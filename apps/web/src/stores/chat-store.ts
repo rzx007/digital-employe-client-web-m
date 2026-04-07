@@ -7,6 +7,8 @@ import {
   type Contact,
 } from "@/lib/mock-data/ai-employees"
 
+export type ActiveTab = "chat" | "contacts" | "calendar"
+
 interface ChatStore {
   contacts: Contact[]
   selectedContactId: string | null
@@ -14,11 +16,14 @@ interface ChatStore {
   isDraftConversation: boolean
   draftSessionKey: number
   showWorkbench: boolean
+  activeTab: ActiveTab
   setContacts: (contacts: Contact[]) => void
   setSelectedContactId: (id: string | null) => void
   setSelectedConversationId: (id: string | number | null) => void
   setDraftConversation: (isDraft: boolean) => void
   setShowWorkbench: (show: boolean) => void
+  setActiveTab: (tab: ActiveTab) => void
+  startDraftConversation: (contactId: string) => void
   getSelectedContact: () => Contact | undefined
 }
 
@@ -31,6 +36,7 @@ export const useChatStore = create<ChatStore>()(
       isDraftConversation: false,
       draftSessionKey: 0,
       showWorkbench: false,
+      activeTab: "chat" as ActiveTab,
       setContacts: (contacts) => set({ contacts }),
       setSelectedContactId: (id) =>
         set({
@@ -52,6 +58,15 @@ export const useChatStore = create<ChatStore>()(
             : state.draftSessionKey,
         })),
       setShowWorkbench: (show) => set({ showWorkbench: show }),
+      setActiveTab: (tab) => set({ activeTab: tab }),
+      startDraftConversation: (contactId) =>
+        set((state) => ({
+          selectedContactId: contactId,
+          selectedConversationId: null,
+          isDraftConversation: true,
+          draftSessionKey: state.draftSessionKey + 1,
+          activeTab: "chat" as ActiveTab,
+        })),
       getSelectedContact: () => {
         const { contacts, selectedContactId } = get()
         if (!selectedContactId) return undefined

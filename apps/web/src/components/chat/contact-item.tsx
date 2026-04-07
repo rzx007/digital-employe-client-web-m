@@ -32,11 +32,13 @@ import { GroupDetailDialog } from "./group-detail-dialog"
 interface ContactItemProps extends React.ComponentProps<"div"> {
   contact: Contact
   isCollapsed: boolean
+  onDoubleClick?: () => void
 }
 
 export function ContactItem({
   contact,
   isCollapsed,
+  onDoubleClick,
   className,
   ...props
 }: ContactItemProps) {
@@ -216,6 +218,10 @@ export function ContactItem({
           )}
           {...props}
           onClick={handleClick}
+          onDoubleClick={(e) => {
+            e.stopPropagation()
+            onDoubleClick?.()
+          }}
           title={displayName}
         >
           {renderAvatar()}
@@ -236,6 +242,10 @@ export function ContactItem({
         )}
         {...props}
         onClick={handleClick}
+        onDoubleClick={(e) => {
+          e.stopPropagation()
+          onDoubleClick?.()
+        }}
       >
         <div className="relative shrink-0">{renderAvatar()}</div>
         {renderText()}

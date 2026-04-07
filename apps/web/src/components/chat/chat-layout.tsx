@@ -1,5 +1,4 @@
 import * as React from "react"
-import { useShallow } from "zustand/react/shallow"
 
 import { Sheet, SheetContent } from "@workspace/ui/components/sheet"
 import { cn } from "@workspace/ui/lib/utils"
@@ -9,28 +8,23 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useChatStore } from "@/stores/chat-store"
-import { ContactsSidebar } from "./contacts-sidebar"
-import { ConversationList } from "./conversation-list"
+import { AppToolbar } from "./app-toolbar"
+import { CalendarPlaceholder } from "./calendar-placeholder"
 import { ChatView } from "./chat-view"
+import { ContactDetailPanel } from "./contact-detail-panel"
+import { ContactsPanel } from "./contacts-panel"
+import { ConversationList } from "./conversation-list"
+import { RecentConversations } from "./recent-conversations"
 
 export function ChatLayout({
   className,
   ...props
 }: React.ComponentProps<"div">) {
-  const [showContacts, setShowContacts] = React.useState(false)
-  const [showConversations, setShowConversations] = React.useState(false)
   const isMobile = useIsMobile()
-  const { setDraftConversation, setSelectedConversationId } = useChatStore(
-    useShallow((state) => ({
-      setDraftConversation: state.setDraftConversation,
-      setSelectedConversationId: state.setSelectedConversationId,
-    }))
-  )
+  const activeTab = useChatStore((s) => s.activeTab)
 
-  const handleNewConversation = () => {
-    setDraftConversation(true)
-    setSelectedConversationId(null)
-  }
+  const [showConversations, setShowConversations] = React.useState(false)
+
   const {
     activeArtifactId,
     artifacts,
@@ -64,49 +58,79 @@ export function ChatLayout({
       setMonitorFullscreen(true)
     }
   }, [isMobile, isMonitorOpen, setMonitorFullscreen])
+
+  const handleNewConversation = () => {
+    const { setDraftConversation, setSelectedConversationId } =
+      useChatStore.getState()
+    setDraftConversation(true)
+    setSelectedConversationId(null)
+  }
+
+  const handleOpenConversations = () => {
+    setShowConversations(true)
+  }
+
+  const handleOpenContacts = () => {
+    useChatStore.getState().setActiveTab("contacts")
+  }
+
+  const showMonitorSheet = isMonitorOpen && activeTab === "chat"
+
   return (
     <div className={cn("relative flex h-full", className)} {...props}>
-      <ContactsSidebar className="hidden md:flex" />
+      {!isMobile && <AppToolbar />}
+
+      {!isMobile && (
+        <div className="hidden w-64 shrink-0 md:flex md:flex-col">
+          {activeTab === "chat" && (
+            <RecentConversations className="h-full w-full" />
+          )}
+          {activeTab === "contacts" && (
+            <ContactsPanel className="h-full w-full" />
+          )}
+          {activeTab === "calendar" && (
+            <CalendarPlaceholder className="h-full w-full" />
+          )}
+        </div>
+      )}
 
       <div className="flex min-w-0 flex-1">
-        <ChatView
-          onOpenContacts={() => setShowContacts(true)}
-          onOpenConversations={() => setShowConversations(true)}
-          onNewConversation={handleNewConversation}
-          className="min-w-0 flex-1"
-        />
+        {activeTab === "chat" && (
+          <ChatView
+            onOpenContacts={handleOpenContacts}
+            onOpenConversations={handleOpenConversations}
+            onNewConversation={handleNewConversation}
+            className="min-w-0 flex-1"
+          />
+        )}
 
-        {isPanelOpen && activeArtifact && !isFullscreen && !isMobile && (
-          <div className="hidden w-[600px] border-l bg-muted/20 p-3 md:block">
-            <ArtifactPanel
-              artifact={activeArtifact}
-              isOpen={isPanelOpen}
-              isFullscreen={false}
-              onClose={closeArtifact}
-              onToggleFullscreen={toggleFullscreen}
-              className="h-full rounded-xl"
-            />
-          </div>
+        {activeTab === "contacts" && (
+          <ContactDetailPanel className="min-w-0 flex-1" />
         )}
-        {isMonitorOpen && !isMonitorFullscreen && !isMobile && (
-          <div className="hidden w-[380px] border-l bg-muted/20 p-2 transition-all duration-100 sm:block lg:p-3 2xl:w-[520px]">
-            <MonitorPanel
-              isOpen={isMonitorOpen}
-              isFullscreen={false}
-              onClose={closeMonitor}
-              onToggleFullscreen={toggleMonitorFullscreen}
-              className="h-full rounded-xl"
-            />
-          </div>
+
+        {activeTab === "calendar" && (
+          <CalendarPlaceholder variant="content" className="min-w-0 flex-1" />
         )}
+
+        {isPanelOpen &&
+          activeArtifact &&
+          !isFullscreen &&
+          !isMobile &&
+          activeTab === "chat" && (
+            <div className="hidden w-[600px] border-l bg-muted/20 p-3 md:block">
+              <ArtifactPanel
+                artifact={activeArtifact}
+                isOpen={isPanelOpen}
+                isFullscreen={false}
+                onClose={closeArtifact}
+                onToggleFullscreen={toggleFullscreen}
+                className="h-full rounded-xl"
+              />
+            </div>
+          )}
       </div>
 
-      <Sheet open={showContacts} onOpenChange={setShowContacts}>
-        <SheetContent side="left" className="w-64 p-0 md:hidden">
-          <ContactsSidebar className="h-full w-full border-r-0" />
-        </SheetContent>
-      </Sheet>
-
+      {/* Conversation history Sheet */}
       <Sheet open={showConversations} onOpenChange={setShowConversations}>
         <SheetContent side="right" className="w-[300px] p-0">
           <ConversationList
@@ -116,16 +140,54 @@ export function ChatLayout({
         </SheetContent>
       </Sheet>
 
-      {isPanelOpen && activeArtifact && (isFullscreen || isMobile) && (
-        <ArtifactPanel
-          artifact={activeArtifact}
-          isOpen={isPanelOpen}
-          isFullscreen={isFullscreen}
-          onClose={closeArtifact}
-          onToggleFullscreen={toggleFullscreen}
-        />
+      {/* MonitorPanel as Sheet in chat mode */}
+      <Sheet
+        open={showMonitorSheet}
+        onOpenChange={(open) => {
+          if (!open) closeMonitor()
+        }}
+      >
+        <SheetContent side="right" className="w-[520px] p-0 sm:w-[600px]">
+          <MonitorPanel
+            isOpen={true}
+            isFullscreen={false}
+            onClose={closeMonitor}
+            onToggleFullscreen={() => {}}
+            className="h-full w-full rounded-none border-0 shadow-none"
+          />
+        </SheetContent>
+      </Sheet>
+
+      {/* Mobile Sheet for contacts */}
+      {isMobile && (
+        <Sheet
+          open={isMobile && activeTab === "contacts"}
+          onOpenChange={(open) => {
+            if (!open) useChatStore.getState().setActiveTab("chat")
+          }}
+        >
+          <SheetContent side="left" className="w-64 p-0">
+            <ContactsPanel className="h-full w-full border-r-0" />
+          </SheetContent>
+        </Sheet>
       )}
-      {isMonitorOpen && (isMonitorFullscreen || isMobile) && (
+
+      {/* Artifact fullscreen */}
+      {isPanelOpen &&
+        activeArtifact &&
+        (isFullscreen || isMobile) &&
+        activeTab === "chat" && (
+          <ArtifactPanel
+            artifact={activeArtifact}
+            isOpen={isPanelOpen}
+            isFullscreen={isFullscreen}
+            onClose={closeArtifact}
+            onToggleFullscreen={toggleFullscreen}
+          />
+        )}
+
+      {/* Monitor fullscreen (non-chat tab) */}
+      {isMonitorOpen && isMonitorFullscreen && activeTab !== "chat" && (
         <MonitorPanel
           isOpen={isMonitorOpen}
           isFullscreen={isMonitorFullscreen}
