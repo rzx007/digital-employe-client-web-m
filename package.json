@@ -21,7 +21,8 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "electron"
+      "electron",
+      "better-sqlite3"
     ],
     "ignoredBuiltDependencies": [
       "better-sqlite3",

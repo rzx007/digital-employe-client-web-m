@@ -40,6 +40,7 @@ import { ArtifactPreview } from "../artifact"
 import { ChatPromptInput } from "../chat-prompt-input"
 import type { PromptChangeEvent } from "../lexical-editor/prompt-input-textarea"
 import type { SlashCommandItem } from "../lexical-editor/slash-command-plugin"
+import type { MentionCandidate } from "../lexical-editor/mention-plugin"
 import { ChatPanelHeader } from "./chat-panel-header"
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
 import { WorkbenchView } from "./workbench-view"
@@ -159,6 +160,29 @@ export function ChatPanel({
     //     keywords: ["技能", "技能 1", "描述 1"],
     //   }
     // ]
+  }, [contact])
+  const mentionCandidates = React.useMemo<MentionCandidate[]>(() => {
+    console.log("contact", contact)
+    if (contact?.type === "group") {
+      return (contact.group?.participants ?? []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        avatar: p.avatar,
+        role: p.role,
+      }))
+    }
+    if (contact?.type === "curator") {
+      const { contacts } = useChatStore.getState()
+      return contacts
+        .filter((c) => c.type === "employee" && c.employee)
+        .map((c) => ({
+          id: c.employee!.id,
+          name: c.employee!.name,
+          avatar: c.employee!.avatar,
+          role: c.employee!.role,
+        }))
+    }
+    return []
   }, [contact])
 
   return (
@@ -387,6 +411,7 @@ export function ChatPanel({
                   size="compact"
                   className="w-full overflow-hidden shadow-xl"
                   slashCommands={slashCommands}
+                  mentionCandidates={mentionCandidates}
                 />
                 {error && (
                   <p className="mt-2 text-xs text-destructive">{error.message}</p>

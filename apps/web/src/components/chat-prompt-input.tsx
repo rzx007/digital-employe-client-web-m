@@ -38,6 +38,7 @@ import {
 } from "@workspace/ui/components/ai-elements/model-selector"
 import { IconSettings, IconMap } from "@tabler/icons-react"
 import type { SlashCommandItem } from "./lexical-editor/slash-command-plugin"
+import type { MentionCandidate } from "./lexical-editor/mention-plugin"
 
 // Ensure models logic is shared or injected. We'll use a local constant for now.
 const models = [
@@ -126,6 +127,7 @@ interface ChatPromptInputProps {
   className?: string
   /** 员工技能生成的斜杠命令 */
   slashCommands?: SlashCommandItem[]
+  mentionCandidates?: MentionCandidate[]
 }
 
 export function ChatPromptInput({
@@ -138,6 +140,7 @@ export function ChatPromptInput({
   size = "default",
   className,
   slashCommands,
+  mentionCandidates
 }: ChatPromptInputProps) {
   const [model, setModel] = useState<string>(models[0]!.id)
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
@@ -168,6 +171,7 @@ export function ChatPromptInput({
             value={value}
             placeholder={placeholder}
             commands={slashCommands}
+            mentionCandidates={mentionCandidates}
             className={`resize-none placeholder:text-muted-foreground/60 ${isCompact ? "min-h-[60px] text-base" : "min-h-28 text-lg"
               }`}
           />
