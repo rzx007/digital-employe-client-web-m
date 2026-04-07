@@ -174,3 +174,50 @@ navigate({ to: "/demo" })
 - **Radix UI** + **shadcn/ui** 组件体系
 - **Tailwind CSS v4** 样式
 - **Electron** 桌面端支持
+
+### 启动时序图
+
+```plaintext
+[应用启动]
+    │
+    ▼
+ initAuthStore()  ← 读 auth.json
+    │
+    ▼
+ createSplashWindow()
+    │
+    ▼
+ startBackend()
+    │
+    ▼
+ closeSplashWindow()
+    │
+    ▼
+ hasToken()?
+    │
+   YES ──→ createWindow()
+    │         │
+    │         ▼
+    │     restoreSession()  ← electron-store → localStorage + Zustand
+    │         │
+    │         ▼
+    │     [主窗口正常使用]
+    │         │
+    │     API 返回 401?
+    │         │
+    │        YES → clearAuth() →  跳转 loginWindow
+    │
+   NO ───→ createLoginWindow()
+              │
+              ▼
+          [用户登录]
+              │
+              ▼
+          login() → POST /api/login
+              │
+         code === 1?
+              │
+            YES → saveAuth() → loginSuccess() → createWindow()
+              │
+             NO  → 显示错误
+```

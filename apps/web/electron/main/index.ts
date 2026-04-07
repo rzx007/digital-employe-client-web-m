@@ -1,10 +1,17 @@
-import { app, BrowserWindow, shell } from "electron"
+import { app, BrowserWindow, shell, Menu } from "electron"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 import os from "node:os"
 import { startBackend, stopBackend, getBackendPort } from "./backend"
-import { registerIpcHandlers, isForceQuit, setForceQuit } from "./ipc-handlers"
+import { registerIpcHandlers, isForceQuit, setForceQuit, setMainWindow } from "./ipc-handlers"
 import { update } from "./update"
+import {
+  createSplashWindow,
+  closeSplashWindow,
+} from "./splash"
+import { createTray, destroyTray } from "./tray"
+import { createLoginWindow } from "./login"
+import { initAuthStore, hasToken } from "./auth"
 
 /**
  * Electron 主进程入口
@@ -15,9 +22,13 @@ import { update } from "./update"
  * - 协调后端进程的启动/停止时机
  * - 注册应用生命周期事件
  *
- * 其他职责已拆分：
+ * 功能：
  * - backend.ts: Python 后端进程管理
  * - ipc-handlers.ts: IPC 通信处理器
+ * - splash.ts: 加载窗口管理
+ * - tray.ts: 系统托盘管理
+ * - login.ts: 登录窗口管理
+ * - auth.ts: 认证持久化管理
  * - update.ts: 自动更新
  */
 
@@ -62,7 +73,7 @@ const indexHtml = path.join(RENDERER_DIST, "index.html")
 async function createWindow() {
   win = new BrowserWindow({
     title: "DigitalEmployee",
-    icon: path.join(process.env.VITE_PUBLIC, "logo.svg"),
+    icon: path.join(process.env.APP_ROOT, "build/icon.ico"),
     webPreferences: {
       preload,
     },
@@ -73,11 +84,21 @@ async function createWindow() {
   // 加载页面：开发环境加载 Vite dev server，生产环境加载本地文件
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
+    win.webContents.openDevTools()
   } else {
     win.loadFile(indexHtml)
   }
 
-  win.webContents.openDevTools()
+
+
+  // 点击关闭按钮(X) → 隐藏窗口到托盘，不退出应用
+  // forceQuit 为 true 时（从托盘菜单退出），允许窗口真正关闭
+  win.on("close", (e) => {
+    if (!isForceQuit()) {
+      e.preventDefault()
+      win?.hide()
+    }
+  })
 
   // 页面加载完成后通知渲染进程
   win.webContents.on("did-finish-load", () => {
@@ -91,8 +112,11 @@ async function createWindow() {
     return { action: "deny" }
   })
 
-  // 注册 IPC 通信
-  registerIpcHandlers(win)
+  //  IPC handlers 的窗口引用（窗口控制类 IPC 生效）
+  setMainWindow(win)
+
+  // 创建系统托盘（窗口关闭后仍可从托盘操作）
+  createTray(win)
 
   // 自动更新
   update(win)
@@ -111,6 +135,7 @@ app.on("before-quit", (e) => {
   e.preventDefault()
 
   setForceQuit(true)
+  destroyTray()
   stopBackend()
 
   // 兜底超时：即使后端未退出，也要确保应用能退出
@@ -123,37 +148,59 @@ app.on("before-quit", (e) => {
  * 应用就绪
  *
  * 启动顺序：
- * 1. 启动 Python 后端（等待就绪或超时）
- * 2. 创建主窗口
- * 3. 如果后端启动失败，仍然创建窗口，通过 IPC 通知渲染进程
+ * 1. 初始化认证存储
+ * 2. 注册 IPC 通信
+ * 3. 启动 Python 后端（等待就绪或超时）
+ * 4. 关闭 splash
+ * 5. 检查是否有持久化 token → 有则直接进主窗口，否则进登录窗口
  */
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null)
+
+  initAuthStore()
+
+  registerIpcHandlers(async () => {
+    await createWindow()
+  })
+
+  createSplashWindow({
+    devServerUrl: VITE_DEV_SERVER_URL,
+    indexHtml,
+  })
+
   try {
     await startBackend()
-    console.log("[App] backend server ready, creating window...")
-    await createWindow()
+    console.log("[App] backend server ready")
+    closeSplashWindow()
+
+    // 检查是否有持久化的 token，有则跳过登录
+    if (hasToken()) {
+      console.log("[App] saved token found, skipping login...")
+      await createWindow()
+    } else {
+      console.log("[App] no saved token, opening login window...")
+      createLoginWindow({ devServerUrl: VITE_DEV_SERVER_URL, indexHtml })
+    }
   } catch (err) {
     console.error("[App] backend failed:", err)
-    await createWindow()
-
-    // 通知渲染进程后端启动失败
     setTimeout(() => {
-      win?.webContents.send(
-        "backend-error",
-        err instanceof Error ? err.message : String(err)
-      )
-    }, 1000)
+      closeSplashWindow()
+      createLoginWindow({ devServerUrl: VITE_DEV_SERVER_URL, indexHtml })
+    }, 1500)
   }
 })
 
 app.on("window-all-closed", () => {
   win = null
-  if (process.platform !== "darwin") app.quit()
+  // 不退出应用，保持 tray 存活
+  // 真正退出走 tray 菜单「退出」或 forceQuit
 })
 
 app.on("second-instance", () => {
   if (win) {
     if (win.isMinimized()) win.restore()
+    // 窗口隐藏到托盘时也要能唤出
+    win.show()
     win.focus()
   }
 })

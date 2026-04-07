@@ -21,10 +21,12 @@ import {
 } from "lexical"
 import { useEffect, useRef } from "react"
 import { CommandPillNode, $isCommandPillNode } from "./command-pill-node"
+import { MentionPillNode, $isMentionPillNode } from "./mention-pill-node"
 import {
   SlashCommandPlugin,
   type SlashCommandItem,
 } from "./slash-command-plugin"
+import { MentionPlugin, type MentionCandidate } from "./mention-plugin"
 
 export interface PromptChangeEvent {
   value: string
@@ -33,26 +35,35 @@ export interface PromptChangeEvent {
     id: string
     title: string
   } | null
+  mentions: Array<{
+    id: string
+    name: string
+  }>
 }
 
 function getEditorCommandAndValue(): PromptChangeEvent {
   const root = $getRoot()
 
   let command: PromptChangeEvent["command"] = null
+  const mentions: PromptChangeEvent["mentions"] = []
 
   const topLevelChildren = root.getChildren()
   for (const child of topLevelChildren) {
-    // 只关心段落等元素里的第一个命令 Pill
     if ($isElementNode(child)) {
       const grandChildren = child.getChildren()
-      for (const node of grandChildren as unknown as CommandPillNode[]) {
+      for (const node of grandChildren) {
         if ($isCommandPillNode(node)) {
           const latest = node.getLatest() as CommandPillNode
           command = {
             id: latest.getCommandId(),
             title: latest.getCommandTitle(),
           }
-          break
+        } else if ($isMentionPillNode(node)) {
+          const latest = node.getLatest() as MentionPillNode
+          mentions.push({
+            id: latest.getMentionId(),
+            name: latest.getMentionName(),
+          })
         }
       }
       if (command) break
@@ -65,6 +76,7 @@ function getEditorCommandAndValue(): PromptChangeEvent {
     value,
     rawValue,
     command,
+    mentions,
   }
 }
 
@@ -91,6 +103,7 @@ function OnChangePlugin({
           value: nextValue,
           rawValue,
           command,
+          mentions,
         } = getEditorCommandAndValue()
 
         if (nextValue !== value && onChange) {
@@ -98,6 +111,7 @@ function OnChangePlugin({
             value: nextValue,
             rawValue,
             command,
+            mentions,
           })
         }
       })
@@ -237,10 +251,9 @@ export interface LexicalPromptInputTextareaProps {
   onChange?: (e: PromptChangeEvent) => void
   placeholder?: string
   className?: string
-  /** 挂载后是否自动聚焦到输入框，默认 true */
   autoFocus?: boolean
-  /** 斜杠命令选项，不传则不启用斜杠命令 */
   commands?: SlashCommandItem[]
+  mentionCandidates?: MentionCandidate[]
 }
 
 // 组件
@@ -251,6 +264,7 @@ export function LexicalPromptInputTextarea({
   value: propValue,
   autoFocus = true,
   commands,
+  mentionCandidates,
 }: LexicalPromptInputTextareaProps) {
   const controller = useOptionalPromptInputController()
   const attachments = usePromptInputAttachments()
@@ -307,9 +321,9 @@ export function LexicalPromptInputTextarea({
 
   const handleChange = controller
     ? (e: PromptChangeEvent) => {
-      controller.textInput.setInput(e.value)
-      onChange?.(e)
-    }
+        controller.textInput.setInput(e.value)
+        onChange?.(e)
+      }
     : (e: PromptChangeEvent) => onChange?.(e)
 
   const initialConfig = {
@@ -323,7 +337,7 @@ export function LexicalPromptInputTextarea({
         strikethrough: "line-through",
       },
     },
-    nodes: [CommandPillNode],
+    nodes: [CommandPillNode, MentionPillNode],
     onError(error: Error) {
       console.error(error)
     },
@@ -367,6 +381,7 @@ export function LexicalPromptInputTextarea({
         {!isComposing && <SubmitKeyPlugin />}
         <BackspaceAttachmentPlugin attachments={attachments} />
         <SlashCommandPlugin commands={commands} />
+        <MentionPlugin candidates={mentionCandidates} />
       </div>
     </LexicalComposer>
   )

@@ -1,0 +1,772 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Simple Agents API",
+    "description": "AI agent session management API with chat, streaming, and artifact support.",
+    "version": "2.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local development server"
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "getServiceInfo",
+        "summary": "Get service information",
+        "tags": ["Service"],
+        "responses": {
+          "200": {
+            "description": "Service metadata",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ServiceInfo" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions": {
+      "post": {
+        "operationId": "createSession",
+        "summary": "Create a new session",
+        "tags": ["Sessions"],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateSessionInput" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Session created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Session" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listSessions",
+        "summary": "List all sessions",
+        "tags": ["Sessions"],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": { "type": "integer", "default": 1, "minimum": 1 }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": { "type": "integer", "default": 20, "minimum": 1 }
+          },
+          {
+            "name": "includeArchived",
+            "in": "query",
+            "schema": { "type": "boolean", "default": false }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated session list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedSessionResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{id}": {
+      "get": {
+        "operationId": "getSession",
+        "summary": "Get a session by ID",
+        "tags": ["Sessions"],
+        "parameters": [{ "$ref": "#/components/parameters/SessionId" }],
+        "responses": {
+          "200": {
+            "description": "Session found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Session" }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateSession",
+        "summary": "Update a session",
+        "tags": ["Sessions"],
+        "parameters": [{ "$ref": "#/components/parameters/SessionId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateSessionInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Session" }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSession",
+        "summary": "Delete a session",
+        "tags": ["Sessions"],
+        "parameters": [{ "$ref": "#/components/parameters/SessionId" }],
+        "responses": {
+          "200": {
+            "description": "Session deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{id}/messages": {
+      "get": {
+        "operationId": "getMessages",
+        "summary": "List messages in a session",
+        "tags": ["Chat"],
+        "parameters": [
+          { "$ref": "#/components/parameters/SessionId" },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": { "type": "integer", "default": 1, "minimum": 1 }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": { "type": "integer", "default": 50, "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated message list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedMessageResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{id}/chat": {
+      "post": {
+        "operationId": "chat",
+        "summary": "Send a message (non-streaming)",
+        "tags": ["Chat"],
+        "parameters": [{ "$ref": "#/components/parameters/SessionId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SendMessageInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Agent response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ChatResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "409": {
+            "description": "Session has an active stream",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveStreamConflict"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Agent invocation failed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{id}/chat/stream": {
+      "post": {
+        "operationId": "chatStream",
+        "summary": "Send a message with SSE streaming",
+        "tags": ["Chat"],
+        "parameters": [{ "$ref": "#/components/parameters/SessionId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SendMessageInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SSE stream of agent events",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "object",
+                  "description": "Each SSE event contains a JSON-encoded StreamEvent in the `data` field."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "409": {
+            "description": "Session already has an active stream",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveStreamConflict"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{id}/stream": {
+      "get": {
+        "operationId": "getStreamStatus",
+        "summary": "Get the current stream status for a session",
+        "tags": ["Streaming"],
+        "parameters": [{ "$ref": "#/components/parameters/SessionId" }],
+        "responses": {
+          "200": {
+            "description": "Stream status",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamStatus" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{id}/stream/{streamId}": {
+      "get": {
+        "operationId": "resumeStream",
+        "summary": "Resume or retrieve a stream by ID",
+        "tags": ["Streaming"],
+        "parameters": [
+          { "$ref": "#/components/parameters/SessionId" },
+          { "$ref": "#/components/parameters/StreamId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stream result or SSE continuation stream",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamResult" }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "object",
+                  "description": "SSE stream resuming from cached content or live events."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Stream not found or expired",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamNotFound" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{id}/stream/{streamId}/cancel": {
+      "post": {
+        "operationId": "cancelStream",
+        "summary": "Cancel an active stream",
+        "tags": ["Streaming"],
+        "parameters": [
+          { "$ref": "#/components/parameters/SessionId" },
+          { "$ref": "#/components/parameters/StreamId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stream cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "streamId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Stream not found, already completed, or expired",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{id}/artifacts": {
+      "get": {
+        "operationId": "listArtifacts",
+        "summary": "List artifacts for a session",
+        "tags": ["Artifacts"],
+        "parameters": [{ "$ref": "#/components/parameters/SessionId" }],
+        "responses": {
+          "200": {
+            "description": "Artifact list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Artifact" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{id}/artifacts/{artifactId}": {
+      "get": {
+        "operationId": "getArtifact",
+        "summary": "Download an artifact file",
+        "tags": ["Artifacts"],
+        "parameters": [
+          { "$ref": "#/components/parameters/SessionId" },
+          { "$ref": "#/components/parameters/ArtifactId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artifact file content",
+            "content": {
+              "*/*": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "404": {
+            "description": "Artifact or file not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteArtifact",
+        "summary": "Delete an artifact",
+        "tags": ["Artifacts"],
+        "parameters": [
+          { "$ref": "#/components/parameters/SessionId" },
+          { "$ref": "#/components/parameters/ArtifactId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artifact deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Artifact not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "SessionId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "Session ID"
+      },
+      "StreamId": {
+        "name": "streamId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "Stream task ID"
+      },
+      "ArtifactId": {
+        "name": "artifactId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "Artifact ID"
+      }
+    },
+    "schemas": {
+      "ServiceInfo": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "version": { "type": "string" },
+          "dataDir": { "type": "string" },
+          "endpoints": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        }
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "metadata": { "type": ["string", "null"] },
+          "isArchived": { "type": "boolean" }
+        },
+        "required": ["id", "title", "createdAt", "updatedAt", "isArchived"]
+      },
+      "CreateSessionInput": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "metadata": { "type": "object" }
+        }
+      },
+      "UpdateSessionInput": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "metadata": { "type": "object" },
+          "isArchived": { "type": "boolean" }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "sessionId": { "type": "string" },
+          "role": {
+            "type": "string",
+            "enum": ["user", "assistant", "system", "tool"]
+          },
+          "content": { "type": ["string", "null"] },
+          "toolCalls": { "type": ["string", "null"] },
+          "toolResults": { "type": ["string", "null"] },
+          "tokenCount": { "type": ["integer", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "sessionId", "role", "createdAt"]
+      },
+      "SendMessageInput": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" }
+        },
+        "required": ["message"]
+      },
+      "ChatResponse": {
+        "type": "object",
+        "properties": {
+          "content": { "type": ["string", "null"] },
+          "messageId": { "type": "integer" }
+        }
+      },
+      "Artifact": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "sessionId": { "type": "string" },
+          "filePath": { "type": "string" },
+          "fileName": { "type": "string" },
+          "fileSize": { "type": "integer" },
+          "mimeType": { "type": "string" },
+          "description": { "type": ["string", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": [
+          "id",
+          "sessionId",
+          "filePath",
+          "fileName",
+          "fileSize",
+          "mimeType",
+          "createdAt"
+        ]
+      },
+      "StreamEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "stream_start" },
+              "streamId": { "type": "string" }
+            },
+            "required": ["type", "streamId"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "token" },
+              "content": { "type": "string" }
+            },
+            "required": ["type", "content"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "tool_start" },
+              "name": { "type": "string" },
+              "input": {}
+            },
+            "required": ["type", "name"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "tool_end" },
+              "name": { "type": "string" },
+              "output": { "type": "string" }
+            },
+            "required": ["type", "name"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "done" },
+              "messageId": { "type": "integer" },
+              "streamId": { "type": "string" }
+            },
+            "required": ["type", "messageId", "streamId"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "error" },
+              "message": { "type": "string" },
+              "streamId": { "type": "string" }
+            },
+            "required": ["type", "message", "streamId"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "cancelled" },
+              "streamId": { "type": "string" }
+            },
+            "required": ["type", "streamId"]
+          }
+        ],
+        "discriminator": { "propertyName": "type" }
+      },
+      "StreamStatus": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "active": { "type": "boolean", "const": true },
+              "streamId": { "type": "string" },
+              "status": { "type": "string" }
+            }
+          },
+          {
+            "type": "object",
+            "properties": {
+              "active": { "type": "boolean", "const": false },
+              "lastStreamId": { "type": "string" },
+              "lastStatus": { "type": "string" },
+              "lastMessageId": { "type": "integer" }
+            }
+          }
+        ],
+        "discriminator": { "propertyName": "active" }
+      },
+      "StreamResult": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["completed", "failed", "cancelled"]
+          },
+          "content": { "type": "string" },
+          "error": { "type": ["string", "null"] },
+          "messageId": { "type": ["integer", "null"] },
+          "streamId": { "type": "string" },
+          "source": { "type": ["string", "null"] }
+        }
+      },
+      "StreamNotFound": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "latestStreamId": { "type": "string" },
+          "latestStatus": { "type": "string" }
+        }
+      },
+      "ActiveStreamConflict": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "activeStreamId": { "type": "string" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" }
+        },
+        "required": ["error"]
+      },
+      "PaginatedSessionResult": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Session" }
+          },
+          "total": { "type": "integer" },
+          "page": { "type": "integer" },
+          "pageSize": { "type": "integer" },
+          "totalPages": { "type": "integer" }
+        }
+      },
+      "PaginatedMessageResult": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Message" }
+          },
+          "total": { "type": "integer" },
+          "page": { "type": "integer" },
+          "pageSize": { "type": "integer" },
+          "totalPages": { "type": "integer" }
+        }
+      }
+    }
+  },
+  "tags": [
+    { "name": "Service", "description": "Service metadata" },
+    { "name": "Sessions", "description": "Session CRUD operations" },
+    { "name": "Chat", "description": "Chat and messaging" },
+    { "name": "Streaming", "description": "Stream lifecycle management" },
+    { "name": "Artifacts", "description": "Artifact file management" }
+  ]
+}

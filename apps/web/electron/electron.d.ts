@@ -49,6 +49,22 @@ declare global {
       isMaximized: () => Promise<boolean>
       setForceQuit: (value: boolean) => Promise<void>
       getPlatform: () => Promise<PlatformInfo>
+      flashTray: () => Promise<void>
+      stopFlashTray: () => Promise<void>
+      sendNotification: (title: string, body: string, silent?: boolean) => Promise<void>
+      loginSuccess: () => Promise<void>
+      saveAuth: (
+        token: string,
+        user: Record<string, unknown>,
+        rememberMe: boolean
+      ) => Promise<void>
+      clearAuth: () => Promise<void>
+      getAuthStatus: () => Promise<{
+        token: string | null
+        user: Record<string, unknown> | null
+        rememberMe: boolean
+      }>
+      hasSavedAuth: () => Promise<boolean>
     }
   }
   const __APP_VERSION__: string

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SSE Stream Test</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        max-width: 800px;
+        margin: 40px auto;
+        padding: 20px;
+      }
+      h1 {
+        font-size: 20px;
+        margin-bottom: 20px;
+      }
+      .input-group {
+        margin-bottom: 20px;
+      }
+      input,
+      button {
+        padding: 10px;
+        font-size: 14px;
+      }
+      input {
+        width: 300px;
+        margin-right: 10px;
+      }
+      button {
+        background: #007aff;
+        color: white;
+        border: none;
+        cursor: pointer;
+        border-radius: 6px;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+      #output {
+        background: #f5f5f5;
+        padding: 20px;
+        border-radius: 8px;
+        min-height: 300px;
+        white-space: pre-wrap;
+        font-family: monospace;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .token {
+        color: #333;
+      }
+      .event {
+        color: #007aff;
+      }
+      .error {
+        color: #ff3b30;
+      }
+      .done {
+        color: #34c759;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>DeepAgents Stream Test</h1>
+
+    <div class="input-group">
+      <input type="text" id="sessionId" placeholder="Session ID" value="" />
+      <button onclick="createSession()">创建新会话</button>
+    </div>
+
+    <div class="input-group">
+      <input
+        type="text"
+        id="message"
+        placeholder="输入消息"
+        value="用三句话介绍什么是AI"
+      />
+      <button onclick="sendStream()">发送流式消息</button>
+    </div>
+
+    <div id="output"></div>
+
+    <script>
+      const output = document.getElementById("output")
+      const sessionIdInput = document.getElementById("sessionId")
+      const messageInput = document.getElementById("message")
+
+      function log(msg, type = "token") {
+        const span = document.createElement("span")
+        span.className = type
+        span.textContent = msg + "\n"
+        output.appendChild(span)
+        output.scrollTop = output.scrollHeight
+      }
+
+      async function createSession() {
+        const res = await fetch("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "Test Session" }),
+        })
+        const data = await res.json()
+        sessionIdInput.value = data.id
+        log(`创建会话: ${data.id}`, "event")
+      }
+
+      async function sendStream() {
+        const sessionId = sessionIdInput.value
+        const message = messageInput.value
+
+        if (!sessionId) {
+          log("请先创建会话", "error")
+          return
+        }
+
+        log(`\n--- 发送消息: ${message} ---`, "event")
+
+        const res = await fetch(
+          `/api/sessions/${sessionId}/chat/stream`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message }),
+          }
+        )
+
+        if (!res.ok) {
+          const err = await res.text()
+          log(`错误: ${res.status} - ${err}`, "error")
+          return
+        }
+
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ""
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split("\n")
+          buffer = lines.pop() || ""
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6))
+                log(
+                  `[${data.type}] ${data.content || data.messageId || ""}`,
+                  data.type
+                )
+              } catch (e) {
+                log(`[raw] ${line}`, "token")
+              }
+            }
+          }
+        }
+
+        log("--- 流结束 ---", "done")
+      }
+    </script>
+  </body>
+</html>

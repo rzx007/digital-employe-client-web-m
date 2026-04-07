@@ -1,21 +1,58 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron"
 import os from "node:os"
 import { getBackendStatus, getBackendPort, stopBackend } from "./backend"
+import { flashTray, stopFlashTray } from "./tray"
+import { sendNotification } from "./notification"
+import { closeLoginWindow } from "./login"
+import {
+  saveAuth,
+  clearAuth,
+  getStoredAuth,
+  hasToken,
+} from "./auth"
 
 /**
  * IPC 通信处理器
  *
  * 注册所有渲染进程与主进程之间的 IPC 通信通道。
- * 分为三类：
+ * 分为：
  * - 后端管理：查询后端状态、端口
  * - 窗口控制：最小化、最大化、关闭、退出
  * - 系统信息：平台检测
+ * - 托盘控制：闪烁通知、停止闪烁
+ * - 系统通知：发送 OS 原生通知
+ * - 登录控制：登录成功跳转
+ * - 认证管理：保存/清除/查询认证信息
+ *
+ * 窗口引用通过 setMainWindow() 动态更新，
+ * 登录窗口创建时 win 为 null，主窗口创建后更新引用。
  */
+
+// 主窗口引用（登录阶段为 null，主窗口创建后更新）
+let mainWin: BrowserWindow | null = null
+// 登录成功回调
+let _onLoginSuccess: (() => void) | null = null
+
+/**
+ * 设置主窗口引用
+ *
+ * 在 createWindow() 创建主窗口后调用，
+ * 使窗口控制类 IPC（minimize/maximize/close 等）生效。
+ */
+export function setMainWindow(win: BrowserWindow): void {
+  mainWin = win
+}
 
 /**
  * 注册所有 IPC handlers
+ *
+ * 应在 app.whenReady() 中调用，登录窗口和主窗口共用。
+ *
+ * @param onLoginSuccess - 登录成功回调（关闭登录窗口、创建主窗口）
  */
-export function registerIpcHandlers(win: BrowserWindow): void {
+export function registerIpcHandlers(onLoginSuccess: () => void): void {
+  _onLoginSuccess = onLoginSuccess
+
   // ========== 后端管理 ==========
 
   /** 查询后端运行状态 */
@@ -37,26 +74,26 @@ export function registerIpcHandlers(win: BrowserWindow): void {
 
   /** 最小化窗口 */
   ipcMain.handle("minimize-window", () => {
-    win?.minimize()
+    mainWin?.minimize()
   })
 
-  /** 关闭窗口 */
+  /** 关闭窗口（最小化到托盘，不退出应用） */
   ipcMain.handle("close-window", () => {
-    win?.close()
+    mainWin?.hide()
   })
 
   /** 最大化/还原窗口 */
   ipcMain.handle("maximize-window", () => {
-    if (win?.isMaximized()) {
-      win.unmaximize()
+    if (mainWin?.isMaximized()) {
+      mainWin.unmaximize()
     } else {
-      win?.maximize()
+      mainWin?.maximize()
     }
   })
 
   /** 查询窗口是否最大化 */
   ipcMain.handle("is-maximized", () => {
-    return win?.isMaximized() ?? false
+    return mainWin?.isMaximized() ?? false
   })
 
   /** 设置强制退出标志（用于自定义标题栏关闭按钮） */
@@ -80,6 +117,70 @@ export function registerIpcHandlers(win: BrowserWindow): void {
   /** 打开新窗口 */
   ipcMain.handle("open-win", (_, arg) => {
     openChildWindow(arg)
+  })
+
+  // ========== 托盘控制 ==========
+
+  /** 开始托盘闪烁（新消息提醒） */
+  ipcMain.handle("flash-tray", () => {
+    flashTray()
+  })
+
+  /** 停止托盘闪烁 */
+  ipcMain.handle("stop-flash-tray", () => {
+    stopFlashTray()
+  })
+
+  // ========== 系统通知 ==========
+
+  /** 发送 OS 原生通知（屏幕右下角 Toast） */
+  ipcMain.handle(
+    "send-notification",
+    (_event, options: { title: string; body: string; silent?: boolean }) => {
+      if (mainWin) {
+        sendNotification({ ...options, win: mainWin })
+      }
+    }
+  )
+
+  // ========== 登录控制 ==========
+
+  /** 登录成功：关闭登录窗口，触发创建主窗口 */
+  ipcMain.handle("login-success", () => {
+    closeLoginWindow()
+    _onLoginSuccess?.()
+  })
+
+  // ========== 认证管理 ==========
+
+  /** 保存认证信息（登录成功后调用） */
+  ipcMain.handle(
+    "save-auth",
+    (
+      _event,
+      data: {
+        token: string
+        user: Record<string, unknown>
+        rememberMe: boolean
+      }
+    ) => {
+      saveAuth(data.token, data.user, data.rememberMe)
+    }
+  )
+
+  /** 清除认证信息（退出登录时调用） */
+  ipcMain.handle("clear-auth", () => {
+    clearAuth()
+  })
+
+  /** 获取已存储的认证状态 */
+  ipcMain.handle("get-auth-status", () => {
+    return getStoredAuth()
+  })
+
+  /** 检查是否有持久化的 token（启动时判断是否跳过登录） */
+  ipcMain.handle("has-saved-auth", () => {
+    return hasToken()
   })
 }
 
@@ -124,3 +225,5 @@ function openChildWindow(arg: string): void {
   // TODO: 使用共享的 preload 路径和 indexHtml 路径
   // 目前保留原始实现，后续可提取为公共配置
 }
+
+export { stopBackend }

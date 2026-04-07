@@ -196,35 +196,37 @@ export function ChatPanelHeader({
               <IconLayoutDashboard className="size-4" />
             </Button>
           )}
-          {conversationId && (
-            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm">
-                  <IconDots className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-36">
-                <DropdownMenuItem>
-                  <IconPencil className="text-muted-foreground" />
-                  <span>重命名</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <IconArchive className="text-muted-foreground" />
-                  <span>归档</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  onSelect={handleDeleteClick}
-                >
-                  <IconTrash />
-                  <span>删除</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
-      </div>
+          {
+            conversationId && (
+              <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-sm">
+                    <IconDots className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-36">
+                  <DropdownMenuItem>
+                    <IconPencil className="text-muted-foreground" />
+                    <span>重命名</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <IconArchive className="text-muted-foreground" />
+                    <span>归档</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={handleDeleteClick}
+                  >
+                    <IconTrash />
+                    <span>删除</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )
+          }
+        </div >
+      </div >
 
       <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
         <AlertDialogContent>

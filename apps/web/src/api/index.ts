@@ -29,3 +29,6 @@ export {
   fetchConversationMessages,
   streamConversation,
 } from "./conversation"
+
+// 认证
+export { loginApi } from "./auth"
