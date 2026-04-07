@@ -1,0 +1,1226 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BallStats隐私政策</title>
+    <style type="text/css">
+      [data-color-mode*='light'],
+      [data-color-mode*='light'] body,
+      .markdown-body[theme*='light'] {
+        --color-prettylights-syntax-comment: #6e7781;
+        --color-prettylights-syntax-constant: #0550ae;
+        --color-prettylights-syntax-entity: #8250df;
+        --color-prettylights-syntax-storage-modifier-import: #24292f;
+        --color-prettylights-syntax-entity-tag: #116329;
+        --color-prettylights-syntax-keyword: #cf222e;
+        --color-prettylights-syntax-string: #0a3069;
+        --color-prettylights-syntax-variable: #953800;
+        --color-prettylights-syntax-brackethighlighter-unmatched: #82071e;
+        --color-prettylights-syntax-invalid-illegal-text: #f6f8fa;
+        --color-prettylights-syntax-invalid-illegal-bg: #82071e;
+        --color-prettylights-syntax-carriage-return-text: #f6f8fa;
+        --color-prettylights-syntax-carriage-return-bg: #cf222e;
+        --color-prettylights-syntax-string-regexp: #116329;
+        --color-prettylights-syntax-markup-list: #3b2300;
+        --color-prettylights-syntax-markup-heading: #0550ae;
+        --color-prettylights-syntax-markup-italic: #24292f;
+        --color-prettylights-syntax-markup-bold: #24292f;
+        --color-prettylights-syntax-markup-deleted-text: #82071e;
+        --color-prettylights-syntax-markup-deleted-bg: #ffebe9;
+        --color-prettylights-syntax-markup-inserted-text: #116329;
+        --color-prettylights-syntax-markup-inserted-bg: #dafbe1;
+        --color-prettylights-syntax-markup-changed-text: #953800;
+        --color-prettylights-syntax-markup-changed-bg: #ffd8b5;
+        --color-prettylights-syntax-markup-ignored-text: #eaeef2;
+        --color-prettylights-syntax-markup-ignored-bg: #0550ae;
+        --color-prettylights-syntax-meta-diff-range: #8250df;
+        --color-prettylights-syntax-brackethighlighter-angle: #57606a;
+        --color-prettylights-syntax-sublimelinter-gutter-mark: #8c959f;
+        --color-prettylights-syntax-constant-other-reference-link: #0a3069;
+        --color-fg-default: #24292f;
+        --color-fg-muted: #57606a;
+        --color-fg-subtle: #6e7781;
+        --color-canvas-default: #ffffff;
+        --color-canvas-subtle: #f6f8fa;
+        --color-border-default: #d0d7de;
+        --color-border-muted: hsla(210, 18%, 87%, 1);
+        --color-neutral-muted: rgba(175, 184, 193, 0.2);
+        --color-accent-fg: #0969da;
+        --color-accent-emphasis: #0969da;
+        --color-attention-subtle: #fff8c5;
+        --color-danger-fg: #cf222e;
+      }
+      [data-color-mode*='dark'],
+      [data-color-mode*='dark'] body,
+      .markdown-body[theme*='dark'] {
+        --color-prettylights-syntax-comment: #8b949e;
+        --color-prettylights-syntax-constant: #79c0ff;
+        --color-prettylights-syntax-entity: #d2a8ff;
+        --color-prettylights-syntax-storage-modifier-import: #c9d1d9;
+        --color-prettylights-syntax-entity-tag: #7ee787;
+        --color-prettylights-syntax-keyword: #ff7b72;
+        --color-prettylights-syntax-string: #a5d6ff;
+        --color-prettylights-syntax-variable: #ffa657;
+        --color-prettylights-syntax-brackethighlighter-unmatched: #f85149;
+        --color-prettylights-syntax-invalid-illegal-text: #f0f6fc;
+        --color-prettylights-syntax-invalid-illegal-bg: #8e1519;
+        --color-prettylights-syntax-carriage-return-text: #f0f6fc;
+        --color-prettylights-syntax-carriage-return-bg: #b62324;
+        --color-prettylights-syntax-string-regexp: #7ee787;
+        --color-prettylights-syntax-markup-list: #f2cc60;
+        --color-prettylights-syntax-markup-heading: #1f6feb;
+        --color-prettylights-syntax-markup-italic: #c9d1d9;
+        --color-prettylights-syntax-markup-bold: #c9d1d9;
+        --color-prettylights-syntax-markup-deleted-text: #ffdcd7;
+        --color-prettylights-syntax-markup-deleted-bg: #67060c;
+        --color-prettylights-syntax-markup-inserted-text: #aff5b4;
+        --color-prettylights-syntax-markup-inserted-bg: #033a16;
+        --color-prettylights-syntax-markup-changed-text: #ffdfb6;
+        --color-prettylights-syntax-markup-changed-bg: #5a1e02;
+        --color-prettylights-syntax-markup-ignored-text: #c9d1d9;
+        --color-prettylights-syntax-markup-ignored-bg: #1158c7;
+        --color-prettylights-syntax-meta-diff-range: #d2a8ff;
+        --color-prettylights-syntax-brackethighlighter-angle: #8b949e;
+        --color-prettylights-syntax-sublimelinter-gutter-mark: #484f58;
+        --color-prettylights-syntax-constant-other-reference-link: #a5d6ff;
+        --color-fg-default: #c9d1d9;
+        --color-fg-muted: #8b949e;
+        --color-fg-subtle: #484f58;
+        --color-canvas-default: #0d1117;
+        --color-canvas-subtle: #161b22;
+        --color-border-default: #30363d;
+        --color-border-muted: #21262d;
+        --color-neutral-muted: rgba(110, 118, 129, 0.4);
+        --color-accent-fg: #58a6ff;
+        --color-accent-emphasis: #1f6feb;
+        --color-attention-subtle: rgba(187, 128, 9, 0.15);
+        --color-danger-fg: #f85149;
+      }
+
+      .markdown-body {
+        display: block;
+        -webkit-text-size-adjust: 100%;
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif,
+          'Apple Color Emoji', 'Segoe UI Emoji';
+        font-size: 16px;
+        line-height: 1.5;
+        word-wrap: break-word;
+        color: var(--color-fg-default);
+        background-color: var(--color-canvas-default);
+        max-width: 800px;
+        margin: 0 auto;
+      }
+
+      .markdown-body details,
+      .markdown-body figcaption,
+      .markdown-body figure {
+        display: block;
+      }
+
+      .markdown-body summary {
+        display: list-item;
+      }
+
+      .markdown-body [hidden] {
+        display: none !important;
+      }
+
+      .markdown-body a {
+        background-color: transparent;
+        color: var(--color-accent-fg);
+        text-decoration: none;
+      }
+
+      .markdown-body a:active,
+      .markdown-body a:hover {
+        outline-width: 0;
+      }
+
+      .markdown-body abbr[title] {
+        border-bottom: none;
+        text-decoration: underline dotted;
+      }
+
+      .markdown-body b,
+      .markdown-body strong {
+        font-weight: 600;
+      }
+
+      .markdown-body dfn {
+        font-style: italic;
+      }
+
+      .markdown-body h1 {
+        margin: 0.67em 0;
+        font-weight: 600;
+        padding-bottom: 0.3em;
+        font-size: 2em;
+        border-bottom: 1px solid var(--color-border-muted);
+      }
+
+      .markdown-body mark {
+        background-color: var(--color-attention-subtle);
+        color: var(--color-text-primary);
+      }
+
+      .markdown-body small {
+        font-size: 90%;
+      }
+
+      .markdown-body sub,
+      .markdown-body sup {
+        font-size: 75%;
+        line-height: 0;
+        position: relative;
+        vertical-align: baseline;
+      }
+
+      .markdown-body sub {
+        bottom: -0.25em;
+      }
+
+      .markdown-body sup {
+        top: -0.5em;
+      }
+
+      .markdown-body img {
+        border-style: none;
+        max-width: 100%;
+        box-sizing: content-box;
+        background-color: var(--color-canvas-default);
+      }
+
+      .markdown-body code,
+      .markdown-body kbd,
+      .markdown-body pre,
+      .markdown-body samp {
+        font-family: monospace, monospace;
+        font-size: 1em;
+      }
+
+      .markdown-body figure {
+        margin: 1em 40px;
+      }
+
+      .markdown-body hr {
+        box-sizing: content-box;
+        overflow: hidden;
+        background: transparent;
+        border-bottom: 1px solid var(--color-border-muted);
+        height: 0.25em;
+        padding: 0;
+        margin: 24px 0;
+        background-color: var(--color-border-default);
+        border: 0;
+      }
+
+      .markdown-body input {
+        font: inherit;
+        margin: 0;
+        overflow: visible;
+        font-family: inherit;
+        font-size: inherit;
+        line-height: inherit;
+      }
+
+      .markdown-body [type='button'],
+      .markdown-body [type='reset'],
+      .markdown-body [type='submit'] {
+        -webkit-appearance: button;
+      }
+
+      .markdown-body [type='button']::-moz-focus-inner,
+      .markdown-body [type='reset']::-moz-focus-inner,
+      .markdown-body [type='submit']::-moz-focus-inner {
+        border-style: none;
+        padding: 0;
+      }
+
+      .markdown-body [type='button']:-moz-focusring,
+      .markdown-body [type='reset']:-moz-focusring,
+      .markdown-body [type='submit']:-moz-focusring {
+        outline: 1px dotted ButtonText;
+      }
+
+      .markdown-body [type='checkbox'],
+      .markdown-body [type='radio'] {
+        box-sizing: border-box;
+        padding: 0;
+      }
+
+      .markdown-body [type='number']::-webkit-inner-spin-button,
+      .markdown-body [type='number']::-webkit-outer-spin-button {
+        height: auto;
+      }
+
+      .markdown-body [type='search'] {
+        -webkit-appearance: textfield;
+        outline-offset: -2px;
+      }
+
+      .markdown-body [type='search']::-webkit-search-cancel-button,
+      .markdown-body [type='search']::-webkit-search-decoration {
+        -webkit-appearance: none;
+      }
+
+      .markdown-body ::-webkit-input-placeholder {
+        color: inherit;
+        opacity: 0.54;
+      }
+
+      .markdown-body ::-webkit-file-upload-button {
+        -webkit-appearance: button;
+        font: inherit;
+      }
+
+      .markdown-body a:hover {
+        text-decoration: underline;
+      }
+
+      .markdown-body hr::before {
+        display: table;
+        content: '';
+      }
+
+      .markdown-body hr::after {
+        display: table;
+        clear: both;
+        content: '';
+      }
+
+      .markdown-body table {
+        border-spacing: 0;
+        border-collapse: collapse;
+        display: block;
+        width: max-content;
+        max-width: 100%;
+        overflow: auto;
+      }
+
+      .markdown-body td,
+      .markdown-body th {
+        padding: 0;
+      }
+
+      .markdown-body details summary {
+        cursor: pointer;
+      }
+
+      .markdown-body details:not([open]) > *:not(summary) {
+        display: none !important;
+      }
+
+      .markdown-body kbd {
+        display: inline-block;
+        padding: 3px 5px;
+        font:
+          11px ui-monospace,
+          SFMono-Regular,
+          SF Mono,
+          Menlo,
+          Consolas,
+          Liberation Mono,
+          monospace;
+        line-height: 10px;
+        color: var(--color-fg-default);
+        vertical-align: middle;
+        background-color: var(--color-canvas-subtle);
+        border: solid 1px var(--color-neutral-muted);
+        border-bottom-color: var(--color-neutral-muted);
+        border-radius: 6px;
+        box-shadow: inset 0 -1px 0 var(--color-neutral-muted);
+      }
+
+      .markdown-body h1,
+      .markdown-body h2,
+      .markdown-body h3,
+      .markdown-body h4,
+      .markdown-body h5,
+      .markdown-body h6 {
+        margin-top: 24px;
+        margin-bottom: 16px;
+        font-weight: 600;
+        line-height: 1.25;
+      }
+
+      .markdown-body h2 {
+        font-weight: 600;
+        padding-bottom: 0.3em;
+        font-size: 1.5em;
+        border-bottom: 1px solid var(--color-border-muted);
+      }
+
+      .markdown-body h3 {
+        font-weight: 600;
+        font-size: 1.25em;
+      }
+
+      .markdown-body h4 {
+        font-weight: 600;
+        font-size: 1em;
+      }
+
+      .markdown-body h5 {
+        font-weight: 600;
+        font-size: 0.875em;
+      }
+
+      .markdown-body h6 {
+        font-weight: 600;
+        font-size: 0.85em;
+        color: var(--color-fg-muted);
+      }
+
+      .markdown-body p {
+        margin-top: 0;
+        margin-bottom: 10px;
+      }
+
+      .markdown-body blockquote {
+        margin: 0;
+        padding: 0 1em;
+        color: var(--color-fg-muted);
+        border-left: 0.25em solid var(--color-border-default);
+      }
+
+      .markdown-body ul,
+      .markdown-body ol {
+        margin-top: 0;
+        margin-bottom: 0;
+        padding-left: 2em;
+      }
+
+      .markdown-body ol ol,
+      .markdown-body ul ol {
+        list-style-type: lower-roman;
+      }
+
+      .markdown-body ul ul ol,
+      .markdown-body ul ol ol,
+      .markdown-body ol ul ol,
+      .markdown-body ol ol ol {
+        list-style-type: lower-alpha;
+      }
+
+      .markdown-body dd {
+        margin-left: 0;
+      }
+
+      .markdown-body tt,
+      .markdown-body code {
+        font-family:
+          ui-monospace,
+          SFMono-Regular,
+          SF Mono,
+          Menlo,
+          Consolas,
+          Liberation Mono,
+          monospace;
+        font-size: 12px;
+      }
+
+      .markdown-body pre {
+        margin-top: 0;
+        margin-bottom: 0;
+        font-family:
+          ui-monospace,
+          SFMono-Regular,
+          SF Mono,
+          Menlo,
+          Consolas,
+          Liberation Mono,
+          monospace;
+        font-size: 12px;
+        word-wrap: normal;
+      }
+
+      .markdown-body .octicon {
+        display: inline-block;
+        overflow: visible !important;
+        vertical-align: text-bottom;
+        fill: currentColor;
+      }
+
+      .markdown-body ::placeholder {
+        color: var(--color-fg-subtle);
+        opacity: 1;
+      }
+
+      .markdown-body input::-webkit-outer-spin-button,
+      .markdown-body input::-webkit-inner-spin-button {
+        margin: 0;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+
+      .markdown-body .token.comment,
+      .markdown-body .token.prolog,
+      .markdown-body .token.doctype,
+      .markdown-body .token.cdata {
+        color: var(--color-prettylights-syntax-comment);
+      }
+      .markdown-body .token.namespace {
+        opacity: 0.7;
+      }
+      .markdown-body .token.tag,
+      .markdown-body .token.selector,
+      .markdown-body .token.constant,
+      .markdown-body .token.symbol,
+      .markdown-body .token.deleted {
+        color: var(--color-prettylights-syntax-entity-tag);
+      }
+      .markdown-body .token.maybe-class-name {
+        color: var(--color-prettylights-syntax-variable);
+      }
+      .markdown-body .token.property-access,
+      .markdown-body .token.operator,
+      .markdown-body .token.boolean,
+      .markdown-body .token.number,
+      .markdown-body .token.selector .markdown-body .token.class,
+      .markdown-body .token.attr-name,
+      .markdown-body .token.string,
+      .markdown-body .token.char,
+      .markdown-body .token.builtin {
+        color: var(--color-prettylights-syntax-constant);
+      }
+
+      .markdown-body .token.deleted {
+        color: var(--color-prettylights-syntax-markup-deleted-text);
+      }
+      .markdown-body .token.property {
+        color: var(--color-prettylights-syntax-constant);
+      }
+      .markdown-body .token.punctuation {
+        color: var(--color-prettylights-syntax-markup-bold);
+      }
+      .markdown-body .token.function {
+        color: var(--color-prettylights-syntax-entity);
+      }
+      .markdown-body .code-line .token.deleted {
+        background-color: var(--color-prettylights-syntax-markup-deleted-bg);
+      }
+      .markdown-body .token.inserted {
+        color: var(--color-prettylights-syntax-markup-inserted-text);
+      }
+      .markdown-body .code-line .token.inserted {
+        background-color: var(--color-prettylights-syntax-markup-inserted-bg);
+      }
+
+      .markdown-body .token.variable {
+        color: var(--color-prettylights-syntax-constant);
+      }
+      .markdown-body .token.entity,
+      .markdown-body .token.url,
+      .language-css .markdown-body .token.string,
+      .style .markdown-body .token.string {
+        color: var(--color-prettylights-syntax-string);
+      }
+      .markdown-body .token.color,
+      .markdown-body .token.atrule,
+      .markdown-body .token.attr-value,
+      .markdown-body .token.function,
+      .markdown-body .token.class-name {
+        color: var(--color-prettylights-syntax-string);
+      }
+      .markdown-body .token.rule,
+      .markdown-body .token.regex,
+      .markdown-body .token.important,
+      .markdown-body .token.keyword {
+        color: var(--color-prettylights-syntax-keyword);
+      }
+      .markdown-body .token.coord {
+        color: var(--color-prettylights-syntax-meta-diff-range);
+      }
+      .markdown-body .token.important,
+      .markdown-body .token.bold {
+        font-weight: bold;
+      }
+      .markdown-body .token.italic {
+        font-style: italic;
+      }
+      .markdown-body .token.entity {
+        cursor: help;
+      }
+
+      .markdown-body [data-catalyst] {
+        display: block;
+      }
+
+      .markdown-body g-emoji {
+        font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+        font-size: 1em;
+        font-style: normal !important;
+        font-weight: 400;
+        line-height: 1;
+        vertical-align: -0.075em;
+      }
+
+      .markdown-body g-emoji img {
+        width: 1em;
+        height: 1em;
+      }
+
+      .markdown-body::before {
+        display: table;
+        content: '';
+      }
+
+      .markdown-body::after {
+        display: table;
+        clear: both;
+        content: '';
+      }
+
+      .markdown-body > *:first-child {
+        margin-top: 0 !important;
+      }
+
+      .markdown-body > *:last-child {
+        margin-bottom: 0 !important;
+      }
+
+      .markdown-body a:not([href]) {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .markdown-body .absent {
+        color: var(--color-danger-fg);
+      }
+
+      .markdown-body a.anchor {
+        float: left;
+        padding-right: 4px;
+        margin-left: -20px;
+        line-height: 1;
+      }
+
+      .markdown-body a.anchor:focus {
+        outline: none;
+      }
+
+      .markdown-body p,
+      .markdown-body blockquote,
+      .markdown-body ul,
+      .markdown-body ol,
+      .markdown-body dl,
+      .markdown-body table,
+      .markdown-body pre,
+      .markdown-body details {
+        margin-top: 0;
+        margin-bottom: 16px;
+      }
+
+      .markdown-body blockquote > :first-child {
+        margin-top: 0;
+      }
+
+      .markdown-body blockquote > :last-child {
+        margin-bottom: 0;
+      }
+
+      .markdown-body sup > a::before {
+        content: '[';
+      }
+
+      .markdown-body sup > a::after {
+        content: ']';
+      }
+
+      .markdown-body .octicon-video {
+        border: 1px solid #d0d7de !important;
+        border-radius: 6px !important;
+        display: block;
+      }
+
+      .markdown-body .octicon-video summary {
+        border-bottom: 1px solid #d0d7de !important;
+        padding: 8px 16px !important;
+        cursor: pointer;
+      }
+
+      .markdown-body .octicon-video > video {
+        display: block !important;
+        max-width: 100% !important;
+        padding: 2px;
+        box-sizing: border-box;
+        border-bottom-right-radius: 6px !important;
+        border-bottom-left-radius: 6px !important;
+      }
+
+      .markdown-body details.octicon-video:not([open]) > *:not(summary) {
+        display: none !important;
+      }
+
+      .markdown-body details.octicon-video:not([open]) > summary {
+        border-bottom: 0 !important;
+      }
+
+      .markdown-body h1 .octicon-link,
+      .markdown-body h2 .octicon-link,
+      .markdown-body h3 .octicon-link,
+      .markdown-body h4 .octicon-link,
+      .markdown-body h5 .octicon-link,
+      .markdown-body h6 .octicon-link {
+        color: var(--color-fg-default);
+        vertical-align: middle;
+        visibility: hidden;
+      }
+
+      .markdown-body h1:hover .anchor,
+      .markdown-body h2:hover .anchor,
+      .markdown-body h3:hover .anchor,
+      .markdown-body h4:hover .anchor,
+      .markdown-body h5:hover .anchor,
+      .markdown-body h6:hover .anchor {
+        text-decoration: none;
+      }
+
+      .markdown-body h1:hover .anchor .octicon-link,
+      .markdown-body h2:hover .anchor .octicon-link,
+      .markdown-body h3:hover .anchor .octicon-link,
+      .markdown-body h4:hover .anchor .octicon-link,
+      .markdown-body h5:hover .anchor .octicon-link,
+      .markdown-body h6:hover .anchor .octicon-link {
+        visibility: visible;
+      }
+
+      .markdown-body h1 tt,
+      .markdown-body h1 code,
+      .markdown-body h2 tt,
+      .markdown-body h2 code,
+      .markdown-body h3 tt,
+      .markdown-body h3 code,
+      .markdown-body h4 tt,
+      .markdown-body h4 code,
+      .markdown-body h5 tt,
+      .markdown-body h5 code,
+      .markdown-body h6 tt,
+      .markdown-body h6 code {
+        padding: 0 0.2em;
+        font-size: inherit;
+      }
+
+      .markdown-body ul.no-list,
+      .markdown-body ol.no-list {
+        padding: 0;
+        list-style-type: none;
+      }
+
+      .markdown-body ol[type='1'] {
+        list-style-type: decimal;
+      }
+
+      .markdown-body ol[type='a'] {
+        list-style-type: lower-alpha;
+      }
+
+      .markdown-body ol[type='i'] {
+        list-style-type: lower-roman;
+      }
+
+      .markdown-body div > ol:not([type]) {
+        list-style-type: decimal;
+      }
+
+      .markdown-body ul ul,
+      .markdown-body ul ol,
+      .markdown-body ol ol,
+      .markdown-body ol ul {
+        margin-top: 0;
+        margin-bottom: 0;
+      }
+
+      .markdown-body li > p {
+        margin-top: 16px;
+      }
+
+      .markdown-body li + li {
+        margin-top: 0.25em;
+      }
+
+      .markdown-body dl {
+        padding: 0;
+      }
+
+      .markdown-body dl dt {
+        padding: 0;
+        margin-top: 16px;
+        font-size: 1em;
+        font-style: italic;
+        font-weight: 600;
+      }
+
+      .markdown-body dl dd {
+        padding: 0 16px;
+        margin-bottom: 16px;
+      }
+
+      .markdown-body table th {
+        font-weight: 600;
+      }
+
+      .markdown-body table th,
+      .markdown-body table td {
+        padding: 6px 13px;
+        border: 1px solid var(--color-border-default);
+      }
+
+      .markdown-body table tr {
+        background-color: var(--color-canvas-default);
+        border-top: 1px solid var(--color-border-muted);
+      }
+
+      .markdown-body table tr:nth-child(2n) {
+        background-color: var(--color-canvas-subtle);
+      }
+
+      .markdown-body table img {
+        background-color: transparent;
+        vertical-align: middle;
+      }
+
+      .markdown-body img[align='right'] {
+        padding-left: 20px;
+      }
+
+      .markdown-body img[align='left'] {
+        padding-right: 20px;
+      }
+
+      .markdown-body .emoji {
+        max-width: none;
+        vertical-align: text-top;
+        background-color: transparent;
+      }
+
+      .markdown-body span.frame {
+        display: block;
+        overflow: hidden;
+      }
+
+      .markdown-body span.frame > span {
+        display: block;
+        float: left;
+        width: auto;
+        padding: 7px;
+        margin: 13px 0 0;
+        overflow: hidden;
+        border: 1px solid var(--color-border-default);
+      }
+
+      .markdown-body span.frame span img {
+        display: block;
+        float: left;
+      }
+
+      .markdown-body span.frame span span {
+        display: block;
+        padding: 5px 0 0;
+        clear: both;
+        color: var(--color-fg-default);
+      }
+
+      .markdown-body span.align-center {
+        display: block;
+        overflow: hidden;
+        clear: both;
+      }
+
+      .markdown-body span.align-center > span {
+        display: block;
+        margin: 13px auto 0;
+        overflow: hidden;
+        text-align: center;
+      }
+
+      .markdown-body span.align-center span img {
+        margin: 0 auto;
+        text-align: center;
+      }
+
+      .markdown-body span.align-right {
+        display: block;
+        overflow: hidden;
+        clear: both;
+      }
+
+      .markdown-body span.align-right > span {
+        display: block;
+        margin: 13px 0 0;
+        overflow: hidden;
+        text-align: right;
+      }
+
+      .markdown-body span.align-right span img {
+        margin: 0;
+        text-align: right;
+      }
+
+      .markdown-body span.float-left {
+        display: block;
+        float: left;
+        margin-right: 13px;
+        overflow: hidden;
+      }
+
+      .markdown-body span.float-left span {
+        margin: 13px 0 0;
+      }
+
+      .markdown-body span.float-right {
+        display: block;
+        float: right;
+        margin-left: 13px;
+        overflow: hidden;
+      }
+
+      .markdown-body span.float-right > span {
+        display: block;
+        margin: 13px auto 0;
+        overflow: hidden;
+        text-align: right;
+      }
+
+      .markdown-body code,
+      .markdown-body tt {
+        padding: 0.2em 0.4em;
+        margin: 0;
+        font-size: 85%;
+        background-color: var(--color-neutral-muted);
+        border-radius: 6px;
+      }
+
+      .markdown-body code br,
+      .markdown-body tt br {
+        display: none;
+      }
+
+      .markdown-body del code {
+        text-decoration: inherit;
+      }
+
+      .markdown-body pre code {
+        font-size: 100%;
+      }
+
+      .markdown-body pre > code {
+        padding: 0;
+        margin: 0;
+        word-break: normal;
+        white-space: pre;
+        background: transparent;
+        border: 0;
+      }
+
+      .markdown-body pre {
+        position: relative;
+        font-size: 85%;
+        line-height: 1.45;
+        background-color: var(--color-canvas-subtle);
+        border-radius: 6px;
+      }
+
+      .markdown-body pre code,
+      .markdown-body pre tt {
+        display: inline;
+        max-width: auto;
+        padding: 0;
+        margin: 0;
+        overflow: visible;
+        line-height: inherit;
+        word-wrap: normal;
+        background-color: transparent;
+        border: 0;
+      }
+
+      .markdown-body pre > code {
+        padding: 16px;
+        overflow: auto;
+        display: block;
+      }
+
+      .markdown-body .csv-data td,
+      .markdown-body .csv-data th {
+        padding: 5px;
+        overflow: hidden;
+        font-size: 12px;
+        line-height: 1;
+        text-align: left;
+        white-space: nowrap;
+      }
+
+      .markdown-body .csv-data .blob-num {
+        padding: 10px 8px 9px;
+        text-align: right;
+        background: var(--color-canvas-default);
+        border: 0;
+      }
+
+      .markdown-body .csv-data tr {
+        border-top: 0;
+      }
+
+      .markdown-body .csv-data th {
+        font-weight: 600;
+        background: var(--color-canvas-subtle);
+        border-top: 0;
+      }
+
+      .markdown-body .footnotes {
+        font-size: 12px;
+        color: var(--color-fg-muted);
+        border-top: 1px solid var(--color-border-default);
+      }
+
+      .markdown-body .footnotes ol {
+        padding-left: 16px;
+      }
+
+      .markdown-body .footnotes li {
+        position: relative;
+      }
+
+      .markdown-body .footnotes li:target::before {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        bottom: -8px;
+        left: -24px;
+        pointer-events: none;
+        content: '';
+        border: 2px solid var(--color-accent-emphasis);
+        border-radius: 6px;
+      }
+
+      .markdown-body .footnotes li:target {
+        color: var(--color-fg-default);
+      }
+
+      .markdown-body .footnotes .data-footnote-backref g-emoji {
+        font-family: monospace;
+      }
+
+      .markdown-body .task-list-item {
+        list-style-type: none;
+      }
+
+      .markdown-body .task-list-item label {
+        font-weight: 400;
+      }
+
+      .markdown-body .task-list-item.enabled label {
+        cursor: pointer;
+      }
+
+      .markdown-body .task-list-item + .task-list-item {
+        margin-top: 3px;
+      }
+
+      .markdown-body .task-list-item .handle {
+        display: none;
+      }
+
+      .markdown-body .task-list-item-checkbox,
+      .markdown-body input[type='checkbox'] {
+        margin: 0 0.2em 0.25em -1.6em;
+        vertical-align: middle;
+      }
+
+      .markdown-body .contains-task-list:dir(rtl) .task-list-item-checkbox,
+      .markdown-body .contains-task-list:dir(rtl) input[type='checkbox'] {
+        margin: 0 -1.6em 0.25em 0.2em;
+      }
+
+      .markdown-body ::-webkit-calendar-picker-indicator {
+        filter: invert(50%);
+      }
+      body {
+        padding: 2em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="markdown-body">
+      <h1 style="text-align: center">BallStats隐私政策</h1>
+      <p>
+        BallStats（以下简称
+        “我们”）深知个人信息对您的重要性，我们一向庄严承诺保护使用我们产品和服务（以下统称
+        “ACTUS服务”）的用户（以下统称 “用户” 或
+        “您”）的个人信息及隐私安全。您在使用ACTUS服务时，我们可能会收集和使用您的相关个人信息（或简称
+        “个人信息”）。《BallStats隐私政策》（以下简称
+        “本政策”）适用于我们提供的ACTUS服务。未满十八周岁的用户，请在法定监护人的陪同下阅读本政策，并特别注意未成年人使用条款。我们希望通过本政策向您说明我们在收集和使用您相关个人信息时对应的处理规则，以及我们为您提供的访问、更正、删除和保护这些个人信息的方式，以便更好地保障您的权益。
+      </p>
+      <p>
+        一旦您使用或在我们更新本政策后继续使用我们的产品或服务，即意味着您同意本政策并同意我们按照本政策处理您的相关个人信息。
+      </p>
+      <h2>一、我们如何收集和使用您的个人信息</h2>
+      <h3>（一）注册与登录信息</h3>
+      <p>
+        当您注册ACTUS账号时，我们会收集您的手机号码或邮箱地址，用于创建您的账号并确保账号的安全性。您也可以选择设置昵称、头像等信息来完善您的个人资料，这些信息将用于在应用内展示您的身份标识。如果您不提供这些信息，将无法注册账号并使用需要登录的高级功能，但仍可浏览应用的部分公开内容。
+      </p>
+      <h3>（二）对话交互信息</h3>
+      <p>
+        <strong>对话内容</strong>：在您使用 AI 对话功能时，我们会收集您输入的问题以及 AI
+        生成的回答内容。这些信息用于为您提供精准的对话服务，理解您的需求并持续优化 AI
+        模型。例如，我们通过分析您的问题类型和高频词汇，让 AI
+        能更好地理解语境，提供更符合您期望的回答。
+      </p>
+      <p>
+        <strong>交互行为</strong>：我们会记录您与 AI
+        对话的时间、次数、点击操作等交互行为数据。这些数据帮助我们了解您对不同功能的使用偏好，以便优化产品的交互设计，为您提供更便捷的使用体验。比如，如果发现您频繁使用某个特定功能，我们可能会将该功能在界面上设置得更突出。
+      </p>
+      <h3>（三）设备信息</h3>
+      <p>
+        为保障ACTUS服务的稳定运行，我们会收集您的设备信息，包括设备型号、操作系统版本、设备标识符（如
+        IMEI、Android ID、IDFA
+        等）、屏幕分辨率、网络状态等。这些信息用于适配不同设备，确保应用在您的设备上正常运行，同时帮助我们排查设备相关的问题。例如，当应用出现崩溃或卡顿情况时，我们可以根据设备信息快速定位问题根源，进行针对性的修复。
+      </p>
+      <h3>（四）日志信息</h3>
+      <p>
+        我们会自动收集您使用ACTUS服务时产生的日志信息，包括您访问的页面、使用的功能、IP
+        地址、访问时间等。日志信息有助于我们了解用户的使用行为，优化服务质量。例如，通过分析日志中用户频繁访问的页面，我们可以优化页面加载速度，提升用户体验。同时，这些信息也用于安全监测，防范恶意攻击和违规行为。
+      </p>
+      <h3>（五）位置信息（可选）</h3>
+      <p>
+        当您使用与位置相关的特定功能（如根据您所在地区提供本地化信息）时，我们会在获得您明确同意后，收集您的位置信息。我们可能通过
+        GPS、基站、Wi-Fi
+        等方式获取您的位置。如果您拒绝提供位置信息，将无法使用依赖位置的功能，但不影响其他功能的正常使用。
+      </p>
+      <h3>（六）依法豁免征得同意收集和使用的个人信息</h3>
+      <p>
+        根据法律法规及相关国家标准，我们在以下情形下收集和使用您的个人信息无需征得您的授权同意：
+      </p>
+      <p>与国家安全、国防安全直接相关的；</p>
+      <p>与公共安全、公共卫生、重大公共利益直接相关的；</p>
+      <p>与犯罪侦查、起诉、审判和判决执行等直接相关的；</p>
+      <p>出于维护您或其他个人的生命、财产等重大合法权益但又很难得到本人同意的；</p>
+      <p>所收集的您的个人信息是您自行向社会公众公开的；</p>
+      <p>从合法公开披露的信息中收集的您的个人信息的，如合法的新闻报道、政府信息公开等渠道；</p>
+      <p>用于维护软件及相关服务的安全稳定运行所必需的，例如发现、处置软件及相关服务的故障；</p>
+      <p>法律法规规定的其他情形。</p>
+      <h2>二、我们如何使用 Cookie 和同类技术</h2>
+      <p>
+        为了提升您的使用体验，我们可能会使用 Cookie 和同类技术（如 Web Beacon、Local Storage
+        等）。这些技术可以帮助我们识别您的设备，记住您的偏好设置，分析您的使用行为，从而为您提供更个性化的服务。例如，通过
+        Cookie 记住您上次登录的账号，使您下次登录更加便捷；通过分析 Cookie
+        记录的您的浏览历史，为您推荐相关的内容。
+      </p>
+      <p>
+        您可以通过浏览器设置来管理或拒绝 Cookie。但请注意，如果您拒绝
+        Cookie，可能会影响某些功能的正常使用，例如无法自动登录、个性化推荐不准确等。
+      </p>
+      <h2>三、我们如何共享、转让、公开披露您的个人信息</h2>
+      <h3>（一）共享</h3>
+      <p>
+        <strong>向关联公司共享</strong
+        >：在必要的情况下，我们可能会向我们的关联公司共享您的个人信息，以提供更好的服务或开展联合活动。例如，我们的关联公司可能协助我们进行数据分析，以优化产品功能。我们会与关联公司签署严格的保密协议，确保他们按照本政策的规定处理您的个人信息。
+      </p>
+      <p>
+        <strong>向第三方服务提供商共享</strong
+        >：我们会与第三方服务提供商（如云服务提供商、数据分析公司、推送通知服务商等）共享您的个人信息，以实现特定的功能。例如，我们将您的设备信息共享给云服务提供商，以便他们为我们提供稳定的服务器支持；将您的交互行为数据共享给数据分析公司，帮助我们进行市场分析。我们仅共享必要的个人信息，并且要求第三方服务提供商遵守严格的保密和安全措施，不得将您的个人信息用于其他目的。
+      </p>
+      <p>
+        <strong>共享清单</strong
+        >：您可点击《ACTUS个人信息第三方共享清单》查看第三方收集和使用您个人信息的具体情况。
+      </p>
+      <h3>（二）转让</h3>
+      <p>我们不会将您的个人信息转让给其他公司、组织或个人，除非：</p>
+      <p>事先获得您明确的同意或授权；</p>
+      <p>根据法律法规、强制性的行政或司法要求所必须的情况进行转让；</p>
+      <p>
+        在涉及合并、收购、资产转让或类似的交易时，如涉及到个人信息转让，我们会要求新的持有您个人信息的公司、组织继续受本隐私政策的约束，否则我们将要求该公司、组织重新向您征求授权同意。
+      </p>
+      <h3>（三）公开披露</h3>
+      <p>我们不会公开披露您的个人信息，除非：</p>
+      <p>获得您明确同意或基于您的主动选择，我们可能会公开披露您的个人信息；</p>
+      <p>
+        如果我们确定您出现违反法律法规或严重违反ACTUS相关协议规则的情况，或为保护ACTUS及其关联公司用户或公众的人身财产安全免遭侵害，我们可能依据法律法规或ACTUS相关协议规则披露关于您的个人信息，包括相关违规行为以及ACTUS已对您采取的措施。
+      </p>
+      <h3>（四）依法豁免征得同意共享、转让、公开披露的个人信息</h3>
+      <p>
+        根据法律法规及国家标准，我们共享、转让、公开披露您的个人信息无需征得您的授权同意的情形与本政策第一条第（六）款一致。
+      </p>
+      <h2>四、我们如何存储和保护您的个人信息</h2>
+      <h3>（一）存储</h3>
+      <p>
+        <strong>存储地点</strong
+        >：我们会将在境内运营过程中收集和产生的您的个人信息存储于中华人民共和国境内。目前，我们不会将上述信息传输至境外，如果未来因业务发展需要向境外传输，我们将会遵循相关国家规定或者征求您的同意。
+      </p>
+      <p>
+        <strong>存储期限</strong
+        >：我们仅在为提供ACTUS服务之目的所必需的期间内保留您的个人信息。例如，在您使用服务期间，我们会保留您的账号信息和对话记录；在您注销账号后，我们将按照法律法规的规定删除或匿名化处理您的个人信息。但在某些情况下，我们可能需要根据法律法规的要求或为解决纠纷、进行审计等目的，在一定期限内继续保留部分信息。
+      </p>
+      <h3>（二）保护措施</h3>
+      <p>
+        <strong>技术措施</strong>：我们采用了多种安全技术来保护您的个人信息，包括加密技术（如
+        SSL/TLS
+        加密）、访问控制技术、数据脱敏技术等。例如，我们对您的对话内容进行加密传输和存储，防止信息在传输和存储过程中被窃取；通过访问控制技术，限制只有授权人员才能访问您的个人信息。
+      </p>
+      <p>
+        <strong>管理措施</strong
+        >：我们建立了完善的信息安全管理制度，对员工进行信息安全培训，确保员工严格遵守保密义务。例如，我们与员工签署保密协议，对违反保密规定的员工进行严厉处罚；定期对信息安全管理体系进行评估和改进，以应对不断变化的安全威胁。
+      </p>
+      <p>
+        尽管我们采取了上述合理且有效的措施来保护您的个人信息，但请您理解，由于技术的限制以及可能存在的各种恶意手段，在互联网行业，即便竭尽所能加强安全措施，也不可能始终保证信息的绝对安全。如果我们的物理、技术或管理防护设施遭到破坏，导致信息被非授权访问、公开披露、篡改或毁坏，从而给您造成损失的，我们将依法承担相应的责任。
+      </p>
+      <h2>五、您的权利</h2>
+      <h3>（一）访问权</h3>
+      <p>
+        您有权访问您的个人信息，包括账号信息、个人资料、对话记录等。您可以通过登录ACTUS应用，在相关设置或个人信息管理页面中查看和访问您的个人信息。
+      </p>
+      <h3>（二）更正权</h3>
+      <p>
+        如果您发现我们收集、存储的您的个人信息有错误或不准确，您有权要求我们更正。您可以通过应用内的反馈渠道或联系我们的客服人员，提交更正申请，我们将在核实后及时为您更正。
+      </p>
+      <h3>（三）删除权</h3>
+      <p>在以下情形下，您可以向我们提出删除个人信息的请求：</p>
+      <p>如果我们处理个人信息的行为违反法律法规；</p>
+      <p>如果我们收集、使用您的个人信息，却未征得您的同意；</p>
+      <p>如果我们处理个人信息的行为违反了与您的约定；</p>
+      <p>如果您不再使用我们的产品或服务，或您注销了账号；</p>
+      <p>如果我们不再为您提供产品或服务。</p>
+      <p>
+        我们会在收到您的删除请求后，尽快进行处理。如果涉及到需要向第三方共享的个人信息，我们也会通知第三方进行删除（如果法律允许且可行）。但请注意，在某些情况下，根据法律法规的要求，我们可能无法完全删除您的个人信息，例如为遵守法律法规的存档要求等。
+      </p>
+      <h3>（四）撤回同意权</h3>
+      <p>
+        您有权撤回您之前对我们收集和使用您个人信息的同意。您可以通过应用内的隐私设置或联系我们的客服人员，撤回您的同意。撤回同意后，我们将不再基于该同意继续收集和使用您的个人信息，但不影响我们在您撤回同意前基于您的同意所进行的个人信息处理活动的合法性。
+      </p>
+      <h3>（五）注销权</h3>
+      <p>
+        您有权随时注销您的ACTUS账号。您可以通过应用内的账号注销功能或联系我们的客服人员申请注销账号。在您注销账号后，我们将按照法律法规的规定删除或匿名化处理您的个人信息，且无法再恢复您的账号及相关信息。但在某些情况下，根据法律法规的要求，我们可能需要在一定期限内继续保留部分信息。
+      </p>
+      <h3>（六）获取个人信息副本权</h3>
+      <p>
+        您有权获取您的个人信息副本。您可以通过联系我们的客服人员，向我们提出获取个人信息副本的请求，我们将在合理的时间内为您提供。
+      </p>
+      <h2>六、未成年人保护</h2>
+      <p>
+        我们非常重视对未成年人个人信息的保护。如果您是未满十八周岁的未成年人，在使用ACTUS服务前，请您通知您的监护人共同阅读并接受本政策，并在您使用ACTUS服务、提交个人信息之前，寻求其同意和指导。
+      </p>
+      <p>
+        对于经监护人同意而收集未成年人个人信息的情况，我们只会在受到法律允许、监护人明确同意或者保护未成年人所必要的情况下使用或公开披露此信息。如果我们发现自己在未事先获得监护人同意的情况下收集了未成年人的个人信息，我们会尽快删除相关数据。
+      </p>
+      <p>
+        如您是未满十四周岁的儿童，还应请您的监护人仔细阅读《ACTUS儿童个人信息保护规则及监护人须知》，我们将按照该规则及须知的规定处理儿童的个人信息。
+      </p>
+      <h2>七、隐私政策的更新</h2>
+      <p>
+        我们可能会根据法律法规的变化、业务的发展或其他原因对本隐私政策进行更新。更新后的隐私政策将在ACTUS应用内以适当的方式公布，公布时间即为生效时间。如果更新内容涉及对您个人信息处理方式的重大变更，我们将通过推送通知、弹窗等方式向您提示。请您定期关注本隐私政策的更新，以便了解我们对您个人信息的最新处理规则。
+      </p>
+      <h2>八、如何联系我们</h2>
+      <p>
+        若您对我们的隐私政策或与个人信息相关的事宜有任何问题、意见或建议，您可以通过以下方式联系我们：
+      </p>
+      <p><strong>在线客服</strong>：您可以在ACTUS应用内的帮助与反馈板块中联系在线客服；</p>
+      <p><strong>电子邮件</strong>：发送电子邮件至 [具体邮箱地址]；</p>
+      <p><strong>邮寄信件</strong>：写信至 [具体地址]，收件人请注明 “BallStats隐私政策反馈”。</p>
+      <p>
+        我们将在收到您的反馈后，尽快与您联系并处理您的问题。如果您对我们的处理结果不满意，您还可向履行个人信息保护职责的部门进行投诉、举报。
+      </p>
+    </div>
+  </body>
+</html>

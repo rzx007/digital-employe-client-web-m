@@ -1,0 +1,57 @@
+// @see https://www.electron.build/configuration/configuration
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.digital-employee.app",
+  "asar": true,
+  "productName": "DigitalEmployee",
+  "directories": {
+    // "output": "release/${version}"
+    "output": "release"
+  },
+  "publish": {
+    "provider": "generic",
+    "url": "http://192.168.1.100:8080"
+  },
+  "files": [
+    "dist",
+    "dist-electron",
+    "build"
+  ],
+  "extraResources": [
+    {
+      "from": "py-server",
+      "to": "py-server",
+      "filter": ["**/*", "!data/**", "!logs/**", "!tmp/**"]
+    }
+  ],
+  "mac": {
+    "target": [
+      "dmg"
+    ],
+    "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
+  },
+  "win": {
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "artifactName": "${productName}-Windows-${version}-Setup.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false
+  },
+  "linux": {
+    "target": [
+      "AppImage"
+    ],
+    "artifactName": "${productName}-Linux-${version}.${ext}"
+  }
+}

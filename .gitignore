@@ -1,0 +1,41 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Local env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.history/*
+apps/simple-agents/data/*
+apps/web/py-server/*
+docs/*
+
+# Testing
+coverage
+
+.claude
+.CLAUDE.md
+
+# Turbo
+.turbo
+
+# Vercel
+.vercel
+
+# Build Outputs
+dist
+
+# Debug
+npm-debug.log*
+
+# Misc
+.DS_Store
+*.pem
+*.local
+.history
+dist-electron
+release
