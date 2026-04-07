@@ -5,6 +5,10 @@ import os from "node:os"
 import { startBackend, stopBackend, getBackendPort } from "./backend"
 import { registerIpcHandlers, isForceQuit, setForceQuit } from "./ipc-handlers"
 import { update } from "./update"
+import {
+  createSplashWindow,
+  closeSplashWindow,
+} from "./splash"
 
 /**
  * Electron 主进程入口
@@ -18,6 +22,7 @@ import { update } from "./update"
  * 其他职责已拆分：
  * - backend.ts: Python 后端进程管理
  * - ipc-handlers.ts: IPC 通信处理器
+ * - splash.ts: 加载窗口管理
  * - update.ts: 自动更新
  */
 
@@ -128,21 +133,29 @@ app.on("before-quit", (e) => {
  * 3. 如果后端启动失败，仍然创建窗口，通过 IPC 通知渲染进程
  */
 app.whenReady().then(async () => {
+  createSplashWindow({
+    devServerUrl: VITE_DEV_SERVER_URL,
+    indexHtml,
+  })
+
   try {
     await startBackend()
     console.log("[App] backend server ready, creating window...")
+    closeSplashWindow()
     await createWindow()
   } catch (err) {
     console.error("[App] backend failed:", err)
-    await createWindow()
+    setTimeout(() => {
+      closeSplashWindow()
+      createWindow()
+    }, 1500)
 
-    // 通知渲染进程后端启动失败
     setTimeout(() => {
       win?.webContents.send(
         "backend-error",
         err instanceof Error ? err.message : String(err)
       )
-    }, 1000)
+    }, 2500)
   }
 })
 
