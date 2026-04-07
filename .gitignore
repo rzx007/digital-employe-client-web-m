@@ -17,6 +17,9 @@ docs/*
 # Testing
 coverage
 
+.claude
+.CLAUDE.md
+
 # Turbo
 .turbo
 

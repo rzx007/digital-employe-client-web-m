@@ -13,10 +13,12 @@ interface ChatStore {
   selectedConversationId: string | number | null
   isDraftConversation: boolean
   draftSessionKey: number
+  showWorkbench: boolean
   setContacts: (contacts: Contact[]) => void
   setSelectedContactId: (id: string | null) => void
   setSelectedConversationId: (id: string | number | null) => void
   setDraftConversation: (isDraft: boolean) => void
+  setShowWorkbench: (show: boolean) => void
   getSelectedContact: () => Contact | undefined
 }
 
@@ -28,6 +30,7 @@ export const useChatStore = create<ChatStore>()(
       selectedConversationId: null,
       isDraftConversation: false,
       draftSessionKey: 0,
+      showWorkbench: false,
       setContacts: (contacts) => set({ contacts }),
       setSelectedContactId: (id) =>
         set({
@@ -48,6 +51,7 @@ export const useChatStore = create<ChatStore>()(
             ? state.draftSessionKey + 1
             : state.draftSessionKey,
         })),
+      setShowWorkbench: (show) => set({ showWorkbench: show }),
       getSelectedContact: () => {
         const { contacts, selectedContactId } = get()
         if (!selectedContactId) return undefined
