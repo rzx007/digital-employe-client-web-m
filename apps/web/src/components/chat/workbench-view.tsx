@@ -1,10 +1,11 @@
 import * as React from "react"
 import { IconPlus, IconX } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
-import { cn } from "@workspace/ui/lib/utils"
-import type { ChatViewContact } from "./chat-view-shared"
+import { Skeleton } from "@workspace/ui/components/skeleton"
+import type { MetadataSkill } from "@/api/types"
 import { useEmployeeDetailQuery } from "@/hooks/use-chat-queries"
 import { useWorkbenchConfig } from "@/hooks/use-workbench-config"
+import { fetchEmployeeSkillsFromLocal } from "@/lib/workbench/local-skill-loader"
 import { WorkbenchLeftPanel } from "@/components/workbench/workbench-left-panel"
 import { DraggableWorkbenchGrid } from "@/components/workbench/draggable-workbench-grid"
 import { AddBlockDialog } from "@/components/workbench/add-block-dialog"
@@ -16,12 +17,40 @@ interface WorkbenchViewProps {
 
 export function WorkbenchView({ contact, onClose }: WorkbenchViewProps) {
   const [showAddDialog, setShowAddDialog] = React.useState(false)
+  const [localSkills, setLocalSkills] = React.useState<MetadataSkill[]>([])
+  const [isLoadingSkills, setIsLoadingSkills] = React.useState(false)
 
   const employeeId = contact.employee?.id ?? ""
-  const { data: employee } = useEmployeeDetailQuery(employeeId)
-  const skills = employee?.metadata?.skills ?? []
+  const employeeName = contact.employee?.name ?? ""
 
-  const { config, toggleBlockEnabled, reorderBlocks, addBlock, removeBlock } = useWorkbenchConfig({
+  // Get API skills
+  const { data: employee } = useEmployeeDetailQuery(employeeId)
+  const apiSkills = employee?.metadata?.skills ?? []
+
+  // Load local skills based on employee name
+  React.useEffect(() => {
+    if (employeeName) {
+      loadLocalSkills()
+    }
+  }, [employeeName])
+
+  const loadLocalSkills = async () => {
+    setIsLoadingSkills(true)
+    try {
+      const skills = await fetchEmployeeSkillsFromLocal(employeeName)
+      setLocalSkills(skills)
+    } catch (e) {
+      console.error("Failed to load local skills:", e)
+      setLocalSkills([])
+    } finally {
+      setIsLoadingSkills(false)
+    }
+  }
+
+  // Use local skills if available, otherwise use API skills
+  const skills = localSkills.length > 0 ? localSkills : apiSkills
+
+  const { config, toggleBlockEnabled, reorderBlocks, addBlock, removeBlock, resizeBlock } = useWorkbenchConfig({
     employeeId,
     skills,
   })
@@ -58,16 +87,22 @@ export function WorkbenchView({ contact, onClose }: WorkbenchViewProps) {
         <WorkbenchLeftPanel employeeId={employeeId} />
         <div className="flex-1 overflow-auto p-3">
           <div className="mb-2 text-xs font-medium text-muted-foreground">
-            技能板块
+            自定义模块 {isLoadingSkills && "(加载中...)"}
           </div>
-          {config && (
+          {isLoadingSkills ? (
+            <div className="space-y-3">
+              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-32 w-full" />
+            </div>
+          ) : config ? (
             <DraggableWorkbenchGrid
               blocks={config.blocks}
               onReorder={reorderBlocks}
               onToggleBlock={toggleBlockEnabled}
               onRemoveBlock={removeBlock}
+              onResizeBlock={resizeBlock}
             />
-          )}
+          ) : null}
         </div>
       </div>
 

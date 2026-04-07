@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import {
   DndContext,
   closestCenter,
@@ -15,27 +15,31 @@ import {
   useSortable,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { IconGripVertical, IconTrash, IconExternalLink } from "@tabler/icons-react"
+import { IconGripVertical, IconTrash } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
-import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
+import { Card, CardContent } from "@workspace/ui/components/card"
 import type { WorkbenchBlock } from "@/types/workbench"
 import { SkillBlockRenderer } from "./skill-block-renderer"
+import { DataVisualizer } from "./data-visualizer"
 
 interface DraggableWorkbenchGridProps {
   blocks: WorkbenchBlock[]
   onReorder: (blockIds: string[]) => void
   onToggleBlock?: (blockId: string) => void
   onRemoveBlock?: (blockId: string) => void
+  onResizeBlock?: (blockId: string, width: number, height: number) => void
 }
 
 function SortableBlock({
   block,
   onToggle,
   onRemove,
+  onResize,
 }: {
   block: WorkbenchBlock
   onToggle?: (blockId: string) => void
   onRemove?: (blockId: string) => void
+  onResize?: (blockId: string, width: number, height: number) => void
 }) {
   const {
     attributes,
@@ -80,24 +84,9 @@ function SortableBlock({
           </button>
         )}
 
-        {onToggle && (
-          <button
-            type="button"
-            onClick={() => onToggle(block.id)}
-            className={cn(
-              "absolute right-6 top-1 z-10 rounded px-1.5 py-0.5 text-[10px] opacity-0 transition-opacity group-hover:opacity-100",
-              block.enabled
-                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
-                : "bg-muted text-muted-foreground"
-            )}
-          >
-            {block.enabled ? "已启用" : "已禁用"}
-          </button>
-        )}
-
         {block.enabled ? (
           block.type === "custom" && block.queryInterface ? (
-            <CustomInterfaceBlock block={block} />
+            <ResizableBlock block={block} onResize={onResize} />
           ) : (
             <SkillBlockRenderer
               blockType={block.type}
@@ -118,47 +107,84 @@ function SortableBlock({
   )
 }
 
-function CustomInterfaceBlock({ block }: { block: WorkbenchBlock }) {
+function ResizableBlock({
+  block,
+  onResize,
+}: {
+  block: WorkbenchBlock
+  onResize?: (blockId: string, width: number, height: number) => void
+}) {
   const iface = block.queryInterface
+  const [isResizing, setIsResizing] = useState(false)
+  const [size, setSize] = useState({ width: block.width || 300, height: block.height || 180 })
+
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsResizing(true)
+
+    const startX = e.clientX
+    const startY = e.clientY
+    const startWidth = size.width
+    const startHeight = size.height
+    let finalW = startWidth
+    let finalH = startHeight
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX
+      const deltaY = moveEvent.clientY - startY
+      finalW = Math.max(200, startWidth + deltaX)
+      finalH = Math.max(120, startHeight + deltaY)
+      setSize({ width: finalW, height: finalH })
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+      document.removeEventListener("mousemove", handleMouseMove)
+      document.removeEventListener("mouseup", handleMouseUp)
+      if (onResize && (finalW !== block.width || finalH !== block.height)) {
+        onResize(block.id, finalW, finalH)
+      }
+    }
+
+    document.addEventListener("mousemove", handleMouseMove)
+    document.addEventListener("mouseup", handleMouseUp)
+  }, [size.width, size.height, block.id, block.width, block.height, onResize])
+
+  if (!iface) {
+    return (
+      <Card className="h-[180px] rounded-xl border-dashed border-border/80 bg-muted/20 shadow-none">
+        <CardContent className="flex h-full items-center justify-center">
+          <div className="text-xs text-muted-foreground">暂无接口配置</div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
-    <Card className="h-[180px]">
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <span className="truncate">{block.title}</span>
-          {iface && (
-            <span className={cn(
-              "shrink-0 text-xs px-1.5 py-0.5 rounded",
-              iface.method === "GET" ? "bg-green-100 text-green-700" :
-              iface.method === "POST" ? "bg-blue-100 text-blue-700" :
-              iface.method === "PUT" ? "bg-yellow-100 text-yellow-700" :
-              "bg-red-100 text-red-700"
-            )}>
-              {iface.method}
-            </span>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-0 px-4 pb-4">
-        {iface ? (
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground line-clamp-2">
-              {iface.description || "无描述"}
-            </p>
-            <div className="flex items-center gap-1 text-xs font-mono text-muted-foreground/70">
-              <IconExternalLink className="size-3" />
-              <span className="truncate">{iface.path}</span>
-            </div>
-            <div className="mt-2 text-xs text-muted-foreground/60">
-              点击查看数据
-            </div>
-          </div>
-        ) : (
-          <div className="flex h-[100px] items-center justify-center text-xs text-muted-foreground">
-            暂无接口配置
-          </div>
-        )}
+    <Card
+      className={cn(
+        "group/card relative overflow-hidden rounded-xl border-border/80 bg-card shadow-sm",
+        "ring-1 ring-border/30 transition-[box-shadow,ring-color] hover:shadow-md hover:ring-border/50"
+      )}
+      style={{ width: size.width, height: size.height }}
+    >
+      <CardContent className="h-full p-0">
+        <DataVisualizer queryInterface={iface} className="text-xs" title={block.title} embedded />
       </CardContent>
+      <div
+        className={cn(
+          "absolute bottom-0.5 right-0.5 flex size-5 cursor-se-resize items-end justify-end rounded-sm p-0.5 opacity-0 transition-opacity group-hover/card:opacity-100",
+          isResizing && "opacity-100"
+        )}
+        onMouseDown={handleMouseDown}
+        title="拖拽调整大小"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" className="text-muted-foreground/80" aria-hidden>
+          <path d="M14 14L14 8M14 14L8 14M14 14L10 10" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" fill="none" />
+        </svg>
+      </div>
     </Card>
   )
 }
@@ -168,9 +194,8 @@ export function DraggableWorkbenchGrid({
   onReorder,
   onToggleBlock,
   onRemoveBlock,
+  onResizeBlock,
 }: DraggableWorkbenchGridProps) {
-  const [activeId, setActiveId] = useState<string | null>(null)
-
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -178,12 +203,7 @@ export function DraggableWorkbenchGrid({
     })
   )
 
-  const handleDragStart = (event: { active: { id: string } }) => {
-    setActiveId(event.active.id as string)
-  }
-
   const handleDragEnd = (event: DragEndEvent) => {
-    setActiveId(null)
     const { active, over } = event
 
     if (over && active.id !== over.id) {
@@ -215,17 +235,17 @@ export function DraggableWorkbenchGrid({
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
       <SortableContext items={blocks.map((b) => b.id)} strategy={rectSortingStrategy}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-wrap gap-3">
           {blocks.map((block) => (
             <SortableBlock
               key={block.id}
               block={block}
               onToggle={onToggleBlock}
               onRemove={onRemoveBlock}
+              onResize={onResizeBlock}
             />
           ))}
         </div>

@@ -8,6 +8,7 @@ import {
   removeBlock,
   toggleBlock,
   updateBlockOrder,
+  updateBlockSize,
 } from "@/lib/workbench/workbench-config"
 
 interface UseWorkbenchConfigOptions {
@@ -68,12 +69,22 @@ export function useWorkbenchConfig({ employeeId, skills }: UseWorkbenchConfigOpt
     [config]
   )
 
+  const resizeBlock = useCallback(
+    (blockId: string, width: number, height: number) => {
+      if (!config) return
+      const updated = updateBlockSize(config, blockId, width, height)
+      setConfig(updated)
+    },
+    [config]
+  )
+
   return {
     config,
     toggleBlockEnabled,
     reorderBlocks,
     addBlock,
     removeBlock: removeBlockById,
+    resizeBlock,
     refreshConfig,
   }
 }

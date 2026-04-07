@@ -68,7 +68,7 @@ export function getBlockTitleForType(blockType: BlockType): string {
  * Generate a unique block ID
  */
 export function generateBlockId(blockType: BlockType, skillId: number | null): string {
-  return `${blockType}-${skillId ?? "default"}-${Date.now()}`
+  return `${blockType}-${skillId ?? "default"}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 /**

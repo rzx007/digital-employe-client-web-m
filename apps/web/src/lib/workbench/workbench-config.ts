@@ -149,14 +149,6 @@ export function addCustomBlock(
   config: WorkbenchConfig,
   queryInterface: QueryInterface
 ): WorkbenchConfig {
-  // Check if interface already exists
-  const exists = config.blocks.some(
-    (b) => b.queryInterface?.id === queryInterface.id
-  )
-  if (exists) {
-    return config
-  }
-
   const newBlock: WorkbenchBlock = {
     id: generateBlockId("custom", null),
     type: "custom",
@@ -195,6 +187,29 @@ export function removeBlock(
   const updatedConfig: WorkbenchConfig = {
     ...config,
     blocks: reorderedBlocks,
+    lastModified: Date.now(),
+  }
+
+  saveWorkbenchConfig(updatedConfig)
+  return updatedConfig
+}
+
+/**
+ * Update block size (width/height)
+ */
+export function updateBlockSize(
+  config: WorkbenchConfig,
+  blockId: string,
+  width: number,
+  height: number
+): WorkbenchConfig {
+  const updatedBlocks = config.blocks.map((b) =>
+    b.id === blockId ? { ...b, width, height } : b
+  )
+
+  const updatedConfig: WorkbenchConfig = {
+    ...config,
+    blocks: updatedBlocks,
     lastModified: Date.now(),
   }
 
