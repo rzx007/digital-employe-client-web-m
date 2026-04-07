@@ -3,23 +3,49 @@ import os from "node:os"
 import { getBackendStatus, getBackendPort, stopBackend } from "./backend"
 import { flashTray, stopFlashTray } from "./tray"
 import { sendNotification } from "./notification"
+import { closeLoginWindow } from "./login"
 
 /**
  * IPC 通信处理器
  *
  * 注册所有渲染进程与主进程之间的 IPC 通信通道。
- * 分为三类：
+ * 分为：
  * - 后端管理：查询后端状态、端口
  * - 窗口控制：最小化、最大化、关闭、退出
  * - 系统信息：平台检测
  * - 托盘控制：闪烁通知、停止闪烁
  * - 系统通知：发送 OS 原生通知
+ * - 登录控制：登录成功跳转
+ *
+ * 窗口引用通过 setMainWindow() 动态更新，
+ * 登录窗口创建时 win 为 null，主窗口创建后更新引用。
  */
+
+// 主窗口引用（登录阶段为 null，主窗口创建后更新）
+let mainWin: BrowserWindow | null = null
+// 登录成功回调
+let _onLoginSuccess: (() => void) | null = null
+
+/**
+ * 设置主窗口引用
+ *
+ * 在 createWindow() 创建主窗口后调用，
+ * 使窗口控制类 IPC（minimize/maximize/close 等）生效。
+ */
+export function setMainWindow(win: BrowserWindow): void {
+  mainWin = win
+}
 
 /**
  * 注册所有 IPC handlers
+ *
+ * 应在 app.whenReady() 中调用，登录窗口和主窗口共用。
+ *
+ * @param onLoginSuccess - 登录成功回调（关闭登录窗口、创建主窗口）
  */
-export function registerIpcHandlers(win: BrowserWindow): void {
+export function registerIpcHandlers(onLoginSuccess: () => void): void {
+  _onLoginSuccess = onLoginSuccess
+
   // ========== 后端管理 ==========
 
   /** 查询后端运行状态 */
@@ -41,26 +67,26 @@ export function registerIpcHandlers(win: BrowserWindow): void {
 
   /** 最小化窗口 */
   ipcMain.handle("minimize-window", () => {
-    win?.minimize()
+    mainWin?.minimize()
   })
 
   /** 关闭窗口（最小化到托盘，不退出应用） */
   ipcMain.handle("close-window", () => {
-    win?.hide()
+    mainWin?.hide()
   })
 
   /** 最大化/还原窗口 */
   ipcMain.handle("maximize-window", () => {
-    if (win?.isMaximized()) {
-      win.unmaximize()
+    if (mainWin?.isMaximized()) {
+      mainWin.unmaximize()
     } else {
-      win?.maximize()
+      mainWin?.maximize()
     }
   })
 
   /** 查询窗口是否最大化 */
   ipcMain.handle("is-maximized", () => {
-    return win?.isMaximized() ?? false
+    return mainWin?.isMaximized() ?? false
   })
 
   /** 设置强制退出标志（用于自定义标题栏关闭按钮） */
@@ -104,9 +130,19 @@ export function registerIpcHandlers(win: BrowserWindow): void {
   ipcMain.handle(
     "send-notification",
     (_event, options: { title: string; body: string; silent?: boolean }) => {
-      sendNotification({ ...options, win })
+      if (mainWin) {
+        sendNotification({ ...options, win: mainWin })
+      }
     }
   )
+
+  // ========== 登录控制 ==========
+
+  /** 登录成功：关闭登录窗口，触发创建主窗口 */
+  ipcMain.handle("login-success", () => {
+    closeLoginWindow()
+    _onLoginSuccess?.()
+  })
 }
 
 /**

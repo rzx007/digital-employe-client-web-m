@@ -42,4 +42,5 @@ contextBridge.exposeInMainWorld("electronApi", {
   stopFlashTray: () => ipcRenderer.invoke("stop-flash-tray"),
   sendNotification: (title: string, body: string, silent?: boolean) =>
     ipcRenderer.invoke("send-notification", { title, body, silent }),
+  loginSuccess: () => ipcRenderer.invoke("login-success"),
 })

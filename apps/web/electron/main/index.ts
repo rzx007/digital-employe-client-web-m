@@ -3,13 +3,14 @@ import { fileURLToPath } from "node:url"
 import path from "node:path"
 import os from "node:os"
 import { startBackend, stopBackend, getBackendPort } from "./backend"
-import { registerIpcHandlers, isForceQuit, setForceQuit } from "./ipc-handlers"
+import { registerIpcHandlers, isForceQuit, setForceQuit, setMainWindow } from "./ipc-handlers"
 import { update } from "./update"
 import {
   createSplashWindow,
   closeSplashWindow,
 } from "./splash"
 import { createTray, destroyTray } from "./tray"
+import { createLoginWindow, closeLoginWindow } from "./login"
 
 /**
  * Electron 主进程入口
@@ -25,6 +26,7 @@ import { createTray, destroyTray } from "./tray"
  * - ipc-handlers.ts: IPC 通信处理器
  * - splash.ts: 加载窗口管理
  * - tray.ts: 系统托盘管理
+ * - login.ts: 登录窗口管理
  * - update.ts: 自动更新
  */
 
@@ -107,8 +109,8 @@ async function createWindow() {
     return { action: "deny" }
   })
 
-  // 注册 IPC 通信
-  registerIpcHandlers(win)
+  //  IPC handlers 的窗口引用（窗口控制类 IPC 生效）
+  setMainWindow(win)
 
   // 创建系统托盘（窗口关闭后仍可从托盘操作）
   createTray(win)
@@ -144,12 +146,19 @@ app.on("before-quit", (e) => {
  *
  * 启动顺序：
  * 1. 启动 Python 后端（等待就绪或超时）
- * 2. 创建主窗口
- * 3. 如果后端启动失败，仍然创建窗口，通过 IPC 通知渲染进程
+ * 2. 关闭 splash，打开登录窗口
+ * 3. 登录成功后关闭登录窗口，创建主窗口
+ * 4. 如果后端启动失败，仍然创建登录窗口
  */
 app.whenReady().then(async () => {
   // 移除默认菜单栏（File Edit View 等）
   Menu.setApplicationMenu(null)
+
+  // 预注册 IPC 通信（登录窗口和主窗口共用）
+  // 主窗口引用在 createWindow() 中通过 setMainWindow() 更新
+  registerIpcHandlers(async () => {
+    await createWindow()
+  })
 
   createSplashWindow({
     devServerUrl: VITE_DEV_SERVER_URL,
@@ -158,22 +167,15 @@ app.whenReady().then(async () => {
 
   try {
     await startBackend()
-    console.log("[App] backend server ready, creating window...")
+    console.log("[App] backend server ready, opening login window...")
     closeSplashWindow()
-    await createWindow()
+    createLoginWindow({ devServerUrl: VITE_DEV_SERVER_URL, indexHtml })
   } catch (err) {
     console.error("[App] backend failed:", err)
     setTimeout(() => {
       closeSplashWindow()
-      createWindow()
+      createLoginWindow({ devServerUrl: VITE_DEV_SERVER_URL, indexHtml })
     }, 1500)
-
-    setTimeout(() => {
-      win?.webContents.send(
-        "backend-error",
-        err instanceof Error ? err.message : String(err)
-      )
-    }, 2500)
   }
 })
 

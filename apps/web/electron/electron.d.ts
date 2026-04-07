@@ -52,6 +52,7 @@ declare global {
       flashTray: () => Promise<void>
       stopFlashTray: () => Promise<void>
       sendNotification: (title: string, body: string, silent?: boolean) => Promise<void>
+      loginSuccess: () => Promise<void>
     }
   }
   const __APP_VERSION__: string

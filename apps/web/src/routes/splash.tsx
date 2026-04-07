@@ -17,7 +17,10 @@ function SplashPage() {
   }, [])
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-[#f9fafb]">
+    <div
+      className="flex h-screen w-screen items-center justify-center bg-[#f9fafb]"
+      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+    >
       <div className="flex flex-col items-center">
         <img src={logoImage} alt="logo" className="mb-5 h-12 w-12" />
         <div className="h-7 w-7 animate-spin rounded-full border-[3px] border-gray-200 border-t-blue-500" />
