@@ -49,6 +49,9 @@ declare global {
       isMaximized: () => Promise<boolean>
       setForceQuit: (value: boolean) => Promise<void>
       getPlatform: () => Promise<PlatformInfo>
+      flashTray: () => Promise<void>
+      stopFlashTray: () => Promise<void>
+      sendNotification: (title: string, body: string, silent?: boolean) => Promise<void>
     }
   }
   const __APP_VERSION__: string

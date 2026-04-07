@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron"
 import os from "node:os"
 import { getBackendStatus, getBackendPort, stopBackend } from "./backend"
+import { flashTray, stopFlashTray } from "./tray"
+import { sendNotification } from "./notification"
 
 /**
  * IPC 通信处理器
@@ -10,6 +12,8 @@ import { getBackendStatus, getBackendPort, stopBackend } from "./backend"
  * - 后端管理：查询后端状态、端口
  * - 窗口控制：最小化、最大化、关闭、退出
  * - 系统信息：平台检测
+ * - 托盘控制：闪烁通知、停止闪烁
+ * - 系统通知：发送 OS 原生通知
  */
 
 /**
@@ -40,9 +44,9 @@ export function registerIpcHandlers(win: BrowserWindow): void {
     win?.minimize()
   })
 
-  /** 关闭窗口 */
+  /** 关闭窗口（最小化到托盘，不退出应用） */
   ipcMain.handle("close-window", () => {
-    win?.close()
+    win?.hide()
   })
 
   /** 最大化/还原窗口 */
@@ -81,6 +85,28 @@ export function registerIpcHandlers(win: BrowserWindow): void {
   ipcMain.handle("open-win", (_, arg) => {
     openChildWindow(arg)
   })
+
+  // ========== 托盘控制 ==========
+
+  /** 开始托盘闪烁（新消息提醒） */
+  ipcMain.handle("flash-tray", () => {
+    flashTray()
+  })
+
+  /** 停止托盘闪烁 */
+  ipcMain.handle("stop-flash-tray", () => {
+    stopFlashTray()
+  })
+
+  // ========== 系统通知 ==========
+
+  /** 发送 OS 原生通知（屏幕右下角 Toast） */
+  ipcMain.handle(
+    "send-notification",
+    (_event, options: { title: string; body: string; silent?: boolean }) => {
+      sendNotification({ ...options, win })
+    }
+  )
 }
 
 /**
@@ -124,3 +150,5 @@ function openChildWindow(arg: string): void {
   // TODO: 使用共享的 preload 路径和 indexHtml 路径
   // 目前保留原始实现，后续可提取为公共配置
 }
+
+export { stopBackend }

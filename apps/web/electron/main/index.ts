@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from "electron"
+import { app, BrowserWindow, shell, Menu } from "electron"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 import os from "node:os"
@@ -9,6 +9,7 @@ import {
   createSplashWindow,
   closeSplashWindow,
 } from "./splash"
+import { createTray, destroyTray } from "./tray"
 
 /**
  * Electron 主进程入口
@@ -19,10 +20,11 @@ import {
  * - 协调后端进程的启动/停止时机
  * - 注册应用生命周期事件
  *
- * 其他职责已拆分：
+ * 功能：
  * - backend.ts: Python 后端进程管理
  * - ipc-handlers.ts: IPC 通信处理器
  * - splash.ts: 加载窗口管理
+ * - tray.ts: 系统托盘管理
  * - update.ts: 自动更新
  */
 
@@ -84,6 +86,15 @@ async function createWindow() {
 
   win.webContents.openDevTools()
 
+  // 点击关闭按钮(X) → 隐藏窗口到托盘，不退出应用
+  // forceQuit 为 true 时（从托盘菜单退出），允许窗口真正关闭
+  win.on("close", (e) => {
+    if (!isForceQuit()) {
+      e.preventDefault()
+      win?.hide()
+    }
+  })
+
   // 页面加载完成后通知渲染进程
   win.webContents.on("did-finish-load", () => {
     win?.webContents.send("main-process-message", new Date().toLocaleString())
@@ -98,6 +109,9 @@ async function createWindow() {
 
   // 注册 IPC 通信
   registerIpcHandlers(win)
+
+  // 创建系统托盘（窗口关闭后仍可从托盘操作）
+  createTray(win)
 
   // 自动更新
   update(win)
@@ -116,6 +130,7 @@ app.on("before-quit", (e) => {
   e.preventDefault()
 
   setForceQuit(true)
+  destroyTray()
   stopBackend()
 
   // 兜底超时：即使后端未退出，也要确保应用能退出
@@ -133,6 +148,9 @@ app.on("before-quit", (e) => {
  * 3. 如果后端启动失败，仍然创建窗口，通过 IPC 通知渲染进程
  */
 app.whenReady().then(async () => {
+  // 移除默认菜单栏（File Edit View 等）
+  Menu.setApplicationMenu(null)
+
   createSplashWindow({
     devServerUrl: VITE_DEV_SERVER_URL,
     indexHtml,
@@ -161,12 +179,15 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   win = null
-  if (process.platform !== "darwin") app.quit()
+  // 不退出应用，保持 tray 存活
+  // 真正退出走 tray 菜单「退出」或 forceQuit
 })
 
 app.on("second-instance", () => {
   if (win) {
     if (win.isMinimized()) win.restore()
+    // 窗口隐藏到托盘时也要能唤出
+    win.show()
     win.focus()
   }
 })
