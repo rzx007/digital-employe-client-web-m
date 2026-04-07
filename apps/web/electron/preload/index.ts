@@ -43,4 +43,14 @@ contextBridge.exposeInMainWorld("electronApi", {
   sendNotification: (title: string, body: string, silent?: boolean) =>
     ipcRenderer.invoke("send-notification", { title, body, silent }),
   loginSuccess: () => ipcRenderer.invoke("login-success"),
+  saveAuth: (
+    token: string,
+    user: Record<string, unknown>,
+    rememberMe: boolean
+  ) =>
+    ipcRenderer.invoke("save-auth", { token, user, rememberMe }),
+  clearAuth: () => ipcRenderer.invoke("clear-auth"),
+  getAuthStatus: () =>
+    ipcRenderer.invoke("get-auth-status"),
+  hasSavedAuth: () => ipcRenderer.invoke("has-saved-auth"),
 })

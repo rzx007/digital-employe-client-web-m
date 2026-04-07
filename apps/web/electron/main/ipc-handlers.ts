@@ -4,6 +4,12 @@ import { getBackendStatus, getBackendPort, stopBackend } from "./backend"
 import { flashTray, stopFlashTray } from "./tray"
 import { sendNotification } from "./notification"
 import { closeLoginWindow } from "./login"
+import {
+  saveAuth,
+  clearAuth,
+  getStoredAuth,
+  hasToken,
+} from "./auth"
 
 /**
  * IPC 通信处理器
@@ -16,6 +22,7 @@ import { closeLoginWindow } from "./login"
  * - 托盘控制：闪烁通知、停止闪烁
  * - 系统通知：发送 OS 原生通知
  * - 登录控制：登录成功跳转
+ * - 认证管理：保存/清除/查询认证信息
  *
  * 窗口引用通过 setMainWindow() 动态更新，
  * 登录窗口创建时 win 为 null，主窗口创建后更新引用。
@@ -142,6 +149,38 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
   ipcMain.handle("login-success", () => {
     closeLoginWindow()
     _onLoginSuccess?.()
+  })
+
+  // ========== 认证管理 ==========
+
+  /** 保存认证信息（登录成功后调用） */
+  ipcMain.handle(
+    "save-auth",
+    (
+      _event,
+      data: {
+        token: string
+        user: Record<string, unknown>
+        rememberMe: boolean
+      }
+    ) => {
+      saveAuth(data.token, data.user, data.rememberMe)
+    }
+  )
+
+  /** 清除认证信息（退出登录时调用） */
+  ipcMain.handle("clear-auth", () => {
+    clearAuth()
+  })
+
+  /** 获取已存储的认证状态 */
+  ipcMain.handle("get-auth-status", () => {
+    return getStoredAuth()
+  })
+
+  /** 检查是否有持久化的 token（启动时判断是否跳过登录） */
+  ipcMain.handle("has-saved-auth", () => {
+    return hasToken()
   })
 }
 

@@ -11,6 +11,7 @@ import { Checkbox } from "@workspace/ui/components/checkbox"
 import { Separator } from "@workspace/ui/components/separator"
 import { IconEye, IconEyeOff, IconLoader2 } from "@tabler/icons-react"
 import logoImage from "@/assets/logo.svg"
+import { useAuthStore } from "@/stores/auth-store"
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -21,16 +22,12 @@ function LoginPage() {
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const { login, loading, error, clearError } = useAuthStore()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-    // TODO: 对接登录 API
-    setTimeout(() => {
-      window?.electronApi?.loginSuccess()
-      setLoading(false)
-    }, 1500)
+    clearError()
+    await login(username, password, rememberMe)
   }
 
   return (
@@ -132,6 +129,11 @@ function LoginPage() {
                 {loading && <IconLoader2 className="animate-spin" />}
                 {loading ? "登录中..." : "登 录"}
               </Button>
+
+              {/* 错误提示 */}
+              {error && (
+                <p className="text-xs text-destructive">{error}</p>
+              )}
             </form>
 
             <Separator />

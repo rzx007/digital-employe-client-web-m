@@ -61,5 +61,15 @@ export const request = ofetch.create({
   },
   async onRequestError() {},
   async onResponse() {},
-  async onResponseError() {},
+  async onResponseError({ response }) {
+    const status = response?.status
+    if (status === 401 || status === 403) {
+      // token 失效：清除本地存储并跳转登录页
+      localStorage.removeItem("token")
+      await window.electronApi?.clearAuth()
+      if (typeof window !== "undefined") {
+        window.location.hash = "#/login"
+      }
+    }
+  },
 })

@@ -10,7 +10,8 @@ import {
   closeSplashWindow,
 } from "./splash"
 import { createTray, destroyTray } from "./tray"
-import { createLoginWindow, closeLoginWindow } from "./login"
+import { createLoginWindow } from "./login"
+import { initAuthStore, hasToken } from "./auth"
 
 /**
  * Electron 主进程入口
@@ -27,6 +28,7 @@ import { createLoginWindow, closeLoginWindow } from "./login"
  * - splash.ts: 加载窗口管理
  * - tray.ts: 系统托盘管理
  * - login.ts: 登录窗口管理
+ * - auth.ts: 认证持久化管理
  * - update.ts: 自动更新
  */
 
@@ -145,17 +147,17 @@ app.on("before-quit", (e) => {
  * 应用就绪
  *
  * 启动顺序：
- * 1. 启动 Python 后端（等待就绪或超时）
- * 2. 关闭 splash，打开登录窗口
- * 3. 登录成功后关闭登录窗口，创建主窗口
- * 4. 如果后端启动失败，仍然创建登录窗口
+ * 1. 初始化认证存储
+ * 2. 注册 IPC 通信
+ * 3. 启动 Python 后端（等待就绪或超时）
+ * 4. 关闭 splash
+ * 5. 检查是否有持久化 token → 有则直接进主窗口，否则进登录窗口
  */
 app.whenReady().then(async () => {
-  // 移除默认菜单栏（File Edit View 等）
   Menu.setApplicationMenu(null)
 
-  // 预注册 IPC 通信（登录窗口和主窗口共用）
-  // 主窗口引用在 createWindow() 中通过 setMainWindow() 更新
+  initAuthStore()
+
   registerIpcHandlers(async () => {
     await createWindow()
   })
@@ -167,9 +169,17 @@ app.whenReady().then(async () => {
 
   try {
     await startBackend()
-    console.log("[App] backend server ready, opening login window...")
+    console.log("[App] backend server ready")
     closeSplashWindow()
-    createLoginWindow({ devServerUrl: VITE_DEV_SERVER_URL, indexHtml })
+
+    // 检查是否有持久化的 token，有则跳过登录
+    if (hasToken()) {
+      console.log("[App] saved token found, skipping login...")
+      await createWindow()
+    } else {
+      console.log("[App] no saved token, opening login window...")
+      createLoginWindow({ devServerUrl: VITE_DEV_SERVER_URL, indexHtml })
+    }
   } catch (err) {
     console.error("[App] backend failed:", err)
     setTimeout(() => {

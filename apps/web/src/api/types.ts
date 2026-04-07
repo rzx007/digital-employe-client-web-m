@@ -139,3 +139,49 @@ export interface ChatMessage {
   timestamp?: string
   created_at?: string
 }
+
+/**
+ * 部门信息
+ */
+export interface Department {
+  id: number
+  name: string
+  parentId: number | null
+  description: string | null
+  createTime: string | null
+  updateTime: string | null
+  status: string
+}
+
+/**
+ * 登录用户信息（后端 result 数组中的对象）
+ */
+export interface LoginUser {
+  id: number
+  name: string
+  username: string
+  menuid: string
+  orgType: string | null
+  orgNo: string | null
+  email: string
+  phoneNumber: string
+  expirationTime: string | null
+  status: string
+  loginTime: string
+  changePwdTime: string
+  inTime: string | null
+  inIp: string | null
+  consInfo: Record<string, unknown>
+  dpts: Department[]
+}
+
+/**
+ * 登录响应（后端实际返回结构）
+ */
+export interface LoginResponse {
+  code: number
+  result: LoginUser[]
+  noMenus: boolean
+  token: string
+  msg: string
+}
