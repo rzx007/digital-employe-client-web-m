@@ -12,6 +12,7 @@ node_modules
 .history/*
 apps/simple-agents/data/*
 apps/web/py-server/*
+docs/*
 
 # Testing
 coverage
