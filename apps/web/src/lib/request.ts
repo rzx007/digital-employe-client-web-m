@@ -56,11 +56,11 @@ export const request = ofetch.create({
   async onRequest(ctx) {
     const token = getAuthToken()
     if (token && ctx.options?.headers) {
-      ;(ctx.options.headers as Headers).set("Authorization", `Bearer ${token}`)
+      ; (ctx.options.headers as Headers).set("Authorization", `Bearer ${token}`)
     }
   },
-  async onRequestError() {},
-  async onResponse() {},
+  async onRequestError() { },
+  async onResponse() { },
   async onResponseError({ response }) {
     const status = response?.status
     if (status === 401 || status === 403) {

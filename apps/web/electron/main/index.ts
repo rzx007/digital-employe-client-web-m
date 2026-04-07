@@ -73,7 +73,7 @@ const indexHtml = path.join(RENDERER_DIST, "index.html")
 async function createWindow() {
   win = new BrowserWindow({
     title: "DigitalEmployee",
-    icon: path.join(process.env.VITE_PUBLIC, "logo.svg"),
+    icon: path.join(process.env.APP_ROOT, "build/icon.ico"),
     webPreferences: {
       preload,
     },
@@ -84,11 +84,12 @@ async function createWindow() {
   // 加载页面：开发环境加载 Vite dev server，生产环境加载本地文件
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
+    win.webContents.openDevTools()
   } else {
     win.loadFile(indexHtml)
   }
 
-  win.webContents.openDevTools()
+
 
   // 点击关闭按钮(X) → 隐藏窗口到托盘，不退出应用
   // forceQuit 为 true 时（从托盘菜单退出），允许窗口真正关闭

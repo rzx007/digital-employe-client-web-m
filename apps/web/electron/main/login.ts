@@ -38,6 +38,8 @@ export function createLoginWindow(options: {
   loginWin = new BrowserWindow({
     width: 350,
     height: 520,
+    title: "DigitalEmployee",
+    icon: path.join(process.env.APP_ROOT!, "build/icon.ico"),
     frame: false,
     resizable: false,
     center: true,

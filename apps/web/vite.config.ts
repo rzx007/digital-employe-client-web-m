@@ -94,7 +94,7 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
           rewrite: (path) => path.replace(/^\/actus/, ""),
         },
         "/digital": {
-          target: "http://localhost:58000",
+          target: "http://10.172.246.179:5002",
           changeOrigin: true,
         },
       },
