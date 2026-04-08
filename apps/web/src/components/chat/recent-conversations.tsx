@@ -411,89 +411,92 @@ export function RecentConversations({
         </div>
 
         <ScrollArea className="flex-1">
-          <div className="space-y-0.5 py-2">
+          <div className="py-2">
             {displayItems.map((item) => (
-              <div
-                key={item.contactId}
-                className={cn(
-                  "group flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-xs transition-colors",
-                  (item.isDraft &&
-                    isDraftConversation &&
-                    selectedContactId === item.contactId) ||
-                    (!item.isDraft && selectedContactId === item.contactId)
-                    ? "bg-primary/90 text-primary-foreground"
-                    : "hover:bg-accent/50 hover:text-accent-foreground"
-                )}
-                onClick={() => handleSelectItem(item.contactId)}
-              >
-                {item.isGroup ? (
-                  <GroupMembersAvatar
-                    participants={item.participants?.map((p) => ({
-                      id: p.name,
-                      name: p.name,
-                      role: "",
-                      status: "online" as const,
-                      specialty: "",
-                      avatar: p.avatar,
-                    }))}
-                    className="size-9"
-                  />
-                ) : (
-                  <EmployeeContactAvatar
-                    name={item.contactName}
-                    avatar={item.avatar}
-                    status={item.status as "online" | "busy" | "offline"}
-                    showStatus
-                  />
-                )}
-                <div className="flex min-w-0  flex-1 flex-col gap-0.5 ">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1">
-                      {item.isCurator && (
-                        <IconPin
-                          className={cn(
-                            "size-3.5",
-                            selectedContactId === item.contactId
-                              ? "text-primary-foreground/70"
-                              : "text-muted-foreground"
-                          )}
-                        />
-                      )}
-                      <span className="truncate text-sm font-medium w-26">
-                        {item.contactName}
+              <>
+                <div
+                  key={item.contactId}
+                  className={cn(
+                    "group flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-xs transition-colors",
+                    (item.isDraft &&
+                      isDraftConversation &&
+                      selectedContactId === item.contactId) ||
+                      (!item.isDraft && selectedContactId === item.contactId)
+                      ? "bg-primary/90 text-primary-foreground"
+                      : "hover:bg-accent/50 hover:text-accent-foreground"
+                  )}
+                  onClick={() => handleSelectItem(item.contactId)}
+                >
+                  {item.isGroup ? (
+                    <GroupMembersAvatar
+                      participants={item.participants?.map((p) => ({
+                        id: p.name,
+                        name: p.name,
+                        role: "",
+                        status: "online" as const,
+                        specialty: "",
+                        avatar: p.avatar,
+                      }))}
+                      className="size-9"
+                    />
+                  ) : (
+                    <EmployeeContactAvatar
+                      name={item.contactName}
+                      avatar={item.avatar}
+                      status={item.status as "online" | "busy" | "offline"}
+                      showStatus
+                    />
+                  )}
+                  <div className="flex min-w-0  flex-1 flex-col gap-0.5 ">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1">
+                        {item.isCurator && (
+                          <IconPin
+                            className={cn(
+                              "size-3.5",
+                              selectedContactId === item.contactId
+                                ? "text-primary-foreground/70"
+                                : "text-muted-foreground"
+                            )}
+                          />
+                        )}
+                        <span className="truncate text-sm font-medium w-26">
+                          {item.contactName}
+                        </span>
+                      </div>
+                      <span
+                        className={cn(
+                          "shrink-0 text-[10px]",
+                          selectedContactId === item.contactId
+                            ? "text-primary-foreground/70"
+                            : "text-muted-foreground"
+                        )}
+                      >
+                        {getTimeAgo(item.updatedAt)}
                       </span>
                     </div>
-                    <span
-                      className={cn(
-                        "shrink-0 text-[10px]",
-                        selectedContactId === item.contactId
-                          ? "text-primary-foreground/70"
-                          : "text-muted-foreground"
-                      )}
-                    >
-                      {getTimeAgo(item.updatedAt)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span
-                      className={cn(
-                        "max-w-[160px] truncate",
-                        selectedContactId === item.contactId
-                          ? "text-primary-foreground/70"
-                          : "text-muted-foreground"
-                      )}
-                    >
-                      {item.title || "新对话"}
-                    </span>
-                    {item.unreadCount > 0 &&
-                      selectedContactId !== item.contactId && (
-                        <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
-                          {item.unreadCount}
-                        </span>
-                      )}
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={cn(
+                          "max-w-[160px] truncate",
+                          selectedContactId === item.contactId
+                            ? "text-primary-foreground/70"
+                            : "text-muted-foreground"
+                        )}
+                      >
+                        {item.title || "新对话"}
+                      </span>
+                      {item.unreadCount > 0 &&
+                        selectedContactId !== item.contactId && (
+                          <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+                            {item.unreadCount}
+                          </span>
+                        )}
+                    </div>
                   </div>
                 </div>
-              </div>
+                <div className="border-b mx-3"></div>
+              </>
             ))}
             {displayItems.length === 0 && (
               <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
