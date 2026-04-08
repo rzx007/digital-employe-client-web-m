@@ -111,7 +111,7 @@ function ContactProfileCard({
         : undefined
 
   return (
-    <div className="rounded-xl border bg-background p-6 shadow-sm">
+    <div className="border bg-background p-6">
       <div className="flex items-start gap-4">
         {contact.type === "group" ? (
           <GroupMembersAvatar

@@ -1,12 +1,9 @@
 import * as React from "react"
-import {
-  IconCirclePlus,
-  IconSearch,
-  IconUser,
-} from "@tabler/icons-react"
+import { IconCirclePlus, IconSearch, IconUser } from "@tabler/icons-react"
 import { useShallow } from "zustand/react/shallow"
 import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
+import { Input } from "@workspace/ui/components/input"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
 import { useContactsQuery } from "@/hooks/use-chat-queries"
@@ -22,15 +19,20 @@ export function ContactsPanel({
   ...props
 }: React.ComponentProps<"div">) {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
-  const { setContacts, selectedContactId, setSelectedContactId, startDraftConversation } =
-    useChatStore(
-      useShallow((state) => ({
-        setContacts: state.setContacts,
-        selectedContactId: state.selectedContactId,
-        setSelectedContactId: state.setSelectedContactId,
-        startDraftConversation: state.startDraftConversation,
-      }))
-    )
+  const [searchQuery, setSearchQuery] = React.useState("")
+  const {
+    setContacts,
+    selectedContactId,
+    setSelectedContactId,
+    startDraftConversation,
+  } = useChatStore(
+    useShallow((state) => ({
+      setContacts: state.setContacts,
+      selectedContactId: state.selectedContactId,
+      setSelectedContactId: state.setSelectedContactId,
+      startDraftConversation: state.startDraftConversation,
+    }))
+  )
   const { data: apiContacts } = useContactsQuery()
 
   const contacts = React.useMemo(
@@ -70,6 +72,32 @@ export function ContactsPanel({
     startDraftConversation(contactId)
   }
 
+  const q = searchQuery.toLowerCase()
+  const filteredCuratorContacts = React.useMemo(
+    () =>
+      curatorContacts.filter((c) => {
+        if (!q) return true
+        return c.curator?.name.toLowerCase().includes(q)
+      }),
+    [curatorContacts, q]
+  )
+  const filteredGroupContacts = React.useMemo(
+    () =>
+      groupContacts.filter((c) => {
+        if (!q) return true
+        return c.group?.name.toLowerCase().includes(q)
+      }),
+    [groupContacts, q]
+  )
+  const filteredEmployeeContacts = React.useMemo(
+    () =>
+      employeeContacts.filter((c) => {
+        if (!q) return true
+        return c.employee?.name.toLowerCase().includes(q)
+      }),
+    [employeeContacts, q]
+  )
+
   return (
     <>
       <CreateGroupDialog
@@ -85,27 +113,25 @@ export function ContactsPanel({
         )}
         {...props}
       >
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <h2 className="text-sm font-medium">通讯录</h2>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="h-8 w-8"
-              title="搜索"
-            >
-              <IconSearch className="size-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="h-8 w-8"
-              title="添加联系人"
-              onClick={() => toast.info("添加联系人功能开发中")}
-            >
-              <IconCirclePlus className="size-4" />
-            </Button>
+        <div className="flex items-center gap-1.5 border-b px-3 py-2">
+          <div className="relative flex-1">
+            <IconSearch className="absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="h-7 pl-7 text-xs bg-background border-none"
+              placeholder="搜索联系人..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="h-7 w-7 shrink-0"
+            title="添加联系人"
+            onClick={() => toast.info("添加联系人功能开发中")}
+          >
+            <IconCirclePlus className="size-4" />
+          </Button>
         </div>
 
         <ScrollArea className="flex-1">
@@ -114,7 +140,7 @@ export function ContactsPanel({
               <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
                 总管助手
               </p>
-              {curatorContacts.map((contact) => (
+              {filteredCuratorContacts.map((contact) => (
                 <ContactItem
                   key={contact.curator?.id}
                   contact={contact}
@@ -126,12 +152,12 @@ export function ContactsPanel({
               ))}
             </div>
 
-            {groupContacts.length > 0 && (
+            {filteredGroupContacts.length > 0 && (
               <div className="space-y-0.5">
                 <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
                   群聊
                 </p>
-                {groupContacts.map((contact) => (
+                {filteredGroupContacts.map((contact) => (
                   <ContactItem
                     key={contact.group?.id}
                     contact={contact}
@@ -143,6 +169,35 @@ export function ContactsPanel({
                 ))}
               </div>
             )}
+
+            {filteredEmployeeContacts.length > 0 && (
+              <div className="space-y-0.5">
+                <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
+                  联系人
+                </p>
+                {filteredEmployeeContacts.map((contact) => (
+                  <ContactItem
+                    key={contact.employee?.id}
+                    contact={contact}
+                    isCollapsed={false}
+                    onDoubleClick={() =>
+                      handleDoubleClickContact(contact.employee?.id ?? "")
+                    }
+                  />
+                ))}
+              </div>
+            )}
+
+            {filteredCuratorContacts.length === 0 &&
+              filteredGroupContacts.length === 0 &&
+              filteredEmployeeContacts.length === 0 && (
+                <div className="flex flex-col items-center justify-center px-2 py-10 text-muted-foreground/60">
+                  <IconUser className="size-8 stroke-1" />
+                  <p className="mt-2 text-xs">
+                    {searchQuery ? "未找到匹配的联系人" : "暂无联系人"}
+                  </p>
+                </div>
+              )}
 
             {employeeContacts.length > 0 && (
               <div className="space-y-0.5">
@@ -162,13 +217,12 @@ export function ContactsPanel({
               </div>
             )}
 
-            {groupContacts.length === 0 &&
-              employeeContacts.length === 0 && (
-                <div className="flex flex-col items-center justify-center px-2 py-10 text-muted-foreground/60">
-                  <IconUser className="size-8 stroke-1" />
-                  <p className="mt-2 text-xs">暂无联系人</p>
-                </div>
-              )}
+            {groupContacts.length === 0 && employeeContacts.length === 0 && (
+              <div className="flex flex-col items-center justify-center px-2 py-10 text-muted-foreground/60">
+                <IconUser className="size-8 stroke-1" />
+                <p className="mt-2 text-xs">暂无联系人</p>
+              </div>
+            )}
           </div>
         </ScrollArea>
       </div>

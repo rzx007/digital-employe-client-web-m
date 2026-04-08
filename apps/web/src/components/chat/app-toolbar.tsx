@@ -1,8 +1,11 @@
 import * as React from "react"
 import {
   IconMessage,
-  IconUsers,
+  IconMessage2Filled,
+  IconUser,
+  IconUserFilled,
   IconCalendar,
+  IconCalendarFilled,
   IconSettings,
 } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
@@ -14,13 +17,36 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import { useChatStore, type ActiveTab } from "@/stores/chat-store"
 
-const tabs: { id: ActiveTab; icon: React.ReactNode; label: string }[] = [
-  { id: "chat", icon: <IconMessage className="size-5" />, label: "对话" },
-  { id: "contacts", icon: <IconUsers className="size-5" />, label: "联系人" },
-  { id: "calendar", icon: <IconCalendar className="size-5" />, label: "日历" },
+const tabs: {
+  id: ActiveTab
+  icon: React.ComponentType<{ className?: string }>
+  iconFilled: React.ComponentType<{ className?: string }>
+  label: string
+}[] = [
+  {
+    id: "chat",
+    icon: IconMessage,
+    iconFilled: IconMessage2Filled,
+    label: "对话",
+  },
+  {
+    id: "contacts",
+    icon: IconUser,
+    iconFilled: IconUserFilled,
+    label: "联系人",
+  },
+  {
+    id: "calendar",
+    icon: IconCalendar,
+    iconFilled: IconCalendarFilled,
+    label: "日历",
+  },
 ]
 
-export function AppToolbar({ className, ...props }: React.ComponentProps<"div">) {
+export function AppToolbar({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
   const activeTab = useChatStore((s) => s.activeTab)
   const setActiveTab = useChatStore((s) => s.setActiveTab)
 
@@ -32,11 +58,11 @@ export function AppToolbar({ className, ...props }: React.ComponentProps<"div">)
       )}
       {...props}
     >
-      <div className="flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold mb-4">
+      <div className="mb-4 flex size-10 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
         U
       </div>
 
-      <nav className="flex flex-1 flex-col items-center gap-1">
+      <nav className="flex flex-1 flex-col items-center gap-2">
         {tabs.map((tab) => (
           <Tooltip key={tab.id}>
             <TooltipTrigger asChild>
@@ -49,7 +75,11 @@ export function AppToolbar({ className, ...props }: React.ComponentProps<"div">)
                 )}
                 onClick={() => setActiveTab(tab.id)}
               >
-                {tab.icon}
+                {activeTab === tab.id ? (
+                  <tab.iconFilled className="size-6 text-primary" />
+                ) : (
+                  <tab.icon className="size-6" />
+                )}
               </Button>
             </TooltipTrigger>
             <TooltipContent side="right" sideOffset={8}>
