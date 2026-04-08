@@ -1,4 +1,5 @@
 import * as React from "react"
+import { useNavigate } from "@tanstack/react-router"
 import {
   IconCirclePlus,
   IconSearch,
@@ -26,9 +27,6 @@ import {
 } from "@/lib/mock-data/ai-employees"
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
 import { CreateGroupDialog } from "./create-group-dialog"
-import { RecruitmentDialog } from "../employee/recruitment-dialog"
-import { HireEmployeeDialog } from "../employee/hire-employee-dialog"
-import type { RecruitmentCandidate } from "@/api/employee"
 import { formatDistanceToNow } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import type { Conversation } from "@/lib/mock-data/conversations"
@@ -146,9 +144,9 @@ function ensureContactInList(
     isCurator,
     participants: isGroup
       ? contact.group?.participants.map((p) => ({
-        name: p.name,
-        avatar: p.avatar,
-      }))
+          name: p.name,
+          avatar: p.avatar,
+        }))
       : undefined,
   }
   return [newItem, ...existing].slice(0, MAX_RECENT)
@@ -213,17 +211,10 @@ export function RecentConversations({
     saveRecentConversations(items)
     return items
   })
+  const navigate = useNavigate()
+
   const [searchQuery, setSearchQuery] = React.useState("")
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
-  const [isRecruitDialogOpen, setIsRecruitDialogOpen] = React.useState(false)
-  const [isHireDialogOpen, setIsHireDialogOpen] = React.useState(false)
-  const [selectedCandidate, setSelectedCandidate] =
-    React.useState<RecruitmentCandidate | null>(null)
-
-  const handleSelectCandidate = (candidate: RecruitmentCandidate) => {
-    setSelectedCandidate(candidate)
-    setIsHireDialogOpen(true)
-  }
 
   const { selectedContactId, isDraftConversation, switchToContact } =
     useChatStore(
@@ -264,9 +255,9 @@ export function RecentConversations({
     const isGroup = selectedContact.type === "group"
     const participants = isGroup
       ? selectedContact.group?.participants.map((p) => ({
-        name: p.name,
-        avatar: p.avatar,
-      }))
+          name: p.name,
+          avatar: p.avatar,
+        }))
       : undefined
 
     setRecentItems((prev) => {
@@ -357,19 +348,6 @@ export function RecentConversations({
         employees={employeeList}
         onCreate={handleCreateGroup}
       />
-      <RecruitmentDialog
-        open={isRecruitDialogOpen}
-        onOpenChange={setIsRecruitDialogOpen}
-        onSelectCandidate={handleSelectCandidate}
-      />
-      <HireEmployeeDialog
-        open={isHireDialogOpen}
-        onOpenChange={(open) => {
-          setIsHireDialogOpen(open)
-          if (!open) setSelectedCandidate(null)
-        }}
-        candidate={selectedCandidate}
-      />
       <div
         className={cn(
           "flex h-full w-full flex-col border-r bg-muted/50 transition-all duration-300",
@@ -402,7 +380,15 @@ export function RecentConversations({
                 <IconUsers className="size-4" />
                 添加群聊
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setIsRecruitDialogOpen(true)}>
+              <DropdownMenuItem
+                onClick={async () => {
+                  if (window.electronApi?.openRecruitment) {
+                    await window.electronApi.openRecruitment()
+                  } else {
+                    navigate({ to: "/recruitment" })
+                  }
+                }}
+              >
                 <IconUserPlus className="size-4" />
                 招聘员工
               </DropdownMenuItem>
@@ -447,7 +433,7 @@ export function RecentConversations({
                       showStatus
                     />
                   )}
-                  <div className="flex min-w-0  flex-1 flex-col gap-0.5 ">
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1">
                         {item.isCurator && (
@@ -460,7 +446,7 @@ export function RecentConversations({
                             )}
                           />
                         )}
-                        <span className="truncate text-sm font-medium w-26">
+                        <span className="w-26 truncate text-sm font-medium">
                           {item.contactName}
                         </span>
                       </div>
@@ -495,7 +481,7 @@ export function RecentConversations({
                     </div>
                   </div>
                 </div>
-                <div className="border-b mx-3"></div>
+                <div className="mx-3 border-b"></div>
               </>
             ))}
             {displayItems.length === 0 && (

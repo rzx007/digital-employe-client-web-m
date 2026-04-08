@@ -103,12 +103,16 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.removeItem("token")
 
     // 清除 electron-store 中的持久化数据
+    // Electron 环境下：主进程会关闭主窗口、打开登录窗口
+    // 非 Electron 环境下：手动跳转登录页
+    const isElectron = window.electronApi?.isElectron
     await window.electronApi?.clearAuth()
 
     set({ token: null, user: null, isAuthenticated: false })
 
-    // 跳转到登录页
-    window.location.hash = "#/login"
+    if (!isElectron) {
+      window.location.hash = "#/login"
+    }
   },
 
   restoreSession: async () => {

@@ -3,7 +3,9 @@ import os from "node:os"
 import { getBackendStatus, getBackendPort, stopBackend } from "./backend"
 import { flashTray, stopFlashTray } from "./tray"
 import { sendNotification } from "./notification"
-import { closeLoginWindow } from "./login"
+import { closeLoginWindow, createLoginWindow } from "./login"
+import { createRecruitmentWindow, closeRecruitmentWindow } from "./recruitment"
+import { VITE_DEV_SERVER_URL, indexHtml } from "./index"
 import {
   saveAuth,
   clearAuth,
@@ -23,6 +25,7 @@ import {
  * - 系统通知：发送 OS 原生通知
  * - 登录控制：登录成功跳转
  * - 认证管理：保存/清除/查询认证信息
+ * - 招聘窗口：打开/关闭招聘员工窗口
  *
  * 窗口引用通过 setMainWindow() 动态更新，
  * 登录窗口创建时 win 为 null，主窗口创建后更新引用。
@@ -171,6 +174,17 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
   /** 清除认证信息（退出登录时调用） */
   ipcMain.handle("clear-auth", () => {
     clearAuth()
+
+    // Electron 环境下：关闭主窗口，打开登录窗口
+    if (mainWin && !mainWin.isDestroyed()) {
+      mainWin.close()
+      mainWin = null
+    }
+
+    createLoginWindow({
+      devServerUrl: VITE_DEV_SERVER_URL,
+      indexHtml,
+    })
   })
 
   /** 获取已存储的认证状态 */
@@ -181,6 +195,18 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
   /** 检查是否有持久化的 token（启动时判断是否跳过登录） */
   ipcMain.handle("has-saved-auth", () => {
     return hasToken()
+  })
+
+  // ========== 招聘窗口 ==========
+
+  /** 打开招聘员工窗口 */
+  ipcMain.handle("open-recruitment", () => {
+    createRecruitmentWindow()
+  })
+
+  /** 关闭招聘员工窗口 */
+  ipcMain.handle("close-recruitment", () => {
+    closeRecruitmentWindow()
   })
 }
 

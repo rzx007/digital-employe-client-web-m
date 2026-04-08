@@ -67,6 +67,9 @@ let win: BrowserWindow | null = null
 const preload = path.join(__dirname, "../preload/index.mjs")
 const indexHtml = path.join(RENDERER_DIST, "index.html")
 
+// 导出给其他模块使用（登录、招聘等窗口）
+export { VITE_DEV_SERVER_URL, indexHtml }
+
 /**
  * 创建主窗口
  */

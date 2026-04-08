@@ -28,17 +28,20 @@ export function createLoginWindow(options: {
   devServerUrl: string | undefined
   indexHtml: string
 }): void {
-  if (loginWin) return
+  if (loginWin) {
+    loginWin.focus()
+    return
+  }
 
   const preload = path.join(
-    path.dirname(__dirname),
-    "preload/index.mjs"
+    process.env.APP_ROOT!,
+    "dist-electron/preload/index.mjs"
   )
 
   loginWin = new BrowserWindow({
     width: 350,
     height: 520,
-    title: "DigitalEmployee",
+    title: "数字员工",
     icon: path.join(process.env.APP_ROOT!, "build/icon.ico"),
     frame: false,
     resizable: false,

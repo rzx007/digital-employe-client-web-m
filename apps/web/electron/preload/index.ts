@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld("ipcRenderer", {
 })
 
 contextBridge.exposeInMainWorld("electronApi", {
+  // 判断是否为 Electron 环境
+  isElectron: true,
   getBackendStatus: () => ipcRenderer.invoke("get-backend-status"),
   getBackendPort: () => ipcRenderer.invoke("get-backend-port"),
   onBackendError: (callback: (message: string) => void) => {
@@ -53,4 +55,6 @@ contextBridge.exposeInMainWorld("electronApi", {
   getAuthStatus: () =>
     ipcRenderer.invoke("get-auth-status"),
   hasSavedAuth: () => ipcRenderer.invoke("has-saved-auth"),
+  openRecruitment: () => ipcRenderer.invoke("open-recruitment"),
+  closeRecruitment: () => ipcRenderer.invoke("close-recruitment"),
 })

@@ -38,6 +38,7 @@ declare global {
   interface Window {
     ipcRenderer?: IpcRendererAPI
     electronApi?: {
+      isElectron: boolean
       getBackendStatus: () => Promise<BackendStatus>
       getBackendPort: () => Promise<number>
       onBackendError: (callback: (message: string) => void) => () => void
@@ -65,6 +66,8 @@ declare global {
         rememberMe: boolean
       }>
       hasSavedAuth: () => Promise<boolean>
+      openRecruitment: () => Promise<void>
+      closeRecruitment: () => Promise<void>
     }
   }
   const __APP_VERSION__: string
