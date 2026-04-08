@@ -43,11 +43,10 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
                   rollupOptions: {
                     // Some third-party Node.js libraries may not be built correctly by Vite, especially `C/C++` addons,
                     // we can use `external` to exclude them to ensure they work correctly.
-                    // Others need to put them in `dependencies` to ensure they are collected into `app.asar` after the app is built.
-                    // Of course, this is not absolute, just this way is relatively simple. :)
+                    // electron-store 需要 bundle 进主进程，否则 pnpm monorepo 环境下打包后找不到依赖
                     external: Object.keys(
                       "dependencies" in pkg ? pkg.dependencies : {}
-                    ),
+                    ).filter((dep) => dep !== "electron-store"),
                   },
                 },
               },
@@ -64,7 +63,7 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
                   rollupOptions: {
                     external: Object.keys(
                       "dependencies" in pkg ? pkg.dependencies : {}
-                    ),
+                    ).filter((dep) => dep !== "electron-store"),
                   },
                 },
               },
