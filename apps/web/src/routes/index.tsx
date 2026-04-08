@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router"
 
 import { ChatLayout } from "@/components/chat/chat-layout"
+import { AppTitlebar } from "@/components/chat/app-titlebar"
 
 export const Route = createFileRoute("/")({
   component: ChatPage,
@@ -8,7 +9,8 @@ export const Route = createFileRoute("/")({
 
 function ChatPage() {
   return (
-    <div className="h-svh overflow-hidden">
+    <div className="flex h-svh flex-col overflow-hidden">
+      <AppTitlebar />
       <ChatLayout />
     </div>
   )

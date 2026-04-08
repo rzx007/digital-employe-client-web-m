@@ -3,12 +3,14 @@ import { fileURLToPath } from "node:url"
 import path from "node:path"
 import os from "node:os"
 import { startBackend, stopBackend, getBackendPort } from "./backend"
-import { registerIpcHandlers, isForceQuit, setForceQuit, setMainWindow } from "./ipc-handlers"
-import { update } from "./update"
 import {
-  createSplashWindow,
-  closeSplashWindow,
-} from "./splash"
+  registerIpcHandlers,
+  isForceQuit,
+  setForceQuit,
+  setMainWindow,
+} from "./ipc-handlers"
+import { update } from "./update"
+import { createSplashWindow, closeSplashWindow } from "./splash"
 import { createTray, destroyTray } from "./tray"
 import { createLoginWindow } from "./login"
 import { initAuthStore, hasToken } from "./auth"
@@ -76,6 +78,7 @@ export { VITE_DEV_SERVER_URL, indexHtml }
 async function createWindow() {
   win = new BrowserWindow({
     title: "DigitalEmployee",
+    frame: false,
     icon: path.join(process.env.APP_ROOT, "build/icon.ico"),
     webPreferences: {
       preload,
@@ -91,8 +94,6 @@ async function createWindow() {
   } else {
     win.loadFile(indexHtml)
   }
-
-
 
   // 点击关闭按钮(X) → 隐藏窗口到托盘，不退出应用
   // forceQuit 为 true 时（从托盘菜单退出），允许窗口真正关闭
