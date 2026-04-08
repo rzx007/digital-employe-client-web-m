@@ -24,7 +24,6 @@ import {
 export interface MonitorPanelProps {
   isOpen: boolean
   isFullscreen: boolean
-  onClose: () => void
   onToggleFullscreen: () => void
   className?: string
 }
@@ -32,7 +31,6 @@ export interface MonitorPanelProps {
 export function MonitorPanel({
   isOpen,
   isFullscreen,
-  onClose,
   onToggleFullscreen,
   className,
 }: MonitorPanelProps) {
@@ -88,7 +86,7 @@ export function MonitorPanel({
         >
           <MonitorHeader
             title={`任务监控 - ${displayName}`}
-            onClose={onClose}
+
             onToggleFullscreen={onToggleFullscreen}
             isFullscreen={isFullscreen}
           />

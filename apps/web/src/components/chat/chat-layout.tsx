@@ -15,6 +15,7 @@ import { AppToolbar } from "./app-toolbar"
 import { CalendarPlaceholder } from "./calendar-placeholder"
 import { ChatView } from "./chat-view"
 import { ContactDetailPanel } from "./contact-detail-panel"
+import { ContactsPanel } from "./contacts-panel"
 import { ConversationList } from "./conversation-list"
 import { MobileTabBar } from "./mobile-tab-bar"
 import { RecentConversations } from "./recent-conversations"
@@ -125,7 +126,7 @@ export function ChatLayout({
               <RecentConversations className="h-full w-full" />
             )}
             {activeTab === "contacts" && (
-              <CalendarPlaceholder className="h-full w-full" />
+              <ContactsPanel className="h-full w-full" />
             )}
             {activeTab === "calendar" && (
               <CalendarPlaceholder className="h-full w-full" />
@@ -189,7 +190,6 @@ export function ChatLayout({
           <MonitorPanel
             isOpen={true}
             isFullscreen={false}
-            onClose={closeMonitor}
             onToggleFullscreen={() => { }}
             className="h-full w-full rounded-none border-0 shadow-none"
           />

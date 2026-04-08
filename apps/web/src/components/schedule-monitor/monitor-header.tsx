@@ -5,13 +5,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
-import { IconMaximize, IconMinimize, IconX } from "@tabler/icons-react"
+import { IconMaximize, IconMinimize } from "@tabler/icons-react"
 import type { Icon } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 
 export interface MonitorHeaderProps {
   title: string
-  onClose: () => void
   onToggleFullscreen: () => void
   isFullscreen: boolean
 }
@@ -21,6 +20,7 @@ export interface MonitorActionProps {
   label: string
   tooltip: string
   onClick: () => void
+  className: string
 }
 
 export const MonitorAction = ({
@@ -28,10 +28,11 @@ export const MonitorAction = ({
   label,
   tooltip,
   onClick,
+  className
 }: MonitorActionProps) => {
   const button = (
     <Button
-      className="size-8 p-0 text-muted-foreground hover:text-foreground"
+      className={cn("cursor-pointer rounded-full px-4", className)}
       size="sm"
       type="button"
       variant="ghost"
@@ -56,7 +57,6 @@ export const MonitorAction = ({
 
 export function MonitorHeader({
   title,
-  onClose,
   onToggleFullscreen,
   isFullscreen,
 }: MonitorHeaderProps) {
@@ -70,17 +70,13 @@ export function MonitorHeader({
 
       <div className="flex items-center gap-1">
         <MonitorAction
+          className="mr-4"
           icon={isFullscreen ? IconMinimize : IconMaximize}
           label={isFullscreen ? "退出全屏" : "全屏"}
           tooltip={isFullscreen ? "退出全屏" : "全屏"}
           onClick={onToggleFullscreen}
         />
-        <MonitorAction
-          icon={IconX}
-          label="关闭"
-          tooltip="关闭面板"
-          onClick={onClose}
-        />
+
       </div>
     </div>
   )

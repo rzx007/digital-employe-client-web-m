@@ -1,5 +1,5 @@
 import { request } from "@/lib/request"
-import type { ApiResponse, Capability, Employee } from "./types"
+import type { ApiResponse, Capability, Employee, MetadataSkill } from "./types"
 import type { TaskFormData, ShiftScheduleForm } from "@/types/task"
 
 /** 当前固定工作空间 ID */
@@ -51,16 +51,21 @@ export interface RecruitRequest {
 
 export interface RecruitmentCandidate {
   id: number
+  workspace_id: number | null
   employee_name: string
   capability_desc: string | null
   status: number
   detail_page_url: string | null
   created_at: string
-  updated_at: string | null
+  updated_at: string
+  user_id: string | null
   capability_ids: number[]
   skill_ids: number[]
   capabilities: Capability[]
-  match_score: number
+  skills: MetadataSkill[]
+  shift_schedule: unknown | null
+  tasks: unknown[]
+  match_score?: number
 }
 
 /**
@@ -72,16 +77,14 @@ export interface RecruitmentCandidate {
 export async function fetchRecruitCandidates(
   params: RecruitRequest
 ): Promise<RecruitmentCandidate[]> {
-  // 发起API请求获取招聘信息
   const body = await request<{
     code?: number
     msg?: string
     data?: RecruitmentCandidate[]
-  }>("/recruitment/generate-employees", {
+  }>("/generate-employees", {
     method: "POST",
     body: params,
   })
-  // 验证响应数据结构并返回候选人数组，确保返回类型安全
   return Array.isArray(body?.data) ? body.data : []
 }
 
@@ -92,6 +95,7 @@ export interface CreateEmployeeParams {
   detail_page_url?: string | null
   capability_ids?: number[]
   skill_ids?: number[]
+  skills?: MetadataSkill[]
   shift_schedule?: ShiftScheduleForm | null
   tasks?: TaskFormData[]
 }
@@ -104,9 +108,13 @@ export interface CreateEmployeeParams {
 export async function createEmployee(
   params: CreateEmployeeParams
 ): Promise<ApiResponse<unknown>> {
-  const { shift_schedule, tasks, ...basic } = params
+  const { shift_schedule, tasks, skills, ...basic } = params
 
   const body: Record<string, unknown> = { ...basic }
+
+  if (skills && skills.length > 0) {
+    body.skills = skills
+  }
 
   if (shift_schedule) {
     body.shift_schedule = shift_schedule
@@ -128,7 +136,7 @@ export async function createEmployee(
     }))
   }
 
-  return request<ApiResponse<unknown>>("/digital/api/v1/employee/create", {
+  return request<ApiResponse<unknown>>("/employees/create", {
     method: "POST",
     body,
   })

@@ -47,8 +47,7 @@ import {
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
 import { Textarea } from "@workspace/ui/components/textarea"
-import type { Capability } from "@/api/types"
-import type { SkillItem } from "@/api/skill"
+import type { Capability, MetadataSkill } from "@/api/types"
 import { cn } from "@workspace/ui/lib/utils"
 import {
   executeTimeToCronExpression,
@@ -109,7 +108,7 @@ interface TaskEditDialogProps {
   taskIndex: number | null
   task: TaskFormData | null
   capabilities: Capability[]
-  skills: SkillItem[]
+  skills: MetadataSkill[]
   capabilityIds?: number[]
   skillIds?: number[]
   onSave: (task: TaskFormData) => void

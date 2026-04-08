@@ -6,8 +6,7 @@ import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { Switch } from "@workspace/ui/components/switch"
 import { toast } from "sonner"
-import type { Capability } from "@/api/types"
-import type { SkillItem } from "@/api/skill"
+import type { Capability, MetadataSkill } from "@/api/types"
 import { parseCronToExecuteTime } from "@/lib/cron-utils"
 import type { ShiftScheduleForm, TaskFormData } from "@/types/task"
 import { cn } from "@workspace/ui/lib/utils"
@@ -37,7 +36,7 @@ function TaskCard({
   onToggleActive,
 }: {
   task: TaskFormData
-  skills: SkillItem[]
+  skills: MetadataSkill[]
   onEdit: () => void
   onDelete: () => void
   onToggleActive: (active: boolean) => void
@@ -103,6 +102,7 @@ interface ScheduleTaskConfigProps {
   capabilities: Capability[]
   capabilityIds?: number[]
   skillIds?: number[]
+  skills: MetadataSkill[]
   tasks: TaskFormData[]
   schedule: ShiftScheduleForm
   onTasksChange: (tasks: TaskFormData[]) => void
@@ -113,28 +113,24 @@ export function ScheduleTaskConfig({
   capabilities,
   capabilityIds,
   skillIds,
+  skills: passedSkills,
   tasks,
   schedule,
   onTasksChange,
   onScheduleChange,
 }: ScheduleTaskConfigProps) {
-  const [skills, setSkills] = React.useState<SkillItem[]>([])
+  const [skills, setSkills] = React.useState<MetadataSkill[]>(
+    passedSkills ?? []
+  )
   const [editOpen, setEditOpen] = React.useState(false)
   const [editIndex, setEditIndex] = React.useState<number | null>(null)
   const [editTask, setEditTask] = React.useState<TaskFormData | null>(null)
 
   React.useEffect(() => {
-    let cancelled = false
-    import("@/api/skill")
-      .then(({ fetchAvailableSkills }) => fetchAvailableSkills())
-      .then((data) => {
-        if (!cancelled) setSkills(data)
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
+    if (passedSkills && passedSkills.length > 0) {
+      setSkills(passedSkills)
     }
-  }, [])
+  }, [passedSkills])
 
   const handleAddTask = () => {
     setEditIndex(null)

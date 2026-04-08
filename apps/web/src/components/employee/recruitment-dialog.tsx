@@ -65,9 +65,13 @@ function CandidateCard({
 }) {
   const [expanded, setExpanded] = React.useState(false)
 
-  const displayCapabilities = candidate.capabilities?.slice(0, 3) ?? []
-  const remainingCount =
+  const displayCapabilities = candidate.capabilities?.slice(0, 2) ?? []
+  const displaySkills = candidate.skills?.slice(0, 2) ?? []
+  const remainingCapCount =
     (candidate.capabilities?.length ?? 0) - displayCapabilities.length
+  const remainingSkillCount =
+    (candidate.skills?.length ?? 0) - displaySkills.length
+  const matchScore = candidate.match_score ?? 0
 
   return (
     <div className="rounded-md border transition-colors hover:border-primary/30">
@@ -82,22 +86,24 @@ function CandidateCard({
             <span className="truncate text-sm font-medium">
               {candidate.employee_name}
             </span>
-            <div className="flex shrink-0 items-center gap-1">
-              <span
-                className={cn(
-                  "text-xs font-semibold",
-                  getMatchScoreColor(candidate.match_score)
-                )}
-              >
-                {candidate.match_score}%
-              </span>
-              <Badge
-                variant={candidate.match_score >= 60 ? "default" : "secondary"}
-                className="px-1.5 py-0 text-[10px]"
-              >
-                {getMatchScoreLabel(candidate.match_score)}
-              </Badge>
-            </div>
+            {matchScore > 0 && (
+              <div className="flex shrink-0 items-center gap-1">
+                <span
+                  className={cn(
+                    "text-xs font-semibold",
+                    getMatchScoreColor(matchScore)
+                  )}
+                >
+                  {matchScore}%
+                </span>
+                <Badge
+                  variant={matchScore >= 60 ? "default" : "secondary"}
+                  className="px-1.5 py-0 text-[10px]"
+                >
+                  {getMatchScoreLabel(matchScore)}
+                </Badge>
+              </div>
+            )}
           </div>
 
           <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
@@ -107,32 +113,51 @@ function CandidateCard({
           <div className="mt-2 flex flex-wrap gap-1">
             {displayCapabilities.map((cap, index) => (
               <Badge
-                key={`${cap.capability_name}-${index}`}
-                variant="outline"
+                key={`cap-${cap.capability_name}-${index}`}
+                variant="secondary"
                 className="text-[10px]"
               >
                 {cap.capability_name}
               </Badge>
             ))}
-            {remainingCount > 0 && (
+            {remainingCapCount > 0 && (
+              <Badge
+                variant="secondary"
+                className="text-[10px] text-muted-foreground"
+              >
+                +{remainingCapCount} MCP
+              </Badge>
+            )}
+            {displaySkills.map((skill, index) => (
+              <Badge
+                key={`skill-${skill.id}-${index}`}
+                variant="outline"
+                className="text-[10px]"
+              >
+                {skill.skillName}
+              </Badge>
+            ))}
+            {remainingSkillCount > 0 && (
               <Badge
                 variant="outline"
                 className="text-[10px] text-muted-foreground"
               >
-                +{remainingCount}
+                +{remainingSkillCount} 技能
               </Badge>
             )}
           </div>
 
-          <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className={cn(
-                "h-full rounded-full transition-all duration-500",
-                getProgressColor(candidate.match_score)
-              )}
-              style={{ width: `${candidate.match_score}%` }}
-            />
-          </div>
+          {matchScore > 0 && (
+            <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all duration-500",
+                  getProgressColor(matchScore)
+                )}
+                style={{ width: `${matchScore}%` }}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -166,10 +191,18 @@ function CandidateCard({
         <CollapsibleContent>
           <div className="space-y-1.5 border-t px-3 py-2">
             {candidate.capabilities?.map((cap, index) => (
-              <div key={`${cap.capability_name}-${index}`} className="text-xs">
-                <span className="font-medium">{cap.capability_name}</span>
+              <div key={`cap-detail-${index}`} className="text-xs">
+                <span className="font-medium">MCP: {cap.capability_name}</span>
                 <p className="leading-relaxed text-muted-foreground">
                   {cap.capability_desc}
+                </p>
+              </div>
+            ))}
+            {candidate.skills?.map((skill, index) => (
+              <div key={`skill-detail-${index}`} className="text-xs">
+                <span className="font-medium">技能: {skill.skillName}</span>
+                <p className="leading-relaxed text-muted-foreground">
+                  {skill.description}
                 </p>
               </div>
             ))}

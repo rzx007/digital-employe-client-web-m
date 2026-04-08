@@ -95,7 +95,7 @@ export function ContactsPanel({
         )}
         {...props}
       >
-        <div className="flex items-center gap-1.5 border-b px-3 py-2">
+        <div className="flex items-center gap-1.5 border-b px-3 py-4">
           <div className="relative flex-1">
             <IconSearch className="absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input

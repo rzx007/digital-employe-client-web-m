@@ -80,6 +80,7 @@ export function HireEmployeeDialog({
         status: 1,
         capability_ids: candidate?.capability_ids ?? [],
         skill_ids: candidate?.skill_ids ?? [],
+        skills: candidate?.skills ?? [],
         shift_schedule: showScheduleAndTask ? schedule : null,
         tasks: showScheduleAndTask ? tasks : [],
       })
@@ -123,13 +124,32 @@ export function HireEmployeeDialog({
                 </p>
                 {(candidate.capabilities?.length ?? 0) > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
+                    <span className="text-[10px] text-muted-foreground">
+                      MCP:
+                    </span>
                     {candidate.capabilities.map((cap, index) => (
                       <Badge
-                        key={`${cap.capability_name}-${index}`}
-                        variant="outline"
+                        key={`cap-${index}`}
+                        variant="secondary"
                         className="text-xs"
                       >
                         {cap.capability_name}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                {(candidate.skills?.length ?? 0) > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <span className="text-[10px] text-muted-foreground">
+                      技能:
+                    </span>
+                    {candidate.skills.map((skill, index) => (
+                      <Badge
+                        key={`skill-${index}`}
+                        variant="outline"
+                        className="text-xs"
+                      >
+                        {skill.skillName}
                       </Badge>
                     ))}
                   </div>
@@ -183,6 +203,7 @@ export function HireEmployeeDialog({
                 capabilities={candidate?.capabilities ?? []}
                 capabilityIds={candidate?.capability_ids}
                 skillIds={candidate?.skill_ids}
+                skills={candidate?.skills ?? []}
                 tasks={tasks}
                 schedule={schedule}
                 onTasksChange={setTasks}
