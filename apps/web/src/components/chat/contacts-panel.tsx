@@ -198,31 +198,6 @@ export function ContactsPanel({
                   </p>
                 </div>
               )}
-
-            {employeeContacts.length > 0 && (
-              <div className="space-y-0.5">
-                <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
-                  联系人
-                </p>
-                {employeeContacts.map((contact) => (
-                  <ContactItem
-                    key={contact.employee?.id}
-                    contact={contact}
-                    isCollapsed={false}
-                    onDoubleClick={() =>
-                      handleDoubleClickContact(contact.employee?.id ?? "")
-                    }
-                  />
-                ))}
-              </div>
-            )}
-
-            {groupContacts.length === 0 && employeeContacts.length === 0 && (
-              <div className="flex flex-col items-center justify-center px-2 py-10 text-muted-foreground/60">
-                <IconUser className="size-8 stroke-1" />
-                <p className="mt-2 text-xs">暂无联系人</p>
-              </div>
-            )}
           </div>
         </ScrollArea>
       </div>
