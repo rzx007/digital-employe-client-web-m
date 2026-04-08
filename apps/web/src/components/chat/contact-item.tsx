@@ -26,7 +26,7 @@ import type { Contact } from "@/lib/mock-data/ai-employees"
 import { useChatStore } from "@/stores/chat-store"
 
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
-import { EmployeeDetailDialog } from "./employee-detail-dialog"
+import { EmployeeDetailDialog } from "../employee/employee-detail-dialog"
 import { GroupDetailDialog } from "./group-detail-dialog"
 
 interface ContactItemProps extends React.ComponentProps<"div"> {

@@ -1,5 +1,6 @@
 import { request } from "@/lib/request"
-import type { ApiResponse, Employee } from "./types"
+import type { ApiResponse, Capability, Employee } from "./types"
+import type { TaskFormData, ShiftScheduleForm } from "@/types/task"
 
 /** 当前固定工作空间 ID */
 const WORKSPACE_ID = 1
@@ -43,103 +44,92 @@ export async function deleteEmployee(employeeId: number | string) {
 }
 
 export interface RecruitRequest {
-  requirement: string
+  title: string
+  prompt: string
+  count: number
 }
 
-export interface RecruitCandidate {
-  id: string
-  name: string
-  description: string
-  matchScore: number
-  skills: {
-    id: number
-    skillName: string
-    description: string
-  }[]
+export interface RecruitmentCandidate {
+  id: number
+  employee_name: string
+  capability_desc: string | null
+  status: number
+  detail_page_url: string | null
+  created_at: string
+  updated_at: string | null
+  capability_ids: number[]
+  skill_ids: number[]
+  capabilities: Capability[]
+  match_score: number
 }
 
+/**
+ * 获取招聘候选人列表
+ *
+ * @param params - 招聘请求参数，用于指定招聘条件和筛选标准
+ * @returns 返回招聘候选人的数组，如果请求失败或数据格式不正确则返回空数组
+ */
 export async function fetchRecruitCandidates(
-  _params: RecruitRequest
-): Promise<RecruitCandidate[]> {
-  await new Promise((resolve) => setTimeout(resolve, 1500))
-  return [
-    {
-      id: "mock-1",
-      name: "Web全栈工程师",
-      description:
-        "精通前后端开发，熟悉主流框架，能够独立完成Web应用的全流程开发",
-      matchScore: 92,
-      skills: [
-        {
-          id: 1,
-          skillName: "代码开发",
-          description:
-            "具备全栈代码编写能力，熟悉React、Vue等前端框架以及Node.js、Python等后端技术栈",
-        },
-        {
-          id: 2,
-          skillName: "文档撰写",
-          description: "能够编写清晰的技术文档、API文档和用户手册",
-        },
-        {
-          id: 3,
-          skillName: "数据分析",
-          description: "能够对业务数据进行分析和可视化展示",
-        },
-      ],
-    },
-    {
-      id: "mock-2",
-      name: "数据分析专家",
-      description: "专注于数据统计分析与报表生成，擅长从数据中发现业务洞察",
-      matchScore: 78,
-      skills: [
-        {
-          id: 4,
-          skillName: "数据统计",
-          description: "具备数据收集、清洗、统计分析的全流程能力",
-        },
-        {
-          id: 5,
-          skillName: "报表生成",
-          description: "能够根据数据自动生成多维度分析报表",
-        },
-        {
-          id: 6,
-          skillName: "SQL查询",
-          description: "精通SQL，能够高效查询和处理数据库中的数据",
-        },
-      ],
-    },
-    {
-      id: "mock-3",
-      name: "运维专员",
-      description: "负责系统监控与运维自动化，保障服务稳定运行",
-      matchScore: 65,
-      skills: [
-        {
-          id: 7,
-          skillName: "系统监控",
-          description: "实时监控系统运行状态，及时发现和响应异常",
-        },
-        {
-          id: 8,
-          skillName: "日志分析",
-          description: "分析系统日志，定位问题根因",
-        },
-        {
-          id: 9,
-          skillName: "自动化脚本",
-          description: "编写自动化运维脚本，提升运维效率",
-        },
-      ],
-    },
-  ]
+  params: RecruitRequest
+): Promise<RecruitmentCandidate[]> {
+  // 发起API请求获取招聘信息
+  const body = await request<{
+    code?: number
+    msg?: string
+    data?: RecruitmentCandidate[]
+  }>("/recruitment/generate-employees", {
+    method: "POST",
+    body: params,
+  })
+  // 验证响应数据结构并返回候选人数组，确保返回类型安全
+  return Array.isArray(body?.data) ? body.data : []
 }
 
+export interface CreateEmployeeParams {
+  employee_name: string
+  capability_desc?: string | null
+  status?: number
+  detail_page_url?: string | null
+  capability_ids?: number[]
+  skill_ids?: number[]
+  shift_schedule?: ShiftScheduleForm | null
+  tasks?: TaskFormData[]
+}
+
+/**
+ * 创建员工信息
+ * @param params - 创建员工所需的参数对象，包含员工的基本信息和其他必要字段
+ * @returns 返回API响应结果，包含操作状态和相关数据
+ */
 export async function createEmployee(
-  _params: Omit<RecruitCandidate, "id" | "matchScore">
-) {
-  await new Promise((resolve) => setTimeout(resolve, 800))
-  return { success: true }
+  params: CreateEmployeeParams
+): Promise<ApiResponse<unknown>> {
+  const { shift_schedule, tasks, ...basic } = params
+
+  const body: Record<string, unknown> = { ...basic }
+
+  if (shift_schedule) {
+    body.shift_schedule = shift_schedule
+  }
+
+  if (tasks && tasks.length > 0) {
+    body.tasks = tasks.map((task) => ({
+      id: task.id,
+      task_name: task.task_name,
+      capability_id: task.capability_id,
+      task_type: task.task_type ?? 2,
+      config: {},
+      cron_expression: task.cron_expression || "",
+      is_active: task.is_active ?? true,
+      cron_expression_type: task.cron_expression_type || "daily",
+      user_prompt: task.user_prompt,
+      task_resource_type: task.task_resource_type,
+      skill_id: task.skill_id,
+    }))
+  }
+
+  return request<ApiResponse<unknown>>("/digital/api/v1/employee/create", {
+    method: "POST",
+    body,
+  })
 }

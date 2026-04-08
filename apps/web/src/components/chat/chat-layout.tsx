@@ -15,8 +15,8 @@ import { AppToolbar } from "./app-toolbar"
 import { CalendarPlaceholder } from "./calendar-placeholder"
 import { ChatView } from "./chat-view"
 import { ContactDetailPanel } from "./contact-detail-panel"
-import { ContactsPanel } from "./contacts-panel"
 import { ConversationList } from "./conversation-list"
+import { MobileTabBar } from "./mobile-tab-bar"
 import { RecentConversations } from "./recent-conversations"
 
 const CURATOR_CONTACT = { type: "curator" as const, curator: PRIMARY_CURATOR }
@@ -115,24 +115,24 @@ export function ChatLayout({
   const showMonitorSheet = isMonitorOpen && activeTab === "chat"
 
   return (
-    <div className={cn("relative flex h-full", className)} {...props}>
-      {!isMobile && <AppToolbar />}
-
-      {!isMobile && (
-        <div className="hidden w-64 shrink-0 md:flex md:flex-col">
-          {activeTab === "chat" && (
-            <RecentConversations className="h-full w-full" />
-          )}
-          {activeTab === "contacts" && (
-            <ContactsPanel className="h-full w-full" />
-          )}
-          {activeTab === "calendar" && (
-            <CalendarPlaceholder className="h-full w-full" />
-          )}
-        </div>
-      )}
-
+    <div className={cn("flex h-full relative", isMobile && "flex-col", className)} {...props}>
       <div className="flex min-w-0 flex-1">
+        {!isMobile && <AppToolbar />}
+
+        {!isMobile && (
+          <div className="hidden w-64 shrink-0 md:flex md:flex-col">
+            {activeTab === "chat" && (
+              <RecentConversations className="h-full w-full" />
+            )}
+            {activeTab === "contacts" && (
+              <CalendarPlaceholder className="h-full w-full" />
+            )}
+            {activeTab === "calendar" && (
+              <CalendarPlaceholder className="h-full w-full" />
+            )}
+          </div>
+        )}
+
         {activeTab === "chat" && (
           <ChatView
             onOpenContacts={handleOpenContacts}
@@ -190,25 +190,11 @@ export function ChatLayout({
             isOpen={true}
             isFullscreen={false}
             onClose={closeMonitor}
-            onToggleFullscreen={() => {}}
+            onToggleFullscreen={() => { }}
             className="h-full w-full rounded-none border-0 shadow-none"
           />
         </SheetContent>
       </Sheet>
-
-      {/* Mobile Sheet for contacts */}
-      {isMobile && (
-        <Sheet
-          open={isMobile && activeTab === "contacts"}
-          onOpenChange={(open) => {
-            if (!open) useChatStore.getState().setActiveTab("chat")
-          }}
-        >
-          <SheetContent side="left" className="w-64 p-0">
-            <ContactsPanel className="h-full w-full border-r-0" />
-          </SheetContent>
-        </Sheet>
-      )}
 
       {/* Artifact fullscreen */}
       {isPanelOpen &&
@@ -233,6 +219,9 @@ export function ChatLayout({
           onToggleFullscreen={toggleMonitorFullscreen}
         />
       )}
+
+      {/* Mobile bottom tab bar */}
+      {isMobile && <MobileTabBar />}
     </div>
   )
 }

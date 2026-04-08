@@ -30,7 +30,7 @@ import { createDiceBearAvatar } from "@/lib/avatar"
 import { useChatStore } from "@/stores/chat-store"
 import { useEmployeeDetailQuery } from "@/hooks/use-chat-queries"
 
-import { EmployeeContactAvatar } from "./contact-avatars"
+import { EmployeeContactAvatar } from "../chat/contact-avatars"
 
 interface EmployeeDetailDialogProps {
   contact: Contact

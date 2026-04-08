@@ -26,7 +26,9 @@ import {
 } from "@/lib/mock-data/ai-employees"
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
 import { CreateGroupDialog } from "./create-group-dialog"
-import { RecruitEmployeeDialog } from "./recruit-employee-dialog"
+import { RecruitmentDialog } from "../employee/recruitment-dialog"
+import { HireEmployeeDialog } from "../employee/hire-employee-dialog"
+import type { RecruitmentCandidate } from "@/api/employee"
 import { formatDistanceToNow } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import type { Conversation } from "@/lib/mock-data/conversations"
@@ -106,9 +108,7 @@ function upsertRecentConversation(
     isCurator: conv.contactId === PRIMARY_CURATOR.id,
     participants,
   }
-  const filtered = existing.filter(
-    (c) => c.contactId !== conv.contactId
-  )
+  const filtered = existing.filter((c) => c.contactId !== conv.contactId)
   const updated = [item, ...filtered].slice(0, MAX_RECENT)
   if (item.isCurator) {
     const withoutCurator = updated.filter((c) => !c.isCurator)
@@ -129,12 +129,10 @@ function ensureContactInList(
   }
   const contactInfo = getContactInfoFromStore(contactId)
   if (!contactInfo) return existing
-  const contact = findContactInList(
-    useChatStore.getState().contacts,
-    contactId
-  )
+  const contact = findContactInList(useChatStore.getState().contacts, contactId)
   const isGroup = contact?.type === "group"
-  const isCurator = contact?.type === "curator" || contactId === PRIMARY_CURATOR.id
+  const isCurator =
+    contact?.type === "curator" || contactId === PRIMARY_CURATOR.id
   const newItem: RecentConversationItem = {
     id: `recent:${contactId}`,
     contactId,
@@ -218,19 +216,24 @@ export function RecentConversations({
   const [searchQuery, setSearchQuery] = React.useState("")
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [isRecruitDialogOpen, setIsRecruitDialogOpen] = React.useState(false)
+  const [isHireDialogOpen, setIsHireDialogOpen] = React.useState(false)
+  const [selectedCandidate, setSelectedCandidate] =
+    React.useState<RecruitmentCandidate | null>(null)
 
-  const {
-    selectedContactId,
-    isDraftConversation,
-    switchToContact,
-  } = useChatStore(
-    useShallow((state) => ({
-      selectedContactId: state.selectedContactId,
-      selectedConversationId: state.selectedConversationId,
-      isDraftConversation: state.isDraftConversation,
-      switchToContact: state.switchToContact,
-    }))
-  )
+  const handleSelectCandidate = (candidate: RecruitmentCandidate) => {
+    setSelectedCandidate(candidate)
+    setIsHireDialogOpen(true)
+  }
+
+  const { selectedContactId, isDraftConversation, switchToContact } =
+    useChatStore(
+      useShallow((state) => ({
+        selectedContactId: state.selectedContactId,
+        selectedConversationId: state.selectedConversationId,
+        isDraftConversation: state.isDraftConversation,
+        switchToContact: state.switchToContact,
+      }))
+    )
 
   const selectedContact = useChatStore((s) => s.getSelectedContact())
   const contacts = useChatStore((s) => s.contacts)
@@ -269,7 +272,13 @@ export function RecentConversations({
     setRecentItems((prev) => {
       const updated = conversations.reduce(
         (acc, conv) =>
-          upsertRecentConversation(acc, conv, contactInfo, isGroup, participants),
+          upsertRecentConversation(
+            acc,
+            conv,
+            contactInfo,
+            isGroup,
+            participants
+          ),
         prev
       )
       const hasNew =
@@ -348,9 +357,18 @@ export function RecentConversations({
         employees={employeeList}
         onCreate={handleCreateGroup}
       />
-      <RecruitEmployeeDialog
+      <RecruitmentDialog
         open={isRecruitDialogOpen}
         onOpenChange={setIsRecruitDialogOpen}
+        onSelectCandidate={handleSelectCandidate}
+      />
+      <HireEmployeeDialog
+        open={isHireDialogOpen}
+        onOpenChange={(open) => {
+          setIsHireDialogOpen(open)
+          if (!open) setSelectedCandidate(null)
+        }}
+        candidate={selectedCandidate}
       />
       <div
         className={cn(
@@ -428,44 +446,51 @@ export function RecentConversations({
                     showStatus
                   />
                 )}
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <div className="flex min-w-0  flex-1 flex-col gap-0.5 ">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1">
                       {item.isCurator && (
-                        <IconPin className={cn(
-                          "size-3.5",
-                          selectedContactId === item.contactId
-                            ? "text-primary-foreground/70"
-                            : "text-muted-foreground"
-                        )} />
+                        <IconPin
+                          className={cn(
+                            "size-3.5",
+                            selectedContactId === item.contactId
+                              ? "text-primary-foreground/70"
+                              : "text-muted-foreground"
+                          )}
+                        />
                       )}
-                      <span className="truncate text-sm font-medium">
+                      <span className="truncate text-sm font-medium w-26">
                         {item.contactName}
                       </span>
                     </div>
-                    <span className={cn(
-                      "shrink-0 text-[10px]",
-                      selectedContactId === item.contactId
-                        ? "text-primary-foreground/70"
-                        : "text-muted-foreground"
-                    )}>
+                    <span
+                      className={cn(
+                        "shrink-0 text-[10px]",
+                        selectedContactId === item.contactId
+                          ? "text-primary-foreground/70"
+                          : "text-muted-foreground"
+                      )}
+                    >
                       {getTimeAgo(item.updatedAt)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className={cn(
-                      "max-w-[160px] truncate",
-                      selectedContactId === item.contactId
-                        ? "text-primary-foreground/70"
-                        : "text-muted-foreground"
-                    )}>
+                    <span
+                      className={cn(
+                        "max-w-[160px] truncate",
+                        selectedContactId === item.contactId
+                          ? "text-primary-foreground/70"
+                          : "text-muted-foreground"
+                      )}
+                    >
                       {item.title || "新对话"}
                     </span>
-                    {item.unreadCount > 0 && selectedContactId !== item.contactId && (
-                      <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
-                        {item.unreadCount}
-                      </span>
-                    )}
+                    {item.unreadCount > 0 &&
+                      selectedContactId !== item.contactId && (
+                        <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+                          {item.unreadCount}
+                        </span>
+                      )}
                   </div>
                 </div>
               </div>
