@@ -23,7 +23,7 @@ export function ContactDetailPanel({
   ...props
 }: React.ComponentProps<"div">) {
   const selectedContact = useChatStore((s) => s.getSelectedContact())
-  const startDraftConversation = useChatStore((s) => s.startDraftConversation)
+  const switchToContact = useChatStore((s) => s.switchToContact)
 
   const handleSendMessage = () => {
     const contact = useChatStore.getState().getSelectedContact()
@@ -35,7 +35,7 @@ export function ContactDetailPanel({
           ? contact.employee?.id
           : contact.group?.id
     if (id) {
-      startDraftConversation(id)
+      switchToContact(id)
     }
   }
 

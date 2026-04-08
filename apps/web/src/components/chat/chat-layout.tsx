@@ -1,13 +1,16 @@
 import * as React from "react"
+import { toast } from "sonner"
 
 import { Sheet, SheetContent } from "@workspace/ui/components/sheet"
 import { cn } from "@workspace/ui/lib/utils"
 import { ArtifactPanel } from "@/components/artifact"
 import { MonitorPanel } from "@/components/schedule-monitor"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useContactsQuery } from "@/hooks/use-chat-queries"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useChatStore } from "@/stores/chat-store"
+import { PRIMARY_CURATOR } from "@/lib/mock-data/ai-employees"
 import { AppToolbar } from "./app-toolbar"
 import { CalendarPlaceholder } from "./calendar-placeholder"
 import { ChatView } from "./chat-view"
@@ -16,12 +19,47 @@ import { ContactsPanel } from "./contacts-panel"
 import { ConversationList } from "./conversation-list"
 import { RecentConversations } from "./recent-conversations"
 
+const CURATOR_CONTACT = { type: "curator" as const, curator: PRIMARY_CURATOR }
+
 export function ChatLayout({
   className,
   ...props
 }: React.ComponentProps<"div">) {
   const isMobile = useIsMobile()
   const activeTab = useChatStore((s) => s.activeTab)
+  const setContacts = useChatStore((s) => s.setContacts)
+
+  const { data: apiContacts, isError: contactsError } = useContactsQuery()
+
+  const hasContactsErrorToastRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (apiContacts) {
+      setContacts([CURATOR_CONTACT, ...apiContacts])
+    }
+  }, [apiContacts, setContacts])
+
+  React.useEffect(() => {
+    if (!contactsError) {
+      hasContactsErrorToastRef.current = false
+      return
+    }
+    const { contacts, selectedContactId } = useChatStore.getState()
+    const hasCurator = contacts.some((c) => c.type === "curator")
+    if (!hasCurator) {
+      useChatStore.getState().setContacts([CURATOR_CONTACT])
+    }
+    if (selectedContactId !== PRIMARY_CURATOR.id) {
+      if (!hasContactsErrorToastRef.current) {
+        hasContactsErrorToastRef.current = true
+        toast.warning("服务连接异常，已切换到总管助手", {
+          description: "请检查网络连接后重试",
+          duration: 5000,
+        })
+      }
+      useChatStore.getState().setSelectedContactId(PRIMARY_CURATOR.id)
+    }
+  }, [contactsError])
 
   const [showConversations, setShowConversations] = React.useState(false)
 

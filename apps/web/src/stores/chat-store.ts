@@ -24,6 +24,8 @@ interface ChatStore {
   setShowWorkbench: (show: boolean) => void
   setActiveTab: (tab: ActiveTab) => void
   startDraftConversation: (contactId: string) => void
+  selectConversation: (contactId: string, conversationId: string) => void
+  switchToContact: (contactId: string) => void
   getSelectedContact: () => Contact | undefined
 }
 
@@ -64,6 +66,20 @@ export const useChatStore = create<ChatStore>()(
           selectedContactId: contactId,
           selectedConversationId: null,
           isDraftConversation: true,
+          draftSessionKey: state.draftSessionKey + 1,
+          activeTab: "chat" as ActiveTab,
+        })),
+      selectConversation: (contactId, conversationId) =>
+        set({
+          selectedContactId: contactId,
+          selectedConversationId: conversationId,
+          isDraftConversation: false,
+        }),
+      switchToContact: (contactId) =>
+        set((state) => ({
+          selectedContactId: contactId,
+          selectedConversationId: null,
+          isDraftConversation: false,
           draftSessionKey: state.draftSessionKey + 1,
           activeTab: "chat" as ActiveTab,
         })),

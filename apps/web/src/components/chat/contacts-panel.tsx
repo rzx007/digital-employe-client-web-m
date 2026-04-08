@@ -6,13 +6,10 @@ import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
-import { useContactsQuery } from "@/hooks/use-chat-queries"
-import { PRIMARY_CURATOR, type AIEmployee } from "@/lib/mock-data/ai-employees"
+import { type AIEmployee } from "@/lib/mock-data/ai-employees"
 import { useChatStore } from "@/stores/chat-store"
 import { ContactItem } from "./contact-item"
 import { CreateGroupDialog } from "./create-group-dialog"
-
-const CURATOR_CONTACT = { type: "curator" as const, curator: PRIMARY_CURATOR }
 
 export function ContactsPanel({
   className,
@@ -20,29 +17,14 @@ export function ContactsPanel({
 }: React.ComponentProps<"div">) {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState("")
-  const {
-    setContacts,
-    selectedContactId,
-    setSelectedContactId,
-    startDraftConversation,
-  } = useChatStore(
+  const { selectedContactId, switchToContact } = useChatStore(
     useShallow((state) => ({
-      setContacts: state.setContacts,
       selectedContactId: state.selectedContactId,
-      setSelectedContactId: state.setSelectedContactId,
-      startDraftConversation: state.startDraftConversation,
+      switchToContact: state.switchToContact,
     }))
   )
-  const { data: apiContacts } = useContactsQuery()
 
-  const contacts = React.useMemo(
-    () => [CURATOR_CONTACT, ...(apiContacts ?? [])],
-    [apiContacts]
-  )
-
-  React.useEffect(() => {
-    setContacts(contacts)
-  }, [contacts, setContacts])
+  const contacts = useChatStore((s) => s.contacts)
 
   const curatorContacts = React.useMemo(
     () => contacts.filter((c) => c.type === "curator"),
@@ -69,7 +51,7 @@ export function ContactsPanel({
   }
 
   const handleDoubleClickContact = (contactId: string) => {
-    startDraftConversation(contactId)
+    switchToContact(contactId)
   }
 
   const q = searchQuery.toLowerCase()

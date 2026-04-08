@@ -4,6 +4,7 @@ import {
   IconSearch,
   IconUsers,
   IconUserPlus,
+  IconPin,
 } from "@tabler/icons-react"
 import { useShallow } from "zustand/react/shallow"
 import { Button } from "@workspace/ui/components/button"
@@ -20,6 +21,7 @@ import { useConversationsQuery } from "@/hooks/use-chat-queries"
 import { useChatStore } from "@/stores/chat-store"
 import {
   findContactInList,
+  PRIMARY_CURATOR,
   type AIEmployee,
 } from "@/lib/mock-data/ai-employees"
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
@@ -42,6 +44,7 @@ interface RecentConversationItem {
   status?: string
   isGroup?: boolean
   isDraft?: boolean
+  isCurator?: boolean
   participants?: { name: string; avatar?: string }[]
 }
 
@@ -54,15 +57,15 @@ function loadRecentConversations(): RecentConversationItem[] {
     if (!raw) return []
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    return parsed.map((item: Record<string, unknown>) => ({
+    return (parsed as RecentConversationItem[]).map((item) => ({
       ...item,
       lastMessageTime: item.lastMessageTime
-        ? new Date(item.lastMessageTime as string)
+        ? new Date(item.lastMessageTime as unknown as string)
         : undefined,
       updatedAt: item.updatedAt
-        ? new Date(item.updatedAt as string)
+        ? new Date(item.updatedAt as unknown as string)
         : undefined,
-    })) as RecentConversationItem[]
+    }))
   } catch {
     return []
   }
@@ -100,10 +103,57 @@ function upsertRecentConversation(
     avatar: contact?.avatar,
     status: contact?.status,
     isGroup,
+    isCurator: conv.contactId === PRIMARY_CURATOR.id,
     participants,
   }
-  const filtered = existing.filter((c) => c.id !== conv.id)
-  return [item, ...filtered].slice(0, MAX_RECENT)
+  const filtered = existing.filter(
+    (c) => c.contactId !== conv.contactId
+  )
+  const updated = [item, ...filtered].slice(0, MAX_RECENT)
+  if (item.isCurator) {
+    const withoutCurator = updated.filter((c) => !c.isCurator)
+    return [item, ...withoutCurator]
+  }
+  return updated
+}
+
+function ensureContactInList(
+  existing: RecentConversationItem[],
+  contactId: string
+): RecentConversationItem[] {
+  const exists = existing.some((c) => c.contactId === contactId)
+  if (exists) {
+    const filtered = existing.filter((c) => c.contactId !== contactId)
+    const item = existing.find((c) => c.contactId === contactId)!
+    return [item, ...filtered]
+  }
+  const contactInfo = getContactInfoFromStore(contactId)
+  if (!contactInfo) return existing
+  const contact = findContactInList(
+    useChatStore.getState().contacts,
+    contactId
+  )
+  const isGroup = contact?.type === "group"
+  const isCurator = contact?.type === "curator" || contactId === PRIMARY_CURATOR.id
+  const newItem: RecentConversationItem = {
+    id: `recent:${contactId}`,
+    contactId,
+    contactName: contactInfo.name,
+    title: isCurator ? "数字员工统筹" : "",
+    unreadCount: 0,
+    updatedAt: new Date(),
+    avatar: contactInfo.avatar,
+    status: contactInfo.status,
+    isGroup,
+    isCurator,
+    participants: isGroup
+      ? contact.group?.participants.map((p) => ({
+        name: p.name,
+        avatar: p.avatar,
+      }))
+      : undefined,
+  }
+  return [newItem, ...existing].slice(0, MAX_RECENT)
 }
 
 function getContactInfoFromStore(contactId: string): {
@@ -146,28 +196,39 @@ export function RecentConversations({
 }: React.ComponentProps<"div">) {
   const [recentItems, setRecentItems] = React.useState<
     RecentConversationItem[]
-  >(loadRecentConversations)
+  >(() => {
+    const loaded = loadRecentConversations()
+    const hasCurator = loaded.some((c) => c.contactId === PRIMARY_CURATOR.id)
+    if (hasCurator) return loaded
+    const curatorItem: RecentConversationItem = {
+      id: "recent:curator-primary",
+      contactId: PRIMARY_CURATOR.id,
+      contactName: PRIMARY_CURATOR.name,
+      title: "数字员工统筹",
+      unreadCount: 0,
+      updatedAt: new Date(),
+      avatar: PRIMARY_CURATOR.avatar,
+      status: PRIMARY_CURATOR.status,
+      isCurator: true,
+    }
+    const items = [curatorItem, ...loaded]
+    saveRecentConversations(items)
+    return items
+  })
   const [searchQuery, setSearchQuery] = React.useState("")
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [isRecruitDialogOpen, setIsRecruitDialogOpen] = React.useState(false)
 
   const {
     selectedContactId,
-    selectedConversationId,
     isDraftConversation,
-    setDraftConversation,
-    setSelectedConversationId,
-    setSelectedContactId,
-    startDraftConversation: startDraft,
+    switchToContact,
   } = useChatStore(
     useShallow((state) => ({
       selectedContactId: state.selectedContactId,
       selectedConversationId: state.selectedConversationId,
       isDraftConversation: state.isDraftConversation,
-      setDraftConversation: state.setDraftConversation,
-      setSelectedConversationId: state.setSelectedConversationId,
-      setSelectedContactId: state.setSelectedContactId,
-      startDraftConversation: state.startDraftConversation,
+      switchToContact: state.switchToContact,
     }))
   )
 
@@ -195,65 +256,64 @@ export function RecentConversations({
 
   React.useEffect(() => {
     if (!selectedContact || selectedContact.type === "curator") return
+    if (conversations.length === 0) return
     const contactInfo = getContactInfoFromStore(selectedContactId ?? "")
     const isGroup = selectedContact.type === "group"
     const participants = isGroup
       ? selectedContact.group?.participants.map((p) => ({
-          name: p.name,
-          avatar: p.avatar,
-        }))
+        name: p.name,
+        avatar: p.avatar,
+      }))
       : undefined
 
-    const updated = conversations.reduce(
-      (acc, conv) =>
-        upsertRecentConversation(acc, conv, contactInfo, isGroup, participants),
-      recentItems
-    )
-    const hasNew =
-      updated.length !== recentItems.length ||
-      updated[0]?.id !== recentItems[0]?.id
-    if (hasNew) {
-      setRecentItems(updated)
-      saveRecentConversations(updated)
-    }
+    setRecentItems((prev) => {
+      const updated = conversations.reduce(
+        (acc, conv) =>
+          upsertRecentConversation(acc, conv, contactInfo, isGroup, participants),
+        prev
+      )
+      const hasNew =
+        updated.length !== prev.length ||
+        updated[0]?.id !== prev[0]?.id ||
+        updated[0]?.updatedAt?.getTime() !== prev[0]?.updatedAt?.getTime()
+      if (hasNew) {
+        saveRecentConversations(updated)
+        return updated
+      }
+      return prev
+    })
   }, [conversations, selectedContact, selectedContactId])
 
   React.useEffect(() => {
-    if (!isDraftConversation || !selectedContactId) return
-    const hasExisting = recentItems.some(
-      (item) => item.contactId === selectedContactId && !item.isDraft
-    )
-    if (hasExisting) return
-    const contactInfo = getContactInfoFromStore(selectedContactId)
-    const existingDraft = recentItems.find(
+    if (!selectedContactId) return
+    setRecentItems((prev) => {
+      const exists = prev.some((c) => c.contactId === selectedContactId)
+      if (exists) return prev
+      const updated = ensureContactInList(prev, selectedContactId)
+      saveRecentConversations(updated)
+      return updated
+    })
+  }, [selectedContactId])
+
+  React.useEffect(() => {
+    if (isDraftConversation) return
+    if (!selectedContactId) return
+    const draftItem = recentItems.find(
       (item) => item.isDraft && item.contactId === selectedContactId
     )
-    if (existingDraft) return
-    const draftItem: RecentConversationItem = {
-      id: `draft:${selectedContactId}`,
-      contactId: selectedContactId,
-      contactName: contactInfo?.name ?? "未知",
-      title: "",
-      unreadCount: 0,
-      avatar: contactInfo?.avatar,
-      status: contactInfo?.status,
-      isDraft: true,
-    }
-    const updated = [draftItem, ...recentItems].slice(0, MAX_RECENT)
-    setRecentItems(updated)
-    saveRecentConversations(updated)
+    if (!draftItem) return
+    setRecentItems((prev) => {
+      const updated = prev.filter(
+        (item) => !(item.isDraft && item.contactId === selectedContactId)
+      )
+      saveRecentConversations(updated)
+      return updated
+    })
   }, [isDraftConversation, selectedContactId])
 
-  const handleSelectConversation = (conversationId: string) => {
-    const item = recentItems.find((c) => c.id === conversationId)
-    if (!item) return
-    if (item.isDraft) {
-      startDraft(item.contactId)
-      return
-    }
-    setSelectedContactId(item.contactId)
-    setDraftConversation(false)
-    setSelectedConversationId(conversationId)
+  const handleSelectItem = (contactId: string) => {
+    if (contactId === selectedContactId) return
+    switchToContact(contactId)
   }
 
   const getTimeAgo = (date?: Date) => {
@@ -262,19 +322,23 @@ export function RecentConversations({
   }
 
   const displayItems = React.useMemo(() => {
-    const items =
-      conversations.length > 0
-        ? recentItems
-        : recentItems.filter((item) => item.isDraft)
-    if (!searchQuery.trim()) return items
-    const q = searchQuery.toLowerCase()
-    return items.filter(
-      (item) =>
-        item.contactName.toLowerCase().includes(q) ||
-        item.title.toLowerCase().includes(q) ||
-        item.lastMessage?.toLowerCase().includes(q)
-    )
-  }, [conversations, recentItems, searchQuery])
+    let items = recentItems
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
+      items = items.filter(
+        (item) =>
+          item.contactName.toLowerCase().includes(q) ||
+          item.title.toLowerCase().includes(q)
+      )
+    }
+    return [...items].sort((a, b) => {
+      if (a.isCurator && !b.isCurator) return -1
+      if (!a.isCurator && b.isCurator) return 1
+      const ta = a.updatedAt?.getTime() ?? 0
+      const tb = b.updatedAt?.getTime() ?? 0
+      return tb - ta
+    })
+  }, [recentItems, searchQuery])
 
   return (
     <>
@@ -329,20 +393,20 @@ export function RecentConversations({
         </div>
 
         <ScrollArea className="flex-1">
-          <div className="space-y-0.5 p-2">
+          <div className="space-y-0.5 py-2">
             {displayItems.map((item) => (
               <div
-                key={item.id}
+                key={item.contactId}
                 className={cn(
                   "group flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-xs transition-colors",
                   (item.isDraft &&
                     isDraftConversation &&
                     selectedContactId === item.contactId) ||
-                    (!item.isDraft && selectedConversationId === item.id)
-                    ? "bg-accent text-primary"
+                    (!item.isDraft && selectedContactId === item.contactId)
+                    ? "bg-primary/90 text-primary-foreground"
                     : "hover:bg-accent/50 hover:text-accent-foreground"
                 )}
-                onClick={() => handleSelectConversation(item.id)}
+                onClick={() => handleSelectItem(item.contactId)}
               >
                 {item.isGroup ? (
                   <GroupMembersAvatar
@@ -366,18 +430,38 @@ export function RecentConversations({
                 )}
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <div className="flex items-center justify-between">
-                    <span className="truncate text-sm font-medium">
-                      {item.contactName}
-                    </span>
-                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                    <div className="flex items-center gap-1">
+                      {item.isCurator && (
+                        <IconPin className={cn(
+                          "size-3.5",
+                          selectedContactId === item.contactId
+                            ? "text-primary-foreground/70"
+                            : "text-muted-foreground"
+                        )} />
+                      )}
+                      <span className="truncate text-sm font-medium">
+                        {item.contactName}
+                      </span>
+                    </div>
+                    <span className={cn(
+                      "shrink-0 text-[10px]",
+                      selectedContactId === item.contactId
+                        ? "text-primary-foreground/70"
+                        : "text-muted-foreground"
+                    )}>
                       {getTimeAgo(item.updatedAt)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="max-w-[160px] truncate text-muted-foreground">
-                      {item.title}
+                    <span className={cn(
+                      "max-w-[160px] truncate",
+                      selectedContactId === item.contactId
+                        ? "text-primary-foreground/70"
+                        : "text-muted-foreground"
+                    )}>
+                      {item.title || "新对话"}
                     </span>
-                    {item.unreadCount > 0 && (
+                    {item.unreadCount > 0 && selectedContactId !== item.contactId && (
                       <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
                         {item.unreadCount}
                       </span>
