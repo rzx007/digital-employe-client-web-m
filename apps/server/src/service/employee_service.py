@@ -9,12 +9,17 @@ from zipfile import ZipFile
 
 import httpx
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
-from src.models.employee import Employee
+from src.models.employee import Employee, EmployeeShiftSchedule
+from src.models.employee_skill import EmployeeSkill
 from src.models.workspace import Workspace
+from src.schemas.employee import EmployeeCreate, EmployeeUpdate, ShiftScheduleCreateWithoutEmployee
+from src.service.skill_service import SkillService
+from src.service.task_service import TaskService
+from src.service.workspace_service import WorkspaceService
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +138,37 @@ class EmployeeService:
             return {}
 
     @staticmethod
+    def _skill_content_to_file_map(skill_content: object) -> dict[str, str] | None:
+        """将 skillContent（JSON 字符串，如 {\"SKILL.md\": \"...\"}，或已是 dict）解析为 相对路径 -> 文件文本。"""
+        if skill_content is None:
+            return None
+        if isinstance(skill_content, str):
+            stripped = skill_content.strip()
+            if not stripped:
+                return None
+            try:
+                file_map = json.loads(stripped)
+            except json.JSONDecodeError:
+                return None
+        elif isinstance(skill_content, dict):
+            file_map = skill_content
+        else:
+            return None
+        if not isinstance(file_map, dict) or not file_map:
+            return None
+        out: dict[str, str] = {}
+        for rel_path, raw in file_map.items():
+            if not isinstance(rel_path, str) or not rel_path.strip():
+                continue
+            if isinstance(raw, str):
+                out[rel_path] = raw
+            elif isinstance(raw, (dict, list)):
+                out[rel_path] = json.dumps(raw, ensure_ascii=False)
+            else:
+                out[rel_path] = str(raw)
+        return out or None
+
+    @staticmethod
     def materialize_embedded_skills(employee_dir: Path) -> None:
         metadata = EmployeeService._load_json_file(employee_dir / "metadata.json")
         skills = metadata.get("skills")
@@ -143,30 +179,15 @@ class EmployeeService:
             if not isinstance(skill, dict):
                 continue
             skill_name = skill.get("skillName")
-            skill_content = skill.get("skillContent")
             if not isinstance(skill_name, str) or not skill_name.strip():
                 continue
-            if not skill_content:
-                continue
-
-            if isinstance(skill_content, str):
-                try:
-                    file_map = json.loads(skill_content)
-                except json.JSONDecodeError:
-                    continue
-            elif isinstance(skill_content, dict):
-                file_map = skill_content
-            else:
-                continue
-
-            if not isinstance(file_map, dict):
+            file_map = EmployeeService._skill_content_to_file_map(skill.get("skillContent"))
+            if not file_map:
                 continue
 
             skill_dir = employee_dir / "skills" / skill_name
             skill_dir.mkdir(parents=True, exist_ok=True)
             for relative_path, content in file_map.items():
-                if not isinstance(relative_path, str) or not isinstance(content, str):
-                    continue
                 target = EmployeeService._safe_skill_file_path(skill_dir, relative_path)
                 if target is None:
                     continue
@@ -196,6 +217,169 @@ class EmployeeService:
     @staticmethod
     def _write_skills(skills: list[dict]) -> list[dict]:
         return skills
+
+    @staticmethod
+    def _load_employee_meta(employee: Employee) -> dict:
+        try:
+            meta = json.loads(employee.meta_json or "{}")
+        except json.JSONDecodeError:
+            meta = {}
+        if not isinstance(meta, dict):
+            meta = {}
+        return meta
+
+    @staticmethod
+    def _normalize_tasks(tasks: list | None) -> list[dict]:
+        if not tasks:
+            return []
+        normalized: list[dict] = []
+        for task in tasks:
+            if not isinstance(task, dict):
+                task = task.model_dump()
+            task_name = str(task.get("task_name") or "").strip()
+            cron_expression = str(task.get("cron_expression") or "").strip()
+            if not task_name or not cron_expression:
+                continue
+            config = task.get("config")
+            if not isinstance(config, dict):
+                config = {}
+            normalized.append(
+                {
+                    "task_name": task_name,
+                    "dispatch_type": str(task.get("dispatch_type") or "skill"),
+                    "skill_id": task.get("skill_id"),
+                    "priority": int(task.get("priority") or 0),
+                    "task_type": task.get("task_type"),
+                    "cron_expression": cron_expression,
+                    "cron_expression_type": str(task.get("cron_expression_type") or "custom"),
+                    "is_active": bool(task.get("is_active", True)),
+                    "config": {"input": config},
+                    "user_prompt": task.get("user_prompt"),
+                }
+            )
+        return normalized
+
+    @staticmethod
+    def _validate_and_fetch_skills(skill_ids: list[int] | None) -> list[dict]:
+        if not skill_ids:
+            return []
+        details: list[dict] = []
+        seen: set[int] = set()
+        for raw_id in skill_ids:
+            skill_id = int(raw_id)
+            if skill_id in seen:
+                continue
+            seen.add(skill_id)
+            detail = SkillService.get_remote_skill(int(skill_id))
+            if int(detail.get("status") or 0) != 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"技能未启用，skill_id={skill_id}",
+                )
+            skill_content = detail.get("skillContent")
+            if not skill_content:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"技能内容为空，skill_id={skill_id}",
+                )
+            try:
+                if isinstance(skill_content, str):
+                    parsed_content = json.loads(skill_content)
+                elif isinstance(skill_content, dict):
+                    parsed_content = skill_content
+                else:
+                    raise ValueError("skillContent 不是字符串或对象")
+                if not isinstance(parsed_content, dict):
+                    raise ValueError("skillContent 解析后不是对象")
+            except (json.JSONDecodeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"技能内容格式不合法，skill_id={skill_id}",
+                ) from exc
+            details.append(detail)
+        return details
+
+    @staticmethod
+    def _skill_detail_skill_content_to_text(skill_content: object) -> str | None:
+        """将技能详情中的 skillContent（字符串或对象）存为 TEXT。"""
+        if skill_content is None:
+            return None
+        if isinstance(skill_content, str):
+            return skill_content
+        if isinstance(skill_content, dict):
+            return json.dumps(skill_content, ensure_ascii=False)
+        return str(skill_content)
+
+    @staticmethod
+    def _save_skills_to_local_files(employee: Employee, skills: list[dict]) -> None:
+        """将远程技能详情落盘到 local-employees/<员工目录>/skills/<skillName>/，与 metadata 内嵌技能结构一致。"""
+        label = (employee.name or "").strip() or str(employee.employee_code or employee.id)
+        employee_root = Path.cwd() / "local-employees" / label / "skills"
+        for skill in skills:
+            if not isinstance(skill, dict):
+                continue
+            skill_name = skill.get("skillName")
+            if not isinstance(skill_name, str) or not skill_name.strip():
+                continue
+            file_map = EmployeeService._skill_content_to_file_map(skill.get("skillContent"))
+            if not file_map:
+                continue
+            skill_dir = employee_root / skill_name.strip()
+            skill_dir.mkdir(parents=True, exist_ok=True)
+            for relative_path, content in file_map.items():
+                target = EmployeeService._safe_skill_file_path(skill_dir, relative_path)
+                if target is None:
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
+        # 返回skkill所在的路径
+        return employee_root
+
+    @staticmethod
+    def _skill_detail_prompt_to_text(prompt: object) -> str | None:
+        if prompt is None:
+            return None
+        prompt_str = prompt if isinstance(prompt, str) else str(prompt)
+        prompt_str = prompt_str.strip()
+        return prompt_str or None
+
+    @staticmethod
+    def _replace_employee_skills(db: Session, employee: Employee, skills: list[dict]) -> None:
+        db.execute(delete(EmployeeSkill).where(EmployeeSkill.employee_id == employee.id))
+        for item in skills:
+            db.add(
+                EmployeeSkill(
+                    workspace_id=employee.workspace_id,
+                    employee_id=employee.id,
+                    skill_id=int(item.get("id")),
+                    skill_name=str(item.get("skillName") or ""),
+                    skill_description=item.get("description"),
+                    prompt=EmployeeService._skill_detail_prompt_to_text(item.get("prompt")),
+                    skill_content=EmployeeService._skill_detail_skill_content_to_text(item.get("skillContent")),
+                )
+            )
+        employee.skills_json = json.dumps(skills, ensure_ascii=False)
+
+    @staticmethod
+    def _replace_shift_schedule(
+        db: Session,
+        employee: Employee,
+        shift_schedule: ShiftScheduleCreateWithoutEmployee | None,
+    ) -> None:
+        db.execute(delete(EmployeeShiftSchedule).where(EmployeeShiftSchedule.employee_id == employee.id))
+        shift_payload: dict = {}
+        if shift_schedule is not None:
+            shift_payload = shift_schedule.model_dump(exclude_none=True)
+            db.add(
+                EmployeeShiftSchedule(
+                    employee_id=employee.id,
+                    start_date=shift_schedule.start_date,
+                    end_date=shift_schedule.end_date,
+                    status=shift_schedule.status,
+                    notes=shift_schedule.notes,
+                )
+            )
+        employee.shift_schedule_json = json.dumps(shift_payload, ensure_ascii=False)
 
     @staticmethod
     def sync_workspace_employees(db: Session, workspace: Workspace) -> list[Employee]:
@@ -280,19 +464,35 @@ class EmployeeService:
     def update_employee(
         db: Session,
         employee_id: int,
-        name: str | None,
-        description: str | None,
-        version: str | None,
+        payload: EmployeeUpdate,
     ) -> Employee:
         employee = EmployeeService.get_employee(db, employee_id)
-        if name is not None:
-            employee.name = name
-        if description is not None:
-            employee.description = description
-        if version is not None:
-            employee.version = version
+        changed_tasks = False
+        if payload.name is not None:
+            employee.name = payload.name
+        if payload.description is not None:
+            employee.description = payload.description
+        if payload.version is not None:
+            employee.version = payload.version
+
+        if "skill_ids" in payload.model_fields_set:
+            skills = EmployeeService._validate_and_fetch_skills(payload.skill_ids)
+            EmployeeService._replace_employee_skills(db, employee, skills)
+            EmployeeService._save_skills_to_local_files(employee, skills)
+
+        if "shift_schedule" in payload.model_fields_set:
+            EmployeeService._replace_shift_schedule(db, employee, payload.shift_schedule)
+
+        if "tasks" in payload.model_fields_set:
+            changed_tasks = True
+            meta = EmployeeService._load_employee_meta(employee)
+            meta["tasks"] = EmployeeService._normalize_tasks(payload.tasks)
+            employee.meta_json = json.dumps(meta, ensure_ascii=False)
         db.commit()
         db.refresh(employee)
+        if changed_tasks:
+            TaskService.sync_workspace_tasks(db, employee.workspace_id)
+            db.refresh(employee)
         return employee
 
     @staticmethod
@@ -302,28 +502,58 @@ class EmployeeService:
         db.commit()
 
     @staticmethod
-    def get_local_employee_skills(employee_name: str) -> list[dict]:
-        """从本地目录获取员工的技能列表。
+    def create_employee(db: Session, obj_in: EmployeeCreate) -> Employee:
+        workspace_id = obj_in.workspace_id or get_settings().default_workspace_id
+        WorkspaceService.get_workspace(db, workspace_id)
 
-        Args:
-            employee_name: 员工名称（对应 local-employees 目录下的文件夹名称）
+        existing = db.scalar(
+            select(Employee).where(
+                Employee.workspace_id == workspace_id,
+                Employee.name == obj_in.employee_name,
+            )
+        )
+        if existing:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="员工名称已存在")
 
-        Returns:
-            技能列表
-        """
-        root = EmployeeService._resolve_local_employees_root()
-        employee_dir = root / employee_name
-        if not employee_dir.exists():
-            logger.warning(f"Local employee directory not found: {employee_dir}")
-            return []
+        skills = EmployeeService._validate_and_fetch_skills(obj_in.skill_ids)
+        
+        tasks = EmployeeService._normalize_tasks(obj_in.tasks)
+        shift_schedule = obj_in.shift_schedule
+        meta = {
+            "status": obj_in.status,
+            "detail_page_url": obj_in.detail_page_url,
+            "user_id": obj_in.user_id,
+            "tasks": tasks,
+            "employee_name": obj_in.employee_name,
+        }
 
-        metadata_file = employee_dir / "metadata.json"
-        if not metadata_file.exists():
-            logger.warning(f"Metadata file not found: {metadata_file}")
-            return []
+        employee = Employee(
+            workspace_id=workspace_id,
+            employee_code="0",
+            name=obj_in.employee_name,
+            description=obj_in.capability_desc,
+            version="",
+            skills_json="[]",
+            meta_json=json.dumps(meta, ensure_ascii=False),
+            shift_schedule_json="{}",
+        )
+        db.add(employee)
+        db.flush()
+        employee.employee_code = str(employee.id)
 
-        metadata = EmployeeService._load_json_file(metadata_file)
-        skills = metadata.get("skills", [])
-        if not isinstance(skills, list):
-            return []
-        return skills
+        EmployeeService._replace_employee_skills(db, employee, skills)
+        EmployeeService._replace_shift_schedule(db, employee, shift_schedule)
+        # 将skills的内容存到本地文件
+        skill_dir = EmployeeService._save_skills_to_local_files(employee, skills)
+        # 将skill_dir的格式修改为 [{"skills_dir": "D:\\project\\boban\\llm\\actus-employee-client\\local-employees\\TMR运维人员\\skills"}]格式
+        skills_dir = [{"skills_dir": str(skill_dir)}]
+        employee.skills_json = json.dumps(skills_dir, ensure_ascii=False)
+        db.commit()
+        db.refresh(employee)
+
+        if tasks:
+            TaskService.sync_workspace_tasks(db, workspace_id)
+            db.refresh(employee)
+        return employee
+
+

@@ -19,7 +19,6 @@ class EmployeeTask(Base):
     task_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     dispatch_type: Mapped[str] = mapped_column(String(32), nullable=False, default="skill", index=True)
     skill_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
-    capability_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     task_type: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cron_expression: Mapped[str] = mapped_column(String(128), nullable=False)

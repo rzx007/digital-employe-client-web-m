@@ -15,7 +15,6 @@ class EmployeeTaskRead(BaseModel):
     task_name: str
     dispatch_type: str
     skill_id: int | None
-    capability_id: int | None
     priority: int
     task_type: int | None
     cron_expression: str
@@ -87,7 +86,6 @@ class TaskExecutionLogRead(BaseModel):
 
 
 class MonthlyCalendarTaskRead(BaseModel):
-    capability_id: int | None
     is_active: bool
     task_type: int | None
     task_id: int

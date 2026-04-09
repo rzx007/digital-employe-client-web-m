@@ -34,10 +34,8 @@ def create_app() -> FastAPI:
         with get_session_local()() as db:
             workspace = WorkspaceService.ensure_default_workspace(db)
             initialize_default_workspace_employees(db, workspace)
-            # 获取员工（如果还没有员工数据才同步）
-            existing = db.scalar(select(Employee.id).limit(1))
-            if not existing:
-                EmployeeService.sync_workspace_employees(db, workspace)
+            # 获取员工
+            # EmployeeService.sync_workspace_employees(db, workspace)
             # 从员工 metadata 同步任务
             TaskService.sync_workspace_tasks(db, workspace.id)
         # 启动调度器
