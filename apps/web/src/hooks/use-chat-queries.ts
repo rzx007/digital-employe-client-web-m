@@ -38,6 +38,7 @@ export function useMessagesQuery(conversationId: string | number | null) {
     queryKey: chatKeys.messages(String(conversationId ?? "")),
     queryFn: () => fetchMessagesByConversationId(conversationId!),
     enabled: Boolean(conversationId),
+    staleTime: 1000 * 60 * 5,
   })
 }
 

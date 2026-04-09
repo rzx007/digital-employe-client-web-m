@@ -185,7 +185,12 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
   ipcMain.handle("clear-auth", () => {
     clearAuth()
 
-    // Electron 环境下：关闭主窗口，打开登录窗口
+    // Electron 环境下：关闭所有窗口，打开登录窗口
+    // 关闭设置窗口
+    closeSettingsWindow()
+    // 关闭招聘窗口
+    closeRecruitmentWindow()
+    // 关闭主窗口
     if (mainWin && !mainWin.isDestroyed()) {
       mainWin.close()
       mainWin = null

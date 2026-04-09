@@ -63,6 +63,7 @@ export function ChatView({
     />
   ) : (
     <ConversationChatView
+      key={String(selectedConversationId)}
       contact={contact}
       title={selectedConversation?.title ?? "新对话"}
       conversationId={selectedConversationId}

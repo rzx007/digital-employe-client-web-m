@@ -30,6 +30,7 @@ import { Separator } from "@workspace/ui/components/separator"
 import { cn } from "@workspace/ui/lib/utils"
 import { useTheme } from "@/components/theme-provider"
 import { useAuthStore } from "@/stores/auth-store"
+import { ScrollArea } from "@workspace/ui/components/scroll-area"
 
 type SettingsTab = "general" | "shortcuts" | "models" | "about"
 
@@ -38,11 +39,11 @@ const tabs: {
   label: string
   icon: React.ComponentType<{ className?: string }>
 }[] = [
-  { id: "general", label: "通用", icon: IconSettings },
-  { id: "shortcuts", label: "快捷键", icon: IconKeyboard },
-  { id: "models", label: "模型", icon: IconBrain },
-  { id: "about", label: "关于", icon: IconInfoCircle },
-]
+    { id: "general", label: "通用", icon: IconSettings },
+    { id: "shortcuts", label: "快捷键", icon: IconKeyboard },
+    { id: "models", label: "模型", icon: IconBrain },
+    { id: "about", label: "关于", icon: IconInfoCircle },
+  ]
 
 function ThemeCard({
   value,
@@ -185,12 +186,12 @@ function GeneralSettings() {
               </span>
             </div>
             <label className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center">
-               <input
-                 type="checkbox"
-                 className="peer sr-only"
-                 checked={autoLaunch}
-                 onChange={(e) => handleAutoLaunchChange(e.target.checked)}
-               />
+              <input
+                type="checkbox"
+                className="peer sr-only"
+                checked={autoLaunch}
+                onChange={(e) => handleAutoLaunchChange(e.target.checked)}
+              />
               <span className="pointer-events-none absolute inset-0 rounded-full bg-muted transition-colors peer-checked:bg-primary peer-checked:after:translate-x-full after:content-[''] after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rotate-0 after:rounded-full after:transition-transform" />
             </label>
           </div>
@@ -203,12 +204,12 @@ function GeneralSettings() {
               </span>
             </div>
             <label className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center">
-               <input
-                 type="checkbox"
-                 className="peer sr-only"
-                 checked={autoUpdate}
-                 onChange={(e) => handleAutoUpdateChange(e.target.checked)}
-               />
+              <input
+                type="checkbox"
+                className="peer sr-only"
+                checked={autoUpdate}
+                onChange={(e) => handleAutoUpdateChange(e.target.checked)}
+              />
               <span className="pointer-events-none absolute inset-0 rounded-full bg-muted transition-colors peer-checked:bg-primary peer-checked:after:translate-x-full after:content-[''] after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rotate-0 after:rounded-full after:transition-transform" />
             </label>
           </div>
@@ -221,12 +222,12 @@ function GeneralSettings() {
               </span>
             </div>
             <label className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center">
-               <input
-                 type="checkbox"
-                 className="peer sr-only"
-                 checked={notifications}
-                 onChange={(e) => handleNotificationsChange(e.target.checked)}
-               />
+              <input
+                type="checkbox"
+                className="peer sr-only"
+                checked={notifications}
+                onChange={(e) => handleNotificationsChange(e.target.checked)}
+              />
               <span className="pointer-events-none absolute inset-0 rounded-full bg-muted transition-colors peer-checked:bg-primary peer-checked:after:translate-x-full after:content-[''] after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rotate-0 after:rounded-full after:transition-transform" />
             </label>
           </div>
@@ -262,10 +263,10 @@ function GeneralSettings() {
                 清除所有本地数据并恢复默认设置
               </span>
             </div>
-             <Button variant="outline" size="sm" onClick={handleResetApp}>
-               <IconRefresh className="mr-2 size-4" />
-               重置应用
-             </Button>
+            <Button variant="outline" size="sm" onClick={handleResetApp}>
+              <IconRefresh className="mr-2 size-4" />
+              重置应用
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -483,12 +484,12 @@ export function SettingsPage() {
       </div>
 
       {/* 右侧内容 */}
-      <div className="flex-1 overflow-auto p-6">
+      <ScrollArea className="flex-1  p-6">
         {activeTab === "general" && <GeneralSettings />}
         {activeTab === "shortcuts" && <ShortcutsSettings />}
         {activeTab === "models" && <ModelsSettings />}
         {activeTab === "about" && <AboutSettings />}
-      </div>
+      </ScrollArea>
     </div>
   )
 }

@@ -1,9 +1,11 @@
 import * as React from "react"
 import { useChat } from "@ai-sdk/react"
+import { useQueryClient } from "@tanstack/react-query"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
 import { useMessagesQuery } from "@/hooks/use-chat-queries"
+import { chatKeys } from "@/lib/query-keys/chat"
 
 import { ChatPanel } from "./chat-panel"
 import { chatTransport, type ChatViewContact } from "./chat-view-shared"
@@ -31,7 +33,7 @@ export function ConversationChatView({
     id: string
     title: string
   } | null>(null)
-  const previousSessionIdRef = React.useRef<string | null>(null)
+  const queryClient = useQueryClient()
 
   const { data: storedMessages = [] } = useMessagesQuery(conversationId)
 
@@ -44,7 +46,11 @@ export function ConversationChatView({
     id: String(conversationId),
     messages: initialMessages,
     transport: chatTransport,
-    // resume: false,
+    onFinish: () => {
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(String(conversationId)),
+      })
+    },
     onError: (chatError) => {
       toast.error("发送失败", {
         description: chatError.message || "请稍后重试",
@@ -53,12 +59,9 @@ export function ConversationChatView({
   })
 
   React.useEffect(() => {
-    if (previousSessionIdRef.current === String(conversationId)) {
-      return
+    if (initialMessages.length > 0) {
+      setMessages(initialMessages)
     }
-
-    previousSessionIdRef.current = String(conversationId)
-    setMessages(initialMessages)
   }, [conversationId, initialMessages, setMessages])
 
   const handleTextChange = React.useCallback((event: PromptChangeEvent) => {
