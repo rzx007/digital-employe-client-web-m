@@ -1,0 +1,32 @@
+[project]
+name = "micro-agent"
+version = "0.1.0"
+description = "A natural language to SQL query agent powered by LangChain's DeepAgents framework and OpenAI GPT-4"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "deepagents>=0.3.5",
+    "apscheduler>=3.10.4",
+    "langchain>=1.2.3",
+    "langchain-openai>=1.0.2",
+    "langchain-community>=0.3.0",
+    "langgraph>=1.0.6",
+    "sqlalchemy>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "tavily-python>=0.5.0",
+    "rich>=13.0.0",
+    "PyMySQL>=1.0.0",
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+]
+[dependency-groups]
+dev = ["pyinstaller>=6.0"]
+[project.urls]
+Repository = "https://github.com/langchain-ai/deepagents/tree/master/examples/text-to-sql-agent"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["*"]

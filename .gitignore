@@ -12,7 +12,18 @@ node_modules
 .history/*
 apps/simple-agents/*
 apps/web/py-server/*
+apps/server/data/*
+apps/server/__pycache__/*
+apps/server/.venv
+apps/server/.python-version
+apps/server/.pytest_cache
+apps/server/.coverage
+apps/server/*.log
 docs/*
+
+# 构建脚本相关
+build/
+*.spec
 
 # Testing
 coverage

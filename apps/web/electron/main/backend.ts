@@ -40,10 +40,21 @@ function getPyServerPath(): string {
 /**
  * 启动 Python 后端进程
  *
+ * 开发模式：跳过启动，只检测端口是否就绪
+ * 生产模式：启动 py-server/backend.exe
+ *
  * 返回一个 Promise，在后端就绪（检测到 Uvicorn 监听日志）或超时时 resolve/reject。
  */
 export function startBackend(): Promise<void> {
   return new Promise((resolve, reject) => {
+    // 开发模式：跳过启动，只检测端口
+    if (!app.isPackaged) {
+      console.log(`[Backend] 开发模式：跳过启动，等待端口 ${BACKEND_PORT} 就绪`)
+      waitForPortReady(resolve, reject)
+      return
+    }
+
+    // 生产模式：启动 backend.exe
     const pyServerPath = getPyServerPath()
     const exePath = path.join(pyServerPath, "backend.exe")
 
@@ -179,6 +190,44 @@ export function getBackendStatus() {
     port: BACKEND_PORT,
     running: backendProcess !== null,
   }
+}
+
+/**
+ * 端口检测函数（开发模式使用）
+ * 检测后端端口是否就绪
+ */
+function waitForPortReady(resolve: () => void, reject: (err: Error) => void): void {
+  const timeout = setTimeout(() => {
+    reject(new Error(`后端端口 ${BACKEND_PORT} 检测超时 (${BACKEND_READY_TIMEOUT / 1000}s)`))
+  }, BACKEND_READY_TIMEOUT)
+
+  const checkPort = () => {
+    const net = require("node:net")
+    const socket = new net.Socket()
+
+    socket.setTimeout(1000)
+    socket.on("connect", () => {
+      socket.destroy()
+      clearTimeout(timeout)
+      backendReady = true
+      console.log(`[Backend] 端口 ${BACKEND_PORT} 已就绪`)
+      resolve()
+    })
+
+    socket.on("timeout", () => {
+      socket.destroy()
+      setTimeout(checkPort, 1000)
+    })
+
+    socket.on("error", () => {
+      socket.destroy()
+      setTimeout(checkPort, 1000)
+    })
+
+    socket.connect(BACKEND_PORT, "127.0.0.1")
+  }
+
+  checkPort()
 }
 
 /**

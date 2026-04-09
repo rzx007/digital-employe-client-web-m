@@ -1,0 +1,285 @@
+# Actus Employee Client
+
+一个基于 FastAPI 的数字员工后端服务。
+
+它解决的不是“单纯调用大模型”，而是这几件事：
+
+- 管理工作空间
+- 管理员工和群组
+- 持久化聊天会话与消息
+- 为指定员工加载本地 `skills`
+- 通过流式接口返回对话结果
+
+## 项目结构
+
+- `src/api/`: HTTP 接口层
+- `src/service/`: 业务逻辑
+- `src/models/`: SQLAlchemy 模型
+- `src/schemas/`: Pydantic schema
+- `src/db/`: 数据库初始化与会话管理
+- `local-employees/`: 本地员工技能目录
+- `data/app.db`: 默认 SQLite 数据库
+- `start.py`: 本地启动入口
+
+## 现在的运行规则
+
+这部分最重要。
+
+### 1. 数据库是应用状态，不是 skills 的真实来源
+
+数据库主要存这些内容：
+
+- workspace
+- employee 基础信息
+- group
+- conversation
+- conversation message
+
+员工技能在运行时的优先级是：
+
+1. `./local-employees/<员工名>/skills`
+2. `./local-employees/<employee_code>/skills`
+3. 数据库里的 `skills_json` 仅作为兜底
+
+也就是说，当前开发约定下，**本地 `local-employees` 才是 skills 的真实来源**。
+
+### 2. 新增本地 skill 不需要先写数据库
+
+只要目录结构正确：
+
+```text
+local-employees/
+  测试员工/
+    skills/
+      lark-im/
+        SKILL.md
+```
+
+下一次对话请求就会重新扫描技能目录。正常情况下，不需要因为“新增了一个 skill”而先同步员工数据。
+
+### 3. 如果你改了 Python 代码，本次代码改动仍然需要重启服务
+
+本地 skill 文件本身是按请求重新发现的，但 Python 代码改动是否生效，取决于你是不是用热重载方式启动服务。
+
+## 环境要求
+
+- Python 3.11+
+- 推荐使用 `uv`
+
+## 配置
+
+参考 `.env.example`：
+
+```env
+SQLITE_PATH=./data/app.db
+EMPLOYEE_ZIP_URL=http://...
+EMPLOYEE_TMP_DIR=./tmp/employees
+DEEPAGENT_MODEL=qwen2.5-72b-instruct
+CHAT_HISTORY_MAX_MESSAGES=30
+OPENAI_API_KEY=...
+BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+DEFAULT_WORKSPACE_ROOT=./workspaces
+DEFAULT_WORKSPACE_ID=1
+DEFAULT_WORKSPACE_NAME=默认的工作空间
+```
+
+关键项说明：
+
+- `SQLITE_PATH`: SQLite 文件路径，默认是 `./data/app.db`
+- `EMPLOYEE_ZIP_URL`: 远程员工包导入地址；只在“同步员工”时使用
+- `DEFAULT_WORKSPACE_ROOT`: 默认工作空间根目录
+- `OPENAI_API_KEY` / `BASE_URL`: 模型调用配置
+
+## 启动方式
+
+### 用 uv
+
+安装依赖：
+
+```bash
+uv sync
+```
+
+启动服务：
+
+```bash
+uv run python start.py
+```
+
+服务默认监听：
+
+```text
+http://0.0.0.0:58000
+```
+
+热重载开发：
+
+```bash
+uv run uvicorn src.server:app --host 0.0.0.0 --port 58000 --reload
+```
+
+### 用 venv + pip
+
+创建虚拟环境：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+安装依赖：
+
+```bash
+pip install -e .
+```
+
+启动：
+
+```bash
+python start.py
+```
+
+## 首次启动会发生什么
+
+应用启动时会自动做两件事：
+
+1. 初始化数据库表
+2. 确保默认 workspace 存在
+
+相关逻辑在 `src/server.py`。
+
+## 本地员工与 skills
+
+如果你主要在本地调试技能，直接看这个目录：
+
+```text
+local-employees/
+```
+
+每个员工建议结构：
+
+```text
+local-employees/
+  测试员工/
+    skills/
+      echo-test-skill/
+        SKILL.md
+      lark-doc/
+        SKILL.md
+      lark-im/
+        SKILL.md
+```
+
+要求：
+
+- skill 必须是 `skills/<skill-name>/SKILL.md`
+- 目录名就是 skill 名
+- 对话请求会按员工名或 `employee_code` 查本地目录
+
+## 员工同步接口的作用
+
+接口：
+
+```text
+GET /workspaces/{workspace_id}/employees/sync
+```
+
+这个接口会：
+
+- 从 `EMPLOYEE_ZIP_URL` 下载员工 ZIP
+- 解压到仓库根目录的 `local-employees/`
+- 提取员工元数据
+- 写入数据库
+
+它的价值主要是“导入员工索引和元数据”，不是本地 skills 开发的必要前置步骤。
+
+如果你现在是本地开发模式，并且 skills 都放在 `local-employees/`，那么就不要把“先同步员工”当成技能生效的前提。
+
+## 常用接口
+
+### Workspace
+
+- `POST /workspaces/create`
+- `GET /workspaces/list`
+- `GET /workspaces/detail/{workspace_id}`
+- `PUT /workspaces/update/{workspace_id}`
+- `DELETE /workspaces/delete/{workspace_id}`
+- `GET /workspaces/files/{workspace_id}`
+
+### Employee
+
+- `GET /workspaces/{workspace_id}/employees/sync`
+- `GET /workspaces/{workspace_id}/employees`
+- `GET /employees/{employee_id}`
+- `PUT /employees/{employee_id}`
+- `DELETE /employees/{employee_id}`
+
+### Group
+
+- `POST /workspaces/{workspace_id}/groups`
+- `GET /workspaces/{workspace_id}/groups`
+
+### Chat
+
+- `POST /chat/conversations`
+- `GET /chat/conversations`
+- `GET /chat/conversations/{conversation_id}/messages`
+- `DELETE /chat/conversations/{conversation_id}`
+- `GET /chat/conversations/{conversation_id}/stream`
+
+## 一个最小调试流程
+
+1. 在 `local-employees/测试员工/skills/` 下放一个 skill
+2. 启动服务
+3. 先确认员工记录存在
+4. 创建 conversation
+5. 调用流式接口发消息
+
+示例请求：
+
+```bash
+curl -N "http://127.0.0.1:58000/chat/conversations/12/stream?skill=&question=你有lark-im这个技能吗"
+```
+
+## 排查技能加载问题
+
+现在服务会输出两类日志：
+
+- 技能目录是从本地 `local-employees` 解析出来的，还是从数据库 payload 解析出来的
+- 最终扫描到的 `available_skills`
+
+典型日志：
+
+```text
+Resolved employee skills from local-employees: employee_name=测试员工 employee_code=测试员工 candidate=/.../local-employees/测试员工/skills
+get_agent skill_path=/.../local-employees/测试员工 skills_root=/.../local-employees/测试员工/skills available_skills=['echo-test-skill', 'lark-doc', 'lark-im']
+```
+
+如果目录里明明有 skill，但回答里没有，先看日志，不要先猜数据库。
+
+## 测试
+
+已添加的关键测试：
+
+- `tests/test_chat_service_skill_resolution.py`
+- `tests/test_agent_skill_prompt.py`
+
+运行：
+
+```bash
+./.venv/bin/python -m unittest tests.test_chat_service_skill_resolution tests.test_agent_skill_prompt
+```
+
+或：
+
+```bash
+uv run python -m unittest tests.test_chat_service_skill_resolution tests.test_agent_skill_prompt
+```
+
+## 当前建议
+
+- 本地开发时，把 `local-employees` 当成 skills 单一真实来源
+- 不要把数据库里的绝对路径当成权威配置
+- 遇到“技能没生效”，先看日志里解析到的 `skills_root` 和 `available_skills`
+
+这套规则已经比“先同步数据库再猜路径”稳定得多。

@@ -88,7 +88,7 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
       open: true,
       proxy: {
         "/actus": {
-          target: "http://10.172.246.114:58000",
+          target: "http://localhost:58000",
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/actus/, ""),
         },
