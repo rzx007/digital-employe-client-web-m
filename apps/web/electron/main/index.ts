@@ -14,6 +14,7 @@ import { createSplashWindow, closeSplashWindow } from "./splash"
 import { createTray, destroyTray } from "./tray"
 import { createLoginWindow } from "./login"
 import { initAuthStore, hasToken } from "./auth"
+import { initSettingsStore } from "./settings-store"
 
 /**
  * Electron 主进程入口
@@ -162,6 +163,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
 
   initAuthStore()
+  initSettingsStore()
 
   registerIpcHandlers(async () => {
     await createWindow()

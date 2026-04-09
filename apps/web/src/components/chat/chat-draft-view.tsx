@@ -53,7 +53,7 @@ export function DraftChatView({
     setInputValue("")
   }, [draftSessionKey, selectedContactId])
 
-  const { messages, sendMessage, status, error } = useChat({
+  const { messages, sendMessage, status, error, stop } = useChat({
     id: selectedContactId
       ? `draft:${selectedContactId}:${draftSessionKey}`
       : `draft:chat-view:${draftSessionKey}`,
@@ -76,7 +76,7 @@ export function DraftChatView({
     status === "streaming"
 
   const isSubmitDisabled = useMemo(() => {
-    return !inputValue.trim() || status === "streaming" || isBusy
+    return !inputValue.trim() || status === "submitted" || (isBusy && status !== "streaming")
   }, [inputValue, isBusy, status])
 
   const handleSendMessage = useCallback(
@@ -152,6 +152,7 @@ export function DraftChatView({
       isSubmitDisabled={isSubmitDisabled}
       onInputChange={handleTextChange}
       onSend={handleSendMessage}
+      onStop={stop}
       onOpenContacts={onOpenContacts}
       onOpenConversations={onOpenConversations}
       onNewConversation={onNewConversation}

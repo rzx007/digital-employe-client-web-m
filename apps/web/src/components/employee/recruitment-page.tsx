@@ -6,7 +6,6 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconSparkles,
-  IconUserPlus,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
@@ -18,7 +17,6 @@ import {
   CollapsibleTrigger,
 } from "@workspace/ui/components/collapsible"
 import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { Separator } from "@workspace/ui/components/separator"
 import { Skeleton } from "@workspace/ui/components/skeleton"
@@ -30,24 +28,176 @@ import {
 } from "@/api/employee"
 import { cn } from "@workspace/ui/lib/utils"
 
+const HOT_JOBS = [
+  "客服助手",
+  "数据分析师",
+  "运维工程师",
+  "测试工程师",
+  "内容运营",
+  "HR助手",
+  "财务助手",
+  "行政助理",
+]
+
+const DEMO_CANDIDATES: RecruitmentCandidate[] = [
+  {
+    id: 9991,
+    workspace_id: null,
+    employee_name: "智能客服助手",
+    capability_desc:
+      "熟练掌握多轮对话、意图识别、知识库问答，能够高效处理客户咨询，提供7×24小时不间断服务。",
+    status: 1,
+    detail_page_url: null,
+    created_at: "",
+    updated_at: "",
+    user_id: null,
+    capability_ids: [1, 2, 3],
+    skill_ids: [1],
+    capabilities: [
+      {
+        capability_name: "客服对话",
+        capability_desc: "多轮对话管理",
+        mcp_server_name: "customer-service",
+        mcp_tool_name: "chat",
+      },
+      {
+        capability_name: "意图识别",
+        capability_desc: "用户意图分析",
+        mcp_server_name: "nlp",
+        mcp_tool_name: "intent",
+      },
+      {
+        capability_name: "知识库管理",
+        capability_desc: "知识库查询与更新",
+        mcp_server_name: "knowledge",
+        mcp_tool_name: "query",
+      },
+    ],
+    skills: [
+      {
+        id: 1,
+        skillName: "FAQ自动回复",
+        description: "常见问题自动回答",
+        prompt: "",
+        directoryId: null,
+        status: 1,
+        createTime: "",
+        updateTime: "",
+        directoryName: null,
+      },
+    ],
+    shift_schedule: null,
+    tasks: [],
+    match_score: 95,
+  },
+  {
+    id: 9992,
+    workspace_id: null,
+    employee_name: "数据分析师",
+    capability_desc:
+      "擅长数据清洗、统计分析、可视化报表生成，能够从海量数据中挖掘业务洞察，提供决策支持。",
+    status: 1,
+    detail_page_url: null,
+    created_at: "",
+    updated_at: "",
+    user_id: null,
+    capability_ids: [4, 5],
+    skill_ids: [2],
+    capabilities: [
+      {
+        capability_name: "数据处理",
+        capability_desc: "ETL数据清洗",
+        mcp_server_name: "data",
+        mcp_tool_name: "clean",
+      },
+      {
+        capability_name: "可视化",
+        capability_desc: "报表生成",
+        mcp_server_name: "chart",
+        mcp_tool_name: "render",
+      },
+    ],
+    skills: [
+      {
+        id: 2,
+        skillName: "SQL查询",
+        description: "数据库查询分析",
+        prompt: "",
+        directoryId: null,
+        status: 1,
+        createTime: "",
+        updateTime: "",
+        directoryName: null,
+      },
+    ],
+    shift_schedule: null,
+    tasks: [],
+    match_score: 88,
+  },
+  {
+    id: 9993,
+    workspace_id: null,
+    employee_name: "运维工程师",
+    capability_desc:
+      "熟悉系统监控、日志分析、自动化运维，能够快速定位故障，保障服务稳定运行。",
+    status: 1,
+    detail_page_url: null,
+    created_at: "",
+    updated_at: "",
+    user_id: null,
+    capability_ids: [6, 7],
+    skill_ids: [3],
+    capabilities: [
+      {
+        capability_name: "系统监控",
+        capability_desc: "服务状态监控",
+        mcp_server_name: "monitor",
+        mcp_tool_name: "check",
+      },
+      {
+        capability_name: "日志分析",
+        capability_desc: "日志检索分析",
+        mcp_server_name: "logger",
+        mcp_tool_name: "search",
+      },
+    ],
+    skills: [
+      {
+        id: 3,
+        skillName: "自动化脚本",
+        description: "批量任务自动化",
+        prompt: "",
+        directoryId: null,
+        status: 1,
+        createTime: "",
+        updateTime: "",
+        directoryName: null,
+      },
+    ],
+    shift_schedule: null,
+    tasks: [],
+    match_score: 82,
+  },
+]
+
 function getMatchScoreColor(score: number) {
-  if (score >= 80) return "text-green-600 dark:text-green-400"
-  if (score >= 60) return "text-blue-600 dark:text-blue-400"
-  if (score >= 40) return "text-yellow-600 dark:text-yellow-400"
+  if (score >= 90) return "text-green-600 dark:text-green-400"
+  if (score >= 70) return "text-blue-600 dark:text-blue-400"
+  if (score >= 50) return "text-yellow-600 dark:text-yellow-400"
   return "text-gray-600 dark:text-gray-400"
 }
 
 function getMatchScoreLabel(score: number) {
-  if (score >= 80) return "极佳匹配"
-  if (score >= 60) return "良好匹配"
-  if (score >= 40) return "一般匹配"
+  if (score >= 90) return "极佳匹配"
+  if (score >= 70) return "良好匹配"
+  if (score >= 50) return "一般匹配"
   return "较低匹配"
 }
 
 function getProgressColor(score: number) {
-  if (score >= 80) return "bg-green-500"
-  if (score >= 60) return "bg-blue-500"
-  if (score >= 40) return "bg-yellow-500"
+  if (score >= 90) return "bg-green-500"
+  if (score >= 70) return "bg-blue-500"
+  if (score >= 50) return "bg-yellow-500"
   return "bg-gray-400"
 }
 
@@ -159,7 +309,7 @@ function CandidateCard({
       <Separator />
 
       <Collapsible open={expanded} onOpenChange={setExpanded}>
-        <div className="flex items-center py-1">
+        <div className="flex items-center">
           <CollapsibleTrigger asChild>
             <button
               type="button"
@@ -174,11 +324,11 @@ function CandidateCard({
             </button>
           </CollapsibleTrigger>
           <Button
+            variant="ghost"
             size="xs"
             className="mr-2 gap-1"
             onClick={() => onSelect(candidate)}
           >
-            <IconUserPlus className="size-3" />
             选择该应聘者
           </Button>
         </div>
@@ -210,7 +360,6 @@ function CandidateCard({
 export function RecruitmentPage() {
   const navigate = useNavigate()
   const isElectron = !!(typeof window !== "undefined" && window.electronApi)
-  const [title, setTitle] = React.useState("")
   const [prompt, setPrompt] = React.useState("")
   const [candidates, setCandidates] = React.useState<RecruitmentCandidate[]>([])
   const [isSearching, setIsSearching] = React.useState(false)
@@ -219,23 +368,20 @@ export function RecruitmentPage() {
     React.useState<RecruitmentCandidate | null>(null)
 
   const handleSearch = async () => {
-    // if (!title.trim()) return
     setIsSearching(true)
-    setHasSearched(false)
-    setCandidates([])
+    setHasSearched(true)
 
     try {
       const result = await fetchRecruitCandidates({
-        title: title.trim(),
+        title: "数字员工",
         prompt: prompt.trim(),
-        count: Math.floor(Math.random() * 4) + 3,
+        count: 6,
       })
       setCandidates(result)
     } catch {
       toast.error("匹配失败，请稍后重试")
     } finally {
       setIsSearching(false)
-      setHasSearched(true)
     }
   }
 
@@ -249,14 +395,15 @@ export function RecruitmentPage() {
 
   const handleHireSuccess = () => {
     setSelectedCandidate(null)
-    setTitle("")
     setPrompt("")
     setCandidates([])
     setHasSearched(false)
   }
 
+  const displayCandidates = hasSearched ? candidates : DEMO_CANDIDATES
+
   return (
-    <div className="flex h-full flex-col bg-background">
+    <div className="flex min-h-0 flex-1 flex-col bg-background">
       {!isElectron && (
         <div className="flex shrink-0 items-center gap-3 border-b px-4 py-3">
           <Button
@@ -278,97 +425,119 @@ export function RecruitmentPage() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl px-4 py-6">
-          <div className="space-y-3">
-            {/* <div className="space-y-1.5">
-              <Label className="text-xs">
-                招聘标题 <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                placeholder="例如：招聘客服助手"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                disabled={isSearching}
-              />
-            </div> */}
-            <div className="space-y-1.5">
-              <Label className="text-xs">岗位描述</Label>
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-foreground">
+                  🔥 热门推荐
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {HOT_JOBS.map((job) => (
+                  <Button
+                    key={job}
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setPrompt(`招聘${job}`)}
+                  >
+                    {job}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-lg border p-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-foreground">
+                  📝 描述您的招聘需求
+                </span>
+              </div>
               <Textarea
                 className="min-h-20 resize-none"
-                placeholder="描述该岗位的工作职责和要求..."
+                placeholder="例如：需要一个能处理客户咨询、解答产品问题的数字员工..."
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 disabled={isSearching}
               />
+              <Button
+                size="sm"
+                className="w-full gap-1.5"
+                onClick={handleSearch}
+                disabled={isSearching}
+              >
+                {isSearching ? (
+                  <>
+                    <Spinner className="size-3.5" />
+                    正在匹配最佳应聘者...
+                  </>
+                ) : (
+                  <>
+                    <IconSparkles className="size-3.5" />
+                    发布招聘
+                  </>
+                )}
+              </Button>
             </div>
-            <Button
-              size="sm"
-              className="w-full gap-1.5"
-              onClick={handleSearch}
-              disabled={isSearching}
-            >
-              {isSearching ? (
-                <>
-                  <Spinner className="size-3.5" />
-                  正在匹配最佳应聘者...
-                </>
-              ) : (
-                <>
-                  <IconSparkles className="size-3.5" />
-                  发布招聘
-                </>
-              )}
-            </Button>
           </div>
 
-          {hasSearched && (
-            <>
-              <Separator className="my-4" />
-              <div className="mb-2">
-                <span className="text-xs font-medium text-muted-foreground">
-                  推荐应聘者 ({candidates.length})
-                </span>
-              </div>
-            </>
-          )}
+          <Separator className="my-6" />
 
-          {isSearching && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 rounded-md border p-3">
-                <Skeleton className="size-10 shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-3 w-full" />
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-foreground">
+                💡 {hasSearched ? "为您推荐" : "为您智能推荐"}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                ({displayCandidates.length})
+              </span>
+            </div>
+
+            {isSearching && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 rounded-md border p-4">
+                  <Skeleton className="size-10 shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-full" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-md border p-4">
+                  <Skeleton className="size-10 shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-3 w-full" />
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-3 rounded-md border p-3">
-                <Skeleton className="size-10 shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-3 w-full" />
-                </div>
+            )}
+
+            {!isSearching && (
+              <div className="space-y-3">
+                {displayCandidates.map((candidate) => (
+                  <CandidateCard
+                    key={candidate.id}
+                    candidate={candidate}
+                    onSelect={handleSelectCandidate}
+                  />
+                ))}
               </div>
-            </div>
-          )}
+            )}
 
-          {hasSearched && candidates.length > 0 && (
-            <div className="space-y-4">
-              {candidates.map((candidate) => (
-                <CandidateCard
-                  key={candidate.id}
-                  candidate={candidate}
-                  onSelect={handleSelectCandidate}
-                />
-              ))}
-            </div>
-          )}
+            {hasSearched && !isSearching && candidates.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+                <IconSparkles className="size-8 stroke-1" />
+                <p className="mt-2 text-xs">暂未找到匹配的应聘者</p>
+                <p className="text-xs">请尝试调整招聘需求描述</p>
+              </div>
+            )}
 
-          {hasSearched && candidates.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-              <IconSparkles className="size-8 stroke-1" />
-              <p className="mt-2 text-xs">暂未找到匹配的应聘者</p>
-              <p className="text-xs">请尝试调整招聘标题或岗位描述</p>
-            </div>
-          )}
+            {!hasSearched && (
+              <p className="text-xs text-muted-foreground">
+                点击上方热门推荐或输入描述，开始匹配数字员工
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -389,6 +558,7 @@ export function RecruitmentPage() {
 import { Sheet, SheetContent } from "@workspace/ui/components/sheet"
 import { IconLoader2, IconX } from "@tabler/icons-react"
 import { Switch } from "@workspace/ui/components/switch"
+import { Label } from "@workspace/ui/components/label"
 import { createEmployee } from "@/api/employee"
 import { ScheduleTaskConfig } from "./schedule-task-config"
 import type { ShiftScheduleForm, TaskFormData } from "@/types/task"
@@ -462,7 +632,7 @@ function HireSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
+        className="flex w-full flex-col gap-0 p-0 sm:max-w-md min-h-0 overflow-y-auto"
       >
         <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
           <div className="flex items-center gap-2">
@@ -475,14 +645,7 @@ function HireSheet({
               {candidate.employee_name}
             </span>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            onClick={() => onOpenChange(false)}
-          >
-            <IconX className="size-4" />
-          </Button>
+
         </div>
 
         <ScrollArea className="flex-1">
@@ -533,9 +696,7 @@ function HireSheet({
                 基本信息
               </Label>
               <div className="space-y-1.5">
-                <Label className="text-xs">
-                  员工名称 <span className="text-destructive">*</span>
-                </Label>
+                <Label className="text-xs">员工名称</Label>
                 <Input
                   placeholder="请输入员工名称"
                   value={name}

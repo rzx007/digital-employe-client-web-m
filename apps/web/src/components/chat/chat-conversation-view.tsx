@@ -40,7 +40,7 @@ export function ConversationChatView({
     [storedMessages]
   )
 
-  const { messages, setMessages, sendMessage, status, error } = useChat({
+  const { messages, setMessages, sendMessage, status, error, stop } = useChat({
     id: String(conversationId),
     messages: initialMessages,
     transport: chatTransport,
@@ -70,7 +70,7 @@ export function ConversationChatView({
   const chatStatus = status === "ready" && isBusy ? "submitted" : status
 
   const isSubmitDisabled = React.useMemo(() => {
-    return !(inputValue.trim() || status) || status === "streaming" || isBusy
+    return !(inputValue.trim() || status) || status === "submitted" || (isBusy && status !== "streaming")
   }, [inputValue, isBusy, status])
 
   const handleSendMessage = React.useCallback(
@@ -158,6 +158,7 @@ export function ConversationChatView({
       isSubmitDisabled={isSubmitDisabled}
       onInputChange={handleTextChange}
       onSend={handleSendMessage}
+      onStop={stop}
       onOpenContacts={onOpenContacts}
       onOpenConversations={onOpenConversations}
       onNewConversation={onNewConversation}

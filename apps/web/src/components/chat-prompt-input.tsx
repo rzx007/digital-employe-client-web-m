@@ -120,6 +120,7 @@ interface ChatPromptInputProps {
   value: string
   onChange: (e: PromptChangeEvent) => void
   onSubmit: (message: PromptInputMessage) => void
+  onStop?: () => void
   status: "submitted" | "streaming" | "ready" | "error"
   disabled?: boolean
   placeholder?: string
@@ -134,6 +135,7 @@ export function ChatPromptInput({
   value,
   onChange,
   onSubmit,
+  onStop,
   status,
   disabled,
   placeholder = "请输入任务，然后交给 Agent",
@@ -225,6 +227,7 @@ export function ChatPromptInput({
             <PromptInputSubmit
               disabled={disabled}
               status={status}
+              onStop={onStop}
               className="bg-primary/80 transition-colors hover:bg-primary"
             />
           </PromptInputTools>

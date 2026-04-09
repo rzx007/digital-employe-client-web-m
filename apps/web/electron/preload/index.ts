@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld("electronApi", {
   stopFlashTray: () => ipcRenderer.invoke("stop-flash-tray"),
   sendNotification: (title: string, body: string, silent?: boolean) =>
     ipcRenderer.invoke("send-notification", { title, body, silent }),
+
+  // auth
   loginSuccess: () => ipcRenderer.invoke("login-success"),
   saveAuth: (
     token: string,
@@ -57,4 +59,26 @@ contextBridge.exposeInMainWorld("electronApi", {
   hasSavedAuth: () => ipcRenderer.invoke("has-saved-auth"),
   openRecruitment: () => ipcRenderer.invoke("open-recruitment"),
   closeRecruitment: () => ipcRenderer.invoke("close-recruitment"),
+  // settings
+  openSettings: () => ipcRenderer.invoke("open-settings"),
+  closeSettings: () => ipcRenderer.invoke("close-settings"),
+  setAutoLaunch: (enabled: boolean) =>
+    ipcRenderer.invoke("set-auto-launch", enabled),
+  getAutoLaunch: () => ipcRenderer.invoke("get-auto-launch"),
+  setNotifications: (enabled: boolean) =>
+    ipcRenderer.invoke("set-notifications", enabled),
+  getNotifications: () => ipcRenderer.invoke("get-notifications"),
+  setAutoUpdate: (enabled: boolean) =>
+    ipcRenderer.invoke("set-auto-update", enabled),
+  getAutoUpdate: () => ipcRenderer.invoke("get-auto-update"),
+  getModelSettings: () => ipcRenderer.invoke("get-model-settings"),
+  setModelSettings: (data: {
+    model: string
+    apiKey: string
+    apiUrl: string
+  }) => ipcRenderer.invoke("set-model-settings", data),
+  resetApp: () => ipcRenderer.invoke("reset-app"),
+  checkUpdate: () => ipcRenderer.invoke("check-update"),
+  startDownloadUpdate: () => ipcRenderer.invoke("start-download"),
+  quitAndInstall: () => ipcRenderer.invoke("quit-and-install"),
 })

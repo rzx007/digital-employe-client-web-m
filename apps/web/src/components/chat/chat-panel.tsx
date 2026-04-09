@@ -86,6 +86,7 @@ export function ChatPanel({
   isSubmitDisabled,
   onInputChange,
   onSend,
+  onStop,
   onOpenContacts,
   onOpenConversations,
   onNewConversation,
@@ -104,6 +105,7 @@ export function ChatPanel({
   isSubmitDisabled: boolean
   onInputChange: (event: PromptChangeEvent) => void
   onSend: (message: PromptInputMessage) => Promise<void>
+  onStop?: () => void
   onOpenContacts?: () => void
   onOpenConversations?: () => void
   onNewConversation?: () => void
@@ -406,6 +408,7 @@ export function ChatPanel({
                   value={inputValue}
                   onChange={onInputChange}
                   onSubmit={onSend}
+                  onStop={onStop}
                   status={status}
                   disabled={isSubmitDisabled}
                   size="compact"

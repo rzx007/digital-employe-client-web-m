@@ -1,5 +1,15 @@
 import { BrowserWindow, Notification } from "electron"
 
+let notificationsEnabled = true
+
+export function setNotificationsEnabled(enabled: boolean): void {
+  notificationsEnabled = enabled
+}
+
+export function isNotificationsEnabled(): boolean {
+  return notificationsEnabled
+}
+
 /**
  * 系统通知管理
  *
@@ -27,6 +37,8 @@ export function sendNotification(options: {
   silent?: boolean
   win: BrowserWindow
 }): void {
+  if (!notificationsEnabled) return
+
   const notification = new Notification({
     title: options.title,
     body: options.body,

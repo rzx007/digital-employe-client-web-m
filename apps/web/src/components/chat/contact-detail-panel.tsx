@@ -58,7 +58,7 @@ export function ContactDetailPanel({
 
   return (
     <div className={cn("flex h-full flex-col bg-muted/30", className)} {...props}>
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="mx-auto max-w-2xl space-y-6 p-6">
           <ContactProfileCard
             contact={selectedContact}

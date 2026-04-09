@@ -68,6 +68,28 @@ declare global {
       hasSavedAuth: () => Promise<boolean>
       openRecruitment: () => Promise<void>
       closeRecruitment: () => Promise<void>
+      openSettings: () => Promise<void>
+      closeSettings: () => Promise<void>
+      setAutoLaunch: (enabled: boolean) => Promise<void>
+      getAutoLaunch: () => Promise<boolean>
+      setNotifications: (enabled: boolean) => Promise<void>
+      getNotifications: () => Promise<boolean>
+      setAutoUpdate: (enabled: boolean) => Promise<void>
+      getAutoUpdate: () => Promise<boolean>
+      getModelSettings: () => Promise<{
+        model: string
+        apiKey: string
+        apiUrl: string
+      }>
+      setModelSettings: (data: {
+        model: string
+        apiKey: string
+        apiUrl: string
+      }) => Promise<void>
+      resetApp: () => Promise<void>
+      checkUpdate: () => Promise<any>
+      startDownloadUpdate: () => Promise<void>
+      quitAndInstall: () => Promise<void>
     }
   }
   const __APP_VERSION__: string

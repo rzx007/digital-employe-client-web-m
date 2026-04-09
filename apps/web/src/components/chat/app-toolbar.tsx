@@ -7,6 +7,7 @@ import {
   IconCalendar,
   IconCalendarFilled,
   IconLogout,
+  IconSettings,
 } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -123,21 +124,39 @@ export function AppToolbar({
           ))}
         </nav>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-10 rounded-lg text-muted-foreground hover:text-destructive"
-              onClick={() => setShowLogoutDialog(true)}
-            >
-              <IconLogout className="size-5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="right" sideOffset={8}>
-            退出登录
-          </TooltipContent>
-        </Tooltip>
+        <div className="flex flex-col gap-2 mt-auto">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-10 rounded-lg text-muted-foreground hover:text-foreground"
+                onClick={() => window.electronApi?.openSettings()}
+              >
+                <IconSettings className="size-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={8}>
+              设置
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-10 rounded-lg text-muted-foreground hover:text-destructive"
+                onClick={() => setShowLogoutDialog(true)}
+              >
+                <IconLogout className="size-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={8}>
+              退出登录
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
     </>
   )

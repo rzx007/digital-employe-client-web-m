@@ -29,9 +29,9 @@ export function createRecruitmentWindow(): void {
   )
 
   recruitmentWin = new BrowserWindow({
-    width: 1024,
+    width: 960,
     height: 768,
-    minWidth: 1024,
+    minWidth: 960,
     minHeight: 768,
     title: "招聘员工",
     icon: path.join(process.env.APP_ROOT!, "build/icon.ico"),

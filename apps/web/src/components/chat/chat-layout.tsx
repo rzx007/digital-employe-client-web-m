@@ -116,7 +116,7 @@ export function ChatLayout({
   const showMonitorSheet = isMonitorOpen && activeTab === "chat"
 
   return (
-    <div className={cn("flex h-full relative", isMobile && "flex-col", className)} {...props}>
+    <div className={cn("flex min-h-0 relative flex-1", isMobile && "flex-col", className)} {...props}>
       <div className="flex min-w-0 flex-1">
         {!isMobile && <AppToolbar />}
 
@@ -144,7 +144,7 @@ export function ChatLayout({
         )}
 
         {activeTab === "contacts" && (
-          <ContactDetailPanel className="min-w-0 flex-1" />
+          <ContactDetailPanel className="min-w-0 flex-1 1111" />
         )}
 
         {activeTab === "calendar" && (

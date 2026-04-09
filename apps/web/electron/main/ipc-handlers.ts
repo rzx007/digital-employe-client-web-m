@@ -1,10 +1,12 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron"
 import os from "node:os"
+import path from "node:path"
 import { getBackendStatus, getBackendPort, stopBackend } from "./backend"
 import { flashTray, stopFlashTray } from "./tray"
-import { sendNotification } from "./notification"
+import { sendNotification, setNotificationsEnabled } from "./notification"
 import { closeLoginWindow, createLoginWindow } from "./login"
 import { createRecruitmentWindow, closeRecruitmentWindow } from "./recruitment"
+import { createSettingsWindow, closeSettingsWindow } from "./settings"
 import { VITE_DEV_SERVER_URL, indexHtml } from "./index"
 import {
   saveAuth,
@@ -12,6 +14,14 @@ import {
   getStoredAuth,
   hasToken,
 } from "./auth"
+import { setAutoLaunch, getAutoLaunch } from "./auto-launch"
+import {
+  getSetting,
+  setSetting,
+  getModelSettings,
+  setModelSettings,
+  clearSettingsStore,
+} from "./settings-store"
 
 /**
  * IPC 通信处理器
@@ -207,6 +217,75 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
   /** 关闭招聘员工窗口 */
   ipcMain.handle("close-recruitment", () => {
     closeRecruitmentWindow()
+  })
+
+  // ========== 设置窗口 ==========
+
+  /** 打开设置窗口 */
+  ipcMain.handle("open-settings", () => {
+    createSettingsWindow()
+  })
+
+  /** 关闭设置窗口 */
+  ipcMain.handle("close-settings", () => {
+    closeSettingsWindow()
+  })
+
+  // ========== 应用设置 ==========
+
+  /** 设置开机自启 */
+  ipcMain.handle("set-auto-launch", (_event, enabled: boolean) => {
+    setAutoLaunch(enabled)
+  })
+
+  /** 获取开机自启状态 */
+  ipcMain.handle("get-auto-launch", () => {
+    return getAutoLaunch()
+  })
+
+  /** 设置消息通知开关 */
+  ipcMain.handle("set-notifications", (_event, enabled: boolean) => {
+    setSetting("notifications", enabled)
+    setNotificationsEnabled(enabled)
+  })
+
+  /** 获取消息通知开关状态 */
+  ipcMain.handle("get-notifications", () => {
+    return getSetting("notifications") ?? true
+  })
+
+  /** 设置自动检查更新 */
+  ipcMain.handle("set-auto-update", (_event, enabled: boolean) => {
+    setSetting("autoUpdate", enabled)
+  })
+
+  /** 获取自动检查更新状态 */
+  ipcMain.handle("get-auto-update", () => {
+    return getSetting("autoUpdate") ?? true
+  })
+
+  /** 获取模型设置 */
+  ipcMain.handle("get-model-settings", () => {
+    return getModelSettings()
+  })
+
+  /** 保存模型设置 */
+  ipcMain.handle(
+    "set-model-settings",
+    (
+      _event,
+      data: { model: string; apiKey: string; apiUrl: string }
+    ) => {
+      setModelSettings(data)
+    }
+  )
+
+  /** 重置应用：清除所有存储数据并重启 */
+  ipcMain.handle("reset-app", () => {
+    clearAuth()
+    clearSettingsStore()
+    app.relaunch({ args: process.argv.slice(1).concat(["--relaunched"]) })
+    app.exit(0)
   })
 }
 
