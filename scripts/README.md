@@ -31,6 +31,9 @@ pnpm build:server:debug    # 调试模式构建
 
 # 直接使用 Python 脚本
 python scripts/build-server.py [--clean] [--debug]
+
+# 打包 Python 后端 + Electron 应用
+python scripts/build-server.py --app
 ```
 
 #### 3. 参数说明

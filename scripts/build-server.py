@@ -6,11 +6,12 @@ Python 后端打包脚本
 支持跨平台打包，自动处理依赖和资源文件。
 
 使用方法:
-    python scripts/build-server.py [--clean] [--debug]
+    python scripts/build-server.py [--clean] [--debug] [--app]
 
 参数:
     --clean: 清理之前的构建产物
     --debug: 启用调试模式，不删除临时文件
+    --app: 打包 Python 后端后，再打包 Electron 应用
 """
 
 import os
@@ -36,6 +37,9 @@ def parse_args():
     parser.add_argument("--clean", action="store_true", help="清理之前的构建产物")
     parser.add_argument(
         "--debug", action="store_true", help="启用调试模式，不删除临时文件"
+    )
+    parser.add_argument(
+        "--app", action="store_true", help="打包 Python 后端后，再打包 Electron 应用"
     )
     return parser.parse_args()
 
@@ -230,6 +234,29 @@ def copy_additional_files():
     print("✅ 文件复制完成")
 
 
+def build_electron():
+    """构建 Electron 应用"""
+    print("🔨 构建 Electron 应用...")
+
+    try:
+        subprocess.run(
+            ["pnpm", "run", "build:app"],
+            cwd=ROOT_DIR,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        print("✅ Electron 应用构建完成")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Electron 构建失败:")
+        print(f"   错误: {e.stderr}")
+        return False
+    except FileNotFoundError:
+        print("❌ 错误: 未找到 pnpm 命令")
+        return False
+
+
 def main():
     """主函数"""
     args = parse_args()
@@ -260,21 +287,35 @@ def main():
     # 复制额外文件
     copy_additional_files()
 
+    # 检查 backend.exe 是否成功产出
+    exe_path = OUTPUT_DIR / ("backend.exe" if sys.platform == "win32" else "backend")
+    if not exe_path.exists():
+        print(f"❌ 错误: backend.exe 未成功产出，无法继续打包 Electron")
+        sys.exit(1)
+
     # 清理临时文件（除非调试模式）
     if not args.debug and BUILD_DIR.exists():
         shutil.rmtree(BUILD_DIR)
         print("🧹 已清理临时文件")
 
     print()
-    print("🎉 打包完成!")
-    print(
-        f"   可执行文件: {OUTPUT_DIR / ('backend.exe' if sys.platform == 'win32' else 'backend')}"
-    )
+    print("🎉 Python 后端打包完成!")
+    print(f"   可执行文件: {exe_path}")
     print()
-    print("📝 使用说明:")
-    print("   开发模式: pnpm dev:server")
-    print("   构建后端: python scripts/build-server.py")
-    print("   清理构建: python scripts/build-server.py --clean")
+
+    # 如果指定了 --app，则继续打包 Electron
+    if args.app:
+        print("=" * 50)
+        if not build_electron():
+            sys.exit(1)
+        print()
+        print("🎉 完整打包完成!")
+        print("   Python 后端 + Electron 应用")
+    else:
+        print("📝 使用说明:")
+        print("   开发模式: pnpm dev:server")
+        print("   构建后端: python scripts/build-server.py")
+        print("   构建应用: python scripts/build-server.py --app")
 
 
 if __name__ == "__main__":

@@ -8,6 +8,9 @@
     "lint": "turbo lint",
     "format": "turbo format",
     "typecheck": "turbo typecheck",
+    "dev:client": "turbo dev:app",
+    "build:client": "turbo build:app",
+    "build:app": "python scripts/build-server.py --app",
     "dev:server": "cd apps/server && uv run uvicorn src.server:app --reload --port 58000",
     "build:server": "python scripts/build-server.py --clean",
     "build:server:debug": "python scripts/build-server.py --debug"

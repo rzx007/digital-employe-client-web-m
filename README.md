@@ -44,6 +44,9 @@ pnpm --filter web build:app
 | `pnpm lint`      | ESLint 检查         |
 | `pnpm format`    | Prettier 格式化     |
 | `pnpm typecheck` | TypeScript 类型检查 |
+| `pnpm dev:server` | 启动 Python 后端（使用 uv） |
+| `pnpm build:server` | 打包 Python 后端为 exe |
+| `pnpm build:app` | 打包完整应用（Python + Electron） |
 
 如需针对特定包运行命令：
 
@@ -54,11 +57,66 @@ pnpm build --filter=@workspace/ui
 
 ## 项目结构
 
-```
+```palintext
 ├── apps/web          # 主应用（TanStack Router + React Query + Electron）
+├── apps/server       # Python 后端（FastAPI + SQLAlchemy）
 ├── packages/ui       # 共享 UI 组件库（Radix UI + Tailwind CSS）
+├── scripts           # 构建脚本
 └── AGENTS.md         # AI Agent 开发规范与代码风格指南
 ```
+
+## Python 后端
+
+项目包含 Python FastAPI 后端，使用 `uv` 管理依赖。
+
+### 环境要求
+
+- **Python** >= 3.11
+- **uv** - Python 包管理器（项目已包含）
+
+### 开发模式
+
+Electron 开发模式下会自动使用 `uv` 启动 Python 后端服务：
+
+```bash
+# 自动启动（Electron 开发模式）
+pnpm dev:app
+
+# 或手动启动
+pnpm dev:server
+```
+
+内部命令：
+
+```bash
+uv run uvicorn src.server:app --reload --host 0.0.0.0 --port 58000
+```
+
+工作目录：`apps/server/`
+
+### 构建
+
+| 命令 | 说明 |
+|------|------|
+| `pnpm build:server` | 仅打包 Python 后端为 exe |
+| `pnpm build:app` | 打包完整应用（Python 后端 + Electron） |
+
+### 手动构建
+
+```bash
+# 使用 Python 脚本
+python scripts/build-server.py [--clean] [--debug] [--app]
+
+# 参数说明
+--clean: 清理之前的构建产物
+--debug: 调试模式，保留临时文件
+--app: 打包后继续打包 Electron 应用
+```
+
+### 输出文件
+
+- Python 后端可执行文件：`apps/web/py-server/backend.exe`
+- Electron 应用：`apps/web/release/`
 
 ## 添加 UI 组件
 

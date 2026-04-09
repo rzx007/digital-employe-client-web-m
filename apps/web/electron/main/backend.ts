@@ -40,17 +40,17 @@ function getPyServerPath(): string {
 /**
  * 启动 Python 后端进程
  *
- * 开发模式：跳过启动，只检测端口是否就绪
+ * 开发模式：启动 uvicorn 服务
  * 生产模式：启动 py-server/backend.exe
  *
  * 返回一个 Promise，在后端就绪（检测到 Uvicorn 监听日志）或超时时 resolve/reject。
  */
 export function startBackend(): Promise<void> {
   return new Promise((resolve, reject) => {
-    // 开发模式：跳过启动，只检测端口
+    // 开发模式：启动 uvicorn
     if (!app.isPackaged) {
-      console.log(`[Backend] 开发模式：跳过启动，等待端口 ${BACKEND_PORT} 就绪`)
-      waitForPortReady(resolve, reject)
+      console.log(`[Backend] dev mode: uvicorn`)
+      startDevServer(resolve, reject)
       return
     }
 
@@ -71,7 +71,7 @@ export function startBackend(): Promise<void> {
     })
 
     const timeout = setTimeout(() => {
-      reject(new Error(`后端启动超时 (${BACKEND_READY_TIMEOUT / 1000}s)`))
+      reject(new Error(`Timeout (${BACKEND_READY_TIMEOUT / 1000}s)`))
     }, BACKEND_READY_TIMEOUT)
 
     /**
@@ -113,6 +113,63 @@ export function startBackend(): Promise<void> {
       backendProcess = null
       backendReady = false
     })
+  })
+}
+
+/**
+ * 开发模式下启动 uvicorn 服务
+ */
+function startDevServer(resolve: () => void, reject: (err: Error) => void): void {
+  const serverDir = path.join(process.env.APP_ROOT!, "..", "server")
+
+  console.log(`[Backend] starting dir: ${serverDir}`)
+
+  backendProcess = spawn(
+    "uv",
+    ["run", "uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "58000", "--reload"],
+    {
+      cwd: serverDir,
+      stdio: ["pipe", "pipe", "pipe"],
+      shell: true,
+    }
+  )
+
+  const timeout = setTimeout(() => {
+    reject(new Error(`backend timeout (${BACKEND_READY_TIMEOUT / 1000}s)`))
+  }, BACKEND_READY_TIMEOUT)
+
+  const checkReady = (log: string) => {
+    if (!backendReady && log.includes(`0.0.0.0:${BACKEND_PORT}`)) {
+      backendReady = true
+      clearTimeout(timeout)
+      console.log(`[Backend] port: ${BACKEND_PORT}`)
+      resolve()
+    }
+  }
+
+  backendProcess.stdout?.on("data", (data: Buffer) => {
+    const log = data.toString()
+    console.log(`[Backend] ${log}`)
+    checkReady(log)
+  })
+
+  backendProcess.stderr?.on("data", (data: Buffer) => {
+    const log = data.toString()
+    console.error(`[Backend:stderr] ${log}`)
+    checkReady(log)
+  })
+
+  backendProcess.on("error", (err) => {
+    clearTimeout(timeout)
+    console.error(`[Backend] startup failed:`, err)
+    backendProcess = null
+    reject(err)
+  })
+
+  backendProcess.on("exit", (code, signal) => {
+    console.log(`[Backend] quit (code: ${code}, signal: ${signal})`)
+    backendProcess = null
+    backendReady = false
   })
 }
 
@@ -190,44 +247,6 @@ export function getBackendStatus() {
     port: BACKEND_PORT,
     running: backendProcess !== null,
   }
-}
-
-/**
- * 端口检测函数（开发模式使用）
- * 检测后端端口是否就绪
- */
-function waitForPortReady(resolve: () => void, reject: (err: Error) => void): void {
-  const timeout = setTimeout(() => {
-    reject(new Error(`后端端口 ${BACKEND_PORT} 检测超时 (${BACKEND_READY_TIMEOUT / 1000}s)`))
-  }, BACKEND_READY_TIMEOUT)
-
-  const checkPort = () => {
-    const net = require("node:net")
-    const socket = new net.Socket()
-
-    socket.setTimeout(1000)
-    socket.on("connect", () => {
-      socket.destroy()
-      clearTimeout(timeout)
-      backendReady = true
-      console.log(`[Backend] 端口 ${BACKEND_PORT} 已就绪`)
-      resolve()
-    })
-
-    socket.on("timeout", () => {
-      socket.destroy()
-      setTimeout(checkPort, 1000)
-    })
-
-    socket.on("error", () => {
-      socket.destroy()
-      setTimeout(checkPort, 1000)
-    })
-
-    socket.connect(BACKEND_PORT, "127.0.0.1")
-  }
-
-  checkPort()
 }
 
 /**
