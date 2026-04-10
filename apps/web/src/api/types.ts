@@ -11,10 +11,14 @@ export interface ApiResponse<T> {
  * 员工能力项
  */
 export interface Capability {
+  id?: number
   capability_name: string
   capability_desc: string
   mcp_server_name: string
   mcp_tool_name: string
+  creator_id?: number
+  created_at?: string
+  updated_at?: string
 }
 
 /**
@@ -24,7 +28,10 @@ export interface MetadataSkill {
   id: number
   skillName: string
   description: string
+  displayNameZh?: string
   prompt: string
+  inputSchema?: unknown
+  skillContent?: string
   directoryId: number | null
   status: number
   createTime: string
