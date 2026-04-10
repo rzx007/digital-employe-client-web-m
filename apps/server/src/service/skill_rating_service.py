@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from fastapi import HTTPException, status
 
+from core.config import get_settings
 from src.models.employee import Employee
 from src.models.employee_skill import EmployeeSkill
 from src.models.skill_rating import SkillRating
@@ -72,6 +74,16 @@ class SkillRatingService:
         db.add(row)
         db.commit()
         db.refresh(row)
+        # 调用远程接口，将分数同步过去
+        settings = get_settings()
+        try:
+            # 将skill_remote_rating路径中的{skillId}替换为skill_id
+            
+            rating_url = settings.skill_remote_base_url + settings.skill_remote_rating.format(skill_id=skill_id)
+            httpx.post(rating_url, json={"score": payload.score})
+        except (httpx.HTTPError, ValueError)  as exc:
+            print(f"评分同步失败: {exc}")
+
         return SkillRatingRead.model_validate(row)
 
     @staticmethod
