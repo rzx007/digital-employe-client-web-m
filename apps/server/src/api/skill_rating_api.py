@@ -12,16 +12,15 @@ router = APIRouter(tags=["技能评分"])
 
 
 @router.post(
-    "/employees/{employee_id}/skill-ratings",
-    response_model=ResponseBase[list[SkillRatingRead]],
+    "/skill-ratings",
+    response_model=ResponseBase[SkillRatingRead],
 )
-def batch_create_skill_ratings(
-    employee_id: int,
+def create_skill_rating(
     payload: SkillRatingBatchCreate,
     db: Session = Depends(get_db),
-) -> ResponseBase[list[SkillRatingRead]]:
-    """对员工本次涉及的多个技能打相同分数（每个 skill_id 各写入一条记录）。"""
-    data = SkillRatingService.create_batch(db, employee_id, payload)
+) -> ResponseBase[SkillRatingRead]:
+    """根据 task_execution_log_id 从日志表解析员工与 skill_id，写入一条评分。"""
+    data = SkillRatingService.create_from_task_log(db, payload)
     return ResponseBase(data=data)
 
 

@@ -6,11 +6,13 @@ from pydantic import BaseModel, Field
 
 
 class SkillRatingBatchCreate(BaseModel):
-    """对本轮助手回复涉及的技能打同一分数；技能从会话推断（chunk 中的 /skills/ 路径与上一条用户消息中的「请使用…技能」等），不传 skill_ids。"""
+    """根据单条任务执行日志解析 skill_id 并写入一条评分。"""
 
-    message_id: int = Field(..., description="被评分的助手消息 ID（该条 assistant 消息的 chunk_json 用于推断调用了哪些技能）")
-    score: int = Field(..., ge=1, le=5, description="评分 1–5")
-    conversation_id: int | None = Field(None, description="可选；若填写须与 message 所属会话一致")
+    task_execution_log_id: int = Field(
+        ...,
+        description="任务执行日志 ID（task_execution_logs.id），用于解析 skill_id",
+    )
+    score: int = Field(..., ge=0, le=10, description="评分 0–10")
     comment: str | None = Field(None, max_length=2000, description="备注")
 
 
