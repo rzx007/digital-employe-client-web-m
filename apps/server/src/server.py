@@ -36,7 +36,7 @@ def create_app() -> FastAPI:
             # 获取员工
             # EmployeeService.sync_workspace_employees(db, workspace)
             # 从员工 metadata 同步任务
-            # TaskService.sync_workspace_tasks(db, workspace.id)
+            TaskService.sync_workspace_tasks(db, workspace.id)
         # 启动调度器
         TaskSchedulerService.start()
         yield

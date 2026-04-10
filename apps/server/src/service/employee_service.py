@@ -18,6 +18,7 @@ from src.models.employee_skill import EmployeeSkill
 from src.models.workspace import Workspace
 from src.schemas.employee import EmployeeCreate, EmployeeUpdate, ShiftScheduleCreateWithoutEmployee
 from src.service.skill_service import SkillService
+from src.service.task_scheduler_service import TaskSchedulerService
 from src.service.task_service import TaskService
 from src.service.workspace_service import WorkspaceService
 
@@ -505,7 +506,7 @@ class EmployeeService:
 
         if "skill_ids" in payload.model_fields_set:
             skills = EmployeeService._validate_and_fetch_skills(
-                payload.skill_ids)
+                payload.skill_ids, token)
             EmployeeService._replace_employee_skills(db, employee, skills)
             EmployeeService._save_skills_to_local_files(employee, skills)
 
@@ -523,6 +524,7 @@ class EmployeeService:
         if changed_tasks:
             TaskService.sync_workspace_tasks(db, employee.workspace_id)
             db.refresh(employee)
+            TaskSchedulerService.reload_jobs()
         return employee
 
     @staticmethod
@@ -530,6 +532,7 @@ class EmployeeService:
         employee = EmployeeService.get_employee(db, employee_id)
         db.delete(employee)
         db.commit()
+        TaskSchedulerService.reload_jobs()
 
     @staticmethod
     def create_employee(db: Session, obj_in: EmployeeCreate, token: str) -> Employee:
@@ -587,4 +590,5 @@ class EmployeeService:
         if tasks:
             TaskService.sync_workspace_tasks(db, workspace_id)
             db.refresh(employee)
+            TaskSchedulerService.reload_jobs()
         return employee
