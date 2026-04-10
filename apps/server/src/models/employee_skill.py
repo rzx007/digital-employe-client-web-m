@@ -18,6 +18,7 @@ class EmployeeSkill(Base):
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
     skill_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     skill_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    skill_name_zh: Mapped[str | None] = mapped_column(String(255), nullable=True)
     skill_description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     # 来自远程技能详情（get_remote_skill）的 prompt、skillContent
     prompt: Mapped[str | None] = mapped_column(Text, nullable=True)

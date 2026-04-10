@@ -49,11 +49,13 @@ def get_employee(employee_id: int, db: Session = Depends(get_db)) -> ResponseBas
 @router.put("/employees/{employee_id}", response_model=ResponseBase[EmployeeRead])
 def update_employee(
     employee_id: int,
+    request: Request,
     payload: EmployeeUpdate,
     db: Session = Depends(get_db),
 ) -> ResponseBase[EmployeeRead]:
     """更新指定员工的基础信息。"""
-    employee = EmployeeService.update_employee(db, employee_id, payload)
+    token = request.headers.get("token")
+    employee = EmployeeService.update_employee(db, employee_id, payload, token)
     return ResponseBase(data=EmployeeService._employee_to_dict(employee))
 
 
@@ -70,13 +72,14 @@ def create_employee(
     employee_in: EmployeeCreate,
     db: Session = Depends(get_db),
 ):
+    token = request.headers.get("token")
     try:
         # 获取用户ID
         user_id = get_user_id(request)
     except Exception as e:
         print(f"获取user_id失败: {e}")
         # 如果获取不到用户ID，尝试从token中提取
-        token = request.headers.get("token")
+        
         if token:
             user_id = get_user_id_from_token(token)
             if not user_id:
@@ -88,7 +91,7 @@ def create_employee(
     employee_in.user_id = user_id
     print(f"设置user_id为: {user_id}")
     
-    employee = EmployeeService.create_employee(db, employee_in)
+    employee = EmployeeService.create_employee(db, employee_in, token)
     return ResponseBase(data=EmployeeService._employee_to_dict(employee))
 
 
