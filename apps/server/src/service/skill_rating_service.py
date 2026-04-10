@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from fastapi import HTTPException, status
 
-from core.config import get_settings
+from src.core.config import get_settings
 from src.models.employee import Employee
 from src.models.employee_skill import EmployeeSkill
 from src.models.skill_rating import SkillRating
@@ -78,19 +78,26 @@ class SkillRatingService:
         settings = get_settings()
         try:
             # 将skill_remote_rating路径中的{skillId}替换为skill_id
-            
-            rating_url = settings.skill_remote_base_url + settings.skill_remote_rating.format(skill_id=skill_id)
+
+            rating_url = (
+                settings.skill_remote_base_url
+                + settings.skill_remote_rating.format(skill_id=skill_id)
+            )
             httpx.post(rating_url, json={"score": payload.score})
-        except (httpx.HTTPError, ValueError)  as exc:
+        except (httpx.HTTPError, ValueError) as exc:
             print(f"评分同步失败: {exc}")
 
         return SkillRatingRead.model_validate(row)
 
     @staticmethod
-    def list_for_employee(db: Session, employee_id: int, limit: int = 200) -> list[SkillRatingRead]:
+    def list_for_employee(
+        db: Session, employee_id: int, limit: int = 200
+    ) -> list[SkillRatingRead]:
         employee = db.get(Employee, employee_id)
         if not employee:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到员工。")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="未找到员工。"
+            )
         stmt = (
             select(SkillRating)
             .where(SkillRating.employee_id == employee_id)

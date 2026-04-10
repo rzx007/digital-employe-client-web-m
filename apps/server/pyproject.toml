@@ -22,7 +22,10 @@ dependencies = [
     "PyJWT>=2.8.0",
 ]
 [dependency-groups]
-dev = ["pyinstaller>=6.0"]
+dev = [
+    "micro-agent",
+    "pyinstaller>=6.0",
+]
 [project.urls]
 Repository = "https://github.com/langchain-ai/deepagents/tree/master/examples/text-to-sql-agent"
 
@@ -32,3 +35,11 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["*"]
+
+[tool.uv.workspace]
+members = [
+    ".",
+]
+
+[tool.uv.sources]
+micro-agent = { workspace = true, editable = true }

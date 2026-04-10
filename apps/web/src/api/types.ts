@@ -11,14 +11,42 @@ export interface ApiResponse<T> {
  * 员工能力项
  */
 export interface Capability {
-  id?: number
   capability_name: string
   capability_desc: string
   mcp_server_name: string
   mcp_tool_name: string
-  creator_id?: number
-  created_at?: string
-  updated_at?: string
+}
+
+/**
+ * MCP 能力列表项
+ */
+export interface McpListItem {
+  id: number
+  capability_name: string
+  capability_desc: string
+  mcp_server_name: string
+  mcp_tool_name: string
+  creator_id: number
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * 技能列表项
+ */
+export interface SkillListItem {
+  id: number
+  skillName: string
+  description: string
+  displayNameZh: string
+  prompt: string
+  inputSchema: unknown
+  skillContent: string
+  directoryId: number | null
+  status: number
+  createTime: string
+  updateTime: string
+  directoryName: string | null
 }
 
 /**
@@ -28,10 +56,7 @@ export interface MetadataSkill {
   id: number
   skillName: string
   description: string
-  displayNameZh?: string
   prompt: string
-  inputSchema?: unknown
-  skillContent?: string
   directoryId: number | null
   status: number
   createTime: string
