@@ -36,3 +36,9 @@ def init_db() -> None:
     ensure_column("employee_tasks", "next_run_at", "next_run_at DATETIME")
     ensure_column("employee_tasks", "last_run_at", "last_run_at DATETIME")
 
+    # 兼容历史员工技能关系表：补充新增字段
+    ensure_column("employee_skills", "skill_name", "skill_name VARCHAR(255) NOT NULL DEFAULT ''")
+    ensure_column("employee_skills", "skill_description", "skill_description VARCHAR(1000)")
+    ensure_column("employee_skills", "prompt", "prompt TEXT")
+    ensure_column("employee_skills", "skill_content", "skill_content TEXT")
+

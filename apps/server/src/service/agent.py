@@ -311,7 +311,6 @@ def get_agent(skill_path, root_path):
         available_skills,
     )
     base_dir = Path(__file__).resolve().parent
-
     settings = get_settings()
     model = ChatOpenAI(
         model=settings.deepagent_model or "qwen2.5-72b-instruct",

@@ -1,10 +1,41 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional, List, Dict
 
 from pydantic import BaseModel, Field, field_serializer
 
+
+class ShiftScheduleCreateWithoutEmployee(BaseModel):
+    """创建排班计划（不含员工ID，用于嵌套在员工信息中）"""
+    start_date: str = Field(..., description="开始日期")
+    end_date: str = Field(..., description="结束日期")
+    status: int = Field(1, description="排班状态: 1-激活, 2-未激活, 3-取消")
+    notes: Optional[str] = Field(None, description="备注")
+
+
+class SchedulingTaskCreateWithoutEmployee(BaseModel):
+    """创建调度任务（不含员工ID，用于嵌套在员工信息中）"""
+    id: Optional[int] = None
+    task_name: str
+    dispatch_type: str = "skill"
+    skill_id: Optional[int] = None
+    user_prompt: Optional[str] = None
+    priority: int = 0
+    task_type: int  # 1: 外部输入, 2: Cron任务
+    config: Dict[str, Any]
+    cron_expression: Optional[str] = None
+    cron_expression_type: Optional[str] = None
+    is_active: Optional[bool] = True
+
+class EmployeeBase(BaseModel):
+    """员工基础信息"""
+
+    workspace_id: Optional[int] = None
+    employee_name: str
+    capability_desc: Optional[str] = None
+    status: int = 1
+    detail_page_url: Optional[str] = None
 
 class EmployeeRead(BaseModel):
     id: int
@@ -28,6 +59,9 @@ class EmployeeUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     description: str | None = Field(default=None, max_length=1000)
     version: str | None = Field(default=None, max_length=128)
+    skill_ids: Optional[List[int]] = None
+    shift_schedule: Optional[ShiftScheduleCreateWithoutEmployee] = None
+    tasks: Optional[List[SchedulingTaskCreateWithoutEmployee]] = None
 
 
 class EmployeeSyncResult(BaseModel):
@@ -35,3 +69,37 @@ class EmployeeSyncResult(BaseModel):
     synced_count: int
     employees: list[EmployeeRead]
 
+
+class EmployeeCreate(EmployeeBase):
+    """创建员工信息"""
+
+    # 添加技能列表
+    skill_ids: Optional[List[int]] = None
+    # 添加排班信息 - 使用具体的模型而不是字典
+    shift_schedule: Optional[ShiftScheduleCreateWithoutEmployee] = None
+    # 添加任务信息 - 使用具体的模型而不是字典
+    tasks: Optional[List[SchedulingTaskCreateWithoutEmployee]] = None
+    user_id: Optional[str] = None
+
+class EmployeeOut(EmployeeBase):
+    """员工输出信息"""
+
+    id: int
+    created_at: str
+    updated_at: str
+    user_id: Optional[str] = None
+    skill_ids: List[int]
+    skills: Optional[List[dict]] = None
+    shift_schedule: Optional[ShiftScheduleCreateWithoutEmployee] = None
+    tasks: Optional[List[SchedulingTaskCreateWithoutEmployee]] = None
+
+
+class EmployeeGenerationRequest(BaseModel):
+    prompt: str
+    count: int = 1
+
+class EmployeeProfile(BaseModel):
+    name: str
+    description: str
+    skill_ids: list[int] = Field(default_factory=list)
+    skills_list: list[dict[str, Any]] = Field(default_factory=list)

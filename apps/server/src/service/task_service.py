@@ -144,8 +144,7 @@ class TaskService:
                 if not TaskService._is_skill_dispatch(dispatch_type):
                     continue
                 skill_id = TaskService._to_int(raw_task.get("skill_id"))
-                capability_id = TaskService._to_int(raw_task.get("capability_id"))
-                signature = (task_name, dispatch_type, skill_id, capability_id)
+                signature = (task_name, dispatch_type, skill_id)
                 active_signatures.add(signature)
 
                 existing = db.scalar(
@@ -155,7 +154,6 @@ class TaskService:
                         EmployeeTask.task_name == task_name,
                         EmployeeTask.dispatch_type == dispatch_type,
                         EmployeeTask.skill_id == skill_id,
-                        EmployeeTask.capability_id == capability_id,
                     )
                 )
                 if existing:
@@ -167,7 +165,6 @@ class TaskService:
                         task_name=task_name,
                         dispatch_type=dispatch_type,
                         skill_id=skill_id,
-                        capability_id=capability_id,
                     )
                     db.add(task)
 
@@ -196,7 +193,7 @@ class TaskService:
                 ).all()
             )
             for task in existing_tasks:
-                current_signature = (task.task_name, task.dispatch_type, task.skill_id, task.capability_id)
+                current_signature = (task.task_name, task.dispatch_type, task.skill_id)
                 if current_signature in active_signatures and TaskService._is_skill_dispatch(task.dispatch_type):
                     continue
                 if not TaskService._is_skill_dispatch(task.dispatch_type):
@@ -372,7 +369,6 @@ class TaskService:
 
                 tasks_payload = [
                     {
-                        "capability_id": task.capability_id,
                         "is_active": task.is_active,
                         "task_type": task.task_type,
                         "task_id": task.id,
