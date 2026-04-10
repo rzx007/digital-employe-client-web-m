@@ -1,5 +1,9 @@
 README.md
 pyproject.toml
+local-employees/TMR运维人员/skills/tmr-axe-consistency/scripts/check_device.py
+local-employees/TMR运维人员/skills/tmr-axe-consistency/scripts/execute_task.py
+local-employees/TMR运维人员/skills/tmr-axe-consistency/scripts/recalc_power.py
+local-employees/新闻助手/skills/hot-news/scripts/hot_news.py
 micro_agent.egg-info/PKG-INFO
 micro_agent.egg-info/SOURCES.txt
 micro_agent.egg-info/dependency_links.txt

@@ -1,4 +1,3 @@
-import uvicorn
 import logging
 from sqlalchemy import select
 from fastapi import FastAPI
