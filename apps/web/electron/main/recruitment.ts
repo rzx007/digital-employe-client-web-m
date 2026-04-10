@@ -45,13 +45,16 @@ export function createRecruitmentWindow(): void {
   const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
   const RENDERER_DIST = path.join(process.env.APP_ROOT!, "dist")
   const indexHtml = path.join(RENDERER_DIST, "index.html")
+  const recruitmentUrl = VITE_DEV_SERVER_URL
+    ? `${VITE_DEV_SERVER_URL}#/recruitment`
+    : `file://${indexHtml}#/recruitment`
+
+  recruitmentWin.loadURL(recruitmentUrl)
 
   if (VITE_DEV_SERVER_URL) {
-    recruitmentWin.loadURL(`${VITE_DEV_SERVER_URL}#/recruitment`)
     recruitmentWin.webContents.openDevTools()
-  } else {
-    recruitmentWin.loadFile(`${indexHtml}#/recruitment`)
   }
+
   recruitmentWin.on("closed", () => {
     recruitmentWin = null
   })

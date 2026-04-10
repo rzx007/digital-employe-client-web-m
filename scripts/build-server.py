@@ -234,29 +234,6 @@ def copy_additional_files():
     print("✅ 文件复制完成")
 
 
-def build_electron():
-    """构建 Electron 应用"""
-    print("🔨 构建 Electron 应用...")
-
-    try:
-        subprocess.run(
-            ["pnpm", "run", "build:app"],
-            cwd=ROOT_DIR,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        print("✅ Electron 应用构建完成")
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Electron 构建失败:")
-        print(f"   错误: {e.stderr}")
-        return False
-    except FileNotFoundError:
-        print("❌ 错误: 未找到 pnpm 命令")
-        return False
-
-
 def main():
     """主函数"""
     args = parse_args()
@@ -303,19 +280,11 @@ def main():
     print(f"   可执行文件: {exe_path}")
     print()
 
-    # 如果指定了 --app，则继续打包 Electron
-    if args.app:
-        print("=" * 50)
-        if not build_electron():
-            sys.exit(1)
-        print()
-        print("🎉 完整打包完成!")
-        print("   Python 后端 + Electron 应用")
-    else:
-        print("📝 使用说明:")
-        print("   开发模式: pnpm dev:server")
-        print("   构建后端: python scripts/build-server.py")
-        print("   构建应用: python scripts/build-server.py --app")
+    print("📝 使用说明:")
+    print("   开发模式: pnpm dev:server")
+    print("   构建后端: python scripts/build-server.py")
+    print("   构建应用: python scripts/build-server.py --app")
+       
 
 
 if __name__ == "__main__":
