@@ -24,8 +24,11 @@ class Settings:
     skill_remote_base_url: str | None
     skill_remote_token: str | None
     skill_remote_timeout: float
+    skill_remote_rating: str | None
     agent_interface_base_url: str | None
     dbchat_base_url: str | None
+    login_url: str | None
+    
 
 
 @lru_cache(maxsize=1)
@@ -44,8 +47,10 @@ def get_settings() -> Settings:
         skill_remote_base_url=os.getenv("SKILL_REMOTE_BASE_URL") or None,
         skill_remote_token=os.getenv("SKILL_REMOTE_TOKEN") or None,
         skill_remote_timeout=float(os.getenv("SKILL_REMOTE_TIMEOUT", "15")),
+        skill_remote_rating=os.getenv("SKILL_REMOTE_RATING") or None,
         agent_interface_base_url=os.getenv("AGENT_INTERFACE_BASE_URL") or None,
         dbchat_base_url=os.getenv("DBCHAT_BASE_URL") or None,
+        login_url=os.getenv("LOGIN_URL") or None,
     )
 
 

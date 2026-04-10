@@ -21,17 +21,17 @@ class SkillService:
         return f"{base_url}{path}"
 
     @staticmethod
-    def _request_remote(path: str) -> dict[str, Any]:
+    def _request_remote(path: str, token: str) -> dict[str, Any]:
         settings = get_settings()
-        token = (settings.skill_remote_token or "").strip()
-        if not token:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="未配置远程技能服务令牌（SKILL_REMOTE_TOKEN）。",
-            )
+        # token = (settings.skill_remote_token or "").strip()
+        # if not token:
+        #     raise HTTPException(
+        #         status_code=status.HTTP_400_BAD_REQUEST,
+        #         detail="未配置远程技能服务令牌（SKILL_REMOTE_TOKEN）。",
+        #     )
 
         url = SkillService._build_url(path)
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = {"token": f"{token}"}
         timeout = settings.skill_remote_timeout
 
         try:
@@ -68,8 +68,8 @@ class SkillService:
         return payload
 
     @staticmethod
-    def list_remote_skills() -> list[dict[str, Any]]:
-        payload = SkillService._request_remote("/aios/skill/page/list")
+    def list_remote_skills(token: str) -> list[dict[str, Any]]:
+        payload = SkillService._request_remote("/api/v1/client/skills/export", token)
         data = payload.get("data")
         if not isinstance(data, list):
             raise HTTPException(
@@ -79,8 +79,35 @@ class SkillService:
         return [item for item in data if isinstance(item, dict)]
 
     @staticmethod
-    def get_remote_skill(skill_id: int) -> dict[str, Any]:
-        payload = SkillService._request_remote(f"/aios/skill/page/content/{skill_id}")
+    def map_remote_to_list_item(raw: dict[str, Any]) -> dict[str, Any]:
+        """将远程技能字典转为列表接口字段（camelCase，兼容 snake_case）。"""
+
+        def first_present(*keys: str) -> Any:
+            for k in keys:
+                if k in raw:
+                    return raw[k]
+            return None
+
+        if "id" not in raw:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="远程技能列表项缺少 id。",
+            )
+
+        skill_name = first_present("skillName", "skill_name")
+        dir_id = first_present("directoryId", "directory_id")
+        return {
+            "id": int(raw["id"]),
+            "skillName": "" if skill_name is None else str(skill_name),
+            "displayNameZh": first_present("displayNameZh", "display_name_zh"),
+            "description": first_present("description"),
+            "directoryId": int(dir_id) if dir_id is not None else None,
+            "directoryName": first_present("directoryName", "directory_name"),
+        }
+
+    @staticmethod
+    def get_remote_skill(skill_id: int, token: str) -> dict[str, Any]:
+        payload = SkillService._request_remote(f"/api/v1/client/skills/export/full/{skill_id}", token)
         data = payload.get("data")
         if not isinstance(data, dict):
             raise HTTPException(

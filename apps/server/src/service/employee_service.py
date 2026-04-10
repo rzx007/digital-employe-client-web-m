@@ -18,6 +18,7 @@ from src.models.employee_skill import EmployeeSkill
 from src.models.workspace import Workspace
 from src.schemas.employee import EmployeeCreate, EmployeeUpdate, ShiftScheduleCreateWithoutEmployee
 from src.service.skill_service import SkillService
+from src.service.task_scheduler_service import TaskSchedulerService
 from src.service.task_service import TaskService
 from src.service.workspace_service import WorkspaceService
 
@@ -47,7 +48,8 @@ class EmployeeService:
     @staticmethod
     def _employee_to_dict(employee: Employee) -> dict:
         metadata = json.loads(employee.meta_json or "{}")
-        shift_schedule = json.loads(getattr(employee, "shift_schedule_json", "{}") or "{}")
+        shift_schedule = json.loads(
+            getattr(employee, "shift_schedule_json", "{}") or "{}")
         if not isinstance(shift_schedule, dict):
             shift_schedule = {}
         if not shift_schedule and isinstance(metadata, dict):
@@ -72,7 +74,8 @@ class EmployeeService:
     def _download_zip() -> Path:
         settings = get_settings()
         if not settings.employee_zip_url:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未配置员工ZIP下载地址（EMPLOYEE_ZIP_URL）。")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="未配置员工ZIP下载地址（EMPLOYEE_ZIP_URL）。")
 
         tmp_dir = Path(settings.employee_tmp_dir)
         if not tmp_dir.is_absolute():
@@ -101,7 +104,8 @@ class EmployeeService:
         level_one = [p for p in extract_dir.iterdir() if p.is_dir()]
         if len(level_one) == 1:
             candidate = level_one[0]
-            has_employee_payload = (candidate / "skills").is_dir() or any(candidate.glob("*.json"))
+            has_employee_payload = (
+                candidate / "skills").is_dir() or any(candidate.glob("*.json"))
             if has_employee_payload:
                 return [candidate]
             children = [p for p in candidate.iterdir() if p.is_dir()]
@@ -116,7 +120,8 @@ class EmployeeService:
             return extract_dir
 
         wrapper = level_one[0]
-        has_employee_payload = (wrapper / "skills").is_dir() or any(wrapper.glob("*.json"))
+        has_employee_payload = (
+            wrapper / "skills").is_dir() or any(wrapper.glob("*.json"))
         if has_employee_payload:
             return extract_dir
 
@@ -127,7 +132,8 @@ class EmployeeService:
         for child in children:
             shutil.move(str(child), extract_dir / child.name)
         wrapper.rmdir()
-        logger.warning("Flattened wrapped employee extract dir: wrapper=%s target=%s", wrapper, extract_dir)
+        logger.warning(
+            "Flattened wrapped employee extract dir: wrapper=%s target=%s", wrapper, extract_dir)
         return extract_dir
 
     @staticmethod
@@ -170,7 +176,8 @@ class EmployeeService:
 
     @staticmethod
     def materialize_embedded_skills(employee_dir: Path) -> None:
-        metadata = EmployeeService._load_json_file(employee_dir / "metadata.json")
+        metadata = EmployeeService._load_json_file(
+            employee_dir / "metadata.json")
         skills = metadata.get("skills")
         if not isinstance(skills, list):
             return
@@ -181,14 +188,16 @@ class EmployeeService:
             skill_name = skill.get("skillName")
             if not isinstance(skill_name, str) or not skill_name.strip():
                 continue
-            file_map = EmployeeService._skill_content_to_file_map(skill.get("skillContent"))
+            file_map = EmployeeService._skill_content_to_file_map(
+                skill.get("skillContent"))
             if not file_map:
                 continue
 
             skill_dir = employee_dir / "skills" / skill_name
             skill_dir.mkdir(parents=True, exist_ok=True)
             for relative_path, content in file_map.items():
-                target = EmployeeService._safe_skill_file_path(skill_dir, relative_path)
+                target = EmployeeService._safe_skill_file_path(
+                    skill_dir, relative_path)
                 if target is None:
                     continue
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -200,12 +209,14 @@ class EmployeeService:
         json_files = sorted(employee_dir.glob("*.json"))
         if json_files:
             priority_names = {"meta.json", "employee.json", "info.json"}
-            meta_file = next((p for p in json_files if p.name.lower() in priority_names), json_files[0])
+            meta_file = next(
+                (p for p in json_files if p.name.lower() in priority_names), json_files[0])
             meta = EmployeeService._load_json_file(meta_file)
 
         skills_dir = employee_dir / "skills"
         if not skills_dir.exists():
-            candidates = [p for p in employee_dir.rglob("*") if p.is_dir() and "skill" in p.name.lower()]
+            candidates = [p for p in employee_dir.rglob(
+                "*") if p.is_dir() and "skill" in p.name.lower()]
             if candidates:
                 skills_dir = candidates[0]
 
@@ -260,7 +271,7 @@ class EmployeeService:
         return normalized
 
     @staticmethod
-    def _validate_and_fetch_skills(skill_ids: list[int] | None) -> list[dict]:
+    def _validate_and_fetch_skills(skill_ids: list[int] | None, token: str) -> list[dict]:
         if not skill_ids:
             return []
         details: list[dict] = []
@@ -270,7 +281,7 @@ class EmployeeService:
             if skill_id in seen:
                 continue
             seen.add(skill_id)
-            detail = SkillService.get_remote_skill(int(skill_id))
+            detail = SkillService.get_remote_skill(int(skill_id), token)
             if int(detail.get("status") or 0) != 1:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -313,7 +324,8 @@ class EmployeeService:
     @staticmethod
     def _save_skills_to_local_files(employee: Employee, skills: list[dict]) -> None:
         """将远程技能详情落盘到 local-employees/<员工目录>/skills/<skillName>/，与 metadata 内嵌技能结构一致。"""
-        label = (employee.name or "").strip() or str(employee.employee_code or employee.id)
+        label = (employee.name or "").strip() or str(
+            employee.employee_code or employee.id)
         employee_root = Path.cwd() / "local-employees" / label / "skills"
         for skill in skills:
             if not isinstance(skill, dict):
@@ -321,13 +333,15 @@ class EmployeeService:
             skill_name = skill.get("skillName")
             if not isinstance(skill_name, str) or not skill_name.strip():
                 continue
-            file_map = EmployeeService._skill_content_to_file_map(skill.get("skillContent"))
+            file_map = EmployeeService._skill_content_to_file_map(
+                skill.get("skillContent"))
             if not file_map:
                 continue
             skill_dir = employee_root / skill_name.strip()
             skill_dir.mkdir(parents=True, exist_ok=True)
             for relative_path, content in file_map.items():
-                target = EmployeeService._safe_skill_file_path(skill_dir, relative_path)
+                target = EmployeeService._safe_skill_file_path(
+                    skill_dir, relative_path)
                 if target is None:
                     continue
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -345,7 +359,8 @@ class EmployeeService:
 
     @staticmethod
     def _replace_employee_skills(db: Session, employee: Employee, skills: list[dict]) -> None:
-        db.execute(delete(EmployeeSkill).where(EmployeeSkill.employee_id == employee.id))
+        db.execute(delete(EmployeeSkill).where(
+            EmployeeSkill.employee_id == employee.id))
         for item in skills:
             db.add(
                 EmployeeSkill(
@@ -353,9 +368,12 @@ class EmployeeService:
                     employee_id=employee.id,
                     skill_id=int(item.get("id")),
                     skill_name=str(item.get("skillName") or ""),
+                    skill_name_zh=str(item.get("displayNameZh") or ""),
                     skill_description=item.get("description"),
-                    prompt=EmployeeService._skill_detail_prompt_to_text(item.get("prompt")),
-                    skill_content=EmployeeService._skill_detail_skill_content_to_text(item.get("skillContent")),
+                    prompt=EmployeeService._skill_detail_prompt_to_text(
+                        item.get("prompt")),
+                    skill_content=EmployeeService._skill_detail_skill_content_to_text(
+                        item.get("skillContent")),
                 )
             )
         employee.skills_json = json.dumps(skills, ensure_ascii=False)
@@ -366,7 +384,8 @@ class EmployeeService:
         employee: Employee,
         shift_schedule: ShiftScheduleCreateWithoutEmployee | None,
     ) -> None:
-        db.execute(delete(EmployeeShiftSchedule).where(EmployeeShiftSchedule.employee_id == employee.id))
+        db.execute(delete(EmployeeShiftSchedule).where(
+            EmployeeShiftSchedule.employee_id == employee.id))
         shift_payload: dict = {}
         if shift_schedule is not None:
             shift_payload = shift_schedule.model_dump(exclude_none=True)
@@ -379,7 +398,8 @@ class EmployeeService:
                     notes=shift_schedule.notes,
                 )
             )
-        employee.shift_schedule_json = json.dumps(shift_payload, ensure_ascii=False)
+        employee.shift_schedule_json = json.dumps(
+            shift_payload, ensure_ascii=False)
 
     @staticmethod
     def sync_workspace_employees(db: Session, workspace: Workspace) -> list[Employee]:
@@ -397,13 +417,15 @@ class EmployeeService:
             extract_dir = EmployeeService._resolve_local_employees_root()
             extract_dir.parent.mkdir(parents=True, exist_ok=True)
             extract_dir = EmployeeService._extract_zip(zip_path, extract_dir)
-            extract_dir = EmployeeService._flatten_wrapped_extract_dir(extract_dir)
+            extract_dir = EmployeeService._flatten_wrapped_extract_dir(
+                extract_dir)
             employee_dirs = EmployeeService._resolve_employee_dirs(extract_dir)
 
             synced: list[Employee] = []
             for employee_dir in employee_dirs:
                 employee_code = employee_dir.name
-                meta, skills_paths = EmployeeService._extract_employee_payload(employee_dir)
+                meta, skills_paths = EmployeeService._extract_employee_payload(
+                    employee_dir)
                 skills = EmployeeService._write_skills(skills_paths)
 
                 existing = db.scalar(
@@ -416,10 +438,12 @@ class EmployeeService:
                 if existing:
                     employee = existing
                 else:
-                    employee = Employee(workspace_id=workspace.id, employee_code=employee_code)
+                    employee = Employee(
+                        workspace_id=workspace.id, employee_code=employee_code)
                     db.add(employee)
 
-                employee.name = str(meta.get("name") or meta.get("employee_name") or employee_code)
+                employee.name = str(meta.get("name") or meta.get(
+                    "employee_name") or employee_code)
                 employee.description = (
                     meta.get("description")
                     or meta.get("skill_description")
@@ -432,7 +456,8 @@ class EmployeeService:
                 employee.version = str(meta.get("version") or "")
                 employee.skills_json = json.dumps(skills, ensure_ascii=False)
                 employee.meta_json = json.dumps(meta, ensure_ascii=False)
-                employee.shift_schedule_json = json.dumps(EmployeeService._extract_shift_schedule(meta), ensure_ascii=False)
+                employee.shift_schedule_json = json.dumps(
+                    EmployeeService._extract_shift_schedule(meta), ensure_ascii=False)
                 synced.append(employee)
 
             db.commit()
@@ -440,7 +465,8 @@ class EmployeeService:
                 db.refresh(employee)
             return synced
         except httpx.HTTPError as exc:
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"获取员工ZIP失败：{exc}") from exc
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail=f"获取员工ZIP失败：{exc}") from exc
         finally:
             if should_cleanup_zip and zip_path and zip_path.exists():
                 zip_path.unlink(missing_ok=True)
@@ -449,7 +475,8 @@ class EmployeeService:
     def list_employees(db: Session, workspace_id: int) -> list[Employee]:
         return list(
             db.scalars(
-                select(Employee).where(Employee.workspace_id == workspace_id).order_by(Employee.id.desc())
+                select(Employee).where(Employee.workspace_id ==
+                                       workspace_id).order_by(Employee.id.desc())
             ).all()
         )
 
@@ -457,7 +484,8 @@ class EmployeeService:
     def get_employee(db: Session, employee_id: int) -> Employee:
         employee = db.get(Employee, employee_id)
         if not employee:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到员工。")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="未找到员工。")
         return employee
 
     @staticmethod
@@ -465,6 +493,7 @@ class EmployeeService:
         db: Session,
         employee_id: int,
         payload: EmployeeUpdate,
+        token: str
     ) -> Employee:
         employee = EmployeeService.get_employee(db, employee_id)
         changed_tasks = False
@@ -476,12 +505,14 @@ class EmployeeService:
             employee.version = payload.version
 
         if "skill_ids" in payload.model_fields_set:
-            skills = EmployeeService._validate_and_fetch_skills(payload.skill_ids)
+            skills = EmployeeService._validate_and_fetch_skills(
+                payload.skill_ids, token)
             EmployeeService._replace_employee_skills(db, employee, skills)
             EmployeeService._save_skills_to_local_files(employee, skills)
 
         if "shift_schedule" in payload.model_fields_set:
-            EmployeeService._replace_shift_schedule(db, employee, payload.shift_schedule)
+            EmployeeService._replace_shift_schedule(
+                db, employee, payload.shift_schedule)
 
         if "tasks" in payload.model_fields_set:
             changed_tasks = True
@@ -493,6 +524,7 @@ class EmployeeService:
         if changed_tasks:
             TaskService.sync_workspace_tasks(db, employee.workspace_id)
             db.refresh(employee)
+            TaskSchedulerService.reload_jobs()
         return employee
 
     @staticmethod
@@ -500,9 +532,10 @@ class EmployeeService:
         employee = EmployeeService.get_employee(db, employee_id)
         db.delete(employee)
         db.commit()
+        TaskSchedulerService.reload_jobs()
 
     @staticmethod
-    def create_employee(db: Session, obj_in: EmployeeCreate) -> Employee:
+    def create_employee(db: Session, obj_in: EmployeeCreate, token: str) -> Employee:
         workspace_id = obj_in.workspace_id or get_settings().default_workspace_id
         WorkspaceService.get_workspace(db, workspace_id)
 
@@ -513,10 +546,12 @@ class EmployeeService:
             )
         )
         if existing:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="员工名称已存在")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="员工名称已存在")
 
-        skills = EmployeeService._validate_and_fetch_skills(obj_in.skill_ids)
-        
+        skills = EmployeeService._validate_and_fetch_skills(
+            obj_in.skill_ids, token)
+
         tasks = EmployeeService._normalize_tasks(obj_in.tasks)
         shift_schedule = obj_in.shift_schedule
         meta = {
@@ -544,7 +579,8 @@ class EmployeeService:
         EmployeeService._replace_employee_skills(db, employee, skills)
         EmployeeService._replace_shift_schedule(db, employee, shift_schedule)
         # 将skills的内容存到本地文件
-        skill_dir = EmployeeService._save_skills_to_local_files(employee, skills)
+        skill_dir = EmployeeService._save_skills_to_local_files(
+            employee, skills)
         # 将skill_dir的格式修改为 [{"skills_dir": "D:\\project\\boban\\llm\\actus-employee-client\\local-employees\\TMR运维人员\\skills"}]格式
         skills_dir = [{"skills_dir": str(skill_dir)}]
         employee.skills_json = json.dumps(skills_dir, ensure_ascii=False)
@@ -554,6 +590,5 @@ class EmployeeService:
         if tasks:
             TaskService.sync_workspace_tasks(db, workspace_id)
             db.refresh(employee)
+            TaskSchedulerService.reload_jobs()
         return employee
-
-
