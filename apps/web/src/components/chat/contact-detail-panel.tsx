@@ -1,7 +1,13 @@
 import { useState } from "react"
-import { IconMessage } from "@tabler/icons-react"
+import { IconMessage, IconUsers } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@workspace/ui/components/tabs"
 import { cn } from "@workspace/ui/lib/utils"
 import { useChatStore } from "@/stores/chat-store"
 import {
@@ -16,7 +22,7 @@ import { ScheduleCalendar } from "../schedule-monitor/sections/schedule-calendar
 import { TaskStatsCards } from "../schedule-monitor/sections/task-stats-cards"
 import { ExecutionDetail } from "../schedule-monitor/sections/execution-detail"
 import { AnomalyMonitor } from "../schedule-monitor/sections/anomaly-monitor"
-import { IconUsers } from "@tabler/icons-react"
+import { EmployeeEditForm } from "../employee/employee-edit-form"
 
 export function ContactDetailPanel({
   className,
@@ -57,16 +63,39 @@ export function ContactDetailPanel({
   }
 
   return (
-    <div className={cn("flex h-full flex-col bg-muted/30", className)} {...props}>
-      <ScrollArea className="flex-1 min-h-0">
+    <div
+      className={cn("flex h-full flex-col bg-muted/30", className)}
+      {...props}
+    >
+      <ScrollArea className="min-h-0 flex-1">
         <div className="mx-auto max-w-2xl space-y-6 p-6">
           <ContactProfileCard
             contact={selectedContact}
             onSendMessage={handleSendMessage}
           />
-          {selectedContact.type === "employee" && (
-            <ContactMonitorSection employeeId={selectedContact.employee?.id ?? ""} />
-          )}
+          {selectedContact.type === "employee" &&
+            selectedContact.employee?.id && (
+              <Tabs defaultValue="tasks" className="w-full">
+                <TabsList variant="line" className="w-full">
+                  <TabsTrigger value="tasks" className="flex-1">
+                    任务监控
+                  </TabsTrigger>
+                  <TabsTrigger value="edit" className="flex-1">
+                    编辑员工
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="edit">
+                  <EmployeeEditForm
+                    employeeId={selectedContact.employee?.id ?? ""}
+                  />
+                </TabsContent>
+                <TabsContent value="tasks">
+                  <ContactMonitorSection
+                    employeeId={selectedContact.employee?.id ?? ""}
+                  />
+                </TabsContent>
+              </Tabs>
+            )}
         </div>
       </ScrollArea>
     </div>
@@ -146,7 +175,11 @@ function ContactProfileCard({
                 )}
               />
               <span className="text-xs text-muted-foreground">
-                {status === "online" ? "在线" : status === "busy" ? "忙碌" : "离线"}
+                {status === "online"
+                  ? "在线"
+                  : status === "busy"
+                    ? "忙碌"
+                    : "离线"}
               </span>
             </div>
           )}
