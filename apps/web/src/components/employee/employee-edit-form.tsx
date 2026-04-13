@@ -14,8 +14,13 @@ import {
   fetchMcpList,
   fetchSkillList,
 } from "@/api/employee"
-import type { McpListItem, SkillListItem } from "@/api/types"
-import type { ShiftScheduleForm, TaskFormData } from "@/types/task"
+import type { McpListItem, MetadataSkill, SkillListItem } from "@/api/types"
+import type {
+  CronExpressionType,
+  ShiftScheduleForm,
+  TaskFormData,
+  TaskResourceType,
+} from "@/types/task"
 import { useEmployeeDetailQuery } from "@/hooks/use-chat-queries"
 import { useUpdateEmployeeMutation } from "@/hooks/use-chat-queries"
 
@@ -27,6 +32,60 @@ const EMPTY_SCHEDULE: ShiftScheduleForm = {
   end_date: "",
   status: 1,
   notes: "",
+}
+
+interface ApiSkillResponse {
+  id: number
+  skill_id: number
+  skill_name: string
+  skill_name_zh: string
+  skill_description: string
+}
+
+interface ApiTaskResponse {
+  task_name: string
+  dispatch_type?: string
+  skill_id: number
+  priority?: number
+  task_type: number
+  cron_expression: string
+  cron_expression_type: string
+  is_active: boolean
+  confirm_execution_result?: boolean
+  config?: Record<string, unknown>
+  user_prompt: string
+}
+
+function convertApiSkillsToMetadataSkills(
+  apiSkills: ApiSkillResponse[] | undefined
+): MetadataSkill[] {
+  if (!apiSkills) return []
+  return apiSkills.map((s) => ({
+    id: s.id,
+    skillName: s.skill_name,
+    description: s.skill_description,
+    prompt: "",
+    directoryId: null,
+    status: 1,
+    createTime: "",
+    updateTime: "",
+    directoryName: s.skill_name_zh,
+  }))
+}
+
+function convertApiTasksToTaskFormData(apiTasks: ApiTaskResponse[]): TaskFormData[] {
+  if (!apiTasks) return []
+  return apiTasks.map((t) => ({
+    task_name: t.task_name,
+    user_prompt: t.user_prompt,
+    task_resource_type: (t.dispatch_type as TaskResourceType) || "skill",
+    capability_id: 0,
+    skill_id: t.skill_id,
+    task_type: t.task_type ?? 2,
+    cron_expression: t.cron_expression,
+    cron_expression_type: (t.cron_expression_type as CronExpressionType) || "daily",
+    is_active: t.is_active ?? true,
+  }))
 }
 
 export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
@@ -41,6 +100,7 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
     React.useState<ShiftScheduleForm>(EMPTY_SCHEDULE)
   const [selectedMcpIds, setSelectedMcpIds] = React.useState<number[]>([])
   const [selectedSkillIds, setSelectedSkillIds] = React.useState<number[]>([])
+  const [employeeSkills, setEmployeeSkills] = React.useState<MetadataSkill[]>([])
   const [allMcpList, setAllMcpList] = React.useState<McpListItem[]>([])
   const [allSkillList, setAllSkillList] = React.useState<SkillListItem[]>([])
   const [pickerOpen, setPickerOpen] = React.useState(false)
@@ -51,21 +111,25 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
     fetchSkillList().then(setAllSkillList).catch(() => {})
   }, [])
 
-  React.useEffect(() => {
+React.useEffect(() => {
     if (employee && !initialized) {
       const meta = employee.metadata
       setName(meta?.employee_name ?? employee.name ?? "")
       setDescription(meta?.capability_desc ?? employee.description ?? "")
       setSelectedMcpIds([])
-      setSelectedSkillIds([])
-      const metaTasks = (employee.metadata as Record<string, unknown>)?.tasks as
-        | TaskFormData[]
+      const convertedSkills = convertApiSkillsToMetadataSkills(
+        meta?.skills as unknown as ApiSkillResponse[] | undefined
+      )
+      setEmployeeSkills(convertedSkills)
+      setSelectedSkillIds((meta?.skills ?? []).map((s) => s.skill_id))
+    const metaTasks = (employee.metadata as unknown as Record<string, unknown>)
+        ?.tasks as ApiTaskResponse[]
         | undefined
       if (metaTasks && metaTasks.length > 0) {
-        setTasks(metaTasks)
+        setTasks(convertApiTasksToTaskFormData(metaTasks))
         setShowScheduleAndTask(true)
       }
-      const sch = (employee as Record<string, unknown>).shift_schedule as
+      const sch = (employee as unknown as Record<string, unknown>).shift_schedule as
         | ShiftScheduleForm
         | undefined
       if (sch) {
@@ -246,6 +310,7 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
           checked={showScheduleAndTask}
           onCheckedChange={setShowScheduleAndTask}
         />
+       
       </div>
 
       {showScheduleAndTask && (
@@ -253,7 +318,7 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
           capabilities={employee?.metadata?.capabilities ?? []}
           capabilityIds={selectedMcpIds}
           skillIds={selectedSkillIds}
-          skills={employee?.metadata?.skills ?? []}
+          skills={selectedSkillItems}
           tasks={tasks}
           schedule={schedule}
           onTasksChange={setTasks}

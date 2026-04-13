@@ -62,6 +62,7 @@ export interface MetadataSkill {
   createTime: string
   updateTime: string
   directoryName: string | null
+  [x:string]: any
 }
 
 /**
@@ -83,9 +84,15 @@ export interface EmployeeMetadata {
  * 员工技能文件引用
  */
 export interface Skill {
-  source: string
-  stored_path: string
-  name: string
+  id: number
+  skillName: string
+  description: string
+  prompt: string
+  directoryId: number | null
+  status: number
+  createTime: string
+  updateTime: string
+  directoryName: string | null
 }
 
 /**

@@ -279,7 +279,7 @@ export function ChatPanel({
                       }
 
                       return (
-                        <Message key={message.id} from={message.role}>
+                        <Message key={message.id} from={message.role} className="max-w-4xl mx-auto">
                           {message.role === "assistant" && (
                             <div className="mb-2 flex items-center gap-2">
                               {contact.type === "group" ? (
@@ -403,7 +403,7 @@ export function ChatPanel({
                 <ConversationScrollButton />
               </Conversation>
 
-              <div className="border-none p-4">
+              <div className="border-none p-4 ">
                 <ChatPromptInput
                   value={inputValue}
                   onChange={onInputChange}
@@ -412,7 +412,7 @@ export function ChatPanel({
                   status={status}
                   disabled={isSubmitDisabled}
                   size="compact"
-                  className="w-full overflow-hidden shadow-xl"
+                  className="w-full overflow-hidden shadow-xl max-w-4xl mx-auto"
                   slashCommands={slashCommands}
                   mentionCandidates={mentionCandidates}
                 />

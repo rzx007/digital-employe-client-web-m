@@ -125,7 +125,7 @@ export function RecruitmentPage() {
   const navigate = useNavigate()
   const isElectron = !!(typeof window !== "undefined" && window.electronApi)
   const [prompt, setPrompt] = React.useState("")
-  const [count, setCount] = React.useState(5)
+  const [count, setCount] = React.useState(3)
   const [candidates, setCandidates] = React.useState<RecruitmentCandidate[]>([])
   const [isSearching, setIsSearching] = React.useState(false)
   const [hasSearched, setHasSearched] = React.useState(false)
@@ -224,7 +224,7 @@ export function RecruitmentPage() {
                     htmlFor="candidate-count"
                     className="text-xs text-muted-foreground"
                   >
-                    招聘人数:
+                    推荐人数:
                   </label>
                   <Input
                     id="candidate-count"

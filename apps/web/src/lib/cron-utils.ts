@@ -48,7 +48,7 @@ export function parseCronToExecuteTime(
 }
 
 export function executeTimeToCronExpression(
-  executeTime: string,
+  executeTime: string | undefined,
   cronExpressionType?: string
 ): string {
   if (!executeTime) return ""
