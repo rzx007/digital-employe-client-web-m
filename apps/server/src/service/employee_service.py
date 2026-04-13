@@ -71,6 +71,46 @@ class EmployeeService:
         }
 
     @staticmethod
+    def _employee_skills_snapshot(db: Session, employee: Employee) -> list[dict]:
+        """员工技能摘要：优先 employee_skills 表，否则回退 meta_json.skills。"""
+        rows = list(
+            db.scalars(
+                select(EmployeeSkill)
+                .where(EmployeeSkill.employee_id == employee.id)
+                .order_by(EmployeeSkill.id.asc())
+            ).all()
+        )
+        if rows:
+            return [
+                {
+                    "id": r.id,
+                    "skill_id": r.skill_id,
+                    "skill_name": r.skill_name,
+                    "skill_name_zh": r.skill_name_zh,
+                    "skill_description": r.skill_description,
+                }
+                for r in rows
+            ]
+        meta = EmployeeService._load_employee_meta(employee)
+        nested = meta.get("skills")
+        if isinstance(nested, list):
+            return [x for x in nested if isinstance(x, dict)]
+        return []
+
+    @staticmethod
+    def employee_detail_dict(db: Session, employee: Employee) -> dict:
+        """员工详情：在 metadata 中附加 skills_info（技能信息列表）。"""
+        data = EmployeeService._employee_to_dict(employee)
+        meta = data.get("metadata")
+        if isinstance(meta, dict):
+            meta = dict(meta)
+        else:
+            meta = {}
+        meta["skills"] = EmployeeService._employee_skills_snapshot(db, employee)
+        data["metadata"] = meta
+        return data
+
+    @staticmethod
     def _download_zip() -> Path:
         settings = get_settings()
         if not settings.employee_zip_url:
