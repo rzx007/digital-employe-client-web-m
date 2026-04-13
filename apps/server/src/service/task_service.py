@@ -317,8 +317,35 @@ class TaskService:
         # 给items加上员工姓名字段
         for item in items:
             item.employee_name = employee_name_map.get(item.employee_id, "")
-        
+
         return items, total
+
+    @staticmethod
+    def confirm_task_execution_log(
+        db: Session,
+        workspace_id: int,
+        execution_log_id: int,
+    ) -> TaskExecutionLog:
+        """将指定执行日志标记为已确认结果。"""
+        WorkspaceService.get_workspace(db, workspace_id)
+        log = db.get(TaskExecutionLog, execution_log_id)
+        if not log or log.workspace_id != workspace_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="未找到任务执行日志。",
+            )
+        log.result_confirmed = True
+        db.add(log)
+        db.commit()
+        db.refresh(log)
+        employees = list(
+            db.scalars(
+                select(Employee).where(Employee.workspace_id == workspace_id).order_by(Employee.id.asc())
+            ).all()
+        )
+        employee_name_map = {emp.id: emp.name for emp in employees}
+        log.employee_name = employee_name_map.get(log.employee_id, "")
+        return log
 
     @staticmethod
     def build_monthly_calendar(

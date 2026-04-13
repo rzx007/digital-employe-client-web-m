@@ -80,6 +80,7 @@ class TaskExecutionLogRead(BaseModel):
     ended_at: datetime | None
     duration_ms: int | None
     confirm_url: str | None = None
+    result_confirmed: bool = False
 
     @field_serializer("started_at", "ended_at")
     def serialize_datetime(self, value: datetime | None) -> str | None:

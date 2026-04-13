@@ -46,6 +46,11 @@ def init_db() -> None:
         "confirm_url",
         "confirm_url VARCHAR(2048)",
     )
+    ensure_column(
+        "task_execution_logs",
+        "result_confirmed",
+        "result_confirmed BOOLEAN NOT NULL DEFAULT 0",
+    )
 
     # 兼容历史员工技能关系表：补充新增字段
     ensure_column("employee_skills", "skill_name", "skill_name VARCHAR(255) NOT NULL DEFAULT ''")

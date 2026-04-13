@@ -35,6 +35,28 @@ def _loads_json(raw: str | None, default: Any) -> Any:
         return default
 
 
+def _task_execution_log_to_read(item) -> TaskExecutionLogRead:
+    return TaskExecutionLogRead(
+        id=item.id,
+        task_id=item.task_id,
+        workspace_id=item.workspace_id,
+        employee_id=item.employee_id,
+        employee_name=getattr(item, "employee_name", None),
+        skill_id=item.skill_id,
+        task_name=item.task_name_snapshot,
+        run_status=item.run_status,
+        run_result=item.run_result,
+        error_message=item.error_message,
+        input=_loads_json(item.input_json, {}),
+        output=_loads_json(item.output_json, {}),
+        started_at=item.started_at,
+        ended_at=item.ended_at,
+        duration_ms=item.duration_ms,
+        confirm_url=item.confirm_url,
+        result_confirmed=getattr(item, "result_confirmed", False),
+    )
+
+
 def _to_task_read(task) -> EmployeeTaskRead:
     return EmployeeTaskRead(
         id=task.id,
@@ -160,26 +182,23 @@ def list_task_executions(
         page=page,
         page_size=page_size,
     )
-    payload = [
-        TaskExecutionLogRead(
-            id=item.id,
-            task_id=item.task_id,
-            workspace_id=item.workspace_id,
-            employee_id=item.employee_id,
-            employee_name=item.employee_name,
-            skill_id=item.skill_id,
-            task_name=item.task_name_snapshot,
-            run_status=item.run_status,
-            run_result=item.run_result,
-            error_message=item.error_message,
-            input=_loads_json(item.input_json, {}),
-            output=_loads_json(item.output_json, {}),
-            started_at=item.started_at,
-            ended_at=item.ended_at,
-            duration_ms=item.duration_ms,
-            confirm_url=item.confirm_url,
-        )
-        for item in items
-    ]
+    payload = [_task_execution_log_to_read(item) for item in items]
     return PageResponse(data=payload, total=total, page=page, page_size=page_size)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/tasks/executions/{task_execution_log_id}/confirm",
+    response_model=ResponseBase[TaskExecutionLogRead],
+    summary="确认任务执行结果",
+)
+def confirm_task_execution_result(
+    workspace_id: int,
+    task_execution_log_id: int,
+    db: Session = Depends(get_db),
+) -> ResponseBase[TaskExecutionLogRead]:
+    """将指定执行日志标记为已确认（result_confirmed=true）。"""
+    log = TaskService.confirm_task_execution_log(
+        db, workspace_id=workspace_id, execution_log_id=task_execution_log_id
+    )
+    return ResponseBase(data=_task_execution_log_to_read(log))
 
