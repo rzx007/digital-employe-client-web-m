@@ -1,9 +1,13 @@
 README.md
 pyproject.toml
-local-employees/TMR运维人员/skills/tmr-axe-consistency/scripts/check_device.py
-local-employees/TMR运维人员/skills/tmr-axe-consistency/scripts/execute_task.py
-local-employees/TMR运维人员/skills/tmr-axe-consistency/scripts/recalc_power.py
-local-employees/新闻助手/skills/hot-news/scripts/hot_news.py
+local-employees/刘测试员工2/skills/power-recalc/scripts/calc.py
+local-employees/刘测试员工6/skills/data-querys/query_trade_data.py
+local-employees/刘测试员工/skills/power-recalc/scripts/calc.py
+local-employees/定时任务执行结果查看2/skills/hot-news/scripts/hot_news.py
+local-employees/定时任务执行结果查看3/skills/hot-news/scripts/hot_news.py
+local-employees/定时任务执行结果查看4/skills/hot-news/scripts/hot_news.py
+local-employees/定时任务执行结果查看/skills/agent-browser/scripts/weibo_hot_search.py
+local-employees/定时任务执行结果查看/skills/agent-browser/tmp/fetch_weibo_hot_search.py
 micro_agent.egg-info/PKG-INFO
 micro_agent.egg-info/SOURCES.txt
 micro_agent.egg-info/dependency_links.txt
@@ -14,6 +18,7 @@ src/api/__init__.py
 src/api/chat_api.py
 src/api/employee_api.py
 src/api/group_api.py
+src/api/login_api.py
 src/api/model_api.py
 src/api/skill_api.py
 src/api/skill_rating_api.py
@@ -42,6 +47,7 @@ src/schemas/__init__.py
 src/schemas/chat_group.py
 src/schemas/conversation.py
 src/schemas/employee.py
+src/schemas/login.py
 src/schemas/skill.py
 src/schemas/skill_rating.py
 src/schemas/task.py
@@ -58,6 +64,7 @@ src/service/get_baidu_hot.py
 src/service/group_service.py
 src/service/modal_service.py
 src/service/show_baidu_hot.py
+src/service/skill_confirm_url.py
 src/service/skill_invocation_inference.py
 src/service/skill_rating_service.py
 src/service/skill_service.py
