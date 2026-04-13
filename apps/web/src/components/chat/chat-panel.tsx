@@ -149,7 +149,7 @@ export function ChatPanel({
       icon: <IconSparkles className="h-4 w-4" />,
       description: skill.description,
       keywords: [
-        skill.skillName.toLowerCase(),
+        skill.skillName?skill.skillName.toLowerCase():'',
         ...(skill.description ? skill.description.toLowerCase().split(/\s+/).slice(0, 3) : []),
       ],
     }))

@@ -101,10 +101,8 @@ function parseExecutionMessage(msg: string): string {
 }
 
 function getResultText(execution: TaskExecution): string {
-  if (execution.output?.response?.messages?.length) {
-    return execution.output.response.messages
-      .map(parseExecutionMessage)
-      .join("\n\n")
+  if (execution.output?.content) {
+    return parseExecutionMessage(execution.output.content)
   }
   return execution.run_result ?? ""
 }
