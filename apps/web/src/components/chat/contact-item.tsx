@@ -2,8 +2,7 @@ import * as React from "react"
 import { toast } from "sonner"
 import { useShallow } from "zustand/react/shallow"
 
-import { IconDots, IconInfoCircle, IconTrash } from "@tabler/icons-react"
-import { Button } from "@workspace/ui/components/button"
+import { IconInfoCircle, IconTrash } from "@tabler/icons-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,12 +14,12 @@ import {
   AlertDialogTitle,
 } from "@workspace/ui/components/alert-dialog"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@workspace/ui/components/dropdown-menu"
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@workspace/ui/components/context-menu"
 import { cn } from "@workspace/ui/lib/utils"
 import type { Contact } from "@/lib/mock-data/ai-employees"
 import { useChatStore } from "@/stores/chat-store"
@@ -59,7 +58,6 @@ export function ContactItem({
         : contact.group?.id
   const isSelected = selectedContactId === contactId
 
-  const [menuOpen, setMenuOpen] = React.useState(false)
   const [alertOpen, setAlertOpen] = React.useState(false)
   const [detailOpen, setDetailOpen] = React.useState(false)
 
@@ -75,12 +73,10 @@ export function ContactItem({
   }
 
   const handleDetail = () => {
-    setMenuOpen(false)
     setDetailOpen(true)
   }
 
   const handleDeleteClick = () => {
-    setMenuOpen(false)
     setAlertOpen(true)
   }
 
@@ -206,26 +202,49 @@ export function ContactItem({
     return null
   }
 
+  const renderContextMenu = () => {
+    if (contact.type === "curator") return null
+
+    return (
+      <ContextMenuContent className="w-36">
+        <ContextMenuItem onSelect={handleDetail}>
+          <IconInfoCircle className="text-muted-foreground" />
+          <span>详情</span>
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem variant="destructive" onSelect={handleDeleteClick}>
+          <IconTrash />
+          <span>删除</span>
+        </ContextMenuItem>
+      </ContextMenuContent>
+    )
+  }
+
   if (isCollapsed) {
     return (
       <>
-        <div
-          className={cn(
-            "relative cursor-pointer transition-transform hover:scale-105",
-            isSelected &&
-              "rounded-md ring-1 ring-primary ring-offset-1 ring-offset-primary",
-            className
-          )}
-          {...props}
-          onClick={handleClick}
-          onDoubleClick={(e) => {
-            e.stopPropagation()
-            onDoubleClick?.()
-          }}
-          title={displayName}
-        >
-          {renderAvatar()}
-        </div>
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <div
+              className={cn(
+                "cursor-pointer transition-transform hover:scale-105",
+                isSelected &&
+                  "rounded-md ring-1 ring-primary ring-offset-1 ring-offset-primary",
+                className
+              )}
+              {...props}
+              onClick={handleClick}
+              onDoubleClick={(e) => {
+                e.stopPropagation()
+                onDoubleClick?.()
+              }}
+              title={displayName}
+            >
+              {renderAvatar()}
+            </div>
+          </ContextMenuTrigger>
+          {renderContextMenu()}
+        </ContextMenu>
         {renderAlertDialog()}
         {renderDetailDialog()}
       </>
@@ -234,54 +253,27 @@ export function ContactItem({
 
   return (
     <>
-      <div
-        className={cn(
-          "group relative flex cursor-pointer items-center gap-2 rounded-md p-2 text-xs transition-colors hover:bg-primary/10 hover:text-foreground",
-          isSelected && "bg-primary/15 text-primary",
-          className
-        )}
-        {...props}
-        onClick={handleClick}
-        onDoubleClick={(e) => {
-          e.stopPropagation()
-          onDoubleClick?.()
-        }}
-      >
-        <div className="relative shrink-0">{renderAvatar()}</div>
-        {renderText()}
-        {contact.type !== "curator" && (
-          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="absolute right-1 h-6 w-6 rounded-sm opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <IconDots className="size-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-36"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <DropdownMenuItem onSelect={handleDetail}>
-                <IconInfoCircle className="text-muted-foreground" />
-                <span>详情</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onSelect={handleDeleteClick}
-              >
-                <IconTrash />
-                <span>删除</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div
+            className={cn(
+              "group relative flex cursor-pointer items-center gap-2 rounded-md p-2 text-xs transition-colors hover:bg-primary/10 hover:text-foreground",
+              isSelected && "bg-primary/15 text-primary",
+              className
+            )}
+            {...props}
+            onClick={handleClick}
+            onDoubleClick={(e) => {
+              e.stopPropagation()
+              onDoubleClick?.()
+            }}
+          >
+            <div className="relative shrink-0">{renderAvatar()}</div>
+            {renderText()}
+          </div>
+        </ContextMenuTrigger>
+        {renderContextMenu()}
+      </ContextMenu>
       {renderAlertDialog()}
       {renderDetailDialog()}
     </>

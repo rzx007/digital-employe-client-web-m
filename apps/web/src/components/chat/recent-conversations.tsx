@@ -2,13 +2,23 @@ import * as React from "react"
 import { useNavigate } from "@tanstack/react-router"
 import {
   IconCirclePlus,
+  IconInfoCircle,
+  IconPin,
+  IconPinnedOff,
   IconSearch,
+  IconTrash,
   IconUsers,
   IconUserPlus,
-  IconPin,
 } from "@tabler/icons-react"
 import { useShallow } from "zustand/react/shallow"
 import { Button } from "@workspace/ui/components/button"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@workspace/ui/components/context-menu"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,14 +29,17 @@ import { Input } from "@workspace/ui/components/input"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
 import { useConversationsQuery } from "@/hooks/use-chat-queries"
-import { useChatStore } from "@/stores/chat-store"
 import {
   findContactInList,
   PRIMARY_CURATOR,
   type AIEmployee,
+  type Contact,
 } from "@/lib/mock-data/ai-employees"
+import { useChatStore } from "@/stores/chat-store"
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
 import { CreateGroupDialog } from "./create-group-dialog"
+import { GroupDetailDialog } from "./group-detail-dialog"
+import { EmployeeDetailDialog } from "../employee/employee-detail-dialog"
 import { formatDistanceToNow } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import type { Conversation } from "@/lib/mock-data/conversations"
@@ -45,6 +58,7 @@ interface RecentConversationItem {
   isGroup?: boolean
   isDraft?: boolean
   isCurator?: boolean
+  isPinned?: boolean
   participants?: { name: string; avatar?: string }[]
 }
 
@@ -91,6 +105,7 @@ function upsertRecentConversation(
   isGroup = false,
   participants?: { name: string; avatar?: string }[]
 ): RecentConversationItem[] {
+  const existingItem = existing.find((c) => c.contactId === conv.contactId)
   const item: RecentConversationItem = {
     id: conv.id,
     contactId: conv.contactId,
@@ -104,6 +119,7 @@ function upsertRecentConversation(
     status: contact?.status,
     isGroup,
     isCurator: conv.contactId === PRIMARY_CURATOR.id,
+    isPinned: existingItem?.isPinned,
     participants,
   }
   const filtered = existing.filter((c) => c.contactId !== conv.contactId)
@@ -144,9 +160,9 @@ function ensureContactInList(
     isCurator,
     participants: isGroup
       ? contact.group?.participants.map((p) => ({
-          name: p.name,
-          avatar: p.avatar,
-        }))
+        name: p.name,
+        avatar: p.avatar,
+      }))
       : undefined,
   }
   return [newItem, ...existing].slice(0, MAX_RECENT)
@@ -215,6 +231,8 @@ export function RecentConversations({
 
   const [searchQuery, setSearchQuery] = React.useState("")
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  const [detailContact, setDetailContact] = React.useState<Contact | null>(null)
+  const [detailOpen, setDetailOpen] = React.useState(false)
 
   const { selectedContactId, isDraftConversation, switchToContact } =
     useChatStore(
@@ -255,9 +273,9 @@ export function RecentConversations({
     const isGroup = selectedContact.type === "group"
     const participants = isGroup
       ? selectedContact.group?.participants.map((p) => ({
-          name: p.name,
-          avatar: p.avatar,
-        }))
+        name: p.name,
+        avatar: p.avatar,
+      }))
       : undefined
 
     setRecentItems((prev) => {
@@ -316,6 +334,34 @@ export function RecentConversations({
     switchToContact(contactId)
   }
 
+  const handleDetail = (item: RecentConversationItem) => {
+    const contact = findContactInList(contacts, item.contactId)
+    if (contact) {
+      setDetailContact(contact)
+      setDetailOpen(true)
+    }
+  }
+
+  const handleTogglePin = (item: RecentConversationItem) => {
+    setRecentItems((prev) => {
+      const updated = prev.map((i) =>
+        i.contactId === item.contactId
+          ? { ...i, isPinned: !i.isPinned }
+          : i
+      )
+      saveRecentConversations(updated)
+      return updated
+    })
+  }
+
+  const handleRemove = (item: RecentConversationItem) => {
+    setRecentItems((prev) => {
+      const updated = prev.filter((i) => i.contactId !== item.contactId)
+      saveRecentConversations(updated)
+      return updated
+    })
+  }
+
   const getTimeAgo = (date?: Date) => {
     if (!date) return ""
     return formatDistanceToNow(date, { addSuffix: true, locale: zhCN })
@@ -334,11 +380,82 @@ export function RecentConversations({
     return [...items].sort((a, b) => {
       if (a.isCurator && !b.isCurator) return -1
       if (!a.isCurator && b.isCurator) return 1
+      if (a.isPinned && !b.isPinned) return -1
+      if (!a.isPinned && b.isPinned) return 1
       const ta = a.updatedAt?.getTime() ?? 0
       const tb = b.updatedAt?.getTime() ?? 0
       return tb - ta
     })
   }, [recentItems, searchQuery])
+
+  const renderDetailDialog = () => {
+    if (!detailContact) return null
+    if (detailContact.type === "employee") {
+      return (
+        <EmployeeDetailDialog
+          contact={detailContact}
+          open={detailOpen}
+          onOpenChange={setDetailOpen}
+        />
+      )
+    }
+    if (detailContact.type === "group") {
+      return (
+        <GroupDetailDialog
+          contact={detailContact}
+          open={detailOpen}
+          onOpenChange={setDetailOpen}
+        />
+      )
+    }
+    return null
+  }
+
+  const renderPinIcon = (item: RecentConversationItem) => {
+    if (!item.isPinned) return null
+    return (
+      <IconPin
+        className={cn(
+          "size-3.5 shrink-0",
+          selectedContactId === item.contactId
+            ? "text-primary-foreground/70"
+            : "text-muted-foreground"
+        )}
+      />
+    )
+  }
+
+  const renderContextMenuItem = (item: RecentConversationItem) => {
+    if (item.isCurator) return null
+
+    return (
+      <ContextMenuContent className="w-36">
+        <ContextMenuItem onSelect={() => handleDetail(item)}>
+          <IconInfoCircle className="text-muted-foreground" />
+          <span>详情</span>
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => handleTogglePin(item)}>
+          {item.isPinned ? (
+            <>
+              <IconPinnedOff />
+              <span>取消置顶</span>
+            </>
+          ) : (
+            <>
+              <IconPin />
+              <span>置顶</span>
+            </>
+          )}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem variant="destructive" onSelect={() => handleRemove(item)}>
+          <IconTrash />
+          <span>移除</span>
+        </ContextMenuItem>
+      </ContextMenuContent>
+    )
+  }
 
   return (
     <>
@@ -348,6 +465,7 @@ export function RecentConversations({
         employees={employeeList}
         onCreate={handleCreateGroup}
       />
+      {renderDetailDialog()}
       <div
         className={cn(
           "flex h-full w-full flex-col border-r bg-muted/50 transition-all duration-300",
@@ -399,90 +517,96 @@ export function RecentConversations({
         <ScrollArea className="flex-1">
           <div className="py-2">
             {displayItems.map((item) => (
-              <>
-                <div
-                  key={item.contactId}
-                  className={cn(
-                    "group flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-xs transition-colors",
-                    (item.isDraft &&
-                      isDraftConversation &&
-                      selectedContactId === item.contactId) ||
-                      (!item.isDraft && selectedContactId === item.contactId)
-                      ? "bg-primary/90 text-primary-foreground"
-                      : "hover:bg-accent/50 hover:text-accent-foreground"
-                  )}
-                  onClick={() => handleSelectItem(item.contactId)}
-                >
-                  {item.isGroup ? (
-                    <GroupMembersAvatar
-                      participants={item.participants?.map((p) => ({
-                        id: p.name,
-                        name: p.name,
-                        role: "",
-                        status: "online" as const,
-                        specialty: "",
-                        avatar: p.avatar,
-                      }))}
-                      className="size-9"
-                    />
-                  ) : (
-                    <EmployeeContactAvatar
-                      name={item.contactName}
-                      avatar={item.avatar}
-                      status={item.status as "online" | "busy" | "offline"}
-                      showStatus
-                    />
-                  )}
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1">
-                        {item.isCurator && (
-                          <IconPin
+              <React.Fragment key={item.contactId}>
+                <ContextMenu>
+                  <ContextMenuTrigger asChild>
+                    <div
+                      className={cn(
+                        "group flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-xs transition-colors",
+                        (item.isDraft &&
+                          isDraftConversation &&
+                          selectedContactId === item.contactId) ||
+                          (!item.isDraft &&
+                            selectedContactId === item.contactId)
+                          ? "bg-primary/90 text-primary-foreground"
+                          : "hover:bg-accent/50 hover:text-accent-foreground"
+                      )}
+                      onClick={() => handleSelectItem(item.contactId)}
+                    >
+                      {item.isGroup ? (
+                        <GroupMembersAvatar
+                          participants={item.participants?.map((p) => ({
+                            id: p.name,
+                            name: p.name,
+                            role: "",
+                            status: "online" as const,
+                            specialty: "",
+                            avatar: p.avatar,
+                          }))}
+                          className="size-9"
+                        />
+                      ) : (
+                        <EmployeeContactAvatar
+                          name={item.contactName}
+                          avatar={item.avatar}
+                          status={item.status as "online" | "busy" | "offline"}
+                          showStatus
+                        />
+                      )}
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1">
+                            {item.isCurator && (
+                              <IconPin
+                                className={cn(
+                                  "size-3.5",
+                                  selectedContactId === item.contactId
+                                    ? "text-primary-foreground/70"
+                                    : "text-muted-foreground"
+                                )}
+                              />
+                            )}
+                            {!item.isCurator && renderPinIcon(item)}
+                            <span className="w-26 truncate text-sm font-medium">
+                              {item.contactName}
+                            </span>
+                          </div>
+                          <span
                             className={cn(
-                              "size-3.5",
+                              "shrink-0 text-[10px]",
                               selectedContactId === item.contactId
                                 ? "text-primary-foreground/70"
                                 : "text-muted-foreground"
                             )}
-                          />
-                        )}
-                        <span className="w-26 truncate text-sm font-medium">
-                          {item.contactName}
-                        </span>
-                      </div>
-                      <span
-                        className={cn(
-                          "shrink-0 text-[10px]",
-                          selectedContactId === item.contactId
-                            ? "text-primary-foreground/70"
-                            : "text-muted-foreground"
-                        )}
-                      >
-                        {getTimeAgo(item.updatedAt)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span
-                        className={cn(
-                          "max-w-[160px] truncate",
-                          selectedContactId === item.contactId
-                            ? "text-primary-foreground/70"
-                            : "text-muted-foreground"
-                        )}
-                      >
-                        {item.title || "新对话"}
-                      </span>
-                      {item.unreadCount > 0 &&
-                        selectedContactId !== item.contactId && (
-                          <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
-                            {item.unreadCount}
+                          >
+                            {getTimeAgo(item.updatedAt)}
                           </span>
-                        )}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span
+                            className={cn(
+                              "max-w-[160px] truncate",
+                              selectedContactId === item.contactId
+                                ? "text-primary-foreground/70"
+                                : "text-muted-foreground"
+                            )}
+                          >
+                            {item.title || "新对话"}
+                          </span>
+                          {item.unreadCount > 0 &&
+                            selectedContactId !== item.contactId && (
+                              <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+                                {item.unreadCount}
+                              </span>
+                            )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  </ContextMenuTrigger>
+                  {renderContextMenuItem(item)}
+                </ContextMenu>
                 <div className="mx-3 border-b"></div>
-              </>
+              </React.Fragment>
             ))}
             {displayItems.length === 0 && (
               <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
