@@ -40,10 +40,16 @@ def init_db() -> None:
         "confirm_execution_result",
         "confirm_execution_result BOOLEAN NOT NULL DEFAULT 0",
     )
+    ensure_column("employee_tasks", "user_prompt", "user_prompt TEXT")
     ensure_column(
         "task_execution_logs",
         "confirm_url",
         "confirm_url VARCHAR(2048)",
+    )
+    ensure_column(
+        "task_execution_logs",
+        "result_confirmed",
+        "result_confirmed BOOLEAN NOT NULL DEFAULT 0",
     )
 
     # 兼容历史员工技能关系表：补充新增字段
