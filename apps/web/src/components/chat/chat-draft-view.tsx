@@ -133,6 +133,7 @@ export function DraftChatView({
       }
     },
     [
+      command,
       createConversationMutation,
       selectedContactId,
       selectedContact,
