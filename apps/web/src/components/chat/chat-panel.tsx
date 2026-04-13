@@ -150,7 +150,7 @@ export function ChatPanel({
       description: skill.description,
       keywords: [
         skill.skillName.toLowerCase(),
-        ...skill.description.toLowerCase().split(/\s+/).slice(0, 3),
+        ...(skill.description ? skill.description.toLowerCase().split(/\s+/).slice(0, 3) : []),
       ],
     }))
     // return [

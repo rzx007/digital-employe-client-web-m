@@ -1,13 +1,6 @@
 README.md
 pyproject.toml
-local-employees/刘测试员工2/skills/power-recalc/scripts/calc.py
-local-employees/刘测试员工6/skills/data-querys/query_trade_data.py
-local-employees/刘测试员工/skills/power-recalc/scripts/calc.py
-local-employees/定时任务执行结果查看2/skills/hot-news/scripts/hot_news.py
-local-employees/定时任务执行结果查看3/skills/hot-news/scripts/hot_news.py
-local-employees/定时任务执行结果查看4/skills/hot-news/scripts/hot_news.py
-local-employees/定时任务执行结果查看/skills/agent-browser/scripts/weibo_hot_search.py
-local-employees/定时任务执行结果查看/skills/agent-browser/tmp/fetch_weibo_hot_search.py
+local-employees/热榜助手/skills/hot-news/scripts/hot_news.py
 micro_agent.egg-info/PKG-INFO
 micro_agent.egg-info/SOURCES.txt
 micro_agent.egg-info/dependency_links.txt
