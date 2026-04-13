@@ -30,47 +30,47 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ loading: true, error: null })
 
     try {
-      // const res = await loginApi(username, password)
-      const res = {
-        "code": 1,
-        "result": [
-          {
-            "id": 1,
-            "name": "系统管理员",
-            "username": "bbadmin",
-            "menuid": "1",
-            "orgType": null,
-            "orgNo": null,
-            "email": "ca@greg.co",
-            "phoneNumber": "13720349091",
-            "expirationTime": null,
-            "status": "1",
-            "loginTime": "2026-04-07 06:32:11",
-            "changePwdTime": "2026-04-07 06:21:05",
-            "inTime": null,
-            "inIp": null,
-            "consInfo": {},
-            "dpts": [
-              {
-                "id": 10,
-                "name": "爱可生",
-                "parentId": null,
-                "description": null,
-                "createTime": null,
-                "updateTime": null,
-                "status": "1"
-              }
-            ]
-          }
-        ],
-        "noMenus": false,
-        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0aWQiOjEsIm1lbnVpZCI6IjEiLCJ1c2VybmFtZSI6ImJiYWRtaW4iLCJvcmdObyI6bnVsbCwib3JnVHlwZSI6bnVsbCwiZHB0SWRzIjoiMTAiLCJsb2dpbklwIjoiMTAuMTcyLjI0Ni4xNDQiLCJjaGFuZ2VQd2RUaW1lIjoiMjAyNi0wNC0wNyAwNjoyMTowNSIsImV4cFRpbWUiOjE3OTYyODE1NDk1NTksImlhdCI6MTc3NTU0NTU0OSwiZXhwIjoxNzc2NDA5NTQ5fQ.ViBSPVwb7tRfFRWQ1uj-BtfY_t_EwNIgNWsooWvaVTQ",
-        "msg": ""
-      }
+      const res = await loginApi(username, password)
+      // const res = {
+      //   "code": 1,
+      //   "result": [
+      //     {
+      //       "id": 1,
+      //       "name": "系统管理员",
+      //       "username": "bbadmin",
+      //       "menuid": "1",
+      //       "orgType": null,
+      //       "orgNo": null,
+      //       "email": "ca@greg.co",
+      //       "phoneNumber": "13720349091",
+      //       "expirationTime": null,
+      //       "status": "1",
+      //       "loginTime": "2026-04-07 06:32:11",
+      //       "changePwdTime": "2026-04-07 06:21:05",
+      //       "inTime": null,
+      //       "inIp": null,
+      //       "consInfo": {},
+      //       "dpts": [
+      //         {
+      //           "id": 10,
+      //           "name": "爱可生",
+      //           "parentId": null,
+      //           "description": null,
+      //           "createTime": null,
+      //           "updateTime": null,
+      //           "status": "1"
+      //         }
+      //       ]
+      //     }
+      //   ],
+      //   "noMenus": false,
+      //   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0aWQiOjEsIm1lbnVpZCI6IjEiLCJ1c2VybmFtZSI6ImJiYWRtaW4iLCJvcmdObyI6bnVsbCwib3JnVHlwZSI6bnVsbCwiZHB0SWRzIjoiMTAiLCJsb2dpbklwIjoiMTAuMTcyLjI0Ni4xNDQiLCJjaGFuZ2VQd2RUaW1lIjoiMjAyNi0wNC0wNyAwNjoyMTowNSIsImV4cFRpbWUiOjE3OTYyODE1NDk1NTksImlhdCI6MTc3NTU0NTU0OSwiZXhwIjoxNzc2NDA5NTQ5fQ.ViBSPVwb7tRfFRWQ1uj-BtfY_t_EwNIgNWsooWvaVTQ",
+      //   "msg": ""
+      // }
 
-      if (res.code === 1 && res.token && res.result?.length > 0) {
-        const token = res.token
-        const user = res.result[0]
+      if (res.code === 200 && res.data.token && res.data.result?.length > 0) {
+        const token = res.data.token
+        const user = res.data.result[0]
 
         // 写入 localStorage（request.ts 的 getAuthToken() 从这里读取）
         localStorage.setItem("token", token)

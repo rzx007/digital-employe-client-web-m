@@ -185,9 +185,8 @@ export function RecruitmentPage() {
 
     try {
       const result = await fetchRecruitCandidates({
-        title: "数字员工",
         prompt: prompt.trim(),
-        count: 6,
+        count: 1,
       })
       setCandidates(result)
     } catch {

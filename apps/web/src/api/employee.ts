@@ -14,14 +14,14 @@ const WORKSPACE_ID = 1
 
 export async function fetchMcpList(): Promise<McpListItem[]> {
   const res = await request<{ code?: number; data?: McpListItem[] }>(
-    "/digital/api/v1/capabilities"
+    "/capabilities/list"
   )
   return Array.isArray(res?.data) ? res.data : []
 }
 
 export async function fetchSkillList(): Promise<SkillListItem[]> {
   const res = await request<{ code?: number; data?: SkillListItem[] }>(
-    "/digital/api/v1/skills"
+    "/skills/list"
   )
   return Array.isArray(res?.data) ? res.data : []
 }
@@ -65,7 +65,6 @@ export async function deleteEmployee(employeeId: number | string) {
 }
 
 export interface RecruitRequest {
-  title: string
   prompt: string
   count: number
 }
@@ -116,7 +115,6 @@ export interface CreateEmployeeParams {
   detail_page_url?: string | null
   capability_ids?: number[]
   skill_ids?: number[]
-  skills?: MetadataSkill[]
   shift_schedule?: ShiftScheduleForm | null
   tasks?: TaskFormData[]
 }
@@ -129,14 +127,11 @@ export interface CreateEmployeeParams {
 export async function createEmployee(
   params: CreateEmployeeParams
 ): Promise<ApiResponse<unknown>> {
-  const { shift_schedule, tasks, skills, ...basic } = params
+  const { shift_schedule, tasks, ...basic } = params
+
 
   const body: Record<string, unknown> = { ...basic }
-
-  if (skills && skills.length > 0) {
-    body.skills = skills
-  }
-
+  body.workspace_id = 1
   if (shift_schedule) {
     body.shift_schedule = shift_schedule
   }

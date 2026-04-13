@@ -72,8 +72,8 @@ export function HireSheet({
       setSelectedMcpIds(candidate.capability_ids ?? [])
       setSelectedSkillIds(candidate.skill_ids ?? [])
 
-      fetchMcpList().then(setAllMcpList).catch(() => {})
-      fetchSkillList().then(setAllSkillList).catch(() => {})
+      fetchMcpList().then(setAllMcpList).catch(() => { })
+      fetchSkillList().then(setAllSkillList).catch(() => { })
     }
   }, [open, candidate])
 
@@ -113,7 +113,6 @@ export function HireSheet({
         status: 1,
         capability_ids: selectedMcpIds,
         skill_ids: selectedSkillIds,
-        skills: candidate.skills ?? [],
         shift_schedule: showScheduleAndTask ? schedule : null,
         tasks: showScheduleAndTask ? tasks : [],
       })

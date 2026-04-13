@@ -48,13 +48,13 @@ export function CapabilityPickerDialog({
   const [draftMcpIds, setDraftMcpIds] = React.useState<number[]>(selectedMcpIds)
   const [draftSkillIds, setDraftSkillIds] =
     React.useState<number[]>(selectedSkillIds)
-  const [tab, setTab] = React.useState<"mcp" | "skill">("mcp")
+  const [tab, setTab] = React.useState<"mcp" | "skill">("skill")
 
   React.useEffect(() => {
     if (open) {
       setDraftMcpIds(selectedMcpIds)
       setDraftSkillIds(selectedSkillIds)
-      setTab("mcp")
+      setTab("skill")
     }
   }, [open, selectedMcpIds, selectedSkillIds])
 
@@ -87,14 +87,14 @@ export function CapabilityPickerDialog({
           onValueChange={(v) => setTab(v as "mcp" | "skill")}
           className="flex flex-1 flex-col overflow-hidden"
         >
-          <TabsList className="mx-5 grid h-9 grid-cols-2 rounded-none rounded-t-lg border-b">
+          {/* <TabsList className="mx-5 grid h-9 grid-cols-2 rounded-none rounded-t-lg border-b">
             <TabsTrigger value="mcp" className="rounded-none">
               MCP 工具
             </TabsTrigger>
             <TabsTrigger value="skill" className="rounded-none">
               技能
             </TabsTrigger>
-          </TabsList>
+          </TabsList> */}
           <TabsContent value="mcp" className="mt-0 min-h-0 flex-1 overflow-hidden">
             <Command className="border-none">
               <CommandInput placeholder="搜索 MCP 工具..." />

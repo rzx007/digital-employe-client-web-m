@@ -212,8 +212,10 @@ export interface LoginUser {
  */
 export interface LoginResponse {
   code: number
-  result: LoginUser[]
-  noMenus: boolean
-  token: string
-  msg: string
+  data: {
+    result: LoginUser[]
+    noMenus: boolean
+    token: string
+    msg: string
+  }
 }
