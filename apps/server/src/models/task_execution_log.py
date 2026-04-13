@@ -26,5 +26,6 @@ class TaskExecutionLog(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    confirm_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now, index=True)
 

@@ -35,6 +35,16 @@ def init_db() -> None:
     # 兼容历史任务表：补充新增字段
     ensure_column("employee_tasks", "next_run_at", "next_run_at DATETIME")
     ensure_column("employee_tasks", "last_run_at", "last_run_at DATETIME")
+    ensure_column(
+        "employee_tasks",
+        "confirm_execution_result",
+        "confirm_execution_result BOOLEAN NOT NULL DEFAULT 0",
+    )
+    ensure_column(
+        "task_execution_logs",
+        "confirm_url",
+        "confirm_url VARCHAR(2048)",
+    )
 
     # 兼容历史员工技能关系表：补充新增字段
     ensure_column("employee_skills", "skill_name", "skill_name VARCHAR(255) NOT NULL DEFAULT ''")

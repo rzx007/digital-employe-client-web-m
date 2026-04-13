@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from fastapi import HTTPException, status
 
-from core.config import get_settings
+from src.core.config import get_settings
 from src.models.employee import Employee
 from src.models.employee_skill import EmployeeSkill
 from src.models.skill_rating import SkillRating
