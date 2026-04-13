@@ -24,7 +24,7 @@ function mapEmployeeToAIEmployee(emp: Employee): AIEmployee {
     avatar: createDiceBearAvatar(String(emp.id)),
     status: mapStatus(emp.metadata?.status ?? 0),
     specialty: emp.metadata?.capability_desc ?? "",
-    skills: emp?.skills ?? [],
+    skills: emp.metadata?.skills ?? [],
   }
 }
 

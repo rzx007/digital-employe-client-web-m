@@ -86,6 +86,7 @@ export function ContactDetailPanel({
                 </TabsList>
                 <TabsContent value="edit">
                   <EmployeeEditForm
+                    key={selectedContact.employee?.id}
                     employeeId={selectedContact.employee?.id ?? ""}
                   />
                 </TabsContent>

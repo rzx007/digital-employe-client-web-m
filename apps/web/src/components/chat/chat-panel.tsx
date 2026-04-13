@@ -142,15 +142,18 @@ export function ChatPanel({
   const slashCommands = React.useMemo<SlashCommandItem[]>(() => {
     const skills =
       contact?.type === "employee" ? contact.employee?.skills : undefined
+    console.log("skills", skills)
     if (!skills?.length) return []
     return skills.map((skill) => ({
       id: String(skill.id),
-      title: skill.skillName,
+      title: skill.skillName || skill.skill_name,
       icon: <IconSparkles className="h-4 w-4" />,
-      description: skill.description,
+      description: skill.description || skill.skill_description || "",
       keywords: [
-        skill.skillName?skill.skillName.toLowerCase():'',
-        ...(skill.description ? skill.description.toLowerCase().split(/\s+/).slice(0, 3) : []),
+        skill.skill_name ? skill.skill_name.toLowerCase() : "",
+        ...(skill.skill_description
+          ? skill.skill_description.toLowerCase().split(/\s+/).slice(0, 3)
+          : []),
       ],
     }))
     // return [
@@ -216,7 +219,11 @@ export function ChatPanel({
                   {isDraftMode ? (
                     <ConversationEmptyState className="py-16">
                       <div className="flex flex-col items-center gap-6">
-                        <img src={logo} alt="Logo" className="size-12 opacity-80" />
+                        <img
+                          src={logo}
+                          alt="Logo"
+                          className="size-12 opacity-80"
+                        />
                         <div className="space-y-3 text-center">
                           <h2 className="text-md font-semibold tracking-tight">
                             数字员工智能助手
@@ -226,16 +233,19 @@ export function ChatPanel({
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center justify-center gap-3">
-                          {["智能问答", "数据分析", "文档生成", "流程自动化"].map(
-                            (label) => (
-                              <span
-                                key={label}
-                                className="rounded-full border border-border/60 bg-muted/50 px-3 py-1 text-xs text-muted-foreground"
-                              >
-                                {label}
-                              </span>
-                            )
-                          )}
+                          {[
+                            "智能问答",
+                            "数据分析",
+                            "文档生成",
+                            "流程自动化",
+                          ].map((label) => (
+                            <span
+                              key={label}
+                              className="rounded-full border border-border/60 bg-muted/50 px-3 py-1 text-xs text-muted-foreground"
+                            >
+                              {label}
+                            </span>
+                          ))}
                         </div>
                       </div>
                     </ConversationEmptyState>
@@ -257,16 +267,20 @@ export function ChatPanel({
                     </ConversationEmptyState>
                   ) : (
                     displayMessages.map((message) => {
-                      const liveArtifact = getLatestArtifactFromUIMessage(message)
+                      const liveArtifact =
+                        getLatestArtifactFromUIMessage(message)
                       const renderBlocks = getRenderBlocksFromUIMessage(message)
                       const storedMessage = storedMessages.find(
                         (item) => item.id === message.id
                       )
                       const timestamp = storedMessage?.timestamp
-                      const metadata = isMessageMetadata(storedMessage?.metadata)
+                      const metadata = isMessageMetadata(
+                        storedMessage?.metadata
+                      )
                         ? storedMessage.metadata
                         : null
-                      const artifact = liveArtifact ?? metadata?.artifact ?? null
+                      const artifact =
+                        liveArtifact ?? metadata?.artifact ?? null
 
                       const handleOpenArtifact = () => {
                         if (!artifact) {
@@ -279,7 +293,11 @@ export function ChatPanel({
                       }
 
                       return (
-                        <Message key={message.id} from={message.role} className="max-w-4xl mx-auto">
+                        <Message
+                          key={message.id}
+                          from={message.role}
+                          className="mx-auto max-w-4xl"
+                        >
                           {message.role === "assistant" && (
                             <div className="mb-2 flex items-center gap-2">
                               {contact.type === "group" ? (
@@ -334,14 +352,18 @@ export function ChatPanel({
                                         defaultOpen={false}
                                       >
                                         <ToolHeader
-                                          state={part.state as ToolUIPart["state"]}
+                                          state={
+                                            part.state as ToolUIPart["state"]
+                                          }
                                           type={part.type as ToolUIPart["type"]}
                                         />
                                         <ToolContent>
                                           <ToolInput input={part.input} />
                                           <ToolOutput
                                             errorText={part.errorText}
-                                            output={renderToolOutput(part.output)}
+                                            output={renderToolOutput(
+                                              part.output
+                                            )}
                                           />
                                         </ToolContent>
                                       </Tool>
@@ -387,7 +409,10 @@ export function ChatPanel({
                   )}
 
                   {showStreamingIndicator && (
-                    <Message from="assistant" className="-mt-4 max-w-4xl mx-auto">
+                    <Message
+                      from="assistant"
+                      className="mx-auto -mt-4 max-w-4xl"
+                    >
                       <MessageContent className="rounded-lg border border-border/60 bg-muted/40 px-3 py-2.5">
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Spinner
@@ -403,7 +428,7 @@ export function ChatPanel({
                 <ConversationScrollButton />
               </Conversation>
 
-              <div className="border-none p-4 ">
+              <div className="border-none p-4">
                 <ChatPromptInput
                   value={inputValue}
                   onChange={onInputChange}
@@ -412,19 +437,20 @@ export function ChatPanel({
                   status={status}
                   disabled={isSubmitDisabled}
                   size="compact"
-                  className="w-full overflow-hidden shadow-xl max-w-4xl mx-auto"
+                  className="mx-auto w-full max-w-4xl overflow-hidden shadow-xl"
                   slashCommands={slashCommands}
                   mentionCandidates={mentionCandidates}
                 />
                 {error && (
-                  <p className="mt-2 text-xs text-destructive">{error.message}</p>
+                  <p className="mt-2 text-xs text-destructive">
+                    {error.message}
+                  </p>
                 )}
               </div>
             </>
           )}
         </>
-      )
-      }
-    </div >
+      )}
+    </div>
   )
 }
