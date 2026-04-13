@@ -387,7 +387,7 @@ export function ChatPanel({
                   )}
 
                   {showStreamingIndicator && (
-                    <Message from="assistant" className="-mt-4">
+                    <Message from="assistant" className="-mt-4 max-w-4xl mx-auto">
                       <MessageContent className="rounded-lg border border-border/60 bg-muted/40 px-3 py-2.5">
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Spinner

@@ -66,6 +66,7 @@ export function DraftChatView({
   })
 
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
+    console.log("handleTextChange", event)
     setCommand(event.command)
     setInputValue(event.value)
   }, [])
