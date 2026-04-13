@@ -63,6 +63,21 @@ class EmployeeSkillTaskScheduleRead(BaseModel):
     # schedules: list[EmployeeTaskScheduleRead]
 
 
+class TaskExecutionSkillRatingRead(BaseModel):
+    """执行日志关联的技能评分摘要。"""
+
+    id: int
+    skill_id: int
+    skill_name: str
+    score: int
+    comment: str | None = None
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+
+
 class TaskExecutionLogRead(BaseModel):
     id: int
     task_id: int
@@ -81,6 +96,7 @@ class TaskExecutionLogRead(BaseModel):
     duration_ms: int | None
     confirm_url: str | None = None
     result_confirmed: bool = False
+    skill_rating: TaskExecutionSkillRatingRead | None = None
 
     @field_serializer("started_at", "ended_at")
     def serialize_datetime(self, value: datetime | None) -> str | None:

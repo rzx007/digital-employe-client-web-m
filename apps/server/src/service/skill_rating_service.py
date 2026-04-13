@@ -61,11 +61,23 @@ class SkillRatingService:
                 detail=f"技能 skill_id={skill_id} 未绑定到该员工。",
             )
 
+        existing_rating_id = db.scalar(
+            select(SkillRating.id).where(
+                SkillRating.task_execution_log_id == payload.task_execution_log_id
+            ).limit(1)
+        )
+        if existing_rating_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="该任务执行日志已存在评分记录。",
+            )
+
         row = SkillRating(
             workspace_id=employee.workspace_id,
             employee_id=employee.id,
             conversation_id=None,
             message_id=None,
+            task_execution_log_id=payload.task_execution_log_id,
             skill_id=skill_id,
             skill_name=skill_name,
             score=payload.score,

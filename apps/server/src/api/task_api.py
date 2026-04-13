@@ -16,6 +16,7 @@ from src.schemas.task import (
     MonthlyCalendarRead,
     EmployeeTaskScheduleRead,
     TaskExecutionLogRead,
+    TaskExecutionSkillRatingRead,
     TaskSyncResult,
 )
 from src.service.employee_service import EmployeeService
@@ -36,6 +37,17 @@ def _loads_json(raw: str | None, default: Any) -> Any:
 
 
 def _task_execution_log_to_read(item) -> TaskExecutionLogRead:
+    summ = getattr(item, "skill_rating_summary", None)
+    skill_rating = None
+    if summ is not None:
+        skill_rating = TaskExecutionSkillRatingRead(
+            id=summ.id,
+            skill_id=summ.skill_id,
+            skill_name=summ.skill_name,
+            score=summ.score,
+            comment=summ.comment,
+            created_at=summ.created_at,
+        )
     return TaskExecutionLogRead(
         id=item.id,
         task_id=item.task_id,
@@ -54,6 +66,7 @@ def _task_execution_log_to_read(item) -> TaskExecutionLogRead:
         duration_ms=item.duration_ms,
         confirm_url=item.confirm_url,
         result_confirmed=getattr(item, "result_confirmed", False),
+        skill_rating=skill_rating,
     )
 
 

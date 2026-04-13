@@ -22,6 +22,7 @@ class SkillRatingRead(BaseModel):
     employee_id: int
     conversation_id: int | None
     message_id: int | None
+    task_execution_log_id: int | None = None
     skill_id: int
     skill_name: str
     score: int

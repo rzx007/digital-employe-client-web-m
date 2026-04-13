@@ -23,6 +23,11 @@ class SkillRating(Base):
     message_id: Mapped[int | None] = mapped_column(
         ForeignKey("conversation_messages.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    task_execution_log_id: Mapped[int | None] = mapped_column(
+        ForeignKey("task_execution_logs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     skill_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     skill_name: Mapped[str] = mapped_column(String(255), nullable=False)
     score: Mapped[int] = mapped_column(Integer, nullable=False, index=True)

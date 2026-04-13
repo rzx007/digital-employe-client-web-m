@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from src.models.employee import Employee
 from src.models.employee_task import EmployeeTask
+from src.models.skill_rating import SkillRating
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import CST, cst_now
 from src.service.workspace_service import WorkspaceService
@@ -272,6 +273,27 @@ class TaskService:
         return result
 
     @staticmethod
+    def _attach_skill_ratings_for_logs(db: Session, items: list[TaskExecutionLog]) -> None:
+        """为执行日志列表挂载 skill_rating_summary（同页内按 log id 关联最新一条评分）。"""
+        if not items:
+            return
+        log_ids = [i.id for i in items]
+        ratings = list(
+            db.scalars(
+                select(SkillRating)
+                .where(SkillRating.task_execution_log_id.in_(log_ids))
+                .order_by(SkillRating.id.desc())
+            ).all()
+        )
+        by_log: dict[int, SkillRating] = {}
+        for r in ratings:
+            lid = r.task_execution_log_id
+            if lid is not None and lid not in by_log:
+                by_log[lid] = r
+        for item in items:
+            setattr(item, "skill_rating_summary", by_log.get(item.id))
+
+    @staticmethod
     def list_execution_logs(
         db: Session,
         workspace_id: int,
@@ -318,6 +340,8 @@ class TaskService:
         for item in items:
             item.employee_name = employee_name_map.get(item.employee_id, "")
 
+        TaskService._attach_skill_ratings_for_logs(db, items)
+
         return items, total
 
     @staticmethod
@@ -345,6 +369,7 @@ class TaskService:
         )
         employee_name_map = {emp.id: emp.name for emp in employees}
         log.employee_name = employee_name_map.get(log.employee_id, "")
+        TaskService._attach_skill_ratings_for_logs(db, [log])
         return log
 
     @staticmethod
