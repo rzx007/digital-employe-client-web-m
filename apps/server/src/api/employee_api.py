@@ -36,7 +36,9 @@ def list_workspace_employees(workspace_id: int, db: Session = Depends(get_db)) -
     """查询指定工作空间下的员工列表。"""
     WorkspaceService.get_workspace(db, workspace_id)
     employees = EmployeeService.list_employees(db, workspace_id)
-    return ListResponse(data=[EmployeeService._employee_to_dict(emp) for emp in employees])
+    return ListResponse(
+        data=[EmployeeService.employee_detail_dict(db, emp) for emp in employees],
+    )
 
 
 @router.get("/employees/{employee_id}", response_model=ResponseBase[EmployeeRead])
