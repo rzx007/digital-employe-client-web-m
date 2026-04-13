@@ -229,7 +229,7 @@ export function ContactItem({
               className={cn(
                 "cursor-pointer transition-transform hover:scale-105",
                 isSelected &&
-                  "rounded-md ring-1 ring-primary ring-offset-1 ring-offset-primary",
+                "rounded-md ring-1 ring-primary ring-offset-1 ring-offset-primary",
                 className
               )}
               {...props}

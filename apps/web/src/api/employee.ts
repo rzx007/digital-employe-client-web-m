@@ -41,9 +41,10 @@ export async function syncEmployees() {
  * GET /workspaces/{workspace_id}/employees
  */
 export async function fetchEmployees() {
-  return request<ApiResponse<Employee[]>>(
+  const res = request<ApiResponse<Employee[]>>(
     `/workspaces/${WORKSPACE_ID}/employees`
   )
+  return res
 }
 
 /**

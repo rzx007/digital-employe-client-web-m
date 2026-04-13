@@ -1,6 +1,6 @@
 import * as React from "react"
 
-import { IconCheck, IconChevronDown } from "@tabler/icons-react"
+import { IconCheck, IconChevronDown, IconTool } from "@tabler/icons-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -262,10 +262,12 @@ export function TaskEditDialog({
                 >
                   {selectedSkill ? (
                     <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <div className="size-9 shrink-0 rounded-lg border border-border/50 bg-muted" />
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-muted">
+                        <IconTool className="size-4 text-muted-foreground" />
+                      </div>
                       <div className="min-w-0 flex-1 text-left">
                         <div className="truncate text-sm font-medium">
-                          {selectedSkill.name}
+                          {selectedSkill.skillName}
                         </div>
                         <div className="truncate text-xs text-muted-foreground">
                           {selectedSkill.description}
@@ -290,7 +292,7 @@ export function TaskEditDialog({
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[400px] p-0" align="start">
-                <Tabs
+                {/* <Tabs
                   value={pickerTab}
                   onValueChange={(v) => setPickerTab(v as "mcp" | "skill")}
                 >
@@ -366,7 +368,7 @@ export function TaskEditDialog({
                           {filteredSkills.map((skill) => (
                             <CommandItem
                               key={String(skill.id)}
-                              value={`${skill.id}-${skill.name}-${skill.description}`}
+                              value={`${skill.id}-${skill.skillName}-${skill.description}`}
                               onSelect={() => {
                                 const numId = Number(skill.id)
                                 const nextId =
@@ -384,7 +386,7 @@ export function TaskEditDialog({
                                 <div className="size-9 shrink-0 rounded-lg border border-border/50 bg-muted" />
                                 <div className="min-w-0 flex-1">
                                   <div className="truncate text-sm font-medium">
-                                    {skill.name}
+                                    {skill.skillName}
                                   </div>
                                   <div className="truncate text-xs text-muted-foreground">
                                     {skill.description}
@@ -406,7 +408,56 @@ export function TaskEditDialog({
                       </CommandList>
                     </Command>
                   </TabsContent>
-                </Tabs>
+                </Tabs> */}
+                <Command>
+                  <CommandInput placeholder="搜索技能..." />
+                  <CommandList>
+                    <CommandEmpty>没有找到匹配的技能</CommandEmpty>
+                    <CommandGroup>
+                      {filteredSkills.map((skill) => (
+                        <CommandItem
+                          key={String(skill.id)}
+                          value={`${skill.id}-${skill.skillName}-${skill.description}`}
+                          onSelect={() => {
+                            const numId = Number(skill.id)
+                            const nextId =
+                              formData.skill_id === numId ? 0 : numId
+                            setFormData((prev) => ({
+                              ...prev,
+                              capability_id: 0,
+                              skill_id: nextId,
+                              task_resource_type: nextId ? "skill" : "mcp",
+                            }))
+                            setCapabilityOpen(false)
+                          }}
+                        >
+                          <div className="flex w-full items-center gap-3 py-1">
+                            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-muted">
+                              <IconTool className="size-4 text-muted-foreground" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-medium">
+                                {skill.skillName}
+                              </div>
+                              <div className="truncate text-xs text-muted-foreground">
+                                {skill.description}
+                              </div>
+                            </div>
+                            <IconCheck
+                              className={cn(
+                                "size-4 shrink-0",
+                                formData.task_resource_type === "skill" &&
+                                  formData.skill_id === Number(skill.id)
+                                  ? "opacity-100"
+                                  : "opacity-0"
+                              )}
+                            />
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
               </PopoverContent>
             </Popover>
           </div>

@@ -20,7 +20,7 @@ function mapEmployeeToAIEmployee(emp: Employee): AIEmployee {
   return {
     id: String(emp.id),
     name: emp.name,
-    role: emp.metadata?.capability_desc ?? emp.employee_code,
+    role: emp.description || '',
     avatar: createDiceBearAvatar(String(emp.id)),
     status: mapStatus(emp.metadata?.status ?? 0),
     specialty: emp.metadata?.capability_desc ?? "",

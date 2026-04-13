@@ -10,11 +10,7 @@ const defaultHeaders: HeadersInit = {
 
 const isElectron = !!(typeof window !== "undefined" && window.electronApi)
 
-const baseURL = isElectron
-  ? "http://localhost:58000"
-  : import.meta.env.DEV
-    ? "/actus"
-    : "http://localhost:58000"
+const baseURL = "/actus"
 
 const headers = { ...defaultHeaders }
 

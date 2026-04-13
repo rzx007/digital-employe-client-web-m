@@ -4,7 +4,8 @@ import { useNavigate } from "@tanstack/react-router"
 import { IconArrowLeft, IconSparkles } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
-import { ScrollArea } from "@workspace/ui/components/scroll-area"
+// import { ScrollArea } from "@workspace/ui/components/scroll-area"
+import { Input } from "@workspace/ui/components/input"
 import { Separator } from "@workspace/ui/components/separator"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { Spinner } from "@workspace/ui/components/spinner"
@@ -16,9 +17,10 @@ import {
 
 import { CandidateCard } from "./candidate-card"
 import { HireSheet } from "./hire-sheet"
+import { useQueryClient } from "@tanstack/react-query"
+import { chatKeys } from "@/lib/query-keys/chat"
 
 const HOT_JOBS = [
-  "客服助手",
   "数据分析师",
   "运维工程师",
   "测试工程师",
@@ -29,56 +31,6 @@ const HOT_JOBS = [
 ]
 
 const DEMO_CANDIDATES: RecruitmentCandidate[] = [
-  {
-    id: 9991,
-    workspace_id: null,
-    employee_name: "智能客服助手",
-    capability_desc:
-      "熟练掌握多轮对话、意图识别、知识库问答，能够高效处理客户咨询，提供7×24小时不间断服务。",
-    status: 1,
-    detail_page_url: null,
-    created_at: "",
-    updated_at: "",
-    user_id: null,
-    capability_ids: [1, 2, 3],
-    skill_ids: [1],
-    capabilities: [
-      {
-        capability_name: "客服对话",
-        capability_desc: "多轮对话管理",
-        mcp_server_name: "customer-service",
-        mcp_tool_name: "chat",
-      },
-      {
-        capability_name: "意图识别",
-        capability_desc: "用户意图分析",
-        mcp_server_name: "nlp",
-        mcp_tool_name: "intent",
-      },
-      {
-        capability_name: "知识库管理",
-        capability_desc: "知识库查询与更新",
-        mcp_server_name: "knowledge",
-        mcp_tool_name: "query",
-      },
-    ],
-    skills: [
-      {
-        id: 1,
-        skillName: "FAQ自动回复",
-        description: "常见问题自动回答",
-        prompt: "",
-        directoryId: null,
-        status: 1,
-        createTime: "",
-        updateTime: "",
-        directoryName: null,
-      },
-    ],
-    shift_schedule: null,
-    tasks: [],
-    match_score: 95,
-  },
   {
     id: 9992,
     workspace_id: null,
@@ -173,6 +125,7 @@ export function RecruitmentPage() {
   const navigate = useNavigate()
   const isElectron = !!(typeof window !== "undefined" && window.electronApi)
   const [prompt, setPrompt] = React.useState("")
+  const [count, setCount] = React.useState(5)
   const [candidates, setCandidates] = React.useState<RecruitmentCandidate[]>([])
   const [isSearching, setIsSearching] = React.useState(false)
   const [hasSearched, setHasSearched] = React.useState(false)
@@ -186,7 +139,7 @@ export function RecruitmentPage() {
     try {
       const result = await fetchRecruitCandidates({
         prompt: prompt.trim(),
-        count: 1,
+        count: Math.max(1, count),
       })
       setCandidates(result)
     } catch {
@@ -204,14 +157,17 @@ export function RecruitmentPage() {
     setSelectedCandidate(null)
   }
 
+  const queryClient = useQueryClient()
+
   const handleHireSuccess = () => {
     setSelectedCandidate(null)
     setPrompt("")
     setCandidates([])
     setHasSearched(false)
+    queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
   }
 
-  const displayCandidates = hasSearched ? candidates : DEMO_CANDIDATES
+  // const displayCandidates = hasSearched ? candidates : DEMO_CANDIDATES
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -259,10 +215,29 @@ export function RecruitmentPage() {
             </div>
 
             <div className="space-y-3 rounded-lg border p-4">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium text-foreground">
                   📝 描述您的招聘需求
                 </span>
+                <div className="flex items-center gap-2">
+                  <label
+                    htmlFor="candidate-count"
+                    className="text-xs text-muted-foreground"
+                  >
+                    招聘人数:
+                  </label>
+                  <Input
+                    id="candidate-count"
+                    type="number"
+                    min={1}
+                    value={count}
+                    onChange={(e) =>
+                      setCount(Math.max(1, parseInt(e.target.value) || 1))
+                    }
+                    className="h-7 w-16 text-center"
+                    disabled={isSearching}
+                  />
+                </div>
               </div>
               <Textarea
                 className="min-h-20 resize-none"
@@ -275,7 +250,7 @@ export function RecruitmentPage() {
                 size="sm"
                 className="w-full gap-1.5"
                 onClick={handleSearch}
-                disabled={isSearching}
+                disabled={isSearching || !prompt}
               >
                 {isSearching ? (
                   <>
@@ -300,7 +275,7 @@ export function RecruitmentPage() {
                 💡 {hasSearched ? "为您推荐" : "为您智能推荐"}
               </span>
               <span className="text-xs text-muted-foreground">
-                ({displayCandidates.length})
+                ({candidates.length})
               </span>
             </div>
 
@@ -325,7 +300,7 @@ export function RecruitmentPage() {
 
             {!isSearching && (
               <div className="space-y-3">
-                {displayCandidates.map((candidate) => (
+                {candidates.map((candidate) => (
                   <CandidateCard
                     key={candidate.id}
                     candidate={candidate}
