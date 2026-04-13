@@ -140,6 +140,71 @@ class TaskSchedulerService:
             return json.dumps({"raw": str(payload)}, ensure_ascii=False)
 
     @staticmethod
+    def _stringify_lc_message_content(content: Any) -> str:
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for block in content:
+                if isinstance(block, str):
+                    parts.append(block)
+                elif isinstance(block, dict):
+                    if block.get("type") == "text" and "text" in block:
+                        parts.append(str(block.get("text", "")))
+                    elif "text" in block:
+                        parts.append(str(block["text"]))
+            return "".join(parts)
+        return str(content)
+
+    @staticmethod
+    def _extract_final_agent_text(invoke_result: Any) -> str:
+        """从 agent.invoke 的返回状态中提取最后一条 AI 可见文本（用于定时任务 output_json）。"""
+        if invoke_result is None:
+            return ""
+        if isinstance(invoke_result, str):
+            return invoke_result.strip()
+
+        messages = None
+        if isinstance(invoke_result, dict):
+            messages = invoke_result.get("messages")
+        if messages is None:
+            messages = getattr(invoke_result, "messages", None)
+        if not isinstance(messages, (list, tuple)) or not messages:
+            return ""
+
+        try:
+            from langchain_core.messages import AIMessage as _AIMessage
+        except ImportError:
+            _AIMessage = None
+
+        for msg in reversed(messages):
+            if _AIMessage is not None and isinstance(msg, _AIMessage):
+                return TaskSchedulerService._stringify_lc_message_content(
+                    msg.content
+                ).strip()
+            if type(msg).__name__ == "AIMessage":
+                return TaskSchedulerService._stringify_lc_message_content(
+                    getattr(msg, "content", "")
+                ).strip()
+            if isinstance(msg, dict):
+                t = msg.get("type")
+                if t in ("ai", "assistant"):
+                    return TaskSchedulerService._stringify_lc_message_content(
+                        msg.get("content")
+                    ).strip()
+
+        last = messages[-1]
+        if isinstance(last, dict):
+            return TaskSchedulerService._stringify_lc_message_content(
+                last.get("content")
+            ).strip()
+        return TaskSchedulerService._stringify_lc_message_content(
+            getattr(last, "content", "")
+        ).strip()
+
+    @staticmethod
     def _resolve_skill_name(employee: Employee, skill_id: int | None) -> str:
         if skill_id is None:
             return ""
@@ -320,7 +385,8 @@ class TaskSchedulerService:
                 output = cls._execute_task_call(db, task)
                 run_log.run_status = "success"
                 run_log.run_result = "任务执行成功"
-                run_log.output_json = cls._to_json_string(output)
+                final_text = cls._extract_final_agent_text(output.get("response"))
+                run_log.output_json = cls._to_json_string({"content": final_text})
                 run_log.error_message = None
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.exception("定时任务执行失败 task_id=%s", task_id)
