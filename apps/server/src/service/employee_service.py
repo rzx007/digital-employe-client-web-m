@@ -374,10 +374,10 @@ class EmployeeService:
 
     @staticmethod
     def _save_skills_to_local_files(employee: Employee, skills: list[dict]) -> None:
-        """将远程技能详情落盘到 local-employees/<员工目录>/skills/<skillName>/，与 metadata 内嵌技能结构一致。"""
-        label = (employee.name or "").strip() or str(
-            employee.employee_code or employee.id)
-        employee_root = Path.cwd() / "local-employees" / label / "skills"
+        """将远程技能详情落盘到 local-employees/<员工ID>/skills/<skillName>/。"""
+        employee_root = (
+            EmployeeService._resolve_local_employees_root() / str(employee.id) / "skills"
+        )
         for skill in skills:
             if not isinstance(skill, dict):
                 continue
@@ -632,7 +632,7 @@ class EmployeeService:
         # 将skills的内容存到本地文件
         skill_dir = EmployeeService._save_skills_to_local_files(
             employee, skills)
-        # 将skill_dir的格式修改为 [{"skills_dir": "D:\\project\\boban\\llm\\actus-employee-client\\local-employees\\TMR运维人员\\skills"}]格式
+        # skills_json：{"skills_dir": ".../local-employees/<员工ID>/skills"}
         skills_dir = [{"skills_dir": str(skill_dir)}]
         employee.skills_json = json.dumps(skills_dir, ensure_ascii=False)
         db.commit()

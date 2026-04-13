@@ -89,6 +89,7 @@ async def chat_send(
     try:
         skills_path = ChatService.resolve_employee_skills_dir(
             skills_payload=skills_path_payload,
+            employee_id=employee.id,
             employee_name=employee.name,
             employee_code=employee.employee_code,
         )

@@ -83,11 +83,14 @@ class ChatService:
     @staticmethod
     def resolve_employee_skills_dir(
         skills_payload: str | list | dict | None,
-        employee_name: str | None,
-        employee_code: str | None,
+        employee_id: int | None = None,
+        employee_name: str | None = None,
+        employee_code: str | None = None,
     ) -> str:
         local_root = Path.cwd() / "local-employees"
-        local_candidates = []
+        local_candidates: list[Path] = []
+        if employee_id is not None:
+            local_candidates.append(local_root / str(employee_id) / "skills")
         if employee_name:
             local_candidates.append(local_root / employee_name / "skills")
         if employee_code and employee_code != employee_name:
@@ -97,7 +100,8 @@ class ChatService:
             if candidate.is_dir():
                 EmployeeService.materialize_embedded_skills(candidate.parent)
                 logger.warning(
-                    "Resolved employee skills from local-employees: employee_name=%s employee_code=%s candidate=%s",
+                    "Resolved employee skills from local-employees: employee_id=%s employee_name=%s employee_code=%s candidate=%s",
+                    employee_id,
                     employee_name,
                     employee_code,
                     candidate,
@@ -106,7 +110,8 @@ class ChatService:
 
         resolved = ChatService._resolve_skills_dir(skills_payload)
         logger.warning(
-            "Resolved employee skills from payload: employee_name=%s employee_code=%s payload=%s resolved=%s",
+            "Resolved employee skills from payload: employee_id=%s employee_name=%s employee_code=%s payload=%s resolved=%s",
+            employee_id,
             employee_name,
             employee_code,
             skills_payload,
@@ -301,6 +306,7 @@ class ChatService:
         try:
             skills_path = ChatService.resolve_employee_skills_dir(
                 skills_payload=skills_path_payload,
+                employee_id=employee.id if target_type == "employee" else None,
                 employee_name=employee.name if target_type == "employee" else None,
                 employee_code=employee.employee_code if target_type == "employee" else None,
             )
