@@ -50,6 +50,7 @@ def _to_task_read(task) -> EmployeeTaskRead:
         cron_expression_type=task.cron_expression_type,
         is_active=task.is_active,
         confirm_execution_result=task.confirm_execution_result,
+        user_prompt=task.user_prompt,
         task_input=_loads_json(task.task_input_json, {}),
         next_run_at=task.next_run_at,
         last_run_at=task.last_run_at,

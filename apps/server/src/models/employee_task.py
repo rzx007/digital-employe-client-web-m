@@ -27,6 +27,8 @@ class EmployeeTask(Base):
     confirm_execution_result: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, index=True
     )
+    # 用户定时任务提示词（与 meta.tasks[].user_prompt 同步）
+    user_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     task_input_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)

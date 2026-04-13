@@ -182,7 +182,17 @@ class TaskService:
                     task_input = task_input.get("input", {})
                 if not isinstance(task_input, dict):
                     task_input = {}
+                up = raw_task.get("user_prompt")
+                if up is not None and str(up).strip():
+                    task_input["prompt"] = str(up).strip()
+                    task_input.setdefault("user_prompt", str(up).strip())
                 task.task_input_json = json.dumps(task_input, ensure_ascii=False)
+                stored_prompt = (
+                    str(up).strip()
+                    if up is not None and str(up).strip()
+                    else str(task_input.get("prompt") or "").strip()
+                )
+                task.user_prompt = stored_prompt or None
                 task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=now) if task.is_active else None
                 task.updated_at = now
                 upserted.append(task)

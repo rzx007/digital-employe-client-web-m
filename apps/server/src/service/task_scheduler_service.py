@@ -257,7 +257,13 @@ class TaskSchedulerService:
             raise ValueError("任务关联员工或工作空间不存在。")
 
         input_payload = TaskSchedulerService._loads_json(task.task_input_json, {})
-        prompt = str(input_payload.get("prompt") or f"执行任务：{task.task_name}")
+        table_prompt = str(getattr(task, "user_prompt", "") or "").strip()
+        prompt = (
+            table_prompt
+            or str(input_payload.get("prompt") or "").strip()
+            or str(input_payload.get("user_prompt") or "").strip()
+            or f"执行任务：{task.task_name}"
+        )
         scene = str(input_payload.get("scene") or "")
         skill_name = cls._resolve_skill_name(employee, task.skill_id)
         question = prompt

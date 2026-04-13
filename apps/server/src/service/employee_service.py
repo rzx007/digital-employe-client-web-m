@@ -294,6 +294,14 @@ class EmployeeService:
             config = task.get("config")
             if not isinstance(config, dict):
                 config = {}
+            if isinstance(config.get("input"), dict):
+                input_payload = dict(config["input"])
+            else:
+                input_payload = dict(config)
+            user_prompt = task.get("user_prompt")
+            if user_prompt is not None and str(user_prompt).strip():
+                input_payload["prompt"] = str(user_prompt).strip()
+                input_payload.setdefault("user_prompt", str(user_prompt).strip())
             normalized.append(
                 {
                     "task_name": task_name,
@@ -307,8 +315,8 @@ class EmployeeService:
                     "confirm_execution_result": TaskService._to_bool(
                         task.get("confirm_execution_result"), default=False
                     ),
-                    "config": {"input": config},
-                    "user_prompt": task.get("user_prompt"),
+                    "config": {"input": input_payload},
+                    "user_prompt": user_prompt,
                 }
             )
         return normalized
