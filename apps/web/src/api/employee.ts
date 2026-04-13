@@ -1,9 +1,30 @@
 import { request } from "@/lib/request"
-import type { ApiResponse, Capability, Employee, MetadataSkill } from "./types"
+import type {
+  ApiResponse,
+  Capability,
+  Employee,
+  McpListItem,
+  MetadataSkill,
+  SkillListItem,
+} from "./types"
 import type { TaskFormData, ShiftScheduleForm } from "@/types/task"
 
 /** 当前固定工作空间 ID */
 const WORKSPACE_ID = 1
+
+export async function fetchMcpList(): Promise<McpListItem[]> {
+  const res = await request<{ code?: number; data?: McpListItem[] }>(
+    "/capabilities/list"
+  )
+  return Array.isArray(res?.data) ? res.data : []
+}
+
+export async function fetchSkillList(): Promise<SkillListItem[]> {
+  const res = await request<{ code?: number; data?: SkillListItem[] }>(
+    "/skills/list"
+  )
+  return Array.isArray(res?.data) ? res.data : []
+}
 
 /**
  * 导入员工列表并解析
@@ -20,9 +41,10 @@ export async function syncEmployees() {
  * GET /workspaces/{workspace_id}/employees
  */
 export async function fetchEmployees() {
-  return request<ApiResponse<Employee[]>>(
+  const res = request<ApiResponse<Employee[]>>(
     `/workspaces/${WORKSPACE_ID}/employees`
   )
+  return res
 }
 
 /**
@@ -44,7 +66,6 @@ export async function deleteEmployee(employeeId: number | string) {
 }
 
 export interface RecruitRequest {
-  title: string
   prompt: string
   count: number
 }
@@ -88,46 +109,6 @@ export async function fetchRecruitCandidates(
   return Array.isArray(body?.data) ? body.data : []
 }
 
-export interface McpItem {
-  id: number
-  capability_name: string
-  capability_desc: string
-  mcp_server_name: string
-  mcp_tool_name: string
-  creator_id: number
-  created_at: string
-  updated_at: string
-}
-
-export interface SkillItem {
-  id: number
-  skillName: string
-  description: string
-  displayNameZh: string
-  prompt: string
-  inputSchema: null
-  skillContent: string
-  directoryId: null
-  status: number
-  createTime: string
-  updateTime: string
-  directoryName: null
-}
-
-export async function fetchMcps(): Promise<McpItem[]> {
-  const res = await request<{ code?: number; data?: McpItem[] }>(
-    "/digital/api/v1/mcps"
-  )
-  return Array.isArray(res?.data) ? res.data : []
-}
-
-export async function fetchSkills(): Promise<SkillItem[]> {
-  const res = await request<{ code?: number; data?: SkillItem[] }>(
-    "/digital/api/v1/skills"
-  )
-  return Array.isArray(res?.data) ? res.data : []
-}
-
 export interface CreateEmployeeParams {
   employee_name: string
   capability_desc?: string | null
@@ -135,7 +116,6 @@ export interface CreateEmployeeParams {
   detail_page_url?: string | null
   capability_ids?: number[]
   skill_ids?: number[]
-  skills?: MetadataSkill[]
   shift_schedule?: ShiftScheduleForm | null
   tasks?: TaskFormData[]
 }
@@ -148,14 +128,11 @@ export interface CreateEmployeeParams {
 export async function createEmployee(
   params: CreateEmployeeParams
 ): Promise<ApiResponse<unknown>> {
-  const { shift_schedule, tasks, skills, ...basic } = params
+  const { shift_schedule, tasks, ...basic } = params
+
 
   const body: Record<string, unknown> = { ...basic }
-
-  if (skills && skills.length > 0) {
-    body.skills = skills
-  }
-
+  body.workspace_id = 1
   if (shift_schedule) {
     body.shift_schedule = shift_schedule
   }

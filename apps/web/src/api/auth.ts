@@ -9,7 +9,7 @@ import type { LoginResponse } from "./types"
  * 返回: { code: 1, result: [user], token, msg }
  */
 export function loginApi(username: string, password: string) {
-  return request<LoginResponse>("/api/login", {
+  return request<LoginResponse>("/login", {
     method: "POST",
     body: JSON.stringify({ username, password }),
   })

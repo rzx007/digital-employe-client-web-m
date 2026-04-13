@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { decryptPwd } from '@/lib/password-sm'
 import { createFileRoute } from "@tanstack/react-router"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -27,7 +28,7 @@ function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     clearError()
-    await login(username, password, rememberMe)
+    await login(username, decryptPwd(password), rememberMe)
   }
 
   return (
