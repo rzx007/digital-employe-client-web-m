@@ -63,11 +63,7 @@ export interface SkillResponse {
 }
 
 export interface TaskExecutionOutput {
-  scene?: string
-  prompt?: string
-  skill_name?: string
-  response?: SkillResponse
-  [key: string]: unknown
+  content: string
 }
 
 export interface TaskExecution {

@@ -149,8 +149,8 @@ export function ChatPanel({
       icon: <IconSparkles className="h-4 w-4" />,
       description: skill.description,
       keywords: [
-        skill.skillName.toLowerCase(),
-        ...skill.description.toLowerCase().split(/\s+/).slice(0, 3),
+        skill.skillName?skill.skillName.toLowerCase():'',
+        ...(skill.description ? skill.description.toLowerCase().split(/\s+/).slice(0, 3) : []),
       ],
     }))
     // return [
@@ -387,7 +387,7 @@ export function ChatPanel({
                   )}
 
                   {showStreamingIndicator && (
-                    <Message from="assistant" className="-mt-4">
+                    <Message from="assistant" className="-mt-4 max-w-4xl mx-auto">
                       <MessageContent className="rounded-lg border border-border/60 bg-muted/40 px-3 py-2.5">
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Spinner

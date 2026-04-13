@@ -136,7 +136,7 @@ export function ConversationChatView({
         })
       }
     },
-    [conversationId, sendMessage]
+    [conversationId, sendMessage, command]
   )
 
   const displayMessages = React.useMemo(() => {
