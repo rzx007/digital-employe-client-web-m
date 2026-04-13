@@ -120,16 +120,10 @@ export interface CreateEmployeeParams {
   tasks?: TaskFormData[]
 }
 
-/**
- * 创建员工信息
- * @param params - 创建员工所需的参数对象，包含员工的基本信息和其他必要字段
- * @returns 返回API响应结果，包含操作状态和相关数据
- */
-export async function createEmployee(
+function buildEmployeeBody(
   params: CreateEmployeeParams
-): Promise<ApiResponse<unknown>> {
+): Record<string, unknown> {
   const { shift_schedule, tasks, ...basic } = params
-
 
   const body: Record<string, unknown> = { ...basic }
   body.workspace_id = 1
@@ -153,8 +147,31 @@ export async function createEmployee(
     }))
   }
 
+  return body
+}
+
+/**
+ * 创建员工信息
+ */
+export async function createEmployee(
+  params: CreateEmployeeParams
+): Promise<ApiResponse<unknown>> {
   return request<ApiResponse<unknown>>("/employees/create", {
     method: "POST",
-    body,
+    body: buildEmployeeBody(params),
+  })
+}
+
+/**
+ * 更新员工信息
+ * PUT /employees/{employee_id}
+ */
+export async function updateEmployee(
+  employeeId: number | string,
+  params: CreateEmployeeParams
+): Promise<ApiResponse<unknown>> {
+  return request<ApiResponse<unknown>>(`/employees/${employeeId}`, {
+    method: "PUT",
+    body: buildEmployeeBody(params),
   })
 }

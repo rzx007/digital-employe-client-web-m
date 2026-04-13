@@ -242,6 +242,7 @@ export function ScheduleTaskConfig({
 
         {tasks.length > 0 && (
           <div className="space-y-2 px-3 pb-3">
+  
             {tasks.map((task, index) => (
               <TaskCard
                 key={task.id ?? index}

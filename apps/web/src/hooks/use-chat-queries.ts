@@ -1,7 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { deleteConversation as deleteConversationApi } from "@/api/conversation"
-import { fetchEmployeeById } from "@/api/employee"
+import {
+  fetchEmployeeById,
+  updateEmployee,
+  type CreateEmployeeParams,
+} from "@/api/employee"
 import { fetchGroupById } from "@/api/group"
 import {
   createConversation,
@@ -122,6 +126,23 @@ export function useDeleteConversationMutation() {
     onSettled: (_data, _error, variables) => {
       queryClient.invalidateQueries({
         queryKey: chatKeys.conversations(variables.contactId),
+      })
+    },
+  })
+}
+
+export function useUpdateEmployeeMutation(employeeId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (params: CreateEmployeeParams) =>
+      updateEmployee(employeeId, params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.employee(employeeId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.contacts(),
       })
     },
   })

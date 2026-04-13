@@ -7,7 +7,10 @@ import {
   IconHistory,
   IconMaximize,
   IconMinimize,
+  IconSend,
 } from "@tabler/icons-react"
+import { useMutation } from "@tanstack/react-query"
+import { toast } from "sonner"
 import {
   Conversation,
   ConversationContent,
@@ -27,7 +30,7 @@ import {
 } from "@workspace/ui/components/dialog"
 import { cn } from "@workspace/ui/lib/utils"
 import { format } from "date-fns"
-import { zhCN } from "date-fns/locale"
+import { se, zhCN } from "date-fns/locale"
 import type { TaskExecution } from "@/types/schedule-monitor"
 import { useAllTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { useChatStore } from "@/stores/chat-store"
@@ -39,6 +42,9 @@ import type { ChatViewContact } from "./chat-view-shared"
 import { EmployeeContactAvatar } from "./contact-avatars"
 import type { AIEmployee } from "@/lib/mock-data/ai-employees"
 import { Button } from "@workspace/ui/components/button"
+import { Textarea } from "@workspace/ui/components/textarea"
+import { submitSkillRating } from "@/api/skill-ratings"
+import { StarRating } from "./star-rating"
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   success: {
@@ -290,6 +296,8 @@ function ExecutionCard({ execution }: { execution: TaskExecution }) {
                 暂无详细信息
               </p>
             )}
+
+            <RatingSection executionId={execution.id} />
           </div>
         )}
       </div>
@@ -300,6 +308,90 @@ function ExecutionCard({ execution }: { execution: TaskExecution }) {
         onOpenChange={setDetailOpen}
       />
     </>
+  )
+}
+
+function RatingSection({
+  executionId,
+}: {
+  executionId: number
+}) {
+  const [score, setScore] = React.useState(0.5)
+  const [comment, setComment] = React.useState("")
+  const [expanded, setExpanded] = React.useState(false)
+
+  const mutation = useMutation({
+    mutationFn: submitSkillRating,
+    onSuccess: (res) => {
+      if (res.code === 0) {
+        setComment("")
+      } else {
+        toast.error(res.msg || "评分提交失败")
+      }
+    },
+    onError: () => {
+      toast.error("评分提交失败，请稍后重试")
+    },
+  })
+
+  const handleQuickRate = (newScore: number) => {
+    setScore(newScore)
+    mutation.mutate({
+      task_execution_log_id: executionId,
+      score: newScore,
+      comment: "",
+    })
+  }
+
+  const handleSubmit = () => {
+    mutation.mutate({
+      task_execution_log_id: executionId,
+      score,
+      comment,
+    })
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded border border-dashed p-2">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-muted-foreground">评分</span>
+        <StarRating
+          value={score}
+          onChange={expanded ? setScore : handleQuickRate}
+          size={14}
+          disabled={mutation.isPending}
+        />
+        <button
+          type="button"
+          className="ml-auto text-[10px] text-muted-foreground hover:text-primary"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? "收起" : "添加评语"}
+        </button>
+      </div>
+      {expanded && (
+        <>
+          <Textarea
+            placeholder="添加评语..."
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            className="min-h-[60px] resize-none text-[10px]"
+          />
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              variant="default"
+              onClick={handleSubmit}
+              disabled={mutation.isPending}
+              className="h-6 text-[10px]"
+            >
+              <IconSend className="mr-1 size-3" />
+              {mutation.isPending ? "提交中..." : "提交评分"}
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 
