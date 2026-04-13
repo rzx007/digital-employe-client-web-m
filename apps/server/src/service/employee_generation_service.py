@@ -83,6 +83,8 @@ class EmployeeGenerationService:
 
         可用技能列表：{json.dumps(limited_skills, ensure_ascii=False, indent=2) if isinstance(limited_skills, list) else json.dumps(limited_skills, ensure_ascii=False, indent=2)}
 
+        员工的姓名需要与员工所拥有的技能相关，可以从技能的中文名称提取关键词，如XX助手、XX工程师等。
+
         请返回JSON格式的员工信息数组，每个员工包含以下字段：
         - name: 员工名称
         - description: 员工描述
