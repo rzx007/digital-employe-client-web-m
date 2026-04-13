@@ -8,7 +8,7 @@ from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler  # pylint: disable=import-error
 from apscheduler.triggers.cron import CronTrigger  # pylint: disable=import-error
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from src.db.session import get_session_local
@@ -18,6 +18,7 @@ from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import CST, Workspace, cst_now
 from src.service.task_service import TaskService
 from src.service.agent import get_agent
+from src.service.skill_confirm_url import load_confirm_url_for_skill
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +155,101 @@ class TaskSchedulerService:
         return ""
 
     @classmethod
+    def _invoke_sql_agent_update_confirm_url(
+        cls,
+        *,
+        run_log_id: int,
+        confirm_url: str,
+        skills_dir: str,
+        workspace_root: str,
+    ) -> None:
+        """通过挂载了 LangChain SQLDatabaseToolkit 的 Agent 更新 task_execution_logs.confirm_url。"""
+        safe_url = confirm_url.replace("'", "''")
+        skills_arg = str(Path(skills_dir).resolve()) if skills_dir.strip() else ""
+        agent = get_agent(
+            skills_arg,
+            workspace_root or "",
+            include_sqlite_tools=True,
+        )
+        thread_id = f"task-confirm-sql-{run_log_id}-{int(datetime.now().timestamp())}"
+        prompt = (
+            "你是一个只操作本应用 SQLite 数据库的助手。请使用提供的 SQL 相关工具执行更新，"
+            "不要做与本次更新无关的大规模全表扫描。"
+            f"将表 `task_execution_logs` 中主键 `id = {run_log_id}` 的行的字段 `confirm_url` "
+            f"设置为（整段字符串作为列值）：{confirm_url!r}  "
+            "等价 SQL 示例（请用工具执行语义一致的 UPDATE，注意字符串转义）："
+            f"UPDATE task_execution_logs SET confirm_url = '{safe_url}' WHERE id = {run_log_id};"
+            "执行完成后用一句话说明是否已更新。"
+        )
+        agent.invoke(
+            {"messages": [{"role": "user", "content": prompt}]},
+            config={"configurable": {"thread_id": thread_id}},
+        )
+
+    @classmethod
+    def _maybe_write_confirm_url(
+        cls,
+        db: Session,
+        *,
+        run_log: TaskExecutionLog,
+        task: EmployeeTask,
+        employee: Employee | None,
+        workspace: Workspace | None,
+    ) -> None:
+        if not employee or not workspace:
+            return
+        if not getattr(task, "confirm_execution_result", False):
+            return
+        if task.skill_id is None:
+            return
+        skill_name = cls._resolve_skill_name(employee, task.skill_id)
+        skills_dir = cls._resolve_skills_dir(employee.skills_json)
+        if not skill_name or not skills_dir.strip():
+            return
+        resolved_dir = str(Path(skills_dir).resolve())
+        confirm_url = load_confirm_url_for_skill(resolved_dir, skill_name)
+        if not confirm_url:
+            logger.warning(
+                "任务要求确认执行结果但未在 SKILL.md 中解析到 confirm_url，"
+                "task_id=%s skill=%s",
+                task.id,
+                skill_name,
+            )
+            return
+        try:
+            cls._invoke_sql_agent_update_confirm_url(
+                run_log_id=run_log.id,
+                confirm_url=confirm_url,
+                skills_dir=resolved_dir,
+                workspace_root=str(workspace.root_path or ""),
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning(
+                "Agent SQL 工具写入 confirm_url 失败 run_log_id=%s: %s",
+                run_log.id,
+                exc,
+                exc_info=True,
+            )
+        db.refresh(run_log)
+        if run_log.confirm_url:
+            return
+        try:
+            db.execute(
+                text(
+                    "UPDATE task_execution_logs SET confirm_url = :u WHERE id = :i"
+                ),
+                {"u": confirm_url, "i": run_log.id},
+            )
+            run_log.confirm_url = confirm_url
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning(
+                "confirm_url 直连回写失败 run_log_id=%s: %s",
+                run_log.id,
+                exc,
+                exc_info=True,
+            )
+
+    @classmethod
     def _execute_task_call(cls, db: Session, task: EmployeeTask) -> dict[str, Any]:
         employee = db.get(Employee, task.employee_id)
         workspace = db.get(Workspace, task.workspace_id)
@@ -194,6 +290,9 @@ class TaskSchedulerService:
             if not task or not task.is_active or task.dispatch_type != "skill":
                 return
 
+            employee = db.get(Employee, task.employee_id)
+            workspace = db.get(Workspace, task.workspace_id)
+
             started_at = cst_now()
             run_log = TaskExecutionLog(
                 task_id=task.id,
@@ -230,5 +329,12 @@ class TaskSchedulerService:
             task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=ended_at)
             db.add(task)
             db.add(run_log)
+            cls._maybe_write_confirm_url(
+                db,
+                run_log=run_log,
+                task=task,
+                employee=employee,
+                workspace=workspace,
+            )
             db.commit()
 

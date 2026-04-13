@@ -174,6 +174,9 @@ class TaskService:
                 task.cron_expression = cron_expression
                 task.cron_expression_type = str(raw_task.get("cron_expression_type") or "custom")
                 task.is_active = TaskService._to_bool(raw_task.get("is_active"), default=True)
+                task.confirm_execution_result = TaskService._to_bool(
+                    raw_task.get("confirm_execution_result"), default=False
+                )
                 task_input = raw_task.get("config", {})
                 if isinstance(task_input, dict):
                     task_input = task_input.get("input", {})

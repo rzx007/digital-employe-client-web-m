@@ -264,6 +264,9 @@ class EmployeeService:
                     "cron_expression": cron_expression,
                     "cron_expression_type": str(task.get("cron_expression_type") or "custom"),
                     "is_active": bool(task.get("is_active", True)),
+                    "confirm_execution_result": TaskService._to_bool(
+                        task.get("confirm_execution_result"), default=False
+                    ),
                     "config": {"input": config},
                     "user_prompt": task.get("user_prompt"),
                 }

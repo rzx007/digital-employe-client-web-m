@@ -27,6 +27,10 @@ class SchedulingTaskCreateWithoutEmployee(BaseModel):
     cron_expression: Optional[str] = None
     cron_expression_type: Optional[str] = None
     is_active: Optional[bool] = True
+    confirm_execution_result: bool = Field(
+        False,
+        description="为 true 时表示需在定时任务执行后确认执行结果",
+    )
 
 class EmployeeBase(BaseModel):
     """员工基础信息"""

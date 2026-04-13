@@ -24,6 +24,9 @@ class EmployeeTask(Base):
     cron_expression: Mapped[str] = mapped_column(String(128), nullable=False)
     cron_expression_type: Mapped[str] = mapped_column(String(32), nullable=False, default="custom")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    confirm_execution_result: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, index=True
+    )
     task_input_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)

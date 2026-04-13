@@ -297,7 +297,7 @@ class WindowsCompatibleCompositeBackend(CompositeBackend, BaseSandbox):
     def id(self) -> str:
         return f"windows_composite_{self.shell_backend.id}"
 
-def get_agent(skill_path, root_path):
+def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False):
     checkpointer = _CHECKPOINTER
     store = _STORE  # /memories/ uses StoreBackend, requires BaseStore
 
@@ -318,6 +318,21 @@ def get_agent(skill_path, root_path):
         api_key=settings.api_key,
         base_url=settings.base_url or "https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
+
+    sql_tools: list = []
+    if include_sqlite_tools:
+        try:
+            from src.db.session import get_engine
+
+            db_uri = str(get_engine().url)
+            sqldb = SQLDatabase.from_uri(db_uri)
+            toolkit = SQLDatabaseToolkit(db=sqldb, llm=model)
+            sql_tools = list(toolkit.get_tools())
+            logger.info(
+                "get_agent 已挂载应用 SQLite SQL 工具，共 %s 个工具", len(sql_tools)
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("初始化 SQLDatabaseToolkit 失败: %s", exc, exc_info=True)
 
     skills_fs = PosixVirtualFilesystemBackend(root_dir=str(skills_root), virtual_mode=True)
     agent_fs = PosixVirtualFilesystemBackend(root_dir=str(base_dir), virtual_mode=True)
@@ -348,6 +363,7 @@ def get_agent(skill_path, root_path):
         store=store,
         backend=make_backend,
         checkpointer=checkpointer,
+        tools=sql_tools or None,
         # Add this middleware to disable general-purpose agent
         # middleware=[
         #     SubAgentMiddleware(

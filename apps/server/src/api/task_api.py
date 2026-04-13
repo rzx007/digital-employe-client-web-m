@@ -44,12 +44,12 @@ def _to_task_read(task) -> EmployeeTaskRead:
         task_name=task.task_name,
         dispatch_type=task.dispatch_type,
         skill_id=task.skill_id,
-        capability_id=task.capability_id,
         priority=task.priority,
         task_type=task.task_type,
         cron_expression=task.cron_expression,
         cron_expression_type=task.cron_expression_type,
         is_active=task.is_active,
+        confirm_execution_result=task.confirm_execution_result,
         task_input=_loads_json(task.task_input_json, {}),
         next_run_at=task.next_run_at,
         last_run_at=task.last_run_at,
@@ -176,6 +176,7 @@ def list_task_executions(
             started_at=item.started_at,
             ended_at=item.ended_at,
             duration_ms=item.duration_ms,
+            confirm_url=item.confirm_url,
         )
         for item in items
     ]
