@@ -47,9 +47,9 @@ export function ConversationChatView({
     messages: initialMessages,
     transport: chatTransport,
     onFinish: () => {
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.messages(String(conversationId)),
-      })
+      // queryClient.invalidateQueries({
+      //   queryKey: chatKeys.messages(String(conversationId)),
+      // })
     },
     onError: (chatError) => {
       toast.error("发送失败", {

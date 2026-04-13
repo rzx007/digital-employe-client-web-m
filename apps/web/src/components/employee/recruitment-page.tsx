@@ -556,12 +556,13 @@ export function RecruitmentPage() {
 }
 
 import { Sheet, SheetContent } from "@workspace/ui/components/sheet"
-import { IconLoader2, IconX } from "@tabler/icons-react"
+import { IconLoader2, IconX, IconPlus, IconCheck } from "@tabler/icons-react"
 import { Switch } from "@workspace/ui/components/switch"
 import { Label } from "@workspace/ui/components/label"
-import { createEmployee } from "@/api/employee"
+import { createEmployee, fetchMcps, fetchSkills, type McpItem, type SkillItem } from "@/api/employee"
 import { ScheduleTaskConfig } from "./schedule-task-config"
 import type { ShiftScheduleForm, TaskFormData } from "@/types/task"
+import type { Capability, MetadataSkill } from "@/api/types"
 
 const EMPTY_SCHEDULE: ShiftScheduleForm = {
   start_date: "",
@@ -590,6 +591,11 @@ function HireSheet({
   const [tasks, setTasks] = React.useState<TaskFormData[]>([])
   const [schedule, setSchedule] =
     React.useState<ShiftScheduleForm>(EMPTY_SCHEDULE)
+  const [availableMcps, setAvailableMcps] = React.useState<McpItem[]>([])
+  const [availableSkills, setAvailableSkills] = React.useState<SkillItem[]>([])
+  const [selectedMcps, setSelectedMcps] = React.useState<Capability[]>([])
+  const [selectedSkills, setSelectedSkills] = React.useState<MetadataSkill[]>([])
+  const [isLoadingOptions, setIsLoadingOptions] = React.useState(false)
 
   React.useEffect(() => {
     if (open) {
@@ -598,8 +604,59 @@ function HireSheet({
       setShowScheduleAndTask(false)
       setTasks([])
       setSchedule({ ...EMPTY_SCHEDULE })
+      setSelectedMcps(candidate.capabilities ?? [])
+      setSelectedSkills(candidate.skills ?? [])
+      setIsLoadingOptions(true)
+      Promise.all([fetchMcps(), fetchSkills()])
+        .then(([mcps, skills]) => {
+          setAvailableMcps(mcps)
+          setAvailableSkills(skills)
+        })
+        .finally(() => setIsLoadingOptions(false))
     }
   }, [open, candidate])
+
+  const toggleMcp = (mcp: McpItem) => {
+    const exists = selectedMcps.find(
+      (m) => m.mcp_tool_name === mcp.mcp_tool_name
+    )
+    if (exists) {
+      setSelectedMcps(selectedMcps.filter((m) => m.mcp_tool_name !== mcp.mcp_tool_name))
+    } else {
+      setSelectedMcps([
+        ...selectedMcps,
+        {
+          capability_name: mcp.capability_name,
+          capability_desc: mcp.capability_desc,
+          mcp_server_name: mcp.mcp_server_name,
+          mcp_tool_name: mcp.mcp_tool_name,
+          id: mcp.id,
+        },
+      ])
+    }
+  }
+
+  const toggleSkill = (skill: SkillItem) => {
+    const exists = selectedSkills.find((s) => s.id === skill.id)
+    if (exists) {
+      setSelectedSkills(selectedSkills.filter((s) => s.id !== skill.id))
+    } else {
+      setSelectedSkills([
+        ...selectedSkills,
+        {
+          id: skill.id,
+          skillName: skill.skillName,
+          description: skill.description,
+          prompt: skill.prompt,
+          directoryId: skill.directoryId,
+          status: skill.status,
+          createTime: skill.createTime,
+          updateTime: skill.updateTime,
+          directoryName: skill.directoryName,
+        },
+      ])
+    }
+  }
 
   const handleSubmit = async () => {
     if (!name.trim()) {
@@ -613,9 +670,9 @@ function HireSheet({
         employee_name: name.trim(),
         capability_desc: description.trim() || null,
         status: 1,
-        capability_ids: candidate.capability_ids ?? [],
-        skill_ids: candidate.skill_ids ?? [],
-        skills: candidate.skills ?? [],
+        capability_ids: selectedMcps.map((m) => m.id ?? 0),
+        skill_ids: selectedSkills.map((s) => s.id),
+        skills: selectedSkills,
         shift_schedule: showScheduleAndTask ? schedule : null,
         tasks: showScheduleAndTask ? tasks : [],
       })
@@ -650,46 +707,75 @@ function HireSheet({
 
         <ScrollArea className="flex-1">
           <div className="space-y-4 px-4 py-3">
-            {candidate.capability_desc && (
-              <div className="rounded-lg bg-muted/50 p-3">
-                <span className="text-xs text-muted-foreground">能力描述</span>
-                <p className="mt-1 text-sm leading-relaxed">
-                  {candidate.capability_desc}
-                </p>
-                {(candidate.capabilities?.length ?? 0) > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <span className="text-[10px] text-muted-foreground">
-                      MCP:
-                    </span>
-                    {candidate.capabilities.map((cap, index) => (
-                      <Badge
-                        key={`cap-${index}`}
-                        variant="secondary"
-                        className="text-xs"
+            <div className="space-y-3">
+              <Label className="text-xs font-medium text-muted-foreground">
+                MCP 能力 (已选 {selectedMcps.length})
+              </Label>
+              {isLoadingOptions ? (
+                <div className="text-xs text-muted-foreground">加载中...</div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {availableMcps.map((mcp) => {
+                    const isSelected = selectedMcps.some(
+                      (m) => m.mcp_tool_name === mcp.mcp_tool_name
+                    )
+                    return (
+                      <Button
+                        key={mcp.id}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className="h-6 gap-1 text-xs"
+                        onClick={() => toggleMcp(mcp)}
                       >
-                        {cap.capability_name}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-                {(candidate.skills?.length ?? 0) > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <span className="text-[10px] text-muted-foreground">
-                      技能:
+                        {isSelected && <IconCheck className="size-3" />}
+                        {mcp.capability_name}
+                      </Button>
+                    )
+                  })}
+                  {availableMcps.length === 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      暂无可用 MCP
                     </span>
-                    {candidate.skills.map((skill, index) => (
-                      <Badge
-                        key={`skill-${index}`}
-                        variant="outline"
-                        className="text-xs"
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-xs font-medium text-muted-foreground">
+                技能 (已选 {selectedSkills.length})
+              </Label>
+              {isLoadingOptions ? (
+                <div className="text-xs text-muted-foreground">加载中...</div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {availableSkills.map((skill) => {
+                    const isSelected = selectedSkills.some(
+                      (s) => s.id === skill.id
+                    )
+                    return (
+                      <Button
+                        key={skill.id}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className="h-6 gap-1 text-xs"
+                        onClick={() => toggleSkill(skill)}
                       >
+                        {isSelected && <IconCheck className="size-3" />}
                         {skill.skillName}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+                      </Button>
+                    )
+                  })}
+                  {availableSkills.length === 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      暂无可用技能
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <Separator />
 
             <div className="space-y-3">
               <Label className="text-xs font-medium text-muted-foreground">
@@ -732,10 +818,10 @@ function HireSheet({
 
             {showScheduleAndTask && (
               <ScheduleTaskConfig
-                capabilities={candidate.capabilities ?? []}
-                capabilityIds={candidate.capability_ids}
-                skillIds={candidate.skill_ids}
-                skills={candidate.skills ?? []}
+                capabilities={selectedMcps}
+                capabilityIds={selectedMcps.map((m) => m.id ?? 0)}
+                skillIds={selectedSkills.map((s) => s.id)}
+                skills={selectedSkills}
                 tasks={tasks}
                 schedule={schedule}
                 onTasksChange={setTasks}
