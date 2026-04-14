@@ -4,6 +4,15 @@ import re
 from pathlib import Path
 
 
+def _clean_and_validate_http_url(raw: str) -> str | None:
+    candidate = (raw or "").strip().strip("\"'<>")
+    # 常见中文/英文句末标点，避免把标点带进 URL
+    candidate = candidate.rstrip("，。；；、,.!?！？")
+    if re.match(r"(?i)^https?://", candidate):
+        return candidate
+    return None
+
+
 def find_skill_md_path(skills_dir: str, skill_folder_name: str) -> Path | None:
     """在员工 skills 目录下定位某技能的 SKILL.md。"""
     name = (skill_folder_name or "").strip()
@@ -34,27 +43,36 @@ def parse_confirm_url_from_skill_md(text: str) -> str | None:
     - 正文 `确认结果链接: https://...` / `确认链接：` / `确认地址：`
     - 正文 `confirm_url: https://...` 或 `confirm_url=https://...`
     """
-    if not (text or "").strip():
+    text = (text or "").lstrip("\ufeff")
+    if not text.strip():
         return None
 
-    fm = re.match(r"^---\s*\r?\n(.*?)\r?\n---\s*", text, re.DOTALL)
+    fm = re.match(r"^\s*---\s*\r?\n(.*?)\r?\n---\s*", text, re.DOTALL)
     if fm:
         block = fm.group(1)
-        m = re.search(r"(?im)^confirm_url:\s*(\S+)", block)
+        m = re.search(r"(?im)^\s*confirm_url\s*[:：]\s*(.+?)\s*$", block)
         if m:
-            raw = m.group(1).strip().strip("\"'")
-            if raw.startswith("http://") or raw.startswith("https://"):
-                return raw
+            parsed = _clean_and_validate_http_url(m.group(1))
+            if parsed:
+                return parsed
 
     m = re.search(
-        r"(?i)确认(?:结果)?(?:链接|地址|URL)[:：]\s*(https?://[^\s\]\)]+)", text
+        r"(?i)确认(?:结果)?(?:链接|地址|URL)\s*[:：]\s*(?:\[.*?\]\()?<?(https?://[^\s\]\)>]+)",
+        text,
     )
     if m:
-        return m.group(1).strip()
+        parsed = _clean_and_validate_http_url(m.group(1))
+        if parsed:
+            return parsed
 
-    m = re.search(r"(?i)confirm_url\s*[:=]\s*(https?://[^\s\]\)]+)", text)
+    m = re.search(
+        r"(?i)confirm_url\s*[:=：]\s*(?:\[.*?\]\()?<?(https?://[^\s\]\)>]+)",
+        text,
+    )
     if m:
-        return m.group(1).strip()
+        parsed = _clean_and_validate_http_url(m.group(1))
+        if parsed:
+            return parsed
 
     return None
 
