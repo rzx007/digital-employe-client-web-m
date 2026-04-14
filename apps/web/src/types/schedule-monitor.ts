@@ -65,7 +65,14 @@ export interface SkillResponse {
 export interface TaskExecutionOutput {
   content: string
 }
-
+export interface SkillRatingOutput {
+  id: number;
+  skill_id: number;
+  skill_name: string;
+  score: number;
+  comment: string;
+  created_at: string;
+}
 export interface TaskExecution {
   id: number
   task_id: number
@@ -82,6 +89,7 @@ export interface TaskExecution {
   started_at: string
   ended_at: string | null
   duration_ms: number | null
+  skill_rating: null | SkillRatingOutput
 }
 
 export interface ShiftSchedule {

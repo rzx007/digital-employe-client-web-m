@@ -69,7 +69,7 @@ function SkillCard({ skill }: { skill: MetadataSkill }) {
               <IconChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
             )}
             <span className="min-w-0 flex-1 truncate font-medium">
-              {skill.skillName}
+              {skill.skill_name}
             </span>
             <span className="shrink-0 text-[10px] text-muted-foreground">
               {skill.status === 1 ? "已启用" : "未启用"}
@@ -79,13 +79,13 @@ function SkillCard({ skill }: { skill: MetadataSkill }) {
         <CollapsibleContent>
           <div className="border-t px-2.5 pt-2 pb-2.5">
             <p className="text-xs leading-relaxed text-muted-foreground">
-              {skill.description}
+              {skill.skill_description}
             </p>
-            {skill.directoryName && (
+            {/* {skill.directoryName && (
               <div className="mt-1.5 text-[10px] text-muted-foreground">
                 目录: {skill.directoryName}
               </div>
-            )}
+            )} */}
           </div>
         </CollapsibleContent>
       </div>
