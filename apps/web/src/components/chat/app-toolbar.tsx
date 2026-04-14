@@ -35,25 +35,25 @@ const tabs: {
   iconFilled: React.ComponentType<{ className?: string }>
   label: string
 }[] = [
-  {
-    id: "chat",
-    icon: IconMessage,
-    iconFilled: IconMessage2Filled,
-    label: "对话",
-  },
-  {
-    id: "contacts",
-    icon: IconUser,
-    iconFilled: IconUserFilled,
-    label: "联系人",
-  },
-  {
-    id: "calendar",
-    icon: IconCalendar,
-    iconFilled: IconCalendarFilled,
-    label: "日历",
-  },
-]
+    {
+      id: "chat",
+      icon: IconMessage,
+      iconFilled: IconMessage2Filled,
+      label: "对话",
+    },
+    {
+      id: "contacts",
+      icon: IconUser,
+      iconFilled: IconUserFilled,
+      label: "联系人",
+    },
+    {
+      id: "calendar",
+      icon: IconCalendar,
+      iconFilled: IconCalendarFilled,
+      label: "日历",
+    },
+  ]
 
 export function AppToolbar({
   className,
@@ -141,7 +141,7 @@ export function AppToolbar({
             </TooltipContent>
           </Tooltip>
 
-          <Tooltip>
+          {/* <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
@@ -155,7 +155,7 @@ export function AppToolbar({
             <TooltipContent side="right" sideOffset={8}>
               退出登录
             </TooltipContent>
-          </Tooltip>
+          </Tooltip> */}
         </div>
       </div>
     </>
