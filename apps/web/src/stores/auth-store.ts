@@ -89,7 +89,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       } else {
         set({
           loading: false,
-          error: res.msg || "登录失败",
+          error: "登录失败",
         })
       }
     } catch (err) {
