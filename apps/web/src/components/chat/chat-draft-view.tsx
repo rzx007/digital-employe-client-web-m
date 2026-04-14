@@ -124,7 +124,7 @@ export function DraftChatView({
             },
           }
         )
-        toast.success("发送成功")
+        // toast.success("发送成功")
       } catch (sendError) {
         toast.error("发送失败", {
           description:

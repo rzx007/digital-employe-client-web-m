@@ -391,7 +391,7 @@ class TaskSchedulerService:
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.exception("定时任务执行失败 task_id=%s", task_id)
                 run_log.run_status = "failed"
-                run_log.run_result = "任务执行成功"
+                run_log.run_result = "任务执行失败"
                 run_log.error_message = str(exc)
 
             ended_at = cst_now()

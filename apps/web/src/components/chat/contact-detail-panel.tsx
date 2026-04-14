@@ -23,6 +23,7 @@ import { TaskStatsCards } from "../schedule-monitor/sections/task-stats-cards"
 import { ExecutionDetail } from "../schedule-monitor/sections/execution-detail"
 import { AnomalyMonitor } from "../schedule-monitor/sections/anomaly-monitor"
 import { EmployeeEditForm } from "../employee/employee-edit-form"
+import { CuratorOverviewSection } from "./curator-overview-section"
 
 export function ContactDetailPanel({
   className,
@@ -97,6 +98,7 @@ export function ContactDetailPanel({
                 </TabsContent>
               </Tabs>
             )}
+          {selectedContact.type === "curator" && <CuratorOverviewSection />}
         </div>
       </ScrollArea>
     </div>
