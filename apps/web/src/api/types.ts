@@ -62,7 +62,7 @@ export interface MetadataSkill {
   createTime: string
   updateTime: string
   directoryName: string | null
-  [x:string]: any
+  [x: string]: any
 }
 
 /**
@@ -219,7 +219,9 @@ export interface LoginUser {
  */
 export interface LoginResponse {
   code: number
+  msg: string
   data: {
+    code: 0 | 1
     result: LoginUser[]
     noMenus: boolean
     token: string

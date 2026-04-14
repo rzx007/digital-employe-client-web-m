@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { decryptPwd } from "@/lib/password-sm"
 import { createFileRoute } from "@tanstack/react-router"
 import { Button } from "@workspace/ui/components/button"
@@ -32,6 +32,31 @@ function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false)
   const [currentView, setCurrentView] = useState<LoginView>("login")
   const { login, loading, error, clearError } = useAuthStore()
+
+  // 用于保存定时器引用，避免内存泄漏
+  const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // 当error存在时，2秒后自动清除
+  useEffect(() => {
+    if (error) {
+      // 清除之前的定时器
+      if (errorTimeoutRef.current) {
+        clearTimeout(errorTimeoutRef.current)
+      }
+      // 设置新的定时器
+      errorTimeoutRef.current = setTimeout(() => {
+        clearError()
+      }, 2000)
+    }
+
+    // 组件卸载或重新渲染时清除定时器
+    return () => {
+      if (errorTimeoutRef.current) {
+        clearTimeout(errorTimeoutRef.current)
+        errorTimeoutRef.current = null
+      }
+    }
+  }, [error, clearError])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -178,13 +203,12 @@ function LoginPage() {
                 {loading && (
                   <IconLoader2 className="mr-2 size-4 animate-spin" />
                 )}
-                登录
+                {loading ? "登录中..." : '登录'}
               </Button>
 
-              {/* {error && <p className="text-xs text-destructive">{error}</p>} */}
             </form>
-
-            <p className="mt-4 w-full text-center text-xs text-muted-foreground">
+            {error && <p className="text-xs text-destructive mt-2">{error}</p>}
+            <p className="mt-2 w-full text-center text-xs text-muted-foreground">
               还没有账号?{" "}
               <span className="cursor-pointer text-primary">联系管理员</span>
             </p>

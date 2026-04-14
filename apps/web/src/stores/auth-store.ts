@@ -68,7 +68,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       //   "msg": ""
       // }
 
-      if (res.code === 200 && res.data.token && res.data.result?.length > 0) {
+      if (res.code === 200 && res.data.code === 1 && res.data.token && res.data.result?.length > 0) {
         const token = res.data.token
         const user = res.data.result[0]
 
@@ -89,7 +89,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       } else {
         set({
           loading: false,
-          error: "登录失败",
+          error: res.data.msg || "登录失败",
         })
       }
     } catch (err) {
