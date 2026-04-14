@@ -1,6 +1,5 @@
 README.md
 pyproject.toml
-local-employees/热榜助手/skills/hot-news/scripts/hot_news.py
 micro_agent.egg-info/PKG-INFO
 micro_agent.egg-info/SOURCES.txt
 micro_agent.egg-info/dependency_links.txt
@@ -53,7 +52,6 @@ src/service/custom_graph.py
 src/service/employee_generation_service.py
 src/service/employee_service.py
 src/service/file_service.py
-src/service/get_baidu_hot.py
 src/service/group_service.py
 src/service/modal_service.py
 src/service/show_baidu_hot.py
@@ -65,10 +63,3 @@ src/service/task_scheduler_service.py
 src/service/task_service.py
 src/service/workspace_service.py
 src/utils/http_client.py
-tests/test_agent_skill_prompt.py
-tests/test_chat_service_skill_resolution.py
-tests/test_chat_stream_debug_content_only.py
-tests/test_employee_sync_local_employees.py
-tests/test_server_app_lifespan.py
-tests/test_server_startup_initialization.py
-tests/test_workspace_defaults.py

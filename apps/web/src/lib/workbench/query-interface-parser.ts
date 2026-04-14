@@ -145,11 +145,12 @@ export async function parseInterfacesFromSkills(
     return []
   }
 
-  const enabled = skills.filter((s) => s.status === 1)
+  // 兼容status为数字1或字符串"1"，无status字段也默认启用
+  const enabled = skills.filter((s) => s.status === undefined || s.status === 1 || s.status === "1")
   const heuristic = buildHeuristicQueryInterfaces(enabled)
 
   const skillBlob = enabled
-    .map((s) => `【${s.skillName}】\n${s.description}\n${s.prompt}`)
+    .map((s) => `【${s.skillName}】\n${s.description || s.skill_description || ""}\n${s.prompt || ""}\n${s.skillContent || s.skill_content || ""}`)
     .join("\n\n---\n\n")
 
   const heuristicJson = JSON.stringify(
@@ -164,25 +165,23 @@ export async function parseInterfacesFromSkills(
 
   const skillDescriptions = enabled
     .map((s) => {
-      return `【技能: ${s.skillName}】\n描述: ${s.description}\nPrompt:\n${s.prompt}`
+      return `【技能: ${s.skillName || s.skill_name || ""}】\n描述: ${s.description || s.skill_description || ""}\nPrompt:\n${s.prompt || ""}\n技能内容:\n${s.skillContent || s.skill_content || ""}`
     })
     .join("\n\n")
 
   let merged: QueryInterface[]
+  let aiItems: Omit<QueryInterface, "id">[] = []
 
-  if (heuristic.length > 0) {
+  // Always call AI to get enriched interface information (responseFormat, fieldBinding, etc.)
+  try {
+    aiItems = await fetchInterfaceAnalysisAiItems(employeeId, skillDescriptions, heuristicJson)
+  } catch (e) {
+    console.error("Failed to parse interfaces from skills (AI):", e)
+  }
+
+  merged = mergeHeuristicAndAiResults(heuristic, aiItems, skillBlob)
+  if (merged.length === 0) {
     merged = heuristic
-  } else {
-    let aiItems: Omit<QueryInterface, "id">[] = []
-    try {
-      aiItems = await fetchInterfaceAnalysisAiItems(employeeId, skillDescriptions, heuristicJson)
-    } catch (e) {
-      console.error("Failed to parse interfaces from skills (AI):", e)
-    }
-    merged = mergeHeuristicAndAiResults(heuristic, aiItems, skillBlob)
-    if (merged.length === 0) {
-      merged = heuristic
-    }
   }
 
   if (merged.length === 0) {

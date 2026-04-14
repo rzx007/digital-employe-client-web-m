@@ -37,7 +37,7 @@ export function WorkbenchView({ contact, onClose }: WorkbenchViewProps) {
   const loadLocalSkills = async () => {
     setIsLoadingSkills(true)
     try {
-      const skills = await fetchEmployeeSkillsFromLocal(employeeName)
+      const skills = await fetchEmployeeSkillsFromLocal(employeeId, employeeName)
       setLocalSkills(skills)
     } catch (e) {
       console.error("Failed to load local skills:", e)
@@ -47,8 +47,8 @@ export function WorkbenchView({ contact, onClose }: WorkbenchViewProps) {
     }
   }
 
-  // Use local skills if available, otherwise use API skills
-  const skills = localSkills.length > 0 ? localSkills : apiSkills
+  // Use API skills first (contains complete skillContent), fallback to local skills
+  const skills = apiSkills.length > 0 ? apiSkills : localSkills
 
   const { config, toggleBlockEnabled, reorderBlocks, addBlock, removeBlock, resizeBlock } = useWorkbenchConfig({
     employeeId,

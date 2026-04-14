@@ -10,6 +10,7 @@ router = APIRouter(tags=["登录"])
 def login(request: LoginRequest):
     """ 登录接口，直接将登录参数转发到指定的URL，并且直接返回登录结果 """
     # 获取登录参数
+    print(request)
     login_params = request.model_dump()
     # 从setting里面获取login_url
     login_url = get_settings().login_url or ""

@@ -175,11 +175,12 @@ ${ctx}
     const res = await request<{
       code: number
       data: { response: string }
-    }>(`/workspaces/${WORKSPACE_ID}/chat/send`, {
+    }>(`/actus/workspaces/${WORKSPACE_ID}/chat/send`, {
       method: "POST",
       body: JSON.stringify({
         question: prompt,
         employee_id: employeeId || "system",
+        skill_descriptions: skillBlob,
       }),
     })
 

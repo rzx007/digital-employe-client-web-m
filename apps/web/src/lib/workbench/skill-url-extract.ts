@@ -187,7 +187,8 @@ export function buildHeuristicQueryInterfaces(skills: MetadataSkill[]): QueryInt
   const out: QueryInterface[] = []
 
   for (const s of skills) {
-    if (s.status !== 1) continue
+    // 兼容status为数字1或字符串"1"，无status字段也默认启用
+    if (s.status !== undefined && s.status !== 1 && s.status !== "1") continue
 
     const blob = [s.skillName, s.description, s.prompt].filter(Boolean).join("\n\n")
     const headerHints = extractHeadersFromSkillText(blob)

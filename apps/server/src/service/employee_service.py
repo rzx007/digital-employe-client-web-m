@@ -88,8 +88,13 @@ class EmployeeService:
                     "id": r.id,
                     "skill_id": r.skill_id,
                     "skill_name": r.skill_name,
+                    "skillName": r.skill_name,
                     "skill_name_zh": r.skill_name_zh,
                     "skill_description": r.skill_description,
+                    "description": r.skill_description,
+                    "prompt": r.prompt,
+                    "skillContent": r.skill_content,
+                    "skill_content": r.skill_content,
                 }
                 for r in rows
             ]
