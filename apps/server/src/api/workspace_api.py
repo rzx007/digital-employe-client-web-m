@@ -15,6 +15,7 @@ from src.service.workspace_service import WorkspaceService
 class ChatSendRequest(BaseModel):
     question: str
     employee_id: int
+    skill_descriptions: str | None = None
 
 router = APIRouter(tags=["工作空间"])
 

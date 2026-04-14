@@ -42,4 +42,4 @@ members = [
 ]
 
 [tool.uv.sources]
-micro-agent = { workspace = true, editable = true }
+micro-agent = { workspace = true }

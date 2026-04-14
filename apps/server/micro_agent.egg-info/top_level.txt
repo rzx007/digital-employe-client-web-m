@@ -1,5 +1,3 @@
 data
-local-employees
 src
-tests
 tmp

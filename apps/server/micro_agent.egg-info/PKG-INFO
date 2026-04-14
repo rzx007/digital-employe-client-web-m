@@ -41,7 +41,7 @@ Requires-Dist: PyJWT>=2.8.0
 - `src/schemas/`: Pydantic schema
 - `src/db/`: 数据库初始化与会话管理
 - `local-employees/`: 本地员工技能目录
-- `data/app.db`: 默认 SQLite 数据库
+- `~/digital-employee-client/data/app.db`: 默认 SQLite 数据库
 - `start.py`: 本地启动入口
 
 ## 现在的运行规则
