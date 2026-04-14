@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field, field_serializer
 
 class ShiftScheduleCreateWithoutEmployee(BaseModel):
     """创建排班计划（不含员工ID，用于嵌套在员工信息中）"""
-    start_date: str = Field(..., description="开始日期")
-    end_date: str = Field(..., description="结束日期")
+    start_date: Optional[str] = Field(None, description="开始日期，可为空")
+    end_date: Optional[str] = Field(None, description="结束日期，可为空")
     status: int = Field(1, description="排班状态: 1-激活, 2-未激活, 3-取消")
     notes: Optional[str] = Field(None, description="备注")
 

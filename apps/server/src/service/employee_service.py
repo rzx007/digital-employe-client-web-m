@@ -4,6 +4,7 @@ import json
 import logging
 import shutil
 import uuid
+from datetime import date
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class EmployeeService:
+    LONG_TERM_SHIFT_END_DATE = "9999-12-31"
 
     @staticmethod
     def _extract_shift_schedule(meta: dict) -> dict:
@@ -373,11 +375,14 @@ class EmployeeService:
         return str(skill_content)
 
     @staticmethod
-    def _save_skills_to_local_files(employee: Employee, skills: list[dict]) -> None:
-        """将远程技能详情落盘到 local-employees/<员工ID>/skills/<skillName>/。"""
+    def _save_skills_to_local_files(employee: Employee, skills: list[dict]) -> Path:
+        """将远程技能详情全量覆盖落盘到 local-employees/<员工ID>/skills/。"""
         employee_root = (
             EmployeeService._resolve_local_employees_root() / str(employee.id) / "skills"
         )
+        if employee_root.exists():
+            shutil.rmtree(employee_root, ignore_errors=True)
+        employee_root.mkdir(parents=True, exist_ok=True)
         for skill in skills:
             if not isinstance(skill, dict):
                 continue
@@ -397,7 +402,7 @@ class EmployeeService:
                     continue
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(content, encoding="utf-8")
-        # 返回skkill所在的路径
+        # 返回 skill 根目录
         return employee_root
 
     @staticmethod
@@ -437,20 +442,42 @@ class EmployeeService:
     ) -> None:
         db.execute(delete(EmployeeShiftSchedule).where(
             EmployeeShiftSchedule.employee_id == employee.id))
-        shift_payload: dict = {}
-        if shift_schedule is not None:
-            shift_payload = shift_schedule.model_dump(exclude_none=True)
+        shift_payload = EmployeeService._normalize_shift_schedule(shift_schedule)
+        if shift_payload:
             db.add(
                 EmployeeShiftSchedule(
                     employee_id=employee.id,
-                    start_date=shift_schedule.start_date,
-                    end_date=shift_schedule.end_date,
-                    status=shift_schedule.status,
-                    notes=shift_schedule.notes,
+                    start_date=shift_payload["start_date"],
+                    end_date=shift_payload["end_date"],
+                    status=shift_payload["status"],
+                    notes=shift_payload.get("notes"),
                 )
             )
         employee.shift_schedule_json = json.dumps(
             shift_payload, ensure_ascii=False)
+
+    @staticmethod
+    def _normalize_shift_schedule(
+        shift_schedule: ShiftScheduleCreateWithoutEmployee | None,
+    ) -> dict:
+        if shift_schedule is None:
+            return {}
+
+        start_date = (shift_schedule.start_date or "").strip()
+        end_date = (shift_schedule.end_date or "").strip()
+        if not start_date:
+            start_date = date.today().isoformat()
+        if not end_date:
+            end_date = EmployeeService.LONG_TERM_SHIFT_END_DATE
+
+        payload = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "status": shift_schedule.status,
+        }
+        if shift_schedule.notes is not None:
+            payload["notes"] = shift_schedule.notes
+        return payload
 
     @staticmethod
     def sync_workspace_employees(db: Session, workspace: Workspace) -> list[Employee]:
@@ -554,6 +581,20 @@ class EmployeeService:
             employee.description = payload.description
         if payload.version is not None:
             employee.version = payload.version
+
+        # 这里需要加一个判断条件，新的员工姓名不能与其他员工姓名相同
+        existing_employee = db.scalar(
+            select(Employee).where(
+                Employee.workspace_id == employee.workspace_id,
+                Employee.name == payload.name,
+                Employee.id != employee.id,
+            )
+        )
+        if existing_employee:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="员工名称已存在")
+        else:
+            employee.name = payload.name
 
         if "skill_ids" in payload.model_fields_set:
             skills = EmployeeService._validate_and_fetch_skills(
