@@ -94,7 +94,7 @@ local-employees/
 参考 `.env.example`：
 
 ```env
-SQLITE_PATH=./data/app.db
+SQLITE_PATH=~/digital-employee-client/data/app.db
 EMPLOYEE_ZIP_URL=http://...
 EMPLOYEE_TMP_DIR=./tmp/employees
 DEEPAGENT_MODEL=qwen2.5-72b-instruct
@@ -108,7 +108,7 @@ DEFAULT_WORKSPACE_NAME=默认的工作空间
 
 关键项说明：
 
-- `SQLITE_PATH`: SQLite 文件路径，默认是 `./data/app.db`
+- `SQLITE_PATH`: SQLite 文件路径，默认是 `~/digital-employee-client/data/app.db`
 - `EMPLOYEE_ZIP_URL`: 远程员工包导入地址；只在“同步员工”时使用
 - `DEFAULT_WORKSPACE_ROOT`: 默认工作空间根目录
 - `OPENAI_API_KEY` / `BASE_URL`: 模型调用配置

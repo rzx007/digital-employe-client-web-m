@@ -9,6 +9,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def get_default_sqlite_path() -> str:
+    return str(Path.home() / "digital-employee-client" / "data" / "app.db")
+
+
 @dataclass(slots=True)
 class Settings:
     default_workspace_root: str | None
@@ -37,7 +41,7 @@ def get_settings() -> Settings:
         default_workspace_root=os.getenv("DEFAULT_WORKSPACE_ROOT") or None,
         default_workspace_id=int(os.getenv("DEFAULT_WORKSPACE_ID", "1")),
         default_workspace_name=os.getenv("DEFAULT_WORKSPACE_NAME") or "默认的工作空间",
-        sqlite_path=os.getenv("SQLITE_PATH", "./data/app.db"),
+        sqlite_path=os.getenv("SQLITE_PATH", get_default_sqlite_path()),
         employee_zip_url=os.getenv("EMPLOYEE_ZIP_URL") or None,
         employee_tmp_dir=os.getenv("EMPLOYEE_TMP_DIR", "./tmp/employees"),
         deepagent_model=os.getenv("DEEPAGENT_MODEL") or None,
@@ -55,7 +59,7 @@ def get_settings() -> Settings:
 
 
 def resolve_sqlite_path(sqlite_path: str) -> Path:
-    path = Path(sqlite_path)
+    path = Path(os.path.expandvars(os.path.expanduser(sqlite_path)))
     if not path.is_absolute():
         path = Path.cwd() / path
     return path
