@@ -1,4 +1,6 @@
 import * as React from "react"
+import pkg from "../../../package.json"
+import logoSvg from '@/assets/logo.svg'
 import {
   IconSettings,
   IconKeyboard,
@@ -27,6 +29,7 @@ import {
   SelectValue,
 } from "@workspace/ui/components/select"
 import { Separator } from "@workspace/ui/components/separator"
+import { Switch } from "@workspace/ui/components/switch"
 import { cn } from "@workspace/ui/lib/utils"
 import { useTheme } from "@/components/theme-provider"
 import { useAuthStore } from "@/stores/auth-store"
@@ -185,15 +188,10 @@ function GeneralSettings() {
                 系统启动时自动打开应用
               </span>
             </div>
-            <label className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center">
-              <input
-                type="checkbox"
-                className="peer sr-only"
-                checked={autoLaunch}
-                onChange={(e) => handleAutoLaunchChange(e.target.checked)}
-              />
-              <span className="pointer-events-none absolute inset-0 rounded-full bg-muted transition-colors peer-checked:bg-primary peer-checked:after:translate-x-full after:content-[''] after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rotate-0 after:rounded-full after:transition-transform" />
-            </label>
+            <Switch
+              checked={autoLaunch}
+              onCheckedChange={handleAutoLaunchChange}
+            />
           </div>
 
           <div className="flex items-center justify-between">
@@ -203,15 +201,10 @@ function GeneralSettings() {
                 有新版本时自动提示
               </span>
             </div>
-            <label className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center">
-              <input
-                type="checkbox"
-                className="peer sr-only"
-                checked={autoUpdate}
-                onChange={(e) => handleAutoUpdateChange(e.target.checked)}
-              />
-              <span className="pointer-events-none absolute inset-0 rounded-full bg-muted transition-colors peer-checked:bg-primary peer-checked:after:translate-x-full after:content-[''] after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rotate-0 after:rounded-full after:transition-transform" />
-            </label>
+            <Switch
+              checked={autoUpdate}
+              onCheckedChange={handleAutoUpdateChange}
+            />
           </div>
 
           <div className="flex items-center justify-between">
@@ -221,15 +214,10 @@ function GeneralSettings() {
                 接收新消息时显示系统通知
               </span>
             </div>
-            <label className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center">
-              <input
-                type="checkbox"
-                className="peer sr-only"
-                checked={notifications}
-                onChange={(e) => handleNotificationsChange(e.target.checked)}
-              />
-              <span className="pointer-events-none absolute inset-0 rounded-full bg-muted transition-colors peer-checked:bg-primary peer-checked:after:translate-x-full after:content-[''] after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rotate-0 after:rounded-full after:transition-transform" />
-            </label>
+            <Switch
+              checked={notifications}
+              onCheckedChange={handleNotificationsChange}
+            />
           </div>
         </CardContent>
       </Card>
@@ -289,7 +277,7 @@ function ShortcutsSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>快捷键</CardTitle>
+        <CardTitle>快捷键 <em className="text-xs ml-2 text-muted-foreground">开发中...</em></CardTitle>
         <CardDescription>应用支持的键盘快捷键</CardDescription>
       </CardHeader>
       <CardContent>
@@ -337,7 +325,7 @@ function ModelsSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>模型设置</CardTitle>
+        <CardTitle>模型设置<em className="text-xs ml-2 text-muted-foreground">开发中...</em></CardTitle>
         <CardDescription>配置 AI 模型相关选项</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -395,8 +383,8 @@ function AboutSettings() {
       <CardContent className="flex flex-col gap-5">
         {/* 品牌展示 */}
         <div className="flex flex-col items-center gap-3 py-4">
-          <div className="flex size-16 items-center justify-center rounded-2xl bg-primary text-2xl font-bold text-primary-foreground">
-            <IconRocket className="size-8" />
+          <div className="flex size-16 items-center justify-center rounded-2xl text-2xl font-bold text-primary-foreground">
+            <img src={logoSvg} className="size-10" />
           </div>
           <span className="text-xl font-semibold">DigitalEmployee</span>
           <span className="text-xs text-muted-foreground">
@@ -411,7 +399,7 @@ function AboutSettings() {
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">应用版本</span>
             <span className="text-sm font-medium font-mono">
-              v{typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "0.0.0"}
+              v{pkg.version}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -420,19 +408,9 @@ function AboutSettings() {
               {typeof __BUILD_TIME__ !== "undefined" ? __BUILD_TIME__ : "-"}
             </span>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">运行环境</span>
-            <span className="text-sm font-medium font-mono">Electron</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">后端服务</span>
-            <span className="text-sm font-medium font-mono">
-              http://localhost:58000
-            </span>
-          </div>
         </div>
 
-        <Separator />
+
 
         {/* 操作 */}
         <div className="flex flex-col gap-3">
@@ -448,10 +426,8 @@ function AboutSettings() {
           </div>
         </div>
 
-        <Separator />
-
         <p className="text-xs text-center text-muted-foreground">
-          © {new Date().getFullYear()} DigitalEmployee. All rights reserved.
+          © {new Date().getFullYear()} Bobandata. All rights reserved.
         </p>
       </CardContent>
     </Card>

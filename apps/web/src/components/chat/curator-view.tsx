@@ -217,7 +217,7 @@ function ExecutionCard({ execution }: { execution: TaskExecution }) {
 
   return (
     <>
-      <div className="rounded-lg border bg-card">
+      <div className="rounded-lg border bg-card min-w-sm">
         <button
           type="button"
           className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted/50"
@@ -373,7 +373,7 @@ function RatingSection({
             placeholder="添加评语..."
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            className="min-h-[60px] resize-none text-[10px]"
+            className="min-h-[60px] resize-none text-[10px] min-w-xl"
           />
           <div className="flex justify-end">
             <Button

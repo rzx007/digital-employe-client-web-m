@@ -78,12 +78,14 @@ export { VITE_DEV_SERVER_URL, indexHtml }
  */
 async function createWindow() {
   win = new BrowserWindow({
-    title: "DigitalEmployee",
+    title: "数字员工",
     frame: false,
     icon: path.join(process.env.APP_ROOT, "build/icon.ico"),
     webPreferences: {
       preload,
     },
+    width: 1280,
+    height: 800,
     minWidth: 1024,
     minHeight: 768,
   })
