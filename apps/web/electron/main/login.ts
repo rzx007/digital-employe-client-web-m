@@ -39,16 +39,19 @@ export function createLoginWindow(options: {
   )
 
   loginWin = new BrowserWindow({
-    width: 350,
-    height: 520,
+    width: 290,
+    height: 410,
     title: "数字员工",
     icon: path.join(process.env.APP_ROOT!, "build/icon.ico"),
     frame: false,
     resizable: false,
+    useContentSize: true,
     center: true,
-    skipTaskbar: true,
+    autoHideMenuBar: true,
+    // skipTaskbar: true,
     webPreferences: {
       preload,
+      zoomFactor: 0.95,
       nodeIntegration: false,
       contextIsolation: true,
     },

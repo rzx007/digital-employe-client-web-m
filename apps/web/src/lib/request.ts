@@ -1,8 +1,5 @@
 import { ofetch } from "ofetch"
 
-/**
- * 默认请求头
- */
 const defaultHeaders: HeadersInit = {
   Accept: "application/json",
   "Content-Type": "application/json",
@@ -10,27 +7,39 @@ const defaultHeaders: HeadersInit = {
 
 const isElectron = !!(typeof window !== "undefined" && window.electronApi)
 
-const baseURL = isElectron
+const fallbackBaseURL = isElectron
   ? "http://localhost:58000"
   : import.meta.env.DEV
     ? "/actus"
     : "http://localhost:58000"
 
-const headers = { ...defaultHeaders }
+let currentBaseURL = fallbackBaseURL
+
+async function loadEndpointBaseURL(): Promise<string> {
+  if (typeof window === "undefined") return fallbackBaseURL
+  try {
+    const data = await window.ipcRenderer?.getStoreValue("app")
+    if (data?.endpoint) {
+      currentBaseURL = data.endpoint
+      return data.endpoint
+    }
+  } catch {
+    // ignore
+  }
+  return fallbackBaseURL
+}
 
 export function getRequestBaseUrl() {
   if (typeof window === "undefined") {
-    return baseURL || "http://localhost"
+    return currentBaseURL || "http://localhost"
   }
-
-  return new URL(baseURL || "/", window.location.origin).toString()
+  return new URL(currentBaseURL || "/", window.location.origin).toString()
 }
 
 export function getAuthToken() {
   if (typeof window === "undefined") {
     return null
   }
-
   return localStorage.getItem("token")
 }
 
@@ -50,21 +59,24 @@ export function getRequestHeaders(customHeaders?: HeadersInit) {
   return nextHeaders
 }
 
+export function updateRequestBaseUrl(url: string) {
+  currentBaseURL = url
+}
+
 export const request = ofetch.create({
-  baseURL,
-  headers,
+  baseURL: currentBaseURL,
+  headers: { ...defaultHeaders },
   async onRequest(ctx) {
     const token = getAuthToken()
     if (token && ctx.options?.headers) {
-      ; (ctx.options.headers as Headers).set("token", `${token}`)
+      ;(ctx.options.headers as Headers).set("token", `${token}`)
     }
   },
-  async onRequestError() { },
-  async onResponse() { },
+  async onRequestError() {},
+  async onResponse() {},
   async onResponseError({ response }) {
     const status = response?.status
     if (status === 401 || status === 403) {
-      // token 失效：清除本地存储并跳转登录页
       localStorage.removeItem("token")
       await window.electronApi?.clearAuth()
       if (typeof window !== "undefined") {
@@ -73,3 +85,9 @@ export const request = ofetch.create({
     }
   },
 })
+
+if (typeof window !== "undefined") {
+  loadEndpointBaseURL().then((url) => {
+    request.options.baseURL = url
+  })
+}
