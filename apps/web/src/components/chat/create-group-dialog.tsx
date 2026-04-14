@@ -76,7 +76,7 @@ export function CreateGroupDialog({
                 />
                 <Avatar className="h-10 w-10">
                   <AvatarFallback className="bg-primary font-medium text-primary-foreground">
-                    {employee.name.slice(0, 1)}
+                    {employee?.name?.slice(0, 1)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">

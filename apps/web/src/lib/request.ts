@@ -69,11 +69,11 @@ export const request = ofetch.create({
   async onRequest(ctx) {
     const token = getAuthToken()
     if (token && ctx.options?.headers) {
-      ;(ctx.options.headers as Headers).set("token", `${token}`)
+      ; (ctx.options.headers as Headers).set("token", `${token}`)
     }
   },
-  async onRequestError() {},
-  async onResponse() {},
+  async onRequestError() { },
+  async onResponse() { },
   async onResponseError({ response }) {
     const status = response?.status
     if (status === 401 || status === 403) {
@@ -88,6 +88,6 @@ export const request = ofetch.create({
 
 if (typeof window !== "undefined") {
   loadEndpointBaseURL().then((url) => {
-    request.options.baseURL = url
+    // request.options.baseURL = url
   })
 }
