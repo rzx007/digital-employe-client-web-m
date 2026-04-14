@@ -270,8 +270,9 @@ class TaskSchedulerService:
     ) -> None:
         if not employee or not workspace:
             return
-        # if not getattr(task, "confirm_execution_result", False):
-        #     return
+        # 如果该任务不需要确认，则直接跳过
+        if not getattr(task, "confirm_execution_result", False):
+            return
         if task.skill_id is None:
             return
         skill_name = cls._resolve_skill_name(db, employee, task.skill_id)
