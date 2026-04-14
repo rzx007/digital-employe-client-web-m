@@ -580,18 +580,18 @@ class EmployeeService:
     ) -> Employee:
         employee = EmployeeService.get_employee(db, employee_id)
         changed_tasks = False
-        if payload.name is not None:
-            employee.name = payload.name
-        if payload.description is not None:
-            employee.description = payload.description
-        if payload.version is not None:
-            employee.version = payload.version
+        if payload.employee_name is not None:
+            employee.name = payload.employee_name
+        if payload.capability_desc is not None:
+            employee.description = payload.capability_desc
+        # if payload.version is not None:
+        #     employee.version = payload.version
 
         # 这里需要加一个判断条件，新的员工姓名不能与其他员工姓名相同
         existing_employee = db.scalar(
             select(Employee).where(
                 Employee.workspace_id == employee.workspace_id,
-                Employee.name == payload.name,
+                Employee.name == payload.employee_name,
                 Employee.id != employee.id,
             )
         )
@@ -599,7 +599,7 @@ class EmployeeService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="员工名称已存在")
         else:
-            employee.name = payload.name
+            employee.name = payload.employee_name
 
         if "skill_ids" in payload.model_fields_set:
             skills = EmployeeService._validate_and_fetch_skills(

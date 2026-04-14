@@ -30,8 +30,8 @@ import {
 } from "@workspace/ui/components/dialog"
 import { cn } from "@workspace/ui/lib/utils"
 import { format } from "date-fns"
-import { se, zhCN } from "date-fns/locale"
-import type { TaskExecution } from "@/types/schedule-monitor"
+import { zhCN } from "date-fns/locale"
+import type { SkillRatingOutput, TaskExecution } from "@/types/schedule-monitor"
 import { useAllTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
@@ -294,8 +294,10 @@ function ExecutionCard({ execution }: { execution: TaskExecution }) {
                 暂无详细信息
               </p>
             )}
+            {execution.run_status !== "running" && (
+              <RatingSection executionId={execution.id} skillRating={execution.skill_rating} />
+            )}
 
-            <RatingSection executionId={execution.id} />
           </div>
         )}
       </div>
@@ -311,12 +313,15 @@ function ExecutionCard({ execution }: { execution: TaskExecution }) {
 
 function RatingSection({
   executionId,
+  skillRating,
 }: {
   executionId: number
+  skillRating?: SkillRatingOutput | null
 }) {
-  const [score, setScore] = React.useState(0.5)
-  const [comment, setComment] = React.useState("")
-  const [expanded, setExpanded] = React.useState(false)
+  const hasRated = !!skillRating
+  const [score, setScore] = React.useState(skillRating?.score ?? 0)
+  const [comment, setComment] = React.useState(skillRating?.comment ?? "")
+  const [expanded, setExpanded] = React.useState(!!skillRating?.comment)
 
   const mutation = useMutation({
     mutationFn: submitSkillRating,
@@ -333,6 +338,7 @@ function RatingSection({
   })
 
   const handleQuickRate = (newScore: number) => {
+    if (hasRated) return
     setScore(newScore)
     mutation.mutate({
       task_execution_log_id: executionId,
@@ -342,6 +348,7 @@ function RatingSection({
   }
 
   const handleSubmit = () => {
+    if (hasRated) return
     mutation.mutate({
       task_execution_log_id: executionId,
       score,
@@ -355,38 +362,48 @@ function RatingSection({
         <span className="text-[10px] text-muted-foreground">评分</span>
         <StarRating
           value={score}
-          onChange={expanded ? setScore : handleQuickRate}
+          onChange={hasRated ? undefined : (expanded ? setScore : handleQuickRate)}
           size={14}
-          disabled={mutation.isPending}
+          disabled={hasRated || mutation.isPending}
         />
-        <button
-          type="button"
-          className="ml-auto text-[10px] text-muted-foreground hover:text-primary"
-          onClick={() => setExpanded(!expanded)}
-        >
-          {expanded ? "收起" : "添加评语"}
-        </button>
+        {!hasRated && (
+          <button
+            type="button"
+            className="ml-auto text-[10px] text-muted-foreground hover:text-primary"
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? "收起" : "添加评语"}
+          </button>
+        )}
+        {hasRated && (
+          <span className="ml-auto text-[10px] text-green-600 dark:text-green-400">
+            已评分
+          </span>
+        )}
       </div>
       {expanded && (
         <>
           <Textarea
             placeholder="添加评语..."
             value={comment}
-            onChange={(e) => setComment(e.target.value)}
+            onChange={(e) => !hasRated && setComment(e.target.value)}
             className="min-h-[60px] resize-none text-[10px] min-w-xl"
+            disabled={hasRated}
           />
-          <div className="flex justify-end">
-            <Button
-              size="sm"
-              variant="default"
-              onClick={handleSubmit}
-              disabled={mutation.isPending}
-              className="h-6 text-[10px]"
-            >
-              <IconSend className="mr-1 size-3" />
-              {mutation.isPending ? "提交中..." : "提交评分"}
-            </Button>
-          </div>
+          {!hasRated && (
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                variant="default"
+                onClick={handleSubmit}
+                disabled={mutation.isPending}
+                className="h-6 text-[10px]"
+              >
+                <IconSend className="mr-1 size-3" />
+                {mutation.isPending ? "提交中..." : "提交评分"}
+              </Button>
+            </div>
+          )}
         </>
       )}
     </div>
