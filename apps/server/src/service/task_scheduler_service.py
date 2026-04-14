@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from src.db.session import get_session_local
 from src.models.employee import Employee
+from src.models.employee_skill import EmployeeSkill
 from src.models.employee_task import EmployeeTask
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import CST, Workspace, cst_now
@@ -205,19 +206,25 @@ class TaskSchedulerService:
         ).strip()
 
     @staticmethod
-    def _resolve_skill_name(employee: Employee, skill_id: int | None) -> str:
+    def _resolve_skill_name(db: Session, employee: Employee, skill_id: int | None) -> str:
         if skill_id is None:
             return ""
-        meta = TaskSchedulerService._loads_json(employee.meta_json, {})
-        skills = meta.get("skills")
-        if not isinstance(skills, list):
-            return ""
-        for skill in skills:
-            if not isinstance(skill, dict):
-                continue
-            if TaskSchedulerService._to_int(skill.get("id")) == skill_id:
-                return str(skill.get("skillName") or skill.get("name") or "")
-        return ""
+        skill_name = db.scalar(
+            select(EmployeeSkill.skill_name).where(
+                EmployeeSkill.employee_id == employee.id,
+                EmployeeSkill.skill_id == skill_id,
+            ).limit(1)
+        )
+        if skill_name:
+            return str(skill_name)
+        # 兜底：历史数据可能缺少 employee_id 维度时，按 workspace + skill_id 查一次
+        fallback_name = db.scalar(
+            select(EmployeeSkill.skill_name).where(
+                EmployeeSkill.workspace_id == employee.workspace_id,
+                EmployeeSkill.skill_id == skill_id,
+            ).order_by(EmployeeSkill.id.desc()).limit(1)
+        )
+        return str(fallback_name or "")
 
     @classmethod
     def _invoke_sql_agent_update_confirm_url(
@@ -263,16 +270,18 @@ class TaskSchedulerService:
     ) -> None:
         if not employee or not workspace:
             return
-        if not getattr(task, "confirm_execution_result", False):
-            return
+        # if not getattr(task, "confirm_execution_result", False):
+        #     return
         if task.skill_id is None:
             return
-        skill_name = cls._resolve_skill_name(employee, task.skill_id)
+        skill_name = cls._resolve_skill_name(db, employee, task.skill_id)
         skills_dir = cls._resolve_skills_dir(employee.skills_json)
         if not skill_name or not skills_dir.strip():
             return
         resolved_dir = str(Path(skills_dir).resolve())
         confirm_url = load_confirm_url_for_skill(resolved_dir, skill_name)
+        print(f"confirm_url: {confirm_url}")
+        logger.warning("confirm_url: %s", confirm_url)
         if not confirm_url:
             logger.warning(
                 "任务要求确认执行结果但未在 SKILL.md 中解析到 confirm_url，"
@@ -330,7 +339,7 @@ class TaskSchedulerService:
             or f"执行任务：{task.task_name}"
         )
         scene = str(input_payload.get("scene") or "")
-        skill_name = cls._resolve_skill_name(employee, task.skill_id)
+        skill_name = cls._resolve_skill_name(db, employee, task.skill_id)
         question = prompt
         if skill_name:
             question = f"请使用{skill_name}技能完成以下任务：{prompt}"
@@ -401,6 +410,7 @@ class TaskSchedulerService:
             task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=ended_at)
             db.add(task)
             db.add(run_log)
+            db.commit()
             cls._maybe_write_confirm_url(
                 db,
                 run_log=run_log,
