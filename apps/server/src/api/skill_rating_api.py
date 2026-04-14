@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from src.db.session import get_db
@@ -17,10 +17,12 @@ router = APIRouter(tags=["技能评分"])
 )
 def create_skill_rating(
     payload: SkillRatingBatchCreate,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> ResponseBase[SkillRatingRead]:
     """根据 task_execution_log_id 从日志表解析员工与 skill_id，写入一条评分。"""
-    data = SkillRatingService.create_from_task_log(db, payload)
+    token = request.headers.get("token")
+    data = SkillRatingService.create_from_task_log(db, payload, token)
     return ResponseBase(data=data)
 
 
