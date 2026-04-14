@@ -29,6 +29,7 @@ class SkillRatingService:
     def create_from_task_log(
         db: Session,
         payload: SkillRatingBatchCreate,
+        token: str,
     ) -> SkillRatingRead:
         log = db.get(TaskExecutionLog, payload.task_execution_log_id)
         if not log:
@@ -95,7 +96,8 @@ class SkillRatingService:
                 settings.skill_remote_base_url
                 + settings.skill_remote_rating.format(skill_id=skill_id)
             )
-            httpx.post(rating_url, json={"score": payload.score})
+            headers = {"token": f"{token}"}
+            result = httpx.post(rating_url, headers=headers, json={"score": payload.score})
         except (httpx.HTTPError, ValueError) as exc:
             print(f"评分同步失败: {exc}")
 
