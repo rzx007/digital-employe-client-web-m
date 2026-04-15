@@ -31,5 +31,9 @@ class TaskExecutionLog(Base):
     result_confirmed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, index=True
     )
+    # 日志是否已读（默认未读）
+    is_read: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now, index=True)
 

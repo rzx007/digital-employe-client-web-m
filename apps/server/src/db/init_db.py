@@ -51,6 +51,11 @@ def init_db() -> None:
         "result_confirmed",
         "result_confirmed BOOLEAN NOT NULL DEFAULT 0",
     )
+    ensure_column(
+        "task_execution_logs",
+        "is_read",
+        "is_read BOOLEAN NOT NULL DEFAULT 0",
+    )
     ensure_column("skill_ratings", "task_execution_log_id", "task_execution_log_id INTEGER")
 
     # 兼容历史员工技能关系表：补充新增字段
