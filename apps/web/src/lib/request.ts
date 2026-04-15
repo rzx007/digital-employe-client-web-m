@@ -7,11 +7,13 @@ const defaultHeaders: HeadersInit = {
 
 const isElectron = !!(typeof window !== "undefined" && window.electronApi)
 
+const server_url = `${import.meta.env.VITE_BACKEND_URL}:${import.meta.env.VITE_BACKEND_PORT}`
+
 const fallbackBaseURL = isElectron
-  ? "http://localhost:58000"
+  ? server_url
   : import.meta.env.DEV
     ? "/actus"
-    : "http://localhost:58000"
+    : server_url
 
 let currentBaseURL = fallbackBaseURL
 

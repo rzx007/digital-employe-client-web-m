@@ -17,7 +17,7 @@ import path from "node:path"
  *   退出时用 process.kill(-pid, signal) 杀掉整个进程组。
  */
 
-const BACKEND_PORT = 58000
+const BACKEND_PORT = process.env.VITE_BACKEND_PORT || 58000
 const BACKEND_READY_TIMEOUT = 30_000
 const KILL_TIMEOUT = 5000
 
@@ -126,7 +126,7 @@ function startDevServer(resolve: () => void, reject: (err: Error) => void): void
 
   backendProcess = spawn(
     "uv",
-    ["run", "uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "58000", "--reload"],
+    ["run", "uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", BACKEND_PORT.toString(), "--reload"],
     {
       cwd: serverDir,
       stdio: ["pipe", "pipe", "pipe"],

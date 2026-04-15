@@ -11,7 +11,7 @@
     "dev:client": "turbo dev:app",
     "build:client": "turbo build:app",
     "build:app": "python scripts/build-server.py --app && pnpm build:client",
-    "dev:server": "cd apps/server && uv run uvicorn src.server:app --reload --port 58000",
+    "dev:server": "cd apps/server && uv run python start.py",
     "build:server": "python scripts/build-server.py",
     "build:server:debug": "python scripts/build-server.py --debug"
   },

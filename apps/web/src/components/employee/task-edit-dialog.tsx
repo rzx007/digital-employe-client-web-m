@@ -91,6 +91,7 @@ function createEmptyTask(): TaskFormData {
     is_active: true,
     excludedDates: [],
     executeTime: "",
+    confirm_execution_result: false,
   }
 }
 
@@ -207,6 +208,7 @@ export function TaskEditDialog({
       is_active: formData.is_active ?? true,
       excludedDates: formData.excludedDates,
       executeTime: formData.executeTime,
+      confirm_execution_result: formData.confirm_execution_result ?? false,
     }
     onSave(saved)
   }
@@ -529,6 +531,19 @@ export function TaskEditDialog({
             <Switch
               checked={formData.is_active}
               onCheckedChange={(v) => updateField("is_active", v)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-4">
+            <div className="space-y-0.5">
+              <Label className="text-sm">执行结果确认通知</Label>
+              <p className="text-xs text-muted-foreground">
+                任务执行完成后发送确认通知
+              </p>
+            </div>
+            <Switch
+              checked={formData.confirm_execution_result ?? false}
+              onCheckedChange={(v) => updateField("confirm_execution_result", v)}
             />
           </div>
 

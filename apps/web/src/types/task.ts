@@ -15,6 +15,7 @@ export interface TaskFormData {
   is_active: boolean
   excludedDates?: string[]
   executeTime?: string
+  confirm_execution_result?: boolean
 }
 
 export interface ShiftScheduleForm {
