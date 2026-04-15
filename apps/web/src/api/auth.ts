@@ -14,3 +14,18 @@ export function loginApi(username: string, password: string) {
     body: JSON.stringify({ username, password }),
   })
 }
+
+export function updatePassword(data: {
+  id: number
+  oldPassword: string
+  password: string
+}) {
+  return request<{ code: number; msg: string }>("/yc/updatePassword", {
+    method: "POST",
+    body: {
+      id: data.id,
+      oldpassword: data.oldPassword,
+      password: data.password,
+    },
+  })
+}

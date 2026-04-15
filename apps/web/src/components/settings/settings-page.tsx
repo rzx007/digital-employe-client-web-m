@@ -1,18 +1,30 @@
 import * as React from "react"
 import pkg from "../../../package.json"
 import logoSvg from '@/assets/logo.svg'
+import Avatar1 from "@/assets/avaters/1.png"
+import Avatar2 from "@/assets/avaters/2.png"
+import Avatar3 from "@/assets/avaters/3.png"
+import Avatar4 from "@/assets/avaters/4.png"
+import Avatar5 from "@/assets/avaters/5.png"
+import Avatar6 from "@/assets/avaters/6.png"
+import Avatar7 from "@/assets/avaters/7.png"
+import Avatar8 from "@/assets/avaters/8.png"
+import Avatar9 from "@/assets/avaters/9.png"
 import {
   IconSettings,
   IconKeyboard,
   IconBrain,
   IconInfoCircle,
   IconLogout,
-  IconRefresh,
   IconSun,
   IconMoon,
   IconDeviceDesktop,
   IconRocket,
+  IconUser,
+  IconLock,
+  IconTrash,
 } from "@tabler/icons-react"
+import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 import {
   Card,
@@ -21,6 +33,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@workspace/ui/components/dialog"
+import { Input } from "@workspace/ui/components/input"
+import { Label } from "@workspace/ui/components/label"
 import {
   Select,
   SelectContent,
@@ -34,14 +55,17 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useTheme } from "@/components/theme-provider"
 import { useAuthStore } from "@/stores/auth-store"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
+import { updatePassword } from "@/api/auth"
+import { decryptPwd } from "@/lib/password-sm"
 
-type SettingsTab = "general" | "shortcuts" | "models" | "about"
+type SettingsTab = "account" | "general" | "shortcuts" | "models" | "about"
 
 const tabs: {
   id: SettingsTab
   label: string
   icon: React.ComponentType<{ className?: string }>
 }[] = [
+    { id: "account", label: "账号与隐私", icon: IconUser },
     { id: "general", label: "通用", icon: IconSettings },
     { id: "shortcuts", label: "快捷键", icon: IconKeyboard },
     { id: "models", label: "模型", icon: IconBrain },
@@ -86,9 +110,301 @@ function ThemeCard({
   )
 }
 
+const userAvatars = [
+  Avatar1, Avatar2, Avatar3, Avatar4, Avatar5,
+  Avatar6, Avatar7, Avatar8, Avatar9, Avatar1,
+]
+
+function ChangePasswordDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+}) {
+  const user = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.logout)
+  const [oldPwd, setOldPwd] = React.useState("")
+  const [newPwd, setNewPwd] = React.useState("")
+  const [confirmPwd, setConfirmPwd] = React.useState("")
+  const [errors, setErrors] = React.useState<Record<string, string>>({})
+  const [submitting, setSubmitting] = React.useState(false)
+
+  const validate = (): boolean => {
+    const errs: Record<string, string> = {}
+    if (!oldPwd) errs.oldPwd = "旧密码不可为空"
+    if (!newPwd) {
+      errs.newPwd = "新密码不可为空"
+    } else if (newPwd.length < 8 || newPwd.length > 15) {
+      errs.newPwd = "密码长度需在8-15位之间"
+    } else {
+      const hasUpper = /[A-Z]/.test(newPwd)
+      const hasLower = /[a-z]/.test(newPwd)
+      const hasNumber = /[0-9]/.test(newPwd)
+      const hasSpecial = /[^A-Za-z0-9]/.test(newPwd)
+      const typeCount = [hasUpper, hasLower, hasNumber, hasSpecial].filter(Boolean).length
+      if (typeCount < 3) errs.newPwd = "密码需包含大写字母、小写字母、数字、特殊字符中至少三种"
+      if (user?.username && newPwd.includes(user.username)) errs.newPwd = "密码不能包含用户名"
+    }
+    if (!confirmPwd) {
+      errs.confirmPwd = "确认密码不可为空"
+    } else if (newPwd !== confirmPwd) {
+      errs.confirmPwd = "两次输入的密码不一致"
+    }
+    setErrors(errs)
+    return Object.keys(errs).length === 0
+  }
+
+  const handleSubmit = async () => {
+    if (!validate() || !user?.id) return
+    setSubmitting(true)
+    try {
+      const res = await updatePassword({
+        id: user.id,
+        oldPassword: decryptPwd(oldPwd),
+        password: decryptPwd(newPwd),
+      })
+      if (res.data?.code === 1) {
+        toast.success("密码修改成功，请重新登录")
+        onOpenChange(false)
+        setOldPwd("")
+        setNewPwd("")
+        setConfirmPwd("")
+        logout()
+      } else {
+        toast.error(res.data?.msg || "密码修改失败")
+      }
+    } catch {
+      toast.error("密码修改失败")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleClose = (v: boolean) => {
+    if (!v) {
+      setOldPwd("")
+      setNewPwd("")
+      setConfirmPwd("")
+      setErrors({})
+    }
+    onOpenChange(v)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>修改密码</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="old-pwd">旧密码</Label>
+            <Input
+              id="old-pwd"
+              type="password"
+              placeholder="请输入旧密码"
+              value={oldPwd}
+              onChange={(e) => setOldPwd(e.target.value)}
+            />
+            {errors.oldPwd && (
+              <p className="text-xs text-destructive">{errors.oldPwd}</p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="new-pwd">新密码</Label>
+            <Input
+              id="new-pwd"
+              type="password"
+              placeholder="8-15位，包含至少三种字符类型"
+              value={newPwd}
+              onChange={(e) => setNewPwd(e.target.value)}
+            />
+            {errors.newPwd && (
+              <p className="text-xs text-destructive">{errors.newPwd}</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              密码需包含大写字母、小写字母、数字、特殊字符中至少三种
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="confirm-pwd">确认新密码</Label>
+            <Input
+              id="confirm-pwd"
+              type="password"
+              placeholder="请再次输入新密码"
+              value={confirmPwd}
+              onChange={(e) => setConfirmPwd(e.target.value)}
+            />
+            {errors.confirmPwd && (
+              <p className="text-xs text-destructive">{errors.confirmPwd}</p>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={handleSubmit} disabled={submitting}>
+            {submitting ? "保存中..." : "保存"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function AccountSettings() {
+  const user = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.logout)
+  const restoreSession = useAuthStore((s) => s.restoreSession)
+  const [pwdDialogOpen, setPwdDialogOpen] = React.useState(false)
+  React.useEffect(() => {
+    (async () => {
+      await restoreSession()
+    })()
+  }, [restoreSession])
+
+  const avatarIndex = user?.id ? parseInt(user.id.toString()) % 10 : 0
+  const department = user?.dpts?.[0]?.name
+
+  return (
+    <>
+      <ChangePasswordDialog
+        open={pwdDialogOpen}
+        onOpenChange={setPwdDialogOpen}
+      />
+      <div className="flex flex-col gap-5">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="size-16 overflow-hidden rounded-full">
+                <img
+                  src={userAvatars[avatarIndex]}
+                  alt={user?.name || "用户"}
+                  className="size-full object-cover"
+                />
+              </div>
+              <div>
+                <h3 className="text-xl font-medium">
+                  {user?.name || "未知用户"}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {department || "未知部门"}
+                </p>
+              </div>
+            </div>
+
+            <h3 className="mb-4 text-sm font-medium">账号信息</h3>
+
+            <div className="space-y-4">
+              <div className="flex items-center">
+                <div className="w-20 shrink-0">
+                  <Label>用户名</Label>
+                </div>
+                <p
+                  className={cn(
+                    "text-sm",
+                    !user?.username && "text-muted-foreground"
+                  )}
+                >
+                  {user?.username || "未知用户"}
+                </p>
+              </div>
+
+              <div className="flex items-center">
+                <div className="w-20 shrink-0">
+                  <Label>手机号</Label>
+                </div>
+                <p
+                  className={cn(
+                    "text-sm",
+                    !user?.phoneNumber && "text-muted-foreground"
+                  )}
+                >
+                  {user?.phoneNumber || "尚未绑定"}
+                </p>
+              </div>
+
+              <div className="flex items-center">
+                <div className="w-20 shrink-0">
+                  <Label>邮箱</Label>
+                </div>
+                <p
+                  className={cn(
+                    "text-sm",
+                    !user?.email && "text-muted-foreground"
+                  )}
+                >
+                  {user?.email || "尚未绑定"}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>账号安全</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">密码修改</p>
+                <p className="text-xs text-muted-foreground">
+                  密码修改后，您需要重新登录。
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPwdDialogOpen(true)}
+              >
+                <IconLock className="mr-2 size-4" />
+                修改密码
+              </Button>
+            </div>
+
+            <Separator />
+
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">退出登录</p>
+                <p className="text-xs text-muted-foreground">
+                  退出当前登录账号。
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={logout}>
+                <IconLogout className="mr-2 size-4" />
+                退出登录
+              </Button>
+            </div>
+
+            <Separator />
+
+            <div className="flex cursor-not-allowed items-center justify-between opacity-55">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">注销账号</p>
+                <p className="text-xs text-red-500">
+                  注销账号不可恢复，所有数据将被删除。
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled
+                className="border-red-200 text-red-500 hover:bg-red-100 hover:text-red-600"
+              >
+                <IconTrash className="mr-2 size-4" />
+                注销账号
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </>
+  )
+}
+
 function GeneralSettings() {
   const { theme, setTheme } = useTheme()
-  const logout = useAuthStore((s) => s.logout)
   const [autoLaunch, setAutoLaunch] = React.useState(false)
   const [autoUpdate, setAutoUpdate] = React.useState(true)
   const [notifications, setNotifications] = React.useState(true)
@@ -127,12 +443,6 @@ function GeneralSettings() {
     setNotifications(checked)
     if (window.electronApi?.isElectron) {
       await window.electronApi.setNotifications(checked)
-    }
-  }
-
-  const handleResetApp = async () => {
-    if (window.electronApi?.isElectron) {
-      await window.electronApi.resetApp()
     }
   }
 
@@ -218,43 +528,6 @@ function GeneralSettings() {
               checked={notifications}
               onCheckedChange={handleNotificationsChange}
             />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* 退出登录 */}
-      <Card>
-        <CardHeader>
-          <CardTitle>账号操作</CardTitle>
-          <CardDescription>管理你的账号登录状态</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-medium">退出登录</span>
-              <span className="text-xs text-muted-foreground">
-                退出当前账号，需要重新登录
-              </span>
-            </div>
-            <Button variant="destructive" size="sm" onClick={logout}>
-              <IconLogout className="mr-2 size-4" />
-              退出登录
-            </Button>
-          </div>
-
-          <Separator />
-
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-medium text-destructive">重置应用</span>
-              <span className="text-xs text-muted-foreground">
-                清除所有本地数据并恢复默认设置
-              </span>
-            </div>
-            <Button variant="outline" size="sm" onClick={handleResetApp}>
-              <IconRefresh className="mr-2 size-4" />
-              重置应用
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -461,6 +734,7 @@ export function SettingsPage() {
 
       {/* 右侧内容 */}
       <ScrollArea className="flex-1  p-6">
+        {activeTab === "account" && <AccountSettings />}
         {activeTab === "general" && <GeneralSettings />}
         {activeTab === "shortcuts" && <ShortcutsSettings />}
         {activeTab === "models" && <ModelsSettings />}

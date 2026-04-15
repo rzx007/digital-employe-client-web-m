@@ -4,13 +4,15 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { tanstackRouter } from "@tanstack/router-plugin/vite"
 import electron from "vite-plugin-electron/simple"
-import { defineConfig, type ConfigEnv } from "vite"
+import { defineConfig, loadEnv, type ConfigEnv } from "vite"
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }: ConfigEnv) => {
+  const env = loadEnv(mode, process.cwd())
   const isServe = command === "serve"
   const isBuild = command === "build"
   const sourcemap = isServe || !!process.env.VSCODE_DEBUG
+  const server_url = `${env.VITE_BACKEND_URL}:${env.VITE_BACKEND_PORT}`
 
   return {
     plugins: [
@@ -88,7 +90,7 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
       open: true,
       proxy: {
         "/actus": {
-          target: "http://localhost:58000",
+          target: server_url,
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/actus/, ""),
         },
