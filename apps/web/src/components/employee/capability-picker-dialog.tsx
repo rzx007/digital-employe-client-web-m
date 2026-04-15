@@ -1,6 +1,7 @@
 import * as React from "react"
 
-import { IconCheck, IconSearch } from "@tabler/icons-react"
+import { IconCheck, IconPlug, IconSearch } from "@tabler/icons-react"
+import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
   Dialog,
@@ -38,7 +39,7 @@ export function CapabilityPickerDialog({
   selectedSkillIds,
   onConfirm,
 }: CapabilityPickerDialogProps) {
-  const [draftMcpIds] = React.useState<number[]>(selectedMcpIds)
+  const [draftMcpIds, setDraftMcpIds] = React.useState<number[]>(selectedMcpIds)
   const [draftSkillIds, setDraftSkillIds] =
     React.useState<number[]>(selectedSkillIds)
   const [tab, setTab] = React.useState<"mcp" | "skill">("skill")
@@ -47,6 +48,7 @@ export function CapabilityPickerDialog({
 
   React.useEffect(() => {
     if (open) {
+      setDraftMcpIds(selectedMcpIds)
       setDraftSkillIds(selectedSkillIds)
       setSearchQuery("")
     }
@@ -54,6 +56,12 @@ export function CapabilityPickerDialog({
 
   const toggleSkill = (id: number) => {
     setDraftSkillIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    )
+  }
+
+  const toggleMcp = (id: number) => {
+    setDraftMcpIds((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
     )
   }
@@ -73,6 +81,18 @@ export function CapabilityPickerDialog({
         (item.displayNameZh && item.displayNameZh.toLowerCase().includes(q))
     )
   }, [allSkillList, searchQuery])
+
+  const filteredMcps = React.useMemo(() => {
+    if (!searchQuery.trim()) return allMcpList
+    const q = searchQuery.toLowerCase()
+    return allMcpList.filter(
+      (item) =>
+        item.capability_name.toLowerCase().includes(q) ||
+        item.capability_desc.toLowerCase().includes(q) ||
+        item.mcp_server_name.toLowerCase().includes(q) ||
+        item.mcp_tool_name.toLowerCase().includes(q)
+    )
+  }, [allMcpList, searchQuery])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -150,7 +170,70 @@ export function CapabilityPickerDialog({
 
           </TabsContent>
           <TabsContent value="mcp" className="mt-0 min-h-0 flex-1 overflow-hidden">
+            <div className="relative px-6 pb-3">
+              <IconSearch className="pointer-events-none absolute top-2/5 left-[2.25rem] size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="搜索 MCP 工具..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
 
+            <div className="flex-1 overflow-y-auto px-6 pb-4">
+              {filteredMcps.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                  <IconSearch className="size-8 stroke-1" />
+                  <p className="mt-2 text-sm">没有找到匹配的 MCP 工具</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {filteredMcps.map((item) => {
+                    const checked = draftMcpIds.includes(item.id)
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={cn(
+                          "relative flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors",
+                          checked
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-primary/30"
+                        )}
+                        onClick={() => toggleMcp(item.id)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <IconPlug className="size-3.5 shrink-0 text-muted-foreground" />
+                            <span className="text-sm font-medium leading-snug">
+                              {item.capability_name}
+                            </span>
+                          </div>
+                          <IconCheck
+                            className={cn(
+                              "size-4 shrink-0 text-primary",
+                              checked ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                        </div>
+                        <span className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                          {item.capability_desc}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <Badge variant="secondary" className="px-1 py-0 text-[10px] font-normal">
+                            {item.mcp_server_name}
+                          </Badge>
+                          <span className="text-[10px] text-muted-foreground">/</span>
+                          <Badge variant="outline" className="px-1 py-0 text-[10px] font-normal">
+                            {item.mcp_tool_name}
+                          </Badge>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </TabsContent>
         </Tabs>
 
