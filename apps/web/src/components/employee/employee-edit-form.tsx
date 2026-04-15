@@ -85,6 +85,7 @@ function convertApiTasksToTaskFormData(apiTasks: ApiTaskResponse[]): TaskFormDat
     cron_expression: t.cron_expression,
     cron_expression_type: (t.cron_expression_type as CronExpressionType) || "daily",
     is_active: t.is_active ?? true,
+    confirm_execution_result: t.confirm_execution_result ?? false,
   }))
 }
 

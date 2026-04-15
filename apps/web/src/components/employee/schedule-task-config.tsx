@@ -49,7 +49,7 @@ function TaskCard({
   const targetName = React.useMemo(() => {
     if (task.task_resource_type === "skill") {
       const skill = skills.find((s) => Number(s.id) === task.skill_id)
-      return skill?.name ?? "未选择技能"
+      return skill?.skillName ?? skill?.displayNameZh ?? "未选择技能"
     }
     return "未选择能力"
   }, [task.task_resource_type, task.skill_id, skills])
@@ -242,7 +242,7 @@ export function ScheduleTaskConfig({
 
         {tasks.length > 0 && (
           <div className="space-y-2 px-3 pb-3">
-  
+
             {tasks.map((task, index) => (
               <TaskCard
                 key={task.id ?? index}

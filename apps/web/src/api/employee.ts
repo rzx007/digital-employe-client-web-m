@@ -144,6 +144,7 @@ function buildEmployeeBody(
       user_prompt: task.user_prompt,
       task_resource_type: task.task_resource_type,
       skill_id: task.skill_id,
+      confirm_execution_result: task.confirm_execution_result ?? false,
     }))
   }
 
