@@ -108,11 +108,12 @@ def _build_system_prompt(current_time: str, available_skills: list[str]) -> str:
     return f"""今天的时间是{current_time}
 
         Skills available at /skills/. Use /memories/ for persistent context.
-        我的默认环境是windows 环境 所有 你执行 命令的时候要注意windows 的规范
+        我的默认环境是windows环境，所以你执行命令的时候要注意windows的命令规范
+        在生成命令的时候不要添加引号，例如正确的命令是：python script.py 而不是 python \"script.py\"
         当前已加载的技能名单：{skills_line}
         如果用户询问“你有没有某个技能”或“你有哪些技能”，必须严格基于当前已加载的技能名单回答，不要猜测，不要遗漏名单中的技能。
         在执行技能或者技能脚本的时候，查找技能所在的绝对路径，然后执行，不要用相对路径
-         """
+        """
 
 
 class PosixVirtualFilesystemBackend(FilesystemBackend):
