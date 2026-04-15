@@ -339,6 +339,19 @@ class TaskService:
         # 给items加上员工姓名字段
         for item in items:
             item.employee_name = employee_name_map.get(item.employee_id, "")
+        task_ids = [item.task_id for item in items if getattr(item, "task_id", None) is not None]
+        task_confirm_map: dict[int, bool] = {}
+        if task_ids:
+            task_rows = list(
+                db.execute(
+                    select(EmployeeTask.id, EmployeeTask.confirm_execution_result).where(
+                        EmployeeTask.id.in_(task_ids)
+                    )
+                ).all()
+            )
+            task_confirm_map = {int(task_id): bool(confirm) for task_id, confirm in task_rows}
+        for item in items:
+            item.confirm_execution_result = task_confirm_map.get(item.task_id)
 
         TaskService._attach_skill_ratings_for_logs(db, items)
 
@@ -369,6 +382,42 @@ class TaskService:
         )
         employee_name_map = {emp.id: emp.name for emp in employees}
         log.employee_name = employee_name_map.get(log.employee_id, "")
+        task = db.get(EmployeeTask, log.task_id)
+        log.confirm_execution_result = (
+            bool(task.confirm_execution_result) if task is not None else None
+        )
+        TaskService._attach_skill_ratings_for_logs(db, [log])
+        return log
+
+    @staticmethod
+    def mark_task_execution_log_read(
+        db: Session,
+        workspace_id: int,
+        execution_log_id: int,
+    ) -> TaskExecutionLog:
+        """将指定执行日志标记为已读。"""
+        WorkspaceService.get_workspace(db, workspace_id)
+        log = db.get(TaskExecutionLog, execution_log_id)
+        if not log or log.workspace_id != workspace_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="未找到任务执行日志。",
+            )
+        log.is_read = True
+        db.add(log)
+        db.commit()
+        db.refresh(log)
+        employees = list(
+            db.scalars(
+                select(Employee).where(Employee.workspace_id == workspace_id).order_by(Employee.id.asc())
+            ).all()
+        )
+        employee_name_map = {emp.id: emp.name for emp in employees}
+        log.employee_name = employee_name_map.get(log.employee_id, "")
+        task = db.get(EmployeeTask, log.task_id)
+        log.confirm_execution_result = (
+            bool(task.confirm_execution_result) if task is not None else None
+        )
         TaskService._attach_skill_ratings_for_logs(db, [log])
         return log
 

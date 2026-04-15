@@ -65,7 +65,9 @@ def _task_execution_log_to_read(item) -> TaskExecutionLogRead:
         ended_at=item.ended_at,
         duration_ms=item.duration_ms,
         confirm_url=item.confirm_url,
+        confirm_execution_result=getattr(item, "confirm_execution_result", None),
         result_confirmed=getattr(item, "result_confirmed", False),
+        is_read=getattr(item, "is_read", False),
         skill_rating=skill_rating,
     )
 
@@ -211,6 +213,23 @@ def confirm_task_execution_result(
 ) -> ResponseBase[TaskExecutionLogRead]:
     """将指定执行日志标记为已确认（result_confirmed=true）。"""
     log = TaskService.confirm_task_execution_log(
+        db, workspace_id=workspace_id, execution_log_id=task_execution_log_id
+    )
+    return ResponseBase(data=_task_execution_log_to_read(log))
+
+
+@router.post(
+    "/workspaces/{workspace_id}/tasks/executions/{task_execution_log_id}/read",
+    response_model=ResponseBase[TaskExecutionLogRead],
+    summary="确认任务日志已读",
+)
+def mark_task_execution_read(
+    workspace_id: int,
+    task_execution_log_id: int,
+    db: Session = Depends(get_db),
+) -> ResponseBase[TaskExecutionLogRead]:
+    """将指定执行日志标记为已读（is_read=true）。"""
+    log = TaskService.mark_task_execution_log_read(
         db, workspace_id=workspace_id, execution_log_id=task_execution_log_id
     )
     return ResponseBase(data=_task_execution_log_to_read(log))

@@ -95,7 +95,9 @@ class TaskExecutionLogRead(BaseModel):
     ended_at: datetime | None
     duration_ms: int | None
     confirm_url: str | None = None
+    confirm_execution_result: bool | None = None
     result_confirmed: bool = False
+    is_read: bool = False
     skill_rating: TaskExecutionSkillRatingRead | None = None
 
     @field_serializer("started_at", "ended_at")
