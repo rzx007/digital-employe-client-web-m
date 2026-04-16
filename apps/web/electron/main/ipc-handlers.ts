@@ -146,11 +146,13 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
 
   // ========== 系统通知 ==========
 
-  /** 发送 OS 原生通知（屏幕右下角 Toast） */
+  /** 发送 OS 原生通知（仅在窗口不在焦点时发送） */
   ipcMain.handle(
     "send-notification",
     (_event, options: { title: string; body: string; silent?: boolean }) => {
-      if (mainWin) {
+      if (!mainWin || mainWin.isDestroyed()) return
+      const isFocused = mainWin.isFocused() && !mainWin.isMinimized()
+      if (!isFocused) {
         sendNotification({ ...options, win: mainWin })
       }
     }

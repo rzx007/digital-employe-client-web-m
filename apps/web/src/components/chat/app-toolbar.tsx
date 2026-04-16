@@ -28,6 +28,7 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import { useAuthStore } from "@/stores/auth-store"
 import { useChatStore, type ActiveTab } from "@/stores/chat-store"
+import { NotificationBell } from "./notification-center"
 
 // 导入所有头像资源
 import Avatar1 from "@/assets/avaters/1.png"
@@ -160,6 +161,8 @@ export function AppToolbar({
         </nav>
 
         <div className="flex flex-col gap-2 mt-auto">
+          <NotificationBell />
+
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

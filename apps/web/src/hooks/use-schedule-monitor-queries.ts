@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { request } from "@/lib/request"
 import type {
@@ -154,5 +154,46 @@ export function useAnomalies(employeeId: string | null) {
     queryFn: () => generateAnomalies(employeeId!),
     enabled: Boolean(employeeId),
     staleTime: 30_000,
+  })
+}
+
+export function useNotifications() {
+  return useQuery({
+    queryKey: [...chatKeys.all, "notifications"],
+    queryFn: async () => {
+      const res = await request<{
+        code: number
+        data: TaskExecution[]
+      }>(`/workspaces/${WORKSPACE_ID}/tasks/executions`)
+      return res.data.filter((e) => e.confirm_execution_result)
+    },
+    staleTime: 30_000,
+    refetchInterval: 15_000,
+  })
+}
+
+export function useMarkNotificationRead() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: number) => {
+      await request(`/tasks/executions/${id}/read`, { method: "PUT" })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [...chatKeys.all, "notifications"] })
+    },
+  })
+}
+
+export function useMarkAllNotificationsRead() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (ids: number[]) => {
+      await Promise.all(
+        ids.map((id) => request(`/tasks/executions/${id}/read`, { method: "PUT" }))
+      )
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [...chatKeys.all, "notifications"] })
+    },
   })
 }

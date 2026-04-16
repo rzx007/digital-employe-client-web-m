@@ -90,6 +90,10 @@ export interface TaskExecution {
   ended_at: string | null
   duration_ms: number | null
   skill_rating: null | SkillRatingOutput
+  confirm_url: string | null
+  confirm_execution_result: boolean
+  result_confirmed: boolean
+  is_read: boolean
 }
 
 export interface ShiftSchedule {

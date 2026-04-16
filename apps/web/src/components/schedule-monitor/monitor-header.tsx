@@ -60,6 +60,7 @@ export function MonitorHeader({
   onToggleFullscreen,
   isFullscreen,
 }: MonitorHeaderProps) {
+  const isElectron = !!(typeof window !== "undefined" && window.electronApi)
   return (
     <div
       className={cn("flex items-center gap-2 border-b bg-muted/50 px-4 py-3")}
@@ -69,13 +70,13 @@ export function MonitorHeader({
       </div>
 
       <div className="flex items-center gap-1">
-        <MonitorAction
+        {!isElectron && <MonitorAction
           className="mr-4"
           icon={isFullscreen ? IconMinimize : IconMaximize}
           label={isFullscreen ? "退出全屏" : "全屏"}
           tooltip={isFullscreen ? "退出全屏" : "全屏"}
           onClick={onToggleFullscreen}
-        />
+        />}
 
       </div>
     </div>
