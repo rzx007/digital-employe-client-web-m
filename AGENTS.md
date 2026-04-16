@@ -139,8 +139,6 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 
 ### 已知问题
 
-- **start.py reload 反转**：`reload=IS_PROD`，生产环境开启热重载，开发环境反而关闭。开发时推荐直接用 `uvicorn --reload`。
-- **SQLite 路径不一致**：`.env.example` 写的 `~/digital-employee-client/data/app.db`，代码默认 `~/.digital-employee/data/app.db`。以代码为准。
 - **无测试**：`tests/` 目录不存在。
 
 ### 打包
