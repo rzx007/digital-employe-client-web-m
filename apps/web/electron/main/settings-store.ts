@@ -1,4 +1,15 @@
+import { app } from "electron"
+import path from "node:path"
+import fs from "node:fs"
 import Store from "electron-store"
+
+export function getStoreDir(): string {
+  const dir = path.join(app.getPath("home"), ".digital-employee")
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+  return dir
+}
 
 interface SettingsData {
   autoLaunch: boolean
@@ -14,6 +25,7 @@ let store: Store<SettingsData> | null = null
 export function initSettingsStore(): void {
   store = new Store<SettingsData>({
     name: "settings",
+    cwd: getStoreDir(),
     defaults: {
       autoLaunch: false,
       notifications: true,
@@ -25,7 +37,9 @@ export function initSettingsStore(): void {
   })
 }
 
-export function getSetting<K extends keyof SettingsData>(key: K): SettingsData[K] {
+export function getSetting<K extends keyof SettingsData>(
+  key: K
+): SettingsData[K] {
   if (!store) {
     // 根据键名返回对应的默认值
     const defaults: SettingsData = {
