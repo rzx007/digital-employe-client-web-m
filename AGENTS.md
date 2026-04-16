@@ -87,7 +87,7 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 
 `src/service/agent.py` → `get_agent(skill_path, root_path)` 创建对话 agent：
 
-- 使用 `deepagents`（v0.3.5）+ `langchain` + `langgraph`
+- 使用 `deepagents`（v0.5.3）+ `langchain` + `langgraph`
 - `src/service/custom_graph.py` → `create_deep_agent()` 配置 LangGraph 状态图
 - Backend 是 Windows 兼容的 `WindowsCompatibleCompositeBackend`：
   - `/memories/` → StoreBackend（持久化）
