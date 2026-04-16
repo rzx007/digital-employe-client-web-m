@@ -15,9 +15,11 @@ from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
 from src.models.employee import Employee, EmployeeShiftSchedule
+from src.models.employee_mcp import EmployeeMcp
 from src.models.employee_skill import EmployeeSkill
 from src.models.workspace import Workspace
 from src.schemas.employee import EmployeeCreate, EmployeeUpdate, ShiftScheduleCreateWithoutEmployee
+from src.service.mcp_service import McpService
 from src.service.skill_service import SkillService
 from src.service.task_scheduler_service import TaskSchedulerService
 from src.service.task_service import TaskService
@@ -105,8 +107,43 @@ class EmployeeService:
         return []
 
     @staticmethod
+    def _employee_mcps_snapshot(db: Session, employee: Employee) -> list[dict]:
+        """返回该员工已绑定的 MCP 摘要列表。"""
+        rows = list(
+            db.scalars(
+                select(EmployeeMcp)
+                .where(EmployeeMcp.employee_id == employee.id)
+                .order_by(EmployeeMcp.id.asc())
+            ).all()
+        )
+        return [
+            {
+                "id": r.id,
+                "mcp_id": r.mcp_id,
+                "server_name": r.server_name,
+                "server_addr": r.server_addr,
+                "server_describe": r.server_describe,
+                "directory_id": r.directory_id,
+                "directory_name": r.directory_name,
+                "tool_num": r.tool_num,
+                "status": r.status,
+                "create_time": r.create_time,
+                "update_time": r.update_time,
+                "source_type": r.source_type,
+                "content": r.content,
+                "call_timeout": r.call_timeout,
+                "recovery": r.recovery,
+                "aios_mcp_result": json.loads(r.aios_mcp_result_json) if r.aios_mcp_result_json else None,
+                "mcp_sync_client": json.loads(r.mcp_sync_client_json) if r.mcp_sync_client_json else None,
+                "aios_mcp_authorize_dto": json.loads(r.aios_mcp_authorize_dto_json) if r.aios_mcp_authorize_dto_json else None,
+                "aios_mcp_info_server_list": json.loads(r.aios_mcp_info_server_list_json) if r.aios_mcp_info_server_list_json else None,
+            }
+            for r in rows
+        ]
+
+    @staticmethod
     def employee_detail_dict(db: Session, employee: Employee) -> dict:
-        """员工详情：在 metadata 中附加 skills_info（技能信息列表）。"""
+        """员工详情：在 metadata 中附加 skills 和 mcps 快照。"""
         data = EmployeeService._employee_to_dict(employee)
         meta = data.get("metadata")
         if isinstance(meta, dict):
@@ -114,7 +151,9 @@ class EmployeeService:
         else:
             meta = {}
         meta["skills"] = EmployeeService._employee_skills_snapshot(db, employee)
+        meta["mcps"] = EmployeeService._employee_mcps_snapshot(db, employee)
         data["metadata"] = meta
+        data["mcps"] = meta["mcps"]
         return data
 
     @staticmethod
@@ -327,6 +366,63 @@ class EmployeeService:
                 }
             )
         return normalized
+
+    @staticmethod
+    def _validate_and_fetch_mcps(mcp_ids: list[int] | None, token: str) -> list[dict]:
+        """去重后逐个拉取远程 MCP 详情，任何一个失败直接抛出异常。"""
+        if not mcp_ids:
+            return []
+        details: list[dict] = []
+        seen: set[int] = set()
+        for raw_id in mcp_ids:
+            mcp_id = int(raw_id)
+            if mcp_id in seen:
+                continue
+            seen.add(mcp_id)
+            detail = McpService.get_remote_mcp_detail(mcp_id, token)
+            details.append(detail)
+        return details
+
+    @staticmethod
+    def _replace_employee_mcps(db: Session, employee: Employee, mcp_details: list[dict]) -> None:
+        """全量覆盖：先删除该员工全部 MCP 关联，再按最新详情重建。"""
+        db.execute(delete(EmployeeMcp).where(EmployeeMcp.employee_id == employee.id))
+
+        def _to_json(val: object) -> str | None:
+            if val is None:
+                return None
+            if isinstance(val, str):
+                return val
+            try:
+                return json.dumps(val, ensure_ascii=False)
+            except (TypeError, ValueError):
+                return str(val)
+
+        for item in mcp_details:
+            db.add(
+                EmployeeMcp(
+                    workspace_id=employee.workspace_id,
+                    employee_id=employee.id,
+                    mcp_id=int(item.get("id")),
+                    server_name=item.get("serverName"),
+                    server_addr=item.get("serverAddr"),
+                    server_describe=item.get("serverDescribe"),
+                    directory_id=item.get("directoryId"),
+                    directory_name=item.get("directoryName"),
+                    tool_num=item.get("toolNum"),
+                    status=item.get("status"),
+                    create_time=item.get("createTime"),
+                    update_time=item.get("updateTime"),
+                    source_type=_to_json(item.get("sourceType")),
+                    content=_to_json(item.get("content")),
+                    call_timeout=item.get("callTimeout"),
+                    recovery=bool(item.get("recovery", False)),
+                    aios_mcp_result_json=_to_json(item.get("aiosMcpResult")),
+                    mcp_sync_client_json=_to_json(item.get("mcpSyncClient")),
+                    aios_mcp_authorize_dto_json=_to_json(item.get("aiosMcpAuthorizeDto")),
+                    aios_mcp_info_server_list_json=_to_json(item.get("aiosMcpInfoServerList")),
+                )
+            )
 
     @staticmethod
     def _validate_and_fetch_skills(skill_ids: list[int] | None, token: str) -> list[dict]:
@@ -607,6 +703,10 @@ class EmployeeService:
             EmployeeService._replace_employee_skills(db, employee, skills)
             EmployeeService._save_skills_to_local_files(employee, skills)
 
+        if "mcp_ids" in payload.model_fields_set:
+            mcp_details = EmployeeService._validate_and_fetch_mcps(payload.mcp_ids, token)
+            EmployeeService._replace_employee_mcps(db, employee, mcp_details)
+
         if "shift_schedule" in payload.model_fields_set:
             EmployeeService._replace_shift_schedule(
                 db, employee, payload.shift_schedule)
@@ -648,6 +748,7 @@ class EmployeeService:
 
         skills = EmployeeService._validate_and_fetch_skills(
             obj_in.skill_ids, token)
+        mcp_details = EmployeeService._validate_and_fetch_mcps(obj_in.mcp_ids, token)
 
         tasks = EmployeeService._normalize_tasks(obj_in.tasks)
         shift_schedule = obj_in.shift_schedule
@@ -674,6 +775,7 @@ class EmployeeService:
         employee.employee_code = str(employee.id)
 
         EmployeeService._replace_employee_skills(db, employee, skills)
+        EmployeeService._replace_employee_mcps(db, employee, mcp_details)
         EmployeeService._replace_shift_schedule(db, employee, shift_schedule)
         # 将skills的内容存到本地文件
         skill_dir = EmployeeService._save_skills_to_local_files(

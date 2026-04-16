@@ -64,3 +64,33 @@ def init_db() -> None:
     ensure_column("employee_skills", "prompt", "prompt TEXT")
     ensure_column("employee_skills", "skill_content", "skill_content TEXT")
 
+    # 兼容历史员工 MCP 关联表：补充新增字段
+    ensure_column("employee_mcps", "workspace_id", "workspace_id INTEGER")
+    ensure_column("employee_mcps", "employee_id", "employee_id INTEGER")
+    ensure_column("employee_mcps", "mcp_id", "mcp_id INTEGER")
+    ensure_column("employee_mcps", "server_name", "server_name VARCHAR(255)")
+    ensure_column("employee_mcps", "server_addr", "server_addr VARCHAR(1000)")
+    ensure_column("employee_mcps", "server_describe", "server_describe VARCHAR(1000)")
+    ensure_column("employee_mcps", "directory_id", "directory_id INTEGER")
+    ensure_column("employee_mcps", "directory_name", "directory_name VARCHAR(255)")
+    ensure_column("employee_mcps", "tool_num", "tool_num INTEGER")
+    ensure_column("employee_mcps", "status", "status INTEGER")
+    ensure_column("employee_mcps", "create_time", "create_time VARCHAR(32)")
+    ensure_column("employee_mcps", "update_time", "update_time VARCHAR(32)")
+    ensure_column("employee_mcps", "source_type", "source_type VARCHAR(255)")
+    ensure_column("employee_mcps", "content", "content TEXT")
+    ensure_column("employee_mcps", "call_timeout", "call_timeout INTEGER")
+    ensure_column("employee_mcps", "recovery", "recovery BOOLEAN NOT NULL DEFAULT 0")
+    ensure_column("employee_mcps", "aios_mcp_result_json", "aios_mcp_result_json TEXT")
+    ensure_column("employee_mcps", "mcp_sync_client_json", "mcp_sync_client_json TEXT")
+    ensure_column(
+        "employee_mcps",
+        "aios_mcp_authorize_dto_json",
+        "aios_mcp_authorize_dto_json TEXT",
+    )
+    ensure_column(
+        "employee_mcps",
+        "aios_mcp_info_server_list_json",
+        "aios_mcp_info_server_list_json TEXT",
+    )
+
