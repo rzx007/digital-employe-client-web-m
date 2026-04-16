@@ -142,7 +142,7 @@ export function ChatPromptInput({
   size = "default",
   className,
   slashCommands,
-  mentionCandidates
+  mentionCandidates,
 }: ChatPromptInputProps) {
   const [model, setModel] = useState<string>(models[0]!.id)
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
@@ -158,6 +158,7 @@ export function ChatPromptInput({
   }, [])
 
   const isCompact = size === "compact"
+  const isStreaming = status === "streaming" || status === "submitted"
 
   return (
     <div className={className}>
@@ -174,8 +175,11 @@ export function ChatPromptInput({
             placeholder={placeholder}
             commands={slashCommands}
             mentionCandidates={mentionCandidates}
-            className={`resize-none placeholder:text-muted-foreground/60 ${isCompact ? "min-h-[60px] text-base" : "min-h-28 text-lg"
-              }`}
+            disabled={isStreaming}
+            disabledPlaceholder="AI 正在回复中..."
+            className={`resize-none placeholder:text-muted-foreground/60 ${
+              isCompact ? "min-h-[60px] text-base" : "min-h-28 text-lg"
+            }`}
           />
         </PromptInputBody>
         <PromptInputFooter>

@@ -210,6 +210,23 @@ function BackspaceAttachmentPlugin({
   return null
 }
 
+function DisabledPlugin({ disabled }: { disabled: boolean }) {
+  const [editor] = useLexicalComposerContext()
+
+  useEffect(() => {
+    editor.setEditable(!disabled)
+  }, [editor, disabled])
+
+  if (disabled) {
+    const el = editor.getRootElement()
+    if (el) {
+      el.setAttribute("contenteditable", "false")
+    }
+  }
+
+  return null
+}
+
 // 挂载后自动聚焦到编辑器
 function FocusOnMountPlugin({ autoFocus }: { autoFocus: boolean }) {
   const [editor] = useLexicalComposerContext()
@@ -254,6 +271,8 @@ export interface LexicalPromptInputTextareaProps {
   autoFocus?: boolean
   commands?: SlashCommandItem[]
   mentionCandidates?: MentionCandidate[]
+  disabled?: boolean
+  disabledPlaceholder?: string
 }
 
 // 组件
@@ -265,6 +284,8 @@ export function LexicalPromptInputTextarea({
   autoFocus = true,
   commands,
   mentionCandidates,
+  disabled = false,
+  disabledPlaceholder = "AI 正在回复中...",
 }: LexicalPromptInputTextareaProps) {
   const controller = useOptionalPromptInputController()
   const attachments = usePromptInputAttachments()
@@ -355,7 +376,11 @@ export function LexicalPromptInputTextarea({
         />
       )}
       <div
-        className={cn("relative flex w-full flex-1 flex-col", className)}
+        className={cn(
+          "relative flex w-full flex-1 flex-col",
+          disabled && "pointer-events-none opacity-60",
+          className
+        )}
         onCompositionStart={handleCompositionStart}
         onCompositionEnd={handleCompositionEnd}
         onPaste={handlePaste}
@@ -371,14 +396,18 @@ export function LexicalPromptInputTextarea({
             />
           }
           placeholder={
-            <Placeholder placeholder={placeholder} className="py-2" />
+            <Placeholder
+              placeholder={disabled ? disabledPlaceholder : placeholder}
+              className="py-2"
+            />
           }
           ErrorBoundary={LexicalErrorBoundary}
         />
         <HistoryPlugin />
+        <DisabledPlugin disabled={disabled} />
         <OnChangePlugin value={value} onChange={handleChange} />
-        <FocusOnMountPlugin autoFocus={autoFocus} />
-        {!isComposing && <SubmitKeyPlugin />}
+        <FocusOnMountPlugin autoFocus={autoFocus && !disabled} />
+        {!isComposing && !disabled && <SubmitKeyPlugin />}
         <BackspaceAttachmentPlugin attachments={attachments} />
         <SlashCommandPlugin commands={commands} />
         <MentionPlugin candidates={mentionCandidates} />
