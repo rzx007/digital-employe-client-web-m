@@ -1,4 +1,5 @@
 import Store from "electron-store"
+import { getStoreDir } from "./settings-store"
 
 /**
  * 认证持久化管理
@@ -9,7 +10,7 @@ import Store from "electron-store"
  * - rememberMe=false 时仅存内存（关闭应用后需重新登录）
  * - 提供初始化、保存、清除、查询接口
  *
- * 存储位置：app.getPath('userData')/auth.json
+ * 存储位置：~/.digital-employee/auth.json
  * 结构：{ token, user, rememberMe }
  */
 
@@ -37,6 +38,7 @@ let store: Store<AuthStoreData> | null = null
 export function initAuthStore(): void {
   store = new Store<AuthStoreData>({
     name: "auth",
+    cwd: getStoreDir(),
     defaults: {
       token: null,
       user: null,

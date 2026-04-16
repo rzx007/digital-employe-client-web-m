@@ -10,7 +10,7 @@ load_dotenv()
 
 
 def get_default_sqlite_path() -> str:
-    return str(Path.home() / "digital-employee-client" / "data" / "app.db")
+    return str(Path.home() / ".digital-employee" / "data" / "app.db")
 
 
 @dataclass(slots=True)
@@ -41,7 +41,7 @@ def get_settings() -> Settings:
         default_workspace_root=os.getenv("DEFAULT_WORKSPACE_ROOT") or None,
         default_workspace_id=int(os.getenv("DEFAULT_WORKSPACE_ID", "1")),
         default_workspace_name=os.getenv("DEFAULT_WORKSPACE_NAME") or "默认的工作空间",
-        sqlite_path=os.getenv("SQLITE_PATH", get_default_sqlite_path()),
+        sqlite_path=get_default_sqlite_path(),
         employee_zip_url=os.getenv("EMPLOYEE_ZIP_URL") or None,
         employee_tmp_dir=os.getenv("EMPLOYEE_TMP_DIR", "./tmp/employees"),
         deepagent_model=os.getenv("DEEPAGENT_MODEL") or None,
