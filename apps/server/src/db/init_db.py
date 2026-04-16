@@ -41,6 +41,7 @@ def init_db() -> None:
         "confirm_execution_result BOOLEAN NOT NULL DEFAULT 0",
     )
     ensure_column("employee_tasks", "user_prompt", "user_prompt TEXT")
+    ensure_column("employee_tasks", "capability_id", "capability_id INTEGER")
     ensure_column(
         "task_execution_logs",
         "confirm_url",

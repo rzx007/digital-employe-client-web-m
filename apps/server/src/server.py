@@ -1,7 +1,8 @@
 import logging
-from sqlalchemy import select
+# from sqlalchemy import select
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.sql import select
 
 from src.api import api_router
 from src.db.init_db import init_db

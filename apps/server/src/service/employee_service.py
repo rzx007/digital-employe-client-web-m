@@ -348,11 +348,35 @@ class EmployeeService:
             if user_prompt is not None and str(user_prompt).strip():
                 input_payload["prompt"] = str(user_prompt).strip()
                 input_payload.setdefault("user_prompt", str(user_prompt).strip())
+
+            raw_dispatch = str(task.get("dispatch_type") or "").strip()
+            if raw_dispatch:
+                dispatch_type = raw_dispatch
+            else:
+                trt = task.get("task_resource_type")
+                if trt is not None and str(trt).strip():
+                    tlow = str(trt).strip().lower()
+                    dispatch_type = "mcp" if tlow == "mcp" else "skill"
+                else:
+                    dispatch_type = "skill"
+
+            mtp = task.get("mcp_tool_name")
+            if mtp is not None and str(mtp).strip():
+                input_payload["mcp_tool_name"] = str(mtp).strip()
+
+            if dispatch_type == "mcp":
+                skill_id = None
+                cap_id = TaskService._to_int(task.get("capability_id"))
+            else:
+                skill_id = TaskService._to_int(task.get("skill_id"))
+                cap_id = None
+
             normalized.append(
                 {
                     "task_name": task_name,
-                    "dispatch_type": str(task.get("dispatch_type") or "skill"),
-                    "skill_id": task.get("skill_id"),
+                    "dispatch_type": dispatch_type,
+                    "skill_id": skill_id,
+                    "capability_id": cap_id,
                     "priority": int(task.get("priority") or 0),
                     "task_type": task.get("task_type"),
                     "cron_expression": cron_expression,

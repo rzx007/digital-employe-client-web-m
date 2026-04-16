@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional, List, Dict
 
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, Field, field_serializer, model_validator
 
 
 class ShiftScheduleCreateWithoutEmployee(BaseModel):
@@ -19,7 +19,10 @@ class SchedulingTaskCreateWithoutEmployee(BaseModel):
     id: Optional[int] = None
     task_name: str
     dispatch_type: str = "skill"
+    task_resource_type: Optional[str] = None
     skill_id: Optional[int] = None
+    capability_id: Optional[int] = None
+    mcp_tool_name: Optional[str] = None
     user_prompt: Optional[str] = None
     priority: int = 0
     task_type: int  # 1: 外部输入, 2: Cron任务
@@ -31,6 +34,21 @@ class SchedulingTaskCreateWithoutEmployee(BaseModel):
         False,
         description="为 true 时表示需在定时任务执行后确认执行结果",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def map_task_resource_type(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        trt = data.get("task_resource_type")
+        if trt is None or not str(trt).strip():
+            return data
+        low = str(trt).strip().lower()
+        if low == "mcp":
+            return {**data, "dispatch_type": "mcp"}
+        if low == "skill":
+            return {**data, "dispatch_type": "skill"}
+        return data
 
 class EmployeeBase(BaseModel):
     """员工基础信息"""

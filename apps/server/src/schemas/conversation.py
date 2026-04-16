@@ -50,3 +50,10 @@ class ConversationMessageRead(BaseModel):
 
 class ConversationAskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=12000)
+
+
+# 定义请求体模型
+class StreamConversationRequest(BaseModel):
+    skill: str
+    question: str
+    debug_content_only: bool = False

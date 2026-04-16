@@ -24,6 +24,15 @@ class TaskService:
         return (dispatch_type or "skill").strip().lower() == "skill"
 
     @staticmethod
+    def _is_mcp_dispatch(dispatch_type: str | None) -> bool:
+        return (dispatch_type or "").strip().lower() == "mcp"
+
+    @staticmethod
+    def _is_skill_or_mcp_dispatch(dispatch_type: str | None) -> bool:
+        d = (dispatch_type or "").strip().lower()
+        return d in ("skill", "mcp")
+
+    @staticmethod
     def _loads_json(raw: str | None, default: Any) -> Any:
         if not raw:
             return default
@@ -120,19 +129,6 @@ class TaskService:
         now = cst_now()
 
         for employee in employees:
-            # mcp/非skill任务不保留在任务表中，避免被误查询或误执行。
-            stale_non_skill_tasks = list(
-                db.scalars(
-                    select(EmployeeTask).where(
-                        EmployeeTask.workspace_id == workspace_id,
-                        EmployeeTask.employee_id == employee.id,
-                        EmployeeTask.dispatch_type != "skill",
-                    )
-                ).all()
-            )
-            for stale_task in stale_non_skill_tasks:
-                db.delete(stale_task)
-
             tasks = TaskService._extract_tasks_from_employee(employee)
             active_signatures: set[tuple[str, str, int | None, int | None]] = set()
             for raw_task in tasks:
@@ -141,11 +137,22 @@ class TaskService:
                 if not task_name or not cron_expression:
                     continue
 
-                dispatch_type = str(raw_task.get("dispatch_type") or "skill").strip() or "skill"
-                if not TaskService._is_skill_dispatch(dispatch_type):
+                dispatch_type = str(raw_task.get("dispatch_type") or "skill").strip().lower() or "skill"
+                if not TaskService._is_skill_or_mcp_dispatch(dispatch_type):
                     continue
-                skill_id = TaskService._to_int(raw_task.get("skill_id"))
-                signature = (task_name, dispatch_type, skill_id)
+
+                skill_id: int | None
+                capability_id: int | None
+                if TaskService._is_mcp_dispatch(dispatch_type):
+                    skill_id = None
+                    capability_id = TaskService._to_int(raw_task.get("capability_id"))
+                    if capability_id is None:
+                        continue
+                else:
+                    skill_id = TaskService._to_int(raw_task.get("skill_id"))
+                    capability_id = None
+
+                signature = (task_name, dispatch_type, skill_id, capability_id)
                 active_signatures.add(signature)
 
                 existing = db.scalar(
@@ -155,6 +162,7 @@ class TaskService:
                         EmployeeTask.task_name == task_name,
                         EmployeeTask.dispatch_type == dispatch_type,
                         EmployeeTask.skill_id == skill_id,
+                        EmployeeTask.capability_id == capability_id,
                     )
                 )
                 if existing:
@@ -166,6 +174,7 @@ class TaskService:
                         task_name=task_name,
                         dispatch_type=dispatch_type,
                         skill_id=skill_id,
+                        capability_id=capability_id,
                     )
                     db.add(task)
 
@@ -207,10 +216,15 @@ class TaskService:
                 ).all()
             )
             for task in existing_tasks:
-                current_signature = (task.task_name, task.dispatch_type, task.skill_id)
-                if current_signature in active_signatures and TaskService._is_skill_dispatch(task.dispatch_type):
+                current_signature = (
+                    task.task_name,
+                    task.dispatch_type,
+                    task.skill_id,
+                    task.capability_id,
+                )
+                if current_signature in active_signatures:
                     continue
-                if not TaskService._is_skill_dispatch(task.dispatch_type):
+                if not TaskService._is_skill_or_mcp_dispatch(task.dispatch_type):
                     db.delete(task)
                     continue
                 task.is_active = False
@@ -341,17 +355,22 @@ class TaskService:
             item.employee_name = employee_name_map.get(item.employee_id, "")
         task_ids = [item.task_id for item in items if getattr(item, "task_id", None) is not None]
         task_confirm_map: dict[int, bool] = {}
+        task_dispatch_map: dict[int, str] = {}
         if task_ids:
             task_rows = list(
                 db.execute(
-                    select(EmployeeTask.id, EmployeeTask.confirm_execution_result).where(
-                        EmployeeTask.id.in_(task_ids)
-                    )
+                    select(
+                        EmployeeTask.id,
+                        EmployeeTask.confirm_execution_result,
+                        EmployeeTask.dispatch_type,
+                    ).where(EmployeeTask.id.in_(task_ids))
                 ).all()
             )
-            task_confirm_map = {int(task_id): bool(confirm) for task_id, confirm in task_rows}
+            task_confirm_map = {int(r[0]): bool(r[1]) for r in task_rows}
+            task_dispatch_map = {int(r[0]): str(r[2]) for r in task_rows}
         for item in items:
             item.confirm_execution_result = task_confirm_map.get(item.task_id)
+            item.dispatch_type = task_dispatch_map.get(item.task_id)
 
         TaskService._attach_skill_ratings_for_logs(db, items)
 
@@ -386,6 +405,7 @@ class TaskService:
         log.confirm_execution_result = (
             bool(task.confirm_execution_result) if task is not None else None
         )
+        log.dispatch_type = task.dispatch_type if task is not None else None
         TaskService._attach_skill_ratings_for_logs(db, [log])
         return log
 
@@ -418,6 +438,7 @@ class TaskService:
         log.confirm_execution_result = (
             bool(task.confirm_execution_result) if task is not None else None
         )
+        log.dispatch_type = task.dispatch_type if task is not None else None
         TaskService._attach_skill_ratings_for_logs(db, [log])
         return log
 

@@ -31,9 +31,10 @@ class Settings:
     skill_remote_rating: str | None
     mcp_remote_list_url: str | None
     mcp_remote_detail_url: str | None
-    agent_interface_base_url: str | None
-    dbchat_base_url: str | None
-    login_url: str | None
+    mcp_base_url: str | None = None
+    agent_interface_base_url: str | None = None
+    dbchat_base_url: str | None = None
+    login_url: str | None = None
     
 
 
@@ -56,6 +57,7 @@ def get_settings() -> Settings:
         skill_remote_rating=os.getenv("SKILL_REMOTE_RATING") or None,
         mcp_remote_list_url=os.getenv("MCP_REMOTE_LIST_URL") or None,
         mcp_remote_detail_url=os.getenv("MCP_REMOTE_DETAIL_URL") or None,
+        mcp_base_url=os.getenv("MCP_BASE_URL") or None,
         agent_interface_base_url=os.getenv("AGENT_INTERFACE_BASE_URL") or None,
         dbchat_base_url=os.getenv("DBCHAT_BASE_URL") or None,
         login_url=os.getenv("LOGIN_URL") or None,

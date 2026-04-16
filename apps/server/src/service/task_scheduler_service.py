@@ -2,17 +2,21 @@ from __future__ import annotations
 
 import json
 import logging
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 from apscheduler.schedulers.background import BackgroundScheduler  # pylint: disable=import-error
 from apscheduler.triggers.cron import CronTrigger  # pylint: disable=import-error
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from src.core.config import get_settings
 from src.db.session import get_session_local
 from src.models.employee import Employee
+from src.models.employee_mcp import EmployeeMcp
 from src.models.employee_skill import EmployeeSkill
 from src.models.employee_task import EmployeeTask
 from src.models.task_execution_log import TaskExecutionLog
@@ -61,7 +65,7 @@ class TaskSchedulerService:
                 db.scalars(
                     select(EmployeeTask).where(
                         EmployeeTask.is_active.is_(True),
-                        EmployeeTask.dispatch_type == "skill",
+                        EmployeeTask.dispatch_type.in_(("skill", "mcp")),
                     ).order_by(
                         EmployeeTask.priority.desc(),
                         EmployeeTask.id.desc(),
@@ -226,6 +230,114 @@ class TaskSchedulerService:
         )
         return str(fallback_name or "")
 
+    @staticmethod
+    def _first_tool_name_from_mcp_server_list_json(raw: str | None) -> str:
+        if not raw or not str(raw).strip():
+            return ""
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return ""
+        if isinstance(data, list) and data:
+            first = data[0]
+            if isinstance(first, dict):
+                return str(
+                    first.get("toolName")
+                    or first.get("name")
+                    or first.get("tool_name")
+                    or ""
+                ).strip()
+        if isinstance(data, dict):
+            tools = data.get("tools") or data.get("toolList") or data.get("servers")
+            if isinstance(tools, list) and tools:
+                t0 = tools[0]
+                if isinstance(t0, dict):
+                    return str(
+                        t0.get("toolName")
+                        or t0.get("name")
+                        or t0.get("tool_name")
+                        or ""
+                    ).strip()
+        return ""
+
+    @classmethod
+    def _execute_mcp_tool_call(cls, db: Session, task: EmployeeTask) -> dict[str, Any]:
+        settings = get_settings()
+        base = (settings.mcp_base_url or "").strip().rstrip("/")
+        if not base:
+            raise ValueError("未配置 MCP_BASE_URL。")
+        if task.capability_id is None:
+            raise ValueError("MCP 任务缺少 capability_id。")
+
+        em = db.scalar(
+            select(EmployeeMcp).where(
+                EmployeeMcp.employee_id == task.employee_id,
+                EmployeeMcp.mcp_id == task.capability_id,
+            )
+        )
+        if not em:
+            raise ValueError(
+                f"未找到员工绑定的 MCP：employee_id={task.employee_id} mcp_id={task.capability_id}"
+            )
+
+        server_name = (em.server_name or "").strip()
+        if not server_name:
+            raise ValueError("MCP 记录缺少 server_name。")
+
+        input_payload = TaskSchedulerService._loads_json(task.task_input_json, {})
+        tool_name = str(input_payload.get("mcp_tool_name") or "").strip()
+        if not tool_name:
+            tool_name = TaskSchedulerService._first_tool_name_from_mcp_server_list_json(
+                em.aios_mcp_info_server_list_json
+            )
+        if not tool_name:
+            raise ValueError(
+                "无法解析 MCP toolName，请在任务输入中配置 mcp_tool_name。"
+            )
+
+        args = input_payload.get("arguments")
+        if args is None:
+            args = input_payload.get("mcp_arguments")
+        if not isinstance(args, dict):
+            args = {}
+
+        timeout_sec = 600
+        raw_to = input_payload.get("timeout")
+        if isinstance(raw_to, int) and raw_to > 0:
+            timeout_sec = raw_to
+        elif isinstance(raw_to, str) and raw_to.isdigit():
+            timeout_sec = int(raw_to)
+
+        parsed_url = urllib.parse.urlparse(
+            base if "://" in base else f"http://{base}"
+        )
+        host_header = parsed_url.netloc
+
+        url = f"{base}/tool/call"
+        payload = {
+            "serverName": server_name,
+            "toolName": tool_name,
+            "arguments": args,
+            "timeout": timeout_sec,
+        }
+
+        with httpx.Client(timeout=httpx.Timeout(timeout_sec + 60.0)) as client:
+            response = client.post(
+                url,
+                headers={
+                    "Accept": "*/*",
+                    "Host": host_header,
+                    "Connection": "keep-alive",
+                },
+                json=payload,
+            )
+
+        return {
+            "response": response,
+            "server_name": server_name,
+            "tool_name": tool_name,
+        }
+
     @classmethod
     def _invoke_sql_agent_update_confirm_url(
         cls,
@@ -368,7 +480,7 @@ class TaskSchedulerService:
     def run_task_job(cls, task_id: int) -> None:
         with get_session_local()() as db:
             task = db.get(EmployeeTask, task_id)
-            if not task or not task.is_active or task.dispatch_type != "skill":
+            if not task or not task.is_active or task.dispatch_type not in ("skill", "mcp"):
                 return
 
             employee = db.get(Employee, task.employee_id)
@@ -392,12 +504,40 @@ class TaskSchedulerService:
             db.refresh(run_log)
 
             try:
-                output = cls._execute_task_call(db, task)
-                run_log.run_status = "success"
-                run_log.run_result = "任务执行成功"
-                final_text = cls._extract_final_agent_text(output.get("response"))
-                run_log.output_json = cls._to_json_string({"content": final_text})
-                run_log.error_message = None
+                if task.dispatch_type == "skill":
+                    output = cls._execute_task_call(db, task)
+                    run_log.run_status = "success"
+                    run_log.run_result = "任务执行成功"
+                    final_text = cls._extract_final_agent_text(output.get("response"))
+                    run_log.output_json = cls._to_json_string({"content": final_text})
+                    run_log.error_message = None
+                else:
+                    mcp_out = cls._execute_mcp_tool_call(db, task)
+                    resp = mcp_out["response"]
+                    try:
+                        body: Any = resp.json()
+                    except Exception:  # pylint: disable=broad-exception-caught
+                        body = {"raw": resp.text}
+                    if resp.status_code >= 400:
+                        run_log.run_status = "failed"
+                        run_log.run_result = "MCP 调用失败"
+                        run_log.error_message = (
+                            f"HTTP {resp.status_code}: {str(resp.text)[:2000]}"
+                        )
+                        run_log.output_json = cls._to_json_string(
+                            body if isinstance(body, dict) else {"body": body}
+                        )
+                    else:
+                        run_log.run_status = "success"
+                        run_log.run_result = "任务执行成功"
+                        run_log.error_message = None
+                        if isinstance(body, dict) and "data" in body:
+                            out_payload = body.get("data")
+                        else:
+                            out_payload = body
+                        run_log.output_json = cls._to_json_string(
+                            out_payload if out_payload is not None else body
+                        )
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.exception("定时任务执行失败 task_id=%s", task_id)
                 run_log.run_status = "failed"
@@ -412,12 +552,13 @@ class TaskSchedulerService:
             db.add(task)
             db.add(run_log)
             db.commit()
-            cls._maybe_write_confirm_url(
-                db,
-                run_log=run_log,
-                task=task,
-                employee=employee,
-                workspace=workspace,
-            )
-            db.commit()
+            if task.dispatch_type == "skill":
+                cls._maybe_write_confirm_url(
+                    db,
+                    run_log=run_log,
+                    task=task,
+                    employee=employee,
+                    workspace=workspace,
+                )
+                db.commit()
 

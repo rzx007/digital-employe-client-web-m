@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from src.db.session import get_db
 from src.models.response import BaseResponse, ListResponse, ResponseBase
-from src.schemas.conversation import ConversationCreate, ConversationMessageRead, ConversationRead
+from src.schemas.conversation import ConversationCreate, ConversationMessageRead, ConversationRead, StreamConversationRequest
 from src.service.chat_service import ChatService
 
 router = APIRouter(tags=["对话"])
@@ -59,12 +59,10 @@ def delete_conversation(conversation_id: int, db: Session = Depends(get_db)) -> 
     return BaseResponse(data=None)
 
 
-@router.get("/chat/conversations/{conversation_id}/stream")
+@router.post("/chat/conversations/{conversation_id}/stream")
 async def stream_conversation(
     conversation_id: int,
-    skill: str,
-    question: str = Query(..., min_length=1),
-    debug_content_only: bool = Query(False),
+    request: StreamConversationRequest,
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """流式获取会话回答（SSE）。"""
@@ -72,9 +70,9 @@ async def stream_conversation(
         ChatService.stream_conversation_answer(
             db,
             conversation_id,
-            question,
-            skill,
-            debug_content_only=debug_content_only,
+            request.question,
+            request.skill,
+            debug_content_only=request.debug_content_only,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
