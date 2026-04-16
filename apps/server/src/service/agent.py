@@ -8,13 +8,13 @@ from dotenv import load_dotenv
 from langchain_community.utilities import SQLDatabase
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from deepagents.backends import (
-    CompositeBackend, 
-    StateBackend, 
-    StoreBackend, 
-    FilesystemBackend
+    CompositeBackend,
+    LocalShellBackend,
+    StateBackend,
+    StoreBackend,
+    FilesystemBackend,
 )
-from deepagents.backends.protocol import ExecuteResponse
-from deepagents.backends.sandbox import BaseSandbox
+from deepagents.backends.protocol import ExecuteResponse, SandboxBackendProtocol
 from langchain_openai import ChatOpenAI
 from langchain.tools import tool
 from rich.console import Console
@@ -23,11 +23,12 @@ from datetime import datetime  # 导入datetime模块
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore  # For dev; use PostgresStore for prod
 
-from src.service.custom_graph import create_deep_agent
+from deepagents import create_deep_agent
 from src.core.config import get_settings
 
 # Load environment variables
 load_dotenv()
+
 
 @tool
 def run_shell_command(command: str) -> str:
@@ -42,20 +43,20 @@ def run_shell_command(command: str) -> str:
             capture_output=True,
             text=False,  # Capture as bytes to avoid encoding issues
             timeout=30,
-            cwd=os.getcwd()
+            cwd=os.getcwd(),
         )
-        
+
         # Decode output with error handling
         def decode_bytes(data: bytes) -> str:
-            encodings_to_try = ['utf-8', 'gbk', 'cp936']  # Common Windows encodings
+            encodings_to_try = ["utf-8", "gbk", "cp936"]  # Common Windows encodings
             for encoding in encodings_to_try:
                 try:
                     return data.decode(encoding)
                 except UnicodeDecodeError:
                     continue
             # If all fail, use utf-8 with replace
-            return data.decode('utf-8', errors='replace')
-        
+            return data.decode("utf-8", errors="replace")
+
         stdout = decode_bytes(result.stdout)
         stderr = decode_bytes(result.stderr)
         output = stdout
@@ -66,6 +67,7 @@ def run_shell_command(command: str) -> str:
         return "Command timed out after 30 seconds"
     except Exception as e:
         return f"Error executing command: {str(e)}"
+
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -100,7 +102,11 @@ def _resolve_skills_root(skill_path: str) -> Path:
 def _list_available_skills(skills_root: Path) -> list[str]:
     if not skills_root.is_dir():
         return []
-    return sorted(child.name for child in skills_root.iterdir() if child.is_dir() and (child / "SKILL.md").is_file())
+    return sorted(
+        child.name
+        for child in skills_root.iterdir()
+        if child.is_dir() and (child / "SKILL.md").is_file()
+    )
 
 
 def _build_system_prompt(current_time: str, available_skills: list[str]) -> str:
@@ -119,35 +125,55 @@ def _build_system_prompt(current_time: str, available_skills: list[str]) -> str:
 class PosixVirtualFilesystemBackend(FilesystemBackend):
     """Normalize virtual paths to POSIX style on Windows."""
 
-    def ls_info(self, path: str) -> list[dict]:
-        infos = super().ls_info(_norm_virtual_path(path))
-        for item in infos:
-            if "path" in item and isinstance(item["path"], str):
-                item["path"] = _norm_virtual_path(item["path"])
-        return infos
+    def ls(self, path: str):
+        result = super().ls(_norm_virtual_path(path))
+        if result.entries:
+            for item in result.entries:
+                if "path" in item and isinstance(item["path"], str):
+                    item["path"] = _norm_virtual_path(item["path"])
+        return result
 
-    def read(self, file_path: str, offset: int = 0, limit: int = 2000) -> str:
+    def read(self, file_path: str, offset: int = 0, limit: int = 2000):
         return super().read(_norm_virtual_path(file_path), offset=offset, limit=limit)
 
     def write(self, file_path: str, content: str):
         return super().write(_norm_virtual_path(file_path), content)
 
-    def edit(self, file_path: str, old_string: str, new_string: str, replace_all: bool = False):
-        return super().edit(_norm_virtual_path(file_path), old_string, new_string, replace_all=replace_all)
+    def edit(
+        self,
+        file_path: str,
+        old_string: str,
+        new_string: str,
+        replace_all: bool = False,
+    ):
+        return super().edit(
+            _norm_virtual_path(file_path),
+            old_string,
+            new_string,
+            replace_all=replace_all,
+        )
 
     def download_files(self, paths: list[str]):
         return super().download_files([_norm_virtual_path(p) for p in paths])
 
     def upload_files(self, files: list[tuple[str, bytes]]):
-        return super().upload_files([(_norm_virtual_path(path), content) for path, content in files])
+        return super().upload_files(
+            [(_norm_virtual_path(path), content) for path, content in files]
+        )
 
 
-class WindowsShellBackend(BaseSandbox):
+class WindowsShellBackend(LocalShellBackend):
     """Windows-compatible shell backend that properly handles encoding issues."""
 
     def __init__(self, base_dir: str | None = None):
-        super().__init__()
-        self.base_dir = Path(base_dir).resolve() if base_dir else Path.cwd()
+        resolved = Path(base_dir).resolve() if base_dir else Path.cwd()
+        super().__init__(
+            root_dir=str(resolved),
+            virtual_mode=True,
+            inherit_env=True,
+            timeout=30,
+        )
+        self.base_dir = resolved
 
     def _resolve_relative_paths(self, command: str) -> str:
         import shlex
@@ -162,15 +188,17 @@ class WindowsShellBackend(BaseSandbox):
 
         updated = False
         for i, token in enumerate(parts):
-            quote = ''
-            if (token.startswith('"') and token.endswith('"')) or (token.startswith("'") and token.endswith("'")):
+            quote = ""
+            if (token.startswith('"') and token.endswith('"')) or (
+                token.startswith("'") and token.endswith("'")
+            ):
                 quote = token[0]
                 stripped = token[1:-1]
             else:
                 stripped = token
 
             # Skip command and option tokens
-            if stripped.startswith('-'):
+            if stripped.startswith("-"):
                 continue
 
             try:
@@ -179,12 +207,11 @@ class WindowsShellBackend(BaseSandbox):
                 continue
 
             # Handle slash-leading virtual paths (e.g. /skills/xxx)
-            if stripped.startswith('/') or stripped.startswith('\\'):
-                virtual_path = stripped.lstrip('/\\')
+            if stripped.startswith("/") or stripped.startswith("\\"):
+                virtual_path = stripped.lstrip("/\\")
                 candidate = self.base_dir / virtual_path
             else:
                 if path_obj.is_absolute():
-                    # Keep real absolute paths unchanged (Windows/Cygwin style)
                     continue
                 candidate = self.base_dir / stripped
 
@@ -199,78 +226,63 @@ class WindowsShellBackend(BaseSandbox):
             return subprocess.list2cmdline(parts)
         return command
 
-    def execute(self, command: str) -> ExecuteResponse:
+    def execute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
         """Execute a command with proper Windows encoding handling."""
-        import subprocess
         import locale
 
         try:
-            # Resolve relative paths in command to base_dir path
             command = self._resolve_relative_paths(command)
 
-            # Run command and capture output as bytes to avoid encoding issues
+            effective_timeout = timeout if timeout is not None else 30
+
             result = subprocess.run(
                 command,
                 shell=True,
                 capture_output=True,
-                text=False,  # Capture as bytes
-                timeout=30,
-                cwd=str(self.base_dir)
+                text=False,
+                timeout=effective_timeout,
+                cwd=str(self.base_dir),
             )
-            
-            # Decode stdout and stderr with error handling
-            encodings_to_try = ['utf-8', locale.getpreferredencoding(False)]
-            
+
+            encodings_to_try = ["utf-8", locale.getpreferredencoding(False)]
+
             def decode_bytes(data: bytes) -> str:
                 for encoding in encodings_to_try:
                     try:
                         return data.decode(encoding)
                     except UnicodeDecodeError:
                         continue
-                # If all encodings fail, use utf-8 with replace
-                return data.decode('utf-8', errors='replace')
-            
+                return data.decode("utf-8", errors="replace")
+
             stdout = decode_bytes(result.stdout)
             stderr = decode_bytes(result.stderr)
             output = stdout + stderr
-            
+
             return ExecuteResponse(
-                output=output,
-                exit_code=result.returncode,
-                truncated=False
+                output=output, exit_code=result.returncode, truncated=False
             )
-            
+
         except subprocess.TimeoutExpired:
             return ExecuteResponse(
                 output="Command timed out after 30 seconds",
                 exit_code=-1,
-                truncated=False
+                truncated=False,
             )
         except Exception as e:
             return ExecuteResponse(
                 output=f"Error executing command: {str(e)}",
                 exit_code=-1,
-                truncated=False
+                truncated=False,
             )
 
-    @property
-    def id(self) -> str:
-        """Unique identifier for this backend."""
-        return "windows_shell_backend"
 
-    def upload_files(self, files: list[tuple[str, bytes]]):
-        """Upload files - not supported in local shell backend."""
-        from deepagents.backends.protocol import FileUploadResponse
-        return [FileUploadResponse(path=path, error="file_not_found") for path, _ in files]
-
-    def download_files(self, paths: list[str]):
-        """Download files - not supported in local shell backend."""
-        from deepagents.backends.protocol import FileDownloadResponse
-        return [FileDownloadResponse(path=path, error="file_not_found") for path in paths]
-
-
-class WindowsCompatibleCompositeBackend(CompositeBackend, BaseSandbox):
-    def __init__(self, shell_backend: WindowsShellBackend, default: StateBackend, routes: dict[str, FilesystemBackend]):
+class WindowsCompatibleCompositeBackend(CompositeBackend, SandboxBackendProtocol):
+    def __init__(
+        self,
+        shell_backend: WindowsShellBackend,
+        default: StateBackend,
+        routes: dict[str, FilesystemBackend],
+    ):
         # Create a hybrid default that supports both file ops and execution
         self.shell_backend = shell_backend
         self.state_backend = default
@@ -283,7 +295,7 @@ class WindowsCompatibleCompositeBackend(CompositeBackend, BaseSandbox):
         # Check if path matches any route first
         for route_prefix, backend in self.sorted_routes:
             if path.startswith(route_prefix):
-                stripped_key = path[len(route_prefix):]
+                stripped_key = path[len(route_prefix) :]
                 if not stripped_key.startswith("/"):
                     stripped_key = "/" + stripped_key
                 return backend, stripped_key
@@ -297,6 +309,7 @@ class WindowsCompatibleCompositeBackend(CompositeBackend, BaseSandbox):
     @property
     def id(self) -> str:
         return f"windows_composite_{self.shell_backend.id}"
+
 
 def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False):
     checkpointer = _CHECKPOINTER
@@ -317,7 +330,8 @@ def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False):
         model=settings.deepagent_model or "qwen2.5-72b-instruct",
         temperature=0,
         api_key=settings.api_key,
-        base_url=settings.base_url or "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        base_url=settings.base_url
+        or "https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
 
     sql_tools: list = []
@@ -335,7 +349,9 @@ def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False):
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("初始化 SQLDatabaseToolkit 失败: %s", exc, exc_info=True)
 
-    skills_fs = PosixVirtualFilesystemBackend(root_dir=str(skills_root), virtual_mode=True)
+    skills_fs = PosixVirtualFilesystemBackend(
+        root_dir=str(skills_root), virtual_mode=True
+    )
     agent_fs = PosixVirtualFilesystemBackend(root_dir=str(base_dir), virtual_mode=True)
 
     # Create shell backend for Windows compatibility
@@ -343,17 +359,15 @@ def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False):
     backend_base_dir = Path(root_path).resolve() if root_path else skills_root
     shell_backend = WindowsShellBackend(base_dir=str(skills_root.parent))
 
-    # Hybrid backend: virtual paths only for deepagents with shell support
-    def make_backend(runtime):
-        return WindowsCompatibleCompositeBackend(
-            shell_backend=shell_backend,
-            default=StateBackend(runtime),            # /notes.txt, /workspace/*
-            routes={
-                "/memories/": StoreBackend(runtime),  # Persistent across threads
-                "/skills/": skills_fs,                # Employee skills folder
-                "/agent/": agent_fs,                  # src/service folder (for AGENTS.md)
-            }
-        )
+    backend = WindowsCompatibleCompositeBackend(
+        shell_backend=shell_backend,
+        default=StateBackend(),
+        routes={
+            "/memories/": StoreBackend(),
+            "/skills/": skills_fs,
+            "/agent/": agent_fs,
+        },
+    )
 
     agent = create_deep_agent(
         model=model,
@@ -362,18 +376,9 @@ def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False):
         subagents=[],
         system_prompt=_build_system_prompt(current_time, available_skills),
         store=store,
-        backend=make_backend,
+        backend=backend,
         checkpointer=checkpointer,
         tools=sql_tools or None,
-        # Add this middleware to disable general-purpose agent
-        # middleware=[
-        #     SubAgentMiddleware(
-        #         backend=make_backend(None),
-        #         subagents=[],
-        #         general_purpose_agent=False
-        #     )
-        # ]
-
     )
     return agent
 
@@ -388,10 +393,11 @@ def main():
     python agent.py "What are the top 5 best-selling artists?"
     python agent.py "Which employee generated the most revenue by country?"
     python agent.py "How many customers are from Canada?"
-            """
-        )
+            """,
+    )
     pass
-    
+
+
 #     # Add command line argument for question
 #     parser.add_argument(
 #         "question",
@@ -401,7 +407,7 @@ def main():
 #         """,
 #         help="Natural language question to answer using the Chinook database"
 #     )
-    
+
 #     # 添加数据库URI参数
 #     parser.add_argument(
 #         "--db-uri",
@@ -412,7 +418,7 @@ def main():
 
 #     # Parse command line argument
 #     args = parser.parse_args()
-    
+
 #     # Create the agent with database URI if provided
 #     agent = create_sql_deep_agent(database_uri=args.db_uri)
 #     # Display the question

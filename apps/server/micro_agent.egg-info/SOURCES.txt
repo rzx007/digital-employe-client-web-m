@@ -48,13 +48,11 @@ src/service/__init__.py
 src/service/agent.py
 src/service/agent_interface_service.py
 src/service/chat_service.py
-src/service/custom_graph.py
 src/service/employee_generation_service.py
 src/service/employee_service.py
 src/service/file_service.py
 src/service/group_service.py
 src/service/modal_service.py
-src/service/show_baidu_hot.py
 src/service/skill_confirm_url.py
 src/service/skill_invocation_inference.py
 src/service/skill_rating_service.py
