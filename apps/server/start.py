@@ -9,4 +9,9 @@ IS_PROD = ENV == "prod"
 
 if __name__ == "__main__":
     print("Starting server...")
-    uvicorn.run("src.server:app", host="0.0.0.0", port=int(os.getenv('SERVER_PORT', 58000)), reload=IS_PROD)
+    uvicorn.run(
+        "src.server:app",
+        host="0.0.0.0",
+        port=int(os.getenv("SERVER_PORT", 58000)),
+        reload=not IS_PROD,
+    )

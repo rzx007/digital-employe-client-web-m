@@ -45,7 +45,7 @@ uv sync
 # 启动服务（默认 http://0.0.0.0:58000）
 uv run python start.py
 
-# 热重载开发（推荐用这个，start.py 的 reload 逻辑有 bug）
+# 热重载开发
 uv run uvicorn src.server:app --host 0.0.0.0 --port 58000 --reload
 
 # 从项目根目录启动
