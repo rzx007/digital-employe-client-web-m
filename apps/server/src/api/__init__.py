@@ -9,6 +9,7 @@ from src.api.workspace_api import router as workspace_router
 from src.api.model_api import router as model_router
 from src.api.skill_rating_api import router as skill_rating_router
 from src.api.login_api import router as login_router
+from src.api.mcp_api import router as mcp_router
 
 api_router = APIRouter()
 api_router.include_router(workspace_router)
@@ -20,6 +21,7 @@ api_router.include_router(skill_router)
 api_router.include_router(skill_rating_router)
 api_router.include_router(model_router)
 api_router.include_router(login_router)
+api_router.include_router(mcp_router)
 
 __all__ = ["api_router"]
 

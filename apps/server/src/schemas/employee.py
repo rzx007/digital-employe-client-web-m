@@ -61,6 +61,7 @@ class EmployeeRead(BaseModel):
 
 class EmployeeUpdate(EmployeeBase):
     skill_ids: Optional[List[int]] = None
+    mcp_ids: Optional[List[int]] = None
     shift_schedule: Optional[ShiftScheduleCreateWithoutEmployee] = None
     tasks: Optional[List[SchedulingTaskCreateWithoutEmployee]] = None
 
@@ -76,6 +77,8 @@ class EmployeeCreate(EmployeeBase):
 
     # 添加技能列表
     skill_ids: Optional[List[int]] = None
+    # 添加 MCP 列表
+    mcp_ids: Optional[List[int]] = None
     # 添加排班信息 - 使用具体的模型而不是字典
     shift_schedule: Optional[ShiftScheduleCreateWithoutEmployee] = None
     # 添加任务信息 - 使用具体的模型而不是字典
@@ -90,6 +93,7 @@ class EmployeeOut(EmployeeBase):
     updated_at: str
     user_id: Optional[str] = None
     skill_ids: List[int]
+    mcp_ids: Optional[List[int]] = None
     skills: Optional[List[dict]] = None
     shift_schedule: Optional[ShiftScheduleCreateWithoutEmployee] = None
     tasks: Optional[List[SchedulingTaskCreateWithoutEmployee]] = None
