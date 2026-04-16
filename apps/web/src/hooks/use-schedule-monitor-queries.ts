@@ -176,7 +176,7 @@ export function useMarkNotificationRead() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (id: number) => {
-      await request(`/tasks/executions/${id}/read`, { method: "PUT" })
+      await request(`/workspaces/${WORKSPACE_ID}/tasks/executions/${id}/read`, { method: "POST" })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [...chatKeys.all, "notifications"] })
@@ -189,7 +189,7 @@ export function useMarkAllNotificationsRead() {
   return useMutation({
     mutationFn: async (ids: number[]) => {
       await Promise.all(
-        ids.map((id) => request(`/tasks/executions/${id}/read`, { method: "PUT" }))
+        ids.map((id) => request(`/workspaces/${WORKSPACE_ID}/tasks/executions/${id}/read`, { method: "POST" }))
       )
     },
     onSuccess: () => {

@@ -3,7 +3,6 @@ import {
   IconBell,
   IconBellFilled,
   IconCheck,
-  IconCircle,
   IconCircleCheckFilled,
   IconExternalLink,
 } from "@tabler/icons-react"
@@ -75,6 +74,10 @@ function formatTime(iso: string): string {
   return format(new Date(iso), "HH:mm", { locale: zhCN })
 }
 
+function getUserPrompt(input: Record<string, unknown>): string {
+  return (input as { user_prompt?: string })?.user_prompt ?? ""
+}
+
 function NotificationItem({
   execution,
   onMarkRead,
@@ -85,32 +88,47 @@ function NotificationItem({
   const isUnread = !execution.is_read
   const config = STATUS_CONFIG[execution.run_status] ?? STATUS_CONFIG.pending
   const resultText = execution.run_result ?? ""
+  const promptText = getUserPrompt(execution.input)
 
   return (
     <div
       className={cn(
-        "group flex gap-3 rounded-lg border p-3 transition-colors",
-        isUnread ? "border-primary/20 bg-primary/[0.02]" : "border-border"
+        "group flex items-start gap-2.5 rounded-lg border px-3 py-2.5 transition-colors",
+        isUnread ? "border-primary/20 bg-primary/[0.02]" : "border-border opacity-70"
       )}
     >
-      <div className="flex shrink-0 pt-0.5">
+      <div className="flex shrink-0 pt-1.5">
         {isUnread ? (
-          <IconCircle className="size-3 fill-blue-500 text-blue-500" />
+          <span className="block size-2 rounded-full bg-blue-500" />
         ) : (
-          <IconCircleCheckFilled className="size-3 text-muted-foreground/40" />
+          <span className="block size-2 rounded-full bg-muted-foreground/30" />
         )}
       </div>
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium">
-            {execution.employee_name}
-          </span>
-          <span className="text-muted-foreground">·</span>
-          <span className="truncate text-sm text-muted-foreground">
-            {execution.task_name}
-          </span>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5 text-sm">
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {execution.employee_name}
+            </span>
+            <span className="truncate font-medium">{execution.task_name}</span>
+          </div>
+          {isUnread ? (
+            <Button
+              variant="outline"
+              size="xs"
+              className="shrink-0 gap-1 text-[10px] opacity-0 transition-opacity group-hover:opacity-100"
+              onClick={() => onMarkRead(execution.id)}
+            >
+              <IconCheck className="size-3" />
+              标记为已读
+            </Button>
+          ) : (
+            <IconCircleCheckFilled className="size-3.5 shrink-0 text-muted-foreground/25" />
+          )}
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+
+        <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
           <Badge
             variant="outline"
             className={cn("px-1 py-0 text-[10px]", config.className)}
@@ -118,33 +136,31 @@ function NotificationItem({
             {config.label}
           </Badge>
           <span>{formatDuration(execution.duration_ms)}</span>
+          <span>·</span>
           <span>{formatTime(execution.started_at)}</span>
         </div>
-        {resultText && (
-          <p className="line-clamp-1 text-xs text-muted-foreground">
-            {resultText}
-          </p>
-        )}
-        <div className="flex items-center gap-2 pt-0.5">
+
+        <div className="mt-1 flex items-start gap-1">
+          {promptText && (
+            <p className="line-clamp-1 flex-1 text-xs italic text-muted-foreground/80">
+              "{promptText}"
+            </p>
+          )}
+          {resultText && !promptText && (
+            <p className="line-clamp-1 flex-1 text-xs text-muted-foreground/80">
+              {resultText}
+            </p>
+          )}
           {execution.confirm_url && (
             <a
               href={execution.confirm_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+              className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-primary hover:underline"
             >
-              <IconExternalLink className="size-3" />
               查看详情
+              <IconExternalLink className="size-2.5" />
             </a>
-          )}
-          {isUnread && (
-            <button
-              type="button"
-              className="text-xs text-muted-foreground hover:text-primary"
-              onClick={() => onMarkRead(execution.id)}
-            >
-              标记已读
-            </button>
           )}
         </div>
       </div>
@@ -156,9 +172,7 @@ export function NotificationBell() {
   const { data: notifications = [] } = useNotifications()
   const dialogOpen = useNotificationStore((s) => s.dialogOpen)
   const setDialogOpen = useNotificationStore((s) => s.setDialogOpen)
-  const autoPopupDisabled = useNotificationStore(
-    (s) => s.autoPopupDisabled
-  )
+  const autoPopupDisabled = useNotificationStore((s) => s.autoPopupDisabled)
   const setAutoPopupDisabled = useNotificationStore(
     (s) => s.setAutoPopupDisabled
   )
@@ -199,7 +213,13 @@ export function NotificationBell() {
     prevReadIdsRef.current = new Set(
       notifications.filter((n) => n.is_read).map((n) => n.id)
     )
-  }, [unreadCount, autoPopupDisabled, setDialogOpen, unreadItems, notifications])
+  }, [
+    unreadCount,
+    autoPopupDisabled,
+    setDialogOpen,
+    unreadItems,
+    notifications,
+  ])
 
   return (
     <>
@@ -217,7 +237,7 @@ export function NotificationBell() {
               <IconBell className="size-5" />
             )}
             {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 flex min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground animate-pulse">
+              <span className="absolute -top-0.5 -right-0.5 flex animate-pulse items-center justify-center rounded-full bg-destructive p-0.5 px-1 text-[10px] font-bold text-white">
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
@@ -271,7 +291,7 @@ function NotificationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[70vh] sm:max-w-md max-w-lg flex-col gap-0 p-0">
+      <DialogContent className="flex max-h-[70vh] max-w-lg flex-col gap-0 p-0 sm:max-w-md">
         <DialogHeader className="flex flex-row items-center justify-between px-5 pt-5 pb-3">
           <DialogTitle className="flex items-center gap-2">
             消息通知
@@ -281,17 +301,6 @@ function NotificationDialog({
               </Badge>
             )}
           </DialogTitle>
-          {unreadCount > 0 && (
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={handleMarkAllRead}
-              disabled={markAllRead.isPending}
-            >
-              <IconCheck className="mr-1 size-3" />
-              全部已读
-            </Button>
-          )}
         </DialogHeader>
 
         <Separator />
@@ -316,15 +325,28 @@ function NotificationDialog({
         <Separator />
 
         <DialogFooter className="px-5 py-2.5">
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={autoPopupDisabled}
-              onChange={(e) => onAutoPopupDisabledChange(e.target.checked)}
-              className="rounded border-border"
-            />
-            不再自动弹出通知
-          </label>
+          <div className="flex w-full items-center justify-between">
+            {unreadCount > 0 && (
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={handleMarkAllRead}
+                disabled={markAllRead.isPending}
+              >
+                <IconCheck className="mr-1 size-3" />
+                全部已读
+              </Button>
+            )}
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={autoPopupDisabled}
+                onChange={(e) => onAutoPopupDisabledChange(e.target.checked)}
+                className="rounded border-border"
+              />
+              不再自动弹出通知
+            </label>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
