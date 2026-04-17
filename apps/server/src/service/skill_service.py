@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
 from fastapi import HTTPException, status
 
 from src.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class SkillService:
@@ -39,16 +42,21 @@ class SkillService:
             response.raise_for_status()
             payload = response.json()
         except httpx.TimeoutException as exc:
+            logger.error("远程技能服务超时: %s", exc, exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_504_GATEWAY_TIMEOUT,
                 detail=f"远程技能服务超时：{exc}",
             ) from exc
         except httpx.HTTPStatusError as exc:
+            logger.error(
+                "远程技能服务 HTTP 错误: %s", exc.response.status_code, exc_info=True
+            )
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"远程技能服务返回错误状态码：{exc.response.status_code}",
             ) from exc
         except (httpx.HTTPError, ValueError) as exc:
+            logger.error("远程技能服务请求失败: %s", exc, exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"远程技能服务请求失败：{exc}",

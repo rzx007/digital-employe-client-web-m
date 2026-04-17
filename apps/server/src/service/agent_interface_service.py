@@ -51,7 +51,7 @@ class AgentInterfaceService:
                     skills = [s for s in skills if s.get("status") == status]
                 return skills
         except Exception as e:
-            logger.error(f"获取技能列表失败: {str(e)}")
+            logger.error("获取技能列表失败: %s", e, exc_info=True)
             return []
 
     async def get_available_skills(self, status: int | None = None) -> list[dict]:
@@ -98,7 +98,7 @@ class AgentInterfaceService:
                     return data["data"]
                 return data
         except Exception as e:
-            logger.error(f"获取技能详情失败: {str(e)}")
+            logger.error("获取技能详情失败: %s", e, exc_info=True)
             return None
 
     async def get_skill_function_format(self, skill_id: int) -> dict | None:
@@ -122,7 +122,7 @@ class AgentInterfaceService:
                     return data["data"]
                 return data
         except Exception as e:
-            logger.error(f"获取技能Function Calling格式失败: {str(e)}")
+            logger.error("获取技能Function Calling格式失败: %s", e, exc_info=True)
             return None
 
     async def get_skill_function_format_batch(self, skill_ids: list[int]) -> list[dict]:
@@ -145,7 +145,7 @@ class AgentInterfaceService:
                     return data["data"]
                 return data if isinstance(data, list) else []
         except Exception as e:
-            logger.error(f"批量获取技能Function Calling格式失败: {str(e)}")
+            logger.error("批量获取技能Function Calling格式失败: %s", e, exc_info=True)
             return []
 
     async def get_directory_tree(self) -> list[dict]:
@@ -165,7 +165,7 @@ class AgentInterfaceService:
                     return data["data"]
                 return data if isinstance(data, list) else []
         except Exception as e:
-            logger.error(f"获取技能目录树失败: {str(e)}")
+            logger.error("获取技能目录树失败: %s", e, exc_info=True)
             return []
 
     async def download_skill_zip(self, skill_id: int) -> bytes | None:
@@ -185,7 +185,7 @@ class AgentInterfaceService:
                 response.raise_for_status()
                 return response.content
         except Exception as e:
-            logger.error(f"下载技能ZIP失败(skill_id={skill_id}): {str(e)}")
+            logger.error("下载技能ZIP失败 skill_id=%s: %s", skill_id, e, exc_info=True)
             return None
 
 

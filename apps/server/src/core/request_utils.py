@@ -1,6 +1,10 @@
-from fastapi import Request
+import logging
 from typing import Optional
+
 import jwt
+from fastapi import Request
+
+logger = logging.getLogger(__name__)
 
 
 def get_user_id_from_token(token: str) -> str:
@@ -12,8 +16,7 @@ def get_user_id_from_token(token: str) -> str:
         user_id = decoded.get("tid", "") or decoded.get("userId", "") or decoded.get("user_id", "") or decoded.get("id", "")
         return str(user_id)
     except Exception as e:
-        # 记录错误但不影响其他逻辑
-        print(f"解析token失败: {e}")
+        logger.error("解析 token 失败: %s", e, exc_info=True)
         return ""
 
 

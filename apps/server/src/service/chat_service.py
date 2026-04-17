@@ -375,6 +375,7 @@ class ChatService:
             # 发送结束标记
             yield "data: [DONE]\n\n"
         except Exception as e:
+            logger.error("流式对话执行失败: %s", e, exc_info=True)
             yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
 
 
@@ -400,7 +401,8 @@ class ChatService:
             if isinstance(obj, (Serializable,)) or (hasattr(obj, 'to_json') and callable(getattr(obj, 'to_json'))):
                 # 使用langchain的序列化功能
                 return json.loads(dumps(obj))
-        except ImportError:
+        except ImportError as exc:
+            logger.error("langchain_core 序列化不可用: %s", exc, exc_info=True)
             # 如果没有安装langchain_core，尝试langchain
             try:
                 from langchain.load.dump import dumps
@@ -409,10 +411,10 @@ class ChatService:
                 if isinstance(obj, (Serializable,)) or (hasattr(obj, '_as_lc_jsonable') and callable(getattr(obj, '_as_lc_jsonable'))):
                     # 使用langchain的序列化功能
                     return json.loads(dumps(obj))
-            except ImportError:
-                pass
-        except Exception:
-            pass  # 如果langchain序列化失败，继续使用其他方法
+            except ImportError as exc2:
+                logger.error("langchain 序列化不可用: %s", exc2, exc_info=True)
+        except Exception as exc:
+            logger.error("langchain 序列化失败: %s", exc, exc_info=True)
         
         # 尝试直接序列化
         try:
@@ -460,8 +462,13 @@ class ChatService:
                         try:
                             processed_key = cls.convert_to_serializable(key, _seen)
                             result[processed_key] = cls.convert_to_serializable(value, _seen)
-                        except Exception:
-                            # 如果键无法处理，转换为字符串
+                        except Exception as exc:
+                            logger.error(
+                                "序列化 dict 键值失败 key=%s: %s",
+                                key,
+                                exc,
+                                exc_info=True,
+                            )
                             result[str(key)] = cls.convert_to_serializable(value, _seen)
                     return result
                 elif hasattr(obj, '__dict__'):
@@ -471,8 +478,13 @@ class ChatService:
                         if not callable(attr_value) and not attr_name.startswith('_'):
                             try:
                                 result[attr_name] = cls.convert_to_serializable(attr_value, _seen)
-                            except Exception:
-                                # 如果某个属性无法处理，将其转换为字符串
+                            except Exception as exc:
+                                logger.error(
+                                    "序列化对象属性失败 %s: %s",
+                                    attr_name,
+                                    exc,
+                                    exc_info=True,
+                                )
                                 result[attr_name] = str(attr_value)
                     return result
                 elif type(obj).__name__ == 'Overwrite':
@@ -491,7 +503,10 @@ class ChatService:
                     # 处理其他可迭代对象
                     try:
                         return [cls.convert_to_serializable(item, _seen) for item in obj]
-                    except Exception:
+                    except Exception as exc:
+                        logger.error(
+                            "序列化可迭代对象失败: %s", exc, exc_info=True
+                        )
                         return {"__type__": "iterable", "repr": str(obj)}
                 else:
                     return {"__type__": "unknown", "repr": repr(obj)}

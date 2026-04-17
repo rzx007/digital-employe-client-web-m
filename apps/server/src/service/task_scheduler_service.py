@@ -76,7 +76,13 @@ class TaskSchedulerService:
                 try:
                     trigger = CronTrigger.from_crontab(task.cron_expression, timezone=CST)
                 except ValueError as exc:
-                    logger.warning("跳过非法 cron 任务 task_id=%s cron=%s err=%s", task.id, task.cron_expression, exc)
+                    logger.error(
+                        "跳过非法 cron 任务 task_id=%s cron=%s err=%s",
+                        task.id,
+                        task.cron_expression,
+                        exc,
+                        exc_info=True,
+                    )
                     continue
 
                 job_id = f"{cls._job_prefix}{task.id}"
@@ -363,10 +369,9 @@ class TaskSchedulerService:
             return
         resolved_dir = str(Path(skills_dir).resolve())
         confirm_url = load_confirm_url_for_skill(resolved_dir, skill_name)
-        print(f"confirm_url: {confirm_url}")
-        logger.warning("confirm_url: %s", confirm_url)
+        logger.info("confirm_url: %s", confirm_url)
         if not confirm_url:
-            logger.warning(
+            logger.info(
                 "任务要求确认执行结果但未在 SKILL.md 中解析到 confirm_url，"
                 "task_id=%s skill=%s",
                 task.id,
@@ -381,7 +386,7 @@ class TaskSchedulerService:
                 workspace_root=str(workspace.root_path or ""),
             )
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.warning(
+            logger.error(
                 "Agent SQL 工具写入 confirm_url 失败 run_log_id=%s: %s",
                 run_log.id,
                 exc,
@@ -399,7 +404,7 @@ class TaskSchedulerService:
             )
             run_log.confirm_url = confirm_url
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.warning(
+            logger.error(
                 "confirm_url 直连回写失败 run_log_id=%s: %s",
                 run_log.id,
                 exc,
@@ -486,7 +491,13 @@ class TaskSchedulerService:
                     resp = mcp_out["response"]
                     try:
                         body: Any = resp.json()
-                    except Exception:  # pylint: disable=broad-exception-caught
+                    except Exception as json_exc:  # pylint: disable=broad-exception-caught
+                        logger.error(
+                            "MCP 响应解析 JSON 失败 task_id=%s: %s",
+                            task_id,
+                            json_exc,
+                            exc_info=True,
+                        )
                         body = {"raw": resp.text}
                     if resp.status_code >= 400:
                         run_log.run_status = "failed"
@@ -509,7 +520,7 @@ class TaskSchedulerService:
                             out_payload if out_payload is not None else body
                         )
             except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.exception("定时任务执行失败 task_id=%s", task_id)
+                logger.error("定时任务执行失败 task_id=%s", task_id, exc_info=True)
                 run_log.run_status = "failed"
                 run_log.run_result = "任务执行失败"
                 run_log.error_message = str(exc)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,6 +14,8 @@ from src.models.employee_skill import EmployeeSkill
 from src.models.skill_rating import SkillRating
 from src.models.task_execution_log import TaskExecutionLog
 from src.schemas.skill_rating import SkillRatingBatchCreate, SkillRatingRead
+
+logger = logging.getLogger(__name__)
 
 
 class SkillRatingService:
@@ -99,7 +103,7 @@ class SkillRatingService:
             headers = {"token": f"{token}"}
             result = httpx.post(rating_url, headers=headers, json={"score": payload.score})
         except (httpx.HTTPError, ValueError) as exc:
-            print(f"评分同步失败: {exc}")
+            logger.error("评分同步远程失败 skill_id=%s: %s", skill_id, exc, exc_info=True)
 
         return SkillRatingRead.model_validate(row)
 

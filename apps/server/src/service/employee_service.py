@@ -538,6 +538,12 @@ class EmployeeService:
                 if not isinstance(parsed_content, dict):
                     raise ValueError("skillContent 解析后不是对象")
             except (json.JSONDecodeError, ValueError) as exc:
+                logger.error(
+                    "技能 skillContent 解析失败 skill_id=%s: %s",
+                    skill_id,
+                    exc,
+                    exc_info=True,
+                )
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"技能内容格式不合法，skill_id={skill_id}",
@@ -725,6 +731,7 @@ class EmployeeService:
                 db.refresh(employee)
             return synced
         except httpx.HTTPError as exc:
+            logger.error("同步员工 ZIP 下载失败: %s", exc, exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY, detail=f"获取员工ZIP失败：{exc}") from exc
         finally:

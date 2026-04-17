@@ -1,14 +1,20 @@
+import logging
 import os
-from src.server import app
+
 import uvicorn
 
-# 读取环境变量，默认开发环境（dev）,打包时注入prod
+from src.core.logging_setup import setup_logging
+
+setup_logging()
+logger = logging.getLogger(__name__)
+
+# 读取环境变量，默认开发环境（dev）,打包时注入 prod
 ENV = os.getenv("ENVIRONMENT", "prod")  # dev / prod
-print(f"当前环境: {ENV}")
 IS_PROD = ENV == "prod"
 
 if __name__ == "__main__":
-    print("Starting server...")
+    logger.info("当前环境: %s", ENV)
+    logger.info("Starting server...")
     uvicorn.run(
         "src.server:app",
         host="0.0.0.0",
