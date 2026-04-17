@@ -1,6 +1,6 @@
 import * as React from "react"
 import pkg from "../../../package.json"
-import logoSvg from '@/assets/logo.svg'
+import logoSvg from "@/assets/logo.svg"
 import Avatar1 from "@/assets/avaters/1.png"
 import Avatar2 from "@/assets/avaters/2.png"
 import Avatar3 from "@/assets/avaters/3.png"
@@ -54,6 +54,7 @@ import { Switch } from "@workspace/ui/components/switch"
 import { cn } from "@workspace/ui/lib/utils"
 import { useTheme } from "@/components/theme-provider"
 import { useAuthStore } from "@/stores/auth-store"
+import { useOnboardingStore } from "@/stores/onboarding-store"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { updatePassword } from "@/api/auth"
 import { decryptPwd } from "@/lib/password-sm"
@@ -65,12 +66,12 @@ const tabs: {
   label: string
   icon: React.ComponentType<{ className?: string }>
 }[] = [
-    { id: "account", label: "账号与隐私", icon: IconUser },
-    { id: "general", label: "通用", icon: IconSettings },
-    { id: "shortcuts", label: "快捷键", icon: IconKeyboard },
-    { id: "models", label: "模型", icon: IconBrain },
-    { id: "about", label: "关于", icon: IconInfoCircle },
-  ]
+  { id: "account", label: "账号与隐私", icon: IconUser },
+  { id: "general", label: "通用", icon: IconSettings },
+  { id: "shortcuts", label: "快捷键", icon: IconKeyboard },
+  { id: "models", label: "模型", icon: IconBrain },
+  { id: "about", label: "关于", icon: IconInfoCircle },
+]
 
 function ThemeCard({
   value,
@@ -99,7 +100,9 @@ function ThemeCard({
       <div
         className={cn(
           "flex size-10 items-center justify-center rounded-lg transition-colors",
-          active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+          active
+            ? "bg-primary text-primary-foreground"
+            : "bg-muted text-muted-foreground"
         )}
       >
         <Icon className="size-5" />
@@ -111,8 +114,16 @@ function ThemeCard({
 }
 
 const userAvatars = [
-  Avatar1, Avatar2, Avatar3, Avatar4, Avatar5,
-  Avatar6, Avatar7, Avatar8, Avatar9, Avatar1,
+  Avatar1,
+  Avatar2,
+  Avatar3,
+  Avatar4,
+  Avatar5,
+  Avatar6,
+  Avatar7,
+  Avatar8,
+  Avatar9,
+  Avatar1,
 ]
 
 function ChangePasswordDialog({
@@ -142,9 +153,13 @@ function ChangePasswordDialog({
       const hasLower = /[a-z]/.test(newPwd)
       const hasNumber = /[0-9]/.test(newPwd)
       const hasSpecial = /[^A-Za-z0-9]/.test(newPwd)
-      const typeCount = [hasUpper, hasLower, hasNumber, hasSpecial].filter(Boolean).length
-      if (typeCount < 3) errs.newPwd = "密码需包含大写字母、小写字母、数字、特殊字符中至少三种"
-      if (user?.username && newPwd.includes(user.username)) errs.newPwd = "密码不能包含用户名"
+      const typeCount = [hasUpper, hasLower, hasNumber, hasSpecial].filter(
+        Boolean
+      ).length
+      if (typeCount < 3)
+        errs.newPwd = "密码需包含大写字母、小写字母、数字、特殊字符中至少三种"
+      if (user?.username && newPwd.includes(user.username))
+        errs.newPwd = "密码不能包含用户名"
     }
     if (!confirmPwd) {
       errs.confirmPwd = "确认密码不可为空"
@@ -257,7 +272,7 @@ function AccountSettings() {
   const restoreSession = useAuthStore((s) => s.restoreSession)
   const [pwdDialogOpen, setPwdDialogOpen] = React.useState(false)
   React.useEffect(() => {
-    (async () => {
+    ;(async () => {
       await restoreSession()
     })()
   }, [restoreSession])
@@ -274,7 +289,7 @@ function AccountSettings() {
       <div className="flex flex-col gap-5">
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-4 mb-6">
+            <div className="mb-6 flex items-center gap-4">
               <div className="size-16 overflow-hidden rounded-full">
                 <img
                   src={userAvatars[avatarIndex]}
@@ -405,6 +420,7 @@ function AccountSettings() {
 
 function GeneralSettings() {
   const { theme, setTheme } = useTheme()
+  const resetOnboarding = useOnboardingStore((s) => s.resetOnboarding)
   const [autoLaunch, setAutoLaunch] = React.useState(false)
   const [autoUpdate, setAutoUpdate] = React.useState(true)
   const [notifications, setNotifications] = React.useState(true)
@@ -412,11 +428,12 @@ function GeneralSettings() {
   React.useEffect(() => {
     const loadSettings = async () => {
       if (window.electronApi?.isElectron) {
-        const [autoLaunchVal, autoUpdateVal, notificationsVal] = await Promise.all([
-          window.electronApi.getAutoLaunch(),
-          window.electronApi.getAutoUpdate(),
-          window.electronApi.getNotifications(),
-        ])
+        const [autoLaunchVal, autoUpdateVal, notificationsVal] =
+          await Promise.all([
+            window.electronApi.getAutoLaunch(),
+            window.electronApi.getAutoUpdate(),
+            window.electronApi.getNotifications(),
+          ])
         setAutoLaunch(autoLaunchVal)
         setAutoUpdate(autoUpdateVal)
         setNotifications(notificationsVal)
@@ -531,6 +548,27 @@ function GeneralSettings() {
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>新手引导</CardTitle>
+          <CardDescription>重新查看应用核心功能的使用引导</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium">重新查看引导</span>
+              <span className="text-xs text-muted-foreground">
+                重新播放应用核心功能的使用引导 <em>(重启应用后生效)</em>
+              </span>
+            </div>
+            <Button variant="outline" size="sm" onClick={resetOnboarding}>
+              <IconRocket className="mr-2 size-4" />
+              重新查看引导
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -550,7 +588,10 @@ function ShortcutsSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>快捷键 <em className="text-xs ml-2 text-muted-foreground">开发中...</em></CardTitle>
+        <CardTitle>
+          快捷键{" "}
+          <em className="ml-2 text-xs text-muted-foreground">开发中...</em>
+        </CardTitle>
         <CardDescription>应用支持的键盘快捷键</CardDescription>
       </CardHeader>
       <CardContent>
@@ -561,7 +602,7 @@ function ShortcutsSettings() {
               className="flex items-center justify-between rounded-md border p-3"
             >
               <span className="text-sm">{item.action}</span>
-              <kbd className="rounded bg-muted px-2 py-1 text-xs font-mono">
+              <kbd className="rounded bg-muted px-2 py-1 font-mono text-xs">
                 {item.key}
               </kbd>
             </div>
@@ -598,7 +639,10 @@ function ModelsSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>模型设置<em className="text-xs ml-2 text-muted-foreground">开发中...</em></CardTitle>
+        <CardTitle>
+          模型设置
+          <em className="ml-2 text-xs text-muted-foreground">开发中...</em>
+        </CardTitle>
         <CardDescription>配置 AI 模型相关选项</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -622,7 +666,7 @@ function ModelsSettings() {
           <input
             type="password"
             placeholder="sk-..."
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+            className="rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
           />
@@ -632,7 +676,7 @@ function ModelsSettings() {
           <span className="text-sm font-medium">API 地址</span>
           <input
             placeholder="https://api.example.com"
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+            className="rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
             value={apiUrl}
             onChange={(e) => setApiUrl(e.target.value)}
           />
@@ -671,35 +715,37 @@ function AboutSettings() {
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">应用版本</span>
-            <span className="text-sm font-medium font-mono">
+            <span className="font-mono text-sm font-medium">
               v{pkg.version}
             </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">构建时间</span>
-            <span className="text-sm font-medium font-mono">
+            <span className="font-mono text-sm font-medium">
               {typeof __BUILD_TIME__ !== "undefined" ? __BUILD_TIME__ : "-"}
             </span>
           </div>
         </div>
 
-
-
         {/* 操作 */}
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">检查更新</span>
-            <Button variant="outline" size="sm" onClick={async () => {
-              if (window.electronApi?.isElectron) {
-                await window.electronApi.checkUpdate()
-              }
-            }}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                if (window.electronApi?.isElectron) {
+                  await window.electronApi.checkUpdate()
+                }
+              }}
+            >
               检查更新
             </Button>
           </div>
         </div>
 
-        <p className="text-xs text-center text-muted-foreground">
+        <p className="text-center text-xs text-muted-foreground">
           © {new Date().getFullYear()} Bobandata. All rights reserved.
         </p>
       </CardContent>
@@ -733,7 +779,7 @@ export function SettingsPage() {
       </div>
 
       {/* 右侧内容 */}
-      <ScrollArea className="flex-1  p-6">
+      <ScrollArea className="flex-1 p-6">
         {activeTab === "account" && <AccountSettings />}
         {activeTab === "general" && <GeneralSettings />}
         {activeTab === "shortcuts" && <ShortcutsSettings />}

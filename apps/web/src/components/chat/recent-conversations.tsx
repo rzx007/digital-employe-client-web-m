@@ -160,9 +160,9 @@ function ensureContactInList(
     isCurator,
     participants: isGroup
       ? contact.group?.participants.map((p) => ({
-        name: p.name,
-        avatar: p.avatar,
-      }))
+          name: p.name,
+          avatar: p.avatar,
+        }))
       : undefined,
   }
   return [newItem, ...existing].slice(0, MAX_RECENT)
@@ -273,9 +273,9 @@ export function RecentConversations({
     const isGroup = selectedContact.type === "group"
     const participants = isGroup
       ? selectedContact.group?.participants.map((p) => ({
-        name: p.name,
-        avatar: p.avatar,
-      }))
+          name: p.name,
+          avatar: p.avatar,
+        }))
       : undefined
 
     setRecentItems((prev) => {
@@ -345,9 +345,7 @@ export function RecentConversations({
   const handleTogglePin = (item: RecentConversationItem) => {
     setRecentItems((prev) => {
       const updated = prev.map((i) =>
-        i.contactId === item.contactId
-          ? { ...i, isPinned: !i.isPinned }
-          : i
+        i.contactId === item.contactId ? { ...i, isPinned: !i.isPinned } : i
       )
       saveRecentConversations(updated)
       return updated
@@ -449,7 +447,10 @@ export function RecentConversations({
           )}
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem variant="destructive" onSelect={() => handleRemove(item)}>
+        <ContextMenuItem
+          variant="destructive"
+          onSelect={() => handleRemove(item)}
+        >
           <IconTrash />
           <span>移除</span>
         </ContextMenuItem>
@@ -489,6 +490,7 @@ export function RecentConversations({
                 variant="ghost"
                 size="icon-sm"
                 className="h-7 w-7 shrink-0"
+                data-tour-id="add-button"
               >
                 <IconCirclePlus className="size-5" />
               </Button>

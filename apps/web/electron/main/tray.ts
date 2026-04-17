@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, Tray, nativeImage } from "electron"
 import path from "node:path"
 import { setForceQuit, stopBackend } from "./ipc-handlers"
+import { createSettingsWindow } from "./settings"
 
 /**
  * 系统托盘管理
@@ -63,10 +64,10 @@ function generateNotifyIcon(base: Electron.NativeImage): Electron.NativeImage {
 
   // 填充红色边框背景
   for (let i = 0; i < canvasSize * canvasSize; i++) {
-    canvasBuffer[i * 4] = 255       // R
-    canvasBuffer[i * 4 + 1] = 66    // G
-    canvasBuffer[i * 4 + 2] = 66    // B
-    canvasBuffer[i * 4 + 3] = 255   // A
+    canvasBuffer[i * 4] = 255 // R
+    canvasBuffer[i * 4 + 1] = 66 // G
+    canvasBuffer[i * 4 + 2] = 66 // B
+    canvasBuffer[i * 4 + 3] = 255 // A
   }
 
   // 将底图绘制到画布中心
@@ -139,6 +140,15 @@ export function createTray(win: BrowserWindow): void {
     },
     { type: "separator" },
     {
+      label: "打开设置",
+      click: () => createSettingsWindow(),
+    },
+    {
+      label: "重启应用",
+      click: () => restartApp(),
+    },
+    { type: "separator" },
+    {
       label: "退出",
       click: () => quitFromTray(win),
     },
@@ -205,6 +215,15 @@ export function stopFlashTray(): void {
   if (tray && !tray.isDestroyed() && normalIcon) {
     tray.setImage(normalIcon)
   }
+}
+
+function restartApp(): void {
+  setForceQuit(true)
+  stopFlashTray()
+  destroyTray()
+  stopBackend()
+  app.relaunch({ args: process.argv.slice(1).concat(["--relaunched"]) })
+  app.exit(0)
 }
 
 /**

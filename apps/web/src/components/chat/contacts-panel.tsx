@@ -110,7 +110,7 @@ export function ContactsPanel({
           <div className="relative flex-1">
             <IconSearch className="absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="h-7 pl-7 text-xs bg-background border-none"
+              className="h-7 border-none bg-background pl-7 text-xs"
               placeholder="搜索联系人..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -164,7 +164,7 @@ export function ContactsPanel({
             )}
 
             {filteredEmployeeContacts.length > 0 && (
-              <div className="space-y-0.5">
+              <div className="space-y-0.5" data-tour-id="contact-employee">
                 <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
                   联系人
                 </p>

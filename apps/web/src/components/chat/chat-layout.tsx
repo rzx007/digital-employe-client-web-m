@@ -10,7 +10,9 @@ import { useContactsQuery } from "@/hooks/use-chat-queries"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useChatStore } from "@/stores/chat-store"
+import { useOnboardingStore } from "@/stores/onboarding-store"
 import { PRIMARY_CURATOR } from "@/lib/mock-data/ai-employees"
+import { WelcomeDialog, UserTour } from "@/components/onboarding"
 import { AppToolbar } from "./app-toolbar"
 import { CalendarPlaceholder } from "./calendar-placeholder"
 import { ChatView } from "./chat-view"
@@ -29,10 +31,19 @@ export function ChatLayout({
   const isMobile = useIsMobile()
   const activeTab = useChatStore((s) => s.activeTab)
   const setContacts = useChatStore((s) => s.setContacts)
+  const showWelcome = useOnboardingStore((s) => s.showWelcome)
+  const onboardingCompleted = useOnboardingStore((s) => s.onboardingCompleted)
 
   const { data: apiContacts, isError: contactsError } = useContactsQuery()
 
   const hasContactsErrorToastRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (!onboardingCompleted) {
+      const timer = setTimeout(() => showWelcome(), 1500)
+      return () => clearTimeout(timer)
+    }
+  }, [onboardingCompleted, showWelcome])
 
   React.useEffect(() => {
     if (apiContacts) {
@@ -116,7 +127,16 @@ export function ChatLayout({
   const showMonitorSheet = isMonitorOpen && activeTab === "chat"
 
   return (
-    <div className={cn("flex min-h-0 relative flex-1", isMobile && "flex-col", className)} {...props}>
+    <div
+      className={cn(
+        "relative flex min-h-0 flex-1",
+        isMobile && "flex-col",
+        className
+      )}
+      {...props}
+    >
+      <WelcomeDialog />
+      <UserTour />
       <div className="flex min-w-0 flex-1">
         {!isMobile && <AppToolbar />}
 
@@ -144,7 +164,7 @@ export function ChatLayout({
         )}
 
         {activeTab === "contacts" && (
-          <ContactDetailPanel className="min-w-0 flex-1 1111" />
+          <ContactDetailPanel className="1111 min-w-0 flex-1" />
         )}
 
         {activeTab === "calendar" && (
@@ -190,7 +210,7 @@ export function ChatLayout({
           <MonitorPanel
             isOpen={true}
             isFullscreen={false}
-            onToggleFullscreen={() => { }}
+            onToggleFullscreen={() => {}}
             className="h-full w-full rounded-none border-0 shadow-none"
           />
         </SheetContent>
