@@ -15,7 +15,7 @@ def get_default_sqlite_path() -> str:
 
 
 def get_default_skill_path() -> str:
-    return str(Path.home() / "digital-employee-client" / "employees-skills")
+    return str(Path.home() / ".digital-employee" / "employees-skills")
 
 
 def resolve_configured_path(path_value: str) -> str:
