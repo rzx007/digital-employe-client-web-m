@@ -18,6 +18,7 @@ interface SettingsData {
   model: string
   apiKey: string
   apiUrl: string
+  onboardingCompleted: boolean
 }
 
 let store: Store<SettingsData> | null = null
@@ -33,6 +34,7 @@ export function initSettingsStore(): void {
       model: "",
       apiKey: "",
       apiUrl: "",
+      onboardingCompleted: false,
     },
   })
 }
@@ -49,6 +51,7 @@ export function getSetting<K extends keyof SettingsData>(
       model: "",
       apiKey: "",
       apiUrl: "",
+      onboardingCompleted: false,
     }
     return defaults[key]
   }

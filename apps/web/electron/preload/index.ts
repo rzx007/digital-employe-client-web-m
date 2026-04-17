@@ -51,11 +51,9 @@ contextBridge.exposeInMainWorld("electronApi", {
     token: string,
     user: Record<string, unknown>,
     rememberMe: boolean
-  ) =>
-    ipcRenderer.invoke("save-auth", { token, user, rememberMe }),
+  ) => ipcRenderer.invoke("save-auth", { token, user, rememberMe }),
   clearAuth: () => ipcRenderer.invoke("clear-auth"),
-  getAuthStatus: () =>
-    ipcRenderer.invoke("get-auth-status"),
+  getAuthStatus: () => ipcRenderer.invoke("get-auth-status"),
   hasSavedAuth: () => ipcRenderer.invoke("has-saved-auth"),
   openRecruitment: () => ipcRenderer.invoke("open-recruitment"),
   closeRecruitment: () => ipcRenderer.invoke("close-recruitment"),
@@ -71,12 +69,12 @@ contextBridge.exposeInMainWorld("electronApi", {
   setAutoUpdate: (enabled: boolean) =>
     ipcRenderer.invoke("set-auto-update", enabled),
   getAutoUpdate: () => ipcRenderer.invoke("get-auto-update"),
+  getOnboardingCompleted: () => ipcRenderer.invoke("get-onboarding-completed"),
+  setOnboardingCompleted: (value: boolean) =>
+    ipcRenderer.invoke("set-onboarding-completed", value),
   getModelSettings: () => ipcRenderer.invoke("get-model-settings"),
-  setModelSettings: (data: {
-    model: string
-    apiKey: string
-    apiUrl: string
-  }) => ipcRenderer.invoke("set-model-settings", data),
+  setModelSettings: (data: { model: string; apiKey: string; apiUrl: string }) =>
+    ipcRenderer.invoke("set-model-settings", data),
   resetApp: () => ipcRenderer.invoke("reset-app"),
   checkUpdate: () => ipcRenderer.invoke("check-update"),
   startDownloadUpdate: () => ipcRenderer.invoke("start-download"),

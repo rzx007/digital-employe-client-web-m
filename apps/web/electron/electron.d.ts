@@ -52,7 +52,11 @@ declare global {
       getPlatform: () => Promise<PlatformInfo>
       flashTray: () => Promise<void>
       stopFlashTray: () => Promise<void>
-      sendNotification: (title: string, body: string, silent?: boolean) => Promise<void>
+      sendNotification: (
+        title: string,
+        body: string,
+        silent?: boolean
+      ) => Promise<void>
       loginSuccess: () => Promise<void>
       saveAuth: (
         token: string,
@@ -76,6 +80,8 @@ declare global {
       getNotifications: () => Promise<boolean>
       setAutoUpdate: (enabled: boolean) => Promise<void>
       getAutoUpdate: () => Promise<boolean>
+      getOnboardingCompleted: () => Promise<boolean>
+      setOnboardingCompleted: (value: boolean) => Promise<void>
       getModelSettings: () => Promise<{
         model: string
         apiKey: string

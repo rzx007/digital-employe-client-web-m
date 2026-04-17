@@ -33,17 +33,23 @@ export function ChatLayout({
   const setContacts = useChatStore((s) => s.setContacts)
   const showWelcome = useOnboardingStore((s) => s.showWelcome)
   const onboardingCompleted = useOnboardingStore((s) => s.onboardingCompleted)
+  const initialized = useOnboardingStore((s) => s.initialized)
+  const initOnboarding = useOnboardingStore((s) => s.initOnboarding)
 
   const { data: apiContacts, isError: contactsError } = useContactsQuery()
 
   const hasContactsErrorToastRef = React.useRef(false)
 
   React.useEffect(() => {
-    if (!onboardingCompleted) {
+    initOnboarding()
+  }, [initOnboarding])
+
+  React.useEffect(() => {
+    if (initialized && !onboardingCompleted) {
       const timer = setTimeout(() => showWelcome(), 1500)
       return () => clearTimeout(timer)
     }
-  }, [onboardingCompleted, showWelcome])
+  }, [initialized, onboardingCompleted, showWelcome])
 
   React.useEffect(() => {
     if (apiContacts) {

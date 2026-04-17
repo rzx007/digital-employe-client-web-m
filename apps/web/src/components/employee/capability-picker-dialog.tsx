@@ -114,8 +114,11 @@ export function CapabilityPickerDialog({
               MCP 工具
             </TabsTrigger>
           </TabsList>
-          <TabsContent value="skill" className="mt-0 min-h-0 flex-1 overflow-hidden">
-            <div className="relative px-6 pb-3 ">
+          <TabsContent
+            value="skill"
+            className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
+          >
+            <div className="relative shrink-0 px-6 pb-3">
               <IconSearch className="pointer-events-none absolute top-2/5 left-[2.25rem] size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="pl-9"
@@ -125,7 +128,7 @@ export function CapabilityPickerDialog({
               />
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 pb-4 ">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
               {filteredSkills.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <IconSearch className="size-8 stroke-1" />
@@ -148,7 +151,7 @@ export function CapabilityPickerDialog({
                         onClick={() => toggleSkill(item.id)}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <span className="text-sm font-medium leading-snug">
+                          <span className="text-sm leading-snug font-medium">
                             {item.displayNameZh || item.skillName}
                           </span>
                           <IconCheck
@@ -167,10 +170,12 @@ export function CapabilityPickerDialog({
                 </div>
               )}
             </div>
-
           </TabsContent>
-          <TabsContent value="mcp" className="mt-0 min-h-0 flex-1 overflow-hidden">
-            <div className="relative px-6 pb-3">
+          <TabsContent
+            value="mcp"
+            className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
+          >
+            <div className="relative shrink-0 px-6 pb-3">
               <IconSearch className="pointer-events-none absolute top-2/5 left-[2.25rem] size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="pl-9"
@@ -180,7 +185,7 @@ export function CapabilityPickerDialog({
               />
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 pb-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
               {filteredMcps.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <IconSearch className="size-8 stroke-1" />
@@ -205,7 +210,7 @@ export function CapabilityPickerDialog({
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2">
                             <IconPlug className="size-3.5 shrink-0 text-muted-foreground" />
-                            <span className="text-sm font-medium leading-snug">
+                            <span className="text-sm leading-snug font-medium">
                               {item.capability_name}
                             </span>
                           </div>
@@ -220,11 +225,19 @@ export function CapabilityPickerDialog({
                           {item.capability_desc}
                         </span>
                         <div className="flex items-center gap-1">
-                          <Badge variant="secondary" className="px-1 py-0 text-[10px] font-normal">
+                          <Badge
+                            variant="secondary"
+                            className="px-1 py-0 text-[10px] font-normal"
+                          >
                             {item.mcp_server_name}
                           </Badge>
-                          <span className="text-[10px] text-muted-foreground">/</span>
-                          <Badge variant="outline" className="px-1 py-0 text-[10px] font-normal">
+                          <span className="text-[10px] text-muted-foreground">
+                            /
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className="px-1 py-0 text-[10px] font-normal"
+                          >
                             {item.mcp_tool_name}
                           </Badge>
                         </div>
@@ -236,8 +249,6 @@ export function CapabilityPickerDialog({
             </div>
           </TabsContent>
         </Tabs>
-
-
 
         <div className="flex justify-end gap-2 border-t px-6 py-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>

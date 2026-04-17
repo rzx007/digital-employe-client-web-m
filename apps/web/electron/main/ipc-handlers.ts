@@ -8,12 +8,7 @@ import { closeLoginWindow, createLoginWindow } from "./login"
 import { createRecruitmentWindow, closeRecruitmentWindow } from "./recruitment"
 import { createSettingsWindow, closeSettingsWindow } from "./settings"
 import { VITE_DEV_SERVER_URL, indexHtml } from "./index"
-import {
-  saveAuth,
-  clearAuth,
-  getStoredAuth,
-  hasToken,
-} from "./auth"
+import { saveAuth, clearAuth, getStoredAuth, hasToken } from "./auth"
 import { setAutoLaunch, getAutoLaunch } from "./auto-launch"
 import {
   getSetting,
@@ -271,6 +266,16 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
     return getSetting("autoUpdate") ?? true
   })
 
+  /** 获取引导完成状态 */
+  ipcMain.handle("get-onboarding-completed", () => {
+    return getSetting("onboardingCompleted") ?? false
+  })
+
+  /** 设置引导完成状态 */
+  ipcMain.handle("set-onboarding-completed", (_event, value: boolean) => {
+    setSetting("onboardingCompleted", value)
+  })
+
   /** 获取模型设置 */
   ipcMain.handle("get-model-settings", () => {
     return getModelSettings()
@@ -279,10 +284,7 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
   /** 保存模型设置 */
   ipcMain.handle(
     "set-model-settings",
-    (
-      _event,
-      data: { model: string; apiKey: string; apiUrl: string }
-    ) => {
+    (_event, data: { model: string; apiKey: string; apiUrl: string }) => {
       setModelSettings(data)
     }
   )
