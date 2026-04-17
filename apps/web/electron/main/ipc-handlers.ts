@@ -221,6 +221,13 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
     closeRecruitmentWindow()
   })
 
+  /** 招聘成功：通知主窗口刷新联系人列表 */
+  ipcMain.handle("hire-success", () => {
+    if (mainWin && !mainWin.isDestroyed()) {
+      mainWin.webContents.send("invalidate-contacts")
+    }
+  })
+
   // ========== 设置窗口 ==========
 
   /** 打开设置窗口 */

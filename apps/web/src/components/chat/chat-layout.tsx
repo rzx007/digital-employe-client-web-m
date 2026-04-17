@@ -3,10 +3,12 @@ import { toast } from "sonner"
 
 import { Sheet, SheetContent } from "@workspace/ui/components/sheet"
 import { cn } from "@workspace/ui/lib/utils"
+import { useQueryClient } from "@tanstack/react-query"
 import { ArtifactPanel } from "@/components/artifact"
 import { MonitorPanel } from "@/components/schedule-monitor"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useContactsQuery } from "@/hooks/use-chat-queries"
+import { chatKeys } from "@/lib/query-keys/chat"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useChatStore } from "@/stores/chat-store"
@@ -78,6 +80,16 @@ export function ChatLayout({
       useChatStore.getState().setSelectedContactId(PRIMARY_CURATOR.id)
     }
   }, [contactsError])
+
+  const queryClient = useQueryClient()
+
+  React.useEffect(() => {
+    if (!window.electronApi?.onInvalidateContacts) return
+    const cleanup = window.electronApi.onInvalidateContacts(() => {
+      queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
+    })
+    return cleanup
+  }, [queryClient])
 
   const [showConversations, setShowConversations] = React.useState(false)
 

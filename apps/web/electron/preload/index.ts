@@ -57,6 +57,11 @@ contextBridge.exposeInMainWorld("electronApi", {
   hasSavedAuth: () => ipcRenderer.invoke("has-saved-auth"),
   openRecruitment: () => ipcRenderer.invoke("open-recruitment"),
   closeRecruitment: () => ipcRenderer.invoke("close-recruitment"),
+  notifyHireSuccess: () => ipcRenderer.invoke("hire-success"),
+  onInvalidateContacts: (callback: () => void) => {
+    ipcRenderer.on("invalidate-contacts", () => callback())
+    return () => ipcRenderer.removeAllListeners("invalidate-contacts")
+  },
   // settings
   openSettings: () => ipcRenderer.invoke("open-settings"),
   closeSettings: () => ipcRenderer.invoke("close-settings"),

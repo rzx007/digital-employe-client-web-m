@@ -1,15 +1,17 @@
 import * as React from "react"
-import { IconRefresh, IconSearch, IconUser } from "@tabler/icons-react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useNavigate } from "@tanstack/react-router"
+import {
+  IconSearch,
+  IconUser,
+  IconUserPlus,
+} from "@tabler/icons-react"
 import { useShallow } from "zustand/react/shallow"
-import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
 import { type AIEmployee } from "@/lib/mock-data/ai-employees"
 import { useChatStore } from "@/stores/chat-store"
-import { chatKeys } from "@/lib/query-keys/chat"
 import { ContactItem } from "./contact-item"
 import { CreateGroupDialog } from "./create-group-dialog"
 
@@ -17,9 +19,9 @@ export function ContactsPanel({
   className,
   ...props
 }: React.ComponentProps<"div">) {
+  const navigate = useNavigate()
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState("")
-  const queryClient = useQueryClient()
   const { switchToContact } = useChatStore(
     useShallow((state) => ({
       switchToContact: state.switchToContact,
@@ -50,15 +52,6 @@ export function ContactsPanel({
   const handleCreateGroup = (selectedEmployees: AIEmployee[]) => {
     console.log("创建群聊，选择员工:", selectedEmployees)
     setIsDialogOpen(false)
-  }
-
-  const handleRefreshContacts = async () => {
-    try {
-      await queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
-      toast.success("联系人已刷新")
-    } catch (error) {
-      toast.error("刷新联系人失败")
-    }
   }
 
   const handleDoubleClickContact = (contactId: string) => {
@@ -120,10 +113,15 @@ export function ContactsPanel({
             variant="ghost"
             size="icon-sm"
             className="h-7 w-7 shrink-0"
-            title="刷新联系人"
-            onClick={handleRefreshContacts}
+            onClick={async () => {
+              if (window.electronApi?.openRecruitment) {
+                await window.electronApi.openRecruitment()
+              } else {
+                navigate({ to: "/recruitment" })
+              }
+            }}
           >
-            <IconRefresh className="size-4" />
+            <IconUserPlus className="size-4" />
           </Button>
         </div>
 

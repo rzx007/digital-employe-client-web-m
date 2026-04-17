@@ -1,8 +1,9 @@
 import * as React from "react"
 import { toast } from "sonner"
 import { useShallow } from "zustand/react/shallow"
+import { useQueryClient } from "@tanstack/react-query"
 
-import { IconInfoCircle, IconTrash } from "@tabler/icons-react"
+import { IconInfoCircle, IconRefresh, IconTrash } from "@tabler/icons-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +24,7 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import type { Contact } from "@/lib/mock-data/ai-employees"
 import { useChatStore } from "@/stores/chat-store"
+import { chatKeys } from "@/lib/query-keys/chat"
 
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
 import { EmployeeDetailDialog } from "../employee/employee-detail-dialog"
@@ -60,6 +62,7 @@ export function ContactItem({
 
   const [alertOpen, setAlertOpen] = React.useState(false)
   const [detailOpen, setDetailOpen] = React.useState(false)
+  const queryClient = useQueryClient()
 
   const displayName =
     contact.type === "group"
@@ -212,6 +215,17 @@ export function ContactItem({
           <span>详情</span>
         </ContextMenuItem>
         <ContextMenuSeparator />
+        <ContextMenuItem
+          onSelect={async () => {
+            await queryClient.invalidateQueries({
+              queryKey: chatKeys.contacts(),
+            })
+          }}
+        >
+          <IconRefresh className="text-muted-foreground" />
+          <span>刷新</span>
+        </ContextMenuItem>
+        <ContextMenuSeparator />
         <ContextMenuItem variant="destructive" onSelect={handleDeleteClick}>
           <IconTrash />
           <span>删除</span>
@@ -229,7 +243,7 @@ export function ContactItem({
               className={cn(
                 "cursor-pointer transition-transform hover:scale-105",
                 isSelected &&
-                "rounded-md ring-1 ring-primary ring-offset-1 ring-offset-primary",
+                  "rounded-md ring-1 ring-primary ring-offset-1 ring-offset-primary",
                 className
               )}
               {...props}

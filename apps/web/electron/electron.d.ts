@@ -72,6 +72,8 @@ declare global {
       hasSavedAuth: () => Promise<boolean>
       openRecruitment: () => Promise<void>
       closeRecruitment: () => Promise<void>
+      notifyHireSuccess: () => Promise<void>
+      onInvalidateContacts: (callback: () => void) => () => void
       openSettings: () => Promise<void>
       closeSettings: () => Promise<void>
       setAutoLaunch: (enabled: boolean) => Promise<void>

@@ -496,10 +496,6 @@ export function RecentConversations({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setIsDialogOpen(true)}>
-                <IconUsers className="size-4" />
-                添加群聊
-              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
                   if (window.electronApi?.openRecruitment) {
@@ -511,6 +507,10 @@ export function RecentConversations({
               >
                 <IconUserPlus className="size-4" />
                 招聘员工
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setIsDialogOpen(true)}>
+                <IconUsers className="size-5" />
+                添加群聊
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

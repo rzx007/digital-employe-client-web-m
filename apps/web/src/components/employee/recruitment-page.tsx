@@ -83,7 +83,7 @@ export function RecruitmentPage() {
   const navigate = useNavigate()
   const isElectron = !!(typeof window !== "undefined" && window.electronApi)
   const [prompt, setPrompt] = React.useState("")
-  const [count, setCount] = React.useState(3)
+  const [count, setCount] = React.useState(1)
   const [candidates, setCandidates] = React.useState<RecruitmentCandidate[]>([])
   const [isSearching, setIsSearching] = React.useState(false)
   const [hasSearched, setHasSearched] = React.useState(false)
@@ -123,6 +123,7 @@ export function RecruitmentPage() {
     setCandidates([])
     setHasSearched(false)
     queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
+    window.electronApi?.notifyHireSuccess?.()
   }
 
   // const displayCandidates = hasSearched ? candidates : DEMO_CANDIDATES
