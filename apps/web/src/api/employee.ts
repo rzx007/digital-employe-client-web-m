@@ -4,6 +4,7 @@ import type {
   Capability,
   Employee,
   McpListItem,
+  MetadataMcp,
   MetadataSkill,
   SkillListItem,
 } from "./types"
@@ -14,7 +15,7 @@ const WORKSPACE_ID = 1
 
 export async function fetchMcpList(): Promise<McpListItem[]> {
   const res = await request<{ code?: number; data?: McpListItem[] }>(
-    "/capabilities/list"
+    "/mcp/list"
   )
   return Array.isArray(res?.data) ? res.data : []
 }
@@ -80,9 +81,9 @@ export interface RecruitmentCandidate {
   created_at: string
   updated_at: string
   user_id: string | null
-  capability_ids: number[]
+  mcp_ids: number[]
   skill_ids: number[]
-  capabilities: Capability[]
+  mcps: MetadataMcp[]
   skills: MetadataSkill[]
   shift_schedule: unknown | null
   tasks: unknown[]
@@ -114,7 +115,7 @@ export interface CreateEmployeeParams {
   capability_desc?: string | null
   status?: number
   detail_page_url?: string | null
-  capability_ids?: number[]
+  mcp_ids?: number[]
   skill_ids?: number[]
   shift_schedule?: ShiftScheduleForm | null
   tasks?: TaskFormData[]

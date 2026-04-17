@@ -42,16 +42,18 @@ const DEMO_CANDIDATES: RecruitmentCandidate[] = [
     created_at: "",
     updated_at: "",
     user_id: null,
-    capability_ids: [4, 5],
+    mcp_ids: [4, 5],
     skill_ids: [2],
-    capabilities: [
+    mcps: [
       {
+        id: 4,
         capability_name: "数据处理",
         capability_desc: "ETL数据清洗",
         mcp_server_name: "data",
         mcp_tool_name: "clean",
       },
       {
+        id: 5,
         capability_name: "可视化",
         capability_desc: "报表生成",
         mcp_server_name: "chart",
@@ -74,50 +76,6 @@ const DEMO_CANDIDATES: RecruitmentCandidate[] = [
     shift_schedule: null,
     tasks: [],
     match_score: 88,
-  },
-  {
-    id: 9993,
-    workspace_id: null,
-    employee_name: "运维工程师",
-    capability_desc:
-      "熟悉系统监控、日志分析、自动化运维，能够快速定位故障，保障服务稳定运行。",
-    status: 1,
-    detail_page_url: null,
-    created_at: "",
-    updated_at: "",
-    user_id: null,
-    capability_ids: [6, 7],
-    skill_ids: [3],
-    capabilities: [
-      {
-        capability_name: "系统监控",
-        capability_desc: "服务状态监控",
-        mcp_server_name: "monitor",
-        mcp_tool_name: "check",
-      },
-      {
-        capability_name: "日志分析",
-        capability_desc: "日志检索分析",
-        mcp_server_name: "logger",
-        mcp_tool_name: "search",
-      },
-    ],
-    skills: [
-      {
-        id: 3,
-        skillName: "自动化脚本",
-        description: "批量任务自动化",
-        prompt: "",
-        directoryId: null,
-        status: 1,
-        createTime: "",
-        updateTime: "",
-        directoryName: null,
-      },
-    ],
-    shift_schedule: null,
-    tasks: [],
-    match_score: 82,
   },
 ]
 

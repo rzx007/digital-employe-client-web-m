@@ -11,6 +11,7 @@ export interface ApiResponse<T> {
  * 员工能力项
  */
 export interface Capability {
+  
   capability_name: string
   capability_desc: string
   mcp_server_name: string
@@ -64,6 +65,14 @@ export interface MetadataSkill {
   directoryName: string | null
   [x: string]: any
 }
+export interface MetadataMcp {
+  id: number
+  mcp_server_name: string
+  mcp_tool_name: string
+  createTime?: string
+  updateTime?: string
+  [x: string]: any
+}
 
 /**
  * 员工元数据（能力描述、MCP 工具绑定等）
@@ -78,6 +87,7 @@ export interface EmployeeMetadata {
   updated_at: string
   capabilities: Capability[]
   skills: MetadataSkill[]
+  mcps: MetadataMcp[]
 }
 
 /**

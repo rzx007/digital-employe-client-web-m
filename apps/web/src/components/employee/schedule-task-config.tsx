@@ -6,7 +6,7 @@ import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { Switch } from "@workspace/ui/components/switch"
 import { toast } from "sonner"
-import type { Capability, MetadataSkill } from "@/api/types"
+import type { MetadataMcp, MetadataSkill } from "@/api/types"
 import { parseCronToExecuteTime } from "@/lib/cron-utils"
 import type { ShiftScheduleForm, TaskFormData } from "@/types/task"
 import { cn } from "@workspace/ui/lib/utils"
@@ -31,12 +31,14 @@ function getCronTypeLabel(type: string) {
 function TaskCard({
   task,
   skills,
+  mcps,
   onEdit,
   onDelete,
   onToggleActive,
 }: {
   task: TaskFormData
   skills: MetadataSkill[]
+  mcps: MetadataMcp[]
   onEdit: () => void
   onDelete: () => void
   onToggleActive: (active: boolean) => void
@@ -51,8 +53,9 @@ function TaskCard({
       const skill = skills.find((s) => Number(s.id) === task.skill_id)
       return skill?.skillName ?? skill?.displayNameZh ?? "未选择技能"
     }
-    return "未选择能力"
-  }, [task.task_resource_type, task.skill_id, skills])
+    const mcp = mcps.find((m) => m.id === task.capability_id)
+    return mcp?.capability_name ?? "未选择能力"
+  }, [task.task_resource_type, task.skill_id, task.capability_id, skills, mcps])
 
   return (
     <div className="flex items-start gap-3 rounded-md border p-3">
@@ -99,7 +102,7 @@ function TaskCard({
 }
 
 interface ScheduleTaskConfigProps {
-  capabilities: Capability[]
+  capabilities: MetadataMcp[]
   capabilityIds?: number[]
   skillIds?: number[]
   skills: MetadataSkill[]
@@ -242,12 +245,12 @@ export function ScheduleTaskConfig({
 
         {tasks.length > 0 && (
           <div className="space-y-2 px-3 pb-3">
-
             {tasks.map((task, index) => (
               <TaskCard
                 key={task.id ?? index}
                 task={task}
                 skills={skills}
+                mcps={capabilities}
                 onEdit={() => handleEditTask(index)}
                 onDelete={() => {
                   const next = tasks.filter((_, i) => i !== index)
