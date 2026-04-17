@@ -156,7 +156,7 @@ class EmployeeService:
 
     @staticmethod
     def _employee_mcps_snapshot(db: Session, employee: Employee) -> list[dict]:
-        """返回该员工已绑定的 MCP 摘要列表。"""
+        """返回该员工已绑定的 MCP 列表（与 /mcp/list、远程详情字段一致，id 为远程能力 ID）。"""
         rows = list(
             db.scalars(
                 select(EmployeeMcp)
@@ -164,30 +164,21 @@ class EmployeeService:
                 .order_by(EmployeeMcp.id.asc())
             ).all()
         )
-        return [
-            {
-                "id": r.id,
-                "mcp_id": r.mcp_id,
-                "server_name": r.server_name,
-                "server_addr": r.server_addr,
-                "server_describe": r.server_describe,
-                "directory_id": r.directory_id,
-                "directory_name": r.directory_name,
-                "tool_num": r.tool_num,
-                "status": r.status,
-                "create_time": r.create_time,
-                "update_time": r.update_time,
-                "source_type": r.source_type,
-                "content": r.content,
-                "call_timeout": r.call_timeout,
-                "recovery": r.recovery,
-                "aios_mcp_result": json.loads(r.aios_mcp_result_json) if r.aios_mcp_result_json else None,
-                "mcp_sync_client": json.loads(r.mcp_sync_client_json) if r.mcp_sync_client_json else None,
-                "aios_mcp_authorize_dto": json.loads(r.aios_mcp_authorize_dto_json) if r.aios_mcp_authorize_dto_json else None,
-                "aios_mcp_info_server_list": json.loads(r.aios_mcp_info_server_list_json) if r.aios_mcp_info_server_list_json else None,
-            }
-            for r in rows
-        ]
+        out: list[dict] = []
+        for r in rows:
+            out.append(
+                {
+                    "id": r.mcp_id,
+                    "mcp_server_name": r.mcp_server_name,
+                    "mcp_tool_name": r.mcp_tool_name,
+                    "capability_name": r.capability_name,
+                    "capability_desc": r.capability_desc,
+                    "creator_id": r.creator_id,
+                    "created_at": r.api_created_at,
+                    "updated_at": r.api_updated_at,
+                }
+            )
+        return out
 
     @staticmethod
     def employee_detail_dict(db: Session, employee: Employee) -> dict:
@@ -463,39 +454,54 @@ class EmployeeService:
         """全量覆盖：先删除该员工全部 MCP 关联，再按最新详情重建。"""
         db.execute(delete(EmployeeMcp).where(EmployeeMcp.employee_id == employee.id))
 
-        def _to_json(val: object) -> str | None:
-            if val is None:
+        def _pick_str(d: dict, *keys: str) -> str | None:
+            for k in keys:
+                if k not in d:
+                    continue
+                v = d[k]
+                if v is None:
+                    continue
+                s = str(v).strip()
+                if s:
+                    return s
+            return None
+
+        def _opt_creator_id(d: dict) -> int | None:
+            v = d.get("creator_id")
+            if v is None:
                 return None
-            if isinstance(val, str):
-                return val
             try:
-                return json.dumps(val, ensure_ascii=False)
+                return int(v)
             except (TypeError, ValueError):
-                return str(val)
+                return None
 
         for item in mcp_details:
+            raw_id = item.get("id")
+            if raw_id is None:
+                continue
+            mcp_id = int(raw_id)
+            mcp_server_name = _pick_str(item, "mcp_server_name")
+            mcp_tool_name = _pick_str(item, "mcp_tool_name")
+            capability_name = _pick_str(item, "capability_name")
+            capability_desc: str | None = None
+            if "capability_desc" in item and item["capability_desc"] is not None:
+                capability_desc = str(item["capability_desc"])
+            creator_id = _opt_creator_id(item)
+            api_created_at = _pick_str(item, "created_at")
+            api_updated_at = _pick_str(item, "updated_at")
+
             db.add(
                 EmployeeMcp(
                     workspace_id=employee.workspace_id,
                     employee_id=employee.id,
-                    mcp_id=int(item.get("id")),
-                    server_name=item.get("serverName"),
-                    server_addr=item.get("serverAddr"),
-                    server_describe=item.get("serverDescribe"),
-                    directory_id=item.get("directoryId"),
-                    directory_name=item.get("directoryName"),
-                    tool_num=item.get("toolNum"),
-                    status=item.get("status"),
-                    create_time=item.get("createTime"),
-                    update_time=item.get("updateTime"),
-                    source_type=_to_json(item.get("sourceType")),
-                    content=_to_json(item.get("content")),
-                    call_timeout=item.get("callTimeout"),
-                    recovery=bool(item.get("recovery", False)),
-                    aios_mcp_result_json=_to_json(item.get("aiosMcpResult")),
-                    mcp_sync_client_json=_to_json(item.get("mcpSyncClient")),
-                    aios_mcp_authorize_dto_json=_to_json(item.get("aiosMcpAuthorizeDto")),
-                    aios_mcp_info_server_list_json=_to_json(item.get("aiosMcpInfoServerList")),
+                    mcp_id=mcp_id,
+                    mcp_server_name=mcp_server_name,
+                    mcp_tool_name=mcp_tool_name,
+                    capability_name=capability_name,
+                    capability_desc=capability_desc,
+                    creator_id=creator_id,
+                    api_created_at=api_created_at,
+                    api_updated_at=api_updated_at,
                 )
             )
 
