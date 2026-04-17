@@ -44,8 +44,16 @@ import { useEffect } from "react"
 
 // 头像映射
 const avatars = [
-  Avatar1, Avatar2, Avatar3, Avatar4, Avatar5,
-  Avatar6, Avatar7, Avatar8, Avatar9, Avatar1 // 第10个使用第1个头像
+  Avatar1,
+  Avatar2,
+  Avatar3,
+  Avatar4,
+  Avatar5,
+  Avatar6,
+  Avatar7,
+  Avatar8,
+  Avatar9,
+  Avatar1, // 第10个使用第1个头像
 ]
 
 const tabs: {
@@ -54,25 +62,25 @@ const tabs: {
   iconFilled: React.ComponentType<{ className?: string }>
   label: string
 }[] = [
-    {
-      id: "chat",
-      icon: IconMessage,
-      iconFilled: IconMessage2Filled,
-      label: "对话",
-    },
-    {
-      id: "contacts",
-      icon: IconUser,
-      iconFilled: IconUserFilled,
-      label: "联系人",
-    },
-    {
-      id: "calendar",
-      icon: IconCalendar,
-      iconFilled: IconCalendarFilled,
-      label: "日历",
-    },
-  ]
+  {
+    id: "chat",
+    icon: IconMessage,
+    iconFilled: IconMessage2Filled,
+    label: "对话",
+  },
+  {
+    id: "contacts",
+    icon: IconUser,
+    iconFilled: IconUserFilled,
+    label: "联系人",
+  },
+  {
+    id: "calendar",
+    icon: IconCalendar,
+    iconFilled: IconCalendarFilled,
+    label: "日历",
+  },
+]
 
 export function AppToolbar({
   className,
@@ -84,7 +92,7 @@ export function AppToolbar({
   const user = useAuthStore((s) => s.user)
   const restoreSession = useAuthStore((s) => s.restoreSession)
   useEffect(() => {
-    (async () => {
+    ;(async () => {
       await restoreSession()
     })()
   }, [restoreSession])
@@ -113,7 +121,9 @@ export function AppToolbar({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={handleLogout}>确定退出</AlertDialogAction>
+            <AlertDialogAction onClick={handleLogout}>
+              确定退出
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -144,6 +154,9 @@ export function AppToolbar({
                     "size-10 rounded-lg",
                     activeTab === tab.id && "bg-accent text-accent-foreground"
                   )}
+                  data-tour-id={
+                    tab.id === "contacts" ? "contacts-tab" : undefined
+                  }
                   onClick={() => setActiveTab(tab.id)}
                 >
                   {activeTab === tab.id ? (
@@ -160,8 +173,10 @@ export function AppToolbar({
           ))}
         </nav>
 
-        <div className="flex flex-col gap-2 mt-auto">
-          <NotificationBell />
+        <div className="mt-auto flex flex-col gap-2">
+          <div data-tour-id="notification-bell">
+            <NotificationBell />
+          </div>
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -169,6 +184,7 @@ export function AppToolbar({
                 variant="ghost"
                 size="icon"
                 className="size-10 rounded-lg text-muted-foreground hover:text-foreground"
+                data-tour-id="settings-btn"
                 onClick={() => window.electronApi?.openSettings()}
               >
                 <IconSettings className="size-5" />
