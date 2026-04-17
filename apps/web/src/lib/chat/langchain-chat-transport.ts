@@ -48,7 +48,7 @@ function getEventBoundaryLength(buffer: string, index: number) {
 }
 
 function buildChatApiUrl(options: any) {
-  return `/chat/conversations/${options.conversationId}/stream?question=${options.prompt}&skill=${options.skill}`
+  return `/chat/conversations/${options.conversationId}/stream`
 }
 
 function buildResumeApiUrl(conversationId: string) {
@@ -97,12 +97,12 @@ async function createEventSourceResponse(options: {
   abortSignal: AbortSignal | undefined
 }) {
   const response = await request.raw(buildChatApiUrl(options), {
-    method: "GET",
+    method: "POST",
     // headers: getRequestHeaders({
     //   Accept: "text/event-stream",
     //   "Content-Type": "application/json",
     // }),
-    // body: JSON.stringify({ question: options.prompt }),
+    body: JSON.stringify({ question: options.prompt, skill: options?.skill }),
     signal: options.abortSignal,
   })
 

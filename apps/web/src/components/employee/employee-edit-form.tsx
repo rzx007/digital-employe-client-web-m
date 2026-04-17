@@ -10,10 +10,7 @@ import { Separator } from "@workspace/ui/components/separator"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { Switch } from "@workspace/ui/components/switch"
 import { Textarea } from "@workspace/ui/components/textarea"
-import {
-  fetchMcpList,
-  fetchSkillList,
-} from "@/api/employee"
+import { fetchMcpList, fetchSkillList } from "@/api/employee"
 import type { McpListItem, MetadataSkill, SkillListItem } from "@/api/types"
 import type {
   CronExpressionType,
@@ -73,7 +70,9 @@ function convertApiSkillsToMetadataSkills(
   }))
 }
 
-function convertApiTasksToTaskFormData(apiTasks: ApiTaskResponse[]): TaskFormData[] {
+function convertApiTasksToTaskFormData(
+  apiTasks: ApiTaskResponse[]
+): TaskFormData[] {
   if (!apiTasks) return []
   return apiTasks.map((t) => ({
     task_name: t.task_name,
@@ -83,7 +82,8 @@ function convertApiTasksToTaskFormData(apiTasks: ApiTaskResponse[]): TaskFormDat
     skill_id: t.skill_id,
     task_type: t.task_type ?? 2,
     cron_expression: t.cron_expression,
-    cron_expression_type: (t.cron_expression_type as CronExpressionType) || "daily",
+    cron_expression_type:
+      (t.cron_expression_type as CronExpressionType) || "daily",
     is_active: t.is_active ?? true,
     confirm_execution_result: t.confirm_execution_result ?? false,
   }))
@@ -101,18 +101,24 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
     React.useState<ShiftScheduleForm>(EMPTY_SCHEDULE)
   const [selectedMcpIds, setSelectedMcpIds] = React.useState<number[]>([])
   const [selectedSkillIds, setSelectedSkillIds] = React.useState<number[]>([])
-  const [employeeSkills, setEmployeeSkills] = React.useState<MetadataSkill[]>([])
+  const [employeeSkills, setEmployeeSkills] = React.useState<MetadataSkill[]>(
+    []
+  )
   const [allMcpList, setAllMcpList] = React.useState<McpListItem[]>([])
   const [allSkillList, setAllSkillList] = React.useState<SkillListItem[]>([])
   const [pickerOpen, setPickerOpen] = React.useState(false)
   const [initialized, setInitialized] = React.useState(false)
 
   React.useEffect(() => {
-    fetchMcpList().then(setAllMcpList).catch(() => {})
-    fetchSkillList().then(setAllSkillList).catch(() => {})
+    fetchMcpList()
+      .then(setAllMcpList)
+      .catch(() => {})
+    fetchSkillList()
+      .then(setAllSkillList)
+      .catch(() => {})
   }, [])
 
-React.useEffect(() => {
+  React.useEffect(() => {
     if (employee && !initialized) {
       const meta = employee.metadata
       setName(meta?.employee_name ?? employee.name ?? "")
@@ -123,16 +129,15 @@ React.useEffect(() => {
       )
       setEmployeeSkills(convertedSkills)
       setSelectedSkillIds((meta?.skills ?? []).map((s) => s.skill_id))
-    const metaTasks = (employee.metadata as unknown as Record<string, unknown>)
-        ?.tasks as ApiTaskResponse[]
-        | undefined
+      const metaTasks = (
+        employee.metadata as unknown as Record<string, unknown>
+      )?.tasks as ApiTaskResponse[] | undefined
       if (metaTasks && metaTasks.length > 0) {
         setTasks(convertApiTasksToTaskFormData(metaTasks))
         setShowScheduleAndTask(true)
       }
-      const sch = (employee as unknown as Record<string, unknown>).shift_schedule as
-        | ShiftScheduleForm
-        | undefined
+      const sch = (employee as unknown as Record<string, unknown>)
+        .shift_schedule as ShiftScheduleForm | undefined
       if (sch) {
         setSchedule(sch)
         setShowScheduleAndTask(true)
@@ -168,14 +173,19 @@ React.useEffect(() => {
       toast.error("请输入员工名称")
       return
     }
-
+    const validMcpIds = selectedMcpIds.filter((id) =>
+      allMcpList.some((m) => m.id === id)
+    )
+    const validSkillIds = selectedSkillIds.filter((id) =>
+      allSkillList.some((s) => s.id === id)
+    )
     try {
       await updateMutation.mutateAsync({
         employee_name: name.trim(),
         capability_desc: description.trim() || null,
         status: employee?.metadata?.status ?? 1,
-        capability_ids: selectedMcpIds,
-        skill_ids: selectedSkillIds,
+        capability_ids: validMcpIds || [],
+        skill_ids: validSkillIds || [],
         shift_schedule: showScheduleAndTask ? schedule : null,
         tasks: showScheduleAndTask ? tasks : [],
       })
@@ -240,9 +250,7 @@ React.useEffect(() => {
 
         {selectedMcpItems.length > 0 && (
           <div className="space-y-1">
-            <span className="text-[10px] text-muted-foreground">
-              MCP 工具
-            </span>
+            <span className="text-[10px] text-muted-foreground">MCP 工具</span>
             <div className="flex flex-wrap gap-1.5">
               {selectedMcpItems.map((item) => (
                 <Badge
@@ -266,9 +274,7 @@ React.useEffect(() => {
 
         {selectedSkillItems.length > 0 && (
           <div className="space-y-1">
-            <span className="text-[10px] text-muted-foreground">
-              技能
-            </span>
+            <span className="text-[10px] text-muted-foreground">技能</span>
             <div className="flex flex-wrap gap-1.5">
               {selectedSkillItems.map((item) => (
                 <Badge
@@ -311,7 +317,6 @@ React.useEffect(() => {
           checked={showScheduleAndTask}
           onCheckedChange={setShowScheduleAndTask}
         />
-       
       </div>
 
       {showScheduleAndTask && (
