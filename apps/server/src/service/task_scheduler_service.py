@@ -230,36 +230,6 @@ class TaskSchedulerService:
         )
         return str(fallback_name or "")
 
-    @staticmethod
-    def _first_tool_name_from_mcp_server_list_json(raw: str | None) -> str:
-        if not raw or not str(raw).strip():
-            return ""
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            return ""
-        if isinstance(data, list) and data:
-            first = data[0]
-            if isinstance(first, dict):
-                return str(
-                    first.get("toolName")
-                    or first.get("name")
-                    or first.get("tool_name")
-                    or ""
-                ).strip()
-        if isinstance(data, dict):
-            tools = data.get("tools") or data.get("toolList") or data.get("servers")
-            if isinstance(tools, list) and tools:
-                t0 = tools[0]
-                if isinstance(t0, dict):
-                    return str(
-                        t0.get("toolName")
-                        or t0.get("name")
-                        or t0.get("tool_name")
-                        or ""
-                    ).strip()
-        return ""
-
     @classmethod
     def _execute_mcp_tool_call(cls, db: Session, task: EmployeeTask) -> dict[str, Any]:
         settings = get_settings()
@@ -280,16 +250,14 @@ class TaskSchedulerService:
                 f"未找到员工绑定的 MCP：employee_id={task.employee_id} mcp_id={task.capability_id}"
             )
 
-        server_name = (em.server_name or "").strip()
+        server_name = (em.mcp_server_name or "").strip()
         if not server_name:
-            raise ValueError("MCP 记录缺少 server_name。")
+            raise ValueError("MCP 记录缺少 mcp_server_name。")
 
         input_payload = TaskSchedulerService._loads_json(task.task_input_json, {})
         tool_name = str(input_payload.get("mcp_tool_name") or "").strip()
         if not tool_name:
-            tool_name = TaskSchedulerService._first_tool_name_from_mcp_server_list_json(
-                em.aios_mcp_info_server_list_json
-            )
+            tool_name = (em.mcp_tool_name or "").strip()
         if not tool_name:
             raise ValueError(
                 "无法解析 MCP toolName，请在任务输入中配置 mcp_tool_name。"
@@ -320,6 +288,8 @@ class TaskSchedulerService:
             "arguments": args,
             "timeout": timeout_sec,
         }
+        # 日志记录MCP的URL和参数
+        logger.info("MCP调用URL：%s, 参数为：%s", url, payload)
 
         with httpx.Client(timeout=httpx.Timeout(timeout_sec + 60.0)) as client:
             response = client.post(

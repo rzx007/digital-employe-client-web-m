@@ -52,7 +52,8 @@ class McpService:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="远程 MCP 服务响应格式错误。",
             )
-        if payload.get("code") != 1:
+        code = payload.get("code")
+        if code not in (1, 200):
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=str(payload.get("msg") or "远程 MCP 服务返回失败。"),
