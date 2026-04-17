@@ -1,3 +1,7 @@
+from src.core.logging_setup import setup_logging
+
+setup_logging()
+
 import logging
 # from sqlalchemy import select
 from fastapi import FastAPI
@@ -20,9 +24,13 @@ logger = logging.getLogger(__name__)
 def initialize_default_workspace_employees(db, workspace) -> None:
     existing_employee = db.scalar(select(Employee.id).limit(1))
     if existing_employee is not None:
-        logger.warning("Skip employee bootstrap on startup: employees already exist")
+        logger.info("Skip employee bootstrap on startup: employees already exist")
         return
-    logger.warning("Bootstrap employees on startup: workspace_id=%s workspace_name=%s", workspace.id, workspace.name)
+    logger.info(
+        "Bootstrap employees on startup: workspace_id=%s workspace_name=%s",
+        workspace.id,
+        workspace.name,
+    )
     EmployeeService.sync_workspace_employees(db, workspace)
 
 

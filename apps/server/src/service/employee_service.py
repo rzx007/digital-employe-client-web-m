@@ -66,13 +66,13 @@ class EmployeeService:
 
         target_root = EmployeeService._resolve_skill_root()
         if source_root == target_root:
-            logger.warning(
+            logger.info(
                 "Skip migration because local-employees and SKILL_PATH are same: %s",
                 source_root,
             )
             return
         if target_root.is_relative_to(source_root):
-            logger.warning(
+            logger.info(
                 "Skip migration because SKILL_PATH is inside local-employees: source=%s target=%s",
                 source_root,
                 target_root,
@@ -90,7 +90,7 @@ class EmployeeService:
                 shutil.copy2(item, dest)
             copied_count += 1
 
-        logger.warning(
+        logger.info(
             "Copied local-employees content into SKILL_PATH: source=%s target=%s items=%s",
             source_root,
             target_root,
@@ -266,8 +266,11 @@ class EmployeeService:
         for child in children:
             shutil.move(str(child), extract_dir / child.name)
         wrapper.rmdir()
-        logger.warning(
-            "Flattened wrapped employee extract dir: wrapper=%s target=%s", wrapper, extract_dir)
+        logger.info(
+            "Flattened wrapped employee extract dir: wrapper=%s target=%s",
+            wrapper,
+            extract_dir,
+        )
         return extract_dir
 
     @staticmethod

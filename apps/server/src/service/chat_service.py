@@ -92,7 +92,7 @@ class ChatService:
             resolved_path = Path(resolved)
             if resolved_path.is_dir():
                 EmployeeService.materialize_embedded_skills(resolved_path)
-            logger.warning(
+            logger.info(
                 "Resolved employee skills from payload: employee_id=%s employee_name=%s employee_code=%s payload=%s resolved=%s",
                 employee_id,
                 employee_name,
@@ -122,7 +122,7 @@ class ChatService:
             for candidate in candidates:
                 if candidate.is_dir():
                     EmployeeService.materialize_embedded_skills(candidate.parent)
-                    logger.warning(
+                    logger.info(
                         "Resolved employee skills from fallback root: employee_id=%s employee_name=%s employee_code=%s root=%s candidate=%s",
                         employee_id,
                         employee_name,

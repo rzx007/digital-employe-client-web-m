@@ -318,7 +318,7 @@ def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False):
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     skills_root = _resolve_skills_root(skill_path)
     available_skills = _list_available_skills(skills_root)
-    logger.warning(
+    logger.info(
         "get_agent skill_path=%s skills_root=%s available_skills=%s",
         skill_path,
         skills_root,
@@ -347,7 +347,7 @@ def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False):
                 "get_agent 已挂载应用 SQLite SQL 工具，共 %s 个工具", len(sql_tools)
             )
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.warning("初始化 SQLDatabaseToolkit 失败: %s", exc, exc_info=True)
+            logger.error("初始化 SQLDatabaseToolkit 失败: %s", exc, exc_info=True)
 
     skills_fs = PosixVirtualFilesystemBackend(
         root_dir=str(skills_root), virtual_mode=True
