@@ -146,7 +146,7 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
     "send-notification",
     (_event, options: { title: string; body: string; silent?: boolean }) => {
       if (!mainWin || mainWin.isDestroyed()) return
-      const isFocused = mainWin.isFocused() && !mainWin.isMinimized()
+      const isFocused = mainWin.isFocused()
       if (!isFocused) {
         sendNotification({ ...options, win: mainWin })
       }

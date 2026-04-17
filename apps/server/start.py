@@ -1,5 +1,6 @@
 import logging
 import os
+from src.server import app
 
 import uvicorn
 
@@ -16,7 +17,7 @@ if __name__ == "__main__":
     logger.info("当前环境: %s", ENV)
     logger.info("Starting server...")
     uvicorn.run(
-        "src.server:app",
+        app,
         host="0.0.0.0",
         port=int(os.getenv("SERVER_PORT", 58000)),
         reload=not IS_PROD,
