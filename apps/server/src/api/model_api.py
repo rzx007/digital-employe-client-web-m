@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
@@ -6,6 +8,7 @@ from src.service.modal_service import ModelCallRequest, ModelService
 from src.models.response import ResponseBase
 
 router = APIRouter(tags=["模型调用"])
+logger = logging.getLogger(__name__)
 
 
 class ModelCallResponse(BaseModel):
@@ -34,7 +37,8 @@ async def call_model_api(request: ModelCallRequest):
                 message="模型调用失败"
             ))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("call-model 失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/simple-chat", summary="简单聊天接口", response_model=ResponseBase[Dict[str, Any]])
@@ -46,4 +50,5 @@ async def simple_chat(prompt: str):
         result = await ModelService.call_model(prompt, {})
         return ResponseBase(data=result or {"error": "模型调用失败"})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("simple-chat 失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e

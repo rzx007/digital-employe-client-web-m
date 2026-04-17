@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def _clean_and_validate_http_url(raw: str) -> str | None:
@@ -83,6 +86,7 @@ def load_confirm_url_for_skill(skills_dir: str, skill_folder_name: str) -> str |
         return None
     try:
         content = path.read_text(encoding="utf-8")
-    except OSError:
+    except OSError as exc:
+        logger.error("读取 SKILL.md 失败 path=%s: %s", path, exc, exc_info=True)
         return None
     return parse_confirm_url_from_skill_md(content)

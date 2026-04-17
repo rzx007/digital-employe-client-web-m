@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from src.schemas.workspace import FileEntry
 
@@ -17,7 +20,8 @@ class FileService:
         for item in iterator:
             try:
                 stat = item.stat()
-            except OSError:
+            except OSError as exc:
+                logger.error("文件项 stat 失败 path=%s: %s", item, exc, exc_info=True)
                 continue
             entries.append(
                 FileEntry(

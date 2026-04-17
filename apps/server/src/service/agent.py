@@ -29,6 +29,8 @@ from src.core.config import get_settings
 # Load environment variables
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 
 @tool
 def run_shell_command(command: str) -> str:
@@ -64,13 +66,14 @@ def run_shell_command(command: str) -> str:
             output += "\nSTDERR:\n" + stderr
         return f"Exit code: {result.returncode}\nOutput:\n{output}"
     except subprocess.TimeoutExpired:
+        logger.error("run_shell_command 超时: %s", command)
         return "Command timed out after 30 seconds"
     except Exception as e:
+        logger.error("run_shell_command 执行失败: %s", e, exc_info=True)
         return f"Error executing command: {str(e)}"
 
 
 console = Console()
-logger = logging.getLogger(__name__)
 _CHECKPOINTER = MemorySaver()
 _STORE = InMemoryStore()
 
@@ -263,12 +266,14 @@ class WindowsShellBackend(LocalShellBackend):
             )
 
         except subprocess.TimeoutExpired:
+            logger.error("WindowsShellBackend.execute 超时: %s", command)
             return ExecuteResponse(
                 output="Command timed out after 30 seconds",
                 exit_code=-1,
                 truncated=False,
             )
         except Exception as e:
+            logger.error("WindowsShellBackend.execute 失败: %s", e, exc_info=True)
             return ExecuteResponse(
                 output=f"Error executing command: {str(e)}",
                 exit_code=-1,

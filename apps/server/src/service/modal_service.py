@@ -36,8 +36,8 @@ class ModelService:
                     response_data = await response.json()
                     return response_data
         except aiohttp.ClientError as e:
-            logger.error(f"Error calling model API: {str(e)}")
+            logger.error("调用模型 API 失败: %s", e, exc_info=True)
             return None
         except Exception as e:
-            logger.error(f"Unexpected error calling model API: {str(e)}")
+            logger.error("调用模型 API 意外错误: %s", e, exc_info=True)
             return None

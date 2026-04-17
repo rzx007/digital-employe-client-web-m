@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
@@ -11,7 +13,7 @@ from src.models.response import BaseResponse, ListResponse, ResponseBase
 from src.schemas.employee import EmployeeCreate, EmployeeGenerationRequest, EmployeeOut, EmployeeRead, EmployeeSyncResult, EmployeeUpdate
 from src.service.employee_service import EmployeeService
 from src.service.workspace_service import WorkspaceService
-import logging
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["员工"])
@@ -79,9 +81,9 @@ def create_employee(
         # 获取用户ID
         user_id = get_user_id(request)
     except Exception as e:
-        print(f"获取user_id失败: {e}")
+        logger.error("获取 user_id 失败: %s", e, exc_info=True)
         # 如果获取不到用户ID，尝试从token中提取
-        
+
         if token:
             user_id = get_user_id_from_token(token)
             if not user_id:
@@ -91,7 +93,7 @@ def create_employee(
     
     # 设置创建者ID
     employee_in.user_id = user_id
-    print(f"设置user_id为: {user_id}")
+    logger.info("创建员工 user_id=%s", user_id)
     
     employee = EmployeeService.create_employee(db, employee_in, token)
     return ResponseBase(data=EmployeeService._employee_to_dict(employee))

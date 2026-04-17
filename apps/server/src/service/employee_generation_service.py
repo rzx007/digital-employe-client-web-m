@@ -22,7 +22,7 @@ class EmployeeGenerationService:
             logger.info(f"招聘生成获取到技能数量: {len(skills)}")
             return skills
         except Exception as e:
-            logger.error(f"Error fetching skills: {str(e)}")
+            logger.error("获取技能列表失败: %s", e, exc_info=True)
             return []
 
 
@@ -98,7 +98,7 @@ class EmployeeGenerationService:
         )
 
         if not result or result.get("code") != 1:
-            logger.warning(f"员工生成模型调用失败，返回内容: {result}")
+            logger.info("员工生成模型调用失败，返回内容: %s", result)
             return EmployeeGenerationService._build_default_profiles(
                 count, "AI生成员工", "由AI生成的虚拟员工"
             )
@@ -139,7 +139,7 @@ class EmployeeGenerationService:
                     f"员工生成解析结果: name={profile.get('name', '')}, skill_ids={skill_ids}"
                 )
                 if not skill_ids:
-                    logger.warning(f"员工生成未匹配到技能: profile={profile}")
+                    logger.info("员工生成未匹配到技能: profile=%s", profile)
                 profiles.append(
                     EmployeeProfile(
                         name=profile.get("name", ""),
@@ -149,16 +149,24 @@ class EmployeeGenerationService:
                     )
                 )
             return profiles
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            logger.error(
+                "员工生成 JSON 解析失败: %s", exc, exc_info=True
+            )
             json_match = re.search(r"\[.*\]", result_content, re.DOTALL)
             if json_match:
                 try:
                     return EmployeeGenerationService._parse_skill_profiles(
                         json_match.group(), skills_list, count
                     )
-                except json.JSONDecodeError:
-                    pass
-            logger.warning(f"员工生成模型返回无法解析为JSON数组: {result_content[:300]}")
+                except json.JSONDecodeError as exc2:
+                    logger.error(
+                        "员工生成二次 JSON 解析失败: %s", exc2, exc_info=True
+                    )
+            logger.info(
+                "员工生成模型返回无法解析为JSON数组: %s",
+                result_content[:300],
+            )
             return EmployeeGenerationService._build_default_profiles(
                 count,
                 "候选员工",
@@ -184,7 +192,7 @@ class EmployeeGenerationService:
             return profiles
 
         except Exception as e:
-            logger.exception(f"生成员工档案异常: {str(e)}")
+            logger.error("生成员工档案异常: %s", e, exc_info=True)
             profiles = []
             for i in range(count):
                 profiles.append(EmployeeProfile(

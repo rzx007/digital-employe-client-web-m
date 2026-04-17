@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -18,6 +20,7 @@ class ChatSendRequest(BaseModel):
     skill_descriptions: str | None = None
 
 router = APIRouter(tags=["工作空间"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/workspaces/create", response_model=ResponseBase[WorkspaceRead], status_code=status.HTTP_201_CREATED)
@@ -94,7 +97,8 @@ async def chat_send(
             employee_name=employee.name,
             employee_code=employee.employee_code,
         )
-    except Exception:
+    except Exception as exc:
+        logger.error("解析员工技能目录失败 employee_id=%s: %s", employee.id, exc, exc_info=True)
         skills_path = ""
 
     agent = get_agent(skills_path, workspace.root_path)
@@ -116,7 +120,7 @@ async def chat_send(
             if hasattr(message_chunk, "content") and isinstance(message_chunk.content, str):
                 collected_texts.append(message_chunk.content)
     except Exception as e:
-        print(f"Exception in astream: {e}", flush=True)
+        logger.error("chat astream 异常: %s", e, exc_info=True)
 
     full_response = "".join(collected_texts).strip()
     return ResponseBase(data=ChatSendResponse(response=full_response or "模型已完成调用。"))
