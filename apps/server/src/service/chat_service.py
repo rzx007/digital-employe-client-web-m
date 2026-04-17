@@ -87,37 +87,55 @@ class ChatService:
         employee_name: str | None = None,
         employee_code: str | None = None,
     ) -> str:
-        local_root = Path.cwd() / "local-employees"
-        local_candidates: list[Path] = []
-        if employee_id is not None:
-            local_candidates.append(local_root / str(employee_id) / "skills")
-        if employee_name:
-            local_candidates.append(local_root / employee_name / "skills")
-        if employee_code and employee_code != employee_name:
-            local_candidates.append(local_root / employee_code / "skills")
+        try:
+            resolved = ChatService._resolve_skills_dir(skills_payload)
+            resolved_path = Path(resolved)
+            if resolved_path.is_dir():
+                EmployeeService.materialize_embedded_skills(resolved_path)
+            logger.warning(
+                "Resolved employee skills from payload: employee_id=%s employee_name=%s employee_code=%s payload=%s resolved=%s",
+                employee_id,
+                employee_name,
+                employee_code,
+                skills_payload,
+                resolved,
+            )
+            return resolved
+        except HTTPException:
+            pass
 
-        for candidate in local_candidates:
-            if candidate.is_dir():
-                EmployeeService.materialize_embedded_skills(candidate.parent)
-                logger.warning(
-                    "Resolved employee skills from local-employees: employee_id=%s employee_name=%s employee_code=%s candidate=%s",
-                    employee_id,
-                    employee_name,
-                    employee_code,
-                    candidate,
-                )
-                return str(candidate.parent)
+        settings = get_settings()
+        skill_root = Path(os.path.expandvars(os.path.expanduser(settings.skill_path)))
+        if not skill_root.is_absolute():
+            skill_root = Path.cwd() / skill_root
+        roots = [skill_root, Path.cwd() / "local-employees"]
 
-        resolved = ChatService._resolve_skills_dir(skills_payload)
-        logger.warning(
-            "Resolved employee skills from payload: employee_id=%s employee_name=%s employee_code=%s payload=%s resolved=%s",
-            employee_id,
-            employee_name,
-            employee_code,
-            skills_payload,
-            resolved,
+        for root in roots:
+            candidates: list[Path] = []
+            if employee_id is not None:
+                candidates.append(root / str(employee_id) / "skills")
+            if employee_name:
+                candidates.append(root / employee_name / "skills")
+            if employee_code and employee_code != employee_name:
+                candidates.append(root / employee_code / "skills")
+
+            for candidate in candidates:
+                if candidate.is_dir():
+                    EmployeeService.materialize_embedded_skills(candidate.parent)
+                    logger.warning(
+                        "Resolved employee skills from fallback root: employee_id=%s employee_name=%s employee_code=%s root=%s candidate=%s",
+                        employee_id,
+                        employee_name,
+                        employee_code,
+                        root,
+                        candidate,
+                    )
+                    return str(candidate.parent)
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No available employee skills directory found",
         )
-        return resolved
 
     @staticmethod
     def _validate_target(db: Session, workspace_id: int, target_type: str, target_id: int) -> None:

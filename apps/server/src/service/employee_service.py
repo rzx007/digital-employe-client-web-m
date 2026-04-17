@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import uuid
 from datetime import date
@@ -48,6 +49,53 @@ class EmployeeService:
     @staticmethod
     def _resolve_local_employees_root() -> Path:
         return Path.cwd() / "local-employees"
+
+    @staticmethod
+    def _resolve_skill_root() -> Path:
+        settings = get_settings()
+        path = Path(os.path.expandvars(os.path.expanduser(settings.skill_path)))
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        return path.resolve()
+
+    @staticmethod
+    def migrate_local_employees_to_skill_path() -> None:
+        source_root = EmployeeService._resolve_local_employees_root().resolve()
+        if not source_root.is_dir():
+            return
+
+        target_root = EmployeeService._resolve_skill_root()
+        if source_root == target_root:
+            logger.warning(
+                "Skip migration because local-employees and SKILL_PATH are same: %s",
+                source_root,
+            )
+            return
+        if target_root.is_relative_to(source_root):
+            logger.warning(
+                "Skip migration because SKILL_PATH is inside local-employees: source=%s target=%s",
+                source_root,
+                target_root,
+            )
+            return
+
+        target_root.mkdir(parents=True, exist_ok=True)
+        copied_count = 0
+        for item in source_root.iterdir():
+            dest = target_root / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+            else:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, dest)
+            copied_count += 1
+
+        logger.warning(
+            "Copied local-employees content into SKILL_PATH: source=%s target=%s items=%s",
+            source_root,
+            target_root,
+            copied_count,
+        )
 
     @staticmethod
     def _employee_to_dict(employee: Employee) -> dict:
@@ -500,10 +548,10 @@ class EmployeeService:
         return str(skill_content)
 
     @staticmethod
-    def _save_skills_to_local_files(employee: Employee, skills: list[dict]) -> Path:
+    def _save_skills_to_skill_path(employee: Employee, skills: list[dict]) -> Path:
         """将远程技能详情全量覆盖落盘到 local-employees/<员工ID>/skills/。"""
         employee_root = (
-            EmployeeService._resolve_local_employees_root() / str(employee.id) / "skills"
+            EmployeeService._resolve_skill_root() / str(employee.id) / "skills"
         )
         if employee_root.exists():
             shutil.rmtree(employee_root, ignore_errors=True)
@@ -725,7 +773,10 @@ class EmployeeService:
             skills = EmployeeService._validate_and_fetch_skills(
                 payload.skill_ids, token)
             EmployeeService._replace_employee_skills(db, employee, skills)
-            EmployeeService._save_skills_to_local_files(employee, skills)
+            skill_dir = EmployeeService._save_skills_to_skill_path(employee, skills)
+            employee.skills_json = json.dumps(
+                [{"skills_dir": str(skill_dir)}], ensure_ascii=False
+            )
 
         if "mcp_ids" in payload.model_fields_set:
             mcp_details = EmployeeService._validate_and_fetch_mcps(payload.mcp_ids, token)
@@ -802,9 +853,8 @@ class EmployeeService:
         EmployeeService._replace_employee_mcps(db, employee, mcp_details)
         EmployeeService._replace_shift_schedule(db, employee, shift_schedule)
         # 将skills的内容存到本地文件
-        skill_dir = EmployeeService._save_skills_to_local_files(
-            employee, skills)
-        # skills_json：{"skills_dir": ".../local-employees/<员工ID>/skills"}
+        skill_dir = EmployeeService._save_skills_to_skill_path(employee, skills)
+        # skills_json：{"skills_dir": ".../SKILL_PATH/<员工ID>/skills"}
         skills_dir = [{"skills_dir": str(skill_dir)}]
         employee.skills_json = json.dumps(skills_dir, ensure_ascii=False)
         db.commit()

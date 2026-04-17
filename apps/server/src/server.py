@@ -31,6 +31,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         init_db()
+        EmployeeService.migrate_local_employees_to_skill_path()
         with get_session_local()() as db:
             workspace = WorkspaceService.ensure_default_workspace(db)
             # initialize_default_workspace_employees(db, workspace)
