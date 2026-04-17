@@ -49,8 +49,8 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   ? path.join(process.env.APP_ROOT, "public")
   : RENDERER_DIST
 
- //  语言设置
-  app.commandLine.appendSwitch('lang', 'zh-CN')
+//  语言设置
+app.commandLine.appendSwitch("lang", "zh-CN")
 
 // ========== 平台兼容性 ==========
 
@@ -58,9 +58,9 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 if (os.release().startsWith("6.1")) app.disableHardwareAcceleration()
 
 // Windows 10+ 设置应用用户模型 ID（用于系统通知）
-if (process.platform === "win32") app.setAppUserModelId(app.getName())
+if (process.platform === "win32")
+  app.setAppUserModelId("com.digital-employee-m.app")
 
-  
 // ========== 单实例锁 ==========
 
 if (!app.requestSingleInstanceLock()) {
