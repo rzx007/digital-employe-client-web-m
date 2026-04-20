@@ -23,6 +23,7 @@ import { ContactsPanel } from "./contacts-panel"
 import { ConversationList } from "./conversation-list"
 import { MobileTabBar } from "./mobile-tab-bar"
 import { RecentConversations } from "./recent-conversations"
+import { WorkbenchView } from "./workbench-view"
 
 const CURATOR_CONTACT = { type: "curator" as const, curator: PRIMARY_CURATOR }
 
@@ -158,7 +159,7 @@ export function ChatLayout({
       <div className="flex min-w-0 flex-1">
         {!isMobile && <AppToolbar />}
 
-        {!isMobile && (
+        {!isMobile && activeTab !== "workbench" && (
           <div className="hidden w-64 shrink-0 md:flex md:flex-col">
             {activeTab === "chat" && (
               <RecentConversations className="h-full w-full" />
@@ -187,6 +188,10 @@ export function ChatLayout({
 
         {activeTab === "calendar" && (
           <CalendarPlaceholder variant="content" className="min-w-0 flex-1" />
+        )}
+
+        {activeTab === "workbench" && (
+          <WorkbenchView className="min-w-0 flex-1" />
         )}
 
         {isPanelOpen &&
