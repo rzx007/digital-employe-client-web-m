@@ -14,21 +14,14 @@ import {
   MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolInput,
-  ToolOutput,
-} from "@workspace/ui/components/ai-elements/tool"
 import { cn } from "@workspace/ui/lib/utils"
 import { IconSparkles } from "@tabler/icons-react"
 import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import logo from "@/assets/logo.svg"
 import {
+  classifyMessageParts,
   getLatestArtifactFromUIMessage,
-  getRenderBlocksFromUIMessage,
 } from "@/lib/chat/message-utils"
 import type { Message as StoredMessage } from "@/lib/mock-data/messages"
 import { Spinner } from "@/components/spinner"
@@ -43,6 +36,8 @@ import type { SlashCommandItem } from "../lexical-editor/slash-command-plugin"
 import type { MentionCandidate } from "../lexical-editor/mention-plugin"
 import { ChatPanelHeader } from "./chat-panel-header"
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
+import { ThinkingBlock } from "./thinking-block"
+import { ToolGroupBlock } from "./tool-group-block"
 import { WorkbenchView } from "./workbench-view"
 import {
   getContactDisplayName,
@@ -52,25 +47,26 @@ import {
 
 const EMPTY_MESSAGES: UIMessage[] = []
 
-type ToolUIPart = Extract<
-  UIMessage["parts"][number],
-  {
-    type: `tool-${string}`
-    toolCallId: string
-  }
->
+function renderClassifiedBlocks(
+  blocks: import("@/lib/chat/message-classifier").ClassifiedBlock[]
+) {
+  return blocks.map((block) => {
+    if (block.kind === "thinking") {
+      return <ThinkingBlock key={block.key} text={block.text} />
+    }
 
-function renderToolOutput(output: unknown) {
-  if (output == null) {
+    if (block.kind === "tool-group") {
+      return <ToolGroupBlock key={block.key} block={block} />
+    }
+
+    if (block.kind === "final-response") {
+      return (
+        <MessageResponse key={block.key}>{block.text}</MessageResponse>
+      )
+    }
+
     return null
-  }
-
-  const content =
-    typeof output === "object"
-      ? JSON.stringify(output, null, 2)
-      : String(output)
-
-  return <MessageResponse>{content}</MessageResponse>
+  })
 }
 
 export function ChatPanel({
@@ -269,7 +265,7 @@ export function ChatPanel({
                     displayMessages.map((message) => {
                       const liveArtifact =
                         getLatestArtifactFromUIMessage(message)
-                      const renderBlocks = getRenderBlocksFromUIMessage(message)
+                      const classifiedBlocks = classifyMessageParts(message)
                       const storedMessage = storedMessages.find(
                         (item) => item.id === message.id
                       )
@@ -332,61 +328,19 @@ export function ChatPanel({
                           )}
                           <MessageContent>
                             <div className="space-y-3">
-                              {renderBlocks.length > 0 ? (
-                                renderBlocks.map((block) => {
-                                  if (block.kind === "text") {
-                                    return (
-                                      <MessageResponse key={block.key}>
-                                        {block.text}
-                                      </MessageResponse>
-                                    )
-                                  }
-
-                                  if (block.kind === "tool") {
-                                    const part = block.part as ToolUIPart
-
-                                    return (
-                                      <Tool
-                                        key={block.key}
-                                        className="max-w-2xl"
-                                        defaultOpen={false}
-                                      >
-                                        <ToolHeader
-                                          state={
-                                            part.state as ToolUIPart["state"]
-                                          }
-                                          type={part.type as ToolUIPart["type"]}
-                                        />
-                                        <ToolContent>
-                                          <ToolInput input={part.input} />
-                                          <ToolOutput
-                                            errorText={part.errorText}
-                                            output={renderToolOutput(
-                                              part.output
-                                            )}
-                                          />
-                                        </ToolContent>
-                                      </Tool>
-                                    )
-                                  }
-
-                                  return (
-                                    <ArtifactPreview
-                                      key={block.key}
-                                      artifact={block.artifact}
-                                      onClick={() => {
-                                        addArtifact(block.artifact)
-                                        setFullscreen(isMobile)
-                                        openArtifact(block.artifact.id)
-                                      }}
-                                    />
-                                  )
-                                })
+                              {classifiedBlocks.length > 0 ? (
+                                renderClassifiedBlocks(classifiedBlocks)
                               ) : metadata?.artifact ? null : (
                                 <MessageResponse />
                               )}
                             </div>
                           </MessageContent>
+                          {artifact && (
+                            <ArtifactPreview
+                              artifact={artifact}
+                              onClick={handleOpenArtifact}
+                            />
+                          )}
                           {timestamp && (
                             <div
                               className={cn(
@@ -396,12 +350,6 @@ export function ChatPanel({
                             >
                               {formatTime(timestamp)}
                             </div>
-                          )}
-                          {artifact && renderBlocks.length === 0 && (
-                            <ArtifactPreview
-                              artifact={artifact}
-                              onClick={handleOpenArtifact}
-                            />
                           )}
                         </Message>
                       )
@@ -413,14 +361,14 @@ export function ChatPanel({
                       from="assistant"
                       className="mx-auto -mt-4 max-w-4xl"
                     >
-                      <MessageContent className="rounded-lg border border-border/60 bg-muted/40 px-3 py-2.5">
+                      <MessageContent className="rounded-lg bg-muted/40 px-3 py-2.5">
                         <div className="flex items-center gap-2 text-muted-foreground">
-                          <Spinner
+                      <Spinner
                             className="size-3.5"
-                            style={{ color: "#8B5CF6" }}
-                          />
+                        style={{ color: "#8B5CF6" }}
+                      />
                           <Shimmer className="text-xs">正在生成回复...</Shimmer>
-                        </div>
+                    </div>
                       </MessageContent>
                     </Message>
                   )}

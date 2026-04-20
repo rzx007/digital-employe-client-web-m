@@ -9,7 +9,10 @@ export {
   getLatestArtifactFromUIMessage,
 } from "./artifact-utils"
 
+export { classifyMessageParts, type ClassifiedBlock, type ToolGroupItem } from "./message-classifier"
+
 import { getArtifactFromToolPart } from "./artifact-utils"
+import { classifyMessageParts, type ClassifiedBlock } from "./message-classifier"
 import {
   closeTextPhaseIfNeeded,
   createLangChainStreamParseState,
