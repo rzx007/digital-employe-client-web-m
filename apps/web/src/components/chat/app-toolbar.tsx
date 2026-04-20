@@ -65,6 +65,12 @@ const tabs: {
   label: string
 }[] = [
   {
+    id: "workbench",
+    icon: IconLayoutDashboard,
+    iconFilled: IconLayoutDashboardFilled,
+    label: "工作台",
+  },
+  {
     id: "chat",
     icon: IconMessage,
     iconFilled: IconMessage2Filled,
@@ -75,12 +81,6 @@ const tabs: {
     icon: IconUser,
     iconFilled: IconUserFilled,
     label: "联系人",
-  },
-  {
-    id: "workbench",
-    icon: IconLayoutDashboard,
-    iconFilled: IconLayoutDashboardFilled,
-    label: "工作台",
   },
   {
     id: "calendar",
