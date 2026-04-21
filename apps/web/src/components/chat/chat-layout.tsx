@@ -95,8 +95,6 @@ export function ChatLayout({
   const [showConversations, setShowConversations] = React.useState(false)
 
   const {
-    activeArtifactId,
-    artifacts,
     closeArtifact,
     isFullscreen,
     isPanelOpen,
@@ -112,15 +110,13 @@ export function ChatLayout({
     setFullscreen: setMonitorFullscreen,
   } = useMonitorStore()
 
-  const activeArtifact = activeArtifactId
-    ? (artifacts.get(activeArtifactId) ?? null)
-    : null
+  const selectedConversationId = useChatStore((s) => s.selectedConversationId)
 
   React.useEffect(() => {
-    if (isMobile && isPanelOpen && activeArtifact) {
+    if (isMobile && isPanelOpen) {
       setFullscreen(true)
     }
-  }, [activeArtifact, isMobile, isPanelOpen, setFullscreen])
+  }, [isMobile, isPanelOpen, setFullscreen])
 
   React.useEffect(() => {
     if (isMobile && isMonitorOpen) {
@@ -192,13 +188,12 @@ export function ChatLayout({
         )}
 
         {isPanelOpen &&
-          activeArtifact &&
           !isFullscreen &&
           !isMobile &&
           activeTab === "chat" && (
-            <div className="hidden w-[600px] border-l bg-muted/20 p-3 md:block">
+            <div className="hidden w-[720px] border-l bg-muted/20 p-3 md:block">
               <ArtifactPanel
-                artifact={activeArtifact}
+                conversationId={selectedConversationId}
                 isOpen={isPanelOpen}
                 isFullscreen={false}
                 onClose={closeArtifact}
@@ -238,11 +233,10 @@ export function ChatLayout({
 
       {/* Artifact fullscreen */}
       {isPanelOpen &&
-        activeArtifact &&
         (isFullscreen || isMobile) &&
         activeTab === "chat" && (
           <ArtifactPanel
-            artifact={activeArtifact}
+            conversationId={selectedConversationId}
             isOpen={isPanelOpen}
             isFullscreen={isFullscreen}
             onClose={closeArtifact}
@@ -255,7 +249,6 @@ export function ChatLayout({
         <MonitorPanel
           isOpen={isMonitorOpen}
           isFullscreen={isMonitorFullscreen}
-          onClose={closeMonitor}
           onToggleFullscreen={toggleMonitorFullscreen}
         />
       )}

@@ -243,7 +243,7 @@ export const ARTIFACT_EXCLUDED_PREFIXES = [
 
 export const artifactDataSchema = z.object({
   id: z.string(),
-  artifactType: z.enum(["text", "code", "sheet", "image"]),
+  artifactType: z.enum(["text", "code", "sheet", "image", "skill-draft"]),
   title: z.string(),
   content: z.string(),
   language: z.string().nullable().optional(),

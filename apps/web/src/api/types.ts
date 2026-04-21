@@ -270,3 +270,25 @@ export interface LoginResponse {
     msg: string
   }
 }
+
+export interface ResourceEntry {
+  name: string
+  path: string
+  entry_type: "file" | "directory"
+  artifact_type: string | null
+  size: number
+  modified_at: number | null
+  children: ResourceEntry[] | null
+}
+
+export interface ResourceList {
+  artifacts: ResourceEntry[]
+  skills_draft: ResourceEntry[]
+}
+
+export interface ResourceContent {
+  path: string
+  content: string
+  artifact_type: string
+  language: string | null
+}

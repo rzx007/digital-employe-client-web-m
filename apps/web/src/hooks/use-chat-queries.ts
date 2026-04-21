@@ -13,6 +13,10 @@ import {
   fetchConversationsByContactId,
   fetchMessagesByConversationId,
 } from "@/api/chat"
+import {
+  fetchConversationResources,
+  fetchResourceContent,
+} from "@/api/conversation"
 import type { Contact } from "@/lib/mock-data/ai-employees"
 import type { Conversation } from "@/lib/mock-data/conversations"
 import type { Message } from "@/lib/mock-data/messages"
@@ -145,5 +149,30 @@ export function useUpdateEmployeeMutation(employeeId: string) {
         queryKey: chatKeys.contacts(),
       })
     },
+  })
+}
+
+export function useConversationResourcesQuery(conversationId: string | number | null) {
+  return useQuery({
+    queryKey: chatKeys.resources(String(conversationId)),
+    queryFn: async () => {
+      const res = await fetchConversationResources(conversationId!)
+      return res.data
+    },
+    enabled: !!conversationId,
+  })
+}
+
+export function useResourceContentQuery(
+  conversationId: string | number,
+  path: string | null,
+) {
+  return useQuery({
+    queryKey: chatKeys.resourceContent(String(conversationId), path ?? ""),
+    queryFn: async () => {
+      const res = await fetchResourceContent(conversationId, path!)
+      return res.data
+    },
+    enabled: !!path,
   })
 }

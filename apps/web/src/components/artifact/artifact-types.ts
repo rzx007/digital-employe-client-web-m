@@ -1,4 +1,4 @@
-export type ArtifactType = "text" | "code" | "sheet" | "image"
+export type ArtifactType = "text" | "code" | "sheet" | "image" | "skill-draft"
 
 export interface Artifact {
   id: string

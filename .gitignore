@@ -20,7 +20,6 @@ apps/server/.pytest_cache
 apps/server/.coverage
 apps/server/*.log
 apps/server/micro_agent.egg-info/*
-docs/*
 
 # 构建脚本相关
 build/
