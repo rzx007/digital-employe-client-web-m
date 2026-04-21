@@ -13,6 +13,7 @@ import {
   enqueueFinish,
   parseLangChainPayloadToChunks,
 } from "./langchain-stream-parser"
+import { sseEventSchema } from "./langchain-sse-schema"
 
 const useMock =
   import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_SSE === "true"
@@ -248,8 +249,13 @@ export class LangChainChatTransport<
 
           try {
             const payload = JSON.parse(data)
+            const parsed = sseEventSchema.safeParse(payload)
+            if (!parsed.success) {
+              return false
+            }
+
             const chunks = parseLangChainPayloadToChunks({
-              payload,
+              payload: parsed.data,
               state,
             })
 

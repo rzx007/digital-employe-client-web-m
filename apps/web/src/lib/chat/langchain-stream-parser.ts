@@ -1,56 +1,11 @@
 import { createIdGenerator, type UIMessageChunk } from "ai"
 
+import type { AIMessageChunk, ToolMessage } from "./langchain-sse-schema"
+
 const generatePartId = createIdGenerator({
   prefix: "lc-part",
   size: 16,
 })
-
-interface LangChainAIMessageChunk {
-  id?: string[]
-  type?: string
-  kwargs?: {
-    id?: string
-    content?: unknown
-    type?: string
-    chunk_position?: string
-    response_metadata?: {
-      finish_reason?: string
-    }
-    tool_calls?: Array<{
-      name?: unknown
-      args?: unknown
-      id?: unknown
-      type?: unknown
-    }>
-    tool_call_chunks?: Array<{
-      name?: unknown
-      args?: unknown
-      id?: unknown
-      index?: unknown
-      type?: unknown
-    }>
-    invalid_tool_calls?: Array<{
-      name?: unknown
-      args?: unknown
-      id?: unknown
-      error?: unknown
-      type?: unknown
-      index?: unknown
-    }>
-  }
-}
-
-interface LangChainToolMessage {
-  id?: string[]
-  type?: string
-  kwargs?: {
-    content?: unknown
-    type?: string
-    name?: unknown
-    tool_call_id?: unknown
-    status?: unknown
-  }
-}
 
 interface PendingToolCall {
   key: string
@@ -114,12 +69,12 @@ function openNewTextPhase(state: LangChainStreamParseState): UIMessageChunk[] {
 
 function isLangChainAiMessageChunk(
   chunk: unknown
-): chunk is LangChainAIMessageChunk {
+): chunk is AIMessageChunk {
   if (!chunk || typeof chunk !== "object") {
     return false
   }
 
-  const candidate = chunk as LangChainAIMessageChunk
+  const candidate = chunk as AIMessageChunk
 
   return (
     Array.isArray(candidate.id) &&
@@ -129,12 +84,12 @@ function isLangChainAiMessageChunk(
   )
 }
 
-function isLangChainToolMessage(chunk: unknown): chunk is LangChainToolMessage {
+function isToolMessage(chunk: unknown): chunk is ToolMessage {
   if (!chunk || typeof chunk !== "object") {
     return false
   }
 
-  const candidate = chunk as LangChainToolMessage
+  const candidate = chunk as ToolMessage
 
   return (
     Array.isArray(candidate.id) &&
@@ -275,7 +230,7 @@ function extractAssistantText(payload: unknown) {
 }
 
 function buildToolInputChunks(
-  chunk: LangChainAIMessageChunk,
+  chunk: AIMessageChunk,
   state: LangChainStreamParseState
 ) {
   const messageChunkId = chunk.kwargs?.id ?? generatePartId()
@@ -460,7 +415,7 @@ function buildToolOutputChunk(
 
   const chunk = payload[0]
 
-  if (!isLangChainToolMessage(chunk)) {
+  if (!isToolMessage(chunk)) {
     return null
   }
 
@@ -577,7 +532,7 @@ export function parseLangChainPayloadToChunks(options: {
   if (hasToolInput) {
     state.currentPhase = "tool"
     result.push(
-      ...buildToolInputChunks(payload[0] as LangChainAIMessageChunk, state)
+      ...buildToolInputChunks(payload[0] as AIMessageChunk, state)
     )
   }
 
@@ -595,7 +550,7 @@ export function parseLangChainPayloadToChunks(options: {
   return result
 }
 
-function hasAnyToolDelta(chunk: LangChainAIMessageChunk): boolean {
+function hasAnyToolDelta(chunk: AIMessageChunk): boolean {
   const toolCalls = Array.isArray(chunk.kwargs?.tool_calls)
     ? chunk.kwargs.tool_calls
     : []
