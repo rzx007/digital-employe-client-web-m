@@ -87,7 +87,7 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
     server: {
       port: 3399,
       host: "0.0.0.0",
-      open: true,
+      open: false,
       proxy: {
         "/actus": {
           target: server_url,

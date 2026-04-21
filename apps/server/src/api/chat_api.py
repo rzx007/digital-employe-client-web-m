@@ -4,10 +4,13 @@ from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from src.core.config import get_settings
 from src.db.session import get_db
 from src.models.response import BaseResponse, ListResponse, ResponseBase
 from src.schemas.conversation import ConversationCreate, ConversationMessageRead, ConversationRead, StreamConversationRequest
+from src.schemas.resource import ResourceContent, ResourceList
 from src.service.chat_service import ChatService
+from src.service.resource_service import ResourceService
 
 router = APIRouter(tags=["对话"])
 
@@ -77,3 +80,30 @@ async def stream_conversation(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
+
+
+@router.get("/chat/conversations/{conversation_id}/resources", response_model=ResponseBase[ResourceList])
+def list_conversation_resources(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+) -> ResponseBase[ResourceList]:
+    """列出会话下的资源文件（artifacts + skills-draft）。"""
+    conversation = ChatService.get_conversation(db, conversation_id)
+    settings = get_settings()
+    data = ResourceService.list_resources(settings.artifacts_path, conversation.id)
+    return ResponseBase(data=data)
+
+
+@router.get("/chat/conversations/{conversation_id}/resources/content", response_model=ResponseBase[ResourceContent])
+def read_conversation_resource_content(
+    conversation_id: int,
+    path: str = Query(..., description="虚拟文件路径，如 /artifacts/report.md"),
+    db: Session = Depends(get_db),
+) -> ResponseBase[ResourceContent]:
+    """读取会话资源文件的内容。"""
+    conversation = ChatService.get_conversation(db, conversation_id)
+    settings = get_settings()
+    content = ResourceService.read_content(settings.artifacts_path, conversation.id, path)
+    if content is None:
+        return ResponseBase(data=None, msg="文件不存在或路径不合法")
+    return ResponseBase(data=content)

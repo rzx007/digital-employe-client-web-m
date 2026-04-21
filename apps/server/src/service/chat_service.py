@@ -449,7 +449,7 @@ class ChatService:
       
         root_path = settings.artifacts_path
 
-        agent = get_agent(skills_path, root_path, conversation_id=conversation_id)
+        agent = get_agent(skills_path, root_path, employee_id=employee.id if target_type == "employee" else None, conversation_id=conversation_id)
         # print(agent.skills)
         collected_chunks: list[Any] = []
         assistant_text_parts: list[str] = []

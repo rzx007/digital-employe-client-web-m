@@ -438,7 +438,7 @@ class TaskSchedulerService:
 
 
 
-        agent = get_agent(skills_dir, workspace.root_path)
+        agent = get_agent(skills_dir, workspace.root_path, employee_id=employee.id)
         thread_id = f"task-{task.id}-{int(datetime.now().timestamp())}"
         response = agent.invoke(
             {"messages": [{"role": "user", "content": question}]},

@@ -47,7 +47,7 @@ export function AppTitlebar({ title = "数字员工" }: AppTitlebarProps) {
 
   return (
     <div
-      className="flex h-9 shrink-0 items-center bg-transparent select-none"
+      className="flex h-9 shrink-0 items-center border-b border-border/50 bg-transparent select-none"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       onDoubleClick={handleMaximize}
     >
