@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react"
 import { decryptPwd } from "@/lib/password-sm"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { Checkbox } from "@workspace/ui/components/checkbox"
+import { cn } from "@workspace/ui/lib/utils"
 import {
   IconEye,
   IconEyeOff,
@@ -31,7 +32,8 @@ function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
   const [currentView, setCurrentView] = useState<LoginView>("login")
-  const { login, loading, error, clearError } = useAuthStore()
+  const { login, loading, error, clearError, isAuthenticated } = useAuthStore()
+  const navigate = useNavigate()
 
   // 用于保存定时器引用，避免内存泄漏
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -66,21 +68,32 @@ function LoginPage() {
 
   const isElectron = !!window.electronApi
 
+  useEffect(() => {
+    if (!isElectron && isAuthenticated) {
+      navigate({ to: "/" })
+    }
+  }, [isAuthenticated, isElectron, navigate])
+
   const handleEndpointSaved = () => {
     const baseUrl = useEndpointStore.getState().getBaseUrl()
     updateRequestBaseUrl(baseUrl)
     setCurrentView("login")
   }
 
+  const rootStyle: React.CSSProperties = {
+    background: `url(${bgImage}) no-repeat 100% 0%, linear-gradient(180deg, #eaf0fd 1%, rgba(236, 242, 255, 0.74) 27%, rgba(255, 255, 255, 0) 83%)`,
+    ...(isElectron ? { WebkitAppRegion: "drag" } : {}),
+  }
+
   return (
     <div
-      className="relative h-screen w-screen overflow-hidden"
-      style={
-        {
-          background: `url(${bgImage}) no-repeat 100% 0%, linear-gradient(180deg, #eaf0fd 1%, rgba(236, 242, 255, 0.74) 27%, rgba(255, 255, 255, 0) 83%)`,
-          WebkitAppRegion: "drag",
-        } as React.CSSProperties
-      }
+      className={cn(
+        "relative w-screen overflow-hidden",
+        isElectron
+          ? "h-screen"
+          : "flex min-h-screen flex-col items-center justify-center px-4 py-10 md:px-6"
+      )}
+      style={rootStyle}
     >
       {/* 右上角按钮 */}
       {isElectron && (
@@ -109,28 +122,70 @@ function LoginPage() {
         </div>
       )}
 
-      {/* 左上角 Logo + 名称 */}
-      <div className="flex items-center px-4 pt-4 select-none">
+      {/* Logo + 名称 */}
+      <div
+        className={cn(
+          "select-none",
+          isElectron
+            ? "flex items-center px-4 pt-4"
+            : "mx-auto flex w-full max-w-md items-center justify-center gap-2 pb-6"
+        )}
+      >
         <img src={logoImage} alt="DigitalEmployee" className="h-7 w-7" />
-        <h1 className="ml-2 text-base font-semibold tracking-wider text-gray-800">
+        <h1
+          className={cn(
+            "text-gray-800 tracking-wider",
+            isElectron ? "ml-2 text-base font-semibold" : "text-xl font-semibold"
+          )}
+        >
           数字员工
         </h1>
       </div>
 
       {currentView === "endpoint" ? (
-        <EndpointConfig
-          onCancel={() => setCurrentView("login")}
-          onSaved={handleEndpointSaved}
-        />
+        <div
+          className={cn(
+            "mx-auto w-full",
+            isElectron
+              ? "max-w-sm"
+              : "max-w-md rounded-2xl border border-border/60 bg-background/90 p-6 shadow-sm backdrop-blur md:p-8"
+          )}
+        >
+          <EndpointConfig
+            isElectron={isElectron}
+            onCancel={() => setCurrentView("login")}
+            onSaved={handleEndpointSaved}
+          />
+        </div>
       ) : (
-        <div className="flex flex-col items-center justify-center px-6 pt-10">
-          <h3 className="mb-6 text-xl font-bold">欢迎回来</h3>
-
+        <div
+          className={cn(
+            isElectron
+              ? "flex flex-col items-center justify-center px-6 pt-10"
+              : "mx-auto flex w-full max-w-md justify-center"
+          )}
+        >
           <div
-            className="w-full max-w-sm"
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            className={cn(
+              "w-full",
+              isElectron
+                ? "max-w-sm"
+                : "rounded-2xl border border-border/60 bg-background/90 p-6 shadow-sm backdrop-blur md:p-8"
+            )}
+            style={
+              isElectron
+                ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties)
+                : undefined
+            }
           >
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <h3 className={cn("font-bold", isElectron ? "mb-6 text-xl" : "mb-8 text-2xl")}>
+              欢迎回来
+            </h3>
+
+            <form
+              onSubmit={handleSubmit}
+              className={cn("flex flex-col", isElectron ? "gap-4" : "gap-5")}
+            >
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="username" className="text-sm font-bold">
                   账号
@@ -197,7 +252,7 @@ function LoginPage() {
               <Button
                 type="submit"
                 className="w-full"
-                size="lg"
+                size={isElectron ? "lg" : "default"}
                 disabled={loading || !username || !password}
               >
                 {loading && (
@@ -208,7 +263,12 @@ function LoginPage() {
 
             </form>
             {error && <p className="text-xs text-destructive mt-2">{error}</p>}
-            <p className="mt-2 w-full text-center text-xs text-muted-foreground">
+            <p
+              className={cn(
+                "w-full text-center text-xs text-muted-foreground",
+                isElectron ? "mt-2" : "mt-4"
+              )}
+            >
               还没有账号?{" "}
               <span className="cursor-pointer text-primary">联系管理员</span>
             </p>

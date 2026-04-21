@@ -74,6 +74,29 @@ export interface MetadataMcp {
   [x: string]: any
 }
 
+export interface MetadataTask {
+  task_name: string
+  dispatch_type: "mcp" | "skill" | string
+  skill_id: number | null
+  capability_id: number | null
+  priority?: number
+  task_type?: number
+  cron_expression?: string
+  cron_expression_type?: string
+  is_active?: boolean
+  confirm_execution_result?: boolean
+  config?: {
+    input?: {
+      prompt?: string
+      user_prompt?: string
+      [x: string]: unknown
+    }
+    [x: string]: unknown
+  }
+  user_prompt?: string
+  [x: string]: unknown
+}
+
 /**
  * 员工元数据（能力描述、MCP 工具绑定等）
  */
@@ -88,6 +111,7 @@ export interface EmployeeMetadata {
   capabilities: Capability[]
   skills: MetadataSkill[]
   mcps: MetadataMcp[]
+  tasks?: MetadataTask[]
 }
 
 /**
@@ -108,6 +132,13 @@ export interface Skill {
 /**
  * 数字员工
  */
+export interface ShiftSchedule {
+  start_date?: string
+  end_date?: string
+  status?: number
+  notes?: string
+}
+
 export interface Employee {
   id: number
   workspace_id: number
@@ -117,6 +148,7 @@ export interface Employee {
   version: string
   skills: Skill[]
   metadata: EmployeeMetadata
+  shift_schedule: ShiftSchedule
   created_at: string
   updated_at: string
 }

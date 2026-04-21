@@ -16,7 +16,7 @@ import { useOnboardingStore } from "@/stores/onboarding-store"
 import { PRIMARY_CURATOR } from "@/lib/mock-data/ai-employees"
 import { WelcomeDialog, UserTour } from "@/components/onboarding"
 import { AppToolbar } from "./app-toolbar"
-import { CalendarPlaceholder } from "./calendar-placeholder"
+import { ShiftCalendarPage } from "@/components/shift-calendar"
 import { ChatView } from "./chat-view"
 import { ContactDetailPanel } from "./contact-detail-panel"
 import { ContactsPanel } from "./contacts-panel"
@@ -159,16 +159,13 @@ export function ChatLayout({
       <div className="flex min-w-0 flex-1">
         {!isMobile && <AppToolbar />}
 
-        {!isMobile && activeTab !== "workbench" && (
+        {!isMobile && activeTab !== "workbench" && activeTab !== "calendar" && (
           <div className="hidden w-64 shrink-0 md:flex md:flex-col">
             {activeTab === "chat" && (
               <RecentConversations className="h-full w-full" />
             )}
             {activeTab === "contacts" && (
               <ContactsPanel className="h-full w-full" />
-            )}
-            {activeTab === "calendar" && (
-              <CalendarPlaceholder className="h-full w-full" />
             )}
           </div>
         )}
@@ -187,7 +184,7 @@ export function ChatLayout({
         )}
 
         {activeTab === "calendar" && (
-          <CalendarPlaceholder variant="content" className="min-w-0 flex-1" />
+          <ShiftCalendarPage className="min-w-0 flex-1" />
         )}
 
         {activeTab === "workbench" && (

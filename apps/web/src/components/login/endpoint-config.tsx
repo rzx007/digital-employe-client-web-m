@@ -9,6 +9,7 @@ import {
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { cn } from "@workspace/ui/lib/utils"
 import {
   Select,
   SelectContent,
@@ -21,11 +22,16 @@ import { useEndpointStore } from "@/stores/endpoint-store"
 interface EndpointConfigProps {
   onCancel: () => void
   onSaved: () => void
+  isElectron?: boolean
 }
 
 type ValidateStatus = "idle" | "loading" | "success" | "error"
 
-export function EndpointConfig({ onCancel, onSaved }: EndpointConfigProps) {
+export function EndpointConfig({
+  onCancel,
+  onSaved,
+  isElectron = false,
+}: EndpointConfigProps) {
   const {
     protocol,
     ip,
@@ -64,10 +70,14 @@ export function EndpointConfig({ onCancel, onSaved }: EndpointConfigProps) {
 
   return (
     <div
-      className="box-border px-6"
-      style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      className="box-border px-0"
+      style={
+        isElectron
+          ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties)
+          : undefined
+      }
     >
-      <div className="mx-auto mt-5 w-[95%]">
+      <div className={cn("mx-auto w-full", isElectron ? "mt-5 w-[95%]" : "max-w-md")}>
         <form onSubmit={handleValidate} className="space-y-5">
           <div className="flex flex-col gap-1.5">
             <Label className="mb-4 text-sm font-bold">协议</Label>
