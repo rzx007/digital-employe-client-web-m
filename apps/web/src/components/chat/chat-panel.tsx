@@ -23,6 +23,7 @@ import {
   classifyMessageParts,
   getLatestArtifactFromUIMessage,
 } from "@/lib/chat/message-utils"
+import type { ArtifactData } from "@/lib/chat/langchain-sse-schema"
 import type { Message as StoredMessage } from "@/lib/mock-data/messages"
 import { Spinner } from "@/components/spinner"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -42,6 +43,7 @@ import {
   getContactDisplayName,
   isMessageMetadata,
   type ChatViewContact,
+  chatTransport,
 } from "./chat-view-shared"
 
 const EMPTY_MESSAGES: UIMessage[] = []
@@ -117,6 +119,26 @@ export function ChatPanel({
     (status === "submitted" || status === "streaming") &&
     !error &&
     displayMessages.length > 0
+
+  // 注册流式 artifact 事件处理器
+  React.useEffect(() => {
+    const handleArtifact = (data: ArtifactData) => {
+      const artifact: import("@/types/artifact").Artifact = {
+        id: data.id,
+        type: data.artifactType,
+        title: data.title,
+        content: data.content,
+        language: data.language ?? undefined,
+      }
+      addArtifact(artifact)
+      openArtifact(data.id)
+    }
+
+    chatTransport.setArtifactHandler(handleArtifact)
+    return () => {
+      chatTransport.setArtifactHandler(undefined)
+    }
+  }, [addArtifact, openArtifact])
 
   React.useEffect(() => {
     displayMessages.forEach((message) => {

@@ -2,6 +2,8 @@ import type { UIMessage } from "ai"
 
 import type { Artifact, ArtifactType } from "@/types/artifact"
 
+import { ARTIFACT_EXCLUDED_PREFIXES } from "./langchain-sse-schema"
+
 type ToolPart = Extract<UIMessage["parts"][number], { type: `tool-${string}` }>
 
 interface ToolOutputPayload {
@@ -16,6 +18,17 @@ interface ToolInputPayload {
   file_path?: unknown
   content?: unknown
   new_string?: unknown
+}
+
+/**
+ * 判断文件路径是否为 artifact 产物路径。
+ * 内部路径（技能、记忆、agent 配置等）不应作为产物展示。
+ */
+export function isArtifactFilePath(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, "/")
+  return !ARTIFACT_EXCLUDED_PREFIXES.some((prefix) =>
+    normalized.startsWith(prefix)
+  )
 }
 
 /**
@@ -173,6 +186,11 @@ function buildArtifactFromToolPart(part: ToolPart): Artifact | null {
 
   // 检查必需字段是否存在
   if (!filePath || content === null) {
+    return null
+  }
+
+  // 过滤内部路径（技能文件、记忆等不算产物）
+  if (!isArtifactFilePath(filePath)) {
     return null
   }
 

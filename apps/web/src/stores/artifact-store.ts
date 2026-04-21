@@ -14,6 +14,7 @@ interface ArtifactStore {
   toggleFullscreen: () => void
   setFullscreen: (fullscreen: boolean) => void
   setPanelOpen: (open: boolean) => void
+  updateArtifactContent: (id: string, content: string) => void
 }
 
 export const useArtifactStore = create<ArtifactStore>((set) => ({
@@ -44,4 +45,14 @@ export const useArtifactStore = create<ArtifactStore>((set) => ({
     set((state) => ({ isFullscreen: !state.isFullscreen })),
   setFullscreen: (fullscreen) => set({ isFullscreen: fullscreen }),
   setPanelOpen: (open) => set({ isPanelOpen: open }),
+  updateArtifactContent: (id, content) =>
+    set((state) => {
+      const artifacts = new Map(state.artifacts)
+      const existing = artifacts.get(id)
+      if (existing) {
+        artifacts.set(id, { ...existing, content })
+        return { artifacts }
+      }
+      return state
+    }),
 }))

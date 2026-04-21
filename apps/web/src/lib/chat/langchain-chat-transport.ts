@@ -13,7 +13,10 @@ import {
   enqueueFinish,
   parseLangChainPayloadToChunks,
 } from "./langchain-stream-parser"
-import { sseEventSchema } from "./langchain-sse-schema"
+import {
+  sseEventSchema,
+  type ArtifactData,
+} from "./langchain-sse-schema"
 
 const useMock =
   import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_SSE === "true"
@@ -148,9 +151,17 @@ async function createResumeEventSourceResponse(options: {
   return response.body
 }
 
+export type ArtifactEventHandler = (artifact: ArtifactData) => void
+
 export class LangChainChatTransport<
   UI_MESSAGE extends UIMessage,
 > implements ChatTransport<UI_MESSAGE> {
+  private artifactHandler: ArtifactEventHandler | undefined
+
+  setArtifactHandler(handler: ArtifactEventHandler | undefined) {
+    this.artifactHandler = handler
+  }
+
   async sendMessages({
     messages,
     abortSignal,
@@ -218,6 +229,7 @@ export class LangChainChatTransport<
   private processResponseStream(stream: ReadableStream<Uint8Array>) {
     const decoder = new TextDecoder()
     const reader = stream.getReader()
+    const artifactHandler = this.artifactHandler
 
     return new ReadableStream<UIMessageChunk>({
       async start(controller) {
@@ -254,8 +266,19 @@ export class LangChainChatTransport<
               return false
             }
 
+            const event = parsed.data
+
+            // 处理 artifact 事件
+            if (Array.isArray(event) && event[0] === "artifact" && event.length === 2) {
+              const artifactData = event[1] as ArtifactData
+              if (artifactData && artifactHandler) {
+                artifactHandler(artifactData)
+              }
+              return false
+            }
+
             const chunks = parseLangChainPayloadToChunks({
-              payload: parsed.data,
+              payload: event,
               state,
             })
 

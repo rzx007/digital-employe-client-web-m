@@ -231,9 +231,40 @@ export const sseUpdatesEventSchema = z.tuple([
   updatePayloadSchema,
 ])
 
+// ── Artifact Event ──────────────────────────────────────────────
+
+export const ARTIFACT_EXCLUDED_PREFIXES = [
+  "/skills/",
+  "/agent/",
+  "/memories/",
+  "/large_tool_results/",
+  "/conversation_history/",
+]
+
+export const artifactDataSchema = z.object({
+  id: z.string(),
+  artifactType: z.enum(["text", "code", "sheet", "image"]),
+  title: z.string(),
+  content: z.string(),
+  language: z.string().nullable().optional(),
+  conversationId: z.number(),
+  filePath: z.string().optional(),
+  status: z.enum(["creating", "updated", "completed"]),
+})
+
+export const artifactEventSchema = z.tuple([
+  z.literal("artifact"),
+  artifactDataSchema,
+])
+
 // ── Top-level SSE Event (extensible) ───────────────────────────────
 
-export const sseEventSchema = z.union([sseMessagesEventSchema, sseUpdatesEventSchema, z.tuple([z.string(), z.unknown()])])
+export const sseEventSchema = z.union([
+  sseMessagesEventSchema,
+  sseUpdatesEventSchema,
+  artifactEventSchema,
+  z.tuple([z.string(), z.unknown()]),
+])
 
 // ── Type exports ───────────────────────────────────────────────────
 
@@ -260,4 +291,6 @@ export type UpdatePayload = z.infer<typeof updatePayloadSchema>
 
 export type SSEMessagesEvent = z.infer<typeof sseMessagesEventSchema>
 export type SSEUpdatesEvent = z.infer<typeof sseUpdatesEventSchema>
+export type ArtifactData = z.infer<typeof artifactDataSchema>
+export type SSEArtifactEvent = z.infer<typeof artifactEventSchema>
 export type SSEEvent = z.infer<typeof sseEventSchema>

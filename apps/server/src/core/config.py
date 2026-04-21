@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def get_default_artifacts_path() -> str:
+    return str(Path.home() / ".digital-employee" / "artifacts")
+
 def get_default_sqlite_path() -> str:
     return str(Path.home() / ".digital-employee" / "data" / "app.db")
 
@@ -32,6 +35,7 @@ class Settings:
     default_workspace_name: str | None
     sqlite_path: str
     skill_path: str
+    artifacts_path: str
     employee_zip_url: str | None
     employee_tmp_dir: str
     deepagent_model: str | None
@@ -60,6 +64,7 @@ def get_settings() -> Settings:
         skill_path=resolve_configured_path(
             os.getenv("SKILL_PATH", get_default_skill_path())
         ),
+        artifacts_path=get_default_artifacts_path(),
         employee_zip_url=os.getenv("EMPLOYEE_ZIP_URL") or None,
         employee_tmp_dir=os.getenv("EMPLOYEE_TMP_DIR", "./tmp/employees"),
         deepagent_model=os.getenv("DEEPAGENT_MODEL") or None,

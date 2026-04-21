@@ -112,8 +112,14 @@ def _list_available_skills(skills_root: Path) -> list[str]:
     )
 
 
-def _build_system_prompt(current_time: str, available_skills: list[str]) -> str:
+def _build_system_prompt(current_time: str, available_skills: list[str], *, has_artifacts_route: bool = False) -> str:
     skills_line = ", ".join(available_skills) if available_skills else "无"
+    artifacts_instruction = ""
+    if has_artifacts_route:
+        artifacts_instruction = """
+        当你需要为用户创建文件（如代码文件、文档、数据文件等产物）时，必须将文件写入 /artifacts/ 路径下，例如 write_file("/artifacts/report.md", "...")。
+        不要将用户产物文件写到根路径或其他虚拟路径，只有 /artifacts/ 下的文件会被持久化保存并向用户展示。
+        """
     return f"""今天的时间是{current_time}
 
         Skills available at /skills/. Use /memories/ for persistent context.
@@ -122,6 +128,7 @@ def _build_system_prompt(current_time: str, available_skills: list[str]) -> str:
         当前已加载的技能名单：{skills_line}
         如果用户询问“你有没有某个技能”或“你有哪些技能”，必须严格基于当前已加载的技能名单回答，不要猜测，不要遗漏名单中的技能。
         在执行技能或者技能脚本的时候，查找技能所在的绝对路径，然后执行，不要用相对路径
+        {artifacts_instruction}
         """
 
 
@@ -316,7 +323,75 @@ class WindowsCompatibleCompositeBackend(CompositeBackend, SandboxBackendProtocol
         return f"windows_composite_{self.shell_backend.id}"
 
 
-def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False):
+ARTIFACT_EXCLUDED_PREFIXES = (
+    "/skills/",
+    "/agent/",
+    "/memories/",
+    "/large_tool_results/",
+    "/conversation_history/",
+)
+
+
+def is_artifact_file(file_path: str) -> bool:
+    """判断文件操作是否应作为 artifact 展示。
+
+    技能文件、记忆、agent 配置、中间缓存等不算产物。
+    """
+    normalized = file_path.replace("\\", "/")
+    return not any(normalized.startswith(prefix) for prefix in ARTIFACT_EXCLUDED_PREFIXES)
+
+
+_ARTIFACT_CODE_EXTENSIONS = {"ts", "tsx", "js", "jsx", "json", "py", "sql", "css", "html", "java", "go", "rs", "cpp", "c", "h"}
+_ARTIFACT_SHEET_EXTENSIONS = {"csv", "tsv"}
+_ARTIFACT_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"}
+_ARTIFACT_LANGUAGE_MAP = {
+    "css": "css", "html": "html", "js": "javascript", "json": "json",
+    "md": "markdown", "py": "python", "sql": "sql", "ts": "typescript",
+    "tsx": "tsx", "jsx": "jsx", "java": "java", "go": "go", "rs": "rust",
+    "cpp": "cpp", "c": "c",
+}
+
+
+def infer_artifact_type(file_path: str) -> str:
+    ext = Path(file_path).suffix.lstrip(".").lower()
+    if ext in _ARTIFACT_CODE_EXTENSIONS:
+        return "code"
+    if ext in _ARTIFACT_SHEET_EXTENSIONS:
+        return "sheet"
+    if ext in _ARTIFACT_IMAGE_EXTENSIONS:
+        return "image"
+    return "text"
+
+
+def infer_artifact_language(file_path: str) -> str | None:
+    ext = Path(file_path).suffix.lstrip(".").lower()
+    return _ARTIFACT_LANGUAGE_MAP.get(ext)
+
+
+def build_artifact_event(
+    file_path: str,
+    content: str,
+    conversation_id: int,
+    tool_call_id: str,
+    status: str,
+) -> dict:
+    artifact_type = infer_artifact_type(file_path)
+    return {
+        "type": "artifact",
+        "data": {
+            "id": f"artifact:{conversation_id}:{tool_call_id}",
+            "artifactType": artifact_type,
+            "title": Path(file_path).name,
+            "content": content,
+            "language": infer_artifact_language(file_path) if artifact_type == "code" else None,
+            "conversationId": conversation_id,
+            "filePath": file_path,
+            "status": status,
+        },
+    }
+
+
+def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False, conversation_id: int | None = None):
     checkpointer = _CHECKPOINTER
     store = _STORE  # /memories/ uses StoreBackend, requires BaseStore
 
@@ -324,10 +399,11 @@ def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False):
     skills_root = _resolve_skills_root(skill_path)
     available_skills = _list_available_skills(skills_root)
     logger.info(
-        "get_agent skill_path=%s skills_root=%s available_skills=%s",
+        "get_agent skill_path=%s skills_root=%s available_skills=%s conversation_id=%s",
         skill_path,
         skills_root,
         available_skills,
+        conversation_id,
     )
     base_dir = Path(__file__).resolve().parent
     settings = get_settings()
@@ -359,6 +435,20 @@ def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False):
     )
     agent_fs = PosixVirtualFilesystemBackend(root_dir=str(base_dir), virtual_mode=True)
 
+    # 会话隔离的 artifacts 目录
+    routes: dict[str, Any] = {
+        "/memories/": StoreBackend(),
+        "/skills/": skills_fs,
+        "/agent/": agent_fs,
+    }
+    if conversation_id and root_path:
+        artifacts_dir = Path(root_path) / "conversations" / str(conversation_id) / "artifacts"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        artifacts_fs = PosixVirtualFilesystemBackend(
+            root_dir=str(artifacts_dir), virtual_mode=True
+        )
+        routes["/artifacts/"] = artifacts_fs
+
     # Create shell backend for Windows compatibility
     # Prefer workspace root (root_path) then fallback to skills root
     backend_base_dir = Path(root_path).resolve() if root_path else skills_root
@@ -367,11 +457,7 @@ def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False):
     backend = WindowsCompatibleCompositeBackend(
         shell_backend=shell_backend,
         default=StateBackend(),
-        routes={
-            "/memories/": StoreBackend(),
-            "/skills/": skills_fs,
-            "/agent/": agent_fs,
-        },
+        routes=routes,
     )
 
     agent = create_deep_agent(
@@ -379,7 +465,10 @@ def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False):
         memory=["/agent/AGENTS.md"],
         skills=["/skills/"],
         subagents=[],
-        system_prompt=_build_system_prompt(current_time, available_skills),
+        system_prompt=_build_system_prompt(
+            current_time, available_skills,
+            has_artifacts_route="/artifacts/" in routes,
+        ),
         store=store,
         backend=backend,
         checkpointer=checkpointer,
