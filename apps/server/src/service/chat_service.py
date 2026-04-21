@@ -346,7 +346,7 @@ class ChatService:
             # 异步调用代理并流式返回结果，保持原有SSE数据结构不变
             async for chunk in agent.astream(
                 {"messages": request_messages},
-                stream_mode="messages",
+                stream_mode=["messages", "updates"],
                 config={"configurable": {"thread_id": conversation_id}}
             ):
                 # 转换前打印内容

@@ -526,12 +526,32 @@ export function enqueueFinish(
   state.didSendFinish = true
 }
 
+function unwrapStreamModePayload(payload: unknown): unknown {
+  if (
+    Array.isArray(payload) &&
+    payload.length === 2 &&
+    typeof payload[0] === "string"
+  ) {
+    if (payload[0] === "messages" && Array.isArray(payload[1])) {
+      return payload[1]
+    }
+    return null
+  }
+  return payload
+}
+
 export function parseLangChainPayloadToChunks(options: {
   payload: unknown
   state: LangChainStreamParseState
 }): UIMessageChunk[] {
-  const { payload, state } = options
+  const rawPayload = unwrapStreamModePayload(options.payload)
+  if (rawPayload === null) {
+    return []
+  }
+
+  const { state } = options
   const result: UIMessageChunk[] = []
+  const payload = rawPayload
 
   const toolOutputChunk = buildToolOutputChunk(payload, state)
 
