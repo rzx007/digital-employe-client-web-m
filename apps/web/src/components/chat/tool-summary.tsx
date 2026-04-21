@@ -1,5 +1,5 @@
 import { cn } from "@workspace/ui/lib/utils"
-import { CheckCircleIcon, LoaderIcon, XCircleIcon } from "lucide-react"
+import { IconCircleCheck, IconLoader, IconXboxX } from "@tabler/icons-react"
 import { type ComponentProps, useRef, useState, useLayoutEffect } from "react"
 
 import type { ToolCallSummary } from "@/lib/chat/tool-summarizer"
@@ -11,9 +11,9 @@ export type ToolSummaryProps = ComponentProps<"div"> & {
   compact?: boolean
 }
 
-const stateIcons: Record<string, typeof CheckCircleIcon> = {
-  "output-available": CheckCircleIcon,
-  "output-error": XCircleIcon,
+const stateIcons: Record<string, typeof IconCircleCheck> = {
+  "output-available": IconCircleCheck,
+  "output-error": IconXboxX,
 }
 
 export function ToolSummary({
@@ -24,7 +24,7 @@ export function ToolSummary({
   className,
   ...props
 }: ToolSummaryProps) {
-  const Icon = stateIcons[state] ?? LoaderIcon
+  const Icon = stateIcons[state] ?? IconLoader
   const isError = state === "output-error"
   const isRunning =
     !state ||

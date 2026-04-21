@@ -4,7 +4,7 @@ import {
   CollapsibleTrigger,
 } from "@workspace/ui/components/collapsible"
 import { cn } from "@workspace/ui/lib/utils"
-import { BrainIcon, ChevronDownIcon } from "lucide-react"
+import { IconBrain, IconChevronDown } from "@tabler/icons-react"
 import type { ComponentProps } from "react"
 import { useState } from "react"
 
@@ -32,9 +32,9 @@ export function ThinkingBlock({
             "outline-none focus-visible:ring-0"
           )}
         >
-          <BrainIcon className="size-3" />
+          <IconBrain className="size-3" />
           <span className="flex-1 text-left">思考过程</span>
-          <ChevronDownIcon
+          <IconChevronDown
             className={cn(
               "size-3 transition-transform",
               isOpen ? "rotate-180" : "rotate-0"
