@@ -284,14 +284,29 @@ function buildToolInputChunks(
     ? chunk.kwargs.tool_calls
     : []
 
-  toolCalls.forEach((toolCall, index) => {
+  toolCalls.forEach((toolCall, arrayIndex) => {
     const toolCallId = getStringValue(toolCall.id)
     const toolName = getStringValue(toolCall.name)
-    const existingPending = resolvePendingToolCallByChunkIndex(
-      state,
-      messageChunkId,
-      index
-    )
+
+    let existingPending: PendingToolCall | null = null
+
+    if (toolCallId) {
+      existingPending = resolvePendingToolCallById(state, toolCallId)
+    }
+
+    if (!existingPending) {
+      const byChunkIndex = resolvePendingToolCallByChunkIndex(
+        state,
+        messageChunkId,
+        arrayIndex
+      )
+      if (
+        byChunkIndex &&
+        (!byChunkIndex.toolCallId || byChunkIndex.toolCallId === toolCallId)
+      ) {
+        existingPending = byChunkIndex
+      }
+    }
 
     if (existingPending) {
       if (toolCallId && !existingPending.toolCallId) {
@@ -326,7 +341,7 @@ function buildToolInputChunks(
     const pending = getOrCreatePendingToolCall({
       state,
       messageChunkId,
-      index,
+      index: arrayIndex,
       toolCallId,
       toolName,
     })

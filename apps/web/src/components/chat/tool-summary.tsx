@@ -1,6 +1,6 @@
 import { cn } from "@workspace/ui/lib/utils"
 import { CheckCircleIcon, LoaderIcon, XCircleIcon } from "lucide-react"
-import type { ComponentProps } from "react"
+import { type ComponentProps, useRef, useState, useLayoutEffect } from "react"
 
 import type { ToolCallSummary } from "@/lib/chat/tool-summarizer"
 
@@ -31,6 +31,15 @@ export function ToolSummary({
     state === "input-streaming" ||
     state === "input-available"
 
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [isOverflowing, setIsOverflowing] = useState(false)
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    setIsOverflowing(el.scrollHeight > el.clientHeight)
+  }, [resultText])
+
   return (
     <div className={cn(compact ? "" : "py-0.5", className)} {...props}>
       <div className="flex items-center gap-1.5 text-xs">
@@ -46,15 +55,27 @@ export function ToolSummary({
         </span>
       </div>
       {resultText && (
-        <div
-          className={cn(
-            "mt-0.5 truncate pl-[18px] text-[11px]",
-            isError
-              ? "text-destructive/60"
-              : "text-muted-foreground/50"
+        <div className="relative mt-0.5 max-h-10 pl-[18px]">
+          <div
+            ref={scrollRef}
+            className={cn(
+              "overflow-y-auto text-[11px]",
+              isError
+                ? "text-destructive/60"
+                : "text-muted-foreground/50"
+            )}
+          >
+            {resultText}
+          </div>
+
+          {isOverflowing && (
+            <div
+              className={cn(
+                "pointer-events-none absolute right-0 bottom-0 left-0 h-6",
+                "bg-gradient-to-t from-background to-transparent"
+              )}
+            />
           )}
-        >
-          {resultText}
         </div>
       )}
     </div>

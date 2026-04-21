@@ -5,7 +5,6 @@ import { useShallow } from "zustand/react/shallow"
 import {
   IconCalendar,
   IconArchive,
-  IconLayoutDashboard,
   IconMessage2Plus,
   IconDots,
   IconHistory,
@@ -36,7 +35,6 @@ import { useDeleteConversationMutation } from "@/hooks/use-chat-queries"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
-import { cn } from "@workspace/ui/lib/utils"
 import { Separator } from "@workspace/ui/components/separator"
 import type { ChatViewContact } from "./chat-view-shared"
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
@@ -48,8 +46,6 @@ interface ChatPanelHeaderProps {
   onOpenContacts?: () => void
   onOpenConversations?: () => void
   onNewConversation?: () => void
-  showWorkbench?: boolean
-  onToggleWorkbench?: () => void
 }
 
 export function ChatPanelHeader({
@@ -59,8 +55,6 @@ export function ChatPanelHeader({
   onOpenContacts,
   onOpenConversations,
   onNewConversation,
-  showWorkbench,
-  onToggleWorkbench,
 }: ChatPanelHeaderProps) {
   const isMobile = useIsMobile()
   const [menuOpen, setMenuOpen] = React.useState(false)
@@ -184,16 +178,6 @@ export function ChatPanelHeader({
               }
             >
               <IconCalendar className="size-4" />
-            </Button>
-          )}
-          {contact?.type === "employee" && (
-            <Button
-              title="工作台"
-              variant={showWorkbench ? "secondary" : "ghost"}
-              size="icon-sm"
-              onClick={onToggleWorkbench}
-            >
-              <IconLayoutDashboard className="size-4" />
             </Button>
           )}
           {

@@ -5,11 +5,12 @@ import {
 } from "@workspace/ui/components/collapsible"
 import { cn } from "@workspace/ui/lib/utils"
 import {
-  CheckCircleIcon,
-  ChevronDownIcon,
-  LoaderIcon,
-  WrenchIcon,
-} from "lucide-react"
+  IconCircle,
+  IconChevronDown,
+  IconLoader,
+  IconTool,
+  IconXboxX
+} from "@tabler/icons-react"
 import type { ComponentProps } from "react"
 import { useState } from "react"
 
@@ -47,9 +48,9 @@ export function ToolGroupBlock({
 
   const StatusIcon = done
     ? error
-      ? XCircleIcon
-      : CheckCircleIcon
-    : LoaderIcon
+      ? IconXboxX
+      : IconCircle
+    : IconLoader
 
   return (
     <div className={cn("not-prose", className)} {...props}>
@@ -71,11 +72,11 @@ export function ToolGroupBlock({
               done && !error && "text-green-600/70"
             )}
           />
-          <WrenchIcon className="size-3 shrink-0" />
+          <IconTool className="size-3 shrink-0" />
           <span className="flex-1 truncate text-left">
             {block.summary}
           </span>
-          <ChevronDownIcon
+          <IconChevronDown
             className={cn(
               "size-3 shrink-0 transition-transform",
               isOpen ? "rotate-180" : "rotate-0"
