@@ -76,9 +76,23 @@ export function DraftChatView({
     status === "submitted" ||
     status === "streaming"
 
+  const chatStatus =
+    createConversationMutation.isPending && status === "ready"
+      ? "submitted"
+      : status
+
+  const handleStop = useCallback(() => {
+    if (createConversationMutation.isPending) {
+      createConversationMutation.reset()
+    } else {
+      stop()
+    }
+  }, [createConversationMutation, stop])
+
   const isSubmitDisabled = useMemo(() => {
-    return !inputValue.trim() || status === "submitted" || (isBusy && status !== "streaming")
-  }, [inputValue, isBusy, status])
+    // 生成中（含创建会话）需保留可点击以触发 onStop，与 ConversationChatView 行为一致
+    return !isBusy && !inputValue.trim()
+  }, [inputValue, isBusy])
 
   const handleSendMessage = useCallback(
     async (message: PromptInputMessage) => {
@@ -148,13 +162,13 @@ export function DraftChatView({
       title="新对话"
       messages={messages}
       inputValue={inputValue}
-      status={status}
+      status={chatStatus}
       error={error}
       isDraftMode={messages.length === 0}
       isSubmitDisabled={isSubmitDisabled}
       onInputChange={handleTextChange}
       onSend={handleSendMessage}
-      onStop={stop}
+      onStop={handleStop}
       onOpenContacts={onOpenContacts}
       onOpenConversations={onOpenConversations}
       onNewConversation={onNewConversation}

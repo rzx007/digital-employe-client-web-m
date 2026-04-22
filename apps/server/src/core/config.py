@@ -11,7 +11,7 @@ load_dotenv()
 
 
 def get_default_artifacts_path() -> str:
-    return str(Path.home() / ".digital-employee" / "artifacts")
+    return str(Path.home() / ".digital-employee" / "conversations")
 
 def get_default_sqlite_path() -> str:
     return str(Path.home() / ".digital-employee" / "data" / "app.db")

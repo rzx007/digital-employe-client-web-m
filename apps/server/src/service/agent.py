@@ -1,4 +1,6 @@
 import logging
+import shlex
+import subprocess
 from pathlib import Path
 from typing import Any
 from dotenv import load_dotenv
@@ -22,6 +24,71 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 _CHECKPOINTER = MemorySaver()
+
+
+class SkillAwareShellBackend(LocalShellBackend):
+    """Map virtual skill paths to physical paths before shell execute."""
+
+    def __init__(
+        self,
+        *,
+        root_dir: str,
+        skills_root: Path,
+        draft_root: Path | None,
+        virtual_mode: bool = True,
+        inherit_env: bool = True,
+        timeout: int = 30,
+    ):
+        super().__init__(
+            root_dir=root_dir,
+            virtual_mode=virtual_mode,
+            inherit_env=inherit_env,
+            timeout=timeout,
+        )
+        self._skills_root = skills_root.resolve()
+        self._draft_root = draft_root.resolve() if draft_root is not None else None
+
+    def _map_virtual_token(self, token: str) -> str:
+        normalized = token.replace("\\", "/")
+        if normalized == "/skills":
+            return str(self._skills_root)
+        if normalized.startswith("/skills/"):
+            suffix = normalized[len("/skills/") :]
+            return str((self._skills_root / suffix).resolve())
+        if self._draft_root is None:
+            return token
+        if normalized == "/skills-draft":
+            return str(self._draft_root)
+        if normalized.startswith("/skills-draft/"):
+            suffix = normalized[len("/skills-draft/") :]
+            return str((self._draft_root / suffix).resolve())
+        return token
+
+    def _rewrite_command_virtual_paths(self, command: str) -> str:
+        try:
+            parts = shlex.split(command, posix=False)
+        except ValueError:
+            return command
+
+        changed = False
+        for i, part in enumerate(parts):
+            quote = ""
+            raw = part
+            if len(part) >= 2 and part[0] == part[-1] and part[0] in {"'", '"'}:
+                quote = part[0]
+                raw = part[1:-1]
+            mapped = self._map_virtual_token(raw)
+            if mapped != raw:
+                parts[i] = f"{quote}{mapped}{quote}" if quote else mapped
+                changed = True
+
+        if not changed:
+            return command
+        return subprocess.list2cmdline(parts)
+
+    def execute(self, command: str, *, timeout: int | None = None):
+        rewritten = self._rewrite_command_virtual_paths(command)
+        return super().execute(rewritten, timeout=timeout)
 
 
 def _resolve_skills_root(skill_path: str) -> Path:
@@ -51,15 +118,26 @@ def _list_available_skills(skills_root: Path) -> list[str]:
     )
 
 
-def _build_system_prompt(current_time: str, available_skills: list[str], *, has_draft_route: bool = False) -> str:
+def _build_system_prompt(
+    current_time: str,
+    available_skills: list[str],
+    *,
+    has_draft_route: bool = False,
+    skills_real_path: str = "",
+    draft_skills_real_path: str = "",
+) -> str:
     skills_line = ", ".join(available_skills) if available_skills else "无"
+    skills_root_line = skills_real_path or "未配置"
     draft_instruction = ""
     if has_draft_route:
-        draft_instruction = """
+        draft_root_line = draft_skills_real_path or "未配置"
+        draft_instruction = f"""
         如果用户要求创建新技能或修改已有技能，将技能文件写入 /skills-draft/ 路径下，
         例如 write_file("/skills-draft/my-skill/SKILL.md", "...")。
         草稿技能会立即生效，可以像正式技能一样调用和调试。
         注意：/skills/ 下的正式技能是只读的，不要尝试修改，只能通过 /skills-draft/ 覆盖。
+        草稿技能真实物理路径根目录：{draft_root_line}
+        执行草稿技能脚本时，请使用草稿真实路径，不要在 execute 命令里使用 /skills-draft/ 虚拟路径。
         """
     return f"""今天的时间是{current_time}
 
@@ -68,7 +146,9 @@ def _build_system_prompt(current_time: str, available_skills: list[str], *, has_
         在生成命令的时候不要添加引号，例如正确的命令是：python script.py 而不是 python \"script.py\"
         当前已加载的技能名单：{skills_line}
         如果用户询问"你有没有某个技能"或"你有哪些技能"，必须严格基于当前已加载的技能名单回答，不要猜测，不要遗漏名单中的技能。
-        在执行技能或者技能脚本的时候，查找技能所在的绝对路径，然后执行，不要用相对路径
+        技能文件真实物理路径根目录：{skills_root_line}
+        执行技能脚本时请基于上面的真实路径拼接绝对路径（例如 python <skills_real_path>/<skill_name>/script.py），不要使用相对路径。
+        /skills/ 是虚拟路由路径，仅用于读写文件工具，不可直接用于 shell execute 命令。
         当你需要为用户创建文件（如代码文件、文档、数据文件等产物）时，必须将文件写入 /artifacts/ 路径下，例如 write_file("/artifacts/report.md", "...")。
         不要将用户产物文件写到根路径或其他虚拟路径，只有 /artifacts/ 下的文件会被持久化保存并向用户展示。
         {draft_instruction}
@@ -203,7 +283,7 @@ def get_agent(
 
     # /artifacts/ 始终挂载：聊天场景按会话隔离，其他场景按员工隔离
     if conversation_id and root_path:
-        artifacts_dir = Path(root_path) / "conversations" / str(conversation_id) / "artifacts"
+        artifacts_dir = Path(root_path)  / str(conversation_id) / "artifacts"
     elif employee_id:
         artifacts_dir = skills_root.parent / "artifacts"
     else:
@@ -218,17 +298,20 @@ def get_agent(
     }
 
     # /skills-draft/ 仅在会话场景挂载，跟会话走
+    draft_dir: Path | None = None
     has_draft_route = False
     if conversation_id and root_path:
-        draft_dir = Path(root_path) / "conversations" / str(conversation_id) / "skills-draft"
+        draft_dir = Path(root_path)  / str(conversation_id) / "skills-draft"
         draft_dir.mkdir(parents=True, exist_ok=True)
         routes["/skills-draft/"] = FilesystemBackend(root_dir=str(draft_dir), virtual_mode=True)
         has_draft_route = True
 
     skill_sources = ["/skills/", "/skills-draft/"] if has_draft_route else ["/skills/"]
 
-    shell_backend = LocalShellBackend(
+    shell_backend = SkillAwareShellBackend(
         root_dir=str(artifacts_dir),
+        skills_root=skills_root,
+        draft_root=draft_dir,
         virtual_mode=True,
         inherit_env=True,
         timeout=30,
@@ -241,7 +324,13 @@ def get_agent(
         memory=["/agent/AGENTS.md"],
         skills=skill_sources,
         subagents=[],
-        system_prompt=_build_system_prompt(current_time, available_skills, has_draft_route=has_draft_route),
+        system_prompt=_build_system_prompt(
+            current_time,
+            available_skills,
+            has_draft_route=has_draft_route,
+            skills_real_path=str(skills_root),
+            draft_skills_real_path=str(draft_dir) if draft_dir is not None else "",
+        ),
         backend=backend,
         checkpointer=checkpointer,
         tools=sql_tools or None,

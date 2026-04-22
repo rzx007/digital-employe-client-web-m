@@ -90,7 +90,7 @@ def _scan_skills_draft(directory: Path) -> list[ResourceEntry]:
 class ResourceService:
     @staticmethod
     def list_resources(root_path: str, conversation_id: int) -> ResourceList:
-        conversation_dir = Path(root_path) / "conversations" / str(conversation_id)
+        conversation_dir = Path(root_path) / str(conversation_id)
         artifacts_dir = conversation_dir / "artifacts"
         skills_draft_dir = conversation_dir / "skills-draft"
 
@@ -104,7 +104,7 @@ class ResourceService:
         if not any(path.startswith(prefix) for prefix in _ALLOWED_PREFIXES):
             return None
 
-        conversation_dir = Path(root_path) / "conversations" / str(conversation_id)
+        conversation_dir = Path(root_path) / str(conversation_id)
         resolved = _resolve_safe_path(conversation_dir, path)
         if resolved is None or not resolved.is_file():
             return None

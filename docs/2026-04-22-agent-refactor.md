@@ -11,6 +11,7 @@
 #### 改动文件：`apps/server/src/service/agent.py`
 
 **删除的代码（约 200 行）：**
+
 - `PosixVirtualFilesystemBackend` — Windows 路径兼容层，deepagents 已处理
 - `WindowsShellBackend` — Windows 编码兼容层，deepagents 已处理
 - `WindowsCompatibleCompositeBackend` — 自定义 CompositeBackend，用原生的替代
@@ -31,6 +32,7 @@
 | default | `LocalShellBackend(root_dir=skills_root.parent)` | `LocalShellBackend(root_dir=artifacts_dir)` |
 
 **新增能力：**
+
 - `permissions` 参数：禁止写入 `/skills/**` 和 `/agent/**`
 - 双源技能加载：`skills=["/skills/", "/skills-draft/"]`，同名技能草稿覆盖正式版
 - `infer_artifact_type()` 新增 `"skill-draft"` 类型
@@ -38,7 +40,7 @@
 
 **最终目录结构：**
 
-```
+```plaintext
 <root_path>/conversations/<conversation_id>/
 ├── artifacts/          # /artifacts/ — 会话产物（可读写）
 └── skills-draft/       # /skills-draft/ — 草稿技能（可读写，立即生效）
@@ -122,7 +124,7 @@ class ResourceContent(BaseModel):
 
 **ArtifactPanel 新布局：**
 
-```
+```plaintext
 ┌──────────────────────────────────────────────────┐
 │ 资源管理器                          ▢ 📋 ⬇ ✕     │
 ├──────────────┬───────────────────────────────────┤
@@ -146,7 +148,7 @@ class ResourceContent(BaseModel):
 
 ### 聊天场景
 
-```
+```plaintext
 用户发消息 → SSE 流
   → Agent 写 write_file("/artifacts/report.md", ...)
   → is_artifact_file() = true（不在排除列表）
@@ -162,7 +164,7 @@ class ResourceContent(BaseModel):
 
 ### 技能草稿场景
 
-```
+```plaintext
 用户："帮我创建一个数据分析技能"
   → Agent 写 write_file("/skills-draft/data-analysis/SKILL.md", ...)
   → is_artifact_file() = true（/skills-draft/ 不在排除列表）
