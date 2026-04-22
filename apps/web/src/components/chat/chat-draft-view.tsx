@@ -158,7 +158,7 @@ export function DraftChatView({
             const next = [...prev]
             for (let i = next.length - 1; i >= 0; i--) {
               if (next[i].role === "user") {
-                ;(
+                ; (
                   next[i] as UIMessage & {
                     metadata?: typeof pendingMeta
                   }

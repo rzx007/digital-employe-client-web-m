@@ -88,6 +88,7 @@ function FloatingMenu({
 
   return createPortal(
     <div
+      data-prompt-typeahead-menu="true"
       className="z-50 max-w-2xl animate-in overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md fade-in-0 zoom-in-95"
       style={{
         position: "fixed",
