@@ -21,6 +21,10 @@ def get_default_skill_path() -> str:
     return str(Path.home() / ".digital-employee" / "employees-skills")
 
 
+def get_default_logs_dir() -> Path:
+    return Path.home() / ".digital-employee" / "logs"
+
+
 def resolve_configured_path(path_value: str) -> str:
     path = Path(os.path.expandvars(os.path.expanduser(path_value)))
     if not path.is_absolute():
