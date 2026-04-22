@@ -31,8 +31,7 @@ export const useEndpointStore = create<EndpointState>((set, get) => ({
 
   loadEndpoint: async () => {
     try {
-      const data = await window.ipcRenderer?.getStoreValue("app")
-      const endpoint = data?.endpoint
+      const endpoint = await window.electronApi?.getEndpoint()
       if (endpoint) {
         const url = new URL(endpoint)
         set({
@@ -72,7 +71,7 @@ export const useEndpointStore = create<EndpointState>((set, get) => ({
   saveEndpoint: async () => {
     const { protocol, ip, port } = get()
     const endpoint = `${protocol}${ip}:${port}`
-    await window.ipcRenderer?.setStoreValue("app", { endpoint })
+    await window.electronApi?.setEndpoint(endpoint)
   },
 
   getBaseUrl: () => {

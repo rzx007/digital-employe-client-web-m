@@ -20,10 +20,10 @@ let currentBaseURL = fallbackBaseURL
 async function loadEndpointBaseURL(): Promise<string> {
   if (typeof window === "undefined") return fallbackBaseURL
   try {
-    const data = await window.ipcRenderer?.getStoreValue("app")
-    if (data?.endpoint) {
-      currentBaseURL = data.endpoint
-      return data.endpoint
+    const endpoint = await window.electronApi?.getEndpoint()
+    if (endpoint) {
+      currentBaseURL = endpoint
+      return endpoint
     }
   } catch {
     // ignore

@@ -42,13 +42,6 @@ import {
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@workspace/ui/components/select"
 import { Separator } from "@workspace/ui/components/separator"
 import { Switch } from "@workspace/ui/components/switch"
 import { cn } from "@workspace/ui/lib/utils"
@@ -648,17 +641,12 @@ function ModelsSettings() {
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
           <span className="text-sm font-medium">默认模型</span>
-          <Select value={model} onValueChange={setModel}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="选择默认模型" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="claude">Claude 3.5 Sonnet</SelectItem>
-              <SelectItem value="gpt4">GPT-4</SelectItem>
-              <SelectItem value="gemini">Gemini Pro</SelectItem>
-              <SelectItem value="deepseek">DeepSeek</SelectItem>
-            </SelectContent>
-          </Select>
+          <Input
+            placeholder="例如: google/gemma-4-26b-a4b"
+            className="font-mono text-sm"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+          />
         </div>
 
         <div className="flex flex-col gap-2">

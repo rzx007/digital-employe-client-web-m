@@ -15,6 +15,8 @@ import {
   setSetting,
   getModelSettings,
   setModelSettings,
+  getEndpoint,
+  setEndpoint,
   clearSettingsStore,
 } from "./settings-store"
 
@@ -295,6 +297,16 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
       setModelSettings(data)
     }
   )
+
+  /** 获取 Endpoint 配置 */
+  ipcMain.handle("get-endpoint", () => {
+    return getEndpoint()
+  })
+
+  /** 保存 Endpoint 配置 */
+  ipcMain.handle("set-endpoint", (_event, endpoint: string) => {
+    setEndpoint(endpoint)
+  })
 
   /** 重置应用：清除所有存储数据并重启 */
   ipcMain.handle("reset-app", () => {

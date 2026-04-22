@@ -84,6 +84,8 @@ declare global {
       getAutoUpdate: () => Promise<boolean>
       getOnboardingCompleted: () => Promise<boolean>
       setOnboardingCompleted: (value: boolean) => Promise<void>
+      getEndpoint: () => Promise<string>
+      setEndpoint: (endpoint: string) => Promise<void>
       getModelSettings: () => Promise<{
         model: string
         apiKey: string

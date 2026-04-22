@@ -77,6 +77,9 @@ contextBridge.exposeInMainWorld("electronApi", {
   getOnboardingCompleted: () => ipcRenderer.invoke("get-onboarding-completed"),
   setOnboardingCompleted: (value: boolean) =>
     ipcRenderer.invoke("set-onboarding-completed", value),
+  getEndpoint: () => ipcRenderer.invoke("get-endpoint"),
+  setEndpoint: (endpoint: string) =>
+    ipcRenderer.invoke("set-endpoint", endpoint),
   getModelSettings: () => ipcRenderer.invoke("get-model-settings"),
   setModelSettings: (data: { model: string; apiKey: string; apiUrl: string }) =>
     ipcRenderer.invoke("set-model-settings", data),
