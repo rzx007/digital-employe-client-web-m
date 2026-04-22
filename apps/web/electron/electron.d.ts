@@ -74,6 +74,7 @@ declare global {
       closeRecruitment: () => Promise<void>
       notifyHireSuccess: () => Promise<void>
       onInvalidateContacts: (callback: () => void) => () => void
+      onInvalidateModelConfig: (callback: () => void) => () => void
       openSettings: () => Promise<void>
       closeSettings: () => Promise<void>
       setAutoLaunch: (enabled: boolean) => Promise<void>

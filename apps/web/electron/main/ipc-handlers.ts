@@ -295,6 +295,9 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
     "set-model-settings",
     (_event, data: { model: string; apiKey: string; apiUrl: string }) => {
       setModelSettings(data)
+      if (mainWin && !mainWin.isDestroyed()) {
+        mainWin.webContents.send("invalidate-model-config")
+      }
     }
   )
 

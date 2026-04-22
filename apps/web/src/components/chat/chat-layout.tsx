@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from "react"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -9,6 +10,7 @@ import { MonitorPanel } from "@/components/schedule-monitor"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useContactsQuery } from "@/hooks/use-chat-queries"
 import { chatKeys } from "@/lib/query-keys/chat"
+import { modelKeys } from "@/lib/query-keys/model"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useChatStore } from "@/stores/chat-store"
@@ -41,26 +43,26 @@ export function ChatLayout({
 
   const { data: apiContacts, isError: contactsError } = useContactsQuery()
 
-  const hasContactsErrorToastRef = React.useRef(false)
+  const hasContactsErrorToastRef = useRef(false)
 
-  React.useEffect(() => {
+  useEffect(() => {
     initOnboarding()
   }, [initOnboarding])
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (initialized && !onboardingCompleted) {
       const timer = setTimeout(() => showWelcome(), 1500)
       return () => clearTimeout(timer)
     }
   }, [initialized, onboardingCompleted, showWelcome])
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (apiContacts) {
       setContacts([CURATOR_CONTACT, ...apiContacts])
     }
   }, [apiContacts, setContacts])
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!contactsError) {
       hasContactsErrorToastRef.current = false
       return
@@ -84,7 +86,7 @@ export function ChatLayout({
 
   const queryClient = useQueryClient()
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!window.electronApi?.onInvalidateContacts) return
     const cleanup = window.electronApi.onInvalidateContacts(() => {
       queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
@@ -92,7 +94,15 @@ export function ChatLayout({
     return cleanup
   }, [queryClient])
 
-  const [showConversations, setShowConversations] = React.useState(false)
+  useEffect(() => {
+    if (!window.electronApi?.onInvalidateModelConfig) return
+    const cleanup = window.electronApi.onInvalidateModelConfig(() => {
+      queryClient.invalidateQueries({ queryKey: modelKeys.runtimeConfig() })
+    })
+    return cleanup
+  }, [queryClient])
+
+  const [showConversations, setShowConversations] = useState(false)
 
   const {
     closeArtifact,
@@ -112,13 +122,13 @@ export function ChatLayout({
 
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isMobile && isPanelOpen) {
       setFullscreen(true)
     }
   }, [isMobile, isPanelOpen, setFullscreen])
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isMobile && isMonitorOpen) {
       setMonitorFullscreen(true)
     }
@@ -225,7 +235,7 @@ export function ChatLayout({
           <MonitorPanel
             isOpen={true}
             isFullscreen={false}
-            onToggleFullscreen={() => {}}
+            onToggleFullscreen={() => { }}
             className="h-full w-full rounded-none border-0 shadow-none"
           />
         </SheetContent>

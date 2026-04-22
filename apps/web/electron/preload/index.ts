@@ -62,6 +62,10 @@ contextBridge.exposeInMainWorld("electronApi", {
     ipcRenderer.on("invalidate-contacts", () => callback())
     return () => ipcRenderer.removeAllListeners("invalidate-contacts")
   },
+  onInvalidateModelConfig: (callback: () => void) => {
+    ipcRenderer.on("invalidate-model-config", () => callback())
+    return () => ipcRenderer.removeAllListeners("invalidate-model-config")
+  },
   // settings
   openSettings: () => ipcRenderer.invoke("open-settings"),
   closeSettings: () => ipcRenderer.invoke("close-settings"),

@@ -1,4 +1,5 @@
 import * as React from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import pkg from "../../../package.json"
 import logoSvg from "@/assets/logo.svg"
 import Avatar1 from "@/assets/avaters/1.png"
@@ -50,6 +51,7 @@ import { useAuthStore } from "@/stores/auth-store"
 import { useOnboardingStore } from "@/stores/onboarding-store"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { updatePassword } from "@/api/auth"
+import { modelKeys } from "@/lib/query-keys/model"
 import { decryptPwd } from "@/lib/password-sm"
 
 type SettingsTab = "account" | "general" | "shortcuts" | "models" | "about"
@@ -607,9 +609,11 @@ function ShortcutsSettings() {
 }
 
 function ModelsSettings() {
+  const queryClient = useQueryClient()
   const [model, setModel] = React.useState("")
   const [apiKey, setApiKey] = React.useState("")
   const [apiUrl, setApiUrl] = React.useState("")
+  const [saving, setSaving] = React.useState(false)
 
   React.useEffect(() => {
     const loadModelSettings = async () => {
@@ -624,8 +628,21 @@ function ModelsSettings() {
   }, [])
 
   const handleSave = async () => {
-    if (window.electronApi?.isElectron) {
+    if (!window.electronApi?.isElectron) {
+      toast.error("仅支持在桌面端保存模型设置")
+      return
+    }
+    setSaving(true)
+    try {
       await window.electronApi.setModelSettings({ model, apiKey, apiUrl })
+      await queryClient.invalidateQueries({
+        queryKey: modelKeys.runtimeConfig(),
+      })
+      toast.success("模型设置已保存")
+    } catch {
+      toast.error("模型设置保存失败")
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -670,8 +687,8 @@ function ModelsSettings() {
           />
         </div>
 
-        <Button onClick={handleSave} className="mt-2">
-          保存设置
+        <Button onClick={handleSave} className="mt-2" disabled={saving}>
+          {saving ? "保存中..." : "保存设置"}
         </Button>
       </CardContent>
     </Card>
