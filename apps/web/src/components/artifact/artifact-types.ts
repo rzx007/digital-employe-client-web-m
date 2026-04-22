@@ -8,8 +8,3 @@ export interface Artifact {
   language?: string
   metadata?: Record<string, any>
 }
-
-export interface ArtifactMetadata {
-  artifactToolCallId: string
-  artifact: Artifact
-}

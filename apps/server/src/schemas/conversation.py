@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 
 TargetType = Literal["employee", "group"]
@@ -39,9 +39,21 @@ class ConversationMessageRead(BaseModel):
     role: MessageRole
     content: str | None
     chunk_json: str | None
+    extra_meta: dict | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("extra_meta", mode="before")
+    @classmethod
+    def parse_extra_meta(cls, v: str | dict | None) -> dict | None:
+        if isinstance(v, str):
+            import json
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, ValueError):
+                return None
+        return v
 
     @field_serializer("created_at")
     def serialize_datetime(self, value: datetime) -> str:
@@ -57,3 +69,4 @@ class StreamConversationRequest(BaseModel):
     skill: str
     question: str
     debug_content_only: bool = False
+    extra_meta: dict | None = None

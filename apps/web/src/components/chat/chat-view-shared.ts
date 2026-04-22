@@ -2,22 +2,10 @@ import type { UIMessage } from "ai"
 
 import { findContactInList } from "@/lib/mock-data/ai-employees"
 import { LangChainChatTransport } from "@/lib/chat/langchain-chat-transport"
-import type { Artifact } from "@/types/artifact"
 
 export const chatTransport = new LangChainChatTransport<UIMessage>()
 
 export type ChatViewContact = NonNullable<ReturnType<typeof findContactInList>>
-
-export type MessageMetadata = {
-  artifactToolCallId?: string
-  artifact?: Artifact
-}
-
-export function isMessageMetadata(
-  metadata: unknown
-): metadata is MessageMetadata {
-  return typeof metadata === "object" && metadata !== null
-}
 
 export function getContactDisplayName(contact: ChatViewContact) {
   if (contact.type === "group") {

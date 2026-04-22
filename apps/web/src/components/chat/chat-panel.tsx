@@ -16,15 +16,12 @@ import {
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import { cn } from "@workspace/ui/lib/utils"
 import { IconSparkles } from "@tabler/icons-react"
-import { format } from "date-fns"
-import { zhCN } from "date-fns/locale"
 import logo from "@/assets/logo.svg"
 import {
   classifyMessageParts,
   getLatestArtifactFromUIMessage,
 } from "@/lib/chat/message-utils"
 import type { ArtifactData } from "@/lib/chat/langchain-sse-schema"
-import type { Message as StoredMessage } from "@/lib/mock-data/messages"
 import { Spinner } from "@/components/spinner"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useChatStore } from "@/stores/chat-store"
@@ -41,28 +38,90 @@ import { ThinkingBlock } from "./thinking-block"
 import { ToolGroupBlock } from "./tool-group-block"
 import {
   getContactDisplayName,
-  isMessageMetadata,
   type ChatViewContact,
   chatTransport,
 } from "./chat-view-shared"
 
 const EMPTY_MESSAGES: UIMessage[] = []
 
+type CommandMeta = { id?: string; title?: string } | null
+type MentionMeta = Array<{ id?: string; name?: string }>
+type MessageMeta = {
+  command?: { id?: string; title?: string } | null
+  mentions?: Array<{ id?: string; name?: string }>
+}
+
+function getMessageMeta(message: UIMessage): MessageMeta | null {
+  if (!message || typeof message !== "object") {
+    return null
+  }
+  const meta = (message as UIMessage & { metadata?: unknown }).metadata
+  return meta && typeof meta === "object" ? (meta as MessageMeta) : null
+}
+
+function MessageMetaBadges({
+  commandMeta,
+  mentionMeta,
+  messageId,
+}: {
+  commandMeta: CommandMeta
+  mentionMeta: MentionMeta
+  messageId: string
+}) {
+  if (!commandMeta?.title && mentionMeta.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+      {commandMeta?.title && (
+        <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+          /{commandMeta.title}
+        </span>
+      )}
+      {mentionMeta.map((mention, index) => (
+        <span
+          key={mention.id ?? `${messageId}:mention:${index}`}
+          className="rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-600"
+        >
+          @{mention.name ?? "unknown"}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 function renderClassifiedBlocks(
-  blocks: import("@/lib/chat/message-classifier").ClassifiedBlock[]
+  blocks: import("@/lib/chat/message-classifier").ClassifiedBlock[],
+  options?: {
+    commandMeta?: CommandMeta
+    mentionMeta?: MentionMeta
+    messageId?: string
+  }
 ) {
   return blocks.map((block) => {
     if (block.kind === "thinking") {
-      return <ThinkingBlock key={block.key} text={block.text} />
+      return <ThinkingBlock className="w-full" key={block.key} text={block.text} />
     }
 
     if (block.kind === "tool-group") {
-      return <ToolGroupBlock key={block.key} block={block} />
+      return <ToolGroupBlock className="w-full" key={block.key} block={block} />
     }
 
     if (block.kind === "final-response") {
+      const commandMeta = options?.commandMeta ?? null
+      const mentionMeta = options?.mentionMeta ?? []
+      const messageId = options?.messageId ?? block.key
+
       return (
-        <MessageResponse key={block.key}>{block.text}</MessageResponse>
+        <div className="w-full flex items-center space-x-2" key={block.key}>
+          <MessageMetaBadges
+            commandMeta={commandMeta}
+            mentionMeta={mentionMeta}
+            messageId={messageId}
+          />
+          <MessageResponse className="flex-1">{block.text}</MessageResponse>
+        </div>
       )
     }
 
@@ -75,7 +134,6 @@ export function ChatPanel({
   title,
   conversationId,
   messages,
-  storedMessages = [],
   inputValue,
   status,
   error,
@@ -94,7 +152,6 @@ export function ChatPanel({
   title: string
   conversationId?: string | number
   messages: UIMessage[]
-  storedMessages?: StoredMessage[]
   inputValue: string
   status: "submitted" | "streaming" | "ready" | "error"
   error?: Error
@@ -120,6 +177,10 @@ export function ChatPanel({
     !error &&
     displayMessages.length > 0
 
+  React.useEffect(() => {
+    console.log("messages", messages)
+  }, [messages])
+
   // 注册流式 artifact 事件处理器
   React.useEffect(() => {
     const handleArtifact = (data: ArtifactData) => {
@@ -141,18 +202,15 @@ export function ChatPanel({
   }, [addArtifact, openArtifact])
 
   React.useEffect(() => {
+    const { artifacts } = useArtifactStore.getState()
     displayMessages.forEach((message) => {
       const artifact = getLatestArtifactFromUIMessage(message)
 
-      if (artifact) {
+      if (artifact && !artifacts.has(artifact.id)) {
         addArtifact(artifact)
       }
     })
   }, [addArtifact, displayMessages])
-
-  const formatTime = React.useCallback((date: Date) => {
-    return format(date, "HH:mm", { locale: zhCN })
-  }, [])
 
   const slashCommands = React.useMemo<SlashCommandItem[]>(() => {
     const skills =
@@ -274,27 +332,34 @@ export function ChatPanel({
                   </ConversationEmptyState>
                 ) : (
                   displayMessages.map((message) => {
-                    const liveArtifact =
+                    const artifact =
                       getLatestArtifactFromUIMessage(message)
                     const classifiedBlocks = classifyMessageParts(message)
-                    const storedMessage = storedMessages.find(
-                      (item) => item.id === message.id
-                    )
-                    const timestamp = storedMessage?.timestamp
-                    const metadata = isMessageMetadata(
-                      storedMessage?.metadata
-                    )
-                      ? storedMessage.metadata
-                      : null
-                    const artifact =
-                      liveArtifact ?? metadata?.artifact ?? null
+                    const messageMeta = getMessageMeta(message)
+                    const commandMeta =
+                      messageMeta &&
+                        typeof messageMeta === "object" &&
+                        "command" in messageMeta &&
+                        messageMeta.command &&
+                        typeof messageMeta.command === "object"
+                        ? (messageMeta.command as { id?: string; title?: string })
+                        : null
+                    const mentionMeta =
+                      messageMeta &&
+                        typeof messageMeta === "object" &&
+                        "mentions" in messageMeta &&
+                        Array.isArray(messageMeta.mentions)
+                        ? (messageMeta.mentions as Array<{
+                          id?: string
+                          name?: string
+                        }>)
+                        : []
 
                     const handleOpenArtifact = () => {
                       if (!artifact) {
                         return
                       }
 
-                      addArtifact(artifact)
                       setFullscreen(isMobile)
                       openArtifact(artifact.id)
                     }
@@ -337,11 +402,16 @@ export function ChatPanel({
                             </span>
                           </div>
                         )}
-                        <MessageContent>
+
+                        <MessageContent className="w-auto">
                           <div className="space-y-3">
                             {classifiedBlocks.length > 0 ? (
-                              renderClassifiedBlocks(classifiedBlocks)
-                            ) : metadata?.artifact ? null : (
+                              renderClassifiedBlocks(classifiedBlocks, {
+                                commandMeta,
+                                mentionMeta,
+                                messageId: message.id,
+                              })
+                            ) : artifact ? null : (
                               <MessageResponse />
                             )}
                           </div>
@@ -351,16 +421,6 @@ export function ChatPanel({
                             artifact={artifact}
                             onClick={handleOpenArtifact}
                           />
-                        )}
-                        {timestamp && (
-                          <div
-                            className={cn(
-                              "mt-1 text-[10px] text-muted-foreground",
-                              message.role === "user" && "text-right"
-                            )}
-                          >
-                            {formatTime(timestamp)}
-                          </div>
                         )}
                       </Message>
                     )

@@ -98,7 +98,7 @@ export function ChatPromptInput({
   onStop,
   status,
   disabled,
-  placeholder = "请输入任务，然后交给 Agent",
+  placeholder = "请输入任务，然后交给我",
   size = "default",
   className,
   slashCommands,

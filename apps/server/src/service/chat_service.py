@@ -224,12 +224,14 @@ class ChatService:
         role: str,
         content: str | None,
         chunk_json: str | None = None,
+        extra_meta: dict | None = None,
     ) -> ConversationMessage:
         message = ConversationMessage(
             conversation_id=conversation.id,
             role=role,
             content=content,
             chunk_json=chunk_json,
+            extra_meta=json.dumps(extra_meta, ensure_ascii=False) if extra_meta else None,
         )
         db.add(message)
         conversation.updated_at = cst_now()
@@ -399,6 +401,7 @@ class ChatService:
         question: str,
         skill_name: str,
         debug_content_only: bool = False,
+        extra_meta: dict | None = None,
     ):
         settings = get_settings()
         
@@ -409,7 +412,7 @@ class ChatService:
             limit=settings.chat_history_max_messages,
         )
 
-        ChatService._append_message(db, conversation=conversation, role="user", content=question)
+        ChatService._append_message(db, conversation=conversation, role="user", content=question, extra_meta=extra_meta)
         request_messages = [*history_messages, {"role": "user", "content": question}]
         # 根据会话ID获取会话详情，然后获取root_path
         conversation = ChatService.get_conversation(db, conversation_id)

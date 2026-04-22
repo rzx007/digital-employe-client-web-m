@@ -74,7 +74,15 @@ function getSkillFromBody(body: any): string {
     return ''
   }
 
-  return body?.skill || '' 
+  return body?.skill || ''
+}
+function getExtraMetaFromBody(body: any): Record<string, any> | undefined {
+  if (!body || typeof body !== "object") {
+    return undefined
+  }
+
+  const { metadata } = body as { metadata?: unknown }
+  return metadata && typeof metadata === "object" ? metadata as Record<string, any> : undefined
 }
 function getAttachmentsFromBody(body: object | undefined) {
   if (!body || typeof body !== "object") {
@@ -98,15 +106,16 @@ async function createEventSourceResponse(options: {
   conversationId: string
   prompt: string
   skill: string
+  metadata?: Record<string, any>
   abortSignal: AbortSignal | undefined
 }) {
   const response = await request.raw(buildChatApiUrl(options), {
     method: "POST",
-    // headers: getRequestHeaders({
-    //   Accept: "text/event-stream",
-    //   "Content-Type": "application/json",
-    // }),
-    body: JSON.stringify({ question: options.prompt, skill: options?.skill }),
+    body: JSON.stringify({
+      question: options.prompt,
+      skill: options?.skill,
+      extra_meta: options.metadata,
+    }),
     signal: options.abortSignal,
   })
 
@@ -170,6 +179,7 @@ export class LangChainChatTransport<
     const conversationId = getConversationIdFromBody(body)
     const skill = getSkillFromBody(body)
     const attachments = getAttachmentsFromBody(body)
+    const metadata = getExtraMetaFromBody(body)
     const latestMessage = messages.at(-1)
     const latestText = latestMessage?.parts
       ?.filter((part) => part.type === "text")
@@ -193,6 +203,7 @@ export class LangChainChatTransport<
         conversationId,
         skill,
         prompt: latestText,
+        metadata,
         abortSignal,
       })
 

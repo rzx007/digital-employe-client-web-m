@@ -55,11 +55,11 @@ export function ToolSummary({
         </span>
       </div>
       {resultText && (
-        <div className="relative mt-0.5 max-h-10 pl-[18px]">
+        <div className="relative mt-0.5  pl-[18px]">
           <div
             ref={scrollRef}
             className={cn(
-              "overflow-y-auto text-[11px]",
+              "overflow-y-auto text-[11px] max-h-16",
               isError
                 ? "text-destructive/60"
                 : "text-muted-foreground/50"

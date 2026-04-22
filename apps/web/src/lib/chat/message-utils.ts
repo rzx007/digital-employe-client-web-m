@@ -12,7 +12,6 @@ export {
 export { classifyMessageParts, type ClassifiedBlock, type ToolGroupItem } from "./message-classifier"
 
 import { getArtifactFromToolPart } from "./artifact-utils"
-import { classifyMessageParts, type ClassifiedBlock } from "./message-classifier"
 import {
   closeTextPhaseIfNeeded,
   createLangChainStreamParseState,
@@ -415,22 +414,30 @@ export function mapStoredMessagesToUIMessages(
   messages: Message[]
 ): UIMessage[] {
   return messages.map((message) => {
+    const messageMeta =
+      message.metadata && typeof message.metadata === "object"
+        ? message.metadata
+        : undefined
+
     // assistant 消息尝试使用 chunkJson 重建 parts
     if (message.role === "assistant" && message.chunkJson) {
       const parts = replayChunkJsonToParts(message.chunkJson)
 
       // chunkJson 解析成功且有有效 parts 时使用重建结果
       if (parts && parts.length > 0) {
-        return {
+        const uiMessage: UIMessage = {
           id: message.id,
           role: message.role,
           parts,
         }
+        ;(uiMessage as UIMessage & { metadata?: Record<string, any> }).metadata =
+          messageMeta
+        return uiMessage
       }
     }
 
     // 降级：使用 content 作为纯文本 part
-    return {
+    const uiMessage: UIMessage = {
       id: message.id,
       role: message.role,
       parts: [
@@ -441,5 +448,8 @@ export function mapStoredMessagesToUIMessages(
         },
       ],
     }
+    ;(uiMessage as UIMessage & { metadata?: Record<string, any> }).metadata =
+      messageMeta
+    return uiMessage
   })
 }

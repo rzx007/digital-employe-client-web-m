@@ -76,6 +76,7 @@ async def stream_conversation(
             request.question,
             request.skill,
             debug_content_only=request.debug_content_only,
+            extra_meta=request.extra_meta,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},

@@ -22,4 +22,4 @@ export {
   ImageRenderer,
   type ImageRendererProps,
 } from "./artifact-content/image-renderer"
-export type { Artifact, ArtifactType, ArtifactMetadata } from "./artifact-types"
+export type { Artifact, ArtifactType } from "./artifact-types"

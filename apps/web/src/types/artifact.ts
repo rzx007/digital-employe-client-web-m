@@ -9,11 +9,6 @@ export interface Artifact {
   metadata?: Record<string, any>
 }
 
-export interface ArtifactMetadata {
-  artifactToolCallId: string
-  artifact: Artifact
-}
-
 export interface ResourceEntry {
   name: string
   path: string

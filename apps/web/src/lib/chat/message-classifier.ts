@@ -53,9 +53,10 @@ function extractResultText(part: ToolUIPart): string | null {
 
   const output = part.output as Record<string, unknown>
   if (typeof output.text === "string" && output.text) {
-    return output.text.length > 200
-      ? output.text.slice(0, 197) + "..."
-      : output.text
+    // return output.text.length > 200
+    //   ? output.text.slice(0, 197) + "..."
+    //   : output.text
+    return output.text
   }
 
   return null

@@ -1,11 +1,10 @@
 import * as React from "react"
 import { useChat } from "@ai-sdk/react"
-import { useQueryClient } from "@tanstack/react-query"
+import type { UIMessage } from "ai"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
 import { useMessagesQuery } from "@/hooks/use-chat-queries"
-import { chatKeys } from "@/lib/query-keys/chat"
 
 import { ChatPanel } from "./chat-panel"
 import { chatTransport, type ChatViewContact } from "./chat-view-shared"
@@ -33,8 +32,10 @@ export function ConversationChatView({
     id: string
     title: string
   } | null>(null)
-  const queryClient = useQueryClient()
-
+  const [mentions, setMentions] = React.useState<Array<{
+    id: string
+    name: string
+  }>>([])
   const { data: storedMessages = [] } = useMessagesQuery(conversationId)
 
   const initialMessages = React.useMemo(
@@ -66,6 +67,7 @@ export function ConversationChatView({
 
   const handleTextChange = React.useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
+    setMentions(event.mentions)
     setInputValue(event.value)
   }, [])
 
@@ -114,6 +116,14 @@ export function ConversationChatView({
         })
       }
 
+      const pendingMeta = {
+        command: command ? { id: command.id, title: command.title } : undefined,
+        mentions: mentions.length > 0 ? mentions : undefined,
+      }
+      const hasPendingMeta = Boolean(
+        pendingMeta.command || pendingMeta.mentions?.length
+      )
+
       try {
         setInputValue("")
 
@@ -126,9 +136,27 @@ export function ConversationChatView({
               attachments: message.files,
               conversationId,
               skill: command?.title ?? "",
+              metadata: pendingMeta,
             },
           }
         )
+
+        if (hasPendingMeta) {
+          setMessages((prev) => {
+            const next = [...prev]
+            for (let i = next.length - 1; i >= 0; i--) {
+              if (next[i].role === "user") {
+                ;(
+                  next[i] as UIMessage & {
+                    metadata?: typeof pendingMeta
+                  }
+                ).metadata = pendingMeta
+                break
+              }
+            }
+            return next
+          })
+        }
       } catch (sendError) {
         toast.error("发送失败", {
           description:
@@ -136,7 +164,7 @@ export function ConversationChatView({
         })
       }
     },
-    [conversationId, sendMessage, command]
+    [conversationId, sendMessage, command, mentions]
   )
 
   const displayMessages = React.useMemo(() => {
@@ -153,7 +181,6 @@ export function ConversationChatView({
       title={title}
       conversationId={conversationId}
       messages={displayMessages}
-      storedMessages={storedMessages}
       inputValue={inputValue}
       status={chatStatus}
       error={error}
