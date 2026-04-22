@@ -50,8 +50,9 @@ export function summarizeToolCall(options: {
 
   if (toolName === "execute" && input?.command) {
     const cmd = String(input.command)
-    const short =
-      cmd.length > 60 ? cmd.slice(0, 57) + "..." : cmd
+    const short = cmd
+    // const short =
+    //   cmd.length > 60 ? cmd.slice(0, 57) + "..." : cmd
     return { toolName, label: `${meta.verb} ${short}`, icon: meta.icon }
   }
 

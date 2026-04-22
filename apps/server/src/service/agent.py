@@ -1,6 +1,4 @@
 import logging
-import shlex
-import subprocess
 from pathlib import Path
 from typing import Any
 from dotenv import load_dotenv
@@ -8,7 +6,6 @@ from langchain_community.utilities import SQLDatabase
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from deepagents.backends import (
     CompositeBackend,
-    LocalShellBackend,
     FilesystemBackend,
 )
 from langchain_openai import ChatOpenAI
@@ -18,77 +15,13 @@ from langgraph.checkpoint.memory import MemorySaver
 from deepagents import create_deep_agent
 from deepagents.middleware.permissions import FilesystemPermission
 from src.core.config import get_settings
+from src.service.skill_shell_backend import SkillAwareShellBackend
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 _CHECKPOINTER = MemorySaver()
-
-
-class SkillAwareShellBackend(LocalShellBackend):
-    """Map virtual skill paths to physical paths before shell execute."""
-
-    def __init__(
-        self,
-        *,
-        root_dir: str,
-        skills_root: Path,
-        draft_root: Path | None,
-        virtual_mode: bool = True,
-        inherit_env: bool = True,
-        timeout: int = 30,
-    ):
-        super().__init__(
-            root_dir=root_dir,
-            virtual_mode=virtual_mode,
-            inherit_env=inherit_env,
-            timeout=timeout,
-        )
-        self._skills_root = skills_root.resolve()
-        self._draft_root = draft_root.resolve() if draft_root is not None else None
-
-    def _map_virtual_token(self, token: str) -> str:
-        normalized = token.replace("\\", "/")
-        if normalized == "/skills":
-            return str(self._skills_root)
-        if normalized.startswith("/skills/"):
-            suffix = normalized[len("/skills/") :]
-            return str((self._skills_root / suffix).resolve())
-        if self._draft_root is None:
-            return token
-        if normalized == "/skills-draft":
-            return str(self._draft_root)
-        if normalized.startswith("/skills-draft/"):
-            suffix = normalized[len("/skills-draft/") :]
-            return str((self._draft_root / suffix).resolve())
-        return token
-
-    def _rewrite_command_virtual_paths(self, command: str) -> str:
-        try:
-            parts = shlex.split(command, posix=False)
-        except ValueError:
-            return command
-
-        changed = False
-        for i, part in enumerate(parts):
-            quote = ""
-            raw = part
-            if len(part) >= 2 and part[0] == part[-1] and part[0] in {"'", '"'}:
-                quote = part[0]
-                raw = part[1:-1]
-            mapped = self._map_virtual_token(raw)
-            if mapped != raw:
-                parts[i] = f"{quote}{mapped}{quote}" if quote else mapped
-                changed = True
-
-        if not changed:
-            return command
-        return subprocess.list2cmdline(parts)
-
-    def execute(self, command: str, *, timeout: int | None = None):
-        rewritten = self._rewrite_command_virtual_paths(command)
-        return super().execute(rewritten, timeout=timeout)
 
 
 def _resolve_skills_root(skill_path: str) -> Path:
@@ -144,11 +77,13 @@ def _build_system_prompt(
         Skills available at /skills/. Use /memories/ for persistent context.
         我的默认环境是windows环境，所以你执行命令的时候要注意windows的命令规范
         在生成命令的时候不要添加引号，例如正确的命令是：python script.py 而不是 python \"script.py\"
+        执行 Python 脚本时优先使用无缓冲模式：python -u <script.py> ...
         当前已加载的技能名单：{skills_line}
         如果用户询问"你有没有某个技能"或"你有哪些技能"，必须严格基于当前已加载的技能名单回答，不要猜测，不要遗漏名单中的技能。
         技能文件真实物理路径根目录：{skills_root_line}
         执行技能脚本时请基于上面的真实路径拼接绝对路径（例如 python <skills_real_path>/<skill_name>/script.py），不要使用相对路径。
         /skills/ 是虚拟路由路径，仅用于读写文件工具，不可直接用于 shell execute 命令。
+        如果 execute 返回 exit code=0 但输出为空，先判断为命令可能是静默成功，不要立刻改用 python -c 重跑。
         当你需要为用户创建文件（如代码文件、文档、数据文件等产物）时，必须将文件写入 /artifacts/ 路径下，例如 write_file("/artifacts/report.md", "...")。
         不要将用户产物文件写到根路径或其他虚拟路径，只有 /artifacts/ 下的文件会被持久化保存并向用户展示。
         {draft_instruction}
