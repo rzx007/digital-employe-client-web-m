@@ -80,3 +80,17 @@ def init_db() -> None:
     # 兼容历史会话消息表：补充 metadata 字段
     ensure_column("conversation_messages", "extra_meta", "extra_meta TEXT")
 
+    # 兼容历史会话消息表：补充流状态字段（断线重连用）
+    # 取值: "streaming" | "completed" | "error" | NULL（旧消息无此字段
+    ensure_column(
+        "conversation_messages", "stream_state", "stream_state VARCHAR(32)"
+    )
+    # 已发送的最后一个事件序列号
+    ensure_column(
+        "conversation_messages",
+        "stream_cursor",
+        "stream_cursor INTEGER DEFAULT 0",
+    )
+    # 序列化的事件列表（JSON array），用于断线重放
+    ensure_column("conversation_messages", "stream_chunks", "stream_chunks TEXT")
+
