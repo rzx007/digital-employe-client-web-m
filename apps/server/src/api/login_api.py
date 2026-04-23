@@ -17,6 +17,9 @@ def login(request: LoginRequest):
     login_params = request.model_dump()
     logger.info("登录请求 keys=%s", list(login_params.keys()))
     login_url = get_settings().login_url or ""
+    if not login_url:
+        logger.error("未配置登录服务地址。")
+        raise HTTPException(status_code=400, detail="未配置登录服务地址。")
     try:
         response = httpx.post(login_url, json=login_params, timeout=30.0)
         response.raise_for_status()

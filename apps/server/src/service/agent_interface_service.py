@@ -3,14 +3,15 @@ import logging
 from src.utils.http_client import create_agent_interface_http_client
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
+
 
 class AgentInterfaceService:
     """Agent Interface集成服务，用于调用agent-interface的Skills接口"""
 
     def __init__(self):
-        self.base_url = settings.agent_interface_base_url
-        self.skill_prefix = "/aios/skill"
+        settings = get_settings()
+        self.base_url = settings.remote_api_base_url
+        self.skill_prefix = settings.skill_remote_list_path
 
     async def get_skill_list(
         self, directory_id: int | None = None, status: int | None = None
@@ -26,7 +27,7 @@ class AgentInterfaceService:
             List[Dict]: 技能列表
         """
         try:
-            url = f"{self.base_url}{self.skill_prefix}/list"
+            url = f"{self.base_url}{self.skill_prefix}"
             params = {}
             if directory_id is not None:
                 params["directoryId"] = directory_id

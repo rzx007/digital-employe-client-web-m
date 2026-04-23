@@ -19,7 +19,7 @@ class SkillService:
         if not base_url:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="未配置远程技能服务地址（SKILL_REMOTE_BASE_URL）。",
+                detail="未配置远程技能服务地址（REMOTE_API_BASE_URL）。",
             )
         return f"{base_url}{path}"
 
@@ -77,7 +77,8 @@ class SkillService:
 
     @staticmethod
     def list_remote_skills(token: str) -> list[dict[str, Any]]:
-        payload = SkillService._request_remote("/api/v1/client/skills/export", token)
+        settings = get_settings()
+        payload = SkillService._request_remote(settings.skill_remote_list_path, token)
         data = payload.get("data")
         if not isinstance(data, list):
             raise HTTPException(
@@ -115,7 +116,11 @@ class SkillService:
 
     @staticmethod
     def get_remote_skill(skill_id: int, token: str) -> dict[str, Any]:
-        payload = SkillService._request_remote(f"/api/v1/client/skills/export/full/{skill_id}", token)
+        settings = get_settings()
+        payload = SkillService._request_remote(
+            settings.skill_remote_detail_path.format(skill_id=skill_id),
+            token,
+        )
         data = payload.get("data")
         if not isinstance(data, dict):
             raise HTTPException(
