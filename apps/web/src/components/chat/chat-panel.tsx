@@ -19,15 +19,12 @@ import { IconSparkles } from "@tabler/icons-react"
 import logo from "@/assets/logo.svg"
 import {
   classifyMessageParts,
-  getLatestArtifactFromUIMessage,
 } from "@/lib/chat/message-utils"
 import type { ArtifactData } from "@/lib/chat/langchain-sse-schema"
 import { Spinner } from "@/components/spinner"
-import { useIsMobile } from "@/hooks/use-mobile"
 import { useChatStore } from "@/stores/chat-store"
 import { useArtifactStore } from "@/stores/artifact-store"
 
-import { ArtifactPreview } from "../artifact"
 import { ChatPromptInput } from "../chat-prompt-input"
 import type { PromptChangeEvent } from "../lexical-editor/prompt-input-textarea"
 import type { SlashCommandItem } from "../lexical-editor/slash-command-plugin"
@@ -105,7 +102,7 @@ function renderClassifiedBlocks(
     }
 
     if (block.kind === "tool-group") {
-      return <ToolGroupBlock className="w-full" key={block.key} block={block} />
+      return <ToolGroupBlock className="w-full ml-1" key={block.key} block={block} />
     }
 
     if (block.kind === "final-response") {
@@ -132,7 +129,6 @@ function renderClassifiedBlocks(
 export function ChatPanel({
   contact,
   title,
-  conversationId,
   messages,
   inputValue,
   status,
@@ -150,7 +146,6 @@ export function ChatPanel({
 }: React.ComponentProps<"div"> & {
   contact?: ChatViewContact
   title: string
-  conversationId?: string | number
   messages: UIMessage[]
   inputValue: string
   status: "submitted" | "streaming" | "ready" | "error"
@@ -164,8 +159,7 @@ export function ChatPanel({
   onOpenConversations?: () => void
   onNewConversation?: () => void
 }) {
-  const isMobile = useIsMobile()
-  const { addArtifact, openArtifact, setFullscreen } = useArtifactStore()
+  const { addArtifact, openArtifact } = useArtifactStore()
   const contactDisplayName = contact
     ? getContactDisplayName(contact)
     : "AI 助手"
@@ -176,10 +170,6 @@ export function ChatPanel({
     (status === "submitted" || status === "streaming") &&
     !error &&
     displayMessages.length > 0
-
-  React.useEffect(() => {
-    console.log("messages", messages)
-  }, [messages])
 
   // 注册流式 artifact 事件处理器
   React.useEffect(() => {
@@ -201,21 +191,9 @@ export function ChatPanel({
     }
   }, [addArtifact, openArtifact])
 
-  React.useEffect(() => {
-    const { artifacts } = useArtifactStore.getState()
-    displayMessages.forEach((message) => {
-      const artifact = getLatestArtifactFromUIMessage(message)
-
-      if (artifact && !artifacts.has(artifact.id)) {
-        addArtifact(artifact)
-      }
-    })
-  }, [addArtifact, displayMessages])
-
   const slashCommands = React.useMemo<SlashCommandItem[]>(() => {
     const skills =
       contact?.type === "employee" ? contact.employee?.skills : undefined
-    console.log("skills", skills)
     if (!skills?.length) return []
     return skills.map((skill) => ({
       id: String(skill.id),
@@ -240,7 +218,6 @@ export function ChatPanel({
     // ]
   }, [contact])
   const mentionCandidates = React.useMemo<MentionCandidate[]>(() => {
-    console.log("contact", contact)
     if (contact?.type === "group") {
       return (contact.group?.participants ?? []).map((p) => ({
         id: p.id,
@@ -272,7 +249,6 @@ export function ChatPanel({
         <>
           <ChatPanelHeader
             title={title}
-            conversationId={conversationId}
             contact={contact}
             onOpenContacts={onOpenContacts}
             onOpenConversations={onOpenConversations}
@@ -332,8 +308,6 @@ export function ChatPanel({
                   </ConversationEmptyState>
                 ) : (
                   displayMessages.map((message) => {
-                    const artifact =
-                      getLatestArtifactFromUIMessage(message)
                     const classifiedBlocks = classifyMessageParts(message)
                     const messageMeta = getMessageMeta(message)
                     const commandMeta =
@@ -354,15 +328,6 @@ export function ChatPanel({
                           name?: string
                         }>)
                         : []
-
-                    const handleOpenArtifact = () => {
-                      if (!artifact) {
-                        return
-                      }
-
-                      setFullscreen(isMobile)
-                      openArtifact(artifact.id)
-                    }
 
                     return (
                       <Message
@@ -411,17 +376,11 @@ export function ChatPanel({
                                 mentionMeta,
                                 messageId: message.id,
                               })
-                            ) : artifact ? null : (
+                            ) : (
                               <MessageResponse />
                             )}
                           </div>
                         </MessageContent>
-                        {artifact && (
-                          <ArtifactPreview
-                            artifact={artifact}
-                            onClick={handleOpenArtifact}
-                          />
-                        )}
                       </Message>
                     )
                   })

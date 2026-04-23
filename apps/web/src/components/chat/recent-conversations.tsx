@@ -160,9 +160,9 @@ function ensureContactInList(
     isCurator,
     participants: isGroup
       ? contact.group?.participants.map((p) => ({
-          name: p.name,
-          avatar: p.avatar,
-        }))
+        name: p.name,
+        avatar: p.avatar,
+      }))
       : undefined,
   }
   return [newItem, ...existing].slice(0, MAX_RECENT)
@@ -204,8 +204,9 @@ function getContactInfoFromStore(contactId: string): {
 
 export function RecentConversations({
   className,
+  collapsed,
   ...props
-}: React.ComponentProps<"div">) {
+}: React.ComponentProps<"div"> & { collapsed?: boolean }) {
   const [recentItems, setRecentItems] = React.useState<
     RecentConversationItem[]
   >(() => {
@@ -273,9 +274,9 @@ export function RecentConversations({
     const isGroup = selectedContact.type === "group"
     const participants = isGroup
       ? selectedContact.group?.participants.map((p) => ({
-          name: p.name,
-          avatar: p.avatar,
-        }))
+        name: p.name,
+        avatar: p.avatar,
+      }))
       : undefined
 
     setRecentItems((prev) => {
@@ -458,6 +459,10 @@ export function RecentConversations({
     )
   }
 
+  const isSelected = (item: RecentConversationItem) =>
+    (item.isDraft && isDraftConversation && selectedContactId === item.contactId) ||
+    (!item.isDraft && selectedContactId === item.contactId)
+
   return (
     <>
       <CreateGroupDialog
@@ -470,66 +475,69 @@ export function RecentConversations({
       <div
         className={cn(
           "flex h-full w-full flex-col border-r bg-muted/50 transition-all duration-300",
+          collapsed && "items-center",
           className
         )}
         {...props}
       >
-        <div className="flex items-center gap-1.5 border-b px-3 py-4">
-          <div className="relative flex-1">
-            <IconSearch className="absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="h-7 border-none bg-background pl-7 text-xs"
-              placeholder="搜索会话..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+        {!collapsed && (
+          <div className="flex items-center gap-1.5 border-b px-3 py-4">
+            <div className="relative flex-1">
+              <IconSearch className="absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-7 border-none bg-background pl-7 text-xs"
+                placeholder="搜索会话..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="h-7 w-7 shrink-0"
+                  data-tour-id="add-button"
+                >
+                  <IconCirclePlus className="size-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={async () => {
+                    if (window.electronApi?.openRecruitment) {
+                      await window.electronApi.openRecruitment()
+                    } else {
+                      navigate({ to: "/recruitment" })
+                    }
+                  }}
+                >
+                  <IconUserPlus className="size-4" />
+                  招聘员工
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsDialogOpen(true)}>
+                  <IconUsers className="size-5" />
+                  添加群聊
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="h-7 w-7 shrink-0"
-                data-tour-id="add-button"
-              >
-                <IconCirclePlus className="size-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={async () => {
-                  if (window.electronApi?.openRecruitment) {
-                    await window.electronApi.openRecruitment()
-                  } else {
-                    navigate({ to: "/recruitment" })
-                  }
-                }}
-              >
-                <IconUserPlus className="size-4" />
-                招聘员工
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setIsDialogOpen(true)}>
-                <IconUsers className="size-5" />
-                添加群聊
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        )}
 
-        <ScrollArea className="flex-1">
-          <div className="py-2">
+        <ScrollArea className="flex-1 w-full">
+          <div className={cn("py-2", collapsed && "px-1.5")}>
             {displayItems.map((item) => (
               <React.Fragment key={item.contactId}>
                 <ContextMenu>
                   <ContextMenuTrigger asChild>
                     <div
+                      title={collapsed ? item.contactName : undefined}
                       className={cn(
-                        "group flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-xs transition-colors",
-                        (item.isDraft &&
-                          isDraftConversation &&
-                          selectedContactId === item.contactId) ||
-                          (!item.isDraft &&
-                            selectedContactId === item.contactId)
+                        "group flex cursor-pointer items-center transition-colors",
+                        collapsed
+                          ? "justify-center rounded-lg px-0 py-2"
+                          : "gap-3 rounded-md px-3 py-2.5 text-xs",
+                        isSelected(item)
                           ? "bg-primary/90 text-primary-foreground"
                           : "hover:bg-accent/50 hover:text-accent-foreground"
                       )}
@@ -545,7 +553,7 @@ export function RecentConversations({
                             specialty: "",
                             avatar: p.avatar,
                           }))}
-                          className="size-9"
+                          className={cn("size-9", collapsed && "size-8")}
                         />
                       ) : (
                         <EmployeeContactAvatar
@@ -555,62 +563,64 @@ export function RecentConversations({
                           showStatus
                         />
                       )}
-                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1">
-                            {item.isCurator && (
-                              <IconPin
-                                className={cn(
-                                  "size-3.5",
-                                  selectedContactId === item.contactId
-                                    ? "text-primary-foreground/70"
-                                    : "text-muted-foreground"
-                                )}
-                              />
-                            )}
-                            {!item.isCurator && renderPinIcon(item)}
-                            <span className="w-26 truncate text-sm font-medium">
-                              {item.contactName}
+                      {!collapsed && (
+                        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1">
+                              {item.isCurator && (
+                                <IconPin
+                                  className={cn(
+                                    "size-3.5",
+                                    selectedContactId === item.contactId
+                                      ? "text-primary-foreground/70"
+                                      : "text-muted-foreground"
+                                  )}
+                                />
+                              )}
+                              {!item.isCurator && renderPinIcon(item)}
+                              <span className="w-26 truncate text-sm font-medium">
+                                {item.contactName}
+                              </span>
+                            </div>
+                            <span
+                              className={cn(
+                                "shrink-0 text-[10px]",
+                                selectedContactId === item.contactId
+                                  ? "text-primary-foreground/70"
+                                  : "text-muted-foreground"
+                              )}
+                            >
+                              {getTimeAgo(item.updatedAt)}
                             </span>
                           </div>
-                          <span
-                            className={cn(
-                              "shrink-0 text-[10px]",
-                              selectedContactId === item.contactId
-                                ? "text-primary-foreground/70"
-                                : "text-muted-foreground"
-                            )}
-                          >
-                            {getTimeAgo(item.updatedAt)}
-                          </span>
+                          <div className="flex items-center justify-between">
+                            <span
+                              className={cn(
+                                "max-w-[160px] truncate",
+                                selectedContactId === item.contactId
+                                  ? "text-primary-foreground/70"
+                                  : "text-muted-foreground"
+                              )}
+                            >
+                              {item.title || "新对话"}
+                            </span>
+                            {item.unreadCount > 0 &&
+                              selectedContactId !== item.contactId && (
+                                <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+                                  {item.unreadCount}
+                                </span>
+                              )}
+                          </div>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span
-                            className={cn(
-                              "max-w-[160px] truncate",
-                              selectedContactId === item.contactId
-                                ? "text-primary-foreground/70"
-                                : "text-muted-foreground"
-                            )}
-                          >
-                            {item.title || "新对话"}
-                          </span>
-                          {item.unreadCount > 0 &&
-                            selectedContactId !== item.contactId && (
-                              <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
-                                {item.unreadCount}
-                              </span>
-                            )}
-                        </div>
-                      </div>
+                      )}
                     </div>
                   </ContextMenuTrigger>
                   {renderContextMenuItem(item)}
                 </ContextMenu>
-                <div className="mx-3 border-b"></div>
+                {!collapsed && <div className="mx-3 border-b"></div>}
               </React.Fragment>
             ))}
-            {displayItems.length === 0 && (
+            {displayItems.length === 0 && !collapsed && (
               <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
                 <IconCirclePlus className="size-8 stroke-1" />
                 <p className="mt-2 text-xs">暂无会话记录</p>

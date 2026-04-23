@@ -324,83 +324,83 @@ function buildToolInputChunks(
     deltas.length > 0
       ? []
       : invalidToolCalls.filter(
-          (toolCallChunk) => typeof toolCallChunk.args === "string"
-        )
+        (toolCallChunk) => typeof toolCallChunk.args === "string"
+      )
 
-  ;[...deltas, ...fallbackDeltas].forEach((toolCallChunk, fallbackIndex) => {
-    const indexValue =
-      typeof toolCallChunk.index === "number"
-        ? toolCallChunk.index
-        : fallbackIndex
-    const toolCallId = getStringValue(toolCallChunk.id)
-    const toolName = getStringValue(toolCallChunk.name)
-    const inputTextDelta =
-      typeof toolCallChunk.args === "string" ? toolCallChunk.args : ""
+    ;[...deltas, ...fallbackDeltas].forEach((toolCallChunk, fallbackIndex) => {
+      const indexValue =
+        typeof toolCallChunk.index === "number"
+          ? toolCallChunk.index
+          : fallbackIndex
+      const toolCallId = getStringValue(toolCallChunk.id)
+      const toolName = getStringValue(toolCallChunk.name)
+      const inputTextDelta =
+        typeof toolCallChunk.args === "string" ? toolCallChunk.args : ""
 
-    if (!inputTextDelta) {
-      return
-    }
+      if (!inputTextDelta) {
+        return
+      }
 
-    const pending =
-      (toolCallId ? resolvePendingToolCallById(state, toolCallId) : null) ??
-      resolvePendingToolCallByChunkIndex(state, messageChunkId, indexValue) ??
-      getOrCreatePendingToolCall({
-        state,
-        messageChunkId,
-        index: indexValue,
-        toolCallId,
-        toolName,
-      })
+      const pending =
+        (toolCallId ? resolvePendingToolCallById(state, toolCallId) : null) ??
+        resolvePendingToolCallByChunkIndex(state, messageChunkId, indexValue) ??
+        getOrCreatePendingToolCall({
+          state,
+          messageChunkId,
+          index: indexValue,
+          toolCallId,
+          toolName,
+        })
 
-    if (!pending) {
-      return
-    }
+      if (!pending) {
+        return
+      }
 
-    if (toolCallId && !pending.toolCallId) {
-      pending.toolCallId = toolCallId
-      state.toolCallKeysById.set(toolCallId, pending.key)
-    }
+      if (toolCallId && !pending.toolCallId) {
+        pending.toolCallId = toolCallId
+        state.toolCallKeysById.set(toolCallId, pending.key)
+      }
 
-    state.toolCallKeysByChunkIndex.set(
-      getChunkIndexKey(messageChunkId, indexValue),
-      pending.key
-    )
+      state.toolCallKeysByChunkIndex.set(
+        getChunkIndexKey(messageChunkId, indexValue),
+        pending.key
+      )
 
-    if (toolName && !pending.toolName) {
-      pending.toolName = toolName
-    }
+      if (toolName && !pending.toolName) {
+        pending.toolName = toolName
+      }
 
-    const resolvedToolCallId = pending.toolCallId ?? pending.key
-    const resolvedToolName = pending.toolName ?? "unknown_tool"
+      const resolvedToolCallId = pending.toolCallId ?? pending.key
+      const resolvedToolName = pending.toolName ?? "unknown_tool"
 
-    if (!pending.sentInputStart) {
+      if (!pending.sentInputStart) {
+        result.push({
+          type: "tool-input-start",
+          toolCallId: resolvedToolCallId,
+          toolName: resolvedToolName,
+        })
+        pending.sentInputStart = true
+      }
+
+      pending.inputText += inputTextDelta
+
       result.push({
-        type: "tool-input-start",
+        type: "tool-input-delta",
         toolCallId: resolvedToolCallId,
-        toolName: resolvedToolName,
+        inputTextDelta,
       })
-      pending.sentInputStart = true
-    }
 
-    pending.inputText += inputTextDelta
-
-    result.push({
-      type: "tool-input-delta",
-      toolCallId: resolvedToolCallId,
-      inputTextDelta,
+      const parsedInput = tryParseToolInput(pending.inputText)
+      if (!pending.sentInputAvailable && parsedInput !== null) {
+        result.push({
+          type: "tool-input-available",
+          toolCallId: resolvedToolCallId,
+          toolName: resolvedToolName,
+          input: parsedInput,
+        })
+        pending.sentInputAvailable = true
+      }
     })
-
-    const parsedInput = tryParseToolInput(pending.inputText)
-    if (!pending.sentInputAvailable && parsedInput !== null) {
-      result.push({
-        type: "tool-input-available",
-        toolCallId: resolvedToolCallId,
-        toolName: resolvedToolName,
-        input: parsedInput,
-      })
-      pending.sentInputAvailable = true
-    }
-  })
 
   return result
 }
@@ -428,14 +428,14 @@ function buildToolOutputChunk(
   if (!toolCallId) {
     return outputText
       ? {
-          type: "tool-output-available",
-          toolCallId: generatePartId(),
-          output: {
-            status,
-            text: outputText,
-            toolName,
-          },
-        }
+        type: "tool-output-available",
+        toolCallId: generatePartId(),
+        output: {
+          status,
+          text: outputText,
+          toolName,
+        },
+      }
       : null
   }
 
@@ -482,14 +482,13 @@ export function enqueueFinish(
 }
 
 function unwrapStreamModePayload(payload: unknown): unknown {
-  if (
-    Array.isArray(payload) &&
-    payload.length === 2 &&
-    typeof payload[0] === "string"
-  ) {
-    if (payload[0] === "messages" && Array.isArray(payload[1])) {
-      return payload[1]
+  // v2 格式: {type: "messages"|"updates", ns: [...], data: [...]}
+  if (payload && typeof payload === "object" && "type" in payload && "data" in payload) {
+    const obj = payload as { type: string; data: unknown }
+    if (obj.type === "messages" && Array.isArray(obj.data)) {
+      return obj.data
     }
+    // updates 事件不产生 UIMessageChunk，跳过
     return null
   }
   return payload

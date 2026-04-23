@@ -2,7 +2,6 @@ import { z } from "zod"
 
 // ── Shared primitives ──────────────────────────────────────────────
 
-const lcNamespace = z.array(z.string())
 const constructorType = z.literal("constructor")
 
 // ── Tool Call schemas ──────────────────────────────────────────────
@@ -143,12 +142,13 @@ export const messageSchema = z.union([
   humanMessageSchema,
 ])
 
-// ── Messages Event: ["messages", [Message, Metadata]] ──────────────
+// ── Messages Event (v2): {"type": "messages", "ns": [...], "data": [Message, Metadata]} ──
 
-export const sseMessagesEventSchema = z.tuple([
-  z.literal("messages"),
-  z.tuple([messageSchema, langgraphMetadataSchema.passthrough()]),
-])
+export const sseMessagesEventSchema = z.object({
+  type: z.literal("messages"),
+  ns: z.array(z.string()),
+  data: z.tuple([messageSchema, langgraphMetadataSchema.passthrough()]),
+})
 
 // ── Update schemas ─────────────────────────────────────────────────
 
@@ -224,12 +224,13 @@ export const updatePayloadSchema = z.union([
   z.record(z.unknown()),
 ])
 
-// ── Updates Event: ["updates", UpdatePayload] ──────────────────────
+// ── Updates Event (v2): {"type": "updates", "ns": [...], "data": UpdatePayload} ──────
 
-export const sseUpdatesEventSchema = z.tuple([
-  z.literal("updates"),
-  updatePayloadSchema,
-])
+export const sseUpdatesEventSchema = z.object({
+  type: z.literal("updates"),
+  ns: z.array(z.string()),
+  data: updatePayloadSchema,
+})
 
 // ── Artifact Event ──────────────────────────────────────────────
 
@@ -252,18 +253,18 @@ export const artifactDataSchema = z.object({
   status: z.enum(["creating", "updated", "completed"]),
 })
 
-export const artifactEventSchema = z.tuple([
-  z.literal("artifact"),
-  artifactDataSchema,
-])
+export const artifactEventSchema = z.object({
+  type: z.literal("artifact"),
+  data: artifactDataSchema,
+})
 
-// ── Top-level SSE Event (extensible) ───────────────────────────────
+// ── Top-level SSE Event (v2, extensible) ───────────────────────────
 
 export const sseEventSchema = z.union([
   sseMessagesEventSchema,
   sseUpdatesEventSchema,
   artifactEventSchema,
-  z.tuple([z.string(), z.unknown()]),
+  z.object({ type: z.string(), data: z.unknown(), ns: z.array(z.string()).optional() }),
 ])
 
 // ── Type exports ───────────────────────────────────────────────────

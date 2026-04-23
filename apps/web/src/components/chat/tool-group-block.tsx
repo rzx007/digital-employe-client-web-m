@@ -1,24 +1,11 @@
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@workspace/ui/components/collapsible"
 import { cn } from "@workspace/ui/lib/utils"
-import {
-  IconCircle,
-  IconChevronDown,
-  IconLoader,
-  IconTool,
-  IconXboxX
-} from "@tabler/icons-react"
 import type { ComponentProps } from "react"
-import { useState } from "react"
 
 import type {
   ClassifiedBlock,
   ToolGroupItem,
 } from "@/lib/chat/message-classifier"
-import { ToolSummary } from "./tool-summary"
+import { ToolActionRow } from "./tool-action-row"
 
 export type ToolGroupBlockProps = ComponentProps<"div"> & {
   block: Extract<ClassifiedBlock, { kind: "tool-group" }>
@@ -38,67 +25,43 @@ function hasError(tools: ToolGroupItem[]): boolean {
 
 export function ToolGroupBlock({
   block,
-  defaultOpen = false,
   className,
   ...props
 }: ToolGroupBlockProps) {
-  const [isOpen, setIsOpen] = useState(defaultOpen)
+  if (block.tools.length === 1) {
+    const tool = block.tools[0]
+    return (
+      <ToolActionRow
+        className={cn("not-prose", className)}
+        summary={tool.summary}
+        state={tool.state}
+        resultText={tool.resultText}
+        input={tool.input}
+        {...props}
+      />
+    )
+  }
+
   const done = isGroupDone(block.tools)
   const error = hasError(block.tools)
 
-  const StatusIcon = done
-    ? error
-      ? IconXboxX
-      : IconCircle
-    : IconLoader
-
   return (
-    <div className={cn("not-prose", className)} {...props}>
-      <Collapsible onOpenChange={setIsOpen} open={isOpen}>
-        <CollapsibleTrigger
-          className={cn(
-            "flex w-full items-center gap-1.5 text-xs transition-colors outline-none",
-            error
-              ? "text-destructive/70 hover:text-destructive"
-              : done
-                ? "text-muted-foreground/60 hover:text-muted-foreground"
-                : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <StatusIcon
-            className={cn(
-              "size-3 shrink-0",
-              !done && "animate-spin",
-              done && !error && "text-green-600/70"
-            )}
+    <div className={cn("not-prose rounded-lg border border-border/50 bg-muted/30 px-3 py-2", className)} {...props}>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        {done ? (error ? "x" : "done") : "..."}
+        <span className="truncate">{block.summary}</span>
+      </div>
+      <div className="mt-1.5 space-y-1.5">
+        {block.tools.map((tool) => (
+          <ToolActionRow
+            key={tool.key}
+            summary={tool.summary}
+            state={tool.state}
+            resultText={tool.resultText}
+            input={tool.input}
           />
-          <IconTool className="size-3 shrink-0" />
-          <span className="flex-1 truncate text-left">
-            {block.summary}
-          </span>
-          <IconChevronDown
-            className={cn(
-              "size-3 shrink-0 transition-transform",
-              isOpen ? "rotate-180" : "rotate-0"
-            )}
-          />
-        </CollapsibleTrigger>
-        <CollapsibleContent
-          className={cn(
-            "space-y-0.5 pl-5",
-            "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0"
-          )}
-        >
-          {block.tools.map((tool) => (
-            <ToolSummary
-              key={tool.key}
-              summary={tool.summary}
-              state={tool.state}
-              resultText={tool.resultText}
-            />
-          ))}
-        </CollapsibleContent>
-      </Collapsible>
+        ))}
+      </div>
     </div>
   )
 }

@@ -1,0 +1,5917 @@
+[
+  {
+    "type": "start"
+  },
+  {
+    "type": "tool-input-start",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "toolName": "write_todos"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "{"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\"todos"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\":["
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "{"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\"content"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\":"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "使用"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": " hot"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "-"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "news"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "技能"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "获取"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "微博"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "热"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "搜"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": " top"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": ","
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\"status"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\":"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "in"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "_"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "progress"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "},{"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\"content"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\":"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "将"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "获取"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "到的"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "微博"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "热"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "搜"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": " top"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "写入"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "文件"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": ","
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\"status"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\":"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "pending"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "inputTextDelta": "}]}"
+  },
+  {
+    "type": "tool-input-available",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "toolName": "write_todos",
+    "input": {
+      "todos": [
+        {
+          "content": "使用 hot-news 技能获取微博热搜 top 5",
+          "status": "in_progress"
+        },
+        {
+          "content": "将获取到的微博热搜 top 5 写入文件",
+          "status": "pending"
+        }
+      ]
+    }
+  },
+  {
+    "type": "tool-output-available",
+    "toolCallId": "EsCtEHoNR4ucerCCaejttc99jPGWqiLX",
+    "output": {
+      "status": "success",
+      "text": "Updated todo list to [{'content': '使用 hot-news 技能获取微博热搜 top 5', 'status': 'in_progress'}, {'content': '将获取到的微博热搜 top 5 写入文件', 'status': 'pending'}]",
+      "toolName": "write_todos",
+      "input": {
+        "todos": [
+          {
+            "content": "使用 hot-news 技能获取微博热搜 top 5",
+            "status": "in_progress"
+          },
+          {
+            "content": "将获取到的微博热搜 top 5 写入文件",
+            "status": "pending"
+          }
+        ]
+      },
+      "inputText": "{\"todos\":[{\"content\":\"使用 hot-news 技能获取微博热搜 top 5\",\"status\":\"in_progress\"},{\"content\":\"将获取到的微博热搜 top 5 写入文件\",\"status\":\"pending\"}]}"
+    }
+  },
+  {
+    "type": "tool-input-start",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "toolName": "read_file"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "{"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "\"file"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "_"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "path"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "\":"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "/"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "skills"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "/"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "hot"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "-"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "news"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "/"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "SK"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "ILL"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "md"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": ","
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "\"limit"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "\":"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "1"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "inputTextDelta": "}"
+  },
+  {
+    "type": "tool-input-available",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "toolName": "read_file",
+    "input": {
+      "file_path": "/skills/hot-news/SKILL.md",
+      "limit": 1000
+    }
+  },
+  {
+    "type": "tool-output-available",
+    "toolCallId": "1BFQKgt7FawkdFrzSaDTM9XNEvhwFqAb",
+    "output": {
+      "status": "success",
+      "text": "     1\t---\n     2\tname: hot-news\n     3\tdescription: 查询多个平台的热门新闻和热榜，支持微博、知乎、抖音、B站等20+平台；当用户需要查看热搜、热门话题、时事新闻或特定平台的热榜时使用\n     4\tdependency:\n     5\t  python:\n     6\t    - requests>=2.25.0\n     7\t---\n    \n... [truncated, total 2667 chars] ...\nV2EX（技术）\n   100\tpython scripts/hot_news.py --type douban-movie # 豆瓣电影\n   101\t```",
+      "toolName": "read_file",
+      "input": {
+        "file_path": "/skills/hot-news/SKILL.md",
+        "limit": 1000
+      },
+      "inputText": "{\"file_path\":\"/skills/hot-news/SKILL.md\",\"limit\":1000}"
+    }
+  },
+  {
+    "type": "tool-input-start",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "toolName": "execute"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "{"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "\"command"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "\":"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "python"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": " C"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": ":\\\\"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "Users"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "\\\\"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "ru"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "anz"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "\\\\."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "digital"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "-"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "employee"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "\\\\"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "employees"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "-"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "skills"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "\\\\"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "1"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "\\\\"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "skills"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "\\\\"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "hot"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "-"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "news"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "\\\\"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "scripts"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "\\\\"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "hot"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "_"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "news"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "py"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": " --"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "type"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": " we"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "ibo"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": " --"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "top"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "inputTextDelta": "}"
+  },
+  {
+    "type": "tool-input-available",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "toolName": "execute",
+    "input": {
+      "command": "python C:\\Users\\ruanz\\.digital-employee\\employees-skills\\1\\skills\\hot-news\\scripts\\hot_news.py --type weibo --top 5"
+    }
+  },
+  {
+    "type": "tool-output-available",
+    "toolCallId": "53tSeIHvLQ49X8btVnGT1vhwa8L9WSxE",
+    "output": {
+      "status": "success",
+      "text": "======================================================================\r\n【新浪微博热搜】热门榜单\r\n更新时间：2026-04-23 10:37:10\r\n======================================================================\r\n 1. 女子怒怼空乘不会中文还飞\n... [truncated, total 1209 chars] ...\n=========================================\r\n\n[Command succeeded with exit code 0]",
+      "toolName": "execute",
+      "input": {
+        "command": "python C:\\Users\\ruanz\\.digital-employee\\employees-skills\\1\\skills\\hot-news\\scripts\\hot_news.py --type weibo --top 5"
+      },
+      "inputText": "{\"command\":\"python C:\\\\Users\\\\ruanz\\\\.digital-employee\\\\employees-skills\\\\1\\\\skills\\\\hot-news\\\\scripts\\\\hot_news.py --type weibo --top 5\"}"
+    }
+  },
+  {
+    "type": "tool-input-start",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "toolName": "write_file"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "{"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\"content"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\":"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "================"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "================"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "================"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "================"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "======"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\\n"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "【"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "新"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "浪"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "微博"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "热"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "搜"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "】"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "热门"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "榜"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "单"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " Top"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\\n"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "更新"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "时间"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "："
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "-"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "-"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "1"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": ":"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": ":"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "1"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\\n"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "================"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "================"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "================"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "================"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "======"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\\n"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "1"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " 女"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "子"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "怒"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "怼"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "空"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "乘"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "不会"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "中文"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "还"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "飞"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "国际"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "航班"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "  "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "🔥"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "1"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "1"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "万"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\\n"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "    "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "🔗"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " https"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "://"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "s"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "we"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "ibo"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "com"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "/"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "we"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "ibo"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "?"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "q"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "=%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "A"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "AD"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "BC"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "A"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "BA"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "D"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "BC"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "A"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "AD"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "BF"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "A"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "BD"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "AA"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "F"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "AD"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\\n"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "库"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "克"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "称"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "苹果"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "地图"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "发布"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "是"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "首"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "个"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "重大"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "错误"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "  "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "🔥"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "万"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\\n"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "    "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "🔗"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " https"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "://"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "s"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "we"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "ibo"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "com"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "/"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "we"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "ibo"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "?"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "q"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "=%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "BA"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "A"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "C"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "C"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "BE"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "F"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "1"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "AF"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "A"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "AA"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "D"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "A"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "A"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "AF"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "AF"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\\n"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " 人"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "民"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "海军"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "成立"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "周年"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "  "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "🔥"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "万"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\\n"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "    "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "🔗"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " https"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "://"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "s"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "we"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "ibo"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "com"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "/"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "we"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "ibo"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "?"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "q"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "=%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "BA"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "BA"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "1"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "AB"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "1"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "A"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\\n"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " 李"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "小"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "冉"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "王"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "濛"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "唐"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "艺"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "昕"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "hi"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "合"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "照"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "  "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "🔥"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "万"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\\n"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "    "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "🔗"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " https"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "://"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "s"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "we"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "ibo"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "com"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "/"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "we"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "ibo"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "?"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "q"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "=%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "D"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "F"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "BF"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "BA"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "hi"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "A"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\\n"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " 原"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "来"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "前"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "额"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "叶"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "成熟"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "是"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "这样的"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "  "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "🔥"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "万"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\\n"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "    "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "🔗"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": " https"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "://"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "s"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "we"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "ibo"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "com"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "/"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "we"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "ibo"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "?"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "q"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "=%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "F"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "D"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "A"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "D"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "A"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "D"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "F"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "F"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "AF"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "BF"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "6"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "A"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "0"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "B"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "E"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "7"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "9"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "A"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "8"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "4"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "%"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "2"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "3"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\\n"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "================"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "================"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "================"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "================"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "======"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\\n"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": ","
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\"file"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "_"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "path"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\":"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "/"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "artifacts"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "/"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "we"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "ibo"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "_"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "top"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "."
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "txt"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "inputTextDelta": "}"
+  },
+  {
+    "type": "tool-input-available",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "toolName": "write_file",
+    "input": {
+      "content": "======================================================================\n【新浪微博热搜】热门榜单 Top 5\n更新时间：2026-04-23 10:37:10\n======================================================================\n 1. 女子怒怼空乘不会中文还飞国际航班  🔥 115.7万\n    🔗 https://s.weibo.com/weibo?q=%23%E5%A5%B3%E5%AD%90%E6%80%92%E6%80%BC%E7%A9%BA%E4%B9%98%E4%B8%8D%E4%BC%9A%E4%B8%AD%E6%96%87%E8%BF%98%E9%A3%9E%E5%9B%BD%E9%99%85%E8%88%AA%E7%8F%AD%23\n 2. 库克称苹果地图发布是首个重大错误  🔥 85.7万\n    🔗 https://s.weibo.com/weibo?q=%23%E5%BA%93%E5%85%8B%E7%A7%B0%E8%8B%B9%E6%9E%9C%E5%9C%B0%E5%9B%BE%E5%8F%91%E5%B8%83%E6%98%AF%E9%A6%96%E4%B8%AA%E9%87%8D%E5%A4%A7%E9%94%99%E8%AF%AF%23\n 3. 人民海军成立77周年  🔥 67.0万\n    🔗 https://s.weibo.com/weibo?q=%23%E4%BA%BA%E6%B0%91%E6%B5%B7%E5%86%9B%E6%88%90%E7%AB%8B77%E5%91%A8%E5%B9%B4%23\n 4. 李小冉王濛唐艺昕hi6合照  🔥 48.3万\n    🔗 https://s.weibo.com/weibo?q=%23%E6%9D%8E%E5%B0%8F%E5%86%89%E7%8E%8B%E6%BF%9B%E5%94%90%E8%89%BA%E6%98%95hi6%E5%90%88%E7%85%A7%23\n 5. 原来前额叶成熟是这样的  🔥 44.0万\n    🔗 https://s.weibo.com/weibo?q=%23%E5%8E%9F%E6%9D%A5%E5%89%8D%E9%A2%9D%E5%8F%B6%E6%88%90%E7%86%9F%E6%98%AF%E8%BF%99%E6%A0%B7%E7%9A%84%23\n======================================================================\n",
+      "file_path": "/artifacts/weibo_top5.txt"
+    }
+  },
+  {
+    "type": "tool-output-available",
+    "toolCallId": "skBfMDeVqCPHzWhawtOwWzU7ix7AGTq0",
+    "output": {
+      "status": "success",
+      "text": "Updated file /artifacts/weibo_top5.txt",
+      "toolName": "write_file",
+      "input": {
+        "content": "======================================================================\n【新浪微博热搜】热门榜单 Top 5\n更新时间：2026-04-23 10:37:10\n======================================================================\n 1. 女子怒怼空乘不会中文还飞国际航班  🔥 115.7万\n    🔗 https://s.weibo.com/weibo?q=%23%E5%A5%B3%E5%AD%90%E6%80%92%E6%80%BC%E7%A9%BA%E4%B9%98%E4%B8%8D%E4%BC%9A%E4%B8%AD%E6%96%87%E8%BF%98%E9%A3%9E%E5%9B%BD%E9%99%85%E8%88%AA%E7%8F%AD%23\n 2. 库克称苹果地图发布是首个重大错误  🔥 85.7万\n    🔗 https://s.weibo.com/weibo?q=%23%E5%BA%93%E5%85%8B%E7%A7%B0%E8%8B%B9%E6%9E%9C%E5%9C%B0%E5%9B%BE%E5%8F%91%E5%B8%83%E6%98%AF%E9%A6%96%E4%B8%AA%E9%87%8D%E5%A4%A7%E9%94%99%E8%AF%AF%23\n 3. 人民海军成立77周年  🔥 67.0万\n    🔗 https://s.weibo.com/weibo?q=%23%E4%BA%BA%E6%B0%91%E6%B5%B7%E5%86%9B%E6%88%90%E7%AB%8B77%E5%91%A8%E5%B9%B4%23\n 4. 李小冉王濛唐艺昕hi6合照  🔥 48.3万\n    🔗 https://s.weibo.com/weibo?q=%23%E6%9D%8E%E5%B0%8F%E5%86%89%E7%8E%8B%E6%BF%9B%E5%94%90%E8%89%BA%E6%98%95hi6%E5%90%88%E7%85%A7%23\n 5. 原来前额叶成熟是这样的  🔥 44.0万\n    🔗 https://s.weibo.com/weibo?q=%23%E5%8E%9F%E6%9D%A5%E5%89%8D%E9%A2%9D%E5%8F%B6%E6%88%90%E7%86%9F%E6%98%AF%E8%BF%99%E6%A0%B7%E7%9A%84%23\n======================================================================\n",
+        "file_path": "/artifacts/weibo_top5.txt"
+      },
+      "inputText": "{\"content\":\"======================================================================\\n【新浪微博热搜】热门榜单 Top 5\\n更新时间：2026-04-23 10:37:10\\n====================... [truncated, total 1232 chars] ...========================================================\\n\",\"file_path\":\"/artifacts/weibo_top5.txt\"}"
+    }
+  },
+  {
+    "type": "tool-input-start",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "toolName": "write_todos"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "{"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\"todos"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\":["
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "{"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\"content"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\":"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "使用"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": " hot"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "-"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "news"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "技能"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "获取"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "微博"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "热"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "搜"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": " top"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": ","
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\"status"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\":"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "completed"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "},{"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\"content"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\":"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "将"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "获取"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "到的"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "微博"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "热"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "搜"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": " top"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "5"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": " "
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "写入"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "文件"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": ","
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\"status"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\":"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "completed"
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "\""
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "inputTextDelta": "}]}"
+  },
+  {
+    "type": "tool-input-available",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "toolName": "write_todos",
+    "input": {
+      "todos": [
+        {
+          "content": "使用 hot-news 技能获取微博热搜 top 5",
+          "status": "completed"
+        },
+        {
+          "content": "将获取到的微博热搜 top 5 写入文件",
+          "status": "completed"
+        }
+      ]
+    }
+  },
+  {
+    "type": "tool-output-available",
+    "toolCallId": "N40RKVAYNmgtoAPYsToRy5Ns9wq5P11j",
+    "output": {
+      "status": "success",
+      "text": "Updated todo list to [{'content': '使用 hot-news 技能获取微博热搜 top 5', 'status': 'completed'}, {'content': '将获取到的微博热搜 top 5 写入文件', 'status': 'completed'}]",
+      "toolName": "write_todos",
+      "input": {
+        "todos": [
+          {
+            "content": "使用 hot-news 技能获取微博热搜 top 5",
+            "status": "completed"
+          },
+          {
+            "content": "将获取到的微博热搜 top 5 写入文件",
+            "status": "completed"
+          }
+        ]
+      },
+      "inputText": "{\"todos\":[{\"content\":\"使用 hot-news 技能获取微博热搜 top 5\",\"status\":\"completed\"},{\"content\":\"将获取到的微博热搜 top 5 写入文件\",\"status\":\"completed\"}]}"
+    }
+  },
+  {
+    "type": "text-start",
+    "id": "lc-part-0001"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "已"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "为您"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "获取"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "微博"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "热"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "搜"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " Top"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " "
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "5"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "，"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "并将"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "结果"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "写入"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "文件"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " `/"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "artifacts"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "/"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "we"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "ibo"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "_"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "top"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "5"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "."
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "txt"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "`"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "。"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "\n\n"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "**"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "微博"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "热"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "搜"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " Top"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " "
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "5"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " 内容"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "如下"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "："
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "**"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "\n"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "1"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "."
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " 女"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "子"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "怒"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "怼"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "空"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "乘"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "不会"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "中文"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "还"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "飞"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "国际"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "航班"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " 🔥"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " "
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "1"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "1"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "5"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "."
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "7"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "万"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "\n"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "2"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "."
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " "
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "库"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "克"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "称"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "苹果"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "地图"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "发布"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "是"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "首"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "个"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "重大"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "错误"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " 🔥"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " "
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "8"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "5"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "."
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "7"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "万"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "\n"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "3"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "."
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " 人"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "民"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "海军"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "成立"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "7"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "7"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "周年"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " 🔥"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " "
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "6"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "7"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "."
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "0"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "万"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "\n"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "4"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "."
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " 李"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "小"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "冉"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "王"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "濛"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "唐"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "艺"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "昕"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "hi"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "6"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "合"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "照"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " 🔥"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " "
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "4"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "8"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "."
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "3"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "万"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "\n"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "5"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "."
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " 原"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "来"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "前"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "额"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "叶"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "成熟"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "是"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "这样的"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " 🔥"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": " "
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "4"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "4"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "."
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "0"
+  },
+  {
+    "type": "text-delta",
+    "id": "lc-part-0001",
+    "delta": "万"
+  },
+  {
+    "type": "text-end",
+    "id": "lc-part-0001"
+  },
+  {
+    "type": "finish",
+    "finishReason": "stop"
+  }
+]

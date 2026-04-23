@@ -60,6 +60,7 @@ class Settings:
     agent_interface_base_url: str | None = None
     dbchat_base_url: str | None = None
     login_url: str | None = None
+    execute_timeout: int = 600
 
 
 SETTINGS_JSON_PATH = Path.home() / ".digital-employee" / "settings.json"
@@ -151,6 +152,7 @@ def get_settings() -> Settings:
         agent_interface_base_url=_get_env_value("AGENT_INTERFACE_BASE_URL"),
         dbchat_base_url=_get_env_value("DBCHAT_BASE_URL"),
         login_url=_get_env_value("LOGIN_URL"),
+        execute_timeout=_safe_int_env("EXECUTE_TIMEOUT", 600),
     )
 
 

@@ -8,6 +8,8 @@ import { IconBrain, IconChevronDown } from "@tabler/icons-react"
 import type { ComponentProps } from "react"
 import { useState } from "react"
 
+const SHORT_TEXT_THRESHOLD = 120
+
 export type ThinkingBlockProps = ComponentProps<"div"> & {
   text: string
   defaultOpen?: boolean
@@ -15,13 +17,27 @@ export type ThinkingBlockProps = ComponentProps<"div"> & {
 
 export function ThinkingBlock({
   text,
-  defaultOpen = false,
+  defaultOpen,
   className,
   ...props
 }: ThinkingBlockProps) {
-  const [isOpen, setIsOpen] = useState(defaultOpen)
-
   if (!text.trim()) return null
+
+  const isShort = text.length <= SHORT_TEXT_THRESHOLD
+  const [isOpen, setIsOpen] = useState(
+    defaultOpen ?? isShort
+  )
+
+  if (isShort) {
+    return (
+      <div className={cn("not-prose", className)} {...props}>
+        <div className="flex items-start gap-1.5 text-xs text-muted-foreground/60">
+          <IconBrain className="mt-0.5 size-3 shrink-0" />
+          <p className="leading-relaxed">{text}</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={cn("not-prose", className)} {...props}>

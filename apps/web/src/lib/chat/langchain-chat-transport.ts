@@ -280,8 +280,8 @@ export class LangChainChatTransport<
             const event = parsed.data
 
             // 处理 artifact 事件
-            if (Array.isArray(event) && event[0] === "artifact" && event.length === 2) {
-              const artifactData = event[1] as ArtifactData
+            if (event && typeof event === "object" && "type" in event && (event as { type: string }).type === "artifact" && "data" in event) {
+              const artifactData = (event as { data: unknown }).data as ArtifactData
               if (artifactData && artifactHandler) {
                 artifactHandler(artifactData)
               }

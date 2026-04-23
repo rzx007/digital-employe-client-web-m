@@ -179,7 +179,6 @@ export function ConversationChatView({
     <ChatPanel
       contact={contact}
       title={title}
-      conversationId={conversationId}
       messages={displayMessages}
       inputValue={inputValue}
       status={chatStatus}

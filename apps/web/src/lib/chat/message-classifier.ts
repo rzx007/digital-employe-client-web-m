@@ -2,7 +2,6 @@ import type { UIMessage } from "ai"
 
 import {
   summarizeToolCall,
-  summarizeToolGroup,
   type ToolCallSummary,
 } from "./tool-summarizer"
 
@@ -23,6 +22,7 @@ export interface ToolGroupItem {
   state: string
   summary: ToolCallSummary
   resultText: string | null
+  input: unknown
   part: ToolUIPart
 }
 
@@ -62,14 +62,25 @@ function extractResultText(part: ToolUIPart): string | null {
   return null
 }
 
+/**
+ * 将 UI 消息的部分（parts）分类为不同的块（blocks），以便在界面上进行结构化展示。
+ *
+ * 该函数根据消息中是否包含工具调用（Tool Calls）以及文本部分的位置，
+ * 将消息内容划分为“最终响应”、“思考过程”或“工具调用组”。
+ *
+ * @param message - 需要分类的 UI 消息对象，包含唯一标识符和部分内容数组。
+ * @returns 分类后的块数组。如果消息为空或无有效内容，则返回空数组。
+ */
 export function classifyMessageParts(
   message: UIMessage
 ): ClassifiedBlock[] {
   const parts = message.parts
   if (parts.length === 0) return []
 
+  // 检查消息中是否包含任何工具调用部分
   const hasAnyTool = parts.some(isToolUIPart)
 
+  // 如果没有工具调用，则将所有文本部分合并为一个最终响应块
   if (!hasAnyTool) {
     const text = parts
       .filter((p) => p.type === "text" && "text" in p && p.text)
@@ -85,48 +96,45 @@ export function classifyMessageParts(
     }]
   }
 
+  // 找到最后一个工具调用部分的索引，用于区分工具执行前的思考过程和工具执行后的最终响应
   const lastToolIndex = parts.reduce(
     (acc, p, i) => (isToolUIPart(p) ? i : acc),
     -1
   )
 
   const blocks: ClassifiedBlock[] = []
-  const toolBuffer: {
-    part: ToolUIPart
-    index: number
-    summary: ToolCallSummary
-  }[] = []
 
-  function flushToolBuffer() {
-    if (toolBuffer.length === 0) return
+  function pushSingleTool(part: ToolUIPart, index: number) {
+    const toolInput = "input" in part ? (part as ToolUIPart).input : undefined
+    const summary = summarizeToolCall({
+      type: part.type,
+      input: toolInput,
+    })
 
-    const tools: ToolGroupItem[] = toolBuffer.map((t) => ({
-      key: `${message.id}:tool:${t.part.toolCallId}:${t.index}`,
-      toolCallId: t.part.toolCallId,
-      toolName: t.summary.toolName,
-      type: t.part.type,
-      state: ("state" in t.part ? (t.part as ToolUIPart).state : "unknown") as string,
-      summary: t.summary,
-      resultText: extractResultText(t.part),
-      part: t.part,
-    }))
+    const tool: ToolGroupItem = {
+      key: `${message.id}:tool:${part.toolCallId}:${index}`,
+      toolCallId: part.toolCallId,
+      toolName: summary.toolName,
+      type: part.type,
+      state: ("state" in part ? (part as ToolUIPart).state : "unknown") as string,
+      summary,
+      resultText: extractResultText(part),
+      input: toolInput,
+      part,
+    }
 
     blocks.push({
       kind: "tool-group",
-      key: `${message.id}:tgroup:${toolBuffer[0].index}`,
-      tools,
-      summary: summarizeToolGroup(tools.map((t) => t.summary)),
+      key: `${message.id}:tgroup:${index}`,
+      tools: [tool],
+      summary: summary.label,
     })
-
-    toolBuffer.length = 0
   }
 
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]
 
     if (part.type === "text" && "text" in part && part.text) {
-      flushToolBuffer()
-
       const cleaned = stripThinkTags(part.text)
 
       if (i > lastToolIndex) {
@@ -148,19 +156,10 @@ export function classifyMessageParts(
     }
 
     if (isToolUIPart(part)) {
-      const summary = summarizeToolCall({
-        type: part.type,
-        input: "input" in part ? (part as ToolUIPart).input : undefined,
-      })
-
-      toolBuffer.push({ part, index: i, summary })
+      pushSingleTool(part, i)
       continue
     }
-
-    flushToolBuffer()
   }
-
-  flushToolBuffer()
 
   return blocks
 }

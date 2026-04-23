@@ -5,6 +5,7 @@ import { useShallow } from "zustand/react/shallow"
 import {
   IconCalendar,
   IconArchive,
+  IconFolder,
   IconMessage2Plus,
   IconDots,
   IconHistory,
@@ -33,15 +34,16 @@ import {
 
 import { useDeleteConversationMutation } from "@/hooks/use-chat-queries"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useArtifactStore } from "@/stores/artifact-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
+import { cn } from "@workspace/ui/lib/utils"
 import { Separator } from "@workspace/ui/components/separator"
 import type { ChatViewContact } from "./chat-view-shared"
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
 
 interface ChatPanelHeaderProps {
   title: string
-  conversationId?: string | number
   contact?: ChatViewContact
   onOpenContacts?: () => void
   onOpenConversations?: () => void
@@ -50,7 +52,6 @@ interface ChatPanelHeaderProps {
 
 export function ChatPanelHeader({
   title,
-  conversationId,
   contact,
   onOpenContacts,
   onOpenConversations,
@@ -59,16 +60,20 @@ export function ChatPanelHeader({
   const isMobile = useIsMobile()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [alertOpen, setAlertOpen] = React.useState(false)
-  const { selectedContactId, setSelectedConversationId, setDraftConversation } =
+  const { selectedContactId, setSelectedConversationId, setDraftConversation, selectedConversationId } =
     useChatStore(
       useShallow((state) => ({
         selectedContactId: state.selectedContactId,
+        selectedConversationId: state.selectedConversationId,
         setSelectedConversationId: state.setSelectedConversationId,
         setDraftConversation: state.setDraftConversation,
       }))
     )
   const deleteMutation = useDeleteConversationMutation()
   const openMonitor = useMonitorStore((s) => s.openMonitor)
+  const isArtifactPanelOpen = useArtifactStore((s) => s.isPanelOpen)
+  const setArtifactPanelOpen = useArtifactStore((s) => s.setPanelOpen)
+  const isCompactMode = useChatStore((s) => s.isCompactMode)
 
   const handleDeleteClick = () => {
     setMenuOpen(false)
@@ -78,11 +83,11 @@ export function ChatPanelHeader({
   const handleDeleteConfirm = () => {
     setAlertOpen(false)
 
-    if (!selectedContactId || !conversationId) return
+    if (!selectedContactId || !selectedConversationId) return
 
     deleteMutation.mutate(
       {
-        conversationId: String(conversationId),
+        conversationId: String(selectedConversationId),
         contactId: selectedContactId,
       },
       {
@@ -137,7 +142,10 @@ export function ChatPanelHeader({
             </>
           )}
           <h3
-            className="max-w-[200px] min-w-0 flex-1 truncate text-sm font-medium"
+            className={cn(
+              "min-w-0 flex-1 truncate text-sm font-medium",
+              isCompactMode ? "max-w-[120px]" : "max-w-[200px]"
+            )}
             title={title}
           >
             {title}
@@ -145,7 +153,7 @@ export function ChatPanelHeader({
         </div>
 
         <div className="flex items-center gap-1">
-          {onNewConversation && (
+          {!isCompactMode && onNewConversation && (
             <Button
               title="新建对话"
               variant="ghost"
@@ -155,7 +163,7 @@ export function ChatPanelHeader({
               <IconMessage2Plus className="size-4" />
             </Button>
           )}
-          {onOpenConversations && (
+          {!isCompactMode && onOpenConversations && (
             <Button
               title="历史话列表"
               variant="ghost"
@@ -165,23 +173,18 @@ export function ChatPanelHeader({
               <IconHistory className="size-4" />
             </Button>
           )}
-          {contact?.type === "employee" && (
+          {selectedConversationId && (
             <Button
-              title="监控"
+              title={isArtifactPanelOpen ? "收起资源管理器" : "打开资源管理器"}
               variant="ghost"
               size="icon-sm"
-              onClick={() =>
-                openMonitor(
-                  contact.employee?.id ?? "",
-                  contact.employee?.name ?? ""
-                )
-              }
+              onClick={() => setArtifactPanelOpen(!isArtifactPanelOpen)}
             >
-              <IconCalendar className="size-4" />
+              <IconFolder className="size-4" />
             </Button>
           )}
           {
-            conversationId && (
+            selectedConversationId && (
               <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon-sm">
@@ -189,6 +192,20 @@ export function ChatPanelHeader({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-36">
+                  {contact?.type === "employee" && (
+                    <DropdownMenuItem
+                      onSelect={
+                        () =>
+                          openMonitor(
+                            contact?.employee?.id ?? "",
+                            contact?.employee?.name ?? ""
+                          )
+                      }
+                    >
+                      <IconCalendar className="text-muted-foreground" />
+                      <span>监控</span>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem>
                     <IconPencil className="text-muted-foreground" />
                     <span>重命名</span>

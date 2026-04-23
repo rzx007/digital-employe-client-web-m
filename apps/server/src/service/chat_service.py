@@ -264,38 +264,55 @@ class ChatService:
 
     @staticmethod
     def _extract_text_from_chunk(value: Any) -> str:
+        """从 v2 格式的 serializable_chunk 中提取文本内容。
+
+        v2 格式: {"type": "messages", "ns": [], "data": [[AIMessageChunk序列化, metadata]]}
+        只处理 type=messages 的事件，从 data[0] 中提取 content 文本。
+        """
         if value is None:
             return ""
         if isinstance(value, str):
             return value
-        if isinstance(value, list):
-            return "".join(ChatService._extract_text_from_chunk(item) for item in value)
         if isinstance(value, dict):
+            # v2 格式：顶层是 {"type": ..., "data": ...}
+            if "type" in value and "data" in value:
+                if value["type"] != "messages":
+                    return ""
+                data = value["data"]
+                if not isinstance(data, list) or len(data) == 0:
+                    return ""
+                return ChatService._extract_text_from_chunk(data[0])
+            # 递归处理 kwargs 等嵌套 dict
             text_parts: list[str] = []
             for key, item in value.items():
-                if key in {"content", "text", "output"}:
+                if key in {"content", "text"}:
                     text_parts.append(ChatService._extract_text_from_chunk(item))
-                elif key in {"messages", "events", "chunks", "kwargs", "additional_kwargs"}:
+                elif key in {"kwargs"}:
                     text_parts.append(ChatService._extract_text_from_chunk(item))
             return "".join(text_parts)
+        if isinstance(value, list):
+            return "".join(ChatService._extract_text_from_chunk(item) for item in value)
         return ""
 
     @staticmethod
     def _try_extract_artifact(chunk: Any, conversation_id: int, pending_tool_calls: dict) -> dict | None:
-        """从 agent.astream chunk 中检测文件操作并生成 artifact 事件。
+        """从 agent.astream v2 chunk 中检测文件操作并生成 artifact 事件。
+
+        v2 格式: {"type": "messages"|"updates", "ns": [...], "data": ...}
 
         处理两种事件：
         - messages 事件中的 ToolMessage：记录 pending 信息（工具名、file_path、tool_call_id）
         - updates 事件中的 tools files：获取文件完整内容，与 pending 合并后发出 artifact
 
         Args:
-            chunk: agent.astream 的原始 tuple (stream_mode, payload)
+            chunk: agent.astream v2 格式的 dict {"type", "ns", "data"}
             conversation_id: 会话 ID
             pending_tool_calls: 挂起的工具调用映射 {tool_call_id -> {tool_name, file_path}}
         """
-        if not isinstance(chunk, tuple) or len(chunk) != 2:
+        if not isinstance(chunk, dict) or "type" not in chunk or "data" not in chunk:
             return None
-        stream_mode, payload = chunk[0], chunk[1]
+        stream_mode = chunk["type"]
+        payload = chunk["data"]
 
         # 处理 messages 事件：检测 write_file / edit_file 的 ToolMessage
         if stream_mode == "messages":
@@ -467,7 +484,8 @@ class ChatService:
             async for chunk in agent.astream(
                 {"messages": request_messages},
                 stream_mode=["messages", "updates"],
-                config={"configurable": {"thread_id": conversation_id}}
+                config={"configurable": {"thread_id": conversation_id}},
+                version="v2"
             ):
                 serializable_chunk = ChatService.convert_to_serializable(chunk)
                 collected_chunks.append(serializable_chunk)

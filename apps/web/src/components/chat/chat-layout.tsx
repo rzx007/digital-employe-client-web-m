@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import * as React from "react"
 import { toast } from "sonner"
+import { useSize } from "ahooks"
 
 import { Sheet, SheetContent } from "@workspace/ui/components/sheet"
 import { cn } from "@workspace/ui/lib/utils"
@@ -149,10 +150,23 @@ export function ChatLayout({
     useChatStore.getState().setActiveTab("contacts")
   }
 
+  const layoutRef = useRef<HTMLDivElement>(null)
+  const layoutSize = useSize(layoutRef)
+  const layoutWidth = layoutSize?.width ?? 0
+
+  const shouldCollapseRecent =
+    isPanelOpen && !isFullscreen && !isMobile && layoutWidth < 1902
+
+  const setCompactMode = useChatStore((s) => s.setCompactMode)
+  useEffect(() => {
+    setCompactMode(shouldCollapseRecent)
+  }, [shouldCollapseRecent, setCompactMode])
+
   const showMonitorSheet = isMonitorOpen && activeTab === "chat"
 
   return (
     <div
+      ref={layoutRef}
       className={cn(
         "relative flex min-h-0 flex-1",
         isMobile && "flex-col",
@@ -166,9 +180,17 @@ export function ChatLayout({
         {!isMobile && <AppToolbar />}
 
         {!isMobile && activeTab !== "workbench" && activeTab !== "calendar" && (
-          <div className="hidden w-64 shrink-0 md:flex md:flex-col">
+          <div
+            className={cn(
+              "hidden shrink-0 md:flex md:flex-col transition-[width] duration-300",
+              shouldCollapseRecent ? "w-16" : "w-64"
+            )}
+          >
             {activeTab === "chat" && (
-              <RecentConversations className="h-full w-full" />
+              <RecentConversations
+                className="h-full w-full"
+                collapsed={shouldCollapseRecent}
+              />
             )}
             {activeTab === "contacts" && (
               <ContactsPanel className="h-full w-full" />
@@ -181,7 +203,10 @@ export function ChatLayout({
             onOpenContacts={handleOpenContacts}
             onOpenConversations={handleOpenConversations}
             onNewConversation={handleNewConversation}
-            className="min-w-0 flex-1"
+            className={cn(
+              "min-w-0",
+              isPanelOpen && !isFullscreen && !isMobile ? "flex-[3]" : "flex-1"
+            )}
           />
         )}
 
@@ -201,7 +226,7 @@ export function ChatLayout({
           !isFullscreen &&
           !isMobile &&
           activeTab === "chat" && (
-            <div className="hidden w-[720px] border-l bg-muted/20 p-3 md:block">
+            <div className="flex-[7] border-l bg-muted/20 p-3">
               <ArtifactPanel
                 conversationId={selectedConversationId}
                 isOpen={isPanelOpen}

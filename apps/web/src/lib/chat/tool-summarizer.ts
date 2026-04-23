@@ -1,3 +1,5 @@
+const MAX_LABEL_LENGTH = 60
+
 export interface ToolCallSummary {
   toolName: string
   label: string
@@ -16,6 +18,7 @@ const TOOL_META: Record<
   ls: { icon: "📁", verb: "列出目录", pathKey: "path" },
   download_files: { icon: "📥", verb: "下载", pathKey: "paths" },
   upload_files: { icon: "📤", verb: "上传", pathKey: "files" },
+  write_todos: { icon: "📋", verb: "规划任务" },
 }
 
 function extractToolName(type: string): string {
@@ -23,6 +26,15 @@ function extractToolName(type: string): string {
     return type.slice(5)
   }
   return type
+}
+
+function truncate(text: string, max = MAX_LABEL_LENGTH): string {
+  return text.length > max ? text.slice(0, max - 1) + "..." : text
+}
+
+function extractScriptBasename(command: string): string | null {
+  const match = command.match(/([^\s/\\]+\.(?:py|sh|js|ts))\b/)
+  return match ? match[1] : null
 }
 
 export function summarizeToolCall(options: {
@@ -50,14 +62,19 @@ export function summarizeToolCall(options: {
 
   if (toolName === "execute" && input?.command) {
     const cmd = String(input.command)
-    const short = cmd
-    // const short =
-    //   cmd.length > 60 ? cmd.slice(0, 57) + "..." : cmd
-    return { toolName, label: `${meta.verb} ${short}`, icon: meta.icon }
+    const script = extractScriptBasename(cmd)
+    const label = script
+      ? `${meta.verb} ${script}`
+      : truncate(`${meta.verb} ${cmd}`)
+    return { toolName, label, icon: meta.icon }
+  }
+
+  if (toolName === "write_todos") {
+    return { toolName, label: "任务列表", icon: meta.icon }
   }
 
   const label = filePath
-    ? `${meta.verb} ${filePath}`
+    ? `${meta.verb} ${truncate(filePath)}`
     : meta.verb
 
   return { toolName, label, filePath, icon: meta.icon }
