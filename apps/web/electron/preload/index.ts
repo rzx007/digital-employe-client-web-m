@@ -57,6 +57,15 @@ contextBridge.exposeInMainWorld("electronApi", {
   hasSavedAuth: () => ipcRenderer.invoke("has-saved-auth"),
   openRecruitment: () => ipcRenderer.invoke("open-recruitment"),
   closeRecruitment: () => ipcRenderer.invoke("close-recruitment"),
+  notifyHireSuccess: () => ipcRenderer.invoke("hire-success"),
+  onInvalidateContacts: (callback: () => void) => {
+    ipcRenderer.on("invalidate-contacts", () => callback())
+    return () => ipcRenderer.removeAllListeners("invalidate-contacts")
+  },
+  onInvalidateModelConfig: (callback: () => void) => {
+    ipcRenderer.on("invalidate-model-config", () => callback())
+    return () => ipcRenderer.removeAllListeners("invalidate-model-config")
+  },
   // settings
   openSettings: () => ipcRenderer.invoke("open-settings"),
   closeSettings: () => ipcRenderer.invoke("close-settings"),
@@ -72,6 +81,9 @@ contextBridge.exposeInMainWorld("electronApi", {
   getOnboardingCompleted: () => ipcRenderer.invoke("get-onboarding-completed"),
   setOnboardingCompleted: (value: boolean) =>
     ipcRenderer.invoke("set-onboarding-completed", value),
+  getEndpoint: () => ipcRenderer.invoke("get-endpoint"),
+  setEndpoint: (endpoint: string) =>
+    ipcRenderer.invoke("set-endpoint", endpoint),
   getModelSettings: () => ipcRenderer.invoke("get-model-settings"),
   setModelSettings: (data: { model: string; apiKey: string; apiUrl: string }) =>
     ipcRenderer.invoke("set-model-settings", data),

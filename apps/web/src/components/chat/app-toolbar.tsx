@@ -6,6 +6,8 @@ import {
   IconUserFilled,
   IconCalendar,
   IconCalendarFilled,
+  IconLayoutDashboard,
+  IconLayoutDashboardFilled,
   IconLogout,
   IconSettings,
 } from "@tabler/icons-react"
@@ -62,6 +64,12 @@ const tabs: {
   iconFilled: React.ComponentType<{ className?: string }>
   label: string
 }[] = [
+  {
+    id: "workbench",
+    icon: IconLayoutDashboard,
+    iconFilled: IconLayoutDashboardFilled,
+    label: "工作台",
+  },
   {
     id: "chat",
     icon: IconMessage,

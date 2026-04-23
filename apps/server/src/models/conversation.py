@@ -34,6 +34,7 @@ class ConversationMessage(Base):
     role: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     chunk_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    extra_meta: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now, index=True)
 
     conversation = relationship("Conversation", back_populates="messages")

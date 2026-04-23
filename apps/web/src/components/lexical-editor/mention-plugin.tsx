@@ -87,6 +87,7 @@ function MentionFloatingMenu({
 
   return createPortal(
     <div
+      data-prompt-typeahead-menu="true"
       className="z-50 w-52 animate-in overflow-hidden rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg fade-in-0 zoom-in-95"
       style={{
         position: "fixed",

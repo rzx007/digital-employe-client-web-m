@@ -1,9 +1,9 @@
 import * as React from "react"
 import {
   IconX,
+  IconMinimize,
+  IconMaximize,
   IconMinus,
-  IconSquare,
-  IconLayoutRows,
 } from "@tabler/icons-react"
 import logoSvg from "@/assets/logo.svg"
 
@@ -47,7 +47,7 @@ export function AppTitlebar({ title = "数字员工" }: AppTitlebarProps) {
 
   return (
     <div
-      className="flex h-9 shrink-0 items-center bg-transparent select-none"
+      className="flex h-9 shrink-0 items-center border-b border-border/50 bg-transparent select-none"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       onDoubleClick={handleMaximize}
     >
@@ -72,9 +72,9 @@ export function AppTitlebar({ title = "数字员工" }: AppTitlebarProps) {
           onClick={handleMaximize}
         >
           {isMaximized ? (
-            <IconLayoutRows className="size-4" />
+            <IconMinimize className="size-4" />
           ) : (
-            <IconSquare className="size-3.5" />
+            <IconMaximize className="size-3.5" />
           )}
         </button>
         <button

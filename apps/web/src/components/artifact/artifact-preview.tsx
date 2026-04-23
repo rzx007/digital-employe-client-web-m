@@ -24,6 +24,7 @@ const typeIcons: Record<Artifact["type"], ComponentType<any>> = {
   code: IconFileCode,
   sheet: IconTable,
   image: IconMagnet,
+  "skill-draft": IconFileCode,
 }
 
 const typeLabels: Record<Artifact["type"], string> = {
@@ -31,6 +32,7 @@ const typeLabels: Record<Artifact["type"], string> = {
   code: "代码",
   sheet: "表格",
   image: "图像",
+  "skill-draft": "技能草稿",
 }
 
 export const ArtifactPreview = ({

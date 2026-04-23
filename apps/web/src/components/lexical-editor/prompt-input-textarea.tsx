@@ -41,6 +41,8 @@ export interface PromptChangeEvent {
   }>
 }
 
+const TYPEAHEAD_MENU_SELECTOR = '[data-prompt-typeahead-menu="true"]'
+
 function getEditorCommandAndValue(): PromptChangeEvent {
   const root = $getRoot()
 
@@ -151,6 +153,15 @@ function SubmitKeyPlugin() {
     return editor.registerCommand(
       KEY_ENTER_COMMAND,
       (event: KeyboardEvent) => {
+        if (document.querySelector(TYPEAHEAD_MENU_SELECTOR)) {
+          return false
+        }
+
+        // Let other plugins (e.g. typeahead menus) consume Enter first.
+        if (event.defaultPrevented) {
+          return false
+        }
+
         if (event.shiftKey) {
           return false // 让 Lexical 处理默认新行
         }

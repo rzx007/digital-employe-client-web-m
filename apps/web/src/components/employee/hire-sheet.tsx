@@ -53,7 +53,7 @@ export function HireSheet({
     React.useState<ShiftScheduleForm>(EMPTY_SCHEDULE)
 
   const [selectedMcpIds, setSelectedMcpIds] = React.useState<number[]>(
-    candidate.capability_ids ?? []
+    candidate.mcp_ids ?? []
   )
   const [selectedSkillIds, setSelectedSkillIds] = React.useState<number[]>(
     candidate.skill_ids ?? []
@@ -69,11 +69,15 @@ export function HireSheet({
       setShowScheduleAndTask(false)
       setTasks([])
       setSchedule({ ...EMPTY_SCHEDULE })
-      setSelectedMcpIds(candidate.capability_ids ?? [])
+      setSelectedMcpIds(candidate.mcp_ids ?? [])
       setSelectedSkillIds(candidate.skill_ids ?? [])
 
-      fetchMcpList().then(setAllMcpList).catch(() => { })
-      fetchSkillList().then(setAllSkillList).catch(() => { })
+      fetchMcpList()
+        .then(setAllMcpList)
+        .catch(() => {})
+      fetchSkillList()
+        .then(setAllSkillList)
+        .catch(() => {})
     }
   }, [open, candidate])
 
@@ -111,7 +115,7 @@ export function HireSheet({
         employee_name: name.trim(),
         capability_desc: description.trim() || null,
         status: 1,
-        capability_ids: selectedMcpIds,
+        mcp_ids: selectedMcpIds,
         skill_ids: selectedSkillIds,
         shift_schedule: showScheduleAndTask ? schedule : null,
         tasks: showScheduleAndTask ? tasks : [],
@@ -129,7 +133,7 @@ export function HireSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex w-full flex-col gap-0 p-0 sm:max-w-md min-h-0 overflow-y-auto"
+        className="flex min-h-0 w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-md"
       >
         <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
           <div className="flex items-center gap-2">
@@ -265,7 +269,7 @@ export function HireSheet({
 
             {showScheduleAndTask && (
               <ScheduleTaskConfig
-                capabilities={candidate.capabilities ?? []}
+                capabilities={candidate.mcps ?? []}
                 capabilityIds={selectedMcpIds}
                 skillIds={selectedSkillIds}
                 skills={candidate.skills ?? []}

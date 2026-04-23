@@ -6,6 +6,8 @@ import {
   IconUserFilled,
   IconCalendar,
   IconCalendarFilled,
+  IconLayoutDashboard,
+  IconLayoutDashboardFilled,
 } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 import { useChatStore, type ActiveTab } from "@/stores/chat-store"
@@ -27,6 +29,12 @@ const tabs: {
     icon: IconUser,
     iconFilled: IconUserFilled,
     label: "联系人",
+  },
+  {
+    id: "workbench",
+    icon: IconLayoutDashboard,
+    iconFilled: IconLayoutDashboardFilled,
+    label: "工作台",
   },
   {
     id: "calendar",

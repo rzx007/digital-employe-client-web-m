@@ -47,7 +47,7 @@ import {
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
 import { Textarea } from "@workspace/ui/components/textarea"
-import type { Capability, MetadataSkill } from "@/api/types"
+import type { MetadataMcp, MetadataSkill } from "@/api/types"
 import { cn } from "@workspace/ui/lib/utils"
 import {
   executeTimeToCronExpression,
@@ -108,7 +108,7 @@ interface TaskEditDialogProps {
   onOpenChange: (open: boolean) => void
   taskIndex: number | null
   task: TaskFormData | null
-  capabilities: Capability[]
+  capabilities: MetadataMcp[]
   skills: MetadataSkill[]
   capabilityIds?: number[]
   skillIds?: number[]
@@ -135,9 +135,7 @@ export function TaskEditDialog({
 
   const filteredCapabilities = React.useMemo(() => {
     if (!capabilityIds?.length) return capabilities
-    return capabilities.filter((c) =>
-      capabilityIds.some((id) => c.capability_name === String(id))
-    )
+    return capabilities.filter((c) => capabilityIds.includes(c.id))
   }, [capabilities, capabilityIds])
 
   const filteredSkills = React.useMemo(() => {
@@ -150,9 +148,8 @@ export function TaskEditDialog({
   const selectedCapability = React.useMemo(
     () =>
       formData.task_resource_type === "mcp"
-        ? (filteredCapabilities.find(
-          (c) => c.capability_name === String(formData.capability_id)
-        ) ?? null)
+        ? (filteredCapabilities.find((c) => c.id === formData.capability_id) ??
+          null)
         : null,
     [formData.task_resource_type, formData.capability_id, filteredCapabilities]
   )
@@ -278,7 +275,9 @@ export function TaskEditDialog({
                     </div>
                   ) : selectedCapability ? (
                     <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <div className="size-9 shrink-0 rounded-lg border border-border/50 bg-muted" />
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-muted">
+                        <IconTool className="size-4 text-muted-foreground" />
+                      </div>
                       <div className="min-w-0 flex-1 text-left">
                         <div className="truncate text-sm font-medium">
                           {selectedCapability.capability_name}
@@ -312,29 +311,26 @@ export function TaskEditDialog({
                       <CommandList>
                         <CommandEmpty>没有找到匹配的工具</CommandEmpty>
                         <CommandGroup>
-                          {filteredCapabilities.map((cap, index) => (
+                          {filteredCapabilities.map((cap) => (
                             <CommandItem
-                              key={`${cap.capability_name}-${index}`}
+                              key={cap.id}
                               value={`${cap.capability_name}-${cap.capability_desc}`}
                               onSelect={() => {
-                                const currentName = String(
-                                  formData.capability_id
-                                )
-                                const nextName =
-                                  currentName === cap.capability_name
-                                    ? ""
-                                    : cap.capability_name
+                                const nextId =
+                                  formData.capability_id === cap.id ? 0 : cap.id
                                 setFormData((prev) => ({
                                   ...prev,
                                   task_resource_type: "mcp",
                                   skill_id: 0,
-                                  capability_id: nextName ? index + 1 : 0,
+                                  capability_id: nextId,
                                 }))
                                 setCapabilityOpen(false)
                               }}
                             >
                               <div className="flex w-full items-center gap-3 py-1">
-                                <div className="size-9 shrink-0 rounded-lg border border-border/50 bg-muted" />
+                                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-muted">
+                                  <IconTool className="size-4 text-muted-foreground" />
+                                </div>
                                 <div className="min-w-0 flex-1">
                                   <div className="truncate text-sm font-medium">
                                     {cap.capability_name}
@@ -347,9 +343,7 @@ export function TaskEditDialog({
                                   className={cn(
                                     "size-4 shrink-0",
                                     formData.task_resource_type === "mcp" &&
-                                      filteredCapabilities[
-                                        formData.capability_id - 1
-                                      ]?.capability_name === cap.capability_name
+                                      formData.capability_id === cap.id
                                       ? "opacity-100"
                                       : "opacity-0"
                                   )}
@@ -413,7 +407,6 @@ export function TaskEditDialog({
                     </Command>
                   </TabsContent>
                 </Tabs>
-
               </PopoverContent>
             </Popover>
           </div>
@@ -497,7 +490,9 @@ export function TaskEditDialog({
             </div>
             <Switch
               checked={formData.confirm_execution_result ?? false}
-              onCheckedChange={(v) => updateField("confirm_execution_result", v)}
+              onCheckedChange={(v) =>
+                updateField("confirm_execution_result", v)
+              }
             />
           </div>
 

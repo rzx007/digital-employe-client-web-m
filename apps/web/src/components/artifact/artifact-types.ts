@@ -1,4 +1,4 @@
-export type ArtifactType = "text" | "code" | "sheet" | "image"
+export type ArtifactType = "text" | "code" | "sheet" | "image" | "skill-draft"
 
 export interface Artifact {
   id: string
@@ -7,9 +7,4 @@ export interface Artifact {
   content: string
   language?: string
   metadata?: Record<string, any>
-}
-
-export interface ArtifactMetadata {
-  artifactToolCallId: string
-  artifact: Artifact
 }

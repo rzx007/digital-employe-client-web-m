@@ -14,23 +14,14 @@ import {
   MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolInput,
-  ToolOutput,
-} from "@workspace/ui/components/ai-elements/tool"
 import { cn } from "@workspace/ui/lib/utils"
 import { IconSparkles } from "@tabler/icons-react"
-import { format } from "date-fns"
-import { zhCN } from "date-fns/locale"
 import logo from "@/assets/logo.svg"
 import {
+  classifyMessageParts,
   getLatestArtifactFromUIMessage,
-  getRenderBlocksFromUIMessage,
 } from "@/lib/chat/message-utils"
-import type { Message as StoredMessage } from "@/lib/mock-data/messages"
+import type { ArtifactData } from "@/lib/chat/langchain-sse-schema"
 import { Spinner } from "@/components/spinner"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useChatStore } from "@/stores/chat-store"
@@ -43,34 +34,99 @@ import type { SlashCommandItem } from "../lexical-editor/slash-command-plugin"
 import type { MentionCandidate } from "../lexical-editor/mention-plugin"
 import { ChatPanelHeader } from "./chat-panel-header"
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
-import { WorkbenchView } from "./workbench-view"
+import { ThinkingBlock } from "./thinking-block"
+import { ToolGroupBlock } from "./tool-group-block"
 import {
   getContactDisplayName,
-  isMessageMetadata,
   type ChatViewContact,
+  chatTransport,
 } from "./chat-view-shared"
 
 const EMPTY_MESSAGES: UIMessage[] = []
 
-type ToolUIPart = Extract<
-  UIMessage["parts"][number],
-  {
-    type: `tool-${string}`
-    toolCallId: string
-  }
->
+type CommandMeta = { id?: string; title?: string } | null
+type MentionMeta = Array<{ id?: string; name?: string }>
+type MessageMeta = {
+  command?: { id?: string; title?: string } | null
+  mentions?: Array<{ id?: string; name?: string }>
+}
 
-function renderToolOutput(output: unknown) {
-  if (output == null) {
+function getMessageMeta(message: UIMessage): MessageMeta | null {
+  if (!message || typeof message !== "object") {
+    return null
+  }
+  const meta = (message as UIMessage & { metadata?: unknown }).metadata
+  return meta && typeof meta === "object" ? (meta as MessageMeta) : null
+}
+
+function MessageMetaBadges({
+  commandMeta,
+  mentionMeta,
+  messageId,
+}: {
+  commandMeta: CommandMeta
+  mentionMeta: MentionMeta
+  messageId: string
+}) {
+  if (!commandMeta?.title && mentionMeta.length === 0) {
     return null
   }
 
-  const content =
-    typeof output === "object"
-      ? JSON.stringify(output, null, 2)
-      : String(output)
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+      {commandMeta?.title && (
+        <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+          /{commandMeta.title}
+        </span>
+      )}
+      {mentionMeta.map((mention, index) => (
+        <span
+          key={mention.id ?? `${messageId}:mention:${index}`}
+          className="rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-600"
+        >
+          @{mention.name ?? "unknown"}
+        </span>
+      ))}
+    </div>
+  )
+}
 
-  return <MessageResponse>{content}</MessageResponse>
+function renderClassifiedBlocks(
+  blocks: import("@/lib/chat/message-classifier").ClassifiedBlock[],
+  options?: {
+    commandMeta?: CommandMeta
+    mentionMeta?: MentionMeta
+    messageId?: string
+  }
+) {
+  return blocks.map((block) => {
+    if (block.kind === "thinking") {
+      return <ThinkingBlock className="w-full" key={block.key} text={block.text} />
+    }
+
+    if (block.kind === "tool-group") {
+      return <ToolGroupBlock className="w-full" key={block.key} block={block} />
+    }
+
+    if (block.kind === "final-response") {
+      const commandMeta = options?.commandMeta ?? null
+      const mentionMeta = options?.mentionMeta ?? []
+      const messageId = options?.messageId ?? block.key
+
+      return (
+        <div className="w-full flex items-center space-x-2" key={block.key}>
+          <MessageMetaBadges
+            commandMeta={commandMeta}
+            mentionMeta={mentionMeta}
+            messageId={messageId}
+          />
+          <MessageResponse className="flex-1">{block.text}</MessageResponse>
+        </div>
+      )
+    }
+
+    return null
+  })
 }
 
 export function ChatPanel({
@@ -78,7 +134,6 @@ export function ChatPanel({
   title,
   conversationId,
   messages,
-  storedMessages = [],
   inputValue,
   status,
   error,
@@ -97,7 +152,6 @@ export function ChatPanel({
   title: string
   conversationId?: string | number
   messages: UIMessage[]
-  storedMessages?: StoredMessage[]
   inputValue: string
   status: "submitted" | "streaming" | "ready" | "error"
   error?: Error
@@ -112,8 +166,6 @@ export function ChatPanel({
 }) {
   const isMobile = useIsMobile()
   const { addArtifact, openArtifact, setFullscreen } = useArtifactStore()
-  const { showWorkbench, setShowWorkbench } = useChatStore()
-
   const contactDisplayName = contact
     ? getContactDisplayName(contact)
     : "AI 助手"
@@ -126,18 +178,39 @@ export function ChatPanel({
     displayMessages.length > 0
 
   React.useEffect(() => {
+    console.log("messages", messages)
+  }, [messages])
+
+  // 注册流式 artifact 事件处理器
+  React.useEffect(() => {
+    const handleArtifact = (data: ArtifactData) => {
+      const artifact: import("@/types/artifact").Artifact = {
+        id: data.id,
+        type: data.artifactType,
+        title: data.title,
+        content: data.content,
+        language: data.language ?? undefined,
+      }
+      addArtifact(artifact)
+      openArtifact(data.id)
+    }
+
+    chatTransport.setArtifactHandler(handleArtifact)
+    return () => {
+      chatTransport.setArtifactHandler(undefined)
+    }
+  }, [addArtifact, openArtifact])
+
+  React.useEffect(() => {
+    const { artifacts } = useArtifactStore.getState()
     displayMessages.forEach((message) => {
       const artifact = getLatestArtifactFromUIMessage(message)
 
-      if (artifact) {
+      if (artifact && !artifacts.has(artifact.id)) {
         addArtifact(artifact)
       }
     })
   }, [addArtifact, displayMessages])
-
-  const formatTime = React.useCallback((date: Date) => {
-    return format(date, "HH:mm", { locale: zhCN })
-  }, [])
 
   const slashCommands = React.useMemo<SlashCommandItem[]>(() => {
     const skills =
@@ -204,251 +277,196 @@ export function ChatPanel({
             onOpenContacts={onOpenContacts}
             onOpenConversations={onOpenConversations}
             onNewConversation={onNewConversation}
-            showWorkbench={showWorkbench}
-            onToggleWorkbench={() => setShowWorkbench(!showWorkbench)}
           />
-          {showWorkbench && contact?.type === "employee" ? (
-            <WorkbenchView
-              contact={contact}
-              onClose={() => setShowWorkbench(false)}
-            />
-          ) : (
-            <>
-              <Conversation className="min-h-0 flex-1 overflow-y-auto pt-4">
-                <ConversationContent>
-                  {isDraftMode ? (
-                    <ConversationEmptyState className="py-16">
-                      <div className="flex flex-col items-center gap-6">
-                        <img
-                          src={logo}
-                          alt="Logo"
-                          className="size-12 opacity-80"
-                        />
-                        <div className="space-y-3 text-center">
-                          <h2 className="text-md font-semibold tracking-tight">
-                            数字员工智能助手
-                          </h2>
-                          <p className="text-sm text-muted-foreground">
-                            随时为您解答问题、处理任务、提升效率
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center justify-center gap-3">
-                          {[
-                            "智能问答",
-                            "数据分析",
-                            "文档生成",
-                            "流程自动化",
-                          ].map((label) => (
-                            <span
-                              key={label}
-                              className="rounded-full border border-border/60 bg-muted/50 px-3 py-1 text-xs text-muted-foreground"
-                            >
-                              {label}
-                            </span>
-                          ))}
-                        </div>
+          <>
+            <Conversation className="min-h-0 flex-1 overflow-y-auto pt-4">
+              <ConversationContent>
+                {isDraftMode ? (
+                  <ConversationEmptyState className="py-16">
+                    <div className="flex flex-col items-center gap-6">
+                      <img
+                        src={logo}
+                        alt="Logo"
+                        className="size-12 opacity-80"
+                      />
+                      <div className="space-y-3 text-center">
+                        <h2 className="text-md font-semibold tracking-tight">
+                          数字员工智能助手
+                        </h2>
+                        <p className="text-sm text-muted-foreground">
+                          随时为您解答问题、处理任务、提升效率
+                        </p>
                       </div>
-                    </ConversationEmptyState>
-                  ) : displayMessages.length === 0 ? (
-                    <ConversationEmptyState className="py-16">
-                      <div className="flex flex-col items-center gap-5">
-                        <img
-                          src={logo}
-                          alt="Logo"
-                          className="h-10 w-10 opacity-50"
-                        />
-                        <div className="space-y-1.5 text-center">
-                          <h3 className="text-sm font-medium">开始新对话</h3>
-                          <p className="text-xs text-muted-foreground">
-                            在下方输入消息，开启与 {contactDisplayName} 的对话
-                          </p>
-                        </div>
+                      <div className="flex flex-wrap items-center justify-center gap-3">
+                        {[
+                          "智能问答",
+                          "数据分析",
+                          "文档生成",
+                          "流程自动化",
+                        ].map((label) => (
+                          <span
+                            key={label}
+                            className="rounded-full border border-border/60 bg-muted/50 px-3 py-1 text-xs text-muted-foreground"
+                          >
+                            {label}
+                          </span>
+                        ))}
                       </div>
-                    </ConversationEmptyState>
-                  ) : (
-                    displayMessages.map((message) => {
-                      const liveArtifact =
-                        getLatestArtifactFromUIMessage(message)
-                      const renderBlocks = getRenderBlocksFromUIMessage(message)
-                      const storedMessage = storedMessages.find(
-                        (item) => item.id === message.id
-                      )
-                      const timestamp = storedMessage?.timestamp
-                      const metadata = isMessageMetadata(
-                        storedMessage?.metadata
-                      )
-                        ? storedMessage.metadata
+                    </div>
+                  </ConversationEmptyState>
+                ) : displayMessages.length === 0 ? (
+                  <ConversationEmptyState className="py-16">
+                    <div className="flex flex-col items-center gap-5">
+                      <img
+                        src={logo}
+                        alt="Logo"
+                        className="h-10 w-10 opacity-50"
+                      />
+                      <div className="space-y-1.5 text-center">
+                        <h3 className="text-sm font-medium">开始新对话</h3>
+                        <p className="text-xs text-muted-foreground">
+                          在下方输入消息，开启与 {contactDisplayName} 的对话
+                        </p>
+                      </div>
+                    </div>
+                  </ConversationEmptyState>
+                ) : (
+                  displayMessages.map((message) => {
+                    const artifact =
+                      getLatestArtifactFromUIMessage(message)
+                    const classifiedBlocks = classifyMessageParts(message)
+                    const messageMeta = getMessageMeta(message)
+                    const commandMeta =
+                      messageMeta &&
+                        typeof messageMeta === "object" &&
+                        "command" in messageMeta &&
+                        messageMeta.command &&
+                        typeof messageMeta.command === "object"
+                        ? (messageMeta.command as { id?: string; title?: string })
                         : null
-                      const artifact =
-                        liveArtifact ?? metadata?.artifact ?? null
+                    const mentionMeta =
+                      messageMeta &&
+                        typeof messageMeta === "object" &&
+                        "mentions" in messageMeta &&
+                        Array.isArray(messageMeta.mentions)
+                        ? (messageMeta.mentions as Array<{
+                          id?: string
+                          name?: string
+                        }>)
+                        : []
 
-                      const handleOpenArtifact = () => {
-                        if (!artifact) {
-                          return
-                        }
-
-                        addArtifact(artifact)
-                        setFullscreen(isMobile)
-                        openArtifact(artifact.id)
+                    const handleOpenArtifact = () => {
+                      if (!artifact) {
+                        return
                       }
 
-                      return (
-                        <Message
-                          key={message.id}
-                          from={message.role}
-                          className="mx-auto max-w-4xl"
-                        >
-                          {message.role === "assistant" && (
-                            <div className="mb-2 flex items-center gap-2">
-                              {contact.type === "group" ? (
-                                <GroupMembersAvatar
-                                  participants={contact.group?.participants}
-                                  className="size-6"
-                                  itemClassName="h-3 w-3"
-                                  fallbackClassName="text-[8px]"
-                                  placeholderClassName="h-3 w-3"
-                                />
-                              ) : contact.type === "curator" ? (
-                                <EmployeeContactAvatar
-                                  name={contact.curator?.name}
-                                  avatar={contact.curator?.avatar}
-                                  status={contact.curator?.status}
-                                  avatarClassName="size-6"
-                                  fallbackClassName="text-[10px]"
-                                />
-                              ) : (
-                                <EmployeeContactAvatar
-                                  name={contact.employee?.name}
-                                  avatar={contact.employee?.avatar}
-                                  status={contact.employee?.status}
-                                  avatarClassName="size-6"
-                                  fallbackClassName="text-[10px]"
-                                />
-                              )}
-                              <span className="text-xs text-muted-foreground">
-                                {contactDisplayName}
-                              </span>
-                            </div>
-                          )}
-                          <MessageContent>
-                            <div className="space-y-3">
-                              {renderBlocks.length > 0 ? (
-                                renderBlocks.map((block) => {
-                                  if (block.kind === "text") {
-                                    return (
-                                      <MessageResponse key={block.key}>
-                                        {block.text}
-                                      </MessageResponse>
-                                    )
-                                  }
+                      setFullscreen(isMobile)
+                      openArtifact(artifact.id)
+                    }
 
-                                  if (block.kind === "tool") {
-                                    const part = block.part as ToolUIPart
+                    return (
+                      <Message
+                        key={message.id}
+                        from={message.role}
+                        className="mx-auto max-w-4xl"
+                      >
+                        {message.role === "assistant" && (
+                          <div className="mb-2 flex items-center gap-2">
+                            {contact.type === "group" ? (
+                              <GroupMembersAvatar
+                                participants={contact.group?.participants}
+                                className="size-6"
+                                itemClassName="h-3 w-3"
+                                fallbackClassName="text-[8px]"
+                                placeholderClassName="h-3 w-3"
+                              />
+                            ) : contact.type === "curator" ? (
+                              <EmployeeContactAvatar
+                                name={contact.curator?.name}
+                                avatar={contact.curator?.avatar}
+                                status={contact.curator?.status}
+                                avatarClassName="size-6"
+                                fallbackClassName="text-[10px]"
+                              />
+                            ) : (
+                              <EmployeeContactAvatar
+                                name={contact.employee?.name}
+                                avatar={contact.employee?.avatar}
+                                status={contact.employee?.status}
+                                avatarClassName="size-6"
+                                fallbackClassName="text-[10px]"
+                              />
+                            )}
+                            <span className="text-xs text-muted-foreground">
+                              {contactDisplayName}
+                            </span>
+                          </div>
+                        )}
 
-                                    return (
-                                      <Tool
-                                        key={block.key}
-                                        className="max-w-2xl"
-                                        defaultOpen={false}
-                                      >
-                                        <ToolHeader
-                                          state={
-                                            part.state as ToolUIPart["state"]
-                                          }
-                                          type={part.type as ToolUIPart["type"]}
-                                        />
-                                        <ToolContent>
-                                          <ToolInput input={part.input} />
-                                          <ToolOutput
-                                            errorText={part.errorText}
-                                            output={renderToolOutput(
-                                              part.output
-                                            )}
-                                          />
-                                        </ToolContent>
-                                      </Tool>
-                                    )
-                                  }
-
-                                  return (
-                                    <ArtifactPreview
-                                      key={block.key}
-                                      artifact={block.artifact}
-                                      onClick={() => {
-                                        addArtifact(block.artifact)
-                                        setFullscreen(isMobile)
-                                        openArtifact(block.artifact.id)
-                                      }}
-                                    />
-                                  )
-                                })
-                              ) : metadata?.artifact ? null : (
-                                <MessageResponse />
-                              )}
-                            </div>
-                          </MessageContent>
-                          {timestamp && (
-                            <div
-                              className={cn(
-                                "mt-1 text-[10px] text-muted-foreground",
-                                message.role === "user" && "text-right"
-                              )}
-                            >
-                              {formatTime(timestamp)}
-                            </div>
-                          )}
-                          {artifact && renderBlocks.length === 0 && (
-                            <ArtifactPreview
-                              artifact={artifact}
-                              onClick={handleOpenArtifact}
-                            />
-                          )}
-                        </Message>
-                      )
-                    })
-                  )}
-
-                  {showStreamingIndicator && (
-                    <Message
-                      from="assistant"
-                      className="mx-auto -mt-4 max-w-4xl"
-                    >
-                      <MessageContent className="rounded-lg border border-border/60 bg-muted/40 px-3 py-2.5">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Spinner
-                            className="size-3.5"
-                            style={{ color: "#8B5CF6" }}
+                        <MessageContent className="w-auto">
+                          <div className="space-y-3">
+                            {classifiedBlocks.length > 0 ? (
+                              renderClassifiedBlocks(classifiedBlocks, {
+                                commandMeta,
+                                mentionMeta,
+                                messageId: message.id,
+                              })
+                            ) : artifact ? null : (
+                              <MessageResponse />
+                            )}
+                          </div>
+                        </MessageContent>
+                        {artifact && (
+                          <ArtifactPreview
+                            artifact={artifact}
+                            onClick={handleOpenArtifact}
                           />
-                          <Shimmer className="text-xs">正在生成回复...</Shimmer>
-                        </div>
-                      </MessageContent>
-                    </Message>
-                  )}
-                </ConversationContent>
-                <ConversationScrollButton />
-              </Conversation>
-
-              <div className="border-none p-4">
-                <ChatPromptInput
-                  value={inputValue}
-                  onChange={onInputChange}
-                  onSubmit={onSend}
-                  onStop={onStop}
-                  status={status}
-                  disabled={isSubmitDisabled}
-                  size="compact"
-                  className="mx-auto w-full max-w-4xl overflow-hidden shadow-xl"
-                  slashCommands={slashCommands}
-                  mentionCandidates={mentionCandidates}
-                />
-                {error && (
-                  <p className="mt-2 text-xs text-destructive">
-                    {error.message}
-                  </p>
+                        )}
+                      </Message>
+                    )
+                  })
                 )}
-              </div>
-            </>
-          )}
+
+                {showStreamingIndicator && (
+                  <Message
+                    from="assistant"
+                    className="mx-auto -mt-4 max-w-4xl"
+                  >
+                    <MessageContent className="rounded-lg bg-muted/40 px-3 py-2.5">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Spinner
+                          className="size-3.5"
+                          style={{ color: "#8B5CF6" }}
+                        />
+                        <Shimmer className="text-xs">正在生成回复...</Shimmer>
+                      </div>
+                    </MessageContent>
+                  </Message>
+                )}
+              </ConversationContent>
+              <ConversationScrollButton />
+            </Conversation>
+
+            <div className="border-none p-4">
+              <ChatPromptInput
+                value={inputValue}
+                onChange={onInputChange}
+                onSubmit={onSend}
+                onStop={onStop}
+                status={status}
+                disabled={isSubmitDisabled}
+                size="compact"
+                className="mx-auto w-full max-w-4xl overflow-hidden shadow-xl"
+                slashCommands={slashCommands}
+                mentionCandidates={mentionCandidates}
+              />
+              {error && (
+                <p className="mt-2 text-xs text-destructive">
+                  {error.message}
+                </p>
+              )}
+            </div>
+          </>
         </>
       )}
     </div>

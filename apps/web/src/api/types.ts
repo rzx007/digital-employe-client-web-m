@@ -11,6 +11,7 @@ export interface ApiResponse<T> {
  * 员工能力项
  */
 export interface Capability {
+  
   capability_name: string
   capability_desc: string
   mcp_server_name: string
@@ -64,6 +65,37 @@ export interface MetadataSkill {
   directoryName: string | null
   [x: string]: any
 }
+export interface MetadataMcp {
+  id: number
+  mcp_server_name: string
+  mcp_tool_name: string
+  createTime?: string
+  updateTime?: string
+  [x: string]: any
+}
+
+export interface MetadataTask {
+  task_name: string
+  dispatch_type: "mcp" | "skill" | string
+  skill_id: number | null
+  capability_id: number | null
+  priority?: number
+  task_type?: number
+  cron_expression?: string
+  cron_expression_type?: string
+  is_active?: boolean
+  confirm_execution_result?: boolean
+  config?: {
+    input?: {
+      prompt?: string
+      user_prompt?: string
+      [x: string]: unknown
+    }
+    [x: string]: unknown
+  }
+  user_prompt?: string
+  [x: string]: unknown
+}
 
 /**
  * 员工元数据（能力描述、MCP 工具绑定等）
@@ -78,6 +110,8 @@ export interface EmployeeMetadata {
   updated_at: string
   capabilities: Capability[]
   skills: MetadataSkill[]
+  mcps: MetadataMcp[]
+  tasks?: MetadataTask[]
 }
 
 /**
@@ -98,6 +132,13 @@ export interface Skill {
 /**
  * 数字员工
  */
+export interface ShiftSchedule {
+  start_date?: string
+  end_date?: string
+  status?: number
+  notes?: string
+}
+
 export interface Employee {
   id: number
   workspace_id: number
@@ -107,6 +148,7 @@ export interface Employee {
   version: string
   skills: Skill[]
   metadata: EmployeeMetadata
+  shift_schedule: ShiftSchedule
   created_at: string
   updated_at: string
 }
@@ -175,6 +217,7 @@ export interface ChatMessage {
   role: "user" | "assistant" | "system"
   content: string
   chunk_json?: string
+  extra_meta?: Record<string, any>
   timestamp?: string
   created_at?: string
 }
@@ -227,4 +270,26 @@ export interface LoginResponse {
     token: string
     msg: string
   }
+}
+
+export interface ResourceEntry {
+  name: string
+  path: string
+  entry_type: "file" | "directory"
+  artifact_type: string | null
+  size: number
+  modified_at: number | null
+  children: ResourceEntry[] | null
+}
+
+export interface ResourceList {
+  artifacts: ResourceEntry[]
+  skills_draft: ResourceEntry[]
+}
+
+export interface ResourceContent {
+  path: string
+  content: string
+  artifact_type: string
+  language: string | null
 }

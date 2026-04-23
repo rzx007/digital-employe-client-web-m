@@ -11,7 +11,12 @@ import { Skeleton } from "@workspace/ui/components/skeleton"
 import { Switch } from "@workspace/ui/components/switch"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { fetchMcpList, fetchSkillList } from "@/api/employee"
-import type { McpListItem, MetadataSkill, SkillListItem } from "@/api/types"
+import type {
+  McpListItem,
+  MetadataMcp,
+  MetadataSkill,
+  SkillListItem,
+} from "@/api/types"
 import type {
   CronExpressionType,
   ShiftScheduleForm,
@@ -42,6 +47,7 @@ interface ApiSkillResponse {
 interface ApiTaskResponse {
   task_name: string
   dispatch_type?: string
+  capability_id: number
   skill_id: number
   priority?: number
   task_type: number
@@ -78,7 +84,7 @@ function convertApiTasksToTaskFormData(
     task_name: t.task_name,
     user_prompt: t.user_prompt,
     task_resource_type: (t.dispatch_type as TaskResourceType) || "skill",
-    capability_id: 0,
+    capability_id: t.capability_id,
     skill_id: t.skill_id,
     task_type: t.task_type ?? 2,
     cron_expression: t.cron_expression,
@@ -123,7 +129,9 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
       const meta = employee.metadata
       setName(meta?.employee_name ?? employee.name ?? "")
       setDescription(meta?.capability_desc ?? employee.description ?? "")
-      setSelectedMcpIds([])
+      setSelectedMcpIds(
+        (meta?.mcps as MetadataMcp[] | undefined)?.map((m) => m.id) ?? []
+      )
       const convertedSkills = convertApiSkillsToMetadataSkills(
         meta?.skills as unknown as ApiSkillResponse[] | undefined
       )
@@ -184,7 +192,7 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
         employee_name: name.trim(),
         capability_desc: description.trim() || null,
         status: employee?.metadata?.status ?? 1,
-        capability_ids: validMcpIds || [],
+        mcp_ids: validMcpIds || [],
         skill_ids: validSkillIds || [],
         shift_schedule: showScheduleAndTask ? schedule : null,
         tasks: showScheduleAndTask ? tasks : [],
@@ -321,7 +329,7 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
 
       {showScheduleAndTask && (
         <ScheduleTaskConfig
-          capabilities={employee?.metadata?.capabilities ?? []}
+          capabilities={employee?.metadata?.mcps ?? []}
           capabilityIds={selectedMcpIds}
           skillIds={selectedSkillIds}
           skills={selectedSkillItems}

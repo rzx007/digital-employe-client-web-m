@@ -15,6 +15,8 @@ import {
   setSetting,
   getModelSettings,
   setModelSettings,
+  getEndpoint,
+  setEndpoint,
   clearSettingsStore,
 } from "./settings-store"
 
@@ -146,7 +148,7 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
     "send-notification",
     (_event, options: { title: string; body: string; silent?: boolean }) => {
       if (!mainWin || mainWin.isDestroyed()) return
-      const isFocused = mainWin.isFocused() && !mainWin.isMinimized()
+      const isFocused = mainWin.isFocused()
       if (!isFocused) {
         sendNotification({ ...options, win: mainWin })
       }
@@ -221,6 +223,13 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
     closeRecruitmentWindow()
   })
 
+  /** 招聘成功：通知主窗口刷新联系人列表 */
+  ipcMain.handle("hire-success", () => {
+    if (mainWin && !mainWin.isDestroyed()) {
+      mainWin.webContents.send("invalidate-contacts")
+    }
+  })
+
   // ========== 设置窗口 ==========
 
   /** 打开设置窗口 */
@@ -286,8 +295,21 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
     "set-model-settings",
     (_event, data: { model: string; apiKey: string; apiUrl: string }) => {
       setModelSettings(data)
+      if (mainWin && !mainWin.isDestroyed()) {
+        mainWin.webContents.send("invalidate-model-config")
+      }
     }
   )
+
+  /** 获取 Endpoint 配置 */
+  ipcMain.handle("get-endpoint", () => {
+    return getEndpoint()
+  })
+
+  /** 保存 Endpoint 配置 */
+  ipcMain.handle("set-endpoint", (_event, endpoint: string) => {
+    setEndpoint(endpoint)
+  })
 
   /** 重置应用：清除所有存储数据并重启 */
   ipcMain.handle("reset-app", () => {

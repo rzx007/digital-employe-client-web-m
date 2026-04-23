@@ -1,9 +1,6 @@
 import * as React from "react"
 
-import {
-  IconChevronDown,
-  IconChevronRight,
-} from "@tabler/icons-react"
+import { IconChevronDown, IconChevronRight } from "@tabler/icons-react"
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
@@ -46,10 +43,10 @@ export function CandidateCard({
 }) {
   const [expanded, setExpanded] = React.useState(false)
 
-  const displayCapabilities = candidate.capabilities?.slice(0, 2) ?? []
+  const displayCapabilities = candidate?.mcps?.slice(0, 2) ?? []
   const displaySkills = candidate.skills?.slice(0, 2) ?? []
   const remainingCapCount =
-    (candidate.capabilities?.length ?? 0) - displayCapabilities.length
+    (candidate?.mcps?.length ?? 0) - displayCapabilities.length
   const remainingSkillCount =
     (candidate.skills?.length ?? 0) - displaySkills.length
   const matchScore = candidate.match_score ?? 0
@@ -170,7 +167,7 @@ export function CandidateCard({
         </div>
         <CollapsibleContent>
           <div className="space-y-1.5 border-t px-3 py-2">
-            {candidate.capabilities?.map((cap, index) => (
+            {candidate.mcps?.map((cap, index) => (
               <div key={`cap-detail-${index}`} className="text-xs">
                 <span className="font-medium">MCP: {cap.capability_name}</span>
                 <p className="leading-relaxed text-muted-foreground">

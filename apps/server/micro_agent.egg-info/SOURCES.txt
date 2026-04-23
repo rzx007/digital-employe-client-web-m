@@ -18,6 +18,7 @@ src/api/skill_rating_api.py
 src/api/task_api.py
 src/api/workspace_api.py
 src/core/config.py
+src/core/logging_setup.py
 src/core/request_utils.py
 src/db/base.py
 src/db/init_db.py
@@ -42,6 +43,7 @@ src/schemas/chat_group.py
 src/schemas/conversation.py
 src/schemas/employee.py
 src/schemas/login.py
+src/schemas/mcp.py
 src/schemas/skill.py
 src/schemas/skill_rating.py
 src/schemas/task.py

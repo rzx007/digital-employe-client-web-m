@@ -1,85 +1,27 @@
-import os
-import sys
-import argparse
 import logging
-import subprocess
 from pathlib import Path
+from typing import Any
 from dotenv import load_dotenv
 from langchain_community.utilities import SQLDatabase
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from deepagents.backends import (
     CompositeBackend,
-    LocalShellBackend,
-    StateBackend,
-    StoreBackend,
     FilesystemBackend,
 )
-from deepagents.backends.protocol import ExecuteResponse, SandboxBackendProtocol
 from langchain_openai import ChatOpenAI
-from langchain.tools import tool
-from rich.console import Console
-from rich.panel import Panel
-from datetime import datetime  # 导入datetime模块
+from datetime import datetime
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.store.memory import InMemoryStore  # For dev; use PostgresStore for prod
 
 from deepagents import create_deep_agent
+from deepagents.middleware.permissions import FilesystemPermission
 from src.core.config import get_settings
+from src.service.skill_shell_backend import SkillAwareShellBackend
 
-# Load environment variables
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-
-@tool
-def run_shell_command(command: str) -> str:
-    """
-    Execute a shell command on Windows and return the output.
-    Use this tool to run commands like python, curl, etc.
-    """
-    try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=False,  # Capture as bytes to avoid encoding issues
-            timeout=30,
-            cwd=os.getcwd(),
-        )
-
-        # Decode output with error handling
-        def decode_bytes(data: bytes) -> str:
-            encodings_to_try = ["utf-8", "gbk", "cp936"]  # Common Windows encodings
-            for encoding in encodings_to_try:
-                try:
-                    return data.decode(encoding)
-                except UnicodeDecodeError:
-                    continue
-            # If all fail, use utf-8 with replace
-            return data.decode("utf-8", errors="replace")
-
-        stdout = decode_bytes(result.stdout)
-        stderr = decode_bytes(result.stderr)
-        output = stdout
-        if stderr:
-            output += "\nSTDERR:\n" + stderr
-        return f"Exit code: {result.returncode}\nOutput:\n{output}"
-    except subprocess.TimeoutExpired:
-        logger.error("run_shell_command 超时: %s", command)
-        return "Command timed out after 30 seconds"
-    except Exception as e:
-        logger.error("run_shell_command 执行失败: %s", e, exc_info=True)
-        return f"Error executing command: {str(e)}"
-
-
-console = Console()
 _CHECKPOINTER = MemorySaver()
-_STORE = InMemoryStore()
-
-
-def _norm_virtual_path(path: str) -> str:
-    return path.replace("\\", "/")
 
 
 def _resolve_skills_root(skill_path: str) -> Path:
@@ -89,15 +31,12 @@ def _resolve_skills_root(skill_path: str) -> Path:
 
     p = Path(raw).resolve()
     if p.is_file() and p.name.lower() == "skill.md":
-        # .../skills/<skill-name>/SKILL.md -> .../skills
         return p.parent.parent
     if p.is_dir() and p.name.lower() == "skills":
         return p
     if p.is_dir() and (p / "SKILL.md").exists():
-        # .../skills/<skill-name> -> .../skills
         return p.parent
     if p.is_dir() and (p / "skills").is_dir():
-        # .../<employee> -> .../<employee>/skills
         return p / "skills"
     return p
 
@@ -112,222 +51,133 @@ def _list_available_skills(skills_root: Path) -> list[str]:
     )
 
 
-def _build_system_prompt(current_time: str, available_skills: list[str]) -> str:
+def _build_system_prompt(
+    current_time: str,
+    available_skills: list[str],
+    *,
+    has_draft_route: bool = False,
+    skills_real_path: str = "",
+    draft_skills_real_path: str = "",
+) -> str:
     skills_line = ", ".join(available_skills) if available_skills else "无"
+    skills_root_line = skills_real_path or "未配置"
+    draft_instruction = ""
+    if has_draft_route:
+        draft_root_line = draft_skills_real_path or "未配置"
+        draft_instruction = f"""
+        如果用户要求创建新技能或修改已有技能，将技能文件写入 /skills-draft/ 路径下，
+        例如 write_file("/skills-draft/my-skill/SKILL.md", "...")。
+        草稿技能会立即生效，可以像正式技能一样调用和调试。
+        注意：/skills/ 下的正式技能是只读的，不要尝试修改，只能通过 /skills-draft/ 覆盖。
+        草稿技能真实物理路径根目录：{draft_root_line}
+        执行草稿技能脚本时，请使用草稿真实路径，不要在 execute 命令里使用 /skills-draft/ 虚拟路径。
+        """
     return f"""今天的时间是{current_time}
 
         Skills available at /skills/. Use /memories/ for persistent context.
         我的默认环境是windows环境，所以你执行命令的时候要注意windows的命令规范
         在生成命令的时候不要添加引号，例如正确的命令是：python script.py 而不是 python \"script.py\"
+        执行 Python 脚本时优先使用无缓冲模式：python -u <script.py> ...
         当前已加载的技能名单：{skills_line}
-        如果用户询问“你有没有某个技能”或“你有哪些技能”，必须严格基于当前已加载的技能名单回答，不要猜测，不要遗漏名单中的技能。
-        在执行技能或者技能脚本的时候，查找技能所在的绝对路径，然后执行，不要用相对路径
+        如果用户询问"你有没有某个技能"或"你有哪些技能"，必须严格基于当前已加载的技能名单回答，不要猜测，不要遗漏名单中的技能。
+        技能文件真实物理路径根目录：{skills_root_line}
+        执行技能脚本时请基于上面的真实路径拼接绝对路径（例如 python <skills_real_path>/<skill_name>/script.py），不要使用相对路径。
+        /skills/ 是虚拟路由路径，仅用于读写文件工具，不可直接用于 shell execute 命令。
+        如果 execute 返回 exit code=0 但输出为空，先判断为命令可能是静默成功，不要立刻改用 python -c 重跑。
+        当你需要为用户创建文件（如代码文件、文档、数据文件等产物）时，必须将文件写入 /artifacts/ 路径下，例如 write_file("/artifacts/report.md", "...")。
+        不要将用户产物文件写到根路径或其他虚拟路径，只有 /artifacts/ 下的文件会被持久化保存并向用户展示。
+        {draft_instruction}
+        无特殊说明，总是以中文回答用户问题。
         """
 
 
-class PosixVirtualFilesystemBackend(FilesystemBackend):
-    """Normalize virtual paths to POSIX style on Windows."""
-
-    def ls(self, path: str):
-        result = super().ls(_norm_virtual_path(path))
-        if result.entries:
-            for item in result.entries:
-                if "path" in item and isinstance(item["path"], str):
-                    item["path"] = _norm_virtual_path(item["path"])
-        return result
-
-    def read(self, file_path: str, offset: int = 0, limit: int = 2000):
-        return super().read(_norm_virtual_path(file_path), offset=offset, limit=limit)
-
-    def write(self, file_path: str, content: str):
-        return super().write(_norm_virtual_path(file_path), content)
-
-    def edit(
-        self,
-        file_path: str,
-        old_string: str,
-        new_string: str,
-        replace_all: bool = False,
-    ):
-        return super().edit(
-            _norm_virtual_path(file_path),
-            old_string,
-            new_string,
-            replace_all=replace_all,
-        )
-
-    def download_files(self, paths: list[str]):
-        return super().download_files([_norm_virtual_path(p) for p in paths])
-
-    def upload_files(self, files: list[tuple[str, bytes]]):
-        return super().upload_files(
-            [(_norm_virtual_path(path), content) for path, content in files]
-        )
+ARTIFACT_EXCLUDED_PREFIXES = (
+    "/skills/",
+    "/agent/",
+    "/memories/",
+    "/large_tool_results/",
+    "/conversation_history/",
+)
 
 
-class WindowsShellBackend(LocalShellBackend):
-    """Windows-compatible shell backend that properly handles encoding issues."""
-
-    def __init__(self, base_dir: str | None = None):
-        resolved = Path(base_dir).resolve() if base_dir else Path.cwd()
-        super().__init__(
-            root_dir=str(resolved),
-            virtual_mode=True,
-            inherit_env=True,
-            timeout=30,
-        )
-        self.base_dir = resolved
-
-    def _resolve_relative_paths(self, command: str) -> str:
-        import shlex
-
-        try:
-            parts = shlex.split(command, posix=False)
-        except ValueError:
-            return command
-
-        if not parts:
-            return command
-
-        updated = False
-        for i, token in enumerate(parts):
-            quote = ""
-            if (token.startswith('"') and token.endswith('"')) or (
-                token.startswith("'") and token.endswith("'")
-            ):
-                quote = token[0]
-                stripped = token[1:-1]
-            else:
-                stripped = token
-
-            # Skip command and option tokens
-            if stripped.startswith("-"):
-                continue
-
-            try:
-                path_obj = Path(stripped)
-            except Exception:
-                continue
-
-            # Handle slash-leading virtual paths (e.g. /skills/xxx)
-            if stripped.startswith("/") or stripped.startswith("\\"):
-                virtual_path = stripped.lstrip("/\\")
-                candidate = self.base_dir / virtual_path
-            else:
-                if path_obj.is_absolute():
-                    continue
-                candidate = self.base_dir / stripped
-
-            if candidate.exists():
-                resolved = str(candidate)
-                if quote:
-                    resolved = f"{quote}{resolved}{quote}"
-                parts[i] = resolved
-                updated = True
-
-        if updated:
-            return subprocess.list2cmdline(parts)
-        return command
-
-    def execute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
-        """Execute a command with proper Windows encoding handling."""
-        import locale
-
-        try:
-            command = self._resolve_relative_paths(command)
-
-            effective_timeout = timeout if timeout is not None else 30
-
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=False,
-                timeout=effective_timeout,
-                cwd=str(self.base_dir),
-            )
-
-            encodings_to_try = ["utf-8", locale.getpreferredencoding(False)]
-
-            def decode_bytes(data: bytes) -> str:
-                for encoding in encodings_to_try:
-                    try:
-                        return data.decode(encoding)
-                    except UnicodeDecodeError:
-                        continue
-                return data.decode("utf-8", errors="replace")
-
-            stdout = decode_bytes(result.stdout)
-            stderr = decode_bytes(result.stderr)
-            output = stdout + stderr
-
-            return ExecuteResponse(
-                output=output, exit_code=result.returncode, truncated=False
-            )
-
-        except subprocess.TimeoutExpired:
-            logger.error("WindowsShellBackend.execute 超时: %s", command)
-            return ExecuteResponse(
-                output="Command timed out after 30 seconds",
-                exit_code=-1,
-                truncated=False,
-            )
-        except Exception as e:
-            logger.error("WindowsShellBackend.execute 失败: %s", e, exc_info=True)
-            return ExecuteResponse(
-                output=f"Error executing command: {str(e)}",
-                exit_code=-1,
-                truncated=False,
-            )
+def is_artifact_file(file_path: str) -> bool:
+    normalized = file_path.replace("\\", "/")
+    return not any(normalized.startswith(prefix) for prefix in ARTIFACT_EXCLUDED_PREFIXES)
 
 
-class WindowsCompatibleCompositeBackend(CompositeBackend, SandboxBackendProtocol):
-    def __init__(
-        self,
-        shell_backend: WindowsShellBackend,
-        default: StateBackend,
-        routes: dict[str, FilesystemBackend],
-    ):
-        # Create a hybrid default that supports both file ops and execution
-        self.shell_backend = shell_backend
-        self.state_backend = default
-
-        # Use shell_backend as default to pass execution support check
-        super().__init__(default=shell_backend, routes=routes)
-
-    def _get_backend_and_key(self, path: str):
-        """Override routing to use state_backend for file operations."""
-        # Check if path matches any route first
-        for route_prefix, backend in self.sorted_routes:
-            if path.startswith(route_prefix):
-                stripped_key = path[len(route_prefix) :]
-                if not stripped_key.startswith("/"):
-                    stripped_key = "/" + stripped_key
-                return backend, stripped_key
-
-                # For file operations, use state_backend instead of shell_backend
-        return self.state_backend, path
-
-    def execute(self, command: str) -> ExecuteResponse:
-        return self.shell_backend.execute(command)
-
-    @property
-    def id(self) -> str:
-        return f"windows_composite_{self.shell_backend.id}"
+_ARTIFACT_CODE_EXTENSIONS = {"ts", "tsx", "js", "jsx", "json", "py", "sql", "css", "html", "java", "go", "rs", "cpp", "c", "h"}
+_ARTIFACT_SHEET_EXTENSIONS = {"csv", "tsv"}
+_ARTIFACT_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"}
+_ARTIFACT_LANGUAGE_MAP = {
+    "css": "css", "html": "html", "js": "javascript", "json": "json",
+    "md": "markdown", "py": "python", "sql": "sql", "ts": "typescript",
+    "tsx": "tsx", "jsx": "jsx", "java": "java", "go": "go", "rs": "rust",
+    "cpp": "cpp", "c": "c",
+}
 
 
-def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False):
+def infer_artifact_type(file_path: str) -> str:
+    normalized = file_path.replace("\\", "/")
+    if normalized.startswith("/skills-draft/"):
+        return "skill-draft"
+    ext = Path(file_path).suffix.lstrip(".").lower()
+    if ext in _ARTIFACT_CODE_EXTENSIONS:
+        return "code"
+    if ext in _ARTIFACT_SHEET_EXTENSIONS:
+        return "sheet"
+    if ext in _ARTIFACT_IMAGE_EXTENSIONS:
+        return "image"
+    return "text"
+
+
+def infer_artifact_language(file_path: str) -> str | None:
+    ext = Path(file_path).suffix.lstrip(".").lower()
+    return _ARTIFACT_LANGUAGE_MAP.get(ext)
+
+
+def build_artifact_event(
+    file_path: str,
+    content: str,
+    conversation_id: int,
+    tool_call_id: str,
+    status: str,
+) -> dict:
+    artifact_type = infer_artifact_type(file_path)
+    return {
+        "type": "artifact",
+        "data": {
+            "id": f"artifact:{conversation_id}:{tool_call_id}",
+            "artifactType": artifact_type,
+            "title": Path(file_path).name,
+            "content": content,
+            "language": infer_artifact_language(file_path) if artifact_type == "code" else None,
+            "conversationId": conversation_id,
+            "filePath": file_path,
+            "status": status,
+        },
+    }
+
+
+def get_agent(
+    skill_path,
+    root_path,
+    *,
+    employee_id: int | None = None,
+    include_sqlite_tools: bool = False,
+    conversation_id: int | None = None,
+):
     checkpointer = _CHECKPOINTER
-    store = _STORE  # /memories/ uses StoreBackend, requires BaseStore
 
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     skills_root = _resolve_skills_root(skill_path)
     available_skills = _list_available_skills(skills_root)
     logger.info(
-        "get_agent skill_path=%s skills_root=%s available_skills=%s",
+        "get_agent skill_path=%s skills_root=%s available_skills=%s employee_id=%s conversation_id=%s",
         skill_path,
         skills_root,
         available_skills,
+        employee_id,
+        conversation_id,
     )
     base_dir = Path(__file__).resolve().parent
     settings = get_settings()
@@ -351,129 +201,80 @@ def get_agent(skill_path, root_path, *, include_sqlite_tools: bool = False):
             logger.info(
                 "get_agent 已挂载应用 SQLite SQL 工具，共 %s 个工具", len(sql_tools)
             )
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.error("初始化 SQLDatabaseToolkit 失败: %s", exc, exc_info=True)
 
-    skills_fs = PosixVirtualFilesystemBackend(
-        root_dir=str(skills_root), virtual_mode=True
-    )
-    agent_fs = PosixVirtualFilesystemBackend(root_dir=str(base_dir), virtual_mode=True)
+    skills_fs = FilesystemBackend(root_dir=str(skills_root), virtual_mode=True)
+    agent_fs = FilesystemBackend(root_dir=str(base_dir), virtual_mode=True)
 
-    # Create shell backend for Windows compatibility
-    # Prefer workspace root (root_path) then fallback to skills root
-    backend_base_dir = Path(root_path).resolve() if root_path else skills_root
-    shell_backend = WindowsShellBackend(base_dir=str(skills_root.parent))
+    # /memories/ 跟员工走：每个员工有独立的长期记忆目录
+    if employee_id:
+        employee_root = skills_root.parent
+        memories_dir = employee_root / "memories"
+    else:
+        memories_dir = base_dir / "memories"
+    memories_dir.mkdir(parents=True, exist_ok=True)
+    memories_fs = FilesystemBackend(root_dir=str(memories_dir), virtual_mode=True)
 
-    backend = WindowsCompatibleCompositeBackend(
-        shell_backend=shell_backend,
-        default=StateBackend(),
-        routes={
-            "/memories/": StoreBackend(),
-            "/skills/": skills_fs,
-            "/agent/": agent_fs,
-        },
+    # /artifacts/ 始终挂载：聊天场景按会话隔离，其他场景按员工隔离
+    if conversation_id and root_path:
+        artifacts_dir = Path(root_path)  / str(conversation_id) / "artifacts"
+    elif employee_id:
+        artifacts_dir = skills_root.parent / "artifacts"
+    else:
+        artifacts_dir = base_dir / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    routes: dict[str, Any] = {
+        "/memories/": memories_fs,
+        "/skills/": skills_fs,
+        "/agent/": agent_fs,
+        "/artifacts/": FilesystemBackend(root_dir=str(artifacts_dir), virtual_mode=True),
+    }
+
+    # /skills-draft/ 仅在会话场景挂载，跟会话走
+    draft_dir: Path | None = None
+    has_draft_route = False
+    if conversation_id and root_path:
+        draft_dir = Path(root_path)  / str(conversation_id) / "skills-draft"
+        draft_dir.mkdir(parents=True, exist_ok=True)
+        routes["/skills-draft/"] = FilesystemBackend(root_dir=str(draft_dir), virtual_mode=True)
+        has_draft_route = True
+
+    skill_sources = ["/skills/", "/skills-draft/"] if has_draft_route else ["/skills/"]
+
+    shell_backend = SkillAwareShellBackend(
+        root_dir=str(artifacts_dir),
+        skills_root=skills_root,
+        draft_root=draft_dir,
+        virtual_mode=True,
+        inherit_env=True,
+        timeout=30,
     )
+
+    backend = CompositeBackend(default=shell_backend, routes=routes)
 
     agent = create_deep_agent(
         model=model,
         memory=["/agent/AGENTS.md"],
-        skills=["/skills/"],
+        skills=skill_sources,
         subagents=[],
-        system_prompt=_build_system_prompt(current_time, available_skills),
-        store=store,
+        system_prompt=_build_system_prompt(
+            current_time,
+            available_skills,
+            has_draft_route=has_draft_route,
+            skills_real_path=str(skills_root),
+            draft_skills_real_path=str(draft_dir) if draft_dir is not None else "",
+        ),
         backend=backend,
         checkpointer=checkpointer,
         tools=sql_tools or None,
+        permissions=[
+            FilesystemPermission(
+                operations=["write"],
+                paths=["/skills/**", "/agent/**"],
+                mode="deny",
+            ),
+        ],
     )
     return agent
-
-
-def main():
-    """Main entry point for the SQL Deep Agent CLI"""
-    parser = argparse.ArgumentParser(
-        description="Text-to-SQL Deep Agent powered by LangChain DeepAgents and OpenAI GPT-4",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-    Examples:
-    python agent.py "What are the top 5 best-selling artists?"
-    python agent.py "Which employee generated the most revenue by country?"
-    python agent.py "How many customers are from Canada?"
-            """,
-    )
-    pass
-
-
-#     # Add command line argument for question
-#     parser.add_argument(
-#         "question",
-#         type=str,
-#         nargs='?',
-#         default="""查询所有的员工信息
-#         """,
-#         help="Natural language question to answer using the Chinook database"
-#     )
-
-#     # 添加数据库URI参数
-#     parser.add_argument(
-#         "--db-uri",
-#         type=str,
-#         default=None,
-#         help="Database URI to connect to, defaults to environment variable DATABASE_URI or built-in default"
-#     )
-
-#     # Parse command line argument
-#     args = parser.parse_args()
-
-#     # Create the agent with database URI if provided
-#     agent = create_sql_deep_agent(database_uri=args.db_uri)
-#     # Display the question
-#     console.print(Panel(
-#         f"[bold cyan]Question:[/bold cyan] {args.question}",
-#         border_style="cyan"
-#     ))
-#     console.print()
-
-#     # Invoke the agent with streaming to show all intermediate steps
-#     console.print("[dim]Processing query with streaming...[/dim]\n")
-
-#     try:
-#         # Use stream() method to get step-by-step output
-#         for chunk in agent.stream(
-#             {"messages": [{"role": "user", "content": args.question}]},
-#             stream_mode="messages"
-#         ):
-#             console.print(chunk)
-#             # if isinstance(chunk, tuple) and len(chunk) >= 2:
-#             #     message_chunk, metadata = chunk[0], chunk[1]
-#             #     print(f"\n[metadata] {metadata}")
-#             #     content = getattr(message_chunk, "content", "")
-#             #     if isinstance(content, str) and content:
-#             #         print(content, end="", flush=True)
-#             #     elif isinstance(content, list):
-#             #         for item in content:
-#             #             if isinstance(item, dict) and item.get("type") == "text" and item.get("text"):
-#             #                 print(item["text"], end="", flush=True)
-#         # Get the final result separately to display the answer cleanly
-#         # result = agent.invoke({
-#         #     "messages": [{"role": "user", "content": timed_question}]
-#         # })
-#         #
-#         # # Extract and display the final answer
-#         # final_message = result["messages"][-1]
-#         # answer = final_message.content if hasattr(final_message, 'content') else str(final_message)
-
-#         # console.print(Panel(
-#         #     f"[bold green]Final Answer:[/bold green]\n\n{answer}",
-#         #     border_style="green"
-#         # ))
-
-#     except Exception as e:
-#         console.print(Panel(
-#             f"[bold red]Error:[/bold red]\n\n{str(e)}",
-#             border_style="red"
-#         ))
-#         sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

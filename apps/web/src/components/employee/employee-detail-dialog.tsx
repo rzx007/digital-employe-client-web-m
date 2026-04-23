@@ -111,7 +111,7 @@ export function EmployeeDetailDialog({
   }
 
   const metadata = employee?.metadata
-  const capabilities = metadata?.capabilities ?? []
+  const capabilities = metadata?.mcps ?? []
   const skills = metadata?.skills ?? []
   const statusInfo = metadata
     ? (statusMap[metadata.status] ?? statusMap[0])

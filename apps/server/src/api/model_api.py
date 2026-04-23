@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 
+from src.core.config import get_settings
 from src.service.modal_service import ModelCallRequest, ModelService
 from src.models.response import ResponseBase
 
@@ -15,6 +16,12 @@ class ModelCallResponse(BaseModel):
     success: bool
     data: Optional[Dict[str, Any]] = None
     message: str = ""
+
+
+class RuntimeModelConfigResponse(BaseModel):
+    model: str
+    base_url: str
+    api_key_present: bool
 
 
 @router.post("/call-model", summary="调用模型API", response_model=ResponseBase[ModelCallResponse])
@@ -52,3 +59,20 @@ async def simple_chat(prompt: str):
     except Exception as e:
         logger.error("simple-chat 失败: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get(
+    "/runtime/model-config",
+    summary="获取运行态模型配置",
+    response_model=ResponseBase[RuntimeModelConfigResponse],
+)
+async def get_runtime_model_config():
+    settings = get_settings()
+    return ResponseBase(
+        data=RuntimeModelConfigResponse(
+            model=settings.deepagent_model or "qwen2.5-72b-instruct",
+            base_url=settings.base_url
+            or "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key_present=bool(settings.api_key),
+        )
+    )

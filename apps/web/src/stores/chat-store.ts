@@ -7,7 +7,7 @@ import {
   type Contact,
 } from "@/lib/mock-data/ai-employees"
 
-export type ActiveTab = "chat" | "contacts" | "calendar"
+export type ActiveTab = "chat" | "contacts" | "calendar" | "workbench"
 
 interface ChatStore {
   contacts: Contact[]
@@ -17,12 +17,14 @@ interface ChatStore {
   draftSessionKey: number
   showWorkbench: boolean
   activeTab: ActiveTab
+  workbenchEmployeeId: string | null
   setContacts: (contacts: Contact[]) => void
   setSelectedContactId: (id: string | null) => void
   setSelectedConversationId: (id: string | number | null) => void
   setDraftConversation: (isDraft: boolean) => void
   setShowWorkbench: (show: boolean) => void
   setActiveTab: (tab: ActiveTab) => void
+  setWorkbenchEmployeeId: (id: string | null) => void
   startDraftConversation: (contactId: string) => void
   selectConversation: (contactId: string, conversationId: string) => void
   switchToContact: (contactId: string) => void
@@ -39,6 +41,7 @@ export const useChatStore = create<ChatStore>()(
       draftSessionKey: 0,
       showWorkbench: false,
       activeTab: "chat" as ActiveTab,
+      workbenchEmployeeId: null,
       setContacts: (contacts) => set({ contacts }),
       setSelectedContactId: (id) =>
         set({
@@ -61,6 +64,7 @@ export const useChatStore = create<ChatStore>()(
         })),
       setShowWorkbench: (show) => set({ showWorkbench: show }),
       setActiveTab: (tab) => set({ activeTab: tab }),
+      setWorkbenchEmployeeId: (id) => set({ workbenchEmployeeId: id }),
       startDraftConversation: (contactId) =>
         set((state) => ({
           selectedContactId: contactId,
@@ -94,6 +98,8 @@ export const useChatStore = create<ChatStore>()(
       partialize: (state) => ({
         selectedContactId: state.selectedContactId,
         selectedConversationId: state.selectedConversationId,
+        activeTab: state.activeTab,
+        workbenchEmployeeId: state.workbenchEmployeeId,
       }),
     }
   )

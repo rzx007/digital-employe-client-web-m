@@ -5,8 +5,10 @@ import sys
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
-# 与 src 平级：<apps/server>/logs/
-_LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
+from src.core.config import get_default_logs_dir
+
+# ~/.digital-employee/logs/
+_LOG_DIR = get_default_logs_dir()
 _APP_LOG = _LOG_DIR / "app.log"
 _ERROR_LOG = _LOG_DIR / "error.log"
 # 按日切分，保留约7天的备份（可按需调小）
@@ -36,7 +38,7 @@ def _timed_log_attached(root: logging.Logger, log_path: Path) -> bool:
 
 
 def setup_logging() -> Path:
-    """将应用日志按日写入 logs/app.log，ERROR 及以上单独按日写入 logs/error.log，并输出到控制台。"""
+    """将应用日志按日写入 ~/.digital-employee/logs/app.log，ERROR 及以上单独按日写入 error.log，并输出到控制台。"""
     _LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     root = logging.getLogger()

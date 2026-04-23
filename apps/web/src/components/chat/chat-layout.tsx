@@ -1,12 +1,16 @@
+import { useState, useEffect, useRef } from "react"
 import * as React from "react"
 import { toast } from "sonner"
 
 import { Sheet, SheetContent } from "@workspace/ui/components/sheet"
 import { cn } from "@workspace/ui/lib/utils"
+import { useQueryClient } from "@tanstack/react-query"
 import { ArtifactPanel } from "@/components/artifact"
 import { MonitorPanel } from "@/components/schedule-monitor"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useContactsQuery } from "@/hooks/use-chat-queries"
+import { chatKeys } from "@/lib/query-keys/chat"
+import { modelKeys } from "@/lib/query-keys/model"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useChatStore } from "@/stores/chat-store"
@@ -14,13 +18,14 @@ import { useOnboardingStore } from "@/stores/onboarding-store"
 import { PRIMARY_CURATOR } from "@/lib/mock-data/ai-employees"
 import { WelcomeDialog, UserTour } from "@/components/onboarding"
 import { AppToolbar } from "./app-toolbar"
-import { CalendarPlaceholder } from "./calendar-placeholder"
+import { ShiftCalendarPage } from "@/components/shift-calendar"
 import { ChatView } from "./chat-view"
 import { ContactDetailPanel } from "./contact-detail-panel"
 import { ContactsPanel } from "./contacts-panel"
 import { ConversationList } from "./conversation-list"
 import { MobileTabBar } from "./mobile-tab-bar"
 import { RecentConversations } from "./recent-conversations"
+import { WorkbenchView } from "./workbench-view"
 
 const CURATOR_CONTACT = { type: "curator" as const, curator: PRIMARY_CURATOR }
 
@@ -38,26 +43,26 @@ export function ChatLayout({
 
   const { data: apiContacts, isError: contactsError } = useContactsQuery()
 
-  const hasContactsErrorToastRef = React.useRef(false)
+  const hasContactsErrorToastRef = useRef(false)
 
-  React.useEffect(() => {
+  useEffect(() => {
     initOnboarding()
   }, [initOnboarding])
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (initialized && !onboardingCompleted) {
       const timer = setTimeout(() => showWelcome(), 1500)
       return () => clearTimeout(timer)
     }
   }, [initialized, onboardingCompleted, showWelcome])
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (apiContacts) {
       setContacts([CURATOR_CONTACT, ...apiContacts])
     }
   }, [apiContacts, setContacts])
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!contactsError) {
       hasContactsErrorToastRef.current = false
       return
@@ -79,11 +84,27 @@ export function ChatLayout({
     }
   }, [contactsError])
 
-  const [showConversations, setShowConversations] = React.useState(false)
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    if (!window.electronApi?.onInvalidateContacts) return
+    const cleanup = window.electronApi.onInvalidateContacts(() => {
+      queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
+    })
+    return cleanup
+  }, [queryClient])
+
+  useEffect(() => {
+    if (!window.electronApi?.onInvalidateModelConfig) return
+    const cleanup = window.electronApi.onInvalidateModelConfig(() => {
+      queryClient.invalidateQueries({ queryKey: modelKeys.runtimeConfig() })
+    })
+    return cleanup
+  }, [queryClient])
+
+  const [showConversations, setShowConversations] = useState(false)
 
   const {
-    activeArtifactId,
-    artifacts,
     closeArtifact,
     isFullscreen,
     isPanelOpen,
@@ -99,17 +120,15 @@ export function ChatLayout({
     setFullscreen: setMonitorFullscreen,
   } = useMonitorStore()
 
-  const activeArtifact = activeArtifactId
-    ? (artifacts.get(activeArtifactId) ?? null)
-    : null
+  const selectedConversationId = useChatStore((s) => s.selectedConversationId)
 
-  React.useEffect(() => {
-    if (isMobile && isPanelOpen && activeArtifact) {
+  useEffect(() => {
+    if (isMobile && isPanelOpen) {
       setFullscreen(true)
     }
-  }, [activeArtifact, isMobile, isPanelOpen, setFullscreen])
+  }, [isMobile, isPanelOpen, setFullscreen])
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isMobile && isMonitorOpen) {
       setMonitorFullscreen(true)
     }
@@ -146,16 +165,13 @@ export function ChatLayout({
       <div className="flex min-w-0 flex-1">
         {!isMobile && <AppToolbar />}
 
-        {!isMobile && (
+        {!isMobile && activeTab !== "workbench" && activeTab !== "calendar" && (
           <div className="hidden w-64 shrink-0 md:flex md:flex-col">
             {activeTab === "chat" && (
               <RecentConversations className="h-full w-full" />
             )}
             {activeTab === "contacts" && (
               <ContactsPanel className="h-full w-full" />
-            )}
-            {activeTab === "calendar" && (
-              <CalendarPlaceholder className="h-full w-full" />
             )}
           </div>
         )}
@@ -174,17 +190,20 @@ export function ChatLayout({
         )}
 
         {activeTab === "calendar" && (
-          <CalendarPlaceholder variant="content" className="min-w-0 flex-1" />
+          <ShiftCalendarPage className="min-w-0 flex-1" />
+        )}
+
+        {activeTab === "workbench" && (
+          <WorkbenchView className="min-w-0 flex-1" />
         )}
 
         {isPanelOpen &&
-          activeArtifact &&
           !isFullscreen &&
           !isMobile &&
           activeTab === "chat" && (
-            <div className="hidden w-[600px] border-l bg-muted/20 p-3 md:block">
+            <div className="hidden w-[720px] border-l bg-muted/20 p-3 md:block">
               <ArtifactPanel
-                artifact={activeArtifact}
+                conversationId={selectedConversationId}
                 isOpen={isPanelOpen}
                 isFullscreen={false}
                 onClose={closeArtifact}
@@ -216,7 +235,7 @@ export function ChatLayout({
           <MonitorPanel
             isOpen={true}
             isFullscreen={false}
-            onToggleFullscreen={() => {}}
+            onToggleFullscreen={() => { }}
             className="h-full w-full rounded-none border-0 shadow-none"
           />
         </SheetContent>
@@ -224,11 +243,10 @@ export function ChatLayout({
 
       {/* Artifact fullscreen */}
       {isPanelOpen &&
-        activeArtifact &&
         (isFullscreen || isMobile) &&
         activeTab === "chat" && (
           <ArtifactPanel
-            artifact={activeArtifact}
+            conversationId={selectedConversationId}
             isOpen={isPanelOpen}
             isFullscreen={isFullscreen}
             onClose={closeArtifact}
@@ -241,7 +259,6 @@ export function ChatLayout({
         <MonitorPanel
           isOpen={isMonitorOpen}
           isFullscreen={isMonitorFullscreen}
-          onClose={closeMonitor}
           onToggleFullscreen={toggleMonitorFullscreen}
         />
       )}

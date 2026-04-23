@@ -101,7 +101,7 @@ async def chat_send(
         logger.error("解析员工技能目录失败 employee_id=%s: %s", employee.id, exc, exc_info=True)
         skills_path = ""
 
-    agent = get_agent(skills_path, workspace.root_path)
+    agent = get_agent(skills_path, workspace.root_path, employee_id=employee.id)
 
     # Collect the full response from the agent
     collected_texts: list[str] = []

@@ -5,6 +5,8 @@ import type {
   ConversationItem,
   ConversationQuery,
   CreateConversationParams,
+  ResourceContent,
+  ResourceList,
 } from "./types"
 
 /** 当前固定工作空间 ID */
@@ -67,4 +69,22 @@ export async function streamConversation(
   return request.raw(`/chat/conversations/${conversationId}/stream`, {
     params: { question },
   })
+}
+
+export async function fetchConversationResources(
+  conversationId: number | string
+) {
+  return request<ApiResponse<ResourceList>>(
+    `/chat/conversations/${conversationId}/resources`
+  )
+}
+
+export async function fetchResourceContent(
+  conversationId: number | string,
+  path: string
+) {
+  return request<ApiResponse<ResourceContent>>(
+    `/chat/conversations/${conversationId}/resources/content`,
+    { params: { path } }
+  )
 }

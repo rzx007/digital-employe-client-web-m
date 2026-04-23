@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 import os
+import re
 import json
 import shutil
 from functools import lru_cache
@@ -24,7 +25,7 @@ from datetime import datetime  # 导入datetime模块
 from urllib.request import urlopen
 from deepagents.backends.utils import create_file_data
 from langgraph.checkpoint.memory import MemorySaver
-from src.service.agent import get_agent
+from src.service.agent import get_agent, is_artifact_file, build_artifact_event
 
 
 logger = logging.getLogger(__name__)
@@ -223,12 +224,14 @@ class ChatService:
         role: str,
         content: str | None,
         chunk_json: str | None = None,
+        extra_meta: dict | None = None,
     ) -> ConversationMessage:
         message = ConversationMessage(
             conversation_id=conversation.id,
             role=role,
             content=content,
             chunk_json=chunk_json,
+            extra_meta=json.dumps(extra_meta, ensure_ascii=False) if extra_meta else None,
         )
         db.add(message)
         conversation.updated_at = cst_now()
@@ -278,12 +281,127 @@ class ChatService:
         return ""
 
     @staticmethod
+    def _try_extract_artifact(chunk: Any, conversation_id: int, pending_tool_calls: dict) -> dict | None:
+        """从 agent.astream chunk 中检测文件操作并生成 artifact 事件。
+
+        处理两种事件：
+        - messages 事件中的 ToolMessage：记录 pending 信息（工具名、file_path、tool_call_id）
+        - updates 事件中的 tools files：获取文件完整内容，与 pending 合并后发出 artifact
+
+        Args:
+            chunk: agent.astream 的原始 tuple (stream_mode, payload)
+            conversation_id: 会话 ID
+            pending_tool_calls: 挂起的工具调用映射 {tool_call_id -> {tool_name, file_path}}
+        """
+        if not isinstance(chunk, tuple) or len(chunk) != 2:
+            return None
+        stream_mode, payload = chunk[0], chunk[1]
+
+        # 处理 messages 事件：检测 write_file / edit_file 的 ToolMessage
+        if stream_mode == "messages":
+            if not isinstance(payload, (list, tuple)) or len(payload) == 0:
+                return None
+            message = payload[0]
+            msg_type = getattr(message, "type", None)
+            if msg_type != "tool":
+                return None
+
+            tool_name = getattr(message, "name", None)
+            tool_call_id = getattr(message, "tool_call_id", None) or ""
+            content = getattr(message, "content", "") or ""
+
+            if tool_name not in ("write_file", "edit_file"):
+                return None
+
+            # write_file 返回 "Updated file /path"，edit_file 返回 "Successfully replaced ..."
+            file_path = ChatService._extract_file_path_from_tool_output(content)
+            if file_path and is_artifact_file(file_path):
+                pending_tool_calls[tool_call_id] = {
+                    "tool_name": tool_name,
+                    "file_path": file_path,
+                }
+                logger.info("artifact pending: tool=%s file=%s call_id=%s", tool_name, file_path, tool_call_id)
+            return None
+
+        # 处理 updates 事件：从 tools.files 中提取文件内容
+        if stream_mode == "updates":
+            if not isinstance(payload, dict):
+                return None
+            tools_data = payload.get("tools")
+            if not isinstance(tools_data, dict):
+                return None
+            files = tools_data.get("files")
+            if not isinstance(files, dict):
+                return None
+
+            for file_path, file_info in files.items():
+                if not isinstance(file_info, dict):
+                    continue
+                file_content = file_info.get("content")
+                if file_content is None or not is_artifact_file(file_path):
+                    continue
+
+                # 查找匹配的 pending tool call
+                tool_call_id = ""
+                tool_name = ""
+                for tid, info in list(pending_tool_calls.items()):
+                    if info["file_path"] == file_path:
+                        tool_call_id = tid
+                        tool_name = info["tool_name"]
+                        del pending_tool_calls[tid]
+                        break
+
+                if not tool_call_id:
+                    # 没有对应的 pending，用文件路径生成 ID
+                    tool_call_id = f"file:{conversation_id}:{file_path}"
+
+                status = "completed" if tool_name == "write_file" or not tool_name else "updated"
+                return build_artifact_event(
+                    file_path=file_path,
+                    content=str(file_content),
+                    conversation_id=conversation_id,
+                    tool_call_id=tool_call_id,
+                    status=status,
+                )
+
+            return None
+
+        return None
+
+    @staticmethod
+    def _extract_file_path_from_tool_output(content: str) -> str | None:
+        """从工具输出文本中提取文件路径。
+
+        write_file 返回 "Updated file /path"
+        edit_file 返回 "Successfully replaced N instance(s) of the string in '/path'"
+        """
+        if not content:
+            return None
+        # write_file: "Updated file /path"
+        if content.startswith("Updated file"):
+            return content.replace("Updated file", "").strip() or None
+        # edit_file: 匹配单引号中的路径 "Successfully replaced ... in '/path'"
+        match = re.search(r"in\s+'([^']+)'", content)
+        if match:
+            return match.group(1)
+        # edit_file: 匹配双引号中的路径
+        match = re.search(r'in\s+"([^"]+)"', content)
+        if match:
+            return match.group(1)
+        # edit_file: 匹配 /path 格式
+        match = re.search(r"in\s+(/\S+)", content)
+        if match:
+            return match.group(1)
+        return None
+
+    @staticmethod
     async def stream_conversation_answer(
         db: Session,
         conversation_id: int,
         question: str,
         skill_name: str,
         debug_content_only: bool = False,
+        extra_meta: dict | None = None,
     ):
         settings = get_settings()
         
@@ -294,14 +412,14 @@ class ChatService:
             limit=settings.chat_history_max_messages,
         )
 
-        ChatService._append_message(db, conversation=conversation, role="user", content=question)
+        ChatService._append_message(db, conversation=conversation, role="user", content=question, extra_meta=extra_meta)
         request_messages = [*history_messages, {"role": "user", "content": question}]
         # 根据会话ID获取会话详情，然后获取root_path
         conversation = ChatService.get_conversation(db, conversation_id)
         workspace = db.get(Workspace, conversation.workspace_id)
         if not workspace:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到工作空间。")
-        root_path = workspace.root_path
+        # root_path = workspace.root_path
         # 根据会话ID获取员工或者群组
         target_type = conversation.target_type
         target_id = conversation.target_id
@@ -331,12 +449,14 @@ class ChatService:
         except HTTPException:
             # 没有可用 skill 时，按约定使用空路径。
             skills_path = ""
-        # print(skills_path, root_path)
-            
-        agent = get_agent(skills_path, root_path)
+      
+        root_path = settings.artifacts_path
+
+        agent = get_agent(skills_path, root_path, employee_id=employee.id if target_type == "employee" else None, conversation_id=conversation_id)
         # print(agent.skills)
         collected_chunks: list[Any] = []
         assistant_text_parts: list[str] = []
+        pending_tool_calls: dict[str, dict] = {}
         try:
             skill_question = question
             if skill_name:
@@ -346,12 +466,9 @@ class ChatService:
             # 异步调用代理并流式返回结果，保持原有SSE数据结构不变
             async for chunk in agent.astream(
                 {"messages": request_messages},
-                stream_mode="messages",
+                stream_mode=["messages", "updates"],
                 config={"configurable": {"thread_id": conversation_id}}
             ):
-                # 转换前打印内容
-                # print(chunk)
-                # 转换为可序列化的格式
                 serializable_chunk = ChatService.convert_to_serializable(chunk)
                 collected_chunks.append(serializable_chunk)
                 text_part = ChatService._extract_text_from_chunk(serializable_chunk)
@@ -361,6 +478,14 @@ class ChatService:
                     if text_part:
                         yield f"data: {text_part}\n\n"
                     continue
+
+                # 检测 artifact 事件：从 ToolMessage + tools update 中提取文件操作
+                artifact_event = ChatService._try_extract_artifact(
+                    chunk, conversation_id, pending_tool_calls
+                )
+                if artifact_event:
+                    yield f"data: {json.dumps(artifact_event, ensure_ascii=False)}\n\n"
+
                 # 将每个chunk转换为JSON格式并发送
                 yield f"data: {json.dumps(serializable_chunk, ensure_ascii=False, default=str)}\n\n"
 

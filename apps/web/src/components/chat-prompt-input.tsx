@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react"
+import { useCallback } from "react"
 import type { FileUIPart } from "ai"
 import {
   Attachment,
@@ -25,31 +25,10 @@ import {
   LexicalPromptInputTextarea,
   type PromptChangeEvent,
 } from "./lexical-editor/prompt-input-textarea"
-import {
-  ModelSelector,
-  ModelSelectorContent,
-  ModelSelectorEmpty,
-  ModelSelectorGroup,
-  ModelSelectorItem,
-  ModelSelectorList,
-  ModelSelectorLogo,
-  ModelSelectorName,
-  ModelSelectorTrigger,
-} from "@workspace/ui/components/ai-elements/model-selector"
-import { IconSettings, IconMap } from "@tabler/icons-react"
+import { useRuntimeModelConfigQuery } from "@/hooks/use-model-queries"
 import type { SlashCommandItem } from "./lexical-editor/slash-command-plugin"
 import type { MentionCandidate } from "./lexical-editor/mention-plugin"
-
-// Ensure models logic is shared or injected. We'll use a local constant for now.
-const models = [
-  {
-    chef: "ZhiPu",
-    chefSlug: "zhipu",
-    id: "zhipu-glm-5.0",
-    name: "GLM 5.0",
-    providers: ["zhipu"],
-  },
-]
+import { Separator } from "@workspace/ui/components/separator"
 
 const AttachmentItem = ({
   attachment,
@@ -97,25 +76,6 @@ const PromptInputAttachmentsDisplay = () => {
   )
 }
 
-const ModelItem = ({
-  m,
-  onSelect,
-}: {
-  m: (typeof models)[0]
-  onSelect: (id: string) => void
-}) => {
-  const handleSelect = useCallback(() => {
-    onSelect(m.id)
-  }, [onSelect, m.id])
-
-  return (
-    <ModelSelectorItem onSelect={handleSelect} value={m.id}>
-      <ModelSelectorLogo provider={m.chefSlug as "zhipu"} />
-      <ModelSelectorName>{m.name}</ModelSelectorName>
-    </ModelSelectorItem>
-  )
-}
-
 interface ChatPromptInputProps {
   value: string
   onChange: (e: PromptChangeEvent) => void
@@ -138,27 +98,21 @@ export function ChatPromptInput({
   onStop,
   status,
   disabled,
-  placeholder = "请输入任务，然后交给 Agent",
+  placeholder = "请输入任务，然后交给我",
   size = "default",
   className,
   slashCommands,
   mentionCandidates,
 }: ChatPromptInputProps) {
-  const [model, setModel] = useState<string>(models[0]!.id)
-  const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
-
-  const selectedModelData = useMemo(
-    () => models.find((m) => m.id === model) ?? models[0],
-    [model]
-  )
-
-  const handleModelSelect = useCallback((modelId: string) => {
-    setModel(modelId)
-    setModelSelectorOpen(false)
-  }, [])
+  const runtimeModelQuery = useRuntimeModelConfigQuery()
 
   const isCompact = size === "compact"
   const isStreaming = status === "streaming" || status === "submitted"
+  const currentModel = runtimeModelQuery.isLoading
+    ? "加载中..."
+    : runtimeModelQuery.isError
+      ? "读取失败"
+      : runtimeModelQuery.data?.model || "未配置"
 
   return (
     <div className={className}>
@@ -177,9 +131,8 @@ export function ChatPromptInput({
             mentionCandidates={mentionCandidates}
             disabled={isStreaming}
             disabledPlaceholder="AI 正在回复中..."
-            className={`resize-none placeholder:text-muted-foreground/60 ${
-              isCompact ? "min-h-[60px] text-base" : "min-h-28 text-lg"
-            }`}
+            className={`resize-none placeholder:text-muted-foreground/60 ${isCompact ? "min-h-[60px] text-base" : "min-h-28 text-lg"
+              }`}
           />
         </PromptInputBody>
         <PromptInputFooter>
@@ -190,7 +143,11 @@ export function ChatPromptInput({
                 <PromptInputActionAddAttachments />
               </PromptInputActionMenuContent>
             </PromptInputActionMenu>
-
+            <Separator orientation="vertical" className="h-3 mt-2 mr-3" />
+            <PromptInputButton className="w-auto px-0.5" variant="ghost" size="icon-sm">
+              {/* <IconMap className="h-4 w-4" /> */}
+              {currentModel.toUpperCase()}
+            </PromptInputButton>
             {/* <PromptInputButton variant="ghost" size="icon-sm">
               <IconMap className="h-4 w-4" />
             </PromptInputButton> */}
@@ -200,34 +157,6 @@ export function ChatPromptInput({
             </PromptInputButton> */}
           </PromptInputTools>
           <PromptInputTools>
-            {/* <ModelSelector
-              onOpenChange={setModelSelectorOpen}
-              open={modelSelectorOpen}
-            >
-              <ModelSelectorTrigger asChild>
-                <PromptInputButton className="min-w-20 px-1.5">
-                  {selectedModelData?.name && (
-                    <ModelSelectorName className="text-muted-foreground">
-                      {selectedModelData.name}
-                    </ModelSelectorName>
-                  )}
-                </PromptInputButton>
-              </ModelSelectorTrigger>
-              <ModelSelectorContent>
-                <ModelSelectorList>
-                  <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
-                  <ModelSelectorGroup heading="GLM 5.0">
-                    {models.map((m) => (
-                      <ModelItem
-                        key={m.id}
-                        m={m}
-                        onSelect={handleModelSelect}
-                      />
-                    ))}
-                  </ModelSelectorGroup>
-                </ModelSelectorList>
-              </ModelSelectorContent>
-            </ModelSelector> */}
             <PromptInputSubmit
               disabled={disabled}
               status={status}

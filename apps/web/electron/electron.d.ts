@@ -72,6 +72,9 @@ declare global {
       hasSavedAuth: () => Promise<boolean>
       openRecruitment: () => Promise<void>
       closeRecruitment: () => Promise<void>
+      notifyHireSuccess: () => Promise<void>
+      onInvalidateContacts: (callback: () => void) => () => void
+      onInvalidateModelConfig: (callback: () => void) => () => void
       openSettings: () => Promise<void>
       closeSettings: () => Promise<void>
       setAutoLaunch: (enabled: boolean) => Promise<void>
@@ -82,6 +85,8 @@ declare global {
       getAutoUpdate: () => Promise<boolean>
       getOnboardingCompleted: () => Promise<boolean>
       setOnboardingCompleted: (value: boolean) => Promise<void>
+      getEndpoint: () => Promise<string>
+      setEndpoint: (endpoint: string) => Promise<void>
       getModelSettings: () => Promise<{
         model: string
         apiKey: string
