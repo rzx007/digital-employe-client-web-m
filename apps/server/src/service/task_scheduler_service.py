@@ -287,7 +287,11 @@ class TaskSchedulerService:
         )
         host_header = parsed_url.netloc
 
-        url = f"{base}/tool/call"
+        tool_call_path = (settings.mcp_tool_call_path or "/tool/call").strip()
+        normalized_tool_call_path = (
+            tool_call_path if tool_call_path.startswith("/") else f"/{tool_call_path}"
+        )
+        url = f"{base}{normalized_tool_call_path}"
         payload = {
             "serverName": server_name,
             "toolName": tool_name,
@@ -454,8 +458,14 @@ class TaskSchedulerService:
     @classmethod
     def run_task_job(cls, task_id: int) -> None:
         with get_session_local()() as db:
-            task = db.get(EmployeeTask, task_id)
-            if not task or not task.is_active or task.dispatch_type not in ("skill", "mcp"):
+            task = db.scalar(
+                select(EmployeeTask).where(
+                    EmployeeTask.id == task_id,
+                    EmployeeTask.is_active.is_(True),
+                    EmployeeTask.dispatch_type.in_(("skill", "mcp")),
+                )
+            )
+            if not task:
                 return
 
             employee = db.get(Employee, task.employee_id)

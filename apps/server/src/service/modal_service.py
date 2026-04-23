@@ -1,12 +1,11 @@
 from typing import Any
 
 from pydantic import BaseModel
-from src.core.config import get_settings
+from src.core.config import get_settings, join_base_and_path
 import aiohttp
 import logging
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 class ModelCallRequest(BaseModel):
     prompt: str
@@ -26,8 +25,15 @@ class ModelService:
         if model_params is None:
             model_params = {}
 
+        settings = get_settings()
 
-        url = settings.dbchat_base_url + "/model/chat/simple"  # 需要根据实际情况调整
+        url = join_base_and_path(
+            settings.dbchat_base_url,
+            settings.dbchat_model_chat_simple_path,
+        )
+        if not url:
+            logger.error("未配置 DB Chat 服务地址（DBCHAT_BASE_URL）。")
+            return None
 
         try:
             async with aiohttp.ClientSession() as session:

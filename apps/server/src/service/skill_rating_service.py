@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from fastapi import HTTPException, status
 
-from src.core.config import get_settings
+from src.core.config import get_settings, join_base_and_path
 from src.models.employee import Employee
 from src.models.employee_skill import EmployeeSkill
 from src.models.skill_rating import SkillRating
@@ -94,14 +94,16 @@ class SkillRatingService:
         # 调用远程接口，将分数同步过去
         settings = get_settings()
         try:
-            # 将skill_remote_rating路径中的{skillId}替换为skill_id
-
-            rating_url = (
-                settings.skill_remote_base_url
-                + settings.skill_remote_rating.format(skill_id=skill_id)
+            if not settings.skill_remote_rating:
+                raise ValueError("未配置技能评分路径（SKILL_REMOTE_RATING）。")
+            rating_url = join_base_and_path(
+                settings.skill_remote_base_url,
+                settings.skill_remote_rating.format(skill_id=skill_id),
             )
+            if not rating_url:
+                raise ValueError("未配置远程技能服务地址（REMOTE_API_BASE_URL）。")
             headers = {"token": f"{token}"}
-            result = httpx.post(rating_url, headers=headers, json={"score": payload.score})
+            httpx.post(rating_url, headers=headers, json={"score": payload.score})
         except (httpx.HTTPError, ValueError) as exc:
             logger.error("评分同步远程失败 skill_id=%s: %s", skill_id, exc, exc_info=True)
 

@@ -10,7 +10,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from src.models.employee import Employee
+from src.models.employee import Employee, EmployeeShiftSchedule
 from src.models.employee_task import EmployeeTask
 from src.models.skill_rating import SkillRating
 from src.models.task_execution_log import TaskExecutionLog
@@ -118,10 +118,20 @@ class TaskService:
     @staticmethod
     def sync_workspace_tasks(db: Session, workspace_id: int) -> list[EmployeeTask]:
         WorkspaceService.get_workspace(db, workspace_id)
+        today = cst_now().date().isoformat()
         employees = list(
             db.scalars(
                 select(Employee)
-                .where(Employee.workspace_id == workspace_id)
+                .join(
+                    EmployeeShiftSchedule,
+                    EmployeeShiftSchedule.employee_id == Employee.id,
+                )
+                .where(
+                    Employee.workspace_id == workspace_id,
+                    EmployeeShiftSchedule.start_date <= today,
+                    EmployeeShiftSchedule.end_date >= today,
+                )
+                .distinct()
                 .order_by(Employee.id.asc())
             ).all()
         )
@@ -183,7 +193,13 @@ class TaskService:
                 task.task_type = TaskService._to_int(raw_task.get("task_type"))
                 task.cron_expression = cron_expression
                 task.cron_expression_type = str(raw_task.get("cron_expression_type") or "custom")
-                task.is_active = TaskService._to_bool(raw_task.get("is_active"), default=True)
+                if "is_active" in raw_task:
+                    task.is_active = TaskService._to_bool(
+                        raw_task.get("is_active"),
+                        default=task.is_active if existing else True,
+                    )
+                elif not existing:
+                    task.is_active = True
                 task.confirm_execution_result = TaskService._to_bool(
                     raw_task.get("confirm_execution_result"), default=False
                 )

@@ -200,7 +200,7 @@ class EmployeeService:
         settings = get_settings()
         if not settings.employee_zip_url:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                detail="未配置员工ZIP下载地址（EMPLOYEE_ZIP_URL）。")
+                                detail="未配置员工ZIP下载地址（REMOTE_API_BASE_URL + EMPLOYEE_ZIP_PATH）。")
 
         tmp_dir = Path(settings.employee_tmp_dir)
         if not tmp_dir.is_absolute():
@@ -413,24 +413,27 @@ class EmployeeService:
                 skill_id = TaskService._to_int(task.get("skill_id"))
                 cap_id = None
 
-            normalized.append(
-                {
-                    "task_name": task_name,
-                    "dispatch_type": dispatch_type,
-                    "skill_id": skill_id,
-                    "capability_id": cap_id,
-                    "priority": int(task.get("priority") or 0),
-                    "task_type": task.get("task_type"),
-                    "cron_expression": cron_expression,
-                    "cron_expression_type": str(task.get("cron_expression_type") or "custom"),
-                    "is_active": bool(task.get("is_active", True)),
-                    "confirm_execution_result": TaskService._to_bool(
-                        task.get("confirm_execution_result"), default=False
-                    ),
-                    "config": {"input": input_payload},
-                    "user_prompt": user_prompt,
-                }
-            )
+            normalized_task = {
+                "task_name": task_name,
+                "dispatch_type": dispatch_type,
+                "skill_id": skill_id,
+                "capability_id": cap_id,
+                "priority": int(task.get("priority") or 0),
+                "task_type": task.get("task_type"),
+                "cron_expression": cron_expression,
+                "cron_expression_type": str(task.get("cron_expression_type") or "custom"),
+                "confirm_execution_result": TaskService._to_bool(
+                    task.get("confirm_execution_result"), default=False
+                ),
+                "config": {"input": input_payload},
+                "user_prompt": user_prompt,
+            }
+            if "is_active" in task:
+                normalized_task["is_active"] = TaskService._to_bool(
+                    task.get("is_active"),
+                    default=True,
+                )
+            normalized.append(normalized_task)
         return normalized
 
     @staticmethod

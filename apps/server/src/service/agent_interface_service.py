@@ -3,14 +3,22 @@ import logging
 from src.utils.http_client import create_agent_interface_http_client
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
+
 
 class AgentInterfaceService:
     """Agent Interface集成服务，用于调用agent-interface的Skills接口"""
 
-    def __init__(self):
-        self.base_url = settings.agent_interface_base_url
-        self.skill_prefix = "/aios/skill"
+    @staticmethod
+    def _build_url(path: str) -> str:
+        settings = get_settings()
+        base_url = (settings.agent_interface_base_url or "").strip().rstrip("/")
+        if not base_url:
+            return ""
+        prefix = (settings.agent_interface_skill_prefix or "/aios/skill").strip()
+        if prefix and not prefix.startswith("/"):
+            prefix = f"/{prefix}"
+        suffix = path if path.startswith("/") else f"/{path}"
+        return f"{base_url}{prefix}{suffix}"
 
     async def get_skill_list(
         self, directory_id: int | None = None, status: int | None = None
@@ -26,7 +34,10 @@ class AgentInterfaceService:
             List[Dict]: 技能列表
         """
         try:
-            url = f"{self.base_url}{self.skill_prefix}/list"
+            url = self._build_url("")
+            if not url:
+                logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
+                return []
             params = {}
             if directory_id is not None:
                 params["directoryId"] = directory_id
@@ -89,7 +100,10 @@ class AgentInterfaceService:
             Optional[Dict]: 技能详情
         """
         try:
-            url = f"{self.base_url}{self.skill_prefix}/get"
+            url = self._build_url("/get")
+            if not url:
+                logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
+                return None
             async with create_agent_interface_http_client() as client:
                 response = await client.get(url, params={"id": skill_id})
                 response.raise_for_status()
@@ -112,8 +126,10 @@ class AgentInterfaceService:
             Optional[Dict]: Function Calling格式数据
         """
         try:
-
-            url = f"{self.base_url}{self.skill_prefix}/function/format"
+            url = self._build_url("/function/format")
+            if not url:
+                logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
+                return None
             async with create_agent_interface_http_client() as client:
                 response = await client.get(url, params={"id": skill_id})
                 response.raise_for_status()
@@ -136,7 +152,10 @@ class AgentInterfaceService:
             List[Dict]: Function Calling格式数据列表
         """
         try:
-            url = f"{self.base_url}{self.skill_prefix}/function/format/batch"
+            url = self._build_url("/function/format/batch")
+            if not url:
+                logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
+                return []
             async with create_agent_interface_http_client() as client:
                 response = await client.post(url, json=skill_ids)
                 response.raise_for_status()
@@ -156,7 +175,10 @@ class AgentInterfaceService:
             List[Dict]: 目录树结构
         """
         try:
-            url = f"{self.base_url}{self.skill_prefix}/directory/tree"
+            url = self._build_url("/directory/tree")
+            if not url:
+                logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
+                return []
             async with create_agent_interface_http_client() as client:
                 response = await client.get(url)
                 response.raise_for_status()
@@ -179,7 +201,10 @@ class AgentInterfaceService:
             Optional[bytes]: ZIP文件字节流，下载失败返回None
         """
         try:
-            url = f"{self.base_url}{self.skill_prefix}/export/single/{skill_id}"
+            url = self._build_url(f"/export/single/{skill_id}")
+            if not url:
+                logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
+                return None
             async with create_agent_interface_http_client() as client:
                 response = await client.get(url)
                 response.raise_for_status()

@@ -1,4 +1,5 @@
 from src.models.chat_group import ChatGroup
+from src.models.config_kv import ConfigKv
 from src.models.conversation import Conversation, ConversationMessage
 from src.models.employee import Employee, EmployeeShiftSchedule
 from src.models.employee_mcp import EmployeeMcp
@@ -16,6 +17,7 @@ __all__ = [
     "EmployeeMcp",
     "EmployeeSkill",
     "ChatGroup",
+    "ConfigKv",
     "GroupMember",
     "Conversation",
     "ConversationMessage",

@@ -19,7 +19,7 @@ class McpService:
         if not base_url:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="未配置远程服务地址（SKILL_REMOTE_BASE_URL）。",
+                detail="未配置远程服务地址（REMOTE_API_BASE_URL）。",
             )
         normalized = path if path.startswith("/") else f"/{path}"
         return f"{base_url}{normalized}"
