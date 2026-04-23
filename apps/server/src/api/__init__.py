@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from src.api.chat_api import router as chat_router
+from src.api.config_kv_api import router as config_kv_router
 from src.api.employee_api import router as employee_router
 from src.api.group_api import router as group_router
 from src.api.skill_api import router as skill_router
@@ -22,6 +23,7 @@ api_router.include_router(skill_rating_router)
 api_router.include_router(model_router)
 api_router.include_router(login_router)
 api_router.include_router(mcp_router)
+api_router.include_router(config_kv_router)
 
 __all__ = ["api_router"]
 

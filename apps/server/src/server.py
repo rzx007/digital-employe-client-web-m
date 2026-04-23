@@ -13,6 +13,7 @@ from src.db.init_db import init_db
 from src.models.employee import Employee
 from src.db.session import get_session_local
 from src.service.employee_service import EmployeeService
+from src.service.config_kv_service import ConfigKvService
 from src.service.task_scheduler_service import TaskSchedulerService
 from src.service.task_service import TaskService
 from src.service.workspace_service import WorkspaceService
@@ -42,6 +43,12 @@ def create_app() -> FastAPI:
         EmployeeService.migrate_local_employees_to_skill_path()
         with get_session_local()() as db:
             workspace = WorkspaceService.ensure_default_workspace(db)
+            inserted = ConfigKvService.bootstrap_from_json(db)
+            if inserted > 0:
+                logger.info(
+                    "Initialized config_kvs from JSON file: inserted=%s",
+                    inserted,
+                )
             # initialize_default_workspace_employees(db, workspace)
             # 获取员工
             # EmployeeService.sync_workspace_employees(db, workspace)

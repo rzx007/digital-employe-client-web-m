@@ -6,7 +6,6 @@ import aiohttp
 import logging
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 class ModelCallRequest(BaseModel):
     prompt: str
@@ -26,6 +25,7 @@ class ModelService:
         if model_params is None:
             model_params = {}
 
+        settings = get_settings()
 
         url = join_base_and_path(
             settings.dbchat_base_url,
