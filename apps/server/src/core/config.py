@@ -23,11 +23,7 @@ def resolve_configured_path(path_value: str) -> str:
     path = Path(os.path.expandvars(os.path.expanduser(path_value)))
     if not path.is_absolute():
         path = Path.cwd() / path
-    return path
-
-
-def resolve_configured_path(path_value: str) -> str:
-    return str(_resolve_path(path_value))
+    return str(path)
 
 
 def split_base_and_path(url: str | None) -> tuple[str | None, str | None]:
@@ -66,7 +62,6 @@ class Settings:
     default_workspace_name: str | None
     sqlite_path: str
     skill_path: str
-    artifacts_path: str
     remote_api_base_url: str | None
     employee_zip_path: str | None
     employee_zip_url: str | None
@@ -97,7 +92,6 @@ class Settings:
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    settings_data = _read_settings_json()
     legacy_employee_zip_url = os.getenv("EMPLOYEE_ZIP_URL")
     legacy_skill_remote_base_url = os.getenv("SKILL_REMOTE_BASE_URL")
     legacy_mcp_base_url = os.getenv("MCP_BASE_URL")
@@ -190,27 +184,6 @@ def get_settings() -> Settings:
         login_url=join_base_and_path(platform_base_url, login_path)
         or legacy_login_url
         or None,
-        artifacts_path=get_default_artifacts_path(),
-        employee_zip_url=_get_env_value("EMPLOYEE_ZIP_URL"),
-        employee_tmp_dir=_get_env_value("EMPLOYEE_TMP_DIR") or "./tmp/employees",
-        deepagent_model=_get_config_value(
-            settings_data, "model", "DEEPAGENT_MODEL"
-        ),
-        chat_history_max_messages=_safe_int_env("CHAT_HISTORY_MAX_MESSAGES", 30),
-        api_key=_get_config_value(settings_data, "apiKey", "OPENAI_API_KEY"),
-        base_url=_get_config_value(settings_data, "apiUrl", "BASE_URL"),
-        skill_remote_base_url=_get_config_value(
-            settings_data, "endpoint", "SKILL_REMOTE_BASE_URL"
-        ),
-        skill_remote_token=_get_env_value("SKILL_REMOTE_TOKEN"),
-        skill_remote_timeout=_safe_float_env("SKILL_REMOTE_TIMEOUT", 15.0),
-        skill_remote_rating=_get_env_value("SKILL_REMOTE_RATING"),
-        mcp_remote_list_url=_get_env_value("MCP_REMOTE_LIST_URL"),
-        mcp_remote_detail_url=_get_env_value("MCP_REMOTE_DETAIL_URL"),
-        mcp_base_url=_get_env_value("MCP_BASE_URL"),
-        agent_interface_base_url=_get_env_value("AGENT_INTERFACE_BASE_URL"),
-        dbchat_base_url=_get_env_value("DBCHAT_BASE_URL"),
-        login_url=_get_env_value("LOGIN_URL"),
     )
 
 
