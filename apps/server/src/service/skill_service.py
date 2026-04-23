@@ -69,6 +69,7 @@ class SkillService:
             )
         if payload.get("code") != 1:
             msg = payload.get("msg") or "远程技能服务返回失败。"
+            logger.error("远程技能服务返回失败: %s", msg, exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=str(msg),
@@ -123,6 +124,7 @@ class SkillService:
         )
         data = payload.get("data")
         if not isinstance(data, dict):
+            logger.error("远程技能详情数据格式错误: %s", data, exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="远程技能详情数据格式错误。",
