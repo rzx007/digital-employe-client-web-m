@@ -5,6 +5,7 @@ import {
 } from "@workspace/ui/components/collapsible"
 import { cn } from "@workspace/ui/lib/utils"
 import { IconBrain, IconChevronDown } from "@tabler/icons-react"
+import { MessageResponse } from "@workspace/ui/components/ai-elements/message"
 import type { ComponentProps } from "react"
 import { useState } from "react"
 
@@ -33,7 +34,9 @@ export function ThinkingBlock({
       <div className={cn("not-prose", className)} {...props}>
         <div className="flex items-start gap-1.5 text-xs text-muted-foreground/60">
           <IconBrain className="mt-0.5 size-3 shrink-0" />
-          <p className="leading-relaxed">{text}</p>
+          <MessageResponse className="flex-1 leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+            {text}
+          </MessageResponse>
         </div>
       </div>
     )
@@ -45,7 +48,8 @@ export function ThinkingBlock({
         <CollapsibleTrigger
           className={cn(
             "flex w-full items-center gap-1.5 text-xs text-muted-foreground/70 transition-colors hover:text-muted-foreground",
-            "outline-none focus-visible:ring-0"
+            "outline-none focus-visible:ring-0 hover:bg-muted/50 p-1",
+            isOpen && "border-b border-border/50"
           )}
         >
           <IconBrain className="size-3" />
@@ -59,11 +63,16 @@ export function ThinkingBlock({
         </CollapsibleTrigger>
         <CollapsibleContent
           className={cn(
+            "overflow-y-auto max-h-60",
             "text-xs leading-relaxed text-muted-foreground/60",
             "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0"
           )}
         >
-          <p className="mt-1.5 pl-[18px]">{text}</p>
+          <div className="mt-1.5 pl-[18px]">
+            <MessageResponse className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+              {text}
+            </MessageResponse>
+          </div>
         </CollapsibleContent>
       </Collapsible>
     </div>

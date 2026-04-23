@@ -20,7 +20,13 @@ let currentBaseURL = fallbackBaseURL
 async function loadEndpointBaseURL(): Promise<string> {
   if (typeof window === "undefined") return fallbackBaseURL
   try {
-    const endpoint = await window.electronApi?.getEndpoint()
+    const res = await ofetch<{
+      data?: { config_value?: string }
+    }>("/config-kvs/platform_base_url", {
+      baseURL: fallbackBaseURL,
+      headers: { ...defaultHeaders },
+    })
+    const endpoint = res?.data?.config_value
     if (endpoint) {
       currentBaseURL = endpoint
       return endpoint
@@ -90,6 +96,6 @@ export const request = ofetch.create({
 
 if (typeof window !== "undefined") {
   loadEndpointBaseURL().then((url) => {
-    // request.options.baseURL = url
+    request.options.baseURL = url
   })
 }

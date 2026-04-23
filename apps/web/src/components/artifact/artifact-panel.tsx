@@ -236,7 +236,7 @@ export const ArtifactPanel = ({
           </div>
 
           <div className="flex min-h-0 flex-1">
-            <div className="w-[220px] shrink-0 overflow-auto border-r">
+            <div className="w-72 shrink-0 overflow-auto border-r">
               <FileTree
                 selectedPath={selectedPath ?? undefined}
                 onSelect={setSelectedPath}
@@ -267,10 +267,10 @@ export const ArtifactPanel = ({
               {(!resourceList ||
                 (resourceList.artifacts.length === 0 &&
                   resourceList.skills_draft.length === 0)) && (
-                <div className="p-4 text-center text-xs text-muted-foreground">
-                  暂无资源文件
-                </div>
-              )}
+                  <div className="p-4 text-center text-xs text-muted-foreground">
+                    暂无资源文件
+                  </div>
+                )}
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col">

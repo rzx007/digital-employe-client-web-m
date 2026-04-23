@@ -63,13 +63,13 @@ function extractResultText(part: ToolUIPart): string | null {
 }
 
 /**
- * 将 UI 消息的部分（parts）分类为不同的块（blocks），以便在界面上进行结构化展示。
+ * 将 UI 消息的部分内容分类为不同的块（思考过程、工具调用组、最终响应）。
  *
- * 该函数根据消息中是否包含工具调用（Tool Calls）以及文本部分的位置，
- * 将消息内容划分为“最终响应”、“思考过程”或“工具调用组”。
+ * 该函数根据消息中是否包含工具调用以及文本部分相对于最后一个工具调用的位置，
+ * 将消息拆分为具有特定语义的块。
  *
- * @param message - 需要分类的 UI 消息对象，包含唯一标识符和部分内容数组。
- * @returns 分类后的块数组。如果消息为空或无有效内容，则返回空数组。
+ * @param message - 需要分类的 UI 消息对象
+ * @returns 分类后的块数组，包含思考块、工具组块和最终响应块
  */
 export function classifyMessageParts(
   message: UIMessage
@@ -77,10 +77,8 @@ export function classifyMessageParts(
   const parts = message.parts
   if (parts.length === 0) return []
 
-  // 检查消息中是否包含任何工具调用部分
   const hasAnyTool = parts.some(isToolUIPart)
 
-  // 如果没有工具调用，则将所有文本部分合并为一个最终响应块
   if (!hasAnyTool) {
     const text = parts
       .filter((p) => p.type === "text" && "text" in p && p.text)
@@ -96,7 +94,6 @@ export function classifyMessageParts(
     }]
   }
 
-  // 找到最后一个工具调用部分的索引，用于区分工具执行前的思考过程和工具执行后的最终响应
   const lastToolIndex = parts.reduce(
     (acc, p, i) => (isToolUIPart(p) ? i : acc),
     -1
@@ -104,6 +101,12 @@ export function classifyMessageParts(
 
   const blocks: ClassifiedBlock[] = []
 
+  /**
+   * 将单个工具调用部分转换为工具组块并添加到结果列表中
+   *
+   @param part - 工具调用部分
+   * @param index - 该部分在消息部分数组中的索引
+   */
   function pushSingleTool(part: ToolUIPart, index: number) {
     const toolInput = "input" in part ? (part as ToolUIPart).input : undefined
     const summary = summarizeToolCall({
@@ -131,6 +134,7 @@ export function classifyMessageParts(
     })
   }
 
+  // 遍历所有消息部分，根据类型和位置将其分类为思考、工具组或最终响应
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]
 
@@ -163,3 +167,42 @@ export function classifyMessageParts(
 
   return blocks
 }
+
+/**
+ * UIMessage.parts 分类收集逻辑
+ *
+ * 输入: UIMessage.parts[] (按流式到达顺序排列的 text / tool-* parts)
+ *
+ * 场景 A — 纯文本对话 (无工具调用):
+ * ┌─────────────────────────────────────────────────┐
+ * │ parts: [text, text, ...]                        │
+ * │   ↓ 合并所有 text, 去除 <think/> 块             │
+ * │ output: [final-response]                        │
+ * └─────────────────────────────────────────────────┘
+ *
+ * 场景 B — 含工具调用的对话:
+ * ┌─────────────────────────────────────────────────────────────┐
+ * │ parts: [text₀, tool₁, tool₂, text₃, tool₄, text₅]         │
+ * │          │      │      │      │      │      │               │
+ * │          │      │      │      │      │      └─ i>lastTool   │
+ * │          │      │      │      │      │         → final-resp │
+ * │          │      │      │      │      └─── i==lastTool       │
+ * │          │      │      │      │          → tool-group       │
+ * │          │      │      │      └──────────→ tool-group       │
+ * │          │      │      └─────────────────→ thinking (i≤last)│
+ * │          │      └────────────────────────→ tool-group       │
+ * │          └───────────────────────────────→ thinking (i≤last)│
+ * │                                                              │
+ * │ lastToolIndex = 4 (最后一个 tool 的位置)                      │
+ * │                                                              │
+ * │ 规则:                                                        │
+ * │   text part + i ≤ lastToolIndex → thinking (去除 <think/>标签)│
+ * │   text part + i > lastToolIndex → final-response (去除块)     │
+ * │   tool-* part                   → tool-group (1 tool/block)  │
+ * └─────────────────────────────────────────────────────────────┘
+ *
+ * 输出: ClassifiedBlock[]
+ *   | "thinking"     — 工具调用之前的 AI 推理/规划文本
+ *   | "tool-group"   — 单个工具调用 (含 input/output/state)
+ *   | "final-response" — 所有工具调用完成后的最终回复
+ */

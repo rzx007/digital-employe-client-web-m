@@ -51,6 +51,7 @@ import { useAuthStore } from "@/stores/auth-store"
 import { useOnboardingStore } from "@/stores/onboarding-store"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { updatePassword } from "@/api/auth"
+import { getConfigKv, setManyConfigKv } from "@/api/config-kv"
 import { modelKeys } from "@/lib/query-keys/model"
 import { decryptPwd } from "@/lib/password-sm"
 
@@ -61,12 +62,12 @@ const tabs: {
   label: string
   icon: React.ComponentType<{ className?: string }>
 }[] = [
-  { id: "account", label: "账号与隐私", icon: IconUser },
-  { id: "general", label: "通用", icon: IconSettings },
-  { id: "shortcuts", label: "快捷键", icon: IconKeyboard },
-  { id: "models", label: "模型", icon: IconBrain },
-  { id: "about", label: "关于", icon: IconInfoCircle },
-]
+    { id: "account", label: "账号与隐私", icon: IconUser },
+    { id: "general", label: "通用", icon: IconSettings },
+    { id: "shortcuts", label: "快捷键", icon: IconKeyboard },
+    { id: "models", label: "模型", icon: IconBrain },
+    { id: "about", label: "关于", icon: IconInfoCircle },
+  ]
 
 function ThemeCard({
   value,
@@ -267,7 +268,7 @@ function AccountSettings() {
   const restoreSession = useAuthStore((s) => s.restoreSession)
   const [pwdDialogOpen, setPwdDialogOpen] = React.useState(false)
   React.useEffect(() => {
-    ;(async () => {
+    ; (async () => {
       await restoreSession()
     })()
   }, [restoreSession])
@@ -610,31 +611,37 @@ function ShortcutsSettings() {
 
 function ModelsSettings() {
   const queryClient = useQueryClient()
-  const [model, setModel] = React.useState("")
+  const [deepagent_model, setModel] = React.useState("")
   const [apiKey, setApiKey] = React.useState("")
   const [apiUrl, setApiUrl] = React.useState("")
   const [saving, setSaving] = React.useState(false)
 
   React.useEffect(() => {
     const loadModelSettings = async () => {
-      if (window.electronApi?.isElectron) {
-        const settings = await window.electronApi.getModelSettings()
-        setModel(settings.model)
-        setApiKey(settings.apiKey)
-        setApiUrl(settings.apiUrl)
+      try {
+        const [modelKv, apiKeyKv, apiUrlKv] = await Promise.all([
+          getConfigKv("deepagent_model"),
+          getConfigKv("open_ai_key"),
+          getConfigKv("base_url"),
+        ])
+        setModel(modelKv?.config_value ?? "")
+        setApiKey(apiKeyKv?.config_value ?? "")
+        setApiUrl(apiUrlKv?.config_value ?? "")
+      } catch {
+        toast.error("模型设置加载失败")
       }
     }
     loadModelSettings()
   }, [])
 
   const handleSave = async () => {
-    if (!window.electronApi?.isElectron) {
-      toast.error("仅支持在桌面端保存模型设置")
-      return
-    }
     setSaving(true)
     try {
-      await window.electronApi.setModelSettings({ model, apiKey, apiUrl })
+      await setManyConfigKv([
+        { key: "deepagent_model", value: deepagent_model },
+        { key: "open_ai_key", value: apiKey },
+        { key: "base_url", value: apiUrl },
+      ])
       await queryClient.invalidateQueries({
         queryKey: modelKeys.runtimeConfig(),
       })
@@ -661,7 +668,7 @@ function ModelsSettings() {
           <Input
             placeholder="例如: google/gemma-4-26b-a4b"
             className="font-mono text-sm"
-            value={model}
+            value={deepagent_model}
             onChange={(e) => setModel(e.target.value)}
           />
         </div>

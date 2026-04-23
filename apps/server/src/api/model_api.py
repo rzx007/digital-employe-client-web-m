@@ -59,20 +59,3 @@ async def simple_chat(prompt: str):
     except Exception as e:
         logger.error("simple-chat 失败: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@router.get(
-    "/runtime/model-config",
-    summary="获取运行态模型配置",
-    response_model=ResponseBase[RuntimeModelConfigResponse],
-)
-async def get_runtime_model_config():
-    settings = get_settings()
-    return ResponseBase(
-        data=RuntimeModelConfigResponse(
-            model=settings.deepagent_model or "qwen2.5-72b-instruct",
-            base_url=settings.base_url
-            or "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            api_key_present=bool(settings.api_key),
-        )
-    )

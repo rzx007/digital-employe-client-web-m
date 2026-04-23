@@ -29,6 +29,7 @@ import { useRuntimeModelConfigQuery } from "@/hooks/use-model-queries"
 import type { SlashCommandItem } from "./lexical-editor/slash-command-plugin"
 import type { MentionCandidate } from "./lexical-editor/mention-plugin"
 import { Separator } from "@workspace/ui/components/separator"
+import { getModelIcon } from "@/lib/chat/model-icon"
 
 const AttachmentItem = ({
   attachment,
@@ -113,6 +114,7 @@ export function ChatPromptInput({
     : runtimeModelQuery.isError
       ? "读取失败"
       : runtimeModelQuery.data?.model || "未配置"
+  const ModelIcon = getModelIcon(runtimeModelQuery.data?.model)
 
   return (
     <div className={className}>
@@ -144,9 +146,9 @@ export function ChatPromptInput({
               </PromptInputActionMenuContent>
             </PromptInputActionMenu>
             <Separator orientation="vertical" className="h-3 mt-2 mr-3" />
-            <PromptInputButton className="w-auto px-0.5" variant="ghost" size="icon-sm">
-              {/* <IconMap className="h-4 w-4" /> */}
-              {currentModel.toUpperCase()}
+            <PromptInputButton className="w-auto gap-1 px-1.5" variant="ghost" size="sm">
+              <ModelIcon className="h-4 w-4 shrink-0" />
+              {currentModel}
             </PromptInputButton>
             {/* <PromptInputButton variant="ghost" size="icon-sm">
               <IconMap className="h-4 w-4" />

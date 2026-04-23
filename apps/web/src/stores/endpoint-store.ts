@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { getConfigKv, setConfigKv } from "@/api/config-kv"
 
 interface EndpointState {
   protocol: string
@@ -31,7 +32,8 @@ export const useEndpointStore = create<EndpointState>((set, get) => ({
 
   loadEndpoint: async () => {
     try {
-      const endpoint = await window.electronApi?.getEndpoint()
+      const endpointKv = await getConfigKv("platform_base_url")
+      const endpoint = endpointKv?.config_value
       if (endpoint) {
         const url = new URL(endpoint)
         set({
@@ -71,7 +73,7 @@ export const useEndpointStore = create<EndpointState>((set, get) => ({
   saveEndpoint: async () => {
     const { protocol, ip, port } = get()
     const endpoint = `${protocol}${ip}:${port}`
-    await window.electronApi?.setEndpoint(endpoint)
+    await setConfigKv("platform_base_url", endpoint)
   },
 
   getBaseUrl: () => {

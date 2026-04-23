@@ -7,5 +7,6 @@ export function useRuntimeModelConfigQuery() {
   return useQuery({
     queryKey: modelKeys.runtimeConfig(),
     queryFn: fetchRuntimeModelConfig,
+    staleTime: 0,
   })
 }
