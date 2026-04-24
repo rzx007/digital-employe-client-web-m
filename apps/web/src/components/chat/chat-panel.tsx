@@ -1,7 +1,5 @@
 import * as React from "react"
 import type { UIMessage } from "ai"
-import { AnimatePresence, motion } from "motion/react"
-
 import {
   Conversation,
   ConversationContent,
@@ -89,8 +87,6 @@ function MessageMetaBadges({
   )
 }
 
-const motionTransition = { duration: 0.3, ease: "easeOut" as const }
-
 function renderClassifiedBlocks(
   blocks: import("@/lib/chat/message-classifier").ClassifiedBlock[],
   options?: {
@@ -100,63 +96,36 @@ function renderClassifiedBlocks(
   }
 ) {
   return (
-    <AnimatePresence mode="popLayout">
-      {blocks.map((block) => {
-        if (block.kind === "tool-group") {
-          return (
-            <motion.div
-              key={block.key}
-              layout
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={motionTransition}
-            >
-              <ToolGroupBlock className="w-full ml-1" block={block} />
-            </motion.div>
-          )
-        }
 
-        const text = block.text
+    blocks.map((block) => {
+      if (block.kind === "tool-group") {
+        return <ToolGroupBlock className="w-full ml-1" block={block} />
+      }
 
-        if (block.kind === "thinking") {
-          return (
-            <motion.div
-              key={block.key}
-              layout
-              initial={{ opacity: 0.5 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={motionTransition}
-            >
-              <ThinkingBlock className="w-full" text={text} />
-            </motion.div>
-          )
-        }
+      const text = block.text
 
-        const commandMeta = options?.commandMeta ?? null
-        const mentionMeta = options?.mentionMeta ?? []
-        const messageId = options?.messageId ?? block.key
+      if (block.kind === "thinking") {
+        return <ThinkingBlock className="w-full" text={text} />
+      }
 
-        return (
-          <motion.div
-            key={block.key}
-            layout
-            initial={{ opacity: 1 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={motionTransition}
-            className="w-full flex items-center space-x-2"
-          >
-            <MessageMetaBadges
-              commandMeta={commandMeta}
-              mentionMeta={mentionMeta}
-              messageId={messageId}
-            />
-            <MessageResponse className="flex-1">{text}</MessageResponse>
-          </motion.div>
-        )
-      })}
-    </AnimatePresence>
+      const commandMeta = options?.commandMeta ?? null
+      const mentionMeta = options?.mentionMeta ?? []
+      const messageId = options?.messageId ?? block.key
+
+      return (
+        <div
+          className="w-full flex items-center space-x-2"
+        >
+          <MessageMetaBadges
+            commandMeta={commandMeta}
+            mentionMeta={mentionMeta}
+            messageId={messageId}
+          />
+          <MessageResponse className="flex-1">{text}</MessageResponse>
+        </div>
+      )
+    })
+
   )
 }
 

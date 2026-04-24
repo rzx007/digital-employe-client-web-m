@@ -1,5 +1,10 @@
 const MAX_LABEL_LENGTH = 60
 
+function extractBasename(path: string): string {
+  const segments = path.split(/[/\\]/)
+  return segments[segments.length - 1] || path
+}
+
 export interface ToolCallSummary {
   toolName: string
   label: string
@@ -73,8 +78,10 @@ export function summarizeToolCall(options: {
     return { toolName, label: "任务列表", icon: meta.icon }
   }
 
-  const label = filePath
-    ? `${meta.verb} ${truncate(filePath)}`
+  const displayName = filePath ? extractBasename(filePath) : undefined
+
+  const label = displayName
+    ? `${meta.verb} ${truncate(displayName)}`
     : meta.verb
 
   return { toolName, label, filePath, icon: meta.icon }

@@ -14,13 +14,39 @@ import {
   IconXboxX,
 } from "@tabler/icons-react"
 import type { ComponentProps } from "react"
-import { useRef, useState, useLayoutEffect, useMemo } from "react"
+import { useRef, useState, useLayoutEffect, useMemo, useEffect } from "react"
 import {
   Collapsible,
   CollapsibleContent,
 } from "@workspace/ui/components/collapsible"
 
 import type { ToolCallSummary } from "@/lib/chat/tool-summarizer"
+
+// ── Display content extraction ──────────────────────────
+
+const CONTENT_TOOLS = new Set(["write_file", "edit_file"])
+const COMMAND_TOOLS = new Set(["execute"])
+
+function getDisplayContent(input: unknown, toolName: string): string | null {
+  if (!input || typeof input !== "object") return null
+  const obj = input as Record<string, unknown>
+  if (CONTENT_TOOLS.has(toolName)) {
+    // edit_file是new_string
+    if (toolName === "edit_file") {
+      return typeof obj.new_string === "string" && obj.new_string ? obj.new_string : null
+    }
+    return typeof obj.content === "string" && obj.content ? obj.content : null
+  }
+  if (COMMAND_TOOLS.has(toolName)) {
+    return typeof obj.command === "string" && obj.command ? obj.command : null
+  }
+  try {
+    const json = JSON.stringify(obj, null, 2)
+    return json === "{}" ? null : json
+  } catch {
+    return null
+  }
+}
 
 // ── Todo types ──────────────────────────────────────────
 
@@ -181,7 +207,14 @@ export function ToolActionRow({
   const isError = state === "output-error"
   const isDone = state === "output-available" || state === "output-error"
   const isRunning = !isDone
+  const isStreaming = state === "input-streaming"
+
+  const displayContent = useMemo(
+    () => getDisplayContent(input, summary.toolName),
+    [input, summary.toolName]
+  )
   const hasResult = !!resultText
+  const hasContent = !!displayContent || hasResult
 
   const isWriteTodos = summary.toolName === "write_todos"
   const todos = isWriteTodos ? getTodos(input, resultText) : null
@@ -190,16 +223,42 @@ export function ToolActionRow({
   const scrollRef = useRef<HTMLDivElement>(null)
   const [isOverflowing, setIsOverflowing] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
+  const didAutoCollapse = useRef(false)
 
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
     setIsOverflowing(el.scrollHeight > el.clientHeight)
-  }, [resultText])
+  }, [displayContent, resultText])
+
+  useEffect(() => {
+    if (isStreaming && displayContent && !isOpen) {
+      setIsOpen(true)
+    }
+  }, [isStreaming, displayContent, isOpen])
+
+  useEffect(() => {
+    if (isDone && resultText && !didAutoCollapse.current) {
+      const timer = setTimeout(() => {
+        didAutoCollapse.current = true
+        setIsOpen(false)
+      }, 800)
+      return () => clearTimeout(timer)
+    }
+  }, [isDone, resultText])
+
+  useEffect(() => {
+    if (isRunning && displayContent && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [displayContent, isRunning])
 
   const IconChevron = useMemo(() => {
     return isOpen ? IconChevronDown : IconChevronRight
   }, [isOpen])
+
+  const collapsibleOpen = isRunning ? true : isOpen
+  const collapsibleToggle = isRunning ? undefined : () => setIsOpen((v) => !v)
 
   // write_todos with structured data: dedicated todo list UI
   if (isWriteTodos && hasTodos) {
@@ -239,23 +298,22 @@ export function ToolActionRow({
     )
   }
 
-  // Generic tool: existing behavior
   return (
     <div
       className={cn(
         "rounded-lg border border-border/50 bg-muted/30 w-[90%]",
-        hasResult && "cursor-pointer select-none",
+        hasContent && !isRunning && "cursor-pointer select-none",
         className
       )}
-      onClick={hasResult ? () => setIsOpen((v) => !v) : undefined}
+      onClick={hasContent && !isRunning ? collapsibleToggle : undefined}
       {...props}
     >
       <div className={cn("group/tool-action-row flex items-center gap-2 px-3 py-2 hover:bg-muted/50", isOpen && "border-b border-border/50")}>
         <ToolIcon className="size-4 shrink-0 text-muted-foreground group-hover/tool-action-row:hidden" />
-        {hasResult && (
+        {hasContent && !isRunning && (
           <IconChevron className="hidden size-4 shrink-0 text-muted-foreground/60 group-hover/tool-action-row:block" />
         )}
-        {!hasResult && <span className="hidden size-4 shrink-0 group-hover/tool-action-row:block" />}
+        {!(hasContent && !isRunning) && <span className="hidden size-4 shrink-0 group-hover/tool-action-row:block" />}
         <span className="flex-1 truncate text-xs text-foreground font-thin">
           {summary.label}
         </span>
@@ -272,26 +330,44 @@ export function ToolActionRow({
         />
       </div>
 
-      {hasResult && (
-        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-          <CollapsibleContent
-            className="data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0"
-          >
-            <div className="relative mt-1.5">
-              <div
-                ref={scrollRef}
-                className={cn(
-                  "overflow-y-auto rounded-md bg-background/60 px-2.5 py-2 text-xs leading-relaxed max-h-52",
-                  isError
-                    ? "text-destructive/70"
-                    : "text-muted-foreground/70"
-                )}
-              >
-                {resultText}
-              </div>
-              {isOverflowing && !isOpen && (
-                <div className="pointer-events-none absolute right-0 bottom-0 left-0 h-6 bg-gradient-to-t from-background/60 to-transparent" />
+      {hasContent && (
+        <Collapsible open={collapsibleOpen} onOpenChange={isRunning ? undefined : setIsOpen}>
+          <CollapsibleContent>
+
+            <div className="px-3 pb-2.5 space-y-2">
+              {displayContent && (
+                <div className="relative">
+                  <div
+                    ref={scrollRef}
+                    className={cn(
+                      "overflow-y-auto rounded-md bg-background/60 px-2.5 py-2 text-xs leading-relaxed max-h-52",
+                      "text-muted-foreground/70"
+                    )}
+                  >
+                    {displayContent}
+                    {isStreaming && (
+                      <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-muted-foreground/50 animate-pulse align-text-bottom" />
+                    )}
+                    {hasResult && (
+                      <div
+                        className={cn(
+                          "rounded-md  px-2.5 py-2 text-xs leading-relaxed",
+                          isError
+                            ? "text-destructive/70"
+                            : "text-muted-foreground/70"
+                        )}
+                      >
+                        {resultText}
+                      </div>
+                    )}
+                  </div>
+
+                  {isOverflowing && !isRunning && !isOpen && (
+                    <div className="pointer-events-none absolute right-0 bottom-0 left-0 h-6 bg-gradient-to-t from-background/60 to-transparent" />
+                  )}
+                </div>
               )}
+
             </div>
           </CollapsibleContent>
         </Collapsible>

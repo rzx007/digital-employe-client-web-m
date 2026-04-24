@@ -59,8 +59,6 @@ class ActiveStreamTask:
         self._asyncio_task: asyncio.Task | None = None
         self.error_message: str | None = None
         self._created_at: float = time.monotonic()
-        # Track per-tool-call emitted line count to avoid re-emitting duplicates.
-        self._tool_output_line_offsets: dict[str, int] = {}
 
     def subscribe(self, fn: Subscriber) -> None:
         self.subscribers.add(fn)
@@ -183,62 +181,6 @@ class StreamRegistry:
 
         asyncio.create_task(_cleanup())
 
-    @staticmethod
-    def _extract_tool_output_lines(
-        serializable_chunk: Any,
-    ) -> tuple[str | None, str | None, list[str]]:
-        if not isinstance(serializable_chunk, dict):
-            return None, None, []
-        if serializable_chunk.get("type") != "messages":
-            return None, None, []
-
-        payload = serializable_chunk.get("data")
-        if not isinstance(payload, list) or not payload:
-            return None, None, []
-        message = payload[0]
-        if not isinstance(message, dict):
-            return None, None, []
-
-        msg_kwargs = message.get("kwargs")
-        if not isinstance(msg_kwargs, dict):
-            return None, None, []
-        if msg_kwargs.get("type") != "tool":
-            return None, None, []
-
-        tool_name = msg_kwargs.get("name")
-        if not isinstance(tool_name, str) or tool_name != "execute_skill":
-            return None, None, []
-
-        tool_call_id = msg_kwargs.get("tool_call_id")
-        if not isinstance(tool_call_id, str) or not tool_call_id.strip():
-            tool_call_id = None
-
-        content = msg_kwargs.get("content")
-        if not isinstance(content, str) or not content.strip():
-            return tool_name, tool_call_id, []
-
-        lines = [line for line in content.splitlines() if line.strip()]
-        return tool_name, tool_call_id, lines
-
-    @staticmethod
-    def _build_tool_output_event(
-        *,
-        tool_name: str,
-        tool_call_id: str | None,
-        chunk: str,
-        chunk_seq: int,
-    ) -> dict[str, Any]:
-        return {
-            "type": "tool_output",
-            "data": {
-                "tool_name": tool_name,
-                "tool_call_id": tool_call_id,
-                "chunk": chunk,
-                "chunk_seq": chunk_seq,
-                "stream": "stdout",
-            },
-        }
-
     async def _run_agent_background(
         self,
         conversation_id: int,
@@ -284,28 +226,6 @@ class StreamRegistry:
                 if not debug_content_only:
                     evt = task.buffer.add(serializable)
                     self.broadcast(conversation_id, evt)
-                    tool_name, tool_call_id, output_lines = self._extract_tool_output_lines(
-                        serializable
-                    )
-                    if tool_name and output_lines:
-                        call_key = (
-                            tool_call_id.strip()
-                            if isinstance(tool_call_id, str) and tool_call_id.strip()
-                            else f"{tool_name}:fallback"
-                        )
-                        emitted_count = task._tool_output_line_offsets.get(call_key, 0)
-                        new_lines = output_lines[emitted_count:]
-                        for index, line in enumerate(new_lines, start=emitted_count + 1):
-                            tool_evt = task.buffer.add(
-                                self._build_tool_output_event(
-                                    tool_name=tool_name,
-                                    tool_call_id=tool_call_id,
-                                    chunk=line,
-                                    chunk_seq=index,
-                                )
-                            )
-                            self.broadcast(conversation_id, tool_evt)
-                        task._tool_output_line_offsets[call_key] = len(output_lines)
 
                 now = time.monotonic()
                 if (
