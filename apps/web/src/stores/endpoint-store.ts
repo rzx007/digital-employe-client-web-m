@@ -32,7 +32,7 @@ export const useEndpointStore = create<EndpointState>((set, get) => ({
 
   loadEndpoint: async () => {
     try {
-      const endpointKv = await getConfigKv("platform_base_url")
+      const endpointKv = await getConfigKv("remote_api_base_url")
       const endpoint = endpointKv?.config_value
       if (endpoint) {
         const url = new URL(endpoint)
@@ -57,15 +57,30 @@ export const useEndpointStore = create<EndpointState>((set, get) => ({
 
   validateEndpoint: async () => {
     const { protocol, ip, port } = get()
-    set({ loading: true, validated: false })
+    set({ loading: true, validated: false, error: null })
 
     try {
-      const url = `${protocol}${ip}:${port}/llm/activate/getMachineInfo`
-      await fetch(url)
+      if (!ip || !port) {
+        throw new Error("endpoint is empty")
+      }
+      const origin = `${protocol}${ip}:${port}`
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 3000)
+      try {
+        // 只验证网络可达性，不依赖具体业务接口
+        await fetch(origin, {
+          method: "HEAD",
+          mode: "no-cors",
+          cache: "no-store",
+          signal: controller.signal,
+        })
+      } finally {
+        clearTimeout(timeoutId)
+      }
       set({ validated: true, loading: false })
       return true
     } catch {
-      set({ validated: false, loading: false })
+      set({ validated: false, loading: false, error: "网络不可达，请检查协议/IP/端口" })
       return false
     }
   },
@@ -73,7 +88,7 @@ export const useEndpointStore = create<EndpointState>((set, get) => ({
   saveEndpoint: async () => {
     const { protocol, ip, port } = get()
     const endpoint = `${protocol}${ip}:${port}`
-    await setConfigKv("platform_base_url", endpoint)
+    await setConfigKv("remote_api_base_url", endpoint)
   },
 
   getBaseUrl: () => {

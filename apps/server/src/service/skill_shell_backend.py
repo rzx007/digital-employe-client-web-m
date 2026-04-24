@@ -1,3 +1,4 @@
+import asyncio
 import shlex
 import subprocess
 from pathlib import Path
@@ -65,6 +66,82 @@ class SkillAwareShellBackend(LocalShellBackend):
         if not changed:
             return command
         return subprocess.list2cmdline(parts)
+
+    # async def aexecute(self, command: str, *, timeout: int | None = None):
+    #     rewritten = self._rewrite_command_virtual_paths(command)
+    #     effective_timeout = timeout if timeout is not None else self._default_timeout
+    #     if effective_timeout <= 0:
+    #         raise ValueError(f"timeout must be positive, got {effective_timeout}")
+
+    #     try:
+    #         from langgraph.config import get_stream_writer
+    #         stream_writer = get_stream_writer()
+    #     except Exception:
+    #         stream_writer = lambda _: None
+
+    #     try:
+    #         proc = await asyncio.create_subprocess_shell(
+    #             rewritten,
+    #             stdout=asyncio.subprocess.PIPE,
+    #             stderr=asyncio.subprocess.STDOUT,
+    #             shell=True,
+    #             env=self._env,
+    #             cwd=str(self.cwd),
+    #         )
+
+    #         lines: list[str] = []
+    #         seq = 0
+
+    #         async def _read_stdout():
+    #             nonlocal seq
+    #             while True:
+    #                 line_bytes = await proc.stdout.readline()
+    #                 if not line_bytes:
+    #                     break
+    #                 line = self._decode_output_bytes(line_bytes).rstrip("\r\n")
+    #                 lines.append(line)
+    #                 seq += 1
+    #                 stream_writer({
+    #                     "type": "tool_output",
+    #                     "data": {
+    #                         "tool_name": "execute",
+    #                         "chunk": line,
+    #                         "chunk_seq": seq,
+    #                         "stream": "stdout",
+    #                     },
+    #                 })
+
+    #         try:
+    #             await asyncio.wait_for(_read_stdout(), timeout=effective_timeout)
+    #         except asyncio.TimeoutError:
+    #             proc.kill()
+    #             await proc.wait()
+    #             output = "\n".join(lines) if lines else ""
+    #             if len(output) > self._max_output_bytes:
+    #                 output = output[: self._max_output_bytes]
+    #                 output += f"\n\n... Output truncated at {self._max_output_bytes} bytes."
+    #             return ExecuteResponse(output=output or " ", exit_code=124, truncated=bool(lines))
+
+    #         exit_code = await proc.wait()
+
+    #         output = "\n".join(lines) if lines else " "
+    #         truncated = False
+    #         if len(output) > self._max_output_bytes:
+    #             output = output[: self._max_output_bytes]
+    #             output += f"\n\n... Output truncated at {self._max_output_bytes} bytes."
+    #             truncated = True
+
+    #         if exit_code != 0:
+    #             output = f"{output.rstrip()}\n\nExit code: {exit_code}"
+
+    #         return ExecuteResponse(output=output, exit_code=exit_code, truncated=truncated)
+
+    #     except Exception as exc:
+    #         return ExecuteResponse(
+    #             output=f"Error executing command ({type(exc).__name__}): {exc}",
+    #             exit_code=1,
+    #             truncated=False,
+    #         )
 
     def execute(self, command: str, *, timeout: int | None = None):
         rewritten = self._rewrite_command_virtual_paths(command)

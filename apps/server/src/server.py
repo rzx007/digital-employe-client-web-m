@@ -59,7 +59,7 @@ def create_app() -> FastAPI:
             inserted = ConfigKvService.bootstrap_from_json(db)
             if inserted > 0:
                 logger.info(
-                    "Initialized config_kvs from JSON file: inserted=%s",
+                    "Initialized config_kvs from seed file (insert-only): inserted=%s",
                     inserted,
                 )
             # initialize_default_workspace_employees(db, workspace)

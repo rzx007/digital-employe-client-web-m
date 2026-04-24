@@ -282,16 +282,14 @@ class TaskSchedulerService:
         elif isinstance(raw_to, str) and raw_to.isdigit():
             timeout_sec = int(raw_to)
 
+        # 解析 base URL，确保存在协议头（如未指定则默认为 http）
         parsed_url = urllib.parse.urlparse(
             base if "://" in base else f"http://{base}"
         )
+ 
         host_header = parsed_url.netloc
 
-        tool_call_path = (settings.mcp_tool_call_path or "/tool/call").strip()
-        normalized_tool_call_path = (
-            tool_call_path if tool_call_path.startswith("/") else f"/{tool_call_path}"
-        )
-        url = f"{base}{normalized_tool_call_path}"
+        url = f"{base}"
         payload = {
             "serverName": server_name,
             "toolName": tool_name,

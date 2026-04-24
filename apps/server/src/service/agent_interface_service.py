@@ -17,8 +17,13 @@ class AgentInterfaceService:
         prefix = (settings.agent_interface_skill_prefix or "/aios/skill").strip()
         if prefix and not prefix.startswith("/"):
             prefix = f"/{prefix}"
-        suffix = path if path.startswith("/") else f"/{path}"
+        # 修复：path为空时suffix应为"/"
+        if not path:
+            suffix = ""
+        else:
+            suffix = path if path.startswith("/") else f"/{path}"
         return f"{base_url}{prefix}{suffix}"
+ 
 
     async def get_skill_list(
         self, directory_id: int | None = None, status: int | None = None
@@ -44,6 +49,7 @@ class AgentInterfaceService:
 
             async with create_agent_interface_http_client() as client:
                 response = await client.get(url, params=params)
+                logger.info("🚀🚀🚀获取技能列表 url: %s", url)
                 response.raise_for_status()
                 data = response.json()
                 if isinstance(data, dict) and "data" in data:

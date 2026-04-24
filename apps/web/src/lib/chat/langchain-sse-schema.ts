@@ -258,12 +258,25 @@ export const artifactEventSchema = z.object({
   data: artifactDataSchema,
 })
 
+export const toolOutputDataSchema = z.object({
+  tool_name: z.string(),
+  chunk: z.string(),
+  chunk_seq: z.number(),
+  stream: z.string(),
+})
+
+export const toolOutputEventSchema = z.object({
+  type: z.literal("tool_output"),
+  data: toolOutputDataSchema,
+})
+
 // ── Top-level SSE Event (v2, extensible) ───────────────────────────
 
 export const sseEventSchema = z.union([
   sseMessagesEventSchema,
   sseUpdatesEventSchema,
   artifactEventSchema,
+  toolOutputEventSchema,
   z.object({ type: z.string(), data: z.unknown(), ns: z.array(z.string()).optional() }),
 ])
 
@@ -294,4 +307,6 @@ export type SSEMessagesEvent = z.infer<typeof sseMessagesEventSchema>
 export type SSEUpdatesEvent = z.infer<typeof sseUpdatesEventSchema>
 export type ArtifactData = z.infer<typeof artifactDataSchema>
 export type SSEArtifactEvent = z.infer<typeof artifactEventSchema>
+export type ToolOutputData = z.infer<typeof toolOutputDataSchema>
+export type SSEToolOutputEvent = z.infer<typeof toolOutputEventSchema>
 export type SSEEvent = z.infer<typeof sseEventSchema>

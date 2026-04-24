@@ -206,12 +206,26 @@ class StreamRegistry:
         try:
             async for chunk in agent.astream(
                 {"messages": messages},
-                stream_mode=["messages", "updates"],
+                stream_mode=["messages", "updates", "custom"],
                 config=config,
                 version="v2",
             ):
                 serializable = ChatService.convert_to_serializable(chunk)
                 collected_chunks.append(serializable)
+
+                if (
+                    isinstance(serializable, dict)
+                    and serializable.get("type") == "custom"
+                ):
+                    custom_data = serializable.get("data")
+                    if (
+                        isinstance(custom_data, dict)
+                        and custom_data.get("type") == "tool_output"
+                    ):
+                        evt = task.buffer.add(custom_data)
+                        self.broadcast(conversation_id, evt)
+                    continue
+
                 text_part = ChatService._extract_text_from_chunk(serializable)
                 if text_part:
                     assistant_text_parts.append(text_part)

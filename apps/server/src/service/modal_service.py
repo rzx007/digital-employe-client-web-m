@@ -1,8 +1,8 @@
 from typing import Any
 
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
-from src.core.config import get_settings, join_base_and_path
-import aiohttp
+from src.core.config import get_settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,38 +12,48 @@ class ModelCallRequest(BaseModel):
     model_params: dict[str, Any] | None = None
 
 class ModelService:
-    """模型服务类 - 用于调用外部AI模型API"""
+    """模型服务类 - 直接调用 ChatOpenAI"""
 
     @staticmethod
     async def call_model(
         prompt: str, model_params: dict[str, Any] | None = None
     ) -> Any:
-        """
-        调用外部模型API
-        注意：这里的URL需要根据实际部署环境调整
-        """
+        """调用 ChatOpenAI 并返回兼容历史结构的数据。"""
         if model_params is None:
             model_params = {}
 
         settings = get_settings()
-
-        url = join_base_and_path(
-            settings.dbchat_base_url,
-            settings.dbchat_model_chat_simple_path,
+        api_key = settings.api_key
+        base_url = settings.base_url
+        model_name = (
+            model_params.get("model")
+            or settings.deepagent_model
+            or "qwen2.5-72b-instruct"
         )
-        if not url:
-            logger.error("未配置 DB Chat 服务地址（DBCHAT_BASE_URL）。")
+        if not api_key:
+            logger.error("未配置 OPENAI_API_KEY，无法调用模型。")
             return None
 
         try:
-            async with aiohttp.ClientSession() as session:
-                payload = {"prompt": prompt, "model_params": model_params}
-                async with session.post(url, json=payload) as response:
-                    response_data = await response.json()
-                    return response_data
-        except aiohttp.ClientError as e:
-            logger.error("调用模型 API 失败: %s", e, exc_info=True)
-            return None
+            llm_kwargs: dict[str, Any] = {
+                "model": model_name,
+                "api_key": api_key,
+                "base_url": base_url,
+            }
+            if "temperature" in model_params:
+                llm_kwargs["temperature"] = model_params["temperature"]
+
+            for key, value in model_params.items():
+                if key in {"model", "temperature"}:
+                    continue
+                llm_kwargs[key] = value
+
+            model = ChatOpenAI(**llm_kwargs)
+            response = model.invoke(prompt)
+            content = response.content if hasattr(response, "content") else ""
+            if isinstance(content, list):
+                content = "".join(str(item) for item in content)
+            return {"code": 1, "data": str(content), "message": "success"}
         except Exception as e:
-            logger.error("调用模型 API 意外错误: %s", e, exc_info=True)
+            logger.error("调用 ChatOpenAI 失败: %s", e, exc_info=True)
             return None

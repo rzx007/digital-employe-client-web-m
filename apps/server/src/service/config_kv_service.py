@@ -94,7 +94,7 @@ class ConfigKvService:
         if not path.is_absolute():
             path = Path.cwd() / path
         if not path.exists():
-            logger.info("Config KV bootstrap file not found: %s", path)
+            logger.info("Config KV seed file not found: %s", path)
             return 0
 
         try:
@@ -104,7 +104,7 @@ class ConfigKvService:
             return 0
 
         if not isinstance(loaded, dict):
-            logger.warning("Config KV bootstrap JSON must be an object: %s", path)
+            logger.warning("Config KV seed JSON must be an object: %s", path)
             return 0
 
         inserted = 0
@@ -123,4 +123,9 @@ class ConfigKvService:
         if inserted > 0:
             db.commit()
             ConfigKvService._refresh_settings_cache()
+        logger.info(
+            "Config KV seed applied (insert-only, never overwrite): inserted=%s file=%s",
+            inserted,
+            path,
+        )
         return inserted
