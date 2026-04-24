@@ -47,6 +47,7 @@ export function ConversationChatView({
     id: String(conversationId),
     messages: initialMessages,
     transport: chatTransport,
+    resume: true,
     onFinish: () => {
       // queryClient.invalidateQueries({
       //   queryKey: chatKeys.messages(String(conversationId)),

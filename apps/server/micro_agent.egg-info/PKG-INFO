@@ -11,6 +11,7 @@ Requires-Dist: langchain>=1.2.3
 Requires-Dist: langchain-openai>=1.0.2
 Requires-Dist: langchain-community>=0.3.0
 Requires-Dist: langgraph>=1.0.6
+Requires-Dist: langgraph-checkpoint-sqlite>=2.0.0
 Requires-Dist: sqlalchemy>=2.0.0
 Requires-Dist: python-dotenv>=1.0.0
 Requires-Dist: tavily-python>=0.5.0
@@ -91,27 +92,27 @@ local-employees/
 
 ## 配置
 
-参考 `.env.example`：
+配置管理，请按下面规则维护：
 
-```env
-SQLITE_PATH=~/digital-employee-client/data/app.db
-EMPLOYEE_ZIP_URL=http://...
-EMPLOYEE_TMP_DIR=./tmp/employees
-DEEPAGENT_MODEL=qwen2.5-72b-instruct
-CHAT_HISTORY_MAX_MESSAGES=30
-OPENAI_API_KEY=...
-BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-DEFAULT_WORKSPACE_ROOT=./workspaces
-DEFAULT_WORKSPACE_ID=1
-DEFAULT_WORKSPACE_NAME=默认的工作空间
+### 业务配置初始化（`config-kv.init.json`）
+
+服务启动时会读取 `config-kv.init.json`，将其中的 `k-v` 初始化到 `config_kvs` 表（仅插入不存在的 key，不覆盖已存在值）。
+
+后续新增业务配置时：
+
+- 需要先在 `config-kv.init.json` 中新增 key/value
+- 不再在 `.env` 里新增或维护这类业务配置
+- 启动后可通过配置管理接口按 key 进行增删改查
+
+示例（`config-kv.init.json`）：
+
+```json
+{
+  "REMOTE_API_BASE_URL": "http://10.172.246.105:18000",
+  "PLATFORM_BASE_URL": "http://10.172.246.105:5002",
+  "LOGIN_PATH": "/yc/login"
+}
 ```
-
-关键项说明：
-
-- `SQLITE_PATH`: SQLite 文件路径，默认是 `~/digital-employee-client/data/app.db`
-- `EMPLOYEE_ZIP_URL`: 远程员工包导入地址；只在“同步员工”时使用
-- `DEFAULT_WORKSPACE_ROOT`: 默认工作空间根目录
-- `OPENAI_API_KEY` / `BASE_URL`: 模型调用配置
 
 ## 启动方式
 
@@ -164,10 +165,11 @@ python start.py
 
 ## 首次启动会发生什么
 
-应用启动时会自动做两件事：
+应用启动时会自动做三件事：
 
 1. 初始化数据库表
 2. 确保默认 workspace 存在
+3. 从 `config-kv.init.json` 初始化 `config_kvs`（仅补充缺失 key）
 
 相关逻辑在 `src/server.py`。
 
@@ -209,7 +211,7 @@ GET /workspaces/{workspace_id}/employees/sync
 
 这个接口会：
 
-- 从 `EMPLOYEE_ZIP_URL` 下载员工 ZIP
+- 从配置（`REMOTE_API_BASE_URL + EMPLOYEE_ZIP_PATH`）下载员工 ZIP
 - 解压到仓库根目录的 `local-employees/`
 - 提取员工元数据
 - 写入数据库

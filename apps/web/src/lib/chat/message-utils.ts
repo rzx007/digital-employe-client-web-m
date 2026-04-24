@@ -28,20 +28,20 @@ type ToolRenderPart = Extract<
 
 export type MessageRenderBlock =
   | {
-      kind: "text"
-      key: string
-      text: string
-    }
+    kind: "text"
+    key: string
+    text: string
+  }
   | {
-      kind: "artifact"
-      key: string
-      artifact: Artifact
-    }
+    kind: "artifact"
+    key: string
+    artifact: Artifact
+  }
   | {
-      kind: "tool"
-      key: string
-      part: ToolRenderPart
-    }
+    kind: "tool"
+    key: string
+    part: ToolRenderPart
+  }
 
 function isToolRenderPart(
   part: UIMessage["parts"][number]
@@ -413,27 +413,30 @@ function accumulateChunksToParts(chunks: UIMessageChunk[]): UIMessage["parts"] {
 export function mapStoredMessagesToUIMessages(
   messages: Message[]
 ): UIMessage[] {
-  return messages.map((message) => {
+  return messages.map((message): UIMessage | null => {
     const messageMeta =
       message.metadata && typeof message.metadata === "object"
         ? message.metadata
         : undefined
 
     // assistant 消息尝试使用 chunkJson 重建 parts
-    if (message.role === "assistant" && message.chunkJson) {
-      const parts = replayChunkJsonToParts(message.chunkJson)
+    if (message.role === "assistant") {
+      if (message.chunkJson) {
+        const parts = replayChunkJsonToParts(message.chunkJson)
 
-      // chunkJson 解析成功且有有效 parts 时使用重建结果
-      if (parts && parts.length > 0) {
-        const uiMessage: UIMessage = {
-          id: message.id,
-          role: message.role,
-          parts,
+        // chunkJson 解析成功且有有效 parts 时使用重建结果
+        if (parts && parts.length > 0) {
+          const uiMessage: UIMessage = {
+            id: message.id,
+            role: message.role,
+            parts,
+          }
+            ; (uiMessage as UIMessage & { metadata?: Record<string, any> }).metadata =
+              messageMeta
+          return uiMessage
         }
-        ;(uiMessage as UIMessage & { metadata?: Record<string, any> }).metadata =
-          messageMeta
-        return uiMessage
       }
+      return null
     }
 
     // 降级：使用 content 作为纯文本 part
@@ -448,8 +451,8 @@ export function mapStoredMessagesToUIMessages(
         },
       ],
     }
-    ;(uiMessage as UIMessage & { metadata?: Record<string, any> }).metadata =
-      messageMeta
+      ; (uiMessage as UIMessage & { metadata?: Record<string, any> }).metadata =
+        messageMeta
     return uiMessage
-  })
+  }).filter((message): message is UIMessage => message !== null)
 }

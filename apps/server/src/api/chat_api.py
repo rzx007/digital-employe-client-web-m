@@ -83,6 +83,31 @@ async def stream_conversation(
     )
 
 
+@router.get("/chat/conversations/{conversation_id}/stream/resume")
+async def resume_conversation_stream(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """恢复流式会话回答（SSE）。"""
+    return StreamingResponse(
+        ChatService.resume_conversation_stream(db, conversation_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+@router.post("/chat/conversations/{conversation_id}/stream/cancel", response_model=BaseResponse)
+def cancel_conversation_stream(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+) -> BaseResponse:
+    """手动终止正在执行的会话流。"""
+    success = ChatService.cancel_conversation_stream(db, conversation_id)
+    if not success:
+        return BaseResponse(code=400, msg="没有正在执行的流或取消失败", data=None)
+    return BaseResponse(data=None)
+
+
 @router.get("/chat/conversations/{conversation_id}/resources", response_model=ResponseBase[ResourceList])
 def list_conversation_resources(
     conversation_id: int,

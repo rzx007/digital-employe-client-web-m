@@ -17,6 +17,7 @@ import {
   sseEventSchema,
   type ArtifactData,
 } from "./langchain-sse-schema"
+import { cancelConversationStream } from "@/api/conversation"
 
 const useMock =
   import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_SSE === "true"
@@ -56,7 +57,7 @@ function buildChatApiUrl(options: any) {
 }
 
 function buildResumeApiUrl(conversationId: string) {
-  return `/digital/api/v1/text2sql/stream/resume?id=${conversationId}`
+  return `/chat/conversations/${conversationId}/stream/resume`
 }
 
 function getConversationIdFromBody(body: object | undefined) {
@@ -207,7 +208,7 @@ export class LangChainChatTransport<
         abortSignal,
       })
 
-    return this.processResponseStream(stream)
+    return this.processResponseStream(stream, conversationId)
   }
 
   async reconnectToStream({
@@ -226,7 +227,7 @@ export class LangChainChatTransport<
       return null
     }
 
-    return this.processResponseStream(stream)
+    return this.processResponseStream(stream, chatId)
   }
 
   /**
@@ -237,7 +238,7 @@ export class LangChainChatTransport<
    * @param stream - 包含Uint8Array数据的可读流，预期包含SSE格式的消息
    * @returns 返回一个可读流，产生UIMessageChunk类型的事件
    */
-  private processResponseStream(stream: ReadableStream<Uint8Array>) {
+  private processResponseStream(stream: ReadableStream<Uint8Array>, conversationId?: string) {
     const decoder = new TextDecoder()
     const reader = stream.getReader()
     const artifactHandler = this.artifactHandler

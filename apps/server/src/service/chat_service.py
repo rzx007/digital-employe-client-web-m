@@ -431,13 +431,24 @@ class ChatService:
 
         ChatService._append_message(db, conversation=conversation, role="user", content=question, extra_meta=extra_meta)
         request_messages = [*history_messages, {"role": "user", "content": question}]
+        
+        # 创建一个空的 assistant 消息，标记为 streaming
+        assistant_msg = ChatService._append_message(
+            db,
+            conversation=conversation,
+            role="assistant",
+            content="",
+            extra_meta=None,
+        )
+        assistant_msg.stream_state = "streaming"
+        db.commit()
+        db.refresh(assistant_msg)
+        
         # 根据会话ID获取会话详情，然后获取root_path
-        conversation = ChatService.get_conversation(db, conversation_id)
         workspace = db.get(Workspace, conversation.workspace_id)
         if not workspace:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到工作空间。")
-        # root_path = workspace.root_path
-        # 根据会话ID获取员工或者群组
+        
         target_type = conversation.target_type
         target_id = conversation.target_id
         if target_type == "employee":
@@ -445,14 +456,6 @@ class ChatService:
             if not employee:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到员工。")
             skills_path_payload = employee.skills_json
-        # elif target_type == "group":
-        #     group = db.get(ChatGroup, target_id)
-        #     if not group:
-        #         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到群组。")
-        #     if not group.members:
-        #         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="群组内没有员工，无法加载技能目录。")
-        #     # 群组默认使用首个成员的技能目录，可按需扩展为多技能目录。
-        #     skills_path_payload = group.members[0].skills_json
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee 或 group。")
         
@@ -464,62 +467,119 @@ class ChatService:
                 employee_code=employee.employee_code if target_type == "employee" else None,
             )
         except HTTPException:
-            # 没有可用 skill 时，按约定使用空路径。
             skills_path = ""
       
         root_path = settings.artifacts_path
 
         agent = get_agent(skills_path, root_path, employee_id=employee.id if target_type == "employee" else None, conversation_id=conversation_id)
-        # print(agent.skills)
-        collected_chunks: list[Any] = []
-        assistant_text_parts: list[str] = []
-        pending_tool_calls: dict[str, dict] = {}
+        
         try:
             skill_question = question
             if skill_name:
                 skill_question = f"请使用{skill_name}技能回答这个问题：{question}"
             if request_messages:
                 request_messages[-1] = {"role": "user", "content": skill_question}
-            # 异步调用代理并流式返回结果，保持原有SSE数据结构不变
-            async for chunk in agent.astream(
-                {"messages": request_messages},
-                stream_mode=["messages", "updates"],
+            
+            from src.service.stream_registry import registry
+            
+            # 启动后台任务
+            started = registry.start(
+                conversation_id=conversation_id,
+                agent=agent,
+                messages=request_messages,
                 config={"configurable": {"thread_id": conversation_id}},
-                version="v2"
-            ):
-                serializable_chunk = ChatService.convert_to_serializable(chunk)
-                collected_chunks.append(serializable_chunk)
-                text_part = ChatService._extract_text_from_chunk(serializable_chunk)
-                if text_part:
-                    assistant_text_parts.append(text_part)
-                if debug_content_only:
-                    if text_part:
-                        yield f"data: {text_part}\n\n"
-                    continue
-
-                # 检测 artifact 事件：从 ToolMessage + tools update 中提取文件操作
-                artifact_event = ChatService._try_extract_artifact(
-                    chunk, conversation_id, pending_tool_calls
-                )
-                if artifact_event:
-                    yield f"data: {json.dumps(artifact_event, ensure_ascii=False)}\n\n"
-
-                # 将每个chunk转换为JSON格式并发送
-                yield f"data: {json.dumps(serializable_chunk, ensure_ascii=False, default=str)}\n\n"
-
-            final_text = "".join(assistant_text_parts).strip() or "模型已完成调用。"
-            ChatService._append_message(
-                db,
-                conversation=conversation,
-                role="assistant",
-                content=final_text,
-                chunk_json=json.dumps(collected_chunks, ensure_ascii=False, default=str),
+                stream_msg_id=assistant_msg.id,
+                skill_name=skill_name,
+                debug_content_only=debug_content_only,
             )
-            # 发送结束标记
-            yield "data: [DONE]\n\n"
+            
+            if not started:
+                yield f"data: {json.dumps({'error': '当前会话已有正在执行的任务'}, ensure_ascii=False)}\n\n"
+                return
+                
+            # 返回恢复流的生成器
+            async for chunk in ChatService.resume_conversation_stream(db, conversation_id, debug_content_only):
+                yield chunk
+                
         except Exception as e:
             logger.error("流式对话执行失败: %s", e, exc_info=True)
             yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+
+    @staticmethod
+    async def resume_conversation_stream(db: Session, conversation_id: int, debug_content_only: bool = False):
+        """恢复流式会话，从数据库加载历史事件并订阅新事件。"""
+        from src.service.stream_registry import registry
+        import asyncio
+        
+        # 尝试从内存或数据库获取 buffer
+        buffer = registry.get_buffer(conversation_id)
+        if not buffer:
+            buffer = registry.load_buffer_from_db(conversation_id, db)
+            
+        if not buffer:
+            yield "data: [DONE]\n\n"
+            return
+            
+        # 发送历史事件
+        for event in buffer.events:
+            data = event.get("data")
+            if not data:
+                continue
+                
+            if isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error"):
+                if data.get("status") == "error":
+                    yield f"data: {json.dumps({'error': data.get('error')}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+                
+            if debug_content_only:
+                text_part = ChatService._extract_text_from_chunk(data)
+                if text_part:
+                    yield f"data: {text_part}\n\n"
+            else:
+                yield f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+                
+        # 如果任务仍在运行，订阅新事件
+        if registry.is_active(conversation_id):
+            queue = asyncio.Queue()
+            
+            def _on_event(evt: dict):
+                queue.put_nowait(evt)
+                
+            registry.get_task(conversation_id).subscribe(_on_event)
+            
+            try:
+                while True:
+                    evt = await queue.get()
+                    data = evt.get("data")
+                    
+                    if not data:
+                        continue
+                        
+                    if isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error"):
+                        if data.get("status") == "error":
+                            yield f"data: {json.dumps({'error': data.get('error')}, ensure_ascii=False)}\n\n"
+                        yield "data: [DONE]\n\n"
+                        break
+                        
+                    if debug_content_only:
+                        text_part = ChatService._extract_text_from_chunk(data)
+                        if text_part:
+                            yield f"data: {text_part}\n\n"
+                    else:
+                        yield f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+            finally:
+                task = registry.get_task(conversation_id)
+                if task:
+                    task.unsubscribe(_on_event)
+        else:
+            yield "data: [DONE]\n\n"
+
+    @staticmethod
+    def cancel_conversation_stream(db: Session, conversation_id: int) -> bool:
+        """手动终止正在执行的会话流。"""
+        from src.service.stream_registry import registry
+        return registry.cancel(conversation_id)
 
 
     @classmethod

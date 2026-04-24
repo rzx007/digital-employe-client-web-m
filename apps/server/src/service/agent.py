@@ -11,6 +11,7 @@ from deepagents.backends import (
 from langchain_openai import ChatOpenAI
 from datetime import datetime
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from deepagents import create_deep_agent
 from deepagents.middleware.permissions import FilesystemPermission
@@ -21,7 +22,21 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-_CHECKPOINTER = MemorySaver()
+# 全局的异步 SqliteSaver 实例，将在应用启动时初始化
+_CHECKPOINTER: AsyncSqliteSaver | MemorySaver | None = None
+
+def init_checkpointer(conn) -> None:
+    """初始化全局的检查点保存器"""
+    global _CHECKPOINTER
+    _CHECKPOINTER = AsyncSqliteSaver(conn)
+
+def get_checkpointer() -> AsyncSqliteSaver | MemorySaver:
+    """获取全局的检查点保存器，如果未初始化则回退到 MemorySaver"""
+    global _CHECKPOINTER
+    if _CHECKPOINTER is None:
+        logger.warning("AsyncSqliteSaver 未初始化，回退到 MemorySaver")
+        _CHECKPOINTER = MemorySaver()
+    return _CHECKPOINTER
 
 
 def _resolve_skills_root(skill_path: str) -> Path:
@@ -166,7 +181,7 @@ def get_agent(
     include_sqlite_tools: bool = False,
     conversation_id: int | None = None,
 ):
-    checkpointer = _CHECKPOINTER
+    checkpointer = get_checkpointer()
 
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     skills_root = _resolve_skills_root(skill_path)

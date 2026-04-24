@@ -7,6 +7,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.sql import select
+import aiosqlite
 
 from src.api import api_router
 from src.db.init_db import init_db
@@ -17,6 +18,8 @@ from src.service.config_kv_service import ConfigKvService
 from src.service.task_scheduler_service import TaskSchedulerService
 from src.service.task_service import TaskService
 from src.service.workspace_service import WorkspaceService
+from src.service.agent import init_checkpointer
+from src.core.config import get_settings, resolve_sqlite_path
 from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
@@ -40,6 +43,16 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         init_db()
+        
+        # 初始化全局 AsyncSqliteSaver
+        settings = get_settings()
+        sqlite_path = resolve_sqlite_path(settings.sqlite_path)
+        sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+        # 保持连接打开直到应用关闭
+        conn = await aiosqlite.connect(str(sqlite_path), check_same_thread=False)
+        init_checkpointer(conn)
+        logger.info("AsyncSqliteSaver initialized")
+        
         EmployeeService.migrate_local_employees_to_skill_path()
         with get_session_local()() as db:
             workspace = WorkspaceService.ensure_default_workspace(db)
@@ -58,6 +71,9 @@ def create_app() -> FastAPI:
         TaskSchedulerService.start()
         yield
         TaskSchedulerService.shutdown()
+        await conn.close()
+        logger.info("AsyncSqliteSaver connection closed")
+        
     fastapi_app = FastAPI(
         title="欢迎来到数字员工客户端",
         description="数字员工客户端",

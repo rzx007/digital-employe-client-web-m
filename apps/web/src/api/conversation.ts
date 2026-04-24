@@ -71,6 +71,21 @@ export async function streamConversation(
   })
 }
 
+/**
+ * 手动终止正在执行的会话流
+ * POST /chat/conversations/{conversation_id}/stream/cancel
+ */
+export async function cancelConversationStream(
+  conversationId: number | string
+) {
+  return request<ApiResponse<null>>(
+    `/chat/conversations/${conversationId}/stream/cancel`,
+    {
+      method: "POST",
+    }
+  )
+}
+
 export async function fetchConversationResources(
   conversationId: number | string
 ) {
