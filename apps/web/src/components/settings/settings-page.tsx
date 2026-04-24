@@ -620,9 +620,9 @@ function ModelsSettings() {
     const loadModelSettings = async () => {
       try {
         const [modelKv, apiKeyKv, apiUrlKv] = await Promise.all([
-          getConfigKv("deepagent_model"),
-          getConfigKv("open_ai_key"),
-          getConfigKv("base_url"),
+          getConfigKv("DEEPAGENT_MODEL"),
+          getConfigKv("OPENAI_API_KEY"),
+          getConfigKv("BASE_URL"),
         ])
         setModel(modelKv?.config_value ?? "")
         setApiKey(apiKeyKv?.config_value ?? "")
@@ -638,9 +638,9 @@ function ModelsSettings() {
     setSaving(true)
     try {
       await setManyConfigKv([
-        { key: "deepagent_model", value: deepagent_model },
-        { key: "open_ai_key", value: apiKey },
-        { key: "base_url", value: apiUrl },
+        { key: "DEEPAGENT_MODEL", value: deepagent_model },
+        { key: "OPENAI_API_KEY", value: apiKey },
+        { key: "BASE_URL", value: apiUrl },
       ])
       await queryClient.invalidateQueries({
         queryKey: modelKeys.runtimeConfig(),

@@ -8,9 +8,9 @@ export interface RuntimeModelConfig {
 
 export async function fetchRuntimeModelConfig(): Promise<RuntimeModelConfig> {
   const [modelKv, baseUrlKv, apiKeyKv] = await Promise.all([
-    getConfigKv("deepagent_model"),
-    getConfigKv("base_url"),
-    getConfigKv("open_ai_key"),
+    getConfigKv("DEEPAGENT_MODEL"),
+    getConfigKv("BASE_URL"),
+    getConfigKv("OPENAI_API_KEY"),
   ])
 
   return {

@@ -101,7 +101,7 @@ local-employees/
 后续新增业务配置时：
 
 - 需要先在 `config-kv.init.json` 中新增 key/value
-- 不再在 `.env` 里新增或维护这类业务配置
+- 不再在 `.env` 或 `~/.digital-employee/settings.json` 中新增或维护这类业务配置
 - 启动后可通过配置管理接口按 key 进行增删改查
 
 示例（`config-kv.init.json`）：

@@ -32,7 +32,7 @@ export const useEndpointStore = create<EndpointState>((set, get) => ({
 
   loadEndpoint: async () => {
     try {
-      const endpointKv = await getConfigKv("remote_api_base_url")
+      const endpointKv = await getConfigKv("REMOTE_API_BASE_URL")
       const endpoint = endpointKv?.config_value
       if (endpoint) {
         const url = new URL(endpoint)
@@ -88,7 +88,7 @@ export const useEndpointStore = create<EndpointState>((set, get) => ({
   saveEndpoint: async () => {
     const { protocol, ip, port } = get()
     const endpoint = `${protocol}${ip}:${port}`
-    await setConfigKv("remote_api_base_url", endpoint)
+    await setConfigKv("REMOTE_API_BASE_URL", endpoint)
   },
 
   getBaseUrl: () => {

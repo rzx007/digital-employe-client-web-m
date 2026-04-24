@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import os
+import logging
 import sqlite3
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def get_default_artifacts_path() -> str:
@@ -43,6 +46,7 @@ def join_base_and_path(base_url: str | None, path: str | None) -> str | None:
     if not suffix:
         return base
     normalized = suffix if suffix.startswith("/") else f"/{suffix}"
+    logger.info("🚀·join_base_and_path base=%s, path=%s, normalized=%s", base, path, normalized)
     return f"{base}{normalized}"
 
 
@@ -197,7 +201,6 @@ def get_settings() -> Settings:
             kv_data, "AGENT_INTERFACE_SKILL_PREFIX"
         )
         or "/aios/skill",
-        login_path=login_path,
         login_url=join_base_and_path(platform_base_url, login_path),
     )
 

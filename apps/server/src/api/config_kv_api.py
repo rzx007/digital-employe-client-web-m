@@ -47,7 +47,7 @@ def update_config_kv(
     payload: ConfigKvUpdate,
     db: Session = Depends(get_db),
 ) -> ResponseBase[ConfigKvRead]:
-    row = ConfigKvService.update_by_key(
+    row = ConfigKvService.upsert(
         db,
         config_key=config_key,
         config_value=payload.config_value,

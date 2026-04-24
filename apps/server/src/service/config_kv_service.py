@@ -87,6 +87,22 @@ class ConfigKvService:
         ConfigKvService._refresh_settings_cache()
 
     @staticmethod
+    def upsert(db: Session, config_key: str, config_value: str) -> ConfigKv:
+        key = ConfigKvService._normalize_key(config_key)
+        row = db.scalar(select(ConfigKv).where(ConfigKv.config_key == key))
+        if row is not None:
+            row.config_value = config_value
+            db.commit()
+            db.refresh(row)
+        else:
+            row = ConfigKv(config_key=key, config_value=config_value)
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+        ConfigKvService._refresh_settings_cache()
+        return row
+
+    @staticmethod
     def bootstrap_from_json(
         db: Session, json_path: str | Path = "config-kv.init.json"
     ) -> int:

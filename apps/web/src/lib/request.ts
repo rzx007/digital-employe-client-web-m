@@ -22,7 +22,7 @@ async function loadEndpointBaseURL(): Promise<string> {
   try {
     const res = await ofetch<{
       data?: { config_value?: string }
-    }>("/config-kvs/platform_base_url", {
+    }>("/config-kvs/REMOTE_API_BASE_URL", {
       baseURL: fallbackBaseURL,
       headers: { ...defaultHeaders },
     })

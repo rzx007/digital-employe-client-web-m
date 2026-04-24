@@ -219,10 +219,10 @@ def copy_additional_files():
     """复制额外的文件到输出目录"""
     print("📋 复制额外文件...")
 
-    # 复制 .env.example 作为参考
-    env_example = SERVER_DIR / ".env"
+    # 复制 config-kv.init.json 作为参考
+    env_example = SERVER_DIR / "config-kv.init.json"
     if env_example.exists():
-        shutil.copy2(env_example, OUTPUT_DIR / ".env")
+        shutil.copy2(env_example, OUTPUT_DIR / "config-kv.init.json")
         print(f"   已复制: {env_example.name}")
 
     # 复制 README.md
