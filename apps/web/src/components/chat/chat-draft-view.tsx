@@ -16,6 +16,7 @@ import { useChatStore } from "@/stores/chat-store"
 
 import { ChatPanel } from "./chat-panel"
 import { chatTransport, type ChatViewContact } from "./chat-view-shared"
+import { cancelConversationStream } from "@/api/conversation"
 import { toast } from "sonner"
 
 export function DraftChatView({
@@ -86,11 +87,17 @@ export function DraftChatView({
       ? "submitted"
       : status
 
-  const handleStop = useCallback(() => {
+  const handleStop = useCallback(async () => {
     if (createConversationMutation.isPending) {
       createConversationMutation.reset()
-    } else {
-      stop()
+      return
+    }
+    stop()
+    const conversationId = createdConversationIdRef.current
+    if (conversationId) {
+      try {
+        await cancelConversationStream(conversationId)
+      } catch {}
     }
   }, [createConversationMutation, stop])
 

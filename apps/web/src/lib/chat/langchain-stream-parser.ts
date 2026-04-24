@@ -229,6 +229,17 @@ function extractAssistantText(payload: unknown) {
   return content
 }
 
+/**
+ * 处理 AI 消息块中的工具调用信息，生成相应的 UI 消息块。
+ *
+ * 该函数主要处理两类数据：
+ * 1. `tool_calls`: 完整的工具调用对象，用于初始化或更新待处理的工具调用状态，并可能触发 "tool-input-start" 事件。
+ * 2. `tool_call_chunks` 或 `invalid_tool_calls`: 流式的工具调用参数片段，用于累积输入文本，触发 "tool-input-delta" 和 "tool-input-available" 事件。
+ *
+ * @param chunk - 包含工具调用信息的 AI 消息块。
+ * @param state - LangChain 流解析状态对象，用于维护待处理工具调用的上下文和映射关系。
+ * @returns 生成的 UI 消息块数组，包含工具调用开始、增量输入和完整输入可用等事件。
+ */
 function buildToolInputChunks(
   chunk: AIMessageChunk,
   state: LangChainStreamParseState
@@ -239,6 +250,7 @@ function buildToolInputChunks(
     ? chunk.kwargs.tool_calls
     : []
 
+  // 处理完整的工具调用对象，初始化或更新待处理状态，并在必要时发出开始信号
   toolCalls.forEach((toolCall, arrayIndex) => {
     const toolCallId = getStringValue(toolCall.id)
     const toolName = getStringValue(toolCall.name)
@@ -317,6 +329,8 @@ function buildToolInputChunks(
   const invalidToolCalls = Array.isArray(chunk.kwargs?.invalid_tool_calls)
     ? chunk.kwargs.invalid_tool_calls
     : []
+
+  // 过滤出包含字符串类型参数的有效片段，若无有效片段则尝试从无效调用中获取作为后备
   const deltas = toolCallChunks.filter(
     (toolCallChunk) => typeof toolCallChunk.args === "string"
   )
@@ -327,6 +341,7 @@ function buildToolInputChunks(
         (toolCallChunk) => typeof toolCallChunk.args === "string"
       )
 
+    // 处理流式工具调用参数片段，累积输入文本并生成相应的 UI 事件
     ;[...deltas, ...fallbackDeltas].forEach((toolCallChunk, fallbackIndex) => {
       const indexValue =
         typeof toolCallChunk.index === "number"
@@ -341,6 +356,7 @@ function buildToolInputChunks(
         return
       }
 
+      // 查找或创建对应的待处理工具调用对象
       const pending =
         (toolCallId ? resolvePendingToolCallById(state, toolCallId) : null) ??
         resolvePendingToolCallByChunkIndex(state, messageChunkId, indexValue) ??
@@ -373,6 +389,7 @@ function buildToolInputChunks(
       const resolvedToolCallId = pending.toolCallId ?? pending.key
       const resolvedToolName = pending.toolName ?? "unknown_tool"
 
+      // 如果尚未发送开始信号，且已具备必要信息，则发送工具输入开始事件
       if (!pending.sentInputStart) {
         result.push({
           type: "tool-input-start",
@@ -384,12 +401,14 @@ function buildToolInputChunks(
 
       pending.inputText += inputTextDelta
 
+      // 发送工具输入增量事件
       result.push({
         type: "tool-input-delta",
         toolCallId: resolvedToolCallId,
         inputTextDelta,
       })
 
+      // 尝试解析累积的输入文本，若解析成功且尚未发送可用信号，则发送工具输入可用事件
       const parsedInput = tryParseToolInput(pending.inputText)
       if (!pending.sentInputAvailable && parsedInput !== null) {
         result.push({
@@ -405,16 +424,25 @@ function buildToolInputChunks(
   return result
 }
 
+/**
+ * 根据原始载荷和当前解析状态构建工具输出消息块。
+ *
+ * @param payload - 待处理的原始数据载荷，预期为包含工具消息对象的数组。
+ * @param state - LangChain 流式解析的状态对象，用于查找待处理的工具调用上下文。
+ * @returns 如果成功构建则返回 UIMessageChunk 对象，否则返回 null。
+ */
 function buildToolOutputChunk(
   payload: unknown,
   state: LangChainStreamParseState
 ): UIMessageChunk | null {
+  // 验证载荷有效性：必须是非空数组
   if (!Array.isArray(payload) || payload.length === 0) {
     return null
   }
 
   const chunk = payload[0]
 
+  // 验证第一个元素是否为有效的工具消息类型
   if (!isToolMessage(chunk)) {
     return null
   }
@@ -425,6 +453,7 @@ function buildToolOutputChunk(
     typeof chunk.kwargs?.content === "string" ? chunk.kwargs.content : ""
   const status = getStringValue(chunk.kwargs?.status)
 
+  // 处理缺失 toolCallId 的情况：若有输出文本则生成独立的消息块，否则返回 null
   if (!toolCallId) {
     return outputText
       ? {
@@ -439,9 +468,11 @@ function buildToolOutputChunk(
       : null
   }
 
+  // 根据 toolCallId 解析待处理的工具调用上下文及输入参数
   const pending = resolvePendingToolCallById(state, toolCallId)
   const parsedInput = pending ? tryParseToolInput(pending.inputText) : null
 
+  // 处理执行失败的状态，返回错误类型的消息块
   if (status && status !== "success") {
     return {
       type: "tool-output-error",
@@ -450,6 +481,7 @@ function buildToolOutputChunk(
     }
   }
 
+  // 构建并返回成功的工具输出消息块，包含解析后的输入和输出信息
   return {
     type: "tool-output-available",
     toolCallId,

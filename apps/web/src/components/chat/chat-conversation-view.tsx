@@ -8,6 +8,7 @@ import { useMessagesQuery } from "@/hooks/use-chat-queries"
 
 import { ChatPanel } from "./chat-panel"
 import { chatTransport, type ChatViewContact } from "./chat-view-shared"
+import { cancelConversationStream } from "@/api/conversation"
 import { toast } from "sonner"
 
 export function ConversationChatView({
@@ -59,6 +60,13 @@ export function ConversationChatView({
       })
     },
   })
+
+  const handleStop = React.useCallback(async () => {
+    stop()
+    try {
+      await cancelConversationStream(conversationId)
+    } catch {}
+  }, [stop, conversationId])
 
   React.useEffect(() => {
     if (initialMessages.length > 0) {
@@ -188,7 +196,7 @@ export function ConversationChatView({
       isSubmitDisabled={isSubmitDisabled}
       onInputChange={handleTextChange}
       onSend={handleSendMessage}
-      onStop={stop}
+      onStop={handleStop}
       onOpenContacts={onOpenContacts}
       onOpenConversations={onOpenConversations}
       onNewConversation={onNewConversation}
