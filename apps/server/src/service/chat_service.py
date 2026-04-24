@@ -511,6 +511,38 @@ class ChatService:
         from src.service.stream_registry import registry
         import asyncio
         
+        last_seq = 0
+
+        def _emit_event_payloads(event: dict) -> tuple[bool, list[str]]:
+            nonlocal last_seq
+            if not isinstance(event, dict):
+                return False, []
+            seq = event.get("seq")
+            if isinstance(seq, int):
+                if seq <= last_seq:
+                    return False, []
+                last_seq = seq
+
+            data = event.get("data")
+            if not data:
+                return False, []
+                
+            if isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error"):
+                payloads: list[str] = []
+                if data.get("status") == "error":
+                    yield_text = json.dumps({"error": data.get("error")}, ensure_ascii=False)
+                    payloads.append(f"data: {yield_text}\n\n")
+                payloads.append("data: [DONE]\n\n")
+                return True, payloads
+                
+            if debug_content_only:
+                text_part = ChatService._extract_text_from_chunk(data)
+                if text_part:
+                    return False, [f"data: {text_part}\n\n"]
+                return False, []
+            else:
+                return False, [f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"]
+        
         # 尝试从内存或数据库获取 buffer
         buffer = registry.get_buffer(conversation_id)
         if not buffer:
@@ -522,22 +554,11 @@ class ChatService:
             
         # 发送历史事件
         for event in buffer.events:
-            data = event.get("data")
-            if not data:
-                continue
-                
-            if isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error"):
-                if data.get("status") == "error":
-                    yield f"data: {json.dumps({'error': data.get('error')}, ensure_ascii=False)}\n\n"
-                yield "data: [DONE]\n\n"
+            done, payloads = _emit_event_payloads(event)
+            for payload in payloads:
+                yield payload
+            if done:
                 return
-                
-            if debug_content_only:
-                text_part = ChatService._extract_text_from_chunk(data)
-                if text_part:
-                    yield f"data: {text_part}\n\n"
-            else:
-                yield f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
                 
         # 如果任务仍在运行，订阅新事件
         if registry.is_active(conversation_id):
@@ -546,28 +567,27 @@ class ChatService:
             def _on_event(evt: dict):
                 queue.put_nowait(evt)
                 
-            registry.get_task(conversation_id).subscribe(_on_event)
+            task = registry.get_task(conversation_id)
+            if not task:
+                yield "data: [DONE]\n\n"
+                return
+            task.subscribe(_on_event)
+            # 补齐订阅窗口期间遗漏事件
+            for missed_event in task.buffer.get_events_after(last_seq):
+                done, payloads = _emit_event_payloads(missed_event)
+                for payload in payloads:
+                    yield payload
+                if done:
+                    return
             
             try:
                 while True:
                     evt = await queue.get()
-                    data = evt.get("data")
-                    
-                    if not data:
-                        continue
-                        
-                    if isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error"):
-                        if data.get("status") == "error":
-                            yield f"data: {json.dumps({'error': data.get('error')}, ensure_ascii=False)}\n\n"
-                        yield "data: [DONE]\n\n"
+                    done, payloads = _emit_event_payloads(evt)
+                    for payload in payloads:
+                        yield payload
+                    if done:
                         break
-                        
-                    if debug_content_only:
-                        text_part = ChatService._extract_text_from_chunk(data)
-                        if text_part:
-                            yield f"data: {text_part}\n\n"
-                    else:
-                        yield f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
             finally:
                 task = registry.get_task(conversation_id)
                 if task:
