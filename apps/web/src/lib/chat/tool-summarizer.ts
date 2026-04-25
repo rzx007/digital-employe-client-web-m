@@ -42,6 +42,25 @@ function extractScriptBasename(command: string): string | null {
   return match ? match[1] : null
 }
 
+export const SIMPLE_LABELS: Record<string, { running: string; done: string; error: string }> = {
+  execute: { running: "正在执行命令...", done: "执行完成", error: "执行失败" },
+  read_file: { running: "正在读取文件...", done: "读取完成", error: "读取失败" },
+  write_file: { running: "正在创建文件...", done: "创建完成", error: "创建失败" },
+  edit_file: { running: "正在编辑文件...", done: "编辑完成", error: "编辑失败" },
+  ls: { running: "正在查看目录...", done: "查看完成", error: "查看失败" },
+  download_files: { running: "正在下载...", done: "下载完成", error: "下载失败" },
+  upload_files: { running: "正在上传...", done: "上传完成", error: "上传失败" },
+  write_todos: { running: "正在规划任务...", done: "任务已规划", error: "规划失败" },
+  glob: { running: "正在搜索文件...", done: "搜索完成", error: "搜索失败" },
+}
+
+export function getSimpleLabel(
+  toolName: string,
+  state: "running" | "done" | "error"
+): string {
+  return SIMPLE_LABELS[toolName]?.[state] ?? (state === "running" ? "处理中..." : state === "error" ? "操作失败" : "已完成")
+}
+
 export function summarizeToolCall(options: {
   type: string
   input?: unknown

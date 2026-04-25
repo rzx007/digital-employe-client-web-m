@@ -6,10 +6,12 @@ import type {
   ToolGroupItem,
 } from "@/lib/chat/message-classifier"
 import { ToolActionRow } from "./tool-action-row"
+import { ToolActionRowSimple } from "./tool-action-row-simple"
 
 export type ToolGroupBlockProps = ComponentProps<"div"> & {
   block: Extract<ClassifiedBlock, { kind: "tool-group" }>
   defaultOpen?: boolean
+  simpleMode?: boolean
 }
 
 function isGroupDone(tools: ToolGroupItem[]): boolean {
@@ -26,12 +28,15 @@ function hasError(tools: ToolGroupItem[]): boolean {
 export function ToolGroupBlock({
   block,
   className,
+  simpleMode = true,
   ...props
 }: ToolGroupBlockProps) {
+  const ToolRow = simpleMode ? ToolActionRowSimple : ToolActionRow
+
   if (block.tools.length === 1) {
     const tool = block.tools[0]
     return (
-      <ToolActionRow
+      <ToolRow
         className={cn("not-prose", className)}
         summary={tool.summary}
         state={tool.state}
@@ -54,7 +59,7 @@ export function ToolGroupBlock({
       </div>
       <div className="mt-1.5 space-y-1.5">
         {block.tools.map((tool) => (
-          <ToolActionRow
+          <ToolRow
             key={tool.key}
             summary={tool.summary}
             state={tool.state}
