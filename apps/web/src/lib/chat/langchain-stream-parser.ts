@@ -25,6 +25,8 @@ export interface LangChainStreamParseState {
   currentPhase: ParsePhase
   currentTextId: string | null
   didSendFinish: boolean
+  toolOutputAccumulators: Map<string, string>
+  toolNamesById: Map<string, string>
 }
 
 export function createLangChainStreamParseState(): LangChainStreamParseState {
@@ -35,6 +37,8 @@ export function createLangChainStreamParseState(): LangChainStreamParseState {
     currentPhase: "idle",
     currentTextId: null,
     didSendFinish: false,
+    toolOutputAccumulators: new Map(),
+    toolNamesById: new Map(),
   }
 }
 
@@ -386,8 +390,12 @@ function buildToolInputChunks(
         pending.toolName = toolName
       }
 
-      const resolvedToolCallId = pending.toolCallId ?? pending.key
-      const resolvedToolName = pending.toolName ?? "unknown_tool"
+  const resolvedToolCallId = pending.toolCallId ?? pending.key
+  const resolvedToolName = pending.toolName ?? "unknown_tool"
+
+  if (pending.toolCallId && pending.toolName) {
+    state.toolNamesById.set(pending.toolCallId, pending.toolName)
+  }
 
       // 如果尚未发送开始信号，且已具备必要信息，则发送工具输入开始事件
       if (!pending.sentInputStart) {
@@ -472,6 +480,8 @@ function buildToolOutputChunk(
   const pending = resolvePendingToolCallById(state, toolCallId)
   const parsedInput = pending ? tryParseToolInput(pending.inputText) : null
 
+  state.toolOutputAccumulators.delete(toolCallId)
+
   // 处理执行失败的状态，返回错误类型的消息块
   if (status && status !== "success") {
     return {
@@ -493,6 +503,34 @@ function buildToolOutputChunk(
       inputText: pending?.inputText ?? "",
     },
   }
+}
+
+export function buildToolOutputStreamingChunk(
+  event: { tool_name: string; chunk: string; chunk_seq: number; stream: string },
+  state: LangChainStreamParseState
+): UIMessageChunk | null {
+  const { tool_name, chunk } = event
+
+  let toolCallId: string | null = null
+  for (const [id, name] of state.toolNamesById) {
+    if (name === tool_name) {
+      toolCallId = id
+      break
+    }
+  }
+
+  if (!toolCallId) return null
+
+  const existing = state.toolOutputAccumulators.get(toolCallId) ?? ""
+  const accumulated = existing ? existing + "\n" + chunk : chunk
+  state.toolOutputAccumulators.set(toolCallId, accumulated)
+
+  return {
+    type: "tool-output-available" as const,
+    toolCallId,
+    output: accumulated,
+    preliminary: true,
+  } as UIMessageChunk
 }
 
 export function closeTextPhaseIfNeeded(

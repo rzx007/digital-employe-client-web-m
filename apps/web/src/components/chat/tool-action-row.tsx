@@ -192,6 +192,7 @@ export type ToolActionRowProps = ComponentProps<"div"> & {
   state: string
   resultText?: string | null
   input?: unknown
+  preliminary?: boolean
 }
 
 export function ToolActionRow({
@@ -199,15 +200,17 @@ export function ToolActionRow({
   state,
   resultText,
   input,
+  preliminary,
   className,
   ...props
 }: ToolActionRowProps) {
   const StatusIcon = stateIconMap[state] ?? IconLoader
   const ToolIcon = getToolIcon(summary.toolName)
   const isError = state === "output-error"
-  const isDone = state === "output-available" || state === "output-error"
+  const isDone = (state === "output-available" && !preliminary) || state === "output-error"
   const isRunning = !isDone
   const isStreaming = state === "input-streaming"
+  const isPreliminaryOutput = state === "output-available" && preliminary === true
 
   const displayContent = useMemo(
     () => getDisplayContent(input, summary.toolName),
@@ -238,27 +241,33 @@ export function ToolActionRow({
   }, [isStreaming, displayContent, isOpen])
 
   useEffect(() => {
+    if (isPreliminaryOutput && !isOpen) {
+      setIsOpen(true)
+    }
+  }, [isPreliminaryOutput, isOpen])
+
+  useEffect(() => {
     if (isDone && resultText && !didAutoCollapse.current) {
       const timer = setTimeout(() => {
         didAutoCollapse.current = true
         setIsOpen(false)
-      }, 800)
+      }, 2500)
       return () => clearTimeout(timer)
     }
   }, [isDone, resultText])
 
   useEffect(() => {
-    if (isRunning && displayContent && scrollRef.current) {
+    if ((isRunning || isPreliminaryOutput) && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [displayContent, isRunning])
+  }, [displayContent, isRunning, isPreliminaryOutput, resultText])
 
   const IconChevron = useMemo(() => {
     return isOpen ? IconChevronDown : IconChevronRight
   }, [isOpen])
 
-  const collapsibleOpen = isRunning ? true : isOpen
-  const collapsibleToggle = isRunning ? undefined : () => setIsOpen((v) => !v)
+  const collapsibleOpen = isRunning || isPreliminaryOutput ? true : isOpen
+  const collapsibleToggle = isRunning || isPreliminaryOutput ? undefined : () => setIsOpen((v) => !v)
 
   // write_todos with structured data: dedicated todo list UI
   if (isWriteTodos && hasTodos) {
@@ -335,7 +344,19 @@ export function ToolActionRow({
           <CollapsibleContent>
 
             <div className="px-3 pb-2.5 space-y-2">
-              {displayContent && (
+              {isPreliminaryOutput && resultText && (
+                <div
+                  ref={scrollRef}
+                  className={cn(
+                    "overflow-y-auto rounded-md bg-background/60 px-2.5 py-2 text-xs leading-relaxed max-h-52",
+                    "font-mono text-muted-foreground/70 whitespace-pre-wrap"
+                  )}
+                >
+                  {resultText}
+                  <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-muted-foreground/50 animate-pulse align-text-bottom" />
+                </div>
+              )}
+              {!isPreliminaryOutput && displayContent && (
                 <div className="relative">
                   <div
                     ref={scrollRef}
@@ -348,23 +369,23 @@ export function ToolActionRow({
                     {isStreaming && (
                       <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-muted-foreground/50 animate-pulse align-text-bottom" />
                     )}
-                    {hasResult && (
-                      <div
-                        className={cn(
-                          "rounded-md  px-2.5 py-2 text-xs leading-relaxed",
-                          isError
-                            ? "text-destructive/70"
-                            : "text-muted-foreground/70"
-                        )}
-                      >
-                        {resultText}
-                      </div>
-                    )}
                   </div>
 
                   {isOverflowing && !isRunning && !isOpen && (
                     <div className="pointer-events-none absolute right-0 bottom-0 left-0 h-6 bg-gradient-to-t from-background/60 to-transparent" />
                   )}
+                </div>
+              )}
+              {!isPreliminaryOutput && hasResult && (
+                <div
+                  className={cn(
+                    "rounded-md bg-background/60 px-2.5 py-2 text-xs leading-relaxed max-h-52 overflow-y-auto",
+                    isError
+                      ? "text-destructive/70"
+                      : "font-mono text-muted-foreground/70 whitespace-pre-wrap"
+                  )}
+                >
+                  {resultText}
                 </div>
               )}
 

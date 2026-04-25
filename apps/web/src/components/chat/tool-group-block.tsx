@@ -15,7 +15,7 @@ export type ToolGroupBlockProps = ComponentProps<"div"> & {
 function isGroupDone(tools: ToolGroupItem[]): boolean {
   return tools.every(
     (t) =>
-      t.state === "output-available" || t.state === "output-error"
+      (t.state === "output-available" && !t.preliminary) || t.state === "output-error"
   )
 }
 
@@ -37,6 +37,7 @@ export function ToolGroupBlock({
         state={tool.state}
         resultText={tool.resultText}
         input={tool.input}
+        preliminary={tool.preliminary}
         {...props}
       />
     )
@@ -59,6 +60,7 @@ export function ToolGroupBlock({
             state={tool.state}
             resultText={tool.resultText}
             input={tool.input}
+            preliminary={tool.preliminary}
           />
         ))}
       </div>

@@ -12,6 +12,7 @@ import {
   createLangChainStreamParseState,
   enqueueFinish,
   parseLangChainPayloadToChunks,
+  buildToolOutputStreamingChunk,
 } from "./langchain-stream-parser"
 import {
   sseEventSchema,
@@ -285,6 +286,23 @@ export class LangChainChatTransport<
               const artifactData = (event as { data: unknown }).data as ArtifactData
               if (artifactData && artifactHandler) {
                 artifactHandler(artifactData)
+              }
+              return false
+            }
+
+            // 处理 tool_output 流式输出事件
+            if (event && typeof event === "object" && "type" in event && (event as { type: string }).type === "tool_output" && "data" in event) {
+              const toolOutputData = (event as { data: unknown }).data as {
+                tool_name: string
+                chunk: string
+                chunk_seq: number
+                stream: string
+              }
+              if (toolOutputData && typeof toolOutputData === "object") {
+                const chunk = buildToolOutputStreamingChunk(toolOutputData, state)
+                if (chunk) {
+                  controller.enqueue(chunk)
+                }
               }
               return false
             }

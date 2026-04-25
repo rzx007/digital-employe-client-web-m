@@ -86,12 +86,13 @@ class SkillAwareShellBackend(LocalShellBackend):
         queue: asyncio.Queue[str | None] = asyncio.Queue()
 
         def _read_lines_sync() -> int:
+            env = {**self._env, "PYTHONUNBUFFERED": "1"}
             proc = subprocess.Popen(  # noqa: S602
                 rewritten,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 shell=True,
-                env=self._env,
+                env=env,
                 cwd=str(self.cwd),
             )
             try:

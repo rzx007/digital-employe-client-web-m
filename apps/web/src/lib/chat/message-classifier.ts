@@ -23,6 +23,9 @@ export interface ToolGroupItem {
   summary: ToolCallSummary
   resultText: string | null
   input: unknown
+  preliminary: boolean
+  toolPartIndex: number
+  hasNewerActiveTool: boolean
   part: ToolUIPart
 }
 
@@ -47,19 +50,28 @@ function stripThinkSections(text: string): string {
 }
 
 function extractResultText(part: ToolUIPart): string | null {
-  if (!("output" in part) || !part.output || typeof part.output !== "object") {
+  if (!("output" in part) || !part.output) {
+    return null
+  }
+
+  if (typeof part.output === "string") {
+    return part.output || null
+  }
+
+  if (typeof part.output !== "object") {
     return null
   }
 
   const output = part.output as Record<string, unknown>
   if (typeof output.text === "string" && output.text) {
-    // return output.text.length > 200
-    //   ? output.text.slice(0, 197) + "..."
-    //   : output.text
     return output.text
   }
 
   return null
+}
+
+function isPreliminary(part: ToolUIPart): boolean {
+  return "preliminary" in part && (part as Record<string, unknown>).preliminary === true
 }
 
 /**
@@ -123,6 +135,7 @@ export function classifyMessageParts(
       summary,
       resultText: extractResultText(part),
       input: toolInput,
+      preliminary: isPreliminary(part),
       part,
     }
 
