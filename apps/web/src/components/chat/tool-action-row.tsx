@@ -19,6 +19,8 @@ import {
   Collapsible,
   CollapsibleContent,
 } from "@workspace/ui/components/collapsible"
+import { DiffViewer } from "@workspace/ui/components/diff-viewer"
+import { CodeHighlight, detectLanguage } from "./code-highlight"
 
 import type { ToolCallSummary } from "@/lib/chat/tool-summarizer"
 
@@ -31,7 +33,6 @@ function getDisplayContent(input: unknown, toolName: string): string | null {
   if (!input || typeof input !== "object") return null
   const obj = input as Record<string, unknown>
   if (CONTENT_TOOLS.has(toolName)) {
-    // edit_file是new_string
     if (toolName === "edit_file") {
       return typeof obj.new_string === "string" && obj.new_string ? obj.new_string : null
     }
@@ -46,6 +47,14 @@ function getDisplayContent(input: unknown, toolName: string): string | null {
   } catch {
     return null
   }
+}
+
+function getEditDiff(input: unknown): { oldCode: string; newCode: string } | null {
+  if (!input || typeof input !== "object") return null
+  const obj = input as Record<string, unknown>
+  const oldCode = typeof obj.old_string === "string" ? obj.old_string : null
+  const newCode = typeof obj.new_string === "string" ? obj.new_string : null
+  return oldCode != null && newCode != null ? { oldCode, newCode } : null
 }
 
 // ── Todo types ──────────────────────────────────────────
@@ -216,6 +225,14 @@ export function ToolActionRow({
     () => getDisplayContent(input, summary.toolName),
     [input, summary.toolName]
   )
+  const editDiff = useMemo(
+    () => summary.toolName === "edit_file" ? getEditDiff(input) : null,
+    [summary.toolName, input]
+  )
+  const detectedLang = useMemo(
+    () => detectLanguage((input as Record<string, unknown> | null)?.file_path as string),
+    [input]
+  )
   const hasResult = !!resultText
   const hasContent = !!displayContent || hasResult
 
@@ -356,21 +373,25 @@ export function ToolActionRow({
                   <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-muted-foreground/50 animate-pulse align-text-bottom" />
                 </div>
               )}
-              {!isPreliminaryOutput && displayContent && (
-                <div className="relative">
-                  <div
-                    ref={scrollRef}
-                    className={cn(
-                      "overflow-y-auto rounded-md bg-background/60 px-2.5 py-2 text-xs leading-relaxed max-h-52",
-                      "text-muted-foreground/70"
-                    )}
-                  >
-                    {displayContent}
-                    {isStreaming && (
-                      <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-muted-foreground/50 animate-pulse align-text-bottom" />
-                    )}
-                  </div>
-
+              {!isPreliminaryOutput && editDiff && (
+                <DiffViewer
+                  oldCode={editDiff.oldCode}
+                  newCode={editDiff.newCode}
+                  layout="unified"
+                  oldTitle="原始"
+                  newTitle="修改后"
+                  className="max-h-52 overflow-y-auto rounded-md"
+                />
+              )}
+              {!isPreliminaryOutput && !editDiff && displayContent && (
+                <div className="relative overflow-y-auto rounded-md bg-background/60 max-h-52">
+                  <CodeHighlight
+                    code={displayContent}
+                    language={detectedLang}
+                  />
+                  {isStreaming && (
+                    <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-muted-foreground/50 animate-pulse align-text-bottom" />
+                  )}
                   {isOverflowing && !isRunning && !isOpen && (
                     <div className="pointer-events-none absolute right-0 bottom-0 left-0 h-6 bg-gradient-to-t from-background/60 to-transparent" />
                   )}

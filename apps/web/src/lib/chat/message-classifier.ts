@@ -24,8 +24,6 @@ export interface ToolGroupItem {
   resultText: string | null
   input: unknown
   preliminary: boolean
-  toolPartIndex: number
-  hasNewerActiveTool: boolean
   part: ToolUIPart
 }
 
