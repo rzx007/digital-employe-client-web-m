@@ -1,6 +1,6 @@
 {
   "$schema": "https://ui.shadcn.com/schema.json",
-  "style": "radix-lyra",
+  "style": "radix-mira",
   "rsc": false,
   "tsx": true,
   "tailwind": {
@@ -21,6 +21,7 @@
     "hooks": "@workspace/ui/hooks"
   },
   "registries": {
-    "@ai-elements": "https://ai-sdk.dev/elements/api/registry/{name}.json"
+    "@ai-elements": "https://ai-sdk.dev/elements/api/registry/{name}.json",
+    "@jalco": "https://ui.justinlevine.me/r/{name}.json"
   }
 }
