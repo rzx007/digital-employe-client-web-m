@@ -82,37 +82,34 @@ class StreamRegistry:
         task = self._tasks.get(conversation_id)
         return task.buffer if task else None
 
-    def load_buffer_from_db(self, conversation_id: int, db: Any) -> StreamEventBuffer | None:
-        """从数据库加载历史事件到 buffer，用于断线重连或重启恢复。"""
-        from src.models.conversation import ConversationMessage
-        from sqlalchemy import select
+    def get_stream_status(self, conversation_id: int, db: Any) -> dict | None:
+        task = self._tasks.get(conversation_id)
+        if task:
+            if task.completed:
+                return {
+                    "status": task.status,
+                    "error": task.error_message,
+                }
+            return None
 
         stmt = (
             select(ConversationMessage)
             .where(
                 ConversationMessage.conversation_id == conversation_id,
                 ConversationMessage.role == "assistant",
-                ConversationMessage.stream_state == "streaming",
+                ConversationMessage.stream_state.in_(["completed", "error", "cancelled"]),
             )
             .order_by(ConversationMessage.id.desc())
             .limit(1)
         )
         msg = db.scalar(stmt)
-        if not msg or not msg.stream_chunks:
+        if not msg or not msg.stream_state:
             return None
 
-        try:
-            events = json.loads(msg.stream_chunks)
-            if not isinstance(events, list):
-                return None
-            buffer = StreamEventBuffer(conversation_id)
-            buffer.events = events
-            if events:
-                buffer._seq = events[-1].get("seq", 0)
-            return buffer
-        except json.JSONDecodeError:
-            logger.warning("Failed to decode stream_chunks for msg %s", msg.id)
-            return None
+        return {
+            "status": msg.stream_state,
+            "error": None,
+        }
 
     def broadcast(self, conversation_id: int, event: dict) -> None:
         task = self._tasks.get(conversation_id)
@@ -171,7 +168,6 @@ class StreamRegistry:
 
         self.broadcast(conversation_id, {"type": "cancelled"})
         task.subscribers.clear()
-        self._schedule_cleanup(conversation_id)
         return True
 
     def _schedule_cleanup(self, conversation_id: int) -> None:
@@ -260,8 +256,10 @@ class StreamRegistry:
 
         except asyncio.CancelledError:
             state_final = "cancelled"
+            partial_text = "".join(assistant_text_parts).strip() or None
             self._flush_to_db(
                 db, stream_msg_id, task.buffer, state="cancelled",
+                content=partial_text,
             )
             raise
 
@@ -272,8 +270,10 @@ class StreamRegistry:
             )
             state_final = "error"
             task.error_message = str(e)
+            partial_text = "".join(assistant_text_parts).strip() or None
             self._flush_to_db(
                 db, stream_msg_id, task.buffer, state="error",
+                content=partial_text,
                 error_message=str(e),
             )
             evt = task.buffer.add({"error": str(e)})

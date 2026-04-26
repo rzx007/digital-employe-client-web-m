@@ -388,12 +388,24 @@ class ChatService:
             yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
 
     @staticmethod
-    async def resume_conversation_stream(db: Session, conversation_id: int, debug_content_only: bool = False):
-        """恢复流式会话，从数据库加载历史事件并订阅新事件。"""
+    async def resume_conversation_stream(db: Session, conversation_id: int, debug_content_only: bool = False, cursor: int = 0):
+        """恢复流式会话，仅对仍在运行的流返回增量事件。"""
         from src.service.stream_registry import registry
         import asyncio
-        
-        last_seq = 0
+
+        status_info = registry.get_stream_status(conversation_id, db)
+        if status_info:
+            yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': status_info['status'], 'error': status_info.get('error')}}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
+        task = registry.get_task(conversation_id)
+        if not task or task.completed:
+            yield f"data: {json.dumps({'type': 'no_stream', 'data': {'message': '无可恢复的流'}}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
+        last_seq = cursor
 
         def _emit_event_payloads(event: dict) -> tuple[bool, list[str]]:
             nonlocal last_seq
@@ -408,7 +420,7 @@ class ChatService:
             data = event.get("data")
             if not data:
                 return False, []
-                
+
             if isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error"):
                 payloads: list[str] = []
                 if data.get("status") == "error":
@@ -416,7 +428,7 @@ class ChatService:
                     payloads.append(f"data: {yield_text}\n\n")
                 payloads.append("data: [DONE]\n\n")
                 return True, payloads
-                
+
             if debug_content_only:
                 text_part = ChatService._extract_text_from_chunk(data)
                 if text_part:
@@ -424,58 +436,40 @@ class ChatService:
                 return False, []
             else:
                 return False, [f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"]
-        
-        # 尝试从内存或数据库获取 buffer
-        buffer = registry.get_buffer(conversation_id)
-        if not buffer:
-            buffer = registry.load_buffer_from_db(conversation_id, db)
-            
-        if not buffer:
-            yield "data: [DONE]\n\n"
-            return
-            
-        # 发送历史事件
-        for event in buffer.events:
+
+        for event in task.buffer.get_events_after(last_seq):
             done, payloads = _emit_event_payloads(event)
             for payload in payloads:
                 yield payload
             if done:
                 return
-                
-        # 如果任务仍在运行，订阅新事件
-        if registry.is_active(conversation_id):
-            queue = asyncio.Queue()
-            
-            def _on_event(evt: dict):
-                queue.put_nowait(evt)
-                
-            task = registry.get_task(conversation_id)
-            if not task:
-                yield "data: [DONE]\n\n"
+
+        queue = asyncio.Queue()
+
+        def _on_event(evt: dict):
+            queue.put_nowait(evt)
+
+        task.subscribe(_on_event)
+        for missed_event in task.buffer.get_events_after(last_seq):
+            done, payloads = _emit_event_payloads(missed_event)
+            for payload in payloads:
+                yield payload
+            if done:
+                task.unsubscribe(_on_event)
                 return
-            task.subscribe(_on_event)
-            # 补齐订阅窗口期间遗漏事件
-            for missed_event in task.buffer.get_events_after(last_seq):
-                done, payloads = _emit_event_payloads(missed_event)
+
+        try:
+            while True:
+                evt = await queue.get()
+                done, payloads = _emit_event_payloads(evt)
                 for payload in payloads:
                     yield payload
                 if done:
-                    return
-            
-            try:
-                while True:
-                    evt = await queue.get()
-                    done, payloads = _emit_event_payloads(evt)
-                    for payload in payloads:
-                        yield payload
-                    if done:
-                        break
-            finally:
-                task = registry.get_task(conversation_id)
-                if task:
-                    task.unsubscribe(_on_event)
-        else:
-            yield "data: [DONE]\n\n"
+                    break
+        finally:
+            t = registry.get_task(conversation_id)
+            if t:
+                t.unsubscribe(_on_event)
 
     @staticmethod
     def cancel_conversation_stream(db: Session, conversation_id: int) -> bool:
