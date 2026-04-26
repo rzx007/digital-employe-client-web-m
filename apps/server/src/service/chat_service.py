@@ -1,7 +1,6 @@
 from __future__ import annotations
 import logging
 import os
-import re
 import json
 import shutil
 from functools import lru_cache
@@ -25,7 +24,7 @@ from datetime import datetime  # 导入datetime模块
 from urllib.request import urlopen
 from deepagents.backends.utils import create_file_data
 from langgraph.checkpoint.memory import MemorySaver
-from src.service.agent import get_agent, is_artifact_file, build_artifact_event
+from src.service.agent import get_agent
 
 
 logger = logging.getLogger(__name__)
@@ -293,123 +292,6 @@ class ChatService:
         if isinstance(value, list):
             return "".join(ChatService._extract_text_from_chunk(item) for item in value)
         return ""
-
-    @staticmethod
-    def _try_extract_artifact(chunk: Any, conversation_id: int, pending_tool_calls: dict) -> dict | None:
-        """从 agent.astream v2 chunk 中检测文件操作并生成 artifact 事件。
-
-        v2 格式: {"type": "messages"|"updates", "ns": [...], "data": ...}
-
-        处理两种事件：
-        - messages 事件中的 ToolMessage：记录 pending 信息（工具名、file_path、tool_call_id）
-        - updates 事件中的 tools files：获取文件完整内容，与 pending 合并后发出 artifact
-
-        Args:
-            chunk: agent.astream v2 格式的 dict {"type", "ns", "data"}
-            conversation_id: 会话 ID
-            pending_tool_calls: 挂起的工具调用映射 {tool_call_id -> {tool_name, file_path}}
-        """
-        if not isinstance(chunk, dict) or "type" not in chunk or "data" not in chunk:
-            return None
-        stream_mode = chunk["type"]
-        payload = chunk["data"]
-
-        # 处理 messages 事件：检测 write_file / edit_file 的 ToolMessage
-        if stream_mode == "messages":
-            if not isinstance(payload, (list, tuple)) or len(payload) == 0:
-                return None
-            message = payload[0]
-            msg_type = getattr(message, "type", None)
-            if msg_type != "tool":
-                return None
-
-            tool_name = getattr(message, "name", None)
-            tool_call_id = getattr(message, "tool_call_id", None) or ""
-            content = getattr(message, "content", "") or ""
-
-            if tool_name not in ("write_file", "edit_file"):
-                return None
-
-            # write_file 返回 "Updated file /path"，edit_file 返回 "Successfully replaced ..."
-            file_path = ChatService._extract_file_path_from_tool_output(content)
-            if file_path and is_artifact_file(file_path):
-                pending_tool_calls[tool_call_id] = {
-                    "tool_name": tool_name,
-                    "file_path": file_path,
-                }
-                logger.info("artifact pending: tool=%s file=%s call_id=%s", tool_name, file_path, tool_call_id)
-            return None
-
-        # 处理 updates 事件：从 tools.files 中提取文件内容
-        if stream_mode == "updates":
-            if not isinstance(payload, dict):
-                return None
-            tools_data = payload.get("tools")
-            if not isinstance(tools_data, dict):
-                return None
-            files = tools_data.get("files")
-            if not isinstance(files, dict):
-                return None
-
-            for file_path, file_info in files.items():
-                if not isinstance(file_info, dict):
-                    continue
-                file_content = file_info.get("content")
-                if file_content is None or not is_artifact_file(file_path):
-                    continue
-
-                # 查找匹配的 pending tool call
-                tool_call_id = ""
-                tool_name = ""
-                for tid, info in list(pending_tool_calls.items()):
-                    if info["file_path"] == file_path:
-                        tool_call_id = tid
-                        tool_name = info["tool_name"]
-                        del pending_tool_calls[tid]
-                        break
-
-                if not tool_call_id:
-                    # 没有对应的 pending，用文件路径生成 ID
-                    tool_call_id = f"file:{conversation_id}:{file_path}"
-
-                status = "completed" if tool_name == "write_file" or not tool_name else "updated"
-                return build_artifact_event(
-                    file_path=file_path,
-                    content=str(file_content),
-                    conversation_id=conversation_id,
-                    tool_call_id=tool_call_id,
-                    status=status,
-                )
-
-            return None
-
-        return None
-
-    @staticmethod
-    def _extract_file_path_from_tool_output(content: str) -> str | None:
-        """从工具输出文本中提取文件路径。
-
-        write_file 返回 "Updated file /path"
-        edit_file 返回 "Successfully replaced N instance(s) of the string in '/path'"
-        """
-        if not content:
-            return None
-        # write_file: "Updated file /path"
-        if content.startswith("Updated file"):
-            return content.replace("Updated file", "").strip() or None
-        # edit_file: 匹配单引号中的路径 "Successfully replaced ... in '/path'"
-        match = re.search(r"in\s+'([^']+)'", content)
-        if match:
-            return match.group(1)
-        # edit_file: 匹配双引号中的路径
-        match = re.search(r'in\s+"([^"]+)"', content)
-        if match:
-            return match.group(1)
-        # edit_file: 匹配 /path 格式
-        match = re.search(r"in\s+(/\S+)", content)
-        if match:
-            return match.group(1)
-        return None
 
     @staticmethod
     async def stream_conversation_answer(

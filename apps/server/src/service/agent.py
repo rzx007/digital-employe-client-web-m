@@ -106,20 +106,6 @@ def _build_system_prompt(
         """
 
 
-ARTIFACT_EXCLUDED_PREFIXES = (
-    "/skills/",
-    "/agent/",
-    "/memories/",
-    "/large_tool_results/",
-    "/conversation_history/",
-)
-
-
-def is_artifact_file(file_path: str) -> bool:
-    normalized = file_path.replace("\\", "/")
-    return not any(normalized.startswith(prefix) for prefix in ARTIFACT_EXCLUDED_PREFIXES)
-
-
 _ARTIFACT_CODE_EXTENSIONS = {"ts", "tsx", "js", "jsx", "json", "py", "sql", "css", "html", "java", "go", "rs", "cpp", "c", "h"}
 _ARTIFACT_SHEET_EXTENSIONS = {"csv", "tsv"}
 _ARTIFACT_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"}
@@ -148,29 +134,6 @@ def infer_artifact_type(file_path: str) -> str:
 def infer_artifact_language(file_path: str) -> str | None:
     ext = Path(file_path).suffix.lstrip(".").lower()
     return _ARTIFACT_LANGUAGE_MAP.get(ext)
-
-
-def build_artifact_event(
-    file_path: str,
-    content: str,
-    conversation_id: int,
-    tool_call_id: str,
-    status: str,
-) -> dict:
-    artifact_type = infer_artifact_type(file_path)
-    return {
-        "type": "artifact",
-        "data": {
-            "id": f"artifact:{conversation_id}:{tool_call_id}",
-            "artifactType": artifact_type,
-            "title": Path(file_path).name,
-            "content": content,
-            "language": infer_artifact_language(file_path) if artifact_type == "code" else None,
-            "conversationId": conversation_id,
-            "filePath": file_path,
-            "status": status,
-        },
-    }
 
 
 def get_agent(

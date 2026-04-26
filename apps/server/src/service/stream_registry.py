@@ -199,7 +199,6 @@ class StreamRegistry:
 
         collected_chunks: list[Any] = []
         assistant_text_parts: list[str] = []
-        pending_tool_calls: dict[str, dict] = {}
         last_flush_time = time.monotonic()
         state_final = "completed"
 
@@ -229,13 +228,6 @@ class StreamRegistry:
                 text_part = ChatService._extract_text_from_chunk(serializable)
                 if text_part:
                     assistant_text_parts.append(text_part)
-
-                artifact_event = ChatService._try_extract_artifact(
-                    chunk, conversation_id, pending_tool_calls,
-                )
-                if artifact_event:
-                    evt = task.buffer.add(artifact_event)
-                    self.broadcast(conversation_id, evt)
 
                 if not debug_content_only:
                     evt = task.buffer.add(serializable)
