@@ -2,11 +2,21 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/lora";
+@import "streamdown/styles.css";
 
 @custom-variant dark (&:is(.dark *));
 @source "../../../apps/**/*.{ts,tsx}";
 @source "../../../components/**/*.{ts,tsx}";
 @source "../**/*.{ts,tsx}";
+
+/* Streamdown & plugins: let Tailwind v4 detect utility classes used by
+   streamdown's compiled output (pnpm symlinks the packages into
+   packages/ui/node_modules). */
+@source "../../node_modules/streamdown/dist/*.js";
+@source "../../node_modules/@streamdown/code/dist/*.js";
+@source "../../node_modules/@streamdown/cjk/dist/*.js";
+@source "../../node_modules/@streamdown/math/dist/*.js";
+@source "../../node_modules/@streamdown/mermaid/dist/*.js";
 
 @theme inline {
   --font-heading: var(--font-sans);
@@ -274,4 +284,15 @@
 /* Dark mode inline code */
 .dark [data-streamdown="inline-code"] {
   background: oklch(0.269 0.005 0);
+}
+/* Shiki code highlighting */
+.shiki,
+.shiki span {
+  color: var(--shiki-light);
+  background-color: var(--shiki-light-bg);
+}
+.dark .shiki,
+.dark .shiki span {
+  color: var(--shiki-dark);
+  background-color: var(--shiki-dark-bg);
 }
