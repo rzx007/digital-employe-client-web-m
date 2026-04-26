@@ -2,7 +2,7 @@ import * as React from "react"
 import type { UIMessage } from "ai"
 
 import { request, getRequestHeaders } from "@/lib/request"
-import { sseEventSchema, type ArtifactData, type SSEEvent } from "@/lib/chat/langchain-sse-schema"
+import { sseEventSchema, type SSEEvent } from "@/lib/chat/langchain-sse-schema"
 import {
   applySSEEventToParts,
   createPartsBuilderState,
@@ -30,7 +30,6 @@ export interface UseChatStreamReturn {
   status: ChatStreamStatus
   error: Error | undefined
   stop: () => void
-  setArtifactHandler: (handler: ((data: ArtifactData) => void) | undefined) => void
 }
 
 function getEventBoundaryIndex(buffer: string) {
@@ -66,18 +65,10 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamRetur
 
   const abortRef = React.useRef<AbortController | null>(null)
   const builderRef = React.useRef<PartsBuilderState>(createPartsBuilderState())
-  const artifactHandlerRef = React.useRef<((data: ArtifactData) => void) | undefined>(undefined)
   const onErrorRef = React.useRef(onError)
   const onFinishRef = React.useRef(onFinish)
   onErrorRef.current = onError
   onFinishRef.current = onFinish
-
-  const setArtifactHandler = React.useCallback(
-    (handler: ((data: ArtifactData) => void) | undefined) => {
-      artifactHandlerRef.current = handler
-    },
-    []
-  )
 
   const processSSEStream = React.useCallback(
     async (stream: ReadableStream<Uint8Array>) => {
@@ -137,10 +128,6 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamRetur
                 )
 
                 if (!result) return prev
-
-                if (result.artifactData) {
-                  artifactHandlerRef.current?.(result.artifactData)
-                }
 
                 if (result.parts === currentParts) return prev
 
@@ -311,7 +298,6 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamRetur
     status,
     error,
     stop,
-    setArtifactHandler,
   }
 }
 

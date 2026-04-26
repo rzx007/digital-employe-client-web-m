@@ -18,9 +18,3 @@ export function getContactDisplayName(contact: ChatViewContact) {
 
   return contact.employee?.name ?? "AI 助手"
 }
-
-export function setArtifactHandler(
-  handler: Parameters<typeof chatTransport.setArtifactHandler>[0]
-) {
-  chatTransport.setArtifactHandler(handler)
-}

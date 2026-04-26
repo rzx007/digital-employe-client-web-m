@@ -1,97 +1,20 @@
 import type { UIMessage, UIMessageChunk } from "ai"
 
-import type { Artifact } from "@/types/artifact"
 import type { Message } from "@/lib/mock-data/messages"
-
-export {
-  getArtifactFromToolPart,
-  getArtifactsFromUIMessage,
-  getLatestArtifactFromUIMessage,
-} from "./artifact-utils"
 
 export { classifyMessageParts, type ClassifiedBlock, type ToolGroupItem } from "./message-classifier"
 
-import { getArtifactFromToolPart } from "./artifact-utils"
 import {
   closeTextPhaseIfNeeded,
   createLangChainStreamParseState,
   parseLangChainPayloadToChunks,
 } from "./langchain-stream-parser"
 
-type ToolRenderPart = Extract<
-  UIMessage["parts"][number],
-  {
-    type: `tool-${string}`
-    toolCallId: string
-  }
->
-
-export type MessageRenderBlock =
-  | {
-    kind: "text"
-    key: string
-    text: string
-  }
-  | {
-    kind: "artifact"
-    key: string
-    artifact: Artifact
-  }
-  | {
-    kind: "tool"
-    key: string
-    part: ToolRenderPart
-  }
-
-function isToolRenderPart(
-  part: UIMessage["parts"][number]
-): part is ToolRenderPart {
-  return part.type.startsWith("tool-") && "toolCallId" in part
-}
-
 export function getTextFromUIMessage(message: UIMessage) {
   return message.parts
     .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("\n")
-}
-
-export function getRenderBlocksFromUIMessage(
-  message: UIMessage
-): MessageRenderBlock[] {
-  return message.parts.reduce<MessageRenderBlock[]>((blocks, part, index) => {
-    if (part.type === "text") {
-      if (part.text) {
-        blocks.push({
-          kind: "text",
-          key: `${message.id}:text:${index}`,
-          text: part.text,
-        })
-      }
-
-      return blocks
-    }
-
-    if (isToolRenderPart(part)) {
-      blocks.push({
-        kind: "tool",
-        key: `${message.id}:tool:${part.toolCallId}:${index}`,
-        part,
-      })
-    }
-
-    const artifact = getArtifactFromToolPart(part)
-
-    if (artifact) {
-      blocks.push({
-        kind: "artifact",
-        key: `${message.id}:artifact:${artifact.id}:${index}`,
-        artifact,
-      })
-    }
-
-    return blocks
-  }, [])
 }
 
 // --- 从 chunk_json 重建 UIMessage parts 的逻辑 ---

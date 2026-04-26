@@ -16,9 +16,7 @@ import {
 } from "./langchain-stream-parser"
 import {
   sseEventSchema,
-  type ArtifactData,
 } from "./langchain-sse-schema"
-import { cancelConversationStream } from "@/api/conversation"
 
 const useMock =
   import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_SSE === "true"
@@ -162,17 +160,9 @@ async function createResumeEventSourceResponse(options: {
   return response.body
 }
 
-export type ArtifactEventHandler = (artifact: ArtifactData) => void
-
 export class LangChainChatTransport<
   UI_MESSAGE extends UIMessage,
 > implements ChatTransport<UI_MESSAGE> {
-  private artifactHandler: ArtifactEventHandler | undefined
-
-  setArtifactHandler(handler: ArtifactEventHandler | undefined) {
-    this.artifactHandler = handler
-  }
-
   async sendMessages({
     messages,
     abortSignal,
@@ -209,7 +199,7 @@ export class LangChainChatTransport<
         abortSignal,
       })
 
-    return this.processResponseStream(stream, conversationId)
+    return this.processResponseStream(stream)
   }
 
   async reconnectToStream({
@@ -228,7 +218,7 @@ export class LangChainChatTransport<
       return null
     }
 
-    return this.processResponseStream(stream, chatId)
+    return this.processResponseStream(stream)
   }
 
   /**
@@ -239,10 +229,9 @@ export class LangChainChatTransport<
    * @param stream - 包含Uint8Array数据的可读流，预期包含SSE格式的消息
    * @returns 返回一个可读流，产生UIMessageChunk类型的事件
    */
-  private processResponseStream(stream: ReadableStream<Uint8Array>, conversationId?: string) {
+  private processResponseStream(stream: ReadableStream<Uint8Array>) {
     const decoder = new TextDecoder()
     const reader = stream.getReader()
-    const artifactHandler = this.artifactHandler
 
     return new ReadableStream<UIMessageChunk>({
       async start(controller) {
@@ -280,15 +269,6 @@ export class LangChainChatTransport<
             }
 
             const event = parsed.data
-
-            // 处理 artifact 事件
-            if (event && typeof event === "object" && "type" in event && (event as { type: string }).type === "artifact" && "data" in event) {
-              const artifactData = (event as { data: unknown }).data as ArtifactData
-              if (artifactData && artifactHandler) {
-                artifactHandler(artifactData)
-              }
-              return false
-            }
 
             // 处理 tool_output 流式输出事件
             if (event && typeof event === "object" && "type" in event && (event as { type: string }).type === "tool_output" && "data" in event) {

@@ -2,7 +2,6 @@ import type { UIMessage } from "ai"
 
 import type {
   AIMessageChunk,
-  ArtifactData,
   SSEEvent,
   ToolMessage,
 } from "./langchain-sse-schema"
@@ -122,7 +121,6 @@ function findToolCallIdByToolName(
 
 export interface SSEPartsResult {
   parts: AnyPart[]
-  artifactData?: ArtifactData
 }
 
 export function applySSEEventToParts(
@@ -133,10 +131,6 @@ export function applySSEEventToParts(
   if (!event || typeof event !== "object" || !("type" in event)) return null
 
   const eventType = (event as { type: string }).type
-
-  if (eventType === "artifact" && "data" in event) {
-    return { parts: currentParts, artifactData: (event as { data: unknown }).data as ArtifactData }
-  }
 
   if (eventType === "tool_output" && "data" in event) {
     return applyToolOutputEvent(currentParts, event as any, state)

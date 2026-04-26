@@ -19,10 +19,8 @@ import logo from "@/assets/logo.svg"
 import {
   classifyMessageParts,
 } from "@/lib/chat/message-utils"
-import type { ArtifactData } from "@/lib/chat/langchain-sse-schema"
 import { Spinner } from "@/components/spinner"
 import { useChatStore } from "@/stores/chat-store"
-import { useArtifactStore } from "@/stores/artifact-store"
 
 import { ChatPromptInput } from "../chat-prompt-input"
 import type { PromptChangeEvent } from "../lexical-editor/prompt-input-textarea"
@@ -35,7 +33,6 @@ import { ToolGroupBlock } from "./tool-group-block"
 import {
   getContactDisplayName,
   type ChatViewContact,
-  chatTransport,
 } from "./chat-view-shared"
 
 const EMPTY_MESSAGES: UIMessage[] = []
@@ -162,7 +159,6 @@ export function ChatPanel({
   onOpenConversations?: () => void
   onNewConversation?: () => void
 }) {
-  const { addArtifact, openArtifact } = useArtifactStore()
   const contactDisplayName = contact
     ? getContactDisplayName(contact)
     : "AI 助手"
@@ -173,26 +169,6 @@ export function ChatPanel({
     (status === "submitted" || status === "streaming") &&
     !error &&
     displayMessages.length > 0
-
-  // 注册流式 artifact 事件处理器
-  React.useEffect(() => {
-    const handleArtifact = (data: ArtifactData) => {
-      const artifact: import("@/types/artifact").Artifact = {
-        id: data.id,
-        type: data.artifactType,
-        title: data.title,
-        content: data.content,
-        language: data.language ?? undefined,
-      }
-      addArtifact(artifact)
-      openArtifact(data.id)
-    }
-
-    chatTransport.setArtifactHandler(handleArtifact)
-    return () => {
-      chatTransport.setArtifactHandler(undefined)
-    }
-  }, [addArtifact, openArtifact])
 
   const slashCommands = React.useMemo<SlashCommandItem[]>(() => {
     const skills =
