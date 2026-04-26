@@ -4,6 +4,10 @@ import {
   summarizeToolCall,
   type ToolCallSummary,
 } from "./tool-summarizer"
+import {
+  getFileChangesFromUIMessage,
+  type FileChangeItem,
+} from "./file-change-utils"
 
 type ToolUIPart = Extract<
   UIMessage["parts"][number],
@@ -31,6 +35,11 @@ export type ClassifiedBlock =
   | { kind: "thinking"; key: string; text: string }
   | { kind: "tool-group"; key: string; tools: ToolGroupItem[]; summary: string }
   | { kind: "final-response"; key: string; text: string }
+  | { kind: "file-changes"; key: string; files: FileChangeItem[] }
+
+interface ClassifyMessagePartsOptions {
+  includeFileChanges?: boolean
+}
 
 const THINK_OPEN_RE = /^<think\s*>?\n?/s
 const THINK_CLOSE_RE = /\n?\s*<\/think\s*>?\n?/s
@@ -82,7 +91,8 @@ function isPreliminary(part: ToolUIPart): boolean {
  * @returns 分类后的块数组，包含思考块、工具组块和最终响应块
  */
 export function classifyMessageParts(
-  message: UIMessage
+  message: UIMessage,
+  options: ClassifyMessagePartsOptions = {}
 ): ClassifiedBlock[] {
   const parts = message.parts
   if (parts.length === 0) return []
@@ -174,6 +184,20 @@ export function classifyMessageParts(
       pushSingleTool(part, i)
       continue
     }
+  }
+
+  const hasFinalResponse = blocks.some((block) => block.kind === "final-response")
+  const shouldIncludeFileChanges =
+    hasFinalResponse || options.includeFileChanges === true
+  const fileChanges = shouldIncludeFileChanges
+    ? getFileChangesFromUIMessage(message)
+    : []
+  if (fileChanges.length > 0) {
+    blocks.push({
+      kind: "file-changes",
+      key: `${message.id}:file-changes`,
+      files: fileChanges,
+    })
   }
 
   return blocks

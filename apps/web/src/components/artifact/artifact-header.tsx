@@ -8,8 +8,6 @@ import {
 import {
   IconCopy,
   IconDownload,
-  IconMinimize,
-  IconMaximize,
   IconX,
 } from "@tabler/icons-react"
 import type { Icon } from "@tabler/icons-react"
@@ -19,8 +17,6 @@ import type { Artifact } from "./artifact-types"
 export interface ArtifactHeaderProps {
   artifact: Artifact
   onClose: () => void
-  onToggleFullscreen: () => void
-  isFullscreen: boolean
 }
 
 export interface ArtifactActionProps {
@@ -64,8 +60,6 @@ export const ArtifactAction = ({
 export const ArtifactHeader = ({
   artifact,
   onClose,
-  onToggleFullscreen,
-  isFullscreen,
 }: ArtifactHeaderProps) => {
   const handleCopy = async () => {
     await navigator.clipboard.writeText(artifact.content)
@@ -103,12 +97,6 @@ export const ArtifactHeader = ({
           label="下载"
           tooltip="下载文件"
           onClick={handleDownload}
-        />
-        <ArtifactAction
-          icon={isFullscreen ? IconMinimize : IconMaximize}
-          label={isFullscreen ? "退出全屏" : "全屏"}
-          tooltip={isFullscreen ? "退出全屏" : "全屏"}
-          onClick={onToggleFullscreen}
         />
         <ArtifactAction
           icon={IconX}

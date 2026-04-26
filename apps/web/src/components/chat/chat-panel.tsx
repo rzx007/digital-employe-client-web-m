@@ -28,6 +28,7 @@ import type { SlashCommandItem } from "../lexical-editor/slash-command-plugin"
 import type { MentionCandidate } from "../lexical-editor/mention-plugin"
 import { ChatPanelHeader } from "./chat-panel-header"
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
+import { FileChangeCards } from "./file-change-cards"
 import { ThinkingBlock } from "./thinking-block"
 import { ToolGroupBlock } from "./tool-group-block"
 import {
@@ -36,6 +37,17 @@ import {
 } from "./chat-view-shared"
 
 const EMPTY_MESSAGES: UIMessage[] = []
+
+function getLastAssistantMessageId(messages: UIMessage[]) {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message?.role === "assistant") {
+      return message.id
+    }
+  }
+
+  return null
+}
 
 type CommandMeta = { id?: string; title?: string } | null
 type MentionMeta = Array<{ id?: string; name?: string }>
@@ -96,13 +108,23 @@ function renderClassifiedBlocks(
 
     blocks.map((block) => {
       if (block.kind === "tool-group") {
-        return <ToolGroupBlock className="w-full ml-1" block={block} />
+        return (
+          <ToolGroupBlock
+            block={block}
+            className="w-full ml-1"
+            key={block.key}
+          />
+        )
+      }
+
+      if (block.kind === "file-changes") {
+        return <FileChangeCards files={block.files} key={block.key} />
       }
 
       const text = block.text
 
       if (block.kind === "thinking") {
-        return <ThinkingBlock className="w-full" text={text} />
+        return <ThinkingBlock className="w-full" key={block.key} text={text} />
       }
 
       const commandMeta = options?.commandMeta ?? null
@@ -112,6 +134,7 @@ function renderClassifiedBlocks(
       return (
         <div
           className="w-full flex items-center space-x-2"
+          key={block.key}
         >
           <MessageMetaBadges
             commandMeta={commandMeta}
@@ -164,6 +187,8 @@ export function ChatPanel({
     : "AI 助手"
 
   const displayMessages = isDraftMode ? EMPTY_MESSAGES : messages
+  const lastAssistantMessageId = getLastAssistantMessageId(displayMessages)
+  const hasCurrentTurnEnded = status === "ready" || status === "error" || !!error
   const showStreamingIndicator =
     !isDraftMode &&
     (status === "submitted" || status === "streaming") &&
@@ -287,7 +312,15 @@ export function ChatPanel({
                   </ConversationEmptyState>
                 ) : (
                   displayMessages.map((message) => {
-                    const classifiedBlocks = classifyMessageParts(message)
+                    const isLastAssistantMessage =
+                      message.role === "assistant" &&
+                      message.id === lastAssistantMessageId
+                    const includeFileChanges =
+                      message.role === "assistant" &&
+                      (!isLastAssistantMessage || hasCurrentTurnEnded)
+                    const classifiedBlocks = classifyMessageParts(message, {
+                      includeFileChanges,
+                    })
                     const messageMeta = getMessageMeta(message)
                     const commandMeta =
                       messageMeta &&

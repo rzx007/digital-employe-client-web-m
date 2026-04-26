@@ -13,7 +13,7 @@ export const ImageRenderer = ({ artifact, className }: ImageRendererProps) => {
   return (
     <ScrollArea
       className={cn(
-        "flex flex-1 items-center justify-center overflow-auto bg-background p-4",
+        "flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-auto bg-background p-4",
         className
       )}
     >

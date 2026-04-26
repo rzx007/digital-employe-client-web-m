@@ -3,29 +3,35 @@ import type { Artifact } from "@/types/artifact"
 
 interface ArtifactStore {
   activeArtifactId: string | null
+  activeResourcePath: string | null
   isPanelOpen: boolean
-  isFullscreen: boolean
   artifacts: Map<string, Artifact>
 
   openArtifact: (id: string) => void
+  openResource: (path: string) => void
   closeArtifact: () => void
   addArtifact: (artifact: Artifact) => void
   removeArtifact: (id: string) => void
-  toggleFullscreen: () => void
-  setFullscreen: (fullscreen: boolean) => void
   setPanelOpen: (open: boolean) => void
   updateArtifactContent: (id: string, content: string) => void
 }
 
 export const useArtifactStore = create<ArtifactStore>((set) => ({
   activeArtifactId: null,
+  activeResourcePath: null,
   isPanelOpen: false,
-  isFullscreen: false,
   artifacts: new Map(),
 
-  openArtifact: (id) => set({ activeArtifactId: id, isPanelOpen: true }),
+  openArtifact: (id) =>
+    set({ activeArtifactId: id, activeResourcePath: null, isPanelOpen: true }),
+  openResource: (path) =>
+    set({ activeArtifactId: null, activeResourcePath: path, isPanelOpen: true }),
   closeArtifact: () =>
-    set({ activeArtifactId: null, isPanelOpen: false, isFullscreen: false }),
+    set({
+      activeArtifactId: null,
+      activeResourcePath: null,
+      isPanelOpen: false,
+    }),
   addArtifact: (artifact) =>
     set((state) => {
       const artifacts = new Map(state.artifacts)
@@ -37,14 +43,17 @@ export const useArtifactStore = create<ArtifactStore>((set) => ({
       const artifacts = new Map(state.artifacts)
       artifacts.delete(id)
       if (state.activeArtifactId === id) {
-        return { activeArtifactId: null, isPanelOpen: false, artifacts }
+        return {
+          activeArtifactId: null,
+          activeResourcePath: null,
+          isPanelOpen: false,
+          artifacts,
+        }
       }
       return { artifacts }
     }),
-  toggleFullscreen: () =>
-    set((state) => ({ isFullscreen: !state.isFullscreen })),
-  setFullscreen: (fullscreen) => set({ isFullscreen: fullscreen }),
-  setPanelOpen: (open) => set({ isPanelOpen: open }),
+  setPanelOpen: (open) =>
+    set({ isPanelOpen: open, ...(open ? {} : { activeResourcePath: null }) }),
   updateArtifactContent: (id, content) =>
     set((state) => {
       const artifacts = new Map(state.artifacts)

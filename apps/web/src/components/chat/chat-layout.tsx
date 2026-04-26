@@ -107,10 +107,7 @@ export function ChatLayout({
 
   const {
     closeArtifact,
-    isFullscreen,
     isPanelOpen,
-    setFullscreen,
-    toggleFullscreen,
   } = useArtifactStore()
 
   const {
@@ -122,12 +119,6 @@ export function ChatLayout({
   } = useMonitorStore()
 
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
-
-  useEffect(() => {
-    if (isMobile && isPanelOpen) {
-      setFullscreen(true)
-    }
-  }, [isMobile, isPanelOpen, setFullscreen])
 
   useEffect(() => {
     if (isMobile && isMonitorOpen) {
@@ -155,7 +146,7 @@ export function ChatLayout({
   const layoutWidth = layoutSize?.width ?? 0
 
   const shouldCollapseRecent =
-    isPanelOpen && !isFullscreen && !isMobile && layoutWidth < 1902
+    isPanelOpen && !isMobile && layoutWidth < 1902
 
   const setCompactMode = useChatStore((s) => s.setCompactMode)
   useEffect(() => {
@@ -205,7 +196,7 @@ export function ChatLayout({
             onNewConversation={handleNewConversation}
             className={cn(
               "min-w-0",
-              isPanelOpen && !isFullscreen && !isMobile ? "flex-[3]" : "flex-1"
+              isPanelOpen && !isMobile ? "flex-[3]" : "flex-1"
             )}
           />
         )}
@@ -223,16 +214,13 @@ export function ChatLayout({
         )}
 
         {isPanelOpen &&
-          !isFullscreen &&
           !isMobile &&
           activeTab === "chat" && (
-            <div className="flex-[7] border-l bg-muted/20 p-3">
+            <div className="min-w-0 flex-[7] overflow-hidden border-l bg-muted/20 p-3">
               <ArtifactPanel
                 conversationId={selectedConversationId}
                 isOpen={isPanelOpen}
-                isFullscreen={false}
                 onClose={closeArtifact}
-                onToggleFullscreen={toggleFullscreen}
                 className="h-full rounded-xl"
               />
             </div>
@@ -266,18 +254,22 @@ export function ChatLayout({
         </SheetContent>
       </Sheet>
 
-      {/* Artifact fullscreen */}
-      {isPanelOpen &&
-        (isFullscreen || isMobile) &&
-        activeTab === "chat" && (
+      {/* Artifact panel on mobile */}
+      <Sheet
+        open={isPanelOpen && isMobile && activeTab === "chat"}
+        onOpenChange={(open) => {
+          if (!open) closeArtifact()
+        }}
+      >
+        <SheetContent side="right" className="w-[92vw] p-0 sm:w-[640px]">
           <ArtifactPanel
             conversationId={selectedConversationId}
             isOpen={isPanelOpen}
-            isFullscreen={isFullscreen}
             onClose={closeArtifact}
-            onToggleFullscreen={toggleFullscreen}
+            className="h-full rounded-none border-0 shadow-none"
           />
-        )}
+        </SheetContent>
+      </Sheet>
 
       {/* Monitor fullscreen (non-chat tab) */}
       {isMonitorOpen && isMonitorFullscreen && activeTab !== "chat" && (

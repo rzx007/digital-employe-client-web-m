@@ -169,13 +169,13 @@ export const FileTreeFolder = ({
         >
           <div
             className={cn(
-              "flex w-full items-center gap-1 rounded px-2 py-1 text-left transition-colors hover:bg-muted/50",
-              isSelected && "bg-muted"
+              "flex w-full items-center gap-1 rounded px-2 py-1 text-left transition-colors hover:bg-muted/50 focus-within:bg-muted/50",
+              isSelected && "bg-muted text-foreground"
             )}
           >
             <CollapsibleTrigger asChild>
               <button
-                className="flex shrink-0 cursor-pointer items-center border-none bg-transparent p-0"
+                className="flex shrink-0 cursor-pointer items-center rounded border-none bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 type="button"
               >
                 <ChevronRightIcon
@@ -187,7 +187,7 @@ export const FileTreeFolder = ({
               </button>
             </CollapsibleTrigger>
             <button
-              className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-left"
+              className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 rounded border-none bg-transparent p-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
               onClick={handleSelect}
               type="button"
             >
@@ -256,8 +256,8 @@ export const FileTreeFile = ({
     <FileTreeFileContext.Provider value={fileContextValue}>
       <div
         className={cn(
-          "flex cursor-pointer items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-muted/50",
-          isSelected && "bg-muted",
+          "flex cursor-pointer items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+          isSelected && "bg-muted text-foreground",
           className
         )}
         onClick={handleClick}

@@ -6,6 +6,7 @@ import {
   FileTreeFolder,
 } from "@workspace/ui/components/ai-elements/file-tree"
 import { Button } from "@workspace/ui/components/button"
+import { Input } from "@workspace/ui/components/input"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import {
   Tooltip,
@@ -16,18 +17,18 @@ import {
 import {
   IconCopy,
   IconDownload,
-  IconMaximize,
-  IconMinimize,
   IconX,
   IconFile,
   IconCode,
   IconFileTypeCsv,
   IconPhoto,
   IconSparkles,
+  IconSearch,
 } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
-import type { ResourceEntry, ResourceList } from "@/types/artifact"
+import type { ResourceEntry, ResourceList } from "@/api/types"
 import { useConversationResourcesQuery, useResourceContentQuery } from "@/hooks/use-chat-queries"
+import { useArtifactStore } from "@/stores/artifact-store"
 import { CodeRenderer } from "./artifact-content/code-renderer"
 import { ImageRenderer } from "./artifact-content/image-renderer"
 import { SheetRenderer } from "./artifact-content/sheet-renderer"
@@ -37,9 +38,7 @@ import type { Artifact } from "./artifact-types"
 export interface ArtifactPanelProps {
   conversationId: string | number | null
   isOpen: boolean
-  isFullscreen: boolean
   onClose: () => void
-  onToggleFullscreen: () => void
   className?: string
 }
 
@@ -49,6 +48,122 @@ const renderers: Record<string, React.ComponentType<{ artifact: Artifact; classN
   sheet: SheetRenderer,
   image: ImageRenderer,
   "skill-draft": CodeRenderer,
+}
+
+const EMPTY_RESOURCE_LIST: ResourceList = {
+  artifacts: [],
+  skills_draft: [],
+}
+
+function getParentPaths(path: string) {
+  const segments = path.split("/").filter(Boolean)
+  const parentPaths: string[] = []
+
+  for (let i = 1; i <= segments.length; i++) {
+    parentPaths.push(`/${segments.slice(0, i).join("/")}`)
+  }
+
+  return parentPaths
+}
+
+function countFiles(entries: ResourceEntry[]): number {
+  return entries.reduce((count, entry) => {
+    if (entry.entry_type === "file") {
+      return count + 1
+    }
+
+    return count + countFiles(entry.children ?? [])
+  }, 0)
+}
+
+function hasEntries(entries: ResourceEntry[]) {
+  return entries.length > 0
+}
+
+function matchesEntry(entry: ResourceEntry, query: string) {
+  const needle = query.toLowerCase()
+  return (
+    entry.name.toLowerCase().includes(needle) ||
+    entry.path.toLowerCase().includes(needle)
+  )
+}
+
+function filterEntries(entries: ResourceEntry[], query: string): ResourceEntry[] {
+  const trimmed = query.trim()
+  if (!trimmed) {
+    return entries
+  }
+
+  return entries.flatMap((entry) => {
+    const children = entry.children
+      ? filterEntries(entry.children, trimmed)
+      : null
+    const isMatch = matchesEntry(entry, trimmed)
+
+    if (isMatch) {
+      return [entry]
+    }
+
+    if (children && children.length > 0) {
+      return [{ ...entry, children }]
+    }
+
+    return []
+  })
+}
+
+function collectDirectoryPaths(entries: ResourceEntry[]) {
+  const paths = new Set<string>()
+
+  function visit(entry: ResourceEntry) {
+    if (entry.entry_type !== "directory") {
+      return
+    }
+
+    paths.add(entry.path)
+    for (const child of entry.children ?? []) {
+      visit(child)
+    }
+  }
+
+  for (const entry of entries) {
+    visit(entry)
+  }
+
+  return paths
+}
+
+function formatFileSize(size: number | undefined) {
+  if (typeof size !== "number") {
+    return null
+  }
+
+  if (size < 1024) {
+    return `${size} B`
+  }
+
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`
+  }
+
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
+function getArtifactTypeLabel(artifactType: string | null | undefined) {
+  switch (artifactType) {
+    case "code":
+      return "代码"
+    case "image":
+      return "图片"
+    case "sheet":
+      return "表格"
+    case "skill-draft":
+      return "技能草稿"
+    case "text":
+      return "文本"
+    default:
+      return "文件"
+  }
 }
 
 function getFileIcon(artifactType: string | null) {
@@ -86,27 +201,80 @@ function renderEntry(entry: ResourceEntry) {
 export const ArtifactPanel = ({
   conversationId,
   isOpen,
-  isFullscreen,
   onClose,
-  onToggleFullscreen,
   className,
 }: ArtifactPanelProps) => {
   const [selectedPath, setSelectedPath] = React.useState<string | null>(null)
+  const [expandedPaths, setExpandedPaths] = React.useState<Set<string>>(
+    () => new Set()
+  )
+  const [searchQuery, setSearchQuery] = React.useState("")
+  const activeResourcePath = useArtifactStore((s) => s.activeResourcePath)
+
+  React.useEffect(() => {
+    if (!activeResourcePath) return
+
+    setSelectedPath(activeResourcePath)
+    setExpandedPaths((current) => {
+      const next = new Set(current)
+      for (const path of getParentPaths(activeResourcePath)) {
+        next.add(path)
+      }
+      return next
+    })
+  }, [activeResourcePath])
 
   const { data: resourceList } = useConversationResourcesQuery(
     isOpen ? conversationId : null
   )
-
-  const { data: resourceContent } = useResourceContentQuery(
-    conversationId!,
-    selectedPath
+  const resources = resourceList ?? EMPTY_RESOURCE_LIST
+  const filteredArtifacts = React.useMemo(
+    () => filterEntries(resources.artifacts, searchQuery),
+    [resources.artifacts, searchQuery]
   )
+  const filteredSkillsDraft = React.useMemo(
+    () => filterEntries(resources.skills_draft, searchQuery),
+    [resources.skills_draft, searchQuery]
+  )
+  const totalFiles = React.useMemo(
+    () => countFiles(resources.artifacts) + countFiles(resources.skills_draft),
+    [resources.artifacts, resources.skills_draft]
+  )
+  const filteredFiles = React.useMemo(
+    () => countFiles(filteredArtifacts) + countFiles(filteredSkillsDraft),
+    [filteredArtifacts, filteredSkillsDraft]
+  )
+  const hasResources = totalFiles > 0
+  const hasSearchQuery = searchQuery.trim().length > 0
+  const hasFilteredResources =
+    hasEntries(filteredArtifacts) || hasEntries(filteredSkillsDraft)
+
+  React.useEffect(() => {
+    if (!hasSearchQuery) return
+
+    setExpandedPaths((current) => {
+      const next = new Set(current)
+      if (filteredArtifacts.length > 0) {
+        next.add("/artifacts")
+      }
+      if (filteredSkillsDraft.length > 0) {
+        next.add("/skills-draft")
+      }
+      for (const path of collectDirectoryPaths([
+        ...filteredArtifacts,
+        ...filteredSkillsDraft,
+      ])) {
+        next.add(path)
+      }
+      return next
+    })
+  }, [filteredArtifacts, filteredSkillsDraft, hasSearchQuery])
 
   const selectedEntry = React.useMemo(() => {
     if (!selectedPath || !resourceList) return null
     const find = (entries: ResourceEntry[]): ResourceEntry | null => {
       for (const e of entries) {
-        if (e.path === selectedPath && e.entry_type === "file") return e
+        if (e.path === selectedPath) return e
         if (e.children) {
           const found = find(e.children)
           if (found) return found
@@ -116,6 +284,14 @@ export const ArtifactPanel = ({
     }
     return find([...resourceList.artifacts, ...resourceList.skills_draft])
   }, [selectedPath, resourceList])
+
+  const selectedFilePath =
+    selectedEntry?.entry_type === "file" ? selectedEntry.path : null
+
+  const { data: resourceContent } = useResourceContentQuery(
+    conversationId!,
+    selectedFilePath
+  )
 
   const artifactForRenderer = React.useMemo((): Artifact | null => {
     if (!resourceContent) return null
@@ -131,6 +307,8 @@ export const ArtifactPanel = ({
   const Renderer = artifactForRenderer
     ? renderers[artifactForRenderer.type] ?? TextRenderer
     : null
+  const selectedFileSize = formatFileSize(selectedEntry?.size)
+  const selectedTypeLabel = getArtifactTypeLabel(selectedEntry?.artifact_type)
 
   const handleCopy = async () => {
     if (artifactForRenderer) {
@@ -155,18 +333,24 @@ export const ArtifactPanel = ({
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={isFullscreen ? { opacity: 0 } : { x: "100%" }}
-          animate={isFullscreen ? { opacity: 1 } : { x: 0 }}
-          exit={isFullscreen ? { opacity: 0 } : { x: "100%" }}
+          initial={{ x: "100%" }}
+          animate={{ x: 0 }}
+          exit={{ x: "100%" }}
           transition={{ type: "spring", damping: 25, stiffness: 200 }}
           className={cn(
-            "flex h-full flex-col overflow-hidden rounded-lg border bg-background shadow-xl",
-            isFullscreen ? "fixed inset-0 z-50 rounded-none" : "w-full",
+            "flex h-full min-w-0 flex-col overflow-hidden rounded-lg border bg-background shadow-xl",
             className
           )}
         >
-          <div className="flex items-center justify-between border-b px-4 py-3">
-            <h2 className="text-sm font-medium">资源管理器</h2>
+          <div className="flex min-w-0 items-center justify-between gap-3 border-b px-4 py-3">
+            <div className="min-w-0">
+              <h2 className="text-sm font-medium">资源管理器</h2>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {hasResources
+                  ? `${totalFiles} 个文件${hasSearchQuery ? `，匹配 ${filteredFiles} 个` : ""}`
+                  : "本轮暂无资源文件"}
+              </p>
+            </div>
             <div className="flex items-center gap-1">
               {artifactForRenderer && (
                 <>
@@ -209,21 +393,6 @@ export const ArtifactPanel = ({
                       className="size-8 p-0 text-muted-foreground hover:text-foreground"
                       size="sm"
                       variant="ghost"
-                      onClick={onToggleFullscreen}
-                    >
-                      {isFullscreen ? <IconMinimize className="size-4" /> : <IconMaximize className="size-4" />}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{isFullscreen ? "退出全屏" : "全屏"}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      className="size-8 p-0 text-muted-foreground hover:text-foreground"
-                      size="sm"
-                      variant="ghost"
                       onClick={onClose}
                     >
                       <IconX className="size-4" />
@@ -235,50 +404,119 @@ export const ArtifactPanel = ({
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-1">
-            <div className="w-72 shrink-0 overflow-auto border-r">
-              <FileTree
-                selectedPath={selectedPath ?? undefined}
-                onSelect={setSelectedPath}
-                className="h-full rounded-none border-0"
-              >
-                {resourceList && resourceList.artifacts.length > 0 && (
-                  <FileTreeFolder path="/artifacts" name="artifacts">
-                    {resourceList.artifacts.map(renderEntry)}
-                  </FileTreeFolder>
+          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+            <div className="flex w-72 min-w-0 shrink-0 flex-col overflow-hidden border-r bg-muted/10">
+              <div className="space-y-2 border-b p-3">
+                <div className="relative">
+                  <IconSearch className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    aria-label="搜索资源文件"
+                    className="h-8 pl-7"
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="搜索文件或路径"
+                    value={searchQuery}
+                  />
+                </div>
+                {hasSearchQuery && (
+                  <p className="text-[11px] text-muted-foreground">
+                    找到 {filteredFiles} 个匹配文件
+                  </p>
                 )}
-                {resourceList && resourceList.skills_draft.length > 0 && (
-                  <FileTreeFolder path="/skills-draft" name="skills-draft">
-                    {resourceList.skills_draft.map((skill) => (
-                      <FileTreeFolder
-                        key={skill.path}
-                        path={skill.path}
-                        name={skill.name}
-                      >
-                        <span className="flex items-center gap-1">
-                          <IconSparkles className="size-3 text-amber-500" />
-                        </span>
-                        {skill.children?.map(renderEntry)}
+              </div>
+
+              <ScrollArea className="min-h-0 min-w-0 flex-1">
+                {hasResources && hasFilteredResources ? (
+                  <FileTree
+                    expanded={expandedPaths}
+                    selectedPath={selectedPath ?? undefined}
+                    onExpandedChange={setExpandedPaths}
+                    onSelect={setSelectedPath}
+                    className="h-full rounded-none border-0 bg-transparent"
+                  >
+                    {filteredArtifacts.length > 0 && (
+                      <FileTreeFolder path="/artifacts" name="artifacts">
+                        {filteredArtifacts.map(renderEntry)}
                       </FileTreeFolder>
-                    ))}
-                  </FileTreeFolder>
-                )}
-              </FileTree>
-              {(!resourceList ||
-                (resourceList.artifacts.length === 0 &&
-                  resourceList.skills_draft.length === 0)) && (
-                  <div className="p-4 text-center text-xs text-muted-foreground">
-                    暂无资源文件
+                    )}
+                    {filteredSkillsDraft.length > 0 && (
+                      <FileTreeFolder path="/skills-draft" name="skills-draft">
+                        {filteredSkillsDraft.map((skill) => (
+                          <FileTreeFolder
+                            key={skill.path}
+                            path={skill.path}
+                            name={skill.name}
+                          >
+                            <span className="flex items-center gap-1">
+                              <IconSparkles className="size-3 text-amber-500" />
+                            </span>
+                            {skill.children?.map(renderEntry)}
+                          </FileTreeFolder>
+                        ))}
+                      </FileTreeFolder>
+                    )}
+                  </FileTree>
+                ) : (
+                  <div className="flex min-h-48 flex-col items-center justify-center px-4 text-center">
+                    <IconFile className="mb-2 size-8 text-muted-foreground/50" />
+                    <p className="text-sm text-muted-foreground">
+                      {hasSearchQuery ? "没有匹配的资源" : "暂无资源文件"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground/80">
+                      {hasSearchQuery
+                        ? "换个关键词试试"
+                        : "产物文件会在这里展示"}
+                    </p>
                   </div>
                 )}
+              </ScrollArea>
             </div>
 
-            <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <div className="flex min-w-0 items-center justify-between gap-3 border-b bg-background/95 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    {selectedEntry && getFileIcon(selectedEntry.artifact_type)}
+                    <h3 className="truncate text-sm font-medium">
+                      {selectedEntry?.name ?? "选择文件"}
+                    </h3>
+                  </div>
+                  <div className="mt-1 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                    <span className="shrink-0">{selectedTypeLabel}</span>
+                    {selectedFileSize && (
+                      <>
+                        <span className="shrink-0">·</span>
+                        <span className="shrink-0">{selectedFileSize}</span>
+                      </>
+                    )}
+                    {selectedEntry?.path && (
+                      <>
+                        <span className="shrink-0">·</span>
+                        <span className="truncate">{selectedEntry.path}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
               {artifactForRenderer && Renderer ? (
-                <Renderer artifact={artifactForRenderer} className="flex-1" />
+                <Renderer
+                  artifact={artifactForRenderer}
+                  className="min-h-0 min-w-0 flex-1"
+                />
               ) : (
-                <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-                  选择文件查看内容
+                <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden p-6 text-sm text-muted-foreground">
+                  <div className="max-w-xs text-center">
+                    <IconFile className="mx-auto mb-3 size-10 text-muted-foreground/50" />
+                    <p>
+                      {selectedEntry?.entry_type === "directory"
+                        ? "这是一个文件夹"
+                        : "选择文件查看内容"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground/80">
+                      {selectedEntry?.entry_type === "directory"
+                        ? "展开左侧目录并选择具体文件进行预览"
+                        : "可在左侧搜索或浏览资源文件"}
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
