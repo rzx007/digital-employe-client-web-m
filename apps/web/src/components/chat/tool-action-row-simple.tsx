@@ -1,13 +1,8 @@
 import { cn } from "@workspace/ui/lib/utils"
 import {
   IconCircleCheck,
-  IconCode,
-  IconFileDescription,
-  IconFolder,
   IconListCheck,
   IconLoader,
-  IconPencil,
-  IconPlayerPlay,
   IconXboxX,
 } from "@tabler/icons-react"
 import type { ComponentProps } from "react"
@@ -18,52 +13,16 @@ import {
 } from "@workspace/ui/components/collapsible"
 import { DiffViewer } from "@workspace/ui/components/diff-viewer"
 import { CodeHighlight, detectLanguage } from "./code-highlight"
+import {
+  getDisplayContent,
+  getEditDiff,
+  getToolIcon,
+  getTodos,
+  countCompleted,
+  TodoListBlock,
+} from "./tool-shared"
 
 import { getSimpleLabel, type ToolCallSummary } from "@/lib/chat/tool-summarizer"
-
-const TOOL_ICON_MAP: Record<string, typeof IconFileDescription> = {
-  read_file: IconFileDescription,
-  write_file: IconPencil,
-  edit_file: IconPencil,
-  execute: IconPlayerPlay,
-  ls: IconFolder,
-  write_todos: IconListCheck,
-}
-
-function getToolIcon(toolName: string): typeof IconFileDescription {
-  return TOOL_ICON_MAP[toolName] ?? IconCode
-}
-
-const CONTENT_TOOLS = new Set(["write_file", "edit_file"])
-const COMMAND_TOOLS = new Set(["execute"])
-
-function getDisplayContent(input: unknown, toolName: string): string | null {
-  if (!input || typeof input !== "object") return null
-  const obj = input as Record<string, unknown>
-  if (CONTENT_TOOLS.has(toolName)) {
-    if (toolName === "edit_file") {
-      return typeof obj.new_string === "string" && obj.new_string ? obj.new_string : null
-    }
-    return typeof obj.content === "string" && obj.content ? obj.content : null
-  }
-  if (COMMAND_TOOLS.has(toolName)) {
-    return typeof obj.command === "string" && obj.command ? obj.command : null
-  }
-  try {
-    const json = JSON.stringify(obj, null, 2)
-    return json === "{}" ? null : json
-  } catch {
-    return null
-  }
-}
-
-function getEditDiff(input: unknown): { oldCode: string; newCode: string } | null {
-  if (!input || typeof input !== "object") return null
-  const obj = input as Record<string, unknown>
-  const oldCode = typeof obj.old_string === "string" ? obj.old_string : null
-  const newCode = typeof obj.new_string === "string" ? obj.new_string : null
-  return oldCode != null && newCode != null ? { oldCode, newCode } : null
-}
 
 export type ToolActionRowSimpleProps = ComponentProps<"div"> & {
   summary: ToolCallSummary
@@ -106,6 +65,10 @@ export function ToolActionRowSimple({
   )
   const hasResult = !!resultText
   const hasContent = !!displayContent || hasResult
+
+  const isWriteTodos = summary.toolName === "write_todos"
+  const todos = isWriteTodos ? getTodos(input, resultText) : null
+  const hasTodos = todos && todos.length > 0
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const [isOverflowing, setIsOverflowing] = useState(false)
@@ -152,6 +115,45 @@ export function ToolActionRowSimple({
   const StatusIcon = isDone
     ? (isError ? IconXboxX : IconCircleCheck)
     : IconLoader
+
+  if (isWriteTodos && hasTodos) {
+    const completed = countCompleted(todos!)
+    const total = todos!.length
+    const allDone = completed === total
+
+    return (
+      <div
+        className={cn(
+          "rounded-lg border border-border/50 bg-muted/30 w-[90%]",
+          className
+        )}
+        {...props}
+      >
+        <div className="flex items-center gap-2 px-3 py-2">
+          <IconListCheck className="size-4 shrink-0 text-muted-foreground" />
+          <span className={cn(
+            "flex-1 truncate text-xs font-thin",
+            isDone && !isError && "text-muted-foreground",
+            isError && "text-destructive/80",
+            !isDone && "text-foreground"
+          )}>
+            {allDone
+              ? `${total} 项任务已完成`
+              : `任务规划（${completed}/${total}）`}
+          </span>
+          <StatusIcon
+            className={cn(
+              "size-3.5 shrink-0",
+              !isDone && "animate-spin",
+              isDone && !isError && "text-green-600/70",
+              isError && "text-destructive/70"
+            )}
+          />
+        </div>
+        <TodoListBlock todos={todos!} />
+      </div>
+    )
+  }
 
   return (
     <div

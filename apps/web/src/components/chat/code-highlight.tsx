@@ -72,7 +72,9 @@ export function CodeHighlight({ code, language, className }: CodeHighlightProps)
     return (
       <div
         className={cn(
-          "[&_code]:font-mono [&_code]:text-xs [&_pre]:m-0 [&_pre]:p-2.5 [&_pre]:bg-transparent",
+          "[&_code]:font-mono [&_code]:text-xs",
+          "[&_pre]:m-0 [&_pre]:p-2.5 [&_pre]:bg-transparent",
+          "[&_pre]:max-w-full [&_pre]:overflow-x-auto",
           className
         )}
         dangerouslySetInnerHTML={{ __html: html }}

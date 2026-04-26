@@ -183,18 +183,24 @@ function getFileIcon(artifactType: string | null) {
 function renderEntry(entry: ResourceEntry) {
   if (entry.entry_type === "directory") {
     return (
-      <FileTreeFolder key={entry.path} path={entry.path} name={entry.name}>
+      <FileTreeFolder className="truncate" key={entry.path} path={entry.path} name={entry.name}>
         {entry.children?.map(renderEntry)}
       </FileTreeFolder>
     )
   }
   return (
     <FileTreeFile
+      className="w-full min-w-0 cursor-pointer"
+      title={entry.name}
       key={entry.path}
       path={entry.path}
       name={entry.name}
       icon={getFileIcon(entry.artifact_type)}
-    />
+    >
+      <span className="size-4 shrink-0" />
+      <span className="shrink-0">{getFileIcon(entry.artifact_type)}</span>
+      <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+    </FileTreeFile>
   )
 }
 

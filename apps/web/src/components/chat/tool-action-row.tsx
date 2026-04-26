@@ -1,16 +1,10 @@
 import { cn } from "@workspace/ui/lib/utils"
 import {
   IconCircleCheck,
-  IconCircle,
-  IconCode,
   IconChevronRight,
   IconChevronDown,
-  IconFileDescription,
-  IconFolder,
   IconListCheck,
   IconLoader,
-  IconPencil,
-  IconPlayerPlay,
   IconXboxX,
 } from "@tabler/icons-react"
 import type { ComponentProps } from "react"
@@ -21,180 +15,21 @@ import {
 } from "@workspace/ui/components/collapsible"
 import { DiffViewer } from "@workspace/ui/components/diff-viewer"
 import { CodeHighlight, detectLanguage } from "./code-highlight"
+import {
+  getDisplayContent,
+  getEditDiff,
+  getToolIcon,
+  getTodos,
+  countCompleted,
+  TodoListBlock,
+} from "./tool-shared"
 
 import type { ToolCallSummary } from "@/lib/chat/tool-summarizer"
-
-// ── Display content extraction ──────────────────────────
-
-const CONTENT_TOOLS = new Set(["write_file", "edit_file"])
-const COMMAND_TOOLS = new Set(["execute"])
-
-function getDisplayContent(input: unknown, toolName: string): string | null {
-  if (!input || typeof input !== "object") return null
-  const obj = input as Record<string, unknown>
-  if (CONTENT_TOOLS.has(toolName)) {
-    if (toolName === "edit_file") {
-      return typeof obj.new_string === "string" && obj.new_string ? obj.new_string : null
-    }
-    return typeof obj.content === "string" && obj.content ? obj.content : null
-  }
-  if (COMMAND_TOOLS.has(toolName)) {
-    return typeof obj.command === "string" && obj.command ? obj.command : null
-  }
-  try {
-    const json = JSON.stringify(obj, null, 2)
-    return json === "{}" ? null : json
-  } catch {
-    return null
-  }
-}
-
-function getEditDiff(input: unknown): { oldCode: string; newCode: string } | null {
-  if (!input || typeof input !== "object") return null
-  const obj = input as Record<string, unknown>
-  const oldCode = typeof obj.old_string === "string" ? obj.old_string : null
-  const newCode = typeof obj.new_string === "string" ? obj.new_string : null
-  return oldCode != null && newCode != null ? { oldCode, newCode } : null
-}
-
-// ── Todo types ──────────────────────────────────────────
-
-export interface TodoItem {
-  content: string
-  status: string
-}
-
-const PREVIEW_COUNT = 3
-
-function extractTodosFromInput(input: unknown): TodoItem[] | null {
-  if (!input || typeof input !== "object") return null
-  const todos = (input as Record<string, unknown>).todos
-  if (!Array.isArray(todos) || todos.length === 0) return null
-  return todos.map((t: Record<string, unknown>) => ({
-    content: typeof t.content === "string" ? t.content : String(t.content ?? ""),
-    status: typeof t.status === "string" ? t.status : "pending",
-  }))
-}
-
-function extractTodosFromOutputText(text: string): TodoItem[] | null {
-  const match = text.match(/Updated todo list to\s*(\[[\s\S]*\])/)
-  if (!match) return null
-  try {
-    let jsonStr = match[1]
-    jsonStr = jsonStr.replace(/'/g, '"')
-    const parsed = JSON.parse(jsonStr)
-    if (!Array.isArray(parsed)) return null
-    return parsed.map((t: Record<string, unknown>) => ({
-      content: typeof t.content === "string" ? t.content : String(t.content ?? ""),
-      status: typeof t.status === "string" ? t.status : "pending",
-    }))
-  } catch {
-    return null
-  }
-}
-
-function getTodos(input: unknown, resultText: string | null | undefined): TodoItem[] | null {
-  return extractTodosFromInput(input) ?? (resultText ? extractTodosFromOutputText(resultText) : null)
-}
-
-function countCompleted(todos: TodoItem[]): number {
-  return todos.filter((t) => t.status === "completed").length
-}
-
-// ── Icon maps ───────────────────────────────────────────
-
-const TOOL_ICON_MAP: Record<string, typeof IconFileDescription> = {
-  read_file: IconFileDescription,
-  write_file: IconPencil,
-  edit_file: IconPencil,
-  execute: IconPlayerPlay,
-  ls: IconFolder,
-  write_todos: IconListCheck,
-}
-
-function getToolIcon(toolName: string): typeof IconFileDescription {
-  return TOOL_ICON_MAP[toolName] ?? IconCode
-}
 
 const stateIconMap: Record<string, typeof IconCircleCheck> = {
   "output-available": IconCircleCheck,
   "output-error": IconXboxX,
 }
-
-// ── TodoListBlock ───────────────────────────────────────
-
-function TodoListBlock({
-  todos,
-}: {
-  todos: TodoItem[]
-}) {
-  const completed = countCompleted(todos)
-  const total = todos.length
-  const allDone = completed === total
-  const needsCollapse = todos.length > PREVIEW_COUNT
-  const [expanded, setExpanded] = useState(false)
-
-  const visibleTodos = needsCollapse && !expanded
-    ? todos.slice(0, PREVIEW_COUNT)
-    : todos
-
-  return (
-    <div className="px-3 pb-2.5">
-      <div className="mb-1.5 flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="font-medium">
-          {allDone
-            ? `${total} 项任务已完成`
-            : `${completed}/${total} 已完成`}
-        </span>
-      </div>
-      <div className="space-y-1">
-        {visibleTodos.map((todo, idx) => (
-          <div key={idx} className="flex items-start gap-2 text-xs">
-            {todo.status === "completed" ? (
-              <IconCircleCheck className="mt-0.5 size-3.5 shrink-0 text-green-600/70" />
-            ) : todo.status === "in_progress" ? (
-              <IconLoader className="mt-0.5 size-3.5 shrink-0 text-amber-500/70" />
-            ) : (
-              <IconCircle className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/40" />
-            )}
-            <span
-              className={cn(
-                "leading-relaxed",
-                todo.status === "completed"
-                  ? "text-muted-foreground/60 line-through"
-                  : "text-foreground/80"
-              )}
-            >
-              {todo.content}
-            </span>
-          </div>
-        ))}
-      </div>
-      {needsCollapse && (
-        <button
-          type="button"
-          className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-          onClick={(e) => {
-            e.stopPropagation()
-            setExpanded((v) => !v)
-          }}
-        >
-          <IconChevronDown
-            className={cn(
-              "size-3 transition-transform",
-              expanded && "rotate-180"
-            )}
-          />
-          {expanded
-            ? "收起"
-            : `还有 ${todos.length - PREVIEW_COUNT} 项`}
-        </button>
-      )}
-    </div>
-  )
-}
-
-// ── ToolActionRow ───────────────────────────────────────
 
 export type ToolActionRowProps = ComponentProps<"div"> & {
   summary: ToolCallSummary
@@ -286,7 +121,6 @@ export function ToolActionRow({
   const collapsibleOpen = isRunning || isPreliminaryOutput ? true : isOpen
   const collapsibleToggle = isRunning || isPreliminaryOutput ? undefined : () => setIsOpen((v) => !v)
 
-  // write_todos with structured data: dedicated todo list UI
   if (isWriteTodos && hasTodos) {
     const completed = countCompleted(todos!)
     const total = todos!.length
