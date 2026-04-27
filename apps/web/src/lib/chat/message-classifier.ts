@@ -186,9 +186,7 @@ export function classifyMessageParts(
     }
   }
 
-  const hasFinalResponse = blocks.some((block) => block.kind === "final-response")
-  const shouldIncludeFileChanges =
-    hasFinalResponse || options.includeFileChanges === true
+  const shouldIncludeFileChanges = options.includeFileChanges === true
   const fileChanges = shouldIncludeFileChanges
     ? getFileChangesFromUIMessage(message)
     : []

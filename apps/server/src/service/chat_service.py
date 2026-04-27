@@ -403,12 +403,12 @@ class ChatService:
         status_info = registry.get_stream_status(conversation_id, db)
         if status_info:
             logger.info("[resume] conv=%s stream already ended: status=%s", conversation_id, status_info)
-            yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': status_info['status'], 'error': status_info.get('error')}}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': status_info['status'], 'error': status_info.get('error'), 'cursor': status_info.get('cursor', 0)}}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return
 
         task = registry.get_task(conversation_id)
-        if not task or task.completed:
+        if not task or not task.is_active:
             # Detect stale streaming message (no active task, but DB still says streaming)
             if not task:
                 from sqlalchemy import select
@@ -436,7 +436,7 @@ class ChatService:
                     yield "data: [DONE]\n\n"
                     return
 
-            logger.info("[resume] conv=%s no active task (task=%s, completed=%s)", conversation_id, bool(task), task.completed if task else None)
+            logger.info("[resume] conv=%s no active task (task=%s, status=%s)", conversation_id, bool(task), task.status if task else None)
             yield f"data: {json.dumps({'type': 'no_stream', 'data': {'message': '无可恢复的流'}}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return
@@ -462,32 +462,86 @@ class ChatService:
             if not data:
                 return False, []
 
+            def _sse_line(payload: str) -> str:
+                return f"id: {seq}\ndata: {payload}\n\n" if seq is not None else f"data: {payload}\n\n"
+
             if isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error"):
                 payloads: list[str] = []
                 if data.get("status") == "error":
                     yield_text = await _to_thread(
                         json.dumps, {"error": data.get("error")}, ensure_ascii=False
                     )
-                    payloads.append(f"data: {yield_text}\n\n")
-                payloads.append("data: [DONE]\n\n")
+                    payloads.append(_sse_line(yield_text))
+                payloads.append(_sse_line("[DONE]"))
                 logger.info("[resume] conv=%s terminal event in buffer: seq=%s status=%s", conversation_id, seq, data.get("status"))
                 return True, payloads
 
             if debug_content_only:
                 text_part = ChatService._extract_text_from_chunk(data)
                 if text_part:
-                    return False, [f"data: {text_part}\n\n"]
+                    return False, [_sse_line(text_part)]
                 return False, []
             else:
                 payload_str = await _to_thread(
                     json.dumps, data, ensure_ascii=False, default=str
                 )
-                return False, [f"data: {payload_str}\n\n"]
+                return False, [_sse_line(payload_str)]
+
+        # Helper to detect terminal events without expensive serialization
+        def _is_terminal(event: dict) -> bool:
+            data = event.get("data") if isinstance(event, dict) else None
+            return isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error")
+
+        # ── Cold path: replay from DB chunk_json for events trimmed from buffer ──
+        if cursor < task.buffer.base_cursor and last_seq < task.buffer.base_cursor:
+            logger.info(
+                "[resume] conv=%s cold path: cursor=%d < base_cursor=%d, replaying from DB",
+                conversation_id, cursor, task.buffer.base_cursor,
+            )
+            from sqlalchemy import select as _sel
+            from src.models.conversation import ConversationMessage as _CM
+            _stmt = _sel(_CM).where(
+                _CM.conversation_id == conversation_id,
+                _CM.role == "assistant",
+            ).order_by(_CM.id.desc()).limit(1)
+            _msg = db.scalar(_stmt)
+            if _msg and _msg.chunk_json:
+                try:
+                    _chunks = await _to_thread(json.loads, _msg.chunk_json)
+                except json.JSONDecodeError:
+                    _chunks = []
+                if not isinstance(_chunks, list):
+                    _chunks = []
+                for i, _data in enumerate(_chunks):
+                    _seq = i + 1
+                    if _seq <= last_seq:
+                        continue
+                    if _seq > task.buffer.base_cursor:
+                        break
+                    _evt = {"seq": _seq, "data": _data}
+                    if task.status != "streaming" and not _is_terminal(_evt):
+                        continue
+                    if not _is_terminal(_evt):
+                        done, payloads = await _emit_event_payloads(_evt)
+                        if not done and task.status != "streaming":
+                            continue
+                        for payload in payloads:
+                            yield payload
+                        if done:
+                            return
+                logger.info(
+                    "[resume] conv=%s cold path done, last_seq now %d",
+                    conversation_id, last_seq,
+                )
 
         buffer_events = task.buffer.get_events_after(last_seq)
         logger.info("[resume] conv=%s initial buffer scan: %d events after cursor=%d", conversation_id, len(buffer_events), last_seq)
         for event in buffer_events:
+            if task.status != "streaming" and not _is_terminal(event):
+                continue
             done, payloads = await _emit_event_payloads(event)
+            if not done and task.status != "streaming":
+                continue
             for payload in payloads:
                 yield payload
             if done:
@@ -503,7 +557,11 @@ class ChatService:
         missed = task.buffer.get_events_after(last_seq)
         logger.info("[resume] conv=%s after subscribe, missed=%d events after seq=%d", conversation_id, len(missed), last_seq)
         for missed_event in missed:
+            if task.status != "streaming" and not _is_terminal(missed_event):
+                continue
             done, payloads = await _emit_event_payloads(missed_event)
+            if not done and task.status != "streaming":
+                continue
             for payload in payloads:
                 yield payload
             if done:
@@ -515,7 +573,11 @@ class ChatService:
         try:
             while True:
                 evt = await queue.get()
+                if task.status != "streaming" and not _is_terminal(evt):
+                    continue
                 done, payloads = await _emit_event_payloads(evt)
+                if not done and task.status != "streaming":
+                    continue
                 for payload in payloads:
                     yield payload
                 if done:
