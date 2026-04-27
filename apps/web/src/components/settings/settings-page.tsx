@@ -1,7 +1,7 @@
 import * as React from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import pkg from "../../../package.json"
-import logoSvg from "@/assets/logo.svg"
+import logoSvg from "@/assets/logo.png"
 import Avatar1 from "@/assets/avaters/1.png"
 import Avatar2 from "@/assets/avaters/2.png"
 import Avatar3 from "@/assets/avaters/3.png"

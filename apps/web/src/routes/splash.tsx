@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
-import logoImage from "@/assets/logo.svg"
+import logoImage from "@/assets/logo.png"
 
 export const Route = createFileRoute("/splash")({
   component: SplashPage,

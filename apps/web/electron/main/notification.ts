@@ -44,7 +44,7 @@ export function sendNotification(options: {
     body: options.body,
     silent: options.silent ?? false,
     icon: process.env.VITE_PUBLIC
-      ? `${process.env.VITE_PUBLIC}/logo.svg`
+      ? `${process.env.VITE_PUBLIC}/logo.png`
       : undefined,
   })
 

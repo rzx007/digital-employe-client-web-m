@@ -107,7 +107,18 @@ class StreamRegistry:
             return None
 
         if msg.stream_state == "streaming":
-            return None
+            logger.warning(
+                "[status] conv=%s stale streaming msg_id=%s (no active task), auto-repairing to error",
+                conversation_id, msg.id,
+            )
+            msg.stream_state = "error"
+            if not msg.content:
+                msg.content = "流已中断，无法恢复"
+            db.commit()
+            return {
+                "status": "error",
+                "error": "流已中断，无法恢复",
+            }
 
         return {
             "status": msg.stream_state,
@@ -270,7 +281,7 @@ class StreamRegistry:
                 "[run] conv=%s stream completed normally, chunks=%d, text_len=%d",
                 conversation_id, len(collected_chunks), len(final_text),
             )
-            self._flush_to_db(
+            self._flush_terminal(
                 db, stream_msg_id, task.buffer, state="completed",
                 content=final_text,
                 chunk_json=self._safe_serialize_chunks(collected_chunks),
@@ -292,13 +303,11 @@ class StreamRegistry:
                 len(partial_text) if partial_text else "None",
                 task.status,
             )
-            self._flush_to_db(
+            self._flush_terminal(
                 db, stream_msg_id, task.buffer, state="cancelled",
                 content=partial_text,
                 chunk_json=self._safe_serialize_chunks(collected_chunks),
             )
-            # Add terminal event to buffer after DB flush, then broadcast
-            # so resume subscribers receive it in recognisable buffer format
             evt = task.buffer.add({"status": "cancelled"})
             logger.info(
                 "[run] conv=%s broadcasting cancelled event: seq=%d, subscribers=%d",
@@ -317,7 +326,7 @@ class StreamRegistry:
             state_final = "error"
             task.error_message = str(e)
             partial_text = "".join(assistant_text_parts).strip() or None
-            self._flush_to_db(
+            self._flush_terminal(
                 db, stream_msg_id, task.buffer, state="error",
                 content=partial_text,
                 chunk_json=self._safe_serialize_chunks(collected_chunks),
@@ -334,7 +343,7 @@ class StreamRegistry:
                 )
                 state_final = "cancelled"
                 partial_text = "".join(assistant_text_parts).strip() or None
-                self._flush_to_db(
+                self._flush_terminal(
                     db, stream_msg_id, task.buffer, state="cancelled",
                     content=partial_text,
                     chunk_json=self._safe_serialize_chunks(collected_chunks),
@@ -348,6 +357,41 @@ class StreamRegistry:
             task.subscribers.clear()
             db.close()
             self._schedule_cleanup(conversation_id)
+
+    def _flush_terminal(
+        self,
+        db: Any,
+        stream_msg_id: int,
+        buffer: StreamEventBuffer,
+        state: str,
+        content: str | None,
+        chunk_json: str | None,
+        error_message: str | None = None,
+        max_retries: int = 3,
+    ) -> None:
+        """Flush terminal state with retry to avoid stuck streaming on transient DB errors."""
+        for attempt in range(max_retries):
+            self._flush_to_db(
+                db, stream_msg_id, buffer, state=state,
+                content=content, chunk_json=chunk_json,
+                error_message=error_message,
+            )
+            try:
+                msg = db.get(ConversationMessage, stream_msg_id)
+                if msg and msg.stream_state == state:
+                    return
+            except Exception:
+                db.rollback()
+            if attempt < max_retries - 1:
+                logger.warning(
+                    "[flush] msg_id=%s terminal state=%s not persisted, retrying %d/%d",
+                    stream_msg_id, state, attempt + 1, max_retries,
+                )
+                time.sleep(0.3)
+        logger.error(
+            "[flush] msg_id=%s terminal state=%s FAILED after %d retries",
+            stream_msg_id, state, max_retries,
+        )
 
     def _flush_to_db(
         self,

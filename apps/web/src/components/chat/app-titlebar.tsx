@@ -5,7 +5,7 @@ import {
   IconMaximize,
   IconMinus,
 } from "@tabler/icons-react"
-import logoSvg from "@/assets/logo.svg"
+import logoSvg from "@/assets/logo.png"
 
 interface AppTitlebarProps {
   title?: string

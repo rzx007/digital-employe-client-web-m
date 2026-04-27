@@ -144,10 +144,10 @@ export function ChatPromptInput({
               </PromptInputActionMenuContent>
             </PromptInputActionMenu>
             <Separator orientation="vertical" className="h-3 mt-2 mr-3" />
-            <PromptInputButton className="w-auto gap-1 px-1.5" variant="ghost" size="sm">
+            {/* <PromptInputButton className="w-auto gap-1 px-1.5" variant="ghost" size="sm">
               <ModelIcon className="h-4 w-4 shrink-0" />
               {currentModel}
-            </PromptInputButton>
+            </PromptInputButton> */}
             {/* <PromptInputButton variant="ghost" size="icon-sm">
               <IconMap className="h-4 w-4" />
             </PromptInputButton> */}

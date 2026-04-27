@@ -15,7 +15,7 @@ import {
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import { cn } from "@workspace/ui/lib/utils"
 import { IconSparkles } from "@tabler/icons-react"
-import logo from "@/assets/logo.svg"
+import logo from "@/assets/logo.png"
 import {
   classifyMessageParts,
 } from "@/lib/chat/message-utils"
@@ -440,10 +440,10 @@ export function ChatPanel({
                 <div className="mx-auto w-[98%]">
                   <PendingMessageQueue
                     queue={pendingMessages}
-                    onRemove={onPendingRemove ?? (() => {})}
-                    onSendNow={onPendingSendNow ?? (() => {})}
-                    onMoveUp={onPendingMoveUp ?? (() => {})}
-                    onMoveDown={onPendingMoveDown ?? (() => {})}
+                    onRemove={onPendingRemove ?? (() => { })}
+                    onSendNow={onPendingSendNow ?? (() => { })}
+                    onMoveUp={onPendingMoveUp ?? (() => { })}
+                    onMoveDown={onPendingMoveDown ?? (() => { })}
                   />
                 </div>
               )}

@@ -314,7 +314,8 @@ class ChatService:
         ChatService._append_message(db, conversation=conversation, role="user", content=question, extra_meta=extra_meta)
         request_messages = [*history_messages, {"role": "user", "content": question}]
         
-        # 创建一个空的 assistant 消息，标记为 streaming
+        # 创建一个空的 assistant 消息占位（不标记 streaming 状态，
+        # 等 registry.start 成功后再标记，避免 start 失败时留下僵尸消息）
         assistant_msg = ChatService._append_message(
             db,
             conversation=conversation,
@@ -322,9 +323,6 @@ class ChatService:
             content="",
             extra_meta=None,
         )
-        assistant_msg.stream_state = "streaming"
-        db.commit()
-        db.refresh(assistant_msg)
         
         # 根据会话ID获取会话详情，然后获取root_path
         workspace = db.get(Workspace, conversation.workspace_id)
@@ -376,8 +374,15 @@ class ChatService:
             )
             
             if not started:
+                assistant_msg.stream_state = "error"
+                assistant_msg.content = "当前会话已有正在执行的任务"
+                db.commit()
                 yield f"data: {json.dumps({'error': '当前会话已有正在执行的任务'}, ensure_ascii=False)}\n\n"
                 return
+
+            assistant_msg.stream_state = "streaming"
+            db.commit()
+            db.refresh(assistant_msg)
                 
             # 返回恢复流的生成器
             async for chunk in ChatService.resume_conversation_stream(db, conversation_id, debug_content_only):
@@ -404,6 +409,33 @@ class ChatService:
 
         task = registry.get_task(conversation_id)
         if not task or task.completed:
+            # Detect stale streaming message (no active task, but DB still says streaming)
+            if not task:
+                from sqlalchemy import select
+                from src.models.conversation import ConversationMessage
+                stmt = (
+                    select(ConversationMessage)
+                    .where(
+                        ConversationMessage.conversation_id == conversation_id,
+                        ConversationMessage.role == "assistant",
+                        ConversationMessage.stream_state == "streaming",
+                    )
+                    .order_by(ConversationMessage.id.desc())
+                    .limit(1)
+                )
+                stale_msg = db.scalar(stmt)
+                if stale_msg:
+                    logger.warning(
+                        "[resume] conv=%s stale streaming message msg_id=%s, auto-repairing to error",
+                        conversation_id, stale_msg.id,
+                    )
+                    stale_msg.stream_state = "error"
+                    stale_msg.content = stale_msg.content or "流已中断，无法恢复"
+                    db.commit()
+                    yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': 'error', 'error': '流已中断，无法恢复'}}, ensure_ascii=False)}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+
             logger.info("[resume] conv=%s no active task (task=%s, completed=%s)", conversation_id, bool(task), task.completed if task else None)
             yield f"data: {json.dumps({'type': 'no_stream', 'data': {'message': '无可恢复的流'}}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
