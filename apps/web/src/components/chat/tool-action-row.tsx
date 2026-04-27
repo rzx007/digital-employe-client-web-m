@@ -100,11 +100,8 @@ export function ToolActionRow({
 
   useEffect(() => {
     if (isDone && resultText && !didAutoCollapse.current) {
-      const timer = setTimeout(() => {
-        didAutoCollapse.current = true
-        setIsOpen(false)
-      }, 2500)
-      return () => clearTimeout(timer)
+      didAutoCollapse.current = true
+      setIsOpen(false)
     }
   }, [isDone, resultText])
 

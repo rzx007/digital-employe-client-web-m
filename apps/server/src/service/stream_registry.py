@@ -97,13 +97,16 @@ class StreamRegistry:
             .where(
                 ConversationMessage.conversation_id == conversation_id,
                 ConversationMessage.role == "assistant",
-                ConversationMessage.stream_state.in_(["completed", "error", "cancelled"]),
+                ConversationMessage.stream_state.isnot(None),
             )
             .order_by(ConversationMessage.id.desc())
             .limit(1)
         )
         msg = db.scalar(stmt)
-        if not msg or not msg.stream_state:
+        if not msg:
+            return None
+
+        if msg.stream_state == "streaming":
             return None
 
         return {
@@ -157,17 +160,30 @@ class StreamRegistry:
 
     def cancel(self, conversation_id: int) -> bool:
         task = self._tasks.get(conversation_id)
-        if not task or task.completed:
+        if not task:
+            logger.warning("[cancel] conv=%s no active task in registry, cancel missed", conversation_id)
+            return False
+        if task.completed:
+            logger.warning("[cancel] conv=%s task already completed (status=%s), cancel missed", conversation_id, task.status)
             return False
 
         task.status = "cancelled"
-        task.completed = True
+        # NOTE: Do NOT set task.completed or clear subscribers here.
+        # The background task's CancelledError handler will flush DB first,
+        # then add a buffer terminal event and broadcast it.
+        # The finally block will then set task.completed and clean up subscribers.
+        # This prevents:
+        #  (1) resume hang: broadcast must use buffer format so
+        #      _emit_event_payloads can detect terminal status correctly
+        #  (2) race: task.completed must only be set after DB flush so
+        #      resume+message fetch always sees chunk_json
 
         if task._asyncio_task and not task._asyncio_task.done():
             task._asyncio_task.cancel()
+            logger.info("[cancel] conv=%s task.cancel() called, asyncio_task will raise CancelledError", conversation_id)
+        else:
+            logger.warning("[cancel] conv=%s asyncio_task already done before cancel()", conversation_id)
 
-        self.broadcast(conversation_id, {"type": "cancelled"})
-        task.subscribers.clear()
         return True
 
     def _schedule_cleanup(self, conversation_id: int) -> None:
@@ -176,6 +192,16 @@ class StreamRegistry:
             self._tasks.pop(conversation_id, None)
 
         asyncio.create_task(_cleanup())
+
+    @staticmethod
+    def _safe_serialize_chunks(chunks: list[Any]) -> str | None:
+        try:
+            result = json.dumps(chunks, ensure_ascii=False, default=str)
+            logger.debug("[serialize] chunks=%d items, json_len=%d", len(chunks), len(result))
+            return result
+        except Exception:
+            logger.warning("[serialize] FAILED chunks=%d items", len(chunks), exc_info=True)
+            return None
 
     async def _run_agent_background(
         self,
@@ -240,34 +266,53 @@ class StreamRegistry:
             final_text = "".join(assistant_text_parts).strip() or "模型已完成调用。"
             state_final = "completed"
 
+            logger.info(
+                "[run] conv=%s stream completed normally, chunks=%d, text_len=%d",
+                conversation_id, len(collected_chunks), len(final_text),
+            )
             self._flush_to_db(
-                db,
-                stream_msg_id,
-                task.buffer,
-                state="completed",
+                db, stream_msg_id, task.buffer, state="completed",
                 content=final_text,
-                chunk_json=json.dumps(
-                    collected_chunks, ensure_ascii=False, default=str,
-                ),
+                chunk_json=self._safe_serialize_chunks(collected_chunks),
             )
 
             evt = task.buffer.add({"status": "completed"})
+            logger.info(
+                "[run] conv=%s broadcasting completed event: seq=%d, subscribers=%d",
+                conversation_id, evt["seq"], len(task.subscribers),
+            )
             self.broadcast(conversation_id, evt)
 
         except asyncio.CancelledError:
             state_final = "cancelled"
             partial_text = "".join(assistant_text_parts).strip() or None
+            logger.info(
+                "[run] conv=%s CancelledError caught, chunks=%d, text_len=%s, task.status=%s",
+                conversation_id, len(collected_chunks),
+                len(partial_text) if partial_text else "None",
+                task.status,
+            )
             self._flush_to_db(
                 db, stream_msg_id, task.buffer, state="cancelled",
                 content=partial_text,
-                chunk_json=json.dumps(collected_chunks, ensure_ascii=False, default=str),
+                chunk_json=self._safe_serialize_chunks(collected_chunks),
             )
+            # Add terminal event to buffer after DB flush, then broadcast
+            # so resume subscribers receive it in recognisable buffer format
+            evt = task.buffer.add({"status": "cancelled"})
+            logger.info(
+                "[run] conv=%s broadcasting cancelled event: seq=%d, subscribers=%d",
+                conversation_id, evt["seq"], len(task.subscribers),
+            )
+            self.broadcast(conversation_id, evt)
             raise
 
         except Exception as e:
             logger.error(
-                "后台 agent 执行失败: conv=%s err=%s",
-                conversation_id, e, exc_info=True,
+                "[run] conv=%s agent FAILED: %s, chunks=%d, text_len=%s",
+                conversation_id, e, len(collected_chunks),
+                len("".join(assistant_text_parts)) if assistant_text_parts else "0",
+                exc_info=True,
             )
             state_final = "error"
             task.error_message = str(e)
@@ -275,13 +320,29 @@ class StreamRegistry:
             self._flush_to_db(
                 db, stream_msg_id, task.buffer, state="error",
                 content=partial_text,
-                chunk_json=json.dumps(collected_chunks, ensure_ascii=False, default=str),
+                chunk_json=self._safe_serialize_chunks(collected_chunks),
                 error_message=str(e),
             )
-            evt = task.buffer.add({"error": str(e)})
+            evt = task.buffer.add({"status": "error", "error": str(e)})
             self.broadcast(conversation_id, evt)
 
         finally:
+            if task.status == "cancelled" and state_final != "cancelled":
+                logger.warning(
+                    "[run] conv=%s finally: task.status=cancelled but state_final=%s, doing fallback flush",
+                    conversation_id, state_final,
+                )
+                state_final = "cancelled"
+                partial_text = "".join(assistant_text_parts).strip() or None
+                self._flush_to_db(
+                    db, stream_msg_id, task.buffer, state="cancelled",
+                    content=partial_text,
+                    chunk_json=self._safe_serialize_chunks(collected_chunks),
+                )
+            logger.info(
+                "[run] conv=%s finally: state_final=%s, chunks=%d, buffer_cursor=%d",
+                conversation_id, state_final, len(collected_chunks), task.buffer.cursor,
+            )
             task.status = state_final
             task.completed = True
             task.subscribers.clear()
@@ -301,20 +362,41 @@ class StreamRegistry:
         try:
             msg = db.get(ConversationMessage, stream_msg_id)
             if not msg:
+                logger.warning("[flush] msg_id=%s not found in DB, skip", stream_msg_id)
                 return
             if state is not None:
                 msg.stream_state = state
             if content is not None:
                 msg.content = content
-            if chunk_json is not None:
-                msg.chunk_json = chunk_json
+            if error_message is not None:
+                try:
+                    meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
+                except (json.JSONDecodeError, TypeError):
+                    meta = {}
+                meta["error_message"] = error_message
+                msg.extra_meta = json.dumps(meta, ensure_ascii=False)
+            # stream_cursor tracks how many events have been flushed;
+            # resume uses in-memory buffer, not DB stream_chunks, so we
+            # skip intermediate event serialization to avoid O(n²) overhead.
             msg.stream_cursor = buffer.cursor
-            msg.stream_chunks = json.dumps(
-                buffer.events, ensure_ascii=False, default=str,
-            )
+            msg.stream_chunks = None
+            if chunk_json is not None:
+                try:
+                    msg.chunk_json = chunk_json
+                except Exception:
+                    logger.warning("[flush] msg_id=%s set chunk_json failed", stream_msg_id, exc_info=True)
+            else:
+                logger.info("[flush] msg_id=%s chunk_json=None, state=%s, buffer_cursor=%d", stream_msg_id, state, buffer.cursor)
             db.commit()
+            logger.info(
+                "[flush] msg_id=%s committed: state=%s, content_len=%s, chunk_json_len=%s, stream_chunks=%s",
+                stream_msg_id, state,
+                len(content) if content else None,
+                len(chunk_json) if chunk_json else None,
+                "cleared" if state in ("completed", "error", "cancelled") else f"{buffer.cursor} events",
+            )
         except Exception:
-            logger.warning("flush_to_db failed", exc_info=True)
+            logger.warning("[flush] msg_id=%s FAILED", stream_msg_id, exc_info=True)
             db.rollback()
 
 

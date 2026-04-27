@@ -38,18 +38,17 @@ export function ConversationChatView({
     id: string
     name: string
   }>>([])
-  const { data: storedMessages = [] } = useMessagesQuery(conversationId)
+  const { data: storedMessages = [], isPending: isMessagesLoading } = useMessagesQuery(conversationId)
 
   const initialMessages = React.useMemo(
     () => mapStoredMessagesToUIMessages(storedMessages),
     [storedMessages]
   )
 
-  const { messages, setMessages, sendMessage, status, error, stop } = useChat({
+  const { messages, setMessages, sendMessage, status, error, stop, resumeStream } = useChat({
     id: String(conversationId),
     messages: initialMessages,
     transport: chatTransport,
-    resume: true,
     onFinish: () => {},
     onError: (chatError) => {
       toast.error("发送失败", {
@@ -68,8 +67,13 @@ export function ConversationChatView({
   React.useEffect(() => {
     if (initialMessages.length > 0) {
       setMessages(initialMessages)
+
+      const lastStored = storedMessages[storedMessages.length - 1]
+      if (lastStored?.role === "assistant" && lastStored.streamState === "streaming") {
+        resumeStream()
+      }
     }
-  }, [conversationId, initialMessages, setMessages])
+  }, [conversationId, initialMessages, setMessages, resumeStream, storedMessages])
 
   const handleTextChange = React.useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
@@ -221,6 +225,7 @@ export function ConversationChatView({
       status={chatStatus}
       error={error}
       isDraftMode={false}
+      isMessagesLoading={isMessagesLoading}
       isSubmitDisabled={isSubmitDisabled}
       onInputChange={handleTextChange}
       onSend={handleSendMessage}

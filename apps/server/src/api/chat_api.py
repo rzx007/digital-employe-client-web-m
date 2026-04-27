@@ -101,10 +101,9 @@ async def resume_conversation_stream(
 @router.post("/chat/conversations/{conversation_id}/stream/cancel", response_model=BaseResponse)
 def cancel_conversation_stream(
     conversation_id: int,
-    db: Session = Depends(get_db),
 ) -> BaseResponse:
     """手动终止正在执行的会话流。"""
-    success = ChatService.cancel_conversation_stream(db, conversation_id)
+    success = ChatService.cancel_conversation_stream(conversation_id)
     if not success:
         return BaseResponse(code=400, msg="没有正在执行的流或取消失败", data=None)
     return BaseResponse(data=None)

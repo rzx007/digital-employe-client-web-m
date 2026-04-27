@@ -342,12 +342,10 @@ export function mapStoredMessagesToUIMessages(
         ? message.metadata
         : undefined
 
-    // assistant 消息尝试使用 chunkJson 重建 parts
     if (message.role === "assistant") {
       if (message.chunkJson) {
         const parts = replayChunkJsonToParts(message.chunkJson)
 
-        // chunkJson 解析成功且有有效 parts 时使用重建结果
         if (parts && parts.length > 0) {
           const uiMessage: UIMessage = {
             id: message.id,
@@ -359,6 +357,35 @@ export function mapStoredMessagesToUIMessages(
           return uiMessage
         }
       }
+
+      if (message.content) {
+        const uiMessage: UIMessage = {
+          id: message.id,
+          role: message.role,
+          parts: [
+            {
+              type: "text",
+              text: message.content,
+              state: "done" as const,
+            },
+          ],
+        }
+          ; (uiMessage as UIMessage & { metadata?: Record<string, any> }).metadata =
+            messageMeta
+        return uiMessage
+      }
+
+      if (message.streamState === "streaming") {
+        const uiMessage: UIMessage = {
+          id: message.id,
+          role: message.role,
+          parts: [],
+        }
+          ; (uiMessage as UIMessage & { metadata?: Record<string, any> }).metadata =
+            messageMeta
+        return uiMessage
+      }
+
       return null
     }
 

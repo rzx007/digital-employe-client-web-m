@@ -33,6 +33,7 @@ import type { PendingMessage } from "@/hooks/use-pending-messages"
 import { FileChangeCards } from "./file-change-cards"
 import { ThinkingBlock } from "./thinking-block"
 import { ToolGroupBlock } from "./tool-group-block"
+import { MessageLoadingSkeleton } from "./message-loading-skeleton"
 import {
   getContactDisplayName,
   type ChatViewContact,
@@ -159,6 +160,7 @@ export function ChatPanel({
   status,
   error,
   isDraftMode,
+  isMessagesLoading,
   isSubmitDisabled,
   onInputChange,
   onSend,
@@ -181,6 +183,7 @@ export function ChatPanel({
   status: "submitted" | "streaming" | "ready" | "error"
   error?: Error
   isDraftMode: boolean
+  isMessagesLoading?: boolean
   isSubmitDisabled: boolean
   onInputChange: (event: PromptChangeEvent) => void
   onSend: (message: PromptInputMessage) => Promise<void>
@@ -306,6 +309,8 @@ export function ChatPanel({
                       </div>
                     </div>
                   </ConversationEmptyState>
+                ) : isMessagesLoading ? (
+                  <MessageLoadingSkeleton />
                 ) : displayMessages.length === 0 ? (
                   <ConversationEmptyState className="py-16">
                     <div className="flex flex-col items-center gap-5">

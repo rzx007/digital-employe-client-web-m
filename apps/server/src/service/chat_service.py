@@ -393,21 +393,30 @@ class ChatService:
         from src.service.stream_registry import registry
         import asyncio
 
+        logger.info("[resume] conv=%s cursor=%s debug=%s", conversation_id, cursor, debug_content_only)
+
         status_info = registry.get_stream_status(conversation_id, db)
         if status_info:
+            logger.info("[resume] conv=%s stream already ended: status=%s", conversation_id, status_info)
             yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': status_info['status'], 'error': status_info.get('error')}}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return
 
         task = registry.get_task(conversation_id)
         if not task or task.completed:
+            logger.info("[resume] conv=%s no active task (task=%s, completed=%s)", conversation_id, bool(task), task.completed if task else None)
             yield f"data: {json.dumps({'type': 'no_stream', 'data': {'message': '无可恢复的流'}}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return
 
+        logger.info("[resume] conv=%s subscribing to live task, buffer_cursor=%d", conversation_id, task.buffer.cursor)
+
         last_seq = cursor
 
-        def _emit_event_payloads(event: dict) -> tuple[bool, list[str]]:
+        # Keep a typed reference to asyncio.to_thread for closure correctness
+        _to_thread = asyncio.to_thread
+
+        async def _emit_event_payloads(event: dict) -> tuple[bool, list[str]]:
             nonlocal last_seq
             if not isinstance(event, dict):
                 return False, []
@@ -424,9 +433,12 @@ class ChatService:
             if isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error"):
                 payloads: list[str] = []
                 if data.get("status") == "error":
-                    yield_text = json.dumps({"error": data.get("error")}, ensure_ascii=False)
+                    yield_text = await _to_thread(
+                        json.dumps, {"error": data.get("error")}, ensure_ascii=False
+                    )
                     payloads.append(f"data: {yield_text}\n\n")
                 payloads.append("data: [DONE]\n\n")
+                logger.info("[resume] conv=%s terminal event in buffer: seq=%s status=%s", conversation_id, seq, data.get("status"))
                 return True, payloads
 
             if debug_content_only:
@@ -435,13 +447,19 @@ class ChatService:
                     return False, [f"data: {text_part}\n\n"]
                 return False, []
             else:
-                return False, [f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"]
+                payload_str = await _to_thread(
+                    json.dumps, data, ensure_ascii=False, default=str
+                )
+                return False, [f"data: {payload_str}\n\n"]
 
-        for event in task.buffer.get_events_after(last_seq):
-            done, payloads = _emit_event_payloads(event)
+        buffer_events = task.buffer.get_events_after(last_seq)
+        logger.info("[resume] conv=%s initial buffer scan: %d events after cursor=%d", conversation_id, len(buffer_events), last_seq)
+        for event in buffer_events:
+            done, payloads = await _emit_event_payloads(event)
             for payload in payloads:
                 yield payload
             if done:
+                logger.info("[resume] conv=%s terminated during initial buffer scan at seq=%d", conversation_id, last_seq)
                 return
 
         queue = asyncio.Queue()
@@ -450,32 +468,42 @@ class ChatService:
             queue.put_nowait(evt)
 
         task.subscribe(_on_event)
-        for missed_event in task.buffer.get_events_after(last_seq):
-            done, payloads = _emit_event_payloads(missed_event)
+        missed = task.buffer.get_events_after(last_seq)
+        logger.info("[resume] conv=%s after subscribe, missed=%d events after seq=%d", conversation_id, len(missed), last_seq)
+        for missed_event in missed:
+            done, payloads = await _emit_event_payloads(missed_event)
             for payload in payloads:
                 yield payload
             if done:
                 task.unsubscribe(_on_event)
+                logger.info("[resume] conv=%s terminated during missed-event scan at seq=%d", conversation_id, last_seq)
                 return
 
+        logger.info("[resume] conv=%s entering queue.get() loop, waiting for live events...", conversation_id)
         try:
             while True:
                 evt = await queue.get()
-                done, payloads = _emit_event_payloads(evt)
+                done, payloads = await _emit_event_payloads(evt)
                 for payload in payloads:
                     yield payload
                 if done:
+                    logger.info("[resume] conv=%s terminated from queue event, seq=%d", conversation_id, last_seq)
                     break
         finally:
             t = registry.get_task(conversation_id)
             if t:
                 t.unsubscribe(_on_event)
+            logger.info("[resume] conv=%s unsubscribed, final seq=%d", conversation_id, last_seq)
 
     @staticmethod
-    def cancel_conversation_stream(db: Session, conversation_id: int) -> bool:
+    def cancel_conversation_stream(conversation_id: int) -> bool:
         """手动终止正在执行的会话流。"""
         from src.service.stream_registry import registry
-        return registry.cancel(conversation_id)
+        logger.info("[cancel_service] conv=%s attempting cancel", conversation_id)
+        success = registry.cancel(conversation_id)
+        if not success:
+            logger.warning("[cancel_service] conv=%s registry.cancel returned False (no active task)", conversation_id)
+        return success
 
 
     @classmethod
