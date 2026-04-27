@@ -13,6 +13,7 @@ import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/pr
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
 import { useCreateConversationMutation } from "@/hooks/use-chat-queries"
 import { useChatStore } from "@/stores/chat-store"
+import { usePendingMessages } from "@/hooks/use-pending-messages"
 
 import { ChatPanel } from "./chat-panel"
 import { chatTransport, type ChatViewContact } from "./chat-view-shared"
@@ -71,7 +72,6 @@ export function DraftChatView({
   })
 
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
-    console.log("handleTextChange", event)
     setCommand(event.command)
     setMentions(event.mentions)
     setInputValue(event.value)
@@ -102,23 +102,13 @@ export function DraftChatView({
   }, [createConversationMutation, stop])
 
   const isSubmitDisabled = useMemo(() => {
-    // 生成中（含创建会话）需保留可点击以触发 onStop，与 ConversationChatView 行为一致
     return !isBusy && !inputValue.trim()
   }, [inputValue, isBusy])
 
-  const handleSendMessage = useCallback(
-    async (message: PromptInputMessage) => {
-      const hasText = Boolean(message.text)
-      const messageText = message.text?.trim() ?? ""
-      if (!hasText) {
-        return
-      }
-
-      if (message.files?.length) {
-        toast.success("Files attached", {
-          description: `${message.files.length} file(s) attached to message`,
-        })
-      }
+  const doSend = useCallback(
+    async (message: PromptInputMessage | string) => {
+      const messageText = (typeof message === "string" ? message : message.text)?.trim() ?? ""
+      if (!messageText) return
 
       const pendingMeta = {
         command: command ? { id: command.id, title: command.title } : undefined,
@@ -144,15 +134,11 @@ export function DraftChatView({
           setSelectedConversationId(conversationId)
         }
 
-        setInputValue("")
-
         await sendMessage(
-          {
-            text: messageText,
-          },
+          { text: messageText },
           {
             body: {
-              attachments: message.files,
+              attachments: typeof message === "string" ? undefined : message.files,
               conversationId,
               skill: command?.title ?? "",
               metadata: pendingMeta,
@@ -176,7 +162,6 @@ export function DraftChatView({
             return next
           })
         }
-        // toast.success("发送成功")
       } catch (sendError) {
         toast.error("发送失败", {
           description:
@@ -196,6 +181,50 @@ export function DraftChatView({
     ]
   )
 
+  const {
+    queue: pendingQueue,
+    enqueue,
+    remove: pendingRemove,
+    sendNow: pendingSendNow,
+    moveUp: pendingMoveUp,
+    moveDown: pendingMoveDown,
+  } = usePendingMessages({
+    status,
+    onSend: doSend,
+    onStop: handleStop,
+  })
+
+  const handleSendMessage = useCallback(
+    async (message: PromptInputMessage) => {
+      const hasText = Boolean(message.text)
+      const messageText = message.text?.trim() ?? ""
+      if (!hasText) {
+        return
+      }
+
+      if (message.files?.length) {
+        toast.success("Files attached", {
+          description: `${message.files.length} file(s) attached to message`,
+        })
+      }
+
+      if (isBusy) {
+        enqueue({
+          id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          text: messageText,
+          command: command ? { id: command.id, title: command.title } : null,
+          mentions: mentions.length > 0 ? [...mentions] : undefined,
+        })
+        setInputValue("")
+        return
+      }
+
+      setInputValue("")
+      await doSend(message)
+    },
+    [isBusy, enqueue, command, mentions, doSend]
+  )
+
   return (
     <ChatPanel
       contact={contact}
@@ -212,6 +241,11 @@ export function DraftChatView({
       onOpenContacts={onOpenContacts}
       onOpenConversations={onOpenConversations}
       onNewConversation={onNewConversation}
+      pendingMessages={pendingQueue}
+      onPendingRemove={pendingRemove}
+      onPendingSendNow={pendingSendNow}
+      onPendingMoveUp={pendingMoveUp}
+      onPendingMoveDown={pendingMoveDown}
       className={className}
       {...props}
     />

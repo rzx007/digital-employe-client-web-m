@@ -260,6 +260,7 @@ class StreamRegistry:
             self._flush_to_db(
                 db, stream_msg_id, task.buffer, state="cancelled",
                 content=partial_text,
+                chunk_json=json.dumps(collected_chunks, ensure_ascii=False, default=str),
             )
             raise
 
@@ -274,6 +275,7 @@ class StreamRegistry:
             self._flush_to_db(
                 db, stream_msg_id, task.buffer, state="error",
                 content=partial_text,
+                chunk_json=json.dumps(collected_chunks, ensure_ascii=False, default=str),
                 error_message=str(e),
             )
             evt = task.buffer.add({"error": str(e)})

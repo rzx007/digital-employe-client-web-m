@@ -5,6 +5,7 @@ import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/pr
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
 import { useMessagesQuery } from "@/hooks/use-chat-queries"
+import { usePendingMessages } from "@/hooks/use-pending-messages"
 
 import { ChatPanel } from "./chat-panel"
 import { chatTransport, type ChatViewContact } from "./chat-view-shared"
@@ -49,11 +50,7 @@ export function ConversationChatView({
     messages: initialMessages,
     transport: chatTransport,
     resume: true,
-    onFinish: () => {
-      // queryClient.invalidateQueries({
-      //   queryKey: chatKeys.messages(String(conversationId)),
-      // })
-    },
+    onFinish: () => {},
     onError: (chatError) => {
       toast.error("发送失败", {
         description: chatError.message || "请稍后重试",
@@ -86,6 +83,71 @@ export function ConversationChatView({
   const isSubmitDisabled = React.useMemo(() => {
     return !(inputValue.trim() || status) || status === "submitted" || (isBusy && status !== "streaming")
   }, [inputValue, isBusy, status])
+
+  const doSend = React.useCallback(
+    async (message: PromptInputMessage | string) => {
+      const messageText = (typeof message === "string" ? message : message.text)?.trim() ?? ""
+      if (!messageText) return
+
+      const pendingMeta = {
+        command: command ? { id: command.id, title: command.title } : undefined,
+        mentions: mentions.length > 0 ? mentions : undefined,
+      }
+      const hasPendingMeta = Boolean(
+        pendingMeta.command || pendingMeta.mentions?.length
+      )
+
+      try {
+        await sendMessage(
+          { text: messageText },
+          {
+            body: {
+              attachments: typeof message === "string" ? undefined : message.files,
+              conversationId,
+              skill: command?.title ?? "",
+              metadata: pendingMeta,
+            },
+          }
+        )
+
+        if (hasPendingMeta) {
+          setMessages((prev) => {
+            const next = [...prev]
+            for (let i = next.length - 1; i >= 0; i--) {
+              if (next[i].role === "user") {
+                ; (
+                  next[i] as UIMessage & {
+                    metadata?: typeof pendingMeta
+                  }
+                ).metadata = pendingMeta
+                break
+              }
+            }
+            return next
+          })
+        }
+      } catch (sendError) {
+        toast.error("发送失败", {
+          description:
+            sendError instanceof Error ? sendError.message : "请稍后重试",
+        })
+      }
+    },
+    [conversationId, sendMessage, command, mentions]
+  )
+
+  const {
+    queue: pendingQueue,
+    enqueue,
+    remove: pendingRemove,
+    sendNow: pendingSendNow,
+    moveUp: pendingMoveUp,
+    moveDown: pendingMoveDown,
+  } = usePendingMessages({
+    status,
+    onSend: doSend,
+    onStop: handleStop,
+  })
 
   const handleSendMessage = React.useCallback(
     async (message: PromptInputMessage) => {
@@ -125,55 +187,21 @@ export function ConversationChatView({
         })
       }
 
-      const pendingMeta = {
-        command: command ? { id: command.id, title: command.title } : undefined,
-        mentions: mentions.length > 0 ? mentions : undefined,
-      }
-      const hasPendingMeta = Boolean(
-        pendingMeta.command || pendingMeta.mentions?.length
-      )
-
-      try {
-        setInputValue("")
-
-        await sendMessage(
-          {
-            text: messageText,
-          },
-          {
-            body: {
-              attachments: message.files,
-              conversationId,
-              skill: command?.title ?? "",
-              metadata: pendingMeta,
-            },
-          }
-        )
-
-        if (hasPendingMeta) {
-          setMessages((prev) => {
-            const next = [...prev]
-            for (let i = next.length - 1; i >= 0; i--) {
-              if (next[i].role === "user") {
-                ; (
-                  next[i] as UIMessage & {
-                    metadata?: typeof pendingMeta
-                  }
-                ).metadata = pendingMeta
-                break
-              }
-            }
-            return next
-          })
-        }
-      } catch (sendError) {
-        toast.error("发送失败", {
-          description:
-            sendError instanceof Error ? sendError.message : "请稍后重试",
+      if (isBusy) {
+        enqueue({
+          id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          text: messageText,
+          command: command ? { id: command.id, title: command.title } : null,
+          mentions: mentions.length > 0 ? [...mentions] : undefined,
         })
+        setInputValue("")
+        return
       }
+
+      setInputValue("")
+      await doSend(message)
     },
-    [conversationId, sendMessage, command, mentions]
+    [isBusy, enqueue, command, mentions, doSend]
   )
 
   const displayMessages = React.useMemo(() => {
@@ -200,6 +228,11 @@ export function ConversationChatView({
       onOpenContacts={onOpenContacts}
       onOpenConversations={onOpenConversations}
       onNewConversation={onNewConversation}
+      pendingMessages={pendingQueue}
+      onPendingRemove={pendingRemove}
+      onPendingSendNow={pendingSendNow}
+      onPendingMoveUp={pendingMoveUp}
+      onPendingMoveDown={pendingMoveDown}
       className={className}
       {...props}
     />

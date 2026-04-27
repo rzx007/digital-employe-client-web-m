@@ -108,7 +108,6 @@ export function ChatPromptInput({
   const runtimeModelQuery = useRuntimeModelConfigQuery()
 
   const isCompact = size === "compact"
-  const isStreaming = status === "streaming" || status === "submitted"
   const currentModel = runtimeModelQuery.isLoading
     ? "加载中..."
     : runtimeModelQuery.isError
@@ -131,8 +130,7 @@ export function ChatPromptInput({
             placeholder={placeholder}
             commands={slashCommands}
             mentionCandidates={mentionCandidates}
-            disabled={isStreaming}
-            disabledPlaceholder="AI 正在回复中..."
+            disabled={false}
             className={`resize-none placeholder:text-muted-foreground/60 ${isCompact ? "min-h-[60px] text-base" : "min-h-28 text-lg"
               }`}
           />

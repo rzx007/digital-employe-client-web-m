@@ -401,7 +401,7 @@ export function LexicalPromptInputTextarea({
             <ContentEditable
               data-slot="input-group-control"
               className={cn(
-                "h-full w-full flex-1 resize-none rounded-none border-0 bg-transparent px-4 shadow-none ring-0 focus-visible:outline-none disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent",
+                "h-full w-full flex-1 resize-none  border-0 bg-transparent px-4 shadow-none ring-0 focus-visible:outline-none disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent",
                 className
               )}
             />
