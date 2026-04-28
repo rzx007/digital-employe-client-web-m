@@ -217,6 +217,7 @@ export interface ChatMessage {
   role: "user" | "assistant" | "system"
   content: string
   chunk_json?: string
+  stream_state?: string | null
   extra_meta?: Record<string, any>
   timestamp?: string
   created_at?: string

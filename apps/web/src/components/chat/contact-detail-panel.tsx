@@ -69,7 +69,7 @@ export function ContactDetailPanel({
       {...props}
     >
       <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto max-w-2xl space-y-6 p-6">
+        <div className="mx-auto max-w-3xl space-y-6 p-6">
           <ContactProfileCard
             contact={selectedContact}
             onSendMessage={handleSendMessage}

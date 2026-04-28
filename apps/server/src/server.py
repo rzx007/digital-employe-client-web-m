@@ -72,6 +72,13 @@ def create_app() -> FastAPI:
         # 启动调度器
         TaskSchedulerService.start()
         yield
+        # Cancel all active streams so background tasks flush final state
+        from src.service.stream_registry import registry
+        _active = [cid for cid, t in registry._tasks.items() if t.is_active]
+        if _active:
+            logger.info("Shutting down %d active streams: %s", len(_active), _active)
+            for conv_id in _active:
+                registry.cancel(conv_id)
         TaskSchedulerService.shutdown()
         await conn.close()
         logger.info("AsyncSqliteSaver connection closed")

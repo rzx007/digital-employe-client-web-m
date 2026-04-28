@@ -11,6 +11,7 @@ export interface Message {
   type?: "text" | "image" | "file"
   metadata?: Record<string, any>
   chunkJson?: string
+  streamState?: string | null
 }
 
 export const MOCK_MESSAGES: Record<string, Message[]> = {

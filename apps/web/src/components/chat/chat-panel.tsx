@@ -15,7 +15,7 @@ import {
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import { cn } from "@workspace/ui/lib/utils"
 import { IconSparkles } from "@tabler/icons-react"
-import logo from "@/assets/logo.svg"
+import logo from "@/assets/logo.png"
 import {
   classifyMessageParts,
 } from "@/lib/chat/message-utils"
@@ -28,9 +28,12 @@ import type { SlashCommandItem } from "../lexical-editor/slash-command-plugin"
 import type { MentionCandidate } from "../lexical-editor/mention-plugin"
 import { ChatPanelHeader } from "./chat-panel-header"
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
+import { PendingMessageQueue } from "./pending-message-queue"
+import type { PendingMessage } from "@/hooks/use-pending-messages"
 import { FileChangeCards } from "./file-change-cards"
 import { ThinkingBlock } from "./thinking-block"
 import { ToolGroupBlock } from "./tool-group-block"
+import { MessageLoadingSkeleton } from "./message-loading-skeleton"
 import {
   getContactDisplayName,
   type ChatViewContact,
@@ -111,7 +114,7 @@ function renderClassifiedBlocks(
         return (
           <ToolGroupBlock
             block={block}
-            className="w-full ml-1"
+            className="w-full"
             key={block.key}
           />
         )
@@ -157,6 +160,7 @@ export function ChatPanel({
   status,
   error,
   isDraftMode,
+  isMessagesLoading,
   isSubmitDisabled,
   onInputChange,
   onSend,
@@ -164,6 +168,11 @@ export function ChatPanel({
   onOpenContacts,
   onOpenConversations,
   onNewConversation,
+  pendingMessages,
+  onPendingRemove,
+  onPendingSendNow,
+  onPendingMoveUp,
+  onPendingMoveDown,
   className,
   ...props
 }: React.ComponentProps<"div"> & {
@@ -174,6 +183,7 @@ export function ChatPanel({
   status: "submitted" | "streaming" | "ready" | "error"
   error?: Error
   isDraftMode: boolean
+  isMessagesLoading?: boolean
   isSubmitDisabled: boolean
   onInputChange: (event: PromptChangeEvent) => void
   onSend: (message: PromptInputMessage) => Promise<void>
@@ -181,6 +191,11 @@ export function ChatPanel({
   onOpenContacts?: () => void
   onOpenConversations?: () => void
   onNewConversation?: () => void
+  pendingMessages?: PendingMessage[]
+  onPendingRemove?: (id: string) => void
+  onPendingSendNow?: (id: string) => void
+  onPendingMoveUp?: (id: string) => void
+  onPendingMoveDown?: (id: string) => void
 }) {
   const contactDisplayName = contact
     ? getContactDisplayName(contact)
@@ -294,6 +309,8 @@ export function ChatPanel({
                       </div>
                     </div>
                   </ConversationEmptyState>
+                ) : isMessagesLoading ? (
+                  <MessageLoadingSkeleton />
                 ) : displayMessages.length === 0 ? (
                   <ConversationEmptyState className="py-16">
                     <div className="flex flex-col items-center gap-5">
@@ -418,7 +435,18 @@ export function ChatPanel({
               <ConversationScrollButton />
             </Conversation>
 
-            <div className="border-none p-4">
+            <div className="border-none p-4 max-w-4xl mx-auto w-full">
+              {pendingMessages && pendingMessages.length > 0 && (
+                <div className="mx-auto w-[98%]">
+                  <PendingMessageQueue
+                    queue={pendingMessages}
+                    onRemove={onPendingRemove ?? (() => { })}
+                    onSendNow={onPendingSendNow ?? (() => { })}
+                    onMoveUp={onPendingMoveUp ?? (() => { })}
+                    onMoveDown={onPendingMoveDown ?? (() => { })}
+                  />
+                </div>
+              )}
               <ChatPromptInput
                 value={inputValue}
                 onChange={onInputChange}
@@ -427,7 +455,7 @@ export function ChatPanel({
                 status={status}
                 disabled={isSubmitDisabled}
                 size="compact"
-                className="mx-auto w-full max-w-4xl overflow-hidden shadow-xl"
+                className=" w-full overflow-hidden shadow-xl bg-background/80"
                 slashCommands={slashCommands}
                 mentionCandidates={mentionCandidates}
               />

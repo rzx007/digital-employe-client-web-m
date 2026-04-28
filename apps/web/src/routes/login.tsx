@@ -13,7 +13,7 @@ import {
   IconSettings,
   IconX,
 } from "@tabler/icons-react"
-import logoImage from "@/assets/logo.svg"
+import logoImage from "@/assets/logo.png"
 import bgImage from "@/assets/Group.png"
 import { useAuthStore } from "@/stores/auth-store"
 import { EndpointConfig } from "@/components/login/endpoint-config"
@@ -131,7 +131,7 @@ function LoginPage() {
             : "mx-auto flex w-full max-w-md items-center justify-center gap-2 pb-6"
         )}
       >
-        <img src={logoImage} alt="DigitalEmployee" className="h-7 w-7" />
+        <img src={logoImage} alt="DigitalEmployee" className="h-7 w-9" />
         <h1
           className={cn(
             "text-gray-800 tracking-wider",
@@ -263,15 +263,20 @@ function LoginPage() {
 
             </form>
             {error && <p className="text-xs text-destructive mt-2">{error}</p>}
-            <p
+            <div
               className={cn(
-                "w-full text-center text-xs text-muted-foreground",
+                "w-full text-center",
                 isElectron ? "mt-2" : "mt-4"
               )}
             >
-              还没有账号?{" "}
-              <span className="cursor-pointer text-primary">联系管理员</span>
-            </p>
+              <p className="text-xs text-muted-foreground">
+                还没有账号?{" "}
+                <span className="cursor-pointer text-primary">注册</span>
+              </p>
+              <p className="mt-2 text-[11px] text-muted-foreground/50">
+                上海博般技术数据有限公司
+              </p>
+            </div>
           </div>
         </div>
       )}
