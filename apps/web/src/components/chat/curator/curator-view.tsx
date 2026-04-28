@@ -17,14 +17,13 @@ import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
 import { Spinner } from "@/components/spinner"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 import { classifyMessageParts } from "@/lib/chat/message-utils"
-import { useMessagesQuery, useCuratorConversationQuery } from "@/hooks/use-chat-queries"
+import { useMessagesQuery, useCuratorConversationQuery, useOrchestrationPlansQuery } from "@/hooks/use-chat-queries"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
+import { useAllTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { cancelConversationStream } from "@/api/conversation"
 import { toast } from "sonner"
 import { chatTransport, type ChatViewContact } from "../chat-view-shared"
 import { CuratorChatHeader } from "../curator-chat-header"
-import { useOrchestrationStore } from "@/stores/orchestration-store"
-import { useExecutionReportsStore } from "@/stores/execution-reports-store"
 import { OrchestrationPlanCard } from "../orchestration-plan-card"
 import { TaskProgressBar } from "../task-progress-bar"
 import { ExecutionReportCard } from "../execution-report-card"
@@ -36,10 +35,11 @@ import {
   getMessageMeta,
 } from "../chat-panel"
 import { useEffect } from "react"
+import type { TaskExecution } from "@/types/schedule-monitor"
 
 type TimelineEntry =
   | { kind: "message"; data: UIMessage; ts: number }
-  | { kind: "report"; data: import("@/stores/execution-reports-store").ExecutionReport; ts: number }
+  | { kind: "execution"; data: TaskExecution; ts: number }
 
 export function CuratorView({
   contact,
@@ -130,7 +130,6 @@ export function CuratorView({
           command: command ? { id: command.id, title: command.title } : undefined,
           mentions: mentions.length > 0 ? mentions : undefined,
         }
-        console.log("curatorConversationId", curatorConversationId)
         await sendMessage(
           { text: messageText },
           {
@@ -164,7 +163,6 @@ export function CuratorView({
     async (message: PromptInputMessage) => {
       const messageText = message.text?.trim() ?? ""
       if (!(messageText || message.files?.length)) return
-
       if (isBusy || !curatorConversationId) {
         enqueue({
           id: `pending-${Date.now()}`,
@@ -175,25 +173,32 @@ export function CuratorView({
         setInputValue("")
         return
       }
-
       setInputValue("")
       await doSend(message)
     },
     [isBusy, enqueue, command, mentions, doSend, curatorConversationId]
   )
 
-  const pendingPlan = useOrchestrationStore((s) => s.pendingPlan)
-  const clearPendingPlan = useOrchestrationStore((s) => s.clearPendingPlan)
-  const activePlans = useOrchestrationStore((s) => s.activePlans)
-  const reports = useExecutionReportsStore((s) => s.reports)
+  const { data: plans = [] } = useOrchestrationPlansQuery()
+
+  const pendingPlan = React.useMemo(
+    () => plans.find((p: any) => p.status === "pending_confirmation"),
+    [plans]
+  )
+
+  const executingPlans = React.useMemo(
+    () => plans.filter((p: any) => p.status === "executing"),
+    [plans]
+  )
+
+  const { data: executions = [] } = useAllTaskExecutions()
 
   const handleConfirm = React.useCallback(
     async (planId: number) => {
-      clearPendingPlan()
       const { request } = await import("@/lib/request")
       await request(`/orchestration/plans/${planId}/confirm`, { method: "PUT" })
     },
-    [clearPendingPlan]
+    []
   )
 
   const handleCancel = React.useCallback(
@@ -201,12 +206,11 @@ export function CuratorView({
       import("@/lib/request").then(({ request }) =>
         request(`/orchestration/plans/${planId}/cancel`, { method: "PUT" })
       )
-      clearPendingPlan()
     },
-    [clearPendingPlan]
+    []
   )
 
-  /* ── Build unified timeline ── */
+  /* ── Build unified timeline from DB data ── */
   const timeline: TimelineEntry[] = React.useMemo(() => {
     const entries: TimelineEntry[] = []
 
@@ -214,13 +218,19 @@ export function CuratorView({
       entries.push({ kind: "message", data: msg, ts: msg.createdAt?.getTime() ?? Date.now() })
     }
 
-    for (const report of reports) {
-      entries.push({ kind: "report", data: report, ts: report.ts })
+    for (const exec of executions) {
+      if (exec.run_status !== "pending") {
+        entries.push({
+          kind: "execution",
+          data: exec,
+          ts: new Date(exec.started_at).getTime(),
+        })
+      }
     }
 
     entries.sort((a, b) => a.ts - b.ts)
     return entries
-  }, [displayMessages, reports])
+  }, [displayMessages, executions])
 
   const isDraft = !curatorConversationId
   const contactDisplayName = contact?.curator?.name ?? "总管助手"
@@ -246,9 +256,21 @@ export function CuratorView({
           {pendingPlan && (
             <div className="mx-auto mb-4 max-w-4xl px-4">
               <OrchestrationPlanCard
-                planId={pendingPlan.planId}
-                summary={pendingPlan.summary}
-                tasks={pendingPlan.tasks}
+                planId={pendingPlan.id}
+                summary={pendingPlan.user_input || ""}
+                tasks={(() => {
+                  try {
+                    const json = JSON.parse(pendingPlan.plan_json || "[]")
+                    return json.map((t: any, i: number) => ({
+                      task_id: i,
+                      employee_name: t.employee_name || String(t.employee_id),
+                      task_name: t.task_name || "",
+                      status: "pending" as const,
+                      cron: t.cron || null,
+                      execute_mode: t.cron ? "scheduled" : "immediate",
+                    }))
+                  } catch { return [] }
+                })()}
                 onConfirm={handleConfirm}
                 onCancel={handleCancel}
               />
@@ -256,33 +278,45 @@ export function CuratorView({
           )}
 
           {!pendingPlan &&
-            Object.entries(activePlans).map(([pid, plan]) => (
-              <div key={pid} className="mx-auto mb-4 max-w-4xl px-4">
+            executingPlans.map((plan: any) => (
+              <div key={plan.id} className="mx-auto mb-4 max-w-4xl px-4">
                 <TaskProgressBar
-                  planId={plan.planId}
-                  summary={plan.summary}
-                  total={plan.total}
-                  completed={plan.completed}
-                  tasks={plan.tasks}
+                  planId={plan.id}
+                  summary={plan.user_input || ""}
+                  total={plan.total_tasks || 0}
+                  completed={plan.completed_tasks || 0}
+                  tasks={(() => {
+                    try {
+                      const json = JSON.parse(plan.plan_json || "[]")
+                      return json.map((t: any, i: number) => ({
+                        task_id: i,
+                        employee_name: t.employee_name || String(t.employee_id),
+                        task_name: t.task_name || "",
+                        status: "running" as const,
+                        cron: t.cron || null,
+                        execute_mode: t.cron ? "scheduled" : "immediate",
+                      }))
+                    } catch { return [] }
+                  })()}
                 />
               </div>
             ))}
 
           {timeline.map((entry) => {
-            if (entry.kind === "report") {
-              const r = entry.data
+            if (entry.kind === "execution") {
+              const exec = entry.data
               return (
-                <Message key={`report-${r.ts}-${r.taskId}`} from="assistant" className="mx-auto max-w-4xl">
+                <Message key={`exec-${exec.id}`} from="assistant" className="mx-auto max-w-4xl">
                   <div className="mb-2 flex items-center gap-2">
                     <EmployeeContactAvatar
-                      name={r.employeeName}
+                      name={exec.employee_name || String(exec.employee_id)}
                       avatarClassName="size-6"
                       fallbackClassName="text-[10px]"
                     />
-                    <span className="text-xs text-muted-foreground">{r.employeeName}</span>
+                    <span className="text-xs text-muted-foreground">{exec.employee_name || String(exec.employee_id)}</span>
                   </div>
                   <MessageContent className="w-auto">
-                    <ExecutionReportCard report={r} />
+                    <ExecutionReportCard execution={exec} />
                   </MessageContent>
                 </Message>
               )
@@ -292,8 +326,7 @@ export function CuratorView({
             const isLastAssistantMessage =
               message.role === "assistant" && message.id === lastAssistantMessageId
             const includeFileChanges =
-              message.role === "assistant" &&
-              (!isLastAssistantMessage || hasCurrentTurnEnded)
+              message.role === "assistant" && (!isLastAssistantMessage || hasCurrentTurnEnded)
             const classifiedBlocks = classifyMessageParts(message, { includeFileChanges })
             const messageMeta = getMessageMeta(message)
             const commandMeta =
@@ -318,7 +351,6 @@ export function CuratorView({
                 from={message.role}
                 className="mx-auto max-w-4xl"
               >
-                {/* 头像 */}
                 {message.role === "assistant" && (
                   <div className="mb-2 flex items-center gap-2">
                     {contact?.type === "curator" ? (
@@ -337,12 +369,9 @@ export function CuratorView({
                         fallbackClassName="text-[10px]"
                       />
                     )}
-                    <span className="text-xs text-muted-foreground">
-                      {contactDisplayName}
-                    </span>
+                    <span className="text-xs text-muted-foreground">{contactDisplayName}</span>
                   </div>
                 )}
-
                 <MessageContent className="w-auto">
                   <div className="space-y-3">
                     {classifiedBlocks.length > 0 ? (

@@ -8,7 +8,7 @@ import { submitSkillRating } from "@/api/skill-ratings"
 import { useChatStore } from "@/stores/chat-store"
 import { EmployeeContactAvatar } from "./contact-avatars"
 import { StarRating } from "./star-rating"
-import type { ExecutionReport } from "@/stores/execution-reports-store"
+import type { TaskExecution } from "@/types/schedule-monitor"
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   success: {
@@ -26,26 +26,28 @@ function truncateText(text: string, max: number): string {
 }
 
 export function ExecutionReportCard({
-  report,
+  execution,
   className,
 }: {
-  report: ExecutionReport
+  execution: TaskExecution
   className?: string
 }) {
   const contacts = useChatStore((s) => s.contacts)
   const employee = React.useMemo(
-    () => contacts.find((c) => c.type === "employee" && c.employee?.id === String(report.employeeId)),
-    [contacts, report.employeeId]
+    () => contacts.find((c) => c.type === "employee" && c.employee?.id === String(execution.employee_id)),
+    [contacts, execution.employee_id]
   )
 
   const ratingMutation = useMutation({
     mutationFn: (score: number) =>
       submitSkillRating({
         workspace_id: 1,
-        employee_id: report.employeeId,
+        employee_id: execution.employee_id,
         score,
       }),
   })
+
+  const outputText = execution.output?.content ?? execution.run_result ?? ""
 
   return (
     <div className={cn("flex items-start gap-3 rounded-lg border bg-card p-3 text-sm", className)}>
@@ -53,11 +55,11 @@ export function ExecutionReportCard({
         type="button"
         className="shrink-0 rounded-full transition-all hover:ring-2 hover:ring-primary/30"
         onClick={() => {
-          useChatStore.getState().switchToContact(String(report.employeeId))
+          useChatStore.getState().switchToContact(String(execution.employee_id))
         }}
       >
         <EmployeeContactAvatar
-          name={employee?.employee?.name ?? report.employeeName}
+          name={employee?.employee?.name ?? String(execution.employee_id)}
           avatar={employee?.employee?.avatar}
           avatarClassName="size-8"
           fallbackClassName="text-xs"
@@ -66,24 +68,24 @@ export function ExecutionReportCard({
 
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium">{report.employeeName}</span>
+          <span className="text-xs font-medium">{execution.employee_name || employee?.employee?.name || String(execution.employee_id)}</span>
           <Badge
             variant="outline"
             className={cn(
               "px-1.5 py-0 text-[10px]",
-              STATUS_CONFIG[report.status]?.className ?? ""
+              STATUS_CONFIG[execution.run_status]?.className ?? ""
             )}
           >
-            {STATUS_CONFIG[report.status]?.label ?? report.status}
+            {STATUS_CONFIG[execution.run_status]?.label ?? execution.run_status}
           </Badge>
           <span className="text-[10px] text-muted-foreground">
-            {report.taskName}
+            {execution.task_name}
           </span>
         </div>
 
-        {report.outputText && (
+        {outputText && (
           <p className="text-xs text-muted-foreground leading-relaxed">
-            {truncateText(report.outputText, 200)}
+            {truncateText(outputText, 200)}
           </p>
         )}
 
@@ -93,7 +95,7 @@ export function ExecutionReportCard({
             onChange={(score) => ratingMutation.mutate(score)}
             size={12}
           />
-          {report.conversationId && (
+          {execution.conversation_id && (
             <Button
               variant="ghost"
               size="icon-sm"

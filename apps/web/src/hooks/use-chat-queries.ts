@@ -63,6 +63,20 @@ export function useCuratorConversationQuery() {
   })
 }
 
+export function useOrchestrationPlansQuery() {
+  return useQuery({
+    queryKey: [...chatKeys.all, "orchestration-plans"],
+    queryFn: async () => {
+      const { request } = await import("@/lib/request")
+      const res = await request<{ code: number; data: Array<{ id: number; workspace_id: number; conversation_id: number; user_input: string; plan_json: string; status: string; total_tasks: number; completed_tasks: number; created_at: string; updated_at: string }>}>(
+        "/orchestration/plans?workspace_id=1"
+      )
+      return res?.data ?? []
+    },
+    refetchInterval: 5000,
+  })
+}
+
 export function useCreateConversationMutation() {
   const queryClient = useQueryClient()
   return useMutation({

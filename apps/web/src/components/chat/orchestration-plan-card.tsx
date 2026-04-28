@@ -4,11 +4,17 @@ import * as React from "react"
 import { IconX } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
-import {
-  useOrchestrationStore,
-  type OrchestrationTaskProgress,
-} from "@/stores/orchestration-store"
 import { CronPreviewBadge } from "./cron-preview-badge"
+
+export interface OrchestrationTaskProgress {
+  task_id: number
+  employee_name: string
+  task_name: string
+  status: "pending" | "running" | "success" | "failed"
+  conversation_id?: number
+  cron?: string | null
+  execute_mode: string
+}
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "待执行",
@@ -30,6 +36,7 @@ export function OrchestrationPlanCard({
   tasks,
   onConfirm,
   onCancel,
+  isExecuting,
   className,
 }: {
   planId: number
@@ -37,13 +44,10 @@ export function OrchestrationPlanCard({
   tasks: OrchestrationTaskProgress[]
   onConfirm?: (planId: number) => void
   onCancel?: (planId: number) => void
+  isExecuting?: boolean
   className?: string
 }) {
   const [confirming, setConfirming] = React.useState(false)
-  const activePlans = useOrchestrationStore((s) => s.activePlans)
-
-  const isExecuting =
-    activePlans[planId] || confirming
 
   const handleConfirm = React.useCallback(async () => {
     setConfirming(true)

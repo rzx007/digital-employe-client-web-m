@@ -3,7 +3,7 @@
 import * as React from "react"
 import { cn } from "@workspace/ui/lib/utils"
 import { useChatStore } from "@/stores/chat-store"
-import type { OrchestrationTaskProgress } from "@/stores/orchestration-store"
+import type { OrchestrationTaskProgress } from "./orchestration-plan-card"
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "待执行",

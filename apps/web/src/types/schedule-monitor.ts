@@ -80,6 +80,7 @@ export interface TaskExecution {
   workspace_id: number
   employee_id: number
   skill_id: number
+  conversation_id: number | null
   task_name: string
   run_status: TaskRunStatus
   run_result: string | null
