@@ -12,13 +12,16 @@ class EmployeeGenerationService:
     """员工生成服务类 - 使用AI模型生成员工信息"""
 
     @staticmethod
-    async def get_available_skills() -> list[dict[str, Any]]:
+    async def get_available_skills(token: str | None = None) -> list[dict[str, Any]]:
         """
         获取可用技能列表
         """
         try:
 
-            skills = await agent_interface_service.get_available_skills(status=1)
+            skills = await agent_interface_service.get_available_skills(
+                status=1,
+                token=token,
+            )
             logger.info(f"招聘生成获取到技能数量: {len(skills)}")
             return skills
         except Exception as e:

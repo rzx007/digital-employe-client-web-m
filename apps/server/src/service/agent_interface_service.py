@@ -23,10 +23,16 @@ class AgentInterfaceService:
         else:
             suffix = path if path.startswith("/") else f"/{path}"
         return f"{base_url}{prefix}{suffix}"
- 
+
+    @staticmethod
+    def _headers(token: str | None) -> dict[str, str]:
+        return {"token": token or ""}
 
     async def get_skill_list(
-        self, directory_id: int | None = None, status: int | None = None
+        self,
+        directory_id: int | None = None,
+        status: int | None = None,
+        token: str | None = None,
     ) -> list[dict]:
         """
         获取技能列表
@@ -48,7 +54,11 @@ class AgentInterfaceService:
                 params["directoryId"] = directory_id
 
             async with create_agent_interface_http_client() as client:
-                response = await client.get(url, params=params)
+                response = await client.get(
+                    url,
+                    params=params,
+                    headers=self._headers(token),
+                )
                 logger.info("🚀🚀🚀获取技能列表 url: %s", url)
                 response.raise_for_status()
                 data = response.json()
@@ -71,7 +81,9 @@ class AgentInterfaceService:
             logger.error("获取技能列表失败: %s", e, exc_info=True)
             return []
 
-    async def get_available_skills(self, status: int | None = None) -> list[dict]:
+    async def get_available_skills(
+        self, status: int | None = None, token: str | None = None
+    ) -> list[dict]:
         """
         获取所有可选skills（用于展示给用户选择）
 
@@ -81,7 +93,7 @@ class AgentInterfaceService:
         Returns:
             List[Dict]: 简化字段的技能列表（id, skillName, description, directoryId, directoryName）
         """
-        skills = await self.get_skill_list(status=status)
+        skills = await self.get_skill_list(status=status, token=token)
         available = []
         for skill in skills:
             available.append(
@@ -95,7 +107,9 @@ class AgentInterfaceService:
             )
         return available
 
-    async def get_skill_detail(self, skill_id: int) -> dict | None:
+    async def get_skill_detail(
+        self, skill_id: int, token: str | None = None
+    ) -> dict | None:
         """
         获取技能详情
 
@@ -111,7 +125,11 @@ class AgentInterfaceService:
                 logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
                 return None
             async with create_agent_interface_http_client() as client:
-                response = await client.get(url, params={"id": skill_id})
+                response = await client.get(
+                    url,
+                    params={"id": skill_id},
+                    headers=self._headers(token),
+                )
                 response.raise_for_status()
                 data = response.json()
                 if isinstance(data, dict) and "data" in data:
@@ -121,7 +139,9 @@ class AgentInterfaceService:
             logger.error("获取技能详情失败: %s", e, exc_info=True)
             return None
 
-    async def get_skill_function_format(self, skill_id: int) -> dict | None:
+    async def get_skill_function_format(
+        self, skill_id: int, token: str | None = None
+    ) -> dict | None:
         """
         获取技能的Function Calling格式
 
@@ -137,7 +157,11 @@ class AgentInterfaceService:
                 logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
                 return None
             async with create_agent_interface_http_client() as client:
-                response = await client.get(url, params={"id": skill_id})
+                response = await client.get(
+                    url,
+                    params={"id": skill_id},
+                    headers=self._headers(token),
+                )
                 response.raise_for_status()
                 data = response.json()
                 if isinstance(data, dict) and "data" in data:
@@ -147,7 +171,9 @@ class AgentInterfaceService:
             logger.error("获取技能Function Calling格式失败: %s", e, exc_info=True)
             return None
 
-    async def get_skill_function_format_batch(self, skill_ids: list[int]) -> list[dict]:
+    async def get_skill_function_format_batch(
+        self, skill_ids: list[int], token: str | None = None
+    ) -> list[dict]:
         """
         批量获取技能的Function Calling格式
 
@@ -163,7 +189,11 @@ class AgentInterfaceService:
                 logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
                 return []
             async with create_agent_interface_http_client() as client:
-                response = await client.post(url, json=skill_ids)
+                response = await client.post(
+                    url,
+                    json=skill_ids,
+                    headers=self._headers(token),
+                )
                 response.raise_for_status()
                 data = response.json()
                 if isinstance(data, dict) and "data" in data:
@@ -173,7 +203,7 @@ class AgentInterfaceService:
             logger.error("批量获取技能Function Calling格式失败: %s", e, exc_info=True)
             return []
 
-    async def get_directory_tree(self) -> list[dict]:
+    async def get_directory_tree(self, token: str | None = None) -> list[dict]:
         """
         获取技能目录树
 
@@ -186,7 +216,7 @@ class AgentInterfaceService:
                 logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
                 return []
             async with create_agent_interface_http_client() as client:
-                response = await client.get(url)
+                response = await client.get(url, headers=self._headers(token))
                 response.raise_for_status()
                 data = response.json()
                 if isinstance(data, dict) and "data" in data:
@@ -196,7 +226,9 @@ class AgentInterfaceService:
             logger.error("获取技能目录树失败: %s", e, exc_info=True)
             return []
 
-    async def download_skill_zip(self, skill_id: int) -> bytes | None:
+    async def download_skill_zip(
+        self, skill_id: int, token: str | None = None
+    ) -> bytes | None:
         """
         下载单个技能的ZIP包
 
@@ -212,7 +244,7 @@ class AgentInterfaceService:
                 logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
                 return None
             async with create_agent_interface_http_client() as client:
-                response = await client.get(url)
+                response = await client.get(url, headers=self._headers(token))
                 response.raise_for_status()
                 return response.content
         except Exception as e:
