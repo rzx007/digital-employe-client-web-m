@@ -21,6 +21,14 @@ def get_default_skill_path() -> str:
     return str(Path.home() / ".digital-employee" / "employees-skills")
 
 
+def get_default_builtin_skills_path() -> str:
+    return str(Path.home() / ".digital-employee" / "build-in-skills")
+
+
+def get_default_local_skills_path() -> str:
+    return str(Path.home() / ".digital-employee" / "local-skills")
+
+
 def get_default_logs_dir() -> Path:
     return Path.home() / ".digital-employee" / "logs"
 
@@ -57,6 +65,8 @@ class Settings:
     default_workspace_name: str | None
     sqlite_path: str
     skill_path: str
+    builtin_skills_path: str
+    local_skills_path: str
     artifacts_path: str
     remote_api_base_url: str | None
     employee_zip_path: str | None
@@ -79,6 +89,10 @@ class Settings:
     mcp_base_url: str | None = None
     agent_interface_base_url: str | None = None
     agent_interface_skill_prefix: str = "/aios/skill"
+    skill_dir_path: str = "/api/v1/client/skills/directories"
+    skill_remote_import_path: str = "/api/v1/client/skills/import"
+    skill_name_validate_path: str = "/api/v1/client/skills/name/exists"
+    client_skill_import_max_bytes: int = 52428800
     login_path: str | None = None
     login_url: str | None = None
     execute_timeout: int = 600
@@ -138,7 +152,21 @@ def get_settings() -> Settings:
         _get_kv_value(kv_data, "SKILL_REMOTE_DETAIL_PATH")
         or "/api/v1/client/skills/export/full/{skill_id}"
     )
-
+    skill_dir_path = (
+        _get_kv_value(kv_data, "SKILL_DIR")
+        or "/api/v1/client/skills/directories"
+    )
+    skill_remote_import_path = (
+        _get_kv_value(kv_data, "SKILL_REMOTE_IMPORT")
+        or "/api/v1/client/skills/import"
+    )
+    skill_name_validate_path = (
+        _get_kv_value(kv_data, "SKILL_NAME_VALIDATE")
+        or "/api/v1/client/skills/name/exists"
+    )
+    client_skill_import_max_bytes_raw = _get_kv_value(
+        kv_data, "CLIENT_SKILL_IMPORT_MAX_BYTES"
+    )
     mcp_remote_list_url = _get_kv_value(
         kv_data, "MCP_REMOTE_LIST_PATH"
     ) or _get_kv_value(kv_data, "MCP_REMOTE_LIST_URL")
@@ -153,6 +181,14 @@ def get_settings() -> Settings:
     login_path = _get_kv_value(kv_data, "LOGIN_PATH") or "/yc/login"
     sqlite_path = get_default_sqlite_path()
     skill_path = get_default_skill_path()
+    builtin_skills_path = (
+        _get_kv_value(kv_data, "BUILTIN_SKILLS_PATH")
+        or get_default_builtin_skills_path()
+    )
+    local_skills_path = (
+        _get_kv_value(kv_data, "LOCAL_SKILLS_PATH")
+        or get_default_local_skills_path()
+    )
     chat_history_max_messages_raw = _get_kv_value(kv_data, "CHAT_HISTORY_MAX_MESSAGES")
     try:
         chat_history_max_messages = int(chat_history_max_messages_raw or "30")
@@ -168,6 +204,12 @@ def get_settings() -> Settings:
         default_workspace_id = int(default_workspace_id_raw or "1")
     except ValueError:
         default_workspace_id = 1
+    try:
+        client_skill_import_max_bytes = int(
+            client_skill_import_max_bytes_raw or "52428800"
+        )
+    except ValueError:
+        client_skill_import_max_bytes = 52428800
 
     return Settings(
         default_workspace_root=_get_kv_value(kv_data, "DEFAULT_WORKSPACE_ROOT"),
@@ -176,6 +218,8 @@ def get_settings() -> Settings:
         or "默认的工作空间",
         sqlite_path=resolve_configured_path(sqlite_path),
         skill_path=resolve_configured_path(skill_path),
+        builtin_skills_path=resolve_configured_path(builtin_skills_path),
+        local_skills_path=resolve_configured_path(local_skills_path),
         artifacts_path=get_default_artifacts_path(),
         remote_api_base_url=remote_api_base_url,
         employee_zip_path=employee_zip_path,
@@ -201,6 +245,10 @@ def get_settings() -> Settings:
             kv_data, "AGENT_INTERFACE_SKILL_PREFIX"
         )
         or "/aios/skill",
+        skill_dir_path=skill_dir_path,
+        skill_remote_import_path=skill_remote_import_path,
+        skill_name_validate_path=skill_name_validate_path,
+        client_skill_import_max_bytes=client_skill_import_max_bytes,
         login_url=join_base_and_path(platform_base_url, login_path),
     )
 

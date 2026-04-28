@@ -51,3 +51,15 @@ def create_agent_interface_http_client():
     return create_http_client(
         timeout_connect=10.0, timeout_read=30.0, timeout_write=30.0, timeout_pool=5.0
     )
+
+
+def create_agent_interface_upload_http_client():
+    """
+    创建用于Agent Interface文件上传的专用HTTP客户端
+
+    Returns:
+        httpx.AsyncClient: 适配大文件上传和较长处理时延
+    """
+    return create_http_client(
+        timeout_connect=10.0, timeout_read=300.0, timeout_write=120.0, timeout_pool=30.0
+    )

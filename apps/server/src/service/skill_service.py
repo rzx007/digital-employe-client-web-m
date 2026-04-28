@@ -6,7 +6,11 @@ from typing import Any
 import httpx
 from fastapi import HTTPException, status
 
-from src.core.config import get_settings
+from src.core.config import get_settings, join_base_and_path
+from src.utils.http_client import (
+    create_agent_interface_http_client,
+    create_agent_interface_upload_http_client,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -15,13 +19,30 @@ class SkillService:
     @staticmethod
     def _build_url(path: str) -> str:
         settings = get_settings()
-        base_url = (settings.skill_remote_base_url or "").strip().rstrip("/")
-        if not base_url:
+        merged = join_base_and_path(settings.skill_remote_base_url, path)
+        if not merged:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="未配置远程技能服务地址（REMOTE_API_BASE_URL）。",
             )
-        return f"{base_url}{path}"
+        return merged
+
+    @staticmethod
+    def _ensure_success_payload(payload: Any) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="远程技能服务响应格式错误。",
+            )
+        code = payload.get("code")
+        if code not in (1, 200, "1", "200", None):
+            msg = payload.get("msg") or "远程技能服务返回失败。"
+            logger.error("远程技能服务返回失败: %s", msg)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=str(msg),
+            )
+        return payload
 
     @staticmethod
     def _request_remote(path: str, token: str) -> dict[str, Any]:
@@ -62,19 +83,7 @@ class SkillService:
                 detail=f"远程技能服务请求失败：{exc}",
             ) from exc
 
-        if not isinstance(payload, dict):
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="远程技能服务响应格式错误。",
-            )
-        if payload.get("code") != 1:
-            msg = payload.get("msg") or "远程技能服务返回失败。"
-            logger.error("远程技能服务返回失败: %s", msg, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=str(msg),
-            )
-        return payload
+        return SkillService._ensure_success_payload(payload)
 
     @staticmethod
     def list_remote_skills(token: str) -> list[dict[str, Any]]:
@@ -130,3 +139,117 @@ class SkillService:
                 detail="远程技能详情数据格式错误。",
             )
         return data
+
+    @staticmethod
+    async def get_remote_directories(flat: bool, token: str | None) -> Any:
+        settings = get_settings()
+        url = SkillService._build_url(settings.skill_dir_path)
+        headers = {"token": token or ""}
+        params = {"flat": "true" if flat else "false"}
+        try:
+            async with create_agent_interface_http_client() as client:
+                response = await client.get(url, headers=headers, params=params)
+                response.raise_for_status()
+                payload = SkillService._ensure_success_payload(response.json())
+                return payload.get("data")
+        except httpx.TimeoutException as exc:
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail=f"远程技能目录请求超时：{exc}",
+            ) from exc
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"远程技能目录请求失败：{exc.response.status_code}",
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"远程技能目录请求异常：{exc}",
+            ) from exc
+
+    @staticmethod
+    async def remote_skill_name_exists(skill_name: str, token: str | None) -> bool:
+        settings = get_settings()
+        url = SkillService._build_url(settings.skill_name_validate_path)
+        headers = {"token": token or ""}
+        payload = {"skillName": skill_name}
+        try:
+            async with create_agent_interface_http_client() as client:
+                response = await client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                data = SkillService._ensure_success_payload(response.json()).get("data")
+                if not isinstance(data, dict):
+                    return False
+                exists = data.get("exists")
+                if isinstance(exists, bool):
+                    return exists
+                name = data.get("skillName") or data.get("skill_name")
+                return bool(name)
+        except httpx.TimeoutException as exc:
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail=f"远程技能重名校验超时：{exc}",
+            ) from exc
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"远程技能重名校验失败：{exc.response.status_code}",
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"远程技能重名校验异常：{exc}",
+            ) from exc
+
+    @staticmethod
+    async def remote_import_skill(
+        file_name: str,
+        file_bytes: bytes,
+        directory_id: int,
+        display_name_zh: str | None,
+        uploaded_by_user_id: str | None,
+        token: str | None,
+    ) -> dict[str, Any]:
+        settings = get_settings()
+        url = SkillService._build_url(settings.skill_remote_import_path)
+        headers = {"token": token or ""}
+        form_data = {
+            "directoryId": str(directory_id),
+            "uploadedByUserId": str(uploaded_by_user_id or "1"),
+        }
+        if display_name_zh:
+            form_data["displayNameZh"] = display_name_zh
+        files = {
+            "file": (file_name, file_bytes, "application/zip"),
+        }
+        try:
+            async with create_agent_interface_upload_http_client() as client:
+                response = await client.post(
+                    url,
+                    headers=headers,
+                    data=form_data,
+                    files=files,
+                )
+                response.raise_for_status()
+                payload = SkillService._ensure_success_payload(response.json())
+                return {
+                    "code": payload.get("code", 1),
+                    "msg": payload.get("msg", "操作成功"),
+                    "data": payload.get("data"),
+                }
+        except httpx.TimeoutException as exc:
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail=f"远程技能导入超时：{exc}",
+            ) from exc
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"远程技能导入失败：{exc.response.status_code}",
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"远程技能导入异常：{exc}",
+            ) from exc
