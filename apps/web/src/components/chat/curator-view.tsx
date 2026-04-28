@@ -1,1 +1,1 @@
-export { CuratorView } from "./curator/curator-view-root"
+export { CuratorView } from "./curator/curator-view"

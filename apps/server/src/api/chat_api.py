@@ -15,6 +15,15 @@ from src.service.resource_service import ResourceService
 router = APIRouter(tags=["对话"])
 
 
+@router.get("/chat/curator/conversation", response_model=ResponseBase[ConversationRead])
+def get_curator_conversation(
+    db: Session = Depends(get_db),
+) -> ResponseBase[ConversationRead]:
+    """获取或创建总管对话（每应用唯一）。"""
+    conversation = ChatService.ensure_curator_conversation(db)
+    return ResponseBase(data=conversation)
+
+
 @router.post("/chat/conversations", response_model=ResponseBase[ConversationRead])
 def create_conversation(
     payload: ConversationCreate,

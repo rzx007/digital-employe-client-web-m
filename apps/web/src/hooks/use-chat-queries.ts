@@ -16,9 +16,11 @@ import {
 import {
   fetchConversationResources,
   fetchResourceContent,
+  fetchCuratorConversation,
 } from "@/api/conversation"
 import type { Contact } from "@/lib/mock-data/ai-employees"
 import type { Conversation } from "@/lib/mock-data/conversations"
+import type { ConversationItem } from "@/api/types"
 import type { Message } from "@/lib/mock-data/messages"
 import { chatKeys } from "@/lib/query-keys/chat"
 
@@ -50,9 +52,19 @@ export function useMessagesQuery(conversationId: string | number | null) {
   })
 }
 
+export function useCuratorConversationQuery() {
+  return useQuery({
+    queryKey: chatKeys.curator(),
+    queryFn: async () => {
+      const res = await fetchCuratorConversation()
+      return res?.data ?? null
+    },
+    staleTime: Infinity,
+  })
+}
+
 export function useCreateConversationMutation() {
   const queryClient = useQueryClient()
-
   return useMutation({
     mutationFn: createConversation,
     onSuccess: (conversation) => {

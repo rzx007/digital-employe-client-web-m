@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
 from src.models.chat_group import ChatGroup
+from src.schemas.conversation import ConversationRead
 from src.models.conversation import Conversation, ConversationMessage
 from src.models.employee import Employee
 from src.models.workspace import Workspace, cst_now
@@ -261,6 +262,29 @@ class ChatService:
                 continue
             payload.append({"role": message.role, "content": message.content})
         return payload
+
+
+    @staticmethod
+    def ensure_curator_conversation(db: Session):
+        """获取或创建总管对话（每工作空间仅一条）。"""
+        conv = db.scalars(
+            select(Conversation).where(
+                Conversation.target_type == "curator"
+            ).limit(1)
+        ).first()
+        if conv:
+            return ConversationRead.model_validate(conv)
+
+        conv = Conversation(
+            workspace_id=1,
+            target_type="curator",
+            target_id=1,
+            title="总管对话",
+        )
+        db.add(conv)
+        db.commit()
+        db.refresh(conv)
+        return ConversationRead.model_validate(conv)
 
 
     @staticmethod

@@ -25,32 +25,20 @@ export function ChatView({
   const isDraftConversation = useChatStore((s) => s.isDraftConversation)
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
   const contact = useChatStore((s) => s.getSelectedContact())
+
   useConversationAutoSelect(selectedContactId, contact)
   const { data: conversations = [] } = useConversationsQuery(
     selectedContactId,
     contact
   )
 
+  if (contact?.type === "curator") {
+    return <CuratorView contact={contact} className={cn(className)} {...props} />
+  }
+
   const selectedConversation = conversations.find(
     (conversation) => String(conversation.id) === String(selectedConversationId)
   )
-
-  if (contact?.type === "curator") {
-    return (
-      <CuratorView
-        contact={contact}
-        conversations={conversations}
-        selectedConversation={selectedConversation}
-        selectedConversationId={selectedConversationId}
-        isDraftConversation={isDraftConversation}
-        onOpenContacts={onOpenContacts}
-        onOpenConversations={onOpenConversations}
-        onNewConversation={onNewConversation}
-        className={cn(className)}
-        {...props}
-      />
-    )
-  }
 
   return isDraftConversation || !selectedConversationId ? (
     <DraftChatView

@@ -66,7 +66,7 @@ function getConversationIdFromBody(body: object | undefined) {
 
   const { conversationId } = body as { conversationId?: unknown }
 
-  return typeof conversationId === "string" ? conversationId : null
+  return conversationId ?? null
 }
 
 function getSkillFromBody(body: any): string {
@@ -192,7 +192,7 @@ export class LangChainChatTransport<
     const stream = useMock
       ? createMockSSEStream(SeeData)
       : await createEventSourceResponse({
-        conversationId,
+        conversationId: conversationId as string,
         skill,
         prompt: latestText,
         metadata,

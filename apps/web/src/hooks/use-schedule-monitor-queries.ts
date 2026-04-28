@@ -131,8 +131,6 @@ export function useTaskSummary(employeeId: string | null) {
   })
 }
 
-export { CURATOR_PINNED_CONVERSATION_ID } from "@/lib/constants"
-
 export function useAllTaskExecutions() {
   return useQuery({
     queryKey: [...chatKeys.all, "all-task-executions"],

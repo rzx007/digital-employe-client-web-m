@@ -94,6 +94,10 @@ export async function fetchConversationResources(
   )
 }
 
+export async function fetchCuratorConversation() {
+  return request<ApiResponse<ConversationItem>>(`/chat/curator/conversation`)
+}
+
 export async function fetchResourceContent(
   conversationId: number | string,
   path: string

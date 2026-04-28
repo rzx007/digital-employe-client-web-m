@@ -13,4 +13,5 @@ export const chatKeys = {
     [...chatKeys.all, "resources", conversationId] as const,
   resourceContent: (conversationId: string, path: string) =>
     [...chatKeys.all, "resource-content", conversationId, path] as const,
-}
+  curator: () => [...chatKeys.all, "curator"] as const,
+} as const

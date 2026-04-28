@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useOrchestrationStore } from "@/stores/orchestration-store"
+import { useExecutionReportsStore } from "@/stores/execution-reports-store"
 
 export type WorkspaceEvent =
   | { type: "task_started"; task_id: number; conversation_id: number; employee_id: number; employee_name: string; task_name: string }
@@ -20,6 +21,8 @@ let _reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let _reconnectCount = 0
 let _isConnected = false
 let _connectionListeners: Set<(connected: boolean) => void> = new Set()
+
+const _taskCache = new Map<number, { employee_id: number; employee_name: string; task_name: string }>()
 
 function notifyConnectionChange(connected: boolean) {
   _isConnected = connected
@@ -60,6 +63,11 @@ function bridgeEventToStore(event: WorkspaceEvent) {
         break
       }
       case "task_started": {
+        _taskCache.set(event.task_id, {
+          employee_id: event.employee_id,
+          employee_name: event.employee_name,
+          task_name: event.task_name,
+        })
         for (const [planId, plan] of Object.entries(store.activePlans)) {
           const task = plan.tasks.find((t) => t.task_id === event.task_id)
           if (task) {
@@ -78,11 +86,37 @@ function bridgeEventToStore(event: WorkspaceEvent) {
         for (const [planId] of Object.entries(store.activePlans)) {
           store.updateTaskProgress(Number(planId), event.task_id, "success", event.conversation_id)
         }
+        const cached = _taskCache.get(event.task_id)
+        if (cached) {
+          useExecutionReportsStore.getState().pushReport({
+            taskId: event.task_id,
+            conversationId: event.conversation_id,
+            employeeId: cached.employee_id,
+            employeeName: cached.employee_name,
+            taskName: cached.task_name,
+            status: "success",
+            ts: Date.now(),
+          })
+          _taskCache.delete(event.task_id)
+        }
         break
       }
       case "task_failed": {
         for (const [planId] of Object.entries(store.activePlans)) {
           store.updateTaskProgress(Number(planId), event.task_id, "failed", event.conversation_id)
+        }
+        const cachedFail = _taskCache.get(event.task_id)
+        if (cachedFail) {
+          useExecutionReportsStore.getState().pushReport({
+            taskId: event.task_id,
+            conversationId: event.conversation_id,
+            employeeId: cachedFail.employee_id,
+            employeeName: cachedFail.employee_name,
+            taskName: cachedFail.task_name,
+            status: "failed",
+            ts: Date.now(),
+          })
+          _taskCache.delete(event.task_id)
         }
         break
       }

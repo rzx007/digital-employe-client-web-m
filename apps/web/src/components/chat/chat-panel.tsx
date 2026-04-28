@@ -59,7 +59,7 @@ type MessageMeta = {
   mentions?: Array<{ id?: string; name?: string }>
 }
 
-function getMessageMeta(message: UIMessage): MessageMeta | null {
+export function getMessageMeta(message: UIMessage): MessageMeta | null {
   if (!message || typeof message !== "object") {
     return null
   }
@@ -99,7 +99,7 @@ function MessageMetaBadges({
   )
 }
 
-function renderClassifiedBlocks(
+export function renderClassifiedBlocks(
   blocks: import("@/lib/chat/message-classifier").ClassifiedBlock[],
   options?: {
     commandMeta?: CommandMeta
@@ -317,7 +317,7 @@ export function ChatPanel({
                       <img
                         src={logo}
                         alt="Logo"
-                        className="h-10 w-10 opacity-50"
+                        className="h-10 w-14 opacity-50"
                       />
                       <div className="space-y-1.5 text-center">
                         <h3 className="text-sm font-medium">开始新对话</h3>
