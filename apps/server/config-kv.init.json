@@ -18,5 +18,11 @@
   "MCP_REMOTE_DETAIL_PATH": "/digital/api/v1/client/mcp/export/{mcp_id}",
   "MCP_CLIENT_BASE_PATH": "/llm/aios/mcp/client/tool/call",
   "AGENT_INTERFACE_SKILL_PREFIX": "/llm/aios/skill/list",
-  "LOGIN_PATH": "/yc/login"
+  "LOGIN_PATH": "/yc/login",
+  "SKILL_DIR": "/api/v1/client/skills/directories",
+  "SKILL_REMOTE_IMPORT": "/api/v1/client/skills/import",
+  "SKILL_NAME_VALIDATE": "/api/v1/client/skills/name/exists",
+  "BUILTIN_SKILLS_PATH": "~/.digital-employee/build-in-skills",
+  "LOCAL_SKILLS_PATH": "~/.digital-employee/local-skills",
+  "CLIENT_SKILL_IMPORT_MAX_BYTES": "52428800"
 }

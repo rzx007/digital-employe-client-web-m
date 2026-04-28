@@ -62,6 +62,7 @@ src/service/employee_generation_service.py
 src/service/employee_service.py
 src/service/file_service.py
 src/service/group_service.py
+src/service/local_skill_service.py
 src/service/mcp_service.py
 src/service/modal_service.py
 src/service/resource_service.py

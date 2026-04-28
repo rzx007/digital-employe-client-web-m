@@ -19,6 +19,7 @@ from src.service.config_kv_service import ConfigKvService
 from src.service.task_scheduler_service import TaskSchedulerService
 from src.service.task_service import TaskService
 from src.service.workspace_service import WorkspaceService
+from src.service.local_skill_service import LocalSkillService
 from src.service.agent import init_checkpointer
 from src.core.config import get_settings, resolve_sqlite_path
 from contextlib import asynccontextmanager
@@ -44,6 +45,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         init_db()
+        LocalSkillService.seed_builtin_skills()
         
         # 保存主事件循环引用，供 sync context 调度协程
         from src.service.orchestrator_agent import set_main_event_loop

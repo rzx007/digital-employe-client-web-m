@@ -21,6 +21,7 @@ Requires-Dist: fastapi>=0.104.0
 Requires-Dist: uvicorn>=0.24.0
 Requires-Dist: jwt>=1.4.0
 Requires-Dist: PyJWT>=2.8.0
+Requires-Dist: python-multipart>=0.0.27
 
 # Actus Employee Client
 

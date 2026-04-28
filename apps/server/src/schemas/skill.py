@@ -26,3 +26,35 @@ class SkillRead(BaseModel):
     status: int | None = None
     createTime: str | None = None
     updateTime: str | None = None
+
+
+class SkillNameExistsRequest(BaseModel):
+    skillName: str
+
+
+class SkillNameExistsResult(BaseModel):
+    exists: bool
+
+
+class LocalSkillItem(BaseModel):
+    skillName: str
+    path: str
+    directoryId: int | None = None
+    hasSkillMd: bool
+    importedAt: str | None = None
+
+
+class LocalSkillDetail(BaseModel):
+    skillName: str
+    path: str
+    directoryId: int | None = None
+    importedAt: str | None = None
+    skillMdContent: str | None = None
+    files: list[str]
+
+
+class LocalSkillImportResult(BaseModel):
+    skillName: str
+    directoryId: int
+    path: str
+    overwritten: bool = False
