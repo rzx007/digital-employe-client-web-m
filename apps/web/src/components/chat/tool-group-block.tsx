@@ -28,7 +28,7 @@ function hasError(tools: ToolGroupItem[]): boolean {
 export function ToolGroupBlock({
   block,
   className,
-  simpleMode = true,
+  simpleMode = false,
   ...props
 }: ToolGroupBlockProps) {
   const ToolRow = simpleMode ? ToolActionRowSimple : ToolActionRow

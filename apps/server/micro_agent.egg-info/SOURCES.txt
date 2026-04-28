@@ -14,6 +14,7 @@ src/api/group_api.py
 src/api/login_api.py
 src/api/mcp_api.py
 src/api/model_api.py
+src/api/orchestration_api.py
 src/api/skill_api.py
 src/api/skill_rating_api.py
 src/api/task_api.py
@@ -36,6 +37,7 @@ src/models/employee_mcp.py
 src/models/employee_skill.py
 src/models/employee_task.py
 src/models/group_member.py
+src/models/orchestration_plan.py
 src/models/response.py
 src/models/skill_rating.py
 src/models/task_execution_log.py
@@ -47,6 +49,7 @@ src/schemas/conversation.py
 src/schemas/employee.py
 src/schemas/login.py
 src/schemas/mcp.py
+src/schemas/orchestration.py
 src/schemas/resource.py
 src/schemas/skill.py
 src/schemas/skill_rating.py
@@ -65,6 +68,7 @@ src/service/group_service.py
 src/service/local_skill_service.py
 src/service/mcp_service.py
 src/service/modal_service.py
+src/service/orchestrator_agent.py
 src/service/resource_service.py
 src/service/skill_confirm_url.py
 src/service/skill_invocation_inference.py
@@ -74,5 +78,6 @@ src/service/skill_shell_backend.py
 src/service/stream_registry.py
 src/service/task_scheduler_service.py
 src/service/task_service.py
+src/service/workspace_events.py
 src/service/workspace_service.py
 src/utils/http_client.py

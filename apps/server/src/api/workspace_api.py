@@ -137,15 +137,18 @@ async def workspace_events(
     """工作空间级 SSE 事件通道，推送任务启动/完成/失败通知。"""
 
     async def event_generator():
-        queue = WorkspaceEventBus.subscribe(workspace_id)
+        import asyncio
+        q = WorkspaceEventBus.subscribe(workspace_id)
+        loop = asyncio.get_running_loop()
         try:
             while True:
-                data = await queue.get()
+                # queue.Queue.get() is blocking, run in thread executor
+                data = await loop.run_in_executor(None, q.get)
                 yield f"data: {data}\n\n"
         except asyncio.CancelledError:
             pass
         finally:
-            WorkspaceEventBus.unsubscribe(workspace_id, queue)
+            WorkspaceEventBus.unsubscribe(workspace_id, q)
 
     return StreamingResponse(
         event_generator(),

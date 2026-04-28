@@ -318,6 +318,7 @@ export function CuratorView({
                 from={message.role}
                 className="mx-auto max-w-4xl"
               >
+                {/* 头像 */}
                 {message.role === "assistant" && (
                   <div className="mb-2 flex items-center gap-2">
                     {contact?.type === "curator" ? (

@@ -185,6 +185,12 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 4. 调用 `create_orchestration_plan` 将编排计划落库，生成确认卡片
 5. 用户确认后，调用 `confirm_orchestration_plan` 开始执行
 
+## 确认执行规则（必须遵守）
+- 当你调用 `create_orchestration_plan` 后，你会收到一个 plan_id
+- 当用户回复「确认」「执行」「可以」「没问题」「OK」等确认词时，你必须**立即调用** `confirm_orchestration_plan(plan_id=<id>)`，不得只口头回复
+- 你**只能**通过调用 `confirm_orchestration_plan` 工具来执行计划，口头说"开始执行"没有任何效果
+- 如果用户询问进度或修改计划，先调用 `confirm_orchestration_plan` 再回复
+
 ## 子任务拆解规则
 - 每个子任务必须对应一个具体的数字员工，不要自己编造
 - 任务 prompt 要写清楚具体做什么，输出什么，格式如何
@@ -197,6 +203,8 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 - 始终用中文回复
 - 生成编排计划后，向用户展示摘要并请求确认
 - 确认后开始执行，执行中汇报进度
+
+重要：你所有的工具调用都会产生实际效果。如果你只回复文字而不调用工具，什么事情都不会发生。尤其是编排计划，必须通过 confirm_orchestration_plan 工具来执行。
 """
 
 
@@ -281,14 +289,25 @@ def create_orchestration_plan(summary: str, tasks: str) -> str:
     db.commit()
 
     from src.service.workspace_events import WorkspaceEventBus
+    tasks_for_event: list[dict] = []
+    for t in task_list:
+        emp = db.get(Employee, t["employee_id"])
+        tasks_for_event.append({
+            "task_id": t.get("task_name", ""),
+            "task_name": t.get("task_name", ""),
+            "employee_name": emp.name if emp else "",
+            "cron": t.get("cron"),
+            "execute_mode": "scheduled" if t.get("cron") else "immediate",
+        })
     WorkspaceEventBus.push(workspace_id, {
         "type": "orchestration_plan_generated",
         "plan_id": plan.id,
         "summary": summary,
         "total_tasks": len(task_list),
+        "tasks": tasks_for_event,
     })
 
-    return f"编排计划 #{plan.id} 已生成，包含 {len(task_list)} 个子任务，请确认后开始执行。"
+    return f"编排计划 #{plan.id} 已生成，包含 {len(task_list)} 个子任务。\n请回复「确认」开始执行。记住：只有调用 confirm_orchestration_plan({plan.id}) 工具才能执行。"
 
 
 @tool
@@ -343,13 +362,31 @@ def _start_immediate_tasks(
     plan: OrchestrationPlan,
     workspace_id: int,
 ) -> list[str]:
+    """
+    启动无需等待或依赖已满足的即时任务。
+
+    该函数解析编排计划中的依赖关系，构建任务依赖图，并尝试启动所有当前可执行的任务。
+    它会检查员工是否存在、是否达到并发上限，并处理任务启动过程中的异常。
+    对于因依赖未满足或员工容量限制而无法启动的任务，会在最后生成相应的状态消息。
+
+    Args:
+        db (Session): 数据库会话对象，用于查询员工信息和启动任务会话。
+        tasks (list[EmployeeTask]): 待处理的任务列表。
+        plan (OrchestrationPlan): 编排计划对象，包含任务依赖关系的JSON描述。
+        workspace_id (int): 工作空间ID，用于创建任务会话。
+
+    Returns:
+        list[str]: 任务执行结果的消息列表，包含成功启动、跳过、失败及Pending原因的描述。
+    """
     plan_json_obj: list[dict] = json.loads(plan.plan_json or "[]")
 
+    # 构建任务ID到任务对象的映射，以及任务ID到原始顺序索引的映射
     task_lookup: dict[int, EmployeeTask] = {t.id: t for t in tasks}
     task_order: dict[int, int] = {}
     for i, t in enumerate(tasks):
         task_order[t.id] = i
 
+    # 解析依赖关系，构建依赖地图和每个任务的剩余依赖计数
     dep_map: dict[int, list[int]] = {}
     dep_count: dict[int, int] = {}
     for i, t in enumerate(tasks):
@@ -365,6 +402,7 @@ def _start_immediate_tasks(
         dep_map[t.id] = deps
         dep_count[t.id] = len(deps)
 
+    # 初始化就绪队列（无依赖的任务），以及记录已启动和已跳过的任务ID
     ready_ids: set[int] = {
         t.id for t in tasks if dep_count.get(t.id, 0) == 0
     }
@@ -372,6 +410,7 @@ def _start_immediate_tasks(
     skipped_ids: set[int] = set()
     results: list[str] = []
 
+    # 循环处理就绪队列中的任务，直到没有更多可立即启动的任务
     while ready_ids:
         batch: list[EmployeeTask] = []
         for tid in list(ready_ids):
@@ -381,12 +420,16 @@ def _start_immediate_tasks(
             t = task_lookup.get(tid)
             if not t:
                 continue
+            
+            # 验证员工存在性，若不存在则标记为跳过
             emp = db.get(Employee, t.employee_id)
             if not emp:
                 results.append(f"任务 {t.task_name}: 员工不存在，跳过")
                 skipped_ids.add(tid)
                 ready_ids.discard(tid)
                 continue
+            
+            # 检查员工是否具备接收新任务的容量，若不具备则暂时不加入批次
             if not _can_assign_to_employee(db, t.employee_id):
                 continue
             batch.append(t)
@@ -394,6 +437,7 @@ def _start_immediate_tasks(
         if not batch:
             break
 
+        # 批量启动当前符合条件的任务，并更新依赖状态
         for task in batch:
             employee = db.get(Employee, task.employee_id)
             try:
@@ -402,6 +446,7 @@ def _start_immediate_tasks(
                 started_ids.add(task.id)
                 ready_ids.discard(task.id)
 
+                # 更新后续任务的依赖计数，若依赖满足则加入就绪队列
                 for other_id, other_deps in dep_map.items():
                     if task.id in other_deps:
                         dep_count[other_id] = dep_count.get(other_id, 0) - 1
@@ -415,6 +460,7 @@ def _start_immediate_tasks(
                 skipped_ids.add(task.id)
                 ready_ids.discard(task.id)
 
+    # 处理最终仍处于Pending状态的任务，区分是因依赖未满足还是员工容量限制
     pending = set(t.id for t in tasks) - started_ids - skipped_ids
     if pending:
         unreachable: list[str] = []
