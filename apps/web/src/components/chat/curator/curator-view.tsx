@@ -17,15 +17,13 @@ import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
 import { Spinner } from "@/components/spinner"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 import { classifyMessageParts } from "@/lib/chat/message-utils"
-import { useMessagesQuery, useCuratorConversationQuery, useOrchestrationPlansQuery } from "@/hooks/use-chat-queries"
+import { useMessagesQuery, useCuratorConversationQuery } from "@/hooks/use-chat-queries"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { useAllTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { cancelConversationStream } from "@/api/conversation"
 import { toast } from "sonner"
 import { chatTransport, type ChatViewContact } from "../chat-view-shared"
 import { CuratorChatHeader } from "../curator-chat-header"
-import { OrchestrationPlanCard } from "../orchestration-plan-card"
-import { TaskProgressBar } from "../task-progress-bar"
 import { ExecutionReportCard } from "../execution-report-card"
 import { ChatPromptInput } from "@/components/chat-prompt-input"
 import { PendingMessageQueue } from "../pending-message-queue"
@@ -35,11 +33,25 @@ import {
   getMessageMeta,
 } from "../chat-panel"
 import { useEffect } from "react"
+import { format } from "date-fns"
+import { zhCN } from "date-fns/locale"
 import type { TaskExecution } from "@/types/schedule-monitor"
 
 type TimelineEntry =
   | { kind: "message"; data: UIMessage; ts: number }
   | { kind: "execution"; data: TaskExecution; ts: number }
+
+function getMsgTs(msg: UIMessage, storedMessages: Array<{ id: string; metadata?: Record<string, any>; timestamp?: Date }>): number {
+  const stored = storedMessages.find((m) => m.id === msg.id)
+  const meta = stored?.metadata
+  if (meta?.created_at) return new Date(meta.created_at).getTime()
+  if (stored?.timestamp) return stored.timestamp.getTime()
+  return 0
+}
+
+function formatTime(ts: number): string {
+  return format(new Date(ts), "HH:mm", { locale: zhCN })
+}
 
 export function CuratorView({
   contact,
@@ -179,51 +191,22 @@ export function CuratorView({
     [isBusy, enqueue, command, mentions, doSend, curatorConversationId]
   )
 
-  const { data: plans = [] } = useOrchestrationPlansQuery()
-
-  const pendingPlan = React.useMemo(
-    () => plans.find((p: any) => p.status === "pending_confirmation"),
-    [plans]
-  )
-
-  const executingPlans = React.useMemo(
-    () => plans.filter((p: any) => p.status === "executing"),
-    [plans]
-  )
-
   const { data: executions = [] } = useAllTaskExecutions()
 
-  const handleConfirm = React.useCallback(
-    async (planId: number) => {
-      const { request } = await import("@/lib/request")
-      await request(`/orchestration/plans/${planId}/confirm`, { method: "PUT" })
-    },
-    []
-  )
-
-  const handleCancel = React.useCallback(
-    (planId: number) => {
-      import("@/lib/request").then(({ request }) =>
-        request(`/orchestration/plans/${planId}/cancel`, { method: "PUT" })
-      )
-    },
-    []
-  )
-
-  /* ── Build unified timeline from DB data ── */
+  /* ── Build unified timeline ── */
   const timeline: TimelineEntry[] = React.useMemo(() => {
     const entries: TimelineEntry[] = []
 
     for (const msg of displayMessages) {
-      entries.push({ kind: "message", data: msg, ts: msg.createdAt?.getTime() ?? Date.now() })
+      entries.push({ kind: "message", data: msg, ts: getMsgTs(msg, storedMessages) })
     }
 
     for (const exec of executions) {
-      if (exec.run_status !== "pending") {
+      if (exec.run_status === "success" || exec.run_status === "failed" || exec.run_status === "timeout" || exec.run_status === "cancelled") {
         entries.push({
           kind: "execution",
           data: exec,
-          ts: new Date(exec.started_at).getTime(),
+          ts: exec.ended_at ? new Date(exec.ended_at).getTime() : new Date(exec.started_at).getTime(),
         })
       }
     }
@@ -253,56 +236,7 @@ export function CuratorView({
             </div>
           )}
 
-          {pendingPlan && (
-            <div className="mx-auto mb-4 max-w-4xl px-4">
-              <OrchestrationPlanCard
-                planId={pendingPlan.id}
-                summary={pendingPlan.user_input || ""}
-                tasks={(() => {
-                  try {
-                    const json = JSON.parse(pendingPlan.plan_json || "[]")
-                    return json.map((t: any, i: number) => ({
-                      task_id: i,
-                      employee_name: t.employee_name || String(t.employee_id),
-                      task_name: t.task_name || "",
-                      status: "pending" as const,
-                      cron: t.cron || null,
-                      execute_mode: t.cron ? "scheduled" : "immediate",
-                    }))
-                  } catch { return [] }
-                })()}
-                onConfirm={handleConfirm}
-                onCancel={handleCancel}
-              />
-            </div>
-          )}
-
-          {!pendingPlan &&
-            executingPlans.map((plan: any) => (
-              <div key={plan.id} className="mx-auto mb-4 max-w-4xl px-4">
-                <TaskProgressBar
-                  planId={plan.id}
-                  summary={plan.user_input || ""}
-                  total={plan.total_tasks || 0}
-                  completed={plan.completed_tasks || 0}
-                  tasks={(() => {
-                    try {
-                      const json = JSON.parse(plan.plan_json || "[]")
-                      return json.map((t: any, i: number) => ({
-                        task_id: i,
-                        employee_name: t.employee_name || String(t.employee_id),
-                        task_name: t.task_name || "",
-                        status: "running" as const,
-                        cron: t.cron || null,
-                        execute_mode: t.cron ? "scheduled" : "immediate",
-                      }))
-                    } catch { return [] }
-                  })()}
-                />
-              </div>
-            ))}
-
-          {timeline.map((entry) => {
+          {timeline.map((entry, i) => {
             if (entry.kind === "execution") {
               const exec = entry.data
               return (
@@ -314,6 +248,7 @@ export function CuratorView({
                       fallbackClassName="text-[10px]"
                     />
                     <span className="text-xs text-muted-foreground">{exec.employee_name || String(exec.employee_id)}</span>
+                    <span className="text-[10px] text-muted-foreground/60">{formatTime(entry.ts)}</span>
                   </div>
                   <MessageContent className="w-auto">
                     <ExecutionReportCard execution={exec} />
@@ -322,6 +257,7 @@ export function CuratorView({
               )
             }
 
+            /* message */
             const message = entry.data
             const isLastAssistantMessage =
               message.role === "assistant" && message.id === lastAssistantMessageId
@@ -370,6 +306,7 @@ export function CuratorView({
                       />
                     )}
                     <span className="text-xs text-muted-foreground">{contactDisplayName}</span>
+                    <span className="text-[10px] text-muted-foreground/60 ml-auto">{formatTime(entry.ts)}</span>
                   </div>
                 )}
                 <MessageContent className="w-auto">

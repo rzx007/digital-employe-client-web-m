@@ -1,7 +1,7 @@
 from src.models.chat_group import ChatGroup
 from src.models.config_kv import ConfigKv
 from src.models.conversation import Conversation, ConversationMessage
-from src.models.employee import Employee, EmployeeShiftSchedule
+from src.models.employee import Employee
 from src.models.employee_mcp import EmployeeMcp
 from src.models.employee_skill import EmployeeSkill
 from src.models.employee_task import EmployeeTask
@@ -14,7 +14,6 @@ from src.models.workspace import Workspace
 __all__ = [
     "Workspace",
     "Employee",
-    "EmployeeShiftSchedule",
     "EmployeeMcp",
     "EmployeeSkill",
     "ChatGroup",

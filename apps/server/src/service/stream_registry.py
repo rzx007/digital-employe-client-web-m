@@ -527,8 +527,6 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
     try:
         from src.db.session import get_session_local
         from src.models.task_execution_log import TaskExecutionLog
-        from src.models.employee_task import EmployeeTask
-        from src.models.orchestration_plan import OrchestrationPlan
         from src.models.conversation import ConversationMessage
         from src.service.workspace_events import WorkspaceEventBus
         from src.models.workspace import cst_now
@@ -575,15 +573,6 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
             log.run_status = "failed"
             log.run_result = "执行异常"
             log.error_message = "agent stream error"
-
-        task = db.get(EmployeeTask, log.task_id)
-        if task and task.orchestration_plan_id:
-            if stream_state == "completed":
-                plan = db.get(OrchestrationPlan, task.orchestration_plan_id)
-                if plan and plan.status == "executing":
-                    plan.completed_tasks += 1
-                    if plan.completed_tasks >= plan.total_tasks:
-                        plan.status = "completed"
 
         db.commit()
         db.close()
@@ -645,7 +634,9 @@ def cleanup_zombie_executions(db: Any) -> int:
             log.error_message = "进程重启时检测到任务无心跳超时"
             log.ended_at = now
             if log.started_at:
-                log.duration_ms = int((now - log.started_at).total_seconds() * 1000)
+                log.duration_ms = int(
+                    (now.replace(tzinfo=None) - log.started_at.replace(tzinfo=None)).total_seconds() * 1000
+                )
 
         if zombies:
             db.commit()

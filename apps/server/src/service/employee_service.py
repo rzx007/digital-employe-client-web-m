@@ -15,7 +15,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
-from src.models.employee import Employee, EmployeeShiftSchedule
+from src.models.employee import Employee
 from src.models.employee_mcp import EmployeeMcp
 from src.models.employee_skill import EmployeeSkill
 from src.models.workspace import Workspace
@@ -637,19 +637,7 @@ class EmployeeService:
         employee: Employee,
         shift_schedule: ShiftScheduleCreateWithoutEmployee | None,
     ) -> None:
-        db.execute(delete(EmployeeShiftSchedule).where(
-            EmployeeShiftSchedule.employee_id == employee.id))
         shift_payload = EmployeeService._normalize_shift_schedule(shift_schedule)
-        if shift_payload:
-            db.add(
-                EmployeeShiftSchedule(
-                    employee_id=employee.id,
-                    start_date=shift_payload["start_date"],
-                    end_date=shift_payload["end_date"],
-                    status=shift_payload["status"],
-                    notes=shift_payload.get("notes"),
-                )
-            )
         employee.shift_schedule_json = json.dumps(
             shift_payload, ensure_ascii=False)
 

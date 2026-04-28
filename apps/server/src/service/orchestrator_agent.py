@@ -179,17 +179,24 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 {employee_table}
 
 ## 工作流程
-1. 用户描述需求后，先调用 `list_workspace_employees` 查看当前可用的员工及其技能
+1. 先调用 `list_workspace_employees` 查看当前可用的员工及其技能
 2. 分析需求，拆解为可独立执行的子任务
 3. 为每个子任务指派最合适的员工（根据技能和角色匹配）
-4. 调用 `create_orchestration_plan` 将编排计划落库，生成确认卡片
-5. 用户确认后，调用 `confirm_orchestration_plan` 开始执行
+4. 调用 `create_orchestration_plan` 将编排计划落库
 
-## 确认执行规则（必须遵守）
-- 当你调用 `create_orchestration_plan` 后，你会收到一个 plan_id
-- 当用户回复「确认」「执行」「可以」「没问题」「OK」等确认词时，你必须**立即调用** `confirm_orchestration_plan(plan_id=<id>)`，不得只口头回复
-- 你**只能**通过调用 `confirm_orchestration_plan` 工具来执行计划，口头说"开始执行"没有任何效果
-- 如果用户询问进度或修改计划，先调用 `confirm_orchestration_plan` 再回复
+## 确认策略（必须遵守）
+- **简单任务**（全部即时执行、无依赖、子任务数 ≤ 2）：
+  → 调用 `create_orchestration_plan` 后，**立即在同一轮接着调用** `confirm_orchestration_plan(plan_id=<id>)`
+  → 直接告知用户"已自动执行，无需确认"
+- **其他任务**（定时、有依赖、或 ≥ 3 个子任务）：
+  → 只调用 `create_orchestration_plan`
+  → 等待用户回复「确认」「执行」「可以」「没问题」等后再调用 `confirm_orchestration_plan`
+- **只能**通过调用 `confirm_orchestration_plan` 工具来执行，口头说"开始执行"没有效果
+
+## 任务管理工具
+- `update_task(task_id, task_name?, prompt?, cron?, employee_id?)` → 修改已有子任务
+- `delete_task(task_id)` → 删除子任务（设置 is_active=false）
+- `cancel_plan(plan_id)` → 取消整个编排计划
 
 ## 子任务拆解规则
 - 每个子任务必须对应一个具体的数字员工，不要自己编造
@@ -201,7 +208,8 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 
 ## 输出约定
 - 始终用中文回复
-- 生成编排计划后，向用户展示摘要并请求确认
+- 简单任务自动执行后直接告知结果
+- 复杂任务生成计划后展示摘要，等待用户确认
 - 确认后开始执行，执行中汇报进度
 
 重要：你所有的工具调用都会产生实际效果。如果你只回复文字而不调用工具，什么事情都不会发生。尤其是编排计划，必须通过 confirm_orchestration_plan 工具来执行。
@@ -307,7 +315,15 @@ def create_orchestration_plan(summary: str, tasks: str) -> str:
         "tasks": tasks_for_event,
     })
 
-    return f"编排计划 #{plan.id} 已生成，包含 {len(task_list)} 个子任务。\n请回复「确认」开始执行。记住：只有调用 confirm_orchestration_plan({plan.id}) 工具才能执行。"
+    plan_json_output = json.dumps({
+        "type": "plan_generated",
+        "plan_id": plan.id,
+        "summary": summary,
+        "total_tasks": len(task_list),
+        "tasks": tasks_for_event,
+    }, ensure_ascii=False)
+
+    return plan_json_output + "\n\n" + f"编排计划 #{plan.id} 已生成，包含 {len(task_list)} 个子任务。\n请回复「确认」开始执行。记住：只有调用 confirm_orchestration_plan({plan.id}) 工具才能执行。"
 
 
 @tool
@@ -377,6 +393,15 @@ def _start_immediate_tasks(
 
     Returns:
         list[str]: 任务执行结果的消息列表，包含成功启动、跳过、失败及Pending原因的描述。
+
+
+    环节	                            EmployeeTask 的职责
+    create_orchestration_plan Tool	    直接写 employee_tasks 表（source="orchestration"）
+    _execute_plan	                    读 EmployeeTask WHERE orchestration_plan_id = plan.id 来执行
+    _start_task_as_conversation	        读 task.user_prompt 作为员工 Agent 的输入，写 TaskExecutionLog（run_status="running", conversation_id）
+    TaskSchedulerService.reload_jobs	读 EmployeeTask 创建 APScheduler 定时任务
+    _finalize_task_stream	            曾更新 OrchestrationPlan.completed_tasks → 已移除，现状：只更新 TaskExecutionLog.run_status
+    _compute_plan_progress（查询时）	 从 TaskExecutionLog 聚合 completed_tasks + 派生 status
     """
     plan_json_obj: list[dict] = json.loads(plan.plan_json or "[]")
 
@@ -583,6 +608,142 @@ def _start_task_as_conversation(
     return conversation.id
 
 
+@tool
+def update_task(task_id: int, task_name: str | None = None, prompt: str | None = None, cron: str | None = None, employee_id: int | None = None) -> str:
+    """修改已存在的子任务。参数均可选，只更新传入的非 None 字段。
+    - task_name: 修改任务名称
+    - prompt: 修改执行指令文字
+    - cron: 修改调度时间（标准 cron 表达式，null 表示改为立即执行）
+    - employee_id: 重新分配给指定员工
+    """
+    db = _get_db()
+    task = db.get(EmployeeTask, task_id)
+    if not task:
+        return f"错误：任务 #{task_id} 不存在。"
+
+    changed: list[str] = []
+    if task_name is not None:
+        task.task_name = task_name
+        changed.append("任务名称")
+    if prompt is not None:
+        task.user_prompt = prompt
+        changed.append("执行指令")
+    if cron is not None:
+        task.cron_expression = cron if cron else ""
+        task.execute_mode = "scheduled" if cron else "immediate"
+        changed.append("调度时间")
+    if employee_id is not None:
+        emp = db.get(Employee, employee_id)
+        if not emp:
+            return f"错误：员工 ID={employee_id} 不存在。"
+        task.employee_id = employee_id
+        task.employee_name_snapshot = emp.name or ""
+        changed.append("执行员工")
+
+    if changed:
+        db.commit()
+        return f"任务 #{task_id} ({task.task_name}) 已更新：{'、'.join(changed)}。"
+    return "未做任何修改。"
+
+
+@tool
+def delete_task(task_id: int) -> str:
+    """删除子任务（设置 is_active=false，不会物理删除）。"""
+    db = _get_db()
+    task = db.get(EmployeeTask, task_id)
+    if not task:
+        return f"错误：任务 #{task_id} 不存在。"
+
+    task.is_active = False
+    db.commit()
+    return f"任务 #{task_id} ({task.task_name}) 已删除。"
+
+
+@tool
+def cancel_plan(plan_id: int) -> str:
+    """取消整个编排计划（设置 status=cancelled）。"""
+    db = _get_db()
+    plan = db.get(OrchestrationPlan, plan_id)
+    if not plan:
+        return f"错误：编排计划 #{plan_id} 不存在。"
+
+    plan.status = "cancelled"
+    db.commit()
+    return f"编排计划 #{plan_id} 已取消。"
+
+
+@tool
+def list_tasks(status: str | None = None, plan_id: int | None = None, employee_id: int | None = None, limit: int = 20) -> str:
+    """查询任务列表。查询当前工作空间下的 EmployeeTask。
+    - status: 过滤执行状态（executing/completed/failed/cancelled），null=全部
+    - plan_id: 过滤指定编排计划的任务，null=全部计划
+    - employee_id: 过滤指定员工的任务，null=全部员工
+    - limit: 最多返回条数（默认20）
+    """
+    db = _get_db()
+    workspace_id = _get_workspace_id()
+
+    query = select(EmployeeTask).where(
+        EmployeeTask.workspace_id == workspace_id,
+        EmployeeTask.is_active.is_(True),
+    )
+
+    if plan_id is not None:
+        query = query.where(EmployeeTask.orchestration_plan_id == plan_id)
+    if employee_id is not None:
+        query = query.where(EmployeeTask.employee_id == employee_id)
+    if status is not None:
+        if status in ("executing", ):
+            from src.models.task_execution_log import TaskExecutionLog
+            sub = select(TaskExecutionLog.task_id).where(
+                TaskExecutionLog.run_status == "running"
+            ).distinct()
+            query = query.where(
+                (EmployeeTask.execute_mode == "scheduled")
+                | (EmployeeTask.id.in_(sub))
+            )
+        elif status in ("completed", "success"):
+            from src.models.task_execution_log import TaskExecutionLog
+            sub = select(TaskExecutionLog.task_id).where(
+                TaskExecutionLog.run_status == "success"
+            ).distinct()
+            query = query.where(EmployeeTask.id.in_(sub))
+        elif status in ("failed", "timeout", "cancelled"):
+            from src.models.task_execution_log import TaskExecutionLog
+            sub = select(TaskExecutionLog.task_id).where(
+                TaskExecutionLog.run_status.in_(["failed", "timeout", "cancelled"])
+            ).distinct()
+            query = query.where(EmployeeTask.id.in_(sub))
+        elif status == "pending":
+            query = query.where(
+                EmployeeTask.execute_mode == "scheduled",
+                ~EmployeeTask.id.in_(
+                    select(TaskExecutionLog.task_id).distinct()
+                ),
+            )
+
+    tasks = list(db.scalars(query.order_by(EmployeeTask.priority.desc(), EmployeeTask.id.desc()).limit(limit)).all())
+
+    if not tasks:
+        return "没有找到匹配的任务。"
+
+    lines = ["| ID | 任务名 | 员工 | 执行模式 | 状态 |", "|---|---|---|---|---|"]
+    from src.models.task_execution_log import TaskExecutionLog
+    for t in tasks:
+        emp = db.get(Employee, t.employee_id)
+        emp_name = emp.name if emp else (t.employee_name_snapshot or str(t.employee_id))
+        mode = "定时" if t.execute_mode == "scheduled" else "即时"
+        latest_log = db.scalars(
+            select(TaskExecutionLog.run_status).where(
+                TaskExecutionLog.task_id == t.id
+            ).order_by(TaskExecutionLog.id.desc()).limit(1)
+        ).first()
+        task_status = latest_log or ("运行中" if t.execute_mode == "scheduled" else "未执行")
+        lines.append(f"| {t.id} | {t.task_name} | {emp_name} | {mode} | {task_status} |")
+
+    return "\n".join(lines)
+
+
 def get_orchestrator_agent(
     workspace_id: int,
     db: Session,
@@ -612,7 +773,7 @@ def get_orchestrator_agent(
 
     agent = create_deep_agent(
         model=model,
-        tools=[list_workspace_employees, create_orchestration_plan, confirm_orchestration_plan],
+        tools=[list_workspace_employees, create_orchestration_plan, confirm_orchestration_plan, update_task, delete_task, cancel_plan, list_tasks],
         system_prompt=system_prompt,
         backend=backend,
         checkpointer=checkpointer,

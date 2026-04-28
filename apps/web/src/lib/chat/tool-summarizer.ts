@@ -24,6 +24,7 @@ const TOOL_META: Record<
   download_files: { icon: "📥", verb: "下载", pathKey: "paths" },
   upload_files: { icon: "📤", verb: "上传", pathKey: "files" },
   write_todos: { icon: "📋", verb: "规划任务" },
+  create_orchestration_plan: { icon: "📋", verb: "生成编排计划" },
 }
 
 function extractToolName(type: string): string {

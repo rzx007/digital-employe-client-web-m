@@ -10,7 +10,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from src.models.employee import Employee, EmployeeShiftSchedule
+from src.models.employee import Employee
 from src.models.employee_task import EmployeeTask
 from src.models.skill_rating import SkillRating
 from src.models.task_execution_log import TaskExecutionLog
@@ -108,6 +108,21 @@ class TaskService:
         return shift_id, str(shift_name) if shift_name is not None else None, shift_schedule
 
     @staticmethod
+    def _is_employee_active_today(employee: Employee, today: str) -> bool:
+        shift = TaskService._loads_json(getattr(employee, "shift_schedule_json", "{}"), {})
+        if not isinstance(shift, dict) or not shift:
+            return True
+        start = shift.get("start_date", "")
+        end = shift.get("end_date", "")
+        if not start and not end:
+            return True
+        if start and today < start:
+            return False
+        if end and today > end:
+            return False
+        return True
+
+    @staticmethod
     def _describe_cron(cron_expression: str) -> str:
         if cron_expression.startswith("*/") and cron_expression.endswith(" * * * *"):
             minute = cron_expression.split(" ")[0].replace("*/", "")
@@ -118,23 +133,18 @@ class TaskService:
     @staticmethod
     def sync_workspace_tasks(db: Session, workspace_id: int) -> list[EmployeeTask]:
         WorkspaceService.get_workspace(db, workspace_id)
-        today = cst_now().date().isoformat()
         employees = list(
             db.scalars(
                 select(Employee)
-                .join(
-                    EmployeeShiftSchedule,
-                    EmployeeShiftSchedule.employee_id == Employee.id,
-                )
-                .where(
-                    Employee.workspace_id == workspace_id,
-                    EmployeeShiftSchedule.start_date <= today,
-                    EmployeeShiftSchedule.end_date >= today,
-                )
-                .distinct()
+                .where(Employee.workspace_id == workspace_id)
                 .order_by(Employee.id.asc())
             ).all()
         )
+        today = cst_now().date().isoformat()
+        employees = [
+            e for e in employees
+            if TaskService._is_employee_active_today(e, today)
+        ]
         upserted: list[EmployeeTask] = []
         now = cst_now()
 

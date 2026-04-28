@@ -1,11 +1,31 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
 from src.core.config import get_default_logs_dir
+
+
+class WindowsSafeTimedRotatingFileHandler(TimedRotatingFileHandler):
+    """TimedRotatingFileHandler that handles Windows file-locking during rotation."""
+
+    def doRollover(self):
+        if os.name != "nt":
+            super().doRollover()
+            return
+        try:
+            super().doRollover()
+        except PermissionError:
+            self.stream.close()
+            self.stream = None
+            try:
+                super().doRollover()
+            finally:
+                if self.stream is None:
+                    self.stream = self._open()
 
 # ~/.digital-employee/logs/
 _LOG_DIR = get_default_logs_dir()
@@ -28,7 +48,7 @@ def _console_attached(root: logging.Logger) -> bool:
 def _timed_log_attached(root: logging.Logger, log_path: Path) -> bool:
     resolved = log_path.resolve()
     for handler in root.handlers:
-        if isinstance(handler, TimedRotatingFileHandler):
+        if isinstance(handler, (TimedRotatingFileHandler, WindowsSafeTimedRotatingFileHandler)):
             try:
                 if Path(handler.baseFilename).resolve() == resolved:
                     return True
@@ -50,7 +70,7 @@ def setup_logging() -> Path:
     )
 
     if not _timed_log_attached(root, _APP_LOG):
-        app_handler = TimedRotatingFileHandler(
+        app_handler = WindowsSafeTimedRotatingFileHandler(
             str(_APP_LOG),
             when="midnight",
             interval=1,
@@ -62,7 +82,7 @@ def setup_logging() -> Path:
         root.addHandler(app_handler)
 
     if not _timed_log_attached(root, _ERROR_LOG):
-        err_handler = TimedRotatingFileHandler(
+        err_handler = WindowsSafeTimedRotatingFileHandler(
             str(_ERROR_LOG),
             when="midnight",
             interval=1,

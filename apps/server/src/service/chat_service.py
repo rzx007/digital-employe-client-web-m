@@ -228,12 +228,14 @@ class ChatService:
         chunk_json: str | None = None,
         extra_meta: dict | None = None,
     ) -> ConversationMessage:
+        meta = dict(extra_meta) if extra_meta else {}
+        meta["created_at"] = cst_now().isoformat()
         message = ConversationMessage(
             conversation_id=conversation.id,
             role=role,
             content=content,
             chunk_json=chunk_json,
-            extra_meta=json.dumps(extra_meta, ensure_ascii=False) if extra_meta else None,
+            extra_meta=json.dumps(meta, ensure_ascii=False),
         )
         db.add(message)
         conversation.updated_at = cst_now()

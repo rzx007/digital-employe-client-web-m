@@ -3,17 +3,53 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.db.session import get_db
 from src.models.employee_task import EmployeeTask
 from src.models.orchestration_plan import OrchestrationPlan
+from src.models.task_execution_log import TaskExecutionLog
 from src.models.response import BaseResponse, ListResponse, ResponseBase
 from src.schemas.orchestration import OrchestrationPlanDetail, OrchestrationPlanRead, OrchestrationTaskItem
 
 router = APIRouter(tags=["编排"])
 logger = logging.getLogger(__name__)
+
+
+def _compute_plan_progress(db: Session, plan: OrchestrationPlan) -> tuple[int, int, str]:
+    """从 TaskExecutionLog 计算 completed_tasks 和派生 status。"""
+    completed = db.scalar(
+        select(func.count(func.distinct(TaskExecutionLog.task_id)))
+        .select_from(EmployeeTask)
+        .join(TaskExecutionLog, TaskExecutionLog.task_id == EmployeeTask.id)
+        .where(
+            EmployeeTask.orchestration_plan_id == plan.id,
+            TaskExecutionLog.run_status != "running",
+        )
+    ) or 0
+
+    failed = db.scalar(
+        select(func.count(func.distinct(TaskExecutionLog.task_id)))
+        .select_from(EmployeeTask)
+        .join(TaskExecutionLog, TaskExecutionLog.task_id == EmployeeTask.id)
+        .where(
+            EmployeeTask.orchestration_plan_id == plan.id,
+            TaskExecutionLog.run_status.in_(["failed", "timeout", "cancelled"]),
+        )
+    ) or 0
+
+    total = db.scalar(
+        select(func.count())
+        .select_from(EmployeeTask)
+        .where(EmployeeTask.orchestration_plan_id == plan.id)
+    ) or 0
+
+    status = plan.status
+    if status == "executing" and completed >= total:
+        status = "completed" if failed == 0 else "partially_failed"
+
+    return completed, total, status
 
 
 def _build_task_items(db: Session, plan: OrchestrationPlan) -> list[OrchestrationTaskItem]:
@@ -71,9 +107,15 @@ def list_plans(
             .limit(50)
         ).all()
     )
-    return ListResponse(data=[
-        OrchestrationPlanRead.model_validate(p) for p in plans
-    ])
+    result: list[OrchestrationPlanRead] = []
+    for p in plans:
+        plan_data = OrchestrationPlanRead.model_validate(p)
+        completed, total, status = _compute_plan_progress(db, p)
+        plan_data.completed_tasks = completed
+        plan_data.total_tasks = max(total, p.total_tasks)
+        plan_data.status = status
+        result.append(plan_data)
+    return ListResponse(data=result)
 
 
 @router.get("/orchestration/plans/{plan_id}", response_model=ResponseBase[OrchestrationPlanDetail])
@@ -82,8 +124,13 @@ def get_plan(plan_id: int, db: Session = Depends(get_db)) -> ResponseBase[Orches
     if not plan:
         from fastapi import HTTPException
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
+    plan_data = OrchestrationPlanRead.model_validate(plan)
+    completed, total, status = _compute_plan_progress(db, plan)
+    plan_data.completed_tasks = completed
+    plan_data.total_tasks = max(total, plan.total_tasks)
+    plan_data.status = status
     return ResponseBase(data=OrchestrationPlanDetail(
-        plan=OrchestrationPlanRead.model_validate(plan),
+        plan=plan_data,
         tasks=_build_task_items(db, plan),
     ))
 

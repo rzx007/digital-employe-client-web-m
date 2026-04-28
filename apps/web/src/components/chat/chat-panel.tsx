@@ -33,6 +33,7 @@ import type { PendingMessage } from "@/hooks/use-pending-messages"
 import { FileChangeCards } from "./file-change-cards"
 import { ThinkingBlock } from "./thinking-block"
 import { ToolGroupBlock } from "./tool-group-block"
+import { PlanGeneratedCard } from "./plan-generated-card"
 import { MessageLoadingSkeleton } from "./message-loading-skeleton"
 import {
   getContactDisplayName,
@@ -114,6 +115,16 @@ export function renderClassifiedBlocks(
         return (
           <ToolGroupBlock
             block={block}
+            className="w-full"
+            key={block.key}
+          />
+        )
+      }
+
+      if (block.kind === "plan-generated") {
+        return (
+          <PlanGeneratedCard
+            input={block.input}
             className="w-full"
             key={block.key}
           />
