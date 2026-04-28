@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 
 from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -11,6 +14,7 @@ from src.models.response import BaseResponse, ListResponse, ResponseBase
 from src.schemas.workspace import FileEntry, WorkspaceCreate, WorkspaceRead, WorkspaceUpdate
 from src.service.chat_service import ChatService
 from src.service.file_service import FileService
+from src.service.workspace_events import WorkspaceEventBus
 from src.service.workspace_service import WorkspaceService
 
 
@@ -124,4 +128,28 @@ async def chat_send(
 
     full_response = "".join(collected_texts).strip()
     return ResponseBase(data=ChatSendResponse(response=full_response or "模型已完成调用。"))
+
+
+@router.get("/workspaces/{workspace_id}/events")
+async def workspace_events(
+    workspace_id: int,
+) -> StreamingResponse:
+    """工作空间级 SSE 事件通道，推送任务启动/完成/失败通知。"""
+
+    async def event_generator():
+        queue = WorkspaceEventBus.subscribe(workspace_id)
+        try:
+            while True:
+                data = await queue.get()
+                yield f"data: {data}\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            WorkspaceEventBus.unsubscribe(workspace_id, queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
 

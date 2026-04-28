@@ -37,7 +37,7 @@ export function useConversationsQuery(
     queryKey: chatKeys.conversations(contactId ?? ""),
     queryFn: () => fetchConversationsByContactId(contactId!, contact),
     enabled:
-      Boolean(contactId) && Boolean(contact) && contact?.type !== "curator",
+      Boolean(contactId) && Boolean(contact),
   })
 }
 

@@ -42,6 +42,11 @@ def init_db() -> None:
     )
     ensure_column("employee_tasks", "user_prompt", "user_prompt TEXT")
     ensure_column("employee_tasks", "capability_id", "capability_id INTEGER")
+    ensure_column("employee_tasks", "source", "source VARCHAR(32) NOT NULL DEFAULT 'manual'")
+    ensure_column("employee_tasks", "orchestration_plan_id", "orchestration_plan_id INTEGER")
+    ensure_column("employee_tasks", "execute_mode", "execute_mode VARCHAR(32) NOT NULL DEFAULT 'scheduled'")
+    ensure_column("employee_tasks", "valid_from", "valid_from DATETIME")
+    ensure_column("employee_tasks", "valid_until", "valid_until DATETIME")
     ensure_column(
         "task_execution_logs",
         "confirm_url",
@@ -57,6 +62,8 @@ def init_db() -> None:
         "is_read",
         "is_read BOOLEAN NOT NULL DEFAULT 0",
     )
+    ensure_column("task_execution_logs", "conversation_id", "conversation_id INTEGER")
+    ensure_column("task_execution_logs", "last_heartbeat_at", "last_heartbeat_at DATETIME")
     ensure_column("skill_ratings", "task_execution_log_id", "task_execution_log_id INTEGER")
 
     # 兼容历史员工技能关系表：补充新增字段
@@ -93,4 +100,6 @@ def init_db() -> None:
     )
     # 序列化的事件列表（JSON array），用于断线重放
     ensure_column("conversation_messages", "stream_chunks", "stream_chunks TEXT")
+
+    ensure_column("orchestration_plans", "started_at", "started_at DATETIME")
 

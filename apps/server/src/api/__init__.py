@@ -11,6 +11,7 @@ from src.api.model_api import router as model_router
 from src.api.skill_rating_api import router as skill_rating_router
 from src.api.login_api import router as login_router
 from src.api.mcp_api import router as mcp_router
+from src.api.orchestration_api import router as orchestration_router
 
 api_router = APIRouter()
 api_router.include_router(workspace_router)
@@ -24,6 +25,7 @@ api_router.include_router(model_router)
 api_router.include_router(login_router)
 api_router.include_router(mcp_router)
 api_router.include_router(config_kv_router)
+api_router.include_router(orchestration_router)
 
 __all__ = ["api_router"]
 

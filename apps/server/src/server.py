@@ -3,6 +3,7 @@ from src.core.logging_setup import setup_logging
 setup_logging()
 
 import logging
+import asyncio
 # from sqlalchemy import select
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,6 +45,10 @@ def create_app() -> FastAPI:
     async def lifespan(_app: FastAPI):
         init_db()
         
+        # 保存主事件循环引用，供 sync context 调度协程
+        from src.service.orchestrator_agent import set_main_event_loop
+        set_main_event_loop(asyncio.get_running_loop())
+        
         # 初始化全局 AsyncSqliteSaver
         settings = get_settings()
         sqlite_path = resolve_sqlite_path(settings.sqlite_path)
@@ -62,6 +67,11 @@ def create_app() -> FastAPI:
                     "Initialized config_kvs from seed file (insert-only): inserted=%s",
                     inserted,
                 )
+            # 清理僵尸运行状态（上次进程崩溃遗留）
+            from src.service.stream_registry import cleanup_zombie_executions
+            cleaned = cleanup_zombie_executions(db)
+            if cleaned > 0:
+                logger.info("Cleaned %d zombie task executions", cleaned)
             # initialize_default_workspace_employees(db, workspace)
             # 获取员工
             # EmployeeService.sync_workspace_employees(db, workspace)

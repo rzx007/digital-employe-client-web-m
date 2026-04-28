@@ -168,7 +168,7 @@ export interface Group {
 /**
  * 聊天目标类型：单聊（员工）或群聊
  */
-export type ChatTargetType = "employee" | "group"
+export type ChatTargetType = "employee" | "group" | "curator"
 
 /**
  * 创建会话参数

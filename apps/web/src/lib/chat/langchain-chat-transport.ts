@@ -17,9 +17,9 @@ import {
 import {
   sseEventSchema,
 } from "./langchain-sse-schema"
-
 const useMock =
   import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_SSE === "true"
+
 
 /**
  * 获取事件边界的索引位置
@@ -293,10 +293,12 @@ export class LangChainChatTransport<
             })
 
             chunks.forEach((chunk) => {
-              console.log(chunk)
               controller.enqueue(chunk)
             })
-          } catch {
+          } catch (e) {
+            if (import.meta.env.DEV) {
+              console.error("[sse] dropped event:", e)
+            }
             return false
           }
 

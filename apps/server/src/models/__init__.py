@@ -6,6 +6,7 @@ from src.models.employee_mcp import EmployeeMcp
 from src.models.employee_skill import EmployeeSkill
 from src.models.employee_task import EmployeeTask
 from src.models.group_member import GroupMember
+from src.models.orchestration_plan import OrchestrationPlan
 from src.models.skill_rating import SkillRating
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import Workspace
@@ -22,6 +23,7 @@ __all__ = [
     "Conversation",
     "ConversationMessage",
     "EmployeeTask",
+    "OrchestrationPlan",
     "TaskExecutionLog",
     "SkillRating",
 ]

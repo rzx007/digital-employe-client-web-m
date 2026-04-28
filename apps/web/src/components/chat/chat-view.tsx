@@ -4,7 +4,6 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { useConversationAutoSelect } from "@/hooks/use-conversation-auto-select"
 import { useConversationsQuery } from "@/hooks/use-chat-queries"
-import { CURATOR_PINNED_CONVERSATION_ID } from "@/lib/constants"
 import { useChatStore } from "@/stores/chat-store"
 
 import { CuratorView } from "./curator-view"
@@ -36,14 +35,15 @@ export function ChatView({
     (conversation) => String(conversation.id) === String(selectedConversationId)
   )
 
-  const isCuratorMonitorView =
-    contact?.type === "curator" &&
-    selectedConversationId === CURATOR_PINNED_CONVERSATION_ID
-
-  if (isCuratorMonitorView) {
+  if (contact?.type === "curator") {
     return (
       <CuratorView
         contact={contact}
+        conversations={conversations}
+        selectedConversation={selectedConversation}
+        selectedConversationId={selectedConversationId}
+        isDraftConversation={isDraftConversation}
+        onOpenContacts={onOpenContacts}
         onOpenConversations={onOpenConversations}
         onNewConversation={onNewConversation}
         className={cn(className)}

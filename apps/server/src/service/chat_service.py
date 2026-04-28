@@ -139,6 +139,8 @@ class ChatService:
 
     @staticmethod
     def _validate_target(db: Session, workspace_id: int, target_type: str, target_id: int) -> None:
+        if target_type == "curator":
+            return
         if target_type == "employee":
             employee = db.get(Employee, target_id)
             if not employee or employee.workspace_id != workspace_id:
@@ -149,7 +151,7 @@ class ChatService:
             if not group or group.workspace_id != workspace_id:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到群组。")
             return
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee 或 group。")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee、group 或 curator。")
 
     @staticmethod
     def create_conversation(
@@ -331,31 +333,36 @@ class ChatService:
         
         target_type = conversation.target_type
         target_id = conversation.target_id
-        if target_type == "employee":
+        if target_type == "curator":
+            from src.service.orchestrator_agent import get_orchestrator_agent
+            agent = get_orchestrator_agent(
+                workspace_id=conversation.workspace_id,
+                db=db,
+                conversation_id=conversation_id,
+            )
+            request_messages = [*history_messages, {"role": "user", "content": question}]
+        elif target_type == "employee":
             employee = db.get(Employee, target_id)
             if not employee:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到员工。")
             skills_path_payload = employee.skills_json
+            try:
+                skills_path = ChatService.resolve_employee_skills_dir(
+                    skills_payload=skills_path_payload,
+                    employee_id=employee.id if target_type == "employee" else None,
+                    employee_name=employee.name if target_type == "employee" else None,
+                    employee_code=employee.employee_code if target_type == "employee" else None,
+                )
+            except HTTPException:
+                skills_path = ""
+            root_path = settings.artifacts_path
+            agent = get_agent(skills_path, root_path, employee_id=employee.id if target_type == "employee" else None, conversation_id=conversation_id)
         else:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee 或 group。")
-        
-        try:
-            skills_path = ChatService.resolve_employee_skills_dir(
-                skills_payload=skills_path_payload,
-                employee_id=employee.id if target_type == "employee" else None,
-                employee_name=employee.name if target_type == "employee" else None,
-                employee_code=employee.employee_code if target_type == "employee" else None,
-            )
-        except HTTPException:
-            skills_path = ""
-      
-        root_path = settings.artifacts_path
-
-        agent = get_agent(skills_path, root_path, employee_id=employee.id if target_type == "employee" else None, conversation_id=conversation_id)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee、group 或 curator。")
         
         try:
             skill_question = question
-            if skill_name:
+            if skill_name and target_type != "curator":
                 skill_question = f"请使用{skill_name}技能回答这个问题：{question}"
             if request_messages:
                 request_messages[-1] = {"role": "user", "content": skill_question}

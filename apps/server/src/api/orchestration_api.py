@@ -1,0 +1,128 @@
+from __future__ import annotations
+
+import logging
+
+from fastapi import APIRouter, Depends, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from src.db.session import get_db
+from src.models.employee_task import EmployeeTask
+from src.models.orchestration_plan import OrchestrationPlan
+from src.models.response import BaseResponse, ListResponse, ResponseBase
+from src.schemas.orchestration import OrchestrationPlanDetail, OrchestrationPlanRead, OrchestrationTaskItem
+
+router = APIRouter(tags=["编排"])
+logger = logging.getLogger(__name__)
+
+
+def _build_task_items(db: Session, plan: OrchestrationPlan) -> list[OrchestrationTaskItem]:
+    tasks = list(
+        db.scalars(
+            select(EmployeeTask).where(EmployeeTask.orchestration_plan_id == plan.id).order_by(EmployeeTask.id.asc())
+        ).all()
+    )
+    items: list[OrchestrationTaskItem] = []
+    for t in tasks:
+        status: str = "pending"
+        if t.execute_mode == "scheduled":
+            status = "pending"
+        else:
+            from src.models.task_execution_log import TaskExecutionLog
+            log = db.scalars(
+                select(TaskExecutionLog).where(
+                    TaskExecutionLog.task_id == t.id,
+                ).order_by(TaskExecutionLog.id.desc()).limit(1)
+            ).first()
+            if log:
+                if log.run_status == "success":
+                    status = "success"
+                elif log.run_status in ("failed", "cancelled"):
+                    status = log.run_status
+                elif log.run_status == "running":
+                    status = "running"
+
+        items.append(OrchestrationTaskItem(
+            task_id=t.id,
+            employee_id=t.employee_id,
+            employee_name=t.employee_name_snapshot or "",
+            task_name=t.task_name,
+            prompt=t.user_prompt or "",
+            dispatch_type=t.dispatch_type,
+            skill_id=t.skill_id,
+            cron=t.cron_expression,
+            execute_mode=t.execute_mode,
+            priority=t.priority,
+            status=status,
+        ))
+    return items
+
+
+@router.get("/orchestration/plans", response_model=ListResponse[OrchestrationPlanRead])
+def list_plans(
+    workspace_id: int,
+    db: Session = Depends(get_db),
+) -> ListResponse[OrchestrationPlanRead]:
+    plans = list(
+        db.scalars(
+            select(OrchestrationPlan)
+            .where(OrchestrationPlan.workspace_id == workspace_id)
+            .order_by(OrchestrationPlan.id.desc())
+            .limit(50)
+        ).all()
+    )
+    return ListResponse(data=[
+        OrchestrationPlanRead.model_validate(p) for p in plans
+    ])
+
+
+@router.get("/orchestration/plans/{plan_id}", response_model=ResponseBase[OrchestrationPlanDetail])
+def get_plan(plan_id: int, db: Session = Depends(get_db)) -> ResponseBase[OrchestrationPlanDetail]:
+    plan = db.get(OrchestrationPlan, plan_id)
+    if not plan:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
+    return ResponseBase(data=OrchestrationPlanDetail(
+        plan=OrchestrationPlanRead.model_validate(plan),
+        tasks=_build_task_items(db, plan),
+    ))
+
+
+@router.put("/orchestration/plans/{plan_id}/confirm", response_model=BaseResponse)
+def confirm_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
+    plan = db.get(OrchestrationPlan, plan_id)
+    if not plan:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
+    if plan.status != "pending_confirmation":
+        return BaseResponse(code=400, msg=f"计划当前状态为 {plan.status}，无法确认", data=None)
+
+    from src.service.orchestrator_agent import _execute_plan
+    result = _execute_plan(db, plan, plan.workspace_id)
+
+    from src.service.workspace_events import WorkspaceEventBus
+    WorkspaceEventBus.push(plan.workspace_id, {
+        "type": "orchestration_plan_generated",
+        "plan_id": plan.id,
+        "status": "executing",
+    })
+
+    return BaseResponse(data={
+        "plan_id": plan_id,
+        "status": "executing",
+        "result": result,
+    })
+
+
+@router.put("/orchestration/plans/{plan_id}/cancel", response_model=BaseResponse)
+def cancel_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
+    plan = db.get(OrchestrationPlan, plan_id)
+    if not plan:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
+    if plan.status not in ("pending_confirmation", "executing"):
+        return BaseResponse(code=400, msg=f"计划当前状态为 {plan.status}，无法取消", data=None)
+
+    plan.status = "cancelled"
+    db.commit()
+    return BaseResponse(data={"plan_id": plan_id, "status": "cancelled"})

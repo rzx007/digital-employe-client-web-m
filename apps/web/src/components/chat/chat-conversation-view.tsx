@@ -38,7 +38,13 @@ export function ConversationChatView({
     id: string
     name: string
   }>>([])
-  const { data: storedMessages = [], isPending: isMessagesLoading } = useMessagesQuery(conversationId)
+  const { data: storedMessages = [], isPending: isMessagesLoading, isError: isMessagesError } = useMessagesQuery(conversationId)
+
+  React.useEffect(() => {
+    if (isMessagesError) {
+      toast.error("加载历史消息失败")
+    }
+  }, [isMessagesError])
 
   const initialMessages = React.useMemo(
     () => mapStoredMessagesToUIMessages(storedMessages),
@@ -61,7 +67,9 @@ export function ConversationChatView({
     stop()
     try {
       await cancelConversationStream(conversationId)
-    } catch {}
+    } catch {
+      toast.error("停止对话失败")
+    }
   }, [stop, conversationId])
 
   React.useEffect(() => {

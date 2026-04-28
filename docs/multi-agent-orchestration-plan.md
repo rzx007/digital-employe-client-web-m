@@ -1134,3 +1134,85 @@ def build_employee_capability_context(db: Session, workspace_id: int) -> str:
 3. **并发安全**：编排计划确认后批量执行时，注意 DB session 管理和 APScheduler 并发调度。
 4. **Checkpointer 隔离**：Orchestrator Agent 和 Employee Agent 应使用不同的 `thread_id`（通过 `conversation_id` 区分），避免状态污染。
 5. **向后兼容**：现有基于 `EmployeeTask` + `meta_json` 的排班机制保留不变，编排系统作为新增功能并行运行。
+
+---
+
+## 八、实施总结
+
+### 实施范围
+
+6 个 Phase，全部完成。从手动填表式排班演进为自然语言对话式任务分发。
+
+### 核心链路
+
+```
+用户: "帮我开发智能客服系统"
+  → curator conversation (SSE 流)
+    → Orchestrator Agent:
+        1. list_workspace_employees()  ← Tool: 查看所有员工
+        2. create_orchestration_plan() ← Tool: 写 DB + 推确认卡片事件
+  → 前端显示确认卡片
+  → 用户点击「确认执行」
+    → PUT /orchestration/plans/{id}/confirm
+    → _execute_plan()
+      → _start_immediate_tasks() (拓扑排序 + 并发控制)
+        → _start_task_as_conversation()
+          → 创建 Conversation + TaskExecutionLog
+          → call_soon_threadsafe → registry.start()
+            → agent.astream() 流式执行
+            → _finalize_task_stream() → run_status = success/failed
+```
+
+### 兜底机制
+
+| 场景 | 处理 | 涉及文件 |
+|------|------|----------|
+| 进程崩溃重启 | `cleanup_zombie_executions()`：10 分钟无心跳的 running → `timeout` | `stream_registry.py` |
+| 线程/agent crash | `_finalize_task_stream` 独立 session 回写 | `stream_registry.py` |
+| LLM 超时 | `AGENT_CHUNK_TIMEOUT=120s` → Exception → `state_final="error"` | `stream_registry.py` |
+| 员工并发超限 | `MAX_CONCURRENT_PER_EMPLOYEE=2`，排队等待 | `orchestrator_agent.py` |
+| 任务依赖循环 | 依赖完成后才启动后置任务，依赖失败者标记未完成 | `orchestrator_agent.py` |
+| SQLite NOT NULL 兼容 | cron 为空时写 `""` | `orchestrator_agent.py` |
+| event loop 跨线程 | `set_main_event_loop()` + `call_soon_threadsafe()` | `server.py`, `orchestrator_agent.py` |
+| 时区不一致 | `replace(tzinfo=None)` 统一后相减 | `stream_registry.py` |
+
+### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `apps/server/src/models/orchestration_plan.py` | 编排计划 ORM |
+| `apps/server/src/schemas/orchestration.py` | 编排 Pydantic schema |
+| `apps/server/src/service/orchestrator_agent.py` | **总管 Agent 工厂** + 3 个 LangChain Tool |
+| `apps/server/src/service/workspace_events.py` | 工作空间级 SSE 事件通道 |
+| `apps/server/src/api/orchestration_api.py` | 编排 API (list/get/confirm/cancel) |
+| `apps/web/src/components/chat/curator/curator-view-root.tsx` | 三态路由 |
+| `apps/web/src/components/chat/curator/curator-monitor-view.tsx` | 监控模式 |
+| `apps/web/src/components/chat/curator/curator-draft-view.tsx` | 草稿模式 |
+| `apps/web/src/components/chat/curator/curator-conversation-view.tsx` | 对话模式（含编排卡片 + 进度条） |
+| `apps/web/src/components/chat/orchestration-plan-card.tsx` | 确认卡片 |
+| `apps/web/src/components/chat/task-progress-bar.tsx` | 实时进度条 |
+| `apps/web/src/components/chat/cron-preview-badge.tsx` | Cron 中文预览 |
+| `apps/web/src/hooks/use-workspace-events.ts` | workspace 事件订阅 + 自动桥接 store |
+| `apps/web/src/stores/orchestration-store.ts` | 编排状态管理 |
+
+### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `models/employee_task.py` | +6 字段 (source/orch_plan_id/execute_mode/valid_from/valid_until) |
+| `models/task_execution_log.py` | +conversation_id, +last_heartbeat_at |
+| `models/orchestration_plan.py` | +started_at |
+| `chat_service.py` | curator 分支 → `get_orchestrator_agent()` + `_validate_target` 支持 curator |
+| `task_scheduler_service.py` | `run_task_job` skill 分支 → `_start_task_as_conversation()`；+`parse_nl_cron()`；过期任务过滤 |
+| `stream_registry.py` | `_finalize_task_stream` 独立 session；心跳更新 `last_heartbeat_at`；+`cleanup_zombie_executions` |
+| `server.py` | 启动保存主事件循环 + 清理僵尸 running 任务 |
+| `chat-view.tsx` | curator 路由统一走 CuratorView |
+| `init_db.py` | 新列迁移 |
+
+### 后续优化方向（用户体验）
+
+1. **编排卡片可视化** — PlanCard 增加依赖关系 DAG 图和执行时间线
+2. **执行结果预览** — 在总管对话中直接展示子任务执行摘要，不必跳转
+3. **错误提示增强** — 前台展示 Agent 异常/超时原因，提供重试按钮
+4. **定时任务管理界面** — 在 Workbench 中增加编排生成任务的查看/编辑/暂停功能
+5. **员工忙闲状态** — 在联系人列表中展示员工实时并发占用率

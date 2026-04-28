@@ -46,7 +46,7 @@ def join_base_and_path(base_url: str | None, path: str | None) -> str | None:
     if not suffix:
         return base
     normalized = suffix if suffix.startswith("/") else f"/{suffix}"
-    logger.info("🚀·join_base_and_path base=%s, path=%s, normalized=%s", base, path, normalized)
+    logger.info("join_base_and_path base=%s, path=%s, normalized=%s", base, path, normalized)
     return f"{base}{normalized}"
 
 

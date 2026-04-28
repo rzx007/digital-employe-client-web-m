@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
 
-TargetType = Literal["employee", "group"]
+TargetType = Literal["employee", "group", "curator"]
 MessageRole = Literal["user", "assistant", "tool"]
 
 

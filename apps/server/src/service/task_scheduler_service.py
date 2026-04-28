@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +24,49 @@ from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import CST, Workspace, cst_now
 from src.service.task_service import TaskService
 from src.service.agent import get_agent
+from langchain_openai import ChatOpenAI
+
+logger = logging.getLogger(__name__)
+
+_re_cron_digits = re.compile(r"^[\d\s\*\,\/\-]+$")
+
+
+def parse_nl_cron(nl_input: str) -> str | None:
+    """将自然语言时间表达式转为标准 cron 表达式。
+
+    如果输入已经是 cron 格式字符串，直接返回。
+    否则调用 LLM 一次性转换。
+
+    示例:
+        "每天上午 9:30" -> "30 9 * * *"
+        "每周一上午 10:00" -> "0 10 * * 1"
+        "下午3点" -> "0 15 * * *"
+    """
+    stripped = nl_input.strip()
+    if _re_cron_digits.match(stripped):
+        return stripped
+
+    settings = get_settings()
+    try:
+        model = ChatOpenAI(
+            model=settings.deepagent_model or "qwen2.5-72b-instruct",
+            temperature=0,
+            api_key=settings.api_key,
+            base_url=settings.base_url or "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        )
+        response = model.invoke(
+            f"将以下自然语言时间表达式转换为标准 cron 表达式（5 段：分 时 日 月 周）。"
+            f"只输出 cron 表达式，不要任何其他文字，不要换行。"
+            f"输入：{stripped}"
+        )
+        result = response.content.strip() if hasattr(response, "content") else ""
+        if _re_cron_digits.match(result) and len(result.split()) == 5:
+            return result
+        logger.warning("parse_nl_cron LLM 返回无效: %s", result)
+        return None
+    except Exception as exc:
+        logger.error("parse_nl_cron LLM 调用失败: %s", exc, exc_info=True)
+        return None
 from src.service.skill_confirm_url import load_confirm_url_for_skill
 
 logger = logging.getLogger(__name__)
@@ -61,17 +105,37 @@ class TaskSchedulerService:
                 scheduler.remove_job(job.id)
 
         with get_session_local()() as db:
+            now = cst_now()
             tasks = list(
                 db.scalars(
                     select(EmployeeTask).where(
                         EmployeeTask.is_active.is_(True),
                         EmployeeTask.dispatch_type.in_(("skill", "mcp")),
+                        (EmployeeTask.valid_until.is_(None)) | (EmployeeTask.valid_until >= now),
                     ).order_by(
                         EmployeeTask.priority.desc(),
                         EmployeeTask.id.desc(),
                     )
                 ).all()
             )
+
+            expired_tasks = [
+                t for t in list(
+                    db.scalars(
+                        select(EmployeeTask).where(
+                            EmployeeTask.is_active.is_(True),
+                            EmployeeTask.valid_until.isnot(None),
+                            EmployeeTask.valid_until < now,
+                        )
+                    ).all()
+                )
+            ]
+            for t in expired_tasks:
+                t.is_active = False
+                logger.info("任务已过期，自动停用 task_id=%s task_name=%s", t.id, t.task_name)
+            if expired_tasks:
+                db.commit()
+
             for task in tasks:
                 try:
                     trigger = CronTrigger.from_crontab(task.cron_expression, timezone=CST)
@@ -469,32 +533,37 @@ class TaskSchedulerService:
             employee = db.get(Employee, task.employee_id)
             workspace = db.get(Workspace, task.workspace_id)
 
-            started_at = cst_now()
-            run_log = TaskExecutionLog(
-                task_id=task.id,
-                workspace_id=task.workspace_id,
-                employee_id=task.employee_id,
-                skill_id=task.skill_id,
-                task_name_snapshot=task.task_name,
-                run_status="running",
-                run_result="执行中",
-                input_json=task.task_input_json or "{}",
-                output_json="{}",
-                started_at=started_at,
-            )
-            db.add(run_log)
-            db.commit()
-            db.refresh(run_log)
-
             try:
                 if task.dispatch_type == "skill":
-                    output = cls._execute_task_call(db, task)
-                    run_log.run_status = "success"
-                    run_log.run_result = "任务执行成功"
-                    final_text = cls._extract_final_agent_text(output.get("response"))
-                    run_log.output_json = cls._to_json_string({"content": final_text})
-                    run_log.error_message = None
+                    from src.service.orchestrator_agent import _start_task_as_conversation
+                    _start_task_as_conversation(db, task, employee, task.workspace_id)
+                    task.last_run_at = cst_now()
+                    task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=task.last_run_at)
+                    db.add(task)
+                    db.commit()
+                    logger.info(
+                        "定时任务启动为流式对话 task_id=%s task_name=%s employee_id=%s",
+                        task_id, task.task_name, task.employee_id,
+                    )
+                    return
                 else:
+                    started_at = cst_now()
+                    run_log = TaskExecutionLog(
+                        task_id=task.id,
+                        workspace_id=task.workspace_id,
+                        employee_id=task.employee_id,
+                        skill_id=task.skill_id,
+                        task_name_snapshot=task.task_name,
+                        run_status="running",
+                        run_result="执行中",
+                        input_json=task.task_input_json or "{}",
+                        output_json="{}",
+                        started_at=started_at,
+                    )
+                    db.add(run_log)
+                    db.commit()
+                    db.refresh(run_log)
+
                     mcp_out = cls._execute_mcp_tool_call(db, task)
                     resp = mcp_out["response"]
                     try:

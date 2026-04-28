@@ -8,8 +8,10 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useQueryClient } from "@tanstack/react-query"
 import { ArtifactPanel } from "@/components/artifact"
 import { MonitorPanel } from "@/components/schedule-monitor"
+import { OfflineBanner } from "@/components/offline-banner"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useContactsQuery } from "@/hooks/use-chat-queries"
+import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { modelKeys } from "@/lib/query-keys/model"
 import { useArtifactStore } from "@/stores/artifact-store"
@@ -43,6 +45,8 @@ export function ChatLayout({
   const initOnboarding = useOnboardingStore((s) => s.initOnboarding)
 
   const { data: apiContacts, isError: contactsError } = useContactsQuery()
+
+  useWorkspaceEvents()
 
   const hasContactsErrorToastRef = useRef(false)
 
@@ -282,6 +286,8 @@ export function ChatLayout({
 
       {/* Mobile bottom tab bar */}
       {isMobile && <MobileTabBar />}
+
+      <OfflineBanner />
     </div>
   )
 }

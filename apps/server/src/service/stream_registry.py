@@ -17,6 +17,7 @@ Subscriber = Callable[[dict], None]
 
 FLUSH_INTERVAL_EVENTS = 20
 FLUSH_INTERVAL_SECONDS = 2.0
+HEARTBEAT_INTERVAL_SECONDS = 30.0
 TASK_TTL_SECONDS = 300
 BUFFER_MAXLEN = 5000
 AGENT_CHUNK_TIMEOUT = 120.0
@@ -271,7 +272,19 @@ class StreamRegistry:
         chunk_builder = ChunkJsonBuilder()
         assistant_text_parts: list[str] = []
         last_flush_time = time.monotonic()
+        last_heartbeat_time = time.monotonic()
         state_final = "completed"
+
+        def _maybe_heartbeat() -> None:
+            nonlocal last_heartbeat_time
+            now_hb = time.monotonic()
+            if now_hb - last_heartbeat_time < HEARTBEAT_INTERVAL_SECONDS:
+                return
+            last_heartbeat_time = now_hb
+            try:
+                _flush_heartbeat(db, conversation_id)
+            except Exception:
+                pass
 
         def _maybe_flush() -> None:
             nonlocal last_flush_time
@@ -336,6 +349,7 @@ class StreamRegistry:
                     or now - last_flush_time >= FLUSH_INTERVAL_SECONDS
                 ):
                     _maybe_flush()
+                    _maybe_heartbeat()
 
             final_text = "".join(assistant_text_parts).strip() or "模型已完成调用。"
 
@@ -415,6 +429,9 @@ class StreamRegistry:
                 conversation_id, state_final, chunk_builder.count, task.buffer.cursor,
             )
             task.status = state_final
+            print(f"1111111111111state_final: {state_final}")
+            _finalize_task_stream(conversation_id, state_final)
+
             task.subscribers.clear()
             db.close()
             self._schedule_cleanup(conversation_id)
@@ -502,6 +519,145 @@ class StreamRegistry:
             logger.warning("[flush] msg_id=%s FAILED", stream_msg_id, exc_info=True)
             db.rollback()
             return False
+
+
+def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
+    """流结束时回写 TaskExecutionLog + 推送 workspace 事件。
+    使用独立 session，不依赖调用方 session 状态。"""
+    try:
+        from src.db.session import get_session_local
+        from src.models.task_execution_log import TaskExecutionLog
+        from src.models.employee_task import EmployeeTask
+        from src.models.orchestration_plan import OrchestrationPlan
+        from src.models.conversation import ConversationMessage
+        from src.service.workspace_events import WorkspaceEventBus
+        from src.models.workspace import cst_now
+
+        db = get_session_local()()
+
+        log = db.scalars(
+            select(TaskExecutionLog).where(
+                TaskExecutionLog.conversation_id == conversation_id,
+                TaskExecutionLog.run_status == "running",
+            )
+        ).first()
+        if not log:
+            db.close()
+            return
+
+        log.ended_at = cst_now()
+        if log.started_at and log.ended_at:
+            log.duration_ms = int(
+                (log.ended_at.replace(tzinfo=None) - log.started_at.replace(tzinfo=None)).total_seconds() * 1000
+            )
+
+        if stream_state == "completed":
+            last_msg = db.scalars(
+                select(ConversationMessage).where(
+                    ConversationMessage.conversation_id == conversation_id,
+                    ConversationMessage.role == "assistant",
+                ).order_by(ConversationMessage.id.desc())
+            ).first()
+            final_text = last_msg.content if last_msg else ""
+            log.run_status = "success"
+            log.run_result = "任务执行成功"
+            log.output_json = json.dumps({"content": final_text}, ensure_ascii=False)
+
+            WorkspaceEventBus.push(log.workspace_id, {
+                "type": "task_completed",
+                "task_id": log.task_id,
+                "conversation_id": conversation_id,
+            })
+        elif stream_state == "cancelled":
+            log.run_status = "cancelled"
+            log.run_result = "任务已取消"
+        else:
+            log.run_status = "failed"
+            log.run_result = "执行异常"
+            log.error_message = "agent stream error"
+
+        task = db.get(EmployeeTask, log.task_id)
+        if task and task.orchestration_plan_id:
+            if stream_state == "completed":
+                plan = db.get(OrchestrationPlan, task.orchestration_plan_id)
+                if plan and plan.status == "executing":
+                    plan.completed_tasks += 1
+                    if plan.completed_tasks >= plan.total_tasks:
+                        plan.status = "completed"
+
+        db.commit()
+        db.close()
+    except Exception:
+        logger.error(
+            "_finalize_task_stream failed conv=%s state=%s",
+            conversation_id, stream_state, exc_info=True
+        )
+
+
+def _flush_heartbeat(db: Any, conversation_id: int) -> None:
+    try:
+        from sqlalchemy import select
+        from src.models.task_execution_log import TaskExecutionLog
+        from src.models.workspace import cst_now
+
+        log = db.scalars(
+            select(TaskExecutionLog).where(
+                TaskExecutionLog.conversation_id == conversation_id,
+                TaskExecutionLog.run_status == "running",
+            )
+        ).first()
+        if not log:
+            return
+        log.last_heartbeat_at = cst_now()
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
+def cleanup_zombie_executions(db: Any) -> int:
+    """启动时清理僵尸运行状态：超过10分钟无心跳的 running 任务标记为 timeout。"""
+    try:
+        from sqlalchemy import select
+        from src.models.task_execution_log import TaskExecutionLog
+        from src.models.workspace import cst_now
+        from datetime import timedelta
+
+        now = cst_now()
+        threshold = now - timedelta(minutes=10)
+
+        zombies = list(
+            db.scalars(
+                select(TaskExecutionLog).where(
+                    TaskExecutionLog.run_status == "running",
+                    (
+                        TaskExecutionLog.last_heartbeat_at.is_(None)
+                        | (TaskExecutionLog.last_heartbeat_at < threshold)
+                    ),
+                )
+            ).all()
+        )
+        for log in zombies:
+            log.run_status = "timeout"
+            log.run_result = "任务超时"
+            log.error_message = "进程重启时检测到任务无心跳超时"
+            log.ended_at = now
+            if log.started_at:
+                log.duration_ms = int((now - log.started_at).total_seconds() * 1000)
+
+        if zombies:
+            db.commit()
+            logger.info("cleanup_zombie_executions: cleaned %d zombie tasks", len(zombies))
+        return len(zombies)
+    except Exception:
+        logger.error("cleanup_zombie_executions failed", exc_info=True)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return 0
 
 
 registry = StreamRegistry()

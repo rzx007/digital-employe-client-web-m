@@ -22,15 +22,21 @@ class EmployeeTask(Base):
     capability_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     task_type: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    cron_expression: Mapped[str] = mapped_column(String(128), nullable=False)
+    cron_expression: Mapped[str | None] = mapped_column(String(128), nullable=True)
     cron_expression_type: Mapped[str] = mapped_column(String(32), nullable=False, default="custom")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
     confirm_execution_result: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, index=True
     )
-    # 用户定时任务提示词（与 meta.tasks[].user_prompt 同步）
     user_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     task_input_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    execute_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="scheduled")
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
+    orchestration_plan_id: Mapped[int | None] = mapped_column(
+        ForeignKey("orchestration_plans.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)

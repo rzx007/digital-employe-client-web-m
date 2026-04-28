@@ -32,7 +32,9 @@ function mapContactToTarget(contact: Contact): {
   target_type: ChatTargetType
   target_id: number
 } | null {
-  if (contact.type === "curator") return null
+  if (contact.type === "curator") {
+    return { target_type: "curator", target_id: 1 }
+  }
   if (contact.type === "employee") {
     const eid = Number(contact.employee?.id)
     return isNaN(eid) ? null : { target_type: "employee", target_id: eid }
@@ -88,9 +90,7 @@ export async function fetchConversationsByContactId(
   contactId: string,
   contact?: Contact
 ): Promise<Conversation[]> {
-  if (!contact || contact.type === "curator") {
-    return []
-  }
+  if (!contact) return []
 
   const target = mapContactToTarget(contact)
   if (!target) return []
@@ -149,7 +149,7 @@ export async function createConversation(params: {
   title?: string
   contact?: Contact
 }): Promise<Conversation> {
-  if (!params.contact || params.contact.type === "curator") {
+  if (!params.contact) {
     return {
       id: `draft-${params.contactId}-${Date.now()}`,
       title: params.title ?? "新对话",
