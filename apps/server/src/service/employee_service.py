@@ -196,7 +196,7 @@ class EmployeeService:
         return data
 
     @staticmethod
-    def _download_zip() -> Path:
+    def _download_zip(token: str | None = None) -> Path:
         settings = get_settings()
         if not settings.employee_zip_url:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
@@ -208,7 +208,13 @@ class EmployeeService:
         tmp_dir.mkdir(parents=True, exist_ok=True)
 
         zip_path = tmp_dir / f"employees-{uuid.uuid4().hex}.zip"
-        with httpx.stream("GET", settings.employee_zip_url, timeout=120.0) as resp:
+        headers = {"token": token or ""}
+        with httpx.stream(
+            "GET",
+            settings.employee_zip_url,
+            timeout=120.0,
+            headers=headers,
+        ) as resp:
             resp.raise_for_status()
             with zip_path.open("wb") as f:
                 for chunk in resp.iter_bytes():
@@ -671,12 +677,16 @@ class EmployeeService:
         return payload
 
     @staticmethod
-    def sync_workspace_employees(db: Session, workspace: Workspace) -> list[Employee]:
+    def sync_workspace_employees(
+        db: Session,
+        workspace: Workspace,
+        token: str | None = None,
+    ) -> list[Employee]:
         zip_path: Path | None = None
         extract_dir: Path | None = None
         should_cleanup_zip = False
         try:
-            zip_path = EmployeeService._download_zip()
+            zip_path = EmployeeService._download_zip(token=token)
             should_cleanup_zip = True
             if not zip_path.exists():
                 raise HTTPException(

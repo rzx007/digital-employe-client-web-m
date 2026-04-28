@@ -20,10 +20,15 @@ router = APIRouter(tags=["员工"])
 
 
 @router.get("/workspaces/{workspace_id}/employees/sync", response_model=ResponseBase[EmployeeSyncResult])
-def sync_workspace_employees(workspace_id: int, db: Session = Depends(get_db)) -> ResponseBase[EmployeeSyncResult]:
+def sync_workspace_employees(
+    workspace_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> ResponseBase[EmployeeSyncResult]:
     """同步指定工作空间的员工数据。"""
     workspace = WorkspaceService.get_workspace(db, workspace_id)
-    employees = EmployeeService.sync_workspace_employees(db, workspace)
+    token = request.headers.get("token")
+    employees = EmployeeService.sync_workspace_employees(db, workspace, token=token)
     employee_items = [EmployeeService._employee_to_dict(emp) for emp in employees]
     payload = EmployeeSyncResult(
         workspace_id=workspace_id,
@@ -104,12 +109,13 @@ def create_employee(
     summary="根据用户需求生成员工",
     response_model=ResponseBase[list[EmployeeOut]],
 )
-async def generate_employees(request: EmployeeGenerationRequest):
+async def generate_employees(http_request: Request, request: EmployeeGenerationRequest):
     """
     根据用户需求异步生成员工信息
     """
     # 异步获取技能列表
-    skills = await EmployeeGenerationService.get_available_skills()
+    token = http_request.headers.get("token")
+    skills = await EmployeeGenerationService.get_available_skills(token=token)
     logger.info(f"招聘接口可用技能数量: {len(skills)}")
     if not skills:
         # 返回错误响应
@@ -135,7 +141,10 @@ async def generate_employees(request: EmployeeGenerationRequest):
         skills_detail = []
         if skill_ids:
             for skill_id in skill_ids:
-                detail = await agent_interface_service.get_skill_detail(skill_id)
+                detail = await agent_interface_service.get_skill_detail(
+                    skill_id,
+                    token=token,
+                )
                 if detail:
                     skills_detail.append(detail)
 
