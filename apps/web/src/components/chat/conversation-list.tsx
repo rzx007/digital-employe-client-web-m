@@ -2,7 +2,6 @@ import { type ComponentProps } from "react"
 import { IconCirclePlus, IconPinFilled } from "@tabler/icons-react"
 import { useShallow } from "zustand/react/shallow"
 import { Button } from "@workspace/ui/components/button"
-import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
 import { useConversationsQuery } from "@/hooks/use-chat-queries"
 import { CURATOR_PINNED_CONVERSATION_ID } from "@/lib/constants"
@@ -72,7 +71,7 @@ export function ConversationList({
   return (
     <div
       className={cn(
-        "flex h-full w-full flex-col border-r bg-muted/50 transition-all duration-300",
+        "flex h-full min-h-0 w-full flex-col border-r bg-muted/50 transition-all duration-300",
         className
       )}
       {...props}
@@ -137,7 +136,7 @@ export function ConversationList({
         </Button>
       )}
 
-      <ScrollArea className="flex-1">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-0.5 p-2">
           {isCurator && (
             <CuratorPinnedItem
@@ -177,7 +176,7 @@ export function ConversationList({
               </div>
             )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }
