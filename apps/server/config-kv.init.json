@@ -19,10 +19,19 @@
   "MCP_CLIENT_BASE_PATH": "/llm/aios/mcp/client/tool/call",
   "AGENT_INTERFACE_SKILL_PREFIX": "/llm/aios/skill/list",
   "LOGIN_PATH": "/yc/login",
-  "SKILL_DIR": "/api/v1/client/skills/directories",
-  "SKILL_REMOTE_IMPORT": "/api/v1/client/skills/import",
-  "SKILL_NAME_VALIDATE": "/api/v1/client/skills/name/exists",
+  "SKILL_DIR": "/digital/api/v1/client/skills/directories",
+  "SKILL_REMOTE_IMPORT": "/digital/api/v1/client/skills/import",
+  "SKILL_NAME_VALIDATE": "/digital/api/v1/client/skills/name/exists",
   "BUILTIN_SKILLS_PATH": "~/.digital-employee/build-in-skills",
   "LOCAL_SKILLS_PATH": "~/.digital-employee/local-skills",
   "CLIENT_SKILL_IMPORT_MAX_BYTES": "52428800"
+  ,
+  "FEISHU_APP_ID": "cli_a97bcb15167b1bb4",
+  "FEISHU_APP_SECRET": "xvccgjHzEdB8dV28c8R4KeI6jTjWsPWL",
+  "FEISHU_TENANT_ACCESS_TOKEN_URL": "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+  "FEISHU_TOKEN_REFRESH_BEFORE_SECONDS": "600",
+  "FEISHU_TOKEN_REQUEST_TIMEOUT": "10",
+  "FEISHU_BITABLE_APP_TOKEN": "M9NRbEGwaarCrgs16VfcF17Ynlj",
+  "FEISHU_BITABLE_TABLE_ID": "tblz2j5wMJLvToHa",
+  "FEISHU_BITABLE_VIEW_ID": "vewKecDsBf"
 }

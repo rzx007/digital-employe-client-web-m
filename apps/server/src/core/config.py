@@ -89,13 +89,23 @@ class Settings:
     mcp_base_url: str | None = None
     agent_interface_base_url: str | None = None
     agent_interface_skill_prefix: str = "/aios/skill"
-    skill_dir_path: str = "/api/v1/client/skills/directories"
-    skill_remote_import_path: str = "/api/v1/client/skills/import"
-    skill_name_validate_path: str = "/api/v1/client/skills/name/exists"
+    skill_dir_path: str | None = None
+    skill_remote_import_path: str | None = None
+    skill_name_validate_path: str | None = None
     client_skill_import_max_bytes: int = 52428800
     login_path: str | None = None
     login_url: str | None = None
     execute_timeout: int = 600
+    feishu_app_id: str = "cli_a97bcb15167b1bb4"
+    feishu_app_secret: str = "xvccgjHzEdB8dV28c8R4KeI6jTjWsPWL"
+    feishu_tenant_access_token_url: str = (
+        "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+    )
+    feishu_token_refresh_before_seconds: int = 600
+    feishu_token_request_timeout: float = 10.0
+    feishu_bitable_app_token: str = "JjbwbZqiQaT2ZosTeJPcRxF5npc"
+    feishu_bitable_table_id: str = "tblY6kGa1btVqkH3"
+    feishu_bitable_view_id: str = "vewhP7JKEa"
 
 
 def _get_kv_value(kv_data: dict[str, str], key: str) -> str | None:
@@ -210,6 +220,26 @@ def get_settings() -> Settings:
         )
     except ValueError:
         client_skill_import_max_bytes = 52428800
+    feishu_token_refresh_before_seconds_raw = _get_kv_value(
+        kv_data, "FEISHU_TOKEN_REFRESH_BEFORE_SECONDS"
+    )
+    try:
+        feishu_token_refresh_before_seconds = int(
+            feishu_token_refresh_before_seconds_raw or "600"
+        )
+    except ValueError:
+        feishu_token_refresh_before_seconds = 600
+    if feishu_token_refresh_before_seconds < 0:
+        feishu_token_refresh_before_seconds = 600
+    feishu_token_request_timeout_raw = _get_kv_value(
+        kv_data, "FEISHU_TOKEN_REQUEST_TIMEOUT"
+    )
+    try:
+        feishu_token_request_timeout = float(feishu_token_request_timeout_raw or "10")
+    except ValueError:
+        feishu_token_request_timeout = 10.0
+    if feishu_token_request_timeout <= 0:
+        feishu_token_request_timeout = 10.0
 
     return Settings(
         default_workspace_root=_get_kv_value(kv_data, "DEFAULT_WORKSPACE_ROOT"),
@@ -250,6 +280,22 @@ def get_settings() -> Settings:
         skill_name_validate_path=skill_name_validate_path,
         client_skill_import_max_bytes=client_skill_import_max_bytes,
         login_url=join_base_and_path(platform_base_url, login_path),
+        feishu_app_id=_get_kv_value(kv_data, "FEISHU_APP_ID")
+        or "cli_a9d1e24afb38dcc4",
+        feishu_app_secret=_get_kv_value(kv_data, "FEISHU_APP_SECRET")
+        or "X26JhpNSmz7Ekb8qGkk4Pymeg64Jpcdm",
+        feishu_tenant_access_token_url=_get_kv_value(
+            kv_data, "FEISHU_TENANT_ACCESS_TOKEN_URL"
+        )
+        or "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+        feishu_token_refresh_before_seconds=feishu_token_refresh_before_seconds,
+        feishu_token_request_timeout=feishu_token_request_timeout,
+        feishu_bitable_app_token=_get_kv_value(kv_data, "FEISHU_BITABLE_APP_TOKEN")
+        or "UrEbbbWQOan8RtsZxvIcQZBhn9b",
+        feishu_bitable_table_id=_get_kv_value(kv_data, "FEISHU_BITABLE_TABLE_ID")
+        or "tblGUEhjytwRMNAn",
+        feishu_bitable_view_id=_get_kv_value(kv_data, "FEISHU_BITABLE_VIEW_ID")
+        or "vewr46ceAD",
     )
 
 

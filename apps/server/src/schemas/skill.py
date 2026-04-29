@@ -12,6 +12,8 @@ class SkillListItem(BaseModel):
     description: str | None = None
     directoryId: int | None = None
     directoryName: str | None = None
+    source: str = "remote"
+    sourceLabel: str = "远程"
 
 
 class SkillRead(BaseModel):

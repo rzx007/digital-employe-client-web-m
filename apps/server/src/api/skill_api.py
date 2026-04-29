@@ -23,10 +23,31 @@ router = APIRouter(tags=["技能"])
 @router.get("/skills/list", response_model=ResponseBase[list[SkillListItem]])
 def list_skills(request: Request) -> ResponseBase[list[SkillListItem]]:
     token = request.headers.get("token")
-    skills = SkillService.list_remote_skills(token)
-    data = [
-        SkillListItem(**SkillService.map_remote_to_list_item(item)) for item in skills
-    ]
+    remote_skills = SkillService.list_remote_skills(token)
+    remote_data = []
+    for item in remote_skills:
+        mapped = SkillService.map_remote_to_list_item(item)
+        mapped["source"] = "remote"
+        mapped["sourceLabel"] = "远程"
+        remote_data.append(SkillListItem(**mapped))
+
+    local_skills = LocalSkillService.list_local_skills()
+    local_data = []
+    for index, item in enumerate(local_skills, start=1):
+        local_data.append(
+            SkillListItem(
+                id=-index,
+                skillName=item.get("skillName") or "",
+                displayNameZh=item.get("skillName") or "",
+                description=None,
+                directoryId=item.get("directoryId"),
+                directoryName="本地技能",
+                source="local",
+                sourceLabel="本地",
+            )
+        )
+
+    data = remote_data + local_data
     return ResponseBase[list[SkillListItem]](data=data)
 
 
@@ -37,7 +58,7 @@ def get_skill(skill_id: int, request: Request) -> ResponseBase[SkillRead]:
     return ResponseBase[SkillRead](data=SkillRead(**detail))
 
 
-@router.get("/skills/directories", response_model=ResponseBase[Any])
+@router.get("/skills/remote/directories", response_model=ResponseBase[Any])
 async def get_skill_directories(
     request: Request,
     flat: bool = Query(default=True),
