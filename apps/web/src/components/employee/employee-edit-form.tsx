@@ -11,9 +11,7 @@ import { Skeleton } from "@workspace/ui/components/skeleton"
 import { Switch } from "@workspace/ui/components/switch"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { fetchMcpList, fetchSkillList } from "@/api/employee"
-import { fetchLocalSkillList } from "@/api/skill"
 import type {
-  LocalSkillItem,
   McpListItem,
   MetadataMcp,
   MetadataSkill,
@@ -114,9 +112,6 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
   )
   const [allMcpList, setAllMcpList] = React.useState<McpListItem[]>([])
   const [allSkillList, setAllSkillList] = React.useState<SkillListItem[]>([])
-  const [allLocalSkillList, setAllLocalSkillList] = React.useState<
-    LocalSkillItem[]
-  >([])
   const [pickerOpen, setPickerOpen] = React.useState(false)
   const [initialized, setInitialized] = React.useState(false)
 
@@ -126,9 +121,6 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
       .catch(() => {})
     fetchSkillList()
       .then(setAllSkillList)
-      .catch(() => {})
-    fetchLocalSkillList()
-      .then(setAllLocalSkillList)
       .catch(() => {})
   }, [])
 
@@ -179,11 +171,7 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
     setSelectedSkillIds((prev) => prev.filter((i) => i !== id))
   }
 
-  const handlePickerConfirm = (
-    mcpIds: number[],
-    skillIds: number[],
-    _localSkillNames: string[]
-  ) => {
+  const handlePickerConfirm = (mcpIds: number[], skillIds: number[]) => {
     setSelectedMcpIds(mcpIds)
     setSelectedSkillIds(skillIds)
   }
@@ -372,7 +360,6 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
         onOpenChange={setPickerOpen}
         allMcpList={allMcpList}
         allSkillList={allSkillList}
-        allLocalSkillList={allLocalSkillList}
         selectedMcpIds={selectedMcpIds}
         selectedSkillIds={selectedSkillIds}
         onConfirm={handlePickerConfirm}

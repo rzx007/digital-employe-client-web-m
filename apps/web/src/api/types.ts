@@ -38,16 +38,18 @@ export interface McpListItem {
 export interface SkillListItem {
   id: number
   skillName: string
-  description: string
-  displayNameZh: string
-  prompt: string
-  inputSchema: unknown
-  skillContent: string
+  description: string | null
+  displayNameZh: string | null
+  prompt?: string
+  inputSchema?: unknown
+  skillContent?: string
   directoryId: number | null
-  status: number
-  createTime: string
-  updateTime: string
+  status?: number
+  createTime?: string
+  updateTime?: string
   directoryName: string | null
+  source?: "remote" | "local"
+  sourceLabel?: string
 }
 
 /**

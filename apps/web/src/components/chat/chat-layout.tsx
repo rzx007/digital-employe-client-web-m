@@ -22,6 +22,7 @@ import { PRIMARY_CURATOR } from "@/lib/mock-data/ai-employees"
 import { WelcomeDialog, UserTour } from "@/components/onboarding"
 import { AppToolbar } from "./app-toolbar"
 import { ShiftCalendarPage } from "@/components/shift-calendar"
+import { SkillsPage } from "@/components/skills"
 import { ChatView } from "./chat-view"
 import { ContactDetailPanel } from "./contact-detail-panel"
 import { ContactsPanel } from "./contacts-panel"
@@ -174,7 +175,7 @@ export function ChatLayout({
       <div className="flex min-w-0 flex-1">
         {!isMobile && <AppToolbar />}
 
-        {!isMobile && activeTab !== "workbench" && activeTab !== "calendar" && (
+        {!isMobile && activeTab !== "workbench" && activeTab !== "calendar" && activeTab !== "skills" && (
           <div
             className={cn(
               "hidden shrink-0 md:flex md:flex-col transition-[width] duration-300",
@@ -215,6 +216,10 @@ export function ChatLayout({
 
         {activeTab === "workbench" && (
           <WorkbenchView className="min-w-0 flex-1" />
+        )}
+
+        {activeTab === "skills" && (
+          <SkillsPage className="min-w-0 flex-1" />
         )}
 
         {isPanelOpen &&

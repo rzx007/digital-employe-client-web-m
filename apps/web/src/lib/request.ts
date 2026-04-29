@@ -2,7 +2,6 @@ import { ofetch } from "ofetch"
 
 const defaultHeaders: HeadersInit = {
   Accept: "application/json",
-  "Content-Type": "application/json",
 }
 
 const isElectron = !!(typeof window !== "undefined" && window.electronApi)
@@ -75,10 +74,29 @@ export const request = ofetch.create({
   baseURL: currentBaseURL,
   headers: { ...defaultHeaders },
   async onRequest(ctx) {
+    const headers = new Headers(ctx.options?.headers)
     const token = getAuthToken()
-    if (token && ctx.options?.headers) {
-      ; (ctx.options.headers as Headers).set("token", `${token}`)
+    if (token) {
+      headers.set("token", `${token}`)
     }
+
+    const body = ctx.options?.body
+    const isFormData =
+      typeof FormData !== "undefined" && body instanceof FormData
+    const isJsonLikeBody =
+      body != null &&
+      typeof body === "object" &&
+      !isFormData &&
+      !(body instanceof Blob) &&
+      !(body instanceof URLSearchParams)
+
+    if (isJsonLikeBody) {
+      headers.set("Content-Type", "application/json")
+    } else if (isFormData) {
+      headers.delete("Content-Type")
+    }
+
+    ctx.options.headers = headers
   },
   async onRequestError() { },
   async onResponse() { },
@@ -96,6 +114,6 @@ export const request = ofetch.create({
 
 if (typeof window !== "undefined") {
   loadEndpointBaseURL().then((url) => {
-    request.options.baseURL = url
+    // request.options.baseURL = url
   })
 }
