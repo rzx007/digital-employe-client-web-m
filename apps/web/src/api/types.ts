@@ -286,6 +286,30 @@ export type LoginResponse =
       msg: string
     }
 
+export interface LocalSkillItem {
+  skillName: string
+  path: string
+  directoryId: number | null
+  hasSkillMd: boolean
+  importedAt: string | null
+}
+
+export interface LocalSkillDetail {
+  skillName: string
+  path: string
+  directoryId: number | null
+  importedAt: string | null
+  skillMdContent: string | null
+  files: string[]
+}
+
+export interface LocalSkillImportResult {
+  skillName: string
+  directoryId: number
+  path: string
+  overwritten: boolean
+}
+
 export interface ResourceEntry {
   name: string
   path: string

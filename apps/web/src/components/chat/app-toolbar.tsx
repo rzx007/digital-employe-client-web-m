@@ -10,7 +10,9 @@ import {
   IconLayoutDashboardFilled,
   IconLogout,
   IconSettings,
+  IconPackages,
 } from "@tabler/icons-react"
+import { useNavigate } from "@tanstack/react-router"
 import { Button } from "@workspace/ui/components/button"
 import {
   AlertDialog,
@@ -99,6 +101,7 @@ export function AppToolbar({
   const logout = useAuthStore((s) => s.logout)
   const user = useAuthStore((s) => s.user)
   const restoreSession = useAuthStore((s) => s.restoreSession)
+  const navigate = useNavigate()
   useEffect(() => {
     ;(async () => {
       await restoreSession()
@@ -185,6 +188,22 @@ export function AppToolbar({
           <div data-tour-id="notification-bell">
             <NotificationBell />
           </div>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-10 rounded-lg text-muted-foreground hover:text-foreground"
+                onClick={() => navigate({ to: "/skills" })}
+              >
+                <IconPackages className="size-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={8}>
+              技能管理
+            </TooltipContent>
+          </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>

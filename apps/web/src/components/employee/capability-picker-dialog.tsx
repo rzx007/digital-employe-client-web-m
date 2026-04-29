@@ -16,7 +16,7 @@ import {
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
 import { Input } from "@workspace/ui/components/input"
-import type { McpListItem, SkillListItem } from "@/api/types"
+import type { LocalSkillItem, McpListItem, SkillListItem } from "@/api/types"
 import { cn } from "@workspace/ui/lib/utils"
 
 interface CapabilityPickerDialogProps {
@@ -24,9 +24,15 @@ interface CapabilityPickerDialogProps {
   onOpenChange: (open: boolean) => void
   allMcpList: McpListItem[]
   allSkillList: SkillListItem[]
+  allLocalSkillList?: LocalSkillItem[]
   selectedMcpIds: number[]
   selectedSkillIds: number[]
-  onConfirm: (mcpIds: number[], skillIds: number[]) => void
+  selectedLocalSkillNames?: string[]
+  onConfirm: (
+    mcpIds: number[],
+    skillIds: number[],
+    localSkillNames: string[]
+  ) => void
 }
 
 export function CapabilityPickerDialog({
@@ -34,13 +40,17 @@ export function CapabilityPickerDialog({
   onOpenChange,
   allMcpList,
   allSkillList,
+  allLocalSkillList = [],
   selectedMcpIds,
   selectedSkillIds,
+  selectedLocalSkillNames = [],
   onConfirm,
 }: CapabilityPickerDialogProps) {
   const [draftMcpIds, setDraftMcpIds] = React.useState<number[]>(selectedMcpIds)
   const [draftSkillIds, setDraftSkillIds] =
     React.useState<number[]>(selectedSkillIds)
+  const [draftLocalSkillNames, setDraftLocalSkillNames] =
+    React.useState<string[]>(selectedLocalSkillNames)
   const [tab, setTab] = React.useState<"mcp" | "skill">("skill")
 
   const [searchQuery, setSearchQuery] = React.useState("")
@@ -49,13 +59,20 @@ export function CapabilityPickerDialog({
     if (open) {
       setDraftMcpIds(selectedMcpIds)
       setDraftSkillIds(selectedSkillIds)
+      setDraftLocalSkillNames(selectedLocalSkillNames)
       setSearchQuery("")
     }
-  }, [open, selectedMcpIds, selectedSkillIds])
+  }, [open, selectedMcpIds, selectedSkillIds, selectedLocalSkillNames])
 
   const toggleSkill = (id: number) => {
     setDraftSkillIds((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    )
+  }
+
+  const toggleLocalSkill = (name: string) => {
+    setDraftLocalSkillNames((prev) =>
+      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
     )
   }
 
@@ -66,7 +83,7 @@ export function CapabilityPickerDialog({
   }
 
   const handleConfirm = () => {
-    onConfirm(draftMcpIds, draftSkillIds)
+    onConfirm(draftMcpIds, draftSkillIds, draftLocalSkillNames)
     onOpenChange(false)
   }
 
@@ -80,6 +97,14 @@ export function CapabilityPickerDialog({
         (item.displayNameZh && item.displayNameZh.toLowerCase().includes(q))
     )
   }, [allSkillList, searchQuery])
+
+  const filteredLocalSkills = React.useMemo(() => {
+    if (!searchQuery.trim()) return allLocalSkillList
+    const q = searchQuery.toLowerCase()
+    return allLocalSkillList.filter((item) =>
+      item.skillName.toLowerCase().includes(q)
+    )
+  }, [allLocalSkillList, searchQuery])
 
   const filteredMcps = React.useMemo(() => {
     if (!searchQuery.trim()) return allMcpList
@@ -128,7 +153,7 @@ export function CapabilityPickerDialog({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
-              {filteredSkills.length === 0 ? (
+              {filteredSkills.length === 0 && filteredLocalSkills.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <IconSearch className="size-8 stroke-1" />
                   <p className="mt-2 text-sm">没有找到匹配的技能</p>
@@ -139,7 +164,7 @@ export function CapabilityPickerDialog({
                     const checked = draftSkillIds.includes(item.id)
                     return (
                       <button
-                        key={item.id}
+                        key={`remote-${item.id}`}
                         type="button"
                         className={cn(
                           "relative flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors",
@@ -153,15 +178,56 @@ export function CapabilityPickerDialog({
                           <span className="text-sm leading-snug font-medium">
                             {item.displayNameZh || item.skillName}
                           </span>
-                          <IconCheck
-                            className={cn(
-                              "size-4 shrink-0 text-primary",
-                              checked ? "opacity-100" : "opacity-0"
-                            )}
-                          />
+                          <div className="flex shrink-0 items-center gap-1">
+                            <Badge variant="secondary" className="px-1 py-0 text-[10px]">
+                              远程
+                            </Badge>
+                            <IconCheck
+                              className={cn(
+                                "size-4 text-primary",
+                                checked ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                          </div>
                         </div>
                         <span className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
                           {item.description}
+                        </span>
+                      </button>
+                    )
+                  })}
+                  {filteredLocalSkills.map((item) => {
+                    const checked = draftLocalSkillNames.includes(item.skillName)
+                    return (
+                      <button
+                        key={`local-${item.skillName}`}
+                        type="button"
+                        className={cn(
+                          "relative flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors",
+                          checked
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-primary/30"
+                        )}
+                        onClick={() => toggleLocalSkill(item.skillName)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-sm leading-snug font-medium">
+                            {item.skillName}
+                          </span>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <Badge variant="outline" className="px-1 py-0 text-[10px]">
+                              本地
+                            </Badge>
+                            <IconCheck
+                              className={cn(
+                                "size-4 text-primary",
+                                checked ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                          </div>
+                        </div>
+                        <span className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                          {item.path}
                         </span>
                       </button>
                     )
