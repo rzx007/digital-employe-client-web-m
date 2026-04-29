@@ -16,11 +16,13 @@ import {
 import { motion, AnimatePresence } from "motion/react"
 import logoImage from "@/assets/logo.png"
 import bgImage from "@/assets/Group.png"
+import feishuIcon from "@/assets/feishu.svg"
 import { useAuthStore } from "@/stores/auth-store"
 import { EndpointConfig } from "@/components/login/endpoint-config"
 import { ChangePasswordForm } from "@/components/login/change-password-form"
 import { useEndpointStore } from "@/stores/endpoint-store"
 import { updateRequestBaseUrl } from "@/lib/request"
+import { getOAuthAuthorizeUrl } from "@/api/auth"
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -107,6 +109,33 @@ function LoginPage() {
     setCurrentView("login")
   }
 
+  const handleFeishuLogin = async () => {
+    try {
+      const res = await getOAuthAuthorizeUrl("feishu")
+      const width = 600
+      const height = 700
+      const left = window.screenX + (window.outerWidth - width) / 2
+      const top = window.screenY + (window.outerHeight - height) / 2
+      window.open(
+        res.url,
+        "feishu_oauth",
+        `width=${width},height=${height},left=${left},top=${top},popup=yes`
+      )
+    } catch (err) {
+      console.error("获取飞书授权地址失败:", err)
+    }
+  }
+
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === "oauth_callback") {
+        console.log("OAuth result:", e.data.payload)
+      }
+    }
+    window.addEventListener("message", handler)
+    return () => window.removeEventListener("message", handler)
+  }, [])
+
   const rootStyle: React.CSSProperties = {
     background: `url(${bgImage}) no-repeat 100% 0%, linear-gradient(180deg, #eaf0fd 1%, rgba(236, 242, 255, 0.74) 27%, rgba(255, 255, 255, 0) 83%)`,
     ...(isElectron ? { WebkitAppRegion: "drag" } : {}),
@@ -116,17 +145,15 @@ function LoginPage() {
     <div
       className={cn(
         "relative w-screen overflow-hidden",
-        isElectron
-          ? "h-screen"
-          : "flex min-h-screen flex-col items-center justify-center px-4 py-10 md:px-6"
+        isElectron ? "h-screen" : "min-h-screen px-4 py-10 md:px-6"
       )}
       style={rootStyle}
     >
-      <div>
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
         {/* 右上角按钮 */}
         {isElectron && (
           <div
-            className="absolute top-0 right-0 z-10 flex items-center"
+            className="pointer-events-auto absolute top-0 right-0 z-10 flex items-center"
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
             <button
@@ -153,7 +180,7 @@ function LoginPage() {
         {/* Logo + 名称 */}
         <div
           className={cn(
-            "select-none",
+            "pointer-events-auto select-none",
             isElectron
               ? "flex items-center px-4 pt-4"
               : "mx-auto flex w-full max-w-md items-center justify-center gap-2 pb-6"
@@ -170,43 +197,34 @@ function LoginPage() {
           </h1>
         </div>
       </div>
-      {currentView === "endpoint" ? (
+      <div
+        className={cn(
+          isElectron
+            ? "flex h-full items-center justify-center px-6 pt-14"
+            : "mx-auto flex min-h-screen w-full max-w-md items-center justify-center pt-24"
+        )}
+      >
         <div
           className={cn(
-            "mx-auto w-full",
+            "w-full",
             isElectron
-              ? "max-w-sm px-6 "
-              : "max-w-md rounded-2xl border border-border/60 bg-background/90 p-6 shadow-sm backdrop-blur md:p-8"
+              ? "max-w-sm"
+              : "rounded-2xl border border-border/60 bg-background/90 p-6 shadow-sm backdrop-blur md:p-8"
           )}
-        >
-          <EndpointConfig
-            isElectron={isElectron}
-            onCancel={() => setCurrentView("login")}
-            onSaved={handleEndpointSaved}
-          />
-        </div>
-      ) : (
-        <div
-          className={cn(
+          style={
             isElectron
-              ? "flex flex-col items-center justify-center px-6 pt-10"
-              : "mx-auto flex w-full max-w-md justify-center"
-          )}
+              ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties)
+              : undefined
+          }
         >
-          <div
-            className={cn(
-              "w-full",
-              isElectron
-                ? "max-w-sm"
-                : "rounded-2xl border border-border/60 bg-background/90 p-6 shadow-sm backdrop-blur md:p-8"
-            )}
-            style={
-              isElectron
-                ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties)
-                : undefined
-            }
-          >
-            <AnimatePresence mode="wait">
+          {currentView === "endpoint" ? (
+            <EndpointConfig
+              isElectron={isElectron}
+              onCancel={() => setCurrentView("login")}
+              onSaved={handleEndpointSaved}
+            />
+          ) : (
+            <AnimatePresence mode="wait" initial={false}>
               {currentView === "changePassword" ? (
                 <motion.div
                   key="changePassword"
@@ -321,16 +339,35 @@ function LoginPage() {
                   {error && (
                     <p className="mt-2 text-xs text-destructive">{error}</p>
                   )}
+                  <div className="mt-4">
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-background px-2 text-muted-foreground">
+                          其他登录方式
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex justify-center gap-4">
+                      <button
+                        type="button"
+                        onClick={handleFeishuLogin}
+                        disabled={loading}
+                        className="flex size-9  cursor-pointer items-center justify-center rounded-full border bg-background transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                        title="飞书登录"
+                      >
+                        <img src={feishuIcon} alt="飞书" className="size-6" />
+                      </button>
+                    </div>
+                  </div>
                   <div
                     className={cn(
                       "w-full text-center",
                       isElectron ? "mt-2" : "mt-4"
                     )}
                   >
-                    <p className="text-xs text-muted-foreground">
-                      还没有账号?{" "}
-                      <span className="cursor-pointer text-primary">注册</span>
-                    </p>
                     <p className="mt-2 text-[11px] text-muted-foreground/50">
                       上海博般技术数据有限公司
                     </p>
@@ -338,9 +375,9 @@ function LoginPage() {
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }

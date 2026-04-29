@@ -106,6 +106,11 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    from starlette.middleware.sessions import SessionMiddleware
+    fastapi_app.add_middleware(
+        SessionMiddleware,
+        secret_key="digital-employee-oauth-secret",
+    )
     fastapi_app.include_router(api_router)
     return fastapi_app
 

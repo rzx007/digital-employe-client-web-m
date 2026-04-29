@@ -97,6 +97,9 @@ class Settings:
     login_url: str | None = None
     update_user_password_url: str | None = None
     execute_timeout: int = 600
+    feishu_app_id: str | None = None
+    feishu_app_secret: str | None = None
+    feishu_redirect_uri: str | None = None
 
 
 def _get_kv_value(kv_data: dict[str, str], key: str) -> str | None:
@@ -253,6 +256,9 @@ def get_settings() -> Settings:
         client_skill_import_max_bytes=client_skill_import_max_bytes,
         login_url=join_base_and_path(platform_base_url, login_path),
         update_user_password_url=join_base_and_path(platform_base_url, update_user_password_path),
+        feishu_app_id=_get_kv_value(kv_data, "FEISHU_APP_ID"),
+        feishu_app_secret=_get_kv_value(kv_data, "FEISHU_APP_SECRET"),
+        feishu_redirect_uri=_get_kv_value(kv_data, "FEISHU_REDIRECT_URI"),
     )
 
 

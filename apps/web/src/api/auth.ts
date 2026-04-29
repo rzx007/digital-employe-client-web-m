@@ -35,3 +35,7 @@ export function updatePassword(data: {
     },
   })
 }
+
+export function getOAuthAuthorizeUrl(provider: string) {
+  return request<{ url: string }>(`/oauth/${provider}/authorize`)
+}
