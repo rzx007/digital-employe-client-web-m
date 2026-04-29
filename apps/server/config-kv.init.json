@@ -1,5 +1,5 @@
 {
-  "REMOTE_API_BASE_URL": "http://10.172.246.105:5002",
+  "REMOTE_API_BASE_URL": "http://10.172.246.179:5002",
   "DEEPAGENT_MODEL": "deepseek-v3.2",
   "CHAT_HISTORY_MAX_MESSAGES": "30",
   "OPENAI_API_KEY": "sk-f9441c2d00d140989c1669cb245da166",
@@ -19,6 +19,7 @@
   "MCP_CLIENT_BASE_PATH": "/llm/aios/mcp/client/tool/call",
   "AGENT_INTERFACE_SKILL_PREFIX": "/llm/aios/skill/list",
   "LOGIN_PATH": "/yc/login",
+  "UPDATE_USER_PASSWORD_PATH": "/yc/updatePassword",
   "SKILL_DIR": "/api/v1/client/skills/directories",
   "SKILL_REMOTE_IMPORT": "/api/v1/client/skills/import",
   "SKILL_NAME_VALIDATE": "/api/v1/client/skills/name/exists",

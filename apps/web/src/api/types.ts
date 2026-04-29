@@ -11,7 +11,7 @@ export interface ApiResponse<T> {
  * 员工能力项
  */
 export interface Capability {
-  
+
   capability_name: string
   capability_desc: string
   mcp_server_name: string
@@ -260,18 +260,31 @@ export interface LoginUser {
 
 /**
  * 登录响应（后端实际返回结构）
+ *
+ * code === 1  : 登录成功，result 为用户数组
+ * code === -2 : 密码已过期，result 为单个用户对象（含 id）
+ * code === 0  : 登录失败
  */
-export interface LoginResponse {
-  code: number
-  msg: string
-  data: {
-    code: 0 | 1
-    result: LoginUser[]
-    noMenus: boolean
-    token: string
-    msg: string
-  }
-}
+export type LoginResponse =
+  | {
+      code: 1
+      result: LoginUser[]
+      noMenus: boolean
+      token: string
+      msg: string
+    }
+  | {
+      code: -2
+      result: { id: number; userName?: string }
+      token: string
+      msg: string
+    }
+  | {
+      code: 0
+      result?: undefined
+      token?: string
+      msg: string
+    }
 
 export interface ResourceEntry {
   name: string

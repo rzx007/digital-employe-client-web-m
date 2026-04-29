@@ -82,7 +82,7 @@ export function EndpointConfig({
           <div className="flex flex-col gap-1.5">
             <Label className="mb-4 text-sm font-bold">协议</Label>
             <Select value={protocol} onValueChange={setProtocol}>
-              <SelectTrigger>
+              <SelectTrigger className="rounded-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -101,6 +101,7 @@ export function EndpointConfig({
               placeholder="请输入IP地址"
               value={ip}
               onChange={(e) => setIp(e.target.value)}
+              className="rounded-xs"
             />
           </div>
 
@@ -111,6 +112,7 @@ export function EndpointConfig({
               placeholder="请输入端口"
               value={port}
               onChange={(e) => setPort(Number(e.target.value))}
+              className="rounded-xs"
             />
           </div>
 

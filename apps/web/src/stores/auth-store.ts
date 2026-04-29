@@ -2,12 +2,19 @@ import { create } from "zustand"
 import { loginApi } from "@/api/auth"
 import type { LoginUser } from "@/api/types"
 
+interface PendingPasswordChange {
+  token: string
+  userId: number
+  username: string
+}
+
 interface AuthState {
   token: string | null
   user: LoginUser | null
   isAuthenticated: boolean
   loading: boolean
   error: string | null
+  pendingPasswordChange: PendingPasswordChange | null
 
   login: (
     username: string,
@@ -17,6 +24,7 @@ interface AuthState {
   logout: () => Promise<void>
   restoreSession: () => Promise<void>
   clearError: () => void
+  clearPendingPasswordChange: () => void
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -25,6 +33,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: false,
   loading: false,
   error: null,
+  pendingPasswordChange: null,
 
   login: async (username, password, rememberMe) => {
     set({ loading: true, error: null })
@@ -67,15 +76,24 @@ export const useAuthStore = create<AuthState>((set) => ({
       //   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0aWQiOjEsIm1lbnVpZCI6IjEiLCJ1c2VybmFtZSI6ImJiYWRtaW4iLCJvcmdObyI6bnVsbCwib3JnVHlwZSI6bnVsbCwiZHB0SWRzIjoiMTAiLCJsb2dpbklwIjoiMTAuMTcyLjI0Ni4xNDQiLCJjaGFuZ2VQd2RUaW1lIjoiMjAyNi0wNC0wNyAwNjoyMTowNSIsImV4cFRpbWUiOjE3OTYyODE1NDk1NTksImlhdCI6MTc3NTU0NTU0OSwiZXhwIjoxNzc2NDA5NTQ5fQ.ViBSPVwb7tRfFRWQ1uj-BtfY_t_EwNIgNWsooWvaVTQ",
       //   "msg": ""
       // }
+      if (res.code === -2) {
+        set({
+          loading: false,
+          pendingPasswordChange: {
+            token: res.token,
+            userId: res.result?.id,
+            username,
+          },
+        })
+        return
+      }
 
-      if (res.code === 200 && res.data.code === 1 && res.data.token && res.data.result?.length > 0) {
-        const token = res.data.token
-        const user = res.data.result[0]
+      if (res.code === 1 && res.token && res.result?.length > 0) {
+        const token = res.token
+        const user = res.result[0]
 
-        // 写入 localStorage（request.ts 的 getAuthToken() 从这里读取）
         localStorage.setItem("token", token)
 
-        // 通过 IPC 持久化到 electron-store（仅 Electron 环境）
         await window.electronApi?.saveAuth(
           token,
           user as unknown as Record<string, unknown>,
@@ -84,12 +102,11 @@ export const useAuthStore = create<AuthState>((set) => ({
 
         set({ token, user, isAuthenticated: true, loading: false })
 
-        // 通知主进程：关闭登录窗口，打开主窗口
         await window.electronApi?.loginSuccess()
       } else {
         set({
           loading: false,
-          error: res.data.msg || "登录失败",
+          error: res.msg || "登录失败",
         })
       }
     } catch (err) {
@@ -102,9 +119,6 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: async () => {
     localStorage.removeItem("token")
 
-    // 清除 electron-store 中的持久化数据
-    // Electron 环境下：主进程会关闭主窗口、打开登录窗口
-    // 非 Electron 环境下：手动跳转登录页
     const isElectron = window.electronApi?.isElectron
     await window.electronApi?.clearAuth()
 
@@ -116,7 +130,6 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   restoreSession: async () => {
-    // 从 electron-store 恢复认证信息到 localStorage
     const status = await window.electronApi?.getAuthStatus()
     if (status?.token) {
       localStorage.setItem("token", status.token)
@@ -129,4 +142,5 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   clearError: () => set({ error: null }),
+  clearPendingPasswordChange: () => set({ pendingPasswordChange: null }),
 }))

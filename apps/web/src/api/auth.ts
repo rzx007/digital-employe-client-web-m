@@ -14,13 +14,19 @@ export function loginApi(username: string, password: string) {
     body: JSON.stringify({ username, password }),
   })
 }
-
+/**
+ * 更新用户密码接口
+ *
+ * POST /api/update-password
+ * body: { id, oldPassword, password }
+ * 返回: { code: 1, msg: string }
+ */
 export function updatePassword(data: {
   id: number
   oldPassword: string
   password: string
 }) {
-  return request<{ code: number; msg: string }>("/yc/updatePassword", {
+  return request<{ code: number; msg: string }>("/update-password", {
     method: "POST",
     body: {
       id: data.id,
