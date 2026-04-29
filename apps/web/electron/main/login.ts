@@ -39,8 +39,8 @@ export function createLoginWindow(options: {
   )
 
   loginWin = new BrowserWindow({
-    width: 290,
-    height: 410,
+    width: 310,
+    height: 450,
     title: "数字员工",
     icon: path.join(process.env.APP_ROOT!, "build/icon.ico"),
     frame: false,
@@ -61,7 +61,7 @@ export function createLoginWindow(options: {
   const loginUrl = options.devServerUrl
     ? `${options.devServerUrl}#/login`
     : `file://${options.indexHtml}#/login`
-  // loginWin.webContents.openDevTools()
+  loginWin.webContents.openDevTools()
 
   loginWin.loadURL(loginUrl)
 

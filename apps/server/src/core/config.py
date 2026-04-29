@@ -95,7 +95,11 @@ class Settings:
     client_skill_import_max_bytes: int = 52428800
     login_path: str | None = None
     login_url: str | None = None
+    update_user_password_url: str | None = None
     execute_timeout: int = 600
+    feishu_app_id: str | None = None
+    feishu_app_secret: str | None = None
+    feishu_redirect_uri: str | None = None
     feishu_app_id: str = "cli_a97bcb15167b1bb4"
     feishu_app_secret: str = "xvccgjHzEdB8dV28c8R4KeI6jTjWsPWL"
     feishu_tenant_access_token_url: str = (
@@ -189,6 +193,7 @@ def get_settings() -> Settings:
         _get_kv_value(kv_data, "MCP_CLIENT_BASE_PATH") or "/llm/aios/mcp/client"
     )
     login_path = _get_kv_value(kv_data, "LOGIN_PATH") or "/yc/login"
+    update_user_password_path = _get_kv_value(kv_data, "UPDATE_USER_PASSWORD_PATH") or "/yc/updatePassword"
     sqlite_path = get_default_sqlite_path()
     skill_path = get_default_skill_path()
     builtin_skills_path = (
@@ -280,6 +285,10 @@ def get_settings() -> Settings:
         skill_name_validate_path=skill_name_validate_path,
         client_skill_import_max_bytes=client_skill_import_max_bytes,
         login_url=join_base_and_path(platform_base_url, login_path),
+        update_user_password_url=join_base_and_path(platform_base_url, update_user_password_path),
+        feishu_app_id=_get_kv_value(kv_data, "FEISHU_APP_ID"),
+        feishu_app_secret=_get_kv_value(kv_data, "FEISHU_APP_SECRET"),
+        feishu_redirect_uri=_get_kv_value(kv_data, "FEISHU_REDIRECT_URI"),
         feishu_app_id=_get_kv_value(kv_data, "FEISHU_APP_ID")
         or "cli_a9d1e24afb38dcc4",
         feishu_app_secret=_get_kv_value(kv_data, "FEISHU_APP_SECRET")

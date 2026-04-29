@@ -14,6 +14,7 @@ src/api/group_api.py
 src/api/login_api.py
 src/api/mcp_api.py
 src/api/model_api.py
+src/api/oauth_api.py
 src/api/orchestration_api.py
 src/api/skill_api.py
 src/api/skill_rating_api.py
@@ -80,4 +81,6 @@ src/service/task_scheduler_service.py
 src/service/task_service.py
 src/service/workspace_events.py
 src/service/workspace_service.py
+src/service/oauth/__init__.py
+src/service/oauth/feishu.py
 src/utils/http_client.py
