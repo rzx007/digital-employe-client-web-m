@@ -1,5 +1,5 @@
 import * as React from "react"
-import { IconPackage, IconUpload } from "@tabler/icons-react"
+import { IconUpload } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -13,6 +13,7 @@ import {
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { Switch } from "@workspace/ui/components/switch"
+import { cn } from "@workspace/ui/lib/utils"
 import { importLocalSkill, checkLocalSkillNameExists } from "@/api/skill"
 
 export function ImportSkillDialog({
@@ -32,6 +33,9 @@ export function ImportSkillDialog({
   const [overwrite, setOverwrite] = React.useState(false)
   const [submitting, setSubmitting] = React.useState(false)
   const [nameError, setNameError] = React.useState("")
+  const [isDragActive, setIsDragActive] = React.useState(false)
+  const [isNameTouched, setIsNameTouched] = React.useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null)
 
   React.useEffect(() => {
     if (open) {
@@ -41,8 +45,52 @@ export function ImportSkillDialog({
       setOverwrite(false)
       setNameError("")
       setSubmitting(false)
+      setIsDragActive(false)
+      setIsNameTouched(false)
     }
   }, [open])
+
+  const deriveSkillNameFromFile = React.useCallback((fileName: string) => {
+    return fileName.replace(/\.zip$/i, "").trim()
+  }, [])
+
+  const handleFileSelect = React.useCallback(
+    (nextFile: File | null) => {
+      if (!nextFile) return
+      const isZip =
+        nextFile.name.toLowerCase().endsWith(".zip") ||
+        nextFile.type.includes("zip")
+      if (!isZip) {
+        toast.error("仅支持上传 ZIP 文件")
+        return
+      }
+      setFile(nextFile)
+      if (!isNameTouched && !skillName.trim()) {
+        setSkillName(deriveSkillNameFromFile(nextFile.name))
+      }
+    },
+    [deriveSkillNameFromFile, isNameTouched, skillName]
+  )
+
+  const handleDragOver: React.DragEventHandler<HTMLDivElement> = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragActive(true)
+  }
+
+  const handleDragLeave: React.DragEventHandler<HTMLDivElement> = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragActive(false)
+  }
+
+  const handleDrop: React.DragEventHandler<HTMLDivElement> = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragActive(false)
+    const dropped = e.dataTransfer.files?.[0] ?? null
+    handleFileSelect(dropped)
+  }
 
   const handleNameBlur = async () => {
     if (!skillName.trim()) {
@@ -104,12 +152,14 @@ export function ImportSkillDialog({
     <>
       {trigger && (
         <Button
-
-          className="gap-1.5"
+          variant="outline"
+          size="icon"
+          className="size-8"
           onClick={() => onOpenChange(true)}
+          aria-label="导入本地技能"
+          title="导入本地技能"
         >
-          <IconPackage className="size-3.5" />
-          导入技能
+          <IconUpload className="size-4" />
         </Button>
       )}
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -129,6 +179,7 @@ export function ImportSkillDialog({
                 placeholder="例如: my-skill（仅英文、数字、下划线、连字符）"
                 value={skillName}
                 onChange={(e) => {
+                  setIsNameTouched(true)
                   setSkillName(e.target.value)
                   setNameError("")
                 }}
@@ -141,13 +192,40 @@ export function ImportSkillDialog({
 
             <div className="space-y-2">
               <Label>ZIP 文件</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="file"
-                  accept=".zip"
-                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                  className="cursor-pointer"
-                />
+              <Input
+                ref={fileInputRef}
+                type="file"
+                accept=".zip,application/zip,application/x-zip-compressed"
+                onChange={(e) => handleFileSelect(e.target.files?.[0] ?? null)}
+                className="hidden"
+              />
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => fileInputRef.current?.click()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    fileInputRef.current?.click()
+                  }
+                }}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={cn(
+                  "cursor-pointer rounded-lg border border-dashed bg-muted/20 p-4 text-center transition-colors",
+                  isDragActive && "border-primary bg-primary/5"
+                )}
+              >
+                <div className="mx-auto mb-2 flex size-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                  <IconUpload className="size-4" />
+                </div>
+                <p className="text-sm font-medium">
+                  拖拽 ZIP 到此处或点击上传
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  仅支持 .zip 文件
+                </p>
               </div>
               {file && (
                 <p className="text-xs text-muted-foreground">

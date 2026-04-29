@@ -38,7 +38,7 @@ function SkillCard({
   return (
     <button
       type="button"
-      className="flex flex-col gap-2 rounded-lg border p-4 text-left transition-colors hover:border-primary/30 hover:bg-accent/30"
+      className="flex flex-col gap-2 rounded-sm border p-4 text-left transition-colors hover:border-primary/30 hover:bg-accent/30"
       onClick={onClick}
     >
       <div className="flex items-start justify-between gap-2">
@@ -99,12 +99,12 @@ function SkillDetailPanel({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-xl">
+      <SheetContent className="flex w-full min-w-0 flex-col gap-0 p-0 sm:max-w-xl">
         <SheetHeader className="border-b px-6 pt-6 pb-5 text-left">
           <div className="space-y-3">
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               <IconSparkles className="size-4 text-primary" />
-              <SheetTitle className="text-lg font-semibold leading-tight">
+              <SheetTitle className="min-w-0 break-all pr-8 text-lg leading-tight font-semibold">
                 {skill.displayNameZh || skill.skillName}
               </SheetTitle>
             </div>
@@ -137,7 +137,7 @@ function SkillDetailPanel({
                     <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                       导入时间
                     </h4>
-                    <p className="text-sm leading-relaxed">
+                    <p className="break-all text-sm leading-relaxed">
                       {new Date(localDetail.importedAt).toLocaleString("zh-CN")}
                     </p>
                   </div>
@@ -151,7 +151,7 @@ function SkillDetailPanel({
                       {localDetail.files.map((f) => (
                         <p
                           key={f}
-                          className="font-mono text-xs leading-relaxed text-muted-foreground"
+                          className="break-all font-mono text-xs leading-relaxed text-muted-foreground"
                         >
                           {f}
                         </p>
@@ -181,33 +181,37 @@ function SkillDetailPanel({
           ) : (
             <div className="space-y-6">
               {skill.description && (
-                <div className="space-y-1.5 rounded-lg border bg-background p-4 shadow-sm">
+                <div className="space-y-1.5 rounded-lg border bg-background p-4">
                   <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                     描述
                   </h4>
-                  <p className="text-sm leading-relaxed">{skill.description}</p>
+                  <p className="break-all text-sm leading-relaxed">
+                    {skill.description}
+                  </p>
                 </div>
               )}
               {skill.skillName && (
-                <div className="space-y-1.5 rounded-lg border bg-background p-4 shadow-sm">
+                <div className="space-y-1.5 rounded-lg border bg-background p-4">
                   <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                     技能名称
                   </h4>
-                  <p className="font-mono text-sm">{skill.skillName}</p>
+                  <p className="break-all font-mono text-sm">{skill.skillName}</p>
                 </div>
               )}
               {skill.directoryName && (
-                <div className="space-y-1.5 rounded-lg border bg-background p-4 shadow-sm">
+                <div className="space-y-1.5 rounded-lg border bg-background p-4">
                   <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                     所属目录
                   </h4>
-                  <p className="text-sm leading-relaxed">{skill.directoryName}</p>
+                  <p className="break-all text-sm leading-relaxed">
+                    {skill.directoryName}
+                  </p>
                 </div>
               )}
               {skill.prompt && (
                 <div className="space-y-2">
                   <Separator />
-                  <div className="space-y-2 rounded-lg border bg-background p-4 shadow-sm">
+                  <div className="space-y-2 rounded-lg border bg-background p-4">
                     <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                       Prompt
                     </h4>
@@ -229,7 +233,7 @@ export function SkillsPage({
   className,
   ...props
 }: React.ComponentProps<"div">) {
-  const [tab, setTab] = React.useState<"remote" | "local">("remote")
+  const [tab, setTab] = React.useState<"remote" | "local">("local")
   const [allSkills, setAllSkills] = React.useState<SkillListItem[]>([])
   const [loading, setLoading] = React.useState(true)
   const [searchQuery, setSearchQuery] = React.useState("")
@@ -305,15 +309,7 @@ export function SkillsPage({
           </div>
 
           <TabsList className="ml-2 h-9 w-auto rounded-md bg-muted/70 p-1">
-            <TabsTrigger
-              value="remote"
-              className="h-7 gap-1.5 rounded-md px-3 text-xs text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-            >
-              远程技能
-              <span className="text-xs text-muted-foreground">
-                ({remoteSkills.length})
-              </span>
-            </TabsTrigger>
+
             <TabsTrigger
               value="local"
               className="h-7 gap-1.5 rounded-md px-3 text-xs text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
@@ -323,16 +319,35 @@ export function SkillsPage({
                 ({localSkills.length})
               </span>
             </TabsTrigger>
+            <TabsTrigger
+              value="remote"
+              className="h-7 gap-1.5 rounded-md px-3 text-xs text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+            >
+              远程技能
+              <span className="text-xs text-muted-foreground">
+                ({remoteSkills.length})
+              </span>
+            </TabsTrigger>
           </TabsList>
 
-          <div className="relative ml-auto w-full max-w-72">
-            <IconSearch className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="h-7.5 pl-7 text-xs rounded-md"
-              placeholder={`搜索${tab === "remote" ? "远程" : "本地"}技能...`}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          <div className="ml-auto flex w-full max-w-80 items-center gap-2">
+            <div className="relative flex-1">
+              <IconSearch className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-7.5 rounded-md pl-7 text-xs"
+                placeholder={`搜索${tab === "remote" ? "远程" : "本地"}技能...`}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            {tab === "local" && (
+              <ImportSkillDialog
+                open={importOpen}
+                onOpenChange={setImportOpen}
+                onSuccess={handleImportSuccess}
+                trigger
+              />
+            )}
           </div>
         </header>
 
@@ -346,14 +361,6 @@ export function SkillsPage({
             />
           </TabsContent>
           <TabsContent value="local" className="m-0 p-6">
-            <div className="mb-4 flex justify-end">
-              <ImportSkillDialog
-                open={importOpen}
-                onOpenChange={setImportOpen}
-                onSuccess={handleImportSuccess}
-                trigger
-              />
-            </div>
             <SkillGrid
               skills={filteredLocal}
               loading={loading}
@@ -409,7 +416,7 @@ function SkillGrid({
   }
 
   return (
-    <div className="grid grid-cols-3 gap-4">
+    <div className="grid grid-cols-3 gap-4 min-[1600px]:grid-cols-4">
       {skills.map((skill) => (
         <SkillCard key={skill.id} skill={skill} onClick={() => onSelect(skill)} />
       ))}
