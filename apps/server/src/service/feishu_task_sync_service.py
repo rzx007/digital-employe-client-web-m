@@ -24,7 +24,7 @@ class FeishuTaskSyncService:
     FIELD_EXECUTOR = "执行人"
     FIELD_START_TIME = "开始时间"
     FIELD_END_TIME = "结束时间"
-    AUTO_CONFIRM_SUFFIX = ",不需要手动确认，自动确认，如果工作空间没有员工，就自己创建一个员工"
+    AUTO_CONFIRM_SUFFIX = ",不需要手动确认，自动确认"
 
     @staticmethod
     def _extract_text(value: Any) -> str:

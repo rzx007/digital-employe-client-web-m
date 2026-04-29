@@ -40,6 +40,7 @@ class SkillNameExistsResult(BaseModel):
 
 class LocalSkillItem(BaseModel):
     skillName: str
+    localId: int | None = None
     path: str
     hasSkillMd: bool
     importedAt: str | None = None
@@ -47,6 +48,7 @@ class LocalSkillItem(BaseModel):
 
 class LocalSkillDetail(BaseModel):
     skillName: str
+    localId: int | None = None
     path: str
     importedAt: str | None = None
     skillMdContent: str | None = None
@@ -55,5 +57,6 @@ class LocalSkillDetail(BaseModel):
 
 class LocalSkillImportResult(BaseModel):
     skillName: str
+    localId: int | None = None
     path: str
     overwritten: bool = False

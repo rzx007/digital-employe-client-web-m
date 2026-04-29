@@ -569,17 +569,21 @@ class EmployeeService:
         if not local_skill_ids:
             return []
 
-        # /skills/list 对本地技能使用 -index（1-based）作为临时 ID
         local_skills = LocalSkillService.list_local_skills()
+        local_skill_map: dict[int, dict] = {}
+        for item in local_skills:
+            raw_local_id = item.get("localId")
+            if isinstance(raw_local_id, int) and raw_local_id < 0:
+                local_skill_map[raw_local_id] = item
+
         details: list[dict] = []
         for local_id in local_skill_ids:
-            index = abs(local_id) - 1
-            if index < 0 or index >= len(local_skills):
+            item = local_skill_map.get(local_id)
+            if item is None:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"本地技能不存在或已变化，skill_id={local_id}",
                 )
-            item = local_skills[index]
             skill_name = str(item.get("skillName") or "").strip()
             skill_path = str(item.get("path") or "").strip()
             if not skill_name or not skill_path:
