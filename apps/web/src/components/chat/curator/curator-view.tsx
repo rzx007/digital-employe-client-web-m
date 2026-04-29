@@ -197,8 +197,17 @@ export function CuratorView({
   const timeline: TimelineEntry[] = React.useMemo(() => {
     const entries: TimelineEntry[] = []
 
+    const now = Date.now()
+    const fallbackBase = now - displayMessages.length * 1000
+    let fallbackIdx = 0
+
     for (const msg of displayMessages) {
-      entries.push({ kind: "message", data: msg, ts: getMsgTs(msg, storedMessages) })
+      let ts = getMsgTs(msg, storedMessages)
+      if (ts === 0) {
+        ts = fallbackBase + fallbackIdx * 1000
+        fallbackIdx++
+      }
+      entries.push({ kind: "message", data: msg, ts })
     }
 
     for (const exec of executions) {
@@ -213,7 +222,7 @@ export function CuratorView({
 
     entries.sort((a, b) => a.ts - b.ts)
     return entries
-  }, [displayMessages, executions])
+  }, [displayMessages, executions, storedMessages])
 
   const isDraft = !curatorConversationId
   const contactDisplayName = contact?.curator?.name ?? "总管助手"
