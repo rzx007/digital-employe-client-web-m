@@ -71,14 +71,12 @@ async def get_skill_directories(
 async def _import_local_skill_impl(
     *,
     skill_name: str,
-    directory_id: int,
     file: UploadFile,
     overwrite: bool,
 ) -> ResponseBase[LocalSkillImportResult]:
     file_bytes = await file.read()
     imported = LocalSkillService.import_local_skill_zip(
         skill_name=skill_name,
-        directory_id=directory_id,
         file_name=file.filename or f"{skill_name}.zip",
         file_bytes=file_bytes,
         overwrite=overwrite,
@@ -93,13 +91,11 @@ async def _import_local_skill_impl(
 )
 async def import_local_skill(
     skillName: str = Form(...),
-    directoryId: int = Form(...),
     file: UploadFile = File(...),
     overwrite: bool = Form(default=False),
 ) -> ResponseBase[LocalSkillImportResult]:
     return await _import_local_skill_impl(
         skill_name=skillName,
-        directory_id=directoryId,
         file=file,
         overwrite=overwrite,
     )
@@ -112,13 +108,11 @@ async def import_local_skill(
 )
 async def import_local_skill_zip(
     skillName: str = Form(...),
-    directoryId: int = Form(...),
     file: UploadFile = File(...),
     overwrite: bool = Form(default=False),
 ) -> ResponseBase[LocalSkillImportResult]:
     return await _import_local_skill_impl(
         skill_name=skillName,
-        directory_id=directoryId,
         file=file,
         overwrite=overwrite,
     )

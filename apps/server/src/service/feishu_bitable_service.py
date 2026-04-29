@@ -52,7 +52,8 @@ class FeishuBitableService:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
-
+        # 打印url和参数
+        logger.info("飞书多维表格查询url: %s, params: %s, body: %s, headers: %s", url, params, body, headers)
         try:
             response = httpx.post(
                 url,
