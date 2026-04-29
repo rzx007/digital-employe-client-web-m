@@ -10,6 +10,7 @@ src/api/__init__.py
 src/api/chat_api.py
 src/api/config_kv_api.py
 src/api/employee_api.py
+src/api/feishu_api.py
 src/api/group_api.py
 src/api/login_api.py
 src/api/mcp_api.py
@@ -64,6 +65,8 @@ src/service/chat_service.py
 src/service/config_kv_service.py
 src/service/employee_generation_service.py
 src/service/employee_service.py
+src/service/feishu_bitable_service.py
+src/service/feishu_token_service.py
 src/service/file_service.py
 src/service/group_service.py
 src/service/local_skill_service.py

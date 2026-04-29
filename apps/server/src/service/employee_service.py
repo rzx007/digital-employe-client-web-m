@@ -21,6 +21,7 @@ from src.models.employee_skill import EmployeeSkill
 from src.models.workspace import Workspace
 from src.schemas.employee import EmployeeCreate, EmployeeUpdate, ShiftScheduleCreateWithoutEmployee
 from src.service.mcp_service import McpService
+from src.service.local_skill_service import LocalSkillService
 from src.service.skill_service import SkillService
 from src.service.task_scheduler_service import TaskSchedulerService
 from src.service.task_service import TaskService
@@ -561,6 +562,62 @@ class EmployeeService:
         return details
 
     @staticmethod
+    def _validate_and_fetch_local_skills(skill_ids: list[int] | None) -> list[dict]:
+        if not skill_ids:
+            return []
+        local_skill_ids = [int(v) for v in skill_ids if int(v) < 0]
+        if not local_skill_ids:
+            return []
+
+        # /skills/list 对本地技能使用 -index（1-based）作为临时 ID
+        local_skills = LocalSkillService.list_local_skills()
+        details: list[dict] = []
+        for local_id in local_skill_ids:
+            index = abs(local_id) - 1
+            if index < 0 or index >= len(local_skills):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"本地技能不存在或已变化，skill_id={local_id}",
+                )
+            item = local_skills[index]
+            skill_name = str(item.get("skillName") or "").strip()
+            skill_path = str(item.get("path") or "").strip()
+            if not skill_name or not skill_path:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"本地技能信息不完整，skill_id={local_id}",
+                )
+            details.append(
+                {
+                    "id": local_id,
+                    "skillName": skill_name,
+                    "displayNameZh": skill_name,
+                    "description": f"本地技能：{skill_name}",
+                    "prompt": None,
+                    "skillContent": None,
+                    "path": skill_path,
+                    "source": "local",
+                }
+            )
+        return details
+
+    @staticmethod
+    def _build_skills_json_payload(
+        employee: Employee,
+        remote_skills: list[dict],
+        local_skills: list[dict],
+    ) -> str:
+        # 选了本地技能时，skills_dir 直接指向该本地技能目录
+        if local_skills:
+            local_path = str(local_skills[0].get("path") or "").strip()
+            if local_path:
+                return json.dumps([{"skills_dir": local_path}], ensure_ascii=False)
+
+        # 未选本地技能时，维持原有行为：将远程技能落到员工私有目录并指向该目录
+        skill_dir = EmployeeService._save_skills_to_skill_path(employee, remote_skills)
+        return json.dumps([{"skills_dir": str(skill_dir)}], ensure_ascii=False)
+
+    @staticmethod
     def _skill_detail_skill_content_to_text(skill_content: object) -> str | None:
         """将技能详情中的 skillContent（字符串或对象）存为 TEXT。"""
         if skill_content is None:
@@ -787,12 +844,18 @@ class EmployeeService:
             employee.name = payload.employee_name
 
         if "skill_ids" in payload.model_fields_set:
-            skills = EmployeeService._validate_and_fetch_skills(
-                payload.skill_ids, token)
-            EmployeeService._replace_employee_skills(db, employee, skills)
-            skill_dir = EmployeeService._save_skills_to_skill_path(employee, skills)
-            employee.skills_json = json.dumps(
-                [{"skills_dir": str(skill_dir)}], ensure_ascii=False
+            skill_ids = payload.skill_ids or []
+            remote_skill_ids = [int(v) for v in skill_ids if int(v) > 0]
+            remote_skills = EmployeeService._validate_and_fetch_skills(
+                remote_skill_ids, token
+            )
+            local_skills = EmployeeService._validate_and_fetch_local_skills(skill_ids)
+            merged_skills = [*remote_skills, *local_skills]
+            EmployeeService._replace_employee_skills(db, employee, merged_skills)
+            employee.skills_json = EmployeeService._build_skills_json_payload(
+                employee,
+                remote_skills,
+                local_skills,
             )
 
         if "mcp_ids" in payload.model_fields_set:
@@ -838,8 +901,12 @@ class EmployeeService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="员工名称已存在")
 
-        skills = EmployeeService._validate_and_fetch_skills(
-            obj_in.skill_ids, token)
+        skill_ids = obj_in.skill_ids or []
+        remote_skill_ids = [int(v) for v in skill_ids if int(v) > 0]
+        remote_skills = EmployeeService._validate_and_fetch_skills(
+            remote_skill_ids, token
+        )
+        local_skills = EmployeeService._validate_and_fetch_local_skills(skill_ids)
         mcp_details = EmployeeService._validate_and_fetch_mcps(obj_in.mcp_ids, token)
 
         tasks = EmployeeService._normalize_tasks(obj_in.tasks)
@@ -866,14 +933,16 @@ class EmployeeService:
         db.flush()
         employee.employee_code = str(employee.id)
 
-        EmployeeService._replace_employee_skills(db, employee, skills)
+        EmployeeService._replace_employee_skills(
+            db, employee, [*remote_skills, *local_skills]
+        )
         EmployeeService._replace_employee_mcps(db, employee, mcp_details)
         EmployeeService._replace_shift_schedule(db, employee, shift_schedule)
-        # 将skills的内容存到本地文件
-        skill_dir = EmployeeService._save_skills_to_skill_path(employee, skills)
-        # skills_json：{"skills_dir": ".../SKILL_PATH/<员工ID>/skills"}
-        skills_dir = [{"skills_dir": str(skill_dir)}]
-        employee.skills_json = json.dumps(skills_dir, ensure_ascii=False)
+        employee.skills_json = EmployeeService._build_skills_json_payload(
+            employee,
+            remote_skills,
+            local_skills,
+        )
         db.commit()
         db.refresh(employee)
 

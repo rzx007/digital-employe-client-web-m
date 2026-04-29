@@ -167,7 +167,6 @@ class LocalSkillService:
     @staticmethod
     def import_local_skill_zip(
         skill_name: str,
-        directory_id: int,
         file_name: str,
         file_bytes: bytes,
         overwrite: bool = False,
@@ -199,7 +198,6 @@ class LocalSkillService:
             shutil.copytree(source_root, target_dir, dirs_exist_ok=False)
             meta = {
                 "skillName": normalized,
-                "directoryId": int(directory_id),
                 "sourceFileName": file_name,
                 "importedAt": datetime.now().isoformat(timespec="seconds"),
                 "overwrite": overwrite,
@@ -207,7 +205,6 @@ class LocalSkillService:
             LocalSkillService._write_meta(target_dir, meta)
             return {
                 "skillName": normalized,
-                "directoryId": int(directory_id),
                 "path": str(target_dir),
                 "overwritten": already_exists and overwrite,
             }
@@ -228,7 +225,6 @@ class LocalSkillService:
                 {
                     "skillName": skill_dir.name,
                     "path": str(skill_dir),
-                    "directoryId": meta.get("directoryId"),
                     "hasSkillMd": (skill_dir / LocalSkillService.SKILL_MD_NAME).exists(),
                     "importedAt": meta.get("importedAt"),
                 }
@@ -256,7 +252,6 @@ class LocalSkillService:
         return {
             "skillName": normalized,
             "path": str(skill_dir),
-            "directoryId": meta.get("directoryId"),
             "importedAt": meta.get("importedAt"),
             "skillMdContent": skill_md_content,
             "files": files,

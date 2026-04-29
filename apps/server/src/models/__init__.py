@@ -5,8 +5,10 @@ from src.models.employee import Employee
 from src.models.employee_mcp import EmployeeMcp
 from src.models.employee_skill import EmployeeSkill
 from src.models.employee_task import EmployeeTask
+from src.models.feishu_task import FeishuTask
 from src.models.group_member import GroupMember
 from src.models.orchestration_plan import OrchestrationPlan
+from src.models.performance_record import PerformanceRecord
 from src.models.skill_rating import SkillRating
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import Workspace
@@ -16,6 +18,7 @@ __all__ = [
     "Employee",
     "EmployeeMcp",
     "EmployeeSkill",
+    "FeishuTask",
     "ChatGroup",
     "ConfigKv",
     "GroupMember",
@@ -23,6 +26,7 @@ __all__ = [
     "ConversationMessage",
     "EmployeeTask",
     "OrchestrationPlan",
+    "PerformanceRecord",
     "TaskExecutionLog",
     "SkillRating",
 ]

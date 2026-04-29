@@ -75,6 +75,7 @@ logger = logging.getLogger(__name__)
 class TaskSchedulerService:
     _scheduler: BackgroundScheduler | None = None
     _job_prefix = "employee_task:"
+    _feishu_sync_job_id = "system:feishu_task_sync"
 
     @classmethod
     def _get_scheduler(cls) -> BackgroundScheduler:
@@ -88,6 +89,7 @@ class TaskSchedulerService:
         if not scheduler.running:
             scheduler.start()
         cls.reload_jobs()
+        cls._register_system_jobs()
 
     @classmethod
     def shutdown(cls) -> None:
@@ -164,6 +166,36 @@ class TaskSchedulerService:
                 task.next_run_at = job.next_run_time if job else TaskService.compute_next_run(task.cron_expression)
                 db.add(task)
             db.commit()
+
+        cls._register_system_jobs()
+
+    @classmethod
+    def _register_system_jobs(cls) -> None:
+        scheduler = cls._get_scheduler()
+        if not scheduler.running:
+            return
+        scheduler.add_job(
+            cls.run_feishu_sync_job,
+            trigger=CronTrigger.from_crontab("*/5 * * * *", timezone=CST),
+            id=cls._feishu_sync_job_id,
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=120,
+        )
+
+    @staticmethod
+    def run_feishu_sync_job() -> None:
+        from src.service.feishu_task_sync_service import FeishuTaskSyncService
+
+        result = FeishuTaskSyncService.sync_and_trigger()
+        logger.info(
+            "飞书任务同步完成: username=%s inserted=%s updated=%s changed=%s",
+            result.get("username"),
+            result.get("inserted_count"),
+            result.get("updated_count"),
+            result.get("changed_count"),
+        )
 
     @staticmethod
     def _resolve_skills_dir(skills_payload: str | list | dict | None) -> str:
