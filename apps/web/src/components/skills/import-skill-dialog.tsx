@@ -1,5 +1,5 @@
 import * as React from "react"
-import { IconUpload } from "@tabler/icons-react"
+import { IconPackage, IconUpload } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -19,13 +19,15 @@ export function ImportSkillDialog({
   open,
   onOpenChange,
   onSuccess,
+  trigger,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
+  trigger?: boolean
 }) {
   const [skillName, setSkillName] = React.useState("")
-  const [directoryId, setDirectoryId] = React.useState("")
+  const [directoryId, setDirectoryId] = React.useState("0")
   const [file, setFile] = React.useState<File | null>(null)
   const [overwrite, setOverwrite] = React.useState(false)
   const [submitting, setSubmitting] = React.useState(false)
@@ -34,7 +36,7 @@ export function ImportSkillDialog({
   React.useEffect(() => {
     if (open) {
       setSkillName("")
-      setDirectoryId("")
+      setDirectoryId("0")
       setFile(null)
       setOverwrite(false)
       setNameError("")
@@ -78,7 +80,7 @@ export function ImportSkillDialog({
     try {
       const result = await importLocalSkill({
         skillName: trimmed,
-        directoryId: directoryId ? Number(directoryId) : undefined,
+        directoryId: directoryId ? Number(directoryId) : 0,
         file,
         overwrite,
       })
@@ -99,97 +101,98 @@ export function ImportSkillDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>导入本地技能</DialogTitle>
-          <DialogDescription>
-            上传技能 ZIP 包到本地技能库
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      {trigger && (
+        <Button
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="skill-name">技能名称</Label>
-            <Input
-              id="skill-name"
-              placeholder="例如: my-skill（仅英文、数字、下划线、连字符）"
-              value={skillName}
-              onChange={(e) => {
-                setSkillName(e.target.value)
-                setNameError("")
-              }}
-              onBlur={handleNameBlur}
-            />
-            {nameError && (
-              <p className="text-xs text-destructive">{nameError}</p>
-            )}
-          </div>
+          className="gap-1.5"
+          onClick={() => onOpenChange(true)}
+        >
+          <IconPackage className="size-3.5" />
+          导入技能
+        </Button>
+      )}
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>导入本地技能</DialogTitle>
+            <DialogDescription>
+              上传技能 ZIP 包到本地技能库
+            </DialogDescription>
+          </DialogHeader>
 
-          <div className="space-y-2">
-            <Label htmlFor="directory-id">目录 ID（可选）</Label>
-            <Input
-              id="directory-id"
-              type="number"
-              placeholder="远程目录 ID"
-              value={directoryId}
-              onChange={(e) => setDirectoryId(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>ZIP 文件</Label>
-            <div className="flex items-center gap-2">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="skill-name">技能名称</Label>
               <Input
-                type="file"
-                accept=".zip"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="cursor-pointer"
+                id="skill-name"
+                placeholder="例如: my-skill（仅英文、数字、下划线、连字符）"
+                value={skillName}
+                onChange={(e) => {
+                  setSkillName(e.target.value)
+                  setNameError("")
+                }}
+                onBlur={handleNameBlur}
+              />
+              {nameError && (
+                <p className="text-xs text-destructive">{nameError}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>ZIP 文件</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="file"
+                  accept=".zip"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  className="cursor-pointer"
+                />
+              </div>
+              {file && (
+                <p className="text-xs text-muted-foreground">
+                  {file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB)
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <Label htmlFor="overwrite-switch" className="cursor-pointer text-sm">
+                  覆盖已有
+                </Label>
+                <span className="text-xs text-muted-foreground">
+                  同名技能将被覆盖
+                </span>
+              </div>
+              <Switch
+                id="overwrite-switch"
+                checked={overwrite}
+                onCheckedChange={setOverwrite}
               />
             </div>
-            {file && (
-              <p className="text-xs text-muted-foreground">
-                {file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB)
-              </p>
-            )}
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-0.5">
-              <Label htmlFor="overwrite-switch" className="cursor-pointer text-sm">
-                覆盖已有
-              </Label>
-              <span className="text-xs text-muted-foreground">
-                同名技能将被覆盖
-              </span>
-            </div>
-            <Switch
-              id="overwrite-switch"
-              checked={overwrite}
-              onCheckedChange={setOverwrite}
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            取消
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={submitting || !skillName.trim() || !file}
-          >
-            {submitting ? (
-              "导入中..."
-            ) : (
-              <span className="flex items-center gap-1.5">
-                <IconUpload className="size-3.5" />
-                导入
-              </span>
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              取消
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={submitting || !skillName.trim() || !file}
+            >
+              {submitting ? (
+                "导入中..."
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <IconUpload className="size-3.5" />
+                  导入
+                </span>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

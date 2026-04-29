@@ -7,7 +7,7 @@ import {
   type Contact,
 } from "@/lib/mock-data/ai-employees"
 
-export type ActiveTab = "chat" | "contacts" | "calendar" | "workbench"
+export type ActiveTab = "chat" | "contacts" | "calendar" | "workbench" | "skills"
 
 interface ChatStore {
   contacts: Contact[]

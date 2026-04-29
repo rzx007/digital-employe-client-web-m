@@ -10,9 +10,9 @@ import {
   IconLayoutDashboardFilled,
   IconLogout,
   IconSettings,
-  IconPackages,
+  IconSparkles,
+  IconSparklesFilled,
 } from "@tabler/icons-react"
-import { useNavigate } from "@tanstack/react-router"
 import { Button } from "@workspace/ui/components/button"
 import {
   AlertDialog,
@@ -66,31 +66,37 @@ const tabs: {
   iconFilled: React.ComponentType<{ className?: string }>
   label: string
 }[] = [
-  {
-    id: "workbench",
-    icon: IconLayoutDashboard,
-    iconFilled: IconLayoutDashboardFilled,
-    label: "工作台",
-  },
-  {
-    id: "chat",
-    icon: IconMessage,
-    iconFilled: IconMessage2Filled,
-    label: "对话",
-  },
-  {
-    id: "contacts",
-    icon: IconUser,
-    iconFilled: IconUserFilled,
-    label: "联系人",
-  },
-  {
-    id: "calendar",
-    icon: IconCalendar,
-    iconFilled: IconCalendarFilled,
-    label: "日历",
-  },
-]
+    {
+      id: "workbench",
+      icon: IconLayoutDashboard,
+      iconFilled: IconLayoutDashboardFilled,
+      label: "工作台",
+    },
+    {
+      id: "chat",
+      icon: IconMessage,
+      iconFilled: IconMessage2Filled,
+      label: "对话",
+    },
+    {
+      id: "contacts",
+      icon: IconUser,
+      iconFilled: IconUserFilled,
+      label: "联系人",
+    },
+    {
+      id: "calendar",
+      icon: IconCalendar,
+      iconFilled: IconCalendarFilled,
+      label: "日历",
+    },
+    {
+      id: "skills",
+      icon: IconSparkles,
+      iconFilled: IconSparklesFilled,
+      label: "技能管理",
+    },
+  ]
 
 export function AppToolbar({
   className,
@@ -101,9 +107,8 @@ export function AppToolbar({
   const logout = useAuthStore((s) => s.logout)
   const user = useAuthStore((s) => s.user)
   const restoreSession = useAuthStore((s) => s.restoreSession)
-  const navigate = useNavigate()
   useEffect(() => {
-    ;(async () => {
+    ; (async () => {
       await restoreSession()
     })()
   }, [restoreSession])
@@ -188,22 +193,6 @@ export function AppToolbar({
           <div data-tour-id="notification-bell">
             <NotificationBell />
           </div>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-10 rounded-lg text-muted-foreground hover:text-foreground"
-                onClick={() => navigate({ to: "/skills" })}
-              >
-                <IconPackages className="size-5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={8}>
-              技能管理
-            </TooltipContent>
-          </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>

@@ -18,8 +18,7 @@ import {
   fetchSkillList,
   type RecruitmentCandidate,
 } from "@/api/employee"
-import { fetchLocalSkillList } from "@/api/skill"
-import type { LocalSkillItem, McpListItem, SkillListItem } from "@/api/types"
+import type { McpListItem, SkillListItem } from "@/api/types"
 import type { ShiftScheduleForm, TaskFormData } from "@/types/task"
 
 import { CapabilityPickerDialog } from "./capability-picker-dialog"
@@ -61,9 +60,6 @@ export function HireSheet({
   )
   const [allMcpList, setAllMcpList] = React.useState<McpListItem[]>([])
   const [allSkillList, setAllSkillList] = React.useState<SkillListItem[]>([])
-  const [allLocalSkillList, setAllLocalSkillList] = React.useState<
-    LocalSkillItem[]
-  >([])
   const [pickerOpen, setPickerOpen] = React.useState(false)
 
   React.useEffect(() => {
@@ -81,9 +77,6 @@ export function HireSheet({
         .catch(() => {})
       fetchSkillList()
         .then(setAllSkillList)
-        .catch(() => {})
-      fetchLocalSkillList()
-        .then(setAllLocalSkillList)
         .catch(() => {})
     }
   }, [open, candidate])
@@ -105,11 +98,7 @@ export function HireSheet({
     setSelectedSkillIds((prev) => prev.filter((i) => i !== id))
   }
 
-  const handlePickerConfirm = (
-    mcpIds: number[],
-    skillIds: number[],
-    _localSkillNames: string[]
-  ) => {
+  const handlePickerConfirm = (mcpIds: number[], skillIds: number[]) => {
     setSelectedMcpIds(mcpIds)
     setSelectedSkillIds(skillIds)
   }
@@ -326,7 +315,6 @@ export function HireSheet({
         onOpenChange={setPickerOpen}
         allMcpList={allMcpList}
         allSkillList={allSkillList}
-        allLocalSkillList={allLocalSkillList}
         selectedMcpIds={selectedMcpIds}
         selectedSkillIds={selectedSkillIds}
         onConfirm={handlePickerConfirm}
