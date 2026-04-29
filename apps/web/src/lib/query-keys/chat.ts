@@ -14,4 +14,7 @@ export const chatKeys = {
   resourceContent: (conversationId: string, path: string) =>
     [...chatKeys.all, "resource-content", conversationId, path] as const,
   curator: () => [...chatKeys.all, "curator"] as const,
+  skills: () => [...chatKeys.all, "skills"] as const,
+  localSkillDetail: (skillName: string) =>
+    [...chatKeys.all, "local-skill-detail", skillName] as const,
 } as const

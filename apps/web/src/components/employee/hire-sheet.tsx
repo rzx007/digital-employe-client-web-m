@@ -15,11 +15,11 @@ import { Textarea } from "@workspace/ui/components/textarea"
 import {
   createEmployee,
   fetchMcpList,
-  fetchSkillList,
   type RecruitmentCandidate,
 } from "@/api/employee"
 import type { McpListItem, SkillListItem } from "@/api/types"
 import type { ShiftScheduleForm, TaskFormData } from "@/types/task"
+import { useSkillListQuery } from "@/hooks/use-skill-queries"
 
 import { CapabilityPickerDialog } from "./capability-picker-dialog"
 import { ScheduleTaskConfig } from "./schedule-task-config"
@@ -59,7 +59,7 @@ export function HireSheet({
     candidate.skill_ids ?? []
   )
   const [allMcpList, setAllMcpList] = React.useState<McpListItem[]>([])
-  const [allSkillList, setAllSkillList] = React.useState<SkillListItem[]>([])
+  const { data: allSkillList = [] } = useSkillListQuery()
   const [pickerOpen, setPickerOpen] = React.useState(false)
 
   React.useEffect(() => {
@@ -74,9 +74,6 @@ export function HireSheet({
 
       fetchMcpList()
         .then(setAllMcpList)
-        .catch(() => {})
-      fetchSkillList()
-        .then(setAllSkillList)
         .catch(() => {})
     }
   }, [open, candidate])

@@ -1,4 +1,5 @@
 import * as React from "react"
+import { cn } from "@workspace/ui/lib/utils"
 import { useChat } from "@ai-sdk/react"
 import type { UIMessage } from "ai"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
@@ -19,6 +20,7 @@ import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 import { classifyMessageParts } from "@/lib/chat/message-utils"
 import { useMessagesQuery, useCuratorConversationQuery } from "@/hooks/use-chat-queries"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
+import { useChatStore } from "@/stores/chat-store"
 import { useAllTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { cancelConversationStream } from "@/api/conversation"
 import { toast } from "sonner"
@@ -55,10 +57,12 @@ function formatTime(ts: number): string {
 
 export function CuratorView({
   contact,
+  size = "default",
   className,
   ...props
 }: React.ComponentProps<"div"> & {
   contact?: ChatViewContact
+  size?: "default" | "compact"
 }) {
   const [inputValue, setInputValue] = React.useState("")
   const [command, setCommand] = React.useState<{ id: string; title: string } | null>(null)
@@ -191,6 +195,7 @@ export function CuratorView({
     [isBusy, enqueue, command, mentions, doSend, curatorConversationId]
   )
 
+  const contacts = useChatStore((s) => s.contacts)
   const { data: executions = [] } = useAllTaskExecutions()
 
   /* ── Build unified timeline ── */
@@ -227,12 +232,14 @@ export function CuratorView({
   const isDraft = !curatorConversationId
   const contactDisplayName = contact?.curator?.name ?? "总管助手"
 
+  const isCompact = size === "compact"
+
   return (
-    <div className="flex flex-1 flex-col bg-background" {...props}>
-      <CuratorChatHeader contact={contact} />
+    <div className={cn("flex flex-col bg-background", !isCompact && "flex-1", className)} {...props}>
+      {!isCompact && <CuratorChatHeader contact={contact} />}
 
       <ConversationUI className="min-h-0 flex-1 overflow-y-auto">
-        <ConversationContent>
+        <ConversationContent className="space-y-3">
           {curatorLoading && (
             <div className="flex items-center justify-center py-16">
               <Spinner className="size-5" />
@@ -248,11 +255,15 @@ export function CuratorView({
           {timeline.map((entry, i) => {
             if (entry.kind === "execution") {
               const exec = entry.data
+              const employeeContact = contacts.find(
+                (c) => c.type === "employee" && c.employee?.id === String(exec.employee_id)
+              )
               return (
                 <Message key={`exec-${exec.id}`} from="assistant" className="mx-auto max-w-4xl">
                   <div className="mb-2 flex items-center gap-2">
                     <EmployeeContactAvatar
                       name={exec.employee_name || String(exec.employee_id)}
+                      avatar={employeeContact?.employee?.avatar}
                       avatarClassName="size-6"
                       fallbackClassName="text-[10px]"
                     />
@@ -345,7 +356,7 @@ export function CuratorView({
         <ConversationScrollButton />
       </ConversationUI>
 
-      <div className="border-none p-4 max-w-4xl mx-auto w-full">
+      <div className={cn("border-none max-w-4xl mx-auto w-full", isCompact ? "py-2" : "py-4")}>
         {pendingQueue.length > 0 && (
           <div className="mx-auto w-[98%]">
             <PendingMessageQueue

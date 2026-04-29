@@ -125,6 +125,7 @@ export function renderClassifiedBlocks(
         return (
           <PlanGeneratedCard
             input={block.input}
+            state={block.state}
             className="w-full"
             key={block.key}
           />
@@ -446,7 +447,7 @@ export function ChatPanel({
               <ConversationScrollButton />
             </Conversation>
 
-            <div className="border-none p-4 max-w-4xl mx-auto w-full">
+            <div className="border-none py-4 max-w-4xl mx-auto w-full">
               {pendingMessages && pendingMessages.length > 0 && (
                 <div className="mx-auto w-[98%]">
                   <PendingMessageQueue

@@ -271,9 +271,38 @@ class StreamRegistry:
 
         chunk_builder = ChunkJsonBuilder()
         assistant_text_parts: list[str] = []
+        latest_updates_text: str | None = None
         last_flush_time = time.monotonic()
         last_heartbeat_time = time.monotonic()
         state_final = "completed"
+
+        def _extract_updates_content(event: Any) -> str | None:
+            """Extract latest non-empty kwargs.content from type=updates payload."""
+            if not isinstance(event, dict) or event.get("type") != "updates":
+                return None
+            data = event.get("data")
+            if not isinstance(data, dict):
+                return None
+            tools_payload = data.get("model")
+            if not isinstance(tools_payload, dict):
+                return None
+            messages_payload = tools_payload.get("messages")
+            if not isinstance(messages_payload, list):
+                return None
+
+            latest_content: str | None = None
+            for message in messages_payload:
+                if not isinstance(message, dict):
+                    continue
+                kwargs_payload = message.get("kwargs")
+                if not isinstance(kwargs_payload, dict):
+                    continue
+                content = kwargs_payload.get("content")
+                if isinstance(content, str):
+                    content = content.strip()
+                    if content:
+                        latest_content = content
+            return latest_content
 
         def _maybe_heartbeat() -> None:
             nonlocal last_heartbeat_time
@@ -319,6 +348,9 @@ class StreamRegistry:
                         f"Agent stream timed out after {AGENT_CHUNK_TIMEOUT}s"
                     )
                 serializable = ChatService.convert_to_serializable(chunk)
+                updates_content = _extract_updates_content(serializable)
+                if updates_content:
+                    latest_updates_text = updates_content
 
                 if (
                     isinstance(serializable, dict)
@@ -351,7 +383,7 @@ class StreamRegistry:
                     _maybe_flush()
                     _maybe_heartbeat()
 
-            final_text = "".join(assistant_text_parts).strip() or "模型已完成调用。"
+            final_text = latest_updates_text or "模型已完成调用。"
 
             logger.info(
                 "[run] conv=%s stream completed normally, event_count=%d, text_len=%d",
@@ -372,7 +404,7 @@ class StreamRegistry:
 
         except asyncio.CancelledError:
             state_final = "cancelled"
-            partial_text = "".join(assistant_text_parts).strip() or None
+            partial_text = latest_updates_text or None
             logger.info(
                 "[run] conv=%s CancelledError caught, event_count=%d, text_len=%s, task.status=%s",
                 conversation_id, chunk_builder.count,
@@ -401,7 +433,7 @@ class StreamRegistry:
             )
             state_final = "error"
             task.error_message = str(e)
-            partial_text = "".join(assistant_text_parts).strip() or None
+            partial_text = latest_updates_text or None
             self._flush_terminal(
                 db, stream_msg_id, task.buffer, state="error",
                 content=partial_text,
@@ -418,7 +450,7 @@ class StreamRegistry:
                     conversation_id, state_final,
                 )
                 state_final = "cancelled"
-                partial_text = "".join(assistant_text_parts).strip() or None
+                partial_text = latest_updates_text or None
                 self._flush_terminal(
                     db, stream_msg_id, task.buffer, state="cancelled",
                     content=partial_text,

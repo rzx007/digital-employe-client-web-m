@@ -4,6 +4,7 @@ import {
   IconSearch,
   IconSparkles,
 } from "@tabler/icons-react"
+import { useQueryClient } from "@tanstack/react-query"
 import { Badge } from "@workspace/ui/components/badge"
 import {
   Tabs,
@@ -14,9 +15,7 @@ import {
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { Input } from "@workspace/ui/components/input"
 import { cn } from "@workspace/ui/lib/utils"
-import { fetchSkillList } from "@/api/employee"
-import { fetchLocalSkillDetail } from "@/api/skill"
-import type { SkillListItem, LocalSkillDetail } from "@/api/types"
+import type { SkillListItem } from "@/api/types"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { Separator } from "@workspace/ui/components/separator"
 import {
@@ -25,6 +24,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@workspace/ui/components/sheet"
+import { useSkillListQuery, useLocalSkillDetailQuery } from "@/hooks/use-skill-queries"
+import { chatKeys } from "@/lib/query-keys/chat"
 import { ImportSkillDialog } from "./import-skill-dialog"
 
 function SkillCard({
@@ -76,22 +77,10 @@ function SkillDetailPanel({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const [localDetail, setLocalDetail] = React.useState<LocalSkillDetail | null>(
-    null
-  )
-  const [loadingLocal, setLoadingLocal] = React.useState(false)
-
-  React.useEffect(() => {
-    if (open && skill?.source === "local") {
-      setLoadingLocal(true)
-      setLocalDetail(null)
-      fetchLocalSkillDetail(skill.skillName)
-        .then(setLocalDetail)
-        .catch(() => setLocalDetail(null))
-        .finally(() => setLoadingLocal(false))
-    }
-    if (!open) setLocalDetail(null)
-  }, [open, skill])
+  const { data: localDetail, isLoading: loadingLocal } =
+    useLocalSkillDetailQuery(
+      open && skill?.source === "local" ? skill.skillName : null
+    )
 
   if (!skill) return null
 
@@ -233,29 +222,18 @@ export function SkillsPage({
   className,
   ...props
 }: React.ComponentProps<"div">) {
+  const queryClient = useQueryClient()
   const [tab, setTab] = React.useState<"remote" | "local">("local")
-  const [allSkills, setAllSkills] = React.useState<SkillListItem[]>([])
-  const [loading, setLoading] = React.useState(true)
   const [searchQuery, setSearchQuery] = React.useState("")
   const [selectedSkill, setSelectedSkill] = React.useState<SkillListItem | null>(
     null
   )
   const [importOpen, setImportOpen] = React.useState(false)
 
-  React.useEffect(() => {
-    setLoading(true)
-    fetchSkillList()
-      .then(setAllSkills)
-      .catch(() => setAllSkills([]))
-      .finally(() => setLoading(false))
-  }, [])
+  const { data: allSkills = [], isLoading: loading } = useSkillListQuery()
 
   const handleImportSuccess = () => {
-    setLoading(true)
-    fetchSkillList()
-      .then(setAllSkills)
-      .catch(() => setAllSkills([]))
-      .finally(() => setLoading(false))
+    queryClient.invalidateQueries({ queryKey: chatKeys.skills() })
   }
 
   const remoteSkills = React.useMemo(

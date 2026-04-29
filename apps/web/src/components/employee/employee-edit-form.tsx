@@ -10,7 +10,7 @@ import { Separator } from "@workspace/ui/components/separator"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { Switch } from "@workspace/ui/components/switch"
 import { Textarea } from "@workspace/ui/components/textarea"
-import { fetchMcpList, fetchSkillList } from "@/api/employee"
+import { fetchMcpList } from "@/api/employee"
 import type {
   McpListItem,
   MetadataMcp,
@@ -23,8 +23,8 @@ import type {
   TaskFormData,
   TaskResourceType,
 } from "@/types/task"
-import { useEmployeeDetailQuery } from "@/hooks/use-chat-queries"
-import { useUpdateEmployeeMutation } from "@/hooks/use-chat-queries"
+import { useEmployeeDetailQuery, useUpdateEmployeeMutation } from "@/hooks/use-chat-queries"
+import { useSkillListQuery } from "@/hooks/use-skill-queries"
 
 import { CapabilityPickerDialog } from "./capability-picker-dialog"
 import { ScheduleTaskConfig } from "./schedule-task-config"
@@ -111,16 +111,13 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
     []
   )
   const [allMcpList, setAllMcpList] = React.useState<McpListItem[]>([])
-  const [allSkillList, setAllSkillList] = React.useState<SkillListItem[]>([])
+  const { data: allSkillList = [] } = useSkillListQuery()
   const [pickerOpen, setPickerOpen] = React.useState(false)
   const [initialized, setInitialized] = React.useState(false)
 
   React.useEffect(() => {
     fetchMcpList()
       .then(setAllMcpList)
-      .catch(() => {})
-    fetchSkillList()
-      .then(setAllSkillList)
       .catch(() => {})
   }, [])
 

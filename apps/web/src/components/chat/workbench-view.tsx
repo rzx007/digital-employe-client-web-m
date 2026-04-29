@@ -23,7 +23,7 @@ import { useChatStore } from "@/stores/chat-store"
 import { WorkbenchLeftPanel } from "@/components/workbench/workbench-left-panel"
 import { DraggableWorkbenchGrid } from "@/components/workbench/draggable-workbench-grid"
 import { AddBlockDialog } from "@/components/workbench/add-block-dialog"
-import { AllExecutionsPanel } from "@/components/workbench/all-executions-panel"
+import { CuratorView } from "@/components/chat/curator-view"
 import type { ChatViewContact } from "./chat-view-shared"
 
 interface WorkbenchViewProps {
@@ -230,7 +230,7 @@ export function WorkbenchView({
           </div>
         )}
 
-        {isTabMode && <AllExecutionsPanel />}
+        {isTabMode && <CuratorView size="compact" className="w-[400px] shrink-0 border-l px-1" />}
       </div>
 
       {/* Add Block Dialog */}

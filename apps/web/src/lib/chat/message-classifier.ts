@@ -34,7 +34,7 @@ export interface ToolGroupItem {
 export type ClassifiedBlock =
   | { kind: "thinking"; key: string; text: string }
   | { kind: "tool-group"; key: string; tools: ToolGroupItem[]; summary: string }
-  | { kind: "plan-generated"; key: string; toolCallId: string; input: unknown }
+  | { kind: "plan-generated"; key: string; toolCallId: string; input: unknown; state: string }
   | { kind: "final-response"; key: string; text: string }
   | { kind: "file-changes"; key: string; files: FileChangeItem[] }
 
@@ -141,6 +141,7 @@ export function classifyMessageParts(
         key: `${message.id}:plan:${index}`,
         toolCallId: part.toolCallId,
         input: toolInput,
+        state: ("state" in part ? (part as ToolUIPart).state : "unknown") as string,
       })
       return
     }
