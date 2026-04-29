@@ -34,13 +34,15 @@ def list_skills(request: Request) -> ResponseBase[list[SkillListItem]]:
     local_skills = LocalSkillService.list_local_skills()
     local_data = []
     for index, item in enumerate(local_skills, start=1):
+        local_id = item.get("localId")
+        normalized_id = int(local_id) if isinstance(local_id, int) else -index
         local_data.append(
             SkillListItem(
-                id=-index,
+                id=normalized_id,
                 skillName=item.get("skillName") or "",
                 displayNameZh=item.get("skillName") or "",
                 description=None,
-                directoryId=item.get("directoryId"),
+                directoryId=None,
                 directoryName="本地技能",
                 source="local",
                 sourceLabel="本地",

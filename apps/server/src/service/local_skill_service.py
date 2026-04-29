@@ -89,6 +89,31 @@ class LocalSkillService:
         )
 
     @staticmethod
+    def _parse_local_id(raw: object) -> int | None:
+        try:
+            value = int(raw)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+        if value >= 0:
+            return None
+        return value
+
+    @staticmethod
+    def _next_local_id(local_root: Path) -> int:
+        existing_ids: list[int] = []
+        if local_root.exists():
+            for skill_dir in local_root.iterdir():
+                if not skill_dir.is_dir():
+                    continue
+                meta = LocalSkillService._read_meta(skill_dir)
+                local_id = LocalSkillService._parse_local_id(meta.get("localId"))
+                if local_id is not None:
+                    existing_ids.append(local_id)
+        if not existing_ids:
+            return -1
+        return min(existing_ids) - 1
+
+    @staticmethod
     def _extract_zip_to_temp(file_bytes: bytes) -> Path:
         temp_dir = Path(tempfile.mkdtemp(prefix="local-skill-import-"))
         try:
@@ -193,11 +218,23 @@ class LocalSkillService:
             local_root = LocalSkillService._resolve_local_root()
             local_root.mkdir(parents=True, exist_ok=True)
             target_dir = local_root / normalized
+            existing_local_id: int | None = None
+            if target_dir.exists():
+                existing_meta = LocalSkillService._read_meta(target_dir)
+                existing_local_id = LocalSkillService._parse_local_id(
+                    existing_meta.get("localId")
+                )
             if target_dir.exists():
                 shutil.rmtree(target_dir, ignore_errors=True)
             shutil.copytree(source_root, target_dir, dirs_exist_ok=False)
+            local_id = (
+                existing_local_id
+                if existing_local_id is not None
+                else LocalSkillService._next_local_id(local_root)
+            )
             meta = {
                 "skillName": normalized,
+                "localId": local_id,
                 "sourceFileName": file_name,
                 "importedAt": datetime.now().isoformat(timespec="seconds"),
                 "overwrite": overwrite,
@@ -205,6 +242,7 @@ class LocalSkillService:
             LocalSkillService._write_meta(target_dir, meta)
             return {
                 "skillName": normalized,
+                "localId": local_id,
                 "path": str(target_dir),
                 "overwritten": already_exists and overwrite,
             }
@@ -217,13 +255,22 @@ class LocalSkillService:
         if not local_root.exists():
             return []
         items: list[dict] = []
+        next_id = LocalSkillService._next_local_id(local_root)
         for skill_dir in sorted(local_root.iterdir(), key=lambda p: p.name.lower()):
             if not skill_dir.is_dir():
                 continue
             meta = LocalSkillService._read_meta(skill_dir)
+            local_id = LocalSkillService._parse_local_id(meta.get("localId"))
+            if local_id is None:
+                local_id = next_id
+                next_id -= 1
+                meta["localId"] = local_id
+                meta["skillName"] = meta.get("skillName") or skill_dir.name
+                LocalSkillService._write_meta(skill_dir, meta)
             items.append(
                 {
                     "skillName": skill_dir.name,
+                    "localId": local_id,
                     "path": str(skill_dir),
                     "hasSkillMd": (skill_dir / LocalSkillService.SKILL_MD_NAME).exists(),
                     "importedAt": meta.get("importedAt"),
@@ -251,6 +298,7 @@ class LocalSkillService:
                 files.append(path.relative_to(skill_dir).as_posix())
         return {
             "skillName": normalized,
+            "localId": LocalSkillService._parse_local_id(meta.get("localId")),
             "path": str(skill_dir),
             "importedAt": meta.get("importedAt"),
             "skillMdContent": skill_md_content,
