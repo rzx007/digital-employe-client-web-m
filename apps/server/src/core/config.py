@@ -100,8 +100,6 @@ class Settings:
     feishu_app_id: str | None = None
     feishu_app_secret: str | None = None
     feishu_redirect_uri: str | None = None
-    feishu_app_id: str = "cli_a97bcb15167b1bb4"
-    feishu_app_secret: str = "xvccgjHzEdB8dV28c8R4KeI6jTjWsPWL"
     feishu_tenant_access_token_url: str = (
         "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
     )
@@ -289,10 +287,6 @@ def get_settings() -> Settings:
         feishu_app_id=_get_kv_value(kv_data, "FEISHU_APP_ID"),
         feishu_app_secret=_get_kv_value(kv_data, "FEISHU_APP_SECRET"),
         feishu_redirect_uri=_get_kv_value(kv_data, "FEISHU_REDIRECT_URI"),
-        feishu_app_id=_get_kv_value(kv_data, "FEISHU_APP_ID")
-        or "cli_a9d1e24afb38dcc4",
-        feishu_app_secret=_get_kv_value(kv_data, "FEISHU_APP_SECRET")
-        or "X26JhpNSmz7Ekb8qGkk4Pymeg64Jpcdm",
         feishu_tenant_access_token_url=_get_kv_value(
             kv_data, "FEISHU_TENANT_ACCESS_TOKEN_URL"
         )
