@@ -203,6 +203,20 @@ def list_task_executions(
     return PageResponse(data=payload, total=total, page=page, page_size=page_size)
 
 
+@router.delete(
+    "/workspaces/{workspace_id}/tasks/executions",
+    response_model=ResponseBase[dict],
+    summary="清空所有任务执行日志",
+)
+def delete_all_task_executions(
+    workspace_id: int,
+    db: Session = Depends(get_db),
+) -> ResponseBase[dict]:
+    """清空指定工作空间的所有任务执行日志。"""
+    count = TaskService.delete_all_execution_logs(db, workspace_id)
+    return ResponseBase(data={"deleted": count})
+
+
 @router.post(
     "/workspaces/{workspace_id}/tasks/executions/{task_execution_log_id}/confirm",
     response_model=ResponseBase[TaskExecutionLogRead],

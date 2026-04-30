@@ -47,7 +47,21 @@ export function ChatLayout({
 
   const { data: apiContacts, isError: contactsError } = useContactsQuery()
 
-  useWorkspaceEvents()
+  const queryClient = useQueryClient()
+
+  useWorkspaceEvents((event) => {
+    switch (event.type) {
+      case "task_completed":
+      case "task_failed":
+      case "task_started":
+        queryClient.invalidateQueries({ queryKey: [...chatKeys.all, "all-task-executions"] })
+        queryClient.invalidateQueries({ queryKey: [...chatKeys.all, "notifications"] })
+        break
+      case "orchestration_plan_generated":
+        queryClient.invalidateQueries({ queryKey: [...chatKeys.all, "orchestration-plans"] })
+        break
+    }
+  })
 
   const hasContactsErrorToastRef = useRef(false)
 
@@ -89,8 +103,6 @@ export function ChatLayout({
       useChatStore.getState().setSelectedContactId(PRIMARY_CURATOR.id)
     }
   }, [contactsError])
-
-  const queryClient = useQueryClient()
 
   useEffect(() => {
     if (!window.electronApi?.onInvalidateContacts) return

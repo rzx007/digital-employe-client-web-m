@@ -17,6 +17,7 @@ import {
   fetchConversationResources,
   fetchResourceContent,
   fetchCuratorConversation,
+  deleteAllTaskExecutions,
 } from "@/api/conversation"
 import type { Contact } from "@/lib/mock-data/ai-employees"
 import type { Conversation } from "@/lib/mock-data/conversations"
@@ -157,6 +158,27 @@ export function useDeleteConversationMutation() {
       queryClient.invalidateQueries({
         queryKey: chatKeys.conversations(variables.contactId),
       })
+    },
+  })
+}
+
+export function useResetCuratorConversation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ conversationId, clearTaskLogs }: { 
+      conversationId: number | string
+      clearTaskLogs?: boolean 
+    }) => {
+      const promises = [deleteConversationApi(conversationId)]
+      if (clearTaskLogs) {
+        promises.push(deleteAllTaskExecutions())
+      }
+      await Promise.all(promises)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chatKeys.curator() })
+      queryClient.invalidateQueries({ queryKey: [...chatKeys.all, "all-task-executions"] })
     },
   })
 }

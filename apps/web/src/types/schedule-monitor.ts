@@ -5,8 +5,9 @@ export type TaskRunStatus =
   | "running"
   | "timeout"
   | "stuck"
+  | "cancelled"
 
-export type AnomalyType = "timeout" | "error" | "duplicate" | "stuck"
+export type AnomalyType = "timeout" | "error" | "duplicate" | "stuck" | "cancelled"
 
 export interface TaskRun {
   id: string

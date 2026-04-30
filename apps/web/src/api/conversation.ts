@@ -107,3 +107,9 @@ export async function fetchResourceContent(
     { params: { path } }
   )
 }
+
+export async function deleteAllTaskExecutions() {
+  return request<ApiResponse<{ deleted: number }>>(`/workspaces/1/tasks/executions`, {
+    method: "DELETE",
+  })
+}

@@ -40,10 +40,15 @@ const STATUS_CONFIG: Record<
     className: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
     dotClassName: "bg-purple-500",
   },
+  cancelled: {
+    label: "已取消",
+    className: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
+    dotClassName: "bg-slate-500",
+  },
 }
 
 export function TaskStatusBadge({ status, className }: TaskStatusBadgeProps) {
-  const config = STATUS_CONFIG[status]
+  const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending
 
   return (
     <span

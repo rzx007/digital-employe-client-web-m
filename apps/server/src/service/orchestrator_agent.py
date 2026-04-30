@@ -37,6 +37,11 @@ _main_loop: asyncio.AbstractEventLoop | None = None
 
 
 def set_main_event_loop(loop: asyncio.AbstractEventLoop) -> None:
+    """
+    main_loop = 应用主 asyncio 循环的句柄；
+    call_soon_threadsafe 用来在「非 async / 可能跨线程」的 orchestrator 代码里，
+    安全地把「启动流式 agent 任务」丢回主循环执行，避免 asyncio.create_task 用错循环。
+    """
     global _main_loop
     _main_loop = loop
 
@@ -267,9 +272,8 @@ def create_orchestration_plan(summary: str, tasks: str) -> str:
         conversation_id=conversation_id,
         user_input=summary,
         plan_json=json.dumps(task_list, ensure_ascii=False),
-        status="pending_confirmation",
+        status="pending",
         total_tasks=len(task_list),
-        completed_tasks=0,
     )
     db.add(plan)
     db.flush()
@@ -337,14 +341,14 @@ def confirm_orchestration_plan(plan_id: int) -> str:
     if not plan:
         return f"错误：编排计划 #{plan_id} 不存在。"
 
-    if plan.status != "pending_confirmation":
+    if plan.status != "pending":
         return f"编排计划 #{plan_id} 当前状态为 {plan.status}，无法执行。"
 
     return _execute_plan(db, plan, workspace_id)
 
 
 def _execute_plan(db: Session, plan: OrchestrationPlan, workspace_id: int) -> str:
-    plan.status = "executing"
+    plan.status = "confirmed"
     plan.started_at = cst_now()
     db.commit()
 
@@ -666,6 +670,9 @@ def cancel_plan(plan_id: int) -> str:
     plan = db.get(OrchestrationPlan, plan_id)
     if not plan:
         return f"错误：编排计划 #{plan_id} 不存在。"
+
+    if plan.status not in ("pending", "confirmed"):
+        return f"编排计划 #{plan_id} 当前状态为 {plan.status}，无法取消。"
 
     plan.status = "cancelled"
     db.commit()

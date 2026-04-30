@@ -61,7 +61,7 @@ export function createLoginWindow(options: {
   const loginUrl = options.devServerUrl
     ? `${options.devServerUrl}#/login`
     : `file://${options.indexHtml}#/login`
-  loginWin.webContents.openDevTools()
+  // loginWin.webContents.openDevTools()
 
   loginWin.loadURL(loginUrl)
 
