@@ -18,7 +18,33 @@ logger = logging.getLogger(__name__)
 
 
 def _compute_plan_progress(db: Session, plan: OrchestrationPlan) -> tuple[int, int, str]:
-    """从 TaskExecutionLog 计算 completed_tasks 和派生 status。"""
+    """从 TaskExecutionLog 实时计算 completed_tasks 和派生 status。
+
+    数据库 status 只有三个值：pending / confirmed / cancelled。
+    终端状态（executing / completed / partially_failed）由此函数实时计算。
+    """
+    if plan.status == "pending":
+        total = db.scalar(
+            select(func.count())
+            .select_from(EmployeeTask)
+            .where(EmployeeTask.orchestration_plan_id == plan.id)
+        ) or 0
+        return 0, total, "pending"
+
+    if plan.status == "cancelled":
+        total = db.scalar(
+            select(func.count())
+            .select_from(EmployeeTask)
+            .where(EmployeeTask.orchestration_plan_id == plan.id)
+        ) or 0
+        return 0, total, "cancelled"
+
+    total = db.scalar(
+        select(func.count())
+        .select_from(EmployeeTask)
+        .where(EmployeeTask.orchestration_plan_id == plan.id)
+    ) or 0
+
     completed = db.scalar(
         select(func.count(func.distinct(TaskExecutionLog.task_id)))
         .select_from(EmployeeTask)
@@ -39,17 +65,12 @@ def _compute_plan_progress(db: Session, plan: OrchestrationPlan) -> tuple[int, i
         )
     ) or 0
 
-    total = db.scalar(
-        select(func.count())
-        .select_from(EmployeeTask)
-        .where(EmployeeTask.orchestration_plan_id == plan.id)
-    ) or 0
+    if completed >= total:
+        derived_status = "completed" if failed == 0 else "partially_failed"
+    else:
+        derived_status = "executing"
 
-    status = plan.status
-    if status == "executing" and completed >= total:
-        status = "completed" if failed == 0 else "partially_failed"
-
-    return completed, total, status
+    return completed, total, derived_status
 
 
 def _build_task_items(db: Session, plan: OrchestrationPlan) -> list[OrchestrationTaskItem]:
@@ -141,7 +162,7 @@ def confirm_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
     if not plan:
         from fastapi import HTTPException
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
-    if plan.status != "pending_confirmation":
+    if plan.status != "pending":
         return BaseResponse(code=400, msg=f"计划当前状态为 {plan.status}，无法确认", data=None)
 
     from src.service.orchestrator_agent import _execute_plan
@@ -167,7 +188,7 @@ def cancel_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
     if not plan:
         from fastapi import HTTPException
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
-    if plan.status not in ("pending_confirmation", "executing"):
+    if plan.status not in ("pending", "confirmed"):
         return BaseResponse(code=400, msg=f"计划当前状态为 {plan.status}，无法取消", data=None)
 
     plan.status = "cancelled"

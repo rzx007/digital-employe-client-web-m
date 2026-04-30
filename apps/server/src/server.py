@@ -50,6 +50,32 @@ def create_app() -> FastAPI:
         # 保存主事件循环引用，供 sync context 调度协程
         from src.service.orchestrator_agent import set_main_event_loop
         set_main_event_loop(asyncio.get_running_loop())
+
+        from src.service.stream_registry import registry as _stream_registry
+        from src.service.workspace_events import WorkspaceEventBus
+
+        def _on_task_finalized(conversation_id: int, stream_state: str, task_id: int, workspace_id: int) -> None:
+            if stream_state == "completed":
+                WorkspaceEventBus.push(workspace_id, {
+                    "type": "task_completed",
+                    "task_id": task_id,
+                    "conversation_id": conversation_id,
+                })
+            elif stream_state == "cancelled":
+                WorkspaceEventBus.push(workspace_id, {
+                    "type": "task_failed",
+                    "task_id": task_id,
+                    "conversation_id": conversation_id,
+                    "error": "任务已取消",
+                })
+            else:
+                WorkspaceEventBus.push(workspace_id, {
+                    "type": "task_failed",
+                    "task_id": task_id,
+                    "conversation_id": conversation_id,
+                })
+
+        _stream_registry.on_task_finalized = _on_task_finalized
         
         # 初始化全局 AsyncSqliteSaver
         settings = get_settings()

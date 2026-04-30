@@ -33,7 +33,7 @@ class OrchestrationPlanRead(BaseModel):
     plan_json: str | None = None
     status: str
     total_tasks: int
-    completed_tasks: int
+    completed_tasks: int = 0
     created_at: datetime
     updated_at: datetime
 

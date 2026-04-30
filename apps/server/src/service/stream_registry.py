@@ -129,6 +129,7 @@ class ActiveStreamTask:
 class StreamRegistry:
     def __init__(self) -> None:
         self._tasks: dict[int, ActiveStreamTask] = {}
+        self.on_task_finalized: Callable[[int, str, int, int], None] | None = None
 
     def is_active(self, conversation_id: int) -> bool:
         task = self._tasks.get(conversation_id)
@@ -554,13 +555,12 @@ class StreamRegistry:
 
 
 def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
-    """流结束时回写 TaskExecutionLog + 推送 workspace 事件。
+    """流结束时回写 TaskExecutionLog + 通过可选回调通知上层。
     使用独立 session，不依赖调用方 session 状态。"""
     try:
         from src.db.session import get_session_local
         from src.models.task_execution_log import TaskExecutionLog
         from src.models.conversation import ConversationMessage
-        from src.service.workspace_events import WorkspaceEventBus
         from src.models.workspace import cst_now
 
         db = get_session_local()()
@@ -592,12 +592,6 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
             log.run_status = "success"
             log.run_result = "任务执行成功"
             log.output_json = json.dumps({"content": final_text}, ensure_ascii=False)
-
-            WorkspaceEventBus.push(log.workspace_id, {
-                "type": "task_completed",
-                "task_id": log.task_id,
-                "conversation_id": conversation_id,
-            })
         elif stream_state == "cancelled":
             log.run_status = "cancelled"
             log.run_result = "任务已取消"
@@ -607,6 +601,17 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
             log.error_message = "agent stream error"
 
         db.commit()
+
+        if registry.on_task_finalized:
+            try:
+                registry.on_task_finalized(
+                    conversation_id, stream_state, log.task_id, log.workspace_id
+                )
+            except Exception:
+                logger.warning(
+                    "on_task_finalized callback failed conv=%s", conversation_id, exc_info=True
+                )
+
         db.close()
     except Exception:
         logger.error(
