@@ -91,4 +91,33 @@ contextBridge.exposeInMainWorld("electronApi", {
   checkUpdate: () => ipcRenderer.invoke("check-update"),
   startDownloadUpdate: () => ipcRenderer.invoke("start-download"),
   quitAndInstall: () => ipcRenderer.invoke("quit-and-install"),
+
+  onUpdateAvailable: (
+    callback: (info: { update: boolean; version: string; newVersion: string }) => void
+  ) => {
+    ipcRenderer.on("update-can-available", (_, info) => {
+      if (info.update) callback(info)
+    })
+    return () => ipcRenderer.removeAllListeners("update-can-available")
+  },
+  onUpdateNotAvailable: (callback: () => void) => {
+    ipcRenderer.on("update-can-available", (_, info) => {
+      if (!info.update) callback()
+    })
+    return () => ipcRenderer.removeAllListeners("update-can-available")
+  },
+  onDownloadProgress: (
+    callback: (info: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void
+  ) => {
+    ipcRenderer.on("download-progress", (_, info) => callback(info))
+    return () => ipcRenderer.removeAllListeners("download-progress")
+  },
+  onUpdateDownloaded: (callback: () => void) => {
+    ipcRenderer.on("update-downloaded", () => callback())
+    return () => ipcRenderer.removeAllListeners("update-downloaded")
+  },
+  onUpdateError: (callback: (info: { message: string }) => void) => {
+    ipcRenderer.on("update-error", (_, info) => callback(info))
+    return () => ipcRenderer.removeAllListeners("update-error")
+  },
 })

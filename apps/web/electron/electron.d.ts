@@ -101,6 +101,26 @@ declare global {
       checkUpdate: () => Promise<any>
       startDownloadUpdate: () => Promise<void>
       quitAndInstall: () => Promise<void>
+      onUpdateAvailable: (
+        callback: (info: {
+          update: boolean
+          version: string
+          newVersion: string
+        }) => void
+      ) => () => void
+      onUpdateNotAvailable: (callback: () => void) => () => void
+      onDownloadProgress: (
+        callback: (info: {
+          percent: number
+          bytesPerSecond: number
+          transferred: number
+          total: number
+        }) => void
+      ) => () => void
+      onUpdateDownloaded: (callback: () => void) => () => void
+      onUpdateError: (
+        callback: (info: { message: string }) => void
+      ) => () => void
     }
   }
   const __APP_VERSION__: string

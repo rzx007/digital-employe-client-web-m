@@ -50,6 +50,7 @@ import { useTheme } from "@/components/theme-provider"
 import { useAuthStore } from "@/stores/auth-store"
 import { useOnboardingStore } from "@/stores/onboarding-store"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
+import { UpdateButton } from "@/components/common/app-updater"
 import { updatePassword } from "@/api/auth"
 import { getConfigKv, setManyConfigKv } from "@/api/config-kv"
 import { modelKeys } from "@/lib/query-keys/model"
@@ -742,19 +743,9 @@ function AboutSettings() {
         {/* 操作 */}
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">检查更新</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                if (window.electronApi?.isElectron) {
-                  await window.electronApi.checkUpdate()
-                }
-              }}
-            >
-              检查更新
-            </Button>
+            <span className="text-sm text-muted-foreground">版本更新</span>
           </div>
+          <UpdateButton />
         </div>
 
         <p className="text-center text-xs text-muted-foreground">

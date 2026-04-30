@@ -6,6 +6,7 @@ import {
   IconMinus,
 } from "@tabler/icons-react"
 import logoSvg from "@/assets/logo.png"
+import { UpdatePill } from "@/components/common/app-updater"
 
 interface AppTitlebarProps {
   title?: string
@@ -59,6 +60,9 @@ export function AppTitlebar({ title = "数字员工" }: AppTitlebarProps) {
         className="flex h-full items-center"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
+        <div className="flex items-center pr-1">
+          <UpdatePill />
+        </div>
         <button
           type="button"
           className="inline-flex h-full w-10 items-center justify-center transition-colors outline-none hover:bg-accent"
