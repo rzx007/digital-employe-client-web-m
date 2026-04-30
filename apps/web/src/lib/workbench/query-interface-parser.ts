@@ -145,7 +145,17 @@ export async function parseInterfacesFromSkills(
     return []
   }
 
-  // 兼容status为数字1或字符串"1"，无status字段也默认启用
+  // 调试：打印技能信息
+  console.log('[parseInterfacesFromSkills] skills count:', skills.length)
+  skills.forEach((s, i) => {
+    console.log(`[parseInterfacesFromSkills] skill ${i}:`, {
+      skillName: s.skillName,
+      hasSkillContent: !!(s.skillContent || s.skill_content),
+      contentLength: (s.skillContent || s.skill_content || '').length,
+    })
+  })
+
+  // 兼容 status 为数字 1 或字符串 "1"，无 status 字段也默认启用
   const enabled = skills.filter((s) => s.status === undefined || s.status === 1 || s.status === "1")
   const heuristic = buildHeuristicQueryInterfaces(enabled)
 

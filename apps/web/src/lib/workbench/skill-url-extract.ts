@@ -187,10 +187,19 @@ export function buildHeuristicQueryInterfaces(skills: MetadataSkill[]): QueryInt
   const out: QueryInterface[] = []
 
   for (const s of skills) {
-    // 兼容status为数字1或字符串"1"，无status字段也默认启用
+    // 兼容 status 为数字 1 或字符串 "1"，无 status 字段也默认启用
     if (s.status !== undefined && s.status !== 1 && s.status !== "1") continue
-
-    const blob = [s.skillName, s.description, s.prompt].filter(Boolean).join("\n\n")
+  
+    // 构建技能文本 blob，包含 skillContent（本地技能的主要内容）
+    const blob = [
+      s.skillName,
+      s.description,
+      s.prompt,
+      s.skillContent || s.skill_content,  // 添加技能内容
+    ]
+      .filter(Boolean)
+      .join("\n\n")
+    console.log("blob", blob)
     const headerHints = extractHeadersFromSkillText(blob)
     const pairs = extractMethodUrlPairs(blob)
     const bareUrls = extractUrlsFromSkillText(blob)
