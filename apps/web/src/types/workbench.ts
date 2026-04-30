@@ -83,4 +83,4 @@ export interface SkillBlockMapping {
 /**
  * Task status for badge display
  */
-export type TaskStatus = "success" | "failed" | "pending" | "running" | "timeout" | "stuck"
+export type TaskStatus = "success" | "failed" | "pending" | "running" | "timeout" | "stuck" | "cancelled"

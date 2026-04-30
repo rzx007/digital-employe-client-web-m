@@ -469,6 +469,15 @@ class TaskService:
         return log
 
     @staticmethod
+    def delete_all_execution_logs(db: Session, workspace_id: int) -> int:
+        """删除指定工作空间的所有任务执行日志，返回删除数量。"""
+        count = db.query(TaskExecutionLog).filter(
+            TaskExecutionLog.workspace_id == workspace_id
+        ).delete()
+        db.commit()
+        return count
+
+    @staticmethod
     def build_monthly_calendar(
         db: Session,
         year: int | None = None,

@@ -1,4 +1,5 @@
 import * as React from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { cn } from "@workspace/ui/lib/utils"
 import { useChat } from "@ai-sdk/react"
 import type { UIMessage } from "ai"
@@ -18,12 +19,23 @@ import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
 import { Spinner } from "@/components/spinner"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 import { classifyMessageParts } from "@/lib/chat/message-utils"
-import { useMessagesQuery, useCuratorConversationQuery } from "@/hooks/use-chat-queries"
+import { useMessagesQuery, useCuratorConversationQuery, useResetCuratorConversation } from "@/hooks/use-chat-queries"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { useChatStore } from "@/stores/chat-store"
 import { useAllTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { cancelConversationStream } from "@/api/conversation"
 import { toast } from "sonner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@workspace/ui/components/alert-dialog"
+import { Checkbox } from "@workspace/ui/components/checkbox"
 import { chatTransport, type ChatViewContact } from "../chat-view-shared"
 import { CuratorChatHeader } from "../curator-chat-header"
 import { ExecutionReportCard } from "../execution-report-card"
@@ -38,6 +50,7 @@ import { useEffect } from "react"
 import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import type { TaskExecution } from "@/types/schedule-monitor"
+import { chatKeys } from "@/lib/query-keys/chat"
 
 type TimelineEntry =
   | { kind: "message"; data: UIMessage; ts: number }
@@ -67,7 +80,11 @@ export function CuratorView({
   const [inputValue, setInputValue] = React.useState("")
   const [command, setCommand] = React.useState<{ id: string; title: string } | null>(null)
   const [mentions, setMentions] = React.useState<Array<{ id: string; name: string }>>([])
+  const [showResetDialog, setShowResetDialog] = React.useState(false)
+  const [clearTaskLogs, setClearTaskLogs] = React.useState(true)
 
+  const resetMutation = useResetCuratorConversation()
+  const queryClient = useQueryClient()
   const { data: curatorConv, isLoading: curatorLoading } = useCuratorConversationQuery()
   const curatorConversationId = curatorConv?.id ?? null
 
@@ -102,6 +119,19 @@ export function CuratorView({
       try { await cancelConversationStream(curatorConversationId) } catch { }
     }
   }, [stop, curatorConversationId])
+
+  const handleReset = React.useCallback(async () => {
+    if (!curatorConversationId) return
+    try {
+      await resetMutation.mutateAsync({ conversationId: curatorConversationId, clearTaskLogs })
+      queryClient.setQueryData(chatKeys.messages(String(curatorConversationId)), [])
+      setMessages([])
+      setShowResetDialog(false)
+      toast.success("会话已清空")
+    } catch {
+      toast.error("清空失败")
+    }
+  }, [curatorConversationId, clearTaskLogs, resetMutation, setMessages, queryClient])
 
   useEffect(() => {
     if (!initialMessages.length || !curatorConversationId) return
@@ -236,7 +266,7 @@ export function CuratorView({
 
   return (
     <div className={cn("flex flex-col bg-background", !isCompact && "flex-1", className)} {...props}>
-      {!isCompact && <CuratorChatHeader contact={contact} />}
+      {!isCompact && <CuratorChatHeader contact={contact} onReset={() => setShowResetDialog(true)} />}
 
       <ConversationUI className="min-h-0 flex-1 overflow-y-auto">
         <ConversationContent className="space-y-3">
@@ -374,7 +404,7 @@ export function CuratorView({
           onSubmit={handleSendMessage}
           onStop={handleStop}
           status={chatStatus}
-          disabled={!inputValue.trim() || isBusy || curatorLoading}
+          disabled={curatorLoading || (!isBusy && !inputValue.trim())}
           size="compact"
           className="w-full overflow-hidden shadow-xl bg-background/80"
           slashCommands={[]}
@@ -384,6 +414,34 @@ export function CuratorView({
           <p className="mt-2 text-xs text-destructive">{error.message}</p>
         )}
       </div>
+
+      <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>清空会话</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要清空总管助手的会话记录吗？此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex items-center gap-2 px-1">
+            <Checkbox
+              id="clear-task-logs"
+              checked={clearTaskLogs}
+              onCheckedChange={(checked) => setClearTaskLogs(checked === true)}
+            />
+            <label
+              htmlFor="clear-task-logs"
+              className="text-xs text-muted-foreground cursor-pointer select-none"
+            >
+              同时清空员工执行日志
+            </label>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleReset}>确定</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

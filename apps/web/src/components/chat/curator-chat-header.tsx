@@ -1,13 +1,23 @@
+import { IconDots, IconTrash } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
+import { Button } from "@workspace/ui/components/button"
 import { Separator } from "@workspace/ui/components/separator"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@workspace/ui/components/dropdown-menu"
 import type { ChatViewContact } from "./chat-view-shared"
 import { EmployeeContactAvatar } from "./contact-avatars"
 
 export function CuratorChatHeader({
   contact,
+  onReset,
   className,
 }: {
   contact?: ChatViewContact
+  onReset?: () => void
   className?: string
 }) {
   return (
@@ -29,6 +39,22 @@ export function CuratorChatHeader({
           </p>
         </div>
       </div>
+
+      {onReset && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-sm">
+              <IconDots className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onReset}>
+              <IconTrash className="size-4" />
+              清空会话
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   )
 }
