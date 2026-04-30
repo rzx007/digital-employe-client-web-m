@@ -53,7 +53,6 @@ export function MonitorPanel({
   const [viewMonth, setViewMonth] = useState(now.getMonth() + 1)
 
   const { data: overview } = useMonthlyScheduleOverview(
-    targetEmployeeId,
     viewYear,
     viewMonth
   )

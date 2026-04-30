@@ -208,7 +208,6 @@ function ContactMonitorSection({ employeeId }: { employeeId: string }) {
   const [viewMonth, setViewMonth] = useState(now.getMonth() + 1)
 
   const { data: overview } = useMonthlyScheduleOverview(
-    employeeId,
     viewYear,
     viewMonth
   )

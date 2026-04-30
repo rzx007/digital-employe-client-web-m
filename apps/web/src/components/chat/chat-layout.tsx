@@ -55,6 +55,7 @@ export function ChatLayout({
       case "task_failed":
       case "task_started":
         queryClient.invalidateQueries({ queryKey: [...chatKeys.all, "all-task-executions"] })
+        queryClient.invalidateQueries({ queryKey: [...chatKeys.all, "today-all-executions"] })
         queryClient.invalidateQueries({ queryKey: [...chatKeys.all, "notifications"] })
         break
       case "orchestration_plan_generated":

@@ -30,19 +30,17 @@ function mapExecutionToTaskRun(exec: TaskExecution): TaskRun {
 }
 
 export function useMonthlyScheduleOverview(
-  employeeId: string | null,
   year: number,
-  month: number
+  month: number,
 ) {
   return useQuery({
-    queryKey: [...chatKeys.all, "schedule-overview", employeeId, year, month],
+    queryKey: [...chatKeys.all, "schedule-overview", year, month],
     queryFn: async () => {
       const res = await request<{ code: number; data: MonthlyOverview }>(
-        `/tasks/calendar/monthly?year=${year}&month=${month}&employee_id=${employeeId}`
+        `/tasks/calendar/monthly?year=${year}&month=${month}`
       )
       return res.data
     },
-    enabled: Boolean(employeeId),
     placeholderData: keepPreviousData,
     staleTime: 30_000,
   })
@@ -143,6 +141,25 @@ export function useAllTaskExecutions() {
     },
     staleTime: 30_000,
     refetchInterval: 15_000,
+  })
+}
+
+export function useTodayAllExecutions() {
+  return useQuery({
+    queryKey: [...chatKeys.all, "today-all-executions"],
+    queryFn: () => {
+      const now = new Date()
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+      const formatIso = (d: Date) => d.toISOString().slice(0, 19)
+      return request<{
+        code: number
+        data: TaskExecution[]
+      }>(
+        `/workspaces/${WORKSPACE_ID}/tasks/executions?start_time=${formatIso(start)}&end_time=${formatIso(end)}&page_size=200`
+      ).then((res) => res.data)
+    },
+    staleTime: 30_000,
   })
 }
 

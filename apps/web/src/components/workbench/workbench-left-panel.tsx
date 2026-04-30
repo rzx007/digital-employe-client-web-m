@@ -1,23 +1,18 @@
 import { useState } from "react"
-import { useMonthlyScheduleOverview, useTodayTaskRuns } from "@/hooks/use-schedule-monitor-queries"
+import { useMonthlyScheduleOverview, useTodayAllExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { ScheduleCalendar } from "@/components/schedule-monitor/sections/schedule-calendar"
 import { TodayTaskList } from "./today-task-list"
 
-interface WorkbenchLeftPanelProps {
-  employeeId: string | null
-}
-
-export function WorkbenchLeftPanel({ employeeId }: WorkbenchLeftPanelProps) {
+export function WorkbenchLeftPanel() {
   const now = new Date()
   const [viewYear, setViewYear] = useState(now.getFullYear())
   const [viewMonth, setViewMonth] = useState(now.getMonth() + 1)
 
   const { data: overview, isLoading: isOverviewLoading } = useMonthlyScheduleOverview(
-    employeeId,
     viewYear,
     viewMonth
   )
-  const { data: taskRuns = [], isLoading: isTaskRunsLoading } = useTodayTaskRuns(employeeId)
+  const { data: executions = [], isLoading: isExecutionsLoading } = useTodayAllExecutions()
 
   const handleMonthChange = (year: number, month: number) => {
     setViewYear(year)
@@ -35,8 +30,8 @@ export function WorkbenchLeftPanel({ employeeId }: WorkbenchLeftPanelProps) {
       <div className="text-xs font-medium text-muted-foreground">今日任务</div>
 
       <TodayTaskList
-        taskRuns={taskRuns}
-        isLoading={isTaskRunsLoading}
+        executions={executions}
+        isLoading={isExecutionsLoading}
       />
     </div>
   )

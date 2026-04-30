@@ -235,7 +235,7 @@ export function WorkbenchView({
           </div>
         ) : (
           <div className="flex min-w-0 flex-1">
-            <WorkbenchLeftPanel employeeId={employeeId} />
+            <WorkbenchLeftPanel />
             <div className="min-w-0 flex-1 overflow-auto p-3">
               <div className="mb-2 text-xs font-medium text-muted-foreground">
                 自定义模块 {isLoadingSkills && "(加载中...)"}
