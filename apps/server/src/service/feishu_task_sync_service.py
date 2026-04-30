@@ -328,16 +328,14 @@ class FeishuTaskSyncService:
     def sync_and_trigger() -> dict[str, Any]:
         with get_session_local()() as db:
             result = FeishuTaskSyncService.sync_tasks(db)
+        pending_task_ids = result.get("pending_task_ids") or []
+        # 只要本轮同步成功并识别到待处理任务，先标记为已创建排班，避免重复触发
+        marked_count = FeishuTaskSyncService._mark_tasks_scheduled(pending_task_ids)
         trigger_ok = False
-        marked_count = 0
         try:
             trigger_ok = FeishuTaskSyncService.trigger_curator_after_sync_if_needed(
                 result.get("pending_tasks") or []
             )
-            if trigger_ok:
-                marked_count = FeishuTaskSyncService._mark_tasks_scheduled(
-                    result.get("pending_task_ids") or []
-                )
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("飞书任务同步后触发总管会话失败: %s", exc, exc_info=True)
         result["trigger_ok"] = trigger_ok
