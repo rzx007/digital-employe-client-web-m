@@ -28,6 +28,9 @@ class OrchestrationPlan(Base):
         String(32), nullable=False, default="pending", index=True
     )
     total_tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # SQLite 不支持 DROP COLUMN，此列保留以兼容历史表结构。
+    # 业务逻辑不使用此字段，进度由 _compute_plan_progress 实时从 TaskExecutionLog 聚合。
+    completed_tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)
     updated_at: Mapped[datetime] = mapped_column(
