@@ -171,3 +171,71 @@ async def remote_import_local_skill(
         msg=payload.get("msg") or "操作成功",
         data=payload.get("data"),
     )
+
+
+@router.get("/local_employees/skills", response_model=ResponseBase[list[dict]])
+def get_employee_local_skills(
+    employee_id: str = Query(..., description="员工ID"),
+    employee_name: str | None = Query(default=None, description="员工名称"),
+    skill_name: str | None = Query(default=None, description="指定技能名称"),
+) -> ResponseBase[list[dict]]:
+    """
+    获取指定员工的本地技能列表
+    
+    该接口用于工作台加载本地上传的技能，支持：
+    1. 不传 skill_name：返回该员工所有本地技能
+    2. 传入 skill_name：返回指定技能的详细信息
+    """
+    from pathlib import Path
+    from src.core.config import get_settings
+    
+    settings = get_settings()
+    local_root = Path(settings.local_skills_path)
+    
+    if not local_root.exists():
+        return ResponseBase(data=[])
+    
+    skills = []
+    for skill_dir in sorted(local_root.iterdir(), key=lambda p: p.name.lower()):
+        if not skill_dir.is_dir():
+            continue
+        
+        skill_md = skill_dir / "SKILL.md"
+        if not skill_md.exists():
+            continue
+        
+        # 读取 SKILL.md 内容
+        skill_content = ""
+        try:
+            skill_content = skill_md.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Failed to read SKILL.md for {skill_dir.name}: {e}")
+        
+        meta_file = skill_dir / ".skill-meta.json"
+        meta = {}
+        if meta_file.exists():
+            try:
+                import json
+                meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        
+        # 如果指定了 skill_name，只返回匹配的
+        if skill_name and skill_dir.name != skill_name:
+            continue
+        
+        skills.append({
+            "id": meta.get("localId", 0),
+            "skillName": skill_dir.name,
+            "description": meta.get("description", ""),
+            "prompt": "",
+            "directoryId": None,
+            "status": 1,
+            "createTime": meta.get("importedAt", ""),
+            "updateTime": meta.get("importedAt", ""),
+            "directoryName": "本地技能",
+            "skillContent": skill_content,  # 添加技能内容
+            "skill_content": skill_content,  # 兼容两种字段名
+        })
+    
+    return ResponseBase(data=skills)

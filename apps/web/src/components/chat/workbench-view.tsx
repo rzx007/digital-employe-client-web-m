@@ -106,7 +106,35 @@ export function WorkbenchView({
     }
   }
 
-  const skills = apiSkills.length > 0 ? apiSkills : localSkills
+  // 合并远程和本地技能，两者都保留
+  const skills = React.useMemo(() => {
+    const allSkills: MetadataSkill[] = []
+    
+    // 添加远程技能
+    apiSkills.forEach((skill) => {
+      allSkills.push({
+        ...skill,
+        directoryName: skill.directoryName || "远程技能",
+      })
+    })
+    
+    // 添加本地技能
+    localSkills.forEach((skill) => {
+      allSkills.push({
+        ...skill,
+        directoryName: skill.directoryName || "本地技能",
+      })
+    })
+
+    console.log('[workbench-view] merged skills:', allSkills.map(s => ({
+      skillName: s.skillName,
+      directoryName: s.directoryName,
+      hasSkillContent: !!(s.skillContent || s.skill_content),
+      contentLength: (s.skillContent || s.skill_content || '').length,
+    })))
+
+    return allSkills
+  }, [apiSkills, localSkills])
 
   const {
     config,
