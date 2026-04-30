@@ -43,9 +43,9 @@ import { ChatPromptInput } from "@/components/chat-prompt-input"
 import { PendingMessageQueue } from "../pending-message-queue"
 import { EmployeeContactAvatar } from "../contact-avatars"
 import {
-  renderClassifiedBlocks,
   getMessageMeta,
-} from "../chat-panel"
+} from "../chat-view-shared"
+import { RenderClassifiedBlocks } from "../chat-message-item"
 import { useEffect } from "react"
 import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
@@ -362,7 +362,7 @@ export function CuratorView({
                 <MessageContent className="w-auto">
                   <div className="space-y-3">
                     {classifiedBlocks.length > 0 ? (
-                      renderClassifiedBlocks(classifiedBlocks, { commandMeta, mentionMeta, messageId: message.id })
+                      <RenderClassifiedBlocks blocks={classifiedBlocks} commandMeta={commandMeta} mentionMeta={mentionMeta} messageId={message.id} />
                     ) : message.role === "assistant" ? (
                       <MessageResponse />
                     ) : null}

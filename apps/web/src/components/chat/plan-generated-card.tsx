@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { memo } from "react"
 import { cn } from "@workspace/ui/lib/utils"
 import { CronPreviewBadge } from "./cron-preview-badge"
 
@@ -42,7 +43,7 @@ const STATE_CONFIG: Record<
   },
 }
 
-export function PlanGeneratedCard({
+function PlanGeneratedCardInner({
   input,
   state,
   className,
@@ -125,3 +126,5 @@ export function PlanGeneratedCard({
     </div>
   )
 }
+
+export const PlanGeneratedCard = memo(PlanGeneratedCardInner)

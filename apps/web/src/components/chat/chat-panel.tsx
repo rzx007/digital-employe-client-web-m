@@ -10,15 +10,13 @@ import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
 import {
   Message,
   MessageContent,
-  MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import { cn } from "@workspace/ui/lib/utils"
 import { IconSparkles } from "@tabler/icons-react"
+import { useVirtualizer } from "@tanstack/react-virtual"
+import { useStickToBottomContext } from "use-stick-to-bottom"
 import logo from "@/assets/logo.png"
-import {
-  classifyMessageParts,
-} from "@/lib/chat/message-utils"
 import { Spinner } from "@/components/spinner"
 import { useChatStore } from "@/stores/chat-store"
 
@@ -27,18 +25,14 @@ import type { PromptChangeEvent } from "../lexical-editor/prompt-input-textarea"
 import type { SlashCommandItem } from "../lexical-editor/slash-command-plugin"
 import type { MentionCandidate } from "../lexical-editor/mention-plugin"
 import { ChatPanelHeader } from "./chat-panel-header"
-import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
 import { PendingMessageQueue } from "./pending-message-queue"
 import type { PendingMessage } from "@/hooks/use-pending-messages"
-import { FileChangeCards } from "./file-change-cards"
-import { ThinkingBlock } from "./thinking-block"
-import { ToolGroupBlock } from "./tool-group-block"
-import { PlanGeneratedCard } from "./plan-generated-card"
 import { MessageLoadingSkeleton } from "./message-loading-skeleton"
 import {
   getContactDisplayName,
   type ChatViewContact,
 } from "./chat-view-shared"
+import { ChatMessageItem } from "./chat-message-item"
 
 const EMPTY_MESSAGES: UIMessage[] = []
 
@@ -49,118 +43,87 @@ function getLastAssistantMessageId(messages: UIMessage[]) {
       return message.id
     }
   }
-
   return null
 }
 
-type CommandMeta = { id?: string; title?: string } | null
-type MentionMeta = Array<{ id?: string; name?: string }>
-type MessageMeta = {
-  command?: { id?: string; title?: string } | null
-  mentions?: Array<{ id?: string; name?: string }>
+type VirtualizedMessageListProps = {
+  messages: UIMessage[]
+  contact: ChatViewContact
+  hasCurrentTurnEnded: boolean
 }
 
-export function getMessageMeta(message: UIMessage): MessageMeta | null {
-  if (!message || typeof message !== "object") {
-    return null
-  }
-  const meta = (message as UIMessage & { metadata?: unknown }).metadata
-  return meta && typeof meta === "object" ? (meta as MessageMeta) : null
-}
+function VirtualizedMessageList({
+  messages,
+  contact,
+  hasCurrentTurnEnded,
+}: VirtualizedMessageListProps) {
+  const { scrollRef } = useStickToBottomContext()
+  const lastAssistantMessageId = getLastAssistantMessageId(messages)
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const virtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 200,
+    overscan: 5,
+  })
 
-function MessageMetaBadges({
-  commandMeta,
-  mentionMeta,
-  messageId,
-}: {
-  commandMeta: CommandMeta
-  mentionMeta: MentionMeta
-  messageId: string
-}) {
-  if (!commandMeta?.title && mentionMeta.length === 0) {
-    return null
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-      {commandMeta?.title && (
-        <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
-          /{commandMeta.title}
-        </span>
-      )}
-      {mentionMeta.map((mention, index) => (
-        <span
-          key={mention.id ?? `${messageId}:mention:${index}`}
-          className="rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-600"
-        >
-          @{mention.name ?? "unknown"}
-        </span>
-      ))}
-    </div>
+  const measureRef = React.useCallback(
+    (el: HTMLElement | null) => {
+      virtualizer.measureElement(el)
+    },
+    [virtualizer]
   )
-}
 
-export function renderClassifiedBlocks(
-  blocks: import("@/lib/chat/message-classifier").ClassifiedBlock[],
-  options?: {
-    commandMeta?: CommandMeta
-    mentionMeta?: MentionMeta
-    messageId?: string
-  }
-) {
+  const prevCountRef = React.useRef(messages.length)
+  React.useEffect(() => {
+    if (messages.length > prevCountRef.current && messages.length > 0) {
+      virtualizer.scrollToIndex(messages.length - 1, { align: "end" })
+    }
+    prevCountRef.current = messages.length
+  }, [messages.length, virtualizer])
+
+  const items = virtualizer.getVirtualItems()
+
   return (
+    <div
+      style={{
+        height: `${virtualizer.getTotalSize()}px`,
+        width: "100%",
+        position: "relative",
+      }}
+    >
+      {items.map((virtualItem) => {
+        const message = messages[virtualItem.index]
+        const isLastAssistantMessage =
+          message.role === "assistant" &&
+          message.id === lastAssistantMessageId
+        const includeFileChanges =
+          message.role === "assistant" &&
+          (!isLastAssistantMessage || hasCurrentTurnEnded)
 
-    blocks.map((block) => {
-      if (block.kind === "tool-group") {
         return (
-          <ToolGroupBlock
-            block={block}
-            className="w-full"
-            key={block.key}
-          />
+          <div
+            key={virtualItem.key}
+            data-index={virtualItem.index}
+            ref={measureRef}
+            className="pb-8"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              transform: `translateY(${virtualItem.start}px)`,
+            }}
+          >
+            <ChatMessageItem
+              message={message}
+              contact={contact}
+              includeFileChanges={includeFileChanges}
+            />
+          </div>
         )
-      }
-
-      if (block.kind === "plan-generated") {
-        return (
-          <PlanGeneratedCard
-            input={block.input}
-            state={block.state}
-            className="w-full"
-            key={block.key}
-          />
-        )
-      }
-
-      if (block.kind === "file-changes") {
-        return <FileChangeCards files={block.files} key={block.key} />
-      }
-
-      const text = block.text
-
-      if (block.kind === "thinking") {
-        return <ThinkingBlock className="w-full" key={block.key} text={text} />
-      }
-
-      const commandMeta = options?.commandMeta ?? null
-      const mentionMeta = options?.mentionMeta ?? []
-      const messageId = options?.messageId ?? block.key
-
-      return (
-        <div
-          className="w-full flex items-center space-x-2"
-          key={block.key}
-        >
-          <MessageMetaBadges
-            commandMeta={commandMeta}
-            mentionMeta={mentionMeta}
-            messageId={messageId}
-          />
-          <MessageResponse className="flex-1">{text}</MessageResponse>
-        </div>
-      )
-    })
-
+      })}
+    </div>
   )
 }
 
@@ -214,7 +177,6 @@ export function ChatPanel({
     : "AI 助手"
 
   const displayMessages = isDraftMode ? EMPTY_MESSAGES : messages
-  const lastAssistantMessageId = getLastAssistantMessageId(displayMessages)
   const hasCurrentTurnEnded = status === "ready" || status === "error" || !!error
   const showStreamingIndicator =
     !isDraftMode &&
@@ -238,16 +200,8 @@ export function ChatPanel({
           : []),
       ],
     }))
-    // return [
-    //   {
-    //     id: "skill-1",
-    //     title: "技能 1",
-    //     icon: <IconSparkles className="h-4 w-4" />,
-    //     description: 'Answer questions about the AI SDK and help build AI-powered features. ',
-    //     keywords: ["技能", "技能 1", "描述 1"],
-    //   }
-    // ]
   }, [contact])
+
   const mentionCandidates = React.useMemo<MentionCandidate[]>(() => {
     if (contact?.type === "group") {
       return (contact.group?.participants ?? []).map((p) => ({
@@ -287,7 +241,7 @@ export function ChatPanel({
           />
           <>
             <Conversation className="min-h-0 flex-1 overflow-y-auto pt-4">
-              <ConversationContent>
+              <ConversationContent className="px-4 pb-4">
                 {isDraftMode ? (
                   <ConversationEmptyState className="py-16">
                     <div className="flex flex-col items-center gap-6">
@@ -340,91 +294,11 @@ export function ChatPanel({
                     </div>
                   </ConversationEmptyState>
                 ) : (
-                  displayMessages.map((message) => {
-                    const isLastAssistantMessage =
-                      message.role === "assistant" &&
-                      message.id === lastAssistantMessageId
-                    const includeFileChanges =
-                      message.role === "assistant" &&
-                      (!isLastAssistantMessage || hasCurrentTurnEnded)
-                    const classifiedBlocks = classifyMessageParts(message, {
-                      includeFileChanges,
-                    })
-                    const messageMeta = getMessageMeta(message)
-                    const commandMeta =
-                      messageMeta &&
-                        typeof messageMeta === "object" &&
-                        "command" in messageMeta &&
-                        messageMeta.command &&
-                        typeof messageMeta.command === "object"
-                        ? (messageMeta.command as { id?: string; title?: string })
-                        : null
-                    const mentionMeta =
-                      messageMeta &&
-                        typeof messageMeta === "object" &&
-                        "mentions" in messageMeta &&
-                        Array.isArray(messageMeta.mentions)
-                        ? (messageMeta.mentions as Array<{
-                          id?: string
-                          name?: string
-                        }>)
-                        : []
-
-                    return (
-                      <Message
-                        key={message.id}
-                        from={message.role}
-                        className="mx-auto max-w-4xl"
-                      >
-                        {message.role === "assistant" && (
-                          <div className="mb-2 flex items-center gap-2">
-                            {contact.type === "group" ? (
-                              <GroupMembersAvatar
-                                participants={contact.group?.participants}
-                                className="size-6"
-                                itemClassName="h-3 w-3"
-                                fallbackClassName="text-[8px]"
-                                placeholderClassName="h-3 w-3"
-                              />
-                            ) : contact.type === "curator" ? (
-                              <EmployeeContactAvatar
-                                name={contact.curator?.name}
-                                avatar={contact.curator?.avatar}
-                                status={contact.curator?.status}
-                                avatarClassName="size-6"
-                                fallbackClassName="text-[10px]"
-                              />
-                            ) : (
-                              <EmployeeContactAvatar
-                                name={contact.employee?.name}
-                                avatar={contact.employee?.avatar}
-                                status={contact.employee?.status}
-                                avatarClassName="size-6"
-                                fallbackClassName="text-[10px]"
-                              />
-                            )}
-                            <span className="text-xs text-muted-foreground">
-                              {contactDisplayName}
-                            </span>
-                          </div>
-                        )}
-
-                        <MessageContent className="w-auto">
-                          <div className="space-y-3">
-                            {classifiedBlocks.length > 0 ? (
-                              renderClassifiedBlocks(classifiedBlocks, {
-                                commandMeta,
-                                mentionMeta,
-                                messageId: message.id,
-                              })
-                            ) : (
-                              <MessageResponse />
-                            )}
-                          </div>
-                        </MessageContent>
-                      </Message>
-                    )
-                  })
+                  <VirtualizedMessageList
+                    messages={displayMessages}
+                    contact={contact}
+                    hasCurrentTurnEnded={hasCurrentTurnEnded}
+                  />
                 )}
 
                 {showStreamingIndicator && (
@@ -447,7 +321,7 @@ export function ChatPanel({
               <ConversationScrollButton />
             </Conversation>
 
-            <div className="border-none py-4 max-w-4xl mx-auto w-full">
+            <div className="mx-auto w-full max-w-4xl border-none py-4">
               {pendingMessages && pendingMessages.length > 0 && (
                 <div className="mx-auto w-[98%]">
                   <PendingMessageQueue
@@ -467,7 +341,7 @@ export function ChatPanel({
                 status={status}
                 disabled={isSubmitDisabled}
                 size="compact"
-                className=" w-full overflow-hidden shadow-xl bg-background/80"
+                className="w-full overflow-hidden bg-background/80 shadow-xl"
                 slashCommands={slashCommands}
                 mentionCandidates={mentionCandidates}
               />

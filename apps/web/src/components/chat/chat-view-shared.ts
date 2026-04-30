@@ -18,3 +18,17 @@ export function getContactDisplayName(contact: ChatViewContact) {
 
   return contact.employee?.name ?? "AI 助手"
 }
+
+export type CommandMeta = { id?: string; title?: string } | null
+export type MentionMeta = Array<{ id?: string; name?: string }>
+
+export function getMessageMeta(message: UIMessage): {
+  command?: CommandMeta
+  mentions?: MentionMeta
+} | null {
+  if (!message || typeof message !== "object") return null
+  const meta = (message as Record<string, unknown>).metadata
+  return meta && typeof meta === "object"
+    ? (meta as { command?: CommandMeta; mentions?: MentionMeta })
+    : null
+}

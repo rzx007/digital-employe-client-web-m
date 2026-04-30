@@ -7,7 +7,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { IconBrain, IconChevronDown } from "@tabler/icons-react"
 import { MessageResponse } from "@workspace/ui/components/ai-elements/message"
 import type { ComponentProps } from "react"
-import { useState } from "react"
+import { useState, memo } from "react"
 
 const SHORT_TEXT_THRESHOLD = 120
 
@@ -16,7 +16,7 @@ export type ThinkingBlockProps = ComponentProps<"div"> & {
   defaultOpen?: boolean
 }
 
-export function ThinkingBlock({
+function ThinkingBlockInner({
   text,
   defaultOpen,
   className,
@@ -78,3 +78,5 @@ export function ThinkingBlock({
     </div>
   )
 }
+
+export const ThinkingBlock = memo(ThinkingBlockInner)

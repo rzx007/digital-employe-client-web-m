@@ -1,5 +1,6 @@
 import { cn } from "@workspace/ui/lib/utils"
 import type { ComponentProps } from "react"
+import { memo } from "react"
 
 import type {
   ClassifiedBlock,
@@ -25,7 +26,7 @@ function hasError(tools: ToolGroupItem[]): boolean {
   return tools.some((t) => t.state === "output-error")
 }
 
-export function ToolGroupBlock({
+function ToolGroupBlockInner({
   block,
   className,
   simpleMode = false,
@@ -72,3 +73,5 @@ export function ToolGroupBlock({
     </div>
   )
 }
+
+export const ToolGroupBlock = memo(ToolGroupBlockInner)

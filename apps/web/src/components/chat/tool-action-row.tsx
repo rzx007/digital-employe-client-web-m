@@ -8,7 +8,7 @@ import {
   IconXboxX,
 } from "@tabler/icons-react"
 import type { ComponentProps } from "react"
-import { useRef, useState, useLayoutEffect, useMemo, useEffect } from "react"
+import { useRef, useState, useLayoutEffect, useMemo, useEffect, memo } from "react"
 import {
   Collapsible,
   CollapsibleContent,
@@ -39,7 +39,7 @@ export type ToolActionRowProps = ComponentProps<"div"> & {
   preliminary?: boolean
 }
 
-export function ToolActionRow({
+function ToolActionRowInner({
   summary,
   state,
   resultText,
@@ -248,3 +248,5 @@ export function ToolActionRow({
     </div>
   )
 }
+
+export const ToolActionRow = memo(ToolActionRowInner)

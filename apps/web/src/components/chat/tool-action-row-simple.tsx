@@ -6,7 +6,7 @@ import {
   IconXboxX,
 } from "@tabler/icons-react"
 import type { ComponentProps } from "react"
-import { useRef, useState, useLayoutEffect, useMemo, useEffect } from "react"
+import { useRef, useState, useLayoutEffect, useMemo, useEffect, memo } from "react"
 import {
   Collapsible,
   CollapsibleContent,
@@ -32,7 +32,7 @@ export type ToolActionRowSimpleProps = ComponentProps<"div"> & {
   preliminary?: boolean
 }
 
-export function ToolActionRowSimple({
+function ToolActionRowSimpleInner({
   summary,
   state,
   resultText,
@@ -241,3 +241,5 @@ export function ToolActionRowSimple({
     </div>
   )
 }
+
+export const ToolActionRowSimple = memo(ToolActionRowSimpleInner)
