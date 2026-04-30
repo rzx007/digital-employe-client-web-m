@@ -25,6 +25,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import type { Contact } from "@/lib/mock-data/ai-employees"
 import { useChatStore } from "@/stores/chat-store"
 import { chatKeys } from "@/lib/query-keys/chat"
+import { deleteEmployee } from "@/api/employee"
 
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
 import { EmployeeDetailDialog } from "../employee/employee-detail-dialog"
@@ -83,25 +84,32 @@ export function ContactItem({
     setAlertOpen(true)
   }
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     setAlertOpen(false)
 
-    const updated = contacts.filter((c) => {
-      const id =
-        c.type === "curator"
-          ? c.curator?.id
-          : c.type === "employee"
-            ? c.employee?.id
-            : c.group?.id
-      return id !== contactId
-    })
-    setContacts(updated)
-
-    if (selectedContactId === contactId) {
-      setSelectedContactId(null)
+    if (contact.type === "employee" && contactId) {
+      try {
+        await deleteEmployee(contactId)
+        // 删除成功后刷新联系人列表
+        await queryClient.invalidateQueries({
+          queryKey: chatKeys.contacts(),
+        })
+        toast.success(`已删除「${displayName}」`)
+      } catch (error) {
+        toast.error("删除失败，请稍后重试")
+      }
+    } else if (contact.type === "group" && contactId) {
+      // 如果是群组，暂时只在前端删除（需要后端支持群组删除API）
+      const updated = contacts.filter((c) => {
+        const id = c.group?.id
+        return id !== contactId
+      })
+      setContacts(updated)
+      if (selectedContactId === contactId) {
+        setSelectedContactId(null)
+      }
+      toast.success(`已删除「${displayName}」`)
     }
-
-    toast.success(`已删除「${displayName}」`)
   }
 
   const renderAvatar = () => {
