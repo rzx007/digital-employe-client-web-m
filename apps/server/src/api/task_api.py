@@ -18,6 +18,7 @@ from src.schemas.task import (
     TaskExecutionLogRead,
     TaskExecutionSkillRatingRead,
     TaskSyncResult,
+    TodayTaskRead,
 )
 from src.service.employee_service import EmployeeService
 from src.service.workspace_service import WorkspaceService
@@ -169,6 +170,16 @@ def get_monthly_task_calendar(
         employee_id=employee_id,
     )
     return ResponseBase(data=MonthlyCalendarRead(**payload))
+
+
+@router.get("/workspaces/{workspace_id}/tasks/today", response_model=ResponseBase[list[TodayTaskRead]])
+def list_today_tasks(
+    workspace_id: int,
+    db: Session = Depends(get_db),
+) -> ResponseBase[list[TodayTaskRead]]:
+    """获取今日所有任务统一视图：包含待执行(pending)和已执行的各种状态。"""
+    items = TaskService.list_today_tasks(db, workspace_id)
+    return ResponseBase(data=[TodayTaskRead(**item) for item in items])
 
 
 @router.get("/workspaces/{workspace_id}/tasks/executions", response_model=PageResponse[list[TaskExecutionLogRead]])

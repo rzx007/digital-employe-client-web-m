@@ -143,3 +143,20 @@ export interface TaskSummary {
   failed: number
   pending: number
 }
+
+export interface TodayTask {
+  task_id: number
+  task_name: string
+  employee_id: number
+  employee_name: string
+  cron_expression: string | null
+  execute_mode: string
+  planned_at: string | null
+  execution_id: number | null
+  run_status: TaskRunStatus
+  run_result: string | null
+  started_at: string | null
+  ended_at: string | null
+  duration_ms: number | null
+  conversation_id: number | null
+}

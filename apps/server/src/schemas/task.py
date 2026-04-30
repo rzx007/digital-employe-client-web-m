@@ -141,3 +141,20 @@ class MonthlyCalendarRead(BaseModel):
     month: int
     days: dict[str, MonthlyCalendarDayRead]
 
+
+class TodayTaskRead(BaseModel):
+    task_id: int
+    task_name: str
+    employee_id: int
+    employee_name: str
+    cron_expression: str | None = None
+    execute_mode: str
+    planned_at: str | None = None
+    execution_id: int | None = None
+    run_status: str
+    run_result: str | None = None
+    started_at: str | None = None
+    ended_at: str | None = None
+    duration_ms: int | None = None
+    conversation_id: int | None = None
+

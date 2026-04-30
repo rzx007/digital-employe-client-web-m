@@ -7,6 +7,7 @@ import type {
   TaskExecution,
   TaskRun,
   TaskSummary,
+  TodayTask,
 } from "@/types/schedule-monitor"
 import { generateAnomalies } from "@/lib/mock-data/schedule-monitor"
 
@@ -147,18 +148,12 @@ export function useAllTaskExecutions() {
 export function useTodayAllExecutions() {
   return useQuery({
     queryKey: [...chatKeys.all, "today-all-executions"],
-    queryFn: () => {
-      const now = new Date()
-      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
-      const formatIso = (d: Date) => d.toISOString().slice(0, 19)
-      return request<{
+    queryFn: () =>
+      request<{
         code: number
-        data: TaskExecution[]
-      }>(
-        `/workspaces/${WORKSPACE_ID}/tasks/executions?start_time=${formatIso(start)}&end_time=${formatIso(end)}&page_size=200`
-      ).then((res) => res.data)
-    },
+        data: TodayTask[]
+      }>(`/workspaces/${WORKSPACE_ID}/tasks/today`)
+        .then((res) => res.data),
     staleTime: 30_000,
   })
 }

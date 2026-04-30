@@ -3,11 +3,11 @@ import { IconClock } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { Skeleton } from "@workspace/ui/components/skeleton"
-import type { TaskExecution } from "@/types/schedule-monitor"
+import type { TodayTask } from "@/types/schedule-monitor"
 import { TaskStatusBadge } from "./task-status-badge"
 
 interface TodayTaskListProps {
-  executions: TaskExecution[]
+  executions: TodayTask[]
   isLoading?: boolean
 }
 
@@ -33,7 +33,9 @@ export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
     return [...executions].sort((a, b) => {
       if (a.run_status === "running" && b.run_status !== "running") return -1
       if (b.run_status === "running" && a.run_status !== "running") return 1
-      return new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+      const at = a.started_at || a.planned_at || ""
+      const bt = b.started_at || b.planned_at || ""
+      return bt.localeCompare(at)
     })
   }, [executions])
 
@@ -58,30 +60,30 @@ export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
   return (
     <ScrollArea className="flex-1">
       <div className="space-y-1.5">
-        {sorted.map((exec) => (
+        {sorted.map((task) => (
           <div
-            key={exec.id}
+            key={task.task_id + (task.execution_id ? `-${task.execution_id}` : "")}
             className={cn(
               "flex items-center gap-2 rounded-md border p-2 transition-colors",
-              exec.run_status === "running" && "border-blue-300 bg-blue-50/50 dark:bg-blue-950/20"
+              task.run_status === "running" && "border-blue-300 bg-blue-50/50 dark:bg-blue-950/20"
             )}
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <span className="truncate text-xs font-medium">{exec.task_name}</span>
-                <span className="shrink-0 text-[10px] text-muted-foreground">{exec.employee_name}</span>
+                <span className="truncate text-xs font-medium">{task.task_name}</span>
+                <span className="shrink-0 text-[10px] text-muted-foreground">{task.employee_name}</span>
               </div>
               <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
                 <span className="flex items-center gap-0.5">
                   <IconClock className="size-2.5" />
-                  {formatTime(exec.started_at)}
+                  {formatTime(task.started_at || task.planned_at || "")}
                 </span>
-                {exec.duration_ms != null && (
-                  <span>{formatDuration(exec.duration_ms)}</span>
+                {task.duration_ms != null && (
+                  <span>{formatDuration(task.duration_ms)}</span>
                 )}
               </div>
             </div>
-            <TaskStatusBadge status={exec.run_status} />
+            <TaskStatusBadge status={task.run_status} />
           </div>
         ))}
       </div>

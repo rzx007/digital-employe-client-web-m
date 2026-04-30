@@ -313,6 +313,114 @@ class TaskService:
         return result
 
     @staticmethod
+    def list_today_tasks(db: Session, workspace_id: int) -> list[dict[str, Any]]:
+        """返回今日所有任务的统一视图：pending（未执行）+ 已执行状态。
+
+        从 employee_tasks 计算今天应执行的任务，再与 task_execution_logs
+        以 task_id 做 left join，合并出完整的状态信息。
+        """
+        now = cst_now()
+        target_date = now.date()
+        day_start = datetime.combine(target_date, time.min).replace(tzinfo=CST)
+        day_end = day_start + timedelta(days=1)
+
+        employees = list(
+            db.scalars(
+                select(Employee).where(Employee.workspace_id == workspace_id)
+                .order_by(Employee.id.asc())
+            ).all()
+        )
+        emp_name_map = {e.id: e.name for e in employees}
+
+        tasks = list(
+            db.scalars(
+                select(EmployeeTask).where(
+                    EmployeeTask.workspace_id == workspace_id,
+                    EmployeeTask.is_active.is_(True),
+                    EmployeeTask.dispatch_type.in_(("skill", "mcp")),
+                ).order_by(EmployeeTask.priority.desc(), EmployeeTask.id.asc())
+            ).all()
+        )
+
+        today_tasks: list[dict[str, Any]] = []
+        for task in tasks:
+            fire_times: list[str] = []
+            if task.cron_expression:
+                try:
+                    trigger = TaskService._build_trigger(task.cron_expression)
+                    next_fire = trigger.get_next_fire_time(None, day_start - timedelta(seconds=1))
+                    while next_fire and next_fire < day_end:
+                        if next_fire >= day_start:
+                            fire_times.append(next_fire.strftime("%Y-%m-%d %H:%M:%S"))
+                        next_fire = trigger.get_next_fire_time(next_fire, next_fire)
+                except ValueError:
+                    pass
+
+            if not fire_times and task.execute_mode != "immediate":
+                continue
+
+            today_tasks.append({
+                "task_id": task.id,
+                "task_name": task.task_name,
+                "employee_id": task.employee_id,
+                "employee_name": emp_name_map.get(task.employee_id, task.employee_name_snapshot or ""),
+                "cron_expression": task.cron_expression,
+                "execute_mode": task.execute_mode,
+                "planned_at": fire_times[0] if fire_times else None,
+            })
+
+        task_ids = [t["task_id"] for t in today_tasks]
+        log_map: dict[int, list[TaskExecutionLog]] = {}
+        if task_ids:
+            logs = list(
+                db.scalars(
+                    select(TaskExecutionLog).where(
+                        TaskExecutionLog.workspace_id == workspace_id,
+                        TaskExecutionLog.started_at >= day_start,
+                        TaskExecutionLog.started_at < day_end,
+                        TaskExecutionLog.task_id.in_(task_ids),
+                    ).order_by(TaskExecutionLog.started_at.desc())
+                ).all()
+            )
+            for log in logs:
+                log_map.setdefault(log.task_id, []).append(log)
+
+        result: list[dict[str, Any]] = []
+        for t in today_tasks:
+            tid = t["task_id"]
+            logs_for_task = log_map.get(tid)
+            if logs_for_task:
+                latest = logs_for_task[0]
+                result.append({
+                    **t,
+                    "execution_id": latest.id,
+                    "run_status": latest.run_status,
+                    "run_result": latest.run_result,
+                    "started_at": latest.started_at.strftime("%Y-%m-%d %H:%M:%S") if latest.started_at else None,
+                    "ended_at": latest.ended_at.strftime("%Y-%m-%d %H:%M:%S") if latest.ended_at else None,
+                    "duration_ms": latest.duration_ms,
+                    "conversation_id": latest.conversation_id,
+                })
+            else:
+                result.append({
+                    **t,
+                    "execution_id": None,
+                    "run_status": "pending",
+                    "run_result": None,
+                    "started_at": None,
+                    "ended_at": None,
+                    "duration_ms": None,
+                    "conversation_id": None,
+                })
+
+        result.sort(key=lambda x: (
+            0 if x["run_status"] == "running" else 1,
+            x["started_at"] or x["planned_at"] or "",
+        ), reverse=True)
+
+        return result
+
+    @staticmethod
     def _attach_skill_ratings_for_logs(db: Session, items: list[TaskExecutionLog]) -> None:
         """为执行日志列表挂载 skill_rating_summary（同页内按 log id 关联最新一条评分）。"""
         if not items:
