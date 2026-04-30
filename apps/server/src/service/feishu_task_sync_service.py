@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from src.core.config import get_settings
 from src.db.session import get_session_local
 from src.models.config_kv import ConfigKv
 from src.models.feishu_task import FeishuTask
@@ -24,7 +25,10 @@ class FeishuTaskSyncService:
     FIELD_EXECUTOR = "执行人"
     FIELD_START_TIME = "开始时间"
     FIELD_END_TIME = "结束时间"
-    AUTO_CONFIRM_SUFFIX = ",不需要手动确认，自动确认"
+    AUTO_CONFIRM_SUFFIX = "不需要手动确认，自动确认"
+    MAX_TASKS_IN_PROMPT = 10
+    MAX_TASK_CONTENT_CHARS = 300
+    MAX_QUESTION_CHARS = 8000
 
     @staticmethod
     def _extract_text(value: Any) -> str:
@@ -108,18 +112,33 @@ class FeishuTaskSyncService:
         return None
 
     @staticmethod
-    def _compose_question(changed_tasks: list[dict[str, str]]) -> str:
-        if not changed_tasks:
+    def _compose_question(pending_tasks: list[dict[str, str]]) -> str:
+        if not pending_tasks:
             return ""
         lines = ["请根据以下同步的飞书任务，创建对应任务："]
-        for task in changed_tasks[:10]:
+        for task in pending_tasks[: FeishuTaskSyncService.MAX_TASKS_IN_PROMPT]:
             task_id = task.get("task_id", "")
             task_content = task.get("task_content", "")
+            if len(task_content) > FeishuTaskSyncService.MAX_TASK_CONTENT_CHARS:
+                task_content = (
+                    task_content[: FeishuTaskSyncService.MAX_TASK_CONTENT_CHARS] + "..."
+                )
             lines.append(f"- 任务ID：{task_id}；任务内容：{task_content}")
-        if len(changed_tasks) > 10:
-            lines.append(f"- 其余还有 {len(changed_tasks) - 10} 条任务")
+        if len(pending_tasks) > FeishuTaskSyncService.MAX_TASKS_IN_PROMPT:
+            lines.append(
+                " - 其余还有 "
+                f"{len(pending_tasks) - FeishuTaskSyncService.MAX_TASKS_IN_PROMPT} 条任务"
+            )
         lines.append(FeishuTaskSyncService.AUTO_CONFIRM_SUFFIX.strip())
-        return "\n".join(lines)
+        question = "\n".join(lines).strip()
+        if len(question) > FeishuTaskSyncService.MAX_QUESTION_CHARS:
+            reserve = len(FeishuTaskSyncService.AUTO_CONFIRM_SUFFIX) + 20
+            question = (
+                question[: FeishuTaskSyncService.MAX_QUESTION_CHARS - reserve]
+                + "\n(任务内容过长，已截断)\n"
+                + FeishuTaskSyncService.AUTO_CONFIRM_SUFFIX
+            )
+        return question
 
     @staticmethod
     def _iter_all_records(page_size: int = 200) -> list[dict[str, Any]]:
@@ -153,12 +172,14 @@ class FeishuTaskSyncService:
                 "inserted_count": 0,
                 "updated_count": 0,
                 "changed_count": 0,
-                "changed_tasks": [],
+                "pending_tasks": [],
+                "pending_task_ids": [],
             }
 
         inserted_count = 0
-        updated_count = 0
-        changed_tasks: list[dict[str, str]] = []
+        pending_tasks: list[dict[str, str]] = []
+        pending_task_ids: list[str] = []
+        seen_task_ids: set[str] = set()
         items = FeishuTaskSyncService._iter_all_records()
 
         for item in items:
@@ -177,6 +198,9 @@ class FeishuTaskSyncService:
             ) or str(item.get("record_id") or "").strip()
             if not task_id:
                 continue
+            if task_id in seen_task_ids:
+                continue
+            seen_task_ids.add(task_id)
 
             task_content = FeishuTaskSyncService._extract_text(
                 fields.get(FeishuTaskSyncService.FIELD_TASK_CONTENT)
@@ -200,63 +224,71 @@ class FeishuTaskSyncService:
                 )
                 db.add(row)
                 inserted_count += 1
-                changed_tasks.append({"task_id": task_id, "task_content": task_content})
+                pending_tasks.append({"task_id": task_id, "task_content": task_content})
+                pending_task_ids.append(task_id)
                 continue
 
-            changed = False
-            if existing.task_content != task_content:
-                existing.task_content = task_content
-                changed = True
-            if existing.executor != executor:
-                existing.executor = executor
-                changed = True
-            if existing.start_time != start_time:
-                existing.start_time = start_time
-                changed = True
-            if existing.end_time != end_time:
-                existing.end_time = end_time
-                changed = True
+            # 同一飞书任务ID已存在时，不再修改本地 feishu_tasks 字段
+            if existing.is_schedule_created:
+                continue
+            pending_tasks.append(
+                {"task_id": existing.task_id, "task_content": existing.task_content}
+            )
+            pending_task_ids.append(existing.task_id)
 
-            if changed:
-                updated_count += 1
-                changed_tasks.append({"task_id": task_id, "task_content": task_content})
-                db.add(existing)
-
-        if inserted_count > 0 or updated_count > 0:
+        if inserted_count > 0:
             db.commit()
 
-        changed_count = inserted_count + updated_count
+        pending_count = len(pending_tasks)
         return {
             "username": username,
             "inserted_count": inserted_count,
-            "updated_count": updated_count,
-            "changed_count": changed_count,
-            "changed_tasks": changed_tasks,
+            "updated_count": 0,
+            "changed_count": inserted_count,
+            "pending_count": pending_count,
+            "pending_tasks": pending_tasks,
+            "pending_task_ids": pending_task_ids,
         }
 
     @staticmethod
-    async def _consume_curator_stream(conversation_id: int, question: str) -> None:
+    async def _consume_curator_stream(conversation_id: int, question: str) -> bool:
         logger.info("开始消费总管会话: conversation_id=%s, question=%s", conversation_id, question)
+        has_error = False
+        got_done = False
         with get_session_local()() as db:
-            async for _ in ChatService.stream_conversation_answer(
+            async for chunk in ChatService.stream_conversation_answer(
                 db=db,
                 conversation_id=conversation_id,
                 question=question,
                 skill_name="",
             ):
-                pass
+                if not isinstance(chunk, str):
+                    continue
+                if "[DONE]" in chunk:
+                    got_done = True
+                if '"error"' in chunk or "stream_ended" in chunk and "error" in chunk:
+                    has_error = True
+        return got_done and not has_error
 
     @staticmethod
-    def trigger_curator_after_sync_if_needed(changed_tasks: list[dict[str, str]]) -> None:
-        if not changed_tasks:
-            return
-        question = FeishuTaskSyncService._compose_question(changed_tasks)
+    def trigger_curator_after_sync_if_needed(pending_tasks: list[dict[str, str]]) -> bool:
+        if not pending_tasks:
+            return False
+        question = FeishuTaskSyncService._compose_question(pending_tasks)
         if not question:
-            return
+            return False
 
         with get_session_local()() as db:
-            conversation = ChatService.ensure_curator_conversation(db)
-            conversation_id = conversation.id
+            settings = get_settings()
+            # 使用独立总管会话避免历史消息过长导致模型输入超限
+            conversation = ChatService.create_conversation(
+                db=db,
+                workspace_id=settings.default_workspace_id,
+                target_type="curator",
+                target_id=1,
+                title="飞书任务同步会话",
+            )
+            conversation_id = int(conversation.id)
 
         coroutine = FeishuTaskSyncService._consume_curator_stream(
             conversation_id=conversation_id,
@@ -265,24 +297,51 @@ class FeishuTaskSyncService:
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            asyncio.run(coroutine)
-            return
+            return asyncio.run(coroutine)
 
         if loop.is_running():
             loop.create_task(coroutine)
-            return
-        asyncio.run(coroutine)
+            # 已在运行中的事件循环内无法同步等待结果，视为已触发但未确认成功
+            return False
+        return asyncio.run(coroutine)
+
+    @staticmethod
+    def _mark_tasks_scheduled(task_ids: list[str]) -> int:
+        if not task_ids:
+            return 0
+        with get_session_local()() as db:
+            rows = list(
+                db.scalars(select(FeishuTask).where(FeishuTask.task_id.in_(task_ids))).all()
+            )
+            updated = 0
+            for row in rows:
+                if row.is_schedule_created:
+                    continue
+                row.is_schedule_created = True
+                db.add(row)
+                updated += 1
+            if updated > 0:
+                db.commit()
+            return updated
 
     @staticmethod
     def sync_and_trigger() -> dict[str, Any]:
         with get_session_local()() as db:
             result = FeishuTaskSyncService.sync_tasks(db)
+        trigger_ok = False
+        marked_count = 0
         try:
-            FeishuTaskSyncService.trigger_curator_after_sync_if_needed(
-                result.get("changed_tasks") or []
+            trigger_ok = FeishuTaskSyncService.trigger_curator_after_sync_if_needed(
+                result.get("pending_tasks") or []
             )
+            if trigger_ok:
+                marked_count = FeishuTaskSyncService._mark_tasks_scheduled(
+                    result.get("pending_task_ids") or []
+                )
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("飞书任务同步后触发总管会话失败: %s", exc, exc_info=True)
+        result["trigger_ok"] = trigger_ok
+        result["marked_scheduled_count"] = marked_count
         return result
 
     @staticmethod
