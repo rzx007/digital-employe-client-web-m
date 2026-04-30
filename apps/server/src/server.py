@@ -44,12 +44,18 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        init_db()
-        LocalSkillService.seed_builtin_skills()
-        
+        loop = asyncio.get_running_loop()
+
+        # 离线 IO 密集型初始化到线程池，避免阻塞事件循环导致前端请求挂起
+        def _startup_db_init():
+            init_db()
+            LocalSkillService.seed_builtin_skills()
+
+        await loop.run_in_executor(None, _startup_db_init)
+
         # 保存主事件循环引用，供 sync context 调度协程
         from src.service.orchestrator_agent import set_main_event_loop
-        set_main_event_loop(asyncio.get_running_loop())
+        set_main_event_loop(loop)
 
         from src.service.stream_registry import registry as _stream_registry
         from src.service.workspace_events import WorkspaceEventBus
@@ -85,26 +91,31 @@ def create_app() -> FastAPI:
         conn = await aiosqlite.connect(str(sqlite_path), check_same_thread=False)
         init_checkpointer(conn)
         logger.info("AsyncSqliteSaver initialized")
-        
-        EmployeeService.migrate_local_employees_to_skill_path()
-        with get_session_local()() as db:
-            workspace = WorkspaceService.ensure_default_workspace(db)
-            inserted = ConfigKvService.bootstrap_from_json(db)
-            if inserted > 0:
-                logger.info(
-                    "Initialized config_kvs from seed file (insert-only): inserted=%s",
-                    inserted,
-                )
-            # 清理僵尸运行状态（上次进程崩溃遗留）
-            from src.service.stream_registry import cleanup_zombie_executions
-            cleaned = cleanup_zombie_executions(db)
-            if cleaned > 0:
-                logger.info("Cleaned %d zombie task executions", cleaned)
-            # initialize_default_workspace_employees(db, workspace)
-            # 获取员工
-            # EmployeeService.sync_workspace_employees(db, workspace)
-            # 从员工 metadata 同步任务
-            TaskService.sync_workspace_tasks(db, workspace.id)
+
+        await loop.run_in_executor(None, EmployeeService.migrate_local_employees_to_skill_path)
+
+        def _startup_data_init():
+            with get_session_local()() as db:
+                workspace = WorkspaceService.ensure_default_workspace(db)
+                inserted = ConfigKvService.bootstrap_from_json(db)
+                if inserted > 0:
+                    logger.info(
+                        "Initialized config_kvs from seed file (insert-only): inserted=%s",
+                        inserted,
+                    )
+                # 清理僵尸运行状态（上次进程崩溃遗留）
+                from src.service.stream_registry import cleanup_zombie_executions
+                cleaned = cleanup_zombie_executions(db)
+                if cleaned > 0:
+                    logger.info("Cleaned %d zombie task executions", cleaned)
+                # initialize_default_workspace_employees(db, workspace)
+                # 获取员工
+                # EmployeeService.sync_workspace_employees(db, workspace)
+                # 从员工 metadata 同步任务
+                TaskService.sync_workspace_tasks(db, workspace.id)
+
+        await loop.run_in_executor(None, _startup_data_init)
+
         # 启动调度器
         TaskSchedulerService.start()
         yield

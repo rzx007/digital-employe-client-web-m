@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { loginApi } from "@/api/auth"
+import { setConfigKv } from "@/api/config-kv"
 import type { LoginUser } from "@/api/types"
 
 interface PendingPasswordChange {
@@ -101,6 +102,12 @@ export const useAuthStore = create<AuthState>((set) => ({
         )
 
         set({ token, user, isAuthenticated: true, loading: false })
+
+        try {
+          await setConfigKv("USERNAME", user.name)
+        } catch (error) {
+          console.warn("Failed to persist USERNAME config kv:", error)
+        }
 
         await window.electronApi?.loginSuccess()
       } else {

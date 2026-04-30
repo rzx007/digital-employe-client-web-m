@@ -87,6 +87,15 @@ export function HireSheet({
     [allSkillList, selectedSkillIds]
   )
 
+  const effectiveMcpIds = React.useMemo(
+    () => selectedMcpIds.filter((id) => allMcpList.some((m) => m.id === id)),
+    [selectedMcpIds, allMcpList]
+  )
+  const effectiveSkillIds = React.useMemo(
+    () => selectedSkillIds.filter((id) => allSkillList.some((s) => s.id === id)),
+    [selectedSkillIds, allSkillList]
+  )
+
   const handleRemoveMcp = (id: number) => {
     setSelectedMcpIds((prev) => prev.filter((i) => i !== id))
   }
@@ -96,8 +105,8 @@ export function HireSheet({
   }
 
   const handlePickerConfirm = (mcpIds: number[], skillIds: number[]) => {
-    setSelectedMcpIds(mcpIds)
-    setSelectedSkillIds(skillIds)
+    setSelectedMcpIds(mcpIds.filter((id) => allMcpList.some((m) => m.id === id)))
+    setSelectedSkillIds(skillIds.filter((id) => allSkillList.some((s) => s.id === id)))
   }
 
   const handleSubmit = async () => {
@@ -112,8 +121,8 @@ export function HireSheet({
         employee_name: name.trim(),
         capability_desc: description.trim() || null,
         status: 1,
-        mcp_ids: selectedMcpIds,
-        skill_ids: selectedSkillIds,
+        mcp_ids: effectiveMcpIds,
+        skill_ids: effectiveSkillIds,
         shift_schedule: showScheduleAndTask ? schedule : null,
         tasks: showScheduleAndTask ? tasks : [],
       })
@@ -267,8 +276,8 @@ export function HireSheet({
             {showScheduleAndTask && (
               <ScheduleTaskConfig
                 capabilities={candidate.mcps ?? []}
-                capabilityIds={selectedMcpIds}
-                skillIds={selectedSkillIds}
+                capabilityIds={effectiveMcpIds}
+                skillIds={effectiveSkillIds}
                 skills={candidate.skills ?? []}
                 tasks={tasks}
                 schedule={schedule}
@@ -312,8 +321,8 @@ export function HireSheet({
         onOpenChange={setPickerOpen}
         allMcpList={allMcpList}
         allSkillList={allSkillList}
-        selectedMcpIds={selectedMcpIds}
-        selectedSkillIds={selectedSkillIds}
+        selectedMcpIds={effectiveMcpIds}
+        selectedSkillIds={effectiveSkillIds}
         onConfirm={handlePickerConfirm}
       />
     </Sheet>

@@ -24,6 +24,9 @@ async function loadEndpointBaseURL(): Promise<string> {
     }>("/config-kvs/REMOTE_API_BASE_URL", {
       baseURL: fallbackBaseURL,
       headers: { ...defaultHeaders },
+      timeout: 10000,
+      retry: 1,
+      retryDelay: 2000,
     })
     const endpoint = res?.data?.config_value
     if (endpoint) {
@@ -73,6 +76,9 @@ export function updateRequestBaseUrl(url: string) {
 export const request = ofetch.create({
   baseURL: currentBaseURL,
   headers: { ...defaultHeaders },
+  timeout: 30000,
+  retry: 2,
+  retryDelay: 1000,
   async onRequest(ctx) {
     const headers = new Headers(ctx.options?.headers)
     const token = getAuthToken()
@@ -114,6 +120,6 @@ export const request = ofetch.create({
 
 if (typeof window !== "undefined") {
   loadEndpointBaseURL().then((url) => {
-    // request.options.baseURL = url
+    ;(request as any).options.baseURL = url
   })
 }
