@@ -285,7 +285,7 @@ function LoginPage() {
                         <Input
                           id="password"
                           type={showPassword ? "text" : "password"}
-                          placeholder="请输入你的密码"
+                          placeholder="初始密码 Aa123456"
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           className="pr-8 rounded-xs"
