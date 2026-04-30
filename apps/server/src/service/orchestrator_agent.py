@@ -18,6 +18,10 @@ from sqlalchemy.orm import Session
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend
 from deepagents.middleware.permissions import FilesystemPermission
+from deepagents.middleware.summarization import (
+    SummarizationMiddleware,
+    SummarizationToolMiddleware,
+)
 from src.core.config import get_settings
 from src.models.employee import Employee
 from src.models.employee_mcp import EmployeeMcp
@@ -218,6 +222,14 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 - 确认后开始执行，执行中汇报进度
 
 重要：你所有的工具调用都会产生实际效果。如果你只回复文字而不调用工具，什么事情都不会发生。尤其是编排计划，必须通过 confirm_orchestration_plan 工具来执行。
+
+## 上下文管理
+- 你可以调用 `compact_conversation` 工具来压缩对话历史，释放上下文空间
+- 以下情况适合主动压缩：
+  - 一个编排计划已确认执行完毕，用户开始讨论新任务前
+  - 工具返回内容很长（如任务列表、编排计划详情），且后续不再需要这些细节
+  - 感觉对话轮次较多、响应变慢时
+- 压缩不会丢失关键信息，旧消息会被摘要替代
 """
 
 
@@ -765,6 +777,7 @@ def get_orchestrator_agent(
         api_key=settings.api_key,
         base_url=settings.base_url or "https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
+    model.profile = {"max_input_tokens": 131072}
 
     employee_context = _build_employee_capability_context(db, workspace_id)
     system_prompt = ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE.format(
@@ -772,11 +785,20 @@ def get_orchestrator_agent(
         employee_table=employee_context,
     )
 
-    base_dir = Path(__file__).resolve().parent
-    agent_fs = FilesystemBackend(root_dir=str(base_dir), virtual_mode=True)
+    history_root = Path(settings.artifacts_path)
+    history_root.mkdir(parents=True, exist_ok=True)
+    agent_fs = FilesystemBackend(root_dir=str(history_root), virtual_mode=True)
     backend = CompositeBackend(default=agent_fs, routes={})
 
     checkpointer = get_checkpointer()
+
+    summarization_ref = SummarizationMiddleware(
+        model=model,
+        backend=backend,
+        trigger=("fraction", 0.85),
+        keep=("fraction", 0.10),
+    )
+    summarization_tool_mw = SummarizationToolMiddleware(summarization_ref)
 
     agent = create_deep_agent(
         model=model,
@@ -784,6 +806,7 @@ def get_orchestrator_agent(
         system_prompt=system_prompt,
         backend=backend,
         checkpointer=checkpointer,
+        middleware=[summarization_tool_mw],
         subagents=[],
         permissions=[
             FilesystemPermission(

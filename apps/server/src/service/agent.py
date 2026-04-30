@@ -15,6 +15,10 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from deepagents import create_deep_agent
 from deepagents.middleware.permissions import FilesystemPermission
+from deepagents.middleware.summarization import (
+    SummarizationMiddleware,
+    SummarizationToolMiddleware,
+)
 from src.core.config import get_settings
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
@@ -103,6 +107,14 @@ def _build_system_prompt(
         不要将用户产物文件写到根路径或其他虚拟路径，只有 /artifacts/ 下的文件会被持久化保存并向用户展示。
         {draft_instruction}
         无特殊说明，总是以中文回答用户问题。
+
+        ## 上下文管理
+        - 你可以调用 `compact_conversation` 工具来压缩对话历史，释放上下文空间
+        - 以下情况适合主动压缩：
+          - 一个复杂任务执行完毕，用户开始讨论新话题前
+          - 工具返回内容很长（如执行结果、文件内容），且后续不再需要这些细节
+          - 感觉对话轮次较多、响应变慢时
+        - 压缩不会丢失关键信息，旧消息会被摘要替代
         """
 
 
@@ -166,6 +178,7 @@ def get_agent(
         base_url=settings.base_url
         or "https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
+    model.profile = {"max_input_tokens": 131072}
 
     sql_tools: list = []
     if include_sqlite_tools:
@@ -232,6 +245,21 @@ def get_agent(
 
     backend = CompositeBackend(default=shell_backend, routes=routes)
 
+    if employee_id:
+        history_root = skills_root.parent
+    else:
+        history_root = base_dir
+    history_root.mkdir(parents=True, exist_ok=True)
+    history_backend = FilesystemBackend(root_dir=str(history_root), virtual_mode=True)
+
+    summarization_ref = SummarizationMiddleware(
+        model=model,
+        backend=history_backend,
+        trigger=("fraction", 0.85),
+        keep=("fraction", 0.10),
+    )
+    summarization_tool_mw = SummarizationToolMiddleware(summarization_ref)
+
     agent = create_deep_agent(
         model=model,
         memory=["/agent/AGENTS.md"],
@@ -247,6 +275,7 @@ def get_agent(
         backend=backend,
         checkpointer=checkpointer,
         tools=sql_tools or None,
+        middleware=[summarization_tool_mw],
         permissions=[
             FilesystemPermission(
                 operations=["write"],
