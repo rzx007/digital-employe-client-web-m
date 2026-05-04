@@ -189,7 +189,6 @@ export function NotificationBell() {
   )
 
   const prevCountRef = React.useRef(unreadCount)
-  const prevReadIdsRef = React.useRef<Set<number>>(new Set())
   React.useEffect(() => {
     if (
       !autoPopupDisabled &&
@@ -197,28 +196,12 @@ export function NotificationBell() {
       unreadCount > prevCountRef.current
     ) {
       setDialogOpen(true)
-
-      if (window.electronApi?.sendNotification) {
-        const latest = unreadItems[unreadItems.length - 1]
-        if (latest && !prevReadIdsRef.current.has(latest.id)) {
-          window.electronApi.sendNotification(
-            `${latest.employee_name} · ${latest.task_name}`,
-            latest.run_result || "任务执行完成",
-            false
-          )
-        }
-      }
     }
     prevCountRef.current = unreadCount
-    prevReadIdsRef.current = new Set(
-      notifications.filter((n) => n.is_read).map((n) => n.id)
-    )
   }, [
     unreadCount,
     autoPopupDisabled,
     setDialogOpen,
-    unreadItems,
-    notifications,
   ])
 
   return (

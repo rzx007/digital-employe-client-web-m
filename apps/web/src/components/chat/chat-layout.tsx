@@ -12,6 +12,7 @@ import { OfflineBanner } from "@/components/offline-banner"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useContactsQuery } from "@/hooks/use-chat-queries"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
+import { useTaskExecutionNotifications } from "@/hooks/use-task-execution-notifications"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { modelKeys } from "@/lib/query-keys/model"
 import { useArtifactStore } from "@/stores/artifact-store"
@@ -63,6 +64,8 @@ export function ChatLayout({
         break
     }
   })
+
+  useTaskExecutionNotifications()
 
   const hasContactsErrorToastRef = useRef(false)
 
