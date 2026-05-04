@@ -320,36 +320,72 @@ export function classifyMessageParts(
  *
  * 输入: UIMessage.parts[] (按流式到达顺序排列的 text / tool-* parts)
  *
- * 场景 A — 纯文本对话 (无工具调用):
- * ┌─────────────────────────────────────────────────┐
- * │ parts: [text, text, ...]                        │
- * │   ↓ 合并所有 text, 去除 <think/> 块             │
- * │ output: [final-response]                        │
- * └─────────────────────────────────────────────────┘
+ * ━━━ 场景 A — 纯文本对话 (无工具调用) ━━━━━━━━━━━━━━━━━━━━━━
  *
- * 场景 B — 含工具调用的对话:
- * ┌─────────────────────────────────────────────────────────────┐
- * │ parts: [text₀, tool₁, tool₂, text₃, tool₄, text₅]         │
- * │          │      │      │      │      │      │               │
- * │          │      │      │      │      │      └─ i>lastTool   │
- * │          │      │      │      │      │         → final-resp │
- * │          │      │      │      │      └─── i==lastTool       │
- * │          │      │      │      │          → tool-group       │
- * │          │      │      │      └──────────→ tool-group       │
- * │          │      │      └─────────────────→ thinking (i≤last)│
- * │          │      └────────────────────────→ tool-group       │
- * │          └───────────────────────────────→ thinking (i≤last)│
- * │                                                              │
- * │ lastToolIndex = 4 (最后一个 tool 的位置)                      │
- * │                                                              │
- * │ 规则:                                                        │
- * │   text part + i ≤ lastToolIndex → thinking (去除 <think/>标签)│
- * │   text part + i > lastToolIndex → final-response (去除块)     │
- * │   tool-* part                   → tool-group (1 tool/block)  │
- * └─────────────────────────────────────────────────────────────┘
+ *   parts: [text, text, ...]
+ *             │
+ *             ▼ 合并所有 text, 去除 <think/> 块
+ *   output: [final-response]
  *
- * 输出: ClassifiedBlock[]
- *   | "thinking"     — 工具调用之前的 AI 推理/规划文本
- *   | "tool-group"   — 单个工具调用 (含 input/output/state)
- *   | "final-response" — 所有工具调用完成后的最终回复
+ *
+ * ━━━ 场景 B — 普通工具调用 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ *
+ *   parts: [text₀, tool₁, tool₂, text₃]
+ *             │      │      │      │
+ *             │      │      │      └── i > lastTool
+ *             │      │      │          → final-response
+ *             │      │      └──────────→ tool-group (execute)
+ *             │      └─────────────────→ tool-group (read_file)
+ *             └────────────────────────→ thinking
+ *
+ *   lastToolIndex = 2 (最后一个 tool part 的位置)
+ *
+ *   规则:
+ *     text part  + i ≤ lastToolIndex  → thinking    (去除 <think/> 标签)
+ *     text part  + i > lastToolIndex  → final-response (去除 <think/> 块)
+ *     tool-* part                      → tool-group  (1 tool/block)
+ *
+ *
+ * ━━━ 场景 C — 技能探索 (含 /skills/ 路径的工具调用) ━━━━━━━━━
+ *
+ *   用户发送: "今天有什么热点新闻"
+ *             │
+ *             ▼
+ *   parts 按流式顺序（示例）:
+ *
+ *     text₀
+ *       └→ 吞入 skill-exploration.thinkingText（与后续连续技能工具同块输出）
+ *
+ *     tool₁ read …/skills/…     isSkillToolCall=true，开启 skillExploreOpen
+ *     tool₂ ls …/skills/…       isSkill=true
+ *     tool₃ read …/SKILL.md     isSkill=true
+ *       └→ 合并为一个 skill-exploration 折叠块，items ≈ [read, ls, read]
+ *
+ *     tool₄ execute script      isSkill=false
+ *       └→ flushSkillExplore("tool") → 单独 tool-group（独立展示，与普通工具一致）
+ *
+ *     text₅（i > lastToolIndex）
+ *       └→ flushSkillExplore("end") → final-response
+ *
+ *   output: [ skill-exploration, tool-group(execute), final-response ]
+ *             ╰─── 默认折叠 ───╯   ╰── 正常展示 ──╯   ╰── 正常展示 ─╯
+ *
+ *
+ *   技能识别规则 (isSkillToolCall):
+ *     read_file  → input.file_path  以 /skills/ 或 /skills-draft/ 开头
+ *     ls         → input.path       以 /skills/ 或 /skills-draft/ 开头
+ *     glob       → input.path       以 /skills/ 或 /skills-draft/ 开头
+ *     grep       → input.path       以 /skills/ 或 /skills-draft/ 开头
+ *     execute    → 不匹配 (始终走 tool-group，不受影响)
+ *     write_file → 不匹配 (始终走 tool-group)
+ *
+ *
+ * ━━━ 输出: ClassifiedBlock[] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ *
+ *   | "thinking"          — 工具调用之前的 AI 推理文本
+ *   | "tool-group"        — 普通工具调用 (含 input/output/state)
+ *   | "skill-exploration" — 连续技能探索调用合并为折叠块 (默认收起)
+ *   | "plan-generated"    — 编排计划卡片 (create_orchestration_plan)
+ *   | "final-response"    — 所有工具调用完成后的最终回复
+ *   | "file-changes"      — write_file/edit_file 产生的文件变更卡片
  */

@@ -56,10 +56,13 @@ type TimelineEntry =
   | { kind: "message"; data: UIMessage; ts: number }
   | { kind: "execution"; data: TaskExecution; ts: number }
 
-function getMsgTs(msg: UIMessage, storedMessages: Array<{ id: string; metadata?: Record<string, any>; timestamp?: Date }>): number {
+function getMsgTs(msg: UIMessage, storedMessages: Array<{ id: string; metadata?: Record<string, unknown>; timestamp?: Date }>): number {
   const stored = storedMessages.find((m) => m.id === msg.id)
   const meta = stored?.metadata
-  if (meta?.created_at) return new Date(meta.created_at).getTime()
+  const createdAt = meta?.created_at
+  if (typeof createdAt === "string" || createdAt instanceof Date) {
+    return new Date(createdAt).getTime()
+  }
   if (stored?.timestamp) return stored.timestamp.getTime()
   return 0
 }
@@ -107,7 +110,7 @@ export function CuratorView({
     id: String(curatorConversationId ?? "curator-persistent"),
     messages: initialMessages,
     transport: chatTransport,
-    onFinish: () => { },
+    onFinish: () => undefined,
     onError: (chatError) => {
       toast.error("发送失败", { description: chatError.message || "请稍后重试" })
     },
@@ -116,7 +119,11 @@ export function CuratorView({
   const handleStop = React.useCallback(async () => {
     stop()
     if (curatorConversationId) {
-      try { await cancelConversationStream(curatorConversationId) } catch { }
+      try {
+        await cancelConversationStream(curatorConversationId)
+      } catch {
+        /* best-effort cancel */
+      }
     }
   }, [stop, curatorConversationId])
 
@@ -232,8 +239,28 @@ export function CuratorView({
   const timeline: TimelineEntry[] = React.useMemo(() => {
     const entries: TimelineEntry[] = []
 
-    const now = Date.now()
-    const fallbackBase = now - displayMessages.length * 1000
+    // 保持无时间戳消息的相对顺序并与真实时间线一致
+    const n = displayMessages.length
+    let anchor = 0
+    for (const msg of displayMessages) {
+      const t = getMsgTs(msg, storedMessages)
+      if (t > anchor) anchor = t
+    }
+    for (const exec of executions) {
+      if (
+        exec.run_status === "success" ||
+        exec.run_status === "failed" ||
+        exec.run_status === "timeout" ||
+        exec.run_status === "cancelled"
+      ) {
+        const t = exec.ended_at
+          ? new Date(exec.ended_at).getTime()
+          : new Date(exec.started_at).getTime()
+        if (t > anchor) anchor = t
+      }
+    }
+    const pseudoNow = anchor + (n + 1) * 1000
+    const fallbackBase = pseudoNow - n * 1000
     let fallbackIdx = 0
 
     for (const msg of displayMessages) {
@@ -282,7 +309,7 @@ export function CuratorView({
             </div>
           )}
 
-          {timeline.map((entry, i) => {
+          {timeline.map((entry) => {
             if (entry.kind === "execution") {
               const exec = entry.data
               const employeeContact = contacts.find(
