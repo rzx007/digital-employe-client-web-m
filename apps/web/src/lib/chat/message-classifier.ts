@@ -2,6 +2,8 @@ import type { UIMessage } from "ai"
 
 import {
   summarizeToolCall,
+  isSkillToolCall,
+  extractSkillName,
   type ToolCallSummary,
 } from "./tool-summarizer"
 import {
@@ -31,9 +33,21 @@ export interface ToolGroupItem {
   part: ToolUIPart
 }
 
+export interface SkillExploreItem {
+  key: string
+  toolCallId: string
+  toolName: string
+  state: string
+  label: string
+  skillName: string | null
+  input: unknown
+  resultText: string | null
+}
+
 export type ClassifiedBlock =
   | { kind: "thinking"; key: string; text: string }
   | { kind: "tool-group"; key: string; tools: ToolGroupItem[]; summary: string }
+  | { kind: "skill-exploration"; key: string; items: SkillExploreItem[]; thinkingText?: string }
   | { kind: "plan-generated"; key: string; toolCallId: string; input: unknown; state: string }
   | { kind: "final-response"; key: string; text: string }
   | { kind: "file-changes"; key: string; files: FileChangeItem[] }
@@ -146,6 +160,29 @@ export function classifyMessageParts(
       return
     }
 
+    // 检查当前工具调用是否属于技能类工具，如果是则构建并添加技能探索项
+    if (isSkillToolCall(toolInput, summary.toolName)) {
+      // 提取技能名称
+      const skillName = extractSkillName(toolInput, summary.toolName)
+      // 根据技能名称和文件路径生成显示用的基础名称
+      const basename = skillName
+        ? `${skillName}/${summary.filePath?.split("/").pop() ?? ""}`
+        : (summary.filePath?.split("/").pop() ?? summary.toolName)
+
+      // 构造技能探索项并加入列表，随后终止当前处理流程
+      skillExploreItems.push({
+        key: `${message.id}:skill-explore:${part.toolCallId}:${index}`,
+        toolCallId: part.toolCallId,
+        toolName: summary.toolName,
+        state: ("state" in part ? (part as ToolUIPart).state : "unknown") as string,
+        label: `${SKILL_EXPLORE_VERB[summary.toolName] ?? "读取"} ${basename}`,
+        skillName,
+        input: toolInput,
+        resultText: extractResultText(part),
+      })
+      return
+    }
+
     const tool: ToolGroupItem = {
       key: `${message.id}:tool:${part.toolCallId}:${index}`,
       toolCallId: part.toolCallId,
@@ -167,14 +204,51 @@ export function classifyMessageParts(
     })
   }
 
-  // 遍历所有消息部分，根据类型和位置将其分类为思考、工具组或最终响应
+  /**
+   * 刷新技能探索状态，将收集到的探索项打包成块并重置相关状态。
+   * 仅在触发原因为 "tool" 或 "end" 且存在待处理探索项时执行提交操作。
+   *
+   * @param reason - 触发刷新的原因，可选值为 "tool"、"text" 或 "end"
+   */
+  function flushSkillExplore(reason: "tool" | "text" | "end") {
+    if (skillExploreItems.length === 0) return
+
+    // 当触发原因为工具调用或结束时，将当前积累的探索项封装为数据块并清空临时状态
+    if (reason === "tool" || reason === "end") {
+      blocks.push({
+        kind: "skill-exploration",
+        key: `${message.id}:skill-explore:${skillExploreItems[0].key}`,
+        items: [...skillExploreItems],
+        thinkingText: skillThinkingText || undefined,
+      })
+      skillExploreItems.length = 0
+      skillThinkingText = ""
+      skillExploreOpen = false
+    }
+  }
+
+  const SKILL_EXPLORE_VERB: Record<string, string> = {
+    read_file: "读取",
+    ls: "浏览",
+    glob: "搜索",
+    grep: "搜索",
+  }
+
+  const skillExploreItems: SkillExploreItem[] = []
+  let skillThinkingText = ""
+  let skillExploreOpen = false
+
+  // 遍历消息的各个部分，根据类型将其分类为最终响应、思考过程或工具调用
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]
 
+    // 处理文本类型的部分：区分最终响应和思考内容
     if (part.type === "text" && "text" in part && part.text) {
       const cleaned = stripThinkTags(part.text)
 
+      // 如果当前索引在最后一个工具调用之后，则视为最终响应
       if (i > lastToolIndex) {
+        flushSkillExplore("end")
         const responseText = stripThinkSections(part.text)
         blocks.push({
           kind: "final-response",
@@ -182,21 +256,49 @@ export function classifyMessageParts(
           text: responseText,
         })
       } else if (cleaned) {
-        blocks.push({
-          kind: "thinking",
-          key: `${message.id}:thinking:${i}`,
-          text: cleaned,
-        })
+        // 如果处于技能探索模式，累积思考文本；否则作为独立的思考块添加
+        if (skillExploreOpen) {
+          skillThinkingText += (skillThinkingText ? "\n" : "") + cleaned
+        } else {
+          blocks.push({
+            kind: "thinking",
+            key: `${message.id}:thinking:${i}`,
+            text: cleaned,
+          })
+        }
       }
 
       continue
     }
 
+    // 处理工具 UI 部分：识别技能调用并管理技能探索状态
     if (isToolUIPart(part)) {
+      const toolInput = "input" in part ? (part as ToolUIPart).input : undefined
+      const toolName = part.type.startsWith("tool-") ? part.type.slice(5) : part.type
+      const isSkill = isSkillToolCall(toolInput, toolName)
+
+      // 检测到技能开始且未开启探索模式时，初始化技能探索状态并合并之前的思考内容
+      if (isSkill && !skillExploreOpen) {
+        skillExploreOpen = true
+        const prevThinking = blocks.length > 0 && blocks[blocks.length - 1].kind === "thinking"
+          ? blocks.pop() as Extract<ClassifiedBlock, { kind: "thinking" }>
+          : null
+        if (prevThinking) {
+          skillThinkingText = prevThinking.text
+        }
+      }
+
+      // 如果当前不是技能但处于技能探索模式中，则结束当前的技能探索
+      if (!isSkill && skillExploreOpen) {
+        flushSkillExplore("tool")
+      }
+
       pushSingleTool(part, i)
       continue
     }
   }
+
+  flushSkillExplore("end")
 
   const shouldIncludeFileChanges = options.includeFileChanges === true
   const fileChanges = shouldIncludeFileChanges

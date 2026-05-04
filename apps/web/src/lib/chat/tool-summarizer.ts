@@ -107,6 +107,35 @@ export function summarizeToolCall(options: {
   return { toolName, label, filePath, icon: meta.icon }
 }
 
+// ── Skill path detection ────────────────────────────────────
+
+const SKILL_PATH_KEYS: Record<string, string> = {
+  read_file: "file_path",
+  ls: "path",
+  glob: "path",
+  grep: "path",
+}
+
+export function isSkillToolCall(input: unknown, toolName: string): boolean {
+  const pathKey = SKILL_PATH_KEYS[toolName]
+  if (!pathKey || !input || typeof input !== "object") return false
+  const obj = input as Record<string, unknown>
+  const val = obj[pathKey]
+  if (typeof val !== "string") return false
+  return val.startsWith("/skills/") || val.startsWith("/skills-draft/")
+}
+
+export function extractSkillName(input: unknown, toolName: string): string | null {
+  const pathKey = SKILL_PATH_KEYS[toolName]
+  if (!pathKey || !input || typeof input !== "object") return null
+  const obj = input as Record<string, unknown>
+  const val = obj[pathKey]
+  if (typeof val !== "string") return null
+  const match = val.match(/\/skills-(?:draft\/|\/)([^/]+)/)
+  if (match) return match[1]
+  return null
+}
+
 export function summarizeToolGroup(
   summaries: ToolCallSummary[]
 ): string {

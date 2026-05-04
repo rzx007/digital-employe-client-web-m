@@ -10,6 +10,7 @@ import { FileChangeCards } from "./file-change-cards"
 import { ThinkingBlock } from "./thinking-block"
 import { ToolGroupBlock } from "./tool-group-block"
 import { PlanGeneratedCard } from "./plan-generated-card"
+import { SkillExplorationBlock } from "./skill-exploration-block"
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
 import {
   getContactDisplayName,
@@ -86,6 +87,16 @@ export function RenderClassifiedBlocks({
         }
         if (block.kind === "file-changes") {
           return <FileChangeCards files={block.files} key={block.key} />
+        }
+        if (block.kind === "skill-exploration") {
+          return (
+            <SkillExplorationBlock
+              items={block.items}
+              thinkingText={block.thinkingText}
+              className="w-full"
+              key={block.key}
+            />
+          )
         }
         if (block.kind === "thinking") {
           return (
