@@ -3,6 +3,7 @@ import {
   IconCircleCheck,
   IconChevronRight,
   IconChevronDown,
+  IconCode,
   IconListCheck,
   IconLoader,
   IconXboxX,
@@ -18,10 +19,10 @@ import { CodeHighlight, detectLanguage } from "./code-highlight"
 import {
   getDisplayContent,
   getEditDiff,
-  getToolIcon,
   getTodos,
   countCompleted,
   TodoListBlock,
+  TOOL_ICON_MAP,
 } from "./tool-shared"
 
 import type { ToolCallSummary } from "@/lib/chat/tool-summarizer"
@@ -49,7 +50,7 @@ function ToolActionRowInner({
   ...props
 }: ToolActionRowProps) {
   const StatusIcon = stateIconMap[state] ?? IconLoader
-  const ToolIcon = getToolIcon(summary.toolName)
+  const ToolIcon = TOOL_ICON_MAP[summary.toolName] ?? IconCode
   const isError = state === "output-error"
   const isDone = (state === "output-available" && !preliminary) || state === "output-error"
   const isRunning = !isDone
@@ -88,20 +89,20 @@ function ToolActionRowInner({
 
   useEffect(() => {
     if (isStreaming && displayContent && !isOpen) {
-      setIsOpen(true)
+      queueMicrotask(() => setIsOpen(true))
     }
   }, [isStreaming, displayContent, isOpen])
 
   useEffect(() => {
     if (isPreliminaryOutput && !isOpen) {
-      setIsOpen(true)
+      queueMicrotask(() => setIsOpen(true))
     }
   }, [isPreliminaryOutput, isOpen])
 
   useEffect(() => {
     if (isDone && resultText && !didAutoCollapse.current) {
       didAutoCollapse.current = true
-      setIsOpen(false)
+      queueMicrotask(() => setIsOpen(false))
     }
   }, [isDone, resultText])
 
