@@ -100,6 +100,7 @@ class TaskExecutionLogRead(BaseModel):
     confirm_execution_result: bool | None = None
     result_confirmed: bool = False
     is_read: bool = False
+    conversation_id: int | None = None
     skill_rating: TaskExecutionSkillRatingRead | None = None
 
     @field_serializer("started_at", "ended_at")

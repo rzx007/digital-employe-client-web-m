@@ -70,6 +70,7 @@ def _task_execution_log_to_read(item) -> TaskExecutionLogRead:
         confirm_execution_result=getattr(item, "confirm_execution_result", None),
         result_confirmed=getattr(item, "result_confirmed", False),
         is_read=getattr(item, "is_read", False),
+        conversation_id=getattr(item, "conversation_id", None),
         skill_rating=skill_rating,
     )
 

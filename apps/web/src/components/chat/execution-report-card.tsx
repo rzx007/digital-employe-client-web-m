@@ -127,7 +127,10 @@ export function ExecutionReportCard({
               onClick={() => {
                 useChatStore
                   .getState()
-                  .switchToContact(String(execution.employee_id))
+                  .selectConversation(
+                    String(execution.employee_id),
+                    String(execution.conversation_id)
+                  )
               }}
             >
               <IconExternalLink className="size-3" />
