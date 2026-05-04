@@ -248,7 +248,7 @@ export function ChatPanel({
                       <img
                         src={logo}
                         alt="Logo"
-                        className="size-12 opacity-80"
+                        className="w-12 opacity-80"
                       />
                       <div className="space-y-3 text-center">
                         <h2 className="text-md font-semibold tracking-tight">
@@ -283,7 +283,7 @@ export function ChatPanel({
                       <img
                         src={logo}
                         alt="Logo"
-                        className="h-10 w-14 opacity-50"
+                        className="w-14 opacity-50"
                       />
                       <div className="space-y-1.5 text-center">
                         <h3 className="text-sm font-medium">开始新对话</h3>
