@@ -159,6 +159,27 @@ class LocalSkillService:
         )
 
     @staticmethod
+    def _extract_description_from_skill_md(skill_md_path: Path) -> str:
+        try:
+            content = skill_md_path.read_text(encoding="utf-8")
+        except OSError:
+            return ""
+
+        frontmatter = re.match(r"^\s*---\s*\r?\n(.*?)\r?\n---\s*", content, re.DOTALL)
+        if not frontmatter:
+            return ""
+
+        match = re.search(
+            r"(?im)^\s*description\s*[:：]\s*(.+?)\s*$",
+            frontmatter.group(1),
+        )
+        if not match:
+            return ""
+
+        description = match.group(1).strip().strip("\"'")
+        return description
+
+    @staticmethod
     def seed_builtin_skills() -> dict[str, int]:
         source_root = LocalSkillService._resolve_skill_temp_root().resolve()
         target_root = LocalSkillService._resolve_builtin_root().resolve()
@@ -215,6 +236,9 @@ class LocalSkillService:
         temp_dir = LocalSkillService._extract_zip_to_temp(file_bytes)
         try:
             source_root = LocalSkillService._detect_skill_source_root(temp_dir)
+            description = LocalSkillService._extract_description_from_skill_md(
+                source_root / LocalSkillService.SKILL_MD_NAME
+            )
             local_root = LocalSkillService._resolve_local_root()
             local_root.mkdir(parents=True, exist_ok=True)
             target_dir = local_root / normalized
@@ -238,6 +262,7 @@ class LocalSkillService:
                 "sourceFileName": file_name,
                 "importedAt": datetime.now().isoformat(timespec="seconds"),
                 "overwrite": overwrite,
+                "description": description,
             }
             LocalSkillService._write_meta(target_dir, meta)
             return {

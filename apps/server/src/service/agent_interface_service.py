@@ -1,5 +1,9 @@
-from src.core.config import get_settings
 import logging
+
+import httpx
+
+from src.core.config import get_settings, join_base_and_path
+from src.service.local_skill_service import LocalSkillService
 from src.utils.http_client import create_agent_interface_http_client
 
 logger = logging.getLogger(__name__)
@@ -45,15 +49,24 @@ class AgentInterfaceService:
             List[Dict]: 技能列表
         """
         try:
-            url = self._build_url("")
+            settings = get_settings()
+            url = join_base_and_path(
+                settings.remote_api_base_url,
+                settings.skill_remote_list_path,
+            )
             if not url:
-                logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
+                logger.error(
+                    "未配置远程 API（REMOTE_API_BASE_URL）或技能列表路径（SKILL_REMOTE_LIST_PATH）。"
+                )
                 return []
-            params = {}
+            params = {
+                "status": status,
+            }
             if directory_id is not None:
                 params["directoryId"] = directory_id
 
-            async with create_agent_interface_http_client() as client:
+            timeout = settings.skill_remote_timeout
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.get(
                     url,
                     params=params,
@@ -74,8 +87,8 @@ class AgentInterfaceService:
                     skills = data
                 else:
                     skills = []
-                if status is not None:
-                    skills = [s for s in skills if s.get("status") == status]
+                # if status is not None:
+                #     skills = [s for s in skills if s.get("status") == status]
                 return skills
         except Exception as e:
             logger.error("获取技能列表失败: %s", e, exc_info=True)
@@ -120,21 +133,52 @@ class AgentInterfaceService:
             Optional[Dict]: 技能详情
         """
         try:
-            url = self._build_url("/get")
-            if not url:
-                logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
-                return None
-            async with create_agent_interface_http_client() as client:
-                response = await client.get(
-                    url,
-                    params={"id": skill_id},
-                    headers=self._headers(token),
+            if skill_id < 0:
+                local_skills = LocalSkillService.list_local_skills()
+                matched_skill = next(
+                    (
+                        skill
+                        for skill in local_skills
+                        if skill.get("localId") == skill_id
+                    ),
+                    None,
                 )
+                if not matched_skill:
+                    logger.warning("未找到本地技能详情 skill_id=%s", skill_id)
+                    return None
+                skill_name = str(matched_skill.get("skillName") or "").strip()
+                if not skill_name:
+                    return None
+                detail = LocalSkillService.get_local_skill_detail(skill_name)
+                return {
+                    "id": skill_id,
+                    "skillName": skill_name,
+                    "description": "",
+                    "directoryId": None,
+                    "directoryName": "本地技能",
+                    "skillContent": detail.get("skillMdContent"),
+                    "skill_content": detail.get("skillMdContent"),
+                    "files": detail.get("files", []),
+                    "importedAt": detail.get("importedAt"),
+                    "path": detail.get("path"),
+                }
+
+            settings = get_settings()
+            detail_path = settings.skill_remote_detail_path.format(skill_id=skill_id)
+            url = join_base_and_path(settings.remote_api_base_url, detail_path)
+            if not url:
+                logger.error(
+                    "未配置远程 API（REMOTE_API_BASE_URL）或技能详情路径（SKILL_REMOTE_DETAIL_PATH）。"
+                )
+                return None
+            timeout = settings.skill_remote_timeout
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.get(url, headers=self._headers(token))
                 response.raise_for_status()
-                data = response.json()
-                if isinstance(data, dict) and "data" in data:
-                    return data["data"]
-                return data
+                payload = response.json()
+                if isinstance(payload, dict) and "data" in payload:
+                    return payload["data"]
+                return payload if isinstance(payload, dict) else None
         except Exception as e:
             logger.error("获取技能详情失败: %s", e, exc_info=True)
             return None
