@@ -1,5 +1,8 @@
-from src.core.config import get_settings
 import logging
+
+import httpx
+
+from src.core.config import get_settings, join_base_and_path
 from src.utils.http_client import create_agent_interface_http_client
 
 logger = logging.getLogger(__name__)
@@ -45,15 +48,24 @@ class AgentInterfaceService:
             List[Dict]: 技能列表
         """
         try:
-            url = self._build_url("")
+            settings = get_settings()
+            url = join_base_and_path(
+                settings.remote_api_base_url,
+                settings.skill_remote_list_path,
+            )
             if not url:
-                logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
+                logger.error(
+                    "未配置远程 API（REMOTE_API_BASE_URL）或技能列表路径（SKILL_REMOTE_LIST_PATH）。"
+                )
                 return []
-            params = {}
+            params = {
+                "status": status,
+            }
             if directory_id is not None:
                 params["directoryId"] = directory_id
 
-            async with create_agent_interface_http_client() as client:
+            timeout = settings.skill_remote_timeout
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.get(
                     url,
                     params=params,
@@ -74,8 +86,8 @@ class AgentInterfaceService:
                     skills = data
                 else:
                     skills = []
-                if status is not None:
-                    skills = [s for s in skills if s.get("status") == status]
+                # if status is not None:
+                #     skills = [s for s in skills if s.get("status") == status]
                 return skills
         except Exception as e:
             logger.error("获取技能列表失败: %s", e, exc_info=True)
