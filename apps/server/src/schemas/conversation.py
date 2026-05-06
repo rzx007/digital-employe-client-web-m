@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic_core.core_schema import NoneSchema
 
 
 TargetType = Literal["employee", "group", "curator"]
@@ -14,7 +15,7 @@ class ConversationCreate(BaseModel):
     workspace_id: int
     target_type: TargetType
     target_id: int
-    title: str | None = Field(default=None, max_length=255)
+    title: str | None = Field(default=NoneSchema)
 
 
 class ConversationRead(BaseModel):

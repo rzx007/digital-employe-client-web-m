@@ -104,6 +104,10 @@ def init_db() -> None:
     # 序列化的事件列表（JSON array），用于断线重放
     ensure_column("conversation_messages", "stream_chunks", "stream_chunks TEXT")
 
+    # Migration: conversations.title 从 VARCHAR(255) 改为 TEXT（去掉长度限制）
+    if "conversations" in inspector.get_table_names():
+        _migrate_conversation_title_to_text(engine, inspector)
+
     ensure_column("orchestration_plans", "started_at", "started_at DATETIME")
 
     # Migration: task_execution_logs.task_id 改为 nullable + SET NULL
@@ -171,4 +175,50 @@ def _migrate_task_id_nullable(engine, inspector) -> None:
         ]:
             conn.execute(text(idx_sql))
     logger.info("Migrated task_execution_logs.task_id to nullable successfully")
+
+
+def _migrate_conversation_title_to_text(engine, inspector) -> None:
+    """SQLite 表重建：将 conversations.title 迁移为 TEXT，去掉 255 长度限制。"""
+    columns = inspector.get_columns("conversations")
+    title_col = next((col for col in columns if col["name"] == "title"), None)
+    if not title_col:
+        return
+
+    title_type = str(title_col.get("type", "")).upper()
+    # 已是 TEXT（或无长度文本）则跳过
+    if "TEXT" in title_type and "VARCHAR" not in title_type:
+        return
+
+    logger.info("Migrating conversations.title to TEXT ...")
+    with engine.connect() as conn:
+        conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        try:
+            conn.execute(text("CREATE TABLE _conversations_new ("
+                              "id INTEGER PRIMARY KEY,"
+                              "workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,"
+                              "target_type VARCHAR(32) NOT NULL,"
+                              "target_id INTEGER NOT NULL,"
+                              "title TEXT,"
+                              "created_at DATETIME,"
+                              "updated_at DATETIME"
+                              ")"))
+            conn.execute(text("INSERT INTO _conversations_new "
+                              "SELECT id, workspace_id, target_type, target_id, title, created_at, updated_at "
+                              "FROM conversations"))
+            conn.execute(text("DROP TABLE conversations"))
+            conn.execute(text("ALTER TABLE _conversations_new RENAME TO conversations"))
+            for idx_sql in [
+                "CREATE INDEX ix_conversations_id ON conversations(id)",
+                "CREATE INDEX ix_conversations_workspace_id ON conversations(workspace_id)",
+                "CREATE INDEX ix_conversations_target_type ON conversations(target_type)",
+                "CREATE INDEX ix_conversations_target_id ON conversations(target_id)",
+            ]:
+                conn.execute(text(idx_sql))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+    logger.info("Migrated conversations.title to TEXT successfully")
 
