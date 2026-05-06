@@ -23,6 +23,7 @@ import { useChatStore } from "@/stores/chat-store"
 import { WorkbenchLeftPanel } from "@/components/workbench/workbench-left-panel"
 import { DraggableWorkbenchGrid } from "@/components/workbench/draggable-workbench-grid"
 import { AddBlockDialog } from "@/components/workbench/add-block-dialog"
+import { PerformanceMetricsCard } from "@/components/workbench/performance-metrics-card"
 import { CuratorView } from "@/components/chat/curator-view"
 import type { ChatViewContact } from "./chat-view-shared"
 
@@ -109,7 +110,7 @@ export function WorkbenchView({
   // 合并远程和本地技能，两者都保留
   const skills = React.useMemo(() => {
     const allSkills: MetadataSkill[] = []
-    
+
     // 添加远程技能
     apiSkills.forEach((skill) => {
       allSkills.push({
@@ -117,7 +118,7 @@ export function WorkbenchView({
         directoryName: skill.directoryName || "远程技能",
       })
     })
-    
+
     // 添加本地技能
     localSkills.forEach((skill) => {
       allSkills.push({
@@ -177,6 +178,7 @@ export function WorkbenchView({
     <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
       {/* Workbench Header */}
       <div className="flex items-center justify-between border-b px-4 py-2">
+        {/* 数字员工选择器 */}
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-medium">工作台</h3>
           {isTabMode ? (
@@ -206,6 +208,7 @@ export function WorkbenchView({
             )
           )}
         </div>
+        {/* 添加模块按钮 */}
         <div className="flex items-center gap-1">
           <Button
             variant="outline"
@@ -237,7 +240,8 @@ export function WorkbenchView({
           <div className="flex min-w-0 flex-1">
             <WorkbenchLeftPanel />
             <div className="min-w-0 flex-1 overflow-auto p-3">
-              <div className="mb-2 text-xs font-medium text-muted-foreground">
+              <PerformanceMetricsCard />
+              <div className="mb-2 mt-4 text-xs font-medium text-muted-foreground">
                 自定义模块 {isLoadingSkills && "(加载中...)"}
               </div>
               {isLoadingSkills ? (

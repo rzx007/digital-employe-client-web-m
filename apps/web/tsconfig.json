@@ -10,6 +10,5 @@
       "@/*": ["./src/*"],
       "@workspace/ui/*": ["../../packages/ui/src/*"]
     }
-  },
- "include": ["vite.config.ts", "electron/**/*.ts"]
+  }
 }
