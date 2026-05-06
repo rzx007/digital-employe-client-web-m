@@ -611,14 +611,10 @@ class EmployeeService:
         remote_skills: list[dict],
         local_skills: list[dict],
     ) -> str:
-        # 选了本地技能时，skills_dir 直接指向该本地技能目录
-        if local_skills:
-            local_path = str(local_skills[0].get("path") or "").strip()
-            if local_path:
-                return json.dumps([{"skills_dir": local_path}], ensure_ascii=False)
-
-        # 未选本地技能时，维持原有行为：将远程技能落到员工私有目录并指向该目录
-        skill_dir = EmployeeService._save_skills_to_skill_path(employee, remote_skills)
+        # 统一行为：无论远程/本地技能，都复制到员工私有 skills 目录
+        skill_dir = EmployeeService._save_skills_to_skill_path(
+            employee, [*remote_skills, *local_skills]
+        )
         return json.dumps([{"skills_dir": str(skill_dir)}], ensure_ascii=False)
 
     @staticmethod
@@ -634,7 +630,7 @@ class EmployeeService:
 
     @staticmethod
     def _save_skills_to_skill_path(employee: Employee, skills: list[dict]) -> Path:
-        """将远程技能详情全量覆盖落盘到 local-employees/<员工ID>/skills/。"""
+        """将技能全量覆盖落盘到 local-employees/<员工ID>/skills/。"""
         employee_root = (
             EmployeeService._resolve_skill_root() / str(employee.id) / "skills"
         )
@@ -647,11 +643,19 @@ class EmployeeService:
             skill_name = skill.get("skillName")
             if not isinstance(skill_name, str) or not skill_name.strip():
                 continue
+            skill_dir = employee_root / skill_name.strip()
+
+            # 本地技能：直接复制本地技能目录到员工私有目录
+            if str(skill.get("source") or "").strip().lower() == "local":
+                local_path = Path(str(skill.get("path") or "").strip())
+                if local_path.is_dir():
+                    shutil.copytree(local_path, skill_dir, dirs_exist_ok=True)
+                continue
+
             file_map = EmployeeService._skill_content_to_file_map(
                 skill.get("skillContent"))
             if not file_map:
                 continue
-            skill_dir = employee_root / skill_name.strip()
             skill_dir.mkdir(parents=True, exist_ok=True)
             for relative_path, content in file_map.items():
                 target = EmployeeService._safe_skill_file_path(

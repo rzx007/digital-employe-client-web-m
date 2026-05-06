@@ -5,6 +5,7 @@ import logging
 from src.schemas.employee import EmployeeProfile
 from src.service.modal_service import ModelService
 from src.service.agent_interface_service import agent_interface_service
+from src.service.local_skill_service import LocalSkillService
 
 logger = logging.getLogger(__name__)
 
@@ -17,12 +18,33 @@ class EmployeeGenerationService:
         获取可用技能列表
         """
         try:
-
-            skills = await agent_interface_service.get_available_skills(
+            remote_skills = await agent_interface_service.get_available_skills(
                 status=1,
                 token=token,
             )
-            logger.info(f"招聘生成获取到技能数量: {len(skills)}")
+            local_skills = LocalSkillService.list_local_skills()
+            local_skill_items: list[dict[str, Any]] = []
+            for item in local_skills:
+                local_id = item.get("localId")
+                if local_id is None:
+                    continue
+                local_skill_items.append(
+                    {
+                        "id": local_id,
+                        "skillName": item.get("skillName"),
+                        "description": "",
+                        "directoryId": None,
+                        "directoryName": "本地技能",
+                    }
+                )
+
+            skills = [*remote_skills, *local_skill_items]
+            logger.info(
+                "招聘生成获取到技能数量: remote=%s, local=%s, total=%s",
+                len(remote_skills),
+                len(local_skill_items),
+                len(skills),
+            )
             return skills
         except Exception as e:
             logger.error("获取技能列表失败: %s", e, exc_info=True)
