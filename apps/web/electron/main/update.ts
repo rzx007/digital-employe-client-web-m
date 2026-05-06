@@ -2,14 +2,38 @@ import { app, ipcMain } from 'electron'
 import { createRequire } from 'node:module'
 import type {
   ProgressInfo,
-  UpdateDownloadedEvent,
   UpdateInfo,
 } from 'electron-updater'
 import { getSetting } from './settings-store'
+import { getBackendPort } from './backend'
 
 const { autoUpdater } = createRequire(import.meta.url)('electron-updater');
 
 let downloadListenersCleanup: (() => void) | null = null
+
+function getPlatformPath(): string {
+  switch (process.platform) {
+    case 'win32': return '/win32'
+    case 'darwin': return '/macos'
+    default: return '/linux'
+  }
+}
+
+async function resolveUpdateFeedURL(): Promise<string | null> {
+  try {
+    const port = getBackendPort()
+    const res = await fetch(`http://localhost:${port}/config-kvs/REMOTE_API_BASE_URL`)
+    if (!res.ok) return null
+    const json = await res.json()
+    const baseUrl: string | undefined = json?.data?.config_value
+    if (baseUrl) {
+      return `${baseUrl.replace(/\/+$/, '')}${getPlatformPath()}`
+    }
+  } catch {
+    // backend not available
+  }
+  return null
+}
 
 export function update(win: Electron.BrowserWindow) {
 
@@ -18,6 +42,10 @@ export function update(win: Electron.BrowserWindow) {
   autoUpdater.allowDowngrade = false
 
   autoUpdater.on('checking-for-update', function () { })
+
+  autoUpdater.on('error', (error: Error) => {
+    win.webContents.send('update-error', { message: error.message, error })
+  })
 
   autoUpdater.on('update-available', (arg: UpdateInfo) => {
     win.webContents.send('update-can-available', { update: true, version: app.getVersion(), newVersion: arg?.version })
@@ -39,8 +67,13 @@ export function update(win: Electron.BrowserWindow) {
     }
 
     try {
+      const feedUrl = await resolveUpdateFeedURL()
+      if (feedUrl) {
+        autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl })
+      }
       return await autoUpdater.checkForUpdatesAndNotify()
     } catch (error) {
+      win.webContents.send('update-error', { message: 'Network error', error })
       return { message: 'Network error', error }
     }
   })

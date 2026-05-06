@@ -8,9 +8,11 @@
     // "output": "release/${version}"
     "output": "release"
   },
+  // 运行时由 REMOTE_API_BASE_URL 动态覆盖（update.ts resolveUpdateFeedURL）
+  // 此处仅作 fallback 和打包时元数据使用
   "publish": {
     "provider": "generic",
-    "url": "http://localhost:8080/win32"
+    "url": "http://192.168.1.100:8080/win32"
   },
   "files": [
     "dist",

@@ -28,6 +28,16 @@ export function useAppUpdater() {
   const checkForUpdates = React.useCallback(async () => {
     if (!window.electronApi?.isElectron) return
     setState((s) => ({ ...s, status: "checking", errorMessage: "" }))
+
+    const timer = setTimeout(() => {
+      setState((s) => {
+        if (s.status === "checking") {
+          return { ...s, status: "error", errorMessage: "检查更新超时" }
+        }
+        return s
+      })
+    }, 15_000)
+
     try {
       await window.electronApi.checkUpdate()
     } catch {
@@ -36,6 +46,8 @@ export function useAppUpdater() {
         status: "error",
         errorMessage: "检查更新失败",
       }))
+    } finally {
+      clearTimeout(timer)
     }
   }, [])
 

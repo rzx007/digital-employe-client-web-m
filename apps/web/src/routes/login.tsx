@@ -36,14 +36,7 @@ function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
   const [currentView, setCurrentView] = useState<LoginView>("login")
-  const {
-    login,
-    loading,
-    error,
-    clearError,
-    isAuthenticated,
-    pendingPasswordChange,
-  } = useAuthStore()
+  const { login, loading, error, clearError, isAuthenticated } = useAuthStore()
   const navigate = useNavigate()
 
   // 用于保存定时器引用，避免内存泄漏
@@ -71,17 +64,13 @@ function LoginPage() {
     }
   }, [error, clearError])
 
-  // 检测 pendingPasswordChange，自动切换到修改密码视图
-  useEffect(() => {
-    if (pendingPasswordChange && currentView === "login") {
-      setCurrentView("changePassword")
-    }
-  }, [pendingPasswordChange, currentView])
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     clearError()
     await login(username, decryptPwd(password), rememberMe)
+    if (useAuthStore.getState().pendingPasswordChange) {
+      setCurrentView("changePassword")
+    }
   }
 
   const isElectron = !!window.electronApi
