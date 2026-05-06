@@ -2,9 +2,38 @@ import { cn } from "@workspace/ui/lib/utils"
 import {
   Avatar,
   AvatarFallback,
+  AvatarImage,
 } from "@workspace/ui/components/avatar"
 import { Skeleton } from "@workspace/ui/components/skeleton"
+import { useAuthStore } from "@/stores/auth-store"
 import { useCurrentMonthPerformance } from "@/hooks/use-performance-queries"
+import Avatar1 from "@/assets/avaters/1.png"
+import Avatar2 from "@/assets/avaters/2.png"
+import Avatar3 from "@/assets/avaters/3.png"
+import Avatar4 from "@/assets/avaters/4.png"
+import Avatar5 from "@/assets/avaters/5.png"
+import Avatar6 from "@/assets/avaters/6.png"
+import Avatar7 from "@/assets/avaters/7.png"
+import Avatar8 from "@/assets/avaters/8.png"
+import Avatar9 from "@/assets/avaters/9.png"
+
+const avatars = [
+  Avatar1,
+  Avatar2,
+  Avatar3,
+  Avatar4,
+  Avatar5,
+  Avatar6,
+  Avatar7,
+  Avatar8,
+  Avatar9,
+  Avatar1,
+]
+
+function getUserAvatarSrc(userId?: string | number | null) {
+  if (!userId) return Avatar1
+  return avatars[parseInt(userId.toString()) % 10]
+}
 
 type DeviationLevel = "normal" | "warning" | "danger"
 
@@ -111,6 +140,8 @@ function parsePeriod(period: string) {
 
 function CompactPerformanceCard() {
   const { data, isLoading, isError } = useCurrentMonthPerformance()
+  const user = useAuthStore((s) => s.user)
+  const avatarSrc = getUserAvatarSrc(user?.id)
 
   if (isError) return null
 
@@ -144,8 +175,9 @@ function CompactPerformanceCard() {
       <div className="p-3">
         {/* Profile header */}
         <div className="flex items-center gap-2.5">
-          <Avatar className="size-8 shrink-0 bg-slate-200 dark:bg-slate-700">
-            <AvatarFallback className="bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-300">
+          <Avatar className="size-8 shrink-0">
+            <AvatarImage src={avatarSrc} alt={data.username} />
+            <AvatarFallback className="bg-slate-200 text-xs font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-300">
               {data.username.slice(0, 1)}
             </AvatarFallback>
           </Avatar>

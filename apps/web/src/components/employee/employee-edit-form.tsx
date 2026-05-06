@@ -118,7 +118,7 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
   React.useEffect(() => {
     fetchMcpList()
       .then(setAllMcpList)
-      .catch(() => {})
+      .catch(() => { })
   }, [])
 
   React.useEffect(() => {

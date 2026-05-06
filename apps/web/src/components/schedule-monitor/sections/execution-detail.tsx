@@ -66,7 +66,7 @@ function TaskRunRow({ run }: { run: TaskRun }) {
   const config = STATUS_CONFIG[run.status] ?? STATUS_FALLBACK
 
   return (
-    <div className="rounded-md border">
+    <div className="rounded-md border mb-1">
       <button
         type="button"
         className={cn(
