@@ -328,6 +328,7 @@ class StreamRegistry:
                 task.buffer.trim()
             last_flush_time = time.monotonic()
 
+        _agent_it = None
         try:
             _agent_it = agent.astream(
                 {"messages": messages},
@@ -445,6 +446,12 @@ class StreamRegistry:
             self.broadcast(conversation_id, evt)
 
         finally:
+            if _agent_it is not None:
+                try:
+                    await _agent_it.aclose()
+                except Exception:
+                    pass
+
             if task.status == "cancelled" and state_final != "cancelled":
                 logger.warning(
                     "[run] conv=%s finally: task.status=cancelled but state_final=%s, doing fallback flush",
@@ -462,7 +469,6 @@ class StreamRegistry:
                 conversation_id, state_final, chunk_builder.count, task.buffer.cursor,
             )
             task.status = state_final
-            print(f"1111111111111state_final: {state_final}")
             _finalize_task_stream(conversation_id, state_final)
 
             task.subscribers.clear()
