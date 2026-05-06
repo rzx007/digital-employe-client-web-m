@@ -714,7 +714,7 @@ function AboutSettings() {
         {/* 品牌展示 */}
         <div className="flex flex-col items-center gap-3 py-4">
           <div className="flex size-16 items-center justify-center rounded-2xl text-2xl font-bold text-primary-foreground">
-            <img src={logoSvg} className="size-10" />
+            <img src={logoSvg} className="w-10" />
           </div>
           <span className="text-xl font-semibold">DigitalEmployee</span>
           <span className="text-xs text-muted-foreground">
@@ -757,7 +757,7 @@ function AboutSettings() {
 }
 
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = React.useState<SettingsTab>("general")
+  const [activeTab, setActiveTab] = React.useState<SettingsTab>("account")
 
   return (
     <div className="flex h-svh w-screen bg-background">

@@ -23,7 +23,6 @@ import { useChatStore } from "@/stores/chat-store"
 import { WorkbenchLeftPanel } from "@/components/workbench/workbench-left-panel"
 import { DraggableWorkbenchGrid } from "@/components/workbench/draggable-workbench-grid"
 import { AddBlockDialog } from "@/components/workbench/add-block-dialog"
-import { PerformanceMetricsCard } from "@/components/workbench/performance-metrics-card"
 import { CuratorView } from "@/components/chat/curator-view"
 import type { ChatViewContact } from "./chat-view-shared"
 
@@ -240,8 +239,7 @@ export function WorkbenchView({
           <div className="flex min-w-0 flex-1">
             <WorkbenchLeftPanel />
             <div className="min-w-0 flex-1 overflow-auto p-3">
-              <PerformanceMetricsCard />
-              <div className="mb-2 mt-4 text-xs font-medium text-muted-foreground">
+              <div className="mb-2 text-xs font-medium text-muted-foreground">
                 自定义模块 {isLoadingSkills && "(加载中...)"}
               </div>
               {isLoadingSkills ? (

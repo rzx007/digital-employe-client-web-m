@@ -13,23 +13,45 @@ function getDeviationLevel(value: number): DeviationLevel {
 
 const DEVIATION_COLORS: Record<
   DeviationLevel,
-  { bar: string; bg: string; text: string }
+  { bar: string; text: string }
 > = {
   normal: {
     bar: "bg-emerald-500",
-    bg: "bg-emerald-500/10",
     text: "text-emerald-600 dark:text-emerald-400",
   },
   warning: {
     bar: "bg-amber-500",
-    bg: "bg-amber-500/10",
     text: "text-amber-600 dark:text-amber-400",
   },
   danger: {
     bar: "bg-red-500",
-    bg: "bg-red-500/10",
     text: "text-red-600 dark:text-red-400",
   },
+}
+
+function CompactDeviationIndicator({ value }: { value: number }) {
+  const level = getDeviationLevel(value)
+  const colors = DEVIATION_COLORS[level]
+  const percent = Math.min(Math.abs(value) * 100, 100)
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="h-1 w-12 overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn("h-full rounded-full transition-all", colors.bar)}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      <span
+        className={cn(
+          "text-[10px] font-medium tabular-nums",
+          colors.text
+        )}
+      >
+        {value.toFixed(2)}
+      </span>
+    </div>
+  )
 }
 
 function DeviationBar({ value }: { value: number }) {
@@ -45,7 +67,12 @@ function DeviationBar({ value }: { value: number }) {
           style={{ width: `${percent}%` }}
         />
       </div>
-      <span className={cn("text-[10px] font-medium tabular-nums", colors.text)}>
+      <span
+        className={cn(
+          "text-[10px] font-medium tabular-nums",
+          colors.text
+        )}
+      >
         {value.toFixed(2)}
       </span>
     </div>
@@ -62,12 +89,7 @@ function MetricCard({
   className?: string
 }) {
   return (
-    <div
-      className={cn(
-        "flex flex-col justify-between px-4 py-3",
-        className
-      )}
-    >
+    <div className={cn("flex flex-col justify-between px-4 py-3", className)}>
       <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
         {label}
       </span>
@@ -78,12 +100,115 @@ function MetricCard({
   )
 }
 
+function MetricRow({
+  shortLabel,
+  fullLabel,
+  value,
+  children,
+  className,
+}: {
+  shortLabel: string
+  fullLabel: string
+  value: number
+  children?: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between py-1.5 text-xs",
+        className
+      )}
+    >
+      <span
+        title={fullLabel}
+        className="shrink-0 text-muted-foreground"
+      >
+        {shortLabel}
+      </span>
+      <div className="flex items-center gap-2">
+        <span className="font-semibold tabular-nums">
+          {value.toFixed(2)}
+        </span>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 function parsePeriod(period: string) {
   const parts = period.split("-")
   return { year: parts[0] ?? "", month: parts[1] ?? "" }
 }
 
-export function PerformanceMetricsCard() {
+function CompactPerformanceCard() {
+  const { data, isLoading, isError } = useCurrentMonthPerformance()
+
+  if (isError) return null
+
+  if (isLoading) {
+    return (
+      <div className="rounded-lg border space-y-1.5 p-3">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-full" />
+      </div>
+    )
+  }
+
+  if (!data) return null
+
+  return (
+    <div className="rounded-lg border divide-y divide-border/20 p-3">
+      <div className="flex items-baseline justify-between pb-1.5 text-[11px] text-muted-foreground">
+        <span className="font-medium tabular-nums">
+          {data.assessment_period}
+        </span>
+        <span className="text-sm font-semibold text-foreground">
+          {data.username}
+          <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
+            No.{data.work_no}
+          </span>
+        </span>
+      </div>
+
+      <MetricRow
+        shortLabel="AC总值"
+        fullLabel="当月AC总值"
+        value={data.monthly_ac_total}
+      />
+      <MetricRow
+        shortLabel="EV总值"
+        fullLabel="当月EV总值"
+        value={data.monthly_ev_total}
+      />
+      <MetricRow
+        shortLabel="AC实发"
+        fullLabel="AC实发基准"
+        value={data.ac_actual_base_value}
+      />
+      <MetricRow
+        shortLabel="工作偏差"
+        fullLabel="当月工作偏差"
+        value={data.monthly_work_deviation}
+      >
+        <CompactDeviationIndicator value={data.monthly_work_deviation} />
+      </MetricRow>
+      <MetricRow
+        shortLabel="基准偏差"
+        fullLabel="工作日基准偏差"
+        value={data.workday_base_deviation}
+      >
+        <CompactDeviationIndicator value={data.workday_base_deviation} />
+      </MetricRow>
+    </div>
+  )
+}
+
+function FullPerformanceCard() {
   const { data, isLoading, isError } = useCurrentMonthPerformance()
 
   if (isError) return null
@@ -110,10 +235,8 @@ export function PerformanceMetricsCard() {
 
   return (
     <div className="overflow-hidden rounded-lg border border-border/50">
-      {/* Swiss-style dark header */}
       <div className="relative bg-slate-900 px-5 py-4 dark:bg-slate-800">
         <div className="flex items-start justify-between">
-          {/* Left: period typography */}
           <div>
             <div className="flex items-baseline gap-1">
               <span className="text-3xl font-bold tracking-tight text-white">
@@ -122,14 +245,15 @@ export function PerformanceMetricsCard() {
             </div>
             <div className="mt-0.5 flex items-baseline gap-1.5">
               <span className="text-lg font-light text-white/50">——</span>
-              <span className="text-xl font-semibold text-white">{month}</span>
+              <span className="text-xl font-semibold text-white">
+                {month}
+              </span>
             </div>
             <div className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-white/40">
               考核周期
             </div>
           </div>
 
-          {/* Right: user info */}
           <div className="text-right">
             <div className="text-sm font-medium text-white/90">
               {data.username}
@@ -145,13 +269,10 @@ export function PerformanceMetricsCard() {
           </div>
         </div>
 
-        {/* Decorative thin line */}
         <div className="absolute bottom-0 left-5 right-5 h-px bg-white/10" />
       </div>
 
-      {/* Metrics grid */}
       <div className="p-3">
-        {/* Top row: 3 numeric metrics with dividers */}
         <div className="grid grid-cols-3">
           <MetricCard label="当月AC总值" value={data.monthly_ac_total} />
           <MetricCard
@@ -165,10 +286,8 @@ export function PerformanceMetricsCard() {
           />
         </div>
 
-        {/* Thin divider */}
         <div className="my-3 h-px bg-border/30" />
 
-        {/* Bottom row: 2 deviation metrics */}
         <div className="grid grid-cols-2 gap-3">
           <div className="border border-border/50 px-4 py-3">
             <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
@@ -200,4 +319,9 @@ export function PerformanceMetricsCard() {
       </div>
     </div>
   )
+}
+
+export function PerformanceMetricsCard({ compact }: { compact?: boolean }) {
+  if (compact) return <CompactPerformanceCard />
+  return <FullPerformanceCard />
 }

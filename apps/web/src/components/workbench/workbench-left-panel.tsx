@@ -1,7 +1,9 @@
 import { useState } from "react"
+import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { useMonthlyScheduleOverview, useTodayAllExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { ScheduleCalendar } from "@/components/schedule-monitor/sections/schedule-calendar"
 import { TodayTaskList } from "./today-task-list"
+import { PerformanceMetricsCard } from "./performance-metrics-card"
 
 export function WorkbenchLeftPanel() {
   const now = new Date()
@@ -20,19 +22,26 @@ export function WorkbenchLeftPanel() {
   }
 
   return (
-    <div className="flex h-full w-[320px] shrink-0 flex-col gap-3 border-r p-3">
-      <div className="text-xs font-medium text-muted-foreground">日程</div>
+    <div className="flex h-full w-[320px] shrink-0 flex-col border-r">
+      <ScrollArea className="min-h-0 flex-1 p-3">
+        <div className="flex flex-col gap-3">
+          <div className="text-xs font-medium text-muted-foreground">考核指标</div>
+          <PerformanceMetricsCard compact />
 
-      {overview && (
-        <ScheduleCalendar overview={overview} onMonthChange={handleMonthChange} />
-      )}
+          <div className="text-xs font-medium text-muted-foreground">日程</div>
 
-      <div className="text-xs font-medium text-muted-foreground">今日任务</div>
+          {overview && (
+            <ScheduleCalendar overview={overview} onMonthChange={handleMonthChange} />
+          )}
 
-      <TodayTaskList
-        executions={executions}
-        isLoading={isExecutionsLoading}
-      />
+          <div className="text-xs font-medium text-muted-foreground">今日任务</div>
+
+          <TodayTaskList
+            executions={executions}
+            isLoading={isExecutionsLoading}
+          />
+        </div>
+      </ScrollArea>
     </div>
   )
 }
