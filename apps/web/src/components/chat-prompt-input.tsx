@@ -22,7 +22,8 @@ import type { SlashCommandItem } from "./lexical-editor/slash-command-plugin"
 import type { MentionCandidate } from "./lexical-editor/mention-plugin"
 import { Separator } from "@workspace/ui/components/separator"
 import { Spinner } from "@/components/spinner"
-import { uploadConversationFile } from "@/api/conversation"
+import { uploadConversationFile, deleteConversationUpload } from "@/api/conversation"
+import { getFileIcon } from "@/lib/chat/file-icons"
 
 const ACCEPTED_FILE_TYPES =
   ".txt,.md,.csv,.tsv,.json,.xml,.yaml,.yml,.toml,.ini,.cfg,.conf,.log,.env," +
@@ -166,34 +167,54 @@ function ChatPromptInputAttachments({
     }
   }, [attachments.files, conversationId, uploadFile])
 
+  const handleRemove = useCallback(
+    async (fileId: string) => {
+      const state = fileStates[fileId]
+      if (conversationId && state?.status === "done" && state.path) {
+        try {
+          await deleteConversationUpload(conversationId, state.path)
+        } catch { }
+      }
+      attachments.remove(fileId)
+    },
+    [attachments, conversationId, fileStates],
+  )
+
   if (attachments.files.length === 0) return null
 
   return (
-    <div className="flex flex-wrap gap-1.5 px-1 pt-2">
+    <div className="grid gap-2 px-1 pt-2 sm:grid-cols-2">
       {attachments.files.map((file) => {
         const state = fileStates[file.id]
         const filename = file.filename || "unknown"
 
-        let statusEl: React.ReactNode = null
+        let statusLabel: React.ReactNode = null
         if (!conversationId) {
-          statusEl = (
-            <span className="shrink-0 text-yellow-500 text-[10px]">
+          statusLabel = (
+            <span className="shrink-0 rounded-full bg-yellow-100 px-1.5 py-0.5 text-[10px] text-yellow-700">
               待上传
             </span>
           )
         } else if (state?.status === "uploading") {
-          statusEl = <Spinner className="size-3 shrink-0" />
+          statusLabel = (
+            <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
+              <Spinner className="size-3" />
+              上传中
+            </span>
+          )
         } else if (state?.status === "done") {
-          statusEl = (
-            <span className="shrink-0 text-green-500">&#10003;</span>
+          statusLabel = (
+            <span className="shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] text-green-700">
+              已上传
+            </span>
           )
         } else if (state?.status === "error") {
-          statusEl = (
+          statusLabel = (
             <span
-              className="shrink-0 cursor-help text-red-500"
+              className="shrink-0 cursor-help rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700"
               title={state.error}
             >
-              &#10007;
+              上传失败
             </span>
           )
         }
@@ -201,10 +222,41 @@ function ChatPromptInputAttachments({
         return (
           <div
             key={file.id}
-            className="flex max-w-48 items-center gap-1 rounded-md border bg-muted/50 px-2 py-1 text-xs"
+            className="group relative flex min-w-0 items-center gap-3 rounded-md border border-border/50 bg-background/70 px-3 py-2"
           >
-            {statusEl}
-            <span className="min-w-0 truncate">{filename}</span>
+            <button
+              type="button"
+              className="absolute -top-1.5 -right-1.5 flex size-5 cursor-pointer items-center justify-center rounded-full border border-border/50 bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+              onClick={() => handleRemove(file.id)}
+              aria-label="移除附件"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 12 12"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              >
+                <path d="M3 3l6 6M9 3l-6 6" />
+              </svg>
+            </button>
+            <img
+              alt=""
+              aria-hidden="true"
+              className="size-8 shrink-0"
+              draggable={false}
+              src={getFileIcon(filename)}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-sm font-medium text-foreground">
+                  {filename}
+                </span>
+                {statusLabel}
+              </div>
+            </div>
           </div>
         )
       })}

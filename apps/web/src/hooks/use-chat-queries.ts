@@ -171,7 +171,7 @@ export function useResetCuratorConversation() {
       conversationId: number | string
       clearTaskLogs?: boolean 
     }) => {
-      const promises = [deleteConversationApi(conversationId)]
+      const promises: Promise<unknown>[] = [deleteConversationApi(conversationId)]
       if (clearTaskLogs) {
         promises.push(deleteAllTaskExecutions())
       }

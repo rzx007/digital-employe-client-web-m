@@ -1,7 +1,5 @@
 import {
   useState,
-  useRef,
-  useEffect,
   useCallback,
   useMemo,
   type ComponentProps,
@@ -68,17 +66,7 @@ export function DraftChatView({
   const [mentions, setMentions] = useState<Array<{ id: string; name: string }>>(
     []
   )
-  const createdConversationIdRef = useRef<string | number | null>(null)
   const createConversationMutation = useCreateConversationMutation()
-
-  useEffect(() => {
-    createdConversationIdRef.current = selectedConversationId
-  }, [selectedConversationId])
-
-  useEffect(() => {
-    createdConversationIdRef.current = null
-    setInputValue("")
-  }, [draftSessionKey, selectedContactId])
 
   const { messages, setMessages, sendMessage, status, error, stop } = useChat({
     id: selectedContactId
@@ -114,7 +102,7 @@ export function DraftChatView({
       return
     }
     stop()
-    const conversationId = createdConversationIdRef.current
+    const conversationId = useChatStore.getState().selectedConversationId
     if (conversationId) {
       try {
         await cancelConversationStream(conversationId)
@@ -140,7 +128,7 @@ export function DraftChatView({
       )
 
       try {
-        let conversationId = createdConversationIdRef.current
+        let conversationId = useChatStore.getState().selectedConversationId
 
         if (!conversationId) {
           const createdConversation =
@@ -151,7 +139,6 @@ export function DraftChatView({
             })
 
           conversationId = createdConversation.id
-          createdConversationIdRef.current = conversationId
           setSelectedConversationId(conversationId)
         }
 
@@ -269,6 +256,8 @@ export function DraftChatView({
       onPendingSendNow={pendingSendNow}
       onPendingMoveUp={pendingMoveUp}
       onPendingMoveDown={pendingMoveDown}
+      conversationId={selectedConversationId}
+      onAttachmentsChange={() => {}}
       className={className}
       {...props}
     />

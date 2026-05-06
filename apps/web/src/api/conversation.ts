@@ -51,11 +51,21 @@ export async function fetchConversationMessages(
     `/chat/conversations/${conversationId}/messages`
   )
 }
-
 export async function deleteConversation(conversationId: number | string) {
   return request<ApiResponse<null>>(`/chat/conversations/${conversationId}`, {
     method: "DELETE",
   })
+}
+export async function deleteConversationUpload(
+  conversationId: number | string,
+  path: string
+) {
+  return request<ApiResponse<null>>(
+    `/chat/conversations/${conversationId}/resources/uploads?path=${encodeURIComponent(path)}`,
+    {
+      method: "DELETE",
+    }
+  )
 }
 
 /**
