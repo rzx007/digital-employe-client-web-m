@@ -16,7 +16,7 @@ class Conversation(Base):
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     target_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     target_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now, onupdate=cst_now)
 
