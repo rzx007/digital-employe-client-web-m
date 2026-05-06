@@ -183,7 +183,7 @@ class EmployeeService:
 
     @staticmethod
     def employee_detail_dict(db: Session, employee: Employee) -> dict:
-        """员工详情：在 metadata 中附加 skills 和 mcps 快照。"""
+        """员工详情：在 metadata 中附加 skills、mcps、tasks 快照。"""
         data = EmployeeService._employee_to_dict(employee)
         meta = data.get("metadata")
         if isinstance(meta, dict):
@@ -192,6 +192,7 @@ class EmployeeService:
             meta = {}
         meta["skills"] = EmployeeService._employee_skills_snapshot(db, employee)
         meta["mcps"] = EmployeeService._employee_mcps_snapshot(db, employee)
+        meta["tasks"] = TaskService.list_employee_tasks_as_dict(db, employee.id)
         data["metadata"] = meta
         data["mcps"] = meta["mcps"]
         return data
@@ -876,13 +877,13 @@ class EmployeeService:
 
         if "tasks" in payload.model_fields_set:
             changed_tasks = True
-            meta = EmployeeService._load_employee_meta(employee)
-            meta["tasks"] = EmployeeService._normalize_tasks(payload.tasks)
-            employee.meta_json = json.dumps(meta, ensure_ascii=False)
+            normalized = EmployeeService._normalize_tasks(payload.tasks)
+            TaskService.upsert_employee_tasks(
+                db, employee.workspace_id, employee.id, normalized
+            )
         db.commit()
         db.refresh(employee)
         if changed_tasks:
-            TaskService.sync_workspace_tasks(db, employee.workspace_id)
             db.refresh(employee)
             TaskSchedulerService.reload_jobs()
         return employee
@@ -923,7 +924,6 @@ class EmployeeService:
             "status": obj_in.status,
             "detail_page_url": obj_in.detail_page_url,
             "user_id": obj_in.user_id,
-            "tasks": tasks,
             "employee_name": obj_in.employee_name,
         }
 
@@ -955,7 +955,7 @@ class EmployeeService:
         db.refresh(employee)
 
         if tasks:
-            TaskService.sync_workspace_tasks(db, workspace_id)
+            TaskService.upsert_employee_tasks(db, workspace_id, employee.id, tasks)
             db.refresh(employee)
             TaskSchedulerService.reload_jobs()
         return employee

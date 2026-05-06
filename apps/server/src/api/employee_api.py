@@ -29,7 +29,7 @@ def sync_workspace_employees(
     workspace = WorkspaceService.get_workspace(db, workspace_id)
     token = request.headers.get("token")
     employees = EmployeeService.sync_workspace_employees(db, workspace, token=token)
-    employee_items = [EmployeeService._employee_to_dict(emp) for emp in employees]
+    employee_items = [EmployeeService.employee_detail_dict(db, emp) for emp in employees]
     payload = EmployeeSyncResult(
         workspace_id=workspace_id,
         synced_count=len(employee_items),
@@ -65,7 +65,7 @@ def update_employee(
     """更新指定员工的基础信息。"""
     token = request.headers.get("token")
     employee = EmployeeService.update_employee(db, employee_id, payload, token)
-    return ResponseBase(data=EmployeeService._employee_to_dict(employee))
+    return ResponseBase(data=EmployeeService.employee_detail_dict(db, employee))
 
 
 @router.delete("/employees/{employee_id}", status_code=status.HTTP_200_OK, response_model=BaseResponse)
@@ -101,7 +101,7 @@ def create_employee(
     logger.info("创建员工 user_id=%s", user_id)
     
     employee = EmployeeService.create_employee(db, employee_in, token)
-    return ResponseBase(data=EmployeeService._employee_to_dict(employee))
+    return ResponseBase(data=EmployeeService.employee_detail_dict(db, employee))
 
 
 @router.post(

@@ -13,7 +13,7 @@ class TaskExecutionLog(Base):
     __tablename__ = "task_execution_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    task_id: Mapped[int] = mapped_column(ForeignKey("employee_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("employee_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
     skill_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
