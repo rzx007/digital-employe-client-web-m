@@ -148,6 +148,8 @@ export function ChatPanel({
   onPendingSendNow,
   onPendingMoveUp,
   onPendingMoveDown,
+  conversationId,
+  onAttachmentsChange,
   className,
   ...props
 }: React.ComponentProps<"div"> & {
@@ -171,6 +173,8 @@ export function ChatPanel({
   onPendingSendNow?: (id: string) => void
   onPendingMoveUp?: (id: string) => void
   onPendingMoveDown?: (id: string) => void
+  conversationId?: string | number | null
+  onAttachmentsChange?: (paths: string[]) => void
 }) {
   const contactDisplayName = contact
     ? getContactDisplayName(contact)
@@ -344,6 +348,8 @@ export function ChatPanel({
                 className="w-full overflow-hidden bg-background/80 shadow-xl"
                 slashCommands={slashCommands}
                 mentionCandidates={mentionCandidates}
+                conversationId={conversationId}
+                onAttachmentsChange={onAttachmentsChange}
               />
               {error && (
                 <p className="mt-2 text-xs text-destructive">

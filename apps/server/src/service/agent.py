@@ -232,6 +232,12 @@ def get_agent(
         routes["/skills-draft/"] = FilesystemBackend(root_dir=str(draft_dir), virtual_mode=True)
         has_draft_route = True
 
+    # /uploads/ 仅在会话场景挂载（用户上传的文件）
+    if conversation_id and root_path:
+        uploads_dir = Path(root_path) / str(conversation_id) / "uploads"
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+        routes["/uploads/"] = FilesystemBackend(root_dir=str(uploads_dir), virtual_mode=True)
+
     skill_sources = ["/skills/", "/skills-draft/"] if has_draft_route else ["/skills/"]
 
     shell_backend = SkillAwareShellBackend(

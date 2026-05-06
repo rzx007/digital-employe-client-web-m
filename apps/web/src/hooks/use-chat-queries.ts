@@ -18,6 +18,7 @@ import {
   fetchResourceContent,
   fetchCuratorConversation,
   deleteAllTaskExecutions,
+  uploadConversationFile,
 } from "@/api/conversation"
 import type { Contact } from "@/lib/mock-data/ai-employees"
 import type { Conversation } from "@/lib/mock-data/conversations"
@@ -222,5 +223,16 @@ export function useResourceContentQuery(
       return res.data
     },
     enabled: !!path,
+  })
+}
+
+export function useUploadFileMutation(conversationId: string | number | null) {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      if (!conversationId) throw new Error("缺少会话 ID")
+      const res = await uploadConversationFile(conversationId, file)
+      if (!res?.data) throw new Error(res?.msg || "上传失败")
+      return res.data
+    },
   })
 }

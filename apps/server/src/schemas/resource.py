@@ -15,6 +15,7 @@ class ResourceEntry(BaseModel):
 
 class ResourceList(BaseModel):
     artifacts: list[ResourceEntry]
+    uploads: list[ResourceEntry] = []
     skills_draft: list[ResourceEntry]
 
 
@@ -23,3 +24,9 @@ class ResourceContent(BaseModel):
     content: str
     artifact_type: str
     language: str | None = None
+
+
+class ResourceUploadResult(BaseModel):
+    name: str
+    path: str
+    size: int

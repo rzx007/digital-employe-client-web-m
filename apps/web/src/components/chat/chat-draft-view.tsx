@@ -7,7 +7,7 @@ import {
   type ComponentProps,
 } from "react"
 import { useChat } from "@ai-sdk/react"
-import type { UIMessage } from "ai"
+import type { UIMessage, FileUIPart } from "ai"
 
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
@@ -17,8 +17,29 @@ import { usePendingMessages } from "@/hooks/use-pending-messages"
 
 import { ChatPanel } from "./chat-panel"
 import { chatTransport, type ChatViewContact } from "./chat-view-shared"
-import { cancelConversationStream } from "@/api/conversation"
+import { cancelConversationStream, uploadConversationFile } from "@/api/conversation"
 import { toast } from "sonner"
+
+async function uploadDraftFiles(
+  conversationId: string | number,
+  files: FileUIPart[],
+): Promise<string[]> {
+  const paths: string[] = []
+  for (const file of files) {
+    const response = await fetch(file.url)
+    const blob = await response.blob()
+    const fileObj = new File([blob], file.filename || "file", {
+      type: file.mediaType,
+    })
+    const result = await uploadConversationFile(conversationId, fileObj)
+    if (result?.data?.path) {
+      paths.push(result.data.path)
+    } else {
+      throw new Error(result?.msg || `上传文件 ${file.filename} 失败`)
+    }
+  }
+  return paths
+}
 
 export function DraftChatView({
   contact,
@@ -134,11 +155,19 @@ export function DraftChatView({
           setSelectedConversationId(conversationId)
         }
 
+        let uploadedPaths: string[] = []
+        if (typeof message !== "string" && message.files?.length) {
+          uploadedPaths = await uploadDraftFiles(
+            conversationId,
+            message.files,
+          )
+        }
+
         await sendMessage(
           { text: messageText },
           {
             body: {
-              attachments: typeof message === "string" ? undefined : message.files,
+              attachments: uploadedPaths.length > 0 ? uploadedPaths : undefined,
               conversationId,
               skill: command?.title ?? "",
               metadata: pendingMeta,
@@ -200,12 +229,6 @@ export function DraftChatView({
       const messageText = message.text?.trim() ?? ""
       if (!hasText) {
         return
-      }
-
-      if (message.files?.length) {
-        toast.success("Files attached", {
-          description: `${message.files.length} file(s) attached to message`,
-        })
       }
 
       if (isBusy) {

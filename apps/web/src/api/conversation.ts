@@ -7,6 +7,7 @@ import type {
   CreateConversationParams,
   ResourceContent,
   ResourceList,
+  ResourceUploadResult,
 } from "./types"
 
 /** 当前固定工作空间 ID */
@@ -112,4 +113,19 @@ export async function deleteAllTaskExecutions() {
   return request<ApiResponse<{ deleted: number }>>(`/workspaces/1/tasks/executions`, {
     method: "DELETE",
   })
+}
+
+export async function uploadConversationFile(
+  conversationId: number | string,
+  file: File
+) {
+  const formData = new FormData()
+  formData.append("file", file)
+  return request<ApiResponse<ResourceUploadResult>>(
+    `/chat/conversations/${conversationId}/resources/upload`,
+    {
+      method: "POST",
+      body: formData,
+    }
+  )
 }

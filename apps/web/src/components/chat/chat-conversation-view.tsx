@@ -109,12 +109,17 @@ export function ConversationChatView({
         pendingMeta.command || pendingMeta.mentions?.length
       )
 
+      const paths = uploadedPathsRef.current
+      if (paths.length > 0) {
+        uploadedPathsRef.current = []
+      }
+
       try {
         await sendMessage(
           { text: messageText },
           {
             body: {
-              attachments: typeof message === "string" ? undefined : message.files,
+              attachments: paths.length > 0 ? paths : undefined,
               conversationId,
               skill: command?.title ?? "",
               metadata: pendingMeta,
@@ -148,6 +153,15 @@ export function ConversationChatView({
     [conversationId, sendMessage, command, mentions]
   )
 
+  const uploadedPathsRef = React.useRef<string[]>([])
+
+  const handleAttachmentsChange = React.useCallback(
+    (paths: string[]) => {
+      uploadedPathsRef.current = paths
+    },
+    [],
+  )
+
   const {
     queue: pendingQueue,
     enqueue,
@@ -167,36 +181,13 @@ export function ConversationChatView({
       const hasAttachments = Boolean(message.files?.length)
       const messageText = message.text?.trim() ?? ""
 
-      const hasImageAttachment = Boolean(
-        message.files?.some((file) => {
-          const mediaType = "mediaType" in file ? file.mediaType : undefined
-          const filename = "filename" in file ? file.filename : undefined
-
-          return (
-            mediaType?.startsWith("image/") ||
-            Boolean(filename?.match(/\.(png|jpe?g|gif|webp|bmp|svg)$/i))
-          )
-        })
-      )
-
       if (!(hasText || hasAttachments)) {
-        return
-      }
-
-      if (hasImageAttachment) {
-        toast.error("当前模型不支持图片输入，请移除图片后再发送")
         return
       }
 
       if (!messageText) {
         toast.error("暂不支持仅发送附件")
         return
-      }
-
-      if (message.files?.length) {
-        toast.success("Files attached", {
-          description: `${message.files.length} file(s) attached to message`,
-        })
       }
 
       if (isBusy) {
@@ -246,6 +237,8 @@ export function ConversationChatView({
       onPendingSendNow={pendingSendNow}
       onPendingMoveUp={pendingMoveUp}
       onPendingMoveDown={pendingMoveDown}
+      conversationId={conversationId}
+      onAttachmentsChange={handleAttachmentsChange}
       className={className}
       {...props}
     />

@@ -3,12 +3,30 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from src.schemas.resource import ResourceContent, ResourceEntry, ResourceList
+from src.schemas.resource import (
+    ResourceContent,
+    ResourceEntry,
+    ResourceList,
+    ResourceUploadResult,
+)
 from src.service.agent import infer_artifact_language, infer_artifact_type
 
 logger = logging.getLogger(__name__)
 
-_ALLOWED_PREFIXES = ("/artifacts/", "/skills-draft/")
+_ALLOWED_PREFIXES = ("/artifacts/", "/skills-draft/", "/uploads/")
+
+ALLOWED_UPLOAD_EXTENSIONS: set[str] = {
+    ".txt", ".md", ".csv", ".tsv", ".json", ".xml", ".yaml", ".yml",
+    ".toml", ".ini", ".cfg", ".conf", ".log", ".env",
+    ".py", ".js", ".ts", ".tsx", ".jsx", ".html", ".css", ".scss",
+    ".less", ".vue", ".svelte", ".java", ".go", ".rs", ".c", ".cpp",
+    ".h", ".hpp", ".cs", ".rb", ".php", ".swift", ".kt", ".scala",
+    ".sh", ".bash", ".zsh", ".sql", ".r", ".m",
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
+    ".geojson", ".jsonl", ".ndjson",
+}
+
+MAX_UPLOAD_FILE_SIZE = 200 * 1024 * 1024
 
 
 def _resolve_safe_path(conversation_dir: Path, virtual_path: str) -> Path | None:
@@ -93,9 +111,11 @@ class ResourceService:
         conversation_dir = Path(root_path) / str(conversation_id)
         artifacts_dir = conversation_dir / "artifacts"
         skills_draft_dir = conversation_dir / "skills-draft"
+        uploads_dir = conversation_dir / "uploads"
 
         return ResourceList(
             artifacts=_scan_dir_flat(artifacts_dir, "/artifacts/"),
+            uploads=_scan_dir_flat(uploads_dir, "/uploads/"),
             skills_draft=_scan_skills_draft(skills_draft_dir),
         )
 
@@ -121,3 +141,72 @@ class ResourceService:
             artifact_type=infer_artifact_type(path),
             language=infer_artifact_language(path),
         )
+
+    @staticmethod
+    def upload_file(
+        root_path: str,
+        conversation_id: int,
+        filename: str,
+        file_bytes: bytes,
+    ) -> ResourceUploadResult | str:
+        if len(file_bytes) > MAX_UPLOAD_FILE_SIZE:
+            return f"文件大小超过限制（最大 {MAX_UPLOAD_FILE_SIZE // (1024*1024)}MB）"
+
+        ext = Path(filename).suffix.lower()
+        if ext and ext not in ALLOWED_UPLOAD_EXTENSIONS:
+            return f"不支持的文件类型：{ext}"
+
+        safe_name = Path(filename).name
+        if not safe_name or safe_name.startswith("."):
+            return "文件名不合法"
+
+        conversation_dir = Path(root_path) / str(conversation_id)
+        uploads_dir = conversation_dir / "uploads"
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+
+        target_path = uploads_dir / safe_name
+        if target_path.exists():
+            stem = target_path.stem
+            suffix = target_path.suffix
+            counter = 1
+            while target_path.exists():
+                target_path = uploads_dir / f"{stem}_{counter}{suffix}"
+                counter += 1
+
+        try:
+            target_path.resolve().relative_to(uploads_dir.resolve())
+        except ValueError:
+            return "文件路径不合法"
+
+        target_path.write_bytes(file_bytes)
+
+        virtual_path = "/uploads/" + target_path.name
+
+        return ResourceUploadResult(
+            name=target_path.name,
+            path=virtual_path,
+            size=len(file_bytes),
+        )
+
+    @staticmethod
+    def delete_upload_file(
+        root_path: str, conversation_id: int, virtual_path: str
+    ) -> bool:
+        if not virtual_path.startswith("/uploads/"):
+            return False
+
+        conversation_dir = Path(root_path) / str(conversation_id)
+        resolved = _resolve_safe_path(conversation_dir, virtual_path)
+        if resolved is None or not resolved.is_file():
+            return False
+
+        try:
+            resolved.resolve().relative_to(
+                (conversation_dir / "uploads").resolve()
+            )
+        except ValueError:
+            return False
+
+        resolved.unlink()
+        logger.info("已删除上传文件: %s", virtual_path)
+        return True

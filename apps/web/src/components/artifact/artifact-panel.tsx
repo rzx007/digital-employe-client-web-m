@@ -52,6 +52,7 @@ const renderers: Record<string, React.ComponentType<{ artifact: Artifact; classN
 
 const EMPTY_RESOURCE_LIST: ResourceList = {
   artifacts: [],
+  uploads: [],
   skills_draft: [],
 }
 
@@ -242,18 +243,22 @@ export const ArtifactPanel = ({
     () => filterEntries(resources.skills_draft, searchQuery),
     [resources.skills_draft, searchQuery]
   )
+  const filteredUploads = React.useMemo(
+    () => filterEntries(resources.uploads, searchQuery),
+    [resources.uploads, searchQuery]
+  )
   const totalFiles = React.useMemo(
-    () => countFiles(resources.artifacts) + countFiles(resources.skills_draft),
-    [resources.artifacts, resources.skills_draft]
+    () => countFiles(resources.artifacts) + countFiles(resources.uploads) + countFiles(resources.skills_draft),
+    [resources.artifacts, resources.uploads, resources.skills_draft]
   )
   const filteredFiles = React.useMemo(
-    () => countFiles(filteredArtifacts) + countFiles(filteredSkillsDraft),
-    [filteredArtifacts, filteredSkillsDraft]
+    () => countFiles(filteredArtifacts) + countFiles(filteredUploads) + countFiles(filteredSkillsDraft),
+    [filteredArtifacts, filteredUploads, filteredSkillsDraft]
   )
   const hasResources = totalFiles > 0
   const hasSearchQuery = searchQuery.trim().length > 0
   const hasFilteredResources =
-    hasEntries(filteredArtifacts) || hasEntries(filteredSkillsDraft)
+    hasEntries(filteredArtifacts) || hasEntries(filteredUploads) || hasEntries(filteredSkillsDraft)
 
   React.useEffect(() => {
     if (!hasSearchQuery) return
@@ -263,18 +268,22 @@ export const ArtifactPanel = ({
       if (filteredArtifacts.length > 0) {
         next.add("/artifacts")
       }
+      if (filteredUploads.length > 0) {
+        next.add("/uploads")
+      }
       if (filteredSkillsDraft.length > 0) {
         next.add("/skills-draft")
       }
       for (const path of collectDirectoryPaths([
         ...filteredArtifacts,
+        ...filteredUploads,
         ...filteredSkillsDraft,
       ])) {
         next.add(path)
       }
       return next
     })
-  }, [filteredArtifacts, filteredSkillsDraft, hasSearchQuery])
+  }, [filteredArtifacts, filteredUploads, filteredSkillsDraft, hasSearchQuery])
 
   const selectedEntry = React.useMemo(() => {
     if (!selectedPath || !resourceList) return null
@@ -288,7 +297,7 @@ export const ArtifactPanel = ({
       }
       return null
     }
-    return find([...resourceList.artifacts, ...resourceList.skills_draft])
+    return find([...resourceList.artifacts, ...resourceList.uploads, ...resourceList.skills_draft])
   }, [selectedPath, resourceList])
 
   const selectedFilePath =
@@ -442,6 +451,11 @@ export const ArtifactPanel = ({
                     {filteredArtifacts.length > 0 && (
                       <FileTreeFolder path="/artifacts" name="artifacts">
                         {filteredArtifacts.map(renderEntry)}
+                      </FileTreeFolder>
+                    )}
+                    {filteredUploads.length > 0 && (
+                      <FileTreeFolder path="/uploads" name="uploads">
+                        {filteredUploads.map(renderEntry)}
                       </FileTreeFolder>
                     )}
                     {filteredSkillsDraft.length > 0 && (
