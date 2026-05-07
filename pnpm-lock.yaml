@@ -86,6 +86,9 @@ importers:
       electron-updater:
         specifier: ^6.8.3
         version: 6.8.3
+      hucre:
+        specifier: ^0.4.0
+        version: 0.4.0
       jsbn:
         specifier: ^1.1.0
         version: 1.1.0
@@ -4488,6 +4491,10 @@ packages:
   https-proxy-agent@7.0.6:
     resolution: {integrity: sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==}
     engines: {node: '>= 14'}
+
+  hucre@0.4.0:
+    resolution: {integrity: sha512-O5J0VR5COwAlRMLRitQH6SW7oy5S3UsEKnT9htLisGBwcKkKrLffhsknFz9Zrgndv8qWHLn7Kj7hxbtM45ECFA==}
+    hasBin: true
 
   human-signals@2.1.0:
     resolution: {integrity: sha512-B4FFZ6q/T2jhhksgkbEW3HBvWIfDW85snkQgawt07S7J5QXTk6BkNV+0yAeZrM5QpMAdYlocGoljn0sJ/WQkFw==}
@@ -11348,6 +11355,8 @@ snapshots:
       debug: 4.4.3
     transitivePeerDependencies:
       - supports-color
+
+  hucre@0.4.0: {}
 
   human-signals@2.1.0: {}
 
