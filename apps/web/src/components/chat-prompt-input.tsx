@@ -53,6 +53,9 @@ function ChatPromptInputAttachments({
   onAttachmentsChange: (paths: string[]) => void
 }) {
   const attachments = usePromptInputAttachments()
+  // useEffect(() => {
+  //   console.log(111, attachments.files)
+  // }, [attachments.files])
   const [fileStates, setFileStates] = useState<
     Record<string, UploadFileState>
   >({})
@@ -334,7 +337,7 @@ export function ChatPromptInput({
             <PromptInputActionMenu>
               <PromptInputActionMenuTrigger />
               <PromptInputActionMenuContent>
-                <PromptInputActionAddAttachments />
+                <PromptInputActionAddAttachments className="w-72" label="上传文件或图片" />
               </PromptInputActionMenuContent>
             </PromptInputActionMenu>
             <Separator orientation="vertical" className="h-3 mt-2 mr-3" />

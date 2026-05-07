@@ -106,7 +106,7 @@ export function DraftChatView({
     if (conversationId) {
       try {
         await cancelConversationStream(conversationId)
-      } catch {}
+      } catch { }
     }
   }, [createConversationMutation, stop])
 
@@ -130,6 +130,9 @@ export function DraftChatView({
       try {
         let conversationId = useChatStore.getState().selectedConversationId
 
+        /**
+         * 如果当前没有会话，则创建一个新会话
+         */
         if (!conversationId) {
           const createdConversation =
             await createConversationMutation.mutateAsync({
@@ -257,7 +260,7 @@ export function DraftChatView({
       onPendingMoveUp={pendingMoveUp}
       onPendingMoveDown={pendingMoveDown}
       conversationId={selectedConversationId}
-      onAttachmentsChange={() => {}}
+      onAttachmentsChange={() => { }}
       className={className}
       {...props}
     />

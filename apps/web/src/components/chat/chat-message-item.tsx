@@ -109,7 +109,7 @@ export function RenderClassifiedBlocks({
         }
         return (
           <div
-            className="flex w-full items-center space-x-2"
+            className="flex w-full items-start space-x-2"
             key={block.key}
           >
             <MessageMetaBadges
