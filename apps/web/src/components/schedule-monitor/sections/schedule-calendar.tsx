@@ -9,6 +9,58 @@ import {
 } from "@workspace/ui/components/hover-card"
 import type { MonthlyOverview, ScheduleDay } from "@/types/schedule-monitor"
 
+const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"]
+
+function formatHoverDateLabel(dateStr: string): string {
+  const parts = dateStr.split("-").map(Number)
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) {
+    return dateStr
+  }
+  const [year, month, day] = parts
+  const d = new Date(year, month - 1, day)
+  const w = WEEKDAY_LABELS[(d.getDay() + 6) % 7]
+  return `${month}月${day}日 周${w}`
+}
+
+function countDayTasks(dayData: ScheduleDay): number {
+  return dayData.employees.reduce((sum, emp) => sum + emp.tasks.length, 0)
+}
+
+function ScheduleDayHoverContent({
+  dateStr,
+  dayData,
+}: {
+  dateStr: string
+  dayData: ScheduleDay
+}) {
+  const totalTasks = countDayTasks(dayData)
+  return (
+    <div className="flex flex-col gap-0">
+      <p className="text-[11px] font-medium leading-snug text-foreground">
+        {formatHoverDateLabel(dateStr)}
+      </p>
+      <p className="mt-0.5 text-[10px] text-muted-foreground">
+        {totalTasks} 个任务 · {dayData.employees.length} 人
+      </p>
+      <ul className="mt-1.5 max-h-32 space-y-1 overflow-y-auto border-t border-border/50 pt-1.5">
+        {dayData.employees.map((emp) => (
+          <li
+            key={emp.employee_id}
+            className="flex items-center justify-between gap-2 text-[10px]"
+          >
+            <span className="min-w-0 truncate font-medium text-foreground">
+              {emp.employee_name}
+            </span>
+            <span className="shrink-0 rounded-md bg-muted px-1.5 py-px tabular-nums text-muted-foreground">
+              {emp.tasks.length}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function getLevel(dayData: ScheduleDay): 0 | 1 | 2 | 3 {
   const totalTasks = dayData.employees.reduce(
     (sum, emp) => sum + emp.tasks.length,
@@ -18,18 +70,6 @@ function getLevel(dayData: ScheduleDay): 0 | 1 | 2 | 3 {
   if (totalTasks <= 5) return 1
   if (totalTasks <= 8) return 2
   return 3
-}
-
-function getDaySummary(dayData: ScheduleDay): string {
-  const employeeNames = dayData.employees.map((e) => e.employee_name)
-  const uniqueNames = [...new Set(employeeNames)]
-  const totalTasks = dayData.employees.reduce(
-    (sum, emp) => sum + emp.tasks.length,
-    0
-  )
-  const employeePart =
-    uniqueNames.length > 0 ? uniqueNames.join(", ") : "无排班"
-  return `${totalTasks} 个任务 - ${employeePart}`
 }
 
 const LEVEL_COLORS: Record<number, string> = {
@@ -55,8 +95,6 @@ function getCalendarGrid(year: number, month: number) {
 function formatDateStr(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
 }
-
-const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"]
 
 export function ScheduleCalendar({
   overview,
@@ -185,6 +223,8 @@ export function ScheduleCalendar({
           }
 
           if (hasSchedule && dayData) {
+            const totalTasks = countDayTasks(dayData)
+            const hoverTitle = `${formatHoverDateLabel(dateStr)} · ${totalTasks} 个任务 · ${dayData.employees.length} 人`
             return (
               <HoverCard
                 key={dateStr}
@@ -192,14 +232,17 @@ export function ScheduleCalendar({
                 closeDelay={80}
               >
                 <HoverCardTrigger asChild>
-                  <button {...buttonProps} />
+                  <button {...buttonProps} title={hoverTitle} />
                 </HoverCardTrigger>
                 <HoverCardContent
                   side="top"
                   align="center"
-                  className="w-auto max-w-xs text-[10px]"
+                  className="w-[min(100vw-1.5rem,260px)] max-w-xs p-2.5"
                 >
-                  {`${dateStr}: ${getDaySummary(dayData)}`}
+                  <ScheduleDayHoverContent
+                    dateStr={dateStr}
+                    dayData={dayData}
+                  />
                 </HoverCardContent>
               </HoverCard>
             )
