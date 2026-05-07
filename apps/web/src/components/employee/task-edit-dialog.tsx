@@ -1,7 +1,6 @@
 import * as React from "react"
 
 import { IconCheck, IconChevronDown, IconTool } from "@tabler/icons-react"
-import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
   Command,
@@ -46,18 +45,18 @@ import {
   TabsList,
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
-import { Textarea } from "@workspace/ui/components/textarea"
+import {
+  WheelPicker,
+  WheelPickerWrapper,
+  type WheelPickerOption,
+} from "@workspace/ui/components/wheel-picker"
 import type { MetadataMcp, MetadataSkill } from "@/api/types"
 import { cn } from "@workspace/ui/lib/utils"
 import {
   executeTimeToCronExpression,
   parseCronToExecuteTime,
 } from "@/lib/cron-utils"
-import type {
-  CronExpressionType,
-  TaskFormData,
-  TaskResourceType,
-} from "@/types/task"
+import type { CronExpressionType, TaskFormData } from "@/types/task"
 
 const SCHEDULE_TYPE_OPTIONS: { value: CronExpressionType; label: string }[] = [
   { value: "daily", label: "每天" },
@@ -77,6 +76,30 @@ const LOOP_INTERVAL_OPTIONS = [
   { value: "6小时", label: "6小时" },
   { value: "12小时", label: "12小时" },
 ]
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0")
+}
+
+function splitExecuteTime(executeTime: string | null | undefined): {
+  hour: string
+  minute: string
+} {
+  const matched = executeTime?.match(/^(\d{1,2}):(\d{1,2})$/)
+  if (!matched) {
+    return { hour: "00", minute: "00" }
+  }
+
+  const hour = Math.min(23, Math.max(0, Number(matched[1])))
+  const minute = Math.min(59, Math.max(0, Number(matched[2])))
+  return { hour: pad2(hour), minute: pad2(minute) }
+}
+
+function buildExecuteTime(hour: string, minute: string): string {
+  const hourNum = Math.min(23, Math.max(0, Number(hour)))
+  const minuteNum = Math.min(59, Math.max(0, Number(minute)))
+  return `${pad2(hourNum)}:${pad2(minuteNum)}`
+}
 
 function createEmptyTask(): TaskFormData {
   return {
@@ -130,6 +153,7 @@ export function TaskEditDialog({
 }: TaskEditDialogProps) {
   const [formData, setFormData] = React.useState<TaskFormData>(createEmptyTask)
   const [capabilityOpen, setCapabilityOpen] = React.useState(false)
+  const [timePickerOpen, setTimePickerOpen] = React.useState(false)
   const [pickerTab, setPickerTab] = React.useState<"mcp" | "skill">("mcp")
   const [advancedOpen, setAdvancedOpen] = React.useState(false)
 
@@ -161,6 +185,26 @@ export function TaskEditDialog({
         : null,
     [formData.task_resource_type, formData.skill_id, filteredSkills]
   )
+  const timeValue = React.useMemo(
+    () => splitExecuteTime(formData.executeTime),
+    [formData.executeTime]
+  )
+  const hourOptions = React.useMemo<WheelPickerOption[]>(
+    () =>
+      Array.from({ length: 24 }, (_, idx) => {
+        const value = pad2(idx)
+        return { label: value, value }
+      }),
+    []
+  )
+  const minuteOptions = React.useMemo<WheelPickerOption[]>(
+    () =>
+      Array.from({ length: 60 }, (_, idx) => {
+        const value = pad2(idx)
+        return { label: value, value }
+      }),
+    []
+  )
 
   const dialogTitle = taskIndex !== null ? "编辑任务" : "新增任务"
 
@@ -170,6 +214,7 @@ export function TaskEditDialog({
       setFormData(initial)
       setPickerTab(initial.task_resource_type === "skill" ? "skill" : "mcp")
       setCapabilityOpen(false)
+      setTimePickerOpen(false)
       setAdvancedOpen(false)
     }
   }, [open, task])
@@ -461,12 +506,45 @@ export function TaskEditDialog({
                 </SelectContent>
               </Select>
             ) : (
-              <Input
-                type="time"
-                value={formData.executeTime}
-                onChange={(e) => updateField("executeTime", e.target.value)}
-                placeholder="请选择执行时间"
-              />
+              <Popover open={timePickerOpen} onOpenChange={setTimePickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-between font-normal"
+                  >
+                    <span>{formData.executeTime || "请选择执行时间"}</span>
+                    <IconChevronDown className="size-4 text-muted-foreground" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  className="w-56 border-none bg-transparent p-0 shadow-none"
+                >
+                  <WheelPickerWrapper>
+                    <WheelPicker
+                      options={hourOptions}
+                      value={timeValue.hour}
+                      onValueChange={(hour) =>
+                        updateField(
+                          "executeTime",
+                          buildExecuteTime(String(hour), timeValue.minute)
+                        )
+                      }
+                    />
+                    <WheelPicker
+                      options={minuteOptions}
+                      value={timeValue.minute}
+                      onValueChange={(minute) =>
+                        updateField(
+                          "executeTime",
+                          buildExecuteTime(timeValue.hour, String(minute))
+                        )
+                      }
+                    />
+                  </WheelPickerWrapper>
+                </PopoverContent>
+              </Popover>
             )}
           </div>
 
