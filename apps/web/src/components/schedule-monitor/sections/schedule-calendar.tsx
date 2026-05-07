@@ -1,7 +1,12 @@
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 import { Button } from "@workspace/ui/components/button"
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@workspace/ui/components/hover-card"
 import type { MonthlyOverview, ScheduleDay } from "@/types/schedule-monitor"
 
 function getLevel(dayData: ScheduleDay): 0 | 1 | 2 | 3 {
@@ -10,8 +15,8 @@ function getLevel(dayData: ScheduleDay): 0 | 1 | 2 | 3 {
     0
   )
   if (totalTasks === 0) return 0
-  if (totalTasks <= 2) return 1
-  if (totalTasks <= 5) return 2
+  if (totalTasks <= 5) return 1
+  if (totalTasks <= 8) return 2
   return 3
 }
 
@@ -29,9 +34,9 @@ function getDaySummary(dayData: ScheduleDay): string {
 
 const LEVEL_COLORS: Record<number, string> = {
   0: "bg-muted-foreground/10 border-muted-foreground/10",
-  1: "bg-emerald-200 border-emerald-300 dark:bg-emerald-900 dark:border-emerald-800",
-  2: "bg-emerald-400 border-emerald-500 dark:bg-emerald-600 dark:border-emerald-500",
-  3: "bg-emerald-600 border-emerald-700 dark:bg-emerald-800 dark:border-emerald-700",
+  1: "bg-emerald-200 border-emerald-300 dark:bg-emerald-900/70 dark:border-emerald-800/70",
+  2: "bg-emerald-400 border-emerald-500 dark:bg-emerald-600/70 dark:border-emerald-500/70",
+  3: "bg-emerald-600 border-emerald-700 dark:bg-emerald-800/70 dark:border-emerald-700/70",
 }
 
 function getCalendarGrid(year: number, month: number) {
@@ -90,12 +95,6 @@ export function ScheduleCalendar({
     "11月",
     "12月",
   ]
-
-  const [tooltipInfo, setTooltipInfo] = useState<{
-    text: string
-    x: number
-    y: number
-  } | null>(null)
 
   const handlePrev = () => {
     let m = overview.month - 1
@@ -159,7 +158,7 @@ export function ScheduleCalendar({
         ))}
       </div>
 
-      <div className="relative grid grid-cols-7 justify-items-center gap-x-1 gap-y-1">
+      <div className="grid grid-cols-7 justify-items-center gap-x-1 gap-y-1">
         {cells.map((day, i) => {
           if (day == null) {
             return <div key={`empty-${i}`} />
@@ -171,61 +170,60 @@ export function ScheduleCalendar({
           const isToday = dateStr === todayStr
           const hasSchedule = dayData && dayData.employees.length > 0
 
-          return (
-            <button
-              key={dateStr}
-              type="button"
-              disabled={!dayData || !hasSchedule}
-              className={cn(
-                "size-4 rounded-sm border transition-colors",
-                LEVEL_COLORS[level],
-                isToday &&
-                "ring-1 ring-ring ring-offset-1 ring-offset-background",
-                dayData && !hasSchedule && "cursor-default opacity-30",
-                hasSchedule && "cursor-pointer hover:opacity-80"
-              )}
-              onMouseEnter={(e) => {
-                if (!dayData || !hasSchedule) return
-                const rect = e.currentTarget.getBoundingClientRect()
-                setTooltipInfo({
-                  text: `${dateStr}: ${getDaySummary(dayData)}`,
-                  x: rect.left + rect.width / 2,
-                  y: rect.top,
-                })
-              }}
-              onMouseLeave={() => setTooltipInfo(null)}
-            >
-              <span className="sr-only">{day}</span>
-            </button>
-          )
-        })}
+          const buttonProps = {
+            type: "button" as const,
+            disabled: !dayData || !hasSchedule,
+            className: cn(
+              "size-4 rounded-sm border transition-colors",
+              LEVEL_COLORS[level],
+              isToday &&
+              "ring-1 ring-ring ring-offset-1 ring-offset-background",
+              dayData && !hasSchedule && "cursor-default opacity-30",
+              hasSchedule && "cursor-pointer hover:opacity-80"
+            ),
+            children: <span className="sr-only">{day}</span>,
+          }
 
-        {tooltipInfo && (
-          <div
-            className="pointer-events-none absolute -top-8 z-50 -translate-x-1/2 rounded bg-popover px-2 py-1 text-[10px] text-popover-foreground shadow-md"
-            style={{ left: tooltipInfo.x, top: tooltipInfo.y - 8 }}
-          >
-            {tooltipInfo.text}
-            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-popover" />
-          </div>
-        )}
+          if (hasSchedule && dayData) {
+            return (
+              <HoverCard
+                key={dateStr}
+                openDelay={120}
+                closeDelay={80}
+              >
+                <HoverCardTrigger asChild>
+                  <button {...buttonProps} />
+                </HoverCardTrigger>
+                <HoverCardContent
+                  side="top"
+                  align="center"
+                  className="w-auto max-w-xs text-[10px]"
+                >
+                  {`${dateStr}: ${getDaySummary(dayData)}`}
+                </HoverCardContent>
+              </HoverCard>
+            )
+          }
+
+          return <button key={dateStr} {...buttonProps} />
+        })}
       </div>
 
       <div className="mt-2 flex items-center justify-end gap-3">
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-muted-foreground/10" />
+          <span className="size-2.5 rounded-sm bg-muted-foreground/8" />
           <span className="text-[10px] text-muted-foreground">无</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-emerald-200 dark:bg-emerald-900" />
+          <span className="size-2.5 rounded-sm bg-emerald-50 dark:bg-emerald-950/40" />
           <span className="text-[10px] text-muted-foreground">少</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-emerald-400 dark:bg-emerald-600" />
+          <span className="size-2.5 rounded-sm bg-emerald-100 dark:bg-emerald-900/35" />
           <span className="text-[10px] text-muted-foreground">中</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-emerald-600 dark:bg-emerald-800" />
+          <span className="size-2.5 rounded-sm bg-emerald-200 dark:bg-emerald-800/45" />
           <span className="text-[10px] text-muted-foreground">多</span>
         </div>
       </div>
