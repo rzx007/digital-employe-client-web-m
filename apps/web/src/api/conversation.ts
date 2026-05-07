@@ -139,3 +139,43 @@ export async function uploadConversationFile(
     }
   )
 }
+
+export async function downloadResource(
+  conversationId: number | string,
+  path: string
+) {
+  const res = await request.raw(
+    `/chat/conversations/${conversationId}/resources/download`,
+    { params: { path }, responseType: "blob" }
+  )
+  const raw = res._data
+  if (raw == null) {
+    throw new Error("下载失败：响应体为空")
+  }
+  const blob = raw instanceof Blob ? raw : new Blob([raw])
+
+  const disposition = res.headers.get("content-disposition")
+  const filename =
+    disposition?.match(/filename="(.+?)"/)?.[1] ??
+    path.replace(/\/$/, "").split("/").pop() ??
+    "download"
+
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = filename
+  document.body.append(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+export async function deleteResource(
+  conversationId: number | string,
+  path: string
+) {
+  return request<ApiResponse<null>>(
+    `/chat/conversations/${conversationId}/resources?path=${encodeURIComponent(path)}`,
+    { method: "DELETE" }
+  )
+}

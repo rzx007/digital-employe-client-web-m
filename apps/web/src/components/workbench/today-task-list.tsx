@@ -71,7 +71,9 @@ export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
                 <span className="truncate text-xs font-medium">{task.task_name}</span>
-                <span className="shrink-0 text-[10px] text-muted-foreground">{task.employee_name}</span>
+                <span className="shrink-0 rounded bg-muted/70 px-1 py-px text-[10px] font-semibold text-foreground">
+                  {task.employee_name}
+                </span>
               </div>
               <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
                 <span className="flex items-center gap-0.5">
