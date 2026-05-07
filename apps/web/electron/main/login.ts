@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron"
+import { BrowserWindow, screen } from "electron"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 
@@ -15,6 +15,26 @@ import path from "node:path"
  */
 
 let loginWin: BrowserWindow | null = null
+
+const LOGIN_WIDTH = 400
+/** 内容偏短时仍可操作的最小内容区高度（勿过大，否则会挤压成「底部大片空白」） */
+const LOGIN_MIN_HEIGHT = 380
+const LOGIN_MAX_HEIGHT_RATIO = 0.92
+
+/**
+ * 按内容调整登录窗口高度（useContentSize 为内容区尺寸）
+ */
+export function resizeLoginWindow(size: { width: number; height: number }): void {
+  if (!loginWin || loginWin.isDestroyed()) return
+  const workH = screen.getPrimaryDisplay().workArea.height
+  const maxH = Math.floor(workH * LOGIN_MAX_HEIGHT_RATIO)
+  const w = Math.max(320, Math.round(size.width))
+  const h = Math.min(
+    maxH,
+    Math.max(LOGIN_MIN_HEIGHT, Math.round(size.height)),
+  )
+  loginWin.setContentSize(w, h)
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -39,8 +59,8 @@ export function createLoginWindow(options: {
   )
 
   loginWin = new BrowserWindow({
-    width: 310,
-    height: 450,
+    width: LOGIN_WIDTH,
+    height: 560,
     title: "数字员工",
     icon: path.join(process.env.APP_ROOT!, "build/icon.ico"),
     frame: false,

@@ -4,7 +4,7 @@ import path from "node:path"
 import { getBackendStatus, getBackendPort, stopBackend } from "./backend"
 import { flashTray, stopFlashTray } from "./tray"
 import { sendNotification, setNotificationsEnabled } from "./notification"
-import { closeLoginWindow, createLoginWindow } from "./login"
+import { closeLoginWindow, createLoginWindow, resizeLoginWindow } from "./login"
 import { createRecruitmentWindow, closeRecruitmentWindow } from "./recruitment"
 import { createSettingsWindow, closeSettingsWindow } from "./settings"
 import { VITE_DEV_SERVER_URL, indexHtml } from "./index"
@@ -162,6 +162,14 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
     closeLoginWindow()
     _onLoginSuccess?.()
   })
+
+  /** 按登录页内容自适应登录窗口尺寸（frameless + useContentSize） */
+  ipcMain.handle(
+    "resize-login-window",
+    (_event, size: { width: number; height: number }) => {
+      resizeLoginWindow(size)
+    },
+  )
 
   // ========== 认证管理 ==========
 

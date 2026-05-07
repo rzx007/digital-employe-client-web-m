@@ -37,6 +37,10 @@ class PerformanceBalanceService:
         )
 
     @staticmethod
+    def get_username_from_config(db: Session) -> str:
+        return PerformanceBalanceService._get_username_from_config(db)
+
+    @staticmethod
     async def _request_remote_by_path(path: str | None, missing_path_message: str, db: Session) -> Any:
         settings = get_settings()
         username = PerformanceBalanceService._get_username_from_config(db)

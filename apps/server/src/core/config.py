@@ -96,6 +96,8 @@ class Settings:
     login_path: str | None = None
     login_url: str | None = None
     update_user_password_url: str | None = None
+    register_url: str | None = None
+    get_dept_tree_url: str | None = None
     performance_monthly_balance_path: str | None = None
     performance_dispatch_orders_path: str | None = None
     execute_timeout: int = 600
@@ -194,6 +196,10 @@ def get_settings() -> Settings:
     )
     login_path = _get_kv_value(kv_data, "LOGIN_PATH") or "/yc/login"
     update_user_password_path = _get_kv_value(kv_data, "UPDATE_USER_PASSWORD_PATH") or "/yc/updatePassword"
+    register_path = _get_kv_value(kv_data, "REGISTER_PATH") or "/yc/register"
+    get_dept_tree_path = (
+        _get_kv_value(kv_data, "GET_DEPT_TREE_PATH") or "/yc/getDeptTree"
+    )
     performance_monthly_balance_path = (
         _get_kv_value(kv_data, "PERFORMANCE_MONTHLY_BALANCE_PATH")
         or "/api/v1/performance/monthly-balance"
@@ -293,7 +299,13 @@ def get_settings() -> Settings:
         skill_name_validate_path=skill_name_validate_path,
         client_skill_import_max_bytes=client_skill_import_max_bytes,
         login_url=join_base_and_path(platform_base_url, login_path),
-        update_user_password_url=join_base_and_path(platform_base_url, update_user_password_path),
+        update_user_password_url=join_base_and_path(
+            platform_base_url, update_user_password_path
+        ),
+        register_url=join_base_and_path(platform_base_url, register_path),
+        get_dept_tree_url=join_base_and_path(
+            platform_base_url, get_dept_tree_path
+        ),
         performance_monthly_balance_path=performance_monthly_balance_path,
         performance_dispatch_orders_path=performance_dispatch_orders_path,
         feishu_app_id=_get_kv_value(kv_data, "FEISHU_APP_ID"),

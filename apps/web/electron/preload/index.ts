@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld("electronApi", {
 
   // auth
   loginSuccess: () => ipcRenderer.invoke("login-success"),
+  resizeLoginWindow: (size: { width: number; height: number }) =>
+    ipcRenderer.invoke("resize-login-window", size),
   saveAuth: (
     token: string,
     user: Record<string, unknown>,

@@ -3,7 +3,6 @@ import {
   IconLoader2,
   IconShieldCheck,
   IconShieldQuestion,
-  IconCircleX,
   IconShieldX,
 } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
@@ -18,10 +17,13 @@ import {
   SelectValue,
 } from "@workspace/ui/components/select"
 import { useEndpointStore } from "@/stores/endpoint-store"
+import { toast } from "sonner"
 
 interface EndpointConfigProps {
   onCancel: () => void
   onSaved: () => void
+  /** 验证成功并已写入 KV 后回调（同步业务 API baseURL、刷新注册部门树等） */
+  onKvPersisted?: () => void
   isElectron?: boolean
 }
 
@@ -30,6 +32,7 @@ type ValidateStatus = "idle" | "loading" | "success" | "error"
 export function EndpointConfig({
   onCancel,
   onSaved,
+  onKvPersisted,
   isElectron = false,
 }: EndpointConfigProps) {
   const {
@@ -55,10 +58,21 @@ export function EndpointConfig({
     e.preventDefault()
     setStatus("loading")
     const ok = await validateEndpoint()
-    if (ok) {
-      setStatus("success")
-    } else {
+    if (!ok) {
       setStatus("error")
+      setTimeout(() => setStatus("idle"), 2000)
+      return
+    }
+    try {
+      await saveEndpoint()
+      setStatus("success")
+      toast.success("通讯地址验证成功，配置已保存")
+      onKvPersisted?.()
+    } catch (err) {
+      setStatus("error")
+      toast.error(
+        err instanceof Error ? err.message : "保存通讯配置失败，请重试",
+      )
       setTimeout(() => setStatus("idle"), 2000)
     }
   }
