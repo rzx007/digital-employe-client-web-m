@@ -96,6 +96,8 @@ class Settings:
     login_path: str | None = None
     login_url: str | None = None
     update_user_password_url: str | None = None
+    performance_monthly_balance_path: str | None = None
+    performance_dispatch_orders_path: str | None = None
     execute_timeout: int = 600
     feishu_app_id: str | None = None
     feishu_app_secret: str | None = None
@@ -192,6 +194,14 @@ def get_settings() -> Settings:
     )
     login_path = _get_kv_value(kv_data, "LOGIN_PATH") or "/yc/login"
     update_user_password_path = _get_kv_value(kv_data, "UPDATE_USER_PASSWORD_PATH") or "/yc/updatePassword"
+    performance_monthly_balance_path = (
+        _get_kv_value(kv_data, "PERFORMANCE_MONTHLY_BALANCE_PATH")
+        or "/api/v1/performance/monthly-balance"
+    )
+    performance_dispatch_orders_path = (
+        _get_kv_value(kv_data, "PERFORMANCE_DISPATCH_ORDERS_PATH")
+        or "/api/v1/performance/dispatch-orders"
+    )
     sqlite_path = get_default_sqlite_path()
     skill_path = get_default_skill_path()
     builtin_skills_path = (
@@ -284,6 +294,8 @@ def get_settings() -> Settings:
         client_skill_import_max_bytes=client_skill_import_max_bytes,
         login_url=join_base_and_path(platform_base_url, login_path),
         update_user_password_url=join_base_and_path(platform_base_url, update_user_password_path),
+        performance_monthly_balance_path=performance_monthly_balance_path,
+        performance_dispatch_orders_path=performance_dispatch_orders_path,
         feishu_app_id=_get_kv_value(kv_data, "FEISHU_APP_ID"),
         feishu_app_secret=_get_kv_value(kv_data, "FEISHU_APP_SECRET"),
         feishu_redirect_uri=_get_kv_value(kv_data, "FEISHU_REDIRECT_URI"),
