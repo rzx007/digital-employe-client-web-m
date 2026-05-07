@@ -68,6 +68,16 @@ if (!app.requestSingleInstanceLock()) {
   process.exit(0)
 }
 
+/** F12 切换当前窗口开发者工具（主窗口、登录窗、招聘窗等） */
+app.on("browser-window-created", (_event, browserWindow) => {
+  browserWindow.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown" || input.key !== "F12") return
+    if (input.control || input.meta || input.alt) return
+    event.preventDefault()
+    browserWindow.webContents.toggleDevTools()
+  })
+})
+
 // ========== 窗口管理 ==========
 
 let win: BrowserWindow | null = null

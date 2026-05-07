@@ -3,7 +3,7 @@ import { request } from "@/lib/request"
 
 /**
  * Fetch skill details by skill name from local directory
- * Path: GET /actus/local_employees/skills?employee_id=xxx&employee_name=xxx&skill_name=xxx
+ * Path: GET /local_employees/skills?…（开发环境由 request 拼到 /actus 代理）
  */
 export async function fetchSkillDetails(
   employeeId: number | string,
@@ -17,7 +17,7 @@ export async function fetchSkillDetails(
     params.append("skill_name", skillName)
 
     const res = await request<ApiResponse<MetadataSkill>>(
-      `/actus/local_employees/skills?${params.toString()}`
+      `/local_employees/skills?${params.toString()}`
     )
     return res.data
   } catch (e) {
@@ -28,7 +28,7 @@ export async function fetchSkillDetails(
 
 /**
  * Fetch all skills for an employee from local directory
- * Path: GET /actus/local_employees/skills?employee_id=xxx&employee_name=xxx
+ * Path: GET /local_employees/skills?…
  */
 export async function fetchEmployeeSkillsFromLocal(
   employeeId: number | string,
@@ -40,7 +40,7 @@ export async function fetchEmployeeSkillsFromLocal(
     if (employeeName) params.append("employee_name", employeeName)
 
     const res = await request<ApiResponse<MetadataSkill[]>>(
-      `/actus/local_employees/skills?${params.toString()}`
+      `/local_employees/skills?${params.toString()}`
     )
     return res.data
   } catch (e) {

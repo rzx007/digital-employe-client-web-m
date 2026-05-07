@@ -58,6 +58,10 @@ declare global {
         silent?: boolean
       ) => Promise<void>
       loginSuccess: () => Promise<void>
+      resizeLoginWindow: (size: {
+        width: number
+        height: number
+      }) => Promise<void>
       saveAuth: (
         token: string,
         user: Record<string, unknown>,
