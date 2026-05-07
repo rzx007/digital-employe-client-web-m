@@ -14,24 +14,24 @@ router = APIRouter(tags=["绩效管理"])
 
 @router.get(
     "/performance/monthly-balance",
-    response_model=ResponseBase[Any],
+    response_model=dict[str, Any],
     summary="远程月度结算查询",
 )
 async def get_monthly_balance(
     db: Session = Depends(get_db),
-) -> ResponseBase[Any]:
+):
     data = await PerformanceBalanceService.get_remote_monthly_balance(db)
-    return ResponseBase(data=data)
+    return data
 
 
 @router.get(
     "/performance/dispatch-orders",
-    response_model=ResponseBase[Any],
+    response_model=dict[str, Any],
     summary="远程绩效派单查询",
 )
 async def get_dispatch_orders(
     db: Session = Depends(get_db),
-) -> ResponseBase[Any]:
+):
     data = await PerformanceBalanceService.get_remote_dispatch_orders(db)
-    return ResponseBase(data=data)
+    return data
 

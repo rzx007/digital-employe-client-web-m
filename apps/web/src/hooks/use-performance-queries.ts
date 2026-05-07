@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query"
-import { fetchCurrentMonthPerformance } from "@/api/performance"
+import { fetchMonthlyBalance } from "@/api/performance"
 
 export function useCurrentMonthPerformance() {
   return useQuery({
-    queryKey: ["performance", "current-month"],
+    queryKey: ["performance", "monthly-balance"],
     queryFn: async () => {
-      const res = await fetchCurrentMonthPerformance()
-      return res.data?.[0] ?? null
+      const res = await fetchMonthlyBalance()
+      return res.data ?? null
     },
     staleTime: 5 * 60_000,
   })
