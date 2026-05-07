@@ -1,3 +1,6 @@
 data
 docs
+local-employees
+logs
 src
+tmp

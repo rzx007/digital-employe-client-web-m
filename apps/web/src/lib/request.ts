@@ -14,36 +14,92 @@ const fallbackBaseURL = isElectron
     ? "/actus"
     : server_url
 
-let currentBaseURL = fallbackBaseURL
+/**
+ * KV 中的通讯（远端）地址，供 apps/server 转发；渲染进程发 HTTP 时不得以此作为 base。
+ */
+let cachedRemoteApiBaseUrl: string | null = null
 
-async function loadEndpointBaseURL(): Promise<string> {
-  if (typeof window === "undefined") return fallbackBaseURL
+/** 解析出 pathname + search，便于归一化；绝对 URL 字符串也会归一成路径 */
+function normalizeRequestPathLike(request: unknown): string {
+  if (typeof request === "string") {
+    if (request.startsWith("http://") || request.startsWith("https://")) {
+      try {
+        const u = new URL(request)
+        return `${u.pathname}${u.search}`
+      } catch {
+        return request
+      }
+    }
+    return request
+  }
+  if (typeof URL !== "undefined" && request instanceof URL)
+    return `${request.pathname}${request.search}`
+  if (typeof Request !== "undefined" && request instanceof Request) {
+    try {
+      const u = new URL(request.url)
+      return `${u.pathname}${u.search}`
+    } catch {
+      return ""
+    }
+  }
+  return ""
+}
+
+/**
+ * 相对 base（如 dev 的 `/actus`）下，不能以 `/foo` 作为 path，否则 URL 合并会丢掉 `/actus`
+ *（最终命中 Vite 根路径而非代理）。应使用 base `/actus/` + path `foo...`。
+ */
+function mergeBaseAndPath(
+  baseRaw: string,
+  pathLike: string,
+): { baseURL: string; path: string } {
+  if (/^https?:\/\//i.test(baseRaw)) {
+    return { baseURL: baseRaw, path: pathLike }
+  }
+  if (baseRaw.startsWith("/")) {
+    const baseURL = baseRaw.endsWith("/") ? baseRaw : `${baseRaw}/`
+    const rest = pathLike.startsWith("/") ? pathLike.slice(1) : pathLike
+    return { baseURL, path: rest }
+  }
+  return { baseURL: baseRaw, path: pathLike }
+}
+
+async function loadRemoteApiBaseFromKv(): Promise<void> {
+  if (typeof window === "undefined") return
   try {
+    const kvMerge = mergeBaseAndPath(
+      fallbackBaseURL,
+      "/config-kvs/REMOTE_API_BASE_URL",
+    )
     const res = await ofetch<{
       data?: { config_value?: string }
-    }>("/config-kvs/REMOTE_API_BASE_URL", {
-      baseURL: fallbackBaseURL,
+    }>(kvMerge.path, {
+      baseURL: kvMerge.baseURL,
       headers: { ...defaultHeaders },
       timeout: 10000,
       retry: 1,
       retryDelay: 2000,
     })
-    const endpoint = res?.data?.config_value
+    const endpoint = res?.data?.config_value?.trim()
     if (endpoint) {
-      currentBaseURL = endpoint
-      return endpoint
+      cachedRemoteApiBaseUrl = endpoint
     }
   } catch {
     // ignore
   }
-  return fallbackBaseURL
+}
+
+/** 配置里的远端通讯地址（若有）；业务请求仍应走本地网关 */
+export function getCachedRemoteApiBaseUrl(): string | null {
+  return cachedRemoteApiBaseUrl
 }
 
 export function getRequestBaseUrl() {
+  const base = fallbackBaseURL
   if (typeof window === "undefined") {
-    return currentBaseURL || "http://localhost"
+    return /^https?:\/\//i.test(base) ? base : "http://localhost"
   }
-  return new URL(currentBaseURL || "/", window.location.origin).toString()
+  return new URL(base || "/", window.location.origin).toString()
 }
 
 export function getAuthToken() {
@@ -69,17 +125,19 @@ export function getRequestHeaders(customHeaders?: HeadersInit) {
   return nextHeaders
 }
 
-export function updateRequestBaseUrl(url: string) {
-  currentBaseURL = url
-}
-
 export const request = ofetch.create({
-  baseURL: currentBaseURL,
+  baseURL: fallbackBaseURL,
   headers: { ...defaultHeaders },
   timeout: 30000,
   retry: 2,
   retryDelay: 1000,
   async onRequest(ctx) {
+    const pathLike = normalizeRequestPathLike(ctx.request)
+    const merged = mergeBaseAndPath(fallbackBaseURL, pathLike)
+    ctx.options.baseURL = merged.baseURL
+    if (typeof ctx.request === "string") {
+      ctx.request = merged.path
+    }
     const headers = new Headers(ctx.options?.headers)
     const token = getAuthToken()
     if (token) {
@@ -118,8 +176,20 @@ export const request = ofetch.create({
   },
 })
 
+/**
+ * 同步 KV 中的远端通讯地址到内存（不写浏览器请求的 base）。
+ * 登录页保存通讯配置后调用，便于其它模块读取。
+ */
+export function updateRequestBaseUrl(url: string) {
+  const t = url.trim()
+  cachedRemoteApiBaseUrl = t || null
+}
+
+/** 本地 Python 后端 base（开发为 `/actus` 或打包同源端口） */
+export function getServerBaseUrl(): string {
+  return fallbackBaseURL
+}
+
 if (typeof window !== "undefined") {
-  loadEndpointBaseURL().then((url) => {
-    ;(request as any).options.baseURL = url
-  })
+  void loadRemoteApiBaseFromKv()
 }

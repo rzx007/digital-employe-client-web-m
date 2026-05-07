@@ -261,6 +261,14 @@ export interface LoginUser {
 }
 
 /**
+ * 用户注册接口响应
+ */
+export interface RegisterResponse {
+  code: number
+  msg: string
+}
+
+/**
  * 登录响应（后端实际返回结构）
  *
  * code === 1  : 登录成功，result 为用户数组

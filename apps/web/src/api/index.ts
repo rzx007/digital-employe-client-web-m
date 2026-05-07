@@ -31,4 +31,7 @@ export {
 } from "./conversation"
 
 // 认证
-export { loginApi } from "./auth"
+export { loginApi, registerApi } from "./auth"
+
+// 部门（注册等）
+export { getDeptTree, type DeptTreeNode } from "./dept"

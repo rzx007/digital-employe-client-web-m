@@ -175,7 +175,7 @@ ${ctx}
     const res = await request<{
       code: number
       data: { response: string }
-    }>(`/actus/workspaces/${WORKSPACE_ID}/chat/send`, {
+    }>(`/workspaces/${WORKSPACE_ID}/chat/send`, {
       method: "POST",
       body: JSON.stringify({
         question: prompt,
