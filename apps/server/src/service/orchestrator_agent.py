@@ -658,6 +658,10 @@ def update_task(task_id: int, task_name: str | None = None, prompt: str | None =
 
     if changed:
         db.commit()
+        if "调度时间" in changed:
+            from src.service.task_scheduler_service import TaskSchedulerService
+
+            TaskSchedulerService.reload_jobs()
         return f"任务 #{task_id} ({task.task_name}) 已更新：{'、'.join(changed)}。"
     return "未做任何修改。"
 
@@ -672,6 +676,9 @@ def delete_task(task_id: int) -> str:
 
     db.delete(task)
     db.commit()
+    from src.service.task_scheduler_service import TaskSchedulerService
+
+    TaskSchedulerService.reload_jobs()
     return f"任务 #{task_id} ({task.task_name}) 已删除。"
 
 
