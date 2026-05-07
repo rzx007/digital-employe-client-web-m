@@ -39,6 +39,7 @@
 │  │   stream_state: "streaming" | "completed" | ...       │    │
 │  │   stream_cursor: int  ← 最新 flush 到的 event seq      │    │
 │  │   chunk_json: str     ← [data, data, ...] 渐进更新     │    │
+│  │   stream_chunks: str  ← [{seq,data},...] 含真实seq     │    │
 │  │   content: str        ← 最终文本（终态时写入）          │    │
 │  └──────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────┘
@@ -46,13 +47,16 @@
 
 ### ChunkJsonBuilder
 
-增量构建 `chunk_json`（前端兼容格式）和 `stream_json`（冷路径格式），O(1) 序列化：
+增量构建 `chunk_json`（前端兼容格式）和 `stream_json`（冷路径回放格式），O(1) 序列化：
 
 ```
 add({seq:42, data:{...}})
-  → _data_parts:  ['"你好"', '"世界"', ...]     → to_chunk_json() → ["你好","世界",...]
-  → _event_parts: ['{"seq":1,"data":"你好"}', ...] → 备用（预留）
+  → _data_parts:  ['"你好"', '"世界"', ...]          → to_chunk_json()  → ["你好","世界",...]
+  → _event_parts: ['{"seq":1,"data":"你好"}', ...]   → to_stream_json() → [{"seq":1,"data":"你好"},...]
 ```
+
+- `to_chunk_json()` — `[data1, data2, ...]` 格式，前端渲染使用
+- `to_stream_json()` — `[{"seq":N,"data":...}, ...]` 格式，冷路径回放使用（含真实 seq）
 
 ### StreamEventBuffer
 
@@ -117,7 +121,7 @@ get_stream_status()
      │   └─ DB stale detection → 自动修复或 no_stream + [DONE]
      └─ task.is_active →
          ├─ cursor < buffer.base_cursor → 冷路径
-         │   json.loads(DB chunk_json) → 从 implicit seq 回放
+         │   json.loads(DB stream_chunks) → 使用真实 seq 回放
          │   每个 event 前检查 task.status（cancel 时秒停）
          │   last_seq = base_cursor
          ├─ cursor >= buffer.base_cursor → 热路径
@@ -132,7 +136,7 @@ get_stream_status()
 ```
 task.status = "cancelled"
 task._asyncio_task.cancel()
-→ 后台 CancelledError → flush_terminal(state="cancelled", chunk_json)
+→ 后台 CancelledError → flush_terminal(state="cancelled", chunk_json, stream_json)
 → buffer.add({"status":"cancelled"}) → broadcast → 挂起 resume 收到 [DONE]
 → finally: task.status = "cancelled" → subscribers.clear()
 ```
@@ -152,12 +156,14 @@ while agent.astream().__anext__():    ← 每 120s 超时
     broadcast(evt)
 
     每 20 事件 / 2s：_maybe_flush()
-        chunk_json = chunk_builder.to_chunk_json()    ← O(1)
-        _flush_to_db(chunk_json=chunk_json)            ← 渐进写 DB
-        if ok: buffer.trim()                           ← 安全剪裁
+        chunk_json  = chunk_builder.to_chunk_json()     ← O(1) 前端渲染格式
+        stream_json = chunk_builder.to_stream_json()    ← O(1) 冷路径回放格式
+        _flush_to_db(chunk_json=chunk_json,             ← 渐进写 DB
+                     stream_json=stream_json)
+        if ok: buffer.trim()                            ← 安全剪裁
 
 终态：
-    _flush_terminal(state, content, chunk_json, retry=3)
+    _flush_terminal(state, content, chunk_json, stream_json, retry=3)
     buffer.add({"status": state})
     broadcast → 挂起 resume 收到 [DONE]
 
@@ -166,6 +172,16 @@ finally:
     subscribers.clear()
     db.close()
 ```
+
+### DB 列说明
+
+| 列名 | 写入时机 | 格式 | 用途 |
+|------|----------|------|------|
+| `chunk_json` | 每次 flush + 终态 | `[data1, data2, ...]` | 前端渲染（`mapStoredMessagesToUIMessages`） |
+| `stream_chunks` | 每次 flush + 终态 | `[{"seq":N,"data":...}, ...]` | 冷路径回放（含真实 seq） |
+| `stream_cursor` | 每次 flush + 终态 | `int` | 最新已持久化的 seq |
+| `stream_state` | start / 终态 | `"streaming"` / `"completed"` / ... | 流状态 |
+| `content` | 终态 | `str` | 最终回复文本 |
 
 ---
 
@@ -236,7 +252,7 @@ data: [DONE]
 
 ```
 1. GET /chat/conversations/{id}/messages
-   → 返回历史消息列表，assistant 消息含 chunk_json
+   → 返回历史消息列表，assistant 消息含 chunk_json、stream_cursor
    → chunk_json 不再是恒定 null，流运行中就有部分数据，可直接渲染
 
 2. GET /chat/conversations/{id}/stream/resume?cursor={lastSeq}
@@ -275,7 +291,7 @@ POST /chat/conversations/{id}/stream/cancel
 |------|------|
 | 不传 `cursor`（默认 0） | 后端从头回放所有事件（DB → 内存），功能正确但性能较差 |
 | 传正确 `cursor` | 直接走内存快路径，毫秒级恢复 |
-| `cursor` 过期（断线太久，buffer 已剪裁） | 后端自动从 DB chunk_json 冷路径回放，**前端无感知** |
+| `cursor` 过期（断线太久，buffer 已剪裁） | 后端自动从 DB stream_chunks 冷路径回放（含真实 seq），**前端无感知** |
 | chunk_json 在流中不为 null | `/messages` 拉到中间态数据可直接渲染，不再是空白等待 |
 
 ---
@@ -315,5 +331,197 @@ POST /chat/conversations/{id}/stream/cancel
 | `src/service/chat_service.py` | stream_conversation_answer()、resume_conversation_stream()、cancel_conversation_stream() |
 | `src/api/chat_api.py` | REST API 路由 |
 | `src/models/conversation.py` | ConversationMessage ORM 模型 |
+| `src/schemas/conversation.py` | Pydantic schema（含 stream_cursor） |
 | `src/db/session.py` | SQLite engine（WAL + busy_timeout） |
 | `src/server.py` | FastAPI lifespan（shutdown 清理） |
+
+---
+
+## 十一、恢复流完整流程图
+
+```
+                     后端可恢复流 (Resumable Stream) 完整流程
+ ─────────────────────────────────────────────────────────────────────────────
+
+  请求: GET /chat/conversations/{id}/stream/resume?cursor=N
+                                │
+                                ▼
+              ┌─────────────────────────────────┐
+              │  resume_conversation_stream()    │
+              │  chat_service.py:429            │
+              └──────────────┬──────────────────┘
+                             │
+                             ▼
+              ┌─────────────────────────────────┐
+              │  registry.get_stream_status()   │──── 从 DB 查询 stream_state
+              │  (已结束的流直接返回)              │     (completed/error/cancelled)
+              └──────────────┬──────────────────┘
+                             │
+                    已结束? ──┤── 否
+                    │        │
+                    ▼        ▼
+          ┌──────────┐   ┌──────────────────────────────┐
+          │ SSE:     │   │  registry.get_task(id)        │
+          │ stream_  │   │  查找内存中的 ActiveStreamTask  │
+          │ ended    │   └──────────────┬───────────────┘
+          │ [DONE]   │                  │
+          └──────────┘        Task存在? ├── 否
+                               │       │
+                              是       ▼
+                               │   ┌──────────────────────────┐
+                               │   │ DB: 查 stream_state       │
+                               │   │ == "streaming" 的消息      │
+                               │   │                           │
+                               │   │  有 ──→ 自动修复为 "error"  │
+                               │   │         返回 stream_ended │
+                               │   │  无 ──→ 返回 no_stream    │
+                               │   └──────────────────────────┘
+                               │
+                               ▼
+              ┌─────────────────────────────────────────┐
+              │  有活跃的 ActiveStreamTask               │
+              │  task.is_active == True                  │
+              │  last_seq = cursor (客户端传来的游标)      │
+              └──────────────────┬──────────────────────┘
+                                 │
+                                 ▼
+              ┌──────────────────────────────────────────┐
+              │  Phase 1: 冷路径 (Cold Path)              │
+              │                                          │
+              │  条件: cursor < buffer.base_cursor        │
+              │  含义: 客户端缺失的事件已被 trim 出内存     │
+              │                                          │
+              │  优先: 从 DB 读取 msg.stream_chunks       │
+              │        格式: [{"seq":N,"data":...}, ...]  │  ← 含真实 seq
+              │                                          │
+              │  兼容回退: 若 stream_chunks 为空           │
+              │           使用旧 chunk_json (i+1 伪 seq)  │
+              │                                          │
+              │  for evt in stream_chunks:                │
+              │    if evt.seq <= last_seq: skip           │
+              │    if evt.seq > base_cursor: break        │
+              │    yield SSE event                        │
+              └──────────────────┬───────────────────────┘
+                                 │
+                                 ▼
+              ┌──────────────────────────────────────────┐
+              │  Phase 2: 内存 Buffer 扫描                │
+              │                                          │
+              │  buffer_events = buffer.get_events_after  │
+              │                  (last_seq)               │
+              │                                          │
+              │  ┌─────────────────────────────┐         │
+              │  │  StreamEventBuffer (内存)     │         │
+              │  │  deque: [evt5, evt6, evt7..] │         │
+              │  │  base_cursor = 4 (已trim)    │         │
+              │  │  cursor = 7 (当前最新seq)     │         │
+              │  └─────────────────────────────┘         │
+              │                                          │
+              │  遍历 buffer_events, yield SSE            │
+              └──────────────────┬───────────────────────┘
+                                 │
+                                 ▼
+              ┌──────────────────────────────────────────┐
+              │  Phase 3: 订阅实时事件                     │
+              │                                          │
+              │  queue = asyncio.Queue()                 │
+              │                                          │
+              │  ① task.subscribe(_on_event)              │
+              │     │                                    │
+              │     │  注册回调: 新事件 → queue.put()      │
+              │     │                                    │
+              │  ② missed = buffer.get_events_after       │
+              │             (last_seq)                    │
+              │     │                                    │
+              │     │  补漏: subscribe 和 scan 之间         │
+              │     │        可能到达的新事件               │
+              │     │                                    │
+              │  ③ yield missed events                    │
+              └──────────────────┬───────────────────────┘
+                                 │
+                                 ▼
+              ┌──────────────────────────────────────────┐
+              │  Phase 4: 实时 Queue 循环                 │
+              │                                          │
+              │  while True:                              │
+              │    evt = await queue.get()               │
+              │                                          │
+              │    if 终止事件(completed/cancelled/error):  │
+              │      yield → unsubscribe → break         │
+              │    else:                                  │
+              │      yield SSE: id:{seq}\ndata:{json}\n\n │
+              └──────────────────┬───────────────────────┘
+                                 │
+                                 ▼
+                           ┌──────────┐
+                           │ 结束流    │
+                           │ [DONE]   │
+                           └──────────┘
+
+
+ ─────────────────────────────────────────────────────────────────────────────
+
+  后台 Agent 执行 (_run_agent_background) 并发写入:
+
+  ┌──────────────────────────────────────────────┐
+  │  agent.astream() ──→ chunk ──→ serializable  │
+  │                         │                    │
+  │                         ▼                    │
+  │               buffer.add(data)               │
+  │               chunk_builder.add(evt)         │
+  │               broadcast(evt)  ───→ subscribers│
+  │                         │                    │
+  │                         ▼ (每20事件/每2秒)    │
+  │               _maybe_flush()                 │
+  │                 │                             │
+  │                 ▼                             │
+  │               _flush_to_db()                 │
+  │                 ├─ chunk_json = [data,...]    │  ← 前端渲染用
+  │                 ├─ stream_chunks = [{seq,data}]│  ← 冷路径回放用
+  │                 ├─ stream_cursor = buffer.seq │
+  │                 └─ stream_state = "streaming" │
+  │                         │                    │
+  │                         ▼                    │
+  │               buffer.trim()                  │
+  │                 └─ 淘汰超出 maxlen 的旧事件    │
+  │                    更新 base_cursor           │
+  └──────────────────────────────────────────────┘
+
+
+ ─────────────────────────────────────────────────────────────────────────────
+
+  数据生命周期 (事件 seq):
+
+  时间 ──────────────────────────────────────────────────────►
+
+  Agent 产生:  seq1  seq2  seq3 ... seq20  seq21  seq22  seq23
+                  │                       │
+                  ▼                       ▼
+  buffer trim:  [seq1..seq20] trim!     [seq21..seq23] 仍在内存
+                  │                       │
+                  ▼                       │
+  DB flush:     stream_chunks =          │
+                [{seq:1,data},            │
+                 {seq:2,data},            │
+                 ...                      │
+                 {seq:20,data}]           │
+                                        base_cursor = 20
+                  │                       │
+                  ▼                       ▼
+  Resume 场景:                        客户端 cursor=15
+                                      (断线前最后收到的 seq)
+
+    Phase 1 冷路径:                   Phase 2 Buffer:
+    从 stream_chunks                  从内存 buffer
+    replay seq 16..20                 replay seq 21..23
+    (seq<=15 跳过, >20 break)
+                  │                       │
+                  └───────────┬───────────┘
+                              ▼
+                    Phase 3+4: 订阅实时
+                    seq 24, 25, 26 ...
+                              │
+                              ▼
+                          客户端完整恢复
+                          无遗漏 无重复
+```

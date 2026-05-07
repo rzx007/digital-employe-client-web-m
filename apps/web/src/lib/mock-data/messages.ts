@@ -12,6 +12,7 @@ export interface Message {
   metadata?: Record<string, any>
   chunkJson?: string
   streamState?: string | null
+  streamCursor?: number | null
 }
 
 export const MOCK_MESSAGES: Record<string, Message[]> = {

@@ -525,7 +525,7 @@ class ChatService:
             data = event.get("data") if isinstance(event, dict) else None
             return isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error")
 
-        # ── Cold path: replay from DB chunk_json for events trimmed from buffer ──
+        # ── Cold path: replay from DB stream_chunks for events trimmed from buffer ──
         if cursor < task.buffer.base_cursor and last_seq < task.buffer.base_cursor:
             logger.info(
                 "[resume] conv=%s cold path: cursor=%d < base_cursor=%d, replaying from DB",
@@ -538,7 +538,39 @@ class ChatService:
                 _CM.role == "assistant",
             ).order_by(_CM.id.desc()).limit(1)
             _msg = db.scalar(_stmt)
-            if _msg and _msg.chunk_json:
+            _replayed = False
+            if _msg and _msg.stream_chunks:
+                try:
+                    _events = await _to_thread(json.loads, _msg.stream_chunks)
+                except json.JSONDecodeError:
+                    _events = []
+                if isinstance(_events, list):
+                    for _evt in _events:
+                        if not isinstance(_evt, dict):
+                            continue
+                        _seq = _evt.get("seq", 0)
+                        if _seq <= last_seq:
+                            continue
+                        if _seq > task.buffer.base_cursor:
+                            break
+                        if task.status != "streaming" and not _is_terminal(_evt):
+                            continue
+                        if not _is_terminal(_evt):
+                            done, payloads = await _emit_event_payloads(_evt)
+                            if not done and task.status != "streaming":
+                                continue
+                            for payload in payloads:
+                                yield payload
+                            if done:
+                                return
+                        else:
+                            done, payloads = await _emit_event_payloads(_evt)
+                            for payload in payloads:
+                                yield payload
+                            if done:
+                                return
+                        _replayed = True
+            if not _replayed and _msg and _msg.chunk_json:
                 try:
                     _chunks = await _to_thread(json.loads, _msg.chunk_json)
                 except json.JSONDecodeError:
@@ -562,6 +594,17 @@ class ChatService:
                             yield payload
                         if done:
                             return
+                    else:
+                        done, payloads = await _emit_event_payloads(_evt)
+                        for payload in payloads:
+                            yield payload
+                        if done:
+                            return
+                logger.info(
+                    "[resume] conv=%s cold path done (legacy chunk_json), last_seq now %d",
+                    conversation_id, last_seq,
+                )
+            else:
                 logger.info(
                     "[resume] conv=%s cold path done, last_seq now %d",
                     conversation_id, last_seq,

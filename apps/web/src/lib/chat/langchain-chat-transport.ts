@@ -54,8 +54,12 @@ function buildChatApiUrl(options: any) {
   return `/chat/conversations/${options.conversationId}/stream`
 }
 
-function buildResumeApiUrl(conversationId: string) {
-  return `/chat/conversations/${conversationId}/stream/resume`
+function buildResumeApiUrl(conversationId: string, cursor?: number) {
+  const base = `/chat/conversations/${conversationId}/stream/resume`
+  if (cursor && cursor > 0) {
+    return `${base}?cursor=${cursor}`
+  }
+  return base
 }
 
 function getConversationIdFromBody(body: object | undefined) {
@@ -127,10 +131,11 @@ async function createEventSourceResponse(options: {
 
 async function createResumeEventSourceResponse(options: {
   conversationId: string
+  cursor?: number
   abortSignal: AbortSignal | undefined
 }) {
   const response = await request.raw(
-    buildResumeApiUrl(options.conversationId),
+    buildResumeApiUrl(options.conversationId, options.cursor),
     {
       method: "GET",
       headers: getRequestHeaders({
@@ -158,6 +163,8 @@ async function createResumeEventSourceResponse(options: {
 export class LangChainChatTransport<
   UI_MESSAGE extends UIMessage,
 > implements ChatTransport<UI_MESSAGE> {
+  private _lastSeqByChat: Map<string, number> = new Map() // 追踪每个会话最后收到的 SSE seq
+
   async sendMessages({
     messages,
     abortSignal,
@@ -199,7 +206,7 @@ export class LangChainChatTransport<
         abortSignal,
       })
 
-    return this.processResponseStream(stream)
+    return this.processResponseStream(stream, conversationId as string)
   }
 
   async reconnectToStream({
@@ -209,8 +216,11 @@ export class LangChainChatTransport<
       return null
     }
 
+    const cursor = this._lastSeqByChat.get(String(chatId)) ?? 0
+
     const stream = await createResumeEventSourceResponse({
       conversationId: chatId,
+      cursor: cursor > 0 ? cursor : undefined,
       abortSignal: undefined,
     })
 
@@ -218,9 +228,8 @@ export class LangChainChatTransport<
       return null
     }
 
-    return this.processResponseStream(stream)
+    return this.processResponseStream(stream, String(chatId))
   }
-
   /**
    * 处理服务器发送的响应流，将其转换为UI消息块流
    * 该方法接收一个字节数组可读流，解析其中的SSE（Server-Sent Events）格式数据，
@@ -229,9 +238,10 @@ export class LangChainChatTransport<
    * @param stream - 包含Uint8Array数据的可读流，预期包含SSE格式的消息
    * @returns 返回一个可读流，产生UIMessageChunk类型的事件
    */
-  private processResponseStream(stream: ReadableStream<Uint8Array>) {
+  private processResponseStream(stream: ReadableStream<Uint8Array>, conversationId?: string) {
     const decoder = new TextDecoder()
     const reader = stream.getReader()
+    const lastSeqRef = this._lastSeqByChat
 
     return new ReadableStream<UIMessageChunk>({
       async start(controller) {
@@ -241,8 +251,19 @@ export class LangChainChatTransport<
         controller.enqueue({ type: "start" })
 
         const flushEvent = (eventText: string) => {
-          const lines = eventText
-            .split(/\r?\n/)
+          const allLines = eventText.split(/\r?\n/)
+
+          let eventSeq: number | null = null
+          for (const line of allLines) {
+            if (line.startsWith("id:")) {
+              const parsed = parseInt(line.slice(3).trim(), 10)
+              if (!isNaN(parsed)) {
+                eventSeq = parsed
+              }
+            }
+          }
+
+          const lines = allLines
             .filter((line) => line.startsWith("data:"))
             .map((line) => line.slice(5).trim())
 
@@ -253,6 +274,9 @@ export class LangChainChatTransport<
           const data = lines.join("\n")
 
           if (data === "[DONE]") {
+            if (eventSeq != null && conversationId) {
+              lastSeqRef.set(conversationId, eventSeq)
+            }
             closeTextPhaseIfNeeded(state).forEach((chunk) =>
               controller.enqueue(chunk)
             )
@@ -300,6 +324,10 @@ export class LangChainChatTransport<
               console.error("[sse] dropped event:", e)
             }
             return false
+          }
+
+          if (eventSeq != null && conversationId) {
+            lastSeqRef.set(conversationId, eventSeq)
           }
 
           return false

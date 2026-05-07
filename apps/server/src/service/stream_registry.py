@@ -321,8 +321,10 @@ class StreamRegistry:
             if chunk_builder.count == 0:
                 return
             chunk_json = chunk_builder.to_chunk_json()
+            stream_json = chunk_builder.to_stream_json()
             ok = self._flush_to_db(
-                db, stream_msg_id, task.buffer, chunk_json=chunk_json,
+                db, stream_msg_id, task.buffer,
+                chunk_json=chunk_json, stream_json=stream_json,
             )
             if ok:
                 task.buffer.trim()
@@ -395,6 +397,7 @@ class StreamRegistry:
                 db, stream_msg_id, task.buffer, state="completed",
                 content=final_text,
                 chunk_json=chunk_builder.to_chunk_json(),
+                stream_json=chunk_builder.to_stream_json(),
             )
 
             evt = task.buffer.add({"status": "completed"})
@@ -417,6 +420,7 @@ class StreamRegistry:
                 db, stream_msg_id, task.buffer, state="cancelled",
                 content=partial_text,
                 chunk_json=chunk_builder.to_chunk_json(),
+                stream_json=chunk_builder.to_stream_json(),
             )
             evt = task.buffer.add({"status": "cancelled"})
             logger.info(
@@ -440,6 +444,7 @@ class StreamRegistry:
                 db, stream_msg_id, task.buffer, state="error",
                 content=partial_text,
                 chunk_json=chunk_builder.to_chunk_json(),
+                stream_json=chunk_builder.to_stream_json(),
                 error_message=str(e),
             )
             evt = task.buffer.add({"status": "error", "error": str(e)})
@@ -463,6 +468,7 @@ class StreamRegistry:
                     db, stream_msg_id, task.buffer, state="cancelled",
                     content=partial_text,
                     chunk_json=chunk_builder.to_chunk_json(),
+                    stream_json=chunk_builder.to_stream_json(),
                 )
             logger.info(
                 "[run] conv=%s finally: state_final=%s, event_count=%d, buffer_cursor=%d",
@@ -483,6 +489,7 @@ class StreamRegistry:
         state: str,
         content: str | None,
         chunk_json: str | None,
+        stream_json: str | None = None,
         error_message: str | None = None,
         max_retries: int = 3,
     ) -> None:
@@ -491,6 +498,7 @@ class StreamRegistry:
             self._flush_to_db(
                 db, stream_msg_id, buffer, state=state,
                 content=content, chunk_json=chunk_json,
+                stream_json=stream_json,
                 error_message=error_message,
             )
             try:
@@ -518,6 +526,7 @@ class StreamRegistry:
         state: str | None = None,
         content: str | None = None,
         chunk_json: str | None = None,
+        stream_json: str | None = None,
         error_message: str | None = None,
     ) -> bool:
         """Persist stream progress to DB.  Returns True on success."""
@@ -538,7 +547,8 @@ class StreamRegistry:
                 meta["error_message"] = error_message
                 msg.extra_meta = json.dumps(meta, ensure_ascii=False)
             msg.stream_cursor = buffer.cursor
-            msg.stream_chunks = None
+            if stream_json is not None:
+                msg.stream_chunks = stream_json
             if chunk_json is not None:
                 try:
                     msg.chunk_json = chunk_json

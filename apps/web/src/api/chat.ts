@@ -135,6 +135,7 @@ export async function fetchMessagesByConversationId(
     content: msg.content,
     chunkJson: msg.chunk_json,
     streamState: msg.stream_state,
+    streamCursor: msg.stream_cursor,
     metadata: msg.extra_meta ?? undefined,
     timestamp: msg.timestamp
       ? new Date(msg.timestamp)
