@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { FileUIPart } from "ai"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import {
   PromptInput,
@@ -12,6 +11,7 @@ import {
   PromptInputHeader,
   PromptInputSubmit,
   PromptInputTools,
+  type PromptAttachmentFile,
   usePromptInputAttachments,
 } from "@workspace/ui/components/ai-elements/prompt-input"
 import {
@@ -35,6 +35,17 @@ const ACCEPTED_FILE_TYPES =
 
 const MAX_UPLOAD_SIZE_BYTES = 200 * 1024 * 1024
 
+const ONE_MB_BYTES = 1024 * 1024
+
+function formatAttachmentDisplaySize(bytes: number): string {
+  if (bytes < ONE_MB_BYTES) {
+    const kb = bytes / 1024
+    return kb < 10 ? `${kb.toFixed(1)} KB` : `${Math.round(kb)} KB`
+  }
+  const mb = bytes / ONE_MB_BYTES
+  return mb < 10 ? `${mb.toFixed(1)} MB` : `${Math.round(mb)} MB`
+}
+
 type FileUploadStatus = "uploading" | "done" | "error"
 
 interface UploadFileState {
@@ -43,6 +54,7 @@ interface UploadFileState {
   status: FileUploadStatus
   path?: string
   error?: string
+  sizeBytes?: number
 }
 
 function ChatPromptInputAttachments({
@@ -87,19 +99,22 @@ function ChatPromptInputAttachments({
   }, [reportPaths])
 
   const uploadFile = useCallback(
-    async (file: FileUIPart & { id: string }) => {
+    async (file: PromptAttachmentFile) => {
       if (!conversationId) return
+      const sizeBytes = file.sizeBytes
       setFileStates((prev) => ({
         ...prev,
         [file.id]: {
           id: file.id,
           filename: file.filename || "unknown",
           status: "uploading",
+          sizeBytes,
         },
       }))
       try {
         const response = await fetch(file.url)
         const blob = await response.blob()
+        const resolvedSize = sizeBytes ?? blob.size
         const fileObj = new File(
           [blob],
           file.filename || "file",
@@ -117,6 +132,7 @@ function ChatPromptInputAttachments({
               filename: file.filename || "unknown",
               status: "done",
               path: result.data.path,
+              sizeBytes: resolvedSize,
             },
           }))
         } else {
@@ -130,6 +146,7 @@ function ChatPromptInputAttachments({
             filename: file.filename || "unknown",
             status: "error",
             error: err instanceof Error ? err.message : "上传失败",
+            sizeBytes: prev[file.id]?.sizeBytes ?? sizeBytes,
           },
         }))
       }
@@ -152,6 +169,7 @@ function ChatPromptInputAttachments({
               id: f.id,
               filename: f.filename || "unknown",
               status: "uploading",
+              sizeBytes: f.sizeBytes,
             },
           }))
         }
@@ -176,7 +194,9 @@ function ChatPromptInputAttachments({
       if (conversationId && state?.status === "done" && state.path) {
         try {
           await deleteConversationUpload(conversationId, state.path)
-        } catch { }
+        } catch {
+          // 删除远端附件失败时仍允许从输入区移除
+        }
       }
       attachments.remove(fileId)
     },
@@ -186,10 +206,11 @@ function ChatPromptInputAttachments({
   if (attachments.files.length === 0) return null
 
   return (
-    <div className="grid gap-2 px-1 pt-2 sm:grid-cols-2">
+    <div className="grid gap-2 px-1 pt-2 sm:grid-cols-3">
       {attachments.files.map((file) => {
         const state = fileStates[file.id]
         const filename = file.filename || "unknown"
+        const sizeBytes = state?.sizeBytes ?? file.sizeBytes
 
         let statusLabel: React.ReactNode = null
         if (!conversationId) {
@@ -225,7 +246,7 @@ function ChatPromptInputAttachments({
         return (
           <div
             key={file.id}
-            className="group relative flex min-w-0 items-center gap-3 rounded-md border border-border/50 bg-background/70 px-3 py-2"
+            className="group relative flex w-full min-w-0 items-center gap-3 rounded-md border border-border/50 bg-background/70 px-3 py-2"
           >
             <button
               type="button"
@@ -253,11 +274,17 @@ function ChatPromptInputAttachments({
               src={getFileIcon(filename)}
             />
             <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="truncate text-sm font-medium text-foreground">
+              <div className="flex min-w-0 w-full flex-col gap-1">
+                <span
+                  className="min-w-0 truncate text-xs text-foreground"
+                  title={filename}
+                >
                   {filename}
                 </span>
-                {statusLabel}
+                <span className="text-[10px] text-muted-foreground tabular-nums">
+                  {formatAttachmentDisplaySize(sizeBytes)}
+                </span>
+                <div className="flex shrink-0 items-start">{statusLabel}</div>
               </div>
             </div>
           </div>
@@ -336,8 +363,8 @@ export function ChatPromptInput({
           <PromptInputTools>
             <PromptInputActionMenu>
               <PromptInputActionMenuTrigger />
-              <PromptInputActionMenuContent>
-                <PromptInputActionAddAttachments className="w-72" label="上传文件或图片" />
+              <PromptInputActionMenuContent className="w-48">
+                <PromptInputActionAddAttachments className="w-full" label="上传文件或图片" />
               </PromptInputActionMenuContent>
             </PromptInputActionMenu>
             <Separator orientation="vertical" className="h-3 mt-2 mr-3" />

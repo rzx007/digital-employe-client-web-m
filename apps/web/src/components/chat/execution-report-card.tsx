@@ -50,9 +50,9 @@ export function ExecutionReportCard({
   const ratingMutation = useMutation({
     mutationFn: (score: number) =>
       submitSkillRating({
-        workspace_id: 1,
-        employee_id: execution.employee_id,
+        task_execution_log_id: execution.id,
         score,
+        comment: "",
       }),
   })
 
@@ -77,13 +77,13 @@ export function ExecutionReportCard({
             className={cn(
               "rounded border-2 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider opacity-20",
               execution.run_status === "success" &&
-                "border-green-600 text-green-700 rotate-[-12deg] dark:border-green-400 dark:text-green-400",
+              "border-green-600 text-green-700 rotate-[-12deg] dark:border-green-400 dark:text-green-400",
               execution.run_status === "failed" &&
-                "border-red-600 text-red-700 rotate-[-12deg] dark:border-red-400 dark:text-red-400",
+              "border-red-600 text-red-700 rotate-[-12deg] dark:border-red-400 dark:text-red-400",
               execution.run_status === "timeout" &&
-                "border-amber-600 text-amber-700 rotate-[-12deg] dark:border-amber-400 dark:text-amber-400",
+              "border-amber-600 text-amber-700 rotate-[-12deg] dark:border-amber-400 dark:text-amber-400",
               execution.run_status === "cancelled" &&
-                "border-gray-500 text-gray-600 rotate-[-12deg] dark:border-gray-400 dark:text-gray-400"
+              "border-gray-500 text-gray-600 rotate-[-12deg] dark:border-gray-400 dark:text-gray-400"
             )}
           >
             {statusCfg.stampText}
@@ -123,14 +123,16 @@ export function ExecutionReportCard({
             <Button
               variant="ghost"
               size="icon-sm"
-              className="size-5"
+              className="size-5 shrink-0"
+              aria-label="打开对应会话"
               onClick={() => {
-                useChatStore
-                  .getState()
-                  .selectConversation(
-                    String(execution.employee_id),
-                    String(execution.conversation_id)
-                  )
+                const { selectConversation, setActiveTab } =
+                  useChatStore.getState()
+                selectConversation(
+                  String(execution.employee_id),
+                  String(execution.conversation_id),
+                )
+                setActiveTab("chat")
               }}
             >
               <IconExternalLink className="size-3" />

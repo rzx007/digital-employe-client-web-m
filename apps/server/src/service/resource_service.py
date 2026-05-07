@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import logging
+import shutil
+import io
+import zipfile
 from pathlib import Path
 
 from src.schemas.resource import (
@@ -209,4 +212,54 @@ class ResourceService:
 
         resolved.unlink()
         logger.info("已删除上传文件: %s", virtual_path)
+        return True
+
+    @staticmethod
+    def resolve_download_path(
+        root_path: str, conversation_id: int, virtual_path: str
+    ) -> tuple[Path, bool] | None:
+        if not any(virtual_path.startswith(p) for p in _ALLOWED_PREFIXES):
+            return None
+        conversation_dir = Path(root_path) / str(conversation_id)
+        resolved = _resolve_safe_path(conversation_dir, virtual_path)
+        if resolved is None or not resolved.exists():
+            return None
+        return resolved, resolved.is_dir()
+
+    @staticmethod
+    def create_zip(directory: Path) -> io.BytesIO:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for file_path in sorted(directory.rglob("*")):
+                if file_path.is_file():
+                    arcname = file_path.relative_to(directory).as_posix()
+                    zf.write(file_path, arcname)
+        buf.seek(0)
+        return buf
+
+    @staticmethod
+    def delete_resource(
+        root_path: str, conversation_id: int, virtual_path: str
+    ) -> bool:
+        if not any(virtual_path.startswith(p) for p in _ALLOWED_PREFIXES):
+            return False
+        parts = virtual_path.strip("/").split("/")
+        if len(parts) < 2:
+            return False
+
+        conversation_dir = Path(root_path) / str(conversation_id)
+        resolved = _resolve_safe_path(conversation_dir, virtual_path)
+        if resolved is None or not resolved.exists():
+            return False
+
+        try:
+            if resolved.is_dir():
+                shutil.rmtree(resolved)
+            else:
+                resolved.unlink()
+        except Exception as exc:
+            logger.error("删除资源失败 path=%s: %s", virtual_path, exc)
+            return False
+
+        logger.info("已删除资源: %s", virtual_path)
         return True

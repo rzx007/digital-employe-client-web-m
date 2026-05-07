@@ -24,11 +24,23 @@ import {
   IconPhoto,
   IconSparkles,
   IconSearch,
+  IconTrash,
 } from "@tabler/icons-react"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@workspace/ui/components/context-menu"
 import { cn } from "@workspace/ui/lib/utils"
 import type { ResourceEntry, ResourceList } from "@/api/types"
 import { useConversationResourcesQuery, useResourceContentQuery } from "@/hooks/use-chat-queries"
+import { downloadResource, deleteResource } from "@/api/conversation"
+import { useQueryClient } from "@tanstack/react-query"
+import { chatKeys } from "@/lib/query-keys/chat"
 import { useArtifactStore } from "@/stores/artifact-store"
+import { toast } from "sonner"
 import { CodeRenderer } from "./artifact-content/code-renderer"
 import { ImageRenderer } from "./artifact-content/image-renderer"
 import { SheetRenderer } from "./artifact-content/sheet-renderer"
@@ -181,27 +193,78 @@ function getFileIcon(artifactType: string | null) {
   }
 }
 
-function renderEntry(entry: ResourceEntry) {
+function ResourceContextMenu({
+  entry,
+  conversationId,
+  onDelete,
+}: {
+  entry: ResourceEntry
+  conversationId: string | number
+  onDelete: (entry: ResourceEntry) => void
+}) {
+  const handleDownload = async () => {
+    await downloadResource(conversationId, entry.path)
+  }
+
+  return (
+    <ContextMenuContent className="w-36">
+      <ContextMenuItem onSelect={handleDownload}>
+        <IconDownload className="size-4 text-muted-foreground" />
+        <span>下载</span>
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem variant="destructive" onSelect={() => onDelete(entry)}>
+        <IconTrash className="size-4" />
+        <span>删除</span>
+      </ContextMenuItem>
+    </ContextMenuContent>
+  )
+}
+
+function renderEntry(
+  entry: ResourceEntry,
+  conversationId: string | number,
+  onDelete: (entry: ResourceEntry) => void,
+) {
   if (entry.entry_type === "directory") {
     return (
-      <FileTreeFolder className="truncate" key={entry.path} path={entry.path} name={entry.name}>
-        {entry.children?.map(renderEntry)}
-      </FileTreeFolder>
+      <ContextMenu key={entry.path}>
+        <ContextMenuTrigger asChild>
+          <div>
+            <FileTreeFolder className="truncate" path={entry.path} name={entry.name}>
+              {entry.children?.map((child) => renderEntry(child, conversationId, onDelete))}
+            </FileTreeFolder>
+          </div>
+        </ContextMenuTrigger>
+        <ResourceContextMenu
+          entry={entry}
+          conversationId={conversationId}
+          onDelete={onDelete}
+        />
+      </ContextMenu>
     )
   }
   return (
-    <FileTreeFile
-      className="w-full min-w-0 cursor-pointer"
-      title={entry.name}
-      key={entry.path}
-      path={entry.path}
-      name={entry.name}
-      icon={getFileIcon(entry.artifact_type)}
-    >
-      <span className="size-4 shrink-0" />
-      <span className="shrink-0">{getFileIcon(entry.artifact_type)}</span>
-      <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-    </FileTreeFile>
+    <ContextMenu key={entry.path}>
+      <ContextMenuTrigger asChild>
+        <FileTreeFile
+          className="w-full min-w-0 cursor-pointer"
+          title={entry.name}
+          path={entry.path}
+          name={entry.name}
+          icon={getFileIcon(entry.artifact_type)}
+        >
+          <span className="size-4 shrink-0" />
+          <span className="shrink-0">{getFileIcon(entry.artifact_type)}</span>
+          <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+        </FileTreeFile>
+      </ContextMenuTrigger>
+      <ResourceContextMenu
+        entry={entry}
+        conversationId={conversationId}
+        onDelete={onDelete}
+      />
+    </ContextMenu>
   )
 }
 
@@ -331,17 +394,25 @@ export const ArtifactPanel = ({
     }
   }
 
-  const handleDownload = () => {
-    if (!artifactForRenderer) return
-    const blob = new Blob([artifactForRenderer.content], { type: "text/plain" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = artifactForRenderer.title
-    document.body.append(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
+  const handleDownload = async () => {
+    if (!conversationId || !selectedPath) return
+    await downloadResource(conversationId, selectedPath)
+  }
+
+  const queryClient = useQueryClient()
+
+  const handleDelete = async (entry: ResourceEntry) => {
+    if (!conversationId) return
+    try {
+      await deleteResource(conversationId, entry.path)
+      toast.success(`已删除 ${entry.name}`)
+      if (selectedPath === entry.path) {
+        setSelectedPath(null)
+      }
+      queryClient.invalidateQueries({ queryKey: chatKeys.resources(String(conversationId)) })
+    } catch {
+      toast.error(`删除失败`)
+    }
   }
 
   return (
@@ -367,7 +438,7 @@ export const ArtifactPanel = ({
               </p>
             </div>
             <div className="flex items-center gap-1">
-              {artifactForRenderer && (
+              {selectedEntry && (
                 <>
                   <TooltipProvider>
                     <Tooltip>
@@ -450,27 +521,37 @@ export const ArtifactPanel = ({
                   >
                     {filteredArtifacts.length > 0 && (
                       <FileTreeFolder path="/artifacts" name="artifacts">
-                        {filteredArtifacts.map(renderEntry)}
+                        {filteredArtifacts.map((e) => renderEntry(e, conversationId!, handleDelete))}
                       </FileTreeFolder>
                     )}
                     {filteredUploads.length > 0 && (
                       <FileTreeFolder path="/uploads" name="uploads">
-                        {filteredUploads.map(renderEntry)}
+                        {filteredUploads.map((e) => renderEntry(e, conversationId!, handleDelete))}
                       </FileTreeFolder>
                     )}
                     {filteredSkillsDraft.length > 0 && (
                       <FileTreeFolder path="/skills-draft" name="skills-draft">
                         {filteredSkillsDraft.map((skill) => (
-                          <FileTreeFolder
-                            key={skill.path}
-                            path={skill.path}
-                            name={skill.name}
-                          >
-                            <span className="flex items-center gap-1">
-                              <IconSparkles className="size-3 text-amber-500" />
-                            </span>
-                            {skill.children?.map(renderEntry)}
-                          </FileTreeFolder>
+                          <ContextMenu key={skill.path}>
+                            <ContextMenuTrigger asChild>
+                              <div>
+                                <FileTreeFolder
+                                  path={skill.path}
+                                  name={skill.name}
+                                >
+                                  <span className="flex items-center gap-1">
+                                    <IconSparkles className="size-3 text-amber-500" />
+                                  </span>
+                                  {skill.children?.map((e) => renderEntry(e, conversationId!, handleDelete))}
+                                </FileTreeFolder>
+                              </div>
+                            </ContextMenuTrigger>
+                            <ResourceContextMenu
+                              entry={skill}
+                              conversationId={conversationId!}
+                              onDelete={handleDelete}
+                            />
+                          </ContextMenu>
                         ))}
                       </FileTreeFolder>
                     )}

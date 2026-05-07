@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
@@ -181,4 +181,49 @@ def delete_conversation_upload(
     )
     if not ok:
         return BaseResponse(msg="文件不存在或删除失败")
+    return BaseResponse()
+
+
+@router.get("/chat/conversations/{conversation_id}/resources/download")
+def download_conversation_resource(
+    conversation_id: int,
+    path: str = Query(..., description="虚拟路径，如 /artifacts/report.md"),
+    db: Session = Depends(get_db),
+):
+    conversation = ChatService.get_conversation(db, conversation_id)
+    settings = get_settings()
+    result = ResourceService.resolve_download_path(
+        settings.artifacts_path, conversation.id, path
+    )
+    if result is None:
+        return BaseResponse(msg="文件不存在或路径不合法")
+    resolved, is_dir = result
+    if is_dir:
+        buf = ResourceService.create_zip(resolved)
+        filename = f"{resolved.name}.zip"
+        return StreamingResponse(
+            buf,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    return FileResponse(
+        resolved,
+        filename=resolved.name,
+        media_type="application/octet-stream",
+    )
+
+
+@router.delete("/chat/conversations/{conversation_id}/resources")
+def delete_conversation_resource(
+    conversation_id: int,
+    path: str = Query(..., description="虚拟路径，如 /artifacts/report.md"),
+    db: Session = Depends(get_db),
+) -> BaseResponse:
+    conversation = ChatService.get_conversation(db, conversation_id)
+    settings = get_settings()
+    ok = ResourceService.delete_resource(
+        settings.artifacts_path, conversation.id, path
+    )
+    if not ok:
+        return BaseResponse(msg="资源不存在或删除失败")
     return BaseResponse()
