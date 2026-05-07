@@ -272,7 +272,7 @@ def get_agent(
         draft_root=draft_dir,
         virtual_mode=True,
         inherit_env=True,
-        timeout=settings.execute_timeout,
+        timeout=settings.execute_timeout * 2,
     )
 
     backend = CompositeBackend(default=shell_backend, routes=routes)
