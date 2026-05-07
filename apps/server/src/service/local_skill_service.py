@@ -114,20 +114,40 @@ class LocalSkillService:
         return min(existing_ids) - 1
 
     @staticmethod
+    def _decode_zip_member_name(raw_name: str, is_utf8: bool) -> str:
+        if not raw_name:
+            return raw_name
+        if is_utf8:
+            return raw_name
+        try:
+            # 一些 Windows 压缩工具会把 GBK 文件名写入 ZIP，
+            # 但未设置 UTF-8 标志，Python 会按 cp437 解码后出现乱码。
+            return raw_name.encode("cp437").decode("gbk")
+        except UnicodeError:
+            return raw_name
+
+    @staticmethod
     def _extract_zip_to_temp(file_bytes: bytes) -> Path:
         temp_dir = Path(tempfile.mkdtemp(prefix="local-skill-import-"))
         try:
             with ZipFile(io.BytesIO(file_bytes), "r") as zip_file:
-                members = [m for m in zip_file.namelist() if m and not m.endswith("/")]
+                members = [
+                    info for info in zip_file.infolist() if info.filename and not info.is_dir()
+                ]
                 if not members:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="ZIP 文件为空或不包含有效文件。",
                     )
                 for member in members:
-                    if member.startswith("__MACOSX/"):
+                    is_utf8 = bool(member.flag_bits & 0x800)
+                    member_name = LocalSkillService._decode_zip_member_name(
+                        member.filename,
+                        is_utf8,
+                    )
+                    if member_name.startswith("__MACOSX/"):
                         continue
-                    target = LocalSkillService._safe_member_path(temp_dir, member)
+                    target = LocalSkillService._safe_member_path(temp_dir, member_name)
                     target.parent.mkdir(parents=True, exist_ok=True)
                     with zip_file.open(member, "r") as src, target.open("wb") as dst:
                         shutil.copyfileobj(src, dst)
