@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from calendar import monthrange
 from datetime import date, datetime, time, timedelta
 from typing import Any
@@ -16,6 +17,8 @@ from src.models.skill_rating import SkillRating
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import CST, cst_now
 from src.service.workspace_service import WorkspaceService
+
+logger = logging.getLogger(__name__)
 
 
 class TaskService:
@@ -80,14 +83,6 @@ class TaskService:
             return None
 
     @staticmethod
-    def _extract_tasks_from_employee(employee: Employee) -> list[dict[str, Any]]:
-        meta = TaskService._loads_json(employee.meta_json, {})
-        tasks = meta.get("tasks")
-        if isinstance(tasks, list):
-            return [item for item in tasks if isinstance(item, dict)]
-        return []
-
-    @staticmethod
     def _extract_shift_info(employee: Employee) -> tuple[int | None, str | None, dict[str, Any]]:
         meta = TaskService._loads_json(employee.meta_json, {})
         shift_schedule = TaskService._loads_json(getattr(employee, "shift_schedule_json", "{}"), {})
@@ -108,21 +103,6 @@ class TaskService:
         return shift_id, str(shift_name) if shift_name is not None else None, shift_schedule
 
     @staticmethod
-    def _is_employee_active_today(employee: Employee, today: str) -> bool:
-        shift = TaskService._loads_json(getattr(employee, "shift_schedule_json", "{}"), {})
-        if not isinstance(shift, dict) or not shift:
-            return True
-        start = shift.get("start_date", "")
-        end = shift.get("end_date", "")
-        if not start and not end:
-            return True
-        if start and today < start:
-            return False
-        if end and today > end:
-            return False
-        return True
-
-    @staticmethod
     def _describe_cron(cron_expression: str) -> str:
         if cron_expression.startswith("*/") and cron_expression.endswith(" * * * *"):
             minute = cron_expression.split(" ")[0].replace("*/", "")
@@ -131,131 +111,181 @@ class TaskService:
         return cron_expression
 
     @staticmethod
-    def sync_workspace_tasks(db: Session, workspace_id: int) -> list[EmployeeTask]:
-        WorkspaceService.get_workspace(db, workspace_id)
-        employees = list(
+    def list_employee_tasks_as_dict(db: Session, employee_id: int) -> list[dict]:
+        """查询某个员工的所有 skill/mcp 任务，以 dict 列表返回（供 API 序列化）。"""
+        tasks = list(
             db.scalars(
-                select(Employee)
-                .where(Employee.workspace_id == workspace_id)
-                .order_by(Employee.id.asc())
+                select(EmployeeTask).where(
+                    EmployeeTask.employee_id == employee_id,
+                    EmployeeTask.dispatch_type.in_(("skill", "mcp")),
+                ).order_by(EmployeeTask.id.asc())
             ).all()
         )
-        today = cst_now().date().isoformat()
-        employees = [
-            e for e in employees
-            if TaskService._is_employee_active_today(e, today)
+        return [
+            {
+                "id": t.id,
+                "task_name": t.task_name,
+                "dispatch_type": t.dispatch_type,
+                "skill_id": t.skill_id,
+                "capability_id": t.capability_id,
+                "priority": t.priority,
+                "task_type": t.task_type,
+                "cron_expression": t.cron_expression,
+                "cron_expression_type": t.cron_expression_type,
+                "is_active": t.is_active,
+                "confirm_execution_result": t.confirm_execution_result,
+                "user_prompt": t.user_prompt,
+                "config": {"input": json.loads(t.task_input_json or "{}")},
+            }
+            for t in tasks
         ]
-        upserted: list[EmployeeTask] = []
+
+    @staticmethod
+    def sync_workspace_tasks(db: Session, workspace_id: int) -> list[EmployeeTask]:
+        """启动时只重算 next_run_at，不再从 meta_json.tasks 同步或停用任务。
+        employee_tasks 表是任务唯一数据源。"""
+        now = cst_now()
+        tasks = list(
+            db.scalars(
+                select(EmployeeTask).where(
+                    EmployeeTask.workspace_id == workspace_id,
+                    EmployeeTask.is_active.is_(True),
+                )
+            ).all()
+        )
+        for task in tasks:
+            if task.employee_id:
+                employee = db.get(Employee, task.employee_id)
+                if employee:
+                    task.employee_name_snapshot = employee.name
+            task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=now)
+            task.updated_at = now
+        if tasks:
+            db.commit()
+            logger.info(
+                "sync_workspace_tasks: recalculated next_run_at for %d active tasks in workspace %d",
+                len(tasks),
+                workspace_id,
+            )
+        return tasks
+
+    @staticmethod
+    def upsert_employee_tasks(
+        db: Session,
+        workspace_id: int,
+        employee_id: int,
+        tasks: list[dict],
+    ) -> list[EmployeeTask]:
+        """为单个员工 upsert 任务（创建/编辑员工时调用）。
+        按 (task_name, dispatch_type, skill_id, capability_id) 签名去重，
+        不在输入列表中的已有任务会被物理删除（执行记录保留）。"""
+        employee = db.get(Employee, employee_id)
+        employee_name = employee.name if employee else ""
         now = cst_now()
 
-        for employee in employees:
-            tasks = TaskService._extract_tasks_from_employee(employee)
-            active_signatures: set[tuple[str, str, int | None, int | None]] = set()
-            for raw_task in tasks:
-                task_name = str(raw_task.get("task_name") or "").strip()
-                cron_expression = str(raw_task.get("cron_expression") or "").strip()
-                if not task_name or not cron_expression:
+        active_signatures: set[tuple[str, str, int | None, int | None]] = set()
+        upserted: list[EmployeeTask] = []
+
+        for raw_task in tasks:
+            task_name = str(raw_task.get("task_name") or "").strip()
+            cron_expression = str(raw_task.get("cron_expression") or "").strip()
+            if not task_name or not cron_expression:
+                continue
+
+            dispatch_type = str(raw_task.get("dispatch_type") or "skill").strip().lower() or "skill"
+            if not TaskService._is_skill_or_mcp_dispatch(dispatch_type):
+                continue
+
+            skill_id: int | None
+            capability_id: int | None
+            if TaskService._is_mcp_dispatch(dispatch_type):
+                skill_id = None
+                capability_id = TaskService._to_int(raw_task.get("capability_id"))
+                if capability_id is None:
                     continue
+            else:
+                skill_id = TaskService._to_int(raw_task.get("skill_id"))
+                capability_id = None
 
-                dispatch_type = str(raw_task.get("dispatch_type") or "skill").strip().lower() or "skill"
-                if not TaskService._is_skill_or_mcp_dispatch(dispatch_type):
-                    continue
+            signature = (task_name, dispatch_type, skill_id, capability_id)
+            active_signatures.add(signature)
 
-                skill_id: int | None
-                capability_id: int | None
-                if TaskService._is_mcp_dispatch(dispatch_type):
-                    skill_id = None
-                    capability_id = TaskService._to_int(raw_task.get("capability_id"))
-                    if capability_id is None:
-                        continue
-                else:
-                    skill_id = TaskService._to_int(raw_task.get("skill_id"))
-                    capability_id = None
-
-                signature = (task_name, dispatch_type, skill_id, capability_id)
-                active_signatures.add(signature)
-
-                existing = db.scalar(
-                    select(EmployeeTask).where(
-                        EmployeeTask.workspace_id == workspace_id,
-                        EmployeeTask.employee_id == employee.id,
-                        EmployeeTask.task_name == task_name,
-                        EmployeeTask.dispatch_type == dispatch_type,
-                        EmployeeTask.skill_id == skill_id,
-                        EmployeeTask.capability_id == capability_id,
-                    )
+            existing = db.scalar(
+                select(EmployeeTask).where(
+                    EmployeeTask.workspace_id == workspace_id,
+                    EmployeeTask.employee_id == employee_id,
+                    EmployeeTask.task_name == task_name,
+                    EmployeeTask.dispatch_type == dispatch_type,
+                    EmployeeTask.skill_id == skill_id,
+                    EmployeeTask.capability_id == capability_id,
                 )
-                if existing:
-                    task = existing
-                else:
-                    task = EmployeeTask(
-                        workspace_id=workspace_id,
-                        employee_id=employee.id,
-                        task_name=task_name,
-                        dispatch_type=dispatch_type,
-                        skill_id=skill_id,
-                        capability_id=capability_id,
-                    )
-                    db.add(task)
-
-                task.employee_name_snapshot = employee.name
-                task.priority = TaskService._to_int(raw_task.get("priority")) or 0
-                task.task_type = TaskService._to_int(raw_task.get("task_type"))
-                task.cron_expression = cron_expression
-                task.cron_expression_type = str(raw_task.get("cron_expression_type") or "custom")
-                if "is_active" in raw_task:
-                    task.is_active = TaskService._to_bool(
-                        raw_task.get("is_active"),
-                        default=task.is_active if existing else True,
-                    )
-                elif not existing:
-                    task.is_active = True
-                task.confirm_execution_result = TaskService._to_bool(
-                    raw_task.get("confirm_execution_result"), default=False
-                )
-                task_input = raw_task.get("config", {})
-                if isinstance(task_input, dict):
-                    task_input = task_input.get("input", {})
-                if not isinstance(task_input, dict):
-                    task_input = {}
-                up = raw_task.get("user_prompt")
-                if up is not None and str(up).strip():
-                    task_input["prompt"] = str(up).strip()
-                    task_input.setdefault("user_prompt", str(up).strip())
-                task.task_input_json = json.dumps(task_input, ensure_ascii=False)
-                stored_prompt = (
-                    str(up).strip()
-                    if up is not None and str(up).strip()
-                    else str(task_input.get("prompt") or "").strip()
-                )
-                task.user_prompt = stored_prompt or None
-                task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=now) if task.is_active else None
-                task.updated_at = now
-                upserted.append(task)
-
-            existing_tasks = list(
-                db.scalars(
-                    select(EmployeeTask).where(
-                        EmployeeTask.workspace_id == workspace_id,
-                        EmployeeTask.employee_id == employee.id,
-                    )
-                ).all()
             )
-            for task in existing_tasks:
-                current_signature = (
-                    task.task_name,
-                    task.dispatch_type,
-                    task.skill_id,
-                    task.capability_id,
+            if existing:
+                task = existing
+            else:
+                task = EmployeeTask(
+                    workspace_id=workspace_id,
+                    employee_id=employee_id,
+                    task_name=task_name,
+                    dispatch_type=dispatch_type,
+                    skill_id=skill_id,
+                    capability_id=capability_id,
                 )
-                if current_signature in active_signatures:
-                    continue
-                if not TaskService._is_skill_or_mcp_dispatch(task.dispatch_type):
-                    db.delete(task)
-                    continue
-                task.is_active = False
-                task.next_run_at = None
-                task.updated_at = now
+                db.add(task)
+
+            task.employee_name_snapshot = employee_name
+            task.priority = TaskService._to_int(raw_task.get("priority")) or 0
+            task.task_type = TaskService._to_int(raw_task.get("task_type"))
+            task.cron_expression = cron_expression
+            task.cron_expression_type = str(raw_task.get("cron_expression_type") or "custom")
+            if "is_active" in raw_task:
+                task.is_active = TaskService._to_bool(
+                    raw_task.get("is_active"),
+                    default=task.is_active if existing else True,
+                )
+            elif not existing:
+                task.is_active = True
+            task.confirm_execution_result = TaskService._to_bool(
+                raw_task.get("confirm_execution_result"), default=False
+            )
+            task_input = raw_task.get("config", {})
+            if isinstance(task_input, dict):
+                task_input = task_input.get("input", {})
+            if not isinstance(task_input, dict):
+                task_input = {}
+            up = raw_task.get("user_prompt")
+            if up is not None and str(up).strip():
+                task_input["prompt"] = str(up).strip()
+                task_input.setdefault("user_prompt", str(up).strip())
+            task.task_input_json = json.dumps(task_input, ensure_ascii=False)
+            stored_prompt = (
+                str(up).strip()
+                if up is not None and str(up).strip()
+                else str(task_input.get("prompt") or "").strip()
+            )
+            task.user_prompt = stored_prompt or None
+            task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=now) if task.is_active else None
+            task.updated_at = now
+            upserted.append(task)
+
+        existing_tasks = list(
+            db.scalars(
+                select(EmployeeTask).where(
+                    EmployeeTask.workspace_id == workspace_id,
+                    EmployeeTask.employee_id == employee_id,
+                )
+            ).all()
+        )
+        for task in existing_tasks:
+            current_signature = (
+                task.task_name,
+                task.dispatch_type,
+                task.skill_id,
+                task.capability_id,
+            )
+            if current_signature in active_signatures:
+                continue
+            db.delete(task)
 
         db.commit()
         for task in upserted:
@@ -314,10 +344,11 @@ class TaskService:
 
     @staticmethod
     def list_today_tasks(db: Session, workspace_id: int) -> list[dict[str, Any]]:
-        """返回今日所有任务的统一视图：pending（未执行）+ 已执行状态。
+        """返回今日所有任务的统一视图：已执行（from logs）+ 待执行（from employee_tasks）。
 
-        从 employee_tasks 计算今天应执行的任务，再与 task_execution_logs
-        以 task_id 做 left join，合并出完整的状态信息。
+        已执行任务直接从 task_execution_logs 查询今天的记录，
+        待执行任务从 employee_tasks 查今天 cron 会触发但还没有执行记录的任务。
+        两部分按 task_id 去重合并。
         """
         now = cst_now()
         target_date = now.date()
@@ -332,6 +363,47 @@ class TaskService:
         )
         emp_name_map = {e.id: e.name for e in employees}
 
+        # === Part A: 已执行任务（直接查 logs 表）===
+        logs = list(
+            db.scalars(
+                select(TaskExecutionLog).where(
+                    TaskExecutionLog.workspace_id == workspace_id,
+                    TaskExecutionLog.started_at >= day_start,
+                    TaskExecutionLog.started_at < day_end,
+                ).order_by(TaskExecutionLog.started_at.desc())
+            ).all()
+        )
+
+        executed_task_ids: set[int] = set()
+        result: list[dict[str, Any]] = []
+        seen_task_ids: set[int] = set()
+
+        for log in logs:
+            tid = log.task_id if log.task_id else 0
+            if tid and tid in seen_task_ids:
+                continue
+            if tid:
+                seen_task_ids.add(tid)
+                executed_task_ids.add(tid)
+
+            result.append({
+                "task_id": tid,
+                "task_name": log.task_name_snapshot or "",
+                "employee_id": log.employee_id,
+                "employee_name": emp_name_map.get(log.employee_id, ""),
+                "cron_expression": None,
+                "execute_mode": "scheduled",
+                "planned_at": log.started_at.strftime("%Y-%m-%d %H:%M:%S") if log.started_at else None,
+                "execution_id": log.id,
+                "run_status": log.run_status,
+                "run_result": log.run_result,
+                "started_at": log.started_at.strftime("%Y-%m-%d %H:%M:%S") if log.started_at else None,
+                "ended_at": log.ended_at.strftime("%Y-%m-%d %H:%M:%S") if log.ended_at else None,
+                "duration_ms": log.duration_ms,
+                "conversation_id": log.conversation_id,
+            })
+
+        # === Part B: 待执行任务（from employee_tasks，排除已有执行记录的）===
         tasks = list(
             db.scalars(
                 select(EmployeeTask).where(
@@ -342,8 +414,10 @@ class TaskService:
             ).all()
         )
 
-        today_tasks: list[dict[str, Any]] = []
         for task in tasks:
+            if task.id in executed_task_ids:
+                continue
+
             fire_times: list[str] = []
             if task.cron_expression:
                 try:
@@ -359,7 +433,7 @@ class TaskService:
             if not fire_times and task.execute_mode != "immediate":
                 continue
 
-            today_tasks.append({
+            result.append({
                 "task_id": task.id,
                 "task_name": task.task_name,
                 "employee_id": task.employee_id,
@@ -367,51 +441,14 @@ class TaskService:
                 "cron_expression": task.cron_expression,
                 "execute_mode": task.execute_mode,
                 "planned_at": fire_times[0] if fire_times else None,
+                "execution_id": None,
+                "run_status": "pending",
+                "run_result": None,
+                "started_at": None,
+                "ended_at": None,
+                "duration_ms": None,
+                "conversation_id": None,
             })
-
-        task_ids = [t["task_id"] for t in today_tasks]
-        log_map: dict[int, list[TaskExecutionLog]] = {}
-        if task_ids:
-            logs = list(
-                db.scalars(
-                    select(TaskExecutionLog).where(
-                        TaskExecutionLog.workspace_id == workspace_id,
-                        TaskExecutionLog.started_at >= day_start,
-                        TaskExecutionLog.started_at < day_end,
-                        TaskExecutionLog.task_id.in_(task_ids),
-                    ).order_by(TaskExecutionLog.started_at.desc())
-                ).all()
-            )
-            for log in logs:
-                log_map.setdefault(log.task_id, []).append(log)
-
-        result: list[dict[str, Any]] = []
-        for t in today_tasks:
-            tid = t["task_id"]
-            logs_for_task = log_map.get(tid)
-            if logs_for_task:
-                latest = logs_for_task[0]
-                result.append({
-                    **t,
-                    "execution_id": latest.id,
-                    "run_status": latest.run_status,
-                    "run_result": latest.run_result,
-                    "started_at": latest.started_at.strftime("%Y-%m-%d %H:%M:%S") if latest.started_at else None,
-                    "ended_at": latest.ended_at.strftime("%Y-%m-%d %H:%M:%S") if latest.ended_at else None,
-                    "duration_ms": latest.duration_ms,
-                    "conversation_id": latest.conversation_id,
-                })
-            else:
-                result.append({
-                    **t,
-                    "execution_id": None,
-                    "run_status": "pending",
-                    "run_result": None,
-                    "started_at": None,
-                    "ended_at": None,
-                    "duration_ms": None,
-                    "conversation_id": None,
-                })
 
         result.sort(key=lambda x: (
             0 if x["run_status"] == "running" else 1,

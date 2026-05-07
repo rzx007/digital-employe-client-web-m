@@ -16,6 +16,7 @@ from src.api.mcp_api import router as mcp_router
 from src.api.orchestration_api import router as orchestration_router
 from src.api.oauth_api import router as oauth_router
 from src.api.performance_record_api import router as performance_record_router
+from src.api.performance_balance_api import router as performance_balance_router
 
 api_router = APIRouter()
 api_router.include_router(workspace_router)
@@ -34,6 +35,7 @@ api_router.include_router(config_kv_router)
 api_router.include_router(orchestration_router)
 api_router.include_router(oauth_router)
 api_router.include_router(performance_record_router)
+api_router.include_router(performance_balance_router)
 
 __all__ = ["api_router"]
 

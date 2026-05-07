@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
 from src.db.session import get_db
 from src.models.response import BaseResponse, ListResponse, ResponseBase
 from src.schemas.conversation import ConversationCreate, ConversationMessageRead, ConversationRead, StreamConversationRequest
-from src.schemas.resource import ResourceContent, ResourceList
+from src.schemas.resource import ResourceContent, ResourceList, ResourceUploadResult
 from src.service.chat_service import ChatService
 from src.service.resource_service import ResourceService
 
@@ -143,3 +143,87 @@ def read_conversation_resource_content(
     if content is None:
         return ResponseBase(data=None, msg="文件不存在或路径不合法")
     return ResponseBase(data=content)
+
+
+@router.post("/chat/conversations/{conversation_id}/resources/upload")
+async def upload_conversation_resource(
+    conversation_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> ResponseBase[ResourceUploadResult]:
+    """上传文件到会话的 uploads 目录。"""
+    conversation = ChatService.get_conversation(db, conversation_id)
+    file_bytes = await file.read()
+    filename = file.filename or "unnamed_file"
+    settings = get_settings()
+    result = ResourceService.upload_file(
+        settings.artifacts_path,
+        conversation.id,
+        filename,
+        file_bytes,
+    )
+    if isinstance(result, str):
+        return ResponseBase(data=None, msg=result)
+    return ResponseBase(data=result)
+
+
+@router.delete("/chat/conversations/{conversation_id}/resources/uploads")
+def delete_conversation_upload(
+    conversation_id: int,
+    path: str = Query(..., description="虚拟路径，如 /uploads/file.txt"),
+    db: Session = Depends(get_db),
+) -> BaseResponse:
+    """删除会话 uploads 目录中的文件。"""
+    conversation = ChatService.get_conversation(db, conversation_id)
+    settings = get_settings()
+    ok = ResourceService.delete_upload_file(
+        settings.artifacts_path, conversation.id, path
+    )
+    if not ok:
+        return BaseResponse(msg="文件不存在或删除失败")
+    return BaseResponse()
+
+
+@router.get("/chat/conversations/{conversation_id}/resources/download")
+def download_conversation_resource(
+    conversation_id: int,
+    path: str = Query(..., description="虚拟路径，如 /artifacts/report.md"),
+    db: Session = Depends(get_db),
+):
+    conversation = ChatService.get_conversation(db, conversation_id)
+    settings = get_settings()
+    result = ResourceService.resolve_download_path(
+        settings.artifacts_path, conversation.id, path
+    )
+    if result is None:
+        return BaseResponse(msg="文件不存在或路径不合法")
+    resolved, is_dir = result
+    if is_dir:
+        buf = ResourceService.create_zip(resolved)
+        filename = f"{resolved.name}.zip"
+        return StreamingResponse(
+            buf,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    return FileResponse(
+        resolved,
+        filename=resolved.name,
+        media_type="application/octet-stream",
+    )
+
+
+@router.delete("/chat/conversations/{conversation_id}/resources")
+def delete_conversation_resource(
+    conversation_id: int,
+    path: str = Query(..., description="虚拟路径，如 /artifacts/report.md"),
+    db: Session = Depends(get_db),
+) -> BaseResponse:
+    conversation = ChatService.get_conversation(db, conversation_id)
+    settings = get_settings()
+    ok = ResourceService.delete_resource(
+        settings.artifacts_path, conversation.id, path
+    )
+    if not ok:
+        return BaseResponse(msg="资源不存在或删除失败")
+    return BaseResponse()

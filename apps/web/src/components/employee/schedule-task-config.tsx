@@ -70,6 +70,7 @@ function TaskCard({
           </span>
         </div>
         <div className="text-xs">
+          {/* {task.cron_expression} */}
           <span className="font-medium">{task.task_name || "未命名任务"}</span>
           <span className="ml-1.5 text-muted-foreground">{targetName}</span>
         </div>

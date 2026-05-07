@@ -1,4 +1,4 @@
-import logging
+﻿import logging
 from pathlib import Path
 from typing import Any
 from dotenv import load_dotenv
@@ -77,32 +77,58 @@ def _build_system_prompt(
     has_draft_route: bool = False,
     skills_real_path: str = "",
     draft_skills_real_path: str = "",
+    uploads_real_path: str = "",
+    artifacts_real_path: str = "",
+    memories_real_path: str = "",
+    agent_real_path: str = "",
 ) -> str:
     skills_line = ", ".join(available_skills) if available_skills else "无"
-    skills_root_line = skills_real_path or "未配置"
+
+    path_mappings = []
+    if skills_real_path:
+        path_mappings.append(f"  /skills/       → {skills_real_path}")
+    if draft_skills_real_path:
+        path_mappings.append(f"  /skills-draft/ → {draft_skills_real_path}")
+    if uploads_real_path:
+        path_mappings.append(f"  /uploads/      → {uploads_real_path}")
+    if artifacts_real_path:
+        path_mappings.append(f"  /artifacts/    → {artifacts_real_path}")
+    if memories_real_path:
+        path_mappings.append(f"  /memories/     → {memories_real_path}")
+    if agent_real_path:
+        path_mappings.append(f"  /agent/        → {agent_real_path}")
+
+    path_table = "\n".join(path_mappings) if path_mappings else "无"
+
     draft_instruction = ""
     if has_draft_route:
-        draft_root_line = draft_skills_real_path or "未配置"
-        draft_instruction = f"""
+        draft_instruction = """
         如果用户要求创建新技能或修改已有技能，将技能文件写入 /skills-draft/ 路径下，
         例如 write_file("/skills-draft/my-skill/SKILL.md", "...")。
         草稿技能会立即生效，可以像正式技能一样调用和调试。
         注意：/skills/ 下的正式技能是只读的，不要尝试修改，只能通过 /skills-draft/ 覆盖。
-        草稿技能真实物理路径根目录：{draft_root_line}
-        执行草稿技能脚本时，请使用草稿真实路径，不要在 execute 命令里使用 /skills-draft/ 虚拟路径。
         """
+
     return f"""今天的时间是{current_time}
 
         Skills available at /skills/. Use /memories/ for persistent context.
         我的默认环境是windows环境，所以你执行命令的时候要注意windows的命令规范
-        在生成命令的时候不要添加引号，例如正确的命令是：python script.py 而不是 python \"script.py\"
+        在生成命令的时候不要添加引号，例如正确的命令是：python script.py 而不是 python "script.py"
         执行 Python 脚本时优先使用无缓冲模式：python -u <script.py> ...
         当前已加载的技能名单：{skills_line}
         如果用户询问"你有没有某个技能"或"你有哪些技能"，必须严格基于当前已加载的技能名单回答，不要猜测，不要遗漏名单中的技能。
-        技能文件真实物理路径根目录：{skills_root_line}
-        执行技能脚本时请基于上面的真实路径拼接绝对路径（例如 python <skills_real_path>/<skill_name>/script.py），不要使用相对路径。
-        /skills/ 是虚拟路由路径，仅用于读写文件工具，不可直接用于 shell execute 命令。
-        如果 execute 返回 exit code=0 但输出为空，先判断为命令可能是静默成功，不要立刻改用 python -c 重跑。
+
+        ## 路径规则（重要）
+
+        虚拟路径与真实物理路径映射：
+{path_table}
+
+        规则：
+        1. read_file / write_file 等文件操作工具：使用虚拟路径（如 /skills/xxx/script.py）
+        2. shell execute 命令（python、shell 等）：必须使用上表对应的真实物理路径，不要使用虚拟路径
+        3. 读取或执行内部文件时，优先使用文件的完整真实物理路径，避免相对路径歧义
+        4. 如果 execute 返回 exit code=0 但输出为空，先判断为命令可能是静默成功，不要立刻改用 python -c 重跑
+
         当你需要为用户创建文件（如代码文件、文档、数据文件等产物）时，必须将文件写入 /artifacts/ 路径下，例如 write_file("/artifacts/report.md", "...")。
         不要将用户产物文件写到根路径或其他虚拟路径，只有 /artifacts/ 下的文件会被持久化保存并向用户展示。
         {draft_instruction}
@@ -116,7 +142,6 @@ def _build_system_prompt(
           - 感觉对话轮次较多、响应变慢时
         - 压缩不会丢失关键信息，旧消息会被摘要替代
         """
-
 
 _ARTIFACT_CODE_EXTENSIONS = {"ts", "tsx", "js", "jsx", "json", "py", "sql", "css", "html", "java", "go", "rs", "cpp", "c", "h"}
 _ARTIFACT_SHEET_EXTENSIONS = {"csv", "tsv"}
@@ -232,6 +257,13 @@ def get_agent(
         routes["/skills-draft/"] = FilesystemBackend(root_dir=str(draft_dir), virtual_mode=True)
         has_draft_route = True
 
+    # /uploads/ 仅在会话场景挂载（用户上传的文件）
+    uploads_dir: Path | None = None
+    if conversation_id and root_path:
+        uploads_dir = Path(root_path) / str(conversation_id) / "uploads"
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+        routes["/uploads/"] = FilesystemBackend(root_dir=str(uploads_dir), virtual_mode=True)
+
     skill_sources = ["/skills/", "/skills-draft/"] if has_draft_route else ["/skills/"]
 
     shell_backend = SkillAwareShellBackend(
@@ -271,6 +303,10 @@ def get_agent(
             has_draft_route=has_draft_route,
             skills_real_path=str(skills_root),
             draft_skills_real_path=str(draft_dir) if draft_dir is not None else "",
+            uploads_real_path=str(uploads_dir) if uploads_dir is not None else "",
+            artifacts_real_path=str(artifacts_dir),
+            memories_real_path=str(memories_dir),
+            agent_real_path=str(base_dir),
         ),
         backend=backend,
         checkpointer=checkpointer,

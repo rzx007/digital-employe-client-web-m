@@ -39,7 +39,17 @@ const STATUS_CONFIG: Record<
     className:
       "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400",
   },
+  cancelled: {
+    label: "已取消",
+    className:
+      "bg-muted text-muted-foreground dark:bg-muted/60",
+  },
 }
+
+const STATUS_FALLBACK = {
+  label: "未知",
+  className: "bg-muted text-muted-foreground",
+} as const
 
 function formatTime(iso: string): string {
   const d = new Date(iso)
@@ -53,10 +63,10 @@ function formatTime(iso: string): string {
 
 function TaskRunRow({ run }: { run: TaskRun }) {
   const [expanded, setExpanded] = useState(false)
-  const config = STATUS_CONFIG[run.status]
+  const config = STATUS_CONFIG[run.status] ?? STATUS_FALLBACK
 
   return (
-    <div className="rounded-md border">
+    <div className="rounded-md border mb-1">
       <button
         type="button"
         className={cn(

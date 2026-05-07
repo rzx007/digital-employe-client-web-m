@@ -48,11 +48,11 @@ export function AppTitlebar({ title = "数字员工" }: AppTitlebarProps) {
 
   return (
     <div
-      className="flex h-9 shrink-0 items-center border-b border-border/50 bg-transparent select-none"
+      className="bg-background flex justify-between h-9 shrink-0 items-center border-b border-border/50 select-none"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       onDoubleClick={handleMaximize}
     >
-      <div className="flex flex-1 items-center gap-2 pl-3">
+      <div className="flex h-full  items-center  gap-2 px-3 ">
         <img src={logoSvg} alt="" className="size-4" />
         <span className="text-xs text-muted-foreground">{title}</span>
       </div>

@@ -332,6 +332,7 @@ export interface ResourceEntry {
 
 export interface ResourceList {
   artifacts: ResourceEntry[]
+  uploads: ResourceEntry[]
   skills_draft: ResourceEntry[]
 }
 
@@ -340,4 +341,10 @@ export interface ResourceContent {
   content: string
   artifact_type: string
   language: string | null
+}
+
+export interface ResourceUploadResult {
+  name: string
+  path: string
+  size: number
 }

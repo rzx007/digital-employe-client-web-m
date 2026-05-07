@@ -98,6 +98,8 @@ class Settings:
     update_user_password_url: str | None = None
     register_url: str | None = None
     get_dept_tree_url: str | None = None
+    performance_monthly_balance_path: str | None = None
+    performance_dispatch_orders_path: str | None = None
     execute_timeout: int = 600
     feishu_app_id: str | None = None
     feishu_app_secret: str | None = None
@@ -198,6 +200,14 @@ def get_settings() -> Settings:
     get_dept_tree_path = (
         _get_kv_value(kv_data, "GET_DEPT_TREE_PATH") or "/yc/getDeptTree"
     )
+    performance_monthly_balance_path = (
+        _get_kv_value(kv_data, "PERFORMANCE_MONTHLY_BALANCE_PATH")
+        or "/api/v1/performance/monthly-balance"
+    )
+    performance_dispatch_orders_path = (
+        _get_kv_value(kv_data, "PERFORMANCE_DISPATCH_ORDERS_PATH")
+        or "/api/v1/performance/dispatch-orders"
+    )
     sqlite_path = get_default_sqlite_path()
     skill_path = get_default_skill_path()
     builtin_skills_path = (
@@ -296,6 +306,8 @@ def get_settings() -> Settings:
         get_dept_tree_url=join_base_and_path(
             platform_base_url, get_dept_tree_path
         ),
+        performance_monthly_balance_path=performance_monthly_balance_path,
+        performance_dispatch_orders_path=performance_dispatch_orders_path,
         feishu_app_id=_get_kv_value(kv_data, "FEISHU_APP_ID"),
         feishu_app_secret=_get_kv_value(kv_data, "FEISHU_APP_SECRET"),
         feishu_redirect_uri=_get_kv_value(kv_data, "FEISHU_REDIRECT_URI"),

@@ -141,7 +141,7 @@ def get_employee_task_schedule(
     skill_tasks = TaskService.list_active_tasks(db, workspace_id=employee.workspace_id, employee_id=employee_id)
     # schedules = TaskService.build_daily_schedule(db, employee.workspace_id, employee_id, target_date=target_date)
     payload = EmployeeSkillTaskScheduleRead(
-        employee=EmployeeService._employee_to_dict(employee),
+        employee=EmployeeService.employee_detail_dict(db, employee),
         date=target_date,
         skill_tasks=[_to_task_read(task) for task in skill_tasks],
         schedules=[],

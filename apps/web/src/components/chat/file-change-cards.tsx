@@ -1,38 +1,17 @@
 import { cn } from "@workspace/ui/lib/utils"
 
-import cssIcon from "@/assets/files/css.png"
-import docIcon from "@/assets/files/doc.png"
-import docxIcon from "@/assets/files/docx.png"
 import folderIcon from "@/assets/files/fold.png"
-import htmlIcon from "@/assets/files/html.png"
-import mdIcon from "@/assets/files/md.png"
-import pdfIcon from "@/assets/files/pdf.png"
 import plainIcon from "@/assets/files/plain_dark.png"
-import svgIcon from "@/assets/files/svg.png"
-import txtIcon from "@/assets/files/txt.png"
-import xlsIcon from "@/assets/files/xls.png"
-import xlsxIcon from "@/assets/files/xlsx.png"
 import type { FileChangeItem } from "@/lib/chat/file-change-utils"
+import { EXTENSION_ICONS } from "@/lib/chat/file-icons"
 import { useArtifactStore } from "@/stores/artifact-store"
+import { useChatStore } from "@/stores/chat-store"
+import { downloadResource } from "@/api/conversation"
+import { IconDownload } from "@tabler/icons-react"
 
 interface FileChangeCardsProps {
   files: FileChangeItem[]
   className?: string
-}
-
-const EXTENSION_ICONS: Record<string, string> = {
-  css: cssIcon,
-  doc: docIcon,
-  docx: docxIcon,
-  html: htmlIcon,
-  htm: htmlIcon,
-  md: mdIcon,
-  pdf: pdfIcon,
-  svg: svgIcon,
-  text: txtIcon,
-  txt: txtIcon,
-  xls: xlsIcon,
-  xlsx: xlsxIcon,
 }
 
 function getIcon(file: FileChangeItem) {
@@ -65,6 +44,12 @@ function formatSize(size: number | undefined) {
 
 export function FileChangeCards({ files, className }: FileChangeCardsProps) {
   const openResource = useArtifactStore((s) => s.openResource)
+  const conversationId = useChatStore((s) => s.selectedConversationId)
+
+  const handleDownload = async (file: FileChangeItem) => {
+    if (!conversationId) return
+    await downloadResource(conversationId, file.path)
+  }
 
   if (files.length === 0) {
     return null
@@ -85,12 +70,29 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
           const size = formatSize(file.size)
 
           return (
-            <button
-              className="flex min-w-0 cursor-pointer items-center gap-3 rounded-md border border-border/50 bg-background/70 px-3 py-2 text-left transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            <div
+              className="group relative flex min-w-0 items-center gap-3 rounded-md border border-border/50 bg-background/70 px-3 py-2 text-left transition-colors hover:bg-background"
               key={file.id}
               onClick={() => openResource(file.path)}
-              type="button"
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") openResource(file.path)
+              }}
             >
+              {conversationId && (
+                <button
+                  type="button"
+                  className="absolute top-1.5 right-1.5 flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDownload(file)
+                  }}
+                  aria-label="下载"
+                >
+                  <IconDownload className="size-3.5" />
+                </button>
+              )}
               <img
                 alt=""
                 aria-hidden="true"
@@ -112,7 +114,7 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
                   {size && <span className="shrink-0">{size}</span>}
                 </div>
               </div>
-            </button>
+            </div>
           )
         })}
       </div>

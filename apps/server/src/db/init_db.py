@@ -1,6 +1,9 @@
 from src.db.base import Base
 from src.db.session import get_engine
 from sqlalchemy import inspect, text
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Ensure model metadata is registered.
 from src import models  # noqa: F401  pylint: disable=unused-import
@@ -101,5 +104,121 @@ def init_db() -> None:
     # 序列化的事件列表（JSON array），用于断线重放
     ensure_column("conversation_messages", "stream_chunks", "stream_chunks TEXT")
 
+    # Migration: conversations.title 从 VARCHAR(255) 改为 TEXT（去掉长度限制）
+    if "conversations" in inspector.get_table_names():
+        _migrate_conversation_title_to_text(engine, inspector)
+
     ensure_column("orchestration_plans", "started_at", "started_at DATETIME")
+
+    # Migration: task_execution_logs.task_id 改为 nullable + SET NULL
+    # 真删除任务前需要保留执行记录，task_id 允许 NULL
+    if "task_execution_logs" in inspector.get_table_names():
+        _migrate_task_id_nullable(engine, inspector)
+
+
+def _migrate_task_id_nullable(engine, inspector) -> None:
+    """SQLite 表重建：将 task_execution_logs.task_id 从 NOT NULL CASCADE 改为 nullable SET NULL。"""
+    col_info = None
+    for col in inspector.get_columns("task_execution_logs"):
+        if col["name"] == "task_id":
+            col_info = col
+            break
+    if not col_info or col_info.get("nullable", False):
+        return
+
+    logger.info("Migrating task_execution_logs.task_id to nullable ...")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE _task_execution_logs_new ("
+                          "id INTEGER PRIMARY KEY,"
+                          "task_id INTEGER REFERENCES employee_tasks(id) ON DELETE SET NULL,"
+                          "workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,"
+                          "employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,"
+                          "skill_id INTEGER,"
+                          "conversation_id INTEGER REFERENCES conversations(id) ON DELETE SET NULL,"
+                          "task_name_snapshot VARCHAR(255) NOT NULL,"
+                          "run_status VARCHAR(32) NOT NULL,"
+                          "run_result VARCHAR(255),"
+                          "error_message TEXT,"
+                          "input_json TEXT NOT NULL DEFAULT '{}',"
+                          "output_json TEXT NOT NULL DEFAULT '{}',"
+                          "started_at DATETIME NOT NULL,"
+                          "ended_at DATETIME,"
+                          "duration_ms INTEGER,"
+                          "last_heartbeat_at DATETIME,"
+                          "confirm_url VARCHAR(2048),"
+                          "result_confirmed BOOLEAN NOT NULL DEFAULT 0,"
+                          "is_read BOOLEAN NOT NULL DEFAULT 0,"
+                          "created_at DATETIME"
+                          ")"))
+        conn.execute(text("INSERT INTO _task_execution_logs_new "
+                          "SELECT id, task_id, workspace_id, employee_id, skill_id, "
+                          "conversation_id, task_name_snapshot, run_status, run_result, "
+                          "error_message, input_json, output_json, started_at, ended_at, "
+                          "duration_ms, last_heartbeat_at, confirm_url, result_confirmed, "
+                          "is_read, created_at "
+                          "FROM task_execution_logs"))
+        conn.execute(text("DROP TABLE task_execution_logs"))
+        conn.execute(text("ALTER TABLE _task_execution_logs_new RENAME TO task_execution_logs"))
+        for idx_sql in [
+            "CREATE INDEX ix_task_execution_logs_task_id ON task_execution_logs(task_id)",
+            "CREATE INDEX ix_task_execution_logs_workspace_id ON task_execution_logs(workspace_id)",
+            "CREATE INDEX ix_task_execution_logs_employee_id ON task_execution_logs(employee_id)",
+            "CREATE INDEX ix_task_execution_logs_conversation_id ON task_execution_logs(conversation_id)",
+            "CREATE INDEX ix_task_execution_logs_task_name_snapshot ON task_execution_logs(task_name_snapshot)",
+            "CREATE INDEX ix_task_execution_logs_run_status ON task_execution_logs(run_status)",
+            "CREATE INDEX ix_task_execution_logs_started_at ON task_execution_logs(started_at)",
+            "CREATE INDEX ix_task_execution_logs_ended_at ON task_execution_logs(ended_at)",
+            "CREATE INDEX ix_task_execution_logs_created_at ON task_execution_logs(created_at)",
+            "CREATE INDEX ix_task_execution_logs_result_confirmed ON task_execution_logs(result_confirmed)",
+            "CREATE INDEX ix_task_execution_logs_is_read ON task_execution_logs(is_read)",
+            "CREATE INDEX ix_task_execution_logs_skill_id ON task_execution_logs(skill_id)",
+        ]:
+            conn.execute(text(idx_sql))
+    logger.info("Migrated task_execution_logs.task_id to nullable successfully")
+
+
+def _migrate_conversation_title_to_text(engine, inspector) -> None:
+    """SQLite 表重建：将 conversations.title 迁移为 TEXT，去掉 255 长度限制。"""
+    columns = inspector.get_columns("conversations")
+    title_col = next((col for col in columns if col["name"] == "title"), None)
+    if not title_col:
+        return
+
+    title_type = str(title_col.get("type", "")).upper()
+    # 已是 TEXT（或无长度文本）则跳过
+    if "TEXT" in title_type and "VARCHAR" not in title_type:
+        return
+
+    logger.info("Migrating conversations.title to TEXT ...")
+    with engine.connect() as conn:
+        conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        try:
+            conn.execute(text("CREATE TABLE _conversations_new ("
+                              "id INTEGER PRIMARY KEY,"
+                              "workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,"
+                              "target_type VARCHAR(32) NOT NULL,"
+                              "target_id INTEGER NOT NULL,"
+                              "title TEXT,"
+                              "created_at DATETIME,"
+                              "updated_at DATETIME"
+                              ")"))
+            conn.execute(text("INSERT INTO _conversations_new "
+                              "SELECT id, workspace_id, target_type, target_id, title, created_at, updated_at "
+                              "FROM conversations"))
+            conn.execute(text("DROP TABLE conversations"))
+            conn.execute(text("ALTER TABLE _conversations_new RENAME TO conversations"))
+            for idx_sql in [
+                "CREATE INDEX ix_conversations_id ON conversations(id)",
+                "CREATE INDEX ix_conversations_workspace_id ON conversations(workspace_id)",
+                "CREATE INDEX ix_conversations_target_type ON conversations(target_type)",
+                "CREATE INDEX ix_conversations_target_id ON conversations(target_id)",
+            ]:
+                conn.execute(text(idx_sql))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+    logger.info("Migrated conversations.title to TEXT successfully")
 

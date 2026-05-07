@@ -1,11 +1,13 @@
 import * as React from "react"
 import {
+  IconArrowLeft,
   IconPackage,
   IconSearch,
   IconSparkles,
 } from "@tabler/icons-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Badge } from "@workspace/ui/components/badge"
+import { Button } from "@workspace/ui/components/button"
 import {
   Tabs,
   TabsContent,
@@ -14,16 +16,11 @@ import {
 } from "@workspace/ui/components/tabs"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { Input } from "@workspace/ui/components/input"
+import { Label } from "@workspace/ui/components/label"
+import { Textarea } from "@workspace/ui/components/textarea"
 import { cn } from "@workspace/ui/lib/utils"
 import type { SkillListItem } from "@/api/types"
 import { Skeleton } from "@workspace/ui/components/skeleton"
-import { Separator } from "@workspace/ui/components/separator"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@workspace/ui/components/sheet"
 import { useSkillListQuery, useLocalSkillDetailQuery } from "@/hooks/use-skill-queries"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { ImportSkillDialog } from "./import-skill-dialog"
@@ -68,153 +65,164 @@ function SkillCard({
   )
 }
 
-function SkillDetailPanel({
+function SkillDetailView({
   skill,
-  open,
-  onOpenChange,
+  onBack,
 }: {
-  skill: SkillListItem | null
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  skill: SkillListItem
+  onBack: () => void
 }) {
-  const { data: localDetail, isLoading: loadingLocal } =
-    useLocalSkillDetailQuery(
-      open && skill?.source === "local" ? skill.skillName : null
-    )
-
-  if (!skill) return null
-
   const isLocal = skill.source === "local"
+  const { data: localDetail, isLoading: loadingLocal } =
+    useLocalSkillDetailQuery(isLocal ? skill.skillName : null)
+
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onBack()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onBack])
+
+  const readOnlyInputClass = "cursor-default bg-muted/30"
+  const readOnlyDescTextareaClass = cn(
+    "field-sizing-fixed max-h-36 min-h-20 cursor-default overflow-y-auto",
+    "bg-muted/30",
+  )
+  const readOnlyInstructionTextareaClass = cn(
+    "field-sizing-fixed min-h-32 max-h-[min(60vh,28rem)] cursor-default",
+    "overflow-y-auto bg-muted/30 font-mono text-xs",
+  )
+  const readOnlyFilesTextareaClass = cn(
+    "field-sizing-fixed min-h-20 max-h-48 cursor-default overflow-y-auto",
+    "bg-muted/30 font-mono text-xs",
+  )
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full min-w-0 flex-col gap-0 p-0 sm:max-w-xl">
-        <SheetHeader className="border-b px-6 pt-6 pb-5 text-left">
-          <div className="space-y-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <IconSparkles className="size-4 text-primary" />
-              <SheetTitle className="min-w-0 break-all pr-8 text-lg leading-tight font-semibold">
-                {skill.displayNameZh || skill.skillName}
-              </SheetTitle>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge
-                variant={isLocal ? "outline" : "secondary"}
-                className="px-1.5 py-0 text-[10px]"
-              >
-                {skill.sourceLabel || (isLocal ? "本地" : "远程")}
-              </Badge>
-              <p className="text-xs text-muted-foreground">
-                {isLocal ? "本地技能详情" : "远程技能详情"}
-              </p>
-            </div>
-          </div>
-        </SheetHeader>
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="shrink-0 border-b px-4 py-3 sm:px-6">
+        <div className="mx-auto flex w-full items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onBack}
+            aria-label="返回"
+            title="返回"
+            className="-ml-1 shrink-0"
+          >
+            <IconArrowLeft className="size-4" />
+          </Button>
+          <IconSparkles className="size-4 shrink-0 text-primary" />
+          <h2 className="min-w-0 flex-1 truncate text-base font-semibold">
+            {skill.displayNameZh || skill.skillName}
+          </h2>
+          <Badge
+            variant={isLocal ? "outline" : "secondary"}
+            className="shrink-0 px-1.5 py-0 text-[10px]"
+          >
+            {skill.sourceLabel || (isLocal ? "本地" : "远程")}
+          </Badge>
+        </div>
+      </header>
 
-        <ScrollArea className="min-h-0 flex-1 bg-muted/10 px-6 py-6">
+      <ScrollArea className="min-h-0 flex-1 bg-muted/10">
+        <div className="mx-auto w-full max-w-4xl px-4 py-4 sm:px-6">
           {isLocal ? (
             loadingLocal ? (
-              <div className="space-y-4 rounded-lg border bg-background p-4">
+              <div className="flex flex-col gap-3">
                 <Skeleton className="h-4 w-2/3" />
-                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-24 w-full" />
               </div>
             ) : localDetail ? (
-              <div className="space-y-6">
+              <div className="flex flex-col gap-3">
                 {localDetail.importedAt && (
-                  <div className="space-y-1.5 rounded-lg border bg-background p-4 shadow-sm">
-                    <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                      导入时间
-                    </h4>
-                    <p className="break-all text-sm leading-relaxed">
-                      {new Date(localDetail.importedAt).toLocaleString("zh-CN")}
-                    </p>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="skill-detail-imported-at">导入时间</Label>
+                    <Input
+                      id="skill-detail-imported-at"
+                      readOnly
+                      value={new Date(localDetail.importedAt).toLocaleString(
+                        "zh-CN",
+                      )}
+                      className={readOnlyInputClass}
+                    />
                   </div>
                 )}
                 {localDetail.files.length > 0 && (
-                  <div className="space-y-2 rounded-lg border bg-background p-4 shadow-sm">
-                    <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                      文件列表
-                    </h4>
-                    <div className="rounded-md border bg-muted/30 p-3">
-                      {localDetail.files.map((f) => (
-                        <p
-                          key={f}
-                          className="break-all font-mono text-xs leading-relaxed text-muted-foreground"
-                        >
-                          {f}
-                        </p>
-                      ))}
-                    </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="skill-detail-files">文件列表</Label>
+                    <Textarea
+                      id="skill-detail-files"
+                      readOnly
+                      rows={16}
+                      value={localDetail.files.join("\n")}
+                      className={readOnlyFilesTextareaClass}
+                    />
                   </div>
                 )}
                 {localDetail.skillMdContent && (
-                  <div className="space-y-2">
-                    <Separator />
-                    <div className="space-y-2 rounded-lg border bg-background p-4 shadow-sm">
-                      <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                        SKILL.md
-                      </h4>
-                      <pre className="max-h-80 overflow-auto rounded-md border bg-muted/30 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
-                        {localDetail.skillMdContent}
-                      </pre>
-                    </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="skill-detail-md">SKILL.md</Label>
+                    <Textarea
+                      id="skill-detail-md"
+                      readOnly
+                      rows={100}
+                      value={localDetail.skillMdContent}
+                      className={readOnlyInstructionTextareaClass}
+                    />
                   </div>
                 )}
               </div>
             ) : (
-              <p className="rounded-lg border border-dashed bg-background p-4 text-sm text-muted-foreground">
+              <p className="rounded-md border border-dashed bg-background p-4 text-sm text-muted-foreground">
                 无法加载技能详情
               </p>
             )
           ) : (
-            <div className="space-y-6">
-              {skill.description && (
-                <div className="space-y-1.5 rounded-lg border bg-background p-4">
-                  <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                    描述
-                  </h4>
-                  <p className="break-all text-sm leading-relaxed">
-                    {skill.description}
-                  </p>
-                </div>
-              )}
+            <div className="flex flex-col gap-3">
               {skill.skillName && (
-                <div className="space-y-1.5 rounded-lg border bg-background p-4">
-                  <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                    技能名称
-                  </h4>
-                  <p className="break-all font-mono text-sm">{skill.skillName}</p>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="skill-detail-name">技能名称</Label>
+                  <Input
+                    id="skill-detail-name"
+                    readOnly
+                    value={skill.skillName}
+                    className={cn(readOnlyInputClass, "font-mono text-xs")}
+                  />
                 </div>
               )}
-              {skill.directoryName && (
-                <div className="space-y-1.5 rounded-lg border bg-background p-4">
-                  <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                    所属目录
-                  </h4>
-                  <p className="break-all text-sm leading-relaxed">
-                    {skill.directoryName}
-                  </p>
+
+              {skill.description && (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="skill-detail-description">描述</Label>
+                  <Textarea
+                    id="skill-detail-description"
+                    readOnly
+                    rows={4}
+                    value={skill.description}
+                    className={readOnlyDescTextareaClass}
+                  />
                 </div>
               )}
+
               {skill.prompt && (
-                <div className="space-y-2">
-                  <Separator />
-                  <div className="space-y-2 rounded-lg border bg-background p-4">
-                    <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                      Prompt
-                    </h4>
-                    <pre className="max-h-80 overflow-auto rounded-md border bg-muted/30 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
-                      {skill.prompt}
-                    </pre>
-                  </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="skill-detail-prompt">指令</Label>
+                  <Textarea
+                    id="skill-detail-prompt"
+                    readOnly
+                    rows={8}
+                    value={skill.prompt}
+                    className={readOnlyInstructionTextareaClass}
+                  />
                 </div>
               )}
             </div>
           )}
-        </ScrollArea>
-      </SheetContent>
-    </Sheet>
+        </div>
+      </ScrollArea>
+    </div>
   )
 }
 
@@ -272,91 +280,89 @@ export function SkillsPage({
       className={cn("flex h-full w-full flex-col bg-background", className)}
       {...props}
     >
-      <Tabs
-        value={tab}
-        onValueChange={(v) => {
-          setTab(v as "remote" | "local")
-          setSearchQuery("")
-        }}
-        className="flex min-h-0 flex-1 flex-col"
-      >
-        <header className="flex shrink-0 items-center gap-4 border-b px-6 py-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <IconPackage className="size-5 text-primary" />
-            <h1 className="text-lg font-semibold">技能管理</h1>
-          </div>
-
-          <TabsList className="ml-2 h-9 w-auto rounded-md bg-muted/70 p-1">
-
-            <TabsTrigger
-              value="local"
-              className="h-7 gap-1.5 rounded-md px-3 text-xs text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-            >
-              本地技能
-              <span className="text-xs text-muted-foreground">
-                ({localSkills.length})
-              </span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="remote"
-              className="h-7 gap-1.5 rounded-md px-3 text-xs text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-            >
-              远程技能
-              <span className="text-xs text-muted-foreground">
-                ({remoteSkills.length})
-              </span>
-            </TabsTrigger>
-          </TabsList>
-
-          <div className="ml-auto flex w-full max-w-80 items-center gap-2">
-            <div className="relative flex-1">
-              <IconSearch className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="h-7.5 rounded-md pl-7 text-xs"
-                placeholder={`搜索${tab === "remote" ? "远程" : "本地"}技能...`}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+      {selectedSkill ? (
+        <SkillDetailView
+          skill={selectedSkill}
+          onBack={() => setSelectedSkill(null)}
+        />
+      ) : (
+        <Tabs
+          value={tab}
+          onValueChange={(v) => {
+            setTab(v as "remote" | "local")
+            setSearchQuery("")
+          }}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <header className="flex shrink-0 items-center gap-4 border-b px-6 py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <IconPackage className="size-5 text-primary" />
+              <h1 className="text-lg font-semibold">技能管理</h1>
             </div>
-            {tab === "local" && (
-              <ImportSkillDialog
-                open={importOpen}
-                onOpenChange={setImportOpen}
-                onSuccess={handleImportSuccess}
-                trigger
+
+            <TabsList className="ml-2 h-9 w-auto rounded-md bg-muted/70 p-1">
+              <TabsTrigger
+                value="local"
+                className="h-7 gap-1.5 rounded-md px-3 text-xs text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+              >
+                本地技能
+                <span className="text-xs text-muted-foreground">
+                  ({localSkills.length})
+                </span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="remote"
+                className="h-7 gap-1.5 rounded-md px-3 text-xs text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+              >
+                远程技能
+                <span className="text-xs text-muted-foreground">
+                  ({remoteSkills.length})
+                </span>
+              </TabsTrigger>
+            </TabsList>
+
+            <div className="ml-auto flex w-full max-w-80 items-center gap-2">
+              <div className="relative flex-1">
+                <IconSearch className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="h-7.5 rounded-md pl-7 text-xs"
+                  placeholder={`搜索${tab === "remote" ? "远程" : "本地"}技能...`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              {tab === "local" && (
+                <ImportSkillDialog
+                  open={importOpen}
+                  onOpenChange={setImportOpen}
+                  onSuccess={handleImportSuccess}
+                  trigger
+                />
+              )}
+            </div>
+          </header>
+
+          <ScrollArea className="min-h-0 flex-1">
+            <TabsContent value="remote" className="m-0 p-6">
+              <SkillGrid
+                skills={filteredRemote}
+                loading={loading}
+                searchQuery={searchQuery}
+                onSelect={setSelectedSkill}
               />
-            )}
-          </div>
-        </header>
-
-        <ScrollArea className="min-h-0 flex-1">
-          <TabsContent value="remote" className="m-0 p-6">
-            <SkillGrid
-              skills={filteredRemote}
-              loading={loading}
-              searchQuery={searchQuery}
-              onSelect={setSelectedSkill}
-            />
-          </TabsContent>
-          <TabsContent value="local" className="m-0 p-6">
-            <SkillGrid
-              skills={filteredLocal}
-              loading={loading}
-              searchQuery={searchQuery}
-              onSelect={setSelectedSkill}
-              emptyText="暂无本地技能，点击「导入技能」添加"
-            />
-          </TabsContent>
-        </ScrollArea>
-      </Tabs>
-
-      <SkillDetailPanel
-        skill={selectedSkill}
-        open={!!selectedSkill}
-        onOpenChange={(open) => {
-          if (!open) setSelectedSkill(null)
-        }}
-      />
+            </TabsContent>
+            <TabsContent value="local" className="m-0 p-6">
+              <SkillGrid
+                skills={filteredLocal}
+                loading={loading}
+                searchQuery={searchQuery}
+                onSelect={setSelectedSkill}
+                emptyText="暂无本地技能，点击「导入技能」添加"
+              />
+            </TabsContent>
+          </ScrollArea>
+        </Tabs>
+      )}
     </div>
   )
 }

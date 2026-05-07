@@ -173,21 +173,29 @@ export function CuratorView({
   const hasCurrentTurnEnded = status === "ready" || status === "error" || !!error
   const showStreamingIndicator = !isMessagesLoading && (status === "submitted" || status === "streaming") && !error && displayMessages.length > 0
 
+  const uploadedPathsRef = React.useRef<string[]>([])
+
   const doSend = React.useCallback(
     async (message: PromptInputMessage | string) => {
       const messageText = (typeof message === "string" ? message : message.text)?.trim() ?? ""
       if (!messageText || !curatorConversationId) return
 
+      const pendingMeta = {
+        command: command ? { id: command.id, title: command.title } : undefined,
+        mentions: mentions.length > 0 ? mentions : undefined,
+      }
+
+      const paths = uploadedPathsRef.current
+      if (paths.length > 0) {
+        uploadedPathsRef.current = []
+      }
+
       try {
-        const pendingMeta = {
-          command: command ? { id: command.id, title: command.title } : undefined,
-          mentions: mentions.length > 0 ? mentions : undefined,
-        }
         await sendMessage(
           { text: messageText },
           {
             body: {
-              attachments: typeof message === "string" ? undefined : message.files,
+              attachments: paths.length > 0 ? paths : undefined,
               conversationId: curatorConversationId,
               skill: command?.title ?? "",
               metadata: pendingMeta,
@@ -201,6 +209,13 @@ export function CuratorView({
       }
     },
     [curatorConversationId, sendMessage, command, mentions]
+  )
+
+  const handleAttachmentsChange = React.useCallback(
+    (paths: string[]) => {
+      uploadedPathsRef.current = paths
+    },
+    [],
   )
 
   const {
@@ -436,6 +451,8 @@ export function CuratorView({
           className="w-full overflow-hidden shadow-xl bg-background/80"
           slashCommands={[]}
           mentionCandidates={[]}
+          conversationId={curatorConversationId}
+          onAttachmentsChange={handleAttachmentsChange}
         />
         {error && (
           <p className="mt-2 text-xs text-destructive">{error.message}</p>

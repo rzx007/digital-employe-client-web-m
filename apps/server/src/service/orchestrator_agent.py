@@ -658,20 +658,27 @@ def update_task(task_id: int, task_name: str | None = None, prompt: str | None =
 
     if changed:
         db.commit()
+        if "调度时间" in changed:
+            from src.service.task_scheduler_service import TaskSchedulerService
+
+            TaskSchedulerService.reload_jobs()
         return f"任务 #{task_id} ({task.task_name}) 已更新：{'、'.join(changed)}。"
     return "未做任何修改。"
 
 
 @tool
 def delete_task(task_id: int) -> str:
-    """删除子任务（设置 is_active=false，不会物理删除）。"""
+    """删除子任务（物理删除，关联的执行记录会保留但 task_id 置空）。"""
     db = _get_db()
     task = db.get(EmployeeTask, task_id)
     if not task:
         return f"错误：任务 #{task_id} 不存在。"
 
-    task.is_active = False
+    db.delete(task)
     db.commit()
+    from src.service.task_scheduler_service import TaskSchedulerService
+
+    TaskSchedulerService.reload_jobs()
     return f"任务 #{task_id} ({task.task_name}) 已删除。"
 
 

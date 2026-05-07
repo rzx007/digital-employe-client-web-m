@@ -22,6 +22,8 @@
   "UPDATE_USER_PASSWORD_PATH": "/yc/updatePassword",
   "REGISTER_PATH": "/yc/register",
   "GET_DEPT_TREE_PATH": "/yc/getDeptTree",
+  "PERFORMANCE_MONTHLY_BALANCE_PATH": "/digital/api/v1/performance/monthly-balance",
+  "PERFORMANCE_DISPATCH_ORDERS_PATH": "/digital/api/v1/performance/dispatch-orders",
   "SKILL_DIR": "/api/v1/client/skills/directories",
   "SKILL_REMOTE_IMPORT": "/api/v1/client/skills/import",
   "SKILL_NAME_VALIDATE": "/api/v1/client/skills/name/exists",

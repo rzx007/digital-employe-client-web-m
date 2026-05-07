@@ -1,8 +1,65 @@
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 import { Button } from "@workspace/ui/components/button"
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@workspace/ui/components/hover-card"
 import type { MonthlyOverview, ScheduleDay } from "@/types/schedule-monitor"
+
+const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"]
+
+function formatHoverDateLabel(dateStr: string): string {
+  const parts = dateStr.split("-").map(Number)
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) {
+    return dateStr
+  }
+  const [year, month, day] = parts
+  const d = new Date(year, month - 1, day)
+  const w = WEEKDAY_LABELS[(d.getDay() + 6) % 7]
+  return `${month}月${day}日 周${w}`
+}
+
+function countDayTasks(dayData: ScheduleDay): number {
+  return dayData.employees.reduce((sum, emp) => sum + emp.tasks.length, 0)
+}
+
+function ScheduleDayHoverContent({
+  dateStr,
+  dayData,
+}: {
+  dateStr: string
+  dayData: ScheduleDay
+}) {
+  const totalTasks = countDayTasks(dayData)
+  return (
+    <div className="flex flex-col gap-0">
+      <p className="text-[11px] font-medium leading-snug text-foreground">
+        {formatHoverDateLabel(dateStr)}
+      </p>
+      <p className="mt-0.5 text-[10px] text-muted-foreground">
+        {totalTasks} 个任务 · {dayData.employees.length} 人
+      </p>
+      <ul className="mt-1.5 max-h-32 space-y-1 overflow-y-auto border-t border-border/50 pt-1.5">
+        {dayData.employees.map((emp) => (
+          <li
+            key={emp.employee_id}
+            className="flex items-center justify-between gap-2 text-[10px]"
+          >
+            <span className="min-w-0 truncate font-medium text-foreground">
+              {emp.employee_name}
+            </span>
+            <span className="shrink-0 rounded-md bg-muted px-1.5 py-px tabular-nums text-muted-foreground">
+              {emp.tasks.length}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 function getLevel(dayData: ScheduleDay): 0 | 1 | 2 | 3 {
   const totalTasks = dayData.employees.reduce(
@@ -10,28 +67,16 @@ function getLevel(dayData: ScheduleDay): 0 | 1 | 2 | 3 {
     0
   )
   if (totalTasks === 0) return 0
-  if (totalTasks <= 2) return 1
-  if (totalTasks <= 5) return 2
+  if (totalTasks <= 5) return 1
+  if (totalTasks <= 8) return 2
   return 3
-}
-
-function getDaySummary(dayData: ScheduleDay): string {
-  const employeeNames = dayData.employees.map((e) => e.employee_name)
-  const uniqueNames = [...new Set(employeeNames)]
-  const totalTasks = dayData.employees.reduce(
-    (sum, emp) => sum + emp.tasks.length,
-    0
-  )
-  const employeePart =
-    uniqueNames.length > 0 ? uniqueNames.join(", ") : "无排班"
-  return `${totalTasks} 个任务 - ${employeePart}`
 }
 
 const LEVEL_COLORS: Record<number, string> = {
   0: "bg-muted-foreground/10 border-muted-foreground/10",
-  1: "bg-emerald-200 border-emerald-300 dark:bg-emerald-900 dark:border-emerald-800",
-  2: "bg-emerald-400 border-emerald-500 dark:bg-emerald-600 dark:border-emerald-500",
-  3: "bg-emerald-600 border-emerald-700 dark:bg-emerald-800 dark:border-emerald-700",
+  1: "bg-emerald-200 border-emerald-300 dark:bg-emerald-900/70 dark:border-emerald-800/70",
+  2: "bg-emerald-400 border-emerald-500 dark:bg-emerald-600/70 dark:border-emerald-500/70",
+  3: "bg-emerald-600 border-emerald-700 dark:bg-emerald-800/70 dark:border-emerald-700/70",
 }
 
 function getCalendarGrid(year: number, month: number) {
@@ -50,8 +95,6 @@ function getCalendarGrid(year: number, month: number) {
 function formatDateStr(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
 }
-
-const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"]
 
 export function ScheduleCalendar({
   overview,
@@ -90,12 +133,6 @@ export function ScheduleCalendar({
     "11月",
     "12月",
   ]
-
-  const [tooltipInfo, setTooltipInfo] = useState<{
-    text: string
-    x: number
-    y: number
-  } | null>(null)
 
   const handlePrev = () => {
     let m = overview.month - 1
@@ -159,7 +196,7 @@ export function ScheduleCalendar({
         ))}
       </div>
 
-      <div className="relative grid grid-cols-7 justify-items-center gap-x-1 gap-y-1">
+      <div className="grid grid-cols-7 justify-items-center gap-x-1 gap-y-1">
         {cells.map((day, i) => {
           if (day == null) {
             return <div key={`empty-${i}`} />
@@ -171,61 +208,65 @@ export function ScheduleCalendar({
           const isToday = dateStr === todayStr
           const hasSchedule = dayData && dayData.employees.length > 0
 
-          return (
-            <button
-              key={dateStr}
-              type="button"
-              disabled={!dayData || !hasSchedule}
-              className={cn(
-                "size-4 rounded-sm border transition-colors",
-                LEVEL_COLORS[level],
-                isToday &&
-                "ring-1 ring-ring ring-offset-1 ring-offset-background",
-                dayData && !hasSchedule && "cursor-default opacity-30",
-                hasSchedule && "cursor-pointer hover:opacity-80"
-              )}
-              onMouseEnter={(e) => {
-                if (!dayData || !hasSchedule) return
-                const rect = e.currentTarget.getBoundingClientRect()
-                setTooltipInfo({
-                  text: `${dateStr}: ${getDaySummary(dayData)}`,
-                  x: rect.left + rect.width / 2,
-                  y: rect.top,
-                })
-              }}
-              onMouseLeave={() => setTooltipInfo(null)}
-            >
-              <span className="sr-only">{day}</span>
-            </button>
-          )
-        })}
+          const buttonProps = {
+            type: "button" as const,
+            disabled: !dayData || !hasSchedule,
+            className: cn(
+              "size-4 rounded-sm border transition-colors",
+              LEVEL_COLORS[level],
+              isToday &&
+              "ring-1 ring-ring ring-offset-1 ring-offset-background",
+              dayData && !hasSchedule && "cursor-default opacity-30",
+              hasSchedule && "cursor-pointer hover:opacity-80"
+            ),
+            children: <span className="sr-only">{day}</span>,
+          }
 
-        {tooltipInfo && (
-          <div
-            className="pointer-events-none absolute -top-8 z-50 -translate-x-1/2 rounded bg-popover px-2 py-1 text-[10px] text-popover-foreground shadow-md"
-            style={{ left: tooltipInfo.x, top: tooltipInfo.y - 8 }}
-          >
-            {tooltipInfo.text}
-            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-popover" />
-          </div>
-        )}
+          if (hasSchedule && dayData) {
+            const totalTasks = countDayTasks(dayData)
+            const hoverTitle = `${formatHoverDateLabel(dateStr)} · ${totalTasks} 个任务 · ${dayData.employees.length} 人`
+            return (
+              <HoverCard
+                key={dateStr}
+                openDelay={120}
+                closeDelay={80}
+              >
+                <HoverCardTrigger asChild>
+                  <button {...buttonProps} title={hoverTitle} />
+                </HoverCardTrigger>
+                <HoverCardContent
+                  side="top"
+                  align="center"
+                  className="w-[min(100vw-1.5rem,260px)] max-w-xs p-2.5"
+                >
+                  <ScheduleDayHoverContent
+                    dateStr={dateStr}
+                    dayData={dayData}
+                  />
+                </HoverCardContent>
+              </HoverCard>
+            )
+          }
+
+          return <button key={dateStr} {...buttonProps} />
+        })}
       </div>
 
       <div className="mt-2 flex items-center justify-end gap-3">
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-muted-foreground/10" />
+          <span className="size-2.5 rounded-sm bg-muted-foreground/8" />
           <span className="text-[10px] text-muted-foreground">无</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-emerald-200 dark:bg-emerald-900" />
+          <span className="size-2.5 rounded-sm bg-emerald-50 dark:bg-emerald-950/40" />
           <span className="text-[10px] text-muted-foreground">少</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-emerald-400 dark:bg-emerald-600" />
+          <span className="size-2.5 rounded-sm bg-emerald-100 dark:bg-emerald-900/35" />
           <span className="text-[10px] text-muted-foreground">中</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-emerald-600 dark:bg-emerald-800" />
+          <span className="size-2.5 rounded-sm bg-emerald-200 dark:bg-emerald-800/45" />
           <span className="text-[10px] text-muted-foreground">多</span>
         </div>
       </div>

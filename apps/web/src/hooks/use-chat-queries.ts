@@ -18,10 +18,10 @@ import {
   fetchResourceContent,
   fetchCuratorConversation,
   deleteAllTaskExecutions,
+  uploadConversationFile,
 } from "@/api/conversation"
 import type { Contact } from "@/lib/mock-data/ai-employees"
 import type { Conversation } from "@/lib/mock-data/conversations"
-import type { ConversationItem } from "@/api/types"
 import type { Message } from "@/lib/mock-data/messages"
 import { chatKeys } from "@/lib/query-keys/chat"
 
@@ -69,7 +69,7 @@ export function useOrchestrationPlansQuery() {
     queryKey: [...chatKeys.all, "orchestration-plans"],
     queryFn: async () => {
       const { request } = await import("@/lib/request")
-      const res = await request<{ code: number; data: Array<{ id: number; workspace_id: number; conversation_id: number; user_input: string; plan_json: string; status: string; total_tasks: number; completed_tasks: number; created_at: string; updated_at: string }>}>(
+      const res = await request<{ code: number; data: Array<{ id: number; workspace_id: number; conversation_id: number; user_input: string; plan_json: string; status: string; total_tasks: number; completed_tasks: number; created_at: string; updated_at: string }> }>(
         "/orchestration/plans?workspace_id=1"
       )
       return res?.data ?? []
@@ -166,11 +166,11 @@ export function useResetCuratorConversation() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ conversationId, clearTaskLogs }: { 
+    mutationFn: async ({ conversationId, clearTaskLogs }: {
       conversationId: number | string
-      clearTaskLogs?: boolean 
+      clearTaskLogs?: boolean
     }) => {
-      const promises = [deleteConversationApi(conversationId)]
+      const promises: Promise<unknown>[] = [deleteConversationApi(conversationId)]
       if (clearTaskLogs) {
         promises.push(deleteAllTaskExecutions())
       }
@@ -222,5 +222,16 @@ export function useResourceContentQuery(
       return res.data
     },
     enabled: !!path,
+  })
+}
+
+export function useUploadFileMutation(conversationId: string | number | null) {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      if (!conversationId) throw new Error("缺少会话 ID")
+      const res = await uploadConversationFile(conversationId, file)
+      if (!res?.data) throw new Error(res?.msg || "上传失败")
+      return res.data
+    },
   })
 }
