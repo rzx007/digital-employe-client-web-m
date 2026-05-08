@@ -344,8 +344,8 @@ function LoginPage() {
         className={cn(
           isElectron
             ? cn(
-                "flex w-full flex-col overflow-x-hidden px-6 pb-3 pt-12",
-              )
+              "flex w-full flex-col overflow-x-hidden px-6 pb-3 pt-12",
+            )
             : "flex min-h-0 flex-1 flex-col justify-center px-4 pb-6 pt-20 md:px-6",
         )}
       >
@@ -368,413 +368,413 @@ function LoginPage() {
               isElectron
                 ? "flex w-full flex-col overflow-x-hidden"
                 : cn(
-                    "flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain",
-                    hideScrollbar,
-                    "p-5 md:p-7",
-                  ),
+                  "flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain",
+                  hideScrollbar,
+                  "p-5 md:p-7",
+                ),
             )}
           >
-          {currentView === "endpoint" ? (
-            <EndpointConfig
-              isElectron={isElectron}
-              onCancel={() => setCurrentView("login")}
-              onKvPersisted={syncRemoteApiBaseFromStore}
-              onSaved={handleEndpointSaved}
-            />
-          ) : (
-            <AnimatePresence mode="wait" initial={false}>
-              {currentView === "changePassword" ? (
-                <motion.div
-                  key="changePassword"
-                  initial={{ x: 300, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: -300, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
-                >
-                  <ChangePasswordForm
-                    isElectron={isElectron}
-                    onSuccess={handleChangePasswordSuccess}
-                    onCancel={handleChangePasswordCancel}
-                  />
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="login"
-                  initial={{ x: 300, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: -300, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
-                >
-                  <AnimatePresence mode="wait" initial={false}>
-                    {authTab === "login" ? (
-                      <motion.div
-                        key="login-form"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -8 }}
-                        transition={{ duration: 0.2, ease: "easeOut" }}
-                        className="w-full"
-                      >
-                      <div className="mb-6 space-y-1 md:mb-8">
-                        <h3 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">
-                          欢迎回来
-                        </h3>
-                        <p className="text-sm text-muted-foreground">
-                          登录以继续使用数字员工
-                        </p>
-                      </div>
-                      {registerSuccessHint && (
-                        <div
-                          className="mb-5 flex items-center gap-2 rounded-lg border border-emerald-200/80 bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-200"
-                          role="status"
-                        >
-                          <span className="inline-block size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                          注册成功，请登录
-                        </div>
-                      )}
-
-                      <form
-                        onSubmit={handleSubmit}
-                        className={cn(
-                          "flex flex-col",
-                          isElectron ? "gap-4" : "gap-5"
-                        )}
-                      >
-                        <div className="flex flex-col gap-1.5">
-                          <Label
-                            htmlFor="username"
-                            className="text-sm font-medium text-foreground"
-                          >
-                            账号
-                          </Label>
-                          <Input
-                            id="username"
-                            className="h-10 rounded-md border-border/80 bg-background transition-shadow focus-visible:ring-2 focus-visible:ring-primary/20"
-                            type="text"
-                            placeholder="请输入你的用户名"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
-                            autoComplete="username"
-                            disabled={loading}
-                            autoFocus
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-1">
-                          <Label
-                            htmlFor="password"
-                            className="text-sm font-medium text-foreground"
-                          >
-                            密码
-                          </Label>
-                          <div className="relative">
-                            <Input
-                              id="password"
-                              type={showPassword ? "text" : "password"}
-                              placeholder="初始密码 Aa123456"
-                              value={password}
-                              onChange={(e) => setPassword(e.target.value)}
-                              className="h-10 rounded-md border-border/80 bg-background pr-8 transition-shadow focus-visible:ring-2 focus-visible:ring-primary/20"
-                              autoComplete="current-password"
-                              disabled={loading}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowPassword(!showPassword)}
-                              className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed"
-                              tabIndex={-1}
-                              disabled={loading}
-                            >
-                              {showPassword ? (
-                                <IconEyeOff className="size-3.5" />
-                              ) : (
-                                <IconEye className="size-3.5" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-4 py-1">
-                          <div className="flex items-center gap-1">
-                            <Checkbox
-                              id="remember"
-                              checked={rememberMe}
-                              onCheckedChange={(checked) =>
-                                setRememberMe(checked === true)
-                              }
-                              disabled={loading}
-                            />
-                            <Label
-                              htmlFor="remember"
-                              className="cursor-pointer text-sm"
-                            >
-                              记住密码
-                            </Label>
-                          </div>
-                        </div>
-
-                        <Button
-                          type="submit"
-                          className="w-full font-medium shadow-sm"
-                          size={isElectron ? "lg" : "default"}
-                          disabled={loading || !username || !password}
-                        >
-                          {loading && (
-                            <IconLoader2 className="mr-2 size-4 animate-spin" />
-                          )}
-                          {loading ? "登录中..." : "登录"}
-                        </Button>
-                        <div className="mt-4 flex flex-wrap items-center justify-center gap-x-1 gap-y-0.5 text-sm">
-                          <span className="text-muted-foreground">还没有账号？</span>
-                          <button
-                            type="button"
-                            onClick={() => switchAuthView("register")}
-                            className="font-medium text-primary underline decoration-primary/25 underline-offset-4 transition hover:decoration-primary"
-                          >
-                            去注册
-                          </button>
-                        </div>
-                      </form>
-                      {error && (
-                        <p
-                          className="mt-3 rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive"
-                          role="alert"
-                        >
-                          {error}
-                        </p>
-                      )}
-                      <div className="mt-7">
-                        <div className="relative">
-                          <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t border-border/70" />
-                          </div>
-                          <div className="relative flex justify-center text-[11px] font-medium tracking-wide text-muted-foreground">
-                            <span className="bg-background px-3 text-muted-foreground/90">
-                              其他登录方式
-                            </span>
-                          </div>
-                        </div>
-                        <div className="mt-4 flex justify-center gap-4">
-                          <button
-                            type="button"
-                            onClick={handleFeishuLogin}
-                            disabled={loading}
-                            className="flex size-10 cursor-pointer items-center justify-center rounded-full border border-border/80 bg-background shadow-sm transition-all hover:border-primary/25 hover:bg-muted/60 hover:shadow disabled:cursor-not-allowed disabled:opacity-50"
-                            title="飞书登录"
-                          >
-                            <img
-                              src={feishuIcon}
-                              alt="飞书"
-                              className="size-6"
-                            />
-                          </button>
-                        </div>
-                      </div>
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="register-form"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -8 }}
-                        transition={{ duration: 0.2, ease: "easeOut" }}
-                        className="w-full"
-                      >
-                      <div className="mb-5 space-y-1 md:mb-6">
-                        <h3 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">
-                          创建账号
-                        </h3>
-                        <p className="text-sm text-muted-foreground">
-                          填写以下信息完成注册
-                        </p>
-                      </div>
-
-                      <form
-                        onSubmit={handleRegisterSubmit}
-                        className={cn(
-                          "flex flex-col",
-                          isElectron ? "gap-3" : "gap-3.5",
-                        )}
-                      >
-                        <div className="flex flex-col gap-1.5">
-                          <Label
-                            htmlFor="reg-username"
-                            className="text-sm font-medium text-foreground"
-                          >
-                            用户名
-                          </Label>
-                          <Input
-                            id="reg-username"
-                            className="h-10 rounded-md border-border/80 bg-background transition-shadow focus-visible:ring-2 focus-visible:ring-primary/20"
-                            type="text"
-                            placeholder="登录用户名"
-                            value={regUsername}
-                            onChange={(e) => setRegUsername(e.target.value)}
-                            autoComplete="username"
-                            disabled={registerLoading}
-                            autoFocus
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-1">
-                          <Label
-                            htmlFor="reg-password"
-                            className="text-sm font-medium text-foreground"
-                          >
-                            密码
-                          </Label>
-                          <div className="relative">
-                            <Input
-                              id="reg-password"
-                              type={showRegPassword ? "text" : "password"}
-                              placeholder="与登录相同的密码规则"
-                              value={regPassword}
-                              onChange={(e) => setRegPassword(e.target.value)}
-                              className="h-10 rounded-md border-border/80 bg-background pr-8 transition-shadow focus-visible:ring-2 focus-visible:ring-primary/20"
-                              autoComplete="new-password"
-                              disabled={registerLoading}
-                            />
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setShowRegPassword(!showRegPassword)
-                              }
-                              className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed"
-                              tabIndex={-1}
-                              disabled={registerLoading}
-                            >
-                              {showRegPassword ? (
-                                <IconEyeOff className="size-3.5" />
-                              ) : (
-                                <IconEye className="size-3.5" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <Label
-                            htmlFor="reg-phone"
-                            className="text-sm font-medium text-foreground"
-                          >
-                            手机号
-                          </Label>
-                          <Input
-                            id="reg-phone"
-                            className="h-10 rounded-md border-border/80 bg-background transition-shadow focus-visible:ring-2 focus-visible:ring-primary/20"
-                            type="tel"
-                            inputMode="numeric"
-                            placeholder="11 位手机号"
-                            value={regPhone}
-                            onChange={(e) => setRegPhone(e.target.value)}
-                            autoComplete="tel"
-                            disabled={registerLoading}
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <Label
-                            htmlFor="reg-name"
-                            className="text-sm font-medium text-foreground"
-                          >
-                            姓名
-                          </Label>
-                          <Input
-                            id="reg-name"
-                            className="h-10 rounded-md border-border/80 bg-background transition-shadow focus-visible:ring-2 focus-visible:ring-primary/20"
-                            type="text"
-                            placeholder="真实姓名"
-                            value={regName}
-                            onChange={(e) => setRegName(e.target.value)}
-                            autoComplete="name"
-                            disabled={registerLoading}
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <Label className="text-sm font-medium text-foreground">
-                            部门（必选）
-                          </Label>
-                          {deptLoading ? (
-                            <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <IconLoader2 className="size-3.5 animate-spin" />
-                              加载部门树…
-                            </p>
-                          ) : deptFetchError ? (
-                            <p className="text-xs text-destructive">
-                              {deptFetchError}
-                            </p>
-                          ) : (
-                            <RegisterDeptTree
-                              nodes={deptNodes}
-                              selectedPaths={selectedDeptPaths}
-                              onTogglePath={(path) =>
-                                setSelectedDeptPaths((prev) =>
-                                  togglePath(prev, path),
-                                )
-                              }
-                              disabled={registerLoading}
-                            />
-                          )}
-                        </div>
-
-                        <Button
-                          type="submit"
-                          className="w-full font-medium shadow-sm"
-                          size={isElectron ? "lg" : "default"}
-                          disabled={
-                            registerLoading ||
-                            !regUsername.trim() ||
-                            !regPassword ||
-                            !regPhone.trim() ||
-                            !regName.trim() ||
-                            selectedDeptPaths.length === 0 ||
-                            deptLoading ||
-                            !!deptFetchError
-                          }
-                        >
-                          {registerLoading && (
-                            <IconLoader2 className="mr-2 size-4 animate-spin" />
-                          )}
-                          {registerLoading ? "提交中..." : "注册"}
-                        </Button>
-                        <div className="mt-4 flex flex-wrap items-center justify-center gap-x-1 gap-y-0.5 text-sm">
-                          <span className="text-muted-foreground">已有账号？</span>
-                          <button
-                            type="button"
-                            onClick={() => switchAuthView("login")}
-                            className="font-medium text-primary underline decoration-primary/25 underline-offset-4 transition hover:decoration-primary"
-                          >
-                            登录
-                          </button>
-                        </div>
-                      </form>
-                      {registerError && (
-                        <p
-                          className="mt-3 rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive"
-                          role="alert"
-                        >
-                          {registerError}
-                        </p>
-                      )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  <div
-                    className={cn(
-                      "w-full text-center",
-                      isElectron ? "mt-4 border-t border-border/40 pt-3" : "mt-8 pt-2",
-                    )}
+            {currentView === "endpoint" ? (
+              <EndpointConfig
+                isElectron={isElectron}
+                onCancel={() => setCurrentView("login")}
+                onKvPersisted={syncRemoteApiBaseFromStore}
+                onSaved={handleEndpointSaved}
+              />
+            ) : (
+              <AnimatePresence mode="wait" initial={false}>
+                {currentView === "changePassword" ? (
+                  <motion.div
+                    key="changePassword"
+                    initial={{ x: 300, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -300, opacity: 0 }}
+                    transition={{ duration: 0.3, ease: "easeInOut" }}
                   >
-                    <p className="text-[11px] text-muted-foreground/60">
-                      上海博般技术数据有限公司
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          )}
+                    <ChangePasswordForm
+                      isElectron={isElectron}
+                      onSuccess={handleChangePasswordSuccess}
+                      onCancel={handleChangePasswordCancel}
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="login"
+                    initial={{ x: 300, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -300, opacity: 0 }}
+                    transition={{ duration: 0.3, ease: "easeInOut" }}
+                  >
+                    <AnimatePresence mode="wait" initial={false}>
+                      {authTab === "login" ? (
+                        <motion.div
+                          key="login-form"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -8 }}
+                          transition={{ duration: 0.2, ease: "easeOut" }}
+                          className="w-full"
+                        >
+                          <div className="mb-6 space-y-1 md:mb-8">
+                            <h3 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">
+                              欢迎回来
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                              登录以继续使用数字员工
+                            </p>
+                          </div>
+                          {registerSuccessHint && (
+                            <div
+                              className="mb-5 flex items-center gap-2 rounded-lg border border-emerald-200/80 bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-200"
+                              role="status"
+                            >
+                              <span className="inline-block size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                              注册成功，请登录
+                            </div>
+                          )}
+
+                          <form
+                            onSubmit={handleSubmit}
+                            className={cn(
+                              "flex flex-col",
+                              isElectron ? "gap-4" : "gap-5"
+                            )}
+                          >
+                            <div className="flex flex-col gap-1.5">
+                              <Label
+                                htmlFor="username"
+                                className="text-sm font-medium text-foreground"
+                              >
+                                账号
+                              </Label>
+                              <Input
+                                id="username"
+                                className="h-10 rounded-md border-border/80 bg-background transition-shadow focus-visible:ring-2 focus-visible:ring-primary/20"
+                                type="text"
+                                placeholder="请输入你的用户名"
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value)}
+                                autoComplete="username"
+                                disabled={loading}
+                                autoFocus
+                              />
+                            </div>
+
+                            <div className="flex flex-col gap-1">
+                              <Label
+                                htmlFor="password"
+                                className="text-sm font-medium text-foreground"
+                              >
+                                密码
+                              </Label>
+                              <div className="relative">
+                                <Input
+                                  id="password"
+                                  type={showPassword ? "text" : "password"}
+                                  placeholder="初始密码 Aa123456"
+                                  value={password}
+                                  onChange={(e) => setPassword(e.target.value)}
+                                  className="h-10 rounded-md border-border/80 bg-background pr-8 transition-shadow focus-visible:ring-2 focus-visible:ring-primary/20"
+                                  autoComplete="current-password"
+                                  disabled={loading}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowPassword(!showPassword)}
+                                  className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed"
+                                  tabIndex={-1}
+                                  disabled={loading}
+                                >
+                                  {showPassword ? (
+                                    <IconEyeOff className="size-3.5" />
+                                  ) : (
+                                    <IconEye className="size-3.5" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-4 py-1">
+                              <div className="flex items-center gap-1">
+                                <Checkbox
+                                  id="remember"
+                                  checked={rememberMe}
+                                  onCheckedChange={(checked) =>
+                                    setRememberMe(checked === true)
+                                  }
+                                  disabled={loading}
+                                />
+                                <Label
+                                  htmlFor="remember"
+                                  className="cursor-pointer text-sm"
+                                >
+                                  记住密码
+                                </Label>
+                              </div>
+                            </div>
+
+                            <Button
+                              type="submit"
+                              className="w-full font-medium shadow-sm"
+                              size={isElectron ? "lg" : "default"}
+                              disabled={loading || !username || !password}
+                            >
+                              {loading && (
+                                <IconLoader2 className="mr-2 size-4 animate-spin" />
+                              )}
+                              {loading ? "登录中..." : "登录"}
+                            </Button>
+                            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-1 gap-y-0.5 text-sm">
+                              <span className="text-muted-foreground">还没有账号？</span>
+                              <button
+                                type="button"
+                                onClick={() => switchAuthView("register")}
+                                className="font-medium text-primary underline decoration-primary/25 underline-offset-4 transition hover:decoration-primary"
+                              >
+                                去注册
+                              </button>
+                            </div>
+                          </form>
+                          {error && (
+                            <p
+                              className="mt-3 rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive"
+                              role="alert"
+                            >
+                              {error}
+                            </p>
+                          )}
+                          <div className="mt-7">
+                            <div className="relative">
+                              <div className="absolute inset-0 flex items-center">
+                                <span className="w-full border-t border-border/70" />
+                              </div>
+                              <div className="relative flex justify-center text-[11px] font-medium tracking-wide text-muted-foreground">
+                                <span className="bg-background px-3 text-muted-foreground/90">
+                                  其他登录方式
+                                </span>
+                              </div>
+                            </div>
+                            <div className="mt-4 flex justify-center gap-4">
+                              <button
+                                type="button"
+                                onClick={handleFeishuLogin}
+                                disabled={loading}
+                                className="flex size-10 cursor-pointer items-center justify-center rounded-full border border-border/80 bg-background shadow-sm transition-all hover:border-primary/25 hover:bg-muted/60 hover:shadow disabled:cursor-not-allowed disabled:opacity-50"
+                                title="飞书登录"
+                              >
+                                <img
+                                  src={feishuIcon}
+                                  alt="飞书"
+                                  className="size-6"
+                                />
+                              </button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="register-form"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -8 }}
+                          transition={{ duration: 0.2, ease: "easeOut" }}
+                          className="w-full"
+                        >
+                          <div className="mb-5 space-y-1 md:mb-6">
+                            <h3 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">
+                              创建账号
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                              填写以下信息完成注册
+                            </p>
+                          </div>
+
+                          <form
+                            onSubmit={handleRegisterSubmit}
+                            className={cn(
+                              "flex flex-col",
+                              isElectron ? "gap-3" : "gap-3.5",
+                            )}
+                          >
+                            <div className="flex flex-col gap-1.5">
+                              <Label
+                                htmlFor="reg-username"
+                                className="text-sm font-medium text-foreground"
+                              >
+                                用户名
+                              </Label>
+                              <Input
+                                id="reg-username"
+                                className="h-10 rounded-md border-border/80 bg-background transition-shadow focus-visible:ring-2 focus-visible:ring-primary/20"
+                                type="text"
+                                placeholder="登录用户名"
+                                value={regUsername}
+                                onChange={(e) => setRegUsername(e.target.value)}
+                                autoComplete="username"
+                                disabled={registerLoading}
+                                autoFocus
+                              />
+                            </div>
+
+                            <div className="flex flex-col gap-1">
+                              <Label
+                                htmlFor="reg-password"
+                                className="text-sm font-medium text-foreground"
+                              >
+                                密码
+                              </Label>
+                              <div className="relative">
+                                <Input
+                                  id="reg-password"
+                                  type={showRegPassword ? "text" : "password"}
+                                  placeholder="与登录相同的密码规则"
+                                  value={regPassword}
+                                  onChange={(e) => setRegPassword(e.target.value)}
+                                  className="h-10 rounded-md border-border/80 bg-background pr-8 transition-shadow focus-visible:ring-2 focus-visible:ring-primary/20"
+                                  autoComplete="new-password"
+                                  disabled={registerLoading}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setShowRegPassword(!showRegPassword)
+                                  }
+                                  className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed"
+                                  tabIndex={-1}
+                                  disabled={registerLoading}
+                                >
+                                  {showRegPassword ? (
+                                    <IconEyeOff className="size-3.5" />
+                                  ) : (
+                                    <IconEye className="size-3.5" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col gap-1.5">
+                              <Label
+                                htmlFor="reg-phone"
+                                className="text-sm font-medium text-foreground"
+                              >
+                                手机号
+                              </Label>
+                              <Input
+                                id="reg-phone"
+                                className="h-10 rounded-md border-border/80 bg-background transition-shadow focus-visible:ring-2 focus-visible:ring-primary/20"
+                                type="tel"
+                                inputMode="numeric"
+                                placeholder="11 位手机号"
+                                value={regPhone}
+                                onChange={(e) => setRegPhone(e.target.value)}
+                                autoComplete="tel"
+                                disabled={registerLoading}
+                              />
+                            </div>
+
+                            <div className="flex flex-col gap-1.5">
+                              <Label
+                                htmlFor="reg-name"
+                                className="text-sm font-medium text-foreground"
+                              >
+                                姓名
+                              </Label>
+                              <Input
+                                id="reg-name"
+                                className="h-10 rounded-md border-border/80 bg-background transition-shadow focus-visible:ring-2 focus-visible:ring-primary/20"
+                                type="text"
+                                placeholder="真实姓名"
+                                value={regName}
+                                onChange={(e) => setRegName(e.target.value)}
+                                autoComplete="name"
+                                disabled={registerLoading}
+                              />
+                            </div>
+
+                            <div className="flex flex-col gap-1.5">
+                              <Label className="text-sm font-medium text-foreground">
+                                部门（必选）
+                              </Label>
+                              {deptLoading ? (
+                                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <IconLoader2 className="size-3.5 animate-spin" />
+                                  加载部门树…
+                                </p>
+                              ) : deptFetchError ? (
+                                <p className="text-xs text-destructive">
+                                  {deptFetchError}
+                                </p>
+                              ) : (
+                                <RegisterDeptTree
+                                  nodes={deptNodes}
+                                  selectedPaths={selectedDeptPaths}
+                                  onTogglePath={(path) =>
+                                    setSelectedDeptPaths((prev) =>
+                                      togglePath(prev, path),
+                                    )
+                                  }
+                                  disabled={registerLoading}
+                                />
+                              )}
+                            </div>
+
+                            <Button
+                              type="submit"
+                              className="w-full font-medium shadow-sm"
+                              size={isElectron ? "lg" : "default"}
+                              disabled={
+                                registerLoading ||
+                                !regUsername.trim() ||
+                                !regPassword ||
+                                !regPhone.trim() ||
+                                !regName.trim() ||
+                                selectedDeptPaths.length === 0 ||
+                                deptLoading ||
+                                !!deptFetchError
+                              }
+                            >
+                              {registerLoading && (
+                                <IconLoader2 className="mr-2 size-4 animate-spin" />
+                              )}
+                              {registerLoading ? "提交中..." : "注册"}
+                            </Button>
+                            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-1 gap-y-0.5 text-sm">
+                              <span className="text-muted-foreground">已有账号？</span>
+                              <button
+                                type="button"
+                                onClick={() => switchAuthView("login")}
+                                className="font-medium text-primary underline decoration-primary/25 underline-offset-4 transition hover:decoration-primary"
+                              >
+                                登录
+                              </button>
+                            </div>
+                          </form>
+                          {registerError && (
+                            <p
+                              className="mt-3 rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive"
+                              role="alert"
+                            >
+                              {registerError}
+                            </p>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <div
+                      className={cn(
+                        "w-full text-center",
+                        isElectron ? "mt-4 border-t border-border/40 pt-3" : "mt-8 pt-2",
+                      )}
+                    >
+                      <p className="text-[11px] text-muted-foreground/60">
+                        上海博般技术数据有限公司
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            )}
           </div>
         </div>
       </div>

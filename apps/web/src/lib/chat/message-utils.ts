@@ -43,7 +43,7 @@ interface ToolCallAccumulator {
  * chunk_json 是 SSE 流中每个 data 行的 JSON 数组的序列化，
  * 每个元素形如 [langchainChunk, metadata]。
  *
- * @param chunkJson - 服务端存储的 chunk_json 字符串
+ * @param chunkJson - 服务端存储的 chunk_json 字符串（旧格式，flat data array）
  * @returns 重建的 UIMessage parts 数组；解析失败时返回 null
  */
 function replayChunkJsonToParts(chunkJson: string): UIMessage["parts"] | null {
@@ -59,9 +59,47 @@ function replayChunkJsonToParts(chunkJson: string): UIMessage["parts"] | null {
     return null
   }
 
-  const state = createLangChainStreamParseState()
+  return _replayPayloadsToParts(payloads)
+}
 
-  // 收集所有 UIMessageChunk 事件
+/**
+ * 将 stream_chunks 字符串回放为 UIMessage.parts 数组。
+ *
+ * stream_chunks 格式为 [{"seq":N,"data":原始payload}, ...]，
+ * 与 chunk_json 的区别在于每个元素多了 seq 元数据。
+ *
+ * @param streamChunks - 服务端存储的 stream_chunks 字符串
+ * @returns 重建的 UIMessage parts 数组；解析失败时返回 null
+ */
+function replayStreamChunksToParts(streamChunks: string): UIMessage["parts"] | null {
+  let events: unknown[]
+
+  try {
+    events = JSON.parse(streamChunks)
+  } catch {
+    return null
+  }
+
+  if (!Array.isArray(events) || events.length === 0) {
+    return null
+  }
+
+  const payloads: unknown[] = []
+  for (const evt of events) {
+    if (evt && typeof evt === "object" && "data" in evt) {
+      payloads.push((evt as Record<string, unknown>).data)
+    }
+  }
+
+  if (payloads.length === 0) {
+    return null
+  }
+
+  return _replayPayloadsToParts(payloads)
+}
+
+function _replayPayloadsToParts(payloads: unknown[]): UIMessage["parts"] | null {
+  const state = createLangChainStreamParseState()
   const allChunks: UIMessageChunk[] = []
 
   for (const payload of payloads) {
@@ -73,11 +111,9 @@ function replayChunkJsonToParts(chunkJson: string): UIMessage["parts"] | null {
     }
   }
 
-  // 收尾：关闭可能未闭合的文本阶段
   const tailChunks = closeTextPhaseIfNeeded(state)
   allChunks.push(...tailChunks)
 
-  // 将 UIMessageChunk 事件流累积为最终的 parts
   return accumulateChunksToParts(allChunks)
 }
 
@@ -326,9 +362,11 @@ function accumulateChunksToParts(chunks: UIMessageChunk[]): UIMessage["parts"] {
 /**
  * 将存储的消息列表转换为 UIMessage 列表。
  *
- * 对于 assistant 消息，优先使用 chunkJson 字段重建完整的 parts
- * （包含文本、工具调用和工具结果），保证与实时流式消息结构一致。
- * 如果 chunkJson 不存在或解析失败，降级为使用 content 字段作为纯文本。
+ * 对于 assistant 消息，按优先级尝试重建 rich parts：
+ * 1. chunkJson（旧格式，flat data array）
+ * 2. streamChunks（新格式，[{"seq":N,"data":...}]）
+ * 3. content 纯文本降级
+ * 4. streamState === "streaming" → 空 parts（等待实时流填充）
  *
  * @param messages - 存储的消息列表
  * @returns 转换后的 UIMessage 列表
@@ -345,6 +383,21 @@ export function mapStoredMessagesToUIMessages(
     if (message.role === "assistant") {
       if (message.chunkJson) {
         const parts = replayChunkJsonToParts(message.chunkJson)
+
+        if (parts && parts.length > 0) {
+          const uiMessage: UIMessage = {
+            id: message.id,
+            role: message.role,
+            parts,
+          }
+            ; (uiMessage as UIMessage & { metadata?: Record<string, any> }).metadata =
+              messageMeta
+          return uiMessage
+        }
+      }
+
+      if (message.streamChunks) {
+        const parts = replayStreamChunksToParts(message.streamChunks)
 
         if (parts && parts.length > 0) {
           const uiMessage: UIMessage = {

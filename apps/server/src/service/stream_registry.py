@@ -29,37 +29,28 @@ DB_LOCK_RETRY_SLEEP_SECONDS = 0.2
 class ChunkJsonBuilder:
     """Incrementally builds JSON array of events without O(N²) serialization.
 
-    Each event is stored as ``{"seq": N, "data": ...}`` (stream_json format)
-    and the raw ``data`` is separately accumulated for chunk_json format.
+    Each event is stored as ``{"seq": N, "data": ...}`` for stream_chunks.
     """
 
     def __init__(self) -> None:
-        self._data_parts: list[str] = []   # raw data items → chunk_json("[
-        self._event_parts: list[str] = []  # {seq, data} items → stream_json
+        self._event_parts: list[str] = []
         self._count: int = 0
 
     def add(self, event: dict) -> bool:
         """Add a buffer event ``{seq, data}``.  Returns False if serialization failed."""
         try:
-            data_json = json.dumps(event["data"], ensure_ascii=False, default=str)
             event_json = json.dumps(event, ensure_ascii=False, default=str)
         except Exception:
             logger.warning("[builder] seq=%s serialization failed, skipping", event.get("seq"))
             return False
         if self._count > 0:
-            self._data_parts.append(",")
             self._event_parts.append(",")
-        self._data_parts.append(data_json)
         self._event_parts.append(event_json)
         self._count += 1
         return True
 
-    def to_chunk_json(self) -> str:
-        """``[data1, data2, ...]`` — frontend-compatible chunk_json format."""
-        return "[" + "".join(self._data_parts) + "]"
-
     def to_stream_json(self) -> str:
-        """``[{"seq":N,"data":...}, ...]`` — cold-path replay format."""
+        """``[{"seq":N,"data":...}, ...]`` — stream_chunks format."""
         return "[" + "".join(self._event_parts) + "]"
 
     @property
@@ -344,11 +335,10 @@ class StreamRegistry:
             nonlocal last_flush_time
             if chunk_builder.count == 0:
                 return
-            chunk_json = chunk_builder.to_chunk_json()
             stream_json = chunk_builder.to_stream_json()
             ok = self._flush_to_db(
                 db, stream_msg_id, task.buffer,
-                chunk_json=chunk_json, stream_json=stream_json,
+                stream_json=stream_json,
             )
             if ok:
                 task.buffer.trim()
@@ -420,7 +410,6 @@ class StreamRegistry:
             await self._flush_terminal(
                 db, stream_msg_id, task.buffer, state="completed",
                 content=final_text,
-                chunk_json=chunk_builder.to_chunk_json(),
                 stream_json=chunk_builder.to_stream_json(),
             )
 
@@ -443,7 +432,6 @@ class StreamRegistry:
             await self._flush_terminal(
                 db, stream_msg_id, task.buffer, state="cancelled",
                 content=partial_text,
-                chunk_json=chunk_builder.to_chunk_json(),
                 stream_json=chunk_builder.to_stream_json(),
             )
             evt = task.buffer.add({"status": "cancelled"})
@@ -467,7 +455,6 @@ class StreamRegistry:
             await self._flush_terminal(
                 db, stream_msg_id, task.buffer, state="error",
                 content=partial_text,
-                chunk_json=chunk_builder.to_chunk_json(),
                 stream_json=chunk_builder.to_stream_json(),
                 error_message=str(e),
             )
@@ -491,7 +478,6 @@ class StreamRegistry:
                 await self._flush_terminal(
                     db, stream_msg_id, task.buffer, state="cancelled",
                     content=partial_text,
-                    chunk_json=chunk_builder.to_chunk_json(),
                     stream_json=chunk_builder.to_stream_json(),
                 )
             logger.info(
@@ -512,7 +498,6 @@ class StreamRegistry:
         buffer: StreamEventBuffer,
         state: str,
         content: str | None,
-        chunk_json: str | None,
         stream_json: str | None = None,
         error_message: str | None = None,
         max_retries: int = 3,
@@ -521,7 +506,7 @@ class StreamRegistry:
         for attempt in range(max_retries):
             self._flush_to_db(
                 db, stream_msg_id, buffer, state=state,
-                content=content, chunk_json=chunk_json,
+                content=content,
                 stream_json=stream_json,
                 error_message=error_message,
             )
@@ -549,7 +534,6 @@ class StreamRegistry:
         buffer: StreamEventBuffer,
         state: str | None = None,
         content: str | None = None,
-        chunk_json: str | None = None,
         stream_json: str | None = None,
         error_message: str | None = None,
     ) -> bool:
@@ -574,19 +558,12 @@ class StreamRegistry:
                 msg.stream_cursor = buffer.cursor
                 if stream_json is not None:
                     msg.stream_chunks = stream_json
-                if chunk_json is not None:
-                    try:
-                        msg.chunk_json = chunk_json
-                    except Exception:
-                        logger.warning("[flush] msg_id=%s set chunk_json failed", stream_msg_id, exc_info=True)
-                else:
-                    logger.info("[flush] msg_id=%s chunk_json=None, state=%s, buffer_cursor=%d", stream_msg_id, state, buffer.cursor)
                 db.commit()
                 logger.info(
-                    "[flush] msg_id=%s committed: state=%s, content_len=%s, chunk_json_len=%s",
+                    "[flush] msg_id=%s committed: state=%s, content_len=%s, stream_json_len=%s",
                     stream_msg_id, state,
                     len(content) if content else None,
-                    len(chunk_json) if chunk_json else None,
+                    len(stream_json) if stream_json else None,
                 )
                 return True
             except OperationalError as e:

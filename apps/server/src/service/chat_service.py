@@ -225,7 +225,6 @@ class ChatService:
         conversation: Conversation,
         role: str,
         content: str | None,
-        chunk_json: str | None = None,
         extra_meta: dict | None = None,
     ) -> ConversationMessage:
         meta = dict(extra_meta) if extra_meta else {}
@@ -234,7 +233,6 @@ class ChatService:
             conversation_id=conversation.id,
             role=role,
             content=content,
-            chunk_json=chunk_json,
             extra_meta=json.dumps(meta, ensure_ascii=False),
         )
         db.add(message)
@@ -524,91 +522,6 @@ class ChatService:
         def _is_terminal(event: dict) -> bool:
             data = event.get("data") if isinstance(event, dict) else None
             return isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error")
-
-        # ── Cold path: replay from DB stream_chunks for events trimmed from buffer ──
-        if cursor < task.buffer.base_cursor and last_seq < task.buffer.base_cursor:
-            logger.info(
-                "[resume] conv=%s cold path: cursor=%d < base_cursor=%d, replaying from DB",
-                conversation_id, cursor, task.buffer.base_cursor,
-            )
-            from sqlalchemy import select as _sel
-            from src.models.conversation import ConversationMessage as _CM
-            _stmt = _sel(_CM).where(
-                _CM.conversation_id == conversation_id,
-                _CM.role == "assistant",
-            ).order_by(_CM.id.desc()).limit(1)
-            _msg = db.scalar(_stmt)
-            _replayed = False
-            if _msg and _msg.stream_chunks:
-                try:
-                    _events = await _to_thread(json.loads, _msg.stream_chunks)
-                except json.JSONDecodeError:
-                    _events = []
-                if isinstance(_events, list):
-                    for _evt in _events:
-                        if not isinstance(_evt, dict):
-                            continue
-                        _seq = _evt.get("seq", 0)
-                        if _seq <= last_seq:
-                            continue
-                        if _seq > task.buffer.base_cursor:
-                            break
-                        if task.status != "streaming" and not _is_terminal(_evt):
-                            continue
-                        if not _is_terminal(_evt):
-                            done, payloads = await _emit_event_payloads(_evt)
-                            if not done and task.status != "streaming":
-                                continue
-                            for payload in payloads:
-                                yield payload
-                            if done:
-                                return
-                        else:
-                            done, payloads = await _emit_event_payloads(_evt)
-                            for payload in payloads:
-                                yield payload
-                            if done:
-                                return
-                        _replayed = True
-            if not _replayed and _msg and _msg.chunk_json:
-                try:
-                    _chunks = await _to_thread(json.loads, _msg.chunk_json)
-                except json.JSONDecodeError:
-                    _chunks = []
-                if not isinstance(_chunks, list):
-                    _chunks = []
-                for i, _data in enumerate(_chunks):
-                    _seq = i + 1
-                    if _seq <= last_seq:
-                        continue
-                    if _seq > task.buffer.base_cursor:
-                        break
-                    _evt = {"seq": _seq, "data": _data}
-                    if task.status != "streaming" and not _is_terminal(_evt):
-                        continue
-                    if not _is_terminal(_evt):
-                        done, payloads = await _emit_event_payloads(_evt)
-                        if not done and task.status != "streaming":
-                            continue
-                        for payload in payloads:
-                            yield payload
-                        if done:
-                            return
-                    else:
-                        done, payloads = await _emit_event_payloads(_evt)
-                        for payload in payloads:
-                            yield payload
-                        if done:
-                            return
-                logger.info(
-                    "[resume] conv=%s cold path done (legacy chunk_json), last_seq now %d",
-                    conversation_id, last_seq,
-                )
-            else:
-                logger.info(
-                    "[resume] conv=%s cold path done, last_seq now %d",
-                    conversation_id, last_seq,
-                )
 
         buffer_events = task.buffer.get_events_after(last_seq)
         logger.info("[resume] conv=%s initial buffer scan: %d events after cursor=%d", conversation_id, len(buffer_events), last_seq)

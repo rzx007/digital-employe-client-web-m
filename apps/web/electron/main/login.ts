@@ -16,7 +16,6 @@ import path from "node:path"
 
 let loginWin: BrowserWindow | null = null
 
-const LOGIN_WIDTH = 400
 /** 内容偏短时仍可操作的最小内容区高度（勿过大，否则会挤压成「底部大片空白」） */
 const LOGIN_MIN_HEIGHT = 380
 const LOGIN_MAX_HEIGHT_RATIO = 0.92
@@ -59,8 +58,8 @@ export function createLoginWindow(options: {
   )
 
   loginWin = new BrowserWindow({
-    width: LOGIN_WIDTH,
-    height: 560,
+    width: 310,
+    height: 450,
     title: "数字员工",
     icon: path.join(process.env.APP_ROOT!, "build/icon.ico"),
     frame: false,
