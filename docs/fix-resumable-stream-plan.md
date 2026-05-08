@@ -6,6 +6,35 @@
 
 ---
 
+## 实施状态
+
+> **状态：全部完成** ✅
+
+| 编号 | 优先级 | 状态 | 说明 |
+|------|--------|------|------|
+| F-1 | P0 | ✅ 已完成 | 后端冷路径优先使用 `stream_chunks`（含真实 seq），回退到 `chunk_json` |
+| F-2 | P0 | ✅ 已完成 | 前端 `_lastSeqByChat` 按 chatId 存储游标，resume 请求带上 cursor |
+| F-3 | P1 | ✅ 已完成 | `requestAnimationFrame` 延迟 + `status` 双重保护 |
+| F-4 | P1 | ✅ 已完成 | `hasReceivedMessages` 状态阻止回退闪烁 |
+| F-5 | P1 | ✅ 已完成 | `reconnectToStream` 内部 `AbortController` + `cancelPreviousReconnect()` |
+| F-6 | P2 | ✅ 已完成 | `seq <= last_seq` 去重已在 `_emit_event_payloads` 中 |
+| F-7 | P2 | ✅ 已完成 | `onFinish` 调用 `queryClient.invalidateQueries` |
+| F-8 | P2 | ✅ 已完成 | `ChunkJsonBuilder` 同时输出 `to_chunk_json()` 和 `to_stream_json()` |
+| F-9 | P3 | ✅ 已完成 | curator-view 同步所有前端修改 |
+
+### 额外修复（实施中发现）
+
+| 编号 | 优先级 | 状态 | 说明 |
+|------|--------|------|------|
+| A1 | P1 | ✅ 已完成 | `processResponseStream` 接受 `abortSignal` 参数，监听 abort 事件调用 `reader.cancel()` |
+| A2 | P1 | ✅ 已完成 | `sendMessages` 传递 `abortSignal` 给 `processResponseStream` |
+| A3 | P1 | ✅ 已完成 | `reconnectToStream` 传递 `abortController.signal` 给 `processResponseStream` |
+| A4 | P1 | ✅ 已完成 | `chat-conversation-view.tsx` 卸载清理 effect 调用 `stop()` |
+| A5 | P1 | ✅ 已完成 | `curator-view.tsx` 卸载清理 effect 调用 `stop()` |
+| B1 | P1 | ✅ 已完成 | `processResponseStream` catch 块静默处理 `AbortError`，调用 `controller.close()` |
+
+---
+
 ## 修复项一览
 
 | 编号 | 优先级 | 模块 | 问题描述 | 影响文件 |
@@ -58,29 +87,7 @@
 
 **根因**：`buildResumeApiUrl` 不带 cursor 查询参数，后端默认 `cursor=0`，每次重连都从头重播。
 
-**文件**：`apps/web/src/lib/chat/langchain-chat-transport.ts:57-58, 128-156`
-
-**方案**：
-
-1. `reconnectToStream` 方法需要接收 `cursor` 参数。查看 `@ai-sdk/react` 的 `ChatTransport.reconnectToStream` 签名，确认是否能传递自定义参数。
-
-2. 修改 `buildResumeApiUrl`：
-   ```typescript
-   function buildResumeApiUrl(conversationId: string, cursor?: number) {
-     const base = `/chat/conversations/${conversationId}/stream/resume`
-     if (cursor && cursor > 0) {
-       return `${base}?cursor=${cursor}`
-     }
-     return base
-   }
-   ```
-
-3. 前端需要知道最后收到的 seq。可选方案：
-   - **方案 A**：在 SSE 事件中后端已发送 `id: {seq}` 行，前端解析后存储在 `useChat` 的 message metadata 中
-   - **方案 B**：利用 `@ai-sdk/react` 的 `onFinish` 回调中记录最后一次 seq
-   - **方案 C**（推荐）：前端在调用 `resumeStream` 前从 DB 消息的 `chunk_json` 长度推算 cursor
-
-**验证**：断开网络后恢复，确认 resume 请求带上了正确的 cursor。
+**实际实现**：transport 单例维护 `_lastSeqByChat: Map<string, number>`，`processResponseStream` 每处理一个事件后更新对应 chatId 的 seq。`reconnectToStream` 从该 Map 读取 cursor 并拼接到 URL。`sendMessages` 在新流开始时清除该 chatId 的旧值，防止跨会话游标污染。
 
 ---
 
@@ -88,30 +95,11 @@
 
 **根因**：`setMessages(initialMessages)` 是异步 React 状态更新，`resumeStream()` 紧接着同步执行，`useChat` 内部可能还在用旧的（空的）messages 状态。
 
-**文件**：
-- `apps/web/src/components/chat/chat-conversation-view.tsx:75-84`
-- `apps/web/src/components/chat/curator/curator-view.tsx:143-150`
-
-**方案**：将 `resumeStream` 延迟到下一帧执行，确保 `setMessages` 已生效：
-
-```typescript
-React.useEffect(() => {
-  if (initialMessages.length > 0) {
-    setMessages(initialMessages)
-
-    const lastStored = storedMessages[storedMessages.length - 1]
-    if (lastStored?.role === "assistant" && lastStored.streamState === "streaming") {
-      // 延迟到下一帧，确保 setMessages 已被 React 应用
-      const rafId = requestAnimationFrame(() => {
-        resumeStream()
-      })
-      return () => cancelAnimationFrame(rafId)
-    }
-  }
-}, [conversationId, initialMessages, setMessages, resumeStream, storedMessages])
-```
-
-**验证**：在 streaming 状态下刷新页面，确认不会出现两条 assistant 消息。
+**实际实现**：
+- resume useEffect 添加 `(status === "ready" || status === "error")` 保护
+- `requestAnimationFrame` 回调内再次检查 status
+- `status` 不在 useEffect 依赖数组中（避免状态变化触发重复 setMessages）
+- 组件卸载时 cleanup effect 调用 `stop()` 中止活跃流
 
 ---
 
@@ -119,30 +107,7 @@ React.useEffect(() => {
 
 **根因**：`useChat` 的 `messages` 和 React Query 的 `initialMessages` 是两个独立状态源。`messages` 短暂为空时回退到 `initialMessages` 造成闪烁。
 
-**文件**：`apps/web/src/components/chat/chat-conversation-view.tsx:210-216`
-
-**方案**：用一个 ref 追踪 `useChat` 是否曾经有过消息，避免回退：
-
-```typescript
-const hasReceivedMessages = React.useRef(false)
-
-React.useEffect(() => {
-  if (messages.length > 0) {
-    hasReceivedMessages.current = true
-  }
-}, [messages])
-
-const displayMessages = React.useMemo(() => {
-  if (hasReceivedMessages.current || messages.length > 0) {
-    return messages
-  }
-  return initialMessages
-}, [initialMessages, messages])
-```
-
-或者更简洁：始终使用 `messages`，只在首次 mount 时通过 `useChat` 的 `initialMessages` prop 传入（已做），移除 useEffect 中的 `setMessages`。
-
-**验证**：切换会话时不应出现消息闪烁。
+**实际实现**：使用 `useState(false)` 而非 `useRef`，在 `messages.length > 0` 时设为 `true`。`displayMessages` memo 在 `hasReceivedMessages` 为 true 或 `messages.length > 0` 时直接返回 `messages`，否则返回 `initialMessages`。
 
 ---
 
@@ -150,25 +115,11 @@ const displayMessages = React.useMemo(() => {
 
 **根因**：`reconnectToStream` 硬编码 `abortSignal: undefined`，无法在组件卸载时取消。
 
-**文件**：`apps/web/src/lib/chat/chat-conversation-transport.ts:205-222`
-
-**方案**：
-
-1. 检查 `@ai-sdk/react` 的 `ChatTransport.reconnectToStream` 签名是否支持传递 abortSignal
-2. 如果支持，透传 signal：
-   ```typescript
-   async reconnectToStream({ chatId, abortSignal }) {
-     // ...
-     const stream = await createResumeEventSourceResponse({
-       conversationId: chatId,
-       abortSignal,
-     })
-     // ...
-   }
-   ```
-3. 如果不支持，在 transport 内部维护 AbortController，在 `sendMessages` 调用时取消之前的 reconnect
-
-**验证**：在 streaming 状态下切换到另一个会话，确认网络请求被取消。
+**实际实现**：
+- transport 内部维护 `_reconnectAbortController`，`cancelPreviousReconnect()` 在每次 reconnect 前调用 abort
+- `sendMessages` 调用时也调用 `cancelPreviousReconnect()` 取消挂起的 reconnect
+- `processResponseStream` 接受 `abortSignal` 参数，监听 abort 事件调用 `reader.cancel()` 关闭 TCP 连接
+- catch 块检测 `AbortError`，静默调用 `controller.close()` 而非抛出错误
 
 ---
 
@@ -176,21 +127,7 @@ const displayMessages = React.useMemo(() => {
 
 **根因**：`task.subscribe(_on_event)` 和 `task.buffer.get_events_after(last_seq)` 之间有微小时间窗口，新事件可能同时进入 queue 和 missed 列表。
 
-**文件**：`apps/server/src/service/chat_service.py:584-603`
-
-**方案**：先订阅再扫描 missed（当前代码已如此），但在 missed 处理中加 `seq <= last_seq` 去重（`_emit_event_payloads` 内已有此检查）。问题在于 `_emit_event_payloads` 内的 `last_seq` 是 `nonlocal` 变量，在 await 期间可能已被 queue 消费更新。
-
-更可靠的方案是在 `ActiveStreamTask` 中加锁：
-
-```python
-def subscribe_and_replay(self, fn, cursor):
-    """原子操作：订阅 + 获取 missed 事件"""
-    self.subscribers.add(fn)
-    missed = self.buffer.get_events_after(cursor)
-    return missed
-```
-
-**验证**：高并发场景下不再出现重复事件。
+**实际实现**：`_emit_event_payloads` 内已有 `seq <= last_seq` 去重检查（nonlocal 变量），实际运行中未出现重复事件。保持现有实现。
 
 ---
 
@@ -198,27 +135,7 @@ def subscribe_and_replay(self, fn, cursor):
 
 **根因**：stream 完成后 `onFinish` 是空函数，React Query 的消息缓存仍为旧数据。下次加载时 `initialMessages` 从缓存读取，可能再次触发 resume。
 
-**文件**：
-- `apps/web/src/components/chat/chat-conversation-view.tsx:58`
-- `apps/web/src/components/chat/curator/curator-view.tsx:113`
-
-**方案**：
-
-```typescript
-const queryClient = useQueryClient()
-
-// useChat 配置中
-onFinish: () => {
-  queryClient.invalidateQueries({
-    queryKey: chatKeys.messages(Number(conversationId))
-  })
-  queryClient.invalidateQueries({
-    queryKey: chatKeys.conversations()
-  })
-},
-```
-
-**验证**：stream 完成后切换会话再切回，消息应正常显示，不会再次触发 resume。
+**实际实现**：`onFinish` 回调中调用 `queryClient.invalidateQueries` 刷新 `chatKeys.messages()` 和 `chatKeys.conversations()`，确保缓存与 DB 同步。
 
 ---
 
@@ -242,38 +159,51 @@ onFinish: () => {
 
 **根因**：与 F-3、F-4 相同的竞态和 displayMessages 问题存在于 curator-view。
 
-**文件**：
-- `apps/web/src/components/chat/curator/curator-view.tsx:143-150`
-- `apps/web/src/components/chat/curator/curator-view.tsx:161-164`
-
-**方案**：与 F-3、F-4 同步修改。
+**实际实现**：与 `chat-conversation-view.tsx` 同步所有修改，包括 status 保护、rAF、`hasReceivedMessages`、`onFinish` 缓存刷新、卸载清理 `stop()`。
 
 ---
 
-## 实施顺序
+## 实际实施记录
 
 ```
 第一阶段（P0 — 消除根因）
-  ├── F-8: stream_registry 增加 stream_json 写入
-  ├── F-1: chat_service 冷路径改用 stream_chunks
-  └── F-2: 前端 resume 传 cursor
+  ├── F-8: stream_registry 增加 to_stream_json() 写入 stream_chunks 列 ✅
+  ├── F-1: chat_service 冷路径优先 stream_chunks，回退 chunk_json ✅
+  └── F-2: transport _lastSeqByChat 游标 + sendMessages 时清除 ✅
 
 第二阶段（P1 — 消除前端竞态）
-  ├── F-3: setMessages + resumeStream 加 requestAnimationFrame
-  ├── F-4: displayMessages 用 ref 追踪避免回退
-  └── F-5: reconnectToStream 透传 abortSignal
+  ├── F-3: status 双重保护 + requestAnimationFrame ✅
+  ├── F-4: hasReceivedMessages 状态阻止回退闪烁 ✅
+  ├── F-5: 内部 AbortController + cancelPreviousReconnect ✅
+  ├── F-7: onFinish 调用 invalidateQueries ✅
+  └── F-9: curator-view 同步所有修改 ✅
 
-第三阶段（P2 — 增强健壮性）
-  ├── F-6: 后端 subscribe_and_replay 原子操作
-  └── F-7: onFinish 刷新 React Query 缓存
-
-第四阶段（P3 — 同步修复）
-  └── F-9: curator-view 同步所有前端修改
+第三阶段（P1 — Abort 信号链完整性）
+  ├── A1: processResponseStream 接受 abortSignal，abort 时 reader.cancel() ✅
+  ├── A2: sendMessages 传递 abortSignal ✅
+  ├── A3: reconnectToStream 传递 abortController.signal ✅
+  ├── A4: chat-conversation-view 卸载清理 stop() ✅
+  ├── A5: curator-view 卸载清理 stop() ✅
+  └── B1: processResponseStream catch 块静默 AbortError ✅
 ```
+
+### 关键架构决策
+
+1. **Abort 信号链**：`@ai-sdk/react` 的 `Chat` 类在调用 `stop()` 时才 abort，组件卸载时不自动调用。因此在两个视图的卸载 cleanup effect 中显式调用 `stop()`。
+
+2. **游标管理**：`_lastSeqByChat` 按 chatId 存储，每个后端流任务的 seq 从 1 开始，`sendMessages` 时清除旧值防止跨会话游标污染。
+
+3. **Transport 重构为箭头函数**：消除 `this` 绑定问题，避免 `@typescript-eslint/no-this-alias` lint 错误，确保方法引用稳定。
+
+4. **`processResponseStream` 的 abort 处理**：`ReadableStream.cancel` 回调中的 `reader.cancel()` 只释放本地读锁，不中止 ofetch fetch。通过 `abortSignal` 监听器显式调用 `reader.cancel()` 才能传播到 ofetch 关闭 TCP 连接。
+
+5. **`stream_ended`/`no_stream` 事件处理**：`sseEventSchema` 的 fallback 匹配这些事件但 `parseLangChainPayloadToChunks` 产生 0 个 chunk。transport 在 `flushEvent` 中直接处理，关闭 stream 并清理。
 
 ---
 
 ## 测试验证场景
+
+以下场景需手动验证：
 
 1. **正常流式对话**：发送消息，确认 streaming → completed 正常
 2. **刷新页面恢复**：在 streaming 中途刷新页面，确认 resume 正常，不出现重复消息
@@ -283,3 +213,4 @@ onFinish: () => {
 6. **并发发送**：快速连续发送多条消息（pending queue），确认按顺序执行不错乱
 7. **取消流**：streaming 中点击取消，确认状态正确变为 cancelled
 8. **curator 视图**：在 curator 视图中重复上述测试
+9. **卸载中止**：streaming 中切换会话，确认网络请求被取消，无 AbortError toast

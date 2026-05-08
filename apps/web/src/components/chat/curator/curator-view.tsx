@@ -1,4 +1,4 @@
-import * as React from "react"
+import { useEffect, useRef, useState, useCallback, useMemo, type ComponentProps } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { cn } from "@workspace/ui/lib/utils"
 import { useChat } from "@ai-sdk/react"
@@ -46,7 +46,6 @@ import {
   getMessageMeta,
 } from "../chat-view-shared"
 import { RenderClassifiedBlocks } from "../chat-message-item"
-import { useEffect } from "react"
 import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import type { TaskExecution } from "@/types/schedule-monitor"
@@ -76,15 +75,16 @@ export function CuratorView({
   size = "default",
   className,
   ...props
-}: React.ComponentProps<"div"> & {
+}: ComponentProps<"div"> & {
   contact?: ChatViewContact
   size?: "default" | "compact"
 }) {
-  const [inputValue, setInputValue] = React.useState("")
-  const [command, setCommand] = React.useState<{ id: string; title: string } | null>(null)
-  const [mentions, setMentions] = React.useState<Array<{ id: string; name: string }>>([])
-  const [showResetDialog, setShowResetDialog] = React.useState(false)
-  const [clearTaskLogs, setClearTaskLogs] = React.useState(true)
+  const [inputValue, setInputValue] = useState("")
+  const [command, setCommand] = useState<{ id: string; title: string } | null>(null)
+  const [mentions, setMentions] = useState<Array<{ id: string; name: string }>>([])
+  const [showResetDialog, setShowResetDialog] = useState(false)
+  const [clearTaskLogs, setClearTaskLogs] = useState(true)
+  const [hasReceivedMessages, setHasReceivedMessages] = useState(false)
 
   const resetMutation = useResetCuratorConversation()
   const queryClient = useQueryClient()
@@ -93,7 +93,7 @@ export function CuratorView({
 
   const { data: storedMessages = [], isPending: isMessagesLoading } = useMessagesQuery(curatorConversationId)
 
-  const initialMessages = React.useMemo(
+  const initialMessages = useMemo(
     () => (storedMessages?.length ? mapStoredMessagesToUIMessages(storedMessages) : []),
     [storedMessages]
   )
@@ -110,13 +110,19 @@ export function CuratorView({
     id: String(curatorConversationId ?? "curator-persistent"),
     messages: initialMessages,
     transport: chatTransport,
-    onFinish: () => undefined,
+    onFinish: () => {
+      if (curatorConversationId) {
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.messages(String(curatorConversationId)),
+        })
+      }
+    },
     onError: (chatError) => {
       toast.error("发送失败", { description: chatError.message || "请稍后重试" })
     },
   })
 
-  const handleStop = React.useCallback(async () => {
+  const handleStop = useCallback(async () => {
     stop()
     if (curatorConversationId) {
       try {
@@ -127,12 +133,21 @@ export function CuratorView({
     }
   }, [stop, curatorConversationId])
 
-  const handleReset = React.useCallback(async () => {
+  // 组件卸载时停止对话
+  useEffect(() => {
+    return () => {
+      console.log("🚀 ~ useEffect ~ 组件卸载时停止对话")
+      stop()
+    }
+  }, [stop])
+
+  const handleReset = useCallback(async () => {
     if (!curatorConversationId) return
     try {
       await resetMutation.mutateAsync({ conversationId: curatorConversationId, clearTaskLogs })
       queryClient.setQueryData(chatKeys.messages(String(curatorConversationId)), [])
       setMessages([])
+      setHasReceivedMessages(false)
       setShowResetDialog(false)
       toast.success("会话已清空")
     } catch {
@@ -141,15 +156,31 @@ export function CuratorView({
   }, [curatorConversationId, clearTaskLogs, resetMutation, setMessages, queryClient])
 
   useEffect(() => {
+    if (messages.length > 0 && !hasReceivedMessages) {
+      setHasReceivedMessages(true)
+    }
+  }, [messages, hasReceivedMessages])
+
+  useEffect(() => {
     if (!initialMessages.length || !curatorConversationId) return
     setMessages(initialMessages)
     const lastStored = storedMessages?.[storedMessages.length - 1]
-    if (lastStored?.role === "assistant" && lastStored.streamState === "streaming") {
-      resumeStream()
+    if (
+      lastStored?.role === "assistant" &&
+      lastStored.streamState === "streaming" &&
+      (status === "ready" || status === "error")
+    ) {
+      const rafId = requestAnimationFrame(() => {
+        if (status !== "ready" && status !== "error") return
+        resumeStream()
+      })
+      return () => cancelAnimationFrame(rafId)
     }
+    // status 是防护，不用加入依赖数组
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [curatorConversationId, initialMessages, setMessages, resumeStream, storedMessages])
 
-  const handleTextChange = React.useCallback((event: PromptChangeEvent) => {
+  const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
     setMentions(event.mentions)
     setInputValue(event.value)
@@ -158,12 +189,12 @@ export function CuratorView({
   const isBusy = status === "submitted" || status === "streaming"
   const chatStatus = status === "ready" && isBusy ? "submitted" : status
 
-  const displayMessages = React.useMemo(
-    () => messages.length > 0 ? messages : initialMessages,
-    [initialMessages, messages]
+  const displayMessages = useMemo(
+    () => messages.length > 0 || hasReceivedMessages ? messages : initialMessages,
+    [initialMessages, messages, hasReceivedMessages]
   )
 
-  const lastAssistantMessageId = React.useMemo(() => {
+  const lastAssistantMessageId = useMemo(() => {
     for (let i = displayMessages.length - 1; i >= 0; i--) {
       if (displayMessages[i].role === "assistant") return displayMessages[i].id
     }
@@ -173,9 +204,9 @@ export function CuratorView({
   const hasCurrentTurnEnded = status === "ready" || status === "error" || !!error
   const showStreamingIndicator = !isMessagesLoading && (status === "submitted" || status === "streaming") && !error && displayMessages.length > 0
 
-  const uploadedPathsRef = React.useRef<string[]>([])
+  const uploadedPathsRef = useRef<string[]>([])
 
-  const doSend = React.useCallback(
+  const doSend = useCallback(
     async (message: PromptInputMessage | string) => {
       const messageText = (typeof message === "string" ? message : message.text)?.trim() ?? ""
       if (!messageText || !curatorConversationId) return
@@ -211,7 +242,7 @@ export function CuratorView({
     [curatorConversationId, sendMessage, command, mentions]
   )
 
-  const handleAttachmentsChange = React.useCallback(
+  const handleAttachmentsChange = useCallback(
     (paths: string[]) => {
       uploadedPathsRef.current = paths
     },
@@ -227,7 +258,7 @@ export function CuratorView({
     moveDown: pendingMoveDown,
   } = usePendingMessages({ status, onSend: doSend, onStop: handleStop })
 
-  const handleSendMessage = React.useCallback(
+  const handleSendMessage = useCallback(
     async (message: PromptInputMessage) => {
       const messageText = message.text?.trim() ?? ""
       if (!(messageText || message.files?.length)) return
@@ -251,7 +282,7 @@ export function CuratorView({
   const { data: executions = [] } = useAllTaskExecutions()
 
   /* ── Build unified timeline ── */
-  const timeline: TimelineEntry[] = React.useMemo(() => {
+  const timeline: TimelineEntry[] = useMemo(() => {
     const entries: TimelineEntry[] = []
 
     // 保持无时间戳消息的相对顺序并与真实时间线一致

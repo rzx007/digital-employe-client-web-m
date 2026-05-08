@@ -163,14 +163,33 @@ async function createResumeEventSourceResponse(options: {
 export class LangChainChatTransport<
   UI_MESSAGE extends UIMessage,
 > implements ChatTransport<UI_MESSAGE> {
-  private _lastSeqByChat: Map<string, number> = new Map() // 追踪每个会话最后收到的 SSE seq
+  private _lastSeqByChat = new Map<string, number>()
+  private _reconnectAbort: AbortController | null = null
 
-  async sendMessages({
+  /**
+   * 取消上一次 resume 请求，防止新旧 reconnect 互相干扰
+   */
+  private cancelPreviousReconnect = () => {
+    console.log("🚀 ~ cancelPreviousReconnect~")
+    if (this._reconnectAbort) {
+      this._reconnectAbort.abort()
+      this._reconnectAbort = null
+    }
+  }
+
+  sendMessages = async ({
     messages,
     abortSignal,
     body,
-  }: Parameters<ChatTransport<UI_MESSAGE>["sendMessages"]>[0]) {
+  }: Parameters<ChatTransport<UI_MESSAGE>["sendMessages"]>[0]) => {
+    this.cancelPreviousReconnect()
     const conversationId = getConversationIdFromBody(body)
+
+    // 新流开始，清除旧 session 的 cursor，避免跨 session 残留
+    if (conversationId) {
+      this._lastSeqByChat.delete(String(conversationId))
+    }
+
     const skill = getSkillFromBody(body)
     const metadata = getExtraMetaFromBody(body)
     const latestMessage = messages.at(-1)
@@ -206,53 +225,68 @@ export class LangChainChatTransport<
         abortSignal,
       })
 
-    return this.processResponseStream(stream, conversationId as string)
+    return this.processResponseStream(stream, conversationId as string, undefined, abortSignal)
   }
 
-  async reconnectToStream({
+  reconnectToStream = async ({
     chatId,
-  }: Parameters<ChatTransport<UI_MESSAGE>["reconnectToStream"]>[0]) {
+  }: Parameters<ChatTransport<UI_MESSAGE>["reconnectToStream"]>[0]) => {
     if (!chatId) {
       return null
     }
+
+    this.cancelPreviousReconnect()
+    const abortController = new AbortController()
+    this._reconnectAbort = abortController
 
     const cursor = this._lastSeqByChat.get(String(chatId)) ?? 0
 
     const stream = await createResumeEventSourceResponse({
       conversationId: chatId,
       cursor: cursor > 0 ? cursor : undefined,
-      abortSignal: undefined,
+      abortSignal: abortController.signal,
     })
 
     if (!stream) {
+      this._reconnectAbort = null
       return null
     }
 
-    return this.processResponseStream(stream, String(chatId))
+    return this.processResponseStream(stream, String(chatId), abortController, abortController.signal)
   }
-  /**
-   * 处理服务器发送的响应流，将其转换为UI消息块流
-   * 该方法接收一个字节数组可读流，解析其中的SSE（Server-Sent Events）格式数据，
-   * 并将解析后的消息块输出到新的可读流中
-   *
-   * @param stream - 包含Uint8Array数据的可读流，预期包含SSE格式的消息
-   * @returns 返回一个可读流，产生UIMessageChunk类型的事件
-   */
-  private processResponseStream(stream: ReadableStream<Uint8Array>, conversationId?: string) {
+
+  private processResponseStream = (
+    stream: ReadableStream<Uint8Array>,
+    conversationId?: string,
+    reconnectAbort?: AbortController | null,
+    abortSignal?: AbortSignal,
+  ) => {
     const decoder = new TextDecoder()
     const reader = stream.getReader()
+
+    // signal 触发时取消 reader，关闭底层 TCP 连接
+    if (abortSignal) {
+      const onAbort = () => reader.cancel()
+      if (abortSignal.aborted) {
+        onAbort()
+      } else {
+        abortSignal.addEventListener("abort", onAbort, { once: true })
+      }
+    }
+
     const lastSeqRef = this._lastSeqByChat
 
     return new ReadableStream<UIMessageChunk>({
-      async start(controller) {
+      start: async (controller) => {
         let buffer = ""
         const state = createLangChainStreamParseState()
 
         controller.enqueue({ type: "start" })
 
-        const flushEvent = (eventText: string) => {
+        const flushEvent = (eventText: string): boolean => {
           const allLines = eventText.split(/\r?\n/)
 
+          // 解析 SSE id: 行，提取 seq 用于 cursor 追踪
           let eventSeq: number | null = null
           for (const line of allLines) {
             if (line.startsWith("id:")) {
@@ -263,16 +297,17 @@ export class LangChainChatTransport<
             }
           }
 
-          const lines = allLines
+          const dataLines = allLines
             .filter((line) => line.startsWith("data:"))
             .map((line) => line.slice(5).trim())
 
-          if (lines.length === 0) {
+          if (dataLines.length === 0) {
             return false
           }
 
-          const data = lines.join("\n")
+          const data = dataLines.join("\n")
 
+          // [DONE] → 流正常结束
           if (data === "[DONE]") {
             if (eventSeq != null && conversationId) {
               lastSeqRef.set(conversationId, eventSeq)
@@ -294,8 +329,30 @@ export class LangChainChatTransport<
 
             const event = parsed.data
 
+            // stream_ended / no_stream → 后端已无更多事件，直接结束
+            if (
+              event &&
+              typeof event === "object" &&
+              "type" in event &&
+              ((event as { type: string }).type === "stream_ended" ||
+                (event as { type: string }).type === "no_stream")
+            ) {
+              closeTextPhaseIfNeeded(state).forEach((chunk) =>
+                controller.enqueue(chunk)
+              )
+              enqueueFinish(controller, state)
+              controller.close()
+              return true
+            }
+
             // 处理 tool_output 流式输出事件
-            if (event && typeof event === "object" && "type" in event && (event as { type: string }).type === "tool_output" && "data" in event) {
+            if (
+              event &&
+              typeof event === "object" &&
+              "type" in event &&
+              (event as { type: string }).type === "tool_output" &&
+              "data" in event
+            ) {
               const toolOutputData = (event as { data: unknown }).data as {
                 tool_name: string
                 chunk: string
@@ -316,9 +373,9 @@ export class LangChainChatTransport<
               state,
             })
 
-            chunks.forEach((chunk) => {
+            for (const chunk of chunks) {
               controller.enqueue(chunk)
-            })
+            }
           } catch (e) {
             if (import.meta.env.DEV) {
               console.error("[sse] dropped event:", e)
@@ -369,19 +426,26 @@ export class LangChainChatTransport<
           enqueueFinish(controller, state)
           controller.close()
         } catch (error) {
-          controller.enqueue({
-            type: "error",
-            errorText:
-              error instanceof Error ? error.message : "流式响应解析失败",
-          })
-          controller.error(error)
+          if (error instanceof Error && error.name === "AbortError") {
+            controller.close()
+          } else {
+            controller.enqueue({
+              type: "error",
+              errorText:
+                error instanceof Error ? error.message : "流式响应解析失败",
+            })
+            controller.error(error)
+          }
+
         } finally {
           reader.releaseLock()
+          // 只清除属于当前 reconnect 的 AbortController，不覆盖新创建的
+          if (reconnectAbort && this._reconnectAbort === reconnectAbort) {
+            this._reconnectAbort = null
+          }
         }
       },
-      cancel() {
-        return reader.cancel()
-      },
+      cancel: () => reader.cancel(),
     })
   }
 }
