@@ -87,7 +87,6 @@ def create_app() -> FastAPI:
                         "Initialized config_kvs from seed file (insert-only): inserted=%s",
                         inserted,
                     )
-                ConfigKvService.sync_model_provider_from_remote(db)
                 # 清理僵尸运行状态（上次进程崩溃遗留）
                 from src.service.stream_registry import cleanup_zombie_executions
                 cleaned = cleanup_zombie_executions(db)

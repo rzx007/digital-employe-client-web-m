@@ -16,8 +16,6 @@ logger = logging.getLogger(__name__)
 
 
 class ConfigKvService:
-    REMOTE_MODEL_PROVIDER_PATH = "/digital/api/v1/model/provider"
-
     @staticmethod
     def _refresh_settings_cache() -> None:
         get_settings.cache_clear()
@@ -150,12 +148,12 @@ class ConfigKvService:
         return inserted
 
     @staticmethod
-    def sync_model_provider_from_remote(db: Session) -> bool:
-        """启动时从远程拉取模型服务商配置并覆盖本地关键配置。"""
+    def sync_model_provider_from_remote(db: Session, token: str | None = None) -> bool:
+        """从远程拉取模型服务商配置并覆盖本地关键配置。"""
         settings = get_settings()
         url = join_base_and_path(
             settings.remote_api_base_url,
-            ConfigKvService.REMOTE_MODEL_PROVIDER_PATH,
+            settings.remote_model_provider_path,
         )
         if not url:
             logger.info(
@@ -164,7 +162,12 @@ class ConfigKvService:
             return False
 
         try:
-            response = httpx.get(url, timeout=settings.skill_remote_timeout)
+            headers = {"token": token or ""}
+            response = httpx.get(
+                url,
+                headers=headers,
+                timeout=settings.skill_remote_timeout,
+            )
             response.raise_for_status()
             payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
