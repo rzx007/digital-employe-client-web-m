@@ -4,15 +4,12 @@ setup_logging()
 
 import logging
 import asyncio
-# from sqlalchemy import select
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.sql import select
 import aiosqlite
 
 from src.api import api_router
 from src.db.init_db import init_db
-from src.models.employee import Employee
 from src.db.session import get_session_local
 from src.service.employee_service import EmployeeService
 from src.service.config_kv_service import ConfigKvService
@@ -25,19 +22,6 @@ from src.core.config import get_settings, resolve_sqlite_path
 from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
-
-
-def initialize_default_workspace_employees(db, workspace) -> None:
-    existing_employee = db.scalar(select(Employee.id).limit(1))
-    if existing_employee is not None:
-        logger.info("Skip employee bootstrap on startup: employees already exist")
-        return
-    logger.info(
-        "Bootstrap employees on startup: workspace_id=%s workspace_name=%s",
-        workspace.id,
-        workspace.name,
-    )
-    EmployeeService.sync_workspace_employees(db, workspace)
 
 
 def create_app() -> FastAPI:
@@ -108,10 +92,7 @@ def create_app() -> FastAPI:
                 cleaned = cleanup_zombie_executions(db)
                 if cleaned > 0:
                     logger.info("Cleaned %d zombie task executions", cleaned)
-                # initialize_default_workspace_employees(db, workspace)
-                # 获取员工
-                # EmployeeService.sync_workspace_employees(db, workspace)
-                # 从员工 metadata 同步任务
+                EmployeeService.ensure_builtin_seed_employees(db, workspace)
                 TaskService.sync_workspace_tasks(db, workspace.id)
 
         await loop.run_in_executor(None, _startup_data_init)
