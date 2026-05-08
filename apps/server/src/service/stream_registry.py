@@ -112,6 +112,7 @@ class ActiveStreamTask:
         self.buffer = StreamEventBuffer(conversation_id)
         self.subscribers: set[Subscriber] = set()
         self._asyncio_task: asyncio.Task | None = None
+        self._cleanup_task: asyncio.Task | None = None
         self.error_message: str | None = None
         self._created_at: float = time.monotonic()
 
@@ -207,6 +208,12 @@ class StreamRegistry:
             )
             return False
 
+        if existing and existing._cleanup_task and not existing._cleanup_task.done():
+            existing._cleanup_task.cancel()
+            logger.info(
+                "start: cancelled stale cleanup for conversation %s", conversation_id
+            )
+
         task = ActiveStreamTask(conversation_id)
         self._tasks[conversation_id] = task
 
@@ -248,11 +255,25 @@ class StreamRegistry:
         return True
 
     def _schedule_cleanup(self, conversation_id: int) -> None:
+        task = self._tasks.get(conversation_id)
+
         async def _cleanup() -> None:
             await asyncio.sleep(TASK_TTL_SECONDS)
-            self._tasks.pop(conversation_id, None)
+            current = self._tasks.get(conversation_id)
+            if current is task:
+                self._tasks.pop(conversation_id, None)
+                logger.info(
+                    "cleanup: removed task for conversation %s", conversation_id
+                )
+            else:
+                logger.info(
+                    "cleanup: conversation %s task replaced, skipping removal",
+                    conversation_id,
+                )
 
-        asyncio.create_task(_cleanup())
+        cleanup_task = asyncio.create_task(_cleanup())
+        if task:
+            task._cleanup_task = cleanup_task
 
     async def _run_agent_background(
         self,
@@ -393,7 +414,7 @@ class StreamRegistry:
                 "[run] conv=%s stream completed normally, event_count=%d, text_len=%d",
                 conversation_id, chunk_builder.count, len(final_text),
             )
-            self._flush_terminal(
+            await self._flush_terminal(
                 db, stream_msg_id, task.buffer, state="completed",
                 content=final_text,
                 chunk_json=chunk_builder.to_chunk_json(),
@@ -416,7 +437,7 @@ class StreamRegistry:
                 len(partial_text) if partial_text else "None",
                 task.status,
             )
-            self._flush_terminal(
+            await self._flush_terminal(
                 db, stream_msg_id, task.buffer, state="cancelled",
                 content=partial_text,
                 chunk_json=chunk_builder.to_chunk_json(),
@@ -440,7 +461,7 @@ class StreamRegistry:
             state_final = "error"
             task.error_message = str(e)
             partial_text = latest_updates_text or None
-            self._flush_terminal(
+            await self._flush_terminal(
                 db, stream_msg_id, task.buffer, state="error",
                 content=partial_text,
                 chunk_json=chunk_builder.to_chunk_json(),
@@ -464,7 +485,7 @@ class StreamRegistry:
                 )
                 state_final = "cancelled"
                 partial_text = latest_updates_text or None
-                self._flush_terminal(
+                await self._flush_terminal(
                     db, stream_msg_id, task.buffer, state="cancelled",
                     content=partial_text,
                     chunk_json=chunk_builder.to_chunk_json(),
@@ -481,7 +502,7 @@ class StreamRegistry:
             db.close()
             self._schedule_cleanup(conversation_id)
 
-    def _flush_terminal(
+    async def _flush_terminal(
         self,
         db: Any,
         stream_msg_id: int,
@@ -512,7 +533,7 @@ class StreamRegistry:
                     "[flush] msg_id=%s terminal state=%s not persisted, retrying %d/%d",
                     stream_msg_id, state, attempt + 1, max_retries,
                 )
-                time.sleep(0.3)
+                await asyncio.sleep(0.3)
         logger.error(
             "[flush] msg_id=%s terminal state=%s FAILED after %d retries",
             stream_msg_id, state, max_retries,

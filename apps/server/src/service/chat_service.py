@@ -648,7 +648,17 @@ class ChatService:
         logger.info("[resume] conv=%s entering queue.get() loop, waiting for live events...", conversation_id)
         try:
             while True:
-                evt = await queue.get()
+                try:
+                    evt = await asyncio.wait_for(queue.get(), timeout=30.0)
+                except asyncio.TimeoutError:
+                    current_task = registry.get_task(conversation_id)
+                    if not current_task or not current_task.is_active:
+                        logger.info(
+                            "[resume] conv=%s queue.get() timeout and task no longer active, exiting",
+                            conversation_id,
+                        )
+                        break
+                    continue
                 if task.status != "streaming" and not _is_terminal(evt):
                     continue
                 done, payloads = await _emit_event_payloads(evt)
