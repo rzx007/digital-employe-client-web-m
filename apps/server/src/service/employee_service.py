@@ -29,6 +29,20 @@ from src.service.workspace_service import WorkspaceService
 
 logger = logging.getLogger(__name__)
 
+# 启动种子员工：技能目录名 -> 稳定本地 skill_id（与用户导入的负 id 区间错开）
+_BUILTIN_SEED_SKILL_IDS: dict[str, int] = {
+    "lark-base": -10001,
+    "skill-make": -10002,
+    "feishu-workbench": -10003,
+}
+
+# (展示名称, 技能目录名元组, 简介)
+_BUILTIN_SEED_EMPLOYEES: tuple[tuple[str, tuple[str, ...], str | None], ...] = (
+    ("飞书助手", ("lark-base",), "内置飞书多维表格等能力。"),
+    ("技能制作助手", ("skill-make",), "协助编写与管理技能（Skills）。"),
+    ("工作台助手", ("feishu-workbench",), "工作台展示相关能力。"),
+)
+
 
 class EmployeeService:
     LONG_TERM_SHIFT_END_DATE = "9999-12-31"
@@ -894,6 +908,119 @@ class EmployeeService:
         db.delete(employee)
         db.commit()
         TaskSchedulerService.reload_jobs()
+
+    @staticmethod
+    def _builtin_seed_skill_payloads(
+        builtin_root: Path, skill_names: tuple[str, ...]
+    ) -> list[dict] | None:
+        out: list[dict] = []
+        for sn in skill_names:
+            sid = _BUILTIN_SEED_SKILL_IDS.get(sn)
+            if sid is None:
+                logger.warning("Builtin seed: unknown skill name %r", sn)
+                return None
+            skill_dir = (builtin_root / sn).resolve()
+            skill_md = skill_dir / LocalSkillService.SKILL_MD_NAME
+            if not skill_dir.is_dir() or not skill_md.is_file():
+                logger.warning(
+                    "Builtin seed: skill missing or invalid: %s (expected %s)",
+                    sn,
+                    skill_md,
+                )
+                return None
+            out.append(
+                {
+                    "id": sid,
+                    "skillName": sn,
+                    "displayNameZh": sn,
+                    "description": f"内置技能：{sn}",
+                    "prompt": None,
+                    "skillContent": None,
+                    "path": str(skill_dir),
+                    "source": "local",
+                }
+            )
+        return out
+
+    @staticmethod
+    def _employee_skill_name_set(db: Session, employee: Employee) -> set[str]:
+        names: set[str] = set()
+        for row in EmployeeService._employee_skills_snapshot(db, employee):
+            n = str(row.get("skillName") or row.get("skill_name") or "").strip()
+            if n:
+                names.add(n)
+        return names
+
+    @staticmethod
+    def ensure_builtin_seed_employees(db: Session, workspace: Workspace) -> None:
+        """将内置技能目录下的种子技能绑定到默认三名员工；按名称+技能集合幂等。"""
+        builtin_root = LocalSkillService._resolve_builtin_root().resolve()
+        for name, skill_names, description in _BUILTIN_SEED_EMPLOYEES:
+            expected = frozenset(skill_names)
+            existing = db.scalar(
+                select(Employee).where(
+                    Employee.workspace_id == workspace.id,
+                    Employee.name == name,
+                )
+            )
+            if existing is not None:
+                got = EmployeeService._employee_skill_name_set(db, existing)
+                if got == expected:
+                    logger.info(
+                        "Builtin seed: skip employee (already satisfied): name=%s",
+                        name,
+                    )
+                    continue
+                logger.warning(
+                    "Builtin seed: skip employee (name exists, skills differ): "
+                    "name=%s expected=%s got=%s",
+                    name,
+                    sorted(expected),
+                    sorted(got),
+                )
+                continue
+
+            payloads = EmployeeService._builtin_seed_skill_payloads(
+                builtin_root, skill_names
+            )
+            if payloads is None:
+                logger.warning(
+                    "Builtin seed: skip employee (skill check failed): name=%s",
+                    name,
+                )
+                continue
+
+            meta = {"employee_name": name, "status": None}
+            employee = Employee(
+                workspace_id=workspace.id,
+                employee_code="0",
+                name=name,
+                description=description,
+                version="",
+                skills_json="[]",
+                meta_json=json.dumps(meta, ensure_ascii=False),
+                shift_schedule_json="{}",
+            )
+            db.add(employee)
+            db.flush()
+            employee.employee_code = str(employee.id)
+
+            EmployeeService._replace_employee_skills(db, employee, payloads)
+            EmployeeService._replace_employee_mcps(db, employee, [])
+            EmployeeService._replace_shift_schedule(db, employee, None)
+            employee.skills_json = EmployeeService._build_skills_json_payload(
+                employee,
+                [],
+                payloads,
+            )
+            db.commit()
+            db.refresh(employee)
+            logger.info(
+                "Builtin seed: created employee id=%s name=%s skills=%s",
+                employee.id,
+                name,
+                list(skill_names),
+            )
 
     @staticmethod
     def create_employee(db: Session, obj_in: EmployeeCreate, token: str) -> Employee:

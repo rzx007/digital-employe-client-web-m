@@ -34,8 +34,8 @@ class LocalSkillService:
         return Path(os.path.expandvars(os.path.expanduser(settings.local_skills_path)))
 
     @staticmethod
-    def _resolve_skill_temp_root() -> Path:
-        return Path(__file__).resolve().parents[1] / "skill_temp"
+    def _resolve_packaged_builtin_skills_root() -> Path:
+        return Path(__file__).resolve().parents[1] / "build-in-skills"
 
     @staticmethod
     def _normalize_skill_name(skill_name: str) -> str:
@@ -201,7 +201,7 @@ class LocalSkillService:
 
     @staticmethod
     def seed_builtin_skills() -> dict[str, int]:
-        source_root = LocalSkillService._resolve_skill_temp_root().resolve()
+        source_root = LocalSkillService._resolve_packaged_builtin_skills_root().resolve()
         target_root = LocalSkillService._resolve_builtin_root().resolve()
 
         if not source_root.is_dir():

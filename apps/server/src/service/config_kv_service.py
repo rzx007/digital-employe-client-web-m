@@ -4,17 +4,20 @@ import json
 import logging
 from pathlib import Path
 
+import httpx
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.core.config import get_settings
+from src.core.config import get_settings, join_base_and_path
 from src.models.config_kv import ConfigKv
 
 logger = logging.getLogger(__name__)
 
 
 class ConfigKvService:
+    REMOTE_MODEL_PROVIDER_PATH = "/digital/api/v1/model/provider"
+
     @staticmethod
     def _refresh_settings_cache() -> None:
         get_settings.cache_clear()
@@ -145,3 +148,81 @@ class ConfigKvService:
             path,
         )
         return inserted
+
+    @staticmethod
+    def sync_model_provider_from_remote(db: Session) -> bool:
+        """启动时从远程拉取模型服务商配置并覆盖本地关键配置。"""
+        settings = get_settings()
+        url = join_base_and_path(
+            settings.remote_api_base_url,
+            ConfigKvService.REMOTE_MODEL_PROVIDER_PATH,
+        )
+        if not url:
+            logger.info(
+                "Skip remote model provider sync: REMOTE_API_BASE_URL not configured"
+            )
+            return False
+
+        try:
+            response = httpx.get(url, timeout=settings.skill_remote_timeout)
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("Failed to fetch remote model provider config: %s", exc)
+            return False
+
+        if not isinstance(payload, dict):
+            logger.warning("Remote model provider response is not a JSON object")
+            return False
+
+        code = payload.get("code")
+        if code not in (1, 200, "1", "200", None):
+            logger.warning(
+                "Remote model provider returned non-success code: code=%s msg=%s",
+                code,
+                payload.get("msg"),
+            )
+            return False
+
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            logger.warning("Remote model provider data is invalid: %r", data)
+            return False
+
+        model_name = str(data.get("modelName") or "").strip()
+        api_key = str(data.get("apiKey") or "").strip()
+        api_url = str(data.get("apiUrl") or "").strip()
+        if not model_name or not api_key or not api_url:
+            logger.warning(
+                "Remote model provider missing required fields: modelName/apiKey/apiUrl"
+            )
+            return False
+
+        updates = {
+            "DEEPAGENT_MODEL": model_name,
+            "OPENAI_API_KEY": api_key,
+            "BASE_URL": api_url,
+        }
+        changed = 0
+        for key, value in updates.items():
+            row = db.scalar(select(ConfigKv).where(ConfigKv.config_key == key))
+            if row is None:
+                db.add(ConfigKv(config_key=key, config_value=value))
+                changed += 1
+                continue
+            if row.config_value != value:
+                row.config_value = value
+                changed += 1
+
+        if changed > 0:
+            db.commit()
+            ConfigKvService._refresh_settings_cache()
+            logger.info(
+                "Synced model provider config from remote: changed=%s model=%s",
+                changed,
+                model_name,
+            )
+            return True
+
+        logger.info("Remote model provider config unchanged: model=%s", model_name)
+        return False
