@@ -8,6 +8,7 @@ from collections import deque
 from typing import Any, Callable
 
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from src.models.conversation import ConversationMessage
 
@@ -21,6 +22,8 @@ HEARTBEAT_INTERVAL_SECONDS = 30.0
 TASK_TTL_SECONDS = 300
 BUFFER_MAXLEN = 5000
 AGENT_CHUNK_TIMEOUT = 600.0
+DB_LOCK_RETRY_COUNT = 5
+DB_LOCK_RETRY_SLEEP_SECONDS = 0.2
 
 
 class ChunkJsonBuilder:
@@ -530,44 +533,61 @@ class StreamRegistry:
         error_message: str | None = None,
     ) -> bool:
         """Persist stream progress to DB.  Returns True on success."""
-        try:
-            msg = db.get(ConversationMessage, stream_msg_id)
-            if not msg:
-                logger.warning("[flush] msg_id=%s not found in DB, skip", stream_msg_id)
+        for attempt in range(DB_LOCK_RETRY_COUNT):
+            try:
+                msg = db.get(ConversationMessage, stream_msg_id)
+                if not msg:
+                    logger.warning("[flush] msg_id=%s not found in DB, skip", stream_msg_id)
+                    return False
+                if state is not None:
+                    msg.stream_state = state
+                if content is not None:
+                    msg.content = content
+                if error_message is not None:
+                    try:
+                        meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
+                    except (json.JSONDecodeError, TypeError):
+                        meta = {}
+                    meta["error_message"] = error_message
+                    msg.extra_meta = json.dumps(meta, ensure_ascii=False)
+                msg.stream_cursor = buffer.cursor
+                if stream_json is not None:
+                    msg.stream_chunks = stream_json
+                if chunk_json is not None:
+                    try:
+                        msg.chunk_json = chunk_json
+                    except Exception:
+                        logger.warning("[flush] msg_id=%s set chunk_json failed", stream_msg_id, exc_info=True)
+                else:
+                    logger.info("[flush] msg_id=%s chunk_json=None, state=%s, buffer_cursor=%d", stream_msg_id, state, buffer.cursor)
+                db.commit()
+                logger.info(
+                    "[flush] msg_id=%s committed: state=%s, content_len=%s, chunk_json_len=%s",
+                    stream_msg_id, state,
+                    len(content) if content else None,
+                    len(chunk_json) if chunk_json else None,
+                )
+                return True
+            except OperationalError as e:
+                db.rollback()
+                is_locked = "database is locked" in str(e).lower()
+                if not is_locked:
+                    logger.warning("[flush] msg_id=%s FAILED", stream_msg_id, exc_info=True)
+                    return False
+                if attempt >= DB_LOCK_RETRY_COUNT - 1:
+                    logger.warning(
+                        "[flush] msg_id=%s FAILED after lock retries=%d",
+                        stream_msg_id,
+                        DB_LOCK_RETRY_COUNT,
+                        exc_info=True,
+                    )
+                    return False
+                time.sleep(DB_LOCK_RETRY_SLEEP_SECONDS * (attempt + 1))
+            except Exception:
+                logger.warning("[flush] msg_id=%s FAILED", stream_msg_id, exc_info=True)
+                db.rollback()
                 return False
-            if state is not None:
-                msg.stream_state = state
-            if content is not None:
-                msg.content = content
-            if error_message is not None:
-                try:
-                    meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
-                except (json.JSONDecodeError, TypeError):
-                    meta = {}
-                meta["error_message"] = error_message
-                msg.extra_meta = json.dumps(meta, ensure_ascii=False)
-            msg.stream_cursor = buffer.cursor
-            if stream_json is not None:
-                msg.stream_chunks = stream_json
-            if chunk_json is not None:
-                try:
-                    msg.chunk_json = chunk_json
-                except Exception:
-                    logger.warning("[flush] msg_id=%s set chunk_json failed", stream_msg_id, exc_info=True)
-            else:
-                logger.info("[flush] msg_id=%s chunk_json=None, state=%s, buffer_cursor=%d", stream_msg_id, state, buffer.cursor)
-            db.commit()
-            logger.info(
-                "[flush] msg_id=%s committed: state=%s, content_len=%s, chunk_json_len=%s",
-                stream_msg_id, state,
-                len(content) if content else None,
-                len(chunk_json) if chunk_json else None,
-            )
-            return True
-        except Exception:
-            logger.warning("[flush] msg_id=%s FAILED", stream_msg_id, exc_info=True)
-            db.rollback()
-            return False
+        return False
 
 
 def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
