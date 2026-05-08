@@ -32,14 +32,14 @@ logger = logging.getLogger(__name__)
 # 启动种子员工：技能目录名 -> 稳定本地 skill_id（与用户导入的负 id 区间错开）
 _BUILTIN_SEED_SKILL_IDS: dict[str, int] = {
     "lark-base": -10001,
-    "skill-make": -10002,
+    "skill-creator": -10002,
     "feishu-workbench": -10003,
 }
 
 # (展示名称, 技能目录名元组, 简介)
 _BUILTIN_SEED_EMPLOYEES: tuple[tuple[str, tuple[str, ...], str | None], ...] = (
     ("飞书助手", ("lark-base",), "内置飞书多维表格等能力。"),
-    ("技能制作助手", ("skill-make",), "协助编写与管理技能（Skills）。"),
+    ("技能制作助手", ("skill-creator",), "协助编写与管理技能（Skills）。"),
     ("工作台助手", ("feishu-workbench",), "工作台展示相关能力。"),
 )
 
