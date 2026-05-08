@@ -107,6 +107,7 @@ export function ConversationChatView({
         const rafId = requestAnimationFrame(() => {
           // rAF 执行时重检 status
           if (status !== "ready" && status !== "error") return
+          chatTransport.setLastSeq(String(conversationId), lastStored.streamCursor)
           resumeStream()
         })
         return () => cancelAnimationFrame(rafId)

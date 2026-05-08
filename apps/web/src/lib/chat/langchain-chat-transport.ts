@@ -167,6 +167,16 @@ export class LangChainChatTransport<
   private _reconnectAbort: AbortController | null = null
 
   /**
+   * 从消息加载的 stream_cursor 初始化 cursor，避免页面刷新后 cursor 退化到 0。
+   * 在 resumeStream() 之前调用。
+   */
+  setLastSeq(chatId: string, seq: number | null | undefined) {
+    if (seq != null && seq > 0) {
+      this._lastSeqByChat.set(String(chatId), seq)
+    }
+  }
+
+  /**
    * 取消上一次 resume 请求，防止新旧 reconnect 互相干扰
    */
   private cancelPreviousReconnect = () => {

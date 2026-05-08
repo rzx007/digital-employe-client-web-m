@@ -172,6 +172,7 @@ export function CuratorView({
     ) {
       const rafId = requestAnimationFrame(() => {
         if (status !== "ready" && status !== "error") return
+        chatTransport.setLastSeq(String(curatorConversationId), lastStored.streamCursor)
         resumeStream()
       })
       return () => cancelAnimationFrame(rafId)

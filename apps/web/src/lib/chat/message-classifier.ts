@@ -237,6 +237,7 @@ export function classifyMessageParts(
   const skillExploreItems: SkillExploreItem[] = []
   let skillThinkingText = ""
   let skillExploreOpen = false
+  let responseText = ""
 
   // 遍历消息的各个部分，根据类型将其分类为最终响应、思考过程或工具调用
   for (let i = 0; i < parts.length; i++) {
@@ -246,15 +247,10 @@ export function classifyMessageParts(
     if (part.type === "text" && "text" in part && part.text) {
       const cleaned = stripThinkTags(part.text)
 
-      // 如果当前索引在最后一个工具调用之后，则视为最终响应
+      // 如果当前索引在最后一个工具调用之后，则视为最终响应（累积避免 markdown 跨 part 断裂）
       if (i > lastToolIndex) {
         flushSkillExplore("end")
-        const responseText = stripThinkSections(part.text)
-        blocks.push({
-          kind: "final-response",
-          key: `${message.id}:response:${i}`,
-          text: responseText,
-        })
+        responseText += part.text
       } else if (cleaned) {
         // 如果处于技能探索模式，累积思考文本；否则作为独立的思考块添加
         if (skillExploreOpen) {
@@ -299,6 +295,14 @@ export function classifyMessageParts(
   }
 
   flushSkillExplore("end")
+
+  if (responseText) {
+    blocks.push({
+      kind: "final-response",
+      key: `${message.id}:response:final`,
+      text: stripThinkSections(responseText),
+    })
+  }
 
   const shouldIncludeFileChanges = options.includeFileChanges === true
   const fileChanges = shouldIncludeFileChanges
