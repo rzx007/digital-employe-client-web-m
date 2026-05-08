@@ -55,6 +55,13 @@ def _get_main_loop() -> asyncio.AbstractEventLoop:
         raise RuntimeError("main event loop not set")
     return _main_loop
 
+
+def run_coro_on_main_loop(coro: Any) -> Any:
+    """在线程上下文中将协程安全投递到主事件循环执行并等待结果。"""
+    loop = _get_main_loop()
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    return future.result()
+
 _db_session_ctx: ContextVar[Session | None] = ContextVar("orchestrator_db", default=None)
 _workspace_id_ctx: ContextVar[int | None] = ContextVar("orchestrator_ws", default=None)
 _conversation_id_ctx: ContextVar[int | None] = ContextVar("orchestrator_conv", default=None)
