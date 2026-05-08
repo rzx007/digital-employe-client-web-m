@@ -345,7 +345,7 @@ function LoginPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-4 py-1">
+                    <div className="flex items-center justify-between py-1">
                       <div className="flex items-center gap-1">
                         <Checkbox
                           id="remember"
@@ -357,10 +357,22 @@ function LoginPage() {
                         />
                         <Label
                           htmlFor="remember"
-                          className="cursor-pointer text-sm"
+                          className="cursor-pointer text-xs"
                         >
                           记住密码
                         </Label>
+                      </div>
+                      <div className="flex items-center gap-x-1 text-xs">
+                        <span className="text-muted-foreground">
+                          还没有账号？
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleOpenRegister}
+                          className="font-medium text-primary underline decoration-primary/25 underline-offset-4 transition hover:decoration-primary"
+                        >
+                          去注册
+                        </button>
                       </div>
                     </div>
 
@@ -375,19 +387,6 @@ function LoginPage() {
                       )}
                       {loading ? "登录中..." : "登录"}
                     </Button>
-
-                    <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-0.5 text-sm">
-                      <span className="text-muted-foreground">
-                        还没有账号？
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleOpenRegister}
-                        className="font-medium text-primary underline decoration-primary/25 underline-offset-4 transition hover:decoration-primary"
-                      >
-                        去注册
-                      </button>
-                    </div>
                   </form>
                   {error && (
                     <p className="mt-2 text-xs text-destructive">{error}</p>

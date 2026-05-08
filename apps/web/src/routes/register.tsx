@@ -172,10 +172,11 @@ function RegisterPage() {
             className="pointer-events-auto absolute top-0 right-0 z-10 flex items-center"
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
+
             <button
               type="button"
               title="关闭"
-              className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
+              className="p-2 text-gray-700 hover:bg-destructive hover:text-white"
               onClick={handleClose}
             >
               <IconX className="size-5" />
@@ -412,7 +413,8 @@ function RegisterPage() {
 
                     <Button
                       type="submit"
-                      className="w-full font-medium shadow-sm"
+                      className="w-full"
+                      size={isElectron ? "lg" : "default"}
                       disabled={
                         registerLoading ||
                         !regUsername.trim() ||
