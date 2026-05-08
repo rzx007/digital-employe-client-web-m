@@ -99,3 +99,11 @@ export function closeLoginWindow(): void {
   loginWin.close()
   loginWin = null
 }
+
+/**
+ * 获取登录窗口引用（供其他模块向登录窗口发送消息）
+ */
+export function getLoginWin(): BrowserWindow | null {
+  if (loginWin && !loginWin.isDestroyed()) return loginWin
+  return null
+}
