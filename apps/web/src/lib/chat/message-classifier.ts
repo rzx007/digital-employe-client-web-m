@@ -1,5 +1,16 @@
 import type { UIMessage } from "ai"
 
+/** 流式错误事件注入 text part 时的前缀标记 */
+export const ERROR_MARKER = "⚠️ERROR:"
+
+function isErrorText(text: string): boolean {
+  return text.startsWith(ERROR_MARKER)
+}
+
+function stripErrorMarker(text: string): string {
+  return text.slice(ERROR_MARKER.length).trim()
+}
+
 import {
   summarizeToolCall,
   isSkillToolCall,
@@ -51,6 +62,7 @@ export type ClassifiedBlock =
   | { kind: "plan-generated"; key: string; toolCallId: string; input: unknown; state: string }
   | { kind: "final-response"; key: string; text: string }
   | { kind: "file-changes"; key: string; files: FileChangeItem[] }
+  | { kind: "error"; key: string; text: string }
 
 interface ClassifyMessagePartsOptions {
   includeFileChanges?: boolean
@@ -122,10 +134,19 @@ export function classifyMessageParts(
 
     if (!text) return []
 
+    const cleaned = stripThinkSections(text)
+    if (isErrorText(cleaned)) {
+      return [{
+        kind: "error",
+        key: `${message.id}:error:0`,
+        text: stripErrorMarker(cleaned),
+      }]
+    }
+
     return [{
       kind: "final-response",
       key: `${message.id}:response:0`,
-      text: stripThinkSections(text),
+      text: cleaned,
     }]
   }
 
@@ -297,11 +318,20 @@ export function classifyMessageParts(
   flushSkillExplore("end")
 
   if (responseText) {
-    blocks.push({
-      kind: "final-response",
-      key: `${message.id}:response:final`,
-      text: stripThinkSections(responseText),
-    })
+    const cleaned = stripThinkSections(responseText)
+    if (isErrorText(cleaned)) {
+      blocks.push({
+        kind: "error",
+        key: `${message.id}:error:final`,
+        text: stripErrorMarker(cleaned),
+      })
+    } else {
+      blocks.push({
+        kind: "final-response",
+        key: `${message.id}:response:final`,
+        text: cleaned,
+      })
+    }
   }
 
   const shouldIncludeFileChanges = options.includeFileChanges === true

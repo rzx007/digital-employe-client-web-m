@@ -16,6 +16,7 @@ import {
 import {
   sseEventSchema,
 } from "./langchain-sse-schema"
+import { ERROR_MARKER } from "./message-classifier"
 const useMock =
   import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_SSE === "true"
 
@@ -338,6 +339,34 @@ export class LangChainChatTransport<
             }
 
             const event = parsed.data
+
+            // 检测流式错误事件: {"error": "<message>"}
+            if (
+              event &&
+              typeof event === "object" &&
+              "error" in event
+            ) {
+              const raw = (event as { error: unknown }).error
+              const errorText =
+                typeof raw === "string" ? raw : JSON.stringify(raw)
+              closeTextPhaseIfNeeded(state).forEach((chunk) =>
+                controller.enqueue(chunk)
+              )
+              controller.enqueue({ type: "text-start", id: "stream-error" })
+              controller.enqueue({
+                type: "text-delta",
+                id: "stream-error",
+                delta: ERROR_MARKER + errorText,
+              })
+              controller.enqueue({ type: "text-end", id: "stream-error" })
+              state.didSendFinish = true
+              controller.enqueue({
+                type: "finish",
+                finishReason: "error" as const,
+              })
+              controller.close()
+              return true
+            }
 
             // stream_ended / no_stream → 后端已无更多事件，直接结束
             if (

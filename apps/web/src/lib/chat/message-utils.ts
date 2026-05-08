@@ -9,6 +9,7 @@ import {
   createLangChainStreamParseState,
   parseLangChainPayloadToChunks,
 } from "./langchain-stream-parser"
+import { ERROR_MARKER } from "./message-classifier"
 
 export function getTextFromUIMessage(message: UIMessage) {
   return message.parts
@@ -104,6 +105,25 @@ function _replayPayloadsToParts(payloads: unknown[]): UIMessage["parts"] | null 
 
   for (const payload of payloads) {
     try {
+      if (
+        payload &&
+        typeof payload === "object" &&
+        "status" in payload &&
+        (payload as Record<string, unknown>).status === "error" &&
+        "error" in payload
+      ) {
+        const errorText = String((payload as Record<string, unknown>).error)
+        closeTextPhaseIfNeeded(state).forEach((c) => allChunks.push(c))
+        allChunks.push({ type: "text-start", id: "stream-error-replay" })
+        allChunks.push({
+          type: "text-delta",
+          id: "stream-error-replay",
+          delta: ERROR_MARKER + errorText,
+        })
+        allChunks.push({ type: "text-end", id: "stream-error-replay" })
+        break
+      }
+
       const chunks = parseLangChainPayloadToChunks({ payload, state })
       allChunks.push(...chunks)
     } catch {

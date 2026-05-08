@@ -452,13 +452,16 @@ class StreamRegistry:
             state_final = "error"
             task.error_message = str(e)
             partial_text = latest_updates_text or None
+
+            evt = task.buffer.add({"status": "error", "error": str(e)})
+            chunk_builder.add(evt)
+
             await self._flush_terminal(
                 db, stream_msg_id, task.buffer, state="error",
                 content=partial_text,
                 stream_json=chunk_builder.to_stream_json(),
                 error_message=str(e),
             )
-            evt = task.buffer.add({"status": "error", "error": str(e)})
             self.broadcast(conversation_id, evt)
 
         finally:
