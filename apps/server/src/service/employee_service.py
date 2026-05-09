@@ -29,13 +29,6 @@ from src.service.workspace_service import WorkspaceService
 
 logger = logging.getLogger(__name__)
 
-# 启动种子员工：技能目录名 -> 稳定本地 skill_id（与用户导入的负 id 区间错开）
-_BUILTIN_SEED_SKILL_IDS: dict[str, int] = {
-    "lark-base": -10001,
-    "skill-creator": -10002,
-    "feishu-workbench": -10003,
-}
-
 # (展示名称, 技能目录名元组, 简介)
 _BUILTIN_SEED_EMPLOYEES: tuple[tuple[str, tuple[str, ...], str | None], ...] = (
     ("飞书助手", ("lark-base",), "内置飞书多维表格等能力。"),
@@ -911,15 +904,11 @@ class EmployeeService:
 
     @staticmethod
     def _builtin_seed_skill_payloads(
-        builtin_root: Path, skill_names: tuple[str, ...]
+        local_root: Path, skill_names: tuple[str, ...]
     ) -> list[dict] | None:
         out: list[dict] = []
         for sn in skill_names:
-            sid = _BUILTIN_SEED_SKILL_IDS.get(sn)
-            if sid is None:
-                logger.warning("Builtin seed: unknown skill name %r", sn)
-                return None
-            skill_dir = (builtin_root / sn).resolve()
+            skill_dir = (local_root / sn).resolve()
             skill_md = skill_dir / LocalSkillService.SKILL_MD_NAME
             if not skill_dir.is_dir() or not skill_md.is_file():
                 logger.warning(
@@ -928,12 +917,25 @@ class EmployeeService:
                     skill_md,
                 )
                 return None
+            meta = LocalSkillService._read_meta(skill_dir)
+            local_id = LocalSkillService._parse_local_id(meta.get("localId"))
+            if local_id is None:
+                logger.warning(
+                    "Builtin seed: skill %r has no localId in .skill-meta.json", sn
+                )
+                return None
+            desc_raw = meta.get("description")
+            description = (
+                str(desc_raw).strip()
+                if desc_raw is not None and str(desc_raw).strip()
+                else f"本地技能：{sn}"
+            )
             out.append(
                 {
-                    "id": sid,
+                    "id": local_id,
                     "skillName": sn,
                     "displayNameZh": sn,
-                    "description": f"内置技能：{sn}",
+                    "description": description,
                     "prompt": None,
                     "skillContent": None,
                     "path": str(skill_dir),
@@ -953,8 +955,8 @@ class EmployeeService:
 
     @staticmethod
     def ensure_builtin_seed_employees(db: Session, workspace: Workspace) -> None:
-        """将内置技能目录下的种子技能绑定到默认三名员工；按名称+技能集合幂等。"""
-        builtin_root = LocalSkillService._resolve_builtin_root().resolve()
+        """将本地技能目录（含启动时同步的内置技能）绑定到默认三名员工；按名称+技能集合幂等。"""
+        local_root = LocalSkillService._resolve_local_root().resolve()
         for name, skill_names, description in _BUILTIN_SEED_EMPLOYEES:
             expected = frozenset(skill_names)
             existing = db.scalar(
@@ -981,7 +983,7 @@ class EmployeeService:
                 continue
 
             payloads = EmployeeService._builtin_seed_skill_payloads(
-                builtin_root, skill_names
+                local_root, skill_names
             )
             if payloads is None:
                 logger.warning(
