@@ -474,7 +474,7 @@ export function RecentConversations({
       {renderDetailDialog()}
       <div
         className={cn(
-          "flex h-full w-full flex-col border-r bg-muted/50 transition-all duration-300",
+          "flex h-full min-h-0 w-full flex-col border-r bg-muted/50 transition-all duration-300",
           collapsed && "items-center",
           className
         )}
@@ -524,7 +524,7 @@ export function RecentConversations({
           </div>
         )}
 
-        <ScrollArea className="flex-1 w-full">
+        <ScrollArea className="min-h-0 flex-1 w-full">
           <div className={cn("py-2 px-1", collapsed && "px-1.5")}>
             {displayItems.map((item) => (
               <React.Fragment key={item.contactId}>

@@ -188,13 +188,13 @@ export function ChatLayout({
     >
       <WelcomeDialog />
       <UserTour />
-      <div className="flex min-w-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1">
         {!isMobile && <AppToolbar />}
 
         {!isMobile && activeTab !== "workbench" && activeTab !== "calendar" && activeTab !== "skills" && (
           <div
             className={cn(
-              "hidden shrink-0 md:flex md:flex-col transition-[width] duration-300",
+              "hidden shrink-0 md:flex md:min-h-0 md:flex-col transition-[width] duration-300",
               shouldCollapseRecent ? "w-16" : "w-64"
             )}
           >

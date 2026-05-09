@@ -94,7 +94,7 @@ export function ContactsPanel({
       />
       <div
         className={cn(
-          "flex h-full w-full flex-col border-r bg-muted/50 transition-all duration-300",
+          "flex h-full min-h-0 w-full flex-col border-r bg-muted/50 transition-all duration-300",
           className
         )}
         {...props}
@@ -125,7 +125,7 @@ export function ContactsPanel({
           </Button>
         </div>
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="min-h-0 flex-1 w-full">
           <div className="w-full space-y-3 px-1 py-2">
             <div className="space-y-0.5">
               <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
