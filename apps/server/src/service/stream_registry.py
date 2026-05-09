@@ -21,7 +21,7 @@ FLUSH_INTERVAL_SECONDS = 2.0
 HEARTBEAT_INTERVAL_SECONDS = 30.0
 TASK_TTL_SECONDS = 300
 BUFFER_MAXLEN = 5000
-AGENT_CHUNK_TIMEOUT = 600.0
+AGENT_CHUNK_TIMEOUT = 1800.0
 DB_LOCK_RETRY_COUNT = 5
 DB_LOCK_RETRY_SLEEP_SECONDS = 0.2
 
@@ -292,6 +292,22 @@ class StreamRegistry:
         last_heartbeat_time = time.monotonic()
         state_final = "completed"
 
+        async def _heartbeat_loop():
+            hb_db = get_session_local()()
+            try:
+                while True:
+                    await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
+                    try:
+                        _flush_heartbeat(hb_db, conversation_id)
+                    except Exception:
+                        pass
+            except asyncio.CancelledError:
+                pass
+            finally:
+                hb_db.close()
+
+        _heartbeat_task = asyncio.create_task(_heartbeat_loop())
+
         def _extract_updates_content(event: Any) -> str | None:
             """Extract latest non-empty kwargs.content from type=updates payload."""
             if not isinstance(event, dict) or event.get("type") != "updates":
@@ -331,12 +347,12 @@ class StreamRegistry:
             except Exception:
                 pass
 
-        def _maybe_flush() -> None:
+        async def _maybe_flush() -> None:
             nonlocal last_flush_time
             if chunk_builder.count == 0:
                 return
             stream_json = chunk_builder.to_stream_json()
-            ok = self._flush_to_db(
+            ok = await self._flush_to_db(
                 db, stream_msg_id, task.buffer,
                 stream_json=stream_json,
             )
@@ -380,8 +396,8 @@ class StreamRegistry:
                         and custom_data.get("type") == "tool_output"
                     ):
                         evt = task.buffer.add(custom_data)
-                        chunk_builder.add(evt)
                         self.broadcast(conversation_id, evt)
+                        task.buffer.trim()
                     continue
 
                 text_part = ChatService._extract_text_from_chunk(serializable)
@@ -398,7 +414,7 @@ class StreamRegistry:
                     task.buffer.cursor % FLUSH_INTERVAL_EVENTS == 0
                     or now - last_flush_time >= FLUSH_INTERVAL_SECONDS
                 ):
-                    _maybe_flush()
+                    await _maybe_flush()
                     _maybe_heartbeat()
 
             final_text = latest_updates_text or "模型已完成调用。"
@@ -465,6 +481,12 @@ class StreamRegistry:
             self.broadcast(conversation_id, evt)
 
         finally:
+            _heartbeat_task.cancel()
+            try:
+                await _heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
             if _agent_it is not None:
                 try:
                     await _agent_it.aclose()
@@ -507,7 +529,7 @@ class StreamRegistry:
     ) -> None:
         """Flush terminal state with retry to avoid stuck streaming on transient DB errors."""
         for attempt in range(max_retries):
-            self._flush_to_db(
+            await self._flush_to_db(
                 db, stream_msg_id, buffer, state=state,
                 content=content,
                 stream_json=stream_json,
@@ -530,7 +552,7 @@ class StreamRegistry:
             stream_msg_id, state, max_retries,
         )
 
-    def _flush_to_db(
+    async def _flush_to_db(
         self,
         db: Any,
         stream_msg_id: int,
@@ -583,7 +605,7 @@ class StreamRegistry:
                         exc_info=True,
                     )
                     return False
-                time.sleep(DB_LOCK_RETRY_SLEEP_SECONDS * (attempt + 1))
+                await asyncio.sleep(DB_LOCK_RETRY_SLEEP_SECONDS * (attempt + 1))
             except Exception:
                 logger.warning("[flush] msg_id=%s FAILED", stream_msg_id, exc_info=True)
                 db.rollback()

@@ -1,6 +1,7 @@
 import asyncio
 import shlex
 import subprocess
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -109,6 +110,27 @@ class SkillAwareShellBackend(LocalShellBackend):
         lines: list[str] = []
         seq = 0
         timed_out = False
+        current_output_size = 0
+
+        _BATCH_LINES = 20
+        _BATCH_SECONDS = 0.3
+        _batch: list[tuple[str, int]] = []
+        _last_batch_emit = time.monotonic()
+
+        def _emit_batch():
+            nonlocal _last_batch_emit
+            for chunk_line, chunk_seq in _batch:
+                stream_writer({
+                    "type": "tool_output",
+                    "data": {
+                        "tool_name": "execute",
+                        "chunk": chunk_line,
+                        "chunk_seq": chunk_seq,
+                        "stream": "stdout",
+                    },
+                })
+            _batch.clear()
+            _last_batch_emit = time.monotonic()
 
         try:
             while True:
@@ -119,19 +141,20 @@ class SkillAwareShellBackend(LocalShellBackend):
                     break
                 if line is None:
                     break
-                lines.append(line)
+
+                if current_output_size < self._max_output_bytes:
+                    lines.append(line)
+                    current_output_size += len(line) + 1
+
                 seq += 1
-                stream_writer({
-                    "type": "tool_output",
-                    "data": {
-                        "tool_name": "execute",
-                        "chunk": line,
-                        "chunk_seq": seq,
-                        "stream": "stdout",
-                    },
-                })
+                _batch.append((line, seq))
+                now = time.monotonic()
+                if len(_batch) >= _BATCH_LINES or now - _last_batch_emit >= _BATCH_SECONDS:
+                    _emit_batch()
+
+            _emit_batch()
         except Exception:
-            pass
+            _emit_batch()
 
         try:
             exit_code = await asyncio.wait_for(
