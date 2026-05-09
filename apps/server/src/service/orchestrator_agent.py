@@ -616,8 +616,19 @@ def _start_task_as_conversation(
         ]
     ]
 
+    # Snapshots before commit: commit() expires instances; lazy reload can hit
+    # SQLite misuse in threaded scheduler contexts. The main-loop callback must
+    # not touch ORM objects from this Session on another thread.
+    conversation_id = conversation.id
+    assistant_msg_id = assistant_msg.id
+    task_id_snap = task.id
+    task_name_snap = task.task_name
+    employee_id_snap = employee.id
+    employee_name_snap = employee.name
+
     db.commit()
 
+    thread_id = f"task-{task_id_snap}-{int(datetime.now().timestamp())}"
     main_loop = _get_main_loop()
     main_loop.call_soon_threadsafe(
         lambda: registry.start(

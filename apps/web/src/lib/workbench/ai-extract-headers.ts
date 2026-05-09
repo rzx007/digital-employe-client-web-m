@@ -1,5 +1,6 @@
 import type { QueryInterface } from "@/types/workbench"
 import { request } from "@/lib/request"
+import { WORKBENCH_CHAT_SEND_TIMEOUT_MS } from "@/lib/workbench/chat-send-employee"
 import { normalizeHeadersFromUnknown } from "@/lib/workbench/http-headers"
 import {
   normalizePathKeyForMatch,
@@ -137,13 +138,18 @@ export function lookupAiHeadersForPath(
  * Second-pass: ask the model to infer HTTP headers from unstructured skill prose
  * when regex/heuristics miss non-standard descriptions.
  * Local / already-parsed headers win on key collision.
+ * @param chatEmployeeId 整数员工 ID，需满足后端 /chat/send 的 employee_id: int
  */
 export async function enrichInterfacesHeadersWithAi(
-  employeeId: string,
+  chatEmployeeId: number,
   interfaces: QueryInterface[],
-  skillBlob: string
+  skillBlob: string,
+  signal?: AbortSignal,
 ): Promise<QueryInterface[]> {
   if (interfaces.length === 0) return interfaces
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError")
+  }
 
   const pathsPayload = interfaces.map((i) => ({
     path: i.path,
@@ -179,9 +185,11 @@ ${ctx}
       method: "POST",
       body: JSON.stringify({
         question: prompt,
-        employee_id: employeeId || "system",
+        employee_id: chatEmployeeId,
         skill_descriptions: skillBlob,
       }),
+      timeout: WORKBENCH_CHAT_SEND_TIMEOUT_MS,
+      ...(signal ? { signal } : {}),
     })
 
     const arr = extractJsonArrayFromAiText(res.data.response)
@@ -208,6 +216,13 @@ ${ctx}
       return { ...iface, headers: Object.keys(merged).length ? merged : iface.headers }
     })
   } catch (e) {
+    if (
+      e &&
+      typeof e === "object" &&
+      (e as { name?: string }).name === "AbortError"
+    ) {
+      throw e
+    }
     console.error("enrichInterfacesHeadersWithAi failed:", e)
     return interfaces
   }

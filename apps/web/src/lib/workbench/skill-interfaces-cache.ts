@@ -10,10 +10,16 @@ function storageKey(cacheKey: string): string {
   return `${STORAGE_PREFIX}${cacheKey}`
 }
 
-/** 员工 + 已启用技能的变更签名，技能内容更新后自动视为新缓存键 */
-export function getSkillInterfacesCacheKey(employeeId: string, skills: MetadataSkill[]): string {
-  const sig = skills
-    .filter((s) => s.status === 1)
+/** 员工 + 技能变更签名；传入 focusedSkill 时仅对该技能签名（与当前解析/chat/send 上下文一致） */
+export function getSkillInterfacesCacheKey(
+  employeeId: string,
+  skills: MetadataSkill[],
+  focusedSkill?: MetadataSkill | null,
+): string {
+  const source =
+    focusedSkill != null ? [focusedSkill] : skills
+  const sig = source
+    .filter((s) => s.status === undefined || s.status === 1 || s.status === "1")
     .map((s) => `${s.id}:${s.updateTime}`)
     .sort()
     .join("|")

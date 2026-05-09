@@ -15,7 +15,7 @@ def get_engine() -> Engine:
     sqlite_path.parent.mkdir(parents=True, exist_ok=True)
     engine = create_engine(
         f"sqlite:///{sqlite_path}",
-        connect_args={"check_same_thread": False},
+        connect_args={"check_same_thread": False, "timeout": 30.0},
     )
 
     @event.listens_for(engine, "connect")
@@ -23,7 +23,7 @@ def get_engine() -> Engine:
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA synchronous=NORMAL")
-        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA busy_timeout=30000")
         cursor.close()
 
     return engine

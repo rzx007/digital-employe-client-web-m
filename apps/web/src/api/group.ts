@@ -29,16 +29,23 @@ export async function createGroup(params: CreateGroupParams) {
  * 查询群聊列表
  * GET /workspaces/{workspace_id}/groups
  */
-export async function fetchGroups() {
-  return request<ApiResponse<Group[]>>(`/workspaces/${WORKSPACE_ID}/groups`)
+export async function fetchGroups(opts?: { signal?: AbortSignal }) {
+  return request<ApiResponse<Group[]>>(`/workspaces/${WORKSPACE_ID}/groups`, {
+    ...(opts?.signal ? { signal: opts.signal } : {}),
+  })
 }
 
 /**
  * 查询群聊详情
  * GET /groups/{group_id}
  */
-export async function fetchGroupById(groupId: number | string) {
-  return request<ApiResponse<Group>>(`/groups/${groupId}`)
+export async function fetchGroupById(
+  groupId: number | string,
+  opts?: { signal?: AbortSignal }
+) {
+  return request<ApiResponse<Group>>(`/groups/${groupId}`, {
+    ...(opts?.signal ? { signal: opts.signal } : {}),
+  })
 }
 
 /**

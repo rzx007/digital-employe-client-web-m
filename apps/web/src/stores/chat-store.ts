@@ -17,7 +17,6 @@ interface ChatStore {
   draftSessionKey: number
   showWorkbench: boolean
   activeTab: ActiveTab
-  workbenchEmployeeId: string | null
   isCompactMode: boolean
   setContacts: (contacts: Contact[]) => void
   setSelectedContactId: (id: string | null) => void
@@ -25,7 +24,6 @@ interface ChatStore {
   setDraftConversation: (isDraft: boolean) => void
   setShowWorkbench: (show: boolean) => void
   setActiveTab: (tab: ActiveTab) => void
-  setWorkbenchEmployeeId: (id: string | null) => void
   setCompactMode: (compact: boolean) => void
   startDraftConversation: (contactId: string) => void
   selectConversation: (contactId: string, conversationId: string) => void
@@ -43,7 +41,6 @@ export const useChatStore = create<ChatStore>()(
       draftSessionKey: 0,
       showWorkbench: false,
       activeTab: "chat" as ActiveTab,
-      workbenchEmployeeId: null,
       isCompactMode: false,
       setContacts: (contacts) => set({ contacts }),
       setSelectedContactId: (id) =>
@@ -67,7 +64,6 @@ export const useChatStore = create<ChatStore>()(
         })),
       setShowWorkbench: (show) => set({ showWorkbench: show }),
       setActiveTab: (tab) => set({ activeTab: tab }),
-      setWorkbenchEmployeeId: (id) => set({ workbenchEmployeeId: id }),
       setCompactMode: (compact) => set({ isCompactMode: compact }),
       startDraftConversation: (contactId) =>
         set((state) => ({
@@ -103,7 +99,6 @@ export const useChatStore = create<ChatStore>()(
         selectedContactId: state.selectedContactId,
         selectedConversationId: state.selectedConversationId,
         activeTab: state.activeTab,
-        workbenchEmployeeId: state.workbenchEmployeeId,
       }),
     }
   )

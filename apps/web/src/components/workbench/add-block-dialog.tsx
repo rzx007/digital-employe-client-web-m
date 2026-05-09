@@ -11,10 +11,16 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog"
 import { Checkbox } from "@workspace/ui/components/checkbox"
-import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { IconRefresh } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 import type { MetadataSkill } from "@/api/types"
 import type { ChartDisplayType, QueryInterface } from "@/types/workbench"
 import { parseInterfacesFromSkills } from "@/lib/workbench/query-interface-parser"
@@ -37,7 +43,10 @@ interface AddBlockDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   skills: MetadataSkill[]
+  /** localStorage 工作台缓存键用，如 global */
   employeeId: string
+  /** POST /chat/send 必填整数 employee_id，工作台传入首位可用员工 */
+  chatEmployeeId?: number | null
   onAdd: (interfaces: QueryInterface[]) => void
 }
 
@@ -50,13 +59,29 @@ const CHART_TYPES: { value: ChartDisplayType; label: string; icon: string }[] = 
   { value: "list", label: "列表", icon: "📃" },
 ]
 
+function skillSelectKey(s: MetadataSkill, i: number): string {
+  const row = s as MetadataSkill & { workbenchRowKey?: string }
+  if (row.workbenchRowKey) return row.workbenchRowKey
+  return `${s.directoryName ?? ""}::${String(s.id ?? s.skillName)}::${i}`
+}
+
+function skillOptionLabel(s: MetadataSkill): string {
+  const row = s as MetadataSkill & { workbenchSkillLabel?: string }
+  if (row.workbenchSkillLabel) return row.workbenchSkillLabel
+  return s.directoryName
+    ? `${s.skillName} · ${s.directoryName}`
+    : s.skillName
+}
+
 export function AddBlockDialog({
   open,
   onOpenChange,
   skills,
   employeeId,
+  chatEmployeeId,
   onAdd,
 }: AddBlockDialogProps) {
+  const [selectedSkillKey, setSelectedSkillKey] = React.useState<string>("")
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [interfaces, setInterfaces] = React.useState<QueryInterface[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
@@ -65,9 +90,21 @@ export function AddBlockDialog({
   /** Extra JSON object merged into iface.headers for preview & save */
   const [headersJsonOverrides, setHeadersJsonOverrides] = React.useState<Record<string, string>>({})
 
+  /** 切换技能或关闭弹窗时中止上一轮的解析请求（/chat/send） */
+  const parseAbortRef = React.useRef<AbortController | null>(null)
+
+  const selectedSkill = React.useMemo(() => {
+    if (skills.length === 0) return null
+    if (!selectedSkillKey) return skills[0]
+    const found = skills.find(
+      (s, i) => skillSelectKey(s, i) === selectedSkillKey,
+    )
+    return found ?? skills[0]
+  }, [skills, selectedSkillKey])
+
   const cacheKey = React.useMemo(
-    () => getSkillInterfacesCacheKey(employeeId, skills),
-    [employeeId, skills]
+    () => getSkillInterfacesCacheKey(employeeId, skills, selectedSkill),
+    [employeeId, skills, selectedSkill],
   )
 
   const applyChartDefaults = React.useCallback((list: QueryInterface[]) => {
@@ -80,6 +117,10 @@ export function AddBlockDialog({
 
   const loadInterfaces = React.useCallback(
     async (forceRefresh: boolean) => {
+      if (skills.length === 0 || !selectedSkill) {
+        setInterfaces([])
+        return
+      }
       if (forceRefresh) {
         invalidateSkillInterfacesCache(cacheKey)
       }
@@ -91,25 +132,98 @@ export function AddBlockDialog({
           return
         }
       }
+      parseAbortRef.current?.abort()
+      const ac = new AbortController()
+      parseAbortRef.current = ac
+
       setIsLoading(true)
       try {
-        const parsed = await parseInterfacesFromSkills(employeeId, skills)
+        const parsed = await parseInterfacesFromSkills(
+          employeeId,
+          [selectedSkill],
+          chatEmployeeId,
+          { signal: ac.signal },
+        )
+        if (parseAbortRef.current !== ac) return
         setCachedParsedInterfaces(cacheKey, parsed)
         setInterfaces(parsed)
         applyChartDefaults(parsed)
       } catch (e) {
+        if (
+          e &&
+          typeof e === "object" &&
+          (e as { name?: string }).name === "AbortError"
+        ) {
+          return
+        }
         console.error("Failed to load interfaces:", e)
       } finally {
-        setIsLoading(false)
+        if (parseAbortRef.current === ac) {
+          setIsLoading(false)
+        }
       }
     },
-    [employeeId, skills, cacheKey, applyChartDefaults]
+    [
+      employeeId,
+      selectedSkill,
+      skills.length,
+      cacheKey,
+      applyChartDefaults,
+      chatEmployeeId,
+    ],
   )
+
+  React.useEffect(() => {
+    if (!open) {
+      parseAbortRef.current?.abort()
+      parseAbortRef.current = null
+    }
+  }, [open])
+
+  React.useEffect(() => {
+    if (!open || skills.length === 0) return
+    setSelectedSkillKey((prev) => {
+      const valid =
+        prev && skills.some((s, i) => skillSelectKey(s, i) === prev)
+      if (valid && prev) return prev
+      return skillSelectKey(skills[0], 0)
+    })
+  }, [open, skills])
+
+  React.useEffect(() => {
+    if (!open) return
+    setSelectedIds(new Set())
+    setInterfaces([])
+    setBaseUrlOverrides({})
+    setChartTypeSelections({})
+    setHeadersJsonOverrides({})
+  }, [open, cacheKey])
 
   React.useEffect(() => {
     if (!open) return
     void loadInterfaces(false)
   }, [open, cacheKey, loadInterfaces])
+
+  /** 切换所选技能时强制重新解析（仅当前选中技能） */
+  const skipSelectReparse = React.useRef(true)
+  React.useEffect(() => {
+    if (!open) {
+      skipSelectReparse.current = true
+      return
+    }
+    if (skills.length === 0 || !selectedSkillKey) return
+    if (skipSelectReparse.current) {
+      skipSelectReparse.current = false
+      return
+    }
+    setSelectedIds(new Set())
+    setBaseUrlOverrides({})
+    setChartTypeSelections({})
+    setHeadersJsonOverrides({})
+    void loadInterfaces(true)
+    // Intentionally omit skills.length: list updates from API should refresh via cacheKey, not this branch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selection-change reparsing only
+  }, [open, selectedSkillKey, loadInterfaces])
 
   const handleToggle = (id: string) => {
     const newSelected = new Set(selectedIds)
@@ -176,6 +290,7 @@ export function AddBlockDialog({
 
     onAdd(enriched)
     setSelectedIds(new Set())
+    setSelectedSkillKey("")
     setInterfaces([])
     setBaseUrlOverrides({})
     setChartTypeSelections({})
@@ -185,6 +300,7 @@ export function AddBlockDialog({
 
   const handleClose = () => {
     setSelectedIds(new Set())
+    setSelectedSkillKey("")
     setInterfaces([])
     setBaseUrlOverrides({})
     setChartTypeSelections({})
@@ -194,13 +310,13 @@ export function AddBlockDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-h-[85vh] max-w-3xl gap-0 overflow-hidden p-0 sm:max-w-3xl">
-        <DialogHeader className="space-y-1 border-b border-border/60 bg-muted/20 px-6 py-4 text-left">
+      <DialogContent className="flex max-h-[85vh] min-h-0 max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <DialogHeader className="shrink-0 space-y-1 border-b border-border/60 bg-muted/20 px-6 py-4 text-left">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-1">
               <DialogTitle className="text-base font-semibold tracking-tight">添加数据模块</DialogTitle>
               <DialogDescription className="text-xs leading-relaxed">
-                从技能正文中识别接口地址；勾选后可配置服务地址与图表类型并预览（列表已缓存，可刷新重新解析）
+                下方列表为当前技能解析出的接口（技能来源：工作空间全部远程技能与本地技能，与是否绑定数字员工无关）；切换上方技能将重新解析；勾选后可配置地址与图表并预览（列表已缓存，可点刷新）
               </DialogDescription>
             </div>
             <Button
@@ -218,7 +334,37 @@ export function AddBlockDialog({
           </div>
         </DialogHeader>
 
-        <div className="px-6 py-4" style={{ overflow: "auto" }}>
+        <div className="shrink-0 border-b border-border/60 bg-muted/10 px-6 py-3">
+          <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            选择技能（切换后将重新解析该技能）
+          </label>
+          <Select
+            value={
+              selectedSkillKey ||
+              (skills[0] ? skillSelectKey(skills[0], 0) : undefined)
+            }
+            onValueChange={setSelectedSkillKey}
+            disabled={skills.length === 0}
+          >
+            <SelectTrigger className="h-8 w-full">
+              <SelectValue placeholder="请选择技能" />
+            </SelectTrigger>
+            <SelectContent
+              position="popper"
+              sideOffset={4}
+              collisionPadding={8}
+              className="z-[200] max-h-[min(50vh,360px)] w-[var(--radix-select-trigger-width)]"
+            >
+              {skills.map((s, i) => (
+                <SelectItem key={skillSelectKey(s, i)} value={skillSelectKey(s, i)}>
+                  <span className="text-sm">{skillOptionLabel(s)}</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
           {isLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
@@ -233,8 +379,7 @@ export function AddBlockDialog({
               </p>
             </div>
           ) : (
-            <ScrollArea className="max-h-[500px] pr-3">
-              <div className="space-y-3">
+            <div className="space-y-3 pr-1">
                 {interfaces.map((iface) => (
                   <div
                     key={iface.id}
@@ -359,12 +504,11 @@ export function AddBlockDialog({
                     </div>
                   </div>
                 ))}
-              </div>
-            </ScrollArea>
+            </div>
           )}
         </div>
 
-        <DialogFooter className="border-t border-border/60 bg-muted/10 px-6 py-3 sm:justify-end">
+        <DialogFooter className="shrink-0 border-t border-border/60 bg-muted/10 px-6 py-3 sm:justify-end">
           <Button variant="outline" onClick={handleClose}>
             取消
           </Button>

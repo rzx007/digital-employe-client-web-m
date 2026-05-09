@@ -93,6 +93,9 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
           target: server_url,
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/actus/, ""),
+          /** 与后端 LangGraph+LLM /chat/send 等长请求对齐，避免开发代理提前断开 */
+          timeout: 180_000,
+          proxyTimeout: 180_000,
         },
         "/digital": {
           target: "http://10.172.246.179:5002",

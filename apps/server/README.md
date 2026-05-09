@@ -109,13 +109,13 @@ uv run python start.py
 服务默认监听：
 
 ```text
-http://0.0.0.0:58000
+http://0.0.0.0:34567 
 ```
 
 热重载开发：
 
 ```bash
-uv run uvicorn src.server:app --host 0.0.0.0 --port 58000 --reload
+uv run uvicorn src.server:app --host 0.0.0.0 --port 34567  --reload
 ```
 
 ### 用 venv + pip
@@ -239,7 +239,7 @@ GET /workspaces/{workspace_id}/employees/sync
 示例请求：
 
 ```bash
-curl -N "http://127.0.0.1:58000/chat/conversations/12/stream?skill=&question=你有lark-im这个技能吗"
+curl -N "http://127.0.0.1:34567 /chat/conversations/12/stream?skill=&question=你有lark-im这个技能吗"
 ```
 
 ## 排查技能加载问题

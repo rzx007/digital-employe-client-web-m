@@ -1,22 +1,11 @@
 import * as React from "react"
+import { useQuery } from "@tanstack/react-query"
 import { IconPlus, IconX } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@workspace/ui/components/select"
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@workspace/ui/components/avatar"
 import { cn } from "@workspace/ui/lib/utils"
-import type { MetadataSkill } from "@/api/types"
-import { useEmployeeDetailQuery } from "@/hooks/use-chat-queries"
+import type { MetadataSkill, SkillListItem } from "@/api/types"
+import { fetchEmployees, fetchSkillList } from "@/api/employee"
 import { useWorkbenchConfig } from "@/hooks/use-workbench-config"
 import { fetchEmployeeSkillsFromLocal } from "@/lib/workbench/local-skill-loader"
 import { useChatStore } from "@/stores/chat-store"
@@ -24,117 +13,114 @@ import { WorkbenchLeftPanel } from "@/components/workbench/workbench-left-panel"
 import { DraggableWorkbenchGrid } from "@/components/workbench/draggable-workbench-grid"
 import { AddBlockDialog } from "@/components/workbench/add-block-dialog"
 import { CuratorView } from "@/components/chat/curator-view"
-import type { ChatViewContact } from "./chat-view-shared"
+
+/** Single global workbench config key – see workbench-config.ts localStorage prefix */
+const GLOBAL_WORKBENCH_ID = "global"
 
 interface WorkbenchViewProps {
-  contact?: ChatViewContact
   onClose?: () => void
   className?: string
 }
 
-export function WorkbenchView({
-  contact,
-  onClose,
-  className,
-}: WorkbenchViewProps) {
+/** UI label + stable row key; extends MetadataSkill for workbench only */
+type WorkbenchSkillRow = MetadataSkill & {
+  workbenchSkillLabel?: string
+  workbenchRowKey?: string
+}
+
+function skillListItemToWorkbenchRow(
+  item: SkillListItem,
+  index: number,
+): WorkbenchSkillRow {
+  const src = item.source ?? "remote"
+  const isLocal = src === "local"
+  return {
+    id: item.id,
+    skillName: item.skillName,
+    description: item.description ?? "",
+    prompt: item.prompt ?? "",
+    directoryId: item.directoryId,
+    directoryName: item.directoryName ?? (isLocal ? "本地技能" : "远程技能"),
+    status: item.status ?? 1,
+    createTime: item.createTime ?? "",
+    updateTime: item.updateTime ?? "",
+    skillContent: item.skillContent ?? "",
+    workbenchSkillLabel: `${item.skillName} · ${isLocal ? "本地技能" : "远程技能"}`,
+    workbenchRowKey: `ws-skill-list-${src}-${String(item.id)}-${item.skillName}-${index}`,
+  }
+}
+
+export function WorkbenchView({ onClose, className }: WorkbenchViewProps) {
   const [showAddDialog, setShowAddDialog] = React.useState(false)
-  const [localSkills, setLocalSkills] = React.useState<MetadataSkill[]>([])
-  const [isLoadingSkills, setIsLoadingSkills] = React.useState(false)
+  const [localEnriched, setLocalEnriched] = React.useState<MetadataSkill[]>([])
+  const [isLoadingLocalEnrich, setIsLoadingLocalEnrich] = React.useState(false)
 
   const contacts = useChatStore((s) => s.contacts)
-  const workbenchEmployeeId = useChatStore((s) => s.workbenchEmployeeId)
-  const setWorkbenchEmployeeId = useChatStore(
-    (s) => s.setWorkbenchEmployeeId
-  )
 
-  const employeeContacts = React.useMemo(
-    () => contacts.filter((c) => c.type === "employee" && c.employee),
-    [contacts]
-  )
+  const { data: employeesFromApi = [] } = useQuery({
+    queryKey: ["workbench", "employees"],
+    queryFn: async ({ signal }) => {
+      const res = await fetchEmployees({ signal })
+      return res.data ?? []
+    },
+    staleTime: 30_000,
+  })
 
-  const isTabMode = !contact
-
-  const tabSelectedEmployee = React.useMemo(() => {
-    if (!isTabMode) return undefined
-    if (workbenchEmployeeId) {
-      const found = employeeContacts.find(
-        (c) => c.employee?.id === workbenchEmployeeId
-      )
-      if (found) return found.employee
-    }
-    return employeeContacts[0]?.employee
-  }, [employeeContacts, isTabMode, workbenchEmployeeId])
+  const { data: skillListItems = [], isLoading: isLoadingSkillList } = useQuery({
+    queryKey: ["workbench", "skill-list"],
+    queryFn: ({ signal }) => fetchSkillList({ signal }),
+    staleTime: 30_000,
+  })
 
   React.useEffect(() => {
-    if (!isTabMode) return
-    if (!tabSelectedEmployee) return
-    if (workbenchEmployeeId !== tabSelectedEmployee.id) {
-      setWorkbenchEmployeeId(tabSelectedEmployee.id)
+    let cancelled = false
+    const load = async () => {
+      setIsLoadingLocalEnrich(true)
+      try {
+        const skills = await fetchEmployeeSkillsFromLocal(GLOBAL_WORKBENCH_ID)
+        if (!cancelled) setLocalEnriched(skills)
+      } catch (e) {
+        console.error("Failed to load local skills for enrich:", e)
+        if (!cancelled) setLocalEnriched([])
+      } finally {
+        if (!cancelled) setIsLoadingLocalEnrich(false)
+      }
     }
-  }, [isTabMode, tabSelectedEmployee, workbenchEmployeeId, setWorkbenchEmployeeId])
-
-  const employeeId =
-    contact?.employee?.id ?? tabSelectedEmployee?.id ?? ""
-  const employeeName =
-    contact?.employee?.name ?? tabSelectedEmployee?.name ?? ""
-
-  const { data: employee } = useEmployeeDetailQuery(employeeId)
-  const apiSkills = employee?.metadata?.skills ?? []
-
-  React.useEffect(() => {
-    if (employeeName) {
-      loadLocalSkills()
-    } else {
-      setLocalSkills([])
+    void load()
+    return () => {
+      cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employeeName, employeeId])
+  }, [])
 
-  const loadLocalSkills = async () => {
-    setIsLoadingSkills(true)
-    try {
-      const skills = await fetchEmployeeSkillsFromLocal(
-        employeeId,
-        employeeName
-      )
-      setLocalSkills(skills)
-    } catch (e) {
-      console.error("Failed to load local skills:", e)
-      setLocalSkills([])
-    } finally {
-      setIsLoadingSkills(false)
-    }
-  }
-
-  // 合并远程和本地技能，两者都保留
+  /**
+   * 弹框与解析用技能源：/skills/list（全量远程+全量本地，与是否绑定员工无关）；
+   * 本地行再合并 disk 上 SKILL.md 等以便接口解析。
+   */
   const skills = React.useMemo(() => {
-    const allSkills: MetadataSkill[] = []
-
-    // 添加远程技能
-    apiSkills.forEach((skill) => {
-      allSkills.push({
-        ...skill,
-        directoryName: skill.directoryName || "远程技能",
-      })
+    const byName = new Map(
+      localEnriched.map((s) => [s.skillName, s] as const),
+    )
+    return skillListItems.map((item, idx) => {
+      const base = skillListItemToWorkbenchRow(item, idx)
+      if (item.source === "local") {
+        const full = byName.get(item.skillName)
+        if (full) {
+          const sc =
+            (full as MetadataSkill & { skill_content?: string }).skill_content ??
+            full.skillContent
+          return {
+            ...base,
+            skillContent: sc ?? base.skillContent,
+            prompt: full.prompt || base.prompt,
+            description: full.description || base.description,
+          }
+        }
+      }
+      return base
     })
+  }, [skillListItems, localEnriched])
 
-    // 添加本地技能
-    localSkills.forEach((skill) => {
-      allSkills.push({
-        ...skill,
-        directoryName: skill.directoryName || "本地技能",
-      })
-    })
-
-    console.log('[workbench-view] merged skills:', allSkills.map(s => ({
-      skillName: s.skillName,
-      directoryName: s.directoryName,
-      hasSkillContent: !!(s.skillContent || s.skill_content),
-      contentLength: (s.skillContent || s.skill_content || '').length,
-    })))
-
-    return allSkills
-  }, [apiSkills, localSkills])
+  const ready = !isLoadingSkillList && !isLoadingLocalEnrich
 
   const {
     config,
@@ -144,8 +130,8 @@ export function WorkbenchView({
     removeBlock,
     resizeBlock,
   } = useWorkbenchConfig({
-    employeeId,
-    skills,
+    employeeId: ready ? GLOBAL_WORKBENCH_ID : null,
+    skills: ready ? skills : [],
   })
 
   const handleAddInterfaces = (
@@ -156,119 +142,118 @@ export function WorkbenchView({
     })
   }
 
-  const selectorValue = employeeId || undefined
-
-  const renderEmployeeOption = (
-    e: NonNullable<ChatViewContact["employee"]>
-  ) => (
-    <div className="flex items-center gap-2">
-      <Avatar className="size-5">
-        <AvatarImage src={e.avatar} alt={e.name} />
-        <AvatarFallback>{e.name.slice(0, 1)}</AvatarFallback>
-      </Avatar>
-      <span className="text-sm">{e.name}</span>
-      {e.role && (
-        <span className="text-xs text-muted-foreground">{e.role}</span>
-      )}
-    </div>
-  )
+  /** 后端 /chat/send 需要整数 employee_id；取工作空间内第一位员工作为解析/补全用身份 */
+  const chatEmployeeId = React.useMemo(() => {
+    const fromApi = employeesFromApi[0]?.id
+    if (fromApi != null && fromApi > 0) return fromApi
+    const first = contacts.find((c) => c.type === "employee" && c.employee)
+    if (first?.type === "employee" && first.employee?.id) {
+      const n = Number(first.employee.id)
+      if (Number.isFinite(n) && n > 0) return n
+    }
+    return undefined
+  }, [employeesFromApi, contacts])
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
-      {/* Workbench Header */}
       <div className="flex items-center justify-between border-b px-4 py-2">
-        {/* 数字员工选择器 */}
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-medium">工作台</h3>
-          {isTabMode ? (
-            <Select
-              value={selectorValue}
-              onValueChange={(v) => setWorkbenchEmployeeId(v)}
-              disabled={employeeContacts.length === 0}
-            >
-              <SelectTrigger className="h-8 w-[240px]">
-                <SelectValue placeholder="选择数字员工" />
-              </SelectTrigger>
-              <SelectContent>
-                {employeeContacts.map((c) =>
-                  c.employee ? (
-                    <SelectItem key={c.employee.id} value={c.employee.id}>
-                      {renderEmployeeOption(c.employee)}
-                    </SelectItem>
-                  ) : null
-                )}
-              </SelectContent>
-            </Select>
-          ) : (
-            employeeName && (
-              <span className="text-xs text-muted-foreground">
-                {employeeName}
-              </span>
-            )
-          )}
         </div>
-        {/* 添加模块按钮 */}
-        <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowAddDialog(true)}
-            className="gap-1"
-            disabled={!employeeId}
-          >
-            <IconPlus className="size-3.5" />
-            添加模块
+        {onClose && (
+          <Button variant="ghost" size="icon-sm" onClick={onClose}>
+            <IconX className="size-4" />
           </Button>
-          {onClose && (
-            <Button variant="ghost" size="icon-sm" onClick={onClose}>
-              <IconX className="size-4" />
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Workbench Content */}
-      <div className="flex min-h-0 flex-1">
-        {!employeeId ? (
-          <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
-            {employeeContacts.length === 0
-              ? "暂无数字员工，请先在通讯录中添加"
-              : "请选择一个数字员工"}
-          </div>
-        ) : (
-          <div className="flex min-w-0 flex-1">
-            <WorkbenchLeftPanel />
-            <div className="min-w-0 flex-1 overflow-auto p-3">
-              <div className="mb-2 text-xs font-medium text-muted-foreground">
-                自定义模块 {isLoadingSkills && "(加载中...)"}
-              </div>
-              {isLoadingSkills ? (
-                <div className="space-y-3">
-                  <Skeleton className="h-32 w-full" />
-                  <Skeleton className="h-32 w-full" />
-                </div>
-              ) : config ? (
-                <DraggableWorkbenchGrid
-                  blocks={config.blocks}
-                  onReorder={reorderBlocks}
-                  onToggleBlock={toggleBlockEnabled}
-                  onRemoveBlock={removeBlock}
-                  onResizeBlock={resizeBlock}
-                />
-              ) : null}
-            </div>
-          </div>
         )}
-
-        {isTabMode && <CuratorView size="compact" className="w-[400px] shrink-0 border-l px-1" />}
       </div>
 
-      {/* Add Block Dialog */}
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1">
+          <WorkbenchLeftPanel />
+          <div className="min-w-0 flex-1 overflow-auto p-3">
+            {!ready ? (
+              <div className="space-y-3">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    自定义模板 (加载中...)
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAddDialog(true)}
+                    className="shrink-0 gap-1"
+                    disabled
+                  >
+                    <IconPlus className="size-3.5" />
+                    添加模块
+                  </Button>
+                </div>
+                <Skeleton className="h-32 w-full" />
+                <Skeleton className="h-32 w-full" />
+              </div>
+            ) : skills.length === 0 ? (
+              <div className="space-y-3">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    自定义模板
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAddDialog(true)}
+                    className="shrink-0 gap-1"
+                  >
+                    <IconPlus className="size-3.5" />
+                    添加模块
+                  </Button>
+                </div>
+                <div className="flex min-h-[120px] items-center justify-center rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  暂无可选技能。请检查远程技能服务与网络，或在「技能」中导入本地技能
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    自定义模板
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAddDialog(true)}
+                    className="shrink-0 gap-1"
+                  >
+                    <IconPlus className="size-3.5" />
+                    添加模块
+                  </Button>
+                </div>
+                {config ? (
+                  <DraggableWorkbenchGrid
+                    blocks={config.blocks}
+                    onReorder={reorderBlocks}
+                    onToggleBlock={toggleBlockEnabled}
+                    onRemoveBlock={removeBlock}
+                    onResizeBlock={resizeBlock}
+                    onAddTemplate={() => setShowAddDialog(true)}
+                  />
+                ) : null}
+              </>
+            )}
+          </div>
+        </div>
+
+        <CuratorView
+          size="compact"
+          className="w-[400px] shrink-0 border-l px-1"
+        />
+      </div>
+
       <AddBlockDialog
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
         skills={skills}
-        employeeId={employeeId}
+        employeeId={GLOBAL_WORKBENCH_ID}
+        chatEmployeeId={chatEmployeeId}
         onAdd={handleAddInterfaces}
       />
     </div>
