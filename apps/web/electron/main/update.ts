@@ -63,11 +63,17 @@ export function update(win: Electron.BrowserWindow) {
   ipcMain.handle('check-update', async () => {
     if (!app.isPackaged) {
       const error = new Error('The update feature is only available after the package.')
+      const feedUrl = await resolveUpdateFeedURL()
+      console.log("🚀 ~ update ~ feedUrl:", feedUrl)
+      console.log("🚀 ~ update ~ error:", error)
+      win.webContents.send('update-error', { message: error.message, error })
       return { message: error.message, error }
     }
 
     try {
       const feedUrl = await resolveUpdateFeedURL()
+      console.log("🚀 ~ update ~ feedUrl:", feedUrl)
+
       if (feedUrl) {
         autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl })
       }

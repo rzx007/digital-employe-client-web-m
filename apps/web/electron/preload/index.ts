@@ -107,16 +107,18 @@ contextBridge.exposeInMainWorld("electronApi", {
   onUpdateAvailable: (
     callback: (info: { update: boolean; version: string; newVersion: string }) => void
   ) => {
-    ipcRenderer.on("update-can-available", (_, info) => {
+    const handler = (_: any, info: { update: boolean; version: string; newVersion: string }) => {
       if (info.update) callback(info)
-    })
-    return () => ipcRenderer.removeAllListeners("update-can-available")
+    }
+    ipcRenderer.on("update-can-available", handler)
+    return () => ipcRenderer.removeListener("update-can-available", handler)
   },
   onUpdateNotAvailable: (callback: () => void) => {
-    ipcRenderer.on("update-can-available", (_, info) => {
+    const handler = (_: any, info: { update: boolean }) => {
       if (!info.update) callback()
-    })
-    return () => ipcRenderer.removeAllListeners("update-can-available")
+    }
+    ipcRenderer.on("update-can-available", handler)
+    return () => ipcRenderer.removeListener("update-can-available", handler)
   },
   onDownloadProgress: (
     callback: (info: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void

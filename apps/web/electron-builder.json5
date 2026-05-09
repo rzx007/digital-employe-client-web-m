@@ -12,7 +12,7 @@
   // 此处仅作 fallback 和打包时元数据使用
   "publish": {
     "provider": "generic",
-    "url": "http://192.168.1.100:8080/win32"
+    "url": "http://10.172.246.179:5002"
   },
   "files": [
     "dist",
@@ -26,6 +26,8 @@
       "filter": ["**/*", "!data/**", "!logs/**", "!tmp/**"]
     }
   ],
+  // 脚本在 monorepo 根目录 scripts/（apps/web → 仓库根须 ../../）
+  "afterPack": "../../scripts/afterPack.js",
   "mac": {
     "target": [
       "dmg"

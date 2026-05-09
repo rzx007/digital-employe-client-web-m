@@ -11,14 +11,15 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useAppUpdater } from "@/components/common/use-app-updater"
 
 export function UpdatePill() {
-  const { state, handleClick } = useAppUpdater()
+  const { state, handleClick } = useAppUpdater({ autoCheck: true })
 
   if (!window.electronApi?.isElectron) return null
 
   if (
     state.status === "idle" ||
     state.status === "checking" ||
-    state.status === "error"
+    state.status === "error" ||
+    state.status === "up-to-date"
   ) {
     return null
   }
@@ -61,7 +62,15 @@ export function UpdatePill() {
 }
 
 export function UpdateButton() {
-  const { state, handleClick } = useAppUpdater()
+  const { state, handleClick } = useAppUpdater({
+    autoCheck: false,
+    onNotAvailable: () => {
+      // toast.success("当前已是最新版本")
+    },
+    onError: () => {
+      // toast.error(message)
+    },
+  })
 
   if (!window.electronApi?.isElectron) return null
 
@@ -97,6 +106,12 @@ export function UpdateButton() {
           icon: IconRefresh,
           loading: false,
         }
+      case "up-to-date":
+        return {
+          text: "当前已是最新版本",
+          icon: IconCircleCheck,
+          loading: false,
+        }
       default:
         return {
           text: "检查更新",
@@ -111,7 +126,13 @@ export function UpdateButton() {
   return (
     <Button
       className="w-full"
-      variant={state.status === "error" ? "destructive" : "outline"}
+      variant={
+        state.status === "error"
+          ? "destructive"
+          : state.status === "up-to-date"
+            ? "outline"
+            : "outline"
+      }
       disabled={
         state.status === "checking" || state.status === "downloading"
       }
