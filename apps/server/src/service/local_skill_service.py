@@ -24,11 +24,6 @@ class LocalSkillService:
     SKILL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 
     @staticmethod
-    def _resolve_builtin_root() -> Path:
-        settings = get_settings()
-        return Path(os.path.expandvars(os.path.expanduser(settings.builtin_skills_path)))
-
-    @staticmethod
     def _resolve_local_root() -> Path:
         settings = get_settings()
         return Path(os.path.expandvars(os.path.expanduser(settings.local_skills_path)))
@@ -201,26 +196,63 @@ class LocalSkillService:
 
     @staticmethod
     def seed_builtin_skills() -> dict[str, int]:
+        """将包内 build-in-skills 同步到 LOCAL_SKILLS_PATH，并写入与 ZIP 导入一致的 meta。"""
         source_root = LocalSkillService._resolve_packaged_builtin_skills_root().resolve()
-        target_root = LocalSkillService._resolve_builtin_root().resolve()
+        local_root = LocalSkillService._resolve_local_root().resolve()
 
         if not source_root.is_dir():
-            logger.info("Skip builtin skill copy: source not exists %s", source_root)
+            logger.info("Skip builtin skill seed: packaged source missing %s", source_root)
             return {"copied_items": 0}
 
-        target_root.mkdir(parents=True, exist_ok=True)
+        local_root.mkdir(parents=True, exist_ok=True)
         copied_items = 0
-        for item in source_root.iterdir():
-            dest = target_root / item.name
-            if item.is_dir():
-                shutil.copytree(item, dest, dirs_exist_ok=True)
-            else:
-                shutil.copy2(item, dest)
+        for item in sorted(source_root.iterdir(), key=lambda p: p.name.lower()):
+            if not item.is_dir():
+                continue
+            if not LocalSkillService.SKILL_NAME_PATTERN.match(item.name):
+                logger.warning(
+                    "Skip non-skill directory in build-in-skills: %s", item.name
+                )
+                continue
+            skill_md = item / LocalSkillService.SKILL_MD_NAME
+            if not skill_md.is_file():
+                logger.warning(
+                    "Skip packaged skill without SKILL.md: %s", item
+                )
+                continue
+
+            normalized = item.name
+            target_dir = local_root / normalized
+            existing_meta = LocalSkillService._read_meta(target_dir)
+            existing_local_id = LocalSkillService._parse_local_id(
+                existing_meta.get("localId")
+            )
+
+            shutil.copytree(item, target_dir, dirs_exist_ok=True)
+
+            local_id = (
+                existing_local_id
+                if existing_local_id is not None
+                else LocalSkillService._next_local_id(local_root)
+            )
+            description = LocalSkillService._extract_description_from_skill_md(
+                target_dir / LocalSkillService.SKILL_MD_NAME
+            )
+            meta = {
+                "skillName": normalized,
+                "localId": local_id,
+                "sourceFileName": "builtin:build-in-skills",
+                "importedAt": datetime.now().isoformat(timespec="seconds"),
+                "overwrite": True,
+                "description": description,
+            }
+            LocalSkillService._write_meta(target_dir, meta)
             copied_items += 1
+
         logger.info(
-            "Seeded builtin skills: source=%s target=%s copied_items=%s",
+            "Seeded builtin skills into local-skills: source=%s target=%s copied_items=%s",
             source_root,
-            target_root,
+            local_root,
             copied_items,
         )
         return {"copied_items": copied_items}
