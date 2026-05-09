@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import shutil
+import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -30,7 +31,29 @@ class LocalSkillService:
 
     @staticmethod
     def _resolve_packaged_builtin_skills_root() -> Path:
-        return Path(__file__).resolve().parents[1] / "build-in-skills"
+        settings = get_settings()
+        configured_root = Path(
+            os.path.expandvars(os.path.expanduser(settings.builtin_skills_path))
+        )
+        source_relative_root = Path(__file__).resolve().parents[1] / "build-in-skills"
+        executable_relative_root = Path(sys.executable).resolve().parent / "build-in-skills"
+
+        candidates: list[Path] = [
+            configured_root,
+            executable_relative_root,
+            source_relative_root,
+        ]
+        # PyInstaller onefile 兜底：资源被展开到 _MEIPASS 临时目录。
+        if hasattr(sys, "_MEIPASS"):
+            meipass_root = Path(getattr(sys, "_MEIPASS")) / "src" / "build-in-skills"
+            candidates.append(meipass_root)
+
+        for candidate in candidates:
+            if candidate.is_dir():
+                return candidate
+
+        # 返回配置路径，调用方会记录日志并跳过同步。
+        return configured_root
 
     @staticmethod
     def _normalize_skill_name(skill_name: str) -> str:
@@ -199,7 +222,8 @@ class LocalSkillService:
         """将包内 build-in-skills 同步到 LOCAL_SKILLS_PATH，并写入与 ZIP 导入一致的 meta。"""
         source_root = LocalSkillService._resolve_packaged_builtin_skills_root().resolve()
         local_root = LocalSkillService._resolve_local_root().resolve()
-
+        logger.info("source_root: %s", source_root)
+        logger.info("local_root: %s", local_root)
         if not source_root.is_dir():
             logger.info("Skip builtin skill seed: packaged source missing %s", source_root)
             return {"copied_items": 0}

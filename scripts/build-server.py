@@ -231,6 +231,17 @@ def copy_additional_files():
         shutil.copy2(readme_file, OUTPUT_DIR / "README.md")
         print(f"   已复制: {readme_file.name}")
 
+    # 复制内置技能目录，保证安装后有稳定路径可读取
+    builtin_skills_dir = SERVER_DIR / "src" / "build-in-skills"
+    target_builtin_skills_dir = OUTPUT_DIR / "build-in-skills"
+    if builtin_skills_dir.exists():
+        shutil.copytree(
+            builtin_skills_dir,
+            target_builtin_skills_dir,
+            dirs_exist_ok=True,
+        )
+        print(f"   已复制目录: {builtin_skills_dir.name}")
+
     print("✅ 文件复制完成")
 
 

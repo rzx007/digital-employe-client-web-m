@@ -957,6 +957,7 @@ class EmployeeService:
     def ensure_builtin_seed_employees(db: Session, workspace: Workspace) -> None:
         """将本地技能目录（含启动时同步的内置技能）绑定到默认三名员工；按名称+技能集合幂等。"""
         local_root = LocalSkillService._resolve_local_root().resolve()
+        logger.info(local_root)
         for name, skill_names, description in _BUILTIN_SEED_EMPLOYEES:
             expected = frozenset(skill_names)
             existing = db.scalar(

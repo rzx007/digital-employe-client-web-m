@@ -30,7 +30,7 @@ description: 工作台助手
 
 
 
-   - 接口地址：http://localhost:18000/api/v1/performance/mock/queryTradeDailyRollEntity?dateTime={target_date}
+   - 接口地址：http://localhost:34567/mock/queryTradeDailyRollEntity?dateTime={target_date}
 
 
 
@@ -108,7 +108,7 @@ dataTime: "2026-03-25"
 
 # 获取近10个月的交易总览
 
-接口地址：http://localhost:18000/api/v1/performance/mock/getSpotInfo
+接口地址：http://localhost:34567/mock/getSpotInfo
 
 请求方式：get
 
