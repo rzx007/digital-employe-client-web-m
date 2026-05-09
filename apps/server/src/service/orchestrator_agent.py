@@ -597,16 +597,27 @@ def _start_task_as_conversation(
         ]
     ]
 
+    # Snapshots before commit: commit() expires instances; lazy reload can hit
+    # SQLite misuse in threaded scheduler contexts. The main-loop callback must
+    # not touch ORM objects from this Session on another thread.
+    conversation_id = conversation.id
+    assistant_msg_id = assistant_msg.id
+    task_id_snap = task.id
+    task_name_snap = task.task_name
+    employee_id_snap = employee.id
+    employee_name_snap = employee.name
+
     db.commit()
 
+    thread_id = f"task-{task_id_snap}-{int(datetime.now().timestamp())}"
     main_loop = _get_main_loop()
     main_loop.call_soon_threadsafe(
         lambda: registry.start(
-            conversation_id=conversation.id,
+            conversation_id=conversation_id,
             agent=agent,
             messages=messages,
-            config={"configurable": {"thread_id": f"task-{task.id}-{int(datetime.now().timestamp())}"}},
-            stream_msg_id=assistant_msg.id,
+            config={"configurable": {"thread_id": thread_id}},
+            stream_msg_id=assistant_msg_id,
             skill_name="",
             debug_content_only=False,
         )
@@ -614,14 +625,14 @@ def _start_task_as_conversation(
 
     WorkspaceEventBus.push(workspace_id, {
         "type": "task_started",
-        "task_id": task.id,
-        "conversation_id": conversation.id,
-        "employee_id": employee.id,
-        "employee_name": employee.name,
-        "task_name": task.task_name,
+        "task_id": task_id_snap,
+        "conversation_id": conversation_id,
+        "employee_id": employee_id_snap,
+        "employee_name": employee_name_snap,
+        "task_name": task_name_snap,
     })
 
-    return conversation.id
+    return conversation_id
 
 
 @tool

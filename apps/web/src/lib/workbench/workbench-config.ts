@@ -1,5 +1,10 @@
 import type { MetadataSkill } from "@/api/types"
-import type { QueryInterface, WorkbenchBlock, WorkbenchConfig } from "@/types/workbench"
+import type {
+  BlockType,
+  QueryInterface,
+  WorkbenchBlock,
+  WorkbenchConfig,
+} from "@/types/workbench"
 import {
   generateBlockId,
   getBlockTitleForSkill,

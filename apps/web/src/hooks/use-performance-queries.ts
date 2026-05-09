@@ -4,8 +4,8 @@ import { fetchMonthlyBalance } from "@/api/performance"
 export function useCurrentMonthPerformance() {
   return useQuery({
     queryKey: ["performance", "monthly-balance"],
-    queryFn: async () => {
-      const res = await fetchMonthlyBalance()
+    queryFn: async ({ signal }) => {
+      const res = await fetchMonthlyBalance({ signal })
       return res.data ?? null
     },
     staleTime: 5 * 60_000,

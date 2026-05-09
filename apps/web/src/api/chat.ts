@@ -46,10 +46,12 @@ function mapContactToTarget(contact: Contact): {
   return null
 }
 
-export async function fetchContacts(): Promise<Contact[]> {
+export async function fetchContacts(
+  signal?: AbortSignal
+): Promise<Contact[]> {
   const [employeesRes, groupsRes] = await Promise.all([
-    fetchEmployees(),
-    fetchGroups(),
+    fetchEmployees({ signal }),
+    fetchGroups({ signal }),
   ])
 
   const employees: Contact[] = (employeesRes?.data ?? []).map((emp) => ({
@@ -88,17 +90,21 @@ export async function createContactGroup(params: {
 
 export async function fetchConversationsByContactId(
   contactId: string,
-  contact?: Contact
+  contact?: Contact,
+  opts?: { signal?: AbortSignal },
 ): Promise<Conversation[]> {
   if (!contact) return []
 
   const target = mapContactToTarget(contact)
   if (!target) return []
 
-  const res = await fetchConversationsApi({
-    target_type: target.target_type,
-    target_id: target.target_id,
-  })
+  const res = await fetchConversationsApi(
+    {
+      target_type: target.target_type,
+      target_id: target.target_id,
+    },
+    opts,
+  )
 
   const items = res?.data ?? []
 
@@ -118,9 +124,10 @@ export async function fetchConversationsByContactId(
 }
 
 export async function fetchMessagesByConversationId(
-  conversationId: string | number
+  conversationId: string | number,
+  opts?: { signal?: AbortSignal },
 ): Promise<Message[]> {
-  const res = await fetchConversationMessagesApi(conversationId)
+  const res = await fetchConversationMessagesApi(conversationId, opts)
   const items = res?.data ?? []
 
   return items.map((msg) => ({

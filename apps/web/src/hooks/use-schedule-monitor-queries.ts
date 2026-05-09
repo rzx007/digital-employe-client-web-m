@@ -36,9 +36,10 @@ export function useMonthlyScheduleOverview(
 ) {
   return useQuery({
     queryKey: [...chatKeys.all, "schedule-overview", year, month],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await request<{ code: number; data: MonthlyOverview }>(
-        `/tasks/calendar/monthly?year=${year}&month=${month}`
+        `/tasks/calendar/monthly?year=${year}&month=${month}`,
+        { signal },
       )
       return res.data
     },
@@ -50,12 +51,13 @@ export function useMonthlyScheduleOverview(
 export function useTodayTaskRuns(employeeId: string | null) {
   return useQuery({
     queryKey: [...chatKeys.all, "today-task-runs", employeeId],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await request<{
         code: number
         data: TaskExecution[]
       }>(
-        `/workspaces/${WORKSPACE_ID}/tasks/executions?employee_id=${employeeId}`
+        `/workspaces/${WORKSPACE_ID}/tasks/executions?employee_id=${employeeId}`,
+        { signal },
       )
       return res.data.map(mapExecutionToTaskRun)
     },
@@ -67,17 +69,18 @@ export function useTodayTaskRuns(employeeId: string | null) {
 export function useTaskSummary(employeeId: string | null) {
   return useQuery({
     queryKey: [...chatKeys.all, "task-summary", employeeId],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const [scheduleRes, execRes] = await Promise.all([
         request<{
           code: number
           data: { date: string; skill_tasks: EmployeeScheduleTask[] }
-        }>(`/employees/${employeeId}/tasks/schedule`),
+        }>(`/employees/${employeeId}/tasks/schedule`, { signal }),
         request<{
           code: number
           data: TaskExecution[]
         }>(
-          `/workspaces/${WORKSPACE_ID}/tasks/executions?employee_id=${employeeId}`
+          `/workspaces/${WORKSPACE_ID}/tasks/executions?employee_id=${employeeId}`,
+          { signal },
         ),
       ])
 
@@ -133,11 +136,11 @@ export function useTaskSummary(employeeId: string | null) {
 export function useAllTaskExecutions() {
   return useQuery({
     queryKey: [...chatKeys.all, "all-task-executions"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await request<{
         code: number
         data: TaskExecution[]
-      }>(`/workspaces/${WORKSPACE_ID}/tasks/executions`)
+      }>(`/workspaces/${WORKSPACE_ID}/tasks/executions`, { signal })
       return res.data
     },
     staleTime: 30_000,
@@ -148,12 +151,13 @@ export function useAllTaskExecutions() {
 export function useTodayAllExecutions() {
   return useQuery({
     queryKey: [...chatKeys.all, "today-all-executions"],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       request<{
         code: number
         data: TodayTask[]
-      }>(`/workspaces/${WORKSPACE_ID}/tasks/today`)
-        .then((res) => res.data),
+      }>(`/workspaces/${WORKSPACE_ID}/tasks/today`, { signal }).then(
+        (res) => res.data,
+      ),
     staleTime: 30_000,
   })
 }
@@ -170,11 +174,11 @@ export function useAnomalies(employeeId: string | null) {
 export function useNotifications() {
   return useQuery({
     queryKey: [...chatKeys.all, "notifications"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await request<{
         code: number
         data: TaskExecution[]
-      }>(`/workspaces/${WORKSPACE_ID}/tasks/executions`)
+      }>(`/workspaces/${WORKSPACE_ID}/tasks/executions`, { signal })
       return res.data.filter((e) => e.confirm_execution_result)
     },
     staleTime: 30_000,
