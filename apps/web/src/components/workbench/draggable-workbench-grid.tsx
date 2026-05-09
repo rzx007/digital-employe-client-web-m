@@ -15,8 +15,9 @@ import {
   useSortable,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { IconGripVertical, IconTrash } from "@tabler/icons-react"
+import { IconGripVertical, IconPlus, IconTrash } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
+import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent } from "@workspace/ui/components/card"
 import type { WorkbenchBlock } from "@/types/workbench"
 import { SkillBlockRenderer } from "./skill-block-renderer"
@@ -28,6 +29,8 @@ interface DraggableWorkbenchGridProps {
   onToggleBlock?: (blockId: string) => void
   onRemoveBlock?: (blockId: string) => void
   onResizeBlock?: (blockId: string, width: number, height: number) => void
+  /** 模板无模块时，用于居中「添加模板」操作（通常打开添加数据模块弹窗） */
+  onAddTemplate?: () => void
 }
 
 function SortableBlock({
@@ -195,6 +198,7 @@ export function DraggableWorkbenchGrid({
   onToggleBlock,
   onRemoveBlock,
   onResizeBlock,
+  onAddTemplate,
 }: DraggableWorkbenchGridProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -220,11 +224,30 @@ export function DraggableWorkbenchGrid({
 
   if (blocks.length === 0) {
     return (
-      <div className="flex h-[200px] items-center justify-center rounded-lg border border-dashed">
-        <div className="text-center">
-          <div className="text-sm text-muted-foreground">暂无工作台模块</div>
-          <div className="mt-1 text-xs text-muted-foreground">
-            点击右上角"添加模块"开始
+      <div
+        className={cn(
+          "flex w-full flex-col items-center justify-center gap-4 rounded-xl border border-dashed",
+          "border-border/70 bg-muted/10 px-6 py-16",
+          "min-h-[min(520px,calc(100dvh-14rem))]",
+        )}
+      >
+        {onAddTemplate ? (
+          <Button
+            type="button"
+            size="lg"
+            className="gap-2 px-8"
+            onClick={onAddTemplate}
+          >
+            <IconPlus className="size-5" />
+            添加模板
+          </Button>
+        ) : null}
+        <div className="max-w-sm text-center">
+          <div className="text-sm text-muted-foreground">暂无数据模块</div>
+          <div className="mt-2 text-xs text-muted-foreground">
+            {onAddTemplate
+              ? "从技能解析接口并加入自定义模板，或使用上方「添加模块」"
+              : "点击「自定义模板」右侧的「添加模块」开始"}
           </div>
         </div>
       </div>

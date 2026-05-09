@@ -316,7 +316,7 @@ export function AddBlockDialog({
             <div className="min-w-0 flex-1 space-y-1">
               <DialogTitle className="text-base font-semibold tracking-tight">添加数据模块</DialogTitle>
               <DialogDescription className="text-xs leading-relaxed">
-                下方列表为全部技能中解析出的接口；切换上方技能将重新从全部技能解析；勾选后可配置地址与图表并预览（列表已缓存，可点刷新）
+                下方列表为当前技能解析出的接口（技能来源：工作空间全部远程技能与本地技能，与是否绑定数字员工无关）；切换上方技能将重新解析；勾选后可配置地址与图表并预览（列表已缓存，可点刷新）
               </DialogDescription>
             </div>
             <Button
@@ -336,7 +336,7 @@ export function AddBlockDialog({
 
         <div className="shrink-0 border-b border-border/60 bg-muted/10 px-6 py-3">
           <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            选择技能（切换后将重新解析全部技能中的接口）
+            选择技能（切换后将重新解析该技能）
           </label>
           <Select
             value={
