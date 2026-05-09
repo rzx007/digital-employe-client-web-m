@@ -59,18 +59,55 @@ const CHART_TYPES: { value: ChartDisplayType; label: string; icon: string }[] = 
   { value: "list", label: "列表", icon: "📃" },
 ]
 
+type WorkbenchSelectSkill = MetadataSkill & {
+  displayNameZh?: string | null
+  workbenchSource?: "remote" | "local"
+  workbenchSkillLabel?: string
+  workbenchRowKey?: string
+}
+
+/** 列表展示：优先中文名，无则英文名 */
+function skillTitleZh(s: MetadataSkill): string {
+  const r = s as WorkbenchSelectSkill
+  const zh = r.displayNameZh?.trim()
+  if (zh) return zh
+  return s.skillName
+}
+
+function workbenchSourceFromSkill(s: MetadataSkill): "remote" | "local" {
+  const r = s as WorkbenchSelectSkill
+  if (r.workbenchSource) return r.workbenchSource
+  if (s.directoryName?.includes("本地")) return "local"
+  return "remote"
+}
+
+function SkillSelectRow({ skill }: { skill: MetadataSkill }) {
+  const title = skillTitleZh(skill)
+  const src = workbenchSourceFromSkill(skill)
+  return (
+    <span className="flex min-w-0 max-w-full items-center gap-1.5">
+      <span
+        className="min-w-0 flex-1 truncate"
+        title={title !== skill.skillName ? skill.skillName : undefined}
+      >
+        {title}
+      </span>
+      <span
+        className={cn(
+          "size-1.5 shrink-0 rounded-full ring-1 ring-background",
+          src === "local" ? "bg-amber-500" : "bg-sky-500",
+        )}
+        title={src === "local" ? "本地技能" : "远程技能"}
+        aria-hidden
+      />
+    </span>
+  )
+}
+
 function skillSelectKey(s: MetadataSkill, i: number): string {
   const row = s as MetadataSkill & { workbenchRowKey?: string }
   if (row.workbenchRowKey) return row.workbenchRowKey
   return `${s.directoryName ?? ""}::${String(s.id ?? s.skillName)}::${i}`
-}
-
-function skillOptionLabel(s: MetadataSkill): string {
-  const row = s as MetadataSkill & { workbenchSkillLabel?: string }
-  if (row.workbenchSkillLabel) return row.workbenchSkillLabel
-  return s.directoryName
-    ? `${s.skillName} · ${s.directoryName}`
-    : s.skillName
 }
 
 export function AddBlockDialog({
@@ -356,8 +393,12 @@ export function AddBlockDialog({
               className="z-[200] max-h-[min(50vh,360px)] w-[var(--radix-select-trigger-width)]"
             >
               {skills.map((s, i) => (
-                <SelectItem key={skillSelectKey(s, i)} value={skillSelectKey(s, i)}>
-                  <span className="text-sm">{skillOptionLabel(s)}</span>
+                <SelectItem
+                  key={skillSelectKey(s, i)}
+                  value={skillSelectKey(s, i)}
+                  textValue={`${skillTitleZh(s)} ${s.skillName}`}
+                >
+                  <SkillSelectRow skill={s} />
                 </SelectItem>
               ))}
             </SelectContent>

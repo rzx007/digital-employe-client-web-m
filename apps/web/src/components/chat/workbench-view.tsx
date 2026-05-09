@@ -22,8 +22,10 @@ interface WorkbenchViewProps {
   className?: string
 }
 
-/** UI label + stable row key; extends MetadataSkill for workbench only */
+/** 工作台技能行：中文展示名 + 来源圆点（弹框用），解析仍用 skillName */
 type WorkbenchSkillRow = MetadataSkill & {
+  displayNameZh?: string | null
+  workbenchSource?: "remote" | "local"
   workbenchSkillLabel?: string
   workbenchRowKey?: string
 }
@@ -45,7 +47,8 @@ function skillListItemToWorkbenchRow(
     createTime: item.createTime ?? "",
     updateTime: item.updateTime ?? "",
     skillContent: item.skillContent ?? "",
-    workbenchSkillLabel: `${item.skillName} · ${isLocal ? "本地技能" : "远程技能"}`,
+    displayNameZh: item.displayNameZh ?? null,
+    workbenchSource: isLocal ? "local" : "remote",
     workbenchRowKey: `ws-skill-list-${src}-${String(item.id)}-${item.skillName}-${index}`,
   }
 }
