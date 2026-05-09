@@ -40,7 +40,9 @@ class ConversationMessageRead(BaseModel):
     role: MessageRole
     content: str | None
     chunk_json: str | None
+    stream_chunks: str | None = None
     stream_state: str | None = None
+    stream_cursor: int | None = None
     extra_meta: dict | None = None
     created_at: datetime
 

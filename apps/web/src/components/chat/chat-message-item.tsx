@@ -5,6 +5,7 @@ import {
   MessageContent,
   MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
+import { IconAlertTriangle } from "@tabler/icons-react"
 import { classifyMessageParts } from "@/lib/chat/message-utils"
 import { FileChangeCards } from "./file-change-cards"
 import { ThinkingBlock } from "./thinking-block"
@@ -87,6 +88,22 @@ export function RenderClassifiedBlocks({
         }
         if (block.kind === "file-changes") {
           return <FileChangeCards files={block.files} key={block.key} />
+        }
+        if (block.kind === "error") {
+          return (
+            <div
+              className="w-full rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3"
+              key={block.key}
+            >
+              <div className="mb-1.5 flex items-center gap-2 text-destructive">
+                <IconAlertTriangle className="size-4 shrink-0" />
+                <span className="text-sm font-semibold">请求出错</span>
+              </div>
+              <pre className="whitespace-pre-wrap break-all font-mono text-xs text-destructive/80">
+                {block.text}
+              </pre>
+            </div>
+          )
         }
         if (block.kind === "skill-exploration") {
           return (

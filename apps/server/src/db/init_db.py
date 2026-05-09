@@ -68,6 +68,57 @@ def init_db() -> None:
     ensure_column("task_execution_logs", "conversation_id", "conversation_id INTEGER")
     ensure_column("task_execution_logs", "last_heartbeat_at", "last_heartbeat_at DATETIME")
     ensure_column("skill_ratings", "task_execution_log_id", "task_execution_log_id INTEGER")
+    ensure_column(
+        "dispatch_orders_sync",
+        "remote_order_id",
+        "remote_order_id INTEGER NOT NULL DEFAULT 0",
+    )
+    ensure_column(
+        "dispatch_orders_sync",
+        "order_name",
+        "order_name VARCHAR(128) NOT NULL DEFAULT ''",
+    )
+    ensure_column(
+        "dispatch_orders_sync",
+        "dispatcher",
+        "dispatcher VARCHAR(45) NOT NULL DEFAULT ''",
+    )
+    ensure_column(
+        "dispatch_orders_sync",
+        "receiver",
+        "receiver VARCHAR(45) NOT NULL DEFAULT ''",
+    )
+    ensure_column("dispatch_orders_sync", "start_time", "start_time DATETIME")
+    ensure_column("dispatch_orders_sync", "end_time", "end_time DATETIME")
+    ensure_column("dispatch_orders_sync", "occur_time", "occur_time DATETIME")
+    ensure_column(
+        "dispatch_orders_sync",
+        "status",
+        "status VARCHAR(45) NOT NULL DEFAULT ''",
+    )
+    ensure_column("dispatch_orders_sync", "eval", "eval FLOAT")
+    ensure_column(
+        "dispatch_orders_sync",
+        "content",
+        "content TEXT NOT NULL DEFAULT ''",
+    )
+    ensure_column("dispatch_orders_sync", "comment", "comment VARCHAR(256)")
+    ensure_column(
+        "dispatch_orders_sync",
+        "trigger_status",
+        "trigger_status VARCHAR(32) NOT NULL DEFAULT 'pending'",
+    )
+    ensure_column("dispatch_orders_sync", "trigger_error", "trigger_error TEXT")
+    ensure_column(
+        "dispatch_orders_sync",
+        "last_triggered_at",
+        "last_triggered_at DATETIME",
+    )
+    ensure_column(
+        "dispatch_orders_sync",
+        "last_synced_at",
+        "last_synced_at DATETIME",
+    )
 
     # 兼容历史员工技能关系表：补充新增字段
     ensure_column("employee_skills", "skill_name", "skill_name VARCHAR(255) NOT NULL DEFAULT ''")

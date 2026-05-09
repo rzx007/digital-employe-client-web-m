@@ -60,6 +60,16 @@ contextBridge.exposeInMainWorld("electronApi", {
   openRecruitment: () => ipcRenderer.invoke("open-recruitment"),
   closeRecruitment: () => ipcRenderer.invoke("close-recruitment"),
   notifyHireSuccess: () => ipcRenderer.invoke("hire-success"),
+  openRegister: () => ipcRenderer.invoke("open-register"),
+  closeRegister: () => ipcRenderer.invoke("close-register"),
+  notifyRegisterSuccess: (username: string) =>
+    ipcRenderer.invoke("register-success", username),
+  onRegisterSuccess: (callback: (username: string) => void) => {
+    ipcRenderer.on("register-success", (_, username) => callback(username))
+    return () => ipcRenderer.removeAllListeners("register-success")
+  },
+  resizeRegisterWindow: (size: { width: number; height: number }) =>
+    ipcRenderer.invoke("resize-register-window", size),
   onInvalidateContacts: (callback: () => void) => {
     ipcRenderer.on("invalidate-contacts", () => callback())
     return () => ipcRenderer.removeAllListeners("invalidate-contacts")

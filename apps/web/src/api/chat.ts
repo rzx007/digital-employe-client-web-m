@@ -141,7 +141,9 @@ export async function fetchMessagesByConversationId(
     role: msg.role === "system" ? "assistant" : msg.role,
     content: msg.content,
     chunkJson: msg.chunk_json,
+    streamChunks: msg.stream_chunks,
     streamState: msg.stream_state,
+    streamCursor: msg.stream_cursor,
     metadata: msg.extra_meta ?? undefined,
     timestamp: msg.timestamp
       ? new Date(msg.timestamp)

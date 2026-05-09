@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SplashRouteImport } from './routes/splash'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as RegisterRouteImport } from './routes/register'
 import { Route as RecruitmentRouteImport } from './routes/recruitment'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DemoRouteImport } from './routes/demo'
@@ -24,6 +25,11 @@ const SplashRoute = SplashRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RecruitmentRoute = RecruitmentRouteImport.update({
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/demo': typeof DemoRoute
   '/login': typeof LoginRoute
   '/recruitment': typeof RecruitmentRoute
+  '/register': typeof RegisterRoute
   '/settings': typeof SettingsRoute
   '/splash': typeof SplashRoute
 }
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/demo': typeof DemoRoute
   '/login': typeof LoginRoute
   '/recruitment': typeof RecruitmentRoute
+  '/register': typeof RegisterRoute
   '/settings': typeof SettingsRoute
   '/splash': typeof SplashRoute
 }
@@ -69,20 +77,36 @@ export interface FileRoutesById {
   '/demo': typeof DemoRoute
   '/login': typeof LoginRoute
   '/recruitment': typeof RecruitmentRoute
+  '/register': typeof RegisterRoute
   '/settings': typeof SettingsRoute
   '/splash': typeof SplashRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/demo' | '/login' | '/recruitment' | '/settings' | '/splash'
+  fullPaths:
+    | '/'
+    | '/demo'
+    | '/login'
+    | '/recruitment'
+    | '/register'
+    | '/settings'
+    | '/splash'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/demo' | '/login' | '/recruitment' | '/settings' | '/splash'
+  to:
+    | '/'
+    | '/demo'
+    | '/login'
+    | '/recruitment'
+    | '/register'
+    | '/settings'
+    | '/splash'
   id:
     | '__root__'
     | '/'
     | '/demo'
     | '/login'
     | '/recruitment'
+    | '/register'
     | '/settings'
     | '/splash'
   fileRoutesById: FileRoutesById
@@ -92,6 +116,7 @@ export interface RootRouteChildren {
   DemoRoute: typeof DemoRoute
   LoginRoute: typeof LoginRoute
   RecruitmentRoute: typeof RecruitmentRoute
+  RegisterRoute: typeof RegisterRoute
   SettingsRoute: typeof SettingsRoute
   SplashRoute: typeof SplashRoute
 }
@@ -110,6 +135,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/recruitment': {
@@ -148,6 +180,7 @@ const rootRouteChildren: RootRouteChildren = {
   DemoRoute: DemoRoute,
   LoginRoute: LoginRoute,
   RecruitmentRoute: RecruitmentRoute,
+  RegisterRoute: RegisterRoute,
   SettingsRoute: SettingsRoute,
   SplashRoute: SplashRoute,
 }

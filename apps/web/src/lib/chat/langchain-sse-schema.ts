@@ -244,12 +244,19 @@ export const toolOutputEventSchema = z.object({
   data: toolOutputDataSchema,
 })
 
+// ── Error Event: {"error": "<message>"} ───────────────────────────
+
+export const sseErrorEventSchema = z.object({
+  error: z.string(),
+})
+
 // ── Top-level SSE Event (v2, extensible) ───────────────────────────
 
 export const sseEventSchema = z.union([
   sseMessagesEventSchema,
   sseUpdatesEventSchema,
   toolOutputEventSchema,
+  sseErrorEventSchema,
   z.object({ type: z.string(), data: z.unknown(), ns: z.array(z.string()).optional() }),
 ])
 
@@ -280,4 +287,5 @@ export type SSEMessagesEvent = z.infer<typeof sseMessagesEventSchema>
 export type SSEUpdatesEvent = z.infer<typeof sseUpdatesEventSchema>
 export type ToolOutputData = z.infer<typeof toolOutputDataSchema>
 export type SSEToolOutputEvent = z.infer<typeof toolOutputEventSchema>
+export type SSEErrorEvent = z.infer<typeof sseErrorEventSchema>
 export type SSEEvent = z.infer<typeof sseEventSchema>

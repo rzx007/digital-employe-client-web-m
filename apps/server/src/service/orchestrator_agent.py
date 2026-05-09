@@ -55,6 +55,13 @@ def _get_main_loop() -> asyncio.AbstractEventLoop:
         raise RuntimeError("main event loop not set")
     return _main_loop
 
+
+def run_coro_on_main_loop(coro: Any) -> Any:
+    """在线程上下文中将协程安全投递到主事件循环执行并等待结果。"""
+    loop = _get_main_loop()
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    return future.result()
+
 _db_session_ctx: ContextVar[Session | None] = ContextVar("orchestrator_db", default=None)
 _workspace_id_ctx: ContextVar[int | None] = ContextVar("orchestrator_ws", default=None)
 _conversation_id_ctx: ContextVar[int | None] = ContextVar("orchestrator_conv", default=None)
@@ -576,6 +583,13 @@ def _start_task_as_conversation(
     db.add(assistant_msg)
     db.flush()
 
+    conversation_id = conversation.id
+    assistant_msg_id = assistant_msg.id
+    task_id = task.id
+    employee_id = employee.id
+    employee_name = employee.name
+    task_name = task.task_name
+
     try:
         skills_path = ChatService.resolve_employee_skills_dir(
             skills_payload=employee.skills_json,
@@ -588,7 +602,12 @@ def _start_task_as_conversation(
     settings = get_settings()
     root_path = settings.artifacts_path
 
-    agent = get_agent(skills_path, root_path, employee_id=employee.id, conversation_id=conversation.id)
+    agent = get_agent(
+        skills_path,
+        root_path,
+        employee_id=employee_id,
+        conversation_id=conversation_id,
+    )
 
     messages: list[dict] = [
         {"role": msg["role"], "content": msg["content"]}
@@ -616,7 +635,7 @@ def _start_task_as_conversation(
             conversation_id=conversation_id,
             agent=agent,
             messages=messages,
-            config={"configurable": {"thread_id": thread_id}},
+            config={"configurable": {"thread_id": f"task-{task_id}-{int(datetime.now().timestamp())}"}},
             stream_msg_id=assistant_msg_id,
             skill_name="",
             debug_content_only=False,
@@ -625,11 +644,11 @@ def _start_task_as_conversation(
 
     WorkspaceEventBus.push(workspace_id, {
         "type": "task_started",
-        "task_id": task_id_snap,
+        "task_id": task_id,
         "conversation_id": conversation_id,
-        "employee_id": employee_id_snap,
-        "employee_name": employee_name_snap,
-        "task_name": task_name_snap,
+        "employee_id": employee_id,
+        "employee_name": employee_name,
+        "task_name": task_name,
     })
 
     return conversation_id

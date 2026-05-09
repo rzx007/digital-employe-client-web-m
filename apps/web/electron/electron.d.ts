@@ -77,6 +77,14 @@ declare global {
       openRecruitment: () => Promise<void>
       closeRecruitment: () => Promise<void>
       notifyHireSuccess: () => Promise<void>
+      openRegister: () => Promise<void>
+      closeRegister: () => Promise<void>
+      notifyRegisterSuccess: (username: string) => Promise<void>
+      onRegisterSuccess: (callback: (username: string) => void) => () => void
+      resizeRegisterWindow: (size: {
+        width: number
+        height: number
+      }) => Promise<void>
       onInvalidateContacts: (callback: () => void) => () => void
       onInvalidateModelConfig: (callback: () => void) => () => void
       openSettings: () => Promise<void>

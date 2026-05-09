@@ -4,8 +4,13 @@ import path from "node:path"
 import { getBackendStatus, getBackendPort, stopBackend } from "./backend"
 import { flashTray, stopFlashTray } from "./tray"
 import { sendNotification, setNotificationsEnabled } from "./notification"
-import { closeLoginWindow, createLoginWindow, resizeLoginWindow } from "./login"
+import { closeLoginWindow, createLoginWindow, resizeLoginWindow, getLoginWin } from "./login"
 import { createRecruitmentWindow, closeRecruitmentWindow } from "./recruitment"
+import {
+  createRegisterWindow,
+  closeRegisterWindow,
+  resizeRegisterWindow,
+} from "./register"
 import { createSettingsWindow, closeSettingsWindow } from "./settings"
 import { VITE_DEV_SERVER_URL, indexHtml } from "./index"
 import { saveAuth, clearAuth, getStoredAuth, hasToken } from "./auth"
@@ -197,6 +202,8 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
     closeSettingsWindow()
     // 关闭招聘窗口
     closeRecruitmentWindow()
+    // 关闭注册窗口
+    closeRegisterWindow()
     // 关闭主窗口
     if (mainWin && !mainWin.isDestroyed()) {
       mainWin.close()
@@ -237,6 +244,41 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
       mainWin.webContents.send("invalidate-contacts")
     }
   })
+
+  // ========== 注册窗口 ==========
+
+  /** 打开注册窗口 */
+  ipcMain.handle("open-register", () => {
+    createRegisterWindow({
+      devServerUrl: VITE_DEV_SERVER_URL,
+      indexHtml,
+    })
+  })
+
+  /** 关闭注册窗口 */
+  ipcMain.handle("close-register", () => {
+    closeRegisterWindow()
+  })
+
+  /** 注册成功：通知登录窗口预填用户名 */
+  ipcMain.handle(
+    "register-success",
+    (_event, username: string) => {
+      const win = getLoginWin()
+      if (win && !win.isDestroyed()) {
+        win.webContents.send("register-success", username)
+      }
+      closeRegisterWindow()
+    },
+  )
+
+  /** 按注册页内容自适应注册窗口尺寸 */
+  ipcMain.handle(
+    "resize-register-window",
+    (_event, size: { width: number; height: number }) => {
+      resizeRegisterWindow(size)
+    },
+  )
 
   // ========== 设置窗口 ==========
 

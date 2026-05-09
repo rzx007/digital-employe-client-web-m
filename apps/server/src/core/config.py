@@ -92,6 +92,7 @@ class Settings:
     skill_dir_path: str | None = None
     skill_remote_import_path: str | None = None
     skill_name_validate_path: str | None = None
+    remote_model_provider_path: str | None = None
     client_skill_import_max_bytes: int = 52428800
     login_path: str | None = None
     login_url: str | None = None
@@ -179,6 +180,10 @@ def get_settings() -> Settings:
     skill_name_validate_path = (
         _get_kv_value(kv_data, "SKILL_NAME_VALIDATE")
         or "/api/v1/client/skills/name/exists"
+    )
+    remote_model_provider_path = (
+        _get_kv_value(kv_data, "REMOTE_MODEL_PROVIDER_PATH")
+        or "/digital/api/v1/model/provider"
     )
     client_skill_import_max_bytes_raw = _get_kv_value(
         kv_data, "CLIENT_SKILL_IMPORT_MAX_BYTES"
@@ -297,6 +302,7 @@ def get_settings() -> Settings:
         skill_dir_path=skill_dir_path,
         skill_remote_import_path=skill_remote_import_path,
         skill_name_validate_path=skill_name_validate_path,
+        remote_model_provider_path=remote_model_provider_path,
         client_skill_import_max_bytes=client_skill_import_max_bytes,
         login_url=join_base_and_path(platform_base_url, login_path),
         update_user_password_url=join_base_and_path(

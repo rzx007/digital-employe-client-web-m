@@ -56,6 +56,14 @@ function getBalanceProgress(balance: number): number {
   return Math.min(100, Math.max(0, balance * 100))
 }
 
+function formatMonthPeriod(monthRaw: string): string {
+  const [y, m] = monthRaw.split("-")
+  if (!y || m === undefined || m === "") return monthRaw
+  const monthNum = parseInt(m, 10)
+  if (Number.isNaN(monthNum)) return monthRaw
+  return `${y}年${monthNum}月`
+}
+
 function PerformanceLabelWithHelp({
   className,
 }: {
@@ -94,15 +102,15 @@ function MetricCard({
   className?: string
 }) {
   return (
-    <div className={cn("flex flex-col justify-between px-4 py-3", className)}>
-      <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+    <div className={cn("flex flex-col justify-between gap-1 px-3 py-3 sm:px-4", className)}>
+      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </span>
-      <span className="mt-1 text-2xl font-semibold tabular-nums tracking-tight">
+      <span className="text-2xl font-semibold tabular-nums tracking-tight">
         {value}
       </span>
       {hint ? (
-        <span className="mt-1 text-[10px] text-muted-foreground">{hint}</span>
+        <span className="text-[10px] text-muted-foreground">{hint}</span>
       ) : null}
     </div>
   )
@@ -118,7 +126,7 @@ function CompactPerformanceCard() {
   if (isLoading) {
     return (
       <div className="overflow-hidden rounded-lg border">
-        <div className="h-[3px] bg-gradient-to-r from-slate-700 via-slate-500 to-slate-400 dark:from-slate-600 dark:via-slate-400 dark:to-slate-300" />
+        <div className="h-0.5 bg-primary/80" />
         <div className="space-y-2 p-3">
           <div className="flex items-center gap-2.5">
             <Skeleton className="size-8 shrink-0 rounded-full" />
@@ -139,12 +147,12 @@ function CompactPerformanceCard() {
 
   return (
     <div className="overflow-hidden rounded-lg border">
-      <div className="h-[3px] bg-gradient-to-r from-slate-700 via-slate-500 to-slate-400 dark:from-slate-600 dark:via-slate-400 dark:to-slate-300" />
+      <div className="h-0.5 bg-primary/80" />
       <div className="p-3">
         <div className="flex items-center gap-2.5">
           <Avatar className="size-8 shrink-0">
             <AvatarImage src={avatarSrc} alt={data.name} />
-            <AvatarFallback className="bg-slate-200 text-xs font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+            <AvatarFallback className="bg-muted text-xs font-semibold text-muted-foreground">
               {data.name.slice(0, 1)}
             </AvatarFallback>
           </Avatar>
@@ -156,47 +164,45 @@ function CompactPerformanceCard() {
               </span>
             </div>
             <div className="mt-0.5 text-[10px] text-muted-foreground">
-              {data.month}
+              {formatMonthPeriod(data.month)}
             </div>
           </div>
         </div>
 
-        <div className="my-2.5 flex items-center gap-2">
-          <div className="h-px flex-1 bg-border/40" />
-          <span className="text-[9px] font-medium uppercase tracking-[0.15em] text-muted-foreground/70">
+        <div className="mt-3 border-t border-border/40 pt-2.5">
+          <p className="mb-2 text-[10px] font-medium text-muted-foreground">
             月度绩效
-          </span>
-          <div className="h-px flex-1 bg-border/40" />
-        </div>
+          </p>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <PerformanceLabelWithHelp className="text-[11px] text-muted-foreground" />
-            <span className="text-sm font-semibold tabular-nums">
-              {data.gdp.toFixed(2)}
-            </span>
-          </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-emerald-500 transition-all"
-              style={{ width: `${getBalanceProgress(data.gdp)}%` }}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2 rounded-md bg-muted/40 px-2 py-1.5">
-            <div className="flex flex-col">
-              <span className="text-[10px] text-muted-foreground">当月金额</span>
-              <span className="text-[11px] font-semibold tabular-nums">
-                {formatMoney(data.balance)}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <PerformanceLabelWithHelp className="text-[11px] text-muted-foreground" />
+              <span className="text-sm font-semibold tabular-nums">
+                {data.gdp.toFixed(2)}
               </span>
             </div>
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] text-muted-foreground">排名</span>
-              <span className="text-[11px] font-semibold tabular-nums">
-                {formatRank(data.rank)}
-              </span>
-              {data.rank === -1 ? (
-                <span className="text-[9px] text-muted-foreground">暂无排名</span>
-              ) : null}
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-all"
+                style={{ width: `${getBalanceProgress(data.gdp)}%` }}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2 rounded-md border border-border/50 p-2">
+              <div className="flex flex-col">
+                <span className="text-[10px] text-muted-foreground">当月金额</span>
+                <span className="text-[11px] font-semibold tabular-nums">
+                  {formatMoney(data.balance)}
+                </span>
+              </div>
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] text-muted-foreground">排名</span>
+                <span className="text-[11px] font-semibold tabular-nums">
+                  {formatRank(data.rank)}
+                </span>
+                {data.rank === -1 ? (
+                  <span className="text-[9px] text-muted-foreground">暂无排名</span>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
@@ -213,13 +219,15 @@ function FullPerformanceCard() {
   if (isLoading) {
     return (
       <div className="overflow-hidden rounded-lg border border-border/50">
-        <div className="bg-slate-900 px-5 py-4 dark:bg-slate-800">
-          <Skeleton className="h-5 w-16 bg-white/20" />
-          <Skeleton className="mt-2 h-8 w-24 bg-white/20" />
+        <div className="h-0.5 bg-primary/80" />
+        <div className="border-b border-border/50 bg-muted/40 px-5 py-4">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="mt-2 h-3 w-40" />
+          <Skeleton className="mt-3 h-3 w-24" />
         </div>
-        <div className="grid grid-cols-3 gap-px bg-border/30 p-3">
+        <div className="grid grid-cols-3 gap-3 p-3">
           {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-20 rounded-sm" />
+            <Skeleton key={i} className="h-20 rounded-md" />
           ))}
         </div>
       </div>
@@ -228,52 +236,40 @@ function FullPerformanceCard() {
 
   if (!data) return null
 
-  const [year = "", monthValue = ""] = data.month.split("-")
-
   return (
     <div className="overflow-hidden rounded-lg border border-border/50">
-      <div className="relative bg-slate-900 px-5 py-4 dark:bg-slate-800">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-bold tracking-tight text-white">
-                {year}
-              </span>
-            </div>
-            <div className="mt-0.5 flex items-baseline gap-1.5">
-              <span className="text-lg font-light text-white/50">——</span>
-              <span className="text-xl font-semibold text-white">
-                {monthValue}
-              </span>
-            </div>
-            <div className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-white/40">
+      <div className="h-0.5 bg-primary/80" />
+      <div className="border-b border-border/50 bg-muted/40 px-5 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+              {formatMonthPeriod(data.month)}
+            </p>
+            <p className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
               绩效周期
-            </div>
+            </p>
           </div>
 
-          <div className="text-right">
-            <div className="text-sm font-medium text-white/90">{data.name}</div>
-            <div className="mt-0.5 text-[10px] font-medium uppercase tracking-widest text-white/40">
+          <div className="shrink-0 text-right">
+            <div className="text-sm font-medium text-foreground">{data.name}</div>
+            <div className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
               工号 {data.staff_no || "--"}
             </div>
           </div>
         </div>
-
-        <div className="absolute bottom-0 left-5 right-5 h-px bg-white/10" />
       </div>
 
       <div className="p-3">
-        <div className="grid grid-cols-3">
+        <div className="grid grid-cols-3 gap-3">
           <MetricCard
             label={
-              <PerformanceLabelWithHelp className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground" />
+              <PerformanceLabelWithHelp className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground" />
             }
             value={data.gdp.toFixed(2)}
           />
           <MetricCard
             label="当月金额"
             value={formatMoney(data.balance)}
-            className="border-x border-border/30"
           />
           <MetricCard
             label="排名"
@@ -284,7 +280,7 @@ function FullPerformanceCard() {
 
         <div className="my-3 h-px bg-border/30" />
 
-        <div className="space-y-2 rounded-md bg-muted/40 px-4 py-3">
+        <div className="space-y-2 rounded-md border border-border/50 px-4 py-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">绩效进度</span>
             <span className="font-semibold tabular-nums">
@@ -293,7 +289,7 @@ function FullPerformanceCard() {
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full rounded-full bg-emerald-500 transition-all"
+              className="h-full rounded-full bg-primary transition-all"
               style={{ width: `${getBalanceProgress(data.gdp)}%` }}
             />
           </div>

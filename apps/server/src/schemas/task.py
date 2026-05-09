@@ -81,7 +81,7 @@ class TaskExecutionSkillRatingRead(BaseModel):
 
 class TaskExecutionLogRead(BaseModel):
     id: int
-    task_id: int
+    task_id: int | None
     workspace_id: int
     employee_id: int
     employee_name: str | None

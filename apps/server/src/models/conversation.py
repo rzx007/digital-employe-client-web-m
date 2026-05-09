@@ -33,7 +33,7 @@ class ConversationMessage(Base):
     )
     role: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    chunk_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chunk_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # Deprecated: 后续版本移除，仅保留供旧前端 fallback 用
     extra_meta: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     stream_state: Mapped[str | None] = mapped_column(String(32), nullable=True)     # 取值: "streaming" | "completed" | "error" | NULL（旧消息无此字段
     stream_cursor: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)     # 已发送的最后一个事件序列号

@@ -5,6 +5,7 @@ import type {
   SSEEvent,
   ToolMessage,
 } from "./langchain-sse-schema"
+import { ERROR_MARKER } from "./message-classifier"
 
 type AnyPart = UIMessage["parts"][number]
 
@@ -128,7 +129,23 @@ export function applySSEEventToParts(
   event: SSEEvent,
   state: PartsBuilderState
 ): SSEPartsResult | null {
-  if (!event || typeof event !== "object" || !("type" in event)) return null
+  if (!event || typeof event !== "object") return null
+
+  if (
+    "error" in event &&
+    typeof (event as { error: unknown }).error === "string"
+  ) {
+    const errorText = (event as { error: string }).error
+    const parts = cloneParts(currentParts)
+    parts.push({
+      type: "text",
+      text: ERROR_MARKER + errorText,
+      state: "done",
+    })
+    return { parts }
+  }
+
+  if (!("type" in event)) return null
 
   const eventType = (event as { type: string }).type
 

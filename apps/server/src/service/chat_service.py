@@ -225,7 +225,6 @@ class ChatService:
         conversation: Conversation,
         role: str,
         content: str | None,
-        chunk_json: str | None = None,
         extra_meta: dict | None = None,
     ) -> ConversationMessage:
         meta = dict(extra_meta) if extra_meta else {}
@@ -234,7 +233,6 @@ class ChatService:
             conversation_id=conversation.id,
             role=role,
             content=content,
-            chunk_json=chunk_json,
             extra_meta=json.dumps(meta, ensure_ascii=False),
         )
         db.add(message)
@@ -525,48 +523,6 @@ class ChatService:
             data = event.get("data") if isinstance(event, dict) else None
             return isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error")
 
-        # ── Cold path: replay from DB chunk_json for events trimmed from buffer ──
-        if cursor < task.buffer.base_cursor and last_seq < task.buffer.base_cursor:
-            logger.info(
-                "[resume] conv=%s cold path: cursor=%d < base_cursor=%d, replaying from DB",
-                conversation_id, cursor, task.buffer.base_cursor,
-            )
-            from sqlalchemy import select as _sel
-            from src.models.conversation import ConversationMessage as _CM
-            _stmt = _sel(_CM).where(
-                _CM.conversation_id == conversation_id,
-                _CM.role == "assistant",
-            ).order_by(_CM.id.desc()).limit(1)
-            _msg = db.scalar(_stmt)
-            if _msg and _msg.chunk_json:
-                try:
-                    _chunks = await _to_thread(json.loads, _msg.chunk_json)
-                except json.JSONDecodeError:
-                    _chunks = []
-                if not isinstance(_chunks, list):
-                    _chunks = []
-                for i, _data in enumerate(_chunks):
-                    _seq = i + 1
-                    if _seq <= last_seq:
-                        continue
-                    if _seq > task.buffer.base_cursor:
-                        break
-                    _evt = {"seq": _seq, "data": _data}
-                    if task.status != "streaming" and not _is_terminal(_evt):
-                        continue
-                    if not _is_terminal(_evt):
-                        done, payloads = await _emit_event_payloads(_evt)
-                        if not done and task.status != "streaming":
-                            continue
-                        for payload in payloads:
-                            yield payload
-                        if done:
-                            return
-                logger.info(
-                    "[resume] conv=%s cold path done, last_seq now %d",
-                    conversation_id, last_seq,
-                )
-
         buffer_events = task.buffer.get_events_after(last_seq)
         logger.info("[resume] conv=%s initial buffer scan: %d events after cursor=%d", conversation_id, len(buffer_events), last_seq)
         for event in buffer_events:
@@ -605,7 +561,17 @@ class ChatService:
         logger.info("[resume] conv=%s entering queue.get() loop, waiting for live events...", conversation_id)
         try:
             while True:
-                evt = await queue.get()
+                try:
+                    evt = await asyncio.wait_for(queue.get(), timeout=30.0)
+                except asyncio.TimeoutError:
+                    current_task = registry.get_task(conversation_id)
+                    if not current_task or not current_task.is_active:
+                        logger.info(
+                            "[resume] conv=%s queue.get() timeout and task no longer active, exiting",
+                            conversation_id,
+                        )
+                        break
+                    continue
                 if task.status != "streaming" and not _is_terminal(evt):
                     continue
                 done, payloads = await _emit_event_payloads(evt)

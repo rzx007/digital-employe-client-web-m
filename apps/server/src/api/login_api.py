@@ -5,7 +5,9 @@ import httpx
 from fastapi import APIRouter, Body, HTTPException, Request
 
 from src.core.config import get_settings
+from src.db.session import get_session_local
 from src.schemas.login import LoginRequest, UpdatePasswordRequest
+from src.service.config_kv_service import ConfigKvService
 
 router = APIRouter(tags=["登录"])
 logger = logging.getLogger(__name__)
@@ -16,6 +18,27 @@ def _forward_token_headers(request: Request) -> dict[str, str]:
     if not token:
         return {}
     return {"token": token}
+
+
+def _extract_login_token(payload: dict[str, Any]) -> str:
+    """兼容多种登录返回结构提取 token。"""
+    candidates = [
+        payload.get("token"),
+        payload.get("access_token"),
+    ]
+    data = payload.get("data")
+    if isinstance(data, dict):
+        candidates.extend(
+            [
+                data.get("token"),
+                data.get("access_token"),
+            ]
+        )
+    for raw in candidates:
+        token = str(raw or "").strip()
+        if token:
+            return token
+    return ""
 
 
 @router.post("/login", summary="登录", response_model=dict[str, Any])
@@ -31,7 +54,17 @@ def login(request: LoginRequest):
     try:
         response = httpx.post(login_url, json=login_params, timeout=30.0)
         response.raise_for_status()
-        return response.json()
+        payload = response.json()
+        token = _extract_login_token(payload if isinstance(payload, dict) else {})
+        if token:
+            try:
+                with get_session_local()() as db:
+                    ConfigKvService.sync_model_provider_from_remote(db, token=token)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.warning("登录后同步模型服务商配置失败: %s", exc)
+        else:
+            logger.info("登录成功但未在返回体中提取到 token，跳过模型服务商同步")
+        return payload
     except httpx.HTTPError as exc:
         logger.error("登录转发 HTTP 失败: %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail=f"登录服务请求失败：{exc}") from exc

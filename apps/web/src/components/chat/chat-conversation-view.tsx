@@ -1,4 +1,6 @@
-import * as React from "react"
+import { useEffect, useRef, useState, useCallback, useMemo, type ComponentProps } from "react"
+import { useQueryClient } from "@tanstack/react-query"
+import { chatKeys } from "@/lib/query-keys/chat"
 import { useChat } from "@ai-sdk/react"
 import type { UIMessage } from "ai"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
@@ -21,7 +23,7 @@ export function ConversationChatView({
   onNewConversation,
   className,
   ...props
-}: React.ComponentProps<"div"> & {
+}: ComponentProps<"div"> & {
   contact?: ChatViewContact
   title: string
   conversationId: string | number
@@ -29,24 +31,26 @@ export function ConversationChatView({
   onOpenConversations?: () => void
   onNewConversation?: () => void
 }) {
-  const [inputValue, setInputValue] = React.useState("")
-  const [command, setCommand] = React.useState<{
+  const [inputValue, setInputValue] = useState("")
+  const [command, setCommand] = useState<{
     id: string
     title: string
   } | null>(null)
-  const [mentions, setMentions] = React.useState<Array<{
+  const [mentions, setMentions] = useState<Array<{
     id: string
     name: string
   }>>([])
+  const [hasReceivedMessages, setHasReceivedMessages] = useState(false)
+  const queryClient = useQueryClient()
   const { data: storedMessages = [], isPending: isMessagesLoading, isError: isMessagesError } = useMessagesQuery(conversationId)
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isMessagesError) {
       toast.error("加载历史消息失败")
     }
   }, [isMessagesError])
 
-  const initialMessages = React.useMemo(
+  const initialMessages = useMemo(
     () => mapStoredMessagesToUIMessages(storedMessages),
     [storedMessages]
   )
@@ -55,7 +59,11 @@ export function ConversationChatView({
     id: String(conversationId),
     messages: initialMessages,
     transport: chatTransport,
-    onFinish: () => {},
+    onFinish: () => {
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(String(conversationId)),
+      })
+    },
     onError: (chatError) => {
       toast.error("发送失败", {
         description: chatError.message || "请稍后重试",
@@ -63,7 +71,7 @@ export function ConversationChatView({
     },
   })
 
-  const handleStop = React.useCallback(async () => {
+  const handleStop = useCallback(async () => {
     stop()
     try {
       await cancelConversationStream(conversationId)
@@ -72,18 +80,44 @@ export function ConversationChatView({
     }
   }, [stop, conversationId])
 
-  React.useEffect(() => {
+  // 组件卸载时停止对话
+  useEffect(() => {
+    return () => {
+      console.log("🚀 ~ useEffect ~ 组件卸载时停止对话")
+      stop()
+    }
+  }, [stop])
+
+  useEffect(() => {
+    if (messages.length > 0 && !hasReceivedMessages) {
+      setHasReceivedMessages(true)
+    }
+  }, [messages, hasReceivedMessages])
+
+  useEffect(() => {
     if (initialMessages.length > 0) {
       setMessages(initialMessages)
 
       const lastStored = storedMessages[storedMessages.length - 1]
-      if (lastStored?.role === "assistant" && lastStored.streamState === "streaming") {
-        resumeStream()
+      if (
+        lastStored?.role === "assistant" &&
+        lastStored.streamState === "streaming" &&
+        (status === "ready" || status === "error")
+      ) {
+        const rafId = requestAnimationFrame(() => {
+          // rAF 执行时重检 status
+          if (status !== "ready" && status !== "error") return
+          chatTransport.setLastSeq(String(conversationId), lastStored.streamCursor)
+          resumeStream()
+        })
+        return () => cancelAnimationFrame(rafId)
       }
     }
+    // status 是防护，不用加入依赖数组
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, initialMessages, setMessages, resumeStream, storedMessages])
 
-  const handleTextChange = React.useCallback((event: PromptChangeEvent) => {
+  const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
     setMentions(event.mentions)
     setInputValue(event.value)
@@ -92,11 +126,11 @@ export function ConversationChatView({
   const isBusy = status === "submitted" || status === "streaming"
   const chatStatus = status === "ready" && isBusy ? "submitted" : status
 
-  const isSubmitDisabled = React.useMemo(() => {
+  const isSubmitDisabled = useMemo(() => {
     return !(inputValue.trim() || status) || status === "submitted" || (isBusy && status !== "streaming")
   }, [inputValue, isBusy, status])
 
-  const doSend = React.useCallback(
+  const doSend = useCallback(
     async (message: PromptInputMessage | string) => {
       const messageText = (typeof message === "string" ? message : message.text)?.trim() ?? ""
       if (!messageText) return
@@ -144,18 +178,18 @@ export function ConversationChatView({
           })
         }
       } catch (sendError) {
-        toast.error("发送失败", {
+        toast.error("发送失败!", {
           description:
             sendError instanceof Error ? sendError.message : "请稍后重试",
         })
       }
     },
-    [conversationId, sendMessage, command, mentions]
+    [command, mentions, sendMessage, conversationId, setMessages]
   )
 
-  const uploadedPathsRef = React.useRef<string[]>([])
+  const uploadedPathsRef = useRef<string[]>([])
 
-  const handleAttachmentsChange = React.useCallback(
+  const handleAttachmentsChange = useCallback(
     (paths: string[]) => {
       uploadedPathsRef.current = paths
     },
@@ -175,7 +209,7 @@ export function ConversationChatView({
     onStop: handleStop,
   })
 
-  const handleSendMessage = React.useCallback(
+  const handleSendMessage = useCallback(
     async (message: PromptInputMessage) => {
       const hasText = Boolean(message.text)
       const hasAttachments = Boolean(message.files?.length)
@@ -207,13 +241,13 @@ export function ConversationChatView({
     [isBusy, enqueue, command, mentions, doSend]
   )
 
-  const displayMessages = React.useMemo(() => {
-    if (messages.length > 0) {
+  const displayMessages = useMemo(() => {
+    if (messages.length > 0 || hasReceivedMessages) {
       return messages
     }
 
     return initialMessages
-  }, [initialMessages, messages])
+  }, [initialMessages, messages, hasReceivedMessages])
 
   return (
     <ChatPanel

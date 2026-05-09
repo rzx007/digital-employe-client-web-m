@@ -1,5 +1,16 @@
 import type { UIMessage } from "ai"
 
+/** 流式错误事件注入 text part 时的前缀标记 */
+export const ERROR_MARKER = "⚠️ERROR:"
+
+function isErrorText(text: string): boolean {
+  return text.startsWith(ERROR_MARKER)
+}
+
+function stripErrorMarker(text: string): string {
+  return text.slice(ERROR_MARKER.length).trim()
+}
+
 import {
   summarizeToolCall,
   isSkillToolCall,
@@ -51,6 +62,7 @@ export type ClassifiedBlock =
   | { kind: "plan-generated"; key: string; toolCallId: string; input: unknown; state: string }
   | { kind: "final-response"; key: string; text: string }
   | { kind: "file-changes"; key: string; files: FileChangeItem[] }
+  | { kind: "error"; key: string; text: string }
 
 interface ClassifyMessagePartsOptions {
   includeFileChanges?: boolean
@@ -122,10 +134,19 @@ export function classifyMessageParts(
 
     if (!text) return []
 
+    const cleaned = stripThinkSections(text)
+    if (isErrorText(cleaned)) {
+      return [{
+        kind: "error",
+        key: `${message.id}:error:0`,
+        text: stripErrorMarker(cleaned),
+      }]
+    }
+
     return [{
       kind: "final-response",
       key: `${message.id}:response:0`,
-      text: stripThinkSections(text),
+      text: cleaned,
     }]
   }
 
@@ -237,6 +258,7 @@ export function classifyMessageParts(
   const skillExploreItems: SkillExploreItem[] = []
   let skillThinkingText = ""
   let skillExploreOpen = false
+  let responseText = ""
 
   // 遍历消息的各个部分，根据类型将其分类为最终响应、思考过程或工具调用
   for (let i = 0; i < parts.length; i++) {
@@ -246,15 +268,10 @@ export function classifyMessageParts(
     if (part.type === "text" && "text" in part && part.text) {
       const cleaned = stripThinkTags(part.text)
 
-      // 如果当前索引在最后一个工具调用之后，则视为最终响应
+      // 如果当前索引在最后一个工具调用之后，则视为最终响应（累积避免 markdown 跨 part 断裂）
       if (i > lastToolIndex) {
         flushSkillExplore("end")
-        const responseText = stripThinkSections(part.text)
-        blocks.push({
-          kind: "final-response",
-          key: `${message.id}:response:${i}`,
-          text: responseText,
-        })
+        responseText += part.text
       } else if (cleaned) {
         // 如果处于技能探索模式，累积思考文本；否则作为独立的思考块添加
         if (skillExploreOpen) {
@@ -299,6 +316,23 @@ export function classifyMessageParts(
   }
 
   flushSkillExplore("end")
+
+  if (responseText) {
+    const cleaned = stripThinkSections(responseText)
+    if (isErrorText(cleaned)) {
+      blocks.push({
+        kind: "error",
+        key: `${message.id}:error:final`,
+        text: stripErrorMarker(cleaned),
+      })
+    } else {
+      blocks.push({
+        kind: "final-response",
+        key: `${message.id}:response:final`,
+        text: cleaned,
+      })
+    }
+  }
 
   const shouldIncludeFileChanges = options.includeFileChanges === true
   const fileChanges = shouldIncludeFileChanges

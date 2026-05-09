@@ -14,6 +14,7 @@
   "SKILL_REMOTE_RATING": "/digital/api/v1/skills/{skill_id}/rating",
   "SKILL_REMOTE_LIST_PATH": "/digital/api/v1/client/skills/export",
   "SKILL_REMOTE_DETAIL_PATH": "/digital/api/v1/client/skills/export/full/{skill_id}",
+  "REMOTE_MODEL_PROVIDER_PATH": "/digital/api/v1/model/provider",
   "MCP_REMOTE_LIST_PATH": "/digital/api/v1/client/mcp/export",
   "MCP_REMOTE_DETAIL_PATH": "/digital/api/v1/client/mcp/export/{mcp_id}",
   "MCP_CLIENT_BASE_PATH": "/llm/aios/mcp/client/tool/call",

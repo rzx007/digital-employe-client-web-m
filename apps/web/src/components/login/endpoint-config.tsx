@@ -43,12 +43,18 @@ export function EndpointConfig({
     setProtocol,
     setIp,
     setPort,
+    setValidated,
     validateEndpoint,
     saveEndpoint,
     loadEndpoint,
   } = useEndpointStore()
 
   const [status, setStatus] = React.useState<ValidateStatus>("idle")
+
+  React.useEffect(() => {
+    setValidated(false)
+    setStatus("idle")
+  }, [setValidated])
 
   React.useEffect(() => {
     loadEndpoint()
@@ -66,7 +72,7 @@ export function EndpointConfig({
     try {
       await saveEndpoint()
       setStatus("success")
-      toast.success("通讯地址验证成功，配置已保存")
+      // toast.success("通讯地址验证成功，配置已保存")
       onKvPersisted?.()
     } catch (err) {
       setStatus("error")
@@ -133,7 +139,7 @@ export function EndpointConfig({
           <div className="flex w-full justify-end gap-2">
             {status === "success" || validated ? (
               <Button variant="outline" onClick={handleSave}>
-                <IconShieldCheck className="mr-1 size-5" />
+                <IconShieldCheck className="mr-1 size-5 text-green-500" />
                 确定
               </Button>
             ) : (

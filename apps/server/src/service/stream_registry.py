@@ -8,6 +8,7 @@ from collections import deque
 from typing import Any, Callable
 
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from src.models.conversation import ConversationMessage
 
@@ -21,42 +22,35 @@ HEARTBEAT_INTERVAL_SECONDS = 30.0
 TASK_TTL_SECONDS = 300
 BUFFER_MAXLEN = 5000
 AGENT_CHUNK_TIMEOUT = 600.0
+DB_LOCK_RETRY_COUNT = 5
+DB_LOCK_RETRY_SLEEP_SECONDS = 0.2
 
 
 class ChunkJsonBuilder:
     """Incrementally builds JSON array of events without O(N²) serialization.
 
-    Each event is stored as ``{"seq": N, "data": ...}`` (stream_json format)
-    and the raw ``data`` is separately accumulated for chunk_json format.
+    Each event is stored as ``{"seq": N, "data": ...}`` for stream_chunks.
     """
 
     def __init__(self) -> None:
-        self._data_parts: list[str] = []   # raw data items → chunk_json("[
-        self._event_parts: list[str] = []  # {seq, data} items → stream_json
+        self._event_parts: list[str] = []
         self._count: int = 0
 
     def add(self, event: dict) -> bool:
         """Add a buffer event ``{seq, data}``.  Returns False if serialization failed."""
         try:
-            data_json = json.dumps(event["data"], ensure_ascii=False, default=str)
             event_json = json.dumps(event, ensure_ascii=False, default=str)
         except Exception:
             logger.warning("[builder] seq=%s serialization failed, skipping", event.get("seq"))
             return False
         if self._count > 0:
-            self._data_parts.append(",")
             self._event_parts.append(",")
-        self._data_parts.append(data_json)
         self._event_parts.append(event_json)
         self._count += 1
         return True
 
-    def to_chunk_json(self) -> str:
-        """``[data1, data2, ...]`` — frontend-compatible chunk_json format."""
-        return "[" + "".join(self._data_parts) + "]"
-
     def to_stream_json(self) -> str:
-        """``[{"seq":N,"data":...}, ...]`` — cold-path replay format."""
+        """``[{"seq":N,"data":...}, ...]`` — stream_chunks format."""
         return "[" + "".join(self._event_parts) + "]"
 
     @property
@@ -112,6 +106,7 @@ class ActiveStreamTask:
         self.buffer = StreamEventBuffer(conversation_id)
         self.subscribers: set[Subscriber] = set()
         self._asyncio_task: asyncio.Task | None = None
+        self._cleanup_task: asyncio.Task | None = None
         self.error_message: str | None = None
         self._created_at: float = time.monotonic()
 
@@ -207,6 +202,12 @@ class StreamRegistry:
             )
             return False
 
+        if existing and existing._cleanup_task and not existing._cleanup_task.done():
+            existing._cleanup_task.cancel()
+            logger.info(
+                "start: cancelled stale cleanup for conversation %s", conversation_id
+            )
+
         task = ActiveStreamTask(conversation_id)
         self._tasks[conversation_id] = task
 
@@ -248,11 +249,25 @@ class StreamRegistry:
         return True
 
     def _schedule_cleanup(self, conversation_id: int) -> None:
+        task = self._tasks.get(conversation_id)
+
         async def _cleanup() -> None:
             await asyncio.sleep(TASK_TTL_SECONDS)
-            self._tasks.pop(conversation_id, None)
+            current = self._tasks.get(conversation_id)
+            if current is task:
+                self._tasks.pop(conversation_id, None)
+                logger.info(
+                    "cleanup: removed task for conversation %s", conversation_id
+                )
+            else:
+                logger.info(
+                    "cleanup: conversation %s task replaced, skipping removal",
+                    conversation_id,
+                )
 
-        asyncio.create_task(_cleanup())
+        cleanup_task = asyncio.create_task(_cleanup())
+        if task:
+            task._cleanup_task = cleanup_task
 
     async def _run_agent_background(
         self,
@@ -320,9 +335,10 @@ class StreamRegistry:
             nonlocal last_flush_time
             if chunk_builder.count == 0:
                 return
-            chunk_json = chunk_builder.to_chunk_json()
+            stream_json = chunk_builder.to_stream_json()
             ok = self._flush_to_db(
-                db, stream_msg_id, task.buffer, chunk_json=chunk_json,
+                db, stream_msg_id, task.buffer,
+                stream_json=stream_json,
             )
             if ok:
                 task.buffer.trim()
@@ -391,10 +407,10 @@ class StreamRegistry:
                 "[run] conv=%s stream completed normally, event_count=%d, text_len=%d",
                 conversation_id, chunk_builder.count, len(final_text),
             )
-            self._flush_terminal(
+            await self._flush_terminal(
                 db, stream_msg_id, task.buffer, state="completed",
                 content=final_text,
-                chunk_json=chunk_builder.to_chunk_json(),
+                stream_json=chunk_builder.to_stream_json(),
             )
 
             evt = task.buffer.add({"status": "completed"})
@@ -413,10 +429,10 @@ class StreamRegistry:
                 len(partial_text) if partial_text else "None",
                 task.status,
             )
-            self._flush_terminal(
+            await self._flush_terminal(
                 db, stream_msg_id, task.buffer, state="cancelled",
                 content=partial_text,
-                chunk_json=chunk_builder.to_chunk_json(),
+                stream_json=chunk_builder.to_stream_json(),
             )
             evt = task.buffer.add({"status": "cancelled"})
             logger.info(
@@ -436,13 +452,16 @@ class StreamRegistry:
             state_final = "error"
             task.error_message = str(e)
             partial_text = latest_updates_text or None
-            self._flush_terminal(
+
+            evt = task.buffer.add({"status": "error", "error": str(e)})
+            chunk_builder.add(evt)
+
+            await self._flush_terminal(
                 db, stream_msg_id, task.buffer, state="error",
                 content=partial_text,
-                chunk_json=chunk_builder.to_chunk_json(),
+                stream_json=chunk_builder.to_stream_json(),
                 error_message=str(e),
             )
-            evt = task.buffer.add({"status": "error", "error": str(e)})
             self.broadcast(conversation_id, evt)
 
         finally:
@@ -459,10 +478,10 @@ class StreamRegistry:
                 )
                 state_final = "cancelled"
                 partial_text = latest_updates_text or None
-                self._flush_terminal(
+                await self._flush_terminal(
                     db, stream_msg_id, task.buffer, state="cancelled",
                     content=partial_text,
-                    chunk_json=chunk_builder.to_chunk_json(),
+                    stream_json=chunk_builder.to_stream_json(),
                 )
             logger.info(
                 "[run] conv=%s finally: state_final=%s, event_count=%d, buffer_cursor=%d",
@@ -475,14 +494,14 @@ class StreamRegistry:
             db.close()
             self._schedule_cleanup(conversation_id)
 
-    def _flush_terminal(
+    async def _flush_terminal(
         self,
         db: Any,
         stream_msg_id: int,
         buffer: StreamEventBuffer,
         state: str,
         content: str | None,
-        chunk_json: str | None,
+        stream_json: str | None = None,
         error_message: str | None = None,
         max_retries: int = 3,
     ) -> None:
@@ -490,7 +509,8 @@ class StreamRegistry:
         for attempt in range(max_retries):
             self._flush_to_db(
                 db, stream_msg_id, buffer, state=state,
-                content=content, chunk_json=chunk_json,
+                content=content,
+                stream_json=stream_json,
                 error_message=error_message,
             )
             try:
@@ -504,7 +524,7 @@ class StreamRegistry:
                     "[flush] msg_id=%s terminal state=%s not persisted, retrying %d/%d",
                     stream_msg_id, state, attempt + 1, max_retries,
                 )
-                time.sleep(0.3)
+                await asyncio.sleep(0.3)
         logger.error(
             "[flush] msg_id=%s terminal state=%s FAILED after %d retries",
             stream_msg_id, state, max_retries,
@@ -517,47 +537,58 @@ class StreamRegistry:
         buffer: StreamEventBuffer,
         state: str | None = None,
         content: str | None = None,
-        chunk_json: str | None = None,
+        stream_json: str | None = None,
         error_message: str | None = None,
     ) -> bool:
         """Persist stream progress to DB.  Returns True on success."""
-        try:
-            msg = db.get(ConversationMessage, stream_msg_id)
-            if not msg:
-                logger.warning("[flush] msg_id=%s not found in DB, skip", stream_msg_id)
+        for attempt in range(DB_LOCK_RETRY_COUNT):
+            try:
+                msg = db.get(ConversationMessage, stream_msg_id)
+                if not msg:
+                    logger.warning("[flush] msg_id=%s not found in DB, skip", stream_msg_id)
+                    return False
+                if state is not None:
+                    msg.stream_state = state
+                if content is not None:
+                    msg.content = content
+                if error_message is not None:
+                    try:
+                        meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
+                    except (json.JSONDecodeError, TypeError):
+                        meta = {}
+                    meta["error_message"] = error_message
+                    msg.extra_meta = json.dumps(meta, ensure_ascii=False)
+                msg.stream_cursor = buffer.cursor
+                if stream_json is not None:
+                    msg.stream_chunks = stream_json
+                db.commit()
+                logger.info(
+                    "[flush] msg_id=%s committed: state=%s, content_len=%s, stream_json_len=%s",
+                    stream_msg_id, state,
+                    len(content) if content else None,
+                    len(stream_json) if stream_json else None,
+                )
+                return True
+            except OperationalError as e:
+                db.rollback()
+                is_locked = "database is locked" in str(e).lower()
+                if not is_locked:
+                    logger.warning("[flush] msg_id=%s FAILED", stream_msg_id, exc_info=True)
+                    return False
+                if attempt >= DB_LOCK_RETRY_COUNT - 1:
+                    logger.warning(
+                        "[flush] msg_id=%s FAILED after lock retries=%d",
+                        stream_msg_id,
+                        DB_LOCK_RETRY_COUNT,
+                        exc_info=True,
+                    )
+                    return False
+                time.sleep(DB_LOCK_RETRY_SLEEP_SECONDS * (attempt + 1))
+            except Exception:
+                logger.warning("[flush] msg_id=%s FAILED", stream_msg_id, exc_info=True)
+                db.rollback()
                 return False
-            if state is not None:
-                msg.stream_state = state
-            if content is not None:
-                msg.content = content
-            if error_message is not None:
-                try:
-                    meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
-                except (json.JSONDecodeError, TypeError):
-                    meta = {}
-                meta["error_message"] = error_message
-                msg.extra_meta = json.dumps(meta, ensure_ascii=False)
-            msg.stream_cursor = buffer.cursor
-            msg.stream_chunks = None
-            if chunk_json is not None:
-                try:
-                    msg.chunk_json = chunk_json
-                except Exception:
-                    logger.warning("[flush] msg_id=%s set chunk_json failed", stream_msg_id, exc_info=True)
-            else:
-                logger.info("[flush] msg_id=%s chunk_json=None, state=%s, buffer_cursor=%d", stream_msg_id, state, buffer.cursor)
-            db.commit()
-            logger.info(
-                "[flush] msg_id=%s committed: state=%s, content_len=%s, chunk_json_len=%s",
-                stream_msg_id, state,
-                len(content) if content else None,
-                len(chunk_json) if chunk_json else None,
-            )
-            return True
-        except Exception:
-            logger.warning("[flush] msg_id=%s FAILED", stream_msg_id, exc_info=True)
-            db.rollback()
-            return False
+        return False
 
 
 def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
