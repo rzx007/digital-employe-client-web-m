@@ -549,6 +549,106 @@ class TaskSchedulerService:
         }
 
     @classmethod
+    def _start_curator_task(cls, db: Session, task: EmployeeTask, employee: Employee) -> None:
+        """总管员工的定时任务：投递到 curator 会话，由 orchestrator agent 执行。"""
+        from src.models.conversation import Conversation, ConversationMessage
+        from src.service.orchestrator_agent import get_orchestrator_agent, _get_main_loop
+        from src.service.stream_registry import registry as _stream_registry
+        from src.service.workspace_events import WorkspaceEventBus
+
+        workspace_id = task.workspace_id
+
+        # 1. 获取或创建 curator 会话
+        conv = db.scalars(
+            select(Conversation).where(
+                Conversation.target_type == "curator",
+            ).limit(1)
+        ).first()
+        if not conv:
+            conv = Conversation(
+                workspace_id=workspace_id,
+                target_type="curator",
+                target_id=1,
+                title="总管对话",
+            )
+            db.add(conv)
+            db.flush()
+
+        # 2. 创建 TaskExecutionLog
+        run_log = TaskExecutionLog(
+            task_id=task.id,
+            workspace_id=workspace_id,
+            employee_id=employee.id,
+            skill_id=task.skill_id,
+            task_name_snapshot=task.task_name,
+            run_status="running",
+            run_result="执行中",
+            input_json=task.task_input_json or "{}",
+            output_json="{}",
+            conversation_id=conv.id,
+            started_at=cst_now(),
+        )
+        db.add(run_log)
+        db.flush()
+
+        # 3. 用户消息
+        user_msg = ConversationMessage(
+            conversation_id=conv.id,
+            role="user",
+            content=task.user_prompt or task.task_name,
+            stream_state="completed",
+        )
+        db.add(user_msg)
+
+        # 4. 助手消息
+        assistant_msg = ConversationMessage(
+            conversation_id=conv.id,
+            role="assistant",
+            content="",
+            stream_state="streaming",
+        )
+        db.add(assistant_msg)
+        db.flush()
+
+        conv_id = conv.id
+        asst_msg_id = assistant_msg.id
+        task_name_snap = task.task_name
+
+        # 5. 获取 orchestrator agent
+        agent = get_orchestrator_agent(workspace_id, db, conv_id)
+
+        messages = [
+            {"role": "user", "content": task.user_prompt or ""},
+        ]
+
+        db.commit()
+
+        # 6. 投递到主事件循环执行
+        main_loop = _get_main_loop()
+        import uuid
+        thread_id = f"curator-task-{task.id}-{uuid.uuid4().hex[:8]}"
+        main_loop.call_soon_threadsafe(
+            lambda: _stream_registry.start(
+                conversation_id=conv_id,
+                agent=agent,
+                messages=messages,
+                config={"configurable": {"thread_id": thread_id}},
+                stream_msg_id=asst_msg_id,
+                skill_name="",
+                debug_content_only=False,
+            )
+        )
+
+        WorkspaceEventBus.push(workspace_id, {
+            "type": "task_started",
+            "task_id": task.id,
+            "conversation_id": conv_id,
+            "employee_id": employee.id,
+            "employee_name": employee.name,
+            "task_name": task_name_snap,
+        })
+
+    @classmethod
     def run_task_job(cls, task_id: int) -> None:
         with get_session_local()() as db:
             task = db.scalar(
@@ -568,15 +668,19 @@ class TaskSchedulerService:
             started_at: datetime | None = None
             try:
                 if task.dispatch_type == "skill":
-                    from src.service.orchestrator_agent import _start_task_as_conversation
-                    _start_task_as_conversation(db, task, employee, task.workspace_id)
+                    if employee and employee.is_curator:
+                        cls._start_curator_task(db, task, employee)
+                    else:
+                        from src.service.orchestrator_agent import _start_task_as_conversation
+                        _start_task_as_conversation(db, task, employee, task.workspace_id)
                     task.last_run_at = cst_now()
                     task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=task.last_run_at)
                     db.add(task)
                     db.commit()
                     logger.info(
-                        "定时任务启动为流式对话 task_id=%s task_name=%s employee_id=%s",
+                        "定时任务启动 task_id=%s task_name=%s employee_id=%s is_curator=%s",
                         task_id, task.task_name, task.employee_id,
+                        bool(employee and employee.is_curator),
                     )
                     return
                 started_at = cst_now()

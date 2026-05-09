@@ -69,6 +69,7 @@ class EmployeeRead(BaseModel):
     skills: list[dict[str, Any]]
     metadata: dict[str, Any]
     shift_schedule: dict[str, Any]
+    is_curator: bool
     created_at: datetime
     updated_at: datetime
 

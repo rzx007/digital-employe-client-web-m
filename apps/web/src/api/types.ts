@@ -151,6 +151,7 @@ export interface Employee {
   skills: Skill[]
   metadata: EmployeeMetadata
   shift_schedule: ShiftSchedule
+  is_curator: boolean
   created_at: string
   updated_at: string
 }

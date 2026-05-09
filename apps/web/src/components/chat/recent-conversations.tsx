@@ -44,6 +44,22 @@ import { formatDistanceToNow } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import type { Conversation } from "@/lib/mock-data/conversations"
 
+function getCuratorContactId(): string {
+  const contacts = useChatStore.getState().contacts
+  const curator = contacts.find((c) => c.type === "curator")
+  return curator?.curator?.id ?? PRIMARY_CURATOR.id
+}
+
+function getCuratorDisplay() {
+  const contacts = useChatStore.getState().contacts
+  const curator = contacts.find((c) => c.type === "curator")?.curator
+  return {
+    name: curator?.name ?? PRIMARY_CURATOR.name,
+    avatar: curator?.avatar ?? PRIMARY_CURATOR.avatar,
+    status: curator?.status ?? PRIMARY_CURATOR.status,
+  }
+}
+
 interface RecentConversationItem {
   id: string
   contactId: string
@@ -118,7 +134,7 @@ function upsertRecentConversation(
     avatar: contact?.avatar,
     status: contact?.status,
     isGroup,
-    isCurator: conv.contactId === PRIMARY_CURATOR.id,
+    isCurator: conv.contactId === getCuratorContactId(),
     isPinned: existingItem?.isPinned,
     participants,
   }
@@ -146,7 +162,7 @@ function ensureContactInList(
   const contact = findContactInList(useChatStore.getState().contacts, contactId)
   const isGroup = contact?.type === "group"
   const isCurator =
-    contact?.type === "curator" || contactId === PRIMARY_CURATOR.id
+    contact?.type === "curator" || contactId === getCuratorContactId()
   const newItem: RecentConversationItem = {
     id: `recent:${contactId}`,
     contactId,
@@ -211,20 +227,24 @@ export function RecentConversations({
     RecentConversationItem[]
   >(() => {
     const loaded = loadRecentConversations()
-    const hasCurator = loaded.some((c) => c.contactId === PRIMARY_CURATOR.id)
-    if (hasCurator) return loaded
+    // 移除 历史静态会话 curator-primary
+    const cleaned = loaded.filter((c) => c.id !== `recent:curator-primary`)
+    const curatorId = getCuratorContactId()
+    const hasCurator = cleaned.some((c) => c.contactId === curatorId)
+    if (hasCurator) return cleaned
+    const curatorDisplay = getCuratorDisplay()
     const curatorItem: RecentConversationItem = {
-      id: "recent:curator-primary",
-      contactId: PRIMARY_CURATOR.id,
-      contactName: PRIMARY_CURATOR.name,
+      id: `recent:${curatorId}`,
+      contactId: curatorId,
+      contactName: curatorDisplay.name,
       title: "数字员工统筹",
       unreadCount: 0,
       updatedAt: new Date(),
-      avatar: PRIMARY_CURATOR.avatar,
-      status: PRIMARY_CURATOR.status,
+      avatar: curatorDisplay.avatar,
+      status: curatorDisplay.status,
       isCurator: true,
     }
-    const items = [curatorItem, ...loaded]
+    const items = [curatorItem, ...cleaned]
     saveRecentConversations(items)
     return items
   })
@@ -328,7 +348,7 @@ export function RecentConversations({
       saveRecentConversations(updated)
       return updated
     })
-  }, [isDraftConversation, selectedContactId])
+  }, [isDraftConversation, recentItems, selectedContactId])
 
   const handleSelectItem = (contactId: string) => {
     if (contactId === selectedContactId) return

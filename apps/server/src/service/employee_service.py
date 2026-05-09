@@ -106,6 +106,39 @@ class EmployeeService:
         )
 
     @staticmethod
+    def ensure_curator_employee(db: Session, workspace_id: int) -> Employee:
+        """确保总管员工存在（每工作空间唯一），不存在则自动创建。"""
+        existing = db.scalar(
+            select(Employee).where(
+                Employee.workspace_id == workspace_id,
+                Employee.is_curator.is_(True),
+            )
+        )
+        if existing:
+            return existing
+
+        curator = Employee(
+            workspace_id=workspace_id,
+            employee_code="curator",
+            name="总管助手",
+            description="数字员工统筹",
+            version="",
+            is_curator=True,
+            skills_json="[]",
+            meta_json=json.dumps({
+                "employee_name": "总管助手",
+                "status": 1,
+                "capability_desc": "任务分派、会话路由与协作编排",
+            }, ensure_ascii=False),
+            shift_schedule_json="{}",
+        )
+        db.add(curator)
+        db.commit()
+        db.refresh(curator)
+        logger.info("Created curator employee: id=%s", curator.id)
+        return curator
+
+    @staticmethod
     def _employee_to_dict(employee: Employee) -> dict:
         metadata = json.loads(employee.meta_json or "{}")
         shift_schedule = json.loads(
@@ -126,6 +159,7 @@ class EmployeeService:
             "skills": json.loads(employee.skills_json or "[]"),
             "metadata": metadata,
             "shift_schedule": shift_schedule,
+            "is_curator": bool(employee.is_curator),
             "created_at": employee.created_at,
             "updated_at": employee.updated_at,
         }

@@ -17,9 +17,7 @@ import { useContactsQuery } from "@/hooks/use-chat-queries"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { request } from "@/lib/request"
 import {
-  DEFAULT_SELECTED_CONTACT_ID,
   findContactInList,
-  PRIMARY_CURATOR,
   type AIEmployee,
   type Contact,
 } from "@/lib/mock-data/ai-employees"
@@ -31,11 +29,6 @@ import { CreateGroupDialog } from "./create-group-dialog"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 
 const CONTACTS_SIDEBAR_COLLAPSED_STORAGE_KEY = "chat:contacts-sidebar:collapsed"
-
-const CURATOR_CONTACT: Contact = {
-  type: "curator",
-  curator: PRIMARY_CURATOR,
-}
 
 export function ContactsSidebar({
   className,
@@ -71,7 +64,7 @@ export function ContactsSidebar({
   })
 
   const contacts = React.useMemo(
-    () => [CURATOR_CONTACT, ...(apiContacts ?? [])],
+    () => apiContacts ?? [],
     [apiContacts]
   )
 
@@ -85,7 +78,10 @@ export function ContactsSidebar({
       selectedContactId &&
       !findContactInList(contacts, selectedContactId)
     ) {
-      setSelectedContactId(DEFAULT_SELECTED_CONTACT_ID)
+      const firstCurator = contacts.find((c) => c.type === "curator")
+      if (firstCurator?.curator) {
+        setSelectedContactId(firstCurator.curator.id)
+      }
     }
   }, [contacts, selectedContactId, setSelectedContactId])
 

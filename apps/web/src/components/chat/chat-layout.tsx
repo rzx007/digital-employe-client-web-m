@@ -20,6 +20,8 @@ import { useMonitorStore } from "@/stores/monitor-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useOnboardingStore } from "@/stores/onboarding-store"
 import { PRIMARY_CURATOR } from "@/lib/mock-data/ai-employees"
+import type { Contact } from "@/lib/mock-data/ai-employees"
+import { findContactInList } from "@/lib/mock-data/ai-employees"
 import { WelcomeDialog, UserTour } from "@/components/onboarding"
 import { AppToolbar } from "./app-toolbar"
 import { ShiftCalendarPage } from "@/components/shift-calendar"
@@ -32,7 +34,7 @@ import { MobileTabBar } from "./mobile-tab-bar"
 import { RecentConversations } from "./recent-conversations"
 import { WorkbenchView } from "./workbench-view"
 
-const CURATOR_CONTACT = { type: "curator" as const, curator: PRIMARY_CURATOR }
+const CURATOR_FALLBACK: Contact = { type: "curator" as const, curator: PRIMARY_CURATOR }
 
 export function ChatLayout({
   className,
@@ -82,7 +84,15 @@ export function ChatLayout({
 
   useEffect(() => {
     if (apiContacts) {
-      setContacts([CURATOR_CONTACT, ...apiContacts])
+      setContacts(apiContacts)
+      const { selectedContactId } = useChatStore.getState()
+      const hasSelected = apiContacts.some((c) => findContactInList([c], selectedContactId ?? ""))
+      if (!hasSelected) {
+        const firstCurator = apiContacts.find((c) => c.type === "curator")
+        if (firstCurator?.curator) {
+          useChatStore.getState().setSelectedContactId(firstCurator.curator.id)
+        }
+      }
     }
   }, [apiContacts, setContacts])
 
@@ -94,7 +104,7 @@ export function ChatLayout({
     const { contacts, selectedContactId } = useChatStore.getState()
     const hasCurator = contacts.some((c) => c.type === "curator")
     if (!hasCurator) {
-      useChatStore.getState().setContacts([CURATOR_CONTACT])
+      useChatStore.getState().setContacts([CURATOR_FALLBACK])
     }
     if (selectedContactId !== PRIMARY_CURATOR.id) {
       if (!hasContactsErrorToastRef.current) {

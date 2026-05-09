@@ -88,6 +88,7 @@ def create_app() -> FastAPI:
                 if cleaned > 0:
                     logger.info("Cleaned %d zombie task executions", cleaned)
                 EmployeeService.ensure_builtin_seed_employees(db, workspace)
+                EmployeeService.ensure_curator_employee(db, workspace.id)
                 TaskService.sync_workspace_tasks(db, workspace.id)
 
         await loop.run_in_executor(None, _startup_data_init)

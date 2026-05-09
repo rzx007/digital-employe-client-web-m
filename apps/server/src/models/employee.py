@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.workspace import cst_now
@@ -22,6 +22,7 @@ class Employee(Base):
     skills_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     meta_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     shift_schedule_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    is_curator: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

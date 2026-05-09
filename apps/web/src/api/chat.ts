@@ -7,7 +7,7 @@ import {
   fetchConversations as fetchConversationsApi,
   createConversation as createConversationApi,
 } from "@/api/conversation"
-import { type AIEmployee, type Contact } from "@/lib/mock-data/ai-employees"
+import { type AIEmployee, type Contact, type CuratorProfile } from "@/lib/mock-data/ai-employees"
 import type { Conversation } from "@/lib/mock-data/conversations"
 import type { Message } from "@/lib/mock-data/messages"
 
@@ -54,12 +54,29 @@ export async function fetchContacts(
     fetchGroups({ signal }),
   ])
 
-  const employees: Contact[] = (employeesRes?.data ?? []).map((emp) => ({
+  const allEmployees = (employeesRes?.data ?? []) as Employee[]
+
+  const curatorEmployees = allEmployees.filter((e) => e.is_curator)
+  const regularEmployees = allEmployees.filter((e) => !e.is_curator)
+
+  const curatorContacts: Contact[] = curatorEmployees.map((emp) => {
+    const profile: CuratorProfile = {
+      id: String(emp.id),
+      name: emp.name ?? emp.metadata?.employee_name ?? "",
+      role: emp.description || "",
+      avatar: createDiceBearAvatar(String(emp.id)),
+      status: emp.metadata?.status === 1 ? "online" : "offline",
+      specialty: emp.metadata?.capability_desc ?? "",
+    }
+    return { type: "curator" as const, curator: profile }
+  })
+
+  const employeeContacts: Contact[] = regularEmployees.map((emp) => ({
     type: "employee" as const,
     employee: mapEmployeeToAIEmployee(emp),
   }))
 
-  const allEmployees: AIEmployee[] = (employeesRes?.data ?? []).map(
+  const allAIEmployees: AIEmployee[] = allEmployees.map(
     mapEmployeeToAIEmployee
   )
 
@@ -69,12 +86,12 @@ export async function fetchContacts(
       id: String(group.id),
       name: group.name,
       participants: (group.employee_ids ?? [])
-        .map((eid) => allEmployees.find((e) => e.id === String(eid)))
+        .map((eid) => allAIEmployees.find((e) => e.id === String(eid)))
         .filter(Boolean) as AIEmployee[],
     },
   }))
 
-  return [...employees, ...groups]
+  return [...curatorContacts, ...employeeContacts, ...groups]
 }
 
 export async function createContactGroup(params: {
