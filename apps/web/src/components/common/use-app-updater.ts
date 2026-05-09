@@ -78,6 +78,7 @@ function ensureIpcSubscription() {
   })
 
   const unsubError = window.electronApi.onUpdateError((info) => {
+    console.log("🚀 ~ ensureIpcSubscription ~ info:", info)
     sharedState = { ...sharedState, status: "error", errorMessage: info.message || "检查更新失败" }
     scheduleReset()
     notifyAll()

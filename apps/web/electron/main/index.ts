@@ -140,7 +140,7 @@ async function createWindow() {
   createTray(win)
 
   // 自动更新
-  update(win)
+  update()
 }
 
 // ========== 应用生命周期 ==========

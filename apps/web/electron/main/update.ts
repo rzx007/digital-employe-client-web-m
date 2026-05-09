@@ -1,4 +1,4 @@
-import { app, ipcMain } from 'electron'
+import { app, ipcMain, BrowserWindow } from 'electron'
 import { createRequire } from 'node:module'
 import type {
   ProgressInfo,
@@ -35,7 +35,15 @@ async function resolveUpdateFeedURL(): Promise<string | null> {
   return null
 }
 
-export function update(win: Electron.BrowserWindow) {
+function sendToAll(channel: string, ...args: any[]) {
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channel, ...args)
+    }
+  })
+}
+
+export function update() {
 
   autoUpdater.autoDownload = false
   autoUpdater.disableWebInstaller = false
@@ -44,48 +52,45 @@ export function update(win: Electron.BrowserWindow) {
   autoUpdater.on('checking-for-update', function () { })
 
   autoUpdater.on('error', (error: Error) => {
-    win.webContents.send('update-error', { message: error.message, error })
+    console.error('[Updater] error:', error.message)
+    sendToAll('update-error', { message: error.message, error })
   })
 
   autoUpdater.on('update-available', (arg: UpdateInfo) => {
-    win.webContents.send('update-can-available', { update: true, version: app.getVersion(), newVersion: arg?.version })
+    sendToAll('update-can-available', { update: true, version: app.getVersion(), newVersion: arg?.version })
 
     const autoUpdate = getSetting('autoUpdate')
     if (autoUpdate) {
-      triggerDownload(win)
+      triggerDownload()
     }
   })
 
   autoUpdater.on('update-not-available', (arg: UpdateInfo) => {
-    win.webContents.send('update-can-available', { update: false, version: app.getVersion(), newVersion: arg?.version })
+    sendToAll('update-can-available', { update: false, version: app.getVersion(), newVersion: arg?.version })
   })
 
   ipcMain.handle('check-update', async () => {
     if (!app.isPackaged) {
-      const error = new Error('The update feature is only available after the package.')
       const feedUrl = await resolveUpdateFeedURL()
-      console.log("🚀 ~ update ~ feedUrl:", feedUrl)
-      console.log("🚀 ~ update ~ error:", error)
-      win.webContents.send('update-error', { message: error.message, error })
+      const error = new Error(`The update feature is only available after the package. feedUrl=${feedUrl}`)
+      sendToAll('update-error', { message: error.message, error })
       return { message: error.message, error }
     }
 
     try {
       const feedUrl = await resolveUpdateFeedURL()
-      console.log("🚀 ~ update ~ feedUrl:", feedUrl)
-
       if (feedUrl) {
         autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl })
       }
-      return await autoUpdater.checkForUpdatesAndNotify()
+      return await autoUpdater.checkForUpdates()
     } catch (error) {
-      win.webContents.send('update-error', { message: 'Network error', error })
+      sendToAll('update-error', { message: 'Network error', error })
       return { message: 'Network error', error }
     }
   })
 
-  ipcMain.handle('start-download', (event: Electron.IpcMainInvokeEvent) => {
-    triggerDownload(win)
+  ipcMain.handle('start-download', () => {
+    triggerDownload()
   })
 
   ipcMain.handle('quit-and-install', () => {
@@ -93,19 +98,20 @@ export function update(win: Electron.BrowserWindow) {
   })
 }
 
-function triggerDownload(win: Electron.BrowserWindow) {
+function triggerDownload() {
   cleanupDownloadListeners()
 
   const onProgress = (info: ProgressInfo) => {
-    win.webContents.send('download-progress', info)
+    sendToAll('download-progress', info)
   }
   const onError = (error: Error) => {
     cleanupDownloadListeners()
-    win.webContents.send('update-error', { message: error.message, error })
+    console.error('[Updater] download error:', error.message)
+    sendToAll('update-error', { message: error.message, error })
   }
   const onDownloaded = () => {
     cleanupDownloadListeners()
-    win.webContents.send('update-downloaded')
+    sendToAll('update-downloaded')
   }
 
   autoUpdater.on('download-progress', onProgress)
