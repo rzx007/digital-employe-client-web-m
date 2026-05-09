@@ -1,6 +1,7 @@
 import asyncio
 import shlex
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Callable
@@ -86,6 +87,11 @@ class SkillAwareShellBackend(LocalShellBackend):
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[str | None] = asyncio.Queue()
 
+        # 取消信号：async 侧设 Event，线程函数在 finally 中检查并杀进程
+        cancel_requested = threading.Event()
+        # 用容器把子进程引用从线程暴露给 async 侧，以便直接 kill
+        _proc_ref: list[subprocess.Popen] = []
+
         def _read_lines_sync() -> int:
             env = {**self._env, "PYTHONUNBUFFERED": "1"}
             proc = subprocess.Popen(  # noqa: S602
@@ -96,12 +102,17 @@ class SkillAwareShellBackend(LocalShellBackend):
                 env=env,
                 cwd=str(self.cwd),
             )
+            _proc_ref.append(proc)  # 暴露给 async 侧
             try:
                 for line_bytes in proc.stdout:
                     line = self._decode_output_bytes(line_bytes).rstrip("\r\n")
                     loop.call_soon_threadsafe(queue.put_nowait, line)
                 proc.wait()
             finally:
+                # 双保险：线程侧也检查取消信号，确保无论谁先触发都能清
+                if cancel_requested.is_set() and proc.poll() is None:
+                    proc.kill()
+                    proc.wait()
                 loop.call_soon_threadsafe(queue.put_nowait, None)
             return proc.returncode
 
@@ -132,6 +143,9 @@ class SkillAwareShellBackend(LocalShellBackend):
             _batch.clear()
             _last_batch_emit = time.monotonic()
 
+        # completed_normally 用于标记子进程是自行退出（收到 None），
+        # 而非超时 / 取消 / 异常终止。finally 块据此决定是否杀进程。
+        completed_normally = False
         try:
             while True:
                 try:
@@ -140,6 +154,7 @@ class SkillAwareShellBackend(LocalShellBackend):
                     timed_out = True
                     break
                 if line is None:
+                    completed_normally = True
                     break
 
                 if current_output_size < self._max_output_bytes:
@@ -153,8 +168,26 @@ class SkillAwareShellBackend(LocalShellBackend):
                     _emit_batch()
 
             _emit_batch()
-        except Exception:
-            _emit_batch()
+        finally:
+            # 非正常退出（超时 / 取消 / 异常）：通知线程杀子进程，避免孤儿进程
+            if not completed_normally:
+                cancel_requested.set()
+                if _proc_ref:
+                    proc = _proc_ref[0]
+                    if proc.poll() is None:
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+                try:
+                    _emit_batch()
+                except Exception:
+                    pass
+                # 等线程函数收尾（kill 后 proc.wait()），最长等 10s
+                try:
+                    await asyncio.wait_for(asyncio.shield(future), timeout=10)
+                except Exception:
+                    pass
 
         try:
             exit_code = await asyncio.wait_for(
