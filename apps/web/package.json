@@ -1,6 +1,6 @@
 {
   "name": "digital-employee",
-  "version": "0.0.37",
+  "version": "0.0.39",
   "type": "module",
   "private": true,
   "main": "dist-electron/main/index.js",

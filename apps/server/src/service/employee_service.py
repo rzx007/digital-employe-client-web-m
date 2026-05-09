@@ -993,7 +993,7 @@ class EmployeeService:
                 )
                 continue
 
-            meta = {"employee_name": name, "status": None}
+            meta = {"employee_name": name, "status": 1}
             employee = Employee(
                 workspace_id=workspace.id,
                 employee_code="0",
