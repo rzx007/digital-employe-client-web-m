@@ -36,7 +36,7 @@
   "CLIENT_SKILL_IMPORT_MAX_BYTES": "52428800",
   "FEISHU_APP_ID": "cli_a97bcb15167b1bb4",
   "FEISHU_APP_SECRET": "xvccgjHzEdB8dV28c8R4KeI6jTjWsPWL",
-  "FEISHU_REDIRECT_URI": "http://localhost:34567 /oauth/feishu/callback",
+  "FEISHU_REDIRECT_URI": "http://localhost:34567/oauth/feishu/callback",
   "FEISHU_TENANT_ACCESS_TOKEN_URL": "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
   "FEISHU_TOKEN_REFRESH_BEFORE_SECONDS": "600",
   "FEISHU_TOKEN_REQUEST_TIMEOUT": "10",
