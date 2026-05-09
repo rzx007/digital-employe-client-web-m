@@ -126,7 +126,7 @@ export function ContactsPanel({
         </div>
 
         <ScrollArea className="flex-1">
-          <div className="w-full space-y-3 px-2 py-2">
+          <div className="w-full space-y-3 px-1 py-2">
             <div className="space-y-0.5">
               <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
                 总管助手

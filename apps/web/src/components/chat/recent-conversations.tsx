@@ -525,7 +525,7 @@ export function RecentConversations({
         )}
 
         <ScrollArea className="flex-1 w-full">
-          <div className={cn("py-2", collapsed && "px-1.5")}>
+          <div className={cn("py-2 px-1", collapsed && "px-1.5")}>
             {displayItems.map((item) => (
               <React.Fragment key={item.contactId}>
                 <ContextMenu>
