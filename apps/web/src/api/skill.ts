@@ -35,10 +35,12 @@ export async function fetchLocalSkillList(): Promise<LocalSkillItem[]> {
 }
 
 export async function fetchLocalSkillDetail(
-  skillName: string
+  skillName: string,
+  opts?: { signal?: AbortSignal },
 ): Promise<LocalSkillDetail> {
   const res = await request<ApiResponse<LocalSkillDetail>>(
-    `/skills/local/${encodeURIComponent(skillName)}`
+    `/skills/local/${encodeURIComponent(skillName)}`,
+    opts?.signal ? { signal: opts.signal } : {},
   )
   return res.data
 }

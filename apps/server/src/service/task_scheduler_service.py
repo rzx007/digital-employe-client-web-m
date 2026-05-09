@@ -564,6 +564,8 @@ class TaskSchedulerService:
             employee = db.get(Employee, task.employee_id)
             workspace = db.get(Workspace, task.workspace_id)
 
+            run_log: TaskExecutionLog | None = None
+            started_at: datetime | None = None
             try:
                 if task.dispatch_type == "skill":
                     from src.service.orchestrator_agent import _start_task_as_conversation
@@ -577,77 +579,78 @@ class TaskSchedulerService:
                         task_id, task.task_name, task.employee_id,
                     )
                     return
-                else:
-                    started_at = cst_now()
-                    run_log = TaskExecutionLog(
-                        task_id=task.id,
-                        workspace_id=task.workspace_id,
-                        employee_id=task.employee_id,
-                        skill_id=task.skill_id,
-                        task_name_snapshot=task.task_name,
-                        run_status="running",
-                        run_result="执行中",
-                        input_json=task.task_input_json or "{}",
-                        output_json="{}",
-                        started_at=started_at,
-                    )
-                    db.add(run_log)
-                    db.commit()
-                    db.refresh(run_log)
+                started_at = cst_now()
+                run_log = TaskExecutionLog(
+                    task_id=task.id,
+                    workspace_id=task.workspace_id,
+                    employee_id=task.employee_id,
+                    skill_id=task.skill_id,
+                    task_name_snapshot=task.task_name,
+                    run_status="running",
+                    run_result="执行中",
+                    input_json=task.task_input_json or "{}",
+                    output_json="{}",
+                    started_at=started_at,
+                )
+                db.add(run_log)
+                db.commit()
+                db.refresh(run_log)
 
-                    mcp_out = cls._execute_mcp_tool_call(db, task)
-                    resp = mcp_out["response"]
-                    try:
-                        body: Any = resp.json()
-                    except Exception as json_exc:  # pylint: disable=broad-exception-caught
-                        logger.error(
-                            "MCP 响应解析 JSON 失败 task_id=%s: %s",
-                            task_id,
-                            json_exc,
-                            exc_info=True,
-                        )
-                        body = {"raw": resp.text}
-                    if resp.status_code >= 400:
-                        run_log.run_status = "failed"
-                        run_log.run_result = "MCP 调用失败"
-                        run_log.error_message = (
-                            f"HTTP {resp.status_code}: {str(resp.text)[:2000]}"
-                        )
-                        run_log.output_json = cls._to_json_string(
-                            body if isinstance(body, dict) else {"body": body}
-                        )
+                mcp_out = cls._execute_mcp_tool_call(db, task)
+                resp = mcp_out["response"]
+                try:
+                    body: Any = resp.json()
+                except Exception as json_exc:  # pylint: disable=broad-exception-caught
+                    logger.error(
+                        "MCP 响应解析 JSON 失败 task_id=%s: %s",
+                        task_id,
+                        json_exc,
+                        exc_info=True,
+                    )
+                    body = {"raw": resp.text}
+                if resp.status_code >= 400:
+                    run_log.run_status = "failed"
+                    run_log.run_result = "MCP 调用失败"
+                    run_log.error_message = (
+                        f"HTTP {resp.status_code}: {str(resp.text)[:2000]}"
+                    )
+                    run_log.output_json = cls._to_json_string(
+                        body if isinstance(body, dict) else {"body": body}
+                    )
+                else:
+                    run_log.run_status = "success"
+                    run_log.run_result = "任务执行成功"
+                    run_log.error_message = None
+                    if isinstance(body, dict) and "data" in body:
+                        out_payload = body.get("data")
                     else:
-                        run_log.run_status = "success"
-                        run_log.run_result = "任务执行成功"
-                        run_log.error_message = None
-                        if isinstance(body, dict) and "data" in body:
-                            out_payload = body.get("data")
-                        else:
-                            out_payload = body
-                        run_log.output_json = cls._to_json_string(
-                            out_payload if out_payload is not None else body
-                        )
+                        out_payload = body
+                    run_log.output_json = cls._to_json_string(
+                        out_payload if out_payload is not None else body
+                    )
+
+                ended_at = cst_now()
+                run_log.ended_at = ended_at
+                run_log.duration_ms = int((ended_at - started_at).total_seconds() * 1000)
+                task.last_run_at = ended_at
+                task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=ended_at)
+                db.add(task)
+                db.add(run_log)
+                db.commit()
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.error("定时任务执行失败 task_id=%s", task_id, exc_info=True)
-                run_log.run_status = "failed"
-                run_log.run_result = "任务执行失败"
-                run_log.error_message = str(exc)
-
-            ended_at = cst_now()
-            run_log.ended_at = ended_at
-            run_log.duration_ms = int((ended_at - started_at).total_seconds() * 1000)
-            task.last_run_at = ended_at
-            task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=ended_at)
-            db.add(task)
-            db.add(run_log)
-            db.commit()
-            if task.dispatch_type == "skill":
-                cls._maybe_write_confirm_url(
-                    db,
-                    run_log=run_log,
-                    task=task,
-                    employee=employee,
-                    workspace=workspace,
+                if run_log is not None and started_at is not None:
+                    run_log.run_status = "failed"
+                    run_log.run_result = "任务执行失败"
+                    run_log.error_message = str(exc)
+                    ended_at = cst_now()
+                    run_log.ended_at = ended_at
+                    run_log.duration_ms = int((ended_at - started_at).total_seconds() * 1000)
+                    db.add(run_log)
+                task.last_run_at = cst_now()
+                task.next_run_at = TaskService.compute_next_run(
+                    task.cron_expression, now=task.last_run_at
                 )
+                db.add(task)
                 db.commit()
 

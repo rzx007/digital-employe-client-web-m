@@ -4,12 +4,12 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from src.db.session import get_db
+from src.db.session import get_db, get_session_local
 from src.models.response import BaseResponse, ListResponse, ResponseBase
 from src.schemas.workspace import FileEntry, WorkspaceCreate, WorkspaceRead, WorkspaceUpdate
 from src.service.chat_service import ChatService
@@ -81,31 +81,38 @@ class ChatSendResponse(BaseModel):
 async def chat_send(
     workspace_id: int,
     payload: ChatSendRequest,
-    db: Session = Depends(get_db),
 ) -> ResponseBase[ChatSendResponse]:
     """发送聊天消息并获取AI响应（非流式）。"""
     from src.service.agent import get_agent
     from src.models.employee import Employee
 
-    workspace = WorkspaceService.get_workspace(db, workspace_id)
-    employee = db.get(Employee, payload.employee_id)
-    if not employee:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到员工")
-
-    skills_path_payload = employee.skills_json
+    # 仅短事务读库后即关闭 Session；勿在 agent.astream（可能极久）期间占用连接，
+    # 否则与 LangGraph AsyncSqliteSaver 争用同一 SQLite 文件，易 database is locked。
+    db = get_session_local()()
     try:
-        skills_path = ChatService.resolve_employee_skills_dir(
-            skills_payload=skills_path_payload,
-            employee_id=employee.id,
-            employee_name=employee.name,
-            employee_code=employee.employee_code,
-        )
-    except Exception as exc:
-        logger.error("解析员工技能目录失败 employee_id=%s: %s", employee.id, exc, exc_info=True)
-        skills_path = ""
+        workspace = WorkspaceService.get_workspace(db, workspace_id)
+        employee = db.get(Employee, payload.employee_id)
+        if not employee:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到员工")
 
-    agent = get_agent(skills_path, workspace.root_path, employee_id=employee.id)
+        skills_path_payload = employee.skills_json
+        try:
+            skills_path = ChatService.resolve_employee_skills_dir(
+                skills_payload=skills_path_payload,
+                employee_id=employee.id,
+                employee_name=employee.name,
+                employee_code=employee.employee_code,
+            )
+        except Exception as exc:
+            logger.error("解析员工技能目录失败 employee_id=%s: %s", employee.id, exc, exc_info=True)
+            skills_path = ""
+
+        root_path = workspace.root_path
+        emp_id = employee.id
+    finally:
+        db.close()
+
+    agent = get_agent(skills_path, root_path, employee_id=emp_id)
 
     # Collect the full response from the agent
     collected_texts: list[str] = []

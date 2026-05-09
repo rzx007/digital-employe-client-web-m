@@ -86,8 +86,8 @@ export function useShiftCalendar(year: number, month: number) {
 
   const { data: employees = [], isLoading } = useQuery({
     queryKey: chatKeys.shiftCalendar(year, month),
-    queryFn: async () => {
-      const res = await fetchEmployees()
+    queryFn: async ({ signal }) => {
+      const res = await fetchEmployees({ signal })
       return (res?.data ?? []) as Employee[]
     },
     staleTime: 30_000,

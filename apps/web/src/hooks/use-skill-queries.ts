@@ -7,7 +7,7 @@ import { chatKeys } from "@/lib/query-keys/chat"
 export function useSkillListQuery() {
   return useQuery({
     queryKey: chatKeys.skills(),
-    queryFn: fetchSkillList,
+    queryFn: ({ signal }) => fetchSkillList({ signal }),
     staleTime: 0,
   })
 }
@@ -15,7 +15,7 @@ export function useSkillListQuery() {
 export function useLocalSkillDetailQuery(skillName: string | null) {
   return useQuery({
     queryKey: chatKeys.localSkillDetail(skillName ?? ""),
-    queryFn: () => fetchLocalSkillDetail(skillName!),
+    queryFn: ({ signal }) => fetchLocalSkillDetail(skillName!, { signal }),
     enabled: Boolean(skillName),
   })
 }

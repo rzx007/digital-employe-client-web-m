@@ -28,7 +28,7 @@ import { chatKeys } from "@/lib/query-keys/chat"
 export function useContactsQuery() {
   return useQuery({
     queryKey: chatKeys.contacts(),
-    queryFn: fetchContacts,
+    queryFn: ({ signal }) => fetchContacts(signal),
   })
 }
 
@@ -38,7 +38,8 @@ export function useConversationsQuery(
 ) {
   return useQuery({
     queryKey: chatKeys.conversations(contactId ?? ""),
-    queryFn: () => fetchConversationsByContactId(contactId!, contact),
+    queryFn: ({ signal }) =>
+      fetchConversationsByContactId(contactId!, contact, { signal }),
     enabled:
       Boolean(contactId) && Boolean(contact),
   })
@@ -47,7 +48,8 @@ export function useConversationsQuery(
 export function useMessagesQuery(conversationId: string | number | null) {
   return useQuery({
     queryKey: chatKeys.messages(String(conversationId ?? "")),
-    queryFn: () => fetchMessagesByConversationId(conversationId!),
+    queryFn: ({ signal }) =>
+      fetchMessagesByConversationId(conversationId!, { signal }),
     enabled: Boolean(conversationId),
     staleTime: 1000 * 60 * 0,
   })
@@ -56,8 +58,8 @@ export function useMessagesQuery(conversationId: string | number | null) {
 export function useCuratorConversationQuery() {
   return useQuery({
     queryKey: chatKeys.curator(),
-    queryFn: async () => {
-      const res = await fetchCuratorConversation()
+    queryFn: async ({ signal }) => {
+      const res = await fetchCuratorConversation({ signal })
       return res?.data ?? null
     },
     staleTime: Infinity,
@@ -67,10 +69,11 @@ export function useCuratorConversationQuery() {
 export function useOrchestrationPlansQuery() {
   return useQuery({
     queryKey: [...chatKeys.all, "orchestration-plans"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const { request } = await import("@/lib/request")
       const res = await request<{ code: number; data: Array<{ id: number; workspace_id: number; conversation_id: number; user_input: string; plan_json: string; status: string; total_tasks: number; completed_tasks: number; created_at: string; updated_at: string }> }>(
-        "/orchestration/plans?workspace_id=1"
+        "/orchestration/plans?workspace_id=1",
+        { signal },
       )
       return res?.data ?? []
     },
@@ -105,7 +108,8 @@ export function useCreateConversationMutation() {
 export function useEmployeeDetailQuery(id: string | null) {
   return useQuery({
     queryKey: chatKeys.employee(id ?? ""),
-    queryFn: () => fetchEmployeeById(Number(id!)),
+    queryFn: ({ signal }) =>
+      fetchEmployeeById(Number(id!), { signal }),
     enabled: Boolean(id),
     select: (res) => res.data,
   })
@@ -114,7 +118,8 @@ export function useEmployeeDetailQuery(id: string | null) {
 export function useGroupDetailQuery(id: string | null) {
   return useQuery({
     queryKey: chatKeys.group(id ?? ""),
-    queryFn: () => fetchGroupById(Number(id!)),
+    queryFn: ({ signal }) =>
+      fetchGroupById(Number(id!), { signal }),
     enabled: Boolean(id),
     select: (res) => res.data,
   })
@@ -203,8 +208,8 @@ export function useUpdateEmployeeMutation(employeeId: string) {
 export function useConversationResourcesQuery(conversationId: string | number | null) {
   return useQuery({
     queryKey: chatKeys.resources(String(conversationId)),
-    queryFn: async () => {
-      const res = await fetchConversationResources(conversationId!)
+    queryFn: async ({ signal }) => {
+      const res = await fetchConversationResources(conversationId!, { signal })
       return res.data
     },
     enabled: !!conversationId,
@@ -217,8 +222,8 @@ export function useResourceContentQuery(
 ) {
   return useQuery({
     queryKey: chatKeys.resourceContent(String(conversationId), path ?? ""),
-    queryFn: async () => {
-      const res = await fetchResourceContent(conversationId, path!)
+    queryFn: async ({ signal }) => {
+      const res = await fetchResourceContent(conversationId, path!, { signal })
       return res.data
     },
     enabled: !!path,

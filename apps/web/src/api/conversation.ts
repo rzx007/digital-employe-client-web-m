@@ -31,12 +31,16 @@ export async function createConversation(params: CreateConversationParams) {
  * 查询聊天会话列表
  * GET /chat/conversations
  */
-export async function fetchConversations(query?: ConversationQuery) {
+export async function fetchConversations(
+  query?: ConversationQuery,
+  opts?: { signal?: AbortSignal },
+) {
   return request<ApiResponse<ConversationItem[]>>(`/chat/conversations`, {
     params: {
       workspace_id: WORKSPACE_ID,
       ...query,
     },
+    ...(opts?.signal ? { signal: opts.signal } : {}),
   })
 }
 
@@ -45,10 +49,12 @@ export async function fetchConversations(query?: ConversationQuery) {
  * GET /chat/conversations/{conversation_id}/messages
  */
 export async function fetchConversationMessages(
-  conversationId: number | string
+  conversationId: number | string,
+  opts?: { signal?: AbortSignal },
 ) {
   return request<ApiResponse<ChatMessage[]>>(
-    `/chat/conversations/${conversationId}/messages`
+    `/chat/conversations/${conversationId}/messages`,
+    opts?.signal ? { signal: opts.signal } : undefined,
   )
 }
 export async function deleteConversation(conversationId: number | string) {
@@ -98,24 +104,35 @@ export async function cancelConversationStream(
 }
 
 export async function fetchConversationResources(
-  conversationId: number | string
+  conversationId: number | string,
+  opts?: { signal?: AbortSignal },
 ) {
   return request<ApiResponse<ResourceList>>(
-    `/chat/conversations/${conversationId}/resources`
+    `/chat/conversations/${conversationId}/resources`,
+    opts?.signal ? { signal: opts.signal } : undefined,
   )
 }
 
-export async function fetchCuratorConversation() {
-  return request<ApiResponse<ConversationItem>>(`/chat/curator/conversation`)
+export async function fetchCuratorConversation(opts?: {
+  signal?: AbortSignal
+}) {
+  return request<ApiResponse<ConversationItem>>(
+    `/chat/curator/conversation`,
+    opts?.signal ? { signal: opts.signal } : undefined,
+  )
 }
 
 export async function fetchResourceContent(
   conversationId: number | string,
-  path: string
+  path: string,
+  opts?: { signal?: AbortSignal },
 ) {
   return request<ApiResponse<ResourceContent>>(
     `/chat/conversations/${conversationId}/resources/content`,
-    { params: { path } }
+    {
+      params: { path },
+      ...(opts?.signal ? { signal: opts.signal } : {}),
+    },
   )
 }
 

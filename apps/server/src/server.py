@@ -66,15 +66,10 @@ def create_app() -> FastAPI:
                 })
 
         _stream_registry.on_task_finalized = _on_task_finalized
-        
-        # 初始化全局 AsyncSqliteSaver
+
         settings = get_settings()
         sqlite_path = resolve_sqlite_path(settings.sqlite_path)
         sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-        # 保持连接打开直到应用关闭
-        conn = await aiosqlite.connect(str(sqlite_path), check_same_thread=False)
-        init_checkpointer(conn)
-        logger.info("AsyncSqliteSaver initialized")
 
         await loop.run_in_executor(None, EmployeeService.migrate_local_employees_to_skill_path)
 
@@ -96,6 +91,15 @@ def create_app() -> FastAPI:
                 TaskService.sync_workspace_tasks(db, workspace.id)
 
         await loop.run_in_executor(None, _startup_data_init)
+
+        # LangGraph checkpointer：须在 SQLAlchemy 启动期写入结束后再连接，避免双连接抢锁
+        # （sqlite3.OperationalError: database is locked）
+        conn = await aiosqlite.connect(str(sqlite_path), check_same_thread=False)
+        await conn.execute("PRAGMA journal_mode=WAL")
+        await conn.execute("PRAGMA busy_timeout=30000")
+        await conn.commit()
+        init_checkpointer(conn)
+        logger.info("AsyncSqliteSaver initialized")
 
         # 启动调度器
         TaskSchedulerService.start()

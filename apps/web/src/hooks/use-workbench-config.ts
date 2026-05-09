@@ -17,10 +17,29 @@ interface UseWorkbenchConfigOptions {
 }
 
 export function useWorkbenchConfig({ employeeId, skills }: UseWorkbenchConfigOptions) {
+  const [prevEmployeeId, setPrevEmployeeId] = useState(employeeId)
+
   const [config, setConfig] = useState<WorkbenchConfig | null>(() => {
     if (!employeeId) return null
-    return loadWorkbenchConfig(employeeId) ?? initializeWorkbenchConfig(employeeId, skills)
+    return (
+      loadWorkbenchConfig(employeeId) ??
+      initializeWorkbenchConfig(employeeId, skills)
+    )
   })
+
+  if (employeeId !== prevEmployeeId) {
+    setPrevEmployeeId(employeeId)
+    if (!employeeId) {
+      setConfig(null)
+    } else {
+      const loaded = loadWorkbenchConfig(employeeId)
+      if (loaded) {
+        setConfig(loaded)
+      } else {
+        setConfig(initializeWorkbenchConfig(employeeId, skills))
+      }
+    }
+  }
 
   const refreshConfig = useCallback(() => {
     if (!employeeId) return

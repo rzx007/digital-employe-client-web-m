@@ -20,9 +20,12 @@ export async function fetchMcpList(): Promise<McpListItem[]> {
   return Array.isArray(res?.data) ? res.data : []
 }
 
-export async function fetchSkillList(): Promise<SkillListItem[]> {
+export async function fetchSkillList(opts?: {
+  signal?: AbortSignal
+}): Promise<SkillListItem[]> {
   const res = await request<{ code?: number; data?: SkillListItem[] }>(
-    "/skills/list"
+    "/skills/list",
+    opts?.signal ? { signal: opts.signal } : {},
   )
   return Array.isArray(res?.data) ? res.data : []
 }
@@ -41,19 +44,24 @@ export async function syncEmployees() {
  * 查询员工列表
  * GET /workspaces/{workspace_id}/employees
  */
-export async function fetchEmployees() {
-  const res = request<ApiResponse<Employee[]>>(
-    `/workspaces/${WORKSPACE_ID}/employees`
+export async function fetchEmployees(opts?: { signal?: AbortSignal }) {
+  return request<ApiResponse<Employee[]>>(
+    `/workspaces/${WORKSPACE_ID}/employees`,
+    opts?.signal ? { signal: opts.signal } : {},
   )
-  return res
 }
 
 /**
  * 查询员工详情
  * GET /employees/{employee_id}
  */
-export async function fetchEmployeeById(employeeId: number | string) {
-  return request<ApiResponse<Employee>>(`/employees/${employeeId}`)
+export async function fetchEmployeeById(
+  employeeId: number | string,
+  opts?: { signal?: AbortSignal }
+) {
+  return request<ApiResponse<Employee>>(`/employees/${employeeId}`, {
+    ...(opts?.signal ? { signal: opts.signal } : {}),
+  })
 }
 
 /**

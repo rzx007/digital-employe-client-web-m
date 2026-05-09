@@ -10,6 +10,8 @@ export interface MonthlyBalance {
   rank: number
 }
 
-export async function fetchMonthlyBalance() {
-  return request<ApiResponse<MonthlyBalance>>("/performance/monthly-balance")
+export async function fetchMonthlyBalance(opts?: { signal?: AbortSignal }) {
+  return request<ApiResponse<MonthlyBalance>>("/performance/monthly-balance", {
+    ...(opts?.signal ? { signal: opts.signal } : {}),
+  })
 }

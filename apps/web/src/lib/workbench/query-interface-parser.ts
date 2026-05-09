@@ -2,6 +2,7 @@ import type { MetadataSkill } from "@/api/types"
 import type { QueryInterface } from "@/types/workbench"
 import { request } from "@/lib/request"
 import { enrichInterfacesHeadersWithAi } from "@/lib/workbench/ai-extract-headers"
+import { resolveEmployeeIdForChatSend, WORKBENCH_CHAT_SEND_TIMEOUT_MS } from "@/lib/workbench/chat-send-employee"
 import { normalizeHeadersFromUnknown } from "@/lib/workbench/http-headers"
 import {
   buildHeuristicQueryInterfaces,
@@ -9,6 +10,11 @@ import {
 } from "@/lib/workbench/skill-url-extract"
 
 const WORKSPACE_ID = 1
+
+function isAbortError(e: unknown): boolean {
+  if (e == null || typeof e !== "object") return false
+  return (e as { name?: string }).name === "AbortError"
+}
 
 function extractJsonArrayFromAiText(aiText: string): unknown[] | null {
   const stripped = aiText
@@ -79,9 +85,10 @@ function needsHeaderEnrichmentAi(interfaces: QueryInterface[]): boolean {
  * responseFormat / fieldBinding 可在添加模块后由样例请求与 analyzeResponseFields 补全。
  */
 async function fetchInterfaceAnalysisAiItems(
-  employeeId: string,
+  chatEmployeeId: number,
   skillDescriptions: string,
-  heuristicJson: string
+  heuristicJson: string,
+  signal?: AbortSignal,
 ): Promise<Omit<QueryInterface, "id">[]> {
   const aiPrompt = `你是接口分析助手。下面「程序已从技能正文中提取到的 http(s) 地址」是权威列表：你必须为这些地址补充名称、描述、响应结构说明等，**禁止编造技能正文中不存在的 URL 或域名**；若技能里还有未被程序列出的查询接口（例如写在表格或图片里但正文未出现完整 URL），也不要新增，除非该 URL 的字符串确实出现在上面的技能原文中。
 
@@ -117,8 +124,10 @@ name, description, method, path, baseUrl（可选）, headers（可选）, respo
     method: "POST",
     body: JSON.stringify({
       question: aiPrompt,
-      employee_id: employeeId || "system",
+      employee_id: chatEmployeeId,
     }),
+    timeout: WORKBENCH_CHAT_SEND_TIMEOUT_MS,
+    ...(signal ? { signal } : {}),
   })
 
   const aiText = res.data.response
@@ -135,25 +144,20 @@ name, description, method, path, baseUrl（可选）, headers（可选）, respo
 
 /**
  * Parse skill prompts via AI, grounded by programmatic URL extraction from skill text.
+ * **skills** 应为当前用户选中的技能（通常一条）；不要将工作台列表中的全部技能拼入请求。
  * 性能：正文已能解析出 URL 时跳过「接口分析」大模型调用；各接口已有解析出的请求头时跳过「请求头补全」大模型调用。
  */
 export async function parseInterfacesFromSkills(
   employeeId: string,
-  skills: MetadataSkill[]
+  skills: MetadataSkill[],
+  chatEmployeeId?: number | null,
+  opts?: { signal?: AbortSignal },
 ): Promise<QueryInterface[]> {
   if (skills.length === 0) {
     return []
   }
 
-  // 调试：打印技能信息
-  console.log('[parseInterfacesFromSkills] skills count:', skills.length)
-  skills.forEach((s, i) => {
-    console.log(`[parseInterfacesFromSkills] skill ${i}:`, {
-      skillName: s.skillName,
-      hasSkillContent: !!(s.skillContent || s.skill_content),
-      contentLength: (s.skillContent || s.skill_content || '').length,
-    })
-  })
+  const numericChatId = resolveEmployeeIdForChatSend(employeeId, chatEmployeeId)
 
   // 兼容 status 为数字 1 或字符串 "1"，无 status 字段也默认启用
   const enabled = skills.filter((s) => s.status === undefined || s.status === 1 || s.status === "1")
@@ -182,11 +186,23 @@ export async function parseInterfacesFromSkills(
   let merged: QueryInterface[]
   let aiItems: Omit<QueryInterface, "id">[] = []
 
+  const signal = opts?.signal
+
   // Always call AI to get enriched interface information (responseFormat, fieldBinding, etc.)
   try {
-    aiItems = await fetchInterfaceAnalysisAiItems(employeeId, skillDescriptions, heuristicJson)
+    aiItems = await fetchInterfaceAnalysisAiItems(
+      numericChatId,
+      skillDescriptions,
+      heuristicJson,
+      signal,
+    )
   } catch (e) {
+    if (isAbortError(e)) throw e
     console.error("Failed to parse interfaces from skills (AI):", e)
+  }
+
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError")
   }
 
   merged = mergeHeuristicAndAiResults(heuristic, aiItems, skillBlob)
@@ -199,7 +215,12 @@ export async function parseInterfacesFromSkills(
   }
 
   if (needsHeaderEnrichmentAi(merged)) {
-    return enrichInterfacesHeadersWithAi(employeeId, merged, skillBlob)
+    return enrichInterfacesHeadersWithAi(
+      numericChatId,
+      merged,
+      skillBlob,
+      signal,
+    )
   }
 
   return merged

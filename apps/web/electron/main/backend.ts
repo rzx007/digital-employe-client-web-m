@@ -21,8 +21,22 @@ const BACKEND_PORT = process.env.VITE_BACKEND_PORT || 34567
 const BACKEND_READY_TIMEOUT = 30_000
 const KILL_TIMEOUT = 5000
 
+/** 开发模式监听地址：Windows 上对 0.0.0.0 绑定易触发 WinError 10013（权限/保留端口） */
+const DEV_UVICORN_HOST =
+  process.env.VITE_BACKEND_HOST ||
+  (process.platform === "win32" ? "127.0.0.1" : "0.0.0.0")
+
 let backendProcess: ChildProcess | null = null
 let backendReady = false
+
+function isUvicornReadyLine(log: string): boolean {
+  const port = String(BACKEND_PORT)
+  if (!log.includes(port)) return false
+  return (
+    log.includes("Uvicorn running") ||
+    log.includes("Application startup complete")
+  )
+}
 
 /**
  * 获取 py-server 目录路径
@@ -81,7 +95,7 @@ export function startBackend(): Promise<void> {
      * Uvicorn 启动日志格式: "Uvicorn running on http://0.0.0.0:34567 "
      */
     const checkReady = (log: string) => {
-      if (!backendReady && log.includes(`0.0.0.0:${BACKEND_PORT}`)) {
+      if (!backendReady && isUvicornReadyLine(log)) {
         backendReady = true
         clearTimeout(timeout)
         console.log(`[Backend] port: ${BACKEND_PORT}`)
@@ -109,7 +123,7 @@ export function startBackend(): Promise<void> {
     })
 
     backendProcess.on("exit", (code, signal) => {
-      console.log(`[Backend] qiut (code: ${code}, signal: ${signal})`)
+      console.log(`[Backend] quit (code: ${code}, signal: ${signal})`)
       backendProcess = null
       backendReady = false
     })
@@ -123,27 +137,52 @@ function startDevServer(resolve: () => void, reject: (err: Error) => void): void
   const serverDir = path.join(process.env.APP_ROOT!, "..", "server")
 
   console.log(`[Backend] starting dir: ${serverDir}`)
+  console.log(`[Backend] uvicorn ${DEV_UVICORN_HOST}:${BACKEND_PORT}`)
+
+  let settled = false
+  const finish = (fn: () => void) => {
+    if (settled) return
+    settled = true
+    fn()
+  }
 
   backendProcess = spawn(
     "uv",
-    ["run", "uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", BACKEND_PORT.toString(), "--reload"],
+    [
+      "run",
+      "uvicorn",
+      "src.server:app",
+      "--host",
+      DEV_UVICORN_HOST,
+      "--port",
+      String(BACKEND_PORT),
+      "--reload",
+    ],
     {
       cwd: serverDir,
       stdio: ["pipe", "pipe", "pipe"],
-      shell: true,
+      shell: false,
+      windowsHide: true,
+      env: {
+        ...process.env,
+        PYTHONUTF8: "1",
+        PYTHONIOENCODING: "utf-8",
+      },
     }
   )
 
   const timeout = setTimeout(() => {
-    reject(new Error(`backend timeout (${BACKEND_READY_TIMEOUT / 1000}s)`))
+    finish(() =>
+      reject(new Error(`backend timeout (${BACKEND_READY_TIMEOUT / 1000}s)`))
+    )
   }, BACKEND_READY_TIMEOUT)
 
   const checkReady = (log: string) => {
-    if (!backendReady && log.includes(`0.0.0.0:${BACKEND_PORT}`)) {
+    if (!backendReady && isUvicornReadyLine(log)) {
       backendReady = true
       clearTimeout(timeout)
       console.log(`[Backend] port: ${BACKEND_PORT}`)
-      resolve()
+      finish(() => resolve())
     }
   }
 
@@ -163,13 +202,24 @@ function startDevServer(resolve: () => void, reject: (err: Error) => void): void
     clearTimeout(timeout)
     console.error(`[Backend] startup failed:`, err)
     backendProcess = null
-    reject(err)
+    finish(() => reject(err))
   })
 
   backendProcess.on("exit", (code, signal) => {
     console.log(`[Backend] quit (code: ${code}, signal: ${signal})`)
+    const wasReady = backendReady
     backendProcess = null
     backendReady = false
+    if (!wasReady && code !== 0 && code !== null) {
+      clearTimeout(timeout)
+      finish(() =>
+        reject(
+          new Error(
+            `backend exited (code ${code}${signal ? `, signal ${signal}` : ""}). On Windows, WinError 10013 often means the port is blocked — try another port via VITE_BACKEND_PORT or set VITE_BACKEND_HOST=127.0.0.1.`
+          )
+        )
+      )
+    }
   })
 }
 
@@ -253,5 +303,5 @@ export function getBackendStatus() {
  * 获取后端端口号
  */
 export function getBackendPort(): number {
-  return BACKEND_PORT
+  return Number(BACKEND_PORT)
 }
