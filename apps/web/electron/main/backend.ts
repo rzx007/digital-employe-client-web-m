@@ -17,7 +17,7 @@ import path from "node:path"
  *   退出时用 process.kill(-pid, signal) 杀掉整个进程组。
  */
 
-const BACKEND_PORT = Number(process.env.VITE_BACKEND_PORT) || 58000
+const BACKEND_PORT = process.env.VITE_BACKEND_PORT || 34567
 const BACKEND_READY_TIMEOUT = 30_000
 const KILL_TIMEOUT = 5000
 
@@ -92,7 +92,7 @@ export function startBackend(): Promise<void> {
      * 就绪检测逻辑
      *
      * 监听 stdout 和 stderr，当输出包含 Uvicorn 监听地址时判定为就绪。
-     * Uvicorn 启动日志格式: "Uvicorn running on http://0.0.0.0:58000"
+     * Uvicorn 启动日志格式: "Uvicorn running on http://0.0.0.0:34567 "
      */
     const checkReady = (log: string) => {
       if (!backendReady && isUvicornReadyLine(log)) {
@@ -303,5 +303,5 @@ export function getBackendStatus() {
  * 获取后端端口号
  */
 export function getBackendPort(): number {
-  return BACKEND_PORT
+  return Number(BACKEND_PORT)
 }
