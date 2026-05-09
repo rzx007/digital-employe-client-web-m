@@ -37,7 +37,7 @@ def _ensure_feishu_registered() -> None:
             status_code=500,
             detail="飞书 OAuth 未配置，请在 config_kvs 表中设置 FEISHU_APP_ID 和 FEISHU_APP_SECRET",
         )
-    redirect_uri = settings.feishu_redirect_uri or "http://localhost:58000/oauth/feishu/callback"
+    redirect_uri = settings.feishu_redirect_uri or "http://localhost:34567 /oauth/feishu/callback"
     register_feishu(settings.feishu_app_id, settings.feishu_app_secret, redirect_uri)
 
 
@@ -49,7 +49,7 @@ async def oauth_authorize(provider: str, request: Request):
     _ensure_feishu_registered()
     client = get_feishu_client()
     settings = get_settings()
-    redirect_uri = settings.feishu_redirect_uri or "http://localhost:58000/oauth/feishu/callback"
+    redirect_uri = settings.feishu_redirect_uri or "http://localhost:34567 /oauth/feishu/callback"
 
     state = secrets.token_urlsafe(32)
     request.session["oauth_state"] = state
@@ -82,7 +82,7 @@ async def oauth_callback(provider: str, request: Request, code: str = "", state:
 
     _ensure_feishu_registered()
     settings = get_settings()
-    redirect_uri = settings.feishu_redirect_uri or "http://localhost:58000/oauth/feishu/callback"
+    redirect_uri = settings.feishu_redirect_uri or "http://localhost:34567 /oauth/feishu/callback"
 
     try:
         token = await _exchange_code_for_token(code, redirect_uri)
