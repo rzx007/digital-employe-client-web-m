@@ -264,7 +264,7 @@ function Placeholder({
   return (
     <div
       className={cn(
-        "pointer-events-none absolute -top-1 left-4 text-base text-muted-foreground/60",
+        "pointer-events-none absolute -top-1 left-4 text-sm text-muted-foreground/60",
         className
       )}
     >
@@ -353,9 +353,9 @@ export function LexicalPromptInputTextarea({
 
   const handleChange = controller
     ? (e: PromptChangeEvent) => {
-        controller.textInput.setInput(e.value)
-        onChange?.(e)
-      }
+      controller.textInput.setInput(e.value)
+      onChange?.(e)
+    }
     : (e: PromptChangeEvent) => onChange?.(e)
 
   const initialConfig = {
@@ -409,7 +409,7 @@ export function LexicalPromptInputTextarea({
           placeholder={
             <Placeholder
               placeholder={disabled ? disabledPlaceholder : placeholder}
-              className="py-2"
+              className="py-1"
             />
           }
           ErrorBoundary={LexicalErrorBoundary}

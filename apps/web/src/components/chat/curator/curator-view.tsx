@@ -498,6 +498,7 @@ export function CuratorView({
           status={chatStatus}
           disabled={curatorLoading || (!isBusy && !inputValue.trim())}
           size="compact"
+          placeholder="描述要做的事或目标，我来拆解并分派给数字员工；键入 @ 可指定经办人"
           className="w-full overflow-hidden shadow-xl bg-background/80"
           slashCommands={[]}
           mentionCandidates={mentionCandidates}

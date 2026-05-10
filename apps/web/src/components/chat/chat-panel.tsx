@@ -344,6 +344,7 @@ export function ChatPanel({
                 onStop={onStop}
                 status={status}
                 disabled={isSubmitDisabled}
+                placeholder="请输入任务，然后交给我, 键入 / 指定调用技能"
                 size="compact"
                 className="w-full overflow-hidden bg-background/80 shadow-xl"
                 slashCommands={slashCommands}

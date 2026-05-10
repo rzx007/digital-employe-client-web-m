@@ -279,7 +279,7 @@ function ChatPromptInputAttachments({
             <img
               alt=""
               aria-hidden="true"
-              className="size-5 shrink-0"
+              className="size-7 shrink-0"
               draggable={false}
               src={getFileIcon(filename)}
             />
@@ -292,9 +292,9 @@ function ChatPromptInputAttachments({
                   {filename}
                 </span>
                 <span className="text-[10px] text-muted-foreground tabular-nums">
-                  {formatAttachmentDisplaySize(sizeBytes)}
+                  {formatAttachmentDisplaySize(sizeBytes)}&nbsp;{statusLabel}
                 </span>
-                <div className="flex shrink-0 items-start">{statusLabel}</div>
+                {/* <div className="flex shrink-0 items-start">{statusLabel}</div> */}
               </div>
             </div>
           </div>

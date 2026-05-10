@@ -229,6 +229,7 @@ export function RecentConversations({
     const loaded = loadRecentConversations()
     // 移除 历史静态会话 curator-primary
     const cleaned = loaded.filter((c) => c.id !== `recent:curator-primary`)
+    saveRecentConversations(cleaned)
     const curatorId = getCuratorContactId()
     const hasCurator = cleaned.some((c) => c.contactId === curatorId)
     if (hasCurator) return cleaned
@@ -248,6 +249,8 @@ export function RecentConversations({
     saveRecentConversations(items)
     return items
   })
+
+
   const navigate = useNavigate()
 
   const [searchQuery, setSearchQuery] = React.useState("")
