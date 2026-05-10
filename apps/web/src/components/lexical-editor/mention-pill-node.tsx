@@ -8,8 +8,9 @@ import {
   type SerializedLexicalNode,
   type Spread,
 } from "lexical"
-import { cn } from "@workspace/ui/lib/utils"
 import type { ReactElement } from "react"
+
+import { MentionPillComponent } from "./mention-pill-component"
 
 export type SerializedMentionPillNode = Spread<
   {
@@ -20,22 +21,6 @@ export type SerializedMentionPillNode = Spread<
   },
   SerializedLexicalNode
 >
-
-function MentionPillComponent({ mentionName }: { mentionName: string }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[13px] font-medium",
-        "align-middle select-none",
-        "bg-primary/10 text-primary"
-      )}
-      contentEditable={false}
-    >
-      <span className="text-primary/60">@</span>
-      {mentionName}
-    </span>
-  )
-}
 
 export class MentionPillNode extends DecoratorNode<ReactElement | null> {
   __mentionId: string

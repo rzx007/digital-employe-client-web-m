@@ -8,8 +8,9 @@ import {
   type SerializedLexicalNode,
   type Spread,
 } from "lexical"
-import { cn } from "@workspace/ui/lib/utils"
 import type { ReactElement } from "react"
+
+import { CommandPillComponent } from "./command-pill-component"
 
 export type SerializedCommandPillNode = Spread<
   {
@@ -20,20 +21,6 @@ export type SerializedCommandPillNode = Spread<
   },
   SerializedLexicalNode
 >
-
-function CommandPillComponent({ commandTitle }: { commandTitle: string }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-[calc(var(--radius)-3px)] bg-primary/45 px-1.5 py-0.5 text-sm font-medium text-primary-foreground",
-        "align-middle select-none"
-      )}
-      contentEditable={false}
-    >
-      /{commandTitle}
-    </span>
-  )
-}
 
 export class CommandPillNode extends DecoratorNode<ReactElement | null> {
   __commandId: string

@@ -339,6 +339,13 @@ class ChatService:
 
         ChatService._append_message(db, conversation=conversation, role="user", content=question, extra_meta=extra_meta)
         request_messages = [*history_messages, {"role": "user", "content": question}]
+
+        # 将 extra_meta 中的文件信息注入 agent 上下文的 question（不污染 DB 中的原始消息）
+        if extra_meta and extra_meta.get("files"):
+            file_lines = [f"- {f.get('name', f['path'])} (路径: {f['path']})" for f in extra_meta["files"]]
+            file_context = "[上传的文件]:\n" + "\n".join(file_lines)
+            question = file_context + "\n\n" + question
+            request_messages[-1] = {"role": "user", "content": question}
         
         # 创建一个空的 assistant 消息占位（不标记 streaming 状态，
         # 等 registry.start 成功后再标记，避免 start 失败时留下僵尸消息）
@@ -358,6 +365,17 @@ class ChatService:
         target_type = conversation.target_type
         target_id = conversation.target_id
         if target_type == "curator":
+            # 注入 @mention 上下文，告知 orchestrator 用户指定了哪些员工
+            if extra_meta and extra_meta.get("mentions"):
+                names = [m.get("name") or f"ID:{m.get('id')}" for m in extra_meta["mentions"]]
+                ids = [str(m["id"]) for m in extra_meta["mentions"] if m.get("id")]
+                mention_context = (
+                    f"用户指定了以下员工来执行此任务：{', '.join(names)}"
+                    f"（员工ID: {', '.join(ids)}）。"
+                    f"请优先将任务分配给这些被@的员工。\n\n"
+                )
+                question = mention_context + question
+
             from src.service.orchestrator_agent import get_orchestrator_agent
             agent = get_orchestrator_agent(
                 workspace_id=conversation.workspace_id,

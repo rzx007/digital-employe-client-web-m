@@ -88,20 +88,6 @@ function getExtraMetaFromBody(body: any): Record<string, any> | undefined {
   const { metadata } = body as { metadata?: unknown }
   return metadata && typeof metadata === "object" ? metadata as Record<string, any> : undefined
 }
-function getFilePathsFromBody(body: object | undefined): string[] {
-  if (!body || typeof body !== "object") {
-    return []
-  }
-
-  const { attachments } = body as { attachments?: unknown }
-
-  if (!Array.isArray(attachments)) {
-    return []
-  }
-
-  return attachments.filter((a): a is string => typeof a === "string")
-}
-
 async function createEventSourceResponse(options: {
   conversationId: string
   prompt: string
@@ -218,13 +204,7 @@ export class LangChainChatTransport<
       throw new Error("消息内容不能为空")
     }
 
-    const filePaths = getFilePathsFromBody(body)
-
-    const filePathSection = filePaths.length > 0
-      ? "\n\n[上传的文件]:\n" + filePaths.map(p => `- ${p}`).join("\n")
-      : ""
-
-    const prompt = latestText + filePathSection
+    const prompt = latestText
 
     const stream = useMock
       ? createMockSSEStream(SeeData)

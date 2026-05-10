@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback, useMemo, type ComponentProps 
 import { useQueryClient } from "@tanstack/react-query"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useChat } from "@ai-sdk/react"
-import type { UIMessage } from "ai"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
@@ -135,48 +134,29 @@ export function ConversationChatView({
       const messageText = (typeof message === "string" ? message : message.text)?.trim() ?? ""
       if (!messageText) return
 
-      const pendingMeta = {
-        command: command ? { id: command.id, title: command.title } : undefined,
-        mentions: mentions.length > 0 ? mentions : undefined,
-      }
-      const hasPendingMeta = Boolean(
-        pendingMeta.command || pendingMeta.mentions?.length
-      )
-
       const paths = uploadedPathsRef.current
       if (paths.length > 0) {
         uploadedPathsRef.current = []
       }
+      const filesMeta = paths.length > 0 ? paths.map((p) => ({ path: p, name: p.split("/").pop() ?? p })) : undefined
+
+      const pendingMeta = {
+        command: command ? { id: command.id, title: command.title } : undefined,
+        mentions: mentions.length > 0 ? mentions : undefined,
+        files: filesMeta,
+      }
 
       try {
         await sendMessage(
-          { text: messageText },
+          { text: messageText, metadata: pendingMeta },
           {
             body: {
-              attachments: paths.length > 0 ? paths : undefined,
               conversationId,
               skill: command?.title ?? "",
               metadata: pendingMeta,
             },
           }
         )
-
-        if (hasPendingMeta) {
-          setMessages((prev) => {
-            const next = [...prev]
-            for (let i = next.length - 1; i >= 0; i--) {
-              if (next[i].role === "user") {
-                ; (
-                  next[i] as UIMessage & {
-                    metadata?: typeof pendingMeta
-                  }
-                ).metadata = pendingMeta
-                break
-              }
-            }
-            return next
-          })
-        }
       } catch (sendError) {
         toast.error("发送失败!", {
           description:
@@ -184,7 +164,7 @@ export function ConversationChatView({
         })
       }
     },
-    [command, mentions, sendMessage, conversationId, setMessages]
+    [command, mentions, sendMessage, conversationId]
   )
 
   const uploadedPathsRef = useRef<string[]>([])

@@ -60,11 +60,21 @@ interface UploadFileState {
 function ChatPromptInputAttachments({
   conversationId,
   onAttachmentsChange,
+  status,
 }: {
   conversationId: string | number | null
   onAttachmentsChange: (paths: string[]) => void
+  status: "submitted" | "streaming" | "ready" | "error"
 }) {
   const attachments = usePromptInputAttachments()
+  // 发送消息后清空附件
+  const prevStatusRef = useRef(status)
+  useEffect(() => {
+    if (prevStatusRef.current === "ready" && status === "submitted") {
+      attachments.clear()
+    }
+    prevStatusRef.current = status
+  }, [status, attachments])
   // useEffect(() => {
   //   console.log(111, attachments.files)
   // }, [attachments.files])
@@ -206,7 +216,7 @@ function ChatPromptInputAttachments({
   if (attachments.files.length === 0) return null
 
   return (
-    <div className="grid gap-2 px-1 pt-2 sm:grid-cols-3">
+    <div className="grid w-full grid-cols-2 gap-2 px-1 pt-2 lg:grid-cols-3">
       {attachments.files.map((file) => {
         const state = fileStates[file.id]
         const filename = file.filename || "unknown"
@@ -215,27 +225,27 @@ function ChatPromptInputAttachments({
         let statusLabel: React.ReactNode = null
         if (!conversationId) {
           statusLabel = (
-            <span className="shrink-0 rounded-full bg-yellow-100 px-1.5 py-0.5 text-[10px] text-yellow-700">
+            <span className="shrink-0 rounded-full bg-yellow-100 px-1.5 py-0.5 text-[9px] text-yellow-700">
               待上传
             </span>
           )
         } else if (state?.status === "uploading") {
           statusLabel = (
-            <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
-              <Spinner className="size-3" />
+            <span className="flex shrink-0 items-center gap-1 text-[9px] text-muted-foreground">
+              <Spinner className="size-2.5" />
               上传中
             </span>
           )
         } else if (state?.status === "done") {
           statusLabel = (
-            <span className="shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] text-green-700">
+            <span className="shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] text-green-700">
               已上传
             </span>
           )
         } else if (state?.status === "error") {
           statusLabel = (
             <span
-              className="shrink-0 cursor-help rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700"
+              className="shrink-0 cursor-help rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] text-red-700"
               title={state.error}
             >
               上传失败
@@ -246,17 +256,17 @@ function ChatPromptInputAttachments({
         return (
           <div
             key={file.id}
-            className="group relative flex w-full min-w-0 items-center gap-3 rounded-md border border-border/50 bg-background/70 px-3 py-2"
+            className="group relative flex w-full min-w-0 items-center gap-2 rounded-md border border-border/50 bg-background/70 px-2 py-1.5"
           >
             <button
               type="button"
-              className="absolute -top-1.5 -right-1.5 flex size-5 cursor-pointer items-center justify-center rounded-full border border-border/50 bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+              className="absolute -top-1 -right-1 flex size-4 cursor-pointer items-center justify-center rounded-full border border-border/50 bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
               onClick={() => handleRemove(file.id)}
               aria-label="移除附件"
             >
               <svg
-                width="12"
-                height="12"
+                width="10"
+                height="10"
                 viewBox="0 0 12 12"
                 fill="none"
                 stroke="currentColor"
@@ -269,14 +279,14 @@ function ChatPromptInputAttachments({
             <img
               alt=""
               aria-hidden="true"
-              className="size-8 shrink-0"
+              className="size-5 shrink-0"
               draggable={false}
               src={getFileIcon(filename)}
             />
             <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 w-full flex-col gap-1">
+              <div className="flex min-w-0 w-full flex-col gap-0.5">
                 <span
-                  className="min-w-0 truncate text-xs text-foreground"
+                  className="min-w-0 truncate text-[11px] text-foreground"
                   title={filename}
                 >
                   {filename}
@@ -343,6 +353,7 @@ export function ChatPromptInput({
             <ChatPromptInputAttachments
               conversationId={conversationId ?? null}
               onAttachmentsChange={onAttachmentsChange}
+              status={status}
             />
           )}
         </PromptInputHeader>

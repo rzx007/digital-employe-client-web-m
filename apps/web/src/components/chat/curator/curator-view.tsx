@@ -212,22 +212,23 @@ export function CuratorView({
       const messageText = (typeof message === "string" ? message : message.text)?.trim() ?? ""
       if (!messageText || !curatorConversationId) return
 
-      const pendingMeta = {
-        command: command ? { id: command.id, title: command.title } : undefined,
-        mentions: mentions.length > 0 ? mentions : undefined,
-      }
-
       const paths = uploadedPathsRef.current
       if (paths.length > 0) {
         uploadedPathsRef.current = []
       }
+      const filesMeta = paths.length > 0 ? paths.map((p) => ({ path: p, name: p.split("/").pop() ?? p })) : undefined
+
+      const pendingMeta = {
+        command: command ? { id: command.id, title: command.title } : undefined,
+        mentions: mentions.length > 0 ? mentions : undefined,
+        files: filesMeta,
+      }
 
       try {
         await sendMessage(
-          { text: messageText },
+          { text: messageText, metadata: pendingMeta },
           {
             body: {
-              attachments: paths.length > 0 ? paths : undefined,
               conversationId: curatorConversationId,
               skill: command?.title ?? "",
               metadata: pendingMeta,
@@ -280,6 +281,16 @@ export function CuratorView({
   )
 
   const contacts = useChatStore((s) => s.contacts)
+  const mentionCandidates = useMemo(() => {
+    return contacts
+      .filter((c) => c.type === "employee" && c.employee)
+      .map((c) => ({
+        id: c.employee!.id,
+        name: c.employee!.name,
+        avatar: c.employee!.avatar,
+        role: c.employee!.role,
+      }))
+  }, [contacts])
   const { data: executions = [] } = useAllTaskExecutions()
 
   /* ── Build unified timeline ── */
@@ -404,6 +415,13 @@ export function CuratorView({
                 Array.isArray(messageMeta.mentions)
                 ? (messageMeta.mentions as Array<{ id?: string; name?: string }>)
                 : []
+            const filesMeta =
+              messageMeta &&
+                typeof messageMeta === "object" &&
+                "files" in messageMeta &&
+                Array.isArray(messageMeta.files)
+                ? (messageMeta.files as Array<{ name: string; path: string }>)
+                : undefined
 
             return (
               <Message
@@ -436,7 +454,7 @@ export function CuratorView({
                 <MessageContent className="w-auto">
                   <div className="space-y-3">
                     {classifiedBlocks.length > 0 ? (
-                      <RenderClassifiedBlocks blocks={classifiedBlocks} commandMeta={commandMeta} mentionMeta={mentionMeta} messageId={message.id} />
+                      <RenderClassifiedBlocks blocks={classifiedBlocks} commandMeta={commandMeta} mentionMeta={mentionMeta} filesMeta={filesMeta} messageId={message.id} />
                     ) : message.role === "assistant" ? (
                       <MessageResponse />
                     ) : null}
@@ -482,7 +500,7 @@ export function CuratorView({
           size="compact"
           className="w-full overflow-hidden shadow-xl bg-background/80"
           slashCommands={[]}
-          mentionCandidates={[]}
+          mentionCandidates={mentionCandidates}
           conversationId={curatorConversationId}
           onAttachmentsChange={handleAttachmentsChange}
         />

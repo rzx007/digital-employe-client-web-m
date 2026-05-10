@@ -5,7 +5,7 @@ import {
   MessageContent,
   MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
-import { IconAlertTriangle } from "@tabler/icons-react"
+import { IconAlertTriangle, IconFile } from "@tabler/icons-react"
 import { classifyMessageParts } from "@/lib/chat/message-utils"
 import { FileChangeCards } from "./file-change-cards"
 import { ThinkingBlock } from "./thinking-block"
@@ -18,6 +18,7 @@ import {
   getMessageMeta,
   type ChatViewContact,
   type CommandMeta,
+  type FileMeta,
   type MentionMeta,
 } from "./chat-view-shared"
 import type {
@@ -27,13 +28,15 @@ import type {
 function MessageMetaBadges({
   commandMeta,
   mentionMeta,
+  filesMeta,
   messageId,
 }: {
   commandMeta: CommandMeta
   mentionMeta: MentionMeta
+  filesMeta?: FileMeta
   messageId: string
 }) {
-  if (!commandMeta?.title && mentionMeta.length === 0) return null
+  if (!commandMeta?.title && mentionMeta.length === 0 && !filesMeta?.length) return null
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-1.5">
       {commandMeta?.title && (
@@ -49,6 +52,15 @@ function MessageMetaBadges({
           @{mention.name ?? "unknown"}
         </span>
       ))}
+      {filesMeta?.map((file, index) => (
+        <span
+          key={`${messageId}:file:${index}`}
+          className="inline-flex items-center gap-1 rounded-md bg-green-500/10 px-2 py-0.5 text-[11px] text-green-600"
+        >
+          <IconFile className="size-3" />
+          {file.name}
+        </span>
+      ))}
     </div>
   )
 }
@@ -57,11 +69,13 @@ export function RenderClassifiedBlocks({
   blocks,
   commandMeta,
   mentionMeta,
+  filesMeta,
   messageId,
 }: {
   blocks: ClassifiedBlock[]
   commandMeta: CommandMeta
   mentionMeta: MentionMeta
+  filesMeta?: FileMeta
   messageId: string
 }) {
   return (
@@ -132,6 +146,7 @@ export function RenderClassifiedBlocks({
             <MessageMetaBadges
               commandMeta={commandMeta}
               mentionMeta={mentionMeta}
+              filesMeta={filesMeta}
               messageId={messageId}
             />
             <MessageResponse className="flex-1">{block.text}</MessageResponse>
@@ -171,6 +186,12 @@ function ChatMessageItemInner({ message, contact, includeFileChanges }: ChatMess
   )
     ? messageMeta.mentions
     : []
+  const filesMeta = (
+    messageMeta?.files &&
+    Array.isArray(messageMeta.files)
+  )
+    ? messageMeta.files
+    : undefined
 
   return (
     <Message
@@ -216,6 +237,7 @@ function ChatMessageItemInner({ message, contact, includeFileChanges }: ChatMess
               blocks={classifiedBlocks}
               commandMeta={commandMeta}
               mentionMeta={mentionMeta}
+              filesMeta={filesMeta}
               messageId={message.id}
             />
           ) : (

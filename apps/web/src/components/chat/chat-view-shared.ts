@@ -21,10 +21,12 @@ export function getContactDisplayName(contact: ChatViewContact) {
 
 export type CommandMeta = { id?: string; title?: string } | null
 export type MentionMeta = Array<{ id?: string; name?: string }>
+export type FileMeta = Array<{ name: string; path: string }>
 
 export function getMessageMeta(message: UIMessage): {
   command?: CommandMeta
   mentions?: MentionMeta
+  files?: FileMeta
 } | null {
   if (!message || typeof message !== "object") return null
   const meta = (message as Record<string, unknown>).metadata

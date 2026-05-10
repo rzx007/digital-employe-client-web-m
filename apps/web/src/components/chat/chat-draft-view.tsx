@@ -5,7 +5,7 @@ import {
   type ComponentProps,
 } from "react"
 import { useChat } from "@ai-sdk/react"
-import type { UIMessage, FileUIPart } from "ai"
+import type { FileUIPart } from "ai"
 
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
@@ -68,7 +68,7 @@ export function DraftChatView({
   )
   const createConversationMutation = useCreateConversationMutation()
 
-  const { messages, setMessages, sendMessage, status, error, stop } = useChat({
+  const { messages, sendMessage, status, error, stop } = useChat({
     id: selectedContactId
       ? `draft:${selectedContactId}:${draftSessionKey}`
       : `draft:chat-view:${draftSessionKey}`,
@@ -119,20 +119,14 @@ export function DraftChatView({
       const messageText = (typeof message === "string" ? message : message.text)?.trim() ?? ""
       if (!messageText) return
 
-      const pendingMeta = {
+      const pendingMetaBase = {
         command: command ? { id: command.id, title: command.title } : undefined,
         mentions: mentions.length > 0 ? mentions : undefined,
       }
-      const hasPendingMeta = Boolean(
-        pendingMeta.command || pendingMeta.mentions?.length
-      )
 
       try {
         let conversationId = useChatStore.getState().selectedConversationId
 
-        /**
-         * 如果当前没有会话，则创建一个新会话
-         */
         if (!conversationId) {
           const createdConversation =
             await createConversationMutation.mutateAsync({
@@ -153,34 +147,19 @@ export function DraftChatView({
           )
         }
 
+        const filesMeta = uploadedPaths.length > 0 ? uploadedPaths.map((p) => ({ path: p, name: p.split("/").pop() ?? p })) : undefined
+        const pendingMeta = filesMeta ? { ...pendingMetaBase, files: filesMeta } : pendingMetaBase
+
         await sendMessage(
-          { text: messageText },
+          { text: messageText, metadata: pendingMeta },
           {
             body: {
-              attachments: uploadedPaths.length > 0 ? uploadedPaths : undefined,
               conversationId,
               skill: command?.title ?? "",
               metadata: pendingMeta,
             },
           }
         )
-
-        if (hasPendingMeta) {
-          setMessages((prev) => {
-            const next = [...prev]
-            for (let i = next.length - 1; i >= 0; i--) {
-              if (next[i].role === "user") {
-                ; (
-                  next[i] as UIMessage & {
-                    metadata?: typeof pendingMeta
-                  }
-                ).metadata = pendingMeta
-                break
-              }
-            }
-            return next
-          })
-        }
       } catch (sendError) {
         toast.error("发送失败", {
           description:
@@ -194,7 +173,6 @@ export function DraftChatView({
       createConversationMutation,
       selectedContactId,
       selectedContact,
-      setMessages,
       sendMessage,
       setSelectedConversationId,
     ]
