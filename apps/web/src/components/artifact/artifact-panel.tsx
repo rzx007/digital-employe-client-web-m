@@ -23,6 +23,7 @@ import {
   IconFileTypeCsv,
   IconPhoto,
   IconSparkles,
+  IconRefresh,
   IconSearch,
   IconTrash,
 } from "@tabler/icons-react"
@@ -67,6 +68,13 @@ const EMPTY_RESOURCE_LIST: ResourceList = {
   uploads: [],
   skills_draft: [],
 }
+
+/** 侧栏树内文件名/文件夹名展示宽度；完整名见原生 title */
+const ARTIFACT_TREE_NAME_ROW_CLASS =
+  "[&_button.min-w-0.flex-1>span:last-child]:max-w-[11rem]"
+const ARTIFACT_TREE_FILE_NAME_MAX_W = "max-w-[11rem]"
+/** 预览区标题栏文件名 */
+const ARTIFACT_DETAIL_NAME_MAX_W = "max-w-[min(100%,22rem)]"
 
 function getParentPaths(path: string) {
   const segments = path.split("/").filter(Boolean)
@@ -197,10 +205,12 @@ function ResourceContextMenu({
   entry,
   conversationId,
   onDelete,
+  onRefresh,
 }: {
   entry: ResourceEntry
   conversationId: string | number
   onDelete: (entry: ResourceEntry) => void
+  onRefresh: () => void
 }) {
   const handleDownload = async () => {
     await downloadResource(conversationId, entry.path)
@@ -211,6 +221,10 @@ function ResourceContextMenu({
       <ContextMenuItem onSelect={handleDownload}>
         <IconDownload className="size-4 text-muted-foreground" />
         <span>下载</span>
+      </ContextMenuItem>
+      <ContextMenuItem onSelect={onRefresh}>
+        <IconRefresh className="size-4 text-muted-foreground" />
+        <span>刷新</span>
       </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem variant="destructive" onSelect={() => onDelete(entry)}>
@@ -225,14 +239,22 @@ function renderEntry(
   entry: ResourceEntry,
   conversationId: string | number,
   onDelete: (entry: ResourceEntry) => void,
+  onRefresh: () => void,
 ) {
   if (entry.entry_type === "directory") {
     return (
       <ContextMenu key={entry.path}>
         <ContextMenuTrigger asChild>
           <div>
-            <FileTreeFolder className="truncate" path={entry.path} name={entry.name}>
-              {entry.children?.map((child) => renderEntry(child, conversationId, onDelete))}
+            <FileTreeFolder
+              className={ARTIFACT_TREE_NAME_ROW_CLASS}
+              path={entry.path}
+              name={entry.name}
+              title={entry.name}
+            >
+              {entry.children?.map((child) =>
+                renderEntry(child, conversationId, onDelete, onRefresh),
+              )}
             </FileTreeFolder>
           </div>
         </ContextMenuTrigger>
@@ -240,6 +262,7 @@ function renderEntry(
           entry={entry}
           conversationId={conversationId}
           onDelete={onDelete}
+          onRefresh={onRefresh}
         />
       </ContextMenu>
     )
@@ -256,13 +279,22 @@ function renderEntry(
         >
           <span className="size-4 shrink-0" />
           <span className="shrink-0">{getFileIcon(entry.artifact_type)}</span>
-          <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate",
+              ARTIFACT_TREE_FILE_NAME_MAX_W,
+            )}
+            title={entry.name}
+          >
+            {entry.name}
+          </span>
         </FileTreeFile>
       </ContextMenuTrigger>
       <ResourceContextMenu
         entry={entry}
         conversationId={conversationId}
         onDelete={onDelete}
+        onRefresh={onRefresh}
       />
     </ContextMenu>
   )
@@ -401,6 +433,17 @@ export const ArtifactPanel = ({
 
   const queryClient = useQueryClient()
 
+  const handleRefreshResources = React.useCallback(() => {
+    if (!conversationId) return
+    const id = String(conversationId)
+    void queryClient.invalidateQueries({ queryKey: chatKeys.resources(id) })
+    if (selectedFilePath) {
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.resourceContent(id, selectedFilePath),
+      })
+    }
+  }, [conversationId, queryClient, selectedFilePath])
+
   const handleDelete = async (entry: ResourceEntry) => {
     if (!conversationId) return
     try {
@@ -520,29 +563,67 @@ export const ArtifactPanel = ({
                     className="h-full rounded-none border-0 bg-transparent"
                   >
                     {filteredArtifacts.length > 0 && (
-                      <FileTreeFolder path="/artifacts" name="artifacts">
-                        {filteredArtifacts.map((e) => renderEntry(e, conversationId!, handleDelete))}
+                      <FileTreeFolder
+                        className={ARTIFACT_TREE_NAME_ROW_CLASS}
+                        path="/artifacts"
+                        name="artifacts"
+                        title="artifacts"
+                      >
+                        {filteredArtifacts.map((e) =>
+                          renderEntry(
+                            e,
+                            conversationId!,
+                            handleDelete,
+                            handleRefreshResources,
+                          ),
+                        )}
                       </FileTreeFolder>
                     )}
                     {filteredUploads.length > 0 && (
-                      <FileTreeFolder path="/uploads" name="uploads">
-                        {filteredUploads.map((e) => renderEntry(e, conversationId!, handleDelete))}
+                      <FileTreeFolder
+                        className={ARTIFACT_TREE_NAME_ROW_CLASS}
+                        path="/uploads"
+                        name="uploads"
+                        title="uploads"
+                      >
+                        {filteredUploads.map((e) =>
+                          renderEntry(
+                            e,
+                            conversationId!,
+                            handleDelete,
+                            handleRefreshResources,
+                          ),
+                        )}
                       </FileTreeFolder>
                     )}
                     {filteredSkillsDraft.length > 0 && (
-                      <FileTreeFolder path="/skills-draft" name="skills-draft">
+                      <FileTreeFolder
+                        className={ARTIFACT_TREE_NAME_ROW_CLASS}
+                        path="/skills-draft"
+                        name="skills-draft"
+                        title="skills-draft"
+                      >
                         {filteredSkillsDraft.map((skill) => (
                           <ContextMenu key={skill.path}>
                             <ContextMenuTrigger asChild>
                               <div>
                                 <FileTreeFolder
+                                  className={ARTIFACT_TREE_NAME_ROW_CLASS}
                                   path={skill.path}
                                   name={skill.name}
+                                  title={skill.name}
                                 >
                                   <span className="flex items-center gap-1">
                                     <IconSparkles className="size-3 text-amber-500" />
                                   </span>
-                                  {skill.children?.map((e) => renderEntry(e, conversationId!, handleDelete))}
+                                  {skill.children?.map((e) =>
+                                    renderEntry(
+                                      e,
+                                      conversationId!,
+                                      handleDelete,
+                                      handleRefreshResources,
+                                    ),
+                                  )}
                                 </FileTreeFolder>
                               </div>
                             </ContextMenuTrigger>
@@ -550,6 +631,7 @@ export const ArtifactPanel = ({
                               entry={skill}
                               conversationId={conversationId!}
                               onDelete={handleDelete}
+                              onRefresh={handleRefreshResources}
                             />
                           </ContextMenu>
                         ))}
@@ -577,7 +659,17 @@ export const ArtifactPanel = ({
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-center gap-2">
                     {selectedEntry && getFileIcon(selectedEntry.artifact_type)}
-                    <h3 className="truncate text-sm font-medium">
+                    <h3
+                      className={cn(
+                        "min-w-0 truncate text-sm font-medium",
+                        ARTIFACT_DETAIL_NAME_MAX_W,
+                      )}
+                      title={
+                        selectedEntry?.name
+                          ? selectedEntry.name
+                          : undefined
+                      }
+                    >
                       {selectedEntry?.name ?? "选择文件"}
                     </h3>
                   </div>
@@ -592,7 +684,12 @@ export const ArtifactPanel = ({
                     {selectedEntry?.path && (
                       <>
                         <span className="shrink-0">·</span>
-                        <span className="truncate">{selectedEntry.path}</span>
+                        <span
+                          className="min-w-0 flex-1 truncate"
+                          title={selectedEntry.path}
+                        >
+                          {selectedEntry.path}
+                        </span>
                       </>
                     )}
                   </div>

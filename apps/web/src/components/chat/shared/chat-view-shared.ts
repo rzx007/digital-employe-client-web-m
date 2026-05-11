@@ -29,7 +29,7 @@ export function getMessageMeta(message: UIMessage): {
   files?: FileMeta
 } | null {
   if (!message || typeof message !== "object") return null
-  const meta = (message as Record<string, unknown>).metadata
+  const meta = (message as unknown as Record<string, unknown>).metadata
   return meta && typeof meta === "object"
     ? (meta as { command?: CommandMeta; mentions?: MentionMeta })
     : null

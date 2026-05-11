@@ -26,6 +26,10 @@ import {
 } from "../shared/chat-view-shared"
 import type { ClassifiedBlock } from "@/lib/chat/message-classifier"
 
+/** 单行展示上限，超出由 CSS 省略；完整文案放在 title */
+const META_BADGE_MAX_W = "max-w-[10rem]"
+const META_FILE_BADGE_MAX_W = "max-w-[14rem]"
+
 function MessageMetaBadges({
   commandMeta,
   mentionMeta,
@@ -40,27 +44,36 @@ function MessageMetaBadges({
   if (!commandMeta?.title && mentionMeta.length === 0 && !filesMeta?.length)
     return null
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+    <div className="flex min-w-0 max-w-full shrink flex-wrap items-center gap-1.5">
       {commandMeta?.title && (
-        <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+        <span
+          className={`truncate rounded-md bg-primary/10 px-2 py-0.5 text-[11px] text-primary ${META_BADGE_MAX_W}`}
+          title={`/${commandMeta.title}`}
+        >
           /{commandMeta.title}
         </span>
       )}
-      {mentionMeta.map((mention, index) => (
-        <span
-          key={mention.id ?? `${messageId}:mention:${index}`}
-          className="rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-600"
-        >
-          @{mention.name ?? "unknown"}
-        </span>
-      ))}
+      {mentionMeta.map((mention, index) => {
+        const name = mention.name ?? "unknown"
+        const label = `@${name}`
+        return (
+          <span
+            key={mention.id ?? `${messageId}:mention:${index}`}
+            className={`truncate rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-600 ${META_BADGE_MAX_W}`}
+            title={label}
+          >
+            {label}
+          </span>
+        )
+      })}
       {filesMeta?.map((file, index) => (
         <span
           key={`${messageId}:file:${index}`}
-          className="inline-flex items-center gap-1 rounded-md bg-green-500/10 px-2 py-0.5 text-[11px] text-green-600"
+          className={`inline-flex min-w-0 items-center gap-1 rounded-md bg-green-500/10 px-2 py-0.5 text-[11px] text-green-600 ${META_FILE_BADGE_MAX_W}`}
+          title={file.name}
         >
-          <IconFile className="size-3" />
-          {file.name}
+          <IconFile className="size-3 shrink-0" />
+          <span className="min-w-0 truncate">{file.name}</span>
         </span>
       ))}
     </div>
@@ -137,14 +150,21 @@ export function RenderClassifiedBlocks({
           )
         }
         return (
-          <div className="flex w-full items-start space-x-2" key={block.key}>
-            <MessageMetaBadges
-              commandMeta={commandMeta}
-              mentionMeta={mentionMeta}
-              filesMeta={filesMeta}
-              messageId={messageId}
-            />
-            <MessageResponse className="flex-1">{block.text}</MessageResponse>
+          <div
+            className="flex w-full min-w-0 flex-wrap items-start gap-2"
+            key={block.key}
+          >
+            <div className="min-w-0 max-w-full shrink-0">
+              <MessageMetaBadges
+                commandMeta={commandMeta}
+                mentionMeta={mentionMeta}
+                filesMeta={filesMeta}
+                messageId={messageId}
+              />
+            </div>
+            <MessageResponse className="min-w-0 grow shrink basis-[12rem]">
+              {block.text}
+            </MessageResponse>
           </div>
         )
       })}
@@ -217,7 +237,7 @@ function ChatMessageItemInner({
           </span>
         </div>
       )}
-      <MessageContent className="w-auto">
+      <MessageContent className="w-full min-w-0">
         <div className="space-y-3">
           {classifiedBlocks.length > 0 ? (
             <RenderClassifiedBlocks

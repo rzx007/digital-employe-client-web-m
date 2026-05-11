@@ -319,10 +319,10 @@ export function ChatPanel({
                 <div className="mx-auto w-[98%]">
                   <PendingMessageQueue
                     queue={pendingMessages}
-                    onRemove={onPendingRemove ?? (() => {})}
-                    onSendNow={onPendingSendNow ?? (() => {})}
-                    onMoveUp={onPendingMoveUp ?? (() => {})}
-                    onMoveDown={onPendingMoveDown ?? (() => {})}
+                    onRemove={onPendingRemove ?? (() => { })}
+                    onSendNow={onPendingSendNow ?? (() => { })}
+                    onMoveUp={onPendingMoveUp ?? (() => { })}
+                    onMoveDown={onPendingMoveDown ?? (() => { })}
                   />
                 </div>
               )}

@@ -4,6 +4,8 @@ import logging
 import shutil
 import io
 import zipfile
+import base64
+import mimetypes
 from pathlib import Path
 
 from src.schemas.resource import (
@@ -27,6 +29,7 @@ ALLOWED_UPLOAD_EXTENSIONS: set[str] = {
     ".sh", ".bash", ".zsh", ".sql", ".r", ".m",
     ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
     ".geojson", ".jsonl", ".ndjson",
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
 }
 
 MAX_UPLOAD_FILE_SIZE = 200 * 1024 * 1024
@@ -132,8 +135,15 @@ class ResourceService:
         if resolved is None or not resolved.is_file():
             return None
 
+        artifact_type = infer_artifact_type(path)
         try:
-            content = resolved.read_text(encoding="utf-8")
+            if artifact_type == "image":
+                data = resolved.read_bytes()
+                mt, _ = mimetypes.guess_type(resolved.name)
+                mime = mt or "application/octet-stream"
+                content = f"data:{mime};base64,{base64.b64encode(data).decode()}"
+            else:
+                content = resolved.read_text(encoding="utf-8")
         except Exception as exc:
             logger.error("读取资源文件失败 path=%s: %s", path, exc, exc_info=True)
             return None
@@ -141,7 +151,7 @@ class ResourceService:
         return ResourceContent(
             path=path,
             content=content,
-            artifact_type=infer_artifact_type(path),
+            artifact_type=artifact_type,
             language=infer_artifact_language(path),
         )
 

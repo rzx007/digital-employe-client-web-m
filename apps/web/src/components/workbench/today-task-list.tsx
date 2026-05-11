@@ -13,7 +13,9 @@ interface TodayTaskListProps {
 }
 
 function formatTime(dateStr: string): string {
+  if (!dateStr.trim()) return "--"
   const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return "--"
   return date.toLocaleTimeString("zh-CN", {
     hour: "2-digit",
     minute: "2-digit",
@@ -44,7 +46,6 @@ export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
     },
     [selectConversation, setActiveTab],
   )
-
   const sorted = useMemo(() => {
     return [...executions].sort((a, b) => {
       if (a.run_status === "running" && b.run_status !== "running") return -1
@@ -83,7 +84,7 @@ export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
           const rowClassName = cn(
             "flex items-center gap-2 rounded-md border p-2 transition-colors",
             task.run_status === "running" &&
-              "border-blue-300 bg-blue-50/50 dark:bg-blue-950/20",
+            "border-blue-300 bg-blue-50/50 dark:bg-blue-950/20",
             canOpenChat && "cursor-pointer hover:bg-muted/40",
             !canOpenChat && "cursor-default",
           )
