@@ -1,6 +1,8 @@
 import asyncio
+import os
 import shlex
 import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -91,21 +93,75 @@ class SkillAwareShellBackend(LocalShellBackend):
         cancel_requested = threading.Event()
         # 用容器把子进程引用从线程暴露给 async 侧，以便直接 kill
         _proc_ref: list[subprocess.Popen] = []
+        # 临时文件替代 subprocess.PIPE，避免子进程启动的后代进程（如浏览器）
+        # 持有 PIPE 写端句柄不释放，导致 proc.stdout 永远等不到 EOF 而挂起
+        _tmp_path: str | None = None
+        _POLL_SECONDS = 0.5
+        _READ_CHUNK = 65536       # 文件分块读取大小，控制内存峰值
+        _MAX_TMPFILE_BYTES = 1024 * 1024  # 临时文件上限 1MB，防磁盘写满
 
         def _read_lines_sync() -> int:
+            nonlocal _tmp_path
+            tmp = tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.stdout')
+            tmp.close()
+            _tmp_path = tmp.name
+
             env = {**self._env, "PYTHONUNBUFFERED": "1"}
+            stdout_handle = open(_tmp_path, 'ab')
             proc = subprocess.Popen(  # noqa: S602
                 rewritten,
-                stdout=subprocess.PIPE,
+                stdout=stdout_handle,            # stdout → 临时文件，不用 PIPE
                 stderr=subprocess.STDOUT,
                 shell=True,
                 env=env,
                 cwd=str(self.cwd),
             )
-            _proc_ref.append(proc)  # 暴露给 async 侧
+            stdout_handle.close()                # 释放本进程对文件的引用
+            _proc_ref.append(proc)
+
             try:
-                for line_bytes in proc.stdout:
-                    line = self._decode_output_bytes(line_bytes).rstrip("\r\n")
+                last_size = 0
+                partial_line = b''
+                file_truncated = False
+
+                while True:
+                    if proc.poll() is not None:   # 子进程已退出
+                        break
+                    if cancel_requested.is_set():  # 外部取消
+                        break
+
+                    time.sleep(_POLL_SECONDS)
+
+                    # 读取临时文件尾部增量（分块读，64KB / chunk）
+                    try:
+                        with open(_tmp_path, 'rb') as f:
+                            f.seek(last_size)
+                            while True:
+                                chunk = f.read(_READ_CHUNK)
+                                if not chunk:
+                                    break
+                                data = partial_line + chunk
+                                *complete_lines, partial_line = data.split(b'\n')
+                                for line_bytes in complete_lines:
+                                    line = self._decode_output_bytes(line_bytes).rstrip("\r\n")
+                                    loop.call_soon_threadsafe(queue.put_nowait, line)
+                            last_size = f.tell()
+                            if last_size > _MAX_TMPFILE_BYTES:
+                                file_truncated = True
+                                break
+                    except Exception:
+                        continue
+
+                    if file_truncated:
+                        loop.call_soon_threadsafe(
+                            queue.put_nowait,
+                            "... Output truncated (超过 1MB)",
+                        )
+                        break
+
+                # flush 末尾不完整行
+                if partial_line:
+                    line = self._decode_output_bytes(partial_line).rstrip("\r\n")
                     loop.call_soon_threadsafe(queue.put_nowait, line)
                 proc.wait()
             finally:
@@ -114,6 +170,10 @@ class SkillAwareShellBackend(LocalShellBackend):
                     proc.kill()
                     proc.wait()
                 loop.call_soon_threadsafe(queue.put_nowait, None)
+                try:
+                    os.unlink(_tmp_path)
+                except Exception:
+                    pass
             return proc.returncode
 
         future = loop.run_in_executor(None, _read_lines_sync)
