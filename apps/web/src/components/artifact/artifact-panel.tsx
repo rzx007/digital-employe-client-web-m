@@ -43,6 +43,7 @@ import { chatKeys } from "@/lib/query-keys/chat"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { toast } from "sonner"
 import { CodeRenderer } from "./artifact-content/code-renderer"
+import { DocViewerRenderer } from "./artifact-content/doc-viewer-renderer"
 import { ImageRenderer } from "./artifact-content/image-renderer"
 import { SheetRenderer } from "./artifact-content/sheet-renderer"
 import { TextRenderer } from "./artifact-content/text-renderer"
@@ -61,6 +62,7 @@ const renderers: Record<string, React.ComponentType<{ artifact: Artifact; classN
   sheet: SheetRenderer,
   image: ImageRenderer,
   "skill-draft": CodeRenderer,
+  document: DocViewerRenderer,
 }
 
 const EMPTY_RESOURCE_LIST: ResourceList = {
@@ -182,9 +184,27 @@ function getArtifactTypeLabel(artifactType: string | null | undefined) {
       return "技能草稿"
     case "text":
       return "文本"
+    case "document":
+      return "文档"
     default:
       return "文件"
   }
+}
+
+const DOCUMENT_EXTENSIONS = new Set([
+  "pdf",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "ppt",
+  "pptx",
+])
+
+function isDocumentFile(path: string | null | undefined): boolean {
+  if (!path) return false
+  const ext = path.split(".").pop()?.toLowerCase()
+  return ext ? DOCUMENT_EXTENSIONS.has(ext) : false
 }
 
 function getFileIcon(artifactType: string | null) {
@@ -196,6 +216,8 @@ function getFileIcon(artifactType: string | null) {
       return <IconFileTypeCsv className="size-4 text-green-500" />
     case "image":
       return <IconPhoto className="size-4 text-purple-500" />
+    case "document":
+      return <IconFile className="size-4 text-orange-500" />
     default:
       return <IconFile className="size-4 text-muted-foreground" />
   }
@@ -398,12 +420,23 @@ export const ArtifactPanel = ({
   const selectedFilePath =
     selectedEntry?.entry_type === "file" ? selectedEntry.path : null
 
+  const isDocFile = isDocumentFile(selectedFilePath)
+
   const { data: resourceContent } = useResourceContentQuery(
     conversationId!,
-    selectedFilePath
+    isDocFile ? null : selectedFilePath,
   )
 
   const artifactForRenderer = React.useMemo((): Artifact | null => {
+    if (isDocFile && selectedEntry && conversationId) {
+      return {
+        id: `resource:${selectedPath}`,
+        type: "document",
+        title: selectedEntry.name,
+        content: "",
+        metadata: { conversationId, resourcePath: selectedPath ?? undefined },
+      }
+    }
     if (!resourceContent) return null
     return {
       id: `resource:${selectedPath}`,
@@ -412,13 +445,17 @@ export const ArtifactPanel = ({
       content: resourceContent.content,
       language: resourceContent.language ?? undefined,
     }
-  }, [resourceContent, selectedPath])
+  }, [isDocFile, selectedEntry, conversationId, resourceContent, selectedPath])
 
   const Renderer = artifactForRenderer
     ? renderers[artifactForRenderer.type] ?? TextRenderer
     : null
   const selectedFileSize = formatFileSize(selectedEntry?.size)
-  const selectedTypeLabel = getArtifactTypeLabel(selectedEntry?.artifact_type)
+  const selectedTypeLabel = getArtifactTypeLabel(
+    isDocumentFile(selectedEntry?.path)
+      ? "document"
+      : selectedEntry?.artifact_type,
+  )
 
   const handleCopy = async () => {
     if (artifactForRenderer) {

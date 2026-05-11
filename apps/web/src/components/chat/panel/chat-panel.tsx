@@ -314,7 +314,7 @@ export function ChatPanel({
               <ConversationScrollButton />
             </Conversation>
 
-            <div className="mx-auto w-full max-w-4xl border-none py-4">
+            <div className="mx-auto w-full max-w-4xl border-none py-4 px-1">
               {pendingMessages && pendingMessages.length > 0 && (
                 <div className="mx-auto w-[98%]">
                   <PendingMessageQueue

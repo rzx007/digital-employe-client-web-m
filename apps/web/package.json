@@ -28,6 +28,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@iamjariwala/react-doc-viewer": "^1.8.0",
     "@lexical/react": "^0.42.0",
     "@ncdai/react-wheel-picker": "^1.2.2",
     "@tabler/icons-react": "^3.40.0",

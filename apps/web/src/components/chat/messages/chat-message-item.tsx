@@ -38,7 +38,7 @@ function MessageMetaBadges({
 }) {
   if (!commandMeta?.title && mentionMeta.length === 0 && !filesMeta?.length) return null
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
       {commandMeta?.title && (
         <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
           /{commandMeta.title}
@@ -140,7 +140,7 @@ export function RenderClassifiedBlocks({
         }
         return (
           <div
-            className="flex w-full items-start space-x-2"
+            className="flex w-full min-w-0 flex-wrap items-start gap-2"
             key={block.key}
           >
             <MessageMetaBadges
