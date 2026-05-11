@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, useCallback, useMemo, type ComponentProps } from "react"
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+  type ComponentProps,
+} from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { cn } from "@workspace/ui/lib/utils"
 import { useChat } from "@ai-sdk/react"
@@ -19,7 +26,11 @@ import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
 import { Spinner } from "@/components/spinner"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 import { classifyMessageParts } from "@/lib/chat/message-utils"
-import { useMessagesQuery, useCuratorConversationQuery, useResetCuratorConversation } from "@/hooks/use-chat-queries"
+import {
+  useMessagesQuery,
+  useCuratorConversationQuery,
+  useResetCuratorConversation,
+} from "@/hooks/use-chat-queries"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { useChatStore } from "@/stores/chat-store"
 import { useAllTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
@@ -36,16 +47,14 @@ import {
   AlertDialogTitle,
 } from "@workspace/ui/components/alert-dialog"
 import { Checkbox } from "@workspace/ui/components/checkbox"
-import { chatTransport, type ChatViewContact } from "../chat-view-shared"
-import { CuratorChatHeader } from "../curator-chat-header"
-import { ExecutionReportCard } from "../execution-report-card"
+import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
+import { CuratorChatHeader } from "../contacts/curator-chat-header"
+import { ExecutionReportCard } from "../message-blocks/execution-report-card"
 import { ChatPromptInput } from "@/components/chat-prompt-input"
-import { PendingMessageQueue } from "../pending-message-queue"
-import { EmployeeContactAvatar } from "../contact-avatars"
-import {
-  getMessageMeta,
-} from "../chat-view-shared"
-import { RenderClassifiedBlocks } from "../chat-message-item"
+import { PendingMessageQueue } from "../panel/pending-message-queue"
+import { EmployeeContactAvatar } from "../contacts/contact-avatars"
+import { getMessageMeta } from "../shared/chat-view-shared"
+import { RenderClassifiedBlocks } from "../messages/chat-message-item"
 import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import type { TaskExecution } from "@/types/schedule-monitor"
@@ -55,7 +64,14 @@ type TimelineEntry =
   | { kind: "message"; data: UIMessage; ts: number }
   | { kind: "execution"; data: TaskExecution; ts: number }
 
-function getMsgTs(msg: UIMessage, storedMessages: Array<{ id: string; metadata?: Record<string, unknown>; timestamp?: Date }>): number {
+function getMsgTs(
+  msg: UIMessage,
+  storedMessages: Array<{
+    id: string
+    metadata?: Record<string, unknown>
+    timestamp?: Date
+  }>
+): number {
   const stored = storedMessages.find((m) => m.id === msg.id)
   const meta = stored?.metadata
   const createdAt = meta?.created_at
@@ -80,21 +96,30 @@ export function CuratorView({
   size?: "default" | "compact"
 }) {
   const [inputValue, setInputValue] = useState("")
-  const [command, setCommand] = useState<{ id: string; title: string } | null>(null)
-  const [mentions, setMentions] = useState<Array<{ id: string; name: string }>>([])
+  const [command, setCommand] = useState<{ id: string; title: string } | null>(
+    null
+  )
+  const [mentions, setMentions] = useState<Array<{ id: string; name: string }>>(
+    []
+  )
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [clearTaskLogs, setClearTaskLogs] = useState(true)
   const [hasReceivedMessages, setHasReceivedMessages] = useState(false)
 
   const resetMutation = useResetCuratorConversation()
   const queryClient = useQueryClient()
-  const { data: curatorConv, isLoading: curatorLoading } = useCuratorConversationQuery()
+  const { data: curatorConv, isLoading: curatorLoading } =
+    useCuratorConversationQuery()
   const curatorConversationId = curatorConv?.id ?? null
 
-  const { data: storedMessages = [], isPending: isMessagesLoading } = useMessagesQuery(curatorConversationId)
+  const { data: storedMessages = [], isPending: isMessagesLoading } =
+    useMessagesQuery(curatorConversationId)
 
   const initialMessages = useMemo(
-    () => (storedMessages?.length ? mapStoredMessagesToUIMessages(storedMessages) : []),
+    () =>
+      storedMessages?.length
+        ? mapStoredMessagesToUIMessages(storedMessages)
+        : [],
     [storedMessages]
   )
 
@@ -118,7 +143,9 @@ export function CuratorView({
       }
     },
     onError: (chatError) => {
-      toast.error("发送失败", { description: chatError.message || "请稍后重试" })
+      toast.error("发送失败", {
+        description: chatError.message || "请稍后重试",
+      })
     },
   })
 
@@ -144,8 +171,14 @@ export function CuratorView({
   const handleReset = useCallback(async () => {
     if (!curatorConversationId) return
     try {
-      await resetMutation.mutateAsync({ conversationId: curatorConversationId, clearTaskLogs })
-      queryClient.setQueryData(chatKeys.messages(String(curatorConversationId)), [])
+      await resetMutation.mutateAsync({
+        conversationId: curatorConversationId,
+        clearTaskLogs,
+      })
+      queryClient.setQueryData(
+        chatKeys.messages(String(curatorConversationId)),
+        []
+      )
       setMessages([])
       setHasReceivedMessages(false)
       setShowResetDialog(false)
@@ -153,7 +186,13 @@ export function CuratorView({
     } catch {
       toast.error("清空失败")
     }
-  }, [curatorConversationId, clearTaskLogs, resetMutation, setMessages, queryClient])
+  }, [
+    curatorConversationId,
+    clearTaskLogs,
+    resetMutation,
+    setMessages,
+    queryClient,
+  ])
 
   useEffect(() => {
     if (messages.length > 0 && !hasReceivedMessages) {
@@ -172,14 +211,23 @@ export function CuratorView({
     ) {
       const rafId = requestAnimationFrame(() => {
         if (status !== "ready" && status !== "error") return
-        chatTransport.setLastSeq(String(curatorConversationId), lastStored.streamCursor)
+        chatTransport.setLastSeq(
+          String(curatorConversationId),
+          lastStored.streamCursor
+        )
         resumeStream()
       })
       return () => cancelAnimationFrame(rafId)
     }
     // status 是防护，不用加入依赖数组
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [curatorConversationId, initialMessages, setMessages, resumeStream, storedMessages])
+  }, [
+    curatorConversationId,
+    initialMessages,
+    setMessages,
+    resumeStream,
+    storedMessages,
+  ])
 
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
@@ -191,7 +239,8 @@ export function CuratorView({
   const chatStatus = status === "ready" && isBusy ? "submitted" : status
 
   const displayMessages = useMemo(
-    () => messages.length > 0 || hasReceivedMessages ? messages : initialMessages,
+    () =>
+      messages.length > 0 || hasReceivedMessages ? messages : initialMessages,
     [initialMessages, messages, hasReceivedMessages]
   )
 
@@ -202,21 +251,30 @@ export function CuratorView({
     return null
   }, [displayMessages])
 
-  const hasCurrentTurnEnded = status === "ready" || status === "error" || !!error
-  const showStreamingIndicator = !isMessagesLoading && (status === "submitted" || status === "streaming") && !error && displayMessages.length > 0
+  const hasCurrentTurnEnded =
+    status === "ready" || status === "error" || !!error
+  const showStreamingIndicator =
+    !isMessagesLoading &&
+    (status === "submitted" || status === "streaming") &&
+    !error &&
+    displayMessages.length > 0
 
   const uploadedPathsRef = useRef<string[]>([])
 
   const doSend = useCallback(
     async (message: PromptInputMessage | string) => {
-      const messageText = (typeof message === "string" ? message : message.text)?.trim() ?? ""
+      const messageText =
+        (typeof message === "string" ? message : message.text)?.trim() ?? ""
       if (!messageText || !curatorConversationId) return
 
       const paths = uploadedPathsRef.current
       if (paths.length > 0) {
         uploadedPathsRef.current = []
       }
-      const filesMeta = paths.length > 0 ? paths.map((p) => ({ path: p, name: p.split("/").pop() ?? p })) : undefined
+      const filesMeta =
+        paths.length > 0
+          ? paths.map((p) => ({ path: p, name: p.split("/").pop() ?? p }))
+          : undefined
 
       const pendingMeta = {
         command: command ? { id: command.id, title: command.title } : undefined,
@@ -237,19 +295,17 @@ export function CuratorView({
         )
       } catch (sendError) {
         toast.error("发送失败", {
-          description: sendError instanceof Error ? sendError.message : "请稍后重试",
+          description:
+            sendError instanceof Error ? sendError.message : "请稍后重试",
         })
       }
     },
     [curatorConversationId, sendMessage, command, mentions]
   )
 
-  const handleAttachmentsChange = useCallback(
-    (paths: string[]) => {
-      uploadedPathsRef.current = paths
-    },
-    [],
-  )
+  const handleAttachmentsChange = useCallback((paths: string[]) => {
+    uploadedPathsRef.current = paths
+  }, [])
 
   const {
     queue: pendingQueue,
@@ -331,11 +387,18 @@ export function CuratorView({
     }
 
     for (const exec of executions) {
-      if (exec.run_status === "success" || exec.run_status === "failed" || exec.run_status === "timeout" || exec.run_status === "cancelled") {
+      if (
+        exec.run_status === "success" ||
+        exec.run_status === "failed" ||
+        exec.run_status === "timeout" ||
+        exec.run_status === "cancelled"
+      ) {
         entries.push({
           kind: "execution",
           data: exec,
-          ts: exec.ended_at ? new Date(exec.ended_at).getTime() : new Date(exec.started_at).getTime(),
+          ts: exec.ended_at
+            ? new Date(exec.ended_at).getTime()
+            : new Date(exec.started_at).getTime(),
         })
       }
     }
@@ -350,8 +413,20 @@ export function CuratorView({
   const isCompact = size === "compact"
 
   return (
-    <div className={cn("flex flex-col bg-background", !isCompact && "flex-1", className)} {...props}>
-      {!isCompact && <CuratorChatHeader contact={contact} onReset={() => setShowResetDialog(true)} />}
+    <div
+      className={cn(
+        "flex flex-col bg-background",
+        !isCompact && "flex-1",
+        className
+      )}
+      {...props}
+    >
+      {!isCompact && (
+        <CuratorChatHeader
+          contact={contact}
+          onReset={() => setShowResetDialog(true)}
+        />
+      )}
 
       <ConversationUI className="min-h-0 flex-1 overflow-y-auto">
         <ConversationContent className="space-y-3">
@@ -363,7 +438,9 @@ export function CuratorView({
 
           {!curatorLoading && isDraft && timeline.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
-              <p className="text-xs">在下方输入消息，自然语言下发任务给你的数字员工团队</p>
+              <p className="text-xs">
+                在下方输入消息，自然语言下发任务给你的数字员工团队
+              </p>
             </div>
           )}
 
@@ -371,10 +448,16 @@ export function CuratorView({
             if (entry.kind === "execution") {
               const exec = entry.data
               const employeeContact = contacts.find(
-                (c) => c.type === "employee" && c.employee?.id === String(exec.employee_id)
+                (c) =>
+                  c.type === "employee" &&
+                  c.employee?.id === String(exec.employee_id)
               )
               return (
-                <Message key={`exec-${exec.id}`} from="assistant" className="mx-auto max-w-4xl">
+                <Message
+                  key={`exec-${exec.id}`}
+                  from="assistant"
+                  className="mx-auto max-w-4xl"
+                >
                   <div className="mb-2 flex items-center gap-2">
                     <EmployeeContactAvatar
                       name={exec.employee_name || String(exec.employee_id)}
@@ -382,8 +465,12 @@ export function CuratorView({
                       avatarClassName="size-6"
                       fallbackClassName="text-[10px]"
                     />
-                    <span className="text-xs text-muted-foreground">{exec.employee_name || String(exec.employee_id)}</span>
-                    <span className="text-[10px] text-muted-foreground/60">{formatTime(entry.ts)}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {exec.employee_name || String(exec.employee_id)}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/60">
+                      {formatTime(entry.ts)}
+                    </span>
                   </div>
                   <MessageContent className="w-auto">
                     <ExecutionReportCard execution={exec} />
@@ -395,31 +482,38 @@ export function CuratorView({
             /* message */
             const message = entry.data
             const isLastAssistantMessage =
-              message.role === "assistant" && message.id === lastAssistantMessageId
+              message.role === "assistant" &&
+              message.id === lastAssistantMessageId
             const includeFileChanges =
-              message.role === "assistant" && (!isLastAssistantMessage || hasCurrentTurnEnded)
-            const classifiedBlocks = classifyMessageParts(message, { includeFileChanges })
+              message.role === "assistant" &&
+              (!isLastAssistantMessage || hasCurrentTurnEnded)
+            const classifiedBlocks = classifyMessageParts(message, {
+              includeFileChanges,
+            })
             const messageMeta = getMessageMeta(message)
             const commandMeta =
               messageMeta &&
-                typeof messageMeta === "object" &&
-                "command" in messageMeta &&
-                messageMeta.command &&
-                typeof messageMeta.command === "object"
+              typeof messageMeta === "object" &&
+              "command" in messageMeta &&
+              messageMeta.command &&
+              typeof messageMeta.command === "object"
                 ? (messageMeta.command as { id?: string; title?: string })
                 : null
             const mentionMeta =
               messageMeta &&
-                typeof messageMeta === "object" &&
-                "mentions" in messageMeta &&
-                Array.isArray(messageMeta.mentions)
-                ? (messageMeta.mentions as Array<{ id?: string; name?: string }>)
+              typeof messageMeta === "object" &&
+              "mentions" in messageMeta &&
+              Array.isArray(messageMeta.mentions)
+                ? (messageMeta.mentions as Array<{
+                    id?: string
+                    name?: string
+                  }>)
                 : []
             const filesMeta =
               messageMeta &&
-                typeof messageMeta === "object" &&
-                "files" in messageMeta &&
-                Array.isArray(messageMeta.files)
+              typeof messageMeta === "object" &&
+              "files" in messageMeta &&
+              Array.isArray(messageMeta.files)
                 ? (messageMeta.files as Array<{ name: string; path: string }>)
                 : undefined
 
@@ -447,14 +541,24 @@ export function CuratorView({
                         fallbackClassName="text-[10px]"
                       />
                     )}
-                    <span className="text-xs text-muted-foreground">{contactDisplayName}</span>
-                    <span className="text-[10px] text-muted-foreground/60 ml-auto">{formatTime(entry.ts)}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {contactDisplayName}
+                    </span>
+                    <span className="ml-auto text-[10px] text-muted-foreground/60">
+                      {formatTime(entry.ts)}
+                    </span>
                   </div>
                 )}
                 <MessageContent className="w-auto">
                   <div className="space-y-3">
                     {classifiedBlocks.length > 0 ? (
-                      <RenderClassifiedBlocks blocks={classifiedBlocks} commandMeta={commandMeta} mentionMeta={mentionMeta} filesMeta={filesMeta} messageId={message.id} />
+                      <RenderClassifiedBlocks
+                        blocks={classifiedBlocks}
+                        commandMeta={commandMeta}
+                        mentionMeta={mentionMeta}
+                        filesMeta={filesMeta}
+                        messageId={message.id}
+                      />
                     ) : message.role === "assistant" ? (
                       <MessageResponse />
                     ) : null}
@@ -478,7 +582,12 @@ export function CuratorView({
         <ConversationScrollButton />
       </ConversationUI>
 
-      <div className={cn("border-none max-w-4xl mx-auto w-full", isCompact ? "py-2" : "py-4")}>
+      <div
+        className={cn(
+          "mx-auto w-full max-w-4xl border-none",
+          isCompact ? "py-2" : "py-4"
+        )}
+      >
         {pendingQueue.length > 0 && (
           <div className="mx-auto w-[98%]">
             <PendingMessageQueue
@@ -499,7 +608,7 @@ export function CuratorView({
           disabled={curatorLoading || (!isBusy && !inputValue.trim())}
           size="compact"
           placeholder="描述要做的事或目标，我来拆解并分派给数字员工；键入 @ 可指定经办人"
-          className="w-full overflow-hidden shadow-xl bg-background/80"
+          className="w-full overflow-hidden bg-background/80 shadow-xl"
           slashCommands={[]}
           mentionCandidates={mentionCandidates}
           conversationId={curatorConversationId}
@@ -526,7 +635,7 @@ export function CuratorView({
             />
             <label
               htmlFor="clear-task-logs"
-              className="text-xs text-muted-foreground cursor-pointer select-none"
+              className="cursor-pointer text-xs text-muted-foreground select-none"
             >
               同时清空员工执行日志
             </label>

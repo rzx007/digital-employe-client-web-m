@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router"
 
-import { ChatLayout } from "@/components/chat/chat-layout"
-import { AppTitlebar } from "@/components/chat/app-titlebar"
+import { ChatLayout } from "@/components/chat/shell/chat-layout"
+import { AppTitlebar } from "@/components/chat/shell/app-titlebar"
 
 export const Route = createFileRoute("/")({
   component: ChatPage,
