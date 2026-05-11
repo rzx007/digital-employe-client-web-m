@@ -5,7 +5,7 @@ description = "A natural language to SQL query agent powered by LangChain's Deep
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "deepagents==0.5.3",
+    "deepagents==0.5.9",
     "apscheduler>=3.10.4",
     "langchain>=1.2.3",
     "langchain-openai>=1.0.2",

@@ -13,7 +13,12 @@ from datetime import datetime
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from deepagents import create_deep_agent
+from deepagents import (
+    create_deep_agent,
+    GeneralPurposeSubagentProfile,
+    HarnessProfile,
+    register_harness_profile,
+)
 from deepagents.middleware.permissions import FilesystemPermission
 from deepagents.middleware.summarization import (
     SummarizationMiddleware,
@@ -25,6 +30,16 @@ from src.service.skill_shell_backend import SkillAwareShellBackend
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+# 禁用 deepagents 内置通用子代理（task tool），避免代理在未授权情况下
+# 通过 task tool 调用子代理来执行 shell 命令等操作
+_settings = get_settings()
+register_harness_profile(
+    f"openai:{_settings.deepagent_model or 'qwen2.5-72b-instruct'}",
+    HarnessProfile(
+        general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=False),
+    ),
+)
 
 # 全局的异步 SqliteSaver 实例，将在应用启动时初始化
 _CHECKPOINTER: AsyncSqliteSaver | MemorySaver | None = None

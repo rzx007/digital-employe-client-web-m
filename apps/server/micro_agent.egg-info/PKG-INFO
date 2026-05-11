@@ -5,7 +5,7 @@ Summary: A natural language to SQL query agent powered by LangChain's DeepAgents
 Project-URL: Repository, https://github.com/langchain-ai/deepagents/tree/master/examples/text-to-sql-agent
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
-Requires-Dist: deepagents==0.5.3
+Requires-Dist: deepagents==0.5.9
 Requires-Dist: apscheduler>=3.10.4
 Requires-Dist: langchain>=1.2.3
 Requires-Dist: langchain-openai>=1.0.2
