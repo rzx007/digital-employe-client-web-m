@@ -2,7 +2,6 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
 import {
-  DEFAULT_SELECTED_CONTACT_ID,
   findContactInList,
   type Contact,
 } from "@/lib/mock-data/ai-employees"
@@ -35,7 +34,7 @@ export const useChatStore = create<ChatStore>()(
   persist(
     (set, get) => ({
       contacts: [],
-      selectedContactId: DEFAULT_SELECTED_CONTACT_ID,
+      selectedContactId: null,
       selectedConversationId: null,
       isDraftConversation: false,
       draftSessionKey: 0,

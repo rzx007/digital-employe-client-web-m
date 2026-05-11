@@ -1,6 +1,4 @@
-import { useState, useEffect, useRef } from "react"
-import * as React from "react"
-import { toast } from "sonner"
+import { useState, useEffect, useRef, type ComponentProps } from "react"
 import { useSize } from "ahooks"
 
 import { Sheet, SheetContent } from "@workspace/ui/components/sheet"
@@ -19,9 +17,6 @@ import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useOnboardingStore } from "@/stores/onboarding-store"
-import { PRIMARY_CURATOR } from "@/lib/mock-data/ai-employees"
-import type { Contact } from "@/lib/mock-data/ai-employees"
-import { findContactInList } from "@/lib/mock-data/ai-employees"
 import { WelcomeDialog, UserTour } from "@/components/onboarding"
 import { AppToolbar } from "./app-toolbar"
 import { ShiftCalendarPage } from "@/components/shift-calendar"
@@ -34,12 +29,10 @@ import { MobileTabBar } from "./mobile-tab-bar"
 import { RecentConversations } from "./recent-conversations"
 import { WorkbenchView } from "./workbench-view"
 
-const CURATOR_FALLBACK: Contact = { type: "curator" as const, curator: PRIMARY_CURATOR }
-
 export function ChatLayout({
   className,
   ...props
-}: React.ComponentProps<"div">) {
+}: ComponentProps<"div">) {
   const isMobile = useIsMobile()
   const activeTab = useChatStore((s) => s.activeTab)
   const setContacts = useChatStore((s) => s.setContacts)
@@ -48,7 +41,7 @@ export function ChatLayout({
   const initialized = useOnboardingStore((s) => s.initialized)
   const initOnboarding = useOnboardingStore((s) => s.initOnboarding)
 
-  const { data: apiContacts, isError: contactsError } = useContactsQuery()
+  const { data: apiContacts } = useContactsQuery()
 
   const queryClient = useQueryClient()
 
@@ -69,8 +62,6 @@ export function ChatLayout({
 
   useTaskExecutionNotifications()
 
-  const hasContactsErrorToastRef = useRef(false)
-
   useEffect(() => {
     initOnboarding()
   }, [initOnboarding])
@@ -86,7 +77,11 @@ export function ChatLayout({
     if (apiContacts) {
       setContacts(apiContacts)
       const { selectedContactId } = useChatStore.getState()
-      const hasSelected = apiContacts.some((c) => findContactInList([c], selectedContactId ?? ""))
+      const hasSelected = apiContacts.some((c) => {
+        if (c.type === "curator") return c.curator?.id === selectedContactId
+        if (c.type === "employee") return c.employee?.id === selectedContactId
+        return c.group?.id === selectedContactId
+      })
       if (!hasSelected) {
         const firstCurator = apiContacts.find((c) => c.type === "curator")
         if (firstCurator?.curator) {
@@ -95,28 +90,6 @@ export function ChatLayout({
       }
     }
   }, [apiContacts, setContacts])
-
-  useEffect(() => {
-    if (!contactsError) {
-      hasContactsErrorToastRef.current = false
-      return
-    }
-    const { contacts, selectedContactId } = useChatStore.getState()
-    const hasCurator = contacts.some((c) => c.type === "curator")
-    if (!hasCurator) {
-      useChatStore.getState().setContacts([CURATOR_FALLBACK])
-    }
-    if (selectedContactId !== PRIMARY_CURATOR.id) {
-      if (!hasContactsErrorToastRef.current) {
-        hasContactsErrorToastRef.current = true
-        toast.warning("服务连接异常，已切换到总管助手", {
-          description: "请检查网络连接后重试",
-          duration: 5000,
-        })
-      }
-      useChatStore.getState().setSelectedContactId(PRIMARY_CURATOR.id)
-    }
-  }, [contactsError])
 
   useEffect(() => {
     if (!window.electronApi?.onInvalidateContacts) return

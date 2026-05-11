@@ -34,18 +34,6 @@ export interface Contact {
   }
 }
 
-/** 常驻默认会话入口，通讯录置顶，独立于群聊与其它联系人 */
-export const PRIMARY_CURATOR: CuratorProfile = {
-  id: "curator-primary",
-  name: "总管助手",
-  role: "数字员工统筹",
-  status: "online",
-  avatar: createDiceBearAvatar("Curator"),
-  specialty: "任务分派、会话路由与协作编排",
-}
-
-export const DEFAULT_SELECTED_CONTACT_ID = PRIMARY_CURATOR.id
-
 export const AI_EMPLOYEES: AIEmployee[] = [
   {
     id: "hr-manager",
@@ -102,7 +90,6 @@ export const AI_GROUPS = [
 ]
 
 export const CONTACTS: Contact[] = [
-  { type: "curator" as const, curator: PRIMARY_CURATOR },
   ...AI_EMPLOYEES.map((emp) => ({
     type: "employee" as const,
     employee: emp,
@@ -136,13 +123,10 @@ export const getEmployeeById = (id: string): AIEmployee | undefined => {
   return AI_EMPLOYEES.find((emp) => emp.id === id)
 }
 
-/** 消息发送方等场景：员工或总管助手 */
+/** 消息发送方等场景 */
 export function getPeerProfileById(
   id: string
-): AIEmployee | CuratorProfile | undefined {
-  if (id === PRIMARY_CURATOR.id) {
-    return PRIMARY_CURATOR
-  }
+): AIEmployee | undefined {
   return getEmployeeById(id)
 }
 
