@@ -12,10 +12,7 @@ import { ThinkingBlock } from "../message-blocks/thinking-block"
 import { ToolGroupBlock } from "../message-blocks/tool-group-block"
 import { PlanGeneratedCard } from "../message-blocks/plan-generated-card"
 import { SkillExplorationBlock } from "../message-blocks/skill-exploration-block"
-import {
-  EmployeeContactAvatar,
-  GroupMembersAvatar,
-} from "../contacts/contact-avatars"
+import { EmployeeContactAvatar, GroupMembersAvatar } from "../contacts/contact-avatars"
 import {
   getContactDisplayName,
   getMessageMeta,
@@ -24,11 +21,9 @@ import {
   type FileMeta,
   type MentionMeta,
 } from "../shared/chat-view-shared"
-import type { ClassifiedBlock } from "@/lib/chat/message-classifier"
-
-/** 单行展示上限，超出由 CSS 省略；完整文案放在 title */
-const META_BADGE_MAX_W = "max-w-[10rem]"
-const META_FILE_BADGE_MAX_W = "max-w-[14rem]"
+import type {
+  ClassifiedBlock,
+} from "@/lib/chat/message-classifier"
 
 function MessageMetaBadges({
   commandMeta,
@@ -41,39 +36,29 @@ function MessageMetaBadges({
   filesMeta?: FileMeta
   messageId: string
 }) {
-  if (!commandMeta?.title && mentionMeta.length === 0 && !filesMeta?.length)
-    return null
+  if (!commandMeta?.title && mentionMeta.length === 0 && !filesMeta?.length) return null
   return (
-    <div className="flex min-w-0 max-w-full shrink flex-wrap items-center gap-1.5">
+    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
       {commandMeta?.title && (
-        <span
-          className={`truncate rounded-md bg-primary/10 px-2 py-0.5 text-[11px] text-primary ${META_BADGE_MAX_W}`}
-          title={`/${commandMeta.title}`}
-        >
+        <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
           /{commandMeta.title}
         </span>
       )}
-      {mentionMeta.map((mention, index) => {
-        const name = mention.name ?? "unknown"
-        const label = `@${name}`
-        return (
-          <span
-            key={mention.id ?? `${messageId}:mention:${index}`}
-            className={`truncate rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-600 ${META_BADGE_MAX_W}`}
-            title={label}
-          >
-            {label}
-          </span>
-        )
-      })}
+      {mentionMeta.map((mention, index) => (
+        <span
+          key={mention.id ?? `${messageId}:mention:${index}`}
+          className="rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-600"
+        >
+          @{mention.name ?? "unknown"}
+        </span>
+      ))}
       {filesMeta?.map((file, index) => (
         <span
           key={`${messageId}:file:${index}`}
-          className={`inline-flex min-w-0 items-center gap-1 rounded-md bg-green-500/10 px-2 py-0.5 text-[11px] text-green-600 ${META_FILE_BADGE_MAX_W}`}
-          title={file.name}
+          className="inline-flex items-center gap-1 rounded-md bg-green-500/10 px-2 py-0.5 text-[11px] text-green-600"
         >
-          <IconFile className="size-3 shrink-0" />
-          <span className="min-w-0 truncate">{file.name}</span>
+          <IconFile className="size-3" />
+          {file.name}
         </span>
       ))}
     </div>
@@ -98,7 +83,11 @@ export function RenderClassifiedBlocks({
       {blocks.map((block) => {
         if (block.kind === "tool-group") {
           return (
-            <ToolGroupBlock block={block} className="w-full" key={block.key} />
+            <ToolGroupBlock
+              block={block}
+              className="w-full"
+              key={block.key}
+            />
           )
         }
         if (block.kind === "plan-generated") {
@@ -124,7 +113,7 @@ export function RenderClassifiedBlocks({
                 <IconAlertTriangle className="size-4 shrink-0" />
                 <span className="text-sm font-semibold">请求出错</span>
               </div>
-              <pre className="font-mono text-xs break-all whitespace-pre-wrap text-destructive/80">
+              <pre className="whitespace-pre-wrap break-all font-mono text-xs text-destructive/80">
                 {block.text}
               </pre>
             </div>
@@ -151,20 +140,16 @@ export function RenderClassifiedBlocks({
         }
         return (
           <div
-            className="flex w-full min-w-0 flex-wrap items-start gap-2"
+            className="flex w-full items-start space-x-2"
             key={block.key}
           >
-            <div className="min-w-0 max-w-full shrink-0">
-              <MessageMetaBadges
-                commandMeta={commandMeta}
-                mentionMeta={mentionMeta}
-                filesMeta={filesMeta}
-                messageId={messageId}
-              />
-            </div>
-            <MessageResponse className="min-w-0 grow shrink basis-[12rem]">
-              {block.text}
-            </MessageResponse>
+            <MessageMetaBadges
+              commandMeta={commandMeta}
+              mentionMeta={mentionMeta}
+              filesMeta={filesMeta}
+              messageId={messageId}
+            />
+            <MessageResponse className="flex-1">{block.text}</MessageResponse>
           </div>
         )
       })}
@@ -178,33 +163,41 @@ export interface ChatMessageItemProps {
   includeFileChanges: boolean
 }
 
-function ChatMessageItemInner({
-  message,
-  contact,
-  includeFileChanges,
-}: ChatMessageItemProps) {
+function ChatMessageItemInner({ message, contact, includeFileChanges }: ChatMessageItemProps) {
   const contactDisplayName = getContactDisplayName(contact)
   const classifiedBlocks = React.useMemo(
     () => classifyMessageParts(message, { includeFileChanges }),
     [message, includeFileChanges]
   )
 
-  const messageMeta = React.useMemo(() => getMessageMeta(message), [message])
-  const commandMeta =
-    messageMeta?.command && typeof messageMeta.command === "object"
-      ? (messageMeta.command as { id?: string; title?: string })
-      : null
-  const mentionMeta =
-    messageMeta?.mentions && Array.isArray(messageMeta.mentions)
-      ? messageMeta.mentions
-      : []
-  const filesMeta =
-    messageMeta?.files && Array.isArray(messageMeta.files)
-      ? messageMeta.files
-      : undefined
+  const messageMeta = React.useMemo(
+    () => getMessageMeta(message),
+    [message]
+  )
+  const commandMeta = (
+    messageMeta?.command &&
+    typeof messageMeta.command === "object"
+  )
+    ? (messageMeta.command as { id?: string; title?: string })
+    : null
+  const mentionMeta = (
+    messageMeta?.mentions &&
+    Array.isArray(messageMeta.mentions)
+  )
+    ? messageMeta.mentions
+    : []
+  const filesMeta = (
+    messageMeta?.files &&
+    Array.isArray(messageMeta.files)
+  )
+    ? messageMeta.files
+    : undefined
 
   return (
-    <Message from={message.role} className="mx-auto max-w-4xl">
+    <Message
+      from={message.role}
+      className="mx-auto max-w-4xl"
+    >
       {message.role === "assistant" && (
         <div className="mb-2 flex items-center gap-2">
           {contact.type === "group" ? (
@@ -237,7 +230,7 @@ function ChatMessageItemInner({
           </span>
         </div>
       )}
-      <MessageContent className="w-full min-w-0">
+      <MessageContent className="w-auto">
         <div className="space-y-3">
           {classifiedBlocks.length > 0 ? (
             <RenderClassifiedBlocks
