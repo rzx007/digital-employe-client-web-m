@@ -22,10 +22,12 @@ function ThinkingBlockInner({
   className,
   ...props
 }: ThinkingBlockProps) {
-  if (!text.trim()) return null
-
-  const isShort = text.length <= SHORT_TEXT_THRESHOLD
+  const trimmed = text.trim()
+  const isShort =
+    trimmed.length > 0 && text.length <= SHORT_TEXT_THRESHOLD
   const [isOpen, setIsOpen] = useState(defaultOpen ?? isShort)
+
+  if (!trimmed) return null
 
   if (isShort) {
     return (

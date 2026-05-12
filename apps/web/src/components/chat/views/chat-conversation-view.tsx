@@ -223,7 +223,6 @@ export function ConversationChatView({
     onSend: doSend,
     onStop: handleStop,
   })
-
   const handleSendMessage = useCallback(
     async (message: PromptInputMessage) => {
       const hasText = Boolean(message.text)
