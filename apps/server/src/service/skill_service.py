@@ -46,44 +46,31 @@ class SkillService:
 
     @staticmethod
     def _request_remote(path: str, token: str) -> dict[str, Any]:
-        settings = get_settings()
-        # token = (settings.skill_remote_token or "").strip()
-        # if not token:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_400_BAD_REQUEST,
-        #         detail="未配置远程技能服务令牌（SKILL_REMOTE_TOKEN）。",
-        #     )
-
-        url = SkillService._build_url(path)
-        headers = {"token": f"{token}"}
-        timeout = settings.skill_remote_timeout
-
         try:
+            settings = get_settings()
+            url = SkillService._build_url(path)
+            headers = {"token": f"{token}"}
+            timeout = settings.skill_remote_timeout
+
             response = httpx.get(url, headers=headers, timeout=timeout)
             response.raise_for_status()
-            payload = response.json()
+            payload = SkillService._ensure_success_payload(response.json())
         except httpx.TimeoutException as exc:
             logger.error("远程技能服务超时: %s", exc, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-                detail=f"远程技能服务超时：{exc}",
-            ) from exc
+            return {}
         except httpx.HTTPStatusError as exc:
             logger.error(
                 "远程技能服务 HTTP 错误: %s", exc.response.status_code, exc_info=True
             )
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"远程技能服务返回错误状态码：{exc.response.status_code}",
-            ) from exc
-        except (httpx.HTTPError, ValueError) as exc:
+            return {}
+        except (httpx.HTTPError, ValueError, HTTPException) as exc:
             logger.error("远程技能服务请求失败: %s", exc, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"远程技能服务请求失败：{exc}",
-            ) from exc
+            return {}
+        except Exception as exc:
+            logger.error("远程技能服务请求异常: %s", exc, exc_info=True)
+            return {}
 
-        return SkillService._ensure_success_payload(payload)
+        return payload
 
     @staticmethod
     def list_remote_skills(token: str) -> list[dict[str, Any]]:
@@ -91,10 +78,8 @@ class SkillService:
         payload = SkillService._request_remote(settings.skill_remote_list_path, token)
         data = payload.get("data")
         if not isinstance(data, list):
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="远程技能列表数据格式错误。",
-            )
+            logger.error("远程技能列表数据格式错误: %s", data)
+            return []
         return [item for item in data if isinstance(item, dict)]
 
     @staticmethod
