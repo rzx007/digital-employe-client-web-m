@@ -224,6 +224,7 @@ export interface ChatMessage {
   stream_state?: string | null
   stream_cursor?: number | null
   extra_meta?: Record<string, any>
+  message_parts?: unknown[] | null
   timestamp?: string
   created_at?: string
 }

@@ -1,0 +1,50 @@
+{
+  "id": "power-safety-analyst",
+  "name": "Power Safety Analyst",
+  "type": "sprite",
+  "image": "./sprite.png",
+  "frameWidth": 256,
+  "frameHeight": 256,
+  "columns": 8,
+  "scale": 1,
+  "autoAlign": true,
+  "defaultAnimation": "idle",
+  "animations": {
+    "idle": {
+      "from": 0,
+      "to": 7,
+      "fps": 2,
+      "loop": true
+    },
+    "listening": {
+      "from": 8,
+      "to": 15,
+      "fps": 2,
+      "loop": true
+    },
+    "thinking": {
+      "from": 16,
+      "to": 23,
+      "fps": 2,
+      "loop": true
+    },
+    "acting": {
+      "from": 24,
+      "to": 31,
+      "fps": 2,
+      "loop": true
+    },
+    "speaking": {
+      "from": 32,
+      "to": 39,
+      "fps": 2,
+      "loop": true
+    },
+    "error": {
+      "from": 40,
+      "to": 47,
+      "fps": 2,
+      "loop": true
+    }
+  }
+}

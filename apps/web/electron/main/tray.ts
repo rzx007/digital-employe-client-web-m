@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, Tray, nativeImage } from "electron"
 import path from "node:path"
 import { setForceQuit, stopBackend } from "./ipc-handlers"
 import { createSettingsWindow } from "./settings"
+import { hidePetWindow, destroyPetWindow } from "./pet"
 
 /**
  * 系统托盘管理
@@ -173,6 +174,7 @@ export function createTray(win: BrowserWindow): void {
  * 如果窗口被最小化则先还原，再显示并聚焦。
  */
 function showWindow(win: BrowserWindow): void {
+  hidePetWindow()
   if (win.isMinimized()) {
     win.restore()
   }
@@ -221,6 +223,7 @@ function restartApp(): void {
   setForceQuit(true)
   stopFlashTray()
   destroyTray()
+  destroyPetWindow()
   stopBackend()
   app.relaunch({ args: process.argv.slice(1).concat(["--relaunched"]) })
   app.exit(0)
@@ -239,6 +242,7 @@ function quitFromTray(win: BrowserWindow): void {
   setForceQuit(true)
   stopFlashTray()
   destroyTray()
+  destroyPetWindow()
   stopBackend()
   win.close()
 

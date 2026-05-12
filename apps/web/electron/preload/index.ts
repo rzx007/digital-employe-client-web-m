@@ -104,6 +104,17 @@ contextBridge.exposeInMainWorld("electronApi", {
   startDownloadUpdate: () => ipcRenderer.invoke("start-download"),
   quitAndInstall: () => ipcRenderer.invoke("quit-and-install"),
 
+  // pet window
+  showPet: () => ipcRenderer.invoke("pet:show"),
+  hidePet: () => ipcRenderer.invoke("pet:hide"),
+  setPetPosition: (x: number, y: number) =>
+    ipcRenderer.invoke("pet:set-position", x, y),
+  getPetPosition: () =>
+    ipcRenderer.invoke("pet:get-position") as Promise<{
+      x: number
+      y: number
+    } | null>,
+
   onUpdateAvailable: (
     callback: (info: { update: boolean; version: string; newVersion: string }) => void
   ) => {

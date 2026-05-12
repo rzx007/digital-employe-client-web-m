@@ -113,6 +113,10 @@ declare global {
       checkUpdate: () => Promise<any>
       startDownloadUpdate: () => Promise<void>
       quitAndInstall: () => Promise<void>
+      showPet: () => Promise<void>
+      hidePet: () => Promise<void>
+      setPetPosition: (x: number, y: number) => Promise<void>
+      getPetPosition: () => Promise<{ x: number; y: number } | null>
       onUpdateAvailable: (
         callback: (info: {
           update: boolean

@@ -85,9 +85,9 @@ export function ConversationChatView({
       })
     },
     onError: (chatError) => {
-      toast.error("发送失败", {
-        description: chatError.message || "请稍后重试",
-      })
+      // toast.error("发送失败", {
+      //   description: chatError.message || "请稍后重试",
+      // })
     },
   })
 
@@ -196,10 +196,10 @@ export function ConversationChatView({
           }
         )
       } catch (sendError) {
-        toast.error("发送失败!", {
-          description:
-            sendError instanceof Error ? sendError.message : "请稍后重试",
-        })
+        // toast.error("发送失败!", {
+        //   description:
+        //     sendError instanceof Error ? sendError.message : "请稍后重试",
+        // })
       }
     },
     [command, mentions, sendMessage, conversationId]

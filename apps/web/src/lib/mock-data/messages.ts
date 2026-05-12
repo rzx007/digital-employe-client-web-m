@@ -14,6 +14,7 @@ export interface Message {
   streamChunks?: string
   streamState?: string | null
   streamCursor?: number | null
+  messageParts?: unknown[]
 }
 
 export const MOCK_MESSAGES: Record<string, Message[]> = {

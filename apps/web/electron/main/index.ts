@@ -15,6 +15,7 @@ import { createTray, destroyTray } from "./tray"
 import { createLoginWindow } from "./login"
 import { initAuthStore, hasToken } from "./auth"
 import { initSettingsStore } from "./settings-store"
+import { createPetWindow, showPetWindow, hidePetWindow, destroyPetWindow } from "./pet"
 
 /**
  * Electron 主进程入口
@@ -118,6 +119,7 @@ async function createWindow() {
     if (!isForceQuit()) {
       e.preventDefault()
       win?.hide()
+      showPetWindow()
     }
   })
 
@@ -139,6 +141,13 @@ async function createWindow() {
   // 创建系统托盘（窗口关闭后仍可从托盘操作）
   createTray(win)
 
+  // 创建宠物窗口（初始隐藏，主窗口关闭时显示）
+  createPetWindow({
+    devServerUrl: VITE_DEV_SERVER_URL,
+    indexHtml,
+    preload,
+  })
+
   // 自动更新
   update()
 }
@@ -157,6 +166,7 @@ app.on("before-quit", (e) => {
 
   setForceQuit(true)
   destroyTray()
+  destroyPetWindow()
   stopBackend()
 
   // 兜底超时：即使后端未退出，也要确保应用能退出
@@ -224,6 +234,7 @@ app.on("second-instance", () => {
     // 窗口隐藏到托盘时也要能唤出
     win.show()
     win.focus()
+    hidePetWindow()
   }
 })
 
@@ -231,6 +242,7 @@ app.on("activate", () => {
   const allWindows = BrowserWindow.getAllWindows()
   if (allWindows.length) {
     allWindows[0].focus()
+    hidePetWindow()
   } else {
     createWindow()
   }

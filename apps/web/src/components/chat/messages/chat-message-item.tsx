@@ -78,10 +78,12 @@ export function RenderClassifiedBlocks({
   filesMeta?: FileMeta
   messageId: string
 }) {
+
   return (
     <>
       {blocks.map((block) => {
         if (block.kind === "tool-group") {
+          console.log("block", block)
           return (
             <ToolGroupBlock
               block={block}

@@ -13,6 +13,7 @@ import { Route as SplashRouteImport } from './routes/splash'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as RecruitmentRouteImport } from './routes/recruitment'
+import { Route as PetRouteImport } from './routes/pet'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DemoRouteImport } from './routes/demo'
 import { Route as IndexRouteImport } from './routes/index'
@@ -37,6 +38,11 @@ const RecruitmentRoute = RecruitmentRouteImport.update({
   path: '/recruitment',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PetRoute = PetRouteImport.update({
+  id: '/pet',
+  path: '/pet',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -57,6 +63,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/demo': typeof DemoRoute
   '/login': typeof LoginRoute
+  '/pet': typeof PetRoute
   '/recruitment': typeof RecruitmentRoute
   '/register': typeof RegisterRoute
   '/settings': typeof SettingsRoute
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/demo': typeof DemoRoute
   '/login': typeof LoginRoute
+  '/pet': typeof PetRoute
   '/recruitment': typeof RecruitmentRoute
   '/register': typeof RegisterRoute
   '/settings': typeof SettingsRoute
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/demo': typeof DemoRoute
   '/login': typeof LoginRoute
+  '/pet': typeof PetRoute
   '/recruitment': typeof RecruitmentRoute
   '/register': typeof RegisterRoute
   '/settings': typeof SettingsRoute
@@ -87,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/demo'
     | '/login'
+    | '/pet'
     | '/recruitment'
     | '/register'
     | '/settings'
@@ -96,6 +106,7 @@ export interface FileRouteTypes {
     | '/'
     | '/demo'
     | '/login'
+    | '/pet'
     | '/recruitment'
     | '/register'
     | '/settings'
@@ -105,6 +116,7 @@ export interface FileRouteTypes {
     | '/'
     | '/demo'
     | '/login'
+    | '/pet'
     | '/recruitment'
     | '/register'
     | '/settings'
@@ -115,6 +127,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DemoRoute: typeof DemoRoute
   LoginRoute: typeof LoginRoute
+  PetRoute: typeof PetRoute
   RecruitmentRoute: typeof RecruitmentRoute
   RegisterRoute: typeof RegisterRoute
   SettingsRoute: typeof SettingsRoute
@@ -151,6 +164,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RecruitmentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pet': {
+      id: '/pet'
+      path: '/pet'
+      fullPath: '/pet'
+      preLoaderRoute: typeof PetRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -179,6 +199,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DemoRoute: DemoRoute,
   LoginRoute: LoginRoute,
+  PetRoute: PetRoute,
   RecruitmentRoute: RecruitmentRoute,
   RegisterRoute: RegisterRoute,
   SettingsRoute: SettingsRoute,

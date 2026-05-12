@@ -197,13 +197,27 @@ class ChatService:
 
     @staticmethod
     def list_messages(db: Session, conversation_id: int) -> list[ConversationMessage]:
+        from src.service.message_parts_extractor import extract_message_parts
+
         ChatService.get_conversation(db, conversation_id)
         stmt: Select[tuple[ConversationMessage]] = (
             select(ConversationMessage)
             .where(ConversationMessage.conversation_id == conversation_id)
             .order_by(ConversationMessage.id.asc())
         )
-        return list(db.scalars(stmt).all())
+        messages = list(db.scalars(stmt).all())
+
+        # 方案B：旧数据兼容 — message_parts 为空时从 stream_chunks 动态提取
+        for msg in messages:
+            if msg.message_parts is None and msg.stream_chunks:
+                try:
+                    parts = extract_message_parts(msg.stream_chunks)
+                    if parts:
+                        msg.message_parts = json.dumps(parts, ensure_ascii=False)
+                except Exception:
+                    pass
+
+        return messages
 
     @staticmethod
     def delete_conversation(db: Session, conversation_id: int) -> None:

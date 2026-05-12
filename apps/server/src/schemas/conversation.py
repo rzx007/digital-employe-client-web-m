@@ -44,6 +44,7 @@ class ConversationMessageRead(BaseModel):
     stream_state: str | None = None
     stream_cursor: int | None = None
     extra_meta: dict | None = None
+    message_parts: list[dict] | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -58,6 +59,24 @@ class ConversationMessageRead(BaseModel):
             except (json.JSONDecodeError, ValueError):
                 return None
         return v
+
+    @field_validator("message_parts", mode="before")
+    @classmethod
+    def parse_message_parts(cls, v: str | list | None) -> list | None:
+        """DB 存储为 JSON 字符串，自动反序列化为 list[dict]"""
+        if v is None:
+            return None
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            import json
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+            except (json.JSONDecodeError, ValueError):
+                pass
+        return None
 
     @field_serializer("created_at")
     def serialize_datetime(self, value: datetime) -> str:

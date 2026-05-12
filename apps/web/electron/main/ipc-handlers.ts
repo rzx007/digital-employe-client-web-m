@@ -12,6 +12,7 @@ import {
   resizeRegisterWindow,
 } from "./register"
 import { createSettingsWindow, closeSettingsWindow } from "./settings"
+import { showPetWindow, hidePetWindow } from "./pet"
 import { VITE_DEV_SERVER_URL, indexHtml } from "./index"
 import { saveAuth, clearAuth, getStoredAuth, hasToken } from "./auth"
 import { setAutoLaunch, getAutoLaunch } from "./auto-launch"
@@ -95,6 +96,17 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
   /** 关闭窗口（最小化到托盘，不退出应用） */
   ipcMain.handle("close-window", () => {
     mainWin?.hide()
+    showPetWindow()
+  })
+
+  /** 宠物被点击 → 隐藏宠物窗口，显示主窗口 */
+  ipcMain.handle("pet:show", () => {
+    hidePetWindow()
+    if (mainWin && !mainWin.isDestroyed()) {
+      if (mainWin.isMinimized()) mainWin.restore()
+      mainWin.show()
+      mainWin.focus()
+    }
   })
 
   /** 最大化/还原窗口 */
@@ -204,9 +216,11 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
     closeRecruitmentWindow()
     // 关闭注册窗口
     closeRegisterWindow()
-    // 关闭主窗口
+    // 关闭主窗口（不显示宠物，因为要跳转登录）
     if (mainWin && !mainWin.isDestroyed()) {
+      setForceQuit(true)
       mainWin.close()
+      setForceQuit(false)
       mainWin = null
     }
 

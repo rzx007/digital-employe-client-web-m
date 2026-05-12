@@ -162,6 +162,7 @@ export async function fetchMessagesByConversationId(
     streamState: msg.stream_state,
     streamCursor: msg.stream_cursor,
     metadata: msg.extra_meta ?? undefined,
+    messageParts: msg.message_parts ?? undefined,
     timestamp: msg.timestamp
       ? new Date(msg.timestamp)
       : msg.created_at

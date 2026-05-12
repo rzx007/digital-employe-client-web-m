@@ -156,6 +156,8 @@ def init_db() -> None:
     )
     # 序列化的事件列表（JSON array），用于断线重放
     ensure_column("conversation_messages", "stream_chunks", "stream_chunks TEXT")
+    # 预计算的结构化 parts（JSON），前端直接渲染
+    ensure_column("conversation_messages", "message_parts", "message_parts TEXT")
 
     # Migration: conversations.title 从 VARCHAR(255) 改为 TEXT（去掉长度限制）
     if "conversations" in inspector.get_table_names():

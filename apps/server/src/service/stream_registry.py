@@ -528,12 +528,28 @@ class StreamRegistry:
         max_retries: int = 3,
     ) -> None:
         """Flush terminal state with retry to avoid stuck streaming on transient DB errors."""
+        from src.service.message_parts_extractor import extract_message_parts
+
+        message_parts_json: str | None = None
+        if stream_json and state == "completed":
+            try:
+                parts = extract_message_parts(stream_json)
+                if parts:
+                    message_parts_json = json.dumps(parts, ensure_ascii=False)
+            except Exception:
+                logger.warning(
+                    "[flush] msg_id=%s message_parts extraction failed",
+                    stream_msg_id,
+                    exc_info=True,
+                )
+
         for attempt in range(max_retries):
             await self._flush_to_db(
                 db, stream_msg_id, buffer, state=state,
                 content=content,
                 stream_json=stream_json,
                 error_message=error_message,
+                message_parts=message_parts_json,
             )
             try:
                 msg = db.get(ConversationMessage, stream_msg_id)
@@ -561,6 +577,7 @@ class StreamRegistry:
         content: str | None = None,
         stream_json: str | None = None,
         error_message: str | None = None,
+        message_parts: str | None = None,
     ) -> bool:
         """Persist stream progress to DB.  Returns True on success."""
         for attempt in range(DB_LOCK_RETRY_COUNT):
@@ -583,6 +600,8 @@ class StreamRegistry:
                 msg.stream_cursor = buffer.cursor
                 if stream_json is not None:
                     msg.stream_chunks = stream_json
+                if message_parts is not None:
+                    msg.message_parts = message_parts
                 db.commit()
                 logger.info(
                     "[flush] msg_id=%s committed: state=%s, content_len=%s, stream_json_len=%s",
