@@ -136,11 +136,7 @@ export function CuratorView({
     messages: initialMessages,
     transport: chatTransport,
     onFinish: () => {
-      if (curatorConversationId) {
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.messages(String(curatorConversationId)),
-        })
-      }
+      // 不用 invalidateQueries — useChat 状态已完整
     },
     onError: (chatError) => {
       toast.error("发送失败", {
@@ -202,6 +198,8 @@ export function CuratorView({
 
   useEffect(() => {
     if (!initialMessages.length || !curatorConversationId) return
+    if (status === "streaming" || status === "submitted") return
+
     setMessages(initialMessages)
     const lastStored = storedMessages?.[storedMessages.length - 1]
     if (

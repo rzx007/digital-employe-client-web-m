@@ -6,8 +6,6 @@ import {
   useMemo,
   type ComponentProps,
 } from "react"
-import { useQueryClient } from "@tanstack/react-query"
-import { chatKeys } from "@/lib/query-keys/chat"
 import { useChat } from "@ai-sdk/react"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
@@ -49,7 +47,6 @@ export function ConversationChatView({
     }>
   >([])
   const [hasReceivedMessages, setHasReceivedMessages] = useState(false)
-  const queryClient = useQueryClient()
   const {
     data: storedMessages = [],
     isPending: isMessagesLoading,
@@ -80,14 +77,10 @@ export function ConversationChatView({
     messages: initialMessages,
     transport: chatTransport,
     onFinish: () => {
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.messages(String(conversationId)),
-      })
+      // 不用 invalidateQueries — useChat 状态已完整，再拉库会触发 useEffect 二次 resume
     },
-    onError: (chatError) => {
-      // toast.error("发送失败", {
-      //   description: chatError.message || "请稍后重试",
-      // })
+    onError: () => {
+      // toast.error("发送失败", { description: chatError.message || "请稍后重试" })
     },
   })
 
@@ -115,26 +108,29 @@ export function ConversationChatView({
   }, [messages, hasReceivedMessages])
 
   useEffect(() => {
-    if (initialMessages.length > 0) {
-      setMessages(initialMessages)
+    if (initialMessages.length === 0) return
 
-      const lastStored = storedMessages[storedMessages.length - 1]
-      if (
-        lastStored?.role === "assistant" &&
-        lastStored.streamState === "streaming" &&
-        (status === "ready" || status === "error")
-      ) {
-        const rafId = requestAnimationFrame(() => {
-          // rAF 执行时重检 status
-          if (status !== "ready" && status !== "error") return
-          chatTransport.setLastSeq(
-            String(conversationId),
-            lastStored.streamCursor
-          )
-          resumeStream()
-        })
-        return () => cancelAnimationFrame(rafId)
-      }
+    // 正在恢复流时不要覆盖 useChat 已累积的状态
+    if (status === "streaming" || status === "submitted") return
+
+    setMessages(initialMessages)
+
+    const lastStored = storedMessages[storedMessages.length - 1]
+    if (
+      lastStored?.role === "assistant" &&
+      lastStored.streamState === "streaming" &&
+      (status === "ready" || status === "error")
+    ) {
+      const rafId = requestAnimationFrame(() => {
+        // rAF 执行时重检 status
+        if (status !== "ready" && status !== "error") return
+        chatTransport.setLastSeq(
+          String(conversationId),
+          lastStored.streamCursor
+        )
+        resumeStream()
+      })
+      return () => cancelAnimationFrame(rafId)
     }
     // status 是防护，不用加入依赖数组
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -195,11 +191,8 @@ export function ConversationChatView({
             },
           }
         )
-      } catch (sendError) {
-        // toast.error("发送失败!", {
-        //   description:
-        //     sendError instanceof Error ? sendError.message : "请稍后重试",
-        // })
+      } catch {
+        // toast.error("发送失败!", { description: sendError instanceof Error ? sendError.message : "请稍后重试" })
       }
     },
     [command, mentions, sendMessage, conversationId]
