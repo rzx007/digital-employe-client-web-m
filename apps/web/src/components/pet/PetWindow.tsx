@@ -1,14 +1,15 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
-  useState,
   type KeyboardEvent,
   type MouseEvent,
 } from "react"
 import { SpritePlayer } from "./animation/SpritePlayer"
 import { petStateLabels, type PetState } from "./animation/types"
 import type { SpriteSkinManifest } from "./animation/manifest"
+import { usePetVoiceCurator } from "./use-pet-voice-curator"
 import "./PetWindow.css"
 import manifestData from "./skins/default/manifest.json"
 import spritePng from "./skins/default/sprite.png"
@@ -22,8 +23,8 @@ const skinManifest: SpriteSkinManifest = {
 }
 
 export function PetWindow() {
-  const [petState] = useState<PetState>("idle")
-  const [caption, setCaption] = useState("点击我打开主窗口")
+  const { isRecording, voiceBusy, toggleVoiceClick } = usePetVoiceCurator()
+
   const dragTimerRef = useRef<number | null>(null)
   const dragStartPointRef = useRef<{
     screenX: number
@@ -31,6 +32,30 @@ export function PetWindow() {
   } | null>(null)
   const isPointerDownRef = useRef(false)
   const suppressNextClickRef = useRef(false)
+
+  const petState: PetState = useMemo(
+    () => (voiceBusy ? "thinking" : isRecording ? "listening" : "idle"),
+    [voiceBusy, isRecording]
+  )
+
+  const caption = useMemo(
+    () =>
+      voiceBusy
+        ? "识别并发送给总管…"
+        : isRecording
+          ? "录音中，再点结束"
+          : "点击说话，再点结束并发送",
+    [voiceBusy, isRecording]
+  )
+
+  useEffect(() => {
+    void (async () => {
+      const api = window.electronApi
+      if (!api) return
+      const { token } = await api.getAuthStatus()
+      if (token) localStorage.setItem("token", token)
+    })()
+  }, [])
 
   const clearDragTimer = useCallback(() => {
     if (dragTimerRef.current === null) return
@@ -57,6 +82,7 @@ export function PetWindow() {
   const handlePetMouseDown = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
       if (event.button !== 0) return
+      if (isRecording || voiceBusy) return
 
       isPointerDownRef.current = true
       suppressNextClickRef.current = false
@@ -66,7 +92,7 @@ export function PetWindow() {
       }
       startHoldToDragTimer()
     },
-    [startHoldToDragTimer],
+    [isRecording, voiceBusy, startHoldToDragTimer]
   )
 
   const handlePetMouseUp = useCallback(() => {
@@ -79,18 +105,12 @@ export function PetWindow() {
     (event: KeyboardEvent<HTMLDivElement>) => {
       if (event.key !== "Enter" && event.key !== " ") return
       event.preventDefault()
-      window.electronApi?.showPet()
+      void toggleVoiceClick()
     },
-    [],
+    [toggleVoiceClick]
   )
 
   useEffect(() => clearDragTimer, [clearDragTimer])
-
-  // 首次渲染 6 秒后自动隐藏气泡
-  useEffect(() => {
-    const timer = window.setTimeout(() => setCaption(""), 6000)
-    return () => window.clearTimeout(timer)
-  }, [])
 
   const handlePetClick = useCallback(() => {
     if (suppressNextClickRef.current) {
@@ -98,15 +118,15 @@ export function PetWindow() {
       return
     }
 
-    setCaption("正在打开...")
-    window.electronApi?.showPet()
-  }, [])
+    void toggleVoiceClick()
+  }, [toggleVoiceClick])
 
   return (
     <main className="pet-shell" data-state={petState}>
       <section className="pet-stage" aria-live="polite">
         <div
           aria-label="数字员工宠物"
+          aria-pressed={isRecording}
           className="pet-button"
           onClick={handlePetClick}
           onKeyDown={handlePetKeyDown}
@@ -145,7 +165,7 @@ function startWindowDragFromPoint(startPoint: {
     const handleMouseMove = (event: globalThis.MouseEvent) => {
       api.setPetPosition(
         startPosition.x + event.screenX - startPoint.screenX,
-        startPosition.y + event.screenY - startPoint.screenY,
+        startPosition.y + event.screenY - startPoint.screenY
       )
     }
 

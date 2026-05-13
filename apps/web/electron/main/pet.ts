@@ -1,5 +1,39 @@
-import { BrowserWindow, ipcMain, screen } from "electron"
+import {
+  BrowserWindow,
+  ipcMain,
+  screen,
+  session,
+  type Session,
+} from "electron"
 import path from "node:path"
+
+/**
+ * 独立分区，避免改写 defaultSession 的全局权限回调影响主窗口。
+ * 须在 app ready 之后创建（见 getPetSession），不可在模块顶层调用 session.fromPartition。
+ */
+let petSession: Session | null = null
+
+function getPetSession(): Session {
+  if (!petSession) {
+    petSession = session.fromPartition("persist:pet-panel", {
+      cache: false,
+    })
+  }
+  return petSession
+}
+
+let petSessionPermissionHooked = false
+function ensurePetSessionMediaPermission() {
+  if (petSessionPermissionHooked) return
+  petSessionPermissionHooked = true
+  getPetSession().setPermissionRequestHandler((_wc, permission, callback) => {
+    if (permission === "media") {
+      callback(true)
+      return
+    }
+    callback(false)
+  })
+}
 
 let petWin: BrowserWindow | null = null
 
@@ -25,6 +59,8 @@ export function createPetWindow(options: {
   _devServerUrl = options.devServerUrl
   _indexHtml = options.indexHtml
 
+  ensurePetSessionMediaPermission()
+
   petWin = new BrowserWindow({
     width: PET_WINDOW_WIDTH,
     height: PET_WINDOW_HEIGHT,
@@ -41,6 +77,7 @@ export function createPetWindow(options: {
       preload: options.preload,
       nodeIntegration: false,
       contextIsolation: true,
+      session: getPetSession(),
     },
   })
 
