@@ -51,7 +51,7 @@ export function useMessagesQuery(conversationId: string | number | null) {
     queryFn: ({ signal }) =>
       fetchMessagesByConversationId(conversationId!, { signal }),
     enabled: Boolean(conversationId),
-    staleTime: 1000 * 60 * 0,
+    staleTime: 1000 * 30 * 0,
   })
 }
 

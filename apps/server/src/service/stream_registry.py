@@ -25,6 +25,162 @@ DB_LOCK_RETRY_COUNT = 2
 DB_LOCK_RETRY_SLEEP_SECONDS = 0.05
 
 
+def _flush_to_db_sync(
+    stream_msg_id: int,
+    buffer_cursor: int,
+    state: str | None = None,
+    content: str | None = None,
+    error_message: str | None = None,
+    message_parts: str | None = None,
+) -> bool:
+    """同步写入会话消息流状态；在 asyncio.to_thread 中调用，勿跨线程复用 Session。"""
+    from src.db.session import get_session_local
+
+    db = get_session_local()()
+    try:
+        for attempt in range(DB_LOCK_RETRY_COUNT):
+            try:
+                msg = db.get(ConversationMessage, stream_msg_id)
+                if not msg:
+                    logger.warning(
+                        "[flush] msg_id=%s not found in DB, skip", stream_msg_id
+                    )
+                    return False
+                if state is not None:
+                    msg.stream_state = state
+                if content is not None:
+                    msg.content = content
+                if error_message is not None:
+                    try:
+                        meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
+                    except (json.JSONDecodeError, TypeError):
+                        meta = {}
+                    meta["error_message"] = error_message
+                    msg.extra_meta = json.dumps(meta, ensure_ascii=False)
+                msg.stream_cursor = buffer_cursor
+                if message_parts is not None:
+                    msg.message_parts = message_parts
+                db.commit()
+                logger.info(
+                    "[flush] msg_id=%s committed: state=%s, content_len=%s, parts_len=%s",
+                    stream_msg_id,
+                    state,
+                    len(content) if content else None,
+                    len(message_parts) if message_parts else None,
+                )
+                return True
+            except OperationalError as e:
+                db.rollback()
+                is_locked = "database is locked" in str(e).lower()
+                if not is_locked:
+                    logger.warning(
+                        "[flush] msg_id=%s FAILED", stream_msg_id, exc_info=True
+                    )
+                    return False
+                if attempt >= DB_LOCK_RETRY_COUNT - 1:
+                    logger.warning(
+                        "[flush] msg_id=%s FAILED after lock retries=%d",
+                        stream_msg_id,
+                        DB_LOCK_RETRY_COUNT,
+                        exc_info=True,
+                    )
+                    return False
+                time.sleep(DB_LOCK_RETRY_SLEEP_SECONDS * (attempt + 1))
+            except Exception:
+                logger.warning(
+                    "[flush] msg_id=%s FAILED", stream_msg_id, exc_info=True
+                )
+                db.rollback()
+                return False
+        return False
+    finally:
+        db.close()
+
+
+def _flush_heartbeat_sync(conversation_id: int) -> None:
+    from src.db.session import get_session_local
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.models.workspace import cst_now
+
+    db = get_session_local()()
+    try:
+        log = db.scalars(
+            select(TaskExecutionLog).where(
+                TaskExecutionLog.conversation_id == conversation_id,
+                TaskExecutionLog.run_status == "running",
+            )
+        ).first()
+        if not log:
+            return
+        log.last_heartbeat_at = cst_now()
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+def _checkpoint_flush_sync(
+    stream_msg_id: int,
+    buffer_cursor: int,
+    buffer_events_snapshot: list[dict],
+    content: str | None,
+) -> bool:
+    from src.service.message_parts_extractor import extract_message_parts_from_buffer
+
+    checkpoint_parts = extract_message_parts_from_buffer(buffer_events_snapshot)
+    if not checkpoint_parts:
+        return _flush_to_db_sync(
+            stream_msg_id,
+            buffer_cursor,
+            state="streaming",
+            content=content,
+        )
+    message_parts_json = json.dumps(checkpoint_parts, ensure_ascii=False)
+    return _flush_to_db_sync(
+        stream_msg_id,
+        buffer_cursor,
+        state="streaming",
+        content=content,
+        message_parts=message_parts_json,
+    )
+
+
+def _flush_terminal_sync(
+    stream_msg_id: int,
+    buffer_cursor: int,
+    buffer_events_snapshot: list[dict],
+    state: str,
+    content: str | None,
+    error_message: str | None = None,
+) -> bool:
+    from src.service.message_parts_extractor import extract_message_parts_from_buffer
+
+    message_parts_json: str | None = None
+    try:
+        parts = extract_message_parts_from_buffer(buffer_events_snapshot)
+        if parts:
+            message_parts_json = json.dumps(parts, ensure_ascii=False)
+    except Exception:
+        logger.warning(
+            "[flush] msg_id=%s message_parts extraction failed",
+            stream_msg_id,
+            exc_info=True,
+        )
+
+    return _flush_to_db_sync(
+        stream_msg_id,
+        buffer_cursor,
+        state=state,
+        content=content,
+        error_message=error_message,
+        message_parts=message_parts_json,
+    )
+
+
 class StreamEventBuffer:
     def __init__(self, conversation_id: int):
         self.conversation_id = conversation_id
@@ -222,31 +378,25 @@ class StreamRegistry:
         debug_content_only: bool,
         task: ActiveStreamTask,
     ) -> None:
-        from src.db.session import get_session_local
         from src.service.chat_service import ChatService
-        from src.service.message_parts_extractor import extract_message_parts_from_buffer
-
-        db = get_session_local()()
 
         assistant_text_parts: list[str] = []
         latest_updates_text: str | None = None
-        last_heartbeat_time = time.monotonic()
         state_final = "completed"
         _last_checkpoint_count = 0
 
         async def _heartbeat_loop():
-            hb_db = get_session_local()()
             try:
                 while True:
                     await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
                     try:
-                        _flush_heartbeat(hb_db, conversation_id)
+                        await asyncio.to_thread(
+                            _flush_heartbeat_sync, conversation_id
+                        )
                     except Exception:
                         pass
             except asyncio.CancelledError:
                 pass
-            finally:
-                hb_db.close()
 
         _heartbeat_task = asyncio.create_task(_heartbeat_loop())
 
@@ -276,17 +426,6 @@ class StreamRegistry:
                     if content:
                         latest_content = content
             return latest_content
-
-        def _maybe_heartbeat() -> None:
-            nonlocal last_heartbeat_time
-            now_hb = time.monotonic()
-            if now_hb - last_heartbeat_time < HEARTBEAT_INTERVAL_SECONDS:
-                return
-            last_heartbeat_time = now_hb
-            try:
-                _flush_heartbeat(db, conversation_id)
-            except Exception:
-                pass
 
         _agent_it = None
         try:
@@ -336,24 +475,25 @@ class StreamRegistry:
                     self.broadcast(conversation_id, evt)
 
                 if (
-                    len(task.buffer._events) - _last_checkpoint_count > BUFFER_CHECKPOINT_LEN
+                    len(task.buffer._events) - _last_checkpoint_count
+                    > BUFFER_CHECKPOINT_LEN
                 ):
                     _last_checkpoint_count = len(task.buffer._events)
-                    checkpoint_parts = extract_message_parts_from_buffer(
-                        list(task.buffer._events)
+                    events_snapshot = list(task.buffer._events)
+                    cursor_snapshot = task.buffer.cursor
+                    current_text = "".join(assistant_text_parts)
+                    ok = await asyncio.to_thread(
+                        _checkpoint_flush_sync,
+                        stream_msg_id,
+                        cursor_snapshot,
+                        events_snapshot,
+                        current_text or None,
                     )
-                    if checkpoint_parts:
-                        current_text = "".join(assistant_text_parts)
-                        await self._flush_to_db(
-                            db, stream_msg_id, task.buffer,
-                            state="streaming",
-                            content=current_text or None,
-                            message_parts=json.dumps(
-                                checkpoint_parts, ensure_ascii=False
-                            ),
+                    if not ok:
+                        logger.warning(
+                            "[run] conv=%s checkpoint flush FAILED at cursor=%d",
+                            conversation_id, cursor_snapshot,
                         )
-
-                _maybe_heartbeat()
 
             final_text = latest_updates_text or "模型已完成调用。"
 
@@ -368,10 +508,14 @@ class StreamRegistry:
             )
             self.broadcast(conversation_id, evt)
 
-            await self._flush_terminal(
-                db, stream_msg_id, task.buffer, state="completed",
+            ok = await self._flush_terminal(
+                stream_msg_id,
+                task,
+                state="completed",
                 content=final_text,
             )
+            if not ok:
+                await self._ensure_terminal_state(stream_msg_id, "completed")
 
         except asyncio.CancelledError:
             state_final = "cancelled"
@@ -389,10 +533,14 @@ class StreamRegistry:
             )
             self.broadcast(conversation_id, evt)
 
-            await self._flush_terminal(
-                db, stream_msg_id, task.buffer, state="cancelled",
+            ok = await self._flush_terminal(
+                stream_msg_id,
+                task,
+                state="cancelled",
                 content=partial_text,
             )
+            if not ok:
+                await self._ensure_terminal_state(stream_msg_id, "cancelled")
             raise
 
         except Exception as e:
@@ -409,11 +557,15 @@ class StreamRegistry:
             evt = task.buffer.add({"status": "error", "error": str(e)})
             self.broadcast(conversation_id, evt)
 
-            await self._flush_terminal(
-                db, stream_msg_id, task.buffer, state="error",
+            ok = await self._flush_terminal(
+                stream_msg_id,
+                task,
+                state="error",
                 content=partial_text,
                 error_message=str(e),
             )
+            if not ok:
+                await self._ensure_terminal_state(stream_msg_id, "error")
 
         finally:
             _heartbeat_task.cancel()
@@ -435,10 +587,14 @@ class StreamRegistry:
                 )
                 state_final = "cancelled"
                 partial_text = latest_updates_text or None
-                await self._flush_terminal(
-                    db, stream_msg_id, task.buffer, state="cancelled",
+                ok = await self._flush_terminal(
+                    stream_msg_id,
+                    task,
+                    state="cancelled",
                     content=partial_text,
                 )
+                if not ok:
+                    await self._ensure_terminal_state(stream_msg_id, "cancelled")
             logger.info(
                 "[run] conv=%s finally: state_final=%s, buffer_cursor=%d",
                 conversation_id, state_final, task.buffer.cursor,
@@ -448,97 +604,54 @@ class StreamRegistry:
             await loop.run_in_executor(None, _finalize_task_stream, conversation_id, state_final)
 
             task.subscribers.clear()
-            db.close()
             self._schedule_cleanup(conversation_id)
+
+    async def _ensure_terminal_state(self, stream_msg_id: int, state: str) -> None:
+        """flush 失败兜底：仅写 stream_state，不写 content/parts，保证不卡在 streaming。"""
+        def _do():
+            from src.db.session import get_session_local
+            db = get_session_local()()
+            try:
+                msg = db.get(ConversationMessage, stream_msg_id)
+                if msg and msg.stream_state == "streaming":
+                    msg.stream_state = state
+                    msg.stream_cursor = 0
+                    db.commit()
+                    logger.info(
+                        "[ensure] msg_id=%s terminal state set to %s (fallback after flush failure)",
+                        stream_msg_id, state,
+                    )
+            except Exception:
+                pass
+            finally:
+                db.close()
+        await asyncio.to_thread(_do)
 
     async def _flush_terminal(
         self,
-        db: Any,
         stream_msg_id: int,
-        buffer: StreamEventBuffer,
+        task: ActiveStreamTask,
         state: str,
         content: str | None,
         error_message: str | None = None,
-    ) -> None:
-        from src.service.message_parts_extractor import extract_message_parts_from_buffer
-
-        message_parts_json: str | None = None
-        try:
-            parts = extract_message_parts_from_buffer(list(buffer._events))
-            if parts:
-                message_parts_json = json.dumps(parts, ensure_ascii=False)
-        except Exception:
-            logger.warning(
-                "[flush] msg_id=%s message_parts extraction failed",
-                stream_msg_id,
-                exc_info=True,
-            )
-
-        await self._flush_to_db(
-            db, stream_msg_id, buffer, state=state,
-            content=content,
-            error_message=error_message,
-            message_parts=message_parts_json,
-        )
-
-    async def _flush_to_db(
-        self,
-        db: Any,
-        stream_msg_id: int,
-        buffer: StreamEventBuffer,
-        state: str | None = None,
-        content: str | None = None,
-        error_message: str | None = None,
-        message_parts: str | None = None,
     ) -> bool:
-        for attempt in range(DB_LOCK_RETRY_COUNT):
-            try:
-                msg = db.get(ConversationMessage, stream_msg_id)
-                if not msg:
-                    logger.warning("[flush] msg_id=%s not found in DB, skip", stream_msg_id)
-                    return False
-                if state is not None:
-                    msg.stream_state = state
-                if content is not None:
-                    msg.content = content
-                if error_message is not None:
-                    try:
-                        meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
-                    except (json.JSONDecodeError, TypeError):
-                        meta = {}
-                    meta["error_message"] = error_message
-                    msg.extra_meta = json.dumps(meta, ensure_ascii=False)
-                msg.stream_cursor = buffer.cursor
-                if message_parts is not None:
-                    msg.message_parts = message_parts
-                db.commit()
-                logger.info(
-                    "[flush] msg_id=%s committed: state=%s, content_len=%s, parts_len=%s",
-                    stream_msg_id, state,
-                    len(content) if content else None,
-                    len(message_parts) if message_parts else None,
-                )
-                return True
-            except OperationalError as e:
-                db.rollback()
-                is_locked = "database is locked" in str(e).lower()
-                if not is_locked:
-                    logger.warning("[flush] msg_id=%s FAILED", stream_msg_id, exc_info=True)
-                    return False
-                if attempt >= DB_LOCK_RETRY_COUNT - 1:
-                    logger.warning(
-                        "[flush] msg_id=%s FAILED after lock retries=%d",
-                        stream_msg_id,
-                        DB_LOCK_RETRY_COUNT,
-                        exc_info=True,
-                    )
-                    return False
-                await asyncio.sleep(DB_LOCK_RETRY_SLEEP_SECONDS * (attempt + 1))
-            except Exception:
-                logger.warning("[flush] msg_id=%s FAILED", stream_msg_id, exc_info=True)
-                db.rollback()
-                return False
-        return False
+        events_snapshot = list(task.buffer._events)
+        cursor_snapshot = task.buffer.cursor
+        ok = await asyncio.to_thread(
+            _flush_terminal_sync,
+            stream_msg_id,
+            cursor_snapshot,
+            events_snapshot,
+            state,
+            content,
+            error_message,
+        )
+        if not ok:
+            logger.error(
+                "[flush] conv=%s terminal state=%s FLUSH FAILED",
+                task.conversation_id, state,
+            )
+        return ok
 
 
 def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
@@ -603,29 +716,6 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
             "_finalize_task_stream failed conv=%s state=%s",
             conversation_id, stream_state, exc_info=True
         )
-
-
-def _flush_heartbeat(db: Any, conversation_id: int) -> None:
-    try:
-        from sqlalchemy import select
-        from src.models.task_execution_log import TaskExecutionLog
-        from src.models.workspace import cst_now
-
-        log = db.scalars(
-            select(TaskExecutionLog).where(
-                TaskExecutionLog.conversation_id == conversation_id,
-                TaskExecutionLog.run_status == "running",
-            )
-        ).first()
-        if not log:
-            return
-        log.last_heartbeat_at = cst_now()
-        db.commit()
-    except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass
 
 
 def cleanup_zombie_executions(db: Any) -> int:
