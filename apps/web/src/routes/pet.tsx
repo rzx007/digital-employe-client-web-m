@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { PetWindow } from "@/pet/PetWindow"
+import { PetWindow } from "@/components/pet/PetWindow"
 
 export const Route = createFileRoute("/pet")({
   component: PetWindow,

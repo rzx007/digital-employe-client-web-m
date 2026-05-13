@@ -53,7 +53,7 @@ export function AppTitlebar({ title = "数字员工" }: AppTitlebarProps) {
       onDoubleClick={handleMaximize}
     >
       <div className="flex h-full items-center gap-2 px-3">
-        <img src={logoSvg} alt="" className="size-4" />
+        <img src={logoSvg} alt="" className="w-4" />
         <span className="text-xs text-muted-foreground">{title}</span>
       </div>
       <div

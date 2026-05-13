@@ -1,6 +1,6 @@
 {
   "REMOTE_API_BASE_URL": "http://192.168.2.78:5002",
-  "DEEPAGENT_MODEL": "deepseek-v3.2",
+  "DEEPAGENT_MODEL": "deepseek-v4-flash",
   "CHAT_HISTORY_MAX_MESSAGES": "30",
   "OPENAI_API_KEY": "sk-f9441c2d00d140989c1669cb245da166",
   "BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
