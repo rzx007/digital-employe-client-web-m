@@ -197,8 +197,6 @@ class ChatService:
 
     @staticmethod
     def list_messages(db: Session, conversation_id: int) -> list[ConversationMessage]:
-        from src.service.message_parts_extractor import extract_message_parts
-
         ChatService.get_conversation(db, conversation_id)
         stmt: Select[tuple[ConversationMessage]] = (
             select(ConversationMessage)
@@ -206,16 +204,6 @@ class ChatService:
             .order_by(ConversationMessage.id.asc())
         )
         messages = list(db.scalars(stmt).all())
-
-        # 方案B：旧数据兼容 — message_parts 为空时从 stream_chunks 动态提取
-        for msg in messages:
-            if msg.message_parts is None and msg.stream_chunks:
-                try:
-                    parts = extract_message_parts(msg.stream_chunks)
-                    if parts:
-                        msg.message_parts = json.dumps(parts, ensure_ascii=False)
-                except Exception:
-                    pass
 
         return messages
 
@@ -456,12 +444,12 @@ class ChatService:
             yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
 
     @staticmethod
-    async def resume_conversation_stream(db: Session, conversation_id: int, debug_content_only: bool = False, cursor: int = 0):
-        """恢复流式会话，仅对仍在运行的流返回增量事件。"""
+    async def resume_conversation_stream(db: Session, conversation_id: int, debug_content_only: bool = False):
+        """恢复流式会话，全量回放 buffer 历史后衔接实时事件。"""
         from src.service.stream_registry import registry
         import asyncio
 
-        logger.info("[resume] conv=%s cursor=%s debug=%s", conversation_id, cursor, debug_content_only)
+        logger.info("[resume] conv=%s debug=%s", conversation_id, debug_content_only)
 
         status_info = registry.get_stream_status(conversation_id, db)
         if status_info:
@@ -472,10 +460,7 @@ class ChatService:
 
         task = registry.get_task(conversation_id)
         if not task or not task.is_active:
-            # Detect stale streaming message (no active task, but DB still says streaming)
             if not task:
-                from sqlalchemy import select
-                from src.models.conversation import ConversationMessage
                 stmt = (
                     select(ConversationMessage)
                     .where(
@@ -506,24 +491,14 @@ class ChatService:
 
         logger.info("[resume] conv=%s subscribing to live task, buffer_cursor=%d", conversation_id, task.buffer.cursor)
 
-        last_seq = cursor
-
-        # Keep a typed reference to asyncio.to_thread for closure correctness
         _to_thread = asyncio.to_thread
 
         async def _emit_event_payloads(event: dict) -> tuple[bool, list[str]]:
-            nonlocal last_seq
-            if not isinstance(event, dict):
-                return False, []
-            seq = event.get("seq")
-            if isinstance(seq, int):
-                if seq <= last_seq:
-                    return False, []
-                last_seq = seq
-
             data = event.get("data")
             if not data:
                 return False, []
+
+            seq = event.get("seq")
 
             def _sse_line(payload: str) -> str:
                 return f"id: {seq}\ndata: {payload}\n\n" if seq is not None else f"data: {payload}\n\n"
@@ -550,51 +525,56 @@ class ChatService:
                 )
                 return False, [_sse_line(payload_str)]
 
-        # Helper to detect terminal events without expensive serialization
-        def _is_terminal(event: dict) -> bool:
-            data = event.get("data") if isinstance(event, dict) else None
-            return isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error")
-
-        buffer_events = task.buffer.get_events_after(last_seq)
-        logger.info("[resume] conv=%s initial buffer scan: %d events after cursor=%d", conversation_id, len(buffer_events), last_seq)
-        for event in buffer_events:
-            if task.status != "streaming" and not _is_terminal(event):
-                continue
+        # Phase 1: 全量回放 buffer 中的所有历史事件
+        all_events = list(task.buffer._events)
+        last_buffered_seq = task.buffer.cursor
+        logger.info("[resume] conv=%s full buffer replay: %d events", conversation_id, len(all_events))
+        for event in all_events:
             done, payloads = await _emit_event_payloads(event)
-            if not done and task.status != "streaming":
-                continue
             for payload in payloads:
                 yield payload
             if done:
-                logger.info("[resume] conv=%s terminated during initial buffer scan at seq=%d", conversation_id, last_seq)
+                logger.info("[resume] conv=%s terminated during full buffer replay", conversation_id)
                 return
 
-        queue = asyncio.Queue()
+        # Phase 2: 订阅实时事件
+        queue = asyncio.Queue(maxsize=5000)
 
         def _on_event(evt: dict):
-            queue.put_nowait(evt)
+            try:
+                queue.put_nowait(evt)
+            except asyncio.QueueFull:
+                data = evt.get("data") if isinstance(evt, dict) else None
+                if isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error"):
+                    try:
+                        queue.get_nowait()
+                        queue.put_nowait(evt)
+                    except (asyncio.QueueEmpty, asyncio.QueueFull):
+                        pass
 
         task.subscribe(_on_event)
-        missed = task.buffer.get_events_after(last_seq)
-        logger.info("[resume] conv=%s after subscribe, missed=%d events after seq=%d", conversation_id, len(missed), last_seq)
-        for missed_event in missed:
-            if task.status != "streaming" and not _is_terminal(missed_event):
-                continue
+
+        # 补扫 subscribe 和 replay 之间新到达的事件
+        new_since_scan = [
+            e for e in list(task.buffer._events)
+            if e["seq"] > last_buffered_seq
+        ]
+        logger.info("[resume] conv=%s after subscribe, missed=%d events after seq=%d", conversation_id, len(new_since_scan), last_buffered_seq)
+        for missed_event in new_since_scan:
             done, payloads = await _emit_event_payloads(missed_event)
-            if not done and task.status != "streaming":
-                continue
             for payload in payloads:
                 yield payload
             if done:
                 task.unsubscribe(_on_event)
-                logger.info("[resume] conv=%s terminated during missed-event scan at seq=%d", conversation_id, last_seq)
+                logger.info("[resume] conv=%s terminated during missed-event scan", conversation_id)
                 return
 
+        # Phase 3: 实时 Queue 循环
         logger.info("[resume] conv=%s entering queue.get() loop, waiting for live events...", conversation_id)
         try:
             while True:
                 try:
-                    evt = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    evt = await asyncio.wait_for(queue.get(), timeout=5.0)
                 except asyncio.TimeoutError:
                     current_task = registry.get_task(conversation_id)
                     if not current_task or not current_task.is_active:
@@ -604,21 +584,17 @@ class ChatService:
                         )
                         break
                     continue
-                if task.status != "streaming" and not _is_terminal(evt):
-                    continue
                 done, payloads = await _emit_event_payloads(evt)
-                if not done and task.status != "streaming":
-                    continue
                 for payload in payloads:
                     yield payload
                 if done:
-                    logger.info("[resume] conv=%s terminated from queue event, seq=%d", conversation_id, last_seq)
+                    logger.info("[resume] conv=%s terminated from queue event", conversation_id)
                     break
         finally:
             t = registry.get_task(conversation_id)
             if t:
                 t.unsubscribe(_on_event)
-            logger.info("[resume] conv=%s unsubscribed, final seq=%d", conversation_id, last_seq)
+            logger.info("[resume] conv=%s unsubscribed", conversation_id)
 
     @staticmethod
     def cancel_conversation_stream(conversation_id: int) -> bool:

@@ -40,6 +40,22 @@ def extract_message_parts(stream_chunks_json: str) -> list[dict] | None:
     return _replay_payloads_to_parts(payloads)
 
 
+def extract_message_parts_from_buffer(events: list[dict]) -> list[dict] | None:
+    """从 StreamEventBuffer 的事件列表直接提取 structured parts。
+    
+    用于在终态写入 DB 时，从内存 buffer 的事件列表中提取前端可直接渲染的结构化 message_parts
+    不经过 JSON 序列化/反序列化，直接处理内存中的 buffer 事件。
+    events 格式：[{"seq": N, "data": payload}, ...]
+    每个 payload 是 convert_to_serializable 后的 dict。
+    """
+    if not events:
+        return None
+    payloads = [e["data"] for e in events if isinstance(e, dict) and "data" in e]
+    if not payloads:
+        return None
+    return _replay_payloads_to_parts(payloads)
+
+
 def _replay_payloads_to_parts(payloads: list) -> list[dict]:
     parts: list[dict] = []
     text_buf: str = ""

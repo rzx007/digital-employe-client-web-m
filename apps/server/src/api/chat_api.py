@@ -95,13 +95,12 @@ async def stream_conversation(
 @router.get("/chat/conversations/{conversation_id}/stream/resume")
 async def resume_conversation_stream(
     conversation_id: int,
-    cursor: int = 0,
     debug_content_only: bool = False,
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """恢复流式会话回答（SSE），支持从指定 cursor 开始增量获取。"""
+    """恢复流式会话回答（SSE），全量回放 buffer 历史后衔接实时事件。"""
     return StreamingResponse(
-        ChatService.resume_conversation_stream(db, conversation_id, debug_content_only=debug_content_only, cursor=cursor),
+        ChatService.resume_conversation_stream(db, conversation_id, debug_content_only=debug_content_only),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )

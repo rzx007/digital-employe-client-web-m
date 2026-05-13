@@ -11,7 +11,6 @@ export interface Message {
   type?: "text" | "image" | "file"
   metadata?: Record<string, any>
   chunkJson?: string
-  streamChunks?: string
   streamState?: string | null
   streamCursor?: number | null
   messageParts?: unknown[]

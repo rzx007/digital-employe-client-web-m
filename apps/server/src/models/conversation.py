@@ -37,7 +37,6 @@ class ConversationMessage(Base):
     extra_meta: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     stream_state: Mapped[str | None] = mapped_column(String(32), nullable=True)     # 取值: "streaming" | "completed" | "error" | NULL（旧消息无此字段
     stream_cursor: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)     # 已发送的最后一个事件序列号
-    stream_chunks: Mapped[str | None] = mapped_column(Text, nullable=True)     # 序列化的事件列表（JSON array），用于断线重放
     message_parts: Mapped[str | None] = mapped_column(Text, nullable=True)     # 预计算的结构化 parts（JSON），前端直接渲染
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now, index=True)
 

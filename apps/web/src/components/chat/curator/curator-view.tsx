@@ -147,6 +147,7 @@ export function CuratorView({
 
   const handleStop = useCallback(async () => {
     stop()
+    chatTransport.cancelReconnect()
     if (curatorConversationId) {
       try {
         await cancelConversationStream(curatorConversationId)
@@ -209,10 +210,6 @@ export function CuratorView({
     ) {
       const rafId = requestAnimationFrame(() => {
         if (status !== "ready" && status !== "error") return
-        chatTransport.setLastSeq(
-          String(curatorConversationId),
-          lastStored.streamCursor
-        )
         resumeStream()
       })
       return () => cancelAnimationFrame(rafId)

@@ -55,12 +55,8 @@ function buildChatApiUrl(options: any) {
   return `/chat/conversations/${options.conversationId}/stream`
 }
 
-function buildResumeApiUrl(conversationId: string, cursor?: number) {
-  const base = `/chat/conversations/${conversationId}/stream/resume`
-  if (cursor && cursor > 0) {
-    return `${base}?cursor=${cursor}`
-  }
-  return base
+function buildResumeApiUrl(conversationId: string) {
+  return `/chat/conversations/${conversationId}/stream/resume`
 }
 
 function getConversationIdFromBody(body: object | undefined) {
@@ -118,11 +114,10 @@ async function createEventSourceResponse(options: {
 
 async function createResumeEventSourceResponse(options: {
   conversationId: string
-  cursor?: number
   abortSignal: AbortSignal | undefined
 }) {
   const response = await request.raw(
-    buildResumeApiUrl(options.conversationId, options.cursor),
+    buildResumeApiUrl(options.conversationId),
     {
       method: "GET",
       headers: getRequestHeaders({
@@ -150,18 +145,7 @@ async function createResumeEventSourceResponse(options: {
 export class LangChainChatTransport<
   UI_MESSAGE extends UIMessage,
 > implements ChatTransport<UI_MESSAGE> {
-  private _lastSeqByChat = new Map<string, number>()
   private _reconnectAbort: AbortController | null = null
-
-  /**
-   * 从消息加载的 stream_cursor 初始化 cursor，避免页面刷新后 cursor 退化到 0。
-   * 在 resumeStream() 之前调用。
-   */
-  setLastSeq(chatId: string, seq: number | null | undefined) {
-    if (seq != null && seq > 0) {
-      this._lastSeqByChat.set(String(chatId), seq)
-    }
-  }
 
   /**
    * 取消上一次 resume 请求，防止新旧 reconnect 互相干扰
@@ -174,6 +158,14 @@ export class LangChainChatTransport<
     }
   }
 
+  /**
+   * 中止当前 resume SSE 连接。在 handleStop 中使用，
+   * 确保 stop() 能关掉 resume 建立的 SSE stream。
+   */
+  cancelReconnect = () => {
+    this.cancelPreviousReconnect()
+  }
+
   sendMessages = async ({
     messages,
     abortSignal,
@@ -181,11 +173,6 @@ export class LangChainChatTransport<
   }: Parameters<ChatTransport<UI_MESSAGE>["sendMessages"]>[0]) => {
     this.cancelPreviousReconnect()
     const conversationId = getConversationIdFromBody(body)
-
-    // 新流开始，清除旧 session 的 cursor，避免跨 session 残留
-    if (conversationId) {
-      this._lastSeqByChat.delete(String(conversationId))
-    }
 
     const skill = getSkillFromBody(body)
     const metadata = getExtraMetaFromBody(body)
@@ -230,11 +217,8 @@ export class LangChainChatTransport<
     const abortController = new AbortController()
     this._reconnectAbort = abortController
 
-    const cursor = this._lastSeqByChat.get(String(chatId)) ?? 0
-
     const stream = await createResumeEventSourceResponse({
       conversationId: chatId,
-      cursor: cursor > 0 ? cursor : undefined,
       abortSignal: abortController.signal,
     })
 
@@ -265,8 +249,6 @@ export class LangChainChatTransport<
       }
     }
 
-    const lastSeqRef = this._lastSeqByChat
-
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {
         let buffer = ""
@@ -276,17 +258,6 @@ export class LangChainChatTransport<
 
         const flushEvent = (eventText: string): boolean => {
           const allLines = eventText.split(/\r?\n/)
-
-          // 解析 SSE id: 行，提取 seq 用于 cursor 追踪
-          let eventSeq: number | null = null
-          for (const line of allLines) {
-            if (line.startsWith("id:")) {
-              const parsed = parseInt(line.slice(3).trim(), 10)
-              if (!isNaN(parsed)) {
-                eventSeq = parsed
-              }
-            }
-          }
 
           const dataLines = allLines
             .filter((line) => line.startsWith("data:"))
@@ -300,9 +271,6 @@ export class LangChainChatTransport<
 
           // [DONE] → 流正常结束
           if (data === "[DONE]") {
-            if (eventSeq != null && conversationId) {
-              lastSeqRef.set(conversationId, eventSeq)
-            }
             closeTextPhaseIfNeeded(state).forEach((chunk) =>
               controller.enqueue(chunk)
             )
@@ -400,10 +368,6 @@ export class LangChainChatTransport<
               console.error("[sse] dropped event:", e)
             }
             return false
-          }
-
-          if (eventSeq != null && conversationId) {
-            lastSeqRef.set(conversationId, eventSeq)
           }
 
           return false

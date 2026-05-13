@@ -17,6 +17,7 @@ import { Separator } from "@workspace/ui/components/separator"
 import { ChatPromptInputAttachments } from "./chat-prompt-input-attachments"
 import { ACCEPTED_FILE_TYPES, MAX_UPLOAD_SIZE_BYTES } from "./constants"
 import type { ChatPromptInputProps } from "./types"
+import { cn } from "@workspace/ui/lib/utils"
 
 export function ChatPromptInput({
   value,
@@ -56,7 +57,7 @@ export function ChatPromptInput({
           )}
         </PromptInputHeader>
         <PromptInputBody
-          className={isCompact ? "min-h-[60px]" : "min-h-[100px]"}
+          className={cn(isCompact ? "min-h-[60px]" : "min-h-[100px]", 'max-h-[200px] overflow-auto')}
         >
           <LexicalPromptInputTextarea
             onChange={onChange}

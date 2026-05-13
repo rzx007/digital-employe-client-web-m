@@ -86,6 +86,7 @@ export function ConversationChatView({
 
   const handleStop = useCallback(async () => {
     stop()
+    chatTransport.cancelReconnect()
     try {
       await cancelConversationStream(conversationId)
     } catch {
@@ -124,10 +125,6 @@ export function ConversationChatView({
       const rafId = requestAnimationFrame(() => {
         // rAF 执行时重检 status
         if (status !== "ready" && status !== "error") return
-        chatTransport.setLastSeq(
-          String(conversationId),
-          lastStored.streamCursor
-        )
         resumeStream()
       })
       return () => cancelAnimationFrame(rafId)

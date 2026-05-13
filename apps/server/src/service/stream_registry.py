@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
 import json
 import logging
 import time
@@ -16,55 +17,19 @@ logger = logging.getLogger(__name__)
 
 Subscriber = Callable[[dict], None]
 
-FLUSH_INTERVAL_EVENTS = 20
-FLUSH_INTERVAL_SECONDS = 2.0
 HEARTBEAT_INTERVAL_SECONDS = 30.0
-TASK_TTL_SECONDS = 300
-BUFFER_MAXLEN = 5000
+TASK_TTL_SECONDS = 20
+BUFFER_CHECKPOINT_LEN = 10000
 AGENT_CHUNK_TIMEOUT = 1800.0
-DB_LOCK_RETRY_COUNT = 5
-DB_LOCK_RETRY_SLEEP_SECONDS = 0.2
-
-
-class ChunkJsonBuilder:
-    """Incrementally builds JSON array of events without O(N²) serialization.
-
-    Each event is stored as ``{"seq": N, "data": ...}`` for stream_chunks.
-    """
-
-    def __init__(self) -> None:
-        self._event_parts: list[str] = []
-        self._count: int = 0
-
-    def add(self, event: dict) -> bool:
-        """Add a buffer event ``{seq, data}``.  Returns False if serialization failed."""
-        try:
-            event_json = json.dumps(event, ensure_ascii=False, default=str)
-        except Exception:
-            logger.warning("[builder] seq=%s serialization failed, skipping", event.get("seq"))
-            return False
-        if self._count > 0:
-            self._event_parts.append(",")
-        self._event_parts.append(event_json)
-        self._count += 1
-        return True
-
-    def to_stream_json(self) -> str:
-        """``[{"seq":N,"data":...}, ...]`` — stream_chunks format."""
-        return "[" + "".join(self._event_parts) + "]"
-
-    @property
-    def count(self) -> int:
-        return self._count
+DB_LOCK_RETRY_COUNT = 2
+DB_LOCK_RETRY_SLEEP_SECONDS = 0.05
 
 
 class StreamEventBuffer:
-    def __init__(self, conversation_id: int, maxlen: int = BUFFER_MAXLEN):
+    def __init__(self, conversation_id: int):
         self.conversation_id = conversation_id
         self._events: deque[dict] = deque()
         self._seq = 0
-        self._maxlen = maxlen
-        self._base_cursor: int = 0
 
     def add(self, data: Any) -> dict:
         self._seq += 1
@@ -72,22 +37,8 @@ class StreamEventBuffer:
         self._events.append(event)
         return event
 
-    def trim(self) -> int:
-        """Drop oldest events when beyond maxlen.  Returns trimmed count."""
-        trimmed = 0
-        while len(self._events) > self._maxlen:
-            removed = self._events.popleft()
-            self._base_cursor = removed["seq"]
-            trimmed += 1
-        return trimmed
-
     def get_events_after(self, cursor: int) -> list[dict]:
         return [e for e in self._events if e["seq"] > cursor]
-
-    @property
-    def base_cursor(self) -> int:
-        """Highest seq that has been trimmed from the buffer (0 if none)."""
-        return self._base_cursor
 
     @property
     def cursor(self) -> int:
@@ -95,7 +46,6 @@ class StreamEventBuffer:
 
     @property
     def events(self) -> list[dict]:
-        """Legacy accessor (for logging / flush)."""
         return list(self._events)
 
 
@@ -163,9 +113,6 @@ class StreamRegistry:
             return None
 
         if msg.stream_state == "streaming":
-            # Stale: no active task but DB still says streaming.
-            # Return None so the caller (resume_conversation_stream)
-            # handles auto-repair via its own stale detection.
             return None
 
         return {
@@ -234,11 +181,6 @@ class StreamRegistry:
             return False
 
         task.status = "cancelled"
-        # The background task's CancelledError handler will flush DB,
-        # add a buffer terminal event, and broadcast it.
-        # The finally block will finalize task.status and clean up.
-        # This prevents resume hang (broadcast uses buffer format) and
-        # race (DB flush happens before status becomes non-streaming).
 
         if task._asyncio_task and not task._asyncio_task.done():
             task._asyncio_task.cancel()
@@ -282,15 +224,15 @@ class StreamRegistry:
     ) -> None:
         from src.db.session import get_session_local
         from src.service.chat_service import ChatService
+        from src.service.message_parts_extractor import extract_message_parts_from_buffer
 
         db = get_session_local()()
 
-        chunk_builder = ChunkJsonBuilder()
         assistant_text_parts: list[str] = []
         latest_updates_text: str | None = None
-        last_flush_time = time.monotonic()
         last_heartbeat_time = time.monotonic()
         state_final = "completed"
+        _last_checkpoint_count = 0
 
         async def _heartbeat_loop():
             hb_db = get_session_local()()
@@ -309,7 +251,6 @@ class StreamRegistry:
         _heartbeat_task = asyncio.create_task(_heartbeat_loop())
 
         def _extract_updates_content(event: Any) -> str | None:
-            """Extract latest non-empty kwargs.content from type=updates payload."""
             if not isinstance(event, dict) or event.get("type") != "updates":
                 return None
             data = event.get("data")
@@ -346,19 +287,6 @@ class StreamRegistry:
                 _flush_heartbeat(db, conversation_id)
             except Exception:
                 pass
-
-        async def _maybe_flush() -> None:
-            nonlocal last_flush_time
-            if chunk_builder.count == 0:
-                return
-            stream_json = chunk_builder.to_stream_json()
-            ok = await self._flush_to_db(
-                db, stream_msg_id, task.buffer,
-                stream_json=stream_json,
-            )
-            if ok:
-                task.buffer.trim()
-            last_flush_time = time.monotonic()
 
         _agent_it = None
         try:
@@ -397,7 +325,6 @@ class StreamRegistry:
                     ):
                         evt = task.buffer.add(custom_data)
                         self.broadcast(conversation_id, evt)
-                        task.buffer.trim()
                     continue
 
                 text_part = ChatService._extract_text_from_chunk(serializable)
@@ -406,29 +333,34 @@ class StreamRegistry:
 
                 if not debug_content_only:
                     evt = task.buffer.add(serializable)
-                    chunk_builder.add(evt)
                     self.broadcast(conversation_id, evt)
 
-                now = time.monotonic()
                 if (
-                    task.buffer.cursor % FLUSH_INTERVAL_EVENTS == 0
-                    or now - last_flush_time >= FLUSH_INTERVAL_SECONDS
+                    len(task.buffer._events) - _last_checkpoint_count > BUFFER_CHECKPOINT_LEN
                 ):
-                    await _maybe_flush()
-                    _maybe_heartbeat()
+                    _last_checkpoint_count = len(task.buffer._events)
+                    checkpoint_parts = extract_message_parts_from_buffer(
+                        list(task.buffer._events)
+                    )
+                    if checkpoint_parts:
+                        current_text = "".join(assistant_text_parts)
+                        await self._flush_to_db(
+                            db, stream_msg_id, task.buffer,
+                            state="streaming",
+                            content=current_text or None,
+                            message_parts=json.dumps(
+                                checkpoint_parts, ensure_ascii=False
+                            ),
+                        )
+
+                _maybe_heartbeat()
 
             final_text = latest_updates_text or "模型已完成调用。"
 
             logger.info(
                 "[run] conv=%s stream completed normally, event_count=%d, text_len=%d",
-                conversation_id, chunk_builder.count, len(final_text),
+                conversation_id, task.buffer.cursor, len(final_text),
             )
-            await self._flush_terminal(
-                db, stream_msg_id, task.buffer, state="completed",
-                content=final_text,
-                stream_json=chunk_builder.to_stream_json(),
-            )
-
             evt = task.buffer.add({"status": "completed"})
             logger.info(
                 "[run] conv=%s broadcasting completed event: seq=%d, subscribers=%d",
@@ -436,19 +368,19 @@ class StreamRegistry:
             )
             self.broadcast(conversation_id, evt)
 
+            await self._flush_terminal(
+                db, stream_msg_id, task.buffer, state="completed",
+                content=final_text,
+            )
+
         except asyncio.CancelledError:
             state_final = "cancelled"
             partial_text = latest_updates_text or None
             logger.info(
                 "[run] conv=%s CancelledError caught, event_count=%d, text_len=%s, task.status=%s",
-                conversation_id, chunk_builder.count,
+                conversation_id, task.buffer.cursor,
                 len(partial_text) if partial_text else "None",
                 task.status,
-            )
-            await self._flush_terminal(
-                db, stream_msg_id, task.buffer, state="cancelled",
-                content=partial_text,
-                stream_json=chunk_builder.to_stream_json(),
             )
             evt = task.buffer.add({"status": "cancelled"})
             logger.info(
@@ -456,12 +388,17 @@ class StreamRegistry:
                 conversation_id, evt["seq"], len(task.subscribers),
             )
             self.broadcast(conversation_id, evt)
+
+            await self._flush_terminal(
+                db, stream_msg_id, task.buffer, state="cancelled",
+                content=partial_text,
+            )
             raise
 
         except Exception as e:
             logger.error(
                 "[run] conv=%s agent FAILED: %s, event_count=%d, text_len=%s",
-                conversation_id, e, chunk_builder.count,
+                conversation_id, e, task.buffer.cursor,
                 len("".join(assistant_text_parts)) if assistant_text_parts else "0",
                 exc_info=True,
             )
@@ -470,15 +407,13 @@ class StreamRegistry:
             partial_text = latest_updates_text or None
 
             evt = task.buffer.add({"status": "error", "error": str(e)})
-            chunk_builder.add(evt)
+            self.broadcast(conversation_id, evt)
 
             await self._flush_terminal(
                 db, stream_msg_id, task.buffer, state="error",
                 content=partial_text,
-                stream_json=chunk_builder.to_stream_json(),
                 error_message=str(e),
             )
-            self.broadcast(conversation_id, evt)
 
         finally:
             _heartbeat_task.cancel()
@@ -489,7 +424,7 @@ class StreamRegistry:
 
             if _agent_it is not None:
                 try:
-                    await _agent_it.aclose()
+                    await asyncio.wait_for(_agent_it.aclose(), timeout=5.0)
                 except Exception:
                     pass
 
@@ -503,14 +438,14 @@ class StreamRegistry:
                 await self._flush_terminal(
                     db, stream_msg_id, task.buffer, state="cancelled",
                     content=partial_text,
-                    stream_json=chunk_builder.to_stream_json(),
                 )
             logger.info(
-                "[run] conv=%s finally: state_final=%s, event_count=%d, buffer_cursor=%d",
-                conversation_id, state_final, chunk_builder.count, task.buffer.cursor,
+                "[run] conv=%s finally: state_final=%s, buffer_cursor=%d",
+                conversation_id, state_final, task.buffer.cursor,
             )
             task.status = state_final
-            _finalize_task_stream(conversation_id, state_final)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, _finalize_task_stream, conversation_id, state_final)
 
             task.subscribers.clear()
             db.close()
@@ -523,49 +458,27 @@ class StreamRegistry:
         buffer: StreamEventBuffer,
         state: str,
         content: str | None,
-        stream_json: str | None = None,
         error_message: str | None = None,
-        max_retries: int = 3,
     ) -> None:
-        """Flush terminal state with retry to avoid stuck streaming on transient DB errors."""
-        from src.service.message_parts_extractor import extract_message_parts
+        from src.service.message_parts_extractor import extract_message_parts_from_buffer
 
         message_parts_json: str | None = None
-        if stream_json and state == "completed":
-            try:
-                parts = extract_message_parts(stream_json)
-                if parts:
-                    message_parts_json = json.dumps(parts, ensure_ascii=False)
-            except Exception:
-                logger.warning(
-                    "[flush] msg_id=%s message_parts extraction failed",
-                    stream_msg_id,
-                    exc_info=True,
-                )
-
-        for attempt in range(max_retries):
-            await self._flush_to_db(
-                db, stream_msg_id, buffer, state=state,
-                content=content,
-                stream_json=stream_json,
-                error_message=error_message,
-                message_parts=message_parts_json,
+        try:
+            parts = extract_message_parts_from_buffer(list(buffer._events))
+            if parts:
+                message_parts_json = json.dumps(parts, ensure_ascii=False)
+        except Exception:
+            logger.warning(
+                "[flush] msg_id=%s message_parts extraction failed",
+                stream_msg_id,
+                exc_info=True,
             )
-            try:
-                msg = db.get(ConversationMessage, stream_msg_id)
-                if msg and msg.stream_state == state:
-                    return
-            except Exception:
-                db.rollback()
-            if attempt < max_retries - 1:
-                logger.warning(
-                    "[flush] msg_id=%s terminal state=%s not persisted, retrying %d/%d",
-                    stream_msg_id, state, attempt + 1, max_retries,
-                )
-                await asyncio.sleep(0.3)
-        logger.error(
-            "[flush] msg_id=%s terminal state=%s FAILED after %d retries",
-            stream_msg_id, state, max_retries,
+
+        await self._flush_to_db(
+            db, stream_msg_id, buffer, state=state,
+            content=content,
+            error_message=error_message,
+            message_parts=message_parts_json,
         )
 
     async def _flush_to_db(
@@ -575,11 +488,9 @@ class StreamRegistry:
         buffer: StreamEventBuffer,
         state: str | None = None,
         content: str | None = None,
-        stream_json: str | None = None,
         error_message: str | None = None,
         message_parts: str | None = None,
     ) -> bool:
-        """Persist stream progress to DB.  Returns True on success."""
         for attempt in range(DB_LOCK_RETRY_COUNT):
             try:
                 msg = db.get(ConversationMessage, stream_msg_id)
@@ -598,16 +509,14 @@ class StreamRegistry:
                     meta["error_message"] = error_message
                     msg.extra_meta = json.dumps(meta, ensure_ascii=False)
                 msg.stream_cursor = buffer.cursor
-                if stream_json is not None:
-                    msg.stream_chunks = stream_json
                 if message_parts is not None:
                     msg.message_parts = message_parts
                 db.commit()
                 logger.info(
-                    "[flush] msg_id=%s committed: state=%s, content_len=%s, stream_json_len=%s",
+                    "[flush] msg_id=%s committed: state=%s, content_len=%s, parts_len=%s",
                     stream_msg_id, state,
                     len(content) if content else None,
-                    len(stream_json) if stream_json else None,
+                    len(message_parts) if message_parts else None,
                 )
                 return True
             except OperationalError as e:
@@ -633,8 +542,6 @@ class StreamRegistry:
 
 
 def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
-    """流结束时回写 TaskExecutionLog + 通过可选回调通知上层。
-    使用独立 session，不依赖调用方 session 状态。"""
     try:
         from src.db.session import get_session_local
         from src.models.task_execution_log import TaskExecutionLog
@@ -722,7 +629,6 @@ def _flush_heartbeat(db: Any, conversation_id: int) -> None:
 
 
 def cleanup_zombie_executions(db: Any) -> int:
-    """启动时清理僵尸运行状态：超过10分钟无心跳的 running 任务标记为 timeout。"""
     try:
         from sqlalchemy import select
         from src.models.task_execution_log import TaskExecutionLog
@@ -765,5 +671,44 @@ def cleanup_zombie_executions(db: Any) -> int:
             pass
         return 0
 
+
+def _emergency_flush_all() -> None:
+    from src.service.message_parts_extractor import extract_message_parts_from_buffer
+    from src.db.session import get_session_local
+
+    for cid, task in list(registry._tasks.items()):
+        if not task.is_active:
+            continue
+        try:
+            db = get_session_local()()
+            events = list(task.buffer._events)
+            parts = extract_message_parts_from_buffer(events)
+            stmt = (
+                select(ConversationMessage)
+                .where(
+                    ConversationMessage.conversation_id == cid,
+                    ConversationMessage.role == "assistant",
+                    ConversationMessage.stream_state == "streaming",
+                )
+                .order_by(ConversationMessage.id.desc())
+                .limit(1)
+            )
+            msg = db.scalar(stmt)
+            if msg:
+                msg.stream_state = "error"
+                msg.stream_cursor = task.buffer.cursor
+                if parts:
+                    msg.message_parts = json.dumps(parts, ensure_ascii=False)
+                db.commit()
+                logger.info(
+                    "[emergency] conv=%s flushed on exit: parts_count=%d",
+                    cid, len(parts) if parts else 0,
+                )
+            db.close()
+        except Exception:
+            pass
+
+
+atexit.register(_emergency_flush_all)
 
 registry = StreamRegistry()
