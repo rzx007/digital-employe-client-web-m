@@ -20,6 +20,64 @@ import { ERROR_MARKER } from "./message-classifier"
 const useMock =
   import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_SSE === "true"
 
+/** 合并连续同 id 的 text-delta，减轻下游 useChat 更新次数 */
+function mergeAdjacentTextDeltas(chunks: UIMessageChunk[]): UIMessageChunk[] {
+  const out: UIMessageChunk[] = []
+  for (const chunk of chunks) {
+    if (chunk.type === "text-delta" && out.length > 0) {
+      const last = out[out.length - 1]
+      if (last.type === "text-delta") {
+        const prev = last as { type: "text-delta"; id: string; delta: string }
+        const cur = chunk as { type: "text-delta"; id: string; delta: string }
+        if (prev.id === cur.id) {
+          prev.delta += cur.delta
+          continue
+        }
+      }
+    }
+    out.push(chunk)
+  }
+  return out
+}
+
+/**
+ * rAF 批处理 enqueue；结束前须 flushSync，保证顺序与收尾。
+ */
+function createChunkFlushBatcher(
+  controller: ReadableStreamDefaultController<UIMessageChunk>
+) {
+  let pending: UIMessageChunk[] = []
+  let rafId: number | null = null
+
+  const drainPending = () => {
+    if (pending.length === 0) return
+    const batch = mergeAdjacentTextDeltas(pending)
+    pending = []
+    for (const c of batch) {
+      controller.enqueue(c)
+    }
+  }
+
+  const flushSync = () => {
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId)
+      rafId = null
+    }
+    drainPending()
+  }
+
+  const schedule = (chunk: UIMessageChunk) => {
+    pending.push(chunk)
+    if (rafId !== null) return
+    rafId = requestAnimationFrame(() => {
+      rafId = null
+      drainPending()
+    })
+  }
+
+  return { schedule, flushSync }
+}
+
 
 /**
  * 获取事件边界的索引位置
@@ -253,6 +311,7 @@ export class LangChainChatTransport<
       start: async (controller) => {
         let buffer = ""
         const state = createLangChainStreamParseState()
+        const { schedule, flushSync } = createChunkFlushBatcher(controller)
 
         controller.enqueue({ type: "start" })
 
@@ -271,6 +330,7 @@ export class LangChainChatTransport<
 
           // [DONE] → 流正常结束
           if (data === "[DONE]") {
+            flushSync()
             closeTextPhaseIfNeeded(state).forEach((chunk) =>
               controller.enqueue(chunk)
             )
@@ -297,6 +357,7 @@ export class LangChainChatTransport<
               const raw = (event as { error: unknown }).error
               const errorText =
                 typeof raw === "string" ? raw : JSON.stringify(raw)
+              flushSync()
               closeTextPhaseIfNeeded(state).forEach((chunk) =>
                 controller.enqueue(chunk)
               )
@@ -324,6 +385,7 @@ export class LangChainChatTransport<
               ((event as { type: string }).type === "stream_ended" ||
                 (event as { type: string }).type === "no_stream")
             ) {
+              flushSync()
               closeTextPhaseIfNeeded(state).forEach((chunk) =>
                 controller.enqueue(chunk)
               )
@@ -347,6 +409,7 @@ export class LangChainChatTransport<
                 stream: string
               }
               if (toolOutputData && typeof toolOutputData === "object") {
+                flushSync()
                 const chunk = buildToolOutputStreamingChunk(toolOutputData, state)
                 if (chunk) {
                   controller.enqueue(chunk)
@@ -361,7 +424,7 @@ export class LangChainChatTransport<
             })
 
             for (const chunk of chunks) {
-              controller.enqueue(chunk)
+              schedule(chunk)
             }
           } catch (e) {
             if (import.meta.env.DEV) {
@@ -403,6 +466,7 @@ export class LangChainChatTransport<
             flushEvent(buffer)
           }
 
+          flushSync()
           closeTextPhaseIfNeeded(state).forEach((chunk) =>
             controller.enqueue(chunk)
           )
@@ -410,8 +474,10 @@ export class LangChainChatTransport<
           controller.close()
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") {
+            flushSync()
             controller.close()
           } else {
+            flushSync()
             controller.enqueue({
               type: "error",
               errorText:

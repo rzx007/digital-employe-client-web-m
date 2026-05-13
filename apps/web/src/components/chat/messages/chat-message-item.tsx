@@ -167,14 +167,15 @@ export interface ChatMessageItemProps {
 
 function ChatMessageItemInner({ message, contact, includeFileChanges }: ChatMessageItemProps) {
   const contactDisplayName = getContactDisplayName(contact)
+  const deferredMessage = React.useDeferredValue(message)
   const classifiedBlocks = React.useMemo(
-    () => classifyMessageParts(message, { includeFileChanges }),
-    [message, includeFileChanges]
+    () => classifyMessageParts(deferredMessage, { includeFileChanges }),
+    [deferredMessage, includeFileChanges]
   )
 
   const messageMeta = React.useMemo(
-    () => getMessageMeta(message),
-    [message]
+    () => getMessageMeta(deferredMessage),
+    [deferredMessage]
   )
   const commandMeta = (
     messageMeta?.command &&
