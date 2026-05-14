@@ -25,6 +25,7 @@ dependencies = [
     "authlib>=1.7.0",
     "httpx>=0.27.0",
     "itsdangerous>=2.1.0",
+    "pyyaml>=6.0",
 ]
 [dependency-groups]
 dev = [

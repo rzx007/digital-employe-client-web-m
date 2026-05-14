@@ -41,7 +41,7 @@ def list_skills(request: Request) -> ResponseBase[list[SkillListItem]]:
                 id=normalized_id,
                 skillName=item.get("skillName") or "",
                 displayNameZh=item.get("skillName") or "",
-                description=None,
+                description=item.get("description"),
                 directoryId=None,
                 directoryName="本地技能",
                 source="local",

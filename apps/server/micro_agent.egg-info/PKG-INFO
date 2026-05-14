@@ -25,6 +25,7 @@ Requires-Dist: python-multipart>=0.0.27
 Requires-Dist: authlib>=1.7.0
 Requires-Dist: httpx>=0.27.0
 Requires-Dist: itsdangerous>=2.1.0
+Requires-Dist: pyyaml>=6.0
 
 # Actus Employee Client
 
