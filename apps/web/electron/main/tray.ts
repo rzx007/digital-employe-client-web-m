@@ -2,7 +2,8 @@ import { app, BrowserWindow, Menu, Tray, nativeImage } from "electron"
 import path from "node:path"
 import { setForceQuit, stopBackend } from "./ipc-handlers"
 import { createSettingsWindow } from "./settings"
-import { hidePetWindow, destroyPetWindow } from "./pet"
+import { destroyPetWindow } from "./pet"
+import { hidePetIfWhenMainHiddenMode } from "./pet-main-sync"
 
 /**
  * 系统托盘管理
@@ -174,7 +175,7 @@ export function createTray(win: BrowserWindow): void {
  * 如果窗口被最小化则先还原，再显示并聚焦。
  */
 function showWindow(win: BrowserWindow): void {
-  hidePetWindow()
+  hidePetIfWhenMainHiddenMode()
   if (win.isMinimized()) {
     win.restore()
   }

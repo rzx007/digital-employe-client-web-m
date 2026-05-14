@@ -95,6 +95,16 @@ declare global {
       getNotifications: () => Promise<boolean>
       setAutoUpdate: (enabled: boolean) => Promise<void>
       getAutoUpdate: () => Promise<boolean>
+      getPetSettings: () => Promise<{
+        petEnabled: boolean
+        petVisibilityMode: "always" | "when_main_hidden"
+        petAlwaysOnTop: boolean
+      }>
+      setPetSettings: (partial: {
+        petEnabled?: boolean
+        petVisibilityMode?: "always" | "when_main_hidden"
+        petAlwaysOnTop?: boolean
+      }) => Promise<void>
       getOnboardingCompleted: () => Promise<boolean>
       setOnboardingCompleted: (value: boolean) => Promise<void>
       getEndpoint: () => Promise<string>

@@ -90,6 +90,17 @@ contextBridge.exposeInMainWorld("electronApi", {
   setAutoUpdate: (enabled: boolean) =>
     ipcRenderer.invoke("set-auto-update", enabled),
   getAutoUpdate: () => ipcRenderer.invoke("get-auto-update"),
+  getPetSettings: () =>
+    ipcRenderer.invoke("get-pet-settings") as Promise<{
+      petEnabled: boolean
+      petVisibilityMode: "always" | "when_main_hidden"
+      petAlwaysOnTop: boolean
+    }>,
+  setPetSettings: (partial: {
+    petEnabled?: boolean
+    petVisibilityMode?: "always" | "when_main_hidden"
+    petAlwaysOnTop?: boolean
+  }) => ipcRenderer.invoke("set-pet-settings", partial),
   getOnboardingCompleted: () => ipcRenderer.invoke("get-onboarding-completed"),
   setOnboardingCompleted: (value: boolean) =>
     ipcRenderer.invoke("set-onboarding-completed", value),

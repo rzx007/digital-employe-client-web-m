@@ -13,6 +13,7 @@ import {
 } from "./register"
 import { createSettingsWindow, closeSettingsWindow } from "./settings"
 import { showPetWindow, hidePetWindow } from "./pet"
+import { syncPetVisibilityWithMain } from "./pet-main-sync"
 import { VITE_DEV_SERVER_URL, indexHtml } from "./index"
 import { saveAuth, clearAuth, getStoredAuth, hasToken } from "./auth"
 import { setAutoLaunch, getAutoLaunch } from "./auto-launch"
@@ -24,6 +25,7 @@ import {
   getEndpoint,
   setEndpoint,
   clearSettingsStore,
+  type PetVisibilityMode,
 } from "./settings-store"
 
 /**
@@ -338,6 +340,39 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
   ipcMain.handle("get-auto-update", () => {
     return getSetting("autoUpdate") ?? true
   })
+
+  /** 宠物窗口相关设置 */
+  ipcMain.handle("get-pet-settings", () => ({
+    petEnabled: getSetting("petEnabled"),
+    petVisibilityMode: getSetting("petVisibilityMode"),
+    petAlwaysOnTop: getSetting("petAlwaysOnTop"),
+  }))
+
+  ipcMain.handle(
+    "set-pet-settings",
+    (
+      _event,
+      partial: Partial<{
+        petEnabled: boolean
+        petVisibilityMode: PetVisibilityMode
+        petAlwaysOnTop: boolean
+      }>,
+    ) => {
+      if (typeof partial.petEnabled === "boolean") {
+        setSetting("petEnabled", partial.petEnabled)
+      }
+      if (
+        partial.petVisibilityMode === "always" ||
+        partial.petVisibilityMode === "when_main_hidden"
+      ) {
+        setSetting("petVisibilityMode", partial.petVisibilityMode)
+      }
+      if (typeof partial.petAlwaysOnTop === "boolean") {
+        setSetting("petAlwaysOnTop", partial.petAlwaysOnTop)
+      }
+      syncPetVisibilityWithMain(mainWin)
+    },
+  )
 
   /** 获取引导完成状态 */
   ipcMain.handle("get-onboarding-completed", () => {

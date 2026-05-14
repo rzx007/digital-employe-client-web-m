@@ -6,6 +6,7 @@ import {
   type Session,
 } from "electron"
 import path from "node:path"
+import { getSetting } from "./settings-store"
 
 /**
  * 独立分区，避免改写 defaultSession 的全局权限回调影响主窗口。
@@ -45,12 +46,18 @@ const PET_WINDOW_WIDTH = 230
 const PET_WINDOW_HEIGHT = 260
 const PET_WINDOW_MARGIN = 24
 
+export function applyPetAlwaysOnTopFromStore(): void {
+  if (!petWin || petWin.isDestroyed()) return
+  petWin.setAlwaysOnTop(getSetting("petAlwaysOnTop"))
+}
+
 export function createPetWindow(options: {
   devServerUrl?: string
   indexHtml: string
   preload: string
 }): void {
   if (petWin && !petWin.isDestroyed()) {
+    applyPetAlwaysOnTopFromStore()
     petWin.focus()
     return
   }
@@ -68,7 +75,7 @@ export function createPetWindow(options: {
     frame: false,
     transparent: true,
     backgroundColor: "#00000000",
-    alwaysOnTop: true,
+    alwaysOnTop: getSetting("petAlwaysOnTop"),
     resizable: false,
     skipTaskbar: true,
     hasShadow: false,
@@ -90,6 +97,8 @@ export function createPetWindow(options: {
   // 默认隐藏，主窗口关闭时才显示
   petWin.hide()
 
+  applyPetAlwaysOnTopFromStore()
+
   petWin.on("closed", () => {
     petWin = null
   })
@@ -98,6 +107,8 @@ export function createPetWindow(options: {
 }
 
 export function showPetWindow(): void {
+  if (!getSetting("petEnabled")) return
+
   if (!petWin || petWin.isDestroyed()) {
     // 如果窗口被销毁了，重新创建（不 return，继续执行下面的 show 逻辑）
     createPetWindow({
@@ -123,6 +134,7 @@ export function showPetWindow(): void {
     },
     false,
   )
+  applyPetAlwaysOnTopFromStore()
   petWin.show()
   petWin.focus()
 }

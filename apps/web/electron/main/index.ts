@@ -14,8 +14,12 @@ import { createSplashWindow, closeSplashWindow } from "./splash"
 import { createTray, destroyTray } from "./tray"
 import { createLoginWindow } from "./login"
 import { initAuthStore, hasToken } from "./auth"
-import { initSettingsStore } from "./settings-store"
+import { initSettingsStore, getSetting } from "./settings-store"
 import { createPetWindow, showPetWindow, hidePetWindow, destroyPetWindow } from "./pet"
+import {
+  hidePetIfWhenMainHiddenMode,
+  syncPetOnMainForegroundState,
+} from "./pet-main-sync"
 
 /**
  * Electron 主进程入口
@@ -123,6 +127,19 @@ async function createWindow() {
     }
   })
 
+  win.on("minimize", () => {
+    if (!getSetting("petEnabled")) return
+    showPetWindow()
+  })
+
+  win.on("restore", () => {
+    if (win) syncPetOnMainForegroundState(win)
+  })
+
+  win.on("show", () => {
+    if (win) syncPetOnMainForegroundState(win)
+  })
+
   // 页面加载完成后通知渲染进程
   win.webContents.on("did-finish-load", () => {
     win?.webContents.send("main-process-message", new Date().toLocaleString())
@@ -147,6 +164,10 @@ async function createWindow() {
     indexHtml,
     preload,
   })
+
+  if (getSetting("petEnabled") && getSetting("petVisibilityMode") === "always") {
+    showPetWindow()
+  }
 
   // 自动更新
   update()
@@ -234,7 +255,7 @@ app.on("second-instance", () => {
     // 窗口隐藏到托盘时也要能唤出
     win.show()
     win.focus()
-    hidePetWindow()
+    hidePetIfWhenMainHiddenMode()
   }
 })
 
@@ -242,7 +263,7 @@ app.on("activate", () => {
   const allWindows = BrowserWindow.getAllWindows()
   if (allWindows.length) {
     allWindows[0].focus()
-    hidePetWindow()
+    hidePetIfWhenMainHiddenMode()
   } else {
     createWindow()
   }

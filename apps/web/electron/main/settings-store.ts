@@ -11,6 +11,8 @@ export function getStoreDir(): string {
   return dir
 }
 
+export type PetVisibilityMode = "always" | "when_main_hidden"
+
 interface SettingsData {
   autoLaunch: boolean
   notifications: boolean
@@ -20,6 +22,9 @@ interface SettingsData {
   apiUrl: string
   onboardingCompleted: boolean
   endpoint: string
+  petEnabled: boolean
+  petVisibilityMode: PetVisibilityMode
+  petAlwaysOnTop: boolean
 }
 
 let store: Store<SettingsData> | null = null
@@ -37,6 +42,9 @@ export function initSettingsStore(): void {
       apiUrl: "",
       onboardingCompleted: false,
       endpoint: "",
+      petEnabled: true,
+      petVisibilityMode: "when_main_hidden",
+      petAlwaysOnTop: true,
     },
   })
 }
@@ -55,6 +63,9 @@ export function getSetting<K extends keyof SettingsData>(
       apiUrl: "",
       onboardingCompleted: false,
       endpoint: "",
+      petEnabled: true,
+      petVisibilityMode: "when_main_hidden",
+      petAlwaysOnTop: true,
     }
     return defaults[key]
   }
