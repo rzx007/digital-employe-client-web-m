@@ -1,4 +1,5 @@
 import JSZip from "jszip"
+import { parse as parseYaml } from "yaml"
 
 export interface ParsedSkillZip {
   skillName: string
@@ -20,6 +21,30 @@ function isIgnoredEntry(path: string): boolean {
   return segments.some((seg) => seg === ".DS_Store")
 }
 
+function extractDescriptionFromFrontmatterText(frontmatterText: string): string {
+  try {
+    const data = parseYaml(frontmatterText) as unknown
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      const raw = (data as Record<string, unknown>).description
+      if (typeof raw === "string" && raw.trim()) {
+        const trimmed = raw.trim()
+        if (/^[>|][-+]?$/.test(trimmed)) return ""
+        return trimmed
+      }
+    }
+  } catch {
+    // 非法或非 YAML frontmatter：回退单行正则
+  }
+
+  const descMatch = frontmatterText.match(
+    /^[ \t]*description[ \t]*[:：][ \t]*(.+?)[ \t]*$/im,
+  )
+  if (!descMatch) return ""
+  const value = descMatch[1].trim().replace(/^["']|["']$/g, "")
+  if (/^[>|][-+]?$/.test(value)) return ""
+  return value
+}
+
 function parseFrontmatter(content: string): {
   description: string
   body: string
@@ -30,13 +55,7 @@ function parseFrontmatter(content: string): {
   }
   const frontmatterText = match[1]
   const body = content.slice(match[0].length)
-
-  const descMatch = frontmatterText.match(
-    /^[ \t]*description[ \t]*[:：][ \t]*(.+?)[ \t]*$/im
-  )
-  const description = descMatch
-    ? descMatch[1].trim().replace(/^["']|["']$/g, "")
-    : ""
+  const description = extractDescriptionFromFrontmatterText(frontmatterText)
 
   return { description, body }
 }
