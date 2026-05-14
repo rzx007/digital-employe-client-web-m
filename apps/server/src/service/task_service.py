@@ -8,7 +8,7 @@ from typing import Any
 
 from apscheduler.triggers.cron import CronTrigger  # pylint: disable=import-error
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from src.models.employee import Employee
@@ -347,7 +347,8 @@ class TaskService:
         """返回今日所有任务的统一视图：已执行（from logs）+ 待执行（from employee_tasks）。
 
         已执行任务直接从 task_execution_logs 查询今天的记录，
-        待执行任务从 employee_tasks 查今天 cron 会触发但还没有执行记录的任务。
+        待执行任务从 employee_tasks 查今天 cron 会触发但还没有执行记录的任务；
+        查询时排除 execute_mode 为 immediate 以及 cron_expression 为空（含纯空白）的任务。
         两部分按 task_id 去重合并。
         """
         now = cst_now()
@@ -410,6 +411,11 @@ class TaskService:
                     EmployeeTask.workspace_id == workspace_id,
                     EmployeeTask.is_active.is_(True),
                     EmployeeTask.dispatch_type.in_(("skill", "mcp")),
+                    EmployeeTask.execute_mode != "immediate",
+                    and_(
+                        EmployeeTask.cron_expression.isnot(None),
+                        func.trim(EmployeeTask.cron_expression) != "",
+                    ),
                 ).order_by(EmployeeTask.priority.desc(), EmployeeTask.id.asc())
             ).all()
         )
@@ -430,7 +436,7 @@ class TaskService:
                 except ValueError:
                     pass
 
-            if not fire_times and task.execute_mode != "immediate":
+            if not fire_times:
                 continue
 
             result.append({
