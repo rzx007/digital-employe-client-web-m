@@ -23,6 +23,12 @@ class ChatSendRequest(BaseModel):
     employee_id: int
     skill_descriptions: str | None = None
 
+
+class MyWorkspaceRequest(BaseModel):
+    user_id: str
+    username: str
+
+
 router = APIRouter(tags=["工作空间"])
 logger = logging.getLogger(__name__)
 
@@ -37,6 +43,21 @@ def create_workspace(workspace_create: WorkspaceCreate, db: Session = Depends(ge
 def list_workspaces(db: Session = Depends(get_db)) -> ListResponse[WorkspaceRead]:
     """查询工作空间列表。"""
     return ListResponse(data=WorkspaceService.list_workspaces(db))
+
+
+@router.post("/workspaces/my", response_model=ResponseBase[WorkspaceRead])
+def get_my_workspace(
+    payload: MyWorkspaceRequest,
+    db: Session = Depends(get_db),
+) -> ResponseBase[WorkspaceRead]:
+    """
+    获取或创建当前登录用户的专属工作空间。
+    首次登录时会认领 workspace_id=1（如果尚未被认领），后续用户创建新 workspace。
+    """
+    workspace = WorkspaceService.get_or_create_user_workspace(
+        db, payload.user_id, payload.username
+    )
+    return ResponseBase(data=workspace)
 
 
 @router.get("/workspaces/detail/{workspace_id}", response_model=ResponseBase[WorkspaceRead])

@@ -115,7 +115,10 @@ def _build_task_items(db: Session, plan: OrchestrationPlan) -> list[Orchestratio
     return items
 
 
-@router.get("/orchestration/plans", response_model=ListResponse[OrchestrationPlanRead])
+@router.get(
+    "/workspaces/{workspace_id}/orchestration/plans",
+    response_model=ListResponse[OrchestrationPlanRead],
+)
 def list_plans(
     workspace_id: int,
     db: Session = Depends(get_db),

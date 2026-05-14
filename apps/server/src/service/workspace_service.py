@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import HTTPException, status
@@ -10,8 +11,38 @@ from src.core.config import get_settings
 from src.models.workspace import Workspace
 from src.schemas.workspace import WorkspaceCreate, WorkspaceUpdate
 
+logger = logging.getLogger(__name__)
+
 
 class WorkspaceService:
+    @staticmethod
+    def ensure_workspace_initialized(db: Session, workspace: Workspace) -> None:
+        """
+        确保 workspace 拥有默认的 seed 员工、总管和任务。
+        幂等：已初始化过的 workspace 跳过（已有总管员工即为已初始化）。
+        """
+        from src.models.employee import Employee
+        from src.service.employee_service import EmployeeService
+        from src.service.task_service import TaskService
+
+        existing_curator = db.scalar(
+            select(Employee).where(
+                Employee.workspace_id == workspace.id,
+                Employee.is_curator.is_(True),
+            )
+        )
+        if existing_curator:
+            return
+
+        EmployeeService.ensure_builtin_seed_employees(db, workspace)
+        EmployeeService.ensure_curator_employee(db, workspace.id)
+        TaskService.sync_workspace_tasks(db, workspace.id)
+        logger.info(
+            "Workspace initialized: id=%s name=%s",
+            workspace.id,
+            workspace.name,
+        )
+
     @staticmethod
     def _resolve_default_root() -> Path:
         settings = get_settings()
@@ -26,6 +57,49 @@ class WorkspaceService:
             return Path(install_anchor)
 
         return Path(Path.cwd().anchor or str(Path.cwd()))
+
+    @staticmethod
+    def get_or_create_user_workspace(db: Session, user_id: str, username: str | None = None) -> Workspace:
+        """
+        根据用户ID获取或创建专属工作空间。
+
+        1. 如果已存在该用户的 workspace，直接返回
+        2. 如果不存在：
+           - 检查 workspace_id=1 是否未被认领（user_id IS NULL）
+           - 是则认领该 workspace（将存量数据迁移给该用户）
+           - 否则创建新 workspace，命名为 "<username>的工作空间" 或 "用户工作空间"
+        """
+        existing_workspace = db.execute(
+            select(Workspace).where(Workspace.user_id == user_id)
+        ).scalar_one_or_none()
+        if existing_workspace:
+            WorkspaceService.ensure_workspace_initialized(db, existing_workspace)
+            return existing_workspace
+
+        # 尝试认领 workspace_id=1（如果还未被认领）
+        default_workspace_id = get_settings().default_workspace_id
+        default_workspace = db.get(Workspace, default_workspace_id)
+        if default_workspace and default_workspace.user_id is None:
+            default_workspace.user_id = user_id
+            default_workspace.name = username + "的工作空间" if username else "用户工作空间"
+            db.commit()
+            db.refresh(default_workspace)
+            WorkspaceService.ensure_workspace_initialized(db, default_workspace)
+            return default_workspace
+
+        # 创建新的用户专属 workspace
+        workspace_name = username + "的工作空间" if username else "用户工作空间"
+        workspace_root = WorkspaceService._resolve_default_root()
+        workspace = Workspace(
+            name=workspace_name,
+            root_path=str(workspace_root),
+            user_id=user_id,
+        )
+        db.add(workspace)
+        db.commit()
+        db.refresh(workspace)
+        WorkspaceService.ensure_workspace_initialized(db, workspace)
+        return workspace
 
     @staticmethod
     def ensure_default_workspace(db: Session) -> Workspace:

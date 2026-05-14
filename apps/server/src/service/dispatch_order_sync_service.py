@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from src.core.config import get_settings
 from src.db.session import get_session_local
 from src.models.dispatch_order_sync import DispatchOrderSync
 from src.models.workspace import cst_now
@@ -79,7 +80,9 @@ class DispatchOrderSyncService:
         updated_count = 0
         triggered_count = 0
 
-        curator = ChatService.ensure_curator_conversation(db)
+        settings = get_settings()
+        default_workspace_id = settings.default_workspace_id
+        curator = ChatService.ensure_curator_conversation(db, default_workspace_id)
         conversation_id = int(curator.id)
 
         for item in remote_orders:

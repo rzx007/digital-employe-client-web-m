@@ -2,6 +2,7 @@ import { create } from "zustand"
 import { loginApi } from "@/api/auth"
 import { setConfigKv } from "@/api/config-kv"
 import type { LoginUser } from "@/api/types"
+import { getMyWorkspace } from "@/api/workspace"
 
 interface PendingPasswordChange {
   token: string
@@ -12,6 +13,7 @@ interface PendingPasswordChange {
 interface AuthState {
   token: string | null
   user: LoginUser | null
+  workspaceId: number | null
   isAuthenticated: boolean
   loading: boolean
   error: string | null
@@ -31,6 +33,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set) => ({
   token: null,
   user: null,
+  workspaceId: null,
   isAuthenticated: false,
   loading: false,
   error: null,
@@ -109,6 +112,17 @@ export const useAuthStore = create<AuthState>((set) => ({
           console.warn("Failed to persist USERNAME config kv:", error)
         }
 
+        try {
+          const workspace = await getMyWorkspace(
+            String(user.id),
+            user.name,
+          )
+          localStorage.setItem("workspaceId", String(workspace.id))
+          set({ workspaceId: workspace.id })
+        } catch (error) {
+          console.warn("Failed to get workspace:", error)
+        }
+
         await window.electronApi?.loginSuccess()
       } else {
         set({
@@ -125,11 +139,12 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: async () => {
     localStorage.removeItem("token")
+    localStorage.removeItem("workspaceId")
 
     const isElectron = window.electronApi?.isElectron
     await window.electronApi?.clearAuth()
 
-    set({ token: null, user: null, isAuthenticated: false })
+    set({ token: null, user: null, workspaceId: null })
 
     if (!isElectron) {
       window.location.hash = "#/login"
@@ -140,11 +155,28 @@ export const useAuthStore = create<AuthState>((set) => ({
     const status = await window.electronApi?.getAuthStatus()
     if (status?.token) {
       localStorage.setItem("token", status.token)
+      const user = status.user as unknown as LoginUser
       set({
         token: status.token,
-        user: status.user as unknown as LoginUser,
+        user,
         isAuthenticated: true,
       })
+
+      const cachedWsId = localStorage.getItem("workspaceId")
+      if (cachedWsId) {
+        set({ workspaceId: Number(cachedWsId) })
+      }
+
+      try {
+        const workspace = await getMyWorkspace(
+          String(user?.id ?? ""),
+          user?.name ?? "",
+        )
+        localStorage.setItem("workspaceId", String(workspace.id))
+        set({ workspaceId: workspace.id })
+      } catch (error) {
+        console.warn("Failed to restore workspace:", error)
+      }
     }
   },
 

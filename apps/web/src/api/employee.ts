@@ -136,7 +136,6 @@ function buildEmployeeBody(
   const { shift_schedule, tasks, ...basic } = params
 
   const body: Record<string, unknown> = { ...basic }
-  body.workspace_id = 1
   if (shift_schedule) {
     body.shift_schedule = shift_schedule
   }
@@ -163,26 +162,33 @@ function buildEmployeeBody(
 
 /**
  * 创建员工信息
+ * POST /workspaces/{workspace_id}/employees
  */
 export async function createEmployee(
   params: CreateEmployeeParams
 ): Promise<ApiResponse<unknown>> {
-  return request<ApiResponse<unknown>>("/employees/create", {
-    method: "POST",
-    body: buildEmployeeBody(params),
-  })
+  return request<ApiResponse<unknown>>(
+    `/workspaces/${WORKSPACE_ID}/employees`,
+    {
+      method: "POST",
+      body: buildEmployeeBody(params),
+    },
+  )
 }
 
 /**
  * 更新员工信息
- * PUT /employees/{employee_id}
+ * PUT /workspaces/{workspace_id}/employees/{employee_id}
  */
 export async function updateEmployee(
   employeeId: number | string,
   params: CreateEmployeeParams
 ): Promise<ApiResponse<unknown>> {
-  return request<ApiResponse<unknown>>(`/employees/${employeeId}`, {
-    method: "PUT",
-    body: buildEmployeeBody(params),
-  })
+  return request<ApiResponse<unknown>>(
+    `/workspaces/${WORKSPACE_ID}/employees/${employeeId}`,
+    {
+      method: "PUT",
+      body: buildEmployeeBody(params),
+    },
+  )
 }

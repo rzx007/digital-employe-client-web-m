@@ -26,7 +26,7 @@ import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import type { TaskExecution } from "@/types/schedule-monitor"
 import {
-  useNotifications,
+  useAllTaskExecutions,
   useMarkNotificationRead,
   useMarkAllNotificationsRead,
 } from "@/hooks/use-schedule-monitor-queries"
@@ -171,7 +171,11 @@ function NotificationItem({
 }
 
 export function NotificationBell() {
-  const { data: notifications = [] } = useNotifications()
+  const { data: executions = [] } = useAllTaskExecutions()
+  const notifications = React.useMemo(
+    () => executions.filter((e) => e.confirm_execution_result),
+    [executions],
+  )
   const dialogOpen = useNotificationStore((s) => s.dialogOpen)
   const setDialogOpen = useNotificationStore((s) => s.setDialogOpen)
   const autoPopupDisabled = useNotificationStore((s) => s.autoPopupDisabled)

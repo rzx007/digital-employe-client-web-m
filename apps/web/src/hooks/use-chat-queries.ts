@@ -72,7 +72,7 @@ export function useOrchestrationPlansQuery() {
     queryFn: async ({ signal }) => {
       const { request } = await import("@/lib/request")
       const res = await request<{ code: number; data: Array<{ id: number; workspace_id: number; conversation_id: number; user_input: string; plan_json: string; status: string; total_tasks: number; completed_tasks: number; created_at: string; updated_at: string }> }>(
-        "/orchestration/plans?workspace_id=1",
+        "/workspaces/1/orchestration/plans",
         { signal },
       )
       return res?.data ?? []

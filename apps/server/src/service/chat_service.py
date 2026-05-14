@@ -267,18 +267,19 @@ class ChatService:
 
 
     @staticmethod
-    def ensure_curator_conversation(db: Session):
+    def ensure_curator_conversation(db: Session, workspace_id: int):
         """获取或创建总管对话（每工作空间仅一条）。"""
         conv = db.scalars(
             select(Conversation).where(
-                Conversation.target_type == "curator"
+                Conversation.target_type == "curator",
+                Conversation.workspace_id == workspace_id,
             ).limit(1)
         ).first()
         if conv:
             return ConversationRead.model_validate(conv)
 
         conv = Conversation(
-            workspace_id=1,
+            workspace_id=workspace_id,
             target_type="curator",
             target_id=1,
             title="总管对话",

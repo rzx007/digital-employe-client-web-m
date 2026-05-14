@@ -15,33 +15,33 @@ const WORKSPACE_ID = 1
 
 /**
  * 创建聊天会话
- * POST /chat/conversations
+ * POST /workspaces/{workspace_id}/chat/conversations
  */
 export async function createConversation(params: CreateConversationParams) {
-  return request<ApiResponse<ConversationItem>>(`/chat/conversations`, {
-    method: "POST",
-    body: {
-      workspace_id: WORKSPACE_ID,
-      ...params,
+  return request<ApiResponse<ConversationItem>>(
+    `/workspaces/${WORKSPACE_ID}/chat/conversations`,
+    {
+      method: "POST",
+      body: params,
     },
-  })
+  )
 }
 
 /**
  * 查询聊天会话列表
- * GET /chat/conversations
+ * GET /workspaces/{workspace_id}/chat/conversations
  */
 export async function fetchConversations(
   query?: ConversationQuery,
   opts?: { signal?: AbortSignal },
 ) {
-  return request<ApiResponse<ConversationItem[]>>(`/chat/conversations`, {
-    params: {
-      workspace_id: WORKSPACE_ID,
-      ...query,
+  return request<ApiResponse<ConversationItem[]>>(
+    `/workspaces/${WORKSPACE_ID}/chat/conversations`,
+    {
+      params: query,
+      ...(opts?.signal ? { signal: opts.signal } : {}),
     },
-    ...(opts?.signal ? { signal: opts.signal } : {}),
-  })
+  )
 }
 
 /**
@@ -117,7 +117,7 @@ export async function fetchCuratorConversation(opts?: {
   signal?: AbortSignal
 }) {
   return request<ApiResponse<ConversationItem>>(
-    `/chat/curator/conversation`,
+    `/workspaces/${WORKSPACE_ID}/chat/curator/conversation`,
     opts?.signal ? { signal: opts.signal } : undefined,
   )
 }
@@ -137,9 +137,10 @@ export async function fetchResourceContent(
 }
 
 export async function deleteAllTaskExecutions() {
-  return request<ApiResponse<{ deleted: number }>>(`/workspaces/1/tasks/executions`, {
-    method: "DELETE",
-  })
+  return request<ApiResponse<{ deleted: number }>>(
+    `/workspaces/${WORKSPACE_ID}/tasks/executions`,
+    { method: "DELETE" },
+  )
 }
 
 export async function uploadConversationFile(

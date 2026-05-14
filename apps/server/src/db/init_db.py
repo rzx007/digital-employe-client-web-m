@@ -140,6 +140,9 @@ def init_db() -> None:
     ensure_column("employee_mcps", "api_created_at", "api_created_at VARCHAR(32)")
     ensure_column("employee_mcps", "api_updated_at", "api_updated_at VARCHAR(32)")
 
+    # 兼容历史工作空间表：补充 user_id 字段（用户隔离）
+    ensure_column("workspaces", "user_id", "user_id TEXT")
+
     # 兼容历史会话消息表：补充 metadata 字段
     ensure_column("conversation_messages", "extra_meta", "extra_meta TEXT")
 
