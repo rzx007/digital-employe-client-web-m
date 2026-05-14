@@ -27,6 +27,10 @@ export function useRecentConversations() {
     RecentConversationItem[]
   >(() => loadAndMigrateRecentConversations(workspaceId))
 
+  React.useEffect(() => {
+    setRecentItems(loadAndMigrateRecentConversations(workspaceId))
+  }, [workspaceId])
+
   const [searchQuery, setSearchQuery] = React.useState("")
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [detailContact, setDetailContact] = React.useState<Contact | null>(null)
