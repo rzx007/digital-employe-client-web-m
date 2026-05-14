@@ -13,6 +13,7 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 
 from fastapi import HTTPException, status
+import yaml
 
 from src.core.config import get_settings
 
@@ -215,9 +216,20 @@ class LocalSkillService:
         if not frontmatter:
             return ""
 
+        body = frontmatter.group(1)
+        try:
+            data = yaml.safe_load(body)
+        except yaml.YAMLError:
+            data = None
+
+        if isinstance(data, dict):
+            raw = data.get("description")
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip()
+
         match = re.search(
             r"(?im)^\s*description\s*[:：]\s*(.+?)\s*$",
-            frontmatter.group(1),
+            body,
         )
         if not match:
             return ""
@@ -394,7 +406,8 @@ class LocalSkillService:
                         "path": str(skill_dir),
                         "hasSkillMd": (skill_dir / LocalSkillService.SKILL_MD_NAME).exists(),
                         "importedAt": meta.get("importedAt"),
-                    }
+                        "description": meta.get("description"),
+                }
                 )
             return dir_items
 

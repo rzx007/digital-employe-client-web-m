@@ -44,6 +44,7 @@ class LocalSkillItem(BaseModel):
     path: str
     hasSkillMd: bool
     importedAt: str | None = None
+    description: str | None = None
 
 
 class LocalSkillDetail(BaseModel):

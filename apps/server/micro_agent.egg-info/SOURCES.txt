@@ -87,6 +87,7 @@ src/service/file_service.py
 src/service/group_service.py
 src/service/local_skill_service.py
 src/service/mcp_service.py
+src/service/message_parts_extractor.py
 src/service/modal_service.py
 src/service/orchestrator_agent.py
 src/service/performance_balance_service.py
