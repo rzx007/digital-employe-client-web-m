@@ -112,7 +112,7 @@ export async function fetchRecruitCandidates(
     msg?: string
     data?: RecruitmentCandidate[]
   }>("/generate-employees", {
-    timeout: 30000 * 1.5,
+    timeout: 30000 * 6,
     method: "POST",
     body: params,
   })

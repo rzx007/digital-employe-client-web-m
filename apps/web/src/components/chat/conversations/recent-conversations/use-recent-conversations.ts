@@ -1,5 +1,6 @@
 import * as React from "react"
 import { useShallow } from "zustand/react/shallow"
+import { useAuthStore } from "@/stores/auth-store"
 import { useConversationsQuery } from "@/hooks/use-chat-queries"
 import {
   findContactInList,
@@ -20,9 +21,11 @@ import {
 import type { RecentConversationItem } from "./types"
 
 export function useRecentConversations() {
+  const workspaceId = useAuthStore((s) => s.workspaceId) ?? 1
+
   const [recentItems, setRecentItems] = React.useState<
     RecentConversationItem[]
-  >(() => loadAndMigrateRecentConversations())
+  >(() => loadAndMigrateRecentConversations(workspaceId))
 
   const [searchQuery, setSearchQuery] = React.useState("")
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
@@ -70,7 +73,7 @@ export function useRecentConversations() {
         isCurator: true,
       }
       const updated = [item, ...prev]
-      saveRecentConversations(updated)
+      saveRecentConversations(workspaceId, updated)
       return updated
     })
   }, [contacts])
@@ -116,7 +119,7 @@ export function useRecentConversations() {
         updated[0]?.id !== prev[0]?.id ||
         updated[0]?.updatedAt?.getTime() !== prev[0]?.updatedAt?.getTime()
       if (hasNew) {
-        saveRecentConversations(updated)
+        saveRecentConversations(workspaceId, updated)
         return updated
       }
       return prev
@@ -136,7 +139,7 @@ export function useRecentConversations() {
         storeContacts,
         curatorId
       )
-      saveRecentConversations(updated)
+      saveRecentConversations(workspaceId, updated)
       return updated
     })
   }, [selectedContactId])
@@ -152,7 +155,7 @@ export function useRecentConversations() {
       const updated = prev.filter(
         (item) => !(item.isDraft && item.contactId === selectedContactId)
       )
-      saveRecentConversations(updated)
+      saveRecentConversations(workspaceId, updated)
       return updated
     })
   }, [isDraftConversation, recentItems, selectedContactId])
@@ -175,7 +178,7 @@ export function useRecentConversations() {
       const updated = prev.map((i) =>
         i.contactId === item.contactId ? { ...i, isPinned: !i.isPinned } : i
       )
-      saveRecentConversations(updated)
+      saveRecentConversations(workspaceId, updated)
       return updated
     })
   }
@@ -183,7 +186,7 @@ export function useRecentConversations() {
   const handleRemove = (item: RecentConversationItem) => {
     setRecentItems((prev) => {
       const updated = prev.filter((i) => i.contactId !== item.contactId)
-      saveRecentConversations(updated)
+      saveRecentConversations(workspaceId, updated)
       return updated
     })
   }

@@ -1,10 +1,25 @@
-import { RECENT_CONVERSATIONS_KEY, type RecentConversationItem } from "./types"
+import {
+  getRecentConversationsKey,
+  type RecentConversationItem,
+} from "./types"
 
 const LEGACY_CURATOR_PRIMARY_ID = "recent:curator-primary"
+const OLD_KEY = "app:recent-conversations"
 
-export function loadRecentConversations(): RecentConversationItem[] {
+function migrateOldKeyIfNeeded(workspaceId: number) {
+  const oldRaw = localStorage.getItem(OLD_KEY)
+  if (!oldRaw) return
+  const newKey = getRecentConversationsKey(workspaceId)
+  if (localStorage.getItem(newKey)) return
+  localStorage.setItem(newKey, oldRaw)
+  localStorage.removeItem(OLD_KEY)
+}
+
+export function loadRecentConversations(
+  workspaceId: number,
+): RecentConversationItem[] {
   try {
-    const raw = localStorage.getItem(RECENT_CONVERSATIONS_KEY)
+    const raw = localStorage.getItem(getRecentConversationsKey(workspaceId))
     if (!raw) return []
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
@@ -22,18 +37,27 @@ export function loadRecentConversations(): RecentConversationItem[] {
   }
 }
 
-export function saveRecentConversations(items: RecentConversationItem[]) {
+export function saveRecentConversations(
+  workspaceId: number,
+  items: RecentConversationItem[],
+) {
   try {
-    localStorage.setItem(RECENT_CONVERSATIONS_KEY, JSON.stringify(items))
+    localStorage.setItem(
+      getRecentConversationsKey(workspaceId),
+      JSON.stringify(items),
+    )
   } catch {
     // ignore storage errors
   }
 }
 
 /** Load, migrate legacy rows, persist, return cleaned list. */
-export function loadAndMigrateRecentConversations(): RecentConversationItem[] {
-  const loaded = loadRecentConversations()
+export function loadAndMigrateRecentConversations(
+  workspaceId: number,
+): RecentConversationItem[] {
+  migrateOldKeyIfNeeded(workspaceId)
+  const loaded = loadRecentConversations(workspaceId)
   const cleaned = loaded.filter((c) => c.id !== LEGACY_CURATOR_PRIMARY_ID)
-  saveRecentConversations(cleaned)
+  saveRecentConversations(workspaceId, cleaned)
   return cleaned
 }

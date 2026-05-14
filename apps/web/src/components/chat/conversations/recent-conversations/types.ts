@@ -16,5 +16,8 @@ export interface RecentConversationItem {
   participants?: { name: string; avatar?: string }[]
 }
 
-export const RECENT_CONVERSATIONS_KEY = "app:recent-conversations"
+export function getRecentConversationsKey(workspaceId: number): string {
+  return `app:recent-conversations:${workspaceId}`
+}
+
 export const MAX_RECENT = 50
