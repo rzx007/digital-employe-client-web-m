@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
@@ -128,8 +129,14 @@ async def generate_employees(http_request: Request, request: EmployeeGenerationR
         return ResponseBase(code=500, msg="无法获取技能列表", data=None)
 
     # 异步生成多个员工档案
+    _gen_started = time.perf_counter()
     employee_profiles = await EmployeeGenerationService.generate_employee_profiles_async(
         request.prompt, skills, request.count
+    )
+    logger.info(
+        "generate_employee_profiles_async 处理耗时 %.3fs (count=%s)",
+        time.perf_counter() - _gen_started,
+        request.count,
     )
 
     # 将生成的员工档案转换为可以用于创建员工的数据格式
