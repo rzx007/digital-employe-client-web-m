@@ -128,7 +128,7 @@ export function getRequestHeaders(customHeaders?: HeadersInit) {
 export const request = ofetch.create({
   baseURL: fallbackBaseURL,
   headers: { ...defaultHeaders },
-  timeout: 30000,
+  timeout: 50000,
   retry: 2,
   retryDelay: 1000,
   async onRequest(ctx) {

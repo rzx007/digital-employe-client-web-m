@@ -112,9 +112,17 @@ export function showPetWindow(): void {
   // 定位到屏幕右下角
   const primaryDisplay = screen.getPrimaryDisplay()
   const { width, height } = primaryDisplay.workAreaSize
-  const x = width - PET_WINDOW_WIDTH - PET_WINDOW_MARGIN
-  const y = height - PET_WINDOW_HEIGHT - PET_WINDOW_MARGIN
-  petWin.setPosition(x, y)
+  const x = Math.round(width - PET_WINDOW_WIDTH - PET_WINDOW_MARGIN)
+  const y = Math.round(height - PET_WINDOW_HEIGHT - PET_WINDOW_MARGIN)
+  petWin.setBounds(
+    {
+      x,
+      y,
+      width: PET_WINDOW_WIDTH,
+      height: PET_WINDOW_HEIGHT,
+    },
+    false,
+  )
   petWin.show()
   petWin.focus()
 }
@@ -153,7 +161,15 @@ function registerPetIpcHandlers(): void {
     "pet:set-position",
     (_event, x: number, y: number) => {
       if (!petWin || petWin.isDestroyed()) return
-      petWin.setPosition(Math.round(x), Math.round(y))
+      petWin.setBounds(
+        {
+          x: Math.round(x),
+          y: Math.round(y),
+          width: PET_WINDOW_WIDTH,
+          height: PET_WINDOW_HEIGHT,
+        },
+        false,
+      )
     },
   )
 

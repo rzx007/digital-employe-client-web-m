@@ -3,27 +3,50 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type KeyboardEvent,
   type MouseEvent,
 } from "react"
+import { cn } from "@workspace/ui/lib/utils"
+
 import { SpritePlayer } from "./animation/SpritePlayer"
 import { petStateLabels, type PetState } from "./animation/types"
 import type { SpriteSkinManifest } from "./animation/manifest"
-import { usePetVoiceCurator } from "./use-pet-voice-curator"
+import {
+  usePetVoiceCurator,
+  type PetVoiceFeedback,
+} from "./use-pet-voice-curator"
 import "./PetWindow.css"
 import manifestData from "./skins/default/manifest.json"
 import spritePng from "./skins/default/sprite.png"
 
 const PET_DISPLAY_SCALE = 0.58
 const DRAG_HOLD_DELAY_MS = 220
+const IDLE_HINT_MS = 6000
+const IDLE_HINT_TEXT = "点击说话，再点结束并发送"
 
 const skinManifest: SpriteSkinManifest = {
   ...(manifestData as SpriteSkinManifest),
   image: spritePng,
 }
 
+function bubbleCaptionText(f: PetVoiceFeedback): string {
+  if (f.variant === "none") return ""
+  return f.detail ? `${f.title}\n${f.detail}` : f.title
+}
+
+function bubbleStrongLabel(f: PetVoiceFeedback, petState: PetState): string {
+  if (f.variant === "error") return petStateLabels.error
+  if (f.variant === "success") return "完成"
+  if (f.variant === "info") return "提示"
+  return petStateLabels[petState]
+}
+
 export function PetWindow() {
-  const { isRecording, voiceBusy, toggleVoiceClick } = usePetVoiceCurator()
+  const { isRecording, voiceBusy, feedback, toggleVoiceClick } =
+    usePetVoiceCurator()
+
+  const [idleHintDismissed, setIdleHintDismissed] = useState(false)
 
   const dragTimerRef = useRef<number | null>(null)
   const dragStartPointRef = useRef<{
@@ -33,19 +56,56 @@ export function PetWindow() {
   const isPointerDownRef = useRef(false)
   const suppressNextClickRef = useRef(false)
 
-  const petState: PetState = useMemo(
-    () => (voiceBusy ? "thinking" : isRecording ? "listening" : "idle"),
-    [voiceBusy, isRecording]
-  )
+  const petState: PetState = useMemo(() => {
+    if (feedback.variant === "error") return "error"
+    if (voiceBusy) return "thinking"
+    if (isRecording) return "listening"
+    return "idle"
+  }, [feedback.variant, voiceBusy, isRecording])
 
-  const caption = useMemo(
-    () =>
-      voiceBusy
-        ? "识别并发送给总管…"
-        : isRecording
-          ? "录音中，再点结束"
-          : "点击说话，再点结束并发送",
-    [voiceBusy, isRecording]
+  const caption = useMemo(() => {
+    if (feedback.variant !== "none") {
+      return bubbleCaptionText(feedback)
+    }
+    if (voiceBusy) {
+      return "识别并发送给总管…"
+    }
+    if (isRecording) {
+      return "录音中，再点结束"
+    }
+    if (idleHintDismissed) {
+      return ""
+    }
+    return IDLE_HINT_TEXT
+  }, [feedback, voiceBusy, isRecording, idleHintDismissed])
+
+  useEffect(() => {
+    const idle = feedback.variant === "none" && !isRecording && !voiceBusy
+
+    let dismissTimer: number | null = null
+
+    const run = () => {
+      if (!idle) {
+        setIdleHintDismissed(false)
+        return
+      }
+      setIdleHintDismissed(false)
+      dismissTimer = window.setTimeout(() => {
+        setIdleHintDismissed(true)
+      }, IDLE_HINT_MS)
+    }
+
+    const scheduleId = window.setTimeout(run, 0)
+
+    return () => {
+      window.clearTimeout(scheduleId)
+      if (dismissTimer != null) window.clearTimeout(dismissTimer)
+    }
+  }, [feedback.variant, isRecording, voiceBusy])
+
+  const bubbleStrong = useMemo(
+    () => bubbleStrongLabel(feedback, petState),
+    [feedback, petState]
   )
 
   useEffect(() => {
@@ -121,11 +181,13 @@ export function PetWindow() {
     void toggleVoiceClick()
   }, [toggleVoiceClick])
 
+  const stageAriaLive = feedback.variant === "error" ? "assertive" : "polite"
+
   return (
     <main className="pet-shell" data-state={petState}>
-      <section className="pet-stage" aria-live="polite">
+      <section aria-live={stageAriaLive} className="pet-stage">
         <div
-          aria-label="数字员工宠物"
+          aria-label="数字员工宠物，点击开始或结束语音输入"
           aria-pressed={isRecording}
           className="pet-button"
           onClick={handlePetClick}
@@ -134,6 +196,7 @@ export function PetWindow() {
           onMouseUp={handlePetMouseUp}
           role="button"
           tabIndex={0}
+          title={IDLE_HINT_TEXT}
         >
           <SpritePlayer
             scale={PET_DISPLAY_SCALE}
@@ -142,9 +205,17 @@ export function PetWindow() {
           />
         </div>
         {caption && (
-          <div className="speech-bubble">
+          <div
+            className={cn(
+              "speech-bubble",
+              feedback.variant === "error" && "speech-bubble--error",
+              feedback.variant === "info" && "speech-bubble--info",
+              feedback.variant === "success" && "speech-bubble--success"
+            )}
+            role={feedback.variant === "error" ? "alert" : undefined}
+          >
             <span title={caption}>{caption}</span>
-            <strong>{petStateLabels[petState]}</strong>
+            <strong>{bubbleStrong}</strong>
           </div>
         )}
       </section>

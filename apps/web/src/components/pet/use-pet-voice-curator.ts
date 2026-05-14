@@ -1,37 +1,57 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { toast } from "sonner"
 
 import { sendCuratorStreamMessage } from "@/lib/pet/send-curator-stream"
 import { transcribePetAudio } from "@/lib/pet/transcribe-audio"
 import { chatKeys } from "@/lib/query-keys/chat"
 
-function getMicErrorToast(e: unknown): { title: string; description?: string } {
+export type PetVoiceFeedback =
+  | { variant: "none" }
+  | { variant: "error"; title: string; detail?: string }
+  | { variant: "info"; title: string; detail?: string }
+  | { variant: "success"; title: string; detail?: string }
+
+function feedbackAutoClearMs(
+  variant: Exclude<PetVoiceFeedback["variant"], "none">
+): number {
+  switch (variant) {
+    case "error":
+      return 8000
+    case "info":
+      return 6000
+    case "success":
+      return 4000
+    default:
+      return 6000
+  }
+}
+
+function getMicErrorCopy(e: unknown): { title: string; detail?: string } {
   const name =
     e instanceof DOMException ? e.name : e instanceof Error ? e.name : ""
 
   if (name === "NotAllowedError" || name === "PermissionDeniedError") {
     return {
       title: "需要麦克风权限",
-      description: "请在系统或浏览器设置中允许本应用访问麦克风",
+      detail: "请在系统或浏览器设置中允许本应用访问麦克风",
     }
   }
   if (name === "NotFoundError" || name === "DevicesNotFoundError") {
     return {
       title: "未检测到麦克风",
-      description: "请连接麦克风后重试",
+      detail: "请连接麦克风后重试",
     }
   }
   if (name === "NotReadableError" || name === "TrackStartError") {
     return {
       title: "麦克风被占用",
-      description: "请关闭其他使用麦克风的应用后重试",
+      detail: "请关闭其他使用麦克风的应用后重试",
     }
   }
 
   return {
     title: "无法开始录音",
-    description: e instanceof Error ? e.message : undefined,
+    detail: e instanceof Error ? e.message : undefined,
   }
 }
 
@@ -40,11 +60,27 @@ export function usePetVoiceCurator() {
 
   const [isRecording, setIsRecording] = useState(false)
   const [voiceBusy, setVoiceBusy] = useState(false)
+  const [feedback, setFeedback] = useState<PetVoiceFeedback>({
+    variant: "none",
+  })
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const startingRef = useRef(false)
+
+  const clearFeedback = useCallback(() => {
+    setFeedback({ variant: "none" })
+  }, [])
+
+  useEffect(() => {
+    if (feedback.variant === "none") return
+    const ms = feedbackAutoClearMs(feedback.variant)
+    const id = window.setTimeout(() => {
+      setFeedback({ variant: "none" })
+    }, ms)
+    return () => window.clearTimeout(id)
+  }, [feedback])
 
   const cleanupStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
@@ -75,8 +111,14 @@ export function usePetVoiceCurator() {
 
   const startRecording = useCallback(async () => {
     if (startingRef.current || mediaRecorderRef.current) return false
+
+    clearFeedback()
+
     if (!navigator.mediaDevices?.getUserMedia) {
-      toast.error("当前环境不支持录音")
+      setFeedback({
+        variant: "error",
+        title: "当前环境不支持录音",
+      })
       return false
     }
 
@@ -90,7 +132,7 @@ export function usePetVoiceCurator() {
 
       const mime =
         typeof MediaRecorder !== "undefined" &&
-          MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
           ? "audio/webm;codecs=opus"
           : ""
 
@@ -108,13 +150,13 @@ export function usePetVoiceCurator() {
       return true
     } catch (e) {
       cleanupStream()
-      const { title, description } = getMicErrorToast(e)
-      toast.error(title, description ? { description } : undefined)
+      const { title, detail } = getMicErrorCopy(e)
+      setFeedback({ variant: "error", title, detail })
       return false
     } finally {
       startingRef.current = false
     }
-  }, [cleanupStream])
+  }, [cleanupStream, clearFeedback])
 
   const finishRecordingAndSend = useCallback(async () => {
     setIsRecording(false)
@@ -122,13 +164,21 @@ export function usePetVoiceCurator() {
     try {
       const blob = await stopMediaRecorder()
       if (!blob) {
-        toast.message("未录制到有效音频")
+        setFeedback({
+          variant: "info",
+          title: "未录制到有效音频",
+          detail: "请稍长录音后再点结束",
+        })
         return
       }
 
       const text = (await transcribePetAudio(blob)).trim()
       if (!text) {
-        toast.error("识别结果为空")
+        setFeedback({
+          variant: "error",
+          title: "识别结果为空",
+          detail: "请靠近麦克风或检查网络后重试",
+        })
         return
       }
 
@@ -137,11 +187,18 @@ export function usePetVoiceCurator() {
       await queryClient.invalidateQueries({
         queryKey: chatKeys.messages(conversationId),
       })
-      // toast.success("已发送给总管助手")
-      window.electronApi?.showPet()
+      setFeedback({
+        variant: "success",
+        title: "任务已完成",
+        detail: "已同步到总管助手",
+      })
+      // 不自动打开主窗口，仅用气泡提示；主窗口可从托盘打开
+      // window.electronApi?.showPet()
     } catch (e) {
-      toast.error("识别或发送失败", {
-        description: e instanceof Error ? e.message : undefined,
+      setFeedback({
+        variant: "error",
+        title: "识别或发送失败",
+        detail: e instanceof Error ? e.message : undefined,
       })
     } finally {
       setVoiceBusy(false)
@@ -173,6 +230,8 @@ export function usePetVoiceCurator() {
   return {
     isRecording,
     voiceBusy,
+    feedback,
+    clearFeedback,
     toggleVoiceClick,
   }
 }

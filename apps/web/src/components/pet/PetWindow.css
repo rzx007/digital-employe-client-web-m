@@ -67,7 +67,17 @@ body,
   pointer-events: none;
 }
 
+/* 气泡 token：微冷浅底 + 克制玻璃（半透明 + 轻 blur） */
 .speech-bubble {
+  --bubble-surface: oklch(0.985 0.006 220 / 0.86);
+  --bubble-border: oklch(0.88 0.016 215 / 0.55);
+  --bubble-fg: oklch(0.3 0.028 240);
+  --bubble-fg-strong: oklch(0.44 0.045 215);
+  --bubble-shadow:
+    0 1px 2px oklch(0.2 0.02 240 / 0.06),
+    0 10px 28px oklch(0.22 0.03 235 / 0.11);
+  --bubble-glass-inset: inset 0 1px 0 oklch(1 0 0 / 0.28);
+
   position: absolute;
   right: 18px;
   bottom: 152px;
@@ -75,46 +85,111 @@ body,
   min-width: 92px;
   max-width: min(260px, calc(100vw - 36px));
   flex-direction: column;
-  gap: 2px;
-  padding: 9px 11px;
-  color: #17212b;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(73, 108, 118, 0.16);
-  border-radius: 8px;
-  box-shadow: 0 12px 28px rgba(25, 37, 47, 0.18);
-  backdrop-filter: blur(12px);
+  gap: 4px;
+  padding: 10px 12px;
+  color: var(--bubble-fg);
+  background: var(--bubble-surface);
+  border: 1px solid var(--bubble-border);
+  border-radius: 10px;
+  box-shadow: var(--bubble-shadow), var(--bubble-glass-inset);
   box-sizing: border-box;
+  -webkit-backdrop-filter: blur(10px) saturate(118%);
+  backdrop-filter: blur(10px) saturate(118%);
+  animation: pet-bubble-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .speech-bubble::after {
   position: absolute;
-  right: 42px;
+  left: 42px;
   bottom: -7px;
   width: 12px;
   height: 12px;
   content: "";
-  background: rgba(255, 255, 255, 0.92);
-  border-right: 1px solid rgba(73, 108, 118, 0.16);
-  border-bottom: 1px solid rgba(73, 108, 118, 0.16);
+  background: var(--bubble-surface);
+  border-right: 1px solid var(--bubble-border);
+  border-bottom: 1px solid var(--bubble-border);
   transform: rotate(45deg);
+  -webkit-backdrop-filter: blur(10px) saturate(118%);
+  backdrop-filter: blur(10px) saturate(118%);
 }
 
-.speech-bubble span {
+/* 主文案 caption */
+.speech-bubble > span:first-of-type {
   display: -webkit-box;
   max-height: 5em;
   overflow: hidden;
   overflow-wrap: anywhere;
-  font-size: 14px;
-  font-weight: 650;
-  line-height: 1.25;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
   text-overflow: ellipsis;
+  white-space: pre-line;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
 }
 
 .speech-bubble strong {
-  color: #406777;
+  color: var(--bubble-fg-strong);
   font-size: 11px;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+}
+
+@keyframes pet-bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.speech-bubble.speech-bubble--error {
+  --bubble-surface: oklch(0.97 0.022 18 / 0.88);
+  --bubble-border: oklch(0.82 0.055 22 / 0.5);
+  --bubble-fg: oklch(0.34 0.07 22);
+  --bubble-fg-strong: oklch(0.46 0.1 22);
+  --bubble-shadow:
+    0 1px 2px oklch(0.35 0.08 22 / 0.07),
+    0 10px 26px oklch(0.4 0.09 22 / 0.12);
+  --bubble-glass-inset: inset 0 1px 0 oklch(1 0 0 / 0.35);
+}
+
+.speech-bubble.speech-bubble--error strong {
+  color: var(--bubble-fg-strong);
+}
+
+.speech-bubble.speech-bubble--info {
+  --bubble-surface: oklch(0.982 0.012 230 / 0.86);
+  --bubble-border: oklch(0.87 0.022 225 / 0.52);
+  --bubble-fg: oklch(0.32 0.03 235);
+  --bubble-fg-strong: oklch(0.48 0.04 225);
+  --bubble-shadow:
+    0 1px 2px oklch(0.25 0.03 235 / 0.06),
+    0 10px 26px oklch(0.28 0.04 230 / 0.1);
+}
+
+.speech-bubble.speech-bubble--info strong {
+  color: var(--bubble-fg-strong);
+}
+
+.speech-bubble.speech-bubble--success {
+  --bubble-surface: oklch(0.97 0.035 155 / 0.87);
+  --bubble-border: oklch(0.84 0.06 155 / 0.48);
+  --bubble-fg: oklch(0.3 0.06 155);
+  --bubble-fg-strong: oklch(0.42 0.09 155);
+  --bubble-shadow:
+    0 1px 2px oklch(0.35 0.07 155 / 0.07),
+    0 10px 26px oklch(0.38 0.08 155 / 0.11);
+}
+
+.speech-bubble.speech-bubble--success strong {
+  color: var(--bubble-fg-strong);
 }
