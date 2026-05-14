@@ -3,9 +3,11 @@ from src.core.logging_setup import setup_logging
 setup_logging()
 
 import logging
+import re
 import asyncio
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 import aiosqlite
 
 from src.api import api_router
@@ -87,9 +89,7 @@ def create_app() -> FastAPI:
                 cleaned = cleanup_zombie_executions(db)
                 if cleaned > 0:
                     logger.info("Cleaned %d zombie task executions", cleaned)
-                EmployeeService.ensure_builtin_seed_employees(db, workspace)
-                EmployeeService.ensure_curator_employee(db, workspace.id)
-                TaskService.sync_workspace_tasks(db, workspace.id)
+                WorkspaceService.ensure_workspace_initialized(db, workspace)
 
         await loop.run_in_executor(None, _startup_data_init)
 
@@ -134,6 +134,26 @@ def create_app() -> FastAPI:
         SessionMiddleware,
         secret_key="digital-employee-oauth-secret",
     )
+
+    class WorkspaceHeaderMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            ws_id = request.headers.get("X-Workspace-Id")
+            if ws_id:
+                try:
+                    ws_id_int = int(ws_id)
+                except (TypeError, ValueError):
+                    return await call_next(request)
+                request.state.workspace_id = ws_id_int
+                path = request.scope["path"]
+                request.scope["path"] = re.sub(
+                    r"/workspaces/\d+/",
+                    f"/workspaces/{ws_id}/",
+                    path,
+                )
+            return await call_next(request)
+
+    fastapi_app.add_middleware(WorkspaceHeaderMiddleware)
+
     fastapi_app.include_router(api_router)
     return fastapi_app
 

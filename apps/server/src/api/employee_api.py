@@ -55,8 +55,12 @@ def get_employee(employee_id: int, db: Session = Depends(get_db)) -> ResponseBas
     return ResponseBase(data=EmployeeService.employee_detail_dict(db, employee))
 
 
-@router.put("/employees/{employee_id}", response_model=ResponseBase[EmployeeRead])
+@router.put(
+    "/workspaces/{workspace_id}/employees/{employee_id}",
+    response_model=ResponseBase[EmployeeRead],
+)
 def update_employee(
+    workspace_id: int,
     employee_id: int,
     request: Request,
     payload: EmployeeUpdate,
@@ -75,31 +79,33 @@ def delete_employee(employee_id: int, db: Session = Depends(get_db)) -> BaseResp
     return BaseResponse(data=None)
 
 
-@router.post("/employees/create", summary="创建员工", response_model=ResponseBase)
+@router.post(
+    "/workspaces/{workspace_id}/employees",
+    summary="创建员工",
+    response_model=ResponseBase,
+)
 def create_employee(
+    workspace_id: int,
     request: Request,
     employee_in: EmployeeCreate,
     db: Session = Depends(get_db),
 ):
     token = request.headers.get("token")
+    employee_in.workspace_id = workspace_id
     try:
-        # 获取用户ID
         user_id = get_user_id(request)
     except Exception as e:
         logger.error("获取 user_id 失败: %s", e, exc_info=True)
-        # 如果获取不到用户ID，尝试从token中提取
-
         if token:
             user_id = get_user_id_from_token(token)
             if not user_id:
-                user_id = "1"  # 默认值为管理员
+                user_id = "1"
         else:
-            user_id = "1"  # 默认值为管理员
-    
-    # 设置创建者ID
+            user_id = "1"
+
     employee_in.user_id = user_id
-    logger.info("创建员工 user_id=%s", user_id)
-    
+    logger.info("创建员工 user_id=%s workspace_id=%s", user_id, workspace_id)
+
     employee = EmployeeService.create_employee(db, employee_in, token)
     return ResponseBase(data=EmployeeService.employee_detail_dict(db, employee))
 

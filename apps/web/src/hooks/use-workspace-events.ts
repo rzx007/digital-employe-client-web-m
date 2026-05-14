@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { useAuthStore } from "@/stores/auth-store"
 
 export type WorkspaceEvent =
   | { type: "task_started"; task_id: number; conversation_id: number; employee_id: number; employee_name: string; task_name: string }
@@ -95,8 +96,11 @@ export function useWorkspaceEvents(handler?: EventHandler) {
   const [isConnected, setIsConnected] = useState(_isConnected)
   const handlerRef = useRef(handler)
   handlerRef.current = handler
+  const workspaceId = useAuthStore((s) => s.workspaceId)
 
   useEffect(() => {
+    if (workspaceId == null) return
+
     const connectionListener = (connected: boolean) => setIsConnected(connected)
     _connectionListeners.add(connectionListener)
 
@@ -105,7 +109,7 @@ export function useWorkspaceEvents(handler?: EventHandler) {
     }
     _handlers.add(wrapped)
 
-    connect(1)
+    connect(workspaceId)
 
     return () => {
       _connectionListeners.delete(connectionListener)
@@ -114,7 +118,7 @@ export function useWorkspaceEvents(handler?: EventHandler) {
         disconnect()
       }
     }
-  }, [])
+  }, [workspaceId])
 
   return { isConnected }
 }

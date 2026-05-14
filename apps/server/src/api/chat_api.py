@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -15,24 +15,32 @@ from src.service.resource_service import ResourceService
 router = APIRouter(tags=["对话"])
 
 
-@router.get("/chat/curator/conversation", response_model=ResponseBase[ConversationRead])
+@router.get(
+    "/workspaces/{workspace_id}/chat/curator/conversation",
+    response_model=ResponseBase[ConversationRead],
+)
 def get_curator_conversation(
+    workspace_id: int,
     db: Session = Depends(get_db),
 ) -> ResponseBase[ConversationRead]:
-    """获取或创建总管对话（每应用唯一）。"""
-    conversation = ChatService.ensure_curator_conversation(db)
+    """获取或创建总管对话（每个 workspace 仅一条）。"""
+    conversation = ChatService.ensure_curator_conversation(db, workspace_id)
     return ResponseBase(data=conversation)
 
 
-@router.post("/chat/conversations", response_model=ResponseBase[ConversationRead])
+@router.post(
+    "/workspaces/{workspace_id}/chat/conversations",
+    response_model=ResponseBase[ConversationRead],
+)
 def create_conversation(
+    workspace_id: int,
     payload: ConversationCreate,
     db: Session = Depends(get_db),
 ) -> ResponseBase[ConversationRead]:
     """创建会话。"""
     conversation = ChatService.create_conversation(
         db=db,
-        workspace_id=payload.workspace_id,
+        workspace_id=workspace_id,
         target_type=payload.target_type,
         target_id=payload.target_id,
         title=payload.title,
@@ -40,9 +48,12 @@ def create_conversation(
     return ResponseBase(data=conversation)
 
 
-@router.get("/chat/conversations", response_model=ListResponse[ConversationRead])
+@router.get(
+    "/workspaces/{workspace_id}/chat/conversations",
+    response_model=ListResponse[ConversationRead],
+)
 def list_conversations(
-    workspace_id: int = Query(...),
+    workspace_id: int,
     target_type: str = Query(...),
     target_id: int = Query(...),
     db: Session = Depends(get_db),

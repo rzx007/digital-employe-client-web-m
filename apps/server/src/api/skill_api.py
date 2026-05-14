@@ -3,7 +3,8 @@ from typing import Any
 
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile, status
 
-from src.core.request_utils import get_user_id
+from src.core.request_utils import get_user_id, get_username
+from src.db.session import get_session_local
 from src.models.response import ResponseBase
 from src.schemas.skill import (
     LocalSkillDetail,
@@ -16,13 +17,35 @@ from src.schemas.skill import (
 )
 from src.service.local_skill_service import LocalSkillService
 from src.service.skill_service import SkillService
+from src.service.workspace_service import WorkspaceService
 
 router = APIRouter(tags=["技能"])
+
+
+def _get_workspace_id_from_request(request: Request) -> int:
+    """
+    从请求中获取用户的 workspace_id。
+    优先使用中间件注入的 X-Workspace-Id（request.state.workspace_id），
+    兜底从 token 解析 user_id 后查询数据库。
+    """
+    ws_id = getattr(request.state, "workspace_id", None)
+    if ws_id:
+        return ws_id
+    user_id = get_user_id(request)
+    db = get_session_local()()
+    try:
+        workspace = WorkspaceService.get_or_create_user_workspace(
+            db, user_id, get_username(request)
+        )
+        return workspace.id
+    finally:
+        db.close()
 
 
 @router.get("/skills/list", response_model=ResponseBase[list[SkillListItem]])
 def list_skills(request: Request) -> ResponseBase[list[SkillListItem]]:
     token = request.headers.get("token")
+    workspace_id = _get_workspace_id_from_request(request)
     remote_skills = SkillService.list_remote_skills(token)
     remote_data = []
     for item in remote_skills:
@@ -31,7 +54,7 @@ def list_skills(request: Request) -> ResponseBase[list[SkillListItem]]:
         mapped["sourceLabel"] = "远程"
         remote_data.append(SkillListItem(**mapped))
 
-    local_skills = LocalSkillService.list_local_skills()
+    local_skills = LocalSkillService.list_local_skills(workspace_id)
     local_data = []
     for index, item in enumerate(local_skills, start=1):
         local_id = item.get("localId")
@@ -75,6 +98,7 @@ async def _import_local_skill_impl(
     skill_name: str,
     file: UploadFile,
     overwrite: bool,
+    workspace_id: int,
 ) -> ResponseBase[LocalSkillImportResult]:
     file_bytes = await file.read()
     imported = LocalSkillService.import_local_skill_zip(
@@ -82,6 +106,7 @@ async def _import_local_skill_impl(
         file_name=file.filename or f"{skill_name}.zip",
         file_bytes=file_bytes,
         overwrite=overwrite,
+        workspace_id=workspace_id,
     )
     return ResponseBase[LocalSkillImportResult](data=LocalSkillImportResult(**imported))
 
@@ -92,14 +117,17 @@ async def _import_local_skill_impl(
     status_code=status.HTTP_200_OK,
 )
 async def import_local_skill(
+    request: Request,
     skillName: str = Form(...),
     file: UploadFile = File(...),
     overwrite: bool = Form(default=False),
 ) -> ResponseBase[LocalSkillImportResult]:
+    workspace_id = _get_workspace_id_from_request(request)
     return await _import_local_skill_impl(
         skill_name=skillName,
         file=file,
         overwrite=overwrite,
+        workspace_id=workspace_id,
     )
 
 
@@ -109,14 +137,17 @@ async def import_local_skill(
     status_code=status.HTTP_200_OK,
 )
 async def import_local_skill_zip(
+    request: Request,
     skillName: str = Form(...),
     file: UploadFile = File(...),
     overwrite: bool = Form(default=False),
 ) -> ResponseBase[LocalSkillImportResult]:
+    workspace_id = _get_workspace_id_from_request(request)
     return await _import_local_skill_impl(
         skill_name=skillName,
         file=file,
         overwrite=overwrite,
+        workspace_id=workspace_id,
     )
 
 
@@ -125,23 +156,32 @@ async def import_local_skill_zip(
     response_model=ResponseBase[SkillNameExistsResult],
 )
 def local_skill_name_exists(
+    request: Request,
     payload: SkillNameExistsRequest,
 ) -> ResponseBase[SkillNameExistsResult]:
-    exists = LocalSkillService.local_skill_exists(payload.skillName)
+    workspace_id = _get_workspace_id_from_request(request)
+    exists = LocalSkillService.local_skill_exists(payload.skillName, workspace_id)
     return ResponseBase[SkillNameExistsResult](
         data=SkillNameExistsResult(exists=exists)
     )
 
 
 @router.get("/skills/local/list", response_model=ResponseBase[list[LocalSkillItem]])
-def list_local_skills() -> ResponseBase[list[LocalSkillItem]]:
-    data = [LocalSkillItem(**item) for item in LocalSkillService.list_local_skills()]
+def list_local_skills(request: Request) -> ResponseBase[list[LocalSkillItem]]:
+    workspace_id = _get_workspace_id_from_request(request)
+    data = [
+        LocalSkillItem(**item)
+        for item in LocalSkillService.list_local_skills(workspace_id)
+    ]
     return ResponseBase[list[LocalSkillItem]](data=data)
 
 
 @router.get("/skills/local/{skill_name}", response_model=ResponseBase[LocalSkillDetail])
-def get_local_skill_detail(skill_name: str) -> ResponseBase[LocalSkillDetail]:
-    detail = LocalSkillService.get_local_skill_detail(skill_name)
+def get_local_skill_detail(
+    request: Request, skill_name: str
+) -> ResponseBase[LocalSkillDetail]:
+    workspace_id = _get_workspace_id_from_request(request)
+    detail = LocalSkillService.get_local_skill_detail(skill_name, workspace_id)
     return ResponseBase[LocalSkillDetail](data=LocalSkillDetail(**detail))
 
 
@@ -156,7 +196,8 @@ async def remote_import_local_skill(
     exists = await SkillService.remote_skill_name_exists(skill_name, token)
     if exists:
         return ResponseBase[Any](code=0, msg=f"远程已存在同名技能: {skill_name}")
-    file_name, file_bytes = LocalSkillService.build_local_skill_zip(skill_name)
+    workspace_id = _get_workspace_id_from_request(request)
+    file_name, file_bytes = LocalSkillService.build_local_skill_zip(skill_name, workspace_id)
     uploaded_by_user_id = get_user_id(request)
     payload = await SkillService.remote_import_skill(
         file_name=file_name,
@@ -175,67 +216,84 @@ async def remote_import_local_skill(
 
 @router.get("/local_employees/skills", response_model=ResponseBase[list[dict]])
 def get_employee_local_skills(
+    request: Request,
     employee_id: str = Query(..., description="员工ID"),
     employee_name: str | None = Query(default=None, description="员工名称"),
     skill_name: str | None = Query(default=None, description="指定技能名称"),
 ) -> ResponseBase[list[dict]]:
     """
-    获取指定员工的本地技能列表
-    
+    获取指定员工的本地技能列表（支持 workspace 隔离）
+
     该接口用于工作台加载本地上传的技能，支持：
     1. 不传 skill_name：返回该员工所有本地技能
     2. 传入 skill_name：返回指定技能的详细信息
     """
     from pathlib import Path
     from src.core.config import get_settings
-    
+
+    workspace_id = _get_workspace_id_from_request(request)
     settings = get_settings()
-    local_root = Path(settings.local_skills_path)
-    
-    if not local_root.exists():
-        return ResponseBase(data=[])
-    
+    local_root = Path(settings.local_skills_path) / str(workspace_id)
+    builtin_root = Path(settings.local_skills_path) / "builtin"
+
     skills = []
-    for skill_dir in sorted(local_root.iterdir(), key=lambda p: p.name.lower()):
-        if not skill_dir.is_dir():
-            continue
-        
-        skill_md = skill_dir / "SKILL.md"
-        if not skill_md.exists():
-            continue
-        
-        # 读取 SKILL.md 内容
-        skill_content = ""
-        try:
-            skill_content = skill_md.read_text(encoding="utf-8")
-        except Exception as e:
-            logger.warning(f"Failed to read SKILL.md for {skill_dir.name}: {e}")
-        
-        meta_file = skill_dir / ".skill-meta.json"
-        meta = {}
-        if meta_file.exists():
+
+    def _load_skills_from_dir(root: Path):
+        if not root.exists():
+            return
+        for skill_dir in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+            if not skill_dir.is_dir():
+                continue
+
+            skill_md = skill_dir / "SKILL.md"
+            if not skill_md.exists():
+                continue
+
+            # 读取 SKILL.md 内容
+            skill_content = ""
             try:
-                import json
-                meta = json.loads(meta_file.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-        
-        # 如果指定了 skill_name，只返回匹配的
-        if skill_name and skill_dir.name != skill_name:
-            continue
-        
-        skills.append({
-            "id": meta.get("localId", 0),
-            "skillName": skill_dir.name,
-            "description": meta.get("description", ""),
-            "prompt": "",
-            "directoryId": None,
-            "status": 1,
-            "createTime": meta.get("importedAt", ""),
-            "updateTime": meta.get("importedAt", ""),
-            "directoryName": "本地技能",
-            "skillContent": skill_content,  # 添加技能内容
-            "skill_content": skill_content,  # 兼容两种字段名
-        })
-    
+                skill_content = skill_md.read_text(encoding="utf-8")
+            except Exception as e:
+                logger.warning(f"Failed to read SKILL.md for {skill_dir.name}: {e}")
+
+            meta_file = skill_dir / ".skill-meta.json"
+            meta = {}
+            if meta_file.exists():
+                try:
+                    import json
+                    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+
+            # 如果指定了 skill_name，只返回匹配的
+            if skill_name and skill_dir.name != skill_name:
+                continue
+
+            skills.append(
+                {
+                    "id": meta.get("localId", 0),
+                    "skillName": skill_dir.name,
+                    "description": meta.get("description", ""),
+                    "prompt": "",
+                    "directoryId": None,
+                    "status": 1,
+                    "createTime": meta.get("importedAt", ""),
+                    "updateTime": meta.get("importedAt", ""),
+                    "directoryName": "本地技能",
+                    "skillContent": skill_content,  # 添加技能内容
+                    "skill_content": skill_content,  # 兼容两种字段名
+                }
+            )
+
+    # 先加载 builtin 技能
+    _load_skills_from_dir(builtin_root)
+
+    # 再加载 workspace 自定义技能（同名会覆盖 builtin）
+    _load_skills_from_dir(local_root)
+
+    # 去重（如果 skill_name 未指定）
+    if not skill_name:
+        skill_map = {s["skillName"]: s for s in skills}
+        skills = list(skill_map.values())
+
     return ResponseBase(data=skills)

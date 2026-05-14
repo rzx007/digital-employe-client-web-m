@@ -144,6 +144,11 @@ export const request = ofetch.create({
       headers.set("token", `${token}`)
     }
 
+    const workspaceId = localStorage.getItem("workspaceId")
+    if (workspaceId) {
+      headers.set("X-Workspace-Id", workspaceId)
+    }
+
     const body = ctx.options?.body
     const isFormData =
       typeof FormData !== "undefined" && body instanceof FormData
