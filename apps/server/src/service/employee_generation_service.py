@@ -1,7 +1,8 @@
 import json
-import re
-from typing import Any
 import logging
+import re
+import time
+from typing import Any
 from src.schemas.employee import EmployeeProfile
 from src.service.modal_service import ModelService
 from src.service.agent_interface_service import agent_interface_service
@@ -116,10 +117,14 @@ class EmployeeGenerationService:
         - skill_ids: 关联的技能ID集合（数组格式，包含具体的ID数字或字符串）
         """
 
+        _model_started = time.perf_counter()
         result = await ModelService.call_model(prompt, {})
         logger.info(
-            f"员工生成模型返回摘要: type={type(result).__name__}, "
-            f"code={result.get('code') if isinstance(result, dict) else None}"
+            "员工生成模型调用耗时 %.3fs，返回摘要: type=%s, code=%s (count=%s)",
+            time.perf_counter() - _model_started,
+            type(result).__name__,
+            result.get("code") if isinstance(result, dict) else None,
+            count,
         )
 
         if not result or result.get("code") != 1:
@@ -136,9 +141,16 @@ class EmployeeGenerationService:
         )
         logger.info(f"员工生成模型内容摘要: {content_preview}")
 
-        return EmployeeGenerationService._parse_skill_profiles(
+        _parse_started = time.perf_counter()
+        parsed = EmployeeGenerationService._parse_skill_profiles(
             result_content, skills_list, count
         )
+        logger.info(
+            "_parse_skill_profiles 处理耗时 %.3fs (count=%s)",
+            time.perf_counter() - _parse_started,
+            count,
+        )
+        return parsed
 
     @staticmethod
     def _parse_skill_profiles(
@@ -208,8 +220,14 @@ class EmployeeGenerationService:
         """
 
         try:
+            _gen_started = time.perf_counter()
             profiles = await EmployeeGenerationService._generate_profiles_from_skills(
                 user_request, skills_list, count
+            )
+            logger.info(
+                "_generate_profiles_from_skills 处理耗时 %.3fs (count=%s)",
+                time.perf_counter() - _gen_started,
+                count,
             )
             if any(profile.skill_ids for profile in profiles):
                 return profiles
