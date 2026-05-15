@@ -94,9 +94,12 @@ function disconnect() {
 
 export function useWorkspaceEvents(handler?: EventHandler) {
   const [isConnected, setIsConnected] = useState(_isConnected)
-  const handlerRef = useRef(handler)
-  handlerRef.current = handler
+  const handlerRef = useRef<EventHandler | undefined>(undefined)
   const workspaceId = useAuthStore((s) => s.workspaceId)
+
+  useEffect(() => {
+    handlerRef.current = handler
+  }, [handler])
 
   useEffect(() => {
     if (workspaceId == null) return

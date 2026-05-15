@@ -12,7 +12,6 @@ MessageRole = Literal["user", "assistant", "tool"]
 
 
 class ConversationCreate(BaseModel):
-    workspace_id: int
     target_type: TargetType
     target_id: int
     title: str | None = Field(default=NoneSchema)
