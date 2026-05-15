@@ -35,11 +35,12 @@ import type {
 import { useQueryClient } from "@tanstack/react-query"
 import { useEmployeeDetailQuery } from "@/hooks/use-chat-queries"
 import { chatKeys } from "@/lib/query-keys/chat"
-import type {
-  CronExpressionType,
-  ShiftScheduleForm,
-  TaskFormData,
-  TaskResourceType,
+import {
+  convertApiEmployeeTasksToListItems,
+  tasksToApiPayload,
+  type ApiEmployeeTaskRead,
+  type ScheduleTaskListItem,
+  type ShiftScheduleForm,
 } from "@/types/task"
 import { ScheduleTaskConfig } from "@/components/employee/schedule-task-config"
 
@@ -56,40 +57,6 @@ interface ApiSkillResponse {
   skill_name: string
   skill_name_zh: string
   skill_description: string
-}
-
-interface ApiTaskResponse {
-  task_name: string
-  dispatch_type?: string
-  capability_id: number
-  skill_id: number
-  priority?: number
-  task_type: number
-  cron_expression: string
-  cron_expression_type: string
-  is_active: boolean
-  confirm_execution_result?: boolean
-  config?: Record<string, unknown>
-  user_prompt: string
-}
-
-function convertApiTasksToTaskFormData(
-  apiTasks: ApiTaskResponse[],
-): TaskFormData[] {
-  if (!apiTasks) return []
-  return apiTasks.map((t) => ({
-    task_name: t.task_name,
-    user_prompt: t.user_prompt,
-    task_resource_type: (t.dispatch_type as TaskResourceType) || "skill",
-    capability_id: t.capability_id,
-    skill_id: t.skill_id,
-    task_type: t.task_type ?? 2,
-    cron_expression: t.cron_expression,
-    cron_expression_type:
-      (t.cron_expression_type as CronExpressionType) || "daily",
-    is_active: t.is_active ?? true,
-    confirm_execution_result: t.confirm_execution_result ?? false,
-  }))
 }
 
 function convertApiSkillsToMetadataSkills(
@@ -127,7 +94,7 @@ export function ShiftEditSheet({
 
   const [schedule, setSchedule] =
     React.useState<ShiftScheduleForm>(EMPTY_SCHEDULE)
-  const [tasks, setTasks] = React.useState<TaskFormData[]>([])
+  const [tasks, setTasks] = React.useState<ScheduleTaskListItem[]>([])
   const [initialized, setInitialized] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
 
@@ -163,9 +130,9 @@ export function ShiftEditSheet({
         (apiSkills ?? []).map((s) => s.skill_id),
       )
 
-      const metaTasks = meta?.tasks as ApiTaskResponse[] | undefined
+      const metaTasks = meta?.tasks as ApiEmployeeTaskRead[] | undefined
       if (metaTasks && metaTasks.length > 0) {
-        setTasks(convertApiTasksToTaskFormData(metaTasks))
+        setTasks(convertApiEmployeeTasksToListItems(metaTasks))
       } else {
         setTasks([])
       }
@@ -217,7 +184,7 @@ export function ShiftEditSheet({
         mcp_ids: validMcpIds,
         skill_ids: validSkillIds,
         shift_schedule: schedule,
-        tasks,
+        tasks: tasksToApiPayload(tasks),
       })
       await queryClient.invalidateQueries({
         queryKey: [...chatKeys.all, "shift-calendar"],

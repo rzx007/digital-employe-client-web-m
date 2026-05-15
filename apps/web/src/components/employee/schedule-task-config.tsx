@@ -1,6 +1,7 @@
 import * as React from "react"
 
 import { IconClock, IconPlus, IconPencil, IconTrash } from "@tabler/icons-react"
+import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
@@ -8,10 +9,21 @@ import { Switch } from "@workspace/ui/components/switch"
 import { toast } from "sonner"
 import type { MetadataMcp, MetadataSkill } from "@/api/types"
 import { parseCronToExecuteTime } from "@/lib/cron-utils"
-import type { ShiftScheduleForm, TaskFormData } from "@/types/task"
+import {
+  scheduleTaskListItemToFormData,
+  type ScheduleTaskListItem,
+  type ShiftScheduleForm,
+  type TaskFormData,
+} from "@/types/task"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { TaskEditDialog } from "./task-edit-dialog"
+
+function taskSourceBadgeText(source: string | undefined) {
+  if (source === "orchestration") return "编排"
+  if (!source || source === "manual") return "手动"
+  return source
+}
 
 function getCronTypeLabel(type: string) {
   switch (type) {
@@ -36,7 +48,7 @@ function TaskCard({
   onDelete,
   onToggleActive,
 }: {
-  task: TaskFormData
+  task: ScheduleTaskListItem
   skills: MetadataSkill[]
   mcps: MetadataMcp[]
   onEdit: () => void
@@ -51,7 +63,7 @@ function TaskCard({
   const targetName = React.useMemo(() => {
     if (task.task_resource_type === "skill") {
       const skill = skills.find((s) => Number(s.id) === task.skill_id)
-      return skill?.skillName ?? skill?.displayNameZh ?? "未选择技能"
+      return skill?.skillName ?? skill?.displayNameZh ?? ""
     }
     const mcp = mcps.find((m) => m.id === task.capability_id)
     return mcp?.capability_name ?? "未选择能力"
@@ -60,7 +72,7 @@ function TaskCard({
   return (
     <div className="flex items-start gap-3 rounded-md border p-3">
       <div className="min-w-0 flex-1 space-y-1.5">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <IconClock className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="text-xs font-medium">
             {displayTime || "未设置时间"}
@@ -68,6 +80,9 @@ function TaskCard({
           <span className="text-[10px] text-muted-foreground">
             {getCronTypeLabel(task.cron_expression_type)}
           </span>
+          <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-normal">
+            {taskSourceBadgeText(task.source)}
+          </Badge>
         </div>
         <div className="text-xs">
           {/* {task.cron_expression} */}
@@ -107,9 +122,9 @@ interface ScheduleTaskConfigProps {
   capabilityIds?: number[]
   skillIds?: number[]
   skills: MetadataSkill[]
-  tasks: TaskFormData[]
+  tasks: ScheduleTaskListItem[]
   schedule: ShiftScheduleForm
-  onTasksChange: (tasks: TaskFormData[]) => void
+  onTasksChange: (tasks: ScheduleTaskListItem[]) => void
   onScheduleChange: (schedule: ShiftScheduleForm) => void
 }
 
@@ -144,17 +159,18 @@ export function ScheduleTaskConfig({
 
   const handleEditTask = (index: number) => {
     setEditIndex(index)
-    setEditTask(tasks[index])
+    setEditTask(scheduleTaskListItemToFormData(tasks[index]))
     setEditOpen(true)
   }
 
   const handleSaveTask = (task: TaskFormData) => {
     if (editIndex !== null) {
+      const prev = tasks[editIndex]
       const next = [...tasks]
-      next[editIndex] = task
+      next[editIndex] = { ...task, source: prev.source }
       onTasksChange(next)
     } else {
-      onTasksChange([...tasks, task])
+      onTasksChange([...tasks, { ...task, source: "manual" }])
     }
     setEditOpen(false)
   }
