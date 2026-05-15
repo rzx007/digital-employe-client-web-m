@@ -12,6 +12,7 @@ TASK_STARTED = "task_started"
 TASK_COMPLETED = "task_completed"
 TASK_FAILED = "task_failed"
 ORCHESTRATION_PLAN_GENERATED = "orchestration_plan_generated"
+CONVERSATION_STATUS_CHANGED = "conversation_status_changed"
 
 
 class WorkspaceEventBus:

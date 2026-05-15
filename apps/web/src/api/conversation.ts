@@ -190,10 +190,17 @@ export async function downloadResource(
 
 export async function deleteResource(
   conversationId: number | string,
-  path: string
+  path: string,
 ) {
   return request<ApiResponse<null>>(
     `/chat/conversations/${conversationId}/resources?path=${encodeURIComponent(path)}`,
     { method: "DELETE" }
+  )
+}
+
+export async function resetConversationStatus(conversationId: number | string) {
+  return request<ApiResponse<null>>(
+    `/chat/conversations/${conversationId}/status/reset`,
+    { method: "POST" },
   )
 }

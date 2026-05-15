@@ -23,6 +23,7 @@ class ConversationRead(BaseModel):
     target_type: TargetType
     target_id: int
     title: str | None
+    status: str = "idle"
     created_at: datetime
     updated_at: datetime
 

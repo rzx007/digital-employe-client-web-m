@@ -16,6 +16,7 @@ import { modelKeys } from "@/lib/query-keys/model"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useChatStore } from "@/stores/chat-store"
+import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import { useOnboardingStore } from "@/stores/onboarding-store"
 import { WelcomeDialog, UserTour } from "@/components/onboarding"
 import { AppToolbar } from "./app-toolbar"
@@ -50,6 +51,14 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
       queryKey: [...chatKeys.all, "today-all-executions"],
     })
     switch (event.type) {
+      case "conversation_status_changed":
+        useConversationStatusStore.getState().setStatus(
+          event.conversation_id,
+          event.status,
+          event.target_type,
+          event.target_id,
+        )
+        break
       case "task_completed":
       case "task_failed":
       case "task_started":
@@ -256,7 +265,7 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
           <MonitorPanel
             isOpen={true}
             isFullscreen={false}
-            onToggleFullscreen={() => {}}
+            onToggleFullscreen={() => { }}
             className="h-full w-full rounded-none border-0 shadow-none"
           />
         </SheetContent>

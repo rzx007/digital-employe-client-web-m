@@ -128,6 +128,16 @@ def cancel_conversation_stream(
     return BaseResponse(data=None)
 
 
+@router.post("/chat/conversations/{conversation_id}/status/reset", response_model=BaseResponse)
+def reset_conversation_status(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+) -> BaseResponse:
+    """重置会话状态为 idle。"""
+    ChatService.reset_conversation_status(db, conversation_id)
+    return BaseResponse(data=None)
+
+
 @router.get("/chat/conversations/{conversation_id}/resources", response_model=ResponseBase[ResourceList])
 def list_conversation_resources(
     conversation_id: int,

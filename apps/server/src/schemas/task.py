@@ -23,6 +23,7 @@ class EmployeeTaskRead(BaseModel):
     is_active: bool
     confirm_execution_result: bool = False
     user_prompt: str | None = None
+    source: str = "manual"
     task_input: dict[str, Any]
     next_run_at: datetime | None
     last_run_at: datetime | None

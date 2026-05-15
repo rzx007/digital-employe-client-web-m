@@ -19,6 +19,7 @@ class Conversation(Base):
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now, onupdate=cst_now)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="idle")
 
     workspace = relationship("Workspace", back_populates="conversations")
     messages = relationship("ConversationMessage", back_populates="conversation", cascade="all, delete-orphan")

@@ -135,6 +135,7 @@ class TaskService:
                 "is_active": t.is_active,
                 "confirm_execution_result": t.confirm_execution_result,
                 "user_prompt": t.user_prompt,
+                "source": getattr(t, "source", None) or "manual",
                 "config": {"input": json.loads(t.task_input_json or "{}")},
             }
             for t in tasks

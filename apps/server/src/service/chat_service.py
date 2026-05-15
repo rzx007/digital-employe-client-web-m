@@ -433,7 +433,19 @@ class ChatService:
                 return
 
             assistant_msg.stream_state = "streaming"
+            conversation.status = "running"
             db.commit()
+            try:
+                from src.service.workspace_events import WorkspaceEventBus, CONVERSATION_STATUS_CHANGED
+                WorkspaceEventBus.push(conversation.workspace_id, {
+                    "type": CONVERSATION_STATUS_CHANGED,
+                    "conversation_id": conversation_id,
+                    "target_type": conversation.target_type,
+                    "target_id": conversation.target_id,
+                    "status": "running",
+                })
+            except Exception:
+                logger.warning("push start conversation_status_changed failed conv=%s", conversation_id, exc_info=True)
             db.refresh(assistant_msg)
                 
             # 返回恢复流的生成器
@@ -606,6 +618,24 @@ class ChatService:
         if not success:
             logger.warning("[cancel_service] conv=%s registry.cancel returned False (no active task)", conversation_id)
         return success
+
+    @staticmethod
+    def reset_conversation_status(db: Session, conversation_id: int) -> None:
+        conversation = ChatService.get_conversation(db, conversation_id)
+        if conversation.status != "idle":
+            conversation.status = "idle"
+            db.commit()
+            try:
+                from src.service.workspace_events import WorkspaceEventBus, CONVERSATION_STATUS_CHANGED
+                WorkspaceEventBus.push(conversation.workspace_id, {
+                    "type": CONVERSATION_STATUS_CHANGED,
+                    "conversation_id": conversation_id,
+                    "target_type": conversation.target_type,
+                    "target_id": conversation.target_id,
+                    "status": "idle",
+                })
+            except Exception:
+                logger.warning("push reset status event failed conv=%s", conversation_id, exc_info=True)
 
 
     @classmethod

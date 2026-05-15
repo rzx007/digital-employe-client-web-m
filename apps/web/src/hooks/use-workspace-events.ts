@@ -7,6 +7,7 @@ export type WorkspaceEvent =
   | { type: "task_failed"; task_id: number; conversation_id: number; error?: string }
   | { type: "orchestration_plan_generated"; plan_id: number; summary?: string; total_tasks?: number; tasks?: Array<{ task_id: number; task_name: string; employee_name: string; cron?: string | null; execute_mode: string }> }
   | { type: "orchestration_plan_generated"; plan_id: number; status?: string; total_tasks?: number }
+  | { type: "conversation_status_changed"; conversation_id: number; target_type: string; target_id: number; status: string }
 
 type EventHandler = (event: WorkspaceEvent) => void
 
@@ -15,11 +16,11 @@ const RECONNECT_BASE_MS = 1000
 const RECONNECT_MAX_MS = 30_000
 
 let _eventSource: EventSource | null = null
-let _handlers: Set<EventHandler> = new Set()
+const _handlers: Set<EventHandler> = new Set()
 let _reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let _reconnectCount = 0
 let _isConnected = false
-let _connectionListeners: Set<(connected: boolean) => void> = new Set()
+const _connectionListeners: Set<(connected: boolean) => void> = new Set()
 
 function notifyConnectionChange(connected: boolean) {
   _isConnected = connected
@@ -38,7 +39,7 @@ function connect(workspaceId: number) {
   disconnect()
 
   const baseUrl = (typeof window !== "undefined" &&
-    (window as any).__BASE_URL__) ||
+    (window as unknown as { __BASE_URL__: string }).__BASE_URL__) ||
     (import.meta.env.VITE_BACKEND_URL
       ? `${import.meta.env.VITE_BACKEND_URL}:${import.meta.env.VITE_BACKEND_PORT}`
       : "/actus")
