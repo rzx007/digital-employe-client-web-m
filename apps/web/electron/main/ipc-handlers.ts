@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from "electron"
 import os from "node:os"
 import path from "node:path"
 import { getBackendStatus, getBackendPort, stopBackend } from "./backend"
-import { flashTray, stopFlashTray } from "./tray"
+import { flashTray, stopFlashTray, shutdownAuxiliaryWindows } from "./tray"
 import { sendNotification, setNotificationsEnabled } from "./notification"
 import { closeLoginWindow, createLoginWindow, resizeLoginWindow, getLoginWin } from "./login"
 import { createRecruitmentWindow, closeRecruitmentWindow } from "./recruitment"
@@ -218,6 +218,7 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
     closeRecruitmentWindow()
     // 关闭注册窗口
     closeRegisterWindow()
+    shutdownAuxiliaryWindows()
     // 关闭主窗口（不显示宠物，因为要跳转登录）
     if (mainWin && !mainWin.isDestroyed()) {
       setForceQuit(true)
@@ -427,6 +428,7 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
  */
 function quitApp(): void {
   setForceQuit(true)
+  shutdownAuxiliaryWindows()
   stopBackend()
 
   // 兜底超时：即使后端进程没有退出，也要确保应用能退出

@@ -166,6 +166,8 @@ def init_db() -> None:
     if "conversations" in inspector.get_table_names():
         _migrate_conversation_title_to_text(engine, inspector)
 
+    ensure_column("conversations", "status", "status VARCHAR(32) NOT NULL DEFAULT 'idle'")
+
     ensure_column("orchestration_plans", "started_at", "started_at DATETIME")
 
     # Migration: task_execution_logs.task_id 改为 nullable + SET NULL

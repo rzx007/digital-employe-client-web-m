@@ -11,17 +11,13 @@ import { Skeleton } from "@workspace/ui/components/skeleton"
 import { Switch } from "@workspace/ui/components/switch"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { fetchMcpList } from "@/api/employee"
-import type {
-  McpListItem,
-  MetadataMcp,
-  MetadataSkill,
-  SkillListItem,
-} from "@/api/types"
-import type {
-  CronExpressionType,
-  ShiftScheduleForm,
-  TaskFormData,
-  TaskResourceType,
+import type { McpListItem, MetadataMcp } from "@/api/types"
+import {
+  convertApiEmployeeTasksToListItems,
+  tasksToApiPayload,
+  type ApiEmployeeTaskRead,
+  type ScheduleTaskListItem,
+  type ShiftScheduleForm,
 } from "@/types/task"
 import { useEmployeeDetailQuery, useUpdateEmployeeMutation } from "@/hooks/use-chat-queries"
 import { useSkillListQuery } from "@/hooks/use-skill-queries"
@@ -36,65 +32,6 @@ const EMPTY_SCHEDULE: ShiftScheduleForm = {
   notes: "",
 }
 
-interface ApiSkillResponse {
-  id: number
-  skill_id: number
-  skill_name: string
-  skill_name_zh: string
-  skill_description: string
-}
-
-interface ApiTaskResponse {
-  task_name: string
-  dispatch_type?: string
-  capability_id: number
-  skill_id: number
-  priority?: number
-  task_type: number
-  cron_expression: string
-  cron_expression_type: string
-  is_active: boolean
-  confirm_execution_result?: boolean
-  config?: Record<string, unknown>
-  user_prompt: string
-}
-
-function convertApiSkillsToMetadataSkills(
-  apiSkills: ApiSkillResponse[] | undefined
-): MetadataSkill[] {
-  if (!apiSkills) return []
-  return apiSkills.map((s) => ({
-    id: s.id,
-    skillName: s.skill_name,
-    description: s.skill_description,
-    prompt: "",
-    directoryId: null,
-    status: 1,
-    createTime: "",
-    updateTime: "",
-    directoryName: s.skill_name_zh,
-  }))
-}
-
-function convertApiTasksToTaskFormData(
-  apiTasks: ApiTaskResponse[]
-): TaskFormData[] {
-  if (!apiTasks) return []
-  return apiTasks.map((t) => ({
-    task_name: t.task_name,
-    user_prompt: t.user_prompt,
-    task_resource_type: (t.dispatch_type as TaskResourceType) || "skill",
-    capability_id: t.capability_id,
-    skill_id: t.skill_id,
-    task_type: t.task_type ?? 2,
-    cron_expression: t.cron_expression,
-    cron_expression_type:
-      (t.cron_expression_type as CronExpressionType) || "daily",
-    is_active: t.is_active ?? true,
-    confirm_execution_result: t.confirm_execution_result ?? false,
-  }))
-}
-
 export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
   const { data: employee, isLoading } = useEmployeeDetailQuery(employeeId)
   const updateMutation = useUpdateEmployeeMutation(employeeId)
@@ -102,14 +39,11 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
   const [name, setName] = React.useState("")
   const [description, setDescription] = React.useState("")
   const [showScheduleAndTask, setShowScheduleAndTask] = React.useState(false)
-  const [tasks, setTasks] = React.useState<TaskFormData[]>([])
+  const [tasks, setTasks] = React.useState<ScheduleTaskListItem[]>([])
   const [schedule, setSchedule] =
     React.useState<ShiftScheduleForm>(EMPTY_SCHEDULE)
   const [selectedMcpIds, setSelectedMcpIds] = React.useState<number[]>([])
   const [selectedSkillIds, setSelectedSkillIds] = React.useState<number[]>([])
-  const [employeeSkills, setEmployeeSkills] = React.useState<MetadataSkill[]>(
-    []
-  )
   const [allMcpList, setAllMcpList] = React.useState<McpListItem[]>([])
   const { data: allSkillList = [] } = useSkillListQuery()
   const [pickerOpen, setPickerOpen] = React.useState(false)
@@ -129,16 +63,12 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
       setSelectedMcpIds(
         (meta?.mcps as MetadataMcp[] | undefined)?.map((m) => m.id) ?? []
       )
-      const convertedSkills = convertApiSkillsToMetadataSkills(
-        meta?.skills as unknown as ApiSkillResponse[] | undefined
-      )
-      setEmployeeSkills(convertedSkills)
       setSelectedSkillIds((meta?.skills ?? []).map((s) => s.skill_id))
       const metaTasks = (
         employee.metadata as unknown as Record<string, unknown>
-      )?.tasks as ApiTaskResponse[] | undefined
+      )?.tasks as ApiEmployeeTaskRead[] | undefined
       if (metaTasks && metaTasks.length > 0) {
-        setTasks(convertApiTasksToTaskFormData(metaTasks))
+        setTasks(convertApiEmployeeTasksToListItems(metaTasks))
         setShowScheduleAndTask(true)
       }
       const sch = (employee as unknown as Record<string, unknown>)
@@ -192,7 +122,7 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
         mcp_ids: validMcpIds || [],
         skill_ids: validSkillIds || [],
         shift_schedule: showScheduleAndTask ? schedule : null,
-        tasks: showScheduleAndTask ? tasks : [],
+        tasks: showScheduleAndTask ? tasksToApiPayload(tasks) : [],
       })
       toast.success(`已成功更新「${name.trim()}」`)
     } catch {

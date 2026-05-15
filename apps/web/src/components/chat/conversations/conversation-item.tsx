@@ -31,6 +31,8 @@ import { formatDistanceToNow } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import { useDeleteConversationMutation } from "@/hooks/use-chat-queries"
 import { useChatStore } from "@/stores/chat-store"
+import { useConversationStatusStore } from "@/stores/conversation-status-store"
+import { resetConversationStatus } from "@/api/conversation"
 import type { Conversation } from "@/lib/mock-data/conversations"
 import { Spinner } from "@/components/spinner"
 
@@ -62,6 +64,20 @@ export function ConversationItem({
   const [alertOpen, setAlertOpen] = React.useState(false)
   const deleteMutation = useDeleteConversationMutation()
 
+  const liveStatus = useConversationStatusStore(
+    (s) => s.statuses[Number(conversation.id)],
+  )
+  const displayStatus = liveStatus ?? conversation.status
+
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const store = useConversationStatusStore.getState()
+    if (store.statuses[Number(conversation.id)]) {
+      resetConversationStatus(Number(conversation.id)).catch(() => { })
+      store.resetStatus(Number(conversation.id))
+    }
+    props.onClick?.(e)
+  }
+
   const getTimeAgo = (date?: Date) => {
     if (!date) return ""
     return formatDistanceToNow(date, {
@@ -71,7 +87,7 @@ export function ConversationItem({
   }
 
   const renderStatusIndicator = () => {
-    if (conversation.status === "running") {
+    if (displayStatus === "running") {
       return (
         <Spinner
           className="size-3.5 text-purple-500"
@@ -79,10 +95,10 @@ export function ConversationItem({
         />
       )
     }
-    if (conversation.status === "error") {
+    if (displayStatus === "error") {
       return <div className="size-1.5 rounded-full bg-destructive" />
     }
-    if (conversation.status === "unread") {
+    if (displayStatus === "unread") {
       return <div className="size-1.5 rounded-full bg-primary" />
     }
     return <span className="text-natural-500">-</span>
@@ -130,6 +146,7 @@ export function ConversationItem({
           className
         )}
         {...props}
+        onClick={handleClick}
       >
         <div className="flex h-4 w-4 shrink-0 items-center justify-center">
           {renderStatusIndicator()}

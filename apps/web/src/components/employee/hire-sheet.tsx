@@ -17,8 +17,12 @@ import {
   fetchMcpList,
   type RecruitmentCandidate,
 } from "@/api/employee"
-import type { McpListItem, SkillListItem } from "@/api/types"
-import type { ShiftScheduleForm, TaskFormData } from "@/types/task"
+import type { McpListItem } from "@/api/types"
+import {
+  tasksToApiPayload,
+  type ScheduleTaskListItem,
+  type ShiftScheduleForm,
+} from "@/types/task"
 import { useSkillListQuery } from "@/hooks/use-skill-queries"
 
 import { CapabilityPickerDialog } from "./capability-picker-dialog"
@@ -48,7 +52,7 @@ export function HireSheet({
   )
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [showScheduleAndTask, setShowScheduleAndTask] = React.useState(false)
-  const [tasks, setTasks] = React.useState<TaskFormData[]>([])
+  const [tasks, setTasks] = React.useState<ScheduleTaskListItem[]>([])
   const [schedule, setSchedule] =
     React.useState<ShiftScheduleForm>(EMPTY_SCHEDULE)
 
@@ -124,7 +128,7 @@ export function HireSheet({
         mcp_ids: effectiveMcpIds,
         skill_ids: effectiveSkillIds,
         shift_schedule: showScheduleAndTask ? schedule : null,
-        tasks: showScheduleAndTask ? tasks : [],
+        tasks: showScheduleAndTask ? tasksToApiPayload(tasks) : [],
       })
       toast.success(`已成功录用「${name.trim()}」`)
       onSuccess()

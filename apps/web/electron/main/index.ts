@@ -11,11 +11,11 @@ import {
 } from "./ipc-handlers"
 import { update } from "./update"
 import { createSplashWindow, closeSplashWindow } from "./splash"
-import { createTray, destroyTray } from "./tray"
+import { createTray, shutdownAuxiliaryWindows } from "./tray"
 import { createLoginWindow } from "./login"
 import { initAuthStore, hasToken } from "./auth"
 import { initSettingsStore, getSetting } from "./settings-store"
-import { createPetWindow, showPetWindow, hidePetWindow, destroyPetWindow } from "./pet"
+import { createPetWindow, showPetWindow, hidePetWindow } from "./pet"
 import {
   hidePetIfWhenMainHiddenMode,
   syncPetOnMainForegroundState,
@@ -127,6 +127,10 @@ async function createWindow() {
     }
   })
 
+  win.on("closed", () => {
+    win = null
+  })
+
   win.on("minimize", () => {
     if (!getSetting("petEnabled")) return
     showPetWindow()
@@ -186,8 +190,7 @@ app.on("before-quit", (e) => {
   e.preventDefault()
 
   setForceQuit(true)
-  destroyTray()
-  destroyPetWindow()
+  shutdownAuxiliaryWindows()
   stopBackend()
 
   // 兜底超时：即使后端未退出，也要确保应用能退出

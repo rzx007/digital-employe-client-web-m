@@ -12,7 +12,6 @@ MessageRole = Literal["user", "assistant", "tool"]
 
 
 class ConversationCreate(BaseModel):
-    workspace_id: int
     target_type: TargetType
     target_id: int
     title: str | None = Field(default=NoneSchema)
@@ -24,6 +23,7 @@ class ConversationRead(BaseModel):
     target_type: TargetType
     target_id: int
     title: str | None
+    status: str = "idle"
     created_at: datetime
     updated_at: datetime
 

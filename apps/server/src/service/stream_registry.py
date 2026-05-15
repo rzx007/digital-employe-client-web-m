@@ -658,11 +658,32 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
     try:
         from src.db.session import get_session_local
         from src.models.task_execution_log import TaskExecutionLog
-        from src.models.conversation import ConversationMessage
+        from src.models.conversation import Conversation, ConversationMessage
         from src.models.workspace import cst_now
 
         db = get_session_local()()
 
+        # 1. 更新会话状态 + 推 SSE 事件（必须在 log 检查之前，确保普通聊天也能更新）
+        conv = db.get(Conversation, conversation_id)
+        if conv:
+            if stream_state in ("completed", "cancelled"):
+                conv.status = "idle"
+            elif stream_state == "error":
+                conv.status = "error"
+            db.commit()
+            try:
+                from src.service.workspace_events import WorkspaceEventBus, CONVERSATION_STATUS_CHANGED
+                WorkspaceEventBus.push(conv.workspace_id, {
+                    "type": CONVERSATION_STATUS_CHANGED,
+                    "conversation_id": conversation_id,
+                    "target_type": conv.target_type,
+                    "target_id": conv.target_id,
+                    "status": conv.status,
+                })
+            except Exception:
+                logger.warning("push conversation_status_changed failed conv=%s", conversation_id, exc_info=True)
+
+        # 2. 更新 TaskExecutionLog（仅当存在时）
         log = db.scalars(
             select(TaskExecutionLog).where(
                 TaskExecutionLog.conversation_id == conversation_id,

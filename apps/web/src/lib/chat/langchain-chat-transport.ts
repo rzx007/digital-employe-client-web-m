@@ -109,7 +109,7 @@ function getEventBoundaryLength(buffer: string, index: number) {
   return buffer.startsWith("\r\n\r\n", index) ? 4 : 2
 }
 
-function buildChatApiUrl(options: any) {
+function buildChatApiUrl(options: { conversationId: string }) {
   return `/chat/conversations/${options.conversationId}/stream`
 }
 

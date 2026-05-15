@@ -228,9 +228,6 @@ export function TaskEditDialog({
 
   const handleSave = () => {
     if (!formData.task_name.trim() || !formData.user_prompt.trim()) return
-    const hasCapability = formData.capability_id > 0
-    const hasSkill = formData.skill_id > 0
-    if (!hasCapability && !hasSkill) return
 
     const saved: TaskFormData = {
       id: formData.id,
@@ -258,7 +255,6 @@ export function TaskEditDialog({
   const isValid =
     formData.task_name.trim() !== "" &&
     formData.user_prompt.trim() !== "" &&
-    (formData.capability_id > 0 || formData.skill_id > 0) &&
     (isLoopMode || !!formData.executeTime?.trim())
 
   return (
@@ -295,9 +291,7 @@ export function TaskEditDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs">
-              能力 <span className="text-destructive">*</span>
-            </Label>
+            <Label className="text-xs">能力（可选）</Label>
             <Popover open={capabilityOpen} onOpenChange={setCapabilityOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -613,11 +607,13 @@ export function TaskEditDialog({
               </div>
             </CollapsibleContent>
           </Collapsible>
+          {/* {JSON.stringify(formData)} */}
         </div>
 
         <Separator />
 
         <DialogFooter className="flex items-center px-5 py-3">
+
           {taskIndex !== null && (
             <Button
               variant="ghost"

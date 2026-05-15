@@ -177,7 +177,6 @@ export type ChatTargetType = "employee" | "group" | "curator"
  * 创建会话参数
  */
 export interface CreateConversationParams {
-  workspace_id?: number
   target_type: ChatTargetType
   target_id: number
   title: string

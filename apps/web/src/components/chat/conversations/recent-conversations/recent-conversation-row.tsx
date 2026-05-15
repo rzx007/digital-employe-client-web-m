@@ -14,6 +14,7 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import { formatDistanceToNow } from "date-fns"
 import { zhCN } from "date-fns/locale"
+import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import {
   EmployeeContactAvatar,
   GroupMembersAvatar,
@@ -23,6 +24,23 @@ import type { RecentConversationItem } from "./types"
 function formatTimeAgo(date?: Date) {
   if (!date) return ""
   return formatDistanceToNow(date, { addSuffix: true, locale: zhCN })
+}
+
+function ConversationStatusBadge({ item }: { item: RecentConversationItem }) {
+  const targetType = item.isCurator
+    ? "curator"
+    : item.isGroup
+      ? "group"
+      : "employee"
+  const targetId = item.isCurator ? 1 : Number(item.contactId)
+  const key = `${targetType}:${targetId}`
+  const count = useConversationStatusStore((s) => s.counts[key] ?? 0)
+  if (count === 0) return null
+  return (
+    <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-purple-500 text-[10px] text-white">
+      {count}
+    </span>
+  )
 }
 
 function PinnedIndicator({
@@ -168,16 +186,19 @@ export function RecentConversationRow({
                     {item.contactName}
                   </span>
                 </div>
-                <span
-                  className={cn(
-                    "shrink-0 text-[10px]",
-                    selectedContactId === item.contactId
-                      ? "text-primary-foreground/70"
-                      : "text-muted-foreground"
-                  )}
-                >
-                  {formatTimeAgo(item.updatedAt)}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <ConversationStatusBadge item={item} />
+                  <span
+                    className={cn(
+                      "shrink-0 text-[10px]",
+                      selectedContactId === item.contactId
+                        ? "text-primary-foreground/70"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    {formatTimeAgo(item.updatedAt)}
+                  </span>
+                </div>
               </div>
               <div className="flex items-center justify-between">
                 <span
