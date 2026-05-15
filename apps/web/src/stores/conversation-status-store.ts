@@ -1,8 +1,10 @@
 import { create } from "zustand"
 
+import { useChatStore } from "@/stores/chat-store"
+
 interface ConversationStatusStore {
   statuses: Record<number, string>
-  counts: Record<string, number>
+  unreadCounts: Record<string, number>
   _convToContact: Record<number, string>
 
   setStatus: (
@@ -11,13 +13,13 @@ interface ConversationStatusStore {
     targetType?: string,
     targetId?: number,
   ) => void
-  resetStatus: (conversationId: number) => void
+  markAsRead: (conversationId: number) => void
 }
 
 export const useConversationStatusStore = create<ConversationStatusStore>(
   (set) => ({
     statuses: {},
-    counts: {},
+    unreadCounts: {},
     _convToContact: {},
 
     setStatus: (conversationId, status, targetType?, targetId?) =>
@@ -35,20 +37,29 @@ export const useConversationStatusStore = create<ConversationStatusStore>(
 
         if (targetType != null && targetId != null) {
           const key = `${targetType}:${targetId}`
-          const newCounts = { ...state.counts }
           const newConvToContact = { ...state._convToContact }
+          const newUnreadCounts = { ...state.unreadCounts }
 
           if (isRunning && !wasRunning) {
-            newCounts[key] = (newCounts[key] ?? 0) + 1
             newConvToContact[conversationId] = key
-          } else if (!isRunning && wasRunning) {
-            newCounts[key] = Math.max(0, (newCounts[key] ?? 1) - 1)
-            delete newConvToContact[conversationId]
+            newUnreadCounts[key] = (newUnreadCounts[key] ?? 0) + 1
+          }
+
+          if (!isRunning && wasRunning) {
+            newConvToContact[conversationId] = key
+            const selectedConvId =
+              useChatStore.getState().selectedConversationId
+            if (Number(selectedConvId) === conversationId) {
+              newUnreadCounts[key] = Math.max(
+                0,
+                (newUnreadCounts[key] ?? 1) - 1,
+              )
+            }
           }
 
           return {
             statuses: newStatuses,
-            counts: newCounts,
+            unreadCounts: newUnreadCounts,
             _convToContact: newConvToContact,
           }
         }
@@ -56,29 +67,27 @@ export const useConversationStatusStore = create<ConversationStatusStore>(
         return { statuses: newStatuses }
       }),
 
-    resetStatus: (conversationId) =>
+    markAsRead: (conversationId) =>
       set((state) => {
-        const newStatuses = { ...state.statuses }
-        delete newStatuses[conversationId]
-        const newConvToContact = { ...state._convToContact }
-        const contactKey = newConvToContact[conversationId]
-        delete newConvToContact[conversationId]
-        if (contactKey) {
-          const newCounts = { ...state.counts }
-          newCounts[contactKey] = Math.max(
-            0,
-            (newCounts[contactKey] ?? 1) - 1,
-          )
-          return {
-            statuses: newStatuses,
-            _convToContact: newConvToContact,
-            counts: newCounts,
-          }
-        }
+        const contactKey = state._convToContact[conversationId]
+        if (!contactKey) return state
+        const currentCount = state.unreadCounts[contactKey] ?? 0
+        if (currentCount <= 0) return state
         return {
-          statuses: newStatuses,
-          _convToContact: newConvToContact,
+          unreadCounts: {
+            ...state.unreadCounts,
+            [contactKey]: currentCount - 1,
+          },
         }
       }),
   }),
 )
+
+useChatStore.subscribe((state, prevState) => {
+  if (state.selectedConversationId !== prevState.selectedConversationId) {
+    const convId = Number(state.selectedConversationId)
+    if (!isNaN(convId)) {
+      useConversationStatusStore.getState().markAsRead(convId)
+    }
+  }
+})

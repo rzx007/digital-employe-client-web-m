@@ -8,7 +8,6 @@ import {
   IconCalendarFilled,
   IconLayoutDashboard,
   IconLayoutDashboardFilled,
-  IconLogout,
   IconSettings,
   IconSparkles,
   IconSparklesFilled,
@@ -32,6 +31,7 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import { useAuthStore } from "@/stores/auth-store"
 import { useChatStore, type ActiveTab } from "@/stores/chat-store"
+import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import { NotificationBell } from "../notifications/notification-center"
 
 // 导入所有头像资源
@@ -66,37 +66,37 @@ const tabs: {
   iconFilled: React.ComponentType<{ className?: string }>
   label: string
 }[] = [
-  {
-    id: "workbench",
-    icon: IconLayoutDashboard,
-    iconFilled: IconLayoutDashboardFilled,
-    label: "工作台",
-  },
-  {
-    id: "chat",
-    icon: IconMessage,
-    iconFilled: IconMessage2Filled,
-    label: "对话",
-  },
-  {
-    id: "contacts",
-    icon: IconUser,
-    iconFilled: IconUserFilled,
-    label: "联系人",
-  },
-  {
-    id: "calendar",
-    icon: IconCalendar,
-    iconFilled: IconCalendarFilled,
-    label: "日历",
-  },
-  {
-    id: "skills",
-    icon: IconSparkles,
-    iconFilled: IconSparklesFilled,
-    label: "技能管理",
-  },
-]
+    {
+      id: "workbench",
+      icon: IconLayoutDashboard,
+      iconFilled: IconLayoutDashboardFilled,
+      label: "工作台",
+    },
+    {
+      id: "chat",
+      icon: IconMessage,
+      iconFilled: IconMessage2Filled,
+      label: "对话",
+    },
+    {
+      id: "contacts",
+      icon: IconUser,
+      iconFilled: IconUserFilled,
+      label: "联系人",
+    },
+    {
+      id: "calendar",
+      icon: IconCalendar,
+      iconFilled: IconCalendarFilled,
+      label: "日历",
+    },
+    {
+      id: "skills",
+      icon: IconSparkles,
+      iconFilled: IconSparklesFilled,
+      label: "技能管理",
+    },
+  ]
 
 export function AppToolbar({
   className,
@@ -108,11 +108,15 @@ export function AppToolbar({
   const user = useAuthStore((s) => s.user)
   const restoreSession = useAuthStore((s) => s.restoreSession)
   useEffect(() => {
-    ;(async () => {
+    ; (async () => {
       await restoreSession()
     })()
   }, [restoreSession])
   const [showLogoutDialog, setShowLogoutDialog] = React.useState(false)
+
+  const totalUnread = useConversationStatusStore((s) =>
+    Object.values(s.unreadCounts).reduce((sum, n) => sum + n, 0),
+  )
 
   // 根据用户ID计算头像索引（1-10）
   const getAvatarIndex = () => {
@@ -167,7 +171,7 @@ export function AppToolbar({
                   variant="ghost"
                   size="icon"
                   className={cn(
-                    "size-10 rounded-lg",
+                    "relative size-10 rounded-lg",
                     activeTab === tab.id && "bg-accent text-accent-foreground"
                   )}
                   data-tour-id={
@@ -179,6 +183,11 @@ export function AppToolbar({
                     <tab.iconFilled className="size-6 text-primary" />
                   ) : (
                     <tab.icon className="size-6" />
+                  )}
+                  {tab.id === "chat" && totalUnread > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] text-white">
+                      {totalUnread > 99 ? "99" : totalUnread}
+                    </span>
                   )}
                 </Button>
               </TooltipTrigger>

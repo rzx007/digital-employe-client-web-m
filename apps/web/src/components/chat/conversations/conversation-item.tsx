@@ -71,9 +71,8 @@ export function ConversationItem({
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const store = useConversationStatusStore.getState()
-    if (store.statuses[Number(conversation.id)]) {
-      resetConversationStatus(Number(conversation.id)).catch(() => { })
-      store.resetStatus(Number(conversation.id))
+    if (store.statuses[Number(conversation.id)] === "error") {
+      resetConversationStatus(Number(conversation.id)).catch(() => {})
     }
     props.onClick?.(e)
   }

@@ -34,7 +34,7 @@ function ConversationStatusBadge({ item }: { item: RecentConversationItem }) {
       : "employee"
   const targetId = item.isCurator ? 1 : Number(item.contactId)
   const key = `${targetType}:${targetId}`
-  const count = useConversationStatusStore((s) => s.counts[key] ?? 0)
+  const count = useConversationStatusStore((s) => s.unreadCounts[key] ?? 0)
   if (count === 0) return null
   return (
     <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-purple-500 text-[10px] text-white">

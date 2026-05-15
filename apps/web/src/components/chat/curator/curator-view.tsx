@@ -332,6 +332,10 @@ export function CuratorView({
   )
 
   const contacts = useChatStore((s) => s.contacts)
+  const resolvedContact = useMemo(() => {
+    if (contact) return contact
+    return contacts.find((c) => c.type === "curator")
+  }, [contact, contacts])
   const mentionCandidates = useMemo(() => {
     return contacts
       .filter((c) => c.type === "employee" && c.employee)
@@ -403,7 +407,8 @@ export function CuratorView({
   }, [displayMessages, executions, storedMessages])
 
   const isDraft = !curatorConversationId
-  const contactDisplayName = contact?.curator?.name ?? "总管助手"
+  const contactDisplayName =
+    resolvedContact?.curator?.name ?? "总管助手"
 
   const isCompact = size === "compact"
 
@@ -520,18 +525,25 @@ export function CuratorView({
               >
                 {message.role === "assistant" && (
                   <div className="mb-2 flex items-center gap-2">
-                    {contact?.type === "curator" ? (
+                    {resolvedContact?.type === "curator" ? (
                       <EmployeeContactAvatar
-                        name={contact.curator?.name}
-                        avatar={contact.curator?.avatar}
-                        status={contact.curator?.status}
+                        name={resolvedContact.curator?.name}
+                        avatar={resolvedContact.curator?.avatar}
+                        status={resolvedContact.curator?.status}
+                        avatarClassName="size-6"
+                        fallbackClassName="text-[10px]"
+                      />
+                    ) : resolvedContact?.type === "employee" ? (
+                      <EmployeeContactAvatar
+                        name={resolvedContact.employee?.name}
+                        avatar={resolvedContact.employee?.avatar}
                         avatarClassName="size-6"
                         fallbackClassName="text-[10px]"
                       />
                     ) : (
                       <EmployeeContactAvatar
-                        name={contact?.employee?.name}
-                        avatar={contact?.employee?.avatar}
+                        name={contactDisplayName}
+                        avatar={undefined}
                         avatarClassName="size-6"
                         fallbackClassName="text-[10px]"
                       />
