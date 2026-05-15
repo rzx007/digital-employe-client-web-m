@@ -83,7 +83,7 @@ export function RenderClassifiedBlocks({
     <>
       {blocks.map((block) => {
         if (block.kind === "tool-group") {
-          console.log("block", block)
+          // console.log("block", block)
           return (
             <ToolGroupBlock
               block={block}
