@@ -648,12 +648,12 @@ export function DataVisualizer({ queryInterface, className, title, embedded }: D
     <div className={cn("flex flex-col h-full", className)}>
       <div
         className={cn(
-          "flex shrink-0 items-center justify-between gap-2 px-2 py-1",
+          "flex shrink-0 items-center justify-start gap-2 px-2 py-1",
           embedded && "border-b border-border/50 bg-muted/35",
           !embedded && "py-0.5"
         )}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="flex min-w-0  items-center gap-2">
           {title ? (
             <span className="truncate text-xs font-medium text-foreground">{title}</span>
           ) : null}

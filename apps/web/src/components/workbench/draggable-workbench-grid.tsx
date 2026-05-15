@@ -63,27 +63,53 @@ function SortableBlock({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "relative",
-        isDragging && "z-50 opacity-50"
+        "relative isolate rounded-md",
+        "transition-[box-shadow,opacity] duration-200 ease-out",
+        isDragging &&
+        "z-50 cursor-grabbing opacity-[0.92] shadow-lg ring-2 ring-primary/25 ring-offset-2 ring-offset-background"
       )}
     >
-      <div className="group relative">
+      <div
+        className={cn(
+          "group/sortable relative rounded-md",
+          !isDragging &&
+          "hover:shadow-md hover:shadow-black/5 dark:hover:shadow-black/25"
+        )}
+      >
         <button
           type="button"
           {...attributes}
           {...listeners}
-          className="absolute left-1 top-1 z-10 cursor-grab opacity-0 transition-opacity group-hover:opacity-100"
+          title="拖动排序"
+          className={cn(
+            "absolute top-0 left-2 z-20 flex size-8 cursor-grab items-center justify-center rounded-md",
+            "border border-border/60 bg-background/95 text-muted-foreground shadow-sm",
+            "opacity-0 transition-[opacity,transform,colors] duration-200 ease-out",
+            "hover:border-border hover:bg-muted/80 hover:text-foreground",
+            "active:scale-[0.97] active:cursor-grabbing",
+            "focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none",
+            "group-hover/sortable:opacity-100"
+          )}
         >
-          <IconGripVertical className="size-4 text-muted-foreground" />
+          <IconGripVertical className="size-4" stroke={1.5} />
         </button>
 
         {onRemove && (
           <button
             type="button"
             onClick={() => onRemove(block.id)}
-            className="absolute right-1 top-1 z-10 opacity-0 transition-opacity group-hover:opacity-100"
+            title="移除此模块"
+            className={cn(
+              "absolute top-0 right-2 z-20 flex size-8 items-center justify-center rounded-lg",
+              "border border-transparent text-muted-foreground",
+              "opacity-0 transition-[opacity,transform,colors,background-color,border-color] duration-200 ease-out",
+              "hover:border-border/80 hover:bg-destructive/10 hover:text-destructive",
+              "active:scale-[0.97]",
+              "focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none",
+              "group-hover/sortable:opacity-100"
+            )}
           >
-            <IconTrash className="size-4 text-red-500 hover:text-red-600" />
+            <IconTrash className="size-4" stroke={1.5} />
           </button>
         )}
 
@@ -95,13 +121,23 @@ function SortableBlock({
               blockType={block.type}
               title={block.title}
               skillId={block.skillId}
-              className="h-[180px]"
+              className="h-[180px] rounded-xl border-border/70 shadow-sm ring-1 ring-border/25 transition-[box-shadow,ring-color] duration-200 ease-out group-hover/sortable:shadow-md group-hover/sortable:ring-border/40"
             />
           )
         ) : (
-          <div className="flex h-[180px] items-center justify-center rounded-lg border border-dashed bg-muted/30">
-            <span className="text-xs text-muted-foreground">
-              {block.title} (已禁用)
+          <div
+            className={cn(
+              "flex h-[180px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed",
+              "border-border/60 bg-muted/15 px-4 text-center",
+              "ring-1 ring-border/20 transition-[background-color,ring-color,box-shadow] duration-200 ease-out",
+              "group-hover/sortable:bg-muted/25 group-hover/sortable:ring-border/35"
+            )}
+          >
+            <span className="text-[10px] font-medium tracking-[0.12em] text-muted-foreground/80 uppercase">
+              已禁用
+            </span>
+            <span className="line-clamp-2 text-sm leading-snug font-medium text-foreground/90">
+              {block.title}
             </span>
           </div>
         )}
@@ -119,45 +155,50 @@ function ResizableBlock({
 }) {
   const iface = block.queryInterface
   const [isResizing, setIsResizing] = useState(false)
-  const [size, setSize] = useState({ width: block.width || 300, height: block.height || 180 })
+  const [size, setSize] = useState({
+    width: block.width || 300,
+    height: block.height || 180,
+  })
 
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsResizing(true)
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsResizing(true)
+      const startX = e.clientX
+      const startY = e.clientY
+      const startWidth = size.width
+      const startHeight = size.height
+      let finalW = startWidth
+      let finalH = startHeight
 
-    const startX = e.clientX
-    const startY = e.clientY
-    const startWidth = size.width
-    const startHeight = size.height
-    let finalW = startWidth
-    let finalH = startHeight
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const deltaX = moveEvent.clientX - startX
-      const deltaY = moveEvent.clientY - startY
-      finalW = Math.max(200, startWidth + deltaX)
-      finalH = Math.max(120, startHeight + deltaY)
-      setSize({ width: finalW, height: finalH })
-    }
-
-    const handleMouseUp = () => {
-      setIsResizing(false)
-      document.removeEventListener("mousemove", handleMouseMove)
-      document.removeEventListener("mouseup", handleMouseUp)
-      if (onResize && (finalW !== block.width || finalH !== block.height)) {
-        onResize(block.id, finalW, finalH)
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        const deltaX = moveEvent.clientX - startX
+        const deltaY = moveEvent.clientY - startY
+        finalW = Math.max(200, startWidth + deltaX)
+        finalH = Math.max(120, startHeight + deltaY)
+        setSize({ width: finalW, height: finalH })
       }
-    }
 
-    document.addEventListener("mousemove", handleMouseMove)
-    document.addEventListener("mouseup", handleMouseUp)
-  }, [size.width, size.height, block.id, block.width, block.height, onResize])
+      const handleMouseUp = () => {
+        setIsResizing(false)
+        document.removeEventListener("mousemove", handleMouseMove)
+        document.removeEventListener("mouseup", handleMouseUp)
+        if (onResize && (finalW !== block.width || finalH !== block.height)) {
+          onResize(block.id, finalW, finalH)
+        }
+      }
+
+      document.addEventListener("mousemove", handleMouseMove)
+      document.addEventListener("mouseup", handleMouseUp)
+    },
+    [size.width, size.height, block.id, block.width, block.height, onResize]
+  )
 
   if (!iface) {
     return (
-      <Card className="h-[180px] rounded-xl border-dashed border-border/80 bg-muted/20 shadow-none">
+      <Card className="h-[180px] rounded-md py-0! border-dashed border-border/80 bg-muted/20 shadow-none">
         <CardContent className="flex h-full items-center justify-center">
           <div className="text-xs text-muted-foreground">暂无接口配置</div>
         </CardContent>
@@ -168,24 +209,41 @@ function ResizableBlock({
   return (
     <Card
       className={cn(
-        "group/card relative overflow-hidden rounded-xl border-border/80 bg-card shadow-sm",
+        "group/card relative overflow-hidden rounded-md py-0! border-border/80 bg-card shadow-sm",
         "ring-1 ring-border/30 transition-[box-shadow,ring-color] hover:shadow-md hover:ring-border/50"
       )}
       style={{ width: size.width, height: size.height }}
     >
       <CardContent className="h-full p-0">
-        <DataVisualizer queryInterface={iface} className="text-xs" title={block.title} embedded />
+        <DataVisualizer
+          queryInterface={iface}
+          className="text-xs"
+          title={block.title}
+          embedded
+        />
       </CardContent>
       <div
         className={cn(
-          "absolute bottom-0.5 right-0.5 flex size-5 cursor-se-resize items-end justify-end rounded-sm p-0.5 opacity-0 transition-opacity group-hover/card:opacity-100",
+          "absolute right-0.5 bottom-0.5 flex size-5 cursor-se-resize items-end justify-end rounded-sm p-0.5 opacity-0 transition-opacity group-hover/card:opacity-100",
           isResizing && "opacity-100"
         )}
         onMouseDown={handleMouseDown}
         title="拖拽调整大小"
       >
-        <svg width="14" height="14" viewBox="0 0 16 16" className="text-muted-foreground/80" aria-hidden>
-          <path d="M14 14L14 8M14 14L8 14M14 14L10 10" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" fill="none" />
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          className="text-muted-foreground/80"
+          aria-hidden
+        >
+          <path
+            d="M14 14L14 8M14 14L8 14M14 14L10 10"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            fill="none"
+          />
         </svg>
       </div>
     </Card>
@@ -228,7 +286,7 @@ export function DraggableWorkbenchGrid({
         className={cn(
           "flex w-full flex-col items-center justify-center gap-4 rounded-xl border border-dashed",
           "border-border/70 bg-muted/10 px-6 py-16",
-          "min-h-[min(520px,calc(100dvh-14rem))]",
+          "min-h-[min(520px,calc(100dvh-14rem))]"
         )}
       >
         {onAddTemplate ? (
@@ -260,7 +318,10 @@ export function DraggableWorkbenchGrid({
       collisionDetection={closestCenter}
       onDragEnd={handleDragEnd}
     >
-      <SortableContext items={blocks.map((b) => b.id)} strategy={rectSortingStrategy}>
+      <SortableContext
+        items={blocks.map((b) => b.id)}
+        strategy={rectSortingStrategy}
+      >
         <div className="flex flex-wrap gap-3">
           {blocks.map((block) => (
             <SortableBlock
