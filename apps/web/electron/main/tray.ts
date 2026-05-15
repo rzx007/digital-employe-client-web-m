@@ -222,9 +222,7 @@ export function stopFlashTray(): void {
 
 function restartApp(): void {
   setForceQuit(true)
-  stopFlashTray()
-  destroyTray()
-  destroyPetWindow()
+  shutdownAuxiliaryWindows()
   stopBackend()
   app.relaunch({ args: process.argv.slice(1).concat(["--relaunched"]) })
   app.exit(0)
@@ -241,9 +239,7 @@ function restartApp(): void {
  */
 function quitFromTray(win: BrowserWindow): void {
   setForceQuit(true)
-  stopFlashTray()
-  destroyTray()
-  destroyPetWindow()
+  shutdownAuxiliaryWindows()
   stopBackend()
   win.close()
 
@@ -266,4 +262,13 @@ export function destroyTray(): void {
   }
   normalIcon = null
   notifyIcon = null
+}
+
+/**
+ * 托盘闪烁、托盘图标、宠物窗口的统一清理（destroyTray 内已含 stopFlashTray）。
+ * 供退出应用、回登录、before-quit、托盘菜单退出/重启等路径复用。
+ */
+export function shutdownAuxiliaryWindows(): void {
+  destroyTray()
+  destroyPetWindow()
 }

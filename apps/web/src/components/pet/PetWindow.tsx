@@ -16,6 +16,7 @@ import {
   usePetVoiceCurator,
   type PetVoiceFeedback,
 } from "./use-pet-voice-curator"
+import { getMyWorkspace } from "@/api/workspace"
 import "./PetWindow.css"
 import manifestData from "./skins/default/manifest.json"
 import spritePng from "./skins/default/sprite.png"
@@ -112,8 +113,23 @@ export function PetWindow() {
     void (async () => {
       const api = window.electronApi
       if (!api) return
-      const { token } = await api.getAuthStatus()
-      if (token) localStorage.setItem("token", token)
+      const status = await api.getAuthStatus()
+      if (status.token) {
+        localStorage.setItem("token", status.token)
+      }
+      const user = status.user as { id?: unknown; name?: unknown } | null
+      const userId = user?.id != null ? String(user.id) : ""
+      const username = user?.name != null ? String(user.name) : ""
+      if (!status.token || !userId || !username) return
+      try {
+        const workspace = await getMyWorkspace(userId, username)
+        localStorage.setItem("workspaceId", String(workspace.id))
+      } catch (e) {
+        console.warn(
+          "[PetWindow] Failed to sync workspaceId for API headers",
+          e
+        )
+      }
     })()
   }, [])
 
