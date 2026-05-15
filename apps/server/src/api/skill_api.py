@@ -58,7 +58,11 @@ def list_skills(request: Request) -> ResponseBase[list[SkillListItem]]:
     local_data = []
     for index, item in enumerate(local_skills, start=1):
         local_id = item.get("localId")
-        normalized_id = int(local_id) if isinstance(local_id, int) else -index
+        normalized_id = (
+            int(local_id)
+            if isinstance(local_id, int)
+            else LocalSkillService.LOCAL_SKILL_ID_START - index + 1
+        )
         local_data.append(
             SkillListItem(
                 id=normalized_id,

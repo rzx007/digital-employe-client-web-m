@@ -24,6 +24,7 @@ class LocalSkillService:
     META_FILE_NAME = ".skill-meta.json"
     SKILL_MD_NAME = "SKILL.md"
     SKILL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+    LOCAL_SKILL_ID_START = -100
 
     @staticmethod
     def _resolve_local_root(workspace_id: int | None = None) -> Path:
@@ -137,7 +138,7 @@ class LocalSkillService:
                 if local_id is not None:
                     existing_ids.append(local_id)
         if not existing_ids:
-            return -1
+            return LocalSkillService.LOCAL_SKILL_ID_START
         return min(existing_ids) - 1
 
     @staticmethod
