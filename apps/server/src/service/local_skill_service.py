@@ -127,19 +127,59 @@ class LocalSkillService:
         return value
 
     @staticmethod
-    def _next_local_id(local_root: Path) -> int:
-        existing_ids: list[int] = []
-        if local_root.exists():
-            for skill_dir in local_root.iterdir():
-                if not skill_dir.is_dir():
-                    continue
-                meta = LocalSkillService._read_meta(skill_dir)
-                local_id = LocalSkillService._parse_local_id(meta.get("localId"))
-                if local_id is not None:
-                    existing_ids.append(local_id)
-        if not existing_ids:
+    def _collect_local_ids_from_root(root: Path) -> list[int]:
+        if not root.exists():
+            return []
+        ids: list[int] = []
+        for skill_dir in root.iterdir():
+            if not skill_dir.is_dir():
+                continue
+            meta = LocalSkillService._read_meta(skill_dir)
+            local_id = LocalSkillService._parse_local_id(meta.get("localId"))
+            if local_id is not None:
+                ids.append(local_id)
+        return ids
+
+    @staticmethod
+    def _iter_local_skill_storage_roots() -> list[Path]:
+        """
+        本地技能根目录：builtin + 数字 workspaceId 子目录。
+        导入到 workspace 时若只扫描单个目录会与 builtin 的 localId（从 -100 递减）重合，
+        故分配新 ID 及种子内置技能时需在此范围内预留所有已占用 ID。
+        """
+        settings = get_settings()
+        base_path = Path(
+            os.path.expandvars(os.path.expanduser(settings.local_skills_path)),
+        )
+        if not base_path.is_dir():
+            return []
+        roots: list[Path] = []
+        for child in sorted(base_path.iterdir(), key=lambda p: p.name):
+            if not child.is_dir():
+                continue
+            if child.name == "builtin" or child.name.isdigit():
+                roots.append(child)
+        return roots
+
+    @staticmethod
+    def _reserved_negative_ids_universal() -> set[int]:
+        reserved: set[int] = set()
+        for storage_root in LocalSkillService._iter_local_skill_storage_roots():
+            for lid in LocalSkillService._collect_local_ids_from_root(storage_root):
+                reserved.add(lid)
+        return reserved
+
+    @staticmethod
+    def _next_id_below_reserved(reserved: set[int]) -> int:
+        if not reserved:
             return LocalSkillService.LOCAL_SKILL_ID_START
-        return min(existing_ids) - 1
+        return min(reserved) - 1
+
+    @staticmethod
+    def _next_local_id(local_root: Path) -> int:
+        return LocalSkillService._next_id_below_reserved(
+            set(LocalSkillService._collect_local_ids_from_root(local_root))
+        )
 
     @staticmethod
     def _decode_zip_member_name(raw_name: str, is_utf8: bool) -> str:
@@ -254,6 +294,7 @@ class LocalSkillService:
 
         local_root.mkdir(parents=True, exist_ok=True)
         copied_items = 0
+        reserved_global = LocalSkillService._reserved_negative_ids_universal()
         for item in sorted(source_root.iterdir(), key=lambda p: p.name.lower()):
             if not item.is_dir():
                 continue
@@ -278,11 +319,11 @@ class LocalSkillService:
 
             shutil.copytree(item, target_dir, dirs_exist_ok=True)
 
-            local_id = (
-                existing_local_id
-                if existing_local_id is not None
-                else LocalSkillService._next_local_id(local_root)
-            )
+            if existing_local_id is not None:
+                local_id = existing_local_id
+            else:
+                local_id = LocalSkillService._next_id_below_reserved(reserved_global)
+                reserved_global.add(local_id)
             description = LocalSkillService._extract_description_from_skill_md(
                 target_dir / LocalSkillService.SKILL_MD_NAME
             )
@@ -352,11 +393,11 @@ class LocalSkillService:
             if target_dir.exists():
                 shutil.rmtree(target_dir, ignore_errors=True)
             shutil.copytree(source_root, target_dir, dirs_exist_ok=False)
-            local_id = (
-                existing_local_id
-                if existing_local_id is not None
-                else LocalSkillService._next_local_id(local_root)
-            )
+            if existing_local_id is not None:
+                local_id = existing_local_id
+            else:
+                universal_reserved = LocalSkillService._reserved_negative_ids_universal()
+                local_id = LocalSkillService._next_id_below_reserved(universal_reserved)
             meta = {
                 "skillName": normalized,
                 "localId": local_id,
@@ -383,23 +424,28 @@ class LocalSkillService:
         """
         items: list[dict] = []
         builtin_root = LocalSkillService._resolve_builtin_root()
+        # 合并列表内 localId 唯一：先内置后 workspace，重复或缺失则重新分配并写回 meta
+        claimed_local_ids: set[int] = set()
 
         def _load_skills_from_dir(root: Path) -> list[dict]:
             if not root.exists():
                 return []
             dir_items: list[dict] = []
-            next_id = LocalSkillService._next_local_id(root)
             for skill_dir in sorted(root.iterdir(), key=lambda p: p.name.lower()):
                 if not skill_dir.is_dir():
                     continue
                 meta = LocalSkillService._read_meta(skill_dir)
-                local_id = LocalSkillService._parse_local_id(meta.get("localId"))
-                if local_id is None:
-                    local_id = next_id
-                    next_id -= 1
+                parsed = LocalSkillService._parse_local_id(meta.get("localId"))
+                if parsed is None or parsed in claimed_local_ids:
+                    local_id = LocalSkillService._next_id_below_reserved(
+                        claimed_local_ids
+                    )
                     meta["localId"] = local_id
                     meta["skillName"] = meta.get("skillName") or skill_dir.name
                     LocalSkillService._write_meta(skill_dir, meta)
+                else:
+                    local_id = parsed
+                claimed_local_ids.add(local_id)
                 dir_items.append(
                     {
                         "skillName": skill_dir.name,

@@ -604,14 +604,18 @@ class EmployeeService:
         return details
 
     @staticmethod
-    def _validate_and_fetch_local_skills(skill_ids: list[int] | None) -> list[dict]:
+    def _validate_and_fetch_local_skills(
+        skill_ids: list[int] | None,
+        workspace_id: int | None = None,
+    ) -> list[dict]:
         if not skill_ids:
             return []
         local_skill_ids = [int(v) for v in skill_ids if int(v) < 0]
         if not local_skill_ids:
             return []
 
-        local_skills = LocalSkillService.list_local_skills()
+        # 必须带 workspace_id，否则会只扫 builtin/，导入到 workspace 的负向 localId 无法命中
+        local_skills = LocalSkillService.list_local_skills(workspace_id)
         local_skill_map: dict[int, dict] = {}
         for item in local_skills:
             raw_local_id = item.get("localId")
@@ -899,7 +903,9 @@ class EmployeeService:
             remote_skills = EmployeeService._validate_and_fetch_skills(
                 remote_skill_ids, token
             )
-            local_skills = EmployeeService._validate_and_fetch_local_skills(skill_ids)
+            local_skills = EmployeeService._validate_and_fetch_local_skills(
+                skill_ids, employee.workspace_id
+            )
             merged_skills = [*remote_skills, *local_skills]
             EmployeeService._replace_employee_skills(db, employee, merged_skills)
             employee.skills_json = EmployeeService._build_skills_json_payload(
@@ -1079,7 +1085,9 @@ class EmployeeService:
         remote_skills = EmployeeService._validate_and_fetch_skills(
             remote_skill_ids, token
         )
-        local_skills = EmployeeService._validate_and_fetch_local_skills(skill_ids)
+        local_skills = EmployeeService._validate_and_fetch_local_skills(
+            skill_ids, workspace_id
+        )
         mcp_details = EmployeeService._validate_and_fetch_mcps(obj_in.mcp_ids, token)
 
         tasks = EmployeeService._normalize_tasks(obj_in.tasks)
