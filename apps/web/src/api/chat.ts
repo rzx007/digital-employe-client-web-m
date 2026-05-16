@@ -7,7 +7,11 @@ import {
   fetchConversations as fetchConversationsApi,
   createConversation as createConversationApi,
 } from "@/api/conversation"
-import { type AIEmployee, type Contact, type CuratorProfile } from "@/lib/mock-data/ai-employees"
+import {
+  type AIEmployee,
+  type Contact,
+  type CuratorProfile,
+} from "@/lib/mock-data/ai-employees"
 import type { Conversation } from "@/lib/mock-data/conversations"
 import type { Message } from "@/lib/mock-data/messages"
 
@@ -20,7 +24,7 @@ function mapEmployeeToAIEmployee(emp: Employee): AIEmployee {
   return {
     id: String(emp.id),
     name: emp.name ?? emp.metadata?.employee_name,
-    role: emp.description || '',
+    role: emp.description || "",
     avatar: createDiceBearAvatar(String(emp.id)),
     status: mapStatus(emp.metadata?.status ?? 0),
     specialty: emp.metadata?.capability_desc ?? "",
@@ -33,7 +37,10 @@ function mapContactToTarget(contact: Contact): {
   target_id: number
 } | null {
   if (contact.type === "curator") {
-    return { target_type: "curator", target_id: 1 }
+    const curatorId = Number(contact.curator?.id)
+    return isNaN(curatorId)
+      ? null
+      : { target_type: "curator", target_id: curatorId }
   }
   if (contact.type === "employee") {
     const eid = Number(contact.employee?.id)
@@ -46,9 +53,7 @@ function mapContactToTarget(contact: Contact): {
   return null
 }
 
-export async function fetchContacts(
-  signal?: AbortSignal
-): Promise<Contact[]> {
+export async function fetchContacts(signal?: AbortSignal): Promise<Contact[]> {
   const [employeesRes, groupsRes] = await Promise.all([
     fetchEmployees({ signal }),
     fetchGroups({ signal }),
@@ -76,9 +81,7 @@ export async function fetchContacts(
     employee: mapEmployeeToAIEmployee(emp),
   }))
 
-  const allAIEmployees: AIEmployee[] = allEmployees.map(
-    mapEmployeeToAIEmployee
-  )
+  const allAIEmployees: AIEmployee[] = allEmployees.map(mapEmployeeToAIEmployee)
 
   const groups: Contact[] = (groupsRes?.data ?? []).map((group: ApiGroup) => ({
     type: "group" as const,
@@ -108,7 +111,7 @@ export async function createContactGroup(params: {
 export async function fetchConversationsByContactId(
   contactId: string,
   contact?: Contact,
-  opts?: { signal?: AbortSignal },
+  opts?: { signal?: AbortSignal }
 ): Promise<Conversation[]> {
   if (!contact) return []
 
@@ -120,7 +123,7 @@ export async function fetchConversationsByContactId(
       target_type: target.target_type,
       target_id: target.target_id,
     },
-    opts,
+    opts
   )
 
   const items = res?.data ?? []
@@ -142,7 +145,7 @@ export async function fetchConversationsByContactId(
 
 export async function fetchMessagesByConversationId(
   conversationId: string | number,
-  opts?: { signal?: AbortSignal },
+  opts?: { signal?: AbortSignal }
 ): Promise<Message[]> {
   const res = await fetchConversationMessagesApi(conversationId, opts)
   const items = res?.data ?? []

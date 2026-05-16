@@ -565,10 +565,15 @@ class TaskSchedulerService:
             ).limit(1)
         ).first()
         if not conv:
+            from src.service.employee_service import EmployeeService
+
+            curator_employee = EmployeeService.ensure_curator_employee(
+                db, workspace_id
+            )
             conv = Conversation(
                 workspace_id=workspace_id,
                 target_type="curator",
-                target_id=1,
+                target_id=curator_employee.id,
                 title="总管对话",
             )
             db.add(conv)

@@ -20,6 +20,23 @@ import {
 } from "./persistence"
 import type { RecentConversationItem } from "./types"
 
+/** 与 displayItems 排序一致，用于移除当前项后选中下一条 */
+function pickNextRecentContactId(
+  items: RecentConversationItem[]
+): string | undefined {
+  if (items.length === 0) return undefined
+  const sorted = [...items].sort((a, b) => {
+    if (a.isCurator && !b.isCurator) return -1
+    if (!a.isCurator && b.isCurator) return 1
+    if (a.isPinned && !b.isPinned) return -1
+    if (!a.isPinned && b.isPinned) return 1
+    const ta = a.updatedAt?.getTime() ?? 0
+    const tb = b.updatedAt?.getTime() ?? 0
+    return tb - ta
+  })
+  return sorted[0]?.contactId
+}
+
 export function useRecentConversations() {
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? 1
 
@@ -188,11 +205,20 @@ export function useRecentConversations() {
   }
 
   const handleRemove = (item: RecentConversationItem) => {
-    setRecentItems((prev) => {
-      const updated = prev.filter((i) => i.contactId !== item.contactId)
-      saveRecentConversations(workspaceId, updated)
-      return updated
-    })
+    const updated = recentItems.filter((i) => i.contactId !== item.contactId)
+    saveRecentConversations(workspaceId, updated)
+    setRecentItems(updated)
+
+    const { selectedContactId, setSelectedContactId, switchToContact } =
+      useChatStore.getState()
+    if (selectedContactId !== item.contactId) return
+
+    const nextContactId = pickNextRecentContactId(updated)
+    if (nextContactId) {
+      switchToContact(nextContactId)
+    } else {
+      setSelectedContactId(null)
+    }
   }
 
   const displayItems = React.useMemo(() => {

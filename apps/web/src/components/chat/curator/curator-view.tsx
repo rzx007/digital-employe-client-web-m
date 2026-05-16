@@ -58,7 +58,9 @@ import { RenderClassifiedBlocks } from "../messages/chat-message-item"
 import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import type { TaskExecution } from "@/types/schedule-monitor"
+import { curatorUnreadKey } from "@/lib/constants"
 import { chatKeys } from "@/lib/query-keys/chat"
+import { useConversationStatusStore } from "@/stores/conversation-status-store"
 
 type TimelineEntry =
   | { kind: "message"; data: UIMessage; ts: number }
@@ -111,6 +113,14 @@ export function CuratorView({
   const { data: curatorConv, isLoading: curatorLoading } =
     useCuratorConversationQuery()
   const curatorConversationId = curatorConv?.id ?? null
+
+  useEffect(() => {
+    const curatorId = contact?.curator?.id
+    if (!curatorId) return
+    useConversationStatusStore
+      .getState()
+      .clearUnreadByContactKey(curatorUnreadKey(curatorId))
+  }, [contact?.curator?.id])
 
   const { data: storedMessages = [], isPending: isMessagesLoading } =
     useMessagesQuery(curatorConversationId)
@@ -407,8 +417,7 @@ export function CuratorView({
   }, [displayMessages, executions, storedMessages])
 
   const isDraft = !curatorConversationId
-  const contactDisplayName =
-    resolvedContact?.curator?.name ?? "总管助手"
+  const contactDisplayName = resolvedContact?.curator?.name ?? "总管助手"
 
   const isCompact = size === "compact"
 

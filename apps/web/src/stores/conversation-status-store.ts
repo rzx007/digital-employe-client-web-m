@@ -1,6 +1,20 @@
 import { create } from "zustand"
 
+import {
+  CURATOR_PINNED_CONVERSATION_ID,
+  curatorUnreadKey,
+} from "@/lib/constants"
 import { useChatStore } from "@/stores/chat-store"
+
+function isViewingCurator(): boolean {
+  return useChatStore.getState().getSelectedContact()?.type === "curator"
+}
+
+function getSelectedCuratorUnreadKey(): string | null {
+  const contact = useChatStore.getState().getSelectedContact()
+  if (contact?.type !== "curator" || !contact.curator?.id) return null
+  return curatorUnreadKey(contact.curator.id)
+}
 
 interface ConversationStatusStore {
   statuses: Record<number, string>
@@ -11,9 +25,10 @@ interface ConversationStatusStore {
     conversationId: number,
     status: string,
     targetType?: string,
-    targetId?: number,
+    targetId?: number
   ) => void
   markAsRead: (conversationId: number) => void
+  clearUnreadByContactKey: (key: string) => void
 }
 
 export const useConversationStatusStore = create<ConversationStatusStore>(
@@ -49,10 +64,17 @@ export const useConversationStatusStore = create<ConversationStatusStore>(
             newConvToContact[conversationId] = key
             const selectedConvId =
               useChatStore.getState().selectedConversationId
-            if (Number(selectedConvId) === conversationId) {
+            const viewingConv = Number(selectedConvId) === conversationId
+            const selectedCuratorKey = getSelectedCuratorUnreadKey()
+            const viewingCurator =
+              targetType === "curator" &&
+              isViewingCurator() &&
+              selectedCuratorKey != null &&
+              key === selectedCuratorKey
+            if (viewingConv || viewingCurator) {
               newUnreadCounts[key] = Math.max(
                 0,
-                (newUnreadCounts[key] ?? 1) - 1,
+                (newUnreadCounts[key] ?? 1) - 1
               )
             }
           }
@@ -80,14 +102,41 @@ export const useConversationStatusStore = create<ConversationStatusStore>(
           },
         }
       }),
-  }),
+
+    clearUnreadByContactKey: (key) =>
+      set((state) => {
+        if ((state.unreadCounts[key] ?? 0) === 0) return state
+        return {
+          unreadCounts: {
+            ...state.unreadCounts,
+            [key]: 0,
+          },
+        }
+      }),
+  })
 )
+
+function clearSelectedCuratorUnread(): void {
+  const key = getSelectedCuratorUnreadKey()
+  if (key) {
+    useConversationStatusStore.getState().clearUnreadByContactKey(key)
+  }
+}
 
 useChatStore.subscribe((state, prevState) => {
   if (state.selectedConversationId !== prevState.selectedConversationId) {
     const convId = Number(state.selectedConversationId)
     if (!isNaN(convId)) {
       useConversationStatusStore.getState().markAsRead(convId)
+    }
+    if (state.selectedConversationId === CURATOR_PINNED_CONVERSATION_ID) {
+      clearSelectedCuratorUnread()
+    }
+  }
+
+  if (state.selectedContactId !== prevState.selectedContactId) {
+    if (state.getSelectedContact()?.type === "curator") {
+      clearSelectedCuratorUnread()
     }
   }
 })

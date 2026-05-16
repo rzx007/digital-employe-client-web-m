@@ -14,6 +14,7 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import { formatDistanceToNow } from "date-fns"
 import { zhCN } from "date-fns/locale"
+import { curatorUnreadKey } from "@/lib/constants"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import {
   EmployeeContactAvatar,
@@ -27,13 +28,9 @@ function formatTimeAgo(date?: Date) {
 }
 
 function ConversationStatusBadge({ item }: { item: RecentConversationItem }) {
-  const targetType = item.isCurator
-    ? "curator"
-    : item.isGroup
-      ? "group"
-      : "employee"
-  const targetId = item.isCurator ? 1 : Number(item.contactId)
-  const key = `${targetType}:${targetId}`
+  const key = item.isCurator
+    ? curatorUnreadKey(item.contactId)
+    : `${item.isGroup ? "group" : "employee"}:${Number(item.contactId)}`
   const count = useConversationStatusStore((s) => s.unreadCounts[key] ?? 0)
   if (count === 0) return null
   return (
