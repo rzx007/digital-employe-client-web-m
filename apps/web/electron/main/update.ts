@@ -1,33 +1,35 @@
-import { app, ipcMain, BrowserWindow } from 'electron'
-import { createRequire } from 'node:module'
-import type {
-  ProgressInfo,
-  UpdateInfo,
-} from 'electron-updater'
-import { getSetting } from './settings-store'
-import { getBackendPort } from './backend'
+import { app, ipcMain, BrowserWindow } from "electron"
+import { createRequire } from "node:module"
+import type { ProgressInfo, UpdateInfo } from "electron-updater"
+import { getSetting } from "./settings-store"
+import { getBackendPort } from "./backend"
 
-const { autoUpdater } = createRequire(import.meta.url)('electron-updater');
+const { autoUpdater } = createRequire(import.meta.url)("electron-updater")
 
 let downloadListenersCleanup: (() => void) | null = null
 
 function getPlatformPath(): string {
   switch (process.platform) {
-    case 'win32': return '/win32'
-    case 'darwin': return '/macos'
-    default: return '/linux'
+    case "win32":
+      return "/win32"
+    case "darwin":
+      return "/macos"
+    default:
+      return "/linux"
   }
 }
 
 async function resolveUpdateFeedURL(): Promise<string | null> {
   try {
     const port = getBackendPort()
-    const res = await fetch(`http://localhost:${port}/config-kvs/REMOTE_API_BASE_URL`)
+    const res = await fetch(
+      `http://localhost:${port}/config-kvs/REMOTE_API_BASE_URL`
+    )
     if (!res.ok) return null
     const json = await res.json()
     const baseUrl: string | undefined = json?.data?.config_value
     if (baseUrl) {
-      return `${baseUrl.replace(/\/+$/, '')}${getPlatformPath()}`
+      return `${baseUrl.replace(/\/+$/, "")}${getPlatformPath()}`
     }
   } catch {
     // backend not available
@@ -43,57 +45,69 @@ function sendToAll(channel: string, ...args: any[]) {
   })
 }
 
-export function update() {
+/** 供应用菜单「检查更新」与 IPC 共用 */
+export async function checkForUpdatesFromMenu(): Promise<unknown> {
+  if (!app.isPackaged) {
+    const feedUrl = await resolveUpdateFeedURL()
+    const error = new Error(
+      `The update feature is only available after the package. feedUrl=${feedUrl}`
+    )
+    sendToAll("update-error", { message: error.message, error })
+    return { message: error.message, error }
+  }
 
+  try {
+    const feedUrl = await resolveUpdateFeedURL()
+    if (feedUrl) {
+      autoUpdater.setFeedURL({ provider: "generic", url: feedUrl })
+    }
+    return await autoUpdater.checkForUpdates()
+  } catch (error) {
+    sendToAll("update-error", { message: "Network error", error })
+    return { message: "Network error", error }
+  }
+}
+
+export function update() {
   autoUpdater.autoDownload = false
   autoUpdater.disableWebInstaller = false
   autoUpdater.allowDowngrade = false
 
-  autoUpdater.on('checking-for-update', function () { })
+  autoUpdater.on("checking-for-update", function () {})
 
-  autoUpdater.on('error', (error: Error) => {
-    console.error('[Updater] error:', error.message)
-    sendToAll('update-error', { message: error.message, error })
+  autoUpdater.on("error", (error: Error) => {
+    console.error("[Updater] error:", error.message)
+    sendToAll("update-error", { message: error.message, error })
   })
 
-  autoUpdater.on('update-available', (arg: UpdateInfo) => {
-    sendToAll('update-can-available', { update: true, version: app.getVersion(), newVersion: arg?.version })
+  autoUpdater.on("update-available", (arg: UpdateInfo) => {
+    sendToAll("update-can-available", {
+      update: true,
+      version: app.getVersion(),
+      newVersion: arg?.version,
+    })
 
-    const autoUpdate = getSetting('autoUpdate')
+    const autoUpdate = getSetting("autoUpdate")
     if (autoUpdate) {
       triggerDownload()
     }
   })
 
-  autoUpdater.on('update-not-available', (arg: UpdateInfo) => {
-    sendToAll('update-can-available', { update: false, version: app.getVersion(), newVersion: arg?.version })
+  autoUpdater.on("update-not-available", (arg: UpdateInfo) => {
+    sendToAll("update-can-available", {
+      update: false,
+      version: app.getVersion(),
+      newVersion: arg?.version,
+    })
   })
 
-  ipcMain.handle('check-update', async () => {
-    if (!app.isPackaged) {
-      const feedUrl = await resolveUpdateFeedURL()
-      const error = new Error(`The update feature is only available after the package. feedUrl=${feedUrl}`)
-      sendToAll('update-error', { message: error.message, error })
-      return { message: error.message, error }
-    }
+  ipcMain.handle("check-update", () => checkForUpdatesFromMenu())
 
-    try {
-      const feedUrl = await resolveUpdateFeedURL()
-      if (feedUrl) {
-        autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl })
-      }
-      return await autoUpdater.checkForUpdates()
-    } catch (error) {
-      sendToAll('update-error', { message: 'Network error', error })
-      return { message: 'Network error', error }
-    }
-  })
-
-  ipcMain.handle('start-download', () => {
+  ipcMain.handle("start-download", () => {
     triggerDownload()
   })
 
-  ipcMain.handle('quit-and-install', () => {
+  ipcMain.handle("quit-and-install", () => {
     autoUpdater.quitAndInstall(false, true)
   })
 }
@@ -102,26 +116,26 @@ function triggerDownload() {
   cleanupDownloadListeners()
 
   const onProgress = (info: ProgressInfo) => {
-    sendToAll('download-progress', info)
+    sendToAll("download-progress", info)
   }
   const onError = (error: Error) => {
     cleanupDownloadListeners()
-    console.error('[Updater] download error:', error.message)
-    sendToAll('update-error', { message: error.message, error })
+    console.error("[Updater] download error:", error.message)
+    sendToAll("update-error", { message: error.message, error })
   }
   const onDownloaded = () => {
     cleanupDownloadListeners()
-    sendToAll('update-downloaded')
+    sendToAll("update-downloaded")
   }
 
-  autoUpdater.on('download-progress', onProgress)
-  autoUpdater.on('error', onError)
-  autoUpdater.on('update-downloaded', onDownloaded)
+  autoUpdater.on("download-progress", onProgress)
+  autoUpdater.on("error", onError)
+  autoUpdater.on("update-downloaded", onDownloaded)
 
   downloadListenersCleanup = () => {
-    autoUpdater.removeListener('download-progress', onProgress)
-    autoUpdater.removeListener('error', onError)
-    autoUpdater.removeListener('update-downloaded', onDownloaded)
+    autoUpdater.removeListener("download-progress", onProgress)
+    autoUpdater.removeListener("error", onError)
+    autoUpdater.removeListener("update-downloaded", onDownloaded)
     downloadListenersCleanup = null
   }
 

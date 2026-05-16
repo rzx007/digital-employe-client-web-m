@@ -20,6 +20,8 @@ import {
   hidePetIfWhenMainHiddenMode,
   syncPetOnMainForegroundState,
 } from "./pet-main-sync"
+import { APP_DISPLAY_NAME } from "./app-product"
+import { createMacApplicationMenu } from "./application-menu"
 
 /**
  * Electron 主进程入口
@@ -73,6 +75,11 @@ if (!app.requestSingleInstanceLock()) {
   process.exit(0)
 }
 
+/** macOS：在 ready 前设置，改善 Dock/部分系统文案（开发包下菜单第一项仍可能为 Electron） */
+if (process.platform === "darwin") {
+  app.setName(APP_DISPLAY_NAME)
+}
+
 /** F12 切换当前窗口开发者工具（主窗口、登录窗、招聘窗等） */
 app.on("browser-window-created", (_event, browserWindow) => {
   browserWindow.webContents.on("before-input-event", (event, input) => {
@@ -92,14 +99,10 @@ const indexHtml = path.join(RENDERER_DIST, "index.html")
 // 导出给其他模块使用（登录、招聘等窗口）
 export { VITE_DEV_SERVER_URL, indexHtml }
 
-/**
- * 创建主窗口
- */
-async function createWindow() {
-  win = new BrowserWindow({
-    title: "数字员工",
-    frame: false,
-    icon: path.join(process.env.APP_ROOT, "build/icon.ico"),
+function getMainWindowOptions(): Electron.BrowserWindowConstructorOptions {
+  const base: Electron.BrowserWindowConstructorOptions = {
+    title: APP_DISPLAY_NAME,
+    icon: path.join(process.env.APP_ROOT!, "build/icon.ico"),
     webPreferences: {
       preload,
     },
@@ -107,7 +110,28 @@ async function createWindow() {
     height: 800,
     minWidth: 1024,
     minHeight: 768,
-  })
+  }
+
+  if (process.platform === "darwin") {
+    return {
+      ...base,
+      frame: true,
+      titleBarStyle: "hiddenInset",
+      trafficLightPosition: { x: 12, y: 11 },
+    }
+  }
+
+  return {
+    ...base,
+    frame: false,
+  }
+}
+
+/**
+ * 创建主窗口
+ */
+async function createWindow() {
+  win = new BrowserWindow(getMainWindowOptions())
 
   // 加载页面：开发环境加载 Vite dev server，生产环境加载本地文件
   if (VITE_DEV_SERVER_URL) {
@@ -169,7 +193,10 @@ async function createWindow() {
     preload,
   })
 
-  if (getSetting("petEnabled") && getSetting("petVisibilityMode") === "always") {
+  if (
+    getSetting("petEnabled") &&
+    getSetting("petVisibilityMode") === "always"
+  ) {
     showPetWindow()
   }
 
@@ -210,7 +237,11 @@ app.on("before-quit", (e) => {
  * 5. 检查是否有持久化 token → 有则直接进主窗口，否则进登录窗口
  */
 app.whenReady().then(async () => {
-  Menu.setApplicationMenu(null)
+  if (process.platform === "darwin") {
+    Menu.setApplicationMenu(createMacApplicationMenu())
+  } else {
+    Menu.setApplicationMenu(null)
+  }
 
   initAuthStore()
   initSettingsStore()

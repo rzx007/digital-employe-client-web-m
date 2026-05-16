@@ -1,6 +1,8 @@
 import { BrowserWindow } from "electron"
 import path from "node:path"
 
+import { pinBrowserWindowTitle } from "./pin-window-title"
+
 /**
  * 招聘窗口管理
  *
@@ -49,6 +51,7 @@ export function createRecruitmentWindow(): void {
     ? `${VITE_DEV_SERVER_URL}#/recruitment`
     : `file://${indexHtml}#/recruitment`
 
+  pinBrowserWindowTitle(recruitmentWin, "招聘员工")
   recruitmentWin.loadURL(recruitmentUrl)
 
   if (VITE_DEV_SERVER_URL) {

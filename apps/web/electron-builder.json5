@@ -29,6 +29,7 @@
   // 脚本在 monorepo 根目录 scripts/（apps/web → 仓库根须 ../../）
   "afterPack": "../../scripts/afterPack.js",
   "mac": {
+    // mac.defaultArch 在 Rosetta Node 下不足以覆盖。
     "target": [
       "dmg"
     ],

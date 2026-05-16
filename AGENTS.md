@@ -26,7 +26,10 @@ pnpm lint --filter=web
 pnpm build --filter=@workspace/ui
 
 # Electron 桌面端开发（自动启动 Python 后端）
-pnpm --filter web dev:app
+pnpm --filter digital-employee dev:app
+
+# Electron 正式打包（必须使用 arm64 原生 Node，见下方 macOS 架构说明）
+pnpm --filter digital-employee build:app
 ```
 
 前端无测试框架。添加测试前先配置 Vitest。
@@ -51,12 +54,20 @@ uv run uvicorn src.server:app --host 0.0.0.0 --port 58000 --reload
 # 从项目根目录启动
 pnpm dev:server
 
-# 打包为 exe（输出到 apps/web/py-server/backend.exe）
+# 打包后端（Windows → apps/web/py-server/backend.exe；macOS/Linux → backend）
 pnpm build:server
 
 # 打包完整应用（Python 后端 + Electron）
 pnpm build:app
 ```
+
+### macOS（Apple Silicon）架构与 venv
+
+若出现 `pydantic_core` / `dlopen` 报错：`have 'arm64', need 'x86_64'`（或相反），或 Electron 打包时 `dmg-builder` 报错 `Library not loaded: /usr/local/opt/gettext/lib/libintl.8.dylib`，说明 **Node 与 Python 依赖的二进制架构不一致**。常见原因是 NVM 装成了 x86_64（Rosetta）版 Node，而 `uv sync` 在 arm64 下装了 wheel。
+
+**验证 Node 架构**：`node -p process.arch` 应输出 `arm64`，`file "$(which node)"` 应包含 `arm64`。若输出 `x64` 或 `x86_64`，说明是 Rosetta 转译版。
+
+**处理**：在 **原生 arm64** 终端中重装 Node（`nvm uninstall <version>` → `nvm install <version>`），删除 `apps/server/.venv` 后重新 `uv sync`。勿在「使用 Rosetta 打开」的终端里安装/同步 Python 依赖。
 
 后端无测试目录。`README.md` 中提到的 `tests/` 文件不存在。
 
@@ -158,6 +169,8 @@ python scripts/build-server.py --app
 ```
 
 输出：`apps/web/py-server/backend.exe`（Windows）/ `backend`（Linux/macOS）。
+
+- **Mac DMG（Apple Silicon）**：`build:app` 直接调用 `electron-builder`，**必须使用 arm64 原生 Node**，否则默认打 x64 包导致 dmg-builder/gettext 失败（x86_64 dmgbuild 二进制编译于较新 macOS，在旧系统上无法运行）。若使用 Rosetta Node 打包，需手动加 `--mac --arm64` 参数。若仍异常可清理 `~/Library/Caches/electron-builder/dmg-builder*` 后重打。
 
 ## 前端 Code Style
 

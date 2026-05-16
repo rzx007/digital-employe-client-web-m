@@ -10,7 +10,7 @@ function createSplashWindow(options: {
   splashWin = new BrowserWindow({
     width: 400,
     height: 250,
-    title: "DigitalEmployee",
+    title: "数字员工",
     icon: path.join(process.env.APP_ROOT!, "build/icon.ico"),
     frame: false,
     transparent: true,

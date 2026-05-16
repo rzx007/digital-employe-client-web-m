@@ -1,11 +1,13 @@
 import { app } from "electron"
 import { spawn, type ChildProcess } from "node:child_process"
+import os from "node:os"
 import path from "node:path"
 
 /**
  * Python 后端（FastAPI）进程管理
  *
- * 负责在 Electron 主进程中管理 backend.exe 的完整生命周期：
+ * 负责在 Electron 主进程中管理 PyInstaller 后端二进制（Windows: backend.exe，
+ * macOS/Linux: backend）的完整生命周期：
  * - 启动：通过 child_process.spawn 创建子进程，按平台区分进程组策略
  * - 就绪检测：监听 stdout/stderr 输出，匹配 Uvicorn 启动日志
  * - 停止：按平台使用不同方式清理进程树，避免残留孤儿进程
@@ -15,6 +17,8 @@ import path from "node:path"
  *   使用 taskkill /T /F /PID 杀掉整个进程树。
  * - Linux/macOS: spawn 时设置 detached: true 创建独立进程组，
  *   退出时用 process.kill(-pid, signal) 杀掉整个进程组。
+ * - macOS dev: 在 Apple Silicon 上用 arch -arm64 启动 uv，避免 Electron/Rosetta
+ *   或 PATH 中 x86_64 的 uv 导致 uvicorn 重载子进程与 arm64 venv 原生扩展不一致。
  */
 
 const BACKEND_PORT = process.env.VITE_BACKEND_PORT || 34567
@@ -39,6 +43,19 @@ function isUvicornReadyLine(log: string): boolean {
 }
 
 /**
+ * 在 Apple Silicon（os.machine() === arm64）上，开发模式统一经 arch -arm64 调用 uv。
+ *
+ * 使用 os.machine() 而非 execSync(\"uname\")：Electron 主进程里 PATH/沙箱可能导致
+ * uname 失败，从而误走纯 uv 路径并触发 x86_64 子进程与 arm64 venv 冲突。
+ *
+ * 否则可能出现：Electron 为 arm64 但 PATH 里 uv 为 x86_64，或主进程为 Rosetta
+ * x64，导致 uvicorn --reload 子进程跑 x86_64，与 arm64 的 pydantic_core 等冲突。
+ */
+function useArchArm64ForDevUvOnAppleSilicon(): boolean {
+  return process.platform === "darwin" && os.machine() === "arm64"
+}
+
+/**
  * 获取 py-server 目录路径
  *
  * 开发环境: <APP_ROOT>/py-server
@@ -51,11 +68,16 @@ function getPyServerPath(): string {
   return path.join(process.resourcesPath, "py-server")
 }
 
+/** 与 scripts/build-server.py 产出一致：Windows 为 backend.exe，其余为 backend */
+function getPackagedBackendBinaryName(): string {
+  return process.platform === "win32" ? "backend.exe" : "backend"
+}
+
 /**
  * 启动 Python 后端进程
  *
  * 开发模式：启动 uvicorn 服务
- * 生产模式：启动 py-server/backend.exe
+ * 生产模式：启动 py-server 下平台对应的打包二进制
  *
  * 返回一个 Promise，在后端就绪（检测到 Uvicorn 监听日志）或超时时 resolve/reject。
  */
@@ -68,9 +90,9 @@ export function startBackend(): Promise<void> {
       return
     }
 
-    // 生产模式：启动 backend.exe
+    // 生产模式：启动 PyInstaller 产物（见 getPackagedBackendBinaryName）
     const pyServerPath = getPyServerPath()
-    const exePath = path.join(pyServerPath, "backend.exe")
+    const exePath = path.join(pyServerPath, getPackagedBackendBinaryName())
 
     console.log(`[Backend] startuping: ${exePath}`)
     console.log(`[Backend] workspace dir: ${pyServerPath}`)
@@ -146,18 +168,24 @@ function startDevServer(resolve: () => void, reject: (err: Error) => void): void
     fn()
   }
 
+  const uvArgs = [
+    "run",
+    "uvicorn",
+    "src.server:app",
+    "--host",
+    DEV_UVICORN_HOST,
+    "--port",
+    String(BACKEND_PORT),
+    "--reload",
+  ]
+  const useArchArm64 = useArchArm64ForDevUvOnAppleSilicon()
+  if (useArchArm64) {
+    console.log(`[Backend] Apple Silicon: spawning uv via arch -arm64`)
+  }
+
   backendProcess = spawn(
-    "uv",
-    [
-      "run",
-      "uvicorn",
-      "src.server:app",
-      "--host",
-      DEV_UVICORN_HOST,
-      "--port",
-      String(BACKEND_PORT),
-      "--reload",
-    ],
+    useArchArm64 ? "arch" : "uv",
+    useArchArm64 ? ["-arm64", "uv", ...uvArgs] : uvArgs,
     {
       cwd: serverDir,
       stdio: ["pipe", "pipe", "pipe"],

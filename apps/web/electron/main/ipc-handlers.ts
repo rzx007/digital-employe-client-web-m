@@ -4,7 +4,12 @@ import path from "node:path"
 import { getBackendStatus, getBackendPort, stopBackend } from "./backend"
 import { flashTray, stopFlashTray, shutdownAuxiliaryWindows } from "./tray"
 import { sendNotification, setNotificationsEnabled } from "./notification"
-import { closeLoginWindow, createLoginWindow, resizeLoginWindow, getLoginWin } from "./login"
+import {
+  closeLoginWindow,
+  createLoginWindow,
+  resizeLoginWindow,
+  getLoginWin,
+} from "./login"
 import { createRecruitmentWindow, closeRecruitmentWindow } from "./recruitment"
 import {
   createRegisterWindow,
@@ -187,7 +192,7 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
     "resize-login-window",
     (_event, size: { width: number; height: number }) => {
       resizeLoginWindow(size)
-    },
+    }
   )
 
   // ========== 认证管理 ==========
@@ -278,23 +283,20 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
   })
 
   /** 注册成功：通知登录窗口预填用户名 */
-  ipcMain.handle(
-    "register-success",
-    (_event, username: string) => {
-      const win = getLoginWin()
-      if (win && !win.isDestroyed()) {
-        win.webContents.send("register-success", username)
-      }
-      closeRegisterWindow()
-    },
-  )
+  ipcMain.handle("register-success", (_event, username: string) => {
+    const win = getLoginWin()
+    if (win && !win.isDestroyed()) {
+      win.webContents.send("register-success", username)
+    }
+    closeRegisterWindow()
+  })
 
   /** 按注册页内容自适应注册窗口尺寸 */
   ipcMain.handle(
     "resize-register-window",
     (_event, size: { width: number; height: number }) => {
       resizeRegisterWindow(size)
-    },
+    }
   )
 
   // ========== 设置窗口 ==========
@@ -357,7 +359,7 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
         petEnabled: boolean
         petVisibilityMode: PetVisibilityMode
         petAlwaysOnTop: boolean
-      }>,
+      }>
     ) => {
       if (typeof partial.petEnabled === "boolean") {
         setSetting("petEnabled", partial.petEnabled)
@@ -372,7 +374,7 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
         setSetting("petAlwaysOnTop", partial.petAlwaysOnTop)
       }
       syncPetVisibilityWithMain(mainWin)
-    },
+    }
   )
 
   /** 获取引导完成状态 */
@@ -426,7 +428,7 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
  * 1. 停止后端进程
  * 2. 给一个短超时兜底，避免后端卡住导致应用无法退出
  */
-function quitApp(): void {
+export function quitApp(): void {
   setForceQuit(true)
   shutdownAuxiliaryWindows()
   stopBackend()

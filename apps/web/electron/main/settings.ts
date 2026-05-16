@@ -1,6 +1,8 @@
 import { BrowserWindow } from "electron"
 import path from "node:path"
 
+import { pinBrowserWindowTitle } from "./pin-window-title"
+
 /**
  * 设置窗口管理
  *
@@ -9,7 +11,7 @@ import path from "node:path"
  * - 加载应用内 /#/settings 路由页面
  * - 销毁设置窗口资源
  *
- * 窗口配置：800x600、无标题栏不可调整大小
+ * 窗口配置：800x600、有标题栏、不可调整大小
  */
 
 let settingsWin: BrowserWindow | null = null
@@ -32,7 +34,7 @@ export function createSettingsWindow(): void {
     width: 800,
     height: 600,
     resizable: false,
-    title: "DigitalEmployee - 设置",
+    title: "数字员工 - 设置",
     icon: path.join(process.env.APP_ROOT!, "build/icon.ico"),
     webPreferences: {
       preload,
@@ -49,6 +51,7 @@ export function createSettingsWindow(): void {
     ? `${VITE_DEV_SERVER_URL}#/settings`
     : `file://${indexHtml}#/settings`
 
+  pinBrowserWindowTitle(settingsWin, "数字员工 - 设置")
   settingsWin.loadURL(settingsUrl)
 
   settingsWin.on("closed", () => {
