@@ -216,15 +216,26 @@ class ChatService:
 
         conversation = ChatService.get_conversation(db, conversation_id)
         workspace = db.get(Workspace, conversation.workspace_id)
-        conversation_memory_root: Path | None = None
+
+        dirs_to_remove: list[Path] = [
+            Path(get_settings().artifacts_path) / str(conversation_id),
+        ]
         if workspace:
-            conversation_memory_root = Path(workspace.root_path) / "conversations" / str(conversation_id)
+            dirs_to_remove.append(
+                Path(workspace.root_path) / "conversations" / str(conversation_id)
+            )
 
         db.delete(conversation)
         db.commit()
 
-        if conversation_memory_root and conversation_memory_root.exists():
-            shutil.rmtree(conversation_memory_root, ignore_errors=True)
+        seen: set[Path] = set()
+        for conversation_dir in dirs_to_remove:
+            resolved = conversation_dir.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            if conversation_dir.exists():
+                shutil.rmtree(conversation_dir, ignore_errors=True)
 
     @staticmethod
     def _append_message(
