@@ -73,6 +73,7 @@ class Settings:
     employee_zip_url: str | None
     employee_tmp_dir: str
     deepagent_model: str | None
+    model_max_input_tokens: int | None
     chat_history_max_messages: int
     api_key: str | None
     base_url: str | None
@@ -223,6 +224,15 @@ def get_settings() -> Settings:
         _get_kv_value(kv_data, "LOCAL_SKILLS_PATH")
         or get_default_local_skills_path()
     )
+    model_max_input_tokens_raw = _get_kv_value(kv_data, "MODEL_MAX_INPUT_TOKENS")
+    model_max_input_tokens: int | None = None
+    if model_max_input_tokens_raw and str(model_max_input_tokens_raw).strip():
+        try:
+            parsed = int(model_max_input_tokens_raw)
+            if parsed > 0:
+                model_max_input_tokens = parsed
+        except ValueError:
+            model_max_input_tokens = None
     chat_history_max_messages_raw = _get_kv_value(kv_data, "CHAT_HISTORY_MAX_MESSAGES")
     try:
         chat_history_max_messages = int(chat_history_max_messages_raw or "30")
@@ -280,6 +290,7 @@ def get_settings() -> Settings:
         employee_zip_url=join_base_and_path(remote_api_base_url, employee_zip_path),
         employee_tmp_dir=_get_kv_value(kv_data, "EMPLOYEE_TMP_DIR") or "./tmp/employees",
         deepagent_model=_get_kv_value(kv_data, "DEEPAGENT_MODEL"),
+        model_max_input_tokens=model_max_input_tokens,
         chat_history_max_messages=chat_history_max_messages,
         api_key=_get_kv_value(kv_data, "OPENAI_API_KEY"),
         base_url=_get_kv_value(kv_data, "BASE_URL"),

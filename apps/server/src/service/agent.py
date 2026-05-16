@@ -25,6 +25,7 @@ from deepagents.middleware.summarization import (
     SummarizationToolMiddleware,
 )
 from src.core.config import get_settings
+from src.service.model_context import apply_model_profile, resolve_max_input_tokens
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
 load_dotenv()
@@ -155,7 +156,7 @@ def _build_system_prompt(
           - 一个复杂任务执行完毕，用户开始讨论新话题前
           - 工具返回内容很长（如执行结果、文件内容），且后续不再需要这些细节
           - 感觉对话轮次较多、响应变慢时
-        - 压缩不会丢失关键信息，旧消息会被摘要替代
+        - 压缩不会丢失关键信息，旧消息会被摘要替代；完整历史 offload 在 /conversation_history/，可用 read_file 查阅
         """
 
 _ARTIFACT_CODE_EXTENSIONS = {"ts", "tsx", "js", "jsx", "json", "py", "sql", "css", "html", "java", "go", "rs", "cpp", "c", "h"}
@@ -218,7 +219,7 @@ def get_agent(
         base_url=settings.base_url
         or "https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
-    model.profile = {"max_input_tokens": 131072}
+    apply_model_profile(model, resolve_max_input_tokens(settings))
 
     sql_tools: list = []
     if include_sqlite_tools:
@@ -279,6 +280,17 @@ def get_agent(
         uploads_dir.mkdir(parents=True, exist_ok=True)
         routes["/uploads/"] = FilesystemBackend(root_dir=str(uploads_dir), virtual_mode=True)
 
+    if employee_id:
+        history_root = skills_root.parent
+    else:
+        history_root = base_dir
+    history_root.mkdir(parents=True, exist_ok=True)
+    (history_root / "conversation_history").mkdir(parents=True, exist_ok=True)
+    routes["/conversation_history/"] = FilesystemBackend(
+        root_dir=str(history_root),
+        virtual_mode=True,
+    )
+
     skill_sources = ["/skills/", "/skills-draft/"] if has_draft_route else ["/skills/"]
 
     shell_backend = SkillAwareShellBackend(
@@ -292,16 +304,9 @@ def get_agent(
 
     backend = CompositeBackend(default=shell_backend, routes=routes)
 
-    if employee_id:
-        history_root = skills_root.parent
-    else:
-        history_root = base_dir
-    history_root.mkdir(parents=True, exist_ok=True)
-    history_backend = FilesystemBackend(root_dir=str(history_root), virtual_mode=True)
-
     summarization_ref = SummarizationMiddleware(
         model=model,
-        backend=history_backend,
+        backend=backend,
         trigger=("fraction", 0.85),
         keep=("fraction", 0.10),
     )

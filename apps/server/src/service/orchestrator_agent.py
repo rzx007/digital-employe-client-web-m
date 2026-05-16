@@ -23,6 +23,7 @@ from deepagents.middleware.summarization import (
     SummarizationToolMiddleware,
 )
 from src.core.config import get_settings
+from src.service.model_context import apply_model_profile, resolve_max_input_tokens
 from src.models.employee import Employee
 from src.models.employee_mcp import EmployeeMcp
 from src.models.employee_skill import EmployeeSkill
@@ -814,7 +815,7 @@ def get_orchestrator_agent(
         api_key=settings.api_key,
         base_url=settings.base_url or "https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
-    model.profile = {"max_input_tokens": 131072}
+    apply_model_profile(model, resolve_max_input_tokens(settings))
 
     employee_context = _build_employee_capability_context(db, workspace_id)
     system_prompt = ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE.format(
