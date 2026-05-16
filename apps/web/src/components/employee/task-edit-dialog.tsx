@@ -154,7 +154,7 @@ export function TaskEditDialog({
   const [formData, setFormData] = React.useState<TaskFormData>(createEmptyTask)
   const [capabilityOpen, setCapabilityOpen] = React.useState(false)
   const [timePickerOpen, setTimePickerOpen] = React.useState(false)
-  const [pickerTab, setPickerTab] = React.useState<"mcp" | "skill">("mcp")
+  const [pickerTab, setPickerTab] = React.useState<"mcp" | "skill">("skill")
   const [advancedOpen, setAdvancedOpen] = React.useState(false)
 
   const filteredCapabilities = React.useMemo(() => {
@@ -212,7 +212,7 @@ export function TaskEditDialog({
     if (open) {
       const initial = task ? taskFromExisting(task) : createEmptyTask()
       setFormData(initial)
-      setPickerTab(initial.task_resource_type === "skill" ? "skill" : "mcp")
+      setPickerTab(initial.task_resource_type === "mcp" ? "mcp" : "skill")
       setCapabilityOpen(false)
       setTimePickerOpen(false)
       setAdvancedOpen(false)
@@ -337,11 +337,11 @@ export function TaskEditDialog({
                   onValueChange={(v) => setPickerTab(v as "mcp" | "skill")}
                 >
                   <TabsList className="grid h-9 w-full grid-cols-2 rounded-none rounded-t-lg border-b">
-                    <TabsTrigger value="mcp" className="rounded-none">
-                      MCP 工具
-                    </TabsTrigger>
                     <TabsTrigger value="skill" className="rounded-none">
                       技能
+                    </TabsTrigger>
+                    <TabsTrigger value="mcp" className="rounded-none">
+                      MCP 工具
                     </TabsTrigger>
                   </TabsList>
                   <TabsContent value="mcp" className="mt-0 outline-none">
