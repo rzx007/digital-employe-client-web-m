@@ -10,10 +10,10 @@
     "typecheck": "turbo typecheck",
     "dev:client": "turbo dev:app",
     "build:client": "turbo build:app",
-    "build:app": "python3 scripts/build-server.py --app && pnpm build:client",
+    "build:app": "python scripts/build-server.py --app && pnpm build:client",
     "dev:server": "cd apps/server && uv run python start.py",
-    "build:server": "python3 scripts/build-server.py",
-    "build:server:debug": "python3 scripts/build-server.py --debug"
+    "build:server": "python scripts/build-server.py",
+    "build:server:debug": "python scripts/build-server.py --debug"
   },
   "devDependencies": {
     "prettier": "^3.8.1",
