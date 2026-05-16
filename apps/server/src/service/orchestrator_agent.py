@@ -11,18 +11,15 @@ from typing import Any
 from dotenv import load_dotenv
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
-from langgraph.checkpoint.memory import MemorySaver
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend
 from deepagents.middleware.permissions import FilesystemPermission
-from deepagents.middleware.summarization import (
-    SummarizationMiddleware,
-    SummarizationToolMiddleware,
-)
+from deepagents.middleware.summarization import SummarizationToolMiddleware
 from src.core.config import get_settings
+from src.service.conversation_summarization import ConversationSummarizationMiddleware
 from src.service.model_context import apply_model_profile, resolve_max_input_tokens
 from src.models.employee import Employee
 from src.models.employee_mcp import EmployeeMcp
@@ -30,7 +27,13 @@ from src.models.employee_skill import EmployeeSkill
 from src.models.employee_task import EmployeeTask
 from src.models.orchestration_plan import OrchestrationPlan
 from src.models.workspace import cst_now
-from src.service.agent import get_checkpointer
+from src.service.agent import (
+    build_filesystem_prompt_section,
+    ensure_employee_memory_file,
+    get_checkpointer,
+    resolve_employee_memories_dir,
+)
+from src.service.skill_shell_backend import SkillAwareShellBackend
 
 load_dotenv()
 
@@ -230,14 +233,6 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 - 确认后开始执行，执行中汇报进度
 
 重要：你所有的工具调用都会产生实际效果。如果你只回复文字而不调用工具，什么事情都不会发生。尤其是编排计划，必须通过 confirm_orchestration_plan 工具来执行。
-
-## 上下文管理
-- 你可以调用 `compact_conversation` 工具来压缩对话历史，释放上下文空间
-- 以下情况适合主动压缩：
-  - 一个编排计划已确认执行完毕，用户开始讨论新任务前
-  - 工具返回内容很长（如任务列表、编排计划详情），且后续不再需要这些细节
-  - 感觉对话轮次较多、响应变慢时
-- 压缩不会丢失关键信息，旧消息会被摘要替代
 """
 
 
@@ -804,6 +799,7 @@ def get_orchestrator_agent(
     workspace_id: int,
     db: Session,
     conversation_id: int | None = None,
+    employee_id: int | None = None,
 ):
     _set_context(db, workspace_id, conversation_id)
 
@@ -816,39 +812,101 @@ def get_orchestrator_agent(
     )
     apply_model_profile(model, resolve_max_input_tokens(settings))
 
+    base_dir = Path(__file__).resolve().parent
+    artifacts_path = Path(settings.artifacts_path)
+    use_session_history = bool(conversation_id)
+
+    memories_dir = resolve_employee_memories_dir(
+        employee_id=employee_id,
+        skills_root=None,
+        base_dir=base_dir,
+    )
+    memories_dir.mkdir(parents=True, exist_ok=True)
+    ensure_employee_memory_file(memories_dir)
+
+    skills_placeholder = memories_dir.parent / "skills"
+    skills_placeholder.mkdir(parents=True, exist_ok=True)
+
+    if conversation_id:
+        artifacts_dir = artifacts_path / str(conversation_id) / "artifacts"
+        conversation_dir = artifacts_path / str(conversation_id)
+    else:
+        artifacts_dir = artifacts_path / "orchestrator" / "artifacts"
+        conversation_dir = artifacts_path / "orchestrator"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    conversation_dir.mkdir(parents=True, exist_ok=True)
+
+    agent_fs = FilesystemBackend(root_dir=str(base_dir), virtual_mode=True)
+    memories_fs = FilesystemBackend(root_dir=str(memories_dir), virtual_mode=True)
+    routes: dict[str, Any] = {
+        "/memories/": memories_fs,
+        "/agent/": agent_fs,
+        "/artifacts/": FilesystemBackend(
+            root_dir=str(artifacts_dir), virtual_mode=True
+        ),
+    }
+    if use_session_history:
+        routes["/conversation_history/"] = FilesystemBackend(
+            root_dir=str(conversation_dir),
+            virtual_mode=True,
+        )
+
+    shell_backend = SkillAwareShellBackend(
+        root_dir=str(artifacts_dir),
+        skills_root=skills_placeholder,
+        draft_root=None,
+        memories_root=memories_dir,
+        virtual_mode=True,
+        inherit_env=True,
+        timeout=settings.execute_timeout * 2,
+    )
+    backend = CompositeBackend(default=shell_backend, routes=routes)
+
     employee_context = _build_employee_capability_context(db, workspace_id)
-    system_prompt = ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE.format(
+    orchestrator_prompt = ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE.format(
         current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         employee_table=employee_context,
     )
-
-    history_root = Path(settings.artifacts_path)
-    history_root.mkdir(parents=True, exist_ok=True)
-    agent_fs = FilesystemBackend(root_dir=str(history_root), virtual_mode=True)
-    backend = CompositeBackend(default=agent_fs, routes={})
+    fs_section = build_filesystem_prompt_section(
+        artifacts_real_path=str(artifacts_dir),
+        memories_real_path=str(memories_dir),
+        agent_real_path=str(base_dir),
+        use_session_history=use_session_history,
+    )
+    system_prompt = orchestrator_prompt + fs_section
 
     checkpointer = get_checkpointer()
 
-    summarization_ref = SummarizationMiddleware(
+    summarization_mw = ConversationSummarizationMiddleware(
         model=model,
         backend=backend,
         trigger=("fraction", 0.85),
         keep=("fraction", 0.10),
     )
-    summarization_tool_mw = SummarizationToolMiddleware(summarization_ref)
+    summarization_mw.use_session_history_file = use_session_history
+    summarization_tool_mw = SummarizationToolMiddleware(summarization_mw)
 
     agent = create_deep_agent(
         model=model,
-        tools=[list_workspace_employees, create_orchestration_plan, confirm_orchestration_plan, update_task, delete_task, cancel_plan, list_tasks],
+        memory=["/agent/AGENTS.md", "/memories/AGENTS.md"],
+        tools=[
+            list_workspace_employees,
+            create_orchestration_plan,
+            confirm_orchestration_plan,
+            update_task,
+            delete_task,
+            cancel_plan,
+            list_tasks,
+        ],
         system_prompt=system_prompt,
         backend=backend,
         checkpointer=checkpointer,
-        middleware=[summarization_tool_mw],
+        middleware=[summarization_mw, summarization_tool_mw],
         subagents=[],
         permissions=[
             FilesystemPermission(
                 operations=["write"],
-                paths=["/**"],
+                paths=["/agent/**"],
                 mode="deny",
             ),
         ],

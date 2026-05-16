@@ -51,6 +51,26 @@ function normalizePath(path: string) {
   return normalized
 }
 
+/** 与后端非用户产物路径一致；此类 write/edit 不展示 FileChangeCard */
+const INTERNAL_FILE_PREFIXES = [
+  "/memories/",
+  "/agent/",
+  "/conversation_history/",
+  "/large_tool_results/",
+  "/skills/",
+  "/uploads/",
+] as const
+
+function isUserVisibleFileChange(path: string): boolean {
+  const normalized = normalizePath(path)
+  if (normalized.startsWith("/artifacts/")) return true
+  if (normalized.startsWith("/skills-draft/")) return true
+  if (INTERNAL_FILE_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
+    return false
+  }
+  return false
+}
+
 function getBasename(path: string) {
   const normalized = normalizePath(path)
   const segments = normalized.split("/").filter(Boolean)
@@ -101,6 +121,10 @@ function buildFileChange(part: ToolPart): FileChangeItem | null {
   }
 
   const path = normalizePath(rawFilePath)
+  if (!isUserVisibleFileChange(path)) {
+    return null
+  }
+
   const skillFolder = getSkillDraftFolder(path)
   if (skillFolder) {
     return {

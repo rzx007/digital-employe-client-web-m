@@ -620,7 +620,9 @@ class TaskSchedulerService:
         task_name_snap = task.task_name
 
         # 5. 获取 orchestrator agent
-        agent = get_orchestrator_agent(workspace_id, db, conv_id)
+        agent = get_orchestrator_agent(
+            workspace_id, db, conv_id, employee_id=employee.id
+        )
 
         messages = [
             {"role": "user", "content": task.user_prompt or ""},
@@ -630,14 +632,12 @@ class TaskSchedulerService:
 
         # 6. 投递到主事件循环执行
         main_loop = _get_main_loop()
-        import uuid
-        thread_id = f"curator-task-{task.id}-{uuid.uuid4().hex[:8]}"
         main_loop.call_soon_threadsafe(
             lambda: _stream_registry.start(
                 conversation_id=conv_id,
                 agent=agent,
                 messages=messages,
-                config={"configurable": {"thread_id": thread_id}},
+                config={"configurable": {"thread_id": conv_id}},
                 stream_msg_id=asst_msg_id,
                 skill_name="",
                 debug_content_only=False,

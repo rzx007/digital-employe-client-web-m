@@ -405,6 +405,7 @@ class ChatService:
                 workspace_id=conversation.workspace_id,
                 db=db,
                 conversation_id=conversation_id,
+                employee_id=target_id,
             )
             request_messages = [*history_messages, {"role": "user", "content": question}]
         elif target_type == "employee":

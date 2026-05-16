@@ -1,4 +1,5 @@
 ﻿import logging
+import os
 from pathlib import Path
 from typing import Any
 from dotenv import load_dotenv
@@ -107,11 +108,53 @@ def _list_available_skills(skills_root: Path) -> list[str]:
     )
 
 
-def _build_system_prompt(
-    current_time: str,
-    available_skills: list[str],
+_EMPLOYEE_MEMORY_TEMPLATE = """# 员工长期记忆
+
+## 用户偏好
+（暂无）
+
+## 已知事实与约定
+（暂无）
+
+---
+说明：用户明确要求「记住」的信息请更新本文件；可另建 /memories/ 下其他 .md，但本文件会在每次对话开始时自动加载，请保持简洁。
+"""
+
+
+def ensure_employee_memory_file(memories_dir: Path) -> None:
+    """若员工记忆文件不存在则写入默认模板（不覆盖已有内容）。"""
+    memory_file = memories_dir / "AGENTS.md"
+    if memory_file.is_file():
+        return
+    memory_file.write_text(_EMPLOYEE_MEMORY_TEMPLATE, encoding="utf-8")
+    logger.info("Seeded employee memory file: %s", memory_file)
+
+
+def resolve_employee_memories_dir(
     *,
-    has_draft_route: bool = False,
+    employee_id: int | None = None,
+    skills_root: Path | None = None,
+    base_dir: Path | None = None,
+) -> Path:
+    """解析员工长期记忆目录（/memories/ 物理根）。"""
+    if employee_id is not None and skills_root is not None:
+        resolved_skills = skills_root.resolve()
+        if resolved_skills.is_dir() and resolved_skills.name.lower() == "skills":
+            return resolved_skills.parent / "memories"
+    if employee_id is not None:
+        settings = get_settings()
+        skill_root = Path(os.path.expandvars(os.path.expanduser(settings.skill_path)))
+        if not skill_root.is_absolute():
+            skill_root = (Path.cwd() / skill_root).resolve()
+        employee_root = skill_root / str(employee_id)
+        employee_root.mkdir(parents=True, exist_ok=True)
+        return employee_root / "memories"
+    base = (base_dir or Path(__file__).resolve().parent).resolve()
+    return base / "memories"
+
+
+def build_filesystem_prompt_section(
+    *,
     skills_real_path: str = "",
     draft_skills_real_path: str = "",
     uploads_real_path: str = "",
@@ -119,9 +162,8 @@ def _build_system_prompt(
     memories_real_path: str = "",
     agent_real_path: str = "",
     use_session_history: bool = False,
+    has_draft_route: bool = False,
 ) -> str:
-    skills_line = ", ".join(available_skills) if available_skills else "无"
-
     path_mappings = []
     if skills_real_path:
         path_mappings.append(f"  /skills/       → {skills_real_path}")
@@ -153,30 +195,31 @@ def _build_system_prompt(
         else "/conversation_history/（按 thread 分文件）"
     )
 
-    return f"""今天的时间是{current_time}
-
-        Skills available at /skills/. Use /memories/ for persistent context.
-        我的默认环境是windows环境，所以你执行命令的时候要注意windows的命令规范
-        在生成命令的时候不要添加引号，例如正确的命令是：python script.py 而不是 python "script.py"
-        执行 Python 脚本时优先使用无缓冲模式：python -u <script.py> ...
-        当前已加载的技能名单：{skills_line}
-        如果用户询问"你有没有某个技能"或"你有哪些技能"，必须严格基于当前已加载的技能名单回答，不要猜测，不要遗漏名单中的技能。
-
+    return f"""
         ## 路径规则（重要）
 
-        虚拟路径与真实物理路径映射：
+        虚拟路径与真实物理路径映射（仅供理解；文件工具见下表用法）：
 {path_table}
 
-        规则：
-        1. read_file / write_file 等文件操作工具：使用虚拟路径（如 /skills/xxx/script.py）
-        2. shell execute 命令（python、shell 等）：必须使用上表对应的真实物理路径，不要使用虚拟路径
-        3. 读取或执行内部文件时，优先使用文件的完整真实物理路径，避免相对路径歧义
-        4. 如果 execute 返回 exit code=0 但输出为空，先判断为命令可能是静默成功，不要立刻改用 python -c 重跑
+        ### 文件工具（read_file / write_file / edit_file / ls）
+        - **一律使用虚拟路径**，例如 /artifacts/report.md、/memories/AGENTS.md
+        - **禁止**在虚拟路径前拼接磁盘绝对路径（如 /artifacts/Users/...、/artifacts/C:/...）
+        - **禁止**把上表「真实物理路径」当作 write_file 的路径（那是磁盘路径，不是虚拟路径）
 
-        当你需要为用户创建文件（如代码文件、文档、数据文件等产物）时，必须将文件写入 /artifacts/ 路径下，例如 write_file("/artifacts/report.md", "...")。
-        不要将用户产物文件写到根路径或其他虚拟路径，只有 /artifacts/ 下的文件会被持久化保存并向用户展示。
+        ### shell execute（python、cmd 等）
+        - **必须使用上表中的真实物理路径**，不要使用 /memories/ 等虚拟路径
+        - 若 execute 返回 exit code=0 但输出为空，先判断为命令可能是静默成功，不要立刻改用 python -c 重跑
+
+        ### 用户可见产物（/artifacts/）
+        - 代码、报告、导出数据等交付给用户看的文件：write_file("/artifacts/文件名", ...)
+        - 仅 /artifacts/ 下简短相对路径（如 /artifacts/report.md），**不要**在 /artifacts/ 下创建 Users、.digital-employee 等目录镜像
+
+        ### 长期记忆（/memories/，每次开聊已自动加载，不在会话资源列表中展示）
+        - /agent/AGENTS.md：产品级说明（只读，已注入上下文）
+        - /memories/AGENTS.md：本员工跨会话记忆（可读写，已注入上下文）；用户说「记住…」时 **仅用** edit_file("/memories/AGENTS.md", ...)
+        - /memories/ 下其他 .md：补充记忆，按需 read_file("/memories/xxx.md")
+        - **禁止**用 write_file("/artifacts/...") 或磁盘绝对路径保存记忆；**禁止**把用户交付物写入 /memories/
         {draft_instruction}
-        无特殊说明，总是以中文回答用户问题。
 
         ## 上下文管理
         - 你可以调用 `compact_conversation` 工具来压缩对话历史，释放上下文空间
@@ -185,6 +228,45 @@ def _build_system_prompt(
           - 工具返回内容很长（如执行结果、文件内容），且后续不再需要这些细节
           - 感觉对话轮次较多、响应变慢时
         - 压缩不会丢失关键信息，旧消息会被摘要替代；完整历史 offload 在 {history_hint}，可用 read_file 查阅
+        """
+
+
+def _build_system_prompt(
+    current_time: str,
+    available_skills: list[str],
+    *,
+    has_draft_route: bool = False,
+    skills_real_path: str = "",
+    draft_skills_real_path: str = "",
+    uploads_real_path: str = "",
+    artifacts_real_path: str = "",
+    memories_real_path: str = "",
+    agent_real_path: str = "",
+    use_session_history: bool = False,
+) -> str:
+    skills_line = ", ".join(available_skills) if available_skills else "无"
+
+    fs_section = build_filesystem_prompt_section(
+        skills_real_path=skills_real_path,
+        draft_skills_real_path=draft_skills_real_path,
+        uploads_real_path=uploads_real_path,
+        artifacts_real_path=artifacts_real_path,
+        memories_real_path=memories_real_path,
+        agent_real_path=agent_real_path,
+        use_session_history=use_session_history,
+        has_draft_route=has_draft_route,
+    )
+
+    return f"""今天的时间是{current_time}
+
+        Skills available at /skills/. Use /memories/ for persistent context.
+        我的默认环境是windows环境，所以你执行命令的时候要注意windows的命令规范
+        在生成命令的时候不要添加引号，例如正确的命令是：python script.py 而不是 python "script.py"
+        执行 Python 脚本时优先使用无缓冲模式：python -u <script.py> ...
+        当前已加载的技能名单：{skills_line}
+        如果用户询问"你有没有某个技能"或"你有哪些技能"，必须严格基于当前已加载的技能名单回答，不要猜测，不要遗漏名单中的技能。
+        {fs_section}
+        无特殊说明，总是用中文回答用户问题。
         """
 
 _ARTIFACT_CODE_EXTENSIONS = {"ts", "tsx", "js", "jsx", "json", "py", "sql", "css", "html", "java", "go", "rs", "cpp", "c", "h"}
@@ -267,13 +349,13 @@ def get_agent(
     skills_fs = FilesystemBackend(root_dir=str(skills_root), virtual_mode=True)
     agent_fs = FilesystemBackend(root_dir=str(base_dir), virtual_mode=True)
 
-    # /memories/ 跟员工走：每个员工有独立的长期记忆目录
-    if employee_id:
-        employee_root = skills_root.parent
-        memories_dir = employee_root / "memories"
-    else:
-        memories_dir = base_dir / "memories"
+    memories_dir = resolve_employee_memories_dir(
+        employee_id=employee_id,
+        skills_root=skills_root if employee_id else None,
+        base_dir=base_dir,
+    )
     memories_dir.mkdir(parents=True, exist_ok=True)
+    ensure_employee_memory_file(memories_dir)
     memories_fs = FilesystemBackend(root_dir=str(memories_dir), virtual_mode=True)
 
     # /artifacts/ 始终挂载：聊天场景按会话隔离，其他场景按员工隔离
@@ -334,6 +416,7 @@ def get_agent(
         root_dir=str(artifacts_dir),
         skills_root=skills_root,
         draft_root=draft_dir,
+        memories_root=memories_dir,
         virtual_mode=True,
         inherit_env=True,
         timeout=settings.execute_timeout * 2,
@@ -352,7 +435,7 @@ def get_agent(
 
     agent = create_deep_agent(
         model=model,
-        memory=["/agent/AGENTS.md"],
+        memory=["/agent/AGENTS.md", "/memories/AGENTS.md"],
         skills=skill_sources,
         subagents=[],
         system_prompt=_build_system_prompt(
