@@ -284,10 +284,12 @@ def get_agent(
         history_root = skills_root.parent
     else:
         history_root = base_dir
-    history_root.mkdir(parents=True, exist_ok=True)
-    (history_root / "conversation_history").mkdir(parents=True, exist_ok=True)
+    history_dir = history_root / "conversation_history"
+    history_dir.mkdir(parents=True, exist_ok=True)
+    # 路由前缀 /conversation_history/ 会被 strip，backend 根必须指向 conversation_history 目录，
+    # 否则 /conversation_history/{id}.md 会落到 {员工根}/{id}.md。
     routes["/conversation_history/"] = FilesystemBackend(
-        root_dir=str(history_root),
+        root_dir=str(history_dir),
         virtual_mode=True,
     )
 
