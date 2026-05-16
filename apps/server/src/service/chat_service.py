@@ -25,7 +25,7 @@ from datetime import datetime  # 导入datetime模块
 from urllib.request import urlopen
 from deepagents.backends.utils import create_file_data
 from langgraph.checkpoint.memory import MemorySaver
-from src.service.agent import get_agent
+from src.service.agent import delete_conversation_checkpoint, get_agent
 
 
 logger = logging.getLogger(__name__)
@@ -208,7 +208,12 @@ class ChatService:
         return messages
 
     @staticmethod
-    def delete_conversation(db: Session, conversation_id: int) -> None:
+    async def adelete_conversation(db: Session, conversation_id: int) -> None:
+        from src.service.stream_registry import registry
+
+        registry.cancel(conversation_id)
+        await delete_conversation_checkpoint(conversation_id)
+
         conversation = ChatService.get_conversation(db, conversation_id)
         workspace = db.get(Workspace, conversation.workspace_id)
         conversation_memory_root: Path | None = None

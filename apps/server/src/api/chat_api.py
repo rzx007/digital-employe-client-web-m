@@ -76,9 +76,11 @@ def list_conversation_messages(conversation_id: int, db: Session = Depends(get_d
 
 
 @router.delete("/chat/conversations/{conversation_id}", response_model=BaseResponse, status_code=status.HTTP_200_OK)
-def delete_conversation(conversation_id: int, db: Session = Depends(get_db)) -> BaseResponse:
+async def delete_conversation(
+    conversation_id: int, db: Session = Depends(get_db)
+) -> BaseResponse:
     """删除指定会话及其消息。"""
-    ChatService.delete_conversation(db, conversation_id)
+    await ChatService.adelete_conversation(db, conversation_id)
     return BaseResponse(data=None)
 
 

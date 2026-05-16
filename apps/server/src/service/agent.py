@@ -20,11 +20,11 @@ from deepagents import (
     register_harness_profile,
 )
 from deepagents.middleware.permissions import FilesystemPermission
-from deepagents.middleware.summarization import (
-    SummarizationMiddleware,
-    SummarizationToolMiddleware,
-)
+from deepagents.middleware.summarization import SummarizationToolMiddleware
 from src.core.config import get_settings
+from src.service.conversation_summarization import (
+    ConversationSummarizationMiddleware,
+)
 from src.service.model_context import apply_model_profile, resolve_max_input_tokens
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
@@ -39,6 +39,7 @@ register_harness_profile(
     f"openai:{_settings.deepagent_model or 'qwen2.5-72b-instruct'}",
     HarnessProfile(
         general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=False),
+        excluded_middleware={"SummarizationMiddleware"},
     ),
 )
 
@@ -57,6 +58,26 @@ def get_checkpointer() -> AsyncSqliteSaver | MemorySaver:
         logger.warning("AsyncSqliteSaver 未初始化，回退到 MemorySaver")
         _CHECKPOINTER = MemorySaver()
     return _CHECKPOINTER
+
+
+async def delete_conversation_checkpoint(conversation_id: int) -> None:
+    """删除 LangGraph 中与 conversation_id 对应的 thread checkpoint。"""
+    checkpointer = get_checkpointer()
+    if not hasattr(checkpointer, "adelete_thread"):
+        logger.warning(
+            "checkpointer has no adelete_thread, skip cleanup conv=%s",
+            conversation_id,
+        )
+        return
+    try:
+        await checkpointer.adelete_thread(str(conversation_id))
+        logger.info("Deleted LangGraph checkpoint for conversation %s", conversation_id)
+    except Exception:
+        logger.warning(
+            "Failed to delete LangGraph checkpoint for conversation %s",
+            conversation_id,
+            exc_info=True,
+        )
 
 
 def _resolve_skills_root(skill_path: str) -> Path:
@@ -97,6 +118,7 @@ def _build_system_prompt(
     artifacts_real_path: str = "",
     memories_real_path: str = "",
     agent_real_path: str = "",
+    use_session_history: bool = False,
 ) -> str:
     skills_line = ", ".join(available_skills) if available_skills else "无"
 
@@ -124,6 +146,12 @@ def _build_system_prompt(
         草稿技能会立即生效，可以像正式技能一样调用和调试。
         注意：/skills/ 下的正式技能是只读的，不要尝试修改，只能通过 /skills-draft/ 覆盖。
         """
+
+    history_hint = (
+        "/conversation_history/history.md（与会话目录下 history.md 对应）"
+        if use_session_history
+        else "/conversation_history/（按 thread 分文件）"
+    )
 
     return f"""今天的时间是{current_time}
 
@@ -156,7 +184,7 @@ def _build_system_prompt(
           - 一个复杂任务执行完毕，用户开始讨论新话题前
           - 工具返回内容很长（如执行结果、文件内容），且后续不再需要这些细节
           - 感觉对话轮次较多、响应变慢时
-        - 压缩不会丢失关键信息，旧消息会被摘要替代；完整历史 offload 在 /conversation_history/，可用 read_file 查阅
+        - 压缩不会丢失关键信息，旧消息会被摘要替代；完整历史 offload 在 {history_hint}，可用 read_file 查阅
         """
 
 _ARTIFACT_CODE_EXTENSIONS = {"ts", "tsx", "js", "jsx", "json", "py", "sql", "css", "html", "java", "go", "rs", "cpp", "c", "h"}
@@ -280,18 +308,25 @@ def get_agent(
         uploads_dir.mkdir(parents=True, exist_ok=True)
         routes["/uploads/"] = FilesystemBackend(root_dir=str(uploads_dir), virtual_mode=True)
 
-    if employee_id:
-        history_root = skills_root.parent
+    use_session_history = bool(conversation_id and root_path)
+    if use_session_history:
+        conversation_dir = Path(root_path) / str(conversation_id)
+        conversation_dir.mkdir(parents=True, exist_ok=True)
+        routes["/conversation_history/"] = FilesystemBackend(
+            root_dir=str(conversation_dir),
+            virtual_mode=True,
+        )
     else:
-        history_root = base_dir
-    history_dir = history_root / "conversation_history"
-    history_dir.mkdir(parents=True, exist_ok=True)
-    # 路由前缀 /conversation_history/ 会被 strip，backend 根必须指向 conversation_history 目录，
-    # 否则 /conversation_history/{id}.md 会落到 {员工根}/{id}.md。
-    routes["/conversation_history/"] = FilesystemBackend(
-        root_dir=str(history_dir),
-        virtual_mode=True,
-    )
+        if employee_id:
+            history_root = skills_root.parent
+        else:
+            history_root = base_dir
+        history_dir = history_root / "conversation_history"
+        history_dir.mkdir(parents=True, exist_ok=True)
+        routes["/conversation_history/"] = FilesystemBackend(
+            root_dir=str(history_dir),
+            virtual_mode=True,
+        )
 
     skill_sources = ["/skills/", "/skills-draft/"] if has_draft_route else ["/skills/"]
 
@@ -306,13 +341,14 @@ def get_agent(
 
     backend = CompositeBackend(default=shell_backend, routes=routes)
 
-    summarization_ref = SummarizationMiddleware(
+    summarization_mw = ConversationSummarizationMiddleware(
         model=model,
         backend=backend,
         trigger=("fraction", 0.85),
         keep=("fraction", 0.10),
     )
-    summarization_tool_mw = SummarizationToolMiddleware(summarization_ref)
+    summarization_mw.use_session_history_file = use_session_history
+    summarization_tool_mw = SummarizationToolMiddleware(summarization_mw)
 
     agent = create_deep_agent(
         model=model,
@@ -329,11 +365,12 @@ def get_agent(
             artifacts_real_path=str(artifacts_dir),
             memories_real_path=str(memories_dir),
             agent_real_path=str(base_dir),
+            use_session_history=use_session_history,
         ),
         backend=backend,
         checkpointer=checkpointer,
         tools=sql_tools or None,
-        middleware=[summarization_tool_mw],
+        middleware=[summarization_mw, summarization_tool_mw],
         permissions=[
             FilesystemPermission(
                 operations=["write"],

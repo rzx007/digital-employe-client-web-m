@@ -629,14 +629,13 @@ def _start_task_as_conversation(
 
     db.commit()
 
-    thread_id = f"task-{task_id_snap}-{int(datetime.now().timestamp())}"
     main_loop = _get_main_loop()
     main_loop.call_soon_threadsafe(
         lambda: registry.start(
             conversation_id=conversation_id,
             agent=agent,
             messages=messages,
-            config={"configurable": {"thread_id": f"task-{task_id}-{int(datetime.now().timestamp())}"}},
+            config={"configurable": {"thread_id": conversation_id}},
             stream_msg_id=assistant_msg_id,
             skill_name="",
             debug_content_only=False,
