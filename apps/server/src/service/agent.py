@@ -107,6 +107,28 @@ def _list_available_skills(skills_root: Path) -> list[str]:
     )
 
 
+_EMPLOYEE_MEMORY_TEMPLATE = """# 员工长期记忆
+
+## 用户偏好
+（暂无）
+
+## 已知事实与约定
+（暂无）
+
+---
+说明：用户明确要求「记住」的信息请更新本文件；可另建 /memories/ 下其他 .md，但本文件会在每次对话开始时自动加载，请保持简洁。
+"""
+
+
+def _ensure_employee_memory_file(memories_dir: Path) -> None:
+    """若员工记忆文件不存在则写入默认模板（不覆盖已有内容）。"""
+    memory_file = memories_dir / "AGENTS.md"
+    if memory_file.is_file():
+        return
+    memory_file.write_text(_EMPLOYEE_MEMORY_TEMPLATE, encoding="utf-8")
+    logger.info("Seeded employee memory file: %s", memory_file)
+
+
 def _build_system_prompt(
     current_time: str,
     available_skills: list[str],
@@ -164,17 +186,27 @@ def _build_system_prompt(
 
         ## 路径规则（重要）
 
-        虚拟路径与真实物理路径映射：
+        虚拟路径与真实物理路径映射（仅供理解；文件工具见下表用法）：
 {path_table}
 
-        规则：
-        1. read_file / write_file 等文件操作工具：使用虚拟路径（如 /skills/xxx/script.py）
-        2. shell execute 命令（python、shell 等）：必须使用上表对应的真实物理路径，不要使用虚拟路径
-        3. 读取或执行内部文件时，优先使用文件的完整真实物理路径，避免相对路径歧义
-        4. 如果 execute 返回 exit code=0 但输出为空，先判断为命令可能是静默成功，不要立刻改用 python -c 重跑
+        ### 文件工具（read_file / write_file / edit_file / ls）
+        - **一律使用虚拟路径**，例如 /skills/foo.py、/artifacts/report.md、/memories/AGENTS.md
+        - **禁止**在虚拟路径前拼接磁盘绝对路径（如 /artifacts/Users/...、/artifacts/C:/...）
+        - **禁止**把上表「真实物理路径」当作 write_file 的路径（那是磁盘路径，不是虚拟路径）
 
-        当你需要为用户创建文件（如代码文件、文档、数据文件等产物）时，必须将文件写入 /artifacts/ 路径下，例如 write_file("/artifacts/report.md", "...")。
-        不要将用户产物文件写到根路径或其他虚拟路径，只有 /artifacts/ 下的文件会被持久化保存并向用户展示。
+        ### shell execute（python、cmd 等）
+        - **必须使用上表中的真实物理路径**，不要使用 /skills/、/memories/ 等虚拟路径
+        - 若 execute 返回 exit code=0 但输出为空，先判断为命令可能是静默成功，不要立刻改用 python -c 重跑
+
+        ### 用户可见产物（/artifacts/）
+        - 代码、报告、导出数据等交付给用户看的文件：write_file("/artifacts/文件名", ...)
+        - 仅 /artifacts/ 下简短相对路径（如 /artifacts/report.md），**不要**在 /artifacts/ 下创建 Users、.digital-employee 等目录镜像
+
+        ### 长期记忆（/memories/，每次开聊已自动加载，不在会话资源列表中展示）
+        - /agent/AGENTS.md：产品级说明（只读，已注入上下文）
+        - /memories/AGENTS.md：本员工跨会话记忆（可读写，已注入上下文）；用户说「记住…」时 **仅用** edit_file("/memories/AGENTS.md", ...)
+        - /memories/ 下其他 .md：补充记忆，按需 read_file("/memories/xxx.md")
+        - **禁止**用 write_file("/artifacts/...") 或磁盘绝对路径保存记忆；**禁止**把用户交付物写入 /memories/
         {draft_instruction}
         无特殊说明，总是以中文回答用户问题。
 
@@ -274,6 +306,7 @@ def get_agent(
     else:
         memories_dir = base_dir / "memories"
     memories_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_employee_memory_file(memories_dir)
     memories_fs = FilesystemBackend(root_dir=str(memories_dir), virtual_mode=True)
 
     # /artifacts/ 始终挂载：聊天场景按会话隔离，其他场景按员工隔离
@@ -334,6 +367,7 @@ def get_agent(
         root_dir=str(artifacts_dir),
         skills_root=skills_root,
         draft_root=draft_dir,
+        memories_root=memories_dir,
         virtual_mode=True,
         inherit_env=True,
         timeout=settings.execute_timeout * 2,
@@ -352,7 +386,7 @@ def get_agent(
 
     agent = create_deep_agent(
         model=model,
-        memory=["/agent/AGENTS.md"],
+        memory=["/agent/AGENTS.md", "/memories/AGENTS.md"],
         skills=skill_sources,
         subagents=[],
         system_prompt=_build_system_prompt(

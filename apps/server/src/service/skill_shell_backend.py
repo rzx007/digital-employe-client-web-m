@@ -21,6 +21,7 @@ class SkillAwareShellBackend(LocalShellBackend):
         root_dir: str,
         skills_root: Path,
         draft_root: Path | None,
+        memories_root: Path | None = None,
         virtual_mode: bool = True,
         inherit_env: bool = True,
         timeout: int = 30,
@@ -33,6 +34,9 @@ class SkillAwareShellBackend(LocalShellBackend):
         )
         self._skills_root = skills_root.resolve()
         self._draft_root = draft_root.resolve() if draft_root is not None else None
+        self._memories_root = (
+            memories_root.resolve() if memories_root is not None else None
+        )
 
     def _map_virtual_token(self, token: str) -> str:
         normalized = token.replace("\\", "/")
@@ -41,6 +45,12 @@ class SkillAwareShellBackend(LocalShellBackend):
         if normalized.startswith("/skills/"):
             suffix = normalized[len("/skills/") :]
             return str((self._skills_root / suffix).resolve())
+        if self._memories_root is not None:
+            if normalized == "/memories":
+                return str(self._memories_root)
+            if normalized.startswith("/memories/"):
+                suffix = normalized[len("/memories/") :]
+                return str((self._memories_root / suffix).resolve())
         if self._draft_root is None:
             return token
         if normalized == "/skills-draft":
