@@ -34,8 +34,11 @@ function ConversationStatusBadge({ item }: { item: RecentConversationItem }) {
   const count = useConversationStatusStore((s) => s.unreadCounts[key] ?? 0)
   if (count === 0) return null
   return (
-    <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-purple-500 text-[10px] text-white">
-      {count}
+    <span
+      className="absolute -top-1 -right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-background bg-purple-500 px-0.5 text-[10px] leading-none font-medium text-white"
+      aria-label={`${count} 条未读`}
+    >
+      {count > 99 ? "99+" : count}
     </span>
   )
 }
@@ -139,26 +142,31 @@ export function RecentConversationRow({
           )}
           onClick={() => onSelect(item.contactId)}
         >
-          {item.isGroup ? (
-            <GroupMembersAvatar
-              participants={item.participants?.map((p) => ({
-                id: p.name,
-                name: p.name,
-                role: "",
-                status: "online" as const,
-                specialty: "",
-                avatar: p.avatar,
-              }))}
-              className={cn("size-9", collapsed && "size-8")}
-            />
-          ) : (
-            <EmployeeContactAvatar
-              name={item.contactName}
-              avatar={item.avatar}
-              status={item.status as "online" | "busy" | "offline"}
-              showStatus
-            />
-          )}
+          <div className="relative shrink-0">
+            {item.isGroup ? (
+              <GroupMembersAvatar
+                participants={item.participants?.map((p) => ({
+                  id: p.name,
+                  name: p.name,
+                  role: "",
+                  status: "online" as const,
+                  specialty: "",
+                  avatar: p.avatar,
+                }))}
+                className={cn("size-9", collapsed && "size-8")}
+              />
+            ) : (
+              <EmployeeContactAvatar
+                name={item.contactName}
+                avatar={item.avatar}
+                status={item.status as "online" | "busy" | "offline"}
+                showStatus
+                avatarClassName={collapsed ? "size-8" : undefined}
+                statusClassName={collapsed ? "h-2 w-2" : undefined}
+              />
+            )}
+            <ConversationStatusBadge item={item} />
+          </div>
           {!collapsed && (
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <div className="flex items-center justify-between">
@@ -184,7 +192,6 @@ export function RecentConversationRow({
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <ConversationStatusBadge item={item} />
                   <span
                     className={cn(
                       "shrink-0 text-[10px]",
