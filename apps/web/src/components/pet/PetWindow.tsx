@@ -19,7 +19,7 @@ import { loadPetSkin, type PetSkin } from "./pet-loader"
 import { getMyWorkspace } from "@/api/workspace"
 import "./PetWindow.css"
 
-const PET_DISPLAY_SCALE = 0.72
+const PET_DISPLAY_SCALE = 0.55
 const DRAG_HOLD_DELAY_MS = 220
 const IDLE_HINT_MS = 6000
 const IDLE_HINT_TEXT = "点击说话，再点结束并发送"
@@ -308,6 +308,7 @@ export function PetWindow() {
             key={actionState ? "action" : "normal"}
             scale={PET_DISPLAY_SCALE}
             image={currentSkin.image}
+            animations={currentSkin.animations}
             animationName={petState}
             onAnimationComplete={handleAnimationComplete}
           />

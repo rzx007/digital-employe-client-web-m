@@ -1,7 +1,8 @@
-import { app, BrowserWindow, shell, Menu, protocol, net } from "electron"
-import { fileURLToPath, pathToFileURL } from "node:url"
+import { app, BrowserWindow, shell, Menu, protocol } from "electron"
+import { fileURLToPath } from "node:url"
 import path from "node:path"
 import os from "node:os"
+import fs from "node:fs"
 import { startBackend, stopBackend, getBackendPort } from "./backend"
 import {
   registerIpcHandlers,
@@ -80,7 +81,13 @@ if (!app.requestSingleInstanceLock()) {
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "petdex",
-    privileges: { bypassCSP: true, stream: true, supportFetchAPI: true },
+    privileges: {
+      bypassCSP: true,
+      stream: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      standard: true,
+    },
   },
 ])
 
@@ -256,15 +263,32 @@ app.whenReady().then(async () => {
   initSettingsStore()
 
   protocol.handle("petdex", (request) => {
-    const url = new URL(request.url)
-    const requestedPath = path.normalize(url.pathname.replace(/^\//, ""))
-    const fullPath = path.resolve(os.homedir(), ".codex", "pets", url.hostname, requestedPath)
-    const petsRoot = path.resolve(os.homedir(), ".codex", "pets")
-    const relative = path.relative(petsRoot, fullPath)
-    if (relative.startsWith("..") || path.isAbsolute(relative)) {
-      return new Response("Forbidden", { status: 403 })
+    try {
+      const url = new URL(request.url)
+      const requestedPath = path.normalize(url.pathname.replace(/^\//, ""))
+      const fullPath = path.resolve(os.homedir(), ".codex", "pets", url.hostname, requestedPath)
+      const petsRoot = path.resolve(os.homedir(), ".codex", "pets")
+      const relative = path.relative(petsRoot, fullPath)
+      if (relative.startsWith("..") || path.isAbsolute(relative)) {
+        return new Response("Forbidden", { status: 403 })
+      }
+      const data = fs.readFileSync(fullPath)
+      const ext = path.extname(fullPath).toLowerCase()
+      const mimeTypes: Record<string, string> = {
+        ".webp": "image/webp",
+        ".png": "image/png",
+        ".json": "application/json",
+      }
+      return new Response(data, {
+        headers: {
+          "Content-Type": mimeTypes[ext] || "application/octet-stream",
+          "Access-Control-Allow-Origin": "*",
+        },
+      })
+    } catch (e) {
+      console.error("[petdex] handler error:", e)
+      return new Response("Not Found", { status: 404 })
     }
-    return net.fetch(pathToFileURL(fullPath).href)
   })
 
   registerIpcHandlers(async () => {

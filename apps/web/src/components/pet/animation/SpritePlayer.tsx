@@ -1,12 +1,10 @@
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useRef } from "react"
 import type { PetState } from "./types"
+import type { PetFrameAnimation } from "../pet-loader"
 import {
   PET_SHEET_COLS,
   PET_SHEET_FRAME_W,
   PET_SHEET_FRAME_H,
-  PET_FRAMES_PER_ROW,
-  PET_DURATIONS,
-  PET_STATES,
 } from "./types"
 
 type FrameOffset = {
@@ -16,6 +14,7 @@ type FrameOffset = {
 
 type SpritePlayerProps = {
   animationName: PetState
+  animations: Record<PetState, PetFrameAnimation>
   image: string
   scale: number
   autoAlign?: boolean
@@ -24,6 +23,7 @@ type SpritePlayerProps = {
 
 export function SpritePlayer({
   animationName,
+  animations,
   image,
   scale,
   autoAlign = true,
@@ -31,17 +31,7 @@ export function SpritePlayer({
 }: SpritePlayerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const completeRef = useRef(false)
-  const animation = useMemo(() => {
-    const row = PET_STATES.indexOf(animationName)
-    const frameCount = PET_FRAMES_PER_ROW[animationName]
-    const from = row * PET_SHEET_COLS
-    return {
-      from,
-      to: from + frameCount - 1,
-      durations: PET_DURATIONS[animationName],
-      loop: true,
-    }
-  }, [animationName])
+  const animation = animations[animationName]
 
   const displayWidth = PET_SHEET_FRAME_W * scale
   const displayHeight = PET_SHEET_FRAME_H * scale
@@ -138,6 +128,7 @@ export function SpritePlayer({
     img.onerror = () => {
       console.warn("[SpritePlayer] Failed to load image:", image)
     }
+    img.crossOrigin = "anonymous"
     img.src = image
 
     return () => {
