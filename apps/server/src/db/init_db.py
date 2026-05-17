@@ -175,6 +175,9 @@ def init_db() -> None:
     if "task_execution_logs" in inspector.get_table_names():
         _migrate_task_id_nullable(engine, inspector)
 
+    # FTS5 全文索引：conversation_messages.content
+    _init_fts5(engine)
+
 
 def _migrate_task_id_nullable(engine, inspector) -> None:
     """SQLite 表重建：将 task_execution_logs.task_id 从 NOT NULL CASCADE 改为 nullable SET NULL。"""
@@ -281,4 +284,23 @@ def _migrate_conversation_title_to_text(engine, inspector) -> None:
         finally:
             conn.exec_driver_sql("PRAGMA foreign_keys=ON")
     logger.info("Migrated conversations.title to TEXT successfully")
+
+
+def _init_fts5(engine) -> None:
+    """为 conversation_messages.content 创建 FTS5 全文索引。"""
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS conversation_messages_fts
+            USING fts5(content, content='conversation_messages', content_rowid='id', tokenize='unicode61')
+        """))
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS cm_fts_insert AFTER INSERT ON conversation_messages
+            BEGIN
+                INSERT INTO conversation_messages_fts(rowid, content) VALUES (new.id, new.content);
+            END
+        """))
+        conn.execute(text(
+            "INSERT INTO conversation_messages_fts(conversation_messages_fts) VALUES('rebuild')"
+        ))
+        conn.commit()
 
