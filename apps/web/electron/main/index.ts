@@ -1,5 +1,5 @@
-import { app, BrowserWindow, shell, Menu } from "electron"
-import { fileURLToPath } from "node:url"
+import { app, BrowserWindow, shell, Menu, protocol, net } from "electron"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import path from "node:path"
 import os from "node:os"
 import { startBackend, stopBackend, getBackendPort } from "./backend"
@@ -74,6 +74,15 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
   process.exit(0)
 }
+
+// ========== Petdex 自定义协议 ==========
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "petdex",
+    privileges: { bypassCSP: true, stream: true, supportFetchAPI: true },
+  },
+])
 
 /** macOS：在 ready 前设置，改善 Dock/部分系统文案（开发包下菜单第一项仍可能为 Electron） */
 if (process.platform === "darwin") {
@@ -245,6 +254,18 @@ app.whenReady().then(async () => {
 
   initAuthStore()
   initSettingsStore()
+
+  protocol.handle("petdex", (request) => {
+    const url = new URL(request.url)
+    const requestedPath = path.normalize(url.pathname.replace(/^\//, ""))
+    const fullPath = path.resolve(os.homedir(), ".codex", "pets", url.hostname, requestedPath)
+    const petsRoot = path.resolve(os.homedir(), ".codex", "pets")
+    const relative = path.relative(petsRoot, fullPath)
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      return new Response("Forbidden", { status: 403 })
+    }
+    return net.fetch(pathToFileURL(fullPath).href)
+  })
 
   registerIpcHandlers(async () => {
     await createWindow()

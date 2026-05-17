@@ -126,6 +126,35 @@ contextBridge.exposeInMainWorld("electronApi", {
       y: number
     } | null>,
 
+  // pet selection
+  getSelectedPetSlug: () =>
+    ipcRenderer.invoke("pet:get-selected") as Promise<string>,
+  setSelectedPetSlug: (slug: string) =>
+    ipcRenderer.invoke("pet:select", slug),
+  onPetChanged: (callback: (slug: string) => void) => {
+    const handler = (_: unknown, slug: string) => callback(slug)
+    ipcRenderer.on("pet-changed", handler)
+    return () => ipcRenderer.removeListener("pet-changed", handler)
+  },
+
+  // Petdex marketplace
+  listPetdexSkins: () =>
+    ipcRenderer.invoke("pet:list-petdex") as Promise<
+      Array<{
+        slug: string
+        displayName: string
+        description: string
+        source: "petdex"
+      }>
+    >,
+  getPetdexMeta: (slug: string) =>
+    ipcRenderer.invoke("pet:get-petdex-meta", slug) as Promise<{
+      id: string
+      displayName: string
+      description: string
+      spritesheetPath: string
+    } | null>,
+
   onUpdateAvailable: (
     callback: (info: { update: boolean; version: string; newVersion: string }) => void
   ) => {

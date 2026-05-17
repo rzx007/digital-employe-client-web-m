@@ -127,6 +127,23 @@ declare global {
       hidePet: () => Promise<void>
       setPetPosition: (x: number, y: number) => Promise<void>
       getPetPosition: () => Promise<{ x: number; y: number } | null>
+      getSelectedPetSlug: () => Promise<string>
+      setSelectedPetSlug: (slug: string) => Promise<void>
+      onPetChanged: (callback: (slug: string) => void) => () => void
+      listPetdexSkins: () => Promise<
+        Array<{
+          slug: string
+          displayName: string
+          description: string
+          source: "petdex"
+        }>
+      >
+      getPetdexMeta: (slug: string) => Promise<{
+        id: string
+        displayName: string
+        description: string
+        spritesheetPath: string
+      } | null>
       onUpdateAvailable: (
         callback: (info: {
           update: boolean

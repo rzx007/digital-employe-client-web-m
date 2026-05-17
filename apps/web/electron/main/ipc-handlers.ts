@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron"
 import os from "node:os"
 import path from "node:path"
+import fs from "node:fs"
 import { getBackendStatus, getBackendPort, stopBackend } from "./backend"
 import { flashTray, stopFlashTray, shutdownAuxiliaryWindows } from "./tray"
 import { sendNotification, setNotificationsEnabled } from "./notification"
@@ -17,7 +18,7 @@ import {
   resizeRegisterWindow,
 } from "./register"
 import { createSettingsWindow, closeSettingsWindow } from "./settings"
-import { showPetWindow, hidePetWindow } from "./pet"
+import { showPetWindow, hidePetWindow, getPetWin } from "./pet"
 import { syncPetVisibilityWithMain } from "./pet-main-sync"
 import { VITE_DEV_SERVER_URL, indexHtml } from "./index"
 import { saveAuth, clearAuth, getStoredAuth, hasToken } from "./auth"
@@ -376,6 +377,57 @@ export function registerIpcHandlers(onLoginSuccess: () => void): void {
       syncPetVisibilityWithMain(mainWin)
     }
   )
+
+  /** 宠物选择 */
+  ipcMain.handle("pet:get-selected", () => {
+    return getSetting("selectedPetSlug")
+  })
+
+  ipcMain.handle("pet:select", (_event, slug: string) => {
+    setSetting("selectedPetSlug", slug)
+    getPetWin()?.webContents.send("pet-changed", slug)
+  })
+
+  /** 列出 Petdex 市场已安装宠物 */
+  ipcMain.handle("pet:list-petdex", async () => {
+    const petdexDir = path.join(os.homedir(), ".codex", "pets")
+    if (!fs.existsSync(petdexDir)) return []
+    const entries = fs.readdirSync(petdexDir, { withFileTypes: true })
+    const results: Array<{
+      slug: string
+      displayName: string
+      description: string
+      source: "petdex"
+    }> = []
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const petJsonPath = path.join(petdexDir, entry.name, "pet.json")
+      if (!fs.existsSync(petJsonPath)) continue
+      try {
+        const meta = JSON.parse(fs.readFileSync(petJsonPath, "utf-8"))
+        results.push({
+          slug: meta.id || entry.name,
+          displayName: meta.displayName ?? entry.name,
+          description: meta.description ?? "",
+          source: "petdex",
+        })
+      } catch {
+        // skip malformed pet.json
+      }
+    }
+    return results
+  })
+
+  /** 读取 Petdex 宠物元数据 */
+  ipcMain.handle("pet:get-petdex-meta", async (_event, slug: string) => {
+    const petJsonPath = path.join(os.homedir(), ".codex", "pets", slug, "pet.json")
+    if (!fs.existsSync(petJsonPath)) return null
+    try {
+      return JSON.parse(fs.readFileSync(petJsonPath, "utf-8"))
+    } catch {
+      return null
+    }
+  })
 
   /** 获取引导完成状态 */
   ipcMain.handle("get-onboarding-completed", () => {
