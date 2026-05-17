@@ -32,6 +32,12 @@ def run_reflection(
     if employee_id is None:
         return
 
+    logger.info(
+        "[学习闭环] 开始后执行反思 conversation_id=%s employee_id=%s",
+        conversation_id,
+        employee_id,
+    )
+
     # 限流：同一员工 60 秒内只反思一次
     if not _acquire_reflect_lock(employee_id):
         return
@@ -59,7 +65,8 @@ def run_reflection(
         '输出格式：每行一条，以「§」开头。不要重复已有记忆。如果没有新发现，输出「无」。'
     )
     result = llm.invoke(prompt).content.strip()
-    if result == "无":
+    if not result or "无" in result[:10]:
+        logger.info("reflection conv=%s employee=%s: no new entries found", conversation_id, employee_id)
         return
 
     # 写入记忆文件（追加新条目到「---」分隔线之前）

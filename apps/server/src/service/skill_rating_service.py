@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 
 import httpx
 from sqlalchemy import select
@@ -107,17 +108,21 @@ class SkillRatingService:
         except (httpx.HTTPError, ValueError) as exc:
             logger.error("评分同步远程失败 skill_id=%s: %s", skill_id, exc, exc_info=True)
 
-        # 评分后触发改进建议（低分 + 有评论）
+        # 评分后触发改进建议（低分 + 有评论，后台线程避免阻塞 API 响应）
         try:
             from src.service.skill_improvement_service import trigger_improvement_review
 
-            trigger_improvement_review(
-                skill_name=skill_name,
-                employee_id=employee.id,
-                score=payload.score,
-                comment=payload.comment or "",
-                conversation_id=log.conversation_id,
-            )
+            threading.Thread(
+                target=trigger_improvement_review,
+                args=(
+                    skill_name,
+                    employee.id,
+                    payload.score,
+                    payload.comment or "",
+                    log.conversation_id,
+                ),
+                daemon=True,
+            ).start()
         except Exception:
             logger.warning("skill improvement review trigger failed", exc_info=True)
 

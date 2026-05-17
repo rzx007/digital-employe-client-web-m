@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from sqlalchemy import text
 
@@ -74,6 +75,7 @@ def session_search(
 
 
 def _to_fts_query(raw: str) -> str:
-    """将用户输入的查询文本转为 FTS5 查询语法。"""
+    """将用户输入的查询文本转为 FTS5 查询语法，过滤特殊字符。"""
     terms = raw.strip().split()
-    return " AND ".join(f'"{t}"' for t in terms if t)
+    cleaned = [re.sub(r'[^\w\u4e00-\u9fff]', '', t) for t in terms if t]
+    return " AND ".join(f'"{t}"' for t in cleaned) if cleaned else '""'

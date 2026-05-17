@@ -683,7 +683,20 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
             except Exception:
                 logger.warning("push conversation_status_changed failed conv=%s", conversation_id, exc_info=True)
 
-        # 2. 更新 TaskExecutionLog（仅当存在时）
+        # 2. 后执行反思（仅 completed，从 Conversation 获取 employee_id）
+        if stream_state == "completed":
+            employee_id = None
+            if conv and conv.target_type == "employee":
+                employee_id = conv.target_id
+            if employee_id is not None:
+                try:
+                    from src.service.reflection_engine import run_reflection
+
+                    run_reflection(conversation_id, employee_id, db)
+                except Exception:
+                    logger.warning("reflection failed conv=%s", conversation_id, exc_info=True)
+
+        # 3. 更新 TaskExecutionLog（仅当存在时）
         log = db.scalars(
             select(TaskExecutionLog).where(
                 TaskExecutionLog.conversation_id == conversation_id,
@@ -720,15 +733,6 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
             log.error_message = "agent stream error"
 
         db.commit()
-
-        # 3. 后执行反思（仅 completed 且有 employee_id）
-        if stream_state == "completed":
-            try:
-                from src.service.reflection_engine import run_reflection
-
-                run_reflection(conversation_id, log.employee_id, db)
-            except Exception:
-                logger.warning("reflection failed conv=%s", conversation_id, exc_info=True)
 
         if registry.on_task_finalized:
             try:
