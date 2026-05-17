@@ -331,6 +331,24 @@ def get_agent(
     )
     apply_model_profile(model, resolve_max_input_tokens(settings))
 
+    # ===== 会话搜索工具（按员工隔离） =====
+    from langchain_core.tools import tool
+
+    _session_search_tools: list = []
+    if employee_id is not None:
+
+        def _make_session_search(emp_id: int):
+            @tool
+            def session_search(query: str, limit: int = 5) -> str:
+                """搜索历史对话记录。当你需要回忆之前讨论过的内容时使用。"""
+                from src.service.session_search import session_search as _search
+
+                return _search(query=query, employee_id=emp_id, limit=limit)
+
+            return session_search
+
+        _session_search_tools.append(_make_session_search(employee_id))
+
     sql_tools: list = []
     if include_sqlite_tools:
         try:
@@ -452,7 +470,7 @@ def get_agent(
         ),
         backend=backend,
         checkpointer=checkpointer,
-        tools=sql_tools or None,
+        tools=(sql_tools or []) + _session_search_tools or None,
         middleware=[summarization_mw, summarization_tool_mw],
         permissions=[
             FilesystemPermission(

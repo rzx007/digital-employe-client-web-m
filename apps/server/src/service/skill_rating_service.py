@@ -107,6 +107,20 @@ class SkillRatingService:
         except (httpx.HTTPError, ValueError) as exc:
             logger.error("评分同步远程失败 skill_id=%s: %s", skill_id, exc, exc_info=True)
 
+        # 评分后触发改进建议（低分 + 有评论）
+        try:
+            from src.service.skill_improvement_service import trigger_improvement_review
+
+            trigger_improvement_review(
+                skill_name=skill_name,
+                employee_id=employee.id,
+                score=payload.score,
+                comment=payload.comment or "",
+                conversation_id=log.conversation_id,
+            )
+        except Exception:
+            logger.warning("skill improvement review trigger failed", exc_info=True)
+
         return SkillRatingRead.model_validate(row)
 
     @staticmethod

@@ -721,6 +721,15 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
 
         db.commit()
 
+        # 3. 后执行反思（仅 completed 且有 employee_id）
+        if stream_state == "completed":
+            try:
+                from src.service.reflection_engine import run_reflection
+
+                run_reflection(conversation_id, log.employee_id, db)
+            except Exception:
+                logger.warning("reflection failed conv=%s", conversation_id, exc_info=True)
+
         if registry.on_task_finalized:
             try:
                 registry.on_task_finalized(
