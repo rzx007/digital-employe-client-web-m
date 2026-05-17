@@ -1,7 +1,8 @@
-import { app, BrowserWindow, shell, Menu } from "electron"
+import { app, BrowserWindow, shell, Menu, protocol } from "electron"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 import os from "node:os"
+import fs from "node:fs"
 import { startBackend, stopBackend, getBackendPort } from "./backend"
 import {
   registerIpcHandlers,
@@ -74,6 +75,21 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
   process.exit(0)
 }
+
+// ========== Petdex 自定义协议 ==========
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "petdex",
+    privileges: {
+      bypassCSP: true,
+      stream: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      standard: true,
+    },
+  },
+])
 
 /** macOS：在 ready 前设置，改善 Dock/部分系统文案（开发包下菜单第一项仍可能为 Electron） */
 if (process.platform === "darwin") {
@@ -245,6 +261,35 @@ app.whenReady().then(async () => {
 
   initAuthStore()
   initSettingsStore()
+
+  protocol.handle("petdex", (request) => {
+    try {
+      const url = new URL(request.url)
+      const requestedPath = path.normalize(url.pathname.replace(/^\//, ""))
+      const fullPath = path.resolve(os.homedir(), ".codex", "pets", url.hostname, requestedPath)
+      const petsRoot = path.resolve(os.homedir(), ".codex", "pets")
+      const relative = path.relative(petsRoot, fullPath)
+      if (relative.startsWith("..") || path.isAbsolute(relative)) {
+        return new Response("Forbidden", { status: 403 })
+      }
+      const data = fs.readFileSync(fullPath)
+      const ext = path.extname(fullPath).toLowerCase()
+      const mimeTypes: Record<string, string> = {
+        ".webp": "image/webp",
+        ".png": "image/png",
+        ".json": "application/json",
+      }
+      return new Response(data, {
+        headers: {
+          "Content-Type": mimeTypes[ext] || "application/octet-stream",
+          "Access-Control-Allow-Origin": "*",
+        },
+      })
+    } catch (e) {
+      console.error("[petdex] handler error:", e)
+      return new Response("Not Found", { status: 404 })
+    }
+  })
 
   registerIpcHandlers(async () => {
     await createWindow()

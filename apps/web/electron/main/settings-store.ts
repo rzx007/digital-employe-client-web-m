@@ -25,6 +25,7 @@ interface SettingsData {
   petEnabled: boolean
   petVisibilityMode: PetVisibilityMode
   petAlwaysOnTop: boolean
+  selectedPetSlug: string
 }
 
 let store: Store<SettingsData> | null = null
@@ -45,6 +46,7 @@ export function initSettingsStore(): void {
       petEnabled: true,
       petVisibilityMode: "when_main_hidden",
       petAlwaysOnTop: true,
+      selectedPetSlug: "wall-e-baby",
     },
   })
 }
@@ -66,6 +68,7 @@ export function getSetting<K extends keyof SettingsData>(
       petEnabled: true,
       petVisibilityMode: "when_main_hidden",
       petAlwaysOnTop: true,
+      selectedPetSlug: "wall-e-baby",
     }
     return defaults[key]
   }

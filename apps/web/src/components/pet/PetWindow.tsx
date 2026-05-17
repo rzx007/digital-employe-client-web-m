@@ -10,37 +10,31 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 
 import { SpritePlayer } from "./animation/SpritePlayer"
-import { petStateLabels, type PetState } from "./animation/types"
-import type { SpriteSkinManifest } from "./animation/manifest"
+import { PET_STATE_LABELS, PET_DURATIONS, type PetState } from "./animation/types"
 import {
   usePetVoiceCurator,
   type PetVoiceFeedback,
 } from "./use-pet-voice-curator"
+import { loadPetSkin, type PetSkin } from "./pet-loader"
 import { getMyWorkspace } from "@/api/workspace"
 import "./PetWindow.css"
-import manifestData from "./skins/default/manifest.json"
-import spritePng from "./skins/default/sprite.png"
 
-const PET_DISPLAY_SCALE = 0.58
+const PET_DISPLAY_SCALE = 0.55
 const DRAG_HOLD_DELAY_MS = 220
 const IDLE_HINT_MS = 6000
 const IDLE_HINT_TEXT = "点击说话，再点结束并发送"
-
-const skinManifest: SpriteSkinManifest = {
-  ...(manifestData as SpriteSkinManifest),
-  image: spritePng,
-}
+const RUNNING_STATES: PetState[] = ["running", "running-left", "running-right"]
 
 function bubbleCaptionText(f: PetVoiceFeedback): string {
   if (f.variant === "none") return ""
   return f.detail ? `${f.title}\n${f.detail}` : f.title
 }
 
-function bubbleStrongLabel(f: PetVoiceFeedback, petState: PetState): string {
-  if (f.variant === "error") return petStateLabels.error
-  if (f.variant === "success") return "完成"
-  if (f.variant === "info") return "提示"
-  return petStateLabels[petState]
+function bubbleStrongLabel(f: PetVoiceFeedback): string {
+  if (f.variant === "error") return PET_STATE_LABELS.failed
+  if (f.variant === "success") return PET_STATE_LABELS.jumping
+  if (f.variant === "info") return PET_STATE_LABELS.waving
+  return PET_STATE_LABELS.idle
 }
 
 export function PetWindow() {
@@ -48,6 +42,27 @@ export function PetWindow() {
     usePetVoiceCurator()
 
   const [idleHintDismissed, setIdleHintDismissed] = useState(false)
+  const [currentSkin, setCurrentSkin] = useState<PetSkin | null>(null)
+
+  useEffect(() => {
+    const api = window.electronApi
+    if (!api?.getSelectedPetSlug) {
+      void loadPetSkin("wall-e-baby").then(setCurrentSkin).catch(console.error)
+      return
+    }
+    void api.getSelectedPetSlug().then((slug) => {
+      loadPetSkin(slug).then(setCurrentSkin).catch(console.error)
+    })
+  }, [])
+
+  useEffect(() => {
+    const api = window.electronApi
+    if (!api?.onPetChanged) return
+    const cleanup = api.onPetChanged((slug: string) => {
+      loadPetSkin(slug).then(setCurrentSkin).catch(console.error)
+    })
+    return cleanup
+  }, [])
 
   const dragTimerRef = useRef<number | null>(null)
   const dragStartPointRef = useRef<{
@@ -56,13 +71,34 @@ export function PetWindow() {
   } | null>(null)
   const isPointerDownRef = useRef(false)
   const suppressNextClickRef = useRef(false)
+  const clickTimerRef = useRef<number | null>(null)
 
-  const petState: PetState = useMemo(() => {
-    if (feedback.variant === "error") return "error"
-    if (voiceBusy) return "thinking"
-    if (isRecording) return "listening"
+  const [actionState, setActionState] = useState<PetState | null>(null)
+  const doubleClickRef = useRef(0)
+  const actionTimerRef = useRef<number | null>(null)
+
+  const [prevVariant, setPrevVariant] = useState(feedback.variant)
+  const [jumpAcked, setJumpAcked] = useState(false)
+
+  if (feedback.variant !== prevVariant) {
+    setPrevVariant(feedback.variant)
+    if (feedback.variant !== "success") {
+      setJumpAcked(false)
+    }
+  }
+
+  const handleAnimationComplete = useCallback(() => {
+    setJumpAcked(true)
+  }, [])
+
+  const petState: PetState = actionState ?? (() => {
+    if (feedback.variant === "error") return "failed"
+    if (voiceBusy) return "waiting"
+    if (isRecording) return "waving"
+    if (feedback.variant === "success" && !jumpAcked) return "jumping"
+    if (feedback.variant === "info") return "waving"
     return "idle"
-  }, [feedback.variant, voiceBusy, isRecording])
+  })()
 
   const caption = useMemo(() => {
     if (feedback.variant !== "none") {
@@ -105,8 +141,8 @@ export function PetWindow() {
   }, [feedback.variant, isRecording, voiceBusy])
 
   const bubbleStrong = useMemo(
-    () => bubbleStrongLabel(feedback, petState),
-    [feedback, petState]
+    () => bubbleStrongLabel(feedback),
+    [feedback]
   )
 
   useEffect(() => {
@@ -133,6 +169,12 @@ export function PetWindow() {
     })()
   }, [])
 
+  const clearClickTimer = useCallback(() => {
+    if (clickTimerRef.current === null) return
+    window.clearTimeout(clickTimerRef.current)
+    clickTimerRef.current = null
+  }, [])
+
   const clearDragTimer = useCallback(() => {
     if (dragTimerRef.current === null) return
     window.clearTimeout(dragTimerRef.current)
@@ -148,12 +190,13 @@ export function PetWindow() {
       if (!isPointerDownRef.current) return
 
       suppressNextClickRef.current = true
+      clearClickTimer()
       const startPoint = dragStartPointRef.current
       if (!startPoint) return
 
       startWindowDragFromPoint(startPoint)
     }, DRAG_HOLD_DELAY_MS)
-  }, [clearDragTimer])
+  }, [clearDragTimer, clearClickTimer])
 
   const handlePetMouseDown = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
@@ -188,16 +231,63 @@ export function PetWindow() {
 
   useEffect(() => clearDragTimer, [clearDragTimer])
 
+  useEffect(() => {
+    return () => {
+      if (actionTimerRef.current != null) window.clearTimeout(actionTimerRef.current)
+      if (clickTimerRef.current != null) window.clearTimeout(clickTimerRef.current)
+    }
+  }, [])
+
+  const triggerAction = useCallback(() => {
+    const state = RUNNING_STATES[Math.floor(Math.random() * RUNNING_STATES.length)]
+    setActionState(state)
+    const totalMs = PET_DURATIONS[state].reduce((a, b) => a + b, 0)
+    if (actionTimerRef.current != null) window.clearTimeout(actionTimerRef.current)
+    actionTimerRef.current = window.setTimeout(() => {
+      setActionState(null)
+      actionTimerRef.current = null
+    }, totalMs)
+  }, [])
+
   const handlePetClick = useCallback(() => {
     if (suppressNextClickRef.current) {
       suppressNextClickRef.current = false
       return
     }
 
-    void toggleVoiceClick()
-  }, [toggleVoiceClick])
+    const now = Date.now()
+    const idle = !voiceBusy && !isRecording && feedback.variant === "none" && !actionState
+
+    // Second click within 400ms from idle → double-click action
+    if (now - doubleClickRef.current < 400 && idle) {
+      clearClickTimer()
+      doubleClickRef.current = 0
+      triggerAction()
+      return
+    }
+
+    doubleClickRef.current = now
+
+    if (idle) {
+      clearClickTimer()
+      clickTimerRef.current = window.setTimeout(() => {
+        clickTimerRef.current = null
+        void toggleVoiceClick()
+      }, 400)
+    } else {
+      void toggleVoiceClick()
+    }
+  }, [toggleVoiceClick, actionState, voiceBusy, isRecording, feedback.variant, triggerAction, clearClickTimer])
 
   const stageAriaLive = feedback.variant === "error" ? "assertive" : "polite"
+
+  if (!currentSkin) {
+    return (
+      <main className="pet-shell">
+        <section className="pet-stage" />
+      </main>
+    )
+  }
 
   return (
     <main className="pet-shell" data-state={petState}>
@@ -215,9 +305,12 @@ export function PetWindow() {
           title={IDLE_HINT_TEXT}
         >
           <SpritePlayer
+            key={actionState ? "action" : "normal"}
             scale={PET_DISPLAY_SCALE}
-            manifest={skinManifest}
+            image={currentSkin.image}
+            animations={currentSkin.animations}
             animationName={petState}
+            onAnimationComplete={handleAnimationComplete}
           />
         </div>
         {caption && (

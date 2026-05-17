@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useRef } from "react"
 import type { PetState } from "./types"
-import { getSpriteAnimation, type SpriteSkinManifest } from "./manifest"
+import type { PetFrameAnimation } from "../pet-loader"
+import {
+  PET_SHEET_COLS,
+  PET_SHEET_FRAME_W,
+  PET_SHEET_FRAME_H,
+} from "./types"
 
 type FrameOffset = {
   x: number
@@ -9,26 +14,27 @@ type FrameOffset = {
 
 type SpritePlayerProps = {
   animationName: PetState
-  manifest: SpriteSkinManifest
+  animations: Record<PetState, PetFrameAnimation>
+  image: string
+  scale: number
+  autoAlign?: boolean
   onAnimationComplete?: () => void
-  scale?: number
 }
 
 export function SpritePlayer({
   animationName,
-  manifest,
-  onAnimationComplete,
+  animations,
+  image,
   scale,
+  autoAlign = true,
+  onAnimationComplete,
 }: SpritePlayerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const completeRef = useRef(false)
-  const animation = useMemo(
-    () => getSpriteAnimation(manifest, animationName),
-    [animationName, manifest],
-  )
-  const displayScale = scale ?? manifest.scale
-  const displayWidth = manifest.frameWidth * displayScale
-  const displayHeight = manifest.frameHeight * displayScale
+  const animation = animations[animationName]
+
+  const displayWidth = PET_SHEET_FRAME_W * scale
+  const displayHeight = PET_SHEET_FRAME_H * scale
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -48,7 +54,7 @@ export function SpritePlayer({
     renderingContext.imageSmoothingEnabled = true
     renderingContext.imageSmoothingQuality = "high"
 
-    const image = new Image()
+    const img = new Image()
     let animationFrame = 0
     let lastTimestamp = 0
     let frameCursor = 0
@@ -58,24 +64,23 @@ export function SpritePlayer({
     completeRef.current = false
 
     const frameCount = Math.max(1, animation.to - animation.from + 1)
-    const frameDurationMs = 1000 / Math.max(1, animation.fps)
     let frameOffsets: FrameOffset[] = []
 
     function drawFrame(frameIndex: number) {
-      const sourceX = (frameIndex % manifest.columns) * manifest.frameWidth
+      const sourceX = (frameIndex % PET_SHEET_COLS) * PET_SHEET_FRAME_W
       const sourceY =
-        Math.floor(frameIndex / manifest.columns) * manifest.frameHeight
+        Math.floor(frameIndex / PET_SHEET_COLS) * PET_SHEET_FRAME_H
       const offset = frameOffsets[frameIndex] ?? { x: 0, y: 0 }
 
       renderingContext.clearRect(0, 0, displayWidth, displayHeight)
       renderingContext.drawImage(
-        image,
+        img,
         sourceX,
         sourceY,
-        manifest.frameWidth,
-        manifest.frameHeight,
-        offset.x * displayScale,
-        offset.y * displayScale,
+        PET_SHEET_FRAME_W,
+        PET_SHEET_FRAME_H,
+        offset.x * scale,
+        offset.y * scale,
         displayWidth,
         displayHeight,
       )
@@ -91,15 +96,20 @@ export function SpritePlayer({
       frameElapsedMs += timestamp - lastTimestamp
       lastTimestamp = timestamp
 
-      while (frameElapsedMs >= frameDurationMs) {
-        frameElapsedMs -= frameDurationMs
+      while (frameCursor < frameCount) {
+        const dur = animation.durations[frameCursor] ?? 100
+        if (frameElapsedMs < dur) break
+        frameElapsedMs -= dur
+        frameCursor++
+      }
 
-        if (frameCursor < frameCount - 1) {
-          frameCursor += 1
-        } else if (animation.loop) {
+      if (frameCursor >= frameCount) {
+        if (animation.loop) {
           frameCursor = 0
+          frameElapsedMs = 0
         } else if (!completeRef.current) {
           completeRef.current = true
+          frameCursor = frameCount - 1
           onAnimationComplete?.()
         }
       }
@@ -108,15 +118,18 @@ export function SpritePlayer({
       animationFrame = window.requestAnimationFrame(tick)
     }
 
-    image.onload = () => {
-      frameOffsets =
-        manifest.autoAlign === false
-          ? []
-          : measureFrameOffsets(image, manifest)
+    img.onload = () => {
+      frameOffsets = autoAlign
+        ? measureFrameOffsets(img)
+        : []
       drawFrame(animation.from)
       animationFrame = window.requestAnimationFrame(tick)
     }
-    image.src = manifest.image
+    img.onerror = () => {
+      console.warn("[SpritePlayer] Failed to load image:", image)
+    }
+    img.crossOrigin = "anonymous"
+    img.src = image
 
     return () => {
       isDisposed = true
@@ -124,10 +137,11 @@ export function SpritePlayer({
     }
   }, [
     animation,
-    displayHeight,
     displayWidth,
-    manifest,
-    displayScale,
+    displayHeight,
+    image,
+    scale,
+    autoAlign,
     onAnimationComplete,
   ])
 
@@ -144,7 +158,6 @@ export function SpritePlayer({
 
 function measureFrameOffsets(
   image: HTMLImageElement,
-  manifest: SpriteSkinManifest,
 ): FrameOffset[] {
   const canvas = document.createElement("canvas")
   const context = canvas.getContext("2d", { willReadFrequently: true })
@@ -156,12 +169,15 @@ function measureFrameOffsets(
   context.drawImage(image, 0, 0)
 
   const frameTotal =
-    Math.floor(image.naturalWidth / manifest.frameWidth) *
-    Math.floor(image.naturalHeight / manifest.frameHeight)
+    Math.floor(image.naturalWidth / PET_SHEET_FRAME_W) *
+    Math.floor(image.naturalHeight / PET_SHEET_FRAME_H)
   const anchors = Array.from({ length: frameTotal }, (_, frameIndex) =>
-    measureFrameAnchor(context, manifest, frameIndex),
+    measureFrameAnchor(context, frameIndex),
   )
-  const validAnchors = anchors.filter((anchor) => anchor !== null)
+  const validAnchors = anchors.filter((anchor) => anchor !== null) as {
+    x: number
+    y: number
+  }[]
 
   if (validAnchors.length === 0) return []
 
@@ -179,29 +195,28 @@ function measureFrameOffsets(
 
 function measureFrameAnchor(
   context: CanvasRenderingContext2D,
-  manifest: SpriteSkinManifest,
   frameIndex: number,
 ): { x: number; y: number } | null {
-  const sourceX = (frameIndex % manifest.columns) * manifest.frameWidth
+  const sourceX = (frameIndex % PET_SHEET_COLS) * PET_SHEET_FRAME_W
   const sourceY =
-    Math.floor(frameIndex / manifest.columns) * manifest.frameHeight
+    Math.floor(frameIndex / PET_SHEET_COLS) * PET_SHEET_FRAME_H
   const data = context.getImageData(
     sourceX,
     sourceY,
-    manifest.frameWidth,
-    manifest.frameHeight,
+    PET_SHEET_FRAME_W,
+    PET_SHEET_FRAME_H,
   ).data
   const alphaThreshold = 18
-  const upperLimit = Math.round(manifest.frameHeight * 0.62)
-  let minX = manifest.frameWidth
+  const upperLimit = Math.round(PET_SHEET_FRAME_H * 0.62)
+  let minX = PET_SHEET_FRAME_W
   let maxX = 0
   let maxY = 0
-  let upperMinX = manifest.frameWidth
+  let upperMinX = PET_SHEET_FRAME_W
   let upperMaxX = 0
 
-  for (let y = 0; y < manifest.frameHeight; y += 1) {
-    for (let x = 0; x < manifest.frameWidth; x += 1) {
-      const alpha = data[(y * manifest.frameWidth + x) * 4 + 3]
+  for (let y = 0; y < PET_SHEET_FRAME_H; y += 1) {
+    for (let x = 0; x < PET_SHEET_FRAME_W; x += 1) {
+      const alpha = data[(y * PET_SHEET_FRAME_W + x) * 4 + 3]
 
       if (alpha <= alphaThreshold) continue
 

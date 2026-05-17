@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
+import { cn } from "@workspace/ui/lib/utils"
 import logoImage from "@/assets/logo.png"
 
 export const Route = createFileRoute("/splash")({
@@ -8,6 +9,7 @@ export const Route = createFileRoute("/splash")({
 
 function SplashPage() {
   const [status, setStatus] = useState("正在启动服务...")
+  const isError = status.includes("失败")
 
   useEffect(() => {
     const cleanup = window.electronApi?.onBackendError?.((message) => {
@@ -18,13 +20,23 @@ function SplashPage() {
 
   return (
     <div
-      className="flex h-screen w-screen items-center justify-center bg-[#f9fafb]"
+      className="flex h-screen w-screen items-center justify-center bg-background"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
       <div className="flex flex-col items-center">
         <img src={logoImage} alt="logo" className="mb-5 w-14" />
-        <div className="h-7 w-7 animate-spin rounded-full border-[3px] border-gray-200 border-t-blue-500" />
-        <span className="mt-4 text-[13px] tracking-wide text-gray-500">
+        <div
+          className={cn(
+            "h-7 w-7 animate-spin rounded-full border-[3px] border-muted",
+            isError ? "border-t-destructive" : "border-t-primary",
+          )}
+        />
+        <span
+          className={cn(
+            "mt-4 text-[13px] tracking-wide",
+            isError ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
           {status}
         </span>
       </div>
