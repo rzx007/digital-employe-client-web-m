@@ -30,7 +30,7 @@ function hasError(tools: ToolGroupItem[]): boolean {
 function ToolGroupBlockInner({
   block,
   className,
-  simpleMode = true,
+  simpleMode = false,
   ...props
 }: ToolGroupBlockProps) {
   const ToolRow = simpleMode ? ToolActionRowSimple : ToolActionRow

@@ -70,7 +70,7 @@ export function CodeHighlight({
       .then((result) => {
         if (!cancelled) setHtml(result)
       })
-      .catch(() => {})
+      .catch(() => { })
     return () => {
       cancelled = true
     }
