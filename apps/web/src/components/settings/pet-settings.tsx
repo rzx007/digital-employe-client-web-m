@@ -128,8 +128,8 @@ export function PetSettings() {
               <div className="space-y-3">
                 <Label className="text-sm font-medium">当前宠物</Label>
                 <p className="text-xs text-muted-foreground">
-                  选择桌面宠物外观。内置宠物自动发现，Petdex
-                  安装的宠物（~/.codex/pets/）也会出现在列表中。
+                  选择桌面宠物外观。内置宠物自动发现，兼容Codex生态宠物
+                  （~/.codex/pets/）也会出现在列表中。
                 </p>
                 <Select
                   value={selectedSlug}
