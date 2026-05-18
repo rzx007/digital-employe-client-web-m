@@ -55,6 +55,7 @@ import { PendingMessageQueue } from "../panel/pending-message-queue"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import { getMessageMeta } from "../shared/chat-view-shared"
 import { RenderClassifiedBlocks } from "../messages/chat-message-item"
+import { computeToolAutoCollapseMap } from "@/lib/chat/tool-collapse-policy"
 import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import type { TaskExecution } from "@/types/schedule-monitor"
@@ -499,6 +500,13 @@ export function CuratorView({
             const classifiedBlocks = classifyMessageParts(message, {
               includeFileChanges,
             })
+            const toolAutoCollapseMap = computeToolAutoCollapseMap(
+              classifiedBlocks,
+              {
+                isLastAssistantMessage,
+                isTurnEnded: hasCurrentTurnEnded,
+              }
+            )
             const messageMeta = getMessageMeta(message)
             const commandMeta =
               messageMeta &&
@@ -574,6 +582,7 @@ export function CuratorView({
                         mentionMeta={mentionMeta}
                         filesMeta={filesMeta}
                         messageId={message.id}
+                        toolAutoCollapseMap={toolAutoCollapseMap}
                       />
                     ) : message.role === "assistant" ? (
                       <MessageResponse />

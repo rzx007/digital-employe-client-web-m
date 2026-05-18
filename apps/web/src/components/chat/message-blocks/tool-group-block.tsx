@@ -13,6 +13,7 @@ export type ToolGroupBlockProps = ComponentProps<"div"> & {
   block: Extract<ClassifiedBlock, { kind: "tool-group" }>
   defaultOpen?: boolean
   simpleMode?: boolean
+  shouldAutoCollapse?: boolean
 }
 
 function isGroupDone(tools: ToolGroupItem[]): boolean {
@@ -31,6 +32,7 @@ function ToolGroupBlockInner({
   block,
   className,
   simpleMode = true,
+  shouldAutoCollapse,
   ...props
 }: ToolGroupBlockProps) {
   const ToolRow = simpleMode ? ToolActionRowSimple : ToolActionRow
@@ -45,6 +47,7 @@ function ToolGroupBlockInner({
         resultText={tool.resultText}
         input={tool.input}
         preliminary={tool.preliminary}
+        shouldAutoCollapse={shouldAutoCollapse}
         {...props}
       />
     )
@@ -74,6 +77,7 @@ function ToolGroupBlockInner({
             resultText={tool.resultText}
             input={tool.input}
             preliminary={tool.preliminary}
+            shouldAutoCollapse={shouldAutoCollapse}
           />
         ))}
       </div>

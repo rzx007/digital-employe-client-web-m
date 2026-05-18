@@ -22,9 +22,8 @@ import {
   type FileMeta,
   type MentionMeta,
 } from "../shared/chat-view-shared"
-import type {
-  ClassifiedBlock,
-} from "@/lib/chat/message-classifier"
+import type { ClassifiedBlock } from "@/lib/chat/message-classifier"
+import { computeToolAutoCollapseMap } from "@/lib/chat/tool-collapse-policy"
 
 function MessageMetaBadges({
   commandMeta,
@@ -72,24 +71,25 @@ export function RenderClassifiedBlocks({
   mentionMeta,
   filesMeta,
   messageId,
+  toolAutoCollapseMap,
 }: {
   blocks: ClassifiedBlock[]
   commandMeta: CommandMeta
   mentionMeta: MentionMeta
   filesMeta?: FileMeta
   messageId: string
+  toolAutoCollapseMap: Map<string, boolean>
 }) {
-
   return (
     <>
       {blocks.map((block) => {
         if (block.kind === "tool-group") {
-          // console.log("block", block)
           return (
             <ToolGroupBlock
               block={block}
               className="w-full"
               key={block.key}
+              shouldAutoCollapse={toolAutoCollapseMap.get(block.key) ?? false}
             />
           )
         }
@@ -173,14 +173,33 @@ export interface ChatMessageItemProps {
   message: UIMessage
   contact: ChatViewContact
   includeFileChanges: boolean
+  /** 是否为列表中最后一条 assistant（当前流式轮） */
+  isLastAssistantMessage?: boolean
+  /** 本轮是否已结束（status ready/error），末项工具据此延迟收起 */
+  isTurnEnded?: boolean
 }
 
-function ChatMessageItemInner({ message, contact, includeFileChanges }: ChatMessageItemProps) {
+function ChatMessageItemInner({
+  message,
+  contact,
+  includeFileChanges,
+  isLastAssistantMessage = false,
+  isTurnEnded = true,
+}: ChatMessageItemProps) {
   const contactDisplayName = getContactDisplayName(contact)
   const deferredMessage = React.useDeferredValue(message)
   const classifiedBlocks = React.useMemo(
     () => classifyMessageParts(deferredMessage, { includeFileChanges }),
     [deferredMessage, includeFileChanges]
+  )
+  // 按同条消息内 tool-group 顺序 + 是否当前轮/回合是否结束，计算各 ToolRow 何时应收起
+  const toolAutoCollapseMap = React.useMemo(
+    () =>
+      computeToolAutoCollapseMap(classifiedBlocks, {
+        isLastAssistantMessage,
+        isTurnEnded,
+      }),
+    [classifiedBlocks, isLastAssistantMessage, isTurnEnded]
   )
 
   const messageMeta = React.useMemo(
@@ -252,6 +271,7 @@ function ChatMessageItemInner({ message, contact, includeFileChanges }: ChatMess
               mentionMeta={mentionMeta}
               filesMeta={filesMeta}
               messageId={message.id}
+              toolAutoCollapseMap={toolAutoCollapseMap}
             />
           ) : (
             <MessageResponse />

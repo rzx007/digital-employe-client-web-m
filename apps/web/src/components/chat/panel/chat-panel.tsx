@@ -118,6 +118,9 @@ function VirtualizedMessageList({
               message={message}
               contact={contact}
               includeFileChanges={includeFileChanges}
+              // 供 ToolRow 延迟收起：仅最后一条 assistant + 回合未结束时不立即收起末项工具
+              isLastAssistantMessage={isLastAssistantMessage}
+              isTurnEnded={hasCurrentTurnEnded}
             />
           </div>
         )

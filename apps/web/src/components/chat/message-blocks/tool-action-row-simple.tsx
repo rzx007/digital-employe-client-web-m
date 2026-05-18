@@ -41,6 +41,8 @@ export type ToolActionRowSimpleProps = ComponentProps<"div"> & {
   resultText?: string | null
   input?: unknown
   preliminary?: boolean
+  /** 由 tool-collapse-policy 计算；为 true 时触发一次自动收起（非完成即收起） */
+  shouldAutoCollapse?: boolean
 }
 
 function ToolActionRowSimpleInner({
@@ -49,6 +51,7 @@ function ToolActionRowSimpleInner({
   resultText,
   input,
   preliminary,
+  shouldAutoCollapse,
   className,
   ...props
 }: ToolActionRowSimpleProps) {
@@ -109,12 +112,12 @@ function ToolActionRowSimpleInner({
     }
   }, [isPreliminaryOutput, isOpen])
 
+  // 延迟收起：仅在父级信号为 true 时收起一次，用户之后手动展开不再重复触发
   useEffect(() => {
-    if (isDone && (resultText || displayContent) && !didAutoCollapse.current) {
-      didAutoCollapse.current = true
-      queueMicrotask(() => setIsOpen(false))
-    }
-  }, [isDone, resultText, displayContent])
+    if (!shouldAutoCollapse || didAutoCollapse.current) return
+    didAutoCollapse.current = true
+    queueMicrotask(() => setIsOpen(false))
+  }, [shouldAutoCollapse])
 
   useEffect(() => {
     if ((isRunning || isPreliminaryOutput) && scrollRef.current) {
