@@ -185,7 +185,7 @@ async def install_remote_skill_to_local(
     overwrite: bool = Query(default=False),
 ) -> ResponseBase[LocalSkillImportResult]:
     token = request.headers.get("token")
-    workspace_id = _get_workspace_id_from_request(request)
+    workspace_id = get_workspace_id_from_request(request)
     detail = SkillService.get_remote_skill(skill_id, token)
     if int(detail.get("status") or 0) != 1:
         raise HTTPException(
@@ -258,7 +258,7 @@ def get_local_skill_detail(
 def delete_workspace_local_skill(
     request: Request, skill_name: str
 ) -> ResponseBase[None]:
-    workspace_id = _get_workspace_id_from_request(request)
+    workspace_id = get_workspace_id_from_request(request)
     LocalSkillService.delete_workspace_skill(skill_name, workspace_id)
     return ResponseBase[None](data=None)
 

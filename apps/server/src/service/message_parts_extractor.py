@@ -56,17 +56,46 @@ def extract_message_parts_from_buffer(events: list[dict]) -> list[dict] | None:
     return _replay_payloads_to_parts(payloads)
 
 
+def _langgraph_node_from_inner(inner) -> str | None:
+    """从 messages 事件的 data 元组读取 langgraph_node（与前端 parser 逻辑一致）。"""
+    if not isinstance(inner, list) or len(inner) < 2:
+        return None
+    meta = inner[1]
+    if not isinstance(meta, dict):
+        return None
+    node = meta.get("langgraph_node")
+    return node if isinstance(node, str) else None
+
+
+def _lc_source_from_inner(inner) -> str | None:
+    """从 messages 元组读取 lc_source（如 summarization）。"""
+    if not isinstance(inner, list) or len(inner) < 2:
+        return None
+    meta = inner[1]
+    if not isinstance(meta, dict):
+        return None
+    src = meta.get("lc_source")
+    return src if isinstance(src, str) else None
+
+
 def _replay_payloads_to_parts(payloads: list) -> list[dict]:
     parts: list[dict] = []
     text_buf: str = ""
+    text_stream_tag: str | None = None
     tool_meta: dict[str, dict] = {}  # toolCallId → {toolCallId, toolName, input, inputText}
     tool_call_index_to_id: dict[int, str] = {}  # array index → toolCallId（用于 tool_call_chunks 的 id 为空时回退）
 
     def _flush_text() -> None:
-        nonlocal text_buf
+        nonlocal text_buf, text_stream_tag
         if text_buf:
-            parts.append({"type": "text", "text": text_buf, "state": "done"})
+            p: dict = {"type": "text", "text": text_buf, "state": "done"}
+            if text_stream_tag == "summarization":
+                p["providerMetadata"] = {
+                    "langchain": {"lcSource": "summarization"},
+                }
+            parts.append(p)
             text_buf = ""
+            text_stream_tag = None
 
     def _resolve_tool_id_from_index(tcc: dict) -> str | None:
         """当 tool_call_chunks / invalid_tool_calls 的 id 为空时，通过 index 回退匹配"""
@@ -143,10 +172,22 @@ def _replay_payloads_to_parts(payloads: list) -> list[dict]:
                     if not meta["inputText"]:
                         meta["inputText"] += itc_args
 
-            # 累积文本
-            content = msg_chunk.get("content")
-            if isinstance(content, str) and content:
-                text_buf += content
+            # 与流式 parser 对齐：tools 节点 ```json…``` 等不写入 text_buf，
+            # 避免历史 message_parts 出现 [text(工具展示), tool, text(总结)] 而流式已过滤
+            node = _langgraph_node_from_inner(inner)
+            if node is None or node == "model":
+                content = msg_chunk.get("content")
+                if isinstance(content, str) and content:
+                    lc_src = _lc_source_from_inner(inner)
+                    tag = "summarization" if lc_src == "summarization" else "default"
+                    if (
+                        text_buf
+                        and text_stream_tag is not None
+                        and text_stream_tag != tag
+                    ):
+                        _flush_text()
+                    text_buf += content
+                    text_stream_tag = tag
             continue
 
         # ── ToolMessage ──

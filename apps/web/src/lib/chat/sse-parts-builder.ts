@@ -6,6 +6,7 @@ import type {
   ToolMessage,
 } from "./langchain-sse-schema"
 import { ERROR_MARKER } from "./message-classifier"
+import { LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA } from "./langchain-summarization-text"
 
 type AnyPart = UIMessage["parts"][number]
 
@@ -46,18 +47,21 @@ function tryParseJSON(text: string): unknown {
 
 export interface PartsBuilderState {
   currentTextPartIndex: number | null
+  /** 当前正在写入的 text part 是否来自 summarization 流（与正文拆段） */
+  currentTextStreamTag: "summarization" | "default" | null
   toolPartIndicesByCallId: Map<string, number>
   toolInputAccumulators: Map<string, string>
   toolInputParsed: Map<string, unknown>
   toolNamesByCallId: Map<string, string>
   toolStreamingOutputs: Map<string, string>
-  pendingToolCallsByChunkKey: Map<string, { toolCallId: string; toolName: string }>
+  pendingToolCallsByChunkKey: Map<string, string>
   messageChunkIdToPending: Map<string, string>
 }
 
 export function createPartsBuilderState(): PartsBuilderState {
   return {
     currentTextPartIndex: null,
+    currentTextStreamTag: null,
     toolPartIndicesByCallId: new Map(),
     toolInputAccumulators: new Map(),
     toolInputParsed: new Map(),
@@ -156,7 +160,8 @@ export function applySSEEventToParts(
   if (eventType === "messages" && "data" in event) {
     const data = (event as { data: unknown }).data
     if (!Array.isArray(data) || data.length === 0) return null
-    return applyMessagesEvent(currentParts, data[0], state)
+    // 传入 [Message, Metadata] 整组，以便读取 langgraph_node
+    return applyMessagesEvent(currentParts, data, state)
   }
 
   if (eventType === "updates") return null
@@ -192,13 +197,47 @@ function applyToolOutputEvent(
   return { parts }
 }
 
+/** 与 langchain-stream-parser.getLangGraphNode 相同语义，供 useChatStream 路径使用 */
+function getLangGraphNodeFromMessageData(data: unknown): string | null {
+  if (!Array.isArray(data) || data.length < 2) {
+    return null
+  }
+  const meta = data[1]
+  if (!meta || typeof meta !== "object") {
+    return null
+  }
+  const node = (meta as { langgraph_node?: unknown }).langgraph_node
+  return typeof node === "string" ? node : null
+}
+
+function getLcSourceFromMessageData(data: unknown): string | null {
+  if (!Array.isArray(data) || data.length < 2) {
+    return null
+  }
+  const meta = data[1]
+  if (!meta || typeof meta !== "object") {
+    return null
+  }
+  const src = (meta as { lc_source?: unknown }).lc_source
+  return typeof src === "string" ? src : null
+}
+
 function applyMessagesEvent(
   currentParts: AnyPart[],
-  rawChunk: unknown,
+  messageData: unknown,
   state: PartsBuilderState
 ): SSEPartsResult | null {
+  const rawChunk = Array.isArray(messageData) ? messageData[0] : messageData
+  const langgraphNode = getLangGraphNodeFromMessageData(messageData)
+
   if (isAIMessageChunk(rawChunk)) {
-    return applyAIMessageChunk(currentParts, rawChunk, state)
+    return applyAIMessageChunk(
+      currentParts,
+      rawChunk,
+      state,
+      langgraphNode,
+      messageData
+    )
   }
   if (isToolMessage(rawChunk)) {
     return applyToolMessage(currentParts, rawChunk, state)
@@ -209,17 +248,46 @@ function applyMessagesEvent(
 function applyAIMessageChunk(
   currentParts: AnyPart[],
   chunk: AIMessageChunk,
-  state: PartsBuilderState
+  state: PartsBuilderState,
+  langgraphNode: string | null,
+  messageData: unknown
 ): SSEPartsResult {
   const parts = cloneParts(currentParts)
   const kwargs = chunk.kwargs
   const content = kwargs?.content
   const messageChunkId = kwargs?.id ?? ""
 
-  if (content && content.length > 0) {
+  // 仅 model 节点追加 text part；tools 节点内层流式 content 忽略
+  const mayAppendText =
+    langgraphNode === null || langgraphNode === "model"
+
+  const streamTag =
+    getLcSourceFromMessageData(messageData) === "summarization"
+      ? "summarization"
+      : "default"
+
+  if (mayAppendText && content && content.length > 0) {
+    const needNewTextPart =
+      state.currentTextPartIndex === null ||
+      state.currentTextStreamTag !== streamTag
+
+    if (needNewTextPart) {
+      state.currentTextPartIndex = null
+    }
+
     if (state.currentTextPartIndex === null) {
-      parts.push({ type: "text", text: content, state: "streaming" })
+      const textPart: Record<string, unknown> = {
+        type: "text",
+        text: content,
+        state: "streaming",
+      }
+      if (streamTag === "summarization") {
+        textPart.providerMetadata =
+          LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA
+      }
+      parts.push(textPart as AnyPart)
       state.currentTextPartIndex = parts.length - 1
+      state.currentTextStreamTag = streamTag
     } else if (state.currentTextPartIndex < parts.length) {
       const textPart = parts[state.currentTextPartIndex]
       if (textPart.type === "text") {
@@ -227,8 +295,19 @@ function applyAIMessageChunk(
       }
     } else {
       state.currentTextPartIndex = null
-      parts.push({ type: "text", text: content, state: "streaming" })
+      state.currentTextStreamTag = null
+      const textPart: Record<string, unknown> = {
+        type: "text",
+        text: content,
+        state: "streaming",
+      }
+      if (streamTag === "summarization") {
+        textPart.providerMetadata =
+          LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA
+      }
+      parts.push(textPart as AnyPart)
       state.currentTextPartIndex = parts.length - 1
+      state.currentTextStreamTag = streamTag
     }
   }
 
@@ -254,6 +333,7 @@ function applyAIMessageChunk(
       state.toolPartIndicesByCallId.set(resolvedId, parts.length - 1)
       state.toolInputAccumulators.set(resolvedId, "")
       state.currentTextPartIndex = null
+      state.currentTextStreamTag = null
     }
   }
 
@@ -276,7 +356,12 @@ function applyAIMessageChunk(
 
   const allDeltas = [...deltas, ...fallbackDeltas]
   for (let i = 0; i < allDeltas.length; i++) {
-    const tcc = allDeltas[i]
+    const tcc = allDeltas[i] as {
+      id?: string | null
+      name?: string | null
+      args?: string | null
+      index?: number | null
+    }
     const indexValue = typeof tcc.index === "number" ? tcc.index : i
     const tcId = getStringValue(tcc.id)
     const tcName = getStringValue(tcc.name)
@@ -304,6 +389,7 @@ function applyAIMessageChunk(
       state.toolPartIndicesByCallId.set(resolvedId, parts.length - 1)
       state.toolInputAccumulators.set(resolvedId, "")
       state.currentTextPartIndex = null
+      state.currentTextStreamTag = null
     }
 
     const existingInput = state.toolInputAccumulators.get(resolvedId) ?? ""
@@ -393,6 +479,9 @@ function applyToolMessage(
   }
 
   state.toolStreamingOutputs.delete(toolCallId)
+  // 工具已产出最终结果，下一段 model 总结应新建 text part，勿追加到工具前的 text
+  state.currentTextPartIndex = null
+  state.currentTextStreamTag = null
 
   return { parts }
 }

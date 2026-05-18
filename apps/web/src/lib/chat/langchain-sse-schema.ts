@@ -50,6 +50,8 @@ export const langgraphMetadataSchema = z.object({
   langgraph_path: z.array(z.unknown()).optional(),
   langgraph_checkpoint_ns: z.string().optional(),
   checkpoint_ns: z.string().optional(),
+  /** LangChain / LangGraph：如 summarization 中间件产生的模型流 */
+  lc_source: z.string().optional(),
   ls_provider: z.string().optional(),
   ls_model_name: z.string().optional(),
   ls_model_type: z.string().optional(),
