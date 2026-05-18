@@ -12,6 +12,16 @@ export function useSkillListQuery() {
   })
 }
 
+/** 招聘 / 员工编辑技能选择器：仅本地 + 内置，不请求远程列表 */
+export function useEmployeePickerSkillsQuery() {
+  return useQuery({
+    queryKey: chatKeys.skillsPickerLocal(),
+    queryFn: ({ signal }) => fetchSkillList({ signal, localOnly: true }),
+    staleTime: 0,
+    select: (data) => data.filter((s) => s.source !== "remote"),
+  })
+}
+
 export function useLocalSkillDetailQuery(skillName: string | null) {
   return useQuery({
     queryKey: chatKeys.localSkillDetail(skillName ?? ""),
