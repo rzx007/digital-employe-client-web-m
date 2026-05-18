@@ -12,6 +12,7 @@ class SkillListItem(BaseModel):
     description: str | None = None
     directoryId: int | None = None
     directoryName: str | None = None
+    tags: list[str] = []
     source: str = "remote"
     sourceLabel: str = "远程"
 
@@ -45,6 +46,8 @@ class LocalSkillItem(BaseModel):
     hasSkillMd: bool
     importedAt: str | None = None
     description: str | None = None
+    displayNameZh: str | None = None
+    isBuiltin: bool = False
 
 
 class LocalSkillDetail(BaseModel):
@@ -54,6 +57,8 @@ class LocalSkillDetail(BaseModel):
     importedAt: str | None = None
     skillMdContent: str | None = None
     files: list[str]
+    displayNameZh: str | None = None
+    isBuiltin: bool = False
 
 
 class LocalSkillImportResult(BaseModel):

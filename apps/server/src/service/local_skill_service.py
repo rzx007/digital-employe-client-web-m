@@ -358,6 +358,7 @@ class LocalSkillService:
         file_bytes: bytes,
         overwrite: bool = False,
         workspace_id: int | None = None,
+        display_name_zh: str | None = None,
     ) -> dict:
         settings = get_settings()
         normalized = LocalSkillService._normalize_skill_name(skill_name)
@@ -406,6 +407,8 @@ class LocalSkillService:
                 "overwrite": overwrite,
                 "description": description,
             }
+            if display_name_zh and str(display_name_zh).strip():
+                meta["displayNameZh"] = str(display_name_zh).strip()
             LocalSkillService._write_meta(target_dir, meta)
             return {
                 "skillName": normalized,
@@ -415,6 +418,98 @@ class LocalSkillService:
             }
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @staticmethod
+    def _safe_write_under_skill_dir(skill_dir: Path, relative_path: str) -> Path | None:
+        relative = Path(relative_path)
+        if relative.is_absolute() or ".." in relative.parts:
+            return None
+        return skill_dir / relative
+
+    @staticmethod
+    def install_skill_from_file_map(
+        *,
+        skill_name: str,
+        file_map: dict[str, str],
+        workspace_id: int,
+        overwrite: bool = False,
+        display_name_zh: str | None = None,
+        description: str | None = None,
+        source_file_name: str = "remote:skillContent",
+    ) -> dict:
+        """
+        将相对路径 -> 文本 映射写入当前工作区 local-skills/<workspace_id>/<skill_name>/，
+        与员工侧从远程 skillContent 落盘逻辑一致（参见 EmployeeService._save_skills_to_skill_path）。
+        """
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        already_exists = LocalSkillService.local_skill_exists(normalized, workspace_id)
+        if already_exists and not overwrite:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"本地已存在同名技能: {normalized}",
+            )
+        if not file_map:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="技能文件内容为空。",
+            )
+
+        local_root = LocalSkillService._resolve_local_root(workspace_id)
+        local_root.mkdir(parents=True, exist_ok=True)
+        target_dir = local_root / normalized
+
+        existing_local_id: int | None = None
+        if target_dir.exists():
+            existing_meta = LocalSkillService._read_meta(target_dir)
+            existing_local_id = LocalSkillService._parse_local_id(
+                existing_meta.get("localId")
+            )
+            shutil.rmtree(target_dir, ignore_errors=True)
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for relative_path, content in file_map.items():
+            target = LocalSkillService._safe_write_under_skill_dir(
+                target_dir, relative_path
+            )
+            if target is None:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            body = content if isinstance(content, str) else str(content)
+            target.write_text(body, encoding="utf-8")
+
+        desc: str | None = None
+        if isinstance(description, str) and description.strip():
+            desc = description.strip()
+        if not desc:
+            skill_md = target_dir / LocalSkillService.SKILL_MD_NAME
+            if skill_md.exists():
+                desc = LocalSkillService._extract_description_from_skill_md(
+                    skill_md
+                ) or None
+
+        if existing_local_id is not None:
+            local_id = existing_local_id
+        else:
+            universal_reserved = LocalSkillService._reserved_negative_ids_universal()
+            local_id = LocalSkillService._next_id_below_reserved(universal_reserved)
+
+        meta = {
+            "skillName": normalized,
+            "localId": local_id,
+            "sourceFileName": source_file_name,
+            "importedAt": datetime.now().isoformat(timespec="seconds"),
+            "overwrite": overwrite,
+            "description": desc,
+        }
+        if display_name_zh and str(display_name_zh).strip():
+            meta["displayNameZh"] = str(display_name_zh).strip()
+        LocalSkillService._write_meta(target_dir, meta)
+        return {
+            "skillName": normalized,
+            "localId": local_id,
+            "path": str(target_dir),
+            "overwritten": already_exists and overwrite,
+        }
 
     @staticmethod
     def list_local_skills(workspace_id: int | None = None) -> list[dict]:
@@ -427,7 +522,7 @@ class LocalSkillService:
         # 合并列表内 localId 唯一：先内置后 workspace，重复或缺失则重新分配并写回 meta
         claimed_local_ids: set[int] = set()
 
-        def _load_skills_from_dir(root: Path) -> list[dict]:
+        def _load_skills_from_dir(root: Path, *, is_builtin: bool) -> list[dict]:
             if not root.exists():
                 return []
             dir_items: list[dict] = []
@@ -446,6 +541,7 @@ class LocalSkillService:
                 else:
                     local_id = parsed
                 claimed_local_ids.add(local_id)
+                zh = meta.get("displayNameZh")
                 dir_items.append(
                     {
                         "skillName": skill_dir.name,
@@ -454,24 +550,40 @@ class LocalSkillService:
                         "hasSkillMd": (skill_dir / LocalSkillService.SKILL_MD_NAME).exists(),
                         "importedAt": meta.get("importedAt"),
                         "description": meta.get("description"),
-                }
+                        "displayNameZh": zh if isinstance(zh, str) else None,
+                        "isBuiltin": is_builtin,
+                    }
                 )
             return dir_items
 
         # 总是包含 builtin 技能
-        items.extend(_load_skills_from_dir(builtin_root))
+        items.extend(_load_skills_from_dir(builtin_root, is_builtin=True))
 
         # 如果指定了 workspace_id，再添加该 workspace 的自定义技能
         # 同名技能会被 workspace 自定义版本覆盖
         if workspace_id is not None:
             workspace_root = LocalSkillService._resolve_local_root(workspace_id)
-            workspace_skills = _load_skills_from_dir(workspace_root)
+            workspace_skills = _load_skills_from_dir(workspace_root, is_builtin=False)
             skill_map = {item["skillName"]: item for item in items}
             for skill in workspace_skills:
                 skill_map[skill["skillName"]] = skill
             items = list(skill_map.values())
 
         return items
+
+    @staticmethod
+    def delete_workspace_skill(skill_name: str, workspace_id: int) -> None:
+        """仅删除当前工作区目录下的技能文件夹，不删除 builtin 下的内置技能。"""
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        skill_dir = LocalSkillService._skill_dir(normalized, workspace_id)
+        if not skill_dir.is_dir():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    f"未找到可删除的本地技能（可能仅为内置技能或名称不存在）: {normalized}"
+                ),
+            )
+        shutil.rmtree(skill_dir)
 
     @staticmethod
     def get_local_skill_detail(skill_name: str, workspace_id: int | None = None) -> dict:
@@ -503,6 +615,12 @@ class LocalSkillService:
         for path in sorted(skill_dir.rglob("*")):
             if path.is_file():
                 files.append(path.relative_to(skill_dir).as_posix())
+        builtin_root = LocalSkillService._resolve_builtin_root().resolve()
+        try:
+            is_builtin = skill_dir.resolve().is_relative_to(builtin_root)
+        except ValueError:
+            is_builtin = False
+        zh = meta.get("displayNameZh")
         return {
             "skillName": skill_name,
             "localId": LocalSkillService._parse_local_id(meta.get("localId")),
@@ -510,6 +628,8 @@ class LocalSkillService:
             "importedAt": meta.get("importedAt"),
             "skillMdContent": skill_md_content,
             "files": files,
+            "displayNameZh": zh if isinstance(zh, str) else None,
+            "isBuiltin": is_builtin,
         }
 
     @staticmethod
