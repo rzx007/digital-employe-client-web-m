@@ -57,7 +57,7 @@ def extract_message_parts_from_buffer(events: list[dict]) -> list[dict] | None:
 
 
 def _langgraph_node_from_inner(inner) -> str | None:
-    """从 messages 事件的 data 元组读取 langgraph_node（与前端 parser 逻辑一致）。"""
+    """从 messages 事件的 data 元组读取 langgraph_node。"""
     if not isinstance(inner, list) or len(inner) < 2:
         return None
     meta = inner[1]
@@ -172,12 +172,12 @@ def _replay_payloads_to_parts(payloads: list) -> list[dict]:
                     if not meta["inputText"]:
                         meta["inputText"] += itc_args
 
-            # 与流式 parser 对齐：tools 节点 ```json…``` 等不写入 text_buf，
-            # 避免历史 message_parts 出现 [text(工具展示), tool, text(总结)] 而流式已过滤
-            node = _langgraph_node_from_inner(inner)
-            if node is None or node == "model":
-                content = msg_chunk.get("content")
-                if isinstance(content, str) and content:
+            content = msg_chunk.get("content")
+            if isinstance(content, str) and content:
+                node = _langgraph_node_from_inner(inner)
+                # tools 节点内层 LLM 流式展示（如 recruit 的 ```json…```）不进 text，
+                # 正式结果以 ToolMessage 为准，与前端流式 preliminary 路径对齐
+                if node is None or node == "model":
                     lc_src = _lc_source_from_inner(inner)
                     tag = "summarization" if lc_src == "summarization" else "default"
                     if (

@@ -56,6 +56,7 @@ export interface PartsBuilderState {
   toolStreamingOutputs: Map<string, string>
   pendingToolCallsByChunkKey: Map<string, string>
   messageChunkIdToPending: Map<string, string>
+  activeToolCallId: string | null
 }
 
 export function createPartsBuilderState(): PartsBuilderState {
@@ -69,6 +70,7 @@ export function createPartsBuilderState(): PartsBuilderState {
     toolStreamingOutputs: new Map(),
     pendingToolCallsByChunkKey: new Map(),
     messageChunkIdToPending: new Map(),
+    activeToolCallId: null,
   }
 }
 
@@ -160,7 +162,6 @@ export function applySSEEventToParts(
   if (eventType === "messages" && "data" in event) {
     const data = (event as { data: unknown }).data
     if (!Array.isArray(data) || data.length === 0) return null
-    // 传入 [Message, Metadata] 整组，以便读取 langgraph_node
     return applyMessagesEvent(currentParts, data, state)
   }
 
@@ -197,7 +198,6 @@ function applyToolOutputEvent(
   return { parts }
 }
 
-/** 与 langchain-stream-parser.getLangGraphNode 相同语义，供 useChatStream 路径使用 */
 function getLangGraphNodeFromMessageData(data: unknown): string | null {
   if (!Array.isArray(data) || data.length < 2) {
     return null
@@ -222,22 +222,32 @@ function getLcSourceFromMessageData(data: unknown): string | null {
   return typeof src === "string" ? src : null
 }
 
+function closeOpenTextPart(
+  parts: AnyPart[],
+  state: PartsBuilderState
+) {
+  if (state.currentTextPartIndex === null) {
+    return
+  }
+  if (state.currentTextPartIndex < parts.length) {
+    const textPart = parts[state.currentTextPartIndex]
+    if (textPart.type === "text") {
+      textPart.state = "done"
+    }
+  }
+  state.currentTextPartIndex = null
+  state.currentTextStreamTag = null
+}
+
 function applyMessagesEvent(
   currentParts: AnyPart[],
   messageData: unknown,
   state: PartsBuilderState
 ): SSEPartsResult | null {
   const rawChunk = Array.isArray(messageData) ? messageData[0] : messageData
-  const langgraphNode = getLangGraphNodeFromMessageData(messageData)
 
   if (isAIMessageChunk(rawChunk)) {
-    return applyAIMessageChunk(
-      currentParts,
-      rawChunk,
-      state,
-      langgraphNode,
-      messageData
-    )
+    return applyAIMessageChunk(currentParts, rawChunk, state, messageData)
   }
   if (isToolMessage(rawChunk)) {
     return applyToolMessage(currentParts, rawChunk, state)
@@ -249,7 +259,6 @@ function applyAIMessageChunk(
   currentParts: AnyPart[],
   chunk: AIMessageChunk,
   state: PartsBuilderState,
-  langgraphNode: string | null,
   messageData: unknown
 ): SSEPartsResult {
   const parts = cloneParts(currentParts)
@@ -257,57 +266,80 @@ function applyAIMessageChunk(
   const content = kwargs?.content
   const messageChunkId = kwargs?.id ?? ""
 
-  // 仅 model 节点追加 text part；tools 节点内层流式 content 忽略
-  const mayAppendText =
-    langgraphNode === null || langgraphNode === "model"
-
+  const langgraphNode = getLangGraphNodeFromMessageData(messageData)
   const streamTag =
     getLcSourceFromMessageData(messageData) === "summarization"
       ? "summarization"
       : "default"
 
-  if (mayAppendText && content && content.length > 0) {
-    const needNewTextPart =
-      state.currentTextPartIndex === null ||
-      state.currentTextStreamTag !== streamTag
+  if (content && content.length > 0) {
+    if (langgraphNode === "tools") {
+      const toolCallId = state.activeToolCallId
+      if (toolCallId) {
+        closeOpenTextPart(parts, state)
+        const existing = state.toolStreamingOutputs.get(toolCallId) ?? ""
+        const accumulated = existing + content
+        state.toolStreamingOutputs.set(toolCallId, accumulated)
 
-    if (needNewTextPart) {
-      state.currentTextPartIndex = null
-    }
+        const partIndex = state.toolPartIndicesByCallId.get(toolCallId)
+        if (partIndex !== undefined && isToolPart(parts[partIndex])) {
+          const toolPart = parts[partIndex] as Record<string, unknown>
+          const name =
+            state.toolNamesByCallId.get(toolCallId) ?? "unknown"
+          toolPart.state = "output-available"
+          toolPart.output = {
+            text: accumulated,
+            status: "success",
+            toolName: name,
+            input: state.toolInputParsed.get(toolCallId),
+            inputText: state.toolInputAccumulators.get(toolCallId) ?? "",
+          }
+          ;(toolPart as { preliminary?: boolean }).preliminary = true
+        }
+      }
+    } else if (langgraphNode === "model" || langgraphNode === null) {
+      const needNewTextPart =
+        state.currentTextPartIndex === null ||
+        state.currentTextStreamTag !== streamTag
 
-    if (state.currentTextPartIndex === null) {
-      const textPart: Record<string, unknown> = {
-        type: "text",
-        text: content,
-        state: "streaming",
+      if (needNewTextPart) {
+        state.currentTextPartIndex = null
       }
-      if (streamTag === "summarization") {
-        textPart.providerMetadata =
-          LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA
+
+      if (state.currentTextPartIndex === null) {
+        const textPart: Record<string, unknown> = {
+          type: "text",
+          text: content,
+          state: "streaming",
+        }
+        if (streamTag === "summarization") {
+          textPart.providerMetadata =
+            LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA
+        }
+        parts.push(textPart as AnyPart)
+        state.currentTextPartIndex = parts.length - 1
+        state.currentTextStreamTag = streamTag
+      } else if (state.currentTextPartIndex < parts.length) {
+        const textPart = parts[state.currentTextPartIndex]
+        if (textPart.type === "text") {
+          textPart.text += content
+        }
+      } else {
+        state.currentTextPartIndex = null
+        state.currentTextStreamTag = null
+        const textPart: Record<string, unknown> = {
+          type: "text",
+          text: content,
+          state: "streaming",
+        }
+        if (streamTag === "summarization") {
+          textPart.providerMetadata =
+            LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA
+        }
+        parts.push(textPart as AnyPart)
+        state.currentTextPartIndex = parts.length - 1
+        state.currentTextStreamTag = streamTag
       }
-      parts.push(textPart as AnyPart)
-      state.currentTextPartIndex = parts.length - 1
-      state.currentTextStreamTag = streamTag
-    } else if (state.currentTextPartIndex < parts.length) {
-      const textPart = parts[state.currentTextPartIndex]
-      if (textPart.type === "text") {
-        textPart.text += content
-      }
-    } else {
-      state.currentTextPartIndex = null
-      state.currentTextStreamTag = null
-      const textPart: Record<string, unknown> = {
-        type: "text",
-        text: content,
-        state: "streaming",
-      }
-      if (streamTag === "summarization") {
-        textPart.providerMetadata =
-          LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA
-      }
-      parts.push(textPart as AnyPart)
-      state.currentTextPartIndex = parts.length - 1
-      state.currentTextStreamTag = streamTag
     }
   }
 
@@ -332,6 +364,7 @@ function applyAIMessageChunk(
       } as AnyPart)
       state.toolPartIndicesByCallId.set(resolvedId, parts.length - 1)
       state.toolInputAccumulators.set(resolvedId, "")
+      state.activeToolCallId = resolvedId
       state.currentTextPartIndex = null
       state.currentTextStreamTag = null
     }
@@ -388,6 +421,7 @@ function applyAIMessageChunk(
       } as AnyPart)
       state.toolPartIndicesByCallId.set(resolvedId, parts.length - 1)
       state.toolInputAccumulators.set(resolvedId, "")
+      state.activeToolCallId = resolvedId
       state.currentTextPartIndex = null
       state.currentTextStreamTag = null
     }
@@ -410,6 +444,7 @@ function applyAIMessageChunk(
         state.toolInputParsed.set(resolvedId, parsed)
         toolPart.state = "input-available"
         toolPart.input = parsed
+        state.activeToolCallId = resolvedId
       }
     }
   }
@@ -432,6 +467,9 @@ function applyToolMessage(
   if (!toolCallId) {
     return { parts }
   }
+
+  closeOpenTextPart(parts, state)
+  state.activeToolCallId = null
 
   const partIndex = state.toolPartIndicesByCallId.get(toolCallId)
   if (partIndex === undefined || !isToolPart(parts[partIndex])) {
@@ -476,12 +514,10 @@ function applyToolMessage(
       input: parsedInput,
       inputText: state.toolInputAccumulators.get(toolCallId) ?? "",
     }
+    delete (toolPart as { preliminary?: boolean }).preliminary
   }
 
   state.toolStreamingOutputs.delete(toolCallId)
-  // 工具已产出最终结果，下一段 model 总结应新建 text part，勿追加到工具前的 text
-  state.currentTextPartIndex = null
-  state.currentTextStreamTag = null
 
   return { parts }
 }

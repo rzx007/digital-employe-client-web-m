@@ -30,6 +30,8 @@ export interface LangChainStreamParseState {
   didSendFinish: boolean
   toolOutputAccumulators: Map<string, string>
   toolNamesById: Map<string, string>
+  /** 当前正在执行的工具 call（tools 节点流式输出归属） */
+  activeToolCallId: string | null
 }
 
 export function createLangChainStreamParseState(): LangChainStreamParseState {
@@ -43,6 +45,7 @@ export function createLangChainStreamParseState(): LangChainStreamParseState {
     didSendFinish: false,
     toolOutputAccumulators: new Map(),
     toolNamesById: new Map(),
+    activeToolCallId: null,
   }
 }
 
@@ -230,22 +233,46 @@ function resolvePendingToolCallByChunkIndex(
   return state.pendingToolCalls.get(key) ?? null
 }
 
-/**
- * 从 LangGraph v2 messages 载荷读取节点名。
- * 载荷形如 [AIMessageChunk | ToolMessage, LangGraphMetadata]。
- */
 function getLangGraphNode(payload: unknown): string | null {
   if (!Array.isArray(payload) || payload.length < 2) {
     return null
   }
-
   const meta = payload[1]
   if (!meta || typeof meta !== "object") {
     return null
   }
-
   const node = (meta as { langgraph_node?: unknown }).langgraph_node
   return typeof node === "string" ? node : null
+}
+
+function getActiveToolCallId(state: LangChainStreamParseState): string | null {
+  if (state.activeToolCallId) {
+    return state.activeToolCallId
+  }
+  let lastId: string | null = null
+  for (const pending of state.pendingToolCalls.values()) {
+    if (pending.toolCallId) {
+      lastId = pending.toolCallId
+    }
+  }
+  return lastId
+}
+
+function buildToolsNodeStreamingChunk(
+  content: string,
+  state: LangChainStreamParseState,
+  toolCallId: string
+): UIMessageChunk {
+  const existing = state.toolOutputAccumulators.get(toolCallId) ?? ""
+  const accumulated = existing + content
+  state.toolOutputAccumulators.set(toolCallId, accumulated)
+
+  return {
+    type: "tool-output-available" as const,
+    toolCallId,
+    output: accumulated,
+    preliminary: true,
+  } as UIMessageChunk
 }
 
 /** LangGraph metadata：`lc_source` 如 summarization 表示会话压缩总结流 */
@@ -261,22 +288,6 @@ function getLcSource(payload: unknown): string | null {
   return typeof src === "string" ? src : null
 }
 
-/**
- * 是否应将 AIMessageChunk.content 转为 text-delta。
- *
- * - model：总管/员工最终回复（如「为您生成了 3 位候选人」）
- * - tools：工具节点内层 LLM 流式展示（如 recruit_employee 的 ```json…```），
- *   若当成正文会误入 ToolRow 或与总结粘连；正式结果以 ToolMessage 为准
- * - 无 metadata 时保持兼容旧格式
- */
-function shouldStreamAssistantText(payload: unknown): boolean {
-  const node = getLangGraphNode(payload)
-  if (node === null) {
-    return true
-  }
-  return node === "model"
-}
-
 function extractAssistantText(payload: unknown) {
   if (!Array.isArray(payload) || payload.length === 0) {
     return null
@@ -285,11 +296,6 @@ function extractAssistantText(payload: unknown) {
   const chunk = payload[0]
 
   if (!isLangChainAiMessageChunk(chunk)) {
-    return null
-  }
-
-  // tools 节点 content 不提取，避免与 tool output / 后续 model 总结混 part
-  if (!shouldStreamAssistantText(payload)) {
     return null
   }
 
@@ -369,6 +375,7 @@ function buildToolInputChunks(
           toolName: existingPending.toolName,
         })
         existingPending.sentInputStart = true
+        state.activeToolCallId = existingPending.toolCallId
       }
 
       return
@@ -393,6 +400,9 @@ function buildToolInputChunks(
         toolName: pending.toolName,
       })
       pending.sentInputStart = true
+      if (pending.toolCallId) {
+        state.activeToolCallId = pending.toolCallId
+      }
     }
   })
 
@@ -501,6 +511,7 @@ function buildToolInputChunks(
           input: parsedInput,
         })
         pending.sentInputAvailable = true
+        state.activeToolCallId = resolvedToolCallId
       }
     })
 
@@ -668,11 +679,10 @@ export function parseLangChainPayloadToChunks(options: {
     state.currentPhase = "tool"
   }
 
-  // ToolMessage 到达：先结束可能误开的 text phase，再写入 tool output；
-  // 后续 model 总结会通过 openNewTextPhase 单独成段
   if (toolOutputChunk) {
     result.push(...closeCurrentTextPhase(state))
     state.currentPhase = "tool"
+    state.activeToolCallId = null
     result.push(toolOutputChunk)
   }
 
@@ -683,30 +693,49 @@ export function parseLangChainPayloadToChunks(options: {
     )
   }
 
-  if (hasTextContent) {
-    const streamTag =
-      getLcSource(payload) === "summarization" ? "summarization" : "default"
-    if (
-      state.currentPhase === "text" &&
-      state.currentTextStreamTag !== null &&
-      state.currentTextStreamTag !== streamTag
-    ) {
-      result.push(...closeCurrentTextPhase(state))
-      state.currentPhase = "idle"
+  if (hasTextContent && assistantText) {
+    const langgraphNode = getLangGraphNode(payload)
+
+    if (langgraphNode === "tools") {
+      const toolCallId = getActiveToolCallId(state)
+      if (toolCallId) {
+        if (state.currentPhase === "text") {
+          result.push(...closeCurrentTextPhase(state))
+        }
+        state.currentPhase = "tool"
+        result.push(
+          buildToolsNodeStreamingChunk(assistantText, state, toolCallId)
+        )
+      } else if (import.meta.env.DEV) {
+        console.warn(
+          "[langchain-stream] dropped tools-node content without activeToolCallId"
+        )
+      }
+    } else if (langgraphNode === "model" || langgraphNode === null) {
+      const streamTag =
+        getLcSource(payload) === "summarization" ? "summarization" : "default"
+      if (
+        state.currentPhase === "text" &&
+        state.currentTextStreamTag !== null &&
+        state.currentTextStreamTag !== streamTag
+      ) {
+        result.push(...closeCurrentTextPhase(state))
+        state.currentPhase = "idle"
+      }
+      if (state.currentPhase !== "text") {
+        result.push(...openNewTextPhase(state, streamTag))
+      }
+      const deltaChunk: UIMessageChunk = {
+        type: "text-delta",
+        id: state.currentTextId!,
+        delta: assistantText,
+      }
+      if (streamTag === "summarization") {
+        ;(deltaChunk as { providerMetadata?: unknown }).providerMetadata =
+          LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA
+      }
+      result.push(deltaChunk)
     }
-    if (state.currentPhase !== "text") {
-      result.push(...openNewTextPhase(state, streamTag))
-    }
-    const deltaChunk: UIMessageChunk = {
-      type: "text-delta",
-      id: state.currentTextId!,
-      delta: assistantText,
-    }
-    if (streamTag === "summarization") {
-      ;(deltaChunk as { providerMetadata?: unknown }).providerMetadata =
-        LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA
-    }
-    result.push(deltaChunk)
   }
 
   return result
