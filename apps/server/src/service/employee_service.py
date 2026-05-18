@@ -22,7 +22,6 @@ from src.models.workspace import Workspace
 from src.schemas.employee import EmployeeCreate, EmployeeUpdate, ShiftScheduleCreateWithoutEmployee
 from src.service.mcp_service import McpService
 from src.service.local_skill_service import LocalSkillService
-from src.service.skill_service import SkillService
 from src.service.task_scheduler_service import TaskSchedulerService
 from src.service.task_service import TaskService
 from src.service.workspace_service import WorkspaceService
@@ -558,52 +557,6 @@ class EmployeeService:
             )
 
     @staticmethod
-    def _validate_and_fetch_skills(skill_ids: list[int] | None, token: str) -> list[dict]:
-        if not skill_ids:
-            return []
-        details: list[dict] = []
-        seen: set[int] = set()
-        for raw_id in skill_ids:
-            skill_id = int(raw_id)
-            if skill_id in seen:
-                continue
-            seen.add(skill_id)
-            detail = SkillService.get_remote_skill(int(skill_id), token)
-            if int(detail.get("status") or 0) != 1:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"技能未启用，skill_id={skill_id}",
-                )
-            skill_content = detail.get("skillContent")
-            if not skill_content:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"技能内容为空，skill_id={skill_id}",
-                )
-            try:
-                if isinstance(skill_content, str):
-                    parsed_content = json.loads(skill_content)
-                elif isinstance(skill_content, dict):
-                    parsed_content = skill_content
-                else:
-                    raise ValueError("skillContent 不是字符串或对象")
-                if not isinstance(parsed_content, dict):
-                    raise ValueError("skillContent 解析后不是对象")
-            except (json.JSONDecodeError, ValueError) as exc:
-                logger.error(
-                    "技能 skillContent 解析失败 skill_id=%s: %s",
-                    skill_id,
-                    exc,
-                    exc_info=True,
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"技能内容格式不合法，skill_id={skill_id}",
-                ) from exc
-            details.append(detail)
-        return details
-
-    @staticmethod
     def _validate_and_fetch_local_skills(
         skill_ids: list[int] | None,
         workspace_id: int | None = None,
@@ -899,15 +852,11 @@ class EmployeeService:
 
         if "skill_ids" in payload.model_fields_set:
             skill_ids = payload.skill_ids or []
-            remote_skill_ids = [int(v) for v in skill_ids if int(v) > 0]
-            remote_skills = EmployeeService._validate_and_fetch_skills(
-                remote_skill_ids, token
-            )
+            remote_skills: list[dict] = []
             local_skills = EmployeeService._validate_and_fetch_local_skills(
                 skill_ids, employee.workspace_id
             )
-            merged_skills = [*remote_skills, *local_skills]
-            EmployeeService._replace_employee_skills(db, employee, merged_skills)
+            EmployeeService._replace_employee_skills(db, employee, local_skills)
             employee.skills_json = EmployeeService._build_skills_json_payload(
                 employee,
                 remote_skills,
@@ -1081,10 +1030,7 @@ class EmployeeService:
                 status_code=status.HTTP_400_BAD_REQUEST, detail="员工名称已存在")
 
         skill_ids = obj_in.skill_ids or []
-        remote_skill_ids = [int(v) for v in skill_ids if int(v) > 0]
-        remote_skills = EmployeeService._validate_and_fetch_skills(
-            remote_skill_ids, token
-        )
+        remote_skills: list[dict] = []
         local_skills = EmployeeService._validate_and_fetch_local_skills(
             skill_ids, workspace_id
         )
@@ -1113,9 +1059,7 @@ class EmployeeService:
         db.flush()
         employee.employee_code = str(employee.id)
 
-        EmployeeService._replace_employee_skills(
-            db, employee, [*remote_skills, *local_skills]
-        )
+        EmployeeService._replace_employee_skills(db, employee, local_skills)
         EmployeeService._replace_employee_mcps(db, employee, mcp_details)
         EmployeeService._replace_shift_schedule(db, employee, shift_schedule)
         employee.skills_json = EmployeeService._build_skills_json_payload(

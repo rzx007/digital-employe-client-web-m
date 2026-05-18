@@ -5,7 +5,6 @@ import time
 from typing import Any
 from src.schemas.employee import EmployeeProfile
 from src.service.modal_service import ModelService
-from src.service.agent_interface_service import agent_interface_service
 from src.service.local_skill_service import LocalSkillService
 
 logger = logging.getLogger(__name__)
@@ -23,13 +22,11 @@ class EmployeeGenerationService:
         workspace_id: int | None = None,
     ) -> list[dict[str, Any]]:
         """
-        获取可用技能列表（本地 = builtin + 指定 workspace 目录下的技能）。
+        获取可用技能列表（仅本地：builtin + 指定 workspace 目录下的技能）。
+        招聘/候选人生成不再拉取远程技能市场，避免多余请求并与员工配置一致。
         """
         try:
-            remote_skills = await agent_interface_service.get_available_skills(
-                status=1,
-                token=token,
-            )
+            _ = token  # 保留签名，便于调用方统一传参
             local_skills = LocalSkillService.list_local_skills(workspace_id)
             local_skill_items: list[dict[str, Any]] = []
             for item in local_skills:
@@ -38,6 +35,12 @@ class EmployeeGenerationService:
                     continue
                 description = (item.get("description") or "").strip()
                 skill_name = str(item.get("skillName") or "")
+                zh_raw = item.get("displayNameZh")
+                display_zh = (
+                    zh_raw.strip()
+                    if isinstance(zh_raw, str) and zh_raw.strip()
+                    else skill_name
+                )
                 recruit_summary = (item.get("recruitSummary") or "").strip()
                 if not recruit_summary:
                     recruit_summary = LocalSkillService.build_recruit_summary(
@@ -47,6 +50,7 @@ class EmployeeGenerationService:
                     {
                         "id": local_id,
                         "skillName": skill_name,
+                        "displayNameZh": display_zh,
                         "description": description,
                         "recruitSummary": recruit_summary,
                         "directoryId": None,
@@ -54,26 +58,12 @@ class EmployeeGenerationService:
                     }
                 )
 
-            enriched_remote: list[dict[str, Any]] = []
-            for skill in remote_skills:
-                description = str(skill.get("description") or "").strip()
-                skill_name = str(skill.get("skillName") or "")
-                recruit_summary = str(skill.get("recruitSummary") or "").strip()
-                if not recruit_summary:
-                    recruit_summary = LocalSkillService.build_recruit_summary(
-                        description, skill_name, RECRUIT_SUMMARY_MAX_CHARS
-                    )
-                enriched_remote.append({**skill, "recruitSummary": recruit_summary})
-
-            skills = [*enriched_remote, *local_skill_items]
             logger.info(
-                "招聘生成获取到技能数量: workspace_id=%s, remote=%s, local=%s, total=%s",
+                "招聘生成获取到技能数量: workspace_id=%s, local=%s",
                 workspace_id,
-                len(enriched_remote),
                 len(local_skill_items),
-                len(skills),
             )
-            return skills
+            return local_skill_items
         except Exception as e:
             logger.error("获取技能列表失败: %s", e, exc_info=True)
             return []

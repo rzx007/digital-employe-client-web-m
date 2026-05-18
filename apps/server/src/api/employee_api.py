@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 _RECRUIT_SKILL_RESPONSE_KEYS = (
     "id",
     "skillName",
+    "displayNameZh",
     "description",
     "prompt",
     "directoryId",
@@ -178,21 +179,28 @@ async def generate_employees(http_request: Request, request: EmployeeGenerationR
        
         skills_detail = []
         profile_skills_by_id = {
-            item.get("id"): item for item in (profile.get("skills") or [])
+            int(item["id"]): item
+            for item in (profile.get("skills") or [])
+            if item.get("id") is not None
         }
         if skill_ids:
-            for skill_id in skill_ids:
-                detail = await agent_interface_service.get_skill_detail(
-                    skill_id,
-                    token=token,
-                    workspace_id=workspace_id,
-                    include_skill_content=False,
-                )
+            for raw_id in skill_ids:
+                skill_id_int = int(raw_id)
+                detail = None
+                if skill_id_int < 0:
+                    detail = await agent_interface_service.get_skill_detail(
+                        skill_id_int,
+                        token=token,
+                        workspace_id=workspace_id,
+                        include_skill_content=False,
+                    )
                 if detail:
                     skills_detail.append(_skill_for_recruit_response(detail))
-                elif skill_id in profile_skills_by_id:
+                elif skill_id_int in profile_skills_by_id:
                     skills_detail.append(
-                        _skill_for_recruit_response(profile_skills_by_id[skill_id])
+                        _skill_for_recruit_response(
+                            profile_skills_by_id[skill_id_int]
+                        )
                     )
 
         # 使用EmployeeInfo创建对象，确保数据格式正确

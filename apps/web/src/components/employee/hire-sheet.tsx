@@ -23,7 +23,7 @@ import {
   type ScheduleTaskListItem,
   type ShiftScheduleForm,
 } from "@/types/task"
-import { useSkillListQuery } from "@/hooks/use-skill-queries"
+import { useEmployeePickerSkillsQuery } from "@/hooks/use-skill-queries"
 
 import { CapabilityPickerDialog } from "./capability-picker-dialog"
 import { ScheduleTaskConfig } from "./schedule-task-config"
@@ -63,7 +63,7 @@ export function HireSheet({
     candidate.skill_ids ?? []
   )
   const [allMcpList, setAllMcpList] = React.useState<McpListItem[]>([])
-  const { data: allSkillList = [] } = useSkillListQuery()
+  const { data: allSkillList = [] } = useEmployeePickerSkillsQuery()
   const [pickerOpen, setPickerOpen] = React.useState(false)
 
   React.useEffect(() => {

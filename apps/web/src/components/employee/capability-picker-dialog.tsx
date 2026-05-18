@@ -70,16 +70,21 @@ export function CapabilityPickerDialog({
     onOpenChange(false)
   }
 
+  const localPickerSkills = React.useMemo(
+    () => allSkillList.filter((s) => s.source !== "remote"),
+    [allSkillList],
+  )
+
   const filteredSkills = React.useMemo(() => {
-    if (!searchQuery.trim()) return allSkillList
+    if (!searchQuery.trim()) return localPickerSkills
     const q = searchQuery.toLowerCase()
-    return allSkillList.filter(
+    return localPickerSkills.filter(
       (item) =>
         item.skillName.toLowerCase().includes(q) ||
         (item.description?.toLowerCase().includes(q)) ||
         (item.displayNameZh && item.displayNameZh.toLowerCase().includes(q))
     )
-  }, [allSkillList, searchQuery])
+  }, [localPickerSkills, searchQuery])
 
   const filteredMcps = React.useMemo(() => {
     if (!searchQuery.trim()) return allMcpList
@@ -137,7 +142,9 @@ export function CapabilityPickerDialog({
                 <div className="grid grid-cols-2 gap-3">
                   {filteredSkills.map((item) => {
                     const checked = draftSkillIds.includes(item.id)
-                    const isLocal = item.source === "local"
+                    const src = item.source ?? "local"
+                    const sourceIsLocal =
+                      src === "local" || src === "builtin"
                     return (
                       <button
                         key={item.id}
@@ -156,10 +163,15 @@ export function CapabilityPickerDialog({
                           </span>
                           <div className="flex shrink-0 items-center gap-1">
                             <Badge
-                              variant={isLocal ? "outline" : "secondary"}
+                              variant={sourceIsLocal ? "outline" : "secondary"}
                               className="px-1 py-0 text-[10px]"
                             >
-                              {item.sourceLabel || (isLocal ? "本地" : "远程")}
+                              {item.sourceLabel ||
+                                (src === "builtin"
+                                  ? "内置"
+                                  : src === "local"
+                                    ? "本地"
+                                    : "远程")}
                             </Badge>
                             <IconCheck
                               className={cn(
@@ -170,7 +182,8 @@ export function CapabilityPickerDialog({
                           </div>
                         </div>
                         <span className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-                          {item.description || (isLocal ? item.skillName : "")}
+                          {item.description ||
+                            (sourceIsLocal ? item.skillName : "")}
                         </span>
                       </button>
                     )

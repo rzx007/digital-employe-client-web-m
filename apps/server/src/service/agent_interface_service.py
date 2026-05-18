@@ -161,9 +161,16 @@ class AgentInterfaceService:
                 if not skill_name:
                     return None
                 description = str(matched_skill.get("description") or "").strip()
+                zh_raw = matched_skill.get("displayNameZh")
+                display_zh = (
+                    zh_raw.strip()
+                    if isinstance(zh_raw, str) and zh_raw.strip()
+                    else skill_name
+                )
                 result: dict[str, Any] = {
                     "id": skill_id,
                     "skillName": skill_name,
+                    "displayNameZh": display_zh,
                     "description": description,
                     "prompt": "",
                     "directoryId": None,

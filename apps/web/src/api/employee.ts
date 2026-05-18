@@ -22,9 +22,11 @@ export async function fetchMcpList(): Promise<McpListItem[]> {
 
 export async function fetchSkillList(opts?: {
   signal?: AbortSignal
+  localOnly?: boolean
 }): Promise<SkillListItem[]> {
+  const suffix = opts?.localOnly ? "?localOnly=true" : ""
   const res = await request<{ code?: number; data?: SkillListItem[] }>(
-    "/skills/list",
+    `/skills/list${suffix}`,
     opts?.signal ? { signal: opts.signal } : {},
   )
   return Array.isArray(res?.data) ? res.data : []

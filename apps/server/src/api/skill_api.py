@@ -39,19 +39,17 @@ router = APIRouter(tags=["技能"])
 
 
 @router.get("/skills/list", response_model=ResponseBase[list[SkillListItem]])
-def list_skills(request: Request) -> ResponseBase[list[SkillListItem]]:
-    token = request.headers.get("token")
+def list_skills(
+    request: Request,
+    local_only: bool = Query(
+        default=False,
+        alias="localOnly",
+        description="为 true 时仅返回本地与内置技能，不请求远程技能列表",
+    ),
+) -> ResponseBase[list[SkillListItem]]:
     workspace_id = get_workspace_id_from_request(request)
-    remote_skills = SkillService.list_remote_skills(token)
-    remote_data = []
-    for item in remote_skills:
-        mapped = SkillService.map_remote_to_list_item(item)
-        mapped["source"] = "remote"
-        mapped["sourceLabel"] = "远程"
-        remote_data.append(SkillListItem(**mapped))
-
     local_skills = LocalSkillService.list_local_skills(workspace_id)
-    local_data = []
+    local_data: list[SkillListItem] = []
     for index, item in enumerate(local_skills, start=1):
         local_id = item.get("localId")
         normalized_id = (
@@ -80,8 +78,19 @@ def list_skills(request: Request) -> ResponseBase[list[SkillListItem]]:
             )
         )
 
-    data = remote_data + local_data
-    return ResponseBase[list[SkillListItem]](data=data)
+    if local_only:
+        return ResponseBase[list[SkillListItem]](data=local_data)
+
+    token = request.headers.get("token")
+    remote_data: list[SkillListItem] = []
+    remote_skills = SkillService.list_remote_skills(token)
+    for item in remote_skills:
+        mapped = SkillService.map_remote_to_list_item(item)
+        mapped["source"] = "remote"
+        mapped["sourceLabel"] = "远程"
+        remote_data.append(SkillListItem(**mapped))
+
+    return ResponseBase[list[SkillListItem]](data=remote_data + local_data)
 
 
 @router.get("/skills/{skill_id}", response_model=ResponseBase[SkillRead])

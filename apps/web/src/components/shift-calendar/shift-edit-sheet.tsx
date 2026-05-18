@@ -108,7 +108,9 @@ export function ShiftEditSheet({
 
   React.useEffect(() => {
     fetchMcpList().then(setAllMcpList).catch(() => {})
-    fetchSkillList().then(setAllSkillList).catch(() => {})
+    fetchSkillList({ localOnly: true })
+      .then(setAllSkillList)
+      .catch(() => {})
   }, [])
 
   React.useEffect(() => {

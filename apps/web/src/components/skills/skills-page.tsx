@@ -279,6 +279,9 @@ function SkillDetailView({
       await deleteWorkspaceLocalSkill(skill.skillName)
       toast.success("已删除本地技能")
       await queryClient.invalidateQueries({ queryKey: chatKeys.skills() })
+      await queryClient.invalidateQueries({
+        queryKey: chatKeys.skillsPickerLocal(),
+      })
       onBack()
     } catch (err: unknown) {
       const msg =
@@ -483,6 +486,7 @@ export function SkillsPage({
 
   const handleImportSuccess = () => {
     queryClient.invalidateQueries({ queryKey: chatKeys.skills() })
+    queryClient.invalidateQueries({ queryKey: chatKeys.skillsPickerLocal() })
   }
 
   const remoteSkills = React.useMemo(
@@ -552,6 +556,9 @@ export function SkillsPage({
         `「${skill.displayNameZh || skill.skillName}」已安装到本地`,
       )
       await queryClient.invalidateQueries({ queryKey: chatKeys.skills() })
+      await queryClient.invalidateQueries({
+        queryKey: chatKeys.skillsPickerLocal(),
+      })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "安装失败"
       const conflict =
@@ -568,6 +575,9 @@ export function SkillsPage({
             )
             await queryClient.invalidateQueries({
               queryKey: chatKeys.skills(),
+            })
+            await queryClient.invalidateQueries({
+              queryKey: chatKeys.skillsPickerLocal(),
             })
           } catch (e2: unknown) {
             toast.error(
