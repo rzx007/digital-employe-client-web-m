@@ -26,6 +26,32 @@ DB_LOCK_RETRY_COUNT = 2
 DB_LOCK_RETRY_SLEEP_SECONDS = 0.05
 
 
+def _extract_last_usage_from_buffer(events: list[dict]) -> dict | None:
+    """从 buffer 倒序取最后一次 AIMessageChunk 的 usage_metadata。"""
+    for event in reversed(events):
+        if not isinstance(event, dict):
+            continue
+        raw = event.get("data")
+        if not isinstance(raw, dict):
+            continue
+        if raw.get("usage_metadata"):
+            return raw["usage_metadata"]
+        if raw.get("type") != "messages":
+            continue
+        inner = raw.get("data")
+        if not isinstance(inner, list) or not inner:
+            continue
+        first = inner[0]
+        if not isinstance(first, dict):
+            continue
+        if first.get("usage_metadata"):
+            return first["usage_metadata"]
+        kwargs = first.get("kwargs")
+        if isinstance(kwargs, dict) and kwargs.get("usage_metadata"):
+            return kwargs["usage_metadata"]
+    return None
+
+
 def _flush_to_db_sync(
     stream_msg_id: int,
     buffer_cursor: int,
@@ -33,6 +59,7 @@ def _flush_to_db_sync(
     content: str | None = None,
     error_message: str | None = None,
     message_parts: str | None = None,
+    usage_metadata: dict | None = None,
 ) -> bool:
     """同步写入会话消息流状态；在 asyncio.to_thread 中调用，勿跨线程复用 Session。"""
     from src.db.session import get_session_local
@@ -61,6 +88,13 @@ def _flush_to_db_sync(
                 msg.stream_cursor = buffer_cursor
                 if message_parts is not None:
                     msg.message_parts = message_parts
+                if usage_metadata is not None:
+                    try:
+                        meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
+                    except (json.JSONDecodeError, TypeError):
+                        meta = {}
+                    meta["usage"] = usage_metadata
+                    msg.extra_meta = json.dumps(meta, ensure_ascii=False)
                 db.commit()
                 logger.info(
                     "[flush] msg_id=%s committed: state=%s, content_len=%s, parts_len=%s",
@@ -172,6 +206,8 @@ def _flush_terminal_sync(
             exc_info=True,
         )
 
+    usage_meta = _extract_last_usage_from_buffer(buffer_events_snapshot)
+
     return _flush_to_db_sync(
         stream_msg_id,
         buffer_cursor,
@@ -179,6 +215,7 @@ def _flush_terminal_sync(
         content=content,
         error_message=error_message,
         message_parts=message_parts_json,
+        usage_metadata=usage_meta,
     )
 
 

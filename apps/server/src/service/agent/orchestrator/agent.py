@@ -36,7 +36,12 @@ from src.service.agent.orchestrator.tools import (
     update_task,
 )
 from src.service.conversation_summarization import ConversationSummarizationMiddleware
-from src.service.model_context import apply_model_profile, resolve_max_input_tokens
+from src.service.model_context import (
+    apply_model_profile,
+    resolve_max_input_tokens,
+    resolve_summarization_keep,
+    resolve_summarization_trigger,
+)
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
 load_dotenv()
@@ -134,8 +139,8 @@ def get_orchestrator_agent(
     summarization_mw = ConversationSummarizationMiddleware(
         model=model,
         backend=backend,
-        trigger=("fraction", 0.85),
-        keep=("fraction", 0.10),
+        trigger=resolve_summarization_trigger(settings),
+        keep=resolve_summarization_keep(settings),
     )
     summarization_mw.use_session_history_file = use_session_history
     summarization_tool_mw = SummarizationToolMiddleware(summarization_mw)

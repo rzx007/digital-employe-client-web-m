@@ -156,7 +156,7 @@ export function ModelsSettings() {
                 onChange={(e) => setMaxInputTokens(e.target.value)}
               />
               <p className="text-xs leading-relaxed text-muted-foreground">
-                用于控制 Agent 上下文压缩的预算（约在达到该值的 85%
+                用于控制 Agent 上下文压缩的预算（约在达到该值的 75%
                 时自动摘要）。留空并保存时，服务端使用默认值 131072。请填写
                 <span className="font-medium text-foreground">
                   不高于推理服务实际上下文

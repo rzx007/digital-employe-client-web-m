@@ -74,6 +74,8 @@ class Settings:
     employee_tmp_dir: str
     deepagent_model: str | None
     model_max_input_tokens: int | None
+    summarization_trigger_fraction: float
+    summarization_keep_fraction: float
     chat_history_max_messages: int
     api_key: str | None
     base_url: str | None
@@ -233,6 +235,26 @@ def get_settings() -> Settings:
                 model_max_input_tokens = parsed
         except ValueError:
             model_max_input_tokens = None
+
+    def _parse_fraction_setting(key: str, default: float) -> float:
+        raw = _get_kv_value(kv_data, key)
+        if not raw or not str(raw).strip():
+            return default
+        try:
+            value = float(raw)
+        except ValueError:
+            return default
+        if value <= 0 or value > 1.0:
+            return default
+        return value
+
+    summarization_trigger_fraction = _parse_fraction_setting(
+        "SUMMARIZATION_TRIGGER_FRACTION", 0.75
+    )
+    summarization_keep_fraction = _parse_fraction_setting(
+        "SUMMARIZATION_KEEP_FRACTION", 0.20
+    )
+
     chat_history_max_messages_raw = _get_kv_value(kv_data, "CHAT_HISTORY_MAX_MESSAGES")
     try:
         chat_history_max_messages = int(chat_history_max_messages_raw or "30")
@@ -291,6 +313,8 @@ def get_settings() -> Settings:
         employee_tmp_dir=_get_kv_value(kv_data, "EMPLOYEE_TMP_DIR") or "./tmp/employees",
         deepagent_model=_get_kv_value(kv_data, "DEEPAGENT_MODEL"),
         model_max_input_tokens=model_max_input_tokens,
+        summarization_trigger_fraction=summarization_trigger_fraction,
+        summarization_keep_fraction=summarization_keep_fraction,
         chat_history_max_messages=chat_history_max_messages,
         api_key=_get_kv_value(kv_data, "OPENAI_API_KEY"),
         base_url=_get_kv_value(kv_data, "BASE_URL"),

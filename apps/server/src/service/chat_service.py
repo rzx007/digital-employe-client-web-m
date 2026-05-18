@@ -261,9 +261,13 @@ class ChatService:
         return message
 
     @staticmethod
-    def _load_history_for_agent(db: Session, conversation_id: int, limit: int) -> list[dict[str, str]]:
+    def _load_history_for_agent(
+        db: Session,
+        conversation_id: int,
+        limit: int,
+    ) -> tuple[list[dict[str, str]], int | None]:
         if limit <= 0:
-            return []
+            return [], None
         stmt: Select[tuple[ConversationMessage]] = (
             select(ConversationMessage)
             .where(
@@ -274,12 +278,46 @@ class ChatService:
             .limit(limit)
         )
         messages = list(db.scalars(stmt).all())
+        last_input_tokens: int | None = None
+        for message in messages:
+            if message.role != "assistant" or not message.extra_meta:
+                continue
+            try:
+                meta = json.loads(message.extra_meta)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            usage = meta.get("usage")
+            if not isinstance(usage, dict):
+                continue
+            raw_tokens = usage.get("input_tokens")
+            if raw_tokens is not None:
+                last_input_tokens = int(raw_tokens)
+                break
         payload = []
         for message in reversed(messages):
             if not message.content:
                 continue
             payload.append({"role": message.role, "content": message.content})
-        return payload
+        return payload, last_input_tokens
+
+    @staticmethod
+    def _resolve_effective_history_limit(
+        settings,
+        last_input_tokens: int | None,
+    ) -> int:
+        """若上一轮 API 报告用量已接近压缩阈值，减少加载的历史条数。"""
+        base_limit = settings.chat_history_max_messages
+        if last_input_tokens is None:
+            return base_limit
+        from src.service.model_context import resolve_max_input_tokens
+
+        max_tokens = resolve_max_input_tokens(settings)
+        threshold = int(
+            max_tokens * settings.summarization_trigger_fraction
+        )
+        if last_input_tokens >= int(threshold * 0.9):
+            return max(4, base_limit // 2)
+        return base_limit
 
 
     @staticmethod
@@ -356,11 +394,29 @@ class ChatService:
         settings = get_settings()
         
         conversation = ChatService.get_conversation(db, conversation_id)
-        history_messages = ChatService._load_history_for_agent(
+        history_limit = settings.chat_history_max_messages
+        history_messages, last_input_tokens = ChatService._load_history_for_agent(
             db,
             conversation_id=conversation_id,
-            limit=settings.chat_history_max_messages,
+            limit=history_limit,
         )
+        effective_limit = ChatService._resolve_effective_history_limit(
+            settings,
+            last_input_tokens,
+        )
+        if effective_limit < history_limit:
+            history_messages, last_input_tokens = ChatService._load_history_for_agent(
+                db,
+                conversation_id=conversation_id,
+                limit=effective_limit,
+            )
+            logger.info(
+                "conv=%s history pre-truncated limit %s -> %s (last_input_tokens=%s)",
+                conversation_id,
+                history_limit,
+                effective_limit,
+                last_input_tokens,
+            )
 
         ChatService._append_message(db, conversation=conversation, role="user", content=question, extra_meta=extra_meta)
         request_messages = [*history_messages, {"role": "user", "content": question}]
@@ -439,11 +495,18 @@ class ChatService:
             from src.service.stream_registry import registry
             
             # 启动后台任务
+            run_config: dict = {
+                "configurable": {"thread_id": conversation_id},
+            }
+            if last_input_tokens is not None:
+                run_config["configurable"]["last_reported_input_tokens"] = (
+                    last_input_tokens
+                )
             started = registry.start(
                 conversation_id=conversation_id,
                 agent=agent,
                 messages=request_messages,
-                config={"configurable": {"thread_id": conversation_id}},
+                config=run_config,
                 stream_msg_id=assistant_msg.id,
                 skill_name=skill_name,
                 debug_content_only=debug_content_only,

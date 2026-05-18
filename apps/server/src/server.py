@@ -35,6 +35,9 @@ def create_app() -> FastAPI:
         # 离线 IO 密集型初始化到线程池，避免阻塞事件循环导致前端请求挂起
         def _startup_db_init():
             init_db()
+            from src.service import model_patch
+
+            model_patch.apply()
 
         await loop.run_in_executor(None, _startup_db_init)
 
