@@ -40,6 +40,7 @@ export function ImportSkillDialog({
 }) {
   const [parseState, setParseState] = React.useState<ParseState>("idle")
   const [skillName, setSkillName] = React.useState("")
+  const [displayNameZh, setDisplayNameZh] = React.useState("")
   const [description, setDescription] = React.useState("")
   const [promptContent, setPromptContent] = React.useState("")
   const [file, setFile] = React.useState<File | null>(null)
@@ -52,6 +53,7 @@ export function ImportSkillDialog({
   const resetState = React.useCallback(() => {
     setParseState("idle")
     setSkillName("")
+    setDisplayNameZh("")
     setDescription("")
     setPromptContent("")
     setFile(null)
@@ -94,6 +96,7 @@ export function ImportSkillDialog({
         toast.error(msg)
         setFile(null)
         setSkillName("")
+        setDisplayNameZh("")
         setDescription("")
         setPromptContent("")
         setParseState("idle")
@@ -171,6 +174,7 @@ export function ImportSkillDialog({
         directoryId: 0,
         file,
         overwrite,
+        displayNameZh: displayNameZh.trim() || undefined,
       })
       toast.success(
         result.overwritten
@@ -266,6 +270,16 @@ export function ImportSkillDialog({
                     {nameError && (
                       <p className="text-xs text-destructive">{nameError}</p>
                     )}
+                  </div>
+
+                  <div className="shrink-0 flex flex-col gap-1.5">
+                    <Label htmlFor="skill-display-zh">中文名称</Label>
+                    <Input
+                      id="skill-display-zh"
+                      placeholder="可选，用于界面展示"
+                      value={displayNameZh}
+                      onChange={(e) => setDisplayNameZh(e.target.value)}
+                    />
                   </div>
 
                   <div className="shrink-0 flex flex-col gap-1.5">

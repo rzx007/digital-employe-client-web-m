@@ -83,6 +83,39 @@ class SkillService:
         return [item for item in data if isinstance(item, dict)]
 
     @staticmethod
+    def _extract_skill_tags(raw: dict[str, Any]) -> list[str]:
+        def normalize_list(value: Any) -> list[str]:
+            if not isinstance(value, list):
+                return []
+            out: list[str] = []
+            for item in value:
+                if item is None:
+                    continue
+                if isinstance(item, str) and item.strip():
+                    out.append(item.strip())
+                elif isinstance(item, dict):
+                    name = item.get("name") or item.get("tagName") or item.get("label")
+                    if isinstance(name, str) and name.strip():
+                        out.append(name.strip())
+            return out
+
+        for key in ("tags", "tagList", "skillTags", "labelList"):
+            tags = normalize_list(raw.get(key))
+            if tags:
+                return tags
+        names = raw.get("tagNames")
+        if isinstance(names, str) and names.strip():
+            parts = [p.strip() for p in names.replace("，", ",").split(",") if p.strip()]
+            if parts:
+                return parts
+        cat = raw.get("category") or raw.get("categories")
+        if isinstance(cat, str) and cat.strip():
+            return [cat.strip()]
+        if isinstance(cat, list):
+            return normalize_list(cat)
+        return []
+
+    @staticmethod
     def map_remote_to_list_item(raw: dict[str, Any]) -> dict[str, Any]:
         """将远程技能字典转为列表接口字段（camelCase，兼容 snake_case）。"""
 
@@ -107,6 +140,7 @@ class SkillService:
             "description": first_present("description"),
             "directoryId": int(dir_id) if dir_id is not None else None,
             "directoryName": first_present("directoryName", "directory_name"),
+            "tags": SkillService._extract_skill_tags(raw),
         }
 
     @staticmethod

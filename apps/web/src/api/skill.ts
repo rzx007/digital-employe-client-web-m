@@ -50,6 +50,7 @@ export async function importLocalSkill(params: {
   directoryId?: number
   file: File
   overwrite?: boolean
+  displayNameZh?: string
 }): Promise<LocalSkillImportResult> {
   const formData = new FormData()
   formData.append("skillName", params.skillName)
@@ -59,6 +60,9 @@ export async function importLocalSkill(params: {
   formData.append("file", params.file)
   if (params.overwrite) {
     formData.append("overwrite", "true")
+  }
+  if (params.displayNameZh?.trim()) {
+    formData.append("displayNameZh", params.displayNameZh.trim())
   }
   const res = await request<ApiResponse<LocalSkillImportResult>>(
     "/skills/local/import",
@@ -101,6 +105,28 @@ export async function uploadLocalSkillToRemote(params: {
       method: "POST",
       body: formData,
     }
+  )
+  return res.data
+}
+
+export async function deleteWorkspaceLocalSkill(
+  skillName: string,
+): Promise<void> {
+  await request<ApiResponse<null>>(`/skills/local/${encodeURIComponent(skillName)}`, {
+    method: "DELETE",
+  })
+}
+
+export async function installRemoteSkillToLocal(
+  skillId: number,
+  opts?: { overwrite?: boolean },
+): Promise<LocalSkillImportResult> {
+  const q = opts?.overwrite ? "?overwrite=true" : ""
+  const res = await request<ApiResponse<LocalSkillImportResult>>(
+    `/skills/remote/${skillId}/install${q}`,
+    {
+      method: "POST",
+    },
   )
   return res.data
 }

@@ -40,6 +40,7 @@ export interface SkillListItem {
   skillName: string
   description: string | null
   displayNameZh: string | null
+  tags?: string[]
   prompt?: string
   inputSchema?: unknown
   skillContent?: string
@@ -48,7 +49,7 @@ export interface SkillListItem {
   createTime?: string
   updateTime?: string
   directoryName: string | null
-  source?: "remote" | "local"
+  source?: "remote" | "local" | "builtin"
   sourceLabel?: string
 }
 
@@ -301,23 +302,30 @@ export type LoginResponse =
 export interface LocalSkillItem {
   skillName: string
   path: string
-  directoryId: number | null
+  localId?: number | null
   hasSkillMd: boolean
   importedAt: string | null
+  description?: string | null
+  displayNameZh?: string | null
+  isBuiltin?: boolean
+  directoryId?: number | null
 }
 
 export interface LocalSkillDetail {
   skillName: string
   path: string
-  directoryId: number | null
+  localId?: number | null
+  directoryId?: number | null
   importedAt: string | null
   skillMdContent: string | null
   files: string[]
+  displayNameZh?: string | null
+  isBuiltin?: boolean
 }
 
 export interface LocalSkillImportResult {
   skillName: string
-  directoryId: number
+  localId?: number | null
   path: string
   overwritten: boolean
 }

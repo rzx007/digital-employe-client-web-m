@@ -8,7 +8,11 @@ from sqlalchemy.orm import Session
 
 from src.service.agent_interface_service import agent_interface_service
 from src.service.employee_generation_service import EmployeeGenerationService
-from src.core.request_utils import get_user_id, get_user_id_from_token
+from src.core.request_utils import (
+    get_user_id,
+    get_user_id_from_token,
+    get_workspace_id_from_request,
+)
 from src.db.session import get_db
 from src.models.response import BaseResponse, ListResponse, ResponseBase
 from src.schemas.employee import EmployeeCreate, EmployeeGenerationRequest, EmployeeOut, EmployeeRead, EmployeeSyncResult, EmployeeUpdate
@@ -16,6 +20,24 @@ from src.service.employee_service import EmployeeService
 from src.service.workspace_service import WorkspaceService
 
 logger = logging.getLogger(__name__)
+
+_RECRUIT_SKILL_RESPONSE_KEYS = (
+    "id",
+    "skillName",
+    "description",
+    "prompt",
+    "directoryId",
+    "directoryName",
+    "status",
+    "createTime",
+    "updateTime",
+)
+
+
+def _skill_for_recruit_response(detail: dict) -> dict:
+    """招聘候选人技能：仅元数据，不含 SKILL.md 全文及重复字段。"""
+    return {key: detail[key] for key in _RECRUIT_SKILL_RESPONSE_KEYS if key in detail}
+
 
 router = APIRouter(tags=["员工"])
 
@@ -122,7 +144,10 @@ async def generate_employees(http_request: Request, request: EmployeeGenerationR
     """
     # 异步获取技能列表
     token = http_request.headers.get("token")
-    skills = await EmployeeGenerationService.get_available_skills(token=token)
+    workspace_id = get_workspace_id_from_request(http_request)
+    skills = await EmployeeGenerationService.get_available_skills(
+        token=token, workspace_id=workspace_id
+    )
     logger.info(f"招聘接口可用技能数量: {len(skills)}")
     if not skills:
         # 返回错误响应
@@ -152,14 +177,23 @@ async def generate_employees(http_request: Request, request: EmployeeGenerationR
         skill_ids = profile.get('skill_ids', [])
        
         skills_detail = []
+        profile_skills_by_id = {
+            item.get("id"): item for item in (profile.get("skills") or [])
+        }
         if skill_ids:
             for skill_id in skill_ids:
                 detail = await agent_interface_service.get_skill_detail(
                     skill_id,
                     token=token,
+                    workspace_id=workspace_id,
+                    include_skill_content=False,
                 )
                 if detail:
-                    skills_detail.append(detail)
+                    skills_detail.append(_skill_for_recruit_response(detail))
+                elif skill_id in profile_skills_by_id:
+                    skills_detail.append(
+                        _skill_for_recruit_response(profile_skills_by_id[skill_id])
+                    )
 
         # 使用EmployeeInfo创建对象，确保数据格式正确
         employee_info = EmployeeOut(
