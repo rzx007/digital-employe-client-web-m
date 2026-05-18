@@ -42,6 +42,7 @@ from src.service.model_context import (
     resolve_summarization_keep,
     resolve_summarization_trigger,
 )
+from src.service.agent.shell_execute_tool import create_shell_execute_tool
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
 load_dotenv()
@@ -145,10 +146,13 @@ def get_orchestrator_agent(
     summarization_mw.use_session_history_file = use_session_history
     summarization_tool_mw = SummarizationToolMiddleware(summarization_mw)
 
+    shell_execute_tool = create_shell_execute_tool(shell_backend)
+
     agent = create_deep_agent(
         model=model,
         memory=["/agent/AGENTS.md", "/memories/AGENTS.md"],
         tools=[
+            shell_execute_tool,
             list_workspace_employees,
             recruit_employee,
             hire_employee,

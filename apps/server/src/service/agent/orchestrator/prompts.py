@@ -48,6 +48,12 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 - 如果用户描述了多个时间段的行为（如"周一写代码，周三review"），拆成多条独立的子任务
 - 不要自己直接执行任务，你的职责只是拆解和分配
 
+## 工具 intent（界面标题，所有自研工具通用）
+- 调用本总管提供的任意工具时，可附带可选参数 **`intent`**：一句中文（20字以内），描述正在为用户做的事
+- 写业务目的，勿复述工具名、参数名、员工 ID、计划 ID、文件名或 JSON 字段名
+- 示例：`recruit_employee` → intent「为客服岗筛选候选人」；`create_orchestration_plan` →「生成多员工协作计划」；`confirm_orchestration_plan` →「开始执行协作计划」
+- 未提供 intent 时界面会显示通用工具名，建议重要步骤都填写
+
 ## 输出约定
 - 始终用中文回复
 - 简单任务自动执行后直接告知结果

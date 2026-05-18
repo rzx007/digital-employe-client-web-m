@@ -16,7 +16,7 @@ import { useState } from "react"
 // ── Display content extraction ──────────────────────────
 
 const CONTENT_TOOLS = new Set(["write_file", "edit_file"])
-const COMMAND_TOOLS = new Set(["execute"])
+const COMMAND_TOOLS = new Set(["execute", "shell_execute"])
 
 export function getDisplayContent(
   input: unknown,

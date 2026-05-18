@@ -29,6 +29,7 @@ from src.service.model_context import (
     resolve_summarization_keep,
     resolve_summarization_trigger,
 )
+from src.service.agent.shell_execute_tool import create_shell_execute_tool
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
 load_dotenv()
@@ -75,10 +76,20 @@ def get_agent(
 
         def _make_session_search(emp_id: int):
             @tool
-            def session_search(query: str, limit: int = 5) -> str:
-                """搜索历史对话记录。当你需要回忆之前讨论过的内容时使用。"""
+            def session_search(
+                query: str,
+                limit: int = 5,
+                intent: str | None = None,
+            ) -> str:
+                """搜索历史对话记录。当你需要回忆之前讨论过的内容时使用。
+
+                参数:
+                  intent: 可选，界面展示用中文短句（20字内），如「检索过往讨论」
+                """
+                from src.service.agent.tool_intent import drop_intent
                 from src.service.session_search import session_search as _search
 
+                drop_intent(intent)
                 return _search(query=query, employee_id=emp_id, limit=limit)
 
             return session_search
@@ -188,6 +199,12 @@ def get_agent(
     summarization_mw.use_session_history_file = use_session_history
     summarization_tool_mw = SummarizationToolMiddleware(summarization_mw)
 
+    shell_execute_tool = create_shell_execute_tool(shell_backend)
+    extra_tools: list = [shell_execute_tool]
+    if sql_tools:
+        extra_tools.extend(sql_tools)
+    extra_tools.extend(_session_search_tools)
+
     agent = create_deep_agent(
         model=model,
         memory=["/agent/AGENTS.md", "/memories/AGENTS.md"],
@@ -207,7 +224,7 @@ def get_agent(
         ),
         backend=backend,
         checkpointer=checkpointer,
-        tools=(sql_tools or []) + _session_search_tools or None,
+        tools=extra_tools,
         middleware=[summarization_mw, summarization_tool_mw],
         permissions=[
             FilesystemPermission(

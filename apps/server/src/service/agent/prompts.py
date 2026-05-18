@@ -51,9 +51,15 @@ def build_filesystem_prompt_section(
         - **禁止**在虚拟路径前拼接磁盘绝对路径（如 /artifacts/Users/...、/artifacts/C:/...）
         - **禁止**把上表「真实物理路径」当作 write_file 的路径（那是磁盘路径，不是虚拟路径）
 
-        ### shell execute（python、cmd 等）
+        ### shell_execute（python、cmd 等，替代内置 execute）
+        - 使用工具 **`shell_execute`**，不要调用已废弃的 `execute`
         - **必须使用上表中的真实物理路径**，不要使用 /memories/ 等虚拟路径
-        - 若 execute 返回 exit code=0 但输出为空，先判断为命令可能是静默成功，不要立刻改用 python -c 重跑
+        - 可选参数 **`intent`**：给用户界面展示的一句中文（20字以内），描述**正在做的事/要达到的目的**，不要复述 command
+        - **intent 禁止出现**：脚本/文件名（含 .py .js .sh）、路径片段、「执行」「运行 xxx」、工具名 shell_execute
+        - **intent 推荐写法**：结合用户任务与 write_todos 当前步骤，用动词短语（如「验证示例代码输出」「检查站点是否可访问」）
+        - 对照：`command` 含 `hello.js` 时，`intent` 写「验证示例代码输出」✅，勿写「运行 hello.js」❌
+        - 自研工具（如 session_search）同样可传 **`intent`**，规则与上一致
+        - 若 shell_execute 返回 exit code=0 但输出为空，先判断为命令可能是静默成功，不要立刻改用 python -c 重跑
 
         ### 用户可见产物（/artifacts/）
         - 代码、报告、导出数据等交付给用户看的文件：write_file("/artifacts/文件名", ...)

@@ -20,11 +20,21 @@ const TOOL_META: Record<
   write_file: { icon: "✏️", verb: "创建", pathKey: "file_path" },
   edit_file: { icon: "✏️", verb: "编辑", pathKey: "file_path" },
   execute: { icon: "⚡", verb: "执行" },
+  shell_execute: { icon: "⚡", verb: "执行" },
   ls: { icon: "📁", verb: "列出目录", pathKey: "path" },
   download_files: { icon: "📥", verb: "下载", pathKey: "paths" },
   upload_files: { icon: "📤", verb: "上传", pathKey: "files" },
   write_todos: { icon: "📋", verb: "规划任务" },
   create_orchestration_plan: { icon: "📋", verb: "生成编排计划" },
+  confirm_orchestration_plan: { icon: "▶️", verb: "执行编排计划" },
+  list_workspace_employees: { icon: "👥", verb: "查看团队" },
+  recruit_employee: { icon: "🧑‍💼", verb: "招聘候选人" },
+  hire_employee: { icon: "✅", verb: "录用员工" },
+  update_task: { icon: "✏️", verb: "更新任务" },
+  delete_task: { icon: "🗑️", verb: "删除任务" },
+  cancel_plan: { icon: "⏹️", verb: "取消计划" },
+  list_tasks: { icon: "📋", verb: "查看任务" },
+  session_search: { icon: "🔍", verb: "检索历史" },
 }
 
 function extractToolName(type: string): string {
@@ -43,8 +53,36 @@ function extractScriptBasename(command: string): string | null {
   return match ? match[1] : null
 }
 
+const SHELL_TOOLS = new Set(["execute", "shell_execute"])
+const INTENT_MAX_LENGTH = 20
+
+function labelFromIntent(input?: Record<string, unknown>): string | null {
+  const raw = input?.intent
+  if (typeof raw !== "string") return null
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  return truncate(trimmed, INTENT_MAX_LENGTH)
+}
+
+function summarizeShellCommand(
+  toolName: string,
+  meta: { icon: string; verb: string },
+  input?: Record<string, unknown>
+): ToolCallSummary {
+  const cmd = input?.command
+  if (typeof cmd === "string") {
+    const script = extractScriptBasename(cmd)
+    const label = script
+      ? `${meta.verb} ${script}`
+      : truncate(`${meta.verb} ${cmd}`)
+    return { toolName, label, icon: meta.icon }
+  }
+  return { toolName, label: meta.verb, icon: meta.icon }
+}
+
 export const SIMPLE_LABELS: Record<string, { running: string; done: string; error: string }> = {
   execute: { running: "正在执行命令...", done: "执行完成", error: "执行失败" },
+  shell_execute: { running: "正在执行命令...", done: "执行完成", error: "执行失败" },
   read_file: { running: "正在读取文件...", done: "读取完成", error: "读取失败" },
   write_file: { running: "正在创建文件...", done: "创建完成", error: "创建失败" },
   edit_file: { running: "正在编辑文件...", done: "编辑完成", error: "编辑失败" },
@@ -53,6 +91,40 @@ export const SIMPLE_LABELS: Record<string, { running: string; done: string; erro
   upload_files: { running: "正在上传...", done: "上传完成", error: "上传失败" },
   write_todos: { running: "正在规划任务...", done: "任务已规划", error: "规划失败" },
   glob: { running: "正在搜索文件...", done: "搜索完成", error: "搜索失败" },
+  create_orchestration_plan: {
+    running: "正在生成编排计划...",
+    done: "编排计划已生成",
+    error: "生成计划失败",
+  },
+  confirm_orchestration_plan: {
+    running: "正在执行编排计划...",
+    done: "编排计划已执行",
+    error: "执行计划失败",
+  },
+  list_workspace_employees: {
+    running: "正在查看团队...",
+    done: "团队列表已更新",
+    error: "查看团队失败",
+  },
+  recruit_employee: {
+    running: "正在筛选候选人...",
+    done: "候选人已生成",
+    error: "招聘失败",
+  },
+  hire_employee: {
+    running: "正在办理入职...",
+    done: "员工已入职",
+    error: "入职失败",
+  },
+  update_task: { running: "正在更新任务...", done: "任务已更新", error: "更新失败" },
+  delete_task: { running: "正在删除任务...", done: "任务已删除", error: "删除失败" },
+  cancel_plan: { running: "正在取消计划...", done: "计划已取消", error: "取消失败" },
+  list_tasks: { running: "正在查询任务...", done: "查询完成", error: "查询失败" },
+  session_search: {
+    running: "正在检索历史...",
+    done: "检索完成",
+    error: "检索失败",
+  },
 }
 
 export function getSimpleLabel(
@@ -70,6 +142,15 @@ export function summarizeToolCall(options: {
   const meta = TOOL_META[toolName]
   const input = options.input as Record<string, unknown> | undefined
 
+  const fromIntent = labelFromIntent(input)
+  if (fromIntent) {
+    return {
+      toolName,
+      label: fromIntent,
+      icon: meta?.icon ?? "🔧",
+    }
+  }
+
   if (!meta) {
     return { toolName, label: toolName, icon: "🔧" }
   }
@@ -85,13 +166,12 @@ export function summarizeToolCall(options: {
     }
   }
 
-  if (toolName === "execute" && input?.command) {
-    const cmd = String(input.command)
-    const script = extractScriptBasename(cmd)
-    const label = script
-      ? `${meta.verb} ${script}`
-      : truncate(`${meta.verb} ${cmd}`)
-    return { toolName, label, icon: meta.icon }
+  if (SHELL_TOOLS.has(toolName)) {
+    return summarizeShellCommand(
+      toolName,
+      meta,
+      input as Record<string, unknown> | undefined
+    )
   }
 
   if (toolName === "write_todos") {

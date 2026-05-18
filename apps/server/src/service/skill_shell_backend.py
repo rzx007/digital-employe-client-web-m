@@ -204,7 +204,7 @@ class SkillAwareShellBackend(LocalShellBackend):
                 stream_writer({
                     "type": "tool_output",
                     "data": {
-                        "tool_name": "execute",
+                        "tool_name": "shell_execute",
                         "chunk": chunk_line,
                         "chunk_seq": chunk_seq,
                         "stream": "stdout",

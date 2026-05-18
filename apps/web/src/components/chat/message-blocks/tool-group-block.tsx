@@ -31,7 +31,7 @@ function hasError(tools: ToolGroupItem[]): boolean {
 function ToolGroupBlockInner({
   block,
   className,
-  simpleMode = true,
+  simpleMode = false,
   shouldAutoCollapse,
   ...props
 }: ToolGroupBlockProps) {
