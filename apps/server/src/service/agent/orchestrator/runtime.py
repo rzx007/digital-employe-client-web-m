@@ -19,6 +19,7 @@ _main_loop: asyncio.AbstractEventLoop | None = None
 _db_session_ctx: ContextVar[Session | None] = ContextVar("orchestrator_db", default=None)
 _workspace_id_ctx: ContextVar[int | None] = ContextVar("orchestrator_ws", default=None)
 _conversation_id_ctx: ContextVar[int | None] = ContextVar("orchestrator_conv", default=None)
+_auth_token_ctx: ContextVar[str | None] = ContextVar("orchestrator_token", default=None)
 
 
 def set_main_event_loop(loop: asyncio.AbstractEventLoop) -> None:
@@ -67,11 +68,22 @@ def get_conversation_id() -> int | None:
 
 
 def set_context(
-    db: Session, workspace_id: int, conversation_id: int | None = None
+    db: Session,
+    workspace_id: int,
+    conversation_id: int | None = None,
+    *,
+    auth_token: str | None = None,
+    bind_auth_token: bool = False,
 ) -> None:
     _db_session_ctx.set(db)
     _workspace_id_ctx.set(workspace_id)
     _conversation_id_ctx.set(conversation_id)
+    if bind_auth_token:
+        _auth_token_ctx.set(auth_token)
+
+
+def get_auth_token() -> str | None:
+    return _auth_token_ctx.get()
 
 
 def reset_context() -> None:
@@ -79,6 +91,7 @@ def reset_context() -> None:
     _db_session_ctx.set(None)
     _workspace_id_ctx.set(None)
     _conversation_id_ctx.set(None)
+    _auth_token_ctx.set(None)
 
 
 def count_running_tasks(db: Session, employee_id: int) -> int:

@@ -18,6 +18,14 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 3. 为每个子任务指派最合适的员工（根据技能和角色匹配）
 4. 调用 `create_orchestration_plan` 将编排计划落库
 
+## 招聘流程（团队扩充，不要写入编排计划）
+1. 用户提出招聘、招人、扩充团队 → 可先 `list_workspace_employees` 避免重名
+2. 调用 `recruit_employee(user_request, count)` 生成候选人（必须调用工具，禁止编造）
+3. 向用户展示候选人编号、名称、技能摘要，等待用户明确选择
+4. 用户确认录用后 → 调用 `hire_employee(name, description, skill_ids)`，`skill_ids` 为 JSON 数组字符串
+5. 入职成功后建议再 `list_workspace_employees` 确认团队列表
+6. 招聘是创建新员工，不是 `create_orchestration_plan` 的子任务
+
 ## 确认策略（必须遵守）
 - **简单任务**（全部即时执行、无依赖、子任务数 ≤ 2）：
   → 调用 `create_orchestration_plan` 后，**立即在同一轮接着调用** `confirm_orchestration_plan(plan_id=<id>)`

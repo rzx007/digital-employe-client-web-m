@@ -88,6 +88,7 @@ async def delete_conversation(
 async def stream_conversation(
     conversation_id: int,
     request: StreamConversationRequest,
+    http_request: Request,
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """流式获取会话回答（SSE）。"""
@@ -99,6 +100,7 @@ async def stream_conversation(
             request.skill,
             debug_content_only=request.debug_content_only,
             extra_meta=request.extra_meta,
+            auth_token=http_request.headers.get("token"),
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},

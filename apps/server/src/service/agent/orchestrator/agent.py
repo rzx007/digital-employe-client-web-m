@@ -22,6 +22,10 @@ from src.service.agent.orchestrator.prompts import (
     build_employee_capability_context,
 )
 from src.service.agent.orchestrator.runtime import set_context
+from src.service.agent.orchestrator.recruitment_tools import (
+    hire_employee,
+    recruit_employee,
+)
 from src.service.agent.orchestrator.tools import (
     cancel_plan,
     confirm_orchestration_plan,
@@ -43,8 +47,15 @@ def get_orchestrator_agent(
     db: Session,
     conversation_id: int | None = None,
     employee_id: int | None = None,
+    auth_token: str | None = None,
 ):
-    set_context(db, workspace_id, conversation_id)
+    set_context(
+        db,
+        workspace_id,
+        conversation_id,
+        auth_token=auth_token,
+        bind_auth_token=True,
+    )
 
     settings = get_settings()
     model = ChatOpenAI(
@@ -134,6 +145,8 @@ def get_orchestrator_agent(
         memory=["/agent/AGENTS.md", "/memories/AGENTS.md"],
         tools=[
             list_workspace_employees,
+            recruit_employee,
+            hire_employee,
             create_orchestration_plan,
             confirm_orchestration_plan,
             update_task,

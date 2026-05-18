@@ -351,6 +351,7 @@ class ChatService:
         skill_name: str,
         debug_content_only: bool = False,
         extra_meta: dict | None = None,
+        auth_token: str | None = None,
     ):
         settings = get_settings()
         
@@ -406,6 +407,7 @@ class ChatService:
                 db=db,
                 conversation_id=conversation_id,
                 employee_id=target_id,
+                auth_token=auth_token,
             )
             request_messages = [*history_messages, {"role": "user", "content": question}]
         elif target_type == "employee":

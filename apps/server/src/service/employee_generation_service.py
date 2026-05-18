@@ -269,3 +269,18 @@ class EmployeeGenerationService:
             converted_profiles.append(converted_profile)
 
         return converted_profiles
+
+    @staticmethod
+    async def generate_candidates_for_orchestrator(
+        user_request: str,
+        count: int = 1,
+        token: str | None = None,
+    ) -> tuple[list[EmployeeProfile], list[dict[str, Any]]]:
+        """为总管招聘 Tool 生成候选人（复用招聘页同一套技能匹配逻辑）。"""
+        skills = await EmployeeGenerationService.get_available_skills(token=token)
+        if not skills:
+            return [], []
+        profiles = await EmployeeGenerationService.generate_employee_profiles_async(
+            user_request, skills, count
+        )
+        return profiles, skills
