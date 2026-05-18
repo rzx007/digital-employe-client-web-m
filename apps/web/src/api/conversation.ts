@@ -188,6 +188,21 @@ export async function downloadResource(
   URL.revokeObjectURL(url)
 }
 
+export async function downloadResourceBlob(
+  conversationId: number | string,
+  path: string,
+): Promise<Blob> {
+  const res = await request.raw(
+    `/chat/conversations/${conversationId}/resources/download`,
+    { params: { path }, responseType: "blob" }
+  )
+  const raw = res._data
+  if (raw == null) {
+    throw new Error("下载失败：响应体为空")
+  }
+  return raw instanceof Blob ? raw : new Blob([raw])
+}
+
 export async function deleteResource(
   conversationId: number | string,
   path: string,

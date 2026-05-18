@@ -115,11 +115,11 @@ function PlanGeneratedCardInner({
         ))}
       </div>
 
-      {state !== "call" && state !== "output-error" && (
+      {/* {state !== "call" && state !== "output-error" && (
         <p className="mt-2.5 text-[11px] text-muted-foreground">
           回复「确认」开始执行
         </p>
-      )}
+      )} */}
     </div>
   )
 }

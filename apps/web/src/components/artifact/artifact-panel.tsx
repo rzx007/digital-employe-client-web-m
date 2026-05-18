@@ -26,6 +26,7 @@ import {
   IconRefresh,
   IconSearch,
   IconTrash,
+  IconFileImport,
 } from "@tabler/icons-react"
 import {
   ContextMenu,
@@ -48,6 +49,7 @@ import { ImageRenderer } from "./artifact-content/image-renderer"
 import { SheetRenderer } from "./artifact-content/sheet-renderer"
 import { TextRenderer } from "./artifact-content/text-renderer"
 import type { Artifact } from "./artifact-types"
+import { ImportDraftSkillDialog } from "./import-draft-skill-dialog"
 
 export interface ArtifactPanelProps {
   conversationId: string | number | null
@@ -257,6 +259,47 @@ function ResourceContextMenu({
   )
 }
 
+function SkillDraftContextMenu({
+  entry,
+  conversationId,
+  onDelete,
+  onRefresh,
+  onImport,
+}: {
+  entry: ResourceEntry
+  conversationId: string | number
+  onDelete: (entry: ResourceEntry) => void
+  onRefresh: () => void
+  onImport: (entry: ResourceEntry) => void
+}) {
+  const handleDownload = async () => {
+    await downloadResource(conversationId, entry.path)
+  }
+
+  return (
+    <ContextMenuContent className="w-42">
+      <ContextMenuItem onSelect={() => onImport(entry)}>
+        <IconFileImport className="size-4 text-muted-foreground" />
+        <span>导入到技能库</span>
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem onSelect={handleDownload}>
+        <IconDownload className="size-4 text-muted-foreground" />
+        <span>下载</span>
+      </ContextMenuItem>
+      <ContextMenuItem onSelect={onRefresh}>
+        <IconRefresh className="size-4 text-muted-foreground" />
+        <span>刷新</span>
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem variant="destructive" onSelect={() => onDelete(entry)}>
+        <IconTrash className="size-4" />
+        <span>删除</span>
+      </ContextMenuItem>
+    </ContextMenuContent>
+  )
+}
+
 function renderEntry(
   entry: ResourceEntry,
   conversationId: string | number,
@@ -333,6 +376,8 @@ export const ArtifactPanel = ({
     () => new Set()
   )
   const [searchQuery, setSearchQuery] = React.useState("")
+  const [importDraftSkillEntry, setImportDraftSkillEntry] =
+    React.useState<ResourceEntry | null>(null)
   const activeResourcePath = useArtifactStore((s) => s.activeResourcePath)
 
   React.useEffect(() => {
@@ -495,7 +540,12 @@ export const ArtifactPanel = ({
     }
   }
 
+  const handleImportSkill = React.useCallback((entry: ResourceEntry) => {
+    setImportDraftSkillEntry(entry)
+  }, [])
+
   return (
+    <>
     <AnimatePresence>
       {isOpen && (
         <motion.div
@@ -603,7 +653,7 @@ export const ArtifactPanel = ({
                       <FileTreeFolder
                         className={ARTIFACT_TREE_NAME_ROW_CLASS}
                         path="/artifacts"
-                        name="artifacts"
+                        name="产物"
                         title="artifacts"
                       >
                         {filteredArtifacts.map((e) =>
@@ -620,7 +670,7 @@ export const ArtifactPanel = ({
                       <FileTreeFolder
                         className={ARTIFACT_TREE_NAME_ROW_CLASS}
                         path="/uploads"
-                        name="uploads"
+                        name="上传文件"
                         title="uploads"
                       >
                         {filteredUploads.map((e) =>
@@ -637,7 +687,7 @@ export const ArtifactPanel = ({
                       <FileTreeFolder
                         className={ARTIFACT_TREE_NAME_ROW_CLASS}
                         path="/skills-draft"
-                        name="skills-draft"
+                        name="技能草稿"
                         title="skills-draft"
                       >
                         {filteredSkillsDraft.map((skill) => (
@@ -664,11 +714,12 @@ export const ArtifactPanel = ({
                                 </FileTreeFolder>
                               </div>
                             </ContextMenuTrigger>
-                            <ResourceContextMenu
+                            <SkillDraftContextMenu
                               entry={skill}
                               conversationId={conversationId!}
                               onDelete={handleDelete}
                               onRefresh={handleRefreshResources}
+                              onImport={handleImportSkill}
                             />
                           </ContextMenu>
                         ))}
@@ -759,5 +810,18 @@ export const ArtifactPanel = ({
         </motion.div>
       )}
     </AnimatePresence>
+      {importDraftSkillEntry && conversationId && (
+        <ImportDraftSkillDialog
+          open={!!importDraftSkillEntry}
+          onOpenChange={(open) => {
+            if (!open) setImportDraftSkillEntry(null)
+          }}
+          onSuccess={handleRefreshResources}
+          conversationId={conversationId}
+          skillPath={importDraftSkillEntry.path}
+          skillName={importDraftSkillEntry.name}
+        />
+      )}
+    </>
   )
 }
