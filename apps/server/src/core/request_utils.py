@@ -47,3 +47,25 @@ def get_username(request: Request) -> Optional[str]:
 def get_dept_ids(request: Request) -> Optional[str]:
     """从请求头获取部门ID"""
     return request.headers.get("dptIds")
+
+
+def get_workspace_id_from_request(request: Request) -> int:
+    """
+    从请求中解析 workspace_id。
+    优先 request.state.workspace_id（中间件），否则按 token/user 查库。
+    """
+    from src.db.session import get_session_local
+    from src.service.workspace_service import WorkspaceService
+
+    ws_id = getattr(request.state, "workspace_id", None)
+    if ws_id:
+        return int(ws_id)
+    user_id = get_user_id(request)
+    db = get_session_local()()
+    try:
+        workspace = WorkspaceService.get_or_create_user_workspace(
+            db, user_id, get_username(request)
+        )
+        return workspace.id
+    finally:
+        db.close()

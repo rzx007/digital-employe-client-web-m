@@ -25,6 +25,26 @@ class LocalSkillService:
     SKILL_MD_NAME = "SKILL.md"
     SKILL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
     LOCAL_SKILL_ID_START = -100
+    RECRUIT_SUMMARY_MAX_CHARS = 20
+
+    @staticmethod
+    def build_recruit_summary(
+        description: str,
+        skill_name: str = "",
+        max_chars: int = RECRUIT_SUMMARY_MAX_CHARS,
+    ) -> str:
+        """将技能描述压缩为招聘 prompt 用短摘要（默认 20 字以内）。"""
+        text = re.sub(r"\s+", "", (description or "").strip())
+        if not text:
+            text = (skill_name or "").strip()
+        if not text:
+            return ""
+        for prefix in ("当用户需要", "当用户", "用于", "适用于", "使用", "支持"):
+            if text.startswith(prefix):
+                text = text[len(prefix) :].lstrip("时").lstrip("要").lstrip("了")
+        if len(text) <= max_chars:
+            return text
+        return text[:max_chars]
 
     @staticmethod
     def _resolve_local_root(workspace_id: int | None = None) -> Path:
@@ -334,6 +354,9 @@ class LocalSkillService:
                 "importedAt": datetime.now().isoformat(timespec="seconds"),
                 "overwrite": True,
                 "description": description,
+                "recruitSummary": LocalSkillService.build_recruit_summary(
+                    description, normalized
+                ),
             }
             LocalSkillService._write_meta(target_dir, meta)
             copied_items += 1
@@ -405,6 +428,9 @@ class LocalSkillService:
                 "importedAt": datetime.now().isoformat(timespec="seconds"),
                 "overwrite": overwrite,
                 "description": description,
+                "recruitSummary": LocalSkillService.build_recruit_summary(
+                    description, normalized
+                ),
             }
             LocalSkillService._write_meta(target_dir, meta)
             return {
@@ -446,6 +472,14 @@ class LocalSkillService:
                 else:
                     local_id = parsed
                 claimed_local_ids.add(local_id)
+                description = meta.get("description") or ""
+                recruit_summary = meta.get("recruitSummary") or ""
+                if not recruit_summary and description:
+                    recruit_summary = LocalSkillService.build_recruit_summary(
+                        str(description), skill_dir.name
+                    )
+                    meta["recruitSummary"] = recruit_summary
+                    LocalSkillService._write_meta(skill_dir, meta)
                 dir_items.append(
                     {
                         "skillName": skill_dir.name,
@@ -453,8 +487,9 @@ class LocalSkillService:
                         "path": str(skill_dir),
                         "hasSkillMd": (skill_dir / LocalSkillService.SKILL_MD_NAME).exists(),
                         "importedAt": meta.get("importedAt"),
-                        "description": meta.get("description"),
-                }
+                        "description": description,
+                        "recruitSummary": recruit_summary,
+                    }
                 )
             return dir_items
 
