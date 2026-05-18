@@ -54,7 +54,7 @@ def recruit_candidates(
 
     async def _run() -> tuple[list[EmployeeProfile], list[dict[str, Any]]]:
         return await EmployeeGenerationService.generate_candidates_for_orchestrator(
-            request, n, token=token
+            request, n, token=token, workspace_id=workspace_id
         )
 
     profiles, skills = run_coro_on_main_loop(_run())

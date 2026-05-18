@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 import httpx
 
@@ -121,20 +122,26 @@ class AgentInterfaceService:
         return available
 
     async def get_skill_detail(
-        self, skill_id: int, token: str | None = None
+        self,
+        skill_id: int,
+        token: str | None = None,
+        workspace_id: int | None = None,
+        include_skill_content: bool = True,
     ) -> dict | None:
         """
         获取技能详情
 
         Args:
             skill_id: 技能ID
+            workspace_id: 工作空间 ID（本地负 ID 技能需与 list_local_skills 一致）
+            include_skill_content: 是否包含 SKILL.md 全文（招聘等场景仅需元数据）
 
         Returns:
             Optional[Dict]: 技能详情
         """
         try:
             if skill_id < 0:
-                local_skills = LocalSkillService.list_local_skills()
+                local_skills = LocalSkillService.list_local_skills(workspace_id)
                 matched_skill = next(
                     (
                         skill
@@ -144,24 +151,39 @@ class AgentInterfaceService:
                     None,
                 )
                 if not matched_skill:
-                    logger.warning("未找到本地技能详情 skill_id=%s", skill_id)
+                    logger.warning(
+                        "未找到本地技能详情 skill_id=%s workspace_id=%s",
+                        skill_id,
+                        workspace_id,
+                    )
                     return None
                 skill_name = str(matched_skill.get("skillName") or "").strip()
                 if not skill_name:
                     return None
-                detail = LocalSkillService.get_local_skill_detail(skill_name)
-                return {
+                description = str(matched_skill.get("description") or "").strip()
+                result: dict[str, Any] = {
                     "id": skill_id,
                     "skillName": skill_name,
-                    "description": "",
+                    "description": description,
+                    "prompt": "",
                     "directoryId": None,
                     "directoryName": "本地技能",
-                    "skillContent": detail.get("skillMdContent"),
-                    "skill_content": detail.get("skillMdContent"),
-                    "files": detail.get("files", []),
-                    "importedAt": detail.get("importedAt"),
-                    "path": detail.get("path"),
+                    "status": 1,
+                    "createTime": "",
+                    "updateTime": "",
                 }
+                if not include_skill_content:
+                    return result
+                detail = LocalSkillService.get_local_skill_detail(
+                    skill_name, workspace_id
+                )
+                skill_md = detail.get("skillMdContent")
+                if skill_md:
+                    result["skillContent"] = skill_md
+                result["files"] = detail.get("files", [])
+                result["importedAt"] = detail.get("importedAt")
+                result["path"] = detail.get("path")
+                return result
 
             settings = get_settings()
             detail_path = settings.skill_remote_detail_path.format(skill_id=skill_id)
@@ -177,8 +199,23 @@ class AgentInterfaceService:
                 response.raise_for_status()
                 payload = response.json()
                 if isinstance(payload, dict) and "data" in payload:
-                    return payload["data"]
-                return payload if isinstance(payload, dict) else None
+                    data = payload["data"]
+                else:
+                    data = payload if isinstance(payload, dict) else None
+                if isinstance(data, dict) and not include_skill_content:
+                    data = {
+                        k: v
+                        for k, v in data.items()
+                        if k
+                        not in (
+                            "skillContent",
+                            "skill_content",
+                            "files",
+                            "path",
+                            "importedAt",
+                        )
+                    }
+                return data
         except Exception as e:
             logger.error("获取技能详情失败: %s", e, exc_info=True)
             return None

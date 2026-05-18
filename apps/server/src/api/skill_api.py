@@ -13,7 +13,11 @@ from fastapi import (
     status,
 )
 
-from src.core.request_utils import get_user_id, get_username
+from src.core.request_utils import (
+    get_user_id,
+    get_username,
+    get_workspace_id_from_request,
+)
 from src.db.session import get_session_local
 from src.models.response import ResponseBase
 from src.schemas.skill import (
@@ -34,30 +38,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["技能"])
 
 
-def _get_workspace_id_from_request(request: Request) -> int:
-    """
-    从请求中获取用户的 workspace_id。
-    优先使用中间件注入的 X-Workspace-Id（request.state.workspace_id），
-    兜底从 token 解析 user_id 后查询数据库。
-    """
-    ws_id = getattr(request.state, "workspace_id", None)
-    if ws_id:
-        return ws_id
-    user_id = get_user_id(request)
-    db = get_session_local()()
-    try:
-        workspace = WorkspaceService.get_or_create_user_workspace(
-            db, user_id, get_username(request)
-        )
-        return workspace.id
-    finally:
-        db.close()
-
-
 @router.get("/skills/list", response_model=ResponseBase[list[SkillListItem]])
 def list_skills(request: Request) -> ResponseBase[list[SkillListItem]]:
     token = request.headers.get("token")
-    workspace_id = _get_workspace_id_from_request(request)
+    workspace_id = get_workspace_id_from_request(request)
     remote_skills = SkillService.list_remote_skills(token)
     remote_data = []
     for item in remote_skills:
@@ -149,7 +133,7 @@ async def import_local_skill(
     overwrite: bool = Form(default=False),
     displayNameZh: str | None = Form(default=None),
 ) -> ResponseBase[LocalSkillImportResult]:
-    workspace_id = _get_workspace_id_from_request(request)
+    workspace_id = get_workspace_id_from_request(request)
     return await _import_local_skill_impl(
         skill_name=skillName,
         file=file,
@@ -171,7 +155,7 @@ async def import_local_skill_zip(
     overwrite: bool = Form(default=False),
     displayNameZh: str | None = Form(default=None),
 ) -> ResponseBase[LocalSkillImportResult]:
-    workspace_id = _get_workspace_id_from_request(request)
+    workspace_id = get_workspace_id_from_request(request)
     return await _import_local_skill_impl(
         skill_name=skillName,
         file=file,
@@ -235,7 +219,7 @@ def local_skill_name_exists(
     request: Request,
     payload: SkillNameExistsRequest,
 ) -> ResponseBase[SkillNameExistsResult]:
-    workspace_id = _get_workspace_id_from_request(request)
+    workspace_id = get_workspace_id_from_request(request)
     exists = LocalSkillService.local_skill_exists(payload.skillName, workspace_id)
     return ResponseBase[SkillNameExistsResult](
         data=SkillNameExistsResult(exists=exists)
@@ -244,7 +228,7 @@ def local_skill_name_exists(
 
 @router.get("/skills/local/list", response_model=ResponseBase[list[LocalSkillItem]])
 def list_local_skills(request: Request) -> ResponseBase[list[LocalSkillItem]]:
-    workspace_id = _get_workspace_id_from_request(request)
+    workspace_id = get_workspace_id_from_request(request)
     data = [
         LocalSkillItem(**item)
         for item in LocalSkillService.list_local_skills(workspace_id)
@@ -256,7 +240,7 @@ def list_local_skills(request: Request) -> ResponseBase[list[LocalSkillItem]]:
 def get_local_skill_detail(
     request: Request, skill_name: str
 ) -> ResponseBase[LocalSkillDetail]:
-    workspace_id = _get_workspace_id_from_request(request)
+    workspace_id = get_workspace_id_from_request(request)
     detail = LocalSkillService.get_local_skill_detail(skill_name, workspace_id)
     return ResponseBase[LocalSkillDetail](data=LocalSkillDetail(**detail))
 
@@ -281,7 +265,7 @@ async def remote_import_local_skill(
     exists = await SkillService.remote_skill_name_exists(skill_name, token)
     if exists:
         return ResponseBase[Any](code=0, msg=f"远程已存在同名技能: {skill_name}")
-    workspace_id = _get_workspace_id_from_request(request)
+    workspace_id = get_workspace_id_from_request(request)
     file_name, file_bytes = LocalSkillService.build_local_skill_zip(skill_name, workspace_id)
     uploaded_by_user_id = get_user_id(request)
     payload = await SkillService.remote_import_skill(
@@ -316,7 +300,7 @@ def get_employee_local_skills(
     from pathlib import Path
     from src.core.config import get_settings
 
-    workspace_id = _get_workspace_id_from_request(request)
+    workspace_id = get_workspace_id_from_request(request)
     settings = get_settings()
     local_root = Path(settings.local_skills_path) / str(workspace_id)
     builtin_root = Path(settings.local_skills_path) / "builtin"
