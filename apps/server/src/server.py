@@ -39,7 +39,7 @@ def create_app() -> FastAPI:
         await loop.run_in_executor(None, _startup_db_init)
 
         # 保存主事件循环引用，供 sync context 调度协程
-        from src.service.orchestrator_agent import set_main_event_loop
+        from src.service.agent.orchestrator import set_main_event_loop
         set_main_event_loop(loop)
 
         from src.service.stream_registry import registry as _stream_registry

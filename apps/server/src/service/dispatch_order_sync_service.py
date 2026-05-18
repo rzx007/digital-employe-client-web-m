@@ -12,7 +12,7 @@ from src.db.session import get_session_local
 from src.models.dispatch_order_sync import DispatchOrderSync
 from src.models.workspace import cst_now
 from src.service.chat_service import ChatService
-from src.service.orchestrator_agent import run_coro_on_main_loop
+from src.service.agent.orchestrator import run_coro_on_main_loop
 from src.service.performance_balance_service import PerformanceBalanceService
 
 logger = logging.getLogger(__name__)

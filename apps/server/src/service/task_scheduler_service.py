@@ -552,7 +552,7 @@ class TaskSchedulerService:
     def _start_curator_task(cls, db: Session, task: EmployeeTask, employee: Employee) -> None:
         """总管员工的定时任务：投递到 curator 会话，由 orchestrator agent 执行。"""
         from src.models.conversation import Conversation, ConversationMessage
-        from src.service.orchestrator_agent import get_orchestrator_agent, _get_main_loop
+        from src.service.agent.orchestrator import get_orchestrator_agent, _get_main_loop
         from src.service.stream_registry import registry as _stream_registry
         from src.service.workspace_events import WorkspaceEventBus
 
@@ -618,31 +618,54 @@ class TaskSchedulerService:
         conv_id = conv.id
         asst_msg_id = assistant_msg.id
         task_name_snap = task.task_name
-
-        # 5. 获取 orchestrator agent
-        agent = get_orchestrator_agent(
-            workspace_id, db, conv_id, employee_id=employee.id
-        )
-
+        workspace_id_snap = workspace_id
+        employee_id_snap = employee.id
         messages = [
             {"role": "user", "content": task.user_prompt or ""},
         ]
 
         db.commit()
 
-        # 6. 投递到主事件循环执行
+        # 在主事件循环上创建 agent 并启动流，确保总管 Tool 的 ContextVar 与 astream 同线程
+        def _start_on_main() -> None:
+            from src.db.session import get_session_local
+            from src.service.agent.orchestrator.runtime import reset_context
+
+            orch_db = get_session_local()()
+            try:
+                agent = get_orchestrator_agent(
+                    workspace_id_snap,
+                    orch_db,
+                    conv_id,
+                    employee_id=employee_id_snap,
+                )
+                started = _stream_registry.start(
+                    conversation_id=conv_id,
+                    agent=agent,
+                    messages=messages,
+                    config={"configurable": {"thread_id": conv_id}},
+                    stream_msg_id=asst_msg_id,
+                    skill_name="",
+                    debug_content_only=False,
+                    orchestrator_owned_db=orch_db,
+                    orchestrator_workspace_id=workspace_id_snap,
+                    orchestrator_conversation_id=conv_id,
+                )
+                if not started:
+                    reset_context()
+                    orch_db.close()
+            except Exception:
+                reset_context()
+                orch_db.close()
+                logger.error(
+                    "总管定时任务启动流失败 task_id=%s conv_id=%s",
+                    task.id,
+                    conv_id,
+                    exc_info=True,
+                )
+
         main_loop = _get_main_loop()
-        main_loop.call_soon_threadsafe(
-            lambda: _stream_registry.start(
-                conversation_id=conv_id,
-                agent=agent,
-                messages=messages,
-                config={"configurable": {"thread_id": conv_id}},
-                stream_msg_id=asst_msg_id,
-                skill_name="",
-                debug_content_only=False,
-            )
-        )
+        main_loop.call_soon_threadsafe(_start_on_main)
 
         WorkspaceEventBus.push(workspace_id, {
             "type": "task_started",
@@ -676,7 +699,7 @@ class TaskSchedulerService:
                     if employee and employee.is_curator:
                         cls._start_curator_task(db, task, employee)
                     else:
-                        from src.service.orchestrator_agent import _start_task_as_conversation
+                        from src.service.agent.orchestrator import _start_task_as_conversation
                         _start_task_as_conversation(db, task, employee, task.workspace_id)
                     task.last_run_at = cst_now()
                     task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=task.last_run_at)

@@ -400,7 +400,7 @@ class ChatService:
                 )
                 question = mention_context + question
 
-            from src.service.orchestrator_agent import get_orchestrator_agent
+            from src.service.agent.orchestrator import get_orchestrator_agent
             agent = get_orchestrator_agent(
                 workspace_id=conversation.workspace_id,
                 db=db,

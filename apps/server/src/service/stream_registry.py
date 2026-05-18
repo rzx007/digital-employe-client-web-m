@@ -9,6 +9,7 @@ from collections import deque
 from typing import Any, Callable
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 
 from src.models.conversation import ConversationMessage
@@ -296,6 +297,10 @@ class StreamRegistry:
         stream_msg_id: int,
         skill_name: str,
         debug_content_only: bool,
+        *,
+        orchestrator_owned_db: Session | None = None,
+        orchestrator_workspace_id: int | None = None,
+        orchestrator_conversation_id: int | None = None,
     ) -> bool:
         existing = self._tasks.get(conversation_id)
         if existing and existing.is_active:
@@ -323,6 +328,9 @@ class StreamRegistry:
             skill_name=skill_name,
             debug_content_only=debug_content_only,
             task=task,
+            orchestrator_owned_db=orchestrator_owned_db,
+            orchestrator_workspace_id=orchestrator_workspace_id,
+            orchestrator_conversation_id=orchestrator_conversation_id,
         )
         task._asyncio_task = asyncio.create_task(coro)
         return True
@@ -377,8 +385,24 @@ class StreamRegistry:
         skill_name: str,
         debug_content_only: bool,
         task: ActiveStreamTask,
+        orchestrator_owned_db: Session | None = None,
+        orchestrator_workspace_id: int | None = None,
+        orchestrator_conversation_id: int | None = None,
     ) -> None:
         from src.service.chat_service import ChatService
+
+        if orchestrator_owned_db is not None:
+            if orchestrator_workspace_id is None:
+                raise ValueError(
+                    "orchestrator_workspace_id required when orchestrator_owned_db is set"
+                )
+            from src.service.agent.orchestrator.runtime import set_context
+
+            set_context(
+                orchestrator_owned_db,
+                orchestrator_workspace_id,
+                orchestrator_conversation_id,
+            )
 
         assistant_text_parts: list[str] = []
         latest_updates_text: str | None = None
@@ -606,6 +630,12 @@ class StreamRegistry:
             task.subscribers.clear()
             self._schedule_cleanup(conversation_id)
 
+            if orchestrator_owned_db is not None:
+                from src.service.agent.orchestrator.runtime import reset_context
+
+                reset_context()
+                orchestrator_owned_db.close()
+
     async def _ensure_terminal_state(self, stream_msg_id: int, state: str) -> None:
         """flush 失败兜底：仅写 stream_state，不写 content/parts，保证不卡在 streaming。"""
         def _do():
@@ -729,8 +759,22 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
             log.run_result = "任务已取消"
         else:
             log.run_status = "failed"
-            log.run_result = "执行异常"
-            log.error_message = "agent stream error"
+            log.run_result = "任务执行失败"
+            err_text = "agent stream error"
+            last_msg = db.scalars(
+                select(ConversationMessage).where(
+                    ConversationMessage.conversation_id == conversation_id,
+                    ConversationMessage.role == "assistant",
+                ).order_by(ConversationMessage.id.desc())
+            ).first()
+            if last_msg and last_msg.extra_meta:
+                try:
+                    meta = json.loads(last_msg.extra_meta)
+                    if isinstance(meta, dict) and meta.get("error_message"):
+                        err_text = str(meta["error_message"])[:2000]
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            log.error_message = err_text
 
         db.commit()
 

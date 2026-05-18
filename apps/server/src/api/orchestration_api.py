@@ -168,7 +168,7 @@ def confirm_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
     if plan.status != "pending":
         return BaseResponse(code=400, msg=f"计划当前状态为 {plan.status}，无法确认", data=None)
 
-    from src.service.orchestrator_agent import _execute_plan
+    from src.service.agent.orchestrator import _execute_plan
     result = _execute_plan(db, plan, plan.workspace_id)
 
     from src.service.workspace_events import WorkspaceEventBus
