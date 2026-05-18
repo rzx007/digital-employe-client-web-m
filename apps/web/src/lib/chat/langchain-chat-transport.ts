@@ -394,7 +394,7 @@ export class LangChainChatTransport<
               return true
             }
 
-            // 处理 tool_output 流式输出事件
+            // execute 等工具的 stdout 预演；不经 parseLangChainPayloadToChunks
             if (
               event &&
               typeof event === "object" &&
@@ -410,6 +410,11 @@ export class LangChainChatTransport<
               }
               if (toolOutputData && typeof toolOutputData === "object") {
                 flushSync()
+                // 与正文 phase 分离，避免 stdout 与 model text-delta 共用同一 text part
+                closeTextPhaseIfNeeded(state).forEach((chunk) =>
+                  controller.enqueue(chunk)
+                )
+                state.currentPhase = "tool"
                 const chunk = buildToolOutputStreamingChunk(toolOutputData, state)
                 if (chunk) {
                   controller.enqueue(chunk)

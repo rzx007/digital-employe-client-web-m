@@ -1,6 +1,7 @@
 import { createIdGenerator, type UIMessageChunk } from "ai"
 
 import type { AIMessageChunk, ToolMessage } from "./langchain-sse-schema"
+import { LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA } from "./langchain-summarization-text"
 
 const generatePartId = createIdGenerator({
   prefix: "lc-part",
@@ -24,6 +25,8 @@ export interface LangChainStreamParseState {
   toolCallKeysByChunkIndex: Map<string, string>
   currentPhase: ParsePhase
   currentTextId: string | null
+  /** 当前打开的 text 流是否与 summarization 元数据对应（用于与后续正文拆段） */
+  currentTextStreamTag: "summarization" | "default" | null
   didSendFinish: boolean
   toolOutputAccumulators: Map<string, string>
   toolNamesById: Map<string, string>
@@ -36,6 +39,7 @@ export function createLangChainStreamParseState(): LangChainStreamParseState {
     toolCallKeysByChunkIndex: new Map(),
     currentPhase: "idle",
     currentTextId: null,
+    currentTextStreamTag: null,
     didSendFinish: false,
     toolOutputAccumulators: new Map(),
     toolNamesById: new Map(),
@@ -61,13 +65,26 @@ function closeCurrentTextPhase(
   ]
   state.currentPhase = "idle"
   state.currentTextId = null
+  state.currentTextStreamTag = null
   return chunks
 }
 
-function openNewTextPhase(state: LangChainStreamParseState): UIMessageChunk[] {
+function openNewTextPhase(
+  state: LangChainStreamParseState,
+  streamTag: "summarization" | "default"
+): UIMessageChunk[] {
   const lifecycle: UIMessageChunk[] = closeCurrentTextPhase(state)
   const textId = transitionToTextPhase(state)
-  lifecycle.push({ type: "text-start", id: textId })
+  state.currentTextStreamTag = streamTag
+  const providerMetadata =
+    streamTag === "summarization"
+      ? LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA
+      : undefined
+  lifecycle.push({
+    type: "text-start",
+    id: textId,
+    ...(providerMetadata ? { providerMetadata } : {}),
+  })
   return lifecycle
 }
 
@@ -213,6 +230,53 @@ function resolvePendingToolCallByChunkIndex(
   return state.pendingToolCalls.get(key) ?? null
 }
 
+/**
+ * 从 LangGraph v2 messages 载荷读取节点名。
+ * 载荷形如 [AIMessageChunk | ToolMessage, LangGraphMetadata]。
+ */
+function getLangGraphNode(payload: unknown): string | null {
+  if (!Array.isArray(payload) || payload.length < 2) {
+    return null
+  }
+
+  const meta = payload[1]
+  if (!meta || typeof meta !== "object") {
+    return null
+  }
+
+  const node = (meta as { langgraph_node?: unknown }).langgraph_node
+  return typeof node === "string" ? node : null
+}
+
+/** LangGraph metadata：`lc_source` 如 summarization 表示会话压缩总结流 */
+function getLcSource(payload: unknown): string | null {
+  if (!Array.isArray(payload) || payload.length < 2) {
+    return null
+  }
+  const meta = payload[1]
+  if (!meta || typeof meta !== "object") {
+    return null
+  }
+  const src = (meta as { lc_source?: unknown }).lc_source
+  return typeof src === "string" ? src : null
+}
+
+/**
+ * 是否应将 AIMessageChunk.content 转为 text-delta。
+ *
+ * - model：总管/员工最终回复（如「为您生成了 3 位候选人」）
+ * - tools：工具节点内层 LLM 流式展示（如 recruit_employee 的 ```json…```），
+ *   若当成正文会误入 ToolRow 或与总结粘连；正式结果以 ToolMessage 为准
+ * - 无 metadata 时保持兼容旧格式
+ */
+function shouldStreamAssistantText(payload: unknown): boolean {
+  const node = getLangGraphNode(payload)
+  if (node === null) {
+    return true
+  }
+  return node === "model"
+}
+
 function extractAssistantText(payload: unknown) {
   if (!Array.isArray(payload) || payload.length === 0) {
     return null
@@ -221,6 +285,11 @@ function extractAssistantText(payload: unknown) {
   const chunk = payload[0]
 
   if (!isLangChainAiMessageChunk(chunk)) {
+    return null
+  }
+
+  // tools 节点 content 不提取，避免与 tool output / 后续 model 总结混 part
+  if (!shouldStreamAssistantText(payload)) {
     return null
   }
 
@@ -346,7 +415,13 @@ function buildToolInputChunks(
       )
 
     // 处理流式工具调用参数片段，累积输入文本并生成相应的 UI 事件
-    ;[...deltas, ...fallbackDeltas].forEach((toolCallChunk, fallbackIndex) => {
+    ;[...deltas, ...fallbackDeltas].forEach((rawChunk, fallbackIndex) => {
+      const toolCallChunk = rawChunk as {
+        id?: string | null
+        name?: string | null
+        args?: string | null
+        index?: number | null
+      }
       const indexValue =
         typeof toolCallChunk.index === "number"
           ? toolCallChunk.index
@@ -593,7 +668,10 @@ export function parseLangChainPayloadToChunks(options: {
     state.currentPhase = "tool"
   }
 
+  // ToolMessage 到达：先结束可能误开的 text phase，再写入 tool output；
+  // 后续 model 总结会通过 openNewTextPhase 单独成段
   if (toolOutputChunk) {
+    result.push(...closeCurrentTextPhase(state))
     state.currentPhase = "tool"
     result.push(toolOutputChunk)
   }
@@ -606,14 +684,29 @@ export function parseLangChainPayloadToChunks(options: {
   }
 
   if (hasTextContent) {
-    if (state.currentPhase !== "text") {
-      result.push(...openNewTextPhase(state))
+    const streamTag =
+      getLcSource(payload) === "summarization" ? "summarization" : "default"
+    if (
+      state.currentPhase === "text" &&
+      state.currentTextStreamTag !== null &&
+      state.currentTextStreamTag !== streamTag
+    ) {
+      result.push(...closeCurrentTextPhase(state))
+      state.currentPhase = "idle"
     }
-    result.push({
+    if (state.currentPhase !== "text") {
+      result.push(...openNewTextPhase(state, streamTag))
+    }
+    const deltaChunk: UIMessageChunk = {
       type: "text-delta",
       id: state.currentTextId!,
       delta: assistantText,
-    })
+    }
+    if (streamTag === "summarization") {
+      ;(deltaChunk as { providerMetadata?: unknown }).providerMetadata =
+        LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA
+    }
+    result.push(deltaChunk)
   }
 
   return result

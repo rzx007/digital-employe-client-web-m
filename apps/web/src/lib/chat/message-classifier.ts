@@ -21,6 +21,7 @@ import {
   getFileChangesFromUIMessage,
   type FileChangeItem,
 } from "./file-change-utils"
+import { isSummarizationTextPart } from "./langchain-summarization-text"
 
 type ToolUIPart = Extract<
   UIMessage["parts"][number],
@@ -60,6 +61,7 @@ export type ClassifiedBlock =
   | { kind: "tool-group"; key: string; tools: ToolGroupItem[]; summary: string }
   | { kind: "skill-exploration"; key: string; items: SkillExploreItem[]; thinkingText?: string }
   | { kind: "plan-generated"; key: string; toolCallId: string; input: unknown; state: string }
+  | { kind: "summarization-checkpoint"; key: string; text: string }
   | { kind: "final-response"; key: string; text: string }
   | { kind: "file-changes"; key: string; files: FileChangeItem[] }
   | { kind: "error"; key: string; text: string }
@@ -108,6 +110,28 @@ function isPreliminary(part: ToolUIPart): boolean {
   return "preliminary" in part && (part as Record<string, unknown>).preliminary === true
 }
 
+function mergeSummarizationCheckpointBlock(
+  blocks: ClassifiedBlock[],
+  messageId: string,
+  partIndex: number,
+  rawText: string
+) {
+  const text = stripThinkSections(rawText)
+  if (!text.trim()) return
+
+  const last = blocks[blocks.length - 1]
+  if (last?.kind === "summarization-checkpoint") {
+    last.text += (last.text.trim() ? "\n" : "") + text
+    return
+  }
+
+  blocks.push({
+    kind: "summarization-checkpoint",
+    key: `${messageId}:summarization:${partIndex}`,
+    text,
+  })
+}
+
 /**
  * 将 UI 消息的部分内容分类为不同的块（思考过程、工具调用组、最终响应）。
  *
@@ -127,27 +151,61 @@ export function classifyMessageParts(
   const hasAnyTool = parts.some(isToolUIPart)
 
   if (!hasAnyTool) {
-    const text = parts
-      .filter((p) => p.type === "text" && "text" in p && p.text)
-      .map((p) => ("text" in p ? p.text : ""))
-      .join("")
+    const out: ClassifiedBlock[] = []
+    let responseAccum = ""
 
-    if (!text) return []
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i]
+      if (p.type !== "text" || !("text" in p) || !p.text) continue
 
-    const cleaned = stripThinkSections(text)
-    if (isErrorText(cleaned)) {
-      return [{
-        kind: "error",
-        key: `${message.id}:error:0`,
-        text: stripErrorMarker(cleaned),
-      }]
+      if (isSummarizationTextPart(p)) {
+        if (responseAccum.trim()) {
+          const c = stripThinkSections(responseAccum)
+          if (c) {
+            if (isErrorText(c)) {
+              return [
+                {
+                  kind: "error",
+                  key: `${message.id}:error:0`,
+                  text: stripErrorMarker(c),
+                },
+              ]
+            }
+            out.push({
+              kind: "final-response",
+              key: `${message.id}:response:${out.length}`,
+              text: c,
+            })
+          }
+          responseAccum = ""
+        }
+        mergeSummarizationCheckpointBlock(out, message.id, i, p.text)
+      } else {
+        responseAccum += p.text
+      }
     }
 
-    return [{
-      kind: "final-response",
-      key: `${message.id}:response:0`,
-      text: cleaned,
-    }]
+    if (responseAccum.trim()) {
+      const c = stripThinkSections(responseAccum)
+      if (c) {
+        if (isErrorText(c)) {
+          return [
+            {
+              kind: "error",
+              key: `${message.id}:error:0`,
+              text: stripErrorMarker(c),
+            },
+          ]
+        }
+        out.push({
+          kind: "final-response",
+          key: `${message.id}:response:final`,
+          text: c,
+        })
+      }
+    }
+
+    return out
   }
 
   const lastToolIndex = parts.reduce(
@@ -266,6 +324,31 @@ export function classifyMessageParts(
 
     // 处理文本类型的部分：区分最终响应和思考内容
     if (part.type === "text" && "text" in part && part.text) {
+      if (isSummarizationTextPart(part)) {
+        flushSkillExplore("end")
+        if (i > lastToolIndex && responseText) {
+          const respCleaned = stripThinkSections(responseText)
+          if (respCleaned) {
+            if (isErrorText(respCleaned)) {
+              blocks.push({
+                kind: "error",
+                key: `${message.id}:error:flush-${i}`,
+                text: stripErrorMarker(respCleaned),
+              })
+            } else {
+              blocks.push({
+                kind: "final-response",
+                key: `${message.id}:response:${i}`,
+                text: respCleaned,
+              })
+            }
+          }
+          responseText = ""
+        }
+        mergeSummarizationCheckpointBlock(blocks, message.id, i, part.text)
+        continue
+      }
+
       const cleaned = stripThinkTags(part.text)
 
       // 如果当前索引在最后一个工具调用之后，则视为最终响应（累积避免 markdown 跨 part 断裂）

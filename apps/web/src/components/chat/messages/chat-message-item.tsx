@@ -12,6 +12,7 @@ import { ThinkingBlock } from "../message-blocks/thinking-block"
 import { ToolGroupBlock } from "../message-blocks/tool-group-block"
 import { PlanGeneratedCard } from "../message-blocks/plan-generated-card"
 import { SkillExplorationBlock } from "../message-blocks/skill-exploration-block"
+import { SummarizationCheckpointBlock } from "../message-blocks/summarization-checkpoint-block"
 import { EmployeeContactAvatar, GroupMembersAvatar } from "../contacts/contact-avatars"
 import {
   getContactDisplayName,
@@ -126,6 +127,15 @@ export function RenderClassifiedBlocks({
             <SkillExplorationBlock
               items={block.items}
               thinkingText={block.thinkingText}
+              className="w-full"
+              key={block.key}
+            />
+          )
+        }
+        if (block.kind === "summarization-checkpoint") {
+          return (
+            <SummarizationCheckpointBlock
+              text={block.text}
               className="w-full"
               key={block.key}
             />
