@@ -12,6 +12,7 @@ import { toast } from "sonner"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
+import { Separator } from "@workspace/ui/components/separator"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { Textarea } from "@workspace/ui/components/textarea"
@@ -26,17 +27,63 @@ import { useSkillListQuery, useLocalSkillDetailQuery } from "@/hooks/use-skill-q
 import { chatKeys } from "@/lib/query-keys/chat"
 import { ImportSkillDialog } from "./import-skill-dialog"
 
-/** 折叠时最多展示数量（约 3 列 × 2 行） */
-const INSTALLED_COLLAPSED_MAX = 6
+/** 须与「已安装」网格类名 min-[1600px]:grid-cols-4 同步 */
+const SKILL_GRID_WIDE_BREAKPOINT_PX = 1600
+
+function getSkillGridColumnCount(): number {
+  if (typeof window === "undefined") return 3
+  return window.innerWidth >= SKILL_GRID_WIDE_BREAKPOINT_PX ? 4 : 3
+}
+
+function useSkillGridColumnCount(): number {
+  const [cols, setCols] = React.useState(getSkillGridColumnCount)
+  React.useEffect(() => {
+    const query = `(min-width: ${SKILL_GRID_WIDE_BREAKPOINT_PX}px)`
+    const mql = window.matchMedia(query)
+    const sync = () => setCols(mql.matches ? 4 : 3)
+    sync()
+    mql.addEventListener("change", sync)
+    return () => mql.removeEventListener("change", sync)
+  }, [])
+  return cols
+}
 
 function isInstalledSource(s: SkillListItem): boolean {
   return s.source === "local" || s.source === "builtin"
 }
 
-function badgeVariantForSource(source: SkillListItem["source"]) {
-  if (source === "local") return "outline" as const
-  if (source === "builtin") return "secondary" as const
-  return "secondary" as const
+/** 本地 / 内置 / 远程 来源标签配色（浅色 + dark） */
+function sourceBadgeClassName(
+  source: SkillListItem["source"] | undefined,
+): string {
+  switch (source) {
+    case "local":
+      return cn(
+        "border-sky-500/45 bg-sky-500/10 text-sky-900",
+        "dark:border-sky-400/35 dark:bg-sky-400/15 dark:text-sky-100",
+      )
+    case "builtin":
+      return cn(
+        "border-amber-500/45 bg-amber-500/10 text-amber-950",
+        "dark:border-amber-400/35 dark:bg-amber-400/15 dark:text-amber-50",
+      )
+    case "remote":
+    default:
+      return cn(
+        "border-violet-500/45 bg-violet-500/10 text-violet-950",
+        "dark:border-violet-400/35 dark:bg-violet-400/15 dark:text-violet-100/90",
+      )
+  }
+}
+
+function sourceBadgeProps(source: SkillListItem["source"] | undefined) {
+  return {
+    variant: "outline" as const,
+    className: cn(
+      "shrink-0 px-1.5 py-0 text-[10px] font-medium",
+      sourceBadgeClassName(source),
+    ),
+  }
 }
 
 function buildRemoteCategories(skills: SkillListItem[]): string[] {
@@ -102,10 +149,7 @@ function InstalledSkillCard({
             {skill.displayNameZh || skill.skillName}
           </span>
         </span>
-        <Badge
-          variant={badgeVariantForSource(src)}
-          className="shrink-0 px-1.5 py-0 text-[10px]"
-        >
+        <Badge {...sourceBadgeProps(src)}>
           {skill.sourceLabel || (src === "builtin" ? "内置" : "本地")}
         </Badge>
       </div>
@@ -128,10 +172,15 @@ function RemoteSkillCard({
   installing: boolean
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-sm border p-4 transition-colors hover:border-primary/30 hover:bg-accent/30">
+    <div
+      className={cn(
+        "flex h-full min-h-0 flex-col gap-2 rounded-sm border p-4",
+        "transition-colors hover:border-primary/30 hover:bg-accent/30",
+      )}
+    >
       <button
         type="button"
-        className="flex w-full flex-col gap-2 text-left"
+        className="flex min-h-0 flex-1 flex-col gap-2 text-left"
         onClick={onSelect}
       >
         <div className="flex items-start justify-between gap-2">
@@ -141,14 +190,11 @@ function RemoteSkillCard({
               {skill.displayNameZh || skill.skillName}
             </span>
           </span>
-          <Badge
-            variant="secondary"
-            className="shrink-0 px-1.5 py-0 text-[10px]"
-          >
+          <Badge {...sourceBadgeProps("remote")}>
             {skill.sourceLabel || "远程"}
           </Badge>
         </div>
-        <span className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+        <span className="line-clamp-2 min-h-10 text-xs leading-relaxed text-muted-foreground">
           {skill.description || "暂无描述"}
         </span>
         {skill.directoryName && (
@@ -261,10 +307,7 @@ function SkillDetailView({
           <h2 className="min-w-0 flex-1 truncate text-base font-semibold">
             {title}
           </h2>
-          <Badge
-            variant={badgeVariantForSource(skill.source)}
-            className="shrink-0 px-1.5 py-0 text-[10px]"
-          >
+          <Badge {...sourceBadgeProps(skill.source)}>
             {skill.sourceLabel ||
               (skill.source === "builtin"
                 ? "内置"
@@ -433,6 +476,9 @@ export function SkillsPage({
   const [installedExpanded, setInstalledExpanded] = React.useState(false)
   const [installingId, setInstallingId] = React.useState<number | null>(null)
 
+  const skillGridCols = useSkillGridColumnCount()
+  const installedCollapsedMax = skillGridCols * 2
+
   const { data: allSkills = [], isLoading: loading } = useSkillListQuery()
 
   const handleImportSuccess = () => {
@@ -492,11 +538,11 @@ export function SkillsPage({
     () =>
       installedExpanded
         ? filteredInstalled
-        : filteredInstalled.slice(0, INSTALLED_COLLAPSED_MAX),
-    [filteredInstalled, installedExpanded],
+        : filteredInstalled.slice(0, installedCollapsedMax),
+    [filteredInstalled, installedExpanded, installedCollapsedMax],
   )
   const showInstalledToggle =
-    filteredInstalled.length > INSTALLED_COLLAPSED_MAX
+    filteredInstalled.length > installedCollapsedMax
 
   const tryInstallRemote = async (skill: SkillListItem) => {
     setInstallingId(skill.id)
@@ -611,21 +657,25 @@ export function SkillsPage({
                       ))}
                     </div>
                     {showInstalledToggle && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs text-muted-foreground"
-                        onClick={() =>
-                          setInstalledExpanded((v) => !v)
-                        }
-                      >
-                        {installedExpanded ? "收起" : "显示更多"}
-                      </Button>
+                      <div className="flex w-full justify-center pt-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs text-muted-foreground"
+                          onClick={() =>
+                            setInstalledExpanded((v) => !v)
+                          }
+                        >
+                          {installedExpanded ? "收起" : "显示更多"}
+                        </Button>
+                      </div>
                     )}
                   </>
                 )}
               </section>
+
+              <Separator className="shrink-0 bg-border/70" />
 
               <section className="space-y-3">
                 <h2 className="text-sm font-semibold text-foreground">
@@ -668,7 +718,7 @@ export function SkillsPage({
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-3 gap-4 min-[1600px]:grid-cols-4">
+                  <div className="grid auto-rows-fr grid-cols-3 gap-4 min-[1600px]:grid-cols-4">
                     {filteredRemote.map((skill) => (
                       <RemoteSkillCard
                         key={skill.id}
