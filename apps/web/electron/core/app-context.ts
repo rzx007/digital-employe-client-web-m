@@ -22,12 +22,17 @@ export function createAppPaths(mainDirname: string): {
   rendererDist: string
   indexHtml: string
   preloadPath: string
+  extensionPreloadPath: string
 } {
   const appRoot = path.join(mainDirname, "../..")
   const rendererDist = path.join(appRoot, "dist")
   const indexHtml = path.join(rendererDist, "index.html")
   const preloadPath = path.join(mainDirname, "../preload/index.mjs")
-  return { appRoot, rendererDist, indexHtml, preloadPath }
+  const extensionPreloadPath = path.join(
+    mainDirname,
+    "../preload/extension-preload.mjs",
+  )
+  return { appRoot, rendererDist, indexHtml, preloadPath, extensionPreloadPath }
 }
 
 export function createAppContext(

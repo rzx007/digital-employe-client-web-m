@@ -15,6 +15,7 @@ import { createAppContext } from "./app-context"
 import { IpcRegistry } from "./ipc/registry"
 import { WindowManager } from "./services/window-manager"
 import { allIpcContributions } from "../features"
+import { initExtensions } from "../features/extension/extension-loader"
 import { rootLogger } from "./logger"
 
 export interface BootstrapOptions {
@@ -49,6 +50,8 @@ export async function bootstrapApp(options: BootstrapOptions): Promise<void> {
   for (const contribution of allIpcContributions) {
     registry.register(contribution)
   }
+
+  initExtensions()
 
   initAutoUpdater()
 

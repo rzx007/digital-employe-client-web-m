@@ -6,6 +6,7 @@ import {
   IconInfoCircle,
   IconUser,
   IconPaw,
+  IconPlug,
 } from "@tabler/icons-react"
 
 export type SettingsTab =
@@ -14,6 +15,7 @@ export type SettingsTab =
   | "shortcuts"
   | "models"
   | "pet"
+  | "extensions"
   | "about"
 
 export type PetVisibilityMode = "always" | "when_main_hidden"
@@ -28,5 +30,6 @@ export const SETTINGS_TABS: {
   { id: "shortcuts", label: "快捷键", icon: IconKeyboard },
   { id: "models", label: "模型", icon: IconBrain },
   { id: "pet", label: "宠物", icon: IconPaw },
+  { id: "extensions", label: "插件", icon: IconPlug },
   { id: "about", label: "关于", icon: IconInfoCircle },
 ]

@@ -54,7 +54,7 @@ function isUvicornReadyLine(log: string): boolean {
  * 否则可能出现：Electron 为 arm64 但 PATH 里 uv 为 x86_64，或主进程为 Rosetta
  * x64，导致 uvicorn --reload 子进程跑 x86_64，与 arm64 的 pydantic_core 等冲突。
  */
-function useArchArm64ForDevUvOnAppleSilicon(): boolean {
+function shouldUseArchArm64ForDevUvOnAppleSilicon(): boolean {
   return process.platform === "darwin" && os.machine() === "arm64"
 }
 
@@ -185,7 +185,7 @@ function startDevServer(resolve: () => void, reject: (err: Error) => void): void
     String(BACKEND_PORT),
     "--reload",
   ]
-  const useArchArm64 = useArchArm64ForDevUvOnAppleSilicon()
+  const useArchArm64 = shouldUseArchArm64ForDevUvOnAppleSilicon()
   if (useArchArm64) {
     log.info("Apple Silicon: spawning uv via arch -arm64")
   }

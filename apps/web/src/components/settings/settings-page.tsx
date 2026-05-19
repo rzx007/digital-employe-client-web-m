@@ -5,6 +5,7 @@ import { AboutSettings } from "./about-settings"
 import { GeneralSettings } from "./general-settings"
 import { ModelsSettings } from "./models-settings"
 import { PetSettings } from "./pet-settings"
+import { ExtensionsSettings } from "./extensions-settings"
 import { SettingsSidebar } from "./settings-sidebar"
 import type { SettingsTab } from "./settings-types"
 import { ShortcutsSettings } from "./shortcuts-settings"
@@ -21,6 +22,7 @@ export function SettingsPage() {
         {activeTab === "shortcuts" && <ShortcutsSettings />}
         {activeTab === "models" && <ModelsSettings />}
         {activeTab === "pet" && <PetSettings />}
+        {activeTab === "extensions" && <ExtensionsSettings />}
         {activeTab === "about" && <AboutSettings />}
       </ScrollArea>
     </div>

@@ -1,7 +1,11 @@
 import { BrowserWindow, type BrowserWindowConstructorOptions } from "electron"
-import { getPreloadPath, getAppIconPath, buildHashRouteUrl } from "../runtime-paths"
+import {
+  getPreloadPath,
+  getAppIconPath,
+  buildHashRouteUrl,
+} from "../runtime-paths"
 
-export type WindowId =
+export type BuiltinWindowId =
   | "main"
   | "login"
   | "settings"
@@ -10,9 +14,26 @@ export type WindowId =
   | "pet"
   | "splash"
 
+export type WindowId = BuiltinWindowId | `plugin:${string}`
+
+export function pluginWindowId(extensionId: string): `plugin:${string}` {
+  return `plugin:${extensionId}`
+}
+
+export function isPluginWindowId(id: WindowId): id is `plugin:${string}` {
+  return id.startsWith("plugin:")
+}
+
 export interface WindowDescriptor {
   id: WindowId
-  route: string
+  /** 主应用 SPA hash 路由 */
+  route?: string
+  /** 插件或独立页面：本地 HTML 文件绝对路径 */
+  loadFile?: string
+  /** 插件开发态或远程页面 URL */
+  loadUrl?: string
+  /** 默认主应用 preload；插件窗应传 extension preload */
+  preloadPath?: string
   overrides: BrowserWindowConstructorOptions
   onCreated?: (win: BrowserWindow) => void
 }
@@ -62,12 +83,27 @@ export class WindowManager {
    * 统一 preload / icon / URL 加载 / closed 清理。
    */
   createWindow(descriptor: WindowDescriptor): BrowserWindow {
-    const { id, route, overrides, onCreated } = descriptor
+    const {
+      id,
+      route,
+      loadFile,
+      loadUrl,
+      preloadPath,
+      overrides,
+      onCreated,
+    } = descriptor
+
+    const loadTargets = [route, loadFile, loadUrl].filter(Boolean)
+    if (loadTargets.length !== 1) {
+      throw new Error(
+        `[WindowManager] exactly one of route, loadFile, loadUrl is required`,
+      )
+    }
 
     const defaults: BrowserWindowConstructorOptions = {
       icon: getAppIconPath(),
       webPreferences: {
-        preload: getPreloadPath(),
+        preload: preloadPath ?? getPreloadPath(),
         nodeIntegration: false,
         contextIsolation: true,
       },
@@ -82,7 +118,13 @@ export class WindowManager {
       },
     })
 
-    win.loadURL(buildHashRouteUrl(route))
+    if (loadUrl) {
+      void win.loadURL(loadUrl)
+    } else if (loadFile) {
+      void win.loadFile(loadFile)
+    } else if (route) {
+      void win.loadURL(buildHashRouteUrl(route))
+    }
 
     win.on("closed", () => {
       this.set(id, null)

@@ -11,7 +11,8 @@ declare namespace NodeJS {
      * │ ├─┬ main
      * │ │ └── index.js    > Electron-Main
      * │ └─┬ preload
-     * │   └── index.mjs   > Preload-Scripts
+     * │   ├── index.mjs
+     * │   └── extension-preload.mjs
      * ├─┬ dist
      * │ └── index.html    > Electron-Renderer
      * ```

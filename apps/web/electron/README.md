@@ -57,6 +57,14 @@ electron/
 │   │   ├── auto-updater.ts  # 自动更新
 │   │   ├── ipc.ts
 │   │   └── preload-bridge.ts
+│   ├── extension/           # 插件（独立 UI + extension preload）
+│   │   ├── extension-loader.ts
+│   │   ├── extension-registry.ts
+│   │   ├── extension-window.ts
+│   │   ├── extension-store.ts
+│   │   ├── manifest-schema.ts
+│   │   ├── ipc.ts
+│   │   └── preload-bridge.ts
 │   └── window/
 │       ├── ipc.ts
 │       └── preload-bridge.ts
@@ -66,9 +74,10 @@ electron/
 │   ├── app-product.ts       # 产品常量
 │   └── pin-window-title.ts  # 窗口标题固定工具
 ├── preload/                 # Preload 脚本
-│   ├── index.ts             # contextBridge 入口
+│   ├── index.ts             # 主应用 contextBridge
+│   ├── extension-preload.ts # 插件窗口专用（window.extension）
 │   ├── invoke.ts            # 类型安全 invoke 封装
-│   └── electron-api.ts      # 统一 API 聚合
+│   └── electron-api.ts      # 主应用 API 聚合
 ├── shared/
 │   └── ipc-channels.ts      # Channel 常量 + IpcInvokeMap
 └── electron.d.ts            # 全局类型声明
@@ -230,27 +239,31 @@ flowchart LR
   Invoke --> MainHandler["features/*/ipc.ts"]
 ```
 
-### 与未来插件扩展的对应关系（规划）
+### 插件（Extension）机制
+
+插件 UI **与主应用 SPA 完全解耦**：任意 `index.html` 或独立 SPA，安装在 `~/.digital-employee/extensions/<id>/`。
 
 ```mermaid
-flowchart TB
-  subgraph today [当前内置 Feature]
-    Builtin["features/auth backend ..."]
-    Builtin --> IpcContrib["IpcContribution"]
-    Builtin --> PreloadBridge2["preload-bridge"]
-    Builtin --> WinStore["window-* / *-store"]
-  end
-
-  subgraph future [远期 Extension]
-    Manifest["digital-employee.extension.json"]
-    Loader["ExtensionLoader"]
-    Manifest --> Loader
-    Loader -->|"同接口 activate"| IpcContrib
-    Loader -->|"合并 bridge"| PreloadBridge2
-  end
-
-  IpcContrib --> Registry2["IpcRegistry"]
+flowchart LR
+  HostSPA["主应用 SPA"] -->|"electronApi.listExtensions"| MainIPC["ext:* host IPC"]
+  PluginWin["插件 BrowserWindow"] -->|"window.extension"| ExtIPC["ext:get-context 等"]
+  MainIPC --> Loader["ExtensionLoader"]
+  ExtIPC --> Loader
+  Loader --> Disk["extensions/id/ui/index.html"]
 ```
+
+| 角色 | API | 说明 |
+|------|-----|------|
+| 主应用设置页 | `electronApi.listExtensions` / `openExtension` / `setExtensionEnabled` | 管理插件，不加载插件 UI |
+| 插件页面 | `window.extension.getContext` / `close` | 仅插件窗口 preload；`close` → IPC `ext:close-window`（非宿主 `ext:close`） |
+
+**Manifest**：`digital-employee.extension.json`（见 [`examples/extension-demo`](../../../examples/extension-demo)）。
+
+**开发**：复制示例到 `~/.digital-employee/extensions/com.example.demo/`，或设置 `EXTENSION_DEV_COM_EXAMPLE_DEMO=http://127.0.0.1:端口/`。
+
+**权限**：`permissions` 含 `auth.read` 时 `getContext()` 才返回 `authToken`。
+
+第二期将支持 `kind: ui-service` 本地子进程（从 `backend-process` 抽象 ServiceHost）。
 
 ## 错误边界与日志
 

@@ -7,6 +7,7 @@ import { notificationTrayIpcContribution } from "./notification-tray/ipc"
 import { settingsIpcContribution } from "./settings/ipc"
 import { petIpcContribution } from "./pet/ipc"
 import { updateIpcContribution } from "./update/ipc"
+import { extensionIpcContribution } from "./extension/ipc"
 
 export const allIpcContributions: IpcContribution[] = [
   backendIpcContribution,
@@ -17,4 +18,5 @@ export const allIpcContributions: IpcContribution[] = [
   settingsIpcContribution,
   petIpcContribution,
   updateIpcContribution,
+  extensionIpcContribution,
 ]

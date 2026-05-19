@@ -5,6 +5,7 @@ export interface ElectronRuntimePaths {
   readonly rendererDist: string
   readonly indexHtml: string
   readonly preloadPath: string
+  readonly extensionPreloadPath: string
   readonly devServerUrl?: string
 }
 
@@ -39,6 +40,10 @@ export function buildHashRouteUrl(route: string): string {
 
 export function getPreloadPath(): string {
   return getElectronRuntime().preloadPath
+}
+
+export function getExtensionPreloadPath(): string {
+  return getElectronRuntime().extensionPreloadPath
 }
 
 export function getAppIconPath(): string {
