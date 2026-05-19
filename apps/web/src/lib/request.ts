@@ -1,5 +1,5 @@
 import { ofetch } from "ofetch"
-import { getElectronApi, isElectron } from "@/lib/electron/host"
+import { isElectron, withElectronApi } from "@/lib/electron/host"
 
 const defaultHeaders: HeadersInit = {
   Accept: "application/json",
@@ -172,7 +172,9 @@ export const request = ofetch.create({
     const status = response?.status
     if (status === 401 || status === 403) {
       localStorage.removeItem("token")
-      await getElectronApi()?.clearAuth()
+      if (isElectron()) {
+        await withElectronApi((api) => api.clearAuth(), { silent: true })
+      }
       if (typeof window !== "undefined") {
         window.location.hash = "#/login"
       }

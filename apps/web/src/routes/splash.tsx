@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { cn } from "@workspace/ui/lib/utils"
 import logoImage from "@/assets/logo.png"
-import { getElectronApi } from "@/lib/electron/host"
+import { subscribeElectron } from "@/lib/electron/host"
 
 export const Route = createFileRoute("/splash")({
   component: SplashPage,
@@ -13,10 +13,11 @@ function SplashPage() {
   const isError = status.includes("失败")
 
   useEffect(() => {
-    const cleanup = getElectronApi()?.onBackendError?.((message) => {
-      setStatus(`服务启动失败: ${message}`)
-    })
-    return () => cleanup?.()
+    return subscribeElectron((api) =>
+      api.onBackendError?.((message) => {
+        setStatus(`服务启动失败: ${message}`)
+      }),
+    )
   }, [])
 
   return (

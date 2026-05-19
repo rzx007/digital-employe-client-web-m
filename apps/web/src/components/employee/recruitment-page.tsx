@@ -19,7 +19,7 @@ import { CandidateCard } from "./candidate-card"
 import { HireSheet } from "./hire-sheet"
 import { useQueryClient } from "@tanstack/react-query"
 import { chatKeys } from "@/lib/query-keys/chat"
-import { getElectronApi, isElectron } from "@/lib/electron/host"
+import { isElectron, withElectronApi } from "@/lib/electron/host"
 
 const HOT_JOBS = [
   "数据分析师",
@@ -124,7 +124,7 @@ export function RecruitmentPage() {
     setCandidates([])
     setHasSearched(false)
     queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
-    getElectronApi()?.notifyHireSuccess?.()
+    void withElectronApi((api) => api.notifyHireSuccess())
   }
 
   // const displayCandidates = hasSearched ? candidates : DEMO_CANDIDATES

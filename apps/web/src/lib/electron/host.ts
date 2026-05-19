@@ -77,3 +77,19 @@ export async function requireElectronApi<T>(
     )
   }
 }
+
+/** 同步注册 IPC 事件监听（如 onRegisterSuccess），返回 cleanup */
+export function subscribeElectron(
+  fn: (api: ElectronApi) => (() => void) | void,
+): (() => void) | undefined {
+  const api = getElectronApi()
+  if (!api) return undefined
+  try {
+    return fn(api) ?? undefined
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error("[electron/host] subscribe failed", error)
+    }
+    return undefined
+  }
+}

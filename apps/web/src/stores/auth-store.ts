@@ -3,7 +3,11 @@ import { loginApi } from "@/api/auth"
 import { setConfigKv } from "@/api/config-kv"
 import type { LoginUser } from "@/api/types"
 import { getMyWorkspace } from "@/api/workspace"
-import { getElectronApi, isElectron } from "@/lib/electron/host"
+import {
+  isElectron,
+  requireElectronApi,
+  withElectronApi,
+} from "@/lib/electron/host"
 
 interface PendingPasswordChange {
   token: string
@@ -99,11 +103,15 @@ export const useAuthStore = create<AuthState>((set) => ({
 
         localStorage.setItem("token", token)
 
-        await getElectronApi()?.saveAuth(
-          token,
-          user as unknown as Record<string, unknown>,
-          rememberMe,
-        )
+        if (isElectron()) {
+          await requireElectronApi((api) =>
+            api.saveAuth(
+              token,
+              user as unknown as Record<string, unknown>,
+              rememberMe,
+            ),
+          )
+        }
 
         set({ token, user, isAuthenticated: true, loading: false })
 
@@ -124,7 +132,9 @@ export const useAuthStore = create<AuthState>((set) => ({
           console.warn("Failed to get workspace:", error)
         }
 
-        await getElectronApi()?.loginSuccess()
+        if (isElectron()) {
+          await requireElectronApi((api) => api.loginSuccess())
+        }
       } else {
         set({
           loading: false,
@@ -143,7 +153,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.removeItem("workspaceId")
 
     const inElectron = isElectron()
-    await getElectronApi()?.clearAuth()
+    if (inElectron) {
+      await withElectronApi((api) => api.clearAuth(), { silent: true })
+    }
 
     set({ token: null, user: null, workspaceId: null })
 
@@ -153,7 +165,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   restoreSession: async () => {
-    const status = await getElectronApi()?.getAuthStatus()
+    if (!isElectron()) return
+    const status = await requireElectronApi((api) => api.getAuthStatus())
     if (status?.token) {
       localStorage.setItem("token", status.token)
       const user = status.user as unknown as LoginUser

@@ -13,7 +13,7 @@ import { registerApi } from "@/api/auth"
 import { getDeptTree } from "@/api/dept"
 import { togglePath, type DeptTreeNode } from "@/lib/dept-tree"
 import { RegisterDeptTree } from "@/components/login/register-dept-tree"
-import { getElectronApi, isElectron } from "@/lib/electron/host"
+import { getElectronApi, isElectron, withElectronApi } from "@/lib/electron/host"
 
 export const Route = createFileRoute("/register")({
   component: RegisterPage,
@@ -129,7 +129,9 @@ function RegisterPage() {
       if (res.code === 1) {
         setRegisterDone(true)
         if (inElectron) {
-          getElectronApi()?.notifyRegisterSuccess(regUsername.trim())
+          void withElectronApi((api) =>
+            api.notifyRegisterSuccess(regUsername.trim()),
+          )
         } else {
           localStorage.setItem("register_success", regUsername.trim())
         }
@@ -147,7 +149,7 @@ function RegisterPage() {
 
   const handleClose = () => {
     if (inElectron) {
-      getElectronApi()?.closeRegister()
+      void withElectronApi((api) => api.closeRegister())
     } else {
       window.close()
     }

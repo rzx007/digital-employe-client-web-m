@@ -2,6 +2,9 @@ import path from "node:path"
 import os from "node:os"
 import fs from "node:fs"
 import type { Protocol } from "electron"
+import { createLogger } from "./logger"
+
+const log = createLogger("petdex")
 
 /**
  * petdex:// 协议 handler（主 session 与 pet 分区 session 共用）
@@ -38,7 +41,9 @@ export function handlePetdexRequest(
       },
     })
   } catch (e) {
-    console.error("[petdex] handler error:", e)
+    log.error("handler error", {
+      message: e instanceof Error ? e.message : String(e),
+    })
     return new Response("Not Found", { status: 404 })
   }
 }

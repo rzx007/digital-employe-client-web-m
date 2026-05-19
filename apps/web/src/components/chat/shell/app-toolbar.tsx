@@ -30,7 +30,7 @@ import {
 } from "@workspace/ui/components/tooltip"
 import { cn } from "@workspace/ui/lib/utils"
 import { useAuthStore } from "@/stores/auth-store"
-import { getElectronApi } from "@/lib/electron/host"
+import { withElectronApi } from "@/lib/electron/host"
 import { useChatStore, type ActiveTab } from "@/stores/chat-store"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import { NotificationBell } from "../notifications/notification-center"
@@ -211,7 +211,7 @@ export function AppToolbar({
                 size="icon"
                 className="size-10 rounded-lg text-muted-foreground hover:text-foreground"
                 data-tour-id="settings-btn"
-                onClick={() => getElectronApi()?.openSettings()}
+                onClick={() => void withElectronApi((api) => api.openSettings())}
               >
                 <IconSettings className="size-5" />
               </Button>

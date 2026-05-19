@@ -23,7 +23,11 @@ import { ChangePasswordForm } from "@/components/login/change-password-form"
 import { useEndpointStore } from "@/stores/endpoint-store"
 import { updateRequestBaseUrl } from "@/lib/request"
 import { getOAuthAuthorizeUrl } from "@/api/auth"
-import { getElectronApi, isElectron } from "@/lib/electron/host"
+import {
+  isElectron,
+  subscribeElectron,
+  withElectronApi,
+} from "@/lib/electron/host"
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -63,13 +67,12 @@ function LoginPage() {
 
   useEffect(() => {
     if (!inElectron) return
-    const cleanup = getElectronApi()?.onRegisterSuccess(
-      (registeredUsername: string) => {
+    return subscribeElectron((api) =>
+      api.onRegisterSuccess((registeredUsername: string) => {
         setUsername(registeredUsername)
         setRegisterSuccessHint(true)
-      },
+      }),
     )
-    return cleanup
   }, [inElectron])
 
   useEffect(() => {
@@ -120,7 +123,7 @@ function LoginPage() {
 
   const handleOpenRegister = () => {
     if (inElectron) {
-      getElectronApi()?.openRegister()
+      void withElectronApi((api) => api.openRegister())
     } else {
       const width = 480
       const height = 700
@@ -196,7 +199,7 @@ function LoginPage() {
               type="button"
               title="关闭"
               className="p-2 text-gray-700 hover:bg-destructive hover:text-white"
-              onClick={() => getElectronApi()?.quitApp()}
+              onClick={() => void withElectronApi((api) => api.quitApp())}
             >
               <IconX className="size-5" />
             </button>

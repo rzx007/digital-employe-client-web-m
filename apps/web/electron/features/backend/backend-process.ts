@@ -2,6 +2,9 @@ import { app } from "electron"
 import { spawn, type ChildProcess } from "node:child_process"
 import os from "node:os"
 import path from "node:path"
+import { createLogger } from "../../core/logger"
+
+const log = createLogger("backend")
 
 /**
  * Python 后端（FastAPI）进程管理
@@ -85,7 +88,7 @@ export function startBackend(): Promise<void> {
   return new Promise((resolve, reject) => {
     // 开发模式：启动 uvicorn
     if (!app.isPackaged) {
-      console.log(`[Backend] dev mode: uvicorn`)
+      log.info("dev mode: uvicorn")
       startDevServer(resolve, reject)
       return
     }
@@ -94,8 +97,7 @@ export function startBackend(): Promise<void> {
     const pyServerPath = getPyServerPath()
     const exePath = path.join(pyServerPath, getPackagedBackendBinaryName())
 
-    console.log(`[Backend] startuping: ${exePath}`)
-    console.log(`[Backend] workspace dir: ${pyServerPath}`)
+    log.info("starting packaged backend", { exePath, pyServerPath })
 
     backendProcess = spawn(exePath, [], {
       cwd: pyServerPath,
@@ -116,36 +118,38 @@ export function startBackend(): Promise<void> {
      * 监听 stdout 和 stderr，当输出包含 Uvicorn 监听地址时判定为就绪。
      * Uvicorn 启动日志格式: "Uvicorn running on http://0.0.0.0:34567 "
      */
-    const checkReady = (log: string) => {
-      if (!backendReady && isUvicornReadyLine(log)) {
+    const checkReady = (line: string) => {
+      if (!backendReady && isUvicornReadyLine(line)) {
         backendReady = true
         clearTimeout(timeout)
-        console.log(`[Backend] port: ${BACKEND_PORT}`)
+        log.info("ready", { port: BACKEND_PORT })
         resolve()
       }
     }
 
     backendProcess.stdout?.on("data", (data: Buffer) => {
-      const log = data.toString()
-      console.log(`[Backend] ${log}`)
-      checkReady(log)
+      const line = data.toString()
+      log.debug("stdout", { line: line.trim() })
+      checkReady(line)
     })
 
     backendProcess.stderr?.on("data", (data: Buffer) => {
-      const log = data.toString()
-      console.error(`[Backend:stderr] ${log}`)
-      checkReady(log)
+      const line = data.toString()
+      log.debug("stderr", { line: line.trim() })
+      checkReady(line)
     })
 
     backendProcess.on("error", (err) => {
       clearTimeout(timeout)
-      console.error(`[Backend] startup failed:`, err)
+      log.error("startup failed", {
+        message: err instanceof Error ? err.message : String(err),
+      })
       backendProcess = null
       reject(err)
     })
 
     backendProcess.on("exit", (code, signal) => {
-      console.log(`[Backend] quit (code: ${code}, signal: ${signal})`)
+      log.info("process exit", { code, signal })
       backendProcess = null
       backendReady = false
     })
@@ -158,8 +162,11 @@ export function startBackend(): Promise<void> {
 function startDevServer(resolve: () => void, reject: (err: Error) => void): void {
   const serverDir = path.join(process.env.APP_ROOT!, "..", "server")
 
-  console.log(`[Backend] starting dir: ${serverDir}`)
-  console.log(`[Backend] uvicorn ${DEV_UVICORN_HOST}:${BACKEND_PORT}`)
+  log.info("starting dev server", {
+    serverDir,
+    host: DEV_UVICORN_HOST,
+    port: BACKEND_PORT,
+  })
 
   let settled = false
   const finish = (fn: () => void) => {
@@ -180,7 +187,7 @@ function startDevServer(resolve: () => void, reject: (err: Error) => void): void
   ]
   const useArchArm64 = useArchArm64ForDevUvOnAppleSilicon()
   if (useArchArm64) {
-    console.log(`[Backend] Apple Silicon: spawning uv via arch -arm64`)
+    log.info("Apple Silicon: spawning uv via arch -arm64")
   }
 
   backendProcess = spawn(
@@ -205,36 +212,38 @@ function startDevServer(resolve: () => void, reject: (err: Error) => void): void
     )
   }, BACKEND_READY_TIMEOUT)
 
-  const checkReady = (log: string) => {
-    if (!backendReady && isUvicornReadyLine(log)) {
+  const checkReady = (line: string) => {
+    if (!backendReady && isUvicornReadyLine(line)) {
       backendReady = true
       clearTimeout(timeout)
-      console.log(`[Backend] port: ${BACKEND_PORT}`)
+      log.info("ready", { port: BACKEND_PORT })
       finish(() => resolve())
     }
   }
 
   backendProcess.stdout?.on("data", (data: Buffer) => {
-    const log = data.toString()
-    console.log(`[Backend] ${log}`)
-    checkReady(log)
+    const line = data.toString()
+    log.debug("stdout", { line: line.trim() })
+    checkReady(line)
   })
 
   backendProcess.stderr?.on("data", (data: Buffer) => {
-    const log = data.toString()
-    console.error(`[Backend:stderr] ${log}`)
-    checkReady(log)
+    const line = data.toString()
+    log.debug("stderr", { line: line.trim() })
+    checkReady(line)
   })
 
   backendProcess.on("error", (err) => {
     clearTimeout(timeout)
-    console.error(`[Backend] startup failed:`, err)
+    log.error("startup failed", {
+      message: err instanceof Error ? err.message : String(err),
+    })
     backendProcess = null
     finish(() => reject(err))
   })
 
   backendProcess.on("exit", (code, signal) => {
-    console.log(`[Backend] quit (code: ${code}, signal: ${signal})`)
+    log.info("process exit", { code, signal })
     const wasReady = backendReady
     backendProcess = null
     backendReady = false
@@ -276,7 +285,7 @@ export function stopBackend(): void {
     return
   }
 
-  console.log(`[Backend] killing (PID: ${pid})...`)
+  log.info("killing process", { pid })
 
   if (process.platform === "win32") {
     // Windows: 使用 taskkill 杀进程树

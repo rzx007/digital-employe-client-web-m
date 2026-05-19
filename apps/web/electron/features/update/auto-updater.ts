@@ -1,8 +1,11 @@
 import { app, BrowserWindow } from "electron"
 import { createRequire } from "node:module"
 import type { ProgressInfo, UpdateInfo } from "electron-updater"
+import { createLogger } from "../../core/logger"
 import { getSetting } from "../settings/settings-store"
 import { getBackendPort } from "../backend/backend-process"
+
+const log = createLogger("update")
 
 const { autoUpdater } = createRequire(import.meta.url)("electron-updater")
 
@@ -87,7 +90,7 @@ export function initAutoUpdater(): void {
   autoUpdater.on("checking-for-update", function () {})
 
   autoUpdater.on("error", (error: Error) => {
-    console.error("[Updater] error:", error.message)
+    log.error("updater error", { message: error.message })
     sendToAll("update-error", { message: error.message, error })
   })
 
@@ -121,7 +124,7 @@ function triggerDownload() {
   }
   const onError = (error: Error) => {
     cleanupDownloadListeners()
-    console.error("[Updater] download error:", error.message)
+    log.error("download error", { message: error.message })
     sendToAll("update-error", { message: error.message, error })
   }
   const onDownloaded = () => {
