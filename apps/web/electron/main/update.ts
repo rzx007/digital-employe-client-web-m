@@ -8,6 +8,7 @@ const { autoUpdater } = createRequire(import.meta.url)("electron-updater")
 
 let downloadListenersCleanup: (() => void) | null = null
 
+/** generic 更新目录：win32/latest.yml；macos/latest-mac.yml（须含 .zip，不能仅 dmg） */
 function getPlatformPath(): string {
   switch (process.platform) {
     case "win32":

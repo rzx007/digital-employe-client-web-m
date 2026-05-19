@@ -30,9 +30,9 @@
   "afterPack": "../../scripts/afterPack.js",
   "mac": {
     // mac.defaultArch 在 Rosetta Node 下不足以覆盖。
-    "target": [
-      "dmg"
-    ],
+    // zip：electron-updater 应用内更新（latest-mac.yml 指向 .zip）
+    // dmg：手动安装分发；勿仅用 dmg 作自动更新源
+    "target": ["dmg", "zip"],
     "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
   },
   "win": {

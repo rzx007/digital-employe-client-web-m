@@ -1,26 +1,23 @@
 # 自定义 electron-updater 服务
 
-对于 electron-updater，需要按照特定的格式组织更新文件。假设你的 Nginx 根目录是 /usr/share/nginx/html，建议按以下结构组织：
+对于 electron-updater，需要按照特定的格式组织更新文件。客户端 feed 由 `electron/main/update.ts` 解析为 `{REMOTE_API_BASE_URL}/win32` 或 `/macos`。
+
+假设你的 Nginx 根目录是 /usr/share/nginx/html，建议按以下结构组织：
 
 ```bash
 /usr/share/nginx/html/
-└── win32/
-    ├── latest.yml           # 始终指向最新版本
-    ├── versions/            # 存放所有历史版本信息
-    │   ├── 0.1.0.yml
-    │   ├── 0.1.1.yml
-    │   └── 0.1.2.yml
-    └── releases/           # 存放所有版本的安装包
-        ├── 0.1.0/
-        │   ├── app-0.1.0.exe
-        │   └── app-0.1.0.exe.blockmap
-        ├── 0.1.1/
-        │   ├── app-0.1.1.exe
-        │   └── app-0.1.1.exe.blockmap
-        └── 0.1.2/
-            ├── app-0.1.2.exe
-            └── app-0.1.2.exe.blockmap
+├── win32/
+│   ├── latest.yml
+│   ├── DigitalEmployee-Windows-0.1.2-Setup.exe
+│   └── DigitalEmployee-Windows-0.1.2-Setup.exe.blockmap
+└── macos/
+    ├── latest-mac.yml          # 必须指向 .zip，不能仅上传 dmg
+    ├── DigitalEmployee-Mac-0.1.2-Installer.zip
+    ├── DigitalEmployee-Mac-0.1.2-Installer.zip.blockmap
+    └── DigitalEmployee-Mac-0.1.2-Installer.dmg   # 可选，仅手动安装
 ```
+
+**macOS 注意**：应用内更新只认 `latest-mac.yml` 里的 **ZIP**（内含 `.app`）。只上传 DMG 会报错 `ZIP file not provided`。打包需在 `electron-builder.json5` 的 `mac.target` 中包含 `zip`。
 
 ## 首先配置 Nginx：
 
@@ -70,36 +67,40 @@ sha512: xxxxxxxxxxxxx
 releaseDate: '2024-04-09T14:28:00.000Z'
 ```
 
-## 发布更新流程：
+## 发布更新流程
+
+构建产物在 `apps/web/release/`（`pnpm --filter digital-employee build:app`）。
+
+### Windows
 
 ```bash
-# 1. 构建新版本
-
-pnpm build
-
-# 2. 创建版本目录
-
-ssh your-server "mkdir -p /usr/share/nginx/html/win32/0.1.2"
-
-# 3. 上传文件
-
-scp dist/app-0.1.2.exe your-server:/usr/share/nginx/html/win32/0.1.2/
-scp dist/app-0.1.2.exe.blockmap your-server:/usr/share/nginx/html/win32/0.1.2/
-scp dist/latest.yml your-server:/usr/share/nginx/html/win32/
-
-# 4. 设置权限
-
-ssh your-server "chmod -R 755 /usr/share/nginx/html/win32"
+# 上传到 {REMOTE_API_BASE_URL}/win32/
+scp release/latest.yml your-server:/usr/share/nginx/html/win32/
+scp release/DigitalEmployee-Windows-*-Setup.exe your-server:/usr/share/nginx/html/win32/
+scp release/DigitalEmployee-Windows-*-Setup.exe.blockmap your-server:/usr/share/nginx/html/win32/
 ```
 
-## 检查更新服务是否正常：
+### macOS
 
 ```bash
-# 测试 latest.yml 是否可访问
-curl http://your-update-server.com/win32/latest.yml
+# 上传到 {REMOTE_API_BASE_URL}/macos/（yml 与 zip 必须同目录，且 yml 中 url 指向 zip）
+scp release/latest-mac.yml your-server:/usr/share/nginx/html/macos/
+scp release/DigitalEmployee-Mac-*-Installer.zip your-server:/usr/share/nginx/html/macos/
+scp release/DigitalEmployee-Mac-*-Installer.zip.blockmap your-server:/usr/share/nginx/html/macos/
+# DMG 可选，不参与 electron-updater 下载
+scp release/DigitalEmployee-Mac-*-Installer.dmg your-server:/usr/share/nginx/html/macos/
+```
 
-# 测试安装包是否可下载
-curl -I http://your-update-server.com/win32/0.1.2/app-0.1.2.exe
+## 检查更新服务是否正常
+
+```bash
+# Windows
+curl http://your-update-server.com/win32/latest.yml
+curl -I http://your-update-server.com/win32/DigitalEmployee-Windows-0.1.2-Setup.exe
+
+# macOS（确认 path 为 .zip）
+curl http://your-update-server.com/macos/latest-mac.yml
+curl -I http://your-update-server.com/macos/DigitalEmployee-Mac-0.1.2-Installer.zip
 ```
 
 ## node作为更新服务

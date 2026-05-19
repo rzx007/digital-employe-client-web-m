@@ -171,6 +171,7 @@ python scripts/build-server.py --app
 输出：`apps/web/py-server/backend.exe`（Windows）/ `backend`（Linux/macOS）。
 
 - **Mac DMG（Apple Silicon）**：`build:app` 直接调用 `electron-builder`，**必须使用 arm64 原生 Node**，否则默认打 x64 包导致 dmg-builder/gettext 失败（x86_64 dmgbuild 二进制编译于较新 macOS，在旧系统上无法运行）。若使用 Rosetta Node 打包，需手动加 `--mac --arm64` 参数。若仍异常可清理 `~/Library/Caches/electron-builder/dmg-builder*` 后重打。
+- **Mac 自动更新**：`mac.target` 需含 `zip`；上传到更新服务器的 `macos/` 目录须包含 `latest-mac.yml` 与同版本 `.zip`（仅 DMG 会导致 `ZIP file not provided`）。详见 `apps/web/electron/README.md`。
 
 ## 前端 Code Style
 
