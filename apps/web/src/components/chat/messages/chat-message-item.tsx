@@ -10,6 +10,7 @@ import { classifyMessageParts } from "@/lib/chat/message-utils"
 import { FileChangeCards } from "../message-blocks/file-change-cards"
 import { ThinkingBlock } from "../message-blocks/thinking-block"
 import { ToolGroupBlock } from "../message-blocks/tool-group-block"
+import { TodoPlanBlock } from "../message-blocks/todo-plan-block"
 import { PlanGeneratedCard } from "../message-blocks/plan-generated-card"
 import { SkillExplorationBlock } from "../message-blocks/skill-exploration-block"
 import { SummarizationCheckpointBlock } from "../message-blocks/summarization-checkpoint-block"
@@ -72,6 +73,8 @@ export function RenderClassifiedBlocks({
   filesMeta,
   messageId,
   toolAutoCollapseMap,
+  isLastAssistantMessage = false,
+  isTurnEnded = true,
 }: {
   blocks: ClassifiedBlock[]
   commandMeta: CommandMeta
@@ -79,6 +82,8 @@ export function RenderClassifiedBlocks({
   filesMeta?: FileMeta
   messageId: string
   toolAutoCollapseMap: Map<string, boolean>
+  isLastAssistantMessage?: boolean
+  isTurnEnded?: boolean
 }) {
   return (
     <>
@@ -90,6 +95,17 @@ export function RenderClassifiedBlocks({
               className="w-full"
               key={block.key}
               toolAutoCollapseMap={toolAutoCollapseMap}
+            />
+          )
+        }
+        if (block.kind === "todo-plan") {
+          return (
+            <TodoPlanBlock
+              key={block.key}
+              tool={block.tool}
+              todos={block.todos}
+              className="w-full"
+              sticky={isLastAssistantMessage && !isTurnEnded}
             />
           )
         }
@@ -272,6 +288,8 @@ function ChatMessageItemInner({
               filesMeta={filesMeta}
               messageId={message.id}
               toolAutoCollapseMap={toolAutoCollapseMap}
+              isLastAssistantMessage={isLastAssistantMessage}
+              isTurnEnded={isTurnEnded}
             />
           ) : (
             <MessageResponse />

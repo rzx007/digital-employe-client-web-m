@@ -1,10 +1,17 @@
 /**
  * LangGraph SSE → AI SDK UIMessageChunk 解析器。
  *
- * 入口：`parseLangChainPayloadToChunks`（由 langchain-chat-transport 按 SSE 帧调用）
- * 输出：`text-*` / `tool-input-*` / `tool-output-*` 等 chunk，供 useChat 组装 UIMessage.parts
+ * 入口：`parseLangChainPayloadToChunks`（由 `langchain-chat-transport` 按 SSE 帧调用）
+ * 输出：`text-*` / `tool-input-*` / `tool-output-*` 等 chunk，供 useChat 组装 `UIMessage.parts`
  *
- * 工具调用解析要点见文件末尾 ASCII 流程图。
+ * 与 UI 的衔接：
+ * - `message-classifier` 将 parts 分为 thinking / tool-group / final-response 等
+ * - `mergeRoutineToolGroups` 合并相邻 routine 工具行
+ * - `collapseWriteTodosBlocks` 将同条消息内多次 `write_todos` 收成单块 `todo-plan`
+ * - `ToolDetailPanel` + `ToolOutputViewport` 展示 stdout / CodeHighlight（StickToBottom + 虚拟化）
+ *
+ * 工具 input 解析要点（无 unknown_tool、DeepSeek index 错位归并）见文件末尾 ASCII 流程图。
+ * 渲染流程见：`apps/web/src/components/chat/messages/MESSAGE_RENDER_FLOW.md`
  */
 import { createIdGenerator, type UIMessageChunk } from "ai"
 
@@ -1000,10 +1007,20 @@ function hasAnyToolDelta(chunk: AIMessageChunk): boolean {
  *        --> preliminary tool-output-available
  *
  *
- * 五、产出 chunk 与下游
+ * 五、产出 chunk 与下游 UI
  *
- *   UIMessageChunk[]  -->  useChat  -->  UIMessage.parts (tool-* / text)
- *                              -->  message-classifier  -->  ToolGroupBlock 等 UI
+ *   UIMessageChunk[]
+ *        --> useChat 组装 UIMessage.parts (tool-* / text)
+ *        --> classifyMessageParts
+ *              --> mergeRoutineToolGroups (shell_execute / grep / ls … 紧凑组)
+ *              --> collapseWriteTodosBlocks (多次 write_todos -> 单块 todo-plan)
+ *        --> RenderClassifiedBlocks
+ *              --> TodoPlanBlock      (任务规划，原位更新 + 可选 sticky)
+ *              --> ToolGroupBlock     --> ToolActivityLine / ToolActionRow
+ *              --> ToolDetailPanel    --> ToolOutputViewport (stdout 粘底/虚拟化)
+ *
+ *   write_todos 典型流：多帧 tool-input-available 更新同一或不同 toolCallId
+ *   的 todos 列表；UI 层不按 part 平铺多张卡，而在分类后合并为首次位置的 todo-plan。
  *
  * 详见：langchain-stream-parser-flow.md、messages/MESSAGE_RENDER_FLOW.md
  * ============================================================================

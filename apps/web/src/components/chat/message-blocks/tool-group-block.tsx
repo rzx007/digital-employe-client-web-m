@@ -29,7 +29,7 @@ import type {
 import { isRoutineTool } from "@/lib/chat/tool-label-registry"
 import { ToolActionRow } from "./tool-action-row"
 import { ToolActivityLine } from "./tool-activity-line"
-import { getEditDiff, getTodos } from "./tool-shared"
+import { getEditDiff } from "./tool-shared"
 
 export type ToolGroupBlockProps = ComponentProps<"div"> & {
   block: Extract<ClassifiedBlock, { kind: "tool-group" }>
@@ -53,10 +53,6 @@ function hasError(tools: ToolGroupItem[]): boolean {
 
 /** 需要大卡 + 专用内容区（任务列表 / diff），不走紧凑活动行 */
 function needsFullToolRow(tool: ToolGroupItem): boolean {
-  if (tool.toolName === "write_todos") {
-    const todos = getTodos(tool.input, tool.resultText)
-    return !!(todos && todos.length > 0)
-  }
   if (tool.toolName === "edit_file") {
     return !!getEditDiff(tool.input)
   }

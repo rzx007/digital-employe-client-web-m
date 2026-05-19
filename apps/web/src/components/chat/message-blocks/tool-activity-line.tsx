@@ -83,7 +83,7 @@ function ToolActivityLineInner({
   const chevronClass = cn(
     "size-3 shrink-0 text-muted-foreground/50 transition-transform",
     !isOpen &&
-      "hidden group-hover/tool-activity:block group-focus-visible/tool-activity:block"
+    "hidden group-hover/tool-activity:block group-focus-visible/tool-activity:block"
   )
 
   return (
@@ -113,7 +113,7 @@ function ToolActivityLineInner({
           className="size-3.5 shrink-0 text-muted-foreground/70"
         />
         <span className="flex min-w-0 flex-1 items-center gap-0.5">
-          <span className="truncate text-foreground/90">{summary.label}</span>
+          <span className="truncate text-foreground/70">{summary.label}</span>
           {hasDetail && !isRunning &&
             (isOpen ? (
               <IconChevronDown className={chevronClass} />

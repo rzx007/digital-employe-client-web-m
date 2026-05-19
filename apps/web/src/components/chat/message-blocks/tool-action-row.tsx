@@ -3,7 +3,6 @@ import {
   IconCircleCheck,
   IconChevronRight,
   IconChevronDown,
-  IconListCheck,
   IconLoader,
   IconXboxX,
 } from "@tabler/icons-react"
@@ -13,8 +12,6 @@ import {
   Collapsible,
   CollapsibleContent,
 } from "@workspace/ui/components/collapsible"
-import { getTodos, countCompleted } from "./tool-shared"
-import { TodoListBlock } from "./todo-list-block"
 import { ToolTypeIcon } from "./tool-type-icon"
 import { ToolDetailPanel, toolDetailHasContent } from "./tool-detail-panel"
 
@@ -56,10 +53,6 @@ function ToolActionRowInner({
 
   const hasContent = toolDetailHasContent(input, summary.toolName, resultText)
 
-  const isWriteTodos = summary.toolName === "write_todos"
-  const todos = isWriteTodos ? getTodos(input, resultText) : null
-  const hasTodos = todos && todos.length > 0
-
   const [isOpen, setIsOpen] = useState(false)
   const didAutoCollapse = useRef(false)
 
@@ -88,42 +81,8 @@ function ToolActionRowInner({
   const chevronClass = cn(
     "size-3.5 shrink-0 text-muted-foreground/50 transition-transform",
     !isOpen &&
-      "hidden group-hover/tool-action-row:block group-focus-visible/tool-action-row:block"
+    "hidden group-hover/tool-action-row:block group-focus-visible/tool-action-row:block"
   )
-
-  if (isWriteTodos && hasTodos) {
-    const completed = countCompleted(todos!)
-    const total = todos!.length
-    const allDone = completed === total
-
-    return (
-      <div
-        className={cn(
-          "not-prose w-[90%] rounded-lg border border-border/50 bg-muted/30",
-          className
-        )}
-        {...props}
-      >
-        <div className="flex items-center gap-2 px-3 py-2">
-          <IconListCheck className="size-4 shrink-0 text-muted-foreground" />
-          <span className="flex-1 text-xs font-thin text-foreground">
-            {allDone
-              ? `${total} 项任务已完成`
-              : `任务规划（${completed}/${total}）`}
-          </span>
-          <StatusIcon
-            className={cn(
-              "size-3.5 shrink-0",
-              isRunning && "animate-spin",
-              !isError && !isRunning && "text-green-600/70",
-              isError && "text-destructive/70"
-            )}
-          />
-        </div>
-        <TodoListBlock todos={todos!} />
-      </div>
-    )
-  }
 
   return (
     <div
@@ -146,7 +105,7 @@ function ToolActionRowInner({
           className="size-4 shrink-0 text-muted-foreground"
         />
         <span className="flex min-w-0 flex-1 items-center gap-1">
-          <span className="truncate text-xs font-thin text-foreground">
+          <span className="truncate text-xs font-thin text-foreground/70">
             {summary.label}
           </span>
           {hasContent && !isRunning &&

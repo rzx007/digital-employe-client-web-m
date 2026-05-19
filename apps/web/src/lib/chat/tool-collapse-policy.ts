@@ -23,6 +23,8 @@ export function computeToolAutoCollapseMap(
   for (const block of blocks) {
     if (block.kind === "tool-group") {
       allTools.push(...block.tools)
+    } else if (block.kind === "todo-plan") {
+      allTools.push(block.tool)
     }
   }
 

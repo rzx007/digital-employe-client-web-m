@@ -22,7 +22,9 @@ import {
   type FileChangeItem,
 } from "./file-change-utils"
 import { isSummarizationTextPart } from "./langchain-summarization-text"
+import { collapseWriteTodosBlocks } from "./collapse-write-todos-blocks"
 import { mergeRoutineToolGroups } from "./merge-routine-tool-groups"
+import type { TodoItem } from "@/components/chat/message-blocks/tool-shared"
 
 type ToolUIPart = Extract<
   UIMessage["parts"][number],
@@ -60,6 +62,12 @@ export interface SkillExploreItem {
 export type ClassifiedBlock =
   | { kind: "thinking"; key: string; text: string }
   | { kind: "tool-group"; key: string; tools: ToolGroupItem[]; summary: string }
+  | {
+      kind: "todo-plan"
+      key: string
+      tool: ToolGroupItem
+      todos: TodoItem[]
+    }
   | { kind: "skill-exploration"; key: string; items: SkillExploreItem[]; thinkingText?: string }
   | { kind: "plan-generated"; key: string; toolCallId: string; input: unknown; state: string }
   | { kind: "summarization-checkpoint"; key: string; text: string }
@@ -430,7 +438,7 @@ export function classifyMessageParts(
     })
   }
 
-  return mergeRoutineToolGroups(blocks)
+  return collapseWriteTodosBlocks(mergeRoutineToolGroups(blocks))
 }
 
 /**
