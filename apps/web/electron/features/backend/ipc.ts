@@ -1,4 +1,4 @@
-import { getBackendStatus, getBackendPort } from "../../main/backend"
+import { getBackendStatus, getBackendPort } from "./backend-process"
 import { IpcChannels } from "../../shared/ipc-channels"
 import type { IpcContribution } from "../../core/ipc/types"
 

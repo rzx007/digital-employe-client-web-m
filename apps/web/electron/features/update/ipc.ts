@@ -2,7 +2,7 @@ import {
   checkForUpdatesFromMenu,
   triggerDownloadUpdate,
   quitAndInstallUpdate,
-} from "../../main/update"
+} from "./auto-updater"
 import { IpcChannels } from "../../shared/ipc-channels"
 import type { IpcContribution } from "../../core/ipc/types"
 

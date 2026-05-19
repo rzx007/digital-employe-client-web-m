@@ -2,11 +2,11 @@ import { app } from "electron"
 import {
   createSettingsWindow,
   closeSettingsWindow,
-} from "../../main/settings"
-import { setAutoLaunch, getAutoLaunch } from "../../main/auto-launch"
-import { setNotificationsEnabled } from "../../main/notification"
-import { syncPetVisibilityWithMain } from "../../main/pet-main-sync"
-import { getPetWin } from "../../main/pet"
+} from "./window-settings"
+import { setAutoLaunch, getAutoLaunch } from "./auto-launch"
+import { setNotificationsEnabled } from "../notification-tray/notification"
+import { syncPetVisibilityWithMain } from "../pet/pet-main-sync"
+import { getPetWin } from "../pet/pet-window"
 import {
   getSetting,
   setSetting,
@@ -16,8 +16,8 @@ import {
   setEndpoint,
   clearSettingsStore,
   type PetVisibilityMode,
-} from "../../main/settings-store"
-import { clearAuth } from "../../main/auth"
+} from "./settings-store"
+import { clearAuth } from "../auth/auth-store"
 import { IpcChannels } from "../../shared/ipc-channels"
 import type { AppContext } from "../../core/app-context"
 import type { IpcContribution } from "../../core/ipc/types"

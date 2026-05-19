@@ -1,6 +1,6 @@
 import { app } from "electron"
-import { stopBackend } from "../../main/backend"
-import { shutdownAuxiliaryWindows } from "../../main/tray"
+import { stopBackend } from "../../features/backend/backend-process"
+import { shutdownAuxiliaryWindows } from "../../features/notification-tray/tray"
 
 let _forceQuit = false
 

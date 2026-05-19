@@ -1,5 +1,5 @@
 import { BrowserWindow, screen } from "electron"
-import { getWindowManager } from "../core/services/window-registry"
+import { getWindowManager } from "../../core/services/window-registry"
 
 const REGISTER_MIN_HEIGHT = 500
 const REGISTER_MAX_HEIGHT_RATIO = 0.92

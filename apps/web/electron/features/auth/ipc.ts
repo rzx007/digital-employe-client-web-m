@@ -1,12 +1,12 @@
 import {
   closeLoginWindow,
   createLoginWindow,
-} from "../../main/login"
-import { closeRecruitmentWindow } from "../../main/recruitment"
-import { closeRegisterWindow } from "../../main/register"
-import { closeSettingsWindow } from "../../main/settings"
-import { shutdownAuxiliaryWindows } from "../../main/tray"
-import { saveAuth, clearAuth, getStoredAuth, hasToken } from "../../main/auth"
+} from "./window-login"
+import { closeRecruitmentWindow } from "../recruitment/window-recruitment"
+import { closeRegisterWindow } from "./window-register"
+import { closeSettingsWindow } from "../settings/window-settings"
+import { shutdownAuxiliaryWindows } from "../notification-tray/tray"
+import { saveAuth, clearAuth, getStoredAuth, hasToken } from "./auth-store"
 import { IpcChannels } from "../../shared/ipc-channels"
 import type { AppContext } from "../../core/app-context"
 import type { IpcContribution } from "../../core/ipc/types"

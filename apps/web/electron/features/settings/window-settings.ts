@@ -1,5 +1,5 @@
-import { getWindowManager } from "../core/services/window-registry"
-import { pinBrowserWindowTitle } from "./pin-window-title"
+import { getWindowManager } from "../../core/services/window-registry"
+import { pinBrowserWindowTitle } from "../../main/pin-window-title"
 
 export function createSettingsWindow(): void {
   const wm = getWindowManager()

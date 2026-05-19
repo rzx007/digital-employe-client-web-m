@@ -17,17 +17,52 @@ electron/
 │       ├── lifecycle.ts     # 生命周期管理
 │       ├── window-manager.ts    # 窗口工厂 + 管理
 │       └── window-registry.ts   # 单例绑定
-├── features/                # 功能模块（IPC + Preload Bridge）
+├── features/                # 功能模块（自包含：窗口 + Store + IPC + Bridge）
 │   ├── index.ts             # 聚合所有 IpcContribution
 │   ├── auth/
+│   │   ├── auth-store.ts    # 认证持久化
+│   │   ├── window-login.ts  # 登录窗口
+│   │   ├── window-register.ts # 注册窗口
+│   │   ├── ipc.ts           # IPC handlers
+│   │   └── preload-bridge.ts # Preload bridge
 │   ├── backend/
+│   │   ├── backend-process.ts # Python 后端进程管理
+│   │   ├── ipc.ts
+│   │   └── preload-bridge.ts
 │   ├── notification-tray/
+│   │   ├── tray.ts          # 系统托盘
+│   │   ├── notification.ts  # 系统通知
+│   │   ├── ipc.ts
+│   │   └── preload-bridge.ts
 │   ├── pet/
+│   │   ├── pet-window.ts    # 桌面宠物窗口
+│   │   ├── pet-main-sync.ts # 宠物与主窗口显隐同步
+│   │   ├── ipc.ts
+│   │   └── preload-bridge.ts
 │   ├── recruitment/
+│   │   ├── window-recruitment.ts # 招聘窗口
+│   │   ├── ipc.ts
+│   │   └── preload-bridge.ts
 │   ├── settings/
+│   │   ├── settings-store.ts # 全局设置持久化
+│   │   ├── window-settings.ts # 设置窗口
+│   │   ├── auto-launch.ts   # 开机自启
+│   │   ├── ipc.ts
+│   │   └── preload-bridge.ts
+│   ├── splash/
+│   │   └── window-splash.ts # 启动屏窗口
 │   ├── update/
+│   │   ├── auto-updater.ts  # 自动更新
+│   │   ├── ipc.ts
+│   │   └── preload-bridge.ts
 │   └── window/
-├── main/                    # Main 进程入口 + 窗口模块
+│       ├── ipc.ts
+│       └── preload-bridge.ts
+├── main/                    # 应用入口 + 跨 feature 基础设施
+│   ├── index.ts             # Electron 主入口
+│   ├── application-menu.ts  # macOS 应用菜单
+│   ├── app-product.ts       # 产品常量
+│   └── pin-window-title.ts  # 窗口标题固定工具
 ├── preload/                 # Preload 脚本
 │   ├── index.ts             # contextBridge 入口
 │   ├── invoke.ts            # 类型安全 invoke 封装
@@ -66,22 +101,25 @@ flowchart TB
     Bootstrap["core/bootstrap.ts"]
     Registry["core/ipc/registry.ts"]
     WM["WindowManager"]
-    Features["features/*/ipc.ts"]
-    MainModules["main/backend tray login ..."]
+    subgraph featureModules [features 自包含模块]
+      FeatIpc["ipc.ts"]
+      FeatWin["window-*.ts / *-store.ts"]
+      FeatSvc["tray / backend-process ..."]
+    end
 
     Index --> Bootstrap
     Bootstrap --> Registry
     Bootstrap --> WM
-    Registry --> Features
-    Features --> WM
-    Features --> MainModules
+    Registry --> FeatIpc
+    FeatIpc --> FeatWin
+    FeatIpc --> FeatSvc
+    FeatWin --> WM
     Index --> WM
   end
 
   Host -->|"getElectronApi invoke"| ElectronApi
   ElectronApi -->|"ipcRenderer.invoke"| Registry
   ElectronToolkit -.->|"安全 ipcRenderer"| Registry
-  Features --> MainModules
 ```
 
 ### 启动编排
@@ -91,7 +129,7 @@ sequenceDiagram
   participant Index as main/index.ts
   participant Boot as core/bootstrap.ts
   participant Reg as IpcRegistry
-  participant BE as backend
+  participant BE as features/backend
   participant WM as WindowManager
 
   Index->>Index: bindElectronRuntime bindWindowManager
@@ -139,12 +177,17 @@ flowchart LR
   ctx --> contributions
 ```
 
-每个 feature 成对维护：
+每个 feature **自包含**（窗口、Store、服务逻辑与 IPC 同目录），成对暴露 Preload：
 
-| 主进程 | Preload |
-|--------|---------|
-| `features/foo/ipc.ts` | `features/foo/preload-bridge.ts` |
-| `IpcRegistry.register` | 合并进 `preload/electron-api.ts` |
+| 职责 | 典型文件 | Preload |
+|------|----------|---------|
+| IPC handlers | `features/foo/ipc.ts` | `features/foo/preload-bridge.ts` |
+| 窗口创建 | `window-*.ts` / `pet-window.ts` | — |
+| 持久化 / 服务 | `*-store.ts` / `backend-process.ts` / `tray.ts` | — |
+| 注册 | `IpcRegistry.register` | 合并进 `preload/electron-api.ts` |
+
+**跨 feature 引用**：通过 `../other-feature/module`（如 `auth/ipc.ts` → `notification-tray/tray`）。  
+**保留在 `main/`**：仅入口 `index.ts`、macOS 菜单、产品常量、`pin-window-title` 等无业务域归属的工具。
 
 Channel 名称统一来自 [`shared/ipc-channels.ts`](shared/ipc-channels.ts)。
 
@@ -154,15 +197,15 @@ Channel 名称统一来自 [`shared/ipc-channels.ts`](shared/ipc-channels.ts)。
 flowchart TB
   WM["WindowManager singleton"]
 
-  WM --> MainWin["main 主窗口"]
-  WM --> LoginWin["login 登录"]
-  WM --> RegisterWin["register 注册"]
-  WM --> SettingsWin["settings 设置"]
-  WM --> RecruitWin["recruitment 招聘"]
-  WM --> PetWin["pet 桌面宠物"]
-  WM --> SplashWin["splash 启动屏"]
+  WM --> MainWin["main 主窗口\nmain/index.ts"]
+  WM --> LoginWin["login\nfeatures/auth/window-login"]
+  WM --> RegisterWin["register\nfeatures/auth/window-register"]
+  WM --> SettingsWin["settings\nfeatures/settings/window-settings"]
+  WM --> RecruitWin["recruitment\nfeatures/recruitment/window-recruitment"]
+  WM --> PetWin["pet\nfeatures/pet/pet-window"]
+  WM --> SplashWin["splash\nfeatures/splash/window-splash"]
 
-  Runtime["core/runtime-paths.ts"] -->|"buildHashRouteUrl getPreloadPath"| LoginWin
+  Runtime["core/runtime-paths.ts"] -->|"createWindow 工厂"| LoginWin
   Runtime --> SettingsWin
   Runtime --> RecruitWin
   Runtime --> PetWin
@@ -193,6 +236,7 @@ flowchart TB
     Builtin["features/auth backend ..."]
     Builtin --> IpcContrib["IpcContribution"]
     Builtin --> PreloadBridge2["preload-bridge"]
+    Builtin --> WinStore["window-* / *-store"]
   end
 
   subgraph future [远期 Extension]
@@ -225,7 +269,7 @@ if (isElectron()) {
 
 # 自定义 electron-updater 服务
 
-对于 electron-updater，需要按照特定的格式组织更新文件。客户端 feed 由 `electron/main/update.ts` 解析为 `{REMOTE_API_BASE_URL}/win32` 或 `/macos`。
+对于 electron-updater，需要按照特定的格式组织更新文件。客户端 feed 由 [`features/update/auto-updater.ts`](features/update/auto-updater.ts) 解析为 `{REMOTE_API_BASE_URL}/win32` 或 `/macos`。
 
 假设你的 Nginx 根目录是 /usr/share/nginx/html，建议按以下结构组织：
 

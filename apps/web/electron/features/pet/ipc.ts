@@ -1,4 +1,4 @@
-import { hidePetWindow, getPetWin } from "../../main/pet"
+import { hidePetWindow, getPetWin } from "./pet-window"
 import { IpcChannels } from "../../shared/ipc-channels"
 import type { AppContext } from "../../core/app-context"
 import type { IpcContribution } from "../../core/ipc/types"

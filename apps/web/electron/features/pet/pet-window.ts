@@ -1,7 +1,7 @@
 import { BrowserWindow, screen, session, type Session } from "electron"
-import { getWindowManager } from "../core/services/window-registry"
-import { getSetting } from "./settings-store"
-import { handlePetdexRequest } from "../core/petdex-protocol"
+import { getWindowManager } from "../../core/services/window-registry"
+import { getSetting } from "../settings/settings-store"
+import { handlePetdexRequest } from "../../core/petdex-protocol"
 
 let petSession: Session | null = null
 

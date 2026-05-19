@@ -1,5 +1,6 @@
 import { BrowserWindow } from "electron"
-import { getWindowManager } from "../core/services/window-registry"
+import { getWindowManager } from "../../core/services/window-registry"
+
 export function createLoginWindow(): void {
   const wm = getWindowManager()
   if (wm.focus("login")) return

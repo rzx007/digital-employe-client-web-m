@@ -1,5 +1,5 @@
-import { flashTray, stopFlashTray } from "../../main/tray"
-import { sendNotification } from "../../main/notification"
+import { flashTray, stopFlashTray } from "./tray"
+import { sendNotification } from "./notification"
 import { IpcChannels } from "../../shared/ipc-channels"
 import type { AppContext } from "../../core/app-context"
 import type { IpcContribution } from "../../core/ipc/types"

@@ -1,14 +1,14 @@
 import { Menu, protocol } from "electron"
-import { initAuthStore, hasToken } from "../main/auth"
-import { initSettingsStore } from "../main/settings-store"
-import { startBackend } from "../main/backend"
+import { initAuthStore, hasToken } from "../features/auth/auth-store"
+import { initSettingsStore } from "../features/settings/settings-store"
+import { startBackend } from "../features/backend/backend-process"
 import {
   createSplashWindow,
   closeSplashWindow,
   notifySplashBackendError,
-} from "../main/splash"
-import { createLoginWindow } from "../main/login"
-import { initAutoUpdater } from "../main/update"
+} from "../features/splash/window-splash"
+import { createLoginWindow } from "../features/auth/window-login"
+import { initAutoUpdater } from "../features/update/auto-updater"
 import { createMacApplicationMenu } from "../main/application-menu"
 import { registerPetdexOnProtocol } from "./petdex-protocol"
 import { createAppContext } from "./app-context"

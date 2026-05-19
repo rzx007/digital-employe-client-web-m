@@ -52,10 +52,9 @@ export function initSettingsStore(): void {
 }
 
 export function getSetting<K extends keyof SettingsData>(
-  key: K
+  key: K,
 ): SettingsData[K] {
   if (!store) {
-    // 根据键名返回对应的默认值
     const defaults: SettingsData = {
       autoLaunch: false,
       notifications: true,
@@ -77,7 +76,7 @@ export function getSetting<K extends keyof SettingsData>(
 
 export function setSetting<K extends keyof SettingsData>(
   key: K,
-  value: SettingsData[K]
+  value: SettingsData[K],
 ): void {
   store?.set(key, value)
 }

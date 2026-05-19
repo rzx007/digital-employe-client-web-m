@@ -1,5 +1,5 @@
 import { app } from "electron"
-import { getSetting, setSetting } from "./settings-store"
+import { getSetting, setSetting } from "../settings/settings-store"
 import { electronApp } from "@electron-toolkit/utils"
 
 export function setAutoLaunch(enabled: boolean): void {

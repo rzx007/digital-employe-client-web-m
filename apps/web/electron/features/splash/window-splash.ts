@@ -1,4 +1,4 @@
-import { getWindowManager } from "../core/services/window-registry"
+import { getWindowManager } from "../../core/services/window-registry"
 
 export function createSplashWindow(): void {
   const wm = getWindowManager()

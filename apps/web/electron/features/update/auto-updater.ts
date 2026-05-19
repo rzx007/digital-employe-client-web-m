@@ -1,15 +1,14 @@
 import { app, BrowserWindow } from "electron"
 import { createRequire } from "node:module"
 import type { ProgressInfo, UpdateInfo } from "electron-updater"
-import { getSetting } from "./settings-store"
-import { getBackendPort } from "./backend"
+import { getSetting } from "../settings/settings-store"
+import { getBackendPort } from "../backend/backend-process"
 
 const { autoUpdater } = createRequire(import.meta.url)("electron-updater")
 
 let downloadListenersCleanup: (() => void) | null = null
 let _updaterListenersRegistered = false
 
-/** generic 更新目录：win32/latest.yml；macos/latest-mac.yml（须含 .zip，不能仅 dmg） */
 function getPlatformPath(): string {
   switch (process.platform) {
     case "win32":
@@ -47,7 +46,6 @@ function sendToAll(channel: string, ...args: unknown[]) {
   })
 }
 
-/** 供应用菜单「检查更新」与 IPC 共用 */
 export async function checkForUpdatesFromMenu(): Promise<unknown> {
   if (!app.isPackaged) {
     const feedUrl = await resolveUpdateFeedURL()
@@ -78,9 +76,6 @@ export function quitAndInstallUpdate(): void {
   autoUpdater.quitAndInstall(false, true)
 }
 
-/**
- * 初始化 autoUpdater 事件监听（仅一次）；IPC 由 features/update 经 IpcRegistry 注册
- */
 export function initAutoUpdater(): void {
   if (_updaterListenersRegistered) return
   _updaterListenersRegistered = true
@@ -116,11 +111,6 @@ export function initAutoUpdater(): void {
       newVersion: arg?.version,
     })
   })
-}
-
-/** @deprecated 使用 initAutoUpdater */
-export function update(): void {
-  initAutoUpdater()
 }
 
 function triggerDownload() {

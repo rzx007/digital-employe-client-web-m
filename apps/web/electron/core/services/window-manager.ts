@@ -73,7 +73,14 @@ export class WindowManager {
       },
     }
 
-    const win = new BrowserWindow({ ...defaults, ...overrides })
+    const win = new BrowserWindow({
+      ...defaults,
+      ...overrides,
+      webPreferences: {
+        ...defaults.webPreferences,
+        ...overrides.webPreferences,
+      },
+    })
 
     win.loadURL(buildHashRouteUrl(route))
 

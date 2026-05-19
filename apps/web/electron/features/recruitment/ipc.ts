@@ -1,13 +1,13 @@
 import {
   createRecruitmentWindow,
   closeRecruitmentWindow,
-} from "../../main/recruitment"
+} from "./window-recruitment"
 import {
   createRegisterWindow,
   closeRegisterWindow,
   resizeRegisterWindow,
-} from "../../main/register"
-import { getLoginWin } from "../../main/login"
+} from "../auth/window-register"
+import { getLoginWin } from "../auth/window-login"
 import { IpcChannels } from "../../shared/ipc-channels"
 import type { AppContext } from "../../core/app-context"
 import type { IpcContribution } from "../../core/ipc/types"
