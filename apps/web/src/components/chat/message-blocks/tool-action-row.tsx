@@ -85,6 +85,12 @@ function ToolActionRowInner({
   const collapsibleToggle =
     isRunning || isPreliminaryOutput ? undefined : () => setIsOpen((v) => !v)
 
+  const chevronClass = cn(
+    "size-3.5 shrink-0 text-muted-foreground/50 transition-transform",
+    !isOpen &&
+      "hidden group-hover/tool-action-row:block group-focus-visible/tool-action-row:block"
+  )
+
   if (isWriteTodos && hasTodos) {
     const completed = countCompleted(todos!)
     const total = todos!.length
@@ -137,19 +143,18 @@ function ToolActionRowInner({
       >
         <ToolTypeIcon
           toolName={summary.toolName}
-          className="size-4 shrink-0 text-muted-foreground group-hover/tool-action-row:hidden"
+          className="size-4 shrink-0 text-muted-foreground"
         />
-        {hasContent && !isRunning &&
-          (isOpen ? (
-            <IconChevronDown className="hidden size-3.5 shrink-0 text-muted-foreground/50 transition-transform group-hover/tool-action-row:block group-focus-visible/tool-action-row:block" />
-          ) : (
-            <IconChevronRight className="hidden size-3.5 shrink-0 text-muted-foreground/50 group-hover/tool-action-row:block group-focus-visible/tool-action-row:block" />
-          ))}
-        {!(hasContent && !isRunning) && (
-          <span className="hidden size-4 shrink-0 group-hover/tool-action-row:block" />
-        )}
-        <span className="flex-1 truncate text-xs font-thin text-foreground">
-          {summary.label}
+        <span className="flex min-w-0 flex-1 items-center gap-1">
+          <span className="truncate text-xs font-thin text-foreground">
+            {summary.label}
+          </span>
+          {hasContent && !isRunning &&
+            (isOpen ? (
+              <IconChevronDown className={chevronClass} />
+            ) : (
+              <IconChevronRight className={chevronClass} />
+            ))}
         </span>
         <StatusIcon
           className={cn(

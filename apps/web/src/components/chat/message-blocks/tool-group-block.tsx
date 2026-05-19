@@ -162,16 +162,17 @@ function RoutineToolActivityBlock({
           ) : (
             <IconCircleCheck className="size-3.5 shrink-0 text-green-600/60" />
           )}
-          <span className="min-w-0 flex-1 truncate text-left">
-            {block.summary}
+          <span className="flex min-w-0 flex-1 items-center gap-0.5 text-left">
+            <span className="truncate">{block.summary}</span>
+            <IconChevronDown
+              className={cn(
+                "size-3 shrink-0 text-muted-foreground/50 transition-transform",
+                !isOpen &&
+                  "hidden group-hover/tool-group:block group-focus-visible/tool-group:block",
+                isOpen ? "rotate-180" : "rotate-0"
+              )}
+            />
           </span>
-          <IconChevronDown
-            className={cn(
-              "hidden size-3 shrink-0 text-muted-foreground/50 transition-transform",
-              "group-hover/tool-group:block group-focus-visible/tool-group:block",
-              isOpen ? "rotate-180" : "rotate-0"
-            )}
-          />
         </CollapsibleTrigger>
         <CollapsibleContent
           className={cn(

@@ -80,8 +80,11 @@ function ToolActivityLineInner({
         ? () => setIsOpen((v) => !v)
         : undefined
 
-  const chevronClass =
-    "hidden size-3 shrink-0 text-muted-foreground/50 transition-transform group-hover/tool-activity:block group-focus-visible/tool-activity:block"
+  const chevronClass = cn(
+    "size-3 shrink-0 text-muted-foreground/50 transition-transform",
+    !isOpen &&
+      "hidden group-hover/tool-activity:block group-focus-visible/tool-activity:block"
+  )
 
   return (
     <div className={cn("not-prose", className)} {...props}>
@@ -109,17 +112,15 @@ function ToolActivityLineInner({
           toolName={summary.toolName}
           className="size-3.5 shrink-0 text-muted-foreground/70"
         />
-        <span className="min-w-0 flex-1 truncate text-foreground/90">
-          {summary.label}
+        <span className="flex min-w-0 flex-1 items-center gap-0.5">
+          <span className="truncate text-foreground/90">{summary.label}</span>
+          {hasDetail && !isRunning &&
+            (isOpen ? (
+              <IconChevronDown className={chevronClass} />
+            ) : (
+              <IconChevronRight className={chevronClass} />
+            ))}
         </span>
-        {hasDetail && !isRunning &&
-          (isOpen ? (
-            <IconChevronDown
-              className={cn(chevronClass, "rotate-180")}
-            />
-          ) : (
-            <IconChevronRight className={chevronClass} />
-          ))}
         <StatusIcon
           className={cn(
             "size-3.5 shrink-0",
@@ -135,7 +136,7 @@ function ToolActivityLineInner({
           open={collapsibleOpen}
           onOpenChange={isRunning ? undefined : setIsOpen}
         >
-          <CollapsibleContent>
+          <CollapsibleContent className="p-2 bg-muted/10 dark:bg-muted/40">
             <ToolDetailPanel
               toolName={summary.toolName}
               state={state}
