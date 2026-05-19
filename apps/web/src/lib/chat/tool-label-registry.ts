@@ -143,6 +143,17 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
       error: "搜索失败",
     },
   },
+  grep: {
+    icon: "🔍",
+    label: "搜索",
+    verb: "搜索",
+    pathKey: "path",
+    simple: {
+      running: "正在搜索内容...",
+      done: "搜索完成",
+      error: "搜索失败",
+    },
+  },
   create_orchestration_plan: {
     icon: "📋",
     label: "生成编排计划",
@@ -251,6 +262,18 @@ export function getToolDisplay(toolName: string): ToolDisplayDef | undefined {
 
 export function isBusinessTool(toolName: string): boolean {
   return BUSINESS_TOOL_NAMES.has(toolName)
+}
+
+/** 可合并为活动流的常规工具（不含 read/write/edit 与业务工具） */
+export const ROUTINE_TOOL_NAMES = new Set([
+  ...SHELL_TOOL_NAMES,
+  "grep",
+  "glob",
+  "ls",
+])
+
+export function isRoutineTool(toolName: string): boolean {
+  return ROUTINE_TOOL_NAMES.has(toolName)
 }
 
 export function getSimpleLabels(

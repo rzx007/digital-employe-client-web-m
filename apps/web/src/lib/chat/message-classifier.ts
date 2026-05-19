@@ -22,6 +22,7 @@ import {
   type FileChangeItem,
 } from "./file-change-utils"
 import { isSummarizationTextPart } from "./langchain-summarization-text"
+import { mergeRoutineToolGroups } from "./merge-routine-tool-groups"
 
 type ToolUIPart = Extract<
   UIMessage["parts"][number],
@@ -429,7 +430,7 @@ export function classifyMessageParts(
     })
   }
 
-  return blocks
+  return mergeRoutineToolGroups(blocks)
 }
 
 /**

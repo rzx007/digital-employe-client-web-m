@@ -63,21 +63,6 @@ function summarizeShellCommand(
   return { toolName, label: display.verb, icon: display.icon }
 }
 
-export function getSimpleLabel(
-  toolName: string,
-  state: "running" | "done" | "error"
-): string {
-  const simple = getToolDisplay(toolName)?.simple
-  return (
-    simple?.[state] ??
-    (state === "running"
-      ? "处理中..."
-      : state === "error"
-        ? "操作失败"
-        : "已完成")
-  )
-}
-
 export function summarizeToolCall(options: {
   type: string
   input?: unknown

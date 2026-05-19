@@ -89,7 +89,7 @@ export function RenderClassifiedBlocks({
               block={block}
               className="w-full"
               key={block.key}
-              shouldAutoCollapse={toolAutoCollapseMap.get(block.key) ?? false}
+              toolAutoCollapseMap={toolAutoCollapseMap}
             />
           )
         }
@@ -263,7 +263,7 @@ function ChatMessageItemInner({
         </div>
       )}
       <MessageContent className="w-auto">
-        <div className="space-y-3">
+        <div className="space-y-1.5">
           {classifiedBlocks.length > 0 ? (
             <RenderClassifiedBlocks
               blocks={classifiedBlocks}

@@ -32,7 +32,7 @@ function ThinkingBlockInner({
   if (isShort) {
     return (
       <div className={cn("not-prose", className)} {...props}>
-        <div className="flex items-start gap-1.5 text-xs text-muted-foreground/60">
+        <div className="flex items-start gap-1 text-xs text-muted-foreground/60">
           <IconBrain className="mt-0.5 size-3 shrink-0" />
           <MessageResponse className="flex-1 leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
             {text}
@@ -47,16 +47,17 @@ function ThinkingBlockInner({
       <Collapsible onOpenChange={setIsOpen} open={isOpen}>
         <CollapsibleTrigger
           className={cn(
-            "flex w-full items-center gap-1.5 text-xs text-muted-foreground/70 transition-colors hover:text-muted-foreground",
-            "p-1 outline-none hover:bg-muted/50 focus-visible:ring-0",
-            isOpen && "border-b border-border/50"
+            "group/thinking flex w-full items-center gap-1 rounded-md text-xs text-muted-foreground/70 transition-colors hover:text-muted-foreground",
+            "px-1.5 py-1 outline-none hover:bg-muted/50 focus-visible:ring-0",
+            isOpen && "mb-0.5 border-b border-border/50"
           )}
         >
-          <IconBrain className="size-3" />
+          <IconBrain className="size-3 shrink-0" />
           <span className="flex-1 text-left">思考过程</span>
           <IconChevronDown
             className={cn(
-              "size-3 transition-transform",
+              "hidden size-3 shrink-0 text-muted-foreground/50 transition-transform",
+              "group-hover/thinking:block group-focus-visible/thinking:block",
               isOpen ? "rotate-180" : "rotate-0"
             )}
           />
@@ -68,7 +69,7 @@ function ThinkingBlockInner({
             "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0"
           )}
         >
-          <div className="mt-1.5 pl-[18px]">
+          <div className="mt-1 pl-4 pb-0.5">
             <MessageResponse className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
               {text}
             </MessageResponse>

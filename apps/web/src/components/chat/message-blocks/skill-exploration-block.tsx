@@ -61,11 +61,11 @@ function SkillExplorationBlockInner({
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <CollapsibleTrigger
           className={cn(
-            "flex w-full items-center gap-1.5 rounded-md text-xs transition-colors",
+            "group/skill-explore flex w-full items-center gap-1 rounded-md text-xs transition-colors",
             "outline-none hover:bg-muted/50 focus-visible:ring-0",
             "text-muted-foreground/70 hover:text-muted-foreground",
-            "px-2 py-1.5",
-            isOpen && "mb-1"
+            "px-1.5 py-1",
+            isOpen && "mb-0.5"
           )}
         >
           {inProgress ? (
@@ -81,7 +81,8 @@ function SkillExplorationBlockInner({
           )}
           <IconChevronDown
             className={cn(
-              "size-3 shrink-0 transition-transform",
+              "hidden size-3 shrink-0 text-muted-foreground/50 transition-transform",
+              "group-hover/skill-explore:block group-focus-visible/skill-explore:block",
               isOpen ? "rotate-180" : "rotate-0"
             )}
           />
@@ -92,9 +93,9 @@ function SkillExplorationBlockInner({
             "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0"
           )}
         >
-          <div className="ml-1 space-y-0.5 border-l border-border/40 py-0.5 pl-3">
+          <div className="ml-0.5 space-y-0 border-l border-border/40 py-0 pl-2">
             {thinkingText && (
-              <div className="mb-1 text-[11px] leading-relaxed text-muted-foreground/50 italic">
+              <div className="mb-0.5 text-[11px] leading-relaxed text-muted-foreground/50 italic">
                 {thinkingText.length > 120
                   ? thinkingText.slice(0, 120) + "..."
                   : thinkingText}
@@ -109,7 +110,7 @@ function SkillExplorationBlockInner({
               return (
                 <div
                   key={item.key}
-                  className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60"
+                  className="flex items-center gap-1 py-0.5 text-[11px] text-muted-foreground/60"
                 >
                   {itemDone ? (
                     itemError ? (
