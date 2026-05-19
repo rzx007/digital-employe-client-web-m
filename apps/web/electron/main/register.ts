@@ -1,9 +1,4 @@
 import { BrowserWindow, screen } from "electron"
-import {
-  buildHashRouteUrl,
-  getAppIconPath,
-  getPreloadPath,
-} from "../core/runtime-paths"
 import { getWindowManager } from "../core/services/window-registry"
 
 const REGISTER_MIN_HEIGHT = 500
@@ -25,44 +20,27 @@ export function resizeRegisterWindow(size: {
   registerWin.setContentSize(w, h)
 }
 
-export function createRegisterWindow(_options?: {
-  devServerUrl?: string
-  indexHtml?: string
-}): void {
+export function createRegisterWindow(): void {
   const wm = getWindowManager()
   if (wm.focus("register")) return
 
-  const registerWin = new BrowserWindow({
-    width: 400,
-    height: 640,
-    title: "注册",
-    icon: getAppIconPath(),
-    frame: false,
-    resizable: false,
-    useContentSize: true,
-    center: true,
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: getPreloadPath(),
-      zoomFactor: 0.95,
-      nodeIntegration: false,
-      contextIsolation: true,
+  wm.createWindow({
+    id: "register",
+    route: "/register",
+    overrides: {
+      width: 400,
+      height: 640,
+      title: "注册",
+      frame: false,
+      resizable: false,
+      useContentSize: true,
+      center: true,
+      autoHideMenuBar: true,
+      webPreferences: { zoomFactor: 0.95 },
     },
   })
-
-  registerWin.loadURL(buildHashRouteUrl("/register"))
-
-  registerWin.on("closed", () => {
-    wm.set("register", null)
-  })
-
-  wm.set("register", registerWin)
 }
 
 export function closeRegisterWindow(): void {
-  const wm = getWindowManager()
-  const registerWin = wm.get("register")
-  if (!registerWin) return
-  registerWin.close()
-  wm.set("register", null)
+  getWindowManager().close("register")
 }

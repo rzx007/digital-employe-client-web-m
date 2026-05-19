@@ -1,9 +1,4 @@
 import { BrowserWindow, screen, session, type Session } from "electron"
-import {
-  buildHashRouteUrl,
-  getAppIconPath,
-  getPreloadPath,
-} from "../core/runtime-paths"
 import { getWindowManager } from "../core/services/window-registry"
 import { getSetting } from "./settings-store"
 import { handlePetdexRequest } from "../core/petdex-protocol"
@@ -43,50 +38,37 @@ export function applyPetAlwaysOnTopFromStore(): void {
   petWin.setAlwaysOnTop(getSetting("petAlwaysOnTop"))
 }
 
-export function createPetWindow(_options?: {
-  devServerUrl?: string
-  indexHtml?: string
-  preload?: string
-}): void {
+export function createPetWindow(): void {
   const wm = getWindowManager()
-  const existing = wm.get("pet")
-  if (existing) {
+  if (wm.get("pet")) {
     applyPetAlwaysOnTopFromStore()
-    existing.focus()
+    wm.focus("pet")
     return
   }
 
   ensurePetSessionMediaPermission()
 
-  const petWin = new BrowserWindow({
-    width: PET_WINDOW_WIDTH,
-    height: PET_WINDOW_HEIGHT,
-    title: "DigitalEmployee-Pet",
-    frame: false,
-    transparent: true,
-    backgroundColor: "#00000000",
-    alwaysOnTop: getSetting("petAlwaysOnTop"),
-    resizable: false,
-    skipTaskbar: true,
-    hasShadow: false,
-    icon: getAppIconPath(),
-    webPreferences: {
-      preload: getPreloadPath(),
-      nodeIntegration: false,
-      contextIsolation: true,
-      session: getPetSession(),
+  wm.createWindow({
+    id: "pet",
+    route: "/pet",
+    overrides: {
+      width: PET_WINDOW_WIDTH,
+      height: PET_WINDOW_HEIGHT,
+      title: "DigitalEmployee-Pet",
+      frame: false,
+      transparent: true,
+      backgroundColor: "#00000000",
+      alwaysOnTop: getSetting("petAlwaysOnTop"),
+      resizable: false,
+      skipTaskbar: true,
+      hasShadow: false,
+      webPreferences: { session: getPetSession() },
+    },
+    onCreated: (win) => {
+      win.hide()
+      applyPetAlwaysOnTopFromStore()
     },
   })
-
-  petWin.loadURL(buildHashRouteUrl("/pet"))
-  petWin.hide()
-  applyPetAlwaysOnTopFromStore()
-
-  petWin.on("closed", () => {
-    wm.set("pet", null)
-  })
-
-  wm.set("pet", petWin)
 }
 
 export function showPetWindow(): void {

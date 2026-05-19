@@ -1,11 +1,9 @@
 import { app } from "electron"
 import { getSetting, setSetting } from "./settings-store"
+import { electronApp } from "@electron-toolkit/utils"
 
 export function setAutoLaunch(enabled: boolean): void {
-  app.setLoginItemSettings({
-    openAtLogin: enabled,
-    path: process.execPath,
-  })
+  electronApp.setAutoLaunch(enabled)
   setSetting("autoLaunch", enabled)
 }
 

@@ -9,11 +9,6 @@ export const authBridge = {
     rememberMe: boolean,
   ) => invoke(IpcChannels.saveAuth, { token, user, rememberMe }),
   clearAuth: () => invoke(IpcChannels.clearAuth),
-  getAuthStatus: () =>
-    invoke<{
-      token: string | null
-      user: Record<string, unknown> | null
-      rememberMe: boolean
-    }>(IpcChannels.getAuthStatus),
-  hasSavedAuth: () => invoke<boolean>(IpcChannels.hasSavedAuth),
+  getAuthStatus: () => invoke(IpcChannels.getAuthStatus),
+  hasSavedAuth: () => invoke(IpcChannels.hasSavedAuth),
 }

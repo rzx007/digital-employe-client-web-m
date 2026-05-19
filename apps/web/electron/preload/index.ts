@@ -10,6 +10,8 @@ if (process.contextIsolated) {
     console.error("[preload] expose failed:", error)
   }
 } else {
-  window.electron = require("@electron-toolkit/preload").electronAPI
-  window.electronApi = electronApi
+  import("@electron-toolkit/preload").then(({ electronAPI }) => {
+    window.electron = electronAPI
+    window.electronApi = electronApi
+  })
 }

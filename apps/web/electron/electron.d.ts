@@ -1,21 +1,8 @@
-import type { ElectronAPI } from "@electron-toolkit/preload"
 import type { ElectronApi } from "./preload/electron-api"
-
-interface BackendStatus {
-  ready: boolean
-  port: number
-  running: boolean
-}
-
-interface PlatformInfo {
-  isLinux: boolean
-  isWin: boolean
-  isMac: boolean
-}
 
 declare global {
   interface Window {
-    electron?: ElectronAPI
+    electron?: import("@electron-toolkit/preload").ElectronAPI
     electronApi?: ElectronApi
   }
   const __APP_VERSION__: string
@@ -24,4 +11,4 @@ declare global {
   const __APP_PORT__: string
 }
 
-export type { BackendStatus, PlatformInfo, ElectronApi }
+export type { ElectronApi }

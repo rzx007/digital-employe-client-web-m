@@ -4,11 +4,37 @@
 
 ```
 electron/
-├── core/           # bootstrap、AppContext、IpcRegistry、WindowManager
-├── features/       # 按域拆分 ipc.ts + preload-bridge.ts
-├── shared/         # ipc-channels 常量
-├── main/           # 窗口实现、backend、tray 等
-└── preload/        # exposeElectronAPI + electronApi 合并
+├── core/                    # 基础设施层
+│   ├── app-context.ts       # 共享应用上下文
+│   ├── bootstrap.ts         # 启动编排
+│   ├── feature.ts           # Feature 接口
+│   ├── ipc/
+│   │   ├── registry.ts      # IPC 集中注册
+│   │   └── types.ts         # IPC 类型定义
+│   ├── petdex-protocol.ts   # 协议处理
+│   ├── runtime-paths.ts     # 路径工具
+│   └── services/
+│       ├── lifecycle.ts     # 生命周期管理
+│       ├── window-manager.ts    # 窗口工厂 + 管理
+│       └── window-registry.ts   # 单例绑定
+├── features/                # 功能模块（IPC + Preload Bridge）
+│   ├── index.ts             # 聚合所有 IpcContribution
+│   ├── auth/
+│   ├── backend/
+│   ├── notification-tray/
+│   ├── pet/
+│   ├── recruitment/
+│   ├── settings/
+│   ├── update/
+│   └── window/
+├── main/                    # Main 进程入口 + 窗口模块
+├── preload/                 # Preload 脚本
+│   ├── index.ts             # contextBridge 入口
+│   ├── invoke.ts            # 类型安全 invoke 封装
+│   └── electron-api.ts      # 统一 API 聚合
+├── shared/
+│   └── ipc-channels.ts      # Channel 常量 + IpcInvokeMap
+└── electron.d.ts            # 全局类型声明
 ```
 
 ## 架构图
@@ -218,7 +244,7 @@ if (isElectron()) {
 
 **macOS 注意**：应用内更新只认 `latest-mac.yml` 里的 **ZIP**（内含 `.app`）。只上传 DMG 会报错 `ZIP file not provided`。打包需在 `electron-builder.json5` 的 `mac.target` 中包含 `zip`。
 
-## 首先配置 Nginx：
+## 首先配置 Nginx
 
 ```nginx
 # /etc/nginx/conf.d/update-server.conf
@@ -253,7 +279,7 @@ server {
 }
 ```
 
-## latest.yml 文件格式示例：
+## latest.yml 文件格式示例
 
 ```yaml
 version: 0.1.2

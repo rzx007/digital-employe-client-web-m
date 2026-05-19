@@ -1,7 +1,7 @@
 import { app, BrowserWindow, shell, protocol } from "electron"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
-import os from "node:os"
+import { is } from "@electron-toolkit/utils"
 import { getBackendPort } from "./backend"
 import { createTray, showMainWindow } from "./tray"
 import { getSetting } from "./settings-store"
@@ -29,8 +29,6 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   : paths.rendererDist
 
 app.commandLine.appendSwitch("lang", "zh-CN")
-
-if (os.release().startsWith("6.1")) app.disableHardwareAcceleration()
 
 if (process.platform === "win32")
   app.setAppUserModelId("com.digital-employee-m.app")
@@ -99,8 +97,8 @@ function getMainWindowOptions(): Electron.BrowserWindowConstructorOptions {
 async function createWindow() {
   win = new BrowserWindow(getMainWindowOptions())
 
-  if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL)
+  if (is.dev) {
+    win.loadURL(VITE_DEV_SERVER_URL as string)
     win.webContents.openDevTools()
   } else {
     win.loadFile(paths.indexHtml)

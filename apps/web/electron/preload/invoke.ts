@@ -1,10 +1,11 @@
 import { ipcRenderer } from "electron"
+import type { IpcChannel, IpcResult } from "../shared/ipc-channels"
 
-export function invoke<T = unknown>(
-  channel: string,
+export function invoke<C extends IpcChannel>(
+  channel: C,
   ...args: unknown[]
-): Promise<T> {
-  return ipcRenderer.invoke(channel, ...args)
+): Promise<IpcResult<C>> {
+  return ipcRenderer.invoke(channel, ...args) as Promise<IpcResult<C>>
 }
 
 export function onChannel(

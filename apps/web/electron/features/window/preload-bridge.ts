@@ -6,10 +6,7 @@ export const windowBridge = {
   minimizeWindow: () => invoke(IpcChannels.minimizeWindow),
   closeWindow: () => invoke(IpcChannels.closeWindow),
   maximizeWindow: () => invoke(IpcChannels.maximizeWindow),
-  isMaximized: () => invoke<boolean>(IpcChannels.isMaximized),
+  isMaximized: () => invoke(IpcChannels.isMaximized),
   setForceQuit: (value: boolean) => invoke(IpcChannels.setForceQuit, value),
-  getPlatform: () =>
-    invoke<{ isLinux: boolean; isWin: boolean; isMac: boolean }>(
-      IpcChannels.getPlatform,
-    ),
+  getPlatform: () => invoke(IpcChannels.getPlatform),
 }

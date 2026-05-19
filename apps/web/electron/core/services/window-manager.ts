@@ -1,4 +1,5 @@
-import type { BrowserWindow } from "electron"
+import { BrowserWindow, type BrowserWindowConstructorOptions } from "electron"
+import { getPreloadPath, getAppIconPath, buildHashRouteUrl } from "../runtime-paths"
 
 export type WindowId =
   | "main"
@@ -8,6 +9,13 @@ export type WindowId =
   | "register"
   | "pet"
   | "splash"
+
+export interface WindowDescriptor {
+  id: WindowId
+  route: string
+  overrides: BrowserWindowConstructorOptions
+  onCreated?: (win: BrowserWindow) => void
+}
 
 /**
  * 统一管理各 BrowserWindow 引用
@@ -39,6 +47,43 @@ export class WindowManager {
   focus(id: WindowId): BrowserWindow | null {
     const win = this.get(id)
     if (win) win.focus()
+    return win
+  }
+
+  close(id: WindowId): void {
+    const win = this.get(id)
+    if (!win) return
+    win.close()
+    this.set(id, null)
+  }
+
+  /**
+   * 工厂方法：创建 BrowserWindow，自动注册到 WindowManager，
+   * 统一 preload / icon / URL 加载 / closed 清理。
+   */
+  createWindow(descriptor: WindowDescriptor): BrowserWindow {
+    const { id, route, overrides, onCreated } = descriptor
+
+    const defaults: BrowserWindowConstructorOptions = {
+      icon: getAppIconPath(),
+      webPreferences: {
+        preload: getPreloadPath(),
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    }
+
+    const win = new BrowserWindow({ ...defaults, ...overrides })
+
+    win.loadURL(buildHashRouteUrl(route))
+
+    win.on("closed", () => {
+      this.set(id, null)
+    })
+
+    this.set(id, win)
+    onCreated?.(win)
+
     return win
   }
 }
