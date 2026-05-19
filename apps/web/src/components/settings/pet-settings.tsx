@@ -31,7 +31,7 @@ export function PetSettings() {
   const [petVisibilityMode, setPetVisibilityMode] =
     React.useState<PetVisibilityMode>("when_main_hidden")
   const [petAlwaysOnTop, setPetAlwaysOnTop] = React.useState(true)
-  const [selectedSlug, setSelectedSlug] = React.useState("wall-e-baby")
+  const [selectedSlug, setSelectedSlug] = React.useState("eve")
   const [availablePets, setAvailablePets] = React.useState<
     Array<{
       slug: string

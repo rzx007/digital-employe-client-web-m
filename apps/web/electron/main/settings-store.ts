@@ -46,7 +46,7 @@ export function initSettingsStore(): void {
       petEnabled: true,
       petVisibilityMode: "when_main_hidden",
       petAlwaysOnTop: true,
-      selectedPetSlug: "wall-e-baby",
+      selectedPetSlug: "eve",
     },
   })
 }
@@ -68,7 +68,7 @@ export function getSetting<K extends keyof SettingsData>(
       petEnabled: true,
       petVisibilityMode: "when_main_hidden",
       petAlwaysOnTop: true,
-      selectedPetSlug: "wall-e-baby",
+      selectedPetSlug: "eve",
     }
     return defaults[key]
   }

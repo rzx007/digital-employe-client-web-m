@@ -47,7 +47,7 @@ export function PetWindow() {
   useEffect(() => {
     const api = window.electronApi
     if (!api?.getSelectedPetSlug) {
-      void loadPetSkin("wall-e-baby").then(setCurrentSkin).catch(console.error)
+      void loadPetSkin("eve").then(setCurrentSkin).catch(console.error)
       return
     }
     void api.getSelectedPetSlug().then((slug) => {
