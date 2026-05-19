@@ -12,15 +12,16 @@ import {
 } from "./ipc-handlers"
 import { update } from "./update"
 import { createSplashWindow, closeSplashWindow } from "./splash"
-import { createTray, shutdownAuxiliaryWindows } from "./tray"
+import {
+  createTray,
+  showMainWindow,
+  shutdownAuxiliaryWindows,
+} from "./tray"
 import { createLoginWindow } from "./login"
 import { initAuthStore, hasToken } from "./auth"
 import { initSettingsStore, getSetting } from "./settings-store"
 import { createPetWindow, showPetWindow, hidePetWindow } from "./pet"
-import {
-  hidePetIfWhenMainHiddenMode,
-  syncPetOnMainForegroundState,
-} from "./pet-main-sync"
+import { syncPetOnMainForegroundState } from "./pet-main-sync"
 import { APP_DISPLAY_NAME } from "./app-product"
 import { createMacApplicationMenu } from "./application-menu"
 
@@ -329,21 +330,23 @@ app.on("window-all-closed", () => {
 })
 
 app.on("second-instance", () => {
-  if (win) {
-    if (win.isMinimized()) win.restore()
-    // 窗口隐藏到托盘时也要能唤出
-    win.show()
-    win.focus()
-    hidePetIfWhenMainHiddenMode()
+  if (win && !win.isDestroyed()) {
+    showMainWindow(win)
   }
 })
 
+/** macOS：点击 Dock 图标时唤起主窗口（hide 后仅 focus 无效） */
 app.on("activate", () => {
-  const allWindows = BrowserWindow.getAllWindows()
-  if (allWindows.length) {
-    allWindows[0].focus()
-    hidePetIfWhenMainHiddenMode()
-  } else {
-    createWindow()
+  if (win && !win.isDestroyed()) {
+    showMainWindow(win)
+    return
   }
+
+  const visible = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed())
+  if (visible.length) {
+    showMainWindow(visible[0])
+    return
+  }
+
+  void createWindow()
 })

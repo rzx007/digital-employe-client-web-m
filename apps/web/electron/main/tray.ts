@@ -99,15 +99,23 @@ function generateNotifyIcon(base: Electron.NativeImage): Electron.NativeImage {
   })
 }
 
+/** macOS 菜单栏推荐尺寸（后续可换专用 trayTemplate.png） */
+const MAC_TRAY_ICON_SIZE = 22
+
 /**
- * 加载图标文件
+ * 加载原始图标（未做平台处理）
  *
- * 优先使用 .ico（Windows 原生支持），回退 .png。
- * 空路径或加载失败时不会崩溃，返回空图像。
+ * macOS 优先 .png（Template 效果更好）；Windows 优先 .ico。
  */
-function loadIcon(): Electron.NativeImage {
+function loadRawIcon(): Electron.NativeImage {
   const icoPath = path.join(process.env.APP_ROOT!, "build/icon.ico")
   const pngPath = path.join(process.env.APP_ROOT!, "build/icon.png")
+
+  if (process.platform === "darwin") {
+    const png = nativeImage.createFromPath(pngPath)
+    if (!png.isEmpty()) return png
+    return nativeImage.createFromPath(icoPath)
+  }
 
   try {
     const image = nativeImage.createFromPath(icoPath)
@@ -120,6 +128,45 @@ function loadIcon(): Electron.NativeImage {
 }
 
 /**
+ * macOS 菜单栏：对当前图标启用 Template，便于深浅色菜单栏显示。
+ * 资源后续可替换为单色 trayTemplate.png，调用方式不变。
+ */
+function prepareMacTrayIcon(image: Electron.NativeImage): Electron.NativeImage {
+  if (image.isEmpty()) return image
+
+  const { width, height } = image.getSize()
+  const maxDim = Math.max(width, height)
+  const trayImage =
+    maxDim > MAC_TRAY_ICON_SIZE
+      ? image.resize({
+          width: MAC_TRAY_ICON_SIZE,
+          height: MAC_TRAY_ICON_SIZE,
+        })
+      : image
+
+  trayImage.setTemplateImage(true)
+  return trayImage
+}
+
+/**
+ * 加载托盘用图标（含 macOS Template 处理）
+ */
+function loadTrayIcons(): {
+  normal: Electron.NativeImage
+  notify: Electron.NativeImage
+} {
+  const raw = loadRawIcon()
+
+  if (process.platform === "darwin") {
+    const normal = prepareMacTrayIcon(raw)
+    // Template 不适合彩色红边；闪烁时与空图交替
+    return { normal, notify: nativeImage.createEmpty() }
+  }
+
+  return { normal: raw, notify: generateNotifyIcon(raw) }
+}
+
+/**
  * 创建系统托盘
  *
  * 图标路径优先使用 .ico（Windows），否则回退到 .png。
@@ -128,8 +175,9 @@ function loadIcon(): Electron.NativeImage {
 export function createTray(win: BrowserWindow): void {
   if (tray) return
 
-  normalIcon = loadIcon()
-  notifyIcon = generateNotifyIcon(normalIcon)
+  const icons = loadTrayIcons()
+  normalIcon = icons.normal
+  notifyIcon = icons.notify
 
   tray = new Tray(normalIcon)
   tray.setToolTip("DigitalEmployee")
@@ -138,7 +186,7 @@ export function createTray(win: BrowserWindow): void {
   const contextMenu = Menu.buildFromTemplate([
     {
       label: "显示窗口",
-      click: () => showWindow(win),
+      click: () => showMainWindow(win),
     },
     { type: "separator" },
     {
@@ -160,7 +208,7 @@ export function createTray(win: BrowserWindow): void {
 
   // 双击托盘图标 → 显示窗口
   tray.on("double-click", () => {
-    showWindow(win)
+    showMainWindow(win)
   })
 
   // 窗口聚焦时自动停止闪烁（用户已看到消息）
@@ -170,11 +218,11 @@ export function createTray(win: BrowserWindow): void {
 }
 
 /**
- * 显示并聚焦主窗口
+ * 显示并聚焦主窗口（托盘 / Dock activate / 二次实例等共用）
  *
- * 如果窗口被最小化则先还原，再显示并聚焦。
+ * 隐藏到托盘时仅 focus 无效，必须先 show；最小化时先 restore。
  */
-function showWindow(win: BrowserWindow): void {
+export function showMainWindow(win: BrowserWindow): void {
   hidePetIfWhenMainHiddenMode()
   if (win.isMinimized()) {
     win.restore()
