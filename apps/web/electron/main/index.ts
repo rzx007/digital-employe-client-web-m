@@ -8,7 +8,10 @@ import { getSetting } from "../features/settings/settings-store"
 import { createPetWindow, showPetWindow } from "../features/pet/pet-window"
 import { syncPetOnMainForegroundState } from "../features/pet/pet-main-sync"
 import { APP_DISPLAY_NAME } from "./app-product"
+import { initMainLogger } from "../core/logger"
 import { bootstrapApp } from "../core/bootstrap"
+
+initMainLogger()
 import { resolveAppRootFromMainEntry } from "../core/app-context"
 import { bindElectronRuntime } from "../core/runtime-paths"
 import { WindowManager } from "../core/services/window-manager"

@@ -14,5 +14,5 @@
     "strict": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["electron/**/*.ts"]
+  "include": ["electron/**/*.ts", "electron/**/*.d.ts"]
 }

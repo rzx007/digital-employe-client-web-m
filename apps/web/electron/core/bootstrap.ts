@@ -15,6 +15,7 @@ import { createAppContext } from "./app-context"
 import { IpcRegistry } from "./ipc/registry"
 import { WindowManager } from "./services/window-manager"
 import { allIpcContributions } from "../features"
+import { rootLogger } from "./logger"
 
 export interface BootstrapOptions {
   mainDirname: string
@@ -55,18 +56,20 @@ export async function bootstrapApp(options: BootstrapOptions): Promise<void> {
 
   try {
     await startBackend()
-    console.log("[App] backend server ready")
+    rootLogger.info("backend server ready")
     closeSplashWindow()
 
     if (hasToken()) {
-      console.log("[App] saved token found, skipping login...")
+      rootLogger.info("saved token found, skipping login")
       await options.createMainWindow()
     } else {
-      console.log("[App] no saved token, opening login window...")
+      rootLogger.info("no saved token, opening login window")
       createLoginWindow()
     }
   } catch (err) {
-    console.error("[App] backend failed:", err)
+    rootLogger.error("backend failed", {
+      message: err instanceof Error ? err.message : String(err),
+    })
     const message = err instanceof Error ? err.message : String(err)
     notifySplashBackendError(message)
     setTimeout(() => {

@@ -8,8 +8,10 @@ electron/
 │   ├── app-context.ts       # 共享应用上下文
 │   ├── bootstrap.ts         # 启动编排
 │   ├── feature.ts           # Feature 接口
+│   ├── logger.ts            # electron-log 初始化 + createLogger
 │   ├── ipc/
 │   │   ├── registry.ts      # IPC 集中注册
+│   │   ├── wrap-handler.ts  # IPC 错误边界
 │   │   └── types.ts         # IPC 类型定义
 │   ├── petdex-protocol.ts   # 协议处理
 │   ├── runtime-paths.ts     # 路径工具
@@ -249,6 +251,43 @@ flowchart TB
 
   IpcContrib --> Registry2["IpcRegistry"]
 ```
+
+## 错误边界与日志
+
+### 主进程日志（electron-log）
+
+- 初始化：[`core/logger.ts`](core/logger.ts) 的 `initMainLogger()`（在 `main/index.ts` 最早调用）
+- 按模块创建：`createLogger("auth")` → 输出带 `[auth]` 前缀
+- 生产环境：写入 `%userData%/logs/main.log`，控制台默认 `warn` 及以上
+- 开发环境：控制台 `debug` 及以上
+
+### IPC 错误边界
+
+[`core/ipc/wrap-handler.ts`](core/ipc/wrap-handler.ts) 在 `IpcRegistry.register` 时自动包装每个 handler：
+
+1. 捕获同步/异步异常
+2. 记录 `ipc:<featureId>` + channel + stack
+3. **原样 rethrow**，渲染端 `invoke` 仍为 `Promise.reject`（不破坏现有返回类型）
+
+Preload [`preload/invoke.ts`](preload/invoke.ts) 在失败时额外打 `electron-log/preload` 警告。
+
+### 渲染进程安全调用
+
+[`src/lib/electron/host.ts`](../src/lib/electron/host.ts)：
+
+```typescript
+import { withElectronApi, requireElectronApi } from "@/lib/electron/host"
+
+// 失败返回 undefined，可选 fallback / onError
+await withElectronApi((api) => api.openSettings(), {
+  onError: (e) => toast.error("打开设置失败"),
+})
+
+// 必须有桌面端，失败抛 ElectronHostError
+await requireElectronApi((api) => api.getAuthStatus())
+```
+
+---
 
 ## 渲染进程访问 API
 

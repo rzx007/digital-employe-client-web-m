@@ -17,3 +17,63 @@ export function getElectronToolkit(): Window["electron"] | undefined {
   if (typeof window === "undefined" || !window.electron) return undefined
   return window.electron
 }
+
+export class ElectronHostError extends Error {
+  readonly cause?: unknown
+
+  constructor(message: string, cause?: unknown) {
+    super(message)
+    this.name = "ElectronHostError"
+    this.cause = cause
+  }
+}
+
+export interface WithElectronApiOptions<T> {
+  /** 非桌面端或调用失败时的返回值 */
+  fallback?: T
+  /** 失败回调（如 toast） */
+  onError?: (error: unknown) => void
+  /** 为 true 时不向 console 打 dev 日志 */
+  silent?: boolean
+}
+
+/**
+ * 在桌面端安全执行 electronApi 调用；Web 或失败时返回 fallback
+ */
+export async function withElectronApi<T>(
+  fn: (api: ElectronApi) => T | Promise<T>,
+  options?: WithElectronApiOptions<T>,
+): Promise<T | undefined> {
+  const api = getElectronApi()
+  if (!api) return options?.fallback
+
+  try {
+    return await fn(api)
+  } catch (error) {
+    options?.onError?.(error)
+    if (import.meta.env.DEV && !options?.silent) {
+      console.error("[electron/host]", error)
+    }
+    return options?.fallback
+  }
+}
+
+/**
+ * 必须有 electronApi，否则抛出 ElectronHostError
+ */
+export async function requireElectronApi<T>(
+  fn: (api: ElectronApi) => T | Promise<T>,
+): Promise<T> {
+  const api = getElectronApi()
+  if (!api) {
+    throw new ElectronHostError("Electron API is not available")
+  }
+  try {
+    return await fn(api)
+  } catch (error) {
+    throw new ElectronHostError(
+      error instanceof Error ? error.message : String(error),
+      error,
+    )
+  }
+}

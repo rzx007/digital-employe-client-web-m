@@ -1,6 +1,10 @@
 import { ipcMain } from "electron"
 import type { AppContext } from "../app-context"
+import { createLogger } from "../logger"
 import type { IpcContribution } from "./types"
+import { wrapIpcHandler } from "./wrap-handler"
+
+const registryLogger = createLogger("IpcRegistry")
 
 /**
  * 集中注册 IPC handlers，防止重复注册与散落 ipcMain.handle
@@ -13,12 +17,15 @@ export class IpcRegistry {
   register(contribution: IpcContribution): void {
     for (const { channel, handler } of contribution.register(this.ctx)) {
       if (this.registered.has(channel)) {
-        console.warn(
-          `[IpcRegistry] channel "${channel}" already registered by ${this.registered.get(channel)}, skipping duplicate from ${contribution.id}`,
+        registryLogger.warn(
+          `channel "${channel}" already registered by ${this.registered.get(channel)}, skipping duplicate from ${contribution.id}`,
         )
         continue
       }
-      ipcMain.handle(channel, handler)
+      ipcMain.handle(
+        channel,
+        wrapIpcHandler(contribution.id, channel, handler),
+      )
       this.registered.set(channel, contribution.id)
     }
   }
