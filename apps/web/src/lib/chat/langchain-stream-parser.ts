@@ -1,3 +1,11 @@
+/**
+ * LangGraph SSE → AI SDK UIMessageChunk 解析器。
+ *
+ * 入口：`parseLangChainPayloadToChunks`（由 langchain-chat-transport 按 SSE 帧调用）
+ * 输出：`text-*` / `tool-input-*` / `tool-output-*` 等 chunk，供 useChat 组装 UIMessage.parts
+ *
+ * 工具调用解析要点见文件末尾 ASCII 流程图。
+ */
 import { createIdGenerator, type UIMessageChunk } from "ai"
 
 import type { AIMessageChunk, ToolMessage } from "./langchain-sse-schema"
@@ -8,6 +16,7 @@ const generatePartId = createIdGenerator({
   size: 16,
 })
 
+/** 进行中的工具调用：累积 args 文本，并跟踪已向 UI 下发了哪些生命周期事件 */
 interface PendingToolCall {
   key: string
   toolCallId: string | null
@@ -32,6 +41,8 @@ export interface LangChainStreamParseState {
   toolNamesById: Map<string, string>
   /** 当前正在执行的工具 call（tools 节点流式输出归属） */
   activeToolCallId: string | null
+  /** 同一 AIMessageChunk 流内首个带 id 的工具 call（用于 index 错位的 args 片段） */
+  primaryToolCallIdByMessageChunk: Map<string, string>
 }
 
 export function createLangChainStreamParseState(): LangChainStreamParseState {
@@ -46,6 +57,7 @@ export function createLangChainStreamParseState(): LangChainStreamParseState {
     toolOutputAccumulators: new Map(),
     toolNamesById: new Map(),
     activeToolCallId: null,
+    primaryToolCallIdByMessageChunk: new Map(),
   }
 }
 
@@ -153,6 +165,176 @@ function tryParseToolInput(inputText: string) {
   } catch {
     return null
   }
+}
+
+/**
+ * 记录同一 AIMessageChunk 流（kwargs.id）内的「主」工具 call。
+ * 用于 provider 将 tool_calls 放在 index 0、tool_call_chunks 放在 index 1 时的 args 归并。
+ */
+function rememberPrimaryToolCallForMessage(
+  state: LangChainStreamParseState,
+  messageChunkId: string,
+  toolCallId: string | null,
+  toolName: string | null
+) {
+  if (!toolCallId || !toolName) return
+  state.primaryToolCallIdByMessageChunk.set(messageChunkId, toolCallId)
+}
+
+/** 建立 messageChunkId:index → pending.key，供后续按 chunk index 查找 */
+function linkChunkIndexToPending(
+  state: LangChainStreamParseState,
+  messageChunkId: string,
+  index: number,
+  pending: PendingToolCall
+) {
+  state.toolCallKeysByChunkIndex.set(
+    getChunkIndexKey(messageChunkId, index),
+    pending.key
+  )
+}
+
+/**
+ * 仅在 toolCallId + toolName 齐备时下发 tool-input-start。
+ * 不使用 unknown_tool 占位，避免 UI 出现幽灵工具行。
+ */
+function emitToolInputStartIfReady(
+  pending: PendingToolCall,
+  state: LangChainStreamParseState,
+  result: UIMessageChunk[]
+) {
+  if (pending.sentInputStart) return
+  if (!pending.toolCallId || !pending.toolName) return
+
+  result.push({
+    type: "tool-input-start",
+    toolCallId: pending.toolCallId,
+    toolName: pending.toolName,
+  })
+  pending.sentInputStart = true
+  state.activeToolCallId = pending.toolCallId
+  state.toolNamesById.set(pending.toolCallId, pending.toolName)
+}
+
+function appendToolInputDelta(
+  pending: PendingToolCall,
+  inputTextDelta: string,
+  state: LangChainStreamParseState,
+  result: UIMessageChunk[]
+) {
+  emitToolInputStartIfReady(pending, state, result)
+  if (!pending.sentInputStart || !pending.toolCallId || !pending.toolName) {
+    pending.inputText += inputTextDelta
+    emitToolInputStartIfReady(pending, state, result)
+    if (!pending.sentInputStart) return
+  }
+
+  const toolCallId = pending.toolCallId
+  const toolName = pending.toolName
+
+  pending.inputText += inputTextDelta
+
+  result.push({
+    type: "tool-input-delta",
+    toolCallId,
+    inputTextDelta,
+  })
+
+  const parsedInput = tryParseToolInput(pending.inputText)
+  if (!pending.sentInputAvailable && parsedInput !== null) {
+    result.push({
+      type: "tool-input-available",
+      toolCallId,
+      toolName,
+      input: parsedInput,
+    })
+    pending.sentInputAvailable = true
+    state.activeToolCallId = toolCallId
+  }
+}
+
+/**
+ * 为流式 args 片段解析 pending，优先级：
+ * 1. toolCallId  2. messageChunkId:index  3. 同流主工具 primaryToolCallId
+ * 无 id/name 且无法归并时返回 null（丢弃噪声片段，如 "0}"）
+ */
+function resolvePendingForToolDelta(options: {
+  state: LangChainStreamParseState
+  messageChunkId: string
+  indexValue: number
+  toolCallId: string | null
+  toolName: string | null
+}): PendingToolCall | null {
+  const { state, messageChunkId, indexValue, toolCallId, toolName } = options
+
+  if (toolCallId) {
+    const byId = resolvePendingToolCallById(state, toolCallId)
+    if (byId) {
+      linkChunkIndexToPending(state, messageChunkId, indexValue, byId)
+      return byId
+    }
+  }
+
+  const byChunkIndex = resolvePendingToolCallByChunkIndex(
+    state,
+    messageChunkId,
+    indexValue
+  )
+  if (byChunkIndex) {
+    return byChunkIndex
+  }
+
+  const primaryId =
+    state.primaryToolCallIdByMessageChunk.get(messageChunkId) ?? null
+  if (!toolCallId && !toolName && primaryId) {
+    const byPrimary = resolvePendingToolCallById(state, primaryId)
+    if (byPrimary) {
+      linkChunkIndexToPending(state, messageChunkId, indexValue, byPrimary)
+      return byPrimary
+    }
+  }
+
+  if (!toolCallId && !toolName) {
+    return null
+  }
+
+  return getOrCreatePendingToolCall({
+    state,
+    messageChunkId,
+    index: indexValue,
+    toolCallId,
+    toolName,
+  })
+}
+
+/** 将带 id 的 tool_call_chunks 的 index 绑定到已存在的 pending（缓解 index 错位） */
+function registerToolCallChunkIndexAliases(
+  chunk: AIMessageChunk,
+  state: LangChainStreamParseState,
+  messageChunkId: string
+) {
+  const toolCallChunks = Array.isArray(chunk.kwargs?.tool_call_chunks)
+    ? chunk.kwargs.tool_call_chunks
+    : []
+
+  toolCallChunks.forEach((rawChunk, fallbackIndex) => {
+    const toolCallChunk = rawChunk as {
+      id?: string | null
+      index?: number | null
+    }
+    const toolCallId = getStringValue(toolCallChunk.id)
+    if (!toolCallId) return
+
+    const indexValue =
+      typeof toolCallChunk.index === "number"
+        ? toolCallChunk.index
+        : fallbackIndex
+
+    const pending = resolvePendingToolCallById(state, toolCallId)
+    if (pending) {
+      linkChunkIndexToPending(state, messageChunkId, indexValue, pending)
+    }
+  })
 }
 
 function getOrCreatePendingToolCall(options: {
@@ -329,7 +511,7 @@ function buildToolInputChunks(
     ? chunk.kwargs.tool_calls
     : []
 
-  // 处理完整的工具调用对象，初始化或更新待处理状态，并在必要时发出开始信号
+  // (1) 完整 tool_calls：登记 id/name，建立主工具与 chunkIndex 映射
   toolCalls.forEach((toolCall, arrayIndex) => {
     const toolCallId = getStringValue(toolCall.id)
     const toolName = getStringValue(toolCall.name)
@@ -364,19 +546,22 @@ function buildToolInputChunks(
         existingPending.toolName = toolName
       }
 
-      if (
-        !existingPending.sentInputStart &&
-        existingPending.toolName &&
-        existingPending.toolCallId
-      ) {
-        result.push({
-          type: "tool-input-start",
-          toolCallId: existingPending.toolCallId,
-          toolName: existingPending.toolName,
-        })
-        existingPending.sentInputStart = true
-        state.activeToolCallId = existingPending.toolCallId
+      if (existingPending.toolCallId && existingPending.toolName) {
+        rememberPrimaryToolCallForMessage(
+          state,
+          messageChunkId,
+          existingPending.toolCallId,
+          existingPending.toolName
+        )
+        linkChunkIndexToPending(
+          state,
+          messageChunkId,
+          arrayIndex,
+          existingPending
+        )
       }
+
+      emitToolInputStartIfReady(existingPending, state, result)
 
       return
     }
@@ -393,18 +578,17 @@ function buildToolInputChunks(
       toolName,
     })
 
-    if (!pending.sentInputStart && pending.toolCallId && pending.toolName) {
-      result.push({
-        type: "tool-input-start",
-        toolCallId: pending.toolCallId,
-        toolName: pending.toolName,
-      })
-      pending.sentInputStart = true
-      if (pending.toolCallId) {
-        state.activeToolCallId = pending.toolCallId
-      }
-    }
+    rememberPrimaryToolCallForMessage(
+      state,
+      messageChunkId,
+      pending.toolCallId,
+      pending.toolName
+    )
+    linkChunkIndexToPending(state, messageChunkId, arrayIndex, pending)
+    emitToolInputStartIfReady(pending, state, result)
   })
+
+  registerToolCallChunkIndexAliases(chunk, state, messageChunkId)
 
   const toolCallChunks = Array.isArray(chunk.kwargs?.tool_call_chunks)
     ? chunk.kwargs.tool_call_chunks
@@ -413,7 +597,7 @@ function buildToolInputChunks(
     ? chunk.kwargs.invalid_tool_calls
     : []
 
-  // 过滤出包含字符串类型参数的有效片段，若无有效片段则尝试从无效调用中获取作为后备
+  // (2)(3) 流式 args：优先 tool_call_chunks，否则回退 invalid_tool_calls
   const deltas = toolCallChunks.filter(
     (toolCallChunk) => typeof toolCallChunk.args === "string"
   )
@@ -445,17 +629,13 @@ function buildToolInputChunks(
         return
       }
 
-      // 查找或创建对应的待处理工具调用对象
-      const pending =
-        (toolCallId ? resolvePendingToolCallById(state, toolCallId) : null) ??
-        resolvePendingToolCallByChunkIndex(state, messageChunkId, indexValue) ??
-        getOrCreatePendingToolCall({
-          state,
-          messageChunkId,
-          index: indexValue,
-          toolCallId,
-          toolName,
-        })
+      const pending = resolvePendingForToolDelta({
+        state,
+        messageChunkId,
+        indexValue,
+        toolCallId,
+        toolName,
+      })
 
       if (!pending) {
         return
@@ -466,53 +646,22 @@ function buildToolInputChunks(
         state.toolCallKeysById.set(toolCallId, pending.key)
       }
 
-      state.toolCallKeysByChunkIndex.set(
-        getChunkIndexKey(messageChunkId, indexValue),
-        pending.key
-      )
+      linkChunkIndexToPending(state, messageChunkId, indexValue, pending)
 
       if (toolName && !pending.toolName) {
         pending.toolName = toolName
       }
 
-  const resolvedToolCallId = pending.toolCallId ?? pending.key
-  const resolvedToolName = pending.toolName ?? "unknown_tool"
-
-  if (pending.toolCallId && pending.toolName) {
-    state.toolNamesById.set(pending.toolCallId, pending.toolName)
-  }
-
-      // 如果尚未发送开始信号，且已具备必要信息，则发送工具输入开始事件
-      if (!pending.sentInputStart) {
-        result.push({
-          type: "tool-input-start",
-          toolCallId: resolvedToolCallId,
-          toolName: resolvedToolName,
-        })
-        pending.sentInputStart = true
+      if (pending.toolCallId && pending.toolName) {
+        rememberPrimaryToolCallForMessage(
+          state,
+          messageChunkId,
+          pending.toolCallId,
+          pending.toolName
+        )
       }
 
-      pending.inputText += inputTextDelta
-
-      // 发送工具输入增量事件
-      result.push({
-        type: "tool-input-delta",
-        toolCallId: resolvedToolCallId,
-        inputTextDelta,
-      })
-
-      // 尝试解析累积的输入文本，若解析成功且尚未发送可用信号，则发送工具输入可用事件
-      const parsedInput = tryParseToolInput(pending.inputText)
-      if (!pending.sentInputAvailable && parsedInput !== null) {
-        result.push({
-          type: "tool-input-available",
-          toolCallId: resolvedToolCallId,
-          toolName: resolvedToolName,
-          input: parsedInput,
-        })
-        pending.sentInputAvailable = true
-        state.activeToolCallId = resolvedToolCallId
-      }
+      appendToolInputDelta(pending, inputTextDelta, state, result)
     })
 
   return result
@@ -650,6 +799,7 @@ function unwrapStreamModePayload(payload: unknown): unknown {
   return payload
 }
 
+/** 将单条 LangGraph SSE data 解析为 0..n 个 UIMessageChunk（有状态，跨帧累积） */
 export function parseLangChainPayloadToChunks(options: {
   payload: unknown
   state: LangChainStreamParseState
@@ -766,3 +916,95 @@ function hasAnyToolDelta(chunk: AIMessageChunk): boolean {
 
   return hasCalls || hasDeltas || hasFallbackDeltas
 }
+
+/*
+ * ============================================================================
+ * ASCII 解析流程（LangGraph SSE → UIMessageChunk）
+ * ============================================================================
+ *
+ * 一、总入口 parseLangChainPayloadToChunks
+ *
+ *   SSE payload (v2: { type, data })
+ *        |
+ *        v
+ *   unwrapStreamModePayload  --> 仅 type=messages 的 data 数组继续
+ *        |
+ *        +-- payload[0] 是 ToolMessage? -----> buildToolOutputChunk
+ *        |                                      (最终 tool-output-available)
+ *        |
+ *        +-- payload[0] 是 AIMessageChunk?
+ *              |
+ *              +-- hasAnyToolDelta? --> buildToolInputChunks
+ *              |                        (tool-input-start/delta/available)
+ *              |
+ *              +-- kwargs.content 文本?
+ *                    |
+ *                    +-- langgraph_node=tools --> buildToolsNodeStreamingChunk
+ *                    |                            (preliminary stdout 累积)
+ *                    |
+ *                    +-- langgraph_node=model --> text-start / text-delta
+ *                                               (lc_source=summarization 可拆段)
+ *
+ *
+ * 二、状态机（state 关键 Map）
+ *
+ *   pendingToolCalls          key -> PendingToolCall（累积 inputText）
+ *   toolCallKeysById          toolCallId -> pending.key
+ *   toolCallKeysByChunkIndex  messageChunkId:index -> pending.key
+ *   primaryToolCallIdByMessageChunk
+ *                             messageChunkId -> 主 toolCallId（同流 args 归并）
+ *   toolNamesById             toolCallId -> toolName（tool_output 反查）
+ *   toolOutputAccumulators    toolCallId -> 流式 stdout 累积文本
+ *   activeToolCallId          当前归属 tools 节点输出的 call
+ *
+ *
+ * 三、buildToolInputChunks（工具参数流）
+ *
+ *   AIMessageChunk (同一 kwargs.id 可跨多帧 SSE)
+ *        |
+ *        |  (1) tool_calls[] 完整对象
+ *        v
+ *   forEach arrayIndex:
+ *        合并已有 pending（by id / by chunkIndex）
+ *        rememberPrimaryToolCall + linkChunkIndex
+ *        emitToolInputStartIfReady  （必须 id+name，无 unknown_tool）
+ *        |
+ *        |  (2) registerToolCallChunkIndexAliases
+ *        v
+ *   带 id 的 tool_call_chunks.index 绑定到 pending
+ *        |
+ *        |  (3) tool_call_chunks / invalid_tool_calls 的 args 字符串
+ *        v
+ *   resolvePendingForToolDelta:
+ *        by toolCallId --> by messageChunkId:index --> by primaryToolCallId
+ *        仍无 id/name --> return null（不建幽灵 pending）
+ *        |
+ *        v
+ *   appendToolInputDelta:
+ *        start（若尚未）-> delta -> JSON 可解析时 input-available
+ *
+ *   典型 DeepSeek 错位（已处理）:
+ *
+ *     帧 N   tool_calls[0]: name=ls, id=call_xxx     --> pending @ index 0
+ *     帧 N+1 tool_call_chunks index=1 args="{..."   --> 归并到 primary call_xxx
+ *     帧 N-1 噪声 index=0 args="0}"                  --> 丢弃（无 id/name）
+ *
+ *
+ * 四、工具输出两条路径
+ *
+ *   A) messages 里的 ToolMessage
+ *        buildToolOutputChunk --> tool-output-available（清除 accumulator）
+ *
+ *   B) artifact tool_output 事件（transport 层）
+ *        buildToolOutputStreamingChunk --> 按 tool_name 查 toolNamesById
+ *        --> preliminary tool-output-available
+ *
+ *
+ * 五、产出 chunk 与下游
+ *
+ *   UIMessageChunk[]  -->  useChat  -->  UIMessage.parts (tool-* / text)
+ *                              -->  message-classifier  -->  ToolGroupBlock 等 UI
+ *
+ * 详见：langchain-stream-parser-flow.md、messages/MESSAGE_RENDER_FLOW.md
+ * ============================================================================
+ */
