@@ -17,6 +17,7 @@ import { Switch } from "@workspace/ui/components/switch"
 import { useTheme } from "@/components/theme-provider"
 import { useOnboardingStore } from "@/stores/onboarding-store"
 import { ThemeCard } from "./theme-card"
+import { getElectronApi, isElectron } from "@/lib/electron/host"
 
 export function GeneralSettings() {
   const { theme, setTheme } = useTheme()
@@ -27,12 +28,13 @@ export function GeneralSettings() {
 
   React.useEffect(() => {
     const loadSettings = async () => {
-      if (window.electronApi?.isElectron) {
+      const api = getElectronApi()
+      if (isElectron() && api) {
         const [autoLaunchVal, autoUpdateVal, notificationsVal] =
           await Promise.all([
-            window.electronApi.getAutoLaunch(),
-            window.electronApi.getAutoUpdate(),
-            window.electronApi.getNotifications(),
+            api.getAutoLaunch(),
+            api.getAutoUpdate(),
+            api.getNotifications(),
           ])
         setAutoLaunch(autoLaunchVal)
         setAutoUpdate(autoUpdateVal)
@@ -44,22 +46,25 @@ export function GeneralSettings() {
 
   const handleAutoLaunchChange = async (checked: boolean) => {
     setAutoLaunch(checked)
-    if (window.electronApi?.isElectron) {
-      await window.electronApi.setAutoLaunch(checked)
+    const api = getElectronApi()
+    if (isElectron() && api) {
+      await api.setAutoLaunch(checked)
     }
   }
 
   const handleAutoUpdateChange = async (checked: boolean) => {
     setAutoUpdate(checked)
-    if (window.electronApi?.isElectron) {
-      await window.electronApi.setAutoUpdate(checked)
+    const api = getElectronApi()
+    if (isElectron() && api) {
+      await api.setAutoUpdate(checked)
     }
   }
 
   const handleNotificationsChange = async (checked: boolean) => {
     setNotifications(checked)
-    if (window.electronApi?.isElectron) {
-      await window.electronApi.setNotifications(checked)
+    const api = getElectronApi()
+    if (isElectron() && api) {
+      await api.setNotifications(checked)
     }
   }
 

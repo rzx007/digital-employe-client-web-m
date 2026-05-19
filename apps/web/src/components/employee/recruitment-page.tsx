@@ -19,6 +19,7 @@ import { CandidateCard } from "./candidate-card"
 import { HireSheet } from "./hire-sheet"
 import { useQueryClient } from "@tanstack/react-query"
 import { chatKeys } from "@/lib/query-keys/chat"
+import { getElectronApi, isElectron } from "@/lib/electron/host"
 
 const HOT_JOBS = [
   "数据分析师",
@@ -81,7 +82,7 @@ const DEMO_CANDIDATES: RecruitmentCandidate[] = [
 
 export function RecruitmentPage() {
   const navigate = useNavigate()
-  const isElectron = !!(typeof window !== "undefined" && window.electronApi)
+  const inElectron = isElectron()
   const [prompt, setPrompt] = React.useState("")
   const [count, setCount] = React.useState(1)
   const [candidates, setCandidates] = React.useState<RecruitmentCandidate[]>([])
@@ -123,14 +124,14 @@ export function RecruitmentPage() {
     setCandidates([])
     setHasSearched(false)
     queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
-    window.electronApi?.notifyHireSuccess?.()
+    getElectronApi()?.notifyHireSuccess?.()
   }
 
   // const displayCandidates = hasSearched ? candidates : DEMO_CANDIDATES
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      {!isElectron && (
+      {!inElectron && (
         <div className="flex shrink-0 items-center gap-3 border-b px-4 py-3">
           <Button
             variant="ghost"
@@ -143,7 +144,7 @@ export function RecruitmentPage() {
           <h1 className="text-lg font-semibold">招聘大厅</h1>
         </div>
       )}
-      {isElectron && (
+      {inElectron && (
         <div className="shrink-0 border-b px-4 py-3">
           <h1 className="text-lg font-semibold">招聘大厅</h1>
         </div>

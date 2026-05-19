@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { getElectronApi } from "@/lib/electron/host"
 
 interface OnboardingState {
   onboardingCompleted: boolean
@@ -14,8 +15,9 @@ interface OnboardingState {
 }
 
 async function readOnboardingCompleted(): Promise<boolean> {
-  if (window.electronApi?.getOnboardingCompleted) {
-    return await window.electronApi.getOnboardingCompleted()
+  const api = getElectronApi()
+  if (api?.getOnboardingCompleted) {
+    return await api.getOnboardingCompleted()
   }
   const raw = localStorage.getItem("onboarding-storage")
   if (raw) {
@@ -30,8 +32,9 @@ async function readOnboardingCompleted(): Promise<boolean> {
 }
 
 async function writeOnboardingCompleted(value: boolean): Promise<void> {
-  if (window.electronApi?.setOnboardingCompleted) {
-    await window.electronApi.setOnboardingCompleted(value)
+  const api = getElectronApi()
+  if (api?.setOnboardingCompleted) {
+    await api.setOnboardingCompleted(value)
   }
 }
 

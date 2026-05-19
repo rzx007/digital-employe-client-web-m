@@ -23,6 +23,7 @@ import { ChangePasswordForm } from "@/components/login/change-password-form"
 import { useEndpointStore } from "@/stores/endpoint-store"
 import { updateRequestBaseUrl } from "@/lib/request"
 import { getOAuthAuthorizeUrl } from "@/api/auth"
+import { getElectronApi, isElectron } from "@/lib/electron/host"
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -39,7 +40,7 @@ function LoginPage() {
   const [currentView, setCurrentView] = useState<LoginView>("login")
   const { login, loading, error, clearError, isAuthenticated } = useAuthStore()
   const navigate = useNavigate()
-  const isElectron = !!window.electronApi
+  const inElectron = isElectron()
 
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -61,18 +62,18 @@ function LoginPage() {
   }, [error, clearError])
 
   useEffect(() => {
-    if (!isElectron) return
-    const cleanup = window.electronApi?.onRegisterSuccess(
+    if (!inElectron) return
+    const cleanup = getElectronApi()?.onRegisterSuccess(
       (registeredUsername: string) => {
         setUsername(registeredUsername)
         setRegisterSuccessHint(true)
       },
     )
     return cleanup
-  }, [isElectron])
+  }, [inElectron])
 
   useEffect(() => {
-    if (isElectron) return
+    if (inElectron) return
     const handler = (e: StorageEvent) => {
       if (e.key === "register_success" && e.newValue) {
         setUsername(e.newValue)
@@ -82,7 +83,7 @@ function LoginPage() {
     }
     window.addEventListener("storage", handler)
     return () => window.removeEventListener("storage", handler)
-  }, [isElectron])
+  }, [inElectron])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -95,10 +96,10 @@ function LoginPage() {
   }
 
   useEffect(() => {
-    if (!isElectron && isAuthenticated) {
+    if (!inElectron && isAuthenticated) {
       navigate({ to: "/" })
     }
-  }, [isAuthenticated, isElectron, navigate])
+  }, [isAuthenticated, inElectron, navigate])
 
   const handleEndpointSaved = () => {
     const baseUrl = useEndpointStore.getState().getBaseUrl()
@@ -108,7 +109,7 @@ function LoginPage() {
 
   const handleChangePasswordSuccess = () => {
     setCurrentView("login")
-    if (!isElectron) {
+    if (!inElectron) {
       navigate({ to: "/" })
     }
   }
@@ -118,8 +119,8 @@ function LoginPage() {
   }
 
   const handleOpenRegister = () => {
-    if (isElectron) {
-      window.electronApi?.openRegister()
+    if (inElectron) {
+      getElectronApi()?.openRegister()
     } else {
       const width = 480
       const height = 700
@@ -162,19 +163,19 @@ function LoginPage() {
 
   const rootStyle: React.CSSProperties = {
     background: `url(${bgImage}) no-repeat 100% 0%, linear-gradient(180deg, #eaf0fd 1%, rgba(236, 242, 255, 0.74) 27%, rgba(255, 255, 255, 0) 83%)`,
-    ...(isElectron ? { WebkitAppRegion: "drag" } : {}),
+    ...(inElectron ? { WebkitAppRegion: "drag" } : {}),
   }
 
   return (
     <div
       className={cn(
         "relative w-screen overflow-hidden",
-        isElectron ? "h-screen" : "min-h-screen px-4 py-10 md:px-6",
+        inElectron ? "h-screen" : "min-h-screen px-4 py-10 md:px-6",
       )}
       style={rootStyle}
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
-        {isElectron && (
+        {inElectron && (
           <div
             className="pointer-events-auto absolute top-0 right-0 z-10 flex items-center"
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -195,7 +196,7 @@ function LoginPage() {
               type="button"
               title="关闭"
               className="p-2 text-gray-700 hover:bg-destructive hover:text-white"
-              onClick={() => window.electronApi?.quitApp()}
+              onClick={() => getElectronApi()?.quitApp()}
             >
               <IconX className="size-5" />
             </button>
@@ -205,7 +206,7 @@ function LoginPage() {
         <div
           className={cn(
             "pointer-events-auto select-none",
-            isElectron
+            inElectron
               ? "flex items-center px-4 pt-4"
               : "mx-auto flex w-full max-w-md items-center justify-center gap-2 pb-6",
           )}
@@ -214,7 +215,7 @@ function LoginPage() {
           <h1
             className={cn(
               "text-gray-800 tracking-wider",
-              isElectron
+              inElectron
                 ? "ml-2 text-base font-semibold"
                 : "text-xl font-semibold",
             )}
@@ -225,7 +226,7 @@ function LoginPage() {
       </div>
       <div
         className={cn(
-          isElectron
+          inElectron
             ? "flex h-full items-center justify-center px-6 pt-14"
             : "mx-auto flex min-h-screen w-full max-w-md items-center justify-center pt-24",
         )}
@@ -233,12 +234,12 @@ function LoginPage() {
         <div
           className={cn(
             "w-full",
-            isElectron
+            inElectron
               ? "max-w-sm"
               : "rounded-2xl border border-border/60 bg-background/90 p-6 shadow-sm backdrop-blur md:p-8",
           )}
           style={
-            isElectron
+            inElectron
               ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties)
               : undefined
           }
@@ -246,7 +247,7 @@ function LoginPage() {
           {currentView === "endpoint" ? (
             <EndpointConfig
               key={currentView}
-              isElectron={isElectron}
+              isElectron={inElectron}
               onCancel={() => setCurrentView("login")}
               onSaved={handleEndpointSaved}
             />
@@ -261,7 +262,7 @@ function LoginPage() {
                   transition={{ duration: 0.3, ease: "easeInOut" }}
                 >
                   <ChangePasswordForm
-                    isElectron={isElectron}
+                    isElectron={inElectron}
                     onSuccess={handleChangePasswordSuccess}
                     onCancel={handleChangePasswordCancel}
                   />
@@ -277,7 +278,7 @@ function LoginPage() {
                   <h3
                     className={cn(
                       "font-bold",
-                      isElectron ? "mb-6 text-xl" : "mb-8 text-2xl",
+                      inElectron ? "mb-6 text-xl" : "mb-8 text-2xl",
                     )}
                   >
                     欢迎回来
@@ -294,7 +295,7 @@ function LoginPage() {
                     onSubmit={handleSubmit}
                     className={cn(
                       "flex flex-col",
-                      isElectron ? "gap-4" : "gap-5",
+                      inElectron ? "gap-4" : "gap-5",
                     )}
                   >
                     <div className="flex flex-col gap-1.5">
@@ -379,7 +380,7 @@ function LoginPage() {
                     <Button
                       type="submit"
                       className="w-full"
-                      size={isElectron ? "lg" : "default"}
+                      size={inElectron ? "lg" : "default"}
                       disabled={loading || !username || !password}
                     >
                       {loading && (
@@ -421,7 +422,7 @@ function LoginPage() {
                   <div
                     className={cn(
                       "w-full text-center",
-                      isElectron ? "mt-2" : "mt-4",
+                      inElectron ? "mt-2" : "mt-4",
                     )}
                   >
                     <p className="mt-2 text-[11px] text-muted-foreground/50">

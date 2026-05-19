@@ -5,6 +5,7 @@ import {
   PET_DURATIONS,
   type PetState,
 } from "./animation/types"
+import { getElectronApi } from "@/lib/electron/host"
 
 export type PetMeta = {
   id: string
@@ -93,7 +94,7 @@ export function getSlugImage(slug: string): string | undefined {
  */
 export async function loadInstalledSkinList(): Promise<PetSkinInfo[]> {
   const bundled = listBundledSkins()
-  const api = window.electronApi
+  const api = getElectronApi()
 
   // 尝试通过 Electron API 获取额外的 Petdex 皮肤并合并结果
   if (api?.listPetdexSkins) {
@@ -120,7 +121,7 @@ export async function loadPetSkin(slug: string): Promise<PetSkin> {
   }
 
   // 2. Try Petdex ~/.codex/pets/ fallback
-  const api = window.electronApi
+  const api = getElectronApi()
   if (api?.getPetdexMeta) {
     const meta = await api.getPetdexMeta(slug)
     if (meta) {

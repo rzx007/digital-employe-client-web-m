@@ -1,3 +1,202 @@
+# Electron 架构
+
+## 目录
+
+```
+electron/
+├── core/           # bootstrap、AppContext、IpcRegistry、WindowManager
+├── features/       # 按域拆分 ipc.ts + preload-bridge.ts
+├── shared/         # ipc-channels 常量
+├── main/           # 窗口实现、backend、tray 等
+└── preload/        # exposeElectronAPI + electronApi 合并
+```
+
+## 架构图
+
+### 总览：主进程 / Preload / 渲染进程
+
+```mermaid
+flowchart TB
+  subgraph renderer [Renderer 渲染进程]
+    Host["src/lib/electron/host.ts"]
+    ReactApp["React SPA"]
+    ReactApp --> Host
+  end
+
+  subgraph preloadLayer [Preload 桥接]
+    PreloadIndex["preload/index.ts"]
+    ElectronApi["window.electronApi"]
+    ElectronToolkit["window.electron"]
+    PreloadIndex --> ElectronApi
+    PreloadIndex --> ElectronToolkit
+    Bridges["features/*/preload-bridge.ts"]
+    Channels["shared/ipc-channels.ts"]
+    Bridges --> Channels
+    Bridges --> ElectronApi
+  end
+
+  subgraph mainProcess [Main 主进程]
+    Index["main/index.ts"]
+    Bootstrap["core/bootstrap.ts"]
+    Registry["core/ipc/registry.ts"]
+    WM["WindowManager"]
+    Features["features/*/ipc.ts"]
+    MainModules["main/backend tray login ..."]
+
+    Index --> Bootstrap
+    Bootstrap --> Registry
+    Bootstrap --> WM
+    Registry --> Features
+    Features --> WM
+    Features --> MainModules
+    Index --> WM
+  end
+
+  Host -->|"getElectronApi invoke"| ElectronApi
+  ElectronApi -->|"ipcRenderer.invoke"| Registry
+  ElectronToolkit -.->|"安全 ipcRenderer"| Registry
+  Features --> MainModules
+```
+
+### 启动编排
+
+```mermaid
+sequenceDiagram
+  participant Index as main/index.ts
+  participant Boot as core/bootstrap.ts
+  participant Reg as IpcRegistry
+  participant BE as backend
+  participant WM as WindowManager
+
+  Index->>Index: bindElectronRuntime bindWindowManager
+  Index->>Boot: bootstrapApp
+  Boot->>Boot: initAuth initSettings
+  Boot->>Boot: registerPetdexProtocol
+  Boot->>Reg: register 8 feature contributions
+  Boot->>Boot: initAutoUpdater
+  Boot->>Boot: createSplashWindow
+  Boot->>BE: startBackend
+  alt hasToken
+    Boot->>Index: createMainWindow
+    Index->>WM: set main
+  else no token
+    Boot->>Boot: createLoginWindow
+    Boot->>WM: set login
+  end
+```
+
+### IPC 注册（Contribution 模式）
+
+```mermaid
+flowchart LR
+  subgraph contributions [features 内置模块]
+    Backend[backend]
+    WindowFeat[window]
+    Auth[auth]
+    Recruitment[recruitment]
+    NotifyTray[notification-tray]
+    Settings[settings]
+    Pet[pet]
+    Update[update]
+  end
+
+  Bootstrap["bootstrap.ts"] --> Registry["IpcRegistry"]
+  contributions -->|"register ctx"| Registry
+  Registry -->|"ipcMain.handle"| IPCMain["Electron ipcMain"]
+
+  subgraph ctx [AppContext]
+    Paths["runtime-paths"]
+    WMRef["windowManager"]
+    OnLogin["onLoginSuccess"]
+  end
+
+  ctx --> contributions
+```
+
+每个 feature 成对维护：
+
+| 主进程 | Preload |
+|--------|---------|
+| `features/foo/ipc.ts` | `features/foo/preload-bridge.ts` |
+| `IpcRegistry.register` | 合并进 `preload/electron-api.ts` |
+
+Channel 名称统一来自 [`shared/ipc-channels.ts`](shared/ipc-channels.ts)。
+
+### 窗口登记（WindowManager）
+
+```mermaid
+flowchart TB
+  WM["WindowManager singleton"]
+
+  WM --> MainWin["main 主窗口"]
+  WM --> LoginWin["login 登录"]
+  WM --> RegisterWin["register 注册"]
+  WM --> SettingsWin["settings 设置"]
+  WM --> RecruitWin["recruitment 招聘"]
+  WM --> PetWin["pet 桌面宠物"]
+  WM --> SplashWin["splash 启动屏"]
+
+  Runtime["core/runtime-paths.ts"] -->|"buildHashRouteUrl getPreloadPath"| LoginWin
+  Runtime --> SettingsWin
+  Runtime --> RecruitWin
+  Runtime --> PetWin
+  Runtime --> SplashWin
+```
+
+窗口类 IPC（最小化/关闭/最大化）通过 `ctx.windowManager.getMain()` 操作主窗，不再维护独立的 `mainWin` 模块变量。
+
+### 渲染层 API 访问路径
+
+```mermaid
+flowchart LR
+  Component["React 组件"] --> Host["host.ts"]
+  Host -->|"isElectron"| Check{桌面端?}
+  Check -->|是| Api["getElectronApi"]
+  Check -->|否| Web["走 Web 逻辑"]
+  Api --> ElectronApi["window.electronApi"]
+  ElectronApi --> PreloadBridge["preload-bridge"]
+  PreloadBridge --> Invoke["ipcRenderer.invoke"]
+  Invoke --> MainHandler["features/*/ipc.ts"]
+```
+
+### 与未来插件扩展的对应关系（规划）
+
+```mermaid
+flowchart TB
+  subgraph today [当前内置 Feature]
+    Builtin["features/auth backend ..."]
+    Builtin --> IpcContrib["IpcContribution"]
+    Builtin --> PreloadBridge2["preload-bridge"]
+  end
+
+  subgraph future [远期 Extension]
+    Manifest["digital-employee.extension.json"]
+    Loader["ExtensionLoader"]
+    Manifest --> Loader
+    Loader -->|"同接口 activate"| IpcContrib
+    Loader -->|"合并 bridge"| PreloadBridge2
+  end
+
+  IpcContrib --> Registry2["IpcRegistry"]
+```
+
+## 渲染进程访问 API
+
+请使用 [`src/lib/electron/host.ts`](../src/lib/electron/host.ts)：
+
+```typescript
+import { getElectronApi, isElectron } from "@/lib/electron/host"
+
+if (isElectron()) {
+  await getElectronApi()?.openSettings()
+}
+```
+
+- `window.electron` — `@electron-toolkit/preload` 提供的安全 ipcRenderer
+- `window.electronApi` — 业务 API（由 feature preload-bridge 合并）
+
+---
+
 # 自定义 electron-updater 服务
 
 对于 electron-updater，需要按照特定的格式组织更新文件。客户端 feed 由 `electron/main/update.ts` 解析为 `{REMOTE_API_BASE_URL}/win32` 或 `/macos`。

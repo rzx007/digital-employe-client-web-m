@@ -33,7 +33,7 @@ export function createMacApplicationMenu(): Menu {
           label: `退出 ${APP_DISPLAY_NAME}`,
           accelerator: "Command+Q",
           click: () => {
-            void import("./ipc-handlers").then(({ quitApp }) => {
+            void import("../core/services/lifecycle").then(({ quitApp }) => {
               quitApp()
             })
           },

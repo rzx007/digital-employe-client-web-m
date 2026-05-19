@@ -65,7 +65,11 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
                   rollupOptions: {
                     external: Object.keys(
                       "dependencies" in pkg ? pkg.dependencies : {}
-                    ).filter((dep) => dep !== "electron-store"),
+                    ).filter(
+                      (dep) =>
+                        dep !== "electron-store" &&
+                        dep !== "@electron-toolkit/preload",
+                    ),
                   },
                 },
               },

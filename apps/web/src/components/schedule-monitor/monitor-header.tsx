@@ -8,6 +8,7 @@ import {
 import { IconMaximize, IconMinimize } from "@tabler/icons-react"
 import type { Icon } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
+import { isElectron } from "@/lib/electron/host"
 
 export interface MonitorHeaderProps {
   title: string
@@ -60,7 +61,7 @@ export function MonitorHeader({
   onToggleFullscreen,
   isFullscreen,
 }: MonitorHeaderProps) {
-  const isElectron = !!(typeof window !== "undefined" && window.electronApi)
+  const inElectron = isElectron()
   return (
     <div
       className={cn("flex items-center gap-2 border-b bg-muted/50 px-4 py-3")}
@@ -70,7 +71,7 @@ export function MonitorHeader({
       </div>
 
       <div className="flex items-center gap-1">
-        {!isElectron && <MonitorAction
+        {!inElectron && <MonitorAction
           className="mr-4"
           icon={isFullscreen ? IconMinimize : IconMaximize}
           label={isFullscreen ? "退出全屏" : "全屏"}

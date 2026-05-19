@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, Tray, nativeImage } from "electron"
 import path from "node:path"
-import { setForceQuit, stopBackend } from "./ipc-handlers"
+import { setForceQuit } from "../core/services/lifecycle"
+import { stopBackend } from "./backend"
 import { createSettingsWindow } from "./settings"
 import { destroyPetWindow } from "./pet"
 import { hidePetIfWhenMainHiddenMode } from "./pet-main-sync"
@@ -16,7 +17,7 @@ import { hidePetIfWhenMainHiddenMode } from "./pet-main-sync"
  * - 退出时清理托盘资源
  *
  * 依赖：
- * - ipc-handlers.ts: setForceQuit / stopBackend（退出流程）
+ * - core/services/lifecycle: setForceQuit；backend: stopBackend（退出流程）
  */
 
 let tray: Tray | null = null

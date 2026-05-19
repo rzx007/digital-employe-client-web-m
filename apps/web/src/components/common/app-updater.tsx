@@ -9,11 +9,12 @@ import {
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { useAppUpdater } from "@/components/common/use-app-updater"
+import { isElectron } from "@/lib/electron/host"
 
 export function UpdatePill() {
   const { state, handleClick } = useAppUpdater({ autoCheck: true })
 
-  if (!window.electronApi?.isElectron) return null
+  if (!isElectron()) return null
 
   if (
     state.status === "idle" ||
@@ -72,7 +73,7 @@ export function UpdateButton() {
     },
   })
 
-  if (!window.electronApi?.isElectron) return null
+  if (!isElectron()) return null
 
   const getConfig = () => {
     switch (state.status) {

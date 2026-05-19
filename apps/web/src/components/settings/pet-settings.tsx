@@ -22,10 +22,11 @@ import { Separator } from "@workspace/ui/components/separator"
 import { Switch } from "@workspace/ui/components/switch"
 import { loadInstalledSkinList } from "@/components/pet/pet-loader"
 import type { PetVisibilityMode } from "./settings-types"
+import { getElectronApi, isElectron } from "@/lib/electron/host"
 
 export function PetSettings() {
-  const api = window.electronApi
-  const isElectron = Boolean(api?.isElectron)
+  const api = getElectronApi()
+  const inElectron = isElectron()
 
   const [petEnabled, setPetEnabled] = React.useState(true)
   const [petVisibilityMode, setPetVisibilityMode] =
@@ -43,7 +44,7 @@ export function PetSettings() {
   const [loaded, setLoaded] = React.useState(false)
 
   React.useEffect(() => {
-    if (!isElectron || !api) return
+    if (!inElectron || !api) return
     void (async () => {
       try {
         const s = await api.getPetSettings()
@@ -60,7 +61,7 @@ export function PetSettings() {
         setLoaded(true)
       }
     })()
-  }, [api, isElectron])
+  }, [api, inElectron])
 
   const persist = React.useCallback(
     async (partial: {
@@ -74,7 +75,7 @@ export function PetSettings() {
     [api],
   )
 
-  if (!isElectron) {
+  if (!inElectron) {
     return (
       <Card>
         <CardHeader>

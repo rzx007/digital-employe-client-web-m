@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
 import { Input } from "@workspace/ui/components/input"
+import { getElectronApi } from "@/lib/electron/host"
 
 interface RecentConversationsToolbarProps {
   searchQuery: string
@@ -52,8 +53,9 @@ export function RecentConversationsToolbar({
         <DropdownMenuContent align="end">
           <DropdownMenuItem
             onClick={async () => {
-              if (window.electronApi?.openRecruitment) {
-                await window.electronApi.openRecruitment()
+              const api = getElectronApi()
+              if (api?.openRecruitment) {
+                await api.openRecruitment()
               } else {
                 navigate({ to: "/recruitment" })
               }

@@ -1,4 +1,4 @@
-import { app, ipcMain, BrowserWindow } from "electron"
+import { app, BrowserWindow } from "electron"
 import { createRequire } from "node:module"
 import type { ProgressInfo, UpdateInfo } from "electron-updater"
 import { getSetting } from "./settings-store"
@@ -7,6 +7,7 @@ import { getBackendPort } from "./backend"
 const { autoUpdater } = createRequire(import.meta.url)("electron-updater")
 
 let downloadListenersCleanup: (() => void) | null = null
+let _updaterListenersRegistered = false
 
 /** generic 更新目录：win32/latest.yml；macos/latest-mac.yml（须含 .zip，不能仅 dmg） */
 function getPlatformPath(): string {
@@ -24,7 +25,7 @@ async function resolveUpdateFeedURL(): Promise<string | null> {
   try {
     const port = getBackendPort()
     const res = await fetch(
-      `http://localhost:${port}/config-kvs/REMOTE_API_BASE_URL`
+      `http://localhost:${port}/config-kvs/REMOTE_API_BASE_URL`,
     )
     if (!res.ok) return null
     const json = await res.json()
@@ -38,7 +39,7 @@ async function resolveUpdateFeedURL(): Promise<string | null> {
   return null
 }
 
-function sendToAll(channel: string, ...args: any[]) {
+function sendToAll(channel: string, ...args: unknown[]) {
   BrowserWindow.getAllWindows().forEach((win) => {
     if (!win.isDestroyed()) {
       win.webContents.send(channel, ...args)
@@ -51,7 +52,7 @@ export async function checkForUpdatesFromMenu(): Promise<unknown> {
   if (!app.isPackaged) {
     const feedUrl = await resolveUpdateFeedURL()
     const error = new Error(
-      `The update feature is only available after the package. feedUrl=${feedUrl}`
+      `The update feature is only available after the package. feedUrl=${feedUrl}`,
     )
     sendToAll("update-error", { message: error.message, error })
     return { message: error.message, error }
@@ -69,7 +70,21 @@ export async function checkForUpdatesFromMenu(): Promise<unknown> {
   }
 }
 
-export function update() {
+export function triggerDownloadUpdate(): void {
+  triggerDownload()
+}
+
+export function quitAndInstallUpdate(): void {
+  autoUpdater.quitAndInstall(false, true)
+}
+
+/**
+ * 初始化 autoUpdater 事件监听（仅一次）；IPC 由 features/update 经 IpcRegistry 注册
+ */
+export function initAutoUpdater(): void {
+  if (_updaterListenersRegistered) return
+  _updaterListenersRegistered = true
+
   autoUpdater.autoDownload = false
   autoUpdater.disableWebInstaller = false
   autoUpdater.allowDowngrade = false
@@ -101,16 +116,11 @@ export function update() {
       newVersion: arg?.version,
     })
   })
+}
 
-  ipcMain.handle("check-update", () => checkForUpdatesFromMenu())
-
-  ipcMain.handle("start-download", () => {
-    triggerDownload()
-  })
-
-  ipcMain.handle("quit-and-install", () => {
-    autoUpdater.quitAndInstall(false, true)
-  })
+/** @deprecated 使用 initAutoUpdater */
+export function update(): void {
+  initAutoUpdater()
 }
 
 function triggerDownload() {

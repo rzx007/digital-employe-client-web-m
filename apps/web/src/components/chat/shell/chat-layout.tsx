@@ -13,6 +13,7 @@ import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 import { useTaskExecutionNotifications } from "@/hooks/use-task-execution-notifications"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { modelKeys } from "@/lib/query-keys/model"
+import { getElectronApi } from "@/lib/electron/host"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useChatStore } from "@/stores/chat-store"
@@ -106,16 +107,18 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   }, [apiContacts, setContacts])
 
   useEffect(() => {
-    if (!window.electronApi?.onInvalidateContacts) return
-    const cleanup = window.electronApi.onInvalidateContacts(() => {
+    const api = getElectronApi()
+    if (!api?.onInvalidateContacts) return
+    const cleanup = api.onInvalidateContacts(() => {
       queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
     })
     return cleanup
   }, [queryClient])
 
   useEffect(() => {
-    if (!window.electronApi?.onInvalidateModelConfig) return
-    const cleanup = window.electronApi.onInvalidateModelConfig(() => {
+    const api = getElectronApi()
+    if (!api?.onInvalidateModelConfig) return
+    const cleanup = api.onInvalidateModelConfig(() => {
       queryClient.invalidateQueries({ queryKey: modelKeys.runtimeConfig() })
     })
     return cleanup

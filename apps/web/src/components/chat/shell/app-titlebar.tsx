@@ -8,13 +8,10 @@ import {
 import logoSvg from "@/assets/logo.png"
 import { UpdatePill } from "@/components/common/app-updater"
 import { cn } from "@workspace/ui/lib/utils"
+import { getElectronApi, isElectron } from "@/lib/electron/host"
 
 interface AppTitlebarProps {
   title?: string
-}
-
-function isElectron() {
-  return typeof window !== "undefined" && window.electronApi?.isElectron
 }
 
 export function AppTitlebar({ title = "数字员工" }: AppTitlebarProps) {
@@ -24,7 +21,7 @@ export function AppTitlebar({ title = "数字员工" }: AppTitlebarProps) {
   React.useEffect(() => {
     if (!isElectron()) return
 
-    void window.electronApi?.getPlatform().then((p) => {
+    void getElectronApi()?.getPlatform().then((p) => {
       setIsMac(!!p?.isMac)
     })
   }, [])
@@ -33,7 +30,7 @@ export function AppTitlebar({ title = "数字员工" }: AppTitlebarProps) {
     if (!isElectron()) return
 
     const checkStatus = async () => {
-      const result = await window.electronApi?.isMaximized()
+      const result = await getElectronApi()?.isMaximized()
       setIsMaximized(!!result)
     }
 
@@ -46,15 +43,16 @@ export function AppTitlebar({ title = "数字员工" }: AppTitlebarProps) {
 
   if (!isElectron()) return null
 
-  const handleMinimize = () => window.electronApi?.minimizeWindow()
+  const api = getElectronApi()
+  const handleMinimize = () => api?.minimizeWindow()
   const handleMaximize = () => {
-    window.electronApi?.maximizeWindow()
+    api?.maximizeWindow()
     setTimeout(async () => {
-      const result = await window.electronApi?.isMaximized()
+      const result = await api?.isMaximized()
       setIsMaximized(!!result)
     }, 100)
   }
-  const handleClose = () => window.electronApi?.closeWindow()
+  const handleClose = () => api?.closeWindow()
 
   return (
     <div

@@ -17,6 +17,7 @@ import {
 } from "./use-pet-voice-curator"
 import { loadPetSkin, type PetSkin } from "./pet-loader"
 import { getMyWorkspace } from "@/api/workspace"
+import { getElectronApi } from "@/lib/electron/host"
 import "./PetWindow.css"
 
 const PET_DISPLAY_SCALE = 0.55
@@ -45,7 +46,7 @@ export function PetWindow() {
   const [currentSkin, setCurrentSkin] = useState<PetSkin | null>(null)
 
   useEffect(() => {
-    const api = window.electronApi
+    const api = getElectronApi()
     if (!api?.getSelectedPetSlug) {
       void loadPetSkin("eve").then(setCurrentSkin).catch(console.error)
       return
@@ -56,7 +57,7 @@ export function PetWindow() {
   }, [])
 
   useEffect(() => {
-    const api = window.electronApi
+    const api = getElectronApi()
     if (!api?.onPetChanged) return
     const cleanup = api.onPetChanged((slug: string) => {
       loadPetSkin(slug).then(setCurrentSkin).catch(console.error)
@@ -147,7 +148,7 @@ export function PetWindow() {
 
   useEffect(() => {
     void (async () => {
-      const api = window.electronApi
+      const api = getElectronApi()
       if (!api) return
       const status = await api.getAuthStatus()
       if (status.token) {
@@ -336,7 +337,7 @@ function startWindowDragFromPoint(startPoint: {
   screenX: number
   screenY: number
 }) {
-  const api = window.electronApi
+  const api = getElectronApi()
   if (!api) return
 
   api.getPetPosition().then((startPosition) => {
