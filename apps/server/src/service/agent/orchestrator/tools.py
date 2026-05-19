@@ -8,7 +8,6 @@ from sqlalchemy import select
 from src.models.employee import Employee
 from src.models.employee_task import EmployeeTask
 from src.models.orchestration_plan import OrchestrationPlan
-from src.service.agent.tool_intent import drop_intent
 from src.service.agent.orchestrator.execution import execute_plan
 from src.service.agent.orchestrator.prompts import build_employee_capability_context
 from src.service.agent.orchestrator.runtime import (
@@ -19,29 +18,19 @@ from src.service.agent.orchestrator.runtime import (
 
 
 @tool
-def list_workspace_employees(intent: str | None = None) -> str:
-    """列出当前工作空间所有数字员工及其角色、技能、MCP 外接能力。在拆解任务前必须先调用此工具。
-
-    参数:
-      intent: 可选，界面展示用中文短句（20字内），如「查看团队可用成员」
-    """
-    drop_intent(intent)
+def list_workspace_employees() -> str:
+    """列出当前工作空间所有数字员工及其角色、技能、MCP 外接能力。在拆解任务前必须先调用此工具。"""
     db = get_db()
     workspace_id = get_workspace_id()
     return build_employee_capability_context(db, workspace_id)
 
 
 @tool
-def create_orchestration_plan(
-    summary: str,
-    tasks: str,
-    intent: str | None = None,
-) -> str:
+def create_orchestration_plan(summary: str, tasks: str) -> str:
     """创建任务编排计划。调用时机：确认任务拆解和员工分配无误后调用。
 
     参数:
       summary: 编排计划的中文描述
-      intent: 可选，界面展示用中文短句（20字内），如「生成多员工协作计划」
       tasks: JSON 数组字符串，每个元素格式:
         {{
           "employee_id": <int>,
@@ -54,7 +43,6 @@ def create_orchestration_plan(
           "depends_on": <int | null>
         }}
     """
-    drop_intent(intent)
     db = get_db()
     workspace_id = get_workspace_id()
     conversation_id = get_conversation_id()
@@ -140,15 +128,9 @@ def create_orchestration_plan(
 
 
 @tool
-def confirm_orchestration_plan(plan_id: int, intent: str | None = None) -> str:
+def confirm_orchestration_plan(plan_id: int) -> str:
     """用户确认编排计划后调用，开始执行所有子任务。
-    注意：此工具只有当用户明确说「确认」「开始执行」「没问题」「可以」等时才能调用。
-
-    参数:
-      plan_id: 编排计划 ID
-      intent: 可选，界面展示用中文短句（20字内），如「开始执行协作计划」
-    """
-    drop_intent(intent)
+    注意：此工具只有当用户明确说「确认」「开始执行」「没问题」「可以」等时才能调用。"""
     db = get_db()
     workspace_id = get_workspace_id()
 
@@ -169,14 +151,8 @@ def update_task(
     prompt: str | None = None,
     cron: str | None = None,
     employee_id: int | None = None,
-    intent: str | None = None,
 ) -> str:
-    """修改已存在的子任务。参数均可选，只更新传入的非 None 字段。
-
-    参数:
-      intent: 可选，界面展示用中文短句（20字内），如「调整子任务安排」
-    """
-    drop_intent(intent)
+    """修改已存在的子任务。参数均可选，只更新传入的非 None 字段。"""
     db = get_db()
     task = db.get(EmployeeTask, task_id)
     if not task:
@@ -212,13 +188,8 @@ def update_task(
 
 
 @tool
-def delete_task(task_id: int, intent: str | None = None) -> str:
-    """删除子任务（物理删除，关联的执行记录会保留但 task_id 置空）。
-
-    参数:
-      intent: 可选，界面展示用中文短句（20字内），如「移除不再需要的子任务」
-    """
-    drop_intent(intent)
+def delete_task(task_id: int) -> str:
+    """删除子任务（物理删除，关联的执行记录会保留但 task_id 置空）。"""
     db = get_db()
     task = db.get(EmployeeTask, task_id)
     if not task:
@@ -233,13 +204,8 @@ def delete_task(task_id: int, intent: str | None = None) -> str:
 
 
 @tool
-def cancel_plan(plan_id: int, intent: str | None = None) -> str:
-    """取消整个编排计划（设置 status=cancelled）。
-
-    参数:
-      intent: 可选，界面展示用中文短句（20字内），如「取消当前编排计划」
-    """
-    drop_intent(intent)
+def cancel_plan(plan_id: int) -> str:
+    """取消整个编排计划（设置 status=cancelled）。"""
     db = get_db()
     plan = db.get(OrchestrationPlan, plan_id)
     if not plan:
@@ -259,14 +225,8 @@ def list_tasks(
     plan_id: int | None = None,
     employee_id: int | None = None,
     limit: int = 20,
-    intent: str | None = None,
 ) -> str:
-    """查询任务列表。查询当前工作空间下的 EmployeeTask。
-
-    参数:
-      intent: 可选，界面展示用中文短句（20字内），如「查看任务执行进度」
-    """
-    drop_intent(intent)
+    """查询任务列表。查询当前工作空间下的 EmployeeTask。"""
     db = get_db()
     workspace_id = get_workspace_id()
 

@@ -30,19 +30,6 @@ register_harness_profile(
                 "intent 可选：20字内中文，写业务目的（如「验证示例代码输出」），"
                 "禁止出现文件名/路径/「执行」字样。"
             ),
-            "recruit_employee": (
-                "根据需求生成数字员工候选人。user_request 为招聘描述。"
-                "intent 可选：20字内中文，如「为客服岗筛选候选人」。"
-            ),
-            "hire_employee": (
-                "用户确认后录用候选人。intent 可选：20字内中文，如「录用选定的数字员工」。"
-            ),
-            "create_orchestration_plan": (
-                "创建多员工协作编排计划。intent 可选：20字内中文，如「生成多员工协作计划」。"
-            ),
-            "confirm_orchestration_plan": (
-                "用户确认后执行编排计划。intent 可选：20字内中文，如「开始执行协作计划」。"
-            ),
         },
     ),
 )

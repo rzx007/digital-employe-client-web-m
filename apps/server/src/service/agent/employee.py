@@ -76,20 +76,10 @@ def get_agent(
 
         def _make_session_search(emp_id: int):
             @tool
-            def session_search(
-                query: str,
-                limit: int = 5,
-                intent: str | None = None,
-            ) -> str:
-                """搜索历史对话记录。当你需要回忆之前讨论过的内容时使用。
-
-                参数:
-                  intent: 可选，界面展示用中文短句（20字内），如「检索过往讨论」
-                """
-                from src.service.agent.tool_intent import drop_intent
+            def session_search(query: str, limit: int = 5) -> str:
+                """搜索历史对话记录。当你需要回忆之前讨论过的内容时使用。"""
                 from src.service.session_search import session_search as _search
 
-                drop_intent(intent)
                 return _search(query=query, employee_id=emp_id, limit=limit)
 
             return session_search

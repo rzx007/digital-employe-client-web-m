@@ -58,7 +58,6 @@ def build_filesystem_prompt_section(
         - **intent 禁止出现**：脚本/文件名（含 .py .js .sh）、路径片段、「执行」「运行 xxx」、工具名 shell_execute
         - **intent 推荐写法**：结合用户任务与 write_todos 当前步骤，用动词短语（如「验证示例代码输出」「检查站点是否可访问」）
         - 对照：`command` 含 `hello.js` 时，`intent` 写「验证示例代码输出」✅，勿写「运行 hello.js」❌
-        - 自研工具（如 session_search）同样可传 **`intent`**，规则与上一致
         - 若 shell_execute 返回 exit code=0 但输出为空，先判断为命令可能是静默成功，不要立刻改用 python -c 重跑
 
         ### 用户可见产物（/artifacts/）

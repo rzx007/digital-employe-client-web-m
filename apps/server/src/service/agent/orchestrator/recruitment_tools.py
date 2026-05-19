@@ -4,7 +4,6 @@ import json
 
 from langchain_core.tools import tool
 
-from src.service.agent.tool_intent import drop_intent
 from src.service.agent.orchestrator.recruitment import hire_candidate, recruit_candidates
 from src.service.agent.orchestrator.runtime import (
     get_auth_token,
@@ -14,11 +13,7 @@ from src.service.agent.orchestrator.runtime import (
 
 
 @tool
-def recruit_employee(
-    user_request: str,
-    count: int = 1,
-    intent: str | None = None,
-) -> str:
+def recruit_employee(user_request: str, count: int = 1) -> str:
     """根据用户的招聘需求生成数字员工候选人列表。
 
     在用户提出招聘、扩充团队、新增某类岗位时使用。调用后向用户展示候选人，
@@ -27,9 +22,7 @@ def recruit_employee(
     参数:
       user_request: 招聘需求描述（岗位、能力、场景等）
       count: 生成候选人数量，1-5，默认 1
-      intent: 可选，界面展示用中文短句（20字内），如「为客服岗筛选候选人」
     """
-    drop_intent(intent)
     workspace_id = get_workspace_id()
     token = get_auth_token()
     return recruit_candidates(
@@ -41,12 +34,7 @@ def recruit_employee(
 
 
 @tool
-def hire_employee(
-    name: str,
-    description: str,
-    skill_ids: str,
-    intent: str | None = None,
-) -> str:
+def hire_employee(name: str, description: str, skill_ids: str) -> str:
     """用户确认录用后，将候选人创建为正式数字员工。
 
     仅在用户明确表示录用（如「录用第1个」「就要这个名字」）后调用。
@@ -56,9 +44,7 @@ def hire_employee(
       name: 员工名称
       description: 员工能力描述
       skill_ids: JSON 数组字符串，例如 "[-101, -102]" 或 "[1, 2]"
-      intent: 可选，界面展示用中文短句（20字内），如「录用选定的数字员工」
     """
-    drop_intent(intent)
     db = get_db()
     workspace_id = get_workspace_id()
     token = get_auth_token()

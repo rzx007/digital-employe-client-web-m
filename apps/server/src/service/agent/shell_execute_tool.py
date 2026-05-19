@@ -8,8 +8,9 @@ from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import BaseModel, Field
 
 from deepagents.backends.protocol import ExecuteResponse
-from src.service.agent.tool_intent import INTENT_MAX_LENGTH
 from src.service.skill_shell_backend import SkillAwareShellBackend
+
+INTENT_MAX_LENGTH = 20
 
 
 def format_execute_response(response: ExecuteResponse) -> str:
