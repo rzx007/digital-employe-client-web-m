@@ -48,7 +48,9 @@
           return
         }
         const ctx = await window.extension.getContext()
-        log({ ctx, hint: "在设置页点「发送测试事件」可收到 onHostEvent" })
+        const methods = await window.extension.listInvokeMethods()
+        log({ ctx, invokeMethods: methods })
+        log({ hint: "在设置页点「发送测试事件」可收到 onHostEvent" })
 
         window.extension.onHostEvent((e) => {
           log({ hostEvent: e })

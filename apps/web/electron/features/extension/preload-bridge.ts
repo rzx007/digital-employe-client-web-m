@@ -37,4 +37,6 @@ export const extensionBridge = {
     ) as Promise<ExtensionContextPayload>,
   emitExtensionHostEvent: (type: string, payload?: unknown) =>
     invokeExtensionHost(ExtensionHostIpcChannels.emitEvent, type, payload),
+  installExtensionFromZip: () =>
+    invokeExtensionHost(ExtensionHostIpcChannels.installFromZip),
 }

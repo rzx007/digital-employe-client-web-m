@@ -24,6 +24,10 @@ const ExtensionServiceReadySchema = z.discriminatedUnion("type", [
   }),
 ])
 
+export const ExtensionNetworkManifestSchema = z.object({
+  allowlist: z.array(z.string().min(1)).min(1),
+})
+
 export const ExtensionServiceManifestSchema = z.object({
   command: z.array(z.string()).min(1),
   cwd: z.string().default("."),
@@ -33,6 +37,8 @@ export const ExtensionServiceManifestSchema = z.object({
   envPortKey: z.string().min(1).default("PORT"),
   ready: ExtensionServiceReadySchema,
   bundledBinary: z.string().optional(),
+  /** headless 接收宿主 POST 事件的路径，默认 /_digital-employee/host-events */
+  hostEventsPath: z.string().min(1).optional(),
 })
 
 export const ExtensionManifestSchema = z
@@ -51,9 +57,11 @@ export const ExtensionManifestSchema = z
           "host.storage",
           "host.backend.read",
           "host.events",
+          "host.network",
         ]),
       )
       .default([]),
+    network: ExtensionNetworkManifestSchema.optional(),
     ui: ExtensionUiSchema.optional(),
     service: ExtensionServiceManifestSchema.optional(),
   })

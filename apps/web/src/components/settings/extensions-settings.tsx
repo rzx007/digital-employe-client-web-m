@@ -1,5 +1,5 @@
 import * as React from "react"
-import { IconPlug, IconExternalLink } from "@tabler/icons-react"
+import { IconPlug, IconExternalLink, IconPackageImport } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import {
   Card,
@@ -67,6 +67,21 @@ export function ExtensionsSettings() {
     })
   }
 
+  const handleInstall = async () => {
+    const result = await withElectronApi((api) => api.installExtensionFromZip(), {
+      onError: (error) => {
+        const message = error instanceof Error ? error.message : "安装失败"
+        if (message !== "Install cancelled") {
+          toast.error(message)
+        }
+      },
+    })
+    if (result?.extensionId) {
+      toast.success(`已安装插件：${result.extensionId}`)
+      void refresh()
+    }
+  }
+
   if (!isElectron()) {
     return (
       <Card>
@@ -83,14 +98,23 @@ export function ExtensionsSettings() {
       <div>
         <h1 className="text-2xl font-semibold">插件</h1>
         <p className="text-muted-foreground text-sm">
-          将插件目录解压到{" "}
+          将插件 zip 安装到扩展目录，或手动解压到{" "}
           <code className="text-xs">
             ~/.digital-employee/extensions/&lt;id&gt;/
           </code>
-          ，内含{" "}
+          。manifest 为{" "}
           <code className="text-xs">digital-employee.extension.json</code>
-          ；可有独立 UI、本地服务，或二者组合。
+          ；可有独立 UI、本地服务，或二者组合。五期 zip 安装暂不验签，请仅安装来源可信的包。
         </p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-3"
+          onClick={() => void handleInstall()}
+        >
+          <IconPackageImport className="size-4" />
+          从 zip 安装…
+        </Button>
       </div>
 
       <Card>
@@ -165,7 +189,8 @@ export function ExtensionsSettings() {
           <div className="border-border mt-6 rounded-lg border p-4">
             <p className="text-sm font-medium">宿主事件（调试）</p>
             <p className="text-muted-foreground mt-1 text-xs">
-              向已打开且含 host.events 的插件窗推送测试事件。
+              向已打开且含 host.events 的插件窗推送测试事件；headless
+              插件会在 service 运行中收到 POST。
             </p>
             <Button
               variant="secondary"

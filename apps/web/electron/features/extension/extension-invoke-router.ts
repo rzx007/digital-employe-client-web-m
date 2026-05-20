@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { getBackendPort } from "../backend/backend-process"
+import { getBackendPort, getBackendStatus } from "../backend/backend-process"
 import { sendNotification } from "../notification-tray/notification"
 import { showMainWindow } from "../notification-tray/tray"
 import { getWindowManager } from "../../core/services/window-registry"
@@ -67,6 +67,27 @@ export async function dispatchExtensionInvoke(
     }
     case "backend.getPort": {
       return { port: getBackendPort() }
+    }
+    case "backend.health": {
+      const status = getBackendStatus()
+      let healthy = false
+      if (status.ready && status.running) {
+        try {
+          const response = await fetch(
+            `http://127.0.0.1:${status.port}/health`,
+            { signal: AbortSignal.timeout(3_000) },
+          )
+          healthy = response.ok
+        } catch {
+          healthy = false
+        }
+      }
+      return {
+        ready: status.ready,
+        running: status.running,
+        port: status.port,
+        healthy,
+      }
     }
     default:
       throw new Error(`Unhandled extension.invoke method: ${method}`)

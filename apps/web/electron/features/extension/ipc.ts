@@ -1,13 +1,17 @@
-import { BrowserWindow, type IpcMainInvokeEvent } from "electron"
+import { BrowserWindow, dialog, type IpcMainInvokeEvent } from "electron"
 import {
   ExtensionHostIpcChannels,
   ExtensionPluginIpcChannels,
 } from "../../shared/extension-ipc-channels"
 import type { AppContext } from "../../core/app-context"
 import type { IpcContribution } from "../../core/ipc/types"
+import { getWindowManager } from "../../core/services/window-registry"
 import { buildExtensionContext } from "./extension-context"
 import { emitHostEvent } from "./extension-host-events"
+import { proxyExtensionFetch } from "./extension-fetch-proxy"
+import { installExtensionFromZip } from "./extension-installer"
 import { dispatchExtensionInvoke } from "./extension-invoke-router"
+import { listExtensionInvokeMethods } from "./extension-permissions"
 import {
   activateExtension,
   deactivateExtension,
@@ -27,6 +31,18 @@ function resolveExtensionIdFromEvent(
   event: IpcMainInvokeEvent,
 ): string | undefined {
   return getExtensionIdForWebContents(event.sender)
+}
+
+function assertMainWindowCaller(event: IpcMainInvokeEvent): void {
+  const main = getWindowManager().getMain()
+  if (!main || main.isDestroyed()) {
+    throw new Error("Main window is not available")
+  }
+  if (event.sender.id !== main.webContents.id) {
+    throw new Error(
+      "This host API is restricted to the main application window",
+    )
+  }
 }
 
 function buildContextForExtensionId(extensionId: string) {
@@ -78,7 +94,8 @@ export const extensionIpcContribution: IpcContribution = {
       },
       {
         channel: ExtensionHostIpcChannels.getContext,
-        handler: (_event, extensionId: string) => {
+        handler: (event, extensionId: string) => {
+          assertMainWindowCaller(event)
           return buildContextForExtensionId(extensionId)
         },
       },
@@ -86,6 +103,25 @@ export const extensionIpcContribution: IpcContribution = {
         channel: ExtensionHostIpcChannels.emitEvent,
         handler: (_event, type: string, payload?: unknown) => {
           emitHostEvent(type, payload)
+        },
+      },
+      {
+        channel: ExtensionHostIpcChannels.installFromZip,
+        handler: async (event) => {
+          assertMainWindowCaller(event)
+          const parent = BrowserWindow.fromWebContents(event.sender)
+          if (!parent || parent.isDestroyed()) {
+            throw new Error("Main window is not available")
+          }
+          const result = await dialog.showOpenDialog(parent, {
+            title: "安装插件",
+            filters: [{ name: "Extension Zip", extensions: ["zip"] }],
+            properties: ["openFile"],
+          })
+          if (result.canceled || result.filePaths.length === 0) {
+            throw new Error("Install cancelled")
+          }
+          return installExtensionFromZip(result.filePaths[0]!)
         },
       },
       {
@@ -124,6 +160,26 @@ export const extensionIpcContribution: IpcContribution = {
           const manifest = getExtensionManifest(id)
           if (!manifest) throw new Error(`Extension not found: ${id}`)
           return dispatchExtensionInvoke(id, manifest, method, payload)
+        },
+      },
+      {
+        channel: ExtensionPluginIpcChannels.listInvokeMethods,
+        handler: (event) => {
+          const id = resolveExtensionIdFromEvent(event)
+          if (!id) throw new Error("Not an extension window")
+          const manifest = getExtensionManifest(id)
+          if (!manifest) throw new Error(`Extension not found: ${id}`)
+          return listExtensionInvokeMethods(manifest)
+        },
+      },
+      {
+        channel: ExtensionPluginIpcChannels.fetch,
+        handler: async (event, input: string, init?: unknown) => {
+          const id = resolveExtensionIdFromEvent(event)
+          if (!id) throw new Error("Not an extension window")
+          const manifest = getExtensionManifest(id)
+          if (!manifest) throw new Error(`Extension not found: ${id}`)
+          return proxyExtensionFetch(manifest, input, init)
         },
       },
     ]

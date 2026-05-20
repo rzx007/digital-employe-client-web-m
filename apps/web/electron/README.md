@@ -298,14 +298,31 @@ Channel 约定见 [`shared/extension-ipc-channels.ts`](shared/extension-ipc-chan
 | 能力 | API |
 |------|-----|
 | 插件调宿主 | `window.extension.invoke(method, payload)`，需 manifest `permissions` |
+| 列举 invoke | `window.extension.listInvokeMethods()` → `{ method, permission, allowed }[]` |
 | 宿主读上下文 | `electronApi.getExtensionContext(extensionId)`（headless 无窗可用） |
 | 宿主推事件 | `electronApi.emitExtensionHostEvent(type, payload)` → 已开窗且含 `host.events` 的插件 `onHostEvent` |
 
-invoke 方法：`notification.show`、`window.focusMain`、`storage.get` / `storage.set`、`backend.getPort`（见 [`extension-permissions.ts`](features/extension/extension-permissions.ts)）。
+invoke 方法：`notification.show`、`window.focusMain`、`storage.get` / `storage.set`、`backend.getPort`、`backend.health`（见 [`extension-permissions.ts`](features/extension/extension-permissions.ts)）。插件内可调用 `await extension.listInvokeMethods()` 获取完整方法表及当前 manifest 是否 `allowed`。
 
 示例：[`examples/extension-demo-invoke`](../../../examples/extension-demo-invoke)。
 
 **权限**：`permissions` 含 `auth.read` 时 `getContext()` 才返回 `authToken`；`getContext().permissions` 返回已声明列表。
+
+#### 五期：fetch 代理 / zip 安装 / headless 事件 / backend.health
+
+| 能力 | API / 行为 |
+|------|------------|
+| 受控出网 | `window.extension.fetch(url, init?)`，需 `host.network` + manifest `network.allowlist` |
+| zip 安装 | 设置页 `electronApi.installExtensionFromZip()`（**无 Ed25519**，仅安装可信来源） |
+| headless 事件 | `emitExtensionHostEvent` 同时 POST 到 `serviceBaseUrl` + `hostEventsPath`（默认 `/_digital-employee/host-events`） |
+| 后端健康 | `invoke('backend.health')` → `{ ready, running, port, healthy }` |
+| get-context 加固 | `ext:host:get-context` 仅主应用主窗可调用 |
+
+**fetch 安全**：主进程校验 allowlist、拒绝内网 SSRF（dev 下 localhost 例外）；响应 MVP 仅 text，上限 5MB。
+
+**zip 安装**：解压 → manifest 校验 → id 冲突拒绝 → 写入 `extensions/<id>/`；防 zip slip。
+
+示例：[`examples/extension-demo-fetch`](../../../examples/extension-demo-fetch)；headless 收事件见 [`extension-demo-headless`](../../../examples/extension-demo-headless)（需 `host.events`）。
 
 ## 错误边界与日志
 

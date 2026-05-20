@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Extension fetch demo</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        padding: 1.5rem;
+        max-width: 640px;
+      }
+      pre {
+        background: #f4f4f5;
+        padding: 0.75rem;
+        overflow: auto;
+        font-size: 12px;
+      }
+      button {
+        margin-right: 0.5rem;
+        margin-top: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>extension.fetch 示例</h1>
+    <p>allowlist: <code>jsonplaceholder.typicode.com</code></p>
+    <button id="fetch-ok">合法请求</button>
+    <button id="fetch-block">被拦截（evil.com）</button>
+    <pre id="log"></pre>
+    <script>
+      const logEl = document.getElementById("log")
+      function log(value) {
+        logEl.textContent =
+          typeof value === "string" ? value : JSON.stringify(value, null, 2)
+      }
+
+      document.getElementById("fetch-ok").addEventListener("click", () => {
+        void window.extension
+          ?.fetch("https://jsonplaceholder.typicode.com/todos/1")
+          .then((res) => log(res))
+          .catch((err) => log(String(err)))
+      })
+
+      document.getElementById("fetch-block").addEventListener("click", () => {
+        void window.extension
+          ?.fetch("https://evil.com/")
+          .then((res) => log(res))
+          .catch((err) => log(String(err)))
+      })
+
+      void window.extension?.getContext().then((ctx) => log({ ctx }))
+    </script>
+  </body>
+</html>

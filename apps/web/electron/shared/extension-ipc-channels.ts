@@ -12,6 +12,7 @@ export const ExtensionHostIpcChannels = {
   setEnabled: "ext:host:set-enabled",
   getContext: "ext:host:get-context",
   emitEvent: "ext:host:emit-event",
+  installFromZip: "ext:host:install-from-zip",
 } as const
 
 /** 插件窗：extension-preload */
@@ -20,6 +21,8 @@ export const ExtensionPluginIpcChannels = {
   getContext: "ext:plugin:get-context",
   closeWindow: "ext:plugin:close-window",
   invoke: "ext:plugin:invoke",
+  listInvokeMethods: "ext:plugin:list-invoke-methods",
+  fetch: "ext:plugin:fetch",
 } as const
 
 /** 主进程 → 插件窗 push（非 invoke） */
@@ -59,12 +62,31 @@ export interface ExtensionHostEventEnvelope {
   timestamp: number
 }
 
+export interface ExtensionFetchInit {
+  method?: string
+  headers?: Record<string, string>
+  body?: string
+}
+
+export interface ExtensionFetchResponse {
+  ok: boolean
+  status: number
+  headers: Record<string, string>
+  body: string
+}
+
+export interface ExtensionInvokeMethodDescriptor {
+  method: string
+  permission: string
+  allowed: boolean
+}
+
 /**
  * extension.invoke 方法（需在 manifest permissions 中声明对应项）
  * - notification.show → host.notification
  * - window.focusMain → host.window.main
  * - storage.get / storage.set → host.storage
- * - backend.getPort → host.backend.read
+ * - backend.getPort / backend.health → host.backend.read
  */
 export type ExtensionInvokeMethod =
   | "notification.show"
@@ -72,6 +94,7 @@ export type ExtensionInvokeMethod =
   | "storage.get"
   | "storage.set"
   | "backend.getPort"
+  | "backend.health"
 
 export interface ExtensionHostInvokeMap {
   [ExtensionHostIpcChannels.list]: { args: []; result: ExtensionListItem[] }
@@ -89,6 +112,10 @@ export interface ExtensionHostInvokeMap {
     args: [type: string, payload?: unknown]
     result: void
   }
+  [ExtensionHostIpcChannels.installFromZip]: {
+    args: []
+    result: { extensionId: string }
+  }
 }
 
 export interface ExtensionPluginInvokeMap {
@@ -101,6 +128,14 @@ export interface ExtensionPluginInvokeMap {
   [ExtensionPluginIpcChannels.invoke]: {
     args: [method: string, payload?: unknown]
     result: unknown
+  }
+  [ExtensionPluginIpcChannels.listInvokeMethods]: {
+    args: []
+    result: ExtensionInvokeMethodDescriptor[]
+  }
+  [ExtensionPluginIpcChannels.fetch]: {
+    args: [input: string, init?: ExtensionFetchInit]
+    result: ExtensionFetchResponse
   }
 }
 

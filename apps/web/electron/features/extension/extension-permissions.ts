@@ -8,6 +8,7 @@ export const ExtensionPermission = {
   hostStorage: "host.storage",
   hostBackendRead: "host.backend.read",
   hostEvents: "host.events",
+  hostNetwork: "host.network",
 } as const
 
 export type ExtensionPermissionValue =
@@ -23,6 +24,7 @@ export const EXTENSION_INVOKE_METHOD_PERMISSIONS: Record<
   "storage.get": ExtensionPermission.hostStorage,
   "storage.set": ExtensionPermission.hostStorage,
   "backend.getPort": ExtensionPermission.hostBackendRead,
+  "backend.health": ExtensionPermission.hostBackendRead,
 }
 
 export function assertExtensionPermission(
@@ -45,4 +47,24 @@ export function assertInvokeMethodAllowed(
     throw new Error(`Unknown extension.invoke method: ${method}`)
   }
   assertExtensionPermission(manifest, required)
+}
+
+export interface ExtensionInvokeMethodDescriptor {
+  method: string
+  permission: ExtensionPermissionValue
+  /** 当前插件 manifest 是否已声明对应 permission */
+  allowed: boolean
+}
+
+/** 列出宿主支持的 invoke 方法（开发时用于发现 API） */
+export function listExtensionInvokeMethods(
+  manifest: Pick<ExtensionManifest, "permissions">,
+): ExtensionInvokeMethodDescriptor[] {
+  return Object.entries(EXTENSION_INVOKE_METHOD_PERMISSIONS).map(
+    ([method, permission]) => ({
+      method,
+      permission,
+      allowed: manifest.permissions.includes(permission),
+    }),
+  )
 }
