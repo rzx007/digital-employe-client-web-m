@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "agent-browser": {
+      "source": "vercel-labs/agent-browser",
+      "sourceType": "github",
+      "skillPath": "skills/agent-browser/SKILL.md",
+      "computedHash": "69ce2932d46901fc0cc0e6244055b51e7325d806604eedf89093d50c2041a575"
+    },
     "impeccable": {
       "source": "pbakaus/impeccable",
       "sourceType": "github",

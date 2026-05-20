@@ -15,6 +15,7 @@ import {
 } from "./langchain-stream-parser"
 import {
   sseEventSchema,
+  type ToolOutputData,
 } from "./langchain-sse-schema"
 import { ERROR_MARKER } from "./message-classifier"
 const useMock =
@@ -402,12 +403,8 @@ export class LangChainChatTransport<
               (event as { type: string }).type === "tool_output" &&
               "data" in event
             ) {
-              const toolOutputData = (event as { data: unknown }).data as {
-                tool_name: string
-                chunk: string
-                chunk_seq: number
-                stream: string
-              }
+              const toolOutputData = (event as { data: unknown })
+                .data as ToolOutputData
               if (toolOutputData && typeof toolOutputData === "object") {
                 flushSync()
                 closeTextPhaseIfNeeded(state).forEach((chunk) =>
