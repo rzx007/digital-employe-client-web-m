@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import shlex
 import subprocess
@@ -10,6 +11,8 @@ from typing import Callable
 
 from deepagents.backends import LocalShellBackend
 from deepagents.backends.protocol import ExecuteResponse
+
+logger = logging.getLogger(__name__)
 
 
 class SkillAwareShellBackend(LocalShellBackend):
@@ -85,11 +88,21 @@ class SkillAwareShellBackend(LocalShellBackend):
     def _get_stream_writer(self) -> Callable[[dict], None]:
         try:
             from langgraph.config import get_stream_writer
-            return get_stream_writer()
-        except Exception:
+            writer = get_stream_writer()
+            if writer is None:
+                logger.warning("[shell] get_stream_writer() returned None")
+            return writer
+        except Exception as e:
+            logger.warning("[shell] get_stream_writer() failed: %s", e)
             return lambda _: None
 
-    async def aexecute(self, command: str, *, timeout: int | None = None):
+    async def aexecute(
+        self,
+        command: str,
+        *,
+        timeout: int | None = None,
+        tool_call_id: str | None = None,
+    ):
         rewritten = self._rewrite_command_virtual_paths(command)
         effective_timeout = timeout if timeout is not None else self._default_timeout
         if effective_timeout <= 0:
@@ -133,6 +146,7 @@ class SkillAwareShellBackend(LocalShellBackend):
                 last_size = 0
                 partial_line = b''
                 file_truncated = False
+                read_fail_count = 0
 
                 while True:
                     if proc.poll() is not None:   # 子进程已退出
@@ -142,6 +156,14 @@ class SkillAwareShellBackend(LocalShellBackend):
 
                     time.sleep(_POLL_SECONDS)
 
+                    # 预检：文件是否有新数据，减少无效 open
+                    try:
+                        if os.path.getsize(_tmp_path) <= last_size:
+                            read_fail_count = 0
+                            continue
+                    except OSError:
+                        pass
+
                     # 读取临时文件尾部增量（分块读，64KB / chunk）
                     try:
                         with open(_tmp_path, 'rb') as f:
@@ -150,16 +172,28 @@ class SkillAwareShellBackend(LocalShellBackend):
                                 chunk = f.read(_READ_CHUNK)
                                 if not chunk:
                                     break
+                                last_size += len(chunk)
                                 data = partial_line + chunk
                                 *complete_lines, partial_line = data.split(b'\n')
                                 for line_bytes in complete_lines:
                                     line = self._decode_output_bytes(line_bytes).rstrip("\r\n")
                                     loop.call_soon_threadsafe(queue.put_nowait, line)
-                            last_size = f.tell()
-                            if last_size > _MAX_TMPFILE_BYTES:
-                                file_truncated = True
-                                break
-                    except Exception:
+                        read_fail_count = 0
+                        if last_size > _MAX_TMPFILE_BYTES:
+                            file_truncated = True
+                            break
+                    except Exception as e:
+                        read_fail_count += 1
+                        logger.warning(
+                            "[shell] tmpfile read error at offset %d (fail #%d): %s",
+                            last_size, read_fail_count, e,
+                        )
+                        if read_fail_count >= 10:
+                            logger.error(
+                                "[shell] tmpfile read failed %d times consecutively, aborting",
+                                read_fail_count,
+                            )
+                            break
                         continue
 
                     if file_truncated:
@@ -183,7 +217,9 @@ class SkillAwareShellBackend(LocalShellBackend):
                 try:
                     os.unlink(_tmp_path)
                 except Exception:
-                    pass
+                    logger.warning(
+                        "[shell] failed to delete tmpfile %s", _tmp_path, exc_info=True
+                    )
             return proc.returncode
 
         future = loop.run_in_executor(None, _read_lines_sync)
@@ -201,14 +237,17 @@ class SkillAwareShellBackend(LocalShellBackend):
         def _emit_batch():
             nonlocal _last_batch_emit
             for chunk_line, chunk_seq in _batch:
+                payload: dict = {
+                    "tool_name": "shell_execute",
+                    "chunk": chunk_line,
+                    "chunk_seq": chunk_seq,
+                    "stream": "stdout",
+                }
+                if tool_call_id:
+                    payload["tool_call_id"] = tool_call_id
                 stream_writer({
                     "type": "tool_output",
-                    "data": {
-                        "tool_name": "shell_execute",
-                        "chunk": chunk_line,
-                        "chunk_seq": chunk_seq,
-                        "stream": "stdout",
-                    },
+                    "data": payload,
                 })
             _batch.clear()
             _last_batch_emit = time.monotonic()
