@@ -54,7 +54,10 @@ flowchart LR
     ├── digital-employee.extension.json
     ├── ui/
     │   └── index.html              # ui.entry 指向的入口
-    └── service/                    # 可选
+    ├── bin/                        # 可选：打包二进制 service
+    │   └── my-service.exe
+    ├── config/                     # 可选：传给二进制的配置
+    └── service/                    # 可选：脚本型 service（如 node server.mjs）
         ├── server.mjs
         └── ...
 ```
@@ -126,8 +129,18 @@ flowchart LR
 | `envPortKey` | 写入子进程 env 的端口变量名，默认 `PORT` |
 | `env` | 额外环境变量 |
 | `ready` | 就绪探测，见 8.2 |
-| `bundledBinary` | 可选；替换 `command[0]` 为插件内二进制路径 |
+| `bundledBinary` | 可选；将 `command[0]` 替换为插件根目录下该文件的**绝对路径** |
 | `hostEventsPath` | headless 收宿主 POST 的路径，默认 `/_digital-employee/host-events` |
+
+**`command` 与 `bundledBinary` 如何配合**
+
+宿主使用 `spawn(command[0], command.slice(1), …)` 启动，**不经过 shell**。若配置了 `bundledBinary`：
+
+- 实际可执行文件 = 插件目录内的 `bundledBinary` 路径
+- `command[1]`、`command[2]`… = 传给二进制的 argv（启动参数）
+- `command[0]` 可写占位名（会被替换），例如 `"my-service.exe"`
+
+动态端口：建议 `port: 0`，子进程从环境变量 **`PORT`**（或 `envPortKey`）读取宿主分配的端口；二进制若只支持 `--port` 形参，需在程序内读 `PORT` 或增加薄包装脚本。
 
 ### 3.5 最小示例
 
@@ -187,6 +200,87 @@ flowchart LR
   }
 }
 ```
+
+#### UI + 打包二进制 service（含启动参数）
+
+插件包内自带可执行文件，通过 `bundledBinary` 指定路径，`command` 从第二项起为 CLI 参数。推荐目录：
+
+```text
+com.company.my-plugin/
+├── digital-employee.extension.json
+├── bin/
+│   └── my-service.exe              # Windows；macOS/Linux 可为 my-service
+├── config/
+│   └── app.toml                    # 可选配置文件
+└── ui/
+    └── index.html
+```
+
+`digital-employee.extension.json` 示例：
+
+```json
+{
+  "id": "com.company.my-plugin",
+  "version": "1.0.0",
+  "displayName": "我的插件（二进制服务）",
+  "minHostVersion": "0.0.49",
+  "permissions": ["context.read"],
+  "ui": {
+    "entry": "ui/index.html",
+    "title": "我的插件",
+    "width": 900,
+    "height": 640
+  },
+  "service": {
+    "bundledBinary": "bin/my-service.exe",
+    "command": [
+      "my-service.exe",
+      "--config",
+      "config/app.toml",
+      "--host",
+      "127.0.0.1"
+    ],
+    "cwd": ".",
+    "port": 0,
+    "host": "127.0.0.1",
+    "envPortKey": "PORT",
+    "env": {
+      "RUST_LOG": "info"
+    },
+    "ready": {
+      "type": "health",
+      "path": "/health",
+      "intervalMs": 500,
+      "timeoutMs": 30000
+    }
+  }
+}
+```
+
+说明：
+
+| 项 | 含义 |
+|----|------|
+| `bundledBinary` | 实际启动 `…/extensions/com.company.my-plugin/bin/my-service.exe` |
+| `command[0]` | 占位，运行时会被 `bundledBinary` 路径覆盖 |
+| `command[1…]` | 原样传给二进制，如 `--config config/app.toml` |
+| `cwd: "."` | 工作目录为插件根，`config/app.toml` 相对路径有效 |
+| `port: 0` + `envPortKey` | 宿主设置 `PORT=<动态端口>`；二进制应监听 `127.0.0.1:$PORT` |
+| `ready.type: health` | 就绪后宿主请求 `http://127.0.0.1:<port>/health` |
+
+仅二进制、无 CLI 参数时，可简化为：
+
+```json
+"service": {
+  "bundledBinary": "bin/my-service.exe",
+  "command": ["my-service.exe"],
+  "cwd": ".",
+  "port": 0,
+  "ready": { "type": "health", "path": "/health" }
+}
+```
+
+**Headless + 二进制** 时去掉 `ui`，保留 `service` 与 `permissions`（若收宿主事件需 `host.events`），`command` / `bundledBinary` 写法相同。
 
 ---
 
@@ -386,7 +480,19 @@ const res = await fetch(`${ctx.serviceBaseUrl}/your-api`)
 
 ### 8.5 命令安全
 
-`service.command` 各参数不得包含 `; & | \` $ < >` 等 shell 元字符（宿主校验）。
+`service.command` 各参数不得包含 `; & | \` $ < >` 等 shell 元字符（宿主校验）。不要使用 `cmd /c` 或整条 shell 命令字符串。
+
+### 8.6 打包二进制与启动参数
+
+与 [§3.5 UI + 打包二进制 service](#ui--打包二进制-service含启动参数) 示例相同，实现要点：
+
+1. 将 exe/可执行文件放在插件包内（如 `bin/`），安装后位于 `~/.digital-employee/extensions/<id>/bin/`。
+2. manifest 声明 `bundledBinary` + `command` 数组；参数逐个写入数组，**不要**拼成 `"--config=config.toml"` 除非你的程序只接受这一种单参数形式。
+3. 监听地址建议只绑定 `127.0.0.1`，端口读环境变量 `PORT`（`port: 0`）。
+4. 跨平台需为 Windows / macOS / Linux 各打一份插件 zip，或按平台分发不同 `bundledBinary` 路径（需自行在文档中说明仅支持 win32 等）。
+5. UI 通过 `serviceBaseUrl` 访问，**不需要** `host.network`。
+
+若二进制**仅支持** `--port 18080` 且不认 `PORT`，应避免多插件端口冲突：优先改二进制支持 `PORT`；次选固定 `port` 与 `command` 中写死同一端口（仅适合单实例）。
 
 ---
 
