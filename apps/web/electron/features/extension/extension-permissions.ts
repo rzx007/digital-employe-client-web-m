@@ -9,6 +9,9 @@ export const ExtensionPermission = {
   hostBackendRead: "host.backend.read",
   hostEvents: "host.events",
   hostNetwork: "host.network",
+  hostWindowSettings: "host.window.settings",
+  hostPet: "host.pet",
+  hostRecruitment: "host.recruitment",
 } as const
 
 export type ExtensionPermissionValue =
@@ -25,6 +28,10 @@ export const EXTENSION_INVOKE_METHOD_PERMISSIONS: Record<
   "storage.set": ExtensionPermission.hostStorage,
   "backend.getPort": ExtensionPermission.hostBackendRead,
   "backend.health": ExtensionPermission.hostBackendRead,
+  "window.openSettings": ExtensionPermission.hostWindowSettings,
+  "pet.show": ExtensionPermission.hostPet,
+  "pet.hide": ExtensionPermission.hostPet,
+  "recruitment.open": ExtensionPermission.hostRecruitment,
 }
 
 export function assertExtensionPermission(

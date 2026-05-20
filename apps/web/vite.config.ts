@@ -102,6 +102,15 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
         "@": path.resolve(__dirname, "./src"),
       },
     },
+    optimizeDeps: {
+      include: [
+        "streamdown",
+        "@streamdown/cjk",
+        "@streamdown/code",
+        "@streamdown/math",
+        "@streamdown/mermaid",
+      ],
+    },
     server: {
       port: 3399,
       host: "0.0.0.0",

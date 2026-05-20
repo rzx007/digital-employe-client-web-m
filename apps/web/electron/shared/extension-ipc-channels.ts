@@ -87,6 +87,9 @@ export interface ExtensionInvokeMethodDescriptor {
  * - window.focusMain → host.window.main
  * - storage.get / storage.set → host.storage
  * - backend.getPort / backend.health → host.backend.read
+ * - window.openSettings → host.window.settings
+ * - pet.show / pet.hide → host.pet
+ * - recruitment.open → host.recruitment
  */
 export type ExtensionInvokeMethod =
   | "notification.show"
@@ -95,6 +98,10 @@ export type ExtensionInvokeMethod =
   | "storage.set"
   | "backend.getPort"
   | "backend.health"
+  | "window.openSettings"
+  | "pet.show"
+  | "pet.hide"
+  | "recruitment.open"
 
 export interface ExtensionHostInvokeMap {
   [ExtensionHostIpcChannels.list]: { args: []; result: ExtensionListItem[] }

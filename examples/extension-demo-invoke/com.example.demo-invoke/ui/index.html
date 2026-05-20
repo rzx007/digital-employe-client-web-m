@@ -25,13 +25,18 @@
     </style>
   </head>
   <body>
-    <h1>四期示例 · extension.invoke</h1>
-    <p>通过宿主能力：通知、聚焦主窗、存储、后端端口；并订阅宿主事件。</p>
+    <h1>示例 · extension.invoke</h1>
+    <p>四至六期宿主能力：通知、主窗、存储、后端、设置/桌宠/招聘等。</p>
     <div class="actions">
       <button type="button" id="notify">发系统通知</button>
       <button type="button" id="focus">聚焦主窗口</button>
       <button type="button" id="storage">storage.set + get</button>
       <button type="button" id="port">backend.getPort</button>
+      <button type="button" id="health">backend.health</button>
+      <button type="button" id="settings">打开设置（插件 tab）</button>
+      <button type="button" id="pet-show">pet.show</button>
+      <button type="button" id="pet-hide">pet.hide</button>
+      <button type="button" id="recruitment">recruitment.open</button>
     </div>
     <pre id="output">加载中…</pre>
     <button type="button" id="close">关闭窗口</button>
@@ -86,6 +91,41 @@
         void window.extension
           ?.invoke("backend.getPort")
           .then((v) => log(v))
+          .catch((e) => log(String(e)))
+      })
+
+      document.getElementById("health").addEventListener("click", () => {
+        void window.extension
+          ?.invoke("backend.health")
+          .then((v) => log(v))
+          .catch((e) => log(String(e)))
+      })
+
+      document.getElementById("settings").addEventListener("click", () => {
+        void window.extension
+          ?.invoke("window.openSettings", { tab: "extensions" })
+          .then(() => log("window.openSettings ok"))
+          .catch((e) => log(String(e)))
+      })
+
+      document.getElementById("pet-show").addEventListener("click", () => {
+        void window.extension
+          ?.invoke("pet.show")
+          .then(() => log("pet.show ok"))
+          .catch((e) => log(String(e)))
+      })
+
+      document.getElementById("pet-hide").addEventListener("click", () => {
+        void window.extension
+          ?.invoke("pet.hide")
+          .then(() => log("pet.hide ok"))
+          .catch((e) => log(String(e)))
+      })
+
+      document.getElementById("recruitment").addEventListener("click", () => {
+        void window.extension
+          ?.invoke("recruitment.open")
+          .then(() => log("recruitment.open ok"))
           .catch((e) => log(String(e)))
       })
 

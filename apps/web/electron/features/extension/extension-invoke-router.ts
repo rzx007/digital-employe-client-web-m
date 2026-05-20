@@ -2,6 +2,9 @@ import { z } from "zod"
 import { getBackendPort, getBackendStatus } from "../backend/backend-process"
 import { sendNotification } from "../notification-tray/notification"
 import { showMainWindow } from "../notification-tray/tray"
+import { createRecruitmentWindow } from "../recruitment/window-recruitment"
+import { hidePetWindow, showPetWindow } from "../pet/pet-window"
+import { createSettingsWindow } from "../settings/window-settings"
 import { getWindowManager } from "../../core/services/window-registry"
 import type { ExtensionManifest } from "./manifest-schema"
 import { assertInvokeMethodAllowed } from "./extension-permissions"
@@ -23,6 +26,20 @@ const StorageGetSchema = z.object({
 const StorageSetSchema = z.object({
   key: z.string().min(1),
   value: z.unknown(),
+})
+
+const OpenSettingsPayloadSchema = z.object({
+  tab: z
+    .enum([
+      "account",
+      "general",
+      "shortcuts",
+      "models",
+      "pet",
+      "extensions",
+      "about",
+    ])
+    .optional(),
 })
 
 export async function dispatchExtensionInvoke(
@@ -88,6 +105,23 @@ export async function dispatchExtensionInvoke(
         port: status.port,
         healthy,
       }
+    }
+    case "window.openSettings": {
+      const data = OpenSettingsPayloadSchema.parse(payload ?? {})
+      createSettingsWindow({ tab: data.tab })
+      return undefined
+    }
+    case "pet.show": {
+      showPetWindow()
+      return undefined
+    }
+    case "pet.hide": {
+      hidePetWindow()
+      return undefined
+    }
+    case "recruitment.open": {
+      createRecruitmentWindow()
+      return undefined
     }
     default:
       throw new Error(`Unhandled extension.invoke method: ${method}`)

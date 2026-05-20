@@ -9,7 +9,10 @@
     "host.window.main",
     "host.storage",
     "host.backend.read",
-    "host.events"
+    "host.events",
+    "host.window.settings",
+    "host.pet",
+    "host.recruitment"
   ],
   "ui": {
     "entry": "ui/index.html",

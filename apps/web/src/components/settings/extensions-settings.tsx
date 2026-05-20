@@ -104,7 +104,7 @@ export function ExtensionsSettings() {
           </code>
           。manifest 为{" "}
           <code className="text-xs">digital-employee.extension.json</code>
-          ；可有独立 UI、本地服务，或二者组合。五期 zip 安装暂不验签，请仅安装来源可信的包。
+          ；可有独立 UI、本地服务，或二者组合。请仅安装来源可信的包。
         </p>
         <Button
           variant="outline"

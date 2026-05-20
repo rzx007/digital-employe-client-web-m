@@ -1,5 +1,6 @@
 import * as React from "react"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
+import { Route } from "@/routes/settings"
 import { AccountSettings } from "./account-settings"
 import { AboutSettings } from "./about-settings"
 import { GeneralSettings } from "./general-settings"
@@ -11,7 +12,14 @@ import type { SettingsTab } from "./settings-types"
 import { ShortcutsSettings } from "./shortcuts-settings"
 
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = React.useState<SettingsTab>("account")
+  const { tab: tabFromSearch } = Route.useSearch()
+  const [activeTab, setActiveTab] = React.useState<SettingsTab>(
+    tabFromSearch ?? "account",
+  )
+
+  React.useEffect(() => {
+    if (tabFromSearch) setActiveTab(tabFromSearch)
+  }, [tabFromSearch])
 
   return (
     <div className="flex h-svh w-screen bg-background">

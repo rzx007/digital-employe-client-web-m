@@ -5,7 +5,6 @@ import {
 } from "../../shared/extension-ipc-channels"
 import type { AppContext } from "../../core/app-context"
 import type { IpcContribution } from "../../core/ipc/types"
-import { getWindowManager } from "../../core/services/window-registry"
 import { buildExtensionContext } from "./extension-context"
 import { emitHostEvent } from "./extension-host-events"
 import { proxyExtensionFetch } from "./extension-fetch-proxy"
@@ -33,14 +32,12 @@ function resolveExtensionIdFromEvent(
   return getExtensionIdForWebContents(event.sender)
 }
 
-function assertMainWindowCaller(event: IpcMainInvokeEvent): void {
-  const main = getWindowManager().getMain()
-  if (!main || main.isDestroyed()) {
-    throw new Error("Main window is not available")
-  }
-  if (event.sender.id !== main.webContents.id) {
+/** 拒绝插件窗调用 ext:host:* 敏感 API；主应用各窗口（main、settings 等）允许 */
+function assertTrustedHostCaller(event: IpcMainInvokeEvent): void {
+  const extensionId = getExtensionIdForWebContents(event.sender)
+  if (extensionId) {
     throw new Error(
-      "This host API is restricted to the main application window",
+      "This host API cannot be invoked from an extension window",
     )
   }
 }
@@ -95,7 +92,7 @@ export const extensionIpcContribution: IpcContribution = {
       {
         channel: ExtensionHostIpcChannels.getContext,
         handler: (event, extensionId: string) => {
-          assertMainWindowCaller(event)
+          assertTrustedHostCaller(event)
           return buildContextForExtensionId(extensionId)
         },
       },
@@ -108,10 +105,10 @@ export const extensionIpcContribution: IpcContribution = {
       {
         channel: ExtensionHostIpcChannels.installFromZip,
         handler: async (event) => {
-          assertMainWindowCaller(event)
+          assertTrustedHostCaller(event)
           const parent = BrowserWindow.fromWebContents(event.sender)
           if (!parent || parent.isDestroyed()) {
-            throw new Error("Main window is not available")
+            throw new Error("No host window available for file dialog")
           }
           const result = await dialog.showOpenDialog(parent, {
             title: "安装插件",

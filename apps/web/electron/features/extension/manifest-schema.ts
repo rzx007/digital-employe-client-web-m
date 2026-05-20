@@ -58,6 +58,9 @@ export const ExtensionManifestSchema = z
           "host.backend.read",
           "host.events",
           "host.network",
+          "host.window.settings",
+          "host.pet",
+          "host.recruitment",
         ]),
       )
       .default([]),

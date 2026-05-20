@@ -302,7 +302,7 @@ Channel 约定见 [`shared/extension-ipc-channels.ts`](shared/extension-ipc-chan
 | 宿主读上下文 | `electronApi.getExtensionContext(extensionId)`（headless 无窗可用） |
 | 宿主推事件 | `electronApi.emitExtensionHostEvent(type, payload)` → 已开窗且含 `host.events` 的插件 `onHostEvent` |
 
-invoke 方法：`notification.show`、`window.focusMain`、`storage.get` / `storage.set`、`backend.getPort`、`backend.health`（见 [`extension-permissions.ts`](features/extension/extension-permissions.ts)）。插件内可调用 `await extension.listInvokeMethods()` 获取完整方法表及当前 manifest 是否 `allowed`。
+invoke 方法：见 [`extension-permissions.ts`](features/extension/extension-permissions.ts)（含四至六期方法）。插件内可调用 `await extension.listInvokeMethods()` 获取完整方法表及当前 manifest 是否 `allowed`。
 
 示例：[`examples/extension-demo-invoke`](../../../examples/extension-demo-invoke)。
 
@@ -316,13 +316,28 @@ invoke 方法：`notification.show`、`window.focusMain`、`storage.get` / `stor
 | zip 安装 | 设置页 `electronApi.installExtensionFromZip()`（**无 Ed25519**，仅安装可信来源） |
 | headless 事件 | `emitExtensionHostEvent` 同时 POST 到 `serviceBaseUrl` + `hostEventsPath`（默认 `/_digital-employee/host-events`） |
 | 后端健康 | `invoke('backend.health')` → `{ ready, running, port, healthy }` |
-| get-context 加固 | `ext:host:get-context` 仅主应用主窗可调用 |
+| get-context 加固 | `ext:host:get-context` / zip 安装：禁止插件窗调用，主应用窗口（含 settings）允许 |
 
 **fetch 安全**：主进程校验 allowlist、拒绝内网 SSRF（dev 下 localhost 例外）；响应 MVP 仅 text，上限 5MB。
 
 **zip 安装**：解压 → manifest 校验 → id 冲突拒绝 → 写入 `extensions/<id>/`；防 zip slip。
 
 示例：[`examples/extension-demo-fetch`](../../../examples/extension-demo-fetch)；headless 收事件见 [`extension-demo-headless`](../../../examples/extension-demo-headless)（需 `host.events`）。
+
+#### 六期：invoke 扩展（设置 / 桌宠 / 招聘）
+
+| 方法 | permission | 场景 |
+|------|------------|------|
+| `window.openSettings` | `host.window.settings` | 打开设置窗；payload 可选 `{ tab: "extensions" }` |
+| `pet.show` | `host.pet` | 显示桌宠（`showPetWindow`，非 `window.focusMain`） |
+| `pet.hide` | `host.pet` | 隐藏桌宠 |
+| `recruitment.open` | `host.recruitment` | 打开招聘窗 |
+
+设置窗已存在时会 `loadURL` 到 `#/settings?tab=…` 并聚焦（见 [`window-settings.ts`](features/settings/window-settings.ts)）。
+
+示例：[`examples/extension-demo-invoke`](../../../examples/extension-demo-invoke)（manifest 需声明上述 permission）。
+
+**七期**：Ed25519 签名校验与 `sign-extension`（五期 zip 安装仍为无验签）。
 
 ## 错误边界与日志
 
