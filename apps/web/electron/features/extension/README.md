@@ -2,7 +2,13 @@
 
 本目录实现 Electron **插件宿主**：发现 manifest、启停本地 `service`、打开插件 UI 窗、IPC、出网策略与 zip 安装。
 
-上层总览与分期能力见 [`../../README.md`](../../README.md) 中「插件（Extension）机制」；**尚未实现、低优先级备忘**见 [`待实现.md`](待实现.md)。Channel 定义见 [`../../shared/extension-ipc-channels.ts`](../../shared/extension-ipc-channels.ts)。插件页 preload 为 [`../../preload/extension-preload.ts`](../../preload/extension-preload.ts)。
+上层总览与分期能力见 [`../../README.md`](../../README.md) 中「插件（Extension）机制」。
+
+- **插件作者开发规范**：[docs/extension-development-guide.md](../../../../docs/extension-development-guide.md)
+- **示例包**：[examples/](../../../../examples/)
+- **尚未实现、低优先级备忘**：[`待实现.md`](待实现.md)
+
+Channel 定义见 [`../../shared/extension-ipc-channels.ts`](../../shared/extension-ipc-channels.ts)。插件页 preload 为 [`../../preload/extension-preload.ts`](../../preload/extension-preload.ts)。
 
 ## 目录与职责
 

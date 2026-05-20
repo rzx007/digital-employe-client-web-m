@@ -15,10 +15,13 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
   const sourcemap = isServe || !!process.env.VSCODE_DEBUG
   const server_url = `${env.VITE_BACKEND_URL}:${env.VITE_BACKEND_PORT}`
 
+  const mainBundledDeps = new Set(["electron-store", "jszip"])
+
   const preloadExternal = Object.keys(
     "dependencies" in pkg ? pkg.dependencies : {},
   ).filter(
-    (dep) => dep !== "electron-store" && dep !== "@electron-toolkit/preload",
+    (dep) =>
+      !mainBundledDeps.has(dep) && dep !== "@electron-toolkit/preload",
   )
 
   /** 单入口 preload，避免多 input 拆 chunk 导致 index.mjs 引用缺失的 ./preload.mjs */
@@ -78,7 +81,7 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
                   rollupOptions: {
                     external: Object.keys(
                       "dependencies" in pkg ? pkg.dependencies : {},
-                    ).filter((dep) => dep !== "electron-store"),
+                    ).filter((dep) => !mainBundledDeps.has(dep)),
                   },
                 },
               },

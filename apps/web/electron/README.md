@@ -245,6 +245,8 @@ flowchart LR
 
 插件 UI **与主应用 SPA 完全解耦**：任意 `index.html` 或独立 SPA，安装在 `~/.digital-employee/extensions/<id>/`。
 
+**插件开发规范（面向作者）**：[docs/extension-development-guide.md](../../../docs/extension-development-guide.md) · **示例**：[examples/](../../../examples/)
+
 ```mermaid
 flowchart LR
   HostSPA["主应用 SPA"] -->|"electronApi.listExtensions"| MainIPC["ext:host:*"]
