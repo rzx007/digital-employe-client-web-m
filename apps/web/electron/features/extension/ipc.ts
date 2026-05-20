@@ -52,13 +52,13 @@ export const extensionIpcContribution: IpcContribution = {
       },
       {
         channel: ExtensionHostIpcChannels.setEnabled,
-        handler: (_event, extensionId: string, enabled: boolean) => {
+        handler: async (_event, extensionId: string, enabled: boolean) => {
           if (!getExtensionManifest(extensionId)) {
             throw new Error(`Extension not found: ${extensionId}`)
           }
           setExtensionEnabled(extensionId, enabled)
           if (enabled) {
-            activateExtension(extensionId)
+            await activateExtension(extensionId)
           } else {
             deactivateExtension(extensionId)
           }

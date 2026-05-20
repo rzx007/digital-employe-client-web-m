@@ -280,6 +280,19 @@ Channel 约定见 [`shared/extension-ipc-channels.ts`](shared/extension-ipc-chan
 
 示例：[`examples/extension-demo-service`](../../../examples/extension-demo-service)。
 
+#### 三期：Headless 与主后端 ManagedProcess
+
+| manifest | 行为 |
+|----------|------|
+| 仅有 `service` | **Headless**：启用 / 应用启动恢复 enabled 时 `startExtensionService`，无 BrowserWindow |
+| 无 `ui` 且无 `service` | 非法 manifest |
+
+- 设置页：`hasUi === false` 时隐藏「打开」，展示 `serviceRunning`
+- `ext:host:open` 对 headless 返回明确错误
+- 示例：[`examples/extension-demo-headless`](../../../examples/extension-demo-headless)
+
+主 Python 后端 [`backend-process.ts`](features/backend/backend-process.ts) 已改用 [`ManagedProcess`](core/services/managed-process.ts)（对外 API 不变：`startBackend` / `stopBackend` / `getBackendPort`）。
+
 **权限**：`permissions` 含 `auth.read` 时 `getContext()` 才返回 `authToken`。
 
 ## 错误边界与日志

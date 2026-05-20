@@ -30,8 +30,10 @@ export interface ExtensionListItem {
   id: string
   version: string
   displayName: string
+  hasUi: boolean
   /** manifest 含 service 块 */
   hasService: boolean
+  serviceRunning: boolean
   enabled: boolean
 }
 

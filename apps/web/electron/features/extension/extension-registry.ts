@@ -4,6 +4,7 @@ import { app } from "electron"
 import { createLogger } from "../../core/logger"
 import {
   ExtensionManifestSchema,
+  hasExtensionUi,
   isHostVersionCompatible,
   MANIFEST_FILE_NAME,
   normalizeManifestRaw,
@@ -107,6 +108,9 @@ export function resolveExtensionUiTarget(extensionId: string): {
   if (!manifest) {
     throw new Error(`Extension not found: ${extensionId}`)
   }
+  if (!hasExtensionUi(manifest)) {
+    throw new Error(`Extension has no UI: ${extensionId}`)
+  }
 
   const devUrl = resolveDevEntry(extensionId, manifest)
   if (devUrl) {
@@ -115,7 +119,7 @@ export function resolveExtensionUiTarget(extensionId: string): {
 
   const entryPath = path.join(
     getExtensionRoot(extensionId),
-    manifest.ui.entry,
+    manifest.ui!.entry,
   )
   if (!fs.existsSync(entryPath)) {
     throw new Error(`Extension UI entry not found: ${entryPath}`)
@@ -140,7 +144,7 @@ function resolveDevEntry(
     return fromStore
   }
 
-  if (manifest.ui.devEntry && isAllowedDevUrl(manifest.ui.devEntry)) {
+  if (manifest.ui?.devEntry && isAllowedDevUrl(manifest.ui.devEntry)) {
     return manifest.ui.devEntry
   }
 

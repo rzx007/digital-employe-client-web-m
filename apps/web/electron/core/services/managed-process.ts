@@ -25,6 +25,9 @@ export interface ManagedProcessStartOptions {
   ready: ManagedProcessReadyConfig
   readyTimeoutMs?: number
   logScope?: string
+  /** 默认非 Windows 为 true；主后端 dev uv 可传 false */
+  detached?: boolean
+  onExit?: (code: number | null, signal: NodeJS.Signals | null) => void
 }
 
 export interface ManagedProcessHandle {
@@ -209,13 +212,22 @@ export async function startManagedProcess(
     [envPortKey]: String(port),
   }
 
+  const detached =
+    options.detached ?? process.platform !== "win32"
+
   const child = spawn(options.command[0], options.command.slice(1), {
     cwd: options.cwd,
     stdio: ["pipe", "pipe", "pipe"],
     env: childEnv,
     windowsHide: true,
-    detached: process.platform !== "win32",
+    detached,
   })
+
+  if (options.onExit) {
+    child.on("exit", (code, signal) => {
+      options.onExit?.(code, signal)
+    })
+  }
 
   const readyTimeoutMs = options.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS
 

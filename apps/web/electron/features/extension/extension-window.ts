@@ -9,7 +9,7 @@ import {
   markExtensionActivated,
   resolveExtensionUiTarget,
 } from "./extension-registry"
-import { hasExtensionService } from "./manifest-schema"
+import { hasExtensionService, hasExtensionUi } from "./manifest-schema"
 import {
   getServiceBaseUrl,
   startExtensionService,
@@ -41,6 +41,9 @@ export async function openExtensionWindow(
   if (!manifest) {
     throw new Error(`Extension not found: ${extensionId}`)
   }
+  if (!hasExtensionUi(manifest)) {
+    throw new Error(`Extension has no UI: ${extensionId}`)
+  }
 
   if (hasExtensionService(manifest)) {
     await startExtensionService(extensionId)
@@ -62,16 +65,16 @@ export async function openExtensionWindow(
     preloadPath: getExtensionPreloadPath(),
     ...uiTarget,
     overrides: {
-      width: manifest.ui.width,
-      height: manifest.ui.height,
-      minWidth: Math.min(640, manifest.ui.width),
-      minHeight: Math.min(480, manifest.ui.height),
-      title: manifest.ui.title,
+      width: manifest.ui!.width,
+      height: manifest.ui!.height,
+      minWidth: Math.min(640, manifest.ui!.width),
+      minHeight: Math.min(480, manifest.ui!.height),
+      title: manifest.ui!.title,
       show: false,
     },
     onCreated: (w) => {
       webContentsToExtensionId.set(w.webContents.id, extensionId)
-      pinBrowserWindowTitle(w, manifest.ui.title)
+      pinBrowserWindowTitle(w, manifest.ui!.title)
       w.once("ready-to-show", () => w.show())
       if (is.dev) {
         w.webContents.openDevTools({ mode: "detach" })

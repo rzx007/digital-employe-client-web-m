@@ -1,180 +1,55 @@
 import { app } from "electron"
-import { spawn, type ChildProcess } from "node:child_process"
 import os from "node:os"
 import path from "node:path"
 import { createLogger } from "../../core/logger"
+import {
+  startManagedProcess,
+  type ManagedProcessHandle,
+} from "../../core/services/managed-process"
 
 const log = createLogger("backend")
 
-/**
- * Python 后端（FastAPI）进程管理
- *
- * 负责在 Electron 主进程中管理 PyInstaller 后端二进制（Windows: backend.exe，
- * macOS/Linux: backend）的完整生命周期：
- * - 启动：通过 child_process.spawn 创建子进程，按平台区分进程组策略
- * - 就绪检测：监听 stdout/stderr 输出，匹配 Uvicorn 启动日志
- * - 停止：按平台使用不同方式清理进程树，避免残留孤儿进程
- *
- * 平台差异：
- * - Windows: 无 POSIX 信号，PyInstaller exe 会产生子进程。
- *   使用 taskkill /T /F /PID 杀掉整个进程树。
- * - Linux/macOS: spawn 时设置 detached: true 创建独立进程组，
- *   退出时用 process.kill(-pid, signal) 杀掉整个进程组。
- * - macOS dev: 在 Apple Silicon 上用 arch -arm64 启动 uv，避免 Electron/Rosetta
- *   或 PATH 中 x86_64 的 uv 导致 uvicorn 重载子进程与 arm64 venv 原生扩展不一致。
- */
-
-const BACKEND_PORT = process.env.VITE_BACKEND_PORT || 34567
+const BACKEND_PORT = Number(process.env.VITE_BACKEND_PORT || 34567)
 const BACKEND_READY_TIMEOUT = 30_000
-const KILL_TIMEOUT = 5000
 
-/** 开发模式监听地址：Windows 上对 0.0.0.0 绑定易触发 WinError 10013（权限/保留端口） */
+/** 开发模式监听地址：Windows 上对 0.0.0.0 绑定易触发 WinError 10013 */
 const DEV_UVICORN_HOST =
   process.env.VITE_BACKEND_HOST ||
   (process.platform === "win32" ? "127.0.0.1" : "0.0.0.0")
 
-let backendProcess: ChildProcess | null = null
+let backendHandle: ManagedProcessHandle | null = null
 let backendReady = false
 
-function isUvicornReadyLine(log: string): boolean {
+function getBackendReadyPattern(): string {
   const port = String(BACKEND_PORT)
-  if (!log.includes(port)) return false
   return (
-    log.includes("Uvicorn running") ||
-    log.includes("Application startup complete")
+    `(?:Uvicorn running|Application startup complete).*${port}` +
+    `|${port}.*(?:Uvicorn running|Application startup complete)`
   )
 }
 
-/**
- * 在 Apple Silicon（os.machine() === arm64）上，开发模式统一经 arch -arm64 调用 uv。
- *
- * 使用 os.machine() 而非 execSync(\"uname\")：Electron 主进程里 PATH/沙箱可能导致
- * uname 失败，从而误走纯 uv 路径并触发 x86_64 子进程与 arm64 venv 冲突。
- *
- * 否则可能出现：Electron 为 arm64 但 PATH 里 uv 为 x86_64，或主进程为 Rosetta
- * x64，导致 uvicorn --reload 子进程跑 x86_64，与 arm64 的 pydantic_core 等冲突。
- */
 function shouldUseArchArm64ForDevUvOnAppleSilicon(): boolean {
   return process.platform === "darwin" && os.machine() === "arm64"
 }
 
-/**
- * 获取 py-server 目录路径
- *
- * 开发环境: <APP_ROOT>/py-server
- * 生产环境: <resourcesPath>/py-server（由 electron-builder extraResources 打包）
- */
 function getPyServerPath(): string {
   if (!app.isPackaged) {
-    return path.join(process.env.APP_ROOT, "py-server")
+    return path.join(process.env.APP_ROOT!, "py-server")
   }
   return path.join(process.resourcesPath, "py-server")
 }
 
-/** 与 scripts/build-server.py 产出一致：Windows 为 backend.exe，其余为 backend */
 function getPackagedBackendBinaryName(): string {
   return process.platform === "win32" ? "backend.exe" : "backend"
 }
 
-/**
- * 启动 Python 后端进程
- *
- * 开发模式：启动 uvicorn 服务
- * 生产模式：启动 py-server 下平台对应的打包二进制
- *
- * 返回一个 Promise，在后端就绪（检测到 Uvicorn 监听日志）或超时时 resolve/reject。
- */
-export function startBackend(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // 开发模式：启动 uvicorn
-    if (!app.isPackaged) {
-      log.info("dev mode: uvicorn")
-      startDevServer(resolve, reject)
-      return
-    }
-
-    // 生产模式：启动 PyInstaller 产物（见 getPackagedBackendBinaryName）
-    const pyServerPath = getPyServerPath()
-    const exePath = path.join(pyServerPath, getPackagedBackendBinaryName())
-
-    log.info("starting packaged backend", { exePath, pyServerPath })
-
-    backendProcess = spawn(exePath, [], {
-      cwd: pyServerPath,
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env },
-      // Linux/macOS: 创建独立进程组，便于退出时整组杀死
-      // Windows: detached 不生效，不影响
-      detached: process.platform !== "win32",
-    })
-
-    const timeout = setTimeout(() => {
-      reject(new Error(`Timeout (${BACKEND_READY_TIMEOUT / 1000}s)`))
-    }, BACKEND_READY_TIMEOUT)
-
-    /**
-     * 就绪检测逻辑
-     *
-     * 监听 stdout 和 stderr，当输出包含 Uvicorn 监听地址时判定为就绪。
-     * Uvicorn 启动日志格式: "Uvicorn running on http://0.0.0.0:34567 "
-     */
-    const checkReady = (line: string) => {
-      if (!backendReady && isUvicornReadyLine(line)) {
-        backendReady = true
-        clearTimeout(timeout)
-        log.info("ready", { port: BACKEND_PORT })
-        resolve()
-      }
-    }
-
-    backendProcess.stdout?.on("data", (data: Buffer) => {
-      const line = data.toString()
-      log.debug("stdout", { line: line.trim() })
-      checkReady(line)
-    })
-
-    backendProcess.stderr?.on("data", (data: Buffer) => {
-      const line = data.toString()
-      log.debug("stderr", { line: line.trim() })
-      checkReady(line)
-    })
-
-    backendProcess.on("error", (err) => {
-      clearTimeout(timeout)
-      log.error("startup failed", {
-        message: err instanceof Error ? err.message : String(err),
-      })
-      backendProcess = null
-      reject(err)
-    })
-
-    backendProcess.on("exit", (code, signal) => {
-      log.info("process exit", { code, signal })
-      backendProcess = null
-      backendReady = false
-    })
-  })
+function resetBackendState(): void {
+  backendHandle = null
+  backendReady = false
 }
 
-/**
- * 开发模式下启动 uvicorn 服务
- */
-function startDevServer(resolve: () => void, reject: (err: Error) => void): void {
+function buildDevBackendCommand(): { command: string[]; cwd: string } {
   const serverDir = path.join(process.env.APP_ROOT!, "..", "server")
-
-  log.info("starting dev server", {
-    serverDir,
-    host: DEV_UVICORN_HOST,
-    port: BACKEND_PORT,
-  })
-
-  let settled = false
-  const finish = (fn: () => void) => {
-    if (settled) return
-    settled = true
-    fn()
-  }
-
   const uvArgs = [
     "run",
     "uvicorn",
@@ -188,157 +63,89 @@ function startDevServer(resolve: () => void, reject: (err: Error) => void): void
   const useArchArm64 = shouldUseArchArm64ForDevUvOnAppleSilicon()
   if (useArchArm64) {
     log.info("Apple Silicon: spawning uv via arch -arm64")
-  }
-
-  backendProcess = spawn(
-    useArchArm64 ? "arch" : "uv",
-    useArchArm64 ? ["-arm64", "uv", ...uvArgs] : uvArgs,
-    {
+    return {
+      command: ["arch", "-arm64", "uv", ...uvArgs],
       cwd: serverDir,
-      stdio: ["pipe", "pipe", "pipe"],
-      shell: false,
-      windowsHide: true,
-      env: {
-        ...process.env,
-        PYTHONUTF8: "1",
-        PYTHONIOENCODING: "utf-8",
-      },
-    }
-  )
-
-  const timeout = setTimeout(() => {
-    finish(() =>
-      reject(new Error(`backend timeout (${BACKEND_READY_TIMEOUT / 1000}s)`))
-    )
-  }, BACKEND_READY_TIMEOUT)
-
-  const checkReady = (line: string) => {
-    if (!backendReady && isUvicornReadyLine(line)) {
-      backendReady = true
-      clearTimeout(timeout)
-      log.info("ready", { port: BACKEND_PORT })
-      finish(() => resolve())
     }
   }
+  return { command: ["uv", ...uvArgs], cwd: serverDir }
+}
 
-  backendProcess.stdout?.on("data", (data: Buffer) => {
-    const line = data.toString()
-    log.debug("stdout", { line: line.trim() })
-    checkReady(line)
-  })
-
-  backendProcess.stderr?.on("data", (data: Buffer) => {
-    const line = data.toString()
-    log.debug("stderr", { line: line.trim() })
-    checkReady(line)
-  })
-
-  backendProcess.on("error", (err) => {
-    clearTimeout(timeout)
-    log.error("startup failed", {
-      message: err instanceof Error ? err.message : String(err),
-    })
-    backendProcess = null
-    finish(() => reject(err))
-  })
-
-  backendProcess.on("exit", (code, signal) => {
-    log.info("process exit", { code, signal })
-    const wasReady = backendReady
-    backendProcess = null
-    backendReady = false
-    if (!wasReady && code !== 0 && code !== null) {
-      clearTimeout(timeout)
-      finish(() =>
-        reject(
-          new Error(
-            `backend exited (code ${code}${signal ? `, signal ${signal}` : ""}). On Windows, WinError 10013 often means the port is blocked — try another port via VITE_BACKEND_PORT or set VITE_BACKEND_HOST=127.0.0.1.`
-          )
-        )
-      )
-    }
-  })
+function buildProdBackendCommand(): { command: string[]; cwd: string } {
+  const pyServerPath = getPyServerPath()
+  const exePath = path.join(pyServerPath, getPackagedBackendBinaryName())
+  return { command: [exePath], cwd: pyServerPath }
 }
 
 /**
- * 停止 Python 后端进程
- *
- * 按平台区分清理策略，确保子进程也被终止：
- *
- * - Windows: 使用 taskkill /T /F /PID <pid>
- *   /T = 杀掉该进程及其所有子进程（进程树）
- *   /F = 强制终止
- *   PyInstaller 打包的 exe 在 Windows 上会产生 uvicorn worker 子进程，
- *   普通的 process.kill() 只杀父进程，子进程会变成孤儿继续运行。
- *
- * - Linux/macOS: 使用 process.kill(-pid, signal)
- *   负号 PID 表示杀掉整个进程组。
- *   spawn 时设置了 detached: true，子进程与主进程在同一进程组中。
- *   先发送 SIGTERM 优雅退出，超时后发送 SIGKILL 强制终止。
+ * 启动 Python 后端进程（内部使用 ManagedProcess）
  */
-export function stopBackend(): void {
-  if (!backendProcess) return
-
-  const pid = backendProcess.pid
-  if (!pid) {
-    backendProcess = null
-    return
+export function startBackend(): Promise<void> {
+  if (backendHandle && backendReady) {
+    return Promise.resolve()
   }
 
-  log.info("killing process", { pid })
+  const isDev = !app.isPackaged
+  const { command, cwd } = isDev
+    ? buildDevBackendCommand()
+    : buildProdBackendCommand()
 
-  if (process.platform === "win32") {
-    // Windows: 使用 taskkill 杀进程树
-    const killCmd = spawn("taskkill", ["/T", "/F", "/PID", String(pid)], {
-      stdio: "ignore",
-      detached: true,
-    })
-    killCmd.unref()
-    backendProcess = null
-    backendReady = false
+  if (!isDev) {
+    log.info("starting packaged backend", { command: command[0], cwd })
   } else {
-    // Linux/macOS: 杀进程组
-    backendProcess = null
-    backendReady = false
-
-    try {
-      process.kill(-pid, "SIGTERM")
-    } catch {
-      // 进程组可能已退出，尝试杀单个进程
-      try {
-        process.kill(pid, "SIGKILL")
-      } catch {
-        // 进程已退出，忽略
-      }
-    }
-
-    // 兜底：SIGTERM 后等待一段时间，如果还没退出则 SIGKILL
-    const forceKillTimeout = setTimeout(() => {
-      try {
-        process.kill(-pid, "SIGKILL")
-      } catch {
-        // 已退出，忽略
-      }
-    }, KILL_TIMEOUT)
-
-    forceKillTimeout.unref()
+    log.info("starting dev server", {
+      cwd,
+      host: DEV_UVICORN_HOST,
+      port: BACKEND_PORT,
+    })
   }
+
+  return startManagedProcess({
+    command,
+    cwd,
+    port: BACKEND_PORT,
+    host: "127.0.0.1",
+    ready: { type: "stdout", pattern: getBackendReadyPattern() },
+    readyTimeoutMs: BACKEND_READY_TIMEOUT,
+    logScope: "backend",
+    detached: isDev ? false : undefined,
+    env: isDev
+      ? {
+          PYTHONUTF8: "1",
+          PYTHONIOENCODING: "utf-8",
+        }
+      : undefined,
+    onExit: (code, signal) => {
+      log.info("process exit", { code, signal })
+      resetBackendState()
+    },
+  })
+    .then((handle) => {
+      backendHandle = handle
+      backendReady = true
+      log.info("ready", { port: BACKEND_PORT })
+    })
+    .catch((err) => {
+      resetBackendState()
+      throw err
+    })
 }
 
-/**
- * 获取后端运行状态
- */
+export function stopBackend(): void {
+  if (!backendHandle) return
+  log.info("stopping backend")
+  backendHandle.stop()
+  resetBackendState()
+}
+
 export function getBackendStatus() {
   return {
     ready: backendReady,
     port: BACKEND_PORT,
-    running: backendProcess !== null,
+    running: backendHandle !== null,
   }
 }
 
-/**
- * 获取后端端口号
- */
 export function getBackendPort(): number {
-  return Number(BACKEND_PORT)
+  return BACKEND_PORT
 }

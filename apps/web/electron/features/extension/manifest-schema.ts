@@ -44,15 +44,15 @@ export const ExtensionManifestSchema = z
     permissions: z
       .array(z.enum(["context.read", "auth.read"]))
       .default([]),
-    ui: ExtensionUiSchema,
+    ui: ExtensionUiSchema.optional(),
     service: ExtensionServiceManifestSchema.optional(),
   })
   .superRefine((data, ctx) => {
-    if (!data.ui && data.service) {
+    if (!data.ui && !data.service) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "service without ui is not supported yet (headless)",
-        path: ["service"],
+        message: "manifest must include ui and/or service",
+        path: ["ui"],
       })
     }
   })
@@ -86,11 +86,24 @@ export function normalizeManifestRaw(raw: unknown): {
   return { value: removed.length > 0 ? copy : raw, removed }
 }
 
+export function hasExtensionUi(
+  manifest: Pick<ExtensionManifest, "ui">,
+): boolean {
+  return manifest.ui != null
+}
+
 /** manifest 含 service 块时需启停本地子进程 */
 export function hasExtensionService(
   manifest: Pick<ExtensionManifest, "service">,
 ): boolean {
   return manifest.service != null
+}
+
+/** 仅 service、无 ui（后台服务插件） */
+export function isHeadlessExtension(
+  manifest: Pick<ExtensionManifest, "ui" | "service">,
+): boolean {
+  return hasExtensionService(manifest) && !hasExtensionUi(manifest)
 }
 
 /** 比较 semver：a >= b 时返回 true */
