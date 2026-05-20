@@ -25,12 +25,14 @@ import {
   closeAllExtensionWindows,
   closeExtensionWindow,
 } from "./extension-window"
+import { registerExtensionNetworkGuard } from "./extension-network-guard"
 
 const log = createLogger("extension")
 
 export function initExtensions(): void {
   initExtensionStore()
   scanExtensionRegistry()
+  registerExtensionNetworkGuard()
   void restoreEnabledExtensions()
 }
 

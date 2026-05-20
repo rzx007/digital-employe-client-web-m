@@ -71,6 +71,9 @@ export async function openExtensionWindow(
       minHeight: Math.min(480, manifest.ui!.height),
       title: manifest.ui!.title,
       show: false,
+      webPreferences: {
+        webSecurity: false,
+      },
     },
     onCreated: (w) => {
       webContentsToExtensionId.set(w.webContents.id, extensionId)

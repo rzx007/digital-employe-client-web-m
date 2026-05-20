@@ -7,7 +7,6 @@ import type { AppContext } from "../../core/app-context"
 import type { IpcContribution } from "../../core/ipc/types"
 import { buildExtensionContext } from "./extension-context"
 import { emitHostEvent } from "./extension-host-events"
-import { proxyExtensionFetch } from "./extension-fetch-proxy"
 import { installExtensionFromZip } from "./extension-installer"
 import { dispatchExtensionInvoke } from "./extension-invoke-router"
 import { listExtensionInvokeMethods } from "./extension-permissions"
@@ -167,16 +166,6 @@ export const extensionIpcContribution: IpcContribution = {
           const manifest = getExtensionManifest(id)
           if (!manifest) throw new Error(`Extension not found: ${id}`)
           return listExtensionInvokeMethods(manifest)
-        },
-      },
-      {
-        channel: ExtensionPluginIpcChannels.fetch,
-        handler: async (event, input: string, init?: unknown) => {
-          const id = resolveExtensionIdFromEvent(event)
-          if (!id) throw new Error("Not an extension window")
-          const manifest = getExtensionManifest(id)
-          if (!manifest) throw new Error(`Extension not found: ${id}`)
-          return proxyExtensionFetch(manifest, input, init)
         },
       },
     ]

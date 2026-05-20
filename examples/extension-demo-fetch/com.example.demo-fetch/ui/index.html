@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <title>Extension fetch demo</title>
+    <title>Extension network demo</title>
     <style>
       body {
         font-family: system-ui, sans-serif;
@@ -22,9 +22,9 @@
     </style>
   </head>
   <body>
-    <h1>extension.fetch 示例</h1>
+    <h1>插件 UI 出网（webRequest + allowlist）</h1>
     <p>allowlist: <code>jsonplaceholder.typicode.com</code></p>
-    <button id="fetch-ok">合法请求</button>
+    <button id="fetch-ok">合法请求（原生 fetch）</button>
     <button id="fetch-block">被拦截（evil.com）</button>
     <pre id="log"></pre>
     <script>
@@ -34,18 +34,20 @@
           typeof value === "string" ? value : JSON.stringify(value, null, 2)
       }
 
+      async function runFetch(url) {
+        const res = await fetch(url)
+        const body = await res.json()
+        log({ ok: res.ok, status: res.status, body })
+      }
+
       document.getElementById("fetch-ok").addEventListener("click", () => {
-        void window.extension
-          ?.fetch("https://jsonplaceholder.typicode.com/todos/1")
-          .then((res) => log(res))
-          .catch((err) => log(String(err)))
+        void runFetch(
+          "https://jsonplaceholder.typicode.com/todos/1",
+        ).catch((err) => log(String(err)))
       })
 
       document.getElementById("fetch-block").addEventListener("click", () => {
-        void window.extension
-          ?.fetch("https://evil.com/")
-          .then((res) => log(res))
-          .catch((err) => log(String(err)))
+        void runFetch("https://evil.com/").catch((err) => log(String(err)))
       })
 
       void window.extension?.getContext().then((ctx) => log({ ctx }))

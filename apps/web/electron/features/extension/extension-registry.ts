@@ -150,3 +150,16 @@ function resolveDevEntry(
 
   return undefined
 }
+
+/** 开发态插件 UI 的 origin（用于 webRequest 放行 dev 资源） */
+export function getExtensionDevOrigin(extensionId: string): string | undefined {
+  const manifest = discovered.get(extensionId)
+  if (!manifest) return undefined
+  const devUrl = resolveDevEntry(extensionId, manifest)
+  if (!devUrl) return undefined
+  try {
+    return new URL(devUrl).origin
+  } catch {
+    return undefined
+  }
+}

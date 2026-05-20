@@ -22,7 +22,6 @@ export const ExtensionPluginIpcChannels = {
   closeWindow: "ext:plugin:close-window",
   invoke: "ext:plugin:invoke",
   listInvokeMethods: "ext:plugin:list-invoke-methods",
-  fetch: "ext:plugin:fetch",
 } as const
 
 /** 主进程 → 插件窗 push（非 invoke） */
@@ -60,19 +59,6 @@ export interface ExtensionHostEventEnvelope {
   type: string
   payload?: unknown
   timestamp: number
-}
-
-export interface ExtensionFetchInit {
-  method?: string
-  headers?: Record<string, string>
-  body?: string
-}
-
-export interface ExtensionFetchResponse {
-  ok: boolean
-  status: number
-  headers: Record<string, string>
-  body: string
 }
 
 export interface ExtensionInvokeMethodDescriptor {
@@ -139,10 +125,6 @@ export interface ExtensionPluginInvokeMap {
   [ExtensionPluginIpcChannels.listInvokeMethods]: {
     args: []
     result: ExtensionInvokeMethodDescriptor[]
-  }
-  [ExtensionPluginIpcChannels.fetch]: {
-    args: [input: string, init?: ExtensionFetchInit]
-    result: ExtensionFetchResponse
   }
 }
 

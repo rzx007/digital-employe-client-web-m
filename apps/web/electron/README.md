@@ -308,17 +308,21 @@ invoke 方法：见 [`extension-permissions.ts`](features/extension/extension-pe
 
 **权限**：`permissions` 含 `auth.read` 时 `getContext()` 才返回 `authToken`；`getContext().permissions` 返回已声明列表。
 
-#### 五期：fetch 代理 / zip 安装 / headless 事件 / backend.health
+#### 五期：插件 UI 出网 / zip 安装 / headless 事件 / backend.health
 
 | 能力 | API / 行为 |
 |------|------------|
-| 受控出网 | `window.extension.fetch(url, init?)`，需 `host.network` + manifest `network.allowlist` |
+| 受控出网 | 插件 UI 使用原生 `fetch` / XHR / WebSocket；`session.webRequest` 强制执行 `host.network` + `network.allowlist`（实现见 [`extension-network-guard.ts`](features/extension/extension-network-guard.ts)） |
+| 鉴权出网 | `auth.read` 时宿主在 `onBeforeSendHeaders` 自动注入 `Authorization: Bearer`（未设置时） |
+| 插件窗 CORS | 插件窗 `webSecurity: false`，避免 `file://` / dev origin 跨域失败 |
 | zip 安装 | 设置页 `electronApi.installExtensionFromZip()`（**无 Ed25519**，仅安装可信来源） |
 | headless 事件 | `emitExtensionHostEvent` 同时 POST 到 `serviceBaseUrl` + `hostEventsPath`（默认 `/_digital-employee/host-events`） |
 | 后端健康 | `invoke('backend.health')` → `{ ready, running, port, healthy }` |
 | get-context 加固 | `ext:host:get-context` / zip 安装：禁止插件窗调用，主应用窗口（含 settings）允许 |
 
-**fetch 安全**：主进程校验 allowlist、拒绝内网 SSRF（dev 下 localhost 例外）；响应 MVP 仅 text，上限 5MB。
+**出网安全（仅插件 UI 窗）**：allowlist 外域名拒绝；**永远拒绝**访问主 Python 后端端口（`getBackendPort()`，默认 `34567`）；本插件 `serviceBaseUrl` 与 dev UI 源放行。`service` 子进程出站不在此列。
+
+**已移除**：`window.extension.fetch` / `ext:plugin:fetch` 主进程代发。
 
 **zip 安装**：解压 → manifest 校验 → id 冲突拒绝 → 写入 `extensions/<id>/`；防 zip slip。
 

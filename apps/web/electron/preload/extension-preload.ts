@@ -4,8 +4,6 @@ import {
   EXTENSION_HOST_EVENT_CHANNEL,
   ExtensionPluginIpcChannels,
   type ExtensionContextPayload,
-  type ExtensionFetchInit,
-  type ExtensionFetchResponse,
   type ExtensionHostEventEnvelope,
   type ExtensionInvokeMethodDescriptor,
   type ExtensionPluginIpcChannel,
@@ -52,12 +50,6 @@ const extensionApi = {
     extensionInvoke(
       ExtensionPluginIpcChannels.listInvokeMethods,
     ) as Promise<ExtensionInvokeMethodDescriptor[]>,
-  fetch: (input: string, init?: ExtensionFetchInit) =>
-    extensionInvoke(
-      ExtensionPluginIpcChannels.fetch,
-      input,
-      init,
-    ) as Promise<ExtensionFetchResponse>,
   onHostEvent: (
     handler: (event: ExtensionHostEventEnvelope) => void,
   ): (() => void) => {
