@@ -21,3 +21,7 @@ pnpm --filter digital-employee dev:app
 ```
 
 或在 manifest 中配置 `ui.devEntry`（仅非打包环境生效）。
+
+## 含本地子进程（二期）
+
+若插件需要独立 HTTP 服务，使用 `kind: "ui-service"` 并在 manifest 中配置 `service` 块。示例见 [`extension-demo-service`](../extension-demo-service)。

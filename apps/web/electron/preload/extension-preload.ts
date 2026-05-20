@@ -1,16 +1,16 @@
 import { contextBridge, ipcRenderer } from "electron"
 import log from "electron-log/preload"
 import {
-  ExtensionIpcChannels,
+  ExtensionPluginIpcChannels,
   type ExtensionContextPayload,
-  type ExtensionIpcChannel,
-  type ExtensionIpcResult,
+  type ExtensionPluginIpcChannel,
+  type ExtensionPluginIpcResult,
 } from "../shared/extension-ipc-channels"
 
-function extensionInvoke<C extends ExtensionIpcChannel>(
+function extensionInvoke<C extends ExtensionPluginIpcChannel>(
   channel: C,
   ...args: unknown[]
-): Promise<ExtensionIpcResult<C>> {
+): Promise<ExtensionPluginIpcResult<C>> {
   return ipcRenderer
     .invoke(channel, ...args)
     .catch((err: unknown) => {
@@ -20,19 +20,20 @@ function extensionInvoke<C extends ExtensionIpcChannel>(
         message,
       })
       throw err
-    }) as Promise<ExtensionIpcResult<C>>
+    }) as Promise<ExtensionPluginIpcResult<C>>
 }
 
 const extensionApi = {
   apiVersion: 1 as const,
-  getPluginId: () => extensionInvoke(ExtensionIpcChannels.getPluginId),
+  getPluginId: () =>
+    extensionInvoke(ExtensionPluginIpcChannels.getPluginId),
   getContext: () =>
-    extensionInvoke(ExtensionIpcChannels.getContext) as Promise<
+    extensionInvoke(ExtensionPluginIpcChannels.getContext) as Promise<
       ExtensionContextPayload
     >,
-  close: () => extensionInvoke(ExtensionIpcChannels.closeWindow),
+  close: () => extensionInvoke(ExtensionPluginIpcChannels.closeWindow),
   invoke: (method: string, payload?: unknown) =>
-    extensionInvoke(ExtensionIpcChannels.invoke, method, payload),
+    extensionInvoke(ExtensionPluginIpcChannels.invoke, method, payload),
 }
 
 if (process.contextIsolated) {

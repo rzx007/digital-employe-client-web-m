@@ -54,20 +54,7 @@ export const IpcChannels = {
   checkUpdate: "check-update",
   startDownload: "start-download",
   quitAndInstall: "quit-and-install",
-  // extension (host SPA only)
-  extList: "ext:list",
-  extOpen: "ext:open",
-  extClose: "ext:close",
-  extSetEnabled: "ext:set-enabled",
 } as const
-
-export interface ExtensionListItem {
-  id: string
-  version: string
-  displayName: string
-  kind: string
-  enabled: boolean
-}
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]
 
@@ -225,14 +212,6 @@ export interface IpcInvokeMap {
   [IpcChannels.checkUpdate]: { args: []; result: unknown }
   [IpcChannels.startDownload]: { args: []; result: void }
   [IpcChannels.quitAndInstall]: { args: []; result: void }
-  // extension (host)
-  [IpcChannels.extList]: { args: []; result: ExtensionListItem[] }
-  [IpcChannels.extOpen]: { args: [extensionId: string]; result: void }
-  [IpcChannels.extClose]: { args: [extensionId: string]; result: void }
-  [IpcChannels.extSetEnabled]: {
-    args: [extensionId: string, enabled: boolean]
-    result: void
-  }
   // pet window
   [IpcChannels.petShow]: { args: []; result: void }
   [IpcChannels.petHide]: { args: []; result: void }

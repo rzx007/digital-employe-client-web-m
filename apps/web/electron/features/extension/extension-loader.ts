@@ -12,6 +12,7 @@ import {
   initExtensionStore,
   isExtensionEnabled,
 } from "./extension-store"
+import { stopAllExtensionServices, stopExtensionService } from "./extension-service-host"
 import {
   closeAllExtensionWindows,
   closeExtensionWindow,
@@ -63,11 +64,13 @@ export function activateExtension(extensionId: string): void {
 
 export function deactivateExtension(extensionId: string): void {
   closeExtensionWindow(extensionId)
+  stopExtensionService(extensionId)
   markExtensionDeactivated(extensionId)
   log.info("extension deactivated", { extensionId })
 }
 
 export function deactivateAllExtensions(): void {
+  stopAllExtensionServices()
   closeAllExtensionWindows()
   clearActivatedExtensions()
 }

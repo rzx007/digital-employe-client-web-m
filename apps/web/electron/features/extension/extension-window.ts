@@ -1,9 +1,7 @@
 import { is } from "@electron-toolkit/utils"
 import type { WebContents } from "electron"
 import { getWindowManager } from "../../core/services/window-registry"
-import {
-  getExtensionPreloadPath,
-} from "../../core/runtime-paths"
+import { getExtensionPreloadPath } from "../../core/runtime-paths"
 import { pluginWindowId } from "../../core/services/window-manager"
 import { createLogger } from "../../core/logger"
 import {
@@ -11,6 +9,11 @@ import {
   markExtensionActivated,
   resolveExtensionUiTarget,
 } from "./extension-registry"
+import {
+  getServiceBaseUrl,
+  startExtensionService,
+  stopExtensionService,
+} from "./extension-service-host"
 import { pinBrowserWindowTitle } from "../../main/pin-window-title"
 
 const log = createLogger("extension")
@@ -24,10 +27,22 @@ export function getExtensionIdForWebContents(
   return webContentsToExtensionId.get(webContents.id)
 }
 
-export function openExtensionWindow(extensionId: string): void {
+export function getExtensionServiceBaseUrl(
+  extensionId: string,
+): string | undefined {
+  return getServiceBaseUrl(extensionId)
+}
+
+export async function openExtensionWindow(
+  extensionId: string,
+): Promise<void> {
   const manifest = getExtensionManifest(extensionId)
   if (!manifest) {
     throw new Error(`Extension not found: ${extensionId}`)
+  }
+
+  if (manifest.kind === "ui-service") {
+    await startExtensionService(extensionId)
   }
 
   const wm = getWindowManager()
@@ -69,13 +84,20 @@ export function openExtensionWindow(extensionId: string): void {
   win.on("closed", () => {
     webContentsToExtensionId.delete(webContentsId)
     openExtensionIds.delete(extensionId)
+    if (manifest.kind === "ui-service") {
+      stopExtensionService(extensionId)
+    }
   })
 
   log.info("extension window opened", { extensionId })
 }
 
 export function closeExtensionWindow(extensionId: string): void {
+  const manifest = getExtensionManifest(extensionId)
   getWindowManager().close(pluginWindowId(extensionId))
+  if (manifest?.kind === "ui-service") {
+    stopExtensionService(extensionId)
+  }
 }
 
 export function closeAllExtensionWindows(): void {

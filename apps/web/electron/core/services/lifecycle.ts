@@ -1,6 +1,7 @@
 import { app } from "electron"
 import { stopBackend } from "../../features/backend/backend-process"
 import { deactivateAllExtensions } from "../../features/extension/extension-loader"
+import { stopAllExtensionServices } from "../../features/extension/extension-service-host"
 import { shutdownAuxiliaryWindows } from "../../features/notification-tray/tray"
 
 let _forceQuit = false
@@ -18,6 +19,7 @@ export function setForceQuit(value: boolean): void {
  */
 export function quitApp(): void {
   setForceQuit(true)
+  stopAllExtensionServices()
   deactivateAllExtensions()
   shutdownAuxiliaryWindows()
   stopBackend()
@@ -29,6 +31,7 @@ export function quitApp(): void {
 
 export function shutdownOnBeforeQuit(): void {
   setForceQuit(true)
+  stopAllExtensionServices()
   deactivateAllExtensions()
   shutdownAuxiliaryWindows()
   stopBackend()

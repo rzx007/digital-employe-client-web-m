@@ -17,6 +17,7 @@ electron/
 │   ├── runtime-paths.ts     # 路径工具
 │   └── services/
 │       ├── lifecycle.ts     # 生命周期管理
+│       ├── managed-process.ts   # 通用子进程 spawn/ready/kill
 │       ├── window-manager.ts    # 窗口工厂 + 管理
 │       └── window-registry.ts   # 单例绑定
 ├── features/                # 功能模块（自包含：窗口 + Store + IPC + Bridge）
@@ -61,6 +62,7 @@ electron/
 │   │   ├── extension-loader.ts
 │   │   ├── extension-registry.ts
 │   │   ├── extension-window.ts
+│   │   ├── extension-service-host.ts
 │   │   ├── extension-store.ts
 │   │   ├── manifest-schema.ts
 │   │   ├── ipc.ts
@@ -245,8 +247,8 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  HostSPA["主应用 SPA"] -->|"electronApi.listExtensions"| MainIPC["ext:* host IPC"]
-  PluginWin["插件 BrowserWindow"] -->|"window.extension"| ExtIPC["ext:get-context 等"]
+  HostSPA["主应用 SPA"] -->|"electronApi.listExtensions"| MainIPC["ext:host:*"]
+  PluginWin["插件 BrowserWindow"] -->|"window.extension"| ExtIPC["ext:plugin:*"]
   MainIPC --> Loader["ExtensionLoader"]
   ExtIPC --> Loader
   Loader --> Disk["extensions/id/ui/index.html"]
@@ -255,15 +257,30 @@ flowchart LR
 | 角色 | API | 说明 |
 |------|-----|------|
 | 主应用设置页 | `electronApi.listExtensions` / `openExtension` / `setExtensionEnabled` | 管理插件，不加载插件 UI |
-| 插件页面 | `window.extension.getContext` / `close` | 仅插件窗口 preload；`close` → IPC `ext:close-window`（非宿主 `ext:close`） |
+| 插件页面 | `window.extension.getContext` / `close` | `ext:plugin:*`（如 `ext:plugin:close-window`） |
+
+Channel 约定见 [`shared/extension-ipc-channels.ts`](shared/extension-ipc-channels.ts)：`ext:host:*`（宿主管理）、`ext:plugin:*`（插件窗 API），与主应用 `IpcChannels` 分离。
 
 **Manifest**：`digital-employee.extension.json`（见 [`examples/extension-demo`](../../../examples/extension-demo)）。
 
 **开发**：复制示例到 `~/.digital-employee/extensions/com.example.demo/`，或设置 `EXTENSION_DEV_COM_EXAMPLE_DEMO=http://127.0.0.1:端口/`。
 
-**权限**：`permissions` 含 `auth.read` 时 `getContext()` 才返回 `authToken`。
+#### 二期：`ui-service`（独立 UI + 本地子进程）
 
-第二期将支持 `kind: ui-service` 本地子进程（从 `backend-process` 抽象 ServiceHost）。
+| kind | 行为 |
+|------|------|
+| `ui` | 仅加载插件 HTML，与一期相同 |
+| `ui-service` | 打开前先启停 manifest `service` 子进程，再加载 UI |
+
+流程：`ext:host:open` → [`extension-service-host`](features/extension/extension-service-host.ts) 使用 [`ManagedProcess`](core/services/managed-process.ts) spawn → 等待 `ready`（stdout 正则或 `/health` 轮询）→ 创建插件窗 → `getContext().serviceBaseUrl` 注入插件 UI。
+
+与主 Python 后端（`backend-process`）无关；各插件 `port: 0` 时由宿主分配端口并写入子进程 `PORT`（可配置 `envPortKey`）。
+
+退出 / 关窗 / 禁用：`stopExtensionService` / `stopAllExtensionServices`（见 `lifecycle.ts`、`extension-window.ts`）。
+
+示例：[`examples/extension-demo-service`](../../../examples/extension-demo-service)。
+
+**权限**：`permissions` 含 `auth.read` 时 `getContext()` 才返回 `authToken`。
 
 ## 错误边界与日志
 

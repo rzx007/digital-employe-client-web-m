@@ -1,17 +1,38 @@
 /**
- * 插件窗口专用 IPC（extension-preload ↔ 主进程）
- * 不并入主应用 IpcInvokeMap，避免污染 ElectronApi
+ * 插件体系 IPC — 与主应用 IpcChannels 分离
+ * - ext:host:*  主应用 SPA（electronApi 管理插件）
+ * - ext:plugin:* 插件窗口（window.extension）
  */
-export const ExtensionIpcChannels = {
-  getPluginId: "ext:get-plugin-id",
-  getContext: "ext:get-context",
-  /** 插件窗关闭自身（无参）；宿主按 id 关闭用 IpcChannels.extClose */
-  closeWindow: "ext:close-window",
-  invoke: "ext:invoke",
+
+/** 宿主：设置页等 */
+export const ExtensionHostIpcChannels = {
+  list: "ext:host:list",
+  open: "ext:host:open",
+  close: "ext:host:close",
+  setEnabled: "ext:host:set-enabled",
 } as const
 
-export type ExtensionIpcChannel =
-  (typeof ExtensionIpcChannels)[keyof typeof ExtensionIpcChannels]
+/** 插件窗：extension-preload */
+export const ExtensionPluginIpcChannels = {
+  getPluginId: "ext:plugin:get-plugin-id",
+  getContext: "ext:plugin:get-context",
+  closeWindow: "ext:plugin:close-window",
+  invoke: "ext:plugin:invoke",
+} as const
+
+export type ExtensionHostIpcChannel =
+  (typeof ExtensionHostIpcChannels)[keyof typeof ExtensionHostIpcChannels]
+
+export type ExtensionPluginIpcChannel =
+  (typeof ExtensionPluginIpcChannels)[keyof typeof ExtensionPluginIpcChannels]
+
+export interface ExtensionListItem {
+  id: string
+  version: string
+  displayName: string
+  kind: string
+  enabled: boolean
+}
 
 export interface ExtensionContextPayload {
   pluginId: string
@@ -19,20 +40,35 @@ export interface ExtensionContextPayload {
   version: string
   hostVersion: string
   authToken?: string
+  /** ui-service 插件且本地服务已启动时 */
+  serviceBaseUrl?: string
 }
 
-export interface ExtensionInvokeMap {
-  [ExtensionIpcChannels.getPluginId]: { args: []; result: string }
-  [ExtensionIpcChannels.getContext]: {
+export interface ExtensionHostInvokeMap {
+  [ExtensionHostIpcChannels.list]: { args: []; result: ExtensionListItem[] }
+  [ExtensionHostIpcChannels.open]: { args: [extensionId: string]; result: void }
+  [ExtensionHostIpcChannels.close]: { args: [extensionId: string]; result: void }
+  [ExtensionHostIpcChannels.setEnabled]: {
+    args: [extensionId: string, enabled: boolean]
+    result: void
+  }
+}
+
+export interface ExtensionPluginInvokeMap {
+  [ExtensionPluginIpcChannels.getPluginId]: { args: []; result: string }
+  [ExtensionPluginIpcChannels.getContext]: {
     args: []
     result: ExtensionContextPayload
   }
-  [ExtensionIpcChannels.closeWindow]: { args: []; result: void }
-  [ExtensionIpcChannels.invoke]: {
+  [ExtensionPluginIpcChannels.closeWindow]: { args: []; result: void }
+  [ExtensionPluginIpcChannels.invoke]: {
     args: [method: string, payload?: unknown]
     result: unknown
   }
 }
 
-export type ExtensionIpcResult<C extends ExtensionIpcChannel> =
-  ExtensionInvokeMap[C]["result"]
+export type ExtensionHostIpcResult<C extends ExtensionHostIpcChannel> =
+  ExtensionHostInvokeMap[C]["result"]
+
+export type ExtensionPluginIpcResult<C extends ExtensionPluginIpcChannel> =
+  ExtensionPluginInvokeMap[C]["result"]

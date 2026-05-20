@@ -7,12 +7,17 @@ export const HOST_VERSION = pkg.version
 
 export function buildExtensionContext(
   manifest: ExtensionManifest,
+  options?: { serviceBaseUrl?: string },
 ): ExtensionContextPayload {
   const ctx: ExtensionContextPayload = {
     pluginId: manifest.id,
     displayName: manifest.displayName,
     version: manifest.version,
     hostVersion: HOST_VERSION,
+  }
+
+  if (options?.serviceBaseUrl) {
+    ctx.serviceBaseUrl = options.serviceBaseUrl
   }
 
   if (manifest.permissions.includes("auth.read")) {

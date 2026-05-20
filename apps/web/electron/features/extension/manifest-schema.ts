@@ -1,26 +1,74 @@
 import { z } from "zod"
 
-const extensionIdRegex = /^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$/
+/** 反向域名式 ID：每段以小写字母开头，可含数字与连字符 */
+const extensionIdRegex = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/
 
-export const ExtensionManifestSchema = z.object({
-  id: z.string().regex(extensionIdRegex, "invalid extension id"),
-  version: z.string().min(1),
-  kind: z.literal("ui"),
-  displayName: z.string().min(1),
-  minHostVersion: z.string().optional(),
-  permissions: z
-    .array(z.enum(["context.read", "auth.read"]))
-    .default([]),
-  ui: z.object({
-    entry: z.string().min(1),
-    title: z.string().min(1),
-    width: z.number().int().positive().default(960),
-    height: z.number().int().positive().default(720),
-    devEntry: z.string().url().optional(),
-  }),
+const ExtensionUiSchema = z.object({
+  entry: z.string().min(1),
+  title: z.string().min(1),
+  width: z.number().int().positive().default(960),
+  height: z.number().int().positive().default(720),
+  devEntry: z.string().url().optional(),
 })
 
+const ExtensionServiceReadySchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("stdout"),
+    pattern: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("health"),
+    path: z.string().min(1).default("/health"),
+    intervalMs: z.number().int().positive().default(500),
+    timeoutMs: z.number().int().positive().default(30_000),
+  }),
+])
+
+export const ExtensionServiceManifestSchema = z.object({
+  command: z.array(z.string()).min(1),
+  cwd: z.string().default("."),
+  env: z.record(z.string()).optional(),
+  port: z.number().int().min(0).default(0),
+  host: z.literal("127.0.0.1").default("127.0.0.1"),
+  envPortKey: z.string().min(1).default("PORT"),
+  ready: ExtensionServiceReadySchema,
+  bundledBinary: z.string().optional(),
+})
+
+export const ExtensionManifestSchema = z
+  .object({
+    id: z.string().regex(extensionIdRegex, "invalid extension id"),
+    version: z.string().min(1),
+    kind: z.enum(["ui", "ui-service"]),
+    displayName: z.string().min(1),
+    minHostVersion: z.string().optional(),
+    permissions: z
+      .array(z.enum(["context.read", "auth.read"]))
+      .default([]),
+    ui: ExtensionUiSchema,
+    service: ExtensionServiceManifestSchema.optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.kind === "ui" && data.service) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "kind ui must not include service block",
+        path: ["service"],
+      })
+    }
+    if (data.kind === "ui-service" && !data.service) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "kind ui-service requires service block",
+        path: ["service"],
+      })
+    }
+  })
+
 export type ExtensionManifest = z.infer<typeof ExtensionManifestSchema>
+export type ExtensionServiceManifest = z.infer<
+  typeof ExtensionServiceManifestSchema
+>
 
 export const MANIFEST_FILE_NAME = "digital-employee.extension.json"
 

@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card"
 import { Switch } from "@workspace/ui/components/switch"
+import { toast } from "sonner"
 import { isElectron, withElectronApi } from "@/lib/electron/host"
 
 interface ExtensionListItem {
@@ -49,7 +50,13 @@ export function ExtensionsSettings() {
   }
 
   const handleOpen = (id: string) => {
-    void withElectronApi((api) => api.openExtension(id))
+    void withElectronApi((api) => api.openExtension(id), {
+      onError: (error) => {
+        const message =
+          error instanceof Error ? error.message : "打开插件失败"
+        toast.error(message)
+      },
+    })
   }
 
   if (!isElectron()) {

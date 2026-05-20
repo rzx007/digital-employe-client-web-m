@@ -1,21 +1,32 @@
-import { IpcChannels } from "../../shared/ipc-channels"
-import { invoke } from "../../preload/invoke"
+import { ipcRenderer } from "electron"
+import {
+  ExtensionHostIpcChannels,
+  type ExtensionHostIpcChannel,
+  type ExtensionHostIpcResult,
+  type ExtensionListItem,
+} from "../../shared/extension-ipc-channels"
 
-export interface ExtensionListItem {
-  id: string
-  version: string
-  displayName: string
-  kind: string
-  enabled: boolean
+function invokeExtensionHost<C extends ExtensionHostIpcChannel>(
+  channel: C,
+  ...args: unknown[]
+): Promise<ExtensionHostIpcResult<C>> {
+  return ipcRenderer.invoke(channel, ...args) as Promise<
+    ExtensionHostIpcResult<C>
+  >
 }
 
+export type { ExtensionListItem }
+
 export const extensionBridge = {
-  listExtensions: () =>
-    invoke(IpcChannels.extList) as Promise<ExtensionListItem[]>,
+  listExtensions: () => invokeExtensionHost(ExtensionHostIpcChannels.list),
   openExtension: (extensionId: string) =>
-    invoke(IpcChannels.extOpen, extensionId),
+    invokeExtensionHost(ExtensionHostIpcChannels.open, extensionId),
   closeExtension: (extensionId: string) =>
-    invoke(IpcChannels.extClose, extensionId),
+    invokeExtensionHost(ExtensionHostIpcChannels.close, extensionId),
   setExtensionEnabled: (extensionId: string, enabled: boolean) =>
-    invoke(IpcChannels.extSetEnabled, extensionId, enabled),
+    invokeExtensionHost(
+      ExtensionHostIpcChannels.setEnabled,
+      extensionId,
+      enabled,
+    ),
 }
