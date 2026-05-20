@@ -10,6 +10,8 @@ export const ExtensionHostIpcChannels = {
   open: "ext:host:open",
   close: "ext:host:close",
   setEnabled: "ext:host:set-enabled",
+  getContext: "ext:host:get-context",
+  emitEvent: "ext:host:emit-event",
 } as const
 
 /** 插件窗：extension-preload */
@@ -19,6 +21,9 @@ export const ExtensionPluginIpcChannels = {
   closeWindow: "ext:plugin:close-window",
   invoke: "ext:plugin:invoke",
 } as const
+
+/** 主进程 → 插件窗 push（非 invoke） */
+export const EXTENSION_HOST_EVENT_CHANNEL = "ext:host:event"
 
 export type ExtensionHostIpcChannel =
   (typeof ExtensionHostIpcChannels)[keyof typeof ExtensionHostIpcChannels]
@@ -42,10 +47,31 @@ export interface ExtensionContextPayload {
   displayName: string
   version: string
   hostVersion: string
+  permissions: string[]
   authToken?: string
   /** 含 service 块且本地服务已启动时 */
   serviceBaseUrl?: string
 }
+
+export interface ExtensionHostEventEnvelope {
+  type: string
+  payload?: unknown
+  timestamp: number
+}
+
+/**
+ * extension.invoke 方法（需在 manifest permissions 中声明对应项）
+ * - notification.show → host.notification
+ * - window.focusMain → host.window.main
+ * - storage.get / storage.set → host.storage
+ * - backend.getPort → host.backend.read
+ */
+export type ExtensionInvokeMethod =
+  | "notification.show"
+  | "window.focusMain"
+  | "storage.get"
+  | "storage.set"
+  | "backend.getPort"
 
 export interface ExtensionHostInvokeMap {
   [ExtensionHostIpcChannels.list]: { args: []; result: ExtensionListItem[] }
@@ -53,6 +79,14 @@ export interface ExtensionHostInvokeMap {
   [ExtensionHostIpcChannels.close]: { args: [extensionId: string]; result: void }
   [ExtensionHostIpcChannels.setEnabled]: {
     args: [extensionId: string, enabled: boolean]
+    result: void
+  }
+  [ExtensionHostIpcChannels.getContext]: {
+    args: [extensionId: string]
+    result: ExtensionContextPayload
+  }
+  [ExtensionHostIpcChannels.emitEvent]: {
+    args: [type: string, payload?: unknown]
     result: void
   }
 }

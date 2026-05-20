@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>示例 · invoke</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem;
+        line-height: 1.5;
+      }
+      button {
+        margin: 0.25rem 0.5rem 0.25rem 0;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+      }
+      pre {
+        background: #f4f4f5;
+        padding: 1rem;
+        border-radius: 8px;
+        overflow: auto;
+        margin-top: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>四期示例 · extension.invoke</h1>
+    <p>通过宿主能力：通知、聚焦主窗、存储、后端端口；并订阅宿主事件。</p>
+    <div class="actions">
+      <button type="button" id="notify">发系统通知</button>
+      <button type="button" id="focus">聚焦主窗口</button>
+      <button type="button" id="storage">storage.set + get</button>
+      <button type="button" id="port">backend.getPort</button>
+    </div>
+    <pre id="output">加载中…</pre>
+    <button type="button" id="close">关闭窗口</button>
+    <script>
+      const out = document.getElementById("output")
+      function log(msg) {
+        out.textContent =
+          typeof msg === "string" ? msg : JSON.stringify(msg, null, 2)
+      }
+
+      async function main() {
+        if (!window.extension) {
+          log("window.extension 不可用")
+          return
+        }
+        const ctx = await window.extension.getContext()
+        log({ ctx, hint: "在设置页点「发送测试事件」可收到 onHostEvent" })
+
+        window.extension.onHostEvent((e) => {
+          log({ hostEvent: e })
+        })
+      }
+
+      document.getElementById("notify").addEventListener("click", () => {
+        void window.extension
+          ?.invoke("notification.show", {
+            title: "来自插件",
+            body: "notification.show 成功",
+          })
+          .then(() => log("notification.show ok"))
+          .catch((e) => log(String(e)))
+      })
+
+      document.getElementById("focus").addEventListener("click", () => {
+        void window.extension
+          ?.invoke("window.focusMain")
+          .then(() => log("window.focusMain ok"))
+          .catch((e) => log(String(e)))
+      })
+
+      document.getElementById("storage").addEventListener("click", () => {
+        void window.extension
+          ?.invoke("storage.set", { key: "demo", value: { t: Date.now() } })
+          .then(() => window.extension?.invoke("storage.get", { key: "demo" }))
+          .then((v) => log({ storage: v }))
+          .catch((e) => log(String(e)))
+      })
+
+      document.getElementById("port").addEventListener("click", () => {
+        void window.extension
+          ?.invoke("backend.getPort")
+          .then((v) => log(v))
+          .catch((e) => log(String(e)))
+      })
+
+      document.getElementById("close").addEventListener("click", () => {
+        void window.extension?.close()
+      })
+
+      main()
+    </script>
+  </body>
+</html>

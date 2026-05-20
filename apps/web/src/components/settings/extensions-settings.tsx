@@ -161,6 +161,37 @@ export function ExtensionsSettings() {
           >
             刷新列表
           </Button>
+
+          <div className="border-border mt-6 rounded-lg border p-4">
+            <p className="text-sm font-medium">宿主事件（调试）</p>
+            <p className="text-muted-foreground mt-1 text-xs">
+              向已打开且含 host.events 的插件窗推送测试事件。
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-3"
+              onClick={() => {
+                void withElectronApi(
+                  (api) =>
+                    api.emitExtensionHostEvent("extension.test", {
+                      message: "hello from host",
+                    }),
+                  {
+                    onError: (error) => {
+                      toast.error(
+                        error instanceof Error
+                          ? error.message
+                          : "发送失败",
+                      )
+                    },
+                  },
+                )
+              }}
+            >
+              发送测试事件
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

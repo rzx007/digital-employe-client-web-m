@@ -14,6 +14,7 @@ export function buildExtensionContext(
     displayName: manifest.displayName,
     version: manifest.version,
     hostVersion: HOST_VERSION,
+    permissions: [...manifest.permissions],
   }
 
   if (options?.serviceBaseUrl) {

@@ -6,6 +6,8 @@ import {
 import type { AppContext } from "../../core/app-context"
 import type { IpcContribution } from "../../core/ipc/types"
 import { buildExtensionContext } from "./extension-context"
+import { emitHostEvent } from "./extension-host-events"
+import { dispatchExtensionInvoke } from "./extension-invoke-router"
 import {
   activateExtension,
   deactivateExtension,
@@ -25,6 +27,16 @@ function resolveExtensionIdFromEvent(
   event: IpcMainInvokeEvent,
 ): string | undefined {
   return getExtensionIdForWebContents(event.sender)
+}
+
+function buildContextForExtensionId(extensionId: string) {
+  const manifest = getExtensionManifest(extensionId)
+  if (!manifest) {
+    throw new Error(`Extension not found: ${extensionId}`)
+  }
+  return buildExtensionContext(manifest, {
+    serviceBaseUrl: getExtensionServiceBaseUrl(extensionId),
+  })
 }
 
 export const extensionIpcContribution: IpcContribution = {
@@ -65,6 +77,18 @@ export const extensionIpcContribution: IpcContribution = {
         },
       },
       {
+        channel: ExtensionHostIpcChannels.getContext,
+        handler: (_event, extensionId: string) => {
+          return buildContextForExtensionId(extensionId)
+        },
+      },
+      {
+        channel: ExtensionHostIpcChannels.emitEvent,
+        handler: (_event, type: string, payload?: unknown) => {
+          emitHostEvent(type, payload)
+        },
+      },
+      {
         channel: ExtensionPluginIpcChannels.getPluginId,
         handler: (event) => {
           const id = resolveExtensionIdFromEvent(event)
@@ -77,19 +101,13 @@ export const extensionIpcContribution: IpcContribution = {
         handler: (event) => {
           const id = resolveExtensionIdFromEvent(event)
           if (!id) throw new Error("Not an extension window")
-          const manifest = getExtensionManifest(id)
-          if (!manifest) throw new Error(`Extension not found: ${id}`)
-          return buildExtensionContext(manifest, {
-            serviceBaseUrl: getExtensionServiceBaseUrl(id),
-          })
+          return buildContextForExtensionId(id)
         },
       },
       {
         channel: ExtensionPluginIpcChannels.closeWindow,
         handler: (event) => {
-          const win =
-            BrowserWindow.fromWebContents(event.sender) ??
-            event.sender.getOwnerBrowserWindow()
+          const win = BrowserWindow.fromWebContents(event.sender)
           if (win && !win.isDestroyed()) {
             win.close()
             return
@@ -100,8 +118,12 @@ export const extensionIpcContribution: IpcContribution = {
       },
       {
         channel: ExtensionPluginIpcChannels.invoke,
-        handler: (_event, _method: string) => {
-          throw new Error("extension.invoke is not implemented yet")
+        handler: async (event, method: string, payload?: unknown) => {
+          const id = resolveExtensionIdFromEvent(event)
+          if (!id) throw new Error("Not an extension window")
+          const manifest = getExtensionManifest(id)
+          if (!manifest) throw new Error(`Extension not found: ${id}`)
+          return dispatchExtensionInvoke(id, manifest, method, payload)
         },
       },
     ]

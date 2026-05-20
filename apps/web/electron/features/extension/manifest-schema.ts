@@ -42,7 +42,17 @@ export const ExtensionManifestSchema = z
     displayName: z.string().min(1),
     minHostVersion: z.string().optional(),
     permissions: z
-      .array(z.enum(["context.read", "auth.read"]))
+      .array(
+        z.enum([
+          "context.read",
+          "auth.read",
+          "host.notification",
+          "host.window.main",
+          "host.storage",
+          "host.backend.read",
+          "host.events",
+        ]),
+      )
       .default([]),
     ui: ExtensionUiSchema.optional(),
     service: ExtensionServiceManifestSchema.optional(),
@@ -88,22 +98,28 @@ export function normalizeManifestRaw(raw: unknown): {
 
 export function hasExtensionUi(
   manifest: Pick<ExtensionManifest, "ui">,
-): boolean {
+): manifest is Pick<ExtensionManifest, "ui"> & {
+  ui: NonNullable<ExtensionManifest["ui"]>
+} {
   return manifest.ui != null
 }
 
 /** manifest 含 service 块时需启停本地子进程 */
 export function hasExtensionService(
   manifest: Pick<ExtensionManifest, "service">,
-): boolean {
+): manifest is Pick<ExtensionManifest, "service"> & {
+  service: ExtensionServiceManifest
+} {
   return manifest.service != null
 }
 
 /** 仅 service、无 ui（后台服务插件） */
 export function isHeadlessExtension(
   manifest: Pick<ExtensionManifest, "ui" | "service">,
-): boolean {
-  return hasExtensionService(manifest) && !hasExtensionUi(manifest)
+): manifest is Pick<ExtensionManifest, "ui" | "service"> & {
+  service: ExtensionServiceManifest
+} {
+  return manifest.service != null && manifest.ui == null
 }
 
 /** 比较 semver：a >= b 时返回 true */

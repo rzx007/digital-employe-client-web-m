@@ -109,3 +109,7 @@ export function closeAllExtensionWindows(): void {
     closeExtensionWindow(extensionId)
   }
 }
+
+export function getOpenExtensionIds(): string[] {
+  return [...openExtensionIds]
+}

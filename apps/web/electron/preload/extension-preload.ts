@@ -1,8 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron"
 import log from "electron-log/preload"
 import {
+  EXTENSION_HOST_EVENT_CHANNEL,
   ExtensionPluginIpcChannels,
   type ExtensionContextPayload,
+  type ExtensionHostEventEnvelope,
   type ExtensionPluginIpcChannel,
   type ExtensionPluginIpcResult,
 } from "../shared/extension-ipc-channels"
@@ -23,6 +25,15 @@ function extensionInvoke<C extends ExtensionPluginIpcChannel>(
     }) as Promise<ExtensionPluginIpcResult<C>>
 }
 
+let cachedPermissions: string[] | null = null
+
+async function ensurePermissions(): Promise<string[]> {
+  if (cachedPermissions) return cachedPermissions
+  const ctx = await extensionInvoke(ExtensionPluginIpcChannels.getContext)
+  cachedPermissions = ctx.permissions ?? []
+  return cachedPermissions
+}
+
 const extensionApi = {
   apiVersion: 1 as const,
   getPluginId: () =>
@@ -34,6 +45,36 @@ const extensionApi = {
   close: () => extensionInvoke(ExtensionPluginIpcChannels.closeWindow),
   invoke: (method: string, payload?: unknown) =>
     extensionInvoke(ExtensionPluginIpcChannels.invoke, method, payload),
+  onHostEvent: (
+    handler: (event: ExtensionHostEventEnvelope) => void,
+  ): (() => void) => {
+    let disposed = false
+    let listener:
+      | ((
+          _event: Electron.IpcRendererEvent,
+          envelope: ExtensionHostEventEnvelope,
+        ) => void)
+      | null = null
+
+    void ensurePermissions().then((permissions) => {
+      if (disposed) return
+      if (!permissions.includes("host.events")) {
+        log.warn("[extension-preload] host.events permission missing")
+        return
+      }
+      listener = (_event, envelope) => {
+        handler(envelope)
+      }
+      ipcRenderer.on(EXTENSION_HOST_EVENT_CHANNEL, listener)
+    })
+
+    return () => {
+      disposed = true
+      if (listener) {
+        ipcRenderer.removeListener(EXTENSION_HOST_EVENT_CHANNEL, listener)
+      }
+    }
+  },
 }
 
 if (process.contextIsolated) {

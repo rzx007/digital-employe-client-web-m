@@ -293,7 +293,19 @@ Channel 约定见 [`shared/extension-ipc-channels.ts`](shared/extension-ipc-chan
 
 主 Python 后端 [`backend-process.ts`](features/backend/backend-process.ts) 已改用 [`ManagedProcess`](core/services/managed-process.ts)（对外 API 不变：`startBackend` / `stopBackend` / `getBackendPort`）。
 
-**权限**：`permissions` 含 `auth.read` 时 `getContext()` 才返回 `authToken`。
+#### 四期：invoke / 宿主事件 / headless get-context
+
+| 能力 | API |
+|------|-----|
+| 插件调宿主 | `window.extension.invoke(method, payload)`，需 manifest `permissions` |
+| 宿主读上下文 | `electronApi.getExtensionContext(extensionId)`（headless 无窗可用） |
+| 宿主推事件 | `electronApi.emitExtensionHostEvent(type, payload)` → 已开窗且含 `host.events` 的插件 `onHostEvent` |
+
+invoke 方法：`notification.show`、`window.focusMain`、`storage.get` / `storage.set`、`backend.getPort`（见 [`extension-permissions.ts`](features/extension/extension-permissions.ts)）。
+
+示例：[`examples/extension-demo-invoke`](../../../examples/extension-demo-invoke)。
+
+**权限**：`permissions` 含 `auth.read` 时 `getContext()` 才返回 `authToken`；`getContext().permissions` 返回已声明列表。
 
 ## 错误边界与日志
 

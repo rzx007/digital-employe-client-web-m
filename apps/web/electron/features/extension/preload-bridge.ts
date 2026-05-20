@@ -1,6 +1,7 @@
 import { ipcRenderer } from "electron"
 import {
   ExtensionHostIpcChannels,
+  type ExtensionContextPayload,
   type ExtensionHostIpcChannel,
   type ExtensionHostIpcResult,
   type ExtensionListItem,
@@ -15,7 +16,7 @@ function invokeExtensionHost<C extends ExtensionHostIpcChannel>(
   >
 }
 
-export type { ExtensionListItem }
+export type { ExtensionListItem, ExtensionContextPayload }
 
 export const extensionBridge = {
   listExtensions: () => invokeExtensionHost(ExtensionHostIpcChannels.list),
@@ -29,4 +30,11 @@ export const extensionBridge = {
       extensionId,
       enabled,
     ),
+  getExtensionContext: (extensionId: string) =>
+    invokeExtensionHost(
+      ExtensionHostIpcChannels.getContext,
+      extensionId,
+    ) as Promise<ExtensionContextPayload>,
+  emitExtensionHostEvent: (type: string, payload?: unknown) =>
+    invokeExtensionHost(ExtensionHostIpcChannels.emitEvent, type, payload),
 }
