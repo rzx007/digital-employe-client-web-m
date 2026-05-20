@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
+from typing import Annotated
 
-from langchain_core.tools import BaseTool, StructuredTool
+from langchain_core.tools import BaseTool, InjectedToolCallId, StructuredTool
 from pydantic import BaseModel, Field
 
 from deepagents.backends.protocol import ExecuteResponse
@@ -32,13 +32,21 @@ class ShellExecuteInput(BaseModel):
 
 
 def create_shell_execute_tool(shell: SkillAwareShellBackend) -> BaseTool:
-    async def _arun(command: str, intent: str | None = None) -> str:
+    async def _arun(
+        command: str,
+        intent: str | None = None,
+        tool_call_id: Annotated[str, InjectedToolCallId] = "",
+    ) -> str:
         del intent
-        response = await shell.aexecute(command)
+        response = await shell.aexecute(command, tool_call_id=tool_call_id or None)
         return format_execute_response(response)
 
-    def _run(command: str, intent: str | None = None) -> str:
-        del intent
+    def _run(
+        command: str,
+        intent: str | None = None,
+        tool_call_id: Annotated[str, InjectedToolCallId] = "",
+    ) -> str:
+        del intent, tool_call_id
         return format_execute_response(shell.execute(command))
 
     return StructuredTool.from_function(
