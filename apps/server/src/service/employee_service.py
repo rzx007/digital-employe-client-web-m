@@ -416,6 +416,45 @@ class EmployeeService:
         return meta
 
     @staticmethod
+    def _sync_employee_meta_from_update(
+        db: Session,
+        employee: Employee,
+        payload: EmployeeUpdate,
+    ) -> None:
+        """将员工表字段与关联数据同步到 meta_json，与 create_employee 写入结构一致。"""
+        meta = EmployeeService._load_employee_meta(employee)
+
+        if payload.employee_name is not None:
+            meta["employee_name"] = payload.employee_name
+        if payload.capability_desc is not None:
+            meta["capability_desc"] = payload.capability_desc
+        if "status" in payload.model_fields_set:
+            meta["status"] = payload.status
+        if "detail_page_url" in payload.model_fields_set:
+            meta["detail_page_url"] = payload.detail_page_url
+
+        if "shift_schedule" in payload.model_fields_set:
+            try:
+                shift = json.loads(employee.shift_schedule_json or "{}")
+            except json.JSONDecodeError:
+                shift = {}
+            if isinstance(shift, dict):
+                meta["shift_schedule"] = shift
+
+        if "skill_ids" in payload.model_fields_set:
+            meta["skills"] = EmployeeService._employee_skills_snapshot(
+                db, employee
+            )
+        if "mcp_ids" in payload.model_fields_set:
+            meta["mcps"] = EmployeeService._employee_mcps_snapshot(db, employee)
+        if "tasks" in payload.model_fields_set:
+            meta["tasks"] = TaskService.list_employee_tasks_as_dict(
+                db, employee.id
+            )
+
+        employee.meta_json = json.dumps(meta, ensure_ascii=False)
+
+    @staticmethod
     def _normalize_tasks(tasks: list | None) -> list[dict]:
         if not tasks:
             return []
@@ -829,26 +868,23 @@ class EmployeeService:
     ) -> Employee:
         employee = EmployeeService.get_employee(db, employee_id)
         changed_tasks = False
+
         if payload.employee_name is not None:
+            existing_employee = db.scalar(
+                select(Employee).where(
+                    Employee.workspace_id == employee.workspace_id,
+                    Employee.name == payload.employee_name,
+                    Employee.id != employee.id,
+                )
+            )
+            if existing_employee:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="员工名称已存在",
+                )
             employee.name = payload.employee_name
         if payload.capability_desc is not None:
             employee.description = payload.capability_desc
-        # if payload.version is not None:
-        #     employee.version = payload.version
-
-        # 这里需要加一个判断条件，新的员工姓名不能与其他员工姓名相同
-        existing_employee = db.scalar(
-            select(Employee).where(
-                Employee.workspace_id == employee.workspace_id,
-                Employee.name == payload.employee_name,
-                Employee.id != employee.id,
-            )
-        )
-        if existing_employee:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="员工名称已存在")
-        else:
-            employee.name = payload.employee_name
 
         if "skill_ids" in payload.model_fields_set:
             skill_ids = payload.skill_ids or []
@@ -877,6 +913,8 @@ class EmployeeService:
             TaskService.upsert_employee_tasks(
                 db, employee.workspace_id, employee.id, normalized
             )
+
+        EmployeeService._sync_employee_meta_from_update(db, employee, payload)
         db.commit()
         db.refresh(employee)
         if changed_tasks:
