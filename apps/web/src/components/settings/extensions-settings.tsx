@@ -16,7 +16,7 @@ interface ExtensionListItem {
   id: string
   version: string
   displayName: string
-  kind: string
+  hasService: boolean
   enabled: boolean
 }
 

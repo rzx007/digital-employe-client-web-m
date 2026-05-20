@@ -1,4 +1,4 @@
-# 示例插件 · ui-service (com.example.demo-service)
+# 示例插件 · 含本地服务 (com.example.demo-service)
 
 将 `com.example.demo-service` 目录复制到扩展安装目录：
 
@@ -13,12 +13,14 @@
 
 在数字员工客户端：**设置 → 插件** 中启用并打开。
 
-## 与 `kind: "ui"` 的区别
+## 与仅 `ui` 示例的区别
 
-| kind | 说明 |
-|------|------|
-| `ui` | 仅独立 HTML/SPA，见 [`extension-demo`](../extension-demo) |
-| `ui-service` | 打开插件窗口前由宿主启动 manifest `service` 子进程；插件 UI 通过 `getContext().serviceBaseUrl` 访问本地 HTTP API |
+| manifest | 说明 |
+|----------|------|
+| 仅有 `ui` | 独立 HTML/SPA，见 [`extension-demo`](../extension-demo) |
+| `ui` + `service` | 打开窗口前宿主启动 `service` 子进程；插件通过 `getContext().serviceBaseUrl` 访问本地 HTTP API |
+
+是否启服务由 manifest 是否包含 `service` 块决定（勿再使用已废弃的 `kind` 字段）。
 
 启停时机：
 

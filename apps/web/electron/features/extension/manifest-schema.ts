@@ -39,7 +39,6 @@ export const ExtensionManifestSchema = z
   .object({
     id: z.string().regex(extensionIdRegex, "invalid extension id"),
     version: z.string().min(1),
-    kind: z.enum(["ui", "ui-service"]),
     displayName: z.string().min(1),
     minHostVersion: z.string().optional(),
     permissions: z
@@ -49,17 +48,10 @@ export const ExtensionManifestSchema = z
     service: ExtensionServiceManifestSchema.optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.kind === "ui" && data.service) {
+    if (!data.ui && data.service) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "kind ui must not include service block",
-        path: ["service"],
-      })
-    }
-    if (data.kind === "ui-service" && !data.service) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "kind ui-service requires service block",
+        message: "service without ui is not supported yet (headless)",
         path: ["service"],
       })
     }
@@ -71,6 +63,35 @@ export type ExtensionServiceManifest = z.infer<
 >
 
 export const MANIFEST_FILE_NAME = "digital-employee.extension.json"
+
+const DEPRECATED_MANIFEST_KEYS = ["kind"] as const
+
+/** 解析前移除已废弃字段（如旧版 kind） */
+export function normalizeManifestRaw(raw: unknown): {
+  value: unknown
+  removed: string[]
+} {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { value: raw, removed: [] }
+  }
+  const obj = raw as Record<string, unknown>
+  const removed: string[] = []
+  const copy = { ...obj }
+  for (const key of DEPRECATED_MANIFEST_KEYS) {
+    if (key in copy) {
+      delete copy[key]
+      removed.push(key)
+    }
+  }
+  return { value: removed.length > 0 ? copy : raw, removed }
+}
+
+/** manifest 含 service 块时需启停本地子进程 */
+export function hasExtensionService(
+  manifest: Pick<ExtensionManifest, "service">,
+): boolean {
+  return manifest.service != null
+}
 
 /** 比较 semver：a >= b 时返回 true */
 export function isHostVersionCompatible(

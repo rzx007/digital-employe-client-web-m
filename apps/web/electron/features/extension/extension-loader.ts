@@ -40,14 +40,14 @@ export function listExtensions(): Array<{
   id: string
   version: string
   displayName: string
-  kind: string
+  hasService: boolean
   enabled: boolean
 }> {
   return listDiscoveredExtensions().map((m) => ({
     id: m.id,
     version: m.version,
     displayName: m.displayName,
-    kind: m.kind,
+    hasService: m.service != null,
     enabled: isExtensionEnabled(m.id),
   }))
 }

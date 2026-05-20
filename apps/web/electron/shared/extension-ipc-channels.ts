@@ -30,7 +30,8 @@ export interface ExtensionListItem {
   id: string
   version: string
   displayName: string
-  kind: string
+  /** manifest 含 service 块 */
+  hasService: boolean
   enabled: boolean
 }
 
@@ -40,7 +41,7 @@ export interface ExtensionContextPayload {
   version: string
   hostVersion: string
   authToken?: string
-  /** ui-service 插件且本地服务已启动时 */
+  /** 含 service 块且本地服务已启动时 */
   serviceBaseUrl?: string
 }
 

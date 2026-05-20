@@ -5,7 +5,10 @@ import {
 } from "../../core/services/managed-process"
 import { getExtensionManifest } from "./extension-registry"
 import { resolveExtensionPath } from "./extension-paths"
-import type { ExtensionServiceManifest } from "./manifest-schema"
+import {
+  hasExtensionService,
+  type ExtensionServiceManifest,
+} from "./manifest-schema"
 
 const log = createLogger("extension:service")
 
@@ -59,7 +62,7 @@ export async function startExtensionService(
   if (!manifest) {
     throw new Error(`Extension not found: ${extensionId}`)
   }
-  if (manifest.kind !== "ui-service" || !manifest.service) {
+  if (!hasExtensionService(manifest)) {
     throw new Error(`Extension has no service: ${extensionId}`)
   }
 

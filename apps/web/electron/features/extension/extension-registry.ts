@@ -6,6 +6,7 @@ import {
   ExtensionManifestSchema,
   isHostVersionCompatible,
   MANIFEST_FILE_NAME,
+  normalizeManifestRaw,
   type ExtensionManifest,
 } from "./manifest-schema"
 import {
@@ -40,7 +41,16 @@ export function scanExtensionRegistry(): ExtensionManifest[] {
     if (!fs.existsSync(manifestPath)) continue
 
     try {
-      const raw = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as unknown
+      const parsed = JSON.parse(
+        fs.readFileSync(manifestPath, "utf-8"),
+      ) as unknown
+      const { value: raw, removed } = normalizeManifestRaw(parsed)
+      if (removed.length > 0) {
+        log.info("removed deprecated manifest fields", {
+          extensionId,
+          removed,
+        })
+      }
       const manifest = ExtensionManifestSchema.parse(raw)
       if (manifest.id !== extensionId) {
         log.warn("manifest id does not match folder name", {

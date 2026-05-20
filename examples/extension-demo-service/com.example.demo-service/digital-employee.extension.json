@@ -1,7 +1,6 @@
 {
   "id": "com.example.demo-service",
   "version": "1.0.0",
-  "kind": "ui-service",
   "displayName": "示例插件（含本地服务）",
   "minHostVersion": "0.0.49",
   "permissions": ["context.read"],

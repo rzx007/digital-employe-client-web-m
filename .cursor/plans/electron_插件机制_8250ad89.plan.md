@@ -101,7 +101,6 @@ flowchart TB
 {
   "id": "com.example.demo",
   "version": "1.0.0",
-  "kind": "ui",
   "displayName": "示例插件",
   "minHostVersion": "0.0.49",
   "permissions": ["context.read"],
@@ -115,7 +114,7 @@ flowchart TB
 }
 ```
 
-- `kind`: 第一期仅校验 `"ui"`；第二期增加 `"ui-service"`、`"headless"`
+- 能力由块组合：`ui`（必填）+ 可选 `service`（本地子进程）；无 `kind` 字段
 - `ui.entry`: 相对扩展根；生产用 `loadFile` 解析为绝对路径
 - `ui.devEntry`: 开发时 `--load-extension` 或环境变量覆盖（见下）
 - `permissions`: 控制 `getContext` 是否含 `authToken`（默认不含，需显式 `auth.read`）
@@ -239,7 +238,7 @@ window.extension = {
 - `openExtensionWindow` 流程：**先** `startService` **再** `loadUI`，`getContext` 增加 `serviceBaseUrl`
 - `lifecycle` 退出时 `stopAllExtensionServices()`
 
-`kind: "ui-service"` 与 `headless` 在第二期启用。
+manifest `service` 块与 `headless`（仅 service、无 ui）在第二期 / 第三期分别启用。
 
 ---
 

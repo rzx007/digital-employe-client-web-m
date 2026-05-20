@@ -9,6 +9,7 @@ import {
   markExtensionActivated,
   resolveExtensionUiTarget,
 } from "./extension-registry"
+import { hasExtensionService } from "./manifest-schema"
 import {
   getServiceBaseUrl,
   startExtensionService,
@@ -41,7 +42,7 @@ export async function openExtensionWindow(
     throw new Error(`Extension not found: ${extensionId}`)
   }
 
-  if (manifest.kind === "ui-service") {
+  if (hasExtensionService(manifest)) {
     await startExtensionService(extensionId)
   }
 
@@ -84,7 +85,7 @@ export async function openExtensionWindow(
   win.on("closed", () => {
     webContentsToExtensionId.delete(webContentsId)
     openExtensionIds.delete(extensionId)
-    if (manifest.kind === "ui-service") {
+    if (hasExtensionService(manifest)) {
       stopExtensionService(extensionId)
     }
   })
@@ -95,7 +96,7 @@ export async function openExtensionWindow(
 export function closeExtensionWindow(extensionId: string): void {
   const manifest = getExtensionManifest(extensionId)
   getWindowManager().close(pluginWindowId(extensionId))
-  if (manifest?.kind === "ui-service") {
+  if (manifest && hasExtensionService(manifest)) {
     stopExtensionService(extensionId)
   }
 }

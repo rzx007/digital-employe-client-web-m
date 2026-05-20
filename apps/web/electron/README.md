@@ -265,12 +265,12 @@ Channel 约定见 [`shared/extension-ipc-channels.ts`](shared/extension-ipc-chan
 
 **开发**：复制示例到 `~/.digital-employee/extensions/com.example.demo/`，或设置 `EXTENSION_DEV_COM_EXAMPLE_DEMO=http://127.0.0.1:端口/`。
 
-#### 二期：`ui-service`（独立 UI + 本地子进程）
+#### 二期：manifest `service`（独立 UI + 本地子进程）
 
-| kind | 行为 |
-|------|------|
-| `ui` | 仅加载插件 HTML，与一期相同 |
-| `ui-service` | 打开前先启停 manifest `service` 子进程，再加载 UI |
+| manifest | 行为 |
+|----------|------|
+| 仅有 `ui` | 仅加载插件 HTML |
+| `ui` + `service` | 打开前先启停 `service` 子进程，再加载 UI |
 
 流程：`ext:host:open` → [`extension-service-host`](features/extension/extension-service-host.ts) 使用 [`ManagedProcess`](core/services/managed-process.ts) spawn → 等待 `ready`（stdout 正则或 `/health` 轮询）→ 创建插件窗 → `getContext().serviceBaseUrl` 注入插件 UI。
 
