@@ -2,7 +2,7 @@
 
 本目录实现 Electron **插件宿主**：发现 manifest、启停本地 `service`、打开插件 UI 窗、IPC、出网策略与 zip 安装。
 
-上层总览与分期能力见 [`../../README.md`](../../README.md) 中「插件（Extension）机制」；Channel 定义见 [`../../shared/extension-ipc-channels.ts`](../../shared/extension-ipc-channels.ts)。插件页 preload 为 [`../../preload/extension-preload.ts`](../../preload/extension-preload.ts)。
+上层总览与分期能力见 [`../../README.md`](../../README.md) 中「插件（Extension）机制」；**尚未实现、低优先级备忘**见 [`待实现.md`](待实现.md)。Channel 定义见 [`../../shared/extension-ipc-channels.ts`](../../shared/extension-ipc-channels.ts)。插件页 preload 为 [`../../preload/extension-preload.ts`](../../preload/extension-preload.ts)。
 
 ## 目录与职责
 
@@ -23,6 +23,7 @@
 | [`extension-network-policy.ts`](extension-network-policy.ts) | 出站 URL 判定：allowlist、主后端端口 SSRF、本插件 service origin、dev UI origin |
 | [`extension-network-guard.ts`](extension-network-guard.ts) | `session.webRequest`：`onBeforeRequest` 拦截 + `onBeforeSendHeaders` 注入 Bearer |
 | [`extension-installer.ts`](extension-installer.ts) | 从 zip 安装到 extensions 目录（防 zip slip） |
+| [`extension-uninstaller.ts`](extension-uninstaller.ts) | 卸载：停窗/停 service、删目录、清 store |
 | [`ipc.ts`](ipc.ts) | 注册 `ext:host:*` / `ext:plugin:*`；插件窗禁止调用敏感 `ext:host:*` |
 | [`preload-bridge.ts`](preload-bridge.ts) | 主应用 `electronApi` 侧 extension 相关 invoke 封装 |
 

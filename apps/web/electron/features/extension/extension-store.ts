@@ -55,3 +55,13 @@ export function setDevOverride(
   }
   store.set("devOverrides", overrides)
 }
+
+/** 卸载插件时移除 enabled / devOverrides 记录 */
+export function removeExtensionFromStore(extensionId: string): void {
+  if (!store) return
+  const enabled = getEnabledExtensionIds().filter((id) => id !== extensionId)
+  store.set("enabled", enabled)
+  const overrides = { ...store.get("devOverrides") }
+  delete overrides[extensionId]
+  store.set("devOverrides", overrides)
+}

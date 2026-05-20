@@ -39,4 +39,6 @@ export const extensionBridge = {
     invokeExtensionHost(ExtensionHostIpcChannels.emitEvent, type, payload),
   installExtensionFromZip: () =>
     invokeExtensionHost(ExtensionHostIpcChannels.installFromZip),
+  uninstallExtension: (extensionId: string) =>
+    invokeExtensionHost(ExtensionHostIpcChannels.uninstall, extensionId),
 }

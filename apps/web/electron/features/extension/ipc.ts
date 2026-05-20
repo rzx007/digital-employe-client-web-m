@@ -8,6 +8,7 @@ import type { IpcContribution } from "../../core/ipc/types"
 import { buildExtensionContext } from "./extension-context"
 import { emitHostEvent } from "./extension-host-events"
 import { installExtensionFromZip } from "./extension-installer"
+import { uninstallExtension } from "./extension-uninstaller"
 import { dispatchExtensionInvoke } from "./extension-invoke-router"
 import { listExtensionInvokeMethods } from "./extension-permissions"
 import {
@@ -118,6 +119,13 @@ export const extensionIpcContribution: IpcContribution = {
             throw new Error("Install cancelled")
           }
           return installExtensionFromZip(result.filePaths[0]!)
+        },
+      },
+      {
+        channel: ExtensionHostIpcChannels.uninstall,
+        handler: async (event, extensionId: string) => {
+          assertTrustedHostCaller(event)
+          await uninstallExtension(extensionId)
         },
       },
       {

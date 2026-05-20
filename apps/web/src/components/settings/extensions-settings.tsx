@@ -1,5 +1,10 @@
 import * as React from "react"
-import { IconPlug, IconExternalLink, IconPackageImport } from "@tabler/icons-react"
+import {
+  IconPlug,
+  IconExternalLink,
+  IconPackageImport,
+  IconTrash,
+} from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import {
   Card,
@@ -8,6 +13,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@workspace/ui/components/alert-dialog"
 import { Switch } from "@workspace/ui/components/switch"
 import { toast } from "sonner"
 import { isElectron, withElectronApi } from "@/lib/electron/host"
@@ -25,6 +40,9 @@ interface ExtensionListItem {
 export function ExtensionsSettings() {
   const [extensions, setExtensions] = React.useState<ExtensionListItem[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [deleteTarget, setDeleteTarget] =
+    React.useState<ExtensionListItem | null>(null)
+  const [deleting, setDeleting] = React.useState(false)
 
   const refresh = React.useCallback(async () => {
     if (!isElectron()) {
@@ -78,6 +96,28 @@ export function ExtensionsSettings() {
     })
     if (result?.extensionId) {
       toast.success(`已安装插件：${result.extensionId}`)
+      void refresh()
+    }
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    const id = deleteTarget.id
+    const name = deleteTarget.displayName
+    let failed = false
+    await withElectronApi((api) => api.uninstallExtension(id), {
+      onError: (error) => {
+        failed = true
+        const message =
+          error instanceof Error ? error.message : "删除失败"
+        toast.error(message)
+      },
+    })
+    setDeleting(false)
+    if (!failed) {
+      setDeleteTarget(null)
+      toast.success(`已删除插件：${name}`)
       void refresh()
     }
   }
@@ -172,6 +212,16 @@ export function ExtensionsSettings() {
                         打开
                       </Button>
                     ) : null}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setDeleteTarget(ext)}
+                      aria-label={`删除 ${ext.displayName}`}
+                    >
+                      <IconTrash className="size-4" />
+                      删除
+                    </Button>
                   </div>
                 </li>
               ))}
@@ -219,6 +269,34 @@ export function ExtensionsSettings() {
           </div>
         </CardContent>
       </Card>
+
+      <AlertDialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除插件</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除「{deleteTarget?.displayName}」（
+              <code className="text-xs">{deleteTarget?.id}</code>
+              ）吗？将关闭窗口、停止服务并删除扩展目录，此操作不可恢复。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => void handleDeleteConfirm()}
+            >
+              {deleting ? "删除中…" : "删除"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

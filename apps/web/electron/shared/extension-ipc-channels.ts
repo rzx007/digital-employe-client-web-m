@@ -13,6 +13,7 @@ export const ExtensionHostIpcChannels = {
   getContext: "ext:host:get-context",
   emitEvent: "ext:host:emit-event",
   installFromZip: "ext:host:install-from-zip",
+  uninstall: "ext:host:uninstall",
 } as const
 
 /** 插件窗：extension-preload */
@@ -108,6 +109,10 @@ export interface ExtensionHostInvokeMap {
   [ExtensionHostIpcChannels.installFromZip]: {
     args: []
     result: { extensionId: string }
+  }
+  [ExtensionHostIpcChannels.uninstall]: {
+    args: [extensionId: string]
+    result: void
   }
 }
 

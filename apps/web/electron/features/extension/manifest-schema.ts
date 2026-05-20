@@ -85,6 +85,14 @@ export type ExtensionServiceManifest = z.infer<
 
 export const MANIFEST_FILE_NAME = "digital-employee.extension.json"
 
+const extensionIdSchema = z
+  .string()
+  .regex(extensionIdRegex, "invalid extension id")
+
+export function assertValidExtensionId(extensionId: string): void {
+  extensionIdSchema.parse(extensionId)
+}
+
 const DEPRECATED_MANIFEST_KEYS = ["kind"] as const
 
 /** 解析前移除已废弃字段（如旧版 kind） */

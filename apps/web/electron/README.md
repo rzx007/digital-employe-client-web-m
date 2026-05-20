@@ -256,7 +256,7 @@ flowchart LR
 
 | 角色 | API | 说明 |
 |------|-----|------|
-| 主应用设置页 | `electronApi.listExtensions` / `openExtension` / `setExtensionEnabled` | 管理插件，不加载插件 UI |
+| 主应用设置页 | `listExtensions` / `openExtension` / `setExtensionEnabled` / `installExtensionFromZip` / `uninstallExtension` | 管理插件，不加载插件 UI |
 | 插件页面 | `window.extension.getContext` / `close` | `ext:plugin:*`（如 `ext:plugin:close-window`） |
 
 Channel 约定见 [`shared/extension-ipc-channels.ts`](shared/extension-ipc-channels.ts)：`ext:host:*`（宿主管理）、`ext:plugin:*`（插件窗 API），与主应用 `IpcChannels` 分离。
@@ -341,7 +341,7 @@ invoke 方法：见 [`extension-permissions.ts`](features/extension/extension-pe
 
 示例：[`examples/extension-demo-invoke`](../../../examples/extension-demo-invoke)（manifest 需声明上述 permission）。
 
-**七期**：Ed25519 签名校验与 `sign-extension`（五期 zip 安装仍为无验签）。
+**七期及备忘**：见 [`features/extension/待实现.md`](features/extension/待实现.md)（Ed25519 验签、市场/OTA、`settings.get/set` 等）。
 
 ## 错误边界与日志
 

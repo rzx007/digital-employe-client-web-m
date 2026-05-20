@@ -40,3 +40,9 @@ export function setPluginStorageValue(
   all[pluginId] = bucket
   getStore().set("plugins", all)
 }
+
+export function clearPluginStorage(pluginId: string): void {
+  const all = { ...getStore().get("plugins") }
+  delete all[pluginId]
+  getStore().set("plugins", all)
+}
