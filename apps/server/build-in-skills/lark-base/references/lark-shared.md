@@ -45,7 +45,7 @@ lark-cli --version
 - **Windows**：常见原因是 npm 全局 bin 未加入 PATH。可用 `npm prefix -g` 查看前缀，确保其下的目录（如 `...\node_modules\.bin` 或 npm 文档所述的全局 bin 路径）已在系统环境变量中；安装 Node 时建议勾选将 Node 加入 PATH。
 - **macOS / Linux**：若使用自定义 `prefix`，需把 `$(npm prefix -g)/bin` 加入 shell 的 `PATH`。
 
-**关于 `npx skills add larksuite/cli`**：若使用飞书 CLI 自带的 Skills 安装流程，可在 CLI 可用后按需执行（与「更新检查」中的组合命令一致）。**不要**与本仓库内嵌的 Markdown 技能（如 `apps/server/src/build-in-skills/`）混为一谈：后者由本应用 Agent 加载，不等同于 `npx skills` 安装的包。
+**关于 `npx skills add larksuite/cli`**：若使用飞书 CLI 自带的 Skills 安装流程，可在 CLI 可用后按需执行（与「更新检查」中的组合命令一致）。**不要**与本仓库内嵌的 Markdown 技能（如 `apps/server/build-in-skills/`）混为一谈：后者由本应用 Agent 加载，不等同于 `npx skills` 安装的包。
 
 ## 配置初始化
 
