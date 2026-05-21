@@ -11,7 +11,7 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import { useChatStore } from "@/stores/chat-store"
 import {
-  useAnomalies,
+  useExecutionMetrics7d,
   useMonthlyScheduleOverview,
   useTaskSummary,
   useTodayTaskRuns,
@@ -24,7 +24,7 @@ import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
 import { ScheduleCalendar } from "@/components/schedule-monitor/sections/schedule-calendar"
 import { TaskStatsCards } from "@/components/schedule-monitor/sections/task-stats-cards"
 import { ExecutionDetail } from "@/components/schedule-monitor/sections/execution-detail"
-import { AnomalyMonitor } from "@/components/schedule-monitor/sections/anomaly-monitor"
+import { ExecutionMetricsCard } from "@/components/schedule-monitor/sections/execution-metrics-card"
 import { EmployeeEditForm } from "@/components/employee/employee-edit-form"
 import { CuratorOverviewSection } from "./curator-overview-section"
 
@@ -217,7 +217,7 @@ function ContactMonitorSection({ employeeId }: { employeeId: string }) {
   )
   const { data: taskRuns = [] } = useTodayTaskRuns(employeeId)
   const { data: summary } = useTaskSummary(employeeId)
-  const { data: anomalies = [] } = useAnomalies(employeeId)
+  const { data: executionMetrics } = useExecutionMetrics7d(employeeId)
 
   const handleMonthChange = (year: number, month: number) => {
     setViewYear(year)
@@ -228,6 +228,8 @@ function ContactMonitorSection({ employeeId }: { employeeId: string }) {
     <div className="space-y-4">
       {summary && <TaskStatsCards summary={summary} />}
 
+      <ExecutionMetricsCard metrics={executionMetrics} />
+
       {overview && (
         <ScheduleCalendar
           overview={overview}
@@ -236,8 +238,6 @@ function ContactMonitorSection({ employeeId }: { employeeId: string }) {
       )}
 
       <ExecutionDetail runs={taskRuns} />
-
-      <AnomalyMonitor anomalies={anomalies} />
     </div>
   )
 }

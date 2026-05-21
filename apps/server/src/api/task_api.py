@@ -19,6 +19,7 @@ from src.schemas.task import (
     TaskExecutionSkillRatingRead,
     TaskSyncResult,
     TodayTaskRead,
+    ExecutionMetricsRead,
 )
 from src.service.employee_service import EmployeeService
 from src.service.workspace_service import WorkspaceService
@@ -182,6 +183,27 @@ def list_today_tasks(
     """获取今日所有任务统一视图：包含待执行(pending)和已执行的各种状态。"""
     items = TaskService.list_today_tasks(db, workspace_id)
     return ResponseBase(data=[TodayTaskRead(**item) for item in items])
+
+
+@router.get(
+    "/workspaces/{workspace_id}/employees/{employee_id}/tasks/execution-metrics",
+    response_model=ResponseBase[ExecutionMetricsRead],
+)
+def get_employee_execution_metrics(
+    workspace_id: int,
+    employee_id: int,
+    days: int = Query(default=7, ge=1, le=90),
+    db: Session = Depends(get_db),
+) -> ResponseBase[ExecutionMetricsRead]:
+    """近 N 日执行失败率等指标（聚合 task_execution_logs）。"""
+    EmployeeService.get_employee(db, employee_id)
+    payload = TaskService.get_execution_metrics(
+        db=db,
+        workspace_id=workspace_id,
+        employee_id=employee_id,
+        days=days,
+    )
+    return ResponseBase(data=ExecutionMetricsRead(**payload))
 
 
 @router.get("/workspaces/{workspace_id}/tasks/executions", response_model=PageResponse[list[TaskExecutionLogRead]])

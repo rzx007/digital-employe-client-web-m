@@ -5,7 +5,7 @@ import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import {
-  useAnomalies,
+  useExecutionMetrics7d,
   useMonthlyScheduleOverview,
   useTaskSummary,
   useTodayTaskRuns,
@@ -15,7 +15,7 @@ import { EmployeeBasicInfo } from "./sections/employee-basic-info"
 import { ScheduleCalendar } from "./sections/schedule-calendar"
 import { TaskStatsCards } from "./sections/task-stats-cards"
 import { ExecutionDetail } from "./sections/execution-detail"
-import { AnomalyMonitor } from "./sections/anomaly-monitor"
+import { ExecutionMetricsCard } from "./sections/execution-metrics-card"
 import type { ChatViewContact } from "@/components/chat/shared/chat-view-shared"
 
 export interface MonitorPanelProps {
@@ -54,7 +54,7 @@ export function MonitorPanel({
   )
   const { data: taskRuns = [] } = useTodayTaskRuns(targetEmployeeId)
   const { data: summary } = useTaskSummary(targetEmployeeId)
-  const { data: anomalies = [] } = useAnomalies(targetEmployeeId)
+  const { data: executionMetrics } = useExecutionMetrics7d(targetEmployeeId)
 
   const handleMonthChange = (year: number, month: number) => {
     setViewYear(year)
@@ -91,9 +91,9 @@ export function MonitorPanel({
 
           {summary && <TaskStatsCards summary={summary} />}
 
-          <ExecutionDetail runs={taskRuns} />
+          <ExecutionMetricsCard metrics={executionMetrics} />
 
-          <AnomalyMonitor anomalies={anomalies} />
+          <ExecutionDetail runs={taskRuns} />
         </div>
       </ScrollArea>
     </div>

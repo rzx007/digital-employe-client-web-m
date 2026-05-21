@@ -8,8 +8,8 @@ import type {
   TaskRun,
   TaskSummary,
   TodayTask,
+  ExecutionMetrics7d,
 } from "@/types/schedule-monitor"
-import { generateAnomalies } from "@/lib/mock-data/schedule-monitor"
 
 const WORKSPACE_ID = 1
 
@@ -173,10 +173,22 @@ export function useTodayAllExecutions() {
   })
 }
 
-export function useAnomalies(employeeId: string | null) {
+export function useExecutionMetrics7d(
+  employeeId: string | null,
+  days = 7,
+) {
   return useQuery({
-    queryKey: [...chatKeys.all, "anomalies", employeeId],
-    queryFn: () => generateAnomalies(employeeId!),
+    queryKey: [...chatKeys.all, "execution-metrics", employeeId, days],
+    queryFn: async ({ signal }) => {
+      const res = await request<{
+        code: number
+        data: ExecutionMetrics7d
+      }>(
+        `/workspaces/${WORKSPACE_ID}/employees/${employeeId}/tasks/execution-metrics?days=${days}`,
+        { signal },
+      )
+      return res.data
+    },
     enabled: Boolean(employeeId),
     staleTime: 30_000,
   })

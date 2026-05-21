@@ -7,8 +7,6 @@ export type TaskRunStatus =
   | "stuck"
   | "cancelled"
 
-export type AnomalyType = "timeout" | "error" | "duplicate" | "stuck" | "cancelled"
-
 export interface TaskRun {
   id: string
   taskId: string
@@ -121,14 +119,17 @@ export interface ScheduleDay {
   employees: ScheduleEmployee[]
 }
 
-export interface AnomalyRecord {
-  id: string
-  taskRunId: string
-  taskName: string
-  type: AnomalyType
-  message: string
-  occurredAt: string
-  resolved: boolean
+export interface ExecutionMetrics7d {
+  days: number
+  start_at: string
+  end_at: string
+  total_finished: number
+  success: number
+  failed: number
+  timeout: number
+  cancelled: number
+  failure_count: number
+  failure_rate: number | null
 }
 
 export interface MonthlyOverview {
