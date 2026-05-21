@@ -1,7 +1,5 @@
 """自定义 shell_execute 工具：替代 deepagents 内置 execute，支持可选 intent 供 UI 展示。"""
 
-from __future__ import annotations
-
 from typing import Annotated
 
 from langchain_core.tools import BaseTool, InjectedToolCallId, StructuredTool
