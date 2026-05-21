@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 from apscheduler.schedulers.background import BackgroundScheduler  # pylint: disable=import-error
 from apscheduler.triggers.cron import CronTrigger  # pylint: disable=import-error
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
@@ -113,7 +113,10 @@ class TaskSchedulerService:
                     select(EmployeeTask).where(
                         EmployeeTask.is_active.is_(True),
                         EmployeeTask.dispatch_type.in_(("skill", "mcp")),
-                        (EmployeeTask.valid_until.is_(None)) | (EmployeeTask.valid_until >= now),
+                        (EmployeeTask.valid_until.is_(None))
+                        | (EmployeeTask.valid_until >= now),
+                        EmployeeTask.cron_expression.isnot(None),
+                        func.trim(EmployeeTask.cron_expression) != "",
                     ).order_by(
                         EmployeeTask.priority.desc(),
                         EmployeeTask.id.desc(),
@@ -139,18 +142,16 @@ class TaskSchedulerService:
                 db.commit()
 
             for task in tasks:
-                try:
-                    trigger = CronTrigger.from_crontab(task.cron_expression, timezone=CST)
-                except ValueError as exc:
-                    logger.error(
-                        "跳过非法 cron 任务 task_id=%s cron=%s err=%s",
+                cron = (task.cron_expression or "").strip()
+                if TaskService.compute_next_run(cron, now=now) is None:
+                    logger.warning(
+                        "跳过无法解析的 cron 任务 task_id=%s cron=%r",
                         task.id,
-                        task.cron_expression,
-                        exc,
-                        exc_info=True,
+                        cron,
                     )
                     continue
 
+                trigger = CronTrigger.from_crontab(cron, timezone=CST)
                 job_id = f"{cls._job_prefix}{task.id}"
                 scheduler.add_job(
                     cls.run_task_job,
@@ -163,7 +164,7 @@ class TaskSchedulerService:
                     misfire_grace_time=120,
                 )
                 job = scheduler.get_job(job_id)
-                task.next_run_at = job.next_run_time if job else TaskService.compute_next_run(task.cron_expression)
+                task.next_run_at = job.next_run_time if job else TaskService.compute_next_run(cron)
                 db.add(task)
             db.commit()
         cls._register_system_jobs()

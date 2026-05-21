@@ -24,8 +24,11 @@ import {
 } from "@workspace/ui/components/ai-elements/message"
 import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
 import { Spinner } from "@/components/spinner"
-import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
-import { classifyMessageParts } from "@/lib/chat/message-utils"
+import {
+  classifyMessageParts,
+  getCopyableMessageText,
+  mapStoredMessagesToUIMessages,
+} from "@/lib/chat/message-utils"
 import {
   useMessagesQuery,
   useCuratorConversationQuery,
@@ -59,6 +62,7 @@ import {
   getMessageMeta,
 } from "../shared/chat-view-shared"
 import { MessageElapsedLabel } from "../messages/message-elapsed-label"
+import { MessageCopyAction } from "../messages/message-copy-action"
 import { RenderClassifiedBlocks } from "../messages/chat-message-item"
 import { computeToolAutoCollapseMap } from "@/lib/chat/tool-collapse-policy"
 import { format } from "date-fns"
@@ -542,15 +546,15 @@ export function CuratorView({
                 ? (messageMeta.files as Array<{ name: string; path: string }>)
                 : undefined
             const elapsedMs = getElapsedMsFromMeta(message)
+            const copyText = getCopyableMessageText(message, {
+              includeFileChanges,
+            })
 
             return (
               <Message
                 key={message.id}
                 from={message.role}
-                className={cn(
-                  "mx-auto max-w-4xl",
-                  message.role === "assistant" && "group"
-                )}
+                className={cn("group mx-auto max-w-4xl")}
               >
                 {message.role === "assistant" && (
                   <div className="mb-2 flex items-center gap-2">
@@ -601,6 +605,7 @@ export function CuratorView({
                     ) : null}
                   </div>
                 </MessageContent>
+                <MessageCopyAction text={copyText} />
                 {message.role === "assistant" && (
                   <MessageElapsedLabel
                     elapsedMs={elapsedMs}
