@@ -30,6 +30,7 @@ def get_default_local_skills_path() -> str:
 
 
 def get_default_logs_dir() -> Path:
+    # 与 Electron getLogsDir()（~/.digital-employee/logs）一致
     return Path.home() / ".digital-employee" / "logs"
 
 

@@ -1,14 +1,8 @@
-import { app } from "electron"
-import path from "node:path"
-import fs from "node:fs"
 import Store from "electron-store"
+import { getDataDir } from "../../core/data-paths"
 
 export function getStoreDir(): string {
-  const dir = path.join(app.getPath("home"), ".digital-employee")
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true })
-  }
-  return dir
+  return getDataDir()
 }
 
 export type PetVisibilityMode = "always" | "when_main_hidden"

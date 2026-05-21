@@ -350,9 +350,21 @@ invoke 方法：见 [`extension-permissions.ts`](features/extension/extension-pe
 ### 主进程日志（electron-log）
 
 - 初始化：[`core/logger.ts`](core/logger.ts) 的 `initMainLogger()`（在 `main/index.ts` 最早调用）
+- 路径：[`core/data-paths.ts`](core/data-paths.ts) 的 `getLogsDir()` → `~/.digital-employee/logs/`（与 Python 后端 `app.log` / `error.log` 同目录）
 - 按模块创建：`createLogger("auth")` → 输出带 `[auth]` 前缀
-- 生产环境：写入 `%userData%/logs/main.log`，控制台默认 `warn` 及以上
+- 生产环境：写入 `~/.digital-employee/logs/main.log`，控制台默认 `warn` 及以上
 - 开发环境：控制台 `debug` 及以上
+- 插件 service 子进程的 stdout/stderr 以 `[extension:service:<id>]` 转发到 `main.log`（debug 级别）；插件自身业务日志（如 Spring logback）仍由插件配置决定，不在此目录
+
+**宿主日志目录一览**（`~/.digital-employee/logs/`）：
+
+| 文件 | 来源 |
+|------|------|
+| `main.log` | Electron 主进程（含插件子进程转发） |
+| `app.log` | Python 主后端 |
+| `error.log` | Python ERROR 及以上 |
+
+旧版 Electron 日志可能仍在 `%APPDATA%/digital-employee/logs/main.log`，升级后不再写入。
 
 ### IPC 错误边界
 

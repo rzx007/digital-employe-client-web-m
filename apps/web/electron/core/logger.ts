@@ -1,6 +1,7 @@
 import { app } from "electron"
 import log from "electron-log/main"
 import path from "node:path"
+import { getLogsDir } from "./data-paths"
 
 let initialized = false
 
@@ -12,7 +13,7 @@ export function initMainLogger(): void {
   initialized = true
 
   log.transports.file.resolvePathFn = () =>
-    path.join(app.getPath("userData"), "logs", "main.log")
+    path.join(getLogsDir(), "main.log")
   log.transports.file.level = app.isPackaged ? "info" : "debug"
   log.transports.console.level = app.isPackaged ? "warn" : "debug"
 
