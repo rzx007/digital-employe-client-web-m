@@ -6,6 +6,7 @@ import {
   MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
 import { IconAlertTriangle, IconFile } from "@tabler/icons-react"
+import { cn } from "@workspace/ui/lib/utils"
 import { classifyMessageParts } from "@/lib/chat/message-utils"
 import { FileChangeCards } from "../message-blocks/file-change-cards"
 import { ThinkingBlock } from "../message-blocks/thinking-block"
@@ -17,12 +18,14 @@ import { SummarizationCheckpointBlock } from "../message-blocks/summarization-ch
 import { EmployeeContactAvatar, GroupMembersAvatar } from "../contacts/contact-avatars"
 import {
   getContactDisplayName,
+  getElapsedMsFromMeta,
   getMessageMeta,
   type ChatViewContact,
   type CommandMeta,
   type FileMeta,
   type MentionMeta,
 } from "../shared/chat-view-shared"
+import { MessageElapsedLabel } from "./message-elapsed-label"
 import type { ClassifiedBlock } from "@/lib/chat/message-classifier"
 import { computeToolAutoCollapseMap } from "@/lib/chat/tool-collapse-policy"
 
@@ -240,11 +243,15 @@ function ChatMessageItemInner({
   )
     ? messageMeta.files
     : undefined
+  const elapsedMs = getElapsedMsFromMeta(deferredMessage)
 
   return (
     <Message
       from={message.role}
-      className="mx-auto max-w-4xl"
+      className={cn(
+        "mx-auto max-w-4xl",
+        message.role === "assistant" && "group"
+      )}
     >
       {message.role === "assistant" && (
         <div className="mb-2 flex items-center gap-2">
@@ -296,6 +303,13 @@ function ChatMessageItemInner({
           )}
         </div>
       </MessageContent>
+      {message.role === "assistant" && (
+        <MessageElapsedLabel
+          elapsedMs={elapsedMs}
+          isLastAssistantMessage={isLastAssistantMessage}
+          isTurnEnded={isTurnEnded}
+        />
+      )}
     </Message>
   )
 }

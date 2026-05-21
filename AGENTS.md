@@ -9,6 +9,15 @@ Monorepo：React 19 + Electron 前端（`apps/web`）、Python FastAPI 后端（
 - `packages/ui` — Radix UI + shadcn/ui + Tailwind CSS v4 组件库
 - `scripts/` — 构建脚本（`build-server.py` 等）
 
+### 宿主日志目录
+
+Electron 主进程与 Python 后端日志统一在 `~/.digital-employee/logs/`：
+
+| 文件 | 来源 |
+|------|------|
+| `main.log` | Electron 主进程（[`apps/web/electron/core/data-paths.ts`](apps/web/electron/core/data-paths.ts)） |
+| `app.log` / `error.log` | Python 后端（[`apps/server/src/core/config.py`](apps/server/src/core/config.py) `get_default_logs_dir()`） |
+
 ## Build & Development Commands
 
 ### 前端（apps/web + packages/ui）

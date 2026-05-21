@@ -53,7 +53,11 @@ import { ExecutionReportCard } from "../message-blocks/execution-report-card"
 import { ChatPromptInput } from "@/components/chat-prompt-input"
 import { PendingMessageQueue } from "../panel/pending-message-queue"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
-import { getMessageMeta } from "../shared/chat-view-shared"
+import {
+  getElapsedMsFromMeta,
+  getMessageMeta,
+} from "../shared/chat-view-shared"
+import { MessageElapsedLabel } from "../messages/message-elapsed-label"
 import { RenderClassifiedBlocks } from "../messages/chat-message-item"
 import { computeToolAutoCollapseMap } from "@/lib/chat/tool-collapse-policy"
 import { format } from "date-fns"
@@ -147,7 +151,10 @@ export function CuratorView({
     messages: initialMessages,
     transport: chatTransport,
     onFinish: () => {
-      // 不用 invalidateQueries — useChat 状态已完整
+      if (!curatorConversationId) return
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(String(curatorConversationId)),
+      })
     },
     onError: (chatError) => {
       toast.error("发送失败", {
@@ -533,12 +540,16 @@ export function CuratorView({
               Array.isArray(messageMeta.files)
                 ? (messageMeta.files as Array<{ name: string; path: string }>)
                 : undefined
+            const elapsedMs = getElapsedMsFromMeta(message)
 
             return (
               <Message
                 key={message.id}
                 from={message.role}
-                className="mx-auto max-w-4xl"
+                className={cn(
+                  "mx-auto max-w-4xl",
+                  message.role === "assistant" && "group"
+                )}
               >
                 {message.role === "assistant" && (
                   <div className="mb-2 flex items-center gap-2">
@@ -589,6 +600,13 @@ export function CuratorView({
                     ) : null}
                   </div>
                 </MessageContent>
+                {message.role === "assistant" && (
+                  <MessageElapsedLabel
+                    elapsedMs={elapsedMs}
+                    isLastAssistantMessage={isLastAssistantMessage}
+                    isTurnEnded={hasCurrentTurnEnded}
+                  />
+                )}
               </Message>
             )
           })}
