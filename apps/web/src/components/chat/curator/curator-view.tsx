@@ -51,6 +51,7 @@ import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
 import { CuratorChatHeader } from "../contacts/curator-chat-header"
 import { ExecutionReportCard } from "../message-blocks/execution-report-card"
 import { ChatPromptInput } from "@/components/chat-prompt-input"
+import { CuratorRotatingPlaceholder } from "./curator-rotating-placeholder"
 import { PendingMessageQueue } from "../panel/pending-message-queue"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import {
@@ -517,27 +518,27 @@ export function CuratorView({
             const messageMeta = getMessageMeta(message)
             const commandMeta =
               messageMeta &&
-              typeof messageMeta === "object" &&
-              "command" in messageMeta &&
-              messageMeta.command &&
-              typeof messageMeta.command === "object"
+                typeof messageMeta === "object" &&
+                "command" in messageMeta &&
+                messageMeta.command &&
+                typeof messageMeta.command === "object"
                 ? (messageMeta.command as { id?: string; title?: string })
                 : null
             const mentionMeta =
               messageMeta &&
-              typeof messageMeta === "object" &&
-              "mentions" in messageMeta &&
-              Array.isArray(messageMeta.mentions)
+                typeof messageMeta === "object" &&
+                "mentions" in messageMeta &&
+                Array.isArray(messageMeta.mentions)
                 ? (messageMeta.mentions as Array<{
-                    id?: string
-                    name?: string
-                  }>)
+                  id?: string
+                  name?: string
+                }>)
                 : []
             const filesMeta =
               messageMeta &&
-              typeof messageMeta === "object" &&
-              "files" in messageMeta &&
-              Array.isArray(messageMeta.files)
+                typeof messageMeta === "object" &&
+                "files" in messageMeta &&
+                Array.isArray(messageMeta.files)
                 ? (messageMeta.files as Array<{ name: string; path: string }>)
                 : undefined
             const elapsedMs = getElapsedMsFromMeta(message)
@@ -650,8 +651,8 @@ export function CuratorView({
           status={chatStatus}
           disabled={curatorLoading || (!isBusy && !inputValue.trim())}
           size="compact"
-          placeholder="描述要做的事或目标，我来拆解并分派给数字员工；键入 @ 可指定经办人"
-          className="w-full overflow-hidden bg-background/80 shadow-xl"
+          placeholder={<CuratorRotatingPlaceholder />}
+          className="w-full"
           slashCommands={[]}
           mentionCandidates={mentionCandidates}
           conversationId={curatorConversationId}

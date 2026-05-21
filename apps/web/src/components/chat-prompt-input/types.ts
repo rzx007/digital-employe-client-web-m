@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import type { PromptChangeEvent } from "../lexical-editor/prompt-input-textarea"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import type { SlashCommandItem } from "../lexical-editor/slash-command-plugin"
@@ -27,7 +28,7 @@ export interface ChatPromptInputProps {
   onStop?: () => void
   status: ChatPromptMessageStatus
   disabled?: boolean
-  placeholder?: string
+  placeholder?: ReactNode
   size?: "default" | "compact"
   className?: string
   slashCommands?: SlashCommandItem[]

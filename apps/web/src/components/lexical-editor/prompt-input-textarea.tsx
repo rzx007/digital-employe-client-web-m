@@ -1,4 +1,9 @@
-import { useState, useCallback, type ClipboardEventHandler } from "react"
+import {
+  useState,
+  useCallback,
+  type ClipboardEventHandler,
+  type ReactNode,
+} from "react"
 import {
   useOptionalPromptInputController,
   usePromptInputAttachments,
@@ -258,7 +263,7 @@ function Placeholder({
   placeholder,
   className,
 }: {
-  placeholder: string
+  placeholder: ReactNode
   className?: string
 }) {
   return (
@@ -277,7 +282,7 @@ function Placeholder({
 export interface LexicalPromptInputTextareaProps {
   value?: string
   onChange?: (e: PromptChangeEvent) => void
-  placeholder?: string
+  placeholder?: ReactNode
   className?: string
   autoFocus?: boolean
   commands?: SlashCommandItem[]
