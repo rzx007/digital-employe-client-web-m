@@ -1,10 +1,8 @@
 import { hidePetWindow, getPetWin } from "./pet-window"
+import { PET_WINDOW_HEIGHT, PET_WINDOW_WIDTH } from "./pet-window-size"
 import { IpcChannels } from "../../shared/ipc-channels"
 import type { AppContext } from "../../core/app-context"
 import type { IpcContribution } from "../../core/ipc/types"
-
-const PET_WINDOW_WIDTH = 230
-const PET_WINDOW_HEIGHT = 260
 
 export const petIpcContribution: IpcContribution = {
   id: "pet",

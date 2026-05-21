@@ -2,6 +2,11 @@ import { BrowserWindow, screen, session, type Session } from "electron"
 import { getWindowManager } from "../../core/services/window-registry"
 import { getSetting } from "../settings/settings-store"
 import { handlePetdexRequest } from "../../core/petdex-protocol"
+import {
+  PET_WINDOW_HEIGHT,
+  PET_WINDOW_MARGIN,
+  PET_WINDOW_WIDTH,
+} from "./pet-window-size"
 
 let petSession: Session | null = null
 
@@ -27,10 +32,6 @@ function ensurePetSessionMediaPermission() {
     callback(false)
   })
 }
-
-const PET_WINDOW_WIDTH = 230
-const PET_WINDOW_HEIGHT = 260
-const PET_WINDOW_MARGIN = 24
 
 export function applyPetAlwaysOnTopFromStore(): void {
   const petWin = getWindowManager().get("pet")
