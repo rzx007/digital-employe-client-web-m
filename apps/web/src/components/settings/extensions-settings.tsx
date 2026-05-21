@@ -2,6 +2,7 @@ import * as React from "react"
 import {
   IconPlug,
   IconExternalLink,
+  IconLoader2,
   IconPackageImport,
   IconTrash,
 } from "@tabler/icons-react"
@@ -43,6 +44,7 @@ export function ExtensionsSettings() {
   const [deleteTarget, setDeleteTarget] =
     React.useState<ExtensionListItem | null>(null)
   const [deleting, setDeleting] = React.useState(false)
+  const [openingId, setOpeningId] = React.useState<string | null>(null)
 
   const refresh = React.useCallback(async () => {
     if (!isElectron()) {
@@ -75,14 +77,16 @@ export function ExtensionsSettings() {
     void refresh()
   }
 
-  const handleOpen = (id: string) => {
-    void withElectronApi((api) => api.openExtension(id), {
+  const handleOpen = async (id: string) => {
+    setOpeningId(id)
+    await withElectronApi((api) => api.openExtension(id), {
       onError: (error) => {
         const message =
           error instanceof Error ? error.message : "打开插件失败"
         toast.error(message)
       },
     })
+    setOpeningId(null)
   }
 
   const handleInstall = async () => {
@@ -205,11 +209,20 @@ export function ExtensionsSettings() {
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={!ext.enabled}
-                        onClick={() => handleOpen(ext.id)}
+                        disabled={!ext.enabled || openingId != null}
+                        onClick={() => void handleOpen(ext.id)}
                       >
-                        <IconExternalLink className="size-4" />
-                        打开
+                        {openingId === ext.id ? (
+                          <>
+                            <IconLoader2 className="size-4 animate-spin" />
+                            启动中…
+                          </>
+                        ) : (
+                          <>
+                            <IconExternalLink className="size-4" />
+                            打开
+                          </>
+                        )}
                       </Button>
                     ) : null}
                     <Button
