@@ -6,8 +6,13 @@ from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# src/service — AGENTS.md 与 /agent/ 虚拟路径根目录
-SERVICE_DIR = Path(__file__).resolve().parent.parent
+# src/service/agent — AGENTS.md 与 /agent/ 虚拟路径根目录
+SERVICE_DIR = Path(__file__).resolve().parent
+
+# apps/server — 与 src 同级的技能目录
+SERVER_ROOT = Path(__file__).resolve().parents[3]
+BUILD_IN_SKILLS_DIR = SERVER_ROOT / "build-in-skills"
+ORCHESTRATOR_SKILLS_DIR = SERVER_ROOT / "orchestrator_skills"
 
 _EMPLOYEE_MEMORY_TEMPLATE = """# 员工长期记忆
 
@@ -37,6 +42,13 @@ def resolve_skills_root(skill_path: str) -> Path:
     if p.is_dir() and (p / "skills").is_dir():
         return p / "skills"
     return p
+
+
+def resolve_orchestrator_skills_root() -> Path:
+    """总管助手固定技能目录（apps/server/orchestrator_skills）。"""
+    root = ORCHESTRATOR_SKILLS_DIR.resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
 
 
 def list_available_skills(skills_root: Path) -> list[str]:

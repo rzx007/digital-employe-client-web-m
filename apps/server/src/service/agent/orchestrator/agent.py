@@ -15,7 +15,13 @@ from deepagents.middleware.summarization import SummarizationToolMiddleware
 
 from src.core.config import get_settings
 from src.service.agent.checkpointer import get_checkpointer
-from src.service.agent.paths import SERVICE_DIR, ensure_employee_memory_file, resolve_employee_memories_dir
+from src.service.agent.paths import (
+    SERVICE_DIR,
+    ensure_employee_memory_file,
+    list_available_skills,
+    resolve_employee_memories_dir,
+    resolve_orchestrator_skills_root,
+)
 from src.service.agent.prompts import build_filesystem_prompt_section
 from src.service.agent.orchestrator.prompts import (
     ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE,
@@ -84,8 +90,9 @@ def get_orchestrator_agent(
     memories_dir.mkdir(parents=True, exist_ok=True)
     ensure_employee_memory_file(memories_dir)
 
-    skills_placeholder = memories_dir.parent / "skills"
-    skills_placeholder.mkdir(parents=True, exist_ok=True)
+    skills_root = resolve_orchestrator_skills_root()
+    available_skills = list_available_skills(skills_root)
+    skills_fs = FilesystemBackend(root_dir=str(skills_root), virtual_mode=True)
 
     if conversation_id:
         artifacts_dir = artifacts_path / str(conversation_id) / "artifacts"
@@ -100,6 +107,7 @@ def get_orchestrator_agent(
     memories_fs = FilesystemBackend(root_dir=str(memories_dir), virtual_mode=True)
     routes: dict[str, Any] = {
         "/memories/": memories_fs,
+        "/skills/": skills_fs,
         "/agent/": agent_fs,
         "/artifacts/": FilesystemBackend(
             root_dir=str(artifacts_dir), virtual_mode=True
@@ -113,7 +121,7 @@ def get_orchestrator_agent(
 
     shell_backend = SkillAwareShellBackend(
         root_dir=str(artifacts_dir),
-        skills_root=skills_placeholder,
+        skills_root=skills_root,
         draft_root=None,
         memories_root=memories_dir,
         virtual_mode=True,
@@ -127,13 +135,20 @@ def get_orchestrator_agent(
         current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         employee_table=employee_context,
     )
+    skills_line = ", ".join(available_skills) if available_skills else "无"
     fs_section = build_filesystem_prompt_section(
+        skills_real_path=str(skills_root),
         artifacts_real_path=str(artifacts_dir),
         memories_real_path=str(memories_dir),
         agent_real_path=str(base_dir),
         use_session_history=use_session_history,
     )
-    system_prompt = orchestrator_prompt + fs_section
+    system_prompt = (
+        orchestrator_prompt
+        + f"\n\n当前已加载的技能（/skills/）：{skills_line}。"
+        " 用户使用客户端或开发相关问题时，优先查阅 /skills/user-usage-manual/ 与 /skills/dev-usage-manual/。"
+        + fs_section
+    )
 
     checkpointer = get_checkpointer()
 
@@ -151,6 +166,7 @@ def get_orchestrator_agent(
     agent = create_deep_agent(
         model=model,
         memory=["/agent/AGENTS.md", "/memories/AGENTS.md"],
+        skills=["/skills/"],
         tools=[
             shell_execute_tool,
             list_workspace_employees,

@@ -232,7 +232,7 @@ def copy_additional_files():
         print(f"   已复制: {readme_file.name}")
 
     # 复制内置技能目录，保证安装后有稳定路径可读取
-    builtin_skills_dir = SERVER_DIR / "src" / "build-in-skills"
+    builtin_skills_dir = SERVER_DIR / "build-in-skills"
     target_builtin_skills_dir = OUTPUT_DIR / "build-in-skills"
     if builtin_skills_dir.exists():
         shutil.copytree(
