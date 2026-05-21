@@ -33,12 +33,23 @@ function mapExecutionToTaskRun(exec: TaskExecution): TaskRun {
 export function useMonthlyScheduleOverview(
   year: number,
   month: number,
+  employeeId?: string | number | null,
 ) {
+  const employeeKey =
+    employeeId != null && employeeId !== "" ? String(employeeId) : null
+
   return useQuery({
-    queryKey: [...chatKeys.all, "schedule-overview", year, month],
+    queryKey: [...chatKeys.all, "schedule-overview", year, month, employeeKey],
     queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({
+        year: String(year),
+        month: String(month),
+      })
+      if (employeeKey) {
+        params.set("employee_id", employeeKey)
+      }
       const res = await request<{ code: number; data: MonthlyOverview }>(
-        `/tasks/calendar/monthly?year=${year}&month=${month}`,
+        `/tasks/calendar/monthly?${params.toString()}`,
         { signal },
       )
       return res.data

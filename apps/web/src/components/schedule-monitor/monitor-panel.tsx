@@ -1,5 +1,4 @@
 import { useState } from "react"
-import { motion, AnimatePresence } from "motion/react"
 import { cn } from "@workspace/ui/lib/utils"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 
@@ -17,21 +16,17 @@ import { ScheduleCalendar } from "./sections/schedule-calendar"
 import { TaskStatsCards } from "./sections/task-stats-cards"
 import { ExecutionDetail } from "./sections/execution-detail"
 import { AnomalyMonitor } from "./sections/anomaly-monitor"
-import {
-  type ChatViewContact,
-} from "@/components/chat/chat-view-shared"
+import type { ChatViewContact } from "@/components/chat/shared/chat-view-shared"
 
 export interface MonitorPanelProps {
   isOpen: boolean
-  isFullscreen: boolean
-  onToggleFullscreen: () => void
+  onClose: () => void
   className?: string
 }
 
 export function MonitorPanel({
   isOpen,
-  isFullscreen,
-  onToggleFullscreen,
+  onClose,
   className,
 }: MonitorPanelProps) {
   const targetEmployeeId = useMonitorStore((s) => s.targetEmployeeId)
@@ -40,10 +35,10 @@ export function MonitorPanel({
 
   const contact = targetEmployeeId
     ? contacts.find(
-      (c) =>
-        c.type === "employee" &&
-        String(c.employee?.id) === String(targetEmployeeId)
-    )
+        (c) =>
+          c.type === "employee" &&
+          String(c.employee?.id) === String(targetEmployeeId)
+      )
     : undefined
 
   const displayName = targetEmployeeName || "未知员工"
@@ -54,7 +49,8 @@ export function MonitorPanel({
 
   const { data: overview } = useMonthlyScheduleOverview(
     viewYear,
-    viewMonth
+    viewMonth,
+    targetEmployeeId
   )
   const { data: taskRuns = [] } = useTodayTaskRuns(targetEmployeeId)
   const { data: summary } = useTaskSummary(targetEmployeeId)
@@ -68,48 +64,38 @@ export function MonitorPanel({
   const employeeContact: ChatViewContact | undefined =
     contact?.type === "employee" ? contact : undefined
 
+  if (!isOpen) return null
+
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-
-          initial={isFullscreen ? { opacity: 0 } : { x: "100%" }}
-          animate={isFullscreen ? { opacity: 1 } : { x: 0 }}
-          exit={isFullscreen ? { opacity: 0 } : { x: "100%" }}
-          transition={{ type: "spring", damping: 25, stiffness: 200 }}
-          className={cn(
-            "flex h-full flex-col overflow-hidden rounded-lg border bg-background shadow-xl",
-            isFullscreen ? "fixed inset-0 z-50 rounded-none" : "w-full",
-            className
-          )}
-        >
-          <MonitorHeader
-            title={`任务监控 - ${displayName}`}
-
-            onToggleFullscreen={onToggleFullscreen}
-            isFullscreen={isFullscreen}
-          />
-
-          <ScrollArea className="min-h-0 flex-1">
-            <div className="space-y-4 p-4">
-              <EmployeeBasicInfo contact={employeeContact} />
-
-              {overview && (
-                <ScheduleCalendar
-                  overview={overview}
-                  onMonthChange={handleMonthChange}
-                />
-              )}
-
-              {summary && <TaskStatsCards summary={summary} />}
-
-              <ExecutionDetail runs={taskRuns} />
-
-              <AnomalyMonitor anomalies={anomalies} />
-            </div>
-          </ScrollArea>
-        </motion.div>
+    <div
+      className={cn(
+        "flex h-full w-full flex-col overflow-hidden rounded-lg border bg-background shadow-xl",
+        className
       )}
-    </AnimatePresence>
+    >
+      <MonitorHeader
+        title={`任务监控 - ${displayName}`}
+        onClose={onClose}
+      />
+
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="space-y-4 p-4">
+          <EmployeeBasicInfo contact={employeeContact} />
+
+          {overview && (
+            <ScheduleCalendar
+              overview={overview}
+              onMonthChange={handleMonthChange}
+            />
+          )}
+
+          {summary && <TaskStatsCards summary={summary} />}
+
+          <ExecutionDetail runs={taskRuns} />
+
+          <AnomalyMonitor anomalies={anomalies} />
+        </div>
+      </ScrollArea>
+    </div>
   )
 }

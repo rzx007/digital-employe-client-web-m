@@ -1,6 +1,14 @@
 import { create } from "zustand"
 import type { Artifact } from "@/types/artifact"
 
+import { useChatStore } from "@/stores/chat-store"
+import { useMonitorStore } from "@/stores/monitor-store"
+
+function closeOtherSidePanels() {
+  useMonitorStore.getState().closeMonitor()
+  useChatStore.getState().closeConversationList()
+}
+
 interface ArtifactStore {
   activeArtifactId: string | null
   activeResourcePath: string | null
@@ -22,10 +30,14 @@ export const useArtifactStore = create<ArtifactStore>((set) => ({
   isPanelOpen: false,
   artifacts: new Map(),
 
-  openArtifact: (id) =>
-    set({ activeArtifactId: id, activeResourcePath: null, isPanelOpen: true }),
-  openResource: (path) =>
-    set({ activeArtifactId: null, activeResourcePath: path, isPanelOpen: true }),
+  openArtifact: (id) => {
+    closeOtherSidePanels()
+    set({ activeArtifactId: id, activeResourcePath: null, isPanelOpen: true })
+  },
+  openResource: (path) => {
+    closeOtherSidePanels()
+    set({ activeArtifactId: null, activeResourcePath: path, isPanelOpen: true })
+  },
   closeArtifact: () =>
     set({
       activeArtifactId: null,
@@ -52,8 +64,13 @@ export const useArtifactStore = create<ArtifactStore>((set) => ({
       }
       return { artifacts }
     }),
-  setPanelOpen: (open) =>
-    set({ isPanelOpen: open, ...(open ? {} : { activeResourcePath: null }) }),
+  setPanelOpen: (open) => {
+    if (open) closeOtherSidePanels()
+    set({
+      isPanelOpen: open,
+      ...(open ? {} : { activeResourcePath: null }),
+    })
+  },
   updateArtifactContent: (id, content) =>
     set((state) => {
       const artifacts = new Map(state.artifacts)

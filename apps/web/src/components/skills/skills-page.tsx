@@ -621,6 +621,12 @@ export function SkillsPage({
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
+              <ImportSkillDialog
+                open={importOpen}
+                onOpenChange={setImportOpen}
+                onSuccess={handleImportSuccess}
+                trigger
+              />
             </div>
           </header>
 
@@ -634,12 +640,7 @@ export function SkillsPage({
                       ({filteredInstalled.length})
                     </span>
                   </h2>
-                  <ImportSkillDialog
-                    open={importOpen}
-                    onOpenChange={setImportOpen}
-                    onSuccess={handleImportSuccess}
-                    trigger
-                  />
+
                 </div>
 
                 {loading ? (

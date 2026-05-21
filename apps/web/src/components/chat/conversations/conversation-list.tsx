@@ -1,5 +1,5 @@
 import { type ComponentProps } from "react"
-import { IconCirclePlus, IconPinFilled } from "@tabler/icons-react"
+import { IconCirclePlus, IconPinFilled, IconX } from "@tabler/icons-react"
 import { useShallow } from "zustand/react/shallow"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
@@ -44,10 +44,12 @@ export function ConversationList({
   className,
   hideNewButton,
   onSelectConversation,
+  onClose,
   ...props
 }: ComponentProps<"div"> & {
   hideNewButton?: boolean
   onSelectConversation?: () => void
+  onClose?: () => void
 }) {
   const {
     selectedContactId,
@@ -74,14 +76,14 @@ export function ConversationList({
   return (
     <div
       className={cn(
-        "flex h-full min-h-0 w-full flex-col border-r bg-muted/50 transition-all duration-300",
+        "flex h-full min-h-0 w-full flex-col bg-background",
         className
       )}
       {...props}
     >
-      <div className="flex items-center justify-between border-b px-4 py-3">
+      <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
         {selectedContact ? (
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             {selectedContact.type === "group" ? (
               <GroupMembersAvatar
                 participants={selectedContact.group?.participants}
@@ -120,7 +122,19 @@ export function ConversationList({
             </div>
           </div>
         ) : (
-          <h2 className="text-sm font-medium">最近消息</h2>
+          <h2 className="min-w-0 flex-1 text-sm font-medium">最近消息</h2>
+        )}
+        {onClose && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            type="button"
+            aria-label="关闭会话列表"
+            className="shrink-0"
+            onClick={onClose}
+          >
+            <IconX className="size-4" />
+          </Button>
         )}
       </div>
 

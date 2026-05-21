@@ -210,7 +210,11 @@ function ContactMonitorSection({ employeeId }: { employeeId: string }) {
   const [viewYear, setViewYear] = useState(now.getFullYear())
   const [viewMonth, setViewMonth] = useState(now.getMonth() + 1)
 
-  const { data: overview } = useMonthlyScheduleOverview(viewYear, viewMonth)
+  const { data: overview } = useMonthlyScheduleOverview(
+    viewYear,
+    viewMonth,
+    employeeId
+  )
   const { data: taskRuns = [] } = useTodayTaskRuns(employeeId)
   const { data: summary } = useTaskSummary(employeeId)
   const { data: anomalies = [] } = useAnomalies(employeeId)
