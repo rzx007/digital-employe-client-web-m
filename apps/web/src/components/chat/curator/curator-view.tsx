@@ -62,7 +62,7 @@ import {
   getMessageCreatedAtMs,
   getMessageMeta,
 } from "../shared/chat-view-shared"
-import { MessageElapsedLabel } from "../messages/message-elapsed-label"
+import { MessageAssistantActions } from "../messages/message-assistant-actions"
 import { MessageCopyAction } from "../messages/message-copy-action"
 import { RenderClassifiedBlocks } from "../messages/chat-message-item"
 import { computeToolAutoCollapseMap } from "@/lib/chat/tool-collapse-policy"
@@ -600,13 +600,15 @@ export function CuratorView({
                     ) : null}
                   </div>
                 </MessageContent>
-                <MessageCopyAction text={copyText} />
-                {message.role === "assistant" && (
-                  <MessageElapsedLabel
+                {message.role === "assistant" ? (
+                  <MessageAssistantActions
+                    copyText={copyText}
                     elapsedMs={elapsedMs}
                     isLastAssistantMessage={isLastAssistantMessage}
                     isTurnEnded={hasCurrentTurnEnded}
                   />
+                ) : (
+                  <MessageCopyAction text={copyText} />
                 )}
               </Message>
             )

@@ -5,10 +5,18 @@ import {
   MessageAction,
   MessageActions,
 } from "@workspace/ui/components/ai-elements/message"
+import { cn } from "@workspace/ui/lib/utils"
 
 const COPIED_RESET_MS = 2000
 
-export function MessageCopyAction({ text }: { text: string }) {
+export function MessageCopyAction({
+  text,
+  embedded = false,
+}: {
+  text: string
+  /** 嵌入 MessageAssistantActions 时由父级控制 hover 显隐 */
+  embedded?: boolean
+}) {
   const [copied, setCopied] = React.useState(false)
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -34,7 +42,13 @@ export function MessageCopyAction({ text }: { text: string }) {
   }
 
   return (
-    <MessageActions className="justify-end opacity-0 transition-opacity group-hover:opacity-100">
+    <MessageActions
+      className={cn(
+        embedded ? "justify-start" : "justify-end",
+        !embedded &&
+          "opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+      )}
+    >
       <MessageAction
         tooltip={copied ? "已复制" : "复制"}
         label="复制"

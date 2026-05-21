@@ -28,7 +28,7 @@ import {
   type FileMeta,
   type MentionMeta,
 } from "../shared/chat-view-shared"
-import { MessageElapsedLabel } from "./message-elapsed-label"
+import { MessageAssistantActions } from "./message-assistant-actions"
 import { MessageCopyAction } from "./message-copy-action"
 import type { ClassifiedBlock } from "@/lib/chat/message-classifier"
 import { computeToolAutoCollapseMap } from "@/lib/chat/tool-collapse-policy"
@@ -329,13 +329,15 @@ function ChatMessageItemInner({
           )}
         </div>
       </MessageContent>
-      <MessageCopyAction text={copyText} />
-      {message.role === "assistant" && (
-        <MessageElapsedLabel
+      {message.role === "assistant" ? (
+        <MessageAssistantActions
+          copyText={copyText}
           elapsedMs={elapsedMs}
           isLastAssistantMessage={isLastAssistantMessage}
           isTurnEnded={isTurnEnded}
         />
+      ) : (
+        <MessageCopyAction text={copyText} />
       )}
     </Message>
   )
