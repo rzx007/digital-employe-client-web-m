@@ -12,6 +12,7 @@ import { fireRealisticConfetti } from "@/lib/celebration/realistic-confetti"
 import {
   isRecruitmentToolRunning,
   parseEmployeeHiredPayload,
+  type EmployeeHiredPayload,
 } from "@/lib/chat/recruitment-tool-payload"
 
 /** 工牌宽度：对话内不占满行，窄侧栏下仍可收缩 */
@@ -70,7 +71,7 @@ function EmployeeHiredCardInner({
   className?: string
 }) {
   const payload = React.useMemo(
-    () => parseEmployeeHiredPayload(resultText),
+    (): EmployeeHiredPayload | null => parseEmployeeHiredPayload(resultText),
     [resultText]
   )
 
@@ -123,6 +124,7 @@ function EmployeeHiredCardInner({
 
   const cfg =
     STATE_CONFIG[state ?? ""] ?? STATE_CONFIG["output-available"]
+  const hiredSkills: string[] = payload?.skills ?? []
 
   return (
     <div
@@ -179,9 +181,9 @@ function EmployeeHiredCardInner({
                 {payload.message}
               </p>
             )}
-            {payload.skills.length > 0 && (
+            {hiredSkills.length > 0 && (
               <div className="mt-2 flex max-w-full flex-wrap gap-1">
-                {payload.skills.map((skill) => (
+                {hiredSkills.map((skill) => (
                   <Badge
                     key={skill}
                     variant="outline"
