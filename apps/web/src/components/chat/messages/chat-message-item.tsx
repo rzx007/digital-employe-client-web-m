@@ -14,6 +14,8 @@ import { ThinkingBlock } from "../message-blocks/thinking-block"
 import { ToolGroupBlock } from "../message-blocks/tool-group-block"
 import { TodoPlanBlock } from "../message-blocks/todo-plan-block"
 import { PlanGeneratedCard } from "../message-blocks/plan-generated-card"
+import { RecruitmentCandidatesCard } from "../message-blocks/recruitment-candidates-card"
+import { EmployeeHiredCard } from "../message-blocks/employee-hired-card"
 import { SkillExplorationBlock } from "../message-blocks/skill-exploration-block"
 import { SummarizationCheckpointBlock } from "../message-blocks/summarization-checkpoint-block"
 import { EmployeeContactAvatar, GroupMembersAvatar } from "../contacts/contact-avatars"
@@ -121,6 +123,26 @@ export function RenderClassifiedBlocks({
               state={block.state}
               className="w-full"
               key={block.key}
+            />
+          )
+        }
+        if (block.kind === "recruitment-candidates") {
+          return (
+            <RecruitmentCandidatesCard
+              key={block.key}
+              state={block.state}
+              resultText={block.resultText}
+              className="w-full"
+            />
+          )
+        }
+        if (block.kind === "employee-hired") {
+          return (
+            <EmployeeHiredCard
+              key={block.key}
+              state={block.state}
+              resultText={block.resultText}
+              celebrateOnSuccess={isLastAssistantMessage}
             />
           )
         }

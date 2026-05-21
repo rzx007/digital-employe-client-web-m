@@ -247,7 +247,7 @@ export function WorkbenchView({ onClose, className }: WorkbenchViewProps) {
 
         <CuratorView
           size="compact"
-          className="w-[400px] shrink-0 border-l px-1"
+          className="h-full min-h-0 w-[400px] shrink-0 border-l px-1"
         />
       </div>
 

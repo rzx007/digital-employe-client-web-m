@@ -25,6 +25,41 @@ export type CommandMeta = { id?: string; title?: string } | null
 export type MentionMeta = Array<{ id?: string; name?: string }>
 export type FileMeta = Array<{ name: string; path: string }>
 
+export type StoredMessageTimestampSource = {
+  id: string
+  metadata?: Record<string, unknown>
+  timestamp?: Date
+}
+
+export function getMessageCreatedAtMs(
+  message: UIMessage,
+  storedMessages?: StoredMessageTimestampSource[]
+): number | null {
+  const meta = getMessageMetadataRecord(message)
+  const createdAt = meta?.created_at
+  if (typeof createdAt === "string" || createdAt instanceof Date) {
+    const ms = new Date(createdAt).getTime()
+    return Number.isFinite(ms) ? ms : null
+  }
+
+  const stored = storedMessages?.find((m) => m.id === message.id)
+  if (stored?.timestamp) {
+    const ms = stored.timestamp.getTime()
+    return Number.isFinite(ms) ? ms : null
+  }
+
+  const storedCreatedAt = stored?.metadata?.created_at
+  if (
+    typeof storedCreatedAt === "string" ||
+    storedCreatedAt instanceof Date
+  ) {
+    const ms = new Date(storedCreatedAt).getTime()
+    return Number.isFinite(ms) ? ms : null
+  }
+
+  return null
+}
+
 export function getMessageMetadataRecord(
   message: UIMessage
 ): Record<string, unknown> | null {

@@ -234,7 +234,7 @@ export function ChatPanel({
 
   return (
     <div
-      className={cn("flex flex-1 flex-col bg-background", className)}
+      className={cn("flex min-h-0 flex-1 flex-col bg-background", className)}
       {...props}
     >
       {contact && (
@@ -247,7 +247,7 @@ export function ChatPanel({
             onNewConversation={onNewConversation}
           />
           <>
-            <Conversation className="min-h-0 flex-1 overflow-y-auto pt-4">
+            <Conversation className="min-h-0 flex-1 pt-4">
               <ConversationContent className="px-4 pb-4">
                 {isDraftMode ? (
                   <ConversationEmptyState className="py-16">

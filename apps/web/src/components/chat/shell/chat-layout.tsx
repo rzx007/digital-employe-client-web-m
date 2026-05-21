@@ -218,7 +218,10 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
             onOpenContacts={handleOpenContacts}
             onOpenConversations={handleOpenConversations}
             onNewConversation={handleNewConversation}
-            className={cn("min-w-0", hasRightPanel ? "flex-3" : "flex-1")}
+            className={cn(
+              "min-h-0 min-w-0",
+              hasRightPanel ? "flex-3" : "flex-1"
+            )}
           />
         )}
 

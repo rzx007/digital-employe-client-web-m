@@ -59,6 +59,7 @@ import { PendingMessageQueue } from "../panel/pending-message-queue"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import {
   getElapsedMsFromMeta,
+  getMessageCreatedAtMs,
   getMessageMeta,
 } from "../shared/chat-view-shared"
 import { MessageElapsedLabel } from "../messages/message-elapsed-label"
@@ -84,14 +85,7 @@ function getMsgTs(
     timestamp?: Date
   }>
 ): number {
-  const stored = storedMessages.find((m) => m.id === msg.id)
-  const meta = stored?.metadata
-  const createdAt = meta?.created_at
-  if (typeof createdAt === "string" || createdAt instanceof Date) {
-    return new Date(createdAt).getTime()
-  }
-  if (stored?.timestamp) return stored.timestamp.getTime()
-  return 0
+  return getMessageCreatedAtMs(msg, storedMessages) ?? 0
 }
 
 function formatTime(ts: number): string {
@@ -437,8 +431,8 @@ export function CuratorView({
   return (
     <div
       className={cn(
-        "flex flex-col bg-background",
-        !isCompact && "flex-1",
+        "flex min-h-0 flex-col bg-background",
+        !isCompact ? "flex-1" : "h-full",
         className
       )}
       {...props}
@@ -450,7 +444,7 @@ export function CuratorView({
         />
       )}
 
-      <ConversationUI className="min-h-0 flex-1 overflow-y-auto">
+      <ConversationUI className="min-h-0 flex-1">
         <ConversationContent className="space-y-3">
           {curatorLoading && (
             <div className="flex items-center justify-center py-16">
@@ -549,7 +543,6 @@ export function CuratorView({
             const copyText = getCopyableMessageText(message, {
               includeFileChanges,
             })
-
             return (
               <Message
                 key={message.id}
@@ -599,6 +592,8 @@ export function CuratorView({
                         filesMeta={filesMeta}
                         messageId={message.id}
                         toolAutoCollapseMap={toolAutoCollapseMap}
+                        isLastAssistantMessage={isLastAssistantMessage}
+                        isTurnEnded={hasCurrentTurnEnded}
                       />
                     ) : message.role === "assistant" ? (
                       <MessageResponse />
