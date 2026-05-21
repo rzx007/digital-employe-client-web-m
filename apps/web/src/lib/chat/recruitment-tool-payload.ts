@@ -139,6 +139,14 @@ export function splitSkillsSummary(summary: string): string[] {
     .filter(Boolean)
 }
 
+/** 总管对话中一键录用时发送给 orchestrator 的文案 */
+export function buildRecruitmentHireMessage(
+  candidate: Pick<RecruitmentCandidateItem, "name">,
+): string {
+  const name = candidate.name.trim()
+  return name ? `录用${name}` : "录用该候选人"
+}
+
 export function isRecruitmentToolRunning(state: string): boolean {
   return (
     state === "call" ||

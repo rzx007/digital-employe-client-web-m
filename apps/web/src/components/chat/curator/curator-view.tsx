@@ -56,6 +56,7 @@ import { ExecutionReportCard } from "../message-blocks/execution-report-card"
 import { ChatPromptInput } from "@/components/chat-prompt-input"
 import { CuratorRotatingPlaceholder } from "./curator-rotating-placeholder"
 import { CuratorEmptyWelcome } from "./curator-empty-welcome"
+import { CuratorRecruitmentProvider } from "./curator-recruitment-provider"
 import { PendingMessageQueue } from "../panel/pending-message-queue"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import {
@@ -71,6 +72,10 @@ import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import type { TaskExecution } from "@/types/schedule-monitor"
 import { curatorUnreadKey } from "@/lib/constants"
+import {
+  buildRecruitmentHireMessage,
+  type RecruitmentCandidateItem,
+} from "@/lib/chat/recruitment-tool-payload"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 
@@ -111,7 +116,8 @@ export function CuratorView({
   )
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [clearTaskLogs, setClearTaskLogs] = useState(true)
-  const [hasReceivedMessages, setHasReceivedMessages] = useState(false)
+  /** 本会话是否已有实时消息流（避免清空 useChat 后仍回退到 initialMessages） */
+  const hasReceivedMessagesRef = useRef(false)
 
   const resetMutation = useResetCuratorConversation()
   const queryClient = useQueryClient()
@@ -195,7 +201,7 @@ export function CuratorView({
         []
       )
       setMessages([])
-      setHasReceivedMessages(false)
+      hasReceivedMessagesRef.current = false
       setShowResetDialog(false)
       toast.success("会话已清空")
     } catch {
@@ -209,11 +215,9 @@ export function CuratorView({
     queryClient,
   ])
 
-  useEffect(() => {
-    if (messages.length > 0 && !hasReceivedMessages) {
-      setHasReceivedMessages(true)
-    }
-  }, [messages, hasReceivedMessages])
+  if (messages.length > 0) {
+    hasReceivedMessagesRef.current = true
+  }
 
   useEffect(() => {
     if (!initialMessages.length || !curatorConversationId) return
@@ -253,8 +257,8 @@ export function CuratorView({
 
   const displayMessages = useMemo(
     () =>
-      messages.length > 0 || hasReceivedMessages ? messages : initialMessages,
-    [initialMessages, messages, hasReceivedMessages]
+      hasReceivedMessagesRef.current ? messages : initialMessages,
+    [initialMessages, messages],
   )
 
   const lastAssistantMessageId = useMemo(() => {
@@ -279,6 +283,8 @@ export function CuratorView({
       const messageText =
         (typeof message === "string" ? message : message.text)?.trim() ?? ""
       if (!messageText || !curatorConversationId) return
+
+      hasReceivedMessagesRef.current = true
 
       const paths = uploadedPathsRef.current
       if (paths.length > 0) {
@@ -339,6 +345,27 @@ export function CuratorView({
     moveUp: pendingMoveUp,
     moveDown: pendingMoveDown,
   } = usePendingMessages({ status, onSend: doSend, onStop: handleStop })
+
+  const handleRecruitmentHire = useCallback(
+    (candidate: RecruitmentCandidateItem) => {
+      const text = buildRecruitmentHireMessage(candidate)
+      if (!curatorConversationId) {
+        toast.error("会话未就绪，请稍后再试")
+        return
+      }
+      if (isBusy) {
+        enqueue({
+          id: `pending-hire-${Date.now()}`,
+          text,
+          command: null,
+        })
+        toast.success("已加入发送队列", { description: text })
+        return
+      }
+      void doSend(text)
+    },
+    [curatorConversationId, isBusy, enqueue, doSend],
+  )
 
   const handleSendMessage = useCallback(
     async (message: PromptInputMessage) => {
@@ -438,6 +465,15 @@ export function CuratorView({
   const contactDisplayName = resolvedContact?.curator?.name ?? "总管助手"
 
   const isCompact = size === "compact"
+
+  const curatorRecruitmentValue = useMemo(
+    () => ({
+      onHire: handleRecruitmentHire,
+      hireDisabled: !curatorConversationId,
+    }),
+    [handleRecruitmentHire, curatorConversationId],
+  )
+
   const showEmptyWelcome =
     !curatorLoading &&
     !isMessagesLoading &&
@@ -461,8 +497,9 @@ export function CuratorView({
         />
       )}
 
-      <ConversationUI className="min-h-0 flex-1">
-        <ConversationContent className="space-y-3">
+      <CuratorRecruitmentProvider value={curatorRecruitmentValue}>
+        <ConversationUI className="min-h-0 flex-1">
+          <ConversationContent className="space-y-3">
           {curatorLoading && (
             <div className="flex items-center justify-center py-16">
               <Spinner className="size-5" />
@@ -645,7 +682,8 @@ export function CuratorView({
           )}
         </ConversationContent>
         <ConversationScrollButton />
-      </ConversationUI>
+        </ConversationUI>
+      </CuratorRecruitmentProvider>
 
       <div
         className={cn(
