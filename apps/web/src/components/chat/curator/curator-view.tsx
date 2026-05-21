@@ -55,6 +55,7 @@ import { CuratorChatHeader } from "../contacts/curator-chat-header"
 import { ExecutionReportCard } from "../message-blocks/execution-report-card"
 import { ChatPromptInput } from "@/components/chat-prompt-input"
 import { CuratorRotatingPlaceholder } from "./curator-rotating-placeholder"
+import { CuratorEmptyWelcome } from "./curator-empty-welcome"
 import { PendingMessageQueue } from "../panel/pending-message-queue"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import {
@@ -315,6 +316,17 @@ export function CuratorView({
     [curatorConversationId, sendMessage, command, mentions]
   )
 
+  const handleGuidanceSelect = useCallback(
+    (text: string) => {
+      if (isBusy || !curatorConversationId) {
+        setInputValue(text)
+        return
+      }
+      void doSend(text)
+    },
+    [isBusy, curatorConversationId, doSend],
+  )
+
   const handleAttachmentsChange = useCallback((paths: string[]) => {
     uploadedPathsRef.current = paths
   }, [])
@@ -423,10 +435,15 @@ export function CuratorView({
     return entries
   }, [displayMessages, executions, storedMessages])
 
-  const isDraft = !curatorConversationId
   const contactDisplayName = resolvedContact?.curator?.name ?? "总管助手"
 
   const isCompact = size === "compact"
+  const showEmptyWelcome =
+    !curatorLoading &&
+    !isMessagesLoading &&
+    timeline.length === 0 &&
+    status !== "submitted" &&
+    status !== "streaming"
 
   return (
     <div
@@ -452,12 +469,14 @@ export function CuratorView({
             </div>
           )}
 
-          {!curatorLoading && isDraft && timeline.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
-              <p className="text-xs">
-                在下方输入消息，自然语言下发任务给你的数字员工团队
-              </p>
-            </div>
+          {showEmptyWelcome && (
+            <CuratorEmptyWelcome
+              contact={resolvedContact}
+              displayName={contactDisplayName}
+              onSuggestionSelect={handleGuidanceSelect}
+              suggestionsDisabled={!curatorConversationId}
+              size={size}
+            />
           )}
 
           {timeline.map((entry) => {
