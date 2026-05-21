@@ -33,13 +33,14 @@ function RecruitmentCandidateBadgeInner({
   return (
     <div
       className={cn(
-        "rounded-lg border bg-card p-3 transition-colors hover:border-primary/30",
+        "min-w-0 rounded-lg border bg-card p-2.5 transition-colors hover:border-primary/30",
+        "@[22rem]/recruitment:p-3",
         className
       )}
     >
-      <div className="flex items-start gap-2.5">
+      <div className="flex items-start gap-2 @[22rem]/recruitment:gap-2.5">
         <div className="relative shrink-0">
-          <Avatar className="size-9 rounded-lg">
+          <Avatar className="size-8 rounded-lg @[22rem]/recruitment:size-9">
             <AvatarFallback className="rounded-lg bg-primary/10 text-[11px] font-medium text-primary">
               {initials(candidate.name)}
             </AvatarFallback>
@@ -50,18 +51,24 @@ function RecruitmentCandidateBadgeInner({
             </span>
           )}
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{candidate.name}</p>
-          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <p
+            className="truncate text-sm font-medium"
+            title={candidate.name}
+          >
+            {candidate.name}
+          </p>
+          <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground @[22rem]/recruitment:mt-1">
             {candidate.description || "暂无描述"}
           </p>
           {displaySkills.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
+            <div className="mt-1.5 flex flex-wrap gap-1 @[22rem]/recruitment:mt-2">
               {displaySkills.map((label) => (
                 <Badge
                   key={label}
                   variant="outline"
-                  className="text-[10px] font-normal"
+                  className="max-w-full truncate text-[10px] font-normal"
+                  title={label}
                 >
                   {label}
                 </Badge>
@@ -77,7 +84,7 @@ function RecruitmentCandidateBadgeInner({
             </div>
           )}
           {skillIdsText && (
-            <p className="mt-1.5 font-mono text-[10px] text-muted-foreground/70">
+            <p className="mt-1 line-clamp-2 break-all font-mono text-[10px] text-muted-foreground/70 @[22rem]/recruitment:mt-1.5">
               skill_ids: {skillIdsText}
             </p>
           )}
