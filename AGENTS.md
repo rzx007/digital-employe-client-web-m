@@ -18,7 +18,14 @@ Electron 主进程与 Python 后端日志统一在 `~/.digital-employee/logs/`�
 | `main.log` | Electron 主进程（[`apps/web/electron/core/data-paths.ts`](apps/web/electron/core/data-paths.ts)） |
 | `app.log` / `error.log` | Python 后端（[`apps/server/src/core/config.py`](apps/server/src/core/config.py) `get_default_logs_dir()`） |
 
-## Build & Development Commands
+### 桌面宠物目录
+
+| 路径 | 用途 |
+|------|------|
+| `~/.digital-employee/pets/<folder>/` | 本应用 zip 安装 / 手动导入（[`pet-paths.ts`](apps/web/electron/features/pet/pet-paths.ts)） |
+| `~/.codex/pets/<folder>/` | Codex/Petdex 生态兼容；只读扫描 |
+
+每包需 `pet.json` + 雪碧图。列表 slug 为**文件夹名**；`resolvePetFolder` 支持 `meta.id` 与目录名不一致时的回退匹配。
 
 ### 前端（apps/web + packages/ui）
 

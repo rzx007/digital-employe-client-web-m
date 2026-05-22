@@ -32,7 +32,8 @@ export type PetSkinInfo = {
   slug: string
   displayName: string
   description: string
-  source: "bundled" | "petdex"
+  source: "bundled" | "installed" | "petdex"
+  petId?: string
 }
 
 const metaModules = import.meta.glob<{ default: PetMeta }>(
@@ -120,13 +121,23 @@ export async function loadPetSkin(slug: string): Promise<PetSkin> {
     }
   }
 
-  // 2. Try Petdex ~/.codex/pets/ fallback
+  // 2. Try custom pets (~/.digital-employee/pets or ~/.codex/pets)
   const api = getElectronApi()
   if (api?.getPetdexMeta) {
     const meta = await api.getPetdexMeta(slug)
     if (meta) {
-      const imageSrc = `petdex://${meta.id || slug}/${meta.spritesheetPath || "sprite.webp"}`
-      return createPetSkin(meta, imageSrc)
+      const folderSlug = meta.folderSlug
+      const spritesheetPath = meta.spritesheetPath || "sprite.webp"
+      const imageSrc = `petdex://${folderSlug}/${spritesheetPath}`
+      return createPetSkin(
+        {
+          id: meta.id ?? folderSlug,
+          displayName: meta.displayName ?? folderSlug,
+          description: meta.description ?? "",
+          spritesheetPath,
+        },
+        imageSrc,
+      )
     }
   }
 

@@ -1,6 +1,6 @@
 import { contextBridge } from "electron"
 import { exposeElectronAPI } from "@electron-toolkit/preload"
-import log from "electron-log/preload"
+import "electron-log/preload"
 import { electronApi } from "./electron-api"
 
 if (process.contextIsolated) {
@@ -8,7 +8,7 @@ if (process.contextIsolated) {
     exposeElectronAPI()
     contextBridge.exposeInMainWorld("electronApi", electronApi)
   } catch (error) {
-    log.error("[preload] expose failed", { error })
+    console.error("[preload] expose failed", error)
   }
 } else {
   import("@electron-toolkit/preload").then(({ electronAPI }) => {

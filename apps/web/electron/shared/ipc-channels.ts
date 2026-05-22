@@ -40,6 +40,8 @@ export const IpcChannels = {
   petSelect: "pet:select",
   petListPetdex: "pet:list-petdex",
   petGetPetdexMeta: "pet:get-petdex-meta",
+  petInstallFromZip: "pet:install-from-zip",
+  petUninstall: "pet:uninstall",
   petShow: "pet:show",
   petHide: "pet:hide",
   petSetPosition: "pet:set-position",
@@ -89,19 +91,28 @@ export interface PetPosition {
   y: number
 }
 
-export interface PetdexSkin {
+export interface CustomPetSkin {
   slug: string
   displayName: string
   description: string
-  source: "petdex"
+  source: "installed" | "petdex"
+  petId?: string
 }
 
-export interface PetdexMeta {
-  id: string
-  displayName: string
-  description: string
-  spritesheetPath: string
+/** @deprecated use CustomPetSkin */
+export type PetdexSkin = CustomPetSkin
+
+export interface CustomPetMeta {
+  id?: string
+  displayName?: string
+  description?: string
+  spritesheetPath?: string
+  folderSlug: string
+  source: "installed" | "petdex"
 }
+
+/** @deprecated use CustomPetMeta */
+export type PetdexMeta = CustomPetMeta
 
 export interface ModelSettings {
   model: string
@@ -193,8 +204,16 @@ export interface IpcInvokeMap {
   }
   [IpcChannels.petGetSelected]: { args: []; result: string }
   [IpcChannels.petSelect]: { args: [slug: string]; result: void }
-  [IpcChannels.petListPetdex]: { args: []; result: PetdexSkin[] }
-  [IpcChannels.petGetPetdexMeta]: { args: [slug: string]; result: PetdexMeta | null }
+  [IpcChannels.petListPetdex]: { args: []; result: CustomPetSkin[] }
+  [IpcChannels.petGetPetdexMeta]: {
+    args: [slug: string]
+    result: CustomPetMeta | null
+  }
+  [IpcChannels.petInstallFromZip]: {
+    args: []
+    result: { slug: string; displayName: string } | null
+  }
+  [IpcChannels.petUninstall]: { args: [slug: string]; result: void }
   [IpcChannels.getOnboardingCompleted]: { args: []; result: boolean }
   [IpcChannels.setOnboardingCompleted]: {
     args: [value: boolean]

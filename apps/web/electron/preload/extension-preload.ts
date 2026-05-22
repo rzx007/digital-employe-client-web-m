@@ -1,5 +1,4 @@
 import { contextBridge, ipcRenderer } from "electron"
-import log from "electron-log/preload"
 import {
   EXTENSION_HOST_EVENT_CHANNEL,
   ExtensionPluginIpcChannels,
@@ -18,10 +17,7 @@ function extensionInvoke<C extends ExtensionPluginIpcChannel>(
     .invoke(channel, ...args)
     .catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err)
-      log.warn(`[extension-preload:invoke] ${channel} failed`, {
-        channel,
-        message,
-      })
+      console.warn(`[extension-preload:invoke] ${channel} failed`, message)
       throw err
     }) as Promise<ExtensionPluginIpcResult<C>>
 }
@@ -64,7 +60,7 @@ const extensionApi = {
     void ensurePermissions().then((permissions) => {
       if (disposed) return
       if (!permissions.includes("host.events")) {
-        log.warn("[extension-preload] host.events permission missing")
+        console.warn("[extension-preload] host.events permission missing")
         return
       }
       listener = (_event, envelope) => {
@@ -86,7 +82,7 @@ if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld("extension", extensionApi)
   } catch (error) {
-    log.error("[extension-preload] expose failed", { error })
+    console.error("[extension-preload] expose failed", error)
   }
 } else {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

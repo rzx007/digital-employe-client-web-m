@@ -596,5 +596,33 @@ Electron 主进程注册，将 `petdex://<slug>/<file>` 映射到 `~/.codex/pets
 - [x] 拖拽、气泡、提示等交互功能不变
 - [x] 内置宠物只需 `pet.json` + 符合 9 行 grid 的 spritesheet 即可使用
 - [x] Petdex 市集宠物直接下载到 `~/.codex/pets/` 即可加载
-- [x] 内置 / Petdex 市场 分组显示
+- [x] 内置 / 已安装 / Codex 兼容 分组显示
+- [x] 设置页支持 zip 安装到 `~/.digital-employee/pets/`
+- [x] slug 以文件夹名为准，`meta.id` 不一致时仍可解析加载
 - [x] Windows / macOS / Linux 跨平台兼容
+
+---
+
+## 8. 自定义宠物安装（v2.1）
+
+### 目录
+
+| 路径 | 用途 |
+|------|------|
+| `~/.digital-employee/pets/<folder>/` | 本应用 zip 安装 / 手动导入；可卸载 |
+| `~/.codex/pets/<folder>/` | Codex/Petdex 生态兼容；只读扫描 |
+
+### Zip 安装
+
+设置 → 宠物 → **从 zip 安装…**。包内需含 `pet.json` 与雪碧图。支持：
+
+- `my-pet/pet.json` + 图片（一层目录，目录名即 slug）
+- 根目录扁平 `pet.json` + 图片（slug 取 `meta.id` 或 zip 文件名）
+
+同 slug 已存在时直接覆盖。
+
+### Slug 规则
+
+- 列表与磁盘路径使用**文件夹名**（`folderSlug`）
+- `pet.json` 的 `id` 可与文件夹名不同；加载时通过 `resolvePetFolder` 回退匹配
+- `petdex://<folderSlug>/<spritesheetPath>` 经双根目录解析

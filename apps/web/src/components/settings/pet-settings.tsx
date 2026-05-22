@@ -1,5 +1,7 @@
 import * as React from "react"
 import { toast } from "sonner"
+import { IconPackageImport, IconTrash } from "@tabler/icons-react"
+import { Button } from "@workspace/ui/components/button"
 import {
   Card,
   CardContent,
@@ -20,9 +22,14 @@ import {
 import { RadioGroup, RadioGroupItem } from "@workspace/ui/components/radio-group"
 import { Separator } from "@workspace/ui/components/separator"
 import { Switch } from "@workspace/ui/components/switch"
-import { loadInstalledSkinList } from "@/components/pet/pet-loader"
+import {
+  loadInstalledSkinList,
+  type PetSkinInfo,
+} from "@/components/pet/pet-loader"
 import type { PetVisibilityMode } from "./settings-types"
-import { getElectronApi, isElectron } from "@/lib/electron/host"
+import { getElectronApi, isElectron, withElectronApi } from "@/lib/electron/host"
+
+const DEFAULT_PET_SLUG = "eve"
 
 export function PetSettings() {
   const api = getElectronApi()
@@ -32,16 +39,21 @@ export function PetSettings() {
   const [petVisibilityMode, setPetVisibilityMode] =
     React.useState<PetVisibilityMode>("when_main_hidden")
   const [petAlwaysOnTop, setPetAlwaysOnTop] = React.useState(true)
-  const [selectedSlug, setSelectedSlug] = React.useState("eve")
-  const [availablePets, setAvailablePets] = React.useState<
-    Array<{
-      slug: string
-      displayName: string
-      description: string
-      source: "bundled" | "petdex"
-    }>
-  >([])
+  const [selectedSlug, setSelectedSlug] = React.useState(DEFAULT_PET_SLUG)
+  const [availablePets, setAvailablePets] = React.useState<PetSkinInfo[]>([])
   const [loaded, setLoaded] = React.useState(false)
+  const [installing, setInstalling] = React.useState(false)
+  const [uninstallingSlug, setUninstallingSlug] = React.useState<string | null>(
+    null,
+  )
+
+  const refreshPetList = React.useCallback(async () => {
+    if (!api) return
+    const slug = await api.getSelectedPetSlug()
+    setSelectedSlug(slug)
+    const pets = await loadInstalledSkinList()
+    setAvailablePets(pets)
+  }, [api])
 
   React.useEffect(() => {
     if (!inElectron || !api) return
@@ -51,17 +63,25 @@ export function PetSettings() {
         setPetEnabled(s.petEnabled)
         setPetVisibilityMode(s.petVisibilityMode)
         setPetAlwaysOnTop(s.petAlwaysOnTop)
-        const slug = await api.getSelectedPetSlug()
-        setSelectedSlug(slug)
-        const pets = await loadInstalledSkinList()
-        setAvailablePets(pets)
+        await refreshPetList()
       } catch {
         toast.error("宠物设置加载失败")
       } finally {
         setLoaded(true)
       }
     })()
-  }, [api, inElectron])
+  }, [api, inElectron, refreshPetList])
+
+  React.useEffect(() => {
+    if (!inElectron) return
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refreshPetList()
+      }
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => document.removeEventListener("visibilitychange", onVisible)
+  }, [inElectron, refreshPetList])
 
   const persist = React.useCallback(
     async (partial: {
@@ -74,6 +94,45 @@ export function PetSettings() {
     },
     [api],
   )
+
+  const handleInstall = async () => {
+    setInstalling(true)
+    const result = await withElectronApi(
+      (electronApi) => electronApi.installPetFromZip(),
+      {
+        silent: true,
+        onError: (error) => {
+          toast.error(error instanceof Error ? error.message : "安装失败")
+        },
+      },
+    )
+    setInstalling(false)
+    if (result?.slug) {
+      toast.success(`已安装宠物：${result.displayName}`)
+      await api?.setSelectedPetSlug(result.slug)
+      await refreshPetList()
+    }
+  }
+
+  const handleUninstall = async (slug: string, displayName: string) => {
+    setUninstallingSlug(slug)
+    let failed = false
+    await withElectronApi((electronApi) => electronApi.uninstallPet(slug), {
+      onError: (error) => {
+        failed = true
+        const message = error instanceof Error ? error.message : "卸载失败"
+        toast.error(message)
+      },
+    })
+    setUninstallingSlug(null)
+    if (failed) return
+
+    toast.success(`已卸载宠物：${displayName}`)
+    if (selectedSlug === slug) {
+      await api?.setSelectedPetSlug(DEFAULT_PET_SLUG)
+    }
+    await refreshPetList()
+  }
 
   if (!inElectron) {
     return (
@@ -92,7 +151,9 @@ export function PetSettings() {
   }
 
   const bundledPets = availablePets.filter((p) => p.source === "bundled")
+  const installedPets = availablePets.filter((p) => p.source === "installed")
   const petdexPets = availablePets.filter((p) => p.source === "petdex")
+  const selectedInstalled = installedPets.find((p) => p.slug === selectedSlug)
 
   return (
     <div className="flex flex-col gap-6">
@@ -129,9 +190,19 @@ export function PetSettings() {
               <div className="space-y-3">
                 <Label className="text-sm font-medium">当前宠物</Label>
                 <p className="text-xs text-muted-foreground">
-                  选择桌面宠物外观。内置宠物自动发现，兼容Codex生态宠物
-                  （~/.codex/pets/）也会出现在列表中。
+                  内置宠物自动发现；zip 安装到{" "}
+                  <code className="text-xs">~/.digital-employee/pets/</code>
+                  ；Codex 生态兼容{" "}
                 </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={installing}
+                  onClick={() => void handleInstall()}
+                >
+                  <IconPackageImport className="size-4" />
+                  {installing ? "安装中…" : "从 zip 安装…"}
+                </Button>
                 <Select
                   value={selectedSlug}
                   onValueChange={async (v) => {
@@ -151,9 +222,19 @@ export function PetSettings() {
                         </SelectItem>
                       ))}
                     </SelectGroup>
+                    {installedPets.length > 0 && (
+                      <SelectGroup>
+                        <SelectLabel>已安装</SelectLabel>
+                        {installedPets.map((p) => (
+                          <SelectItem key={p.slug} value={p.slug}>
+                            {p.displayName}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    )}
                     {petdexPets.length > 0 && (
                       <SelectGroup>
-                        <SelectLabel>自定义</SelectLabel>
+                        <SelectLabel>Codex 兼容</SelectLabel>
                         {petdexPets.map((p) => (
                           <SelectItem key={p.slug} value={p.slug}>
                             {p.displayName}
@@ -163,6 +244,25 @@ export function PetSettings() {
                     )}
                   </SelectContent>
                 </Select>
+                {selectedInstalled && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    disabled={uninstallingSlug === selectedInstalled.slug}
+                    onClick={() =>
+                      void handleUninstall(
+                        selectedInstalled.slug,
+                        selectedInstalled.displayName,
+                      )
+                    }
+                  >
+                    <IconTrash className="size-4" />
+                    {uninstallingSlug === selectedInstalled.slug
+                      ? "卸载中…"
+                      : `卸载 ${selectedInstalled.displayName}`}
+                  </Button>
+                )}
               </div>
 
               <Separator />

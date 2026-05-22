@@ -6,7 +6,6 @@ import {
 import { setAutoLaunch, getAutoLaunch } from "./auto-launch"
 import { setNotificationsEnabled } from "../notification-tray/notification"
 import { syncPetVisibilityWithMain } from "../pet/pet-main-sync"
-import { getPetWin } from "../pet/pet-window"
 import {
   getSetting,
   setSetting,
@@ -21,9 +20,6 @@ import { clearAuth } from "../auth/auth-store"
 import { IpcChannels } from "../../shared/ipc-channels"
 import type { AppContext } from "../../core/app-context"
 import type { IpcContribution } from "../../core/ipc/types"
-import os from "node:os"
-import path from "node:path"
-import fs from "node:fs"
 
 export const settingsIpcContribution: IpcContribution = {
   id: "settings",
@@ -99,66 +95,6 @@ export const settingsIpcContribution: IpcContribution = {
             setSetting("petAlwaysOnTop", p.petAlwaysOnTop)
           }
           syncPetVisibilityWithMain(getMain())
-        },
-      },
-      {
-        channel: IpcChannels.petGetSelected,
-        handler: () => getSetting("selectedPetSlug"),
-      },
-      {
-        channel: IpcChannels.petSelect,
-        handler: (_event, slug: unknown) => {
-          setSetting("selectedPetSlug", String(slug))
-          getPetWin()?.webContents.send("pet-changed", slug)
-        },
-      },
-      {
-        channel: IpcChannels.petListPetdex,
-        handler: async () => {
-          const petdexDir = path.join(os.homedir(), ".codex", "pets")
-          if (!fs.existsSync(petdexDir)) return []
-          const entries = fs.readdirSync(petdexDir, { withFileTypes: true })
-          const results: Array<{
-            slug: string
-            displayName: string
-            description: string
-            source: "petdex"
-          }> = []
-          for (const entry of entries) {
-            if (!entry.isDirectory()) continue
-            const petJsonPath = path.join(petdexDir, entry.name, "pet.json")
-            if (!fs.existsSync(petJsonPath)) continue
-            try {
-              const meta = JSON.parse(fs.readFileSync(petJsonPath, "utf-8"))
-              results.push({
-                slug: meta.id || entry.name,
-                displayName: meta.displayName ?? entry.name,
-                description: meta.description ?? "",
-                source: "petdex",
-              })
-            } catch {
-              // skip malformed pet.json
-            }
-          }
-          return results
-        },
-      },
-      {
-        channel: IpcChannels.petGetPetdexMeta,
-        handler: async (_event, slug: unknown) => {
-          const petJsonPath = path.join(
-            os.homedir(),
-            ".codex",
-            "pets",
-            String(slug),
-            "pet.json",
-          )
-          if (!fs.existsSync(petJsonPath)) return null
-          try {
-            return JSON.parse(fs.readFileSync(petJsonPath, "utf-8"))
-          } catch {
-            return null
-          }
         },
       },
       {

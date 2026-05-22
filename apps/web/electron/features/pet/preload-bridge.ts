@@ -14,4 +14,6 @@ export const petBridge = {
   listPetdexSkins: () => invoke(IpcChannels.petListPetdex),
   getPetdexMeta: (slug: string) =>
     invoke(IpcChannels.petGetPetdexMeta, slug),
+  installPetFromZip: () => invoke(IpcChannels.petInstallFromZip),
+  uninstallPet: (slug: string) => invoke(IpcChannels.petUninstall, slug),
 }

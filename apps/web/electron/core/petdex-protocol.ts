@@ -1,8 +1,8 @@
 import path from "node:path"
-import os from "node:os"
 import fs from "node:fs"
 import type { Protocol } from "electron"
 import { createLogger } from "./logger"
+import { resolvePetFolder, resolvePetAssetPath } from "../features/pet/pet-registry"
 
 const log = createLogger("petdex")
 
@@ -15,18 +15,20 @@ export function handlePetdexRequest(
   try {
     const url = new URL(request.url)
     const requestedPath = path.normalize(url.pathname.replace(/^\//, ""))
-    const fullPath = path.resolve(
-      os.homedir(),
-      ".codex",
-      "pets",
-      url.hostname,
+    const resolved = resolvePetFolder(url.hostname)
+    if (!resolved) {
+      return new Response("Not Found", { status: 404 })
+    }
+
+    const fullPath = resolvePetAssetPath(
+      resolved.folderSlug,
+      resolved.source,
       requestedPath,
     )
-    const petsRoot = path.resolve(os.homedir(), ".codex", "pets")
-    const relative = path.relative(petsRoot, fullPath)
-    if (relative.startsWith("..") || path.isAbsolute(relative)) {
-      return new Response("Forbidden", { status: 403 })
+    if (!fs.existsSync(fullPath)) {
+      return new Response("Not Found", { status: 404 })
     }
+
     const data = fs.readFileSync(fullPath)
     const ext = path.extname(fullPath).toLowerCase()
     const mimeTypes: Record<string, string> = {
