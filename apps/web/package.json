@@ -1,6 +1,12 @@
 {
   "name": "digital-employee",
   "version": "0.0.52",
+  "description": "数字员工客户端",
+  "homepage": "https://digital-employee.app",
+  "author": {
+    "name": "Digital Employee",
+    "email": "support@digital-employee.app"
+  },
   "type": "module",
   "private": true,
   "main": "dist-electron/main/index.js",
