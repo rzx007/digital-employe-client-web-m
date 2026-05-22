@@ -493,6 +493,7 @@ export function CuratorView({
       {!isCompact && (
         <CuratorChatHeader
           contact={contact}
+          conversationId={curatorConversationId}
           onReset={() => setShowResetDialog(true)}
         />
       )}

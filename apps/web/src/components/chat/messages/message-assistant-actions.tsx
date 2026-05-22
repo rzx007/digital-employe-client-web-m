@@ -1,5 +1,4 @@
 import { cn } from "@workspace/ui/lib/utils"
-
 import { shouldShowMessageElapsed } from "../shared/chat-view-shared"
 import { MessageCopyAction } from "./message-copy-action"
 import { MessageElapsedLabel } from "./message-elapsed-label"

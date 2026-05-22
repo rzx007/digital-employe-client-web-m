@@ -44,7 +44,7 @@ export function ChatPromptInput({
       maxFileSize={MAX_UPLOAD_SIZE_BYTES}
       maxFiles={10}
       onSubmit={onSubmit}
-      className={className}
+      className={cn("@container/prompt-input min-w-0", className)}
     >
       <PromptInputHeader>
         {onAttachmentsChange && (

@@ -1,6 +1,7 @@
-import { IconDots, IconTrash } from "@tabler/icons-react"
+import { IconDots, IconFolder, IconTrash } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 import { Button } from "@workspace/ui/components/button"
+import { useArtifactStore } from "@/stores/artifact-store"
 import { Separator } from "@workspace/ui/components/separator"
 import {
   DropdownMenu,
@@ -13,13 +14,18 @@ import { EmployeeContactAvatar } from "./contact-avatars"
 
 export function CuratorChatHeader({
   contact,
+  conversationId,
   onReset,
   className,
 }: {
   contact?: ChatViewContact
+  conversationId?: string | number | null
   onReset?: () => void
   className?: string
 }) {
+  const isArtifactPanelOpen = useArtifactStore((s) => s.isPanelOpen)
+  const setArtifactPanelOpen = useArtifactStore((s) => s.setPanelOpen)
+
   return (
     <div
       className={cn(
@@ -43,21 +49,33 @@ export function CuratorChatHeader({
         </div>
       </div>
 
-      {onReset && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm">
-              <IconDots className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onReset}>
-              <IconTrash className="size-4" />
-              清空会话
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+      <div className="flex items-center gap-1">
+        {conversationId != null && (
+          <Button
+            title={isArtifactPanelOpen ? "收起资源管理器" : "打开资源管理器"}
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setArtifactPanelOpen(!isArtifactPanelOpen)}
+          >
+            <IconFolder className="size-4" />
+          </Button>
+        )}
+        {onReset && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm">
+                <IconDots className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onReset}>
+                <IconTrash className="size-4" />
+                清空会话
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
     </div>
   )
 }

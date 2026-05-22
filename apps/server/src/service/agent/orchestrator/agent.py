@@ -94,14 +94,18 @@ def get_orchestrator_agent(
     available_skills = list_available_skills(skills_root)
     skills_fs = FilesystemBackend(root_dir=str(skills_root), virtual_mode=True)
 
+    uploads_dir: Path | None = None
     if conversation_id:
-        artifacts_dir = artifacts_path / str(conversation_id) / "artifacts"
         conversation_dir = artifacts_path / str(conversation_id)
+        artifacts_dir = conversation_dir / "artifacts"
+        uploads_dir = conversation_dir / "uploads"
     else:
-        artifacts_dir = artifacts_path / "orchestrator" / "artifacts"
         conversation_dir = artifacts_path / "orchestrator"
+        artifacts_dir = conversation_dir / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     conversation_dir.mkdir(parents=True, exist_ok=True)
+    if uploads_dir is not None:
+        uploads_dir.mkdir(parents=True, exist_ok=True)
 
     agent_fs = FilesystemBackend(root_dir=str(base_dir), virtual_mode=True)
     memories_fs = FilesystemBackend(root_dir=str(memories_dir), virtual_mode=True)
@@ -113,6 +117,10 @@ def get_orchestrator_agent(
             root_dir=str(artifacts_dir), virtual_mode=True
         ),
     }
+    if uploads_dir is not None:
+        routes["/uploads/"] = FilesystemBackend(
+            root_dir=str(uploads_dir), virtual_mode=True
+        )
     if use_session_history:
         routes["/conversation_history/"] = FilesystemBackend(
             root_dir=str(conversation_dir),
@@ -138,6 +146,7 @@ def get_orchestrator_agent(
     skills_line = ", ".join(available_skills) if available_skills else "无"
     fs_section = build_filesystem_prompt_section(
         skills_real_path=str(skills_root),
+        uploads_real_path=str(uploads_dir) if uploads_dir is not None else "",
         artifacts_real_path=str(artifacts_dir),
         memories_real_path=str(memories_dir),
         agent_real_path=str(base_dir),

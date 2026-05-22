@@ -7,7 +7,10 @@ import { ArtifactPanel } from "@/components/artifact"
 import { MonitorPanel } from "@/components/schedule-monitor"
 import { OfflineBanner } from "@/components/offline-banner"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { useContactsQuery } from "@/hooks/use-chat-queries"
+import {
+  useContactsQuery,
+  useCuratorConversationQuery,
+} from "@/hooks/use-chat-queries"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 import { useTaskExecutionNotifications } from "@/hooks/use-task-execution-notifications"
 import { chatKeys } from "@/lib/query-keys/chat"
@@ -138,6 +141,12 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const closeConversationList = useChatStore((s) => s.closeConversationList)
 
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
+  const selectedContact = useChatStore((s) => s.getSelectedContact())
+  const { data: curatorConversation } = useCuratorConversationQuery()
+  const artifactPanelConversationId =
+    selectedContact?.type === "curator" && curatorConversation?.id != null
+      ? curatorConversation.id
+      : selectedConversationId
 
   const handleNewConversation = () => {
     const { setDraftConversation, setSelectedConversationId } =
@@ -242,7 +251,7 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
         {hasRightPanel && activeTab === "chat" && rightPanel === "artifact" && (
           <div className={cn(RIGHT_PANEL_SHELL, "min-w-0 flex-7")}>
             <ArtifactPanel
-              conversationId={selectedConversationId}
+              conversationId={artifactPanelConversationId}
               isOpen={isPanelOpen}
               onClose={closeArtifact}
               className="h-full rounded-xl"

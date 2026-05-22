@@ -18,7 +18,7 @@ export function ChatPromptImageAttachments({
   if (files.length === 0) return null
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex min-w-0 flex-wrap gap-1.5 @[18rem]/prompt-input:gap-2">
       {files.map((file) => (
         <ChatPromptImageThumb
           key={file.id}
@@ -52,7 +52,7 @@ function ChatPromptImageThumb({
   const showError = state?.status === "error"
 
   return (
-    <div className="group relative h-12 max-w-[min(40vw,12rem)] shrink-0">
+    <div className="group relative h-10 max-w-[min(42cqw,9rem)] shrink-0 @[18rem]/prompt-input:h-12 @[18rem]/prompt-input:max-w-[min(42cqw,12rem)]">
       <AttachmentRemoveButton onClick={onRemove} />
       <div className="relative h-full max-w-full overflow-hidden rounded-md border border-border/50 bg-muted/40">
         {!imgFailed ? (
@@ -60,12 +60,12 @@ function ChatPromptImageThumb({
             alt=""
             src={file.url}
             draggable={false}
-            className="h-12 w-auto max-w-[min(40vw,12rem)] object-cover"
+            className="h-10 w-auto max-w-[min(42cqw,9rem)] object-cover @[18rem]/prompt-input:h-12 @[18rem]/prompt-input:max-w-[min(42cqw,12rem)]"
             onError={() => setImgFailed(true)}
           />
         ) : (
           <div
-            className="flex h-12 min-w-[4rem] items-center justify-center bg-muted px-2 text-[10px] text-muted-foreground"
+            className="flex h-10 min-w-[3.5rem] items-center justify-center bg-muted px-2 text-[9px] text-muted-foreground @[18rem]/prompt-input:h-12 @[18rem]/prompt-input:min-w-[4rem] @[18rem]/prompt-input:text-[10px]"
             title={file.filename || undefined}
           >
             预览失败
