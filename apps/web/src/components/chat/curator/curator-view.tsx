@@ -52,6 +52,9 @@ import {
 import { Checkbox } from "@workspace/ui/components/checkbox"
 import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
 import { CuratorChatHeader } from "../contacts/curator-chat-header"
+import { CuratorCompactToolbar } from "./curator-compact-toolbar"
+import { CuratorResourcesSheet } from "./curator-resources-sheet"
+import { getCuratorLayout } from "./curator-layout"
 import { ExecutionReportCard } from "../message-blocks/execution-report-card"
 import { ChatPromptInput } from "@/components/chat-prompt-input"
 import { CuratorRotatingPlaceholder } from "./curator-rotating-placeholder"
@@ -115,10 +118,8 @@ export function CuratorView({
     []
   )
   const [showResetDialog, setShowResetDialog] = useState(false)
+  const [resourcesSheetOpen, setResourcesSheetOpen] = useState(false)
   const [clearTaskLogs, setClearTaskLogs] = useState(true)
-  /** 本会话是否已有实时消息流（避免清空 useChat 后仍回退到 initialMessages） */
-  const hasReceivedMessagesRef = useRef(false)
-
   const resetMutation = useResetCuratorConversation()
   const queryClient = useQueryClient()
   const { data: curatorConv, isLoading: curatorLoading } =
@@ -201,7 +202,6 @@ export function CuratorView({
         []
       )
       setMessages([])
-      hasReceivedMessagesRef.current = false
       setShowResetDialog(false)
       toast.success("会话已清空")
     } catch {
@@ -214,10 +214,6 @@ export function CuratorView({
     setMessages,
     queryClient,
   ])
-
-  if (messages.length > 0) {
-    hasReceivedMessagesRef.current = true
-  }
 
   useEffect(() => {
     if (!initialMessages.length || !curatorConversationId) return
@@ -255,11 +251,11 @@ export function CuratorView({
   const isBusy = status === "submitted" || status === "streaming"
   const chatStatus = status === "ready" && isBusy ? "submitted" : status
 
-  const displayMessages = useMemo(
-    () =>
-      hasReceivedMessagesRef.current ? messages : initialMessages,
-    [initialMessages, messages],
-  )
+  const preferLiveMessages =
+    messages.length > 0 ||
+    status === "submitted" ||
+    status === "streaming"
+  const displayMessages = preferLiveMessages ? messages : initialMessages
 
   const lastAssistantMessageId = useMemo(() => {
     for (let i = displayMessages.length - 1; i >= 0; i--) {
@@ -283,8 +279,6 @@ export function CuratorView({
       const messageText =
         (typeof message === "string" ? message : message.text)?.trim() ?? ""
       if (!messageText || !curatorConversationId) return
-
-      hasReceivedMessagesRef.current = true
 
       const paths = uploadedPathsRef.current
       if (paths.length > 0) {
@@ -465,6 +459,7 @@ export function CuratorView({
   const contactDisplayName = resolvedContact?.curator?.name ?? "总管助手"
 
   const isCompact = size === "compact"
+  const layout = getCuratorLayout(size)
 
   const curatorRecruitmentValue = useMemo(
     () => ({
@@ -490,9 +485,18 @@ export function CuratorView({
       )}
       {...props}
     >
-      {!isCompact && (
+      {isCompact ? (
+        <CuratorCompactToolbar
+          contact={resolvedContact}
+          conversationId={curatorConversationId}
+          displayName={contactDisplayName}
+          onReset={() => setShowResetDialog(true)}
+          resourcesOpen={resourcesSheetOpen}
+          onToggleResources={() => setResourcesSheetOpen((open) => !open)}
+        />
+      ) : (
         <CuratorChatHeader
-          contact={contact}
+          contact={resolvedContact}
           conversationId={curatorConversationId}
           onReset={() => setShowResetDialog(true)}
         />
@@ -500,7 +504,7 @@ export function CuratorView({
 
       <CuratorRecruitmentProvider value={curatorRecruitmentValue}>
         <ConversationUI className="min-h-0 flex-1">
-          <ConversationContent className="space-y-3">
+          <ConversationContent className={layout.conversationContent}>
           {curatorLoading && (
             <div className="flex items-center justify-center py-16">
               <Spinner className="size-5" />
@@ -529,7 +533,7 @@ export function CuratorView({
                 <Message
                   key={`exec-${exec.id}`}
                   from="assistant"
-                  className="mx-auto max-w-4xl"
+                  className={layout.message}
                 >
                   <div className="mb-2 flex items-center gap-2">
                     <EmployeeContactAvatar
@@ -604,7 +608,7 @@ export function CuratorView({
               <Message
                 key={message.id}
                 from={message.role}
-                className={cn("group mx-auto max-w-4xl")}
+                className={cn("group", layout.message)}
               >
                 {message.role === "assistant" && (
                   <div className="mb-2 flex items-center gap-2">
@@ -672,7 +676,7 @@ export function CuratorView({
           })}
 
           {showStreamingIndicator && (
-            <Message from="assistant" className="mx-auto -mt-4 max-w-4xl">
+            <Message from="assistant" className={cn("-mt-4", layout.message)}>
               <MessageContent className="rounded-lg bg-muted/40 px-3 py-2.5">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Spinner className="size-3.5" style={{ color: "#8B5CF6" }} />
@@ -686,12 +690,7 @@ export function CuratorView({
         </ConversationUI>
       </CuratorRecruitmentProvider>
 
-      <div
-        className={cn(
-          "mx-auto w-full max-w-4xl border-none",
-          isCompact ? "py-2" : "py-4"
-        )}
-      >
+      <div className={layout.footer}>
         {pendingQueue.length > 0 && (
           <div className="mx-auto w-[98%]">
             <PendingMessageQueue
@@ -722,6 +721,14 @@ export function CuratorView({
           <p className="mt-2 text-xs text-destructive">{error.message}</p>
         )}
       </div>
+
+      {isCompact && (
+        <CuratorResourcesSheet
+          conversationId={curatorConversationId}
+          open={resourcesSheetOpen}
+          onOpenChange={setResourcesSheetOpen}
+        />
+      )}
 
       <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
         <AlertDialogContent>

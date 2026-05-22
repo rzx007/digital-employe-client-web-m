@@ -74,7 +74,12 @@ function matchesServiceOrigin(
   const base = getServiceBaseUrl(extensionId)
   if (!base) return false
   try {
-    return new URL(base).origin === url.origin
+    const serviceUrl = new URL(base)
+    // ws/wss origin differs from http/https; match loopback host + port instead
+    return (
+      serviceUrl.hostname === url.hostname &&
+      getEffectivePort(serviceUrl) === getEffectivePort(url)
+    )
   } catch {
     return false
   }

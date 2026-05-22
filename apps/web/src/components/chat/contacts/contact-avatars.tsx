@@ -30,7 +30,7 @@ export function EmployeeContactAvatar({
   return (
     <div className={cn("relative", className)}>
       <Avatar className={cn("size-9", avatarClassName)}>
-        <AvatarImage src={avatar} />
+        {avatar ? <AvatarImage src={avatar} alt={name ?? ""} /> : null}
         <AvatarFallback
           className={cn(
             "rounded-none! bg-primary font-medium text-primary-foreground",

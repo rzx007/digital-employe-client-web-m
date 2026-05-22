@@ -3,6 +3,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import type { ChatViewContact } from "../shared/chat-view-shared"
 import { GuidanceSuggestions } from "./guidance-suggestions"
+import { getCuratorLayout } from "./curator-layout"
 
 export function CuratorEmptyWelcome({
   contact,
@@ -18,6 +19,7 @@ export function CuratorEmptyWelcome({
   size?: "default" | "compact"
 }) {
   const isCompact = size === "compact"
+  const layout = getCuratorLayout(size)
 
   return (
     <ConversationEmptyState
@@ -28,7 +30,7 @@ export function CuratorEmptyWelcome({
     >
       <div
         className={cn(
-          "mx-auto flex w-full min-w-0 max-w-4xl flex-col items-center",
+          layout.emptyWelcomeInner,
           isCompact ? "gap-4" : "gap-6",
         )}
       >

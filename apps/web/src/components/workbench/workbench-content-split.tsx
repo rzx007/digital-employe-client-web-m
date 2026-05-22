@@ -13,8 +13,9 @@ import { CuratorView } from "@/components/chat/curator/curator-view"
 const LAYOUT_STORAGE_ID = "workbench-grid-curator"
 const PANEL_IDS = ["grid", "curator"] as const
 
-/** 改版前 Curator 固定 w-[400px] */
-const CURATOR_WIDTH_PX = 400
+/** 工作台侧栏总管默认宽度（与 CuratorView compact 布局 token 对齐） */
+const CURATOR_WIDTH_PX = 360
+const CURATOR_MIN_WIDTH_PX = 360
 
 const FALLBACK_LAYOUT: Layout = {
   grid: 65,
@@ -29,7 +30,7 @@ function normalizeLayout(layout: Layout | undefined): Layout {
   if (typeof grid !== "number" || typeof curator !== "number") {
     return FALLBACK_LAYOUT
   }
-  if (curator < 28 || grid < 30) return FALLBACK_LAYOUT
+  if (curator < 24 || grid < 30) return FALLBACK_LAYOUT
   const sum = grid + curator
   if (sum < 85 || sum > 115) return FALLBACK_LAYOUT
   return { grid, curator }
@@ -72,13 +73,13 @@ export function WorkbenchContentSplit({
         <ResizablePanel
           id="curator"
           defaultSize={`${CURATOR_WIDTH_PX}px`}
-          minSize={`${CURATOR_WIDTH_PX}px`}
+          minSize={`${CURATOR_MIN_WIDTH_PX}px`}
           maxSize="55%"
           className="min-w-0"
         >
           <CuratorView
             size="compact"
-            className="h-full min-h-0 border-l px-1"
+            className="h-full min-h-0 border-l"
           />
         </ResizablePanel>
       </ResizablePanelGroup>

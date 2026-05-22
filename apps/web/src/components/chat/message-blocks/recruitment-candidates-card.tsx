@@ -33,7 +33,7 @@ const STATE_CONFIG: Record<string, { title: string; titleClass: string }> = {
   },
 }
 
-/** 按卡片容器宽度响应（CuratorView compact ~400px 保持单列） */
+/** 按卡片容器宽度响应（CuratorView compact ~360px 保持单列） */
 const CANDIDATES_GRID =
   "grid grid-cols-1 gap-2 @[26rem]/recruitment:grid-cols-2 @[26rem]/recruitment:gap-3"
 
