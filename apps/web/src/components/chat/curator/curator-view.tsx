@@ -53,13 +53,14 @@ import { Checkbox } from "@workspace/ui/components/checkbox"
 import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
 import { CuratorChatHeader } from "../contacts/curator-chat-header"
 import { CuratorCompactToolbar } from "./curator-compact-toolbar"
-import { CuratorResourcesSheet } from "./curator-resources-sheet"
 import { getCuratorLayout } from "./curator-layout"
 import { ExecutionReportCard } from "../message-blocks/execution-report-card"
 import { ChatPromptInput } from "@/components/chat-prompt-input"
 import { CuratorRotatingPlaceholder } from "./curator-rotating-placeholder"
 import { CuratorEmptyWelcome } from "./curator-empty-welcome"
+import { CuratorFileProvider } from "./curator-file-provider"
 import { CuratorRecruitmentProvider } from "./curator-recruitment-provider"
+import { useArtifactStore } from "@/stores/artifact-store"
 import { PendingMessageQueue } from "../panel/pending-message-queue"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import {
@@ -104,11 +105,19 @@ function formatTime(ts: number): string {
 export function CuratorView({
   contact,
   size = "default",
+  resourcesOpen,
+  onToggleResources,
+  onOpenResourceFile,
   className,
   ...props
 }: ComponentProps<"div"> & {
   contact?: ChatViewContact
   size?: "default" | "compact"
+  /** compact 工作台：由 WorkbenchContentSplit 控制资源分栏 */
+  resourcesOpen?: boolean
+  onToggleResources?: () => void
+  /** 工作台：打开资源面板并选中文件 */
+  onOpenResourceFile?: (path: string) => void
 }) {
   const [inputValue, setInputValue] = useState("")
   const [command, setCommand] = useState<{ id: string; title: string } | null>(
@@ -118,13 +127,13 @@ export function CuratorView({
     []
   )
   const [showResetDialog, setShowResetDialog] = useState(false)
-  const [resourcesSheetOpen, setResourcesSheetOpen] = useState(false)
   const [clearTaskLogs, setClearTaskLogs] = useState(true)
   const resetMutation = useResetCuratorConversation()
   const queryClient = useQueryClient()
   const { data: curatorConv, isLoading: curatorLoading } =
     useCuratorConversationQuery()
   const curatorConversationId = curatorConv?.id ?? null
+  const openResource = useArtifactStore((s) => s.openResource)
 
   useEffect(() => {
     const curatorId = contact?.curator?.id
@@ -469,6 +478,20 @@ export function CuratorView({
     [handleRecruitmentHire, curatorConversationId],
   )
 
+  const curatorFileValue = useMemo(
+    () => ({
+      conversationId: curatorConversationId,
+      onOpenFile: (path: string) => {
+        if (onOpenResourceFile) {
+          onOpenResourceFile(path)
+        } else {
+          openResource(path)
+        }
+      },
+    }),
+    [curatorConversationId, onOpenResourceFile, openResource],
+  )
+
   const showEmptyWelcome =
     !curatorLoading &&
     !isMessagesLoading &&
@@ -491,8 +514,8 @@ export function CuratorView({
           conversationId={curatorConversationId}
           displayName={contactDisplayName}
           onReset={() => setShowResetDialog(true)}
-          resourcesOpen={resourcesSheetOpen}
-          onToggleResources={() => setResourcesSheetOpen((open) => !open)}
+          resourcesOpen={resourcesOpen}
+          onToggleResources={onToggleResources}
         />
       ) : (
         <CuratorChatHeader
@@ -502,8 +525,9 @@ export function CuratorView({
         />
       )}
 
-      <CuratorRecruitmentProvider value={curatorRecruitmentValue}>
-        <ConversationUI className="min-h-0 flex-1">
+      <CuratorFileProvider value={curatorFileValue}>
+        <CuratorRecruitmentProvider value={curatorRecruitmentValue}>
+          <ConversationUI className="min-h-0 flex-1">
           <ConversationContent className={layout.conversationContent}>
           {curatorLoading && (
             <div className="flex items-center justify-center py-16">
@@ -688,7 +712,8 @@ export function CuratorView({
         </ConversationContent>
         <ConversationScrollButton />
         </ConversationUI>
-      </CuratorRecruitmentProvider>
+        </CuratorRecruitmentProvider>
+      </CuratorFileProvider>
 
       <div className={layout.footer}>
         {pendingQueue.length > 0 && (
@@ -721,14 +746,6 @@ export function CuratorView({
           <p className="mt-2 text-xs text-destructive">{error.message}</p>
         )}
       </div>
-
-      {isCompact && (
-        <CuratorResourcesSheet
-          conversationId={curatorConversationId}
-          open={resourcesSheetOpen}
-          onOpenChange={setResourcesSheetOpen}
-        />
-      )}
 
       <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
         <AlertDialogContent>
