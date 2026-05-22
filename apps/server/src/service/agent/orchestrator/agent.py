@@ -22,7 +22,10 @@ from src.service.agent.paths import (
     resolve_employee_memories_dir,
     resolve_orchestrator_skills_root,
 )
-from src.service.agent.prompts import build_filesystem_prompt_section
+from src.service.agent.prompts import (
+    build_filesystem_prompt_section,
+    build_long_document_writing_section,
+)
 from src.service.agent.orchestrator.prompts import (
     ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE,
     build_employee_capability_context,
@@ -157,6 +160,7 @@ def get_orchestrator_agent(
         + f"\n\n当前已加载的技能（/skills/）：{skills_line}。"
         " 用户使用客户端或开发相关问题时，优先查阅 /skills/user-usage-manual/ 与 /skills/dev-usage-manual/。"
         + fs_section
+        + build_long_document_writing_section(for_orchestrator=True)
     )
 
     checkpointer = get_checkpointer()

@@ -81,6 +81,30 @@ def build_filesystem_prompt_section(
         """
 
 
+def build_long_document_writing_section(*, for_orchestrator: bool = False) -> str:
+    """长文档写作要点（详规见 /agent/AGENTS.md）。"""
+    orchestrator_prefix = ""
+    if for_orchestrator:
+        orchestrator_prefix = """
+        ### 总管助手（默认只编排）
+        - 默认不要自己直接执行任务，职责是拆解与分配；
+          **除非用户明确要求总管助手干活**（如「你写」「总管帮我做」「别分给别的员工」），
+          此时你可亲自调用工具完成任务。
+        """
+
+    return f"""
+        ## 长文档写作（标书 / 方案 / 报告）
+        {orchestrator_prefix}
+        识别到长文档类任务时：
+        - 先用 `write_todos` 拆解章节与附录
+        - 按章写入 `/artifacts/chapter-N-标题.md`，勿在聊天正文粘贴全文
+        - 全部章节完成后合并为 `/artifacts/完整文档.md` 或用户指定文件名
+        - 流程/架构用 mermaid；公式用 LaTeX（$...$ 或 $$...$$）
+        - 交付时在回复中说明虚拟路径，便于工作台下载
+        - 完整步骤与质量标准见已加载的 /agent/AGENTS.md「长文档写作规范」
+        """
+
+
 def build_system_prompt(
     current_time: str,
     available_skills: list[str],
@@ -106,6 +130,7 @@ def build_system_prompt(
         use_session_history=use_session_history,
         has_draft_route=has_draft_route,
     )
+    long_doc_section = build_long_document_writing_section()
 
     return f"""今天的时间是{current_time}
 
@@ -116,5 +141,6 @@ def build_system_prompt(
         当前已加载的技能名单：{skills_line}
         如果用户询问"你有没有某个技能"或"你有哪些技能"，必须严格基于当前已加载的技能名单回答，不要猜测，不要遗漏名单中的技能。
         {fs_section}
+        {long_doc_section}
         无特殊说明，总是用中文回答用户问题。
         """
