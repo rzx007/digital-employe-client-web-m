@@ -4,6 +4,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PNPM_HOME=/usr/local/share/pnpm
 ENV PATH=$PNPM_HOME:/root/.local/bin:$PATH
 ENV PLAYWRIGHT_BROWSERS_PATH=0
+ENV UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl gnupg lsb-release \
