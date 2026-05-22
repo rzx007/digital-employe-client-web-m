@@ -6,6 +6,7 @@ import folderIcon from "@/assets/files/fold.png"
 import plainIcon from "@/assets/files/plain_dark.png"
 import { ImportDraftSkillDialog } from "@/components/artifact/import-draft-skill-dialog"
 import { downloadResource } from "@/api/conversation"
+import { useCuratorFile } from "@/components/chat/curator/use-curator-file"
 import type { FileChangeItem } from "@/lib/chat/file-change-utils"
 import { EXTENSION_ICONS } from "@/lib/chat/file-icons"
 import { useArtifactStore } from "@/stores/artifact-store"
@@ -14,6 +15,16 @@ import { useChatStore } from "@/stores/chat-store"
 const FILE_SCROLL_THRESHOLD = 4
 const FILE_COLLAPSE_THRESHOLD = 8
 const FILE_COLLAPSED_COUNT = 4
+
+/** 随 Curator / 对话区容器宽度响应（可 resize，不用 compact 布尔） */
+const CARD_SHELL =
+  "@container/file-changes not-prose relative w-full min-w-0 max-w-full self-start rounded-lg border border-border/50 bg-muted/30 px-2 py-1.5 @[28rem]/file-changes:max-w-2xl @[28rem]/file-changes:px-3 @[28rem]/file-changes:py-2"
+
+const FILE_GRID =
+  "grid grid-cols-1 gap-2 @[28rem]/file-changes:grid-cols-2"
+
+const FILE_ROW =
+  "group relative flex min-w-0 cursor-pointer items-start gap-2 rounded-md border border-border/50 bg-background/70 px-2 py-1.5 text-left transition-colors hover:bg-background @[28rem]/file-changes:items-center @[28rem]/file-changes:gap-3 @[28rem]/file-changes:px-3 @[28rem]/file-changes:py-2"
 
 interface FileChangeCardsProps {
   files: FileChangeItem[]
@@ -50,6 +61,11 @@ function formatSize(size: number | undefined) {
   return `${(size / 1024).toFixed(1)}k 字符`
 }
 
+function basename(path: string) {
+  const parts = path.split(/[/\\]/)
+  return parts[parts.length - 1] || path
+}
+
 function FileChangeCardRow({
   file,
   conversationId,
@@ -58,16 +74,52 @@ function FileChangeCardRow({
   onImportSkill,
 }: {
   file: FileChangeItem
-  conversationId: string | null
+  conversationId: string | number | null
   onOpen: (path: string) => void
   onDownload: (file: FileChangeItem) => void
   onImportSkill: (file: FileChangeItem) => void
 }) {
   const size = formatSize(file.size)
+  const pathBasename = basename(file.path)
+
+  const actionButtons = conversationId != null && (
+    <div
+      className={cn(
+        "flex shrink-0 items-center gap-0.5",
+        "@[28rem]/file-changes:absolute @[28rem]/file-changes:top-1.5 @[28rem]/file-changes:right-1.5",
+        "@[28rem]/file-changes:opacity-0 @[28rem]/file-changes:transition-opacity @[28rem]/file-changes:group-hover:opacity-100",
+      )}
+    >
+      {file.kind === "skill-folder" && (
+        <button
+          type="button"
+          className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          onClick={(e) => {
+            e.stopPropagation()
+            onImportSkill(file)
+          }}
+          aria-label="导入到技能库"
+        >
+          <IconPlus className="size-3.5" />
+        </button>
+      )}
+      <button
+        type="button"
+        className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+        onClick={(e) => {
+          e.stopPropagation()
+          onDownload(file)
+        }}
+        aria-label="下载"
+      >
+        <IconDownload className="size-3.5" />
+      </button>
+    </div>
+  )
 
   return (
     <div
-      className="group relative flex min-w-0 items-center gap-3 rounded-md border border-border/50 bg-background/70 px-3 py-2 text-left transition-colors hover:bg-background"
+      className={FILE_ROW}
       onClick={() => onOpen(file.path)}
       role="button"
       tabIndex={0}
@@ -75,60 +127,42 @@ function FileChangeCardRow({
         if (e.key === "Enter") onOpen(file.path)
       }}
     >
-      {conversationId && (
-        <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-          {file.kind === "skill-folder" && (
-            <button
-              type="button"
-              className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-              onClick={(e) => {
-                e.stopPropagation()
-                onImportSkill(file)
-              }}
-              aria-label="导入到技能库"
-            >
-              <IconPlus className="size-3.5" />
-            </button>
-          )}
-          <button
-            type="button"
-            className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-            onClick={(e) => {
-              e.stopPropagation()
-              onDownload(file)
-            }}
-            aria-label="下载"
-          >
-            <IconDownload className="size-3.5" />
-          </button>
-        </div>
-      )}
       <img
         alt=""
         aria-hidden="true"
-        className="size-8 shrink-0"
+        className="size-6 shrink-0 @[28rem]/file-changes:size-8"
         draggable={false}
         src={getIcon(file)}
       />
       <div className="min-w-0 flex-1 overflow-hidden">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-col gap-0.5 @[28rem]/file-changes:flex-row @[28rem]/file-changes:items-center @[28rem]/file-changes:gap-2">
           <span
-            className="truncate text-sm font-medium text-foreground"
+            className="truncate text-xs font-medium text-foreground @[28rem]/file-changes:text-sm"
             title={file.title}
           >
             {file.title}
           </span>
-          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          <span className="w-fit shrink-0 rounded-full bg-muted px-1 py-0 text-[9px] text-muted-foreground @[28rem]/file-changes:px-1.5 @[28rem]/file-changes:py-0.5 @[28rem]/file-changes:text-[10px]">
             {getActionLabel(file)}
           </span>
         </div>
-        <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
-          <span className="truncate" title={file.path}>
+        <div className="mt-0 flex min-w-0 items-center gap-2 text-[10px] text-muted-foreground @[28rem]/file-changes:mt-0.5 @[28rem]/file-changes:text-[11px]">
+          <span
+            className="truncate @[28rem]/file-changes:hidden"
+            title={file.path}
+          >
+            {pathBasename}
+          </span>
+          <span
+            className="hidden truncate @[28rem]/file-changes:inline"
+            title={file.path}
+          >
             {file.path}
           </span>
           {size && <span className="shrink-0">{size}</span>}
         </div>
       </div>
+      {actionButtons}
     </div>
   )
 }
@@ -143,21 +177,34 @@ function FileListScrollFog() {
 }
 
 export function FileChangeCards({ files, className }: FileChangeCardsProps) {
+  const curatorFile = useCuratorFile()
   const openResource = useArtifactStore((s) => s.openResource)
-  const conversationId = useChatStore((s) => s.selectedConversationId)
+  const selectedConversationId = useChatStore((s) => s.selectedConversationId)
+
+  const conversationId =
+    curatorFile?.conversationId ?? selectedConversationId
+  const handleOpen = curatorFile?.onOpenFile ?? openResource
 
   const [importSkillFile, setImportSkillFile] =
     React.useState<FileChangeItem | null>(null)
-  const [expanded, setExpanded] = React.useState(
-    () => files.length <= FILE_COLLAPSE_THRESHOLD
-  )
 
-  React.useEffect(() => {
-    setExpanded(files.length <= FILE_COLLAPSE_THRESHOLD)
-  }, [files.length])
+  const filesSignature = React.useMemo(
+    () => files.map((f) => f.id).join("\0"),
+    [files],
+  )
+  const [expandedOverride, setExpandedOverride] = React.useState<{
+    signature: string
+    value: boolean
+  } | null>(null)
+
+  const defaultExpanded = files.length <= FILE_COLLAPSE_THRESHOLD
+  const expanded =
+    expandedOverride?.signature === filesSignature
+      ? expandedOverride.value
+      : defaultExpanded
 
   const handleDownload = async (file: FileChangeItem) => {
-    if (!conversationId) return
+    if (conversationId == null) return
     await downloadResource(conversationId, file.path)
   }
 
@@ -180,15 +227,10 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
 
   return (
     <>
-      <div
-        className={cn(
-          "not-prose relative self-start w-full min-w-0 max-w-2xl rounded-lg border border-border/50 bg-muted/30 px-3 py-2",
-          className
-        )}
-      >
+      <div className={cn(CARD_SHELL, className)}>
         <div className="mb-2 flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground">
+            <span className="text-[10px] font-medium text-muted-foreground @[28rem]/file-changes:text-xs">
               本轮文件变更
             </span>
             <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
@@ -199,7 +241,12 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
             <button
               type="button"
               className="shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-              onClick={() => setExpanded(false)}
+              onClick={() =>
+                setExpandedOverride({
+                  signature: filesSignature,
+                  value: false,
+                })
+              }
             >
               收起
             </button>
@@ -209,9 +256,9 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
         <div className="relative">
           <div
             className={cn(
-              "grid gap-2 sm:grid-cols-2",
+              FILE_GRID,
               needsScroll &&
-                "max-h-64 overflow-y-auto overscroll-y-contain pr-0.5"
+                "max-h-64 overflow-y-auto overscroll-y-contain pr-0.5",
             )}
           >
             {displayFiles.map((file) => (
@@ -219,7 +266,7 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
                 key={file.id}
                 file={file}
                 conversationId={conversationId}
-                onOpen={openResource}
+                onOpen={handleOpen}
                 onDownload={handleDownload}
                 onImportSkill={handleImportSkill}
               />
@@ -232,14 +279,19 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
           <button
             type="button"
             className="mt-2 w-full text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-            onClick={() => setExpanded(true)}
+            onClick={() =>
+              setExpandedOverride({
+                signature: filesSignature,
+                value: true,
+              })
+            }
           >
             查看全部 {files.length} 个文件
           </button>
         )}
       </div>
 
-      {importSkillFile && conversationId && (
+      {importSkillFile && conversationId != null && (
         <ImportDraftSkillDialog
           open={!!importSkillFile}
           onOpenChange={(open) => {
