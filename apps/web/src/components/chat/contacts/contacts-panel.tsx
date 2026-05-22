@@ -10,6 +10,7 @@ import { type AIEmployee } from "@/lib/mock-data/ai-employees"
 import { useChatStore } from "@/stores/chat-store"
 import { ContactItem } from "./contact-item"
 import { CreateGroupDialog } from "../dialogs/create-group-dialog"
+import { getElectronApi } from "@/lib/electron/host"
 
 export function ContactsPanel({
   className,
@@ -110,8 +111,9 @@ export function ContactsPanel({
             size="icon-sm"
             className="h-7 w-7 shrink-0"
             onClick={async () => {
-              if (window.electronApi?.openRecruitment) {
-                await window.electronApi.openRecruitment()
+              const api = getElectronApi()
+              if (api?.openRecruitment) {
+                await api.openRecruitment()
               } else {
                 navigate({ to: "/recruitment" })
               }

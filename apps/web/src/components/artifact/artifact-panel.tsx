@@ -56,6 +56,8 @@ export interface ArtifactPanelProps {
   isOpen: boolean
   onClose: () => void
   className?: string
+  /** embedded：置于 Sheet 等容器内，不使用侧滑入场动画 */
+  presentation?: "slide-over" | "embedded"
 }
 
 const renderers: Record<string, React.ComponentType<{ artifact: Artifact; className?: string }>> = {
@@ -370,6 +372,7 @@ export const ArtifactPanel = ({
   isOpen,
   onClose,
   className,
+  presentation = "slide-over",
 }: ArtifactPanelProps) => {
   const [selectedPath, setSelectedPath] = React.useState<string | null>(null)
   const [expandedPaths, setExpandedPaths] = React.useState<Set<string>>(
@@ -544,20 +547,14 @@ export const ArtifactPanel = ({
     setImportDraftSkillEntry(entry)
   }, [])
 
-  return (
+  const panelShellClass = cn(
+    "flex h-full min-w-0 flex-col overflow-hidden rounded-lg border bg-background shadow-xl",
+    presentation === "embedded" && "rounded-none border-0 shadow-none",
+    className,
+  )
+
+  const panelBody = (
     <>
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          initial={{ x: "100%" }}
-          animate={{ x: 0 }}
-          exit={{ x: "100%" }}
-          transition={{ type: "spring", damping: 25, stiffness: 200 }}
-          className={cn(
-            "flex h-full min-w-0 flex-col overflow-hidden rounded-lg border bg-background shadow-xl",
-            className
-          )}
-        >
           <div className="flex min-w-0 items-center justify-between gap-3 border-b px-4 py-3">
             <div className="min-w-0">
               <h2 className="text-sm font-medium">资源管理器</h2>
@@ -807,9 +804,30 @@ export const ArtifactPanel = ({
               )}
             </div>
           </div>
-        </motion.div>
+    </>
+  )
+
+  return (
+    <>
+      {presentation === "embedded" ? (
+        isOpen ? (
+          <div className={panelShellClass}>{panelBody}</div>
+        ) : null
+      ) : (
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className={panelShellClass}
+            >
+              {panelBody}
+            </motion.div>
+          )}
+        </AnimatePresence>
       )}
-    </AnimatePresence>
       {importDraftSkillEntry && conversationId && (
         <ImportDraftSkillDialog
           open={!!importDraftSkillEntry}

@@ -1,14 +1,13 @@
 import { ofetch } from "ofetch"
+import { isElectron, withElectronApi } from "@/lib/electron/host"
 
 const defaultHeaders: HeadersInit = {
   Accept: "application/json",
 }
 
-const isElectron = !!(typeof window !== "undefined" && window.electronApi)
-
 const server_url = `${import.meta.env.VITE_BACKEND_URL}:${import.meta.env.VITE_BACKEND_PORT}`
 
-const fallbackBaseURL = isElectron
+const fallbackBaseURL = isElectron()
   ? server_url
   : import.meta.env.DEV
     ? "/actus"
@@ -173,7 +172,9 @@ export const request = ofetch.create({
     const status = response?.status
     if (status === 401 || status === 403) {
       localStorage.removeItem("token")
-      await window.electronApi?.clearAuth()
+      if (isElectron()) {
+        await withElectronApi((api) => api.clearAuth(), { silent: true })
+      }
       if (typeof window !== "undefined") {
         window.location.hash = "#/login"
       }

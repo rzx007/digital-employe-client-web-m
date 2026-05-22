@@ -1,6 +1,7 @@
 import * as React from "react"
 import { useAllTaskExecutions } from "./use-schedule-monitor-queries"
 import type { TaskExecution, TaskRunStatus } from "@/types/schedule-monitor"
+import { getElectronApi } from "@/lib/electron/host"
 
 const TERMINAL_STATUSES = new Set<TaskRunStatus>([
   "success",
@@ -54,14 +55,15 @@ export function useTaskExecutionNotifications() {
     prevStatusMapRef.current = nextMap
 
     if (newlyCompleted.length === 0) return
-    if (!window.electronApi?.sendNotification) return
+    const api = getElectronApi()
+    if (!api?.sendNotification) return
 
     for (const exec of newlyCompleted) {
       const title = `${exec.employee_name} · ${exec.task_name}`
       const body = exec.run_result
         || STATUS_TEXT[exec.run_status]
         || "任务执行完成"
-      window.electronApi.sendNotification(title, body, false)
+      api.sendNotification(title, body, false)
     }
   }, [executions])
 }

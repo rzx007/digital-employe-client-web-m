@@ -15,8 +15,9 @@
  */
 import { createIdGenerator, type UIMessageChunk } from "ai"
 
-import type { AIMessageChunk, ToolMessage } from "./langchain-sse-schema"
+import type { AIMessageChunk, ToolMessage, ToolOutputData } from "./langchain-sse-schema"
 import { LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA } from "./langchain-summarization-text"
+import { resolveToolCallIdForToolOutput } from "./tool-output-routing"
 
 const generatePartId = createIdGenerator({
   prefix: "lc-part",
@@ -748,18 +749,19 @@ function buildToolOutputChunk(
 }
 
 export function buildToolOutputStreamingChunk(
-  event: { tool_name: string; chunk: string; chunk_seq: number; stream: string },
+  event: ToolOutputData,
   state: LangChainStreamParseState
 ): UIMessageChunk | null {
   const { tool_name, chunk } = event
 
-  let toolCallId: string | null = null
-  for (const [id, name] of state.toolNamesById) {
-    if (name === tool_name) {
-      toolCallId = id
-      break
-    }
-  }
+  const toolCallId = resolveToolCallIdForToolOutput(
+    {
+      toolNamesById: state.toolNamesById,
+      activeToolCallId: state.activeToolCallId,
+    },
+    tool_name,
+    event.tool_call_id
+  )
 
   if (!toolCallId) return null
 
@@ -1003,7 +1005,7 @@ function hasAnyToolDelta(chunk: AIMessageChunk): boolean {
  *        buildToolOutputChunk --> tool-output-available（清除 accumulator）
  *
  *   B) artifact tool_output 事件（transport 层）
- *        buildToolOutputStreamingChunk --> 按 tool_name 查 toolNamesById
+ *        buildToolOutputStreamingChunk --> tool_call_id 优先，回退 active/最后同名
  *        --> preliminary tool-output-available
  *
  *

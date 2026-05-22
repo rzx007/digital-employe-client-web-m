@@ -12,7 +12,7 @@ import { useChatStore } from "@/stores/chat-store"
 import { WorkbenchLeftPanel } from "@/components/workbench/workbench-left-panel"
 import { DraggableWorkbenchGrid } from "@/components/workbench/draggable-workbench-grid"
 import { AddBlockDialog } from "@/components/workbench/add-block-dialog"
-import { CuratorView } from "../curator/curator-view"
+import { WorkbenchContentSplit } from "@/components/workbench/workbench-content-split"
 
 /** Single global workbench config key – see workbench-config.ts localStorage prefix */
 const GLOBAL_WORKBENCH_ID = "global"
@@ -171,9 +171,8 @@ export function WorkbenchView({ onClose, className }: WorkbenchViewProps) {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1">
-          <WorkbenchLeftPanel />
-          <div className="min-w-0 flex-1 overflow-auto p-3">
+        <WorkbenchLeftPanel />
+        <WorkbenchContentSplit>
             {!ready ? (
               <div className="space-y-3">
                 <div className="mb-2 flex items-center justify-between gap-3">
@@ -242,13 +241,7 @@ export function WorkbenchView({ onClose, className }: WorkbenchViewProps) {
                 ) : null}
               </>
             )}
-          </div>
-        </div>
-
-        <CuratorView
-          size="compact"
-          className="w-[400px] shrink-0 border-l px-1"
-        />
+        </WorkbenchContentSplit>
       </div>
 
       <AddBlockDialog

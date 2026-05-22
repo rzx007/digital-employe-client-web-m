@@ -17,6 +17,7 @@ import {
 } from "@workspace/ui/components/tabs"
 import { Input } from "@workspace/ui/components/input"
 import type { McpListItem, SkillListItem } from "@/api/types"
+import { sourceBadgeProps } from "@/components/skills/skill-utils"
 import { cn } from "@workspace/ui/lib/utils"
 
 interface CapabilityPickerDialogProps {
@@ -123,7 +124,7 @@ export function CapabilityPickerDialog({
             className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
           >
             <div className="relative shrink-0 px-6 pb-3">
-              <IconSearch className="pointer-events-none absolute top-2/5 left-[2.25rem] size-4 -translate-y-1/2 text-muted-foreground" />
+              <IconSearch className="pointer-events-none absolute top-2/5 left-9 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="pl-9"
                 placeholder="搜索技能..."
@@ -162,10 +163,7 @@ export function CapabilityPickerDialog({
                             {item.displayNameZh || item.skillName}
                           </span>
                           <div className="flex shrink-0 items-center gap-1">
-                            <Badge
-                              variant={sourceIsLocal ? "outline" : "secondary"}
-                              className="px-1 py-0 text-[10px]"
-                            >
+                            <Badge {...sourceBadgeProps(src)}>
                               {item.sourceLabel ||
                                 (src === "builtin"
                                   ? "内置"
@@ -197,7 +195,7 @@ export function CapabilityPickerDialog({
             className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
           >
             <div className="relative shrink-0 px-6 pb-3">
-              <IconSearch className="pointer-events-none absolute top-2/5 left-[2.25rem] size-4 -translate-y-1/2 text-muted-foreground" />
+              <IconSearch className="pointer-events-none absolute top-2/5 left-9 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="pl-9"
                 placeholder="搜索 MCP 工具..."

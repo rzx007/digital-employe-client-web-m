@@ -60,6 +60,7 @@ def _flush_to_db_sync(
     error_message: str | None = None,
     message_parts: str | None = None,
     usage_metadata: dict | None = None,
+    elapsed_ms: int | None = None,
 ) -> bool:
     """同步写入会话消息流状态；在 asyncio.to_thread 中调用，勿跨线程复用 Session。"""
     from src.db.session import get_session_local
@@ -94,6 +95,13 @@ def _flush_to_db_sync(
                     except (json.JSONDecodeError, TypeError):
                         meta = {}
                     meta["usage"] = usage_metadata
+                    msg.extra_meta = json.dumps(meta, ensure_ascii=False)
+                if elapsed_ms is not None:
+                    try:
+                        meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
+                    except (json.JSONDecodeError, TypeError):
+                        meta = {}
+                    meta["elapsed_ms"] = elapsed_ms
                     msg.extra_meta = json.dumps(meta, ensure_ascii=False)
                 db.commit()
                 logger.info(
@@ -191,6 +199,7 @@ def _flush_terminal_sync(
     state: str,
     content: str | None,
     error_message: str | None = None,
+    elapsed_ms: int | None = None,
 ) -> bool:
     from src.service.message_parts_extractor import extract_message_parts_from_buffer
 
@@ -216,6 +225,7 @@ def _flush_terminal_sync(
         error_message=error_message,
         message_parts=message_parts_json,
         usage_metadata=usage_meta,
+        elapsed_ms=elapsed_ms,
     )
 
 
@@ -441,6 +451,7 @@ class StreamRegistry:
                 orchestrator_conversation_id,
             )
 
+        stream_start_time = time.monotonic()
         assistant_text_parts: list[str] = []
         latest_updates_text: str | None = None
         state_final = "completed"
@@ -569,11 +580,13 @@ class StreamRegistry:
             )
             self.broadcast(conversation_id, evt)
 
+            elapsed_ms = int((time.monotonic() - stream_start_time) * 1000)
             ok = await self._flush_terminal(
                 stream_msg_id,
                 task,
                 state="completed",
                 content=final_text,
+                elapsed_ms=elapsed_ms,
             )
             if not ok:
                 await self._ensure_terminal_state(stream_msg_id, "completed")
@@ -594,11 +607,13 @@ class StreamRegistry:
             )
             self.broadcast(conversation_id, evt)
 
+            elapsed_ms = int((time.monotonic() - stream_start_time) * 1000)
             ok = await self._flush_terminal(
                 stream_msg_id,
                 task,
                 state="cancelled",
                 content=partial_text,
+                elapsed_ms=elapsed_ms,
             )
             if not ok:
                 await self._ensure_terminal_state(stream_msg_id, "cancelled")
@@ -618,12 +633,14 @@ class StreamRegistry:
             evt = task.buffer.add({"status": "error", "error": str(e)})
             self.broadcast(conversation_id, evt)
 
+            elapsed_ms = int((time.monotonic() - stream_start_time) * 1000)
             ok = await self._flush_terminal(
                 stream_msg_id,
                 task,
                 state="error",
                 content=partial_text,
                 error_message=str(e),
+                elapsed_ms=elapsed_ms,
             )
             if not ok:
                 await self._ensure_terminal_state(stream_msg_id, "error")
@@ -648,11 +665,13 @@ class StreamRegistry:
                 )
                 state_final = "cancelled"
                 partial_text = latest_updates_text or None
+                elapsed_ms = int((time.monotonic() - stream_start_time) * 1000)
                 ok = await self._flush_terminal(
                     stream_msg_id,
                     task,
                     state="cancelled",
                     content=partial_text,
+                    elapsed_ms=elapsed_ms,
                 )
                 if not ok:
                     await self._ensure_terminal_state(stream_msg_id, "cancelled")
@@ -701,6 +720,7 @@ class StreamRegistry:
         state: str,
         content: str | None,
         error_message: str | None = None,
+        elapsed_ms: int | None = None,
     ) -> bool:
         events_snapshot = list(task.buffer._events)
         cursor_snapshot = task.buffer.cursor
@@ -712,6 +732,7 @@ class StreamRegistry:
             state,
             content,
             error_message,
+            elapsed_ms,
         )
         if not ok:
             logger.error(

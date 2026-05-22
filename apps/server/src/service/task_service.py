@@ -721,3 +721,63 @@ class TaskService:
 
         return {"year": target_year, "month": target_month, "days": days}
 
+    @staticmethod
+    def get_execution_metrics(
+        db: Session,
+        workspace_id: int,
+        employee_id: int,
+        days: int = 7,
+    ) -> dict[str, Any]:
+        """近 N 日执行指标：基于 task_execution_logs 聚合，无新表。"""
+        if days < 1 or days > 90:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="days 必须在 1 到 90 之间。",
+            )
+
+        WorkspaceService.get_workspace(db, workspace_id)
+        employee = db.get(Employee, employee_id)
+        if not employee or employee.workspace_id != workspace_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="未找到员工。",
+            )
+
+        end_at = cst_now()
+        start_at = end_at - timedelta(days=days)
+
+        rows = db.execute(
+            select(TaskExecutionLog.run_status, func.count())
+            .where(
+                TaskExecutionLog.workspace_id == workspace_id,
+                TaskExecutionLog.employee_id == employee_id,
+                TaskExecutionLog.started_at >= start_at,
+                TaskExecutionLog.started_at <= end_at,
+            )
+            .group_by(TaskExecutionLog.run_status)
+        ).all()
+
+        counts = {str(status): int(count) for status, count in rows}
+        success = counts.get("success", 0)
+        failed = counts.get("failed", 0)
+        timeout = counts.get("timeout", 0)
+        cancelled = counts.get("cancelled", 0)
+        total_finished = success + failed + timeout + cancelled
+        failure_count = failed + timeout
+        failure_rate: float | None = None
+        if total_finished > 0:
+            failure_rate = round(failure_count / total_finished * 100, 1)
+
+        return {
+            "days": days,
+            "start_at": start_at,
+            "end_at": end_at,
+            "total_finished": total_finished,
+            "success": success,
+            "failed": failed,
+            "timeout": timeout,
+            "cancelled": cancelled,
+            "failure_count": failure_count,
+            "failure_rate": failure_rate,
+        }
+

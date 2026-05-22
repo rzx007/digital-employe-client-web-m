@@ -4,7 +4,9 @@ import type {
   AIMessageChunk,
   SSEEvent,
   ToolMessage,
+  ToolOutputData,
 } from "./langchain-sse-schema"
+import { resolveToolCallIdForToolOutput } from "./tool-output-routing"
 import { ERROR_MARKER } from "./message-classifier"
 import { LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA } from "./langchain-summarization-text"
 
@@ -116,16 +118,6 @@ function resolveToolCallId(
   return tempId
 }
 
-function findToolCallIdByToolName(
-  state: PartsBuilderState,
-  toolName: string
-): string | null {
-  for (const [callId, name] of state.toolNamesByCallId) {
-    if (name === toolName) return callId
-  }
-  return null
-}
-
 export interface SSEPartsResult {
   parts: AnyPart[]
 }
@@ -172,11 +164,18 @@ export function applySSEEventToParts(
 
 function applyToolOutputEvent(
   currentParts: AnyPart[],
-  event: { data: { tool_name: string; chunk: string; chunk_seq: number; stream: string } },
+  event: { data: ToolOutputData },
   state: PartsBuilderState
 ): SSEPartsResult {
   const { tool_name, chunk } = event.data
-  let toolCallId = findToolCallIdByToolName(state, tool_name)
+  const toolCallId = resolveToolCallIdForToolOutput(
+    {
+      toolNamesById: state.toolNamesByCallId,
+      activeToolCallId: state.activeToolCallId,
+    },
+    tool_name,
+    event.data.tool_call_id
+  )
 
   if (!toolCallId) {
     const parts = cloneParts(currentParts)

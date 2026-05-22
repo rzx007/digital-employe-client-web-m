@@ -53,6 +53,8 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 - 简单任务自动执行后直接告知结果
 - 复杂任务生成计划后展示摘要，等待用户确认
 - 确认后开始执行，执行中汇报进度
+- 向用户交付的报告、导出数据等文件请写入 `/artifacts/`（虚拟路径，如 `/artifacts/report.md`）
+- 用户上传的附件在 `/uploads/`，需要阅读时用 read_file 读取
 
 重要：你所有的工具调用都会产生实际效果。如果你只回复文字而不调用工具，什么事情都不会发生。尤其是编排计划，必须通过 confirm_orchestration_plan 工具来执行。
 """

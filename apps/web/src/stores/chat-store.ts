@@ -5,6 +5,8 @@ import {
   findContactInList,
   type Contact,
 } from "@/lib/mock-data/ai-employees"
+import { useArtifactStore } from "@/stores/artifact-store"
+import { useMonitorStore } from "@/stores/monitor-store"
 
 export type ActiveTab = "chat" | "contacts" | "calendar" | "workbench" | "skills"
 
@@ -17,6 +19,7 @@ interface ChatStore {
   showWorkbench: boolean
   activeTab: ActiveTab
   isCompactMode: boolean
+  isConversationListOpen: boolean
   setContacts: (contacts: Contact[]) => void
   setSelectedContactId: (id: string | null) => void
   setSelectedConversationId: (id: string | number | null) => void
@@ -24,6 +27,8 @@ interface ChatStore {
   setShowWorkbench: (show: boolean) => void
   setActiveTab: (tab: ActiveTab) => void
   setCompactMode: (compact: boolean) => void
+  openConversationList: () => void
+  closeConversationList: () => void
   startDraftConversation: (contactId: string) => void
   selectConversation: (contactId: string, conversationId: string) => void
   switchToContact: (contactId: string) => void
@@ -41,6 +46,7 @@ export const useChatStore = create<ChatStore>()(
       showWorkbench: false,
       activeTab: "chat" as ActiveTab,
       isCompactMode: false,
+      isConversationListOpen: false,
       setContacts: (contacts) => set({ contacts }),
       setSelectedContactId: (id) =>
         set({
@@ -64,6 +70,12 @@ export const useChatStore = create<ChatStore>()(
       setShowWorkbench: (show) => set({ showWorkbench: show }),
       setActiveTab: (tab) => set({ activeTab: tab }),
       setCompactMode: (compact) => set({ isCompactMode: compact }),
+      openConversationList: () => {
+        useArtifactStore.getState().closeArtifact()
+        useMonitorStore.getState().closeMonitor()
+        set({ isConversationListOpen: true, activeTab: "chat" as ActiveTab })
+      },
+      closeConversationList: () => set({ isConversationListOpen: false }),
       startDraftConversation: (contactId) =>
         set((state) => ({
           selectedContactId: contactId,

@@ -193,7 +193,7 @@ export function usePetVoiceCurator() {
         detail: "已同步到总管助手",
       })
       // 不自动打开主窗口，仅用气泡提示；主窗口可从托盘打开
-      // window.electronApi?.showPet()
+      // window.electronApi?.showMainWindow()
     } catch (e) {
       setFeedback({
         variant: "error",

@@ -24,8 +24,11 @@ import {
 } from "@workspace/ui/components/ai-elements/message"
 import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
 import { Spinner } from "@/components/spinner"
-import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
-import { classifyMessageParts } from "@/lib/chat/message-utils"
+import {
+  classifyMessageParts,
+  getCopyableMessageText,
+  mapStoredMessagesToUIMessages,
+} from "@/lib/chat/message-utils"
 import {
   useMessagesQuery,
   useCuratorConversationQuery,
@@ -49,17 +52,33 @@ import {
 import { Checkbox } from "@workspace/ui/components/checkbox"
 import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
 import { CuratorChatHeader } from "../contacts/curator-chat-header"
+import { CuratorCompactToolbar } from "./curator-compact-toolbar"
+import { CuratorResourcesSheet } from "./curator-resources-sheet"
+import { getCuratorLayout } from "./curator-layout"
 import { ExecutionReportCard } from "../message-blocks/execution-report-card"
 import { ChatPromptInput } from "@/components/chat-prompt-input"
+import { CuratorRotatingPlaceholder } from "./curator-rotating-placeholder"
+import { CuratorEmptyWelcome } from "./curator-empty-welcome"
+import { CuratorRecruitmentProvider } from "./curator-recruitment-provider"
 import { PendingMessageQueue } from "../panel/pending-message-queue"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
-import { getMessageMeta } from "../shared/chat-view-shared"
+import {
+  getElapsedMsFromMeta,
+  getMessageCreatedAtMs,
+  getMessageMeta,
+} from "../shared/chat-view-shared"
+import { MessageAssistantActions } from "../messages/message-assistant-actions"
+import { MessageCopyAction } from "../messages/message-copy-action"
 import { RenderClassifiedBlocks } from "../messages/chat-message-item"
 import { computeToolAutoCollapseMap } from "@/lib/chat/tool-collapse-policy"
 import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import type { TaskExecution } from "@/types/schedule-monitor"
 import { curatorUnreadKey } from "@/lib/constants"
+import {
+  buildRecruitmentHireMessage,
+  type RecruitmentCandidateItem,
+} from "@/lib/chat/recruitment-tool-payload"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 
@@ -75,14 +94,7 @@ function getMsgTs(
     timestamp?: Date
   }>
 ): number {
-  const stored = storedMessages.find((m) => m.id === msg.id)
-  const meta = stored?.metadata
-  const createdAt = meta?.created_at
-  if (typeof createdAt === "string" || createdAt instanceof Date) {
-    return new Date(createdAt).getTime()
-  }
-  if (stored?.timestamp) return stored.timestamp.getTime()
-  return 0
+  return getMessageCreatedAtMs(msg, storedMessages) ?? 0
 }
 
 function formatTime(ts: number): string {
@@ -106,9 +118,8 @@ export function CuratorView({
     []
   )
   const [showResetDialog, setShowResetDialog] = useState(false)
+  const [resourcesSheetOpen, setResourcesSheetOpen] = useState(false)
   const [clearTaskLogs, setClearTaskLogs] = useState(true)
-  const [hasReceivedMessages, setHasReceivedMessages] = useState(false)
-
   const resetMutation = useResetCuratorConversation()
   const queryClient = useQueryClient()
   const { data: curatorConv, isLoading: curatorLoading } =
@@ -147,7 +158,10 @@ export function CuratorView({
     messages: initialMessages,
     transport: chatTransport,
     onFinish: () => {
-      // 不用 invalidateQueries — useChat 状态已完整
+      if (!curatorConversationId) return
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(String(curatorConversationId)),
+      })
     },
     onError: (chatError) => {
       toast.error("发送失败", {
@@ -188,7 +202,6 @@ export function CuratorView({
         []
       )
       setMessages([])
-      setHasReceivedMessages(false)
       setShowResetDialog(false)
       toast.success("会话已清空")
     } catch {
@@ -201,12 +214,6 @@ export function CuratorView({
     setMessages,
     queryClient,
   ])
-
-  useEffect(() => {
-    if (messages.length > 0 && !hasReceivedMessages) {
-      setHasReceivedMessages(true)
-    }
-  }, [messages, hasReceivedMessages])
 
   useEffect(() => {
     if (!initialMessages.length || !curatorConversationId) return
@@ -244,11 +251,11 @@ export function CuratorView({
   const isBusy = status === "submitted" || status === "streaming"
   const chatStatus = status === "ready" && isBusy ? "submitted" : status
 
-  const displayMessages = useMemo(
-    () =>
-      messages.length > 0 || hasReceivedMessages ? messages : initialMessages,
-    [initialMessages, messages, hasReceivedMessages]
-  )
+  const preferLiveMessages =
+    messages.length > 0 ||
+    status === "submitted" ||
+    status === "streaming"
+  const displayMessages = preferLiveMessages ? messages : initialMessages
 
   const lastAssistantMessageId = useMemo(() => {
     for (let i = displayMessages.length - 1; i >= 0; i--) {
@@ -309,6 +316,17 @@ export function CuratorView({
     [curatorConversationId, sendMessage, command, mentions]
   )
 
+  const handleGuidanceSelect = useCallback(
+    (text: string) => {
+      if (isBusy || !curatorConversationId) {
+        setInputValue(text)
+        return
+      }
+      void doSend(text)
+    },
+    [isBusy, curatorConversationId, doSend],
+  )
+
   const handleAttachmentsChange = useCallback((paths: string[]) => {
     uploadedPathsRef.current = paths
   }, [])
@@ -321,6 +339,27 @@ export function CuratorView({
     moveUp: pendingMoveUp,
     moveDown: pendingMoveDown,
   } = usePendingMessages({ status, onSend: doSend, onStop: handleStop })
+
+  const handleRecruitmentHire = useCallback(
+    (candidate: RecruitmentCandidateItem) => {
+      const text = buildRecruitmentHireMessage(candidate)
+      if (!curatorConversationId) {
+        toast.error("会话未就绪，请稍后再试")
+        return
+      }
+      if (isBusy) {
+        enqueue({
+          id: `pending-hire-${Date.now()}`,
+          text,
+          command: null,
+        })
+        toast.success("已加入发送队列", { description: text })
+        return
+      }
+      void doSend(text)
+    },
+    [curatorConversationId, isBusy, enqueue, doSend],
+  )
 
   const handleSendMessage = useCallback(
     async (message: PromptInputMessage) => {
@@ -417,41 +456,69 @@ export function CuratorView({
     return entries
   }, [displayMessages, executions, storedMessages])
 
-  const isDraft = !curatorConversationId
   const contactDisplayName = resolvedContact?.curator?.name ?? "总管助手"
 
   const isCompact = size === "compact"
+  const layout = getCuratorLayout(size)
+
+  const curatorRecruitmentValue = useMemo(
+    () => ({
+      onHire: handleRecruitmentHire,
+      hireDisabled: !curatorConversationId,
+    }),
+    [handleRecruitmentHire, curatorConversationId],
+  )
+
+  const showEmptyWelcome =
+    !curatorLoading &&
+    !isMessagesLoading &&
+    timeline.length === 0 &&
+    status !== "submitted" &&
+    status !== "streaming"
 
   return (
     <div
       className={cn(
-        "flex flex-col bg-background",
-        !isCompact && "flex-1",
+        "flex min-h-0 flex-col bg-background",
+        !isCompact ? "flex-1" : "h-full",
         className
       )}
       {...props}
     >
-      {!isCompact && (
+      {isCompact ? (
+        <CuratorCompactToolbar
+          contact={resolvedContact}
+          conversationId={curatorConversationId}
+          displayName={contactDisplayName}
+          onReset={() => setShowResetDialog(true)}
+          resourcesOpen={resourcesSheetOpen}
+          onToggleResources={() => setResourcesSheetOpen((open) => !open)}
+        />
+      ) : (
         <CuratorChatHeader
-          contact={contact}
+          contact={resolvedContact}
+          conversationId={curatorConversationId}
           onReset={() => setShowResetDialog(true)}
         />
       )}
 
-      <ConversationUI className="min-h-0 flex-1 overflow-y-auto">
-        <ConversationContent className="space-y-3">
+      <CuratorRecruitmentProvider value={curatorRecruitmentValue}>
+        <ConversationUI className="min-h-0 flex-1">
+          <ConversationContent className={layout.conversationContent}>
           {curatorLoading && (
             <div className="flex items-center justify-center py-16">
               <Spinner className="size-5" />
             </div>
           )}
 
-          {!curatorLoading && isDraft && timeline.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
-              <p className="text-xs">
-                在下方输入消息，自然语言下发任务给你的数字员工团队
-              </p>
-            </div>
+          {showEmptyWelcome && (
+            <CuratorEmptyWelcome
+              contact={resolvedContact}
+              displayName={contactDisplayName}
+              onSuggestionSelect={handleGuidanceSelect}
+              suggestionsDisabled={!curatorConversationId}
+              size={size}
+            />
           )}
 
           {timeline.map((entry) => {
@@ -466,7 +533,7 @@ export function CuratorView({
                 <Message
                   key={`exec-${exec.id}`}
                   from="assistant"
-                  className="mx-auto max-w-4xl"
+                  className={layout.message}
                 >
                   <div className="mb-2 flex items-center gap-2">
                     <EmployeeContactAvatar
@@ -510,35 +577,38 @@ export function CuratorView({
             const messageMeta = getMessageMeta(message)
             const commandMeta =
               messageMeta &&
-              typeof messageMeta === "object" &&
-              "command" in messageMeta &&
-              messageMeta.command &&
-              typeof messageMeta.command === "object"
+                typeof messageMeta === "object" &&
+                "command" in messageMeta &&
+                messageMeta.command &&
+                typeof messageMeta.command === "object"
                 ? (messageMeta.command as { id?: string; title?: string })
                 : null
             const mentionMeta =
               messageMeta &&
-              typeof messageMeta === "object" &&
-              "mentions" in messageMeta &&
-              Array.isArray(messageMeta.mentions)
+                typeof messageMeta === "object" &&
+                "mentions" in messageMeta &&
+                Array.isArray(messageMeta.mentions)
                 ? (messageMeta.mentions as Array<{
-                    id?: string
-                    name?: string
-                  }>)
+                  id?: string
+                  name?: string
+                }>)
                 : []
             const filesMeta =
               messageMeta &&
-              typeof messageMeta === "object" &&
-              "files" in messageMeta &&
-              Array.isArray(messageMeta.files)
+                typeof messageMeta === "object" &&
+                "files" in messageMeta &&
+                Array.isArray(messageMeta.files)
                 ? (messageMeta.files as Array<{ name: string; path: string }>)
                 : undefined
-
+            const elapsedMs = getElapsedMsFromMeta(message)
+            const copyText = getCopyableMessageText(message, {
+              includeFileChanges,
+            })
             return (
               <Message
                 key={message.id}
                 from={message.role}
-                className="mx-auto max-w-4xl"
+                className={cn("group", layout.message)}
               >
                 {message.role === "assistant" && (
                   <div className="mb-2 flex items-center gap-2">
@@ -583,18 +653,30 @@ export function CuratorView({
                         filesMeta={filesMeta}
                         messageId={message.id}
                         toolAutoCollapseMap={toolAutoCollapseMap}
+                        isLastAssistantMessage={isLastAssistantMessage}
+                        isTurnEnded={hasCurrentTurnEnded}
                       />
                     ) : message.role === "assistant" ? (
                       <MessageResponse />
                     ) : null}
                   </div>
                 </MessageContent>
+                {message.role === "assistant" ? (
+                  <MessageAssistantActions
+                    copyText={copyText}
+                    elapsedMs={elapsedMs}
+                    isLastAssistantMessage={isLastAssistantMessage}
+                    isTurnEnded={hasCurrentTurnEnded}
+                  />
+                ) : (
+                  <MessageCopyAction text={copyText} />
+                )}
               </Message>
             )
           })}
 
           {showStreamingIndicator && (
-            <Message from="assistant" className="mx-auto -mt-4 max-w-4xl">
+            <Message from="assistant" className={cn("-mt-4", layout.message)}>
               <MessageContent className="rounded-lg bg-muted/40 px-3 py-2.5">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Spinner className="size-3.5" style={{ color: "#8B5CF6" }} />
@@ -605,14 +687,10 @@ export function CuratorView({
           )}
         </ConversationContent>
         <ConversationScrollButton />
-      </ConversationUI>
+        </ConversationUI>
+      </CuratorRecruitmentProvider>
 
-      <div
-        className={cn(
-          "mx-auto w-full max-w-4xl border-none",
-          isCompact ? "py-2" : "py-4"
-        )}
-      >
+      <div className={layout.footer}>
         {pendingQueue.length > 0 && (
           <div className="mx-auto w-[98%]">
             <PendingMessageQueue
@@ -632,8 +710,8 @@ export function CuratorView({
           status={chatStatus}
           disabled={curatorLoading || (!isBusy && !inputValue.trim())}
           size="compact"
-          placeholder="描述要做的事或目标，我来拆解并分派给数字员工；键入 @ 可指定经办人"
-          className="w-full overflow-hidden bg-background/80 shadow-xl"
+          placeholder={<CuratorRotatingPlaceholder />}
+          className="w-full"
           slashCommands={[]}
           mentionCandidates={mentionCandidates}
           conversationId={curatorConversationId}
@@ -643,6 +721,14 @@ export function CuratorView({
           <p className="mt-2 text-xs text-destructive">{error.message}</p>
         )}
       </div>
+
+      {isCompact && (
+        <CuratorResourcesSheet
+          conversationId={curatorConversationId}
+          open={resourcesSheetOpen}
+          onOpenChange={setResourcesSheetOpen}
+        />
+      )}
 
       <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
         <AlertDialogContent>

@@ -6,6 +6,7 @@ import {
   useMemo,
   type ComponentProps,
 } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { useChat } from "@ai-sdk/react"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
@@ -16,6 +17,7 @@ import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { ChatPanel } from "../panel/chat-panel"
 import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
 import { cancelConversationStream } from "@/api/conversation"
+import { chatKeys } from "@/lib/query-keys/chat"
 import { toast } from "sonner"
 
 export function ConversationChatView({
@@ -47,6 +49,7 @@ export function ConversationChatView({
     }>
   >([])
   const [hasReceivedMessages, setHasReceivedMessages] = useState(false)
+  const queryClient = useQueryClient()
   const {
     data: storedMessages = [],
     isPending: isMessagesLoading,
@@ -77,7 +80,9 @@ export function ConversationChatView({
     messages: initialMessages,
     transport: chatTransport,
     onFinish: () => {
-      // 不用 invalidateQueries — useChat 状态已完整，再拉库会触发 useEffect 二次 resume
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(String(conversationId)),
+      })
     },
     onError: () => {
       // toast.error("发送失败", { description: chatError.message || "请稍后重试" })

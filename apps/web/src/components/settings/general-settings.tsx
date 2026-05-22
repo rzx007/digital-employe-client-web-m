@@ -17,6 +17,7 @@ import { Switch } from "@workspace/ui/components/switch"
 import { useTheme } from "@/components/theme-provider"
 import { useOnboardingStore } from "@/stores/onboarding-store"
 import { ThemeCard } from "./theme-card"
+import { isElectron, withElectronApi } from "@/lib/electron/host"
 
 export function GeneralSettings() {
   const { theme, setTheme } = useTheme()
@@ -26,40 +27,38 @@ export function GeneralSettings() {
   const [notifications, setNotifications] = React.useState(true)
 
   React.useEffect(() => {
-    const loadSettings = async () => {
-      if (window.electronApi?.isElectron) {
-        const [autoLaunchVal, autoUpdateVal, notificationsVal] =
-          await Promise.all([
-            window.electronApi.getAutoLaunch(),
-            window.electronApi.getAutoUpdate(),
-            window.electronApi.getNotifications(),
-          ])
-        setAutoLaunch(autoLaunchVal)
-        setAutoUpdate(autoUpdateVal)
-        setNotifications(notificationsVal)
-      }
-    }
-    loadSettings()
+    if (!isElectron()) return
+    void withElectronApi(async (api) => {
+      const [autoLaunchVal, autoUpdateVal, notificationsVal] =
+        await Promise.all([
+          api.getAutoLaunch(),
+          api.getAutoUpdate(),
+          api.getNotifications(),
+        ])
+      setAutoLaunch(autoLaunchVal)
+      setAutoUpdate(autoUpdateVal)
+      setNotifications(notificationsVal)
+    })
   }, [])
 
   const handleAutoLaunchChange = async (checked: boolean) => {
     setAutoLaunch(checked)
-    if (window.electronApi?.isElectron) {
-      await window.electronApi.setAutoLaunch(checked)
+    if (isElectron()) {
+      await withElectronApi((api) => api.setAutoLaunch(checked))
     }
   }
 
   const handleAutoUpdateChange = async (checked: boolean) => {
     setAutoUpdate(checked)
-    if (window.electronApi?.isElectron) {
-      await window.electronApi.setAutoUpdate(checked)
+    if (isElectron()) {
+      await withElectronApi((api) => api.setAutoUpdate(checked))
     }
   }
 
   const handleNotificationsChange = async (checked: boolean) => {
     setNotifications(checked)
-    if (window.electronApi?.isElectron) {
-      await window.electronApi.setNotifications(checked)
+    if (isElectron()) {
+      await withElectronApi((api) => api.setNotifications(checked))
     }
   }
 

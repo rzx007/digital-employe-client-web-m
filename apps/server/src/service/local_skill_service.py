@@ -65,7 +65,9 @@ class LocalSkillService:
         configured_root = Path(
             os.path.expandvars(os.path.expanduser(settings.builtin_skills_path))
         )
-        source_relative_root = Path(__file__).resolve().parents[1] / "build-in-skills"
+        from src.service.agent.paths import BUILD_IN_SKILLS_DIR
+
+        source_relative_root = BUILD_IN_SKILLS_DIR
         executable_relative_root = Path(sys.executable).resolve().parent / "build-in-skills"
 
         candidates: list[Path] = [
@@ -75,7 +77,7 @@ class LocalSkillService:
         ]
         # PyInstaller onefile 兜底：资源被展开到 _MEIPASS 临时目录。
         if hasattr(sys, "_MEIPASS"):
-            meipass_root = Path(getattr(sys, "_MEIPASS")) / "src" / "build-in-skills"
+            meipass_root = Path(getattr(sys, "_MEIPASS")) / "build-in-skills"
             candidates.append(meipass_root)
 
         for candidate in candidates:

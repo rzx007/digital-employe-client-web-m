@@ -23,7 +23,12 @@
     {
       "from": "py-server",
       "to": "py-server",
-      "filter": ["**/*", "!data/**", "!logs/**", "!tmp/**"]
+      "filter": [
+        "**/*",
+        "!data/**",
+        "!logs/**",
+        "!tmp/**"
+      ]
     }
   ],
   // 脚本在 monorepo 根目录 scripts/（apps/web → 仓库根须 ../../）
@@ -32,7 +37,10 @@
     // mac.defaultArch 在 Rosetta Node 下不足以覆盖。
     // zip：electron-updater 应用内更新（latest-mac.yml 指向 .zip）
     // dmg：手动安装分发；勿仅用 dmg 作自动更新源
-    "target": ["dmg", "zip"],
+    "target": [
+      "dmg",
+      "zip"
+    ],
     "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
   },
   "win": {
@@ -55,8 +63,14 @@
   },
   "linux": {
     "target": [
-      "AppImage"
+      {
+        "target": "deb",
+        "arch": [
+          "arm64"
+        ]
+      }
     ],
-    "artifactName": "${productName}-Linux-${version}.${ext}"
+    "category": "Office",
+    "artifactName": "${productName}-Linux-arm64-${version}.${ext}"
   }
 }

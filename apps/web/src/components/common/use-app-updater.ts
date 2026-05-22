@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { getElectronApi, isElectron, withElectronApi } from "@/lib/electron/host"
 
 type UpdateStatus =
   | "idle"
@@ -53,32 +54,32 @@ function scheduleReset() {
 }
 
 function ensureIpcSubscription() {
-  if (ipcSubscribed || !window.electronApi?.isElectron) return
+  const api = getElectronApi()
+  if (ipcSubscribed || !isElectron() || !api) return
   ipcSubscribed = true
 
-  const unsubAvailable = window.electronApi.onUpdateAvailable((info) => {
+  const unsubAvailable = api.onUpdateAvailable((info) => {
     sharedState = { ...sharedState, status: "available", newVersion: info.newVersion }
     notifyAll()
   })
 
-  const unsubNotAvailable = window.electronApi.onUpdateNotAvailable(() => {
+  const unsubNotAvailable = api.onUpdateNotAvailable(() => {
     sharedState = { ...sharedState, status: "up-to-date" }
     scheduleReset()
     notifyAll()
   })
 
-  const unsubProgress = window.electronApi.onDownloadProgress((info) => {
+  const unsubProgress = api.onDownloadProgress((info) => {
     sharedState = { ...sharedState, status: "downloading", progress: Math.floor(info.percent) }
     notifyAll()
   })
 
-  const unsubDownloaded = window.electronApi.onUpdateDownloaded(() => {
+  const unsubDownloaded = api.onUpdateDownloaded(() => {
     sharedState = { ...sharedState, status: "downloaded" }
     notifyAll()
   })
 
-  const unsubError = window.electronApi.onUpdateError((info) => {
-    console.log("🚀 ~ ensureIpcSubscription ~ info:", info)
+  const unsubError = api.onUpdateError((info) => {
     sharedState = { ...sharedState, status: "error", errorMessage: info.message || "检查更新失败" }
     scheduleReset()
     notifyAll()
@@ -130,36 +131,54 @@ export function useAppUpdater(options?: UseAppUpdaterOptions) {
   }, [cancelTimeout])
 
   const checkForUpdates = useCallback(async () => {
-    if (!window.electronApi?.isElectron) return
+    if (!isElectron()) return
     sharedState = { ...sharedState, status: "checking", errorMessage: "" }
     notifyAll()
     scheduleTimeout()
-    try {
-      await window.electronApi.checkUpdate()
-    } catch {
-      cancelTimeout()
-      sharedState = { ...sharedState, status: "error", errorMessage: "检查更新失败" }
-      scheduleReset()
-      notifyAll()
-    }
+    await withElectronApi(
+      async (api) => {
+        await api.checkUpdate()
+      },
+      {
+        onError: () => {
+          cancelTimeout()
+          sharedState = {
+            ...sharedState,
+            status: "error",
+            errorMessage: "检查更新失败",
+          }
+          scheduleReset()
+          notifyAll()
+        },
+      },
+    )
   }, [scheduleTimeout, cancelTimeout])
 
   const downloadUpdate = useCallback(async () => {
-    if (!window.electronApi?.isElectron) return
+    if (!isElectron()) return
     sharedState = { ...sharedState, status: "downloading", progress: 0 }
     notifyAll()
-    try {
-      await window.electronApi.startDownloadUpdate()
-    } catch {
-      sharedState = { ...sharedState, status: "error", errorMessage: "下载更新失败" }
-      scheduleReset()
-      notifyAll()
-    }
+    await withElectronApi(
+      async (api) => {
+        await api.startDownloadUpdate()
+      },
+      {
+        onError: () => {
+          sharedState = {
+            ...sharedState,
+            status: "error",
+            errorMessage: "下载更新失败",
+          }
+          scheduleReset()
+          notifyAll()
+        },
+      },
+    )
   }, [])
 
   const installUpdate = useCallback(() => {
-    if (!window.electronApi?.isElectron) return
-    window.electronApi.quitAndInstall()
+    if (!isElectron()) return
+    void withElectronApi((api) => api.quitAndInstall())
   }, [])
 
   useEffect(() => {
@@ -181,11 +200,11 @@ export function useAppUpdater(options?: UseAppUpdaterOptions) {
   }, [cancelTimeout])
 
   useEffect(() => {
-    if (!window.electronApi?.isElectron) return
+    if (!isElectron()) return
     if (!options?.autoCheck) return
 
     const autoCheck = async () => {
-      const enabled = await window?.electronApi?.getAutoUpdate?.()
+      const enabled = await withElectronApi((api) => api.getAutoUpdate())
       if (enabled) {
         checkForUpdates()
       }

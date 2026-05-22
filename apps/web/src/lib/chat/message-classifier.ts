@@ -24,6 +24,11 @@ import {
 import { isSummarizationTextPart } from "./langchain-summarization-text"
 import { collapseWriteTodosBlocks } from "./collapse-write-todos-blocks"
 import { mergeRoutineToolGroups } from "./merge-routine-tool-groups"
+import {
+  isRecruitmentToolRunning,
+  parseEmployeeHiredPayload,
+  parseRecruitmentCandidatesPayload,
+} from "./recruitment-tool-payload"
 import type { TodoItem } from "@/components/chat/message-blocks/tool-shared"
 
 type ToolUIPart = Extract<
@@ -70,6 +75,20 @@ export type ClassifiedBlock =
     }
   | { kind: "skill-exploration"; key: string; items: SkillExploreItem[]; thinkingText?: string }
   | { kind: "plan-generated"; key: string; toolCallId: string; input: unknown; state: string }
+  | {
+      kind: "recruitment-candidates"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+    }
+  | {
+      kind: "employee-hired"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+    }
   | { kind: "summarization-checkpoint"; key: string; text: string }
   | { kind: "final-response"; key: string; text: string }
   | { kind: "file-changes"; key: string; files: FileChangeItem[] }
@@ -246,6 +265,39 @@ export function classifyMessageParts(
         state: ("state" in part ? (part as ToolUIPart).state : "unknown") as string,
       })
       return
+    }
+
+    const toolState = (
+      "state" in part ? (part as ToolUIPart).state : "unknown"
+    ) as string
+    const toolResultText = extractResultText(part)
+
+    if (summary.toolName === "recruit_employee") {
+      const payload = parseRecruitmentCandidatesPayload(toolResultText)
+      if (payload || isRecruitmentToolRunning(toolState)) {
+        blocks.push({
+          kind: "recruitment-candidates",
+          key: `${message.id}:recruit:${index}`,
+          toolCallId: part.toolCallId,
+          state: toolState,
+          resultText: toolResultText,
+        })
+        return
+      }
+    }
+
+    if (summary.toolName === "hire_employee") {
+      const payload = parseEmployeeHiredPayload(toolResultText)
+      if (payload || isRecruitmentToolRunning(toolState)) {
+        blocks.push({
+          kind: "employee-hired",
+          key: `${message.id}:hire:${index}`,
+          toolCallId: part.toolCallId,
+          state: toolState,
+          resultText: toolResultText,
+        })
+        return
+      }
     }
 
     // 检查当前工具调用是否属于技能类工具，如果是则构建并添加技能探索项
@@ -512,6 +564,8 @@ export function classifyMessageParts(
  *   | "tool-group"        — 普通工具调用 (含 input/output/state)
  *   | "skill-exploration" — 连续技能探索调用合并为折叠块 (默认收起)
  *   | "plan-generated"    — 编排计划卡片 (create_orchestration_plan)
+ *   | "recruitment-candidates" — 招聘候选人卡片 (recruit_employee)
+ *   | "employee-hired"    — 入职工牌卡片 (hire_employee)
  *   | "final-response"    — 所有工具调用完成后的最终回复
  *   | "file-changes"      — write_file/edit_file 产生的文件变更卡片
  */

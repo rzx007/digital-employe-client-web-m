@@ -2,13 +2,36 @@ import type { UIMessage } from "ai"
 
 import type { Message } from "@/lib/mock-data/messages"
 
-export { classifyMessageParts, type ClassifiedBlock, type ToolGroupItem } from "./message-classifier"
+import { classifyMessageParts } from "./message-classifier"
+
+export {
+  classifyMessageParts,
+  type ClassifiedBlock,
+  type ToolGroupItem,
+} from "./message-classifier"
 
 export function getTextFromUIMessage(message: UIMessage) {
   return message.parts
     .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("\n")
+}
+
+/** 提取适合复制到剪贴板的可读正文（不含工具块、思考过程等） */
+export function getCopyableMessageText(
+  message: UIMessage,
+  options?: { includeFileChanges?: boolean },
+): string {
+  const blocks = classifyMessageParts(message, options)
+  const parts: string[] = []
+  for (const block of blocks) {
+    if (block.kind === "final-response" || block.kind === "error") {
+      const t = block.text.trim()
+      if (t) parts.push(t)
+    }
+  }
+  if (parts.length > 0) return parts.join("\n\n")
+  return getTextFromUIMessage(message).trim()
 }
 
 export function mapStoredMessagesToUIMessages(

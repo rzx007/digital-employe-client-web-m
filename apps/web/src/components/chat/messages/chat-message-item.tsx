@@ -5,24 +5,31 @@ import {
   MessageContent,
   MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
+import { getCopyableMessageText } from "@/lib/chat/message-utils"
 import { IconAlertTriangle, IconFile } from "@tabler/icons-react"
+import { cn } from "@workspace/ui/lib/utils"
 import { classifyMessageParts } from "@/lib/chat/message-utils"
 import { FileChangeCards } from "../message-blocks/file-change-cards"
 import { ThinkingBlock } from "../message-blocks/thinking-block"
 import { ToolGroupBlock } from "../message-blocks/tool-group-block"
 import { TodoPlanBlock } from "../message-blocks/todo-plan-block"
 import { PlanGeneratedCard } from "../message-blocks/plan-generated-card"
+import { RecruitmentCandidatesCard } from "../message-blocks/recruitment-candidates-card"
+import { EmployeeHiredCard } from "../message-blocks/employee-hired-card"
 import { SkillExplorationBlock } from "../message-blocks/skill-exploration-block"
 import { SummarizationCheckpointBlock } from "../message-blocks/summarization-checkpoint-block"
 import { EmployeeContactAvatar, GroupMembersAvatar } from "../contacts/contact-avatars"
 import {
   getContactDisplayName,
+  getElapsedMsFromMeta,
   getMessageMeta,
   type ChatViewContact,
   type CommandMeta,
   type FileMeta,
   type MentionMeta,
 } from "../shared/chat-view-shared"
+import { MessageAssistantActions } from "./message-assistant-actions"
+import { MessageCopyAction } from "./message-copy-action"
 import type { ClassifiedBlock } from "@/lib/chat/message-classifier"
 import { computeToolAutoCollapseMap } from "@/lib/chat/tool-collapse-policy"
 
@@ -116,6 +123,26 @@ export function RenderClassifiedBlocks({
               state={block.state}
               className="w-full"
               key={block.key}
+            />
+          )
+        }
+        if (block.kind === "recruitment-candidates") {
+          return (
+            <RecruitmentCandidatesCard
+              key={block.key}
+              state={block.state}
+              resultText={block.resultText}
+              className="w-full"
+            />
+          )
+        }
+        if (block.kind === "employee-hired") {
+          return (
+            <EmployeeHiredCard
+              key={block.key}
+              state={block.state}
+              resultText={block.resultText}
+              celebrateOnSuccess={isLastAssistantMessage}
             />
           )
         }
@@ -240,11 +267,17 @@ function ChatMessageItemInner({
   )
     ? messageMeta.files
     : undefined
+  const elapsedMs = getElapsedMsFromMeta(deferredMessage)
+  const copyText = React.useMemo(
+    () =>
+      getCopyableMessageText(deferredMessage, { includeFileChanges }),
+    [deferredMessage, includeFileChanges],
+  )
 
   return (
     <Message
       from={message.role}
-      className="mx-auto max-w-4xl"
+      className={cn("group mx-auto max-w-4xl")}
     >
       {message.role === "assistant" && (
         <div className="mb-2 flex items-center gap-2">
@@ -296,6 +329,16 @@ function ChatMessageItemInner({
           )}
         </div>
       </MessageContent>
+      {message.role === "assistant" ? (
+        <MessageAssistantActions
+          copyText={copyText}
+          elapsedMs={elapsedMs}
+          isLastAssistantMessage={isLastAssistantMessage}
+          isTurnEnded={isTurnEnded}
+        />
+      ) : (
+        <MessageCopyAction text={copyText} />
+      )}
     </Message>
   )
 }

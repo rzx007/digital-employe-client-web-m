@@ -1,31 +1,33 @@
 import { create } from "zustand"
 
+import { useArtifactStore } from "@/stores/artifact-store"
+import { useChatStore } from "@/stores/chat-store"
+
 interface MonitorStore {
   isOpen: boolean
-  isFullscreen: boolean
   targetEmployeeId: string | null
   targetEmployeeName: string
 
   openMonitor: (employeeId: string, employeeName: string) => void
   setTargetEmployee: (employeeId: string, employeeName: string) => void
   closeMonitor: () => void
-  toggleFullscreen: () => void
-  setFullscreen: (fullscreen: boolean) => void
 }
 
 export const useMonitorStore = create<MonitorStore>((set) => ({
   isOpen: false,
-  isFullscreen: false,
   targetEmployeeId: null,
   targetEmployeeName: "",
 
-  openMonitor: (employeeId, employeeName) =>
+  openMonitor: (employeeId, employeeName) => {
+    useArtifactStore.getState().closeArtifact()
+    useChatStore.getState().closeConversationList()
+    useChatStore.getState().setActiveTab("chat")
     set({
       isOpen: true,
-      isFullscreen: false,
       targetEmployeeId: employeeId,
       targetEmployeeName: employeeName,
-    }),
+    })
+  },
 
   setTargetEmployee: (employeeId, employeeName) =>
     set({
@@ -36,13 +38,7 @@ export const useMonitorStore = create<MonitorStore>((set) => ({
   closeMonitor: () =>
     set({
       isOpen: false,
-      isFullscreen: false,
       targetEmployeeId: null,
       targetEmployeeName: "",
     }),
-
-  toggleFullscreen: () =>
-    set((state) => ({ isFullscreen: !state.isFullscreen })),
-
-  setFullscreen: (fullscreen) => set({ isFullscreen: fullscreen }),
 }))

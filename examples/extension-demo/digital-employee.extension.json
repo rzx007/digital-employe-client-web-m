@@ -1,0 +1,13 @@
+{
+  "id": "com.example.demo",
+  "version": "1.0.0",
+  "displayName": "示例插件",
+  "minHostVersion": "0.0.49",
+  "permissions": ["context.read"],
+  "ui": {
+    "entry": "ui/index.html",
+    "title": "示例插件",
+    "width": 800,
+    "height": 600
+  }
+}

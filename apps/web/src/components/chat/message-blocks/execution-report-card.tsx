@@ -9,6 +9,7 @@ import { submitSkillRating } from "@/api/skill-ratings"
 import { useChatStore } from "@/stores/chat-store"
 import { StarRating } from "./star-rating"
 import type { TaskExecution } from "@/types/schedule-monitor"
+import { formatExecutionDuration } from "./execution-card"
 
 const STATUS_CONFIG: Record<
   string,
@@ -104,6 +105,11 @@ export function ExecutionReportCard({
           <span className="truncate text-[11px] text-muted-foreground">
             {execution.task_name}
           </span>
+          {execution.duration_ms != null && (
+            <span className="shrink-0 text-[10px] text-muted-foreground/60">
+              耗时 {formatExecutionDuration(execution.duration_ms)}
+            </span>
+          )}
         </div>
 
         {outputText && (

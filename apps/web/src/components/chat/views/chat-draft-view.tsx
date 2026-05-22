@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, type ComponentProps } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { useChat } from "@ai-sdk/react"
 import type { FileUIPart } from "ai"
 
@@ -14,6 +15,7 @@ import {
   cancelConversationStream,
   uploadConversationFile,
 } from "@/api/conversation"
+import { chatKeys } from "@/lib/query-keys/chat"
 import { toast } from "sonner"
 
 async function uploadDraftFiles(
@@ -65,6 +67,7 @@ export function DraftChatView({
     []
   )
   const createConversationMutation = useCreateConversationMutation()
+  const queryClient = useQueryClient()
 
   const { messages, sendMessage, status, error, stop } = useChat({
     id: selectedContactId
@@ -74,6 +77,13 @@ export function DraftChatView({
     onError: (chatError) => {
       toast.error("发送失败", {
         description: chatError.message || "请稍后重试",
+      })
+    },
+    onFinish: () => {
+      const conversationId = useChatStore.getState().selectedConversationId
+      if (!conversationId) return
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(String(conversationId)),
       })
     },
   })

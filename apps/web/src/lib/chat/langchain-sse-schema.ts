@@ -236,6 +236,7 @@ export const sseUpdatesEventSchema = z.object({
 
 export const toolOutputDataSchema = z.object({
   tool_name: z.string(),
+  tool_call_id: z.string().optional(),
   chunk: z.string(),
   chunk_seq: z.number(),
   stream: z.string(),

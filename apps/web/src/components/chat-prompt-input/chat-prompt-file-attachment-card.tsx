@@ -53,26 +53,27 @@ export function ChatPromptFileAttachmentCard({
 
   return (
     <div
-      className="group relative flex min-w-0 w-[calc(50%-4px)] max-w-[calc(50%-4px)] shrink-0 grow-0 items-center gap-2 rounded-md border border-border/50 bg-background/70 px-2 py-1.5 lg:w-[calc(33.333%-6px)] lg:max-w-[calc(33.333%-6px)]"
+      className="group relative flex min-w-0 w-full items-center gap-1.5 rounded-md border border-border/50 bg-background/70 px-1.5 py-1 @[18rem]/prompt-input:gap-2 @[18rem]/prompt-input:px-2 @[18rem]/prompt-input:py-1.5"
     >
       <AttachmentRemoveButton onClick={onRemove} />
       <img
         alt=""
         aria-hidden="true"
-        className="size-7 shrink-0"
+        className="size-6 shrink-0 @[18rem]/prompt-input:size-7"
         draggable={false}
         src={getFileIcon(filename)}
       />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 overflow-hidden">
         <div className="flex min-w-0 w-full flex-col gap-0.5">
           <span
-            className="min-w-0 truncate text-[11px] text-foreground"
+            className="min-w-0 truncate text-[10px] text-foreground @[18rem]/prompt-input:text-[11px]"
             title={filename}
           >
             {filename}
           </span>
-          <span className="text-[10px] text-muted-foreground tabular-nums">
-            {formatAttachmentDisplaySize(sizeBytes)}&nbsp;{statusLabel}
+          <span className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 text-[9px] text-muted-foreground tabular-nums @[18rem]/prompt-input:text-[10px]">
+            <span className="shrink-0">{formatAttachmentDisplaySize(sizeBytes)}</span>
+            {statusLabel}
           </span>
         </div>
       </div>

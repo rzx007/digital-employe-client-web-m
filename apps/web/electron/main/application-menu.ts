@@ -1,7 +1,7 @@
 import { Menu } from "electron"
 
 import { APP_DISPLAY_NAME } from "./app-product"
-import { checkForUpdatesFromMenu } from "./update"
+import { checkForUpdatesFromMenu } from "../features/update/auto-updater"
 
 /**
  * macOS 应用菜单（苹果图标旁第一项 + 编辑 / 显示 / 窗口）
@@ -33,7 +33,7 @@ export function createMacApplicationMenu(): Menu {
           label: `退出 ${APP_DISPLAY_NAME}`,
           accelerator: "Command+Q",
           click: () => {
-            void import("./ipc-handlers").then(({ quitApp }) => {
+            void import("../core/services/lifecycle").then(({ quitApp }) => {
               quitApp()
             })
           },

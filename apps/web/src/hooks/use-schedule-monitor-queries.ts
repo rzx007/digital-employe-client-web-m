@@ -8,8 +8,8 @@ import type {
   TaskRun,
   TaskSummary,
   TodayTask,
+  ExecutionMetrics7d,
 } from "@/types/schedule-monitor"
-import { generateAnomalies } from "@/lib/mock-data/schedule-monitor"
 
 const WORKSPACE_ID = 1
 
@@ -33,12 +33,23 @@ function mapExecutionToTaskRun(exec: TaskExecution): TaskRun {
 export function useMonthlyScheduleOverview(
   year: number,
   month: number,
+  employeeId?: string | number | null,
 ) {
+  const employeeKey =
+    employeeId != null && employeeId !== "" ? String(employeeId) : null
+
   return useQuery({
-    queryKey: [...chatKeys.all, "schedule-overview", year, month],
+    queryKey: [...chatKeys.all, "schedule-overview", year, month, employeeKey],
     queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({
+        year: String(year),
+        month: String(month),
+      })
+      if (employeeKey) {
+        params.set("employee_id", employeeKey)
+      }
       const res = await request<{ code: number; data: MonthlyOverview }>(
-        `/tasks/calendar/monthly?year=${year}&month=${month}`,
+        `/tasks/calendar/monthly?${params.toString()}`,
         { signal },
       )
       return res.data
@@ -162,10 +173,22 @@ export function useTodayAllExecutions() {
   })
 }
 
-export function useAnomalies(employeeId: string | null) {
+export function useExecutionMetrics7d(
+  employeeId: string | null,
+  days = 7,
+) {
   return useQuery({
-    queryKey: [...chatKeys.all, "anomalies", employeeId],
-    queryFn: () => generateAnomalies(employeeId!),
+    queryKey: [...chatKeys.all, "execution-metrics", employeeId, days],
+    queryFn: async ({ signal }) => {
+      const res = await request<{
+        code: number
+        data: ExecutionMetrics7d
+      }>(
+        `/workspaces/${WORKSPACE_ID}/employees/${employeeId}/tasks/execution-metrics?days=${days}`,
+        { signal },
+      )
+      return res.data
+    },
     enabled: Boolean(employeeId),
     staleTime: 30_000,
   })

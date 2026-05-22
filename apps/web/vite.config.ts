@@ -3,7 +3,8 @@ import pkg from "./package.json"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { tanstackRouter } from "@tanstack/router-plugin/vite"
-import electron from "vite-plugin-electron/simple"
+import electron from "vite-plugin-electron"
+import renderer from "vite-plugin-electron-renderer"
 import { defineConfig, loadEnv, type ConfigEnv } from "vite"
 
 // https://vite.dev/config/
@@ -13,6 +14,42 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
   const isBuild = command === "build"
   const sourcemap = isServe || !!process.env.VSCODE_DEBUG
   const server_url = `${env.VITE_BACKEND_URL}:${env.VITE_BACKEND_PORT}`
+
+  const mainBundledDeps = new Set(["electron-store", "jszip"])
+
+  const preloadExternal = Object.keys(
+    "dependencies" in pkg ? pkg.dependencies : {},
+  ).filter(
+    (dep) =>
+      !mainBundledDeps.has(dep) && dep !== "@electron-toolkit/preload",
+  )
+
+  /** 单入口 preload，避免多 input 拆 chunk 导致 index.mjs 引用缺失的 ./preload.mjs */
+  function electronPreloadBuild(input: string, outputFile: string) {
+    return {
+      vite: {
+        build: {
+          sourcemap: sourcemap ? ("inline" as const) : undefined,
+          minify: isBuild,
+          outDir: "dist-electron/preload",
+          // 不可 emptyOutDir：index 热更新会清空目录并删掉 extension-preload.mjs
+          emptyOutDir: false,
+          rollupOptions: {
+            input,
+            external: preloadExternal,
+            output: {
+              format: "cjs" as const,
+              inlineDynamicImports: true,
+              entryFileNames: outputFile,
+            },
+          },
+        },
+      },
+      onstart(args: { reload: () => void }) {
+        args.reload()
+      },
+    }
+  }
 
   return {
     plugins: [
@@ -24,14 +61,13 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
       tailwindcss(),
       ...(mode === "electron"
         ? [
-          electron({
-            main: {
-              // Shortcut of `build.lib.entry`
+          electron([
+            {
               entry: "electron/main/index.ts",
               onstart({ startup }) {
                 if (process.env.VSCODE_DEBUG) {
                   console.log(
-                      /* For `.vscode/.debug.script.mjs` */ "[startup] Electron App"
+                    /* For `.vscode/.debug.script.mjs` */ "[startup] Electron App",
                   )
                 } else {
                   startup()
@@ -43,38 +79,23 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
                   minify: isBuild,
                   outDir: "dist-electron/main",
                   rollupOptions: {
-                    // Some third-party Node.js libraries may not be built correctly by Vite, especially `C/C++` addons,
-                    // we can use `external` to exclude them to ensure they work correctly.
-                    // electron-store 需要 bundle 进主进程，否则 pnpm monorepo 环境下打包后找不到依赖
                     external: Object.keys(
-                      "dependencies" in pkg ? pkg.dependencies : {}
-                    ).filter((dep) => dep !== "electron-store"),
+                      "dependencies" in pkg ? pkg.dependencies : {},
+                    ).filter((dep) => !mainBundledDeps.has(dep)),
                   },
                 },
               },
             },
-            preload: {
-              // Shortcut of `build.rollupOptions.input`.
-              // Preload scripts may contain Web assets, so use the `build.rollupOptions.input` instead `build.lib.entry`.
-              input: "electron/preload/index.ts",
-              vite: {
-                build: {
-                  sourcemap: sourcemap ? "inline" : undefined, // #332
-                  minify: isBuild,
-                  outDir: "dist-electron/preload",
-                  rollupOptions: {
-                    external: Object.keys(
-                      "dependencies" in pkg ? pkg.dependencies : {}
-                    ).filter((dep) => dep !== "electron-store"),
-                  },
-                },
-              },
-            },
-            // Ployfill the Electron and Node.js API for Renderer process.
-            // If you want use Node.js in Renderer process, the `nodeIntegration` needs to be enabled in the Main process.
-            // See 👉 https://github.com/electron-vite/vite-plugin-electron-renderer
-            renderer: {},
-          }),
+            electronPreloadBuild(
+              "electron/preload/index.ts",
+              "index.mjs",
+            ),
+            electronPreloadBuild(
+              "electron/preload/extension-preload.ts",
+              "extension-preload.mjs",
+            ),
+          ]),
+          renderer(),
         ]
         : []),
     ],

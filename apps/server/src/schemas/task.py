@@ -144,6 +144,23 @@ class MonthlyCalendarRead(BaseModel):
     days: dict[str, MonthlyCalendarDayRead]
 
 
+class ExecutionMetricsRead(BaseModel):
+    days: int
+    start_at: datetime
+    end_at: datetime
+    total_finished: int
+    success: int
+    failed: int
+    timeout: int
+    cancelled: int
+    failure_count: int
+    failure_rate: float | None = None
+
+    @field_serializer("start_at", "end_at")
+    def serialize_datetime(self, value: datetime) -> str:
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+
+
 class TodayTaskRead(BaseModel):
     task_id: int
     task_name: str
