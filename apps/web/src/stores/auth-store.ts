@@ -108,8 +108,8 @@ export const useAuthStore = create<AuthState>((set) => ({
             api.saveAuth(
               token,
               user as unknown as Record<string, unknown>,
-              rememberMe,
-            ),
+              rememberMe
+            )
           )
         }
 
@@ -122,10 +122,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         }
 
         try {
-          const workspace = await getMyWorkspace(
-            String(user.id),
-            user.name,
-          )
+          const workspace = await getMyWorkspace(String(user.id), user.name)
           localStorage.setItem("workspaceId", String(workspace.id))
           set({ workspaceId: workspace.id })
         } catch (error) {
@@ -142,8 +139,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         })
       }
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "网络错误，请重试"
+      const message = err instanceof Error ? err.message : "网络错误，请重试"
       set({ loading: false, error: message })
     }
   },
@@ -184,7 +180,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       try {
         const workspace = await getMyWorkspace(
           String(user?.id ?? ""),
-          user?.name ?? "",
+          user?.name ?? ""
         )
         localStorage.setItem("workspaceId", String(workspace.id))
         set({ workspaceId: workspace.id })

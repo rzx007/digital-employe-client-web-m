@@ -51,7 +51,7 @@ export function ToolDetailPanel({
   const isInputStreaming = state === "input-streaming"
 
   return (
-    <div className="space-y-2 px-1 pb-1 pt-0.5">
+    <div className="space-y-2 px-1 pt-0.5 pb-1">
       {isPreliminaryOutput && resultText && (
         <ToolOutputViewport
           text={resultText}
@@ -66,7 +66,7 @@ export function ToolDetailPanel({
           layout="unified"
           oldTitle="原始"
           newTitle="修改后"
-          className="max-h-52 overflow-y-auto "
+          className="max-h-52 overflow-y-auto"
         />
       )}
       {!isPreliminaryOutput && !editDiff && displayContent && (

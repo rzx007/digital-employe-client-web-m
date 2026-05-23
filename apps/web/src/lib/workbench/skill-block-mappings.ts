@@ -1,5 +1,9 @@
 import type { MetadataSkill } from "@/api/types"
-import type { BlockType, QueryInterface, SkillBlockMapping } from "@/types/workbench"
+import type {
+  BlockType,
+  QueryInterface,
+  SkillBlockMapping,
+} from "@/types/workbench"
 
 /**
  * Default skill → block type mappings
@@ -67,7 +71,10 @@ export function getBlockTitleForType(blockType: BlockType): string {
 /**
  * Generate a unique block ID
  */
-export function generateBlockId(blockType: BlockType, skillId: number | null): string {
+export function generateBlockId(
+  blockType: BlockType,
+  skillId: number | null
+): string {
   return `${blockType}-${skillId ?? "default"}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 

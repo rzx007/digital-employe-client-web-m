@@ -124,9 +124,7 @@ export const getEmployeeById = (id: string): AIEmployee | undefined => {
 }
 
 /** 消息发送方等场景 */
-export function getPeerProfileById(
-  id: string
-): AIEmployee | undefined {
+export function getPeerProfileById(id: string): AIEmployee | undefined {
   return getEmployeeById(id)
 }
 

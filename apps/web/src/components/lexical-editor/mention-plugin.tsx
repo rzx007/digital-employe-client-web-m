@@ -44,7 +44,7 @@ class MentionOption extends MenuOption {
     this.name = candidate.name
     this.avatar = candidate.avatar
     this.role = candidate.role
-    this.onSelect = () => { }
+    this.onSelect = () => {}
   }
 }
 

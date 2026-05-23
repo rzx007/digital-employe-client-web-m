@@ -48,9 +48,9 @@ export function ShiftDayCell({
       <HoverCardTrigger asChild>
         <div
           className={cn(
-            "flex h-11 items-center justify-center border-b border-r border-border/40 transition-colors",
+            "flex h-11 items-center justify-center border-r border-b border-border/40 transition-colors",
             bgClass,
-            isToday && "ring-1 ring-inset ring-primary/40",
+            isToday && "ring-1 ring-primary/40 ring-inset"
           )}
         >
           {inShift && (
@@ -59,7 +59,7 @@ export function ShiftDayCell({
                 "size-4 rounded-sm",
                 isExpired && "bg-muted-foreground/35",
                 !isExpired && status === 1 && "bg-primary/50",
-                !isExpired && status === 0 && "bg-amber-500/50",
+                !isExpired && status === 0 && "bg-amber-500/50"
               )}
             />
           )}

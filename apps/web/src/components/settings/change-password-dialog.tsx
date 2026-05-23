@@ -42,7 +42,7 @@ export function ChangePasswordDialog({
       const hasNumber = /[0-9]/.test(newPwd)
       const hasSpecial = /[^A-Za-z0-9]/.test(newPwd)
       const typeCount = [hasUpper, hasLower, hasNumber, hasSpecial].filter(
-        Boolean,
+        Boolean
       ).length
       if (typeCount < 3)
         errs.newPwd = "密码需包含大写字母、小写字母、数字、特殊字符中至少三种"

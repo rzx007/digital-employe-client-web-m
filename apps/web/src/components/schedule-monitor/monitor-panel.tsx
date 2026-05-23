@@ -73,10 +73,7 @@ export function MonitorPanel({
         className
       )}
     >
-      <MonitorHeader
-        title={`任务监控 - ${displayName}`}
-        onClose={onClose}
-      />
+      <MonitorHeader title={`任务监控 - ${displayName}`} onClose={onClose} />
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-4 p-4">

@@ -90,8 +90,7 @@ function EmployeeHiredCardInner({
     state === "output-available" && payload != null && !isRunning && !isError
 
   React.useEffect(() => {
-    const justCompleted =
-      wasRunningRef.current && isSuccess && payload != null
+    const justCompleted = wasRunningRef.current && isSuccess && payload != null
     wasRunningRef.current = isRunning
 
     if (!justCompleted || !celebrateOnSuccess) return
@@ -113,7 +112,7 @@ function EmployeeHiredCardInner({
         )}
       >
         <p className="text-xs font-semibold text-destructive">入职失败</p>
-        <p className="mt-1 line-clamp-4 break-words text-xs leading-relaxed text-destructive/80">
+        <p className="mt-1 line-clamp-4 text-xs leading-relaxed break-words text-destructive/80">
           {resultText}
         </p>
       </div>
@@ -122,8 +121,7 @@ function EmployeeHiredCardInner({
 
   if (!payload && !isRunning) return null
 
-  const cfg =
-    STATE_CONFIG[state ?? ""] ?? STATE_CONFIG["output-available"]
+  const cfg = STATE_CONFIG[state ?? ""] ?? STATE_CONFIG["output-available"]
   const hiredSkills: string[] = payload?.skills ?? []
 
   return (
@@ -169,13 +167,11 @@ function EmployeeHiredCardInner({
               }
             >
               员工 ID {payload.employee_id}
-              {payload.employee_code
-                ? ` · ${payload.employee_code}`
-                : null}
+              {payload.employee_code ? ` · ${payload.employee_code}` : null}
             </p>
             {payload.message && (
               <p
-                className="mt-1 line-clamp-3 break-words text-xs leading-relaxed text-muted-foreground"
+                className="mt-1 line-clamp-3 text-xs leading-relaxed break-words text-muted-foreground"
                 title={payload.message}
               >
                 {payload.message}

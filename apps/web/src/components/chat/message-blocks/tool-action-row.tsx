@@ -81,7 +81,7 @@ function ToolActionRowInner({
   const chevronClass = cn(
     "size-3.5 shrink-0 text-muted-foreground/50 transition-transform",
     !isOpen &&
-    "hidden group-hover/tool-action-row:block group-focus-visible/tool-action-row:block"
+      "hidden group-hover/tool-action-row:block group-focus-visible/tool-action-row:block"
   )
 
   return (
@@ -108,7 +108,8 @@ function ToolActionRowInner({
           <span className="truncate text-xs font-thin text-foreground/70">
             {summary.label}
           </span>
-          {hasContent && !isRunning &&
+          {hasContent &&
+            !isRunning &&
             (isOpen ? (
               <IconChevronDown className={chevronClass} />
             ) : (

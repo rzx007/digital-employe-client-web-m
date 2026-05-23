@@ -50,11 +50,7 @@ export function SkillsCardGridSkeleton({
     variant === "remote" ? RemoteSkillCardSkeleton : InstalledSkillCardSkeleton
 
   return (
-    <div
-      className={gridClass}
-      aria-busy="true"
-      aria-label="技能列表加载中"
-    >
+    <div className={gridClass} aria-busy="true" aria-label="技能列表加载中">
       {Array.from({ length: count }, (_, i) => (
         <Card key={i} />
       ))}

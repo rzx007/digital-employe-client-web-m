@@ -65,12 +65,12 @@ export interface TaskExecutionOutput {
   content: string
 }
 export interface SkillRatingOutput {
-  id: number;
-  skill_id: number;
-  skill_name: string;
-  score: number;
-  comment: string;
-  created_at: string;
+  id: number
+  skill_id: number
+  skill_name: string
+  score: number
+  comment: string
+  created_at: string
 }
 export interface TaskExecution {
   id: number

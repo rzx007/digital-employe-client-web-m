@@ -50,13 +50,24 @@ function toNumeric(v: unknown): number {
   return 0
 }
 
-const CHART_DISPLAY_TYPES: ChartDisplayType[] = ["pie", "bar", "line", "table", "metric", "list"]
+const CHART_DISPLAY_TYPES: ChartDisplayType[] = [
+  "pie",
+  "bar",
+  "line",
+  "table",
+  "metric",
+  "list",
+]
 
 /** 兼容旧配置中的 custom；非法值回退为柱状图 */
-function coerceSavedChartType(raw: string | undefined): ChartDisplayType | undefined {
+function coerceSavedChartType(
+  raw: string | undefined
+): ChartDisplayType | undefined {
   if (!raw) return undefined
   if (raw === "custom") return "bar"
-  return CHART_DISPLAY_TYPES.includes(raw as ChartDisplayType) ? (raw as ChartDisplayType) : "bar"
+  return CHART_DISPLAY_TYPES.includes(raw as ChartDisplayType)
+    ? (raw as ChartDisplayType)
+    : "bar"
 }
 
 /** 常见英文字段名 → 中文图例/表头（接口字段为中文时原样返回） */
@@ -123,7 +134,10 @@ function translateFieldLabel(key: string): string {
 }
 
 /** 优先使用技能正文解析出的 fieldLabels，否则回退到内置英→中映射 */
-function resolveFieldLabel(key: string, fieldLabels?: Record<string, string>): string {
+function resolveFieldLabel(
+  key: string,
+  fieldLabels?: Record<string, string>
+): string {
   const fromSkill = fieldLabels?.[key]
   if (typeof fromSkill === "string" && fromSkill.trim()) return fromSkill.trim()
   return translateFieldLabel(key)
@@ -139,7 +153,8 @@ function formatTooltipNumber(value: unknown): string {
 const chartTooltipShared = {
   formatter: (value: unknown, name: string) =>
     [formatTooltipNumber(value), name] as [string, string],
-  labelFormatter: (label: unknown) => (label != null && label !== "" ? `类别：${label}` : ""),
+  labelFormatter: (label: unknown) =>
+    label != null && label !== "" ? `类别：${label}` : "",
 }
 
 const chartLegendShared = {
@@ -180,14 +195,18 @@ function DataMetricView({
 }) {
   if (rows.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">暂无数据</div>
+      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+        暂无数据
+      </div>
     )
   }
 
   const inferred = inferNumericKeys(headers, rows)
   let keys: string[] = []
   if (fieldBinding?.valueFields?.length) {
-    keys = fieldBinding.valueFields.filter((k) => headers.includes(k) && inferred.includes(k))
+    keys = fieldBinding.valueFields.filter(
+      (k) => headers.includes(k) && inferred.includes(k)
+    )
   }
   if (keys.length === 0) keys = inferred
   if (keys.length === 0) {
@@ -200,7 +219,9 @@ function DataMetricView({
   const row = rows[0]
   if (!row) {
     return (
-      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">暂无数据</div>
+      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+        暂无数据
+      </div>
     )
   }
   return (
@@ -224,7 +245,7 @@ function DataMetricView({
             </div>
             <div
               className={cn(
-                "mt-0.5 font-semibold tabular-nums text-foreground",
+                "mt-0.5 font-semibold text-foreground tabular-nums",
                 keys.length === 1 ? "text-2xl" : "text-base"
               )}
             >
@@ -265,7 +286,9 @@ function DataListView({
 
   if (rows.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">暂无数据</div>
+      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+        暂无数据
+      </div>
     )
   }
 
@@ -276,16 +299,20 @@ function DataListView({
           key={i}
           className="rounded-md border border-border/50 bg-background/90 px-2 py-1.5 shadow-sm"
         >
-          <div className="font-medium leading-snug text-foreground">
+          <div className="leading-snug font-medium text-foreground">
             {String(row[labelKey] ?? `#${i + 1}`)}
           </div>
           {detailKeys.length > 0 && (
             <dl className="mt-1 space-y-0.5 border-t border-border/40 pt-1 text-[10px] text-muted-foreground">
               {detailKeys.map((h) => (
                 <div key={h} className="flex gap-2">
-                  <dt className="shrink-0 font-normal text-muted-foreground/90">{resolveFieldLabel(h, fieldLabels)}</dt>
+                  <dt className="shrink-0 font-normal text-muted-foreground/90">
+                    {resolveFieldLabel(h, fieldLabels)}
+                  </dt>
                   <dd className="min-w-0 flex-1 truncate text-right text-foreground/90">
-                    {row[h] === null || row[h] === undefined ? "—" : String(row[h])}
+                    {row[h] === null || row[h] === undefined
+                      ? "—"
+                      : String(row[h])}
                   </dd>
                 </div>
               ))}
@@ -309,7 +336,9 @@ function detectChartType(data: unknown[]): ChartType {
   if (!firstRow || typeof firstRow !== "object") return "json"
 
   const keys = Object.keys(firstRow)
-  const numericKeys = keys.filter((k) => isNumericLike((firstRow as Record<string, unknown>)[k]))
+  const numericKeys = keys.filter((k) =>
+    isNumericLike((firstRow as Record<string, unknown>)[k])
+  )
 
   // If we have a few categories and one or two numeric values, suggest pie or bar
   if (numericKeys.length >= 1 && numericKeys.length <= 3) {
@@ -375,7 +404,8 @@ function DataPieChart({
       ? fieldBinding.labelField
       : inferLabelKey(headers, rows, numericSet)
   const valueKey =
-    fieldBinding?.valueFields?.[0] && inferred.includes(fieldBinding.valueFields[0])
+    fieldBinding?.valueFields?.[0] &&
+    inferred.includes(fieldBinding.valueFields[0])
       ? fieldBinding.valueFields[0]
       : inferred[0]
 
@@ -409,7 +439,9 @@ function DataPieChart({
             formatTooltipNumber(value),
             resolveFieldLabel(valueKey, fieldLabels),
           ]}
-          labelFormatter={(label) => (label != null && label !== "" ? `类别：${label}` : "")}
+          labelFormatter={(label) =>
+            label != null && label !== "" ? `类别：${label}` : ""
+          }
         />
         <Legend formatter={(value) => String(value)} />
       </PieChart>
@@ -433,7 +465,9 @@ function DataBarChart({
   const inferred = inferNumericKeys(headers, rows)
   let numericKeys: string[] = []
   if (fieldBinding?.valueFields?.length) {
-    numericKeys = fieldBinding.valueFields.filter((k) => headers.includes(k) && inferred.includes(k))
+    numericKeys = fieldBinding.valueFields.filter(
+      (k) => headers.includes(k) && inferred.includes(k)
+    )
   }
   if (numericKeys.length === 0) numericKeys = inferred
 
@@ -488,7 +522,9 @@ function DataLineChart({
   const inferred = inferNumericKeys(headers, rows)
   let numericKeys: string[] = []
   if (fieldBinding?.valueFields?.length) {
-    numericKeys = fieldBinding.valueFields.filter((k) => headers.includes(k) && inferred.includes(k))
+    numericKeys = fieldBinding.valueFields.filter(
+      (k) => headers.includes(k) && inferred.includes(k)
+    )
   }
   if (numericKeys.length === 0) numericKeys = inferred
 
@@ -572,7 +608,7 @@ function DataTable({
         </tbody>
       </table>
       {rows.length > 20 && (
-        <div className="py-2 text-xs text-muted-foreground text-center">
+        <div className="py-2 text-center text-xs text-muted-foreground">
           显示前 20 条，共 {rows.length} 条
         </div>
       )}
@@ -582,22 +618,33 @@ function DataTable({
 
 function JsonView({ data }: { data: unknown }) {
   return (
-    <pre className="text-xs overflow-auto p-2 bg-muted/30 rounded">
+    <pre className="overflow-auto rounded bg-muted/30 p-2 text-xs">
       {JSON.stringify(data, null, 2)}
     </pre>
   )
 }
 
-export function DataVisualizer({ queryInterface, className, title, embedded }: DataVisualizerProps) {
+export function DataVisualizer({
+  queryInterface,
+  className,
+  title,
+  embedded,
+}: DataVisualizerProps) {
   const [data, setData] = useState<unknown>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [autoChartType, setAutoChartType] = useState<ChartType>("unknown")
 
-  const savedChartType = coerceSavedChartType(queryInterface.chartType as string | undefined)
+  const savedChartType = coerceSavedChartType(
+    queryInterface.chartType as string | undefined
+  )
   const displayChartType: ChartDisplayType | "json" =
     savedChartType ??
-    (autoChartType === "unknown" ? "bar" : autoChartType === "json" ? "json" : autoChartType)
+    (autoChartType === "unknown"
+      ? "bar"
+      : autoChartType === "json"
+        ? "json"
+        : autoChartType)
   const isChartTypeFixed = savedChartType !== undefined
 
   const fetchData = useCallback(async () => {
@@ -605,7 +652,10 @@ export function DataVisualizer({ queryInterface, className, title, embedded }: D
     setError(null)
 
     try {
-      const url = buildFetchUrlFromInterface(queryInterface.path, queryInterface.baseUrl)
+      const url = buildFetchUrlFromInterface(
+        queryInterface.path,
+        queryInterface.baseUrl
+      )
 
       const response = await fetch(url, {
         method: queryInterface.method || "GET",
@@ -645,7 +695,7 @@ export function DataVisualizer({ queryInterface, className, title, embedded }: D
   const parsed = parseResponseData(data, effectiveResponseFormat)
 
   return (
-    <div className={cn("flex flex-col h-full", className)}>
+    <div className={cn("flex h-full flex-col", className)}>
       <div
         className={cn(
           "flex shrink-0 items-center justify-start gap-2 px-2 py-1",
@@ -653,9 +703,11 @@ export function DataVisualizer({ queryInterface, className, title, embedded }: D
           !embedded && "py-0.5"
         )}
       >
-        <div className="flex min-w-0  items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           {title ? (
-            <span className="truncate text-xs font-medium text-foreground">{title}</span>
+            <span className="truncate text-xs font-medium text-foreground">
+              {title}
+            </span>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -666,7 +718,7 @@ export function DataVisualizer({ queryInterface, className, title, embedded }: D
                   key={type}
                   onClick={() => setAutoChartType(type)}
                   className={cn(
-                    "shrink-0 text-[10px] px-1.5 py-0.5 rounded",
+                    "shrink-0 rounded px-1.5 py-0.5 text-[10px]",
                     autoChartType === type
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted hover:bg-muted/80"
@@ -680,13 +732,23 @@ export function DataVisualizer({ queryInterface, className, title, embedded }: D
               ))}
             </div>
           )}
-          <Button variant="ghost" size="icon-xs" onClick={fetchData} disabled={loading} className="size-5">
-            {loading ? <IconLoader className="size-3 animate-spin" /> : <IconRefresh className="size-3" />}
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={fetchData}
+            disabled={loading}
+            className="size-5"
+          >
+            {loading ? (
+              <IconLoader className="size-3 animate-spin" />
+            ) : (
+              <IconRefresh className="size-3" />
+            )}
           </Button>
         </div>
       </div>
 
-      <div className="flex-1 p-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden p-1">
         {loading && (
           <div className="flex h-full items-center justify-center">
             <IconLoader className="size-8 animate-spin text-muted-foreground" />
@@ -729,7 +791,11 @@ export function DataVisualizer({ queryInterface, className, title, embedded }: D
               />
             )}
             {displayChartType === "table" && (
-              <DataTable headers={parsed.headers} rows={parsed.rows} fieldLabels={queryInterface.fieldLabels} />
+              <DataTable
+                headers={parsed.headers}
+                rows={parsed.rows}
+                fieldLabels={queryInterface.fieldLabels}
+              />
             )}
             {displayChartType === "metric" && (
               <DataMetricView

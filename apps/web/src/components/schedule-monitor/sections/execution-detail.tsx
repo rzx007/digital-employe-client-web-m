@@ -41,8 +41,7 @@ const STATUS_CONFIG: Record<
   },
   cancelled: {
     label: "已取消",
-    className:
-      "bg-muted text-muted-foreground dark:bg-muted/60",
+    className: "bg-muted text-muted-foreground dark:bg-muted/60",
   },
 }
 
@@ -66,7 +65,7 @@ function TaskRunRow({ run }: { run: TaskRun }) {
   const config = STATUS_CONFIG[run.status] ?? STATUS_FALLBACK
 
   return (
-    <div className="rounded-md border mb-1">
+    <div className="mb-1 rounded-md border">
       <button
         type="button"
         className={cn(

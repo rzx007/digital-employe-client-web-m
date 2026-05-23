@@ -43,7 +43,7 @@ export interface ApiEmployeeTaskRead {
 }
 
 export function parseEmployeeTaskSource(
-  raw: string | null | undefined,
+  raw: string | null | undefined
 ): EmployeeTaskSource | string | undefined {
   if (raw == null || raw === "") return undefined
   const low = raw.toLowerCase()
@@ -53,7 +53,7 @@ export function parseEmployeeTaskSource(
 }
 
 export function convertApiEmployeeTasksToListItems(
-  apiTasks: ApiEmployeeTaskRead[] | undefined | null,
+  apiTasks: ApiEmployeeTaskRead[] | undefined | null
 ): ScheduleTaskListItem[] {
   if (!apiTasks?.length) return []
   return apiTasks.map((t) => ({
@@ -74,7 +74,7 @@ export function convertApiEmployeeTasksToListItems(
 }
 
 export function scheduleTaskListItemToFormData(
-  item: ScheduleTaskListItem,
+  item: ScheduleTaskListItem
 ): TaskFormData {
   const { source, ...rest } = item
   void source
@@ -82,7 +82,7 @@ export function scheduleTaskListItemToFormData(
 }
 
 export function tasksToApiPayload(
-  items: ScheduleTaskListItem[],
+  items: ScheduleTaskListItem[]
 ): TaskFormData[] {
   return items.map((item) => {
     const { source, ...rest } = item

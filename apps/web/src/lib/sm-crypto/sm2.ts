@@ -1,7 +1,7 @@
-import { BigInteger } from 'jsbn'
-import SM3Digest from './sm3'
-import * as _ from './utils'
-import { ECPointFp } from './ec'
+import { BigInteger } from "jsbn"
+import SM3Digest from "./sm3"
+import * as _ from "./utils"
+import { ECPointFp } from "./ec"
 
 export default class SM2Cipher {
   ct: number
@@ -23,8 +23,12 @@ export default class SM2Cipher {
   reset(): void {
     this.sm3keybase = new SM3Digest()
     this.sm3c3 = new SM3Digest()
-    const xWords = _.hexToArray(_.leftPad(this.p2!.getX().toBigInteger().toRadix(16), 64))
-    const yWords = _.hexToArray(_.leftPad(this.p2!.getY().toBigInteger().toRadix(16), 64))
+    const xWords = _.hexToArray(
+      _.leftPad(this.p2!.getX().toBigInteger().toRadix(16), 64)
+    )
+    const yWords = _.hexToArray(
+      _.leftPad(this.p2!.getY().toBigInteger().toRadix(16), 64)
+    )
     this.sm3keybase.blockUpdate(xWords, 0, xWords.length)
     this.sm3c3.blockUpdate(xWords, 0, xWords.length)
     this.sm3keybase.blockUpdate(yWords, 0, yWords.length)
@@ -84,14 +88,16 @@ export default class SM2Cipher {
   }
 
   doFinal(c3: number[]): void {
-    const yWords = _.hexToArray(_.leftPad(this.p2!.getY().toBigInteger().toRadix(16), 64))
+    const yWords = _.hexToArray(
+      _.leftPad(this.p2!.getY().toBigInteger().toRadix(16), 64)
+    )
     this.sm3c3!.blockUpdate(yWords, 0, yWords.length)
     this.sm3c3!.doFinal(c3, 0)
     this.reset()
   }
 
   createPoint(x: string, y: string): ECPointFp {
-    const publicKey = '04' + x + y
+    const publicKey = "04" + x + y
     const point = _.getGlobalCurve().decodePointHex(publicKey)
     return point
   }

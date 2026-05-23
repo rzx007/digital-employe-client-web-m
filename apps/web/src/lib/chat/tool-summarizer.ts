@@ -123,7 +123,10 @@ export function isSkillToolCall(input: unknown, toolName: string): boolean {
   return val.startsWith("/skills/") || val.startsWith("/skills-draft/")
 }
 
-export function extractSkillName(input: unknown, toolName: string): string | null {
+export function extractSkillName(
+  input: unknown,
+  toolName: string
+): string | null {
   const pathKey = SKILL_PATH_KEYS[toolName]
   if (!pathKey || !input || typeof input !== "object") return null
   const obj = input as Record<string, unknown>

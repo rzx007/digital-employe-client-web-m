@@ -51,8 +51,7 @@ function normalizeCandidate(raw: unknown): RecruitmentCandidateItem | null {
   if (!name) return null
   const index =
     typeof c.index === "number" && Number.isFinite(c.index) ? c.index : 0
-  const description =
-    typeof c.description === "string" ? c.description : ""
+  const description = typeof c.description === "string" ? c.description : ""
   const skills_summary =
     typeof c.skills_summary === "string" ? c.skills_summary : ""
   return {
@@ -141,7 +140,7 @@ export function splitSkillsSummary(summary: string): string[] {
 
 /** 总管对话中一键录用时发送给 orchestrator 的文案 */
 export function buildRecruitmentHireMessage(
-  candidate: Pick<RecruitmentCandidateItem, "name">,
+  candidate: Pick<RecruitmentCandidateItem, "name">
 ): string {
   const name = candidate.name.trim()
   return name ? `录用${name}` : "录用该候选人"

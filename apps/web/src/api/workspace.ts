@@ -9,7 +9,7 @@ interface WorkspaceData {
 
 export async function getMyWorkspace(
   userId: string,
-  username: string,
+  username: string
 ): Promise<WorkspaceData> {
   const res = await request<{ data: WorkspaceData }>("/workspaces/my", {
     method: "POST",

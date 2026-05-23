@@ -14,10 +14,9 @@ function storageKey(cacheKey: string): string {
 export function getSkillInterfacesCacheKey(
   employeeId: string,
   skills: MetadataSkill[],
-  focusedSkill?: MetadataSkill | null,
+  focusedSkill?: MetadataSkill | null
 ): string {
-  const source =
-    focusedSkill != null ? [focusedSkill] : skills
+  const source = focusedSkill != null ? [focusedSkill] : skills
   const sig = source
     .filter((s) => s.status === undefined || s.status === 1 || s.status === "1")
     .map((s) => `${s.id}:${s.updateTime}`)
@@ -26,7 +25,9 @@ export function getSkillInterfacesCacheKey(
   return `${employeeId}::${sig}`
 }
 
-export function getCachedParsedInterfaces(cacheKey: string): QueryInterface[] | null {
+export function getCachedParsedInterfaces(
+  cacheKey: string
+): QueryInterface[] | null {
   const m = memory.get(cacheKey)
   if (m) return m
   if (typeof sessionStorage === "undefined") return null
@@ -41,7 +42,10 @@ export function getCachedParsedInterfaces(cacheKey: string): QueryInterface[] | 
   }
 }
 
-export function setCachedParsedInterfaces(cacheKey: string, interfaces: QueryInterface[]): void {
+export function setCachedParsedInterfaces(
+  cacheKey: string,
+  interfaces: QueryInterface[]
+): void {
   memory.set(cacheKey, interfaces)
   try {
     sessionStorage.setItem(storageKey(cacheKey), JSON.stringify(interfaces))

@@ -18,10 +18,9 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
   const mainBundledDeps = new Set(["electron-store", "jszip"])
 
   const preloadExternal = Object.keys(
-    "dependencies" in pkg ? pkg.dependencies : {},
+    "dependencies" in pkg ? pkg.dependencies : {}
   ).filter(
-    (dep) =>
-      !mainBundledDeps.has(dep) && dep !== "@electron-toolkit/preload",
+    (dep) => !mainBundledDeps.has(dep) && dep !== "@electron-toolkit/preload"
   )
 
   /** 单入口 preload，避免多 input 拆 chunk 导致 index.mjs 引用缺失的 ./preload.mjs */
@@ -61,42 +60,39 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
       tailwindcss(),
       ...(mode === "electron"
         ? [
-          electron([
-            {
-              entry: "electron/main/index.ts",
-              onstart({ startup }) {
-                if (process.env.VSCODE_DEBUG) {
-                  console.log(
-                    /* For `.vscode/.debug.script.mjs` */ "[startup] Electron App",
-                  )
-                } else {
-                  startup()
-                }
-              },
-              vite: {
-                build: {
-                  sourcemap,
-                  minify: isBuild,
-                  outDir: "dist-electron/main",
-                  rollupOptions: {
-                    external: Object.keys(
-                      "dependencies" in pkg ? pkg.dependencies : {},
-                    ).filter((dep) => !mainBundledDeps.has(dep)),
+            electron([
+              {
+                entry: "electron/main/index.ts",
+                onstart({ startup }) {
+                  if (process.env.VSCODE_DEBUG) {
+                    console.log(
+                      /* For `.vscode/.debug.script.mjs` */ "[startup] Electron App"
+                    )
+                  } else {
+                    startup()
+                  }
+                },
+                vite: {
+                  build: {
+                    sourcemap,
+                    minify: isBuild,
+                    outDir: "dist-electron/main",
+                    rollupOptions: {
+                      external: Object.keys(
+                        "dependencies" in pkg ? pkg.dependencies : {}
+                      ).filter((dep) => !mainBundledDeps.has(dep)),
+                    },
                   },
                 },
               },
-            },
-            electronPreloadBuild(
-              "electron/preload/index.ts",
-              "index.mjs",
-            ),
-            electronPreloadBuild(
-              "electron/preload/extension-preload.ts",
-              "extension-preload.mjs",
-            ),
-          ]),
-          renderer(),
-        ]
+              electronPreloadBuild("electron/preload/index.ts", "index.mjs"),
+              electronPreloadBuild(
+                "electron/preload/extension-preload.ts",
+                "extension-preload.mjs"
+              ),
+            ]),
+            renderer(),
+          ]
         : []),
     ],
     base: "./",

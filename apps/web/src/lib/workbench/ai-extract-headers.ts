@@ -16,7 +16,10 @@ const HEADER_RELEVANT_LINE =
 /**
  * Put header-relevant lines first, then head + tail of full text so long skills still expose ends.
  */
-export function buildSkillContextForHeaderAi(skillBlob: string, maxChars: number): string {
+export function buildSkillContextForHeaderAi(
+  skillBlob: string,
+  maxChars: number
+): string {
   const lines = skillBlob.split(/\r?\n/)
   const hot: string[] = []
   const cold: string[] = []
@@ -131,7 +134,10 @@ export function lookupAiHeadersForPath(
   if (matches.length === 1) {
     return matches[0]
   }
-  return matches.reduce((acc, h) => ({ ...acc, ...h }), {} as Record<string, string>)
+  return matches.reduce(
+    (acc, h) => ({ ...acc, ...h }),
+    {} as Record<string, string>
+  )
 }
 
 /**
@@ -144,7 +150,7 @@ export async function enrichInterfacesHeadersWithAi(
   chatEmployeeId: number,
   interfaces: QueryInterface[],
   skillBlob: string,
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<QueryInterface[]> {
   if (interfaces.length === 0) return interfaces
   if (signal?.aborted) {
@@ -213,7 +219,10 @@ ${ctx}
       const local = iface.headers || {}
       if (!aiH) return iface
       const merged = { ...aiH, ...local }
-      return { ...iface, headers: Object.keys(merged).length ? merged : iface.headers }
+      return {
+        ...iface,
+        headers: Object.keys(merged).length ? merged : iface.headers,
+      }
     })
   } catch (e) {
     if (

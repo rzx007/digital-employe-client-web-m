@@ -23,7 +23,9 @@ function getStorageKey(employeeId: string): string {
 /**
  * Load workbench config from localStorage
  */
-export function loadWorkbenchConfig(employeeId: string): WorkbenchConfig | null {
+export function loadWorkbenchConfig(
+  employeeId: string
+): WorkbenchConfig | null {
   try {
     const raw = localStorage.getItem(getStorageKey(employeeId))
     if (!raw) return null
@@ -38,7 +40,10 @@ export function loadWorkbenchConfig(employeeId: string): WorkbenchConfig | null 
  */
 export function saveWorkbenchConfig(config: WorkbenchConfig): void {
   try {
-    localStorage.setItem(getStorageKey(config.employeeId), JSON.stringify(config))
+    localStorage.setItem(
+      getStorageKey(config.employeeId),
+      JSON.stringify(config)
+    )
   } catch (e) {
     console.error("Failed to save workbench config:", e)
   }
@@ -47,7 +52,9 @@ export function saveWorkbenchConfig(config: WorkbenchConfig): void {
 /**
  * Create initial blocks from employee skills
  */
-export function createBlocksFromSkills(skills: MetadataSkill[]): WorkbenchBlock[] {
+export function createBlocksFromSkills(
+  skills: MetadataSkill[]
+): WorkbenchBlock[] {
   const blocks: WorkbenchBlock[] = []
   const seenTypes = new Set<BlockType>()
 

@@ -29,5 +29,5 @@ export function getFileIcon(filename: string): string {
   const ext = filename.includes(".")
     ? filename.split(".").pop()!.toLowerCase()
     : ""
-  return ext ? EXTENSION_ICONS[ext] ?? plainIcon : plainIcon
+  return ext ? (EXTENSION_ICONS[ext] ?? plainIcon) : plainIcon
 }

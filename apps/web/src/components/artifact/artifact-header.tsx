@@ -5,11 +5,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
-import {
-  IconCopy,
-  IconDownload,
-  IconX,
-} from "@tabler/icons-react"
+import { IconCopy, IconDownload, IconX } from "@tabler/icons-react"
 import type { Icon } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 import type { Artifact } from "./artifact-types"
@@ -57,10 +53,7 @@ export const ArtifactAction = ({
   )
 }
 
-export const ArtifactHeader = ({
-  artifact,
-  onClose,
-}: ArtifactHeaderProps) => {
+export const ArtifactHeader = ({ artifact, onClose }: ArtifactHeaderProps) => {
   const handleCopy = async () => {
     await navigator.clipboard.writeText(artifact.content)
   }

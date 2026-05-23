@@ -29,6 +29,7 @@ import {
   getCopyableMessageText,
   mapStoredMessagesToUIMessages,
 } from "@/lib/chat/message-utils"
+import { useConversationSession } from "@/hooks/use-conversation-session"
 import {
   useMessagesQuery,
   useCuratorConversationQuery,
@@ -154,6 +155,8 @@ export function CuratorView({
     [storedMessages]
   )
 
+  const onStreamFinishRef = useRef<() => void>(() => {})
+
   const {
     messages,
     setMessages,
@@ -164,13 +167,9 @@ export function CuratorView({
     resumeStream,
   } = useChat({
     id: String(curatorConversationId ?? "curator-persistent"),
-    messages: initialMessages,
     transport: chatTransport,
     onFinish: () => {
-      if (!curatorConversationId) return
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.messages(String(curatorConversationId)),
-      })
+      onStreamFinishRef.current()
     },
     onError: (chatError) => {
       toast.error("发送失败", {
@@ -178,6 +177,18 @@ export function CuratorView({
       })
     },
   })
+
+  const session = useConversationSession({
+    conversationId: curatorConversationId,
+    storedMessages,
+    initialMessages,
+    status,
+    setMessages,
+    resumeStream,
+    queryClient,
+  })
+
+  onStreamFinishRef.current = session.onStreamFinish
 
   const handleStop = useCallback(async () => {
     stop()
@@ -191,11 +202,10 @@ export function CuratorView({
     }
   }, [stop, curatorConversationId])
 
-  // 组件卸载时停止对话
   useEffect(() => {
     return () => {
-      console.log("🚀 ~ useEffect ~ 组件卸载时停止对话")
       stop()
+      chatTransport.cancelReconnect()
     }
   }, [stop])
 
@@ -224,33 +234,6 @@ export function CuratorView({
     queryClient,
   ])
 
-  useEffect(() => {
-    if (!initialMessages.length || !curatorConversationId) return
-    if (status === "streaming" || status === "submitted") return
-
-    setMessages(initialMessages)
-    const lastStored = storedMessages?.[storedMessages.length - 1]
-    if (
-      lastStored?.role === "assistant" &&
-      lastStored.streamState === "streaming" &&
-      (status === "ready" || status === "error")
-    ) {
-      const rafId = requestAnimationFrame(() => {
-        if (status !== "ready" && status !== "error") return
-        resumeStream()
-      })
-      return () => cancelAnimationFrame(rafId)
-    }
-    // status 是防护，不用加入依赖数组
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    curatorConversationId,
-    initialMessages,
-    setMessages,
-    resumeStream,
-    storedMessages,
-  ])
-
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
     setMentions(event.mentions)
@@ -261,9 +244,7 @@ export function CuratorView({
   const chatStatus = status === "ready" && isBusy ? "submitted" : status
 
   const preferLiveMessages =
-    messages.length > 0 ||
-    status === "submitted" ||
-    status === "streaming"
+    messages.length > 0 || status === "submitted" || status === "streaming"
   const displayMessages = preferLiveMessages ? messages : initialMessages
 
   const lastAssistantMessageId = useMemo(() => {
@@ -305,6 +286,7 @@ export function CuratorView({
       }
 
       try {
+        session.prepareOutboundMessage()
         await sendMessage(
           { text: messageText, metadata: pendingMeta },
           {
@@ -322,7 +304,7 @@ export function CuratorView({
         })
       }
     },
-    [curatorConversationId, sendMessage, command, mentions]
+    [curatorConversationId, sendMessage, command, mentions, session]
   )
 
   const handleGuidanceSelect = useCallback(
@@ -333,7 +315,7 @@ export function CuratorView({
       }
       void doSend(text)
     },
-    [isBusy, curatorConversationId, doSend],
+    [isBusy, curatorConversationId, doSend]
   )
 
   const handleAttachmentsChange = useCallback((paths: string[]) => {
@@ -367,7 +349,7 @@ export function CuratorView({
       }
       void doSend(text)
     },
-    [curatorConversationId, isBusy, enqueue, doSend],
+    [curatorConversationId, isBusy, enqueue, doSend]
   )
 
   const handleSendMessage = useCallback(
@@ -475,7 +457,7 @@ export function CuratorView({
       onHire: handleRecruitmentHire,
       hireDisabled: !curatorConversationId,
     }),
-    [handleRecruitmentHire, curatorConversationId],
+    [handleRecruitmentHire, curatorConversationId]
   )
 
   const curatorFileValue = useMemo(
@@ -489,7 +471,7 @@ export function CuratorView({
         }
       },
     }),
-    [curatorConversationId, onOpenResourceFile, openResource],
+    [curatorConversationId, onOpenResourceFile, openResource]
   )
 
   const showEmptyWelcome =
@@ -528,190 +510,199 @@ export function CuratorView({
       <CuratorFileProvider value={curatorFileValue}>
         <CuratorRecruitmentProvider value={curatorRecruitmentValue}>
           <ConversationUI className="min-h-0 flex-1">
-          <ConversationContent className={layout.conversationContent}>
-          {curatorLoading && (
-            <div className="flex items-center justify-center py-16">
-              <Spinner className="size-5" />
-            </div>
-          )}
+            <ConversationContent className={layout.conversationContent}>
+              {curatorLoading && (
+                <div className="flex items-center justify-center py-16">
+                  <Spinner className="size-5" />
+                </div>
+              )}
 
-          {showEmptyWelcome && (
-            <CuratorEmptyWelcome
-              contact={resolvedContact}
-              displayName={contactDisplayName}
-              onSuggestionSelect={handleGuidanceSelect}
-              suggestionsDisabled={!curatorConversationId}
-              size={size}
-            />
-          )}
+              {showEmptyWelcome && (
+                <CuratorEmptyWelcome
+                  contact={resolvedContact}
+                  displayName={contactDisplayName}
+                  onSuggestionSelect={handleGuidanceSelect}
+                  suggestionsDisabled={!curatorConversationId}
+                  size={size}
+                />
+              )}
 
-          {timeline.map((entry) => {
-            if (entry.kind === "execution") {
-              const exec = entry.data
-              const employeeContact = contacts.find(
-                (c) =>
-                  c.type === "employee" &&
-                  c.employee?.id === String(exec.employee_id)
-              )
-              return (
-                <Message
-                  key={`exec-${exec.id}`}
-                  from="assistant"
-                  className={layout.message}
-                >
-                  <div className="mb-2 flex items-center gap-2">
-                    <EmployeeContactAvatar
-                      name={exec.employee_name || String(exec.employee_id)}
-                      avatar={employeeContact?.employee?.avatar}
-                      avatarClassName="size-6"
-                      fallbackClassName="text-[10px]"
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      {exec.employee_name || String(exec.employee_id)}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground/60">
-                      {formatTime(entry.ts)}
-                    </span>
-                  </div>
-                  <MessageContent className="w-auto">
-                    <ExecutionReportCard execution={exec} />
-                  </MessageContent>
-                </Message>
-              )
-            }
+              {timeline.map((entry) => {
+                if (entry.kind === "execution") {
+                  const exec = entry.data
+                  const employeeContact = contacts.find(
+                    (c) =>
+                      c.type === "employee" &&
+                      c.employee?.id === String(exec.employee_id)
+                  )
+                  return (
+                    <Message
+                      key={`exec-${exec.id}`}
+                      from="assistant"
+                      className={layout.message}
+                    >
+                      <div className="mb-2 flex items-center gap-2">
+                        <EmployeeContactAvatar
+                          name={exec.employee_name || String(exec.employee_id)}
+                          avatar={employeeContact?.employee?.avatar}
+                          avatarClassName="size-6"
+                          fallbackClassName="text-[10px]"
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {exec.employee_name || String(exec.employee_id)}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground/60">
+                          {formatTime(entry.ts)}
+                        </span>
+                      </div>
+                      <MessageContent className="w-auto">
+                        <ExecutionReportCard execution={exec} />
+                      </MessageContent>
+                    </Message>
+                  )
+                }
 
-            /* message */
-            const message = entry.data
-            const isLastAssistantMessage =
-              message.role === "assistant" &&
-              message.id === lastAssistantMessageId
-            const includeFileChanges =
-              message.role === "assistant" &&
-              (!isLastAssistantMessage || hasCurrentTurnEnded)
-            const classifiedBlocks = classifyMessageParts(message, {
-              includeFileChanges,
-            })
-            const toolAutoCollapseMap = computeToolAutoCollapseMap(
-              classifiedBlocks,
-              {
-                isLastAssistantMessage,
-                isTurnEnded: hasCurrentTurnEnded,
-              }
-            )
-            const messageMeta = getMessageMeta(message)
-            const commandMeta =
-              messageMeta &&
-                typeof messageMeta === "object" &&
-                "command" in messageMeta &&
-                messageMeta.command &&
-                typeof messageMeta.command === "object"
-                ? (messageMeta.command as { id?: string; title?: string })
-                : null
-            const mentionMeta =
-              messageMeta &&
-                typeof messageMeta === "object" &&
-                "mentions" in messageMeta &&
-                Array.isArray(messageMeta.mentions)
-                ? (messageMeta.mentions as Array<{
-                  id?: string
-                  name?: string
-                }>)
-                : []
-            const filesMeta =
-              messageMeta &&
-                typeof messageMeta === "object" &&
-                "files" in messageMeta &&
-                Array.isArray(messageMeta.files)
-                ? (messageMeta.files as Array<{ name: string; path: string }>)
-                : undefined
-            const elapsedMs = getElapsedMsFromMeta(message)
-            const copyText = getCopyableMessageText(message, {
-              includeFileChanges,
-            })
-            return (
-              <Message
-                key={message.id}
-                from={message.role}
-                className={cn("group", layout.message)}
-              >
-                {message.role === "assistant" && (
-                  <div className="mb-2 flex items-center gap-2">
-                    {resolvedContact?.type === "curator" ? (
-                      <EmployeeContactAvatar
-                        name={resolvedContact.curator?.name}
-                        avatar={resolvedContact.curator?.avatar}
-                        status={resolvedContact.curator?.status}
-                        avatarClassName="size-6"
-                        fallbackClassName="text-[10px]"
-                      />
-                    ) : resolvedContact?.type === "employee" ? (
-                      <EmployeeContactAvatar
-                        name={resolvedContact.employee?.name}
-                        avatar={resolvedContact.employee?.avatar}
-                        avatarClassName="size-6"
-                        fallbackClassName="text-[10px]"
-                      />
-                    ) : (
-                      <EmployeeContactAvatar
-                        name={contactDisplayName}
-                        avatar={undefined}
-                        avatarClassName="size-6"
-                        fallbackClassName="text-[10px]"
-                      />
+                /* message */
+                const message = entry.data
+                const isLastAssistantMessage =
+                  message.role === "assistant" &&
+                  message.id === lastAssistantMessageId
+                const includeFileChanges =
+                  message.role === "assistant" &&
+                  (!isLastAssistantMessage || hasCurrentTurnEnded)
+                const classifiedBlocks = classifyMessageParts(message, {
+                  includeFileChanges,
+                })
+                const toolAutoCollapseMap = computeToolAutoCollapseMap(
+                  classifiedBlocks,
+                  {
+                    isLastAssistantMessage,
+                    isTurnEnded: hasCurrentTurnEnded,
+                  }
+                )
+                const messageMeta = getMessageMeta(message)
+                const commandMeta =
+                  messageMeta &&
+                  typeof messageMeta === "object" &&
+                  "command" in messageMeta &&
+                  messageMeta.command &&
+                  typeof messageMeta.command === "object"
+                    ? (messageMeta.command as { id?: string; title?: string })
+                    : null
+                const mentionMeta =
+                  messageMeta &&
+                  typeof messageMeta === "object" &&
+                  "mentions" in messageMeta &&
+                  Array.isArray(messageMeta.mentions)
+                    ? (messageMeta.mentions as Array<{
+                        id?: string
+                        name?: string
+                      }>)
+                    : []
+                const filesMeta =
+                  messageMeta &&
+                  typeof messageMeta === "object" &&
+                  "files" in messageMeta &&
+                  Array.isArray(messageMeta.files)
+                    ? (messageMeta.files as Array<{
+                        name: string
+                        path: string
+                      }>)
+                    : undefined
+                const elapsedMs = getElapsedMsFromMeta(message)
+                const copyText = getCopyableMessageText(message, {
+                  includeFileChanges,
+                })
+                return (
+                  <Message
+                    key={message.id}
+                    from={message.role}
+                    className={cn("group", layout.message)}
+                  >
+                    {message.role === "assistant" && (
+                      <div className="mb-2 flex items-center gap-2">
+                        {resolvedContact?.type === "curator" ? (
+                          <EmployeeContactAvatar
+                            name={resolvedContact.curator?.name}
+                            avatar={resolvedContact.curator?.avatar}
+                            status={resolvedContact.curator?.status}
+                            avatarClassName="size-6"
+                            fallbackClassName="text-[10px]"
+                          />
+                        ) : resolvedContact?.type === "employee" ? (
+                          <EmployeeContactAvatar
+                            name={resolvedContact.employee?.name}
+                            avatar={resolvedContact.employee?.avatar}
+                            avatarClassName="size-6"
+                            fallbackClassName="text-[10px]"
+                          />
+                        ) : (
+                          <EmployeeContactAvatar
+                            name={contactDisplayName}
+                            avatar={undefined}
+                            avatarClassName="size-6"
+                            fallbackClassName="text-[10px]"
+                          />
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {contactDisplayName}
+                        </span>
+                        <span className="ml-auto text-[10px] text-muted-foreground/60">
+                          {formatTime(entry.ts)}
+                        </span>
+                      </div>
                     )}
-                    <span className="text-xs text-muted-foreground">
-                      {contactDisplayName}
-                    </span>
-                    <span className="ml-auto text-[10px] text-muted-foreground/60">
-                      {formatTime(entry.ts)}
-                    </span>
-                  </div>
-                )}
-                <MessageContent className="w-auto">
-                  <div className="space-y-3">
-                    {classifiedBlocks.length > 0 ? (
-                      <RenderClassifiedBlocks
-                        blocks={classifiedBlocks}
-                        commandMeta={commandMeta}
-                        mentionMeta={mentionMeta}
-                        filesMeta={filesMeta}
-                        messageId={message.id}
-                        toolAutoCollapseMap={toolAutoCollapseMap}
+                    <MessageContent className="w-auto">
+                      <div className="space-y-3">
+                        {classifiedBlocks.length > 0 ? (
+                          <RenderClassifiedBlocks
+                            blocks={classifiedBlocks}
+                            commandMeta={commandMeta}
+                            mentionMeta={mentionMeta}
+                            filesMeta={filesMeta}
+                            messageId={message.id}
+                            toolAutoCollapseMap={toolAutoCollapseMap}
+                            isLastAssistantMessage={isLastAssistantMessage}
+                            isTurnEnded={hasCurrentTurnEnded}
+                          />
+                        ) : message.role === "assistant" ? (
+                          <MessageResponse />
+                        ) : null}
+                      </div>
+                    </MessageContent>
+                    {message.role === "assistant" ? (
+                      <MessageAssistantActions
+                        copyText={copyText}
+                        elapsedMs={elapsedMs}
                         isLastAssistantMessage={isLastAssistantMessage}
                         isTurnEnded={hasCurrentTurnEnded}
                       />
-                    ) : message.role === "assistant" ? (
-                      <MessageResponse />
-                    ) : null}
-                  </div>
-                </MessageContent>
-                {message.role === "assistant" ? (
-                  <MessageAssistantActions
-                    copyText={copyText}
-                    elapsedMs={elapsedMs}
-                    isLastAssistantMessage={isLastAssistantMessage}
-                    isTurnEnded={hasCurrentTurnEnded}
-                  />
-                ) : (
-                  <MessageCopyAction text={copyText} />
-                )}
-              </Message>
-            )
-          })}
+                    ) : (
+                      <MessageCopyAction text={copyText} />
+                    )}
+                  </Message>
+                )
+              })}
 
-          {showStreamingIndicator && (
-            <Message from="assistant" className={cn("-mt-4", layout.message)}>
-              <MessageContent className="rounded-lg bg-muted/40 px-3 py-2.5">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Spinner className="size-3.5" style={{ color: "#8B5CF6" }} />
-                  <Shimmer className="text-xs">正在生成回复...</Shimmer>
-                </div>
-              </MessageContent>
-            </Message>
-          )}
-        </ConversationContent>
-        <ConversationScrollButton />
-        </ConversationUI>
+              {showStreamingIndicator && (
+                <Message
+                  from="assistant"
+                  className={cn("-mt-4", layout.message)}
+                >
+                  <MessageContent className="rounded-lg bg-muted/40 px-3 py-2.5">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Spinner
+                        className="size-3.5"
+                        style={{ color: "#8B5CF6" }}
+                      />
+                      <Shimmer className="text-xs">正在生成回复...</Shimmer>
+                    </div>
+                  </MessageContent>
+                </Message>
+              )}
+            </ConversationContent>
+            <ConversationScrollButton />
+          </ConversationUI>
         </CuratorRecruitmentProvider>
       </CuratorFileProvider>
 

@@ -14,7 +14,7 @@ import { ShortcutsSettings } from "./shortcuts-settings"
 export function SettingsPage() {
   const { tab: tabFromSearch } = Route.useSearch()
   const [activeTab, setActiveTab] = React.useState<SettingsTab>(
-    tabFromSearch ?? "account",
+    tabFromSearch ?? "account"
   )
 
   React.useEffect(() => {

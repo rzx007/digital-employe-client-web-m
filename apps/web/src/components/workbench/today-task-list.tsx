@@ -38,13 +38,10 @@ export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
   const openTaskConversation = useCallback(
     (task: TodayTask) => {
       if (task.conversation_id == null) return
-      selectConversation(
-        String(task.employee_id),
-        String(task.conversation_id),
-      )
+      selectConversation(String(task.employee_id), String(task.conversation_id))
       setActiveTab("chat")
     },
-    [selectConversation, setActiveTab],
+    [selectConversation, setActiveTab]
   )
   const sorted = useMemo(() => {
     return [...executions].sort((a, b) => {
@@ -84,9 +81,9 @@ export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
           const rowClassName = cn(
             "flex items-center gap-2 rounded-md border p-2 transition-colors",
             task.run_status === "running" &&
-            "border-blue-300 bg-blue-50/50 dark:bg-blue-950/20",
+              "border-blue-300 bg-blue-50/50 dark:bg-blue-950/20",
             canOpenChat && "cursor-pointer hover:bg-muted/40",
-            !canOpenChat && "cursor-default",
+            !canOpenChat && "cursor-default"
           )
 
           const body = (

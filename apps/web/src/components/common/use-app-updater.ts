@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { getElectronApi, isElectron, withElectronApi } from "@/lib/electron/host"
+import {
+  getElectronApi,
+  isElectron,
+  withElectronApi,
+} from "@/lib/electron/host"
 
 type UpdateStatus =
   | "idle"
@@ -59,7 +63,11 @@ function ensureIpcSubscription() {
   ipcSubscribed = true
 
   const unsubAvailable = api.onUpdateAvailable((info) => {
-    sharedState = { ...sharedState, status: "available", newVersion: info.newVersion }
+    sharedState = {
+      ...sharedState,
+      status: "available",
+      newVersion: info.newVersion,
+    }
     notifyAll()
   })
 
@@ -70,7 +78,11 @@ function ensureIpcSubscription() {
   })
 
   const unsubProgress = api.onDownloadProgress((info) => {
-    sharedState = { ...sharedState, status: "downloading", progress: Math.floor(info.percent) }
+    sharedState = {
+      ...sharedState,
+      status: "downloading",
+      progress: Math.floor(info.percent),
+    }
     notifyAll()
   })
 
@@ -80,12 +92,22 @@ function ensureIpcSubscription() {
   })
 
   const unsubError = api.onUpdateError((info) => {
-    sharedState = { ...sharedState, status: "error", errorMessage: info.message || "检查更新失败" }
+    sharedState = {
+      ...sharedState,
+      status: "error",
+      errorMessage: info.message || "检查更新失败",
+    }
     scheduleReset()
     notifyAll()
   })
 
-  unsubFns = [unsubAvailable, unsubNotAvailable, unsubProgress, unsubDownloaded, unsubError]
+  unsubFns = [
+    unsubAvailable,
+    unsubNotAvailable,
+    unsubProgress,
+    unsubDownloaded,
+    unsubError,
+  ]
 }
 
 function teardownIpcSubscription() {
@@ -150,7 +172,7 @@ export function useAppUpdater(options?: UseAppUpdaterOptions) {
           scheduleReset()
           notifyAll()
         },
-      },
+      }
     )
   }, [scheduleTimeout, cancelTimeout])
 
@@ -172,7 +194,7 @@ export function useAppUpdater(options?: UseAppUpdaterOptions) {
           scheduleReset()
           notifyAll()
         },
-      },
+      }
     )
   }, [])
 

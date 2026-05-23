@@ -40,9 +40,10 @@ export function useTaskExecutionNotifications() {
 
       const prevStatus = prevMap.get(exec.id)
 
-      const isNewlyTerminal = prevMap.size === 0
-        ? false
-        : prevStatus === undefined || !isTerminal(prevStatus)
+      const isNewlyTerminal =
+        prevMap.size === 0
+          ? false
+          : prevStatus === undefined || !isTerminal(prevStatus)
 
       if (!isNewlyTerminal) continue
 
@@ -60,9 +61,8 @@ export function useTaskExecutionNotifications() {
 
     for (const exec of newlyCompleted) {
       const title = `${exec.employee_name} · ${exec.task_name}`
-      const body = exec.run_result
-        || STATUS_TEXT[exec.run_status]
-        || "任务执行完成"
+      const body =
+        exec.run_result || STATUS_TEXT[exec.run_status] || "任务执行完成"
       api.sendNotification(title, body, false)
     }
   }, [executions])

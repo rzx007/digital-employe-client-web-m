@@ -23,6 +23,13 @@ import {
 } from "./file-change-utils"
 import { isSummarizationTextPart } from "./langchain-summarization-text"
 import { collapseWriteTodosBlocks } from "./collapse-write-todos-blocks"
+import { collapseDocumentPlanBlocks } from "./collapse-document-plan-blocks"
+import { isHitlAbortedOutput } from "./hitl-abort-message-utils"
+import {
+  parseClarifyingQuestions,
+  buildClarifyAnswerItems,
+  type ClarifyAnswerItem,
+} from "./clarifying-questions-utils"
 import { mergeRoutineToolGroups } from "./merge-routine-tool-groups"
 import {
   isRecruitmentToolRunning,
@@ -73,8 +80,19 @@ export type ClassifiedBlock =
       tool: ToolGroupItem
       todos: TodoItem[]
     }
-  | { kind: "skill-exploration"; key: string; items: SkillExploreItem[]; thinkingText?: string }
-  | { kind: "plan-generated"; key: string; toolCallId: string; input: unknown; state: string }
+  | {
+      kind: "skill-exploration"
+      key: string
+      items: SkillExploreItem[]
+      thinkingText?: string
+    }
+  | {
+      kind: "plan-generated"
+      key: string
+      toolCallId: string
+      input: unknown
+      state: string
+    }
   | {
       kind: "recruitment-candidates"
       key: string
@@ -93,6 +111,20 @@ export type ClassifiedBlock =
   | { kind: "final-response"; key: string; text: string }
   | { kind: "file-changes"; key: string; files: FileChangeItem[] }
   | { kind: "error"; key: string; text: string }
+  | {
+      kind: "document-plan"
+      key: string
+      toolCallId: string
+      input: unknown
+      state: string
+      resultText: string | null
+    }
+  | {
+      kind: "clarifying-answers"
+      key: string
+      toolCallId: string
+      items: ClarifyAnswerItem[]
+    }
 
 interface ClassifyMessagePartsOptions {
   includeFileChanges?: boolean
@@ -103,10 +135,7 @@ const THINK_CLOSE_RE = /\n?\s*<\/think\s*>?\n?/s
 const THINK_BLOCK_RE = /<think\s*>?[\s\S]*?<\/think\s*>?\n?/g
 
 function stripThinkTags(text: string): string {
-  return text
-    .replace(THINK_OPEN_RE, "")
-    .replace(THINK_CLOSE_RE, "")
-    .trim()
+  return text.replace(THINK_OPEN_RE, "").replace(THINK_CLOSE_RE, "").trim()
 }
 
 function stripThinkSections(text: string): string {
@@ -135,7 +164,10 @@ function extractResultText(part: ToolUIPart): string | null {
 }
 
 function isPreliminary(part: ToolUIPart): boolean {
-  return "preliminary" in part && (part as Record<string, unknown>).preliminary === true
+  return (
+    "preliminary" in part &&
+    (part as Record<string, unknown>).preliminary === true
+  )
 }
 
 function mergeSummarizationCheckpointBlock(
@@ -262,7 +294,61 @@ export function classifyMessageParts(
         key: `${message.id}:plan:${index}`,
         toolCallId: part.toolCallId,
         input: toolInput,
-        state: ("state" in part ? (part as ToolUIPart).state : "unknown") as string,
+        state: ("state" in part
+          ? (part as ToolUIPart).state
+          : "unknown") as string,
+      })
+      return
+    }
+
+    if (summary.toolName === "submit_document_plan") {
+      const docResultText = extractResultText(part)
+      if (isHitlAbortedOutput(docResultText)) {
+        blocks.push({
+          kind: "document-plan",
+          key: `${message.id}:doc-plan:${index}`,
+          toolCallId: part.toolCallId,
+          input: toolInput,
+          state: "output-available",
+          resultText: docResultText,
+        })
+        return
+      }
+      blocks.push({
+        kind: "document-plan",
+        key: `${message.id}:doc-plan:${index}`,
+        toolCallId: part.toolCallId,
+        input: toolInput,
+        state: ("state" in part
+          ? (part as ToolUIPart).state
+          : "unknown") as string,
+        resultText: docResultText,
+      })
+      return
+    }
+
+    if (summary.toolName === "submit_clarifying_questions") {
+      const toolState = (
+        "state" in part ? (part as ToolUIPart).state : "unknown"
+      ) as string
+      const clarifyResultText = extractResultText(part)
+      const isAnswered =
+        toolState === "output-available" || Boolean(clarifyResultText)
+      if (!isAnswered) {
+        return
+      }
+      const questions = parseClarifyingQuestions(
+        typeof toolInput === "object" && toolInput
+          ? (toolInput as Record<string, unknown>).questions
+          : null
+      )
+      const items = buildClarifyAnswerItems(questions, clarifyResultText)
+      if (items.length === 0) return
+      blocks.push({
+        kind: "clarifying-answers",
+        key: `${message.id}:clarify-answers:${index}`,
+        toolCallId: part.toolCallId,
+        items,
       })
       return
     }
@@ -314,7 +400,9 @@ export function classifyMessageParts(
         key: `${message.id}:skill-explore:${part.toolCallId}:${index}`,
         toolCallId: part.toolCallId,
         toolName: summary.toolName,
-        state: ("state" in part ? (part as ToolUIPart).state : "unknown") as string,
+        state: ("state" in part
+          ? (part as ToolUIPart).state
+          : "unknown") as string,
         label: `${SKILL_EXPLORE_VERB[summary.toolName] ?? "读取"} ${basename}`,
         skillName,
         input: toolInput,
@@ -328,7 +416,9 @@ export function classifyMessageParts(
       toolCallId: part.toolCallId,
       toolName: summary.toolName,
       type: part.type,
-      state: ("state" in part ? (part as ToolUIPart).state : "unknown") as string,
+      state: ("state" in part
+        ? (part as ToolUIPart).state
+        : "unknown") as string,
       summary,
       resultText: extractResultText(part),
       input: toolInput,
@@ -435,15 +525,18 @@ export function classifyMessageParts(
     // 处理工具 UI 部分：识别技能调用并管理技能探索状态
     if (isToolUIPart(part)) {
       const toolInput = "input" in part ? (part as ToolUIPart).input : undefined
-      const toolName = part.type.startsWith("tool-") ? part.type.slice(5) : part.type
+      const toolName = part.type.startsWith("tool-")
+        ? part.type.slice(5)
+        : part.type
       const isSkill = isSkillToolCall(toolInput, toolName)
 
       // 检测到技能开始且未开启探索模式时，初始化技能探索状态并合并之前的思考内容
       if (isSkill && !skillExploreOpen) {
         skillExploreOpen = true
-        const prevThinking = blocks.length > 0 && blocks[blocks.length - 1].kind === "thinking"
-          ? blocks.pop() as Extract<ClassifiedBlock, { kind: "thinking" }>
-          : null
+        const prevThinking =
+          blocks.length > 0 && blocks[blocks.length - 1].kind === "thinking"
+            ? (blocks.pop() as Extract<ClassifiedBlock, { kind: "thinking" }>)
+            : null
         if (prevThinking) {
           skillThinkingText = prevThinking.text
         }
@@ -490,7 +583,9 @@ export function classifyMessageParts(
     })
   }
 
-  return collapseWriteTodosBlocks(mergeRoutineToolGroups(blocks))
+  return collapseDocumentPlanBlocks(
+    collapseWriteTodosBlocks(mergeRoutineToolGroups(blocks))
+  )
 }
 
 /**

@@ -36,7 +36,7 @@ export function CuratorCompactToolbar({
     <div
       className={cn(
         "flex shrink-0 items-center justify-between gap-2 border-b px-2 py-2",
-        className,
+        className
       )}
     >
       <div className="flex min-w-0 items-center gap-2">
@@ -45,7 +45,9 @@ export function CuratorCompactToolbar({
           avatar={
             contact?.type === "curator" ? contact.curator?.avatar : undefined
           }
-          status={contact?.type === "curator" ? contact.curator?.status : undefined}
+          status={
+            contact?.type === "curator" ? contact.curator?.status : undefined
+          }
           showStatus
           avatarClassName="size-7"
           fallbackClassName="text-[10px]"

@@ -13,15 +13,12 @@ export function ShiftCalendarPage({
   const [year, setYear] = React.useState(now.getFullYear())
   const [month, setMonth] = React.useState(now.getMonth() + 1)
   const [searchQuery, setSearchQuery] = React.useState("")
-  const [selectedEmployeeId, setSelectedEmployeeId] = React.useState<number | null>(null)
+  const [selectedEmployeeId, setSelectedEmployeeId] = React.useState<
+    number | null
+  >(null)
 
-  const {
-    employees,
-    shiftMap,
-    groupedEmployees,
-    daysInMonth,
-    isLoading,
-  } = useShiftCalendar(year, month)
+  const { employees, shiftMap, groupedEmployees, daysInMonth, isLoading } =
+    useShiftCalendar(year, month)
 
   const handleMonthChange = (y: number, m: number) => {
     setYear(y)

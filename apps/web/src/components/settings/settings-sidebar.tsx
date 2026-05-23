@@ -18,7 +18,7 @@ export function SettingsSidebar({
             variant={activeTab === tab.id ? "secondary" : "ghost"}
             className={cn(
               "justify-start gap-2 px-3",
-              activeTab === tab.id && "bg-secondary",
+              activeTab === tab.id && "bg-secondary"
             )}
             onClick={() => onTabChange(tab.id)}
           >

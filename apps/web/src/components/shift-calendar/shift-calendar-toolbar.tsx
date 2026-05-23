@@ -67,18 +67,33 @@ export function ShiftCalendarToolbar({
       <h2 className="text-sm font-semibold whitespace-nowrap">排班日历</h2>
 
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="icon-sm" className="size-7" onClick={handlePrev}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="size-7"
+          onClick={handlePrev}
+        >
           <IconChevronLeft className="size-4" />
         </Button>
         <span className="min-w-[100px] text-center text-sm font-medium">
           {year}年 {MONTH_NAMES[month - 1]}
         </span>
-        <Button variant="ghost" size="icon-sm" className="size-7" onClick={handleNext}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="size-7"
+          onClick={handleNext}
+        >
           <IconChevronRight className="size-4" />
         </Button>
       </div>
 
-      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleToday}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 text-xs"
+        onClick={handleToday}
+      >
         今天
       </Button>
 
@@ -94,7 +109,7 @@ export function ShiftCalendarToolbar({
         />
       </div>
 
-      <div className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
+      <div className="ml-auto text-xs whitespace-nowrap text-muted-foreground">
         共 {totalEmployees} 名员工 · {activeCount} 名在岗
       </div>
     </div>

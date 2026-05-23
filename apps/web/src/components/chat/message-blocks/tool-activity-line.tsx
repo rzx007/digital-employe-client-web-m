@@ -83,7 +83,7 @@ function ToolActivityLineInner({
   const chevronClass = cn(
     "size-3 shrink-0 text-muted-foreground/50 transition-transform",
     !isOpen &&
-    "hidden group-hover/tool-activity:block group-focus-visible/tool-activity:block"
+      "hidden group-hover/tool-activity:block group-focus-visible/tool-activity:block"
   )
 
   return (
@@ -98,11 +98,11 @@ function ToolActivityLineInner({
         onKeyDown={
           collapsibleToggle
             ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault()
-                collapsibleToggle()
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  collapsibleToggle()
+                }
               }
-            }
             : undefined
         }
         role={hasDetail && !isRunning ? "button" : undefined}
@@ -114,7 +114,8 @@ function ToolActivityLineInner({
         />
         <span className="flex min-w-0 flex-1 items-center gap-0.5">
           <span className="truncate text-foreground/70">{summary.label}</span>
-          {hasDetail && !isRunning &&
+          {hasDetail &&
+            !isRunning &&
             (isOpen ? (
               <IconChevronDown className={chevronClass} />
             ) : (
@@ -136,7 +137,7 @@ function ToolActivityLineInner({
           open={collapsibleOpen}
           onOpenChange={isRunning ? undefined : setIsOpen}
         >
-          <CollapsibleContent className="p-2 bg-muted/10 dark:bg-muted/40">
+          <CollapsibleContent className="bg-muted/10 p-2 dark:bg-muted/40">
             <ToolDetailPanel
               toolName={summary.toolName}
               state={state}

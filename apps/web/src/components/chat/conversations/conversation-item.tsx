@@ -65,7 +65,7 @@ export function ConversationItem({
   const deleteMutation = useDeleteConversationMutation()
 
   const liveStatus = useConversationStatusStore(
-    (s) => s.statuses[Number(conversation.id)],
+    (s) => s.statuses[Number(conversation.id)]
   )
   const displayStatus = liveStatus ?? conversation.status
 

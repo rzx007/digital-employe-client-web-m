@@ -8,9 +8,8 @@ export function SkillsPage({
   className,
   ...props
 }: React.ComponentProps<"div">) {
-  const [selectedSkill, setSelectedSkill] = React.useState<SkillListItem | null>(
-    null,
-  )
+  const [selectedSkill, setSelectedSkill] =
+    React.useState<SkillListItem | null>(null)
 
   return (
     <div

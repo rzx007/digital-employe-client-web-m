@@ -64,12 +64,11 @@ export function ExtensionsSettings() {
 
   const handleToggle = async (id: string, enabled: boolean) => {
     setExtensions((prev) =>
-      prev.map((ext) => (ext.id === id ? { ...ext, enabled } : ext)),
+      prev.map((ext) => (ext.id === id ? { ...ext, enabled } : ext))
     )
     await withElectronApi((api) => api.setExtensionEnabled(id, enabled), {
       onError: (error) => {
-        const message =
-          error instanceof Error ? error.message : "操作失败"
+        const message = error instanceof Error ? error.message : "操作失败"
         toast.error(message)
         void refresh()
       },
@@ -81,8 +80,7 @@ export function ExtensionsSettings() {
     setOpeningId(id)
     await withElectronApi((api) => api.openExtension(id), {
       onError: (error) => {
-        const message =
-          error instanceof Error ? error.message : "打开插件失败"
+        const message = error instanceof Error ? error.message : "打开插件失败"
         toast.error(message)
       },
     })
@@ -90,14 +88,17 @@ export function ExtensionsSettings() {
   }
 
   const handleInstall = async () => {
-    const result = await withElectronApi((api) => api.installExtensionFromZip(), {
-      onError: (error) => {
-        const message = error instanceof Error ? error.message : "安装失败"
-        if (message !== "Install cancelled") {
-          toast.error(message)
-        }
-      },
-    })
+    const result = await withElectronApi(
+      (api) => api.installExtensionFromZip(),
+      {
+        onError: (error) => {
+          const message = error instanceof Error ? error.message : "安装失败"
+          if (message !== "Install cancelled") {
+            toast.error(message)
+          }
+        },
+      }
+    )
     if (result?.extensionId) {
       toast.success(`已安装插件：${result.extensionId}`)
       void refresh()
@@ -113,8 +114,7 @@ export function ExtensionsSettings() {
     await withElectronApi((api) => api.uninstallExtension(id), {
       onError: (error) => {
         failed = true
-        const message =
-          error instanceof Error ? error.message : "删除失败"
+        const message = error instanceof Error ? error.message : "删除失败"
         toast.error(message)
       },
     })
@@ -141,7 +141,7 @@ export function ExtensionsSettings() {
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">插件</h1>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-sm text-muted-foreground">
           将插件 zip 安装到扩展目录，或手动解压到{" "}
           <code className="text-xs">
             ~/.digital-employee/extensions/&lt;id&gt;/
@@ -156,8 +156,7 @@ export function ExtensionsSettings() {
           className="mt-3"
           onClick={() => void handleInstall()}
         >
-          <IconPackageImport className="size-4" />
-          从 zip 安装…
+          <IconPackageImport className="size-4" />从 zip 安装…
         </Button>
       </div>
 
@@ -173,9 +172,9 @@ export function ExtensionsSettings() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-muted-foreground text-sm">加载中…</p>
+            <p className="text-sm text-muted-foreground">加载中…</p>
           ) : extensions.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
+            <p className="text-sm text-muted-foreground">
               未发现插件。可将示例包复制到扩展目录后刷新。
             </p>
           ) : (
@@ -187,12 +186,12 @@ export function ExtensionsSettings() {
                 >
                   <div className="min-w-0 flex-1">
                     <p className="font-medium">{ext.displayName}</p>
-                    <p className="text-muted-foreground truncate text-xs">
+                    <p className="truncate text-xs text-muted-foreground">
                       {ext.id} · v{ext.version}
                       {!ext.hasUi && ext.hasService ? " · 后台服务" : ""}
                     </p>
                     {!ext.hasUi && ext.hasService && ext.enabled ? (
-                      <p className="text-muted-foreground mt-1 text-xs">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {ext.serviceRunning ? "服务运行中" : "服务已停止"}
                       </p>
                     ) : null}
@@ -249,11 +248,11 @@ export function ExtensionsSettings() {
             刷新列表
           </Button>
 
-          <div className="border-border mt-6 rounded-lg border p-4">
+          <div className="mt-6 rounded-lg border border-border p-4">
             <p className="text-sm font-medium">宿主事件（调试）</p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              向已打开且含 host.events 的插件窗推送测试事件；headless
-              插件会在 service 运行中收到 POST。
+            <p className="mt-1 text-xs text-muted-foreground">
+              向已打开且含 host.events 的插件窗推送测试事件；headless 插件会在
+              service 运行中收到 POST。
             </p>
             <Button
               variant="secondary"
@@ -268,12 +267,10 @@ export function ExtensionsSettings() {
                   {
                     onError: (error) => {
                       toast.error(
-                        error instanceof Error
-                          ? error.message
-                          : "发送失败",
+                        error instanceof Error ? error.message : "发送失败"
                       )
                     },
-                  },
+                  }
                 )
               }}
             >

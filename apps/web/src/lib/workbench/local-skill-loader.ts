@@ -21,7 +21,10 @@ export async function fetchSkillDetails(
     )
     return res.data
   } catch (e) {
-    console.error(`Failed to fetch skill ${skillName} for employee ${employeeId}:`, e)
+    console.error(
+      `Failed to fetch skill ${skillName} for employee ${employeeId}:`,
+      e
+    )
     return null
   }
 }

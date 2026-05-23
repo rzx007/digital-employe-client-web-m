@@ -2,12 +2,47 @@ import { useEffect, useRef, useState } from "react"
 import { useAuthStore } from "@/stores/auth-store"
 
 export type WorkspaceEvent =
-  | { type: "task_started"; task_id: number; conversation_id: number; employee_id: number; employee_name: string; task_name: string }
+  | {
+      type: "task_started"
+      task_id: number
+      conversation_id: number
+      employee_id: number
+      employee_name: string
+      task_name: string
+    }
   | { type: "task_completed"; task_id: number; conversation_id: number }
-  | { type: "task_failed"; task_id: number; conversation_id: number; error?: string }
-  | { type: "orchestration_plan_generated"; plan_id: number; summary?: string; total_tasks?: number; tasks?: Array<{ task_id: number; task_name: string; employee_name: string; cron?: string | null; execute_mode: string }> }
-  | { type: "orchestration_plan_generated"; plan_id: number; status?: string; total_tasks?: number }
-  | { type: "conversation_status_changed"; conversation_id: number; target_type: string; target_id: number; status: string }
+  | {
+      type: "task_failed"
+      task_id: number
+      conversation_id: number
+      error?: string
+    }
+  | {
+      type: "orchestration_plan_generated"
+      plan_id: number
+      summary?: string
+      total_tasks?: number
+      tasks?: Array<{
+        task_id: number
+        task_name: string
+        employee_name: string
+        cron?: string | null
+        execute_mode: string
+      }>
+    }
+  | {
+      type: "orchestration_plan_generated"
+      plan_id: number
+      status?: string
+      total_tasks?: number
+    }
+  | {
+      type: "conversation_status_changed"
+      conversation_id: number
+      target_type: string
+      target_id: number
+      status: string
+    }
 
 type EventHandler = (event: WorkspaceEvent) => void
 
@@ -38,8 +73,9 @@ function getBackoffMs(): number {
 function connect(workspaceId: number) {
   disconnect()
 
-  const baseUrl = (typeof window !== "undefined" &&
-    (window as unknown as { __BASE_URL__: string }).__BASE_URL__) ||
+  const baseUrl =
+    (typeof window !== "undefined" &&
+      (window as unknown as { __BASE_URL__: string }).__BASE_URL__) ||
     (import.meta.env.VITE_BACKEND_URL
       ? `${import.meta.env.VITE_BACKEND_URL}:${import.meta.env.VITE_BACKEND_PORT}`
       : "/actus")
@@ -71,7 +107,9 @@ function connect(workspaceId: number) {
       if (_reconnectCount < MAX_RECONNECT_COUNT) {
         const delay = getBackoffMs()
         _reconnectCount++
-        console.error(`[ws-events] disconnected, reconnecting in ${Math.round(delay)}ms (attempt ${_reconnectCount}/${MAX_RECONNECT_COUNT})`)
+        console.error(
+          `[ws-events] disconnected, reconnecting in ${Math.round(delay)}ms (attempt ${_reconnectCount}/${MAX_RECONNECT_COUNT})`
+        )
         _reconnectTimer = setTimeout(() => connect(workspaceId), delay)
       } else {
         console.error("[ws-events] max reconnect attempts reached, giving up")

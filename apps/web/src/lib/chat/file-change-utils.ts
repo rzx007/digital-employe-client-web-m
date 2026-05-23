@@ -86,7 +86,10 @@ function getExtension(path: string) {
   return filename.slice(dotIndex + 1).toLowerCase()
 }
 
-function getContentSize(input: Record<string, unknown>, action: FileChangeAction) {
+function getContentSize(
+  input: Record<string, unknown>,
+  action: FileChangeAction
+) {
   const contentKey = action === "created" ? "content" : "new_string"
   const content = input[contentKey]
   return typeof content === "string" ? content.length : undefined
@@ -108,7 +111,11 @@ function getSkillDraftFolder(path: string) {
 function buildFileChange(part: ToolPart): FileChangeItem | null {
   const toolName = getToolName(part)
   const action: FileChangeAction | null =
-    toolName === "write_file" ? "created" : toolName === "edit_file" ? "edited" : null
+    toolName === "write_file"
+      ? "created"
+      : toolName === "edit_file"
+        ? "edited"
+        : null
 
   if (!action || !isCompletedToolPart(part)) {
     return null
@@ -149,7 +156,9 @@ function buildFileChange(part: ToolPart): FileChangeItem | null {
   }
 }
 
-export function getFileChangesFromUIMessage(message: UIMessage): FileChangeItem[] {
+export function getFileChangesFromUIMessage(
+  message: UIMessage
+): FileChangeItem[] {
   const changes = new Map<string, FileChangeItem>()
 
   for (const part of message.parts) {

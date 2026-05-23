@@ -1,9 +1,6 @@
 import type { UIMessage } from "ai"
 
-import {
-  summarizeToolCall,
-  type ToolCallSummary,
-} from "./tool-summarizer"
+import { summarizeToolCall, type ToolCallSummary } from "./tool-summarizer"
 
 type ToolUIPart = Extract<
   UIMessage["parts"][number],
@@ -37,10 +34,7 @@ const THINK_BLOCK_RE = /<think\s*>?[\s\S]*?<\/think\s*>?\n?/g
 const HAS_THINK_BLOCK_RE = /<think\s*>?[\s\S]*?<\/think\s*>?/s
 
 function stripThinkTags(text: string): string {
-  return text
-    .replace(THINK_OPEN_RE, "")
-    .replace(THINK_CLOSE_RE, "")
-    .trim()
+  return text.replace(THINK_OPEN_RE, "").replace(THINK_CLOSE_RE, "").trim()
 }
 
 function stripThinkSections(text: string): string {
@@ -66,9 +60,7 @@ function extractResultText(part: ToolUIPart): string | null {
  * - 去掉 think 片段后的剩余文本一律产出 final-response block
  * - 与文本在工具调用前后的位置无关
  */
-export function classifyMessageParts(
-  message: UIMessage
-): ClassifiedBlock[] {
+export function classifyMessageParts(message: UIMessage): ClassifiedBlock[] {
   const parts = message.parts
   if (parts.length === 0) return []
 
@@ -86,7 +78,9 @@ export function classifyMessageParts(
       toolCallId: part.toolCallId,
       toolName: summary.toolName,
       type: part.type,
-      state: ("state" in part ? (part as ToolUIPart).state : "unknown") as string,
+      state: ("state" in part
+        ? (part as ToolUIPart).state
+        : "unknown") as string,
       summary,
       resultText: extractResultText(part),
       input: toolInput,

@@ -10,7 +10,11 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 
 import { SpritePlayer } from "./animation/SpritePlayer"
-import { PET_STATE_LABELS, PET_DURATIONS, type PetState } from "./animation/types"
+import {
+  PET_STATE_LABELS,
+  PET_DURATIONS,
+  type PetState,
+} from "./animation/types"
 import {
   usePetVoiceCurator,
   type PetVoiceFeedback,
@@ -92,14 +96,16 @@ export function PetWindow() {
     setJumpAcked(true)
   }, [])
 
-  const petState: PetState = actionState ?? (() => {
-    if (feedback.variant === "error") return "failed"
-    if (voiceBusy) return "waiting"
-    if (isRecording) return "waving"
-    if (feedback.variant === "success" && !jumpAcked) return "jumping"
-    if (feedback.variant === "info") return "waving"
-    return "idle"
-  })()
+  const petState: PetState =
+    actionState ??
+    (() => {
+      if (feedback.variant === "error") return "failed"
+      if (voiceBusy) return "waiting"
+      if (isRecording) return "waving"
+      if (feedback.variant === "success" && !jumpAcked) return "jumping"
+      if (feedback.variant === "info") return "waving"
+      return "idle"
+    })()
 
   const caption = useMemo(() => {
     if (feedback.variant !== "none") {
@@ -141,10 +147,7 @@ export function PetWindow() {
     }
   }, [feedback.variant, isRecording, voiceBusy])
 
-  const bubbleStrong = useMemo(
-    () => bubbleStrongLabel(feedback),
-    [feedback]
-  )
+  const bubbleStrong = useMemo(() => bubbleStrongLabel(feedback), [feedback])
 
   useEffect(() => {
     void (async () => {
@@ -234,16 +237,20 @@ export function PetWindow() {
 
   useEffect(() => {
     return () => {
-      if (actionTimerRef.current != null) window.clearTimeout(actionTimerRef.current)
-      if (clickTimerRef.current != null) window.clearTimeout(clickTimerRef.current)
+      if (actionTimerRef.current != null)
+        window.clearTimeout(actionTimerRef.current)
+      if (clickTimerRef.current != null)
+        window.clearTimeout(clickTimerRef.current)
     }
   }, [])
 
   const triggerAction = useCallback(() => {
-    const state = RUNNING_STATES[Math.floor(Math.random() * RUNNING_STATES.length)]
+    const state =
+      RUNNING_STATES[Math.floor(Math.random() * RUNNING_STATES.length)]
     setActionState(state)
     const totalMs = PET_DURATIONS[state].reduce((a, b) => a + b, 0)
-    if (actionTimerRef.current != null) window.clearTimeout(actionTimerRef.current)
+    if (actionTimerRef.current != null)
+      window.clearTimeout(actionTimerRef.current)
     actionTimerRef.current = window.setTimeout(() => {
       setActionState(null)
       actionTimerRef.current = null
@@ -257,7 +264,8 @@ export function PetWindow() {
     }
 
     const now = Date.now()
-    const idle = !voiceBusy && !isRecording && feedback.variant === "none" && !actionState
+    const idle =
+      !voiceBusy && !isRecording && feedback.variant === "none" && !actionState
 
     // Second click within 400ms from idle → double-click action
     if (now - doubleClickRef.current < 400 && idle) {
@@ -278,7 +286,15 @@ export function PetWindow() {
     } else {
       void toggleVoiceClick()
     }
-  }, [toggleVoiceClick, actionState, voiceBusy, isRecording, feedback.variant, triggerAction, clearClickTimer])
+  }, [
+    toggleVoiceClick,
+    actionState,
+    voiceBusy,
+    isRecording,
+    feedback.variant,
+    triggerAction,
+    clearClickTimer,
+  ])
 
   const stageAriaLive = feedback.variant === "error" ? "assertive" : "polite"
 

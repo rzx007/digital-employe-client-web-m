@@ -40,8 +40,7 @@ export function useConversationsQuery(
     queryKey: chatKeys.conversations(contactId ?? ""),
     queryFn: ({ signal }) =>
       fetchConversationsByContactId(contactId!, contact, { signal }),
-    enabled:
-      Boolean(contactId) && Boolean(contact),
+    enabled: Boolean(contactId) && Boolean(contact),
   })
 }
 
@@ -51,7 +50,7 @@ export function useMessagesQuery(conversationId: string | number | null) {
     queryFn: ({ signal }) =>
       fetchMessagesByConversationId(conversationId!, { signal }),
     enabled: Boolean(conversationId),
-    staleTime: 1000 * 15 * 0,
+    staleTime: 30_000,
   })
 }
 
@@ -71,10 +70,21 @@ export function useOrchestrationPlansQuery() {
     queryKey: [...chatKeys.all, "orchestration-plans"],
     queryFn: async ({ signal }) => {
       const { request } = await import("@/lib/request")
-      const res = await request<{ code: number; data: Array<{ id: number; workspace_id: number; conversation_id: number; user_input: string; plan_json: string; status: string; total_tasks: number; completed_tasks: number; created_at: string; updated_at: string }> }>(
-        "/workspaces/1/orchestration/plans",
-        { signal },
-      )
+      const res = await request<{
+        code: number
+        data: Array<{
+          id: number
+          workspace_id: number
+          conversation_id: number
+          user_input: string
+          plan_json: string
+          status: string
+          total_tasks: number
+          completed_tasks: number
+          created_at: string
+          updated_at: string
+        }>
+      }>("/workspaces/1/orchestration/plans", { signal })
       return res?.data ?? []
     },
     refetchInterval: 5000,
@@ -108,8 +118,7 @@ export function useCreateConversationMutation() {
 export function useEmployeeDetailQuery(id: string | null) {
   return useQuery({
     queryKey: chatKeys.employee(id ?? ""),
-    queryFn: ({ signal }) =>
-      fetchEmployeeById(Number(id!), { signal }),
+    queryFn: ({ signal }) => fetchEmployeeById(Number(id!), { signal }),
     enabled: Boolean(id),
     select: (res) => res.data,
   })
@@ -118,8 +127,7 @@ export function useEmployeeDetailQuery(id: string | null) {
 export function useGroupDetailQuery(id: string | null) {
   return useQuery({
     queryKey: chatKeys.group(id ?? ""),
-    queryFn: ({ signal }) =>
-      fetchGroupById(Number(id!), { signal }),
+    queryFn: ({ signal }) => fetchGroupById(Number(id!), { signal }),
     enabled: Boolean(id),
     select: (res) => res.data,
   })
@@ -171,11 +179,16 @@ export function useResetCuratorConversation() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ conversationId, clearTaskLogs }: {
+    mutationFn: async ({
+      conversationId,
+      clearTaskLogs,
+    }: {
       conversationId: number | string
       clearTaskLogs?: boolean
     }) => {
-      const promises: Promise<unknown>[] = [deleteConversationApi(conversationId)]
+      const promises: Promise<unknown>[] = [
+        deleteConversationApi(conversationId),
+      ]
       if (clearTaskLogs) {
         promises.push(deleteAllTaskExecutions())
       }
@@ -183,7 +196,9 @@ export function useResetCuratorConversation() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: chatKeys.curator() })
-      queryClient.invalidateQueries({ queryKey: [...chatKeys.all, "all-task-executions"] })
+      queryClient.invalidateQueries({
+        queryKey: [...chatKeys.all, "all-task-executions"],
+      })
     },
   })
 }
@@ -205,7 +220,9 @@ export function useUpdateEmployeeMutation(employeeId: string) {
   })
 }
 
-export function useConversationResourcesQuery(conversationId: string | number | null) {
+export function useConversationResourcesQuery(
+  conversationId: string | number | null
+) {
   return useQuery({
     queryKey: chatKeys.resources(String(conversationId)),
     queryFn: async ({ signal }) => {
@@ -218,7 +235,7 @@ export function useConversationResourcesQuery(conversationId: string | number | 
 
 export function useResourceContentQuery(
   conversationId: string | number,
-  path: string | null,
+  path: string | null
 ) {
   return useQuery({
     queryKey: chatKeys.resourceContent(String(conversationId), path ?? ""),

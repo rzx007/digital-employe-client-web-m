@@ -29,11 +29,21 @@ function resolvePlaceholderValue(paramName: string): string {
     return formatLocalDateTime(new Date())
   }
 
-  if (lower === "timestamp" || lower.endsWith("_ts") || lower === "unix" || lower === "epoch") {
+  if (
+    lower === "timestamp" ||
+    lower.endsWith("_ts") ||
+    lower === "unix" ||
+    lower === "epoch"
+  ) {
     return String(Date.now())
   }
 
-  if (lower.includes("date") || lower.includes("day") || lower === "d" || lower.endsWith("_d")) {
+  if (
+    lower.includes("date") ||
+    lower.includes("day") ||
+    lower === "d" ||
+    lower.endsWith("_d")
+  ) {
     return formatLocalDateYYYYMMDD(new Date())
   }
 
@@ -61,8 +71,12 @@ export function repairIncompletePlaceholderBraces(url: string): string {
  */
 export function applyUrlTemplatePlaceholders(url: string): string {
   let out = url
-  out = out.replace(/\{\{([^}]+)\}\}/g, (_, param) => resolvePlaceholderValue(param))
-  out = out.replace(/\{([^}]+)\}/g, (_, param) => resolvePlaceholderValue(param))
+  out = out.replace(/\{\{([^}]+)\}\}/g, (_, param) =>
+    resolvePlaceholderValue(param)
+  )
+  out = out.replace(/\{([^}]+)\}/g, (_, param) =>
+    resolvePlaceholderValue(param)
+  )
   return out
 }
 
@@ -88,7 +102,10 @@ export function joinBaseUrlAndPath(baseUrl: string, path: string): string {
 /**
  * Full URL for fetch: join base + path when needed, then substitute placeholders.
  */
-export function buildFetchUrlFromInterface(path: string, baseUrl?: string): string {
+export function buildFetchUrlFromInterface(
+  path: string,
+  baseUrl?: string
+): string {
   let raw = repairIncompletePlaceholderBraces(path.trim())
   if (raw.startsWith("http")) {
     return applyUrlTemplatePlaceholders(raw)

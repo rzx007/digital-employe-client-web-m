@@ -66,14 +66,14 @@ function SortableBlock({
         "relative isolate rounded-md",
         "transition-[box-shadow,opacity] duration-200 ease-out",
         isDragging &&
-        "z-50 cursor-grabbing opacity-[0.92] shadow-lg ring-2 ring-primary/25 ring-offset-2 ring-offset-background"
+          "z-50 cursor-grabbing opacity-[0.92] shadow-lg ring-2 ring-primary/25 ring-offset-2 ring-offset-background"
       )}
     >
       <div
         className={cn(
           "group/sortable relative rounded-md",
           !isDragging &&
-          "hover:shadow-md hover:shadow-black/5 dark:hover:shadow-black/25"
+            "hover:shadow-md hover:shadow-black/5 dark:hover:shadow-black/25"
         )}
       >
         <button
@@ -198,7 +198,7 @@ function ResizableBlock({
 
   if (!iface) {
     return (
-      <Card className="h-[180px] rounded-md py-0! border-dashed border-border/80 bg-muted/20 shadow-none">
+      <Card className="h-[180px] rounded-md border-dashed border-border/80 bg-muted/20 py-0! shadow-none">
         <CardContent className="flex h-full items-center justify-center">
           <div className="text-xs text-muted-foreground">暂无接口配置</div>
         </CardContent>
@@ -209,7 +209,7 @@ function ResizableBlock({
   return (
     <Card
       className={cn(
-        "group/card relative overflow-hidden rounded-md py-0! border-border/80 bg-card shadow-sm",
+        "group/card relative overflow-hidden rounded-md border-border/80 bg-card py-0! shadow-sm",
         "ring-1 ring-border/30 transition-[box-shadow,ring-color] hover:shadow-md hover:ring-border/50"
       )}
       style={{ width: size.width, height: size.height }}

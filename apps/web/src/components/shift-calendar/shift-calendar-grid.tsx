@@ -1,7 +1,11 @@
 import { useMemo, Fragment } from "react"
 import { getDay } from "date-fns"
 import { cn } from "@workspace/ui/lib/utils"
-import { Avatar, AvatarFallback, AvatarImage } from "@workspace/ui/components/avatar"
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@workspace/ui/components/avatar"
 import { createDiceBearAvatar } from "@/lib/avatar"
 import {
   Tooltip,
@@ -67,7 +71,8 @@ export function ShiftCalendarGrid({
         day,
         weekday: WEEKDAY_LABELS[weekdayIdx],
         isWeekend: weekday === 0 || weekday === 6,
-        isToday: year === today.year && month === today.month && day === today.day,
+        isToday:
+          year === today.year && month === today.month && day === today.day,
       }
     })
   }, [year, month, daysInMonth, today])
@@ -77,12 +82,16 @@ export function ShiftCalendarGrid({
     const filter = (list: Employee[]) =>
       q
         ? list.filter((emp) =>
-          getEmployeeDisplayName(emp).toLowerCase().includes(q),
-        )
+            getEmployeeDisplayName(emp).toLowerCase().includes(q)
+          )
         : list
 
     return [
-      { key: "active", label: "激活中", employees: filter(groupedEmployees.active) },
+      {
+        key: "active",
+        label: "激活中",
+        employees: filter(groupedEmployees.active),
+      },
       {
         key: "inactive",
         label: "未激活",
@@ -110,7 +119,7 @@ export function ShiftCalendarGrid({
             "size-1.5 rounded-full",
             group.key === "active" && "bg-primary",
             group.key === "inactive" && "bg-amber-500",
-            group.key === "unscheduled" && "bg-muted-foreground/40",
+            group.key === "unscheduled" && "bg-muted-foreground/40"
           )}
         />
         {group.label}（{group.employees.length}）
@@ -127,14 +136,14 @@ export function ShiftCalendarGrid({
       <Fragment key={employee.id}>
         <div
           className={cn(
-            "sticky left-0 z-10 flex cursor-pointer items-center gap-2 border-b border-r bg-background px-3 transition-colors hover:bg-muted/50",
-            isSelected && "bg-primary/5",
+            "sticky left-0 z-10 flex cursor-pointer items-center gap-2 border-r border-b bg-background px-3 transition-colors hover:bg-muted/50",
+            isSelected && "bg-primary/5"
           )}
           onClick={() => onEmployeeClick(employee)}
         >
           <Avatar size="sm">
             <AvatarImage src={createDiceBearAvatar(String(employee.id))} />
-            <AvatarFallback className="bg-primary/10 text-primary text-[10px]">
+            <AvatarFallback className="bg-primary/10 text-[10px] text-primary">
               {name.slice(0, 1)}
             </AvatarFallback>
           </Avatar>
@@ -176,9 +185,12 @@ export function ShiftCalendarGrid({
   return (
     <TooltipProvider delayDuration={200}>
       <div className="flex-1 overflow-auto">
-        <div className="grid min-w-max" style={{ gridTemplateColumns: colTemplate }}>
+        <div
+          className="grid min-w-max"
+          style={{ gridTemplateColumns: colTemplate }}
+        >
           {/* Header: corner cell */}
-          <div className="sticky left-0 top-0 z-30 flex items-center justify-center border-b border-r bg-background px-2 py-2 text-xs font-medium text-muted-foreground">
+          <div className="sticky top-0 left-0 z-30 flex items-center justify-center border-r border-b bg-background px-2 py-2 text-xs font-medium text-muted-foreground">
             员工
           </div>
 
@@ -189,14 +201,16 @@ export function ShiftCalendarGrid({
               className={cn(
                 "sticky top-0 z-20 flex flex-col items-center border-b bg-background py-1.5",
                 isWeekend && "bg-muted/20",
-                isTodayCell && "bg-primary/5",
+                isTodayCell && "bg-primary/5"
               )}
             >
-              <span className="text-[10px] text-muted-foreground">{weekday}</span>
+              <span className="text-[10px] text-muted-foreground">
+                {weekday}
+              </span>
               <span
                 className={cn(
                   "mt-0.5 flex size-5 items-center justify-center rounded-full text-xs font-medium",
-                  isTodayCell && "bg-primary text-primary-foreground",
+                  isTodayCell && "bg-primary text-primary-foreground"
                 )}
               >
                 {day}

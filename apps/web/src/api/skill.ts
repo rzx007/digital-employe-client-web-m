@@ -1,5 +1,10 @@
 import { request } from "@/lib/request"
-import type { ApiResponse, LocalSkillDetail, LocalSkillImportResult, LocalSkillItem } from "./types"
+import type {
+  ApiResponse,
+  LocalSkillDetail,
+  LocalSkillImportResult,
+  LocalSkillItem,
+} from "./types"
 
 export interface SkillItem {
   id: string | number
@@ -28,19 +33,17 @@ export async function fetchMySkills(): Promise<SkillItem[]> {
 }
 
 export async function fetchLocalSkillList(): Promise<LocalSkillItem[]> {
-  const res = await request<ApiResponse<LocalSkillItem[]>>(
-    "/skills/local/list"
-  )
+  const res = await request<ApiResponse<LocalSkillItem[]>>("/skills/local/list")
   return Array.isArray(res?.data) ? res.data : []
 }
 
 export async function fetchLocalSkillDetail(
   skillName: string,
-  opts?: { signal?: AbortSignal },
+  opts?: { signal?: AbortSignal }
 ): Promise<LocalSkillDetail> {
   const res = await request<ApiResponse<LocalSkillDetail>>(
     `/skills/local/${encodeURIComponent(skillName)}`,
-    opts?.signal ? { signal: opts.signal } : {},
+    opts?.signal ? { signal: opts.signal } : {}
   )
   return res.data
 }
@@ -110,23 +113,26 @@ export async function uploadLocalSkillToRemote(params: {
 }
 
 export async function deleteWorkspaceLocalSkill(
-  skillName: string,
+  skillName: string
 ): Promise<void> {
-  await request<ApiResponse<null>>(`/skills/local/${encodeURIComponent(skillName)}`, {
-    method: "DELETE",
-  })
+  await request<ApiResponse<null>>(
+    `/skills/local/${encodeURIComponent(skillName)}`,
+    {
+      method: "DELETE",
+    }
+  )
 }
 
 export async function installRemoteSkillToLocal(
   skillId: number,
-  opts?: { overwrite?: boolean },
+  opts?: { overwrite?: boolean }
 ): Promise<LocalSkillImportResult> {
   const q = opts?.overwrite ? "?overwrite=true" : ""
   const res = await request<ApiResponse<LocalSkillImportResult>>(
     `/skills/remote/${skillId}/install${q}`,
     {
       method: "POST",
-    },
+    }
   )
   return res.data
 }

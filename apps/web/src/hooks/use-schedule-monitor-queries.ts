@@ -1,4 +1,9 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { request } from "@/lib/request"
 import type {
@@ -33,7 +38,7 @@ function mapExecutionToTaskRun(exec: TaskExecution): TaskRun {
 export function useMonthlyScheduleOverview(
   year: number,
   month: number,
-  employeeId?: string | number | null,
+  employeeId?: string | number | null
 ) {
   const employeeKey =
     employeeId != null && employeeId !== "" ? String(employeeId) : null
@@ -50,7 +55,7 @@ export function useMonthlyScheduleOverview(
       }
       const res = await request<{ code: number; data: MonthlyOverview }>(
         `/tasks/calendar/monthly?${params.toString()}`,
-        { signal },
+        { signal }
       )
       return res.data
     },
@@ -68,7 +73,7 @@ export function useTodayTaskRuns(employeeId: string | null) {
         data: TaskExecution[]
       }>(
         `/workspaces/${WORKSPACE_ID}/tasks/executions?employee_id=${employeeId}`,
-        { signal },
+        { signal }
       )
       return res.data.map(mapExecutionToTaskRun)
     },
@@ -91,7 +96,7 @@ export function useTaskSummary(employeeId: string | null) {
           data: TaskExecution[]
         }>(
           `/workspaces/${WORKSPACE_ID}/tasks/executions?employee_id=${employeeId}`,
-          { signal },
+          { signal }
         ),
       ])
 
@@ -167,16 +172,13 @@ export function useTodayAllExecutions() {
         code: number
         data: TodayTask[]
       }>(`/workspaces/${WORKSPACE_ID}/tasks/today`, { signal }).then(
-        (res) => res.data,
+        (res) => res.data
       ),
     staleTime: 30_000,
   })
 }
 
-export function useExecutionMetrics7d(
-  employeeId: string | null,
-  days = 7,
-) {
+export function useExecutionMetrics7d(employeeId: string | null, days = 7) {
   return useQuery({
     queryKey: [...chatKeys.all, "execution-metrics", employeeId, days],
     queryFn: async ({ signal }) => {
@@ -185,7 +187,7 @@ export function useExecutionMetrics7d(
         data: ExecutionMetrics7d
       }>(
         `/workspaces/${WORKSPACE_ID}/employees/${employeeId}/tasks/execution-metrics?days=${days}`,
-        { signal },
+        { signal }
       )
       return res.data
     },
@@ -213,10 +215,14 @@ export function useMarkNotificationRead() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (id: number) => {
-      await request(`/workspaces/${WORKSPACE_ID}/tasks/executions/${id}/read`, { method: "POST" })
+      await request(`/workspaces/${WORKSPACE_ID}/tasks/executions/${id}/read`, {
+        method: "POST",
+      })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [...chatKeys.all, "notifications"] })
+      queryClient.invalidateQueries({
+        queryKey: [...chatKeys.all, "notifications"],
+      })
     },
   })
 }
@@ -226,11 +232,17 @@ export function useMarkAllNotificationsRead() {
   return useMutation({
     mutationFn: async (ids: number[]) => {
       await Promise.all(
-        ids.map((id) => request(`/workspaces/${WORKSPACE_ID}/tasks/executions/${id}/read`, { method: "POST" }))
+        ids.map((id) =>
+          request(`/workspaces/${WORKSPACE_ID}/tasks/executions/${id}/read`, {
+            method: "POST",
+          })
+        )
       )
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [...chatKeys.all, "notifications"] })
+      queryClient.invalidateQueries({
+        queryKey: [...chatKeys.all, "notifications"],
+      })
     },
   })
 }

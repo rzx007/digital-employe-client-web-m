@@ -107,7 +107,10 @@ export function ChangePasswordForm({
       }
     >
       <h3
-        className={cn("font-bold", isElectron ? "mb-4 text-lg" : "mb-8 text-2xl")}
+        className={cn(
+          "font-bold",
+          isElectron ? "mb-4 text-lg" : "mb-8 text-2xl"
+        )}
       >
         修改密码
       </h3>
@@ -131,7 +134,7 @@ export function ChangePasswordForm({
               placeholder="请输入旧密码"
               value={oldPwd}
               onChange={(e) => setOldPwd(e.target.value)}
-              className="pr-8 rounded-xs"
+              className="rounded-xs pr-8"
               disabled={submitting}
               autoFocus
             />
@@ -165,7 +168,7 @@ export function ChangePasswordForm({
               placeholder="8-15位，包含至少三种字符类型"
               value={newPwd}
               onChange={(e) => setNewPwd(e.target.value)}
-              className="pr-8 rounded-xs"
+              className="rounded-xs pr-8"
               disabled={submitting}
             />
             <button
@@ -198,7 +201,7 @@ export function ChangePasswordForm({
               placeholder="请再次输入新密码"
               value={confirmPwd}
               onChange={(e) => setConfirmPwd(e.target.value)}
-              className="pr-8 rounded-xs"
+              className="rounded-xs pr-8"
               disabled={submitting}
             />
             <button
@@ -227,9 +230,7 @@ export function ChangePasswordForm({
             size={isElectron ? "lg" : "default"}
             disabled={submitting || !oldPwd || !newPwd || !confirmPwd}
           >
-            {submitting && (
-              <IconLoader2 className="mr-2 size-4 animate-spin" />
-            )}
+            {submitting && <IconLoader2 className="mr-2 size-4 animate-spin" />}
             {submitting ? "提交中..." : "确认修改"}
           </Button>
           <Button

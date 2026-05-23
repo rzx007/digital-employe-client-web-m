@@ -132,25 +132,24 @@ def cancel_conversation_stream(
     return BaseResponse(data=None)
 
 
-@router.post("/chat/conversations/{conversation_id}/approve")
+@router.post("/chat/conversations/{conversation_id}/approve", response_model=BaseResponse)
 async def approve_hitl(
     conversation_id: int,
     payload: ApproveRequest,
     http_request: Request,
     db: Session = Depends(get_db),
-) -> StreamingResponse:
+) -> BaseResponse:
     """用户 HITL 决策后恢复 agent 执行。"""
-    return StreamingResponse(
-        ChatService.approve_stream(
-            db,
-            conversation_id,
-            stream_id=payload.stream_id,
-            decisions=payload.decisions,
-            auth_token=http_request.headers.get("token"),
-        ),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    result = await ChatService.approve_trigger(
+        db,
+        conversation_id,
+        stream_id=payload.stream_id,
+        decisions=payload.decisions,
+        auth_token=http_request.headers.get("token"),
     )
+    if not result.get("accepted"):
+        return BaseResponse(code=400, msg=result.get("message", "审批失败"), data=None)
+    return BaseResponse(data=result)
 
 
 @router.post("/chat/conversations/{conversation_id}/status/reset", response_model=BaseResponse)

@@ -67,37 +67,37 @@ const tabs: {
   iconFilled: React.ComponentType<{ className?: string }>
   label: string
 }[] = [
-    {
-      id: "workbench",
-      icon: IconLayoutDashboard,
-      iconFilled: IconLayoutDashboardFilled,
-      label: "工作台",
-    },
-    {
-      id: "chat",
-      icon: IconMessage,
-      iconFilled: IconMessage2Filled,
-      label: "对话",
-    },
-    {
-      id: "contacts",
-      icon: IconUser,
-      iconFilled: IconUserFilled,
-      label: "联系人",
-    },
-    {
-      id: "calendar",
-      icon: IconCalendar,
-      iconFilled: IconCalendarFilled,
-      label: "日历",
-    },
-    {
-      id: "skills",
-      icon: IconSparkles,
-      iconFilled: IconSparklesFilled,
-      label: "技能管理",
-    },
-  ]
+  {
+    id: "workbench",
+    icon: IconLayoutDashboard,
+    iconFilled: IconLayoutDashboardFilled,
+    label: "工作台",
+  },
+  {
+    id: "chat",
+    icon: IconMessage,
+    iconFilled: IconMessage2Filled,
+    label: "对话",
+  },
+  {
+    id: "contacts",
+    icon: IconUser,
+    iconFilled: IconUserFilled,
+    label: "联系人",
+  },
+  {
+    id: "calendar",
+    icon: IconCalendar,
+    iconFilled: IconCalendarFilled,
+    label: "日历",
+  },
+  {
+    id: "skills",
+    icon: IconSparkles,
+    iconFilled: IconSparklesFilled,
+    label: "技能管理",
+  },
+]
 
 export function AppToolbar({
   className,
@@ -109,14 +109,14 @@ export function AppToolbar({
   const user = useAuthStore((s) => s.user)
   const restoreSession = useAuthStore((s) => s.restoreSession)
   useEffect(() => {
-    ; (async () => {
+    ;(async () => {
       await restoreSession()
     })()
   }, [restoreSession])
   const [showLogoutDialog, setShowLogoutDialog] = React.useState(false)
 
   const totalUnread = useConversationStatusStore((s) =>
-    Object.values(s.unreadCounts).reduce((sum, n) => sum + n, 0),
+    Object.values(s.unreadCounts).reduce((sum, n) => sum + n, 0)
   )
 
   // 根据用户ID计算头像索引（1-10）
@@ -186,7 +186,7 @@ export function AppToolbar({
                     <tab.icon className="size-6" />
                   )}
                   {tab.id === "chat" && totalUnread > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] text-white">
+                    <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] text-white">
                       {totalUnread > 99 ? "99" : totalUnread}
                     </span>
                   )}
@@ -211,7 +211,9 @@ export function AppToolbar({
                 size="icon"
                 className="size-10 rounded-lg text-muted-foreground hover:text-foreground"
                 data-tour-id="settings-btn"
-                onClick={() => void withElectronApi((api) => api.openSettings())}
+                onClick={() =>
+                  void withElectronApi((api) => api.openSettings())
+                }
               >
                 <IconSettings className="size-5" />
               </Button>

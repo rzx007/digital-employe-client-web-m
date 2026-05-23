@@ -10,7 +10,13 @@ export type BlockType =
 /**
  * Chart display type for data visualization
  */
-export type ChartDisplayType = "pie" | "bar" | "line" | "table" | "metric" | "list"
+export type ChartDisplayType =
+  | "pie"
+  | "bar"
+  | "line"
+  | "table"
+  | "metric"
+  | "list"
 
 /**
  * Query interface from skill prompt
@@ -38,7 +44,10 @@ export interface QueryInterface {
    * 技能正文中为接口字段标注的中文说明（如 JSON 示例里 `"price":"1",//单价`），用于数据板块表头/图例
    */
   fieldLabels?: Record<string, string>
-  parameters?: Record<string, { type: string; description: string; required: boolean }>
+  parameters?: Record<
+    string,
+    { type: string; description: string; required: boolean }
+  >
   responseFormat?: string
 }
 
@@ -83,4 +92,11 @@ export interface SkillBlockMapping {
 /**
  * Task status for badge display
  */
-export type TaskStatus = "success" | "failed" | "pending" | "running" | "timeout" | "stuck" | "cancelled"
+export type TaskStatus =
+  | "success"
+  | "failed"
+  | "pending"
+  | "running"
+  | "timeout"
+  | "stuck"
+  | "cancelled"

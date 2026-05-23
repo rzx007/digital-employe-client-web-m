@@ -42,7 +42,7 @@ export interface WithElectronApiOptions<T> {
  */
 export async function withElectronApi<T>(
   fn: (api: ElectronApi) => T | Promise<T>,
-  options?: WithElectronApiOptions<T>,
+  options?: WithElectronApiOptions<T>
 ): Promise<T | undefined> {
   const api = getElectronApi()
   if (!api) return options?.fallback
@@ -62,7 +62,7 @@ export async function withElectronApi<T>(
  * 必须有 electronApi，否则抛出 ElectronHostError
  */
 export async function requireElectronApi<T>(
-  fn: (api: ElectronApi) => T | Promise<T>,
+  fn: (api: ElectronApi) => T | Promise<T>
 ): Promise<T> {
   const api = getElectronApi()
   if (!api) {
@@ -73,14 +73,14 @@ export async function requireElectronApi<T>(
   } catch (error) {
     throw new ElectronHostError(
       error instanceof Error ? error.message : String(error),
-      error,
+      error
     )
   }
 }
 
 /** 同步注册 IPC 事件监听（如 onRegisterSuccess），返回 cleanup */
 export function subscribeElectron(
-  fn: (api: ElectronApi) => (() => void) | void,
+  fn: (api: ElectronApi) => (() => void) | void
 ): (() => void) | undefined {
   const api = getElectronApi()
   if (!api) return undefined

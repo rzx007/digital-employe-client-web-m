@@ -27,7 +27,7 @@ export async function fetchSkillList(opts?: {
   const suffix = opts?.localOnly ? "?localOnly=true" : ""
   const res = await request<{ code?: number; data?: SkillListItem[] }>(
     `/skills/list${suffix}`,
-    opts?.signal ? { signal: opts.signal } : {},
+    opts?.signal ? { signal: opts.signal } : {}
   )
   return Array.isArray(res?.data) ? res.data : []
 }
@@ -49,7 +49,7 @@ export async function syncEmployees() {
 export async function fetchEmployees(opts?: { signal?: AbortSignal }) {
   return request<ApiResponse<Employee[]>>(
     `/workspaces/${WORKSPACE_ID}/employees`,
-    opts?.signal ? { signal: opts.signal } : {},
+    opts?.signal ? { signal: opts.signal } : {}
   )
 }
 
@@ -174,7 +174,7 @@ export async function createEmployee(
     {
       method: "POST",
       body: buildEmployeeBody(params),
-    },
+    }
   )
 }
 
@@ -191,6 +191,6 @@ export async function updateEmployee(
     {
       method: "PUT",
       body: buildEmployeeBody(params),
-    },
+    }
   )
 }

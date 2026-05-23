@@ -64,11 +64,7 @@ function formatMonthPeriod(monthRaw: string): string {
   return `${y}年${monthNum}月`
 }
 
-function PerformanceLabelWithHelp({
-  className,
-}: {
-  className?: string
-}) {
+function PerformanceLabelWithHelp({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-1", className)}>
       绩效
@@ -102,11 +98,16 @@ function MetricCard({
   className?: string
 }) {
   return (
-    <div className={cn("flex flex-col justify-between gap-1 px-3 py-3 sm:px-4", className)}>
-      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+    <div
+      className={cn(
+        "flex flex-col justify-between gap-1 px-3 py-3 sm:px-4",
+        className
+      )}
+    >
+      <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
         {label}
       </span>
-      <span className="text-2xl font-semibold tabular-nums tracking-tight">
+      <span className="text-2xl font-semibold tracking-tight tabular-nums">
         {value}
       </span>
       {hint ? (
@@ -189,7 +190,9 @@ function CompactPerformanceCard() {
             </div>
             <div className="grid grid-cols-2 gap-2 rounded-md border border-border/50 p-2">
               <div className="flex flex-col">
-                <span className="text-[10px] text-muted-foreground">当月金额</span>
+                <span className="text-[10px] text-muted-foreground">
+                  当月金额
+                </span>
                 <span className="text-[11px] font-semibold tabular-nums">
                   {formatMoney(data.balance)}
                 </span>
@@ -200,7 +203,9 @@ function CompactPerformanceCard() {
                   {formatRank(data.rank)}
                 </span>
                 {data.rank === -1 ? (
-                  <span className="text-[9px] text-muted-foreground">暂无排名</span>
+                  <span className="text-[9px] text-muted-foreground">
+                    暂无排名
+                  </span>
                 ) : null}
               </div>
             </div>
@@ -245,14 +250,16 @@ function FullPerformanceCard() {
             <p className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
               {formatMonthPeriod(data.month)}
             </p>
-            <p className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="mt-1.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
               绩效周期
             </p>
           </div>
 
           <div className="shrink-0 text-right">
-            <div className="text-sm font-medium text-foreground">{data.name}</div>
-            <div className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="text-sm font-medium text-foreground">
+              {data.name}
+            </div>
+            <div className="mt-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
               工号 {data.staff_no || "--"}
             </div>
           </div>
@@ -263,14 +270,11 @@ function FullPerformanceCard() {
         <div className="grid grid-cols-3 gap-3">
           <MetricCard
             label={
-              <PerformanceLabelWithHelp className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground" />
+              <PerformanceLabelWithHelp className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase" />
             }
             value={data.gdp.toFixed(2)}
           />
-          <MetricCard
-            label="当月金额"
-            value={formatMoney(data.balance)}
-          />
+          <MetricCard label="当月金额" value={formatMoney(data.balance)} />
           <MetricCard
             label="排名"
             value={formatRank(data.rank)}

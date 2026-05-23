@@ -18,7 +18,7 @@ export function InstalledSkillCard({
       onClick={onClick}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-sm font-medium leading-snug">
+        <span className="flex items-center gap-1.5 text-sm leading-snug font-medium">
           <IconSparkles className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="line-clamp-1">
             {skill.displayNameZh || skill.skillName}

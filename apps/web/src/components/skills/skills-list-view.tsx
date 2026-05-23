@@ -45,16 +45,16 @@ export function SkillsListView({
 
   const remoteSkills = React.useMemo(
     () => allSkills.filter((s) => s.source === "remote"),
-    [allSkills],
+    [allSkills]
   )
   const installedSkills = React.useMemo(
     () => allSkills.filter((s) => isInstalledSource(s)),
-    [allSkills],
+    [allSkills]
   )
 
   const remoteCategories = React.useMemo(
     () => buildRemoteCategories(remoteSkills),
-    [remoteSkills],
+    [remoteSkills]
   )
 
   React.useEffect(() => {
@@ -65,7 +65,7 @@ export function SkillsListView({
 
   const filteredInstalled = React.useMemo(
     () => filterSkillsBySearch(installedSkills, searchQuery),
-    [installedSkills, searchQuery],
+    [installedSkills, searchQuery]
   )
 
   const remoteAfterSearch = React.useMemo(
@@ -73,12 +73,12 @@ export function SkillsListView({
       filterSkillsBySearch(remoteSkills, searchQuery, {
         includeDirectoryAndTags: true,
       }),
-    [remoteSkills, searchQuery],
+    [remoteSkills, searchQuery]
   )
 
   const filteredRemote = React.useMemo(
     () => filterRemoteByCategory(remoteAfterSearch, remoteCategory),
-    [remoteAfterSearch, remoteCategory],
+    [remoteAfterSearch, remoteCategory]
   )
 
   const visibleInstalled = React.useMemo(
@@ -86,18 +86,15 @@ export function SkillsListView({
       installedExpanded
         ? filteredInstalled
         : filteredInstalled.slice(0, installedCollapsedMax),
-    [filteredInstalled, installedExpanded, installedCollapsedMax],
+    [filteredInstalled, installedExpanded, installedCollapsedMax]
   )
-  const showInstalledToggle =
-    filteredInstalled.length > installedCollapsedMax
+  const showInstalledToggle = filteredInstalled.length > installedCollapsedMax
 
   const tryInstallRemote = async (skill: SkillListItem) => {
     setInstallingId(skill.id)
     try {
       await installRemoteSkillToLocal(skill.id)
-      toast.success(
-        `「${skill.displayNameZh || skill.skillName}」已安装到本地`,
-      )
+      toast.success(`「${skill.displayNameZh || skill.skillName}」已安装到本地`)
       await queryClient.invalidateQueries({ queryKey: chatKeys.skills() })
       await queryClient.invalidateQueries({
         queryKey: chatKeys.skillsPickerLocal(),
@@ -107,14 +104,12 @@ export function SkillsListView({
       const conflict =
         /409|已存在|同名|CONFLICT/i.test(msg) || msg.includes("冲突")
       if (conflict) {
-        const ok = window.confirm(
-          "本地已有同名技能，是否覆盖安装？",
-        )
+        const ok = window.confirm("本地已有同名技能，是否覆盖安装？")
         if (ok) {
           try {
             await installRemoteSkillToLocal(skill.id, { overwrite: true })
             toast.success(
-              `「${skill.displayNameZh || skill.skillName}」已覆盖安装`,
+              `「${skill.displayNameZh || skill.skillName}」已覆盖安装`
             )
             await queryClient.invalidateQueries({
               queryKey: chatKeys.skills(),
@@ -123,9 +118,7 @@ export function SkillsListView({
               queryKey: chatKeys.skillsPickerLocal(),
             })
           } catch (e2: unknown) {
-            toast.error(
-              e2 instanceof Error ? e2.message : "覆盖安装失败",
-            )
+            toast.error(e2 instanceof Error ? e2.message : "覆盖安装失败")
           }
         }
       } else {
@@ -144,7 +137,7 @@ export function SkillsListView({
           <h1 className="text-lg font-semibold">技能管理</h1>
         </div>
 
-        <div className="ml-auto flex w-full min-w-[240px] max-w-md flex-1 items-center gap-2 sm:max-w-lg">
+        <div className="ml-auto flex w-full max-w-md min-w-[240px] flex-1 items-center gap-2 sm:max-w-lg">
           <div className="relative flex-1">
             <IconSearch className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input

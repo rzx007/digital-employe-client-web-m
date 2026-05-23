@@ -2,7 +2,10 @@ import type { MetadataSkill } from "@/api/types"
 import type { QueryInterface } from "@/types/workbench"
 import { request } from "@/lib/request"
 import { enrichInterfacesHeadersWithAi } from "@/lib/workbench/ai-extract-headers"
-import { resolveEmployeeIdForChatSend, WORKBENCH_CHAT_SEND_TIMEOUT_MS } from "@/lib/workbench/chat-send-employee"
+import {
+  resolveEmployeeIdForChatSend,
+  WORKBENCH_CHAT_SEND_TIMEOUT_MS,
+} from "@/lib/workbench/chat-send-employee"
 import { normalizeHeadersFromUnknown } from "@/lib/workbench/http-headers"
 import {
   buildHeuristicQueryInterfaces,
@@ -31,19 +34,26 @@ function extractJsonArrayFromAiText(aiText: string): unknown[] | null {
   }
 }
 
-function normalizeAiItem(raw: Record<string, unknown>): Omit<QueryInterface, "id"> | null {
+function normalizeAiItem(
+  raw: Record<string, unknown>
+): Omit<QueryInterface, "id"> | null {
   const path = typeof raw.path === "string" ? raw.path.trim() : ""
   if (!path) return null
 
-  const methodRaw = typeof raw.method === "string" ? raw.method.toUpperCase() : "GET"
-  const method = (["GET", "POST", "PUT", "DELETE"].includes(methodRaw)
-    ? methodRaw
-    : "GET") as QueryInterface["method"]
+  const methodRaw =
+    typeof raw.method === "string" ? raw.method.toUpperCase() : "GET"
+  const method = (
+    ["GET", "POST", "PUT", "DELETE"].includes(methodRaw) ? methodRaw : "GET"
+  ) as QueryInterface["method"]
 
   const headers = normalizeHeadersFromUnknown(raw.headers)
 
   let fieldBinding: QueryInterface["fieldBinding"]
-  if (raw.fieldBinding && typeof raw.fieldBinding === "object" && raw.fieldBinding !== null) {
+  if (
+    raw.fieldBinding &&
+    typeof raw.fieldBinding === "object" &&
+    raw.fieldBinding !== null
+  ) {
     const fb = raw.fieldBinding as Record<string, unknown>
     fieldBinding = {
       labelField: typeof fb.labelField === "string" ? fb.labelField : undefined,
@@ -54,9 +64,16 @@ function normalizeAiItem(raw: Record<string, unknown>): Omit<QueryInterface, "id
   }
 
   let fieldLabels: QueryInterface["fieldLabels"]
-  if (raw.fieldLabels && typeof raw.fieldLabels === "object" && raw.fieldLabels !== null && !Array.isArray(raw.fieldLabels)) {
+  if (
+    raw.fieldLabels &&
+    typeof raw.fieldLabels === "object" &&
+    raw.fieldLabels !== null &&
+    !Array.isArray(raw.fieldLabels)
+  ) {
     const fl: Record<string, string> = {}
-    for (const [k, v] of Object.entries(raw.fieldLabels as Record<string, unknown>)) {
+    for (const [k, v] of Object.entries(
+      raw.fieldLabels as Record<string, unknown>
+    )) {
       if (typeof v === "string" && v.trim()) fl[k] = v.trim()
     }
     if (Object.keys(fl).length > 0) fieldLabels = fl
@@ -69,7 +86,8 @@ function normalizeAiItem(raw: Record<string, unknown>): Omit<QueryInterface, "id
     path,
     baseUrl: typeof raw.baseUrl === "string" ? raw.baseUrl : "",
     headers,
-    responseFormat: typeof raw.responseFormat === "string" ? raw.responseFormat : undefined,
+    responseFormat:
+      typeof raw.responseFormat === "string" ? raw.responseFormat : undefined,
     fieldBinding,
     fieldLabels,
     chartType: raw.chartType as QueryInterface["chartType"] | undefined,
@@ -77,7 +95,9 @@ function normalizeAiItem(raw: Record<string, unknown>): Omit<QueryInterface, "id
 }
 
 function needsHeaderEnrichmentAi(interfaces: QueryInterface[]): boolean {
-  return interfaces.some((i) => !i.headers || Object.keys(i.headers).length === 0)
+  return interfaces.some(
+    (i) => !i.headers || Object.keys(i.headers).length === 0
+  )
 }
 
 /**
@@ -88,7 +108,7 @@ async function fetchInterfaceAnalysisAiItems(
   chatEmployeeId: number,
   skillDescriptions: string,
   heuristicJson: string,
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<Omit<QueryInterface, "id">[]> {
   const aiPrompt = `你是接口分析助手。下面「程序已从技能正文中提取到的 http(s) 地址」是权威列表：你必须为这些地址补充名称、描述、响应结构说明等，**禁止编造技能正文中不存在的 URL 或域名**；若技能里还有未被程序列出的查询接口（例如写在表格或图片里但正文未出现完整 URL），也不要新增，除非该 URL 的字符串确实出现在上面的技能原文中。
 
@@ -151,7 +171,7 @@ export async function parseInterfacesFromSkills(
   employeeId: string,
   skills: MetadataSkill[],
   chatEmployeeId?: number | null,
-  opts?: { signal?: AbortSignal },
+  opts?: { signal?: AbortSignal }
 ): Promise<QueryInterface[]> {
   if (skills.length === 0) {
     return []
@@ -160,11 +180,16 @@ export async function parseInterfacesFromSkills(
   const numericChatId = resolveEmployeeIdForChatSend(employeeId, chatEmployeeId)
 
   // 兼容 status 为数字 1 或字符串 "1"，无 status 字段也默认启用
-  const enabled = skills.filter((s) => s.status === undefined || s.status === 1 || s.status === "1")
+  const enabled = skills.filter(
+    (s) => s.status === undefined || s.status === 1 || s.status === "1"
+  )
   const heuristic = buildHeuristicQueryInterfaces(enabled)
 
   const skillBlob = enabled
-    .map((s) => `【${s.skillName}】\n${s.description || s.skill_description || ""}\n${s.prompt || ""}\n${s.skillContent || s.skill_content || ""}`)
+    .map(
+      (s) =>
+        `【${s.skillName}】\n${s.description || s.skill_description || ""}\n${s.prompt || ""}\n${s.skillContent || s.skill_content || ""}`
+    )
     .join("\n\n---\n\n")
 
   const heuristicJson = JSON.stringify(
@@ -194,7 +219,7 @@ export async function parseInterfacesFromSkills(
       numericChatId,
       skillDescriptions,
       heuristicJson,
-      signal,
+      signal
     )
   } catch (e) {
     if (isAbortError(e)) throw e
@@ -219,7 +244,7 @@ export async function parseInterfacesFromSkills(
       numericChatId,
       merged,
       skillBlob,
-      signal,
+      signal
     )
   }
 

@@ -1,12 +1,8 @@
-export function AttachmentRemoveButton({
-  onClick,
-}: {
-  onClick: () => void
-}) {
+export function AttachmentRemoveButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       type="button"
-      className="absolute -top-1 -right-1 z-10 flex size-4 cursor-pointer items-center justify-center rounded-full border border-border/50 bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+      className="absolute -top-1 -right-1 z-10 flex size-4 cursor-pointer items-center justify-center rounded-full border border-border/50 bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-muted hover:text-foreground"
       onClick={onClick}
       aria-label="移除附件"
     >

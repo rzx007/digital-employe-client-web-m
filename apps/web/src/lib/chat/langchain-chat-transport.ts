@@ -1,8 +1,4 @@
-import {
-  type ChatTransport,
-  type UIMessage,
-  type UIMessageChunk,
-} from "ai"
+import { type ChatTransport, type UIMessage, type UIMessageChunk } from "ai"
 
 import { request, getRequestHeaders } from "@/lib/request"
 import { SeeData, createMockSSEStream } from "@/lib/mock-data/sse"
@@ -11,13 +7,12 @@ import {
   createLangChainStreamParseState,
   enqueueFinish,
   parseLangChainPayloadToChunks,
-  buildToolOutputStreamingChunk,
+  buildToolOutputStreamingChunks,
 } from "./langchain-stream-parser"
-import {
-  sseEventSchema,
-  type ToolOutputData,
-} from "./langchain-sse-schema"
+import { sseEventSchema, type ToolOutputData } from "./langchain-sse-schema"
 import { ERROR_MARKER } from "./message-classifier"
+import { conversationRuntimeBus } from "./conversation-runtime-bus"
+import type { HitlPayload } from "./conversation-runtime-types"
 const useMock =
   import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_SSE === "true"
 
@@ -79,7 +74,6 @@ function createChunkFlushBatcher(
   return { schedule, flushSync }
 }
 
-
 /**
  * 获取事件边界的索引位置
  * 该函数用于查找HTTP请求或响应头与正文之间的分隔边界
@@ -130,10 +124,10 @@ function getConversationIdFromBody(body: object | undefined) {
 
 function getSkillFromBody(body: any): string {
   if (!body || typeof body !== "object") {
-    return ''
+    return ""
   }
 
-  return body?.skill || ''
+  return body?.skill || ""
 }
 function getExtraMetaFromBody(body: any): Record<string, any> | undefined {
   if (!body || typeof body !== "object") {
@@ -141,7 +135,9 @@ function getExtraMetaFromBody(body: any): Record<string, any> | undefined {
   }
 
   const { metadata } = body as { metadata?: unknown }
-  return metadata && typeof metadata === "object" ? metadata as Record<string, any> : undefined
+  return metadata && typeof metadata === "object"
+    ? (metadata as Record<string, any>)
+    : undefined
 }
 async function createEventSourceResponse(options: {
   conversationId: string
@@ -205,14 +201,20 @@ export class LangChainChatTransport<
   UI_MESSAGE extends UIMessage,
 > implements ChatTransport<UI_MESSAGE> {
   private _reconnectAbort: AbortController | null = null
+  _resumeConversationId: string | null = null
   onStreamId: ((streamId: string) => void) | null = null
-  onInterrupted: ((payload: { action_requests: unknown[]; review_configs: unknown[]; stream_id?: string | null }) => void) | null = null
+  onInterrupted:
+    | ((payload: {
+        action_requests: unknown[]
+        review_configs: unknown[]
+        stream_id?: string | null
+      }) => void)
+    | null = null
 
   /**
    * 取消上一次 resume 请求，防止新旧 reconnect 互相干扰
    */
   private cancelPreviousReconnect = () => {
-    console.log("🚀 ~ cancelPreviousReconnect~")
     if (this._reconnectAbort) {
       this._reconnectAbort.abort()
       this._reconnectAbort = null
@@ -225,6 +227,10 @@ export class LangChainChatTransport<
    */
   cancelReconnect = () => {
     this.cancelPreviousReconnect()
+  }
+
+  setResumeConversationId = (id: string | null) => {
+    this._resumeConversationId = id
   }
 
   sendMessages = async ({
@@ -257,20 +263,26 @@ export class LangChainChatTransport<
     const stream = useMock
       ? createMockSSEStream(SeeData)
       : await createEventSourceResponse({
-        conversationId: conversationId as string,
-        skill,
-        prompt,
-        metadata,
-        abortSignal,
-      })
+          conversationId: conversationId as string,
+          skill,
+          prompt,
+          metadata,
+          abortSignal,
+        })
 
-    return this.processResponseStream(stream, conversationId as string, undefined, abortSignal)
+    return this.processResponseStream(
+      stream,
+      conversationId as string,
+      undefined,
+      abortSignal
+    )
   }
 
   reconnectToStream = async ({
     chatId,
   }: Parameters<ChatTransport<UI_MESSAGE>["reconnectToStream"]>[0]) => {
-    if (!chatId) {
+    const effectiveChatId = this._resumeConversationId ?? chatId
+    if (!effectiveChatId) {
       return null
     }
 
@@ -279,7 +291,7 @@ export class LangChainChatTransport<
     this._reconnectAbort = abortController
 
     const stream = await createResumeEventSourceResponse({
-      conversationId: chatId,
+      conversationId: effectiveChatId,
       abortSignal: abortController.signal,
     })
 
@@ -288,14 +300,21 @@ export class LangChainChatTransport<
       return null
     }
 
-    return this.processResponseStream(stream, String(chatId), abortController, abortController.signal)
+    this._resumeConversationId = null
+
+    return this.processResponseStream(
+      stream,
+      effectiveChatId,
+      abortController,
+      abortController.signal
+    )
   }
 
   private processResponseStream = (
     stream: ReadableStream<Uint8Array>,
     conversationId?: string,
     reconnectAbort?: AbortController | null,
-    abortSignal?: AbortSignal,
+    abortSignal?: AbortSignal
   ) => {
     const decoder = new TextDecoder()
     const reader = stream.getReader()
@@ -350,9 +369,12 @@ export class LangChainChatTransport<
               payload &&
               typeof payload === "object" &&
               payload.type === "stream_id" &&
-              payload.data?.stream_id
+              payload.data?.stream_id &&
+              conversationId
             ) {
-              this.onStreamId?.(payload.data.stream_id)
+              const sid = payload.data.stream_id as string
+              conversationRuntimeBus.emitStreamId(conversationId, sid)
+              this.onStreamId?.(sid)
               return false
             }
 
@@ -362,9 +384,25 @@ export class LangChainChatTransport<
               typeof payload === "object" &&
               payload.status === "interrupted"
             ) {
+              const interruptPayload: HitlPayload = {
+                action_requests: (payload.action_requests ??
+                  []) as HitlPayload["action_requests"],
+                review_configs: (payload.review_configs ?? []) as unknown[],
+              }
+              if (conversationId) {
+                conversationRuntimeBus.emitInterrupted(conversationId, {
+                  ...interruptPayload,
+                  stream_id: payload.stream_id as string | undefined,
+                })
+                conversationRuntimeBus.emitTerminal(conversationId, {
+                  status: "interrupted",
+                  stream_id: payload.stream_id as string | undefined,
+                  interrupt_payload: interruptPayload,
+                })
+              }
               this.onInterrupted?.({
-                action_requests: payload.action_requests ?? [],
-                review_configs: payload.review_configs ?? [],
+                action_requests: interruptPayload.action_requests,
+                review_configs: interruptPayload.review_configs,
               })
               flushSync()
               closeTextPhaseIfNeeded(state).forEach((chunk) =>
@@ -383,11 +421,7 @@ export class LangChainChatTransport<
             const event = parsed.data
 
             // 检测流式错误事件: {"error": "<message>"}
-            if (
-              event &&
-              typeof event === "object" &&
-              "error" in event
-            ) {
+            if (event && typeof event === "object" && "error" in event) {
               const raw = (event as { error: unknown }).error
               const errorText =
                 typeof raw === "string" ? raw : JSON.stringify(raw)
@@ -420,9 +454,51 @@ export class LangChainChatTransport<
                 (event as { type: string }).type === "no_stream")
             ) {
               // HITL: interrupted 状态 — 通知上层
-              const eventData = (event as { data?: { status?: string; interrupt_payload?: unknown; stream_id?: string | null } }).data
-              if (eventData?.status === "interrupted" && eventData.interrupt_payload) {
-                this.onInterrupted?.({ ...(eventData.interrupt_payload as object), stream_id: eventData.stream_id } as { action_requests: unknown[]; review_configs: unknown[]; stream_id?: string | null })
+              const eventData = (
+                event as {
+                  data?: {
+                    status?: string
+                    interrupt_payload?: HitlPayload
+                    stream_id?: string | null
+                    error?: string
+                  }
+                }
+              ).data
+              const terminalStatus =
+                (event as { type: string }).type === "no_stream"
+                  ? "no_stream"
+                  : ((eventData?.status as
+                      | "completed"
+                      | "cancelled"
+                      | "error"
+                      | "interrupted"
+                      | undefined) ?? "completed")
+
+              if (conversationId) {
+                if (
+                  eventData?.status === "interrupted" &&
+                  eventData.interrupt_payload
+                ) {
+                  conversationRuntimeBus.emitInterrupted(conversationId, {
+                    ...eventData.interrupt_payload,
+                    stream_id: eventData.stream_id,
+                  })
+                }
+                conversationRuntimeBus.emitTerminal(conversationId, {
+                  status: terminalStatus,
+                  stream_id: eventData?.stream_id,
+                  interrupt_payload: eventData?.interrupt_payload,
+                })
+              }
+
+              if (
+                eventData?.status === "interrupted" &&
+                eventData.interrupt_payload
+              ) {
+                this.onInterrupted?.({
+                  ...eventData.interrupt_payload,
+                  stream_id: eventData.stream_id,
+                })
               }
               flushSync()
               closeTextPhaseIfNeeded(state).forEach((chunk) =>
@@ -449,8 +525,11 @@ export class LangChainChatTransport<
                   controller.enqueue(chunk)
                 )
                 state.currentPhase = "tool"
-                const chunk = buildToolOutputStreamingChunk(toolOutputData, state)
-                if (chunk) {
+                const toolChunks = buildToolOutputStreamingChunks(
+                  toolOutputData,
+                  state
+                )
+                for (const chunk of toolChunks) {
                   controller.enqueue(chunk)
                 }
               }
@@ -524,7 +603,6 @@ export class LangChainChatTransport<
             })
             controller.error(error)
           }
-
         } finally {
           reader.releaseLock()
           // 只清除属于当前 reconnect 的 AbortController，不覆盖新创建的

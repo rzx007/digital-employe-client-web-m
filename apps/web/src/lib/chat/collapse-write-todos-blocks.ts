@@ -1,4 +1,7 @@
-import { getTodos, type TodoItem } from "@/components/chat/message-blocks/tool-shared"
+import {
+  getTodos,
+  type TodoItem,
+} from "@/components/chat/message-blocks/tool-shared"
 import type { ClassifiedBlock, ToolGroupItem } from "./message-classifier"
 
 function isWriteTodosToolGroup(

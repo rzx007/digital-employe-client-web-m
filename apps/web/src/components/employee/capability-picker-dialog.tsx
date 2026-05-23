@@ -73,7 +73,7 @@ export function CapabilityPickerDialog({
 
   const localPickerSkills = React.useMemo(
     () => allSkillList.filter((s) => s.source !== "remote"),
-    [allSkillList],
+    [allSkillList]
   )
 
   const filteredSkills = React.useMemo(() => {
@@ -82,7 +82,7 @@ export function CapabilityPickerDialog({
     return localPickerSkills.filter(
       (item) =>
         item.skillName.toLowerCase().includes(q) ||
-        (item.description?.toLowerCase().includes(q)) ||
+        item.description?.toLowerCase().includes(q) ||
         (item.displayNameZh && item.displayNameZh.toLowerCase().includes(q))
     )
   }, [localPickerSkills, searchQuery])
@@ -144,8 +144,7 @@ export function CapabilityPickerDialog({
                   {filteredSkills.map((item) => {
                     const checked = draftSkillIds.includes(item.id)
                     const src = item.source ?? "local"
-                    const sourceIsLocal =
-                      src === "local" || src === "builtin"
+                    const sourceIsLocal = src === "local" || src === "builtin"
                     return (
                       <button
                         key={item.id}

@@ -18,7 +18,7 @@ export const TextRenderer = ({ artifact, className }: TextRendererProps) => {
         "[&_[data-slot=scroll-area-viewport]>div]:!block",
         "[&_[data-slot=scroll-area-viewport]>div]:!w-full",
         "[&_[data-slot=scroll-area-viewport]>div]:!min-w-0",
-        className,
+        className
       )}
     >
       <CodeHighlight

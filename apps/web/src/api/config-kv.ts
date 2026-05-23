@@ -9,14 +9,17 @@ export interface ConfigKvItem {
   updated_at: string
 }
 
-export async function getConfigKv(configKey: string): Promise<ConfigKvItem | null> {
+export async function getConfigKv(
+  configKey: string
+): Promise<ConfigKvItem | null> {
   try {
     const res = await request<ApiResponse<ConfigKvItem>>(
       `/config-kvs/${encodeURIComponent(configKey)}`
     )
     return res.data
   } catch (error) {
-    const status = (error as { response?: { status?: number } })?.response?.status
+    const status = (error as { response?: { status?: number } })?.response
+      ?.status
     if (status === 404) {
       return null
     }
@@ -38,7 +41,8 @@ export async function setConfigKv(
     )
     return res.data
   } catch (error) {
-    const status = (error as { response?: { status?: number } })?.response?.status
+    const status = (error as { response?: { status?: number } })?.response
+      ?.status
     if (status !== 404) {
       throw error
     }

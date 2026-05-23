@@ -52,9 +52,7 @@ export function ChatPromptFileAttachmentCard({
   }
 
   return (
-    <div
-      className="group relative flex min-w-0 w-full items-center gap-1.5 rounded-md border border-border/50 bg-background/70 px-1.5 py-1 @[18rem]/prompt-input:gap-2 @[18rem]/prompt-input:px-2 @[18rem]/prompt-input:py-1.5"
-    >
+    <div className="group relative flex w-full min-w-0 items-center gap-1.5 rounded-md border border-border/50 bg-background/70 px-1.5 py-1 @[18rem]/prompt-input:gap-2 @[18rem]/prompt-input:px-2 @[18rem]/prompt-input:py-1.5">
       <AttachmentRemoveButton onClick={onRemove} />
       <img
         alt=""
@@ -64,7 +62,7 @@ export function ChatPromptFileAttachmentCard({
         src={getFileIcon(filename)}
       />
       <div className="min-w-0 flex-1 overflow-hidden">
-        <div className="flex min-w-0 w-full flex-col gap-0.5">
+        <div className="flex w-full min-w-0 flex-col gap-0.5">
           <span
             className="min-w-0 truncate text-[10px] text-foreground @[18rem]/prompt-input:text-[11px]"
             title={filename}
@@ -72,7 +70,9 @@ export function ChatPromptFileAttachmentCard({
             {filename}
           </span>
           <span className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 text-[9px] text-muted-foreground tabular-nums @[18rem]/prompt-input:text-[10px]">
-            <span className="shrink-0">{formatAttachmentDisplaySize(sizeBytes)}</span>
+            <span className="shrink-0">
+              {formatAttachmentDisplaySize(sizeBytes)}
+            </span>
             {statusLabel}
           </span>
         </div>

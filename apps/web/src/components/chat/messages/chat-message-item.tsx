@@ -14,11 +14,20 @@ import { ThinkingBlock } from "../message-blocks/thinking-block"
 import { ToolGroupBlock } from "../message-blocks/tool-group-block"
 import { TodoPlanBlock } from "../message-blocks/todo-plan-block"
 import { PlanGeneratedCard } from "../message-blocks/plan-generated-card"
+import {
+  isHitlAbortedOutput,
+  type HitlPatchOptions,
+} from "@/lib/chat/hitl-abort-message-utils"
+import { DocumentPlanCard } from "../message-blocks/document-plan-card"
+import { ClarifyingAnswersSummary } from "../message-blocks/clarifying-answers-summary"
 import { RecruitmentCandidatesCard } from "../message-blocks/recruitment-candidates-card"
 import { EmployeeHiredCard } from "../message-blocks/employee-hired-card"
 import { SkillExplorationBlock } from "../message-blocks/skill-exploration-block"
 import { SummarizationCheckpointBlock } from "../message-blocks/summarization-checkpoint-block"
-import { EmployeeContactAvatar, GroupMembersAvatar } from "../contacts/contact-avatars"
+import {
+  EmployeeContactAvatar,
+  GroupMembersAvatar,
+} from "../contacts/contact-avatars"
 import {
   getContactDisplayName,
   getElapsedMsFromMeta,
@@ -44,7 +53,8 @@ function MessageMetaBadges({
   filesMeta?: FileMeta
   messageId: string
 }) {
-  if (!commandMeta?.title && mentionMeta.length === 0 && !filesMeta?.length) return null
+  if (!commandMeta?.title && mentionMeta.length === 0 && !filesMeta?.length)
+    return null
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
       {commandMeta?.title && (
@@ -82,6 +92,9 @@ export function RenderClassifiedBlocks({
   toolAutoCollapseMap,
   isLastAssistantMessage = false,
   isTurnEnded = true,
+  conversationId,
+  streamId,
+  onHitlApproved,
 }: {
   blocks: ClassifiedBlock[]
   commandMeta: CommandMeta
@@ -91,6 +104,9 @@ export function RenderClassifiedBlocks({
   toolAutoCollapseMap: Map<string, boolean>
   isLastAssistantMessage?: boolean
   isTurnEnded?: boolean
+  conversationId?: string | number | null
+  streamId?: string | null
+  onHitlApproved?: (options?: HitlPatchOptions) => void
 }) {
   return (
     <>
@@ -123,6 +139,34 @@ export function RenderClassifiedBlocks({
               state={block.state}
               className="w-full"
               key={block.key}
+            />
+          )
+        }
+        if (block.kind === "document-plan") {
+          return (
+            <DocumentPlanCard
+              key={block.key}
+              input={block.input}
+              state={
+                block.resultText && !isHitlAbortedOutput(block.resultText)
+                  ? "output-available"
+                  : block.state
+              }
+              resultText={block.resultText}
+              conversationId={conversationId}
+              streamId={streamId}
+              toolCallId={block.toolCallId}
+              onHitlApproved={onHitlApproved}
+              className="w-full"
+            />
+          )
+        }
+        if (block.kind === "clarifying-answers") {
+          return (
+            <ClarifyingAnswersSummary
+              key={block.key}
+              items={block.items}
+              className="w-full"
             />
           )
         }
@@ -159,7 +203,7 @@ export function RenderClassifiedBlocks({
                 <IconAlertTriangle className="size-4 shrink-0" />
                 <span className="text-sm font-semibold">请求出错</span>
               </div>
-              <pre className="whitespace-pre-wrap break-all font-mono text-xs text-destructive/80">
+              <pre className="font-mono text-xs break-all whitespace-pre-wrap text-destructive/80">
                 {block.text}
               </pre>
             </div>
@@ -220,6 +264,9 @@ export interface ChatMessageItemProps {
   isLastAssistantMessage?: boolean
   /** 本轮是否已结束（status ready/error），末项工具据此延迟收起 */
   isTurnEnded?: boolean
+  conversationId?: string | number | null
+  streamId?: string | null
+  onHitlApproved?: (options?: HitlPatchOptions) => void
 }
 
 function ChatMessageItemInner({
@@ -228,6 +275,9 @@ function ChatMessageItemInner({
   includeFileChanges,
   isLastAssistantMessage = false,
   isTurnEnded = true,
+  conversationId,
+  streamId,
+  onHitlApproved,
 }: ChatMessageItemProps) {
   const contactDisplayName = getContactDisplayName(contact)
   const deferredMessage = React.useDeferredValue(message)
@@ -249,36 +299,26 @@ function ChatMessageItemInner({
     () => getMessageMeta(deferredMessage),
     [deferredMessage]
   )
-  const commandMeta = (
-    messageMeta?.command &&
-    typeof messageMeta.command === "object"
-  )
-    ? (messageMeta.command as { id?: string; title?: string })
-    : null
-  const mentionMeta = (
-    messageMeta?.mentions &&
-    Array.isArray(messageMeta.mentions)
-  )
-    ? messageMeta.mentions
-    : []
-  const filesMeta = (
-    messageMeta?.files &&
-    Array.isArray(messageMeta.files)
-  )
-    ? messageMeta.files
-    : undefined
+  const commandMeta =
+    messageMeta?.command && typeof messageMeta.command === "object"
+      ? (messageMeta.command as { id?: string; title?: string })
+      : null
+  const mentionMeta =
+    messageMeta?.mentions && Array.isArray(messageMeta.mentions)
+      ? messageMeta.mentions
+      : []
+  const filesMeta =
+    messageMeta?.files && Array.isArray(messageMeta.files)
+      ? messageMeta.files
+      : undefined
   const elapsedMs = getElapsedMsFromMeta(deferredMessage)
   const copyText = React.useMemo(
-    () =>
-      getCopyableMessageText(deferredMessage, { includeFileChanges }),
-    [deferredMessage, includeFileChanges],
+    () => getCopyableMessageText(deferredMessage, { includeFileChanges }),
+    [deferredMessage, includeFileChanges]
   )
 
   return (
-    <Message
-      from={message.role}
-      className={cn("group mx-auto max-w-4xl")}
-    >
+    <Message from={message.role} className={cn("group mx-auto max-w-4xl")}>
       {message.role === "assistant" && (
         <div className="mb-2 flex items-center gap-2">
           {contact.type === "group" ? (
@@ -323,6 +363,9 @@ function ChatMessageItemInner({
               toolAutoCollapseMap={toolAutoCollapseMap}
               isLastAssistantMessage={isLastAssistantMessage}
               isTurnEnded={isTurnEnded}
+              conversationId={conversationId}
+              streamId={streamId}
+              onHitlApproved={onHitlApproved}
             />
           ) : (
             <MessageResponse />

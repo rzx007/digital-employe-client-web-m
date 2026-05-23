@@ -11,7 +11,6 @@ export interface ApiResponse<T> {
  * 员工能力项
  */
 export interface Capability {
-
   capability_name: string
   capability_desc: string
   mcp_server_name: string

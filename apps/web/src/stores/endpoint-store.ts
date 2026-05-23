@@ -80,7 +80,11 @@ export const useEndpointStore = create<EndpointState>((set, get) => ({
       set({ validated: true, loading: false })
       return true
     } catch {
-      set({ validated: false, loading: false, error: "网络不可达，请检查协议/IP/端口" })
+      set({
+        validated: false,
+        loading: false,
+        error: "网络不可达，请检查协议/IP/端口",
+      })
       return false
     }
   },

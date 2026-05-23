@@ -8,7 +8,11 @@ export interface MonitorHeaderProps {
   className?: string
 }
 
-export function MonitorHeader({ title, onClose, className }: MonitorHeaderProps) {
+export function MonitorHeader({
+  title,
+  onClose,
+  className,
+}: MonitorHeaderProps) {
   return (
     <div
       className={cn(

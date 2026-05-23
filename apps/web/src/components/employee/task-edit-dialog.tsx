@@ -613,7 +613,6 @@ export function TaskEditDialog({
         <Separator />
 
         <DialogFooter className="flex items-center px-5 py-3">
-
           {taskIndex !== null && (
             <Button
               variant="ghost"

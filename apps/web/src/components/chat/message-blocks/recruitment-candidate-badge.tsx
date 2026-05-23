@@ -179,7 +179,7 @@ function CandidateDetail({
           fallbackClassName="text-sm"
         />
         <div className="min-w-0 flex-1 pt-0.5">
-          <MorphingDialogTitle className="text-base font-semibold leading-tight">
+          <MorphingDialogTitle className="text-base leading-tight font-semibold">
             {candidate.name}
           </MorphingDialogTitle>
           {candidate.index > 0 && (
@@ -194,7 +194,7 @@ function CandidateDetail({
         disableLayoutAnimation
         className="text-sm leading-relaxed text-muted-foreground"
       >
-        <p className="whitespace-pre-wrap wrap-break-word">
+        <p className="wrap-break-word whitespace-pre-wrap">
           {candidate.description || "暂无描述"}
         </p>
       </MorphingDialogDescription>
@@ -209,7 +209,7 @@ function CandidateDetail({
       {skillIdsText && (
         <div>
           <p className="mb-1 text-xs font-medium text-foreground">skill_ids</p>
-          <p className="break-all font-mono text-xs text-muted-foreground/80">
+          <p className="font-mono text-xs break-all text-muted-foreground/80">
             {skillIdsText}
           </p>
         </div>
@@ -229,14 +229,10 @@ function RecruitmentCandidateBadgeInner({
 }) {
   const skillLabels = splitSkillsSummary(candidate.skills_summary)
   const skillIdsText =
-    candidate.skill_ids.length > 0
-      ? JSON.stringify(candidate.skill_ids)
-      : null
+    candidate.skill_ids.length > 0 ? JSON.stringify(candidate.skill_ids) : null
 
   return (
-    <MorphingDialog
-      transition={{ type: "spring", bounce: 0, duration: 0.28 }}
-    >
+    <MorphingDialog transition={{ type: "spring", bounce: 0, duration: 0.28 }}>
       <MorphingDialogTrigger
         className={cn(TRIGGER_CARD, className)}
         aria-label={`查看候选人 ${candidate.name}`}

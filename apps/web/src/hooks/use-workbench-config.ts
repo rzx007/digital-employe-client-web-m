@@ -16,7 +16,10 @@ interface UseWorkbenchConfigOptions {
   skills: MetadataSkill[]
 }
 
-export function useWorkbenchConfig({ employeeId, skills }: UseWorkbenchConfigOptions) {
+export function useWorkbenchConfig({
+  employeeId,
+  skills,
+}: UseWorkbenchConfigOptions) {
   const [prevEmployeeId, setPrevEmployeeId] = useState(employeeId)
 
   const [config, setConfig] = useState<WorkbenchConfig | null>(() => {

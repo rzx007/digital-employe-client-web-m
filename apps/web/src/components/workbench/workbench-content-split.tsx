@@ -55,7 +55,7 @@ function syncPanelCollapse(
   resourcesOpen: boolean,
   gridRef: RefObject<PanelImperativeHandle | null>,
   curatorRef: RefObject<PanelImperativeHandle | null>,
-  resourcesRef: RefObject<PanelImperativeHandle | null>,
+  resourcesRef: RefObject<PanelImperativeHandle | null>
 ) {
   if (resourcesOpen) {
     gridRef.current?.collapse()
@@ -69,16 +69,11 @@ function syncPanelCollapse(
   }
 }
 
-export function WorkbenchContentSplit({
-  children,
-}: {
-  children: ReactNode
-}) {
+export function WorkbenchContentSplit({ children }: { children: ReactNode }) {
   const [resourcesOpen, setResourcesOpen] = useState(false)
   const { data: curatorConv } = useCuratorConversationQuery()
   const curatorConversationId = curatorConv?.id ?? null
-  const showResources =
-    resourcesOpen && curatorConversationId != null
+  const showResources = resourcesOpen && curatorConversationId != null
 
   const gridPanelRef = usePanelRef()
   const curatorPanelRef = usePanelRef()
@@ -92,7 +87,7 @@ export function WorkbenchContentSplit({
 
   const resolvedLayout = useMemo(
     () => normalizeLayout(defaultLayout),
-    [defaultLayout],
+    [defaultLayout]
   )
 
   const handleToggleResources = useCallback(() => {
@@ -112,7 +107,7 @@ export function WorkbenchContentSplit({
       setResourcesOpen(true)
       openResource(path)
     },
-    [curatorConversationId, openResource],
+    [curatorConversationId, openResource]
   )
 
   useEffect(() => {
@@ -121,7 +116,7 @@ export function WorkbenchContentSplit({
         showResources,
         gridPanelRef,
         curatorPanelRef,
-        resourcesPanelRef,
+        resourcesPanelRef
       )
     })
     return () => cancelAnimationFrame(id)
@@ -133,7 +128,7 @@ export function WorkbenchContentSplit({
         onLayoutChanged(layout)
       }
     },
-    [showResources, onLayoutChanged],
+    [showResources, onLayoutChanged]
   )
 
   return (
@@ -173,13 +168,11 @@ export function WorkbenchContentSplit({
             size="compact"
             className={cn(
               "h-full min-h-0",
-              showResources ? "border-r" : "border-l",
+              showResources ? "border-r" : "border-l"
             )}
             resourcesOpen={showResources}
             onToggleResources={
-              curatorConversationId != null
-                ? handleToggleResources
-                : undefined
+              curatorConversationId != null ? handleToggleResources : undefined
             }
             onOpenResourceFile={handleOpenResourceFile}
           />
@@ -199,7 +192,7 @@ export function WorkbenchContentSplit({
           className="min-w-0"
         >
           {showResources && curatorConversationId != null && (
-            <div className="bg-muted/20 p-3 h-full">
+            <div className="h-full bg-muted/20 p-3">
               <ArtifactPanel
                 presentation="embedded"
                 conversationId={curatorConversationId}
@@ -208,7 +201,6 @@ export function WorkbenchContentSplit({
                 className="h-full rounded-lg border shadow-xl"
               />
             </div>
-
           )}
         </ResizablePanel>
       </ResizablePanelGroup>

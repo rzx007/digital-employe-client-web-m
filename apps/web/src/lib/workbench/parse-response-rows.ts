@@ -20,7 +20,10 @@ export function isNumericLike(v: unknown): boolean {
 }
 
 /** Columns that are mostly numeric-like in a sample of rows */
-export function inferNumericKeys(headers: string[], rows: Record<string, unknown>[]): string[] {
+export function inferNumericKeys(
+  headers: string[],
+  rows: Record<string, unknown>[]
+): string[] {
   if (rows.length === 0) return []
   const sample = rows.slice(0, Math.min(50, rows.length))
   return headers.filter((h) => {
@@ -55,7 +58,10 @@ export function inferLabelKey(
   return fallback ?? headers[0] ?? ""
 }
 
-export function parseResponseData(response: unknown, responseFormat?: string): ParsedResponseRows {
+export function parseResponseData(
+  response: unknown,
+  responseFormat?: string
+): ParsedResponseRows {
   if (!response || typeof response !== "object") {
     return { headers: [], rows: [] }
   }
@@ -66,7 +72,11 @@ export function parseResponseData(response: unknown, responseFormat?: string): P
     const pathParts = responseFormat.split(".")
     let current: unknown = dataObj
     for (const part of pathParts) {
-      if (current && typeof current === "object" && part in (current as Record<string, unknown>)) {
+      if (
+        current &&
+        typeof current === "object" &&
+        part in (current as Record<string, unknown>)
+      ) {
         current = (current as Record<string, unknown>)[part]
       } else {
         current = null
@@ -87,7 +97,9 @@ export function parseResponseData(response: unknown, responseFormat?: string): P
   }
 
   if (Array.isArray(dataObj)) {
-    const rows = dataObj.filter((item) => typeof item === "object" && item !== null) as Record<string, unknown>[]
+    const rows = dataObj.filter(
+      (item) => typeof item === "object" && item !== null
+    ) as Record<string, unknown>[]
     if (rows.length > 0) {
       return {
         headers: Object.keys(rows[0]),
@@ -97,7 +109,17 @@ export function parseResponseData(response: unknown, responseFormat?: string): P
     return { headers: [], rows: [] }
   }
 
-  const dataKeys = ["data", "list", "result", "records", "items", "results", "rows", "array", "values"]
+  const dataKeys = [
+    "data",
+    "list",
+    "result",
+    "records",
+    "items",
+    "results",
+    "rows",
+    "array",
+    "values",
+  ]
   for (const key of dataKeys) {
     if (dataObj[key] && Array.isArray(dataObj[key])) {
       const rows = (dataObj[key] as unknown[]).filter(

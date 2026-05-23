@@ -174,7 +174,7 @@ export function NotificationBell() {
   const { data: executions = [] } = useAllTaskExecutions()
   const notifications = React.useMemo(
     () => executions.filter((e) => e.confirm_execution_result),
-    [executions],
+    [executions]
   )
   const dialogOpen = useNotificationStore((s) => s.dialogOpen)
   const setDialogOpen = useNotificationStore((s) => s.setDialogOpen)

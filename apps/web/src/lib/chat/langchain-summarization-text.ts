@@ -13,7 +13,5 @@ export function isSummarizationTextPart(
   if (!pm || typeof pm !== "object") return false
   const langchain = (pm as { langchain?: unknown }).langchain
   if (!langchain || typeof langchain !== "object") return false
-  return (
-    (langchain as { lcSource?: unknown }).lcSource === "summarization"
-  )
+  return (langchain as { lcSource?: unknown }).lcSource === "summarization"
 }

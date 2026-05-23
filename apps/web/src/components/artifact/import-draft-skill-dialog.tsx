@@ -20,12 +20,11 @@ import { downloadResourceBlob, fetchResourceContent } from "@/api/conversation"
 
 type LoadState = "loading" | "loaded" | "error"
 
-function parseSimpleFrontmatter(
-  content: string,
-): { description: string; body: string } {
-  const match = content.match(
-    /^\s*---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?/,
-  )
+function parseSimpleFrontmatter(content: string): {
+  description: string
+  body: string
+} {
+  const match = content.match(/^\s*---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?/)
   if (!match) {
     return { description: "", body: content }
   }
@@ -76,11 +75,11 @@ export function ImportDraftSkillDialog({
       try {
         const res = await fetchResourceContent(
           conversationId,
-          `${skillPath}/SKILL.md`,
+          `${skillPath}/SKILL.md`
         )
         if (res?.data?.content) {
           const { description: desc, body } = parseSimpleFrontmatter(
-            res.data.content,
+            res.data.content
           )
           setDescription(desc || "")
           setPromptContent(body || "")
@@ -136,13 +135,12 @@ export function ImportDraftSkillDialog({
       toast.success(
         result.overwritten
           ? `技能「${result.skillName}」已覆盖导入`
-          : `技能「${result.skillName}」导入成功`,
+          : `技能「${result.skillName}」导入成功`
       )
       onSuccess()
       onOpenChange(false)
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "导入失败，请稍后重试"
+      const msg = err instanceof Error ? err.message : "导入失败，请稍后重试"
       toast.error(msg)
     } finally {
       setSubmitting(false)
@@ -150,19 +148,14 @@ export function ImportDraftSkillDialog({
   }
 
   const canSubmit =
-    loadState === "loaded" &&
-    !!skillName.trim() &&
-    !nameError &&
-    !submitting
+    loadState === "loaded" && !!skillName.trim() && !nameError && !submitting
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[min(90vh,calc(100dvh-2rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
-        <DialogHeader className="shrink-0 space-y-1 border-b px-4 pt-4 pb-3 pr-12">
+        <DialogHeader className="shrink-0 space-y-1 border-b px-4 pt-4 pr-12 pb-3">
           <DialogTitle>导入到技能库</DialogTitle>
-          <DialogDescription>
-            将技能草稿导入到本地技能库中
-          </DialogDescription>
+          <DialogDescription>将技能草稿导入到本地技能库中</DialogDescription>
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-3">
@@ -218,7 +211,7 @@ export function ImportDraftSkillDialog({
                   placeholder="未检测到描述信息"
                   className={cn(
                     "field-sizing-fixed max-h-36 min-h-20 cursor-default overflow-y-auto",
-                    "bg-muted/30",
+                    "bg-muted/30"
                   )}
                 />
               </div>
@@ -235,7 +228,7 @@ export function ImportDraftSkillDialog({
                   placeholder="SKILL.md 正文为空"
                   className={cn(
                     "field-sizing-fixed min-h-32 flex-1 cursor-default",
-                    "overflow-y-auto bg-muted/30 font-mono text-xs",
+                    "overflow-y-auto bg-muted/30 font-mono text-xs"
                   )}
                 />
               </div>

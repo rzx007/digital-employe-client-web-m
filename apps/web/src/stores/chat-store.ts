@@ -1,14 +1,16 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
-import {
-  findContactInList,
-  type Contact,
-} from "@/lib/mock-data/ai-employees"
+import { findContactInList, type Contact } from "@/lib/mock-data/ai-employees"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 
-export type ActiveTab = "chat" | "contacts" | "calendar" | "workbench" | "skills"
+export type ActiveTab =
+  | "chat"
+  | "contacts"
+  | "calendar"
+  | "workbench"
+  | "skills"
 
 interface ChatStore {
   contacts: Contact[]

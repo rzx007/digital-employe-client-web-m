@@ -571,31 +571,35 @@ class ChatService:
 
         task = registry.get_task(conversation_id)
         if not task or not task.is_active:
-            if not task:
-                stmt = (
-                    select(ConversationMessage)
-                    .where(
-                        ConversationMessage.conversation_id == conversation_id,
-                        ConversationMessage.role == "assistant",
-                        ConversationMessage.stream_state == "streaming",
-                    )
-                    .order_by(ConversationMessage.id.desc())
-                    .limit(1)
+            stmt = (
+                select(ConversationMessage)
+                .where(
+                    ConversationMessage.conversation_id == conversation_id,
+                    ConversationMessage.role == "assistant",
+                    ConversationMessage.stream_state == "streaming",
                 )
-                stale_msg = db.scalar(stmt)
-                if stale_msg:
-                    logger.warning(
-                        "[resume] conv=%s stale streaming message msg_id=%s, auto-repairing to error",
-                        conversation_id, stale_msg.id,
-                    )
-                    stale_msg.stream_state = "error"
-                    stale_msg.content = stale_msg.content or "流已中断，无法恢复"
-                    db.commit()
-                    yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': 'error', 'error': '流已中断，无法恢复'}}, ensure_ascii=False)}\n\n"
-                    yield "data: [DONE]\n\n"
-                    return
+                .order_by(ConversationMessage.id.desc())
+                .limit(1)
+            )
+            stale_msg = db.scalar(stmt)
+            if stale_msg:
+                logger.warning(
+                    "[resume] conv=%s stale streaming message msg_id=%s, auto-repairing to error",
+                    conversation_id, stale_msg.id,
+                )
+                stale_msg.stream_state = "error"
+                stale_msg.content = stale_msg.content or "流已中断，无法恢复"
+                db.commit()
+                yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': 'error', 'error': '流已中断，无法恢复'}}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
 
-            logger.info("[resume] conv=%s no active task (task=%s, status=%s)", conversation_id, bool(task), task.status if task else None)
+            logger.info(
+                "[resume] conv=%s no active task (task=%s, status=%s)",
+                conversation_id,
+                bool(task),
+                task.status if task else None,
+            )
             yield f"data: {json.dumps({'type': 'no_stream', 'data': {'message': '无可恢复的流'}}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return
@@ -723,16 +727,15 @@ class ChatService:
         return success
 
     @staticmethod
-    async def approve_stream(
+    async def approve_trigger(
         db: Session,
         conversation_id: int,
         stream_id: str,
         decisions: list[dict],
         auth_token: str | None = None,
-    ):
-        """HITL approve：用户做出决策后继续 agent 执行，返回新的 SSE 流。"""
+    ) -> dict:
+        """HITL approve：校验 + 启动 background resume task，返回状态 dict。"""
         from src.service.stream_registry import registry
-        import asyncio
 
         conversation = ChatService.get_conversation(db, conversation_id)
 
@@ -749,15 +752,11 @@ class ChatService:
         )
         msg = db.scalar(stmt)
         if not msg or not msg.extra_meta:
-            yield f"data: {json.dumps({'error': '无效的 approve 请求：未找到中断状态的消息'}, ensure_ascii=False)}\n\n"
-            yield "data: [DONE]\n\n"
-            return
+            return {"accepted": False, "message": "未找到中断状态的消息"}
 
         meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
         if meta.get("stream_id") != stream_id:
-            yield f"data: {json.dumps({'error': 'stream_id 不匹配'}, ensure_ascii=False)}\n\n"
-            yield "data: [DONE]\n\n"
-            return
+            return {"accepted": False, "message": "stream_id 不匹配"}
 
         # 2. 清除 interrupt 状态，准备 resume
         meta.pop("interrupt_payload", None)
@@ -782,9 +781,7 @@ class ChatService:
         settings = get_settings()
         workspace = db.get(Workspace, conversation.workspace_id)
         if not workspace:
-            yield f"data: {json.dumps({'error': '未找到工作空间'}, ensure_ascii=False)}\n\n"
-            yield "data: [DONE]\n\n"
-            return
+            return {"accepted": False, "message": "未找到工作空间"}
 
         target_type = conversation.target_type
         target_id = conversation.target_id
@@ -801,9 +798,7 @@ class ChatService:
         elif target_type == "employee":
             employee = db.get(Employee, target_id)
             if not employee:
-                yield f"data: {json.dumps({'error': '未找到员工'}, ensure_ascii=False)}\n\n"
-                yield "data: [DONE]\n\n"
-                return
+                return {"accepted": False, "message": "未找到员工"}
             skills_path = ChatService.resolve_employee_skills_dir(
                 skills_payload=employee.skills_json,
                 employee_id=employee.id,
@@ -813,9 +808,7 @@ class ChatService:
             root_path = settings.artifacts_path
             agent = get_agent(skills_path, root_path, employee_id=employee.id, conversation_id=conversation_id)
         else:
-            yield f"data: {json.dumps({'error': '不支持的 target_type'}, ensure_ascii=False)}\n\n"
-            yield "data: [DONE]\n\n"
-            return
+            return {"accepted": False, "message": "不支持的 target_type"}
 
         config = {"configurable": {"thread_id": conversation_id}}
 
@@ -829,13 +822,9 @@ class ChatService:
         )
 
         if not resumed:
-            yield f"data: {json.dumps({'error': '恢复执行失败：已有活跃任务'}, ensure_ascii=False)}\n\n"
-            yield "data: [DONE]\n\n"
-            return
+            return {"accepted": False, "message": "恢复执行失败：已有活跃任务"}
 
-        # 5. 跟 stream_conversation_answer 一样 yield SSE
-        async for chunk in ChatService.resume_conversation_stream(db, conversation_id):
-            yield chunk
+        return {"accepted": True, "resumed": True}
 
     @staticmethod
     def reset_conversation_status(db: Session, conversation_id: int) -> None:

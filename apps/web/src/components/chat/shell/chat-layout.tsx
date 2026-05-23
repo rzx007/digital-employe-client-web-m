@@ -35,8 +35,7 @@ import { WorkbenchView } from "../views/workbench-view"
 
 type RightPanel = "artifact" | "monitor" | "conversations"
 
-const RIGHT_PANEL_SHELL =
-  "shrink-0 overflow-hidden border-l bg-muted/20 p-3"
+const RIGHT_PANEL_SHELL = "shrink-0 overflow-hidden border-l bg-muted/20 p-3"
 
 /** Monitor / ConversationList 侧栏宽度（Artifact 仍用 flex-7） */
 const NARROW_RIGHT_PANEL_WIDTH = "w-[min(480px,38vw)]"
@@ -63,12 +62,14 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
     })
     switch (event.type) {
       case "conversation_status_changed":
-        useConversationStatusStore.getState().setStatus(
-          event.conversation_id,
-          event.status,
-          event.target_type,
-          event.target_id,
-        )
+        useConversationStatusStore
+          .getState()
+          .setStatus(
+            event.conversation_id,
+            event.status,
+            event.target_type,
+            event.target_id
+          )
         break
       case "task_completed":
       case "task_failed":

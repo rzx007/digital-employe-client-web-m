@@ -38,22 +38,20 @@ export type PetSkinInfo = {
 
 const metaModules = import.meta.glob<{ default: PetMeta }>(
   "./skins/*/pet.json",
-  { eager: true },
+  { eager: true }
 )
 
-const imageModules = import.meta.glob<string>(
-  "./skins/*/*.webp",
-  { eager: true, query: "?url", import: "default" },
-)
+const imageModules = import.meta.glob<string>("./skins/*/*.webp", {
+  eager: true,
+  query: "?url",
+  import: "default",
+})
 
 function slugFromPath(path: string): string {
   return path.split("/skins/")[1]?.split("/")[0] ?? ""
 }
 
-export function createPetSkin(
-  meta: PetMeta,
-  imageSrc: string,
-): PetSkin {
+export function createPetSkin(meta: PetMeta, imageSrc: string): PetSkin {
   const animations = {} as Record<PetState, PetFrameAnimation>
   for (let i = 0; i < PET_STATES.length; i++) {
     const state = PET_STATES[i]
@@ -87,10 +85,10 @@ export function getSlugImage(slug: string): string | undefined {
 
 /**
  * 加载已安装的宠物皮肤列表。
- * 
+ *
  * 该函数会合并内置 bundled 皮肤与通过 Electron IPC 接口获取的 Petdex 皮肤。
  * 如果 IPC 接口不可用或调用失败，则仅返回内置皮肤列表。
- * 
+ *
  * @returns 包含所有可用宠物皮肤信息的数组
  */
 export async function loadInstalledSkinList(): Promise<PetSkinInfo[]> {
@@ -136,7 +134,7 @@ export async function loadPetSkin(slug: string): Promise<PetSkin> {
           description: meta.description ?? "",
           spritesheetPath,
         },
-        imageSrc,
+        imageSrc
       )
     }
   }

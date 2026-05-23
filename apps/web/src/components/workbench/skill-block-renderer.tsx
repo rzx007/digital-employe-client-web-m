@@ -1,5 +1,10 @@
 import { cn } from "@workspace/ui/lib/utils"
-import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@workspace/ui/components/card"
 import type { BlockType } from "@/types/workbench"
 
 interface SkillBlockRendererProps {
@@ -20,9 +25,7 @@ function LarkBitableBlock() {
         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
       </svg>
       <div className="text-sm font-medium">飞书多维表格</div>
-      <div className="text-xs text-muted-foreground">
-        正在连接数据...
-      </div>
+      <div className="text-xs text-muted-foreground">正在连接数据...</div>
     </div>
   )
 }
@@ -40,9 +43,7 @@ function DataStatsBlock() {
         <path d="M18 20V10M12 20V4M6 20v-6" />
       </svg>
       <div className="text-sm font-medium">数据统计</div>
-      <div className="text-xs text-muted-foreground">
-        正在加载统计数据...
-      </div>
+      <div className="text-xs text-muted-foreground">正在加载统计数据...</div>
     </div>
   )
 }
@@ -61,9 +62,7 @@ function ScheduleViewBlock() {
         <path d="M16 2v4M8 2v4M3 10h18" />
       </svg>
       <div className="text-sm font-medium">排班视图</div>
-      <div className="text-xs text-muted-foreground">
-        正在获取排班信息...
-      </div>
+      <div className="text-xs text-muted-foreground">正在获取排班信息...</div>
     </div>
   )
 }
@@ -82,9 +81,7 @@ function CustomBlock({ title }: { title: string }) {
         <path d="M9 9h6M9 15h6M9 12h6" />
       </svg>
       <div className="text-sm font-medium">{title}</div>
-      <div className="text-xs text-muted-foreground">
-        暂无数据
-      </div>
+      <div className="text-xs text-muted-foreground">暂无数据</div>
     </div>
   )
 }

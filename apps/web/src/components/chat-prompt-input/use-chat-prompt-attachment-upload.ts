@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { PromptAttachmentFile } from "@workspace/ui/components/ai-elements/prompt-input"
 import { usePromptInputAttachments } from "@workspace/ui/components/ai-elements/prompt-input"
-import { uploadConversationFile, deleteConversationUpload } from "@/api/conversation"
+import {
+  uploadConversationFile,
+  deleteConversationUpload,
+} from "@/api/conversation"
 import type { ChatPromptMessageStatus, UploadFileState } from "./types"
 
 export function useChatPromptAttachmentUpload({
@@ -23,7 +26,7 @@ export function useChatPromptAttachmentUpload({
   }, [status, attachments])
 
   const [fileStates, setFileStates] = useState<Record<string, UploadFileState>>(
-    {},
+    {}
   )
   const handledIdsRef = useRef<Set<string>>(new Set())
   const pathsRef = useRef<string[]>([])
@@ -100,7 +103,7 @@ export function useChatPromptAttachmentUpload({
         }))
       }
     },
-    [conversationId],
+    [conversationId]
   )
 
   useEffect(() => {
@@ -149,7 +152,7 @@ export function useChatPromptAttachmentUpload({
       }
       attachments.remove(fileId)
     },
-    [attachments, conversationId, fileStates],
+    [attachments, conversationId, fileStates]
   )
 
   return {

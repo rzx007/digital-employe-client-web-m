@@ -46,8 +46,7 @@ function ChatPromptImageThumb({
   const [imgFailed, setImgFailed] = useState(false)
 
   const showPending = !conversationId
-  const showUploading =
-    Boolean(conversationId) && state?.status === "uploading"
+  const showUploading = Boolean(conversationId) && state?.status === "uploading"
   const showDone = state?.status === "done"
   const showError = state?.status === "error"
 

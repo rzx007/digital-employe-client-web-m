@@ -80,7 +80,10 @@ function TaskCard({
           <span className="text-[10px] text-muted-foreground">
             {getCronTypeLabel(task.cron_expression_type)}
           </span>
-          <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-normal">
+          <Badge
+            variant="outline"
+            className="h-5 px-1.5 text-[10px] font-normal"
+          >
             {taskSourceBadgeText(task.source)}
           </Badge>
         </div>

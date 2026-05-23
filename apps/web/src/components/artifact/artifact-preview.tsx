@@ -47,7 +47,7 @@ export const ArtifactPreview = ({
     <motion.div
       onClick={onClick}
       className={cn(
-        "group-artifact relative flex w-72 md:w-90 cursor-pointer items-center gap-3 overflow-hidden rounded-xl border border-border/70 bg-background p-5 transition-colors hover:shadow-md",
+        "group-artifact relative flex w-72 cursor-pointer items-center gap-3 overflow-hidden rounded-xl border border-border/70 bg-background p-5 transition-colors hover:shadow-md md:w-90",
         className
       )}
       {...props}
@@ -70,7 +70,7 @@ export const ArtifactPreview = ({
           </p>
         </div>
       </div>
-      <div className="absolute top-6 -right-1 h-35 w-34 rounded-xl border border-border/60 bg-background shadow-md transition-transform group-artifact-hover:-rotate-5">
+      <div className="group-artifact-hover:-rotate-5 absolute top-6 -right-1 h-35 w-34 rounded-xl border border-border/60 bg-background shadow-md transition-transform">
         <img
           src={canvasImage}
           alt={artifact.title}
@@ -82,7 +82,7 @@ export const ArtifactPreview = ({
       <Button
         size="icon"
         variant="outline"
-        className="absolute right-4 bottom-4 size-8 p-0 opacity-0 transition-opacity group-artifact-hover:opacity-100"
+        className="group-artifact-hover:opacity-100 absolute right-4 bottom-4 size-8 p-0 opacity-0 transition-opacity"
       >
         <IconArrowDown className="size-4" />
       </Button>

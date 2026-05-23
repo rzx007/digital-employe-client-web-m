@@ -173,74 +173,74 @@ export function WorkbenchView({ onClose, className }: WorkbenchViewProps) {
       <div className="flex min-h-0 flex-1">
         <WorkbenchLeftPanel />
         <WorkbenchContentSplit>
-            {!ready ? (
-              <div className="space-y-3">
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div className="text-xs font-medium text-muted-foreground">
-                    自定义模板 (加载中...)
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowAddDialog(true)}
-                    className="shrink-0 gap-1"
-                    disabled
-                  >
-                    <IconPlus className="size-3.5" />
-                    添加模块
-                  </Button>
+          {!ready ? (
+            <div className="space-y-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="text-xs font-medium text-muted-foreground">
+                  自定义模板 (加载中...)
                 </div>
-                <Skeleton className="h-32 w-full" />
-                <Skeleton className="h-32 w-full" />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAddDialog(true)}
+                  className="shrink-0 gap-1"
+                  disabled
+                >
+                  <IconPlus className="size-3.5" />
+                  添加模块
+                </Button>
               </div>
-            ) : skills.length === 0 ? (
-              <div className="space-y-3">
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div className="text-xs font-medium text-muted-foreground">
-                    自定义模板
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowAddDialog(true)}
-                    className="shrink-0 gap-1"
-                  >
-                    <IconPlus className="size-3.5" />
-                    添加模块
-                  </Button>
+              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-32 w-full" />
+            </div>
+          ) : skills.length === 0 ? (
+            <div className="space-y-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="text-xs font-medium text-muted-foreground">
+                  自定义模板
                 </div>
-                <div className="flex min-h-[120px] items-center justify-center rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                  暂无可选技能。请检查远程技能服务与网络，或在「技能」中导入本地技能
-                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAddDialog(true)}
+                  className="shrink-0 gap-1"
+                >
+                  <IconPlus className="size-3.5" />
+                  添加模块
+                </Button>
               </div>
-            ) : (
-              <>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div className="text-xs font-medium text-muted-foreground">
-                    自定义模板
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowAddDialog(true)}
-                    className="shrink-0 gap-1"
-                  >
-                    <IconPlus className="size-3.5" />
-                    添加模块
-                  </Button>
+              <div className="flex min-h-[120px] items-center justify-center rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                暂无可选技能。请检查远程技能服务与网络，或在「技能」中导入本地技能
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="text-xs font-medium text-muted-foreground">
+                  自定义模板
                 </div>
-                {config ? (
-                  <DraggableWorkbenchGrid
-                    blocks={config.blocks}
-                    onReorder={reorderBlocks}
-                    onToggleBlock={toggleBlockEnabled}
-                    onRemoveBlock={removeBlock}
-                    onResizeBlock={resizeBlock}
-                    onAddTemplate={() => setShowAddDialog(true)}
-                  />
-                ) : null}
-              </>
-            )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAddDialog(true)}
+                  className="shrink-0 gap-1"
+                >
+                  <IconPlus className="size-3.5" />
+                  添加模块
+                </Button>
+              </div>
+              {config ? (
+                <DraggableWorkbenchGrid
+                  blocks={config.blocks}
+                  onReorder={reorderBlocks}
+                  onToggleBlock={toggleBlockEnabled}
+                  onRemoveBlock={removeBlock}
+                  onResizeBlock={resizeBlock}
+                  onAddTemplate={() => setShowAddDialog(true)}
+                />
+              ) : null}
+            </>
+          )}
         </WorkbenchContentSplit>
       </div>
 

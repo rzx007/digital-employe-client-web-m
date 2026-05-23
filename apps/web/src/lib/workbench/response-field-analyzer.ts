@@ -46,7 +46,10 @@ export async function analyzeResponseFields(
 export async function fetchSampleData(
   queryInterface: QueryInterface
 ): Promise<unknown> {
-  const url = buildFetchUrlFromInterface(queryInterface.path, queryInterface.baseUrl)
+  const url = buildFetchUrlFromInterface(
+    queryInterface.path,
+    queryInterface.baseUrl
+  )
 
   try {
     const response = await fetch(url, {

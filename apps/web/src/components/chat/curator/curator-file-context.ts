@@ -5,5 +5,6 @@ export type CuratorFileContextValue = {
   onOpenFile: (path: string) => void
 }
 
-export const CuratorFileContext =
-  createContext<CuratorFileContextValue | null>(null)
+export const CuratorFileContext = createContext<CuratorFileContextValue | null>(
+  null
+)

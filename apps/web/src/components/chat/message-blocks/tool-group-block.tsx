@@ -121,8 +121,7 @@ function RoutineToolActivityBlock({
   const anyRunning = !done
   const lastTool = block.tools[block.tools.length - 1]
   // 整组收起与组内最后一项工具共用同一 policy 信号（见 tool-collapse-policy）
-  const shouldCollapseGroup =
-    toolAutoCollapseMap?.get(lastTool.key) ?? false
+  const shouldCollapseGroup = toolAutoCollapseMap?.get(lastTool.key) ?? false
 
   // 流式进行中保持组展开，便于看到当前子行
   useEffect(() => {
@@ -141,7 +140,7 @@ function RoutineToolActivityBlock({
   const allRoutine = block.tools.every((t) => isRoutineTool(t.toolName))
 
   return (
-    <div className={cn("not-prose ", className)} {...props}>
+    <div className={cn("not-prose", className)} {...props}>
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <CollapsibleTrigger
           className={cn(

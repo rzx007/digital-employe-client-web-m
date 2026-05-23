@@ -19,7 +19,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@workspace/ui/components/select"
-import { RadioGroup, RadioGroupItem } from "@workspace/ui/components/radio-group"
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from "@workspace/ui/components/radio-group"
 import { Separator } from "@workspace/ui/components/separator"
 import { Switch } from "@workspace/ui/components/switch"
 import {
@@ -27,7 +30,11 @@ import {
   type PetSkinInfo,
 } from "@/components/pet/pet-loader"
 import type { PetVisibilityMode } from "./settings-types"
-import { getElectronApi, isElectron, withElectronApi } from "@/lib/electron/host"
+import {
+  getElectronApi,
+  isElectron,
+  withElectronApi,
+} from "@/lib/electron/host"
 
 const DEFAULT_PET_SLUG = "eve"
 
@@ -44,7 +51,7 @@ export function PetSettings() {
   const [loaded, setLoaded] = React.useState(false)
   const [installing, setInstalling] = React.useState(false)
   const [uninstallingSlug, setUninstallingSlug] = React.useState<string | null>(
-    null,
+    null
   )
 
   const refreshPetList = React.useCallback(async () => {
@@ -92,7 +99,7 @@ export function PetSettings() {
       if (!api?.isElectron) return
       await api.setPetSettings(partial)
     },
-    [api],
+    [api]
   )
 
   const handleInstall = async () => {
@@ -104,7 +111,7 @@ export function PetSettings() {
         onError: (error) => {
           toast.error(error instanceof Error ? error.message : "安装失败")
         },
-      },
+      }
     )
     setInstalling(false)
     if (result?.slug) {
@@ -160,9 +167,7 @@ export function PetSettings() {
       <Card>
         <CardHeader>
           <CardTitle>宠物</CardTitle>
-          <CardDescription>
-            控制桌面宠物窗口是否显示及展示策略
-          </CardDescription>
+          <CardDescription>控制桌面宠物窗口是否显示及展示策略</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
           {!loaded ? (
@@ -253,7 +258,7 @@ export function PetSettings() {
                     onClick={() =>
                       void handleUninstall(
                         selectedInstalled.slug,
-                        selectedInstalled.displayName,
+                        selectedInstalled.displayName
                       )
                     }
                   >

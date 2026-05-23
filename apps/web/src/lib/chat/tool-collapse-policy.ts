@@ -1,10 +1,7 @@
 /**
  * ToolRow 延迟收起策略：完成时不立即收起，由父级按工具顺序与会话状态下发 shouldAutoCollapse。
  */
-import type {
-  ClassifiedBlock,
-  ToolGroupItem,
-} from "./message-classifier"
+import type { ClassifiedBlock, ToolGroupItem } from "./message-classifier"
 
 export function isToolDone(tool: ToolGroupItem): boolean {
   return (

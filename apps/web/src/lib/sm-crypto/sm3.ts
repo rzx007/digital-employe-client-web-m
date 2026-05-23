@@ -1,13 +1,13 @@
-import { BigInteger } from 'jsbn'
-import * as _ from './utils'
-import { ECPointFp } from './ec'
+import { BigInteger } from "jsbn"
+import * as _ from "./utils"
+import { ECPointFp } from "./ec"
 
 const copyArray = function (
   sourceArray: number[],
   sourceIndex: number,
   destinationArray: number[],
   destinationIndex: number,
-  length: number,
+  length: number
 ): void {
   for (let i = 0; i < length; i++) {
     destinationArray[destinationIndex + i] = sourceArray[sourceIndex + i]
@@ -21,22 +21,28 @@ const Int32 = {
     if (n < this.minValue) {
       const bigInteger = Number(-n)
       const bigIntegerRadix = bigInteger.toString(2)
-      const subBigIntegerRadix = bigIntegerRadix.substr(bigIntegerRadix.length - 31, 31)
-      let reBigIntegerRadix = ''
+      const subBigIntegerRadix = bigIntegerRadix.substr(
+        bigIntegerRadix.length - 31,
+        31
+      )
+      let reBigIntegerRadix = ""
       for (let i = 0; i < subBigIntegerRadix.length; i++) {
         const subBigIntegerRadixItem = subBigIntegerRadix.substr(i, 1)
-        reBigIntegerRadix += subBigIntegerRadixItem === '0' ? '1' : '0'
+        reBigIntegerRadix += subBigIntegerRadixItem === "0" ? "1" : "0"
       }
       const result = parseInt(reBigIntegerRadix, 2)
       return result + 1
     } else if (n > this.maxValue) {
       const bigInteger = Number(n)
       const bigIntegerRadix = bigInteger.toString(2)
-      const subBigIntegerRadix = bigIntegerRadix.substr(bigIntegerRadix.length - 31, 31)
-      let reBigIntegerRadix = ''
+      const subBigIntegerRadix = bigIntegerRadix.substr(
+        bigIntegerRadix.length - 31,
+        31
+      )
+      let reBigIntegerRadix = ""
       for (let i = 0; i < subBigIntegerRadix.length; i++) {
         const subBigIntegerRadixItem = subBigIntegerRadix.substr(i, 1)
-        reBigIntegerRadix += subBigIntegerRadixItem === '0' ? '1' : '0'
+        reBigIntegerRadix += subBigIntegerRadixItem === "0" ? "1" : "0"
       }
       const result = parseInt(reBigIntegerRadix, 2)
       return -(result + 1)
@@ -48,11 +54,14 @@ const Int32 = {
     if (n < 0) {
       const bigInteger = Number(-n)
       const bigIntegerRadix = bigInteger.toString(2)
-      const subBigIntegerRadix = bigIntegerRadix.substr(bigIntegerRadix.length - 8, 8)
-      let reBigIntegerRadix = ''
+      const subBigIntegerRadix = bigIntegerRadix.substr(
+        bigIntegerRadix.length - 8,
+        8
+      )
+      let reBigIntegerRadix = ""
       for (let i = 0; i < subBigIntegerRadix.length; i++) {
         const subBigIntegerRadixItem = subBigIntegerRadix.substr(i, 1)
-        reBigIntegerRadix += subBigIntegerRadixItem === '0' ? '1' : '0'
+        reBigIntegerRadix += subBigIntegerRadixItem === "0" ? "1" : "0"
       }
       const result = parseInt(reBigIntegerRadix, 2)
       return (result + 1) % 256
@@ -85,7 +94,10 @@ export default class SM3Digest {
     this.xBufOff = 0
     this.byteCount = 0
     this.DIGEST_LENGTH = 32
-    this.v0 = [0x7380166f, 0x4914b2b9, 0x172442d7, -628488704, -1452330820, 0x163138aa, -477237683, -1325724082]
+    this.v0 = [
+      0x7380166f, 0x4914b2b9, 0x172442d7, -628488704, -1452330820, 0x163138aa,
+      -477237683, -1325724082,
+    ]
     this.v = new Array(8)
     this.v_ = new Array(8)
     this.X0 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -123,7 +135,8 @@ export default class SM3Digest {
     this.xBufOff = 0
 
     const keys = Object.keys(this.xBuf)
-    for (let i = 0, len = keys.length; i < len; i++) this.xBuf[parseInt(keys[i])] = 0
+    for (let i = 0, len = keys.length; i < len; i++)
+      this.xBuf[parseInt(keys[i])] = 0
 
     copyArray(this.v0, 0, this.v, 0, this.v0.length)
     this.xOff = 0
@@ -135,7 +148,10 @@ export default class SM3Digest {
     const ww = this.X
     const ww_ = new Array(64)
     for (i = 16; i < 68; i++) {
-      ww[i] = this.p1(ww[i - 16] ^ ww[i - 9] ^ this.rotate(ww[i - 3], 15)) ^ this.rotate(ww[i - 13], 7) ^ ww[i - 6]
+      ww[i] =
+        this.p1(ww[i - 16] ^ ww[i - 9] ^ this.rotate(ww[i - 3], 15)) ^
+        this.rotate(ww[i - 13], 7) ^
+        ww[i - 6]
     }
     for (i = 0; i < 64; i++) {
       ww_[i] = ww[i] ^ ww[i + 4]
@@ -150,11 +166,19 @@ export default class SM3Digest {
     let aaa
     for (i = 0; i < 16; i++) {
       aaa = this.rotate(vv_[0], 12)
-      SS1 = Int32.parse(Int32.parse(aaa + vv_[4]) + this.rotate(this.T_00_15, i))
+      SS1 = Int32.parse(
+        Int32.parse(aaa + vv_[4]) + this.rotate(this.T_00_15, i)
+      )
       SS1 = this.rotate(SS1, 7)
       SS2 = SS1 ^ aaa
-      TT1 = Int32.parse(Int32.parse(this.ff_00_15(vv_[0], vv_[1], vv_[2]) + vv_[3]) + SS2) + ww_[i]
-      TT2 = Int32.parse(Int32.parse(this.gg_00_15(vv_[4], vv_[5], vv_[6]) + vv_[7]) + SS1) + ww[i]
+      TT1 =
+        Int32.parse(
+          Int32.parse(this.ff_00_15(vv_[0], vv_[1], vv_[2]) + vv_[3]) + SS2
+        ) + ww_[i]
+      TT2 =
+        Int32.parse(
+          Int32.parse(this.gg_00_15(vv_[4], vv_[5], vv_[6]) + vv_[7]) + SS1
+        ) + ww[i]
       vv_[3] = vv_[2]
       vv_[2] = this.rotate(vv_[1], 9)
       vv_[1] = vv_[0]
@@ -166,11 +190,19 @@ export default class SM3Digest {
     }
     for (i = 16; i < 64; i++) {
       aaa = this.rotate(vv_[0], 12)
-      SS1 = Int32.parse(Int32.parse(aaa + vv_[4]) + this.rotate(this.T_16_63, i))
+      SS1 = Int32.parse(
+        Int32.parse(aaa + vv_[4]) + this.rotate(this.T_16_63, i)
+      )
       SS1 = this.rotate(SS1, 7)
       SS2 = SS1 ^ aaa
-      TT1 = Int32.parse(Int32.parse(this.ff_16_63(vv_[0], vv_[1], vv_[2]) + vv_[3]) + SS2) + ww_[i]
-      TT2 = Int32.parse(Int32.parse(this.gg_16_63(vv_[4], vv_[5], vv_[6]) + vv_[7]) + SS1) + ww[i]
+      TT1 =
+        Int32.parse(
+          Int32.parse(this.ff_16_63(vv_[0], vv_[1], vv_[2]) + vv_[3]) + SS2
+        ) + ww_[i]
+      TT2 =
+        Int32.parse(
+          Int32.parse(this.gg_16_63(vv_[4], vv_[5], vv_[6]) + vv_[7]) + SS1
+        ) + ww[i]
       vv_[3] = vv_[2]
       vv_[2] = this.rotate(vv_[1], 9)
       vv_[1] = vv_[0]
@@ -303,15 +335,15 @@ export default class SM3Digest {
       const bigAdd = new BigInteger()
       bigAdd.fromInt(2)
       const shiftLeftBits = ~bits
-      let shiftLeftNumber = ''
+      let shiftLeftNumber = ""
       if (shiftLeftBits < 0) {
         const shiftRightBits = 64 + shiftLeftBits
         for (let i = 0; i < shiftRightBits; i++) {
-          shiftLeftNumber += '0'
+          shiftLeftNumber += "0"
         }
         const shiftLeftNumberBigAdd = new BigInteger()
         shiftLeftNumberBigAdd.fromInt(number >> bits)
-        const shiftLeftNumberBig = new BigInteger('10' + shiftLeftNumber, 2)
+        const shiftLeftNumberBig = new BigInteger("10" + shiftLeftNumber, 2)
         shiftLeftNumber = shiftLeftNumberBig.toRadix(10)
         const r = shiftLeftNumberBig.add(shiftLeftNumberBigAdd)
         returnV = r.toRadix(10)
@@ -327,11 +359,15 @@ export default class SM3Digest {
     // ZA=H256(ENTLA ∥ IDA ∥ a ∥ b ∥ xG ∥ yG ∥xA ∥yA)
     let len = 0
     if (userId) {
-      if (typeof userId !== 'string')
-        throw new Error(`sm2: Type of userId Must be String! Receive Type: ${typeof userId}`)
+      if (typeof userId !== "string")
+        throw new Error(
+          `sm2: Type of userId Must be String! Receive Type: ${typeof userId}`
+        )
 
       if (userId.length >= 8192)
-        throw new Error(`sm2: The Length of userId Must Less Than 8192! Length: ${userId.length}`)
+        throw new Error(
+          `sm2: The Length of userId Must Less Than 8192! Length: ${userId.length}`
+        )
 
       userId = _.parseUtf8StringToHex(userId)
       len = userId.length * 4
@@ -342,10 +378,18 @@ export default class SM3Digest {
       const userIdWords = _.hexToArray(userId)
       this.blockUpdate(userIdWords, 0, userIdWords.length)
     }
-    const aWords = _.hexToArray(_.leftPad(g.curve.a.toBigInteger().toRadix(16), 64))
-    const bWords = _.hexToArray(_.leftPad(g.curve.b.toBigInteger().toRadix(16), 64))
-    const gxWords = _.hexToArray(_.leftPad(g.getX().toBigInteger().toRadix(16), 64))
-    const gyWords = _.hexToArray(_.leftPad(g.getY().toBigInteger().toRadix(16), 64))
+    const aWords = _.hexToArray(
+      _.leftPad(g.curve.a.toBigInteger().toRadix(16), 64)
+    )
+    const bWords = _.hexToArray(
+      _.leftPad(g.curve.b.toBigInteger().toRadix(16), 64)
+    )
+    const gxWords = _.hexToArray(
+      _.leftPad(g.getX().toBigInteger().toRadix(16), 64)
+    )
+    const gyWords = _.hexToArray(
+      _.leftPad(g.getY().toBigInteger().toRadix(16), 64)
+    )
     const pxWords = _.hexToArray(publicKey.substr(0, 64))
     const pyWords = _.hexToArray(publicKey.substr(64, 64))
     this.blockUpdate(aWords, 0, aWords.length)

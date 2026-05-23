@@ -49,7 +49,9 @@ export function normalizePathKeyForMatch(path: string): string {
       const u = new URL(p)
       const pathname = normalizePathnameTrailingSlash(u.pathname)
       const params = new URLSearchParams(u.search)
-      const sorted = [...params.entries()].sort(([a], [b]) => a.localeCompare(b))
+      const sorted = [...params.entries()].sort(([a], [b]) =>
+        a.localeCompare(b)
+      )
       const sp = new URLSearchParams()
       for (const [key, val] of sorted) {
         sp.append(key, val)
@@ -80,7 +82,8 @@ export function originPathnameKey(path: string): string | null {
 
 function shortHash(s: string): string {
   let h = 0
-  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0
+  for (let i = 0; i < s.length; i++)
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0
   return Math.abs(h).toString(36).slice(0, 8)
 }
 
@@ -106,7 +109,10 @@ function findUrlIndexInBlob(blob: string, url: string): number {
 /**
  * 取该 URL 在正文中**上方**最近的 Markdown 标题（#～######），用于同技能多接口的标题/描述区分
  */
-export function extractMarkdownHeadingBeforeUrl(blob: string, url: string): string | null {
+export function extractMarkdownHeadingBeforeUrl(
+  blob: string,
+  url: string
+): string | null {
   const idx = findUrlIndexInBlob(blob, url)
   if (idx < 0) return null
   const before = blob.slice(0, idx)
@@ -122,7 +128,9 @@ export function extractMarkdownHeadingBeforeUrl(blob: string, url: string): stri
 /**
  * 从技能 Markdown/示例 JSON 中解析行内注释：`"fieldName": ...,//中文说明` 或 `... "//x"//说明`
  */
-export function extractFieldLabelsFromSkillText(text: string): Record<string, string> {
+export function extractFieldLabelsFromSkillText(
+  text: string
+): Record<string, string> {
   const out: Record<string, string> = {}
   for (const line of text.split(/\r?\n/)) {
     const m = line.match(/"([^"]+)"\s*:\s*[^/\n]*?(?:,\s*)?\/\/\s*(.+)$/)
@@ -136,7 +144,10 @@ export function extractFieldLabelsFromSkillText(text: string): Record<string, st
 }
 
 /** 取「该 URL 之后到下一处 http(s) 之前」的片段，避免多接口字段说明串台 */
-export function extractFieldLabelsForUrlInSkillBlob(blob: string, url: string): Record<string, string> {
+export function extractFieldLabelsForUrlInSkillBlob(
+  blob: string,
+  url: string
+): Record<string, string> {
   const idx = blob.indexOf(url)
   if (idx < 0) return extractFieldLabelsFromSkillText(blob)
   const after = blob.slice(idx + url.length)
@@ -182,20 +193,22 @@ export function extractMethodUrlPairs(
  * Programmatically discover query-like HTTP endpoints from skill text.
  * Used as ground truth for URLs so the model cannot invent hosts/paths.
  */
-export function buildHeuristicQueryInterfaces(skills: MetadataSkill[]): QueryInterface[] {
+export function buildHeuristicQueryInterfaces(
+  skills: MetadataSkill[]
+): QueryInterface[] {
   const globalSeen = new Set<string>()
   const out: QueryInterface[] = []
 
   for (const s of skills) {
     // 兼容 status 为数字 1 或字符串 "1"，无 status 字段也默认启用
     if (s.status !== undefined && s.status !== 1 && s.status !== "1") continue
-  
+
     // 构建技能文本 blob，包含 skillContent（本地技能的主要内容）
     const blob = [
       s.skillName,
       s.description,
       s.prompt,
-      s.skillContent || s.skill_content,  // 添加技能内容
+      s.skillContent || s.skill_content, // 添加技能内容
     ]
       .filter(Boolean)
       .join("\n\n")
@@ -225,7 +238,8 @@ export function buildHeuristicQueryInterfaces(skills: MetadataSkill[]): QueryInt
       const fieldLabels = extractFieldLabelsForUrlInSkillBlob(blob, url)
       const sectionTitle = extractMarkdownHeadingBeforeUrl(blob, url)
       const fallbackDesc =
-        (s.description || "").slice(0, 280) || `来自技能「${s.skillName}」正文中的接口地址`
+        (s.description || "").slice(0, 280) ||
+        `来自技能「${s.skillName}」正文中的接口地址`
       const name = sectionTitle
         ? sectionTitle
         : urlsOrdered.length > 1
@@ -249,7 +263,10 @@ export function buildHeuristicQueryInterfaces(skills: MetadataSkill[]): QueryInt
 }
 
 /** Reduce hallucinated AI paths: must appear in skill text (or share host/path with it) */
-export function pathMentionedInSkills(path: string, skillBlob: string): boolean {
+export function pathMentionedInSkills(
+  path: string,
+  skillBlob: string
+): boolean {
   const p = path.trim()
   if (!p) return false
   if (skillBlob.includes(p)) return true

@@ -49,10 +49,7 @@ export function getMessageCreatedAtMs(
   }
 
   const storedCreatedAt = stored?.metadata?.created_at
-  if (
-    typeof storedCreatedAt === "string" ||
-    storedCreatedAt instanceof Date
-  ) {
+  if (typeof storedCreatedAt === "string" || storedCreatedAt instanceof Date) {
     const ms = new Date(storedCreatedAt).getTime()
     return Number.isFinite(ms) ? ms : null
   }
@@ -77,7 +74,11 @@ export function getMessageMeta(message: UIMessage): {
 } | null {
   const meta = getMessageMetadataRecord(message)
   return meta
-    ? (meta as { command?: CommandMeta; mentions?: MentionMeta; files?: FileMeta })
+    ? (meta as {
+        command?: CommandMeta
+        mentions?: MentionMeta
+        files?: FileMeta
+      })
     : null
 }
 
@@ -108,8 +109,7 @@ export function formatElapsedMs(ms: number): string {
         : ["seconds"]
 
   return (
-    formatDuration(duration, { locale: zhCN, format: formatUnits }) ||
-    `${ms}ms`
+    formatDuration(duration, { locale: zhCN, format: formatUnits }) || `${ms}ms`
   )
 }
 

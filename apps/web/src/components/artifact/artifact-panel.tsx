@@ -37,7 +37,10 @@ import {
 } from "@workspace/ui/components/context-menu"
 import { cn } from "@workspace/ui/lib/utils"
 import type { ResourceEntry, ResourceList } from "@/api/types"
-import { useConversationResourcesQuery, useResourceContentQuery } from "@/hooks/use-chat-queries"
+import {
+  useConversationResourcesQuery,
+  useResourceContentQuery,
+} from "@/hooks/use-chat-queries"
 import { downloadResource, deleteResource } from "@/api/conversation"
 import { useQueryClient } from "@tanstack/react-query"
 import { chatKeys } from "@/lib/query-keys/chat"
@@ -60,7 +63,10 @@ export interface ArtifactPanelProps {
   presentation?: "slide-over" | "embedded"
 }
 
-const renderers: Record<string, React.ComponentType<{ artifact: Artifact; className?: string }>> = {
+const renderers: Record<
+  string,
+  React.ComponentType<{ artifact: Artifact; className?: string }>
+> = {
   text: TextRenderer,
   code: CodeRenderer,
   sheet: SheetRenderer,
@@ -115,7 +121,10 @@ function matchesEntry(entry: ResourceEntry, query: string) {
   )
 }
 
-function filterEntries(entries: ResourceEntry[], query: string): ResourceEntry[] {
+function filterEntries(
+  entries: ResourceEntry[],
+  query: string
+): ResourceEntry[] {
   const trimmed = query.trim()
   if (!trimmed) {
     return entries
@@ -306,7 +315,7 @@ function renderEntry(
   entry: ResourceEntry,
   conversationId: string | number,
   onDelete: (entry: ResourceEntry) => void,
-  onRefresh: () => void,
+  onRefresh: () => void
 ) {
   if (entry.entry_type === "directory") {
     return (
@@ -320,7 +329,7 @@ function renderEntry(
               title={entry.name}
             >
               {entry.children?.map((child) =>
-                renderEntry(child, conversationId, onDelete, onRefresh),
+                renderEntry(child, conversationId, onDelete, onRefresh)
               )}
             </FileTreeFolder>
           </div>
@@ -349,7 +358,7 @@ function renderEntry(
           <span
             className={cn(
               "min-w-0 flex-1 truncate",
-              ARTIFACT_TREE_FILE_NAME_MAX_W,
+              ARTIFACT_TREE_FILE_NAME_MAX_W
             )}
             title={entry.name}
           >
@@ -413,17 +422,25 @@ export const ArtifactPanel = ({
     [resources.uploads, searchQuery]
   )
   const totalFiles = React.useMemo(
-    () => countFiles(resources.artifacts) + countFiles(resources.uploads) + countFiles(resources.skills_draft),
+    () =>
+      countFiles(resources.artifacts) +
+      countFiles(resources.uploads) +
+      countFiles(resources.skills_draft),
     [resources.artifacts, resources.uploads, resources.skills_draft]
   )
   const filteredFiles = React.useMemo(
-    () => countFiles(filteredArtifacts) + countFiles(filteredUploads) + countFiles(filteredSkillsDraft),
+    () =>
+      countFiles(filteredArtifacts) +
+      countFiles(filteredUploads) +
+      countFiles(filteredSkillsDraft),
     [filteredArtifacts, filteredUploads, filteredSkillsDraft]
   )
   const hasResources = totalFiles > 0
   const hasSearchQuery = searchQuery.trim().length > 0
   const hasFilteredResources =
-    hasEntries(filteredArtifacts) || hasEntries(filteredUploads) || hasEntries(filteredSkillsDraft)
+    hasEntries(filteredArtifacts) ||
+    hasEntries(filteredUploads) ||
+    hasEntries(filteredSkillsDraft)
 
   React.useEffect(() => {
     if (!hasSearchQuery) return
@@ -462,7 +479,11 @@ export const ArtifactPanel = ({
       }
       return null
     }
-    return find([...resourceList.artifacts, ...resourceList.uploads, ...resourceList.skills_draft])
+    return find([
+      ...resourceList.artifacts,
+      ...resourceList.uploads,
+      ...resourceList.skills_draft,
+    ])
   }, [selectedPath, resourceList])
 
   const selectedFilePath =
@@ -472,7 +493,7 @@ export const ArtifactPanel = ({
 
   const { data: resourceContent } = useResourceContentQuery(
     conversationId!,
-    isDocFile ? null : selectedFilePath,
+    isDocFile ? null : selectedFilePath
   )
 
   const artifactForRenderer = React.useMemo((): Artifact | null => {
@@ -496,13 +517,13 @@ export const ArtifactPanel = ({
   }, [isDocFile, selectedEntry, conversationId, resourceContent, selectedPath])
 
   const Renderer = artifactForRenderer
-    ? renderers[artifactForRenderer.type] ?? TextRenderer
+    ? (renderers[artifactForRenderer.type] ?? TextRenderer)
     : null
   const selectedFileSize = formatFileSize(selectedEntry?.size)
   const selectedTypeLabel = getArtifactTypeLabel(
     isDocumentFile(selectedEntry?.path)
       ? "document"
-      : selectedEntry?.artifact_type,
+      : selectedEntry?.artifact_type
   )
 
   const handleCopy = async () => {
@@ -537,7 +558,9 @@ export const ArtifactPanel = ({
       if (selectedPath === entry.path) {
         setSelectedPath(null)
       }
-      queryClient.invalidateQueries({ queryKey: chatKeys.resources(String(conversationId)) })
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.resources(String(conversationId)),
+      })
     } catch {
       toast.error(`删除失败`)
     }
@@ -550,55 +573,23 @@ export const ArtifactPanel = ({
   const panelShellClass = cn(
     "flex h-full min-w-0 flex-col overflow-hidden rounded-lg border bg-background shadow-xl",
     presentation === "embedded" && "rounded-none border-0 shadow-none",
-    className,
+    className
   )
 
   const panelBody = (
     <>
-          <div className="flex min-w-0 items-center justify-between gap-3 border-b px-4 py-3">
-            <div className="min-w-0">
-              <h2 className="text-sm font-medium">资源管理器</h2>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                {hasResources
-                  ? `${totalFiles} 个文件${hasSearchQuery ? `，匹配 ${filteredFiles} 个` : ""}`
-                  : "本轮暂无资源文件"}
-              </p>
-            </div>
-            <div className="flex items-center gap-1">
-              {selectedEntry && (
-                <>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          className="size-8 p-0 text-muted-foreground hover:text-foreground"
-                          size="sm"
-                          variant="ghost"
-                          onClick={handleCopy}
-                        >
-                          <IconCopy className="size-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>复制内容</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          className="size-8 p-0 text-muted-foreground hover:text-foreground"
-                          size="sm"
-                          variant="ghost"
-                          onClick={handleDownload}
-                        >
-                          <IconDownload className="size-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>下载文件</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </>
-              )}
+      <div className="flex min-w-0 items-center justify-between gap-3 border-b px-4 py-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-medium">资源管理器</h2>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {hasResources
+              ? `${totalFiles} 个文件${hasSearchQuery ? `，匹配 ${filteredFiles} 个` : ""}`
+              : "本轮暂无资源文件"}
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          {selectedEntry && (
+            <>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -606,204 +597,230 @@ export const ArtifactPanel = ({
                       className="size-8 p-0 text-muted-foreground hover:text-foreground"
                       size="sm"
                       variant="ghost"
-                      onClick={onClose}
+                      onClick={handleCopy}
                     >
-                      <IconX className="size-4" />
+                      <IconCopy className="size-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>关闭面板</TooltipContent>
+                  <TooltipContent>复制内容</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            </div>
-          </div>
-
-          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-            <div className="flex w-72 min-w-0 shrink-0 flex-col overflow-hidden border-r bg-muted/10">
-              <div className="space-y-2 border-b p-3">
-                <div className="relative">
-                  <IconSearch className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    aria-label="搜索资源文件"
-                    className="h-8 pl-7"
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="搜索文件或路径"
-                    value={searchQuery}
-                  />
-                </div>
-                {hasSearchQuery && (
-                  <p className="text-[11px] text-muted-foreground">
-                    找到 {filteredFiles} 个匹配文件
-                  </p>
-                )}
-              </div>
-
-              <ScrollArea className="min-h-0 min-w-0 flex-1">
-                {hasResources && hasFilteredResources ? (
-                  <FileTree
-                    expanded={expandedPaths}
-                    selectedPath={selectedPath ?? undefined}
-                    onExpandedChange={setExpandedPaths}
-                    onSelect={setSelectedPath}
-                    className="h-full rounded-none border-0 bg-transparent"
-                  >
-                    {filteredArtifacts.length > 0 && (
-                      <FileTreeFolder
-                        className={ARTIFACT_TREE_NAME_ROW_CLASS}
-                        path="/artifacts"
-                        name="产物"
-                        title="artifacts"
-                      >
-                        {filteredArtifacts.map((e) =>
-                          renderEntry(
-                            e,
-                            conversationId!,
-                            handleDelete,
-                            handleRefreshResources,
-                          ),
-                        )}
-                      </FileTreeFolder>
-                    )}
-                    {filteredUploads.length > 0 && (
-                      <FileTreeFolder
-                        className={ARTIFACT_TREE_NAME_ROW_CLASS}
-                        path="/uploads"
-                        name="上传文件"
-                        title="uploads"
-                      >
-                        {filteredUploads.map((e) =>
-                          renderEntry(
-                            e,
-                            conversationId!,
-                            handleDelete,
-                            handleRefreshResources,
-                          ),
-                        )}
-                      </FileTreeFolder>
-                    )}
-                    {filteredSkillsDraft.length > 0 && (
-                      <FileTreeFolder
-                        className={ARTIFACT_TREE_NAME_ROW_CLASS}
-                        path="/skills-draft"
-                        name="技能草稿"
-                        title="skills-draft"
-                      >
-                        {filteredSkillsDraft.map((skill) => (
-                          <ContextMenu key={skill.path}>
-                            <ContextMenuTrigger asChild>
-                              <div>
-                                <FileTreeFolder
-                                  className={ARTIFACT_TREE_NAME_ROW_CLASS}
-                                  path={skill.path}
-                                  name={skill.name}
-                                  title={skill.name}
-                                >
-                                  <span className="flex items-center gap-1">
-                                    <IconSparkles className="size-3 text-amber-500" />
-                                  </span>
-                                  {skill.children?.map((e) =>
-                                    renderEntry(
-                                      e,
-                                      conversationId!,
-                                      handleDelete,
-                                      handleRefreshResources,
-                                    ),
-                                  )}
-                                </FileTreeFolder>
-                              </div>
-                            </ContextMenuTrigger>
-                            <SkillDraftContextMenu
-                              entry={skill}
-                              conversationId={conversationId!}
-                              onDelete={handleDelete}
-                              onRefresh={handleRefreshResources}
-                              onImport={handleImportSkill}
-                            />
-                          </ContextMenu>
-                        ))}
-                      </FileTreeFolder>
-                    )}
-                  </FileTree>
-                ) : (
-                  <div className="flex min-h-48 flex-col items-center justify-center px-4 text-center">
-                    <IconFile className="mb-2 size-8 text-muted-foreground/50" />
-                    <p className="text-sm text-muted-foreground">
-                      {hasSearchQuery ? "没有匹配的资源" : "暂无资源文件"}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground/80">
-                      {hasSearchQuery
-                        ? "换个关键词试试"
-                        : "产物文件会在这里展示"}
-                    </p>
-                  </div>
-                )}
-              </ScrollArea>
-            </div>
-
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              <div className="flex min-w-0 items-center justify-between gap-3 border-b bg-background/95 px-4 py-3">
-                <div className="min-w-0">
-                  <div className="flex min-w-0 items-center gap-2">
-                    {selectedEntry && getFileIcon(selectedEntry.artifact_type)}
-                    <h3
-                      className={cn(
-                        "min-w-0 truncate text-sm font-medium",
-                        ARTIFACT_DETAIL_NAME_MAX_W,
-                      )}
-                      title={
-                        selectedEntry?.name
-                          ? selectedEntry.name
-                          : undefined
-                      }
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      className="size-8 p-0 text-muted-foreground hover:text-foreground"
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleDownload}
                     >
-                      {selectedEntry?.name ?? "选择文件"}
-                    </h3>
-                  </div>
-                  <div className="mt-1 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-                    <span className="shrink-0">{selectedTypeLabel}</span>
-                    {selectedFileSize && (
-                      <>
-                        <span className="shrink-0">·</span>
-                        <span className="shrink-0">{selectedFileSize}</span>
-                      </>
+                      <IconDownload className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>下载文件</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </>
+          )}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  className="size-8 p-0 text-muted-foreground hover:text-foreground"
+                  size="sm"
+                  variant="ghost"
+                  onClick={onClose}
+                >
+                  <IconX className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>关闭面板</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      </div>
+
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div className="flex w-72 min-w-0 shrink-0 flex-col overflow-hidden border-r bg-muted/10">
+          <div className="space-y-2 border-b p-3">
+            <div className="relative">
+              <IconSearch className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                aria-label="搜索资源文件"
+                className="h-8 pl-7"
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="搜索文件或路径"
+                value={searchQuery}
+              />
+            </div>
+            {hasSearchQuery && (
+              <p className="text-[11px] text-muted-foreground">
+                找到 {filteredFiles} 个匹配文件
+              </p>
+            )}
+          </div>
+
+          <ScrollArea className="min-h-0 min-w-0 flex-1">
+            {hasResources && hasFilteredResources ? (
+              <FileTree
+                expanded={expandedPaths}
+                selectedPath={selectedPath ?? undefined}
+                onExpandedChange={setExpandedPaths}
+                onSelect={setSelectedPath}
+                className="h-full rounded-none border-0 bg-transparent"
+              >
+                {filteredArtifacts.length > 0 && (
+                  <FileTreeFolder
+                    className={ARTIFACT_TREE_NAME_ROW_CLASS}
+                    path="/artifacts"
+                    name="产物"
+                    title="artifacts"
+                  >
+                    {filteredArtifacts.map((e) =>
+                      renderEntry(
+                        e,
+                        conversationId!,
+                        handleDelete,
+                        handleRefreshResources
+                      )
                     )}
-                    {selectedEntry?.path && (
-                      <>
-                        <span className="shrink-0">·</span>
-                        <span
-                          className="min-w-0 flex-1 truncate"
-                          title={selectedEntry.path}
-                        >
-                          {selectedEntry.path}
-                        </span>
-                      </>
+                  </FileTreeFolder>
+                )}
+                {filteredUploads.length > 0 && (
+                  <FileTreeFolder
+                    className={ARTIFACT_TREE_NAME_ROW_CLASS}
+                    path="/uploads"
+                    name="上传文件"
+                    title="uploads"
+                  >
+                    {filteredUploads.map((e) =>
+                      renderEntry(
+                        e,
+                        conversationId!,
+                        handleDelete,
+                        handleRefreshResources
+                      )
                     )}
-                  </div>
-                </div>
+                  </FileTreeFolder>
+                )}
+                {filteredSkillsDraft.length > 0 && (
+                  <FileTreeFolder
+                    className={ARTIFACT_TREE_NAME_ROW_CLASS}
+                    path="/skills-draft"
+                    name="技能草稿"
+                    title="skills-draft"
+                  >
+                    {filteredSkillsDraft.map((skill) => (
+                      <ContextMenu key={skill.path}>
+                        <ContextMenuTrigger asChild>
+                          <div>
+                            <FileTreeFolder
+                              className={ARTIFACT_TREE_NAME_ROW_CLASS}
+                              path={skill.path}
+                              name={skill.name}
+                              title={skill.name}
+                            >
+                              <span className="flex items-center gap-1">
+                                <IconSparkles className="size-3 text-amber-500" />
+                              </span>
+                              {skill.children?.map((e) =>
+                                renderEntry(
+                                  e,
+                                  conversationId!,
+                                  handleDelete,
+                                  handleRefreshResources
+                                )
+                              )}
+                            </FileTreeFolder>
+                          </div>
+                        </ContextMenuTrigger>
+                        <SkillDraftContextMenu
+                          entry={skill}
+                          conversationId={conversationId!}
+                          onDelete={handleDelete}
+                          onRefresh={handleRefreshResources}
+                          onImport={handleImportSkill}
+                        />
+                      </ContextMenu>
+                    ))}
+                  </FileTreeFolder>
+                )}
+              </FileTree>
+            ) : (
+              <div className="flex min-h-48 flex-col items-center justify-center px-4 text-center">
+                <IconFile className="mb-2 size-8 text-muted-foreground/50" />
+                <p className="text-sm text-muted-foreground">
+                  {hasSearchQuery ? "没有匹配的资源" : "暂无资源文件"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground/80">
+                  {hasSearchQuery ? "换个关键词试试" : "产物文件会在这里展示"}
+                </p>
               </div>
-              {artifactForRenderer && Renderer ? (
-                <Renderer
-                  artifact={artifactForRenderer}
-                  className="min-h-0 min-w-0 flex-1"
-                />
-              ) : (
-                <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden p-6 text-sm text-muted-foreground">
-                  <div className="max-w-xs text-center">
-                    <IconFile className="mx-auto mb-3 size-10 text-muted-foreground/50" />
-                    <p>
-                      {selectedEntry?.entry_type === "directory"
-                        ? "这是一个文件夹"
-                        : "选择文件查看内容"}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground/80">
-                      {selectedEntry?.entry_type === "directory"
-                        ? "展开左侧目录并选择具体文件进行预览"
-                        : "可在左侧搜索或浏览资源文件"}
-                    </p>
-                  </div>
-                </div>
-              )}
+            )}
+          </ScrollArea>
+        </div>
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex min-w-0 items-center justify-between gap-3 border-b bg-background/95 px-4 py-3">
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
+                {selectedEntry && getFileIcon(selectedEntry.artifact_type)}
+                <h3
+                  className={cn(
+                    "min-w-0 truncate text-sm font-medium",
+                    ARTIFACT_DETAIL_NAME_MAX_W
+                  )}
+                  title={selectedEntry?.name ? selectedEntry.name : undefined}
+                >
+                  {selectedEntry?.name ?? "选择文件"}
+                </h3>
+              </div>
+              <div className="mt-1 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                <span className="shrink-0">{selectedTypeLabel}</span>
+                {selectedFileSize && (
+                  <>
+                    <span className="shrink-0">·</span>
+                    <span className="shrink-0">{selectedFileSize}</span>
+                  </>
+                )}
+                {selectedEntry?.path && (
+                  <>
+                    <span className="shrink-0">·</span>
+                    <span
+                      className="min-w-0 flex-1 truncate"
+                      title={selectedEntry.path}
+                    >
+                      {selectedEntry.path}
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
+          {artifactForRenderer && Renderer ? (
+            <Renderer
+              artifact={artifactForRenderer}
+              className="min-h-0 min-w-0 flex-1"
+            />
+          ) : (
+            <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden p-6 text-sm text-muted-foreground">
+              <div className="max-w-xs text-center">
+                <IconFile className="mx-auto mb-3 size-10 text-muted-foreground/50" />
+                <p>
+                  {selectedEntry?.entry_type === "directory"
+                    ? "这是一个文件夹"
+                    : "选择文件查看内容"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground/80">
+                  {selectedEntry?.entry_type === "directory"
+                    ? "展开左侧目录并选择具体文件进行预览"
+                    : "可在左侧搜索或浏览资源文件"}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </>
   )
 

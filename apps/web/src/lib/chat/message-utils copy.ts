@@ -2,7 +2,11 @@ import type { UIMessage } from "ai"
 
 import type { Message } from "@/lib/mock-data/messages"
 
-export { classifyMessageParts, type ClassifiedBlock, type ToolGroupItem } from "./message-classifier"
+export {
+  classifyMessageParts,
+  type ClassifiedBlock,
+  type ToolGroupItem,
+} from "./message-classifier"
 
 export function getTextFromUIMessage(message: UIMessage) {
   return message.parts
@@ -19,72 +23,78 @@ export function getTextFromUIMessage(message: UIMessage) {
 export function mapStoredMessagesToUIMessages(
   messages: Message[]
 ): UIMessage[] {
-  return messages.map((message): UIMessage | null => {
-    const messageMeta =
-      message.metadata && typeof message.metadata === "object"
-        ? (message.metadata as Record<string, unknown>)
-        : undefined
+  return messages
+    .map((message): UIMessage | null => {
+      const messageMeta =
+        message.metadata && typeof message.metadata === "object"
+          ? (message.metadata as Record<string, unknown>)
+          : undefined
 
-    if (message.role === "assistant") {
-      // 服务端预计算的结构化 parts（最优路径）
-      if (message.messageParts && message.messageParts.length > 0) {
-        const uiMessage: UIMessage = {
-          id: message.id,
-          role: message.role,
-          parts: message.messageParts as UIMessage["parts"],
+      if (message.role === "assistant") {
+        // 服务端预计算的结构化 parts（最优路径）
+        if (message.messageParts && message.messageParts.length > 0) {
+          const uiMessage: UIMessage = {
+            id: message.id,
+            role: message.role,
+            parts: message.messageParts as UIMessage["parts"],
+          }
+          ;(
+            uiMessage as UIMessage & { metadata?: Record<string, unknown> }
+          ).metadata = messageMeta
+          return uiMessage
         }
-          ; (uiMessage as UIMessage & { metadata?: Record<string, unknown> }).metadata =
-            messageMeta
-        return uiMessage
+
+        // 降级：纯文本
+        if (message.content) {
+          const uiMessage: UIMessage = {
+            id: message.id,
+            role: message.role,
+            parts: [
+              {
+                type: "text",
+                text: message.content,
+                state: "done" as const,
+              },
+            ],
+          }
+          ;(
+            uiMessage as UIMessage & { metadata?: Record<string, unknown> }
+          ).metadata = messageMeta
+          return uiMessage
+        }
+
+        // 流式未完成
+        if (message.streamState === "streaming") {
+          const uiMessage: UIMessage = {
+            id: message.id,
+            role: message.role,
+            parts: [],
+          }
+          ;(
+            uiMessage as UIMessage & { metadata?: Record<string, unknown> }
+          ).metadata = messageMeta
+          return uiMessage
+        }
+
+        return null
       }
 
-      // 降级：纯文本
-      if (message.content) {
-        const uiMessage: UIMessage = {
-          id: message.id,
-          role: message.role,
-          parts: [
-            {
-              type: "text",
-              text: message.content,
-              state: "done" as const,
-            },
-          ],
-        }
-          ; (uiMessage as UIMessage & { metadata?: Record<string, unknown> }).metadata =
-            messageMeta
-        return uiMessage
+      // user 等其他 role：使用 content 作为纯文本 part
+      const uiMessage: UIMessage = {
+        id: message.id,
+        role: message.role,
+        parts: [
+          {
+            type: "text",
+            text: message.content,
+            state: "done",
+          },
+        ],
       }
-
-      // 流式未完成
-      if (message.streamState === "streaming") {
-        const uiMessage: UIMessage = {
-          id: message.id,
-          role: message.role,
-          parts: [],
-        }
-          ; (uiMessage as UIMessage & { metadata?: Record<string, unknown> }).metadata =
-            messageMeta
-        return uiMessage
-      }
-
-      return null
-    }
-
-    // user 等其他 role：使用 content 作为纯文本 part
-    const uiMessage: UIMessage = {
-      id: message.id,
-      role: message.role,
-      parts: [
-        {
-          type: "text",
-          text: message.content,
-          state: "done",
-        },
-      ],
-    }
-      ; (uiMessage as UIMessage & { metadata?: Record<string, unknown> }).metadata =
-        messageMeta
-    return uiMessage
-  }).filter((message): message is UIMessage => message !== null)
+      ;(
+        uiMessage as UIMessage & { metadata?: Record<string, unknown> }
+      ).metadata = messageMeta
+      return uiMessage
+    })
+    .filter((message): message is UIMessage => message !== null)
 }

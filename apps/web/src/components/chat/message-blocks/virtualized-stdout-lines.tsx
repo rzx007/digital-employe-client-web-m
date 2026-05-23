@@ -28,7 +28,7 @@ function PlainStdoutLines({
   return (
     <pre
       className={cn(
-        "m-0 whitespace-pre-wrap break-all font-mono text-xs leading-relaxed",
+        "m-0 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap",
         isError ? "text-destructive/70" : "text-muted-foreground/70"
       )}
     >
@@ -93,7 +93,7 @@ function VirtualizedStdoutList({
             ref={measureRef}
             data-index={virtualItem.index}
             className={cn(
-              "absolute top-0 left-0 w-full whitespace-pre-wrap break-all font-mono text-xs leading-relaxed",
+              "absolute top-0 left-0 w-full font-mono text-xs leading-relaxed break-all whitespace-pre-wrap",
               isError ? "text-destructive/70" : "text-muted-foreground/70"
             )}
             style={{ transform: `translateY(${virtualItem.start}px)` }}
@@ -117,11 +117,7 @@ export function VirtualizedStdoutLines({
 
   if (lineCount < VIRTUALIZE_LINE_THRESHOLD) {
     return (
-      <PlainStdoutLines
-        text={text}
-        isError={isError}
-        showCursor={showCursor}
-      />
+      <PlainStdoutLines text={text} isError={isError} showCursor={showCursor} />
     )
   }
 

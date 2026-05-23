@@ -20,18 +20,18 @@ import logo from "@/assets/logo.png"
 import { Spinner } from "@/components/spinner"
 import { useChatStore } from "@/stores/chat-store"
 
-import { ChatPromptInput } from "@/components/chat-prompt-input"
+import { ChatComposerArea } from "./chat-composer-area"
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
 import type { SlashCommandItem } from "@/components/lexical-editor/slash-command-plugin"
 import type { MentionCandidate } from "@/components/lexical-editor/mention-plugin"
 import { ChatPanelHeader } from "./chat-panel-header"
-import { PendingMessageQueue } from "./pending-message-queue"
 import type { PendingMessage } from "@/hooks/use-pending-messages"
 import { MessageLoadingSkeleton } from "./message-loading-skeleton"
 import {
   getContactDisplayName,
   type ChatViewContact,
 } from "../shared/chat-view-shared"
+import type { HitlPatchOptions } from "@/lib/chat/hitl-abort-message-utils"
 import { ChatMessageItem } from "../messages/chat-message-item"
 
 const EMPTY_MESSAGES: UIMessage[] = []
@@ -50,12 +50,18 @@ type VirtualizedMessageListProps = {
   messages: UIMessage[]
   contact: ChatViewContact
   hasCurrentTurnEnded: boolean
+  conversationId?: string | number | null
+  streamId?: string | null
+  onHitlApproved?: (options?: HitlPatchOptions) => void
 }
 
 function VirtualizedMessageList({
   messages,
   contact,
   hasCurrentTurnEnded,
+  conversationId,
+  streamId,
+  onHitlApproved,
 }: VirtualizedMessageListProps) {
   const { scrollRef } = useStickToBottomContext()
   const lastAssistantMessageId = getLastAssistantMessageId(messages)
@@ -118,9 +124,11 @@ function VirtualizedMessageList({
               message={message}
               contact={contact}
               includeFileChanges={includeFileChanges}
-              // 供 ToolRow 延迟收起：仅最后一条 assistant + 回合未结束时不立即收起末项工具
               isLastAssistantMessage={isLastAssistantMessage}
               isTurnEnded={hasCurrentTurnEnded}
+              conversationId={conversationId}
+              streamId={streamId}
+              onHitlApproved={onHitlApproved}
             />
           </div>
         )
@@ -152,6 +160,11 @@ export function ChatPanel({
   onPendingMoveDown,
   conversationId,
   onAttachmentsChange,
+  streamId,
+  composerMessages,
+  hitlInterrupted,
+  hitlPayload,
+  onHitlApproved,
   className,
   ...props
 }: React.ComponentProps<"div"> & {
@@ -177,6 +190,14 @@ export function ChatPanel({
   onPendingMoveDown?: (id: string) => void
   conversationId?: string | number | null
   onAttachmentsChange?: (paths: string[]) => void
+  streamId?: string | null
+  hitlPayload?: {
+    action_requests: Array<{ name: string; args: Record<string, unknown> }>
+    review_configs: unknown[]
+  } | null
+  composerMessages?: UIMessage[]
+  hitlInterrupted?: boolean
+  onHitlApproved?: (options?: HitlPatchOptions) => void
 }) {
   const contactDisplayName = contact
     ? getContactDisplayName(contact)
@@ -294,6 +315,9 @@ export function ChatPanel({
                     messages={displayMessages}
                     contact={contact}
                     hasCurrentTurnEnded={hasCurrentTurnEnded}
+                    conversationId={conversationId}
+                    streamId={streamId}
+                    onHitlApproved={onHitlApproved}
                   />
                 )}
 
@@ -317,36 +341,34 @@ export function ChatPanel({
               <ConversationScrollButton />
             </Conversation>
 
-            <div className="mx-auto w-full max-w-4xl border-none py-4 px-1">
-              {pendingMessages && pendingMessages.length > 0 && (
-                <div className="mx-auto w-[98%]">
-                  <PendingMessageQueue
-                    queue={pendingMessages}
-                    onRemove={onPendingRemove ?? (() => { })}
-                    onSendNow={onPendingSendNow ?? (() => { })}
-                    onMoveUp={onPendingMoveUp ?? (() => { })}
-                    onMoveDown={onPendingMoveDown ?? (() => { })}
-                  />
-                </div>
-              )}
-              <ChatPromptInput
-                value={inputValue}
-                onChange={onInputChange}
-                onSubmit={onSend}
-                onStop={onStop}
+            <div className="mx-auto w-full max-w-4xl border-none px-1 py-4">
+              <ChatComposerArea
+                messages={composerMessages ?? messages}
+                conversationId={conversationId!}
+                streamId={streamId ?? null}
+                inputValue={inputValue}
+                onInputChange={onInputChange}
+                onSend={onSend}
+                onStop={() => onStop?.()}
+                onHitlApproved={onHitlApproved}
+                hitlInterrupted={hitlInterrupted ?? false}
+                hitlPayload={hitlPayload}
                 status={status}
-                disabled={isSubmitDisabled}
+                submitDisabled={isSubmitDisabled}
                 placeholder="请输入任务，然后交给我, 键入 / 指定调用技能"
                 size="compact"
                 className="w-full"
                 slashCommands={slashCommands}
                 mentionCandidates={mentionCandidates}
-                conversationId={conversationId}
                 onAttachmentsChange={onAttachmentsChange}
+                pendingMessages={pendingMessages}
+                onPendingRemove={onPendingRemove}
+                onPendingSendNow={onPendingSendNow}
+                onPendingMoveUp={onPendingMoveUp}
+                onPendingMoveDown={onPendingMoveDown}
+                error={error}
+                pendingQueueClassName="mx-auto w-[98%]"
               />
-              {error && (
-                <p className="mt-2 text-xs text-destructive">{error.message}</p>
-              )}
             </div>
           </>
         </>

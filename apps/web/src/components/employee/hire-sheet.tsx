@@ -96,7 +96,8 @@ export function HireSheet({
     [selectedMcpIds, allMcpList]
   )
   const effectiveSkillIds = React.useMemo(
-    () => selectedSkillIds.filter((id) => allSkillList.some((s) => s.id === id)),
+    () =>
+      selectedSkillIds.filter((id) => allSkillList.some((s) => s.id === id)),
     [selectedSkillIds, allSkillList]
   )
 
@@ -109,8 +110,12 @@ export function HireSheet({
   }
 
   const handlePickerConfirm = (mcpIds: number[], skillIds: number[]) => {
-    setSelectedMcpIds(mcpIds.filter((id) => allMcpList.some((m) => m.id === id)))
-    setSelectedSkillIds(skillIds.filter((id) => allSkillList.some((s) => s.id === id)))
+    setSelectedMcpIds(
+      mcpIds.filter((id) => allMcpList.some((m) => m.id === id))
+    )
+    setSelectedSkillIds(
+      skillIds.filter((id) => allSkillList.some((s) => s.id === id))
+    )
   }
 
   const handleSubmit = async () => {

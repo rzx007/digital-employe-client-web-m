@@ -77,7 +77,7 @@ export function EndpointConfig({
     } catch (err) {
       setStatus("error")
       toast.error(
-        err instanceof Error ? err.message : "保存通讯配置失败，请重试",
+        err instanceof Error ? err.message : "保存通讯配置失败，请重试"
       )
       setTimeout(() => setStatus("idle"), 2000)
     }
@@ -97,7 +97,12 @@ export function EndpointConfig({
           : undefined
       }
     >
-      <div className={cn("mx-auto w-full", isElectron ? "mt-5 w-[95%]" : "max-w-md")}>
+      <div
+        className={cn(
+          "mx-auto w-full",
+          isElectron ? "mt-5 w-[95%]" : "max-w-md"
+        )}
+      >
         <form onSubmit={handleValidate} className="space-y-5">
           <div className="flex flex-col gap-1.5">
             <Label className="mb-4 text-sm font-bold">协议</Label>

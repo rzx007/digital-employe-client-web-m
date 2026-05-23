@@ -1,7 +1,4 @@
-import {
-  getRecentConversationsKey,
-  type RecentConversationItem,
-} from "./types"
+import { getRecentConversationsKey, type RecentConversationItem } from "./types"
 
 const LEGACY_CURATOR_PRIMARY_ID = "recent:curator-primary"
 const OLD_KEY = "app:recent-conversations"
@@ -16,7 +13,7 @@ function migrateOldKeyIfNeeded(workspaceId: number) {
 }
 
 export function loadRecentConversations(
-  workspaceId: number,
+  workspaceId: number
 ): RecentConversationItem[] {
   try {
     const raw = localStorage.getItem(getRecentConversationsKey(workspaceId))
@@ -39,12 +36,12 @@ export function loadRecentConversations(
 
 export function saveRecentConversations(
   workspaceId: number,
-  items: RecentConversationItem[],
+  items: RecentConversationItem[]
 ) {
   try {
     localStorage.setItem(
       getRecentConversationsKey(workspaceId),
-      JSON.stringify(items),
+      JSON.stringify(items)
     )
   } catch {
     // ignore storage errors
@@ -53,7 +50,7 @@ export function saveRecentConversations(
 
 /** Load, migrate legacy rows, persist, return cleaned list. */
 export function loadAndMigrateRecentConversations(
-  workspaceId: number,
+  workspaceId: number
 ): RecentConversationItem[] {
   migrateOldKeyIfNeeded(workspaceId)
   const loaded = loadRecentConversations(workspaceId)

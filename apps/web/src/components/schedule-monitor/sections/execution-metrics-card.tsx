@@ -36,8 +36,8 @@ export function ExecutionMetricsCard({
         <>
           <p
             className={cn(
-              "mt-2 text-2xl font-semibold tabular-nums tracking-tight",
-              rateTone(rate),
+              "mt-2 text-2xl font-semibold tracking-tight tabular-nums",
+              rateTone(rate)
             )}
           >
             {formatRate(rate)}
@@ -51,25 +51,25 @@ export function ExecutionMetricsCard({
             <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
               <div className="flex justify-between gap-2">
                 <dt>成功</dt>
-                <dd className="tabular-nums text-foreground">
+                <dd className="text-foreground tabular-nums">
                   {metrics.success}
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
                 <dt>失败</dt>
-                <dd className="tabular-nums text-foreground">
+                <dd className="text-foreground tabular-nums">
                   {metrics.failed}
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
                 <dt>超时</dt>
-                <dd className="tabular-nums text-foreground">
+                <dd className="text-foreground tabular-nums">
                   {metrics.timeout}
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
                 <dt>取消</dt>
-                <dd className="tabular-nums text-foreground">
+                <dd className="text-foreground tabular-nums">
                   {metrics.cancelled}
                 </dd>
               </div>

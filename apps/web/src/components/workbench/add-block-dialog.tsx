@@ -36,7 +36,10 @@ import {
   normalizeQueryInterfaceForRequest,
 } from "@/lib/workbench/query-interface-resolve"
 import { mergeHeadersJsonOverride } from "@/lib/workbench/http-headers"
-import { analyzeResponseFields, fetchSampleData } from "@/lib/workbench/response-field-analyzer"
+import {
+  analyzeResponseFields,
+  fetchSampleData,
+} from "@/lib/workbench/response-field-analyzer"
 import { DataVisualizer } from "./data-visualizer"
 
 interface AddBlockDialogProps {
@@ -50,14 +53,15 @@ interface AddBlockDialogProps {
   onAdd: (interfaces: QueryInterface[]) => void
 }
 
-const CHART_TYPES: { value: ChartDisplayType; label: string; icon: string }[] = [
-  { value: "bar", label: "柱状图", icon: "📊" },
-  { value: "pie", label: "饼图", icon: "🥧" },
-  { value: "line", label: "折线图", icon: "📈" },
-  { value: "table", label: "表格", icon: "📋" },
-  { value: "metric", label: "数值", icon: "🔢" },
-  { value: "list", label: "列表", icon: "📃" },
-]
+const CHART_TYPES: { value: ChartDisplayType; label: string; icon: string }[] =
+  [
+    { value: "bar", label: "柱状图", icon: "📊" },
+    { value: "pie", label: "饼图", icon: "🥧" },
+    { value: "line", label: "折线图", icon: "📈" },
+    { value: "table", label: "表格", icon: "📋" },
+    { value: "metric", label: "数值", icon: "🔢" },
+    { value: "list", label: "列表", icon: "📃" },
+  ]
 
 type WorkbenchSelectSkill = MetadataSkill & {
   displayNameZh?: string | null
@@ -85,7 +89,7 @@ function SkillSelectRow({ skill }: { skill: MetadataSkill }) {
   const title = skillTitleZh(skill)
   const src = workbenchSourceFromSkill(skill)
   return (
-    <span className="flex min-w-0 max-w-full items-center gap-1.5">
+    <span className="flex max-w-full min-w-0 items-center gap-1.5">
       <span
         className="min-w-0 flex-1 truncate"
         title={title !== skill.skillName ? skill.skillName : undefined}
@@ -95,7 +99,7 @@ function SkillSelectRow({ skill }: { skill: MetadataSkill }) {
       <span
         className={cn(
           "size-1.5 shrink-0 rounded-full ring-1 ring-background",
-          src === "local" ? "bg-amber-500" : "bg-sky-500",
+          src === "local" ? "bg-amber-500" : "bg-sky-500"
         )}
         title={src === "local" ? "本地技能" : "远程技能"}
         aria-hidden
@@ -122,10 +126,16 @@ export function AddBlockDialog({
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [interfaces, setInterfaces] = React.useState<QueryInterface[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
-  const [baseUrlOverrides, setBaseUrlOverrides] = React.useState<Record<string, string>>({})
-  const [chartTypeSelections, setChartTypeSelections] = React.useState<Record<string, ChartDisplayType>>({})
+  const [baseUrlOverrides, setBaseUrlOverrides] = React.useState<
+    Record<string, string>
+  >({})
+  const [chartTypeSelections, setChartTypeSelections] = React.useState<
+    Record<string, ChartDisplayType>
+  >({})
   /** Extra JSON object merged into iface.headers for preview & save */
-  const [headersJsonOverrides, setHeadersJsonOverrides] = React.useState<Record<string, string>>({})
+  const [headersJsonOverrides, setHeadersJsonOverrides] = React.useState<
+    Record<string, string>
+  >({})
 
   /** 切换技能或关闭弹窗时中止上一轮的解析请求（/chat/send） */
   const parseAbortRef = React.useRef<AbortController | null>(null)
@@ -134,14 +144,14 @@ export function AddBlockDialog({
     if (skills.length === 0) return null
     if (!selectedSkillKey) return skills[0]
     const found = skills.find(
-      (s, i) => skillSelectKey(s, i) === selectedSkillKey,
+      (s, i) => skillSelectKey(s, i) === selectedSkillKey
     )
     return found ?? skills[0]
   }, [skills, selectedSkillKey])
 
   const cacheKey = React.useMemo(
     () => getSkillInterfacesCacheKey(employeeId, skills, selectedSkill),
-    [employeeId, skills, selectedSkill],
+    [employeeId, skills, selectedSkill]
   )
 
   const applyChartDefaults = React.useCallback((list: QueryInterface[]) => {
@@ -179,7 +189,7 @@ export function AddBlockDialog({
           employeeId,
           [selectedSkill],
           chatEmployeeId,
-          { signal: ac.signal },
+          { signal: ac.signal }
         )
         if (parseAbortRef.current !== ac) return
         setCachedParsedInterfaces(cacheKey, parsed)
@@ -207,7 +217,7 @@ export function AddBlockDialog({
       cacheKey,
       applyChartDefaults,
       chatEmployeeId,
-    ],
+    ]
   )
 
   React.useEffect(() => {
@@ -220,8 +230,7 @@ export function AddBlockDialog({
   React.useEffect(() => {
     if (!open || skills.length === 0) return
     setSelectedSkillKey((prev) => {
-      const valid =
-        prev && skills.some((s, i) => skillSelectKey(s, i) === prev)
+      const valid = prev && skills.some((s, i) => skillSelectKey(s, i) === prev)
       if (valid && prev) return prev
       return skillSelectKey(skills[0], 0)
     })
@@ -293,7 +302,10 @@ export function AddBlockDialog({
       const configIface: QueryInterface = {
         ...normalizeQueryInterfaceForRequest(iface, baseUrlOverrides[iface.id]),
         chartType,
-        headers: mergeHeadersJsonOverride(iface.headers, headersJsonOverrides[iface.id]),
+        headers: mergeHeadersJsonOverride(
+          iface.headers,
+          headersJsonOverrides[iface.id]
+        ),
       }
 
       // Fetch sample data first
@@ -315,7 +327,10 @@ export function AddBlockDialog({
 
       if (sampleData) {
         try {
-          const fieldBinding = await analyzeResponseFields(configIface, sampleData)
+          const fieldBinding = await analyzeResponseFields(
+            configIface,
+            sampleData
+          )
           configIface.fieldBinding = fieldBinding
         } catch (e) {
           console.error("Failed to analyze response fields:", e)
@@ -351,7 +366,9 @@ export function AddBlockDialog({
         <DialogHeader className="shrink-0 space-y-1 border-b border-border/60 bg-muted/20 px-6 py-4 text-left">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-1">
-              <DialogTitle className="text-base font-semibold tracking-tight">添加数据模块</DialogTitle>
+              <DialogTitle className="text-base font-semibold tracking-tight">
+                添加数据模块
+              </DialogTitle>
               <DialogDescription className="text-xs leading-relaxed">
                 下方列表为当前技能解析出的接口（技能来源：工作空间全部远程技能与本地技能，与是否绑定数字员工无关）；切换上方技能将重新解析；勾选后可配置地址与图表并预览（列表已缓存，可点刷新）
               </DialogDescription>
@@ -365,14 +382,16 @@ export function AddBlockDialog({
               onClick={() => void loadInterfaces(true)}
               title="重新从技能解析接口列表"
             >
-              <IconRefresh className={cn("size-3.5", isLoading && "animate-spin")} />
+              <IconRefresh
+                className={cn("size-3.5", isLoading && "animate-spin")}
+              />
               刷新
             </Button>
           </div>
         </DialogHeader>
 
         <div className="shrink-0 border-b border-border/60 bg-muted/10 px-6 py-3">
-          <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <label className="mb-1.5 block text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
             选择技能（切换后将重新解析该技能）
           </label>
           <Select
@@ -414,137 +433,147 @@ export function AddBlockDialog({
             </div>
           ) : interfaces.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border/80 bg-muted/15 py-12 text-center">
-              <p className="text-sm text-muted-foreground">未从技能中发现查询接口</p>
+              <p className="text-sm text-muted-foreground">
+                未从技能中发现查询接口
+              </p>
               <p className="mt-1 px-4 text-xs text-muted-foreground/80">
                 请在技能 Prompt 中写明以 http:// 或 https:// 开头的完整接口地址
               </p>
             </div>
           ) : (
             <div className="space-y-3 pr-1">
-                {interfaces.map((iface) => (
-                  <div
-                    key={iface.id}
-                    className={cn(
-                      "rounded-xl border p-4 transition-all",
-                      selectedIds.has(iface.id)
-                        ? "border-primary/60 bg-primary/[0.06] shadow-sm ring-1 ring-primary/15"
-                        : "border-border/80 bg-card/40 hover:border-border hover:bg-muted/25"
-                    )}
-                  >
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        checked={selectedIds.has(iface.id)}
-                        onCheckedChange={() => handleToggle(iface.id)}
-                        className="mt-0.5"
-                      />
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium text-sm leading-snug">{iface.name}</span>
-                        </div>
-                        <p className="text-xs leading-relaxed text-muted-foreground">
-                          {iface.description || "无描述"}
-                        </p>
-                        <p className="break-all rounded-md bg-muted/50 px-2 py-1.5 font-mono text-[11px] leading-relaxed text-muted-foreground">
-                          {iface.path}
-                        </p>
+              {interfaces.map((iface) => (
+                <div
+                  key={iface.id}
+                  className={cn(
+                    "rounded-xl border p-4 transition-all",
+                    selectedIds.has(iface.id)
+                      ? "border-primary/60 bg-primary/[0.06] shadow-sm ring-1 ring-primary/15"
+                      : "border-border/80 bg-card/40 hover:border-border hover:bg-muted/25"
+                  )}
+                >
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      checked={selectedIds.has(iface.id)}
+                      onCheckedChange={() => handleToggle(iface.id)}
+                      className="mt-0.5"
+                    />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm leading-snug font-medium">
+                          {iface.name}
+                        </span>
+                      </div>
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {iface.description || "无描述"}
+                      </p>
+                      <p className="rounded-md bg-muted/50 px-2 py-1.5 font-mono text-[11px] leading-relaxed break-all text-muted-foreground">
+                        {iface.path}
+                      </p>
 
-                        {selectedIds.has(iface.id) && (
-                          <div className="space-y-2 pt-1">
-                            {/* Chart type selection */}
-                            <div>
-                              <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                                展示形式
-                              </label>
-                              <div className="flex flex-wrap gap-1.5">
-                                {CHART_TYPES.map((ct) => (
-                                  <button
-                                    key={ct.value}
-                                    type="button"
-                                    onClick={() => handleChartTypeChange(iface.id, ct.value)}
-                                    className={cn(
-                                      "flex min-h-8 flex-1 items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-xs transition-colors",
-                                      chartTypeSelections[iface.id] === ct.value
-                                        ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                                        : "border-border/80 bg-background hover:bg-muted/80"
-                                    )}
-                                  >
-                                    <span>{ct.icon}</span>
-                                    <span>{ct.label}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* Server URL */}
-                            <div>
-                              <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                                服务器地址（可选覆盖）
-                              </label>
-                              <Input
-                                placeholder={
-                                  iface.path.startsWith("http")
-                                    ? extractBaseUrlFromPath(iface.path)
-                                    : "http://192.168.1.100:8080"
-                                }
-                                value={baseUrlOverrides[iface.id] || ""}
-                                onChange={(e) =>
-                                  handleBaseUrlChange(iface.id, e.target.value)
-                                }
-                                className="h-8 text-xs font-mono"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                                请求头（JSON，可选）
-                              </label>
-                              <Textarea
-                                placeholder='{"Authorization":"Bearer …"}'
-                                value={headersJsonOverrides[iface.id] ?? ""}
-                                onChange={(e) =>
-                                  setHeadersJsonOverrides((prev) => ({
-                                    ...prev,
-                                    [iface.id]: e.target.value,
-                                  }))
-                                }
-                                className="min-h-[52px] font-mono text-[11px] leading-relaxed"
-                                rows={2}
-                              />
-                              <p className="mt-1 text-[10px] text-muted-foreground">
-                                与技能解析出的请求头合并；预览与添加后请求均会带上
-                              </p>
-                            </div>
-
-                            {/* Preview */}
-                            <div>
-                              <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                                预览
-                              </label>
-                              <div
-                                className="overflow-hidden rounded-lg border border-border/80 bg-muted/20 ring-1 ring-border/30"
-                                style={{ height: "140px" }}
-                              >
-                                <DataVisualizer
-                                  queryInterface={{
-                                    ...normalizeQueryInterfaceForRequest(iface, baseUrlOverrides[iface.id]),
-                                    chartType: chartTypeSelections[iface.id] || "bar",
-                                    headers: mergeHeadersJsonOverride(
-                                      iface.headers,
-                                      headersJsonOverrides[iface.id]
-                                    ),
-                                  }}
-                                  className="text-xs"
-                                  title={iface.name}
-                                  embedded
-                                />
-                              </div>
+                      {selectedIds.has(iface.id) && (
+                        <div className="space-y-2 pt-1">
+                          {/* Chart type selection */}
+                          <div>
+                            <label className="mb-1.5 block text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                              展示形式
+                            </label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {CHART_TYPES.map((ct) => (
+                                <button
+                                  key={ct.value}
+                                  type="button"
+                                  onClick={() =>
+                                    handleChartTypeChange(iface.id, ct.value)
+                                  }
+                                  className={cn(
+                                    "flex min-h-8 flex-1 items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-xs transition-colors",
+                                    chartTypeSelections[iface.id] === ct.value
+                                      ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                                      : "border-border/80 bg-background hover:bg-muted/80"
+                                  )}
+                                >
+                                  <span>{ct.icon}</span>
+                                  <span>{ct.label}</span>
+                                </button>
+                              ))}
                             </div>
                           </div>
-                        )}
-                      </div>
+
+                          {/* Server URL */}
+                          <div>
+                            <label className="mb-1.5 block text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                              服务器地址（可选覆盖）
+                            </label>
+                            <Input
+                              placeholder={
+                                iface.path.startsWith("http")
+                                  ? extractBaseUrlFromPath(iface.path)
+                                  : "http://192.168.1.100:8080"
+                              }
+                              value={baseUrlOverrides[iface.id] || ""}
+                              onChange={(e) =>
+                                handleBaseUrlChange(iface.id, e.target.value)
+                              }
+                              className="h-8 font-mono text-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1.5 block text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                              请求头（JSON，可选）
+                            </label>
+                            <Textarea
+                              placeholder='{"Authorization":"Bearer …"}'
+                              value={headersJsonOverrides[iface.id] ?? ""}
+                              onChange={(e) =>
+                                setHeadersJsonOverrides((prev) => ({
+                                  ...prev,
+                                  [iface.id]: e.target.value,
+                                }))
+                              }
+                              className="min-h-[52px] font-mono text-[11px] leading-relaxed"
+                              rows={2}
+                            />
+                            <p className="mt-1 text-[10px] text-muted-foreground">
+                              与技能解析出的请求头合并；预览与添加后请求均会带上
+                            </p>
+                          </div>
+
+                          {/* Preview */}
+                          <div>
+                            <label className="mb-1.5 block text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                              预览
+                            </label>
+                            <div
+                              className="overflow-hidden rounded-lg border border-border/80 bg-muted/20 ring-1 ring-border/30"
+                              style={{ height: "140px" }}
+                            >
+                              <DataVisualizer
+                                queryInterface={{
+                                  ...normalizeQueryInterfaceForRequest(
+                                    iface,
+                                    baseUrlOverrides[iface.id]
+                                  ),
+                                  chartType:
+                                    chartTypeSelections[iface.id] || "bar",
+                                  headers: mergeHeadersJsonOverride(
+                                    iface.headers,
+                                    headersJsonOverrides[iface.id]
+                                  ),
+                                }}
+                                className="text-xs"
+                                title={iface.name}
+                                embedded
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                ))}
+                </div>
+              ))}
             </div>
           )}
         </div>

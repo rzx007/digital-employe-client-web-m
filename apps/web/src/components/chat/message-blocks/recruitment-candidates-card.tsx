@@ -106,8 +106,7 @@ function RecruitmentCandidatesCardInner({
 
   if (!payload && !isRunning) return null
 
-  const cfg =
-    STATE_CONFIG[state ?? ""] ?? STATE_CONFIG["output-available"]
+  const cfg = STATE_CONFIG[state ?? ""] ?? STATE_CONFIG["output-available"]
 
   return (
     <div

@@ -1,13 +1,26 @@
-import { useState, useCallback, useMemo, type ComponentProps } from "react"
+import {
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useRef,
+  type ComponentProps,
+} from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useChat } from "@ai-sdk/react"
 import type { FileUIPart } from "ai"
 
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
-import { useCreateConversationMutation } from "@/hooks/use-chat-queries"
+import {
+  useCreateConversationMutation,
+  useMessagesQuery,
+} from "@/hooks/use-chat-queries"
+import { useConversationSession } from "@/hooks/use-conversation-session"
 import { useChatStore } from "@/stores/chat-store"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
+import { dedupeHitlPartsInMessages } from "@/lib/chat/hitl-abort-message-utils"
+import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 
 import { ChatPanel } from "../panel/chat-panel"
 import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
@@ -15,7 +28,6 @@ import {
   cancelConversationStream,
   uploadConversationFile,
 } from "@/api/conversation"
-import { chatKeys } from "@/lib/query-keys/chat"
 import { toast } from "sonner"
 
 async function uploadDraftFiles(
@@ -66,10 +78,28 @@ export function DraftChatView({
   const [mentions, setMentions] = useState<Array<{ id: string; name: string }>>(
     []
   )
+  const conversationIdRef = useRef<string | number | null>(null)
   const createConversationMutation = useCreateConversationMutation()
   const queryClient = useQueryClient()
 
-  const { messages, sendMessage, status, error, stop } = useChat({
+  const { data: storedMessages = [] } = useMessagesQuery(selectedConversationId)
+
+  const initialMessages = useMemo(
+    () => mapStoredMessagesToUIMessages(storedMessages),
+    [storedMessages]
+  )
+
+  const onStreamFinishRef = useRef<() => void>(() => {})
+
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    status,
+    error,
+    stop,
+    resumeStream,
+  } = useChat({
     id: selectedContactId
       ? `draft:${selectedContactId}:${draftSessionKey}`
       : `draft:chat-view:${draftSessionKey}`,
@@ -80,13 +110,21 @@ export function DraftChatView({
       })
     },
     onFinish: () => {
-      const conversationId = useChatStore.getState().selectedConversationId
-      if (!conversationId) return
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.messages(String(conversationId)),
-      })
+      onStreamFinishRef.current()
     },
   })
+
+  const session = useConversationSession({
+    conversationId: selectedConversationId,
+    storedMessages,
+    initialMessages,
+    status,
+    setMessages,
+    resumeStream,
+    queryClient,
+  })
+
+  onStreamFinishRef.current = session.onStreamFinish
 
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
@@ -110,11 +148,14 @@ export function DraftChatView({
       return
     }
     stop()
+    chatTransport.cancelReconnect()
     const conversationId = useChatStore.getState().selectedConversationId
     if (conversationId) {
       try {
         await cancelConversationStream(conversationId)
-      } catch {}
+      } catch {
+        // ignore cancel errors
+      }
     }
   }, [createConversationMutation, stop])
 
@@ -127,6 +168,8 @@ export function DraftChatView({
       const messageText =
         (typeof message === "string" ? message : message.text)?.trim() ?? ""
       if (!messageText) return
+
+      session.prepareOutboundMessage()
 
       const pendingMetaBase = {
         command: command ? { id: command.id, title: command.title } : undefined,
@@ -146,7 +189,10 @@ export function DraftChatView({
 
           conversationId = createdConversation.id
           setSelectedConversationId(conversationId)
+          conversationIdRef.current = conversationId
         }
+
+        conversationIdRef.current = conversationId
 
         let uploadedPaths: string[] = []
         if (typeof message !== "string" && message.files?.length) {
@@ -189,6 +235,7 @@ export function DraftChatView({
       selectedContact,
       sendMessage,
       setSelectedConversationId,
+      session,
     ]
   )
 
@@ -230,11 +277,17 @@ export function DraftChatView({
     [isBusy, enqueue, command, mentions, doSend]
   )
 
+  const messagesForHitl = useMemo(
+    () => dedupeHitlPartsInMessages(messages),
+    [messages]
+  )
+
   return (
     <ChatPanel
       contact={contact}
       title="新对话"
       messages={messages}
+      composerMessages={messagesForHitl}
       inputValue={inputValue}
       status={chatStatus}
       error={error}
@@ -252,6 +305,10 @@ export function DraftChatView({
       onPendingMoveUp={pendingMoveUp}
       onPendingMoveDown={pendingMoveDown}
       conversationId={selectedConversationId}
+      streamId={session.streamId}
+      hitlInterrupted={session.hitlInterrupted}
+      hitlPayload={session.hitlPayload}
+      onHitlApproved={session.onHitlApproved}
       onAttachmentsChange={() => {}}
       className={className}
       {...props}

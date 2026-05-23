@@ -1,12 +1,12 @@
-import { BigInteger } from 'jsbn'
+import { BigInteger } from "jsbn"
 
 function bigIntToMinTwosComplementsHex(bigIntegerValue: BigInteger): string {
   let h = bigIntegerValue.toString(16)
-  if (h.substr(0, 1) !== '-') {
+  if (h.substr(0, 1) !== "-") {
     if (h.length % 2 === 1) {
-      h = '0' + h
+      h = "0" + h
     } else if (!h.match(/^[0-7]/)) {
-      h = '00' + h
+      h = "00" + h
     }
   } else {
     const hPos = h.substr(1)
@@ -16,13 +16,13 @@ function bigIntToMinTwosComplementsHex(bigIntegerValue: BigInteger): string {
     } else if (!h.match(/^[0-7]/)) {
       xorLen += 2
     }
-    let hMask = ''
+    let hMask = ""
     for (let i = 0; i < xorLen; i++) {
-      hMask += 'f'
+      hMask += "f"
     }
     const biMask = new BigInteger(hMask, 16)
     const biNeg = biMask.xor(bigIntegerValue).add(BigInteger.ONE)
-    h = biNeg.toString(16).replace(/^-/, '')
+    h = biNeg.toString(16).replace(/^-/, "")
   }
   return h
 }
@@ -40,9 +40,9 @@ class ASN1Object {
   constructor() {
     this.isModified = true
     this.hTLV = null
-    this.hT = '00'
-    this.hL = '00'
-    this.hV = ''
+    this.hT = "00"
+    this.hL = "00"
+    this.hV = ""
   }
 
   /**
@@ -52,7 +52,7 @@ class ASN1Object {
     const n = this.hV.length / 2
     let hN = n.toString(16)
     if (hN.length % 2 === 1) {
-      hN = '0' + hN
+      hN = "0" + hN
     }
     if (n < 128) {
       return hN
@@ -77,7 +77,7 @@ class ASN1Object {
   }
 
   getFreshValueHex(): string {
-    return ''
+    return ""
   }
 }
 
@@ -88,7 +88,7 @@ class DERInteger extends ASN1Object {
   constructor(options?: { bigint: BigInteger }) {
     super()
 
-    this.hT = '02'
+    this.hT = "02"
     if (options && options.bigint) {
       this.hTLV = null
       this.isModified = true
@@ -110,7 +110,7 @@ class DERSequence extends ASN1Object {
   constructor(options?: { array: ASN1Object[] }) {
     super()
 
-    this.hT = '30'
+    this.hT = "30"
     this.asn1Array = []
     if (options && options.array) {
       this.asn1Array = options.array
@@ -118,7 +118,7 @@ class DERSequence extends ASN1Object {
   }
 
   getFreshValueHex(): string {
-    let h = ''
+    let h = ""
     for (let i = 0; i < this.asn1Array.length; i++) {
       const asn1Obj = this.asn1Array[i]
       h += asn1Obj.getEncodedHex()
@@ -132,7 +132,7 @@ class DERSequence extends ASN1Object {
  * get byte length for ASN.1 L(length) bytes
  */
 function getByteLengthOfL(s: string, pos: number): number {
-  if (s.substring(pos + 2, pos + 3) !== '8') return 1
+  if (s.substring(pos + 2, pos + 3) !== "8") return 1
   const i = parseInt(s.substring(pos + 3, pos + 4), 10)
   if (i === 0) return -1 // length octet '80' indefinite length
   if (i > 0 && i < 10) return i + 1 // including '8?' octet;
@@ -144,7 +144,7 @@ function getByteLengthOfL(s: string, pos: number): number {
  */
 function getHexOfL(s: string, pos: number): string {
   const len = getByteLengthOfL(s, pos)
-  if (len < 1) return ''
+  if (len < 1) return ""
   return s.substring(pos + 2, pos + 2 + len * 2)
 }
 
@@ -153,7 +153,7 @@ function getHexOfL(s: string, pos: number): string {
  */
 function getIntOfL(s: string, pos: number): number {
   const hLength = getHexOfL(s, pos)
-  if (hLength === '') return -1
+  if (hLength === "") return -1
   let bi
   if (parseInt(hLength.substring(0, 1), 10) < 8) {
     bi = new BigInteger(hLength, 16)

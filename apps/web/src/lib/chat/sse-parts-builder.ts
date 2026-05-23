@@ -221,10 +221,7 @@ function getLcSourceFromMessageData(data: unknown): string | null {
   return typeof src === "string" ? src : null
 }
 
-function closeOpenTextPart(
-  parts: AnyPart[],
-  state: PartsBuilderState
-) {
+function closeOpenTextPart(parts: AnyPart[], state: PartsBuilderState) {
   if (state.currentTextPartIndex === null) {
     return
   }
@@ -283,8 +280,7 @@ function applyAIMessageChunk(
         const partIndex = state.toolPartIndicesByCallId.get(toolCallId)
         if (partIndex !== undefined && isToolPart(parts[partIndex])) {
           const toolPart = parts[partIndex] as Record<string, unknown>
-          const name =
-            state.toolNamesByCallId.get(toolCallId) ?? "unknown"
+          const name = state.toolNamesByCallId.get(toolCallId) ?? "unknown"
           toolPart.state = "output-available"
           toolPart.output = {
             text: accumulated,
@@ -355,7 +351,8 @@ function applyAIMessageChunk(
     if (tcId) state.toolNamesByCallId.set(resolvedId, tcName ?? resolvedId)
 
     if (!state.toolPartIndicesByCallId.has(resolvedId)) {
-      const toolName = tcName ?? state.toolNamesByCallId.get(resolvedId) ?? "unknown"
+      const toolName =
+        tcName ?? state.toolNamesByCallId.get(resolvedId) ?? "unknown"
       parts.push({
         type: `tool-${toolName}`,
         toolCallId: resolvedId,
@@ -376,15 +373,11 @@ function applyAIMessageChunk(
     ? kwargs.invalid_tool_calls
     : []
 
-  const deltas = toolCallChunks.filter(
-    (tcc) => typeof tcc.args === "string"
-  )
+  const deltas = toolCallChunks.filter((tcc) => typeof tcc.args === "string")
   const fallbackDeltas =
     deltas.length > 0
       ? []
-      : invalidToolCalls.filter(
-        (itc) => typeof itc.args === "string"
-      )
+      : invalidToolCalls.filter((itc) => typeof itc.args === "string")
 
   const allDeltas = [...deltas, ...fallbackDeltas]
   for (let i = 0; i < allDeltas.length; i++) {
@@ -412,7 +405,8 @@ function applyAIMessageChunk(
     if (tcName) state.toolNamesByCallId.set(resolvedId, tcName)
 
     if (!state.toolPartIndicesByCallId.has(resolvedId)) {
-      const toolName = tcName ?? state.toolNamesByCallId.get(resolvedId) ?? "unknown"
+      const toolName =
+        tcName ?? state.toolNamesByCallId.get(resolvedId) ?? "unknown"
       parts.push({
         type: `tool-${toolName}`,
         toolCallId: resolvedId,
@@ -479,9 +473,7 @@ function applyToolMessage(
       toolCallId,
       state: isErr ? "output-error" : "output-available",
       input: state.toolInputParsed.get(toolCallId) ?? undefined,
-      output: isErr
-        ? undefined
-        : { text: outputText, status, toolName: name },
+      output: isErr ? undefined : { text: outputText, status, toolName: name },
       errorText: isErr ? outputText : undefined,
     } as AnyPart)
     state.toolPartIndicesByCallId.set(toolCallId, parts.length - 1)
@@ -526,7 +518,11 @@ export function finalizeStreamingParts(messages: UIMessage[]): UIMessage[] {
     if (msg.role !== "assistant") return msg
     let changed = false
     const newParts = msg.parts.map((part) => {
-      if (part.type === "text" && "state" in part && part.state === "streaming") {
+      if (
+        part.type === "text" &&
+        "state" in part &&
+        part.state === "streaming"
+      ) {
         changed = true
         return { ...part, state: "done" as const }
       }

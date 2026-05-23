@@ -1,9 +1,7 @@
 import * as React from "react"
 import { IconLoader2 } from "@tabler/icons-react"
 import { toast } from "sonner"
-import {
-  Badge,
-} from "@workspace/ui/components/badge"
+import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Label } from "@workspace/ui/components/label"
 import { Separator } from "@workspace/ui/components/separator"
@@ -21,11 +19,7 @@ import {
 } from "@workspace/ui/components/avatar"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { createDiceBearAvatar } from "@/lib/avatar"
-import {
-  fetchMcpList,
-  fetchSkillList,
-  updateEmployee,
-} from "@/api/employee"
+import { fetchMcpList, fetchSkillList, updateEmployee } from "@/api/employee"
 import type {
   McpListItem,
   MetadataMcp,
@@ -60,7 +54,7 @@ interface ApiSkillResponse {
 }
 
 function convertApiSkillsToMetadataSkills(
-  apiSkills: ApiSkillResponse[] | undefined,
+  apiSkills: ApiSkillResponse[] | undefined
 ): MetadataSkill[] {
   if (!apiSkills) return []
   return apiSkills.map((s) => ({
@@ -89,7 +83,7 @@ export function ShiftEditSheet({
 }: ShiftEditSheetProps) {
   const queryClient = useQueryClient()
   const { data: employee, isLoading } = useEmployeeDetailQuery(
-    String(employeeId ?? ""),
+    String(employeeId ?? "")
   )
 
   const [schedule, setSchedule] =
@@ -101,13 +95,15 @@ export function ShiftEditSheet({
   const [selectedMcpIds, setSelectedMcpIds] = React.useState<number[]>([])
   const [selectedSkillIds, setSelectedSkillIds] = React.useState<number[]>([])
   const [employeeSkills, setEmployeeSkills] = React.useState<MetadataSkill[]>(
-    [],
+    []
   )
   const [allMcpList, setAllMcpList] = React.useState<McpListItem[]>([])
   const [allSkillList, setAllSkillList] = React.useState<SkillListItem[]>([])
 
   React.useEffect(() => {
-    fetchMcpList().then(setAllMcpList).catch(() => {})
+    fetchMcpList()
+      .then(setAllMcpList)
+      .catch(() => {})
     fetchSkillList({ localOnly: true })
       .then(setAllSkillList)
       .catch(() => {})
@@ -128,9 +124,7 @@ export function ShiftEditSheet({
 
       setSelectedMcpIds(mcps.map((m) => m.id))
       setEmployeeSkills(convertedSkills)
-      setSelectedSkillIds(
-        (apiSkills ?? []).map((s) => s.skill_id),
-      )
+      setSelectedSkillIds((apiSkills ?? []).map((s) => s.skill_id))
 
       const metaTasks = meta?.tasks as ApiEmployeeTaskRead[] | undefined
       if (metaTasks && metaTasks.length > 0) {
@@ -155,18 +149,17 @@ export function ShiftEditSheet({
     }
   }, [employee, open, initialized])
 
-  const displayName =
-    employee?.metadata?.employee_name ?? employee?.name ?? ""
+  const displayName = employee?.metadata?.employee_name ?? employee?.name ?? ""
   const description =
     employee?.metadata?.capability_desc ?? employee?.description ?? ""
 
   const selectedMcpItems = React.useMemo(
     () => allMcpList.filter((m) => selectedMcpIds.includes(m.id)),
-    [allMcpList, selectedMcpIds],
+    [allMcpList, selectedMcpIds]
   )
   const selectedSkillItems = React.useMemo(
     () => allSkillList.filter((s) => selectedSkillIds.includes(s.id)),
-    [allSkillList, selectedSkillIds],
+    [allSkillList, selectedSkillIds]
   )
 
   const handleSave = async () => {
@@ -174,10 +167,10 @@ export function ShiftEditSheet({
     setSaving(true)
     try {
       const validMcpIds = selectedMcpIds.filter((id) =>
-        allMcpList.some((m) => m.id === id),
+        allMcpList.some((m) => m.id === id)
       )
       const validSkillIds = selectedSkillIds.filter((id) =>
-        allSkillList.some((s) => s.id === id),
+        allSkillList.some((s) => s.id === id)
       )
       await updateEmployee(employee.id, {
         employee_name: displayName,
@@ -210,7 +203,7 @@ export function ShiftEditSheet({
               <AvatarImage
                 src={createDiceBearAvatar(String(employeeId ?? ""))}
               />
-              <AvatarFallback className="bg-primary/10 text-primary text-xs">
+              <AvatarFallback className="bg-primary/10 text-xs text-primary">
                 {displayName.slice(0, 1)}
               </AvatarFallback>
             </Avatar>
@@ -232,18 +225,24 @@ export function ShiftEditSheet({
                   基本信息
                 </Label>
                 <div className="space-y-1.5">
-                  <span className="text-xs text-muted-foreground">员工名称</span>
+                  <span className="text-xs text-muted-foreground">
+                    员工名称
+                  </span>
                   <p className="text-sm font-medium">{displayName}</p>
                 </div>
                 {description && (
                   <div className="space-y-1.5">
-                    <span className="text-xs text-muted-foreground">岗位描述</span>
+                    <span className="text-xs text-muted-foreground">
+                      岗位描述
+                    </span>
                     <p className="text-sm">{description}</p>
                   </div>
                 )}
                 {selectedMcpItems.length > 0 && (
                   <div className="space-y-1.5">
-                    <span className="text-xs text-muted-foreground">MCP 工具</span>
+                    <span className="text-xs text-muted-foreground">
+                      MCP 工具
+                    </span>
                     <div className="flex flex-wrap gap-1.5">
                       {selectedMcpItems.map((item) => (
                         <Badge
@@ -283,7 +282,8 @@ export function ShiftEditSheet({
                 </Label>
                 <ScheduleTaskConfig
                   capabilities={
-                    (employee?.metadata?.mcps as MetadataMcp[] | undefined) ?? []
+                    (employee?.metadata?.mcps as MetadataMcp[] | undefined) ??
+                    []
                   }
                   capabilityIds={selectedMcpIds}
                   skillIds={selectedSkillIds}

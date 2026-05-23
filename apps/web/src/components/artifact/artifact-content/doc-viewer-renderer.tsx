@@ -44,7 +44,7 @@ export const DocViewerRenderer = ({
       <div
         className={cn(
           "flex min-h-0 min-w-0 flex-1 items-center justify-center text-sm text-muted-foreground",
-          className,
+          className
         )}
       >
         <p>无法加载文档：缺少会话或资源路径</p>

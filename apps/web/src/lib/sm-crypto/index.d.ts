@@ -1,5 +1,5 @@
-import { BigInteger } from 'jsbn'
-import { ECPointFp, ECCurveFp } from './ec'
+import { BigInteger } from "jsbn"
+import { ECPointFp, ECCurveFp } from "./ec"
 
 export interface KeyPair {
   privateKey: string
@@ -38,15 +38,31 @@ export function arrayToUtf8(arr: number[]): string
 export function hexToArray(hexStr: string): number[]
 
 // 核心功能
-export function doEncrypt(msg: string, publicKey: string, cipherMode?: number): string
-export function doDecrypt(encryptData: string, privateKey: string, cipherMode?: number): string
-export function doSignature(msg: string | ArrayBuffer, privateKey: string, options?: SignatureOptions): string
+export function doEncrypt(
+  msg: string,
+  publicKey: string,
+  cipherMode?: number
+): string
+export function doDecrypt(
+  encryptData: string,
+  privateKey: string,
+  cipherMode?: number
+): string
+export function doSignature(
+  msg: string | ArrayBuffer,
+  privateKey: string,
+  options?: SignatureOptions
+): string
 export function doVerifySignature(
   msg: string | ArrayBuffer,
   signHex: string,
   publicKey: string,
-  options?: VerifyOptions,
+  options?: VerifyOptions
 ): boolean
-export function doSm3Hash(hashHex: string, publicKey: string, userId?: string): string
+export function doSm3Hash(
+  hashHex: string,
+  publicKey: string,
+  userId?: string
+): string
 export function getPublicKeyFromPrivateKey(privateKey: string): string
 export function getPoint(): Point

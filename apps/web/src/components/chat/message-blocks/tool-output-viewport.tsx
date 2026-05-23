@@ -32,8 +32,7 @@ const STDOUT_CONTENT_CLASS =
   "px-2.5 py-2 font-mono text-xs leading-relaxed text-muted-foreground/70"
 
 /** 实际滚动容器（scrollRef）：限高 + 可滚，粘底/虚拟化依赖此节点 */
-const SCROLL_CONTAINER_CLASS =
-  "max-h-52 overflow-y-auto overscroll-y-contain"
+const SCROLL_CONTAINER_CLASS = "max-h-52 overflow-y-auto overscroll-y-contain"
 
 function ToolOutputCursor() {
   return (

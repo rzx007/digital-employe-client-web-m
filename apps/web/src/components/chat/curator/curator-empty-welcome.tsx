@@ -25,14 +25,11 @@ export function CuratorEmptyWelcome({
     <ConversationEmptyState
       className={cn(
         "w-full items-stretch px-4",
-        isCompact ? "gap-4 py-10" : "gap-6 py-16",
+        isCompact ? "gap-4 py-10" : "gap-6 py-16"
       )}
     >
       <div
-        className={cn(
-          layout.emptyWelcomeInner,
-          isCompact ? "gap-4" : "gap-6",
-        )}
+        className={cn(layout.emptyWelcomeInner, isCompact ? "gap-4" : "gap-6")}
       >
         {contact?.type === "curator" ? (
           <EmployeeContactAvatar
@@ -54,7 +51,7 @@ export function CuratorEmptyWelcome({
           <h2
             className={cn(
               "font-semibold tracking-tight",
-              isCompact ? "text-sm" : "text-md",
+              isCompact ? "text-sm" : "text-md"
             )}
           >
             你好，我是{displayName}
@@ -62,7 +59,7 @@ export function CuratorEmptyWelcome({
           <p
             className={cn(
               "text-muted-foreground",
-              isCompact ? "text-xs" : "text-sm",
+              isCompact ? "text-xs" : "text-sm"
             )}
           >
             用自然语言描述目标，我会拆解任务并分派给数字员工；输入 @

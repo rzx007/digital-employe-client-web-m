@@ -127,7 +127,7 @@ function FloatingMenu({
                   <span className="text-sm leading-none font-medium">
                     {option.title}
                   </span>
-                  <span className="text-xs text-muted-foreground line-clamp-2 ">
+                  <span className="line-clamp-2 text-xs text-muted-foreground">
                     {option.description}
                   </span>
                 </div>

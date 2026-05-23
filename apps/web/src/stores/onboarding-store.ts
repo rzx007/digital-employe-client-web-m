@@ -17,7 +17,7 @@ interface OnboardingState {
 async function readOnboardingCompleted(): Promise<boolean> {
   if (isElectron()) {
     const completed = await withElectronApi((api) =>
-      api.getOnboardingCompleted(),
+      api.getOnboardingCompleted()
     )
     if (completed !== undefined) return completed
   }

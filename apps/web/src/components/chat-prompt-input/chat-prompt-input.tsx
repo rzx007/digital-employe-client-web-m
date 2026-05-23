@@ -10,9 +10,7 @@ import {
   PromptInputSubmit,
   PromptInputTools,
 } from "@workspace/ui/components/ai-elements/prompt-input"
-import {
-  LexicalPromptInputTextarea,
-} from "../lexical-editor/prompt-input-textarea"
+import { LexicalPromptInputTextarea } from "../lexical-editor/prompt-input-textarea"
 import { Separator } from "@workspace/ui/components/separator"
 import { ChatPromptInputAttachments } from "./chat-prompt-input-attachments"
 import { ACCEPTED_FILE_TYPES, MAX_UPLOAD_SIZE_BYTES } from "./constants"
@@ -56,7 +54,10 @@ export function ChatPromptInput({
         )}
       </PromptInputHeader>
       <PromptInputBody
-        className={cn(isCompact ? "min-h-[60px]" : "min-h-[100px]", 'max-h-[200px] overflow-auto')}
+        className={cn(
+          isCompact ? "min-h-[60px]" : "min-h-[100px]",
+          "max-h-[200px] overflow-auto"
+        )}
       >
         <LexicalPromptInputTextarea
           onChange={onChange}
@@ -79,7 +80,7 @@ export function ChatPromptInput({
               />
             </PromptInputActionMenuContent>
           </PromptInputActionMenu>
-          <Separator orientation="vertical" className="h-3 mt-2 mr-3" />
+          <Separator orientation="vertical" className="mt-2 mr-3 h-3" />
         </PromptInputTools>
         <PromptInputTools>
           <PromptInputSubmit

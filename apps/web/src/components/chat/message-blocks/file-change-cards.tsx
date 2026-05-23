@@ -20,8 +20,7 @@ const FILE_COLLAPSED_COUNT = 4
 const CARD_SHELL =
   "@container/file-changes not-prose relative w-full min-w-0 max-w-full self-start rounded-lg border border-border/50 bg-muted/30 px-2 py-1.5 @[28rem]/file-changes:max-w-2xl @[28rem]/file-changes:px-3 @[28rem]/file-changes:py-2"
 
-const FILE_GRID =
-  "grid grid-cols-1 gap-2 @[28rem]/file-changes:grid-cols-2"
+const FILE_GRID = "grid grid-cols-1 gap-2 @[28rem]/file-changes:grid-cols-2"
 
 const FILE_ROW =
   "group relative flex min-w-0 cursor-pointer items-start gap-2 rounded-md border border-border/50 bg-background/70 px-2 py-1.5 text-left transition-colors hover:bg-background @[28rem]/file-changes:items-center @[28rem]/file-changes:gap-3 @[28rem]/file-changes:px-3 @[28rem]/file-changes:py-2"
@@ -87,7 +86,7 @@ function FileChangeCardRow({
       className={cn(
         "flex shrink-0 items-center gap-0.5",
         "@[28rem]/file-changes:absolute @[28rem]/file-changes:top-1.5 @[28rem]/file-changes:right-1.5",
-        "@[28rem]/file-changes:opacity-0 @[28rem]/file-changes:transition-opacity @[28rem]/file-changes:group-hover:opacity-100",
+        "@[28rem]/file-changes:opacity-0 @[28rem]/file-changes:transition-opacity @[28rem]/file-changes:group-hover:opacity-100"
       )}
     >
       {file.kind === "skill-folder" && (
@@ -181,8 +180,7 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
   const openResource = useArtifactStore((s) => s.openResource)
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
 
-  const conversationId =
-    curatorFile?.conversationId ?? selectedConversationId
+  const conversationId = curatorFile?.conversationId ?? selectedConversationId
   const handleOpen = curatorFile?.onOpenFile ?? openResource
 
   const [importSkillFile, setImportSkillFile] =
@@ -190,7 +188,7 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
 
   const filesSignature = React.useMemo(
     () => files.map((f) => f.id).join("\0"),
-    [files],
+    [files]
   )
   const [expandedOverride, setExpandedOverride] = React.useState<{
     signature: string
@@ -216,9 +214,7 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
     return null
   }
 
-  const displayFiles = expanded
-    ? files
-    : files.slice(0, FILE_COLLAPSED_COUNT)
+  const displayFiles = expanded ? files : files.slice(0, FILE_COLLAPSED_COUNT)
   const needsScroll =
     files.length > FILE_SCROLL_THRESHOLD &&
     (expanded || files.length <= FILE_COLLAPSE_THRESHOLD)
@@ -258,7 +254,7 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
             className={cn(
               FILE_GRID,
               needsScroll &&
-                "max-h-64 overflow-y-auto overscroll-y-contain pr-0.5",
+                "max-h-64 overflow-y-auto overscroll-y-contain pr-0.5"
             )}
           >
             {displayFiles.map((file) => (

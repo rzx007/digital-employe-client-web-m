@@ -16,7 +16,9 @@ export function MessageElapsedLabel({
   isTurnEnded?: boolean
   className?: string
 }) {
-  if (!shouldShowMessageElapsed(elapsedMs, isLastAssistantMessage, isTurnEnded)) {
+  if (
+    !shouldShowMessageElapsed(elapsedMs, isLastAssistantMessage, isTurnEnded)
+  ) {
     return null
   }
   return (

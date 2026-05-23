@@ -133,7 +133,7 @@ export function ModelsSettings() {
                 <IconChevronDown
                   className={cn(
                     "size-3.5 shrink-0 transition-transform",
-                    advancedOpen && "rotate-180",
+                    advancedOpen && "rotate-180"
                   )}
                 />
                 高级选项

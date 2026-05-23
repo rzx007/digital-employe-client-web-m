@@ -22,7 +22,8 @@ export interface ShiftCellData {
 
 function hasTasksSchedule(employee: Employee): boolean {
   return (
-    Array.isArray(employee.metadata?.tasks) && employee.metadata.tasks.length > 0
+    Array.isArray(employee.metadata?.tasks) &&
+    employee.metadata.tasks.length > 0
   )
 }
 
@@ -48,7 +49,7 @@ function isTaskMatchedOnDate(task: MetadataTask, date: Date): boolean {
 
 function getTaskType(task: MetadataTask): keyof ShiftTaskTypeCount | null {
   const taskType = String(
-    task.dispatch_type ?? task.task_resource_type ?? "",
+    task.dispatch_type ?? task.task_resource_type ?? ""
   ).toLowerCase()
 
   if (taskType === "mcp") return "mcp"
@@ -58,7 +59,7 @@ function getTaskType(task: MetadataTask): keyof ShiftTaskTypeCount | null {
 
 function getTaskStatsForDate(
   tasks: MetadataTask[],
-  date: Date,
+  date: Date
 ): {
   taskCount: number
   taskTypeCount: ShiftTaskTypeCount
@@ -95,7 +96,7 @@ export function useShiftCalendar(year: number, month: number) {
 
   const daysInMonth = useMemo(
     () => new Date(year, month, 0).getDate(),
-    [year, month],
+    [year, month]
   )
 
   const shiftMap = useMemo(() => {
@@ -199,10 +200,7 @@ export function useShiftCalendar(year: number, month: number) {
 
 export function getEmployeeDisplayName(emp: Employee): string {
   return (
-    emp.name ||
-    emp.metadata?.employee_name ||
-    emp.employee_code ||
-    "未知员工"
+    emp.name || emp.metadata?.employee_name || emp.employee_code || "未知员工"
   )
 }
 

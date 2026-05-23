@@ -72,41 +72,38 @@ export function ImportSkillDialog({
     }
   }, [open, resetState])
 
-  const handleFileSelect = React.useCallback(
-    async (nextFile: File | null) => {
-      if (!nextFile) return
-      const isZip =
-        nextFile.name.toLowerCase().endsWith(".zip") ||
-        nextFile.type.includes("zip")
-      if (!isZip) {
-        toast.error("仅支持上传 ZIP 文件")
-        return
+  const handleFileSelect = React.useCallback(async (nextFile: File | null) => {
+    if (!nextFile) return
+    const isZip =
+      nextFile.name.toLowerCase().endsWith(".zip") ||
+      nextFile.type.includes("zip")
+    if (!isZip) {
+      toast.error("仅支持上传 ZIP 文件")
+      return
+    }
+    setFile(nextFile)
+    setParseState("parsing")
+    try {
+      const parsed = await parseSkillZip(nextFile)
+      setSkillName(parsed.skillName)
+      setDescription(parsed.description)
+      setPromptContent(parsed.promptContent)
+      setNameError("")
+      setParseState("parsed")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "解析 ZIP 失败"
+      toast.error(msg)
+      setFile(null)
+      setSkillName("")
+      setDisplayNameZh("")
+      setDescription("")
+      setPromptContent("")
+      setParseState("idle")
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
       }
-      setFile(nextFile)
-      setParseState("parsing")
-      try {
-        const parsed = await parseSkillZip(nextFile)
-        setSkillName(parsed.skillName)
-        setDescription(parsed.description)
-        setPromptContent(parsed.promptContent)
-        setNameError("")
-        setParseState("parsed")
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "解析 ZIP 失败"
-        toast.error(msg)
-        setFile(null)
-        setSkillName("")
-        setDisplayNameZh("")
-        setDescription("")
-        setPromptContent("")
-        setParseState("idle")
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ""
-        }
-      }
-    },
-    []
-  )
+    }
+  }, [])
 
   const handleDragOver: React.DragEventHandler<HTMLDivElement> = (e) => {
     e.preventDefault()
@@ -214,7 +211,7 @@ export function ImportSkillDialog({
       )}
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="flex max-h-[min(90vh,calc(100dvh-2rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
-          <DialogHeader className="shrink-0 space-y-1 border-b px-4 pt-4 pb-3 pr-12">
+          <DialogHeader className="shrink-0 space-y-1 border-b px-4 pt-4 pr-12 pb-3">
             <DialogTitle>创建技能</DialogTitle>
             <DialogDescription>
               上传 ZIP 包，解析后预览并导入到本地技能库
@@ -225,7 +222,7 @@ export function ImportSkillDialog({
             <div
               className={cn(
                 "flex flex-col gap-3",
-                parseState === "parsed" && "min-h-0 flex-1",
+                parseState === "parsed" && "min-h-0 flex-1"
               )}
             >
               <input
@@ -251,7 +248,7 @@ export function ImportSkillDialog({
 
               {parseState === "parsed" && (
                 <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
-                  <div className="shrink-0 flex flex-col gap-1.5">
+                  <div className="flex shrink-0 flex-col gap-1.5">
                     <Label htmlFor="skill-name" className="gap-0.5">
                       <span className="text-destructive">*</span>
                       技能名称
@@ -272,7 +269,7 @@ export function ImportSkillDialog({
                     )}
                   </div>
 
-                  <div className="shrink-0 flex flex-col gap-1.5">
+                  <div className="flex shrink-0 flex-col gap-1.5">
                     <Label htmlFor="skill-display-zh">中文名称</Label>
                     <Input
                       id="skill-display-zh"
@@ -282,7 +279,7 @@ export function ImportSkillDialog({
                     />
                   </div>
 
-                  <div className="shrink-0 flex flex-col gap-1.5">
+                  <div className="flex shrink-0 flex-col gap-1.5">
                     <Label htmlFor="skill-description">描述</Label>
                     <Textarea
                       id="skill-description"
@@ -292,7 +289,7 @@ export function ImportSkillDialog({
                       placeholder="未在 SKILL.md frontmatter 中检测到 description"
                       className={cn(
                         "field-sizing-fixed max-h-36 min-h-20 cursor-default overflow-y-auto",
-                        "bg-muted/30",
+                        "bg-muted/30"
                       )}
                     />
                   </div>
@@ -309,12 +306,12 @@ export function ImportSkillDialog({
                       placeholder="SKILL.md 正文为空"
                       className={cn(
                         "field-sizing-fixed min-h-32 flex-1 cursor-default",
-                        "overflow-y-auto bg-muted/30 font-mono text-xs",
+                        "overflow-y-auto bg-muted/30 font-mono text-xs"
                       )}
                     />
                   </div>
 
-                  <div className="shrink-0 flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2">
+                  <div className="flex shrink-0 items-center justify-between rounded-md border bg-muted/20 px-3 py-2">
                     <div className="flex flex-col gap-0.5">
                       <Label
                         htmlFor="overwrite-switch"

@@ -24,7 +24,7 @@ export function AppTitlebar({ title = "数字员工" }: AppTitlebarProps) {
     void withElectronApi((api) =>
       api.getPlatform().then((p) => {
         setIsMac(!!p?.isMac)
-      }),
+      })
     )
   }, [])
 

@@ -10,7 +10,7 @@ import type { ChatViewContact } from "@/components/chat/chat-view-shared"
 /**
  * 自动选择对话的自定义 Hook
  * 当联系人改变或者对话列表加载完成时，自动选择合适的对话进行显示
- * 
+ *
  * @param selectedContactId - 当前选中的联系人 ID
  * @param contact - 联系人对象，可选参数
  */
@@ -51,7 +51,11 @@ export function useConversationAutoSelect(
       prevConversationIdRef.current !== selectedConversationId
 
     // 如果两者都发生了变化且已有选中的对话，则更新 ref 并返回
-    if (contactChanged && conversationChanged && selectedConversationId != null) {
+    if (
+      contactChanged &&
+      conversationChanged &&
+      selectedConversationId != null
+    ) {
       prevContactIdRef.current = selectedContactId
       prevConversationIdRef.current = selectedConversationId
       return

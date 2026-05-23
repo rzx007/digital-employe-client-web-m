@@ -1,5 +1,10 @@
 import * as React from "react"
-import { IconArrowLeft, IconLoader2, IconSparkles, IconTrash } from "@tabler/icons-react"
+import {
+  IconArrowLeft,
+  IconLoader2,
+  IconSparkles,
+  IconTrash,
+} from "@tabler/icons-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { Badge } from "@workspace/ui/components/badge"
@@ -39,28 +44,26 @@ export function SkillDetailView({
   }, [onBack])
 
   const title =
-    localDetail?.displayNameZh ||
-    skill.displayNameZh ||
-    skill.skillName
+    localDetail?.displayNameZh || skill.displayNameZh || skill.skillName
 
   const readOnlyInputClass = "cursor-default bg-muted/30"
   const readOnlyDescTextareaClass = cn(
     "field-sizing-fixed max-h-36 min-h-20 cursor-default overflow-y-auto",
-    "bg-muted/30",
+    "bg-muted/30"
   )
   const readOnlyInstructionTextareaClass = cn(
-    "field-sizing-fixed min-h-32 max-h-[min(60vh,28rem)] cursor-default",
-    "overflow-y-auto bg-muted/30 font-mono text-xs",
+    "field-sizing-fixed max-h-[min(60vh,28rem)] min-h-32 cursor-default",
+    "overflow-y-auto bg-muted/30 font-mono text-xs"
   )
   const readOnlyFilesTextareaClass = cn(
-    "field-sizing-fixed min-h-20 max-h-48 cursor-default overflow-y-auto",
-    "bg-muted/30 font-mono text-xs",
+    "field-sizing-fixed max-h-48 min-h-20 cursor-default overflow-y-auto",
+    "bg-muted/30 font-mono text-xs"
   )
 
   const handleDelete = async () => {
     if (!canDelete || deleting) return
     const ok = window.confirm(
-      `确定删除技能「${skill.skillName}」？将删除本地工作区目录中的文件，不可恢复。`,
+      `确定删除技能「${skill.skillName}」？将删除本地工作区目录中的文件，不可恢复。`
     )
     if (!ok) return
     setDeleting(true)
@@ -73,8 +76,7 @@ export function SkillDetailView({
       })
       onBack()
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : "删除失败，请稍后重试"
+      const msg = err instanceof Error ? err.message : "删除失败，请稍后重试"
       toast.error(msg)
     } finally {
       setDeleting(false)
@@ -140,7 +142,9 @@ export function SkillDetailView({
               <div className="flex flex-col gap-3">
                 {localDetail.skillName && (
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="skill-detail-id-name">技能 ID（目录名）</Label>
+                    <Label htmlFor="skill-detail-id-name">
+                      技能 ID（目录名）
+                    </Label>
                     <Input
                       id="skill-detail-id-name"
                       readOnly
@@ -156,9 +160,7 @@ export function SkillDetailView({
                       id="skill-detail-zh"
                       readOnly
                       value={
-                        localDetail.displayNameZh ||
-                        skill.displayNameZh ||
-                        ""
+                        localDetail.displayNameZh || skill.displayNameZh || ""
                       }
                       className={readOnlyInputClass}
                     />
@@ -171,7 +173,7 @@ export function SkillDetailView({
                       id="skill-detail-imported-at"
                       readOnly
                       value={new Date(localDetail.importedAt).toLocaleString(
-                        "zh-CN",
+                        "zh-CN"
                       )}
                       className={readOnlyInputClass}
                     />

@@ -260,7 +260,11 @@ export const sseEventSchema = z.union([
   sseUpdatesEventSchema,
   toolOutputEventSchema,
   sseErrorEventSchema,
-  z.object({ type: z.string(), data: z.unknown(), ns: z.array(z.string()).optional() }),
+  z.object({
+    type: z.string(),
+    data: z.unknown(),
+    ns: z.array(z.string()).optional(),
+  }),
 ])
 
 // ── Type exports ───────────────────────────────────────────────────

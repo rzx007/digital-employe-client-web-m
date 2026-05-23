@@ -17,7 +17,7 @@ export function CuratorRotatingPlaceholder(): ReactNode {
 
   useEffect(() => {
     const prefersReducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
+      "(prefers-reduced-motion: reduce)"
     ).matches
     let fadeTimeout: ReturnType<typeof setTimeout> | undefined
 
@@ -43,9 +43,9 @@ export function CuratorRotatingPlaceholder(): ReactNode {
   return (
     <span
       className={cn(
-        "block line-clamp-2 transition-opacity duration-300 ease-out",
+        "line-clamp-2 block transition-opacity duration-300 ease-out",
         visible ? "opacity-100" : "opacity-0",
-        "motion-reduce:transition-none",
+        "motion-reduce:transition-none"
       )}
     >
       {CURATOR_PLACEHOLDER_HINTS[index]}

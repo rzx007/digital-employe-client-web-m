@@ -20,7 +20,7 @@ export function RemoteSkillCard({
     <div
       className={cn(
         "flex h-full min-h-0 flex-col gap-2 rounded-sm border p-4",
-        "transition-colors hover:border-primary/30 hover:bg-accent/30",
+        "transition-colors hover:border-primary/30 hover:bg-accent/30"
       )}
     >
       <button
@@ -29,7 +29,7 @@ export function RemoteSkillCard({
         onClick={onSelect}
       >
         <div className="flex items-start justify-between gap-2">
-          <span className="flex items-center gap-1.5 text-sm font-medium leading-snug">
+          <span className="flex items-center gap-1.5 text-sm leading-snug font-medium">
             <IconSparkles className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="line-clamp-1">
               {skill.displayNameZh || skill.skillName}

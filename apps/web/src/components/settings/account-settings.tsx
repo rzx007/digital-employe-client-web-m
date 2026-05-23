@@ -65,7 +65,7 @@ export function AccountSettings() {
                 <p
                   className={cn(
                     "text-sm",
-                    !user?.username && "text-muted-foreground",
+                    !user?.username && "text-muted-foreground"
                   )}
                 >
                   {user?.username || "未知用户"}
@@ -79,7 +79,7 @@ export function AccountSettings() {
                 <p
                   className={cn(
                     "text-sm",
-                    !user?.phoneNumber && "text-muted-foreground",
+                    !user?.phoneNumber && "text-muted-foreground"
                   )}
                 >
                   {user?.phoneNumber || "尚未绑定"}
@@ -93,7 +93,7 @@ export function AccountSettings() {
                 <p
                   className={cn(
                     "text-sm",
-                    !user?.email && "text-muted-foreground",
+                    !user?.email && "text-muted-foreground"
                   )}
                 >
                   {user?.email || "尚未绑定"}

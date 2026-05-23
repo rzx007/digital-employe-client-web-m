@@ -54,7 +54,17 @@ export function detectResponseFormat(data: unknown): string | undefined {
   if (!data || typeof data !== "object") return undefined
 
   const dataObj = data as Record<string, unknown>
-  const dataKeys = ["data", "list", "result", "results", "records", "items", "rows", "array", "values"]
+  const dataKeys = [
+    "data",
+    "list",
+    "result",
+    "results",
+    "records",
+    "items",
+    "rows",
+    "array",
+    "values",
+  ]
 
   for (const key of dataKeys) {
     if (dataObj[key] && Array.isArray(dataObj[key])) {

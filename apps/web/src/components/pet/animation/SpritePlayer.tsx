@@ -1,11 +1,7 @@
 import { useEffect, useRef } from "react"
 import type { PetState } from "./types"
 import type { PetFrameAnimation } from "../pet-loader"
-import {
-  PET_SHEET_COLS,
-  PET_SHEET_FRAME_W,
-  PET_SHEET_FRAME_H,
-} from "./types"
+import { PET_SHEET_COLS, PET_SHEET_FRAME_W, PET_SHEET_FRAME_H } from "./types"
 
 type FrameOffset = {
   x: number
@@ -82,7 +78,7 @@ export function SpritePlayer({
         offset.x * scale,
         offset.y * scale,
         displayWidth,
-        displayHeight,
+        displayHeight
       )
     }
 
@@ -119,9 +115,7 @@ export function SpritePlayer({
     }
 
     img.onload = () => {
-      frameOffsets = autoAlign
-        ? measureFrameOffsets(img)
-        : []
+      frameOffsets = autoAlign ? measureFrameOffsets(img) : []
       drawFrame(animation.from)
       animationFrame = window.requestAnimationFrame(tick)
     }
@@ -156,9 +150,7 @@ export function SpritePlayer({
   )
 }
 
-function measureFrameOffsets(
-  image: HTMLImageElement,
-): FrameOffset[] {
+function measureFrameOffsets(image: HTMLImageElement): FrameOffset[] {
   const canvas = document.createElement("canvas")
   const context = canvas.getContext("2d", { willReadFrequently: true })
 
@@ -172,7 +164,7 @@ function measureFrameOffsets(
     Math.floor(image.naturalWidth / PET_SHEET_FRAME_W) *
     Math.floor(image.naturalHeight / PET_SHEET_FRAME_H)
   const anchors = Array.from({ length: frameTotal }, (_, frameIndex) =>
-    measureFrameAnchor(context, frameIndex),
+    measureFrameAnchor(context, frameIndex)
   )
   const validAnchors = anchors.filter((anchor) => anchor !== null) as {
     x: number
@@ -195,16 +187,15 @@ function measureFrameOffsets(
 
 function measureFrameAnchor(
   context: CanvasRenderingContext2D,
-  frameIndex: number,
+  frameIndex: number
 ): { x: number; y: number } | null {
   const sourceX = (frameIndex % PET_SHEET_COLS) * PET_SHEET_FRAME_W
-  const sourceY =
-    Math.floor(frameIndex / PET_SHEET_COLS) * PET_SHEET_FRAME_H
+  const sourceY = Math.floor(frameIndex / PET_SHEET_COLS) * PET_SHEET_FRAME_H
   const data = context.getImageData(
     sourceX,
     sourceY,
     PET_SHEET_FRAME_W,
-    PET_SHEET_FRAME_H,
+    PET_SHEET_FRAME_H
   ).data
   const alphaThreshold = 18
   const upperLimit = Math.round(PET_SHEET_FRAME_H * 0.62)

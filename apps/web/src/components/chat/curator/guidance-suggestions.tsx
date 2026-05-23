@@ -25,17 +25,15 @@ export function GuidanceSuggestions({
       if (disabled) return
       onSelect(suggestion)
     },
-    [disabled, onSelect],
+    [disabled, onSelect]
   )
 
   return (
     <div
       className={cn(
         "flex w-full min-w-0 gap-2",
-        compact
-          ? "flex-col"
-          : "flex-wrap items-stretch justify-center",
-        className,
+        compact ? "flex-col" : "flex-wrap items-stretch justify-center",
+        className
       )}
     >
       {CURATOR_GUIDANCE_SUGGESTIONS.map((suggestion) => (
@@ -45,10 +43,10 @@ export function GuidanceSuggestions({
           onClick={handleClick}
           disabled={disabled}
           className={cn(
-            "h-auto min-w-0 whitespace-normal leading-snug",
+            "h-auto min-w-0 leading-snug whitespace-normal",
             compact
               ? "w-full justify-start rounded-lg px-3 py-2.5 text-left text-xs"
-              : "max-w-[min(100%,22rem)] shrink-0 rounded-full px-4 py-2 text-center text-sm",
+              : "max-w-[min(100%,22rem)] shrink-0 rounded-full px-4 py-2 text-center text-sm"
           )}
         />
       ))}

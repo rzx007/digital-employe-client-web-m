@@ -23,7 +23,7 @@ export async function createConversation(params: CreateConversationParams) {
     {
       method: "POST",
       body: params,
-    },
+    }
   )
 }
 
@@ -33,14 +33,14 @@ export async function createConversation(params: CreateConversationParams) {
  */
 export async function fetchConversations(
   query?: ConversationQuery,
-  opts?: { signal?: AbortSignal },
+  opts?: { signal?: AbortSignal }
 ) {
   return request<ApiResponse<ConversationItem[]>>(
     `/workspaces/${WORKSPACE_ID}/chat/conversations`,
     {
       params: query,
       ...(opts?.signal ? { signal: opts.signal } : {}),
-    },
+    }
   )
 }
 
@@ -50,11 +50,11 @@ export async function fetchConversations(
  */
 export async function fetchConversationMessages(
   conversationId: number | string,
-  opts?: { signal?: AbortSignal },
+  opts?: { signal?: AbortSignal }
 ) {
   return request<ApiResponse<ChatMessage[]>>(
     `/chat/conversations/${conversationId}/messages`,
-    opts?.signal ? { signal: opts.signal } : undefined,
+    opts?.signal ? { signal: opts.signal } : undefined
   )
 }
 export async function deleteConversation(conversationId: number | string) {
@@ -105,11 +105,11 @@ export async function cancelConversationStream(
 
 export async function fetchConversationResources(
   conversationId: number | string,
-  opts?: { signal?: AbortSignal },
+  opts?: { signal?: AbortSignal }
 ) {
   return request<ApiResponse<ResourceList>>(
     `/chat/conversations/${conversationId}/resources`,
-    opts?.signal ? { signal: opts.signal } : undefined,
+    opts?.signal ? { signal: opts.signal } : undefined
   )
 }
 
@@ -118,28 +118,28 @@ export async function fetchCuratorConversation(opts?: {
 }) {
   return request<ApiResponse<ConversationItem>>(
     `/workspaces/${WORKSPACE_ID}/chat/curator/conversation`,
-    opts?.signal ? { signal: opts.signal } : undefined,
+    opts?.signal ? { signal: opts.signal } : undefined
   )
 }
 
 export async function fetchResourceContent(
   conversationId: number | string,
   path: string,
-  opts?: { signal?: AbortSignal },
+  opts?: { signal?: AbortSignal }
 ) {
   return request<ApiResponse<ResourceContent>>(
     `/chat/conversations/${conversationId}/resources/content`,
     {
       params: { path },
       ...(opts?.signal ? { signal: opts.signal } : {}),
-    },
+    }
   )
 }
 
 export async function deleteAllTaskExecutions() {
   return request<ApiResponse<{ deleted: number }>>(
     `/workspaces/${WORKSPACE_ID}/tasks/executions`,
-    { method: "DELETE" },
+    { method: "DELETE" }
   )
 }
 
@@ -190,7 +190,7 @@ export async function downloadResource(
 
 export async function downloadResourceBlob(
   conversationId: number | string,
-  path: string,
+  path: string
 ): Promise<Blob> {
   const res = await request.raw(
     `/chat/conversations/${conversationId}/resources/download`,
@@ -205,7 +205,7 @@ export async function downloadResourceBlob(
 
 export async function deleteResource(
   conversationId: number | string,
-  path: string,
+  path: string
 ) {
   return request<ApiResponse<null>>(
     `/chat/conversations/${conversationId}/resources?path=${encodeURIComponent(path)}`,
@@ -216,18 +216,29 @@ export async function deleteResource(
 export async function resetConversationStatus(conversationId: number | string) {
   return request<ApiResponse<null>>(
     `/chat/conversations/${conversationId}/status/reset`,
-    { method: "POST" },
+    { method: "POST" }
   )
 }
+
+export type HitlDecision =
+  | { type: "approve" }
+  | { type: "reject"; message: string }
+  | { type: "respond"; message: string }
+  | {
+      type: "edit"
+      edited_action: { name: string; args: Record<string, unknown> }
+    }
 
 export async function approveHitl(
   conversationId: number | string,
   streamId: string,
-  decisions: Array<{ type: string; message?: string; edited_action?: unknown }>,
+  decisions: HitlDecision[]
 ) {
-  return request.raw(`/chat/conversations/${conversationId}/approve`, {
-    method: "POST",
-    body: JSON.stringify({ stream_id: streamId, decisions }),
-    headers: { "Content-Type": "application/json" },
-  })
+  return request<ApiResponse<{ accepted?: boolean; resumed?: boolean }>>(
+    `/chat/conversations/${conversationId}/approve`,
+    {
+      method: "POST",
+      body: JSON.stringify({ stream_id: streamId, decisions }),
+    }
+  )
 }

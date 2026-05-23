@@ -36,7 +36,7 @@ function ScheduleDayHoverContent({
   const totalTasks = countDayTasks(dayData)
   return (
     <div className="flex flex-col gap-0">
-      <p className="text-[11px] font-medium leading-snug text-foreground">
+      <p className="text-[11px] leading-snug font-medium text-foreground">
         {formatHoverDateLabel(dateStr)}
       </p>
       <p className="mt-0.5 text-[10px] text-muted-foreground">
@@ -51,7 +51,7 @@ function ScheduleDayHoverContent({
             <span className="min-w-0 truncate font-medium text-foreground">
               {emp.employee_name}
             </span>
-            <span className="shrink-0 rounded-md bg-muted px-1.5 py-px tabular-nums text-muted-foreground">
+            <span className="shrink-0 rounded-md bg-muted px-1.5 py-px text-muted-foreground tabular-nums">
               {emp.tasks.length}
             </span>
           </li>
@@ -215,7 +215,7 @@ export function ScheduleCalendar({
               "size-4 rounded-sm border transition-colors",
               LEVEL_COLORS[level],
               isToday &&
-              "ring-1 ring-ring ring-offset-1 ring-offset-background",
+                "ring-1 ring-ring ring-offset-1 ring-offset-background",
               dayData && !hasSchedule && "cursor-default opacity-30",
               hasSchedule && "cursor-pointer hover:opacity-80"
             ),
@@ -226,11 +226,7 @@ export function ScheduleCalendar({
             const totalTasks = countDayTasks(dayData)
             const hoverTitle = `${formatHoverDateLabel(dateStr)} · ${totalTasks} 个任务 · ${dayData.employees.length} 人`
             return (
-              <HoverCard
-                key={dateStr}
-                openDelay={120}
-                closeDelay={80}
-              >
+              <HoverCard key={dateStr} openDelay={120} closeDelay={80}>
                 <HoverCardTrigger asChild>
                   <button {...buttonProps} title={hoverTitle} />
                 </HoverCardTrigger>

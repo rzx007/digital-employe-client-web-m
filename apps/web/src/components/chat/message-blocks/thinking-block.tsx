@@ -23,8 +23,7 @@ function ThinkingBlockInner({
   ...props
 }: ThinkingBlockProps) {
   const trimmed = text.trim()
-  const isShort =
-    trimmed.length > 0 && text.length <= SHORT_TEXT_THRESHOLD
+  const isShort = trimmed.length > 0 && text.length <= SHORT_TEXT_THRESHOLD
   const [isOpen, setIsOpen] = useState(defaultOpen ?? isShort)
 
   if (!trimmed) return null
@@ -32,7 +31,7 @@ function ThinkingBlockInner({
   if (isShort) {
     return (
       <div className={cn("not-prose", className)} {...props}>
-        <div className="flex items-start gap-1 text-xs text-muted-foreground/60 px-1.5">
+        <div className="flex items-start gap-1 px-1.5 text-xs text-muted-foreground/60">
           <IconBrain className="mt-1 size-3 shrink-0" />
           <MessageResponse className="flex-1 leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
             {text}
@@ -69,7 +68,7 @@ function ThinkingBlockInner({
             "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0"
           )}
         >
-          <div className="mt-1 pl-4 pb-0.5">
+          <div className="mt-1 pb-0.5 pl-4">
             <MessageResponse className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
               {text}
             </MessageResponse>

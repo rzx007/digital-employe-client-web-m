@@ -50,7 +50,7 @@ function normalizeRequestPathLike(request: unknown): string {
  */
 function mergeBaseAndPath(
   baseRaw: string,
-  pathLike: string,
+  pathLike: string
 ): { baseURL: string; path: string } {
   if (/^https?:\/\//i.test(baseRaw)) {
     return { baseURL: baseRaw, path: pathLike }
@@ -68,7 +68,7 @@ async function loadRemoteApiBaseFromKv(): Promise<void> {
   try {
     const kvMerge = mergeBaseAndPath(
       fallbackBaseURL,
-      "/config-kvs/REMOTE_API_BASE_URL",
+      "/config-kvs/REMOTE_API_BASE_URL"
     )
     const res = await ofetch<{
       data?: { config_value?: string }
@@ -166,8 +166,8 @@ export const request = ofetch.create({
 
     ctx.options.headers = headers
   },
-  async onRequestError() { },
-  async onResponse() { },
+  async onRequestError() {},
+  async onResponse() {},
   async onResponseError({ response }) {
     const status = response?.status
     if (status === 401 || status === 403) {

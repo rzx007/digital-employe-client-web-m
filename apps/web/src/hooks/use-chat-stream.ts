@@ -54,7 +54,9 @@ function parseSSELines(eventText: string): string | null {
   return lines.join("\n")
 }
 
-export function useChatStream(options: UseChatStreamOptions): UseChatStreamReturn {
+export function useChatStream(
+  options: UseChatStreamOptions
+): UseChatStreamReturn {
   const { id, resume, onError, onFinish } = options
 
   const [messages, setMessages] = React.useState<UIMessage[]>(
@@ -121,11 +123,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamRetur
                 }
 
                 const currentParts = prev[lastIdx].parts
-                const result = applySSEEventToParts(
-                  currentParts,
-                  event,
-                  state
-                )
+                const result = applySSEEventToParts(currentParts, event, state)
 
                 if (!result) return prev
 
@@ -176,7 +174,9 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamRetur
       const userMsg: UIMessage = {
         id: `user-${Date.now()}`,
         role: "user",
-        parts: [{ type: "text" as const, text: message.text, state: "done" as const }],
+        parts: [
+          { type: "text" as const, text: message.text, state: "done" as const },
+        ],
       }
       if (metadata) {
         ;(userMsg as UIMessage & { metadata?: unknown }).metadata = metadata
@@ -300,5 +300,3 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamRetur
     stop,
   }
 }
-
-

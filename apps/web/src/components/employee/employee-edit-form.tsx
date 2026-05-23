@@ -19,7 +19,10 @@ import {
   type ScheduleTaskListItem,
   type ShiftScheduleForm,
 } from "@/types/task"
-import { useEmployeeDetailQuery, useUpdateEmployeeMutation } from "@/hooks/use-chat-queries"
+import {
+  useEmployeeDetailQuery,
+  useUpdateEmployeeMutation,
+} from "@/hooks/use-chat-queries"
 import { useEmployeePickerSkillsQuery } from "@/hooks/use-skill-queries"
 
 import { CapabilityPickerDialog } from "./capability-picker-dialog"
@@ -52,7 +55,7 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
   React.useEffect(() => {
     fetchMcpList()
       .then(setAllMcpList)
-      .catch(() => { })
+      .catch(() => {})
   }, [])
 
   React.useEffect(() => {
