@@ -44,11 +44,18 @@ def init_checkpointer(conn) -> None:
 
 
 def get_checkpointer() -> AsyncSqliteSaver | MemorySaver:
-    """获取全局的检查点保存器，如果未初始化则回退到 MemorySaver"""
+    """获取全局的检查点保存器。
+
+    HITL resume 依赖持久 checkpointer。除测试环境外，未初始化时必须
+    明确失败，避免悄悄退化到进程内 MemorySaver。
+    """
     global _CHECKPOINTER
     if _CHECKPOINTER is None:
-        logger.warning("AsyncSqliteSaver 未初始化，回退到 MemorySaver")
-        _CHECKPOINTER = MemorySaver()
+        if get_settings().environment == "test":
+            logger.warning("AsyncSqliteSaver 未初始化，测试环境回退到 MemorySaver")
+            _CHECKPOINTER = MemorySaver()
+        else:
+            raise RuntimeError("LangGraph AsyncSqliteSaver 未初始化")
     return _CHECKPOINTER
 
 
