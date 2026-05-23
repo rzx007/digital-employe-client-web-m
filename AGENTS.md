@@ -110,6 +110,11 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 
 `init_db()` 除了 `create_all`，还自动执行 ALTER TABLE 迁移（为旧表补充新列）。修改模型后不需要手动写 migration，但需要确保 `init_db()` 中补上对应的 `ensure_column` 调用。
 
+### 架构文档（apps/server/docs）
+
+- [可恢复流](./apps/server/docs/resumable-stream-architecture.md) — SSE buffer、resume、落库
+- [HITL 人机协同](./apps/server/docs/hitl-architecture.md) — 澄清/方案审批、`message_id` 模型、数据流与待办
+
 ### Agent 系统
 
 `src/service/agent.py` → `get_agent(skill_path, root_path)` 创建对话 agent：

@@ -115,6 +115,20 @@ export function dedupeHitlPartsInMessages(messages: UIMessage[]): UIMessage[] {
   return messages.map(dedupeHitlPartsInMessage)
 }
 
+/** POST /approve 使用的 message_id（与 session.hitlMessageId 对齐） */
+export function resolveHitlApproveMessageId(
+  message: UIMessage,
+  sessionHitlMessageId: string | null | undefined
+): string {
+  if (
+    sessionHitlMessageId &&
+    String(message.id) === String(sessionHitlMessageId)
+  ) {
+    return String(sessionHitlMessageId)
+  }
+  return message.id
+}
+
 export function findPendingHitl(messages: UIMessage[]): PendingHitl | null {
   const resolvedTypes = new Set<string>()
   for (const m of messages) {

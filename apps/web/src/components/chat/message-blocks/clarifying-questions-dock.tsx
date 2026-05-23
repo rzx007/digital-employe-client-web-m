@@ -11,13 +11,15 @@ import { cn } from "@workspace/ui/lib/utils"
 import { Button } from "@workspace/ui/components/button"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { toast } from "sonner"
-import { approveHitl } from "@/api/conversation"
+import { approveHitl, type HitlDecision } from "@/api/conversation"
 import {
   buildClarifyRespondMessage,
   optionLabel,
   type ClarifyingQuestion,
 } from "@/lib/chat/clarifying-questions-utils"
 import type { PendingHitl } from "@/lib/chat/hitl-abort-message-utils"
+
+const CLARIFY_SKIP_REJECT_MESSAGE = "用户跳过澄清"
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
@@ -32,7 +34,6 @@ function ClarifyingQuestionsDockInner({
   messageId,
   optionalDetails,
   onSubmitted,
-  onSkip,
   className,
 }: {
   pending: PendingHitl & { input: Record<string, unknown> }
@@ -43,7 +44,6 @@ function ClarifyingQuestionsDockInner({
     resumed?: boolean
     assistantMessageId?: string | number
   }) => void | Promise<void>
-  onSkip: () => void | Promise<void>
   className?: string
 }) {
   const questionsInput = pending.input?.questions
@@ -89,6 +89,29 @@ function ClarifyingQuestionsDockInner({
     return false
   }, [current, currentAnswer])
 
+  const submitDecisions = useCallback(
+    async (decisions: HitlDecision[], errorFallback: string) => {
+      if (submitting) return
+      setSubmitting(true)
+      try {
+        const res = await approveHitl(conversationId, messageId, decisions)
+        if (res?.code && res.code !== 200) {
+          toast.error(res.msg || errorFallback)
+          return
+        }
+        await onSubmitted?.({
+          resumed: true,
+          assistantMessageId: res?.data?.assistant_message_id,
+        })
+      } catch {
+        toast.error("请求失败")
+      } finally {
+        setSubmitting(false)
+      }
+    },
+    [conversationId, messageId, onSubmitted, submitting]
+  )
+
   const submitAll = useCallback(async () => {
     const missing = questions.filter(
       (q) => q.required && !answers[q.id]?.trim()
@@ -98,39 +121,19 @@ function ClarifyingQuestionsDockInner({
       return
     }
 
-    if (submitting) return
-    setSubmitting(true)
-    try {
-      const message = buildClarifyRespondMessage(
-        questions,
-        answers,
-        context,
-        optionalDetails
-      )
-      const res = await approveHitl(conversationId, messageId, [
-        { type: "respond", message },
-      ])
-      if (res?.code && res.code !== 200) {
-        toast.error(res.msg || "提交失败")
-        return
-      }
-      await onSubmitted?.({
-        resumed: true,
-        assistantMessageId: res?.data?.assistant_message_id,
-      })
-    } catch {
-      toast.error("提交请求失败")
-    } finally {
-      setSubmitting(false)
-    }
+    const message = buildClarifyRespondMessage(
+      questions,
+      answers,
+      context,
+      optionalDetails
+    )
+    await submitDecisions([{ type: "respond", message }], "提交失败")
   }, [
     answers,
     context,
-    messageId,
-    onSubmitted,
     optionalDetails,
     questions,
-    submitting,
+    submitDecisions,
   ])
 
   const handleContinue = useCallback(() => {
@@ -152,8 +155,11 @@ function ClarifyingQuestionsDockInner({
   }, [total, validateCurrent])
 
   const handleSkip = useCallback(() => {
-    void onSkip()
-  }, [onSkip])
+    void submitDecisions(
+      [{ type: "reject", message: CLARIFY_SKIP_REJECT_MESSAGE }],
+      "跳过失败"
+    )
+  }, [submitDecisions])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -256,6 +262,7 @@ function ClarifyingQuestionsDockInner({
           variant="ghost"
           size="sm"
           className="h-7 text-xs text-muted-foreground"
+          disabled={submitting}
           onClick={handleSkip}
         >
           Skip

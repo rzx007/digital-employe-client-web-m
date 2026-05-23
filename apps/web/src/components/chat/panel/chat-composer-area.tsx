@@ -115,10 +115,6 @@ export function ChatComposerArea({
     [onHitlApproved, pendingHitl]
   )
 
-  const handleSkip = React.useCallback(() => {
-    onStop()
-  }, [onStop])
-
   return (
     <div className={className}>
       {pendingMessages &&
@@ -145,7 +141,6 @@ export function ChatComposerArea({
           messageId={hitlMessageId}
           optionalDetails={inputValue}
           onSubmitted={handleClarifySubmitted}
-          onSkip={handleSkip}
           className="mx-auto w-full max-w-4xl"
         />
       )}

@@ -22,6 +22,9 @@ from src.service.agent.paths import (
     resolve_employee_memories_dir,
     resolve_orchestrator_skills_root,
 )
+from src.service.agent.clarifying_questions_tool import submit_clarifying_questions
+from src.service.agent.document_plan_tool import submit_document_plan
+from src.service.agent.hitl_interrupt_on import HITL_INTERRUPT_ON
 from src.service.agent.prompts import (
     build_filesystem_prompt_section,
     build_long_document_writing_section,
@@ -191,10 +194,14 @@ def get_orchestrator_agent(
             delete_task,
             cancel_plan,
             list_tasks,
+            # 用户明确要求总管亲自执行（含长文档）时与员工 agent 相同的 HITL 门
+            submit_clarifying_questions,
+            submit_document_plan,
         ],
         system_prompt=system_prompt,
         backend=backend,
         checkpointer=checkpointer,
+        interrupt_on=HITL_INTERRUPT_ON,
         middleware=[summarization_mw, summarization_tool_mw],
         subagents=[],
         permissions=[

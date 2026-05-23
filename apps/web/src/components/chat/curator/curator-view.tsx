@@ -56,13 +56,12 @@ import { CuratorChatHeader } from "../contacts/curator-chat-header"
 import { CuratorCompactToolbar } from "./curator-compact-toolbar"
 import { getCuratorLayout } from "./curator-layout"
 import { ExecutionReportCard } from "../message-blocks/execution-report-card"
-import { ChatPromptInput } from "@/components/chat-prompt-input"
+import { ChatComposerArea } from "../panel/chat-composer-area"
 import { CuratorRotatingPlaceholder } from "./curator-rotating-placeholder"
 import { CuratorEmptyWelcome } from "./curator-empty-welcome"
 import { CuratorFileProvider } from "./curator-file-provider"
 import { CuratorRecruitmentProvider } from "./curator-recruitment-provider"
 import { useArtifactStore } from "@/stores/artifact-store"
-import { PendingMessageQueue } from "../panel/pending-message-queue"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import {
   getElapsedMsFromMeta,
@@ -83,6 +82,10 @@ import {
 } from "@/lib/chat/recruitment-tool-payload"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
+import {
+  dedupeHitlPartsInMessages,
+  resolveHitlApproveMessageId,
+} from "@/lib/chat/hitl-abort-message-utils"
 
 type TimelineEntry =
   | { kind: "message"; data: UIMessage; ts: number }
@@ -221,6 +224,7 @@ export function CuratorView({
         []
       )
       setMessages([])
+      session.clearHitl()
       setShowResetDialog(false)
       toast.success("会话已清空")
     } catch {
@@ -230,6 +234,7 @@ export function CuratorView({
     curatorConversationId,
     clearTaskLogs,
     resetMutation,
+    session,
     setMessages,
     queryClient,
   ])
@@ -245,7 +250,16 @@ export function CuratorView({
 
   const preferLiveMessages =
     messages.length > 0 || status === "submitted" || status === "streaming"
-  const displayMessages = preferLiveMessages ? messages : initialMessages
+
+  const displayMessages = useMemo(() => {
+    const source = preferLiveMessages ? messages : initialMessages
+    return dedupeHitlPartsInMessages(source)
+  }, [preferLiveMessages, messages, initialMessages])
+
+  const composerMessages = useMemo(
+    () => dedupeHitlPartsInMessages(messages),
+    [messages]
+  )
 
   const lastAssistantMessageId = useMemo(() => {
     for (let i = displayMessages.length - 1; i >= 0; i--) {
@@ -660,10 +674,15 @@ export function CuratorView({
                             commandMeta={commandMeta}
                             mentionMeta={mentionMeta}
                             filesMeta={filesMeta}
-                            messageId={message.id}
+                            messageId={resolveHitlApproveMessageId(
+                              message,
+                              session.hitlMessageId
+                            )}
                             toolAutoCollapseMap={toolAutoCollapseMap}
                             isLastAssistantMessage={isLastAssistantMessage}
                             isTurnEnded={hasCurrentTurnEnded}
+                            conversationId={curatorConversationId}
+                            onHitlApproved={session.onHitlApproved}
                           />
                         ) : message.role === "assistant" ? (
                           <MessageResponse />
@@ -707,35 +726,37 @@ export function CuratorView({
       </CuratorFileProvider>
 
       <div className={layout.footer}>
-        {pendingQueue.length > 0 && (
-          <div className="mx-auto w-[98%]">
-            <PendingMessageQueue
-              queue={pendingQueue}
-              onRemove={pendingRemove}
-              onSendNow={pendingSendNow}
-              onMoveUp={pendingMoveUp}
-              onMoveDown={pendingMoveDown}
-            />
-          </div>
-        )}
-        <ChatPromptInput
-          value={inputValue}
-          onChange={handleTextChange}
-          onSubmit={handleSendMessage}
-          onStop={handleStop}
-          status={chatStatus}
-          disabled={curatorLoading || (!isBusy && !inputValue.trim())}
-          size="compact"
-          placeholder={<CuratorRotatingPlaceholder />}
-          className="w-full"
-          slashCommands={[]}
-          mentionCandidates={mentionCandidates}
-          conversationId={curatorConversationId}
-          onAttachmentsChange={handleAttachmentsChange}
-        />
-        {error && (
-          <p className="mt-2 text-xs text-destructive">{error.message}</p>
-        )}
+        {curatorConversationId ? (
+          <ChatComposerArea
+            messages={composerMessages}
+            conversationId={curatorConversationId}
+            hitlMessageId={session.hitlMessageId}
+            hitlPayload={session.hitlPayload}
+            hitlInterrupted={session.hitlInterrupted}
+            onHitlApproved={session.onHitlApproved}
+            inputValue={inputValue}
+            onInputChange={handleTextChange}
+            onSend={handleSendMessage}
+            onStop={handleStop}
+            status={chatStatus}
+            submitDisabled={
+              curatorLoading || (!isBusy && !inputValue.trim())
+            }
+            size="compact"
+            placeholder={<CuratorRotatingPlaceholder />}
+            className="w-full"
+            slashCommands={[]}
+            mentionCandidates={mentionCandidates}
+            onAttachmentsChange={handleAttachmentsChange}
+            pendingMessages={pendingQueue}
+            onPendingRemove={pendingRemove}
+            onPendingSendNow={pendingSendNow}
+            onPendingMoveUp={pendingMoveUp}
+            onPendingMoveDown={pendingMoveDown}
+            error={error}
+            pendingQueueClassName="mx-auto w-[98%]"
+          />
+        ) : null}
       </div>
 
       <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
