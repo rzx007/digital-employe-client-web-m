@@ -29,7 +29,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 function ClarifyingQuestionsDockInner({
   pending,
   conversationId,
-  streamId,
+  messageId,
   optionalDetails,
   onSubmitted,
   onSkip,
@@ -37,9 +37,12 @@ function ClarifyingQuestionsDockInner({
 }: {
   pending: PendingHitl & { input: Record<string, unknown> }
   conversationId: string | number
-  streamId: string
+  messageId: string | number
   optionalDetails?: string
-  onSubmitted?: (opts?: { resumed?: boolean }) => void | Promise<void>
+  onSubmitted?: (opts?: {
+    resumed?: boolean
+    assistantMessageId?: string | number
+  }) => void | Promise<void>
   onSkip: () => void | Promise<void>
   className?: string
 }) {
@@ -104,14 +107,17 @@ function ClarifyingQuestionsDockInner({
         context,
         optionalDetails
       )
-      const res = await approveHitl(conversationId, streamId, [
+      const res = await approveHitl(conversationId, messageId, [
         { type: "respond", message },
       ])
       if (res?.code && res.code !== 200) {
         toast.error(res.msg || "提交失败")
         return
       }
-      await onSubmitted?.({ resumed: true })
+      await onSubmitted?.({
+        resumed: true,
+        assistantMessageId: res?.data?.assistant_message_id,
+      })
     } catch {
       toast.error("提交请求失败")
     } finally {
@@ -120,7 +126,7 @@ function ClarifyingQuestionsDockInner({
   }, [
     answers,
     context,
-    streamId,
+    messageId,
     onSubmitted,
     optionalDetails,
     questions,

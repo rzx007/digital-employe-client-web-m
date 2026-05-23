@@ -305,7 +305,7 @@ export function DraftChatView({
       onPendingMoveUp={pendingMoveUp}
       onPendingMoveDown={pendingMoveDown}
       conversationId={selectedConversationId}
-      streamId={session.streamId}
+      hitlMessageId={session.hitlMessageId}
       hitlInterrupted={session.hitlInterrupted}
       hitlPayload={session.hitlPayload}
       onHitlApproved={session.onHitlApproved}

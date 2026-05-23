@@ -3,7 +3,6 @@ import logging
 import os
 import json
 import shutil
-import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -438,8 +437,6 @@ class ChatService:
             content="",
             extra_meta=None,
         )
-        stream_id = str(uuid.uuid4())
-        assistant_msg.extra_meta = json.dumps({"stream_id": stream_id}, ensure_ascii=False)
         db.commit()
         
         # 根据会话ID获取会话详情，然后获取root_path
@@ -538,10 +535,7 @@ class ChatService:
             except Exception:
                 logger.warning("push start conversation_status_changed failed conv=%s", conversation_id, exc_info=True)
             db.refresh(assistant_msg)
-            
-            # 发送 stream_id 作为首个 SSE 事件
-            yield f"data: {json.dumps({'type': 'stream_id', 'data': {'stream_id': stream_id}}, ensure_ascii=False)}\n\n"
-                
+
             # 返回恢复流的生成器
             async for chunk in ChatService.resume_conversation_stream(db, conversation_id, debug_content_only):
                 yield chunk
@@ -562,7 +556,7 @@ class ChatService:
         if status_info:
             logger.info("[resume] conv=%s stream already ended: status=%s", conversation_id, status_info)
             if status_info.get("status") == "interrupted":
-                yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': 'interrupted', 'stream_id': status_info.get('stream_id'), 'interrupt_payload': status_info.get('interrupt_payload')}}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': 'interrupted', 'message_id': status_info.get('message_id'), 'interrupt_payload': status_info.get('interrupt_payload')}}, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
                 return
             yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': status_info['status'], 'error': status_info.get('error'), 'cursor': status_info.get('cursor', 0)}}, ensure_ascii=False)}\n\n"
@@ -730,39 +724,41 @@ class ChatService:
     async def approve_trigger(
         db: Session,
         conversation_id: int,
-        stream_id: str,
+        message_id: int,
         decisions: list[dict],
         auth_token: str | None = None,
     ) -> dict:
-        """HITL approve：校验 + 启动 background resume task，返回状态 dict。"""
+        """HITL approve：封存 interrupted 段 + 新建 assistant 行 + resume。"""
+        from datetime import datetime, timezone
+
         from src.service.stream_registry import registry
 
         conversation = ChatService.get_conversation(db, conversation_id)
 
-        # 1. 按 stream_id 查找 assistant message
-        stmt = (
-            select(ConversationMessage)
-            .where(
-                ConversationMessage.conversation_id == conversation_id,
-                ConversationMessage.role == "assistant",
-                ConversationMessage.stream_state == "interrupted",
-            )
-            .order_by(ConversationMessage.id.desc())
-            .limit(1)
-        )
-        msg = db.scalar(stmt)
-        if not msg or not msg.extra_meta:
-            return {"accepted": False, "message": "未找到中断状态的消息"}
+        msg = db.get(ConversationMessage, message_id)
+        if not msg or msg.conversation_id != conversation_id:
+            return {"accepted": False, "message": "消息不存在"}
+        if msg.role != "assistant":
+            return {"accepted": False, "message": "只能审批 assistant 消息"}
+        if msg.stream_state != "interrupted":
+            return {"accepted": False, "message": "该消息不在等待审批状态"}
 
         meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
-        if meta.get("stream_id") != stream_id:
-            return {"accepted": False, "message": "stream_id 不匹配"}
+        if meta.get("approved_at"):
+            return {"accepted": False, "message": "该消息已审批"}
 
-        # 2. 清除 interrupt 状态，准备 resume
-        meta.pop("interrupt_payload", None)
+        meta["approved_at"] = datetime.now(timezone.utc).isoformat()
         msg.extra_meta = json.dumps(meta, ensure_ascii=False)
-        msg.stream_state = "streaming"
-        msg.stream_cursor = 0
+
+        new_msg = ChatService._append_message(
+            db,
+            conversation=conversation,
+            role="assistant",
+            content="",
+            extra_meta=None,
+        )
+        new_msg.stream_state = "streaming"
+        new_msg.stream_cursor = 0
         conversation.status = "running"
         db.commit()
         try:
@@ -817,14 +813,22 @@ class ChatService:
             conversation_id=conversation_id,
             agent=agent,
             config=config,
-            stream_msg_id=msg.id,
+            stream_msg_id=new_msg.id,
             decisions=decisions,
         )
 
         if not resumed:
+            new_msg.stream_state = "error"
+            new_msg.content = new_msg.content or "恢复执行失败：已有活跃任务"
+            db.commit()
             return {"accepted": False, "message": "恢复执行失败：已有活跃任务"}
 
-        return {"accepted": True, "resumed": True}
+        return {
+            "accepted": True,
+            "resumed": True,
+            "approved_message_id": msg.id,
+            "assistant_message_id": new_msg.id,
+        }
 
     @staticmethod
     def reset_conversation_status(db: Session, conversation_id: int) -> None:

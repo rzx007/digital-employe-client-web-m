@@ -202,12 +202,11 @@ export class LangChainChatTransport<
 > implements ChatTransport<UI_MESSAGE> {
   private _reconnectAbort: AbortController | null = null
   _resumeConversationId: string | null = null
-  onStreamId: ((streamId: string) => void) | null = null
   onInterrupted:
     | ((payload: {
         action_requests: unknown[]
         review_configs: unknown[]
-        stream_id?: string | null
+        message_id?: string | number | null
       }) => void)
     | null = null
 
@@ -364,20 +363,6 @@ export class LangChainChatTransport<
           try {
             const payload = JSON.parse(data)
 
-            // HITL: stream_id 事件 — 捕获并回调，不进入正常解析
-            if (
-              payload &&
-              typeof payload === "object" &&
-              payload.type === "stream_id" &&
-              payload.data?.stream_id &&
-              conversationId
-            ) {
-              const sid = payload.data.stream_id as string
-              conversationRuntimeBus.emitStreamId(conversationId, sid)
-              this.onStreamId?.(sid)
-              return false
-            }
-
             // HITL: interrupted 终态 — 回调后正常结束流
             if (
               payload &&
@@ -389,20 +374,25 @@ export class LangChainChatTransport<
                   []) as HitlPayload["action_requests"],
                 review_configs: (payload.review_configs ?? []) as unknown[],
               }
+              const messageId = payload.message_id as
+                | string
+                | number
+                | undefined
               if (conversationId) {
                 conversationRuntimeBus.emitInterrupted(conversationId, {
                   ...interruptPayload,
-                  stream_id: payload.stream_id as string | undefined,
+                  message_id: messageId,
                 })
                 conversationRuntimeBus.emitTerminal(conversationId, {
                   status: "interrupted",
-                  stream_id: payload.stream_id as string | undefined,
+                  message_id: messageId,
                   interrupt_payload: interruptPayload,
                 })
               }
               this.onInterrupted?.({
                 action_requests: interruptPayload.action_requests,
                 review_configs: interruptPayload.review_configs,
+                message_id: messageId,
               })
               flushSync()
               closeTextPhaseIfNeeded(state).forEach((chunk) =>
@@ -459,7 +449,7 @@ export class LangChainChatTransport<
                   data?: {
                     status?: string
                     interrupt_payload?: HitlPayload
-                    stream_id?: string | null
+                    message_id?: string | number | null
                     error?: string
                   }
                 }
@@ -481,12 +471,12 @@ export class LangChainChatTransport<
                 ) {
                   conversationRuntimeBus.emitInterrupted(conversationId, {
                     ...eventData.interrupt_payload,
-                    stream_id: eventData.stream_id,
+                    message_id: eventData.message_id,
                   })
                 }
                 conversationRuntimeBus.emitTerminal(conversationId, {
                   status: terminalStatus,
-                  stream_id: eventData?.stream_id,
+                  message_id: eventData?.message_id,
                   interrupt_payload: eventData?.interrupt_payload,
                 })
               }
@@ -497,7 +487,7 @@ export class LangChainChatTransport<
               ) {
                 this.onInterrupted?.({
                   ...eventData.interrupt_payload,
-                  stream_id: eventData.stream_id,
+                  message_id: eventData.message_id,
                 })
               }
               flushSync()

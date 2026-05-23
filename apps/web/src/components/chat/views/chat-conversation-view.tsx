@@ -350,7 +350,7 @@ export function ConversationChatView({
       onPendingMoveDown={pendingMoveDown}
       conversationId={conversationId}
       onAttachmentsChange={handleAttachmentsChange}
-      streamId={session.streamId}
+      hitlMessageId={session.hitlMessageId}
       hitlInterrupted={session.hitlInterrupted}
       hitlPayload={session.hitlPayload}
       onHitlApproved={session.onHitlApproved}

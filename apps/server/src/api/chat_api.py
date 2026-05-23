@@ -143,7 +143,7 @@ async def approve_hitl(
     result = await ChatService.approve_trigger(
         db,
         conversation_id,
-        stream_id=payload.stream_id,
+        message_id=payload.message_id,
         decisions=payload.decisions,
         auth_token=http_request.headers.get("token"),
     )

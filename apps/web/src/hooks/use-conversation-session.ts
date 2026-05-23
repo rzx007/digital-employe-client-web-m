@@ -20,6 +20,14 @@ function terminalToStreamState(status: string): string {
   return status
 }
 
+function parseMessageId(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value)
+  }
+  if (typeof value === "string" && value.length > 0) return value
+  return null
+}
+
 export function useConversationSession({
   conversationId,
   storedMessages,
@@ -39,7 +47,7 @@ export function useConversationSession({
   resumeStream: () => void
   queryClient: QueryClient
 }) {
-  const [streamId, setStreamId] = useState<string | null>(null)
+  const [hitlMessageId, setHitlMessageId] = useState<string | null>(null)
   const [hitlPayload, setHitlPayload] = useState<HitlPayload | null>(null)
   const hitlInterrupted = hitlPayload !== null
 
@@ -82,7 +90,7 @@ export function useConversationSession({
 
   const clearHitl = useCallback(() => {
     setHitlPayload(null)
-    setStreamId(null)
+    setHitlMessageId(null)
   }, [])
 
   const resetResumeAttempt = useCallback(() => {
@@ -110,7 +118,7 @@ export function useConversationSession({
     const stored = extractInterruptStateFromStoredMessages(storedMessages)
     if (!stored) return
     setHitlPayload(stored.hitlPayload)
-    if (stored.streamId) setStreamId(stored.streamId)
+    setHitlMessageId(stored.messageId)
   }, [storedMessages])
 
   const hydrateFromServer = useCallback(() => {
@@ -144,11 +152,9 @@ export function useConversationSession({
     if (!convKey) return
 
     const unsubscribe = conversationRuntimeBus.subscribe(convKey, {
-      onStreamId: (id) => {
-        setStreamId(id)
-      },
       onInterrupted: (payload) => {
-        if (payload.stream_id) setStreamId(payload.stream_id)
+        const mid = parseMessageId(payload.message_id)
+        if (mid) setHitlMessageId(mid)
         setHitlPayload({
           action_requests: payload.action_requests,
           review_configs: payload.review_configs,
@@ -161,7 +167,8 @@ export function useConversationSession({
         patchLastAssistantStreamState(queryClient, convKey, streamState)
 
         if (info.status === "interrupted" && info.interrupt_payload) {
-          if (info.stream_id) setStreamId(info.stream_id)
+          const mid = parseMessageId(info.message_id)
+          if (mid) setHitlMessageId(mid)
           setHitlPayload({
             action_requests: info.interrupt_payload.action_requests,
             review_configs: info.interrupt_payload.review_configs,
@@ -170,6 +177,7 @@ export function useConversationSession({
 
         if (info.status !== "interrupted") {
           setHitlPayload(null)
+          setHitlMessageId(null)
         }
 
         scheduleMessagesRefetch()
@@ -198,17 +206,37 @@ export function useConversationSession({
   }, [convKey, queryClient, scheduleMessagesRefetch])
 
   const onHitlApproved = useCallback(
-    async (options?: { resumed?: boolean }) => {
+    async (options?: {
+      resumed?: boolean
+      assistantMessageId?: string | number
+    }) => {
       if (!convKey) return
       scheduleMessagesRefetch()
       if (options?.resumed === false) return
       setHitlPayload(null)
+      setHitlMessageId(null)
+
+      if (options?.assistantMessageId != null) {
+        const newId = String(options.assistantMessageId)
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === newId)) return prev
+          return [
+            ...prev,
+            {
+              id: newId,
+              role: "assistant",
+              parts: [],
+            },
+          ]
+        })
+      }
+
       chatTransport.setResumeConversationId(convKey)
       requestAnimationFrame(() => {
         resumeStream()
       })
     },
-    [convKey, resumeStream, scheduleMessagesRefetch]
+    [convKey, resumeStream, scheduleMessagesRefetch, setMessages]
   )
 
   const prepareOutboundMessage = useCallback(() => {
@@ -217,7 +245,7 @@ export function useConversationSession({
   }, [clearHitl, resetResumeAttempt])
 
   return {
-    streamId,
+    hitlMessageId,
     hitlPayload,
     hitlInterrupted,
     onHitlApproved,

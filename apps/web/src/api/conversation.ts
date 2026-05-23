@@ -231,14 +231,21 @@ export type HitlDecision =
 
 export async function approveHitl(
   conversationId: number | string,
-  streamId: string,
+  messageId: number | string,
   decisions: HitlDecision[]
 ) {
-  return request<ApiResponse<{ accepted?: boolean; resumed?: boolean }>>(
-    `/chat/conversations/${conversationId}/approve`,
-    {
-      method: "POST",
-      body: JSON.stringify({ stream_id: streamId, decisions }),
-    }
-  )
+  return request<
+    ApiResponse<{
+      accepted?: boolean
+      resumed?: boolean
+      assistant_message_id?: number
+      approved_message_id?: number
+    }>
+  >(`/chat/conversations/${conversationId}/approve`, {
+    method: "POST",
+    body: JSON.stringify({
+      message_id: Number(messageId),
+      decisions,
+    }),
+  })
 }

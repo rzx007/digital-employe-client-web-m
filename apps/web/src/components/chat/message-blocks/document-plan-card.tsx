@@ -61,7 +61,7 @@ function DocumentPlanCardInner({
   state,
   resultText,
   conversationId,
-  streamId,
+  messageId,
   toolCallId,
   onHitlApproved,
   className,
@@ -70,7 +70,7 @@ function DocumentPlanCardInner({
   state?: string
   resultText?: string | null
   conversationId?: string | number | null
-  streamId?: string | null
+  messageId?: string | number | null
   toolCallId?: string
   onHitlApproved?: (options?: HitlPatchOptions) => void
   className?: string
@@ -110,8 +110,8 @@ function DocumentPlanCardInner({
       edited_action?: unknown
     }>
   ) => {
-    if (!streamId) {
-      toast.error("无法确认：缺少 streamId")
+    if (messageId == null || messageId === "") {
+      toast.error("无法确认：缺少 messageId")
       return
     }
     if (!conversationId) {
@@ -125,7 +125,7 @@ function DocumentPlanCardInner({
     if (submitting || resolved) return
     setSubmitting(true)
     try {
-      const res = await approveHitl(conversationId, streamId, decisions)
+      const res = await approveHitl(conversationId, messageId, decisions)
       if (res?.code && res.code !== 200) {
         toast.error(res.msg || "确认失败")
         return
@@ -134,6 +134,7 @@ function DocumentPlanCardInner({
         kind: "document-plan",
         toolCallId,
         resumed: true,
+        assistantMessageId: res?.data?.assistant_message_id,
       })
       setResolved(true)
       setMode("view")

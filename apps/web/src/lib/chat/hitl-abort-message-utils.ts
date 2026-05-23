@@ -22,6 +22,7 @@ export type HitlPatchOptions = {
   kind?: PendingHitlKind
   toolCallId?: string
   resumed?: boolean
+  assistantMessageId?: string | number
 }
 
 function kindFromToolType(type: string): PendingHitlKind | null {

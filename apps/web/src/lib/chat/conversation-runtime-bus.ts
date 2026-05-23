@@ -39,13 +39,9 @@ class ConversationRuntimeBus {
     }
   }
 
-  emitStreamId(conversationId: string, streamId: string) {
-    this.emit(conversationId, (l) => l.onStreamId?.(streamId))
-  }
-
   emitInterrupted(
     conversationId: string,
-    payload: HitlPayload & { stream_id?: string | null }
+    payload: HitlPayload & { message_id?: string | number | null }
   ) {
     this.emit(conversationId, (l) => l.onInterrupted?.(payload))
   }
@@ -54,7 +50,7 @@ class ConversationRuntimeBus {
     conversationId: string,
     info: {
       status: StreamTerminalStatus
-      stream_id?: string | null
+      message_id?: string | number | null
       interrupt_payload?: HitlPayload
     }
   ) {

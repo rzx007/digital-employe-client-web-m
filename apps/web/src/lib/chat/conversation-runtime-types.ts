@@ -11,11 +11,12 @@ export type StreamTerminalStatus =
   | "no_stream"
 
 export type ConversationRuntimeListener = {
-  onStreamId?: (streamId: string) => void
-  onInterrupted?: (payload: HitlPayload & { stream_id?: string | null }) => void
+  onInterrupted?: (
+    payload: HitlPayload & { message_id?: string | number | null }
+  ) => void
   onTerminal?: (info: {
     status: StreamTerminalStatus
-    stream_id?: string | null
+    message_id?: string | number | null
     interrupt_payload?: HitlPayload
   }) => void
 }

@@ -46,6 +46,10 @@ export function mapStoredMessagesToUIMessages(
           : undefined
 
       if (message.role === "assistant") {
+        const assistantMeta = {
+          ...messageMeta,
+          streamState: message.streamState ?? undefined,
+        }
         if (message.messageParts && message.messageParts.length > 0) {
           const baseParts = message.messageParts as UIMessage["parts"]
           const parts = enrichAssistantPartsFromStoredMessage(message, baseParts)
@@ -56,7 +60,7 @@ export function mapStoredMessagesToUIMessages(
           }
           ;(
             uiMessage as UIMessage & { metadata?: Record<string, unknown> }
-          ).metadata = messageMeta
+          ).metadata = assistantMeta
           return uiMessage
         }
 
@@ -74,7 +78,7 @@ export function mapStoredMessagesToUIMessages(
           }
           ;(
             uiMessage as UIMessage & { metadata?: Record<string, unknown> }
-          ).metadata = messageMeta
+          ).metadata = assistantMeta
           return uiMessage
         }
 
@@ -86,7 +90,7 @@ export function mapStoredMessagesToUIMessages(
           }
           ;(
             uiMessage as UIMessage & { metadata?: Record<string, unknown> }
-          ).metadata = messageMeta
+          ).metadata = assistantMeta
           return uiMessage
         }
 

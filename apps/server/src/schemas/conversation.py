@@ -95,5 +95,5 @@ class StreamConversationRequest(BaseModel):
 
 
 class ApproveRequest(BaseModel):
-    stream_id: str
+    message_id: int
     decisions: list[dict]

@@ -23,7 +23,7 @@ const HITL_PENDING_PLACEHOLDER = "请先确认或中止当前待办"
 export function ChatComposerArea({
   messages,
   conversationId,
-  streamId,
+  hitlMessageId,
   hitlPayload,
   inputValue,
   onInputChange,
@@ -49,7 +49,7 @@ export function ChatComposerArea({
 }: {
   messages: UIMessage[]
   conversationId: string | number
-  streamId: string | null
+  hitlMessageId: string | null
   inputValue: string
   onInputChange: (event: PromptChangeEvent) => void
   onSend: (message: PromptInputMessage | string) => void
@@ -104,11 +104,12 @@ export function ChatComposerArea({
   const blocksComposer = clarifyActive || planActive
 
   const handleClarifySubmitted = React.useCallback(
-    (opts?: { resumed?: boolean }) => {
+    (opts?: { resumed?: boolean; assistantMessageId?: string | number }) => {
       onHitlApproved?.({
         kind: "clarify",
         toolCallId: pendingHitl?.toolCallId,
         resumed: opts?.resumed,
+        assistantMessageId: opts?.assistantMessageId,
       })
     },
     [onHitlApproved, pendingHitl]
@@ -137,11 +138,11 @@ export function ChatComposerArea({
           </div>
         )}
 
-      {clarifyActive && pendingHitl && streamId && (
+      {clarifyActive && pendingHitl && hitlMessageId && (
         <ClarifyingQuestionsDock
           pending={pendingHitl}
           conversationId={conversationId}
-          streamId={streamId}
+          messageId={hitlMessageId}
           optionalDetails={inputValue}
           onSubmitted={handleClarifySubmitted}
           onSkip={handleSkip}

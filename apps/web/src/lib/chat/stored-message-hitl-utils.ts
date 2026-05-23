@@ -38,32 +38,29 @@ function parseHitlPayload(raw: unknown): HitlPayload | null {
 
 export function extractInterruptStateFromMessage(message: Message): {
   hitlPayload: HitlPayload
-  streamId: string | null
+  messageId: string
 } | null {
   if (message.role !== "assistant" || message.streamState !== "interrupted") {
     return null
   }
   const meta = message.metadata
   if (!isRecord(meta)) return null
+  if (meta.approved_at) return null
 
   const hitlPayload = parseHitlPayload(meta.interrupt_payload)
   if (!hitlPayload) return null
 
-  const streamId =
-    typeof meta.stream_id === "string" && meta.stream_id.length > 0
-      ? meta.stream_id
-      : null
-
-  return { hitlPayload, streamId }
+  return { hitlPayload, messageId: String(message.id) }
 }
 
 export function extractInterruptStateFromStoredMessages(
   messages: Message[]
-): { hitlPayload: HitlPayload; streamId: string | null } | null {
+): { hitlPayload: HitlPayload; messageId: string } | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
     if (msg.role !== "assistant") continue
-    return extractInterruptStateFromMessage(msg)
+    const state = extractInterruptStateFromMessage(msg)
+    if (state) return state
   }
   return null
 }
@@ -105,11 +102,7 @@ export function enrichAssistantPartsFromStoredMessage(
   if (!action) return parts
   if (hasPendingHitlToolPart(parts, action.name)) return parts
 
-  const toolCallId =
-    typeof interrupt.streamId === "string" && interrupt.streamId.length > 0
-      ? `hitl-${interrupt.streamId.slice(0, 8)}`
-      : `hitl-pending-${action.name}`
-
+  const toolCallId = `hitl-${interrupt.messageId}`
   const pendingPart = synthesizePendingHitlPart(action, toolCallId)
   return [...parts, pendingPart]
 }

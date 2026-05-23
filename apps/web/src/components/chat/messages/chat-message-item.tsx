@@ -93,7 +93,6 @@ export function RenderClassifiedBlocks({
   isLastAssistantMessage = false,
   isTurnEnded = true,
   conversationId,
-  streamId,
   onHitlApproved,
 }: {
   blocks: ClassifiedBlock[]
@@ -105,7 +104,6 @@ export function RenderClassifiedBlocks({
   isLastAssistantMessage?: boolean
   isTurnEnded?: boolean
   conversationId?: string | number | null
-  streamId?: string | null
   onHitlApproved?: (options?: HitlPatchOptions) => void
 }) {
   return (
@@ -154,7 +152,7 @@ export function RenderClassifiedBlocks({
               }
               resultText={block.resultText}
               conversationId={conversationId}
-              streamId={streamId}
+              messageId={messageId}
               toolCallId={block.toolCallId}
               onHitlApproved={onHitlApproved}
               className="w-full"
@@ -265,7 +263,6 @@ export interface ChatMessageItemProps {
   /** 本轮是否已结束（status ready/error），末项工具据此延迟收起 */
   isTurnEnded?: boolean
   conversationId?: string | number | null
-  streamId?: string | null
   onHitlApproved?: (options?: HitlPatchOptions) => void
 }
 
@@ -276,7 +273,6 @@ function ChatMessageItemInner({
   isLastAssistantMessage = false,
   isTurnEnded = true,
   conversationId,
-  streamId,
   onHitlApproved,
 }: ChatMessageItemProps) {
   const contactDisplayName = getContactDisplayName(contact)
@@ -364,7 +360,6 @@ function ChatMessageItemInner({
               isLastAssistantMessage={isLastAssistantMessage}
               isTurnEnded={isTurnEnded}
               conversationId={conversationId}
-              streamId={streamId}
               onHitlApproved={onHitlApproved}
             />
           ) : (

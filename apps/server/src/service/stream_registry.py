@@ -355,7 +355,7 @@ class StreamRegistry:
             try:
                 meta = json.loads(msg.extra_meta)
                 result["interrupt_payload"] = meta.get("interrupt_payload")
-                result["stream_id"] = meta.get("stream_id")
+                result["message_id"] = msg.id
             except (json.JSONDecodeError, TypeError):
                 pass
         return result
@@ -686,6 +686,7 @@ class StreamRegistry:
                 )
                 evt = task.buffer.add({
                     "status": "interrupted",
+                    "message_id": stream_msg_id,
                     **interrupt_payload,
                 })
                 self.broadcast(conversation_id, evt)

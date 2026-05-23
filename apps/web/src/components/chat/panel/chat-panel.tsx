@@ -51,7 +51,7 @@ type VirtualizedMessageListProps = {
   contact: ChatViewContact
   hasCurrentTurnEnded: boolean
   conversationId?: string | number | null
-  streamId?: string | null
+  hitlMessageId?: string | null
   onHitlApproved?: (options?: HitlPatchOptions) => void
 }
 
@@ -60,7 +60,7 @@ function VirtualizedMessageList({
   contact,
   hasCurrentTurnEnded,
   conversationId,
-  streamId,
+  hitlMessageId,
   onHitlApproved,
 }: VirtualizedMessageListProps) {
   const { scrollRef } = useStickToBottomContext()
@@ -127,7 +127,7 @@ function VirtualizedMessageList({
               isLastAssistantMessage={isLastAssistantMessage}
               isTurnEnded={hasCurrentTurnEnded}
               conversationId={conversationId}
-              streamId={streamId}
+              hitlMessageId={hitlMessageId}
               onHitlApproved={onHitlApproved}
             />
           </div>
@@ -160,7 +160,7 @@ export function ChatPanel({
   onPendingMoveDown,
   conversationId,
   onAttachmentsChange,
-  streamId,
+  hitlMessageId,
   composerMessages,
   hitlInterrupted,
   hitlPayload,
@@ -190,7 +190,7 @@ export function ChatPanel({
   onPendingMoveDown?: (id: string) => void
   conversationId?: string | number | null
   onAttachmentsChange?: (paths: string[]) => void
-  streamId?: string | null
+  hitlMessageId?: string | null
   hitlPayload?: {
     action_requests: Array<{ name: string; args: Record<string, unknown> }>
     review_configs: unknown[]
@@ -316,7 +316,7 @@ export function ChatPanel({
                     contact={contact}
                     hasCurrentTurnEnded={hasCurrentTurnEnded}
                     conversationId={conversationId}
-                    streamId={streamId}
+                    hitlMessageId={hitlMessageId}
                     onHitlApproved={onHitlApproved}
                   />
                 )}
@@ -345,7 +345,7 @@ export function ChatPanel({
               <ChatComposerArea
                 messages={composerMessages ?? messages}
                 conversationId={conversationId!}
-                streamId={streamId ?? null}
+                hitlMessageId={hitlMessageId ?? null}
                 inputValue={inputValue}
                 onInputChange={onInputChange}
                 onSend={onSend}
