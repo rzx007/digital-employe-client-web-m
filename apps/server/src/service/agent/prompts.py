@@ -81,6 +81,21 @@ def build_filesystem_prompt_section(
         """
 
 
+def build_clarifying_questions_section() -> str:
+    """澄清门（Clarify HITL）要点。"""
+    return """
+        ## 需求澄清（Clarify HITL）
+        当用户需求模糊、关键信息缺失时（含长文档开写前）：
+        - **必须先**调用 `submit_clarifying_questions` 向用户提问，等待用户 **respond** 作答
+        - `questions` 须为 **JSON 字符串**；优先出 **选择题**（`type: "choice"` + `options` 数组，3～6 项），无法列选项时用 `type: "text"`
+        - 每项含 `id`、`prompt`、可选 `required`；一次可提 2～6 题（前端逐题分页展示）
+        - `context` 示例：`long_document`（长文档）、`general`（通用模糊任务）
+        - 用户 **Skip** 会终止本轮对话
+        - **禁止**在澄清完成前 write_file 到 `/artifacts/`（长文档）
+        - 短句明确指令（如「把这段改短」）或用户说「直接写别问了」时，**不要**弹澄清门
+        """
+
+
 def build_long_document_writing_section(*, for_orchestrator: bool = False) -> str:
     """长文档写作要点（详规见 /agent/AGENTS.md）。"""
     orchestrator_prefix = ""
@@ -97,7 +112,12 @@ def build_long_document_writing_section(*, for_orchestrator: bool = False) -> st
         {orchestrator_prefix}
         识别到长文档类任务时：
         - 先用 `write_todos` 拆解章节与附录
-        - 按章写入 `/artifacts/chapter-N-标题.md`，勿在聊天正文粘贴全文
+        - **第一步**：若关键信息不足，调用 `submit_clarifying_questions`（context=`long_document`）收集用户答案
+        - **第二步**：澄清完成后调用 `submit_document_plan` 提交标题、大纲、计划产物路径；**禁止**在用户确认方案前 write_file 到 `/artifacts/`
+        - **同一次长文档任务**：澄清门与方案门各 interrupt 一次；方案 approve/edit 后直接分章写作，**禁止**再次 `submit_document_plan`
+        - 仅当用户 **reject 方案** 并给出修订反馈后，才可修订 outline 并再次 submit
+        - `planned_artifacts` 须为 **JSON 字符串**（如 `'["/artifacts/a.md"]'`）；方案门 **不再**使用 `open_questions`（澄清由上一工具完成）
+        - 用户确认后按章写入 `/artifacts/chapter-N-标题.md`，勿在聊天正文粘贴全文
         - 全部章节完成后合并为 `/artifacts/完整文档.md` 或用户指定文件名
         - 流程/架构用 mermaid；公式用 LaTeX（$...$ 或 $$...$$）
         - 交付时在回复中说明虚拟路径，便于工作台下载
@@ -131,6 +151,7 @@ def build_system_prompt(
         has_draft_route=has_draft_route,
     )
     long_doc_section = build_long_document_writing_section()
+    clarify_section = build_clarifying_questions_section()
 
     return f"""今天的时间是{current_time}
 
@@ -141,6 +162,7 @@ def build_system_prompt(
         当前已加载的技能名单：{skills_line}
         如果用户询问"你有没有某个技能"或"你有哪些技能"，必须严格基于当前已加载的技能名单回答，不要猜测，不要遗漏名单中的技能。
         {fs_section}
+        {clarify_section}
         {long_doc_section}
         无特殊说明，总是用中文回答用户问题。
         """

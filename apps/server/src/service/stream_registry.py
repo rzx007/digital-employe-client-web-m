@@ -61,6 +61,7 @@ def _flush_to_db_sync(
     message_parts: str | None = None,
     usage_metadata: dict | None = None,
     elapsed_ms: int | None = None,
+    interrupt_payload: dict | None = None,
 ) -> bool:
     """同步写入会话消息流状态；在 asyncio.to_thread 中调用，勿跨线程复用 Session。"""
     from src.db.session import get_session_local
@@ -102,6 +103,13 @@ def _flush_to_db_sync(
                     except (json.JSONDecodeError, TypeError):
                         meta = {}
                     meta["elapsed_ms"] = elapsed_ms
+                    msg.extra_meta = json.dumps(meta, ensure_ascii=False)
+                if interrupt_payload is not None:
+                    try:
+                        meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
+                    except (json.JSONDecodeError, TypeError):
+                        meta = {}
+                    meta["interrupt_payload"] = interrupt_payload
                     msg.extra_meta = json.dumps(meta, ensure_ascii=False)
                 db.commit()
                 logger.info(
@@ -192,6 +200,23 @@ def _checkpoint_flush_sync(
     )
 
 
+def _extract_interrupt_payload(interrupts: list) -> dict:
+    """从 LangGraph state.tasks[].interrupts 提取 HITL 载荷。"""
+    action_requests = []
+    review_configs = []
+    for interrupt_item in interrupts:
+        value = getattr(interrupt_item, "value", None)
+        if isinstance(value, dict):
+            if "action_requests" in value:
+                action_requests.extend(value["action_requests"])
+            if "review_configs" in value:
+                review_configs.extend(value["review_configs"])
+    return {
+        "action_requests": action_requests,
+        "review_configs": review_configs,
+    }
+
+
 def _flush_terminal_sync(
     stream_msg_id: int,
     buffer_cursor: int,
@@ -200,6 +225,7 @@ def _flush_terminal_sync(
     content: str | None,
     error_message: str | None = None,
     elapsed_ms: int | None = None,
+    interrupt_payload: dict | None = None,
 ) -> bool:
     from src.service.message_parts_extractor import extract_message_parts_from_buffer
 
@@ -226,6 +252,7 @@ def _flush_terminal_sync(
         message_parts=message_parts_json,
         usage_metadata=usage_meta,
         elapsed_ms=elapsed_ms,
+        interrupt_payload=interrupt_payload,
     )
 
 
@@ -319,11 +346,19 @@ class StreamRegistry:
         if msg.stream_state == "streaming":
             return None
 
-        return {
+        result: dict = {
             "status": msg.stream_state,
             "error": None,
             "cursor": msg.stream_cursor or 0,
         }
+        if msg.stream_state == "interrupted" and msg.extra_meta:
+            try:
+                meta = json.loads(msg.extra_meta)
+                result["interrupt_payload"] = meta.get("interrupt_payload")
+                result["stream_id"] = meta.get("stream_id")
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return result
 
     def broadcast(self, conversation_id: int, event: dict) -> None:
         task = self._tasks.get(conversation_id)
@@ -401,6 +436,58 @@ class StreamRegistry:
 
         return True
 
+    async def approve_and_resume(
+        self,
+        conversation_id: int,
+        agent: Any,
+        config: dict,
+        stream_msg_id: int,
+        decisions: list[dict],
+        *,
+        orchestrator_owned_db: Session | None = None,
+        orchestrator_workspace_id: int | None = None,
+        orchestrator_conversation_id: int | None = None,
+    ) -> bool:
+        """HITL approve: 新建 task + 新 buffer，用 Command(resume) 继续 agent 执行。"""
+        from langgraph.types import Command
+
+        existing = self._tasks.get(conversation_id)
+        if existing and existing.is_active:
+            logger.warning(
+                "[approve] conv=%s refused: active task exists (status=%s)",
+                conversation_id, existing.status,
+            )
+            return False
+
+        if existing and existing._cleanup_task and not existing._cleanup_task.done():
+            existing._cleanup_task.cancel()
+
+        task = ActiveStreamTask(conversation_id)
+        self._tasks[conversation_id] = task
+
+        resume_input = Command(resume={"decisions": decisions})
+
+        coro = self._run_agent_background(
+            conversation_id=conversation_id,
+            agent=agent,
+            messages=[],
+            config=config,
+            stream_msg_id=stream_msg_id,
+            skill_name="",
+            debug_content_only=False,
+            task=task,
+            agent_input=resume_input,
+            orchestrator_owned_db=orchestrator_owned_db,
+            orchestrator_workspace_id=orchestrator_workspace_id,
+            orchestrator_conversation_id=orchestrator_conversation_id,
+        )
+        task._asyncio_task = asyncio.create_task(coro)
+        logger.info(
+            "[approve] conv=%s resume task created with Command(resume)",
+            conversation_id,
+        )
+        return True
+
     def _schedule_cleanup(self, conversation_id: int) -> None:
         task = self._tasks.get(conversation_id)
 
@@ -432,6 +519,7 @@ class StreamRegistry:
         skill_name: str,
         debug_content_only: bool,
         task: ActiveStreamTask,
+        agent_input: Any | None = None,
         orchestrator_owned_db: Session | None = None,
         orchestrator_workspace_id: int | None = None,
         orchestrator_conversation_id: int | None = None,
@@ -501,8 +589,9 @@ class StreamRegistry:
 
         _agent_it = None
         try:
+            stream_input = agent_input if agent_input is not None else {"messages": messages}
             _agent_it = agent.astream(
-                {"messages": messages},
+                stream_input,
                 stream_mode=["messages", "updates", "custom"],
                 config=config,
                 version="v2",
@@ -569,27 +658,70 @@ class StreamRegistry:
 
             final_text = latest_updates_text or "模型已完成调用。"
 
-            logger.info(
-                "[run] conv=%s stream completed normally, event_count=%d, text_len=%d",
-                conversation_id, task.buffer.cursor, len(final_text),
-            )
-            evt = task.buffer.add({"status": "completed"})
-            logger.info(
-                "[run] conv=%s broadcasting completed event: seq=%d, subscribers=%d",
-                conversation_id, evt["seq"], len(task.subscribers),
-            )
-            self.broadcast(conversation_id, evt)
+            is_interrupted = False
+            interrupt_payload = None
+            try:
+                state = await agent.aget_state(config)
+                if state.next:
+                    for task_item in state.tasks:
+                        if task_item.interrupts:
+                            is_interrupted = True
+                            interrupt_payload = _extract_interrupt_payload(
+                                task_item.interrupts
+                            )
+                            break
+            except Exception:
+                logger.warning(
+                    "[run] conv=%s aget_state failed after stream end",
+                    conversation_id,
+                    exc_info=True,
+                )
 
-            elapsed_ms = int((time.monotonic() - stream_start_time) * 1000)
-            ok = await self._flush_terminal(
-                stream_msg_id,
-                task,
-                state="completed",
-                content=final_text,
-                elapsed_ms=elapsed_ms,
-            )
-            if not ok:
-                await self._ensure_terminal_state(stream_msg_id, "completed")
+            if is_interrupted and interrupt_payload:
+                state_final = "interrupted"
+                final_text = latest_updates_text or "等待用户确认..."
+                logger.info(
+                    "[run] conv=%s HITL interrupt detected, event_count=%d, payload=%s",
+                    conversation_id, task.buffer.cursor, list(interrupt_payload.keys()),
+                )
+                evt = task.buffer.add({
+                    "status": "interrupted",
+                    **interrupt_payload,
+                })
+                self.broadcast(conversation_id, evt)
+                elapsed_ms = int((time.monotonic() - stream_start_time) * 1000)
+                ok = await self._flush_terminal(
+                    stream_msg_id,
+                    task,
+                    state="interrupted",
+                    content=final_text,
+                    elapsed_ms=elapsed_ms,
+                    interrupt_payload=interrupt_payload,
+                )
+                if not ok:
+                    await self._ensure_terminal_state(stream_msg_id, "interrupted")
+            else:
+                logger.info(
+                    "[run] conv=%s stream completed normally, event_count=%d, text_len=%d",
+                    conversation_id, task.buffer.cursor, len(final_text),
+                )
+                evt = task.buffer.add({"status": "completed"})
+                logger.info(
+                    "[run] conv=%s broadcasting completed event: seq=%d, subscribers=%d",
+                    conversation_id, evt["seq"], len(task.subscribers),
+                )
+                self.broadcast(conversation_id, evt)
+
+                elapsed_ms = int((time.monotonic() - stream_start_time) * 1000)
+                ok = await self._flush_terminal(
+                    stream_msg_id,
+                    task,
+                    state="completed",
+                    content=final_text,
+                    elapsed_ms=elapsed_ms,
+                )
+                if not ok:
+                    await self._ensure_terminal_state(stream_msg_id, "completed")
 
         except asyncio.CancelledError:
             state_final = "cancelled"
@@ -721,6 +853,7 @@ class StreamRegistry:
         content: str | None,
         error_message: str | None = None,
         elapsed_ms: int | None = None,
+        interrupt_payload: dict | None = None,
     ) -> bool:
         events_snapshot = list(task.buffer._events)
         cursor_snapshot = task.buffer.cursor
@@ -733,6 +866,7 @@ class StreamRegistry:
             content,
             error_message,
             elapsed_ms,
+            interrupt_payload,
         )
         if not ok:
             logger.error(
@@ -758,6 +892,8 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
                 conv.status = "idle"
             elif stream_state == "error":
                 conv.status = "error"
+            elif stream_state == "interrupted":
+                conv.status = "interrupted"
             db.commit()
             try:
                 from src.service.workspace_events import WorkspaceEventBus, CONVERSATION_STATUS_CHANGED

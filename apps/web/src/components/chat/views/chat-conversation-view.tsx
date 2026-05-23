@@ -49,6 +49,8 @@ export function ConversationChatView({
     }>
   >([])
   const [hasReceivedMessages, setHasReceivedMessages] = useState(false)
+  const [hitlInterrupted, setHitlInterrupted] = useState(false)
+  const [streamId, setStreamId] = useState<string | null>(null)
   const queryClient = useQueryClient()
   const {
     data: storedMessages = [],
@@ -85,9 +87,25 @@ export function ConversationChatView({
       })
     },
     onError: () => {
-      // toast.error("发送失败", { description: chatError.message || "请稍后重试" })
     },
   })
+
+  useEffect(() => {
+    chatTransport.onStreamId = (id: string) => {
+      setStreamId(id)
+    }
+    chatTransport.onInterrupted = (payload) => {
+      if (payload.stream_id) setStreamId(payload.stream_id)
+      setHitlInterrupted(true)
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(String(conversationId)),
+      })
+    }
+    return () => {
+      chatTransport.onStreamId = null
+      chatTransport.onInterrupted = null
+    }
+  }, [conversationId, queryClient])
 
   const handleStop = useCallback(async () => {
     stop()
@@ -125,7 +143,8 @@ export function ConversationChatView({
     if (
       lastStored?.role === "assistant" &&
       lastStored.streamState === "streaming" &&
-      (status === "ready" || status === "error")
+      (status === "ready" || status === "error") &&
+      !hitlInterrupted
     ) {
       const rafId = requestAnimationFrame(() => {
         // rAF 执行时重检 status
@@ -183,6 +202,8 @@ export function ConversationChatView({
       }
 
       try {
+        setHitlInterrupted(false)
+        setStreamId(null)
         await sendMessage(
           { text: messageText, metadata: pendingMeta },
           {

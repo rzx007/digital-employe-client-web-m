@@ -219,3 +219,15 @@ export async function resetConversationStatus(conversationId: number | string) {
     { method: "POST" },
   )
 }
+
+export async function approveHitl(
+  conversationId: number | string,
+  streamId: string,
+  decisions: Array<{ type: string; message?: string; edited_action?: unknown }>,
+) {
+  return request.raw(`/chat/conversations/${conversationId}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ stream_id: streamId, decisions }),
+    headers: { "Content-Type": "application/json" },
+  })
+}

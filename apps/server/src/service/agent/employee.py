@@ -30,6 +30,9 @@ from src.service.model_context import (
     resolve_summarization_trigger,
 )
 from src.service.agent.shell_execute_tool import create_shell_execute_tool
+from src.service.agent.clarifying_questions_tool import submit_clarifying_questions
+from src.service.agent.document_plan_tool import submit_document_plan
+from src.service.agent.hitl_interrupt_on import HITL_INTERRUPT_ON
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
 load_dotenv()
@@ -194,6 +197,7 @@ def get_agent(
     if sql_tools:
         extra_tools.extend(sql_tools)
     extra_tools.extend(_session_search_tools)
+    extra_tools.extend([submit_clarifying_questions, submit_document_plan])
 
     agent = create_deep_agent(
         model=model,
@@ -215,6 +219,7 @@ def get_agent(
         backend=backend,
         checkpointer=checkpointer,
         tools=extra_tools,
+        interrupt_on=HITL_INTERRUPT_ON,
         middleware=[summarization_mw, summarization_tool_mw],
         permissions=[
             FilesystemPermission(

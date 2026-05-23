@@ -3,6 +3,7 @@ import logging
 import os
 import json
 import shutil
+import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -437,6 +438,9 @@ class ChatService:
             content="",
             extra_meta=None,
         )
+        stream_id = str(uuid.uuid4())
+        assistant_msg.extra_meta = json.dumps({"stream_id": stream_id}, ensure_ascii=False)
+        db.commit()
         
         # 根据会话ID获取会话详情，然后获取root_path
         workspace = db.get(Workspace, conversation.workspace_id)
@@ -534,6 +538,9 @@ class ChatService:
             except Exception:
                 logger.warning("push start conversation_status_changed failed conv=%s", conversation_id, exc_info=True)
             db.refresh(assistant_msg)
+            
+            # 发送 stream_id 作为首个 SSE 事件
+            yield f"data: {json.dumps({'type': 'stream_id', 'data': {'stream_id': stream_id}}, ensure_ascii=False)}\n\n"
                 
             # 返回恢复流的生成器
             async for chunk in ChatService.resume_conversation_stream(db, conversation_id, debug_content_only):
@@ -554,6 +561,10 @@ class ChatService:
         status_info = registry.get_stream_status(conversation_id, db)
         if status_info:
             logger.info("[resume] conv=%s stream already ended: status=%s", conversation_id, status_info)
+            if status_info.get("status") == "interrupted":
+                yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': 'interrupted', 'stream_id': status_info.get('stream_id'), 'interrupt_payload': status_info.get('interrupt_payload')}}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
             yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': status_info['status'], 'error': status_info.get('error'), 'cursor': status_info.get('cursor', 0)}}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return
@@ -603,13 +614,18 @@ class ChatService:
             def _sse_line(payload: str) -> str:
                 return f"id: {seq}\ndata: {payload}\n\n" if seq is not None else f"data: {payload}\n\n"
 
-            if isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error"):
+            if isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error", "interrupted"):
                 payloads: list[str] = []
                 if data.get("status") == "error":
                     yield_text = await _to_thread(
                         json.dumps, {"error": data.get("error")}, ensure_ascii=False
                     )
                     payloads.append(_sse_line(yield_text))
+                if data.get("status") == "interrupted":
+                    interrupt_json = await _to_thread(
+                        json.dumps, data, ensure_ascii=False, default=str
+                    )
+                    payloads.append(_sse_line(interrupt_json))
                 payloads.append(_sse_line("[DONE]"))
                 logger.info("[resume] conv=%s terminal event in buffer: seq=%s status=%s", conversation_id, seq, data.get("status"))
                 return True, payloads
@@ -705,6 +721,121 @@ class ChatService:
         if not success:
             logger.warning("[cancel_service] conv=%s registry.cancel returned False (no active task)", conversation_id)
         return success
+
+    @staticmethod
+    async def approve_stream(
+        db: Session,
+        conversation_id: int,
+        stream_id: str,
+        decisions: list[dict],
+        auth_token: str | None = None,
+    ):
+        """HITL approve：用户做出决策后继续 agent 执行，返回新的 SSE 流。"""
+        from src.service.stream_registry import registry
+        import asyncio
+
+        conversation = ChatService.get_conversation(db, conversation_id)
+
+        # 1. 按 stream_id 查找 assistant message
+        stmt = (
+            select(ConversationMessage)
+            .where(
+                ConversationMessage.conversation_id == conversation_id,
+                ConversationMessage.role == "assistant",
+                ConversationMessage.stream_state == "interrupted",
+            )
+            .order_by(ConversationMessage.id.desc())
+            .limit(1)
+        )
+        msg = db.scalar(stmt)
+        if not msg or not msg.extra_meta:
+            yield f"data: {json.dumps({'error': '无效的 approve 请求：未找到中断状态的消息'}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
+        meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
+        if meta.get("stream_id") != stream_id:
+            yield f"data: {json.dumps({'error': 'stream_id 不匹配'}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
+        # 2. 清除 interrupt 状态，准备 resume
+        meta.pop("interrupt_payload", None)
+        msg.extra_meta = json.dumps(meta, ensure_ascii=False)
+        msg.stream_state = "streaming"
+        msg.stream_cursor = 0
+        conversation.status = "running"
+        db.commit()
+        try:
+            from src.service.workspace_events import WorkspaceEventBus, CONVERSATION_STATUS_CHANGED
+            WorkspaceEventBus.push(conversation.workspace_id, {
+                "type": CONVERSATION_STATUS_CHANGED,
+                "conversation_id": conversation_id,
+                "target_type": conversation.target_type,
+                "target_id": conversation.target_id,
+                "status": "running",
+            })
+        except Exception:
+            pass
+
+        # 3. 重建 agent
+        settings = get_settings()
+        workspace = db.get(Workspace, conversation.workspace_id)
+        if not workspace:
+            yield f"data: {json.dumps({'error': '未找到工作空间'}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
+        target_type = conversation.target_type
+        target_id = conversation.target_id
+
+        if target_type == "curator":
+            from src.service.agent.orchestrator import get_orchestrator_agent
+            agent = get_orchestrator_agent(
+                workspace_id=conversation.workspace_id,
+                db=db,
+                conversation_id=conversation_id,
+                employee_id=target_id,
+                auth_token=auth_token,
+            )
+        elif target_type == "employee":
+            employee = db.get(Employee, target_id)
+            if not employee:
+                yield f"data: {json.dumps({'error': '未找到员工'}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            skills_path = ChatService.resolve_employee_skills_dir(
+                skills_payload=employee.skills_json,
+                employee_id=employee.id,
+                employee_name=employee.name,
+                employee_code=employee.employee_code,
+            )
+            root_path = settings.artifacts_path
+            agent = get_agent(skills_path, root_path, employee_id=employee.id, conversation_id=conversation_id)
+        else:
+            yield f"data: {json.dumps({'error': '不支持的 target_type'}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
+        config = {"configurable": {"thread_id": conversation_id}}
+
+        # 4. 通过 registry approve_and_resume 启动新 task
+        resumed = await registry.approve_and_resume(
+            conversation_id=conversation_id,
+            agent=agent,
+            config=config,
+            stream_msg_id=msg.id,
+            decisions=decisions,
+        )
+
+        if not resumed:
+            yield f"data: {json.dumps({'error': '恢复执行失败：已有活跃任务'}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
+        # 5. 跟 stream_conversation_answer 一样 yield SSE
+        async for chunk in ChatService.resume_conversation_stream(db, conversation_id):
+            yield chunk
 
     @staticmethod
     def reset_conversation_status(db: Session, conversation_id: int) -> None:

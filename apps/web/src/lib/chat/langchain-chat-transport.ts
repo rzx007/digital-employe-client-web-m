@@ -205,6 +205,8 @@ export class LangChainChatTransport<
   UI_MESSAGE extends UIMessage,
 > implements ChatTransport<UI_MESSAGE> {
   private _reconnectAbort: AbortController | null = null
+  onStreamId: ((streamId: string) => void) | null = null
+  onInterrupted: ((payload: { action_requests: unknown[]; review_configs: unknown[]; stream_id?: string | null }) => void) | null = null
 
   /**
    * 取消上一次 resume 请求，防止新旧 reconnect 互相干扰
@@ -342,6 +344,37 @@ export class LangChainChatTransport<
 
           try {
             const payload = JSON.parse(data)
+
+            // HITL: stream_id 事件 — 捕获并回调，不进入正常解析
+            if (
+              payload &&
+              typeof payload === "object" &&
+              payload.type === "stream_id" &&
+              payload.data?.stream_id
+            ) {
+              this.onStreamId?.(payload.data.stream_id)
+              return false
+            }
+
+            // HITL: interrupted 终态 — 回调后正常结束流
+            if (
+              payload &&
+              typeof payload === "object" &&
+              payload.status === "interrupted"
+            ) {
+              this.onInterrupted?.({
+                action_requests: payload.action_requests ?? [],
+                review_configs: payload.review_configs ?? [],
+              })
+              flushSync()
+              closeTextPhaseIfNeeded(state).forEach((chunk) =>
+                controller.enqueue(chunk)
+              )
+              enqueueFinish(controller, state)
+              controller.close()
+              return true
+            }
+
             const parsed = sseEventSchema.safeParse(payload)
             if (!parsed.success) {
               return false
@@ -386,6 +419,11 @@ export class LangChainChatTransport<
               ((event as { type: string }).type === "stream_ended" ||
                 (event as { type: string }).type === "no_stream")
             ) {
+              // HITL: interrupted 状态 — 通知上层
+              const eventData = (event as { data?: { status?: string; interrupt_payload?: unknown; stream_id?: string | null } }).data
+              if (eventData?.status === "interrupted" && eventData.interrupt_payload) {
+                this.onInterrupted?.({ ...(eventData.interrupt_payload as object), stream_id: eventData.stream_id } as { action_requests: unknown[]; review_configs: unknown[]; stream_id?: string | null })
+              }
               flushSync()
               closeTextPhaseIfNeeded(state).forEach((chunk) =>
                 controller.enqueue(chunk)

@@ -92,3 +92,8 @@ class StreamConversationRequest(BaseModel):
     question: str
     debug_content_only: bool = False
     extra_meta: dict | None = None
+
+
+class ApproveRequest(BaseModel):
+    stream_id: str
+    decisions: list[dict]

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from src.core.config import get_settings
 from src.db.session import get_db
 from src.models.response import BaseResponse, ListResponse, ResponseBase
-from src.schemas.conversation import ConversationCreate, ConversationMessageRead, ConversationRead, StreamConversationRequest
+from src.schemas.conversation import ConversationCreate, ConversationMessageRead, ConversationRead, StreamConversationRequest, ApproveRequest
 from src.schemas.resource import ResourceContent, ResourceList, ResourceUploadResult
 from src.service.chat_service import ChatService
 from src.service.resource_service import ResourceService
@@ -130,6 +130,27 @@ def cancel_conversation_stream(
     if not success:
         return BaseResponse(code=400, msg="没有正在执行的流或取消失败", data=None)
     return BaseResponse(data=None)
+
+
+@router.post("/chat/conversations/{conversation_id}/approve")
+async def approve_hitl(
+    conversation_id: int,
+    payload: ApproveRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """用户 HITL 决策后恢复 agent 执行。"""
+    return StreamingResponse(
+        ChatService.approve_stream(
+            db,
+            conversation_id,
+            stream_id=payload.stream_id,
+            decisions=payload.decisions,
+            auth_token=http_request.headers.get("token"),
+        ),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
 
 
 @router.post("/chat/conversations/{conversation_id}/status/reset", response_model=BaseResponse)
