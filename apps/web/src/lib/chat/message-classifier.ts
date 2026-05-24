@@ -125,6 +125,12 @@ export type ClassifiedBlock =
       toolCallId: string
       items: ClarifyAnswerItem[]
     }
+  | {
+      kind: "document-plan-approved"
+      key: string
+      toolCallId: string
+      resultText: string
+    }
 
 interface ClassifyMessagePartsOptions {
   includeFileChanges?: boolean
@@ -140,6 +146,15 @@ function stripThinkTags(text: string): string {
 
 function stripThinkSections(text: string): string {
   return text.replace(THINK_BLOCK_RE, "").trim()
+}
+
+function hasDocumentPlanCardInput(input: unknown): boolean {
+  if (!input || typeof input !== "object") return false
+  const record = input as Record<string, unknown>
+  const title = typeof record.title === "string" ? record.title.trim() : ""
+  const outline =
+    typeof record.outline === "string" ? record.outline.trim() : ""
+  return Boolean(title || outline)
 }
 
 function extractResultText(part: ToolUIPart): string | null {
@@ -303,6 +318,15 @@ export function classifyMessageParts(
 
     if (summary.toolName === "submit_document_plan") {
       const docResultText = extractResultText(part)
+      const docToolState = (
+        "state" in part ? (part as ToolUIPart).state : "unknown"
+      ) as string
+      const hasPlanInput = hasDocumentPlanCardInput(toolInput)
+      const hasPlanOutput =
+        docToolState === "output-available" ||
+        docToolState === "output-error" ||
+        Boolean(docResultText?.trim())
+
       if (isHitlAbortedOutput(docResultText)) {
         blocks.push({
           kind: "document-plan",
@@ -314,14 +338,23 @@ export function classifyMessageParts(
         })
         return
       }
+
+      if (hasPlanOutput && !hasPlanInput && docResultText?.trim()) {
+        blocks.push({
+          kind: "document-plan-approved",
+          key: `${message.id}:doc-plan-approved:${index}`,
+          toolCallId: part.toolCallId,
+          resultText: docResultText.trim(),
+        })
+        return
+      }
+
       blocks.push({
         kind: "document-plan",
         key: `${message.id}:doc-plan:${index}`,
         toolCallId: part.toolCallId,
         input: toolInput,
-        state: ("state" in part
-          ? (part as ToolUIPart).state
-          : "unknown") as string,
+        state: docToolState,
         resultText: docResultText,
       })
       return

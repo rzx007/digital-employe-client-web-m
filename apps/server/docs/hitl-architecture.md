@@ -388,6 +388,24 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 
 **验收**：一轮内澄清 + 方案 + 正文，UI 显示为一个 assistant 块；approve 仍带正确 `message_id`。
 
+#### 3. 已 approve 方案历史展示（已实现 · 轻量）
+
+**现象**：方案 approve 后，后续 assistant 行的 `message_parts` 中 `tool-submit_document_plan` 常为 `input: null`、仅有 `output.text`（如「方案已确认，请按 outline 分章…」），`DocumentPlanCard` 因无 `input` 不渲染，历史看不到方案信息。
+
+**当前实现**（`DocumentPlanApprovedSummary`）：
+
+- `message-classifier`：当 `submit_document_plan` 已有 output 且 **无** `title/outline` 的 `input` 时，分类为 `document-plan-approved`，展示 `output.text`。
+- 工具返回文案由 `build_document_plan_confirmed_message` 生成（`document_plan_tool.py`），含标题/大纲/计划产出的 `\n\n` 分段，与澄清 ToolMessage 类似。
+- 待确认方案仍走 `DocumentPlanCard`（含 `interrupt_payload` 合成 pending）。
+
+**后续可选方案**（视反馈再选）：
+
+| 方案 | 做法 | 优点 | 缺点 |
+| --- | --- | --- | --- |
+| **A** | approve / 封存时把 `args` 写入 `message_parts.input`（后端） | DB 自洽，复用完整 `DocumentPlanCard` 大纲 UI | 需处理 edit 决策、跨行写入；改动面大 |
+| **B** | 前端从 `extra_meta.interrupt_payload` 合成只读 part（已 approve 行，如 id=698） | 历史可展示完整大纲，无需改 DB | edit 方案后可能与 payload 不一致 |
+| **C** | approve 时写 `extra_meta.plan_snapshot`（最终 args）+ 前端 enrich | 支持 edit，仍不必改 `message_parts` 结构 | 需一小段后端 |
+
 ---
 
 ### P2 — 数据与运维
@@ -411,6 +429,7 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 | approve 404 / 状态错误                 | `message_id` 不是 `interrupted` 行，或已 `approved_at`                                    |
 | resume 后 tool invocation not found | resume 流缺少 `tool-input-start`；检查 `langchain-stream-parser` 与 approve 后新 assistant 行 |
 | 刷新后只有方案卡无澄清 Answers                | `message_parts` 被覆盖或解析格式不符；检查 `clarifying-questions-utils`                          |
+| 刷新后无大纲只有确认文案                      | 已 approve 且 `input` 为空 → 应出现 `DocumentPlanApprovedSummary`；完整大纲见 §八.3 方案 A/B/C   |
 | 卡顿                                 | 见 [§八.1 大文档 resume](#1-大文档-resume-回放卡顿部分完成)；DEV 看 `[sse:resume]` 压缩比              |
 
 
@@ -424,5 +443,6 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 | 2026-05-24 | 初版：message_id 模型、数据流、待办（resume 性能 / Curator HITL / 消息合并） |
 | 2026-05-23 | §八.1：Reconnect 批处理已实现；其余 resume 优化（cursor / DB 优先 / hydrate 去重等）记入待做 |
 | 2026-05-23 | 长文档写作：产物统一写入 `/artifacts/<doc-slug>/`（AGENTS.md、prompts、方案门 UI 占位） |
+| 2026-05-23 | §八.3：`DocumentPlanApprovedSummary` 展示已 approve 方案的 `output.text`；A/B/C 备选记入文档 |
 
 

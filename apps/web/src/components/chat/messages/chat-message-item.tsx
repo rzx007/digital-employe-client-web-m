@@ -21,6 +21,7 @@ import {
 } from "@/lib/chat/hitl-abort-message-utils"
 import { DocumentPlanCard } from "../message-blocks/document-plan-card"
 import { ClarifyingAnswersSummary } from "../message-blocks/clarifying-answers-summary"
+import { DocumentPlanApprovedSummary } from "../message-blocks/document-plan-approved-summary"
 import { RecruitmentCandidatesCard } from "../message-blocks/recruitment-candidates-card"
 import { EmployeeHiredCard } from "../message-blocks/employee-hired-card"
 import { SkillExplorationBlock } from "../message-blocks/skill-exploration-block"
@@ -165,6 +166,15 @@ export function RenderClassifiedBlocks({
             <ClarifyingAnswersSummary
               key={block.key}
               items={block.items}
+              className="w-full"
+            />
+          )
+        }
+        if (block.kind === "document-plan-approved") {
+          return (
+            <DocumentPlanApprovedSummary
+              key={block.key}
+              resultText={block.resultText}
               className="w-full"
             />
           )
