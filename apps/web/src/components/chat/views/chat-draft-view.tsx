@@ -20,6 +20,7 @@ import { useConversationSession } from "@/hooks/use-conversation-session"
 import { useChatStore } from "@/stores/chat-store"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { dedupeHitlPartsInMessages } from "@/lib/chat/hitl-abort-message-utils"
+import { prepareDisplayMessages } from "@/lib/chat/merge-consecutive-assistant-messages"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 
 import { ChatPanel } from "../panel/chat-panel"
@@ -277,6 +278,11 @@ export function DraftChatView({
     [isBusy, enqueue, command, mentions, doSend]
   )
 
+  const displayMessages = useMemo(
+    () => prepareDisplayMessages(messages),
+    [messages]
+  )
+
   const messagesForHitl = useMemo(
     () => dedupeHitlPartsInMessages(messages),
     [messages]
@@ -286,7 +292,7 @@ export function DraftChatView({
     <ChatPanel
       contact={contact}
       title="新对话"
-      messages={messages}
+      messages={displayMessages}
       composerMessages={messagesForHitl}
       inputValue={inputValue}
       status={chatStatus}

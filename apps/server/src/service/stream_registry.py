@@ -384,6 +384,27 @@ class StreamRegistry:
         orchestrator_workspace_id: int | None = None,
         orchestrator_conversation_id: int | None = None,
     ) -> bool:
+        """启动Agent流式任务。
+
+        为指定的会话创建并启动一个后台Agent执行任务，用于处理流式响应。
+        如果该会话已有活跃的任务，则拒绝启动新任务。
+
+        Args:
+            conversation_id: 会话ID，用于标识和追踪流式任务
+            agent: Agent实例，负责处理消息和生成响应
+            messages: 消息列表，包含对话历史或当前需要处理的消息
+            config: 配置字典，包含Agent运行所需的配置参数
+            stream_msg_id: 流式消息ID，用于关联流式输出的消息记录
+            skill_name: 技能名称，标识当前使用的Agent技能
+            debug_content_only: 是否仅返回调试内容，用于开发调试模式
+            orchestrator_owned_db: 可选，协调器拥有的数据库会话对象
+            orchestrator_workspace_id: 可选，协调器工作空间ID
+            orchestrator_conversation_id: 可选，协调器会话ID
+
+        Returns:
+            bool: 任务是否成功启动。如果会话已有活跃任务则返回False，否则返回True
+        """
+        # 检查是否已存在活跃任务，避免重复启动
         existing = self._tasks.get(conversation_id)
         if existing and existing.is_active:
             logger.warning(
@@ -392,15 +413,18 @@ class StreamRegistry:
             )
             return False
 
+        # 清理未完成的历史清理任务，防止资源泄漏
         if existing and existing._cleanup_task and not existing._cleanup_task.done():
             existing._cleanup_task.cancel()
             logger.info(
                 "start: cancelled stale cleanup for conversation %s", conversation_id
             )
 
+        # 创建新的活动流任务并注册到任务管理器
         task = ActiveStreamTask(conversation_id)
         self._tasks[conversation_id] = task
 
+        # 构建后台运行协程并启动异步任务
         coro = self._run_agent_background(
             conversation_id=conversation_id,
             agent=agent,

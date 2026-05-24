@@ -16,6 +16,7 @@ import { TodoPlanBlock } from "../message-blocks/todo-plan-block"
 import { PlanGeneratedCard } from "../message-blocks/plan-generated-card"
 import {
   isHitlAbortedOutput,
+  resolveHitlApproveMessageId,
   type HitlPatchOptions,
 } from "@/lib/chat/hitl-abort-message-utils"
 import { DocumentPlanCard } from "../message-blocks/document-plan-card"
@@ -263,6 +264,7 @@ export interface ChatMessageItemProps {
   /** 本轮是否已结束（status ready/error），末项工具据此延迟收起 */
   isTurnEnded?: boolean
   conversationId?: string | number | null
+  hitlMessageId?: string | null
   onHitlApproved?: (options?: HitlPatchOptions) => void
 }
 
@@ -273,6 +275,7 @@ function ChatMessageItemInner({
   isLastAssistantMessage = false,
   isTurnEnded = true,
   conversationId,
+  hitlMessageId,
   onHitlApproved,
 }: ChatMessageItemProps) {
   const contactDisplayName = getContactDisplayName(contact)
@@ -311,6 +314,10 @@ function ChatMessageItemInner({
   const copyText = React.useMemo(
     () => getCopyableMessageText(deferredMessage, { includeFileChanges }),
     [deferredMessage, includeFileChanges]
+  )
+  const hitlApproveMessageId = React.useMemo(
+    () => resolveHitlApproveMessageId(message, hitlMessageId),
+    [message, hitlMessageId]
   )
 
   return (
@@ -355,7 +362,7 @@ function ChatMessageItemInner({
               commandMeta={commandMeta}
               mentionMeta={mentionMeta}
               filesMeta={filesMeta}
-              messageId={message.id}
+              messageId={hitlApproveMessageId}
               toolAutoCollapseMap={toolAutoCollapseMap}
               isLastAssistantMessage={isLastAssistantMessage}
               isTurnEnded={isTurnEnded}

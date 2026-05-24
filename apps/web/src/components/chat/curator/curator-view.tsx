@@ -86,6 +86,7 @@ import {
   dedupeHitlPartsInMessages,
   resolveHitlApproveMessageId,
 } from "@/lib/chat/hitl-abort-message-utils"
+import { prepareDisplayMessages } from "@/lib/chat/merge-consecutive-assistant-messages"
 
 type TimelineEntry =
   | { kind: "message"; data: UIMessage; ts: number }
@@ -253,7 +254,7 @@ export function CuratorView({
 
   const displayMessages = useMemo(() => {
     const source = preferLiveMessages ? messages : initialMessages
-    return dedupeHitlPartsInMessages(source)
+    return prepareDisplayMessages(source)
   }, [preferLiveMessages, messages, initialMessages])
 
   const composerMessages = useMemo(

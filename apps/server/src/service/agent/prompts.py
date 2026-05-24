@@ -61,8 +61,9 @@ def build_filesystem_prompt_section(
         - 若 shell_execute 返回 exit code=0 但输出为空，先判断为命令可能是静默成功，不要立刻改用 python -c 重跑
 
         ### 用户可见产物（/artifacts/）
-        - 代码、报告、导出数据等交付给用户看的文件：write_file("/artifacts/文件名", ...)
-        - 仅 /artifacts/ 下简短相对路径（如 /artifacts/report.md），**不要**在 /artifacts/ 下创建 Users、.digital-employee 等目录镜像
+        - 代码、报告、导出数据等交付给用户看的文件：write_file("/artifacts/...", ...)
+        - 单次交付可用 /artifacts/report.md；**长文档任务**须用 /artifacts/<doc-slug>/ 子目录（见「长文档写作」）
+        - **不要**在 /artifacts/ 下创建 Users、.digital-employee 等磁盘路径镜像
 
         ### 长期记忆（/memories/，每次开聊已自动加载，不在会话资源列表中展示）
         - /agent/AGENTS.md：产品级说明（只读，已注入上下文）
@@ -116,9 +117,10 @@ def build_long_document_writing_section(*, for_orchestrator: bool = False) -> st
         - **第二步**：澄清完成后调用 `submit_document_plan` 提交标题、大纲、计划产物路径；**禁止**在用户确认方案前 write_file 到 `/artifacts/`
         - **同一次长文档任务**：澄清门与方案门各 interrupt 一次；方案 approve/edit 后直接分章写作，**禁止**再次 `submit_document_plan`
         - 仅当用户 **reject 方案** 并给出修订反馈后，才可修订 outline 并再次 submit
-        - `planned_artifacts` 须为 **JSON 字符串**（如 `'["/artifacts/a.md"]'`）；方案门 **不再**使用 `open_questions`（澄清由上一工具完成）
-        - 用户确认后按章写入 `/artifacts/chapter-N-标题.md`，勿在聊天正文粘贴全文
-        - 全部章节完成后合并为 `/artifacts/完整文档.md` 或用户指定文件名
+        - 每次任务先定 `/artifacts/<doc-slug>/`（由 title 生成简短 slug，同会话多文档须不同 slug）
+        - `planned_artifacts` 须为 **JSON 字符串**，路径均在同一子目录下（如 `'["/artifacts/tech-proposal/chapter-01-背景.md","/artifacts/tech-proposal/完整版.md"]'`）；方案门 **不再**使用 `open_questions`（澄清由上一工具完成）
+        - 用户确认后按章写入 `/artifacts/<doc-slug>/chapter-N-标题.md`，勿在 `/artifacts/` 根目录写 chapter；勿在聊天正文粘贴全文
+        - 全部章节完成后在同一子目录合并为 `/artifacts/<doc-slug>/完整版.md` 或用户指定文件名
         - 流程/架构用 mermaid；公式用 LaTeX（$...$ 或 $$...$$）
         - 交付时在回复中说明虚拟路径，便于工作台下载
         - 完整步骤与质量标准见已加载的 /agent/AGENTS.md「长文档写作规范」

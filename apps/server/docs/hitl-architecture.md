@@ -6,12 +6,14 @@
 
 ## 一、目标与范围
 
-| 目标 | 说明 |
-|------|------|
-| **可中断** | Agent 在指定工具调用前暂停，等待用户确认后再继续 |
-| **可恢复** | 刷新页面、断线后能从 DB + SSE resume 恢复 UI 与审批态 |
+
+| 目标       | 说明                                                         |
+| -------- | ---------------------------------------------------------- |
+| **可中断**  | Agent 在指定工具调用前暂停，等待用户确认后再继续                                |
+| **可恢复**  | 刷新页面、断线后能从 DB + SSE resume 恢复 UI 与审批态                      |
 | **历史清晰** | 每次 interrupt / approve 对应明确的 DB 行，避免 `message_parts` 被整列覆盖 |
-| **审批锚点** | 使用 **`conversation_id` + `message_id`（assistant 行）** 标识待办段 |
+| **审批锚点** | 使用 `**conversation_id` + `message_id`（assistant 行）** 标识待办段 |
+
 
 **当前已接入 HITL 的会话类型**
 
@@ -52,12 +54,14 @@ DB 消息（一轮用户提问内可多段 assistant）:
 
 一次 interrupt 落库后，**同一条** assistant 消息上常同时存在：
 
-| 字段 | 内容 | 用途 |
-|------|------|------|
-| `message_parts` | 从 buffer 抽取的 **已完成** tool（如澄清已提交）+ text | 气泡内历史展示 |
+
+| 字段                             | 内容                                             | 用途                    |
+| ------------------------------ | ---------------------------------------------- | --------------------- |
+| `message_parts`                | 从 buffer 抽取的 **已完成** tool（如澄清已提交）+ text        | 气泡内历史展示               |
 | `extra_meta.interrupt_payload` | **待审批** 的 `action_requests` / `review_configs` | HITL 卡片参数、Composer 锁定 |
-| `stream_state` | `interrupted` | 会话/消息状态机 |
-| `content` | 中断前最后一段展示文案 | 纯文本兜底 |
+| `stream_state`                 | `interrupted`                                  | 会话/消息状态机              |
+| `content`                      | 中断前最后一段展示文案                                    | 纯文本兜底                 |
+
 
 `interrupt_payload` **不会**自动进入 `message_parts`（extractor 主要认 ToolMessage 流事件）。刷新后需 **`stored-message-hitl-utils`** 合成 pending tool part。
 
@@ -100,6 +104,8 @@ sequenceDiagram
   API-->>FE: resumeStream → GET /stream/resume
   FE->>FE: 追加新 assistant 空消息，接续 SSE
 ```
+
+
 
 ### 3.2 后端：发起流
 
@@ -150,9 +156,9 @@ data: [DONE]
 2. 若有中断：`_extract_interrupt_payload` → `action_requests` / `review_configs`。
 3. `buffer.add({ status: "interrupted", message_id: stream_msg_id, ...payload })`。
 4. `_flush_terminal(..., state="interrupted", interrupt_payload=...)`：
-   - `message_parts` ← `extract_message_parts_from_buffer(全 buffer)`
-   - `extra_meta.interrupt_payload` ← payload
-   - `stream_state` ← `interrupted`
+  - `message_parts` ← `extract_message_parts_from_buffer(全 buffer)`
+  - `extra_meta.interrupt_payload` ← payload
+  - `stream_state` ← `interrupted`
 
 关键文件：
 
@@ -171,7 +177,7 @@ Body：`{ "message_id": <int>, "decisions": [...] }`
 3. **新建** assistant 行：`stream_state=streaming`，`stream_cursor=0`。
 4. 按 `target_type` 重建 agent（employee / **curator orchestrator**）。
 5. `registry.approve_and_resume(..., stream_msg_id=new_msg.id, decisions=...)`：
-   - 内部 `Command(resume={"decisions": decisions})` 继续图执行。
+  - 内部 `Command(resume={"decisions": decisions})` 继续图执行。
 6. 返回：`approved_message_id`、`assistant_message_id`。
 
 关键文件：
@@ -185,12 +191,14 @@ Body：`{ "message_id": <int>, "decisions": [...] }`
 
 **Transport**：`LangChainChatTransport`（`apps/web/src/lib/chat/langchain-chat-transport.ts`）
 
-| SSE 载荷 | 行为 |
-|----------|------|
+
+| SSE 载荷                     | 行为                                                             |
+| -------------------------- | -------------------------------------------------------------- |
 | `status === "interrupted"` | `conversationRuntimeBus.emitInterrupted` + `onInterrupted`，关闭流 |
-| `type === "stream_ended"` | `emitTerminal`；若 `interrupted` 同样恢复 HITL |
-| `type === "messages"` 等 | `parseLangChainPayloadToChunks` → `useChat` parts |
-| `[DONE]` | 正常结束 |
+| `type === "stream_ended"`  | `emitTerminal`；若 `interrupted` 同样恢复 HITL                       |
+| `type === "messages"` 等    | `parseLangChainPayloadToChunks` → `useChat` parts              |
+| `[DONE]`                   | 正常结束                                                           |
+
 
 **会话单例状态**：`useConversationSession`（`apps/web/src/hooks/use-conversation-session.ts`）
 
@@ -206,7 +214,7 @@ Body：`{ "message_id": <int>, "decisions": [...] }`
 
 **DB → UI 还原**
 
-- `mapStoredMessagesToUIMessages` + `enrichAssistantPartsFromStoredMessage`：为 `interrupted` 行合成 pending `tool-*` part，便于卡片渲染。
+- `mapStoredMessagesToUIMessages` + `enrichAssistantPartsFromStoredMessage`：为 `interrupted` 行合成 pending `tool-`* part，便于卡片渲染。
 - `dedupeHitlPartsInMessages`：去掉已 resolve 的重复 HITL part。
 
 关键文件：
@@ -236,11 +244,13 @@ Body：`{ "message_id": <int>, "decisions": [...] }`
 
 ## 五、与可恢复流的关系
 
-| 场景 | 行为 |
-|------|------|
-| 流式进行中刷新 | `GET /stream/resume` 全量回放 buffer → 订阅 live；前端 `stream_cursor` 可用来跳过已持久化段（**优化待办**） |
-| 已 interrupted | `get_stream_status` → 直接 `stream_ended` + `interrupt_payload`，无 agent 事件 |
-| 僵尸 `streaming` 行 | resume 时自动修为 `error` 并结束 SSE |
+
+| 场景               | 行为                                                                                 |
+| ---------------- | ---------------------------------------------------------------------------------- |
+| 流式进行中刷新          | `GET /stream/resume` 全量回放 buffer → 订阅 live；前端 `stream_cursor` 可用来跳过已持久化段（**优化待办**） |
+| 已 interrupted    | `get_stream_status` → 直接 `stream_ended` + `interrupt_payload`，无 agent 事件           |
+| 僵尸 `streaming` 行 | resume 时自动修为 `error` 并结束 SSE                                                       |
+
 
 详见 [resumable-stream-architecture.md](./resumable-stream-architecture.md)。
 
@@ -262,18 +272,20 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 
 ## 七、关键文件索引
 
-| 层级 | 路径 |
-|------|------|
-| API | `apps/server/src/api/chat_api.py` |
-| 流与审批 | `apps/server/src/service/chat_service.py` |
-| Buffer / interrupt | `apps/server/src/service/stream_registry.py` |
-| Parts 抽取 | `apps/server/src/service/message_parts_extractor.py` |
-| Schema | `apps/server/src/schemas/conversation.py` |
-| SSE 解析 | `apps/web/src/lib/chat/langchain-chat-transport.ts` |
-| Chunk 解析 | `apps/web/src/lib/chat/langchain-stream-parser.ts` |
-| 会话 HITL 状态 | `apps/web/src/hooks/use-conversation-session.ts` |
-| 历史还原 | `apps/web/src/lib/chat/stored-message-hitl-utils.ts` |
-| UI | `chat-composer-area.tsx`, `document-plan-card.tsx`, `clarifying-questions-dock.tsx` |
+
+| 层级                 | 路径                                                                                  |
+| ------------------ | ----------------------------------------------------------------------------------- |
+| API                | `apps/server/src/api/chat_api.py`                                                   |
+| 流与审批               | `apps/server/src/service/chat_service.py`                                           |
+| Buffer / interrupt | `apps/server/src/service/stream_registry.py`                                        |
+| Parts 抽取           | `apps/server/src/service/message_parts_extractor.py`                                |
+| Schema             | `apps/server/src/schemas/conversation.py`                                           |
+| SSE 解析             | `apps/web/src/lib/chat/langchain-chat-transport.ts`                                 |
+| Chunk 解析           | `apps/web/src/lib/chat/langchain-stream-parser.ts`                                  |
+| 会话 HITL 状态         | `apps/web/src/hooks/use-conversation-session.ts`                                    |
+| 历史还原               | `apps/web/src/lib/chat/stored-message-hitl-utils.ts`                                |
+| UI                 | `chat-composer-area.tsx`, `document-plan-card.tsx`, `clarifying-questions-dock.tsx` |
+
 
 ---
 
@@ -283,40 +295,96 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 
 ### P0 — 体验 / 性能
 
-#### 1. 大文档 resume 回放卡顿（待做）
+#### 1. 大文档 resume 回放卡顿（部分完成）
 
-**现象**：写长文档时 buffer 累积数千条 SSE 事件；刷新或 `resumeStream` 时前端逐条 `enqueue` UIMessageChunk，`useChat` 触发大量 React 更新，页面明显卡顿。
+**现象**：写长文档时 buffer 累积数千条 SSE 事件；刷新或 `resumeStream` 时前端大量 `enqueue` UIMessageChunk，`useChat` 触发密集 React 更新，页面明显卡顿。
 
 **根因**：
 
 - 后端 `resume_conversation_stream` Phase 1 **全量回放** `task.buffer._events`（见 `chat_service.py`）。
-- 前端 `LangChainChatTransport` 默认 **rAF 批处理**仍会在高密度流下产生成千上万次状态更新。
+- 正常 `POST /stream` 使用 rAF 批处理；resume 冷回放会在短时间内推送与 buffer 等量的 SSE。
+- `hydrateFromServer` 已用 DB `message_parts` 恢复 UI，随后 `resumeStream` 仍可能从 buffer 头重放，存在 **重复 apply / 重复 part** 风险（待验证与治理）。
 
-**建议方案**（可组合）：
+**验收**：同一会话 3000+ buffer 事件，刷新后 1–2s 内可交互，无明显长时间白屏/假死；回放结束后正文与 HITL 状态正确。
 
-| 方向 | 做法 |
-|------|------|
-| 后端 | `GET /stream/resume?from_cursor={stream_cursor}`，只回放 `seq > cursor` 的事件；cursor 来自 DB `conversation_message.stream_cursor` |
-| 前端 | reconnect 模式：**合并 enqueue**（每 32–48ms 或每 N 个 chunk 批量 `controller.enqueue`），replay 结束后再恢复逐帧 |
-| 产品 | 刷新后若已有 `message_parts`，列表以 DB 为准，resume 只追 **tail** 增量（需与 `tryResumeOnce` 协调） |
+##### 1.1 已实现 — Reconnect 专用批处理
 
-**验收**：同一会话 3000+ buffer 事件，刷新后 1–2s 内可交互，无明显长时间白屏/假死。
+**位置**：`apps/web/src/lib/chat/langchain-chat-transport.ts`
+
+| 项 | 说明 |
+| --- | --- |
+| 触发条件 | `processResponseStream(..., reconnectAbort)`，即 `reconnectToStream` / `GET .../stream/resume` |
+| 批处理 | 48ms 时间窗 **或** 单批最多 256 个 chunk 后 `flushSync`；批内 `mergeAdjacentTextDeltas` |
+| 让出主线程 | 每处理 320 条有效 SSE 事件：`flushSync` + `setTimeout(0)` |
+| 正常发消息 | 仍用 rAF 批处理（`createChunkFlushBatcher`），不受影响 |
+| 调试 | DEV 控制台 `[sse:resume] reconnect batching`，对比 `chunksScheduled` vs `chunksEnqueued` |
+
+##### 1.2 待做 — 后续优化（按优先级记录，视效果再排期）
+
+**A. 后端 cursor 增量回放（网络侧减负）**
+
+- API：`GET /stream/resume?from_cursor={stream_cursor}`，仅推送 `seq > cursor` 的事件。
+- `stream_cursor` 来源：DB `conversation_message.stream_cursor`（列表接口已返回，前端 `Message.streamCursor`）。
+- 与 Phase 2「补扫 subscribe 后遗漏事件」对齐，避免漏 tail。
+
+**B. 前端 `stream_cursor` 过滤 enqueue（不改后端协议也可做）**
+
+- `tryResumeOnce` / `chatTransport` 传入最后一条 assistant 的 `streamCursor`。
+- 解析 SSE `id: {seq}` 行：`seq <= cursor` 的事件 **不** `schedule(chunk)`（parser state 是否仍需推进需单独评估，避免 tail 错乱）。
+- 可与 A 叠加：后端少推 + 前端少 enqueue。
+
+**C. DB 优先 + 只追 tail（产品 / 会话层）**
+
+- 刷新后列表以 `mapStoredMessagesToUIMessages` + `message_parts` 为准先渲染。
+- `resumeStream` 仅消费 **tail**（依赖 A/B 或后端 `replay_complete` 类标记）。
+- **注意**：`stream_registry` 中 `BUFFER_CHECKPOINT_LEN = 10000`，checkpoint 前 DB `message_parts` 可能偏旧，中途刷新仍依赖 replay；若加强 C，可考虑降低 checkpoint 间隔（后端，见 D）。
+
+**D. 后端 checkpoint 频率（与 C 联动）**
+
+- 位置：`apps/server/src/service/stream_registry.py` `BUFFER_CHECKPOINT_LEN`。
+- 降低后刷新时 DB 快照更接近实时，减轻「必须全量 replay 才看得全」的压力。
+
+**E. Hydrate 与 replay 去重（`use-conversation-session`）**
+
+- 排查 `setMessages(initialMessages)` 后 `resumeStream` 是否在 `useChat` 中 **重复追加** 已存在于 `message_parts` 的 parts。
+- 若重复：resume 前对齐 assistant 行 id；reconnect 路径避免多余 `{ type: "start" }`；或 replay 阶段不 enqueue 已由 DB 覆盖的 chunk。
+
+**F. 展示冻结（replay 期间 UI 不跟高频 `messages`）**
+
+- 会话级 `replayPhase: "frozen" | "live"`：frozen 时 `ChatPanel` 读 hydrate 快照，live 后切回 `useChat.messages`。
+- 切换时机：replay 批处理结束 / 收到首个 tail 事件 / 超时兜底（后端暂无 `replay_complete` 事件）。
+
+**G. 渲染层辅助**
+
+- 回放期间减少 `VirtualizedMessageList` 对末条 assistant 的 `measureElement` 频率。
+- 非末条消息 `React.memo` + 稳定 props，降低 `classifyMessageParts` 重复计算。
+
+**方案组合建议**：
+
+| 阶段 | 建议 |
+| --- | --- |
+| 当前 | 1.1 已上线，先观察 `[sse:resume]` 与真实长文档场景 |
+| 仍卡 | 优先 B + E（纯前端，不动协议） |
+| 仍卡且可改后端 | A + D |
+| 要「秒开可滚动」 | C + F，并配合 D |
+
+**说明**：`apps/web/src/lib/chat/resume-flow.md` 中 `_lastSeqByChat`、`?cursor=` 等为设计稿，**以本表与源码为准**；实现 cursor 后应同步更新 `resume-flow.md`。
 
 ---
 
 ### P1 — 功能覆盖
 
-#### 2. 界面消息合并展示（待做）
+#### 2. 界面消息合并展示（已完成）
 
 **现状**：每次 approve 新建一条 assistant DB 行，列表中出现 **多条连续 assistant 气泡**（同轮用户提问内），历史可读但占屏。
 
 **目标**：**数据层仍多行**（利于审计与 `message_id` 审批），**展示层**将「上一 user 之后、下一 user 之前」的连续 assistant 合并为 **一条气泡**。
 
-**建议**：
+**实现**（`apps/web/src/lib/chat/merge-consecutive-assistant-messages.ts`）：
 
-- 新增 `mergeConsecutiveAssistantMessages(messages)`，仅用于渲染 pipeline（`ConversationChatView` / `DraftChatView` / `CuratorView` timeline 输入前）。
-- 合并规则：`parts` 拼接；`metadata.streamState` 取最后一条；`metadata.hitlAnchorMessageId` 指向 `interrupted` 行 id，供 `DocumentPlanCard` approve。
-- `useChat` / composer 仍用 **未合并** 列表，避免 toolCallId 错乱。
+- `prepareDisplayMessages` = `dedupeHitlPartsInMessages` → `mergeConsecutiveAssistantMessages`；用于 `ConversationChatView` / `DraftChatView` / `CuratorView` 列表与 timeline。
+- 合并规则：`parts` 拼接；`metadata.streamState` 取组内最后一条（含 `streaming`）；`metadata.hitlAnchorMessageId` 指向组内未 approve 的 `interrupted` 行；同一 user 轮次内连续 assistant（含 streaming 行）均为一条气泡。
+- `composerMessages` / `useChat` 仍用 **未合并** 列表；`resolveHitlApproveMessageId` 识别 `hitlAnchorMessageId` / `mergedAssistantIds`。
 
 **验收**：一轮内澄清 + 方案 + 正文，UI 显示为一个 assistant 块；approve 仍带正确 `message_id`。
 
@@ -324,27 +392,37 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 
 ### P2 — 数据与运维
 
-| 项 | 说明 |
-|----|------|
+
+| 项                               | 说明                                                             |
+| ------------------------------- | -------------------------------------------------------------- |
 | `message_parts` 与 interrupt 一致性 | 极端情况下 parts 仅含已完成 tool，pending 靠 `interrupt_payload` + 合成 part |
-| Curator 多段 HITL | 与员工相同的多行 assistant 模型；合并展示后需回归 |
+| Curator 多段 HITL                 | 与员工相同的多行 assistant 模型；合并展示后需回归                                 |
+| 长文档产物目录                      | 每次任务使用 `/artifacts/<doc-slug>/` 子目录（见 `agent/AGENTS.md`、方案门 `planned_artifacts`） |
+
 
 ---
 
 ## 九、排查清单
 
-| 症状 | 可能原因 |
-|------|----------|
-| Dock 不显示 | `hitlPayload` 未写入（Draft 未接 session、或未收到 interrupted） |
-| approve 404 / 状态错误 | `message_id` 不是 `interrupted` 行，或已 `approved_at` |
+
+| 症状                                 | 可能原因                                                                                |
+| ---------------------------------- | ----------------------------------------------------------------------------------- |
+| Dock 不显示                           | `hitlPayload` 未写入（Draft 未接 session、或未收到 interrupted）                                |
+| approve 404 / 状态错误                 | `message_id` 不是 `interrupted` 行，或已 `approved_at`                                    |
 | resume 后 tool invocation not found | resume 流缺少 `tool-input-start`；检查 `langchain-stream-parser` 与 approve 后新 assistant 行 |
-| 刷新后只有方案卡无澄清 Answers | `message_parts` 被覆盖或解析格式不符；检查 `clarifying-questions-utils` |
-| 卡顿 | 见 [§八.1 大文档 resume](#1-大文档-resume-回放卡顿待做) |
+| 刷新后只有方案卡无澄清 Answers                | `message_parts` 被覆盖或解析格式不符；检查 `clarifying-questions-utils`                          |
+| 卡顿                                 | 见 [§八.1 大文档 resume](#1-大文档-resume-回放卡顿部分完成)；DEV 看 `[sse:resume]` 压缩比              |
+
 
 ---
 
 ## 十、修订记录
 
-| 日期 | 说明 |
-|------|------|
+
+| 日期         | 说明                                                       |
+| ---------- | -------------------------------------------------------- |
 | 2026-05-24 | 初版：message_id 模型、数据流、待办（resume 性能 / Curator HITL / 消息合并） |
+| 2026-05-23 | §八.1：Reconnect 批处理已实现；其余 resume 优化（cursor / DB 优先 / hydrate 去重等）记入待做 |
+| 2026-05-23 | 长文档写作：产物统一写入 `/artifacts/<doc-slug>/`（AGENTS.md、prompts、方案门 UI 占位） |
+
+

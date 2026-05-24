@@ -120,11 +120,27 @@ export function resolveHitlApproveMessageId(
   message: UIMessage,
   sessionHitlMessageId: string | null | undefined
 ): string {
+  if (!sessionHitlMessageId) return message.id
+
+  const sessionId = String(sessionHitlMessageId)
+  if (String(message.id) === sessionId) return sessionId
+
+  const meta = (message as UIMessage & { metadata?: Record<string, unknown> })
+    .metadata
   if (
-    sessionHitlMessageId &&
-    String(message.id) === String(sessionHitlMessageId)
+    meta &&
+    typeof meta === "object" &&
+    typeof meta.hitlAnchorMessageId === "string" &&
+    meta.hitlAnchorMessageId === sessionId
   ) {
-    return String(sessionHitlMessageId)
+    return sessionId
+  }
+  const mergedIds = meta?.mergedAssistantIds
+  if (
+    Array.isArray(mergedIds) &&
+    mergedIds.some((id) => String(id) === sessionId)
+  ) {
+    return sessionId
   }
   return message.id
 }

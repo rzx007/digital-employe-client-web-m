@@ -30,17 +30,23 @@
 1. 先用 `write_todos` 拆解文档结构（章节、附录、图表等）
 2. 若关键信息不足，**先** `submit_clarifying_questions`（context=`long_document`）
 3. 澄清完成后 **调用 `submit_document_plan`** 提交标题、大纲（outline）、计划产物路径（planned_artifacts）
-4. **用户确认方案前**，禁止 write_file / edit_file 到 `/artifacts/`（含 chapter-*.md）
+4. **用户确认方案前**，禁止 write_file / edit_file 到 `/artifacts/`（含任务子目录下任何文件）
+
+### 产物目录（每次长文档任务单独子目录）
+- 在 `submit_document_plan` 中根据 **title** 确定 `<doc-slug>`（简短英文/拼音/数字，小写，连字符分隔，如 `tech-proposal-acme-2026`）
+- **同一次长文档任务**内，分章与终稿均写在 `/artifacts/<doc-slug>/` 下，**不要**把 chapter 或终稿直接写在 `/artifacts/` 根目录
+- 同一会话若有多份长文档，须使用**不同** `<doc-slug>`，避免覆盖
 
 ### 写作
-5. 用户确认后，逐章节撰写，每完成一章写入 `/artifacts/chapter-N-章节名.md`
+5. 用户确认后，逐章节撰写，每完成一章写入 `/artifacts/<doc-slug>/chapter-N-章节名.md`
 6. 章节间用 `## 标题` 分隔，保持 Markdown 标题层级一致
 7. 复杂流程/架构使用 mermaid 图表（flowchart、sequenceDiagram 等）
 8. 涉及数据计算/公式的场景使用 LaTeX 数学公式（$...$ 或 $$...$$）
+9. 附图、表格导出等可选放在 `/artifacts/<doc-slug>/assets/`（按需）
 
 ### 交付
-9. 所有章节完成后，合并为完整文档 `/artifacts/完整文档.md`（或用户指定文件名）
-10. 回复中给出**虚拟路径**（如 `/artifacts/技术方案.md`），便于用户在工作台下载
+10. 所有章节完成后，在同一子目录合并为 `/artifacts/<doc-slug>/完整版.md`（或用户指定文件名）
+11. 回复中给出**虚拟路径**（如 `/artifacts/tech-proposal-acme-2026/完整版.md`），便于用户在工作台下载
 
 ### 质量标准
 - 标书/方案类文档：包含背景、需求分析、技术方案、实施计划、风险应对
@@ -52,7 +58,7 @@
 - `submit_document_plan` 会触发用户确认门：approve（开始写作）/ reject（附文字反馈，修订后再次 submit）/ edit（用户直接改 outline 等字段）
 - **同一次长文档任务**：澄清门与方案门各 interrupt 一次；用户 approve 或 edit 方案后**直接分章 write_file**，**不得**再次 submit
 - 仅当用户 **reject 方案** 并说明如何改时，才修订 outline 后再次 `submit_document_plan`
-- `planned_artifacts` 参数类型为 **JSON 字符串**（默认 `"[]"`）；**不再**在方案门使用 `open_questions`（澄清由 `submit_clarifying_questions` 完成）
+- `planned_artifacts` 参数类型为 **JSON 字符串**（默认 `"[]"`），路径须落在同一 `/artifacts/<doc-slug>/` 下（如 `chapter-01-背景.md` 与 `完整版.md` 的完整虚拟路径）；**不再**在方案门使用 `open_questions`（澄清由 `submit_clarifying_questions` 完成）
 
 ### 边界
 - 用户交付物写入 `/artifacts/`，跨会话记忆写入 `/memories/`，二者不要混用

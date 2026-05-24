@@ -24,6 +24,7 @@ import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { useConversationSession } from "@/hooks/use-conversation-session"
 
 import { dedupeHitlPartsInMessages } from "@/lib/chat/hitl-abort-message-utils"
+import { prepareDisplayMessages } from "@/lib/chat/merge-consecutive-assistant-messages"
 
 import { ChatPanel } from "../panel/chat-panel"
 
@@ -316,7 +317,7 @@ export function ConversationChatView({
     const source =
       messages.length > 0 || hasReceivedMessages ? messages : initialMessages
 
-    return dedupeHitlPartsInMessages(source)
+    return prepareDisplayMessages(source)
   }, [initialMessages, messages, hasReceivedMessages])
 
   const messagesForHitl = useMemo(

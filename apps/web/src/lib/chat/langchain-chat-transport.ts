@@ -74,6 +74,84 @@ function createChunkFlushBatcher(
   return { schedule, flushSync }
 }
 
+/** Resume 回放：时间窗 + 上限批处理，减少 useChat 更新次数 */
+const RECONNECT_FLUSH_MS = 48
+const RECONNECT_MAX_CHUNKS_PER_FLUSH = 256
+/** 每处理 N 条 SSE 后 flush 并让出主线程，避免长时间占用 */
+const RECONNECT_YIELD_EVERY_EVENTS = 320
+
+type ChunkFlushBatcher = {
+  schedule: (chunk: UIMessageChunk) => void
+  flushSync: () => void
+}
+
+/**
+ * GET /stream/resume 冷回放专用：48ms 一批或满 256 chunk 即 flush。
+ * 正常 POST /stream 仍用 rAF 批处理以保持跟手。
+ */
+function createReconnectChunkFlushBatcher(
+  controller: ReadableStreamDefaultController<UIMessageChunk>,
+  stats?: { scheduled: number; enqueued: number; flushRounds: number }
+): ChunkFlushBatcher {
+  let pending: UIMessageChunk[] = []
+  let timerId: ReturnType<typeof setTimeout> | null = null
+
+  const drainPending = () => {
+    if (pending.length === 0) return
+    const batch = mergeAdjacentTextDeltas(pending)
+    pending = []
+    if (stats) {
+      stats.flushRounds += 1
+      stats.enqueued += batch.length
+    }
+    for (const c of batch) {
+      controller.enqueue(c)
+    }
+  }
+
+  const flushSync = () => {
+    if (timerId !== null) {
+      clearTimeout(timerId)
+      timerId = null
+    }
+    drainPending()
+  }
+
+  const scheduleTimer = () => {
+    if (timerId !== null) return
+    timerId = setTimeout(() => {
+      timerId = null
+      drainPending()
+    }, RECONNECT_FLUSH_MS)
+  }
+
+  const schedule = (chunk: UIMessageChunk) => {
+    if (stats) stats.scheduled += 1
+    pending.push(chunk)
+    if (pending.length >= RECONNECT_MAX_CHUNKS_PER_FLUSH) {
+      flushSync()
+      return
+    }
+    scheduleTimer()
+  }
+
+  return { schedule, flushSync }
+}
+
+function createChunkBatcherForMode(
+  isReconnect: boolean,
+  controller: ReadableStreamDefaultController<UIMessageChunk>,
+  reconnectStats?: {
+    scheduled: number
+    enqueued: number
+    flushRounds: number
+  }
+): ChunkFlushBatcher {
+  return isReconnect
+    ? createReconnectChunkFlushBatcher(controller, reconnectStats)
+    : createChunkFlushBatcher(controller)
+}
+
 /**
  * 获取事件边界的索引位置
  * 该函数用于查找HTTP请求或响应头与正文之间的分隔边界
@@ -330,13 +408,32 @@ export class LangChainChatTransport<
 
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {
+        const isReconnect = reconnectAbort != null
+        const reconnectStats = isReconnect
+          ? { scheduled: 0, enqueued: 0, flushRounds: 0 }
+          : undefined
         let buffer = ""
+        let reconnectSseEvents = 0
         const state = createLangChainStreamParseState()
-        const { schedule, flushSync } = createChunkFlushBatcher(controller)
+        const { schedule, flushSync } = createChunkBatcherForMode(
+          isReconnect,
+          controller,
+          reconnectStats
+        )
 
         controller.enqueue({ type: "start" })
 
-        const flushEvent = (eventText: string): boolean => {
+        const maybeYieldAfterReconnectBurst = async () => {
+          if (!isReconnect) return
+          reconnectSseEvents += 1
+          if (reconnectSseEvents % RECONNECT_YIELD_EVERY_EVENTS !== 0) return
+          flushSync()
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, 0)
+          })
+        }
+
+        const flushEvent = async (eventText: string): Promise<boolean> => {
           const allLines = eventText.split(/\r?\n/)
 
           const dataLines = allLines
@@ -534,6 +631,7 @@ export class LangChainChatTransport<
             for (const chunk of chunks) {
               schedule(chunk)
             }
+            await maybeYieldAfterReconnectBurst()
           } catch (e) {
             if (import.meta.env.DEV) {
               console.error("[sse] dropped event:", e)
@@ -561,8 +659,19 @@ export class LangChainChatTransport<
                 separatorIndex + getEventBoundaryLength(buffer, separatorIndex)
               )
 
-              const didFinish = flushEvent(eventText)
+              const didFinish = await flushEvent(eventText)
               if (didFinish) {
+                if (import.meta.env.DEV && reconnectStats) {
+                  console.info(
+                    "[sse:resume] reconnect batching",
+                    {
+                      sseEvents: reconnectSseEvents,
+                      chunksScheduled: reconnectStats.scheduled,
+                      chunksEnqueued: reconnectStats.enqueued,
+                      flushRounds: reconnectStats.flushRounds,
+                    }
+                  )
+                }
                 return
               }
 
@@ -571,10 +680,18 @@ export class LangChainChatTransport<
           }
 
           if (buffer.trim()) {
-            flushEvent(buffer)
+            await flushEvent(buffer)
           }
 
           flushSync()
+          if (import.meta.env.DEV && reconnectStats) {
+            console.info("[sse:resume] reconnect batching (stream end)", {
+              sseEvents: reconnectSseEvents,
+              chunksScheduled: reconnectStats.scheduled,
+              chunksEnqueued: reconnectStats.enqueued,
+              flushRounds: reconnectStats.flushRounds,
+            })
+          }
           closeTextPhaseIfNeeded(state).forEach((chunk) =>
             controller.enqueue(chunk)
           )
