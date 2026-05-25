@@ -10,7 +10,7 @@ import {
 } from "@workspace/ui/components/dialog"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { Separator } from "@workspace/ui/components/separator"
-import type { Contact } from "@/lib/mock-data/ai-employees"
+import type { Contact } from "@/types/chat"
 import { useChatStore } from "@/stores/chat-store"
 
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"

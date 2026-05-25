@@ -33,7 +33,7 @@ import { useDeleteConversationMutation } from "@/hooks/use-chat-queries"
 import { useChatStore } from "@/stores/chat-store"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import { resetConversationStatus } from "@/api/conversation"
-import type { Conversation } from "@/lib/mock-data/conversations"
+import type { Conversation } from "@/types/chat"
 import { Spinner } from "@/components/spinner"
 
 interface ConversationItemProps extends React.ComponentProps<"div"> {

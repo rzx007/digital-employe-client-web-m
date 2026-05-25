@@ -22,7 +22,7 @@ import {
   ContextMenuTrigger,
 } from "@workspace/ui/components/context-menu"
 import { cn } from "@workspace/ui/lib/utils"
-import type { Contact } from "@/lib/mock-data/ai-employees"
+import type { Contact } from "@/types/chat"
 import { useChatStore } from "@/stores/chat-store"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { deleteEmployee } from "@/api/employee"

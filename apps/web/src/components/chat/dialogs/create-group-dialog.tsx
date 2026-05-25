@@ -13,7 +13,7 @@ import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
 import { Checkbox } from "@workspace/ui/components/checkbox"
 import { cn } from "@workspace/ui/lib/utils"
-import type { AIEmployee } from "@/lib/mock-data/ai-employees"
+import type { AIEmployee } from "@/types/chat"
 
 interface CreateGroupDialogProps {
   open: boolean

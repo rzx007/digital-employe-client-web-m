@@ -1,20 +1,4 @@
-export type MessageRole = "user" | "assistant"
-
-export interface Message {
-  id: string
-  conversationId: string
-  senderId: string
-  senderName: string
-  role: MessageRole
-  content: string
-  timestamp: Date
-  type?: "text" | "image" | "file"
-  metadata?: Record<string, any>
-  chunkJson?: string
-  streamState?: string | null
-  streamCursor?: number | null
-  messageParts?: unknown[]
-}
+import type { Message } from "@/types/chat"
 
 export const MOCK_MESSAGES: Record<string, Message[]> = {
   "conv-1": [
@@ -98,10 +82,4 @@ export const MOCK_MESSAGES: Record<string, Message[]> = {
       timestamp: new Date(Date.now() - 2.8 * 60 * 60 * 1000),
     },
   ],
-}
-
-export const getMessagesByConversationId = (
-  conversationId: string
-): Message[] => {
-  return MOCK_MESSAGES[conversationId] || []
 }

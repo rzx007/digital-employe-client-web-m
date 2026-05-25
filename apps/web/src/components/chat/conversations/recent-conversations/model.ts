@@ -1,5 +1,5 @@
-import type { Conversation } from "@/lib/mock-data/conversations"
-import { findContactInList, type Contact } from "@/lib/mock-data/ai-employees"
+import { findContactInList } from "@/lib/chat/contact-utils"
+import type { Contact, Conversation } from "@/types/chat"
 import { MAX_RECENT, type RecentConversationItem } from "./types"
 
 export type ContactInfo = {
@@ -116,4 +116,87 @@ export function ensureContactInList(
       : undefined,
   }
   return [newItem, ...existing].slice(0, MAX_RECENT)
+}
+
+export type DeriveRecentItemsParams = {
+  contacts: Contact[]
+  conversations: Conversation[]
+  selectedContactId: string | null
+  selectedContact: Contact | null | undefined
+  isDraftConversation: boolean
+}
+
+/** 从本地存储基线合并联系人、会话列表与当前选中态（无副作用）。 */
+export function deriveRecentItems(
+  stored: RecentConversationItem[],
+  params: DeriveRecentItemsParams
+): RecentConversationItem[] {
+  let items = stored
+
+  const curatorId = getCuratorContactId(params.contacts)
+  if (curatorId) {
+    const curator = params.contacts.find((c) => c.type === "curator")?.curator
+    if (curator && !items.some((c) => c.contactId === curatorId)) {
+      const item: RecentConversationItem = {
+        id: `recent:${curatorId}`,
+        contactId: curatorId,
+        contactName: curator.name,
+        title: "数字员工统筹",
+        unreadCount: 0,
+        updatedAt: new Date(),
+        avatar: curator.avatar,
+        status: curator.status,
+        isCurator: true,
+      }
+      items = [item, ...items]
+    }
+  }
+
+  if (
+    params.selectedContact &&
+    params.selectedContact.type !== "curator" &&
+    params.conversations.length > 0
+  ) {
+    const contactInfo = getContactInfo(
+      params.contacts,
+      params.selectedContactId ?? ""
+    )
+    const isGroup = params.selectedContact.type === "group"
+    const participants = isGroup
+      ? params.selectedContact.group?.participants.map((p) => ({
+          name: p.name,
+          avatar: p.avatar,
+        }))
+      : undefined
+    items = params.conversations.reduce(
+      (acc, conv) =>
+        upsertRecentConversation(
+          acc,
+          conv,
+          contactInfo,
+          curatorId,
+          isGroup,
+          participants
+        ),
+      items
+    )
+  }
+
+  if (params.selectedContactId) {
+    items = ensureContactInList(
+      items,
+      params.selectedContactId,
+      params.contacts,
+      curatorId
+    )
+  }
+
+  if (!params.isDraftConversation && params.selectedContactId) {
+    items = items.filter(
+      (item) =>
+        !(item.isDraft && item.contactId === params.selectedContactId)
+    )
+  }
+
+  return items
 }

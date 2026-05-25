@@ -2,18 +2,10 @@ import * as React from "react"
 import { useShallow } from "zustand/react/shallow"
 import { useAuthStore } from "@/stores/auth-store"
 import { useConversationsQuery } from "@/hooks/use-chat-queries"
-import {
-  findContactInList,
-  type AIEmployee,
-  type Contact,
-} from "@/lib/mock-data/ai-employees"
+import { findContactInList } from "@/lib/chat/contact-utils"
+import type { AIEmployee, Contact } from "@/types/chat"
 import { useChatStore } from "@/stores/chat-store"
-import {
-  ensureContactInList,
-  getContactInfo,
-  getCuratorContactId,
-  upsertRecentConversation,
-} from "./model"
+import { deriveRecentItems } from "./model"
 import {
   loadAndMigrateRecentConversations,
   saveRecentConversations,
@@ -40,13 +32,16 @@ function pickNextRecentContactId(
 export function useRecentConversations() {
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? 1
 
-  const [recentItems, setRecentItems] = React.useState<
+  const [storedItems, setStoredItems] = React.useState<
     RecentConversationItem[]
   >(() => loadAndMigrateRecentConversations(workspaceId))
 
-  React.useEffect(() => {
-    setRecentItems(loadAndMigrateRecentConversations(workspaceId))
-  }, [workspaceId])
+  const [loadedWorkspaceId, setLoadedWorkspaceId] =
+    React.useState(workspaceId)
+  if (workspaceId !== loadedWorkspaceId) {
+    setLoadedWorkspaceId(workspaceId)
+    setStoredItems(loadAndMigrateRecentConversations(workspaceId))
+  }
 
   const [searchQuery, setSearchQuery] = React.useState("")
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
@@ -74,31 +69,6 @@ export function useRecentConversations() {
     [contacts]
   )
 
-  React.useEffect(() => {
-    const curatorId = getCuratorContactId(contacts)
-    if (!curatorId) return
-    const curator = contacts.find((c) => c.type === "curator")?.curator
-    if (!curator) return
-    setRecentItems((prev) => {
-      const hasCuratorItem = prev.some((c) => c.contactId === curatorId)
-      if (hasCuratorItem) return prev
-      const item: RecentConversationItem = {
-        id: `recent:${curatorId}`,
-        contactId: curatorId,
-        contactName: curator.name,
-        title: "数字员工统筹",
-        unreadCount: 0,
-        updatedAt: new Date(),
-        avatar: curator.avatar,
-        status: curator.status,
-        isCurator: true,
-      }
-      const updated = [item, ...prev]
-      saveRecentConversations(workspaceId, updated)
-      return updated
-    })
-  }, [contacts])
-
   const handleCreateGroup = () => {
     setIsDialogOpen(false)
   }
@@ -108,78 +78,32 @@ export function useRecentConversations() {
     selectedContact
   )
 
-  React.useEffect(() => {
-    if (!selectedContact || selectedContact.type === "curator") return
-    if (conversations.length === 0) return
-    const storeContacts = useChatStore.getState().contacts
-    const contactInfo = getContactInfo(storeContacts, selectedContactId ?? "")
-    const curatorId = getCuratorContactId(storeContacts)
-    const isGroup = selectedContact.type === "group"
-    const participants = isGroup
-      ? selectedContact.group?.participants.map((p) => ({
-          name: p.name,
-          avatar: p.avatar,
-        }))
-      : undefined
-
-    setRecentItems((prev) => {
-      const updated = conversations.reduce(
-        (acc, conv) =>
-          upsertRecentConversation(
-            acc,
-            conv,
-            contactInfo,
-            curatorId,
-            isGroup,
-            participants
-          ),
-        prev
-      )
-      const hasNew =
-        updated.length !== prev.length ||
-        updated[0]?.id !== prev[0]?.id ||
-        updated[0]?.updatedAt?.getTime() !== prev[0]?.updatedAt?.getTime()
-      if (hasNew) {
-        saveRecentConversations(workspaceId, updated)
-        return updated
-      }
-      return prev
-    })
-  }, [conversations, selectedContact, selectedContactId])
-
-  React.useEffect(() => {
-    if (!selectedContactId) return
-    setRecentItems((prev) => {
-      const exists = prev.some((c) => c.contactId === selectedContactId)
-      if (exists) return prev
-      const storeContacts = useChatStore.getState().contacts
-      const curatorId = getCuratorContactId(storeContacts)
-      const updated = ensureContactInList(
-        prev,
+  const recentItems = React.useMemo(
+    () =>
+      deriveRecentItems(storedItems, {
+        contacts,
+        conversations,
         selectedContactId,
-        storeContacts,
-        curatorId
-      )
-      saveRecentConversations(workspaceId, updated)
-      return updated
-    })
-  }, [selectedContactId])
+        selectedContact,
+        isDraftConversation,
+      }),
+    [
+      storedItems,
+      contacts,
+      conversations,
+      selectedContactId,
+      selectedContact,
+      isDraftConversation,
+    ]
+  )
 
+  const lastPersistedRef = React.useRef<string | null>(null)
   React.useEffect(() => {
-    if (isDraftConversation) return
-    if (!selectedContactId) return
-    const draftItem = recentItems.find(
-      (item) => item.isDraft && item.contactId === selectedContactId
-    )
-    if (!draftItem) return
-    setRecentItems((prev) => {
-      const updated = prev.filter(
-        (item) => !(item.isDraft && item.contactId === selectedContactId)
-      )
-      saveRecentConversations(workspaceId, updated)
-      return updated
-    })
-  }, [isDraftConversation, recentItems, selectedContactId])
+    const snapshot = JSON.stringify(recentItems)
+    if (lastPersistedRef.current === snapshot) return
+    lastPersistedRef.current = snapshot
+    saveRecentConversations(workspaceId, recentItems)
+  }, [workspaceId, recentItems])
 
   const handleSelectItem = (contactId: string) => {
     if (contactId === selectedContactId) return
@@ -195,19 +119,18 @@ export function useRecentConversations() {
   }
 
   const handleTogglePin = (item: RecentConversationItem) => {
-    setRecentItems((prev) => {
-      const updated = prev.map((i) =>
+    setStoredItems(
+      recentItems.map((i) =>
         i.contactId === item.contactId ? { ...i, isPinned: !i.isPinned } : i
       )
-      saveRecentConversations(workspaceId, updated)
-      return updated
-    })
+    )
   }
 
   const handleRemove = (item: RecentConversationItem) => {
-    const updated = recentItems.filter((i) => i.contactId !== item.contactId)
-    saveRecentConversations(workspaceId, updated)
-    setRecentItems(updated)
+    const updated = recentItems.filter(
+      (i) => i.contactId !== item.contactId
+    )
+    setStoredItems(updated)
 
     const { selectedContactId, setSelectedContactId, switchToContact } =
       useChatStore.getState()

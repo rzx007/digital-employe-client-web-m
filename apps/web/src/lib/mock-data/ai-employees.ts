@@ -1,38 +1,5 @@
-import type { MetadataSkill } from "@/api/types"
 import { createDiceBearAvatar } from "@/lib/avatar"
-
-export interface AIEmployee {
-  id: string
-  name: string
-  role: string
-  avatar?: string
-  status: "online" | "busy" | "offline"
-  specialty: string
-  skills?: MetadataSkill[]
-}
-
-export type ContactType = "curator" | "employee" | "group"
-
-/** 总管助手：独立身份，不属于员工列表 */
-export interface CuratorProfile {
-  id: string
-  name: string
-  role: string
-  avatar?: string
-  status: "online" | "busy" | "offline"
-  specialty: string
-}
-
-export interface Contact {
-  type: ContactType
-  curator?: CuratorProfile
-  employee?: AIEmployee
-  group?: {
-    id: string
-    name: string
-    participants: AIEmployee[]
-  }
-}
+import type { AIEmployee, Contact } from "@/types/chat"
 
 export const AI_EMPLOYEES: AIEmployee[] = [
   {
@@ -74,17 +41,17 @@ export const AI_GROUPS = [
     id: "group-tech",
     name: "技术讨论群",
     participants: [
-      AI_EMPLOYEES[1], // 王大明
-      AI_EMPLOYEES[3], // 赵伟
+      AI_EMPLOYEES[1],
+      AI_EMPLOYEES[3],
     ],
   },
   {
     id: "group-product",
     name: "产品讨论群",
     participants: [
-      AI_EMPLOYEES[1], // 王大明
-      AI_EMPLOYEES[2], // 李晓琳
-      AI_EMPLOYEES[0], // 陈小红
+      AI_EMPLOYEES[1],
+      AI_EMPLOYEES[2],
+      AI_EMPLOYEES[0],
     ],
   },
 ]
@@ -99,35 +66,3 @@ export const CONTACTS: Contact[] = [
     group,
   })),
 ]
-
-export function findContactInList(
-  contacts: readonly Contact[],
-  id: string
-): Contact | undefined {
-  return contacts.find((contact) => {
-    if (contact.type === "curator") {
-      return contact.curator?.id === id
-    }
-    if (contact.type === "employee") {
-      return contact.employee?.id === id
-    }
-    return contact.group?.id === id
-  })
-}
-
-export const getContactById = (id: string): Contact | undefined => {
-  return findContactInList(CONTACTS, id)
-}
-
-export const getEmployeeById = (id: string): AIEmployee | undefined => {
-  return AI_EMPLOYEES.find((emp) => emp.id === id)
-}
-
-/** 消息发送方等场景 */
-export function getPeerProfileById(id: string): AIEmployee | undefined {
-  return getEmployeeById(id)
-}
-
-export const getGroupById = (id: string) => {
-  return AI_GROUPS.find((group) => group.id === id)
-}

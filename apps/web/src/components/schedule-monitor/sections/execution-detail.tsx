@@ -3,7 +3,7 @@ import { IconChevronDown, IconChevronRight } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 import { Badge } from "@workspace/ui/components/badge"
 import type { TaskRun, TaskRunStatus } from "@/types/schedule-monitor"
-import { formatTaskDuration } from "@/lib/mock-data/schedule-monitor"
+import { formatTaskDuration } from "@/lib/schedule-monitor/format-duration"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 
 const STATUS_CONFIG: Record<

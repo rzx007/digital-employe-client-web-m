@@ -7,13 +7,13 @@ import {
   fetchConversations as fetchConversationsApi,
   createConversation as createConversationApi,
 } from "@/api/conversation"
-import {
-  type AIEmployee,
-  type Contact,
-  type CuratorProfile,
-} from "@/lib/mock-data/ai-employees"
-import type { Conversation } from "@/lib/mock-data/conversations"
-import type { Message } from "@/lib/mock-data/messages"
+import type {
+  AIEmployee,
+  Contact,
+  Conversation,
+  CuratorProfile,
+  Message,
+} from "@/types/chat"
 
 function mapStatus(status: number): AIEmployee["status"] {
   if (status === 1) return "online"

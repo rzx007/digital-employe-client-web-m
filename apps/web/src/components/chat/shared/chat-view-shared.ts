@@ -2,7 +2,7 @@ import type { UIMessage } from "ai"
 import { formatDuration, intervalToDuration } from "date-fns"
 import { zhCN } from "date-fns/locale"
 
-import { findContactInList } from "@/lib/mock-data/ai-employees"
+import { findContactInList } from "@/lib/chat/contact-utils"
 import { LangChainChatTransport } from "@/lib/chat/langchain-chat-transport"
 
 export const chatTransport = new LangChainChatTransport<UIMessage>()

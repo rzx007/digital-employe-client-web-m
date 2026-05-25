@@ -1,7 +1,8 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
-import { findContactInList, type Contact } from "@/lib/mock-data/ai-employees"
+import { findContactInList } from "@/lib/chat/contact-utils"
+import type { Contact } from "@/types/chat"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 

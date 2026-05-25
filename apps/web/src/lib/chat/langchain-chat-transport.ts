@@ -1,7 +1,8 @@
 import { type ChatTransport, type UIMessage, type UIMessageChunk } from "ai"
 
 import { request, getRequestHeaders } from "@/lib/request"
-import { SeeData, createMockSSEStream } from "@/lib/mock-data/sse"
+import { createMockSSEStream } from "@/lib/dev/mock-sse-stream"
+import { MOCK_SSE_TEXT } from "@/lib/mock-data/sse"
 import {
   closeTextPhaseIfNeeded,
   createLangChainStreamParseState,
@@ -337,7 +338,7 @@ export class LangChainChatTransport<
     const prompt = latestText
 
     const stream = useMock
-      ? createMockSSEStream(SeeData)
+      ? createMockSSEStream(MOCK_SSE_TEXT)
       : await createEventSourceResponse({
           conversationId: conversationId as string,
           skill,

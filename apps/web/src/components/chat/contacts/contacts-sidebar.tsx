@@ -16,11 +16,8 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useContactsQuery } from "@/hooks/use-chat-queries"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { request } from "@/lib/request"
-import {
-  findContactInList,
-  type AIEmployee,
-  type Contact,
-} from "@/lib/mock-data/ai-employees"
+import { findContactInList } from "@/lib/chat/contact-utils"
+import type { AIEmployee, Contact } from "@/types/chat"
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 

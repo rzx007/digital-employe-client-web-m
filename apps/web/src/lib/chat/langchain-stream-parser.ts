@@ -192,6 +192,26 @@ function tryParseToolInput(inputText: string) {
   }
 }
 
+/** resume 回放 ToolMessage 缺 name 时，仍须登记 invocation 供 useChat 消费 output */
+const FALLBACK_TOOL_NAME_FOR_OUTPUT = "tool"
+
+function resolveToolNameForInvocation(
+  state: LangChainStreamParseState,
+  toolCallId: string,
+  hint?: string | null
+): string {
+  const fromHint = hint?.trim()
+  if (fromHint) return fromHint
+
+  const fromPending = resolvePendingToolCallById(state, toolCallId)?.toolName
+  if (fromPending?.trim()) return fromPending.trim()
+
+  const fromMap = state.toolNamesById.get(toolCallId)
+  if (fromMap?.trim()) return fromMap.trim()
+
+  return FALLBACK_TOOL_NAME_FOR_OUTPUT
+}
+
 /**
  * 记录同一 AIMessageChunk 流（kwargs.id）内的「主」工具 call。
  * 用于 provider 将 tool_calls 放在 index 0、tool_call_chunks 放在 index 1 时的 args 归并。
@@ -873,16 +893,19 @@ function buildToolOutputChunks(
     return result
   }
 
-  // 根据 toolCallId 解析待处理的工具调用上下文及输入参数
   let pending = resolvePendingToolCallById(state, toolCallId)
-  const resolvedToolName = toolName ?? pending?.toolName ?? null
+  const invocationToolName = resolveToolNameForInvocation(
+    state,
+    toolCallId,
+    toolName
+  )
 
-  if (resolvedToolName && !pending?.sentInputStart) {
+  if (!pending?.sentInputStart) {
     pending = ensureToolInvocationBeforeOutput(
       state,
       {
         toolCallId,
-        toolName: resolvedToolName,
+        toolName: invocationToolName,
         input: pending ? tryParseToolInput(pending.inputText) ?? undefined : undefined,
         inputText: pending?.inputText,
       },
@@ -890,6 +913,7 @@ function buildToolOutputChunks(
     )
   }
 
+  const resolvedToolName = pending?.toolName ?? invocationToolName
   const parsedInput = pending ? tryParseToolInput(pending.inputText) : null
 
   state.toolOutputAccumulators.delete(toolCallId)
@@ -935,19 +959,20 @@ export function buildToolOutputStreamingChunks(
 
   if (!toolCallId) return []
 
-  const resolvedToolName =
-    tool_name ?? state.toolNamesById.get(toolCallId) ?? null
+  const invocationToolName = resolveToolNameForInvocation(
+    state,
+    toolCallId,
+    tool_name
+  )
   const result: UIMessageChunk[] = []
 
-  if (resolvedToolName) {
-    const pending = resolvePendingToolCallById(state, toolCallId)
-    if (!pending?.sentInputStart) {
-      ensureToolInvocationBeforeOutput(
-        state,
-        { toolCallId, toolName: resolvedToolName },
-        result
-      )
-    }
+  const pending = resolvePendingToolCallById(state, toolCallId)
+  if (!pending?.sentInputStart) {
+    ensureToolInvocationBeforeOutput(
+      state,
+      { toolCallId, toolName: invocationToolName },
+      result
+    )
   }
 
   const existing = state.toolOutputAccumulators.get(toolCallId) ?? ""

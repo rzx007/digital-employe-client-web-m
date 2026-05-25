@@ -1,6 +1,6 @@
 import type { UIMessage } from "ai"
 
-import type { Message } from "@/lib/mock-data/messages"
+import type { Message } from "@/types/chat"
 
 import { classifyMessageParts } from "./message-classifier"
 

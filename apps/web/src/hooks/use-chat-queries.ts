@@ -20,9 +20,7 @@ import {
   deleteAllTaskExecutions,
   uploadConversationFile,
 } from "@/api/conversation"
-import type { Contact } from "@/lib/mock-data/ai-employees"
-import type { Conversation } from "@/lib/mock-data/conversations"
-import type { Message } from "@/lib/mock-data/messages"
+import type { Contact, Conversation, Message } from "@/types/chat"
 import { chatKeys } from "@/lib/query-keys/chat"
 
 export function useContactsQuery() {

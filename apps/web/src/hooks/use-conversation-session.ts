@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react"
 import type { QueryClient } from "@tanstack/react-query"
 import type { UIMessage } from "ai"
 
-import type { Message } from "@/lib/mock-data/messages"
+import type { Message } from "@/types/chat"
 import { conversationRuntimeBus } from "@/lib/chat/conversation-runtime-bus"
 import {
   findPendingHitl,

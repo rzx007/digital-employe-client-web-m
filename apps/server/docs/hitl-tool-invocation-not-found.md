@@ -129,7 +129,7 @@ sequenceDiagram
 
 ## 4. 已实现修复（仓库现状）
 
-### 4.1 `ensureToolInvocationBeforeOutput`（核心）
+### 4.1 `ensureToolInvocationBeforeOutput` + `resolveToolNameForInvocation`（核心）
 
 **文件**：`apps/web/src/lib/chat/langchain-stream-parser.ts`
 
@@ -139,6 +139,8 @@ sequenceDiagram
 - `tool-input-available`（有 `input` / `inputText` 时）
 
 用于缓解 **resume 回放 ToolMessage 早于 tool_calls 声明** 的问题。
+
+**§5.1（2026-05-24）**：ToolMessage 无 `name` 时通过 `resolveToolNameForInvocation` 回退为 `"tool"`，不再跳过补登记。
 
 ### 4.2 Interrupt 时 `buildHitlInterruptStreamChunks`
 
@@ -161,11 +163,14 @@ sequenceDiagram
 
 ## 5. 仍出现报错时的修复方式
 
-### 5.1 前端：加强 `ensureToolInvocationBeforeOutput` 触发条件（推荐）
+### 5.1 前端：加强 `ensureToolInvocationBeforeOutput` 触发条件（已实现）
 
 **问题**：§3.2 仅在 `resolvedToolName` 非空时补登记。
 
-**改法**：对任意带 `toolCallId` 的 ToolMessage，在发 output 前若 `!pending?.sentInputStart`，一律补 invocation；`toolName` 缺失时用 `"unknown"` 或从 `state.toolNamesById` / 最近 pending 推断。
+**实现**（`apps/web/src/lib/chat/langchain-stream-parser.ts`）：
+
+- `resolveToolNameForInvocation`：hint → pending → `toolNamesById` → 回退 `"tool"`。
+- `buildToolOutputChunks` / `buildToolOutputStreamingChunks`：只要有 `toolCallId` 且未 `sentInputStart`，一律先 `ensureToolInvocationBeforeOutput`。
 
 **验收**：resume 同一会话不再出现 `No tool invocation found`；HITL approve 后继续写文档正常。
 
@@ -226,3 +231,4 @@ sequenceDiagram
 | 日期 | 说明 |
 |------|------|
 | 2026-05-24 | 初版：成因、已实现修复、后续改法、排查表 |
+| 2026-05-24 | §5.1 落地：`resolveToolNameForInvocation`，output 前一律补 invocation |

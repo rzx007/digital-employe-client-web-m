@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query"
 
-import type { Message } from "@/lib/mock-data/messages"
+import type { Message } from "@/types/chat"
 import { chatKeys } from "@/lib/query-keys/chat"
 
 function findLastAssistantIndex(messages: Message[]): number {
