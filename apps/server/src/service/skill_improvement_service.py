@@ -12,6 +12,7 @@ from pathlib import Path
 from langchain_openai import ChatOpenAI
 
 from src.core.config import get_settings
+from src.llm.factory import build_chat_model
 
 logger = logging.getLogger(__name__)
 
@@ -76,13 +77,7 @@ def trigger_improvement_review(
 
 
 def _build_llm() -> ChatOpenAI:
-    settings = get_settings()
-    return ChatOpenAI(
-        model=settings.deepagent_model or "qwen2.5-72b-instruct",
-        temperature=0,
-        api_key=settings.api_key,
-        base_url=settings.base_url,
-    )
+    return build_chat_model(apply_profile=False)
 
 
 def _get_conversation_context(conversation_id: int) -> str:

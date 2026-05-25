@@ -1,18 +1,22 @@
 from typing import Any
 
-from langchain_openai import ChatOpenAI
-from pydantic import BaseModel
-from src.core.config import get_settings
 import logging
 
+from pydantic import BaseModel
+
+from src.core.config import get_settings
+from src.llm.factory import build_chat_model
+
 logger = logging.getLogger(__name__)
+
 
 class ModelCallRequest(BaseModel):
     prompt: str
     model_params: dict[str, Any] | None = None
 
+
 class ModelService:
-    """模型服务类 - 直接调用 ChatOpenAI"""
+    """模型服务类 - 通过 llm 工厂调用 ChatOpenAI"""
 
     @staticmethod
     async def call_model(
@@ -23,32 +27,34 @@ class ModelService:
             model_params = {}
 
         settings = get_settings()
-        api_key = settings.api_key
-        base_url = settings.base_url
         model_name = (
             model_params.get("model")
             or settings.deepagent_model
             or "qwen2.5-72b-instruct"
         )
-        if not api_key:
-            logger.error("未配置 OPENAI_API_KEY，无法调用模型。")
-            return None
+        if not settings.api_key and not model_params.get("api_key"):
+            if (settings.llm_provider or "custom") != "custom":
+                logger.error("未配置 OPENAI_API_KEY，无法调用模型。")
+                return None
 
         try:
-            llm_kwargs: dict[str, Any] = {
-                "model": model_name,
-                "api_key": api_key,
-                "base_url": base_url,
-            }
-            if "temperature" in model_params:
-                llm_kwargs["temperature"] = model_params["temperature"]
+            extra_kwargs: dict[str, Any] = {}
+            temperature = model_params.get("temperature")
+            if temperature is not None:
+                extra_kwargs["temperature"] = temperature
 
             for key, value in model_params.items():
-                if key in {"model", "temperature"}:
+                if key in {"model", "temperature", "api_key", "base_url"}:
                     continue
-                llm_kwargs[key] = value
+                extra_kwargs[key] = value
 
-            model = ChatOpenAI(**llm_kwargs)
+            model = build_chat_model(
+                model=model_name,
+                api_key=model_params.get("api_key"),
+                base_url=model_params.get("base_url"),
+                apply_profile=False,
+                **extra_kwargs,
+            )
             response = model.invoke(prompt)
             content = response.content if hasattr(response, "content") else ""
             if isinstance(content, list):

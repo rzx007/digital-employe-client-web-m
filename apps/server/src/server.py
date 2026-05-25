@@ -37,7 +37,7 @@ def create_app() -> FastAPI:
             init_db()
             from src.service import model_patch
 
-            model_patch.apply()
+            model_patch.apply_if_needed(get_settings())
 
         await loop.run_in_executor(None, _startup_db_init)
 

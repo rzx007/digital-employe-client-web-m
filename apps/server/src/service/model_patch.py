@@ -41,6 +41,23 @@ def _patched_handler(e: lm_base.openai.BadRequestError) -> None:
     return _original_handler(e)
 
 
+def apply_if_needed(settings) -> None:
+    """Apply DashScope error patch only when the active provider needs it."""
+    from src.llm.providers import get_provider, resolve_provider_id
+
+    provider_id = settings.llm_provider or resolve_provider_id(settings.base_url)
+    profile = get_provider(provider_id)
+    needs_patch = provider_id == "dashscope" or (
+        profile is not None and profile.dashscope_error_patch
+    )
+    if needs_patch:
+        apply()
+    else:
+        logger.debug(
+            "Skip DashScope model patch for provider=%s", provider_id
+        )
+
+
 def apply() -> None:
     """Apply the monkey-patch once at process startup."""
     global _applied

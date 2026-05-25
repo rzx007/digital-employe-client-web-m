@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
+from src.llm.factory import build_chat_model
 
 logger = logging.getLogger(__name__)
 
@@ -124,10 +125,4 @@ def _resolve_memories_path(employee_id: int) -> Path:
 
 
 def _build_llm() -> ChatOpenAI:
-    settings = get_settings()
-    return ChatOpenAI(
-        model=settings.deepagent_model or "qwen2.5-72b-instruct",
-        temperature=0,
-        api_key=settings.api_key,
-        base_url=settings.base_url,
-    )
+    return build_chat_model(apply_profile=False)

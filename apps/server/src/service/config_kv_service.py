@@ -206,6 +206,12 @@ class ConfigKvService:
             "OPENAI_API_KEY": api_key,
             "BASE_URL": api_url,
         }
+        from src.llm.providers import resolve_provider_id
+
+        inferred_provider = resolve_provider_id(api_url)
+        if inferred_provider != "custom":
+            updates["LLM_PROVIDER"] = inferred_provider
+
         changed = 0
         for key, value in updates.items():
             row = db.scalar(select(ConfigKv).where(ConfigKv.config_key == key))

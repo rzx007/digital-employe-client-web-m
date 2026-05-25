@@ -130,7 +130,16 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
   - `/agent/` → FilesystemBackend（`src/service/`，用于读取 `AGENTS.md`）
 - Checkpointer：`MemorySaver`（内存，重启丢失）
 - Store：`InMemoryStore`
-- LLM：通过 `OPENAI_API_KEY` / `BASE_URL` / `DEEPAGENT_MODEL` 配置
+- LLM：通过 `config_kvs` 中的 `OPENAI_API_KEY` / `BASE_URL` / `DEEPAGENT_MODEL` / `LLM_PROVIDER` 配置；统一经 `src/llm/factory.build_chat_model()` 创建实例
+
+### 多供应商 LLM（`src/llm/`）
+
+- `src/llm/providers/catalog.py`：静态供应商目录（DashScope、DeepSeek 官方、OpenAI、Moonshot、智谱、SiliconFlow + custom）
+- `src/llm/factory.py`：`build_chat_model()` 合并 KV 配置并应用上下文 profile
+- `src/llm/connection.py`：设置页探活（`GET /models` → fallback `POST /chat/completions`）
+- **注意**：DashScope 与 DeepSeek 官方的模型名不可混用（如 `deepseek-v4-flash` 仅适用于 DashScope，`deepseek-chat` 适用于 DeepSeek 官方）
+- DeepSeek V4 模型在 `build_chat_model()` 中自动注入 `extra_body={"thinking": {"type": "disabled"}}`（LangChain 尚未正确回传 `reasoning_content`，Agent 工具调用会 400）
+- `model_patch` 仅在 `LLM_PROVIDER=dashscope`（或目录标记）时启用，用于 DashScope 上下文超长错误兼容
 
 ### 技能（Skills）解析优先级
 
@@ -162,9 +171,10 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 | `SQLITE_PATH`              | `~/.digital-employee/data/app.db`                   | **注意**：`.env.example` 里的路径已过时，实际默认值在 `config.py` 的 `get_default_sqlite_path()` |
 | `SERVER_PORT`              | `58000`                                             | 服务端口                                                                                         |
 | `ENVIRONMENT`              | `dev`                                               | dev/prod                                                                                         |
-| `OPENAI_API_KEY`           | —                                                   | LLM API Key                                                                                      |
-| `BASE_URL`                 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | LLM API 地址                                                                                     |
+| `OPENAI_API_KEY`           | —                                                   | LLM API Key（存于 `config_kvs`）                                                                 |
+| `BASE_URL`                 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI 兼容 API 地址                                                                             |
 | `DEEPAGENT_MODEL`          | `qwen2.5-72b-instruct`                              | Agent 使用的模型                                                                                 |
+| `LLM_PROVIDER`             | 由 `BASE_URL` 推断或设置页保存                      | 供应商标识：`dashscope` / `deepseek` / `openai` / `moonshot` / `zhipu` / `siliconflow` / `custom` |
 | `SKILL_REMOTE_BASE_URL`    | —                                                   | 远程技能服务地址                                                                                 |
 | `AGENT_INTERFACE_BASE_URL` | —                                                   | Agent Interface 服务地址                                                                         |
 | `DBCHAT_BASE_URL`          | —                                                   | DB Chat 服务地址                                                                                 |

@@ -15,6 +15,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
+from src.llm.factory import build_chat_model
 from src.db.session import get_session_local
 from src.models.employee import Employee
 from src.models.employee_mcp import EmployeeMcp
@@ -24,7 +25,7 @@ from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import CST, Workspace, cst_now
 from src.service.task_service import TaskService
 from src.service.agent import get_agent
-from langchain_openai import ChatOpenAI
+from src.service.skill_confirm_url import load_confirm_url_for_skill
 
 logger = logging.getLogger(__name__)
 
@@ -46,14 +47,8 @@ def parse_nl_cron(nl_input: str) -> str | None:
     if _re_cron_digits.match(stripped):
         return stripped
 
-    settings = get_settings()
     try:
-        model = ChatOpenAI(
-            model=settings.deepagent_model or "qwen2.5-72b-instruct",
-            temperature=0,
-            api_key=settings.api_key,
-            base_url=settings.base_url or "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        )
+        model = build_chat_model()
         response = model.invoke(
             f"将以下自然语言时间表达式转换为标准 cron 表达式（5 段：分 时 日 月 周）。"
             f"只输出 cron 表达式，不要任何其他文字，不要换行。"
@@ -67,9 +62,6 @@ def parse_nl_cron(nl_input: str) -> str | None:
     except Exception as exc:
         logger.error("parse_nl_cron LLM 调用失败: %s", exc, exc_info=True)
         return None
-from src.service.skill_confirm_url import load_confirm_url_for_skill
-
-logger = logging.getLogger(__name__)
 
 
 class TaskSchedulerService:

@@ -4,6 +4,7 @@
   "CHAT_HISTORY_MAX_MESSAGES": "30",
   "OPENAI_API_KEY": "sk-f9441c2d00d140989c1669cb245da166",
   "BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "LLM_PROVIDER": "dashscope",
   "DEFAULT_WORKSPACE_ROOT": "./workspaces",
   "DEFAULT_WORKSPACE_ID": "1",
   "DEFAULT_WORKSPACE_NAME": "默认的工作空间",

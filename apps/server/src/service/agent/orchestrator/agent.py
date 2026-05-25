@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
 from sqlalchemy.orm import Session
 
 from deepagents import create_deep_agent
@@ -14,6 +13,7 @@ from deepagents.middleware.permissions import FilesystemPermission
 from deepagents.middleware.summarization import SummarizationToolMiddleware
 
 from src.core.config import get_settings
+from src.llm.factory import build_chat_model
 from src.service.agent.checkpointer import get_checkpointer
 from src.service.agent.paths import (
     SERVICE_DIR,
@@ -49,8 +49,6 @@ from src.service.agent.orchestrator.tools import (
 )
 from src.service.conversation_summarization import ConversationSummarizationMiddleware
 from src.service.model_context import (
-    apply_model_profile,
-    resolve_max_input_tokens,
     resolve_summarization_keep,
     resolve_summarization_trigger,
 )
@@ -76,13 +74,7 @@ def get_orchestrator_agent(
     )
 
     settings = get_settings()
-    model = ChatOpenAI(
-        model=settings.deepagent_model or "qwen2.5-72b-instruct",
-        temperature=0,
-        api_key=settings.api_key,
-        base_url=settings.base_url or "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    )
-    apply_model_profile(model, resolve_max_input_tokens(settings))
+    model = build_chat_model()
 
     base_dir = SERVICE_DIR
     artifacts_path = Path(settings.artifacts_path)

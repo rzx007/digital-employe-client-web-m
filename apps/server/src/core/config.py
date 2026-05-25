@@ -80,6 +80,7 @@ class Settings:
     chat_history_max_messages: int
     api_key: str | None
     base_url: str | None
+    llm_provider: str | None
     skill_remote_base_url: str | None
     skill_remote_list_path: str
     skill_remote_detail_path: str
@@ -298,6 +299,15 @@ def get_settings() -> Settings:
     if feishu_token_request_timeout <= 0:
         feishu_token_request_timeout = 10.0
 
+    base_url = _get_kv_value(kv_data, "BASE_URL")
+    llm_provider = _get_kv_value(kv_data, "LLM_PROVIDER")
+    if not llm_provider and base_url:
+        from src.llm.providers import resolve_provider_id
+
+        inferred = resolve_provider_id(base_url)
+        if inferred != "custom":
+            llm_provider = inferred
+
     return Settings(
         default_workspace_root=_get_kv_value(kv_data, "DEFAULT_WORKSPACE_ROOT"),
         default_workspace_id=default_workspace_id,
@@ -318,7 +328,8 @@ def get_settings() -> Settings:
         summarization_keep_fraction=summarization_keep_fraction,
         chat_history_max_messages=chat_history_max_messages,
         api_key=_get_kv_value(kv_data, "OPENAI_API_KEY"),
-        base_url=_get_kv_value(kv_data, "BASE_URL"),
+        base_url=base_url,
+        llm_provider=llm_provider,
         skill_remote_base_url=remote_api_base_url,
         skill_remote_list_path=skill_remote_list_path,
         skill_remote_detail_path=skill_remote_detail_path,
