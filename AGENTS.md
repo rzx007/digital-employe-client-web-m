@@ -29,7 +29,7 @@ Electron 主进程与 Python 后端日志统一在 `~/.digital-employee/logs/`�
 
 ### 前端（apps/web + packages/ui）
 
-聊天 API/UI 类型分层见 [`apps/web/src/lib/chat/CHAT_DATA_TYPES.md`](apps/web/src/lib/chat/CHAT_DATA_TYPES.md)。
+聊天 API/UI 类型分层见 [`CHAT_DATA_TYPES.md`](apps/web/src/lib/chat/CHAT_DATA_TYPES.md)；会话消息流转（Query / useChat / SSE / hydrate / HITL 展示）见 [`conversation-message-flow.md`](apps/web/src/lib/chat/conversation-message-flow.md)。
 
 ```bash
 pnpm install          # 安装依赖（需要 Node >= 20, pnpm >= 10.33）

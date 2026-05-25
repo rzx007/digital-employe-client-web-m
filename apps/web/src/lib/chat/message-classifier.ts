@@ -126,6 +126,8 @@ export type ClassifiedBlock =
       key: string
       toolCallId: string
       items: ClarifyAnswerItem[]
+      /** tool part 为 output-error，与正常作答区分 */
+      outputError?: boolean
     }
   | {
       kind: "document-plan-approved"
@@ -370,6 +372,16 @@ export function classifyMessageParts(
       const isAnswered =
         toolState === "output-available" || Boolean(clarifyResultText)
       if (!isAnswered) {
+        return
+      }
+      if (toolState === "output-error") {
+        blocks.push({
+          kind: "clarifying-answers",
+          key: `${message.id}:clarify-answers-error:${index}`,
+          toolCallId: part.toolCallId,
+          items: [],
+          outputError: true,
+        })
         return
       }
       const questions = parseClarifyingQuestions(

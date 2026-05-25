@@ -222,6 +222,8 @@ Body：`{ "message_id": <int>, "decisions": [...] }`
 
 ### 3.6 前端：SSE → UI 状态
 
+**全景（DB / composer / 展示三管道、hydrate、refetch）**：[conversation-message-flow.md](../../web/src/lib/chat/conversation-message-flow.md)
+
 **Transport**：`LangChainChatTransport`（`apps/web/src/lib/chat/langchain-chat-transport.ts`）
 
 
@@ -478,5 +480,6 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 | 2026-05-23 | 废弃 `interrupt_payload`：pending 写入 `message_parts`；展示层 `hitl-display-enrich` 回填 input |
 | 2026-05-25 | 新增 [hitl-test-scenarios.md](./hitl-test-scenarios.md) 手工测试场景手册 |
 | 2026-05-23 | 前端 HITL 逻辑收拢至 `apps/web/src/lib/chat/hitl/`；`hitlMessageId` 由 session 下发至 ChatPanel |
+| 2026-05-23 | 新增前端消息流转全景 `apps/web/src/lib/chat/conversation-message-flow.md` |
 
 

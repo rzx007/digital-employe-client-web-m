@@ -131,6 +131,7 @@ function DocumentPlanCardInner({
       onHitlApproved?.({
         kind: "document-plan",
         toolCallId,
+        approvedMessageId: messageId,
         resumed: true,
         assistantMessageId: res?.data?.assistant_message_id,
       })

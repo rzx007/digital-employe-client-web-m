@@ -1,5 +1,7 @@
 # 聊天数据类型分层
 
+**运行时与同步**（React Query、`useChat`、SSE、hydrate、HITL）见 [conversation-message-flow.md](./conversation-message-flow.md)。
+
 ## 三层模型
 
 | 层 | 类型 | 位置 | 用途 |

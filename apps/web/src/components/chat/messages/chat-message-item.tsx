@@ -166,6 +166,7 @@ export function RenderClassifiedBlocks({
             <ClarifyingAnswersSummary
               key={block.key}
               items={block.items}
+              outputError={block.outputError}
               className="w-full"
             />
           )

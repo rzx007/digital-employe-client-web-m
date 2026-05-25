@@ -15,12 +15,11 @@ import { toast } from "sonner"
 import { approveHitl, type HitlDecision } from "@/api/chat"
 import {
   buildClarifyRespondMessage,
+  CLARIFY_SKIP_REJECT_MESSAGE,
   optionLabel,
   type ClarifyingQuestion,
+  type PendingHitl,
 } from "@/lib/chat/hitl"
-import type { PendingHitl } from "@/lib/chat/hitl"
-
-const CLARIFY_SKIP_REJECT_MESSAGE = "用户跳过澄清"
 
 function isComposerTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false

@@ -19,6 +19,8 @@ export type PendingHitl = {
 export type HitlPatchOptions = {
   kind?: PendingHitlKind
   toolCallId?: string
+  /** 已审批并封存的 assistant 行（POST /approve 的 message_id） */
+  approvedMessageId?: string | number
   resumed?: boolean
   assistantMessageId?: string | number
 }
@@ -27,19 +29,6 @@ function kindFromToolType(type: string): PendingHitlKind | null {
   if (type === `tool-${CLARIFY_TOOL_NAME}`) return "clarify"
   if (type === `tool-${DOCUMENT_PLAN_TOOL_NAME}`) return "document-plan"
   return null
-}
-
-function getResolvedHitlToolTypes(parts: UIMessage["parts"]): Set<string> {
-  const resolved = new Set<string>()
-  for (const part of parts) {
-    if (
-      HITL_TOOL_TYPES.has(part.type) &&
-      toolPartHasFinalOutput(part as { state?: string; output?: unknown })
-    ) {
-      resolved.add(part.type)
-    }
-  }
-  return resolved
 }
 
 function getResolvedHitlToolCallIds(parts: UIMessage["parts"]): Set<string> {
@@ -69,13 +58,6 @@ export function isHitlComposerBlocked(messages: UIMessage[]): boolean {
 }
 
 export function findPendingHitl(messages: UIMessage[]): PendingHitl | null {
-  const resolvedTypes = new Set<string>()
-  for (const m of messages) {
-    if (m.role !== "assistant") continue
-    for (const t of getResolvedHitlToolTypes(m.parts)) {
-      resolvedTypes.add(t)
-    }
-  }
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
     if (m.role !== "assistant") continue
@@ -84,7 +66,6 @@ export function findPendingHitl(messages: UIMessage[]): PendingHitl | null {
     for (let j = m.parts.length - 1; j >= 0; j--) {
       const part = m.parts[j]
       if (!HITL_TOOL_TYPES.has(part.type)) continue
-      if (resolvedTypes.has(part.type)) continue
       const toolCallId =
         "toolCallId" in part && typeof part.toolCallId === "string"
           ? part.toolCallId

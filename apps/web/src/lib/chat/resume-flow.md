@@ -1,3 +1,5 @@
+> **总览（双管道、hydrate、refetch、展示层）**：[conversation-message-flow.md](./conversation-message-flow.md)
+
 ```
 ═══════════════════════════════════════════════════════════════════════════
                    前端对话完整流程图

@@ -3,19 +3,6 @@ import type { UIMessage } from "ai"
 import { HITL_TOOL_TYPES } from "./constants"
 import { toolPartHasFinalOutput } from "./part-utils"
 
-function getResolvedHitlToolTypes(parts: UIMessage["parts"]): Set<string> {
-  const resolved = new Set<string>()
-  for (const part of parts) {
-    if (
-      HITL_TOOL_TYPES.has(part.type) &&
-      toolPartHasFinalOutput(part as { state?: string; output?: unknown })
-    ) {
-      resolved.add(part.type)
-    }
-  }
-  return resolved
-}
-
 function getResolvedHitlToolCallIds(parts: UIMessage["parts"]): Set<string> {
   const resolved = new Set<string>()
   for (const part of parts) {
@@ -32,9 +19,9 @@ function getResolvedHitlToolCallIds(parts: UIMessage["parts"]): Set<string> {
   return resolved
 }
 
-function isPendingHitlPart(
+/** 同一条 assistant 消息内，已有 output 的 toolCallId 对应的 pending part 视为陈旧副本 */
+function isStalePendingHitlPart(
   part: UIMessage["parts"][number],
-  resolvedTypes: Set<string>,
   resolvedToolCallIds: Set<string>
 ): boolean {
   if (!HITL_TOOL_TYPES.has(part.type)) return false
@@ -56,25 +43,17 @@ function isPendingHitlPart(
     "toolCallId" in part && typeof part.toolCallId === "string"
       ? part.toolCallId
       : ""
-  if (toolCallId && resolvedToolCallIds.has(toolCallId)) return true
-  if (resolvedTypes.has(part.type)) return true
-  return false
+  return Boolean(toolCallId && resolvedToolCallIds.has(toolCallId))
 }
 
 export function dedupeHitlPartsInMessage(message: UIMessage): UIMessage {
   if (message.role !== "assistant") return message
-  const resolvedTypes = getResolvedHitlToolTypes(message.parts)
-  if (resolvedTypes.size === 0) return message
+  const resolvedToolCallIds = getResolvedHitlToolCallIds(message.parts)
+  if (resolvedToolCallIds.size === 0) return message
 
-  const parts = message.parts.filter((part) => {
-    if (!HITL_TOOL_TYPES.has(part.type)) return true
-    if (!resolvedTypes.has(part.type)) return true
-    return !isPendingHitlPart(
-      part,
-      resolvedTypes,
-      getResolvedHitlToolCallIds(message.parts)
-    )
-  })
+  const parts = message.parts.filter(
+    (part) => !isStalePendingHitlPart(part, resolvedToolCallIds)
+  )
   return { ...message, parts }
 }
 

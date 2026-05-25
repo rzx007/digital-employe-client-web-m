@@ -23,10 +23,16 @@ export { enrichHitlResolvedPartsInMessage } from "./display-enrich"
 export { prepareDisplayMessages } from "./display-pipeline"
 export { buildHitlInterruptStreamChunks } from "./interrupt-stream-chunks"
 export { patchAssistantWithInterruptParts } from "./session-patch"
+export {
+  createApprovedAtTimestamp,
+  patchApprovedAtOnComposerMessages,
+  patchApprovedAtOnMessagesCache,
+} from "./approve-optimistic"
 export { collapseDocumentPlanBlocks } from "./collapse-document-plan-blocks"
 export {
   buildClarifyAnswerItems,
   buildClarifyRespondMessage,
+  CLARIFY_SKIP_REJECT_MESSAGE,
   optionLabel,
   parseClarifyingQuestions,
   parseClarifyAnswerItemsFromNumberedText,

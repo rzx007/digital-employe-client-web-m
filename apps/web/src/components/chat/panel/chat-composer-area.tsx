@@ -89,6 +89,7 @@ export function ChatComposerArea({
       onHitlApproved?.({
         kind: "clarify",
         toolCallId: pendingHitl?.toolCallId,
+        approvedMessageId: pendingHitl?.messageId,
         resumed: opts?.resumed,
         assistantMessageId: opts?.assistantMessageId,
       })

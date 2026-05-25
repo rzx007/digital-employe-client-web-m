@@ -1,6 +1,6 @@
 /**
  * 单会话运行时：把 React Query 里的历史（storedMessages）同步进 useChat，
- * 并在切回会话 / SSE 终态时决定是否 GET /stream/resume。
+ * 并在切回会话 / 流结束时 hydrate、GET /messages，决定是否 GET /stream/resume。
  *
  * 与展示层分工：
  * - composerMessages：useChat 实时列表（审批 message_id、Dock 扫描 pending）
@@ -21,8 +21,12 @@ import type { UIMessage } from "ai"
 import type { Message } from "@/types/chat"
 import { conversationRuntimeBus } from "@/lib/chat/conversation-runtime-bus"
 import {
+  createApprovedAtTimestamp,
   findPendingHitl,
+  patchApprovedAtOnComposerMessages,
+  patchApprovedAtOnMessagesCache,
   patchAssistantWithInterruptParts,
+  type HitlPatchOptions,
 } from "@/lib/chat/hitl"
 import {
   getLastAssistantMessage,
@@ -31,7 +35,7 @@ import {
 import { chatTransport } from "@/components/chat/shared/chat-view-shared"
 import { chatKeys } from "@/lib/query-keys/chat"
 
-/** 流结束后合并刷消息列表，避免 interrupt/terminal 连发多次 invalidate */
+/** 流结束 / interrupt / approve 后合并刷消息列表，避免连发多次 invalidate */
 const REFETCH_DEBOUNCE_MS = 800
 
 function terminalToStreamState(status: string): string {
@@ -189,11 +193,29 @@ export function useConversationSession({
    * interrupted 段的 resume 只应发生在这里，而不是上面的 DB 同步 effect。
    */
   const onHitlApproved = useCallback(
-    async (options?: {
-      resumed?: boolean
-      assistantMessageId?: string | number
-    }) => {
+    async (options?: HitlPatchOptions) => {
       if (!convKey) return
+
+      const approvedMessageId =
+        options?.approvedMessageId ?? hitlMessageId ?? null
+      if (approvedMessageId != null) {
+        const approvedAt = createApprovedAtTimestamp()
+        patchApprovedAtOnMessagesCache(
+          queryClient,
+          convKey,
+          approvedMessageId,
+          approvedAt
+        )
+        setMessages((prev) =>
+          patchApprovedAtOnComposerMessages(
+            prev,
+            approvedMessageId,
+            approvedAt
+          )
+        )
+        hitlActiveRef.current = false
+      }
+
       scheduleMessagesRefetch()
       if (options?.resumed === false) return
 
@@ -218,7 +240,14 @@ export function useConversationSession({
         resumeStream()
       })
     },
-    [convKey, resumeStream, scheduleMessagesRefetch, setMessages]
+    [
+      convKey,
+      hitlMessageId,
+      queryClient,
+      resumeStream,
+      scheduleMessagesRefetch,
+      setMessages,
+    ]
   )
 
   /** 用户新发消息前重置 resume 去重，允许新一轮 streaming 行再次 resume */

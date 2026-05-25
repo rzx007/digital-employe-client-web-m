@@ -1,3 +1,6 @@
+/** 与 ClarifyingQuestionsDock reject 文案一致 */
+export const CLARIFY_SKIP_REJECT_MESSAGE = "用户跳过澄清"
+
 export type ClarifyingQuestionType = "choice" | "text"
 
 export interface ClarifyingQuestion {
