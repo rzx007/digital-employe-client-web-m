@@ -23,7 +23,6 @@ import { usePendingMessages } from "@/hooks/use-pending-messages"
 
 import { useConversationSession } from "@/hooks/use-conversation-session"
 
-import { dedupeHitlPartsInMessages } from "@/lib/chat/hitl-abort-message-utils"
 import { prepareDisplayMessages } from "@/lib/chat/merge-consecutive-assistant-messages"
 
 import { ChatPanel } from "../panel/chat-panel"
@@ -137,6 +136,8 @@ export function ConversationChatView({
     storedMessages,
 
     initialMessages,
+
+    composerMessages: messages,
 
     status,
 
@@ -320,18 +321,12 @@ export function ConversationChatView({
     return prepareDisplayMessages(source)
   }, [initialMessages, messages, hasReceivedMessages])
 
-  const messagesForHitl = useMemo(
-    () => dedupeHitlPartsInMessages(messages),
-
-    [messages]
-  )
-
   return (
     <ChatPanel
       contact={contact}
       title={title}
       messages={displayMessages}
-      composerMessages={messagesForHitl}
+      composerMessages={messages}
       inputValue={inputValue}
       status={chatStatus}
       error={error}
@@ -351,9 +346,6 @@ export function ConversationChatView({
       onPendingMoveDown={pendingMoveDown}
       conversationId={conversationId}
       onAttachmentsChange={handleAttachmentsChange}
-      hitlMessageId={session.hitlMessageId}
-      hitlInterrupted={session.hitlInterrupted}
-      hitlPayload={session.hitlPayload}
       onHitlApproved={session.onHitlApproved}
       className={className}
       {...props}

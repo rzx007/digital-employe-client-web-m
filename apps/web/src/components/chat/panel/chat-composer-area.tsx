@@ -23,14 +23,11 @@ const HITL_PENDING_PLACEHOLDER = "请先确认或中止当前待办"
 export function ChatComposerArea({
   messages,
   conversationId,
-  hitlMessageId,
-  hitlPayload,
   inputValue,
   onInputChange,
   onSend,
   onStop,
   onHitlApproved,
-  hitlInterrupted,
   status,
   submitDisabled,
   placeholder,
@@ -49,17 +46,11 @@ export function ChatComposerArea({
 }: {
   messages: UIMessage[]
   conversationId: string | number
-  hitlMessageId: string | null
   inputValue: string
   onInputChange: (event: PromptChangeEvent) => void
   onSend: (message: PromptInputMessage | string) => void
   onStop: () => void
   onHitlApproved?: (options?: HitlPatchOptions) => void
-  hitlInterrupted: boolean
-  hitlPayload?: {
-    action_requests: Array<{ name: string; args: Record<string, unknown> }>
-    review_configs: unknown[]
-  } | null
   status: ChatPromptMessageStatus
   submitDisabled?: boolean
   placeholder?: string
@@ -78,29 +69,16 @@ export function ChatComposerArea({
 }) {
   const pendingHitl: (PendingHitl & { input: Record<string, unknown> }) | null =
     React.useMemo(() => {
-      if (!hitlPayload) return null
-      const action = hitlPayload.action_requests[0]
-      if (!action) return null
-      const kind =
-        action.name === "submit_clarifying_questions"
-          ? ("clarify" as const)
-          : ("document-plan" as const)
-      const fromMessages = findPendingHitl(messages)
+      const hitl = findPendingHitl(messages)
+      if (!hitl) return null
       return {
-        kind,
-        messageId: fromMessages?.messageId ?? "",
-        toolCallId: fromMessages?.toolCallId ?? "",
-        input: (fromMessages?.input ?? action.args ?? {}) as Record<
-          string,
-          unknown
-        >,
+        ...hitl,
+        input: (hitl.input ?? {}) as Record<string, unknown>,
       }
-    }, [hitlPayload, messages])
+    }, [messages])
 
-  const clarifyActive = hitlInterrupted && pendingHitl?.kind === "clarify"
-
-  const planActive = hitlInterrupted && pendingHitl?.kind === "document-plan"
-
+  const clarifyActive = pendingHitl?.kind === "clarify"
+  const planActive = pendingHitl?.kind === "document-plan"
   const blocksComposer = clarifyActive || planActive
 
   const handleClarifySubmitted = React.useCallback(
@@ -134,11 +112,11 @@ export function ChatComposerArea({
           </div>
         )}
 
-      {clarifyActive && pendingHitl && hitlMessageId && (
+      {clarifyActive && pendingHitl && (
         <ClarifyingQuestionsDock
           pending={pendingHitl}
           conversationId={conversationId}
-          messageId={hitlMessageId}
+          messageId={pendingHitl.messageId}
           optionalDetails={inputValue}
           onSubmitted={handleClarifySubmitted}
           className="mx-auto w-full max-w-4xl"

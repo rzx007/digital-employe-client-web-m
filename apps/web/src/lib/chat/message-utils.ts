@@ -3,7 +3,6 @@ import type { UIMessage } from "ai"
 import type { Message } from "@/lib/mock-data/messages"
 
 import { classifyMessageParts } from "./message-classifier"
-import { enrichAssistantPartsFromStoredMessage } from "./stored-message-hitl-utils"
 
 export {
   classifyMessageParts,
@@ -49,10 +48,13 @@ export function mapStoredMessagesToUIMessages(
         const assistantMeta = {
           ...messageMeta,
           streamState: message.streamState ?? undefined,
+          approved_at:
+            typeof messageMeta?.approved_at === "string"
+              ? messageMeta.approved_at
+              : undefined,
         }
         if (message.messageParts && message.messageParts.length > 0) {
-          const baseParts = message.messageParts as UIMessage["parts"]
-          const parts = enrichAssistantPartsFromStoredMessage(message, baseParts)
+          const parts = message.messageParts as UIMessage["parts"]
           const uiMessage: UIMessage = {
             id: message.id,
             role: message.role,

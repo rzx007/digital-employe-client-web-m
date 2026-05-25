@@ -32,6 +32,7 @@ import {
   type ChatViewContact,
 } from "../shared/chat-view-shared"
 import type { HitlPatchOptions } from "@/lib/chat/hitl-abort-message-utils"
+import { findPendingHitl } from "@/lib/chat/hitl-abort-message-utils"
 import { ChatMessageItem } from "../messages/chat-message-item"
 
 const EMPTY_MESSAGES: UIMessage[] = []
@@ -160,10 +161,7 @@ export function ChatPanel({
   onPendingMoveDown,
   conversationId,
   onAttachmentsChange,
-  hitlMessageId,
   composerMessages,
-  hitlInterrupted,
-  hitlPayload,
   onHitlApproved,
   className,
   ...props
@@ -190,13 +188,7 @@ export function ChatPanel({
   onPendingMoveDown?: (id: string) => void
   conversationId?: string | number | null
   onAttachmentsChange?: (paths: string[]) => void
-  hitlMessageId?: string | null
-  hitlPayload?: {
-    action_requests: Array<{ name: string; args: Record<string, unknown> }>
-    review_configs: unknown[]
-  } | null
   composerMessages?: UIMessage[]
-  hitlInterrupted?: boolean
   onHitlApproved?: (options?: HitlPatchOptions) => void
 }) {
   const contactDisplayName = contact
@@ -204,6 +196,10 @@ export function ChatPanel({
     : "AI 助手"
 
   const displayMessages = isDraftMode ? EMPTY_MESSAGES : messages
+  const hitlMessageId = React.useMemo(() => {
+    const pending = findPendingHitl(composerMessages ?? messages)
+    return pending?.messageId ?? null
+  }, [composerMessages, messages])
   const hasCurrentTurnEnded =
     status === "ready" || status === "error" || !!error
   const showStreamingIndicator =
@@ -345,14 +341,11 @@ export function ChatPanel({
               <ChatComposerArea
                 messages={composerMessages ?? messages}
                 conversationId={conversationId!}
-                hitlMessageId={hitlMessageId ?? null}
                 inputValue={inputValue}
                 onInputChange={onInputChange}
                 onSend={onSend}
                 onStop={() => onStop?.()}
                 onHitlApproved={onHitlApproved}
-                hitlInterrupted={hitlInterrupted ?? false}
-                hitlPayload={hitlPayload}
                 status={status}
                 submitDisabled={isSubmitDisabled}
                 placeholder="请输入任务，然后交给我, 键入 / 指定调用技能"

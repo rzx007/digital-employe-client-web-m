@@ -19,7 +19,6 @@ import {
 import { useConversationSession } from "@/hooks/use-conversation-session"
 import { useChatStore } from "@/stores/chat-store"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
-import { dedupeHitlPartsInMessages } from "@/lib/chat/hitl-abort-message-utils"
 import { prepareDisplayMessages } from "@/lib/chat/merge-consecutive-assistant-messages"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 
@@ -119,6 +118,7 @@ export function DraftChatView({
     conversationId: selectedConversationId,
     storedMessages,
     initialMessages,
+    composerMessages: messages,
     status,
     setMessages,
     resumeStream,
@@ -283,17 +283,12 @@ export function DraftChatView({
     [messages]
   )
 
-  const messagesForHitl = useMemo(
-    () => dedupeHitlPartsInMessages(messages),
-    [messages]
-  )
-
   return (
     <ChatPanel
       contact={contact}
       title="新对话"
       messages={displayMessages}
-      composerMessages={messagesForHitl}
+      composerMessages={messages}
       inputValue={inputValue}
       status={chatStatus}
       error={error}
@@ -311,9 +306,6 @@ export function DraftChatView({
       onPendingMoveUp={pendingMoveUp}
       onPendingMoveDown={pendingMoveDown}
       conversationId={selectedConversationId}
-      hitlMessageId={session.hitlMessageId}
-      hitlInterrupted={session.hitlInterrupted}
-      hitlPayload={session.hitlPayload}
       onHitlApproved={session.onHitlApproved}
       onAttachmentsChange={() => {}}
       className={className}

@@ -50,20 +50,51 @@ DB 消息（一轮用户提问内可多段 assistant）:
 - **图状态**：`configurable.thread_id = conversation_id`，`Command(resume=decisions)` 在 approve 后恢复。
 - **展示状态**：每段 `astream` 对应 **一行** `conversation_message`（`role=assistant`），段结束为 `stream_state=interrupted|completed|error`。
 
-### 2.2 同一条 assistant 上的两套数据
+### 2.2 message_parts：pending 与 completed 两段
 
-一次 interrupt 落库后，**同一条** assistant 消息上常同时存在：
-
-
-| 字段                             | 内容                                             | 用途                    |
-| ------------------------------ | ---------------------------------------------- | --------------------- |
-| `message_parts`                | 从 buffer 抽取的 **已完成** tool（如澄清已提交）+ text        | 气泡内历史展示               |
-| `extra_meta.interrupt_payload` | **待审批** 的 `action_requests` / `review_configs` | HITL 卡片参数、Composer 锁定 |
-| `stream_state`                 | `interrupted`                                  | 会话/消息状态机              |
-| `content`                      | 中断前最后一段展示文案                                    | 纯文本兜底                 |
+一次 interrupt 落库后，assistant 行的 `message_parts` 同时承载 **已完成** 与 **待审批** 片段：
 
 
-`interrupt_payload` **不会**自动进入 `message_parts`（extractor 主要认 ToolMessage 流事件）。刷新后需 **`stored-message-hitl-utils`** 合成 pending tool part。
+| 片段形态 | 条件 | 示例 |
+| -------- | ---- | ---- |
+| `input-available` + 完整 `input` | interrupt flush 写入的 **pending** HITL part | 澄清 Dock / 方案卡参数 |
+| `output-available` + `output.text` | approve 后 resume 段或 extractor 抽取的 **已完成** tool | 澄清 Answers、方案确认文案 |
+| `text` | 段内展示文案 | 气泡正文 |
+
+**不再**使用 `extra_meta.interrupt_payload`（硬切：旧数据仅含 payload、无 pending part 的不兼容）。
+
+`stream_state=interrupted` + 无 `approved_at` → 待办；写入 `approved_at` 后行封存，pending part 仍保留在 DB 供展示层 enrich。
+
+### 2.3 展示层 enrich（DB 与 UI 形态差异）
+
+DB 多行存储（approve 仍新建 assistant 行），列表渲染经 `prepareDisplayMessages` 三步：
+
+```
+mergeConsecutiveAssistantMessages → enrichHitlResolvedPartsInMessage → dedupeHitlPartsInMessages
+```
+
+- **merge**：同一 user 轮次内连续 assistant 合并为一条气泡（`parts` 拼接）。
+- **enrich**（`hitl-display-enrich.ts`）：在同泡内，将 sealed 行的 `input-available.input` 浅拷贝回填到 `output-available` 且顶层 `input` 为空的 HITL part（仅 UI，不回写 DB）。
+- **dedupe**：移除已 resolve 的重复 pending part。
+
+`composerMessages` / `findPendingHitl` / `POST /approve` 的 `message_id` 仍用 **未 merge、未 enrich** 的 `useChat` 列表。
+
+```mermaid
+flowchart TD
+  subgraph db [DB 多行]
+    R1["#697 input-available + input"]
+    R2["#698 output-available + output"]
+  end
+  subgraph display [prepareDisplayMessages]
+    M[merge]
+    E[enrichHitlResolvedParts]
+    D[dedupeHitlParts]
+    M --> E --> D
+  end
+  R1 --> M
+  R2 --> M
+  E --> UI["ClarifyingAnswers / DocumentPlanCard"]
+```
 
 ---
 
@@ -91,9 +122,9 @@ sequenceDiagram
 
   AG-->>REG: interrupt（HITL middleware）
   REG->>REG: buffer.add({status:interrupted, message_id, ...})
-  REG->>DB: flush interrupted + interrupt_payload
-  FE->>FE: runtimeBus.onInterrupted / onTerminal
-  FE->>FE: hitlMessageId + hitlPayload，Dock/Card 展示
+  REG->>DB: flush interrupted + message_parts（含 pending input-available）
+  FE->>FE: runtimeBus.onInterrupted / patch message_parts
+  FE->>FE: findPendingHitl(composerMessages)，Dock/Card 展示
 
   U->>FE: 确认 / 修改 / 跳过
   FE->>API: POST /approve { message_id, decisions }
@@ -137,7 +168,7 @@ id: {seq}
 data: {"type":"messages","data":[...]}
 
 id: {seq}
-data: {"status":"interrupted","message_id":672,"action_requests":[...],"review_configs":[...]}
+data: {"status":"interrupted","message_id":672,"message_parts":[...]}
 
 data: [DONE]
 ```
@@ -145,7 +176,7 @@ data: [DONE]
 管理事件（已结束再连 resume）：
 
 ```json
-{"type":"stream_ended","data":{"status":"interrupted","message_id":672,"interrupt_payload":{...}}}
+{"type":"stream_ended","data":{"status":"interrupted","message_id":672}}
 ```
 
 ### 3.4 后端：检测 interrupt 并落库
@@ -153,16 +184,16 @@ data: [DONE]
 `_run_agent_background` 在 `astream` 结束后：
 
 1. `agent.aget_state(config)`，检查 `state.next` 与 `state.tasks[].interrupts`。
-2. 若有中断：`_extract_interrupt_payload` → `action_requests` / `review_configs`。
-3. `buffer.add({ status: "interrupted", message_id: stream_msg_id, ...payload })`。
-4. `_flush_terminal(..., state="interrupted", interrupt_payload=...)`：
-  - `message_parts` ← `extract_message_parts_from_buffer(全 buffer)`
-  - `extra_meta.interrupt_payload` ← payload
+2. 若有中断：`_extract_interrupt_payload` → 仅用于构建 pending parts（**不落库**）。
+3. `buffer.add({ status: "interrupted", message_id: stream_msg_id, message_parts: [...] })`。
+4. `_flush_terminal(..., state="interrupted")`：
+  - `message_parts` ← `extract_message_parts_for_interrupt(buffer, payload, stream_msg_id)`（已完成 parts + pending `input-available`）
   - `stream_state` ← `interrupted`
 
 关键文件：
 
-- `apps/server/src/service/stream_registry.py` — `_extract_interrupt_payload`、interrupt 分支
+- `apps/server/src/service/stream_registry.py` — interrupt 分支
+- `apps/server/src/service/hitl_pending_parts.py` — `build_pending_hitl_parts`、`extract_message_parts_for_interrupt`
 - `apps/server/src/service/message_parts_extractor.py` — parts 抽取
 
 ### 3.5 后端：审批与恢复
@@ -194,15 +225,16 @@ Body：`{ "message_id": <int>, "decisions": [...] }`
 
 | SSE 载荷                     | 行为                                                             |
 | -------------------------- | -------------------------------------------------------------- |
-| `status === "interrupted"` | `conversationRuntimeBus.emitInterrupted` + `onInterrupted`，关闭流 |
-| `type === "stream_ended"`  | `emitTerminal`；若 `interrupted` 同样恢复 HITL                       |
+| `status === "interrupted"` | `emitInterrupted` + `buildHitlInterruptStreamChunks(message_parts)` + `onInterrupted` |
+| `type === "stream_ended"`  | `emitTerminal`；`interrupted` 时 `onInterrupted`（无 payload 时靠 DB hydrate） |
 | `type === "messages"` 等    | `parseLangChainPayloadToChunks` → `useChat` parts              |
 | `[DONE]`                   | 正常结束                                                           |
 
 
-**会话单例状态**：`useConversationSession`（`apps/web/src/hooks/use-conversation-session.ts`）
+**会话单例状态**：`useConversationSession`
 
-- `hitlMessageId` / `hitlPayload`：来自 bus 或 **hydrate**（`extractInterruptStateFromStoredMessages`）。
+- `hitlMessageId` / pending 态：由 `findPendingHitl(composerMessages)` 推导（跳过 `metadata.approved_at` 行）。
+- interrupt 时 bus 用 `message_parts` patch 目标 assistant 行。
 - `tryResumeOnce`：最后一条 assistant `stream_state===streaming` 时 `resumeStream()`。
 - `onHitlApproved`：`approve` 成功后 `setMessages` 追加新 assistant 行，再 `resumeStream()`。
 
@@ -214,12 +246,15 @@ Body：`{ "message_id": <int>, "decisions": [...] }`
 
 **DB → UI 还原**
 
-- `mapStoredMessagesToUIMessages` + `enrichAssistantPartsFromStoredMessage`：为 `interrupted` 行合成 pending `tool-`* part，便于卡片渲染。
-- `dedupeHitlPartsInMessages`：去掉已 resolve 的重复 HITL part。
+- `mapStoredMessagesToUIMessages`：直接映射 `message_parts`（含 pending `input-available`）。
+- `prepareDisplayMessages`：merge → enrich → dedupe（见 §2.3）。
+- `findPendingHitl`：扫描未 approve 行的 `input-available` HITL part，驱动 Dock / Composer 锁定。
 
 关键文件：
 
-- `apps/web/src/lib/chat/stored-message-hitl-utils.ts`
+- `apps/web/src/lib/chat/hitl-display-enrich.ts`
+- `apps/web/src/lib/chat/hitl-parts-stream-chunks.ts`
+- `apps/web/src/lib/chat/hitl-abort-message-utils.ts`
 - `apps/web/src/lib/chat/conversation-runtime-bus.ts`
 - `apps/web/src/components/chat/panel/chat-composer-area.tsx`
 - `apps/web/src/components/chat/message-blocks/document-plan-card.tsx`
@@ -248,7 +283,7 @@ Body：`{ "message_id": <int>, "decisions": [...] }`
 | 场景               | 行为                                                                                 |
 | ---------------- | ---------------------------------------------------------------------------------- |
 | 流式进行中刷新          | `GET /stream/resume` 全量回放 buffer → 订阅 live；前端 `stream_cursor` 可用来跳过已持久化段（**优化待办**） |
-| 已 interrupted    | `get_stream_status` → 直接 `stream_ended` + `interrupt_payload`，无 agent 事件           |
+| 已 interrupted    | `get_stream_status` → 直接 `stream_ended` + `message_id`，无 agent 事件           |
 | 僵尸 `streaming` 行 | resume 时自动修为 `error` 并结束 SSE                                                       |
 
 
@@ -283,7 +318,8 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 | SSE 解析             | `apps/web/src/lib/chat/langchain-chat-transport.ts`                                 |
 | Chunk 解析           | `apps/web/src/lib/chat/langchain-stream-parser.ts`                                  |
 | 会话 HITL 状态         | `apps/web/src/hooks/use-conversation-session.ts`                                    |
-| 历史还原               | `apps/web/src/lib/chat/stored-message-hitl-utils.ts`                                |
+| 展示 enrich            | `apps/web/src/lib/chat/hitl-display-enrich.ts`                                      |
+| Pending parts 构建     | `apps/server/src/service/hitl_pending_parts.py`                                     |
 | UI                 | `chat-composer-area.tsx`, `document-plan-card.tsx`, `clarifying-questions-dock.tsx` |
 
 
@@ -380,31 +416,25 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 
 **目标**：**数据层仍多行**（利于审计与 `message_id` 审批），**展示层**将「上一 user 之后、下一 user 之前」的连续 assistant 合并为 **一条气泡**。
 
-**实现**（`apps/web/src/lib/chat/merge-consecutive-assistant-messages.ts`）：
+**实现**（`merge-consecutive-assistant-messages.ts` + `hitl-display-enrich.ts`）：
 
-- `prepareDisplayMessages` = `dedupeHitlPartsInMessages` → `mergeConsecutiveAssistantMessages`；用于 `ConversationChatView` / `DraftChatView` / `CuratorView` 列表与 timeline。
+- `prepareDisplayMessages` = merge → enrich → dedupe；用于三视图列表与 timeline。
 - 合并规则：`parts` 拼接；`metadata.streamState` 取组内最后一条（含 `streaming`）；`metadata.hitlAnchorMessageId` 指向组内未 approve 的 `interrupted` 行；同一 user 轮次内连续 assistant（含 streaming 行）均为一条气泡。
 - `composerMessages` / `useChat` 仍用 **未合并** 列表；`resolveHitlApproveMessageId` 识别 `hitlAnchorMessageId` / `mergedAssistantIds`。
 
 **验收**：一轮内澄清 + 方案 + 正文，UI 显示为一个 assistant 块；approve 仍带正确 `message_id`。
 
-#### 3. 已 approve 方案历史展示（已实现 · 轻量）
+#### 3. 已 approve 方案/澄清历史展示（展示层 enrich）
 
-**现象**：方案 approve 后，后续 assistant 行的 `message_parts` 中 `tool-submit_document_plan` 常为 `input: null`、仅有 `output.text`（如「方案已确认，请按 outline 分章…」），`DocumentPlanCard` 因无 `input` 不渲染，历史看不到方案信息。
+**现象**：approve 后 resume 段的 `message_parts` 中 HITL tool 常为 `input: null`、仅有 `output.text`。
 
-**当前实现**（`DocumentPlanApprovedSummary`）：
+**当前实现**（`hitl-display-enrich.ts`）：
 
-- `message-classifier`：当 `submit_document_plan` 已有 output 且 **无** `title/outline` 的 `input` 时，分类为 `document-plan-approved`，展示 `output.text`。
-- 工具返回文案由 `build_document_plan_confirmed_message` 生成（`document_plan_tool.py`），含标题/大纲/计划产出的 `\n\n` 分段，与澄清 ToolMessage 类似。
-- 待确认方案仍走 `DocumentPlanCard`（含 `interrupt_payload` 合成 pending）。
+- merge 后同泡内，从 sealed 行的 `input-available` part 回填 `input` 到 `output-available` part。
+- 澄清：`ClarifyingAnswers` 可正确配对题目与 `output.text` 答案。
+- 方案：`DocumentPlanCard` 只读态可展示完整 outline（`hasDocumentPlanCardInput` 为 true）。
 
-**后续可选方案**（视反馈再选）：
-
-| 方案 | 做法 | 优点 | 缺点 |
-| --- | --- | --- | --- |
-| **A** | approve / 封存时把 `args` 写入 `message_parts.input`（后端） | DB 自洽，复用完整 `DocumentPlanCard` 大纲 UI | 需处理 edit 决策、跨行写入；改动面大 |
-| **B** | 前端从 `extra_meta.interrupt_payload` 合成只读 part（已 approve 行，如 id=698） | 历史可展示完整大纲，无需改 DB | edit 方案后可能与 payload 不一致 |
-| **C** | approve 时写 `extra_meta.plan_snapshot`（最终 args）+ 前端 enrich | 支持 edit，仍不必改 `message_parts` 结构 | 需一小段后端 |
+**硬切**：不再从 `extra_meta.interrupt_payload` 合成 part；旧 DB 行需重新走 interrupt 或手动迁移 `message_parts`。
 
 ---
 
@@ -413,7 +443,7 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 
 | 项                               | 说明                                                             |
 | ------------------------------- | -------------------------------------------------------------- |
-| `message_parts` 与 interrupt 一致性 | 极端情况下 parts 仅含已完成 tool，pending 靠 `interrupt_payload` + 合成 part |
+| `message_parts` pending part | interrupt flush 经 `hitl_pending_parts` 写入；极端情况下需查 buffer 与 extractor 日志 |
 | Curator 多段 HITL                 | 与员工相同的多行 assistant 模型；合并展示后需回归                                 |
 | 长文档产物目录                      | 每次任务使用 `/artifacts/<doc-slug>/` 子目录（见 `agent/AGENTS.md`、方案门 `planned_artifacts`） |
 
@@ -425,11 +455,11 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 
 | 症状                                 | 可能原因                                                                                |
 | ---------------------------------- | ----------------------------------------------------------------------------------- |
-| Dock 不显示                           | `hitlPayload` 未写入（Draft 未接 session、或未收到 interrupted）                                |
+| Dock 不显示                           | `message_parts` 无 `input-available` pending part；或行已有 `approved_at` |
 | approve 404 / 状态错误                 | `message_id` 不是 `interrupted` 行，或已 `approved_at`                                    |
-| resume 后 tool invocation not found | resume 流缺少 `tool-input-start`；检查 `langchain-stream-parser` 与 approve 后新 assistant 行 |
-| 刷新后只有方案卡无澄清 Answers                | `message_parts` 被覆盖或解析格式不符；检查 `clarifying-questions-utils`                          |
-| 刷新后无大纲只有确认文案                      | 已 approve 且 `input` 为空 → 应出现 `DocumentPlanApprovedSummary`；完整大纲见 §八.3 方案 A/B/C   |
+| resume 后 tool invocation not found | resume 流缺少 `tool-input-start`；检查 `hitl-parts-stream-chunks` 与 approve 后新 assistant 行 |
+| 刷新后只有方案卡无澄清 Answers                | merge 后 enrich 未执行；或 sealed 行缺 `input-available` part                          |
+| 刷新后无大纲只有确认文案                      | enrich 未回填 `input`；检查 #697 类 sealed 行是否含 pending part、`prepareDisplayMessages` pipeline |
 | 卡顿                                 | 见 [§八.1 大文档 resume](#1-大文档-resume-回放卡顿部分完成)；DEV 看 `[sse:resume]` 压缩比              |
 
 
@@ -444,5 +474,6 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 | 2026-05-23 | §八.1：Reconnect 批处理已实现；其余 resume 优化（cursor / DB 优先 / hydrate 去重等）记入待做 |
 | 2026-05-23 | 长文档写作：产物统一写入 `/artifacts/<doc-slug>/`（AGENTS.md、prompts、方案门 UI 占位） |
 | 2026-05-23 | §八.3：`DocumentPlanApprovedSummary` 展示已 approve 方案的 `output.text`；A/B/C 备选记入文档 |
+| 2026-05-23 | 废弃 `interrupt_payload`：pending 写入 `message_parts`；展示层 `hitl-display-enrich` 回填 input |
 
 

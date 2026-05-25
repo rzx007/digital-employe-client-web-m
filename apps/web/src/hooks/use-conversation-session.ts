@@ -1,17 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import type { QueryClient } from "@tanstack/react-query"
 import type { UIMessage } from "ai"
 
 import type { Message } from "@/lib/mock-data/messages"
 import { conversationRuntimeBus } from "@/lib/chat/conversation-runtime-bus"
-import type { HitlPayload } from "@/lib/chat/conversation-runtime-types"
+import { findPendingHitl } from "@/lib/chat/hitl-abort-message-utils"
 import {
   getLastAssistantMessage,
   patchLastAssistantStreamState,
 } from "@/lib/chat/message-query-cache"
 import { chatTransport } from "@/components/chat/shared/chat-view-shared"
 import { chatKeys } from "@/lib/query-keys/chat"
-import { extractInterruptStateFromStoredMessages } from "@/lib/chat/stored-message-hitl-utils"
 
 const REFETCH_DEBOUNCE_MS = 800
 
@@ -32,6 +31,7 @@ export function useConversationSession({
   conversationId,
   storedMessages,
   initialMessages,
+  composerMessages,
   status,
   setMessages,
   resumeStream,
@@ -40,6 +40,7 @@ export function useConversationSession({
   conversationId: string | number | null
   storedMessages: Message[]
   initialMessages: UIMessage[]
+  composerMessages: UIMessage[]
   status: string
   setMessages: (
     messages: UIMessage[] | ((prev: UIMessage[]) => UIMessage[])
@@ -47,9 +48,9 @@ export function useConversationSession({
   resumeStream: () => void
   queryClient: QueryClient
 }) {
-  const [hitlMessageId, setHitlMessageId] = useState<string | null>(null)
-  const [hitlPayload, setHitlPayload] = useState<HitlPayload | null>(null)
-  const hitlInterrupted = hitlPayload !== null
+  const pendingHitl = findPendingHitl(composerMessages)
+  const hitlInterrupted = pendingHitl !== null
+  const hitlMessageId = pendingHitl?.messageId ?? null
 
   const hydratedConvRef = useRef<string | null>(null)
   const resumeAttemptedForRef = useRef<string | null>(null)
@@ -88,11 +89,6 @@ export function useConversationSession({
     }, REFETCH_DEBOUNCE_MS)
   }, [convKey, queryClient])
 
-  const clearHitl = useCallback(() => {
-    setHitlPayload(null)
-    setHitlMessageId(null)
-  }, [])
-
   const resetResumeAttempt = useCallback(() => {
     resumeAttemptedForRef.current = null
   }, [])
@@ -114,27 +110,13 @@ export function useConversationSession({
     })
   }, [convKey, resumeStream, status, storedMessages])
 
-  const restoreHitlFromStoredMessages = useCallback(() => {
-    const stored = extractInterruptStateFromStoredMessages(storedMessages)
-    if (!stored) return
-    setHitlPayload(stored.hitlPayload)
-    setHitlMessageId(stored.messageId)
-  }, [storedMessages])
-
   const hydrateFromServer = useCallback(() => {
     if (!convKey) return
     setMessages(initialMessages)
-    restoreHitlFromStoredMessages()
     hydratedConvRef.current = convKey
     resumeAttemptedForRef.current = null
     tryResumeOnce()
-  }, [
-    convKey,
-    initialMessages,
-    restoreHitlFromStoredMessages,
-    setMessages,
-    tryResumeOnce,
-  ])
+  }, [convKey, initialMessages, setMessages, tryResumeOnce])
 
   useEffect(() => {
     if (!convKey) return
@@ -153,33 +135,40 @@ export function useConversationSession({
 
     const unsubscribe = conversationRuntimeBus.subscribe(convKey, {
       onInterrupted: (payload) => {
-        const mid = parseMessageId(payload.message_id)
-        if (mid) setHitlMessageId(mid)
-        setHitlPayload({
-          action_requests: payload.action_requests,
-          review_configs: payload.review_configs,
-        })
         patchLastAssistantStreamState(queryClient, convKey, "interrupted")
+        if (payload.message_parts) {
+          const messageId = parseMessageId(payload.message_id)
+          setMessages((prev) => {
+            if (prev.length === 0) return prev
+            const targetIndex =
+              messageId != null
+                ? prev.findIndex(
+                    (m) => m.role === "assistant" && String(m.id) === messageId
+                  )
+                : -1
+            const index =
+              targetIndex >= 0
+                ? targetIndex
+                : prev.findLastIndex((m) => m.role === "assistant")
+            if (index < 0) return prev
+            const target = prev[index]
+            const storedParts = payload.message_parts as UIMessage["parts"]
+            const existingTypes = new Set(target.parts.map((p) => p.type))
+            const newParts = storedParts.filter((p) => !existingTypes.has(p.type))
+            if (newParts.length === 0) return prev
+            const next = [...prev]
+            next[index] = {
+              ...target,
+              parts: [...target.parts, ...newParts],
+            }
+            return next
+          })
+        }
         scheduleMessagesRefetch()
       },
       onTerminal: (info) => {
         const streamState = terminalToStreamState(info.status)
         patchLastAssistantStreamState(queryClient, convKey, streamState)
-
-        if (info.status === "interrupted" && info.interrupt_payload) {
-          const mid = parseMessageId(info.message_id)
-          if (mid) setHitlMessageId(mid)
-          setHitlPayload({
-            action_requests: info.interrupt_payload.action_requests,
-            review_configs: info.interrupt_payload.review_configs,
-          })
-        }
-
-        if (info.status !== "interrupted") {
-          setHitlPayload(null)
-          setHitlMessageId(null)
-        }
-
         scheduleMessagesRefetch()
       },
     })
@@ -191,7 +180,7 @@ export function useConversationSession({
         refetchTimerRef.current = null
       }
     }
-  }, [convKey, queryClient, scheduleMessagesRefetch])
+  }, [convKey, queryClient, scheduleMessagesRefetch, setMessages])
 
   const onStreamFinish = useCallback(() => {
     if (!convKey) return
@@ -213,8 +202,6 @@ export function useConversationSession({
       if (!convKey) return
       scheduleMessagesRefetch()
       if (options?.resumed === false) return
-      setHitlPayload(null)
-      setHitlMessageId(null)
 
       if (options?.assistantMessageId != null) {
         const newId = String(options.assistantMessageId)
@@ -240,17 +227,14 @@ export function useConversationSession({
   )
 
   const prepareOutboundMessage = useCallback(() => {
-    clearHitl()
     resetResumeAttempt()
-  }, [clearHitl, resetResumeAttempt])
+  }, [resetResumeAttempt])
 
   return {
     hitlMessageId,
-    hitlPayload,
     hitlInterrupted,
     onHitlApproved,
     onStreamFinish,
     prepareOutboundMessage,
-    clearHitl,
   }
 }

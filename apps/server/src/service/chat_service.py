@@ -556,7 +556,7 @@ class ChatService:
         if status_info:
             logger.info("[resume] conv=%s stream already ended: status=%s", conversation_id, status_info)
             if status_info.get("status") == "interrupted":
-                yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': 'interrupted', 'message_id': status_info.get('message_id'), 'interrupt_payload': status_info.get('interrupt_payload')}}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': 'interrupted', 'message_id': status_info.get('message_id')}}, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
                 return
             yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': status_info['status'], 'error': status_info.get('error'), 'cursor': status_info.get('cursor', 0)}}, ensure_ascii=False)}\n\n"

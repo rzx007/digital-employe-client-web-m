@@ -12,7 +12,7 @@ import {
 import { sseEventSchema, type ToolOutputData } from "./langchain-sse-schema"
 import { ERROR_MARKER } from "./message-classifier"
 import { conversationRuntimeBus } from "./conversation-runtime-bus"
-import type { HitlPayload } from "./conversation-runtime-types"
+import { buildHitlInterruptStreamChunks } from "./hitl-parts-stream-chunks"
 const useMock =
   import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_SSE === "true"
 
@@ -282,9 +282,8 @@ export class LangChainChatTransport<
   _resumeConversationId: string | null = null
   onInterrupted:
     | ((payload: {
-        action_requests: unknown[]
-        review_configs: unknown[]
         message_id?: string | number | null
+        message_parts?: unknown[]
       }) => void)
     | null = null
 
@@ -466,35 +465,32 @@ export class LangChainChatTransport<
               typeof payload === "object" &&
               payload.status === "interrupted"
             ) {
-              const interruptPayload: HitlPayload = {
-                action_requests: (payload.action_requests ??
-                  []) as HitlPayload["action_requests"],
-                review_configs: (payload.review_configs ?? []) as unknown[],
-              }
               const messageId = payload.message_id as
                 | string
                 | number
                 | undefined
+              const messageParts = payload.message_parts
               if (conversationId) {
                 conversationRuntimeBus.emitInterrupted(conversationId, {
-                  ...interruptPayload,
                   message_id: messageId,
+                  message_parts: messageParts,
                 })
                 conversationRuntimeBus.emitTerminal(conversationId, {
                   status: "interrupted",
                   message_id: messageId,
-                  interrupt_payload: interruptPayload,
                 })
               }
               this.onInterrupted?.({
-                action_requests: interruptPayload.action_requests,
-                review_configs: interruptPayload.review_configs,
                 message_id: messageId,
+                message_parts: messageParts,
               })
               flushSync()
               closeTextPhaseIfNeeded(state).forEach((chunk) =>
                 controller.enqueue(chunk)
               )
+              for (const chunk of buildHitlInterruptStreamChunks(messageParts)) {
+                controller.enqueue(chunk)
+              }
               enqueueFinish(controller, state)
               controller.close()
               return true
@@ -545,7 +541,6 @@ export class LangChainChatTransport<
                 event as {
                   data?: {
                     status?: string
-                    interrupt_payload?: HitlPayload
                     message_id?: string | number | null
                     error?: string
                   }
@@ -562,28 +557,14 @@ export class LangChainChatTransport<
                       | undefined) ?? "completed")
 
               if (conversationId) {
-                if (
-                  eventData?.status === "interrupted" &&
-                  eventData.interrupt_payload
-                ) {
-                  conversationRuntimeBus.emitInterrupted(conversationId, {
-                    ...eventData.interrupt_payload,
-                    message_id: eventData.message_id,
-                  })
-                }
                 conversationRuntimeBus.emitTerminal(conversationId, {
                   status: terminalStatus,
                   message_id: eventData?.message_id,
-                  interrupt_payload: eventData?.interrupt_payload,
                 })
               }
 
-              if (
-                eventData?.status === "interrupted" &&
-                eventData.interrupt_payload
-              ) {
+              if (eventData?.status === "interrupted") {
                 this.onInterrupted?.({
-                  ...eventData.interrupt_payload,
                   message_id: eventData.message_id,
                 })
               }

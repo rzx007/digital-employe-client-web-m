@@ -76,22 +76,27 @@ function isPendingHitlPart(
   resolvedToolCallIds: Set<string>
 ): boolean {
   if (!HITL_TOOL_TYPES.has(part.type)) return false
-  if (resolvedTypes.has(part.type)) return false
-  const toolCallId =
-    "toolCallId" in part && typeof part.toolCallId === "string"
-      ? part.toolCallId
-      : ""
-  if (toolCallId && resolvedToolCallIds.has(toolCallId)) return false
+
   const toolPart = part as { state?: string; output?: unknown }
   if (toolPartHasFinalOutput(toolPart)) return false
+
   const state = toolPart.state
   if (state === "output-available" || state === "output-error") return false
-  return (
+
+  const isPendingState =
     state === undefined ||
     state === "input-available" ||
     state === "input-streaming" ||
     state === "call"
-  )
+  if (!isPendingState) return false
+
+  const toolCallId =
+    "toolCallId" in part && typeof part.toolCallId === "string"
+      ? part.toolCallId
+      : ""
+  if (toolCallId && resolvedToolCallIds.has(toolCallId)) return true
+  if (resolvedTypes.has(part.type)) return true
+  return false
 }
 
 export function dedupeHitlPartsInMessage(message: UIMessage): UIMessage {
@@ -145,6 +150,16 @@ export function resolveHitlApproveMessageId(
   return message.id
 }
 
+function messageIsApproved(message: UIMessage): boolean {
+  const meta = (message as UIMessage & { metadata?: Record<string, unknown> })
+    .metadata
+  return typeof meta?.approved_at === "string" && meta.approved_at.length > 0
+}
+
+export function isHitlComposerBlocked(messages: UIMessage[]): boolean {
+  return findPendingHitl(messages) !== null
+}
+
 export function findPendingHitl(messages: UIMessage[]): PendingHitl | null {
   const resolvedTypes = new Set<string>()
   for (const m of messages) {
@@ -156,6 +171,7 @@ export function findPendingHitl(messages: UIMessage[]): PendingHitl | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
     if (m.role !== "assistant") continue
+    if (messageIsApproved(m)) continue
     const resolvedIds = getResolvedHitlToolCallIds(m.parts)
     for (let j = m.parts.length - 1; j >= 0; j--) {
       const part = m.parts[j]

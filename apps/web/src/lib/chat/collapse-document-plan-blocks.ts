@@ -14,12 +14,20 @@ function isDocumentPlanPending(state: string): boolean {
   )
 }
 
+function isDocumentPlanResolved(state: string): boolean {
+  return state === "output-available" || state === "output-error"
+}
+
 export function collapseDocumentPlanBlocks(
   blocks: ClassifiedBlock[]
 ): ClassifiedBlock[] {
   const indices: number[] = []
   let latest: Extract<ClassifiedBlock, { kind: "document-plan" }> | null = null
   let latestPending: Extract<
+    ClassifiedBlock,
+    { kind: "document-plan" }
+  > | null = null
+  let latestResolved: Extract<
     ClassifiedBlock,
     { kind: "document-plan" }
   > | null = null
@@ -33,13 +41,16 @@ export function collapseDocumentPlanBlocks(
     if (isDocumentPlanPending(block.state)) {
       latestPending = block
     }
+    if (isDocumentPlanResolved(block.state)) {
+      latestResolved = block
+    }
   }
 
   if (indices.length <= 1 || !latest) {
     return blocks
   }
 
-  const chosen = latestPending ?? latest
+  const chosen = latestResolved ?? latestPending ?? latest
   const firstIndex = indices[0]
   const merged: ClassifiedBlock = {
     ...chosen,

@@ -83,7 +83,6 @@ import {
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import {
-  dedupeHitlPartsInMessages,
   resolveHitlApproveMessageId,
 } from "@/lib/chat/hitl-abort-message-utils"
 import { prepareDisplayMessages } from "@/lib/chat/merge-consecutive-assistant-messages"
@@ -186,6 +185,7 @@ export function CuratorView({
     conversationId: curatorConversationId,
     storedMessages,
     initialMessages,
+    composerMessages: messages,
     status,
     setMessages,
     resumeStream,
@@ -256,11 +256,6 @@ export function CuratorView({
     const source = preferLiveMessages ? messages : initialMessages
     return prepareDisplayMessages(source)
   }, [preferLiveMessages, messages, initialMessages])
-
-  const composerMessages = useMemo(
-    () => dedupeHitlPartsInMessages(messages),
-    [messages]
-  )
 
   const lastAssistantMessageId = useMemo(() => {
     for (let i = displayMessages.length - 1; i >= 0; i--) {
@@ -729,11 +724,8 @@ export function CuratorView({
       <div className={layout.footer}>
         {curatorConversationId ? (
           <ChatComposerArea
-            messages={composerMessages}
+            messages={messages}
             conversationId={curatorConversationId}
-            hitlMessageId={session.hitlMessageId}
-            hitlPayload={session.hitlPayload}
-            hitlInterrupted={session.hitlInterrupted}
             onHitlApproved={session.onHitlApproved}
             inputValue={inputValue}
             onInputChange={handleTextChange}

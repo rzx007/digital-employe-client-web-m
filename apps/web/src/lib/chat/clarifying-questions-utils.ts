@@ -147,13 +147,28 @@ export function buildClarifyAnswerItems(
   questions: ClarifyingQuestion[],
   resultText: string | null
 ): ClarifyAnswerItem[] {
-  if (questions.length > 0) {
-    const parsed = resultText ? parseClarifyRespondMessage(resultText) : {}
-    return questions.map((q) => ({
+  const numbered = parseClarifyAnswerItemsFromNumberedText(resultText)
+
+  if (questions.length === 0) {
+    return numbered
+  }
+
+  const parsed = resultText ? parseClarifyRespondMessage(resultText) : {}
+  const fromIds = questions.map((q) => ({
+    question: q.prompt,
+    answer: parsed[q.id]?.trim() || "（未填写）",
+  }))
+
+  const idParseEmpty = fromIds.every((item) => item.answer === "（未填写）")
+  if (idParseEmpty && numbered.length > 0) {
+    if (numbered.length === questions.length) {
+      return numbered
+    }
+    return questions.map((q, i) => ({
       question: q.prompt,
-      answer: parsed[q.id]?.trim() || "（未填写）",
+      answer: numbered[i]?.answer ?? "（未填写）",
     }))
   }
 
-  return parseClarifyAnswerItemsFromNumberedText(resultText)
+  return fromIds
 }

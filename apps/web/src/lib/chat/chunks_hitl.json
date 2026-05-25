@@ -24,24 +24,6 @@
     "extra_meta": {
       "created_at": "2026-05-24T21:54:43.760423+08:00",
       "elapsed_ms": 3922,
-      "interrupt_payload": {
-        "action_requests": [
-          {
-            "name": "submit_clarifying_questions",
-            "args": {
-              "context": "long_document",
-              "questions": "[{\"id\":\"q1\",\"prompt\":\"文档的主题或用途是什么？\",\"required\":true,\"type\":\"choice\",\"options\":[\"技术方案\",\"项目标书\",\"可行性报告\",\"产品说明书\",\"工作总结/报告\",\"其他（请说明）\"]},{\"id\":\"q2\",\"prompt\":\"文档的目标读者是谁？\",\"required\":true,\"type\":\"choice\",\"options\":[\"内部团队/领导\",\"客户/甲方\",\"招投标评审\",\"公众/用户\",\"其他\"]},{\"id\":\"q3\",\"prompt\":\"你希望文档大概多少字？\",\"required\":true,\"type\":\"choice\",\"options\":[\"简短的（几百字）\",\"中等的（1000~3000字）\",\"详细的（3000~8000字）\",\"非常详细（8000字以上）\"]},{\"id\":\"q4\",\"prompt\":\"是否需要包含特定的模板或格式要求？\",\"required\":false,\"type\":\"text\"}]"
-            },
-            "description": "Tool execution requires approval\n\nTool: submit_clarifying_questions\nArgs: {'context': 'long_document', 'questions': '[{\"id\":\"q1\",\"prompt\":\"文档的主题或用途是什么？\",\"required\":true,\"type\":\"choice\",\"options\":[\"技术方案\",\"项目标书\",\"可行性报告\",\"产品说明书\",\"工作总结/报告\",\"其他（请说明）\"]},{\"id\":\"q2\",\"prompt\":\"文档的目标读者是谁？\",\"required\":true,\"type\":\"choice\",\"options\":[\"内部团队/领导\",\"客户/甲方\",\"招投标评审\",\"公众/用户\",\"其他\"]},{\"id\":\"q3\",\"prompt\":\"你希望文档大概多少字？\",\"required\":true,\"type\":\"choice\",\"options\":[\"简短的（几百字）\",\"中等的（1000~3000字）\",\"详细的（3000~8000字）\",\"非常详细（8000字以上）\"]},{\"id\":\"q4\",\"prompt\":\"是否需要包含特定的模板或格式要求？\",\"required\":false,\"type\":\"text\"}]'}"
-          }
-        ],
-        "review_configs": [
-          {
-            "action_name": "submit_clarifying_questions",
-            "allowed_decisions": ["respond", "reject"]
-          }
-        ]
-      },
       "approved_at": "2026-05-24T13:55:11.735729+00:00"
     },
     "message_parts": [
@@ -49,6 +31,15 @@
         "type": "text",
         "text": "你想写什么类型的文档？我先问几个关键信息。\n\n",
         "state": "done"
+      },
+      {
+        "type": "tool-submit_clarifying_questions",
+        "toolCallId": "call_6e27cefb22054e2f88f45e04",
+        "state": "input-available",
+        "input": {
+          "context": "long_document",
+          "questions": "[{\"id\":\"q1\",\"prompt\":\"文档的主题或用途是什么？\",\"required\":true,\"type\":\"choice\",\"options\":[\"技术方案\",\"项目标书\",\"可行性报告\",\"产品说明书\",\"工作总结/报告\",\"其他（请说明）\"]},{\"id\":\"q2\",\"prompt\":\"文档的目标读者是谁？\",\"required\":true,\"type\":\"choice\",\"options\":[\"内部团队/领导\",\"客户/甲方\",\"招投标评审\",\"公众/用户\",\"其他\"]},{\"id\":\"q3\",\"prompt\":\"你希望文档大概多少字？\",\"required\":true,\"type\":\"choice\",\"options\":[\"简短的（几百字）\",\"中等的（1000~3000字）\",\"详细的（3000~8000字）\",\"非常详细（8000字以上）\"]},{\"id\":\"q4\",\"prompt\":\"是否需要包含特定的模板或格式要求？\",\"required\":false,\"type\":\"text\"}]"
+        }
       }
     ],
     "created_at": "2026-05-24 21:54:43"
@@ -64,25 +55,6 @@
     "extra_meta": {
       "created_at": "2026-05-24T21:55:11.735729+08:00",
       "elapsed_ms": 8375,
-      "interrupt_payload": {
-        "action_requests": [
-          {
-            "name": "submit_document_plan",
-            "args": {
-              "title": "技术方案文档",
-              "outline": "# 文档大纲\n\n1. **项目背景与目标** — 需求来源、业务痛点、项目目标\n2. **总体架构设计** — 系统架构图、技术选型、核心设计思路\n3. **详细设计方案** — 模块划分、关键流程、接口/数据设计\n4. **实施计划** — 开发阶段、里程碑、资源安排\n5. **风险评估与应对** — 技术风险、进度风险及预案\n6. **附录** — 术语说明、参考文档\n\n（你可以在确认方案时告诉我具体是哪个项目或系统的技术方案，我会据此填充内容。）",
-              "planned_artifacts": "[\"/artifacts/tech-proposal/chapter-01-项目背景与目标.md\",\"/artifacts/tech-proposal/chapter-02-总体架构设计.md\",\"/artifacts/tech-proposal/chapter-03-详细设计方案.md\",\"/artifacts/tech-proposal/chapter-04-实施计划.md\",\"/artifacts/tech-proposal/chapter-05-风险评估与应对.md\",\"/artifacts/tech-proposal/chapter-06-附录.md\",\"/artifacts/tech-proposal/完整版.md\"]"
-            },
-            "description": "Tool execution requires approval\n\nTool: submit_document_plan\nArgs: {'title': '技术方案文档', 'outline': '# 文档大纲\\n\\n1. **项目背景与目标** — 需求来源、业务痛点、项目目标\\n2. **总体架构设计** — 系统架构图、技术选型、核心设计思路\\n3. **详细设计方案** — 模块划分、关键流程、接口/数据设计\\n4. **实施计划** — 开发阶段、里程碑、资源安排\\n5. **风险评估与应对** — 技术风险、进度风险及预案\\n6. **附录** — 术语说明、参考文档\\n\\n（你可以在确认方案时告诉我具体是哪个项目或系统的技术方案，我会据此填充内容。）', 'planned_artifacts': '[\"/artifacts/tech-proposal/chapter-01-项目背景与目标.md\",\"/artifacts/tech-proposal/chapter-02-总体架构设计.md\",\"/artifacts/tech-proposal/chapter-03-详细设计方案.md\",\"/artifacts/tech-proposal/chapter-04-实施计划.md\",\"/artifacts/tech-proposal/chapter-05-风险评估与应对.md\",\"/artifacts/tech-proposal/chapter-06-附录.md\",\"/artifacts/tech-proposal/完整版.md\"]'}"
-          }
-        ],
-        "review_configs": [
-          {
-            "action_name": "submit_document_plan",
-            "allowed_decisions": ["approve", "reject", "edit"]
-          }
-        ]
-      },
       "approved_at": "2026-05-24T13:55:44.737334+00:00"
     },
     "message_parts": [

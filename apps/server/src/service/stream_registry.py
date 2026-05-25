@@ -61,7 +61,6 @@ def _flush_to_db_sync(
     message_parts: str | None = None,
     usage_metadata: dict | None = None,
     elapsed_ms: int | None = None,
-    interrupt_payload: dict | None = None,
 ) -> bool:
     """同步写入会话消息流状态；在 asyncio.to_thread 中调用，勿跨线程复用 Session。"""
     from src.db.session import get_session_local
@@ -103,13 +102,6 @@ def _flush_to_db_sync(
                     except (json.JSONDecodeError, TypeError):
                         meta = {}
                     meta["elapsed_ms"] = elapsed_ms
-                    msg.extra_meta = json.dumps(meta, ensure_ascii=False)
-                if interrupt_payload is not None:
-                    try:
-                        meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
-                    except (json.JSONDecodeError, TypeError):
-                        meta = {}
-                    meta["interrupt_payload"] = interrupt_payload
                     msg.extra_meta = json.dumps(meta, ensure_ascii=False)
                 db.commit()
                 logger.info(
@@ -227,11 +219,19 @@ def _flush_terminal_sync(
     elapsed_ms: int | None = None,
     interrupt_payload: dict | None = None,
 ) -> bool:
+    from src.service.hitl_pending_parts import extract_message_parts_for_interrupt
     from src.service.message_parts_extractor import extract_message_parts_from_buffer
 
     message_parts_json: str | None = None
     try:
-        parts = extract_message_parts_from_buffer(buffer_events_snapshot)
+        if interrupt_payload:
+            parts = extract_message_parts_for_interrupt(
+                buffer_events_snapshot,
+                interrupt_payload,
+                stream_msg_id,
+            )
+        else:
+            parts = extract_message_parts_from_buffer(buffer_events_snapshot)
         if parts:
             message_parts_json = json.dumps(parts, ensure_ascii=False)
     except Exception:
@@ -252,7 +252,6 @@ def _flush_terminal_sync(
         message_parts=message_parts_json,
         usage_metadata=usage_meta,
         elapsed_ms=elapsed_ms,
-        interrupt_payload=interrupt_payload,
     )
 
 
@@ -351,13 +350,8 @@ class StreamRegistry:
             "error": None,
             "cursor": msg.stream_cursor or 0,
         }
-        if msg.stream_state == "interrupted" and msg.extra_meta:
-            try:
-                meta = json.loads(msg.extra_meta)
-                result["interrupt_payload"] = meta.get("interrupt_payload")
-                result["message_id"] = msg.id
-            except (json.JSONDecodeError, TypeError):
-                pass
+        if msg.stream_state == "interrupted":
+            result["message_id"] = msg.id
         return result
 
     def broadcast(self, conversation_id: int, event: dict) -> None:
@@ -708,10 +702,20 @@ class StreamRegistry:
                     "[run] conv=%s HITL interrupt detected, event_count=%d, payload=%s",
                     conversation_id, task.buffer.cursor, list(interrupt_payload.keys()),
                 )
+                events_snapshot = list(task.buffer._events)
+                from src.service.hitl_pending_parts import (
+                    extract_message_parts_for_interrupt,
+                )
+
+                interrupt_parts = extract_message_parts_for_interrupt(
+                    events_snapshot,
+                    interrupt_payload,
+                    stream_msg_id,
+                )
                 evt = task.buffer.add({
                     "status": "interrupted",
                     "message_id": stream_msg_id,
-                    **interrupt_payload,
+                    "message_parts": interrupt_parts,
                 })
                 self.broadcast(conversation_id, evt)
                 elapsed_ms = int((time.monotonic() - stream_start_time) * 1000)

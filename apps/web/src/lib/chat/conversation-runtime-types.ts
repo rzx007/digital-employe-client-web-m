@@ -1,8 +1,3 @@
-export type HitlPayload = {
-  action_requests: Array<{ name: string; args: Record<string, unknown> }>
-  review_configs: unknown[]
-}
-
 export type StreamTerminalStatus =
   | "completed"
   | "cancelled"
@@ -11,12 +6,12 @@ export type StreamTerminalStatus =
   | "no_stream"
 
 export type ConversationRuntimeListener = {
-  onInterrupted?: (
-    payload: HitlPayload & { message_id?: string | number | null }
-  ) => void
+  onInterrupted?: (payload: {
+    message_id?: string | number | null
+    message_parts?: unknown[]
+  }) => void
   onTerminal?: (info: {
     status: StreamTerminalStatus
     message_id?: string | number | null
-    interrupt_payload?: HitlPayload
   }) => void
 }

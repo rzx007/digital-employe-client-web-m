@@ -1,6 +1,5 @@
 import type {
   ConversationRuntimeListener,
-  HitlPayload,
   StreamTerminalStatus,
 } from "./conversation-runtime-types"
 
@@ -41,7 +40,10 @@ class ConversationRuntimeBus {
 
   emitInterrupted(
     conversationId: string,
-    payload: HitlPayload & { message_id?: string | number | null }
+    payload: {
+      message_id?: string | number | null
+      message_parts?: unknown[]
+    }
   ) {
     this.emit(conversationId, (l) => l.onInterrupted?.(payload))
   }
@@ -51,7 +53,6 @@ class ConversationRuntimeBus {
     info: {
       status: StreamTerminalStatus
       message_id?: string | number | null
-      interrupt_payload?: HitlPayload
     }
   ) {
     this.emit(conversationId, (l) => l.onTerminal?.(info))
