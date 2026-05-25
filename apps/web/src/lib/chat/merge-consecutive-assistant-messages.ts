@@ -1,8 +1,5 @@
 import type { UIMessage } from "ai"
 
-import { dedupeHitlPartsInMessages } from "@/lib/chat/hitl-abort-message-utils"
-import { enrichHitlResolvedPartsInMessage } from "@/lib/chat/hitl-display-enrich"
-
 type AssistantMeta = {
   streamState?: string
   mergedAssistantIds?: string[]
@@ -83,11 +80,4 @@ export function mergeConsecutiveAssistantMessages(
   }
   flush()
   return result
-}
-
-/** 列表渲染：merge → enrich HITL input → dedupe pending parts */
-export function prepareDisplayMessages(messages: UIMessage[]): UIMessage[] {
-  const merged = mergeConsecutiveAssistantMessages(messages)
-  const enriched = merged.map(enrichHitlResolvedPartsInMessage)
-  return dedupeHitlPartsInMessages(enriched)
 }

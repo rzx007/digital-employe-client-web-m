@@ -1,14 +1,6 @@
 import type { UIMessageChunk } from "ai"
 
-import {
-  CLARIFY_TOOL_NAME,
-  DOCUMENT_PLAN_TOOL_NAME,
-} from "./hitl-tool-call-resolve"
-
-const HITL_TOOL_NAMES = new Set([
-  CLARIFY_TOOL_NAME,
-  DOCUMENT_PLAN_TOOL_NAME,
-])
+import { HITL_TOOL_NAMES } from "./constants"
 
 type StoredMessagePart = {
   type?: string

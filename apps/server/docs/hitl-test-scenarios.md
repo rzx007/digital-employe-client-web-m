@@ -2,7 +2,7 @@
 
 本文供 **手工测试 / QA** 使用，覆盖「废弃 `interrupt_payload` + 展示层 input 合并」改造后的 HITL 全场景。
 
-架构背景见 [hitl-architecture.md](./hitl-architecture.md)。夹具示例见 [hitl_chunks.json](./hitl_chunks.json)、[`apps/web/src/lib/chat/chunks_hitl.json`](../../web/src/lib/chat/chunks_hitl.json)。
+架构背景见 [hitl-architecture.md](./hitl-architecture.md)。夹具示例见 [hitl_chunks.json](./hitl_chunks.json)、[`apps/web/src/lib/chat/__fixtures__/hitl/chunks_hitl.json`](../../web/src/lib/chat/__fixtures__/hitl/chunks_hitl.json)。
 
 ---
 

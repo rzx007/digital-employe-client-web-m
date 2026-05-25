@@ -4,7 +4,10 @@ import type { UIMessage } from "ai"
 
 import type { Message } from "@/lib/mock-data/messages"
 import { conversationRuntimeBus } from "@/lib/chat/conversation-runtime-bus"
-import { findPendingHitl } from "@/lib/chat/hitl-abort-message-utils"
+import {
+  findPendingHitl,
+  patchAssistantWithInterruptParts,
+} from "@/lib/chat/hitl"
 import {
   getLastAssistantMessage,
   patchLastAssistantStreamState,
@@ -17,14 +20,6 @@ const REFETCH_DEBOUNCE_MS = 800
 function terminalToStreamState(status: string): string {
   if (status === "no_stream") return "error"
   return status
-}
-
-function parseMessageId(value: unknown): string | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value)
-  }
-  if (typeof value === "string" && value.length > 0) return value
-  return null
 }
 
 export function useConversationSession({
@@ -137,32 +132,7 @@ export function useConversationSession({
       onInterrupted: (payload) => {
         patchLastAssistantStreamState(queryClient, convKey, "interrupted")
         if (payload.message_parts) {
-          const messageId = parseMessageId(payload.message_id)
-          setMessages((prev) => {
-            if (prev.length === 0) return prev
-            const targetIndex =
-              messageId != null
-                ? prev.findIndex(
-                    (m) => m.role === "assistant" && String(m.id) === messageId
-                  )
-                : -1
-            const index =
-              targetIndex >= 0
-                ? targetIndex
-                : prev.findLastIndex((m) => m.role === "assistant")
-            if (index < 0) return prev
-            const target = prev[index]
-            const storedParts = payload.message_parts as UIMessage["parts"]
-            const existingTypes = new Set(target.parts.map((p) => p.type))
-            const newParts = storedParts.filter((p) => !existingTypes.has(p.type))
-            if (newParts.length === 0) return prev
-            const next = [...prev]
-            next[index] = {
-              ...target,
-              parts: [...target.parts, ...newParts],
-            }
-            return next
-          })
+          setMessages((prev) => patchAssistantWithInterruptParts(prev, payload))
         }
         scheduleMessagesRefetch()
       },

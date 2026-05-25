@@ -19,7 +19,7 @@ import {
 import { useConversationSession } from "@/hooks/use-conversation-session"
 import { useChatStore } from "@/stores/chat-store"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
-import { prepareDisplayMessages } from "@/lib/chat/merge-consecutive-assistant-messages"
+import { prepareDisplayMessages } from "@/lib/chat/hitl"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 
 import { ChatPanel } from "../panel/chat-panel"
@@ -306,6 +306,7 @@ export function DraftChatView({
       onPendingMoveUp={pendingMoveUp}
       onPendingMoveDown={pendingMoveDown}
       conversationId={selectedConversationId}
+      hitlMessageId={session.hitlMessageId}
       onHitlApproved={session.onHitlApproved}
       onAttachmentsChange={() => {}}
       className={className}

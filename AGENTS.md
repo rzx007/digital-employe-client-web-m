@@ -114,6 +114,7 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 
 - [可恢复流](./apps/server/docs/resumable-stream-architecture.md) — SSE buffer、resume、落库
 - [HITL 人机协同](./apps/server/docs/hitl-architecture.md) — 澄清/方案审批、`message_id` 模型、数据流与待办
+- [HITL tool invocation 报错](./apps/server/docs/hitl-tool-invocation-not-found.md) — `No tool invocation found for tool call ID` 成因与修复
 
 ### Agent 系统
 

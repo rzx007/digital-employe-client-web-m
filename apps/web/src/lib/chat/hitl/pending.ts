@@ -1,13 +1,11 @@
 import type { UIMessage } from "ai"
+
 import {
   CLARIFY_TOOL_NAME,
   DOCUMENT_PLAN_TOOL_NAME,
-} from "./hitl-tool-call-resolve"
-
-const HITL_TOOL_TYPES = new Set([
-  `tool-${CLARIFY_TOOL_NAME}`,
-  `tool-${DOCUMENT_PLAN_TOOL_NAME}`,
-])
+  HITL_TOOL_TYPES,
+} from "./constants"
+import { toolPartHasFinalOutput } from "./part-utils"
 
 export type PendingHitlKind = "clarify" | "document-plan"
 
@@ -29,16 +27,6 @@ function kindFromToolType(type: string): PendingHitlKind | null {
   if (type === `tool-${CLARIFY_TOOL_NAME}`) return "clarify"
   if (type === `tool-${DOCUMENT_PLAN_TOOL_NAME}`) return "document-plan"
   return null
-}
-
-export function toolPartHasFinalOutput(part: {
-  state?: string
-  output?: unknown
-}): boolean {
-  if (part.state === "output-available" || part.state === "output-error") {
-    return true
-  }
-  return Boolean(part.output)
 }
 
 function getResolvedHitlToolTypes(parts: UIMessage["parts"]): Set<string> {
@@ -68,86 +56,6 @@ function getResolvedHitlToolCallIds(parts: UIMessage["parts"]): Set<string> {
     if (toolCallId) resolved.add(toolCallId)
   }
   return resolved
-}
-
-function isPendingHitlPart(
-  part: UIMessage["parts"][number],
-  resolvedTypes: Set<string>,
-  resolvedToolCallIds: Set<string>
-): boolean {
-  if (!HITL_TOOL_TYPES.has(part.type)) return false
-
-  const toolPart = part as { state?: string; output?: unknown }
-  if (toolPartHasFinalOutput(toolPart)) return false
-
-  const state = toolPart.state
-  if (state === "output-available" || state === "output-error") return false
-
-  const isPendingState =
-    state === undefined ||
-    state === "input-available" ||
-    state === "input-streaming" ||
-    state === "call"
-  if (!isPendingState) return false
-
-  const toolCallId =
-    "toolCallId" in part && typeof part.toolCallId === "string"
-      ? part.toolCallId
-      : ""
-  if (toolCallId && resolvedToolCallIds.has(toolCallId)) return true
-  if (resolvedTypes.has(part.type)) return true
-  return false
-}
-
-export function dedupeHitlPartsInMessage(message: UIMessage): UIMessage {
-  if (message.role !== "assistant") return message
-  const resolvedTypes = getResolvedHitlToolTypes(message.parts)
-  if (resolvedTypes.size === 0) return message
-
-  const parts = message.parts.filter((part) => {
-    if (!HITL_TOOL_TYPES.has(part.type)) return true
-    if (!resolvedTypes.has(part.type)) return true
-    return !isPendingHitlPart(
-      part,
-      resolvedTypes,
-      getResolvedHitlToolCallIds(message.parts)
-    )
-  })
-  return { ...message, parts }
-}
-
-export function dedupeHitlPartsInMessages(messages: UIMessage[]): UIMessage[] {
-  return messages.map(dedupeHitlPartsInMessage)
-}
-
-/** POST /approve 使用的 message_id（与 session.hitlMessageId 对齐） */
-export function resolveHitlApproveMessageId(
-  message: UIMessage,
-  sessionHitlMessageId: string | null | undefined
-): string {
-  if (!sessionHitlMessageId) return message.id
-
-  const sessionId = String(sessionHitlMessageId)
-  if (String(message.id) === sessionId) return sessionId
-
-  const meta = (message as UIMessage & { metadata?: Record<string, unknown> })
-    .metadata
-  if (
-    meta &&
-    typeof meta === "object" &&
-    typeof meta.hitlAnchorMessageId === "string" &&
-    meta.hitlAnchorMessageId === sessionId
-  ) {
-    return sessionId
-  }
-  const mergedIds = meta?.mergedAssistantIds
-  if (
-    Array.isArray(mergedIds) &&
-    mergedIds.some((id) => String(id) === sessionId)
-  ) {
-    return sessionId
-  }
-  return message.id
 }
 
 function messageIsApproved(message: UIMessage): boolean {
@@ -195,13 +103,4 @@ export function findPendingHitl(messages: UIMessage[]): PendingHitl | null {
     }
   }
   return null
-}
-
-export function isHitlAbortedOutput(resultText?: string | null): boolean {
-  if (!resultText) return false
-  return (
-    resultText.includes("已中止") ||
-    resultText.includes("已跳过") ||
-    resultText.includes("已取消")
-  )
 }

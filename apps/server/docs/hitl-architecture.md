@@ -76,7 +76,7 @@ mergeConsecutiveAssistantMessages → enrichHitlResolvedPartsInMessage → dedup
 ```
 
 - **merge**：同一 user 轮次内连续 assistant 合并为一条气泡（`parts` 拼接）。
-- **enrich**（`hitl-display-enrich.ts`）：在同泡内，将 sealed 行的 `input-available.input` 浅拷贝回填到 `output-available` 且顶层 `input` 为空的 HITL part（仅 UI，不回写 DB）。
+- **enrich**（`hitl/display-enrich.ts`）：在同泡内，将 sealed 行的 `input-available.input` 浅拷贝回填到 `output-available` 且顶层 `input` 为空的 HITL part（仅 UI，不回写 DB）。
 - **dedupe**：移除已 resolve 的重复 pending part。
 
 `composerMessages` / `findPendingHitl` / `POST /approve` 的 `message_id` 仍用 **未 merge、未 enrich** 的 `useChat` 列表。
@@ -254,9 +254,7 @@ Body：`{ "message_id": <int>, "decisions": [...] }`
 
 关键文件：
 
-- `apps/web/src/lib/chat/hitl-display-enrich.ts`
-- `apps/web/src/lib/chat/hitl-parts-stream-chunks.ts`
-- `apps/web/src/lib/chat/hitl-abort-message-utils.ts`
+- `apps/web/src/lib/chat/hitl/` — `display-pipeline.ts`、`display-enrich.ts`、`pending.ts`、`interrupt-stream-chunks.ts`、`session-patch.ts` 等（ barrel：`hitl/index.ts`）
 - `apps/web/src/lib/chat/conversation-runtime-bus.ts`
 - `apps/web/src/components/chat/panel/chat-composer-area.tsx`
 - `apps/web/src/components/chat/message-blocks/document-plan-card.tsx`
@@ -273,7 +271,7 @@ Body：`{ "message_id": <int>, "decisions": [...] }`
 - `{ "type": "edit", "edited_action": { "name", "args" } }` — 改稿后继续
 - `{ "type": "reject", "message": "..." }` — 拒绝/跳过
 
-具体工具展示与校验见 `document-plan-card.tsx`、`clarifying-questions-dock.tsx` 及 `hitl-tool-call-resolve.ts`。
+具体工具展示与校验见 `document-plan-card.tsx`、`clarifying-questions-dock.tsx` 及 `hitl/constants.ts`。
 
 澄清 Dock 的 **Skip** 与「提交全部」同链路：对当前 `message_id` 调用 `POST /approve`，decision 为 `{ type: "reject", message: "用户跳过澄清" }`，成功后 `onHitlApproved` 清 HITL 并 `resumeStream`。**不要**调用 `POST /stream/cancel`（interrupt 后 registry 通常已无活跃流，会 400）。
 
@@ -320,7 +318,7 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 | SSE 解析             | `apps/web/src/lib/chat/langchain-chat-transport.ts`                                 |
 | Chunk 解析           | `apps/web/src/lib/chat/langchain-stream-parser.ts`                                  |
 | 会话 HITL 状态         | `apps/web/src/hooks/use-conversation-session.ts`                                    |
-| 展示 enrich            | `apps/web/src/lib/chat/hitl-display-enrich.ts`                                      |
+| 展示 enrich / pipeline | `apps/web/src/lib/chat/hitl/`（`display-enrich.ts`、`display-pipeline.ts`）         |
 | Pending parts 构建     | `apps/server/src/service/hitl_pending_parts.py`                                     |
 | UI                 | `chat-composer-area.tsx`, `document-plan-card.tsx`, `clarifying-questions-dock.tsx` |
 
@@ -459,7 +457,7 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 | ---------------------------------- | ----------------------------------------------------------------------------------- |
 | Dock 不显示                           | `message_parts` 无 `input-available` pending part；或行已有 `approved_at` |
 | approve 404 / 状态错误                 | `message_id` 不是 `interrupted` 行，或已 `approved_at`                                    |
-| resume 后 tool invocation not found | resume 流缺少 `tool-input-start`；检查 `hitl-parts-stream-chunks` 与 approve 后新 assistant 行 |
+| resume 后 tool invocation not found | 见专文 [hitl-tool-invocation-not-found.md](./hitl-tool-invocation-not-found.md)（回放顺序、`ensureToolInvocationBeforeOutput`、`toolCallId` 不一致） |
 | 刷新后只有方案卡无澄清 Answers                | merge 后 enrich 未执行；或 sealed 行缺 `input-available` part                          |
 | 刷新后无大纲只有确认文案                      | enrich 未回填 `input`；检查 #697 类 sealed 行是否含 pending part、`prepareDisplayMessages` pipeline |
 | 卡顿                                 | 见 [§八.1 大文档 resume](#1-大文档-resume-回放卡顿部分完成)；DEV 看 `[sse:resume]` 压缩比              |
@@ -476,7 +474,9 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 | 2026-05-23 | §八.1：Reconnect 批处理已实现；其余 resume 优化（cursor / DB 优先 / hydrate 去重等）记入待做 |
 | 2026-05-23 | 长文档写作：产物统一写入 `/artifacts/<doc-slug>/`（AGENTS.md、prompts、方案门 UI 占位） |
 | 2026-05-23 | §八.3：`DocumentPlanApprovedSummary` 展示已 approve 方案的 `output.text`；A/B/C 备选记入文档 |
+| 2026-05-24 | 新增 [hitl-tool-invocation-not-found.md](./hitl-tool-invocation-not-found.md) |
 | 2026-05-23 | 废弃 `interrupt_payload`：pending 写入 `message_parts`；展示层 `hitl-display-enrich` 回填 input |
 | 2026-05-25 | 新增 [hitl-test-scenarios.md](./hitl-test-scenarios.md) 手工测试场景手册 |
+| 2026-05-23 | 前端 HITL 逻辑收拢至 `apps/web/src/lib/chat/hitl/`；`hitlMessageId` 由 session 下发至 ChatPanel |
 
 

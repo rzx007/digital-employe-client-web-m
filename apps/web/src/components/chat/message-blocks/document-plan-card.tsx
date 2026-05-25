@@ -11,7 +11,7 @@ import { approveHitl, type HitlDecision } from "@/api/conversation"
 import {
   isHitlAbortedOutput,
   type HitlPatchOptions,
-} from "@/lib/chat/hitl-abort-message-utils"
+} from "@/lib/chat/hitl"
 
 interface DocumentPlanInput {
   title?: string

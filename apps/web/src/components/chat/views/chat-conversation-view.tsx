@@ -23,7 +23,7 @@ import { usePendingMessages } from "@/hooks/use-pending-messages"
 
 import { useConversationSession } from "@/hooks/use-conversation-session"
 
-import { prepareDisplayMessages } from "@/lib/chat/merge-consecutive-assistant-messages"
+import { prepareDisplayMessages } from "@/lib/chat/hitl"
 
 import { ChatPanel } from "../panel/chat-panel"
 
@@ -77,8 +77,6 @@ export function ConversationChatView({
       name: string
     }>
   >([])
-
-  const [hasReceivedMessages, setHasReceivedMessages] = useState(false)
 
   const queryClient = useQueryClient()
 
@@ -148,7 +146,9 @@ export function ConversationChatView({
     queryClient,
   })
 
-  onStreamFinishRef.current = session.onStreamFinish
+  useEffect(() => {
+    onStreamFinishRef.current = session.onStreamFinish
+  }, [session.onStreamFinish])
 
   const handleStop = useCallback(async () => {
     stop()
@@ -170,11 +170,10 @@ export function ConversationChatView({
     }
   }, [stop])
 
-  useEffect(() => {
-    if (messages.length > 0 && !hasReceivedMessages) {
-      setHasReceivedMessages(true)
-    }
-  }, [messages, hasReceivedMessages])
+  const shouldUseLiveMessages =
+    messages.length > 0 ||
+    status === "submitted" ||
+    status === "streaming"
 
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
@@ -315,11 +314,10 @@ export function ConversationChatView({
   )
 
   const displayMessages = useMemo(() => {
-    const source =
-      messages.length > 0 || hasReceivedMessages ? messages : initialMessages
+    const source = shouldUseLiveMessages ? messages : initialMessages
 
     return prepareDisplayMessages(source)
-  }, [initialMessages, messages, hasReceivedMessages])
+  }, [initialMessages, messages, shouldUseLiveMessages])
 
   return (
     <ChatPanel
@@ -346,6 +344,7 @@ export function ConversationChatView({
       onPendingMoveDown={pendingMoveDown}
       conversationId={conversationId}
       onAttachmentsChange={handleAttachmentsChange}
+      hitlMessageId={session.hitlMessageId}
       onHitlApproved={session.onHitlApproved}
       className={className}
       {...props}

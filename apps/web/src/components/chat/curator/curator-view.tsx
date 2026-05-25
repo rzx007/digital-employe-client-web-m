@@ -83,9 +83,9 @@ import {
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import {
+  prepareDisplayMessages,
   resolveHitlApproveMessageId,
-} from "@/lib/chat/hitl-abort-message-utils"
-import { prepareDisplayMessages } from "@/lib/chat/merge-consecutive-assistant-messages"
+} from "@/lib/chat/hitl"
 
 type TimelineEntry =
   | { kind: "message"; data: UIMessage; ts: number }
@@ -192,7 +192,9 @@ export function CuratorView({
     queryClient,
   })
 
-  onStreamFinishRef.current = session.onStreamFinish
+  useEffect(() => {
+    onStreamFinishRef.current = session.onStreamFinish
+  }, [session.onStreamFinish])
 
   const handleStop = useCallback(async () => {
     stop()
@@ -225,7 +227,6 @@ export function CuratorView({
         []
       )
       setMessages([])
-      session.clearHitl()
       setShowResetDialog(false)
       toast.success("会话已清空")
     } catch {
@@ -235,7 +236,6 @@ export function CuratorView({
     curatorConversationId,
     clearTaskLogs,
     resetMutation,
-    session,
     setMessages,
     queryClient,
   ])
@@ -363,9 +363,12 @@ export function CuratorView({
   )
 
   const handleSendMessage = useCallback(
-    async (message: PromptInputMessage) => {
-      const messageText = message.text?.trim() ?? ""
-      if (!(messageText || message.files?.length)) return
+    async (message: PromptInputMessage | string) => {
+      const messageText =
+        (typeof message === "string" ? message : message.text)?.trim() ?? ""
+      const hasFiles =
+        typeof message !== "string" && (message.files?.length ?? 0) > 0
+      if (!(messageText || hasFiles)) return
       if (isBusy || !curatorConversationId) {
         enqueue({
           id: `pending-${Date.now()}`,

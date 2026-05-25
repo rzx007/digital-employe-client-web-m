@@ -12,7 +12,7 @@ import {
 import { sseEventSchema, type ToolOutputData } from "./langchain-sse-schema"
 import { ERROR_MARKER } from "./message-classifier"
 import { conversationRuntimeBus } from "./conversation-runtime-bus"
-import { buildHitlInterruptStreamChunks } from "./hitl-parts-stream-chunks"
+import { buildHitlInterruptStreamChunks } from "./hitl/interrupt-stream-chunks"
 const useMock =
   import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_SSE === "true"
 

@@ -17,8 +17,8 @@ import {
   buildClarifyRespondMessage,
   optionLabel,
   type ClarifyingQuestion,
-} from "@/lib/chat/clarifying-questions-utils"
-import type { PendingHitl } from "@/lib/chat/hitl-abort-message-utils"
+} from "@/lib/chat/hitl"
+import type { PendingHitl } from "@/lib/chat/hitl"
 
 const CLARIFY_SKIP_REJECT_MESSAGE = "用户跳过澄清"
 

@@ -2,7 +2,7 @@
 
 import { memo } from "react"
 import { cn } from "@workspace/ui/lib/utils"
-import type { ClarifyAnswerItem } from "@/lib/chat/clarifying-questions-utils"
+import type { ClarifyAnswerItem } from "@/lib/chat/hitl"
 
 function ClarifyingAnswersSummaryInner({
   items,

@@ -23,13 +23,15 @@ import {
 } from "./file-change-utils"
 import { isSummarizationTextPart } from "./langchain-summarization-text"
 import { collapseWriteTodosBlocks } from "./collapse-write-todos-blocks"
-import { collapseDocumentPlanBlocks } from "./collapse-document-plan-blocks"
-import { isHitlAbortedOutput } from "./hitl-abort-message-utils"
 import {
-  parseClarifyingQuestions,
+  CLARIFY_TOOL_NAME,
+  DOCUMENT_PLAN_TOOL_NAME,
+  isHitlAbortedOutput,
   buildClarifyAnswerItems,
+  parseClarifyingQuestions,
   type ClarifyAnswerItem,
-} from "./clarifying-questions-utils"
+} from "./hitl"
+import { collapseDocumentPlanBlocks } from "./hitl/collapse-document-plan-blocks"
 import { mergeRoutineToolGroups } from "./merge-routine-tool-groups"
 import {
   isRecruitmentToolRunning,
@@ -316,7 +318,7 @@ export function classifyMessageParts(
       return
     }
 
-    if (summary.toolName === "submit_document_plan") {
+    if (summary.toolName === DOCUMENT_PLAN_TOOL_NAME) {
       const docResultText = extractResultText(part)
       const docToolState = (
         "state" in part ? (part as ToolUIPart).state : "unknown"
@@ -360,7 +362,7 @@ export function classifyMessageParts(
       return
     }
 
-    if (summary.toolName === "submit_clarifying_questions") {
+    if (summary.toolName === CLARIFY_TOOL_NAME) {
       const toolState = (
         "state" in part ? (part as ToolUIPart).state : "unknown"
       ) as string

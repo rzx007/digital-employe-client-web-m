@@ -31,8 +31,7 @@ import {
   getContactDisplayName,
   type ChatViewContact,
 } from "../shared/chat-view-shared"
-import type { HitlPatchOptions } from "@/lib/chat/hitl-abort-message-utils"
-import { findPendingHitl } from "@/lib/chat/hitl-abort-message-utils"
+import type { HitlPatchOptions } from "@/lib/chat/hitl"
 import { ChatMessageItem } from "../messages/chat-message-item"
 
 const EMPTY_MESSAGES: UIMessage[] = []
@@ -162,6 +161,7 @@ export function ChatPanel({
   conversationId,
   onAttachmentsChange,
   composerMessages,
+  hitlMessageId = null,
   onHitlApproved,
   className,
   ...props
@@ -189,6 +189,7 @@ export function ChatPanel({
   conversationId?: string | number | null
   onAttachmentsChange?: (paths: string[]) => void
   composerMessages?: UIMessage[]
+  hitlMessageId?: string | null
   onHitlApproved?: (options?: HitlPatchOptions) => void
 }) {
   const contactDisplayName = contact
@@ -196,10 +197,6 @@ export function ChatPanel({
     : "AI 助手"
 
   const displayMessages = isDraftMode ? EMPTY_MESSAGES : messages
-  const hitlMessageId = React.useMemo(() => {
-    const pending = findPendingHitl(composerMessages ?? messages)
-    return pending?.messageId ?? null
-  }, [composerMessages, messages])
   const hasCurrentTurnEnded =
     status === "ready" || status === "error" || !!error
   const showStreamingIndicator =
@@ -248,6 +245,15 @@ export function ChatPanel({
     }
     return []
   }, [contact])
+
+  const handleComposerSend = React.useCallback(
+    (message: PromptInputMessage | string) => {
+      const payload: PromptInputMessage =
+        typeof message === "string" ? { text: message, files: [] } : message
+      void onSend(payload)
+    },
+    [onSend]
+  )
 
   return (
     <div
@@ -343,7 +349,7 @@ export function ChatPanel({
                 conversationId={conversationId!}
                 inputValue={inputValue}
                 onInputChange={onInputChange}
-                onSend={onSend}
+                onSend={handleComposerSend}
                 onStop={() => onStop?.()}
                 onHitlApproved={onHitlApproved}
                 status={status}

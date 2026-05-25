@@ -18,7 +18,7 @@ import {
   isHitlAbortedOutput,
   resolveHitlApproveMessageId,
   type HitlPatchOptions,
-} from "@/lib/chat/hitl-abort-message-utils"
+} from "@/lib/chat/hitl"
 import { DocumentPlanCard } from "../message-blocks/document-plan-card"
 import { ClarifyingAnswersSummary } from "../message-blocks/clarifying-answers-summary"
 import { DocumentPlanApprovedSummary } from "../message-blocks/document-plan-approved-summary"

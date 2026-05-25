@@ -18,7 +18,7 @@ import {
   findPendingHitl,
   type HitlPatchOptions,
   type PendingHitl,
-} from "@/lib/chat/hitl-abort-message-utils"
+} from "@/lib/chat/hitl"
 
 const CLARIFY_OPTIONAL_PLACEHOLDER = "补充更多可选细节（可选）"
 const HITL_PENDING_PLACEHOLDER = "请先确认或中止当前待办"
@@ -56,7 +56,7 @@ export function ChatComposerArea({
   onHitlApproved?: (options?: HitlPatchOptions) => void
   status: ChatPromptMessageStatus
   submitDisabled?: boolean
-  placeholder?: string
+  placeholder?: React.ReactNode
   size?: ChatPromptInputProps["size"]
   className?: string
   slashCommands?: SlashCommandItem[]
