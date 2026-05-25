@@ -125,7 +125,9 @@ export function DraftChatView({
     queryClient,
   })
 
-  onStreamFinishRef.current = session.onStreamFinish
+  useEffect(() => {
+    onStreamFinishRef.current = session.onStreamFinish
+  }, [session.onStreamFinish])
 
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
