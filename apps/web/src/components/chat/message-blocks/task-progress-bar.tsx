@@ -1,6 +1,3 @@
-"use client"
-
-import * as React from "react"
 import { cn } from "@workspace/ui/lib/utils"
 import { useChatStore } from "@/stores/chat-store"
 import type { OrchestrationTaskProgress } from "./orchestration-plan-card"

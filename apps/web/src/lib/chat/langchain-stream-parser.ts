@@ -254,6 +254,8 @@ function appendToolInputDelta(
     if (!pending.sentInputStart) return
   }
 
+  if (!pending.toolCallId || !pending.toolName) return
+
   const toolCallId = pending.toolCallId
   const toolName = pending.toolName
 

@@ -7,7 +7,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { Input } from "@workspace/ui/components/input"
 import { toast } from "sonner"
-import { approveHitl } from "@/api/conversation"
+import { approveHitl, type HitlDecision } from "@/api/conversation"
 import {
   isHitlAbortedOutput,
   type HitlPatchOptions,
@@ -103,13 +103,7 @@ function DocumentPlanCardInner({
     !resolved && !isAborted && state === "input-available"
   const isConfirmed = !isAborted && state === "output-available"
 
-  const submitDecisions = async (
-    decisions: Array<{
-      type: string
-      message?: string
-      edited_action?: unknown
-    }>
-  ) => {
+  const submitDecisions = async (decisions: HitlDecision[]) => {
     if (messageId == null || messageId === "") {
       toast.error("无法确认：缺少 messageId")
       return

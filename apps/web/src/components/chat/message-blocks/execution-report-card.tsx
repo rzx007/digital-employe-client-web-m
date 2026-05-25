@@ -1,4 +1,3 @@
-import * as React from "react"
 import { useMutation } from "@tanstack/react-query"
 import { IconExternalLink } from "@tabler/icons-react"
 import { Badge } from "@workspace/ui/components/badge"
@@ -77,13 +76,13 @@ export function ExecutionReportCard({
             className={cn(
               "rounded border-2 px-2 py-0.5 text-[11px] font-bold tracking-wider uppercase opacity-20",
               execution.run_status === "success" &&
-                "rotate-[-12deg] border-green-600 text-green-700 dark:border-green-400 dark:text-green-400",
+              "rotate-[-12deg] border-green-600 text-green-700 dark:border-green-400 dark:text-green-400",
               execution.run_status === "failed" &&
-                "rotate-[-12deg] border-red-600 text-red-700 dark:border-red-400 dark:text-red-400",
+              "rotate-[-12deg] border-red-600 text-red-700 dark:border-red-400 dark:text-red-400",
               execution.run_status === "timeout" &&
-                "rotate-[-12deg] border-amber-600 text-amber-700 dark:border-amber-400 dark:text-amber-400",
+              "rotate-[-12deg] border-amber-600 text-amber-700 dark:border-amber-400 dark:text-amber-400",
               execution.run_status === "cancelled" &&
-                "rotate-[-12deg] border-gray-500 text-gray-600 dark:border-gray-400 dark:text-gray-400"
+              "rotate-[-12deg] border-gray-500 text-gray-600 dark:border-gray-400 dark:text-gray-400"
             )}
           >
             {statusCfg.stampText}

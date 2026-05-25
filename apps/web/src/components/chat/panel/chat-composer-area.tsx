@@ -7,7 +7,10 @@ import { ChatPromptInput } from "@/components/chat-prompt-input"
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
 import type { SlashCommandItem } from "@/components/lexical-editor/slash-command-plugin"
 import type { MentionCandidate } from "@/components/lexical-editor/mention-plugin"
-import type { ChatPromptMessageStatus } from "@/components/chat-prompt-input/types"
+import type {
+  ChatPromptInputProps,
+  ChatPromptMessageStatus,
+} from "@/components/chat-prompt-input/types"
 import { ClarifyingQuestionsDock } from "@/components/chat/message-blocks/clarifying-questions-dock"
 import { PendingMessageQueue } from "@/components/chat/panel/pending-message-queue"
 import type { PendingMessage } from "@/hooks/use-pending-messages"
@@ -54,7 +57,7 @@ export function ChatComposerArea({
   status: ChatPromptMessageStatus
   submitDisabled?: boolean
   placeholder?: string
-  size?: "compact" | "full"
+  size?: ChatPromptInputProps["size"]
   className?: string
   slashCommands?: SlashCommandItem[]
   mentionCandidates?: MentionCandidate[]
@@ -123,27 +126,29 @@ export function ChatComposerArea({
         />
       )}
 
-      <ChatPromptInput
-        value={inputValue}
-        onChange={onInputChange}
-        onSubmit={onSend}
-        onStop={onStop}
-        status={status}
-        disabled={submitDisabled || blocksComposer}
-        placeholder={
-          clarifyActive
-            ? CLARIFY_OPTIONAL_PLACEHOLDER
-            : blocksComposer
-              ? HITL_PENDING_PLACEHOLDER
-              : placeholder
-        }
-        size={size}
-        className="w-full"
-        slashCommands={slashCommands}
-        mentionCandidates={mentionCandidates}
-        conversationId={String(conversationId)}
-        onAttachmentsChange={onAttachmentsChange}
-      />
+      <div data-chat-composer className="w-full">
+        <ChatPromptInput
+          value={inputValue}
+          onChange={onInputChange}
+          onSubmit={onSend}
+          onStop={onStop}
+          status={status}
+          disabled={submitDisabled || blocksComposer}
+          placeholder={
+            clarifyActive
+              ? CLARIFY_OPTIONAL_PLACEHOLDER
+              : blocksComposer
+                ? HITL_PENDING_PLACEHOLDER
+                : placeholder
+          }
+          size={size}
+          className="w-full"
+          slashCommands={slashCommands}
+          mentionCandidates={mentionCandidates}
+          conversationId={String(conversationId)}
+          onAttachmentsChange={onAttachmentsChange}
+        />
+      </div>
 
       {error && (
         <p className="mt-2 text-xs text-destructive">{error.message}</p>

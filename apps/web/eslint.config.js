@@ -23,5 +23,9 @@ export default defineConfig([
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    rules: {
+      // 允许与组件同文件导出工具函数/常量（Vite HMR 可接受；插件默认仅放行 primitive 常量）
+      "react-refresh/only-export-components": "off",
+    },
   },
 ])

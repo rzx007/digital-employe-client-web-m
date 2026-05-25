@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { memo, useCallback, useEffect, useState } from "react"
+import { memo, useCallback, useRef, useState } from "react"
+import { useEventListener } from "@reactuses/core"
 import {
   IconChevronDown,
   IconChevronUp,
@@ -21,11 +22,9 @@ import type { PendingHitl } from "@/lib/chat/hitl-abort-message-utils"
 
 const CLARIFY_SKIP_REJECT_MESSAGE = "用户跳过澄清"
 
-function isTypingTarget(target: EventTarget | null): boolean {
+function isComposerTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
-  if (target.isContentEditable) return true
-  const tag = target.tagName
-  return tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT"
+  return Boolean(target.closest("[data-chat-composer]"))
 }
 
 function ClarifyingQuestionsDockInner({
@@ -46,6 +45,10 @@ function ClarifyingQuestionsDockInner({
   }) => void | Promise<void>
   className?: string
 }) {
+  const dockRef = useRef<HTMLDivElement>(null)
+  const continueButtonRef = useRef<HTMLButtonElement>(null)
+  const answerTextareaRef = useRef<HTMLTextAreaElement>(null)
+
   const questionsInput = pending.input?.questions
   const context =
     typeof pending.input?.context === "string"
@@ -81,6 +84,10 @@ function ClarifyingQuestionsDockInner({
     },
     [current]
   )
+
+  const focusContinueButton = useCallback(() => {
+    requestAnimationFrame(() => continueButtonRef.current?.focus())
+  }, [])
 
   const validateCurrent = useCallback((): boolean => {
     if (!current?.required) return true
@@ -128,13 +135,7 @@ function ClarifyingQuestionsDockInner({
       optionalDetails
     )
     await submitDecisions([{ type: "respond", message }], "提交失败")
-  }, [
-    answers,
-    context,
-    optionalDetails,
-    questions,
-    submitDecisions,
-  ])
+  }, [answers, context, optionalDetails, questions, submitDecisions])
 
   const handleContinue = useCallback(() => {
     if (!validateCurrent()) return
@@ -161,29 +162,64 @@ function ClarifyingQuestionsDockInner({
     )
   }, [submitDecisions])
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
+  const handleDockKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (isComposerTarget(event.target)) return
+
       if (event.key === "Escape") {
         event.preventDefault()
         handleSkip()
         return
       }
-      if (event.key === "Enter" && !event.shiftKey) {
-        if (isTypingTarget(event.target)) return
-        event.preventDefault()
-        handleContinue()
+
+      if (event.key !== "Enter" || event.shiftKey) return
+
+      const target = event.target
+      if (target instanceof HTMLTextAreaElement) return
+      if (target instanceof HTMLElement && target.closest("button")) return
+
+      event.preventDefault()
+      handleContinue()
+    },
+    [handleContinue, handleSkip]
+  )
+
+  useEventListener("keydown", handleDockKeyDown, dockRef)
+
+  React.useEffect(() => {
+    if (!current) return
+    requestAnimationFrame(() => {
+      if (current.type === "choice" && current.options?.length) {
+        continueButtonRef.current?.focus()
+      } else {
+        answerTextareaRef.current?.focus()
       }
+    })
+  }, [current, index])
+
+  const handleTextareaKeyDown = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>
+  ) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault()
+      event.stopPropagation()
+      handleContinue()
     }
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [handleContinue, handleSkip])
+  }
+
+  const handleChoiceSelect = (opt: string) => {
+    setCurrentAnswer(opt)
+    focusContinueButton()
+  }
 
   if (!current) return null
 
   return (
     <div
+      ref={dockRef}
+      tabIndex={-1}
       className={cn(
-        "mb-2 overflow-hidden rounded-xl border border-border/80 bg-card shadow-sm",
+        "mb-2 overflow-hidden rounded-xl border border-border/80 bg-card shadow-sm outline-none",
         className
       )}
     >
@@ -238,7 +274,7 @@ function ClarifyingQuestionsDockInner({
                 variant={currentAnswer === opt ? "default" : "outline"}
                 size="sm"
                 className="h-auto min-w-20 px-3 py-1.5 text-xs"
-                onClick={() => setCurrentAnswer(opt)}
+                onClick={() => handleChoiceSelect(opt)}
               >
                 <span className="mr-1 font-medium">{optionLabel(i)}.</span>
                 {opt}
@@ -247,9 +283,11 @@ function ClarifyingQuestionsDockInner({
           </div>
         ) : (
           <Textarea
+            ref={answerTextareaRef}
             value={currentAnswer}
             onChange={(e) => setCurrentAnswer(e.target.value)}
-            placeholder="请输入你的回答..."
+            onKeyDown={handleTextareaKeyDown}
+            placeholder="请输入你的回答...（Enter 继续，Shift+Enter 换行）"
             rows={3}
             className="mt-2.5 text-sm"
           />
@@ -268,6 +306,7 @@ function ClarifyingQuestionsDockInner({
           Skip
         </Button>
         <Button
+          ref={continueButtonRef}
           type="button"
           size="sm"
           className="h-7 text-xs"
