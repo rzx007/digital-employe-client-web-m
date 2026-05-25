@@ -41,7 +41,7 @@ import {
   useConversationResourcesQuery,
   useResourceContentQuery,
 } from "@/hooks/use-chat-queries"
-import { downloadResource, deleteResource } from "@/api/conversation"
+import { deleteResource, downloadResource } from "@/api/chat"
 import { useQueryClient } from "@tanstack/react-query"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useArtifactStore } from "@/stores/artifact-store"

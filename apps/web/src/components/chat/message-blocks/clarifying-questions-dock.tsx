@@ -12,7 +12,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { Button } from "@workspace/ui/components/button"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { toast } from "sonner"
-import { approveHitl, type HitlDecision } from "@/api/conversation"
+import { approveHitl, type HitlDecision } from "@/api/chat"
 import {
   buildClarifyRespondMessage,
   optionLabel,

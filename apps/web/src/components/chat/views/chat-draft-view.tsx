@@ -27,7 +27,7 @@ import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
 import {
   cancelConversationStream,
   uploadConversationFile,
-} from "@/api/conversation"
+} from "@/api/chat"
 import { toast } from "sonner"
 
 async function uploadDraftFiles(

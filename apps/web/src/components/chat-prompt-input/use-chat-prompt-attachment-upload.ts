@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { PromptAttachmentFile } from "@workspace/ui/components/ai-elements/prompt-input"
 import { usePromptInputAttachments } from "@workspace/ui/components/ai-elements/prompt-input"
 import {
-  uploadConversationFile,
   deleteConversationUpload,
-} from "@/api/conversation"
+  uploadConversationFile,
+} from "@/api/chat"
 import type { ChatPromptMessageStatus, UploadFileState } from "./types"
 
 export function useChatPromptAttachmentUpload({

@@ -1,3 +1,9 @@
+/**
+ * UI 域聊天模型（camelCase、`Date`、含 contactId 等前端字段）。
+ * API 响应形状见 `ChatMessageDto` / `ConversationListItemDto`（`@/api/types`）；
+ * 转换见 `@/lib/chat/chat-mappers.ts`；对外请求入口见 `@/api/chat`。
+ * 消息列表渲染使用 AI SDK `UIMessage`，见 `mapStoredMessagesToUIMessages`。
+ */
 import type { MetadataSkill } from "@/api/types"
 
 export type MessageRole = "user" | "assistant"

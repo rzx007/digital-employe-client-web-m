@@ -192,9 +192,9 @@ export interface ConversationQuery {
 }
 
 /**
- * 会话列表项
+ * 会话列表项（API 响应，snake_case 时间字段）
  */
-export interface ConversationItem {
+export interface ConversationListItemDto {
   id: number
   workspace_id: number
   target_type: ChatTargetType
@@ -209,9 +209,9 @@ export interface ConversationItem {
 }
 
 /**
- * 聊天消息
+ * 聊天消息（API 响应）
  */
-export interface ChatMessage {
+export interface ChatMessageDto {
   id: string
   conversationId?: number
   senderId?: string

@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
-import { deleteConversation as deleteConversationApi } from "@/api/conversation"
 import {
   fetchEmployeeById,
   updateEmployee,
@@ -9,17 +8,16 @@ import {
 import { fetchGroupById } from "@/api/group"
 import {
   createConversation,
-  fetchContacts,
-  fetchConversationsByContactId,
-  fetchMessagesByConversationId,
-} from "@/api/chat"
-import {
-  fetchConversationResources,
-  fetchResourceContent,
-  fetchCuratorConversation,
+  deleteConversation as deleteConversationApi,
   deleteAllTaskExecutions,
+  fetchContacts,
+  fetchConversationResources,
+  fetchConversationsByContactId,
+  fetchCuratorConversation,
+  fetchMessagesByConversationId,
+  fetchResourceContent,
   uploadConversationFile,
-} from "@/api/conversation"
+} from "@/api/chat"
 import type { Contact, Conversation, Message } from "@/types/chat"
 import { chatKeys } from "@/lib/query-keys/chat"
 

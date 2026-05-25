@@ -7,7 +7,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { Input } from "@workspace/ui/components/input"
 import { toast } from "sonner"
-import { approveHitl, type HitlDecision } from "@/api/conversation"
+import { approveHitl, type HitlDecision } from "@/api/chat"
 import {
   isHitlAbortedOutput,
   type HitlPatchOptions,

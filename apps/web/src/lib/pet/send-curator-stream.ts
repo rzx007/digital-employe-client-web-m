@@ -1,4 +1,4 @@
-import { fetchCuratorConversation } from "@/api/conversation"
+import { fetchCuratorConversation } from "@/api/chat"
 import { request, getRequestHeaders } from "@/lib/request"
 
 async function drainResponseBody(

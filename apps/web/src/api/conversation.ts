@@ -1,8 +1,8 @@
 import { request } from "@/lib/request"
 import type {
   ApiResponse,
-  ChatMessage,
-  ConversationItem,
+  ChatMessageDto,
+  ConversationListItemDto,
   ConversationQuery,
   CreateConversationParams,
   ResourceContent,
@@ -18,7 +18,7 @@ const WORKSPACE_ID = 1
  * POST /workspaces/{workspace_id}/chat/conversations
  */
 export async function createConversation(params: CreateConversationParams) {
-  return request<ApiResponse<ConversationItem>>(
+  return request<ApiResponse<ConversationListItemDto>>(
     `/workspaces/${WORKSPACE_ID}/chat/conversations`,
     {
       method: "POST",
@@ -35,7 +35,7 @@ export async function fetchConversations(
   query?: ConversationQuery,
   opts?: { signal?: AbortSignal }
 ) {
-  return request<ApiResponse<ConversationItem[]>>(
+  return request<ApiResponse<ConversationListItemDto[]>>(
     `/workspaces/${WORKSPACE_ID}/chat/conversations`,
     {
       params: query,
@@ -52,7 +52,7 @@ export async function fetchConversationMessages(
   conversationId: number | string,
   opts?: { signal?: AbortSignal }
 ) {
-  return request<ApiResponse<ChatMessage[]>>(
+  return request<ApiResponse<ChatMessageDto[]>>(
     `/chat/conversations/${conversationId}/messages`,
     opts?.signal ? { signal: opts.signal } : undefined
   )
@@ -116,7 +116,7 @@ export async function fetchConversationResources(
 export async function fetchCuratorConversation(opts?: {
   signal?: AbortSignal
 }) {
-  return request<ApiResponse<ConversationItem>>(
+  return request<ApiResponse<ConversationListItemDto>>(
     `/workspaces/${WORKSPACE_ID}/chat/curator/conversation`,
     opts?.signal ? { signal: opts.signal } : undefined
   )

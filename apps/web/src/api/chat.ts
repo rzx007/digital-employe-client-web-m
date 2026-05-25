@@ -3,10 +3,28 @@ import { createDiceBearAvatar } from "@/lib/avatar"
 import { fetchEmployees } from "@/api/employee"
 import { createGroup as createGroupApi, fetchGroups } from "@/api/group"
 import {
-  fetchConversationMessages as fetchConversationMessagesApi,
-  fetchConversations as fetchConversationsApi,
+  approveHitl as approveHitlApi,
+  cancelConversationStream as cancelConversationStreamApi,
   createConversation as createConversationApi,
+  deleteAllTaskExecutions as deleteAllTaskExecutionsApi,
+  deleteConversation as deleteConversationApi,
+  deleteConversationUpload as deleteConversationUploadApi,
+  deleteResource as deleteResourceApi,
+  downloadResource as downloadResourceApi,
+  downloadResourceBlob as downloadResourceBlobApi,
+  fetchConversationMessages as fetchConversationMessagesApi,
+  fetchConversationResources as fetchConversationResourcesApi,
+  fetchConversations as fetchConversationsApi,
+  fetchCuratorConversation as fetchCuratorConversationApi,
+  fetchResourceContent as fetchResourceContentApi,
+  resetConversationStatus as resetConversationStatusApi,
+  uploadConversationFile as uploadConversationFileApi,
 } from "@/api/conversation"
+import {
+  mapChatMessageToMessage,
+  mapConversationListItemToConversation,
+  mapCreatedConversationListItem,
+} from "@/lib/chat/chat-mappers"
 import type {
   AIEmployee,
   Contact,
@@ -14,6 +32,24 @@ import type {
   CuratorProfile,
   Message,
 } from "@/types/chat"
+
+export type { HitlDecision } from "@/api/conversation"
+
+export {
+  approveHitlApi as approveHitl,
+  cancelConversationStreamApi as cancelConversationStream,
+  deleteAllTaskExecutionsApi as deleteAllTaskExecutions,
+  deleteConversationApi as deleteConversation,
+  deleteConversationUploadApi as deleteConversationUpload,
+  deleteResourceApi as deleteResource,
+  downloadResourceApi as downloadResource,
+  downloadResourceBlobApi as downloadResourceBlob,
+  fetchConversationResourcesApi as fetchConversationResources,
+  fetchCuratorConversationApi as fetchCuratorConversation,
+  fetchResourceContentApi as fetchResourceContent,
+  resetConversationStatusApi as resetConversationStatus,
+  uploadConversationFileApi as uploadConversationFile,
+}
 
 function mapStatus(status: number): AIEmployee["status"] {
   if (status === 1) return "online"
@@ -128,19 +164,9 @@ export async function fetchConversationsByContactId(
 
   const items = res?.data ?? []
 
-  return items.map((item) => ({
-    id: String(item.id),
-    title: item.title,
-    contactId,
-    status: (item.status as Conversation["status"]) ?? undefined,
-    lastMessage: item.lastMessage,
-    lastMessageTime: item.lastMessageTime
-      ? new Date(item.lastMessageTime)
-      : undefined,
-    lastMessageType: undefined,
-    unreadCount: item.unreadCount ?? 0,
-    updatedAt: new Date(item.updated_at),
-  }))
+  return items.map((item) =>
+    mapConversationListItemToConversation(item, contactId)
+  )
 }
 
 export async function fetchMessagesByConversationId(
@@ -150,27 +176,7 @@ export async function fetchMessagesByConversationId(
   const res = await fetchConversationMessagesApi(conversationId, opts)
   const items = res?.data ?? []
 
-  return items.map((msg) => ({
-    id: msg.id,
-    conversationId:
-      msg.conversationId != null
-        ? String(msg.conversationId)
-        : String(conversationId),
-    senderId: msg.senderId ?? (msg.role === "user" ? "user" : ""),
-    senderName: msg.senderName ?? (msg.role === "user" ? "我" : ""),
-    role: msg.role === "system" ? "assistant" : msg.role,
-    content: msg.content,
-    chunkJson: msg.chunk_json,
-    streamState: msg.stream_state,
-    streamCursor: msg.stream_cursor,
-    metadata: msg.extra_meta ?? undefined,
-    messageParts: msg.message_parts ?? undefined,
-    timestamp: msg.timestamp
-      ? new Date(msg.timestamp)
-      : msg.created_at
-        ? new Date(msg.created_at)
-        : new Date(),
-  }))
+  return items.map((msg) => mapChatMessageToMessage(msg, conversationId))
 }
 
 export async function createConversation(params: {
@@ -204,12 +210,5 @@ export async function createConversation(params: {
     throw new Error("创建会话失败")
   }
 
-  return {
-    id: String(item.id),
-    title: item.title,
-    contactId: params.contactId,
-    status: (item.status as Conversation["status"]) ?? undefined,
-    unreadCount: item.unreadCount ?? 0,
-    updatedAt: new Date(item.updated_at),
-  }
+  return mapCreatedConversationListItem(item, params.contactId)
 }

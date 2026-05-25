@@ -16,7 +16,7 @@ import { Switch } from "@workspace/ui/components/switch"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { cn } from "@workspace/ui/lib/utils"
 import { importLocalSkill, checkLocalSkillNameExists } from "@/api/skill"
-import { downloadResourceBlob, fetchResourceContent } from "@/api/conversation"
+import { downloadResourceBlob, fetchResourceContent } from "@/api/chat"
 
 type LoadState = "loading" | "loaded" | "error"
 

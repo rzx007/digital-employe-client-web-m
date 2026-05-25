@@ -38,7 +38,7 @@ import {
 import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { useChatStore } from "@/stores/chat-store"
 import { useAllTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
-import { cancelConversationStream } from "@/api/conversation"
+import { cancelConversationStream } from "@/api/chat"
 import { toast } from "sonner"
 import {
   AlertDialog,

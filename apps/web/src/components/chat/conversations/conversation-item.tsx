@@ -32,7 +32,7 @@ import { zhCN } from "date-fns/locale"
 import { useDeleteConversationMutation } from "@/hooks/use-chat-queries"
 import { useChatStore } from "@/stores/chat-store"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
-import { resetConversationStatus } from "@/api/conversation"
+import { resetConversationStatus } from "@/api/chat"
 import type { Conversation } from "@/types/chat"
 import { Spinner } from "@/components/spinner"
 

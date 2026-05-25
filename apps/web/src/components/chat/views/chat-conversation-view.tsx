@@ -29,7 +29,7 @@ import { ChatPanel } from "../panel/chat-panel"
 
 import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
 
-import { cancelConversationStream } from "@/api/conversation"
+import { cancelConversationStream } from "@/api/chat"
 
 import { toast } from "sonner"
 
