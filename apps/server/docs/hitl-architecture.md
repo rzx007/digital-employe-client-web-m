@@ -2,6 +2,8 @@
 
 本文描述数字员工客户端中 **澄清题 / 文档方案确认** 等人机协同（HITL）的端到端设计、数据流与关键代码位置。可恢复流（SSE buffer、resume）的通用机制见 [resumable-stream-architecture.md](./resumable-stream-architecture.md)。
 
+**手工测试场景**见 [hitl-test-scenarios.md](./hitl-test-scenarios.md)。
+
 ---
 
 ## 一、目标与范围
@@ -475,5 +477,6 @@ approve 后 **新行** 再次 `streaming → ...`，旧行保持 `interrupted`�
 | 2026-05-23 | 长文档写作：产物统一写入 `/artifacts/<doc-slug>/`（AGENTS.md、prompts、方案门 UI 占位） |
 | 2026-05-23 | §八.3：`DocumentPlanApprovedSummary` 展示已 approve 方案的 `output.text`；A/B/C 备选记入文档 |
 | 2026-05-23 | 废弃 `interrupt_payload`：pending 写入 `message_parts`；展示层 `hitl-display-enrich` 回填 input |
+| 2026-05-25 | 新增 [hitl-test-scenarios.md](./hitl-test-scenarios.md) 手工测试场景手册 |
 
 

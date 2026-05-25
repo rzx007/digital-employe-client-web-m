@@ -1,5 +1,8 @@
 import { cn } from "@workspace/ui/lib/utils"
-import { shouldShowMessageElapsed } from "../shared/chat-view-shared"
+import {
+  shouldShowMessageCopy,
+  shouldShowMessageElapsed,
+} from "../shared/chat-view-shared"
 import { MessageCopyAction } from "./message-copy-action"
 import { MessageElapsedLabel } from "./message-elapsed-label"
 
@@ -16,11 +19,14 @@ export function MessageAssistantActions({
   isTurnEnded?: boolean
   className?: string
 }) {
+  const showCopy = shouldShowMessageCopy(isLastAssistantMessage, isTurnEnded)
   const showElapsed = shouldShowMessageElapsed(
     elapsedMs,
     isLastAssistantMessage,
     isTurnEnded
   )
+
+  if (!showCopy && !showElapsed) return null
 
   return (
     <div
@@ -29,7 +35,7 @@ export function MessageAssistantActions({
         className
       )}
     >
-      <MessageCopyAction text={copyText} embedded />
+      {showCopy && <MessageCopyAction text={copyText} embedded />}
       {showElapsed && (
         <MessageElapsedLabel
           elapsedMs={elapsedMs}

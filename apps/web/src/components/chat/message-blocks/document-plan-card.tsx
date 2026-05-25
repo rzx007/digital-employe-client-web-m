@@ -95,12 +95,12 @@ function DocumentPlanCardInner({
   const openQuestions = parseOpenQuestions(data.open_questions)
   const plannedArtifacts = parsePlannedArtifacts(data.planned_artifacts)
   const isAborted = isHitlAbortedOutput(resultText ?? undefined)
+  const isInputStreaming =
+    state === "input-streaming" || state === "call"
+  const isGenerating =
+    !resolved && !isAborted && isInputStreaming
   const isPending =
-    !resolved &&
-    !isAborted &&
-    (state === "input-available" ||
-      state === "input-streaming" ||
-      state === "call")
+    !resolved && !isAborted && state === "input-available"
   const isConfirmed = !isAborted && state === "output-available"
 
   const submitDecisions = async (
@@ -120,6 +120,10 @@ function DocumentPlanCardInner({
     }
     if (isAborted) {
       toast.error("本轮已中止，请重新发送消息")
+      return
+    }
+    if (state !== "input-available") {
+      toast.error("方案大纲仍在生成，请稍候")
       return
     }
     if (submitting || resolved) return
@@ -224,7 +228,9 @@ function DocumentPlanCardInner({
               ? "文档方案已中止"
               : isConfirmed
                 ? "文档方案已确认"
-                : "长文档方案待确认"}
+                : isGenerating
+                  ? "大纲生成中…"
+                  : "长文档方案待确认"}
           </p>
           {mode === "view" && data.title && (
             <p className="mt-0.5 text-sm leading-snug font-medium">
@@ -232,6 +238,11 @@ function DocumentPlanCardInner({
             </p>
           )}
         </div>
+        {isGenerating && (
+          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            生成中
+          </span>
+        )}
         {isPending && (
           <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
             待确认

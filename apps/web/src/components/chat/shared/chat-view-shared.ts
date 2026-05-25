@@ -113,11 +113,26 @@ export function formatElapsedMs(ms: number): string {
   )
 }
 
+/** 当前轮 live 最后一泡：隐藏复制/耗时，等内容稳定后再展示 */
+export function shouldShowAssistantMessageActions(
+  isLastAssistantMessage: boolean,
+  isTurnEnded: boolean
+): boolean {
+  return !isLastAssistantMessage || isTurnEnded
+}
+
 export function shouldShowMessageElapsed(
   elapsedMs: number | null,
   isLastAssistantMessage: boolean,
   isTurnEnded: boolean
 ): boolean {
   if (elapsedMs == null) return false
-  return !isLastAssistantMessage || isTurnEnded
+  return shouldShowAssistantMessageActions(isLastAssistantMessage, isTurnEnded)
+}
+
+export function shouldShowMessageCopy(
+  isLastAssistantMessage: boolean,
+  isTurnEnded: boolean
+): boolean {
+  return shouldShowAssistantMessageActions(isLastAssistantMessage, isTurnEnded)
 }
