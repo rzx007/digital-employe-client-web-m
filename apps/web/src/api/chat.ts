@@ -1,5 +1,5 @@
 import type { ChatTargetType, Employee, Group as ApiGroup } from "@/api/types"
-import { createDiceBearAvatar } from "@/lib/avatar"
+import { createDiceBearAvatar, CURATOR_AVATAR_URL } from "@/lib/avatar"
 import { fetchEmployees } from "@/api/employee"
 import { createGroup as createGroupApi, fetchGroups } from "@/api/group"
 import {
@@ -105,7 +105,7 @@ export async function fetchContacts(signal?: AbortSignal): Promise<Contact[]> {
       id: String(emp.id),
       name: emp.name ?? emp.metadata?.employee_name ?? "",
       role: emp.description || "",
-      avatar: createDiceBearAvatar(String(emp.id)),
+      avatar: CURATOR_AVATAR_URL,
       status: emp.metadata?.status === 1 ? "online" : "offline",
       specialty: emp.metadata?.capability_desc ?? "",
     }

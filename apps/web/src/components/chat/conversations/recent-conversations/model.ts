@@ -1,4 +1,5 @@
 import { findContactInList } from "@/lib/chat/contact-utils"
+import { CURATOR_AVATAR_URL } from "@/lib/avatar"
 import type { Contact, Conversation } from "@/types/chat"
 import { MAX_RECENT, type RecentConversationItem } from "./types"
 
