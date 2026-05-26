@@ -58,6 +58,18 @@ pnpm build:app:offline:clean     # 额外清 build/server 后打包（Windows �
 - **在线版** (`pnpm build:app`)：安装后默认连接远程服务，需登录。
 - **离线版** (`pnpm build:app:offline`)：安装包内嵌 `.offline` 标记，安装后直接进入主界面，禁用远程集成（技能、MCP、绩效等），仅保留本地功能。
 
+## Linux ARM64 DEB 打包 (`build-deb.sh`)
+
+**须在 Apple Silicon（arm64）macOS 上运行**（Docker Desktop 交叉构建 Ubuntu ARM64 `.deb`）。Windows / Linux 宿主机请勿直接执行 `bash scripts/build-deb.sh`。
+
+```bash
+pnpm build:deb:arm64                  # 在线 deb（macOS arm64 终端）
+pnpm build:deb:arm64:offline          # 离线 deb（产物名带 Offline）
+pnpm build:deb:arm64:offline:clean    # 离线 + 额外清 build/server
+```
+
+详见 [`docs/build-deb-arm64.md`](../docs/build-deb-arm64.md)。
+
 #### 3. 参数说明
 
 - `--clean`: 额外清理 `build/server` 临时目录（`py-server` 每次打包前默认已清空）

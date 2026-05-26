@@ -193,6 +193,9 @@ $env:OFFLINE_MODE="1"; pnpm --filter digital-employee dev:app
 
 # 打包离线版安装包
 pnpm build:app:offline
+
+# Linux ARM64 离线 deb（须在 arm64 macOS + Docker 上运行）
+pnpm build:deb:arm64:offline
 ```
 
 架构入口文件：`apps/server/src/core/runtime_capabilities.py` 和 `apps/server/src/core/remote_gateway.py`。
