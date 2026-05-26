@@ -70,6 +70,9 @@ class DispatchOrderSyncService:
 
     @staticmethod
     async def _sync_once(db: Session) -> dict[str, int]:
+        from src.core.remote_gateway import RemoteGateway
+        RemoteGateway.ensure("dispatch_order_sync")
+        
         now = cst_now()
         remote_payload = await PerformanceBalanceService.get_remote_dispatch_orders(db)
         remote_orders = DispatchOrderSyncService._normalize_remote_orders(remote_payload)

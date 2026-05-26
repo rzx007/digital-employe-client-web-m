@@ -166,15 +166,31 @@ class TaskSchedulerService:
         scheduler = cls._get_scheduler()
         if not scheduler.running:
             return
-        scheduler.add_job(
-            cls.run_dispatch_order_sync_job,
-            trigger=CronTrigger.from_crontab("*/5 * * * *", timezone=CST),
-            id=cls._dispatch_order_sync_job_id,
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True,
-            misfire_grace_time=120,
-        )
+        
+        from src.core.runtime_capabilities import get_capabilities
+        caps = get_capabilities()
+        
+        SYSTEM_JOBS = [
+            (
+                "dispatch_order_sync",
+                cls.run_dispatch_order_sync_job,
+                "*/5 * * * *",
+                cls._dispatch_order_sync_job_id
+            )
+        ]
+        
+        for capability, fn, cron, job_id in SYSTEM_JOBS:
+            if not getattr(caps, capability, False):
+                continue
+            scheduler.add_job(
+                fn,
+                trigger=CronTrigger.from_crontab(cron, timezone=CST),
+                id=job_id,
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=120,
+            )
 
     @staticmethod
     def run_dispatch_order_sync_job() -> None:
@@ -326,6 +342,9 @@ class TaskSchedulerService:
 
     @classmethod
     def _execute_mcp_tool_call(cls, db: Session, task: EmployeeTask) -> dict[str, Any]:
+        from src.core.remote_gateway import RemoteGateway
+        RemoteGateway.ensure("mcp_task_execution")
+        
         settings = get_settings()
         base = (settings.mcp_base_url or "").strip().rstrip("/")
         if not base:

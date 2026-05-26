@@ -19,6 +19,7 @@ import sys
 import shutil
 import subprocess
 import argparse
+import time
 from pathlib import Path
 
 # 项目根目录
@@ -44,18 +45,34 @@ def parse_args():
     return parser.parse_args()
 
 
-def clean_build():
+def safe_rmtree(path: Path, *, retries: int = 5, delay_s: float = 0.5) -> None:
+    """Windows 上 PyInstaller 可能短暂占用 work 目录，重试删除。"""
+    if not path.exists():
+        return
+
+    last_error: OSError | None = None
+    for attempt in range(retries):
+        try:
+            shutil.rmtree(path)
+            return
+        except OSError as err:
+            last_error = err
+            if attempt < retries - 1:
+                time.sleep(delay_s * (attempt + 1))
+    if last_error is not None:
+        raise last_error
+
+
+def clean_build(*, output: bool = True, work: bool = True) -> None:
     """清理构建产物"""
     print("🧹 清理构建产物...")
 
-    # 清理输出目录
-    if OUTPUT_DIR.exists():
-        shutil.rmtree(OUTPUT_DIR)
+    if output and OUTPUT_DIR.exists():
+        safe_rmtree(OUTPUT_DIR)
         print(f"  已删除: {OUTPUT_DIR}")
 
-    # 清理构建目录
-    if BUILD_DIR.exists():
-        shutil.rmtree(BUILD_DIR)
+    if work and BUILD_DIR.exists():
+        safe_rmtree(BUILD_DIR)
         print(f"  已删除: {BUILD_DIR}")
 
     # 清理可能的 PyInstaller 临时文件
@@ -118,6 +135,12 @@ def install_dependencies():
 def run_pyinstaller():
     """运行 PyInstaller 打包"""
     print("🔨 运行 PyInstaller 打包...")
+
+    # 清理上次 PyInstaller work 目录，避免 WinError 32 文件占用
+    work_dir = BUILD_DIR / "work"
+    if work_dir.exists():
+        print(f"   清理临时工作目录: {work_dir}")
+        safe_rmtree(work_dir)
 
     # 确保输出目录存在
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -209,6 +232,12 @@ def run_pyinstaller():
     except subprocess.CalledProcessError as e:
         print(f"❌ PyInstaller 打包失败:")
         print(f"   错误: {e.stderr}")
+        if sys.platform == "win32" and "WinError 32" in (e.stderr or ""):
+            print()
+            print("💡 Windows 文件被占用，常见原因：")
+            print("   1. 仍有 dev:server / dev:app 或 backend.exe 在运行")
+            print("   2. 上次 PyInstaller 中断，work 目录未释放")
+            print("   建议：关闭相关进程后重试 pnpm build:app:offline:clean")
         return False
     except FileNotFoundError:
         print("❌ 错误: 未找到 uv 命令，请安装 uv (https://github.com/astral-sh/uv)")
@@ -247,6 +276,9 @@ def copy_additional_files():
 
 def main():
     """主函数"""
+    if sys.platform == "win32":
+        sys.stdout.reconfigure(encoding="utf-8")
+        
     args = parse_args()
 
     print("🚀 Python 后端打包脚本")
@@ -255,10 +287,9 @@ def main():
     print(f"   输出目录: {OUTPUT_DIR}")
     print()
 
-    # 清理模式
+    # 清理模式：先清再打包（不再仅清理后退出）
     if args.clean:
         clean_build()
-        return
 
     # 检查前置条件
     if not check_prerequisites():
@@ -283,7 +314,7 @@ def main():
 
     # 清理临时文件（除非调试模式）
     if not args.debug and BUILD_DIR.exists():
-        shutil.rmtree(BUILD_DIR)
+        safe_rmtree(BUILD_DIR)
         print("🧹 已清理临时文件")
 
     print()

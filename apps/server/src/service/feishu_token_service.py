@@ -9,6 +9,7 @@ import httpx
 from fastapi import HTTPException, status
 
 from src.core.config import get_settings
+from src.core.remote_gateway import RemoteGateway
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,8 @@ class FeishuTokenService:
 
         payload = {"app_id": app_id, "app_secret": app_secret}
         try:
-            response = httpx.post(
+            response = RemoteGateway.sync_post(
+                "feishu_platform",
                 settings.feishu_tenant_access_token_url,
                 json=payload,
                 timeout=settings.feishu_token_request_timeout,

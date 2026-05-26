@@ -4,6 +4,7 @@ from typing import Any
 import httpx
 
 from src.core.config import get_settings, join_base_and_path
+from src.core.remote_gateway import RemoteGateway
 from src.service.local_skill_service import LocalSkillService
 from src.utils.http_client import create_agent_interface_http_client
 
@@ -68,7 +69,10 @@ class AgentInterfaceService:
 
             timeout = settings.skill_remote_timeout
             async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.get(
+                response = await RemoteGateway.async_request(
+                    "remote_skills",
+                    client,
+                    "GET",
                     url,
                     params=params,
                     headers=self._headers(token),
@@ -202,7 +206,7 @@ class AgentInterfaceService:
                 return None
             timeout = settings.skill_remote_timeout
             async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.get(url, headers=self._headers(token))
+                response = await RemoteGateway.async_request("remote_skills", client, "GET", url, headers=self._headers(token))
                 response.raise_for_status()
                 payload = response.json()
                 if isinstance(payload, dict) and "data" in payload:
@@ -245,11 +249,7 @@ class AgentInterfaceService:
                 logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
                 return None
             async with create_agent_interface_http_client() as client:
-                response = await client.get(
-                    url,
-                    params={"id": skill_id},
-                    headers=self._headers(token),
-                )
+                response = await RemoteGateway.async_request("remote_skills", client, "GET", url, params={"id": skill_id}, headers=self._headers(token))
                 response.raise_for_status()
                 data = response.json()
                 if isinstance(data, dict) and "data" in data:
@@ -277,11 +277,7 @@ class AgentInterfaceService:
                 logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
                 return []
             async with create_agent_interface_http_client() as client:
-                response = await client.post(
-                    url,
-                    json=skill_ids,
-                    headers=self._headers(token),
-                )
+                response = await RemoteGateway.async_request("remote_skills", client, "POST", url, json=skill_ids, headers=self._headers(token))
                 response.raise_for_status()
                 data = response.json()
                 if isinstance(data, dict) and "data" in data:
@@ -304,7 +300,7 @@ class AgentInterfaceService:
                 logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
                 return []
             async with create_agent_interface_http_client() as client:
-                response = await client.get(url, headers=self._headers(token))
+                response = await RemoteGateway.async_request("remote_skills", client, "GET", url, headers=self._headers(token))
                 response.raise_for_status()
                 data = response.json()
                 if isinstance(data, dict) and "data" in data:
@@ -332,7 +328,7 @@ class AgentInterfaceService:
                 logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
                 return None
             async with create_agent_interface_http_client() as client:
-                response = await client.get(url, headers=self._headers(token))
+                response = await RemoteGateway.async_request("remote_skills", client, "GET", url, headers=self._headers(token))
                 response.raise_for_status()
                 return response.content
         except Exception as e:

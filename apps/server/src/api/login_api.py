@@ -2,9 +2,10 @@ import logging
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi import APIRouter, Body, HTTPException, Request, Depends
 
 from src.core.config import get_settings
+from src.core.deps import require_capability
 from src.db.session import get_session_local
 from src.schemas.login import LoginRequest, UpdatePasswordRequest
 from src.service.config_kv_service import ConfigKvService
@@ -41,7 +42,7 @@ def _extract_login_token(payload: dict[str, Any]) -> str:
     return ""
 
 
-@router.post("/login", summary="登录", response_model=dict[str, Any])
+@router.post("/login", summary="登录", response_model=dict[str, Any], dependencies=[Depends(require_capability("remote_login"))])
 def login(request: LoginRequest):
     """登录接口：将登录参数转发到配置的 URL，并返回登录结果。"""
     login_params = request.model_dump()
@@ -59,6 +60,8 @@ def login(request: LoginRequest):
         if token:
             try:
                 with get_session_local()() as db:
+                    from src.core.remote_gateway import RemoteGateway
+                    RemoteGateway.ensure("remote_model_sync")
                     ConfigKvService.sync_model_provider_from_remote(db, token=token)
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning("登录后同步模型服务商配置失败: %s", exc)
@@ -73,13 +76,13 @@ def login(request: LoginRequest):
         raise HTTPException(status_code=502, detail=f"登录响应格式错误：{exc}") from exc
 
 
-@router.post("/yc/login", summary="登录（/yc 路径，与 /login 相同）", response_model=dict[str, Any])
+@router.post("/yc/login", summary="登录（/yc 路径，与 /login 相同）", response_model=dict[str, Any], dependencies=[Depends(require_capability("remote_login"))])
 def login_yc_path(request: LoginRequest) -> dict[str, Any]:
     """兼容前端 POST /yc/login，转发逻辑与 POST /login 一致。"""
     return login(request)
 
 
-@router.post("/update-password", summary="更新用户密码", response_model=dict[str, Any])
+@router.post("/update-password", summary="更新用户密码", response_model=dict[str, Any], dependencies=[Depends(require_capability("remote_login"))])
 def update_password(request: UpdatePasswordRequest):
     """更新用户密码接口：将更新密码参数转发到配置的 URL，并返回更新密码结果。"""
     update_password_params = request.model_dump()
@@ -102,7 +105,7 @@ def update_password(request: UpdatePasswordRequest):
         raise HTTPException(status_code=502, detail=f"更新密码响应格式错误：{exc}") from exc
 
 
-@router.post("/yc/register", summary="用户注册（转发）", response_model=dict[str, Any])
+@router.post("/yc/register", summary="用户注册（转发）", response_model=dict[str, Any], dependencies=[Depends(require_capability("remote_login"))])
 def register_proxy(request: Request, body: dict[str, Any] = Body(...)):
     """将注册请求转发到 REMOTE_API_BASE_URL + REGISTER_PATH。"""
     register_url = (get_settings().register_url or "").strip()
@@ -128,7 +131,7 @@ def register_proxy(request: Request, body: dict[str, Any] = Body(...)):
         raise HTTPException(status_code=502, detail=f"注册响应格式错误：{exc}") from exc
 
 
-@router.get("/yc/getDeptTree", summary="部门树（转发）", response_model=dict[str, Any])
+@router.get("/yc/getDeptTree", summary="部门树（转发）", response_model=dict[str, Any], dependencies=[Depends(require_capability("remote_login"))])
 def get_dept_tree_proxy(request: Request):
     """将部门树请求转发到 REMOTE_API_BASE_URL + GET_DEPT_TREE_PATH。"""
     tree_url = (get_settings().get_dept_tree_url or "").strip()

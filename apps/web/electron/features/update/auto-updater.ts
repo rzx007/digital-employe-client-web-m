@@ -4,6 +4,7 @@ import type { ProgressInfo, UpdateInfo } from "electron-updater"
 import { createLogger } from "../../core/logger"
 import { getSetting } from "../settings/settings-store"
 import { getBackendPort } from "../backend/backend-process"
+import { isOfflineMode } from "../../core/runtime-env"
 
 const log = createLogger("update")
 
@@ -80,6 +81,10 @@ export function quitAndInstallUpdate(): void {
 }
 
 export function initAutoUpdater(): void {
+  if (isOfflineMode()) {
+    log.info("offline mode, skipping auto updater init")
+    return
+  }
   if (_updaterListenersRegistered) return
   _updaterListenersRegistered = true
 

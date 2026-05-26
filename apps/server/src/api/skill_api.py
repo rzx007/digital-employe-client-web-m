@@ -11,6 +11,7 @@ from fastapi import (
     Request,
     UploadFile,
     status,
+    Depends,
 )
 
 from src.core.request_utils import (
@@ -18,6 +19,8 @@ from src.core.request_utils import (
     get_username,
     get_workspace_id_from_request,
 )
+from src.core.runtime_capabilities import get_capabilities
+from src.core.deps import require_capability
 from src.db.session import get_session_local
 from src.models.response import ResponseBase
 from src.schemas.skill import (
@@ -78,7 +81,7 @@ def list_skills(
             )
         )
 
-    if local_only:
+    if local_only or not get_capabilities().remote_skills:
         return ResponseBase[list[SkillListItem]](data=local_data)
 
     token = request.headers.get("token")
@@ -93,14 +96,14 @@ def list_skills(
     return ResponseBase[list[SkillListItem]](data=remote_data + local_data)
 
 
-@router.get("/skills/{skill_id}", response_model=ResponseBase[SkillRead])
+@router.get("/skills/{skill_id}", response_model=ResponseBase[SkillRead], dependencies=[Depends(require_capability("remote_skills"))])
 def get_skill(skill_id: int, request: Request) -> ResponseBase[SkillRead]:
     token = request.headers.get("token")
     detail = SkillService.get_remote_skill(skill_id, token)
     return ResponseBase[SkillRead](data=SkillRead(**detail))
 
 
-@router.get("/skills/remote/directories", response_model=ResponseBase[Any])
+@router.get("/skills/remote/directories", response_model=ResponseBase[Any], dependencies=[Depends(require_capability("remote_skills"))])
 async def get_skill_directories(
     request: Request,
     flat: bool = Query(default=True),
@@ -178,6 +181,7 @@ async def import_local_skill_zip(
     "/skills/remote/{skill_id}/install",
     response_model=ResponseBase[LocalSkillImportResult],
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_capability("remote_skills"))]
 )
 async def install_remote_skill_to_local(
     skill_id: int,
@@ -263,7 +267,7 @@ def delete_workspace_local_skill(
     return ResponseBase[None](data=None)
 
 
-@router.post("/skills/local/{skill_name}/remote-import", response_model=ResponseBase[Any])
+@router.post("/skills/local/{skill_name}/remote-import", response_model=ResponseBase[Any], dependencies=[Depends(require_capability("remote_skills"))])
 async def remote_import_local_skill(
     skill_name: str,
     request: Request,

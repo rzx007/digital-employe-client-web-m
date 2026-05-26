@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 
+from src.core.deps import require_capability
 from src.models.response import ResponseBase
 from src.schemas.mcp import McpDetailRead, McpListItem
 from src.service.mcp_service import McpService
 
-router = APIRouter(tags=["MCP"])
+router = APIRouter(tags=["MCP"], dependencies=[Depends(require_capability("remote_mcp"))])
 
 
 @router.get("/mcp/list", response_model=ResponseBase[list[McpListItem]])

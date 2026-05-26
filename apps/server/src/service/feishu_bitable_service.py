@@ -7,6 +7,7 @@ import httpx
 from fastapi import HTTPException, status
 
 from src.core.config import get_settings
+from src.core.remote_gateway import RemoteGateway
 from src.service.feishu_token_service import FeishuTokenService
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,8 @@ class FeishuBitableService:
         # 打印url和参数
         logger.info("飞书多维表格查询url: %s, params: %s, body: %s, headers: %s", url, params, body, headers)
         try:
-            response = httpx.post(
+            response = RemoteGateway.sync_post(
+                "feishu_platform",
                 url,
                 params=params,
                 json=body,

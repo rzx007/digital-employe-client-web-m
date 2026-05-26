@@ -21,6 +21,7 @@ from src.schemas.task import (
     TodayTaskRead,
     ExecutionMetricsRead,
 )
+from src.service.employee_service import EmployeeService
 from src.service.workspace_service import WorkspaceService
 from src.service.task_scheduler_service import TaskSchedulerService
 from src.service.task_service import TaskService

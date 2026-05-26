@@ -4,6 +4,7 @@ import type { SkillListItem } from "@/api/types"
 import { RemoteSkillCard } from "./remote-skill-card"
 import { SKILLS_REMOTE_GRID_CLASS } from "./skill-grid"
 import { SkillsCardGridSkeleton } from "./skills-grid-skeleton"
+import { useCapability } from "@/lib/runtime/runtime-provider"
 
 export function RemoteSkillsSection({
   loading,
@@ -30,6 +31,9 @@ export function RemoteSkillsSection({
   onSelectSkill: (skill: SkillListItem) => void
   onInstall: (skill: SkillListItem) => void
 }) {
+  const canRemoteSkills = useCapability("remote_skills")
+  if (!canRemoteSkills) return null
+
   return (
     <section className="space-y-3">
       <h2 className="text-sm font-semibold text-foreground">

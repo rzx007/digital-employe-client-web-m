@@ -4,10 +4,11 @@ import json
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import HTMLResponse
 
 from src.core.config import get_settings
+from src.core.deps import require_capability
 from src.service.oauth.feishu import register_feishu, get_feishu_client
 
 router = APIRouter(prefix="/oauth", tags=["第三方登录"])
@@ -41,7 +42,7 @@ def _ensure_feishu_registered() -> None:
     register_feishu(settings.feishu_app_id, settings.feishu_app_secret, redirect_uri)
 
 
-@router.get("/{provider}/authorize")
+@router.get("/{provider}/authorize", dependencies=[Depends(require_capability("oauth"))])
 async def oauth_authorize(provider: str, request: Request):
     if provider != "feishu":
         raise HTTPException(status_code=400, detail=f"不支持的 OAuth provider: {provider}")
@@ -62,7 +63,7 @@ async def oauth_authorize(provider: str, request: Request):
     return {"url": authorization_url["url"]}
 
 
-@router.get("/{provider}/callback")
+@router.get("/{provider}/callback", dependencies=[Depends(require_capability("oauth"))])
 async def oauth_callback(provider: str, request: Request, code: str = "", state: str = ""):
     if provider != "feishu":
         raise HTTPException(status_code=400, detail=f"不支持的 OAuth provider: {provider}")

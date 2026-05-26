@@ -1,13 +1,14 @@
 from typing import Any, Dict, Optional
 from datetime import datetime
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 
+from src.core.deps import require_capability
 from src.models.response import ResponseBase
 from src.service.feishu_bitable_service import FeishuBitableService
 from src.service.feishu_token_service import FeishuTokenService
 
-router = APIRouter(tags=["飞书"])
+router = APIRouter(tags=["飞书"], dependencies=[Depends(require_capability("feishu_platform"))])
 
 
 @router.get("/feishu/token", summary="获取飞书 tenant_access_token")

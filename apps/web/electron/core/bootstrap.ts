@@ -17,6 +17,7 @@ import { WindowManager } from "./services/window-manager"
 import { allIpcContributions } from "../features"
 import { initExtensions } from "../features/extension/extension-loader"
 import { rootLogger } from "./logger"
+import { isOfflineMode } from "./runtime-env"
 
 export interface BootstrapOptions {
   mainDirname: string
@@ -62,8 +63,8 @@ export async function bootstrapApp(options: BootstrapOptions): Promise<void> {
     rootLogger.info("backend server ready")
     closeSplashWindow()
 
-    if (hasToken()) {
-      rootLogger.info("saved token found, skipping login")
+    if (isOfflineMode() || hasToken()) {
+      rootLogger.info("offline mode or saved token found, skipping login")
       await options.createMainWindow()
     } else {
       rootLogger.info("no saved token, opening login window")
@@ -77,7 +78,11 @@ export async function bootstrapApp(options: BootstrapOptions): Promise<void> {
     notifySplashBackendError(message)
     setTimeout(() => {
       closeSplashWindow()
-      createLoginWindow()
+      if (isOfflineMode() || hasToken()) {
+        options.createMainWindow()
+      } else {
+        createLoginWindow()
+      }
     }, 1500)
   }
 }

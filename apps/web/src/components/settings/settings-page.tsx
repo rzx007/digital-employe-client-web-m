@@ -10,16 +10,27 @@ import { ExtensionsSettings } from "./extensions-settings"
 import { SettingsSidebar } from "./settings-sidebar"
 import type { SettingsTab } from "./settings-types"
 import { ShortcutsSettings } from "./shortcuts-settings"
+import { useCapability } from "@/lib/runtime/runtime-provider"
 
 export function SettingsPage() {
   const { tab: tabFromSearch } = Route.useSearch()
+  const canAccount = useCapability("remote_login")
+  const defaultTab = canAccount ? "account" : "general"
   const [activeTab, setActiveTab] = React.useState<SettingsTab>(
-    tabFromSearch ?? "account"
+    tabFromSearch ?? defaultTab
   )
 
   React.useEffect(() => {
-    if (tabFromSearch) setActiveTab(tabFromSearch)
-  }, [tabFromSearch])
+    if (tabFromSearch) {
+      if (tabFromSearch === "account" && !canAccount) {
+        setActiveTab("general")
+      } else {
+        setActiveTab(tabFromSearch)
+      }
+    } else if (!canAccount && activeTab === "account") {
+      setActiveTab("general")
+    }
+  }, [tabFromSearch, canAccount, activeTab])
 
   return (
     <div className="flex h-svh w-screen bg-background">

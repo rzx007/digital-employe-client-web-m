@@ -180,6 +180,23 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 | `DBCHAT_BASE_URL`          | —                                                   | DB Chat 服务地址                                                                                 |
 | `LOGIN_URL`                | —                                                   | 登录页面地址                                                                                     |
 | `DEFAULT_WORKSPACE_ID`     | `1`                                                 | 默认工作空间 ID                                                                                  |
+| `OFFLINE_MODE`             | `0`                                                 | 设为 `1` 启用离线模式（跳过登录、禁用远程集成，保留本地聊天/技能与调度）                         |
+
+#### 离线模式（OFFLINE_MODE）
+
+离线模式下，应用将跳过登录、禁用远程平台集成（技能/MCP/绩效/派单/自动更新），保留本地聊天、本地/内置技能、本地员工 CRUD、本地任务调度与设置页手动 LLM 配置。
+
+```powershell
+# 开发（PowerShell）
+$env:OFFLINE_MODE="1"; pnpm dev:server
+$env:OFFLINE_MODE="1"; pnpm --filter digital-employee dev:app
+
+# 打包离线版安装包
+pnpm build:app:offline
+```
+
+架构入口文件：`apps/server/src/core/runtime_capabilities.py` 和 `apps/server/src/core/remote_gateway.py`。
+离线版最小 KV（配置在设置页或通过 `config-kv.init.json` 种子写入）：`LLM_REGISTRY`（或遗留的 `DEEPAGENT_MODEL`、`OPENAI_API_KEY`、`BASE_URL`）。
 
 ### 已知问题
 

@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query"
 import { fetchMonthlyBalance } from "@/api/performance"
+import { useCapability } from "@/lib/runtime/runtime-provider"
 
 export function useCurrentMonthPerformance() {
+  const canPerformance = useCapability("remote_performance")
   return useQuery({
     queryKey: ["performance", "monthly-balance"],
     queryFn: async ({ signal }) => {
@@ -9,5 +11,6 @@ export function useCurrentMonthPerformance() {
       return res.data ?? null
     },
     staleTime: 5 * 60_000,
+    enabled: canPerformance,
   })
 }

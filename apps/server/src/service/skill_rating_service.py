@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from src.core.config import get_settings, join_base_and_path
+from src.core.remote_gateway import RemoteGateway
 from src.models.employee import Employee
 from src.models.employee_skill import EmployeeSkill
 from src.models.skill_rating import SkillRating
@@ -104,7 +105,7 @@ class SkillRatingService:
             if not rating_url:
                 raise ValueError("未配置远程技能服务地址（REMOTE_API_BASE_URL）。")
             headers = {"token": f"{token}"}
-            httpx.post(rating_url, headers=headers, json={"score": payload.score})
+            RemoteGateway.sync_post("skill_rating_upload", rating_url, headers=headers, json={"score": payload.score})
         except (httpx.HTTPError, ValueError) as exc:
             logger.error("评分同步远程失败 skill_id=%s: %s", skill_id, exc, exc_info=True)
 

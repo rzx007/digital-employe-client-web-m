@@ -1,6 +1,7 @@
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { SETTINGS_TABS, type SettingsTab } from "./settings-types"
+import { useCapability } from "@/lib/runtime/runtime-provider"
 
 export function SettingsSidebar({
   activeTab,
@@ -9,10 +10,12 @@ export function SettingsSidebar({
   activeTab: SettingsTab
   onTabChange: (tab: SettingsTab) => void
 }) {
+  const canAccount = useCapability("remote_login")
+  const tabs = SETTINGS_TABS.filter((tab) => !tab.capability || (tab.capability === "remote_login" && canAccount))
   return (
     <div className="w-48 shrink-0 border-r bg-muted/50 p-4">
       <nav className="flex flex-col gap-1">
-        {SETTINGS_TABS.map((tab) => (
+        {tabs.map((tab) => (
           <Button
             key={tab.id}
             variant={activeTab === tab.id ? "secondary" : "ghost"}

@@ -1,5 +1,6 @@
 import { ofetch } from "ofetch"
 import { isElectron, withElectronApi } from "@/lib/electron/host"
+import { isOfflineModeFlag } from "@/lib/runtime/runtime-provider"
 
 const defaultHeaders: HeadersInit = {
   Accept: "application/json",
@@ -169,6 +170,7 @@ export const request = ofetch.create({
   async onRequestError() {},
   async onResponse() {},
   async onResponseError({ response }) {
+    if (isOfflineModeFlag) return
     const status = response?.status
     if (status === 401 || status === 403) {
       localStorage.removeItem("token")

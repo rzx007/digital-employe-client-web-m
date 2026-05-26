@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings, join_base_and_path
+from src.core.remote_gateway import RemoteGateway
 from src.models.config_kv import ConfigKv
 
 logger = logging.getLogger(__name__)
@@ -178,7 +179,8 @@ class ConfigKvService:
         # 发送HTTP请求获取远程配置
         try:
             headers = {"token": token or ""}
-            response = httpx.get(
+            response = RemoteGateway.sync_get(
+                "remote_model_sync",
                 url,
                 headers=headers,
                 timeout=settings.skill_remote_timeout,

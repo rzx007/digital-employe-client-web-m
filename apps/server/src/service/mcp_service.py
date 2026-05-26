@@ -7,6 +7,7 @@ import httpx
 from fastapi import HTTPException, status
 
 from src.core.config import get_settings
+from src.core.remote_gateway import RemoteGateway
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ class McpService:
         headers = {"token": token or ""}
         timeout = settings.skill_remote_timeout
         try:
-            response = httpx.get(url, headers=headers, timeout=timeout)
+            response = RemoteGateway.sync_get("remote_mcp", url, headers=headers, timeout=timeout)
             response.raise_for_status()
             payload = response.json()
         except httpx.TimeoutException as exc:

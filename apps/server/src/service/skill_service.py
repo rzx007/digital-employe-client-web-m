@@ -7,6 +7,7 @@ import httpx
 from fastapi import HTTPException, status
 
 from src.core.config import get_settings, join_base_and_path
+from src.core.remote_gateway import RemoteGateway
 from src.utils.http_client import (
     create_agent_interface_http_client,
     create_agent_interface_upload_http_client,
@@ -52,7 +53,7 @@ class SkillService:
             headers = {"token": f"{token}"}
             timeout = settings.skill_remote_timeout
 
-            response = httpx.get(url, headers=headers, timeout=timeout)
+            response = RemoteGateway.sync_get("remote_skills", url, headers=headers, timeout=timeout)
             response.raise_for_status()
             payload = SkillService._ensure_success_payload(response.json())
         except httpx.TimeoutException as exc:
@@ -167,7 +168,7 @@ class SkillService:
         params = {"flat": "true" if flat else "false"}
         try:
             async with create_agent_interface_http_client() as client:
-                response = await client.get(url, headers=headers, params=params)
+                response = await RemoteGateway.async_request("remote_skills", client, "GET", url, headers=headers, params=params)
                 response.raise_for_status()
                 payload = SkillService._ensure_success_payload(response.json())
                 return payload.get("data")
@@ -195,7 +196,7 @@ class SkillService:
         payload = {"skillName": skill_name}
         try:
             async with create_agent_interface_http_client() as client:
-                response = await client.post(url, headers=headers, json=payload)
+                response = await RemoteGateway.async_request("remote_skills", client, "POST", url, headers=headers, json=payload)
                 response.raise_for_status()
                 data = SkillService._ensure_success_payload(response.json()).get("data")
                 if not isinstance(data, dict):
@@ -244,7 +245,10 @@ class SkillService:
         }
         try:
             async with create_agent_interface_upload_http_client() as client:
-                response = await client.post(
+                response = await RemoteGateway.async_request(
+                    "remote_skills",
+                    client,
+                    "POST",
                     url,
                     headers=headers,
                     data=form_data,

@@ -36,6 +36,27 @@ python scripts/build-server.py [--clean] [--debug]
 python scripts/build-server.py --app
 ```
 
+## 离线版打包脚本 (`build-offline-app.py`)
+
+### 功能
+
+- 自动执行 `build-server.py` 打包后端
+- 在 `py-server` 目录写入 `.offline` 标记文件，确保 Electron 运行时识别为离线模式
+- 调用 `pnpm build:app:offline` 打包离线版 Electron 应用
+- 产物名称带有 `Offline` 后缀（如 `DigitalEmployee-Offline-Windows-Setup.exe`）
+
+### 使用方法
+
+```bash
+pnpm build:app:offline           # 正常打包离线版
+pnpm build:app:offline:clean     # 清理后打包离线版
+```
+
+### 区别
+
+- **在线版** (`pnpm build:app`)：安装后默认连接远程服务，需登录。
+- **离线版** (`pnpm build:app:offline`)：安装包内嵌 `.offline` 标记，安装后直接进入主界面，禁用远程集成（技能、MCP、绩效等），仅保留本地功能。
+
 #### 3. 参数说明
 
 - `--clean`: 清理之前的构建产物

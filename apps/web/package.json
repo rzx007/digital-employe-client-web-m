@@ -15,6 +15,7 @@
     "dev:app": "vite --mode electron",
     "build": "vite build",
     "build:app": "vite build --mode electron && electron-builder",
+    "build:app:offline": "vite build --mode electron && electron-builder --config electron-builder.offline.json5",
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",

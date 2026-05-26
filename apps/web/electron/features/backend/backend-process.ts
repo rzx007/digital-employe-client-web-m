@@ -6,6 +6,7 @@ import {
   startManagedProcess,
   type ManagedProcessHandle,
 } from "../../core/services/managed-process"
+import { isOfflineMode } from "../../core/runtime-env"
 
 const log = createLogger("backend")
 
@@ -109,12 +110,15 @@ export function startBackend(): Promise<void> {
     readyTimeoutMs: BACKEND_READY_TIMEOUT,
     logScope: "backend",
     detached: isDev ? false : undefined,
-    env: isDev
-      ? {
-          PYTHONUTF8: "1",
-          PYTHONIOENCODING: "utf-8",
-        }
-      : undefined,
+    env: {
+      ...(isDev
+        ? {
+            PYTHONUTF8: "1",
+            PYTHONIOENCODING: "utf-8",
+          }
+        : {}),
+      ...(isOfflineMode() ? { OFFLINE_MODE: "1" } : {}),
+    },
     onExit: (code, signal) => {
       log.info("process exit", { code, signal })
       resetBackendState()

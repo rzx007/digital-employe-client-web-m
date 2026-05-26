@@ -9,6 +9,8 @@ import {
   IconPlug,
 } from "@tabler/icons-react"
 
+import type { Capabilities } from "@/lib/runtime/runtime-types"
+
 export type SettingsTab =
   | "account"
   | "general"
@@ -24,8 +26,9 @@ export const SETTINGS_TABS: {
   id: SettingsTab
   label: string
   icon: React.ComponentType<{ className?: string }>
+  capability?: keyof Capabilities
 }[] = [
-  { id: "account", label: "账号与隐私", icon: IconUser },
+  { id: "account", label: "账号与隐私", icon: IconUser, capability: "remote_login" },
   { id: "general", label: "通用", icon: IconSettings },
   { id: "shortcuts", label: "快捷键", icon: IconKeyboard },
   { id: "models", label: "模型", icon: IconBrain },

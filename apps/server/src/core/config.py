@@ -34,6 +34,10 @@ def get_default_logs_dir() -> Path:
     return Path.home() / ".digital-employee" / "logs"
 
 
+def is_offline_mode() -> bool:
+    return os.getenv("OFFLINE_MODE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _resolve_path(path_value: str) -> Path:
     path = Path(os.path.expandvars(os.path.expanduser(path_value)))
     if not path.is_absolute():
@@ -61,6 +65,7 @@ def join_base_and_path(base_url: str | None, path: str | None) -> str | None:
 
 @dataclass(slots=True)
 class Settings:
+    offline_mode: bool
     default_workspace_root: str | None
     default_workspace_id: int
     default_workspace_name: str | None
@@ -309,6 +314,7 @@ def get_settings() -> Settings:
             llm_provider = inferred
 
     return Settings(
+        offline_mode=is_offline_mode(),
         default_workspace_root=_get_kv_value(kv_data, "DEFAULT_WORKSPACE_ROOT"),
         default_workspace_id=default_workspace_id,
         default_workspace_name=_get_kv_value(kv_data, "DEFAULT_WORKSPACE_NAME")
