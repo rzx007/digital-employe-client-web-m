@@ -25,7 +25,7 @@ export function getContactInfo(
     return {
       id: contact.curator!.id,
       name: contact.curator!.name,
-      avatar: contact.curator!.avatar,
+      avatar: CURATOR_AVATAR_URL,
       status: contact.curator!.status,
     }
   }
@@ -199,5 +199,7 @@ export function deriveRecentItems(
     )
   }
 
-  return items
+  return items.map((item) =>
+    item.isCurator ? { ...item, avatar: CURATOR_AVATAR_URL } : item,
+  )
 }

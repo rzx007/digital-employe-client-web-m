@@ -14,6 +14,7 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import { formatDistanceToNow } from "date-fns"
 import { zhCN } from "date-fns/locale"
+import { CURATOR_AVATAR_URL } from "@/lib/avatar"
 import { curatorUnreadKey } from "@/lib/constants"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import {
@@ -158,7 +159,7 @@ export function RecentConversationRow({
             ) : (
               <EmployeeContactAvatar
                 name={item.contactName}
-                avatar={item.avatar}
+                avatar={item.isCurator ? CURATOR_AVATAR_URL : item.avatar}
                 status={item.status as "online" | "busy" | "offline"}
                 showStatus
                 avatarClassName={collapsed ? "size-8" : undefined}
