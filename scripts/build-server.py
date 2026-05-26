@@ -9,7 +9,7 @@ Python 后端打包脚本
     python scripts/build-server.py [--clean] [--debug] [--app]
 
 参数:
-    --clean: 清理之前的构建产物
+    --clean: 额外清理 build/server 临时目录（py-server 每次打包前默认会清空）
     --debug: 启用调试模式，不删除临时文件
     --app: 打包 Python 后端后，再打包 Electron 应用
 """
@@ -35,7 +35,11 @@ BUILD_DIR = ROOT_DIR / "build" / "server"
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description="Python 后端打包脚本")
-    parser.add_argument("--clean", action="store_true", help="清理之前的构建产物")
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="额外清理 build/server 临时目录（py-server 每次打包前默认清空）",
+    )
     parser.add_argument(
         "--debug", action="store_true", help="启用调试模式，不删除临时文件"
     )
@@ -63,8 +67,8 @@ def safe_rmtree(path: Path, *, retries: int = 5, delay_s: float = 0.5) -> None:
         raise last_error
 
 
-def clean_build(*, output: bool = True, work: bool = True) -> None:
-    """清理构建产物"""
+def clean_build(*, output: bool = True, work: bool = False) -> None:
+    """清理构建产物。默认只清 py-server；--clean 时额外清 build/server。"""
     print("🧹 清理构建产物...")
 
     if output and OUTPUT_DIR.exists():
@@ -75,11 +79,11 @@ def clean_build(*, output: bool = True, work: bool = True) -> None:
         safe_rmtree(BUILD_DIR)
         print(f"  已删除: {BUILD_DIR}")
 
-    # 清理可能的 PyInstaller 临时文件
-    spec_file = SERVER_DIR / "backend.spec"
-    if spec_file.exists():
-        spec_file.unlink()
-        print(f"  已删除: {spec_file}")
+    # 清理可能的 PyInstaller 临时 spec（遗留路径）
+    for spec_file in (SERVER_DIR / "backend.spec", BUILD_DIR / "backend.spec"):
+        if spec_file.exists():
+            spec_file.unlink()
+            print(f"  已删除: {spec_file}")
 
     print("✅ 清理完成")
 
@@ -287,9 +291,8 @@ def main():
     print(f"   输出目录: {OUTPUT_DIR}")
     print()
 
-    # 清理模式：先清再打包（不再仅清理后退出）
-    if args.clean:
-        clean_build()
+    # 每次打包前清 py-server，避免 .offline 等残留污染在线/离线安装包
+    clean_build(output=True, work=args.clean)
 
     # 检查前置条件
     if not check_prerequisites():

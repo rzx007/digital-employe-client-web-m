@@ -21,7 +21,7 @@ OUTPUT_DIR = ROOT_DIR / "apps" / "web" / "py-server"
 
 def parse_args():
     parser = argparse.ArgumentParser(description="离线应用打包脚本")
-    parser.add_argument("--clean", action="store_true", help="清理之前的构建产物")
+    parser.add_argument("--clean", action="store_true", help="额外清理 build/server 临时目录")
     parser.add_argument("--debug", action="store_true", help="启用调试模式，不删除临时文件")
     return parser.parse_args()
 
