@@ -70,9 +70,6 @@ class Settings:
     local_skills_path: str
     artifacts_path: str
     remote_api_base_url: str | None
-    employee_zip_path: str | None
-    employee_zip_url: str | None
-    employee_tmp_dir: str
     deepagent_model: str | None
     model_max_input_tokens: int | None
     summarization_trigger_fraction: float
@@ -162,9 +159,6 @@ def _read_config_kv_data() -> dict[str, str]:
 def get_settings() -> Settings:
     kv_data = _read_config_kv_data()
     remote_api_base_url = _get_kv_value(kv_data, "REMOTE_API_BASE_URL")
-    employee_zip_path = (
-        _get_kv_value(kv_data, "EMPLOYEE_ZIP_PATH") or "/api/v1/employees/export"
-    )
     skill_remote_list_path = (
         _get_kv_value(kv_data, "SKILL_REMOTE_LIST_PATH")
         or _get_kv_value(kv_data, "SKILL_REMOTE_LIST_URL")
@@ -325,9 +319,6 @@ def get_settings() -> Settings:
         local_skills_path=resolve_configured_path(local_skills_path),
         artifacts_path=get_default_artifacts_path(),
         remote_api_base_url=remote_api_base_url,
-        employee_zip_path=employee_zip_path,
-        employee_zip_url=join_base_and_path(remote_api_base_url, employee_zip_path),
-        employee_tmp_dir=_get_kv_value(kv_data, "EMPLOYEE_TMP_DIR") or "./tmp/employees",
         deepagent_model=deepagent_model,
         model_max_input_tokens=model_max_input_tokens,
         summarization_trigger_fraction=summarization_trigger_fraction,

@@ -268,16 +268,6 @@ def list_catalog_available(registry: LlmRegistry) -> list[str]:
     return [p.id for p in list_providers() if p.id not in connected]
 
 
-def delete_legacy_keys(db: Session) -> int:
-    """Remove legacy four-key LLM config rows after one-time migration."""
-    from sqlalchemy import delete
-    from src.models.config_kv import ConfigKv
-    result = db.execute(delete(ConfigKv).where(ConfigKv.config_key.in_(LEGACY_KEYS)))
-    deleted = int(result.rowcount or 0)
-    if deleted > 0:
-        db.commit()
-    return deleted
-
 def set_active(
     db: Session, registry: LlmRegistry, provider_id: str, model_id: str
 ) -> LlmRegistry:

@@ -21,7 +21,6 @@ from src.schemas.task import (
     TodayTaskRead,
     ExecutionMetricsRead,
 )
-from src.service.employee_service import EmployeeService
 from src.service.workspace_service import WorkspaceService
 from src.service.task_scheduler_service import TaskSchedulerService
 from src.service.task_service import TaskService
@@ -105,11 +104,7 @@ def _to_task_read(task) -> EmployeeTaskRead:
 @router.get("/workspaces/{workspace_id}/tasks/sync", response_model=ResponseBase[TaskSyncResult])
 def sync_workspace_tasks(workspace_id: int, db: Session = Depends(get_db)) -> ResponseBase[TaskSyncResult]:
     """同步指定工作空间的员工任务，并刷新调度器作业。"""
-    # 根据workspace_id查询workspace
-    workspace = WorkspaceService.get_workspace(db, workspace_id)
-    # 获取员工
-    EmployeeService.sync_workspace_employees(db, workspace)
-    # 同步任务
+    WorkspaceService.get_workspace(db, workspace_id)
     tasks = TaskService.sync_workspace_tasks(db, workspace_id)
     TaskSchedulerService.reload_jobs()
     payload = TaskSyncResult(

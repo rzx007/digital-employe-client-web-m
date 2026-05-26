@@ -85,12 +85,6 @@ class EmployeeUpdate(EmployeeBase):
     tasks: Optional[List[SchedulingTaskCreateWithoutEmployee]] = None
 
 
-class EmployeeSyncResult(BaseModel):
-    workspace_id: int
-    synced_count: int
-    employees: list[EmployeeRead]
-
-
 class EmployeeCreate(EmployeeBase):
     """创建员工信息"""
 

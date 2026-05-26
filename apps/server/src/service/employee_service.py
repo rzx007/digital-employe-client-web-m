@@ -4,12 +4,9 @@ import json
 import logging
 import os
 import shutil
-import uuid
 from datetime import date
 from pathlib import Path
-from zipfile import ZipFile
 
-import httpx
 from fastapi import HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -38,13 +35,6 @@ _BUILTIN_SEED_EMPLOYEES: tuple[tuple[str, tuple[str, ...], str | None], ...] = (
 
 class EmployeeService:
     LONG_TERM_SHIFT_END_DATE = "9999-12-31"
-
-    @staticmethod
-    def _extract_shift_schedule(meta: dict) -> dict:
-        shift_schedule = meta.get("shift_schedule")
-        if isinstance(shift_schedule, dict):
-            return shift_schedule
-        return {}
 
     @staticmethod
     def _safe_skill_file_path(skill_dir: Path, relative_path: str) -> Path | None:
@@ -238,81 +228,6 @@ class EmployeeService:
         return data
 
     @staticmethod
-    def _download_zip(token: str | None = None) -> Path:
-        settings = get_settings()
-        if not settings.employee_zip_url:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                detail="未配置员工ZIP下载地址（REMOTE_API_BASE_URL + EMPLOYEE_ZIP_PATH）。")
-
-        tmp_dir = Path(settings.employee_tmp_dir)
-        if not tmp_dir.is_absolute():
-            tmp_dir = Path.cwd() / tmp_dir
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-
-        zip_path = tmp_dir / f"employees-{uuid.uuid4().hex}.zip"
-        headers = {"token": token or ""}
-        with httpx.stream(
-            "GET",
-            settings.employee_zip_url,
-            timeout=120.0,
-            headers=headers,
-        ) as resp:
-            resp.raise_for_status()
-            with zip_path.open("wb") as f:
-                for chunk in resp.iter_bytes():
-                    f.write(chunk)
-        return zip_path
-
-    @staticmethod
-    def _extract_zip(zip_path: Path, extract_dir: Path) -> Path:
-        if extract_dir.exists():
-            shutil.rmtree(extract_dir, ignore_errors=True)
-        extract_dir.mkdir(parents=True, exist_ok=True)
-        with ZipFile(zip_path, "r") as zip_file:
-            zip_file.extractall(extract_dir)
-        return extract_dir
-
-    @staticmethod
-    def _resolve_employee_dirs(extract_dir: Path) -> list[Path]:
-        level_one = [p for p in extract_dir.iterdir() if p.is_dir()]
-        if len(level_one) == 1:
-            candidate = level_one[0]
-            has_employee_payload = (
-                candidate / "skills").is_dir() or any(candidate.glob("*.json"))
-            if has_employee_payload:
-                return [candidate]
-            children = [p for p in candidate.iterdir() if p.is_dir()]
-            if children:
-                return children
-        return level_one
-
-    @staticmethod
-    def _flatten_wrapped_extract_dir(extract_dir: Path) -> Path:
-        level_one = [p for p in extract_dir.iterdir() if p.is_dir()]
-        if len(level_one) != 1:
-            return extract_dir
-
-        wrapper = level_one[0]
-        has_employee_payload = (
-            wrapper / "skills").is_dir() or any(wrapper.glob("*.json"))
-        if has_employee_payload:
-            return extract_dir
-
-        children = [p for p in wrapper.iterdir()]
-        if not children:
-            return extract_dir
-
-        for child in children:
-            shutil.move(str(child), extract_dir / child.name)
-        wrapper.rmdir()
-        logger.info(
-            "Flattened wrapped employee extract dir: wrapper=%s target=%s",
-            wrapper,
-            extract_dir,
-        )
-        return extract_dir
-
-    @staticmethod
     def _load_json_file(path: Path) -> dict:
         try:
             return json.loads(path.read_text(encoding="utf-8"))
@@ -378,32 +293,6 @@ class EmployeeService:
                     continue
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(content, encoding="utf-8")
-
-    @staticmethod
-    def _extract_employee_payload(employee_dir: Path) -> tuple[dict, list[dict]]:
-        meta: dict = {}
-        json_files = sorted(employee_dir.glob("*.json"))
-        if json_files:
-            priority_names = {"meta.json", "employee.json", "info.json"}
-            meta_file = next(
-                (p for p in json_files if p.name.lower() in priority_names), json_files[0])
-            meta = EmployeeService._load_json_file(meta_file)
-
-        skills_dir = employee_dir / "skills"
-        if not skills_dir.exists():
-            candidates = [p for p in employee_dir.rglob(
-                "*") if p.is_dir() and "skill" in p.name.lower()]
-            if candidates:
-                skills_dir = candidates[0]
-
-        skills: list[dict] = []
-        if skills_dir.exists():
-            skills.append({"skills_dir": str(skills_dir)})
-        return meta, skills
-
-    @staticmethod
-    def _write_skills(skills: list[dict]) -> list[dict]:
-        return skills
 
     @staticmethod
     def _load_employee_meta(employee: Employee) -> dict:
@@ -766,81 +655,6 @@ class EmployeeService:
         if shift_schedule.notes is not None:
             payload["notes"] = shift_schedule.notes
         return payload
-
-    @staticmethod
-    def sync_workspace_employees(
-        db: Session,
-        workspace: Workspace,
-        token: str | None = None,
-    ) -> list[Employee]:
-        zip_path: Path | None = None
-        extract_dir: Path | None = None
-        should_cleanup_zip = False
-        try:
-            zip_path = EmployeeService._download_zip(token=token)
-            should_cleanup_zip = True
-            if not zip_path.exists():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"从远程接口未找到员工ZIP文件：{zip_path}",
-                )
-            extract_dir = EmployeeService._resolve_local_employees_root()
-            extract_dir.parent.mkdir(parents=True, exist_ok=True)
-            extract_dir = EmployeeService._extract_zip(zip_path, extract_dir)
-            extract_dir = EmployeeService._flatten_wrapped_extract_dir(
-                extract_dir)
-            employee_dirs = EmployeeService._resolve_employee_dirs(extract_dir)
-
-            synced: list[Employee] = []
-            for employee_dir in employee_dirs:
-                employee_code = employee_dir.name
-                meta, skills_paths = EmployeeService._extract_employee_payload(
-                    employee_dir)
-                skills = EmployeeService._write_skills(skills_paths)
-
-                existing = db.scalar(
-                    select(Employee).where(
-                        Employee.workspace_id == workspace.id,
-                        Employee.employee_code == employee_code,
-                    )
-                )
-
-                if existing:
-                    employee = existing
-                else:
-                    employee = Employee(
-                        workspace_id=workspace.id, employee_code=employee_code)
-                    db.add(employee)
-
-                employee.name = str(meta.get("name") or meta.get(
-                    "employee_name") or employee_code)
-                employee.description = (
-                    meta.get("description")
-                    or meta.get("skill_description")
-                    or meta.get("skillDescription")
-                    or meta.get("skills_description")
-                    or meta.get("技能描述")
-                    or meta.get("描述")
-                    or None
-                )
-                employee.version = str(meta.get("version") or "")
-                employee.skills_json = json.dumps(skills, ensure_ascii=False)
-                employee.meta_json = json.dumps(meta, ensure_ascii=False)
-                employee.shift_schedule_json = json.dumps(
-                    EmployeeService._extract_shift_schedule(meta), ensure_ascii=False)
-                synced.append(employee)
-
-            db.commit()
-            for employee in synced:
-                db.refresh(employee)
-            return synced
-        except httpx.HTTPError as exc:
-            logger.error("同步员工 ZIP 下载失败: %s", exc, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY, detail=f"获取员工ZIP失败：{exc}") from exc
-        finally:
-            if should_cleanup_zip and zip_path and zip_path.exists():
-                zip_path.unlink(missing_ok=True)
 
     @staticmethod
     def list_employees(db: Session, workspace_id: int) -> list[Employee]:

@@ -134,6 +134,7 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 
 ### 多供应商 LLM（`src/llm/`）
 
+- 迁移与兼容逻辑总览：[`apps/server/docs/compatibility-inventory.md`](apps/server/docs/compatibility-inventory.md)（含四键 → `LLM_REGISTRY` 待移除清单）
 - `src/llm/registry.py`：`LLM_REGISTRY` JSON（多家供应商凭证 + 模型清单）；全局仅一对 `active_provider_id` / `active_model_id`；设置页 Radio 单选激活
 - `src/llm/providers/catalog.py`：静态供应商目录（DashScope、DeepSeek 官方、OpenAI、Moonshot、智谱、SiliconFlow + custom）
 - `src/llm/factory.py`：`build_chat_model()` 合并 KV 配置并应用上下文 profile
@@ -158,8 +159,9 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 ### 任务调度
 
 - `TaskSchedulerService`：APScheduler BackgroundScheduler，CST 时区
-- 只保留 `dispatch_type == "skill"` 的任务
-- `EmployeeTask` 来自员工 `meta_json.tasks`，通过 `TaskService.sync_workspace_tasks()` 同步
+- 只调度 `dispatch_type` 为 `skill` 或 `mcp` 的活跃任务
+- `employee_tasks` 表是任务唯一数据源；创建/编辑员工时通过 `TaskService.upsert_employee_tasks()` 写入
+- `GET /workspaces/{id}/tasks/sync` 仅重算活跃任务的 `next_run_at` 并调用 `TaskSchedulerService.reload_jobs()`
 - 支持确认流程：从 SKILL.md 解析 `confirm_url`，执行后写入 `TaskExecutionLog.confirm_url`
 - 修改员工任务后需调用 `TaskSchedulerService.reload_jobs()` 刷新调度
 
@@ -178,7 +180,6 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 | `DBCHAT_BASE_URL`          | —                                                   | DB Chat 服务地址                                                                                 |
 | `LOGIN_URL`                | —                                                   | 登录页面地址                                                                                     |
 | `DEFAULT_WORKSPACE_ID`     | `1`                                                 | 默认工作空间 ID                                                                                  |
-| `EMPLOYEE_ZIP_URL`         | —                                                   | 远程员工 ZIP 下载地址                                                                            |
 
 ### 已知问题
 

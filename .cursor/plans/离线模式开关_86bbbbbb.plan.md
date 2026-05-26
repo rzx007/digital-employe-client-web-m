@@ -102,7 +102,6 @@ def is_offline_mode() -> bool:
 | 技能列表 API | [`skill_api.py`](apps/server/src/api/skill_api.py) | offline 时等同 `localOnly=true`；远程 install/detail 503 |
 | Agent Interface | [`agent_interface_service.py`](apps/server/src/service/agent_interface_service.py) | 返回空 |
 | MCP 远程 | [`mcp_service.py`](apps/server/src/service/mcp_service.py) | 返回 `[]` |
-| 员工 ZIP | [`employee_service.py`](apps/server/src/service/employee_service.py) + [`employee_api.py`](apps/server/src/api/employee_api.py) sync 端点 | 503 |
 | 技能评分远程回传 | [`skill_rating_service.py`](apps/server/src/service/skill_rating_service.py) | 跳过 httpx.post（本地评分仍写入 DB） |
 | OAuth | [`oauth_api.py`](apps/server/src/api/oauth_api.py) | 503 |
 | MCP 任务执行 | [`task_scheduler_service.py`](apps/server/src/service/task_scheduler_service.py) `_execute_mcp_tool_call` | offline 时标记失败并 log（避免静默挂起） |

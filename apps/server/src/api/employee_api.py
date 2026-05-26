@@ -15,7 +15,7 @@ from src.core.request_utils import (
 )
 from src.db.session import get_db
 from src.models.response import BaseResponse, ListResponse, ResponseBase
-from src.schemas.employee import EmployeeCreate, EmployeeGenerationRequest, EmployeeOut, EmployeeRead, EmployeeSyncResult, EmployeeUpdate
+from src.schemas.employee import EmployeeCreate, EmployeeGenerationRequest, EmployeeOut, EmployeeRead, EmployeeUpdate
 from src.service.employee_service import EmployeeService
 from src.service.workspace_service import WorkspaceService
 
@@ -41,25 +41,6 @@ def _skill_for_recruit_response(detail: dict) -> dict:
 
 
 router = APIRouter(tags=["员工"])
-
-
-@router.get("/workspaces/{workspace_id}/employees/sync", response_model=ResponseBase[EmployeeSyncResult])
-def sync_workspace_employees(
-    workspace_id: int,
-    request: Request,
-    db: Session = Depends(get_db),
-) -> ResponseBase[EmployeeSyncResult]:
-    """同步指定工作空间的员工数据。"""
-    workspace = WorkspaceService.get_workspace(db, workspace_id)
-    token = request.headers.get("token")
-    employees = EmployeeService.sync_workspace_employees(db, workspace, token=token)
-    employee_items = [EmployeeService.employee_detail_dict(db, emp) for emp in employees]
-    payload = EmployeeSyncResult(
-        workspace_id=workspace_id,
-        synced_count=len(employee_items),
-        employees=employee_items,
-    )
-    return ResponseBase(data=payload)
 
 
 @router.get("/workspaces/{workspace_id}/employees", response_model=ListResponse[EmployeeRead])

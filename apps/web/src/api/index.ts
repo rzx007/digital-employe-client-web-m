@@ -7,7 +7,6 @@ export * from "./types"
 
 // 员工管理
 export {
-  syncEmployees,
   fetchEmployees,
   fetchEmployeeById,
   deleteEmployee,

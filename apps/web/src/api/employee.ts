@@ -33,16 +33,6 @@ export async function fetchSkillList(opts?: {
 }
 
 /**
- * 导入员工列表并解析
- * GET /workspaces/{workspace_id}/employees/sync
- */
-export async function syncEmployees() {
-  return request<ApiResponse<null>>(
-    `/workspaces/${WORKSPACE_ID}/employees/sync`
-  )
-}
-
-/**
  * 查询员工列表
  * GET /workspaces/{workspace_id}/employees
  */

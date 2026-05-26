@@ -185,10 +185,10 @@ description: 数字员工客户端用户使用手册。当用户询问如何使�
 
 ### 定时任务
 
-员工 `meta_json.tasks` 中定义的定时任务会通过 `TaskService.sync_workspace_tasks()` 同步到调度器。
+定时任务存储在 `employee_tasks` 表（唯一数据源）。创建/编辑员工时通过 `TaskService.upsert_employee_tasks()` 写入；`GET /workspaces/{id}/tasks/sync` 重算 `next_run_at` 并刷新 APScheduler。
 
 - 调度器运行在后台（APScheduler BackgroundScheduler，CST 时区）
-- 仅执行 `dispatch_type == "skill"` 的任务
+- 执行 `dispatch_type` 为 `skill` 或 `mcp` 的活跃任务
 - 支持**确认流程**：从 SKILL.md 解析 `confirm_url`，执行后写入确认记录
 - 修改员工任务后需等待调度器 reload（或手动触发）
 
