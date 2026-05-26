@@ -34,7 +34,7 @@ class ModelService:
         )
         if not settings.api_key and not model_params.get("api_key"):
             if (settings.llm_provider or "custom") != "custom":
-                logger.error("未配置 OPENAI_API_KEY，无法调用模型。")
+                logger.error("未配置 LLM API Key，无法调用模型。")
                 return None
 
         try:

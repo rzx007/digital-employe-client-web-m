@@ -14,7 +14,7 @@
 | --- | --- |
 | 前端 | `pnpm dev` 或 `pnpm --filter digital-employee dev:app` |
 | 后端 | `pnpm dev:server` 或 `apps/server` 下 `uv run python start.py` |
-| LLM | `.env` 中 `OPENAI_API_KEY` / `BASE_URL` / `DEEPAGENT_MODEL` 可用 |
+| LLM | 设置页已接入供应商且存在 active 模型（`LLM_REGISTRY`） |
 | 员工技能 | 被测员工需具备 **长文档写作** 类技能（会触发 `submit_clarifying_questions`、`submit_document_plan`） |
 
 ### 1.2 推荐触发语

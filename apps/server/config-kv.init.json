@@ -1,10 +1,7 @@
 {
   "REMOTE_API_BASE_URL": "http://192.168.2.78:5002",
-  "DEEPAGENT_MODEL": "deepseek-v4-flash",
+  "LLM_REGISTRY": "{\"active_provider_id\":\"dashscope\",\"active_model_id\":\"deepseek-v4-flash\",\"providers\":[{\"id\":\"dashscope\",\"source\":\"builtin\",\"display_name\":\"阿里云 DashScope\",\"base_url\":\"https://dashscope.aliyuncs.com/compatible-mode/v1\",\"api_key\":\"sk-f9441c2d00d140989c1669cb245da166\",\"models\":[{\"id\":\"deepseek-v4-flash\",\"display_name\":null},{\"id\":\"deepseek-v4-pro\",\"display_name\":null},{\"id\":\"qwen2.5-72b-instruct\",\"display_name\":null},{\"id\":\"qwen3.7-max\",\"display_name\":null},{\"id\":\"qwen3.6-plus\",\"display_name\":null},{\"id\":\"kimi-k2.6\",\"display_name\":null}]}]}",
   "CHAT_HISTORY_MAX_MESSAGES": "30",
-  "OPENAI_API_KEY": "sk-f9441c2d00d140989c1669cb245da166",
-  "BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-  "LLM_PROVIDER": "dashscope",
   "DEFAULT_WORKSPACE_ROOT": "./workspaces",
   "DEFAULT_WORKSPACE_ID": "1",
   "DEFAULT_WORKSPACE_NAME": "默认的工作空间",

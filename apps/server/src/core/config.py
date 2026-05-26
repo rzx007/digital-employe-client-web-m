@@ -299,8 +299,14 @@ def get_settings() -> Settings:
     if feishu_token_request_timeout <= 0:
         feishu_token_request_timeout = 10.0
 
-    base_url = _get_kv_value(kv_data, "BASE_URL")
-    llm_provider = _get_kv_value(kv_data, "LLM_PROVIDER")
+    from src.llm.registry import resolve_active_from_kv
+
+    reg_key, reg_url, reg_model, reg_provider = resolve_active_from_kv(kv_data)
+
+    base_url = reg_url
+    api_key = reg_key
+    deepagent_model = reg_model
+    llm_provider = reg_provider
     if not llm_provider and base_url:
         from src.llm.providers import resolve_provider_id
 
@@ -322,12 +328,12 @@ def get_settings() -> Settings:
         employee_zip_path=employee_zip_path,
         employee_zip_url=join_base_and_path(remote_api_base_url, employee_zip_path),
         employee_tmp_dir=_get_kv_value(kv_data, "EMPLOYEE_TMP_DIR") or "./tmp/employees",
-        deepagent_model=_get_kv_value(kv_data, "DEEPAGENT_MODEL"),
+        deepagent_model=deepagent_model,
         model_max_input_tokens=model_max_input_tokens,
         summarization_trigger_fraction=summarization_trigger_fraction,
         summarization_keep_fraction=summarization_keep_fraction,
         chat_history_max_messages=chat_history_max_messages,
-        api_key=_get_kv_value(kv_data, "OPENAI_API_KEY"),
+        api_key=api_key,
         base_url=base_url,
         llm_provider=llm_provider,
         skill_remote_base_url=remote_api_base_url,

@@ -35,9 +35,28 @@ def create_app() -> FastAPI:
         # 离线 IO 密集型初始化到线程池，避免阻塞事件循环导致前端请求挂起
         def _startup_db_init():
             init_db()
-            from src.service import model_patch
+            with get_session_local()() as db:
+                workspace = WorkspaceService.ensure_default_workspace(db)
+                inserted = ConfigKvService.bootstrap_from_json(db)
+                if inserted > 0:
+                    logger.info(
+                        "Initialized config_kvs from seed file (insert-only): inserted=%s",
+                        inserted,
+                    )
+                from src.llm.registry import load_registry
 
-            model_patch.apply_if_needed(get_settings())
+                load_registry(db)
+                get_settings.cache_clear()
+                from src.service import model_patch
+
+                model_patch.apply_if_needed(get_settings())
+                LocalSkillService.seed_builtin_skills()
+                from src.service.stream_registry import cleanup_zombie_executions
+
+                cleaned = cleanup_zombie_executions(db)
+                if cleaned > 0:
+                    logger.info("Cleaned %d zombie task executions", cleaned)
+                WorkspaceService.ensure_workspace_initialized(db, workspace)
 
         await loop.run_in_executor(None, _startup_db_init)
 
@@ -76,25 +95,6 @@ def create_app() -> FastAPI:
         sqlite_path.parent.mkdir(parents=True, exist_ok=True)
 
         await loop.run_in_executor(None, EmployeeService.migrate_local_employees_to_skill_path)
-
-        def _startup_data_init():
-            with get_session_local()() as db:
-                workspace = WorkspaceService.ensure_default_workspace(db)
-                inserted = ConfigKvService.bootstrap_from_json(db)
-                if inserted > 0:
-                    logger.info(
-                        "Initialized config_kvs from seed file (insert-only): inserted=%s",
-                        inserted,
-                    )
-                LocalSkillService.seed_builtin_skills()
-                # 清理僵尸运行状态（上次进程崩溃遗留）
-                from src.service.stream_registry import cleanup_zombie_executions
-                cleaned = cleanup_zombie_executions(db)
-                if cleaned > 0:
-                    logger.info("Cleaned %d zombie task executions", cleaned)
-                WorkspaceService.ensure_workspace_initialized(db, workspace)
-
-        await loop.run_in_executor(None, _startup_data_init)
 
         # LangGraph checkpointer：须在 SQLAlchemy 启动期写入结束后再连接，避免双连接抢锁
         # （sqlite3.OperationalError: database is locked）

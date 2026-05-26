@@ -174,9 +174,7 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 
 | 关键变量 | 默认值 | 说明 |
 |---------|--------|------|
-| `OPENAI_API_KEY` | — | LLM API Key |
-| `BASE_URL` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | LLM API 地址 |
-| `DEEPAGENT_MODEL` | `deepseek-v4-flash` | Agent 模型 |
+| `LLM_REGISTRY` | — | 多供应商 LLM 注册表 JSON（设置页管理 active 模型与 API Key） |
 | `SQLITE_PATH` | `~/.digital-employee/data/app.db` | 数据库路径 |
 | `SERVER_PORT` | `34567` | 服务端口 |
 
@@ -197,7 +195,7 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 
 ### LLM 配置
 
-通过 `config_kvs` 表配置：`OPENAI_API_KEY`、`BASE_URL`、`DEEPAGENT_MODEL`。默认使用 DashScope（阿里云通义）兼容接口。
+通过 `config_kvs` 表的 `LLM_REGISTRY` 配置（设置页管理已接入供应商与当前 active 模型）。默认种子为 DashScope + `deepseek-v4-flash`。
 
 ## 六、技能系统
 

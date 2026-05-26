@@ -149,7 +149,21 @@ class ConfigKvService:
 
     @staticmethod
     def sync_model_provider_from_remote(db: Session, token: str | None = None) -> bool:
-        """从远程拉取模型服务商配置并覆盖本地关键配置。"""
+        """从远程拉取模型服务商配置并覆盖本地关键配置。
+        
+        该函数从远程API获取模型服务商的配置信息（包括模型名称、API密钥和API地址），
+        并将其同步到本地的LLM注册表中，设置为激活状态。
+        
+        Args:
+            db: 数据库会话对象，用于更新本地模型注册表
+            token: 可选的认证令牌，用于访问远程API
+            
+        Returns:
+            bool: 同步是否成功
+                - True: 成功从远程获取配置并更新到本地注册表
+                - False: 同步失败（URL未配置、网络错误、响应格式错误、缺少必要字段等）
+        """
+        # 构建远程API URL
         settings = get_settings()
         url = join_base_and_path(
             settings.remote_api_base_url,
@@ -161,6 +175,7 @@ class ConfigKvService:
             )
             return False
 
+        # 发送HTTP请求获取远程配置
         try:
             headers = {"token": token or ""}
             response = httpx.get(
@@ -174,6 +189,7 @@ class ConfigKvService:
             logger.warning("Failed to fetch remote model provider config: %s", exc)
             return False
 
+        # 验证响应格式和业务状态码
         if not isinstance(payload, dict):
             logger.warning("Remote model provider response is not a JSON object")
             return False
@@ -187,6 +203,7 @@ class ConfigKvService:
             )
             return False
 
+        # 提取并验证必要的配置字段
         data = payload.get("data")
         if not isinstance(data, dict):
             logger.warning("Remote model provider data is invalid: %r", data)
@@ -201,37 +218,18 @@ class ConfigKvService:
             )
             return False
 
-        updates = {
-            "DEEPAGENT_MODEL": model_name,
-            "OPENAI_API_KEY": api_key,
-            "BASE_URL": api_url,
-        }
-        from src.llm.providers import resolve_provider_id
+        # 将配置同步到本地LLM注册表
+        from src.llm.registry_service import upsert_from_remote_sync
 
-        inferred_provider = resolve_provider_id(api_url)
-        if inferred_provider != "custom":
-            updates["LLM_PROVIDER"] = inferred_provider
-
-        changed = 0
-        for key, value in updates.items():
-            row = db.scalar(select(ConfigKv).where(ConfigKv.config_key == key))
-            if row is None:
-                db.add(ConfigKv(config_key=key, config_value=value))
-                changed += 1
-                continue
-            if row.config_value != value:
-                row.config_value = value
-                changed += 1
-
-        if changed > 0:
-            db.commit()
-            ConfigKvService._refresh_settings_cache()
-            logger.info(
-                "Synced model provider config from remote: changed=%s model=%s",
-                changed,
-                model_name,
-            )
-            return True
-
-        logger.info("Remote model provider config unchanged: model=%s", model_name)
-        return False
+        upsert_from_remote_sync(
+            db,
+            model_name=model_name,
+            api_key=api_key,
+            api_url=api_url,
+            set_as_active=True,
+        )
+        logger.info(
+            "Synced model provider config from remote into registry: model=%s",
+            model_name,
+        )
+        return True
