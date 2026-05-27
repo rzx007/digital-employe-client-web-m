@@ -119,6 +119,12 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
     }
   }, [apiContacts, setContacts])
 
+  // 当联系人列表发生变化时，重新获取联系人列表
+  useEffect(() => {
+    if (activeTab !== "contacts") return
+    void queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
+  }, [activeTab, queryClient])
+
   useEffect(() => {
     const api = getElectronApi()
     if (!api?.onInvalidateContacts) return
