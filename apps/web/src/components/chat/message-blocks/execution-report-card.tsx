@@ -1,14 +1,14 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "@tanstack/react-query"
 import { IconExternalLink } from "@tabler/icons-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { MessageResponse } from "@workspace/ui/components/ai-elements/message"
 import { cn } from "@workspace/ui/lib/utils"
 import { submitSkillRating } from "@/api/skill-ratings"
-import { navigateToTaskConversation } from "@/lib/chat/navigate-to-task-conversation"
 import { StarRating } from "./star-rating"
 import type { TaskExecution } from "@/types/schedule-monitor"
 import { formatExecutionDuration } from "./execution-card"
+import { useChatStore } from "@/stores/chat-store"
 
 const STATUS_CONFIG: Record<
   string,
@@ -46,7 +46,6 @@ export function ExecutionReportCard({
   execution: TaskExecution
   className?: string
 }) {
-  const queryClient = useQueryClient()
   const ratingMutation = useMutation({
     mutationFn: (score: number) =>
       submitSkillRating({
@@ -120,7 +119,7 @@ export function ExecutionReportCard({
 
         <div className="flex items-center gap-2 pt-0.5">
           <StarRating
-            value={ratingMutation.data?.score ?? 0}
+            value={execution.skill_rating?.score ?? 0}
             onChange={(score) => ratingMutation.mutate(score)}
             size={12}
           />
@@ -131,12 +130,12 @@ export function ExecutionReportCard({
               className="size-5 shrink-0"
               aria-label="打开对应会话"
               onClick={() => {
-                if (!execution.conversation_id) return
-                void navigateToTaskConversation(
-                  queryClient,
-                  execution.employee_id,
-                  execution.conversation_id
+                const { selectConversation, setActiveTab } = useChatStore.getState()
+                selectConversation(
+                  String(execution.employee_id),
+                  String(execution.conversation_id)
                 )
+                setActiveTab("chat")
               }}
             >
               <IconExternalLink className="size-3" />

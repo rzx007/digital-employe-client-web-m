@@ -7,14 +7,6 @@ import { useChatStore } from "@/stores/chat-store"
 
 import type { ChatViewContact } from "@/components/chat/chat-view-shared"
 
-function conversationIdsMatch(
-  a: string | number | null | undefined,
-  b: string | number | null | undefined
-): boolean {
-  if (a == null || b == null) return false
-  return String(a) === String(b)
-}
-
 /**
  * 自动选择对话的自定义 Hook
  * 当联系人改变或者对话列表加载完成时，自动选择合适的对话进行显示
@@ -48,8 +40,6 @@ export function useConversationAutoSelect(
   const {
     data: conversations = [],
     isSuccess: conversationsQuerySuccess,
-    isFetching: conversationsFetching,
-    isPending: conversationsPending,
   } = useConversationsQuery(selectedContactId, contact)
 
   // 使用 ref 存储上一次的联系人 ID 和对话 ID，用于检测变化
@@ -97,18 +87,12 @@ export function useConversationAutoSelect(
         }
 
         // 检查选中的对话是否存在于当前对话列表中
-        const hasSelected = conversations.some((conversation) =>
-          conversationIdsMatch(conversation.id, selectedConversationId)
+        const hasSelected = conversations.some(
+          (conversation) => conversation.id === selectedConversationId
         )
 
         // 如果不存在，则切换到主理人固定对话并标记非草稿
         if (!hasSelected) {
-          if (
-            selectedConversationId != null &&
-            (conversationsFetching || conversationsPending)
-          ) {
-            return
-          }
           setSelectedConversationId(CURATOR_PINNED_CONVERSATION_ID)
           setDraftConversation(false)
         }
@@ -140,30 +124,16 @@ export function useConversationAutoSelect(
     }
 
     // 检查当前选中的对话是否存在于对话列表中
-    const hasSelected = conversations.some((conversation) =>
-      conversationIdsMatch(conversation.id, selectedConversationId)
+    const hasSelected = conversations.some(
+      (conversation) => conversation.id === selectedConversationId
     )
 
     if (hasSelected) return
-
-    // 显式选中（如今日任务跳转）且列表仍在刷新时，勿回退到 updated_at 最新的一条
-    if (
-      selectedConversationId != null &&
-      (conversationsFetching || conversationsPending)
-    ) {
-      return
-    }
-
-    if (selectedConversationId != null) {
-      return
-    }
 
     setSelectedConversationId(conversations[0].id)
   }, [
     conversations,
     conversationsQuerySuccess,
-    conversationsFetching,
-    conversationsPending,
     isCurator,
     isDraftConversation,
     selectedContactId,

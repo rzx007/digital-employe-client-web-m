@@ -159,7 +159,8 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
   const isDraftConversation = useChatStore((s) => s.isDraftConversation)
   const selectedContact = useChatStore((s) => s.getSelectedContact())
-  const { data: conversations = [] } = useConversationsQuery(
+  const { data: conversations = [], isSuccess: conversationsQuerySuccess } =
+    useConversationsQuery(
     selectedContactId,
     selectedContact
   )
@@ -185,6 +186,11 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
       isDraftConversation ||
       (convId != null && String(convId).startsWith("draft-"))
 
+    // 会话列表还没拉完时，conversations 可能短暂为空；此时不要误判并切到草稿
+    if (!conversationsQuerySuccess) {
+      return
+    }
+
     if (!isDraft && convId != null) {
       const stillExists = conversations.some(
         (c) => String(c.id) === String(convId)
@@ -208,6 +214,7 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
     selectedContactId,
     selectedConversationId,
     isDraftConversation,
+    conversationsQuerySuccess,
     conversations,
     resetRightPanels,
   ])
