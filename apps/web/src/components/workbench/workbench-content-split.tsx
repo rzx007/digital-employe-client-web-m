@@ -13,11 +13,11 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@workspace/ui/components/resizable"
+import { cn } from "@workspace/ui/lib/utils"
 import { ArtifactPanel } from "@/components/artifact"
 import { CuratorView } from "@/components/chat/curator/curator-view"
 import { useCuratorConversationQuery } from "@/hooks/use-chat-queries"
 import { useArtifactStore } from "@/stores/artifact-store"
-import { cn } from "@workspace/ui/lib/utils"
 
 const LAYOUT_STORAGE_ID = "workbench-grid-curator-resources-v2"
 const PANEL_IDS = ["grid", "curator", "resources"] as const
@@ -51,11 +51,32 @@ function normalizeLayout(layout: Layout | undefined): Layout {
   return { grid, curator, resources }
 }
 
+/** 资源面板关闭时，把误分给 resources 的宽度归还给 grid/curator */
+function clampClosedResourcesLayout(layout: Layout): Layout {
+  const resources = layout.resources ?? 0
+  if (typeof resources !== "number" || resources <= 0.5) {
+    return { ...layout, resources: 0 }
+  }
+  const grid = layout.grid
+  const curator = layout.curator
+  if (typeof grid !== "number" || typeof curator !== "number") {
+    return { ...layout, resources: 0 }
+  }
+  const pairSum = grid + curator
+  if (pairSum <= 0) return FALLBACK_LAYOUT
+  const scale = 100 / pairSum
+  return {
+    grid: grid * scale,
+    curator: curator * scale,
+    resources: 0,
+  }
+}
+
 function syncPanelCollapse(
   resourcesOpen: boolean,
   gridRef: RefObject<PanelImperativeHandle | null>,
   curatorRef: RefObject<PanelImperativeHandle | null>,
-  resourcesRef: RefObject<PanelImperativeHandle | null>
+  resourcesRef: RefObject<PanelImperativeHandle | null>,
 ) {
   if (resourcesOpen) {
     gridRef.current?.collapse()
@@ -69,11 +90,16 @@ function syncPanelCollapse(
   }
 }
 
-export function WorkbenchContentSplit({ children }: { children: ReactNode }) {
+export function WorkbenchContentSplit({
+  children,
+}: {
+  children: ReactNode
+}) {
   const [resourcesOpen, setResourcesOpen] = useState(false)
   const { data: curatorConv } = useCuratorConversationQuery()
   const curatorConversationId = curatorConv?.id ?? null
-  const showResources = resourcesOpen && curatorConversationId != null
+  const showResources =
+    resourcesOpen && curatorConversationId != null
 
   const gridPanelRef = usePanelRef()
   const curatorPanelRef = usePanelRef()
@@ -87,7 +113,7 @@ export function WorkbenchContentSplit({ children }: { children: ReactNode }) {
 
   const resolvedLayout = useMemo(
     () => normalizeLayout(defaultLayout),
-    [defaultLayout]
+    [defaultLayout],
   )
 
   const handleToggleResources = useCallback(() => {
@@ -107,7 +133,7 @@ export function WorkbenchContentSplit({ children }: { children: ReactNode }) {
       setResourcesOpen(true)
       openResource(path)
     },
-    [curatorConversationId, openResource]
+    [curatorConversationId, openResource],
   )
 
   useEffect(() => {
@@ -116,7 +142,7 @@ export function WorkbenchContentSplit({ children }: { children: ReactNode }) {
         showResources,
         gridPanelRef,
         curatorPanelRef,
-        resourcesPanelRef
+        resourcesPanelRef,
       )
     })
     return () => cancelAnimationFrame(id)
@@ -124,11 +150,17 @@ export function WorkbenchContentSplit({ children }: { children: ReactNode }) {
 
   const handleLayoutChanged = useCallback(
     (layout: Layout) => {
-      if (!showResources) {
-        onLayoutChanged(layout)
+      if (showResources) return
+
+      const resources = layout.resources ?? 0
+      if (typeof resources === "number" && resources > 0.5) {
+        resourcesPanelRef.current?.collapse()
       }
+
+      const clamped = clampClosedResourcesLayout(layout)
+      onLayoutChanged(clamped)
     },
-    [showResources, onLayoutChanged]
+    [showResources, onLayoutChanged, resourcesPanelRef],
   )
 
   return (
@@ -161,18 +193,20 @@ export function WorkbenchContentSplit({ children }: { children: ReactNode }) {
           panelRef={curatorPanelRef}
           defaultSize={`${CURATOR_WIDTH_PX}px`}
           minSize={`${CURATOR_MIN_WIDTH_PX}px`}
-          maxSize="55%"
+          maxSize={showResources ? "60%" : "55%"}
           className="min-w-0"
         >
           <CuratorView
             size="compact"
             className={cn(
               "h-full min-h-0",
-              showResources ? "border-r" : "border-l"
+              showResources ? "border-r" : "border-l",
             )}
             resourcesOpen={showResources}
             onToggleResources={
-              curatorConversationId != null ? handleToggleResources : undefined
+              curatorConversationId != null
+                ? handleToggleResources
+                : undefined
             }
             onOpenResourceFile={handleOpenResourceFile}
           />
@@ -188,7 +222,8 @@ export function WorkbenchContentSplit({ children }: { children: ReactNode }) {
           collapsible
           collapsedSize={0}
           defaultSize={0}
-          minSize="25%"
+          minSize={showResources ? "25%" : "0%"}
+          maxSize={showResources ? undefined : "0%"}
           className="min-w-0"
         >
           {showResources && curatorConversationId != null && (
