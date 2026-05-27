@@ -73,6 +73,11 @@ export function useConversationSession({
 
   /** 已对某条 assistant 行尝试过 resume，避免重复 GET /stream/resume */
   const resumeAttemptedForRef = useRef<string | null>(null)
+  /** 活跃会话状态锁：一旦用户在这个会话里发送过消息、正在流（或进行过 HITL 审批），
+   * 锁就会锁定，阻止后续 React Query 的后台 refetch 被动覆盖当前的 composer */
+  const activeSessionRef = useRef<boolean>(false)
+  /** 记录已经完成 Hydrate 历史记录的会话 ID */
+  const hydratedConvIdRef = useRef<string | null>(null)
   /** 与 hitlInterrupted 同步，供 resume effect 内读取（避免闭包陈旧） */
   const hitlActiveRef = useRef(false)
   const prevConversationIdRef = useRef(conversationId)
@@ -84,11 +89,13 @@ export function useConversationSession({
     hitlActiveRef.current = hitlInterrupted
   }, [hitlInterrupted])
 
-  // 切换 conversationId 时允许对新会话再次 resume
+  // 切换 conversationId 时重置去重状态与状态锁
   useEffect(() => {
     if (prevConversationIdRef.current !== conversationId) {
       resumeAttemptedForRef.current = null
       prevConversationIdRef.current = conversationId
+      hydratedConvIdRef.current = null
+      activeSessionRef.current = false
     }
   }, [conversationId])
 
@@ -115,12 +122,19 @@ export function useConversationSession({
    */
   useEffect(() => {
     if (!convKey) return
-    // 本端已在拉流时不要覆盖 useChat 累积的 parts
-    if (status === "streaming" || status === "submitted") return
+    // 本端已在拉流时不要覆盖 useChat 累积的 parts，且标记会话已激活
+    if (status === "streaming" || status === "submitted") {
+      activeSessionRef.current = true
+      return
+    }
+    // 核心门禁：如果当前会话已被激活（用户已发送或正在流），且已经初始化过一次，绝不让后台 refetch 的旧 cache 覆盖活跃的 composer
+    if (activeSessionRef.current && hydratedConvIdRef.current === convKey) return
+
     // 尚无 DB 数据时等待 refetch（不提前 hydrate 空列表并锁死）
     if (initialMessages.length === 0 && storedMessages.length === 0) return
 
     setMessages(initialMessages)
+    hydratedConvIdRef.current = convKey
 
     // HITL 待办：只展示 DB/composer 中的 pending part，不接 live buffer
     if (hitlActiveRef.current) return
@@ -189,13 +203,14 @@ export function useConversationSession({
   }, [convKey, queryClient, scheduleMessagesRefetch])
 
   /**
-   * POST /approve 成功后：可选追加新 assistant 占位行，再 resume 新段的 SSE。
+   * POST /approve 成功后：可选追加新 assistant 占位行，再 resume 新段 of SSE。
    * interrupted 段的 resume 只应发生在这里，而不是上面的 DB 同步 effect。
    */
   const onHitlApproved = useCallback(
     async (options?: HitlPatchOptions) => {
       if (!convKey) return
 
+      activeSessionRef.current = true // 标记会话已激活
       const approvedMessageId =
         options?.approvedMessageId ?? hitlMessageId ?? null
       if (approvedMessageId != null) {
@@ -252,6 +267,7 @@ export function useConversationSession({
 
   /** 用户新发消息前重置 resume 去重，允许新一轮 streaming 行再次 resume */
   const prepareOutboundMessage = useCallback(() => {
+    activeSessionRef.current = true // 标记会话已激活
     resetResumeAttempt()
   }, [resetResumeAttempt])
 
