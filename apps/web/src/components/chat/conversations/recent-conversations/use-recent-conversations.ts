@@ -10,7 +10,8 @@ import { findContactInList } from "@/lib/chat/contact-utils"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import type { AIEmployee, Contact } from "@/types/chat"
 import { useChatStore } from "@/stores/chat-store"
-import { deriveRecentItems } from "./model"
+import { useConversationStatusStore } from "@/stores/conversation-status-store"
+import { deriveRecentItems, isRecentPlaceholderConversationId } from "./model"
 import {
   loadAndMigrateRecentConversations,
   saveRecentConversations,
@@ -65,6 +66,7 @@ export function useRecentConversations() {
 
   const selectedContact = useChatStore((s) => s.getSelectedContact())
   const contacts = useChatStore((s) => s.contacts)
+  const unreadCounts = useConversationStatusStore((s) => s.unreadCounts)
 
   const employeeList = React.useMemo(
     () =>
@@ -98,6 +100,7 @@ export function useRecentConversations() {
         selectedContactId,
         selectedContact,
         isDraftConversation,
+        unreadCounts,
       }),
     [
       storedItems,
@@ -106,6 +109,7 @@ export function useRecentConversations() {
       selectedContactId,
       selectedContact,
       isDraftConversation,
+      unreadCounts,
     ]
   )
 
@@ -117,9 +121,20 @@ export function useRecentConversations() {
     saveRecentConversations(workspaceId, recentItems)
   }, [workspaceId, recentItems])
 
-  const handleSelectItem = (contactId: string) => {
-    if (contactId === selectedContactId) return
-    switchToContact(contactId)
+  const handleSelectItem = (item: RecentConversationItem) => {
+    const conversationId = isRecentPlaceholderConversationId(item.id)
+      ? null
+      : item.id
+
+    if (item.contactId === selectedContactId) {
+      if (conversationId != null) {
+        useChatStore.getState().setSelectedConversationId(conversationId)
+        useChatStore.getState().setDraftConversation(false)
+      }
+      return
+    }
+
+    switchToContact(item.contactId, conversationId)
   }
 
   const handleDetail = (item: RecentConversationItem) => {

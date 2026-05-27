@@ -1,7 +1,32 @@
 import { findContactInList } from "@/lib/chat/contact-utils"
 import { CURATOR_AVATAR_URL } from "@/lib/avatar"
+import { curatorUnreadKey } from "@/lib/constants"
 import type { Contact, Conversation } from "@/types/chat"
 import { MAX_RECENT, type RecentConversationItem } from "./types"
+
+export function isRecentPlaceholderConversationId(id: string): boolean {
+  return id.startsWith("recent:")
+}
+
+export function getRecentItemUnreadKey(
+  item: Pick<RecentConversationItem, "contactId" | "isCurator" | "isGroup">
+): string {
+  if (item.isCurator) return curatorUnreadKey(item.contactId)
+  return `${item.isGroup ? "group" : "employee"}:${Number(item.contactId)}`
+}
+
+function applyUnreadFromStore(
+  items: RecentConversationItem[],
+  unreadCounts: Record<string, number>
+): RecentConversationItem[] {
+  return items.map((item) => {
+    const fromStore = unreadCounts[getRecentItemUnreadKey(item)] ?? 0
+    return {
+      ...item,
+      unreadCount: Math.max(item.unreadCount, fromStore),
+    }
+  })
+}
 
 export type ContactInfo = {
   id: string
@@ -139,6 +164,7 @@ export type DeriveRecentItemsParams = {
   selectedContactId: string | null
   selectedContact: Contact | null | undefined
   isDraftConversation: boolean
+  unreadCounts: Record<string, number>
 }
 
 /** 从本地存储基线合并联系人、会话列表与当前选中态（无副作用）。 */
@@ -212,6 +238,8 @@ export function deriveRecentItems(
         !(item.isDraft && item.contactId === params.selectedContactId)
     )
   }
+
+  items = applyUnreadFromStore(items, params.unreadCounts)
 
   return items.map((item) =>
     item.isCurator ? { ...item, avatar: CURATOR_AVATAR_URL } : item,

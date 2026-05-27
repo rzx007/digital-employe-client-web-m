@@ -34,7 +34,10 @@ interface ChatStore {
   closeConversationList: () => void
   startDraftConversation: (contactId: string) => void
   selectConversation: (contactId: string, conversationId: string) => void
-  switchToContact: (contactId: string) => void
+  switchToContact: (
+    contactId: string,
+    conversationId?: string | number | null
+  ) => void
   getSelectedContact: () => Contact | undefined
 }
 
@@ -93,10 +96,10 @@ export const useChatStore = create<ChatStore>()(
           selectedConversationId: conversationId,
           isDraftConversation: false,
         }),
-      switchToContact: (contactId) =>
+      switchToContact: (contactId, conversationId = null) =>
         set((state) => ({
           selectedContactId: contactId,
-          selectedConversationId: null,
+          selectedConversationId: conversationId,
           isDraftConversation: false,
           draftSessionKey: state.draftSessionKey + 1,
           activeTab: "chat" as ActiveTab,

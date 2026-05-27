@@ -26,8 +26,6 @@ import { cn } from "@workspace/ui/lib/utils"
 import { formatDistanceToNow } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import { CURATOR_AVATAR_URL } from "@/lib/avatar"
-import { curatorUnreadKey } from "@/lib/constants"
-import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import {
   EmployeeContactAvatar,
   GroupMembersAvatar,
@@ -39,12 +37,14 @@ function formatTimeAgo(date?: Date) {
   return formatDistanceToNow(date, { addSuffix: true, locale: zhCN })
 }
 
-function ConversationStatusBadge({ item }: { item: RecentConversationItem }) {
-  const key = item.isCurator
-    ? curatorUnreadKey(item.contactId)
-    : `${item.isGroup ? "group" : "employee"}:${Number(item.contactId)}`
-  const count = useConversationStatusStore((s) => s.unreadCounts[key] ?? 0)
-  if (count === 0) return null
+function UnreadBadge({
+  count,
+  hidden,
+}: {
+  count: number
+  hidden?: boolean
+}) {
+  if (hidden || count <= 0) return null
   return (
     <span
       className="absolute -top-1 -right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-background bg-purple-500 px-0.5 text-[10px] leading-none font-medium text-white"
@@ -122,7 +122,7 @@ interface RecentConversationRowProps {
   collapsed?: boolean
   selectedContactId: string | null
   isSelected: boolean
-  onSelect: (contactId: string) => void
+  onSelect: (item: RecentConversationItem) => void
   onDetail: (item: RecentConversationItem) => void
   onTogglePin: (item: RecentConversationItem) => void
   onRemove: (item: RecentConversationItem) => void | Promise<void>
@@ -163,7 +163,7 @@ export function RecentConversationRow({
               : "hover:bg-accent/50 hover:text-accent-foreground"
           )}
           onClick={() => {
-            if (!isRemoving) onSelect(item.contactId)
+            if (!isRemoving) onSelect(item)
           }}
           aria-busy={isRemoving}
         >
@@ -190,7 +190,10 @@ export function RecentConversationRow({
                 statusClassName={collapsed ? "h-2 w-2" : undefined}
               />
             )}
-            <ConversationStatusBadge item={item} />
+            <UnreadBadge
+              count={item.unreadCount}
+              hidden={selectedContactId === item.contactId}
+            />
           </div>
           {!collapsed && (
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -240,12 +243,6 @@ export function RecentConversationRow({
                 >
                   {item.title || "新对话"}
                 </span>
-                {item.unreadCount > 0 &&
-                  selectedContactId !== item.contactId && (
-                    <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
-                      {item.unreadCount}
-                    </span>
-                  )}
               </div>
             </div>
           )}
