@@ -14,6 +14,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
+import { useShallow } from "zustand/react/shallow"
 import {
   IconCopy,
   IconDownload,
@@ -27,6 +28,7 @@ import {
   IconSearch,
   IconTrash,
   IconFileImport,
+  IconLoader,
 } from "@tabler/icons-react"
 import {
   ContextMenu,
@@ -44,7 +46,17 @@ import {
 import { deleteResource, downloadResource } from "@/api/chat"
 import { useQueryClient } from "@tanstack/react-query"
 import { chatKeys } from "@/lib/query-keys/chat"
-import { useArtifactStore } from "@/stores/artifact-store"
+import { detectLanguage } from "@/components/chat/shared/code-highlight"
+import {
+  findEntryByPath,
+  findPendingByPath,
+  mergePendingIntoResourceList,
+  pendingToResourceEntry,
+} from "@/lib/chat/pending-resource-utils"
+import {
+  useArtifactStore,
+  type PendingResource,
+} from "@/stores/artifact-store"
 import { toast } from "sonner"
 import {
   getPreviewableTypeLabel,
@@ -67,6 +79,7 @@ const EMPTY_RESOURCE_LIST: ResourceList = {
   uploads: [],
   skills_draft: [],
 }
+const EMPTY_PENDING_LIST: PendingResource[] = []
 
 /** 侧栏树内文件名/文件夹名展示宽度；完整名见原生 title */
 const ARTIFACT_TREE_NAME_ROW_CLASS =
@@ -234,11 +247,13 @@ function ResourceContextMenu({
   conversationId,
   onDelete,
   onRefresh,
+  pendingOnly = false,
 }: {
   entry: ResourceEntry
   conversationId: string | number
   onDelete: (entry: ResourceEntry) => void
   onRefresh: () => void
+  pendingOnly?: boolean
 }) {
   const handleDownload = async () => {
     await downloadResource(conversationId, entry.path)
@@ -246,19 +261,25 @@ function ResourceContextMenu({
 
   return (
     <ContextMenuContent className="w-36">
-      <ContextMenuItem onSelect={handleDownload}>
-        <IconDownload className="size-4 text-muted-foreground" />
-        <span>下载</span>
-      </ContextMenuItem>
+      {!pendingOnly && (
+        <ContextMenuItem onSelect={handleDownload}>
+          <IconDownload className="size-4 text-muted-foreground" />
+          <span>下载</span>
+        </ContextMenuItem>
+      )}
       <ContextMenuItem onSelect={onRefresh}>
         <IconRefresh className="size-4 text-muted-foreground" />
         <span>刷新</span>
       </ContextMenuItem>
-      <ContextMenuSeparator />
-      <ContextMenuItem variant="destructive" onSelect={() => onDelete(entry)}>
-        <IconTrash className="size-4" />
-        <span>删除</span>
-      </ContextMenuItem>
+      {!pendingOnly && (
+        <>
+          <ContextMenuSeparator />
+          <ContextMenuItem variant="destructive" onSelect={() => onDelete(entry)}>
+            <IconTrash className="size-4" />
+            <span>删除</span>
+          </ContextMenuItem>
+        </>
+      )}
     </ContextMenuContent>
   )
 }
@@ -308,7 +329,8 @@ function renderEntry(
   entry: ResourceEntry,
   conversationId: string | number,
   onDelete: (entry: ResourceEntry) => void,
-  onRefresh: () => void
+  onRefresh: () => void,
+  getPendingForPath: (path: string) => PendingResource | null
 ) {
   if (entry.entry_type === "directory") {
     return (
@@ -322,7 +344,13 @@ function renderEntry(
               title={entry.name}
             >
               {entry.children?.map((child) =>
-                renderEntry(child, conversationId, onDelete, onRefresh)
+                renderEntry(
+                  child,
+                  conversationId,
+                  onDelete,
+                  onRefresh,
+                  getPendingForPath
+                )
               )}
             </FileTreeFolder>
           </div>
@@ -336,6 +364,10 @@ function renderEntry(
       </ContextMenu>
     )
   }
+
+  const pending = getPendingForPath(entry.path)
+  const isPendingStreaming = pending?.isStreaming === true
+
   return (
     <ContextMenu key={entry.path}>
       <ContextMenuTrigger asChild>
@@ -350,12 +382,18 @@ function renderEntry(
           <span className="shrink-0">{getFileIcon(entry.artifact_type)}</span>
           <span
             className={cn(
-              "min-w-0 flex-1 truncate",
+              "flex min-w-0 flex-1 items-center gap-1",
               ARTIFACT_TREE_FILE_NAME_MAX_W
             )}
             title={entry.name}
           >
-            {entry.name}
+            <span className="min-w-0 truncate">{entry.name}</span>
+            {isPendingStreaming && (
+              <span className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-muted-foreground">
+                <IconLoader className="size-3 animate-spin" />
+                写入中
+              </span>
+            )}
           </span>
         </FileTreeFile>
       </ContextMenuTrigger>
@@ -364,6 +402,7 @@ function renderEntry(
         conversationId={conversationId}
         onDelete={onDelete}
         onRefresh={onRefresh}
+        pendingOnly={isPendingStreaming}
       />
     </ContextMenu>
   )
@@ -384,6 +423,19 @@ export const ArtifactPanel = ({
   const [importDraftSkillEntry, setImportDraftSkillEntry] =
     React.useState<ResourceEntry | null>(null)
   const activeResourcePath = useArtifactStore((s) => s.activeResourcePath)
+  const clearPendingResource = useArtifactStore((s) => s.clearPendingResource)
+  const pendingList = useArtifactStore(
+    useShallow((s) => {
+      if (!conversationId) return EMPTY_PENDING_LIST
+      const map = s.pendingByConversation.get(String(conversationId))
+      return map ? Array.from(map.values()) : EMPTY_PENDING_LIST
+    })
+  )
+
+  const getPendingForPath = React.useCallback(
+    (path: string) => findPendingByPath(pendingList, path),
+    [pendingList]
+  )
 
   React.useEffect(() => {
     if (!activeResourcePath) return
@@ -401,7 +453,11 @@ export const ArtifactPanel = ({
   const { data: resourceList } = useConversationResourcesQuery(
     isOpen ? conversationId : null
   )
-  const resources = resourceList ?? EMPTY_RESOURCE_LIST
+  const apiResources = resourceList ?? EMPTY_RESOURCE_LIST
+  const resources = React.useMemo(
+    () => mergePendingIntoResourceList(apiResources, pendingList),
+    [apiResources, pendingList]
+  )
   const filteredArtifacts = React.useMemo(
     () => filterEntries(resources.artifacts, searchQuery),
     [resources.artifacts, searchQuery]
@@ -421,6 +477,23 @@ export const ArtifactPanel = ({
       countFiles(resources.skills_draft),
     [resources.artifacts, resources.uploads, resources.skills_draft]
   )
+
+  React.useEffect(() => {
+    if (!conversationId || !resourceList) return
+    for (const pending of pendingList) {
+      const existsOnDisk = findEntryByPath(
+        [
+          ...resourceList.artifacts,
+          ...resourceList.uploads,
+          ...resourceList.skills_draft,
+        ],
+        pending.path
+      )
+      if (existsOnDisk) {
+        clearPendingResource(conversationId, pending.path)
+      }
+    }
+  }, [clearPendingResource, conversationId, pendingList, resourceList])
   const filteredFiles = React.useMemo(
     () =>
       countFiles(filteredArtifacts) +
@@ -461,35 +534,55 @@ export const ArtifactPanel = ({
   }, [filteredArtifacts, filteredUploads, filteredSkillsDraft, hasSearchQuery])
 
   const selectedEntry = React.useMemo(() => {
-    if (!selectedPath || !resourceList) return null
-    const find = (entries: ResourceEntry[]): ResourceEntry | null => {
-      for (const e of entries) {
-        if (e.path === selectedPath) return e
-        if (e.children) {
-          const found = find(e.children)
-          if (found) return found
-        }
-      }
-      return null
-    }
-    return find([
-      ...resourceList.artifacts,
-      ...resourceList.uploads,
-      ...resourceList.skills_draft,
-    ])
-  }, [selectedPath, resourceList])
+    if (!selectedPath) return null
+    const fromMerged = findEntryByPath(
+      [
+        ...resources.artifacts,
+        ...resources.uploads,
+        ...resources.skills_draft,
+      ],
+      selectedPath
+    )
+    if (fromMerged) return fromMerged
+    const pending = findPendingByPath(pendingList, selectedPath)
+    return pending ? pendingToResourceEntry(pending) : null
+  }, [pendingList, resources, selectedPath])
 
   const selectedFilePath =
     selectedEntry?.entry_type === "file" ? selectedEntry.path : null
 
+  const selectedPending = findPendingByPath(pendingList, selectedFilePath)
+
   const isDocFile = isDocumentFile(selectedFilePath)
+  const isPendingDocStreaming =
+    isDocFile && selectedPending?.isStreaming === true
+
+  const skipApiContentFetch =
+    !!selectedPending &&
+    !isDocFile &&
+    selectedPending.isStreaming === true
 
   const { data: resourceContent } = useResourceContentQuery(
     conversationId!,
-    isDocFile ? null : selectedFilePath
+    isDocFile || skipApiContentFetch ? null : selectedFilePath
   )
 
+  const shouldUsePendingContent =
+    !!selectedPending &&
+    !isDocFile &&
+    (selectedPending.isStreaming || !resourceContent)
+
   const artifactForRenderer = React.useMemo((): Artifact | null => {
+    if (isPendingDocStreaming) return null
+    if (shouldUsePendingContent && selectedPending && selectedFilePath) {
+      return {
+        id: `pending:${selectedFilePath}`,
+        type: (selectedEntry?.artifact_type as Artifact["type"]) || "text",
+        title: selectedEntry?.name ?? selectedFilePath.split("/").pop() ?? "file",
+        content: selectedPending.content,
+        language: detectLanguage(selectedFilePath) ?? undefined,
+      }
+    }
     if (isDocFile && selectedEntry && conversationId) {
       return {
         id: `resource:${selectedPath}`,
@@ -507,7 +600,17 @@ export const ArtifactPanel = ({
       content: resourceContent.content,
       language: resourceContent.language ?? undefined,
     }
-  }, [isDocFile, selectedEntry, conversationId, resourceContent, selectedPath])
+  }, [
+    conversationId,
+    isDocFile,
+    isPendingDocStreaming,
+    resourceContent,
+    selectedEntry,
+    selectedFilePath,
+    selectedPath,
+    selectedPending,
+    shouldUsePendingContent,
+  ])
 
   const Renderer = artifactForRenderer
     ? resolveArtifactRenderer(artifactForRenderer, selectedFilePath)
@@ -582,7 +685,7 @@ export const ArtifactPanel = ({
           </p>
         </div>
         <div className="flex items-center gap-1">
-          {selectedEntry && (
+          {selectedEntry && !selectedPending?.isStreaming && (
             <>
               <TooltipProvider>
                 <Tooltip>
@@ -675,7 +778,8 @@ export const ArtifactPanel = ({
                         e,
                         conversationId!,
                         handleDelete,
-                        handleRefreshResources
+                        handleRefreshResources,
+                        getPendingForPath
                       )
                     )}
                   </FileTreeFolder>
@@ -692,7 +796,8 @@ export const ArtifactPanel = ({
                         e,
                         conversationId!,
                         handleDelete,
-                        handleRefreshResources
+                        handleRefreshResources,
+                        getPendingForPath
                       )
                     )}
                   </FileTreeFolder>
@@ -722,7 +827,8 @@ export const ArtifactPanel = ({
                                   e,
                                   conversationId!,
                                   handleDelete,
-                                  handleRefreshResources
+                                  handleRefreshResources,
+                                  getPendingForPath
                                 )
                               )}
                             </FileTreeFolder>
@@ -801,14 +907,22 @@ export const ArtifactPanel = ({
               <div className="max-w-xs text-center">
                 <IconFile className="mx-auto mb-3 size-10 text-muted-foreground/50" />
                 <p>
-                  {selectedEntry?.entry_type === "directory"
-                    ? "这是一个文件夹"
-                    : "选择文件查看内容"}
+                  {isPendingDocStreaming
+                    ? "文件写入中，完成后可预览"
+                    : selectedEntry?.entry_type === "directory"
+                      ? "这是一个文件夹"
+                      : selectedPending?.isStreaming
+                        ? "正在写入文件…"
+                        : "选择文件查看内容"}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground/80">
-                  {selectedEntry?.entry_type === "directory"
-                    ? "展开左侧目录并选择具体文件进行预览"
-                    : "可在左侧搜索或浏览资源文件"}
+                  {isPendingDocStreaming
+                    ? "Office / PDF 等文档需落盘后才能预览"
+                    : selectedEntry?.entry_type === "directory"
+                      ? "展开左侧目录并选择具体文件进行预览"
+                      : selectedPending?.isStreaming
+                        ? "内容将随工具输出实时更新"
+                        : "可在左侧搜索或浏览资源文件"}
                 </p>
               </div>
             </div>

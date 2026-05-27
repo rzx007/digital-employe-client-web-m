@@ -730,6 +730,7 @@ export function CuratorView({
             messages={messages}
             conversationId={curatorConversationId}
             onHitlApproved={session.onHitlApproved}
+            hitlMessageId={session.hitlMessageId}
             inputValue={inputValue}
             onInputChange={handleTextChange}
             onSend={handleSendMessage}

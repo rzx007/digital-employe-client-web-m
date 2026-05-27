@@ -2,6 +2,7 @@ import { DiffViewer } from "@workspace/ui/components/diff-viewer"
 import { useEffect, useMemo, useRef } from "react"
 import { CodeHighlight, detectLanguage } from "../shared/code-highlight"
 import { useArtifactStore } from "@/stores/artifact-store"
+import { useSyncPendingResourceFromTool } from "@/hooks/use-sync-pending-resource-from-tool"
 import {
   getDisplayContent,
   getEditDiff,
@@ -72,6 +73,16 @@ export function ToolDetailPanel({
   const didAutoOpenRef = useRef<string | null>(null)
   const isStdoutStreaming = isRunning || isPreliminaryOutput
   const isInputStreaming = state === "input-streaming"
+
+  useSyncPendingResourceFromTool({
+    toolName,
+    state,
+    preliminary,
+    isRunning,
+    normalizedFilePath,
+    displayContent,
+  })
+
   useEffect(() => {
     if (!shouldTruncatePreview) return
     if (!normalizedFilePath) return

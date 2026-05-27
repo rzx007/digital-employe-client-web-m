@@ -352,6 +352,7 @@ export function ChatPanel({
                 onSend={handleComposerSend}
                 onStop={() => onStop?.()}
                 onHitlApproved={onHitlApproved}
+                hitlMessageId={hitlMessageId}
                 status={status}
                 submitDisabled={isSubmitDisabled}
                 placeholder="请输入任务，然后交给我, 键入 / 指定调用技能"

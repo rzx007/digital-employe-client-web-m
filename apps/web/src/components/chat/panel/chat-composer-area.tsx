@@ -16,6 +16,7 @@ import { PendingMessageQueue } from "@/components/chat/panel/pending-message-que
 import type { PendingMessage } from "@/hooks/use-pending-messages"
 import {
   findPendingHitl,
+  resolveHitlApproveMessageId,
   type HitlPatchOptions,
   type PendingHitl,
 } from "@/lib/chat/hitl"
@@ -31,6 +32,7 @@ export function ChatComposerArea({
   onSend,
   onStop,
   onHitlApproved,
+  hitlMessageId = null,
   status,
   submitDisabled,
   placeholder,
@@ -54,6 +56,7 @@ export function ChatComposerArea({
   onSend: (message: PromptInputMessage | string) => void
   onStop: () => void
   onHitlApproved?: (options?: HitlPatchOptions) => void
+  hitlMessageId?: string | null
   status: ChatPromptMessageStatus
   submitDisabled?: boolean
   placeholder?: React.ReactNode
@@ -84,17 +87,36 @@ export function ChatComposerArea({
   const planActive = pendingHitl?.kind === "document-plan"
   const blocksComposer = clarifyActive || planActive
 
+  const pendingHitlMessage = React.useMemo(() => {
+    if (!pendingHitl) return null
+    return (
+      messages.find(
+        (m) =>
+          m.role === "assistant" && String(m.id) === pendingHitl.messageId
+      ) ?? null
+    )
+  }, [messages, pendingHitl])
+
+  const hitlApproveMessageId = React.useMemo(() => {
+    if (!pendingHitl) return null
+    if (!pendingHitlMessage) return pendingHitl.messageId
+    return resolveHitlApproveMessageId(
+      pendingHitlMessage,
+      hitlMessageId ?? pendingHitl.messageId
+    )
+  }, [hitlMessageId, pendingHitl, pendingHitlMessage])
+
   const handleClarifySubmitted = React.useCallback(
     (opts?: { resumed?: boolean; assistantMessageId?: string | number }) => {
       onHitlApproved?.({
         kind: "clarify",
         toolCallId: pendingHitl?.toolCallId,
-        approvedMessageId: pendingHitl?.messageId,
+        approvedMessageId: hitlApproveMessageId ?? pendingHitl?.messageId,
         resumed: opts?.resumed,
         assistantMessageId: opts?.assistantMessageId,
       })
     },
-    [onHitlApproved, pendingHitl]
+    [hitlApproveMessageId, onHitlApproved, pendingHitl]
   )
 
   return (
@@ -120,7 +142,7 @@ export function ChatComposerArea({
         <ClarifyingQuestionsDock
           pending={pendingHitl}
           conversationId={conversationId}
-          messageId={pendingHitl.messageId}
+          messageId={hitlApproveMessageId ?? pendingHitl.messageId}
           optionalDetails={inputValue}
           onSubmitted={handleClarifySubmitted}
           className="mx-auto w-full max-w-4xl"
