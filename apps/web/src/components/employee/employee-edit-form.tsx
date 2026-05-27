@@ -10,8 +10,9 @@ import { Separator } from "@workspace/ui/components/separator"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { Switch } from "@workspace/ui/components/switch"
 import { Textarea } from "@workspace/ui/components/textarea"
+import { cn } from "@workspace/ui/lib/utils"
 import { fetchMcpList } from "@/api/employee"
-import type { McpListItem, MetadataMcp } from "@/api/types"
+import type { Employee, McpListItem, MetadataMcp } from "@/api/types"
 import {
   convertApiEmployeeTasksToListItems,
   tasksToApiPayload,
@@ -35,54 +36,69 @@ const EMPTY_SCHEDULE: ShiftScheduleForm = {
   notes: "",
 }
 
-export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
-  const { data: employee, isLoading } = useEmployeeDetailQuery(employeeId)
+type EmployeeFormInitial = {
+  name: string
+  description: string
+  showScheduleAndTask: boolean
+  tasks: ScheduleTaskListItem[]
+  schedule: ShiftScheduleForm
+  selectedMcpIds: number[]
+  selectedSkillIds: number[]
+}
+
+function getEmployeeFormInitialState(employee: Employee): EmployeeFormInitial {
+  const meta = employee.metadata
+  const metaTasks = (employee.metadata as unknown as Record<string, unknown>)
+    ?.tasks as ApiEmployeeTaskRead[] | undefined
+  const hasTasks = Boolean(metaTasks?.length)
+  const sch = employee.shift_schedule as ShiftScheduleForm | undefined
+  const hasSchedule = Boolean(sch)
+
+  return {
+    name: meta?.employee_name ?? employee.name ?? "",
+    description: meta?.capability_desc ?? employee.description ?? "",
+    selectedMcpIds:
+      (meta?.mcps as MetadataMcp[] | undefined)?.map((m) => m.id) ?? [],
+    selectedSkillIds: (meta?.skills ?? []).map((s) => s.skill_id),
+    tasks: hasTasks ? convertApiEmployeeTasksToListItems(metaTasks!) : [],
+    schedule: sch ?? EMPTY_SCHEDULE,
+    showScheduleAndTask: hasTasks || hasSchedule,
+  }
+}
+
+function EmployeeEditFormFields({
+  employee,
+  employeeId,
+}: {
+  employee: Employee
+  employeeId: string
+}) {
+  const initial = getEmployeeFormInitialState(employee)
   const updateMutation = useUpdateEmployeeMutation(employeeId)
 
-  const [name, setName] = React.useState("")
-  const [description, setDescription] = React.useState("")
-  const [showScheduleAndTask, setShowScheduleAndTask] = React.useState(false)
-  const [tasks, setTasks] = React.useState<ScheduleTaskListItem[]>([])
+  const [name, setName] = React.useState(initial.name)
+  const [description, setDescription] = React.useState(initial.description)
+  const [showScheduleAndTask, setShowScheduleAndTask] = React.useState(
+    initial.showScheduleAndTask
+  )
+  const [tasks, setTasks] = React.useState<ScheduleTaskListItem[]>(initial.tasks)
   const [schedule, setSchedule] =
-    React.useState<ShiftScheduleForm>(EMPTY_SCHEDULE)
-  const [selectedMcpIds, setSelectedMcpIds] = React.useState<number[]>([])
-  const [selectedSkillIds, setSelectedSkillIds] = React.useState<number[]>([])
+    React.useState<ShiftScheduleForm>(initial.schedule)
+  const [selectedMcpIds, setSelectedMcpIds] = React.useState<number[]>(
+    initial.selectedMcpIds
+  )
+  const [selectedSkillIds, setSelectedSkillIds] = React.useState<number[]>(
+    initial.selectedSkillIds
+  )
   const [allMcpList, setAllMcpList] = React.useState<McpListItem[]>([])
   const { data: allSkillList = [] } = useEmployeePickerSkillsQuery()
   const [pickerOpen, setPickerOpen] = React.useState(false)
-  const [initialized, setInitialized] = React.useState(false)
 
   React.useEffect(() => {
     fetchMcpList()
       .then(setAllMcpList)
       .catch(() => {})
   }, [])
-
-  React.useEffect(() => {
-    if (employee && !initialized) {
-      const meta = employee.metadata
-      setName(meta?.employee_name ?? employee.name ?? "")
-      setDescription(meta?.capability_desc ?? employee.description ?? "")
-      setSelectedMcpIds(
-        (meta?.mcps as MetadataMcp[] | undefined)?.map((m) => m.id) ?? []
-      )
-      setSelectedSkillIds((meta?.skills ?? []).map((s) => s.skill_id))
-      const metaTasks = (
-        employee.metadata as unknown as Record<string, unknown>
-      )?.tasks as ApiEmployeeTaskRead[] | undefined
-      if (metaTasks && metaTasks.length > 0) {
-        setTasks(convertApiEmployeeTasksToListItems(metaTasks))
-        setShowScheduleAndTask(true)
-      }
-      const sch = (employee as unknown as Record<string, unknown>)
-        .shift_schedule as ShiftScheduleForm | undefined
-      if (sch) {
-        setSchedule(sch)
-        setShowScheduleAndTask(true)
-      }
-      setInitialized(true)
-    }
-  }, [employee, initialized])
 
   const selectedMcpItems = React.useMemo(
     () => allMcpList.filter((m) => selectedMcpIds.includes(m.id)),
@@ -121,7 +137,7 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
       await updateMutation.mutateAsync({
         employee_name: name.trim(),
         capability_desc: description.trim() || null,
-        status: employee?.metadata?.status ?? 1,
+        status: employee.metadata?.status ?? 1,
         mcp_ids: validMcpIds || [],
         skill_ids: validSkillIds || [],
         shift_schedule: showScheduleAndTask ? schedule : null,
@@ -133,157 +149,163 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-full" />
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-8 w-full" />
-      </div>
-    )
-  }
-
   return (
-    <div className="space-y-4">
-      <div className="space-y-3">
-        <Label className="text-xs font-medium text-muted-foreground">
-          基本信息
-        </Label>
-        <div className="space-y-1.5">
-          <Label className="text-xs">员工名称</Label>
-          <Input
-            placeholder="请输入员工名称"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">岗位描述</Label>
-          <Textarea
-            className="min-h-20 resize-none"
-            placeholder="请输入岗位描述"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
-      </div>
+    <>
+      <div className="flex flex-col">
+        <div className="space-y-4">
+          <div className="space-y-3">
+            <Label className="text-xs font-medium text-muted-foreground">
+              基本信息
+            </Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">员工名称</Label>
+              <Input
+                placeholder="请输入员工名称"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">岗位描述</Label>
+              <Textarea
+                className="min-h-20 resize-none"
+                placeholder="请输入岗位描述"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+          </div>
 
-      <Separator />
+          <Separator />
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label className="text-xs font-medium text-muted-foreground">
-            能力配置
-          </Label>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-medium text-muted-foreground">
+                能力配置
+              </Label>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="gap-1"
+                onClick={() => setPickerOpen(true)}
+              >
+                <IconPlus className="size-3" />
+                添加能力
+              </Button>
+            </div>
+
+            {selectedMcpItems.length > 0 && (
+              <div className="space-y-1">
+                <span className="text-[10px] text-muted-foreground">
+                  MCP 工具
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedMcpItems.map((item) => (
+                    <Badge
+                      key={item.id}
+                      variant="secondary"
+                      className="gap-1 text-xs"
+                    >
+                      {item.capability_name}
+                      <button
+                        type="button"
+                        className="ml-0.5 rounded-full hover:bg-muted-foreground/20"
+                        onClick={() => handleRemoveMcp(item.id)}
+                      >
+                        <IconX className="size-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedSkillItems.length > 0 && (
+              <div className="space-y-1">
+                <span className="text-[10px] text-muted-foreground">技能</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedSkillItems.map((item) => (
+                    <Badge
+                      key={item.id}
+                      variant="outline"
+                      className="gap-1 text-xs"
+                    >
+                      {item.displayNameZh || item.skillName}
+                      <button
+                        type="button"
+                        className="ml-0.5 rounded-full hover:bg-muted-foreground/20"
+                        onClick={() => handleRemoveSkill(item.id)}
+                      >
+                        <IconX className="size-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedMcpItems.length === 0 &&
+              selectedSkillItems.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  暂未选择任何能力，点击「添加能力」进行选择
+                </p>
+              )}
+          </div>
+
+          <Separator />
+
+          <div className="flex items-center justify-between">
+            <Label
+              htmlFor="edit-show-schedule-task"
+              className="cursor-pointer text-xs text-muted-foreground"
+            >
+              配置排班和任务
+            </Label>
+            <Switch
+              id="edit-show-schedule-task"
+              checked={showScheduleAndTask}
+              onCheckedChange={setShowScheduleAndTask}
+            />
+          </div>
+
+          {showScheduleAndTask && (
+            <ScheduleTaskConfig
+              capabilities={employee.metadata?.mcps ?? []}
+              capabilityIds={selectedMcpIds}
+              skillIds={selectedSkillIds}
+              skills={selectedSkillItems}
+              tasks={tasks}
+              schedule={schedule}
+              onTasksChange={setTasks}
+              onScheduleChange={setSchedule}
+            />
+          )}
+        </div>
+
+        <div
+          className={cn(
+            "sticky bottom-0 z-10 shrink-0 border-t border-border/80",
+            "bg-background/95 pt-3 pb-0.5 backdrop-blur-sm",
+            "shadow-[0_-10px_24px_-16px_rgba(0,0,0,0.2)]",
+            "supports-[backdrop-filter]:bg-background/80"
+          )}
+        >
           <Button
-            variant="ghost"
-            size="xs"
-            className="gap-1"
-            onClick={() => setPickerOpen(true)}
+            className="w-full gap-1.5"
+            onClick={handleSubmit}
+            disabled={!name.trim() || updateMutation.isPending}
           >
-            <IconPlus className="size-3" />
-            添加能力
+            {updateMutation.isPending ? (
+              <>
+                <IconLoader2 className="size-3.5 animate-spin" />
+                保存中...
+              </>
+            ) : (
+              "保存修改"
+            )}
           </Button>
         </div>
-
-        {selectedMcpItems.length > 0 && (
-          <div className="space-y-1">
-            <span className="text-[10px] text-muted-foreground">MCP 工具</span>
-            <div className="flex flex-wrap gap-1.5">
-              {selectedMcpItems.map((item) => (
-                <Badge
-                  key={item.id}
-                  variant="secondary"
-                  className="gap-1 text-xs"
-                >
-                  {item.capability_name}
-                  <button
-                    type="button"
-                    className="ml-0.5 rounded-full hover:bg-muted-foreground/20"
-                    onClick={() => handleRemoveMcp(item.id)}
-                  >
-                    <IconX className="size-3" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {selectedSkillItems.length > 0 && (
-          <div className="space-y-1">
-            <span className="text-[10px] text-muted-foreground">技能</span>
-            <div className="flex flex-wrap gap-1.5">
-              {selectedSkillItems.map((item) => (
-                <Badge
-                  key={item.id}
-                  variant="outline"
-                  className="gap-1 text-xs"
-                >
-                  {item.displayNameZh || item.skillName}
-                  <button
-                    type="button"
-                    className="ml-0.5 rounded-full hover:bg-muted-foreground/20"
-                    onClick={() => handleRemoveSkill(item.id)}
-                  >
-                    <IconX className="size-3" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {selectedMcpItems.length === 0 && selectedSkillItems.length === 0 && (
-          <p className="text-xs text-muted-foreground">
-            暂未选择任何能力，点击「添加能力」进行选择
-          </p>
-        )}
       </div>
-
-      <Separator />
-
-      <div className="flex items-center justify-between">
-        <Label
-          htmlFor="edit-show-schedule-task"
-          className="cursor-pointer text-xs text-muted-foreground"
-        >
-          配置排班和任务
-        </Label>
-        <Switch
-          id="edit-show-schedule-task"
-          checked={showScheduleAndTask}
-          onCheckedChange={setShowScheduleAndTask}
-        />
-      </div>
-
-      {showScheduleAndTask && (
-        <ScheduleTaskConfig
-          capabilities={employee?.metadata?.mcps ?? []}
-          capabilityIds={selectedMcpIds}
-          skillIds={selectedSkillIds}
-          skills={selectedSkillItems}
-          tasks={tasks}
-          schedule={schedule}
-          onTasksChange={setTasks}
-          onScheduleChange={setSchedule}
-        />
-      )}
-
-      <Button
-        className="w-full gap-1.5"
-        onClick={handleSubmit}
-        disabled={!name.trim() || updateMutation.isPending}
-      >
-        {updateMutation.isPending ? (
-          <>
-            <IconLoader2 className="size-3.5 animate-spin" />
-            保存中...
-          </>
-        ) : (
-          "保存修改"
-        )}
-      </Button>
 
       <CapabilityPickerDialog
         open={pickerOpen}
@@ -294,6 +316,24 @@ export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
         selectedSkillIds={selectedSkillIds}
         onConfirm={handlePickerConfirm}
       />
-    </div>
+    </>
+  )
+}
+
+export function EmployeeEditForm({ employeeId }: { employeeId: string }) {
+  const { data: employee, isLoading } = useEmployeeDetailQuery(employeeId)
+
+  if (isLoading || !employee) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-8 w-full" />
+      </div>
+    )
+  }
+
+  return (
+    <EmployeeEditFormFields key={employeeId} employee={employee} employeeId={employeeId} />
   )
 }
