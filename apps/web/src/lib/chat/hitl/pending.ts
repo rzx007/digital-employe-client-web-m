@@ -9,6 +9,7 @@ import { toolPartHasFinalOutput } from "./part-utils"
 
 export type PendingHitlKind = "clarify" | "document-plan"
 
+/** composer 上扫描到的 pending tool（题目 input 等）；审批 id 见 ActiveHitl */
 export type PendingHitl = {
   kind: PendingHitlKind
   messageId: string

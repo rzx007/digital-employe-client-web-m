@@ -31,7 +31,7 @@ import {
   getContactDisplayName,
   type ChatViewContact,
 } from "../shared/chat-view-shared"
-import type { HitlPatchOptions } from "@/lib/chat/hitl"
+import type { ActiveHitl, HitlPatchOptions } from "@/lib/chat/hitl"
 import { ChatMessageItem } from "../messages/chat-message-item"
 
 const EMPTY_MESSAGES: UIMessage[] = []
@@ -51,7 +51,7 @@ type VirtualizedMessageListProps = {
   contact: ChatViewContact
   hasCurrentTurnEnded: boolean
   conversationId?: string | number | null
-  hitlMessageId?: string | null
+  activeHitl?: ActiveHitl | null
   onHitlApproved?: (options?: HitlPatchOptions) => void
 }
 
@@ -60,7 +60,7 @@ function VirtualizedMessageList({
   contact,
   hasCurrentTurnEnded,
   conversationId,
-  hitlMessageId,
+  activeHitl,
   onHitlApproved,
 }: VirtualizedMessageListProps) {
   const { scrollRef } = useStickToBottomContext()
@@ -127,7 +127,7 @@ function VirtualizedMessageList({
               isLastAssistantMessage={isLastAssistantMessage}
               isTurnEnded={hasCurrentTurnEnded}
               conversationId={conversationId}
-              hitlMessageId={hitlMessageId}
+              activeHitl={activeHitl}
               onHitlApproved={onHitlApproved}
             />
           </div>
@@ -161,7 +161,7 @@ export function ChatPanel({
   conversationId,
   onAttachmentsChange,
   composerMessages,
-  hitlMessageId = null,
+  activeHitl = null,
   onHitlApproved,
   className,
   ...props
@@ -189,7 +189,7 @@ export function ChatPanel({
   conversationId?: string | number | null
   onAttachmentsChange?: (paths: string[]) => void
   composerMessages?: UIMessage[]
-  hitlMessageId?: string | null
+  activeHitl?: ActiveHitl | null
   onHitlApproved?: (options?: HitlPatchOptions) => void
 }) {
   const contactDisplayName = contact
@@ -318,7 +318,7 @@ export function ChatPanel({
                     contact={contact}
                     hasCurrentTurnEnded={hasCurrentTurnEnded}
                     conversationId={conversationId}
-                    hitlMessageId={hitlMessageId}
+                    activeHitl={activeHitl}
                     onHitlApproved={onHitlApproved}
                   />
                 )}
@@ -352,7 +352,7 @@ export function ChatPanel({
                 onSend={handleComposerSend}
                 onStop={() => onStop?.()}
                 onHitlApproved={onHitlApproved}
-                hitlMessageId={hitlMessageId}
+                activeHitl={activeHitl}
                 status={status}
                 submitDisabled={isSubmitDisabled}
                 placeholder="请输入任务，然后交给我, 键入 / 指定调用技能"

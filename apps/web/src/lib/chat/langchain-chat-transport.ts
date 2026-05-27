@@ -565,9 +565,16 @@ export class LangChainChatTransport<
               }
 
               if (eventData?.status === "interrupted") {
-                this.onInterrupted?.({
+                const interruptPayload = {
                   message_id: eventData.message_id,
-                })
+                }
+                if (conversationId) {
+                  conversationRuntimeBus.emitInterrupted(
+                    conversationId,
+                    interruptPayload
+                  )
+                }
+                this.onInterrupted?.(interruptPayload)
               }
               flushSync()
               closeTextPhaseIfNeeded(state).forEach((chunk) =>

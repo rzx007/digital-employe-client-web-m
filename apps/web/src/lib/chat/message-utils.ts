@@ -3,6 +3,10 @@ import type { UIMessage } from "ai"
 import type { Message } from "@/types/chat"
 
 import { classifyMessageParts } from "./message-classifier"
+import {
+  HITL_APPROVE_MESSAGE_ID_META_KEY,
+  parseDbMessageId,
+} from "./hitl/message-id"
 
 export {
   classifyMessageParts,
@@ -45,13 +49,21 @@ export function mapStoredMessagesToUIMessages(
           : undefined
 
       if (message.role === "assistant") {
-        const assistantMeta = {
+        const assistantMeta: Record<string, unknown> = {
           ...messageMeta,
           streamState: message.streamState ?? undefined,
           approved_at:
             typeof messageMeta?.approved_at === "string"
               ? messageMeta.approved_at
               : undefined,
+        }
+        const dbId = parseDbMessageId(message.id)
+        if (
+          dbId &&
+          message.streamState === "interrupted" &&
+          typeof assistantMeta.approved_at !== "string"
+        ) {
+          assistantMeta[HITL_APPROVE_MESSAGE_ID_META_KEY] = dbId
         }
         if (message.messageParts && message.messageParts.length > 0) {
           const parts = message.messageParts as UIMessage["parts"]

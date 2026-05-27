@@ -257,6 +257,10 @@ export async function approveHitl(
   messageId: number | string,
   decisions: HitlDecision[]
 ) {
+  const dbId = Number(messageId)
+  if (!Number.isFinite(dbId) || dbId <= 0) {
+    throw new Error(`Invalid approve message_id: ${String(messageId)}`)
+  }
   return request<
     ApiResponse<{
       accepted?: boolean
@@ -267,7 +271,7 @@ export async function approveHitl(
   >(`/chat/conversations/${conversationId}/approve`, {
     method: "POST",
     body: JSON.stringify({
-      message_id: Number(messageId),
+      message_id: dbId,
       decisions,
     }),
   })

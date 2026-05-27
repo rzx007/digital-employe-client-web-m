@@ -17,6 +17,7 @@ import { PlanGeneratedCard } from "../message-blocks/plan-generated-card"
 import {
   isHitlAbortedOutput,
   resolveHitlApproveMessageId,
+  type ActiveHitl,
   type HitlPatchOptions,
 } from "@/lib/chat/hitl"
 import { DocumentPlanCard } from "../message-blocks/document-plan-card"
@@ -101,7 +102,7 @@ export function RenderClassifiedBlocks({
   commandMeta: CommandMeta
   mentionMeta: MentionMeta
   filesMeta?: FileMeta
-  messageId: string
+  messageId: string | null
   toolAutoCollapseMap: Map<string, boolean>
   isLastAssistantMessage?: boolean
   isTurnEnded?: boolean
@@ -275,7 +276,7 @@ export interface ChatMessageItemProps {
   /** 本轮是否已结束（status ready/error），末项工具据此延迟收起 */
   isTurnEnded?: boolean
   conversationId?: string | number | null
-  hitlMessageId?: string | null
+  activeHitl?: ActiveHitl | null
   onHitlApproved?: (options?: HitlPatchOptions) => void
 }
 
@@ -286,7 +287,7 @@ function ChatMessageItemInner({
   isLastAssistantMessage = false,
   isTurnEnded = true,
   conversationId,
-  hitlMessageId,
+  activeHitl,
   onHitlApproved,
 }: ChatMessageItemProps) {
   const contactDisplayName = getContactDisplayName(contact)
@@ -327,8 +328,8 @@ function ChatMessageItemInner({
     [deferredMessage, includeFileChanges]
   )
   const hitlApproveMessageId = React.useMemo(
-    () => resolveHitlApproveMessageId(message, hitlMessageId),
-    [message, hitlMessageId]
+    () => resolveHitlApproveMessageId(message, activeHitl),
+    [message, activeHitl]
   )
 
   return (

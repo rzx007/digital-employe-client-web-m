@@ -344,7 +344,7 @@ export function ConversationChatView({
       onPendingMoveDown={pendingMoveDown}
       conversationId={conversationId}
       onAttachmentsChange={handleAttachmentsChange}
-      hitlMessageId={session.hitlMessageId}
+      activeHitl={session.activeHitl}
       onHitlApproved={session.onHitlApproved}
       className={className}
       {...props}

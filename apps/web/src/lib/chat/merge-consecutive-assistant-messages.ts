@@ -1,9 +1,15 @@
 import type { UIMessage } from "ai"
 
+import {
+  getDbMessageIdFromAssistantMessage,
+  HITL_APPROVE_MESSAGE_ID_META_KEY,
+} from "./hitl/message-id"
+
 type AssistantMeta = {
   streamState?: string
   mergedAssistantIds?: string[]
   hitlAnchorMessageId?: string
+  approveMessageId?: string
   approved_at?: string
 }
 
@@ -21,6 +27,10 @@ function getAssistantMeta(message: UIMessage): AssistantMeta {
       typeof raw.hitlAnchorMessageId === "string"
         ? raw.hitlAnchorMessageId
         : undefined,
+    approveMessageId:
+      typeof raw[HITL_APPROVE_MESSAGE_ID_META_KEY] === "string"
+        ? raw[HITL_APPROVE_MESSAGE_ID_META_KEY]
+        : undefined,
     approved_at:
       typeof raw.approved_at === "string" ? raw.approved_at : undefined,
   }
@@ -35,22 +45,30 @@ function mergeAssistantGroup(group: UIMessage[]): UIMessage {
     return meta.streamState === "interrupted" && !meta.approved_at
   })
   const hitlAnchorMessageId = interrupted?.id ?? last.id
+  const approveMessageId =
+    (interrupted && getDbMessageIdFromAssistantMessage(interrupted)) ||
+    getDbMessageIdFromAssistantMessage(last)
   const mergedIds = group.map((m) => m.id)
 
   const baseMeta =
     (last as UIMessage & { metadata?: Record<string, unknown> }).metadata ?? {}
+
+  const mergedMeta: Record<string, unknown> = {
+    ...baseMeta,
+    streamState: lastMeta.streamState,
+    mergedAssistantIds: mergedIds,
+    hitlAnchorMessageId,
+  }
+  if (approveMessageId) {
+    mergedMeta[HITL_APPROVE_MESSAGE_ID_META_KEY] = approveMessageId
+  }
 
   return {
     ...first,
     id: first.id,
     role: "assistant",
     parts: group.flatMap((m) => m.parts),
-    metadata: {
-      ...baseMeta,
-      streamState: lastMeta.streamState,
-      mergedAssistantIds: mergedIds,
-      hitlAnchorMessageId,
-    },
+    metadata: mergedMeta,
   } as UIMessage
 }
 

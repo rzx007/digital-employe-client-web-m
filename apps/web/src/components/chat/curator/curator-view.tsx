@@ -675,7 +675,7 @@ export function CuratorView({
                             filesMeta={filesMeta}
                             messageId={resolveHitlApproveMessageId(
                               message,
-                              session.hitlMessageId
+                              session.activeHitl
                             )}
                             toolAutoCollapseMap={toolAutoCollapseMap}
                             isLastAssistantMessage={isLastAssistantMessage}
@@ -730,7 +730,7 @@ export function CuratorView({
             messages={messages}
             conversationId={curatorConversationId}
             onHitlApproved={session.onHitlApproved}
-            hitlMessageId={session.hitlMessageId}
+            activeHitl={session.activeHitl}
             inputValue={inputValue}
             onInputChange={handleTextChange}
             onSend={handleSendMessage}

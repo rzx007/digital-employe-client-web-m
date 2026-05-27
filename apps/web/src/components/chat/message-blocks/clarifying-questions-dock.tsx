@@ -16,7 +16,9 @@ import { approveHitl, type HitlDecision } from "@/api/chat"
 import {
   buildClarifyRespondMessage,
   CLARIFY_SKIP_REJECT_MESSAGE,
+  isValidApproveMessageId,
   optionLabel,
+  type ActiveHitl,
   type ClarifyingQuestion,
   type PendingHitl,
 } from "@/lib/chat/hitl"
@@ -27,16 +29,16 @@ function isComposerTarget(target: EventTarget | null): boolean {
 }
 
 function ClarifyingQuestionsDockInner({
+  activeHitl,
   pending,
   conversationId,
-  messageId,
   optionalDetails,
   onSubmitted,
   className,
 }: {
+  activeHitl: ActiveHitl
   pending: PendingHitl & { input: Record<string, unknown> }
   conversationId: string | number
-  messageId: string | number
   optionalDetails?: string
   onSubmitted?: (opts?: {
     resumed?: boolean
@@ -98,9 +100,17 @@ function ClarifyingQuestionsDockInner({
   const submitDecisions = useCallback(
     async (decisions: HitlDecision[], errorFallback: string) => {
       if (submitting) return
+      if (!isValidApproveMessageId(activeHitl.dbMessageId)) {
+        toast.error("无法提交：缺少有效的消息 ID，请刷新后重试")
+        return
+      }
       setSubmitting(true)
       try {
-        const res = await approveHitl(conversationId, messageId, decisions)
+        const res = await approveHitl(
+          conversationId,
+          activeHitl.dbMessageId,
+          decisions
+        )
         if (res?.code && res.code !== 200) {
           toast.error(res.msg || errorFallback)
           return
@@ -115,7 +125,7 @@ function ClarifyingQuestionsDockInner({
         setSubmitting(false)
       }
     },
-    [conversationId, messageId, onSubmitted, submitting]
+    [activeHitl.dbMessageId, conversationId, onSubmitted, submitting]
   )
 
   const submitAll = useCallback(async () => {

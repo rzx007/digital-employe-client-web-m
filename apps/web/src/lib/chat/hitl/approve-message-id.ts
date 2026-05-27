@@ -1,31 +1,19 @@
 import type { UIMessage } from "ai"
 
-/** POST /approve 使用的 message_id（与 session.hitlMessageId 对齐） */
+import type { ActiveHitl } from "./active-hitl"
+import { parseDbMessageId } from "./message-id"
+
+/**
+ * 气泡内方案卡等展示层：审批 id 以 ActiveHitl 为准，merge 气泡仅作对齐辅助。
+ */
 export function resolveHitlApproveMessageId(
   message: UIMessage,
-  sessionHitlMessageId: string | null | undefined
-): string {
-  if (!sessionHitlMessageId) return message.id
+  activeHitl: ActiveHitl | null | undefined
+): string | null {
+  if (activeHitl?.dbMessageId) return activeHitl.dbMessageId
 
-  const sessionId = String(sessionHitlMessageId)
-  if (String(message.id) === sessionId) return sessionId
+  const dbRowId = parseDbMessageId(message.id)
+  if (dbRowId) return dbRowId
 
-  const meta = (message as UIMessage & { metadata?: Record<string, unknown> })
-    .metadata
-  if (
-    meta &&
-    typeof meta === "object" &&
-    typeof meta.hitlAnchorMessageId === "string" &&
-    meta.hitlAnchorMessageId === sessionId
-  ) {
-    return sessionId
-  }
-  const mergedIds = meta?.mergedAssistantIds
-  if (
-    Array.isArray(mergedIds) &&
-    mergedIds.some((id) => String(id) === sessionId)
-  ) {
-    return sessionId
-  }
-  return message.id
+  return null
 }

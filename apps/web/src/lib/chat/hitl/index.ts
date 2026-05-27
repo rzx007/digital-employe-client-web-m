@@ -17,7 +17,21 @@ export {
   dedupeHitlPartsInMessage,
   dedupeHitlPartsInMessages,
 } from "./parts-dedupe"
+export {
+  activeHitlMatchesPending,
+  buildActiveHitlFromInterruptPayload,
+  resolveActiveHitl,
+  seedActiveHitlFromMessageParts,
+  type ActiveHitl,
+} from "./active-hitl"
 export { resolveHitlApproveMessageId } from "./approve-message-id"
+export {
+  HITL_APPROVE_MESSAGE_ID_META_KEY,
+  getApproveMessageIdFromMeta,
+  getDbMessageIdFromAssistantMessage,
+  isValidApproveMessageId,
+  parseDbMessageId,
+} from "./message-id"
 export { isHitlAbortedOutput } from "./aborted-output"
 export { enrichHitlResolvedPartsInMessage } from "./display-enrich"
 export { prepareDisplayMessages } from "./display-pipeline"

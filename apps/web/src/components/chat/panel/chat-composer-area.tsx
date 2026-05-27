@@ -15,8 +15,9 @@ import { ClarifyingQuestionsDock } from "@/components/chat/message-blocks/clarif
 import { PendingMessageQueue } from "@/components/chat/panel/pending-message-queue"
 import type { PendingMessage } from "@/hooks/use-pending-messages"
 import {
+  activeHitlMatchesPending,
   findPendingHitl,
-  resolveHitlApproveMessageId,
+  type ActiveHitl,
   type HitlPatchOptions,
   type PendingHitl,
 } from "@/lib/chat/hitl"
@@ -32,7 +33,7 @@ export function ChatComposerArea({
   onSend,
   onStop,
   onHitlApproved,
-  hitlMessageId = null,
+  activeHitl = null,
   status,
   submitDisabled,
   placeholder,
@@ -56,7 +57,7 @@ export function ChatComposerArea({
   onSend: (message: PromptInputMessage | string) => void
   onStop: () => void
   onHitlApproved?: (options?: HitlPatchOptions) => void
-  hitlMessageId?: string | null
+  activeHitl?: ActiveHitl | null
   status: ChatPromptMessageStatus
   submitDisabled?: boolean
   placeholder?: React.ReactNode
@@ -83,40 +84,41 @@ export function ChatComposerArea({
       }
     }, [messages])
 
-  const clarifyActive = pendingHitl?.kind === "clarify"
+  const clarifyActive =
+    activeHitl?.kind === "clarify" &&
+    (!pendingHitl ||
+      activeHitlMatchesPending(activeHitl, pendingHitl.toolCallId))
+
   const planActive = pendingHitl?.kind === "document-plan"
   const blocksComposer = clarifyActive || planActive
 
-  const pendingHitlMessage = React.useMemo(() => {
-    if (!pendingHitl) return null
-    return (
-      messages.find(
-        (m) =>
-          m.role === "assistant" && String(m.id) === pendingHitl.messageId
-      ) ?? null
-    )
-  }, [messages, pendingHitl])
-
-  const hitlApproveMessageId = React.useMemo(() => {
-    if (!pendingHitl) return null
-    if (!pendingHitlMessage) return pendingHitl.messageId
-    return resolveHitlApproveMessageId(
-      pendingHitlMessage,
-      hitlMessageId ?? pendingHitl.messageId
-    )
-  }, [hitlMessageId, pendingHitl, pendingHitlMessage])
+  const dockPending = React.useMemo((): (PendingHitl & {
+    input: Record<string, unknown>
+  }) | null => {
+    if (!activeHitl || activeHitl.kind !== "clarify") return null
+    const input = (pendingHitl?.input ??
+      activeHitl.input ??
+      {}) as Record<string, unknown>
+    return {
+      kind: "clarify",
+      messageId: pendingHitl?.messageId ?? "",
+      toolCallId: activeHitl.toolCallId,
+      input,
+    }
+  }, [activeHitl, pendingHitl])
 
   const handleClarifySubmitted = React.useCallback(
     (opts?: { resumed?: boolean; assistantMessageId?: string | number }) => {
+      if (!activeHitl) return
       onHitlApproved?.({
         kind: "clarify",
-        toolCallId: pendingHitl?.toolCallId,
-        approvedMessageId: hitlApproveMessageId ?? pendingHitl?.messageId,
+        toolCallId: activeHitl.toolCallId,
+        approvedMessageId: activeHitl.dbMessageId,
         resumed: opts?.resumed,
         assistantMessageId: opts?.assistantMessageId,
       })
     },
-    [hitlApproveMessageId, onHitlApproved, pendingHitl]
+    [activeHitl, onHitlApproved]
   )
 
   return (
@@ -138,11 +140,11 @@ export function ChatComposerArea({
           </div>
         )}
 
-      {clarifyActive && pendingHitl && (
+      {clarifyActive && activeHitl && dockPending && (
         <ClarifyingQuestionsDock
-          pending={pendingHitl}
+          activeHitl={activeHitl}
+          pending={dockPending}
           conversationId={conversationId}
-          messageId={hitlApproveMessageId ?? pendingHitl.messageId}
           optionalDetails={inputValue}
           onSubmitted={handleClarifySubmitted}
           className="mx-auto w-full max-w-4xl"

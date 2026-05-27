@@ -308,7 +308,7 @@ export function DraftChatView({
       onPendingMoveUp={pendingMoveUp}
       onPendingMoveDown={pendingMoveDown}
       conversationId={selectedConversationId}
-      hitlMessageId={session.hitlMessageId}
+      activeHitl={session.activeHitl}
       onHitlApproved={session.onHitlApproved}
       onAttachmentsChange={() => {}}
       className={className}
