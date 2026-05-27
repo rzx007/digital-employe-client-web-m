@@ -203,7 +203,8 @@ local-employees/
 ### Chat
 
 - `POST /chat/conversations`
-- `GET /chat/conversations`
+- `GET /workspaces/{workspace_id}/chat/conversations`（按 `target_type` + `target_id` 列表）
+- `DELETE /workspaces/{workspace_id}/chat/conversations`（按 `target_type` + `target_id` 批量删除，含 checkpoint）
 - `GET /chat/conversations/{conversation_id}/messages`
 - `DELETE /chat/conversations/{conversation_id}`
 - `GET /chat/conversations/{conversation_id}/stream`

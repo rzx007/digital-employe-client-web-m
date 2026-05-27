@@ -31,6 +31,7 @@ export function RecentConversations({
     handleTogglePin,
     handleRemove,
     isItemSelected,
+    removingContactId,
   } = useRecentConversations()
 
   const renderDetailDialog = () => {
@@ -94,6 +95,7 @@ export function RecentConversations({
                   onDetail={handleDetail}
                   onTogglePin={handleTogglePin}
                   onRemove={handleRemove}
+                  isRemoving={removingContactId === item.contactId}
                 />
                 {!collapsed && <div className="mx-3 border-b"></div>}
               </React.Fragment>

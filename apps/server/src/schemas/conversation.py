@@ -34,6 +34,11 @@ class ConversationRead(BaseModel):
         return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
+class ConversationsBulkDeleteResult(BaseModel):
+    deleted_count: int
+    deleted_ids: list[int]
+
+
 class ConversationMessageRead(BaseModel):
     id: int
     conversation_id: int

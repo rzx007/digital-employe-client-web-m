@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ComponentProps } from "react"
+import { useCallback, useEffect, useRef, type ComponentProps } from "react"
 import { useSize } from "ahooks"
 
 import { cn } from "@workspace/ui/lib/utils"
@@ -9,8 +9,10 @@ import { OfflineBanner } from "@/components/offline-banner"
 import { useIsMobile } from "@/hooks/use-mobile"
 import {
   useContactsQuery,
+  useConversationsQuery,
   useCuratorConversationQuery,
 } from "@/hooks/use-chat-queries"
+import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 import { useTaskExecutionNotifications } from "@/hooks/use-task-execution-notifications"
 import { chatKeys } from "@/lib/query-keys/chat"
@@ -141,9 +143,62 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const openConversationList = useChatStore((s) => s.openConversationList)
   const closeConversationList = useChatStore((s) => s.closeConversationList)
 
+  const selectedContactId = useChatStore((s) => s.selectedContactId)
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
+  const isDraftConversation = useChatStore((s) => s.isDraftConversation)
   const selectedContact = useChatStore((s) => s.getSelectedContact())
+  const { data: conversations = [] } = useConversationsQuery(
+    selectedContactId,
+    selectedContact
+  )
   const { data: curatorConversation } = useCuratorConversationQuery()
+
+  const resetRightPanels = useCallback(() => {
+    resetChatRightPanels()
+  }, [])
+
+  const prevConversationCountRef = useRef<number | null>(null)
+  const prevContactIdForConvRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (activeTab !== "chat") return
+
+    if (selectedContactId !== prevContactIdForConvRef.current) {
+      prevContactIdForConvRef.current = selectedContactId
+      prevConversationCountRef.current = null
+    }
+
+    const convId = selectedConversationId
+    const isDraft =
+      isDraftConversation ||
+      (convId != null && String(convId).startsWith("draft-"))
+
+    if (!isDraft && convId != null) {
+      const stillExists = conversations.some(
+        (c) => String(c.id) === String(convId)
+      )
+      if (!stillExists) {
+        resetRightPanels()
+        useChatStore.getState().setSelectedConversationId(null)
+        useChatStore.getState().setDraftConversation(true)
+      }
+    }
+
+    const count = conversations.length
+    const prevCount = prevConversationCountRef.current
+    prevConversationCountRef.current = count
+
+    if (selectedContactId && prevCount != null && prevCount > 0 && count === 0) {
+      resetRightPanels()
+    }
+  }, [
+    activeTab,
+    selectedContactId,
+    selectedConversationId,
+    isDraftConversation,
+    conversations,
+    resetRightPanels,
+  ])
   const artifactPanelConversationId =
     selectedContact?.type === "curator" && curatorConversation?.id != null
       ? curatorConversation.id

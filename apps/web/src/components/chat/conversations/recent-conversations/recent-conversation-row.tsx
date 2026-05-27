@@ -1,9 +1,20 @@
+import * as React from "react"
 import {
   IconInfoCircle,
   IconPin,
   IconPinnedOff,
   IconTrash,
 } from "@tabler/icons-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@workspace/ui/components/alert-dialog"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -68,17 +79,17 @@ function RecentConversationContextMenu({
   item,
   onDetail,
   onTogglePin,
-  onRemove,
+  onRequestRemove,
 }: {
   item: RecentConversationItem
   onDetail: () => void
   onTogglePin: () => void
-  onRemove: () => void
+  onRequestRemove: () => void
 }) {
   if (item.isCurator) return null
 
   return (
-    <ContextMenuContent className="w-36">
+    <ContextMenuContent className="w-40">
       <ContextMenuItem onSelect={onDetail}>
         <IconInfoCircle className="text-muted-foreground" />
         <span>详情</span>
@@ -98,9 +109,9 @@ function RecentConversationContextMenu({
         )}
       </ContextMenuItem>
       <ContextMenuSeparator />
-      <ContextMenuItem variant="destructive" onSelect={onRemove}>
+      <ContextMenuItem variant="destructive" onSelect={onRequestRemove}>
         <IconTrash />
-        <span>移除</span>
+        <span>删除会话</span>
       </ContextMenuItem>
     </ContextMenuContent>
   )
@@ -114,7 +125,8 @@ interface RecentConversationRowProps {
   onSelect: (contactId: string) => void
   onDetail: (item: RecentConversationItem) => void
   onTogglePin: (item: RecentConversationItem) => void
-  onRemove: (item: RecentConversationItem) => void
+  onRemove: (item: RecentConversationItem) => void | Promise<void>
+  isRemoving?: boolean
 }
 
 export function RecentConversationRow({
@@ -126,8 +138,17 @@ export function RecentConversationRow({
   onDetail,
   onTogglePin,
   onRemove,
+  isRemoving = false,
 }: RecentConversationRowProps) {
+  const [alertOpen, setAlertOpen] = React.useState(false)
+
+  const handleDeleteConfirm = () => {
+    setAlertOpen(false)
+    void onRemove(item)
+  }
+
   return (
+    <>
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
@@ -141,7 +162,10 @@ export function RecentConversationRow({
               ? "bg-primary/90 text-primary-foreground"
               : "hover:bg-accent/50 hover:text-accent-foreground"
           )}
-          onClick={() => onSelect(item.contactId)}
+          onClick={() => {
+            if (!isRemoving) onSelect(item.contactId)
+          }}
+          aria-busy={isRemoving}
         >
           <div className="relative shrink-0">
             {item.isGroup ? (
@@ -231,8 +255,29 @@ export function RecentConversationRow({
         item={item}
         onDetail={() => onDetail(item)}
         onTogglePin={() => onTogglePin(item)}
-        onRemove={() => onRemove(item)}
+        onRequestRemove={() => setAlertOpen(true)}
       />
     </ContextMenu>
+    <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>删除全部会话</AlertDialogTitle>
+          <AlertDialogDescription>
+            确定删除与「{item.contactName}」的全部聊天记录吗？此操作不可撤销。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isRemoving}>取消</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            disabled={isRemoving}
+            onClick={handleDeleteConfirm}
+          >
+            删除
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }

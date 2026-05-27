@@ -238,6 +238,56 @@ class ChatService:
                 shutil.rmtree(conversation_dir, ignore_errors=True)
 
     @staticmethod
+    async def adelete_conversations_by_target(
+        db: Session,
+        workspace_id: int,
+        target_type: str,
+        target_id: int,
+    ) -> list[int]:
+        """按联系人（target）批量删除会话，逐条清理 checkpoint、消息与产物目录。"""
+        if target_type == "curator":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="不允许批量删除总管会话。",
+            )
+
+        conversations = ChatService.list_conversations(
+            db, workspace_id, target_type, target_id
+        )
+        deleted_ids: list[int] = []
+        failures: list[tuple[int, str]] = []
+
+        for conversation in conversations:
+            conv_id = conversation.id
+            try:
+                await ChatService.adelete_conversation(db, conv_id)
+                deleted_ids.append(conv_id)
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.error(
+                    "Failed to delete conversation %s for target %s:%s: %s",
+                    conv_id,
+                    target_type,
+                    target_id,
+                    exc,
+                    exc_info=True,
+                )
+                failures.append((conv_id, str(exc)))
+
+        if failures:
+            failed_summary = ", ".join(f"{cid}" for cid, _ in failures)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    f"部分会话删除失败（{len(failures)}/{len(conversations)}），"
+                    f"失败 ID: {failed_summary}"
+                ),
+            )
+
+        return deleted_ids
+
+    @staticmethod
     def _append_message(
         db: Session,
         conversation: Conversation,

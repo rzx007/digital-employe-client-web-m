@@ -62,6 +62,29 @@ export async function deleteConversation(conversationId: number | string) {
     method: "DELETE",
   })
 }
+
+export interface ConversationsBulkDeleteResult {
+  deleted_count: number
+  deleted_ids: number[]
+}
+
+/**
+ * 按联系人批量删除会话
+ * DELETE /workspaces/{workspace_id}/chat/conversations?target_type=&target_id=
+ */
+export async function deleteConversationsByTarget(
+  query: { target_type: string; target_id: number },
+  opts?: { signal?: AbortSignal }
+) {
+  return request<ApiResponse<ConversationsBulkDeleteResult>>(
+    `/workspaces/${WORKSPACE_ID}/chat/conversations`,
+    {
+      method: "DELETE",
+      params: query,
+      ...(opts?.signal ? { signal: opts.signal } : {}),
+    }
+  )
+}
 export async function deleteConversationUpload(
   conversationId: number | string,
   path: string

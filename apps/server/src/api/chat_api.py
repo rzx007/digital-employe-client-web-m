@@ -7,7 +7,14 @@ from sqlalchemy.orm import Session
 from src.core.config import get_settings
 from src.db.session import get_db
 from src.models.response import BaseResponse, ListResponse, ResponseBase
-from src.schemas.conversation import ConversationCreate, ConversationMessageRead, ConversationRead, StreamConversationRequest, ApproveRequest
+from src.schemas.conversation import (
+    ApproveRequest,
+    ConversationCreate,
+    ConversationMessageRead,
+    ConversationRead,
+    ConversationsBulkDeleteResult,
+    StreamConversationRequest,
+)
 from src.schemas.resource import ResourceContent, ResourceList, ResourceUploadResult
 from src.service.chat_service import ChatService
 from src.service.resource_service import ResourceService
@@ -66,6 +73,32 @@ def list_conversations(
         target_id=target_id,
     )
     return ListResponse(data=conversations)
+
+
+@router.delete(
+    "/workspaces/{workspace_id}/chat/conversations",
+    response_model=ResponseBase[ConversationsBulkDeleteResult],
+    status_code=status.HTTP_200_OK,
+)
+async def delete_conversations_by_target(
+    workspace_id: int,
+    target_type: str = Query(...),
+    target_id: int = Query(...),
+    db: Session = Depends(get_db),
+) -> ResponseBase[ConversationsBulkDeleteResult]:
+    """按联系人（target_type + target_id）批量删除其下全部会话。"""
+    deleted_ids = await ChatService.adelete_conversations_by_target(
+        db=db,
+        workspace_id=workspace_id,
+        target_type=target_type,
+        target_id=target_id,
+    )
+    return ResponseBase(
+        data=ConversationsBulkDeleteResult(
+            deleted_count=len(deleted_ids),
+            deleted_ids=deleted_ids,
+        )
+    )
 
 
 @router.get("/chat/conversations/{conversation_id}/messages", response_model=ListResponse[ConversationMessageRead])

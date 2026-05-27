@@ -1,8 +1,13 @@
 import * as React from "react"
+import { toast } from "sonner"
 import { useShallow } from "zustand/react/shallow"
 import { useAuthStore } from "@/stores/auth-store"
-import { useConversationsQuery } from "@/hooks/use-chat-queries"
+import {
+  useConversationsQuery,
+  useDeleteAllConversationsForContactMutation,
+} from "@/hooks/use-chat-queries"
 import { findContactInList } from "@/lib/chat/contact-utils"
+import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import type { AIEmployee, Contact } from "@/types/chat"
 import { useChatStore } from "@/stores/chat-store"
 import { deriveRecentItems } from "./model"
@@ -10,6 +15,7 @@ import {
   loadAndMigrateRecentConversations,
   saveRecentConversations,
 } from "./persistence"
+import { resolveContactForRecentItem } from "./resolve-recent-contact"
 import type { RecentConversationItem } from "./types"
 
 /** 与 displayItems 排序一致，用于移除当前项后选中下一条 */
@@ -78,6 +84,12 @@ export function useRecentConversations() {
     selectedContact
   )
 
+  const deleteAllConversationsMutation =
+    useDeleteAllConversationsForContactMutation()
+  const [removingContactId, setRemovingContactId] = React.useState<
+    string | null
+  >(null)
+
   const recentItems = React.useMemo(
     () =>
       deriveRecentItems(storedItems, {
@@ -126,22 +138,70 @@ export function useRecentConversations() {
     )
   }
 
-  const handleRemove = (item: RecentConversationItem) => {
-    const updated = recentItems.filter(
-      (i) => i.contactId !== item.contactId
+  const handleRemove = async (item: RecentConversationItem) => {
+    if (item.isCurator) return
+
+    const contact = resolveContactForRecentItem(
+      item.contactId,
+      item,
+      contacts
     )
-    setStoredItems(updated)
-
-    const { selectedContactId, setSelectedContactId, switchToContact } =
-      useChatStore.getState()
-    if (selectedContactId !== item.contactId) return
-
-    const nextContactId = pickNextRecentContactId(updated)
-    if (nextContactId) {
-      switchToContact(nextContactId)
-    } else {
-      setSelectedContactId(null)
+    if (!contact) {
+      toast.error("无法删除：找不到该联系人")
+      return
     }
+
+    setRemovingContactId(item.contactId)
+    try {
+      await toast.promise(
+        deleteAllConversationsMutation.mutateAsync({
+          contactId: item.contactId,
+          contact,
+        }),
+        {
+          loading: `正在删除与「${item.contactName}」的所有会话…`,
+          success: `已删除与「${item.contactName}」的所有会话`,
+          error: "删除会话失败，请稍后重试",
+        }
+      )
+    } catch {
+      return
+    } finally {
+      setRemovingContactId(null)
+    }
+
+    resetChatRightPanels()
+
+    const {
+      selectedContactId: currentContactId,
+      selectedConversationId,
+      setSelectedContactId,
+      setSelectedConversationId,
+      setDraftConversation,
+      switchToContact,
+    } = useChatStore.getState()
+
+    const remaining = recentItems.filter((i) => i.contactId !== item.contactId)
+
+    if (currentContactId === item.contactId) {
+      const nextContactId = pickNextRecentContactId(remaining)
+      if (nextContactId) {
+        switchToContact(nextContactId)
+      } else {
+        setSelectedContactId(null)
+      }
+    } else if (
+      selectedConversationId != null &&
+      currentContactId === item.contactId
+    ) {
+      const convId = String(selectedConversationId)
+      if (!convId.startsWith("draft-")) {
+        setSelectedConversationId(null)
+        setDraftConversation(true)
+      }
+    }
+
+    setStoredItems((prev) => prev.filter((i) => i.contactId !== item.contactId))
   }
 
   const displayItems = React.useMemo(() => {
@@ -190,5 +250,6 @@ export function useRecentConversations() {
     handleTogglePin,
     handleRemove,
     isItemSelected,
+    removingContactId,
   }
 }

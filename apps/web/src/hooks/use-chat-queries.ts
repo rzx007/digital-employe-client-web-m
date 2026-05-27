@@ -8,6 +8,7 @@ import {
 import { fetchGroupById } from "@/api/group"
 import {
   createConversation,
+  deleteAllConversationsForContact,
   deleteConversation as deleteConversationApi,
   deleteAllTaskExecutions,
   fetchContacts,
@@ -19,6 +20,7 @@ import {
   uploadConversationFile,
 } from "@/api/chat"
 import type { Contact, Conversation, Message } from "@/types/chat"
+import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import { chatKeys } from "@/lib/query-keys/chat"
 
 export function useContactsQuery() {
@@ -131,6 +133,34 @@ export function useGroupDetailQuery(id: string | null) {
   })
 }
 
+export function useDeleteAllConversationsForContactMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      contactId,
+      contact,
+    }: {
+      contactId: string
+      contact: Contact
+    }) => deleteAllConversationsForContact(contactId, contact),
+    onSuccess: (deletedIds, { contactId }) => {
+      queryClient.setQueryData<Conversation[]>(
+        chatKeys.conversations(contactId),
+        []
+      )
+      for (const id of deletedIds) {
+        queryClient.removeQueries({ queryKey: chatKeys.messages(id) })
+        queryClient.removeQueries({ queryKey: chatKeys.resources(id) })
+      }
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.conversations(contactId),
+      })
+      resetChatRightPanels()
+    },
+  })
+}
+
 export function useDeleteConversationMutation() {
   const queryClient = useQueryClient()
 
@@ -169,6 +199,9 @@ export function useDeleteConversationMutation() {
       queryClient.invalidateQueries({
         queryKey: chatKeys.conversations(variables.contactId),
       })
+    },
+    onSuccess: () => {
+      resetChatRightPanels()
     },
   })
 }

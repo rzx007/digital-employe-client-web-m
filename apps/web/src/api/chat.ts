@@ -14,6 +14,7 @@ import {
   downloadResourceBlob as downloadResourceBlobApi,
   fetchConversationMessages as fetchConversationMessagesApi,
   fetchConversationResources as fetchConversationResourcesApi,
+  deleteConversationsByTarget as deleteConversationsByTargetApi,
   fetchConversations as fetchConversationsApi,
   fetchCuratorConversation as fetchCuratorConversationApi,
   fetchResourceContent as fetchResourceContentApi,
@@ -213,4 +214,29 @@ export async function createConversation(params: {
   }
 
   return mapCreatedConversationListItem(item, params.contactId)
+}
+
+/** 删除某联系人下的全部会话（含消息、checkpoint 与产物，走后端批量 DELETE） */
+export async function deleteAllConversationsForContact(
+  _contactId: string,
+  contact: Contact,
+  opts?: { signal?: AbortSignal }
+): Promise<string[]> {
+  const target = mapContactToTarget(contact)
+  if (!target) {
+    throw new Error("无法确定聊天目标类型")
+  }
+  if (target.target_type === "curator") {
+    throw new Error("不允许删除总管会话")
+  }
+
+  const res = await deleteConversationsByTargetApi(
+    {
+      target_type: target.target_type,
+      target_id: target.target_id,
+    },
+    opts
+  )
+  const deletedIds = res?.data?.deleted_ids ?? []
+  return deletedIds.map(String)
 }
