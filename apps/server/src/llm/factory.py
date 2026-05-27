@@ -12,6 +12,8 @@ from src.llm.providers import get_provider, normalize_openai_base_url, resolve_p
 
 DEFAULT_MODEL = "qwen2.5-72b-instruct"
 DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+# OpenAI SDK / ChatOpenAI 要求非空 api_key；本地无鉴权端点可忽略该占位值
+DEFAULT_API_KEY = "not-needed"
 
 # DeepSeek V4 thinking + LangChain tool-call 需回传 reasoning_content，暂不可用
 _DEEPSEEK_V4_PATTERN = re.compile(r"deepseek[-_/ ]?v4", re.IGNORECASE)
@@ -92,6 +94,7 @@ def build_chat_model(
     settings = get_settings()
     resolved_model = model or settings.deepagent_model or DEFAULT_MODEL
     resolved_key = api_key if api_key is not None else settings.api_key
+    resolved_key = (resolved_key or "").strip() or DEFAULT_API_KEY
     resolved_base = _resolve_base_url(settings, base_url)
     llm_kwargs = _merge_deepseek_v4_extra_body(resolved_model, dict(extra_kwargs))
 
