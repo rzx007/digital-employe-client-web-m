@@ -26,10 +26,12 @@ import { cn } from "@workspace/ui/lib/utils"
 import { formatDistanceToNow } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import { CURATOR_AVATAR_URL } from "@/lib/avatar"
+import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import {
   EmployeeContactAvatar,
   GroupMembersAvatar,
 } from "../../contacts/contact-avatars"
+import { getRecentItemUnreadKey } from "./model"
 import type { RecentConversationItem } from "./types"
 
 function formatTimeAgo(date?: Date) {
@@ -37,18 +39,15 @@ function formatTimeAgo(date?: Date) {
   return formatDistanceToNow(date, { addSuffix: true, locale: zhCN })
 }
 
-function UnreadBadge({
-  count,
-  hidden,
-}: {
-  count: number
-  hidden?: boolean
-}) {
-  if (hidden || count <= 0) return null
+/** SSE 运行态未读（conversation-status-store），头像角标 */
+function StreamingActivityBadge({ item }: { item: RecentConversationItem }) {
+  const key = getRecentItemUnreadKey(item)
+  const count = useConversationStatusStore((s) => s.unreadCounts[key] ?? 0)
+  if (count === 0) return null
   return (
     <span
       className="absolute -top-1 -right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-background bg-purple-500 px-0.5 text-[10px] leading-none font-medium text-white"
-      aria-label={`${count} 条未读`}
+      aria-label={`${count} 条新动态`}
     >
       {count > 99 ? "99+" : count}
     </span>
@@ -122,7 +121,7 @@ interface RecentConversationRowProps {
   collapsed?: boolean
   selectedContactId: string | null
   isSelected: boolean
-  onSelect: (item: RecentConversationItem) => void
+  onSelect: (contactId: string) => void
   onDetail: (item: RecentConversationItem) => void
   onTogglePin: (item: RecentConversationItem) => void
   onRemove: (item: RecentConversationItem) => void | Promise<void>
@@ -163,7 +162,7 @@ export function RecentConversationRow({
               : "hover:bg-accent/50 hover:text-accent-foreground"
           )}
           onClick={() => {
-            if (!isRemoving) onSelect(item)
+            if (!isRemoving) onSelect(item.contactId)
           }}
           aria-busy={isRemoving}
         >
@@ -190,10 +189,7 @@ export function RecentConversationRow({
                 statusClassName={collapsed ? "h-2 w-2" : undefined}
               />
             )}
-            <UnreadBadge
-              count={item.unreadCount}
-              hidden={selectedContactId === item.contactId}
-            />
+            <StreamingActivityBadge item={item} />
           </div>
           {!collapsed && (
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -243,6 +239,15 @@ export function RecentConversationRow({
                 >
                   {item.title || "新对话"}
                 </span>
+                {item.unreadCount > 0 &&
+                  selectedContactId !== item.contactId && (
+                    <span
+                      className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground"
+                      aria-label={`${item.unreadCount} 条未读消息`}
+                    >
+                      {item.unreadCount > 99 ? "99+" : item.unreadCount}
+                    </span>
+                  )}
               </div>
             </div>
           )}
