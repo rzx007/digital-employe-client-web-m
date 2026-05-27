@@ -6,11 +6,73 @@ import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
-import type { AIEmployee } from "@/types/chat"
+import type { AIEmployee, Contact } from "@/types/chat"
 import { useChatStore } from "@/stores/chat-store"
 import { ContactItem } from "./contact-item"
 import { CreateGroupDialog } from "../dialogs/create-group-dialog"
 import { getElectronApi } from "@/lib/electron/host"
+
+function countEmployeeStatus(contacts: Contact[]) {
+  return contacts.reduce(
+    (acc, contact) => {
+      const status = contact.employee?.status ?? "offline"
+      if (status === "online") acc.online += 1
+      else acc.busy += 1
+      return acc
+    },
+    { online: 0, busy: 0 }
+  )
+}
+
+function EmployeeContactsSectionHeader({
+  total,
+  online,
+  busy,
+}: {
+  total: number
+  online: number
+  busy: number
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 px-2 py-1">
+      <span className="text-[11px] font-medium text-muted-foreground">
+        联系人
+        <span className="ml-1 font-normal tabular-nums text-muted-foreground/65">
+          {total}
+        </span>
+      </span>
+      <div
+        className="flex shrink-0 items-center gap-2.5 text-[10px] leading-none tabular-nums text-muted-foreground"
+        aria-label={`${total} 位联系人，在线 ${online}，忙碌 ${busy}`}
+      >
+        <span className="inline-flex items-center gap-1">
+          <span
+            className="size-1.5 shrink-0 rounded-full bg-green-500 ring-1 ring-background"
+            aria-hidden
+          />
+          <span>
+            在线
+            <span className="ml-0.5 font-medium text-foreground/80">
+              {online}
+            </span>
+          </span>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span
+            className="size-1.5 shrink-0 rounded-full bg-gray-400 ring-1 ring-background"
+            aria-hidden
+          />
+          <span>
+            不可用
+            <span className="ml-0.5 font-medium text-foreground/80">
+              {busy}
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  )
+}
 
 export function ContactsPanel({
   className,
@@ -79,6 +141,11 @@ export function ContactsPanel({
         return c.employee?.name.toLowerCase().includes(q)
       }),
     [employeeContacts, q]
+  )
+
+  const employeeStatusCounts = React.useMemo(
+    () => countEmployeeStatus(filteredEmployeeContacts),
+    [filteredEmployeeContacts]
   )
 
   return (
@@ -161,9 +228,11 @@ export function ContactsPanel({
 
             {filteredEmployeeContacts.length > 0 && (
               <div className="space-y-0.5" data-tour-id="contact-employee">
-                <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
-                  联系人
-                </p>
+                <EmployeeContactsSectionHeader
+                  total={filteredEmployeeContacts.length}
+                  online={employeeStatusCounts.online}
+                  busy={employeeStatusCounts.busy}
+                />
                 {filteredEmployeeContacts.map((contact) => (
                   <ContactItem
                     key={contact.employee?.id}
