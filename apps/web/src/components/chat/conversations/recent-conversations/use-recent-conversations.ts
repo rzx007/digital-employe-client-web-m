@@ -172,14 +172,8 @@ export function useRecentConversations() {
 
     resetChatRightPanels()
 
-    const {
-      selectedContactId: currentContactId,
-      selectedConversationId,
-      setSelectedContactId,
-      setSelectedConversationId,
-      setDraftConversation,
-      switchToContact,
-    } = useChatStore.getState()
+    const { selectedContactId: currentContactId, setSelectedContactId, switchToContact } =
+      useChatStore.getState()
 
     const remaining = recentItems.filter((i) => i.contactId !== item.contactId)
 
@@ -189,15 +183,6 @@ export function useRecentConversations() {
         switchToContact(nextContactId)
       } else {
         setSelectedContactId(null)
-      }
-    } else if (
-      selectedConversationId != null &&
-      currentContactId === item.contactId
-    ) {
-      const convId = String(selectedConversationId)
-      if (!convId.startsWith("draft-")) {
-        setSelectedConversationId(null)
-        setDraftConversation(true)
       }
     }
 

@@ -23,9 +23,12 @@ import {
 } from "@workspace/ui/components/context-menu"
 import { cn } from "@workspace/ui/lib/utils"
 import type { Contact } from "@/types/chat"
+import { useAuthStore } from "@/stores/auth-store"
 import { useChatStore } from "@/stores/chat-store"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { deleteEmployee } from "@/api/employee"
+import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
+import { removeRecentConversationByContactId } from "@/components/chat/conversations/recent-conversations/persistence"
 
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
 import { EmployeeDetailDialog } from "@/components/employee/employee-detail-dialog"
@@ -44,6 +47,7 @@ export function ContactItem({
   className,
   ...props
 }: ContactItemProps) {
+  const workspaceId = useAuthStore((s) => s.workspaceId) ?? 1
   const { contacts, selectedContactId, setContacts, setSelectedContactId } =
     useChatStore(
       useShallow((state) => ({
@@ -84,18 +88,33 @@ export function ContactItem({
     setAlertOpen(true)
   }
 
+  const focusAfterContactRemoved = (removedContactId: string) => {
+    if (selectedContactId !== removedContactId) return
+    setSelectedContactId(null)
+    resetChatRightPanels()
+  }
+
   const handleDeleteConfirm = async () => {
     setAlertOpen(false)
 
     if (contact.type === "employee" && contactId) {
       try {
         await deleteEmployee(contactId)
-        // 删除成功后刷新联系人列表
+        removeRecentConversationByContactId(workspaceId, contactId)
+        setContacts(
+          contacts.filter(
+            (c) => !(c.type === "employee" && c.employee?.id === contactId)
+          )
+        )
         await queryClient.invalidateQueries({
           queryKey: chatKeys.contacts(),
         })
+        queryClient.removeQueries({
+          queryKey: chatKeys.conversations(contactId),
+        })
+        focusAfterContactRemoved(contactId)
         toast.success(`已删除「${displayName}」`)
-      } catch (error) {
+      } catch {
         toast.error("删除失败，请稍后重试")
       }
     } else if (contact.type === "group" && contactId) {
@@ -105,9 +124,11 @@ export function ContactItem({
         return id !== contactId
       })
       setContacts(updated)
-      if (selectedContactId === contactId) {
-        setSelectedContactId(null)
-      }
+      removeRecentConversationByContactId(workspaceId, contactId)
+      queryClient.removeQueries({
+        queryKey: chatKeys.conversations(contactId),
+      })
+      focusAfterContactRemoved(contactId)
       toast.success(`已删除「${displayName}」`)
     }
   }

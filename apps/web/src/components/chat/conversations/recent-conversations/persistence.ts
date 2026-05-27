@@ -58,3 +58,13 @@ export function loadAndMigrateRecentConversations(
   saveRecentConversations(workspaceId, cleaned)
   return cleaned
 }
+
+export function removeRecentConversationByContactId(
+  workspaceId: number,
+  contactId: string
+): void {
+  const loaded = loadRecentConversations(workspaceId)
+  const next = loaded.filter((item) => item.contactId !== contactId)
+  if (next.length === loaded.length) return
+  saveRecentConversations(workspaceId, next)
+}

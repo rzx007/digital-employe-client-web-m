@@ -15,6 +15,20 @@ export function getCuratorContactId(contacts: Contact[]): string | undefined {
   return curator?.curator?.id
 }
 
+/** 去掉联系人已不存在（被删除）的最近会话项，保留有效总管项 */
+export function filterRecentItemsExistingContacts(
+  items: RecentConversationItem[],
+  contacts: Contact[]
+): RecentConversationItem[] {
+  const curatorId = getCuratorContactId(contacts)
+  return items.filter((item) => {
+    if (item.isCurator) {
+      return curatorId != null && item.contactId === curatorId
+    }
+    return findContactInList(contacts, item.contactId) != null
+  })
+}
+
 export function getContactInfo(
   contacts: Contact[],
   contactId: string
@@ -132,7 +146,7 @@ export function deriveRecentItems(
   stored: RecentConversationItem[],
   params: DeriveRecentItemsParams
 ): RecentConversationItem[] {
-  let items = stored
+  let items = filterRecentItemsExistingContacts(stored, params.contacts)
 
   const curatorId = getCuratorContactId(params.contacts)
   if (curatorId) {
