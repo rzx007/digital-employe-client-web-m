@@ -18,6 +18,37 @@ import {
 const CONTENT_TOOLS = new Set(["write_file", "edit_file"])
 const COMMAND_TOOLS = new Set(["execute", "shell_execute"])
 
+export const LARGE_FILE_PREVIEW_CHARS = 500
+
+export function getFilePathFromToolInput(
+  input: unknown,
+  toolName: string
+): string | null {
+  if (!CONTENT_TOOLS.has(toolName)) return null
+  if (!input || typeof input !== "object") return null
+  const obj = input as Record<string, unknown>
+  const raw = obj.file_path
+  return typeof raw === "string" && raw ? raw : null
+}
+
+export function getContentLength(input: unknown, toolName: string): number {
+  const content = getDisplayContent(input, toolName)
+  return content?.length ?? 0
+}
+
+export function normalizeToolFilePath(path: string): string {
+  const normalized = path.replace(/\\/g, "/")
+  if (normalized.startsWith("artifacts/") || normalized.startsWith("skills-draft/")) {
+    return `/${normalized}`
+  }
+  return normalized
+}
+
+export function isArtifactLikePath(path: string): boolean {
+  const normalized = normalizeToolFilePath(path)
+  return normalized.startsWith("/artifacts/") || normalized.startsWith("/skills-draft/")
+}
+
 export function getDisplayContent(
   input: unknown,
   toolName: string

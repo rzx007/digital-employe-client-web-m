@@ -1,7 +1,15 @@
 import { DiffViewer } from "@workspace/ui/components/diff-viewer"
-import { useMemo } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { CodeHighlight, detectLanguage } from "../shared/code-highlight"
-import { getDisplayContent, getEditDiff } from "./tool-shared"
+import { useArtifactStore } from "@/stores/artifact-store"
+import {
+  getDisplayContent,
+  getEditDiff,
+  getFilePathFromToolInput,
+  isArtifactLikePath,
+  LARGE_FILE_PREVIEW_CHARS,
+  normalizeToolFilePath,
+} from "./tool-shared"
 import { ToolOutputViewport } from "./tool-output-viewport"
 
 export type ToolDetailPanelProps = {
@@ -31,6 +39,14 @@ export function ToolDetailPanel({
     () => getDisplayContent(input, toolName),
     [input, toolName]
   )
+  const filePath = useMemo(
+    () => getFilePathFromToolInput(input, toolName),
+    [input, toolName]
+  )
+  const normalizedFilePath = useMemo(
+    () => (filePath ? normalizeToolFilePath(filePath) : null),
+    [filePath]
+  )
   const editDiff = useMemo(
     () => (toolName === "edit_file" ? getEditDiff(input) : null),
     [toolName, input]
@@ -45,10 +61,41 @@ export function ToolDetailPanel({
   const hasResult = !!resultText
   const hasContent = !!displayContent || hasResult
 
-  if (!hasContent) return null
+  const shouldTruncatePreview =
+    (toolName === "write_file" || toolName === "edit_file") &&
+    (displayContent?.length ?? 0) > LARGE_FILE_PREVIEW_CHARS
+  const previewContent = shouldTruncatePreview
+    ? displayContent?.slice(0, LARGE_FILE_PREVIEW_CHARS) ?? null
+    : displayContent
 
+  const openResource = useArtifactStore((s) => s.openResource)
+  const didAutoOpenRef = useRef<string | null>(null)
   const isStdoutStreaming = isRunning || isPreliminaryOutput
   const isInputStreaming = state === "input-streaming"
+  useEffect(() => {
+    if (!shouldTruncatePreview) return
+    if (!normalizedFilePath) return
+    if (!isArtifactLikePath(normalizedFilePath)) return
+    if (!(isInputStreaming || isRunning)) return
+    const { activeResourcePath, isPanelOpen } = useArtifactStore.getState()
+    if (activeResourcePath === normalizedFilePath && isPanelOpen) return
+    if (didAutoOpenRef.current === normalizedFilePath) return
+    didAutoOpenRef.current = normalizedFilePath
+    queueMicrotask(() => {
+      const { activeResourcePath: currentPath, isPanelOpen: currentOpen } =
+        useArtifactStore.getState()
+      if (currentPath === normalizedFilePath && currentOpen) return
+      openResource(normalizedFilePath)
+    })
+  }, [
+    isInputStreaming,
+    isRunning,
+    normalizedFilePath,
+    openResource,
+    shouldTruncatePreview,
+  ])
+
+  if (!hasContent) return null
 
   return (
     <div className="space-y-2 px-1 pt-0.5 pb-1">
@@ -70,14 +117,29 @@ export function ToolDetailPanel({
         />
       )}
       {!isPreliminaryOutput && !editDiff && displayContent && (
-        <ToolOutputViewport
-          isStreaming={isInputStreaming}
-          showCursor={isInputStreaming}
-          showFogWhenCollapsed={!isOpen}
-          contentClassName="p-0"
-        >
-          <CodeHighlight code={displayContent} language={detectedLang} />
-        </ToolOutputViewport>
+        <div className="space-y-1">
+          <ToolOutputViewport
+            isStreaming={isInputStreaming}
+            showCursor={isInputStreaming}
+            showFogWhenCollapsed={!isOpen}
+            contentClassName="p-0"
+          >
+            <div className="relative">
+              <CodeHighlight code={previewContent ?? ""} language={detectedLang} />
+              {shouldTruncatePreview && (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-10 bg-gradient-to-t from-background/95 via-background/50 to-transparent"
+                />
+              )}
+            </div>
+          </ToolOutputViewport>
+          {shouldTruncatePreview && (
+            <div className="px-1 text-[11px] text-muted-foreground">
+              仅预览前 {LARGE_FILE_PREVIEW_CHARS} 字，完整内容请看右侧文件面板
+            </div>
+          )}
+        </div>
       )}
       {!isPreliminaryOutput && hasResult && (
         <ToolOutputViewport
