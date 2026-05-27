@@ -46,11 +46,10 @@ import { useQueryClient } from "@tanstack/react-query"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { toast } from "sonner"
-import { CodeRenderer } from "./artifact-content/code-renderer"
-import { DocViewerRenderer } from "./artifact-content/doc-viewer-renderer"
-import { ImageRenderer } from "./artifact-content/image-renderer"
-import { SheetRenderer } from "./artifact-content/sheet-renderer"
-import { TextRenderer } from "./artifact-content/text-renderer"
+import {
+  getPreviewableTypeLabel,
+  resolveArtifactRenderer,
+} from "./artifact-content/resolve-renderer"
 import type { Artifact } from "./artifact-types"
 import { ImportDraftSkillDialog } from "./import-draft-skill-dialog"
 
@@ -61,18 +60,6 @@ export interface ArtifactPanelProps {
   className?: string
   /** embedded：置于 Sheet 等容器内，不使用侧滑入场动画 */
   presentation?: "slide-over" | "embedded"
-}
-
-const renderers: Record<
-  string,
-  React.ComponentType<{ artifact: Artifact; className?: string }>
-> = {
-  text: TextRenderer,
-  code: CodeRenderer,
-  sheet: SheetRenderer,
-  image: ImageRenderer,
-  "skill-draft": CodeRenderer,
-  document: DocViewerRenderer,
 }
 
 const EMPTY_RESOURCE_LIST: ResourceList = {
@@ -185,7 +172,13 @@ function formatFileSize(size: number | undefined) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`
 }
 
-function getArtifactTypeLabel(artifactType: string | null | undefined) {
+function getArtifactTypeLabel(
+  artifactType: string | null | undefined,
+  filePath?: string | null
+) {
+  const previewLabel = getPreviewableTypeLabel(filePath)
+  if (previewLabel) return previewLabel
+
   switch (artifactType) {
     case "code":
       return "代码"
@@ -517,13 +510,14 @@ export const ArtifactPanel = ({
   }, [isDocFile, selectedEntry, conversationId, resourceContent, selectedPath])
 
   const Renderer = artifactForRenderer
-    ? (renderers[artifactForRenderer.type] ?? TextRenderer)
+    ? resolveArtifactRenderer(artifactForRenderer, selectedFilePath)
     : null
   const selectedFileSize = formatFileSize(selectedEntry?.size)
   const selectedTypeLabel = getArtifactTypeLabel(
     isDocumentFile(selectedEntry?.path)
       ? "document"
-      : selectedEntry?.artifact_type
+      : selectedEntry?.artifact_type,
+    selectedFilePath
   )
 
   const handleCopy = async () => {

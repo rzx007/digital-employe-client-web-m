@@ -8,6 +8,7 @@ export interface CodeRendererProps {
   className?: string
 }
 
+/** 源码高亮展示（`text` / `code` / `skill-draft` 等类型共用） */
 export const CodeRenderer = ({ artifact, className }: CodeRendererProps) => {
   const language = artifact.language || detectLanguage(artifact.title) || "text"
 
