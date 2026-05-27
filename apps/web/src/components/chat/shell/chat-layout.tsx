@@ -79,6 +79,12 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
         queryClient.invalidateQueries({
           queryKey: [...chatKeys.all, "notifications"],
         })
+        // 当任务开始时，重新获取对应员工的会话列表
+        if (event.type === "task_started") {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversations(String(event.employee_id)),
+          })
+        }
         break
       case "orchestration_plan_generated":
         queryClient.invalidateQueries({

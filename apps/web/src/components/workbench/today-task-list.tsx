@@ -1,10 +1,11 @@
 import { useCallback, useMemo } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { IconClock } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { Skeleton } from "@workspace/ui/components/skeleton"
+import { navigateToTaskConversation } from "@/lib/chat/navigate-to-task-conversation"
 import type { TodayTask } from "@/types/schedule-monitor"
-import { useChatStore } from "@/stores/chat-store"
 import { TaskStatusBadge } from "./task-status-badge"
 
 interface TodayTaskListProps {
@@ -32,16 +33,18 @@ function formatDuration(ms: number | null): string {
 }
 
 export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
-  const selectConversation = useChatStore((s) => s.selectConversation)
-  const setActiveTab = useChatStore((s) => s.setActiveTab)
+  const queryClient = useQueryClient()
 
   const openTaskConversation = useCallback(
     (task: TodayTask) => {
       if (task.conversation_id == null) return
-      selectConversation(String(task.employee_id), String(task.conversation_id))
-      setActiveTab("chat")
+      void navigateToTaskConversation(
+        queryClient,
+        task.employee_id,
+        task.conversation_id
+      )
     },
-    [selectConversation, setActiveTab]
+    [queryClient]
   )
   const sorted = useMemo(() => {
     return [...executions].sort((a, b) => {
