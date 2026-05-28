@@ -1,6 +1,7 @@
 import type { UIMessage } from "ai"
-
-type ToolPart = Extract<UIMessage["parts"][number], { type: `tool-${string}` }>
+import { normalizeToolPart } from "./tools/normalize-tool-part"
+import { isToolUIPart, type ToolUIPart } from "./tools/tool-part"
+import { normalizeToolFilePath } from "@/components/chat/message-blocks/tool-shared"
 
 export type FileChangeAction = "created" | "edited"
 
@@ -15,42 +16,6 @@ export interface FileChangeItem {
   toolCallId: string
 }
 
-function isToolPart(part: UIMessage["parts"][number]): part is ToolPart {
-  return part.type.startsWith("tool-") && "toolCallId" in part
-}
-
-function isCompletedToolPart(part: ToolPart) {
-  return (
-    "state" in part &&
-    part.state === "output-available" &&
-    !("preliminary" in part && part.preliminary === true)
-  )
-}
-
-function getToolName(part: ToolPart) {
-  return part.type.replace(/^tool-/, "")
-}
-
-function getToolInput(part: ToolPart): Record<string, unknown> | null {
-  if (!("input" in part) || !part.input || typeof part.input !== "object") {
-    return null
-  }
-
-  return part.input as Record<string, unknown>
-}
-
-function normalizePath(path: string) {
-  const normalized = path.replace(/\\/g, "/")
-  if (
-    normalized.startsWith("artifacts/") ||
-    normalized.startsWith("skills-draft/")
-  ) {
-    return `/${normalized}`
-  }
-
-  return normalized
-}
-
 /** 与后端非用户产物路径一致；此类 write/edit 不展示 FileChangeCard */
 const INTERNAL_FILE_PREFIXES = [
   "/memories/",
@@ -62,7 +27,7 @@ const INTERNAL_FILE_PREFIXES = [
 ] as const
 
 function isUserVisibleFileChange(path: string): boolean {
-  const normalized = normalizePath(path)
+  const normalized = normalizeToolFilePath(path)
   if (normalized.startsWith("/artifacts/")) return true
   if (normalized.startsWith("/skills-draft/")) return true
   if (INTERNAL_FILE_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
@@ -72,7 +37,7 @@ function isUserVisibleFileChange(path: string): boolean {
 }
 
 function getBasename(path: string) {
-  const normalized = normalizePath(path)
+  const normalized = normalizeToolFilePath(path)
   const segments = normalized.split("/").filter(Boolean)
   return segments.at(-1) ?? path
 }
@@ -87,16 +52,17 @@ function getExtension(path: string) {
 }
 
 function getContentSize(
-  input: Record<string, unknown>,
+  input: unknown,
   action: FileChangeAction
 ) {
+  if (!input || typeof input !== "object") return undefined
   const contentKey = action === "created" ? "content" : "new_string"
-  const content = input[contentKey]
+  const content = (input as Record<string, unknown>)[contentKey]
   return typeof content === "string" ? content.length : undefined
 }
 
 function getSkillDraftFolder(path: string) {
-  const normalized = normalizePath(path)
+  const normalized = normalizeToolFilePath(path)
   const segments = normalized.split("/").filter(Boolean)
   if (segments[0] !== "skills-draft" || !segments[1]) {
     return null
@@ -108,26 +74,25 @@ function getSkillDraftFolder(path: string) {
   }
 }
 
-function buildFileChange(part: ToolPart): FileChangeItem | null {
-  const toolName = getToolName(part)
+function buildFileChange(part: ToolUIPart): FileChangeItem | null {
+  const vm = normalizeToolPart(part)
   const action: FileChangeAction | null =
-    toolName === "write_file"
+    vm.toolName === "write_file"
       ? "created"
-      : toolName === "edit_file"
+      : vm.toolName === "edit_file"
         ? "edited"
         : null
 
-  if (!action || !isCompletedToolPart(part)) {
+  if (!action || vm.state !== "output-available" || vm.preliminary) {
     return null
   }
 
-  const input = getToolInput(part)
-  const rawFilePath = input?.file_path
+  const rawFilePath = (vm.input as Record<string, unknown>)?.file_path
   if (typeof rawFilePath !== "string" || !rawFilePath) {
     return null
   }
 
-  const path = normalizePath(rawFilePath)
+  const path = normalizeToolFilePath(rawFilePath)
   if (!isUserVisibleFileChange(path)) {
     return null
   }
@@ -151,7 +116,7 @@ function buildFileChange(part: ToolPart): FileChangeItem | null {
     title: getBasename(path),
     path,
     extension: getExtension(path),
-    size: getContentSize(input, action),
+    size: getContentSize(vm.input, action),
     toolCallId: part.toolCallId,
   }
 }
@@ -162,7 +127,7 @@ export function getFileChangesFromUIMessage(
   const changes = new Map<string, FileChangeItem>()
 
   for (const part of message.parts) {
-    if (!isToolPart(part)) {
+    if (!isToolUIPart(part)) {
       continue
     }
 

@@ -1,5 +1,5 @@
 import { DiffViewer } from "@workspace/ui/components/diff-viewer"
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useRef } from "react"
 import { CodeHighlight, detectLanguage } from "../shared/code-highlight"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useSyncPendingResourceFromTool } from "@/lib/chat/pending-resources"
@@ -38,28 +38,12 @@ export function ToolDetailPanel({
   const isPreliminaryOutput =
     state === "output-available" && preliminary === true
 
-  const displayContent = useMemo(
-    () => getDisplayContent(input, toolName),
-    [input, toolName]
-  )
-  const filePath = useMemo(
-    () => getFilePathFromToolInput(input, toolName),
-    [input, toolName]
-  )
-  const normalizedFilePath = useMemo(
-    () => (filePath ? normalizeToolFilePath(filePath) : null),
-    [filePath]
-  )
-  const editDiff = useMemo(
-    () => (toolName === "edit_file" ? getEditDiff(input) : null),
-    [toolName, input]
-  )
-  const detectedLang = useMemo(
-    () =>
-      detectLanguage(
-        (input as Record<string, unknown> | null)?.file_path as string
-      ),
-    [input]
+  const displayContent = getDisplayContent(input, toolName)
+  const filePath = getFilePathFromToolInput(input, toolName)
+  const normalizedFilePath = filePath ? normalizeToolFilePath(filePath) : null
+  const editDiff = toolName === "edit_file" ? getEditDiff(input) : null
+  const detectedLang = detectLanguage(
+    (input as Record<string, unknown> | null)?.file_path as string
   )
   const hasResult = !!resultText
   const hasContent = !!displayContent || hasResult

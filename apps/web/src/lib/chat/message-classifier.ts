@@ -12,10 +12,8 @@ function stripErrorMarker(text: string): string {
 }
 
 import {
-  summarizeToolCall,
   isSkillToolCall,
   extractSkillName,
-  type ToolCallSummary,
 } from "./tool-summarizer"
 import {
   getFileChangesFromUIMessage,
@@ -39,27 +37,12 @@ import {
   parseRecruitmentCandidatesPayload,
 } from "./recruitment-tool-payload"
 import type { TodoItem } from "@/components/chat/message-blocks/tool-shared"
+import { normalizeToolPart } from "./tools/normalize-tool-part"
+import { isToolUIPart } from "./tools/tool-part"
+import type { ToolViewModel } from "./tools/tool-view-model"
 
-type ToolUIPart = Extract<
-  UIMessage["parts"][number],
-  { type: `tool-${string}`; toolCallId: string }
->
-
-function isToolUIPart(part: UIMessage["parts"][number]): part is ToolUIPart {
-  return part.type.startsWith("tool-") && "toolCallId" in part
-}
-
-export interface ToolGroupItem {
+export type ToolGroupItem = ToolViewModel & {
   key: string
-  toolCallId: string
-  toolName: string
-  type: string
-  state: string
-  summary: ToolCallSummary
-  resultText: string | null
-  input: unknown
-  preliminary: boolean
-  part: ToolUIPart
 }
 
 export interface SkillExploreItem {
@@ -159,34 +142,6 @@ function hasDocumentPlanCardInput(input: unknown): boolean {
   const outline =
     typeof record.outline === "string" ? record.outline.trim() : ""
   return Boolean(title || outline)
-}
-
-function extractResultText(part: ToolUIPart): string | null {
-  if (!("output" in part) || !part.output) {
-    return null
-  }
-
-  if (typeof part.output === "string") {
-    return part.output || null
-  }
-
-  if (typeof part.output !== "object") {
-    return null
-  }
-
-  const output = part.output as Record<string, unknown>
-  if (typeof output.text === "string" && output.text) {
-    return output.text
-  }
-
-  return null
-}
-
-function isPreliminary(part: ToolUIPart): boolean {
-  return (
-    "preliminary" in part &&
-    (part as Record<string, unknown>).preliminary === true
-  )
 }
 
 function mergeSummarizationCheckpointBlock(
@@ -300,32 +255,25 @@ export function classifyMessageParts(
    @param part - 工具调用部分
    * @param index - 该部分在消息部分数组中的索引
    */
-  function pushSingleTool(part: ToolUIPart, index: number) {
-    const toolInput = "input" in part ? (part as ToolUIPart).input : undefined
-    const summary = summarizeToolCall({
-      type: part.type,
-      input: toolInput,
-    })
+  function pushSingleTool(part: UIMessage["parts"][number], index: number) {
+    if (!isToolUIPart(part)) return
+    const vm = normalizeToolPart(part)
 
-    if (summary.toolName === "create_orchestration_plan") {
+    if (vm.toolName === "create_orchestration_plan") {
       blocks.push({
         kind: "plan-generated",
         key: `${message.id}:plan:${index}`,
-        toolCallId: part.toolCallId,
-        input: toolInput,
-        state: ("state" in part
-          ? (part as ToolUIPart).state
-          : "unknown") as string,
+        toolCallId: vm.toolCallId,
+        input: vm.input,
+        state: vm.state,
       })
       return
     }
 
-    if (summary.toolName === DOCUMENT_PLAN_TOOL_NAME) {
-      const docResultText = extractResultText(part)
-      const docToolState = (
-        "state" in part ? (part as ToolUIPart).state : "unknown"
-      ) as string
-      const hasPlanInput = hasDocumentPlanCardInput(toolInput)
+    if (vm.toolName === DOCUMENT_PLAN_TOOL_NAME) {
+      const docResultText = vm.resultText
+      const docToolState = vm.state
+      const hasPlanInput = hasDocumentPlanCardInput(vm.input)
       const hasPlanOutput =
         docToolState === "output-available" ||
         docToolState === "output-error" ||
@@ -335,8 +283,8 @@ export function classifyMessageParts(
         blocks.push({
           kind: "document-plan",
           key: `${message.id}:doc-plan:${index}`,
-          toolCallId: part.toolCallId,
-          input: toolInput,
+          toolCallId: vm.toolCallId,
+          input: vm.input,
           state: "output-available",
           resultText: docResultText,
         })
@@ -347,7 +295,7 @@ export function classifyMessageParts(
         blocks.push({
           kind: "document-plan-approved",
           key: `${message.id}:doc-plan-approved:${index}`,
-          toolCallId: part.toolCallId,
+          toolCallId: vm.toolCallId,
           resultText: docResultText.trim(),
         })
         return
@@ -356,19 +304,17 @@ export function classifyMessageParts(
       blocks.push({
         kind: "document-plan",
         key: `${message.id}:doc-plan:${index}`,
-        toolCallId: part.toolCallId,
-        input: toolInput,
+        toolCallId: vm.toolCallId,
+        input: vm.input,
         state: docToolState,
         resultText: docResultText,
       })
       return
     }
 
-    if (summary.toolName === CLARIFY_TOOL_NAME) {
-      const toolState = (
-        "state" in part ? (part as ToolUIPart).state : "unknown"
-      ) as string
-      const clarifyResultText = extractResultText(part)
+    if (vm.toolName === CLARIFY_TOOL_NAME) {
+      const toolState = vm.state
+      const clarifyResultText = vm.resultText
       const isAnswered =
         toolState === "output-available" || Boolean(clarifyResultText)
       if (!isAnswered) {
@@ -378,15 +324,15 @@ export function classifyMessageParts(
         blocks.push({
           kind: "clarifying-answers",
           key: `${message.id}:clarify-answers-error:${index}`,
-          toolCallId: part.toolCallId,
+          toolCallId: vm.toolCallId,
           items: [],
           outputError: true,
         })
         return
       }
       const questions = parseClarifyingQuestions(
-        typeof toolInput === "object" && toolInput
-          ? (toolInput as Record<string, unknown>).questions
+        typeof vm.input === "object" && vm.input
+          ? (vm.input as Record<string, unknown>).questions
           : null
       )
       const items = buildClarifyAnswerItems(questions, clarifyResultText)
@@ -394,24 +340,22 @@ export function classifyMessageParts(
       blocks.push({
         kind: "clarifying-answers",
         key: `${message.id}:clarify-answers:${index}`,
-        toolCallId: part.toolCallId,
+        toolCallId: vm.toolCallId,
         items,
       })
       return
     }
 
-    const toolState = (
-      "state" in part ? (part as ToolUIPart).state : "unknown"
-    ) as string
-    const toolResultText = extractResultText(part)
+    const toolState = vm.state
+    const toolResultText = vm.resultText
 
-    if (summary.toolName === "recruit_employee") {
+    if (vm.toolName === "recruit_employee") {
       const payload = parseRecruitmentCandidatesPayload(toolResultText)
       if (payload || isRecruitmentToolRunning(toolState)) {
         blocks.push({
           kind: "recruitment-candidates",
           key: `${message.id}:recruit:${index}`,
-          toolCallId: part.toolCallId,
+          toolCallId: vm.toolCallId,
           state: toolState,
           resultText: toolResultText,
         })
@@ -419,13 +363,13 @@ export function classifyMessageParts(
       }
     }
 
-    if (summary.toolName === "hire_employee") {
+    if (vm.toolName === "hire_employee") {
       const payload = parseEmployeeHiredPayload(toolResultText)
       if (payload || isRecruitmentToolRunning(toolState)) {
         blocks.push({
           kind: "employee-hired",
           key: `${message.id}:hire:${index}`,
-          toolCallId: part.toolCallId,
+          toolCallId: vm.toolCallId,
           state: toolState,
           resultText: toolResultText,
         })
@@ -434,50 +378,38 @@ export function classifyMessageParts(
     }
 
     // 检查当前工具调用是否属于技能类工具，如果是则构建并添加技能探索项
-    if (isSkillToolCall(toolInput, summary.toolName)) {
+    if (isSkillToolCall(vm.input, vm.toolName)) {
       // 提取技能名称
-      const skillName = extractSkillName(toolInput, summary.toolName)
+      const skillName = extractSkillName(vm.input, vm.toolName)
       // 根据技能名称和文件路径生成显示用的基础名称
       const basename = skillName
-        ? `${skillName}/${summary.filePath?.split("/").pop() ?? ""}`
-        : (summary.filePath?.split("/").pop() ?? summary.toolName)
+        ? `${skillName}/${vm.summary.filePath?.split("/").pop() ?? ""}`
+        : (vm.summary.filePath?.split("/").pop() ?? vm.toolName)
 
       // 构造技能探索项并加入列表，随后终止当前处理流程
       skillExploreItems.push({
-        key: `${message.id}:skill-explore:${part.toolCallId}:${index}`,
-        toolCallId: part.toolCallId,
-        toolName: summary.toolName,
-        state: ("state" in part
-          ? (part as ToolUIPart).state
-          : "unknown") as string,
-        label: `${SKILL_EXPLORE_VERB[summary.toolName] ?? "读取"} ${basename}`,
+        key: `${message.id}:skill-explore:${vm.toolCallId}:${index}`,
+        toolCallId: vm.toolCallId,
+        toolName: vm.toolName,
+        state: vm.state,
+        label: `${SKILL_EXPLORE_VERB[vm.toolName] ?? "读取"} ${basename}`,
         skillName,
-        input: toolInput,
-        resultText: extractResultText(part),
+        input: vm.input,
+        resultText: vm.resultText,
       })
       return
     }
 
     const tool: ToolGroupItem = {
-      key: `${message.id}:tool:${part.toolCallId}:${index}`,
-      toolCallId: part.toolCallId,
-      toolName: summary.toolName,
-      type: part.type,
-      state: ("state" in part
-        ? (part as ToolUIPart).state
-        : "unknown") as string,
-      summary,
-      resultText: extractResultText(part),
-      input: toolInput,
-      preliminary: isPreliminary(part),
-      part,
+      ...vm,
+      key: `${message.id}:tool:${vm.toolCallId}:${index}`,
     }
 
     blocks.push({
       kind: "tool-group",
       key: `${message.id}:tgroup:${index}`,
       tools: [tool],
-      summary: summary.label,
+      summary: vm.summary.label,
     })
   }
 
