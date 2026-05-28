@@ -50,6 +50,7 @@ def build_filesystem_prompt_section(
         - **一律使用虚拟路径**，例如 /artifacts/report.md、/memories/AGENTS.md
         - **禁止**在虚拟路径前拼接磁盘绝对路径（如 /artifacts/Users/...、/artifacts/C:/...）
         - **禁止**把上表「真实物理路径」当作 write_file 的路径（那是磁盘路径，不是虚拟路径）
+        - 调用 **write_file** / **edit_file** 时，工具参数 JSON **须先写 `file_path`，再写 `content`（`edit_file` 为 `new_string`）**
 
         ### shell_execute（python、cmd 等，替代内置 execute）
         - 使用工具 **`shell_execute`**，不要调用已废弃的 `execute`
