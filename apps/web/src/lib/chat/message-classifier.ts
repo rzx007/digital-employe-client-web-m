@@ -21,25 +21,14 @@ import {
 } from "./file-change-utils"
 import { isSummarizationTextPart } from "./langchain-summarization-text"
 import { collapseWriteTodosBlocks } from "./collapse-write-todos-blocks"
-import {
-  CLARIFY_TOOL_NAME,
-  DOCUMENT_PLAN_TOOL_NAME,
-  isHitlAbortedOutput,
-  buildClarifyAnswerItems,
-  parseClarifyingQuestions,
-  type ClarifyAnswerItem,
-} from "./hitl"
 import { collapseDocumentPlanBlocks } from "./hitl/collapse-document-plan-blocks"
 import { mergeRoutineToolGroups } from "./merge-routine-tool-groups"
-import {
-  isRecruitmentToolRunning,
-  parseEmployeeHiredPayload,
-  parseRecruitmentCandidatesPayload,
-} from "./recruitment-tool-payload"
 import type { TodoItem } from "@/components/chat/message-blocks/tool-shared"
 import { normalizeToolPart } from "./tools/normalize-tool-part"
 import { isToolUIPart } from "./tools/tool-part"
 import type { ToolViewModel } from "./tools/tool-view-model"
+import { getToolBlockFromRegistry } from "./tools/block-registry"
+import type { ClarifyAnswerItem } from "./hitl"
 
 export type ToolGroupItem = ToolViewModel & {
   key: string
@@ -133,15 +122,6 @@ function stripThinkTags(text: string): string {
 
 function stripThinkSections(text: string): string {
   return text.replace(THINK_BLOCK_RE, "").trim()
-}
-
-function hasDocumentPlanCardInput(input: unknown): boolean {
-  if (!input || typeof input !== "object") return false
-  const record = input as Record<string, unknown>
-  const title = typeof record.title === "string" ? record.title.trim() : ""
-  const outline =
-    typeof record.outline === "string" ? record.outline.trim() : ""
-  return Boolean(title || outline)
 }
 
 function mergeSummarizationCheckpointBlock(
@@ -259,122 +239,14 @@ export function classifyMessageParts(
     if (!isToolUIPart(part)) return
     const vm = normalizeToolPart(part)
 
-    if (vm.toolName === "create_orchestration_plan") {
-      blocks.push({
-        kind: "plan-generated",
-        key: `${message.id}:plan:${index}`,
-        toolCallId: vm.toolCallId,
-        input: vm.input,
-        state: vm.state,
-      })
+    const registryBlock = getToolBlockFromRegistry(vm, message.id, index)
+    if (registryBlock) {
+      if (Array.isArray(registryBlock)) {
+        blocks.push(...registryBlock)
+      } else {
+        blocks.push(registryBlock)
+      }
       return
-    }
-
-    if (vm.toolName === DOCUMENT_PLAN_TOOL_NAME) {
-      const docResultText = vm.resultText
-      const docToolState = vm.state
-      const hasPlanInput = hasDocumentPlanCardInput(vm.input)
-      const hasPlanOutput =
-        docToolState === "output-available" ||
-        docToolState === "output-error" ||
-        Boolean(docResultText?.trim())
-
-      if (isHitlAbortedOutput(docResultText)) {
-        blocks.push({
-          kind: "document-plan",
-          key: `${message.id}:doc-plan:${index}`,
-          toolCallId: vm.toolCallId,
-          input: vm.input,
-          state: "output-available",
-          resultText: docResultText,
-        })
-        return
-      }
-
-      if (hasPlanOutput && !hasPlanInput && docResultText?.trim()) {
-        blocks.push({
-          kind: "document-plan-approved",
-          key: `${message.id}:doc-plan-approved:${index}`,
-          toolCallId: vm.toolCallId,
-          resultText: docResultText.trim(),
-        })
-        return
-      }
-
-      blocks.push({
-        kind: "document-plan",
-        key: `${message.id}:doc-plan:${index}`,
-        toolCallId: vm.toolCallId,
-        input: vm.input,
-        state: docToolState,
-        resultText: docResultText,
-      })
-      return
-    }
-
-    if (vm.toolName === CLARIFY_TOOL_NAME) {
-      const toolState = vm.state
-      const clarifyResultText = vm.resultText
-      const isAnswered =
-        toolState === "output-available" || Boolean(clarifyResultText)
-      if (!isAnswered) {
-        return
-      }
-      if (toolState === "output-error") {
-        blocks.push({
-          kind: "clarifying-answers",
-          key: `${message.id}:clarify-answers-error:${index}`,
-          toolCallId: vm.toolCallId,
-          items: [],
-          outputError: true,
-        })
-        return
-      }
-      const questions = parseClarifyingQuestions(
-        typeof vm.input === "object" && vm.input
-          ? (vm.input as Record<string, unknown>).questions
-          : null
-      )
-      const items = buildClarifyAnswerItems(questions, clarifyResultText)
-      if (items.length === 0) return
-      blocks.push({
-        kind: "clarifying-answers",
-        key: `${message.id}:clarify-answers:${index}`,
-        toolCallId: vm.toolCallId,
-        items,
-      })
-      return
-    }
-
-    const toolState = vm.state
-    const toolResultText = vm.resultText
-
-    if (vm.toolName === "recruit_employee") {
-      const payload = parseRecruitmentCandidatesPayload(toolResultText)
-      if (payload || isRecruitmentToolRunning(toolState)) {
-        blocks.push({
-          kind: "recruitment-candidates",
-          key: `${message.id}:recruit:${index}`,
-          toolCallId: vm.toolCallId,
-          state: toolState,
-          resultText: toolResultText,
-        })
-        return
-      }
-    }
-
-    if (vm.toolName === "hire_employee") {
-      const payload = parseEmployeeHiredPayload(toolResultText)
-      if (payload || isRecruitmentToolRunning(toolState)) {
-        blocks.push({
-          kind: "employee-hired",
-          key: `${message.id}:hire:${index}`,
-          toolCallId: vm.toolCallId,
-          state: toolState,
-          resultText: toolResultText,
-        })
-        return
-      }
     }
 
     // 检查当前工具调用是否属于技能类工具，如果是则构建并添加技能探索项

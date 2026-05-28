@@ -24,6 +24,7 @@
         v
   +---------------------+
   | ClassifiedBlock[]   |
+  | (via block-registry)|  <-- 工具块按工具名分发解析
   | mergeRoutineTool    |  <-- 相邻 routine 单工具 tool-group 合并
   | Groups              |
   | collapseWriteTodos  |  <-- 同条消息多次 write_todos -> 单块 todo-plan
@@ -93,7 +94,7 @@
      |              |
      |              +-- text, i <= lastToolIndex  --> thinking
      |              +-- text, i >  lastToolIndex  --> final-response
-     |              +-- tool create_orchestration_plan --> plan-generated
+     |              +-- tool via block-registry   --> 业务定制块 (如 plan-generated)
      |              +-- tool 路径含 /skills/           --> skill-exploration (合并)
      |              +-- 其它 tool-*                    --> tool-group (单 tool/块)
      |              |
