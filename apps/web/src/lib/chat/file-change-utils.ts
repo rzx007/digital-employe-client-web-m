@@ -176,3 +176,45 @@ export function getFileChangesFromUIMessage(
 
   return Array.from(changes.values())
 }
+
+/** 当前轮（最后一条 user 之后）的首条 assistant；尚无回复时为 null */
+export function getCurrentTurnAssistantMessageId(
+  messages: UIMessage[]
+): string | null {
+  let lastUserIndex = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.role === "user") {
+      lastUserIndex = i
+      break
+    }
+  }
+  if (lastUserIndex < 0) {
+    return null
+  }
+  for (let i = lastUserIndex + 1; i < messages.length; i++) {
+    const message = messages[i]
+    if (message?.role === "assistant") {
+      return message.id
+    }
+  }
+  return null
+}
+
+/** 仅对「当前轮流式中的 assistant」在回合未结束前隐藏文件变更卡片 */
+export function shouldIncludeFileChangesForMessage(
+  message: UIMessage,
+  messages: UIMessage[],
+  hasCurrentTurnEnded: boolean
+): boolean {
+  if (message.role !== "assistant") {
+    return false
+  }
+  const currentTurnAssistantId = getCurrentTurnAssistantMessageId(messages)
+  if (currentTurnAssistantId == null) {
+    return true
+  }
+  if (message.id !== currentTurnAssistantId) {
+    return true
+  }
+  return hasCurrentTurnEnded
+}

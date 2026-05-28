@@ -29,6 +29,7 @@ import {
   getCopyableMessageText,
   mapStoredMessagesToUIMessages,
 } from "@/lib/chat/message-utils"
+import { shouldIncludeFileChangesForMessage } from "@/lib/chat/file-change-utils"
 import { useConversationSession } from "@/hooks/use-conversation-session"
 import {
   useMessagesQuery,
@@ -561,9 +562,11 @@ export function CuratorView({
                 const isLastAssistantMessage =
                   message.role === "assistant" &&
                   message.id === lastAssistantMessageId
-                const includeFileChanges =
-                  message.role === "assistant" &&
-                  (!isLastAssistantMessage || hasCurrentTurnEnded)
+                const includeFileChanges = shouldIncludeFileChangesForMessage(
+                  message,
+                  displayMessages,
+                  hasCurrentTurnEnded
+                )
                 const classifiedBlocks = classifyMessageParts(message, {
                   includeFileChanges,
                 })

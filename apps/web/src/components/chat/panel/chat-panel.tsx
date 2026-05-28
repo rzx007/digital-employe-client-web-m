@@ -32,6 +32,7 @@ import {
   type ChatViewContact,
 } from "../shared/chat-view-shared"
 import type { ActiveHitl, HitlPatchOptions } from "@/lib/chat/hitl"
+import { shouldIncludeFileChangesForMessage } from "@/lib/chat/file-change-utils"
 import { ChatMessageItem } from "../messages/chat-message-item"
 
 const EMPTY_MESSAGES: UIMessage[] = []
@@ -102,9 +103,11 @@ function VirtualizedMessageList({
         const message = messages[virtualItem.index]
         const isLastAssistantMessage =
           message.role === "assistant" && message.id === lastAssistantMessageId
-        const includeFileChanges =
-          message.role === "assistant" &&
-          (!isLastAssistantMessage || hasCurrentTurnEnded)
+        const includeFileChanges = shouldIncludeFileChangesForMessage(
+          message,
+          messages,
+          hasCurrentTurnEnded
+        )
 
         return (
           <div
