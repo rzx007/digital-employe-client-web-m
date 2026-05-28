@@ -25,7 +25,6 @@ import {
 import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
 import { Spinner } from "@/components/spinner"
 import {
-  classifyMessageParts,
   getCopyableMessageText,
   mapStoredMessagesToUIMessages,
 } from "@/lib/chat/message-utils"
@@ -67,12 +66,9 @@ import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import {
   getElapsedMsFromMeta,
   getMessageCreatedAtMs,
-  getMessageMeta,
 } from "../shared/chat-view-shared"
 import { MessageAssistantActions } from "../messages/message-assistant-actions"
 import { MessageCopyAction } from "../messages/message-copy-action"
-import { RenderClassifiedBlocks } from "../messages/chat-message-item"
-import { computeToolAutoCollapseMap } from "@/lib/chat/tool-collapse-policy"
 import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import type { TaskExecution } from "@/types/schedule-monitor"
@@ -105,6 +101,123 @@ function getMsgTs(
 
 function formatTime(ts: number): string {
   return format(new Date(ts), "HH:mm", { locale: zhCN })
+}
+
+import { BlockRenderer } from "../message-blocks/block-render-map"
+import { useClassifiedMessageBlocks } from "@/hooks/use-classified-message-blocks"
+
+function CuratorMessageItem({
+  message,
+  isLastAssistantMessage,
+  hasCurrentTurnEnded,
+  includeFileChanges,
+  layout,
+  resolvedContact,
+  contactDisplayName,
+  ts,
+  session,
+  curatorConversationId,
+}: {
+  message: UIMessage
+  isLastAssistantMessage: boolean
+  hasCurrentTurnEnded: boolean
+  includeFileChanges: boolean
+  layout: Record<string, string>
+  resolvedContact: ChatViewContact | undefined | null
+  contactDisplayName: string
+  ts: number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  session: any
+  curatorConversationId: string | number | null
+}) {
+  const {
+    blocks: classifiedBlocks,
+    toolAutoCollapseMap,
+    commandMeta,
+    mentionMeta,
+    filesMeta,
+  } = useClassifiedMessageBlocks(message, {
+    includeFileChanges,
+    isLastAssistantMessage,
+    isTurnEnded: hasCurrentTurnEnded,
+  })
+  
+  const elapsedMs = getElapsedMsFromMeta(message)
+  const copyText = getCopyableMessageText(message, { includeFileChanges })
+  const hitlApproveMessageId = resolveHitlApproveMessageId(message, session.activeHitl)
+  const ctx = {
+    messageId: hitlApproveMessageId,
+    conversationId: curatorConversationId,
+    toolAutoCollapseMap,
+    isLastAssistantMessage,
+    isTurnEnded: hasCurrentTurnEnded,
+    onHitlApproved: session.onHitlApproved,
+    commandMeta: commandMeta ?? {},
+    mentionMeta,
+    filesMeta,
+  }
+
+  return (
+    <Message
+      from={message.role}
+      className={cn("group", layout.message)}
+    >
+      {message.role === "assistant" && (
+        <div className="mb-2 flex items-center gap-2">
+          {resolvedContact?.type === "curator" ? (
+            <EmployeeContactAvatar
+              name={resolvedContact.curator?.name}
+              avatar={resolvedContact.curator?.avatar}
+              status={resolvedContact.curator?.status}
+              avatarClassName="size-6"
+              fallbackClassName="text-[10px]"
+            />
+          ) : resolvedContact?.type === "employee" ? (
+            <EmployeeContactAvatar
+              name={resolvedContact.employee?.name}
+              avatar={resolvedContact.employee?.avatar}
+              avatarClassName="size-6"
+              fallbackClassName="text-[10px]"
+            />
+          ) : (
+            <EmployeeContactAvatar
+              name={contactDisplayName}
+              avatar={undefined}
+              avatarClassName="size-6"
+              fallbackClassName="text-[10px]"
+            />
+          )}
+          <span className="text-xs text-muted-foreground">
+            {contactDisplayName}
+          </span>
+          <span className="ml-auto text-[10px] text-muted-foreground/60">
+            {formatTime(ts)}
+          </span>
+        </div>
+      )}
+      <MessageContent className="w-auto">
+        <div className="space-y-3">
+          {classifiedBlocks.length > 0 ? (
+            classifiedBlocks.map((block) => (
+              <BlockRenderer key={block.key} block={block} ctx={ctx} />
+            ))
+          ) : message.role === "assistant" ? (
+            <MessageResponse />
+          ) : null}
+        </div>
+      </MessageContent>
+      {message.role === "assistant" ? (
+        <MessageAssistantActions
+          copyText={copyText}
+          elapsedMs={elapsedMs}
+          isLastAssistantMessage={isLastAssistantMessage}
+          isTurnEnded={hasCurrentTurnEnded}
+        />
+      ) : (
+        <MessageCopyAction text={copyText} />
+      )}
+    </Message>
+  )
 }
 
 export function CuratorView({
@@ -567,122 +680,21 @@ export function CuratorView({
                   displayMessages,
                   hasCurrentTurnEnded
                 )
-                const classifiedBlocks = classifyMessageParts(message, {
-                  includeFileChanges,
-                })
-                const toolAutoCollapseMap = computeToolAutoCollapseMap(
-                  classifiedBlocks,
-                  {
-                    isLastAssistantMessage,
-                    isTurnEnded: hasCurrentTurnEnded,
-                  }
-                )
-                const messageMeta = getMessageMeta(message)
-                const commandMeta =
-                  messageMeta &&
-                  typeof messageMeta === "object" &&
-                  "command" in messageMeta &&
-                  messageMeta.command &&
-                  typeof messageMeta.command === "object"
-                    ? (messageMeta.command as { id?: string; title?: string })
-                    : null
-                const mentionMeta =
-                  messageMeta &&
-                  typeof messageMeta === "object" &&
-                  "mentions" in messageMeta &&
-                  Array.isArray(messageMeta.mentions)
-                    ? (messageMeta.mentions as Array<{
-                        id?: string
-                        name?: string
-                      }>)
-                    : []
-                const filesMeta =
-                  messageMeta &&
-                  typeof messageMeta === "object" &&
-                  "files" in messageMeta &&
-                  Array.isArray(messageMeta.files)
-                    ? (messageMeta.files as Array<{
-                        name: string
-                        path: string
-                      }>)
-                    : undefined
-                const elapsedMs = getElapsedMsFromMeta(message)
-                const copyText = getCopyableMessageText(message, {
-                  includeFileChanges,
-                })
+                
                 return (
-                  <Message
+                  <CuratorMessageItem
                     key={message.id}
-                    from={message.role}
-                    className={cn("group", layout.message)}
-                  >
-                    {message.role === "assistant" && (
-                      <div className="mb-2 flex items-center gap-2">
-                        {resolvedContact?.type === "curator" ? (
-                          <EmployeeContactAvatar
-                            name={resolvedContact.curator?.name}
-                            avatar={resolvedContact.curator?.avatar}
-                            status={resolvedContact.curator?.status}
-                            avatarClassName="size-6"
-                            fallbackClassName="text-[10px]"
-                          />
-                        ) : resolvedContact?.type === "employee" ? (
-                          <EmployeeContactAvatar
-                            name={resolvedContact.employee?.name}
-                            avatar={resolvedContact.employee?.avatar}
-                            avatarClassName="size-6"
-                            fallbackClassName="text-[10px]"
-                          />
-                        ) : (
-                          <EmployeeContactAvatar
-                            name={contactDisplayName}
-                            avatar={undefined}
-                            avatarClassName="size-6"
-                            fallbackClassName="text-[10px]"
-                          />
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          {contactDisplayName}
-                        </span>
-                        <span className="ml-auto text-[10px] text-muted-foreground/60">
-                          {formatTime(entry.ts)}
-                        </span>
-                      </div>
-                    )}
-                    <MessageContent className="w-auto">
-                      <div className="space-y-3">
-                        {classifiedBlocks.length > 0 ? (
-                          <RenderClassifiedBlocks
-                            blocks={classifiedBlocks}
-                            commandMeta={commandMeta}
-                            mentionMeta={mentionMeta}
-                            filesMeta={filesMeta}
-                            messageId={resolveHitlApproveMessageId(
-                              message,
-                              session.activeHitl
-                            )}
-                            toolAutoCollapseMap={toolAutoCollapseMap}
-                            isLastAssistantMessage={isLastAssistantMessage}
-                            isTurnEnded={hasCurrentTurnEnded}
-                            conversationId={curatorConversationId}
-                            onHitlApproved={session.onHitlApproved}
-                          />
-                        ) : message.role === "assistant" ? (
-                          <MessageResponse />
-                        ) : null}
-                      </div>
-                    </MessageContent>
-                    {message.role === "assistant" ? (
-                      <MessageAssistantActions
-                        copyText={copyText}
-                        elapsedMs={elapsedMs}
-                        isLastAssistantMessage={isLastAssistantMessage}
-                        isTurnEnded={hasCurrentTurnEnded}
-                      />
-                    ) : (
-                      <MessageCopyAction text={copyText} />
-                    )}
-                  </Message>
+                    message={message}
+                    isLastAssistantMessage={isLastAssistantMessage}
+                    hasCurrentTurnEnded={hasCurrentTurnEnded}
+                    includeFileChanges={includeFileChanges}
+                    layout={layout}
+                    resolvedContact={resolvedContact}
+                    contactDisplayName={contactDisplayName}
+                    ts={entry.ts}
+                    session={session}
+                    curatorConversationId={curatorConversationId}
+                  />
                 )
               })}
 

@@ -6,27 +6,12 @@ import {
   MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
 import { getCopyableMessageText } from "@/lib/chat/message-utils"
-import { IconAlertTriangle, IconFile } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
-import { classifyMessageParts } from "@/lib/chat/message-utils"
-import { FileChangeCards } from "../message-blocks/file-change-cards"
-import { ThinkingBlock } from "../message-blocks/thinking-block"
-import { ToolGroupBlock } from "../message-blocks/tool-group-block"
-import { TodoPlanBlock } from "../message-blocks/todo-plan-block"
-import { PlanGeneratedCard } from "../message-blocks/plan-generated-card"
 import {
-  isHitlAbortedOutput,
   resolveHitlApproveMessageId,
   type ActiveHitl,
   type HitlPatchOptions,
 } from "@/lib/chat/hitl"
-import { DocumentPlanCard } from "../message-blocks/document-plan-card"
-import { ClarifyingAnswersSummary } from "../message-blocks/clarifying-answers-summary"
-import { DocumentPlanApprovedSummary } from "../message-blocks/document-plan-approved-summary"
-import { RecruitmentCandidatesCard } from "../message-blocks/recruitment-candidates-card"
-import { EmployeeHiredCard } from "../message-blocks/employee-hired-card"
-import { SkillExplorationBlock } from "../message-blocks/skill-exploration-block"
-import { SummarizationCheckpointBlock } from "../message-blocks/summarization-checkpoint-block"
 import {
   EmployeeContactAvatar,
   GroupMembersAvatar,
@@ -34,238 +19,12 @@ import {
 import {
   getContactDisplayName,
   getElapsedMsFromMeta,
-  getMessageMeta,
   type ChatViewContact,
-  type CommandMeta,
-  type FileMeta,
-  type MentionMeta,
 } from "../shared/chat-view-shared"
 import { MessageAssistantActions } from "./message-assistant-actions"
 import { MessageCopyAction } from "./message-copy-action"
-import type { ClassifiedBlock } from "@/lib/chat/message-classifier"
-import { computeToolAutoCollapseMap } from "@/lib/chat/tool-collapse-policy"
-
-function MessageMetaBadges({
-  commandMeta,
-  mentionMeta,
-  filesMeta,
-  messageId,
-}: {
-  commandMeta: CommandMeta
-  mentionMeta: MentionMeta
-  filesMeta?: FileMeta
-  messageId: string
-}) {
-  if (!commandMeta?.title && mentionMeta.length === 0 && !filesMeta?.length)
-    return null
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-      {commandMeta?.title && (
-        <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
-          /{commandMeta.title}
-        </span>
-      )}
-      {mentionMeta.map((mention, index) => (
-        <span
-          key={mention.id ?? `${messageId}:mention:${index}`}
-          className="rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-600"
-        >
-          @{mention.name ?? "unknown"}
-        </span>
-      ))}
-      {filesMeta?.map((file, index) => (
-        <span
-          key={`${messageId}:file:${index}`}
-          className="inline-flex items-center gap-1 rounded-md bg-green-500/10 px-2 py-0.5 text-[11px] text-green-600"
-        >
-          <IconFile className="size-3" />
-          {file.name}
-        </span>
-      ))}
-    </div>
-  )
-}
-
-export function RenderClassifiedBlocks({
-  blocks,
-  commandMeta,
-  mentionMeta,
-  filesMeta,
-  messageId,
-  toolAutoCollapseMap,
-  isLastAssistantMessage = false,
-  isTurnEnded = true,
-  conversationId,
-  onHitlApproved,
-}: {
-  blocks: ClassifiedBlock[]
-  commandMeta: CommandMeta
-  mentionMeta: MentionMeta
-  filesMeta?: FileMeta
-  messageId: string | null
-  toolAutoCollapseMap: Map<string, boolean>
-  isLastAssistantMessage?: boolean
-  isTurnEnded?: boolean
-  conversationId?: string | number | null
-  onHitlApproved?: (options?: HitlPatchOptions) => void
-}) {
-  return (
-    <>
-      {blocks.map((block) => {
-        if (block.kind === "tool-group") {
-          return (
-            <ToolGroupBlock
-              block={block}
-              className="w-full"
-              key={block.key}
-              toolAutoCollapseMap={toolAutoCollapseMap}
-            />
-          )
-        }
-        if (block.kind === "todo-plan") {
-          return (
-            <TodoPlanBlock
-              key={block.key}
-              tool={block.tool}
-              todos={block.todos}
-              className="w-full"
-              sticky={isLastAssistantMessage && !isTurnEnded}
-            />
-          )
-        }
-        if (block.kind === "plan-generated") {
-          return (
-            <PlanGeneratedCard
-              input={block.input}
-              state={block.state}
-              className="w-full"
-              key={block.key}
-            />
-          )
-        }
-        if (block.kind === "document-plan") {
-          return (
-            <DocumentPlanCard
-              key={block.key}
-              input={block.input}
-              state={
-                block.resultText && !isHitlAbortedOutput(block.resultText)
-                  ? "output-available"
-                  : block.state
-              }
-              resultText={block.resultText}
-              conversationId={conversationId}
-              messageId={messageId}
-              toolCallId={block.toolCallId}
-              onHitlApproved={onHitlApproved}
-              className="w-full"
-            />
-          )
-        }
-        if (block.kind === "clarifying-answers") {
-          return (
-            <ClarifyingAnswersSummary
-              key={block.key}
-              items={block.items}
-              outputError={block.outputError}
-              className="w-full"
-            />
-          )
-        }
-        if (block.kind === "document-plan-approved") {
-          return (
-            <DocumentPlanApprovedSummary
-              key={block.key}
-              resultText={block.resultText}
-              className="w-full"
-            />
-          )
-        }
-        if (block.kind === "recruitment-candidates") {
-          return (
-            <RecruitmentCandidatesCard
-              key={block.key}
-              state={block.state}
-              resultText={block.resultText}
-              className="w-full"
-            />
-          )
-        }
-        if (block.kind === "employee-hired") {
-          return (
-            <EmployeeHiredCard
-              key={block.key}
-              state={block.state}
-              resultText={block.resultText}
-              celebrateOnSuccess={isLastAssistantMessage}
-            />
-          )
-        }
-        if (block.kind === "file-changes") {
-          return <FileChangeCards files={block.files} key={block.key} />
-        }
-        if (block.kind === "error") {
-          return (
-            <div
-              className="w-full rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3"
-              key={block.key}
-            >
-              <div className="mb-1.5 flex items-center gap-2 text-destructive">
-                <IconAlertTriangle className="size-4 shrink-0" />
-                <span className="text-sm font-semibold">请求出错</span>
-              </div>
-              <pre className="font-mono text-xs break-all whitespace-pre-wrap text-destructive/80">
-                {block.text}
-              </pre>
-            </div>
-          )
-        }
-        if (block.kind === "skill-exploration") {
-          return (
-            <SkillExplorationBlock
-              items={block.items}
-              thinkingText={block.thinkingText}
-              className="w-full"
-              key={block.key}
-            />
-          )
-        }
-        if (block.kind === "summarization-checkpoint") {
-          return (
-            <SummarizationCheckpointBlock
-              text={block.text}
-              className="w-full"
-              key={block.key}
-            />
-          )
-        }
-        if (block.kind === "thinking") {
-          return (
-            <ThinkingBlock
-              className="w-full"
-              key={block.key}
-              text={block.text}
-            />
-          )
-        }
-        return (
-          <div
-            className="flex w-full min-w-0 flex-wrap items-start gap-2"
-            key={block.key}
-          >
-            <MessageMetaBadges
-              commandMeta={commandMeta}
-              mentionMeta={mentionMeta}
-              filesMeta={filesMeta}
-              messageId={messageId}
-            />
-            <MessageResponse className="flex-1">{block.text}</MessageResponse>
-          </div>
-        )
-      })}
-    </>
-  )
-}
+import { useClassifiedMessageBlocks } from "@/hooks/use-classified-message-blocks"
+import { BlockRenderer } from "../message-blocks/block-render-map"
 
 export interface ChatMessageItemProps {
   message: UIMessage
@@ -292,36 +51,18 @@ function ChatMessageItemInner({
 }: ChatMessageItemProps) {
   const contactDisplayName = getContactDisplayName(contact)
   const deferredMessage = React.useDeferredValue(message)
-  const classifiedBlocks = React.useMemo(
-    () => classifyMessageParts(deferredMessage, { includeFileChanges }),
-    [deferredMessage, includeFileChanges]
-  )
-  // 按同条消息内 tool-group 顺序 + 是否当前轮/回合是否结束，计算各 ToolRow 何时应收起
-  const toolAutoCollapseMap = React.useMemo(
-    () =>
-      computeToolAutoCollapseMap(classifiedBlocks, {
-        isLastAssistantMessage,
-        isTurnEnded,
-      }),
-    [classifiedBlocks, isLastAssistantMessage, isTurnEnded]
-  )
+  const {
+    blocks: classifiedBlocks,
+    toolAutoCollapseMap,
+    commandMeta,
+    mentionMeta,
+    filesMeta,
+  } = useClassifiedMessageBlocks(message, {
+    includeFileChanges,
+    isLastAssistantMessage,
+    isTurnEnded,
+  })
 
-  const messageMeta = React.useMemo(
-    () => getMessageMeta(deferredMessage),
-    [deferredMessage]
-  )
-  const commandMeta =
-    messageMeta?.command && typeof messageMeta.command === "object"
-      ? (messageMeta.command as { id?: string; title?: string })
-      : null
-  const mentionMeta =
-    messageMeta?.mentions && Array.isArray(messageMeta.mentions)
-      ? messageMeta.mentions
-      : []
-  const filesMeta =
-    messageMeta?.files && Array.isArray(messageMeta.files)
-      ? messageMeta.files
-      : undefined
   const elapsedMs = getElapsedMsFromMeta(deferredMessage)
   const copyText = React.useMemo(
     () => getCopyableMessageText(deferredMessage, { includeFileChanges }),
@@ -369,18 +110,23 @@ function ChatMessageItemInner({
       <MessageContent className="w-auto">
         <div className="space-y-1.5">
           {classifiedBlocks.length > 0 ? (
-            <RenderClassifiedBlocks
-              blocks={classifiedBlocks}
-              commandMeta={commandMeta}
-              mentionMeta={mentionMeta}
-              filesMeta={filesMeta}
-              messageId={hitlApproveMessageId}
-              toolAutoCollapseMap={toolAutoCollapseMap}
-              isLastAssistantMessage={isLastAssistantMessage}
-              isTurnEnded={isTurnEnded}
-              conversationId={conversationId}
-              onHitlApproved={onHitlApproved}
-            />
+            classifiedBlocks.map((block) => (
+              <BlockRenderer
+                key={block.key}
+                block={block}
+                ctx={{
+                  messageId: hitlApproveMessageId,
+                  conversationId,
+                  toolAutoCollapseMap,
+                  isLastAssistantMessage,
+                  isTurnEnded,
+                  onHitlApproved,
+                  commandMeta: commandMeta ?? {},
+                  mentionMeta,
+                  filesMeta,
+                }}
+              />
+            ))
           ) : (
             <MessageResponse />
           )}

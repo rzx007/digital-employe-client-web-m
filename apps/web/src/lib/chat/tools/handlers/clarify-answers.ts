@@ -9,7 +9,7 @@ export const clarifyAnswersHandler: ToolBlockHandler = {
     const isAnswered =
       toolState === "output-available" || Boolean(clarifyResultText)
     if (!isAnswered) {
-      return null
+      return []
     }
     if (toolState === "output-error") {
       return {
@@ -26,7 +26,7 @@ export const clarifyAnswersHandler: ToolBlockHandler = {
         : null
     )
     const items = buildClarifyAnswerItems(questions, clarifyResultText)
-    if (items.length === 0) return null
+    if (items.length === 0) return []
     return {
       kind: "clarifying-answers",
       key: `${messageId}:clarify-answers:${index}`,
