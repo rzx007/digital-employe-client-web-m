@@ -37,7 +37,12 @@ export {
   type PreviewSourceMode,
 } from "./artifact-content/preview-source-shell"
 export {
+  ArtifactRendererView,
+  type ArtifactRendererViewProps,
+} from "./artifact-content/artifact-renderer-view"
+export {
   resolveArtifactRenderer,
+  resolveArtifactRendererKind,
   isMarkdownPath,
   isHtmlPath,
 } from "./artifact-content/resolve-renderer"

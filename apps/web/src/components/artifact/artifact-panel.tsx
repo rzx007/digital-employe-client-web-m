@@ -55,10 +55,8 @@ import {
 } from "@/lib/chat/pending-resources"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { toast } from "sonner"
-import {
-  getPreviewableTypeLabel,
-  resolveArtifactRenderer,
-} from "./artifact-content/resolve-renderer"
+import { ArtifactRendererView } from "./artifact-content/artifact-renderer-view"
+import { getPreviewableTypeLabel } from "./artifact-content/resolve-renderer"
 import type { Artifact } from "./artifact-types"
 import { ImportDraftSkillDialog } from "./import-draft-skill-dialog"
 
@@ -570,9 +568,6 @@ export const ArtifactPanel = ({
     shouldUsePendingContent,
   ])
 
-  const Renderer = artifactForRenderer
-    ? resolveArtifactRenderer(artifactForRenderer, selectedFilePath)
-    : null
   const selectedFileSize = formatFileSize(selectedEntry?.size)
   const selectedTypeLabel = getArtifactTypeLabel(
     isDocumentFile(selectedEntry?.path)
@@ -855,9 +850,10 @@ export const ArtifactPanel = ({
               </div>
             </div>
           </div>
-          {artifactForRenderer && Renderer ? (
-            <Renderer
+          {artifactForRenderer ? (
+            <ArtifactRendererView
               artifact={artifactForRenderer}
+              filePath={selectedFilePath}
               className="min-h-0 min-w-0 flex-1"
             />
           ) : (

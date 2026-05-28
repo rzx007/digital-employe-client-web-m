@@ -7,18 +7,6 @@ import { ImageRenderer } from "./image-renderer"
 import { MarkdownArtifactRenderer } from "./markdown-artifact-renderer"
 import { SheetRenderer } from "./sheet-renderer"
 
-const renderers: Record<
-  string,
-  ComponentType<{ artifact: Artifact; className?: string }>
-> = {
-  text: CodeRenderer,
-  code: CodeRenderer,
-  sheet: SheetRenderer,
-  image: ImageRenderer,
-  "skill-draft": CodeRenderer,
-  document: DocViewerRenderer,
-}
-
 export function getFileExtension(
   path: string | null | undefined
 ): string | null {
@@ -37,17 +25,37 @@ export function isHtmlPath(path: string | null | undefined): boolean {
   return ext === "html" || ext === "htm"
 }
 
+export type ArtifactRendererKind =
+  | "markdown"
+  | "html"
+  | "sheet"
+  | "image"
+  | "document"
+  | "code"
+
+export function resolveArtifactRendererKind(
+  artifact: Artifact,
+  filePath: string | null | undefined
+): ArtifactRendererKind {
+  if (isMarkdownPath(filePath)) return "markdown"
+  if (isHtmlPath(filePath)) return "html"
+  if (artifact.type === "sheet") return "sheet"
+  if (artifact.type === "image") return "image"
+  if (artifact.type === "document") return "document"
+  return "code"
+}
+
 export function resolveArtifactRenderer(
   artifact: Artifact,
   filePath: string | null | undefined
 ): ComponentType<{ artifact: Artifact; className?: string }> {
-  if (isMarkdownPath(filePath)) {
-    return MarkdownArtifactRenderer
-  }
-  if (isHtmlPath(filePath)) {
-    return HtmlArtifactRenderer
-  }
-  return renderers[artifact.type] ?? CodeRenderer
+  const kind = resolveArtifactRendererKind(artifact, filePath)
+  if (kind === "markdown") return MarkdownArtifactRenderer
+  if (kind === "html") return HtmlArtifactRenderer
+  if (kind === "sheet") return SheetRenderer
+  if (kind === "image") return ImageRenderer
+  if (kind === "document") return DocViewerRenderer
+  return CodeRenderer
 }
 
 export function getPreviewableTypeLabel(
