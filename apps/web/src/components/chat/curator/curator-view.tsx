@@ -100,6 +100,30 @@ function getMsgTs(
   return getMessageCreatedAtMs(msg, storedMessages) ?? 0
 }
 
+const TERMINAL_EXECUTION_STATUSES = new Set([
+  "success",
+  "failed",
+  "timeout",
+  "cancelled",
+])
+
+function getExecutionTimelineTs(exec: TaskExecution): number | null {
+  const raw = exec.ended_at ?? exec.started_at
+  if (!raw) return null
+  const ms = new Date(raw).getTime()
+  return Number.isFinite(ms) ? ms : null
+}
+
+function getMaxExecutionTimelineTs(executions: TaskExecution[]): number {
+  let max = 0
+  for (const exec of executions) {
+    if (!TERMINAL_EXECUTION_STATUSES.has(exec.run_status)) continue
+    const ts = getExecutionTimelineTs(exec)
+    if (ts != null && ts > max) max = ts
+  }
+  return max
+}
+
 function formatTime(ts: number): string {
   return format(new Date(ts), "HH:mm", { locale: zhCN })
 }
@@ -523,13 +547,28 @@ export function CuratorView({
   const timeline: TimelineEntry[] = useMemo(() => {
     const entries: TimelineEntry[] = []
 
+    const maxExecutionTs = getMaxExecutionTimelineTs(executions)
+
+    let lastRealTsIndex = -1
+    for (let i = 0; i < displayMessages.length; i++) {
+      if (getMsgTs(displayMessages[i], storedMessages) > 0) {
+        lastRealTsIndex = i
+      }
+    }
+
     // 无时间戳（如 useChat 客户端 id 尚未与 DB 对齐）时按展示顺序递推 ts，
     // 避免 refetch 后 resume assistant 的真实 created_at 把 user 行排到其下方。
+    // 尾部 live 消息须压过任务卡片的 ended_at，否则新对话会排在执行卡片上方。
     let lastKnownTs = 0
-    for (const msg of displayMessages) {
+    for (let i = 0; i < displayMessages.length; i++) {
+      const msg = displayMessages[i]
       let ts = getMsgTs(msg, storedMessages)
       if (ts === 0) {
-        ts = lastKnownTs + 1000
+        const bump = lastKnownTs + 1000
+        ts =
+          i > lastRealTsIndex
+            ? Math.max(bump, maxExecutionTs + 1000)
+            : bump
       } else if (ts <= lastKnownTs) {
         ts = lastKnownTs + 1000
       }
@@ -538,20 +577,16 @@ export function CuratorView({
     }
 
     for (const exec of executions) {
-      if (
-        exec.run_status === "success" ||
-        exec.run_status === "failed" ||
-        exec.run_status === "timeout" ||
-        exec.run_status === "cancelled"
-      ) {
-        entries.push({
-          kind: "execution",
-          data: exec,
-          ts: exec.ended_at
-            ? new Date(exec.ended_at).getTime()
-            : new Date(exec.started_at).getTime(),
-        })
-      }
+      if (!TERMINAL_EXECUTION_STATUSES.has(exec.run_status)) continue
+
+      const ts = getExecutionTimelineTs(exec)
+      if (ts == null) continue
+
+      entries.push({
+        kind: "execution",
+        data: exec,
+        ts,
+      })
     }
 
     entries.sort((a, b) => a.ts - b.ts)
