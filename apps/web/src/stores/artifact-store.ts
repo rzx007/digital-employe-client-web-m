@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import type { Artifact } from "@/types/artifact"
 import type {
+  ClearPendingResourceRef,
   PendingResource,
   UpsertPendingResourceInput,
 } from "@/lib/chat/pending-resources"
@@ -8,7 +9,11 @@ import type {
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 
-export type { PendingResource, UpsertPendingResourceInput }
+export type {
+  ClearPendingResourceRef,
+  PendingResource,
+  UpsertPendingResourceInput,
+}
 
 function closeOtherSidePanels() {
   useMonitorStore.getState().closeMonitor()
@@ -35,7 +40,7 @@ interface ArtifactStore {
   ) => void
   clearPendingResource: (
     conversationId: string | number,
-    path: string
+    ref: ClearPendingResourceRef
   ) => void
   clearPendingConversation: (conversationId: string | number) => void
   getPendingResources: (conversationId: string | number) => PendingResource[]
@@ -109,7 +114,8 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
       const pendingByConversation = new Map(state.pendingByConversation)
       const existingMap = pendingByConversation.get(key) ?? new Map()
       const nextMap = new Map(existingMap)
-      nextMap.set(input.path, {
+      nextMap.set(input.toolCallId, {
+        toolCallId: input.toolCallId,
         path: input.path,
         content: input.content,
         isStreaming: input.isStreaming,
@@ -118,14 +124,28 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
       pendingByConversation.set(key, nextMap)
       return { pendingByConversation }
     }),
-  clearPendingResource: (conversationId, path) =>
+  clearPendingResource: (conversationId, ref) =>
     set((state) => {
       const key = toConversationKey(conversationId)
       const existingMap = state.pendingByConversation.get(key)
-      if (!existingMap?.has(path)) return state
+      if (!existingMap?.size) return state
+
+      let deleteKey: string | null = null
+      if ("toolCallId" in ref && ref.toolCallId) {
+        deleteKey = ref.toolCallId
+      } else if ("path" in ref && ref.path) {
+        for (const [mapKey, pending] of existingMap) {
+          if (pending.path === ref.path) {
+            deleteKey = mapKey
+            break
+          }
+        }
+      }
+      if (!deleteKey || !existingMap.has(deleteKey)) return state
+
       const pendingByConversation = new Map(state.pendingByConversation)
       const nextMap = new Map(existingMap)
-      nextMap.delete(path)
+      nextMap.delete(deleteKey)
       if (nextMap.size === 0) {
         pendingByConversation.delete(key)
       } else {

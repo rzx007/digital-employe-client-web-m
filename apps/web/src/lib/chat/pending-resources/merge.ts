@@ -1,12 +1,11 @@
 import type { ResourceEntry, ResourceList } from "@/api/types"
 
 import { getResourceBucket, getBucketRootSegment, type ResourceBucket } from "./paths"
+import {
+  getPendingDisplayName,
+  shouldMergePendingIntoTree,
+} from "./path-stability"
 import type { PendingResource } from "./types"
-
-function getBasename(path: string) {
-  const segments = path.split("/").filter(Boolean)
-  return segments.at(-1) ?? path
-}
 
 function inferArtifactType(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase() ?? ""
@@ -32,9 +31,33 @@ function inferArtifactType(path: string): string {
   return "text"
 }
 
+/** 同一 toolCall 只保留最新 path，避免流式路径前缀产生多条 pending */
+export function dedupePendingList(
+  pendingList: PendingResource[]
+): PendingResource[] {
+  const byToolCallId = new Map<string, PendingResource>()
+  const byPathLegacy = new Map<string, PendingResource>()
+
+  for (const pending of pendingList) {
+    if (pending.toolCallId) {
+      const existing = byToolCallId.get(pending.toolCallId)
+      if (!existing || pending.updatedAt >= existing.updatedAt) {
+        byToolCallId.set(pending.toolCallId, pending)
+      }
+      continue
+    }
+    const existing = byPathLegacy.get(pending.path)
+    if (!existing || pending.updatedAt >= existing.updatedAt) {
+      byPathLegacy.set(pending.path, pending)
+    }
+  }
+
+  return [...byPathLegacy.values(), ...byToolCallId.values()]
+}
+
 export function pendingToResourceEntry(pending: PendingResource): ResourceEntry {
   return {
-    name: getBasename(pending.path),
+    name: getPendingDisplayName(pending),
     path: pending.path,
     entry_type: "file",
     artifact_type: inferArtifactType(pending.path),
@@ -130,8 +153,9 @@ export function mergePendingIntoEntries(
   bucket: ResourceBucket
 ): ResourceEntry[] {
   let merged = entries
-  for (const pending of pendingList) {
+  for (const pending of dedupePendingList(pendingList)) {
     if (getResourceBucket(pending.path) !== bucket) continue
+    if (!shouldMergePendingIntoTree(pending)) continue
     if (pathExistsInTree(merged, pending.path)) continue
     merged = insertFileEntry(merged, pendingToResourceEntry(pending), bucket)
   }
@@ -142,12 +166,13 @@ export function mergePendingIntoResourceList(
   list: ResourceList,
   pendingList: PendingResource[]
 ): ResourceList {
+  const deduped = dedupePendingList(pendingList)
   return {
-    artifacts: mergePendingIntoEntries(list.artifacts, pendingList, "artifacts"),
-    uploads: mergePendingIntoEntries(list.uploads, pendingList, "uploads"),
+    artifacts: mergePendingIntoEntries(list.artifacts, deduped, "artifacts"),
+    uploads: mergePendingIntoEntries(list.uploads, deduped, "uploads"),
     skills_draft: mergePendingIntoEntries(
       list.skills_draft,
-      pendingList,
+      deduped,
       "skills_draft"
     ),
   }

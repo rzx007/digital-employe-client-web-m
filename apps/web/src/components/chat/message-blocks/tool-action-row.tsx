@@ -23,6 +23,7 @@ const stateIconMap: Record<string, typeof IconCircleCheck> = {
 }
 
 export type ToolActionRowProps = ComponentProps<"div"> & {
+  toolCallId: string
   summary: ToolCallSummary
   state: string
   resultText?: string | null
@@ -33,6 +34,7 @@ export type ToolActionRowProps = ComponentProps<"div"> & {
 }
 
 function ToolActionRowInner({
+  toolCallId,
   summary,
   state,
   resultText,
@@ -134,6 +136,7 @@ function ToolActionRowInner({
           <CollapsibleContent>
             <div className="px-3 pb-2.5">
               <ToolDetailPanel
+                toolCallId={toolCallId}
                 toolName={summary.toolName}
                 state={state}
                 input={input}

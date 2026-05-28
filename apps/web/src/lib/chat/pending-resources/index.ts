@@ -1,4 +1,8 @@
-export type { PendingResource, UpsertPendingResourceInput } from "./types"
+export type {
+  ClearPendingResourceRef,
+  PendingResource,
+  UpsertPendingResourceInput,
+} from "./types"
 
 export {
   RESOURCE_TREE_ROOTS,
@@ -12,6 +16,7 @@ export {
 
 export {
   collectAllResourcePaths,
+  dedupePendingList,
   findEntryByPath,
   findPendingByPath,
   flattenResourceListEntries,
@@ -20,6 +25,12 @@ export {
   pendingToResourceEntry,
   resolveResourceEntryWithPending,
 } from "./merge"
+
+export {
+  getPendingDisplayName,
+  isPathStableForPendingTree,
+  shouldMergePendingIntoTree,
+} from "./path-stability"
 
 export {
   getPendingPreviewFlags,

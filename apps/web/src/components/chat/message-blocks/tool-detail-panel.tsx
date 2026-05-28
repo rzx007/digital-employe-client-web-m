@@ -14,6 +14,7 @@ import {
 import { ToolOutputViewport } from "./tool-output-viewport"
 
 export type ToolDetailPanelProps = {
+  toolCallId: string | null
   toolName: string
   state: string
   input?: unknown
@@ -24,6 +25,7 @@ export type ToolDetailPanelProps = {
 }
 
 export function ToolDetailPanel({
+  toolCallId,
   toolName,
   state,
   input,
@@ -75,6 +77,7 @@ export function ToolDetailPanel({
   const isInputStreaming = state === "input-streaming"
 
   useSyncPendingResourceFromTool({
+    toolCallId,
     toolName,
     state,
     preliminary,

@@ -8,6 +8,7 @@ import { useChatStore } from "@/stores/chat-store"
 import { isConversationResourcePath } from "./paths"
 
 export interface SyncPendingResourceFromToolInput {
+  toolCallId: string | null
   toolName: string
   state: string
   preliminary?: boolean
@@ -17,6 +18,7 @@ export interface SyncPendingResourceFromToolInput {
 }
 
 export function useSyncPendingResourceFromTool({
+  toolCallId,
   toolName,
   state,
   preliminary,
@@ -36,6 +38,7 @@ export function useSyncPendingResourceFromTool({
   const isFileTool = toolName === "write_file" || toolName === "edit_file"
   const shouldTrackPending =
     isFileTool &&
+    !!toolCallId &&
     !!normalizedFilePath &&
     isConversationResourcePath(normalizedFilePath) &&
     (isInputStreaming || isRunning || isPreliminaryOutput)
@@ -45,9 +48,10 @@ export function useSyncPendingResourceFromTool({
 
   useEffect(() => {
     if (!shouldTrackPending) return
-    if (!conversationId || !normalizedFilePath) return
+    if (!conversationId || !normalizedFilePath || !toolCallId) return
 
     upsertPendingResource(conversationId, {
+      toolCallId,
       path: normalizedFilePath,
       content: displayContent ?? "",
       isStreaming: isInputStreaming || isRunning || isPreliminaryOutput,
@@ -60,15 +64,17 @@ export function useSyncPendingResourceFromTool({
     isRunning,
     normalizedFilePath,
     shouldTrackPending,
+    toolCallId,
     upsertPendingResource,
   ])
 
   useEffect(() => {
     if (!isToolComplete) return
-    if (!conversationId || !normalizedFilePath) return
+    if (!conversationId || !normalizedFilePath || !toolCallId) return
     if (!isConversationResourcePath(normalizedFilePath)) return
 
     upsertPendingResource(conversationId, {
+      toolCallId,
       path: normalizedFilePath,
       content: displayContent ?? "",
       isStreaming: false,
@@ -83,21 +89,22 @@ export function useSyncPendingResourceFromTool({
     isToolComplete,
     normalizedFilePath,
     queryClient,
+    toolCallId,
     upsertPendingResource,
   ])
 
   useEffect(() => {
-    if (!normalizedFilePath || !conversationId) return
+    if (!toolCallId || !conversationId) return
     if (shouldTrackPending || isToolComplete) return
     if (state !== "output-error") return
 
-    clearPendingResource(conversationId, normalizedFilePath)
+    clearPendingResource(conversationId, { toolCallId })
   }, [
     clearPendingResource,
     conversationId,
     isToolComplete,
-    normalizedFilePath,
     shouldTrackPending,
     state,
+    toolCallId,
   ])
 }

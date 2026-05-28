@@ -372,19 +372,19 @@ function renderEntry(
           <span className="shrink-0">{getFileIcon(entry.artifact_type)}</span>
           <span
             className={cn(
-              "flex min-w-0 flex-1 items-center gap-1",
+              "min-w-0 flex-1 truncate",
               ARTIFACT_TREE_FILE_NAME_MAX_W
             )}
             title={entry.name}
           >
-            <span className="min-w-0 truncate">{entry.name}</span>
-            {isPendingStreaming && (
-              <span className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-muted-foreground">
-                <IconLoader className="size-3 animate-spin" />
-                写入中
-              </span>
-            )}
+            {entry.name}
           </span>
+          {isPendingStreaming && (
+            <span className="ml-auto inline-flex shrink-0 items-center gap-0.5 pl-1 text-[10px] text-muted-foreground">
+              <IconLoader className="size-3 animate-spin" />
+              写入中
+            </span>
+          )}
         </FileTreeFile>
       </ContextMenuTrigger>
       <ResourceContextMenu

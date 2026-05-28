@@ -48,7 +48,7 @@ export function useConversationPendingResources(
         pending.path
       )
       if (existsOnDisk) {
-        clearPendingResource(conversationId, pending.path)
+        clearPendingResource(conversationId, { path: pending.path })
       }
     }
   }, [apiResourceList, clearPendingResource, conversationId, pendingList])

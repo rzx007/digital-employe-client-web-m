@@ -72,6 +72,7 @@ function ToolGroupBlockInner({
       return (
         <ToolActionRow
           className={cn("not-prose", className)}
+          toolCallId={tool.toolCallId}
           summary={tool.summary}
           state={tool.state}
           resultText={tool.resultText}
@@ -85,6 +86,7 @@ function ToolGroupBlockInner({
     return (
       <ToolActivityLine
         className={cn("not-prose", className)}
+        toolCallId={tool.toolCallId}
         summary={tool.summary}
         state={tool.state}
         resultText={tool.resultText}
@@ -181,6 +183,7 @@ function RoutineToolActivityBlock({
               allRoutine || !needsFullToolRow(tool) ? (
                 <ToolActivityLine
                   key={tool.key}
+                  toolCallId={tool.toolCallId}
                   summary={tool.summary}
                   state={tool.state}
                   resultText={tool.resultText}
@@ -194,6 +197,7 @@ function RoutineToolActivityBlock({
                 <ToolActionRow
                   key={tool.key}
                   className="w-full"
+                  toolCallId={tool.toolCallId}
                   summary={tool.summary}
                   state={tool.state}
                   resultText={tool.resultText}
