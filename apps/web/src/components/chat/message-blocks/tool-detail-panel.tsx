@@ -2,7 +2,7 @@ import { DiffViewer } from "@workspace/ui/components/diff-viewer"
 import { useEffect, useMemo, useRef } from "react"
 import { CodeHighlight, detectLanguage } from "../shared/code-highlight"
 import { useArtifactStore } from "@/stores/artifact-store"
-import { useSyncPendingResourceFromTool } from "@/hooks/use-sync-pending-resource-from-tool"
+import { useSyncPendingResourceFromTool } from "@/lib/chat/pending-resources"
 import {
   getDisplayContent,
   getEditDiff,

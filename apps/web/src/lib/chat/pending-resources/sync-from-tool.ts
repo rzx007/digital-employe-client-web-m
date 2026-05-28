@@ -4,7 +4,8 @@ import { useEffect } from "react"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useChatStore } from "@/stores/chat-store"
-import { isArtifactLikePath } from "@/components/chat/message-blocks/tool-shared"
+
+import { isConversationResourcePath } from "./paths"
 
 export interface SyncPendingResourceFromToolInput {
   toolName: string
@@ -36,7 +37,7 @@ export function useSyncPendingResourceFromTool({
   const shouldTrackPending =
     isFileTool &&
     !!normalizedFilePath &&
-    isArtifactLikePath(normalizedFilePath) &&
+    isConversationResourcePath(normalizedFilePath) &&
     (isInputStreaming || isRunning || isPreliminaryOutput)
 
   const isToolComplete =
@@ -65,7 +66,7 @@ export function useSyncPendingResourceFromTool({
   useEffect(() => {
     if (!isToolComplete) return
     if (!conversationId || !normalizedFilePath) return
-    if (!isArtifactLikePath(normalizedFilePath)) return
+    if (!isConversationResourcePath(normalizedFilePath)) return
 
     upsertPendingResource(conversationId, {
       path: normalizedFilePath,
@@ -100,4 +101,3 @@ export function useSyncPendingResourceFromTool({
     state,
   ])
 }
-

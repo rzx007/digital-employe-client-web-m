@@ -14,7 +14,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
-import { useShallow } from "zustand/react/shallow"
 import {
   IconCopy,
   IconDownload,
@@ -38,7 +37,7 @@ import {
   ContextMenuTrigger,
 } from "@workspace/ui/components/context-menu"
 import { cn } from "@workspace/ui/lib/utils"
-import type { ResourceEntry, ResourceList } from "@/api/types"
+import type { ResourceEntry } from "@/api/types"
 import {
   useConversationResourcesQuery,
   useResourceContentQuery,
@@ -48,15 +47,13 @@ import { useQueryClient } from "@tanstack/react-query"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { detectLanguage } from "@/components/chat/shared/code-highlight"
 import {
-  findEntryByPath,
   findPendingByPath,
-  mergePendingIntoResourceList,
-  pendingToResourceEntry,
-} from "@/lib/chat/pending-resource-utils"
-import {
-  useArtifactStore,
+  getPendingPreviewFlags,
+  RESOURCE_TREE_ROOTS,
+  useConversationPendingResources,
   type PendingResource,
-} from "@/stores/artifact-store"
+} from "@/lib/chat/pending-resources"
+import { useArtifactStore } from "@/stores/artifact-store"
 import { toast } from "sonner"
 import {
   getPreviewableTypeLabel,
@@ -73,13 +70,6 @@ export interface ArtifactPanelProps {
   /** embedded：置于 Sheet 等容器内，不使用侧滑入场动画 */
   presentation?: "slide-over" | "embedded"
 }
-
-const EMPTY_RESOURCE_LIST: ResourceList = {
-  artifacts: [],
-  uploads: [],
-  skills_draft: [],
-}
-const EMPTY_PENDING_LIST: PendingResource[] = []
 
 /** 侧栏树内文件名/文件夹名展示宽度；完整名见原生 title */
 const ARTIFACT_TREE_NAME_ROW_CLASS =
@@ -423,41 +413,32 @@ export const ArtifactPanel = ({
   const [importDraftSkillEntry, setImportDraftSkillEntry] =
     React.useState<ResourceEntry | null>(null)
   const activeResourcePath = useArtifactStore((s) => s.activeResourcePath)
-  const clearPendingResource = useArtifactStore((s) => s.clearPendingResource)
-  const pendingList = useArtifactStore(
-    useShallow((s) => {
-      if (!conversationId) return EMPTY_PENDING_LIST
-      const map = s.pendingByConversation.get(String(conversationId))
-      return map ? Array.from(map.values()) : EMPTY_PENDING_LIST
-    })
-  )
+  const [prevActiveResourcePath, setPrevActiveResourcePath] =
+    React.useState(activeResourcePath)
 
-  const getPendingForPath = React.useCallback(
-    (path: string) => findPendingByPath(pendingList, path),
-    [pendingList]
-  )
-
-  React.useEffect(() => {
-    if (!activeResourcePath) return
-
-    setSelectedPath(activeResourcePath)
-    setExpandedPaths((current) => {
-      const next = new Set(current)
-      for (const path of getParentPaths(activeResourcePath)) {
-        next.add(path)
-      }
-      return next
-    })
-  }, [activeResourcePath])
+  if (activeResourcePath !== prevActiveResourcePath) {
+    setPrevActiveResourcePath(activeResourcePath)
+    if (activeResourcePath) {
+      setSelectedPath(activeResourcePath)
+      setExpandedPaths((current) => {
+        const next = new Set(current)
+        for (const path of getParentPaths(activeResourcePath)) {
+          next.add(path)
+        }
+        return next
+      })
+    }
+  }
 
   const { data: resourceList } = useConversationResourcesQuery(
     isOpen ? conversationId : null
   )
-  const apiResources = resourceList ?? EMPTY_RESOURCE_LIST
-  const resources = React.useMemo(
-    () => mergePendingIntoResourceList(apiResources, pendingList),
-    [apiResources, pendingList]
-  )
+  const {
+    pendingList,
+    mergedResources: resources,
+    getPendingForPath,
+    resolveEntryForPath,
+  } = useConversationPendingResources(conversationId, resourceList)
   const filteredArtifacts = React.useMemo(
     () => filterEntries(resources.artifacts, searchQuery),
     [resources.artifacts, searchQuery]
@@ -478,22 +459,6 @@ export const ArtifactPanel = ({
     [resources.artifacts, resources.uploads, resources.skills_draft]
   )
 
-  React.useEffect(() => {
-    if (!conversationId || !resourceList) return
-    for (const pending of pendingList) {
-      const existsOnDisk = findEntryByPath(
-        [
-          ...resourceList.artifacts,
-          ...resourceList.uploads,
-          ...resourceList.skills_draft,
-        ],
-        pending.path
-      )
-      if (existsOnDisk) {
-        clearPendingResource(conversationId, pending.path)
-      }
-    }
-  }, [clearPendingResource, conversationId, pendingList, resourceList])
   const filteredFiles = React.useMemo(
     () =>
       countFiles(filteredArtifacts) +
@@ -508,45 +473,42 @@ export const ArtifactPanel = ({
     hasEntries(filteredUploads) ||
     hasEntries(filteredSkillsDraft)
 
-  React.useEffect(() => {
-    if (!hasSearchQuery) return
+  const searchExpandedPaths = React.useMemo(() => {
+    if (!hasSearchQuery) return null
 
-    setExpandedPaths((current) => {
-      const next = new Set(current)
-      if (filteredArtifacts.length > 0) {
-        next.add("/artifacts")
-      }
-      if (filteredUploads.length > 0) {
-        next.add("/uploads")
-      }
-      if (filteredSkillsDraft.length > 0) {
-        next.add("/skills-draft")
-      }
-      for (const path of collectDirectoryPaths([
-        ...filteredArtifacts,
-        ...filteredUploads,
-        ...filteredSkillsDraft,
-      ])) {
-        next.add(path)
-      }
-      return next
-    })
-  }, [filteredArtifacts, filteredUploads, filteredSkillsDraft, hasSearchQuery])
+    const next = new Set<string>()
+    for (const root of RESOURCE_TREE_ROOTS) {
+      const key = root.listKey
+      const hasBucket =
+        (key === "artifacts" && filteredArtifacts.length > 0) ||
+        (key === "uploads" && filteredUploads.length > 0) ||
+        (key === "skills_draft" && filteredSkillsDraft.length > 0)
+      if (hasBucket) next.add(root.path)
+    }
+    for (const path of collectDirectoryPaths([
+      ...filteredArtifacts,
+      ...filteredUploads,
+      ...filteredSkillsDraft,
+    ])) {
+      next.add(path)
+    }
+    return next
+  }, [
+    filteredArtifacts,
+    filteredSkillsDraft,
+    filteredUploads,
+    hasSearchQuery,
+  ])
 
-  const selectedEntry = React.useMemo(() => {
-    if (!selectedPath) return null
-    const fromMerged = findEntryByPath(
-      [
-        ...resources.artifacts,
-        ...resources.uploads,
-        ...resources.skills_draft,
-      ],
-      selectedPath
-    )
-    if (fromMerged) return fromMerged
-    const pending = findPendingByPath(pendingList, selectedPath)
-    return pending ? pendingToResourceEntry(pending) : null
-  }, [pendingList, resources, selectedPath])
+  const fileTreeExpanded = React.useMemo(() => {
+    if (!searchExpandedPaths) return expandedPaths
+    return new Set([...expandedPaths, ...searchExpandedPaths])
+  }, [expandedPaths, searchExpandedPaths])
+
+  const selectedEntry = React.useMemo(
+    () => resolveEntryForPath(selectedPath),
+    [resolveEntryForPath, selectedPath]
+  )
 
   const selectedFilePath =
     selectedEntry?.entry_type === "file" ? selectedEntry.path : null
@@ -554,23 +516,19 @@ export const ArtifactPanel = ({
   const selectedPending = findPendingByPath(pendingList, selectedFilePath)
 
   const isDocFile = isDocumentFile(selectedFilePath)
-  const isPendingDocStreaming =
-    isDocFile && selectedPending?.isStreaming === true
-
-  const skipApiContentFetch =
-    !!selectedPending &&
-    !isDocFile &&
-    selectedPending.isStreaming === true
+  const { skipApiContentFetch } = getPendingPreviewFlags(
+    selectedPending,
+    isDocFile,
+    false
+  )
 
   const { data: resourceContent } = useResourceContentQuery(
     conversationId!,
     isDocFile || skipApiContentFetch ? null : selectedFilePath
   )
 
-  const shouldUsePendingContent =
-    !!selectedPending &&
-    !isDocFile &&
-    (selectedPending.isStreaming || !resourceContent)
+  const { isPendingDocStreaming, shouldUsePendingContent } =
+    getPendingPreviewFlags(selectedPending, isDocFile, !!resourceContent)
 
   const artifactForRenderer = React.useMemo((): Artifact | null => {
     if (isPendingDocStreaming) return null
@@ -760,7 +718,7 @@ export const ArtifactPanel = ({
           <ScrollArea className="min-h-0 min-w-0 flex-1">
             {hasResources && hasFilteredResources ? (
               <FileTree
-                expanded={expandedPaths}
+                expanded={fileTreeExpanded}
                 selectedPath={selectedPath ?? undefined}
                 onExpandedChange={setExpandedPaths}
                 onSelect={setSelectedPath}

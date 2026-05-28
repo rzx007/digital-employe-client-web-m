@@ -1,13 +1,7 @@
 import type { ResourceEntry, ResourceList } from "@/api/types"
-import type { PendingResource } from "@/stores/artifact-store"
 
-export type ResourceBucket = "artifacts" | "skills_draft"
-
-export function getResourceBucket(path: string): ResourceBucket | null {
-  if (path.startsWith("/artifacts/")) return "artifacts"
-  if (path.startsWith("/skills-draft/")) return "skills_draft"
-  return null
-}
+import { getResourceBucket, getBucketRootSegment, type ResourceBucket } from "./paths"
+import type { PendingResource } from "./types"
 
 function getBasename(path: string) {
   const segments = path.split("/").filter(Boolean)
@@ -70,7 +64,8 @@ function pathExistsInTree(entries: ResourceEntry[], path: string): boolean {
 
 function insertFileEntry(
   entries: ResourceEntry[],
-  fileEntry: ResourceEntry
+  fileEntry: ResourceEntry,
+  bucket: ResourceBucket
 ): ResourceEntry[] {
   const path = fileEntry.path
   if (pathExistsInTree(entries, path)) {
@@ -78,9 +73,12 @@ function insertFileEntry(
   }
 
   const segments = path.split("/").filter(Boolean)
-  if (segments.length === 0) return entries
+  const rootSegment = getBucketRootSegment(bucket)
+  if (segments.length < 2 || segments[0] !== rootSegment) {
+    return entries
+  }
 
-  const dirSegments = segments.slice(0, -1)
+  const dirSegments = segments.slice(1, -1)
 
   function insertAt(
     current: ResourceEntry[],
@@ -91,7 +89,7 @@ function insertFileEntry(
     }
 
     const dirName = dirSegments[depth]!
-    const dirPath = `/${dirSegments.slice(0, depth + 1).join("/")}`
+    const dirPath = `/${rootSegment}/${dirSegments.slice(0, depth + 1).join("/")}`
     const existingIndex = current.findIndex(
       (e) => e.path === dirPath && e.entry_type === "directory"
     )
@@ -128,12 +126,14 @@ function insertFileEntry(
 
 export function mergePendingIntoEntries(
   entries: ResourceEntry[],
-  pendingList: PendingResource[]
+  pendingList: PendingResource[],
+  bucket: ResourceBucket
 ): ResourceEntry[] {
   let merged = entries
   for (const pending of pendingList) {
+    if (getResourceBucket(pending.path) !== bucket) continue
     if (pathExistsInTree(merged, pending.path)) continue
-    merged = insertFileEntry(merged, pendingToResourceEntry(pending))
+    merged = insertFileEntry(merged, pendingToResourceEntry(pending), bucket)
   }
   return merged
 }
@@ -142,19 +142,13 @@ export function mergePendingIntoResourceList(
   list: ResourceList,
   pendingList: PendingResource[]
 ): ResourceList {
-  const artifactsPending = pendingList.filter(
-    (p) => getResourceBucket(p.path) === "artifacts"
-  )
-  const skillsDraftPending = pendingList.filter(
-    (p) => getResourceBucket(p.path) === "skills_draft"
-  )
-
   return {
-    artifacts: mergePendingIntoEntries(list.artifacts, artifactsPending),
-    uploads: list.uploads,
+    artifacts: mergePendingIntoEntries(list.artifacts, pendingList, "artifacts"),
+    uploads: mergePendingIntoEntries(list.uploads, pendingList, "uploads"),
     skills_draft: mergePendingIntoEntries(
       list.skills_draft,
-      skillsDraftPending
+      pendingList,
+      "skills_draft"
     ),
   }
 }
@@ -165,6 +159,25 @@ export function findPendingByPath(
 ): PendingResource | null {
   if (!path) return null
   return pendingList.find((p) => p.path === path) ?? null
+}
+
+export function flattenResourceListEntries(list: ResourceList): ResourceEntry[] {
+  return [...list.artifacts, ...list.uploads, ...list.skills_draft]
+}
+
+export function resolveResourceEntryWithPending(
+  selectedPath: string | null,
+  mergedResources: ResourceList,
+  pendingList: PendingResource[]
+): ResourceEntry | null {
+  if (!selectedPath) return null
+  const fromMerged = findEntryByPath(
+    flattenResourceListEntries(mergedResources),
+    selectedPath
+  )
+  if (fromMerged) return fromMerged
+  const pending = findPendingByPath(pendingList, selectedPath)
+  return pending ? pendingToResourceEntry(pending) : null
 }
 
 export function collectAllResourcePaths(list: ResourceList): string[] {

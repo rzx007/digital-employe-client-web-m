@@ -36,18 +36,11 @@ export function getContentLength(input: unknown, toolName: string): number {
   return content?.length ?? 0
 }
 
-export function normalizeToolFilePath(path: string): string {
-  const normalized = path.replace(/\\/g, "/")
-  if (normalized.startsWith("artifacts/") || normalized.startsWith("skills-draft/")) {
-    return `/${normalized}`
-  }
-  return normalized
-}
-
-export function isArtifactLikePath(path: string): boolean {
-  const normalized = normalizeToolFilePath(path)
-  return normalized.startsWith("/artifacts/") || normalized.startsWith("/skills-draft/")
-}
+export {
+  isArtifactLikePath,
+  isConversationResourcePath,
+  normalizeToolFilePath,
+} from "@/lib/chat/pending-resources"
 
 export function getDisplayContent(
   input: unknown,

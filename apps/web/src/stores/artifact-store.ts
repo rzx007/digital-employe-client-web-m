@@ -1,25 +1,18 @@
 import { create } from "zustand"
 import type { Artifact } from "@/types/artifact"
+import type {
+  PendingResource,
+  UpsertPendingResourceInput,
+} from "@/lib/chat/pending-resources"
 
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 
+export type { PendingResource, UpsertPendingResourceInput }
+
 function closeOtherSidePanels() {
   useMonitorStore.getState().closeMonitor()
   useChatStore.getState().closeConversationList()
-}
-
-export interface PendingResource {
-  path: string
-  content: string
-  isStreaming: boolean
-  updatedAt: number
-}
-
-export interface UpsertPendingResourceInput {
-  path: string
-  content: string
-  isStreaming: boolean
 }
 
 interface ArtifactStore {
