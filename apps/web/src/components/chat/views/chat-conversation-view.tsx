@@ -25,6 +25,8 @@ import { useConversationSession } from "@/hooks/use-conversation-session"
 
 import { prepareDisplayMessages } from "@/lib/chat/hitl"
 
+import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
+
 import { ChatPanel } from "../panel/chat-panel"
 
 import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
@@ -145,6 +147,8 @@ export function ConversationChatView({
 
     queryClient,
   })
+
+  useSyncPendingFromComposer(conversationId, messages, status)
 
   useEffect(() => {
     onStreamFinishRef.current = session.onStreamFinish

@@ -50,9 +50,4 @@ export {
   type StreamingPreviewMode,
 } from "./preview-streaming"
 
-export {
-  useSyncPendingResourceFromTool,
-  type SyncPendingResourceFromToolInput,
-} from "./sync-from-tool"
-
 export { useConversationPendingResources } from "./use-conversation-pending-resources"

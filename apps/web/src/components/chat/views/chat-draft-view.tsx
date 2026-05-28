@@ -21,6 +21,7 @@ import { useChatStore } from "@/stores/chat-store"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { prepareDisplayMessages } from "@/lib/chat/hitl"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
+import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
 
 import { ChatPanel } from "../panel/chat-panel"
 import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
@@ -124,6 +125,8 @@ export function DraftChatView({
     resumeStream,
     queryClient,
   })
+
+  useSyncPendingFromComposer(selectedConversationId, messages, status)
 
   useEffect(() => {
     onStreamFinishRef.current = session.onStreamFinish

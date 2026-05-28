@@ -30,6 +30,7 @@ import {
 } from "@/lib/chat/message-utils"
 import { shouldIncludeFileChangesForMessage } from "@/lib/chat/file-change-utils"
 import { useConversationSession } from "@/hooks/use-conversation-session"
+import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
 import {
   useMessagesQuery,
   useCuratorConversationQuery,
@@ -305,6 +306,8 @@ export function CuratorView({
     resumeStream,
     queryClient,
   })
+
+  useSyncPendingFromComposer(curatorConversationId, messages, status)
 
   useEffect(() => {
     onStreamFinishRef.current = session.onStreamFinish
