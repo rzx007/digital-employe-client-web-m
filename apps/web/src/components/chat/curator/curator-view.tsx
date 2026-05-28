@@ -38,7 +38,7 @@ import {
 } from "@/hooks/use-chat-queries"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { useChatStore } from "@/stores/chat-store"
-import { useAllTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
+import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { cancelConversationStream } from "@/api/chat"
 import { toast } from "sonner"
 import {
@@ -541,7 +541,8 @@ export function CuratorView({
         role: c.employee!.role,
       }))
   }, [contacts])
-  const { data: executions = [] } = useAllTaskExecutions()
+  const { data: executions = [] } =
+    useCuratorTaskExecutions(curatorConversationId)
 
   /* ── Build unified timeline ── */
   const timeline: TimelineEntry[] = useMemo(() => {

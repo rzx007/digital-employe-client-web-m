@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -81,23 +81,23 @@ def _build_task_items(db: Session, plan: OrchestrationPlan) -> list[Orchestratio
     )
     items: list[OrchestrationTaskItem] = []
     for t in tasks:
-        status: str = "pending"
+        task_status: str = "pending"
+        latest_log = None
         if t.execute_mode == "scheduled":
-            status = "pending"
+            task_status = "pending"
         else:
-            from src.models.task_execution_log import TaskExecutionLog
-            log = db.scalars(
+            latest_log = db.scalars(
                 select(TaskExecutionLog).where(
                     TaskExecutionLog.task_id == t.id,
                 ).order_by(TaskExecutionLog.id.desc()).limit(1)
             ).first()
-            if log:
-                if log.run_status == "success":
-                    status = "success"
-                elif log.run_status in ("failed", "cancelled"):
-                    status = log.run_status
-                elif log.run_status == "running":
-                    status = "running"
+            if latest_log:
+                if latest_log.run_status == "success":
+                    task_status = "success"
+                elif latest_log.run_status in ("failed", "cancelled"):
+                    task_status = latest_log.run_status
+                elif latest_log.run_status == "running":
+                    task_status = "running"
 
         items.append(OrchestrationTaskItem(
             task_id=t.id,
@@ -110,7 +110,11 @@ def _build_task_items(db: Session, plan: OrchestrationPlan) -> list[Orchestratio
             cron=t.cron_expression,
             execute_mode=t.execute_mode,
             priority=t.priority,
-            status=status,
+            status=task_status,
+            conversation_id=(
+                latest_log.conversation_id if latest_log is not None else None
+            ),
+            orchestrator_conversation_id=plan.conversation_id,
         ))
     return items
 
@@ -121,16 +125,18 @@ def _build_task_items(db: Session, plan: OrchestrationPlan) -> list[Orchestratio
 )
 def list_plans(
     workspace_id: int,
+    conversation_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> ListResponse[OrchestrationPlanRead]:
-    plans = list(
-        db.scalars(
-            select(OrchestrationPlan)
-            .where(OrchestrationPlan.workspace_id == workspace_id)
-            .order_by(OrchestrationPlan.id.desc())
-            .limit(50)
-        ).all()
+    stmt = (
+        select(OrchestrationPlan)
+        .where(OrchestrationPlan.workspace_id == workspace_id)
+        .order_by(OrchestrationPlan.id.desc())
+        .limit(50)
     )
+    if conversation_id is not None:
+        stmt = stmt.where(OrchestrationPlan.conversation_id == conversation_id)
+    plans = list(db.scalars(stmt).all())
     result: list[OrchestrationPlanRead] = []
     for p in plans:
         plan_data = OrchestrationPlanRead.model_validate(p)

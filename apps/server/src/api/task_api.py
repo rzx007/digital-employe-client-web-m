@@ -210,6 +210,8 @@ def list_task_executions(
     run_status: str | None = Query(default=None),
     start_time: datetime | None = Query(default=None),
     end_time: datetime | None = Query(default=None),
+    orchestrator_conversation_id: int | None = Query(default=None),
+    orchestration_plan_id: int | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -217,7 +219,8 @@ def list_task_executions(
     """
     分页查询任务执行日志。
 
-    支持按员工、任务、状态和时间范围过滤，返回执行耗时、输入输出和执行结果等信息。
+    支持按员工、任务、状态和时间范围过滤。
+    orchestrator_conversation_id：按总管会话过滤（经编排计划 JOIN）。
     """
     items, total = TaskService.list_execution_logs(
         db=db,
@@ -227,6 +230,8 @@ def list_task_executions(
         run_status=run_status,
         start_time=start_time,
         end_time=end_time,
+        orchestrator_conversation_id=orchestrator_conversation_id,
+        orchestration_plan_id=orchestration_plan_id,
         page=page,
         page_size=page_size,
     )

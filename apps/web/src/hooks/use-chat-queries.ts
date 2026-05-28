@@ -65,11 +65,19 @@ export function useCuratorConversationQuery() {
   })
 }
 
-export function useOrchestrationPlansQuery() {
+export function useOrchestrationPlansQuery(
+  conversationId?: string | number | null
+) {
+  const convKey =
+    conversationId != null ? String(conversationId) : null
   return useQuery({
-    queryKey: [...chatKeys.all, "orchestration-plans"],
+    queryKey: chatKeys.orchestrationPlans(convKey),
     queryFn: async ({ signal }) => {
       const { request } = await import("@/lib/request")
+      const qs =
+        convKey != null
+          ? `?conversation_id=${encodeURIComponent(convKey)}`
+          : ""
       const res = await request<{
         code: number
         data: Array<{
@@ -84,7 +92,7 @@ export function useOrchestrationPlansQuery() {
           created_at: string
           updated_at: string
         }>
-      }>("/workspaces/1/orchestration/plans", { signal })
+      }>(`/workspaces/1/orchestration/plans${qs}`, { signal })
       return res?.data ?? []
     },
     refetchInterval: 5000,
@@ -232,6 +240,12 @@ export function useResetCuratorConversation() {
       queryClient.invalidateQueries({ queryKey: chatKeys.curator() })
       queryClient.invalidateQueries({
         queryKey: [...chatKeys.all, "all-task-executions"],
+      })
+      queryClient.invalidateQueries({
+        queryKey: [...chatKeys.all, "curator-executions"],
+      })
+      queryClient.invalidateQueries({
+        queryKey: [...chatKeys.all, "orchestration-plans"],
       })
     },
   })

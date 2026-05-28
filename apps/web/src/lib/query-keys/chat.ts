@@ -14,6 +14,10 @@ export const chatKeys = {
   resourceContent: (conversationId: string, path: string) =>
     [...chatKeys.all, "resource-content", conversationId, path] as const,
   curator: () => [...chatKeys.all, "curator"] as const,
+  curatorExecutions: (conversationId: string) =>
+    [...chatKeys.all, "curator-executions", conversationId] as const,
+  orchestrationPlans: (conversationId: string | null) =>
+    [...chatKeys.all, "orchestration-plans", conversationId ?? "all"] as const,
   skills: () => [...chatKeys.all, "skills"] as const,
   skillsPickerLocal: () => [...chatKeys.all, "skills", "picker-local"] as const,
   localSkillDetail: (skillName: string) =>

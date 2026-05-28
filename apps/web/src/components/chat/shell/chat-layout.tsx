@@ -61,6 +61,9 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
       queryKey: [...chatKeys.all, "all-task-executions"],
     })
     queryClient.invalidateQueries({
+      queryKey: [...chatKeys.all, "curator-executions"],
+    })
+    queryClient.invalidateQueries({
       queryKey: [...chatKeys.all, "today-all-executions"],
     })
     switch (event.type) {

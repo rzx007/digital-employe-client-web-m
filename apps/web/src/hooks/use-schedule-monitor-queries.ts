@@ -164,6 +164,31 @@ export function useAllTaskExecutions() {
   })
 }
 
+const CURATOR_EXECUTIONS_PAGE_SIZE = 100
+
+/** 总管会话下发的编排任务执行记录（经 orchestrator_conversation_id 过滤） */
+export function useCuratorTaskExecutions(
+  conversationId: string | number | null | undefined
+) {
+  const id = conversationId != null ? String(conversationId) : null
+  return useQuery({
+    queryKey: chatKeys.curatorExecutions(id ?? "none"),
+    queryFn: async ({ signal }) => {
+      const res = await request<{
+        code: number
+        data: TaskExecution[]
+      }>(
+        `/workspaces/${WORKSPACE_ID}/tasks/executions?orchestrator_conversation_id=${id}&page_size=${CURATOR_EXECUTIONS_PAGE_SIZE}`,
+        { signal }
+      )
+      return res.data ?? []
+    },
+    enabled: id != null,
+    staleTime: 30_000,
+    refetchInterval: 15_000,
+  })
+}
+
 export function useTodayAllExecutions() {
   return useQuery({
     queryKey: [...chatKeys.all, "today-all-executions"],

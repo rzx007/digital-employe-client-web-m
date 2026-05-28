@@ -22,6 +22,7 @@ class OrchestrationTaskItem(BaseModel):
     depends_on: int | None = None
     status: OrchestrationTaskStatus = "pending"
     conversation_id: int | None = None
+    orchestrator_conversation_id: int | None = None
 
 
 class OrchestrationPlanRead(BaseModel):

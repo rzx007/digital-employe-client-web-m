@@ -494,11 +494,36 @@ class TaskService:
         run_status: str | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
+        orchestrator_conversation_id: int | None = None,
+        orchestration_plan_id: int | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[TaskExecutionLog], int]:
         stmt = select(TaskExecutionLog).where(TaskExecutionLog.workspace_id == workspace_id)
         count_stmt = select(func.count()).select_from(TaskExecutionLog).where(TaskExecutionLog.workspace_id == workspace_id)
+
+        if orchestrator_conversation_id is not None:
+            from src.models.orchestration_plan import OrchestrationPlan
+
+            orchestrated_task_ids = select(EmployeeTask.id).join(
+                OrchestrationPlan,
+                EmployeeTask.orchestration_plan_id == OrchestrationPlan.id,
+            ).where(
+                OrchestrationPlan.conversation_id == orchestrator_conversation_id,
+                EmployeeTask.workspace_id == workspace_id,
+            )
+            stmt = stmt.where(TaskExecutionLog.task_id.in_(orchestrated_task_ids))
+            count_stmt = count_stmt.where(
+                TaskExecutionLog.task_id.in_(orchestrated_task_ids)
+            )
+
+        if orchestration_plan_id is not None:
+            plan_task_ids = select(EmployeeTask.id).where(
+                EmployeeTask.orchestration_plan_id == orchestration_plan_id,
+                EmployeeTask.workspace_id == workspace_id,
+            )
+            stmt = stmt.where(TaskExecutionLog.task_id.in_(plan_task_ids))
+            count_stmt = count_stmt.where(TaskExecutionLog.task_id.in_(plan_task_ids))
 
         if employee_id is not None:
             stmt = stmt.where(TaskExecutionLog.employee_id == employee_id)
