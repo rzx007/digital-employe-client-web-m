@@ -42,7 +42,7 @@ def extract_message_parts(stream_chunks_json: str) -> list[dict] | None:
 
 def extract_message_parts_from_buffer(events: list[dict]) -> list[dict] | None:
     """从 StreamEventBuffer 的事件列表直接提取 structured parts。
-    
+
     用于在终态写入 DB 时，从内存 buffer 的事件列表中提取前端可直接渲染的结构化 message_parts
     不经过 JSON 序列化/反序列化，直接处理内存中的 buffer 事件。
     events 格式：[{"seq": N, "data": payload}, ...]
@@ -78,12 +78,152 @@ def _lc_source_from_inner(inner) -> str | None:
     return src if isinstance(src, str) else None
 
 
+class _ToolReplayState:
+    """跨 payload 累积工具 input，与前端 LangChainStreamParseState 对齐。"""
+
+    def __init__(self) -> None:
+        self.tool_meta: dict[str, dict] = {}
+        # 全局 index → toolCallId（向后兼容）
+        self.tool_call_index_to_id: dict[int, str] = {}
+        # lc_run id 作用域：index → toolCallId / 主工具 id
+        self.chunk_index_to_id: dict[str, dict[int, str]] = {}
+        self.primary_tool_call_id_by_chunk: dict[str, str] = {}
+
+    def ensure_tool_meta(self, tid: str, name: str) -> dict:
+        meta = self.tool_meta.get(tid)
+        if meta is None:
+            meta = {
+                "toolCallId": tid,
+                "toolName": name or "",
+                "input": None,
+                "inputText": "",
+            }
+            self.tool_meta[tid] = meta
+        if name and not meta["toolName"]:
+            meta["toolName"] = name
+        return meta
+
+    def register_tool_call(
+        self,
+        tid: str,
+        name: str,
+        args: object,
+        *,
+        chunk_id: str,
+        array_index: int,
+    ) -> None:
+        if chunk_id:
+            self.chunk_index_to_id.setdefault(chunk_id, {})[array_index] = tid
+            if name:
+                self.primary_tool_call_id_by_chunk[chunk_id] = tid
+        self.tool_call_index_to_id[array_index] = tid
+        meta = self.ensure_tool_meta(tid, name)
+        if isinstance(args, dict) and len(args) > 0:
+            meta["input"] = args
+
+    def resolve_tool_id(self, chunk_id: str, entry: dict) -> str | None:
+        tid = entry.get("id")
+        if isinstance(tid, str) and tid:
+            return tid
+
+        index = entry.get("index")
+        if isinstance(index, int):
+            if chunk_id:
+                scoped = self.chunk_index_to_id.get(chunk_id, {})
+                if index in scoped:
+                    return scoped[index]
+            if index in self.tool_call_index_to_id:
+                return self.tool_call_index_to_id[index]
+
+        if chunk_id:
+            primary = self.primary_tool_call_id_by_chunk.get(chunk_id)
+            if primary:
+                return primary
+        return None
+
+    def append_input_delta(
+        self,
+        chunk_id: str,
+        entry: dict,
+        delta: str,
+    ) -> None:
+        if not delta:
+            return
+        tid = self.resolve_tool_id(chunk_id, entry)
+        if not tid:
+            return
+        name = entry.get("name")
+        name_str = name if isinstance(name, str) else ""
+        meta = self.ensure_tool_meta(tid, name_str)
+        meta["inputText"] += delta
+
+    def apply_tool_payload(
+        self,
+        payload: dict,
+        *,
+        chunk_id: str = "",
+    ) -> None:
+        tool_calls = payload.get("toolCalls") or []
+        tool_call_chunks = payload.get("toolCallChunks") or []
+        invalid_tool_calls = payload.get("invalidToolCalls") or []
+
+        for idx, tc in enumerate(tool_calls):
+            tid = tc.get("id")
+            if not tid:
+                continue
+            self.register_tool_call(
+                tid,
+                tc.get("name") or "",
+                tc.get("args"),
+                chunk_id=chunk_id,
+                array_index=idx,
+            )
+
+        string_deltas = [
+            tcc
+            for tcc in tool_call_chunks
+            if isinstance(tcc.get("args"), str) and tcc["args"]
+        ]
+        fallback_deltas = (
+            []
+            if string_deltas
+            else [
+                itc
+                for itc in invalid_tool_calls
+                if isinstance(itc.get("args"), str) and itc["args"]
+            ]
+        )
+
+        for fallback_index, entry in enumerate([*string_deltas, *fallback_deltas]):
+            if entry.get("index") is None and isinstance(fallback_index, int):
+                entry = {**entry, "index": fallback_index}
+            delta = entry.get("args")
+            if not isinstance(delta, str) or not delta:
+                continue
+            self.append_input_delta(chunk_id, entry, delta)
+
+
+def _resolve_tool_input(meta: dict | None) -> object | None:
+    if not meta:
+        return None
+    stored = meta.get("input")
+    if isinstance(stored, dict) and len(stored) > 0:
+        return stored
+    input_text = meta.get("inputText")
+    if isinstance(input_text, str) and input_text.strip():
+        parsed = _try_parse_json(input_text)
+        if parsed is not None:
+            return parsed
+    if stored is not None:
+        return stored
+    return None
+
+
 def _replay_payloads_to_parts(payloads: list) -> list[dict]:
     parts: list[dict] = []
     text_buf: str = ""
     text_stream_tag: str | None = None
-    tool_meta: dict[str, dict] = {}  # toolCallId → {toolCallId, toolName, input, inputText}
-    tool_call_index_to_id: dict[int, str] = {}  # array index → toolCallId（用于 tool_call_chunks 的 id 为空时回退）
+    tool_state = _ToolReplayState()
 
     def _flush_text() -> None:
         nonlocal text_buf, text_stream_tag
@@ -97,86 +237,29 @@ def _replay_payloads_to_parts(payloads: list) -> list[dict]:
             text_buf = ""
             text_stream_tag = None
 
-    def _resolve_tool_id_from_index(tcc: dict) -> str | None:
-        """当 tool_call_chunks / invalid_tool_calls 的 id 为空时，通过 index 回退匹配"""
-        tcc_index = tcc.get("index")
-        if isinstance(tcc_index, int) and tcc_index in tool_call_index_to_id:
-            return tool_call_index_to_id[tcc_index]
-        return None
-
-    def _ensure_tool_meta(tid: str, name: str) -> dict:
-        meta = tool_meta.get(tid)
-        if meta is None:
-            meta = {
-                "toolCallId": tid,
-                "toolName": name or "",
-                "input": None,
-                "inputText": "",
-            }
-            tool_meta[tid] = meta
-        if name and not meta["toolName"]:
-            meta["toolName"] = name
-        return meta
-
     for raw in payloads:
-        # 错误 payload
         err_msg = _extract_error(raw)
         if err_msg is not None:
             _flush_text()
             parts.append({"type": "text", "text": "\u26a0\ufe0fERROR:" + err_msg, "state": "done"})
             break
 
+        if isinstance(raw, dict) and raw.get("type") == "updates":
+            _apply_updates_tool_meta(raw, tool_state)
+            continue
+
         inner = _unwrap_stream_payload(raw)
         if inner is None:
             continue
 
-        # ── AIMessageChunk ──
         msg_chunk = _extract_ai_message_chunk(inner)
         if msg_chunk is not None:
-            # 注册/更新 tool_calls 元数据
-            for idx, tc in enumerate(msg_chunk.get("toolCalls", [])):
-                tid = tc.get("id")
-                if not tid:
-                    continue
-                tool_call_index_to_id[idx] = tid
-                meta = _ensure_tool_meta(tid, tc.get("name") or "")
-                args = tc.get("args")
-                if isinstance(args, dict) and len(args) > 0 and not meta["inputText"]:
-                    meta["input"] = args
-
-            # 累积 tool_call_chunks 参数增量（id 为空时通过 index 回退匹配）
-            for tcc in msg_chunk.get("toolCallChunks", []):
-                tcc_args = tcc.get("args")
-                if not isinstance(tcc_args, str):
-                    continue
-                tid = tcc.get("id")
-                if not tid:
-                    tid = _resolve_tool_id_from_index(tcc)
-                if not tid:
-                    continue
-                meta = _ensure_tool_meta(tid, tcc.get("name") or "")
-                meta["inputText"] += tcc_args
-
-            # invalid_tool_calls 作为 tool_call_chunks 的后备
-            if len(msg_chunk.get("toolCallChunks", [])) == 0:
-                for itc in msg_chunk.get("invalidToolCalls", []):
-                    itc_args = itc.get("args")
-                    if not isinstance(itc_args, str):
-                        continue
-                    tid = itc.get("id")
-                    if not tid:
-                        tid = _resolve_tool_id_from_index(itc)
-                    if not tid:
-                        continue
-                    meta = _ensure_tool_meta(tid, itc.get("name") or "")
-                    if not meta["inputText"]:
-                        meta["inputText"] += itc_args
+            chunk_id = msg_chunk.get("messageChunkId") or ""
+            tool_state.apply_tool_payload(msg_chunk, chunk_id=chunk_id)
 
             content = msg_chunk.get("content")
             if isinstance(content, str) and content:
                 node = _langgraph_node_from_inner(inner)
-                # tools 节点内层 LLM 流式展示（如 recruit 的 ```json…```）不进 text，
-                # 正式结果以 ToolMessage 为准，与前端流式 preliminary 路径对齐
                 if node is None or node == "model":
                     lc_src = _lc_source_from_inner(inner)
                     tag = "summarization" if lc_src == "summarization" else "default"
@@ -190,21 +273,13 @@ def _replay_payloads_to_parts(payloads: list) -> list[dict]:
                     text_stream_tag = tag
             continue
 
-        # ── ToolMessage ──
         tool_out = _extract_tool_output(inner)
         if tool_out is not None:
             _flush_text()
             tid = tool_out["toolCallId"]
-            meta = tool_meta.get(tid)
+            meta = tool_state.tool_meta.get(tid)
             tool_name = tool_out["toolName"] or (meta["toolName"] if meta else "") or "unknown"
-
-            parsed_input = None
-            if meta and meta.get("inputText"):
-                parsed_input = _try_parse_json(meta["inputText"])
-            if parsed_input is None and meta:
-                parsed_input = meta.get("input")
-            if parsed_input is None:
-                parsed_input = None
+            parsed_input = _resolve_tool_input(meta)
 
             tool_part: dict = {
                 "type": f"tool-{tool_name}",
@@ -229,6 +304,27 @@ def _replay_payloads_to_parts(payloads: list) -> list[dict]:
     return parts if parts else None
 
 
+def _apply_updates_tool_meta(raw: dict, tool_state: _ToolReplayState) -> None:
+    """从 LangGraph updates 事件合并完整 tool_calls（与前端 parseUpdatesPayloadToChunks 对齐）。"""
+    data = raw.get("data")
+    if not isinstance(data, dict):
+        return
+
+    for node_update in data.values():
+        if not isinstance(node_update, dict):
+            continue
+        messages = node_update.get("messages")
+        if not isinstance(messages, list):
+            continue
+
+        for msg in messages:
+            payload = _extract_ai_tool_payload_from_lc_message(msg)
+            if payload is None:
+                continue
+            chunk_id = payload.get("messageChunkId") or ""
+            tool_state.apply_tool_payload(payload, chunk_id=chunk_id)
+
+
 # ── Helper functions ──
 
 
@@ -241,14 +337,112 @@ def _extract_error(raw) -> str | None:
 
 
 def _unwrap_stream_payload(raw):
-    """解包 v2 stream mode: {type:"messages", data:[...]} → data, {type:"updates", ...} → None"""
+    """解包 v2 stream mode: {type:"messages", data:[...]} → data"""
     if not isinstance(raw, dict):
         return raw
     if raw.get("type") == "messages" and isinstance(raw.get("data"), list):
         return raw["data"]
-    if raw.get("type") == "updates":
-        return None
     return raw
+
+
+def _message_chunk_id_from_kwargs(kwargs: dict) -> str:
+    mid = kwargs.get("id")
+    return mid if isinstance(mid, str) and mid else ""
+
+
+def _parse_tool_calls_from_kwargs(kwargs: dict) -> list[dict]:
+    tool_calls: list[dict] = []
+    raw_tcs = kwargs.get("tool_calls")
+    if not isinstance(raw_tcs, list):
+        return tool_calls
+    for tc in raw_tcs:
+        if not isinstance(tc, dict):
+            continue
+        inner = tc.get("kwargs") if isinstance(tc.get("kwargs"), dict) else tc
+        tool_calls.append({
+            "id": inner.get("id") if isinstance(inner.get("id"), str) and inner.get("id") else None,
+            "name": inner.get("name") if isinstance(inner.get("name"), str) and inner.get("name") else None,
+            "args": inner.get("args") if inner.get("args") is not None else inner.get("function"),
+        })
+    return tool_calls
+
+
+def _parse_tool_call_chunks_from_kwargs(kwargs: dict, *, use_list_index: bool) -> list[dict]:
+    tool_call_chunks: list[dict] = []
+    raw_tccs = kwargs.get("tool_call_chunks")
+    if not isinstance(raw_tccs, list):
+        return tool_call_chunks
+    for list_index, tcc in enumerate(raw_tccs):
+        if not isinstance(tcc, dict):
+            continue
+        inner = tcc.get("kwargs") if isinstance(tcc.get("kwargs"), dict) else tcc
+        index = tcc.get("index") if isinstance(tcc.get("index"), int) else None
+        if index is None and use_list_index:
+            index = list_index
+        tool_call_chunks.append({
+            "id": inner.get("id") if isinstance(inner.get("id"), str) and inner.get("id") else None,
+            "name": inner.get("name") if isinstance(inner.get("name"), str) and inner.get("name") else None,
+            "args": inner.get("args") if isinstance(inner.get("args"), str) else None,
+            "index": index,
+        })
+    return tool_call_chunks
+
+
+def _parse_invalid_tool_calls_from_kwargs(kwargs: dict, *, use_list_index: bool) -> list[dict]:
+    invalid_tool_calls: list[dict] = []
+    raw_itcs = kwargs.get("invalid_tool_calls")
+    if not isinstance(raw_itcs, list):
+        return invalid_tool_calls
+    for list_index, itc in enumerate(raw_itcs):
+        if not isinstance(itc, dict):
+            continue
+        inner = itc.get("kwargs") if isinstance(itc.get("kwargs"), dict) else itc
+        index = itc.get("index") if isinstance(itc.get("index"), int) else None
+        if index is None and use_list_index:
+            index = list_index
+        invalid_tool_calls.append({
+            "id": inner.get("id") if isinstance(inner.get("id"), str) and inner.get("id") else None,
+            "name": inner.get("name") if isinstance(inner.get("name"), str) and inner.get("name") else None,
+            "args": inner.get("args") if isinstance(inner.get("args"), str) else None,
+            "index": index,
+        })
+    return invalid_tool_calls
+
+
+def _build_tool_payload_from_kwargs(kwargs: dict, *, message_chunk_id: str) -> dict:
+    content = kwargs.get("content")
+    content_str = content if isinstance(content, str) and len(content) > 0 else None
+    return {
+        "messageChunkId": message_chunk_id,
+        "content": content_str,
+        "toolCalls": _parse_tool_calls_from_kwargs(kwargs),
+        "toolCallChunks": _parse_tool_call_chunks_from_kwargs(kwargs, use_list_index=True),
+        "invalidToolCalls": _parse_invalid_tool_calls_from_kwargs(kwargs, use_list_index=True),
+    }
+
+
+def _extract_ai_tool_payload_from_lc_message(msg: dict) -> dict | None:
+    """从 LangChain 序列化的 AIMessage / AIMessageChunk 提取工具字段。"""
+    if not isinstance(msg, dict):
+        return None
+
+    kwargs: dict | None = None
+    message_chunk_id = ""
+
+    if msg.get("type") == "constructor" and isinstance(msg.get("id"), list):
+        id_str = ".".join(str(x) for x in msg["id"])
+        if "AIMessageChunk" in id_str or "AIMessage" in id_str:
+            kwargs = msg.get("kwargs") if isinstance(msg.get("kwargs"), dict) else None
+    elif isinstance(msg.get("kwargs"), dict):
+        kwargs = msg["kwargs"]
+    elif msg.get("__type__") in ("AIMessageChunk", "AIMessage"):
+        kwargs = msg
+
+    if not isinstance(kwargs, dict):
+        return None
+
+    message_chunk_id = _message_chunk_id_from_kwargs(kwargs)
+    return _build_tool_payload_from_kwargs(kwargs, message_chunk_id=message_chunk_id)
 
 
 def _extract_ai_message_chunk(inner) -> dict | None:
@@ -268,60 +462,8 @@ def _extract_ai_message_chunk(inner) -> dict | None:
     if not isinstance(kwargs, dict):
         return None
 
-    content = kwargs.get("content")
-    content_str = content if isinstance(content, str) and len(content) > 0 else None
-
-    # tool_calls：LangChain constructor 格式 {id, type, kwargs:{id, name, args}},
-    # 兼容 __type__ 格式 {id, name, args}
-    tool_calls: list[dict] = []
-    raw_tcs = kwargs.get("tool_calls")
-    if isinstance(raw_tcs, list):
-        for tc in raw_tcs:
-            if not isinstance(tc, dict):
-                continue
-            inner = tc.get("kwargs") if isinstance(tc.get("kwargs"), dict) else tc
-            tool_calls.append({
-                "id": inner.get("id") if isinstance(inner.get("id"), str) and inner.get("id") else None,
-                "name": inner.get("name") if isinstance(inner.get("name"), str) and inner.get("name") else None,
-                "args": inner.get("args") if inner.get("args") is not None else inner.get("function"),
-            })
-
-    # tool_call_chunks（流式增量参数片段，id 在后续 chunk 中可能为空，需 index 回退）
-    tool_call_chunks: list[dict] = []
-    raw_tccs = kwargs.get("tool_call_chunks")
-    if isinstance(raw_tccs, list):
-        for tcc in raw_tccs:
-            if not isinstance(tcc, dict):
-                continue
-            inner = tcc.get("kwargs") if isinstance(tcc.get("kwargs"), dict) else tcc
-            tool_call_chunks.append({
-                "id": inner.get("id") if isinstance(inner.get("id"), str) and inner.get("id") else None,
-                "name": inner.get("name") if isinstance(inner.get("name"), str) and inner.get("name") else None,
-                "args": inner.get("args") if isinstance(inner.get("args"), str) else None,
-                "index": tcc.get("index") if isinstance(tcc.get("index"), int) else None,
-            })
-
-    # invalid_tool_calls（解析失败的工具调用，作为工具参数的后备来源）
-    invalid_tool_calls: list[dict] = []
-    raw_itcs = kwargs.get("invalid_tool_calls")
-    if isinstance(raw_itcs, list):
-        for itc in raw_itcs:
-            if not isinstance(itc, dict):
-                continue
-            inner = itc.get("kwargs") if isinstance(itc.get("kwargs"), dict) else itc
-            invalid_tool_calls.append({
-                "id": inner.get("id") if isinstance(inner.get("id"), str) and inner.get("id") else None,
-                "name": inner.get("name") if isinstance(inner.get("name"), str) and inner.get("name") else None,
-                "args": inner.get("args") if isinstance(inner.get("args"), str) else None,
-                "index": itc.get("index") if isinstance(itc.get("index"), int) else None,
-            })
-
-    return {
-        "content": content_str,
-        "toolCalls": tool_calls,
-        "toolCallChunks": tool_call_chunks,
-        "invalidToolCalls": invalid_tool_calls,
-    }
+    message_chunk_id = _message_chunk_id_from_kwargs(kwargs)
+    return _build_tool_payload_from_kwargs(kwargs, message_chunk_id=message_chunk_id)
 
 
 def _extract_tool_output(inner) -> dict | None:

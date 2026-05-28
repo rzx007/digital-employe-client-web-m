@@ -31,7 +31,12 @@ dependencies = [
 dev = [
     "micro-agent",
     "pyinstaller>=6.0",
+    "pytest>=8.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
 [project.urls]
 Repository = "https://github.com/langchain-ai/deepagents/tree/master/examples/text-to-sql-agent"
 

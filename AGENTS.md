@@ -87,7 +87,13 @@ pnpm build:app
 
 **处理**：在 **原生 arm64** 终端中重装 Node（`nvm uninstall <version>` → `nvm install <version>`），删除 `apps/server/.venv` 后重新 `uv sync`。勿在「使用 Rosetta 打开」的终端里安装/同步 Python 依赖。
 
-后端无测试目录。`README.md` 中提到的 `tests/` 文件不存在。
+后端测试（pytest）位于 `apps/server/tests/`：
+
+```bash
+cd apps/server
+uv sync --group dev
+uv run pytest
+```
 
 ## apps/server 架构（Python 后端）
 
@@ -203,7 +209,7 @@ pnpm build:deb:arm64:offline
 
 ### 已知问题
 
-- **无测试**：`tests/` 目录不存在。
+- **测试**：`apps/server/tests/`（pytest）；`uv run pytest`。
 
 ### 打包
 
