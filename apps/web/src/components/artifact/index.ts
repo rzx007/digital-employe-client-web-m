@@ -41,6 +41,10 @@ export {
   type ArtifactRendererViewProps,
 } from "./artifact-content/artifact-renderer-view"
 export {
+  ArtifactPreviewStreamingPlaceholder,
+  type ArtifactPreviewStreamingPlaceholderProps,
+} from "./artifact-content/artifact-preview-streaming-placeholder"
+export {
   resolveArtifactRenderer,
   resolveArtifactRendererKind,
   isMarkdownPath,

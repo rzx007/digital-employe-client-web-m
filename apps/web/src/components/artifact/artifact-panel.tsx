@@ -48,13 +48,15 @@ import { chatKeys } from "@/lib/query-keys/chat"
 import { detectLanguage } from "@/components/chat/shared/code-highlight"
 import {
   findPendingByPath,
-  getPendingPreviewFlags,
+  getPendingPreviewState,
+  isDocumentPath,
   RESOURCE_TREE_ROOTS,
   useConversationPendingResources,
   type PendingResource,
 } from "@/lib/chat/pending-resources"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { toast } from "sonner"
+import { ArtifactPreviewStreamingPlaceholder } from "./artifact-content/artifact-preview-streaming-placeholder"
 import { ArtifactRendererView } from "./artifact-content/artifact-renderer-view"
 import { getPreviewableTypeLabel } from "./artifact-content/resolve-renderer"
 import type { Artifact } from "./artifact-types"
@@ -412,21 +414,16 @@ export const ArtifactPanel = ({
     React.useState<ResourceEntry | null>(null)
   const activeResourcePath = useArtifactStore((s) => s.activeResourcePath)
   const [prevActiveResourcePath, setPrevActiveResourcePath] =
-    React.useState(activeResourcePath)
+    React.useState<string | null>(null)
 
   if (activeResourcePath !== prevActiveResourcePath) {
     setPrevActiveResourcePath(activeResourcePath)
     if (activeResourcePath) {
       setSelectedPath(activeResourcePath)
-      setExpandedPaths((current) => {
-        const next = new Set(current)
-        for (const path of getParentPaths(activeResourcePath)) {
-          next.add(path)
-        }
-        return next
-      })
     }
   }
+
+  const selectionPath = selectedPath ?? activeResourcePath
 
   const { data: resourceList } = useConversationResourcesQuery(
     isOpen ? conversationId : null
@@ -498,14 +495,27 @@ export const ArtifactPanel = ({
     hasSearchQuery,
   ])
 
+  const autoExpandPaths = React.useMemo(() => {
+    if (!selectionPath) return new Set<string>()
+    return new Set(getParentPaths(selectionPath))
+  }, [selectionPath])
+
   const fileTreeExpanded = React.useMemo(() => {
-    if (!searchExpandedPaths) return expandedPaths
-    return new Set([...expandedPaths, ...searchExpandedPaths])
-  }, [expandedPaths, searchExpandedPaths])
+    const next = new Set(expandedPaths)
+    for (const path of autoExpandPaths) {
+      next.add(path)
+    }
+    if (searchExpandedPaths) {
+      for (const path of searchExpandedPaths) {
+        next.add(path)
+      }
+    }
+    return next
+  }, [autoExpandPaths, expandedPaths, searchExpandedPaths])
 
   const selectedEntry = React.useMemo(
-    () => resolveEntryForPath(selectedPath),
-    [resolveEntryForPath, selectedPath]
+    () => resolveEntryForPath(selectionPath),
+    [resolveEntryForPath, selectionPath]
   )
 
   const selectedFilePath =
@@ -513,24 +523,31 @@ export const ArtifactPanel = ({
 
   const selectedPending = findPendingByPath(pendingList, selectedFilePath)
 
-  const isDocFile = isDocumentFile(selectedFilePath)
-  const { skipApiContentFetch } = getPendingPreviewFlags(
-    selectedPending,
-    isDocFile,
-    false
-  )
+  const isDocFile = isDocumentPath(selectedFilePath)
 
   const { data: resourceContent } = useResourceContentQuery(
     conversationId!,
-    isDocFile || skipApiContentFetch ? null : selectedFilePath
+    selectedPending?.isStreaming ? null : selectedFilePath
   )
 
-  const { isPendingDocStreaming, shouldUsePendingContent } =
-    getPendingPreviewFlags(selectedPending, isDocFile, !!resourceContent)
+  const previewStateWithContent = React.useMemo(
+    () =>
+      getPendingPreviewState(
+        selectedPending,
+        selectedFilePath,
+        !!resourceContent,
+        selectedEntry?.artifact_type
+      ),
+    [resourceContent, selectedEntry?.artifact_type, selectedFilePath, selectedPending]
+  )
 
   const artifactForRenderer = React.useMemo((): Artifact | null => {
-    if (isPendingDocStreaming) return null
-    if (shouldUsePendingContent && selectedPending && selectedFilePath) {
+    if (previewStateWithContent.showStreamingPlaceholder) return null
+    if (
+      previewStateWithContent.shouldUsePendingContent &&
+      selectedPending &&
+      selectedFilePath
+    ) {
       return {
         id: `pending:${selectedFilePath}`,
         type: (selectedEntry?.artifact_type as Artifact["type"]) || "text",
@@ -541,31 +558,31 @@ export const ArtifactPanel = ({
     }
     if (isDocFile && selectedEntry && conversationId) {
       return {
-        id: `resource:${selectedPath}`,
+        id: `resource:${selectionPath}`,
         type: "document",
         title: selectedEntry.name,
         content: "",
-        metadata: { conversationId, resourcePath: selectedPath ?? undefined },
+        metadata: { conversationId, resourcePath: selectionPath ?? undefined },
       }
     }
     if (!resourceContent) return null
     return {
-      id: `resource:${selectedPath}`,
+      id: `resource:${selectionPath}`,
       type: (resourceContent.artifact_type as Artifact["type"]) || "text",
-      title: selectedPath?.split("/").pop() ?? "file",
+      title: selectionPath?.split("/").pop() ?? "file",
       content: resourceContent.content,
       language: resourceContent.language ?? undefined,
     }
   }, [
     conversationId,
     isDocFile,
-    isPendingDocStreaming,
+    previewStateWithContent.showStreamingPlaceholder,
+    previewStateWithContent.shouldUsePendingContent,
     resourceContent,
     selectedEntry,
     selectedFilePath,
-    selectedPath,
+    selectionPath,
     selectedPending,
-    shouldUsePendingContent,
   ])
 
   const selectedFileSize = formatFileSize(selectedEntry?.size)
@@ -583,8 +600,8 @@ export const ArtifactPanel = ({
   }
 
   const handleDownload = async () => {
-    if (!conversationId || !selectedPath) return
-    await downloadResource(conversationId, selectedPath)
+    if (!conversationId || !selectionPath) return
+    await downloadResource(conversationId, selectionPath)
   }
 
   const queryClient = useQueryClient()
@@ -605,7 +622,7 @@ export const ArtifactPanel = ({
     try {
       await deleteResource(conversationId, entry.path)
       toast.success(`已删除 ${entry.name}`)
-      if (selectedPath === entry.path) {
+      if (selectionPath === entry.path) {
         setSelectedPath(null)
       }
       queryClient.invalidateQueries({
@@ -714,7 +731,7 @@ export const ArtifactPanel = ({
             {hasResources && hasFilteredResources ? (
               <FileTree
                 expanded={fileTreeExpanded}
-                selectedPath={selectedPath ?? undefined}
+                selectedPath={selectionPath ?? undefined}
                 onExpandedChange={setExpandedPaths}
                 onSelect={setSelectedPath}
                 className="h-full rounded-none border-0 bg-transparent"
@@ -850,7 +867,12 @@ export const ArtifactPanel = ({
               </div>
             </div>
           </div>
-          {artifactForRenderer ? (
+          {previewStateWithContent.showStreamingPlaceholder ? (
+            <ArtifactPreviewStreamingPlaceholder
+              kind={previewStateWithContent.rendererKind}
+              className="min-h-0 min-w-0 flex-1"
+            />
+          ) : artifactForRenderer ? (
             <ArtifactRendererView
               artifact={artifactForRenderer}
               filePath={selectedFilePath}
@@ -861,22 +883,14 @@ export const ArtifactPanel = ({
               <div className="max-w-xs text-center">
                 <IconFile className="mx-auto mb-3 size-10 text-muted-foreground/50" />
                 <p>
-                  {isPendingDocStreaming
-                    ? "文件写入中，完成后可预览"
-                    : selectedEntry?.entry_type === "directory"
-                      ? "这是一个文件夹"
-                      : selectedPending?.isStreaming
-                        ? "正在写入文件…"
-                        : "选择文件查看内容"}
+                  {selectedEntry?.entry_type === "directory"
+                    ? "这是一个文件夹"
+                    : "选择文件查看内容"}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground/80">
-                  {isPendingDocStreaming
-                    ? "Office / PDF 等文档需落盘后才能预览"
-                    : selectedEntry?.entry_type === "directory"
-                      ? "展开左侧目录并选择具体文件进行预览"
-                      : selectedPending?.isStreaming
-                        ? "内容将随工具输出实时更新"
-                        : "可在左侧搜索或浏览资源文件"}
+                  {selectedEntry?.entry_type === "directory"
+                    ? "展开左侧目录并选择具体文件进行预览"
+                    : "可在左侧搜索或浏览资源文件"}
                 </p>
               </div>
             </div>

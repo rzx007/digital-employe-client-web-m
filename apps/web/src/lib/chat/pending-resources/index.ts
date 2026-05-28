@@ -21,7 +21,23 @@ export {
   resolveResourceEntryWithPending,
 } from "./merge"
 
-export { getPendingPreviewFlags, type PendingPreviewFlags } from "./preview"
+export {
+  getPendingPreviewFlags,
+  getPendingPreviewState,
+  type ArtifactPreviewPhase,
+  type PendingPreviewFlags,
+  type PendingPreviewState,
+} from "./preview"
+
+export {
+  isDocumentPath,
+  isHtmlPath,
+  isMarkdownPath,
+  resolveRendererKindFromPath,
+  resolveStreamingPreviewMode,
+  type ArtifactRendererKind,
+  type StreamingPreviewMode,
+} from "./preview-streaming"
 
 export {
   useSyncPendingResourceFromTool,

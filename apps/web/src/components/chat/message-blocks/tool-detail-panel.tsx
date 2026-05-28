@@ -147,7 +147,7 @@ export function ToolDetailPanel({
           </ToolOutputViewport>
           {shouldTruncatePreview && (
             <div className="px-1 text-[11px] text-muted-foreground">
-              仅预览前 {LARGE_FILE_PREVIEW_CHARS} 字，完整内容请看右侧文件面板
+              仅预览部分内容，完整内容请看右侧文件面板
             </div>
           )}
         </div>
