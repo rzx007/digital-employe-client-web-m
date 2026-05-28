@@ -53,6 +53,16 @@ def init_db() -> None:
     ensure_column("employee_tasks", "valid_from", "valid_from DATETIME")
     ensure_column("employee_tasks", "valid_until", "valid_until DATETIME")
     ensure_column(
+        "employee_tasks",
+        "source_conversation_id",
+        "source_conversation_id INTEGER",
+    )
+    ensure_column(
+        "task_execution_logs",
+        "orchestrator_conversation_id",
+        "orchestrator_conversation_id INTEGER",
+    )
+    ensure_column(
         "task_execution_logs",
         "confirm_url",
         "confirm_url VARCHAR(2048)",
@@ -177,6 +187,12 @@ def init_db() -> None:
 
     # FTS5 全文索引：conversation_messages.content
     _init_fts5(engine)
+
+    from src.service.orchestrator_conversation_links import (
+        backfill_orchestrator_conversation_links,
+    )
+
+    backfill_orchestrator_conversation_links(engine)
 
 
 def _migrate_task_id_nullable(engine, inspector) -> None:

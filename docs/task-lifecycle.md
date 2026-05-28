@@ -408,4 +408,6 @@ TaskExecutionLog.run_status = 唯一写入源
 | `TaskExecutionLog.conversation_id` | **员工执行会话**（子任务 `start_task_as_conversation` 新建） |
 | `OrchestrationTaskItem.conversation_id` | 员工执行会话（最新一条 log） |
 
-总管时间线过滤：`GET /workspaces/{id}/tasks/executions?orchestrator_conversation_id={curator_conv_id}`（经 `employee_tasks` → `orchestration_plans` JOIN）。编排计划列表：`GET .../orchestration/plans?conversation_id={curator_conv_id}`。
+总管时间线过滤：`GET /workspaces/{id}/tasks/executions?orchestrator_conversation_id={curator_conv_id}`（`task_execution_logs.orchestrator_conversation_id` 列优先；未回填行 fallback JOIN）。编排计划列表：`GET .../orchestration/plans?conversation_id={curator_conv_id}`。
+
+落库（阶段二）：`employee_tasks.source_conversation_id`、`task_execution_logs.orchestrator_conversation_id`；启动时 `init_db` → `backfill_orchestrator_conversation_links`。详见 [`apps/server/docs/compatibility-inventory.md`](../apps/server/docs/compatibility-inventory.md) §11。

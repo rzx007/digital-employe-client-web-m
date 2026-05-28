@@ -20,6 +20,9 @@ class TaskExecutionLog(Base):
     conversation_id: Mapped[int | None] = mapped_column(
         ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    orchestrator_conversation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     task_name_snapshot: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     run_status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     run_result: Mapped[str | None] = mapped_column(String(255), nullable=True)

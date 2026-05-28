@@ -35,6 +35,9 @@ class EmployeeTask(Base):
     orchestration_plan_id: Mapped[int | None] = mapped_column(
         ForeignKey("orchestration_plans.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    source_conversation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)

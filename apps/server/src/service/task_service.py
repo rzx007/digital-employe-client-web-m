@@ -8,7 +8,7 @@ from typing import Any
 
 from apscheduler.triggers.cron import CronTrigger  # pylint: disable=import-error
 from fastapi import HTTPException, status
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from src.models.employee import Employee
@@ -512,10 +512,16 @@ class TaskService:
                 OrchestrationPlan.conversation_id == orchestrator_conversation_id,
                 EmployeeTask.workspace_id == workspace_id,
             )
-            stmt = stmt.where(TaskExecutionLog.task_id.in_(orchestrated_task_ids))
-            count_stmt = count_stmt.where(
-                TaskExecutionLog.task_id.in_(orchestrated_task_ids)
+            orch_filter = or_(
+                TaskExecutionLog.orchestrator_conversation_id
+                == orchestrator_conversation_id,
+                and_(
+                    TaskExecutionLog.orchestrator_conversation_id.is_(None),
+                    TaskExecutionLog.task_id.in_(orchestrated_task_ids),
+                ),
             )
+            stmt = stmt.where(orch_filter)
+            count_stmt = count_stmt.where(orch_filter)
 
         if orchestration_plan_id is not None:
             plan_task_ids = select(EmployeeTask.id).where(

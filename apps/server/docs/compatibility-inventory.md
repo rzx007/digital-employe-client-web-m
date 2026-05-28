@@ -3,18 +3,19 @@
 本文档汇总当前代码库中的**迁移 / 兼容 / 遗留路径**，便于在合适时机统一移除。  
 维护约定：新增临时兼容逻辑时，请在本文件登记；移除时在对应条目打 `[x]` 并注明版本。
 
-**最后更新**：2026-05-26（LLM 多供应商注册表 + 四键退役）
+**最后更新**：2026-05-28（总管任务 ↔ 总管会话关联，阶段二）
 
 ---
 
 ## 移除策略（建议顺序）
 
 1. **确认无老数据**：抽样用户 `config_kvs`、SQLite 表结构、localStorage
-2. **先 LLM 四键迁移链**（本节 §1）— 影响面最清晰
-3. **再 Settings 命名 / factory 硬编码默认**（§2）
-4. **DB `init_db` ensure_column** 仅在新装环境验证后可删对应段（§4）
-5. **前端 localStorage / 消息格式**（§5–§6）需配合版本说明
-6. **远程 API 字段双读**（§7）需确认上游已统一
+2. **总管会话关联**（§11）：确认 `source_conversation_id` / `orchestrator_conversation_id` 已回填后再删 JOIN fallback
+3. **先 LLM 四键迁移链**（本节 §1）— 影响面最清晰
+4. **再 Settings 命名 / factory 硬编码默认**（§2）
+5. **DB `init_db` ensure_column** 仅在新装环境验证后可删对应段（§3）
+6. **前端 localStorage / 消息格式**（§5–§6）需配合版本说明
+7. **远程 API 字段双读**（§7）需确认上游已统一
 
 ---
 
@@ -184,6 +185,79 @@ load_registry         ← 已有 registry 则跳过 _migrate_from_legacy
 
 ---
 
+## §11 总管任务 ↔ 总管会话（阶段一 JOIN + 阶段二列）
+
+### 11.1 真相源 vs 遗留
+
+| 状态 | 说明 |
+|------|------|
+| **真相源（列）** | `employee_tasks.source_conversation_id` — 任务由哪条总管会话下发 |
+| **真相源（列）** | `task_execution_logs.orchestrator_conversation_id` — 本次执行归属的总管会话 |
+| **员工执行会话** | `task_execution_logs.conversation_id` — 子任务 Agent 会话（不变） |
+| **编排计划** | `orchestration_plans.conversation_id` — 创建计划时的总管会话（不变） |
+| **阶段一遗留（查询 fallback）** | `TaskService.list_execution_logs` 在 `orchestrator_conversation_id IS NULL` 时仍用 `employee_tasks` → `orchestration_plans` JOIN |
+
+### 11.2 代码位置
+
+| 文件 | 符号 / 逻辑 | 作用 | 移除条件 |
+|------|-------------|------|----------|
+| [`src/db/init_db.py`](../src/db/init_db.py) | `ensure_column` `source_conversation_id` / `orchestrator_conversation_id` | SQLite 增量加列 | 正式 migration 后 |
+| 同上 | `backfill_orchestrator_conversation_links()` | 启动回填 NULL 行 | 全库列已填满后可改为 no-op |
+| [`src/service/orchestrator_conversation_links.py`](../src/service/orchestrator_conversation_links.py) | `resolve_orchestrator_conversation_id` | 任务 → 总管会话 id | 保留 |
+| 同上 | `backfill_orchestrator_conversation_links` | 三段 SQL 回填 | 同上 |
+| [`src/service/agent/orchestrator/tools.py`](../src/service/agent/orchestrator/tools.py) | `create_orchestration_plan` | 写 `source_conversation_id` | 保留 |
+| [`src/service/agent/orchestrator/execution.py`](../src/service/agent/orchestrator/execution.py) | `start_task_as_conversation` | 写 log 列 + `registry.start(orchestrator_conversation_id=...)` | 保留 |
+| [`src/service/task_scheduler_service.py`](../src/service/task_scheduler_service.py) | `_start_curator_task` | 优先 `task.source_conversation_id`，否则 `ensure_curator_conversation(workspace_id)`；写 `orchestrator_conversation_id` | 保留 |
+| [`src/service/task_service.py`](../src/service/task_service.py) | `list_execution_logs` `or_` 列 + JOIN fallback | 兼容未回填历史行 | 无 NULL `orchestrator_conversation_id` 且编排 log 均已填列 |
+| [`src/api/orchestration_api.py`](../src/api/orchestration_api.py) | `list_plans?conversation_id=` | 按计划会话过滤 | 保留 |
+| [`src/api/task_api.py`](../src/api/task_api.py) | `orchestrator_conversation_id` Query | HTTP 过滤参数 | 保留 |
+| [`apps/web/.../use-schedule-monitor-queries.ts`](../../web/src/hooks/use-schedule-monitor-queries.ts) | `useCuratorTaskExecutions` | 总管时间线专用 | 保留 |
+| [`apps/web/.../curator-overview-section.tsx`](../../web/src/components/chat/contacts/curator-overview-section.tsx) | `useAllTaskExecutions` | 工作区概况仍全量 | 产品约定，非迁移 |
+
+### 11.3 回填规则（`backfill_orchestrator_conversation_links`）
+
+1. `employee_tasks.source_conversation_id` ← `orchestration_plans.conversation_id`（`orchestration_plan_id` 非空且列为 NULL）
+2. `task_execution_logs.orchestrator_conversation_id` ← 同上（经 `task_id` JOIN，列为 NULL）
+3. 总管会话内执行：`orchestrator_conversation_id = conversation_id`（`conversations.target_type = 'curator'` 且列为 NULL）
+
+### 11.4 写入路径（新数据）
+
+| 场景 | `source_conversation_id` | `orchestrator_conversation_id`（log） |
+|------|--------------------------|-------------------------------------|
+| `create_orchestration_plan` | 当前总管 `conversation_id` | — |
+| `start_task_as_conversation`（编排子任务） | 执行时补 NULL | `resolve_orchestrator_conversation_id(task)` |
+| `_start_curator_task`（总管定时） | 执行时补 NULL → `conv.id` | `conv.id`（与 `conversation_id` 相同） |
+| 远程派单 → 总管流 | — | 无独立 `EmployeeTask` log；靠总管会话内编排再落库 |
+
+### 11.5 已知未覆盖（非 bug，后续可增强）
+
+- **MCP 定时任务**（[`task_scheduler_service.py`](../src/service/task_scheduler_service.py) `run_task_job` 非 skill 分支）：创建 `TaskExecutionLog` 未写 `orchestrator_conversation_id`
+- **手动创建、无编排 plan 的员工任务**：无总管会话关联
+- **分页**：`useCuratorTaskExecutions` / `useAllTaskExecutions` 仍受 `page_size` 上限约束
+
+### 11.6 移除 Checklist（阶段二完成后可选）
+
+- [ ] `list_execution_logs` 内 JOIN fallback 分支（`orchestrator_conversation_id IS NULL AND task_id IN (...)`）
+- [ ] （可选）停止每次启动执行 `backfill_orchestrator_conversation_links`（改为一次性脚本）
+- [ ] 多总管会话产品化后：`_start_curator_task` 勿再 `limit(1)` 取 curator 会话（见产品计划阶段三）
+
+### 11.7 数据流（当前）
+
+```
+create_orchestration_plan
+  → plan.conversation_id + task.source_conversation_id
+confirm → start_task_as_conversation
+  → log.conversation_id（员工会话）
+  → log.orchestrator_conversation_id（总管会话）
+  → registry.start(..., orchestrator_conversation_id=)
+
+GET /tasks/executions?orchestrator_conversation_id=
+  → WHERE log.orchestrator_conversation_id = ? 
+     OR (log.orchestrator_conversation_id IS NULL AND plan JOIN)  ← 临时
+```
+
+---
+
 ## §10 死代码 / 待清理
 
 | 文件 | 说明 |
@@ -214,3 +288,4 @@ load_registry         ← 已有 registry 则跳过 _migrate_from_legacy
 - [AGENTS.md](../../AGENTS.md) § 多供应商 LLM
 - [resumable-stream-architecture.md](resumable-stream-architecture.md)
 - [hitl-architecture.md](hitl-architecture.md)
+- [task-lifecycle.md](../../docs/task-lifecycle.md) § 会话 ID 语义

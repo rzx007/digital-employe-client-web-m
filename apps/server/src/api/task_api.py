@@ -72,6 +72,9 @@ def _task_execution_log_to_read(item) -> TaskExecutionLogRead:
         result_confirmed=getattr(item, "result_confirmed", False),
         is_read=getattr(item, "is_read", False),
         conversation_id=getattr(item, "conversation_id", None),
+        orchestrator_conversation_id=getattr(
+            item, "orchestrator_conversation_id", None
+        ),
         skill_rating=skill_rating,
     )
 
@@ -220,7 +223,7 @@ def list_task_executions(
     分页查询任务执行日志。
 
     支持按员工、任务、状态和时间范围过滤。
-    orchestrator_conversation_id：按总管会话过滤（经编排计划 JOIN）。
+    orchestrator_conversation_id：按总管会话过滤（列优先，未回填行经编排计划 JOIN）。
     """
     items, total = TaskService.list_execution_logs(
         db=db,

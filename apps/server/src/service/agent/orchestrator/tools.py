@@ -89,6 +89,7 @@ def create_orchestration_plan(summary: str, tasks: str) -> str:
             execute_mode="scheduled" if cron_expr else "immediate",
             source="orchestration",
             orchestration_plan_id=plan.id,
+            source_conversation_id=conversation_id,
             priority=t.get("priority", 0),
             is_active=True,
         )

@@ -570,28 +570,38 @@ class TaskSchedulerService:
 
         workspace_id = task.workspace_id
 
-        # 1. 获取或创建 curator 会话
-        conv = db.scalars(
-            select(Conversation).where(
-                Conversation.target_type == "curator",
-            ).limit(1)
-        ).first()
-        if not conv:
-            from src.service.employee_service import EmployeeService
+        # 1. 解析总管会话：优先任务绑定的 source_conversation_id，否则 ensure 默认会话
+        from src.service.chat_service import ChatService
 
-            curator_employee = EmployeeService.ensure_curator_employee(
-                db, workspace_id
-            )
-            conv = Conversation(
-                workspace_id=workspace_id,
-                target_type="curator",
-                target_id=curator_employee.id,
-                title="总管对话",
-            )
-            db.add(conv)
-            db.flush()
+        conv: Conversation | None = None
+        if task.source_conversation_id is not None:
+            candidate = db.get(Conversation, task.source_conversation_id)
+            if (
+                candidate is not None
+                and candidate.workspace_id == workspace_id
+                and candidate.target_type == "curator"
+            ):
+                conv = candidate
+            else:
+                logger.warning(
+                    "总管定时任务 task_id=%s source_conversation_id=%s 无效，回退默认总管会话",
+                    task.id,
+                    task.source_conversation_id,
+                )
+
+        if conv is None:
+            curator_read = ChatService.ensure_curator_conversation(db, workspace_id)
+            conv = db.get(Conversation, curator_read.id)
+            if conv is None:
+                raise RuntimeError(
+                    f"ensure_curator_conversation 返回 id={curator_read.id} 但会话不存在"
+                )
+
+        if task.source_conversation_id is None:
+            task.source_conversation_id = conv.id
 
         # 2. 创建 TaskExecutionLog
+
         run_log = TaskExecutionLog(
             task_id=task.id,
             workspace_id=workspace_id,
@@ -603,6 +613,7 @@ class TaskSchedulerService:
             input_json=task.task_input_json or "{}",
             output_json="{}",
             conversation_id=conv.id,
+            orchestrator_conversation_id=conv.id,
             started_at=cst_now(),
         )
         db.add(run_log)

@@ -17,6 +17,9 @@ from src.service.agent.orchestrator.runtime import (
     get_employee_name,
     get_main_loop,
 )
+from src.service.orchestrator_conversation_links import (
+    resolve_orchestrator_conversation_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +176,10 @@ def start_task_as_conversation(
     db.add(conversation)
     db.flush()
 
+    orch_conv_id = resolve_orchestrator_conversation_id(db, task)
+    if task.source_conversation_id is None and orch_conv_id is not None:
+        task.source_conversation_id = orch_conv_id
+
     run_log = TaskExecutionLog(
         task_id=task.id,
         workspace_id=workspace_id,
@@ -184,6 +191,7 @@ def start_task_as_conversation(
         input_json=task.task_input_json or "{}",
         output_json="{}",
         conversation_id=conversation.id,
+        orchestrator_conversation_id=orch_conv_id,
         started_at=cst_now(),
     )
     db.add(run_log)
@@ -253,6 +261,7 @@ def start_task_as_conversation(
             stream_msg_id=assistant_msg_id,
             skill_name="",
             debug_content_only=False,
+            orchestrator_conversation_id=orch_conv_id,
         )
     )
 
