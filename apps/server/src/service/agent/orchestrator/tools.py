@@ -19,7 +19,10 @@ from src.service.agent.orchestrator.runtime import (
 
 @tool
 def list_workspace_employees() -> str:
-    """列出当前工作空间所有数字员工及其角色、技能、MCP 外接能力。在拆解任务前必须先调用此工具。"""
+    """列出当前工作空间所有数字员工及其角色、技能、MCP 外接能力。
+
+    系统 Prompt 已注入员工表时优先用表；招聘后或表可能过期时再调用。
+    """
     db = get_db()
     workspace_id = get_workspace_id()
     return build_employee_capability_context(db, workspace_id)
@@ -125,13 +128,22 @@ def create_orchestration_plan(summary: str, tasks: str) -> str:
         "tasks": tasks_for_event,
     }, ensure_ascii=False)
 
-    return plan_json_output + "\n\n" + f"编排计划 #{plan.id} 已生成，包含 {len(task_list)} 个子任务。\n请回复「确认」开始执行。记住：只有调用 confirm_orchestration_plan({plan.id}) 工具才能执行。"
+    return (
+        plan_json_output
+        + "\n\n"
+        + f"编排计划 #{plan.id} 已生成，包含 {len(task_list)} 个子任务。\n"
+        f"按系统 Prompt「确认策略」决定是否立即调用 confirm_orchestration_plan({plan.id})；"
+        "复杂任务须等用户确认。执行只能通过该 confirm 工具生效。"
+    )
 
 
 @tool
 def confirm_orchestration_plan(plan_id: int) -> str:
-    """用户确认编排计划后调用，开始执行所有子任务。
-    注意：此工具只有当用户明确说「确认」「开始执行」「没问题」「可以」等时才能调用。"""
+    """启动编排计划下所有子任务（各员工在独立会话执行）。
+
+    简单任务可在 create 后同一轮调用；复杂任务须用户明确确认后再调用。
+    调用后：向用户简短说明委派即可；禁止轮询 list_tasks，禁止代员工 shell/read 技能。
+    """
     db = get_db()
     workspace_id = get_workspace_id()
 
@@ -227,7 +239,12 @@ def list_tasks(
     employee_id: int | None = None,
     limit: int = 20,
 ) -> str:
-    """查询任务列表。查询当前工作空间下的 EmployeeTask。"""
+    """查询工作空间任务状态（数据库快照，非员工实时流）。
+
+    适用：用户询问进度/结果、管理已有计划、多子任务汇总。
+    禁止：confirm_orchestration_plan 之后为等待完成而反复调用；界面已有任务执行卡片。
+    建议：带 plan_id 精确查询；limit 宜 ≤ 5。
+    """
     db = get_db()
     workspace_id = get_workspace_id()
 

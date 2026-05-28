@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -22,6 +24,66 @@ from src.service.orchestrator_conversation_links import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 避免总管 astream 未结束时启动员工 astream（LangGraph messages 并发串流）
+_ORCH_STREAM_IDLE_POLL_SECONDS = 0.5
+_ORCH_STREAM_IDLE_MAX_POLLS = 600  # 最多等待 5 分钟
+
+
+async def _start_employee_stream_when_orchestrator_idle(
+    *,
+    orchestrator_conversation_id: int | None,
+    conversation_id: int,
+    agent: Any,
+    messages: list[dict],
+    assistant_msg_id: int,
+) -> None:
+    from src.service.stream_registry import registry
+
+    if orchestrator_conversation_id is not None:
+        polls = 0
+        while registry.is_active(orchestrator_conversation_id):
+            polls += 1
+            if polls > _ORCH_STREAM_IDLE_MAX_POLLS:
+                logger.warning(
+                    "orchestrator conv=%s still active after %ss, "
+                    "starting employee conv=%s anyway",
+                    orchestrator_conversation_id,
+                    int(_ORCH_STREAM_IDLE_POLL_SECONDS * _ORCH_STREAM_IDLE_MAX_POLLS),
+                    conversation_id,
+                )
+                break
+            if polls == 1:
+                logger.info(
+                    "defer employee conv=%s until orchestrator conv=%s stream ends",
+                    conversation_id,
+                    orchestrator_conversation_id,
+                )
+            await asyncio.sleep(_ORCH_STREAM_IDLE_POLL_SECONDS)
+        if polls > 0:
+            logger.info(
+                "orchestrator conv=%s idle after %s polls, starting employee conv=%s",
+                orchestrator_conversation_id,
+                polls,
+                conversation_id,
+            )
+
+    started = registry.start(
+        conversation_id=conversation_id,
+        agent=agent,
+        messages=messages,
+        config={"configurable": {"thread_id": conversation_id}},
+        stream_msg_id=assistant_msg_id,
+        skill_name="",
+        debug_content_only=False,
+        orchestrator_conversation_id=orchestrator_conversation_id,
+    )
+    if not started:
+        logger.warning(
+            "employee stream start refused conv=%s (orchestrator=%s)",
+            conversation_id,
+            orchestrator_conversation_id,
+        )
 
 
 def execute_plan(db: Session, plan: OrchestrationPlan, workspace_id: int) -> str:
@@ -164,7 +226,6 @@ def start_task_as_conversation(
     from src.models.task_execution_log import TaskExecutionLog
     from src.service.agent.employee import get_agent
     from src.service.chat_service import ChatService
-    from src.service.stream_registry import registry
     from src.service.workspace_events import WorkspaceEventBus
 
     conversation = Conversation(
@@ -252,18 +313,19 @@ def start_task_as_conversation(
     db.commit()
 
     main_loop = get_main_loop()
-    main_loop.call_soon_threadsafe(
-        lambda: registry.start(
-            conversation_id=conversation_id,
-            agent=agent,
-            messages=messages,
-            config={"configurable": {"thread_id": conversation_id}},
-            stream_msg_id=assistant_msg_id,
-            skill_name="",
-            debug_content_only=False,
-            orchestrator_conversation_id=orch_conv_id,
+
+    def _schedule_employee_stream() -> None:
+        asyncio.create_task(
+            _start_employee_stream_when_orchestrator_idle(
+                orchestrator_conversation_id=orch_conv_id,
+                conversation_id=conversation_id,
+                agent=agent,
+                messages=messages,
+                assistant_msg_id=assistant_msg_id,
+            )
         )
-    )
+
+    main_loop.call_soon_threadsafe(_schedule_employee_stream)
 
     WorkspaceEventBus.push(workspace_id, {
         "type": "task_started",
