@@ -5,6 +5,10 @@ import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { useConversationsQuery } from "@/hooks/use-chat-queries"
 import { CURATOR_PINNED_CONVERSATION_ID } from "@/lib/constants"
+import {
+  enterDraftConversation,
+  selectConversationById,
+} from "@/lib/chat/conversation-selection"
 import { useChatStore } from "@/stores/chat-store"
 import {
   EmployeeContactAvatar,
@@ -51,17 +55,10 @@ export function ConversationList({
   onSelectConversation?: () => void
   onClose?: () => void
 }) {
-  const {
-    selectedContactId,
-    selectedConversationId,
-    setDraftConversation,
-    setSelectedConversationId,
-  } = useChatStore(
+  const { selectedContactId, selectedConversationId } = useChatStore(
     useShallow((state) => ({
       selectedContactId: state.selectedContactId,
       selectedConversationId: state.selectedConversationId,
-      setDraftConversation: state.setDraftConversation,
-      setSelectedConversationId: state.setSelectedConversationId,
     }))
   )
   const selectedContact = useChatStore((s) => s.getSelectedContact())
@@ -143,8 +140,7 @@ export function ConversationList({
           className="m-2"
           variant="outline"
           onClick={() => {
-            setDraftConversation(true)
-            setSelectedConversationId(null)
+            enterDraftConversation()
             onSelectConversation?.()
           }}
         >
@@ -159,8 +155,7 @@ export function ConversationList({
             <CuratorPinnedItem
               isSelected={isPinnedSelected}
               onClick={() => {
-                setDraftConversation(false)
-                setSelectedConversationId(CURATOR_PINNED_CONVERSATION_ID)
+                selectConversationById(CURATOR_PINNED_CONVERSATION_ID)
                 onSelectConversation?.()
               }}
             />
@@ -177,8 +172,7 @@ export function ConversationList({
               conversation={conversation}
               isSelected={selectedConversationId === conversation.id}
               onClick={() => {
-                setDraftConversation(false)
-                setSelectedConversationId(conversation.id)
+                selectConversationById(conversation.id)
                 onSelectConversation?.()
               }}
             />

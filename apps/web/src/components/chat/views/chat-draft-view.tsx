@@ -129,6 +129,13 @@ export function DraftChatView({
     onStreamFinishRef.current = session.onStreamFinish
   }, [session.onStreamFinish])
 
+  // draftSessionKey 变化时重置 composer（新建会话 / 草稿内删光当前会话）。
+  // 仅 bump key 时 useChat 不一定清空 messages，且 useMessagesQuery 禁用后仍可能保留上一份 data。
+  useEffect(() => {
+    setMessages([])
+    conversationIdRef.current = null
+  }, [draftSessionKey, setMessages])
+
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
     setMentions(event.mentions)

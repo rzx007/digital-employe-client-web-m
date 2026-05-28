@@ -34,7 +34,7 @@ import {
 
 import { useQueryClient } from "@tanstack/react-query"
 import { useDeleteConversationMutation } from "@/hooks/use-chat-queries"
-import { focusAfterDeletedConversation } from "@/lib/chat/focus-after-conversation-deleted"
+import { focusAfterDeletedConversation } from "@/lib/chat/conversation-selection"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useChatStore } from "@/stores/chat-store"

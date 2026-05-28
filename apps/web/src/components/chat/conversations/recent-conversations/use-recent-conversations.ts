@@ -7,6 +7,7 @@ import {
   useDeleteAllConversationsForContactMutation,
 } from "@/hooks/use-chat-queries"
 import { findContactInList } from "@/lib/chat/contact-utils"
+import { focusAfterContactRemoved } from "@/lib/chat/conversation-selection"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import type { AIEmployee, Contact } from "@/types/chat"
 import { useChatStore } from "@/stores/chat-store"
@@ -17,23 +18,6 @@ import {
 } from "./persistence"
 import { resolveContactForRecentItem } from "./resolve-recent-contact"
 import type { RecentConversationItem } from "./types"
-
-/** 与 displayItems 排序一致，用于移除当前项后选中下一条 */
-function pickNextRecentContactId(
-  items: RecentConversationItem[]
-): string | undefined {
-  if (items.length === 0) return undefined
-  const sorted = [...items].sort((a, b) => {
-    if (a.isCurator && !b.isCurator) return -1
-    if (!a.isCurator && b.isCurator) return 1
-    if (a.isPinned && !b.isPinned) return -1
-    if (!a.isPinned && b.isPinned) return 1
-    const ta = a.updatedAt?.getTime() ?? 0
-    const tb = b.updatedAt?.getTime() ?? 0
-    return tb - ta
-  })
-  return sorted[0]?.contactId
-}
 
 export function useRecentConversations() {
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? 1
@@ -172,19 +156,10 @@ export function useRecentConversations() {
 
     resetChatRightPanels()
 
-    const { selectedContactId: currentContactId, setSelectedContactId, switchToContact } =
-      useChatStore.getState()
-
+    const { selectedContactId: currentContactId } = useChatStore.getState()
     const remaining = recentItems.filter((i) => i.contactId !== item.contactId)
 
-    if (currentContactId === item.contactId) {
-      const nextContactId = pickNextRecentContactId(remaining)
-      if (nextContactId) {
-        switchToContact(nextContactId)
-      } else {
-        setSelectedContactId(null)
-      }
-    }
+    focusAfterContactRemoved(currentContactId, item.contactId, remaining)
 
     setStoredItems((prev) => prev.filter((i) => i.contactId !== item.contactId))
   }

@@ -12,6 +12,7 @@ import {
   useConversationsQuery,
   useCuratorConversationQuery,
 } from "@/hooks/use-chat-queries"
+import { enterDraftConversation } from "@/lib/chat/conversation-selection"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 import { useTaskExecutionNotifications } from "@/hooks/use-task-execution-notifications"
@@ -157,10 +158,8 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
 
   const selectedContactId = useChatStore((s) => s.selectedContactId)
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
-  const isDraftConversation = useChatStore((s) => s.isDraftConversation)
   const selectedContact = useChatStore((s) => s.getSelectedContact())
-  const { data: conversations = [], isSuccess: conversationsQuerySuccess } =
-    useConversationsQuery(
+  const { data: conversations = [] } = useConversationsQuery(
     selectedContactId,
     selectedContact
   )
@@ -181,27 +180,6 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
       prevConversationCountRef.current = null
     }
 
-    const convId = selectedConversationId
-    const isDraft =
-      isDraftConversation ||
-      (convId != null && String(convId).startsWith("draft-"))
-
-    // 会话列表还没拉完时，conversations 可能短暂为空；此时不要误判并切到草稿
-    if (!conversationsQuerySuccess) {
-      return
-    }
-
-    if (!isDraft && convId != null) {
-      const stillExists = conversations.some(
-        (c) => String(c.id) === String(convId)
-      )
-      if (!stillExists) {
-        resetRightPanels()
-        useChatStore.getState().setSelectedConversationId(null)
-        useChatStore.getState().setDraftConversation(true)
-      }
-    }
-
     const count = conversations.length
     const prevCount = prevConversationCountRef.current
     prevConversationCountRef.current = count
@@ -212,9 +190,6 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   }, [
     activeTab,
     selectedContactId,
-    selectedConversationId,
-    isDraftConversation,
-    conversationsQuerySuccess,
     conversations,
     resetRightPanels,
   ])
@@ -224,10 +199,7 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
       : selectedConversationId
 
   const handleNewConversation = () => {
-    const { setDraftConversation, setSelectedConversationId } =
-      useChatStore.getState()
-    setDraftConversation(true)
-    setSelectedConversationId(null)
+    enterDraftConversation()
   }
 
   const handleOpenConversations = () => {

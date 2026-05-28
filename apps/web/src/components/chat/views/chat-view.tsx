@@ -2,7 +2,7 @@ import * as React from "react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-import { useConversationAutoSelect } from "@/hooks/use-conversation-auto-select"
+import { useReconcileConversationSelection } from "@/lib/chat/conversation-selection"
 import { useConversationsQuery } from "@/hooks/use-chat-queries"
 import { useChatStore } from "@/stores/chat-store"
 
@@ -26,7 +26,7 @@ export function ChatView({
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
   const contact = useChatStore((s) => s.getSelectedContact())
 
-  useConversationAutoSelect(selectedContactId, contact)
+  useReconcileConversationSelection(selectedContactId, contact)
   const { data: conversations = [] } = useConversationsQuery(
     selectedContactId,
     contact

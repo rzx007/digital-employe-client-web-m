@@ -182,7 +182,10 @@ export function useDeleteConversationMutation() {
 
       queryClient.setQueryData<Conversation[]>(
         chatKeys.conversations(contactId),
-        (current) => current?.filter((c) => c.id !== conversationId)
+        (current) =>
+          current?.filter(
+            (c) => String(c.id) !== String(conversationId)
+          )
       )
 
       return { previousConversations, contactId }
