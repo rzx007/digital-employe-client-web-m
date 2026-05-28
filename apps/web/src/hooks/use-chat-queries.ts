@@ -10,7 +10,7 @@ import {
   createConversation,
   deleteAllConversationsForContact,
   deleteConversation as deleteConversationApi,
-  deleteAllTaskExecutions,
+  deleteTaskExecutionsByOrchestratorConversation,
   fetchContacts,
   fetchConversationResources,
   fetchConversationsByContactId,
@@ -223,21 +223,28 @@ export function useResetCuratorConversation() {
   return useMutation({
     mutationFn: async ({
       conversationId,
+      contactId,
       clearTaskLogs,
     }: {
       conversationId: number | string
+      contactId: string
       clearTaskLogs?: boolean
     }) => {
       const promises: Promise<unknown>[] = [
         deleteConversationApi(conversationId),
       ]
       if (clearTaskLogs) {
-        promises.push(deleteAllTaskExecutions())
+        promises.push(
+          deleteTaskExecutionsByOrchestratorConversation(conversationId)
+        )
       }
       await Promise.all(promises)
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: chatKeys.curator() })
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.conversations(variables.contactId),
+      })
       queryClient.invalidateQueries({
         queryKey: [...chatKeys.all, "all-task-executions"],
       })

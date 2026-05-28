@@ -245,14 +245,19 @@ def list_task_executions(
 @router.delete(
     "/workspaces/{workspace_id}/tasks/executions",
     response_model=ResponseBase[dict],
-    summary="清空所有任务执行日志",
+    summary="清空任务执行日志",
 )
 def delete_all_task_executions(
     workspace_id: int,
+    orchestrator_conversation_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> ResponseBase[dict]:
-    """清空指定工作空间的所有任务执行日志。"""
-    count = TaskService.delete_all_execution_logs(db, workspace_id)
+    """清空执行日志。传 orchestrator_conversation_id 时仅删除该总管会话关联记录。"""
+    count = TaskService.delete_all_execution_logs(
+        db,
+        workspace_id,
+        orchestrator_conversation_id=orchestrator_conversation_id,
+    )
     return ResponseBase(data={"deleted": count})
 
 

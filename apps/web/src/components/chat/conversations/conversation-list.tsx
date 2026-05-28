@@ -1,10 +1,9 @@
 import { type ComponentProps } from "react"
-import { IconCirclePlus, IconPinFilled, IconX } from "@tabler/icons-react"
+import { IconCirclePlus, IconX } from "@tabler/icons-react"
 import { useShallow } from "zustand/react/shallow"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { useConversationsQuery } from "@/hooks/use-chat-queries"
-import { CURATOR_PINNED_CONVERSATION_ID } from "@/lib/constants"
 import {
   enterDraftConversation,
   selectConversationById,
@@ -15,34 +14,6 @@ import {
   GroupMembersAvatar,
 } from "../contacts/contact-avatars"
 import { ConversationItem } from "./conversation-item"
-
-function CuratorPinnedItem({
-  isSelected,
-  onClick,
-}: {
-  isSelected: boolean
-  onClick: () => void
-}) {
-  return (
-    <div
-      className={cn(
-        "group flex cursor-pointer items-center gap-2 rounded-md px-3 py-2.5 text-xs transition-colors",
-        isSelected
-          ? "bg-accent text-primary"
-          : "hover:bg-accent/50 hover:text-accent-foreground"
-      )}
-      onClick={onClick}
-    >
-      <IconPinFilled className="size-3.5 shrink-0 text-muted-foreground" />
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-sm font-medium">任务执行结果</span>
-        <span className="text-[10px] text-muted-foreground">
-          全部员工的实时执行记录
-        </span>
-      </div>
-    </div>
-  )
-}
 
 export function ConversationList({
   className,
@@ -62,13 +33,9 @@ export function ConversationList({
     }))
   )
   const selectedContact = useChatStore((s) => s.getSelectedContact())
-  const isCurator = selectedContact?.type === "curator"
 
   const { data: conversations = [], isPending: conversationsPending } =
     useConversationsQuery(selectedContactId, selectedContact)
-
-  const isPinnedSelected =
-    isCurator && selectedConversationId === CURATOR_PINNED_CONVERSATION_ID
 
   return (
     <div
@@ -151,16 +118,6 @@ export function ConversationList({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-0.5 p-2">
-          {isCurator && (
-            <CuratorPinnedItem
-              isSelected={isPinnedSelected}
-              onClick={() => {
-                selectConversationById(CURATOR_PINNED_CONVERSATION_ID)
-                onSelectConversation?.()
-              }}
-            />
-          )}
-
           {selectedContactId && conversationsPending && (
             <div className="py-6 text-center text-xs text-muted-foreground">
               加载会话…
@@ -179,8 +136,7 @@ export function ConversationList({
           ))}
           {selectedContactId &&
             !conversationsPending &&
-            conversations.length === 0 &&
-            !isCurator && (
+            conversations.length === 0 && (
               <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
                 <p className="text-xs">暂无会话记录</p>
                 <p className="mt-1 text-xs">选择联系人开始聊天</p>

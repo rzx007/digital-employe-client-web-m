@@ -33,7 +33,6 @@ import { useConversationSession } from "@/hooks/use-conversation-session"
 import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
 import {
   useMessagesQuery,
-  useCuratorConversationQuery,
   useResetCuratorConversation,
 } from "@/hooks/use-chat-queries"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
@@ -247,20 +246,30 @@ function CuratorMessageItem({
 
 export function CuratorView({
   contact,
+  conversationId: conversationIdProp,
+  title: conversationTitle,
   size = "default",
   resourcesOpen,
   onToggleResources,
   onOpenResourceFile,
+  onOpenContacts,
+  onOpenConversations,
+  onNewConversation,
   className,
   ...props
 }: ComponentProps<"div"> & {
   contact?: ChatViewContact
+  conversationId: string | number
+  title?: string
   size?: "default" | "compact"
   /** compact 工作台：由 WorkbenchContentSplit 控制资源分栏 */
   resourcesOpen?: boolean
   onToggleResources?: () => void
   /** 工作台：打开资源面板并选中文件 */
   onOpenResourceFile?: (path: string) => void
+  onOpenContacts?: () => void
+  onOpenConversations?: () => void
+  onNewConversation?: () => void
 }) {
   const [inputValue, setInputValue] = useState("")
   const [command, setCommand] = useState<{ id: string; title: string } | null>(
@@ -273,9 +282,8 @@ export function CuratorView({
   const [clearTaskLogs, setClearTaskLogs] = useState(true)
   const resetMutation = useResetCuratorConversation()
   const queryClient = useQueryClient()
-  const { data: curatorConv, isLoading: curatorLoading } =
-    useCuratorConversationQuery()
-  const curatorConversationId = curatorConv?.id ?? null
+  const curatorConversationId = conversationIdProp
+  const curatorContactId = contact?.curator?.id
   const openResource = useArtifactStore((s) => s.openResource)
 
   useEffect(() => {
@@ -357,10 +365,11 @@ export function CuratorView({
   }, [stop])
 
   const handleReset = useCallback(async () => {
-    if (!curatorConversationId) return
+    if (!curatorConversationId || !curatorContactId) return
     try {
       await resetMutation.mutateAsync({
         conversationId: curatorConversationId,
+        contactId: curatorContactId,
         clearTaskLogs,
       })
       queryClient.setQueryData(
@@ -375,6 +384,7 @@ export function CuratorView({
     }
   }, [
     curatorConversationId,
+    curatorContactId,
     clearTaskLogs,
     resetMutation,
     setMessages,
@@ -622,7 +632,6 @@ export function CuratorView({
   )
 
   const showEmptyWelcome =
-    !curatorLoading &&
     !isMessagesLoading &&
     timeline.length === 0 &&
     status !== "submitted" &&
@@ -643,6 +652,8 @@ export function CuratorView({
           conversationId={curatorConversationId}
           displayName={contactDisplayName}
           onReset={() => setShowResetDialog(true)}
+          onOpenConversations={onOpenConversations}
+          onNewConversation={onNewConversation}
           resourcesOpen={resourcesOpen}
           onToggleResources={onToggleResources}
         />
@@ -650,7 +661,11 @@ export function CuratorView({
         <CuratorChatHeader
           contact={resolvedContact}
           conversationId={curatorConversationId}
+          title={conversationTitle}
           onReset={() => setShowResetDialog(true)}
+          onOpenContacts={onOpenContacts}
+          onOpenConversations={onOpenConversations}
+          onNewConversation={onNewConversation}
         />
       )}
 
@@ -658,12 +673,6 @@ export function CuratorView({
         <CuratorRecruitmentProvider value={curatorRecruitmentValue}>
           <ConversationUI className="min-h-0 flex-1">
             <ConversationContent className={layout.conversationContent}>
-              {curatorLoading && (
-                <div className="flex items-center justify-center py-16">
-                  <Spinner className="size-5" />
-                </div>
-              )}
-
               {showEmptyWelcome && (
                 <CuratorEmptyWelcome
                   contact={resolvedContact}
@@ -772,7 +781,7 @@ export function CuratorView({
             onStop={handleStop}
             status={chatStatus}
             submitDisabled={
-              curatorLoading || (!isBusy && !inputValue.trim())
+              !isBusy && !inputValue.trim()
             }
             size="compact"
             placeholder={<CuratorRotatingPlaceholder />}

@@ -1,9 +1,6 @@
 import { create } from "zustand"
 
-import {
-  CURATOR_PINNED_CONVERSATION_ID,
-  curatorUnreadKey,
-} from "@/lib/constants"
+import { curatorUnreadKey } from "@/lib/constants"
 import { useChatStore } from "@/stores/chat-store"
 
 function isViewingCurator(): boolean {
@@ -128,9 +125,6 @@ useChatStore.subscribe((state, prevState) => {
     const convId = Number(state.selectedConversationId)
     if (!isNaN(convId)) {
       useConversationStatusStore.getState().markAsRead(convId)
-    }
-    if (state.selectedConversationId === CURATOR_PINNED_CONVERSATION_ID) {
-      clearSelectedCuratorUnread()
     }
   }
 

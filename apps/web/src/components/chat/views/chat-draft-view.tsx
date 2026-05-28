@@ -145,6 +145,10 @@ export function DraftChatView({
     setInputValue(event.value)
   }, [])
 
+  const handleDraftSuggestionSelect = useCallback((text: string) => {
+    setInputValue(text)
+  }, [])
+
   const isBusy =
     createConversationMutation.isPending ||
     status === "submitted" ||
@@ -321,6 +325,9 @@ export function DraftChatView({
       activeHitl={session.activeHitl}
       onHitlApproved={session.onHitlApproved}
       onAttachmentsChange={() => {}}
+      onDraftSuggestionSelect={
+        contact?.type === "curator" ? handleDraftSuggestionSelect : undefined
+      }
       className={className}
       {...props}
     />

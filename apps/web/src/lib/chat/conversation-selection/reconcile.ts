@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react"
 import { useShallow } from "zustand/react/shallow"
 
 import { useConversationsQuery } from "@/hooks/use-chat-queries"
-import { CURATOR_PINNED_CONVERSATION_ID } from "@/lib/constants"
 import { useChatStore } from "@/stores/chat-store"
 
 import type { ChatViewContact } from "@/components/chat/chat-view-shared"
@@ -57,21 +56,25 @@ export function useReconcileConversationSelection(
     if (!selectedContactId) return
 
     if (isCurator) {
-      if (isDraftConversation) {
+      if (!conversationsQuerySuccess) return
+
+      if (conversations.length === 0) {
+        if (isDraftConversation) return
+        if (selectedConversationId != null) {
+          setSelectedConversationId(null)
+        }
         return
       }
 
-      if (selectedConversationId !== CURATOR_PINNED_CONVERSATION_ID) {
-        if (conversations.length === 0) {
-          selectConversationById(CURATOR_PINNED_CONVERSATION_ID)
-          return
-        }
+      if (isDraftConversation) return
 
-        if (
-          !conversationExistsInList(conversations, selectedConversationId)
-        ) {
-          selectConversationById(CURATOR_PINNED_CONVERSATION_ID)
-        }
+      if (conversationExistsInList(conversations, selectedConversationId)) {
+        return
+      }
+
+      const next = pickFirstConversation(conversations)
+      if (next) {
+        selectConversationById(next.id)
       }
       return
     }

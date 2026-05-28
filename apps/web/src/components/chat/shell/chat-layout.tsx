@@ -10,7 +10,6 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import {
   useContactsQuery,
   useConversationsQuery,
-  useCuratorConversationQuery,
 } from "@/hooks/use-chat-queries"
 import { enterDraftConversation } from "@/lib/chat/conversation-selection"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
@@ -166,8 +165,6 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
     selectedContactId,
     selectedContact
   )
-  const { data: curatorConversation } = useCuratorConversationQuery()
-
   const resetRightPanels = useCallback(() => {
     resetChatRightPanels()
   }, [])
@@ -196,10 +193,7 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
     conversations,
     resetRightPanels,
   ])
-  const artifactPanelConversationId =
-    selectedContact?.type === "curator" && curatorConversation?.id != null
-      ? curatorConversation.id
-      : selectedConversationId
+  const artifactPanelConversationId = selectedConversationId
 
   const handleNewConversation = () => {
     enterDraftConversation()

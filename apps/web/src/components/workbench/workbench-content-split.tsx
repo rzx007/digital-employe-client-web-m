@@ -16,7 +16,11 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import { ArtifactPanel } from "@/components/artifact"
 import { CuratorView } from "@/components/chat/curator/curator-view"
-import { useCuratorConversationQuery } from "@/hooks/use-chat-queries"
+import { enterDraftConversation } from "@/lib/chat/conversation-selection"
+import {
+  useCuratorConversationQuery,
+} from "@/hooks/use-chat-queries"
+import { useChatStore } from "@/stores/chat-store"
 import { useArtifactStore } from "@/stores/artifact-store"
 
 const LAYOUT_STORAGE_ID = "workbench-grid-curator-resources-v2"
@@ -96,8 +100,25 @@ export function WorkbenchContentSplit({
   children: ReactNode
 }) {
   const [resourcesOpen, setResourcesOpen] = useState(false)
-  const { data: curatorConv } = useCuratorConversationQuery()
-  const curatorConversationId = curatorConv?.id ?? null
+  const selectedContact = useChatStore((s) => s.getSelectedContact())
+  const selectedConversationId = useChatStore((s) => s.selectedConversationId)
+  const openConversationList = useChatStore((s) => s.openConversationList)
+  const { data: defaultCuratorConv } = useCuratorConversationQuery()
+
+  const handleNewCuratorConversation = useCallback(() => {
+    enterDraftConversation()
+  }, [])
+
+  const handleOpenCuratorConversations = useCallback(() => {
+    openConversationList()
+  }, [openConversationList])
+
+  const curatorConversationId = useMemo(() => {
+    if (selectedContact?.type === "curator" && selectedConversationId != null) {
+      return selectedConversationId
+    }
+    return defaultCuratorConv?.id ?? null
+  }, [selectedContact, selectedConversationId, defaultCuratorConv?.id])
   const showResources =
     resourcesOpen && curatorConversationId != null
 
@@ -196,20 +217,25 @@ export function WorkbenchContentSplit({
           maxSize={showResources ? "60%" : "55%"}
           className="min-w-0"
         >
-          <CuratorView
-            size="compact"
-            className={cn(
-              "h-full min-h-0",
-              showResources ? "border-r" : "border-l",
-            )}
-            resourcesOpen={showResources}
-            onToggleResources={
-              curatorConversationId != null
-                ? handleToggleResources
-                : undefined
-            }
-            onOpenResourceFile={handleOpenResourceFile}
-          />
+          {curatorConversationId != null ? (
+            <CuratorView
+              conversationId={curatorConversationId}
+              size="compact"
+              className={cn(
+                "h-full min-h-0",
+                showResources ? "border-r" : "border-l",
+              )}
+              resourcesOpen={showResources}
+              onToggleResources={handleToggleResources}
+              onOpenResourceFile={handleOpenResourceFile}
+              onOpenConversations={handleOpenCuratorConversations}
+              onNewConversation={handleNewCuratorConversation}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+              加载总管会话…
+            </div>
+          )}
         </ResizablePanel>
 
         {showResources && (

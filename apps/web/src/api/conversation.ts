@@ -166,6 +166,21 @@ export async function deleteAllTaskExecutions() {
   )
 }
 
+/** 仅删除指定总管会话关联的执行日志（阶段三：清空单条总管会话） */
+export async function deleteTaskExecutionsByOrchestratorConversation(
+  orchestratorConversationId: number | string
+) {
+  return request<ApiResponse<{ deleted: number }>>(
+    `/workspaces/${WORKSPACE_ID}/tasks/executions`,
+    {
+      method: "DELETE",
+      params: {
+        orchestrator_conversation_id: orchestratorConversationId,
+      },
+    }
+  )
+}
+
 export async function uploadConversationFile(
   conversationId: number | string,
   file: File

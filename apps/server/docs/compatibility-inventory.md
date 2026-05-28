@@ -235,7 +235,17 @@ load_registry         ← 已有 registry 则跳过 _migrate_from_legacy
 - **手动创建、无编排 plan 的员工任务**：无总管会话关联
 - **分页**：`useCuratorTaskExecutions` / `useAllTaskExecutions` 仍受 `page_size` 上限约束
 
-### 11.6 移除 Checklist（阶段二完成后可选）
+### 11.6 阶段三（多总管会话，2026-05-28）
+
+| 项 | 说明 |
+|----|------|
+| 默认会话 | `ensure_curator_conversation` 仍保证至少一条；优先 `title='总管对话'`，否则 `id` 最小 |
+| 列表/新建 | 与普通员工相同：`list_conversations` / `create_conversation`，`target_type=curator` |
+| 前端 | `ChatView` 总管分支：会话列表 + `CuratorView(conversationId)`；全工作区概况仅在联系人详情 `CuratorOverviewSection` |
+| 清空会话 | `DELETE /tasks/executions?orchestrator_conversation_id=` 仅删当前会话关联 log，不再 `deleteAll` |
+| 工作台/宠物 | 优先使用聊天区选中的总管 `conversationId`，否则回退 ensure |
+
+### 11.7 移除 Checklist（阶段二完成后可选）
 
 - [ ] `list_execution_logs` 内 JOIN fallback 分支（`orchestrator_conversation_id IS NULL AND task_id IN (...)`）
 - [ ] （可选）停止每次启动执行 `backfill_orchestrator_conversation_links`（改为一次性脚本）

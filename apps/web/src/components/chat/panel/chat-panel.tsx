@@ -34,6 +34,7 @@ import {
 import type { ActiveHitl, HitlPatchOptions } from "@/lib/chat/hitl"
 import { shouldIncludeFileChangesForMessage } from "@/lib/chat/file-change-utils"
 import { ChatMessageItem } from "../messages/chat-message-item"
+import { CuratorEmptyWelcome } from "../curator/curator-empty-welcome"
 
 const EMPTY_MESSAGES: UIMessage[] = []
 
@@ -166,6 +167,7 @@ export function ChatPanel({
   composerMessages,
   activeHitl = null,
   onHitlApproved,
+  onDraftSuggestionSelect,
   className,
   ...props
 }: React.ComponentProps<"div"> & {
@@ -194,6 +196,8 @@ export function ChatPanel({
   composerMessages?: UIMessage[]
   activeHitl?: ActiveHitl | null
   onHitlApproved?: (options?: HitlPatchOptions) => void
+  /** 总管草稿：引导语填入输入框 */
+  onDraftSuggestionSelect?: (text: string) => void
 }) {
   const contactDisplayName = contact
     ? getContactDisplayName(contact)
@@ -276,31 +280,51 @@ export function ChatPanel({
             <Conversation className="min-h-0 flex-1 pt-4">
               <ConversationContent className="px-4 pb-4">
                 {isDraftMode ? (
-                  <ConversationEmptyState className="py-16">
-                    <div className="flex flex-col items-center gap-6">
-                      <img src={logo} alt="Logo" className="w-12 opacity-80" />
-                      <div className="space-y-3 text-center">
-                        <h2 className="text-md font-semibold tracking-tight">
-                          数字员工智能助手
-                        </h2>
-                        <p className="text-sm text-muted-foreground">
-                          随时为您解答问题、处理任务、提升效率
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center justify-center gap-3">
-                        {["智能问答", "数据分析", "文档生成", "流程自动化"].map(
-                          (label) => (
+                  contact.type === "curator" ? (
+                    <CuratorEmptyWelcome
+                      contact={contact}
+                      displayName={contactDisplayName}
+                      onSuggestionSelect={
+                        onDraftSuggestionSelect ?? (() => {})
+                      }
+                      suggestionsDisabled={
+                        status === "submitted" || status === "streaming"
+                      }
+                    />
+                  ) : (
+                    <ConversationEmptyState className="py-16">
+                      <div className="flex flex-col items-center gap-6">
+                        <img
+                          src={logo}
+                          alt="Logo"
+                          className="w-12 opacity-80"
+                        />
+                        <div className="space-y-3 text-center">
+                          <h2 className="text-md font-semibold tracking-tight">
+                            数字员工智能助手
+                          </h2>
+                          <p className="text-sm text-muted-foreground">
+                            随时为您解答问题、处理任务、提升效率
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-center gap-3">
+                          {[
+                            "智能问答",
+                            "数据分析",
+                            "文档生成",
+                            "流程自动化",
+                          ].map((label) => (
                             <span
                               key={label}
                               className="rounded-full border border-border/60 bg-muted/50 px-3 py-1 text-xs text-muted-foreground"
                             >
                               {label}
                             </span>
-                          )
-                        )}
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  </ConversationEmptyState>
+                    </ConversationEmptyState>
+                  )
                 ) : isMessagesLoading ? (
                   <MessageLoadingSkeleton />
                 ) : displayMessages.length === 0 ? (

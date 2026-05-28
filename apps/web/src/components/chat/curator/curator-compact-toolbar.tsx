@@ -1,4 +1,10 @@
-import { IconDots, IconFolder, IconTrash } from "@tabler/icons-react"
+import {
+  IconDots,
+  IconFolder,
+  IconHistory,
+  IconMessage2Plus,
+  IconTrash,
+} from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import {
   DropdownMenu,
@@ -15,6 +21,8 @@ export function CuratorCompactToolbar({
   conversationId,
   displayName = "总管助手",
   onReset,
+  onOpenConversations,
+  onNewConversation,
   resourcesOpen = false,
   onToggleResources,
   className,
@@ -23,6 +31,8 @@ export function CuratorCompactToolbar({
   conversationId?: string | number | null
   displayName?: string
   onReset?: () => void
+  onOpenConversations?: () => void
+  onNewConversation?: () => void
   resourcesOpen?: boolean
   onToggleResources?: () => void
   className?: string
@@ -56,6 +66,26 @@ export function CuratorCompactToolbar({
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5">
+        {onNewConversation && (
+          <Button
+            title="新建对话"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onNewConversation}
+          >
+            <IconMessage2Plus className="size-4" />
+          </Button>
+        )}
+        {onOpenConversations && (
+          <Button
+            title="历史会话"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onOpenConversations}
+          >
+            <IconHistory className="size-4" />
+          </Button>
+        )}
         {conversationId != null && onToggleResources && (
           <Button
             title={resourcesOpen ? "收起资源管理器" : "打开资源管理器"}

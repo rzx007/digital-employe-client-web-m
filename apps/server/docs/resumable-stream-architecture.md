@@ -1,5 +1,7 @@
 # AI 对话可恢复流架构
 
+> 总管委派子任务时，若在同一进程内并发多条 `agent.astream`，可能出现员工事件混入总管 SSE，见 [总管委派 SSE 串流](./orchestrator-employee-stream-isolation.md)。
+
 ## 一、概述
 
 可恢复流（Resumable Stream）是数字员工客户端 AI 对话模块的核心基础设施。它基于 SSE (Server-Sent Events) 协议，实现 LLM 流式输出的断线重连、中途取消和数据持久化。后续多会话并发、技能对话等特性均构建在此之上。

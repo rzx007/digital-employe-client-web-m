@@ -21,15 +21,20 @@ async function drainResponseBody(
  * 并读完 SSE 体以便服务端正常收尾。
  */
 export async function sendCuratorStreamMessage(
-  question: string
+  question: string,
+  options?: { conversationId?: string | number }
 ): Promise<{ conversationId: string }> {
-  const res = await fetchCuratorConversation()
-  const conv = res?.data
-  if (!conv?.id) {
-    throw new Error("总管会话未就绪，请稍后再试")
+  let conversationId: string
+  if (options?.conversationId != null) {
+    conversationId = String(options.conversationId)
+  } else {
+    const res = await fetchCuratorConversation()
+    const conv = res?.data
+    if (!conv?.id) {
+      throw new Error("总管会话未就绪，请稍后再试")
+    }
+    conversationId = String(conv.id)
   }
-
-  const conversationId = String(conv.id)
   const response = await request.raw(
     `/chat/conversations/${conversationId}/stream`,
     {

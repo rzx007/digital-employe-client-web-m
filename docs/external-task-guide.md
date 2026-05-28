@@ -182,5 +182,6 @@ for t in tasks:
 1. **确认阻塞**：复杂任务需要外部程序主动确认，不会自动执行
 2. **状态追踪**：执行完成后通过 `TaskExecutionLog.run_status` 查询（success/failed/timeout）
 3. **并发限制**：每员工最多同时 2 个执行中任务（`MAX_CONCURRENT_PER_EMPLOYEE`）
-4. **默认总管会话**：`ensure_curator_conversation` 保证每工作空间至少一条默认会话；多总管会话能力见产品路线图阶段三
-5. **非编排任务**：无 `orchestration_plan_id` / `source_conversation_id` 的手动或 MCP 任务，不会出现在「按总管会话过滤」的执行列表中
+4. **多总管会话**：除 `ensure_curator_conversation`（默认会话）外，可 `POST /workspaces/{id}/chat/conversations` 创建更多 `target_type=curator` 会话；`GET .../chat/conversations?target_type=curator&target_id=<员工id>` 列表
+5. **按总管会话查执行**：`GET /workspaces/{id}/tasks/executions?orchestrator_conversation_id=<curator_conv_id>`
+6. **非编排任务**：无 `orchestration_plan_id` / `source_conversation_id` 的手动或 MCP 任务，不会出现在「按总管会话过滤」的执行列表中

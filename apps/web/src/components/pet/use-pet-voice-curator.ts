@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { sendCuratorStreamMessage } from "@/lib/pet/send-curator-stream"
 import { transcribePetAudio } from "@/lib/pet/transcribe-audio"
 import { chatKeys } from "@/lib/query-keys/chat"
+import { useChatStore } from "@/stores/chat-store"
 
 export type PetVoiceFeedback =
   | { variant: "none" }
@@ -182,7 +183,17 @@ export function usePetVoiceCurator() {
         return
       }
 
-      const { conversationId } = await sendCuratorStreamMessage(text)
+      const { selectedConversationId, getSelectedContact } =
+        useChatStore.getState()
+      const contact = getSelectedContact()
+      const targetConvId =
+        contact?.type === "curator" && selectedConversationId != null
+          ? selectedConversationId
+          : undefined
+
+      const { conversationId } = await sendCuratorStreamMessage(text, {
+        conversationId: targetConvId,
+      })
       await queryClient.invalidateQueries({ queryKey: chatKeys.curator() })
       await queryClient.invalidateQueries({
         queryKey: chatKeys.messages(conversationId),

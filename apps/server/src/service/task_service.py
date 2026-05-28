@@ -652,11 +652,22 @@ class TaskService:
         return log
 
     @staticmethod
-    def delete_all_execution_logs(db: Session, workspace_id: int) -> int:
-        """删除指定工作空间的所有任务执行日志，返回删除数量。"""
-        count = db.query(TaskExecutionLog).filter(
+    def delete_all_execution_logs(
+        db: Session,
+        workspace_id: int,
+        *,
+        orchestrator_conversation_id: int | None = None,
+    ) -> int:
+        """删除任务执行日志。未传 orchestrator_conversation_id 时删除整个工作空间。"""
+        stmt = db.query(TaskExecutionLog).filter(
             TaskExecutionLog.workspace_id == workspace_id
-        ).delete()
+        )
+        if orchestrator_conversation_id is not None:
+            stmt = stmt.filter(
+                TaskExecutionLog.orchestrator_conversation_id
+                == orchestrator_conversation_id
+            )
+        count = stmt.delete()
         db.commit()
         return count
 
