@@ -1,6 +1,5 @@
 import * as React from "react"
 import { toast } from "sonner"
-import { useShallow } from "zustand/react/shallow"
 
 import {
   IconArchive,
@@ -27,9 +26,11 @@ import {
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
 import { cn } from "@workspace/ui/lib/utils"
+import { useQueryClient } from "@tanstack/react-query"
 import { formatDistanceToNow } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import { useDeleteConversationMutation } from "@/hooks/use-chat-queries"
+import { focusAfterDeletedConversation } from "@/lib/chat/focus-after-conversation-deleted"
 import { useChatStore } from "@/stores/chat-store"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import { resetConversationStatus } from "@/api/chat"
@@ -47,21 +48,10 @@ export function ConversationItem({
   className,
   ...props
 }: ConversationItemProps) {
-  const {
-    selectedContactId,
-    selectedConversationId,
-    setSelectedConversationId,
-    setDraftConversation,
-  } = useChatStore(
-    useShallow((state) => ({
-      selectedContactId: state.selectedContactId,
-      selectedConversationId: state.selectedConversationId,
-      setSelectedConversationId: state.setSelectedConversationId,
-      setDraftConversation: state.setDraftConversation,
-    }))
-  )
+  const selectedContactId = useChatStore((s) => s.selectedContactId)
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [alertOpen, setAlertOpen] = React.useState(false)
+  const queryClient = useQueryClient()
   const deleteMutation = useDeleteConversationMutation()
 
   const liveStatus = useConversationStatusStore(
@@ -121,11 +111,11 @@ export function ConversationItem({
       {
         onSuccess: () => {
           toast.success(`已删除「${conversation.title}」`)
-
-          if (selectedConversationId === conversation.id) {
-            setSelectedConversationId(null)
-            setDraftConversation(true)
-          }
+          focusAfterDeletedConversation(
+            queryClient,
+            selectedContactId,
+            conversation.id
+          )
         },
         onError: () => {
           toast.error("删除失败，请稍后重试")

@@ -32,7 +32,9 @@ import {
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
 
+import { useQueryClient } from "@tanstack/react-query"
 import { useDeleteConversationMutation } from "@/hooks/use-chat-queries"
+import { focusAfterDeletedConversation } from "@/lib/chat/focus-after-conversation-deleted"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useChatStore } from "@/stores/chat-store"
@@ -63,19 +65,13 @@ export function ChatPanelHeader({
   const isMobile = useIsMobile()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [alertOpen, setAlertOpen] = React.useState(false)
-  const {
-    selectedContactId,
-    setSelectedConversationId,
-    setDraftConversation,
-    selectedConversationId,
-  } = useChatStore(
+  const { selectedContactId, selectedConversationId } = useChatStore(
     useShallow((state) => ({
       selectedContactId: state.selectedContactId,
       selectedConversationId: state.selectedConversationId,
-      setSelectedConversationId: state.setSelectedConversationId,
-      setDraftConversation: state.setDraftConversation,
     }))
   )
+  const queryClient = useQueryClient()
   const deleteMutation = useDeleteConversationMutation()
   const openMonitor = useMonitorStore((s) => s.openMonitor)
   const isArtifactPanelOpen = useArtifactStore((s) => s.isPanelOpen)
@@ -100,8 +96,11 @@ export function ChatPanelHeader({
       {
         onSuccess: () => {
           toast.success(`已删除「${title}」`)
-          setSelectedConversationId(null)
-          setDraftConversation(true)
+          focusAfterDeletedConversation(
+            queryClient,
+            selectedContactId,
+            selectedConversationId
+          )
         },
         onError: () => {
           toast.error("删除失败，请稍后重试")
