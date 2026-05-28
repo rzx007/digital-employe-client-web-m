@@ -406,36 +406,17 @@ export function CuratorView({
   const timeline: TimelineEntry[] = useMemo(() => {
     const entries: TimelineEntry[] = []
 
-    // 保持无时间戳消息的相对顺序并与真实时间线一致
-    const n = displayMessages.length
-    let anchor = 0
-    for (const msg of displayMessages) {
-      const t = getMsgTs(msg, storedMessages)
-      if (t > anchor) anchor = t
-    }
-    for (const exec of executions) {
-      if (
-        exec.run_status === "success" ||
-        exec.run_status === "failed" ||
-        exec.run_status === "timeout" ||
-        exec.run_status === "cancelled"
-      ) {
-        const t = exec.ended_at
-          ? new Date(exec.ended_at).getTime()
-          : new Date(exec.started_at).getTime()
-        if (t > anchor) anchor = t
-      }
-    }
-    const pseudoNow = anchor + (n + 1) * 1000
-    const fallbackBase = pseudoNow - n * 1000
-    let fallbackIdx = 0
-
+    // 无时间戳（如 useChat 客户端 id 尚未与 DB 对齐）时按展示顺序递推 ts，
+    // 避免 refetch 后 resume assistant 的真实 created_at 把 user 行排到其下方。
+    let lastKnownTs = 0
     for (const msg of displayMessages) {
       let ts = getMsgTs(msg, storedMessages)
       if (ts === 0) {
-        ts = fallbackBase + fallbackIdx * 1000
-        fallbackIdx++
+        ts = lastKnownTs + 1000
+      } else if (ts <= lastKnownTs) {
+        ts = lastKnownTs + 1000
       }
+      lastKnownTs = ts
       entries.push({ kind: "message", data: msg, ts })
     }
 
