@@ -1,4 +1,8 @@
-import { app } from "electron"
+import { app, BrowserWindow } from "electron"
+import {
+  exportLogsToFile,
+  openLogsDirectory,
+} from "../logs/log-exporter"
 import {
   createSettingsWindow,
   closeSettingsWindow,
@@ -143,6 +147,22 @@ export const settingsIpcContribution: IpcContribution = {
             args: process.argv.slice(1).concat(["--relaunched"]),
           })
           app.exit(0)
+        },
+      },
+      {
+        channel: IpcChannels.openLogsDirectory,
+        handler: async () => {
+          await openLogsDirectory()
+        },
+      },
+      {
+        channel: IpcChannels.exportLogs,
+        handler: async (event) => {
+          const parent = BrowserWindow.fromWebContents(event.sender)
+          if (!parent || parent.isDestroyed()) {
+            throw new Error("No host window available for save dialog")
+          }
+          return exportLogsToFile(parent)
         },
       },
     ]

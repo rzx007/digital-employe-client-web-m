@@ -56,6 +56,8 @@ export const IpcChannels = {
   checkUpdate: "check-update",
   startDownload: "start-download",
   quitAndInstall: "quit-and-install",
+  openLogsDirectory: "open-logs-directory",
+  exportLogs: "export-logs",
 } as const
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]
@@ -227,6 +229,8 @@ export interface IpcInvokeMap {
   [IpcChannels.getEndpoint]: { args: []; result: string }
   [IpcChannels.setEndpoint]: { args: [endpoint: string]; result: void }
   [IpcChannels.resetApp]: { args: []; result: void }
+  [IpcChannels.openLogsDirectory]: { args: []; result: void }
+  [IpcChannels.exportLogs]: { args: []; result: { path: string } | null }
   // update
   [IpcChannels.checkUpdate]: { args: []; result: unknown }
   [IpcChannels.startDownload]: { args: []; result: void }

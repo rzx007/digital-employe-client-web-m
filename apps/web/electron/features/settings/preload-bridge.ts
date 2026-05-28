@@ -31,4 +31,6 @@ export const settingsBridge = {
     apiUrl: string
   }) => invoke(IpcChannels.setModelSettings, data),
   resetApp: () => invoke(IpcChannels.resetApp),
+  openLogsDirectory: () => invoke(IpcChannels.openLogsDirectory),
+  exportLogs: () => invoke(IpcChannels.exportLogs),
 }

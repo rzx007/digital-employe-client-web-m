@@ -18,6 +18,8 @@ Electron 主进程与 Python 后端日志统一在 `~/.digital-employee/logs/`�
 | `main.log` | Electron 主进程（[`apps/web/electron/core/data-paths.ts`](apps/web/electron/core/data-paths.ts)） |
 | `app.log` / `error.log` | Python 后端（[`apps/server/src/core/config.py`](apps/server/src/core/config.py) `get_default_logs_dir()`） |
 
+桌面端可在 **设置 → 关于 → 诊断与支持** 打开日志目录，或将上述三个文件打包为 zip 导出。
+
 ### 桌面宠物目录
 
 | 路径 | 用途 |
