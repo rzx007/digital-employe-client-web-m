@@ -5,12 +5,14 @@ import { planGeneratedHandler, type ToolBlockHandler } from "./handlers/plan-gen
 import { documentPlanHandler } from "./handlers/document-plan"
 import { clarifyAnswersHandler } from "./handlers/clarify-answers"
 import { recruitmentHandler } from "./handlers/recruitment"
+import { employeeCrudHandler } from "./handlers/employee-crud"
 
 export const TOOL_BLOCK_HANDLERS: ToolBlockHandler[] = [
   planGeneratedHandler,
   documentPlanHandler,
   clarifyAnswersHandler,
   recruitmentHandler,
+  employeeCrudHandler,
 ]
 
 export function getToolBlockFromRegistry(

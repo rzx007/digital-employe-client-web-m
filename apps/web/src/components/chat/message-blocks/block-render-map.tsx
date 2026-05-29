@@ -8,6 +8,11 @@ import { DocumentPlanApprovedSummary } from "./document-plan-approved-summary"
 import { RecruitmentCandidatesCard } from "./recruitment-candidates-card"
 import { EmployeeHiredCard } from "./employee-hired-card"
 import { EmployeesHiredBatchCard } from "./employees-hired-batch-card"
+import {
+  EmployeeDeletedCard,
+  EmployeeDetailCard,
+  EmployeeUpdatedCard,
+} from "./employee-crud-result-card"
 import { FileChangeCards } from "./file-change-cards"
 import { SkillExplorationBlock } from "./skill-exploration-block"
 import { SummarizationCheckpointBlock } from "./summarization-checkpoint-block"
@@ -185,6 +190,33 @@ export function BlockRenderer({
         state={block.state}
         resultText={block.resultText}
         celebrateOnSuccess={isLastAssistantMessage}
+      />
+    )
+  }
+  if (block.kind === "employee-detail") {
+    return (
+      <EmployeeDetailCard
+        key={block.key}
+        state={block.state}
+        resultText={block.resultText}
+      />
+    )
+  }
+  if (block.kind === "employee-updated") {
+    return (
+      <EmployeeUpdatedCard
+        key={block.key}
+        state={block.state}
+        resultText={block.resultText}
+      />
+    )
+  }
+  if (block.kind === "employee-deleted") {
+    return (
+      <EmployeeDeletedCard
+        key={block.key}
+        state={block.state}
+        resultText={block.resultText}
       />
     )
   }

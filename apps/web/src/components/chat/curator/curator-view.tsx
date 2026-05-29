@@ -74,6 +74,7 @@ import { zhCN } from "date-fns/locale"
 import type { TaskExecution } from "@/types/schedule-monitor"
 import { curatorUnreadKey } from "@/lib/constants"
 import {
+  buildRecruitmentHireAllMessage,
   buildRecruitmentHireMessage,
   type RecruitmentCandidateItem,
 } from "@/lib/chat/recruitment-tool-payload"
@@ -513,6 +514,29 @@ export function CuratorView({
     [curatorConversationId, isBusy, enqueue, doSend]
   )
 
+  const handleRecruitmentHireAll = useCallback(
+    (candidates: RecruitmentCandidateItem[]) => {
+      const text = buildRecruitmentHireAllMessage(candidates)
+      if (!curatorConversationId) {
+        toast.error("会话未就绪，请稍后再试")
+        return
+      }
+      if (isBusy) {
+        enqueue({
+          id: `pending-hire-all-${Date.now()}`,
+          text,
+          command: null,
+        })
+        toast.success("已加入发送队列", {
+          description: `全部录用 ${candidates.length} 人`,
+        })
+        return
+      }
+      void doSend(text)
+    },
+    [curatorConversationId, isBusy, enqueue, doSend]
+  )
+
   const handleSendMessage = useCallback(
     async (message: PromptInputMessage | string) => {
       const messageText =
@@ -612,9 +636,10 @@ export function CuratorView({
   const curatorRecruitmentValue = useMemo(
     () => ({
       onHire: handleRecruitmentHire,
+      onHireAll: handleRecruitmentHireAll,
       hireDisabled: !curatorConversationId,
     }),
-    [handleRecruitmentHire, curatorConversationId]
+    [handleRecruitmentHire, handleRecruitmentHireAll, curatorConversationId]
   )
 
   const curatorFileValue = useMemo(

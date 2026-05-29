@@ -2,8 +2,11 @@
 
 import * as React from "react"
 import { memo } from "react"
+import { IconUsersPlus } from "@tabler/icons-react"
+import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
+import { useCuratorRecruitment } from "@/components/chat/curator/use-curator-recruitment"
 import {
   isRecruitmentToolRunning,
   parseRecruitmentCandidatesPayload,
@@ -79,6 +82,7 @@ function RecruitmentCandidatesCardInner({
     () => parseRecruitmentCandidatesPayload(resultText),
     [resultText]
   )
+  const recruitment = useCuratorRecruitment()
 
   const isRunning = isRecruitmentToolRunning(state ?? "")
   const isError = state === "output-error"
@@ -129,6 +133,23 @@ function RecruitmentCandidatesCardInner({
           </span>
         )}
       </div>
+
+      {payload &&
+        !isRunning &&
+        payload.candidates.length >= 2 &&
+        recruitment && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="mb-2 h-8 w-full gap-1.5 text-xs"
+            disabled={recruitment.hireDisabled}
+            onClick={() => recruitment.onHireAll(payload.candidates)}
+          >
+            <IconUsersPlus className="size-3.5" />
+            全部录用（{payload.candidates.length} 人）
+          </Button>
+        )}
 
       {isRunning ? (
         <CandidateSkeletons />

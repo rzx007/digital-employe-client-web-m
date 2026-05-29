@@ -88,6 +88,27 @@ export type ClassifiedBlock =
       state: string
       resultText: string | null
     }
+  | {
+      kind: "employee-detail"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+    }
+  | {
+      kind: "employee-updated"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+    }
+  | {
+      kind: "employee-deleted"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+    }
   | { kind: "summarization-checkpoint"; key: string; text: string }
   | { kind: "final-response"; key: string; text: string }
   | { kind: "file-changes"; key: string; files: FileChangeItem[] }
@@ -520,6 +541,9 @@ export function classifyMessageParts(
  *   | "recruitment-candidates" — 招聘候选人卡片 (recruit_employee)
  *   | "employee-hired"    — 入职工牌卡片 (hire_employee)
  *   | "employees-hired"   — 批量入职工牌卡片 (hire_employees)
+ *   | "employee-detail"   — 员工详情卡片 (get_employee)
+ *   | "employee-updated"  — 员工更新卡片 (update_employee)
+ *   | "employee-deleted"  — 员工删除卡片 (delete_employee)
  *   | "final-response"    — 所有工具调用完成后的最终回复
  *   | "file-changes"      — write_file/edit_file 产生的文件变更卡片
  */

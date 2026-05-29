@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  buildRecruitmentHireAllMessage,
   isRecruitmentPlainToolError,
   resolveRecruitmentToolBlockKind,
   shouldRenderRecruitmentToolBlock,
@@ -70,5 +71,31 @@ describe("shouldRenderRecruitmentToolBlock", () => {
     expect(
       shouldRenderRecruitmentToolBlock("output-error", null, false)
     ).toBe(true)
+  })
+})
+
+describe("buildRecruitmentHireAllMessage", () => {
+  it("builds hire_employees instruction with JSON payload", () => {
+    const message = buildRecruitmentHireAllMessage([
+      {
+        index: 1,
+        name: "数据分析师",
+        description: "分析数据",
+        skill_ids: [],
+        skills_summary: "",
+      },
+      {
+        index: 2,
+        name: "法务助手",
+        description: "审合同",
+        skill_ids: [-101],
+        skills_summary: "法务",
+      },
+    ])
+
+    expect(message).toContain("全部录用以下 2 位候选人")
+    expect(message).toContain("hire_employees")
+    expect(message).toContain('"name": "数据分析师"')
+    expect(message).toContain("-101")
   })
 })

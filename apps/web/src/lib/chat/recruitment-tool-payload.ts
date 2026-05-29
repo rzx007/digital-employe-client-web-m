@@ -264,6 +264,25 @@ export function buildRecruitmentHireMessage(
   return lines.join("\n")
 }
 
+/** 总管对话中批量录用时发送给 orchestrator 的文案 */
+export function buildRecruitmentHireAllMessage(
+  candidates: Pick<
+    RecruitmentCandidateItem,
+    "name" | "description" | "skill_ids"
+  >[]
+): string {
+  if (candidates.length === 0) return "全部录用"
+  const payload = candidates.map((candidate) => ({
+    name: candidate.name.trim(),
+    description: (candidate.description || "").trim() || "无",
+    skill_ids: candidate.skill_ids ?? [],
+  }))
+  return [
+    `全部录用以下 ${payload.length} 位候选人，请一次调用 hire_employees：`,
+    JSON.stringify(payload, null, 2),
+  ].join("\n")
+}
+
 export function isRecruitmentToolRunning(state: string): boolean {
   return (
     state === "call" ||

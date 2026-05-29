@@ -242,6 +242,40 @@ class EmployeeGenerationService:
         return parsed
 
     @staticmethod
+    def _normalize_profile_count(
+        profiles: list[EmployeeProfile], count: int
+    ) -> list[EmployeeProfile]:
+        """将解析结果对齐到请求的 count：不足补齐、超出截断。"""
+        if count <= 0:
+            return profiles
+        if len(profiles) > count:
+            logger.info(
+                "员工生成解析条数超过请求: got=%s, count=%s，截断",
+                len(profiles),
+                count,
+            )
+            return profiles[:count]
+        if len(profiles) < count:
+            pad_description = (
+                "根据需求生成的数字员工，录用后可在员工设置中分配技能。"
+            )
+            logger.info(
+                "员工生成解析条数不足: got=%s, count=%s，补齐默认档案",
+                len(profiles),
+                count,
+            )
+            for i in range(len(profiles), count):
+                profiles.append(
+                    EmployeeProfile(
+                        name=f"候选员工 {i + 1}",
+                        description=pad_description,
+                        skill_ids=[],
+                        skills_list=[],
+                    )
+                )
+        return profiles
+
+    @staticmethod
     def _parse_skill_profiles(
         result_content: str, skills_list: list[dict[str, Any]], count: int
     ) -> list[EmployeeProfile]:
@@ -283,7 +317,9 @@ class EmployeeGenerationService:
                         skills_list=matched_skills,
                     )
                 )
-            return profiles
+            return EmployeeGenerationService._normalize_profile_count(
+                profiles, count
+            )
         except json.JSONDecodeError as exc:
             logger.error(
                 "员工生成 JSON 解析失败: %s", exc, exc_info=True
