@@ -21,7 +21,9 @@ from src.core.request_utils import (
 )
 from src.core.runtime_capabilities import get_capabilities
 from src.core.deps import require_capability
-from src.db.session import get_session_local
+from sqlalchemy.orm import Session
+
+from src.db.session import get_db, get_session_local
 from src.models.response import ResponseBase
 from src.schemas.skill import (
     LocalSkillDetail,
@@ -31,6 +33,10 @@ from src.schemas.skill import (
     SkillNameExistsRequest,
     SkillNameExistsResult,
     SkillRead,
+    UpdateSkillDisplayNameRequest,
+    UpdateSkillDisplayNameResult,
+    UpdateLocalSkillRequest,
+    UpdateLocalSkillResult,
 )
 from src.service.employee_service import EmployeeService
 from src.service.local_skill_service import LocalSkillService
@@ -256,6 +262,62 @@ def get_local_skill_detail(
     workspace_id = get_workspace_id_from_request(request)
     detail = LocalSkillService.get_local_skill_detail(skill_name, workspace_id)
     return ResponseBase[LocalSkillDetail](data=LocalSkillDetail(**detail))
+
+
+@router.patch(
+    "/skills/local/{skill_name}",
+    response_model=ResponseBase[UpdateLocalSkillResult],
+)
+def update_local_skill(
+    request: Request,
+    skill_name: str,
+    payload: UpdateLocalSkillRequest,
+    db: Session = Depends(get_db),
+) -> ResponseBase[UpdateLocalSkillResult]:
+    workspace_id = get_workspace_id_from_request(request)
+    updated = LocalSkillService.update_local_skill(
+        skill_name,
+        workspace_id,
+        display_name_zh=payload.displayNameZh,
+        skill_md_content=payload.skillMdContent,
+    )
+    synced_count = EmployeeService.sync_local_skill_to_assignees(
+        db,
+        workspace_id=workspace_id,
+        skill_name=skill_name,
+    )
+    return ResponseBase[UpdateLocalSkillResult](
+        data=UpdateLocalSkillResult(
+            **updated,
+            syncedEmployeeCount=synced_count,
+        )
+    )
+
+
+@router.patch(
+    "/skills/local/{skill_name}/display-name",
+    response_model=ResponseBase[UpdateSkillDisplayNameResult],
+)
+def update_local_skill_display_name(
+    request: Request,
+    skill_name: str,
+    payload: UpdateSkillDisplayNameRequest,
+    db: Session = Depends(get_db),
+) -> ResponseBase[UpdateSkillDisplayNameResult]:
+    workspace_id = get_workspace_id_from_request(request)
+    updated = LocalSkillService.update_display_name_zh(
+        skill_name,
+        payload.displayNameZh,
+        workspace_id,
+    )
+    EmployeeService.sync_local_skill_to_assignees(
+        db,
+        workspace_id=workspace_id,
+        skill_name=skill_name,
+    )
+    return ResponseBase[UpdateSkillDisplayNameResult](
+        data=UpdateSkillDisplayNameResult(**updated)
+    )
 
 
 @router.delete("/skills/local/{skill_name}", response_model=ResponseBase[None])

@@ -349,6 +349,7 @@ class LocalSkillService:
             description = LocalSkillService._extract_description_from_skill_md(
                 target_dir / LocalSkillService.SKILL_MD_NAME
             )
+            existing_display_zh = existing_meta.get("displayNameZh")
             meta = {
                 "skillName": normalized,
                 "localId": local_id,
@@ -360,6 +361,8 @@ class LocalSkillService:
                     description, normalized
                 ),
             }
+            if isinstance(existing_display_zh, str) and existing_display_zh.strip():
+                meta["displayNameZh"] = existing_display_zh.strip()
             LocalSkillService._write_meta(target_dir, meta)
             copied_items += 1
 
@@ -607,6 +610,102 @@ class LocalSkillService:
             items = list(skill_map.values())
 
         return items
+
+    @staticmethod
+    def _resolve_editable_skill_dir(
+        skill_name: str,
+        workspace_id: int | None = None,
+    ) -> Path:
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        if workspace_id is not None:
+            workspace_dir = LocalSkillService._skill_dir(normalized, workspace_id)
+            if workspace_dir.is_dir():
+                return workspace_dir
+
+        builtin_dir = LocalSkillService._skill_dir(normalized, None)
+        if builtin_dir.is_dir():
+            return builtin_dir
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"未找到本地技能: {normalized}",
+        )
+
+    @staticmethod
+    def update_local_skill(
+        skill_name: str,
+        workspace_id: int | None = None,
+        *,
+        display_name_zh: str | None = None,
+        skill_md_content: str | None = None,
+    ) -> dict:
+        if display_name_zh is None and skill_md_content is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="至少需要更新一项。",
+            )
+
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        skill_dir = LocalSkillService._resolve_editable_skill_dir(
+            normalized, workspace_id
+        )
+        meta = LocalSkillService._read_meta(skill_dir)
+        meta["skillName"] = meta.get("skillName") or normalized
+        result: dict = {"skillName": normalized}
+
+        if display_name_zh is not None:
+            trimmed = (display_name_zh or "").strip()
+            if len(trimmed) > 255:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="中文名称不能超过 255 个字符。",
+                )
+            if trimmed:
+                meta["displayNameZh"] = trimmed
+            else:
+                meta.pop("displayNameZh", None)
+            result["displayNameZh"] = trimmed or None
+
+        if skill_md_content is not None:
+            settings = get_settings()
+            encoded = skill_md_content.encode("utf-8")
+            if len(encoded) > settings.client_skill_import_max_bytes:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"SKILL.md 超过大小限制: "
+                        f"{settings.client_skill_import_max_bytes} 字节。"
+                    ),
+                )
+            skill_md = skill_dir / LocalSkillService.SKILL_MD_NAME
+            skill_md.write_text(skill_md_content, encoding="utf-8")
+            description = LocalSkillService._extract_description_from_skill_md(
+                skill_md
+            )
+            meta["description"] = description
+            meta["recruitSummary"] = LocalSkillService.build_recruit_summary(
+                description, normalized
+            )
+            result["skillMdContent"] = skill_md_content
+
+        LocalSkillService._write_meta(skill_dir, meta)
+        return result
+
+    @staticmethod
+    def update_display_name_zh(
+        skill_name: str,
+        display_name_zh: str,
+        workspace_id: int | None = None,
+    ) -> dict:
+        updated = LocalSkillService.update_local_skill(
+            skill_name,
+            workspace_id,
+            display_name_zh=display_name_zh,
+        )
+        return {
+            "skillName": updated["skillName"],
+            "displayNameZh": updated.get("displayNameZh"),
+        }
 
     @staticmethod
     def delete_workspace_skill(skill_name: str, workspace_id: int) -> None:

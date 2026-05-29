@@ -104,6 +104,7 @@ src/service/message_parts_extractor.py
 src/service/modal_service.py
 src/service/model_context.py
 src/service/model_patch.py
+src/service/orchestrator_conversation_links.py
 src/service/performance_balance_service.py
 src/service/performance_record_service.py
 src/service/reflection_engine.py
@@ -132,6 +133,7 @@ src/service/agent/prompts.py
 src/service/agent/shell_execute_tool.py
 src/service/agent/orchestrator/__init__.py
 src/service/agent/orchestrator/agent.py
+src/service/agent/orchestrator/employee_tools.py
 src/service/agent/orchestrator/execution.py
 src/service/agent/orchestrator/prompts.py
 src/service/agent/orchestrator/recruitment.py
@@ -141,4 +143,9 @@ src/service/agent/orchestrator/tools.py
 src/service/oauth/__init__.py
 src/service/oauth/feishu.py
 src/utils/http_client.py
+tests/conftest.py
+tests/test_employee_generation.py
+tests/test_employee_service.py
+tests/test_employee_tools.py
 tests/test_message_parts_extractor.py
+tests/test_recruitment.py
