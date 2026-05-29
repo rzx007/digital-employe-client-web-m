@@ -118,6 +118,7 @@ src/models/employee_task.py
 src/models/group_member.py
 src/models/orchestration_plan.py
 src/models/performance_record.py
+src/models/recent_contact.py
 src/models/response.py
 src/models/skill_rating.py
 src/models/task_execution_log.py
@@ -131,6 +132,7 @@ src/schemas/login.py
 src/schemas/mcp.py
 src/schemas/orchestration.py
 src/schemas/performance_record.py
+src/schemas/recent_contact.py
 src/schemas/resource.py
 src/schemas/skill.py
 src/schemas/skill_rating.py
@@ -157,9 +159,11 @@ src/service/message_parts_extractor.py
 src/service/modal_service.py
 src/service/model_context.py
 src/service/model_patch.py
+src/service/orchestration_lifecycle.py
 src/service/orchestrator_conversation_links.py
 src/service/performance_balance_service.py
 src/service/performance_record_service.py
+src/service/recent_contact_service.py
 src/service/reflection_engine.py
 src/service/resource_service.py
 src/service/session_search.py
@@ -179,6 +183,8 @@ src/service/agent/artifacts.py
 src/service/agent/basic_file_backend.py
 src/service/agent/checkpointer.py
 src/service/agent/clarifying_questions_tool.py
+src/service/agent/compatible_filesystem_middleware.py
+src/service/agent/destructive_hitl.py
 src/service/agent/document_plan_tool.py
 src/service/agent/employee.py
 src/service/agent/hitl_interrupt_on.py
@@ -200,10 +206,16 @@ src/service/oauth/feishu.py
 src/utils/http_client.py
 tests/conftest.py
 tests/test_basic_file_reader.py
+tests/test_compatible_filesystem_middleware.py
+tests/test_create_orchestration_plan.py
+tests/test_destructive_hitl.py
 tests/test_employee_generation.py
 tests/test_employee_service.py
 tests/test_employee_tools.py
 tests/test_message_parts_extractor.py
+tests/test_orchestration_lifecycle.py
+tests/test_orchestration_task_list.py
+tests/test_recent_contact_service.py
 tests/test_recruitment.py
 tests/test_sync_local_skill.py
 tests/test_task_mutations.py

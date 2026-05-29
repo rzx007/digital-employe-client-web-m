@@ -157,8 +157,12 @@ export function ChatView({
   const selectedConversation = conversations.find(
     (conversation) => String(conversation.id) === String(selectedConversationId)
   )
+  const hasValidSelection =
+    selectedConversationId != null &&
+    (!conversationsQuerySuccess ||
+      conversationExistsInList(conversations, selectedConversationId))
 
-  return isDraftConversation || !selectedConversationId ? (
+  return isDraftConversation || !hasValidSelection ? (
     <DraftChatView
       contact={contact}
       onOpenContacts={onOpenContacts}

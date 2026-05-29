@@ -21,7 +21,11 @@ import { SummarizationCheckpointBlock } from "./summarization-checkpoint-block"
 import { ThinkingBlock } from "./thinking-block"
 import { MessageResponse } from "@workspace/ui/components/ai-elements/message"
 import { IconAlertTriangle, IconFile } from "@tabler/icons-react"
-import { isHitlAbortedOutput, type HitlPatchOptions } from "@/lib/chat/hitl"
+import {
+  isDestructiveDeleteRejected,
+  isHitlAbortedOutput,
+  type HitlPatchOptions,
+} from "@/lib/chat/hitl"
 import type { CommandMeta, FileMeta, MentionMeta } from "../shared/chat-view-shared"
 
 export interface BlockRenderContext {
@@ -172,7 +176,7 @@ export function BlockRenderer({
         toolName={block.toolName}
         input={block.input}
         state={
-          block.resultText && !isHitlAbortedOutput(block.resultText)
+          block.resultText && !isDestructiveDeleteRejected(block.resultText)
             ? "output-available"
             : block.state
         }

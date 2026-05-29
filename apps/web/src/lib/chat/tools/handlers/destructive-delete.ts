@@ -1,7 +1,7 @@
 import {
-  DESTRUCTIVE_HITL_TOOL_NAMES,
   isDestructiveHitlToolName,
 } from "../../hitl/constants"
+import { isDestructiveDeleteRejected } from "../../hitl/aborted-output"
 import {
   buildDestructiveDeletePreview,
   isDestructiveDeletePendingState,
@@ -11,15 +11,18 @@ import type { ToolBlockHandler } from "./plan-generated"
 export const destructiveDeleteHandler: ToolBlockHandler = {
   match: (vm) => isDestructiveHitlToolName(vm.toolName),
   classify: (vm, messageId, index) => {
-    if (
-      vm.state === "output-available" ||
-      vm.state === "output-error"
-    ) {
+    const userRejected =
+      vm.state === "output-error" && isDestructiveDeleteRejected(vm.resultText)
+
+    if (vm.state === "output-available") {
+      return null
+    }
+    if (vm.state === "output-error" && !userRejected) {
       return null
     }
 
     const preview = buildDestructiveDeletePreview(vm.toolName, vm.input)
-    if (!preview && !isDestructiveDeletePendingState(vm.state)) {
+    if (!preview && !isDestructiveDeletePendingState(vm.state) && !userRejected) {
       return null
     }
 

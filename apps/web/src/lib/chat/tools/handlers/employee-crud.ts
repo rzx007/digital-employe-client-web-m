@@ -1,4 +1,5 @@
 import { resolveEmployeeCrudBlockKind } from "../../employee-crud-tool-payload"
+import { isDestructiveDeleteRejected } from "../../hitl/aborted-output"
 import type { ToolBlockHandler } from "./plan-generated"
 
 export const employeeCrudHandler: ToolBlockHandler = {
@@ -7,6 +8,14 @@ export const employeeCrudHandler: ToolBlockHandler = {
     vm.toolName === "update_employee" ||
     vm.toolName === "delete_employee",
   classify: (vm, messageId, index) => {
+    if (
+      vm.toolName === "delete_employee" &&
+      vm.state === "output-error" &&
+      isDestructiveDeleteRejected(vm.resultText)
+    ) {
+      return null
+    }
+
     const blockKind = resolveEmployeeCrudBlockKind(
       vm.toolName,
       vm.state,

@@ -4,6 +4,9 @@ export const DESTRUCTIVE_HITL_TOOL_NAMES = new Set([
   "delete_tasks_batch",
 ])
 
+/** 与 DestructiveDeleteConfirmCard reject 文案一致 */
+export const DESTRUCTIVE_DELETE_REJECT_MESSAGE = "用户取消删除"
+
 export const CLARIFY_TOOL_NAME = "submit_clarifying_questions"
 export const DOCUMENT_PLAN_TOOL_NAME = "submit_document_plan"
 

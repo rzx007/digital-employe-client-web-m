@@ -8,7 +8,8 @@ import { Button } from "@workspace/ui/components/button"
 import { toast } from "sonner"
 import { approveHitl, type HitlDecision } from "@/api/chat"
 import {
-  isHitlAbortedOutput,
+  DESTRUCTIVE_DELETE_REJECT_MESSAGE,
+  isDestructiveDeleteRejected,
   isValidApproveMessageId,
   type HitlPatchOptions,
 } from "@/lib/chat/hitl"
@@ -41,7 +42,7 @@ function DestructiveDeleteConfirmCardInner({
     [toolName, input]
   )
 
-  const isAborted = isHitlAbortedOutput(resultText ?? undefined)
+  const isAborted = isDestructiveDeleteRejected(resultText ?? undefined)
   const isInputStreaming = state === "input-streaming" || state === "call"
   const isGenerating = !resolved && !isAborted && isInputStreaming
   const isPending =
@@ -179,7 +180,10 @@ function DestructiveDeleteConfirmCardInner({
               disabled={submitting}
               onClick={() =>
                 submitDecisions([
-                  { type: "reject", message: "用户取消删除" },
+                  {
+                    type: "reject",
+                    message: DESTRUCTIVE_DELETE_REJECT_MESSAGE,
+                  },
                 ])
               }
             >
@@ -206,7 +210,7 @@ function DestructiveDeleteConfirmCardInner({
       )}
 
       {isAborted && (
-        <p className="text-muted-foreground text-xs">已取消或中止。</p>
+        <p className="text-muted-foreground text-xs">已取消，未执行删除。</p>
       )}
     </div>
   )

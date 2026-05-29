@@ -10,21 +10,21 @@ export function isToolUIPart(part: UIMessage["parts"][number]): part is ToolUIPa
 }
 
 export function extractResultText(part: ToolUIPart): string | null {
-  if (!("output" in part) || !part.output) {
-    return null
+  if ("output" in part && part.output) {
+    if (typeof part.output === "string") {
+      return part.output || null
+    }
+
+    if (typeof part.output === "object") {
+      const output = part.output as Record<string, unknown>
+      if (typeof output.text === "string" && output.text) {
+        return output.text
+      }
+    }
   }
 
-  if (typeof part.output === "string") {
-    return part.output || null
-  }
-
-  if (typeof part.output !== "object") {
-    return null
-  }
-
-  const output = part.output as Record<string, unknown>
-  if (typeof output.text === "string" && output.text) {
-    return output.text
+  if ("errorText" in part && typeof part.errorText === "string" && part.errorText) {
+    return part.errorText
   }
 
   return null

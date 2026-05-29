@@ -1,9 +1,11 @@
 export {
   CLARIFY_TOOL_NAME,
   DOCUMENT_PLAN_TOOL_NAME,
+  DESTRUCTIVE_DELETE_REJECT_MESSAGE,
   HITL_TOOL_NAMES,
   HITL_TOOL_TYPES,
   findLastToolCallIdByName,
+  isDestructiveHitlToolName,
 } from "./constants"
 export { toolPartHasFinalOutput } from "./part-utils"
 export {
@@ -32,7 +34,7 @@ export {
   isValidApproveMessageId,
   parseDbMessageId,
 } from "./message-id"
-export { isHitlAbortedOutput } from "./aborted-output"
+export { isHitlAbortedOutput, isDestructiveDeleteRejected } from "./aborted-output"
 export { enrichHitlResolvedPartsInMessage } from "./display-enrich"
 export { prepareDisplayMessages } from "./display-pipeline"
 export { buildHitlInterruptStreamChunks } from "./interrupt-stream-chunks"

@@ -1,7 +1,7 @@
 build-in-skills
 docs
-local-employees
+logs
 orchestrator_skills
+scripts
 src
 tests
-tmp

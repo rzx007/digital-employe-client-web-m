@@ -16,12 +16,11 @@ export function useReconcileConversationSelection(
   selectedContactId: string | null,
   contact?: ChatViewContact
 ) {
-  const { selectedConversationId, isDraftConversation, setSelectedConversationId } =
+  const { selectedConversationId, isDraftConversation } =
     useChatStore(
       useShallow((state) => ({
         selectedConversationId: state.selectedConversationId,
         isDraftConversation: state.isDraftConversation,
-        setSelectedConversationId: state.setSelectedConversationId,
       }))
     )
 
@@ -77,13 +76,11 @@ export function useReconcileConversationSelection(
     if (!conversationsQuerySuccess) return
 
     if (conversations.length === 0) {
-      // 草稿模式下列表变空时，勿抢先只清 selectedConversationId（会打断
-      // focusAfterDeletedConversation 的 targetsCurrentSelection 判断）
+      // 草稿或删光/onMutate 进草稿中，勿抢跑
       if (isDraftConversation) {
         return
       }
       if (selectedConversationId != null) {
-        setSelectedConversationId(null)
         return
       }
       enterDraftConversation()
@@ -109,6 +106,5 @@ export function useReconcileConversationSelection(
     isDraftConversation,
     selectedContactId,
     selectedConversationId,
-    setSelectedConversationId,
   ])
 }

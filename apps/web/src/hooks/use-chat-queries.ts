@@ -30,6 +30,10 @@ import {
 import type { Contact, Conversation, Message } from "@/types/chat"
 import { mapContactToTarget } from "@/lib/chat/contact-target"
 import { findContactInList } from "@/lib/chat/contact-utils"
+import {
+  enterDraftConversation,
+  selectConversationById,
+} from "@/lib/chat/conversation-selection"
 import { mapRecentContactDtoToItem } from "@/lib/chat/recent-contact-mappers"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import { chatKeys } from "@/lib/query-keys/chat"
@@ -385,6 +389,33 @@ export function useDeleteConversationMutation() {
             (c) => String(c.id) !== String(conversationId)
           )
       )
+
+      const remaining =
+        queryClient.getQueryData<Conversation[]>(
+          chatKeys.conversations(contactId)
+        ) ?? []
+      const contact = findContactInList(
+        useChatStore.getState().contacts,
+        contactId
+      )
+      const { selectedConversationId, isDraftConversation } =
+        useChatStore.getState()
+      const deletedId = String(conversationId)
+      const targetsCurrentSelection =
+        String(selectedConversationId) === deletedId ||
+        (selectedConversationId == null && remaining.length === 0)
+
+      if (
+        targetsCurrentSelection &&
+        contact?.type !== "curator"
+      ) {
+        const next = remaining[0]
+        if (next) {
+          selectConversationById(next.id)
+        } else if (!isDraftConversation) {
+          enterDraftConversation()
+        }
+      }
 
       return { previousConversations, contactId }
     },
