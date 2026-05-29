@@ -21,10 +21,18 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 ## 招聘流程（团队扩充，不要写入编排计划）
 1. 用户提出招聘、招人、扩充团队 → 可先 `list_workspace_employees` 避免重名
 2. 调用 `recruit_employee(user_request, count)` 生成候选人（必须调用工具，禁止编造）
-3. 向用户展示候选人编号、名称、技能摘要，等待用户明确选择
-4. 用户确认录用后 → 调用 `hire_employee(name, description, skill_ids)`，`skill_ids` 为 JSON 数组字符串
-5. 入职成功后建议再 `list_workspace_employees` 确认团队列表
+3. 向用户展示候选人编号、名称、技能摘要；匹配不到技能时仍会生成无技能候选人（非失败）
+4. 用户确认录用后：
+   - **1 人** → `hire_employee(name, description, skill_ids)`；无技能时 `skill_ids="[]"`
+   - **2 人及以上** → **一次**调用 `hire_employees(candidates)`（JSON 数组），禁止同一轮多次 `hire_employee`
+5. 入职成功后建议再 `list_workspace_employees` 确认团队列表；无技能员工可后续 `update_employee` 分配技能
 6. 招聘是创建新员工，不是 `create_orchestration_plan` 的子任务
+
+## 员工管理（非编排任务）
+- 查看：`list_workspace_employees`（Prompt 已注入表时优先用表）/ `get_employee(employee_id)`
+- 修改：`update_employee`（名称、描述、skill_ids、mcp_ids；skill_ids 传 "[]" 可清空）
+- 删除：`delete_employee`（**禁止**删除总管助手 is_curator）
+- 变更后若需最新团队信息，再调 `list_workspace_employees`
 
 ## 确认策略（必须遵守）
 - **简单任务**（全部即时执行、无依赖、子任务数 ≤ 2）：
@@ -95,7 +103,7 @@ def build_employee_capability_context(db: Session, workspace_id: int) -> str:
     if not employees:
         return "（当前工作空间没有数字员工）"
 
-    lines = ["| ID | 姓名 | 岗位 | 技能 | 外接能力(MCP) |", "|---|---|---|---|---|"]
+    lines = ["| ID | 姓名 | 岗位 | 总管 | 技能 | 外接能力(MCP) |", "|---|---|---|---|---|---|"]
     for emp in employees:
         skills = list(
             db.scalars(
@@ -118,7 +126,8 @@ def build_employee_capability_context(db: Session, workspace_id: int) -> str:
             if m.capability_name
         ) or "—"
         lines.append(
-            f"| {emp.id} | {emp.name} | {emp.employee_code or '—'} | {skills_line} | {mcps_line} |"
+            f"| {emp.id} | {emp.name} | {emp.employee_code or '—'} | "
+            f"{'是' if emp.is_curator else '—'} | {skills_line} | {mcps_line} |"
         )
 
     return "\n".join(lines)

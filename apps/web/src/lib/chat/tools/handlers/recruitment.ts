@@ -6,7 +6,10 @@ import {
 import type { ToolBlockHandler } from "./plan-generated"
 
 export const recruitmentHandler: ToolBlockHandler = {
-  match: (vm) => vm.toolName === "recruit_employee" || vm.toolName === "hire_employee",
+  match: (vm) =>
+    vm.toolName === "recruit_employee" ||
+    vm.toolName === "hire_employee" ||
+    vm.toolName === "hire_employees",
   classify: (vm, messageId, index) => {
     const toolState = vm.state
     const toolResultText = vm.resultText

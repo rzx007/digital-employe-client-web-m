@@ -94,6 +94,7 @@ export const TOOL_ICON_MAP: Record<string, typeof IconFileDescription> = {
   list_workspace_employees: IconUsers,
   recruit_employee: IconUserPlus,
   hire_employee: IconCircleCheck,
+  hire_employees: IconCircleCheck,
   update_task: IconPencil,
   delete_task: IconTrash,
   cancel_plan: IconPlayerPlay,

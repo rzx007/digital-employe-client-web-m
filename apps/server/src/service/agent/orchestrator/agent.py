@@ -36,7 +36,13 @@ from src.service.agent.orchestrator.prompts import (
 from src.service.agent.orchestrator.runtime import set_context
 from src.service.agent.orchestrator.recruitment_tools import (
     hire_employee,
+    hire_employees,
     recruit_employee,
+)
+from src.service.agent.orchestrator.employee_tools import (
+    delete_employee,
+    get_employee,
+    update_employee,
 )
 from src.service.agent.orchestrator.tools import (
     cancel_plan,
@@ -178,8 +184,12 @@ def get_orchestrator_agent(
         tools=[
             shell_execute_tool,
             list_workspace_employees,
+            get_employee,
+            update_employee,
+            delete_employee,
             recruit_employee,
             hire_employee,
+            hire_employees,
             create_orchestration_plan,
             confirm_orchestration_plan,
             update_task,

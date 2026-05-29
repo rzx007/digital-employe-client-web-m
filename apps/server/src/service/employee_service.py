@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import shutil
+import uuid
 from datetime import date
 from pathlib import Path
 
@@ -24,6 +25,11 @@ from src.service.task_service import TaskService
 from src.service.workspace_service import WorkspaceService
 
 logger = logging.getLogger(__name__)
+
+def _new_pending_employee_code() -> str:
+    """创建员工前的唯一占位 code，避免 (workspace_id, employee_code) 唯一约束冲突。"""
+    return f"pending-{uuid.uuid4().hex}"
+
 
 # (展示名称, 技能目录名元组, 简介)
 _BUILTIN_SEED_EMPLOYEES: tuple[tuple[str, tuple[str, ...], str | None], ...] = (
@@ -739,6 +745,11 @@ class EmployeeService:
     @staticmethod
     def delete_employee(db: Session, employee_id: int) -> None:
         employee = EmployeeService.get_employee(db, employee_id)
+        if employee.is_curator:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="不能删除总管助手。",
+            )
         db.delete(employee)
         db.commit()
         TaskSchedulerService.reload_jobs()
@@ -837,7 +848,7 @@ class EmployeeService:
             meta = {"employee_name": name, "status": 1}
             employee = Employee(
                 workspace_id=workspace.id,
-                employee_code="0",
+                employee_code=_new_pending_employee_code(),
                 name=name,
                 description=description,
                 version="",
@@ -899,7 +910,7 @@ class EmployeeService:
 
         employee = Employee(
             workspace_id=workspace_id,
-            employee_code="0",
+            employee_code=_new_pending_employee_code(),
             name=obj_in.employee_name,
             description=obj_in.capability_desc,
             version="",

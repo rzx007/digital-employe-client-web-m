@@ -127,6 +127,49 @@ class EmployeeGenerationService:
         return profiles
 
     @staticmethod
+    def _resolve_profile_name(raw_name: object, fallback_index: int) -> str:
+        name = str(raw_name or "").strip()
+        if name and name not in ("暂无匹配", "无匹配", "未匹配"):
+            return name
+        return f"待命名员工 {fallback_index}"
+
+    @staticmethod
+    async def _generate_profiles_without_skills(
+        user_request: str, count: int
+    ) -> list[EmployeeProfile]:
+        """技能库为空时，仅根据用户需求生成无技能员工档案。"""
+        logger.info(
+            "无技能库兜底生成: request=%s, count=%s",
+            user_request[:80],
+            count,
+        )
+        prompt = f"""
+        根据以下用户需求，生成{count}个不同的数字员工候选人信息（当前技能库为空，不要编造 skill_ids）：
+
+        用户需求：{user_request}
+
+        规则：
+        1. 每个员工须有合理的岗位名称（2-6 字中文或「XX助手」风格），禁止「暂无匹配」等占位名。
+        2. description 须写清岗位职责与适用场景，并说明录用后可在员工设置中分配技能。
+        3. skill_ids 必须为空数组 []。
+
+        请返回 JSON 数组，每项包含：name、description、skill_ids（固定为 []）。
+        """
+        result = await ModelService.call_model(prompt, {})
+        if not result or result.get("code") != 1:
+            return EmployeeGenerationService._build_default_profiles(
+                count,
+                "候选员工",
+                "根据需求生成的数字员工，录用后可在员工设置中分配技能。",
+            )
+        result_content = result.get("data")
+        return EmployeeGenerationService._parse_skill_profiles(
+            result_content if isinstance(result_content, str) else str(result_content),
+            [],
+            count,
+        )
+
+    @staticmethod
     async def _generate_profiles_from_skills(
         user_request: str, skills_list: list[dict[str, Any]], count: int
     ) -> list[EmployeeProfile]:
@@ -154,7 +197,8 @@ class EmployeeGenerationService:
         规则：
         1. 只能从「可用技能列表」中选择 skill_ids，必须使用列表中的 id 字段。
         2. 若没有技能与用户需求明显相关，必须返回 skill_ids 为空数组 []，不要强行匹配不相关技能。
-        3. 员工的姓名需要与所选技能相关；若 skill_ids 为空，name 可为「暂无匹配」、description 说明未找到合适技能。
+        3. 若 skill_ids 非空，员工姓名应与所选技能/岗位相关；若 skill_ids 为空，仍须根据用户需求生成合理的岗位名称（如「数据分析师」「法务助手」），禁止「暂无匹配」等占位名。
+        4. skill_ids 为空时，description 须写清岗位职责，并说明当前技能库暂无匹配、录用后可手动分配技能。
 
         请返回JSON格式的员工信息数组，每个员工包含以下字段：
         - name: 员工名称
@@ -210,34 +254,31 @@ class EmployeeGenerationService:
                 profiles_data = json.loads(result_content)
 
             profiles = []
-            for profile in profiles_data:
+            for idx, profile in enumerate(profiles_data, start=1):
                 skill_ids = EmployeeGenerationService._extract_skill_ids(
                     profile, skills_list
                 )
                 matched_skills = [
                     skill for skill in skills_list if skill.get("id") in skill_ids
                 ]
+                name = EmployeeGenerationService._resolve_profile_name(
+                    profile.get("name"), idx
+                )
+                description = (
+                    str(profile.get("description") or "").strip()
+                    or "根据需求生成的数字员工，录用后可在员工设置中分配技能。"
+                )
                 logger.info(
-                    f"员工生成解析结果: name={profile.get('name', '')}, skill_ids={skill_ids}"
+                    "员工生成解析结果: name=%s, skill_ids=%s",
+                    name,
+                    skill_ids,
                 )
                 if not skill_ids:
                     logger.info("员工生成未匹配到技能: profile=%s", profile)
-                    profiles.append(
-                        EmployeeProfile(
-                            name="暂无匹配",
-                            description=(
-                                profile.get("description")
-                                or "未找到与需求明显相关的技能，请调整描述或补充技能。"
-                            ),
-                            skill_ids=[],
-                            skills_list=[],
-                        )
-                    )
-                    continue
                 profiles.append(
                     EmployeeProfile(
-                        name=profile.get("name", ""),
-                        description=profile.get("description", ""),
+                        name=name,
+                        description=description,
                         skill_ids=skill_ids,
                         skills_list=matched_skills,
                     )
@@ -328,6 +369,27 @@ class EmployeeGenerationService:
         return converted_profiles
 
     @staticmethod
+    async def generate_profiles_for_recruitment(
+        user_request: str,
+        count: int = 1,
+        token: str | None = None,
+        workspace_id: int | None = None,
+    ) -> tuple[list[EmployeeProfile], list[dict[str, Any]]]:
+        """招聘候选人生成（总管 Tool 与 /generate-employees 共用）。"""
+        skills = await EmployeeGenerationService.get_available_skills(
+            token=token, workspace_id=workspace_id
+        )
+        if skills:
+            profiles = await EmployeeGenerationService.generate_employee_profiles_async(
+                user_request, skills, count
+            )
+        else:
+            profiles = await EmployeeGenerationService._generate_profiles_without_skills(
+                user_request, count
+            )
+        return profiles, skills
+
+    @staticmethod
     async def generate_candidates_for_orchestrator(
         user_request: str,
         count: int = 1,
@@ -335,12 +397,6 @@ class EmployeeGenerationService:
         workspace_id: int | None = None,
     ) -> tuple[list[EmployeeProfile], list[dict[str, Any]]]:
         """为总管招聘 Tool 生成候选人（复用招聘页同一套技能匹配逻辑）。"""
-        skills = await EmployeeGenerationService.get_available_skills(
-            token=token, workspace_id=workspace_id
+        return await EmployeeGenerationService.generate_profiles_for_recruitment(
+            user_request, count, token=token, workspace_id=workspace_id
         )
-        if not skills:
-            return [], []
-        profiles = await EmployeeGenerationService.generate_employee_profiles_async(
-            user_request, skills, count
-        )
-        return profiles, skills

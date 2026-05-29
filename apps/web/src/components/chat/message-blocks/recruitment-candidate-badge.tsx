@@ -199,11 +199,15 @@ function CandidateDetail({
         </p>
       </MorphingDialogDescription>
 
-      {skillLabels.length > 0 && (
+      {skillLabels.length > 0 ? (
         <div>
           <p className="mb-1.5 text-xs font-medium text-foreground">技能</p>
           <SkillBadgeList labels={skillLabels} />
         </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          暂未配置技能，录用后可在员工设置中分配
+        </p>
       )}
 
       {skillIdsText && (

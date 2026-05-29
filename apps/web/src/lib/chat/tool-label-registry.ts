@@ -28,6 +28,7 @@ export const BUSINESS_TOOL_NAMES = new Set([
   "list_workspace_employees",
   "recruit_employee",
   "hire_employee",
+  "hire_employees",
   "update_task",
   "delete_task",
   "cancel_plan",
@@ -202,6 +203,16 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
       running: "正在办理入职...",
       done: "员工已入职",
       error: "入职失败",
+    },
+  },
+  hire_employees: {
+    icon: "✅",
+    label: "批量录用",
+    verb: "批量录用员工",
+    simple: {
+      running: "正在批量办理入职...",
+      done: "批量入职完成",
+      error: "批量入职失败",
     },
   },
   update_task: {

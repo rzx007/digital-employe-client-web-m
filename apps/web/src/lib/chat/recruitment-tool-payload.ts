@@ -140,10 +140,18 @@ export function splitSkillsSummary(summary: string): string[] {
 
 /** 总管对话中一键录用时发送给 orchestrator 的文案 */
 export function buildRecruitmentHireMessage(
-  candidate: Pick<RecruitmentCandidateItem, "name">
+  candidate: Pick<
+    RecruitmentCandidateItem,
+    "name" | "description" | "skill_ids"
+  >
 ): string {
   const name = candidate.name.trim()
-  return name ? `录用${name}` : "录用该候选人"
+  if (!name) return "录用该候选人"
+  const description = (candidate.description || "").trim()
+  const skillIdsJson = JSON.stringify(candidate.skill_ids ?? [])
+  const lines = [`录用「${name}」`, `description: ${description || "无"}`]
+  lines.push(`skill_ids: ${skillIdsJson}`)
+  return lines.join("\n")
 }
 
 export function isRecruitmentToolRunning(state: string): boolean {
