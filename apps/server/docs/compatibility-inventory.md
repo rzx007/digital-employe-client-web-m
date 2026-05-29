@@ -133,7 +133,7 @@ load_registry         ← 已有 registry 则跳过 _migrate_from_legacy
 
 | 文件 | 逻辑 |
 |------|------|
-| [`apps/web/src/components/chat/conversations/recent-conversations/persistence.ts`](../../web/src/components/chat/conversations/recent-conversations/persistence.ts) | `OLD_KEY` → workspace 分键迁移；过滤 `LEGACY_CURATOR_PRIMARY_ID` |
+| [`apps/web/src/components/chat/conversations/recent-conversations/persistence.ts`](../../web/src/components/chat/conversations/recent-conversations/persistence.ts) | 首次 `GET recent-contacts` 为空时从 localStorage 导入至 `recent_contacts` 表后清除；保留 `OLD_KEY` 分键迁移与 `LEGACY_CURATOR_PRIMARY_ID` 过滤 |
 
 ---
 

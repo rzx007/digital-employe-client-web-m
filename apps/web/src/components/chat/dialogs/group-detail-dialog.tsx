@@ -11,7 +11,7 @@ import {
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { Separator } from "@workspace/ui/components/separator"
 import type { Contact } from "@/types/chat"
-import { useChatStore } from "@/stores/chat-store"
+import { switchToContact } from "@/lib/chat/conversation-selection"
 
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 
@@ -35,11 +35,11 @@ export function GroupDetailDialog({
   const group = contact.group
   const participants = group?.participants ?? []
 
-  const { setSelectedContactId } = useChatStore()
-
   const handleSendMessage = () => {
     onOpenChange(false)
-    setSelectedContactId(group?.id ?? null)
+    if (group?.id) {
+      switchToContact(group.id)
+    }
   }
 
   const onlineCount = participants.filter((p) => p.status === "online").length

@@ -1,3 +1,4 @@
+import { touchRecentContactById } from "@/lib/chat/touch-recent-contact"
 import { useChatStore } from "@/stores/chat-store"
 
 /** 进入草稿（新建会话）；已在空草稿时不重复递增 draftSessionKey */
@@ -16,8 +17,21 @@ export function selectConversationById(conversationId: string | number) {
   state.setDraftConversation(false)
 }
 
-export function switchToContact(contactId: string) {
-  useChatStore.getState().switchToContact(contactId)
+export function switchToContact(
+  contactId: string,
+  options?: { touch?: boolean }
+) {
+  const state = useChatStore.getState()
+  if (state.selectedContactId === contactId) return
+  state.switchToContact(contactId)
+  if (options?.touch !== false) {
+    void touchRecentContactById(contactId)
+  }
+}
+
+/** 选中联系人并进入聊天（与 switchToContact 等价，便于替换 setSelectedContactId） */
+export function selectContactById(contactId: string) {
+  switchToContact(contactId)
 }
 
 export function clearSelectedContact() {

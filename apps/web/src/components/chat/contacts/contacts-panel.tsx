@@ -1,12 +1,12 @@
 import * as React from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { IconSearch, IconUser, IconUserPlus } from "@tabler/icons-react"
-import { useShallow } from "zustand/react/shallow"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
 import type { AIEmployee, Contact } from "@/types/chat"
+import { switchToContact } from "@/lib/chat/conversation-selection"
 import { useChatStore } from "@/stores/chat-store"
 import { ContactItem } from "./contact-item"
 import { CreateGroupDialog } from "../dialogs/create-group-dialog"
@@ -81,11 +81,6 @@ export function ContactsPanel({
   const navigate = useNavigate()
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState("")
-  const { switchToContact } = useChatStore(
-    useShallow((state) => ({
-      switchToContact: state.switchToContact,
-    }))
-  )
 
   const contacts = useChatStore((s) => s.contacts)
 

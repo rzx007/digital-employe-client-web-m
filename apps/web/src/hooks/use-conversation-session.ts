@@ -19,6 +19,7 @@ import type { UIMessage } from "ai"
 import type { Message } from "@/types/chat"
 
 import { conversationRuntimeBus } from "@/lib/chat/conversation-runtime-bus"
+import { refetchRecentContacts } from "@/lib/chat/touch-recent-contact"
 
 import {
   createApprovedAtTimestamp,
@@ -292,6 +293,8 @@ export function useConversationSession({
     if (lastAssistant?.streamState === "streaming") {
       patchLastAssistantStreamState(queryClient, convKey, "completed")
     }
+
+    void refetchRecentContacts()
   }, [convKey, queryClient])
 
   const onHitlApproved = useCallback(

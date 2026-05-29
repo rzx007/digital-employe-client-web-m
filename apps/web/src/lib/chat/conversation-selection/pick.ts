@@ -15,19 +15,9 @@ export function conversationExistsInList(
   return conversations.some((c) => String(c.id) === String(conversationId))
 }
 
-/** 与最近对话侧栏 displayItems 排序一致 */
+/** 与 GET recent-contacts 返回顺序一致（总管已在最前） */
 export function pickNextRecentContactId(
   items: RecentConversationItem[]
 ): string | undefined {
-  if (items.length === 0) return undefined
-  const sorted = [...items].sort((a, b) => {
-    if (a.isCurator && !b.isCurator) return -1
-    if (!a.isCurator && b.isCurator) return 1
-    if (a.isPinned && !b.isPinned) return -1
-    if (!a.isPinned && b.isPinned) return 1
-    const ta = a.updatedAt?.getTime() ?? 0
-    const tb = b.updatedAt?.getTime() ?? 0
-    return tb - ta
-  })
-  return sorted[0]?.contactId
+  return items[0]?.contactId
 }

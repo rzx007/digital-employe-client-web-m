@@ -27,7 +27,7 @@ import { Skeleton } from "@workspace/ui/components/skeleton"
 import type { MetadataSkill } from "@/api/types"
 import type { Contact } from "@/types/chat"
 import { createDiceBearAvatar } from "@/lib/avatar"
-import { useChatStore } from "@/stores/chat-store"
+import { switchToContact } from "@/lib/chat/conversation-selection"
 import { useEmployeeDetailQuery } from "@/hooks/use-chat-queries"
 
 import { EmployeeContactAvatar } from "../chat/contact-avatars"
@@ -103,11 +103,9 @@ export function EmployeeDetailDialog({
     open ? employeeId : null
   )
 
-  const { setSelectedContactId } = useChatStore()
-
   const handleSendMessage = () => {
     onOpenChange(false)
-    setSelectedContactId(employeeId)
+    switchToContact(employeeId)
   }
 
   const metadata = employee?.metadata

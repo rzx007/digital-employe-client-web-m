@@ -16,8 +16,15 @@ from src.schemas.conversation import (
     ConversationsBulkDeleteResult,
     StreamConversationRequest,
 )
+from src.schemas.recent_contact import (
+    RecentContactImportRequest,
+    RecentContactPinUpdate,
+    RecentContactRead,
+    RecentContactTouch,
+)
 from src.schemas.resource import ResourceContent, ResourceList, ResourceUploadResult
 from src.service.chat_service import ChatService
+from src.service.recent_contact_service import RecentContactService
 from src.service.resource_service import ResourceService
 
 router = APIRouter(tags=["对话"])
@@ -74,6 +81,99 @@ def list_conversations(
         target_id=target_id,
     )
     return ListResponse(data=conversations)
+
+
+@router.get(
+    "/workspaces/{workspace_id}/chat/recent-contacts",
+    response_model=ListResponse[RecentContactRead],
+)
+def list_recent_contacts(
+    workspace_id: int,
+    db: Session = Depends(get_db),
+) -> ListResponse[RecentContactRead]:
+    """工作空间最近联系人侧栏列表。"""
+    items = RecentContactService.list_recent_contacts(db, workspace_id)
+    return ListResponse(data=items)
+
+
+@router.put(
+    "/workspaces/{workspace_id}/chat/recent-contacts",
+    response_model=ResponseBase[RecentContactRead],
+)
+def touch_recent_contact(
+    workspace_id: int,
+    payload: RecentContactTouch,
+    db: Session = Depends(get_db),
+) -> ResponseBase[RecentContactRead]:
+    """选中联系人时 upsert 并更新最近访问时间。"""
+    item = RecentContactService.touch(
+        db=db,
+        workspace_id=workspace_id,
+        target_type=payload.target_type,
+        target_id=payload.target_id,
+    )
+    return ResponseBase(data=item)
+
+
+@router.patch(
+    "/workspaces/{workspace_id}/chat/recent-contacts/{target_type}/{target_id}",
+    response_model=ResponseBase[RecentContactRead],
+)
+def update_recent_contact_pin(
+    workspace_id: int,
+    target_type: str,
+    target_id: int,
+    payload: RecentContactPinUpdate,
+    db: Session = Depends(get_db),
+) -> ResponseBase[RecentContactRead]:
+    """更新最近联系人置顶状态。"""
+    item = RecentContactService.set_pinned(
+        db=db,
+        workspace_id=workspace_id,
+        target_type=target_type,
+        target_id=target_id,
+        is_pinned=payload.is_pinned,
+    )
+    return ResponseBase(data=item)
+
+
+@router.delete(
+    "/workspaces/{workspace_id}/chat/recent-contacts/{target_type}/{target_id}",
+    response_model=BaseResponse,
+    status_code=status.HTTP_200_OK,
+)
+def delete_recent_contact(
+    workspace_id: int,
+    target_type: str,
+    target_id: int,
+    db: Session = Depends(get_db),
+) -> BaseResponse:
+    """从侧栏移除最近联系人（不删除会话）。"""
+    RecentContactService.delete_by_target(
+        db=db,
+        workspace_id=workspace_id,
+        target_type=target_type,
+        target_id=target_id,
+    )
+    return BaseResponse(data=None)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/chat/recent-contacts/import",
+    response_model=ResponseBase[dict],
+)
+def import_recent_contacts(
+    workspace_id: int,
+    payload: RecentContactImportRequest,
+    db: Session = Depends(get_db),
+) -> ResponseBase[dict]:
+    """从客户端 localStorage 一次性导入最近联系人。"""
+    count = RecentContactService.import_items(
+        db=db,
+        workspace_id=workspace_id,
+        items=payload.items,
+    )
+    return ResponseBase(data={"imported_count": count})
 
 
 @router.delete(

@@ -1,6 +1,7 @@
 export {
   clearSelectedContact,
   enterDraftConversation,
+  selectContactById,
   selectConversationById,
   switchToContact,
 } from "./apply"

@@ -1,4 +1,4 @@
-import type { ChatTargetType, Employee, Group as ApiGroup } from "@/api/types"
+import type { Employee, Group as ApiGroup } from "@/api/types"
 import { createDiceBearAvatar, CURATOR_AVATAR_URL } from "@/lib/avatar"
 import { fetchEmployees } from "@/api/employee"
 import { createGroup as createGroupApi, fetchGroups } from "@/api/group"
@@ -20,6 +20,7 @@ import {
   fetchCuratorConversation as fetchCuratorConversationApi,
   fetchResourceContent as fetchResourceContentApi,
   resetConversationStatus as resetConversationStatusApi,
+  updateConversationTitle as updateConversationTitleApi,
   uploadConversationFile as uploadConversationFileApi,
 } from "@/api/conversation"
 import {
@@ -27,6 +28,7 @@ import {
   mapConversationListItemToConversation,
   mapCreatedConversationListItem,
 } from "@/lib/chat/chat-mappers"
+import { mapContactToTarget } from "@/lib/chat/contact-target"
 import type {
   AIEmployee,
   Contact,
@@ -51,6 +53,7 @@ export {
   fetchCuratorConversationApi as fetchCuratorConversation,
   fetchResourceContentApi as fetchResourceContent,
   resetConversationStatusApi as resetConversationStatus,
+  updateConversationTitleApi as updateConversationTitle,
   uploadConversationFileApi as uploadConversationFile,
 }
 
@@ -73,26 +76,7 @@ function mapEmployeeToAIEmployee(emp: Employee): AIEmployee {
   }
 }
 
-function mapContactToTarget(contact: Contact): {
-  target_type: ChatTargetType
-  target_id: number
-} | null {
-  if (contact.type === "curator") {
-    const curatorId = Number(contact.curator?.id)
-    return isNaN(curatorId)
-      ? null
-      : { target_type: "curator", target_id: curatorId }
-  }
-  if (contact.type === "employee") {
-    const eid = Number(contact.employee?.id)
-    return isNaN(eid) ? null : { target_type: "employee", target_id: eid }
-  }
-  if (contact.type === "group") {
-    const gid = Number(contact.group?.id)
-    return isNaN(gid) ? null : { target_type: "group", target_id: gid }
-  }
-  return null
-}
+export { mapContactToTarget }
 
 export async function fetchContacts(signal?: AbortSignal): Promise<Contact[]> {
   const [employeesRes, groupsRes] = await Promise.all([

@@ -9,6 +9,7 @@ from src.models.employee_task import EmployeeTask
 from src.models.group_member import GroupMember
 from src.models.orchestration_plan import OrchestrationPlan
 from src.models.performance_record import PerformanceRecord
+from src.models.recent_contact import RecentContact
 from src.models.skill_rating import SkillRating
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import Workspace
@@ -29,5 +30,6 @@ __all__ = [
     "PerformanceRecord",
     "TaskExecutionLog",
     "SkillRating",
+    "RecentContact",
 ]
 

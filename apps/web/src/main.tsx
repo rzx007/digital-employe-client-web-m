@@ -5,7 +5,8 @@ import {
   createHashHistory,
   createRouter,
 } from "@tanstack/react-router"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClientProvider } from "@tanstack/react-query"
+import { createAppQueryClient, setQueryClient } from "@/lib/query-client"
 
 import "@workspace/ui/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -26,7 +27,8 @@ declare module "@tanstack/react-router" {
   }
 }
 
-const queryClient = new QueryClient()
+const queryClient = createAppQueryClient()
+setQueryClient(queryClient)
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
