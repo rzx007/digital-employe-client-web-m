@@ -112,6 +112,43 @@ export async function uploadLocalSkillToRemote(params: {
   return res.data
 }
 
+export async function updateLocalSkill(
+  skillName: string,
+  payload: {
+    displayNameZh?: string
+    skillMdContent?: string
+  }
+): Promise<{
+  skillName: string
+  displayNameZh: string | null
+  skillMdContent: string | null
+  syncedEmployeeCount?: number
+}> {
+  const res = await request<
+    ApiResponse<{
+      skillName: string
+      displayNameZh: string | null
+      skillMdContent: string | null
+      syncedEmployeeCount?: number
+    }>
+  >(`/skills/local/${encodeURIComponent(skillName)}`, {
+    method: "PATCH",
+    body: payload,
+  })
+  return res.data
+}
+
+export async function updateLocalSkillDisplayName(
+  skillName: string,
+  displayNameZh: string
+): Promise<{ skillName: string; displayNameZh: string | null }> {
+  const res = await updateLocalSkill(skillName, { displayNameZh })
+  return {
+    skillName: res.skillName,
+    displayNameZh: res.displayNameZh,
+  }
+}
+
 export async function deleteWorkspaceLocalSkill(
   skillName: string
 ): Promise<void> {

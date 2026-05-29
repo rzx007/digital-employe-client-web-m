@@ -9,7 +9,7 @@ from datetime import date
 from pathlib import Path
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
@@ -807,6 +807,155 @@ class EmployeeService:
                 }
             )
         return out
+
+    @staticmethod
+    def _patch_employee_skills_json_for_local_skill(
+        employee: Employee,
+        skill_name: str,
+        *,
+        display_name_zh: str | None,
+        description: str | None,
+        skill_md_content: str | None,
+    ) -> None:
+        """兼容旧版 skills_json（技能对象列表）中的展示字段与 SKILL.md 内容。"""
+        try:
+            data = json.loads(employee.skills_json or "[]")
+        except json.JSONDecodeError:
+            return
+        if not isinstance(data, list) or not data:
+            return
+        if (
+            len(data) == 1
+            and isinstance(data[0], dict)
+            and isinstance(data[0].get("skills_dir"), str)
+        ):
+            return
+
+        changed = False
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("skillName") or "").strip() != skill_name:
+                continue
+            changed = True
+            item["displayNameZh"] = display_name_zh or skill_name
+            if description is not None:
+                item["description"] = description
+            if skill_md_content is not None:
+                item["skillContent"] = json.dumps(
+                    {LocalSkillService.SKILL_MD_NAME: skill_md_content},
+                    ensure_ascii=False,
+                )
+        if changed:
+            employee.skills_json = json.dumps(data, ensure_ascii=False)
+
+    @staticmethod
+    def _refresh_employee_meta_skills(db: Session, employee: Employee) -> None:
+        meta = EmployeeService._load_employee_meta(employee)
+        meta["skills"] = EmployeeService._employee_skills_snapshot(db, employee)
+        employee.meta_json = json.dumps(meta, ensure_ascii=False)
+
+    @staticmethod
+    def sync_local_skill_to_assignees(
+        db: Session,
+        *,
+        workspace_id: int,
+        skill_name: str,
+    ) -> int:
+        """
+        本地技能保存后，同步已分配该技能的员工：
+        employee_skills 表、员工私有 skills 目录、skills_json / meta_json 快照。
+        """
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        skill_dir = LocalSkillService._resolve_editable_skill_dir(
+            normalized, workspace_id
+        )
+        meta = LocalSkillService._read_meta(skill_dir)
+        local_id = LocalSkillService._parse_local_id(meta.get("localId"))
+
+        zh_raw = meta.get("displayNameZh")
+        display_name_zh = (
+            zh_raw.strip()
+            if isinstance(zh_raw, str) and zh_raw.strip()
+            else None
+        )
+        desc_raw = meta.get("description")
+        description = (
+            desc_raw.strip()
+            if isinstance(desc_raw, str) and desc_raw.strip()
+            else None
+        )
+
+        skill_md_path = skill_dir / LocalSkillService.SKILL_MD_NAME
+        skill_md_content = (
+            skill_md_path.read_text(encoding="utf-8")
+            if skill_md_path.is_file()
+            else None
+        )
+
+        match_conditions = [EmployeeSkill.skill_name == normalized]
+        if local_id is not None:
+            match_conditions.append(EmployeeSkill.skill_id == local_id)
+
+        rows = list(
+            db.scalars(
+                select(EmployeeSkill).where(
+                    EmployeeSkill.workspace_id == workspace_id,
+                    or_(*match_conditions),
+                )
+            ).all()
+        )
+        if not rows:
+            return 0
+
+        employee_ids = {row.employee_id for row in rows}
+        employees = {
+            emp.id: emp
+            for emp in db.scalars(
+                select(Employee).where(Employee.id.in_(employee_ids))
+            ).all()
+        }
+
+        for row in rows:
+            row.skill_name_zh = display_name_zh or ""
+            if description is not None:
+                row.skill_description = description
+            if skill_md_content is not None:
+                row.skill_content = skill_md_content
+
+        for employee_id in employee_ids:
+            employee = employees.get(employee_id)
+            if employee is None:
+                continue
+
+            target_dir = (
+                EmployeeService._resolve_skill_root()
+                / str(employee.id)
+                / "skills"
+                / normalized
+            )
+            target_dir.parent.mkdir(parents=True, exist_ok=True)
+            if target_dir.exists():
+                shutil.rmtree(target_dir, ignore_errors=True)
+            shutil.copytree(skill_dir, target_dir, dirs_exist_ok=False)
+
+            EmployeeService._patch_employee_skills_json_for_local_skill(
+                employee,
+                normalized,
+                display_name_zh=display_name_zh,
+                description=description,
+                skill_md_content=skill_md_content,
+            )
+            EmployeeService._refresh_employee_meta_skills(db, employee)
+
+        db.commit()
+        logger.info(
+            "Synced local skill %r to %s employee(s) in workspace %s",
+            normalized,
+            len(employee_ids),
+            workspace_id,
+        )
+        return len(employee_ids)
 
     @staticmethod
     def _employee_skill_name_set(db: Session, employee: Employee) -> set[str]:

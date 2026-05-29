@@ -66,3 +66,24 @@ class LocalSkillImportResult(BaseModel):
     localId: int | None = None
     path: str
     overwritten: bool = False
+
+
+class UpdateSkillDisplayNameRequest(BaseModel):
+    displayNameZh: str
+
+
+class UpdateSkillDisplayNameResult(BaseModel):
+    skillName: str
+    displayNameZh: str | None = None
+
+
+class UpdateLocalSkillRequest(BaseModel):
+    displayNameZh: str | None = None
+    skillMdContent: str | None = None
+
+
+class UpdateLocalSkillResult(BaseModel):
+    skillName: str
+    displayNameZh: str | None = None
+    skillMdContent: str | None = None
+    syncedEmployeeCount: int = 0
