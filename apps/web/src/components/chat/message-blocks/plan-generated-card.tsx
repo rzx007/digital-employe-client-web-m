@@ -1,22 +1,28 @@
 "use client"
 
 import * as React from "react"
-import { memo } from "react"
+import { memo, useState } from "react"
+import { IconX } from "@tabler/icons-react"
+import { useQueryClient } from "@tanstack/react-query"
+import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
+import { toast } from "sonner"
+import {
+  cancelOrchestrationPlan,
+  confirmOrchestrationPlan,
+} from "@/api/orchestration"
+import { useOrchestrationPlansQuery } from "@/hooks/use-chat-queries"
+import { chatKeys } from "@/lib/query-keys/chat"
 import { CronPreviewBadge } from "./cron-preview-badge"
-import { parsePlanTasksFromInput } from "@/lib/chat/plan-generated-payload"
-
-interface PlanTask {
-  employee_id?: number
-  employee_name?: string
-  task_name: string
-  cron?: string | null
-  execute_mode?: string
-}
-
-function parseTasks(input: unknown): PlanTask[] {
-  return parsePlanTasksFromInput(input)
-}
+import {
+  buildPlanManualCancelFeedback,
+  buildPlanManualConfirmFeedback,
+  parsePlanGeneratedOutput,
+  planRequiresManualConfirmation,
+  resolvePlanTasksForCard,
+  type PlanTaskPreview,
+} from "@/lib/chat/plan-generated-payload"
+import { useCuratorPlanFeedback } from "@/components/chat/curator/curator-plan-feedback-context"
 
 const STATE_CONFIG: Record<string, { title: string; titleClass: string }> = {
   call: {
@@ -33,23 +39,146 @@ const STATE_CONFIG: Record<string, { title: string; titleClass: string }> = {
   },
 }
 
+type ManualPlanStatus = "idle" | "confirming" | "cancelling" | "confirmed" | "cancelled"
+
 function PlanGeneratedCardInner({
   input,
   state,
+  resultText,
+  conversationId,
+  isTurnEnded = true,
+  onSendUserMessage,
   className,
 }: {
   input: unknown
   state?: string
+  resultText?: string | null
+  conversationId?: string | number | null
+  isTurnEnded?: boolean
+  onSendUserMessage?: (text: string) => Promise<void>
   className?: string
 }) {
+  const queryClient = useQueryClient()
+  const planFeedback = useCuratorPlanFeedback()
+  const sendPlanFeedback =
+    planFeedback?.sendPlanFeedback ?? onSendUserMessage ?? null
+  const [manualStatus, setManualStatus] = useState<ManualPlanStatus>("idle")
+
+  const planOutput = React.useMemo(
+    () => parsePlanGeneratedOutput(resultText),
+    [resultText]
+  )
+
+  const { data: orchestrationPlans } = useOrchestrationPlansQuery(conversationId)
+
+  const planRecord = React.useMemo(
+    () => orchestrationPlans?.find((plan) => plan.id === planOutput?.plan_id),
+    [orchestrationPlans, planOutput?.plan_id]
+  )
+
+  const remoteStatus = planRecord?.status
+
   const data = React.useMemo(() => {
-    if (!input || typeof input !== "object") return null
-    const obj = input as Record<string, unknown>
-    const summary = typeof obj.summary === "string" ? obj.summary : ""
-    const tasks = parseTasks(input)
+    const tasks = resolvePlanTasksForCard(input, resultText)
+    let summary = ""
+    if (input && typeof input === "object") {
+      const obj = input as Record<string, unknown>
+      summary = typeof obj.summary === "string" ? obj.summary : ""
+    }
+    if (!summary && planOutput?.summary) {
+      summary = planOutput.summary
+    }
     if (!summary && tasks.length === 0) return null
     return { summary, tasks }
-  }, [input])
+  }, [input, resultText, planOutput?.summary])
+
+  const needsManualConfirm = planRequiresManualConfirmation(planOutput)
+
+  const isPlanPending =
+    remoteStatus === "pending" ||
+    (remoteStatus == null && manualStatus === "idle")
+
+  const showActionPanel =
+    state === "output-available" &&
+    needsManualConfirm &&
+    planOutput != null &&
+    isPlanPending &&
+    isTurnEnded &&
+    (manualStatus === "idle" ||
+      manualStatus === "confirming" ||
+      manualStatus === "cancelling") &&
+    Boolean(conversationId)
+
+  const showSimpleHint =
+    state === "output-available" &&
+    !needsManualConfirm &&
+    planOutput != null &&
+    manualStatus === "idle"
+
+  const showConfirmedMessage =
+    manualStatus === "confirmed" ||
+    (remoteStatus != null &&
+      remoteStatus !== "pending" &&
+      remoteStatus !== "cancelled" &&
+      manualStatus !== "cancelled")
+
+  const showCancelledMessage =
+    manualStatus === "cancelled" || remoteStatus === "cancelled"
+
+  const notifyModelAfterPlanAction = async (
+    feedback: string,
+    actionLabel: string
+  ) => {
+    if (!sendPlanFeedback) {
+      toast.warning(`${actionLabel}成功，但无法自动通知总管`)
+      return
+    }
+    try {
+      await sendPlanFeedback(feedback)
+    } catch (err) {
+      toast.error(`${actionLabel}成功，但通知总管失败`, {
+        description: err instanceof Error ? err.message : "请手动告知总管",
+      })
+    }
+  }
+
+  const handleConfirm = async () => {
+    if (!planOutput) return
+    setManualStatus("confirming")
+    try {
+      await confirmOrchestrationPlan(planOutput.plan_id)
+      setManualStatus("confirmed")
+      void queryClient.invalidateQueries({
+        queryKey: [...chatKeys.all, "orchestration-plans"],
+      })
+      await notifyModelAfterPlanAction(
+        buildPlanManualConfirmFeedback(planOutput.plan_id, data?.summary),
+        "确认执行"
+      )
+    } catch (err) {
+      setManualStatus("idle")
+      toast.error(err instanceof Error ? err.message : "确认执行失败")
+    }
+  }
+
+  const handleCancel = async () => {
+    if (!planOutput) return
+    setManualStatus("cancelling")
+    try {
+      await cancelOrchestrationPlan(planOutput.plan_id)
+      setManualStatus("cancelled")
+      void queryClient.invalidateQueries({
+        queryKey: [...chatKeys.all, "orchestration-plans"],
+      })
+      await notifyModelAfterPlanAction(
+        buildPlanManualCancelFeedback(planOutput.plan_id, data?.summary),
+        "取消计划"
+      )
+    } catch (err) {
+      setManualStatus("idle")
+      toast.error(err instanceof Error ? err.message : "取消计划失败")
+    }
+  }
 
   if (!data) return null
 
@@ -79,9 +208,9 @@ function PlanGeneratedCardInner({
       </div>
 
       <div className="space-y-1">
-        {data.tasks.map((task, i) => (
+        {data.tasks.map((task: PlanTaskPreview, i: number) => (
           <div
-            key={i}
+            key={task.task_id ?? i}
             className="flex items-center gap-2 rounded-md bg-muted/40 px-2 py-1.5 text-xs"
           >
             <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
@@ -108,11 +237,63 @@ function PlanGeneratedCardInner({
         ))}
       </div>
 
-      {/* {state !== "call" && state !== "output-error" && (
-        <p className="mt-2.5 text-[11px] text-muted-foreground">
-          回复「确认」开始执行
+      {showSimpleHint && (
+        <p className="text-muted-foreground mt-2.5 text-[11px]">
+          简单任务将由总管自动确认执行。
         </p>
-      )} */}
+      )}
+
+      {showActionPanel && (
+        <>
+          <p className="text-muted-foreground mt-2.5 text-[11px]">
+            该计划含定时或多子任务，需确认后才会执行。
+          </p>
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            <Button
+              type="button"
+              size="sm"
+              className="h-7 text-xs"
+              disabled={manualStatus !== "idle" || !sendPlanFeedback}
+              onClick={() => void handleConfirm()}
+            >
+              {manualStatus === "confirming" ? "确认中..." : "确认执行"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              disabled={manualStatus !== "idle" || !sendPlanFeedback}
+              onClick={() => void handleCancel()}
+            >
+              <IconX className="mr-1 size-3" />
+              {manualStatus === "cancelling" ? "取消中..." : "取消计划"}
+            </Button>
+          </div>
+        </>
+      )}
+
+      {state === "output-available" &&
+        needsManualConfirm &&
+        planOutput != null &&
+        isPlanPending &&
+        !isTurnEnded &&
+        manualStatus === "idle" && (
+          <p className="text-muted-foreground mt-2.5 text-[11px]">
+            总管回复完成后可确认或取消。
+          </p>
+        )}
+
+      {showConfirmedMessage && (
+        <p className="text-muted-foreground mt-2.5 text-[11px]">
+          已确认执行，子任务将按编排开始运行。
+        </p>
+      )}
+      {showCancelledMessage && (
+        <p className="text-muted-foreground mt-2.5 text-[11px]">
+          已取消该编排计划。
+        </p>
+      )}
     </div>
   )
 }

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from src.models.employee import Employee
 from src.models.employee_task import EmployeeTask
 from src.models.orchestration_plan import OrchestrationPlan
+from src.service.agent.orchestrator.confirmation_policy import compute_requires_confirmation
 from src.service.agent.orchestrator.execution import execute_plan
 from src.service.agent.orchestrator.prompts import build_employee_capability_context
 from src.service.agent.orchestrator.runtime import (
@@ -138,6 +139,8 @@ def create_orchestration_plan(summary: str, tasks: str | list[Any]) -> str:
 
     from src.service.workspace_events import WorkspaceEventBus
 
+    requires_confirmation = compute_requires_confirmation(task_list)
+
     tasks_for_event: list[dict] = []
     for task in created_tasks:
         tasks_for_event.append({
@@ -153,6 +156,7 @@ def create_orchestration_plan(summary: str, tasks: str | list[Any]) -> str:
         "plan_id": plan.id,
         "summary": summary,
         "total_tasks": len(task_list),
+        "requires_confirmation": requires_confirmation,
         "tasks": tasks_for_event,
     })
 
@@ -161,6 +165,7 @@ def create_orchestration_plan(summary: str, tasks: str | list[Any]) -> str:
         "plan_id": plan.id,
         "summary": summary,
         "total_tasks": len(task_list),
+        "requires_confirmation": requires_confirmation,
         "tasks": tasks_for_event,
     }, ensure_ascii=False)
 
@@ -168,10 +173,11 @@ def create_orchestration_plan(summary: str, tasks: str | list[Any]) -> str:
         plan_json_output
         + "\n\n"
         + f"编排计划 #{plan.id} 已生成，包含 {len(task_list)} 个子任务。\n"
+        f"requires_confirmation={str(requires_confirmation).lower()}；"
+        f"{'须等用户确认后再' if requires_confirmation else '简单任务可立即'} "
+        f"调用 confirm_orchestration_plan({plan.id})。\n"
         f"tasks[].task_id 为 employee_tasks 主键；plan_id={plan.id} 不可用于 "
-        "delete_task/update_task。\n"
-        f"按系统 Prompt「确认策略」决定是否立即调用 confirm_orchestration_plan({plan.id})；"
-        "复杂任务须等用户确认。执行只能通过该 confirm 工具生效。"
+        "delete_task/update_task。执行只能通过 confirm_orchestration_plan 工具生效。"
     )
 
 

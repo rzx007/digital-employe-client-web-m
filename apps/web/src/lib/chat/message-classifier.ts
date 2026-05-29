@@ -66,6 +66,7 @@ export type ClassifiedBlock =
       toolCallId: string
       input: unknown
       state: string
+      resultText: string | null
     }
   | {
       kind: "recruitment-candidates"

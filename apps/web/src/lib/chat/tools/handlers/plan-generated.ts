@@ -1,6 +1,5 @@
-import type { ClassifiedBlock } from "../message-classifier"
-import type { ToolViewModel } from "./tool-view-model"
-
+import type { ClassifiedBlock } from "../../message-classifier"
+import type { ToolViewModel } from "../tool-view-model"
 export interface ToolBlockHandler {
   match: (vm: ToolViewModel) => boolean
   classify: (
@@ -19,6 +18,7 @@ export const planGeneratedHandler: ToolBlockHandler = {
       toolCallId: vm.toolCallId,
       input: vm.input,
       state: vm.state,
+      resultText: vm.resultText,
     }
   },
 }

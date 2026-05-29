@@ -45,6 +45,7 @@ def test_create_orchestration_plan_returns_numeric_task_ids(
     payload = json.loads(payload_line)
 
     assert payload["type"] == "plan_generated"
+    assert payload["requires_confirmation"] is True
     assert len(payload["tasks"]) == 1
     task_id = payload["tasks"][0]["task_id"]
     assert isinstance(task_id, int)

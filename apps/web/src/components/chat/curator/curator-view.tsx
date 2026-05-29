@@ -64,6 +64,7 @@ import { CuratorRotatingPlaceholder } from "./curator-rotating-placeholder"
 import { CuratorEmptyWelcome } from "./curator-empty-welcome"
 import { CuratorFileProvider } from "./curator-file-provider"
 import { CuratorRecruitmentProvider } from "./curator-recruitment-provider"
+import { CuratorPlanFeedbackProvider } from "./curator-plan-feedback-context"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import {
@@ -145,6 +146,7 @@ function CuratorMessageItem({
   ts,
   session,
   curatorConversationId,
+  onSendUserMessage,
 }: {
   message: UIMessage
   isLastAssistantMessage: boolean
@@ -157,6 +159,7 @@ function CuratorMessageItem({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   session: any
   curatorConversationId: string | number | null
+  onSendUserMessage?: (text: string) => Promise<void>
 }) {
   const {
     blocks: classifiedBlocks,
@@ -180,6 +183,7 @@ function CuratorMessageItem({
     isLastAssistantMessage,
     isTurnEnded: hasCurrentTurnEnded,
     onHitlApproved: session.onHitlApproved,
+    onSendUserMessage,
     commandMeta: commandMeta ?? {},
     mentionMeta,
     filesMeta,
@@ -431,6 +435,19 @@ export function CuratorView({
     displayMessages.length > 0
 
   const uploadedPathsRef = useRef<string[]>([])
+  const chatStatusRef = useRef(status)
+
+  useEffect(() => {
+    chatStatusRef.current = status
+  }, [status])
+
+  const waitForChatReady = useCallback(async () => {
+    for (let i = 0; i < 40; i++) {
+      const current = chatStatusRef.current
+      if (current === "ready" || current === "error") return
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+  }, [])
 
   const doSend = useCallback(
     async (message: PromptInputMessage | string) => {
@@ -519,6 +536,50 @@ export function CuratorView({
     moveUp: pendingMoveUp,
     moveDown: pendingMoveDown,
   } = usePendingMessages({ status, onSend: doSend, onStop: handleStop })
+
+  const sendFeedbackMessage = useCallback(
+    async (text: string) => {
+      const messageText = text.trim()
+      if (!messageText || !curatorConversationId) {
+        throw new Error("会话未就绪，无法发送反馈")
+      }
+
+      if (isBusy) {
+        await handleStop()
+        await waitForChatReady()
+      }
+
+      session.prepareOutboundMessage()
+      await sendMessage(
+        { text: messageText },
+        {
+          body: {
+            conversationId: curatorConversationId,
+            skill: "",
+            metadata: {},
+          },
+        }
+      )
+
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(String(curatorConversationId)),
+      })
+    },
+    [
+      curatorConversationId,
+      handleStop,
+      isBusy,
+      queryClient,
+      sendMessage,
+      session,
+      waitForChatReady,
+    ]
+  )
+
+  const curatorPlanFeedbackValue = useMemo(
+    () => ({ sendPlanFeedback: sendFeedbackMessage }),
+    [sendFeedbackMessage]
+  )
 
   const handleRecruitmentHire = useCallback(
     (candidate: RecruitmentCandidateItem) => {
@@ -722,6 +783,7 @@ export function CuratorView({
 
       <CuratorFileProvider value={curatorFileValue}>
         <CuratorRecruitmentProvider value={curatorRecruitmentValue}>
+          <CuratorPlanFeedbackProvider value={curatorPlanFeedbackValue}>
           <ConversationUI className="min-h-0 flex-1">
             <ConversationContent className={layout.conversationContent}>
               {showEmptyWelcome && (
@@ -793,6 +855,7 @@ export function CuratorView({
                     ts={entry.ts}
                     session={session}
                     curatorConversationId={curatorConversationId}
+                    onSendUserMessage={sendFeedbackMessage}
                   />
                 )
               })}
@@ -816,6 +879,7 @@ export function CuratorView({
             </ConversationContent>
             <ConversationScrollButton />
           </ConversationUI>
+          </CuratorPlanFeedbackProvider>
         </CuratorRecruitmentProvider>
       </CuratorFileProvider>
 

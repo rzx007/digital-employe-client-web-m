@@ -7,12 +7,99 @@ export interface PlanTaskPreview {
   execute_mode?: string
 }
 
+export interface PlanGeneratedOutput {
+  type: "plan_generated"
+  plan_id: number
+  summary?: string
+  total_tasks?: number
+  requires_confirmation?: boolean
+  tasks?: PlanTaskPreview[]
+}
+
+function parseJsonObject(text: string): Record<string, unknown> | null {
+  const trimmed = text.trim()
+  if (!trimmed.startsWith("{")) return null
+  try {
+    const parsed: unknown = JSON.parse(trimmed)
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null
+  } catch {
+    return null
+  }
+}
+
 function isPlanTaskPreview(value: unknown): value is PlanTaskPreview {
   return (
     typeof value === "object" &&
     value != null &&
     typeof (value as PlanTaskPreview).task_name === "string"
   )
+}
+
+export function parsePlanGeneratedOutput(
+  resultText: string | null | undefined
+): PlanGeneratedOutput | null {
+  if (!resultText?.trim()) return null
+  const firstLine = resultText.trim().split("\n", 1)[0] ?? ""
+  const obj = parseJsonObject(firstLine)
+  if (!obj || obj.type !== "plan_generated") return null
+  const planId = obj.plan_id
+  if (typeof planId !== "number" || !Number.isFinite(planId)) return null
+  const tasksRaw = obj.tasks
+  const tasks = Array.isArray(tasksRaw)
+    ? tasksRaw.filter(isPlanTaskPreview)
+    : undefined
+  return {
+    type: "plan_generated",
+    plan_id: planId,
+    summary: typeof obj.summary === "string" ? obj.summary : undefined,
+    total_tasks:
+      typeof obj.total_tasks === "number" ? obj.total_tasks : undefined,
+    requires_confirmation:
+      typeof obj.requires_confirmation === "boolean"
+        ? obj.requires_confirmation
+        : undefined,
+    tasks: tasks?.length ? tasks : undefined,
+  }
+}
+
+export function planRequiresManualConfirmation(
+  output: PlanGeneratedOutput | null | undefined
+): boolean {
+  return output?.requires_confirmation === true
+}
+
+export function buildPlanManualConfirmFeedback(planId: number, summary?: string) {
+  const label = summary ? `（${summary}）` : ""
+  return (
+    `【手动操作】我已在卡片上确认执行编排计划 #${planId}${label}，` +
+    "请知晓，无需再调用 confirm_orchestration_plan。"
+  )
+}
+
+export function buildPlanManualCancelFeedback(planId: number, summary?: string) {
+  const label = summary ? `（${summary}）` : ""
+  return (
+    `【手动操作】我已在卡片上取消编排计划 #${planId}${label}，` +
+    "请知晓，无需再调用 cancel_plan。"
+  )
+}
+
+export function parsePlanTasksFromOutput(
+  resultText: string | null | undefined
+): PlanTaskPreview[] {
+  const output = parsePlanGeneratedOutput(resultText)
+  return output?.tasks ?? []
+}
+
+export function resolvePlanTasksForCard(
+  input: unknown,
+  resultText: string | null | undefined
+): PlanTaskPreview[] {
+  const fromOutput = parsePlanTasksFromOutput(resultText)
+  if (fromOutput.length > 0) return fromOutput
+  return parsePlanTasksFromInput(input)
 }
 
 export function parsePlanTasksFromInput(input: unknown): PlanTaskPreview[] {

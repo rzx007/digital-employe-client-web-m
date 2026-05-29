@@ -35,6 +35,7 @@ export interface BlockRenderContext {
   isLastAssistantMessage: boolean
   isTurnEnded: boolean
   onHitlApproved?: (options?: HitlPatchOptions) => void
+  onSendUserMessage?: (text: string) => Promise<void>
   commandMeta: CommandMeta
   mentionMeta: MentionMeta
   filesMeta?: FileMeta
@@ -95,6 +96,7 @@ export function BlockRenderer({
     isLastAssistantMessage,
     isTurnEnded,
     onHitlApproved,
+    onSendUserMessage,
     commandMeta,
     mentionMeta,
     filesMeta,
@@ -126,6 +128,10 @@ export function BlockRenderer({
       <PlanGeneratedCard
         input={block.input}
         state={block.state}
+        resultText={block.resultText}
+        conversationId={conversationId}
+        isTurnEnded={isTurnEnded}
+        onSendUserMessage={onSendUserMessage}
         className="w-full"
         key={block.key}
       />

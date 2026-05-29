@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -119,6 +119,15 @@ def _build_task_items(db: Session, plan: OrchestrationPlan) -> list[Orchestratio
     return items
 
 
+def _get_plan_in_workspace(
+    db: Session, workspace_id: int, plan_id: int
+) -> OrchestrationPlan | None:
+    plan = db.get(OrchestrationPlan, plan_id)
+    if not plan or plan.workspace_id != workspace_id:
+        return None
+    return plan
+
+
 @router.get(
     "/workspaces/{workspace_id}/orchestration/plans",
     response_model=ListResponse[OrchestrationPlanRead],
@@ -165,19 +174,16 @@ def get_plan(plan_id: int, db: Session = Depends(get_db)) -> ResponseBase[Orches
     ))
 
 
-@router.put("/orchestration/plans/{plan_id}/confirm", response_model=BaseResponse)
-def confirm_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
-    plan = db.get(OrchestrationPlan, plan_id)
-    if not plan:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
+def _confirm_plan(db: Session, plan: OrchestrationPlan) -> BaseResponse:
     if plan.status != "pending":
         return BaseResponse(code=400, msg=f"计划当前状态为 {plan.status}，无法确认", data=None)
 
     from src.service.agent.orchestrator import _execute_plan
+
     result = _execute_plan(db, plan, plan.workspace_id)
 
     from src.service.workspace_events import WorkspaceEventBus
+
     WorkspaceEventBus.push(plan.workspace_id, {
         "type": "orchestration_plan_generated",
         "plan_id": plan.id,
@@ -185,22 +191,58 @@ def confirm_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
     })
 
     return BaseResponse(data={
-        "plan_id": plan_id,
+        "plan_id": plan.id,
         "status": "executing",
         "result": result,
     })
 
 
-@router.put("/orchestration/plans/{plan_id}/cancel", response_model=BaseResponse)
-def cancel_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
+def _cancel_plan(db: Session, plan: OrchestrationPlan) -> BaseResponse:
     from src.service.orchestration_lifecycle import cancel_orchestration_plan
 
-    plan = db.get(OrchestrationPlan, plan_id)
-    if not plan:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
-
-    err = cancel_orchestration_plan(db, plan_id)
+    err = cancel_orchestration_plan(db, plan.id)
     if err:
         return BaseResponse(code=400, msg=err, data=None)
-    return BaseResponse(data={"plan_id": plan_id, "status": "cancelled"})
+    return BaseResponse(data={"plan_id": plan.id, "status": "cancelled"})
+
+
+@router.put(
+    "/workspaces/{workspace_id}/orchestration/plans/{plan_id}/confirm",
+    response_model=BaseResponse,
+)
+def confirm_plan_in_workspace(
+    workspace_id: int, plan_id: int, db: Session = Depends(get_db)
+) -> BaseResponse:
+    plan = _get_plan_in_workspace(db, workspace_id, plan_id)
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
+    return _confirm_plan(db, plan)
+
+
+@router.put(
+    "/workspaces/{workspace_id}/orchestration/plans/{plan_id}/cancel",
+    response_model=BaseResponse,
+)
+def cancel_plan_in_workspace(
+    workspace_id: int, plan_id: int, db: Session = Depends(get_db)
+) -> BaseResponse:
+    plan = _get_plan_in_workspace(db, workspace_id, plan_id)
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
+    return _cancel_plan(db, plan)
+
+
+@router.put("/orchestration/plans/{plan_id}/confirm", response_model=BaseResponse)
+def confirm_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
+    plan = db.get(OrchestrationPlan, plan_id)
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
+    return _confirm_plan(db, plan)
+
+
+@router.put("/orchestration/plans/{plan_id}/cancel", response_model=BaseResponse)
+def cancel_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
+    plan = db.get(OrchestrationPlan, plan_id)
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
+    return _cancel_plan(db, plan)
