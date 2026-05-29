@@ -23,6 +23,9 @@ const COMMAND_TOOLS = new Set(["execute", "shell_execute"])
 
 export const LARGE_FILE_PREVIEW_CHARS = 500
 
+/** 大文件流式写入时是否自动打开资源管理器；暂关以避免侧栏预览卡顿 */
+export const AUTO_OPEN_ARTIFACT_PANEL_ON_LARGE_FILE_STREAM = false
+
 export function getFilePathFromToolInput(
   input: unknown,
   toolName: string
