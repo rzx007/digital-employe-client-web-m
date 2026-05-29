@@ -1,51 +1,78 @@
 ---
 name: 总管员工CRUD与招聘
-overview: 为总管助手新增员工 CRUD 工具（复用现有 EmployeeService），并改造招聘链路：优先技能库匹配，匹配不到或技能库为空时仍生成可录用的无技能员工。
+overview: 为总管助手补齐员工 CRUD、招聘兜底、批量录用/删除、技能/MCP 分配工具，并完成前端专用卡片与 Session 隔离修复。
 todos:
+  # ── 原计划 ──
   - id: recruit-generation
-    content: 改造 employee_generation_service：prompt、解析保留 name、无技能库兜底生成、generate_candidates_for_orchestrator 不再因空 skills 失败
+    content: 改造 employee_generation_service：无技能库兜底、解析保留 name
     status: completed
   - id: recruit-hire
-    content: 放宽 recruitment.py / recruitment_tools.py：允许 skill_ids=[]，更新 hint 与 skills_summary 文案
+    content: 放宽 recruitment：允许 skill_ids=[]，更新 hint 文案
     status: completed
   - id: employee-crud-tools
-    content: 新建 employee_tools.py（get/update/delete），注册到 agent.py，employee_service.delete 加 curator 保护
+    content: employee_tools.py（get/update/delete）+ agent 注册 + curator 保护
     status: completed
   - id: orchestrator-prompt
-    content: 增量更新 prompts.py（合并委派/confirm 已有改动）：员工管理 section + 招聘无技能兜底；employee_tools docstring 对齐 tools.py 风格；可选 is_curator 列
+    content: prompts.py 员工管理 + 招聘无技能兜底
     status: completed
   - id: frontend-hire-msg
-    content: 优化 buildRecruitmentHireMessage 携带 description/skill_ids；无技能候选人 UI 提示（可选）
+    content: buildRecruitmentHireMessage 携带 description/skill_ids
     status: completed
   - id: verify
-    content: 手动验证有匹配/无匹配/空技能库/CRUD/总管保护；跑 typecheck 与 pytest
+    content: pytest + vitest 验证
     status: completed
+  # ── 扩展阶段 ──
+  - id: batch-hire
+    content: hire_employees 批量录用 + fresh Session + employees-hired 卡片 + 「全部录用」
+    status: completed
+  - id: batch-delete-tasks
+    content: task_mutations.py + delete_tasks_batch + Session 隔离 + invalidate_orchestrator_db_cache
+    status: completed
+  - id: frontend-crud-cards
+    content: employeeCrudHandler + Employee*Card + block-registry/classifier/render 接线
+    status: completed
+  - id: list-workspace-skills
+    content: list_workspace_skills tool + prompts + 前端 label + 测试
+    status: completed
+  - id: list-workspace-mcps
+    content: list_workspace_mcps tool + 离线兜底 + 前端 label + 测试
+    status: completed
+  - id: session-cache-invalidate
+    content: 员工 CRUD/招聘写操作后 invalidate_orchestrator_db_cache
+    status: completed
+  - id: tasks-deleted-card
+    content: delete_tasks_batch → tasks-deleted 专用卡片
+    status: completed
+  - id: contacts-invalidate
+    content: 总管对话员工变更后自动刷新通讯录（useInvalidateContactsOnTeamChanges）
+    status: completed
+  - id: extended-verify
+    content: pytest 35 passed + vitest 18 passed
+    status: completed
+  # ── 可选（未做）──
+  - id: workspace-skills-mcps-cards
+    content: workspace_skills / workspace_mcps 专用对话卡片 UI
+    status: cancelled
+  - id: single-delete-task-card
+    content: delete_task 单删专用卡片（当前为纯文本）
+    status: cancelled
+  - id: chat-data-types-doc
+    content: CHAT_DATA_TYPES.md 同步新 block kinds
+    status: cancelled
 isProject: false
 ---
 
 # 总管员工 CRUD 与招聘兜底改造
 
-## 近期已完成（与本计划无关，无需重复做）
+## 实施状态
 
-以下改动已落地，**不改变本计划范围**，实施 CRUD/招聘时需与之兼容：
-
-| 改动 | 文件 | 与本计划关系 |
-|------|------|--------------|
-| 总管 SSE 与员工流串流隔离 | [`execution.py`](apps/server/src/service/agent/orchestrator/execution.py) `_start_employee_stream_when_orchestrator_idle` | 编排 confirm 行为不变；招聘/CRUD 不涉及 |
-| 委派后禁止轮询、禁止代员工执行 | [`prompts.py`](apps/server/src/service/agent/orchestrator/prompts.py)「委派执行后」「确认策略」等 | **prompt 增量合并**，勿覆盖已有 section |
-| 工具 docstring 收紧 | [`tools.py`](apps/server/src/service/agent/orchestrator/tools.py) `confirm_orchestration_plan` / `list_tasks` / `list_workspace_employees` | 新建 employee tools 应沿用同一 docstring 风格 |
-| 总管会话 ↔ 执行日志关联（阶段一） | [`orchestrator_conversation_links.py`](apps/server/src/service/orchestrator_conversation_links.py)、`task_execution_logs.orchestrator_conversation_id`、`useCuratorTaskExecutions` | 员工 CRUD 为 workspace 级，与多对话隔离正交 |
-| 串流问题文档 | [`orchestrator-employee-stream-isolation.md`](apps/server/docs/orchestrator-employee-stream-isolation.md) | 参考即可 |
-
-**结论：本计划 6 项 todo 仍为 pending**，招聘阻断点（`employee_generation_service` / `recruitment.py` / `recruitment_tools.py`）**尚未改动**；`employee_tools.py` 尚未创建。
+**结论：原计划 6 项 + 扩展 9 项均已 completed。** 后端 pytest **35 passed**，前端 vitest **18 passed**。可选 UI 卡片与文档同步未做，不影响功能。
 
 ---
 
-## 背景与问题
+## 背景与问题（已解决）
 
-当前总管助手（orchestrator agent）仅有 `list_workspace_employees` + `recruit_employee` + `hire_employee`，**无更新/删除/详情**工具。
-
-招聘链路存在三处阻断，导致「无匹配技能 = 招不到人」：
+原总管助手仅有 `list_workspace_employees` + `recruit_employee` + `hire_employee`，无更新/删除/详情工具；招聘链路在无匹配技能时会阻断录用。
 
 ```mermaid
 flowchart LR
@@ -57,13 +84,7 @@ flowchart LR
     F --> G[hire_employee 拒绝空 skill_ids]
 ```
 
-关键代码位置：
-
-- 技能库为空直接失败：[`employee_generation_service.py`](apps/server/src/service/employee_generation_service.py) L341-342、`recruit_candidates` L61-65
-- 无匹配时覆盖 name：[`employee_generation_service.py`](apps/server/src/service/employee_generation_service.py) L223-235
-- 录用拒绝空技能：[`recruitment.py`](apps/server/src/service/agent/orchestrator/recruitment.py) L128-129、[`recruitment_tools.py`](apps/server/src/service/agent/orchestrator/recruitment_tools.py) L57-58
-
-底层 `EmployeeService.create_employee` **已支持** `skill_ids=[]`，无需改 schema。
+改造后上述阻断点均已修复；并扩展了批量录用/删除、技能/MCP listing、前端专用卡片与 Session 隔离。
 
 ---
 
@@ -72,136 +93,78 @@ flowchart LR
 | 场景 | 改造后 |
 |------|--------|
 | 技能库有匹配 | 带 skill_ids 的候选人，流程不变 |
-| 技能库有但无匹配 | 保留 LLM 生成的岗位名 + 描述，`skill_ids=[]`，可录用 |
-| 技能库完全为空 | 跳过匹配，纯 LLM 生成无技能候选人，可录用 |
-| 用户要求改/删员工 | 总管调用新 tools，复用 EmployeeService |
+| 技能库有但无匹配 | 保留 LLM 岗位名 + 描述，`skill_ids=[]`，可录用 |
+| 技能库完全为空 | 纯 LLM 生成无技能候选人，可录用 |
+| 用户要求改/删员工 | 总管调用 get/update/delete_employee |
 | 删除总管助手 | 拒绝操作 |
+| 批量录用 2+ 人 | 一次 `hire_employees`，`employees-hired` 卡片 |
+| 批量删除 2+ 任务 | 一次 `delete_tasks_batch`，独立 Session，`tasks-deleted` 卡片 |
+| 给员工分配技能 | 先 `list_workspace_skills` → `update_employee(skill_ids=...)` |
+| 给员工分配 MCP | 先 `list_workspace_mcps` → `update_employee(mcp_ids=...)` |
+| 对话内删/录员工后看通讯录 | 总管对话自动 invalidate `chatKeys.contacts()` |
 
 ---
 
-## 改造方案
+## 已落地改动
 
-### 1. 招聘生成：优先匹配 + 无技能兜底
+### 兼容前提（编排/串流，与本计划正交）
 
-**文件：** [`apps/server/src/service/employee_generation_service.py`](apps/server/src/service/employee_generation_service.py)
+| 改动 | 文件 |
+|------|------|
+| 总管 SSE 与员工流串流隔离 | [`execution.py`](apps/server/src/service/agent/orchestrator/execution.py) |
+| 委派后禁止轮询、禁止代员工执行 | [`prompts.py`](apps/server/src/service/agent/orchestrator/prompts.py) |
+| 总管会话 ↔ 执行日志关联 | [`orchestrator_conversation_links.py`](apps/server/src/service/orchestrator_conversation_links.py) |
+| 串流问题文档 | [`orchestrator-employee-stream-isolation.md`](apps/server/docs/orchestrator-employee-stream-isolation.md) |
 
-**1.1 调整 LLM prompt（`_generate_profiles_from_skills`）**
+### 原计划（招聘 + CRUD）
 
-- 规则 2 保留：不强行匹配不相关技能
-- 规则 3 改为：若 `skill_ids` 为空，仍须根据用户需求生成**合理的岗位名称与职责描述**（2-4 字中文名或「XX助手」风格），禁止「暂无匹配」等占位名
-- 补充：description 应说明「当前技能库暂无匹配，后续可手动分配技能」
+| 项 | 关键文件 |
+|----|----------|
+| 招聘生成兜底 | [`employee_generation_service.py`](apps/server/src/service/employee_generation_service.py) |
+| 录用允许空 skill_ids | [`recruitment.py`](apps/server/src/service/agent/orchestrator/recruitment.py)、[`recruitment_tools.py`](apps/server/src/service/agent/orchestrator/recruitment_tools.py) |
+| 员工 CRUD tools | [`employee_tools.py`](apps/server/src/service/agent/orchestrator/employee_tools.py)、[`agent.py`](apps/server/src/service/agent/orchestrator/agent.py) |
+| Prompt 员工管理 | [`prompts.py`](apps/server/src/service/agent/orchestrator/prompts.py) |
+| 前端录用消息 | [`recruitment-tool-payload.ts`](apps/web/src/lib/chat/recruitment-tool-payload.ts) |
 
-**1.2 修复解析逻辑（`_parse_skill_profiles`）**
+### 扩展阶段
 
-- 当 `skill_ids` 为空时：**保留** LLM 返回的 `name` 和 `description`，删除强制 `name="暂无匹配"` 的分支
-- 若 name 为空才 fallback 到「待命名员工 N」
-
-**1.3 新增无技能库兜底生成**
-
-新增 `_generate_profiles_without_skills(user_request, count)`：
-
-- 不传入技能列表，仅根据用户需求生成 name + description + 空 skill_ids
-- 模型失败时 fallback 到 `_build_default_profiles`
-
-**1.4 改造 `generate_candidates_for_orchestrator`**
-
-```python
-skills = await get_available_skills(...)
-if skills:
-    profiles = await generate_employee_profiles_async(user_request, skills, count)
-else:
-    profiles = await _generate_profiles_without_skills(user_request, count)
-return profiles, skills  # skills 可为 []
-```
-
-**1.5 同步招聘页 API（同一套逻辑）**
-
-[`employee_api.py`](apps/server/src/api/employee_api.py) 的 `/generate-employees` 也调用 `generate_employee_profiles_async`，上述 prompt/解析改动会自动惠及招聘窗口，无需单独 fork 逻辑。
+| 项 | 关键文件 |
+|----|----------|
+| 批量删除任务（Session 隔离） | [`task_mutations.py`](apps/server/src/service/agent/orchestrator/task_mutations.py)、[`tools.py`](apps/server/src/service/agent/orchestrator/tools.py) |
+| `delete_tasks_batch` 命名遮蔽修复 | `tools.py` 导入别名 `run_delete_tasks_batch` |
+| 共享 Session 脏读修复 | [`runtime.py`](apps/server/src/service/agent/orchestrator/runtime.py) `invalidate_orchestrator_db_cache()` |
+| 批量录用 fresh Session | [`recruitment.py`](apps/server/src/service/agent/orchestrator/recruitment.py) `hire_candidates_batch` |
+| 员工写操作 fresh Session | `employee_tools.py` update/delete |
+| 技能库 listing | `employee_tools.py` `list_workspace_skills` |
+| MCP listing | `employee_tools.py` `list_workspace_mcps`（离线返回 notice） |
+| 前端专用卡片 | [`block-registry.ts`](apps/web/src/lib/chat/tools/block-registry.ts)、[`message-classifier.ts`](apps/web/src/lib/chat/message-classifier.ts)、[`block-render-map.tsx`](apps/web/src/components/chat/message-blocks/block-render-map.tsx) |
+| 通讯录自动刷新 | [`use-invalidate-contacts-on-team-changes.ts`](apps/web/src/hooks/use-invalidate-contacts-on-team-changes.ts) → [`curator-view.tsx`](apps/web/src/components/chat/curator/curator-view.tsx) |
 
 ---
 
-### 2. 录用链路：允许空 skill_ids
+## 当前总管 Tool 清单（agent.py）
 
-**文件：** [`recruitment.py`](apps/server/src/service/agent/orchestrator/recruitment.py)
-
-- `recruit_candidates`：删除 `if not skills: return 错误`；skills 为空时仍生成 profiles
-- `hire_candidate`：删除 L128-129 的空 skill_ids 校验；`EmployeeCreate(skill_ids=skill_ids or [])` 照常创建
-- `_skills_summary`：无技能时返回「暂未配置技能（录用后可手动分配）」替代「（未匹配技能）」
-- payload `hint` 补充：无技能候选人录用时传 `skill_ids="[]"`
-
-**文件：** [`recruitment_tools.py`](apps/server/src/service/agent/orchestrator/recruitment_tools.py)
-
-- `hire_employee`：`skill_ids` 默认 `"[]"`；允许空数组；仅校验 JSON 格式与整数类型
-- docstring 说明无技能员工传 `[]`
+| 类别 | Tools |
+|------|-------|
+| 团队 | `list_workspace_employees`, `get_employee`, `update_employee`, `delete_employee` |
+| 资源 | `list_workspace_skills`, `list_workspace_mcps` |
+| 招聘 | `recruit_employee`, `hire_employee`, `hire_employees` |
+| 编排 | `create_orchestration_plan`, `confirm_orchestration_plan`, `cancel_plan` |
+| 任务 | `list_tasks`, `update_task`, `delete_task`, `delete_tasks_batch` |
 
 ---
 
-### 3. 总管员工 CRUD 工具（新建）
+## 前端 Block kinds（专用卡片）
 
-**新建：** [`apps/server/src/service/agent/orchestrator/employee_tools.py`](apps/server/src/service/agent/orchestrator/employee_tools.py)
+| kind | tool |
+|------|------|
+| `recruitment-candidates` | `recruit_employee` |
+| `employee-hired` | `hire_employee` |
+| `employees-hired` | `hire_employees` |
+| `employee-detail` / `employee-updated` / `employee-deleted` | `get_employee` / `update_employee` / `delete_employee` |
+| `tasks-deleted` | `delete_tasks_batch` |
 
-复用 [`EmployeeService`](apps/server/src/service/employee_service.py) + [`EmployeeUpdate`](apps/server/src/schemas/employee.py)，通过 `runtime.get_db()` / `get_workspace_id()` / `get_auth_token()` 取上下文。
-
-| Tool | 参数 | 行为 |
-|------|------|------|
-| `get_employee` | `employee_id: int` | 返回 `employee_detail_dict` JSON（id、name、description、skills、mcp、is_curator） |
-| `update_employee` | `employee_id` + 可选 `employee_name`, `capability_desc`, `skill_ids`(JSON str), `mcp_ids`(JSON str) | 构造 `EmployeeUpdate`，仅设置传入字段；调用 `EmployeeService.update_employee` |
-| `delete_employee` | `employee_id: int` | 查员工；若 `is_curator` 则拒绝；否则 `EmployeeService.delete_employee` |
-
-**安全约束（写在 tool 实现 + prompt）：**
-
-- 禁止修改/删除 `is_curator=True` 的员工
-- 禁止将普通员工改名为「总管助手」/ `curator`
-- `delete_employee` 在 service 层加一道 curator 保护（[`employee_service.py`](apps/server/src/service/employee_service.py) L740），防止 API 与 tool 双入口一致
-
-**注册：** [`agent.py`](apps/server/src/service/agent/orchestrator/agent.py) 的 `tools=[...]` 加入上述 3 个 tool。
-
----
-
-### 4. Prompt 更新（增量合并，勿覆盖近期改动）
-
-**文件：** [`prompts.py`](apps/server/src/service/agent/orchestrator/prompts.py)
-
-`prompts.py` 已在近期大幅更新（委派后禁止轮询、confirm 策略、优先用注入员工表等）。本计划**只追加/微调**，不重写「委派执行后」「确认策略」等已有 section。
-
-**新增「员工管理」section**（建议放在「招聘流程」之后）：
-
-- 查看：`list_workspace_employees`（Prompt 已注入表时优先用表）/ `get_employee(employee_id)`
-- 修改：`update_employee`（含 skill_ids 分配/替换）
-- 删除：`delete_employee`（不可删 `is_curator` 员工）
-- 变更后若需最新团队信息，再调 `list_workspace_employees`（与现有招聘流程第 5 步一致）
-
-**微调「招聘流程」section**（L21-27 附近）：
-
-- 匹配不到技能时仍会生成无技能候选人，不是失败
-- `hire_employee` 无技能时传 `skill_ids="[]"`
-- 无技能录用成功后，提示用户可在员工设置页或通过 `update_employee` 补技能
-
-**同步 tool docstring**（与 [`tools.py`](apps/server/src/service/agent/orchestrator/tools.py) 现有风格一致）：
-
-- `get_employee` / `update_employee` / `delete_employee` 写明何时调用、禁止删总管
-
-可选：`build_employee_capability_context` 表格增加 `is_curator` 列，方便总管识别不可删员工。
-
----
-
-### 5. 前端小改（降低录用失败率）
-
-**文件：** [`apps/web/src/lib/chat/recruitment-tool-payload.ts`](apps/web/src/lib/chat/recruitment-tool-payload.ts)
-
-`buildRecruitmentHireMessage` 从仅发 `录用{name}` 改为附带结构化信息，例如：
-
-```
-录用「数据分析师」
-description: ...
-skill_ids: []
-```
-
-减少总管从对话上下文推断 `skill_ids` 的出错概率。
-
-**文件：** [`recruitment-candidate-badge.tsx`](apps/web/src/components/chat/message-blocks/recruitment-candidate-badge.tsx)
-
-无技能时在详情区显示「暂未配置技能，录用后可在员工设置中分配」——纯 UX，非必须。
+`list_workspace_skills` / `list_workspace_mcps` 仍走通用 tool 行（可选后续做卡片）。
 
 ---
 
@@ -215,42 +178,76 @@ flowchart TD
         R2 -->|否| R4[LLM 纯描述生成]
         R3 --> R5{skill_ids 非空?}
         R5 -->|是| R6[带技能候选人]
-        R5 -->|否| R7[保留 name/desc 无技能候选人]
+        R5 -->|否| R7[无技能候选人]
         R4 --> R7
         R6 --> R8[前端展示]
         R7 --> R8
-        R8 --> R9["hire_employee(skill_ids=[] 或 [...])"]
+        R8 --> R9["hire_employee / hire_employees"]
+    end
+    subgraph listing [资源发现]
+        L1[list_workspace_skills]
+        L2[list_workspace_mcps]
     end
     subgraph crud [员工管理]
         C1[get_employee]
         C2[update_employee]
         C3[delete_employee]
     end
+    subgraph tasks [任务管理]
+        T1[delete_task]
+        T2[delete_tasks_batch]
+    end
+    L1 --> C2
+    L2 --> C2
     R9 --> EmployeeService
     C1 --> EmployeeService
     C2 --> EmployeeService
     C3 --> EmployeeService
+    T2 --> task_mutations
 ```
 
 ---
 
 ## 验证清单
 
+### 自动化（已通过）
+
+- `cd apps/server && uv run pytest` → **35 passed**
+- `cd apps/web && pnpm exec vitest run src/lib/chat/*-tool-payload.test.ts` → **18 passed**
+
+### 建议手动 E2E
+
 1. **有匹配**：总管招聘「需要飞书助手」→ 候选人带 skill_ids → 录用成功
-2. **无匹配**：需求与技能库无关 → 候选人 name 合理、skill_ids=[] → 录用成功
-3. **空技能库**：新 workspace / 无本地技能 → 仍能生成并录用
-4. **CRUD**：总管「把员工 3 的描述改成…」「给员工 3 加上技能 [-101]」「删除员工 5」均生效
+2. **无匹配**：需求与技能库无关 → name 合理、skill_ids=[] → 录用成功
+3. **空技能库**：仍能生成并录用
+4. **CRUD**：总管改描述 / 分配技能 / 删除员工均生效
 5. **保护**：删除/改名总管助手被拒绝
-6. **招聘页**：`/generate-employees` 无匹配时不再返回「暂无匹配」占位名
-7. **回归**：confirm 委派后总管仍不轮询 `list_tasks`、不代员工 shell/read（与 [`orchestrator-employee-stream-isolation.md`](apps/server/docs/orchestrator-employee-stream-isolation.md) 一致）
-8. 运行 `pnpm typecheck`（前端若有改动）+ `cd apps/server && uv run pytest`（若补单测）
+6. **批量删任务**：删 3 个任务无 `database is locked`，出现 `tasks-deleted` 卡片
+7. **全部录用**：招聘卡片「全部录用」→ `hire_employees` + 批量入职卡片
+8. **技能/MCP**：`list_workspace_skills` / `list_workspace_mcps` → `update_employee`
+9. **通讯录**：录用/删除员工后左侧列表自动刷新
+10. **回归**：confirm 委派后总管仍不轮询 `list_tasks`、不代员工 shell/read
 
 ---
 
-## 建议实施顺序
+## 可选后续（未做）
 
-1. 招聘生成 + 录用（核心用户诉求，改动集中）
-2. 员工 CRUD tools + prompt + curator 删除保护
-3. 前端录用消息 + 无技能 UX 文案
+| 项 | 说明 |
+|----|------|
+| `workspace_skills` / `workspace_mcps` 专用 UI 卡片 | 目前 JSON 走通用 tool 行 |
+| `delete_task` 单删专用卡片 | 当前返回纯文本 |
+| `CHAT_DATA_TYPES.md` 同步 | 不影响运行 |
 
-预估改动：**6-8 个文件**，其中 1 个新建（`employee_tools.py`），无 DB migration。
+---
+
+## 完整性结论
+
+| 维度 | 状态 |
+|------|------|
+| 后端总管 tools | ✅ 闭环 |
+| Session 隔离 + 脏读修复 | ✅ |
+| 前端卡片接线 | ✅ |
+| 工具标签 | ✅ |
+| 测试 | ✅ 35 + 18 |
+| 文档 `CHAT_DATA_TYPES.md` | ⏭️ 可选 |
+| 技能/MCP 列表专用卡片 | ⏭️ 可选 |
