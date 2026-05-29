@@ -7,6 +7,7 @@ import { ClarifyingAnswersSummary } from "./clarifying-answers-summary"
 import { DocumentPlanApprovedSummary } from "./document-plan-approved-summary"
 import { RecruitmentCandidatesCard } from "./recruitment-candidates-card"
 import { EmployeeHiredCard } from "./employee-hired-card"
+import { EmployeesHiredBatchCard } from "./employees-hired-batch-card"
 import { FileChangeCards } from "./file-change-cards"
 import { SkillExplorationBlock } from "./skill-exploration-block"
 import { SummarizationCheckpointBlock } from "./summarization-checkpoint-block"
@@ -170,6 +171,16 @@ export function BlockRenderer({
   if (block.kind === "employee-hired") {
     return (
       <EmployeeHiredCard
+        key={block.key}
+        state={block.state}
+        resultText={block.resultText}
+        celebrateOnSuccess={isLastAssistantMessage}
+      />
+    )
+  }
+  if (block.kind === "employees-hired") {
+    return (
+      <EmployeesHiredBatchCard
         key={block.key}
         state={block.state}
         resultText={block.resultText}

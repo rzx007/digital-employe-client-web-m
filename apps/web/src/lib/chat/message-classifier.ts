@@ -81,6 +81,13 @@ export type ClassifiedBlock =
       state: string
       resultText: string | null
     }
+  | {
+      kind: "employees-hired"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+    }
   | { kind: "summarization-checkpoint"; key: string; text: string }
   | { kind: "final-response"; key: string; text: string }
   | { kind: "file-changes"; key: string; files: FileChangeItem[] }
@@ -512,6 +519,7 @@ export function classifyMessageParts(
  *   | "plan-generated"    — 编排计划卡片 (create_orchestration_plan)
  *   | "recruitment-candidates" — 招聘候选人卡片 (recruit_employee)
  *   | "employee-hired"    — 入职工牌卡片 (hire_employee)
+ *   | "employees-hired"   — 批量入职工牌卡片 (hire_employees)
  *   | "final-response"    — 所有工具调用完成后的最终回复
  *   | "file-changes"      — write_file/edit_file 产生的文件变更卡片
  */

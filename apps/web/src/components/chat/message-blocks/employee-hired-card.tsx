@@ -3,17 +3,15 @@
 import * as React from "react"
 import { memo } from "react"
 import { IconCircleCheck } from "@tabler/icons-react"
-import { Badge } from "@workspace/ui/components/badge"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
-import { EmployeeContactAvatar } from "@/components/chat/contacts/contact-avatars"
-import { createDiceBearAvatar } from "@/lib/avatar"
 import { fireRealisticConfetti } from "@/lib/celebration/realistic-confetti"
 import {
   isRecruitmentToolRunning,
   parseEmployeeHiredPayload,
   type EmployeeHiredPayload,
 } from "@/lib/chat/recruitment-tool-payload"
+import { EmployeeHiredPreview } from "./employee-hired-preview"
 
 /** 工牌宽度：对话内不占满行，窄侧栏下仍可收缩 */
 const HIRED_CARD_LAYOUT =
@@ -75,13 +73,6 @@ function EmployeeHiredCardInner({
     [resultText]
   )
 
-  const employeeId = payload?.employee_id
-  const avatarSrc = React.useMemo(
-    () =>
-      employeeId != null ? createDiceBearAvatar(String(employeeId)) : undefined,
-    [employeeId]
-  )
-
   const wasRunningRef = React.useRef(false)
 
   const isRunning = isRecruitmentToolRunning(state ?? "")
@@ -122,7 +113,6 @@ function EmployeeHiredCardInner({
   if (!payload && !isRunning) return null
 
   const cfg = STATE_CONFIG[state ?? ""] ?? STATE_CONFIG["output-available"]
-  const hiredSkills: string[] = payload?.skills ?? []
 
   return (
     <div
@@ -144,55 +134,14 @@ function EmployeeHiredCardInner({
       {isRunning ? (
         <HiredSkeleton />
       ) : payload ? (
-        <div className="flex items-start gap-3">
-          <EmployeeContactAvatar
-            name={payload.employee_name}
-            avatar={avatarSrc}
-            avatarClassName="size-11 rounded-lg"
-            fallbackClassName="rounded-lg bg-primary/10 text-sm font-medium text-primary"
-          />
-          <div className="min-w-0 flex-1 overflow-hidden">
-            <p
-              className="truncate text-sm font-medium"
-              title={payload.employee_name}
-            >
-              {payload.employee_name}
-            </p>
-            <p
-              className="mt-0.5 truncate text-[11px] text-muted-foreground"
-              title={
-                payload.employee_code
-                  ? `员工 ID ${payload.employee_id} · ${payload.employee_code}`
-                  : `员工 ID ${payload.employee_id}`
-              }
-            >
-              员工 ID {payload.employee_id}
-              {payload.employee_code ? ` · ${payload.employee_code}` : null}
-            </p>
-            {payload.message && (
-              <p
-                className="mt-1 line-clamp-3 text-xs leading-relaxed break-words text-muted-foreground"
-                title={payload.message}
-              >
-                {payload.message}
-              </p>
-            )}
-            {hiredSkills.length > 0 && (
-              <div className="mt-2 flex max-w-full flex-wrap gap-1">
-                {hiredSkills.map((skill) => (
-                  <Badge
-                    key={skill}
-                    variant="outline"
-                    className="max-w-full truncate text-[10px] font-normal"
-                    title={skill}
-                  >
-                    {skill}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <EmployeeHiredPreview
+          employeeId={payload.employee_id}
+          employeeName={payload.employee_name}
+          employeeCode={payload.employee_code}
+          skills={payload.skills}
+          message={payload.message}
+          className="border-0 bg-transparent p-0"
+        />
       ) : null}
     </div>
   )

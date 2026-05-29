@@ -319,9 +319,9 @@ class EmployeeService:
         """将员工表字段与关联数据同步到 meta_json，与 create_employee 写入结构一致。"""
         meta = EmployeeService._load_employee_meta(employee)
 
-        if payload.employee_name is not None:
+        if "employee_name" in payload.model_fields_set:
             meta["employee_name"] = payload.employee_name
-        if payload.capability_desc is not None:
+        if "capability_desc" in payload.model_fields_set:
             meta["capability_desc"] = payload.capability_desc
         if "status" in payload.model_fields_set:
             meta["status"] = payload.status
@@ -689,21 +689,29 @@ class EmployeeService:
         employee = EmployeeService.get_employee(db, employee_id)
         changed_tasks = False
 
-        if payload.employee_name is not None:
-            existing_employee = db.scalar(
-                select(Employee).where(
-                    Employee.workspace_id == employee.workspace_id,
-                    Employee.name == payload.employee_name,
-                    Employee.id != employee.id,
-                )
+        if employee.is_curator:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="不能修改总管助手。",
             )
-            if existing_employee:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="员工名称已存在",
+
+        if "employee_name" in payload.model_fields_set:
+            new_name = payload.employee_name
+            if new_name is not None:
+                existing_employee = db.scalar(
+                    select(Employee).where(
+                        Employee.workspace_id == employee.workspace_id,
+                        Employee.name == new_name,
+                        Employee.id != employee.id,
+                    )
                 )
-            employee.name = payload.employee_name
-        if payload.capability_desc is not None:
+                if existing_employee:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="员工名称已存在",
+                    )
+                employee.name = new_name
+        if "capability_desc" in payload.model_fields_set:
             employee.description = payload.capability_desc
 
         if "skill_ids" in payload.model_fields_set:

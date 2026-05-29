@@ -45,6 +45,26 @@ def _is_reserved_name(name: str) -> bool:
     )
 
 
+def build_employee_update_payload(
+    *,
+    employee_name: str | None = None,
+    capability_desc: str | None = None,
+    skill_ids: list[int] | None = None,
+    mcp_ids: list[int] | None = None,
+) -> EmployeeUpdate:
+    """仅包含显式传入字段，供 update_employee tool 与单测使用。"""
+    data: dict = {}
+    if employee_name is not None:
+        data["employee_name"] = employee_name.strip()
+    if capability_desc is not None:
+        data["capability_desc"] = capability_desc.strip() or None
+    if skill_ids is not None:
+        data["skill_ids"] = skill_ids
+    if mcp_ids is not None:
+        data["mcp_ids"] = mcp_ids
+    return EmployeeUpdate.model_validate(data)
+
+
 def _ensure_workspace_employee(db, employee_id: int, workspace_id: int) -> Employee | str:
     employee = db.get(Employee, employee_id)
     if not employee:
@@ -118,26 +138,25 @@ def update_employee(
         ):
             return "错误：未提供任何要更新的字段。"
 
-        data: dict = {
-            "employee_name": employee.name or "",
-            "status": 1,
-        }
-        if employee_name is not None:
-            data["employee_name"] = employee_name.strip()
-        if capability_desc is not None:
-            data["capability_desc"] = capability_desc.strip() or None
+        parsed_skill_ids: list[int] | None = None
+        parsed_mcp_ids: list[int] | None = None
         if skill_ids is not None:
             parsed, err = _parse_json_int_list(skill_ids, "skill_ids")
             if err:
                 return err
-            data["skill_ids"] = parsed
+            parsed_skill_ids = parsed
         if mcp_ids is not None:
             parsed, err = _parse_json_int_list(mcp_ids, "mcp_ids")
             if err:
                 return err
-            data["mcp_ids"] = parsed
+            parsed_mcp_ids = parsed
 
-        update_in = EmployeeUpdate.model_validate(data)
+        update_in = build_employee_update_payload(
+            employee_name=employee_name.strip() if employee_name is not None else None,
+            capability_desc=capability_desc,
+            skill_ids=parsed_skill_ids,
+            mcp_ids=parsed_mcp_ids,
+        )
 
         try:
             updated = EmployeeService.update_employee(

@@ -78,7 +78,14 @@ class EmployeeRead(BaseModel):
         return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
-class EmployeeUpdate(EmployeeBase):
+class EmployeeUpdate(BaseModel):
+    """员工更新信息（各字段可选，仅更新 model_fields_set 中的字段）"""
+
+    workspace_id: Optional[int] = None
+    employee_name: Optional[str] = None
+    capability_desc: Optional[str] = None
+    status: Optional[int] = None
+    detail_page_url: Optional[str] = None
     skill_ids: Optional[List[int]] = None
     mcp_ids: Optional[List[int]] = None
     shift_schedule: Optional[ShiftScheduleCreateWithoutEmployee] = None
