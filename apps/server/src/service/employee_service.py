@@ -756,8 +756,14 @@ class EmployeeService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="不能删除总管助手。",
             )
+        workspace_id = employee.workspace_id
         db.delete(employee)
         db.commit()
+        from src.service.recent_contact_service import RecentContactService
+
+        RecentContactService.delete_by_target(
+            db, workspace_id, "employee", employee_id
+        )
         TaskSchedulerService.reload_jobs()
 
     @staticmethod

@@ -26,9 +26,15 @@ import type { Contact } from "@/types/chat"
 import { useAuthStore } from "@/stores/auth-store"
 import { useChatStore } from "@/stores/chat-store"
 import { chatKeys } from "@/lib/query-keys/chat"
+import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import { deleteEmployee } from "@/api/employee"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
-import { removeRecentConversationByContactId } from "@/components/chat/conversations/recent-conversations/persistence"
+import {
+  clearSelectedContact,
+  switchToContact,
+} from "@/lib/chat/conversation-selection"
+import { deleteRecentContact } from "@/api/recent-contacts"
+import { mapContactToTarget } from "@/lib/chat/contact-target"
 
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
 import { EmployeeDetailDialog } from "@/components/employee/employee-detail-dialog"
@@ -47,16 +53,14 @@ export function ContactItem({
   className,
   ...props
 }: ContactItemProps) {
-  const workspaceId = useAuthStore((s) => s.workspaceId) ?? 1
-  const { contacts, selectedContactId, setContacts, setSelectedContactId } =
-    useChatStore(
-      useShallow((state) => ({
-        contacts: state.contacts,
-        selectedContactId: state.selectedContactId,
-        setContacts: state.setContacts,
-        setSelectedContactId: state.setSelectedContactId,
-      }))
-    )
+  const workspaceId = useAuthStore((s) => s.workspaceId) ?? getActiveWorkspaceId()
+  const { contacts, selectedContactId, setContacts } = useChatStore(
+    useShallow((state) => ({
+      contacts: state.contacts,
+      selectedContactId: state.selectedContactId,
+      setContacts: state.setContacts,
+    }))
+  )
   const contactId =
     contact.type === "curator"
       ? contact.curator?.id
@@ -77,7 +81,9 @@ export function ContactItem({
         : contact.employee?.name
 
   const handleClick = () => {
-    setSelectedContactId(contactId || null)
+    if (contactId) {
+      switchToContact(contactId)
+    }
   }
 
   const handleDetail = () => {
@@ -90,7 +96,7 @@ export function ContactItem({
 
   const focusAfterContactRemoved = (removedContactId: string) => {
     if (selectedContactId !== removedContactId) return
-    setSelectedContactId(null)
+    clearSelectedContact()
     resetChatRightPanels()
   }
 
@@ -100,7 +106,15 @@ export function ContactItem({
     if (contact.type === "employee" && contactId) {
       try {
         await deleteEmployee(contactId)
-        removeRecentConversationByContactId(workspaceId, contactId)
+        const target = mapContactToTarget(contact)
+        if (target) {
+          void deleteRecentContact(target.target_type, target.target_id, {
+            workspaceId,
+          })
+          void queryClient.invalidateQueries({
+            queryKey: chatKeys.recentContacts(workspaceId),
+          })
+        }
         setContacts(
           contacts.filter(
             (c) => !(c.type === "employee" && c.employee?.id === contactId)
@@ -124,7 +138,15 @@ export function ContactItem({
         return id !== contactId
       })
       setContacts(updated)
-      removeRecentConversationByContactId(workspaceId, contactId)
+      const target = mapContactToTarget(contact)
+      if (target) {
+        void deleteRecentContact(target.target_type, target.target_id, {
+          workspaceId,
+        })
+        void queryClient.invalidateQueries({
+          queryKey: chatKeys.recentContacts(workspaceId),
+        })
+      }
       queryClient.removeQueries({
         queryKey: chatKeys.conversations(contactId),
       })

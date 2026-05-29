@@ -9,6 +9,7 @@ import {
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
 import { cn } from "@workspace/ui/lib/utils"
+import { switchToContact } from "@/lib/chat/conversation-selection"
 import { useChatStore } from "@/stores/chat-store"
 import {
   useExecutionMetrics7d,
@@ -33,7 +34,6 @@ export function ContactDetailPanel({
   ...props
 }: React.ComponentProps<"div">) {
   const selectedContact = useChatStore((s) => s.getSelectedContact())
-  const switchToContact = useChatStore((s) => s.switchToContact)
 
   const handleSendMessage = () => {
     const contact = useChatStore.getState().getSelectedContact()

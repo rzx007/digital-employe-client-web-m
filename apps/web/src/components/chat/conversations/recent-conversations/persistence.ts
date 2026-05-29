@@ -1,7 +1,24 @@
+import type { RecentContactImportItem } from "@/api/recent-contacts"
 import { getRecentConversationsKey, type RecentConversationItem } from "./types"
 
 const LEGACY_CURATOR_PRIMARY_ID = "recent:curator-primary"
 const OLD_KEY = "app:recent-conversations"
+
+function getRecentContactsImportedKey(workspaceId: number): string {
+  return `app:recent-contacts-imported:${workspaceId}`
+}
+
+export function hasRecentContactsImported(workspaceId: number): boolean {
+  return localStorage.getItem(getRecentContactsImportedKey(workspaceId)) === "1"
+}
+
+export function markRecentContactsImported(workspaceId: number): void {
+  try {
+    localStorage.setItem(getRecentContactsImportedKey(workspaceId), "1")
+  } catch {
+    // ignore storage errors
+  }
+}
 
 function migrateOldKeyIfNeeded(workspaceId: number) {
   const oldRaw = localStorage.getItem(OLD_KEY)
@@ -67,4 +84,43 @@ export function removeRecentConversationByContactId(
   const next = loaded.filter((item) => item.contactId !== contactId)
   if (next.length === loaded.length) return
   saveRecentConversations(workspaceId, next)
+}
+
+/** 将 localStorage 条目转为服务端 import 载荷 */
+export function buildRecentContactImportPayload(
+  items: RecentConversationItem[]
+): RecentContactImportItem[] {
+  const payload: RecentContactImportItem[] = []
+  for (const item of items) {
+    const targetId = Number(item.contactId)
+    if (Number.isNaN(targetId)) continue
+    let target_type: RecentContactImportItem["target_type"]
+    if (item.isCurator) {
+      target_type = "curator"
+    } else if (item.isGroup) {
+      target_type = "group"
+    } else {
+      target_type = "employee"
+    }
+    const row: RecentContactImportItem = {
+      target_type,
+      target_id: targetId,
+      is_pinned: item.isPinned ?? false,
+    }
+    const accessed = item.updatedAt?.toISOString()
+    if (accessed) {
+      row.last_accessed_at = accessed
+    }
+    payload.push(row)
+  }
+  return payload
+}
+
+export function clearRecentConversationsStorage(workspaceId: number): void {
+  try {
+    localStorage.removeItem(getRecentConversationsKey(workspaceId))
+    localStorage.removeItem(OLD_KEY)
+  } catch {
+    // ignore
+  }
 }

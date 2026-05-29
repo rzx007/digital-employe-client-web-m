@@ -97,6 +97,10 @@ class GroupService:
     @staticmethod
     def delete_group(db: Session, group_id: int) -> None:
         group = GroupService.get_group(db, group_id)
+        workspace_id = group.workspace_id
         db.delete(group)
         db.commit()
+        from src.service.recent_contact_service import RecentContactService
+
+        RecentContactService.delete_by_target(db, workspace_id, "group", group_id)
 

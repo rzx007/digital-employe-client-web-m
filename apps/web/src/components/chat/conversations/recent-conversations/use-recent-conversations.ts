@@ -1,54 +1,41 @@
 import * as React from "react"
 import { toast } from "sonner"
 import { useShallow } from "zustand/react/shallow"
-import { useAuthStore } from "@/stores/auth-store"
 import {
-  useConversationsQuery,
   useDeleteAllConversationsForContactMutation,
+  useRecentContactsQuery,
+  useToggleRecentPinMutation,
 } from "@/hooks/use-chat-queries"
 import { findContactInList } from "@/lib/chat/contact-utils"
-import { focusAfterContactRemoved } from "@/lib/chat/conversation-selection"
+import {
+  focusAfterContactRemoved,
+  switchToContact,
+} from "@/lib/chat/conversation-selection"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import type { AIEmployee, Contact } from "@/types/chat"
 import { useChatStore } from "@/stores/chat-store"
-import { deriveRecentItems } from "./model"
-import {
-  loadAndMigrateRecentConversations,
-  saveRecentConversations,
-} from "./persistence"
+import { enrichRecentContactsList } from "./model"
 import { resolveContactForRecentItem } from "./resolve-recent-contact"
 import type { RecentConversationItem } from "./types"
 
 export function useRecentConversations() {
-  const workspaceId = useAuthStore((s) => s.workspaceId) ?? 1
-
-  const [storedItems, setStoredItems] = React.useState<
-    RecentConversationItem[]
-  >(() => loadAndMigrateRecentConversations(workspaceId))
-
-  const [loadedWorkspaceId, setLoadedWorkspaceId] =
-    React.useState(workspaceId)
-  if (workspaceId !== loadedWorkspaceId) {
-    setLoadedWorkspaceId(workspaceId)
-    setStoredItems(loadAndMigrateRecentConversations(workspaceId))
-  }
-
   const [searchQuery, setSearchQuery] = React.useState("")
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [detailContact, setDetailContact] = React.useState<Contact | null>(null)
   const [detailOpen, setDetailOpen] = React.useState(false)
 
-  const { selectedContactId, isDraftConversation, switchToContact } =
-    useChatStore(
-      useShallow((state) => ({
-        selectedContactId: state.selectedContactId,
-        isDraftConversation: state.isDraftConversation,
-        switchToContact: state.switchToContact,
-      }))
-    )
+  const { selectedContactId, isDraftConversation } = useChatStore(
+    useShallow((state) => ({
+      selectedContactId: state.selectedContactId,
+      isDraftConversation: state.isDraftConversation,
+    }))
+  )
 
-  const selectedContact = useChatStore((s) => s.getSelectedContact())
   const contacts = useChatStore((s) => s.contacts)
+
+  const { data: storedItems = [], isLoading: isRecentLoading } =
+    useRecentContactsQuery()
+  const togglePinMutation = useToggleRecentPinMutation()
 
   const employeeList = React.useMemo(
     () =>
@@ -63,11 +50,6 @@ export function useRecentConversations() {
     setIsDialogOpen(false)
   }
 
-  const { data: conversations = [] } = useConversationsQuery(
-    selectedContactId,
-    selectedContact
-  )
-
   const deleteAllConversationsMutation =
     useDeleteAllConversationsForContactMutation()
   const [removingContactId, setRemovingContactId] = React.useState<
@@ -75,34 +57,11 @@ export function useRecentConversations() {
   >(null)
 
   const recentItems = React.useMemo(
-    () =>
-      deriveRecentItems(storedItems, {
-        contacts,
-        conversations,
-        selectedContactId,
-        selectedContact,
-        isDraftConversation,
-      }),
-    [
-      storedItems,
-      contacts,
-      conversations,
-      selectedContactId,
-      selectedContact,
-      isDraftConversation,
-    ]
+    () => enrichRecentContactsList(storedItems, contacts),
+    [storedItems, contacts]
   )
 
-  const lastPersistedRef = React.useRef<string | null>(null)
-  React.useEffect(() => {
-    const snapshot = JSON.stringify(recentItems)
-    if (lastPersistedRef.current === snapshot) return
-    lastPersistedRef.current = snapshot
-    saveRecentConversations(workspaceId, recentItems)
-  }, [workspaceId, recentItems])
-
   const handleSelectItem = (contactId: string) => {
-    if (contactId === selectedContactId) return
     switchToContact(contactId)
   }
 
@@ -115,11 +74,16 @@ export function useRecentConversations() {
   }
 
   const handleTogglePin = (item: RecentConversationItem) => {
-    setStoredItems(
-      recentItems.map((i) =>
-        i.contactId === item.contactId ? { ...i, isPinned: !i.isPinned } : i
-      )
+    const contact = resolveContactForRecentItem(
+      item.contactId,
+      item,
+      contacts
     )
+    if (!contact) return
+    togglePinMutation.mutate({
+      contact,
+      isPinned: !item.isPinned,
+    })
   }
 
   const handleRemove = async (item: RecentConversationItem) => {
@@ -160,36 +124,20 @@ export function useRecentConversations() {
     const remaining = recentItems.filter((i) => i.contactId !== item.contactId)
 
     focusAfterContactRemoved(currentContactId, item.contactId, remaining)
-
-    setStoredItems((prev) => prev.filter((i) => i.contactId !== item.contactId))
   }
 
   const displayItems = React.useMemo(() => {
-    let items = recentItems
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
-      items = items.filter(
-        (item) =>
-          item.contactName.toLowerCase().includes(q) ||
-          item.title.toLowerCase().includes(q)
-      )
-    }
-    return [...items].sort((a, b) => {
-      if (a.isCurator && !b.isCurator) return -1
-      if (!a.isCurator && b.isCurator) return 1
-      if (a.isPinned && !b.isPinned) return -1
-      if (!a.isPinned && b.isPinned) return 1
-      const ta = a.updatedAt?.getTime() ?? 0
-      const tb = b.updatedAt?.getTime() ?? 0
-      return tb - ta
-    })
+    if (!searchQuery.trim()) return recentItems
+    const q = searchQuery.toLowerCase()
+    return recentItems.filter(
+      (item) =>
+        item.contactName.toLowerCase().includes(q) ||
+        item.title.toLowerCase().includes(q)
+    )
   }, [recentItems, searchQuery])
 
   const isItemSelected = (item: RecentConversationItem) =>
-    (item.isDraft &&
-      isDraftConversation &&
-      selectedContactId === item.contactId) ||
-    (!item.isDraft && selectedContactId === item.contactId)
+    selectedContactId === item.contactId
 
   return {
     displayItems,
@@ -211,5 +159,6 @@ export function useRecentConversations() {
     handleRemove,
     isItemSelected,
     removingContactId,
+    isRecentLoading,
   }
 }
