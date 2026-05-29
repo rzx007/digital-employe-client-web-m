@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend
+from src.service.agent.basic_file_backend import BasicFileFilesystemBackend
 from deepagents.middleware.permissions import FilesystemPermission
 from deepagents.middleware.summarization import SummarizationToolMiddleware
 
@@ -120,12 +121,12 @@ def get_orchestrator_agent(
         "/memories/": memories_fs,
         "/skills/": skills_fs,
         "/agent/": agent_fs,
-        "/artifacts/": FilesystemBackend(
+        "/artifacts/": BasicFileFilesystemBackend(
             root_dir=str(artifacts_dir), virtual_mode=True
         ),
     }
     if uploads_dir is not None:
-        routes["/uploads/"] = FilesystemBackend(
+        routes["/uploads/"] = BasicFileFilesystemBackend(
             root_dir=str(uploads_dir), virtual_mode=True
         )
     if use_session_history:

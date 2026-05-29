@@ -8,6 +8,7 @@ from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_community.utilities import SQLDatabase
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend
+from src.service.agent.basic_file_backend import BasicFileFilesystemBackend
 from deepagents.middleware.permissions import FilesystemPermission
 from deepagents.middleware.summarization import SummarizationToolMiddleware
 
@@ -119,7 +120,9 @@ def get_agent(
         "/memories/": memories_fs,
         "/skills/": skills_fs,
         "/agent/": agent_fs,
-        "/artifacts/": FilesystemBackend(root_dir=str(artifacts_dir), virtual_mode=True),
+        "/artifacts/": BasicFileFilesystemBackend(
+            root_dir=str(artifacts_dir), virtual_mode=True
+        ),
     }
 
     draft_dir: Path | None = None
@@ -127,7 +130,7 @@ def get_agent(
     if conversation_id and root_path:
         draft_dir = Path(root_path) / str(conversation_id) / "skills-draft"
         draft_dir.mkdir(parents=True, exist_ok=True)
-        routes["/skills-draft/"] = FilesystemBackend(
+        routes["/skills-draft/"] = BasicFileFilesystemBackend(
             root_dir=str(draft_dir), virtual_mode=True
         )
         has_draft_route = True
@@ -136,7 +139,7 @@ def get_agent(
     if conversation_id and root_path:
         uploads_dir = Path(root_path) / str(conversation_id) / "uploads"
         uploads_dir.mkdir(parents=True, exist_ok=True)
-        routes["/uploads/"] = FilesystemBackend(
+        routes["/uploads/"] = BasicFileFilesystemBackend(
             root_dir=str(uploads_dir), virtual_mode=True
         )
 
