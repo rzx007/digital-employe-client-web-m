@@ -14,6 +14,7 @@ import {
   EmployeeUpdatedCard,
 } from "./employee-crud-result-card"
 import { TasksDeletedBatchCard } from "./tasks-deleted-batch-card"
+import { DestructiveDeleteConfirmCard } from "./destructive-delete-confirm-card"
 import { FileChangeCards } from "./file-change-cards"
 import { SkillExplorationBlock } from "./skill-exploration-block"
 import { SummarizationCheckpointBlock } from "./summarization-checkpoint-block"
@@ -160,6 +161,25 @@ export function BlockRenderer({
       <DocumentPlanApprovedSummary
         key={block.key}
         resultText={block.resultText}
+        className="w-full"
+      />
+    )
+  }
+  if (block.kind === "destructive-delete") {
+    return (
+      <DestructiveDeleteConfirmCard
+        key={block.key}
+        toolName={block.toolName}
+        input={block.input}
+        state={
+          block.resultText && !isHitlAbortedOutput(block.resultText)
+            ? "output-available"
+            : block.state
+        }
+        resultText={block.resultText}
+        conversationId={conversationId}
+        messageId={messageId}
+        onHitlApproved={onHitlApproved}
         className="w-full"
       />
     )

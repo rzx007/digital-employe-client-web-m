@@ -193,13 +193,14 @@ def confirm_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
 
 @router.put("/orchestration/plans/{plan_id}/cancel", response_model=BaseResponse)
 def cancel_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
+    from src.service.orchestration_lifecycle import cancel_orchestration_plan
+
     plan = db.get(OrchestrationPlan, plan_id)
     if not plan:
         from fastapi import HTTPException
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
-    if plan.status not in ("pending", "confirmed"):
-        return BaseResponse(code=400, msg=f"计划当前状态为 {plan.status}，无法取消", data=None)
 
-    plan.status = "cancelled"
-    db.commit()
+    err = cancel_orchestration_plan(db, plan_id)
+    if err:
+        return BaseResponse(code=400, msg=err, data=None)
     return BaseResponse(data={"plan_id": plan_id, "status": "cancelled"})

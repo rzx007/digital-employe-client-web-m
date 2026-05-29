@@ -3,11 +3,12 @@ import type { UIMessage } from "ai"
 import {
   CLARIFY_TOOL_NAME,
   DOCUMENT_PLAN_TOOL_NAME,
+  isDestructiveHitlToolName,
   HITL_TOOL_TYPES,
 } from "./constants"
 import { toolPartHasFinalOutput } from "./part-utils"
 
-export type PendingHitlKind = "clarify" | "document-plan"
+export type PendingHitlKind = "clarify" | "document-plan" | "destructive-delete"
 
 /** composer 上扫描到的 pending tool（题目 input 等）；审批 id 见 ActiveHitl */
 export type PendingHitl = {
@@ -29,6 +30,8 @@ export type HitlPatchOptions = {
 function kindFromToolType(type: string): PendingHitlKind | null {
   if (type === `tool-${CLARIFY_TOOL_NAME}`) return "clarify"
   if (type === `tool-${DOCUMENT_PLAN_TOOL_NAME}`) return "document-plan"
+  const toolName = type.startsWith("tool-") ? type.slice("tool-".length) : ""
+  if (isDestructiveHitlToolName(toolName)) return "destructive-delete"
   return null
 }
 

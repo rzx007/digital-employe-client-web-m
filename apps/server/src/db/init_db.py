@@ -177,6 +177,7 @@ def init_db() -> None:
         _migrate_conversation_title_to_text(engine, inspector)
 
     ensure_column("conversations", "status", "status VARCHAR(32) NOT NULL DEFAULT 'idle'")
+    ensure_column("conversations", "session_flags", "session_flags TEXT")
 
     ensure_column("orchestration_plans", "started_at", "started_at DATETIME")
 

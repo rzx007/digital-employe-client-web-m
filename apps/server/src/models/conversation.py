@@ -20,6 +20,7 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now, onupdate=cst_now)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="idle")
+    session_flags: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
 
     workspace = relationship("Workspace", back_populates="conversations")
     messages = relationship("ConversationMessage", back_populates="conversation", cascade="all, delete-orphan")

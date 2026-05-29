@@ -94,14 +94,18 @@ export function ChatPanelHeader({
         contactId: selectedContactId,
       },
       {
-        onSuccess: () => {
+        onSuccess: async () => {
           toast.success(`已删除「${title}」`)
-          focusAfterDeletedConversation(
-            queryClient,
-            selectedContactId,
-            selectedConversationId,
-            contact
-          )
+          try {
+            await focusAfterDeletedConversation(
+              queryClient,
+              selectedContactId,
+              selectedConversationId,
+              contact
+            )
+          } catch {
+            // 总管删光后 create 失败时 toast 已在 focus 内处理
+          }
         },
         onError: () => {
           toast.error("删除失败，请稍后重试")

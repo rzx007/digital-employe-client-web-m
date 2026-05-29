@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from langchain_core.tools import tool
 from sqlalchemy import select
@@ -24,6 +25,32 @@ from src.service.agent.orchestrator.task_mutations import (
 )
 
 
+def parse_orchestration_task_list(tasks: Any) -> tuple[list[dict] | None, str | None]:
+    """将 tasks 参数规范为子任务 dict 列表。支持 JSON 字符串或数组（模型常传 object）。"""
+    if isinstance(tasks, list):
+        task_list = tasks
+    elif isinstance(tasks, str):
+        try:
+            parsed = json.loads(tasks)
+        except json.JSONDecodeError as exc:
+            return None, f"错误：tasks 参数格式不是合法的 JSON 数组: {exc}"
+        if not isinstance(parsed, list):
+            return None, "错误：tasks JSON 必须是数组。"
+        task_list = parsed
+    else:
+        return None, "错误：tasks 必须是 JSON 数组字符串或数组。"
+
+    if len(task_list) == 0:
+        return None, "错误：tasks 不能为空，至少需要一个子任务。"
+
+    normalized: list[dict] = []
+    for i, item in enumerate(task_list):
+        if not isinstance(item, dict):
+            return None, f"错误：子任务 #{i} 必须是对象。"
+        normalized.append(item)
+    return normalized, None
+
+
 @tool
 def list_workspace_employees() -> str:
     """列出当前工作空间所有数字员工及其角色、技能、MCP 外接能力。
@@ -36,12 +63,12 @@ def list_workspace_employees() -> str:
 
 
 @tool
-def create_orchestration_plan(summary: str, tasks: str) -> str:
+def create_orchestration_plan(summary: str, tasks: str | list[Any]) -> str:
     """创建任务编排计划。调用时机：确认任务拆解和员工分配无误后调用。
 
     参数:
       summary: 编排计划的中文描述
-      tasks: JSON 数组字符串，每个元素格式:
+      tasks: JSON 数组字符串，或直接传数组；每个元素格式:
         {{
           "employee_id": <int>,
           "task_name": "<任务名称>",
@@ -60,13 +87,10 @@ def create_orchestration_plan(summary: str, tasks: str) -> str:
     if not conversation_id:
         return "错误：当前没有活跃的对话，无法创建编排计划。"
 
-    try:
-        task_list: list[dict] = json.loads(tasks)
-    except json.JSONDecodeError as exc:
-        return f"错误：tasks 参数格式不是合法的 JSON 数组: {exc}"
-
-    if not isinstance(task_list, list) or len(task_list) == 0:
-        return "错误：tasks 不能为空，至少需要一个子任务。"
+    task_list, parse_error = parse_orchestration_task_list(tasks)
+    if parse_error:
+        return parse_error
+    assert task_list is not None
 
     for i, t in enumerate(task_list):
         emp = db.get(Employee, t.get("employee_id"))
@@ -84,12 +108,14 @@ def create_orchestration_plan(summary: str, tasks: str) -> str:
     db.add(plan)
     db.flush()
 
+    created_tasks: list[EmployeeTask] = []
     for t in task_list:
         cron_expr = t.get("cron")
+        emp = db.get(Employee, t["employee_id"])
         task = EmployeeTask(
             workspace_id=workspace_id,
             employee_id=t["employee_id"],
-            employee_name_snapshot=t.get("employee_name") or "",
+            employee_name_snapshot=emp.name if emp else "",
             task_name=t["task_name"],
             dispatch_type=t.get("dispatch_type", "skill"),
             skill_id=t.get("skill_id"),
@@ -104,20 +130,23 @@ def create_orchestration_plan(summary: str, tasks: str) -> str:
             is_active=True,
         )
         db.add(task)
+        created_tasks.append(task)
 
     db.commit()
+    for task in created_tasks:
+        db.refresh(task)
 
     from src.service.workspace_events import WorkspaceEventBus
 
     tasks_for_event: list[dict] = []
-    for t in task_list:
-        emp = db.get(Employee, t["employee_id"])
+    for task in created_tasks:
         tasks_for_event.append({
-            "task_id": t.get("task_name", ""),
-            "task_name": t.get("task_name", ""),
-            "employee_name": emp.name if emp else "",
-            "cron": t.get("cron"),
-            "execute_mode": "scheduled" if t.get("cron") else "immediate",
+            "task_id": task.id,
+            "task_name": task.task_name,
+            "employee_id": task.employee_id,
+            "employee_name": task.employee_name_snapshot or "",
+            "cron": task.cron_expression or None,
+            "execute_mode": task.execute_mode,
         })
     WorkspaceEventBus.push(workspace_id, {
         "type": "orchestration_plan_generated",
@@ -139,6 +168,8 @@ def create_orchestration_plan(summary: str, tasks: str) -> str:
         plan_json_output
         + "\n\n"
         + f"编排计划 #{plan.id} 已生成，包含 {len(task_list)} 个子任务。\n"
+        f"tasks[].task_id 为 employee_tasks 主键；plan_id={plan.id} 不可用于 "
+        "delete_task/update_task。\n"
         f"按系统 Prompt「确认策略」决定是否立即调用 confirm_orchestration_plan({plan.id})；"
         "复杂任务须等用户确认。执行只能通过该 confirm 工具生效。"
     )
@@ -250,17 +281,14 @@ def delete_tasks_batch(task_ids: str) -> str:
 
 @tool
 def cancel_plan(plan_id: int) -> str:
-    """取消整个编排计划（设置 status=cancelled）。"""
+    """取消整个编排计划（停用子任务、终止进行中执行、刷新调度）。"""
     db = get_db()
-    plan = db.get(OrchestrationPlan, plan_id)
-    if not plan:
-        return f"错误：编排计划 #{plan_id} 不存在。"
+    from src.service.orchestration_lifecycle import cancel_orchestration_plan
 
-    if plan.status not in ("pending", "confirmed"):
-        return f"编排计划 #{plan_id} 当前状态为 {plan.status}，无法取消。"
-
-    plan.status = "cancelled"
-    db.commit()
+    err = cancel_orchestration_plan(db, plan_id)
+    if err:
+        return f"错误：{err}"
+    invalidate_orchestrator_db_cache()
     return f"编排计划 #{plan_id} 已取消。"
 
 

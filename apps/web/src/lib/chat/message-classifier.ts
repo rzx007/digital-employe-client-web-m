@@ -116,6 +116,15 @@ export type ClassifiedBlock =
       state: string
       resultText: string | null
     }
+  | {
+      kind: "destructive-delete"
+      key: string
+      toolCallId: string
+      toolName: string
+      state: string
+      input: unknown
+      resultText: string | null
+    }
   | { kind: "summarization-checkpoint"; key: string; text: string }
   | { kind: "final-response"; key: string; text: string }
   | { kind: "file-changes"; key: string; files: FileChangeItem[] }
@@ -552,6 +561,7 @@ export function classifyMessageParts(
  *   | "employee-updated"  — 员工更新卡片 (update_employee)
  *   | "employee-deleted"  — 员工删除卡片 (delete_employee)
  *   | "tasks-deleted"     — 批量删除任务卡片 (delete_tasks_batch)
+ *   | "destructive-delete" — 危险删除确认卡 (delete_employee/delete_task/delete_tasks_batch pending)
  *   | "final-response"    — 所有工具调用完成后的最终回复
  *   | "file-changes"      — write_file/edit_file 产生的文件变更卡片
  */

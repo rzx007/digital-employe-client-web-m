@@ -5,10 +5,11 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+from src.service.agent.destructive_hitl import DESTRUCTIVE_HITL_TOOLS
 from src.service.message_parts_extractor import extract_message_parts_from_buffer
 
 HITL_TOOL_NAMES = frozenset(
-    {"submit_clarifying_questions", "submit_document_plan"}
+    {"submit_clarifying_questions", "submit_document_plan", *DESTRUCTIVE_HITL_TOOLS}
 )
 
 

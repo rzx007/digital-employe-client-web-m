@@ -7,11 +7,13 @@ import { clarifyAnswersHandler } from "./handlers/clarify-answers"
 import { recruitmentHandler } from "./handlers/recruitment"
 import { employeeCrudHandler } from "./handlers/employee-crud"
 import { taskMutationsHandler } from "./handlers/task-mutations"
+import { destructiveDeleteHandler } from "./handlers/destructive-delete"
 
 export const TOOL_BLOCK_HANDLERS: ToolBlockHandler[] = [
   planGeneratedHandler,
   documentPlanHandler,
   clarifyAnswersHandler,
+  destructiveDeleteHandler,
   recruitmentHandler,
   employeeCrudHandler,
   taskMutationsHandler,

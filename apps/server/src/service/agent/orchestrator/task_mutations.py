@@ -31,9 +31,19 @@ def _delete_task_in_session(
         }
 
     task_name = task.task_name
+    orchestration_plan_id = task.orchestration_plan_id
+
+    from src.service.orchestration_lifecycle import (
+        cancel_running_executions_for_task,
+        finalize_orchestration_plan_if_empty,
+    )
+
     try:
+        cancel_running_executions_for_task(db, task_id)
         db.delete(task)
         db.commit()
+        if orchestration_plan_id is not None:
+            finalize_orchestration_plan_if_empty(db, orchestration_plan_id)
     except Exception as exc:
         db.rollback()
         logger.error("delete task failed task_id=%s: %s", task_id, exc, exc_info=True)

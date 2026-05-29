@@ -4,6 +4,7 @@ import {
   CLARIFY_TOOL_NAME,
   DOCUMENT_PLAN_TOOL_NAME,
   HITL_TOOL_NAMES,
+  isDestructiveHitlToolName,
 } from "./constants"
 import {
   findHitlToolCallIdInParts,
@@ -30,6 +31,8 @@ type StoredHitlPart = {
 function kindFromPartType(type: string): PendingHitlKind | null {
   if (type === `tool-${CLARIFY_TOOL_NAME}`) return "clarify"
   if (type === `tool-${DOCUMENT_PLAN_TOOL_NAME}`) return "document-plan"
+  const toolName = type.startsWith("tool-") ? type.slice("tool-".length) : ""
+  if (isDestructiveHitlToolName(toolName)) return "destructive-delete"
   return null
 }
 

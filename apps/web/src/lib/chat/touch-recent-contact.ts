@@ -14,8 +14,7 @@ export async function refetchRecentContacts(): Promise<void> {
 }
 
 export async function touchRecentContactById(
-  contactId: string,
-  options?: { refetch?: boolean }
+  contactId: string
 ): Promise<void> {
   const contact = findContactInList(
     useChatStore.getState().contacts,
@@ -28,8 +27,4 @@ export async function touchRecentContactById(
 
   const workspaceId = getActiveWorkspaceId()
   await touchRecentContact(target, { workspaceId })
-
-  if (options?.refetch !== false) {
-    await refetchRecentContacts()
-  }
 }

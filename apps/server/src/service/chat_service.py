@@ -803,10 +803,12 @@ class ChatService:
         message_id: int,
         decisions: list[dict],
         auth_token: str | None = None,
+        destructive_hitl: dict | None = None,
     ) -> dict:
         """HITL approve：封存 interrupted 段 + 新建 assistant 行 + resume。"""
         from datetime import datetime, timezone
 
+        from src.service.agent.destructive_hitl import set_skip_destructive_hitl
         from src.service.stream_registry import registry
 
         conversation = ChatService.get_conversation(db, conversation_id)
@@ -825,6 +827,9 @@ class ChatService:
 
         meta["approved_at"] = datetime.now(timezone.utc).isoformat()
         msg.extra_meta = json.dumps(meta, ensure_ascii=False)
+
+        if destructive_hitl and destructive_hitl.get("skip_for_conversation"):
+            set_skip_destructive_hitl(db, conversation_id, True)
 
         new_msg = ChatService._append_message(
             db,

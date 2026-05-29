@@ -4,6 +4,7 @@ import * as React from "react"
 import { memo } from "react"
 import { cn } from "@workspace/ui/lib/utils"
 import { CronPreviewBadge } from "./cron-preview-badge"
+import { parsePlanTasksFromInput } from "@/lib/chat/plan-generated-payload"
 
 interface PlanTask {
   employee_id?: number
@@ -14,15 +15,7 @@ interface PlanTask {
 }
 
 function parseTasks(input: unknown): PlanTask[] {
-  if (!input || typeof input !== "object") return []
-  const obj = input as Record<string, unknown>
-  const tasksRaw = obj.tasks
-  if (typeof tasksRaw !== "string") return []
-  try {
-    return JSON.parse(tasksRaw)
-  } catch {
-    return []
-  }
+  return parsePlanTasksFromInput(input)
 }
 
 const STATE_CONFIG: Record<string, { title: string; titleClass: string }> = {

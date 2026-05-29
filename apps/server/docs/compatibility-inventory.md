@@ -3,7 +3,7 @@
 本文档汇总当前代码库中的**迁移 / 兼容 / 遗留路径**，便于在合适时机统一移除。  
 维护约定：新增临时兼容逻辑时，请在本文件登记；移除时在对应条目打 `[x]` 并注明版本。
 
-**最后更新**：2026-05-28（总管任务 ↔ 总管会话关联，阶段二）
+**最后更新**：2026-05-28（危险操作 HITL 确认门 + 总管任务 ↔ 总管会话关联）
 
 ---
 
@@ -110,6 +110,7 @@ load_registry         ← 已有 registry 则跳过 _migrate_from_legacy
 | 类型 | 说明 |
 |------|------|
 | `ensure_column(...)` | 大量 `ALTER TABLE ADD COLUMN`，无 Alembic |
+| 同上 | `conversations.session_flags`（2026-05-28，危险删除 HITL 会话偏好，见 §12） |
 | `_migrate_conversation_title_to_text()` | 会话标题列类型迁移 |
 | `_migrate_task_id_nullable()` | task_id 可空重建表 |
 
@@ -142,7 +143,8 @@ load_registry         ← 已有 registry 则跳过 _migrate_from_legacy
 | 区域 | 文件 | 说明 |
 |------|------|------|
 | HITL | [`docs/hitl-architecture.md`](hitl-architecture.md) | 不再使用 `extra_meta.interrupt_payload` |
-| 消息模型 | [`src/models/conversation.py`](../src/models/conversation.py) | `chunk_json` 标记 Deprecated |
+| HITL 危险删除 | §12、`destructive_hitl.py` | 总管 `delete_*` tool interrupt；`session_flags.skip_destructive_hitl` |
+| 消息模型 | [`src/models/conversation.py`](../src/models/conversation.py) | `chunk_json` 标记 Deprecated；`session_flags` JSON 文本（可空） |
 | 解析 | [`src/service/message_parts_extractor.py`](../src/service/message_parts_extractor.py) | 兼容 `__type__` 工具格式 |
 | 解析 | [`src/service/chat_service.py`](../src/service/chat_service.py) | skills 路径多候选 fallback |
 | 员工生成 | [`src/service/employee_generation_service.py`](../src/service/employee_generation_service.py) | `skills/skill_ids/capabilities` 历史字段 |
@@ -268,6 +270,92 @@ GET /tasks/executions?orchestrator_conversation_id=
 
 ---
 
+## §12 危险操作 HITL 确认门（2026-05-28）
+
+总管 orchestrator 对 `delete_employee`、`delete_task`、`delete_tasks_batch` 在 tool 执行前经 deepagents HITL middleware interrupt；用户通过 `DestructiveDeleteConfirmCard` 确认 / 取消 / 「本会话不再询问」。详见 [`hitl-architecture.md`](hitl-architecture.md)。
+
+### 12.1 真相源 vs 遗留
+
+| 状态 | 说明 |
+|------|------|
+| **真相源（interrupt 配置）** | `build_orchestrator_interrupt_on(session_flags)` — 澄清 + 方案 + 删除类；按会话动态裁剪 |
+| **真相源（会话偏好）** | `conversations.session_flags` JSON 文本，v1 键 `skip_destructive_hitl: true` |
+| **Approve 扩展** | `POST /chat/conversations/{id}/approve` body 可选 `destructive_hitl: { skip_for_conversation: true }` |
+| **员工单聊** | **无**删除 tool，**无**本 HITL；仍仅用 `HITL_INTERRUPT_ON`（澄清 + 方案） |
+| **遗留（无列老库）** | `init_db` `ensure_column` 补 `session_flags`；读侧 `parse_session_flags(None/非法 JSON)` → `{}`，行为等同「须确认」 |
+
+### 12.2 代码位置
+
+| 文件 | 符号 / 逻辑 | 作用 | 移除 / 变更条件 |
+|------|-------------|------|-----------------|
+| [`src/service/agent/destructive_hitl.py`](../src/service/agent/destructive_hitl.py) | `DESTRUCTIVE_HITL_TOOLS`、`build_orchestrator_interrupt_on` | 合并 interrupt_on；skip 时移除三删除 tool | 产品取消危险门或改全局策略 |
+| 同上 | `get_session_flags` / `set_skip_destructive_hitl` / `parse_session_flags` | 读写会话偏好 | 同上 |
+| [`src/db/init_db.py`](../src/db/init_db.py) | `ensure_column("conversations", "session_flags", ...)` | SQLite 增量加列 | 正式 migration 后 |
+| [`src/models/conversation.py`](../src/models/conversation.py) | `session_flags: Text \| None` | ORM 字段 | 保留 |
+| [`src/service/agent/orchestrator/agent.py`](../src/service/agent/orchestrator/agent.py) | `get_orchestrator_agent` | `conversation_id` 存在时读 flags → `interrupt_on` | 保留 |
+| [`src/service/hitl_pending_parts.py`](../src/service/hitl_pending_parts.py) | `HITL_TOOL_NAMES` 含三删除 tool | interrupt flush 写 pending `message_parts` | 保留 |
+| [`src/schemas/conversation.py`](../src/schemas/conversation.py) | `ApproveRequest.destructive_hitl` | 可选 dict | 保留；旧客户端不传即可 |
+| [`src/service/chat_service.py`](../src/service/chat_service.py) | `approve_trigger(..., destructive_hitl=)` | skip 时 **commit 前**写 flags，再重建 agent | 保留 |
+| [`src/api/chat_api.py`](../src/api/chat_api.py) | approve 路由透传 `payload.destructive_hitl` | HTTP 入口 | 保留 |
+| [`src/service/agent/orchestrator/prompts.py`](../src/service/agent/orchestrator/prompts.py) | 员工/任务管理说明 | 禁止口头「已删」、须等确认门 | 保留 |
+| [`apps/web/.../hitl/constants.ts`](../../web/src/lib/chat/hitl/constants.ts) | `DESTRUCTIVE_HITL_TOOL_NAMES`、扩展 `HITL_TOOL_*` | 前端 pending 识别 | 与后端 tool 名同步 |
+| [`apps/web/.../handlers/destructive-delete.ts`](../../web/src/lib/chat/tools/handlers/destructive-delete.ts) | pending → `destructive-delete` block；completed → 交 CRUD/任务结果卡 | 展示分流 | 保留 |
+| [`apps/web/.../destructive-delete-confirm-card.tsx`](../../web/src/components/chat/message-blocks/destructive-delete-confirm-card.tsx) | 三按钮 + `approveHitl` | UI 审批 | 保留 |
+| [`apps/web/src/api/conversation.ts`](../../web/src/api/conversation.ts) | `approveHitl(..., options?.destructive_hitl)` | 可选 body 字段 | 旧调用方不传第四参兼容 |
+
+### 12.3 版本 / 客户端兼容
+
+| 场景 | 行为 |
+|------|------|
+| **老后端 + 新前端** | 无 `session_flags` 列时启动 `init_db` 补齐；无 `destructive_hitl` 字段时 approve 仍可用，仅无法「本会话不再询问」 |
+| **新后端 + 老前端** | 删除 tool 会 interrupt 落库 pending part，但**无确认卡**则用户无法 approve → **须升级前端**（与方案卡同理） |
+| **Approve body 仅 `message_id` + `decisions`** | 完全兼容；`destructive_hitl` 省略时不写 flags |
+| **非法 / 空 `session_flags`** | 视为 `{}`，删除类仍 interrupt |
+| **同流连续删除（skip 后）** | `approve_trigger` 写 flags 并 `get_orchestrator_agent()` 重建，`interrupt_on` 已去掉删除 tool；若 deepagents 仍 interrupt 需 ContextVar 兜底（未实现，见计划风险项） |
+
+### 12.4 v1 产品约束（非临时兼容，记录在案）
+
+| 项 | 说明 |
+|----|------|
+| 作用域 | **仅当前总管会话**；无工作空间 / 全局免确认 |
+| skip 粒度 | 一个布尔 `skip_destructive_hitl` 覆盖三种删除 tool（含删员工） |
+| 恢复确认 | **新建总管会话**或 **清空会话**（`DELETE /chat/conversations/{id}` 删行后重建）→ 新行 `session_flags` 为空；**未**在「仅清消息」路径单独清 flags（当前清空即删 conversation） |
+| 员工 agent | [`employee.py`](../src/service/agent/employee.py) 不注册删除 tool，不受影响 |
+
+### 12.5 数据流
+
+```
+delete_task(...) 调用
+  → HITL middleware interrupt（interrupt_on 含 delete_task）
+  → message_parts: tool-delete_task, state=input-available
+  → 前端 DestructiveDeleteConfirmCard
+
+用户「确认，本会话不再询问」
+  → POST /approve { decisions: [approve], destructive_hitl: { skip_for_conversation: true } }
+  → set_skip_destructive_hitl → conversations.session_flags = {"skip_destructive_hitl": true}
+  → commit → get_orchestrator_agent(session_flags) → interrupt_on 无三删除 tool
+  → Command(resume) 执行 delete_task
+
+同会话后续 delete_*
+  → interrupt_on 已无删除类 → 直接执行（依赖重建 agent；同 resume 流内有效）
+```
+
+### 12.6 测试
+
+| 文件 | 覆盖 |
+|------|------|
+| [`tests/test_destructive_hitl.py`](../tests/test_destructive_hitl.py) | `build_orchestrator_interrupt_on`、flags 持久化、`hitl_pending_parts` |
+| [`apps/web/.../destructive-delete-payload.test.ts`](../../web/src/lib/chat/destructive-delete-payload.test.ts) | 确认卡展示 payload 解析 |
+
+### 12.7 移除 Checklist（v2 或产品变更时）
+
+- [ ] （可选）工作空间级 / 按 tool 拆分 skip 标记
+- [ ] （可选）设置页全局「危险操作免确认」
+- [ ] `ensure_column` `session_flags`（引入 Alembic 后）
+- [ ] 若取消 HITL：从 `DESTRUCTIVE_HITL_TOOLS`、`HITL_TOOL_NAMES`、前端 handler 一并移除
+
+---
+
 ## §10 死代码 / 待清理
 
 | 文件 | 说明 |
@@ -297,5 +385,5 @@ GET /tasks/executions?orchestrator_conversation_id=
 - [多供应商注册表计划](../../.cursor/plans/多供应商注册表_805cf5e3.plan.md)（历史）
 - [AGENTS.md](../../AGENTS.md) § 多供应商 LLM
 - [resumable-stream-architecture.md](resumable-stream-architecture.md)
-- [hitl-architecture.md](hitl-architecture.md)
+- [hitl-architecture.md](hitl-architecture.md)（含危险删除 HITL、`session_flags`、approve 扩展字段）
 - [task-lifecycle.md](../../docs/task-lifecycle.md) § 会话 ID 语义

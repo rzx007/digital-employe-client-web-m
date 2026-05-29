@@ -106,3 +106,4 @@ class StreamConversationRequest(BaseModel):
 class ApproveRequest(BaseModel):
     message_id: int
     decisions: list[dict]
+    destructive_hitl: dict | None = None

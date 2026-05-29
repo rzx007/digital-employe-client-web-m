@@ -90,7 +90,8 @@ export function ChatComposerArea({
       activeHitlMatchesPending(activeHitl, pendingHitl.toolCallId))
 
   const planActive = pendingHitl?.kind === "document-plan"
-  const blocksComposer = clarifyActive || planActive
+  const destructiveDeleteActive = pendingHitl?.kind === "destructive-delete"
+  const blocksComposer = clarifyActive || planActive || destructiveDeleteActive
 
   const dockPending = React.useMemo((): (PendingHitl & {
     input: Record<string, unknown>

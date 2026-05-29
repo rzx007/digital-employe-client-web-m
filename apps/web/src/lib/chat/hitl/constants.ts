@@ -1,14 +1,22 @@
+export const DESTRUCTIVE_HITL_TOOL_NAMES = new Set([
+  "delete_employee",
+  "delete_task",
+  "delete_tasks_batch",
+])
+
 export const CLARIFY_TOOL_NAME = "submit_clarifying_questions"
 export const DOCUMENT_PLAN_TOOL_NAME = "submit_document_plan"
 
 export const HITL_TOOL_NAMES = new Set([
   CLARIFY_TOOL_NAME,
   DOCUMENT_PLAN_TOOL_NAME,
+  ...DESTRUCTIVE_HITL_TOOL_NAMES,
 ])
 
 export const HITL_TOOL_TYPES = new Set([
   `tool-${CLARIFY_TOOL_NAME}`,
   `tool-${DOCUMENT_PLAN_TOOL_NAME}`,
+  ...Array.from(DESTRUCTIVE_HITL_TOOL_NAMES).map((name) => `tool-${name}`),
 ])
 
 export function findLastToolCallIdByName(
@@ -22,4 +30,8 @@ export function findLastToolCallIdByName(
     }
   }
   return last
+}
+
+export function isDestructiveHitlToolName(toolName: string): boolean {
+  return DESTRUCTIVE_HITL_TOOL_NAMES.has(toolName)
 }

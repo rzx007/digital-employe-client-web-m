@@ -30,6 +30,25 @@
 
 - `submit_clarifying_questions` — 澄清问卷（底部 Dock）
 - `submit_document_plan` — 方案大纲确认（`DocumentPlanCard`）
+- `delete_employee` / `delete_task` / `delete_tasks_batch` — 危险删除确认（`DestructiveDeleteConfirmCard`，仅总管 orchestrator）
+
+**会话级免确认（`conversations.session_flags`）**
+
+- JSON 字段，v1 键：`skip_destructive_hitl: true`
+- 用户点「确认，本会话不再询问」时，`POST /approve` body 携带 `destructive_hitl: { skip_for_conversation: true }`，写入 DB 后重建 agent 的 `interrupt_on` 移除三个删除 tool
+- 新建总管会话或清空对话后 `session_flags` 为空，恢复确认门
+
+**Approve 扩展字段**
+
+```json
+{
+  "message_id": 123,
+  "decisions": [{ "type": "approve" }],
+  "destructive_hitl": { "skip_for_conversation": true }
+}
+```
+
+`decisions` 仍为标准 `approve` / `reject`；`destructive_hitl` 可选，仅危险删除确认卡使用。
 
 ---
 

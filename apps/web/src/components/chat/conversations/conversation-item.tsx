@@ -110,14 +110,18 @@ export function ConversationItem({
         contactId: selectedContactId,
       },
       {
-        onSuccess: () => {
+        onSuccess: async () => {
           toast.success(`已删除「${conversation.title}」`)
-          focusAfterDeletedConversation(
-            queryClient,
-            selectedContactId,
-            conversation.id,
-            selectedContact ?? undefined
-          )
+          try {
+            await focusAfterDeletedConversation(
+              queryClient,
+              selectedContactId,
+              conversation.id,
+              selectedContact ?? undefined
+            )
+          } catch {
+            // 总管删光后 create 失败时 toast 已在 focus 内处理
+          }
         },
         onError: () => {
           toast.error("删除失败，请稍后重试")

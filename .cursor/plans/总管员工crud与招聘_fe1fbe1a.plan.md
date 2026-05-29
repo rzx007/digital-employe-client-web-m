@@ -230,6 +230,23 @@ flowchart TD
 
 ---
 
+## 危险操作 HITL 确认门（已完成）
+
+总管删除类 tool（`delete_employee`、`delete_task`、`delete_tasks_batch`）执行前经 HITL interrupt 暂停，前端展示 `DestructiveDeleteConfirmCard` 三按钮：
+
+| 按钮 | 行为 |
+|------|------|
+| 确认删除 | approve，本次执行；后续仍 interrupt |
+| 取消 | reject，不执行 |
+| 确认，本会话不再询问 | approve + `session_flags.skip_destructive_hitl`，同会话后续删除免确认 |
+
+**后端**：`destructive_hitl.py`、`conversations.session_flags`、`build_orchestrator_interrupt_on`、`ApproveRequest.destructive_hitl`  
+**前端**：`destructive-delete` handler/block、`DestructiveDeleteConfirmCard`、composer 阻塞、`approveHitl` 扩展  
+**文档**：[`hitl-architecture.md`](../apps/server/docs/hitl-architecture.md) 已补充 tool 列表与 approve 字段  
+**测试**：`test_destructive_hitl.py` + `destructive-delete-payload.test.ts`
+
+---
+
 ## 可选后续（未做）
 
 | 项 | 说明 |

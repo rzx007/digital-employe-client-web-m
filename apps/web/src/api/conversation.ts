@@ -283,7 +283,10 @@ export type HitlDecision =
 export async function approveHitl(
   conversationId: number | string,
   messageId: number | string,
-  decisions: HitlDecision[]
+  decisions: HitlDecision[],
+  options?: {
+    destructive_hitl?: { skip_for_conversation?: boolean }
+  }
 ) {
   const dbId = Number(messageId)
   if (!Number.isFinite(dbId) || dbId <= 0) {
@@ -301,6 +304,9 @@ export async function approveHitl(
     body: JSON.stringify({
       message_id: dbId,
       decisions,
+      ...(options?.destructive_hitl
+        ? { destructive_hitl: options.destructive_hitl }
+        : {}),
     }),
   })
 }

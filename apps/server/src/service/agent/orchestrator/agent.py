@@ -24,7 +24,10 @@ from src.service.agent.paths import (
 )
 from src.service.agent.clarifying_questions_tool import submit_clarifying_questions
 from src.service.agent.document_plan_tool import submit_document_plan
-from src.service.agent.hitl_interrupt_on import HITL_INTERRUPT_ON
+from src.service.agent.destructive_hitl import (
+    build_orchestrator_interrupt_on,
+    get_session_flags,
+)
 from src.service.agent.prompts import (
     build_filesystem_prompt_section,
     build_long_document_writing_section,
@@ -180,6 +183,11 @@ def get_orchestrator_agent(
 
     shell_execute_tool = create_shell_execute_tool(shell_backend)
 
+    session_flags = (
+        get_session_flags(db, conversation_id) if conversation_id else {}
+    )
+    interrupt_on = build_orchestrator_interrupt_on(session_flags)
+
     agent = create_deep_agent(
         model=model,
         memory=["/agent/AGENTS.md", "/memories/AGENTS.md"],
@@ -209,7 +217,7 @@ def get_orchestrator_agent(
         system_prompt=system_prompt,
         backend=backend,
         checkpointer=checkpointer,
-        interrupt_on=HITL_INTERRUPT_ON,
+        interrupt_on=interrupt_on,
         middleware=[summarization_mw, summarization_tool_mw],
         subagents=[],
         permissions=[

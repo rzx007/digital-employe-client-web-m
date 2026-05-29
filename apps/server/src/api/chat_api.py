@@ -298,6 +298,7 @@ async def approve_hitl(
         message_id=payload.message_id,
         decisions=payload.decisions,
         auth_token=http_request.headers.get("token"),
+        destructive_hitl=payload.destructive_hitl,
     )
     if not result.get("accepted"):
         return BaseResponse(code=400, msg=result.get("message", "审批失败"), data=None)
