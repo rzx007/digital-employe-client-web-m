@@ -7,6 +7,16 @@ import {
 } from "@/api/chat"
 import type { ChatPromptMessageStatus, UploadFileState } from "./types"
 
+function hasUploadConversationId(
+  id: string | number | null | undefined
+): id is string | number {
+  if (id == null || id === "") return false
+  if (typeof id === "string" && (id === "null" || id === "undefined")) {
+    return false
+  }
+  return true
+}
+
 export function useChatPromptAttachmentUpload({
   conversationId,
   onAttachmentsChange,
@@ -57,7 +67,7 @@ export function useChatPromptAttachmentUpload({
 
   const uploadFile = useCallback(
     async (file: PromptAttachmentFile) => {
-      if (!conversationId) return
+      if (!hasUploadConversationId(conversationId)) return
       const sizeBytes = file.sizeBytes
       setFileStates((prev) => ({
         ...prev,
@@ -112,7 +122,7 @@ export function useChatPromptAttachmentUpload({
     for (const f of attachments.files) {
       if (!handledIdsRef.current.has(f.id)) {
         handledIdsRef.current.add(f.id)
-        if (conversationId) {
+        if (hasUploadConversationId(conversationId)) {
           uploadFile(f)
         } else {
           setFileStates((prev) => ({
@@ -143,7 +153,11 @@ export function useChatPromptAttachmentUpload({
   const handleRemove = useCallback(
     async (fileId: string) => {
       const state = fileStates[fileId]
-      if (conversationId && state?.status === "done" && state.path) {
+      if (
+        hasUploadConversationId(conversationId) &&
+        state?.status === "done" &&
+        state.path
+      ) {
         try {
           await deleteConversationUpload(conversationId, state.path)
         } catch {
