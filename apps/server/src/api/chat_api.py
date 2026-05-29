@@ -12,6 +12,7 @@ from src.schemas.conversation import (
     ConversationCreate,
     ConversationMessageRead,
     ConversationRead,
+    ConversationUpdate,
     ConversationsBulkDeleteResult,
     StreamConversationRequest,
 )
@@ -106,6 +107,24 @@ def list_conversation_messages(conversation_id: int, db: Session = Depends(get_d
     """查询指定会话下的消息列表。"""
     messages = ChatService.list_messages(db, conversation_id)
     return ListResponse[ConversationMessageRead](data=messages)
+
+
+@router.patch(
+    "/chat/conversations/{conversation_id}",
+    response_model=ResponseBase[ConversationRead],
+)
+def update_conversation(
+    conversation_id: int,
+    payload: ConversationUpdate,
+    db: Session = Depends(get_db),
+) -> ResponseBase[ConversationRead]:
+    """更新会话元数据（当前仅支持标题）。"""
+    conversation = ChatService.update_conversation(
+        db=db,
+        conversation_id=conversation_id,
+        title=payload.title,
+    )
+    return ResponseBase(data=conversation)
 
 
 @router.delete("/chat/conversations/{conversation_id}", response_model=BaseResponse, status_code=status.HTTP_200_OK)

@@ -12,6 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
+import { useDebouncedCuratorNewConversation } from "@/hooks/use-debounced-curator-new-conversation"
 import { cn } from "@workspace/ui/lib/utils"
 import type { ChatViewContact } from "../shared/chat-view-shared"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
@@ -20,6 +21,7 @@ export function CuratorCompactToolbar({
   contact,
   conversationId,
   displayName = "总管助手",
+  conversationTitle,
   onReset,
   onOpenConversations,
   onNewConversation,
@@ -30,6 +32,7 @@ export function CuratorCompactToolbar({
   contact?: ChatViewContact
   conversationId?: string | number | null
   displayName?: string
+  conversationTitle?: string
   onReset?: () => void
   onOpenConversations?: () => void
   onNewConversation?: () => void
@@ -37,6 +40,8 @@ export function CuratorCompactToolbar({
   onToggleResources?: () => void
   className?: string
 }) {
+  const handleNewConversation =
+    useDebouncedCuratorNewConversation(onNewConversation)
   const name =
     contact?.type === "curator"
       ? (contact.curator?.name ?? displayName)
@@ -62,7 +67,14 @@ export function CuratorCompactToolbar({
           avatarClassName="size-7"
           fallbackClassName="text-[10px]"
         />
-        <span className="truncate text-sm font-medium">{name}</span>
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-medium">{name}</span>
+          {conversationTitle ? (
+            <span className="truncate text-[10px] text-muted-foreground">
+              {conversationTitle}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5">
@@ -71,7 +83,7 @@ export function CuratorCompactToolbar({
             title="新建对话"
             variant="ghost"
             size="icon-sm"
-            onClick={onNewConversation}
+            onClick={handleNewConversation}
           >
             <IconMessage2Plus className="size-4" />
           </Button>

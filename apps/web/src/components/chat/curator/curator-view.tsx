@@ -35,11 +35,13 @@ import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-compos
 import {
   useMessagesQuery,
   useResetCuratorConversation,
+  useUpdateConversationTitleMutation,
 } from "@/hooks/use-chat-queries"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { useChatStore } from "@/stores/chat-store"
 import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { cancelConversationStream } from "@/api/chat"
+import { shouldRenameCuratorConversationOnFirstMessage } from "@/lib/chat/curator-conversation-actions"
 import { toast } from "sonner"
 import {
   AlertDialog,
@@ -283,6 +285,7 @@ export function CuratorView({
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [clearTaskLogs, setClearTaskLogs] = useState(true)
   const resetMutation = useResetCuratorConversation()
+  const updateTitleMutation = useUpdateConversationTitleMutation()
   const queryClient = useQueryClient()
   const curatorConversationId = conversationIdProp
   const curatorContactId = contact?.curator?.id
@@ -452,6 +455,10 @@ export function CuratorView({
 
       try {
         session.prepareOutboundMessage()
+        const shouldUpdateTitle =
+          shouldRenameCuratorConversationOnFirstMessage(conversationTitle) &&
+          displayMessages.length === 0
+
         await sendMessage(
           { text: messageText, metadata: pendingMeta },
           {
@@ -462,6 +469,23 @@ export function CuratorView({
             },
           }
         )
+
+        if (
+          shouldUpdateTitle &&
+          curatorContactId &&
+          contact?.type === "curator"
+        ) {
+          const nextTitle = messageText.slice(0, 50)
+          void updateTitleMutation
+            .mutateAsync({
+              conversationId: curatorConversationId,
+              title: nextTitle,
+              contactId: curatorContactId,
+            })
+            .catch(() => {
+              toast.error("更新会话标题失败")
+            })
+        }
       } catch (sendError) {
         toast.error("发送失败", {
           description:
@@ -469,7 +493,7 @@ export function CuratorView({
         })
       }
     },
-    [curatorConversationId, sendMessage, command, mentions, session]
+    [curatorConversationId, sendMessage, command, mentions, session, conversationTitle, displayMessages.length, curatorContactId, contact, updateTitleMutation]
   )
 
   const handleGuidanceSelect = useCallback(
@@ -677,6 +701,7 @@ export function CuratorView({
           contact={resolvedContact}
           conversationId={curatorConversationId}
           displayName={contactDisplayName}
+          conversationTitle={conversationTitle}
           onReset={() => setShowResetDialog(true)}
           onOpenConversations={onOpenConversations}
           onNewConversation={onNewConversation}

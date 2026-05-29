@@ -27,6 +27,19 @@ export async function createConversation(params: CreateConversationParams) {
   )
 }
 
+export async function updateConversationTitle(
+  conversationId: number | string,
+  title: string
+) {
+  return request<ApiResponse<ConversationListItemDto>>(
+    `/chat/conversations/${conversationId}`,
+    {
+      method: "PATCH",
+      body: { title },
+    }
+  )
+}
+
 /**
  * 查询聊天会话列表
  * GET /workspaces/{workspace_id}/chat/conversations

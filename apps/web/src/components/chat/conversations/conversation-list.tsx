@@ -4,6 +4,7 @@ import { useShallow } from "zustand/react/shallow"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { useConversationsQuery } from "@/hooks/use-chat-queries"
+import { useCreateCuratorConversation } from "@/hooks/use-create-curator-conversation"
 import {
   enterDraftConversation,
   selectConversationById,
@@ -33,6 +34,8 @@ export function ConversationList({
     }))
   )
   const selectedContact = useChatStore((s) => s.getSelectedContact())
+  const { createCuratorConversation, isPending: isCreatingCurator } =
+    useCreateCuratorConversation()
 
   const { data: conversations = [], isPending: conversationsPending } =
     useConversationsQuery(selectedContactId, selectedContact)
@@ -106,7 +109,14 @@ export function ConversationList({
         <Button
           className="m-2"
           variant="outline"
+          disabled={isCreatingCurator}
           onClick={() => {
+            if (selectedContact?.type === "curator") {
+              void createCuratorConversation(selectedContact).then(() => {
+                onSelectConversation?.()
+              })
+              return
+            }
             enterDraftConversation()
             onSelectConversation?.()
           }}

@@ -19,9 +19,12 @@ import {
   fetchResourceContent,
   uploadConversationFile,
 } from "@/api/chat"
+import { updateConversationTitle as updateConversationTitleApi } from "@/api/conversation"
 import type { Contact, Conversation, Message } from "@/types/chat"
+import { findContactInList } from "@/lib/chat/contact-utils"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import { chatKeys } from "@/lib/query-keys/chat"
+import { useChatStore } from "@/stores/chat-store"
 
 export function useContactsQuery() {
   return useQuery({
@@ -123,6 +126,37 @@ export function useCreateConversationMutation() {
   })
 }
 
+export function useUpdateConversationTitleMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      conversationId,
+      title,
+    }: {
+      conversationId: string | number
+      title: string
+      contactId: string
+    }) => {
+      const res = await updateConversationTitleApi(conversationId, title)
+      if (!res?.data) {
+        throw new Error("更新会话标题失败")
+      }
+      return res.data
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.setQueryData<Conversation[]>(
+        chatKeys.conversations(variables.contactId),
+        (current) =>
+          current?.map((item) =>
+            String(item.id) === String(variables.conversationId)
+              ? { ...item, title: variables.title }
+              : item
+          )
+      )
+    },
+  })
+}
+
 export function useEmployeeDetailQuery(id: string | null) {
   return useQuery({
     queryKey: chatKeys.employee(id ?? ""),
@@ -210,6 +244,13 @@ export function useDeleteConversationMutation() {
       queryClient.invalidateQueries({
         queryKey: chatKeys.conversations(variables.contactId),
       })
+      const contact = findContactInList(
+        useChatStore.getState().contacts,
+        variables.contactId
+      )
+      if (contact?.type === "curator") {
+        queryClient.invalidateQueries({ queryKey: chatKeys.curator() })
+      }
     },
     onSuccess: () => {
       resetChatRightPanels()

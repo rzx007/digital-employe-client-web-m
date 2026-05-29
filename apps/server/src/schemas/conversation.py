@@ -17,6 +17,10 @@ class ConversationCreate(BaseModel):
     title: str | None = Field(default=NoneSchema)
 
 
+class ConversationUpdate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+
+
 class ConversationRead(BaseModel):
     id: int
     workspace_id: int

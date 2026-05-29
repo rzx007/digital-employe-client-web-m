@@ -49,6 +49,7 @@ export function ConversationItem({
   ...props
 }: ConversationItemProps) {
   const selectedContactId = useChatStore((s) => s.selectedContactId)
+  const selectedContact = useChatStore((s) => s.getSelectedContact())
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [alertOpen, setAlertOpen] = React.useState(false)
   const queryClient = useQueryClient()
@@ -114,7 +115,8 @@ export function ConversationItem({
           focusAfterDeletedConversation(
             queryClient,
             selectedContactId,
-            conversation.id
+            conversation.id,
+            selectedContact ?? undefined
           )
         },
         onError: () => {

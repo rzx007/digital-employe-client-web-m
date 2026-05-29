@@ -2,7 +2,10 @@ import * as React from "react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-import { useReconcileConversationSelection } from "@/lib/chat/conversation-selection"
+import {
+  conversationExistsInList,
+  useReconcileConversationSelection,
+} from "@/lib/chat/conversation-selection"
 import { useBootstrapCuratorDefaultConversation } from "@/hooks/use-bootstrap-curator-conversations"
 import { useConversationsQuery } from "@/hooks/use-chat-queries"
 import { useChatStore } from "@/stores/chat-store"
@@ -10,6 +13,19 @@ import { useChatStore } from "@/stores/chat-store"
 import { CuratorView } from "../curator/curator-view"
 import { ConversationChatView } from "./chat-conversation-view"
 import { DraftChatView } from "./chat-draft-view"
+
+function CuratorChatLoading({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn(
+        "flex h-full items-center justify-center text-sm text-muted-foreground",
+        className
+      )}
+    >
+      加载总管会话…
+    </div>
+  )
+}
 
 export function ChatView({
   onOpenContacts,
@@ -44,17 +60,15 @@ export function ChatView({
       (c) => String(c.id) === String(selectedConversationId)
     )
 
-    if (isDraftConversation || !selectedConversationId) {
-      return (
-        <DraftChatView
-          contact={contact}
-          onOpenContacts={onOpenContacts}
-          onOpenConversations={onOpenConversations}
-          onNewConversation={onNewConversation}
-          className={cn(className)}
-          {...props}
-        />
-      )
+    if (!selectedConversationId) {
+      return <CuratorChatLoading className={cn(className)} />
+    }
+
+    if (
+      conversationsQuerySuccess &&
+      !conversationExistsInList(conversations, selectedConversationId)
+    ) {
+      return <CuratorChatLoading className={cn(className)} />
     }
 
     return (

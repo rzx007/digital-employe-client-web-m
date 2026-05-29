@@ -16,12 +16,21 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import { ArtifactPanel } from "@/components/artifact"
 import { CuratorView } from "@/components/chat/curator/curator-view"
-import { enterDraftConversation } from "@/lib/chat/conversation-selection"
 import {
+  conversationExistsInList,
+  selectConversationById,
+} from "@/lib/chat/conversation-selection"
+import { resolveWorkbenchCuratorPanel } from "./resolve-workbench-curator-panel"
+import {
+  useConversationsQuery,
   useCuratorConversationQuery,
 } from "@/hooks/use-chat-queries"
+import { useCreateCuratorConversation } from "@/hooks/use-create-curator-conversation"
+import { chatKeys } from "@/lib/query-keys/chat"
 import { useChatStore } from "@/stores/chat-store"
 import { useArtifactStore } from "@/stores/artifact-store"
+import { useQueryClient } from "@tanstack/react-query"
+import { WorkbenchCuratorSessionsSheet } from "./workbench-curator-sessions-sheet"
 
 const LAYOUT_STORAGE_ID = "workbench-grid-curator-resources-v2"
 const PANEL_IDS = ["grid", "curator", "resources"] as const
@@ -100,27 +109,131 @@ export function WorkbenchContentSplit({
   children: ReactNode
 }) {
   const [resourcesOpen, setResourcesOpen] = useState(false)
+  const [curatorSessionsOpen, setCuratorSessionsOpen] = useState(false)
+  const queryClient = useQueryClient()
+  const { createCuratorConversation, isPending: isCreatingCurator } =
+    useCreateCuratorConversation()
+
+  const contacts = useChatStore((s) => s.contacts)
   const selectedContact = useChatStore((s) => s.getSelectedContact())
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
-  const openConversationList = useChatStore((s) => s.openConversationList)
   const { data: defaultCuratorConv } = useCuratorConversationQuery()
 
+  const curatorContact = useMemo(() => {
+    if (selectedContact?.type === "curator") return selectedContact
+    return contacts.find((c) => c.type === "curator")
+  }, [selectedContact, contacts])
+
+  const curatorContactId = curatorContact?.curator?.id ?? null
+  const defaultCuratorConversationId = defaultCuratorConv?.id ?? null
+
+  const { data: curatorConversations = [], isSuccess: curatorConversationsReady } =
+    useConversationsQuery(curatorContactId, curatorContact)
+
+  const panel = useMemo(
+    () =>
+      resolveWorkbenchCuratorPanel({
+        curatorContactId,
+        selectedConversationId,
+        curatorConversations,
+        curatorConversationsReady,
+        defaultCuratorConversationId,
+      }),
+    [
+      curatorContactId,
+      curatorConversations,
+      curatorConversationsReady,
+      defaultCuratorConversationId,
+      selectedConversationId,
+    ]
+  )
+
+  useEffect(() => {
+    if (!curatorContactId || !curatorConversationsReady) return
+    if (curatorConversations.length > 0) return
+
+    void queryClient.invalidateQueries({ queryKey: chatKeys.curator() })
+    void queryClient.invalidateQueries({
+      queryKey: chatKeys.conversations(curatorContactId),
+    })
+  }, [
+    curatorContactId,
+    curatorConversations.length,
+    curatorConversationsReady,
+    queryClient,
+  ])
+
+  const activeConversationId = panel.conversationId ?? null
+
+  useEffect(() => {
+    if (panel.mode === "loading") return
+    if (activeConversationId == null || !curatorConversationsReady) return
+
+    const { selectedConversationId: currentId } = useChatStore.getState()
+    if (String(currentId) === String(activeConversationId)) return
+
+    const currentIsValidCurator =
+      currentId != null &&
+      conversationExistsInList(curatorConversations, currentId)
+
+    if (!currentIsValidCurator) {
+      selectConversationById(activeConversationId)
+    }
+  }, [
+    activeConversationId,
+    curatorConversations,
+    curatorConversationsReady,
+    panel.mode,
+  ])
+
+  const conversationTitle = useMemo(() => {
+    if (activeConversationId == null) return undefined
+    return (
+      curatorConversations.find(
+        (c) => String(c.id) === String(activeConversationId)
+      )?.title ?? "总管对话"
+    )
+  }, [activeConversationId, curatorConversations])
+
+  const ensureCuratorContact = useCallback(() => {
+    if (!curatorContactId) return
+    const state = useChatStore.getState()
+    if (state.selectedContactId === curatorContactId) return
+
+    const preservedConversationId =
+      state.selectedConversationId != null &&
+      conversationExistsInList(curatorConversations, state.selectedConversationId)
+        ? state.selectedConversationId
+        : null
+
+    useChatStore.setState({
+      selectedContactId: curatorContactId,
+      selectedConversationId: preservedConversationId,
+      isDraftConversation: false,
+      draftSessionKey: state.draftSessionKey + 1,
+    })
+  }, [curatorContactId, curatorConversations])
+
   const handleNewCuratorConversation = useCallback(() => {
-    enterDraftConversation()
-  }, [])
+    if (!curatorContact || isCreatingCurator) return
+    ensureCuratorContact()
+    void createCuratorConversation(curatorContact).then(() => {
+      setCuratorSessionsOpen(false)
+      setResourcesOpen(false)
+    })
+  }, [
+    curatorContact,
+    createCuratorConversation,
+    ensureCuratorContact,
+    isCreatingCurator,
+  ])
 
   const handleOpenCuratorConversations = useCallback(() => {
-    openConversationList()
-  }, [openConversationList])
+    ensureCuratorContact()
+    setCuratorSessionsOpen(true)
+  }, [ensureCuratorContact])
 
-  const curatorConversationId = useMemo(() => {
-    if (selectedContact?.type === "curator" && selectedConversationId != null) {
-      return selectedConversationId
-    }
-    return defaultCuratorConv?.id ?? null
-  }, [selectedContact, selectedConversationId, defaultCuratorConv?.id])
-  const showResources =
-    resourcesOpen && curatorConversationId != null
+  const showResources = resourcesOpen && activeConversationId != null
 
   const gridPanelRef = usePanelRef()
   const curatorPanelRef = usePanelRef()
@@ -138,9 +251,9 @@ export function WorkbenchContentSplit({
   )
 
   const handleToggleResources = useCallback(() => {
-    if (curatorConversationId == null) return
+    if (activeConversationId == null) return
     setResourcesOpen((open) => !open)
-  }, [curatorConversationId])
+  }, [activeConversationId])
 
   const handleCloseResources = useCallback(() => {
     setResourcesOpen(false)
@@ -150,11 +263,11 @@ export function WorkbenchContentSplit({
 
   const handleOpenResourceFile = useCallback(
     (path: string) => {
-      if (curatorConversationId == null) return
+      if (activeConversationId == null) return
       setResourcesOpen(true)
       openResource(path)
     },
-    [curatorConversationId, openResource],
+    [activeConversationId, openResource],
   )
 
   useEffect(() => {
@@ -183,6 +296,42 @@ export function WorkbenchContentSplit({
     },
     [showResources, onLayoutChanged, resourcesPanelRef],
   )
+
+  const curatorPanelBorder = showResources ? "border-r" : "border-l"
+
+  const renderCuratorPanel = () => {
+    if (panel.mode === "loading" || !curatorContact) {
+      return (
+        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+          {isCreatingCurator ? "创建会话…" : "加载总管会话…"}
+        </div>
+      )
+    }
+
+    if (activeConversationId == null) {
+      return (
+        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+          {isCreatingCurator ? "创建会话…" : "加载总管会话…"}
+        </div>
+      )
+    }
+
+    return (
+      <CuratorView
+        key={String(activeConversationId)}
+        contact={curatorContact}
+        conversationId={activeConversationId}
+        title={conversationTitle}
+        size="compact"
+        className={cn("h-full min-h-0", curatorPanelBorder)}
+        resourcesOpen={showResources}
+        onToggleResources={handleToggleResources}
+        onOpenResourceFile={handleOpenResourceFile}
+        onOpenConversations={handleOpenCuratorConversations}
+        onNewConversation={handleNewCuratorConversation}
+      />
+    )
+  }
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
@@ -217,25 +366,7 @@ export function WorkbenchContentSplit({
           maxSize={showResources ? "60%" : "55%"}
           className="min-w-0"
         >
-          {curatorConversationId != null ? (
-            <CuratorView
-              conversationId={curatorConversationId}
-              size="compact"
-              className={cn(
-                "h-full min-h-0",
-                showResources ? "border-r" : "border-l",
-              )}
-              resourcesOpen={showResources}
-              onToggleResources={handleToggleResources}
-              onOpenResourceFile={handleOpenResourceFile}
-              onOpenConversations={handleOpenCuratorConversations}
-              onNewConversation={handleNewCuratorConversation}
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-              加载总管会话…
-            </div>
-          )}
+          {renderCuratorPanel()}
         </ResizablePanel>
 
         {showResources && (
@@ -252,11 +383,11 @@ export function WorkbenchContentSplit({
           maxSize={showResources ? undefined : "0%"}
           className="min-w-0"
         >
-          {showResources && curatorConversationId != null && (
+          {showResources && activeConversationId != null && (
             <div className="h-full bg-muted/20 p-3">
               <ArtifactPanel
                 presentation="embedded"
-                conversationId={curatorConversationId}
+                conversationId={activeConversationId}
                 isOpen
                 onClose={handleCloseResources}
                 className="h-full rounded-lg border shadow-xl"
@@ -265,6 +396,11 @@ export function WorkbenchContentSplit({
           )}
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      <WorkbenchCuratorSessionsSheet
+        open={curatorSessionsOpen}
+        onOpenChange={setCuratorSessionsOpen}
+      />
     </div>
   )
 }

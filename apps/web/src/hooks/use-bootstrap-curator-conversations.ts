@@ -11,7 +11,8 @@ import { useChatStore } from "@/stores/chat-store"
 
 /**
  * 总管联系人下会话列表为空时，调用 ensure API 创建默认会话并刷新列表。
- * 用户处于「新建对话」草稿时不自动 ensure，避免顶掉 DraftChatView。
+ * 若已有选中会话（含删光后 focusAfterDeleted 正在 create），或列表曾非空，则不再 ensure，
+ * 避免与「删最后一条 → create 新对话」重复建会话。
  */
 export function useBootstrapCuratorDefaultConversation(
   contact: ChatViewContact | undefined,
@@ -19,7 +20,6 @@ export function useBootstrapCuratorDefaultConversation(
   conversationsQuerySuccess: boolean
 ) {
   const queryClient = useQueryClient()
-  const isDraftConversation = useChatStore((s) => s.isDraftConversation)
   const bootstrappedRef = useRef(false)
   const curatorContactId =
     contact?.type === "curator" ? contact.curator?.id : null
@@ -30,9 +30,16 @@ export function useBootstrapCuratorDefaultConversation(
 
   useEffect(() => {
     if (contact?.type !== "curator" || !contact.curator?.id) return
-    if (isDraftConversation) return
     if (!conversationsQuerySuccess) return
-    if (conversations.length > 0) return
+
+    if (conversations.length > 0) {
+      bootstrappedRef.current = true
+      return
+    }
+
+    const { selectedConversationId } = useChatStore.getState()
+    if (selectedConversationId != null) return
+
     if (bootstrappedRef.current) return
 
     bootstrappedRef.current = true
@@ -42,14 +49,15 @@ export function useBootstrapCuratorDefaultConversation(
       try {
         const res = await fetchCuratorConversation()
         if (cancelled) return
-        if (useChatStore.getState().isDraftConversation) return
+        if (useChatStore.getState().selectedConversationId != null) return
         const id = res?.data?.id
         if (id == null) return
 
         await queryClient.invalidateQueries({
           queryKey: chatKeys.conversations(contact.curator!.id),
         })
-        if (cancelled || useChatStore.getState().isDraftConversation) return
+        if (cancelled) return
+        if (useChatStore.getState().selectedConversationId != null) return
         selectConversationById(String(id))
       } catch {
         bootstrappedRef.current = false
@@ -59,11 +67,5 @@ export function useBootstrapCuratorDefaultConversation(
     return () => {
       cancelled = true
     }
-  }, [
-    contact,
-    conversations.length,
-    conversationsQuerySuccess,
-    isDraftConversation,
-    queryClient,
-  ])
+  }, [contact, conversations.length, conversationsQuerySuccess, queryClient])
 }

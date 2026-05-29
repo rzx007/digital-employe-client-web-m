@@ -168,6 +168,7 @@ export function ChatPanel({
   activeHitl = null,
   onHitlApproved,
   onDraftSuggestionSelect,
+  hideHeader = false,
   className,
   ...props
 }: React.ComponentProps<"div"> & {
@@ -198,6 +199,8 @@ export function ChatPanel({
   onHitlApproved?: (options?: HitlPatchOptions) => void
   /** 总管草稿：引导语填入输入框 */
   onDraftSuggestionSelect?: (text: string) => void
+  /** 工作台 compact：外层已有 CuratorCompactToolbar */
+  hideHeader?: boolean
 }) {
   const contactDisplayName = contact
     ? getContactDisplayName(contact)
@@ -269,13 +272,15 @@ export function ChatPanel({
     >
       {contact && (
         <>
-          <ChatPanelHeader
-            title={title}
-            contact={contact}
-            onOpenContacts={onOpenContacts}
-            onOpenConversations={onOpenConversations}
-            onNewConversation={onNewConversation}
-          />
+          {!hideHeader && (
+            <ChatPanelHeader
+              title={title}
+              contact={contact}
+              onOpenContacts={onOpenContacts}
+              onOpenConversations={onOpenConversations}
+              onNewConversation={onNewConversation}
+            />
+          )}
           <>
             <Conversation className="min-h-0 flex-1 pt-4">
               <ConversationContent className="px-4 pb-4">

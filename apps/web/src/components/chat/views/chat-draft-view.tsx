@@ -57,6 +57,7 @@ export function DraftChatView({
   onOpenContacts,
   onOpenConversations,
   onNewConversation,
+  hideHeader = false,
   className,
   ...props
 }: ComponentProps<"div"> & {
@@ -64,6 +65,7 @@ export function DraftChatView({
   onOpenContacts?: () => void
   onOpenConversations?: () => void
   onNewConversation?: () => void
+  hideHeader?: boolean
 }) {
   const selectedContactId = useChatStore((s) => s.selectedContactId)
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
@@ -328,6 +330,7 @@ export function DraftChatView({
       onDraftSuggestionSelect={
         contact?.type === "curator" ? handleDraftSuggestionSelect : undefined
       }
+      hideHeader={hideHeader}
       className={className}
       {...props}
     />

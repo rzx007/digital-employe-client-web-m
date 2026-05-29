@@ -59,14 +59,11 @@ export function useReconcileConversationSelection(
       if (!conversationsQuerySuccess) return
 
       if (conversations.length === 0) {
-        if (isDraftConversation) return
         if (selectedConversationId != null) {
           setSelectedConversationId(null)
         }
         return
       }
-
-      if (isDraftConversation) return
 
       if (conversationExistsInList(conversations, selectedConversationId)) {
         return

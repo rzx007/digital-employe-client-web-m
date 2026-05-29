@@ -13,6 +13,7 @@ import {
 } from "@/hooks/use-chat-queries"
 import { enterDraftConversation } from "@/lib/chat/conversation-selection"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
+import { useCreateCuratorConversation } from "@/hooks/use-create-curator-conversation"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 import { useTaskExecutionNotifications } from "@/hooks/use-task-execution-notifications"
 import { chatKeys } from "@/lib/query-keys/chat"
@@ -165,6 +166,8 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
     selectedContactId,
     selectedContact
   )
+  const { createCuratorConversation, isPending: isCreatingCurator } =
+    useCreateCuratorConversation()
   const resetRightPanels = useCallback(() => {
     resetChatRightPanels()
   }, [])
@@ -196,6 +199,11 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const artifactPanelConversationId = selectedConversationId
 
   const handleNewConversation = () => {
+    if (selectedContact?.type === "curator") {
+      if (isCreatingCurator) return
+      void createCuratorConversation(selectedContact)
+      return
+    }
     enterDraftConversation()
   }
 

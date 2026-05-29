@@ -8,6 +8,7 @@ import {
 } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 import { Button } from "@workspace/ui/components/button"
+import { useDebouncedCuratorNewConversation } from "@/hooks/use-debounced-curator-new-conversation"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { Separator } from "@workspace/ui/components/separator"
@@ -39,6 +40,8 @@ export function CuratorChatHeader({
   onNewConversation?: () => void
   className?: string
 }) {
+  const handleNewConversation =
+    useDebouncedCuratorNewConversation(onNewConversation)
   const isMobile = useIsMobile()
   const isArtifactPanelOpen = useArtifactStore((s) => s.isPanelOpen)
   const setArtifactPanelOpen = useArtifactStore((s) => s.setPanelOpen)
@@ -79,7 +82,7 @@ export function CuratorChatHeader({
             title="新建对话"
             variant="ghost"
             size="icon-sm"
-            onClick={onNewConversation}
+            onClick={handleNewConversation}
           >
             <IconMessage2Plus className="size-4" />
           </Button>

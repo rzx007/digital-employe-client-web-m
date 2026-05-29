@@ -99,7 +99,8 @@ export function ChatPanelHeader({
           focusAfterDeletedConversation(
             queryClient,
             selectedContactId,
-            selectedConversationId
+            selectedConversationId,
+            contact
           )
         },
         onError: () => {

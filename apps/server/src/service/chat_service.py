@@ -175,6 +175,24 @@ class ChatService:
         return conversation
 
     @staticmethod
+    def update_conversation(
+        db: Session,
+        conversation_id: int,
+        title: str,
+    ) -> Conversation:
+        conversation = ChatService.get_conversation(db, conversation_id)
+        stripped = title.strip()
+        if not stripped:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="会话标题不能为空。",
+            )
+        conversation.title = stripped
+        db.commit()
+        db.refresh(conversation)
+        return conversation
+
+    @staticmethod
     def list_conversations(db: Session, workspace_id: int, target_type: str, target_id: int) -> list[Conversation]:
         ChatService._validate_target(db, workspace_id, target_type, target_id)
         stmt: Select[tuple[Conversation]] = (
