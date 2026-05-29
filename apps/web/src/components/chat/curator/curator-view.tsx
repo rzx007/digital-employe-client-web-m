@@ -30,6 +30,7 @@ import {
 } from "@/lib/chat/message-utils"
 import { shouldIncludeFileChangesForMessage } from "@/lib/chat/file-change-utils"
 import { useConversationSession } from "@/hooks/use-conversation-session"
+import { useInvalidateContactsOnTeamChanges } from "@/hooks/use-invalidate-contacts-on-team-changes"
 import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
 import {
   useMessagesQuery,
@@ -341,6 +342,8 @@ export function CuratorView({
   })
 
   useSyncPendingFromComposer(curatorConversationId, messages, status)
+
+  useInvalidateContactsOnTeamChanges(messages, status, queryClient)
 
   useEffect(() => {
     onStreamFinishRef.current = session.onStreamFinish

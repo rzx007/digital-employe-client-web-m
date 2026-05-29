@@ -17,6 +17,7 @@ from src.service.agent.orchestrator.runtime import (
 )
 from src.service.employee_service import EmployeeService
 from src.service.local_skill_service import LocalSkillService
+from src.service.mcp_service import McpService
 
 _RECRUIT_SUMMARY_MAX_CHARS = 20
 
@@ -75,6 +76,68 @@ def list_workspace_skills() -> str:
             "清空技能：skill_ids=\"[]\"。id 必须来自本列表，禁止编造。"
         ),
     }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def format_workspace_mcps_list(token: str | None) -> tuple[list[dict], str | None]:
+    """远程 MCP 列表，与 update_employee 的 mcp_ids 使用同一套正整数 id。"""
+    from src.core.runtime_capabilities import get_capabilities
+
+    if not get_capabilities().remote_mcp:
+        return [], "当前为离线模式，无可分配的远程 MCP。"
+
+    try:
+        raw = McpService.list_remote_mcps(token)
+    except HTTPException as exc:
+        detail = exc.detail
+        if isinstance(detail, list):
+            detail = "; ".join(str(d) for d in detail)
+        return [], str(detail or "无法获取 MCP 列表。")
+
+    items: list[dict] = []
+    for item in raw:
+        mcp_id = item.get("id")
+        if mcp_id is None:
+            continue
+        name = (
+            item.get("capability_name")
+            or item.get("mcp_tool_name")
+            or item.get("mcp_server_name")
+            or str(mcp_id)
+        )
+        desc = (item.get("capability_desc") or "").strip()
+        items.append({
+            "id": int(mcp_id),
+            "name": str(name),
+            "server": item.get("mcp_server_name"),
+            "tool": item.get("mcp_tool_name"),
+            "description": desc[:80] if desc else None,
+        })
+    return items, None
+
+
+@tool
+def list_workspace_mcps() -> str:
+    """列出当前工作空间可分配给数字员工的远程 MCP（含 mcp id）。
+
+    在 update_employee 需要 mcp_ids 时先调用本工具；
+    返回的 id 为正整数，须原样传入 mcp_ids JSON 数组。
+    离线模式或远程不可用时 total=0，仍可更新无 MCP 员工（mcp_ids="[]"）。
+    """
+    token = get_auth_token()
+    mcps, notice = format_workspace_mcps_list(token)
+    payload: dict = {
+        "type": "workspace_mcps",
+        "workspace_id": get_workspace_id(),
+        "total": len(mcps),
+        "mcps": mcps,
+        "hint": (
+            "为员工分配 MCP：update_employee(employee_id, mcp_ids=\"[<id>, ...]\");"
+            "清空 MCP：mcp_ids=\"[]\"。id 必须来自本列表，禁止编造。"
+        ),
+    }
+    if notice:
+        payload["notice"] = notice
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 

@@ -27,6 +27,7 @@ export const BUSINESS_TOOL_NAMES = new Set([
   "confirm_orchestration_plan",
   "list_workspace_employees",
   "list_workspace_skills",
+  "list_workspace_mcps",
   "recruit_employee",
   "hire_employee",
   "hire_employees",
@@ -197,6 +198,16 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
     simple: {
       running: "正在查询技能库...",
       done: "技能库已加载",
+      error: "查询失败",
+    },
+  },
+  list_workspace_mcps: {
+    icon: "🔌",
+    label: "查看 MCP",
+    verb: "查看 MCP 列表",
+    simple: {
+      running: "正在查询 MCP...",
+      done: "MCP 列表已加载",
       error: "查询失败",
     },
   },

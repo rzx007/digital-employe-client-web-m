@@ -13,6 +13,7 @@ import {
   EmployeeDetailCard,
   EmployeeUpdatedCard,
 } from "./employee-crud-result-card"
+import { TasksDeletedBatchCard } from "./tasks-deleted-batch-card"
 import { FileChangeCards } from "./file-change-cards"
 import { SkillExplorationBlock } from "./skill-exploration-block"
 import { SummarizationCheckpointBlock } from "./summarization-checkpoint-block"
@@ -217,6 +218,16 @@ export function BlockRenderer({
   if (block.kind === "employee-deleted") {
     return (
       <EmployeeDeletedCard
+        key={block.key}
+        state={block.state}
+        resultText={block.resultText}
+        className="w-full"
+      />
+    )
+  }
+  if (block.kind === "tasks-deleted") {
+    return (
+      <TasksDeletedBatchCard
         key={block.key}
         state={block.state}
         resultText={block.resultText}

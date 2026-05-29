@@ -8,8 +8,10 @@ from src.models.employee import Employee
 from src.service.agent.orchestrator.employee_tools import (
     build_employee_update_payload,
     delete_employee,
+    format_workspace_mcps_list,
     format_workspace_skills_list,
     get_employee,
+    list_workspace_mcps,
     list_workspace_skills,
     update_employee,
 )
@@ -127,3 +129,68 @@ def test_delete_employee_rejects_curator(
     result = delete_employee.invoke({"employee_id": curator.id})
 
     assert result == "错误：不能删除总管助手。"
+
+
+def test_format_workspace_mcps_list_offline(monkeypatch):
+    monkeypatch.setattr(
+        "src.core.runtime_capabilities.get_capabilities",
+        lambda: type("Cap", (), {"remote_mcp": False})(),
+    )
+
+    mcps, notice = format_workspace_mcps_list("token")
+
+    assert mcps == []
+    assert notice is not None
+    assert "离线" in notice
+
+
+def test_format_workspace_mcps_list_maps_remote(monkeypatch):
+    monkeypatch.setattr(
+        "src.core.runtime_capabilities.get_capabilities",
+        lambda: type("Cap", (), {"remote_mcp": True})(),
+    )
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.employee_tools.McpService.list_remote_mcps",
+        lambda token: [
+            {
+                "id": 42,
+                "capability_name": "飞书表格",
+                "mcp_server_name": "lark",
+                "mcp_tool_name": "base",
+                "capability_desc": "多维表格读写",
+            }
+        ],
+    )
+
+    mcps, notice = format_workspace_mcps_list("token")
+
+    assert notice is None
+    assert len(mcps) == 1
+    assert mcps[0]["id"] == 42
+    assert mcps[0]["name"] == "飞书表格"
+
+
+def test_list_workspace_mcps_tool_returns_json(db_session, workspace, monkeypatch):
+    monkeypatch.setattr(
+        "src.core.runtime_capabilities.get_capabilities",
+        lambda: type("Cap", (), {"remote_mcp": True})(),
+    )
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.employee_tools.McpService.list_remote_mcps",
+        lambda token: [
+            {
+                "id": 7,
+                "capability_name": "搜索",
+                "mcp_server_name": "search",
+                "mcp_tool_name": "query",
+            }
+        ],
+    )
+    set_context(db=db_session, workspace_id=workspace.id, conversation_id=1)
+
+    result = list_workspace_mcps.invoke({})
+    payload = json.loads(result)
+
+    assert payload["type"] == "workspace_mcps"
+    assert payload["total"] == 1
+    assert payload["mcps"][0]["id"] == 7

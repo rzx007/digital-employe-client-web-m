@@ -42,6 +42,7 @@ from src.service.agent.orchestrator.recruitment_tools import (
 from src.service.agent.orchestrator.employee_tools import (
     delete_employee,
     get_employee,
+    list_workspace_mcps,
     list_workspace_skills,
     update_employee,
 )
@@ -187,6 +188,7 @@ def get_orchestrator_agent(
             shell_execute_tool,
             list_workspace_employees,
             list_workspace_skills,
+            list_workspace_mcps,
             get_employee,
             update_employee,
             delete_employee,
