@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query"
 
-import { createConversation } from "@/api/chat"
+import { createConversation, fetchCuratorConversation } from "@/api/chat"
+import { mapConversationListItemToConversation } from "@/lib/chat/chat-mappers"
 import { selectConversationById } from "@/lib/chat/conversation-selection"
 import { chatKeys } from "@/lib/query-keys/chat"
 import type { Contact, Conversation, Message } from "@/types/chat"
@@ -36,6 +37,95 @@ export function primeCuratorConversationInCache(
     chatKeys.messages(conversation.id),
     []
   )
+}
+
+let ensureInFlight: Promise<Conversation> | null = null
+let ensureInFlightContactId: string | null = null
+
+type CuratorEnsureSnapshot = {
+  isEnsuring: boolean
+  error: string | null
+}
+
+let ensureSnapshot: CuratorEnsureSnapshot = { isEnsuring: false, error: null }
+const ensureListeners = new Set<() => void>()
+
+function emitCuratorEnsureChange() {
+  ensureListeners.forEach((listener) => listener())
+}
+
+function patchCuratorEnsureSnapshot(patch: Partial<CuratorEnsureSnapshot>) {
+  ensureSnapshot = { ...ensureSnapshot, ...patch }
+  emitCuratorEnsureChange()
+}
+
+export function getCuratorEnsureSnapshot(): CuratorEnsureSnapshot {
+  return ensureSnapshot
+}
+
+export function subscribeCuratorEnsure(listener: () => void) {
+  ensureListeners.add(listener)
+  return () => ensureListeners.delete(listener)
+}
+
+export function isEnsuringCuratorConversation(): boolean {
+  return ensureSnapshot.isEnsuring
+}
+
+/**
+ * 总管无可用会话时：GET ensure → 写 cache → 选中。
+ * 删光最后一条、bootstrap 兜底共用此入口；并发调用会合并为同一 Promise。
+ */
+export async function ensureCuratorConversationAndSelect(
+  queryClient: QueryClient,
+  contact: Contact
+): Promise<Conversation> {
+  if (contact.type !== "curator" || !contact.curator?.id) {
+    throw new Error("不是总管联系人")
+  }
+
+  const contactId = contact.curator.id
+
+  if (ensureInFlight && ensureInFlightContactId === contactId) {
+    return ensureInFlight
+  }
+
+  patchCuratorEnsureSnapshot({ isEnsuring: true, error: null })
+
+  const promise = (async () => {
+    try {
+      const res = await fetchCuratorConversation()
+      const item = res?.data
+      if (item?.id == null) {
+        throw new Error("获取总管会话失败")
+      }
+
+      const conversation = mapConversationListItemToConversation(item, contactId)
+      primeCuratorConversationInCache(queryClient, conversation)
+      selectConversationById(conversation.id)
+      void queryClient.invalidateQueries({ queryKey: chatKeys.curator() })
+
+      patchCuratorEnsureSnapshot({ isEnsuring: false, error: null })
+      return conversation
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "请稍后重试"
+      patchCuratorEnsureSnapshot({ isEnsuring: false, error: message })
+      throw error
+    }
+  })()
+
+  ensureInFlightContactId = contactId
+  ensureInFlight = promise
+
+  try {
+    return await promise
+  } finally {
+    if (ensureInFlight === promise) {
+      ensureInFlight = null
+      ensureInFlightContactId = null
+    }
+  }
 }
 
 type CreateConversationMutate = (params: {

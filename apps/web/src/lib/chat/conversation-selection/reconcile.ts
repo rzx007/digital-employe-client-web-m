@@ -59,9 +59,7 @@ export function useReconcileConversationSelection(
       if (!conversationsQuerySuccess) return
 
       if (conversations.length === 0) {
-        if (selectedConversationId != null) {
-          setSelectedConversationId(null)
-        }
+        // 列表为空时由 ensureCuratorConversationAndSelect 负责恢复，勿清选中态
         return
       }
 
