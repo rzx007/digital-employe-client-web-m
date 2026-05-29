@@ -111,9 +111,19 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
   upsertPendingResource: (conversationId, input) =>
     set((state) => {
       const key = toConversationKey(conversationId)
+      const existingMap = state.pendingByConversation.get(key)
+      const existing = existingMap?.get(input.toolCallId)
+      if (
+        existing &&
+        existing.path === input.path &&
+        existing.content === input.content &&
+        existing.isStreaming === input.isStreaming
+      ) {
+        return state
+      }
+
       const pendingByConversation = new Map(state.pendingByConversation)
-      const existingMap = pendingByConversation.get(key) ?? new Map()
-      const nextMap = new Map(existingMap)
+      const nextMap = new Map(existingMap ?? [])
       nextMap.set(input.toolCallId, {
         toolCallId: input.toolCallId,
         path: input.path,

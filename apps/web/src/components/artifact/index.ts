@@ -41,6 +41,10 @@ export {
   type ArtifactRendererViewProps,
 } from "./artifact-content/artifact-renderer-view"
 export {
+  ArtifactStreamingTextPreview,
+  type ArtifactStreamingTextPreviewProps,
+} from "./artifact-content/artifact-streaming-text-preview"
+export {
   ArtifactPreviewStreamingPlaceholder,
   type ArtifactPreviewStreamingPlaceholderProps,
 } from "./artifact-content/artifact-preview-streaming-placeholder"

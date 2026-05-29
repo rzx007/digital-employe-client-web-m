@@ -57,6 +57,7 @@ import {
 import { useArtifactStore } from "@/stores/artifact-store"
 import { toast } from "sonner"
 import { ArtifactPreviewStreamingPlaceholder } from "./artifact-content/artifact-preview-streaming-placeholder"
+import { ArtifactStreamingTextPreview } from "./artifact-content/artifact-streaming-text-preview"
 import { ArtifactRendererView } from "./artifact-content/artifact-renderer-view"
 import { getPreviewableTypeLabel } from "./artifact-content/resolve-renderer"
 import type { Artifact } from "./artifact-types"
@@ -870,6 +871,12 @@ export const ArtifactPanel = ({
           {previewStateWithContent.showStreamingPlaceholder ? (
             <ArtifactPreviewStreamingPlaceholder
               kind={previewStateWithContent.rendererKind}
+              className="min-h-0 min-w-0 flex-1"
+            />
+          ) : previewStateWithContent.shouldUsePendingContent &&
+            selectedPending?.isStreaming ? (
+            <ArtifactStreamingTextPreview
+              content={selectedPending.content}
               className="min-h-0 min-w-0 flex-1"
             />
           ) : artifactForRenderer ? (

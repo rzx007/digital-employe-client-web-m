@@ -3,7 +3,6 @@ import { useEffect, useRef } from "react"
 import { CodeHighlight, detectLanguage } from "../shared/code-highlight"
 import { useArtifactStore } from "@/stores/artifact-store"
 import {
-  AUTO_OPEN_ARTIFACT_PANEL_ON_LARGE_FILE_STREAM,
   getDisplayContent,
   getEditDiff,
   getFilePathFromToolInput,
@@ -61,15 +60,15 @@ export function ToolDetailPanel({
   const isInputStreaming = state === "input-streaming"
 
   useEffect(() => {
-    if (!AUTO_OPEN_ARTIFACT_PANEL_ON_LARGE_FILE_STREAM) return
     if (!shouldTruncatePreview) return
     if (!normalizedFilePath) return
+    if (!toolCallId) return
     if (!isArtifactLikePath(normalizedFilePath)) return
     if (!(isInputStreaming || isRunning)) return
     const { activeResourcePath, isPanelOpen } = useArtifactStore.getState()
     if (activeResourcePath === normalizedFilePath && isPanelOpen) return
-    if (didAutoOpenRef.current === normalizedFilePath) return
-    didAutoOpenRef.current = normalizedFilePath
+    if (didAutoOpenRef.current === toolCallId) return
+    didAutoOpenRef.current = toolCallId
     queueMicrotask(() => {
       const { activeResourcePath: currentPath, isPanelOpen: currentOpen } =
         useArtifactStore.getState()
@@ -82,6 +81,7 @@ export function ToolDetailPanel({
     normalizedFilePath,
     openResource,
     shouldTruncatePreview,
+    toolCallId,
   ])
 
   if (!hasContent) return null
