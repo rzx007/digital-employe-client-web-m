@@ -89,8 +89,10 @@
   流结束 ([DONE] 到达)
       │
       ├── status: "ready"
-      ├── onFinish() → 乐观 patch cache stream_state=completed
-      │                   （completed 不再 invalidate；见 conversation-message-flow §6.1）
+      ├── onFinish() → queryClient.invalidateQueries(messages)
+      │                   │
+      │                   └── React Query 重新拉取消息
+      │                       streamState: "completed" ✓
       │
       └── _reconnectAbort = null
 
@@ -224,7 +226,9 @@
   │  ⑧ [DONE] 到达:                                                     │
   │     ├── status: "ready"                                             │
   │     ├── _lastSeqByChat 更新为最后 seq                                │
-  │     ├── onFinish() → 乐观 patch stream_state=completed（不 invalidate）│
+  │     ├── onFinish() → invalidateQueries(messages)                    │
+  │     │   └── React Query 拉取最新数据                                │
+  │     │       streamState: "completed" ✓                              │
   │     ├── _reconnectAbort = null (条件清除, 不覆盖新 controller)       │
   │     └── contains() → close                                          │
   └─────────────────────────────────────────────────────────────────────┘

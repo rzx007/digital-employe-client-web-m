@@ -51,11 +51,6 @@ function terminalToStreamState(status: string): string {
   return status
 }
 
-/** 正常 completed 结束不 GET /messages：composer 有 activeSession 锁，SSE 为准 */
-function shouldRefetchMessagesAfterTerminal(status: string): boolean {
-  return status !== "completed"
-}
-
 function seedActiveHitlFromStoredMessages(
   storedMessages: Message[]
 ): ActiveHitl | null {
@@ -264,9 +259,7 @@ export function useConversationSession({
 
         patchLastAssistantStreamState(queryClient, convKey, streamState)
 
-        if (shouldRefetchMessagesAfterTerminal(info.status)) {
-          scheduleMessagesRefetch()
-        }
+        scheduleMessagesRefetch()
       },
     })
 
@@ -294,8 +287,10 @@ export function useConversationSession({
       patchLastAssistantStreamState(queryClient, convKey, "completed")
     }
 
+    scheduleMessagesRefetch()
+
     void refetchRecentContacts()
-  }, [convKey, queryClient])
+  }, [convKey, queryClient, scheduleMessagesRefetch])
 
   const onHitlApproved = useCallback(
     async (options?: HitlPatchOptions) => {
