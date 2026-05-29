@@ -4,8 +4,7 @@ import logging
 import shutil
 import io
 import zipfile
-import base64
-import mimetypes
+import shutil
 from pathlib import Path
 
 from src.schemas.resource import (
@@ -14,7 +13,14 @@ from src.schemas.resource import (
     ResourceList,
     ResourceUploadResult,
 )
-from src.service.agent import infer_artifact_language, infer_artifact_type
+from src.service.basic_file_reader import (
+    BasicFileCategory,
+    DASHSCOPE_MAX_MULTIMODAL_BYTES,
+    categorize_file,
+    infer_resource_artifact_type,
+    is_multimodal_payload_too_large,
+    read_basic_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +58,7 @@ def _scan_file(file_path: Path, virtual_prefix: str) -> ResourceEntry:
         name=file_path.name,
         path=vpath,
         entry_type="file",
-        artifact_type=infer_artifact_type(vpath),
+        artifact_type=infer_resource_artifact_type(vpath),
         size=file_path.stat().st_size if file_path.is_file() else 0,
         modified_at=file_path.stat().st_mtime if file_path.is_file() else None,
     )
@@ -135,18 +141,25 @@ class ResourceService:
         if resolved is None or not resolved.is_file():
             return None
 
-        artifact_type = infer_artifact_type(path)
+        category = categorize_file(resolved)
         try:
-            if artifact_type == "image":
-                data = resolved.read_bytes()
-                mt, _ = mimetypes.guess_type(resolved.name)
-                mime = mt or "application/octet-stream"
-                content = f"data:{mime};base64,{base64.b64encode(data).decode()}"
+            if category == BasicFileCategory.IMAGE:
+                payload = read_basic_file(resolved)
+                mime = payload.mime_type or "application/octet-stream"
+                content = f"data:{mime};base64,{payload.base64_data}"
+                artifact_type = "image"
+            elif category == BasicFileCategory.DOCUMENT:
+                payload = read_basic_file(resolved)
+                content = payload.text or ""
+                artifact_type = infer_resource_artifact_type(path)
             else:
                 content = resolved.read_text(encoding="utf-8")
+                artifact_type = infer_resource_artifact_type(path)
         except Exception as exc:
             logger.error("读取资源文件失败 path=%s: %s", path, exc, exc_info=True)
             return None
+
+        from src.service.agent import infer_artifact_language
 
         return ResourceContent(
             path=path,
@@ -168,6 +181,12 @@ class ResourceService:
         ext = Path(filename).suffix.lower()
         if ext and ext not in ALLOWED_UPLOAD_EXTENSIONS:
             return f"不支持的文件类型：{ext}"
+
+        if categorize_file(filename) == BasicFileCategory.IMAGE and (
+            is_multimodal_payload_too_large(raw_bytes=len(file_bytes))
+        ):
+            limit_mb = DASHSCOPE_MAX_MULTIMODAL_BYTES // (1024 * 1024)
+            return f"图片大小超过多模态模型上限（最大 {limit_mb}MB），请压缩后上传"
 
         safe_name = Path(filename).name
         if not safe_name or safe_name.startswith("."):

@@ -2,6 +2,12 @@ from src.core.logging_setup import setup_logging
 
 setup_logging()
 
+from src.service.agent.compatible_filesystem_middleware import (
+    install_compatible_filesystem_middleware,
+)
+
+install_compatible_filesystem_middleware()
+
 import logging
 import re
 import asyncio
