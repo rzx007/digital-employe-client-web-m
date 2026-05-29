@@ -527,9 +527,7 @@ export function CuratorView({
           text,
           command: null,
         })
-        toast.success("已加入发送队列", {
-          description: `全部录用 ${candidates.length} 人`,
-        })
+        toast.success("已加入发送队列", { description: "全部录用" })
         return
       }
       void doSend(text)

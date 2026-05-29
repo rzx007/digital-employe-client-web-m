@@ -1,8 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { memo } from "react"
-import { IconUsersPlus } from "@tabler/icons-react"
+import { memo, useCallback } from "react"
+import { IconCircleCheck } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
@@ -78,11 +78,16 @@ function RecruitmentCandidatesCardInner({
   resultText?: string | null
   className?: string
 }) {
+  const recruitment = useCuratorRecruitment()
   const payload = React.useMemo(
     () => parseRecruitmentCandidatesPayload(resultText),
     [resultText]
   )
-  const recruitment = useCuratorRecruitment()
+
+  const handleHireAll = useCallback(() => {
+    if (!payload?.candidates.length || !recruitment?.onHireAll) return
+    recruitment.onHireAll(payload.candidates)
+  }, [payload, recruitment])
 
   const isRunning = isRecruitmentToolRunning(state ?? "")
   const isError = state === "output-error"
@@ -134,22 +139,21 @@ function RecruitmentCandidatesCardInner({
         )}
       </div>
 
-      {payload &&
-        !isRunning &&
-        payload.candidates.length >= 2 &&
-        recruitment && (
+      {payload && payload.candidates.length >= 2 && !isRunning && recruitment?.onHireAll ? (
+        <div className="mb-2 @[18rem]/recruitment:mb-2.5">
           <Button
             type="button"
-            size="sm"
             variant="secondary"
-            className="mb-2 h-8 w-full gap-1.5 text-xs"
+            size="sm"
+            className="h-8 w-full gap-1.5 text-xs"
             disabled={recruitment.hireDisabled}
-            onClick={() => recruitment.onHireAll(payload.candidates)}
+            onClick={handleHireAll}
           >
-            <IconUsersPlus className="size-3.5" />
-            全部录用（{payload.candidates.length} 人）
+            <IconCircleCheck className="size-3.5" />
+            全部录用 ({payload.candidates.length} 人)
           </Button>
-        )}
+        </div>
+      ) : null}
 
       {isRunning ? (
         <CandidateSkeletons />

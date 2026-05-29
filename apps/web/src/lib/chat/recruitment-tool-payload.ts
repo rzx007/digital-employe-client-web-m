@@ -23,30 +23,6 @@ export interface EmployeeHiredPayload {
   message: string
 }
 
-export interface EmployeeHiredItem {
-  index: number
-  employee_id: number
-  employee_name: string
-  employee_code?: string
-  skills: string[]
-}
-
-export interface EmployeeHireFailedItem {
-  index: number
-  name?: string
-  error: string
-}
-
-export interface EmployeesHiredPayload {
-  type: "employees_hired"
-  total: number
-  succeeded_count: number
-  failed_count: number
-  succeeded: EmployeeHiredItem[]
-  failed: EmployeeHireFailedItem[]
-  message?: string
-}
-
 function parseJsonObject(text: string): Record<string, unknown> | null {
   const trimmed = text.trim()
   if (!trimmed.startsWith("{")) return null
@@ -153,92 +129,6 @@ export function parseEmployeeHiredPayload(
   }
 }
 
-function normalizeHiredItem(raw: unknown): EmployeeHiredItem | null {
-  if (!raw || typeof raw !== "object") return null
-  const item = raw as Record<string, unknown>
-  const employee_name =
-    typeof item.employee_name === "string" ? item.employee_name.trim() : ""
-  const employee_id =
-    typeof item.employee_id === "number" && Number.isFinite(item.employee_id)
-      ? item.employee_id
-      : null
-  if (!employee_name || employee_id == null) return null
-  const index =
-    typeof item.index === "number" && Number.isFinite(item.index) ? item.index : 0
-  const skillsRaw = item.skills
-  const skills = Array.isArray(skillsRaw)
-    ? skillsRaw.filter((s): s is string => typeof s === "string" && !!s)
-    : []
-  return {
-    index,
-    employee_id,
-    employee_name,
-    employee_code:
-      typeof item.employee_code === "string" ? item.employee_code : undefined,
-    skills,
-  }
-}
-
-function normalizeFailedItem(raw: unknown): EmployeeHireFailedItem | null {
-  if (!raw || typeof raw !== "object") return null
-  const item = raw as Record<string, unknown>
-  const error = typeof item.error === "string" ? item.error.trim() : ""
-  if (!error) return null
-  const index =
-    typeof item.index === "number" && Number.isFinite(item.index) ? item.index : 0
-  const name =
-    typeof item.name === "string" && item.name.trim()
-      ? item.name.trim()
-      : undefined
-  return { index, name, error }
-}
-
-export function parseEmployeesHiredPayload(
-  text: string | null | undefined
-): EmployeesHiredPayload | null {
-  if (!text?.trim()) return null
-  const obj = parseJsonObject(text)
-  if (!obj || obj.type !== "employees_hired") return null
-
-  const succeededRaw = obj.succeeded
-  const failedRaw = obj.failed
-  const succeeded = Array.isArray(succeededRaw)
-    ? succeededRaw
-        .map(normalizeHiredItem)
-        .filter((item): item is EmployeeHiredItem => item != null)
-    : []
-  const failed = Array.isArray(failedRaw)
-    ? failedRaw
-        .map(normalizeFailedItem)
-        .filter((item): item is EmployeeHireFailedItem => item != null)
-    : []
-
-  if (succeeded.length === 0 && failed.length === 0) return null
-
-  const total =
-    typeof obj.total === "number" && Number.isFinite(obj.total)
-      ? obj.total
-      : succeeded.length + failed.length
-  const succeeded_count =
-    typeof obj.succeeded_count === "number" && Number.isFinite(obj.succeeded_count)
-      ? obj.succeeded_count
-      : succeeded.length
-  const failed_count =
-    typeof obj.failed_count === "number" && Number.isFinite(obj.failed_count)
-      ? obj.failed_count
-      : failed.length
-
-  return {
-    type: "employees_hired",
-    total,
-    succeeded_count,
-    failed_count,
-    succeeded,
-    failed,
-    message: typeof obj.message === "string" ? obj.message : undefined,
-  }
-}
-
 /** 将 skills_summary 拆成展示用标签（顿号、逗号分隔） */
 export function splitSkillsSummary(summary: string): string[] {
   if (!summary.trim()) return []
@@ -264,25 +154,6 @@ export function buildRecruitmentHireMessage(
   return lines.join("\n")
 }
 
-/** 总管对话中批量录用时发送给 orchestrator 的文案 */
-export function buildRecruitmentHireAllMessage(
-  candidates: Pick<
-    RecruitmentCandidateItem,
-    "name" | "description" | "skill_ids"
-  >[]
-): string {
-  if (candidates.length === 0) return "全部录用"
-  const payload = candidates.map((candidate) => ({
-    name: candidate.name.trim(),
-    description: (candidate.description || "").trim() || "无",
-    skill_ids: candidate.skill_ids ?? [],
-  }))
-  return [
-    `全部录用以下 ${payload.length} 位候选人，请一次调用 hire_employees：`,
-    JSON.stringify(payload, null, 2),
-  ].join("\n")
-}
-
 export function isRecruitmentToolRunning(state: string): boolean {
   return (
     state === "call" ||
@@ -291,7 +162,116 @@ export function isRecruitmentToolRunning(state: string): boolean {
   )
 }
 
-/** 工具返回纯文本错误（非 JSON payload）时仍应渲染招聘专用卡片 */
+export interface EmployeesHiredSucceededItem {
+  index: number
+  employee_id: number
+  employee_name: string
+  employee_code?: string
+  skills: string[]
+}
+
+export interface EmployeesHiredFailedItem {
+  index: number
+  name?: string
+  error: string
+}
+
+export interface EmployeesHiredPayload {
+  type: "employees_hired"
+  total: number
+  succeeded_count: number
+  failed_count: number
+  succeeded: EmployeesHiredSucceededItem[]
+  failed: EmployeesHiredFailedItem[]
+  message?: string
+}
+
+export type RecruitmentToolBlockKind =
+  | "recruitment-candidates"
+  | "employee-hired"
+  | "employees-hired"
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value)
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+
+function normalizeEmployeesHiredSucceeded(
+  raw: unknown
+): EmployeesHiredSucceededItem | null {
+  if (!raw || typeof raw !== "object") return null
+  const item = raw as Record<string, unknown>
+  const employeeId = asNumber(item.employee_id)
+  const employeeName =
+    typeof item.employee_name === "string" ? item.employee_name.trim() : ""
+  if (employeeId == null || !employeeName) return null
+  const index = asNumber(item.index) ?? 0
+  const skillsRaw = item.skills
+  const skills = Array.isArray(skillsRaw)
+    ? skillsRaw.filter((s): s is string => typeof s === "string" && !!s)
+    : []
+  return {
+    index,
+    employee_id: employeeId,
+    employee_name: employeeName,
+    employee_code:
+      typeof item.employee_code === "string" ? item.employee_code : undefined,
+    skills,
+  }
+}
+
+function normalizeEmployeesHiredFailed(
+  raw: unknown
+): EmployeesHiredFailedItem | null {
+  if (!raw || typeof raw !== "object") return null
+  const item = raw as Record<string, unknown>
+  const error = typeof item.error === "string" ? item.error : ""
+  if (!error) return null
+  const index = asNumber(item.index) ?? 0
+  const name = typeof item.name === "string" ? item.name : undefined
+  return { index, name, error }
+}
+
+export function parseEmployeesHiredPayload(
+  text: string | null | undefined
+): EmployeesHiredPayload | null {
+  if (!text?.trim()) return null
+  const obj = parseJsonObject(text)
+  if (!obj || obj.type !== "employees_hired") return null
+
+  const succeededRaw = obj.succeeded
+  const failedRaw = obj.failed
+  const succeeded = Array.isArray(succeededRaw)
+    ? succeededRaw
+        .map(normalizeEmployeesHiredSucceeded)
+        .filter((item): item is EmployeesHiredSucceededItem => item != null)
+    : []
+  const failed = Array.isArray(failedRaw)
+    ? failedRaw
+        .map(normalizeEmployeesHiredFailed)
+        .filter((item): item is EmployeesHiredFailedItem => item != null)
+    : []
+
+  const total = asNumber(obj.total) ?? succeeded.length + failed.length
+  const succeededCount =
+    asNumber(obj.succeeded_count) ?? succeeded.length
+  const failedCount = asNumber(obj.failed_count) ?? failed.length
+
+  return {
+    type: "employees_hired",
+    total,
+    succeeded_count: succeededCount,
+    failed_count: failedCount,
+    succeeded,
+    failed,
+    message: typeof obj.message === "string" ? obj.message : undefined,
+  }
+}
+
 export function isRecruitmentPlainToolError(
   resultText: string | null | undefined
 ): boolean {
@@ -313,11 +293,6 @@ export function shouldRenderRecruitmentToolBlock(
   )
 }
 
-export type RecruitmentToolBlockKind =
-  | "recruitment-candidates"
-  | "employee-hired"
-  | "employees-hired"
-
 export function resolveRecruitmentToolBlockKind(
   toolName: string,
   state: string,
@@ -325,9 +300,7 @@ export function resolveRecruitmentToolBlockKind(
 ): RecruitmentToolBlockKind | null {
   if (toolName === "recruit_employee") {
     const payload = parseRecruitmentCandidatesPayload(resultText)
-    if (
-      shouldRenderRecruitmentToolBlock(state, resultText, payload != null)
-    ) {
+    if (shouldRenderRecruitmentToolBlock(state, resultText, payload != null)) {
       return "recruitment-candidates"
     }
     return null
@@ -350,4 +323,23 @@ export function resolveRecruitmentToolBlockKind(
   }
 
   return null
+}
+
+/** 总管对话中「全部录用」时发送给 orchestrator 的文案 */
+export function buildRecruitmentHireAllMessage(
+  candidates: RecruitmentCandidateItem[]
+): string {
+  const normalized = candidates
+    .filter((c) => c.name.trim())
+    .map((c) => ({
+      name: c.name.trim(),
+      description: (c.description || "").trim() || "无",
+      skill_ids: c.skill_ids ?? [],
+    }))
+  const count = normalized.length
+  const payload = JSON.stringify(normalized, null, 2)
+  return [
+    `全部录用以下 ${count} 位候选人，请调用 hire_employees，candidates 参数为：`,
+    payload,
+  ].join("\n")
 }

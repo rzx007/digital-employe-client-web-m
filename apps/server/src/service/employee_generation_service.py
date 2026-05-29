@@ -242,40 +242,6 @@ class EmployeeGenerationService:
         return parsed
 
     @staticmethod
-    def _normalize_profile_count(
-        profiles: list[EmployeeProfile], count: int
-    ) -> list[EmployeeProfile]:
-        """将解析结果对齐到请求的 count：不足补齐、超出截断。"""
-        if count <= 0:
-            return profiles
-        if len(profiles) > count:
-            logger.info(
-                "员工生成解析条数超过请求: got=%s, count=%s，截断",
-                len(profiles),
-                count,
-            )
-            return profiles[:count]
-        if len(profiles) < count:
-            pad_description = (
-                "根据需求生成的数字员工，录用后可在员工设置中分配技能。"
-            )
-            logger.info(
-                "员工生成解析条数不足: got=%s, count=%s，补齐默认档案",
-                len(profiles),
-                count,
-            )
-            for i in range(len(profiles), count):
-                profiles.append(
-                    EmployeeProfile(
-                        name=f"候选员工 {i + 1}",
-                        description=pad_description,
-                        skill_ids=[],
-                        skills_list=[],
-                    )
-                )
-        return profiles
-
-    @staticmethod
     def _parse_skill_profiles(
         result_content: str, skills_list: list[dict[str, Any]], count: int
     ) -> list[EmployeeProfile]:
@@ -343,7 +309,30 @@ class EmployeeGenerationService:
                 "候选员工",
                 result_content[:200] + "..." if len(result_content) > 200 else result_content,
             )
-    
+
+    @staticmethod
+    def _normalize_profile_count(
+        profiles: list[EmployeeProfile], count: int
+    ) -> list[EmployeeProfile]:
+        if count <= 0:
+            return profiles
+        if len(profiles) > count:
+            return profiles[:count]
+        if len(profiles) < count:
+            padded = list(profiles)
+            for idx in range(len(profiles) + 1, count + 1):
+                padded.append(
+                    EmployeeProfile(
+                        name=f"候选员工 {idx}",
+                        description=(
+                            "根据需求生成的数字员工，录用后可在员工设置中分配技能。"
+                        ),
+                        skill_ids=[],
+                        skills_list=[],
+                    )
+                )
+            return padded
+        return profiles
 
     @staticmethod
     async def generate_employee_profiles_async(
@@ -405,13 +394,13 @@ class EmployeeGenerationService:
         return converted_profiles
 
     @staticmethod
-    async def generate_profiles_for_recruitment(
+    async def generate_candidates_for_orchestrator(
         user_request: str,
         count: int = 1,
         token: str | None = None,
         workspace_id: int | None = None,
     ) -> tuple[list[EmployeeProfile], list[dict[str, Any]]]:
-        """招聘候选人生成（总管 Tool 与 /generate-employees 共用）。"""
+        """为总管招聘 Tool 生成候选人（复用招聘页同一套技能匹配逻辑）。"""
         skills = await EmployeeGenerationService.get_available_skills(
             token=token, workspace_id=workspace_id
         )
@@ -424,15 +413,3 @@ class EmployeeGenerationService:
                 user_request, count
             )
         return profiles, skills
-
-    @staticmethod
-    async def generate_candidates_for_orchestrator(
-        user_request: str,
-        count: int = 1,
-        token: str | None = None,
-        workspace_id: int | None = None,
-    ) -> tuple[list[EmployeeProfile], list[dict[str, Any]]]:
-        """为总管招聘 Tool 生成候选人（复用招聘页同一套技能匹配逻辑）。"""
-        return await EmployeeGenerationService.generate_profiles_for_recruitment(
-            user_request, count, token=token, workspace_id=workspace_id
-        )

@@ -190,6 +190,7 @@ export function BlockRenderer({
         state={block.state}
         resultText={block.resultText}
         celebrateOnSuccess={isLastAssistantMessage}
+        className="w-full"
       />
     )
   }
@@ -199,6 +200,7 @@ export function BlockRenderer({
         key={block.key}
         state={block.state}
         resultText={block.resultText}
+        className="w-full"
       />
     )
   }
@@ -208,6 +210,7 @@ export function BlockRenderer({
         key={block.key}
         state={block.state}
         resultText={block.resultText}
+        className="w-full"
       />
     )
   }
@@ -217,6 +220,7 @@ export function BlockRenderer({
         key={block.key}
         state={block.state}
         resultText={block.resultText}
+        className="w-full"
       />
     )
   }

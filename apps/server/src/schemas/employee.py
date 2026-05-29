@@ -79,12 +79,11 @@ class EmployeeRead(BaseModel):
 
 
 class EmployeeUpdate(BaseModel):
-    """员工更新信息（各字段可选，仅更新 model_fields_set 中的字段）"""
+    """员工更新：仅显式传入的字段会写入（employee_name 可选）。"""
 
-    workspace_id: Optional[int] = None
     employee_name: Optional[str] = None
     capability_desc: Optional[str] = None
-    status: Optional[int] = None
+    status: int = 1
     detail_page_url: Optional[str] = None
     skill_ids: Optional[List[int]] = None
     mcp_ids: Optional[List[int]] = None

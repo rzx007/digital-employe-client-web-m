@@ -94,6 +94,13 @@ def reset_context() -> None:
     _auth_token_ctx.set(None)
 
 
+def invalidate_orchestrator_db_cache() -> None:
+    """fresh Session 写入后，使流式会话中的 ORM 缓存失效。"""
+    db = _db_session_ctx.get()
+    if db is not None:
+        db.expire_all()
+
+
 def count_running_tasks(db: Session, employee_id: int) -> int:
     from src.models.task_execution_log import TaskExecutionLog
 

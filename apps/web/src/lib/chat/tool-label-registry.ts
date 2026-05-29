@@ -26,11 +26,16 @@ export const BUSINESS_TOOL_NAMES = new Set([
   "create_orchestration_plan",
   "confirm_orchestration_plan",
   "list_workspace_employees",
+  "list_workspace_skills",
   "recruit_employee",
   "hire_employee",
   "hire_employees",
+  "get_employee",
+  "update_employee",
+  "delete_employee",
   "update_task",
   "delete_task",
+  "delete_tasks_batch",
   "cancel_plan",
   "list_tasks",
   "session_search",
@@ -185,6 +190,16 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
       error: "查看团队失败",
     },
   },
+  list_workspace_skills: {
+    icon: "🧩",
+    label: "查看技能库",
+    verb: "查看技能库",
+    simple: {
+      running: "正在查询技能库...",
+      done: "技能库已加载",
+      error: "查询失败",
+    },
+  },
   recruit_employee: {
     icon: "🧑‍💼",
     label: "招聘候选人",
@@ -215,6 +230,36 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
       error: "批量入职失败",
     },
   },
+  get_employee: {
+    icon: "👤",
+    label: "查看员工",
+    verb: "查看员工详情",
+    simple: {
+      running: "正在查询员工...",
+      done: "员工详情已加载",
+      error: "查询失败",
+    },
+  },
+  update_employee: {
+    icon: "✏️",
+    label: "更新员工",
+    verb: "更新员工",
+    simple: {
+      running: "正在更新员工...",
+      done: "员工已更新",
+      error: "更新失败",
+    },
+  },
+  delete_employee: {
+    icon: "🗑️",
+    label: "删除员工",
+    verb: "删除员工",
+    simple: {
+      running: "正在删除员工...",
+      done: "员工已删除",
+      error: "删除失败",
+    },
+  },
   update_task: {
     icon: "✏️",
     label: "更新任务",
@@ -233,6 +278,16 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
       running: "正在删除任务...",
       done: "任务已删除",
       error: "删除失败",
+    },
+  },
+  delete_tasks_batch: {
+    icon: "🗑️",
+    label: "批量删除任务",
+    verb: "批量删除任务",
+    simple: {
+      running: "正在批量删除任务...",
+      done: "批量删除完成",
+      error: "批量删除失败",
     },
   },
   cancel_plan: {

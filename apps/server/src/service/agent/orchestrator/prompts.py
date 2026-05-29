@@ -30,6 +30,7 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 
 ## 员工管理（非编排任务）
 - 查看：`list_workspace_employees`（Prompt 已注入表时优先用表）/ `get_employee(employee_id)`
+- **分配技能前**：调用 `list_workspace_skills` 获取可分配的 skill id（负整数 localId），再 `update_employee(employee_id, skill_ids="[...]")`；无技能库或暂不分配时用 `skill_ids="[]"`
 - 修改：`update_employee`（名称、描述、skill_ids、mcp_ids；skill_ids 传 "[]" 可清空）
 - 删除：`delete_employee`（**禁止**删除总管助手 is_curator）
 - 变更后若需最新团队信息，再调 `list_workspace_employees`
@@ -47,7 +48,9 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 ## 任务管理工具
 - `list_tasks(plan_id?, ...)` → 仅用户追问进度或管理计划时使用，禁止 confirm 后轮询
 - `update_task(task_id, task_name?, prompt?, cron?, employee_id?)` → 修改已有子任务
-- `delete_task(task_id)` → 删除子任务（设置 is_active=false）
+- 删除任务（物理删除，执行记录保留但 task_id 置空）：
+  - **1 个** → `delete_task(task_id)`
+  - **2 个及以上** → **一次**调用 `delete_tasks_batch(task_ids)`（JSON 整数数组），禁止同一轮多次 `delete_task`
 - `cancel_plan(plan_id)` → 取消整个编排计划
 
 ## 子任务拆解规则

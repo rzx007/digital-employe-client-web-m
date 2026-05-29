@@ -3,7 +3,7 @@ import type { RecruitmentCandidateItem } from "@/lib/chat/recruitment-tool-paylo
 
 export type CuratorRecruitmentContextValue = {
   onHire: (candidate: RecruitmentCandidateItem) => void
-  onHireAll: (candidates: RecruitmentCandidateItem[]) => void
+  onHireAll?: (candidates: RecruitmentCandidateItem[]) => void
   hireDisabled: boolean
 }
 

@@ -13,6 +13,7 @@ from src.service.agent.orchestrator.recruitment import (
 from src.service.agent.orchestrator.runtime import (
     get_auth_token,
     get_workspace_id,
+    invalidate_orchestrator_db_cache,
 )
 
 
@@ -74,7 +75,7 @@ def hire_employee(name: str, description: str, skill_ids: str = "[]") -> str:
     if err:
         return err
 
-    return hire_candidate(
+    result = hire_candidate(
         workspace_id,
         name,
         description,
@@ -82,6 +83,9 @@ def hire_employee(name: str, description: str, skill_ids: str = "[]") -> str:
         token=token,
         user_id="1",
     )
+    if not result.startswith("错误"):
+        invalidate_orchestrator_db_cache()
+    return result
 
 
 @tool
@@ -113,9 +117,12 @@ def hire_employees(candidates: str) -> str:
     if len(parsed) > MAX_HIRE_BATCH:
         return f"错误：单次最多录用 {MAX_HIRE_BATCH} 人。"
 
-    return hire_candidates_batch(
+    result = hire_candidates_batch(
         workspace_id,
         parsed,
         token=token,
         user_id="1",
     )
+    if not result.startswith("错误"):
+        invalidate_orchestrator_db_cache()
+    return result

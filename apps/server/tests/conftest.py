@@ -58,6 +58,28 @@ def patched_recruitment_db(db_engine, monkeypatch):
     return session_factory
 
 
+@pytest.fixture()
+def patched_task_mutations_db(db_engine, monkeypatch):
+    """让 task_mutations 模块的 get_session_local 使用测试库。"""
+    session_factory = sessionmaker(bind=db_engine)
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.task_mutations.get_session_local",
+        lambda: session_factory,
+    )
+    return session_factory
+
+
+@pytest.fixture()
+def patched_employee_tools_db(db_engine, monkeypatch):
+    """让 employee_tools 模块的 get_session_local 使用测试库。"""
+    session_factory = sessionmaker(bind=db_engine)
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.employee_tools.get_session_local",
+        lambda: session_factory,
+    )
+    return session_factory
+
+
 def add_employee(
     db: Session,
     workspace_id: int,

@@ -4,7 +4,6 @@ import json
 
 from fastapi import HTTPException
 from langchain_core.tools import tool
-from sqlalchemy import select
 
 from src.db.session import get_session_local
 from src.models.employee import Employee
@@ -14,10 +13,69 @@ from src.service.agent.orchestrator.runtime import (
     get_auth_token,
     get_db,
     get_workspace_id,
+    invalidate_orchestrator_db_cache,
 )
 from src.service.employee_service import EmployeeService
+from src.service.local_skill_service import LocalSkillService
+
+_RECRUIT_SUMMARY_MAX_CHARS = 20
 
 _RESERVED_NAMES_LOWER = {n.lower() for n in _RESERVED_EMPLOYEE_NAMES}
+
+
+def format_workspace_skills_list(workspace_id: int) -> list[dict]:
+    """builtin + workspace 本地技能，与招聘/员工配置使用同一套 localId。"""
+    items: list[dict] = []
+    for item in LocalSkillService.list_local_skills(workspace_id):
+        local_id = item.get("localId")
+        if local_id is None:
+            continue
+        skill_name = str(item.get("skillName") or "")
+        description = (item.get("description") or "").strip()
+        zh_raw = item.get("displayNameZh")
+        display_zh = (
+            zh_raw.strip()
+            if isinstance(zh_raw, str) and zh_raw.strip()
+            else skill_name
+        )
+        summary = (item.get("recruitSummary") or "").strip()
+        if not summary:
+            summary = LocalSkillService.build_recruit_summary(
+                description, skill_name, _RECRUIT_SUMMARY_MAX_CHARS
+            )
+        items.append(
+            {
+                "id": int(local_id),
+                "name": skill_name,
+                "display_name_zh": display_zh,
+                "summary": summary[:_RECRUIT_SUMMARY_MAX_CHARS],
+                "source": "builtin" if item.get("isBuiltin") else "workspace",
+            }
+        )
+    return items
+
+
+@tool
+def list_workspace_skills() -> str:
+    """列出当前工作空间可分配给数字员工的本地技能库（含 skill id）。
+
+    在 update_employee / hire_employee 需要 skill_ids 时先调用本工具；
+    返回的 id 为负整数 localId（如 -101），须原样传入 skill_ids JSON 数组。
+    技能库为空时 total=0，仍可录用/更新无技能员工（skill_ids="[]"）。
+    """
+    workspace_id = get_workspace_id()
+    skills = format_workspace_skills_list(workspace_id)
+    payload = {
+        "type": "workspace_skills",
+        "workspace_id": workspace_id,
+        "total": len(skills),
+        "skills": skills,
+        "hint": (
+            "为员工分配技能：update_employee(employee_id, skill_ids=\"[<id>, ...]\");"
+            "清空技能：skill_ids=\"[]\"。id 必须来自本列表，禁止编造。"
+        ),
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
 def _parse_json_int_list(raw: str, field_name: str) -> tuple[list[int] | None, str | None]:
@@ -45,6 +103,15 @@ def _is_reserved_name(name: str) -> bool:
     )
 
 
+def _ensure_workspace_employee(db, employee_id: int, workspace_id: int) -> Employee | str:
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        return f"错误：员工 ID={employee_id} 不存在。"
+    if employee.workspace_id != workspace_id:
+        return f"错误：员工 ID={employee_id} 不属于当前工作空间。"
+    return employee
+
+
 def build_employee_update_payload(
     *,
     employee_name: str | None = None,
@@ -52,8 +119,8 @@ def build_employee_update_payload(
     skill_ids: list[int] | None = None,
     mcp_ids: list[int] | None = None,
 ) -> EmployeeUpdate:
-    """仅包含显式传入字段，供 update_employee tool 与单测使用。"""
-    data: dict = {}
+    """仅包含显式传入字段，供 update_employee 与单测增量校验。"""
+    data: dict = {"status": 1}
     if employee_name is not None:
         data["employee_name"] = employee_name.strip()
     if capability_desc is not None:
@@ -63,15 +130,6 @@ def build_employee_update_payload(
     if mcp_ids is not None:
         data["mcp_ids"] = mcp_ids
     return EmployeeUpdate.model_validate(data)
-
-
-def _ensure_workspace_employee(db, employee_id: int, workspace_id: int) -> Employee | str:
-    employee = db.get(Employee, employee_id)
-    if not employee:
-        return f"错误：员工 ID={employee_id} 不存在。"
-    if employee.workspace_id != workspace_id:
-        return f"错误：员工 ID={employee_id} 不属于当前工作空间。"
-    return employee
 
 
 @tool
@@ -138,23 +196,23 @@ def update_employee(
         ):
             return "错误：未提供任何要更新的字段。"
 
-        parsed_skill_ids: list[int] | None = None
-        parsed_mcp_ids: list[int] | None = None
         if skill_ids is not None:
             parsed, err = _parse_json_int_list(skill_ids, "skill_ids")
             if err:
                 return err
-            parsed_skill_ids = parsed
+        else:
+            parsed = None
+
+        parsed_mcp_ids: list[int] | None = None
         if mcp_ids is not None:
-            parsed, err = _parse_json_int_list(mcp_ids, "mcp_ids")
+            parsed_mcp_ids, err = _parse_json_int_list(mcp_ids, "mcp_ids")
             if err:
                 return err
-            parsed_mcp_ids = parsed
 
         update_in = build_employee_update_payload(
             employee_name=employee_name.strip() if employee_name is not None else None,
-            capability_desc=capability_desc,
-            skill_ids=parsed_skill_ids,
+            capability_desc=capability_desc.strip() if capability_desc is not None else None,
+            skill_ids=parsed,
             mcp_ids=parsed_mcp_ids,
         )
 
@@ -186,6 +244,7 @@ def update_employee(
             "skills": skill_labels,
             "message": f"员工「{updated.name}」（ID={updated.id}）已更新。",
         }
+        invalidate_orchestrator_db_cache()
         return json.dumps(result, ensure_ascii=False, indent=2)
     finally:
         db.close()
@@ -227,6 +286,7 @@ def delete_employee(employee_id: int) -> str:
             "employee_name": name,
             "message": f"员工「{name}」（ID={employee_id}）已删除。",
         }
+        invalidate_orchestrator_db_cache()
         return json.dumps(result, ensure_ascii=False, indent=2)
     finally:
         db.close()

@@ -42,6 +42,7 @@ from src.service.agent.orchestrator.recruitment_tools import (
 from src.service.agent.orchestrator.employee_tools import (
     delete_employee,
     get_employee,
+    list_workspace_skills,
     update_employee,
 )
 from src.service.agent.orchestrator.tools import (
@@ -49,6 +50,7 @@ from src.service.agent.orchestrator.tools import (
     confirm_orchestration_plan,
     create_orchestration_plan,
     delete_task,
+    delete_tasks_batch,
     list_tasks,
     list_workspace_employees,
     update_task,
@@ -184,6 +186,7 @@ def get_orchestrator_agent(
         tools=[
             shell_execute_tool,
             list_workspace_employees,
+            list_workspace_skills,
             get_employee,
             update_employee,
             delete_employee,
@@ -194,6 +197,7 @@ def get_orchestrator_agent(
             confirm_orchestration_plan,
             update_task,
             delete_task,
+            delete_tasks_batch,
             cancel_plan,
             list_tasks,
             # 用户明确要求总管亲自执行（含长文档）时与员工 agent 相同的 HITL 门

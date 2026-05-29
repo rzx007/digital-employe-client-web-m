@@ -14,6 +14,13 @@ from src.service.agent.orchestrator.runtime import (
     get_conversation_id,
     get_db,
     get_workspace_id,
+    invalidate_orchestrator_db_cache,
+)
+from src.service.agent.orchestrator.task_mutations import (
+    MAX_TASK_DELETE_BATCH,
+    _delete_task_with_fresh_session,
+    _update_task_with_fresh_session,
+    delete_tasks_batch as run_delete_tasks_batch,
 )
 
 
@@ -166,54 +173,79 @@ def update_task(
     employee_id: int | None = None,
 ) -> str:
     """修改已存在的子任务。参数均可选，只更新传入的非 None 字段。"""
-    db = get_db()
-    task = db.get(EmployeeTask, task_id)
-    if not task:
-        return f"错误：任务 #{task_id} 不存在。"
+    workspace_id = get_workspace_id()
+    result = _update_task_with_fresh_session(
+        workspace_id,
+        task_id,
+        task_name=task_name,
+        prompt=prompt,
+        cron=cron,
+        employee_id=employee_id,
+    )
+    if result.get("error"):
+        return f"错误：{result['error']}"
 
-    changed: list[str] = []
-    if task_name is not None:
-        task.task_name = task_name
-        changed.append("任务名称")
-    if prompt is not None:
-        task.user_prompt = prompt
-        changed.append("执行指令")
-    if cron is not None:
-        task.cron_expression = cron if cron else ""
-        task.execute_mode = "scheduled" if cron else "immediate"
-        changed.append("调度时间")
-    if employee_id is not None:
-        emp = db.get(Employee, employee_id)
-        if not emp:
-            return f"错误：员工 ID={employee_id} 不存在。"
-        task.employee_id = employee_id
-        task.employee_name_snapshot = emp.name or ""
-        changed.append("执行员工")
+    changed = result.get("changed") or []
+    if not changed:
+        return result.get("message") or "未做任何修改。"
 
-    if changed:
-        db.commit()
-        if "调度时间" in changed:
-            from src.service.task_scheduler_service import TaskSchedulerService
+    if "调度时间" in changed:
+        from src.service.task_scheduler_service import TaskSchedulerService
 
-            TaskSchedulerService.reload_jobs()
-        return f"任务 #{task_id} ({task.task_name}) 已更新：{'、'.join(changed)}。"
-    return "未做任何修改。"
+        TaskSchedulerService.reload_jobs()
+    invalidate_orchestrator_db_cache()
+    return result.get("message") or f"任务 #{task_id} 已更新。"
 
 
 @tool
 def delete_task(task_id: int) -> str:
-    """删除子任务（物理删除，关联的执行记录会保留但 task_id 置空）。"""
-    db = get_db()
-    task = db.get(EmployeeTask, task_id)
-    if not task:
-        return f"错误：任务 #{task_id} 不存在。"
+    """删除单个子任务（物理删除，关联的执行记录会保留但 task_id 置空）。"""
+    workspace_id = get_workspace_id()
+    result = _delete_task_with_fresh_session(workspace_id, task_id)
+    if result.get("error"):
+        return f"错误：{result['error']}"
 
-    db.delete(task)
-    db.commit()
     from src.service.task_scheduler_service import TaskSchedulerService
 
     TaskSchedulerService.reload_jobs()
-    return f"任务 #{task_id} ({task.task_name}) 已删除。"
+    invalidate_orchestrator_db_cache()
+    task_name = result.get("task_name") or ""
+    return f"任务 #{task_id} ({task_name}) 已删除。"
+
+
+@tool
+def delete_tasks_batch(task_ids: str) -> str:
+    """批量删除多个子任务（一次调用，逐任务独立 Session，整批只刷新调度一次）。
+
+    当用户要求删除 2 个及以上任务时使用本工具，不要用同一轮多次 delete_task。
+
+    参数 task_ids: JSON 整数数组字符串，例如 "[31, 32, 33]"
+    """
+    workspace_id = get_workspace_id()
+
+    try:
+        parsed = json.loads(task_ids)
+    except json.JSONDecodeError as exc:
+        return f"错误：task_ids 不是合法的 JSON 数组: {exc}"
+
+    if not isinstance(parsed, list):
+        return "错误：task_ids 必须为 JSON 数组。"
+    if len(parsed) == 0:
+        return "错误：task_ids 不能为空。"
+    if len(parsed) > MAX_TASK_DELETE_BATCH:
+        return f"错误：单次最多删除 {MAX_TASK_DELETE_BATCH} 个任务。"
+
+    normalized: list[int] = []
+    for i, raw in enumerate(parsed):
+        try:
+            normalized.append(int(raw))
+        except (TypeError, ValueError):
+            return f"错误：task_ids[{i}] 不是有效整数: {raw!r}"
+
+    raw = run_delete_tasks_batch(workspace_id, normalized, reload_scheduler=True)
+    if not raw.startswith("错误："):
+        invalidate_orchestrator_db_cache()
+    return raw
 
 
 @tool

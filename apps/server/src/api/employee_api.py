@@ -127,15 +127,21 @@ async def generate_employees(http_request: Request, request: EmployeeGenerationR
     # 异步获取技能列表
     token = http_request.headers.get("token")
     workspace_id = get_workspace_id_from_request(http_request)
+    skills = await EmployeeGenerationService.get_available_skills(
+        token=token, workspace_id=workspace_id
+    )
+    logger.info(f"招聘接口可用技能数量: {len(skills)}")
+    if not skills:
+        # 返回错误响应
+        return ResponseBase(code=500, msg="无法获取技能列表", data=None)
+
+    # 异步生成多个员工档案
     _gen_started = time.perf_counter()
-    employee_profiles, skills = (
-        await EmployeeGenerationService.generate_profiles_for_recruitment(
-            request.prompt, request.count, token=token, workspace_id=workspace_id
-        )
+    employee_profiles = await EmployeeGenerationService.generate_employee_profiles_async(
+        request.prompt, skills, request.count
     )
     logger.info(
-        "招聘接口可用技能数量: %s, generate_profiles_for_recruitment 耗时 %.3fs (count=%s)",
-        len(skills),
+        "generate_employee_profiles_async 处理耗时 %.3fs (count=%s)",
         time.perf_counter() - _gen_started,
         request.count,
     )
