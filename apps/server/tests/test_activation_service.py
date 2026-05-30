@@ -68,6 +68,17 @@ def test_activate_then_status_activated(activation_env):
     assert status.days_remaining is not None and status.days_remaining > 0
 
 
+def test_days_remaining_ceils_sub_day_window(activation_env):
+    private_pem, _ = activation_env
+    exp = datetime.now(timezone.utc) + timedelta(hours=12)
+    code = lic.sign_license(private_pem, FIXED_DEVICE, exp)
+    ActivationService.activate(code)
+
+    status = ActivationService.get_status()
+    assert status.activated is True
+    assert status.days_remaining == 1
+
+
 def test_activate_rejects_license_for_other_device(activation_env):
     private_pem, _ = activation_env
     code = lic.sign_license(private_pem, "ZZZZ-ZZZZ", _future())

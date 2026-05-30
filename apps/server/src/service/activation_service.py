@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -40,8 +41,11 @@ def _now() -> datetime:
 
 
 def _days_remaining(expires_at: datetime) -> int:
-    delta = expires_at - _now()
-    return max(0, delta.days)
+    """展示用剩余天数（向上取整，不足 1 天仍显示 1）。"""
+    seconds = (expires_at - _now()).total_seconds()
+    if seconds <= 0:
+        return 0
+    return math.ceil(seconds / 86400)
 
 
 class ActivationService:
