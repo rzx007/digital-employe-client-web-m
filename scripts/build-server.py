@@ -202,6 +202,9 @@ def run_pyinstaller():
         "langchain_openai",
         "langchain_community",
         "deepagents",
+        "activation_core",
+        "activation_core.license",
+        "activation_core.device",
     ]
 
     for module in hidden_imports:
@@ -211,6 +214,16 @@ def run_pyinstaller():
     data_dir = SERVER_DIR / "data"
     if data_dir.exists():
         pyinstaller_args.extend(["--add-data", f"{data_dir}{os.pathsep}data"])
+
+    # 嵌入激活公钥（非 .py 数据文件，需显式打入）
+    activation_pubkey = SERVER_DIR / "src" / "core" / "activation" / "public_key.pem"
+    if activation_pubkey.exists():
+        pyinstaller_args.extend(
+            [
+                "--add-data",
+                f"{activation_pubkey}{os.pathsep}src/core/activation",
+            ]
+        )
 
     # 添加启动文件
     pyinstaller_args.append(str(SERVER_DIR / "start.py"))

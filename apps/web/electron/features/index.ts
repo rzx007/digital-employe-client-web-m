@@ -8,6 +8,7 @@ import { settingsIpcContribution } from "./settings/ipc"
 import { petIpcContribution } from "./pet/ipc"
 import { updateIpcContribution } from "./update/ipc"
 import { extensionIpcContribution } from "./extension/ipc"
+import { activationIpcContribution } from "./activation/ipc"
 
 export const allIpcContributions: IpcContribution[] = [
   backendIpcContribution,
@@ -19,4 +20,5 @@ export const allIpcContributions: IpcContribution[] = [
   petIpcContribution,
   updateIpcContribution,
   extensionIpcContribution,
+  activationIpcContribution,
 ]

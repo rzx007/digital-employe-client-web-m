@@ -210,6 +210,52 @@ pnpm build:deb:arm64:offline
 架构入口文件：`apps/server/src/core/runtime_capabilities.py` 和 `apps/server/src/core/remote_gateway.py`。
 离线版最小 KV（配置在设置页或通过 `config-kv.init.json` 种子写入）：`LLM_REGISTRY`（或遗留的 `DEEPAGENT_MODEL`、`OPENAI_API_KEY`、`BASE_URL`）。
 
+#### 设备激活（Activation）
+
+完整需求、架构与运维说明见 **[docs/offline-activation.md](docs/offline-activation.md)**。
+
+离线包默认要求本机激活：用户复制**设备码** → 管理员 CLI 签发带有效期的**授权码** → 用户粘贴激活；到期后重复该流程。
+
+| 开关 | 说明 |
+|------|------|
+| `activation_enforced` | 能力表字段；默认 `offline_mode && !ACTIVATION_BYPASS` |
+| `ACTIVATION_BYPASS=1` | 仅开发：跳过激活窗与 Middleware |
+| 在线版也要激活 | 改 `apps/server/src/core/activation/policy.py` 中 `is_activation_enforced()` 一处即可 |
+
+**共享库与边界**
+
+- [`packages/activation-core`](packages/activation-core) — 授权码签名/验签、设备码格式（`license` / `device` / `expiry`）
+- [`apps/server`](apps/server) — 本机设备指纹、`activation.json`、API/Middleware（依赖 activation-core）
+- [`apps/license-issuer`](apps/license-issuer) — 管理员签发 CLI `de-license`（依赖 activation-core，可 PyInstaller 打 exe）
+
+**后端（enforcement 真相源）**
+
+- `apps/server/src/core/activation/` — 运行时 policy / storage / keys；密码学来自 activation-core
+- `apps/server/src/core/activation_gateway.py` + `middleware/activation_middleware.py`
+- `apps/server/src/api/activation_api.py` — `/activation/device`、`/status`、`/activate`
+- `GET /system/runtime` 含 `activation` 与 `capabilities.activation_enforced`
+
+**Electron / 前端**
+
+- `apps/web/electron/features/activation/` — `gate.ts` 启动门控、`window-activation` 激活窗
+- `apps/web/src/routes/activation.tsx`、`components/activation/`
+- 设置 → 关于：`ActivationAboutSection`（仅 `activation_enforced` 时显示）
+
+**管理员签发**
+
+```powershell
+# 组织密钥（仅保管人首次/轮换）；私钥勿入库
+uv run de-license keys generate --out-dir apps/license-issuer/release
+uv run de-license keys export-public -o apps/server/src/core/activation/public_key.pem
+
+# 签发：默认同目录 private_key.pem（与 de-license.exe 一并分发）
+pnpm build:license-issuer
+cd apps/license-issuer/release
+.\de-license.exe issue --device "用户设备码" --expires +365d
+```
+
+详见 [`apps/license-issuer/README.md`](apps/license-issuer/README.md)。私钥与 exe 同目录分发、勿入库；`public_key.pem` 可入库并随 PyInstaller 打入客户端（见 `scripts/build-server.py`）。
+
 ### 已知问题
 
 - **测试**：`apps/server/tests/`（pytest）；`uv run pytest`。

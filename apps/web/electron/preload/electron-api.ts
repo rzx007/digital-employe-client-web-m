@@ -7,6 +7,7 @@ import { settingsBridge } from "../features/settings/preload-bridge"
 import { petBridge } from "../features/pet/preload-bridge"
 import { updateBridge } from "../features/update/preload-bridge"
 import { extensionBridge } from "../features/extension/preload-bridge"
+import { activationBridge } from "../features/activation/preload-bridge"
 
 export const electronApi = {
   isElectron: true as const,
@@ -19,6 +20,7 @@ export const electronApi = {
   ...petBridge,
   ...updateBridge,
   ...extensionBridge,
+  ...activationBridge,
 }
 
 export type ElectronApi = typeof electronApi

@@ -1,0 +1,13 @@
+[project]
+name = "digital-employee-workspace"
+version = "0.0.0"
+description = "Monorepo uv workspace root (Python apps)"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv.workspace]
+members = [
+    "apps/server",
+    "packages/activation-core",
+    "apps/license-issuer",
+]

@@ -170,6 +170,15 @@ def create_app() -> FastAPI:
 
     fastapi_app.add_middleware(WorkspaceHeaderMiddleware)
 
+    # 激活拦截：仅在强制激活时挂载，在线 / bypass 下零开销
+    from src.core.activation.policy import is_activation_enforced
+
+    if is_activation_enforced():
+        from src.middleware.activation_middleware import ActivationMiddleware
+
+        fastapi_app.add_middleware(ActivationMiddleware)
+        logger.info("ActivationMiddleware enabled (activation enforced)")
+
     fastapi_app.include_router(api_router)
     return fastapi_app
 

@@ -8,6 +8,7 @@ import {
 export type BuiltinWindowId =
   | "main"
   | "login"
+  | "activation"
   | "settings"
   | "recruitment"
   | "register"

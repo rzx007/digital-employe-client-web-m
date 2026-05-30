@@ -9,11 +9,21 @@ export interface Capabilities {
   feishu_platform: boolean
   skill_rating_upload: boolean
   mcp_task_execution: boolean
+  activation_enforced: boolean
+}
+
+export interface ActivationRuntime {
+  enforced: boolean
+  activated: boolean
+  expires_at: string | null
+  days_remaining: number | null
+  reason: string | null
 }
 
 export interface RuntimeConfig {
   offline_mode: boolean
   capabilities: Capabilities
+  activation?: ActivationRuntime
 }
 
 export interface RuntimeConfigResponse {

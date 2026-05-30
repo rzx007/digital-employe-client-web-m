@@ -13,6 +13,7 @@ import {
 import { Separator } from "@workspace/ui/components/separator"
 import { UpdateButton } from "@/components/common/app-updater"
 import { isElectron, withElectronApi } from "@/lib/electron/host"
+import { ActivationAboutSection } from "@/components/activation/activation-about-section"
 import { toast } from "sonner"
 
 export function AboutSettings() {
@@ -45,6 +46,7 @@ export function AboutSettings() {
 
   return (
     <div className="flex flex-col gap-6">
+      <ActivationAboutSection />
       <Card>
         <CardHeader>
           <CardTitle>关于</CardTitle>

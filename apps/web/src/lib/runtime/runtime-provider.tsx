@@ -14,6 +14,7 @@ const defaultCapabilities: Capabilities = {
   feishu_platform: true,
   skill_rating_upload: true,
   mcp_task_execution: true,
+  activation_enforced: false,
 }
 
 const defaultRuntimeConfig: RuntimeConfig = {
@@ -47,6 +48,10 @@ export function RuntimeProvider({ children }: { children: React.ReactNode }) {
       {children}
     </RuntimeContext.Provider>
   )
+}
+
+export function useRuntimeConfig(): RuntimeConfig {
+  return React.useContext(RuntimeContext)
 }
 
 export function useCapability(name: keyof Capabilities): boolean {

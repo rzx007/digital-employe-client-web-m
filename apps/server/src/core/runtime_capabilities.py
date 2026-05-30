@@ -13,6 +13,7 @@ class RuntimeCapabilities:
     feishu_platform: bool        # feishu_api + feishu_*_service
     skill_rating_upload: bool
     mcp_task_execution: bool       # 调度器内远程 MCP 调用
+    activation_enforced: bool      # 是否强制设备激活（独立于在线/离线远程能力）
 
 def get_capabilities() -> RuntimeCapabilities:
     """
@@ -34,6 +35,9 @@ def get_capabilities() -> RuntimeCapabilities:
             - skill_rating_upload: 技能评分上传功能
             - mcp_task_execution: MCP任务执行功能
     """
+    from src.core.activation.policy import is_activation_enforced
+
+    activation = is_activation_enforced()
     if is_offline_mode():
-        return RuntimeCapabilities(*(False,) * 10)
-    return RuntimeCapabilities(*(True,) * 10)
+        return RuntimeCapabilities(*(False,) * 10, activation_enforced=activation)
+    return RuntimeCapabilities(*(True,) * 10, activation_enforced=activation)

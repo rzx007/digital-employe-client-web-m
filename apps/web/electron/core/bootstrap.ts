@@ -8,6 +8,10 @@ import {
   notifySplashBackendError,
 } from "../features/splash/window-splash"
 import { createLoginWindow } from "../features/auth/window-login"
+import {
+  resolveActivationGate,
+  createActivationWindow,
+} from "../features/activation"
 import { initAutoUpdater } from "../features/update/auto-updater"
 import { createMacApplicationMenu } from "../main/application-menu"
 import { registerPetdexOnProtocol } from "./petdex-protocol"
@@ -61,9 +65,14 @@ export async function bootstrapApp(options: BootstrapOptions): Promise<void> {
   try {
     await startBackend()
     rootLogger.info("backend server ready")
+
+    const gate = await resolveActivationGate()
     closeSplashWindow()
 
-    if (isOfflineMode() || hasToken()) {
+    if (gate === "activation") {
+      rootLogger.info("activation required, opening activation window")
+      createActivationWindow()
+    } else if (isOfflineMode() || hasToken()) {
       rootLogger.info("offline mode or saved token found, skipping login")
       await options.createMainWindow()
     } else {
@@ -76,10 +85,19 @@ export async function bootstrapApp(options: BootstrapOptions): Promise<void> {
     })
     const message = err instanceof Error ? err.message : String(err)
     notifySplashBackendError(message)
-    setTimeout(() => {
+    setTimeout(async () => {
       closeSplashWindow()
+      try {
+        const gate = await resolveActivationGate()
+        if (gate === "activation") {
+          createActivationWindow()
+          return
+        }
+      } catch {
+        /* backend 未就绪时跳过激活门控 */
+      }
       if (isOfflineMode() || hasToken()) {
-        options.createMainWindow()
+        void options.createMainWindow()
       } else {
         createLoginWindow()
       }
