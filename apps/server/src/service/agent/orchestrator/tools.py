@@ -18,6 +18,7 @@ from src.service.agent.orchestrator.runtime import (
     get_workspace_id,
     invalidate_orchestrator_db_cache,
 )
+from src.service.agent.orchestrator.task_validation import validate_orchestration_tasks
 from src.service.agent.orchestrator.task_mutations import (
     MAX_TASK_DELETE_BATCH,
     _delete_task_with_fresh_session,
@@ -67,6 +68,8 @@ def list_workspace_employees() -> str:
 def create_orchestration_plan(summary: str, tasks: str | list[Any]) -> str:
     """创建任务编排计划。调用时机：确认任务拆解和员工分配无误后调用。
 
+    注意：禁止将同一 employee_id 拆成多条子任务；单员工多步须合并为一条 prompt。
+
     参数:
       summary: 编排计划的中文描述
       tasks: JSON 数组字符串，或直接传数组；每个元素格式:
@@ -92,6 +95,10 @@ def create_orchestration_plan(summary: str, tasks: str | list[Any]) -> str:
     if parse_error:
         return parse_error
     assert task_list is not None
+
+    validation_error = validate_orchestration_tasks(task_list)
+    if validation_error:
+        return validation_error
 
     for i, t in enumerate(task_list):
         emp = db.get(Employee, t.get("employee_id"))

@@ -17,6 +17,7 @@ import { useContactsQuery } from "@/hooks/use-chat-queries"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { request } from "@/lib/request"
 import { findContactInList } from "@/lib/chat/contact-utils"
+import { switchToContact } from "@/lib/chat/conversation-selection"
 import type { AIEmployee, Contact } from "@/types/chat"
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
@@ -113,6 +114,10 @@ export function ContactsSidebar({
     [employeeContacts]
   )
 
+  const handleDoubleClickContact = (contactId: string) => {
+    switchToContact(contactId)
+  }
+
   return (
     <>
       <CreateGroupDialog
@@ -174,6 +179,9 @@ export function ContactsSidebar({
                   key={contact.curator?.id}
                   contact={contact}
                   isCollapsed={isCollapsed}
+                  onDoubleClick={() =>
+                    handleDoubleClickContact(contact.curator?.id ?? "")
+                  }
                 />
               ))}
 
@@ -184,6 +192,9 @@ export function ContactsSidebar({
                   key={contact.group?.id}
                   contact={contact}
                   isCollapsed={isCollapsed}
+                  onDoubleClick={() =>
+                    handleDoubleClickContact(contact.group?.id ?? "")
+                  }
                 />
               ))}
 
@@ -194,6 +205,9 @@ export function ContactsSidebar({
                   key={contact.employee?.id}
                   contact={contact}
                   isCollapsed={isCollapsed}
+                  onDoubleClick={() =>
+                    handleDoubleClickContact(contact.employee?.id ?? "")
+                  }
                 />
               ))}
             </div>
@@ -208,6 +222,9 @@ export function ContactsSidebar({
                     key={contact.curator?.id}
                     contact={contact}
                     isCollapsed={isCollapsed}
+                    onDoubleClick={() =>
+                      handleDoubleClickContact(contact.curator?.id ?? "")
+                    }
                   />
                 ))}
               </div>
@@ -222,6 +239,9 @@ export function ContactsSidebar({
                       key={contact.group?.id}
                       contact={contact}
                       isCollapsed={isCollapsed}
+                      onDoubleClick={() =>
+                        handleDoubleClickContact(contact.group?.id ?? "")
+                      }
                     />
                   ))}
                 </div>
@@ -237,6 +257,9 @@ export function ContactsSidebar({
                       key={contact.employee?.id}
                       contact={contact}
                       isCollapsed={isCollapsed}
+                      onDoubleClick={() =>
+                        handleDoubleClickContact(contact.employee?.id ?? "")
+                      }
                     />
                   ))}
                 </div>

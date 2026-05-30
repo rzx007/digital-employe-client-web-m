@@ -21,9 +21,7 @@ export function switchToContact(
   contactId: string,
   options?: { touch?: boolean }
 ) {
-  const state = useChatStore.getState()
-  if (state.selectedContactId === contactId) return
-  state.switchToContact(contactId)
+  useChatStore.getState().switchToContact(contactId)
   if (options?.touch !== false) {
     void touchRecentContactById(contactId)
   }

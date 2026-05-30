@@ -51,7 +51,7 @@ export function ChatComposerArea({
   pendingQueueClassName,
 }: {
   messages: UIMessage[]
-  conversationId: string | number
+  conversationId: string | number | null
   inputValue: string
   onInputChange: (event: PromptChangeEvent) => void
   onSend: (message: PromptInputMessage | string) => void
@@ -171,7 +171,9 @@ export function ChatComposerArea({
           className="w-full"
           slashCommands={slashCommands}
           mentionCandidates={mentionCandidates}
-          conversationId={String(conversationId)}
+          conversationId={
+            conversationId != null ? String(conversationId) : null
+          }
           onAttachmentsChange={onAttachmentsChange}
         />
       </div>

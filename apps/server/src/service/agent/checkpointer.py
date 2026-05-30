@@ -30,6 +30,10 @@ register_harness_profile(
                 "intent 可选：20字内中文，写业务目的（如「验证示例代码输出」），"
                 "禁止出现文件名/路径/「执行」字样。"
             ),
+            "import_local_file": (
+                "将用户本机绝对路径文件复制到 /uploads/，"
+                "之后用 read_file 读取。优先于 shell_execute 读外部文件。"
+            ),
         },
     ),
 )

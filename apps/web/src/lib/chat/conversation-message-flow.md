@@ -157,10 +157,11 @@ sequenceDiagram
     API-->>T: events
     T-->>UC: UIMessageChunk → composer 更新
   end
-  UC->>S: onFinish（仅乐观 patch stream_state）
+  UC->>S: onFinish
   Bus->>S: onTerminal
-  Note over S: 非 completed 时 800ms debounce → invalidate
-  Note over S: completed 不 invalidate；activeSession 下不 hydrate
+  Note over S: 800ms debounce 合并
+  S->>RQ: invalidate → GET /messages
+  Note over S: activeSession 下不 hydrate composer
 
   Note over V,API: HITL interrupt
   API-->>T: stream_ended interrupted
@@ -185,25 +186,19 @@ sequenceDiagram
 |------|------|
 | `status === ready` 且已有 DB 数据 | `setMessages(initialMessages)` **整表 hydrate** |
 | `status === streaming` / `submitted` | **不 hydrate**（避免覆盖 SSE 累积的 parts） |
-| `onFinish` + bus `onTerminal` | 乐观改最后 assistant `stream_state`；**仅非 `completed`** 终态 **800ms 后** `invalidate` → GET `/messages` |
+| `onFinish` + bus `onTerminal` | Query cache 乐观改最后 assistant `stream_state`；**800ms 后** `invalidate` → GET `/messages` |
 | `onInterrupted` | `patchAssistantWithInterruptParts` + `scheduleMessagesRefetch` |
 | `onHitlApproved` | `patchApprovedAtOnComposerMessages` + cache；`scheduleMessagesRefetch`；`resumeStream` |
 | 切走会话 | 组件 `stop()` 断本端 SSE；**不**调 `/stream/cancel`；后台任务可继续 |
 | 再进会话 | `refetchOnMount` 拉全量；若最后一条 `stream_state === streaming` 则 `GET /stream/resume` |
 
-### 6.1 何时 refetch / 为何不 refetch completed
+### 6.1 流结束 refetch
 
-| 终态 | invalidate |
-|------|------------|
-| `completed` | **否**（`onStreamFinish` 只 patch cache；composer 以 SSE 为准，`activeSessionRef` 阻止 ready 时 hydrate 覆盖） |
-| `interrupted` / `error` / `cancelled` / `no_stream` | **是**（`onTerminal` + `onInterrupted`） |
-| `onHitlApproved` | **是**（resume 后 cache 需含新 assistant 行） |
-
-approve 后 **resume** 仍依赖 **`onHitlApproved` 的 refetch**，与 `completed` 减量无关。切会话靠 `refetchOnMount: "always"` 对齐 DB。
+`completed` 与其它终态均在 `onTerminal` / `onStreamFinish` 后 **800ms debounce** 合并为一次 `GET /messages`，对齐 DB 与 Query cache。同会话内 **`activeSessionRef`** 阻止 `ready` 时用 `initialMessages` 覆盖 composer（SSE 累积的 parts 仍为准）。`onHitlApproved` 单独 schedule refetch，供 resume 后 cache 含新 assistant 行。
 
 ### 6.2 界面「闪一下」
 
-非 completed 的 refetch → `storedMessages` 更新 → 若未持 `activeSessionRef` 可能 hydrate 整表替换 composer。`completed` 跳过 invalidate 可减少这类抖动；HITL Dock 收起靠 approve **乐观 `approved_at`**（`hitl/approve-optimistic.ts`）。
+refetch → `storedMessages` 更新 → 若未持 `activeSessionRef` 可能 hydrate 整表替换 composer；持锁时仅 cache 更新。HITL Dock 收起靠 approve **乐观 `approved_at`**（`hitl/approve-optimistic.ts`）。
 
 ---
 
@@ -218,8 +213,8 @@ approve 后 **resume** 仍依赖 **`onHitlApproved` 的 refetch**，与 `complet
 
 **SSE 终态**（`stream_ended` / `no_stream`）：
 
-1. `conversationRuntimeBus.emitTerminal` → session 更新 cache；**非 `completed` 时** schedule refetch  
-2. `enqueueFinish` → `useChat` `onFinish` → `onStreamFinish`（仅乐观 `stream_state=completed`，不 invalidate）  
+1. `conversationRuntimeBus.emitTerminal` → session 更新 cache + schedule refetch  
+2. `enqueueFinish` → `useChat` `onFinish` → `onStreamFinish`（与上 debounce 合并为一次 invalidate）  
 3. `status === interrupted` 时可能额外 `onInterrupted` 回调（旧 transport 钩子，HITL 以 bus 为准）
 
 ---

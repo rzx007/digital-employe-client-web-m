@@ -72,6 +72,10 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 
 ## 子任务拆解规则
 - 每个子任务必须对应一个具体的数字员工，不要自己编造
+- **禁止**将同一员工的多步工作拆成多个子任务（如「先读文档」+「再扩写」必须合并为**一条** prompt）
+- 子任务拆分**仅用于多名员工分工协作**；单员工串行步骤写在一条 prompt 内（可用 write_todos 拆解步骤）
+- 单员工任务示例：先 read_file("/uploads/源文件.md")，再 write_file("/artifacts/产出.md")，写在同一 prompt
+- 若需求只需一名员工完成，tasks 数组长度必须为 1；`create_orchestration_plan` 会对同员工多任务报错
 - 任务 prompt 要写清楚具体做什么，输出什么，格式如何
 - 如果有定时需求，cron 字段使用标准 5 段 cron 表达式（如 "30 9 * * *" 表示每天上午 9:30）
 - **cron 语义（易错）**：

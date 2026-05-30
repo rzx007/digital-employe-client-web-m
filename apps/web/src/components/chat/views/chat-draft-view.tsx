@@ -92,7 +92,7 @@ export function DraftChatView({
     [storedMessages]
   )
 
-  const onStreamFinishRef = useRef<() => void>(() => {})
+  const onStreamFinishRef = useRef<() => void>(() => { })
 
   const {
     messages,
@@ -221,9 +221,9 @@ export function DraftChatView({
         const filesMeta =
           uploadedPaths.length > 0
             ? uploadedPaths.map((p) => ({
-                path: p,
-                name: p.split("/").pop() ?? p,
-              }))
+              path: p,
+              name: p.split("/").pop() ?? p,
+            }))
             : undefined
         const pendingMeta = filesMeta
           ? { ...pendingMetaBase, files: filesMeta }
@@ -326,7 +326,7 @@ export function DraftChatView({
       conversationId={selectedConversationId}
       activeHitl={session.activeHitl}
       onHitlApproved={session.onHitlApproved}
-      onAttachmentsChange={() => {}}
+      onAttachmentsChange={() => { }}
       onDraftSuggestionSelect={
         contact?.type === "curator" ? handleDraftSuggestionSelect : undefined
       }

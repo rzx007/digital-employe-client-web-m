@@ -47,6 +47,9 @@ def build_filesystem_prompt_section(
         - **一律使用虚拟路径**，例如 /artifacts/report.md、/memories/AGENTS.md
         - **read_file 支持**：纯文本/代码直读；**图片**以多模态（base64）返回；**PDF / Word(.docx) / Excel(.xlsx) / PPT(.pptx)** 自动提取为文本（legacy .doc/.xls/.ppt 请转为新格式）
         - 用户上传附件在 **/uploads/**，相关时用 read_file 读取
+        - **禁止**对磁盘绝对路径（如 `C:\\...`、`/Users/...`、`/home/...`）调用 read_file / write_file / edit_file
+        - 读取用户本机文件：**优先**使用上下文 `[上传的文件]` 中的 `/uploads/` 路径；若无则调用 `import_local_file`，再 `read_file("/uploads/...")`
+        - 仅 `import_local_file` 失败时，才用 shell_execute 读取（Windows: `type`；macOS/Linux: `cat`）
         - **禁止**在虚拟路径前拼接磁盘绝对路径（如 /artifacts/Users/...、/artifacts/C:/...）
         - **禁止**把上表「真实物理路径」当作 write_file 的路径（那是磁盘路径，不是虚拟路径）
         - 调用 **write_file** / **edit_file** 时，工具参数 JSON **须先写 `file_path`，再写 `content`（`edit_file` 为 `new_string`）**

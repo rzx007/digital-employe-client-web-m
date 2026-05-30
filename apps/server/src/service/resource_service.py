@@ -21,6 +21,10 @@ from src.service.basic_file_reader import (
     is_multimodal_payload_too_large,
     read_basic_file,
 )
+from src.service.local_file_import import (
+    is_safe_to_import,
+    try_map_to_existing_virtual,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +222,42 @@ class ResourceService:
             name=target_path.name,
             path=virtual_path,
             size=len(file_bytes),
+        )
+
+    @staticmethod
+    def import_local_file(
+        root_path: str,
+        conversation_id: int,
+        source: Path,
+    ) -> ResourceUploadResult | str:
+        """将本机文件复制到会话 uploads/ 并返回虚拟路径。"""
+        try:
+            resolved = source.resolve()
+        except OSError as exc:
+            return f"无法解析路径: {exc}"
+
+        if not is_safe_to_import(resolved):
+            return "文件不存在或不是普通文件"
+
+        existing = try_map_to_existing_virtual(root_path, conversation_id, resolved)
+        if existing is not None:
+            name = Path(existing).name
+            try:
+                size = resolved.stat().st_size
+            except OSError:
+                size = 0
+            return ResourceUploadResult(name=name, path=existing, size=size)
+
+        try:
+            file_bytes = resolved.read_bytes()
+        except OSError as exc:
+            return f"读取文件失败: {exc}"
+
+        return ResourceService.upload_file(
+            root_path,
+            conversation_id,
+            resolved.name,
+            file_bytes,
         )
 
     @staticmethod

@@ -66,6 +66,7 @@ from src.service.model_context import (
     resolve_summarization_trigger,
 )
 from src.service.agent.shell_execute_tool import create_shell_execute_tool
+from src.service.agent.import_local_file_tool import create_import_local_file_tool
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
 load_dotenv()
@@ -187,6 +188,15 @@ def get_orchestrator_agent(
         shell_backend, artifacts_dir=str(artifacts_dir)
     )
 
+    orchestrator_tools: list = [shell_execute_tool]
+    if conversation_id:
+        orchestrator_tools.append(
+            create_import_local_file_tool(
+                root_path=str(artifacts_path),
+                conversation_id=conversation_id,
+            )
+        )
+
     session_flags = (
         get_session_flags(db, conversation_id) if conversation_id else {}
     )
@@ -197,7 +207,7 @@ def get_orchestrator_agent(
         memory=["/agent/AGENTS.md", "/memories/AGENTS.md"],
         skills=["/skills/"],
         tools=[
-            shell_execute_tool,
+            *orchestrator_tools,
             list_workspace_employees,
             list_workspace_skills,
             list_workspace_mcps,
