@@ -40,7 +40,7 @@ def is_offline_mode() -> bool:
 
 def is_agent_virtual_mode() -> bool:
     """Agent 文件工具是否强制虚拟路径（/artifacts/ 等）。False 时允许 Windows 绝对路径。"""
-    return os.getenv("AGENT_VIRTUAL_MODE", "1").strip().lower() not in (
+    return os.getenv("AGENT_VIRTUAL_MODE", "0").strip().lower() not in (
         "0",
         "false",
         "no",

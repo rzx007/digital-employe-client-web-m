@@ -179,6 +179,7 @@ src/service/task_service.py
 src/service/workspace_events.py
 src/service/workspace_service.py
 src/service/agent/__init__.py
+src/service/agent/agent_path_policy.py
 src/service/agent/artifacts.py
 src/service/agent/basic_file_backend.py
 src/service/agent/checkpointer.py
@@ -201,6 +202,7 @@ src/service/agent/orchestrator/recruitment.py
 src/service/agent/orchestrator/recruitment_tools.py
 src/service/agent/orchestrator/runtime.py
 src/service/agent/orchestrator/task_mutations.py
+src/service/agent/orchestrator/task_validation.py
 src/service/agent/orchestrator/tools.py
 src/service/oauth/__init__.py
 src/service/oauth/feishu.py
@@ -217,6 +219,7 @@ tests/test_employee_tools.py
 tests/test_message_parts_extractor.py
 tests/test_orchestration_lifecycle.py
 tests/test_orchestration_task_list.py
+tests/test_orchestration_task_validation.py
 tests/test_recent_contact_service.py
 tests/test_recruitment.py
 tests/test_sync_local_skill.py

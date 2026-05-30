@@ -1,4 +1,4 @@
-deepagents==0.5.9
+deepagents==0.6.7
 apscheduler>=3.10.4
 langchain>=1.2.3
 langchain-openai>=1.0.2

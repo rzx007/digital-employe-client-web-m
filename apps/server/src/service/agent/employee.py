@@ -29,7 +29,6 @@ from src.service.model_context import (
     resolve_summarization_trigger,
 )
 from src.service.agent.shell_execute_tool import create_shell_execute_tool
-from src.service.agent.import_local_file_tool import create_import_local_file_tool
 from src.service.agent.clarifying_questions_tool import submit_clarifying_questions
 from src.service.agent.document_plan_tool import submit_document_plan
 from src.service.agent.hitl_interrupt_on import HITL_INTERRUPT_ON
@@ -191,13 +190,6 @@ def get_agent(
         shell_backend, artifacts_dir=str(artifacts_dir)
     )
     extra_tools: list = [shell_execute_tool]
-    if conversation_id and root_path:
-        extra_tools.append(
-            create_import_local_file_tool(
-                root_path=root_path,
-                conversation_id=conversation_id,
-            )
-        )
     if sql_tools:
         extra_tools.extend(sql_tools)
     extra_tools.extend(_session_search_tools)

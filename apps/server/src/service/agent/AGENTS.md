@@ -11,13 +11,6 @@
 4. 执行并验证结果
 5. 必要时用文件系统工具保存中间结果
 
-## 读取用户本机文件
-
-- **禁止**对磁盘绝对路径（`C:\...`、`/Users/...`、`/home/...`）直接 `read_file`
-- 优先使用消息上下文中 `[上传的文件]` 里的 `/uploads/` 路径
-- 否则调用 `import_local_file` 导入后再 `read_file("/uploads/...")`
-- 仅导入失败时，用 `shell_execute`（Windows: `type`；Unix: `cat`）
-
 ## 需求澄清（Clarify HITL）
 
 当用户需求模糊、关键信息缺失时：

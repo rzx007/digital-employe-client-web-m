@@ -26,7 +26,6 @@ from urllib.request import urlopen
 from deepagents.backends.utils import create_file_data
 from langgraph.checkpoint.memory import MemorySaver
 from src.service.agent import delete_conversation_checkpoint, get_agent
-from src.service.local_file_import import import_paths_from_message
 
 
 logger = logging.getLogger(__name__)
@@ -497,20 +496,6 @@ class ChatService:
 
         ChatService._append_message(db, conversation=conversation, role="user", content=question, extra_meta=extra_meta)
         request_messages = [*history_messages, {"role": "user", "content": question}]
-
-        imported_files = import_paths_from_message(
-            settings.artifacts_path,
-            conversation_id,
-            question,
-        )
-        if imported_files:
-            files = list((extra_meta or {}).get("files") or [])
-            existing_paths = {f.get("path") for f in files if f.get("path")}
-            for item in imported_files:
-                if item["path"] not in existing_paths:
-                    files.append({"path": item["path"], "name": item["name"]})
-                    existing_paths.add(item["path"])
-            extra_meta = {**(extra_meta or {}), "files": files}
 
         # 将 extra_meta 中的文件信息注入 agent 上下文的 question（不污染 DB 中的原始消息）
         if extra_meta and extra_meta.get("files"):
