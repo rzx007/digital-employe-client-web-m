@@ -27,6 +27,8 @@ def test_map_memories_and_draft_tokens():
     skills = Path("/tmp/skills")
     memories = Path("/tmp/mem")
     draft = Path("/tmp/draft")
+    artifacts = Path("/tmp/artifacts")
+    uploads = Path("/tmp/uploads")
     assert (
         map_virtual_token("/memories/a.md", skills_root=skills, memories_root=memories)
         == str((memories / "a.md").resolve())
@@ -34,6 +36,14 @@ def test_map_memories_and_draft_tokens():
     assert (
         map_virtual_token("/skills-draft/s", skills_root=skills, draft_root=draft)
         == str((draft / "s").resolve())
+    )
+    assert (
+        map_virtual_token("/artifacts/out.md", skills_root=skills, artifacts_root=artifacts)
+        == str((artifacts / "out.md").resolve())
+    )
+    assert (
+        map_virtual_token("/uploads/a.pdf", skills_root=skills, uploads_root=uploads)
+        == str((uploads / "a.pdf").resolve())
     )
 
 

@@ -1,4 +1,7 @@
-from src.service.agent.path_access.prompt_rules import build_file_tool_rules
+from src.service.agent.path_access.prompt_rules import (
+    build_file_tool_rules,
+    build_shell_environment_section,
+)
 
 
 def build_filesystem_prompt_section(
@@ -157,17 +160,12 @@ def build_system_prompt(
     )
     long_doc_section = build_long_document_writing_section()
     clarify_section = build_clarifying_questions_section()
+    shell_env_section = build_shell_environment_section()
 
     return f"""今天的时间是{current_time}
 
         Skills available at /skills/. Use /memories/ for persistent context.
-        我的默认环境是windows环境，所以你执行命令的时候要注意windows的命令规范
-         在生成命令的时候注意 Windows 引号规范：
-           - 路径参数不要额外加引号，如 python script.py（不要 python "script.py"）
-           - 如果命令本身需要引号（如 findstr /c:"搜索文本"），外层用单引号括起来：
-             findstr /c:'<section class="slide"' file.html
-           - PowerShell cmdlet（Select-String、Get-ChildItem 等）语法基于 cmd.exe，避免混用
-        执行 Python 脚本时优先使用无缓冲模式：python -u <script.py> ...
+        {shell_env_section}
         当前已加载的技能名单：{skills_line}
         如果用户询问"你有没有某个技能"或"你有哪些技能"，必须严格基于当前已加载的技能名单回答，不要猜测，不要遗漏名单中的技能。
         {fs_section}

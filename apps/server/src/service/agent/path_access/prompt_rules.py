@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import platform
 
 def build_file_tool_rules(
     *,
@@ -24,7 +25,7 @@ def build_file_tool_rules(
 
         ### shell_execute（python、cmd 等，替代内置 execute）
         - 使用工具 **`shell_execute`**，不要调用已废弃的 `execute`
-        - **必须使用上表中的真实物理路径**，不要使用 /memories/ 等虚拟路径
+        - 可使用上表**真实物理路径**，或 `/skills/`、`/artifacts/` 等虚拟前缀（shell 会自动映射为物理路径）
         """
 
     artifacts_hint = artifacts_real_path or "见上表"
@@ -46,5 +47,39 @@ def build_file_tool_rules(
 
         ### shell_execute（python、cmd 等，替代内置 execute）
         - 使用 **`shell_execute`**；默认 **cwd = 产物目录**（`{artifacts_hint}`）
-        - 引用用户资料时用**完整本机绝对路径**；生成交付文件时用**相对文件名**或 `{artifacts_hint}/文件名`
+        - 引用用户资料时用**完整本机绝对路径**；生成交付文件时可用**相对文件名**（cwd 即产物目录）
+        - shell 命令中的 `/artifacts/`、`/uploads/`、`/skills/` 等虚拟前缀会**自动映射**为真实物理路径，可直接写 `python /artifacts/script.py`
+        """
+
+
+def build_shell_environment_section() -> str:
+    """按当前 OS 返回 shell_execute 环境说明（Windows / macOS / Linux）。"""
+    system = platform.system()
+    python_hint = "执行 Python 脚本时优先使用无缓冲模式：python -u <script.py> ..."
+
+    if system == "Windows":
+        return f"""
+        当前运行环境：**Windows**。shell_execute 使用 cmd.exe，请注意 Windows 命令规范：
+        - 路径参数不要额外加引号，如 python script.py（不要 python "script.py"）
+        - 若命令本身需要引号（如 findstr /c:"搜索文本"），外层用单引号括起来
+        - 避免混用 PowerShell cmdlet 与 cmd 语法
+        - **禁止多行** `python -c "..."`；应 write_file("/artifacts/xxx.py") 再 python -u xxx.py
+        - {python_hint}
+        """
+
+    if system == "Darwin":
+        return f"""
+        当前运行环境：**macOS**。shell_execute 使用 bash/zsh：
+        - 本机绝对路径示例：`/Users/you/Documents/file.pdf`
+        - 路径含空格时用引号：`python "/Users/you/my script.py"`
+        - 优先 `python3`；若仅有 `python` 则沿用环境默认
+        - {python_hint}
+        """
+
+    return f"""
+        当前运行环境：**Linux**。shell_execute 使用 bash/sh：
+        - 本机绝对路径示例：`/home/you/docs/file.pdf`
+        - 路径含空格时用引号：`python "/home/you/my script.py"`
+        - 优先 `python3`；若仅有 `python` 则沿用环境默认
+        - {python_hint}
         """

@@ -19,3 +19,5 @@
 可选：移除 `AGENT_VIRTUAL_MODE` env（桌面端永远 physical），或保留 `=1` 作 CI / 沙箱回退。
 
 预计改动面：3 个文件删除/清空 + 1 行 server 调用，不动 agent 构建主流程。
+
+完整架构、测试与已知限制见 [`docs/path-access-recap.md`](../../../docs/path-access-recap.md)。

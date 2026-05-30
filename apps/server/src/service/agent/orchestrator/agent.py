@@ -143,6 +143,7 @@ def get_orchestrator_agent(
         skills_root=skills_root,
         draft_root=None,
         memories_root=memories_dir,
+        uploads_root=uploads_dir,
         virtual_mode=is_agent_virtual_mode(),
         inherit_env=True,
         timeout=settings.execute_timeout * 2,

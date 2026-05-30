@@ -30,6 +30,7 @@ class SkillAwareShellBackend(LocalShellBackend):
         skills_root: Path,
         draft_root: Path | None,
         memories_root: Path | None = None,
+        uploads_root: Path | None = None,
         virtual_mode: bool = True,
         inherit_env: bool = True,
         timeout: int = 30,
@@ -45,6 +46,9 @@ class SkillAwareShellBackend(LocalShellBackend):
         self._draft_root = draft_root.resolve() if draft_root is not None else None
         self._memories_root = (
             memories_root.resolve() if memories_root is not None else None
+        )
+        self._uploads_root = (
+            uploads_root.resolve() if uploads_root is not None else None
         )
         if os.name == "nt":
             self._env.setdefault("PYTHONUTF8", "1")
@@ -97,6 +101,8 @@ class SkillAwareShellBackend(LocalShellBackend):
             skills_root=self._skills_root,
             draft_root=self._draft_root,
             memories_root=self._memories_root,
+            artifacts_root=self._artifacts_dir,
+            uploads_root=self._uploads_root,
         )
 
     def _extract_python_c_code(self, command: str) -> str | None:
