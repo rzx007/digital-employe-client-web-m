@@ -38,6 +38,16 @@ def is_offline_mode() -> bool:
     return os.getenv("OFFLINE_MODE", "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def is_agent_virtual_mode() -> bool:
+    """Agent 文件工具是否强制虚拟路径（/artifacts/ 等）。False 时允许 Windows 绝对路径。"""
+    return os.getenv("AGENT_VIRTUAL_MODE", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
 def _resolve_path(path_value: str) -> Path:
     path = Path(os.path.expandvars(os.path.expanduser(path_value)))
     if not path.is_absolute():

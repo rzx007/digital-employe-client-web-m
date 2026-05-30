@@ -2,11 +2,18 @@ from src.core.logging_setup import setup_logging
 
 setup_logging()
 
+from dotenv import load_dotenv
+from pathlib import Path
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+from src.service.agent.agent_path_policy import install_agent_path_policy
 from src.service.agent.compatible_filesystem_middleware import (
     install_compatible_filesystem_middleware,
 )
 
 install_compatible_filesystem_middleware()
+install_agent_path_policy()
 
 import logging
 import re

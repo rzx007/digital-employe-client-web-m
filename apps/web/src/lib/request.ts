@@ -8,11 +8,12 @@ const defaultHeaders: HeadersInit = {
 
 const server_url = `${import.meta.env.VITE_BACKEND_URL}:${import.meta.env.VITE_BACKEND_PORT}`
 
-const fallbackBaseURL = isElectron()
-  ? server_url
-  : import.meta.env.DEV
-    ? "/actus"
-    : server_url
+const useActusProxy =
+  import.meta.env.DEV &&
+  import.meta.env.VITE_USE_ACTUS_PROXY !== "false" &&
+  !isElectron()
+
+const fallbackBaseURL = useActusProxy ? "/actus" : server_url
 
 /**
  * KV 中的通讯（远端）地址，供 apps/server 转发；渲染进程发 HTTP 时不得以此作为 base。

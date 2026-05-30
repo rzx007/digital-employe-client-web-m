@@ -8,6 +8,7 @@ def build_filesystem_prompt_section(
     agent_real_path: str = "",
     use_session_history: bool = False,
     has_draft_route: bool = False,
+    virtual_mode: bool = True,
 ) -> str:
     path_mappings = []
     if skills_real_path:
@@ -40,12 +41,8 @@ def build_filesystem_prompt_section(
         else "/conversation_history/（按 thread 分文件）"
     )
 
-    return f"""
-        ## 路径规则（重要）
-
-        虚拟路径与真实物理路径映射（仅供理解；文件工具见下表用法）：
-{path_table}
-
+    if virtual_mode:
+        file_tool_rules = """
         ### 文件工具（read_file / write_file / edit_file / ls）
         - **一律使用虚拟路径**，例如 /artifacts/report.md、/memories/AGENTS.md
         - **read_file 支持**：纯文本/代码直读；**图片**以多模态（base64）返回；**PDF / Word(.docx) / Excel(.xlsx) / PPT(.pptx)** 自动提取为文本（legacy .doc/.xls/.ppt 请转为新格式）
@@ -57,6 +54,31 @@ def build_filesystem_prompt_section(
         ### shell_execute（python、cmd 等，替代内置 execute）
         - 使用工具 **`shell_execute`**，不要调用已废弃的 `execute`
         - **必须使用上表中的真实物理路径**，不要使用 /memories/ 等虚拟路径
+        """
+    else:
+        file_tool_rules = f"""
+        ### 文件工具（read_file / write_file / edit_file / ls）
+        - **读取用户本地资料**（PDF、脚本等）：用 Windows 绝对路径，例如 `D:/space/标书/参考的励磁论文/xxx.pdf`
+        - **交付给用户的成品**（报告、Word、导出数据）：**必须**写入 `/artifacts/`（物理目录：`{artifacts_real_path or "见上表"}`）
+        - **不要**把成品写到用户资料目录（如 D:/space/标书/…）除非用户明确要求；否则工作台看不到
+        - `.md/.txt/.py` 等文本：优先 `write_file("/artifacts/文件名", …)`
+        - `.docx/.xlsx/.pptx` 等二进制：**不能**用 write_file；用 shell_execute + python（docx 等库）**save 到产物目录**（相对路径即可，shell cwd 即该目录）
+        - **Windows 禁止多行 `python -c "..."`**（cmd 会静默失败、exit 0 但不生成文件）；应 `write_file("/artifacts/xxx.py")` 再 `python -u xxx.py`
+        - 运行已有脚本前先看脚本里的 `save`/`output` 路径；若写死到其他目录，执行后**到该绝对路径**验证，**不要**只在 cwd 下 `listdir('.')`
+        - **read_file 支持**：PDF/Office 自动提取文本；图片多模态
+        - 调用 **write_file** / **edit_file** 时，JSON **须先写 `file_path`，再写 `content`**
+
+        ### shell_execute（python、cmd 等，替代内置 execute）
+        - 使用 **`shell_execute`**；默认 **cwd = 产物目录**（`{artifacts_real_path or "见上表 /artifacts/"}`）
+        - 引用用户资料时用**完整绝对路径**；生成交付文件时用**相对文件名**或 `{artifacts_real_path or "产物目录"}/文件名`
+        """
+
+    return f"""
+        ## 路径规则（重要）
+
+        虚拟路径与真实物理路径映射（仅供理解；文件工具见下表用法）：
+{path_table}
+{file_tool_rules}
         - 可选参数 **`intent`**：给用户界面展示的一句中文（20字以内），描述**正在做的事/要达到的目的**，不要复述 command
         - **intent 禁止出现**：脚本/文件名（含 .py .js .sh）、路径片段、「执行」「运行 xxx」、工具名 shell_execute
         - **intent 推荐写法**：结合用户任务与 write_todos 当前步骤，用动词短语（如「验证示例代码输出」「检查站点是否可访问」）
@@ -142,6 +164,7 @@ def build_system_prompt(
     memories_real_path: str = "",
     agent_real_path: str = "",
     use_session_history: bool = False,
+    virtual_mode: bool = True,
 ) -> str:
     skills_line = ", ".join(available_skills) if available_skills else "无"
 
@@ -154,6 +177,7 @@ def build_system_prompt(
         agent_real_path=agent_real_path,
         use_session_history=use_session_history,
         has_draft_route=has_draft_route,
+        virtual_mode=virtual_mode,
     )
     long_doc_section = build_long_document_writing_section()
     clarify_section = build_clarifying_questions_section()

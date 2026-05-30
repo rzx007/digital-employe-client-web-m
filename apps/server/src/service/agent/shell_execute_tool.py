@@ -11,7 +11,12 @@ from src.service.skill_shell_backend import SkillAwareShellBackend
 INTENT_MAX_LENGTH = 20
 
 
-def format_execute_response(response: ExecuteResponse) -> str:
+def format_execute_response(
+    response: ExecuteResponse,
+    shell: SkillAwareShellBackend | None = None,
+) -> str:
+    if shell is not None:
+        return shell.format_shell_output(response)
     return response.output or " "
 
 
@@ -29,7 +34,17 @@ class ShellExecuteInput(BaseModel):
     )
 
 
-def create_shell_execute_tool(shell: SkillAwareShellBackend) -> BaseTool:
+def create_shell_execute_tool(
+    shell: SkillAwareShellBackend,
+    *,
+    artifacts_dir: str = "",
+) -> BaseTool:
+    artifacts_hint = (
+        f" shell 默认 cwd/产物目录: {artifacts_dir}。"
+        if artifacts_dir
+        else ""
+    )
+
     async def _arun(
         command: str,
         intent: str | None = None,
@@ -37,7 +52,7 @@ def create_shell_execute_tool(shell: SkillAwareShellBackend) -> BaseTool:
     ) -> str:
         del intent
         response = await shell.aexecute(command, tool_call_id=tool_call_id or None)
-        return format_execute_response(response)
+        return format_execute_response(response, shell)
 
     def _run(
         command: str,
@@ -45,7 +60,7 @@ def create_shell_execute_tool(shell: SkillAwareShellBackend) -> BaseTool:
         tool_call_id: Annotated[str, InjectedToolCallId] = "",
     ) -> str:
         del intent, tool_call_id
-        return format_execute_response(shell.execute(command))
+        return format_execute_response(shell.execute(command), shell)
 
     return StructuredTool.from_function(
         coroutine=_arun,
@@ -54,6 +69,9 @@ def create_shell_execute_tool(shell: SkillAwareShellBackend) -> BaseTool:
         description=(
             "在 shell 中执行命令（替代 execute）。command 为实际命令；"
             "intent 可选：20字内中文业务目的，勿含文件名或「执行 xxx」。"
+            f"{artifacts_hint}"
+            "交付给用户的 .docx/.xlsx 等二进制须 python 生成并 save 到产物目录；"
+            "勿假设 listdir('.') 能扫到 save 到其他盘符路径的文件。"
         ),
         args_schema=ShellExecuteInput,
     )

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useAuthStore } from "@/stores/auth-store"
+import { getServerBaseUrl } from "@/lib/request"
 
 export type WorkspaceEvent =
   | {
@@ -76,9 +77,7 @@ function connect(workspaceId: number) {
   const baseUrl =
     (typeof window !== "undefined" &&
       (window as unknown as { __BASE_URL__: string }).__BASE_URL__) ||
-    (import.meta.env.VITE_BACKEND_URL
-      ? `${import.meta.env.VITE_BACKEND_URL}:${import.meta.env.VITE_BACKEND_PORT}`
-      : "/actus")
+    getServerBaseUrl()
 
   const url = `${baseUrl}/workspaces/${workspaceId}/events`
 

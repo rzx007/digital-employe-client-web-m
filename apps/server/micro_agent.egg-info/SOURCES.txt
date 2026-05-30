@@ -193,6 +193,7 @@ src/service/agent/prompts.py
 src/service/agent/shell_execute_tool.py
 src/service/agent/orchestrator/__init__.py
 src/service/agent/orchestrator/agent.py
+src/service/agent/orchestrator/confirmation_policy.py
 src/service/agent/orchestrator/employee_tools.py
 src/service/agent/orchestrator/execution.py
 src/service/agent/orchestrator/prompts.py
@@ -207,6 +208,7 @@ src/utils/http_client.py
 tests/conftest.py
 tests/test_basic_file_reader.py
 tests/test_compatible_filesystem_middleware.py
+tests/test_confirmation_policy.py
 tests/test_create_orchestration_plan.py
 tests/test_destructive_hitl.py
 tests/test_employee_generation.py

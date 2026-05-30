@@ -1,16 +1,20 @@
 import asyncio
 import logging
 import os
+import re
 import shlex
 import subprocess
 import tempfile
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Callable
 
 from deepagents.backends import LocalShellBackend
-from deepagents.backends.protocol import ExecuteResponse
+from deepagents.backends.protocol import ExecuteResponse, ReadResult
+
+from src.service.agent.basic_file_backend import basic_file_read
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +39,40 @@ class SkillAwareShellBackend(LocalShellBackend):
             inherit_env=inherit_env,
             timeout=timeout,
         )
+        self._artifacts_dir = Path(root_dir).resolve()
         self._skills_root = skills_root.resolve()
         self._draft_root = draft_root.resolve() if draft_root is not None else None
         self._memories_root = (
             memories_root.resolve() if memories_root is not None else None
         )
+        if os.name == "nt":
+            self._env.setdefault("PYTHONUTF8", "1")
+            self._env.setdefault("PYTHONIOENCODING", "utf-8")
+
+    @property
+    def artifacts_dir(self) -> Path:
+        return self._artifacts_dir
+
+    def format_shell_output(self, response: ExecuteResponse) -> str:
+        output = (response.output or " ").rstrip()
+        if response.exit_code != 0:
+            return output + "\n"
+        footer = (
+            f"\n\n[shell 工作目录: {self.cwd}]\n"
+            f"[会话产物目录（write_file 用 /artifacts/…）: {self._artifacts_dir}]\n"
+            "[说明: shell 默认 cwd 即产物目录；运行外部脚本若 save 到其他绝对路径，"
+            "请到该路径验证，勿仅用 listdir('.') 判断失败]"
+        )
+        return output + footer
+
+    def read(
+        self,
+        file_path: str,
+        offset: int = 0,
+        limit: int = 2000,
+    ) -> ReadResult:
+        """PDF/Office 走文本提取，与 /uploads/、/artifacts/ 路由一致。"""
+        return basic_file_read(self, file_path, offset=offset, limit=limit)
 
     def _map_virtual_token(self, token: str) -> str:
         normalized = token.replace("\\", "/")
@@ -63,7 +96,45 @@ class SkillAwareShellBackend(LocalShellBackend):
             return str((self._draft_root / suffix).resolve())
         return token
 
+    def _extract_python_c_code(self, command: str) -> str | None:
+        """从 `python -c '...'` / `python -u -c "..."` 提取代码体。"""
+        stripped = command.strip()
+        match = re.match(
+            r"python(?:\s+-u)?\s+-c\s+(?P<q>['\"])(?P<code>[\s\S]*)(?P=q)\s*$",
+            stripped,
+            re.IGNORECASE,
+        )
+        if match:
+            return match.group("code")
+        return None
+
+    def _materialize_multiline_python_c(self, command: str) -> str:
+        """Windows cmd 无法可靠执行多行 python -c；落盘为临时 .py 再运行。"""
+        if os.name != "nt" or "\n" not in command:
+            return command
+        if "python" not in command.lower() or "-c" not in command.lower():
+            return command
+
+        code = self._extract_python_c_code(command)
+        if not code:
+            logger.warning(
+                "[shell] multiline python -c detected but failed to extract code; "
+                "command may silently fail on Windows cmd"
+            )
+            return command
+
+        script_path = self.cwd / f"_agent_exec_{uuid.uuid4().hex[:8]}.py"
+        script_path.write_text(code, encoding="utf-8", newline="\n")
+        logger.info("[shell] materialized multiline python -c to %s", script_path)
+        return f'python -u "{script_path}"'
+
+    def _prepare_shell_command(self, command: str) -> str:
+        command = self._materialize_multiline_python_c(command)
+        return self._rewrite_command_virtual_paths(command)
+
     def _rewrite_command_virtual_paths(self, command: str) -> str:
+        if not self.virtual_mode:
+            return command
         try:
             parts = shlex.split(command, posix=False)
         except ValueError:
@@ -103,7 +174,7 @@ class SkillAwareShellBackend(LocalShellBackend):
         timeout: int | None = None,
         tool_call_id: str | None = None,
     ):
-        rewritten = self._rewrite_command_virtual_paths(command)
+        rewritten = self._prepare_shell_command(command)
         effective_timeout = timeout if timeout is not None else self._default_timeout
         if effective_timeout <= 0:
             raise ValueError(f"timeout must be positive, got {effective_timeout}")
@@ -329,7 +400,7 @@ class SkillAwareShellBackend(LocalShellBackend):
         return ExecuteResponse(output=output, exit_code=exit_code, truncated=truncated)
 
     def execute(self, command: str, *, timeout: int | None = None):
-        rewritten = self._rewrite_command_virtual_paths(command)
+        rewritten = self._prepare_shell_command(command)
         effective_timeout = timeout if timeout is not None else self._default_timeout
         if effective_timeout <= 0:
             raise ValueError(f"timeout must be positive, got {effective_timeout}")

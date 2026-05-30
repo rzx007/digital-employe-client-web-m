@@ -13,7 +13,7 @@ from src.service.agent.basic_file_backend import BasicFileFilesystemBackend
 from deepagents.middleware.permissions import FilesystemPermission
 from deepagents.middleware.summarization import SummarizationToolMiddleware
 
-from src.core.config import get_settings
+from src.core.config import get_settings, is_agent_virtual_mode
 from src.llm.factory import build_chat_model
 from src.service.agent.checkpointer import get_checkpointer
 from src.service.agent.paths import (
@@ -143,7 +143,7 @@ def get_orchestrator_agent(
         skills_root=skills_root,
         draft_root=None,
         memories_root=memories_dir,
-        virtual_mode=True,
+        virtual_mode=is_agent_virtual_mode(),
         inherit_env=True,
         timeout=settings.execute_timeout * 2,
     )
@@ -162,6 +162,7 @@ def get_orchestrator_agent(
         memories_real_path=str(memories_dir),
         agent_real_path=str(base_dir),
         use_session_history=use_session_history,
+        virtual_mode=is_agent_virtual_mode(),
     )
     system_prompt = (
         orchestrator_prompt
@@ -182,7 +183,9 @@ def get_orchestrator_agent(
     summarization_mw.use_session_history_file = use_session_history
     summarization_tool_mw = SummarizationToolMiddleware(summarization_mw)
 
-    shell_execute_tool = create_shell_execute_tool(shell_backend)
+    shell_execute_tool = create_shell_execute_tool(
+        shell_backend, artifacts_dir=str(artifacts_dir)
+    )
 
     session_flags = (
         get_session_flags(db, conversation_id) if conversation_id else {}
