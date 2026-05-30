@@ -12,9 +12,10 @@ from pathlib import Path
 from typing import Callable
 
 from deepagents.backends import LocalShellBackend
-from deepagents.backends.protocol import ExecuteResponse, ReadResult
+from deepagents.backends.protocol import EditResult, ExecuteResponse, ReadResult
 
-from src.service.agent.basic_file_backend import basic_file_read
+from src.service.agent.basic_file_backend import basic_file_edit, basic_file_read
+from src.service.agent.path_access.virtual_paths import map_virtual_token
 
 logger = logging.getLogger(__name__)
 
@@ -74,27 +75,29 @@ class SkillAwareShellBackend(LocalShellBackend):
         """PDF/Office 走文本提取，与 /uploads/、/artifacts/ 路由一致。"""
         return basic_file_read(self, file_path, offset=offset, limit=limit)
 
+    def edit(
+        self,
+        file_path: str,
+        old_string: str,
+        new_string: str,
+        replace_all: bool = False,
+    ) -> EditResult:
+        """纯文本 edit：读时编码回退，写回统一 UTF-8。"""
+        return basic_file_edit(
+            self,
+            file_path,
+            old_string,
+            new_string,
+            replace_all=replace_all,
+        )
+
     def _map_virtual_token(self, token: str) -> str:
-        normalized = token.replace("\\", "/")
-        if normalized == "/skills":
-            return str(self._skills_root)
-        if normalized.startswith("/skills/"):
-            suffix = normalized[len("/skills/") :]
-            return str((self._skills_root / suffix).resolve())
-        if self._memories_root is not None:
-            if normalized == "/memories":
-                return str(self._memories_root)
-            if normalized.startswith("/memories/"):
-                suffix = normalized[len("/memories/") :]
-                return str((self._memories_root / suffix).resolve())
-        if self._draft_root is None:
-            return token
-        if normalized == "/skills-draft":
-            return str(self._draft_root)
-        if normalized.startswith("/skills-draft/"):
-            suffix = normalized[len("/skills-draft/") :]
-            return str((self._draft_root / suffix).resolve())
-        return token
+        return map_virtual_token(
+            token,
+            skills_root=self._skills_root,
+            draft_root=self._draft_root,
+            memories_root=self._memories_root,
+        )
 
     def _extract_python_c_code(self, command: str) -> str | None:
         """从 `python -c '...'` / `python -u -c "..."` 提取代码体。"""
@@ -133,8 +136,8 @@ class SkillAwareShellBackend(LocalShellBackend):
         return self._rewrite_command_virtual_paths(command)
 
     def _rewrite_command_virtual_paths(self, command: str) -> str:
-        if not self.virtual_mode:
-            return command
+        # 始终 rewrite /skills/ 等虚拟前缀为物理路径：这是 shell 命令映射的产品逻辑，
+        # 与 LocalShellBackend.virtual_mode（控制 cwd / 沙箱）无关，物理模式下同样需要。
         try:
             parts = shlex.split(command, posix=False)
         except ValueError:

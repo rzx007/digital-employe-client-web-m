@@ -32,6 +32,9 @@ DOCUMENT_EXTENSIONS = frozenset(
 )
 SHEET_EXTENSIONS = frozenset({".csv", ".tsv"})
 
+# 中文 Windows 常见 ANSI/GBK；优先 utf-8，再尝试国标编码，最后 replace
+_TEXT_FALLBACK_ENCODINGS = ("utf-8", "gbk", "gb2312")
+
 
 class BasicFileCategory(str, Enum):
     TEXT = "text"
@@ -100,6 +103,24 @@ def format_multimodal_size_error(path: str, size_bytes: int) -> str:
     )
 
 
+def read_text_with_encoding_fallback(path: Path) -> str:
+    """读取纯文本：utf-8 → gbk/gb2312 → utf-8 replace（兼容中文 Windows 默认编码）。"""
+    raw = path.read_bytes()
+    if not raw:
+        return ""
+    for encoding in _TEXT_FALLBACK_ENCODINGS:
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+def write_text_as_utf8(path: Path, text: str) -> None:
+    """写入纯文本为 UTF-8（无 BOM）；edit 后统一转 UTF-8 时使用。"""
+    path.write_text(text, encoding="utf-8", newline="")
+
+
 def read_basic_file(path: Path) -> BasicFileContent:
     category = categorize_file(path)
     if category == BasicFileCategory.IMAGE:
@@ -117,7 +138,7 @@ def read_basic_file(path: Path) -> BasicFileContent:
         header = f"[已从 {path.name} 提取文本内容]\n\n"
         return BasicFileContent(category=category, text=header + extracted)
     return BasicFileContent(
-        category=category, text=path.read_text(encoding="utf-8")
+        category=category, text=read_text_with_encoding_fallback(path)
     )
 
 

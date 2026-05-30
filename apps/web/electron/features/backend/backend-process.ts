@@ -118,6 +118,10 @@ export function startBackend(): Promise<void> {
           }
         : {}),
       ...(isOfflineMode() ? { OFFLINE_MODE: "1" } : {}),
+      // 桌面端默认物理路径模式；未显式设置时注入 0，保留环境变量覆盖能力
+      ...(process.env.AGENT_VIRTUAL_MODE === undefined
+        ? { AGENT_VIRTUAL_MODE: "0" }
+        : {}),
     },
     onExit: (code, signal) => {
       log.info("process exit", { code, signal })

@@ -14,6 +14,7 @@ from src.service.basic_file_reader import (
     extract_document_text,
     is_multimodal_payload_too_large,
     read_basic_file,
+    read_text_with_encoding_fallback,
 )
 
 
@@ -112,3 +113,16 @@ def test_read_oversized_image_rejected(tmp_path: Path) -> None:
     huge.write_bytes(b"\x00" * (DASHSCOPE_MAX_MULTIMODAL_BYTES + 1))
     with pytest.raises(ValueError, match="超过当前模型多模态上限"):
         read_basic_file(huge)
+
+
+def test_read_text_with_encoding_fallback_gbk(tmp_path: Path) -> None:
+    gbk_file = tmp_path / "gbk.md"
+    gbk_file.write_bytes("中文测试内容".encode("gbk"))
+    assert read_text_with_encoding_fallback(gbk_file) == "中文测试内容"
+
+
+def test_read_basic_file_gbk_text(tmp_path: Path) -> None:
+    gbk_file = tmp_path / "note.md"
+    gbk_file.write_bytes("你好 GBK".encode("gbk"))
+    payload = read_basic_file(gbk_file)
+    assert payload.text == "你好 GBK"

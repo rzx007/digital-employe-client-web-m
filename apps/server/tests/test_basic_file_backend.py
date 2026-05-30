@@ -1,0 +1,46 @@
+"""basic_file_read / basic_file_edit 对 GBK 文本与本机绝对路径。"""
+
+from pathlib import Path
+
+from src.service.agent.basic_file_backend import basic_file_edit, basic_file_read
+from src.service.skill_shell_backend import SkillAwareShellBackend
+
+
+def _shell_backend(tmp_path: Path) -> SkillAwareShellBackend:
+    skills = tmp_path / "skills"
+    skills.mkdir()
+    (tmp_path / "artifacts").mkdir()
+    return SkillAwareShellBackend(
+        root_dir=str(tmp_path / "artifacts"),
+        skills_root=skills,
+        draft_root=None,
+        virtual_mode=False,
+    )
+
+
+def test_basic_file_read_host_absolute_gbk(tmp_path: Path) -> None:
+    host_file = tmp_path / "desktop.md"
+    host_file.write_bytes("桌面 GBK 文件".encode("gbk"))
+
+    result = basic_file_read(_shell_backend(tmp_path), str(host_file.resolve()))
+
+    assert result.error is None
+    assert result.file_data is not None
+    assert "桌面 GBK 文件" in (result.file_data.get("content") or "")
+
+
+def test_basic_file_edit_gbk_converts_to_utf8(tmp_path: Path) -> None:
+    host_file = tmp_path / "test.md"
+    host_file.write_bytes("旧内容 GBK".encode("gbk"))
+
+    backend = _shell_backend(tmp_path)
+    result = basic_file_edit(
+        backend,
+        str(host_file.resolve()),
+        "旧内容",
+        "新内容",
+    )
+
+    assert result.error is None
+    assert result.occurrences == 1
+    assert host_file.read_bytes().decode("utf-8") == "新内容 GBK"

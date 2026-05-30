@@ -1,3 +1,6 @@
+from src.service.agent.path_access.prompt_rules import build_file_tool_rules
+
+
 def build_filesystem_prompt_section(
     *,
     skills_real_path: str = "",
@@ -41,37 +44,10 @@ def build_filesystem_prompt_section(
         else "/conversation_history/（按 thread 分文件）"
     )
 
-    if virtual_mode:
-        file_tool_rules = """
-        ### 文件工具（read_file / write_file / edit_file / ls）
-        - **一律使用虚拟路径**，例如 /artifacts/report.md、/memories/AGENTS.md
-        - **read_file 支持**：纯文本/代码直读；**图片**以多模态（base64）返回；**PDF / Word(.docx) / Excel(.xlsx) / PPT(.pptx)** 自动提取为文本（legacy .doc/.xls/.ppt 请转为新格式）
-        - 用户上传附件在 **/uploads/**，相关时用 read_file 读取
-        - **禁止**在虚拟路径前拼接磁盘绝对路径（如 /artifacts/Users/...、/artifacts/C:/...）
-        - **禁止**把上表「真实物理路径」当作 write_file 的路径（那是磁盘路径，不是虚拟路径）
-        - 调用 **write_file** / **edit_file** 时，工具参数 JSON **须先写 `file_path`，再写 `content`（`edit_file` 为 `new_string`）**
-
-        ### shell_execute（python、cmd 等，替代内置 execute）
-        - 使用工具 **`shell_execute`**，不要调用已废弃的 `execute`
-        - **必须使用上表中的真实物理路径**，不要使用 /memories/ 等虚拟路径
-        """
-    else:
-        file_tool_rules = f"""
-        ### 文件工具（read_file / write_file / edit_file / ls）
-        - **读取用户本地资料**（PDF、脚本等）：用 Windows 绝对路径，例如 `D:/space/标书/参考的励磁论文/xxx.pdf`
-        - **交付给用户的成品**（报告、Word、导出数据）：**必须**写入 `/artifacts/`（物理目录：`{artifacts_real_path or "见上表"}`）
-        - **不要**把成品写到用户资料目录（如 D:/space/标书/…）除非用户明确要求；否则工作台看不到
-        - `.md/.txt/.py` 等文本：优先 `write_file("/artifacts/文件名", …)`
-        - `.docx/.xlsx/.pptx` 等二进制：**不能**用 write_file；用 shell_execute + python（docx 等库）**save 到产物目录**（相对路径即可，shell cwd 即该目录）
-        - **Windows 禁止多行 `python -c "..."`**（cmd 会静默失败、exit 0 但不生成文件）；应 `write_file("/artifacts/xxx.py")` 再 `python -u xxx.py`
-        - 运行已有脚本前先看脚本里的 `save`/`output` 路径；若写死到其他目录，执行后**到该绝对路径**验证，**不要**只在 cwd 下 `listdir('.')`
-        - **read_file 支持**：PDF/Office 自动提取文本；图片多模态
-        - 调用 **write_file** / **edit_file** 时，JSON **须先写 `file_path`，再写 `content`**
-
-        ### shell_execute（python、cmd 等，替代内置 execute）
-        - 使用 **`shell_execute`**；默认 **cwd = 产物目录**（`{artifacts_real_path or "见上表 /artifacts/"}`）
-        - 引用用户资料时用**完整绝对路径**；生成交付文件时用**相对文件名**或 `{artifacts_real_path or "产物目录"}/文件名`
-        """
+    file_tool_rules = build_file_tool_rules(
+        virtual_mode=virtual_mode,
+        artifacts_real_path=artifacts_real_path,
+    )
 
     return f"""
         ## 路径规则（重要）

@@ -39,13 +39,13 @@ def is_offline_mode() -> bool:
 
 
 def is_agent_virtual_mode() -> bool:
-    """Agent 文件工具是否强制虚拟路径（/artifacts/ 等）。False 时允许 Windows 绝对路径。"""
-    return os.getenv("AGENT_VIRTUAL_MODE", "0").strip().lower() not in (
-        "0",
-        "false",
-        "no",
-        "off",
-    )
+    """Agent 文件工具是否强制虚拟路径（/artifacts/ 等）。False 时允许本机绝对路径。
+
+    薄 re-export：实际定义在 src.service.agent.path_access.config，避免重复 env 逻辑。
+    """
+    from src.service.agent.path_access.config import is_virtual_mode_enabled
+
+    return is_virtual_mode_enabled()
 
 
 def _resolve_path(path_value: str) -> Path:
