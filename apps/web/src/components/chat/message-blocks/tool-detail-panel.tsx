@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react"
 import { CodeHighlight, detectLanguage } from "../shared/code-highlight"
 import { useArtifactStore } from "@/stores/artifact-store"
 import {
+  AUTO_OPEN_ARTIFACT_ON_STREAM,
   getDisplayContent,
   getEditDiff,
   getFilePathFromToolInput,
@@ -60,6 +61,7 @@ export function ToolDetailPanel({
   const isInputStreaming = state === "input-streaming"
 
   useEffect(() => {
+    if (!AUTO_OPEN_ARTIFACT_ON_STREAM) return
     if (!shouldTruncatePreview) return
     if (!normalizedFilePath) return
     if (!toolCallId) return

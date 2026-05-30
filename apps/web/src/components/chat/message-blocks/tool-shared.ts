@@ -23,6 +23,9 @@ const COMMAND_TOOLS = new Set(["execute", "shell_execute"])
 
 export const LARGE_FILE_PREVIEW_CHARS = 500
 
+/** 流式 write_file/edit_file 时是否自动打开资源管理器（大文件）；暂关以减轻卡顿 */
+export const AUTO_OPEN_ARTIFACT_ON_STREAM = false
+
 export function getFilePathFromToolInput(
   input: unknown,
   toolName: string
