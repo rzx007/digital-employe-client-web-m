@@ -46,7 +46,7 @@ npm-debug.log*
 
 # Misc
 .DS_Store
-**/private_key.pem
+activaton-keys/*
 !apps/server/src/core/activation/public_key.pem
 *.local
 .history
