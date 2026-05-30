@@ -9,7 +9,13 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.core.config import get_settings, join_base_and_path
+from src.core.config import get_settings, is_offline_mode, join_base_and_path
+from src.llm.registry import (
+    OFFLINE_BOOTSTRAP_PROVIDER_ID,
+    ONLINE_BOOTSTRAP_PROVIDER_ID,
+    REGISTRY_KV_KEY,
+    prepare_llm_registry_seed,
+)
 from src.core.remote_gateway import RemoteGateway
 from src.models.config_kv import ConfigKv
 
@@ -136,6 +142,17 @@ class ConfigKvService:
             if exists is not None:
                 continue
             value = "" if raw_value is None else str(raw_value)
+            if key == REGISTRY_KV_KEY:
+                prepared = prepare_llm_registry_seed(value)
+                if prepared is not None:
+                    value = prepared
+                    logger.info(
+                        "LLM_REGISTRY seed active profile: offline=%s provider=%s",
+                        is_offline_mode(),
+                        OFFLINE_BOOTSTRAP_PROVIDER_ID
+                        if is_offline_mode()
+                        else ONLINE_BOOTSTRAP_PROVIDER_ID,
+                    )
             db.add(ConfigKv(config_key=key, config_value=value))
             inserted += 1
         if inserted > 0:

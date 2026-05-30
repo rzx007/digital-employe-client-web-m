@@ -18,6 +18,11 @@ from src.llm.providers.url import normalize_openai_base_url
 REGISTRY_KV_KEY = "LLM_REGISTRY"
 LEGACY_KEYS = ("LLM_PROVIDER", "BASE_URL", "OPENAI_API_KEY", "DEEPAGENT_MODEL")
 
+ONLINE_BOOTSTRAP_PROVIDER_ID = "dashscope"
+ONLINE_BOOTSTRAP_MODEL_ID = "deepseek-v4-flash"
+OFFLINE_BOOTSTRAP_PROVIDER_ID = "hanhai"
+OFFLINE_BOOTSTRAP_MODEL_ID = "Hanhai"
+
 CUSTOM_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 
 
@@ -122,6 +127,48 @@ def _parse_registry_raw(raw: str | None) -> LlmRegistry | None:
         return LlmRegistry.model_validate(data)
     except ValueError:
         return None
+
+
+def apply_bootstrap_active_profile(registry: LlmRegistry) -> LlmRegistry:
+    """Pick active provider/model for first-time seed based on offline mode."""
+    from src.core.config import is_offline_mode
+
+    if is_offline_mode():
+        provider_id = OFFLINE_BOOTSTRAP_PROVIDER_ID
+        model_id = OFFLINE_BOOTSTRAP_MODEL_ID
+    else:
+        provider_id = ONLINE_BOOTSTRAP_PROVIDER_ID
+        model_id = ONLINE_BOOTSTRAP_MODEL_ID
+
+    provider = find_provider(registry, provider_id)
+    if provider is None:
+        logger.warning(
+            "LLM registry seed missing bootstrap provider %s (offline=%s)",
+            provider_id,
+            is_offline_mode(),
+        )
+        return registry
+
+    if not any(model.id == model_id for model in provider.models):
+        logger.warning(
+            "LLM registry seed missing bootstrap model %s/%s (offline=%s)",
+            provider_id,
+            model_id,
+            is_offline_mode(),
+        )
+        return registry
+
+    registry.active_provider_id = provider_id
+    registry.active_model_id = model_id
+    return registry
+
+
+def prepare_llm_registry_seed(raw: str) -> str | None:
+    """Normalize LLM_REGISTRY seed JSON and apply offline/online active profile."""
+    parsed = _parse_registry_raw(raw)
+    if parsed is None:
+        return None
+    return _registry_to_json(apply_bootstrap_active_profile(parsed))
 
 
 def _read_legacy_kv(db: Session) -> dict[str, str]:
