@@ -54,10 +54,7 @@ export const DocViewerRenderer = ({
 
   const lowerPath = resourcePath.toLowerCase()
   const usesOfficeOnline =
-    lowerPath.endsWith(".doc") ||
-    lowerPath.endsWith(".docx") ||
-    lowerPath.endsWith(".xls") ||
-    lowerPath.endsWith(".xlsx")
+    lowerPath.endsWith(".doc") || lowerPath.endsWith(".xls")
 
   const base = getRequestBaseUrl()
   const isLocalHost =
@@ -66,6 +63,8 @@ export const DocViewerRenderer = ({
 
   if (usesOfficeOnline && isLocalHost) {
     const filename = resourcePath.split("/").pop() ?? "document"
+    const formatHint =
+      lowerPath.endsWith(".doc") ? "Word (.doc)" : "Excel (.xls)"
     return (
       <div
         className={cn(
@@ -77,9 +76,9 @@ export const DocViewerRenderer = ({
           无法在应用内预览此 Office 文档
         </p>
         <p className="max-w-md text-xs">
-          Word / Excel / 旧版 PPT 依赖 Microsoft 在线预览服务，无法访问本机地址（
-          {base || "localhost"}）。.pptx 已支持本地预览；其他格式请下载后用 Office /
-          WPS 打开。
+          旧版 {formatHint} 依赖 Microsoft 在线预览服务，无法访问本机地址（
+          {base || "localhost"}）。.docx / .xlsx / .pptx
+          已支持本地预览；请下载后用 Office / WPS 打开，或让 AI 另存为新格式。
         </p>
         <p className="font-mono text-xs text-foreground/60">{filename}</p>
       </div>

@@ -5,6 +5,7 @@ import { DocViewerRenderer } from "./doc-viewer-renderer"
 import { HtmlArtifactRenderer } from "./html-artifact-renderer"
 import { ImageRenderer } from "./image-renderer"
 import { LegacyPptArtifactRenderer } from "./legacy-ppt-artifact-renderer"
+import { LegacyOfficeArtifactRenderer } from "./legacy-office-artifact-renderer"
 import { MarkdownArtifactRenderer } from "./markdown-artifact-renderer"
 import { SheetRenderer } from "./sheet-renderer"
 import { resolveArtifactRendererKind } from "./resolve-renderer"
@@ -15,6 +16,37 @@ const PptxArtifactRenderer = React.lazy(async () => {
   return { default: mod.PptxArtifactRenderer }
 })
 
+const DocxArtifactRenderer = React.lazy(async () => {
+  const mod = await import("./docx-artifact-renderer")
+  return { default: mod.DocxArtifactRenderer }
+})
+
+const XlsxArtifactRenderer = React.lazy(async () => {
+  const mod = await import("./xlsx-artifact-renderer")
+  return { default: mod.XlsxArtifactRenderer }
+})
+
+function LazyArtifactPreview({
+  children,
+  loadingLabel,
+}: {
+  children: React.ReactNode
+  loadingLabel: string
+}) {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
+          <Spinner className="size-4" />
+          {loadingLabel}
+        </div>
+      }
+    >
+      {children}
+    </React.Suspense>
+  )
+}
+
 function PptxArtifactRendererSuspense({
   artifact,
   className,
@@ -23,16 +55,37 @@ function PptxArtifactRendererSuspense({
   className?: string
 }) {
   return (
-    <React.Suspense
-      fallback={
-        <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
-          <Spinner className="size-4" />
-          正在加载演示文稿预览…
-        </div>
-      }
-    >
+    <LazyArtifactPreview loadingLabel="正在加载演示文稿预览…">
       <PptxArtifactRenderer artifact={artifact} className={className} />
-    </React.Suspense>
+    </LazyArtifactPreview>
+  )
+}
+
+function DocxArtifactRendererSuspense({
+  artifact,
+  className,
+}: {
+  artifact: Artifact
+  className?: string
+}) {
+  return (
+    <LazyArtifactPreview loadingLabel="正在加载 Word 预览…">
+      <DocxArtifactRenderer artifact={artifact} className={className} />
+    </LazyArtifactPreview>
+  )
+}
+
+function XlsxArtifactRendererSuspense({
+  artifact,
+  className,
+}: {
+  artifact: Artifact
+  className?: string
+}) {
+  return (
+    <LazyArtifactPreview loadingLabel="正在加载 Excel 预览…">
+      <XlsxArtifactRenderer artifact={artifact} className={className} />
+    </LazyArtifactPreview>
   )
 }
 
@@ -75,6 +128,36 @@ export function ArtifactRendererView({
     case "legacy-ppt":
       return (
         <LegacyPptArtifactRenderer artifact={artifact} className={className} />
+      )
+    case "docx":
+      return (
+        <DocxArtifactRendererSuspense
+          artifact={artifact}
+          className={className}
+        />
+      )
+    case "xlsx":
+      return (
+        <XlsxArtifactRendererSuspense
+          artifact={artifact}
+          className={className}
+        />
+      )
+    case "legacy-doc":
+      return (
+        <LegacyOfficeArtifactRenderer
+          artifact={artifact}
+          format="doc"
+          className={className}
+        />
+      )
+    case "legacy-xls":
+      return (
+        <LegacyOfficeArtifactRenderer
+          artifact={artifact}
+          format="xls"
+          className={className}
+        />
       )
     case "document":
       return <DocViewerRenderer artifact={artifact} className={className} />

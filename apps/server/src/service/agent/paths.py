@@ -63,8 +63,13 @@ def list_available_skills(skills_root: Path) -> list[str]:
 
 def ensure_employee_memory_file(memories_dir: Path) -> None:
     """若员工记忆文件不存在则写入默认模板（不覆盖已有内容）。"""
+    from src.service.agent.memory_file import ensure_memory_file_utf8
+
     memory_file = memories_dir / "AGENTS.md"
+    memories_dir.mkdir(parents=True, exist_ok=True)
     if memory_file.is_file():
+        if ensure_memory_file_utf8(memory_file):
+            logger.info("Normalized employee memory file to UTF-8: %s", memory_file)
         return
     memory_file.write_text(_EMPLOYEE_MEMORY_TEMPLATE, encoding="utf-8")
     logger.info("Seeded employee memory file: %s", memory_file)

@@ -75,3 +75,26 @@ def test_legacy_remote_synced_custom_still_syncs() -> None:
     )
     assert resolve_model_sync_policy(registry) == "remote"
     assert should_apply_remote_model_sync(registry) is True
+
+
+def test_should_not_sync_when_local_custom_exists_even_if_remote_active() -> None:
+    registry = LlmRegistry(
+        active_provider_id="custom",
+        active_model_id="Hanhai",
+        providers=[_custom_hanhai(), _remote_synced()],
+    )
+    assert should_apply_remote_model_sync(registry) is False
+
+
+def test_restore_local_active_when_remote_still_selected() -> None:
+    from src.llm.registry import maybe_restore_local_active_provider
+
+    registry = LlmRegistry(
+        active_provider_id="custom",
+        active_model_id="Hanhai",
+        providers=[_custom_hanhai(), _remote_synced()],
+    )
+    assert maybe_restore_local_active_provider(registry) is True
+    assert registry.active_provider_id == "hanhai"
+    assert registry.active_model_id == "Hanhai"
+    assert registry.model_sync_policy == "local"

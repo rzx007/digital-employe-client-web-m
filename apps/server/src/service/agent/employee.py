@@ -8,7 +8,10 @@ from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_community.utilities import SQLDatabase
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend
-from src.service.agent.basic_file_backend import BasicFileFilesystemBackend
+from src.service.agent.basic_file_backend import (
+    BasicFileFilesystemBackend,
+    EncodingAwareFilesystemBackend,
+)
 from deepagents.middleware.permissions import FilesystemPermission
 from deepagents.middleware.summarization import SummarizationToolMiddleware
 
@@ -28,7 +31,7 @@ from src.service.model_context import (
     resolve_summarization_keep,
     resolve_summarization_trigger,
 )
-from src.service.agent.shell_execute_tool import create_shell_execute_tool
+from src.service.agent.remember_memory_tool import create_remember_memory_tool
 from src.service.agent.clarifying_questions_tool import submit_clarifying_questions
 from src.service.agent.document_plan_tool import submit_document_plan
 from src.service.agent.hitl_interrupt_on import HITL_INTERRUPT_ON
@@ -97,7 +100,9 @@ def get_agent(
             logger.error("初始化 SQLDatabaseToolkit 失败: %s", exc, exc_info=True)
 
     skills_fs = FilesystemBackend(root_dir=str(skills_root), virtual_mode=True)
-    agent_fs = FilesystemBackend(root_dir=str(base_dir), virtual_mode=True)
+    agent_fs = EncodingAwareFilesystemBackend(
+        root_dir=str(base_dir), virtual_mode=True
+    )
 
     memories_dir = resolve_employee_memories_dir(
         employee_id=employee_id,
@@ -106,7 +111,9 @@ def get_agent(
     )
     memories_dir.mkdir(parents=True, exist_ok=True)
     ensure_employee_memory_file(memories_dir)
-    memories_fs = FilesystemBackend(root_dir=str(memories_dir), virtual_mode=True)
+    memories_fs = EncodingAwareFilesystemBackend(
+        root_dir=str(memories_dir), virtual_mode=True
+    )
 
     if conversation_id and root_path:
         artifacts_dir = Path(root_path) / str(conversation_id) / "artifacts"
@@ -190,7 +197,8 @@ def get_agent(
     shell_execute_tool = create_shell_execute_tool(
         shell_backend, artifacts_dir=str(artifacts_dir)
     )
-    extra_tools: list = [shell_execute_tool]
+    remember_memory_tool = create_remember_memory_tool(memories_dir)
+    extra_tools: list = [shell_execute_tool, remember_memory_tool]
     if sql_tools:
         extra_tools.extend(sql_tools)
     extra_tools.extend(_session_search_tools)
@@ -223,6 +231,11 @@ def get_agent(
             FilesystemPermission(
                 operations=["write"],
                 paths=["/skills/**", "/agent/**"],
+                mode="deny",
+            ),
+            FilesystemPermission(
+                operations=["write"],
+                paths=["/memories/AGENTS.md"],
                 mode="deny",
             ),
         ],

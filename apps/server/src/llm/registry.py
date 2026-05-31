@@ -26,6 +26,7 @@ OFFLINE_BOOTSTRAP_MODEL_ID = "Hanhai"
 REMOTE_SYNC_PROVIDER_DISPLAY_NAME = "远程同步供应商"
 ModelSyncPolicy = Literal["remote", "local"]
 
+CUSTOM_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 
 class LlmModelEntry(BaseModel):
     id: str
@@ -317,6 +318,51 @@ def is_remote_synced_provider(provider: LlmProviderEntry) -> bool:
     return provider.display_name.strip() == REMOTE_SYNC_PROVIDER_DISPLAY_NAME
 
 
+def has_local_custom_provider(registry: LlmRegistry) -> bool:
+    """是否存在用户手动配置的自定义供应商（非登录远程同步写入）。"""
+    return any(
+        p.source == "custom" and not is_remote_synced_provider(p)
+        for p in registry.providers
+    )
+
+
+def maybe_restore_local_active_provider(
+    registry: LlmRegistry,
+) -> bool:
+    """远程同步被跳过时，若当前仍激活远程同步供应商，则切回本地自定义供应商。"""
+    if not has_local_custom_provider(registry):
+        return False
+
+    active = (
+        find_provider(registry, registry.active_provider_id)
+        if registry.active_provider_id
+        else None
+    )
+    if active is not None and not is_remote_synced_provider(active):
+        return False
+
+    preferred_ids = (OFFLINE_BOOTSTRAP_PROVIDER_ID,)
+    candidates: list[LlmProviderEntry] = []
+    for pid in preferred_ids:
+        entry = find_provider(registry, pid)
+        if entry and not is_remote_synced_provider(entry):
+            candidates.append(entry)
+    if not candidates:
+        candidates = [
+            p
+            for p in registry.providers
+            if p.source == "custom" and not is_remote_synced_provider(p)
+        ]
+    if not candidates:
+        return False
+
+    pick = candidates[0]
+    registry.active_provider_id = pick.id
+    registry.active_model_id = pick.models[0].id
+    mark_registry_local_preference(registry)
+    return True
+
+
 def resolve_model_sync_policy(registry: LlmRegistry) -> ModelSyncPolicy:
     """解析是否允许登录后远程覆盖模型配置。"""
     if registry.model_sync_policy in ("remote", "local"):
@@ -337,8 +383,14 @@ def resolve_model_sync_policy(registry: LlmRegistry) -> ModelSyncPolicy:
 
 def should_apply_remote_model_sync(registry: LlmRegistry) -> bool:
     """未配置活跃模型，或用户仍使用平台远程模型时，才允许登录同步。"""
+    if registry.model_sync_policy == "local":
+        return False
+    if registry.model_sync_policy == "remote":
+        return True
     if not registry.active_provider_id or not registry.active_model_id:
         return True
+    if has_local_custom_provider(registry):
+        return False
     return resolve_model_sync_policy(registry) == "remote"
 
 
@@ -366,7 +418,10 @@ def set_active(
         raise ValueError(f"供应商 {provider_id} 下无模型: {model_trimmed}")
     registry.active_provider_id = provider_id
     registry.active_model_id = model_trimmed
-    mark_registry_local_preference(registry)
+    if is_remote_synced_provider(provider):
+        mark_registry_remote_preference(registry)
+    else:
+        mark_registry_local_preference(registry)
     save_registry(db, registry)
     return registry
 

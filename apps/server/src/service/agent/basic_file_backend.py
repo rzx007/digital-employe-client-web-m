@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from deepagents.backends import FilesystemBackend
-from deepagents.backends.protocol import EditResult, FileData, ReadResult
+from deepagents.backends.protocol import EditResult, FileData, FileDownloadResponse, ReadResult
 from deepagents.backends.utils import check_empty_content, perform_string_replacement
 
 from src.service.basic_file_reader import (
@@ -42,6 +42,46 @@ class BasicFileFilesystemBackend(FilesystemBackend):
             new_string,
             replace_all=replace_all,
         )
+
+
+class EncodingAwareFilesystemBackend(BasicFileFilesystemBackend):
+    """MemoryMiddleware 用 download_files 读 AGENTS.md，须兼容 Windows GBK 并归一化为 UTF-8。"""
+
+    def download_files(self, paths: list[str]) -> list[FileDownloadResponse]:
+        responses: list[FileDownloadResponse] = []
+        for path in paths:
+            try:
+                resolved_path = Path(self._resolve_path(path))
+            except (OSError, RuntimeError):
+                responses.extend(super().download_files([path]))
+                continue
+
+            if (
+                resolved_path.is_file()
+                and categorize_file(resolved_path) == BasicFileCategory.TEXT
+            ):
+                try:
+                    text = read_text_with_encoding_fallback(resolved_path)
+                    write_text_as_utf8(resolved_path, text)
+                    responses.append(
+                        FileDownloadResponse(
+                            path=path,
+                            content=text.encode("utf-8"),
+                            error=None,
+                        )
+                    )
+                except OSError as exc:
+                    responses.append(
+                        FileDownloadResponse(
+                            path=path,
+                            content=None,
+                            error=str(exc),
+                        )
+                    )
+                continue
+
+            responses.extend(super().download_files([path]))
+        return responses
 
 
 def _paginate_text_read_result(

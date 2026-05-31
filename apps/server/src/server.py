@@ -15,6 +15,10 @@ from src.service.agent.compatible_filesystem_middleware import (
 install_compatible_filesystem_middleware()
 install_agent_path_access()
 
+from src.service.agent.memory_middleware_patch import install_safe_memory_decode
+
+install_safe_memory_decode()
+
 import logging
 import re
 import asyncio
@@ -69,6 +73,13 @@ def create_app() -> FastAPI:
                 cleaned = cleanup_zombie_executions(db)
                 if cleaned > 0:
                     logger.info("Cleaned %d zombie task executions", cleaned)
+                from src.service.agent.memory_file import normalize_all_memory_files
+
+                normalized = normalize_all_memory_files()
+                if normalized > 0:
+                    logger.info(
+                        "Normalized %d employee memory files to UTF-8", normalized
+                    )
                 WorkspaceService.ensure_workspace_initialized(db, workspace)
 
         await loop.run_in_executor(None, _startup_db_init)

@@ -72,8 +72,6 @@ def build_filesystem_prompt_section(
 
         ### 长期记忆（/memories/，每次开聊已自动加载，不在会话资源列表中展示）
         - /agent/AGENTS.md：产品级说明（只读，已注入上下文）
-        - /memories/AGENTS.md：本员工跨会话记忆（可读写，已注入上下文）；用户说「记住…」时 **仅用** edit_file("/memories/AGENTS.md", ...)
-        - /memories/ 下其他 .md：补充记忆，按需 read_file("/memories/xxx.md")
         - **禁止**用 write_file("/artifacts/...") 或磁盘绝对路径保存记忆；**禁止**把用户交付物写入 /memories/
         {draft_instruction}
 
@@ -84,6 +82,25 @@ def build_filesystem_prompt_section(
           - 工具返回内容很长（如执行结果、文件内容），且后续不再需要这些细节
           - 感觉对话轮次较多、响应变慢时
         - 压缩不会丢失关键信息，旧消息会被摘要替代；完整历史 offload 在 {history_hint}，可用 read_file 查阅
+        """
+
+
+def build_memory_update_section() -> str:
+    """长期记忆更新规则（须与 remember_memory 工具及 /memories/AGENTS.md 写权限禁用一致）。"""
+    return """
+        ## 长期记忆（/memories/，每次开聊已自动加载）
+        - /agent/AGENTS.md：产品说明（只读，已注入上下文）
+        - /memories/AGENTS.md：跨会话记忆（内容已注入上下文）
+
+        ### 用户要「记住 / 更新记忆」时（必须遵守）
+        - **唯一正确做法**：调用 `remember_memory(text=..., section=...)` **一次**即可
+        - **禁止** edit_file / write_file 修改 `/memories/AGENTS.md`（会被权限拒绝且易匹配失败）
+        - **禁止** shell_execute、type/cat、磁盘绝对路径（如 C:\\Users\\...\\AGENTS.md）改记忆
+        - **禁止** 先 read_file 再 edit；**不要** create AGENTS.md
+        - section：`用户偏好`（沟通/格式）或 `已知事实与约定`（环境、路径、OS、约定）
+        - 示例：用户说「记住当前是 Windows」→
+          `remember_memory(text="运行环境: Windows，路径使用 D:/ 或 C:/ 格式", section="已知事实与约定")`
+        - 成功后用一句话告知用户即可，勿反复重试文件编辑
         """
 
 
@@ -161,6 +178,7 @@ def build_system_prompt(
     )
     long_doc_section = build_long_document_writing_section()
     clarify_section = build_clarifying_questions_section()
+    memory_section = build_memory_update_section()
     shell_env_section = build_shell_environment_section()
 
     return f"""今天的时间是{current_time}
@@ -170,6 +188,7 @@ def build_system_prompt(
         当前已加载的技能名单：{skills_line}
         如果用户询问"你有没有某个技能"或"你有哪些技能"，必须严格基于当前已加载的技能名单回答，不要猜测，不要遗漏名单中的技能。
         {fs_section}
+        {memory_section}
         {clarify_section}
         {long_doc_section}
         无特殊说明，总是用中文回答用户问题。

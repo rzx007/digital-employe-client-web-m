@@ -9,7 +9,10 @@ from sqlalchemy.orm import Session
 
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend
-from src.service.agent.basic_file_backend import BasicFileFilesystemBackend
+from src.service.agent.basic_file_backend import (
+    BasicFileFilesystemBackend,
+    EncodingAwareFilesystemBackend,
+)
 from deepagents.middleware.permissions import FilesystemPermission
 from deepagents.middleware.summarization import SummarizationToolMiddleware
 
@@ -32,6 +35,7 @@ from src.service.agent.destructive_hitl import (
 from src.service.agent.prompts import (
     build_filesystem_prompt_section,
     build_long_document_writing_section,
+    build_memory_update_section,
 )
 from src.service.agent.orchestrator.prompts import (
     ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE,
@@ -71,6 +75,7 @@ from src.service.model_context import (
     resolve_summarization_keep,
     resolve_summarization_trigger,
 )
+from src.service.agent.remember_memory_tool import create_remember_memory_tool
 from src.service.agent.shell_execute_tool import create_shell_execute_tool
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
@@ -124,8 +129,12 @@ def get_orchestrator_agent(
     if uploads_dir is not None:
         uploads_dir.mkdir(parents=True, exist_ok=True)
 
-    agent_fs = FilesystemBackend(root_dir=str(base_dir), virtual_mode=True)
-    memories_fs = FilesystemBackend(root_dir=str(memories_dir), virtual_mode=True)
+    agent_fs = EncodingAwareFilesystemBackend(
+        root_dir=str(base_dir), virtual_mode=True
+    )
+    memories_fs = EncodingAwareFilesystemBackend(
+        root_dir=str(memories_dir), virtual_mode=True
+    )
     routes: dict[str, Any] = {
         "/memories/": memories_fs,
         "/skills/": skills_fs,
@@ -191,6 +200,7 @@ def get_orchestrator_agent(
     system_prompt = (
         orchestrator_prompt
         + fs_section
+        + build_memory_update_section()
         + build_long_document_writing_section(for_orchestrator=True)
     )
 
@@ -208,8 +218,9 @@ def get_orchestrator_agent(
     shell_execute_tool = create_shell_execute_tool(
         shell_backend, artifacts_dir=str(artifacts_dir)
     )
+    remember_memory_tool = create_remember_memory_tool(memories_dir)
 
-    orchestrator_tools: list = [shell_execute_tool]
+    orchestrator_tools: list = [shell_execute_tool, remember_memory_tool]
 
     session_flags = (
         get_session_flags(db, conversation_id) if conversation_id else {}
@@ -258,6 +269,11 @@ def get_orchestrator_agent(
             FilesystemPermission(
                 operations=["write"],
                 paths=["/agent/**"],
+                mode="deny",
+            ),
+            FilesystemPermission(
+                operations=["write"],
+                paths=["/memories/AGENTS.md"],
                 mode="deny",
             ),
         ],

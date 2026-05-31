@@ -33,6 +33,22 @@ export function isLegacyPptPath(path: string | null | undefined): boolean {
   return getFileExtension(path) === "ppt"
 }
 
+export function isDocxPath(path: string | null | undefined): boolean {
+  return getFileExtension(path) === "docx"
+}
+
+export function isXlsxPath(path: string | null | undefined): boolean {
+  return getFileExtension(path) === "xlsx"
+}
+
+export function isLegacyDocPath(path: string | null | undefined): boolean {
+  return getFileExtension(path) === "doc"
+}
+
+export function isLegacyXlsPath(path: string | null | undefined): boolean {
+  return getFileExtension(path) === "xls"
+}
+
 export type ArtifactRendererKind =
   | "markdown"
   | "html"
@@ -40,6 +56,10 @@ export type ArtifactRendererKind =
   | "image"
   | "pptx"
   | "legacy-ppt"
+  | "docx"
+  | "xlsx"
+  | "legacy-doc"
+  | "legacy-xls"
   | "document"
   | "code"
 
@@ -51,6 +71,10 @@ export function resolveArtifactRendererKind(
   if (isHtmlPath(filePath)) return "html"
   if (isPptxPath(filePath)) return "pptx"
   if (isLegacyPptPath(filePath)) return "legacy-ppt"
+  if (isDocxPath(filePath)) return "docx"
+  if (isXlsxPath(filePath)) return "xlsx"
+  if (isLegacyDocPath(filePath)) return "legacy-doc"
+  if (isLegacyXlsPath(filePath)) return "legacy-xls"
   if (artifact.type === "sheet") return "sheet"
   if (artifact.type === "image") return "image"
   if (artifact.type === "document") return "document"

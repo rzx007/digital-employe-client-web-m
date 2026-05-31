@@ -51,7 +51,14 @@ def run_reflection(
     # 读当前记忆
     memories_path = _resolve_memories_path(employee_id)
     memory_file = memories_path / "AGENTS.md"
-    current_memory = memory_file.read_text(encoding="utf-8") if memory_file.exists() else ""
+    if memory_file.exists():
+        from src.service.agent.memory_file import ensure_memory_file_utf8
+        from src.service.basic_file_reader import read_text_with_encoding_fallback
+
+        ensure_memory_file_utf8(memory_file)
+        current_memory = read_text_with_encoding_fallback(memory_file)
+    else:
+        current_memory = ""
 
     # 调用辅助 LLM 提取经验
     llm = _build_llm()

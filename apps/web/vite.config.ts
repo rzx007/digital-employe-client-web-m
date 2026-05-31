@@ -108,6 +108,8 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
         "@mui/icons-material",
         "@emotion/react",
         "@emotion/styled",
+        "docx-preview",
+        "xlsx",
       ],
     },
     server: {

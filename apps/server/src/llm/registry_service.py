@@ -154,10 +154,10 @@ def add_custom_provider(
     )
     registry.providers.append(entry)
 
+    mark_registry_local_preference(registry)
     if set_as_active:
         registry.active_provider_id = entry.id
         registry.active_model_id = entry.models[0].id
-        mark_registry_local_preference(registry)
 
     save_registry(db, registry)
 
