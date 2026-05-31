@@ -169,7 +169,6 @@ export function DraftChatView({
     }
     stop()
     chatTransport.cancelReconnect()
-    session.onStreamStopped()
     const conversationId = useChatStore.getState().selectedConversationId
     if (conversationId) {
       try {
@@ -178,6 +177,7 @@ export function DraftChatView({
         // ignore cancel errors
       }
     }
+    session.onStreamStopped()
   }, [createConversationMutation, stop, session])
 
   const isSubmitDisabled = useMemo(() => {

@@ -200,8 +200,53 @@ class SkillAwareShellBackend(LocalShellBackend):
         # 持有 PIPE 写端句柄不释放，导致 proc.stdout 永远等不到 EOF 而挂起
         _tmp_path: str | None = None
         _POLL_SECONDS = 0.1
+        _PARTIAL_EMIT_SECONDS = 0.3
         _READ_CHUNK = 65536       # 文件分块读取大小，控制内存峰值
         _MAX_TMPFILE_BYTES = 1024 * 1024  # 临时文件上限 1MB，防磁盘写满
+
+        def _read_incremental_from_tmp(
+            last_size: int,
+            partial_line: bytes,
+        ) -> tuple[int, bytes, list[bytes]]:
+            """从临时 stdout 文件读取增量，按行切分；无换行尾部留在 partial_line。"""
+            nonlocal _tmp_path
+            complete_lines: list[bytes] = []
+            try:
+                if os.path.getsize(_tmp_path) <= last_size:
+                    return last_size, partial_line, complete_lines
+            except OSError:
+                return last_size, partial_line, complete_lines
+
+            try:
+                with open(_tmp_path, "rb") as f:
+                    f.seek(last_size)
+                    while True:
+                        chunk = f.read(_READ_CHUNK)
+                        if not chunk:
+                            break
+                        last_size += len(chunk)
+                        data = partial_line + chunk
+                        *lines, partial_line = data.split(b"\n")
+                        complete_lines.extend(lines)
+            except OSError as e:
+                logger.warning(
+                    "[shell] tmpfile read error at offset %d: %s",
+                    last_size,
+                    e,
+                )
+            return last_size, partial_line, complete_lines
+
+        def _emit_complete_lines(complete_lines: list[bytes]) -> None:
+            for line_bytes in complete_lines:
+                line = self._decode_output_bytes(line_bytes).rstrip("\r\n")
+                loop.call_soon_threadsafe(queue.put_nowait, line)
+
+        def _emit_partial_line(partial_line: bytes) -> None:
+            if not partial_line:
+                return
+            line = self._decode_output_bytes(partial_line).rstrip("\r\n")
+            if line:
+                loop.call_soon_threadsafe(queue.put_nowait, line)
 
         def _read_lines_sync() -> int:
             nonlocal _tmp_path
@@ -224,69 +269,47 @@ class SkillAwareShellBackend(LocalShellBackend):
 
             try:
                 last_size = 0
-                partial_line = b''
-                file_truncated = False
-                read_fail_count = 0
+                partial_line = b""
+                last_partial_emit = 0.0
 
                 while True:
-                    if proc.poll() is not None:   # 子进程已退出
+                    if proc.poll() is not None:
+                        # 子进程已退出：务必最后再读一次 stdout 文件，避免
+                        # curl -s 等无换行输出在 poll 与写盘之间的竞态丢失。
+                        last_size, partial_line, complete_lines = (
+                            _read_incremental_from_tmp(last_size, partial_line)
+                        )
+                        _emit_complete_lines(complete_lines)
+                        _emit_partial_line(partial_line)
+                        partial_line = b""
                         break
-                    if cancel_requested.is_set():  # 外部取消
+                    if cancel_requested.is_set():
                         break
 
                     time.sleep(_POLL_SECONDS)
 
-                    # 预检：文件是否有新数据，减少无效 open
-                    try:
-                        if os.path.getsize(_tmp_path) <= last_size:
-                            read_fail_count = 0
-                            continue
-                    except OSError:
-                        pass
+                    last_size, partial_line, complete_lines = (
+                        _read_incremental_from_tmp(last_size, partial_line)
+                    )
+                    if complete_lines:
+                        _emit_complete_lines(complete_lines)
 
-                    # 读取临时文件尾部增量（分块读，64KB / chunk）
-                    try:
-                        with open(_tmp_path, 'rb') as f:
-                            f.seek(last_size)
-                            while True:
-                                chunk = f.read(_READ_CHUNK)
-                                if not chunk:
-                                    break
-                                last_size += len(chunk)
-                                data = partial_line + chunk
-                                *complete_lines, partial_line = data.split(b'\n')
-                                for line_bytes in complete_lines:
-                                    line = self._decode_output_bytes(line_bytes).rstrip("\r\n")
-                                    loop.call_soon_threadsafe(queue.put_nowait, line)
-                        read_fail_count = 0
-                        if last_size > _MAX_TMPFILE_BYTES:
-                            file_truncated = True
-                            break
-                    except Exception as e:
-                        read_fail_count += 1
-                        logger.warning(
-                            "[shell] tmpfile read error at offset %d (fail #%d): %s",
-                            last_size, read_fail_count, e,
-                        )
-                        if read_fail_count >= 10:
-                            logger.error(
-                                "[shell] tmpfile read failed %d times consecutively, aborting",
-                                read_fail_count,
-                            )
-                            break
-                        continue
-
-                    if file_truncated:
+                    if last_size > _MAX_TMPFILE_BYTES:
                         loop.call_soon_threadsafe(
                             queue.put_nowait,
                             "... Output truncated (超过 1MB)",
                         )
                         break
 
-                # flush 末尾不完整行
-                if partial_line:
-                    line = self._decode_output_bytes(partial_line).rstrip("\r\n")
-                    loop.call_soon_threadsafe(queue.put_nowait, line)
+                    # 无换行输出（如 curl -s 单行 JSON）运行中也推送，避免 UI 长时间空白
+                    now = time.monotonic()
+                    if (
+                        partial_line
+                        and now - last_partial_emit >= _PARTIAL_EMIT_SECONDS
+                    ):
+                        _emit_partial_line(partial_line)
+                        last_partial_emit = now
+
                 proc.wait()
             finally:
                 # 双保险：线程侧也检查取消信号，确保无论谁先触发都能清

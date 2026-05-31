@@ -285,6 +285,63 @@ def test_updates_only_provides_tool_input() -> None:
     assert parts[0].get("input") == {"file_path": "/skills/foo/SKILL.md"}
 
 
+def test_cancelled_shell_execute_preserves_partial_output() -> None:
+    events = [
+        {
+            "seq": 0,
+            "data": {
+                "type": "messages",
+                "data": [
+                    {
+                        "lc": 1,
+                        "type": "constructor",
+                        "id": ["langchain", "schema", "messages", "AIMessageChunk"],
+                        "kwargs": {
+                            "content": "",
+                            "type": "AIMessageChunk",
+                            "id": "lc_run--shell",
+                            "tool_calls": [
+                                {
+                                    "name": "shell_execute",
+                                    "args": {
+                                        "command": 'curl -s "http://example.test"',
+                                    },
+                                    "id": "call_shell_1",
+                                    "type": "tool_call",
+                                }
+                            ],
+                            "tool_call_chunks": [],
+                            "invalid_tool_calls": [],
+                        },
+                    },
+                    {"langgraph_node": "model"},
+                ],
+            },
+        },
+        {
+            "seq": 1,
+            "data": {
+                "type": "tool_output",
+                "tool_name": "shell_execute",
+                "tool_call_id": "call_shell_1",
+                "chunk": '{"code":0}',
+                "chunk_seq": 1,
+                "stream": "stdout",
+            },
+        },
+        {"seq": 2, "data": {"status": "cancelled"}},
+    ]
+
+    parts = extract_message_parts_from_buffer(events, terminal_state="cancelled")
+    assert parts
+    shell_parts = [p for p in parts if p.get("type") == "tool-shell_execute"]
+    assert len(shell_parts) == 1
+    assert shell_parts[0]["toolCallId"] == "call_shell_1"
+    assert shell_parts[0]["state"] == "output-error"
+    assert '{"code":0}' in shell_parts[0]["output"]["text"]
+    assert "用户已中断" in shell_parts[0]["output"]["text"]
+
+
 def test_null_tool_call_chunks_fallback_to_invalid() -> None:
     parts = extract_message_parts_from_buffer(NULL_CHUNK_EVENTS)
     assert parts

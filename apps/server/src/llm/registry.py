@@ -23,7 +23,8 @@ ONLINE_BOOTSTRAP_MODEL_ID = "deepseek-v4-flash"
 OFFLINE_BOOTSTRAP_PROVIDER_ID = "hanhai"
 OFFLINE_BOOTSTRAP_MODEL_ID = "Hanhai"
 
-CUSTOM_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
+REMOTE_SYNC_PROVIDER_DISPLAY_NAME = "远程同步供应商"
+ModelSyncPolicy = Literal["remote", "local"]
 
 
 class LlmModelEntry(BaseModel):
@@ -67,6 +68,8 @@ class LlmProviderEntry(BaseModel):
 class LlmRegistry(BaseModel):
     active_provider_id: str | None = None
     active_model_id: str | None = None
+    """remote=登录时允许平台覆盖；local=用户已在设置中手动选定，跳过远程同步。"""
+    model_sync_policy: ModelSyncPolicy | None = None
     providers: list[LlmProviderEntry] = Field(default_factory=list)
 
 
@@ -310,6 +313,43 @@ def find_provider(registry: LlmRegistry, provider_id: str) -> LlmProviderEntry |
     return None
 
 
+def is_remote_synced_provider(provider: LlmProviderEntry) -> bool:
+    return provider.display_name.strip() == REMOTE_SYNC_PROVIDER_DISPLAY_NAME
+
+
+def resolve_model_sync_policy(registry: LlmRegistry) -> ModelSyncPolicy:
+    """解析是否允许登录后远程覆盖模型配置。"""
+    if registry.model_sync_policy in ("remote", "local"):
+        return registry.model_sync_policy
+
+    if not registry.active_provider_id or not registry.active_model_id:
+        return "remote"
+
+    provider = find_provider(registry, registry.active_provider_id)
+    if provider is None:
+        return "remote"
+
+    if provider.source == "custom" and not is_remote_synced_provider(provider):
+        return "local"
+
+    return "remote"
+
+
+def should_apply_remote_model_sync(registry: LlmRegistry) -> bool:
+    """未配置活跃模型，或用户仍使用平台远程模型时，才允许登录同步。"""
+    if not registry.active_provider_id or not registry.active_model_id:
+        return True
+    return resolve_model_sync_policy(registry) == "remote"
+
+
+def mark_registry_local_preference(registry: LlmRegistry) -> None:
+    registry.model_sync_policy = "local"
+
+
+def mark_registry_remote_preference(registry: LlmRegistry) -> None:
+    registry.model_sync_policy = "remote"
+
+
 def list_catalog_available(registry: LlmRegistry) -> list[str]:
     connected = {p.id for p in registry.providers if p.source == "builtin"}
     return [p.id for p in list_providers() if p.id not in connected]
@@ -326,6 +366,7 @@ def set_active(
         raise ValueError(f"供应商 {provider_id} 下无模型: {model_trimmed}")
     registry.active_provider_id = provider_id
     registry.active_model_id = model_trimmed
+    mark_registry_local_preference(registry)
     save_registry(db, registry)
     return registry
 

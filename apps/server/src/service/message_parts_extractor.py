@@ -40,20 +40,27 @@ def extract_message_parts(stream_chunks_json: str) -> list[dict] | None:
     return _replay_payloads_to_parts(payloads)
 
 
-def extract_message_parts_from_buffer(events: list[dict]) -> list[dict] | None:
+def extract_message_parts_from_buffer(
+    events: list[dict],
+    *,
+    terminal_state: str | None = None,
+) -> list[dict] | None:
     """从 StreamEventBuffer 的事件列表直接提取 structured parts。
 
     用于在终态写入 DB 时，从内存 buffer 的事件列表中提取前端可直接渲染的结构化 message_parts
     不经过 JSON 序列化/反序列化，直接处理内存中的 buffer 事件。
     events 格式：[{"seq": N, "data": payload}, ...]
     每个 payload 是 convert_to_serializable 后的 dict。
+
+    terminal_state 为 cancelled/error/interrupted 时，会把尚未收到 ToolMessage
+    的工具调用（如 shell_execute 执行中）也落库，避免中断后记录消失。
     """
     if not events:
         return None
     payloads = [e["data"] for e in events if isinstance(e, dict) and "data" in e]
     if not payloads:
         return None
-    return _replay_payloads_to_parts(payloads)
+    return _replay_payloads_to_parts(payloads, terminal_state=terminal_state)
 
 
 def _langgraph_node_from_inner(inner) -> str | None:
@@ -219,11 +226,96 @@ def _resolve_tool_input(meta: dict | None) -> object | None:
     return None
 
 
-def _replay_payloads_to_parts(payloads: list) -> list[dict]:
+def _build_tool_part(
+    *,
+    tool_name: str,
+    tool_call_id: str,
+    parsed_input: object | None,
+    input_text: str,
+    result_text: str,
+    is_error: bool,
+) -> dict:
+    tool_part: dict = {
+        "type": f"tool-{tool_name}",
+        "toolCallId": tool_call_id,
+        "state": "output-error" if is_error else "output-available",
+        "input": parsed_input,
+    }
+    if is_error:
+        tool_part["errorText"] = result_text or f"{tool_name} 执行失败"
+    tool_part["output"] = {
+        "status": "error" if is_error else "success",
+        "text": result_text,
+        "toolName": tool_name,
+        "input": parsed_input,
+        "inputText": input_text,
+    }
+    return tool_part
+
+
+def _append_pending_tool_parts(
+    parts: list[dict],
+    tool_state: _ToolReplayState,
+    tool_streaming_output: dict[str, str],
+    tool_streaming_name: dict[str, str],
+    emitted_tool_ids: set[str],
+    *,
+    terminal_state: str | None,
+) -> None:
+    if terminal_state not in {"cancelled", "error", "interrupted"}:
+        return
+
+    for tid, meta in tool_state.tool_meta.items():
+        if tid in emitted_tool_ids:
+            continue
+        tool_name = tool_streaming_name.get(tid) or meta.get("toolName") or "unknown"
+        parsed_input = _resolve_tool_input(meta)
+        input_text = meta.get("inputText", "") if meta else ""
+        stream_text = tool_streaming_output.get(tid, "").strip()
+
+        if terminal_state == "interrupted":
+            suffix = "[已暂停，等待继续]"
+            result_text = (
+                f"{stream_text}\n\n{suffix}" if stream_text else suffix
+            )
+            parts.append(
+                _build_tool_part(
+                    tool_name=tool_name,
+                    tool_call_id=tid,
+                    parsed_input=parsed_input,
+                    input_text=input_text,
+                    result_text=result_text,
+                    is_error=False,
+                )
+            )
+            continue
+
+        suffix = "[用户已中断]" if terminal_state == "cancelled" else "[执行出错]"
+        result_text = f"{stream_text}\n\n{suffix}" if stream_text else suffix
+        parts.append(
+            _build_tool_part(
+                tool_name=tool_name,
+                tool_call_id=tid,
+                parsed_input=parsed_input,
+                input_text=input_text,
+                result_text=result_text,
+                is_error=True,
+            )
+        )
+
+
+def _replay_payloads_to_parts(
+    payloads: list,
+    *,
+    terminal_state: str | None = None,
+) -> list[dict]:
     parts: list[dict] = []
     text_buf: str = ""
     text_stream_tag: str | None = None
     tool_state = _ToolReplayState()
+    tool_streaming_output: dict[str, str] = {}
+    tool_streaming_name: dict[str, str] = {}
+    emitted_tool_ids: set[str] = set()
 
     def _flush_text() -> None:
         nonlocal text_buf, text_stream_tag
@@ -246,6 +338,19 @@ def _replay_payloads_to_parts(payloads: list) -> list[dict]:
 
         if isinstance(raw, dict) and raw.get("type") == "updates":
             _apply_updates_tool_meta(raw, tool_state)
+            continue
+
+        if isinstance(raw, dict) and raw.get("type") == "tool_output":
+            tid = raw.get("tool_call_id")
+            chunk = raw.get("chunk")
+            tname = raw.get("tool_name")
+            if isinstance(tid, str) and tid and isinstance(chunk, str) and chunk:
+                prev = tool_streaming_output.get(tid, "")
+                tool_streaming_output[tid] = (
+                    f"{prev}\n{chunk}" if prev else chunk
+                )
+            if isinstance(tid, str) and tid and isinstance(tname, str) and tname:
+                tool_streaming_name[tid] = tname
             continue
 
         inner = _unwrap_stream_payload(raw)
@@ -299,8 +404,17 @@ def _replay_payloads_to_parts(payloads: list) -> list[dict]:
             }
 
             parts.append(tool_part)
+            emitted_tool_ids.add(tid)
 
     _flush_text()
+    _append_pending_tool_parts(
+        parts,
+        tool_state,
+        tool_streaming_output,
+        tool_streaming_name,
+        emitted_tool_ids,
+        terminal_state=terminal_state,
+    )
     return parts if parts else None
 
 

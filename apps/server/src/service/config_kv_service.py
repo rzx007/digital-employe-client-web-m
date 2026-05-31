@@ -237,6 +237,19 @@ class ConfigKvService:
             )
             return False
 
+        # 用户已在设置中手动选定模型时，不覆盖本地配置
+        from src.llm.registry import load_registry, should_apply_remote_model_sync
+
+        registry = load_registry(db)
+        if not should_apply_remote_model_sync(registry):
+            logger.info(
+                "Skip remote model provider sync: local preference active=%s/%s policy=%s",
+                registry.active_provider_id,
+                registry.active_model_id,
+                registry.model_sync_policy,
+            )
+            return False
+
         # 将配置同步到本地LLM注册表
         from src.llm.registry_service import upsert_from_remote_sync
 

@@ -379,7 +379,6 @@ export function CuratorView({
   const handleStop = useCallback(async () => {
     stop()
     chatTransport.cancelReconnect()
-    session.onStreamStopped()
     if (curatorConversationId) {
       try {
         await cancelConversationStream(curatorConversationId)
@@ -387,6 +386,7 @@ export function CuratorView({
         /* best-effort cancel */
       }
     }
+    session.onStreamStopped()
   }, [stop, curatorConversationId, session])
 
   useEffect(() => {

@@ -231,7 +231,11 @@ def _flush_terminal_sync(
                 stream_msg_id,
             )
         else:
-            parts = extract_message_parts_from_buffer(buffer_events_snapshot)
+            terminal = state if state in ("cancelled", "error", "interrupted") else None
+            parts = extract_message_parts_from_buffer(
+                buffer_events_snapshot,
+                terminal_state=terminal,
+            )
         if parts:
             message_parts_json = json.dumps(parts, ensure_ascii=False)
     except Exception:

@@ -19,6 +19,9 @@ from src.llm.registry import (
     find_provider,
     list_catalog_available,
     load_registry,
+    mark_registry_local_preference,
+    mark_registry_remote_preference,
+    REMOTE_SYNC_PROVIDER_DISPLAY_NAME,
     registry_for_api,
     save_registry,
     set_active,
@@ -120,6 +123,7 @@ def add_preset_provider(
     if set_as_active and model_entries:
         registry.active_provider_id = entry.id
         registry.active_model_id = model_entries[0].id
+        mark_registry_local_preference(registry)
 
     save_registry(db, registry)
 
@@ -153,6 +157,7 @@ def add_custom_provider(
     if set_as_active:
         registry.active_provider_id = entry.id
         registry.active_model_id = entry.models[0].id
+        mark_registry_local_preference(registry)
 
     save_registry(db, registry)
 
@@ -209,6 +214,7 @@ def update_provider(
     if api_key is not None and not api_key_unchanged:
         entry.api_key = api_key.strip()
 
+    mark_registry_local_preference(registry)
     save_registry(db, registry)
 
     return registry_for_api(registry)
@@ -332,7 +338,7 @@ def upsert_from_remote_sync(
     else:
         entry_id = inferred if inferred != "custom" else "custom"
         source = "custom"
-        display_name = "远程同步供应商"
+        display_name = REMOTE_SYNC_PROVIDER_DISPLAY_NAME
         base_url = normalized_url
 
     # 查找现有提供商配置，存在则更新，不存在则创建新配置
@@ -364,6 +370,7 @@ def upsert_from_remote_sync(
     if set_as_active:
         registry.active_provider_id = entry_id
         registry.active_model_id = model_name
+        mark_registry_remote_preference(registry)
 
     # 保存注册表
     save_registry(db, registry)

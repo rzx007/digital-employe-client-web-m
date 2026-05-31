@@ -109,7 +109,10 @@ def extract_message_parts_for_interrupt(
     interrupt_payload: dict,
     stream_msg_id: int,
 ) -> list[dict]:
-    base = extract_message_parts_from_buffer(buffer_events) or []
+    base = extract_message_parts_from_buffer(
+        buffer_events,
+        terminal_state="interrupted",
+    ) or []
     filtered = [p for p in base if not _part_is_pending_hitl(p)]
 
     action_requests = interrupt_payload.get("action_requests")

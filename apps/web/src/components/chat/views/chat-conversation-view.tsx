@@ -161,13 +161,13 @@ export function ConversationChatView({
 
     chatTransport.cancelReconnect()
 
-    session.onStreamStopped()
-
     try {
       await cancelConversationStream(conversationId)
     } catch {
       toast.error("停止对话失败")
     }
+
+    session.onStreamStopped()
   }, [stop, conversationId, session])
 
   useEffect(() => {

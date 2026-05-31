@@ -50,6 +50,7 @@ import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 import {
   hydrateSignature,
   messagesNeedHydrateFromDb,
+  patchComposerFromStoredWhenSameTurn,
 } from "@/lib/chat/pick-message-display-source"
 
 const REFETCH_DEBOUNCE_MS = 800
@@ -230,7 +231,15 @@ export function useConversationSession({
         !needsHydrate
 
       if (!blockedByActiveSession) {
-        setMessages(initialMessages)
+        if (activeSessionRef.current && needsHydrate) {
+          const patched = patchComposerFromStoredWhenSameTurn(
+            composerMessagesRef.current,
+            initialMessages
+          )
+          setMessages(patched ?? initialMessages)
+        } else {
+          setMessages(initialMessages)
+        }
         lastHydratedSigRef.current = sig
         hydratedConvIdRef.current = convKey
       }
@@ -350,23 +359,13 @@ export function useConversationSession({
 
     patchLastAssistantStreamState(queryClient, convKey, "cancelled")
 
-    const cached = queryClient.getQueryData<Message[]>(
-      chatKeys.messages(convKey)
-    )
-    if (cached?.length) {
-      setMessages(mapStoredMessagesToUIMessages(cached))
-      hydratedConvIdRef.current = convKey
-    }
-
     if (refetchTimerRef.current) {
       clearTimeout(refetchTimerRef.current)
       refetchTimerRef.current = null
     }
 
-    void queryClient.invalidateQueries({
-      queryKey: chatKeys.messages(convKey),
-    })
-  }, [convKey, queryClient, setMessages])
+    scheduleMessagesRefetch()
+  }, [convKey, queryClient, scheduleMessagesRefetch])
 
   const onHitlApproved = useCallback(
     async (options?: HitlPatchOptions) => {
