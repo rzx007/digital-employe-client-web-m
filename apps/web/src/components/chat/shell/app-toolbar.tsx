@@ -4,8 +4,6 @@ import {
   IconMessage2Filled,
   IconUser,
   IconUserFilled,
-  IconCalendar,
-  IconCalendarFilled,
   IconLayoutDashboard,
   IconLayoutDashboardFilled,
   IconSettings,
@@ -84,12 +82,6 @@ const tabs: {
     icon: IconUser,
     iconFilled: IconUserFilled,
     label: "联系人",
-  },
-  {
-    id: "calendar",
-    icon: IconCalendar,
-    iconFilled: IconCalendarFilled,
-    label: "日历",
   },
   {
     id: "skills",

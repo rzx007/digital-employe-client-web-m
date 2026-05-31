@@ -8,6 +8,7 @@ import type { MetadataSkill, SkillListItem } from "@/api/types"
 import { fetchEmployees, fetchSkillList } from "@/api/employee"
 import { useWorkbenchConfig } from "@/hooks/use-workbench-config"
 import { fetchEmployeeSkillsFromLocal } from "@/lib/workbench/local-skill-loader"
+import { isInstalledSource } from "@/components/skills/skill-utils"
 import { useChatStore } from "@/stores/chat-store"
 import { WorkbenchLeftPanel } from "@/components/workbench/workbench-left-panel"
 import { DraggableWorkbenchGrid } from "@/components/workbench/draggable-workbench-grid"
@@ -25,7 +26,7 @@ interface WorkbenchViewProps {
 /** 工作台技能行：中文展示名 + 来源圆点（弹框用），解析仍用 skillName */
 type WorkbenchSkillRow = MetadataSkill & {
   displayNameZh?: string | null
-  workbenchSource?: "remote" | "local"
+  workbenchSource?: "local" | "builtin"
   workbenchSkillLabel?: string
   workbenchRowKey?: string
 }
@@ -34,21 +35,23 @@ function skillListItemToWorkbenchRow(
   item: SkillListItem,
   index: number
 ): WorkbenchSkillRow {
-  const src = item.source ?? "remote"
-  const isLocal = src === "local"
+  const src = item.source ?? "local"
+  const isBuiltin = src === "builtin"
   return {
     id: item.id,
     skillName: item.skillName,
     description: item.description ?? "",
     prompt: item.prompt ?? "",
     directoryId: item.directoryId,
-    directoryName: item.directoryName ?? (isLocal ? "本地技能" : "远程技能"),
+    directoryName:
+      item.directoryName ??
+      (isBuiltin ? "内置技能" : "本地技能"),
     status: item.status ?? 1,
     createTime: item.createTime ?? "",
     updateTime: item.updateTime ?? "",
     skillContent: item.skillContent ?? "",
     displayNameZh: item.displayNameZh ?? null,
-    workbenchSource: isLocal ? "local" : "remote",
+    workbenchSource: isBuiltin ? "builtin" : "local",
     workbenchRowKey: `ws-skill-list-${src}-${String(item.id)}-${item.skillName}-${index}`,
   }
 }
@@ -71,8 +74,8 @@ export function WorkbenchView({ onClose, className }: WorkbenchViewProps) {
 
   const { data: skillListItems = [], isLoading: isLoadingSkillList } = useQuery(
     {
-      queryKey: ["workbench", "skill-list"],
-      queryFn: ({ signal }) => fetchSkillList({ signal }),
+      queryKey: ["workbench", "skill-list", "local-only"],
+      queryFn: ({ signal }) => fetchSkillList({ signal, localOnly: true }),
       staleTime: 30_000,
     }
   )
@@ -98,12 +101,13 @@ export function WorkbenchView({ onClose, className }: WorkbenchViewProps) {
   }, [])
 
   /**
-   * 弹框与解析用技能源：/skills/list（全量远程+全量本地，与是否绑定员工无关）；
+   * 弹框与解析用技能源：仅本地 + 内置（不含远程平台技能）；
    * 本地行再合并 disk 上 SKILL.md 等以便接口解析。
    */
   const skills = React.useMemo(() => {
+    const installed = skillListItems.filter(isInstalledSource)
     const byName = new Map(localEnriched.map((s) => [s.skillName, s] as const))
-    return skillListItems.map((item, idx) => {
+    return installed.map((item, idx) => {
       const base = skillListItemToWorkbenchRow(item, idx)
       if (item.source === "local") {
         const full = byName.get(item.skillName)
@@ -210,7 +214,7 @@ export function WorkbenchView({ onClose, className }: WorkbenchViewProps) {
                 </Button>
               </div>
               <div className="flex min-h-[120px] items-center justify-center rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                暂无可选技能。请检查远程技能服务与网络，或在「技能」中导入本地技能
+                暂无可选技能。请在「技能」页导入本地 ZIP，或使用内置技能
               </div>
             </div>
           ) : (

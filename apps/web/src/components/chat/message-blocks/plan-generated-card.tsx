@@ -18,7 +18,6 @@ import {
   buildPlanManualCancelFeedback,
   buildPlanManualConfirmFeedback,
   parsePlanGeneratedOutput,
-  planRequiresManualConfirmation,
   resolvePlanTasksForCard,
   type PlanTaskPreview,
 } from "@/lib/chat/plan-generated-payload"
@@ -92,28 +91,18 @@ function PlanGeneratedCardInner({
     return { summary, tasks }
   }, [input, resultText, planOutput?.summary])
 
-  const needsManualConfirm = planRequiresManualConfirmation(planOutput)
-
   const isPlanPending =
     remoteStatus === "pending" ||
     (remoteStatus == null && manualStatus === "idle")
 
   const showActionPanel =
     state === "output-available" &&
-    needsManualConfirm &&
     planOutput != null &&
     isPlanPending &&
     isTurnEnded &&
     (manualStatus === "idle" ||
       manualStatus === "confirming" ||
-      manualStatus === "cancelling") &&
-    Boolean(conversationId)
-
-  const showSimpleHint =
-    state === "output-available" &&
-    !needsManualConfirm &&
-    planOutput != null &&
-    manualStatus === "idle"
+      manualStatus === "cancelling")
 
   const showConfirmedMessage =
     manualStatus === "confirmed" ||
@@ -237,23 +226,17 @@ function PlanGeneratedCardInner({
         ))}
       </div>
 
-      {showSimpleHint && (
-        <p className="text-muted-foreground mt-2.5 text-[11px]">
-          简单任务将由总管自动确认执行。
-        </p>
-      )}
-
       {showActionPanel && (
         <>
           <p className="text-muted-foreground mt-2.5 text-[11px]">
-            该计划含定时或多子任务，需确认后才会执行。
+            请确认任务拆解无误后再执行。
           </p>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             <Button
               type="button"
               size="sm"
               className="h-7 text-xs"
-              disabled={manualStatus !== "idle" || !sendPlanFeedback}
+              disabled={manualStatus !== "idle"}
               onClick={() => void handleConfirm()}
             >
               {manualStatus === "confirming" ? "确认中..." : "确认执行"}
@@ -263,7 +246,7 @@ function PlanGeneratedCardInner({
               size="sm"
               variant="ghost"
               className="h-7 text-xs"
-              disabled={manualStatus !== "idle" || !sendPlanFeedback}
+              disabled={manualStatus !== "idle"}
               onClick={() => void handleCancel()}
             >
               <IconX className="mr-1 size-3" />
@@ -274,7 +257,6 @@ function PlanGeneratedCardInner({
       )}
 
       {state === "output-available" &&
-        needsManualConfirm &&
         planOutput != null &&
         isPlanPending &&
         !isTurnEnded &&

@@ -205,6 +205,16 @@ async def delete_conversations_by_target(
 @router.get("/chat/conversations/{conversation_id}/messages", response_model=ListResponse[ConversationMessageRead])
 def list_conversation_messages(conversation_id: int, db: Session = Depends(get_db)) -> ListResponse[ConversationMessageRead]:
     """查询指定会话下的消息列表。"""
+    from src.models.conversation import Conversation
+    from src.service.orchestrator_execution_summary import (
+        backfill_missing_orchestrator_summaries,
+    )
+
+    conv = db.get(Conversation, conversation_id)
+    if conv and conv.target_type == "curator":
+        backfill_missing_orchestrator_summaries(
+            db, conv.workspace_id, conversation_id, limit=20
+        )
     messages = ChatService.list_messages(db, conversation_id)
     return ListResponse[ConversationMessageRead](data=messages)
 

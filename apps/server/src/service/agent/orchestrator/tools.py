@@ -17,6 +17,7 @@ from src.service.agent.orchestrator.confirmation_policy import compute_requires_
 from src.service.agent.orchestrator.execution import execute_plan
 from src.service.agent.orchestrator.prompts import build_employee_capability_context
 from src.service.agent.orchestrator.runtime import (
+    conversation_id_from_runtime,
     get_conversation_id,
     get_db,
     get_workspace_id,
@@ -34,6 +35,32 @@ from src.service.local_skill_service import LocalSkillService
 from src.service.skillsmp_service import SkillsMpError, SkillsMpService
 
 SKILL_MARKET_URL = "https://skillsmp.com/search"
+MARKET_SKILL_SEARCH_LIMIT = 3
+MARKET_SKILL_DETAIL_MAX = 3
+
+_market_detail_count_by_conv: dict[int, int] = {}
+
+
+def _resolve_conv_id(runtime: ToolRuntime[None, None] | None) -> int | None:
+    return get_conversation_id() or conversation_id_from_runtime(runtime)
+
+
+def _reset_market_detail_count(conversation_id: int | None) -> None:
+    if conversation_id is not None:
+        _market_detail_count_by_conv[conversation_id] = 0
+
+
+def _take_market_detail_slot(conversation_id: int | None) -> str | None:
+    if conversation_id is None:
+        return None
+    count = _market_detail_count_by_conv.get(conversation_id, 0)
+    if count >= MARKET_SKILL_DETAIL_MAX:
+        return (
+            f"错误：本轮已从 SkillsMP 预览 {MARKET_SKILL_DETAIL_MAX} 个技能（已达上限）。"
+            "请从已有结果中选定安装，或重新 search_market_skills 后再预览其他技能。"
+        )
+    _market_detail_count_by_conv[conversation_id] = count + 1
+    return None
 
 
 def parse_orchestration_task_list(tasks: Any) -> tuple[list[dict] | None, str | None]:
@@ -190,8 +217,7 @@ def create_orchestration_plan(summary: str, tasks: str | list[Any]) -> str:
         + "\n\n"
         + f"编排计划 #{plan.id} 已生成，包含 {len(task_list)} 个子任务。\n"
         f"requires_confirmation={str(requires_confirmation).lower()}；"
-        f"{'须等用户确认后再' if requires_confirmation else '简单任务可立即'} "
-        f"调用 confirm_orchestration_plan({plan.id})。\n"
+        f"须等用户在卡片上确认或明确回复后再调用 confirm_orchestration_plan({plan.id})。\n"
         f"tasks[].task_id 为 employee_tasks 主键；plan_id={plan.id} 不可用于 "
         "delete_task/update_task。执行只能通过 confirm_orchestration_plan 工具生效。"
     )
@@ -201,7 +227,7 @@ def create_orchestration_plan(summary: str, tasks: str | list[Any]) -> str:
 def confirm_orchestration_plan(plan_id: int) -> str:
     """启动编排计划下所有子任务（各员工在独立会话执行）。
 
-    简单任务可在 create 后同一轮调用；复杂任务须用户明确确认后再调用。
+    须用户通过卡片确认或明确文字确认后再调用；禁止在 create 后同一轮自动调用。
     调用后：向用户简短说明委派即可；禁止轮询 list_tasks，禁止代员工 shell/read 技能。
     """
     db = get_db()
@@ -321,11 +347,14 @@ def list_tasks(
     employee_id: int | None = None,
     limit: int = 20,
 ) -> str:
-    """查询工作空间任务状态（数据库快照，非员工实时流）。
+    """查询工作空间已配置任务（employee_tasks 表快照，非员工实时流）。
 
-    适用：用户询问进度/结果、管理已有计划、多子任务汇总。
-    禁止：confirm_orchestration_plan 之后为等待完成而反复调用；界面已有任务执行卡片。
-    建议：带 plan_id 精确查询；limit 宜 ≤ 5。
+    适用：
+    - 用户问「某员工有没有/有哪些定时任务」→ employee_id=该员工 ID（Prompt 员工表有摘要，需 cron/详情时用本工具）
+    - 用户追问某编排计划进度 → plan_id=计划 ID
+    - 委派快照缺失或与用户描述矛盾时的补充查询
+    禁止：confirm 后反复轮询；Prompt 表已能回答「有没有」时勿重复调用。
+    建议：带 employee_id 或 plan_id 精确查询；limit 宜 ≤ 5。
     """
     db = get_db()
     workspace_id = get_workspace_id()
@@ -377,24 +406,48 @@ def list_tasks(
     if not tasks:
         return "没有找到匹配的任务。"
 
-    lines = ["| ID | 任务名 | 员工 | 执行模式 | 状态 |", "|---|---|---|---|---|"]
+    lines = [
+        "| ID | 任务名 | 员工 | 执行模式 | 状态 | 员工会话 |",
+        "|---|---|---|---|---|---|",
+    ]
     from src.models.task_execution_log import TaskExecutionLog
+    from src.service.orchestrator_execution_summary import (
+        extract_execution_output_text,
+    )
+
+    detail_blocks: list[str] = []
 
     for t in tasks:
         emp = db.get(Employee, t.employee_id)
         emp_name = emp.name if emp else (t.employee_name_snapshot or str(t.employee_id))
         mode = "定时" if t.execute_mode == "scheduled" else "即时"
         latest_log = db.scalars(
-            select(TaskExecutionLog.run_status).where(
+            select(TaskExecutionLog).where(
                 TaskExecutionLog.task_id == t.id
             ).order_by(TaskExecutionLog.id.desc()).limit(1)
         ).first()
-        task_status = latest_log or (
-            "运行中" if t.execute_mode == "scheduled" else "未执行"
+        task_status = (
+            latest_log.run_status
+            if latest_log
+            else ("运行中" if t.execute_mode == "scheduled" else "未执行")
         )
-        lines.append(f"| {t.id} | {t.task_name} | {emp_name} | {mode} | {task_status} |")
+        emp_conv = latest_log.conversation_id if latest_log else "—"
+        lines.append(
+            f"| {t.id} | {t.task_name} | {emp_name} | {mode} | {task_status} | {emp_conv} |"
+        )
+        if latest_log and latest_log.run_status == "success":
+            excerpt = extract_execution_output_text(
+                latest_log.output_json, max_chars=600
+            )
+            if excerpt:
+                detail_blocks.append(
+                    f"任务 #{t.id}（{t.task_name}）最新结果摘要：\n{excerpt}"
+                )
 
-    return "\n".join(lines)
+    result = "\n".join(lines)
+    if detail_blocks:
+        result += "\n\n" + "\n\n".join(detail_blocks)
+    return result
 
 
 def _read_skill_file_map(skill_dir: Path) -> dict[str, str]:
@@ -558,6 +611,7 @@ def search_market_skills(
 ) -> str:
     """从 SkillsMP 公开目录搜索可安装技能（在线模式，无需登录）。
 
+    每次搜索最多返回 3 个结果；预览详情最多 3 个（get_market_skill_detail）。
     完整浏览请打开 https://skillsmp.com/search
     安装前先用 get_market_skill_detail(skill_slug) 预览，确认后 install_market_skill(skill_slug)。
 
@@ -577,8 +631,10 @@ def search_market_skills(
             f"也可在浏览器打开 {SKILL_MARKET_URL} 浏览全部技能。"
         )
 
+    _reset_market_detail_count(_resolve_conv_id(runtime))
+
     try:
-        data = SkillsMpService.search(q, limit=20)
+        data = SkillsMpService.search(q, limit=MARKET_SKILL_SEARCH_LIMIT)
     except SkillsMpError as exc:
         return f"错误：{exc}"
 
@@ -629,10 +685,11 @@ def search_market_skills(
     lines.extend(
         [
             "",
+            f"说明：每次搜索最多 {MARKET_SKILL_SEARCH_LIMIT} 条；"
+            f"预览详情最多 {MARKET_SKILL_DETAIL_MAX} 个（请逐个预览，勿并行批量拉取）。",
             "预览: get_market_skill_detail(skill_slug)",
             "安装: install_market_skill(skill_slug)",
-            "说明: slug 为字符串（如 openclaw-openclaw-agents-skills-control-ui-e2e-skill-md），"
-            "不是 localId 或平台远程技能 id。",
+            "slug 为字符串（如 openclaw-…-skill-md），不是 localId。",
         ]
     )
     return "\n".join(lines)
@@ -645,6 +702,7 @@ def get_market_skill_detail(
 ) -> str:
     """预览 SkillsMP 目录中的某个技能详情（不安装）。
 
+    每轮搜索后最多预览 3 个技能；请勿并行连续调用超过 3 次。
     确认符合需求后再调用 install_market_skill(skill_slug) 安装到本机工作区。
 
     Args:
@@ -656,6 +714,10 @@ def get_market_skill_detail(
     slug = skill_slug.strip()
     if not slug:
         return "错误：skill_slug 不能为空。"
+
+    limit_msg = _take_market_detail_slot(_resolve_conv_id(runtime))
+    if limit_msg:
+        return limit_msg
 
     try:
         detail = SkillsMpService.get_skill(slug)

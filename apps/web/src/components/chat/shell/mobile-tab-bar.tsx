@@ -4,8 +4,6 @@ import {
   IconMessage2Filled,
   IconUser,
   IconUserFilled,
-  IconCalendar,
-  IconCalendarFilled,
   IconLayoutDashboard,
   IconLayoutDashboardFilled,
 } from "@tabler/icons-react"
@@ -35,12 +33,6 @@ const tabs: {
     icon: IconLayoutDashboard,
     iconFilled: IconLayoutDashboardFilled,
     label: "工作台",
-  },
-  {
-    id: "calendar",
-    icon: IconCalendar,
-    iconFilled: IconCalendarFilled,
-    label: "日历",
   },
 ]
 

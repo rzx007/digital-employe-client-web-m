@@ -81,10 +81,39 @@ def test_sanitize_oversized_image_block():
         tool_call_id="call-big",
         additional_kwargs={"read_file_path": "/uploads/huge.png"},
     )
-    out = sanitize_messages_for_openai_compatible([msg])[0]
+    out = sanitize_messages_for_openai_compatible([msg], allow_images=True)[0]
     assert "超过当前模型多模态上限" in str(out.content)
     blocks = out.content_blocks or []
     assert not any(b.get("type") == "image" for b in blocks)
+
+
+def test_sanitize_keeps_image_for_vision_model():
+    msg = ToolMessage(
+        content_blocks=[
+            {"type": "image", "base64": "aGVsbG8=", "mime_type": "image/png"},
+        ],
+        name="read_file",
+        tool_call_id="call-img",
+        additional_kwargs={"read_file_path": "/uploads/photo.png"},
+    )
+    out = sanitize_messages_for_openai_compatible([msg], allow_images=True)[0]
+    payload = out.content if isinstance(out.content, list) else (out.content_blocks or [])
+    assert payload
+    assert payload[0]["type"] == "image_url"
+    assert "data:image/png;base64," in str(payload[0].get("image_url", {}).get("url"))
+
+
+def test_sanitize_strips_image_for_text_model():
+    msg = ToolMessage(
+        content_blocks=[
+            {"type": "image", "base64": "aGVsbG8=", "mime_type": "image/png"},
+        ],
+        name="read_file",
+        tool_call_id="call-img",
+        additional_kwargs={"read_file_path": "/uploads/photo.png"},
+    )
+    out = sanitize_messages_for_openai_compatible([msg], allow_images=False)[0]
+    assert "视觉模型" in str(out.content)
 
 
 def test_oversized_image_read_result_returns_error():

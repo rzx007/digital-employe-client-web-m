@@ -26,7 +26,6 @@ import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import { useOnboardingStore } from "@/stores/onboarding-store"
 import { WelcomeDialog, UserTour } from "@/components/onboarding"
 import { AppToolbar } from "./app-toolbar"
-import { ShiftCalendarPage } from "@/components/shift-calendar"
 import { SkillsPage } from "@/components/skills"
 import { ChatView } from "../views/chat-view"
 import { ContactDetailPanel } from "../contacts/contact-detail-panel"
@@ -46,6 +45,7 @@ const NARROW_RIGHT_PANEL_WIDTH = "w-[min(480px,38vw)]"
 export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const isMobile = useIsMobile()
   const activeTab = useChatStore((s) => s.activeTab)
+  const setActiveTab = useChatStore((s) => s.setActiveTab)
   const setContacts = useChatStore((s) => s.setContacts)
   const showWelcome = useOnboardingStore((s) => s.showWelcome)
   const onboardingCompleted = useOnboardingStore((s) => s.onboardingCompleted)
@@ -56,16 +56,20 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
 
   const queryClient = useQueryClient()
 
-  useWorkspaceEvents((event) => {
-    queryClient.invalidateQueries({
+  const refetchTaskExecutionQueries = useCallback(() => {
+    void queryClient.refetchQueries({
       queryKey: [...chatKeys.all, "all-task-executions"],
     })
-    queryClient.invalidateQueries({
+    void queryClient.refetchQueries({
       queryKey: [...chatKeys.all, "curator-executions"],
     })
-    queryClient.invalidateQueries({
+    void queryClient.refetchQueries({
       queryKey: [...chatKeys.all, "today-all-executions"],
     })
+  }, [queryClient])
+
+  useWorkspaceEvents((event) => {
+    refetchTaskExecutionQueries()
     switch (event.type) {
       case "conversation_status_changed":
         useConversationStatusStore
@@ -80,9 +84,20 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
       case "task_completed":
       case "task_failed":
       case "task_started":
+        refetchTaskExecutionQueries()
         queryClient.invalidateQueries({
           queryKey: [...chatKeys.all, "notifications"],
         })
+        if (
+          (event.type === "task_completed" || event.type === "task_failed")
+          && event.orchestrator_conversation_id
+        ) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.messages(
+              String(event.orchestrator_conversation_id),
+            ),
+          })
+        }
         // 当任务开始时，重新获取对应员工的会话列表
         if (event.type === "task_started") {
           queryClient.invalidateQueries({
@@ -103,6 +118,12 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   useEffect(() => {
     initOnboarding()
   }, [initOnboarding])
+
+  useEffect(() => {
+    if (activeTab === "calendar") {
+      setActiveTab("workbench")
+    }
+  }, [activeTab, setActiveTab])
 
   useEffect(() => {
     if (initialized && !onboardingCompleted) {
@@ -254,7 +275,6 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
 
         {!isMobile &&
           activeTab !== "workbench" &&
-          activeTab !== "calendar" &&
           activeTab !== "skills" && (
             <div
               className={cn(
@@ -288,10 +308,6 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
 
         {activeTab === "contacts" && (
           <ContactDetailPanel className="min-w-0 flex-1" />
-        )}
-
-        {activeTab === "calendar" && (
-          <ShiftCalendarPage className="min-w-0 flex-1" />
         )}
 
         {activeTab === "workbench" && (

@@ -76,6 +76,7 @@ import { MessageCopyAction } from "../messages/message-copy-action"
 import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
 import type { TaskExecution } from "@/types/schedule-monitor"
+import type { Message as ChatMessage } from "@/types/chat"
 import { curatorUnreadKey } from "@/lib/constants"
 import {
   buildRecruitmentHireAllMessage,
@@ -88,6 +89,7 @@ import {
   prepareDisplayMessages,
   resolveHitlApproveMessageId,
 } from "@/lib/chat/hitl"
+import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
 
 type TimelineEntry =
   | { kind: "message"; data: UIMessage; ts: number }
@@ -126,6 +128,24 @@ function getMaxExecutionTimelineTs(executions: TaskExecution[]): number {
     if (ts != null && ts > max) max = ts
   }
   return max
+}
+
+/** 摘要消息 execution_log_id → 时间戳（用于卡片排在摘要下方） */
+function buildExecutionSummaryTsMap(storedMessages: ChatMessage[]): Map<number, number> {
+  const map = new Map<number, number>()
+  for (const msg of storedMessages) {
+    if (msg.role !== "assistant") continue
+    const meta = msg.metadata
+    if (!meta || typeof meta !== "object") continue
+    if (meta.source !== "orchestrator_execution_summary") continue
+    const execId = meta.execution_log_id
+    if (typeof execId !== "number") continue
+    const ts = msg.timestamp?.getTime()
+    if (ts != null && Number.isFinite(ts)) {
+      map.set(execId, ts)
+    }
+  }
+  return map
 }
 
 function formatTime(ts: number): string {
@@ -359,6 +379,7 @@ export function CuratorView({
   const handleStop = useCallback(async () => {
     stop()
     chatTransport.cancelReconnect()
+    session.onStreamStopped()
     if (curatorConversationId) {
       try {
         await cancelConversationStream(curatorConversationId)
@@ -366,7 +387,7 @@ export function CuratorView({
         /* best-effort cancel */
       }
     }
-  }, [stop, curatorConversationId])
+  }, [stop, curatorConversationId, session])
 
   useEffect(() => {
     return () => {
@@ -411,13 +432,10 @@ export function CuratorView({
   const isBusy = status === "submitted" || status === "streaming"
   const chatStatus = status === "ready" && isBusy ? "submitted" : status
 
-  const preferLiveMessages =
-    messages.length > 0 || status === "submitted" || status === "streaming"
-
   const displayMessages = useMemo(() => {
-    const source = preferLiveMessages ? messages : initialMessages
+    const source = pickMessageDisplaySource(messages, initialMessages, status)
     return prepareDisplayMessages(source)
-  }, [preferLiveMessages, messages, initialMessages])
+  }, [messages, initialMessages, status])
 
   const lastAssistantMessageId = useMemo(() => {
     for (let i = displayMessages.length - 1; i >= 0; i--) {
@@ -667,6 +685,7 @@ export function CuratorView({
   /* ── Build unified timeline ── */
   const timeline: TimelineEntry[] = useMemo(() => {
     const entries: TimelineEntry[] = []
+    const summaryTsByExecId = buildExecutionSummaryTsMap(storedMessages)
 
     const maxExecutionTs = getMaxExecutionTimelineTs(executions)
 
@@ -700,8 +719,12 @@ export function CuratorView({
     for (const exec of executions) {
       if (!TERMINAL_EXECUTION_STATUSES.has(exec.run_status)) continue
 
-      const ts = getExecutionTimelineTs(exec)
-      if (ts == null) continue
+      const tsRaw = getExecutionTimelineTs(exec)
+      if (tsRaw == null) continue
+
+      const summaryTs = summaryTsByExecId.get(exec.id)
+      const ts =
+        summaryTs != null ? Math.max(tsRaw, summaryTs + 1000) : tsRaw
 
       entries.push({
         kind: "execution",

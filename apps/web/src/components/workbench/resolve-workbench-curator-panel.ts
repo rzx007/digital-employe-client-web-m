@@ -5,6 +5,14 @@ import {
   pickFirstConversation,
 } from "@/lib/chat/conversation-selection"
 
+export function parseRecentItemConversationId(
+  item: { id: string }
+): string | null {
+  if (item.id.startsWith("recent:")) return null
+  if (/^\d+$/.test(item.id)) return item.id
+  return null
+}
+
 export type WorkbenchCuratorPanelMode = "loading" | "conversation" | "default"
 
 export type WorkbenchCuratorPanelState = {
@@ -14,14 +22,14 @@ export type WorkbenchCuratorPanelState = {
 
 export function resolveWorkbenchCuratorPanel(input: {
   curatorContactId: string | null
-  selectedConversationId: string | number | null
+  workbenchCuratorConversationId: string | number | null
   curatorConversations: Conversation[]
   curatorConversationsReady: boolean
   defaultCuratorConversationId: string | number | null
 }): WorkbenchCuratorPanelState {
   const {
     curatorContactId,
-    selectedConversationId,
+    workbenchCuratorConversationId,
     curatorConversations,
     curatorConversationsReady,
     defaultCuratorConversationId,
@@ -31,35 +39,37 @@ export function resolveWorkbenchCuratorPanel(input: {
     return { mode: "loading" }
   }
 
-  if (
-    selectedConversationId != null &&
-    conversationExistsInList(curatorConversations, selectedConversationId)
-  ) {
-    return {
-      mode: "conversation",
-      conversationId: selectedConversationId,
+  if (workbenchCuratorConversationId != null) {
+    if (!curatorConversationsReady) {
+      return {
+        mode: "conversation",
+        conversationId: workbenchCuratorConversationId,
+      }
+    }
+    if (
+      conversationExistsInList(
+        curatorConversations,
+        workbenchCuratorConversationId
+      )
+    ) {
+      return {
+        mode: "conversation",
+        conversationId: workbenchCuratorConversationId,
+      }
     }
   }
 
-  if (
-    defaultCuratorConversationId != null &&
-    conversationExistsInList(
-      curatorConversations,
-      defaultCuratorConversationId
-    )
-  ) {
-    return {
-      mode: "default",
-      conversationId: defaultCuratorConversationId,
-    }
+  if (!curatorConversationsReady) {
+    return { mode: "loading" }
   }
 
-  const first = pickFirstConversation(curatorConversations)
-  if (first) {
-    return { mode: "default", conversationId: first.id }
+  const mostRecent = pickFirstConversation(curatorConversations)
+  if (mostRecent) {
+    return { mode: "conversation", conversationId: mostRecent.id }
   }
 
-  if (!curatorConversationsReady && defaultCuratorConversationId != null) {
+  // ensure 接口返回的默认总管会话：列表 refetch 为空时仍可直接进入
+  if (defaultCuratorConversationId != null) {
     return {
       mode: "default",
       conversationId: defaultCuratorConversationId,

@@ -184,8 +184,8 @@ export function useCuratorTaskExecutions(
       return res.data ?? []
     },
     enabled: id != null,
-    staleTime: 30_000,
-    refetchInterval: 15_000,
+    staleTime: 5_000,
+    refetchInterval: 10_000,
   })
 }
 
@@ -199,7 +199,8 @@ export function useTodayAllExecutions() {
       }>(`/workspaces/${WORKSPACE_ID}/tasks/today`, { signal }).then(
         (res) => res.data
       ),
-    staleTime: 30_000,
+    staleTime: 5_000,
+    refetchInterval: 10_000,
   })
 }
 

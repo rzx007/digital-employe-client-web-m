@@ -31,6 +31,7 @@ import { deleteEmployee } from "@/api/employee"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import {
   clearSelectedContact,
+  switchToContact,
 } from "@/lib/chat/conversation-selection"
 import { deleteRecentContact } from "@/api/recent-contacts"
 import { mapContactToTarget } from "@/lib/chat/contact-target"
@@ -53,15 +54,13 @@ export function ContactItem({
   ...props
 }: ContactItemProps) {
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? getActiveWorkspaceId()
-  const { contacts, selectedContactId, setContacts, setSelectedContactId } =
-    useChatStore(
-      useShallow((state) => ({
-        contacts: state.contacts,
-        selectedContactId: state.selectedContactId,
-        setContacts: state.setContacts,
-        setSelectedContactId: state.setSelectedContactId,
-      }))
-    )
+  const { contacts, selectedContactId, setContacts } = useChatStore(
+    useShallow((state) => ({
+      contacts: state.contacts,
+      selectedContactId: state.selectedContactId,
+      setContacts: state.setContacts,
+    }))
+  )
   const contactId =
     contact.type === "curator"
       ? contact.curator?.id
@@ -82,7 +81,9 @@ export function ContactItem({
         : contact.employee?.name
 
   const handleClick = () => {
-    setSelectedContactId(contactId ?? null)
+    if (contactId) {
+      switchToContact(contactId)
+    }
   }
 
   const handleDetail = () => {

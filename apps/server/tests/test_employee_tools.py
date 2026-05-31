@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 
 from src.models.employee import Employee
+from src.models.employee_skill import EmployeeSkill
 from src.service.agent.orchestrator.employee_tools import (
     build_employee_update_payload,
     delete_employee,
     format_workspace_skills_list,
     get_employee,
+    get_workspace_skill_detail,
     list_workspace_skills,
     update_employee,
 )
@@ -84,6 +86,75 @@ def test_list_workspace_skills_tool_returns_json(db_session, workspace, monkeypa
     assert payload["type"] == "workspace_skills"
     assert payload["total"] == 1
     assert payload["skills"][0]["id"] == -102
+
+
+def test_get_workspace_skill_detail_by_local_id(db_session, workspace, monkeypatch):
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.employee_tools.LocalSkillService.list_local_skills",
+        lambda workspace_id: [
+            {
+                "localId": -103,
+                "skillName": "data-querys",
+                "displayNameZh": "交易日历",
+                "isBuiltin": False,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.employee_tools.LocalSkillService.get_local_skill_detail",
+        lambda skill_name, workspace_id: {
+            "skillName": skill_name,
+            "localId": -103,
+            "displayNameZh": "交易日历",
+            "isBuiltin": False,
+            "files": ["SKILL.md", "scripts/run.py"],
+            "skillMdContent": "# 获取交易日历\n\n用法说明",
+        },
+    )
+    set_context(db=db_session, workspace_id=workspace.id, conversation_id=1)
+
+    result = get_workspace_skill_detail.invoke({"local_id": -103})
+
+    assert "data-querys" in result
+    assert "localId: -103" in result
+    assert "获取交易日历" in result
+    assert "分配情况" in result
+    assert "禁止用 read_file" in result
+
+
+def test_get_workspace_skill_detail_shows_assignees(
+    db_session, workspace, monkeypatch
+):
+    employee = add_employee(db_session, workspace.id, name="飞书助手")
+    db_session.add(
+        EmployeeSkill(
+            workspace_id=workspace.id,
+            employee_id=employee.id,
+            skill_id=-103,
+            skill_name="data-querys",
+            skill_name_zh="交易日历",
+        )
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.employee_tools.LocalSkillService.get_local_skill_detail",
+        lambda skill_name, workspace_id: {
+            "skillName": skill_name,
+            "localId": -103,
+            "displayNameZh": "交易日历",
+            "isBuiltin": False,
+            "files": ["SKILL.md"],
+            "skillMdContent": "# 获取交易日历",
+        },
+    )
+    set_context(db=db_session, workspace_id=workspace.id, conversation_id=1)
+
+    result = get_workspace_skill_detail.invoke({"skill_name": "data-querys"})
+
+    assert "飞书助手" in result
+    assert "employee_id=" in result
+    assert "尚未分配给任何员工" not in result
 
 
 def test_get_employee_tool_returns_json(db_session, workspace):

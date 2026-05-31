@@ -9,8 +9,10 @@ import {
 import { findContactInList } from "@/lib/chat/contact-utils"
 import {
   focusAfterContactRemoved,
+  selectConversationForContact,
   switchToContact,
 } from "@/lib/chat/conversation-selection"
+import { parseRecentItemConversationId } from "@/components/workbench/resolve-workbench-curator-panel"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import type { AIEmployee, Contact } from "@/types/chat"
 import { useChatStore } from "@/stores/chat-store"
@@ -61,8 +63,14 @@ export function useRecentConversations() {
     [storedItems, contacts]
   )
 
-  const handleSelectItem = (contactId: string) => {
-    switchToContact(contactId)
+  const handleSelectItem = (item: RecentConversationItem) => {
+    const conversationId = parseRecentItemConversationId(item)
+    if (conversationId) {
+      selectConversationForContact(item.contactId, conversationId)
+    } else {
+      switchToContact(item.contactId)
+    }
+    useChatStore.getState().setActiveTab("chat")
   }
 
   const handleDetail = (item: RecentConversationItem) => {

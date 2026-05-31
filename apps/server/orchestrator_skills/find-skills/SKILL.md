@@ -42,6 +42,8 @@ list_workspace_employees       # 是否已有员工自带技能
 
 ### 3. 搜索仓库（在线）
 
+每次搜索 **最多 3 条**；预览详情 **最多 3 个**（须逐个预览，勿并行批量拉取）。
+
 ```
 search_market_skills("关键词")
 ```
@@ -52,7 +54,7 @@ search_market_skills("关键词")
 
 ### 4. 预览再装（必须）
 
-**不要仅凭搜索结果就推荐安装。** 先：
+**不要仅凭搜索结果就推荐安装。** 每轮搜索最多预览 3 个技能，逐个调用：
 
 ```
 get_market_skill_detail(skill_slug)

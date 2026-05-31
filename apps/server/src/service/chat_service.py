@@ -626,8 +626,10 @@ class ChatService:
                 yield chunk
                 
         except Exception as e:
+            from src.service.agent.error_messages import format_agent_error_for_user
+
             logger.error("流式对话执行失败: %s", e, exc_info=True)
-            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'error': format_agent_error_for_user(e)}, ensure_ascii=False)}\n\n"
 
     @staticmethod
     async def resume_conversation_stream(db: Session, conversation_id: int, debug_content_only: bool = False):

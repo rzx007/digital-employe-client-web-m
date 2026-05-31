@@ -66,7 +66,7 @@ describe("parsePlanGeneratedOutput", () => {
 })
 
 describe("planRequiresManualConfirmation", () => {
-  it("returns true only when requires_confirmation is true", () => {
+  it("returns true whenever a plan output exists", () => {
     expect(
       planRequiresManualConfirmation({
         type: "plan_generated",
@@ -80,14 +80,14 @@ describe("planRequiresManualConfirmation", () => {
         plan_id: 1,
         requires_confirmation: false,
       })
-    ).toBe(false)
+    ).toBe(true)
     expect(planRequiresManualConfirmation(null)).toBe(false)
     expect(
       planRequiresManualConfirmation({
         type: "plan_generated",
         plan_id: 1,
       })
-    ).toBe(false)
+    ).toBe(true)
   })
 })
 

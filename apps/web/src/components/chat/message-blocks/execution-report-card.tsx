@@ -8,6 +8,7 @@ import { submitSkillRating } from "@/api/skill-ratings"
 import { StarRating } from "./star-rating"
 import type { TaskExecution } from "@/types/schedule-monitor"
 import { formatExecutionDuration } from "./execution-card"
+import { selectConversationForContact } from "@/lib/chat/conversation-selection"
 import { useChatStore } from "@/stores/chat-store"
 
 const STATUS_CONFIG: Record<
@@ -130,12 +131,11 @@ export function ExecutionReportCard({
               className="size-5 shrink-0"
               aria-label="打开对应会话"
               onClick={() => {
-                const { selectConversation, setActiveTab } = useChatStore.getState()
-                selectConversation(
+                selectConversationForContact(
                   String(execution.employee_id),
                   String(execution.conversation_id)
                 )
-                setActiveTab("chat")
+                useChatStore.getState().setActiveTab("chat")
               }}
             >
               <IconExternalLink className="size-3" />

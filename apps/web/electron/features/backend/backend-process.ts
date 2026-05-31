@@ -23,6 +23,10 @@ let backendReady = false
 
 function getBackendReadyPattern(): string {
   const port = String(BACKEND_PORT)
+  // dev + --reload：reloader 先打印 Uvicorn running，worker 尚未 startup complete
+  if (!app.isPackaged) {
+    return "Application startup complete"
+  }
   return (
     `(?:Uvicorn running|Application startup complete).*${port}` +
     `|${port}.*(?:Uvicorn running|Application startup complete)`
@@ -117,7 +121,15 @@ export function startBackend(): Promise<void> {
             PYTHONIOENCODING: "utf-8",
           }
         : {}),
-      ...(isOfflineMode() ? { OFFLINE_MODE: "1" } : {}),
+      // 显式写入，避免 Windows 用户级 OFFLINE_MODE=1 经 process.env 泄漏到 Python
+      OFFLINE_MODE: isOfflineMode() ? "1" : "0",
+      // 离线开发默认跳过激活门控（与 AGENTS.md ACTIVATION_BYPASS 一致）
+      ...(isDev && isOfflineMode() && !process.env.ACTIVATION_BYPASS
+        ? { ACTIVATION_BYPASS: "1" }
+        : {}),
+      ...(process.env.ACTIVATION_BYPASS
+        ? { ACTIVATION_BYPASS: process.env.ACTIVATION_BYPASS }
+        : {}),
       // 桌面端默认物理路径模式；未显式设置时注入 0，保留环境变量覆盖能力
       ...(process.env.AGENT_VIRTUAL_MODE === undefined
         ? { AGENT_VIRTUAL_MODE: "0" }

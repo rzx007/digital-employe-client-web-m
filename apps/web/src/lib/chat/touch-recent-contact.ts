@@ -27,4 +27,5 @@ export async function touchRecentContactById(
 
   const workspaceId = getActiveWorkspaceId()
   await touchRecentContact(target, { workspaceId })
+  await refetchRecentContacts()
 }

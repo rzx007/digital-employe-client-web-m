@@ -3,6 +3,7 @@ import type { QueryClient } from "@tanstack/react-query"
 import { createConversation, fetchCuratorConversation } from "@/api/chat"
 import { mapConversationListItemToConversation } from "@/lib/chat/chat-mappers"
 import { selectConversationById } from "@/lib/chat/conversation-selection"
+import { selectWorkbenchCuratorConversation } from "@/lib/chat/conversation-selection/apply"
 import { chatKeys } from "@/lib/query-keys/chat"
 import type { Contact, Conversation, Message } from "@/types/chat"
 
@@ -72,13 +73,27 @@ export function isEnsuringCuratorConversation(): boolean {
   return ensureSnapshot.isEnsuring
 }
 
+export type CuratorConversationSelectScope = "global" | "workbench"
+
+function applyCuratorConversationSelection(
+  conversationId: string | number,
+  scope: CuratorConversationSelectScope = "global"
+) {
+  if (scope === "workbench") {
+    selectWorkbenchCuratorConversation(conversationId)
+    return
+  }
+  selectConversationById(conversationId)
+}
+
 /**
  * 总管无可用会话时：GET ensure → 写 cache → 选中。
  * 删光最后一条、bootstrap 兜底共用此入口；并发调用会合并为同一 Promise。
  */
 export async function ensureCuratorConversationAndSelect(
   queryClient: QueryClient,
-  contact: Contact
+  contact: Contact,
+  options?: { selectScope?: CuratorConversationSelectScope }
 ): Promise<Conversation> {
   if (contact.type !== "curator" || !contact.curator?.id) {
     throw new Error("不是总管联系人")
@@ -102,7 +117,10 @@ export async function ensureCuratorConversationAndSelect(
 
       const conversation = mapConversationListItemToConversation(item, contactId)
       primeCuratorConversationInCache(queryClient, conversation)
-      selectConversationById(conversation.id)
+      applyCuratorConversationSelection(
+        conversation.id,
+        options?.selectScope ?? "global"
+      )
       void queryClient.invalidateQueries({ queryKey: chatKeys.curator() })
 
       patchCuratorEnsureSnapshot({ isEnsuring: false, error: null })
@@ -138,9 +156,14 @@ export async function createAndSelectCuratorConversation(options: {
   contact: Contact
   title?: string
   mutateAsync?: CreateConversationMutate
+  selectScope?: CuratorConversationSelectScope
 }): Promise<Conversation> {
-  const { contact, title = CURATOR_DEFAULT_CONVERSATION_TITLE, mutateAsync } =
-    options
+  const {
+    contact,
+    title = CURATOR_DEFAULT_CONVERSATION_TITLE,
+    mutateAsync,
+    selectScope = "global",
+  } = options
 
   if (contact.type !== "curator" || !contact.curator?.id) {
     throw new Error("不是总管联系人")
@@ -161,6 +184,6 @@ export async function createAndSelectCuratorConversation(options: {
     contact,
   })
 
-  selectConversationById(conversation.id)
+  applyCuratorConversationSelection(conversation.id, selectScope)
   return conversation
 }

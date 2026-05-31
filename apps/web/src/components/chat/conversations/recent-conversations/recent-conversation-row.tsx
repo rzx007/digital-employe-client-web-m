@@ -121,7 +121,7 @@ interface RecentConversationRowProps {
   collapsed?: boolean
   selectedContactId: string | null
   isSelected: boolean
-  onSelect: (contactId: string) => void
+  onSelect: (item: RecentConversationItem) => void
   onDetail: (item: RecentConversationItem) => void
   onTogglePin: (item: RecentConversationItem) => void
   onRemove: (item: RecentConversationItem) => void | Promise<void>
@@ -162,7 +162,7 @@ export function RecentConversationRow({
               : "hover:bg-accent/50 hover:text-accent-foreground"
           )}
           onClick={() => {
-            if (!isRemoving) onSelect(item.contactId)
+            if (!isRemoving) onSelect(item)
           }}
           aria-busy={isRemoving}
         >

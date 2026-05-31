@@ -4,6 +4,7 @@ import { toast } from "sonner"
 import {
   createAndSelectCuratorConversation,
   CURATOR_DEFAULT_CONVERSATION_TITLE,
+  type CuratorConversationSelectScope,
 } from "@/lib/chat/curator-conversation-actions"
 import type { Contact } from "@/types/chat"
 
@@ -15,13 +16,15 @@ export function useCreateCuratorConversation() {
   const createCuratorConversation = useCallback(
     async (
       contact: Contact,
-      title: string = CURATOR_DEFAULT_CONVERSATION_TITLE
+      title: string = CURATOR_DEFAULT_CONVERSATION_TITLE,
+      options?: { selectScope?: CuratorConversationSelectScope }
     ) => {
       try {
         return await createAndSelectCuratorConversation({
           contact,
           title,
           mutateAsync: createConversationMutation.mutateAsync,
+          selectScope: options?.selectScope,
         })
       } catch (error) {
         toast.error("创建会话失败", {

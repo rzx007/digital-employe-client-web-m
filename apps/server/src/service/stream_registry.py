@@ -304,7 +304,7 @@ class ActiveStreamTask:
 class StreamRegistry:
     def __init__(self) -> None:
         self._tasks: dict[int, ActiveStreamTask] = {}
-        self.on_task_finalized: Callable[[int, str, int, int], None] | None = None
+        self.on_task_finalized: Callable[..., None] | None = None
 
     def is_active(self, conversation_id: int) -> bool:
         task = self._tasks.get(conversation_id)
@@ -801,6 +801,9 @@ class StreamRegistry:
             raise
 
         except Exception as e:
+            from src.service.agent.error_messages import format_agent_error_for_user
+
+            user_error = format_agent_error_for_user(e)
             logger.error(
                 "[run] conv=%s agent FAILED: %s, event_count=%d, text_len=%s",
                 conversation_id, e, task.buffer.cursor,
@@ -808,10 +811,10 @@ class StreamRegistry:
                 exc_info=True,
             )
             state_final = "error"
-            task.error_message = str(e)
+            task.error_message = user_error
             partial_text = latest_updates_text or None
 
-            evt = task.buffer.add({"status": "error", "error": str(e)})
+            evt = task.buffer.add({"status": "error", "error": user_error})
             self.broadcast(conversation_id, evt)
 
             elapsed_ms = int((time.monotonic() - stream_start_time) * 1000)
@@ -820,7 +823,7 @@ class StreamRegistry:
                 task,
                 state="error",
                 content=partial_text,
-                error_message=str(e),
+                error_message=user_error,
                 elapsed_ms=elapsed_ms,
             )
             if not ok:
@@ -993,13 +996,17 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
             )
 
         if stream_state == "completed":
+            from src.service.orchestrator_execution_summary import (
+                resolve_assistant_delivery_text,
+            )
+
             last_msg = db.scalars(
                 select(ConversationMessage).where(
                     ConversationMessage.conversation_id == conversation_id,
                     ConversationMessage.role == "assistant",
                 ).order_by(ConversationMessage.id.desc())
             ).first()
-            final_text = last_msg.content if last_msg else ""
+            final_text = resolve_assistant_delivery_text(last_msg)
             log.run_status = "success"
             log.run_result = "任务执行成功"
             log.output_json = json.dumps({"content": final_text}, ensure_ascii=False)
@@ -1026,11 +1033,40 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
             log.error_message = err_text
 
         db.commit()
+        db.refresh(log)
+
+        summary_message = None
+        orch_conv_id = log.orchestrator_conversation_id
+        try:
+            from src.service.orchestrator_execution_summary import (
+                append_orchestrator_execution_summary,
+                resolve_log_orchestrator_conversation_id,
+            )
+
+            summary_message = append_orchestrator_execution_summary(
+                db, log, stream_state
+            )
+            if orch_conv_id is None:
+                orch_conv_id = resolve_log_orchestrator_conversation_id(db, log)
+        except Exception:
+            logger.warning(
+                "orchestrator execution summary failed conv=%s",
+                conversation_id,
+                exc_info=True,
+            )
 
         if registry.on_task_finalized:
             try:
                 registry.on_task_finalized(
-                    conversation_id, stream_state, log.task_id, log.workspace_id
+                    conversation_id,
+                    stream_state,
+                    log.task_id,
+                    log.workspace_id,
+                    orchestrator_conversation_id=orch_conv_id,
+                    summary_message_id=(
+                        summary_message.id if summary_message else None
+                    ),
+                    execution_log_id=log.id,
                 )
             except Exception:
                 logger.warning(

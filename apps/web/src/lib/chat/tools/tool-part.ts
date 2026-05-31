@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai"
+import { localizeErrorMessage } from "../message-classifier"
 
 export type ToolUIPart = Extract<
   UIMessage["parts"][number],
@@ -24,7 +25,7 @@ export function extractResultText(part: ToolUIPart): string | null {
   }
 
   if ("errorText" in part && typeof part.errorText === "string" && part.errorText) {
-    return part.errorText
+    return localizeErrorMessage(part.errorText)
   }
 
   return null

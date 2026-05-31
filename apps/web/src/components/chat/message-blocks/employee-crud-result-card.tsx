@@ -19,6 +19,7 @@ import {
 } from "@workspace/ui/components/morphing-dialog"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
+import { formatErrorDisplayText } from "@/lib/chat/message-classifier"
 import {
   isEmployeeCrudToolRunning,
   mcpLabelsFromDetailMcps,
@@ -347,7 +348,7 @@ function EmployeeCrudResultCardInner({
       >
         <p className="text-xs font-semibold text-destructive">操作失败</p>
         <p className="mt-1 line-clamp-4 text-xs leading-relaxed break-words text-destructive/80">
-          {resultText}
+          {formatErrorDisplayText(resultText ?? "")}
         </p>
       </div>
     )

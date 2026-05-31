@@ -99,6 +99,7 @@ export const TOOL_ICON_MAP: Record<string, typeof IconFileDescription> = {
   confirm_orchestration_plan: IconPlayerPlay,
   list_workspace_employees: IconUsers,
   list_workspace_skills: IconPuzzle,
+  get_workspace_skill_detail: IconFileDescription,
   recruit_employee: IconUserPlus,
   hire_employee: IconCircleCheck,
   hire_employees: IconCircleCheck,
@@ -111,6 +112,11 @@ export const TOOL_ICON_MAP: Record<string, typeof IconFileDescription> = {
   cancel_plan: IconPlayerPlay,
   list_tasks: IconListCheck,
   session_search: IconSearch,
+  search_market_skills: IconPlug,
+  get_market_skill_detail: IconFileDescription,
+  install_market_skill: IconPuzzle,
+  list_builtin_skills: IconPuzzle,
+  install_builtin_skill: IconPuzzle,
 }
 
 export function getToolIcon(toolName: string): typeof IconFileDescription {

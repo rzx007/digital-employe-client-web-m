@@ -37,6 +37,7 @@ export const BUSINESS_TOOL_NAMES = new Set([
   "confirm_orchestration_plan",
   "list_workspace_employees",
   "list_workspace_skills",
+  "get_workspace_skill_detail",
   "recruit_employee",
   "hire_employee",
   "hire_employees",
@@ -49,6 +50,11 @@ export const BUSINESS_TOOL_NAMES = new Set([
   "cancel_plan",
   "list_tasks",
   "session_search",
+  "search_market_skills",
+  "get_market_skill_detail",
+  "install_market_skill",
+  "list_builtin_skills",
+  "install_builtin_skill",
 ])
 
 export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
@@ -210,6 +216,16 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
       error: "查询失败",
     },
   },
+  get_workspace_skill_detail: {
+    icon: "📄",
+    label: "预览工作区技能",
+    verb: "预览工作区技能",
+    simple: {
+      running: "正在读取技能详情...",
+      done: "技能详情已加载",
+      error: "读取失败",
+    },
+  },
   recruit_employee: {
     icon: "🧑‍💼",
     label: "招聘候选人",
@@ -328,6 +344,56 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
       running: "正在检索历史...",
       done: "检索完成",
       error: "检索失败",
+    },
+  },
+  search_market_skills: {
+    icon: "🌐",
+    label: "搜索远程技能",
+    verb: "搜索远程技能",
+    simple: {
+      running: "正在搜索 SkillsMP...",
+      done: "搜索完成",
+      error: "搜索失败",
+    },
+  },
+  get_market_skill_detail: {
+    icon: "📄",
+    label: "预览远程技能",
+    verb: "预览远程技能",
+    simple: {
+      running: "正在拉取技能详情...",
+      done: "技能详情已加载",
+      error: "拉取失败",
+    },
+  },
+  install_market_skill: {
+    icon: "📥",
+    label: "安装远程技能",
+    verb: "安装远程技能",
+    simple: {
+      running: "正在安装技能...",
+      done: "技能已安装",
+      error: "安装失败",
+    },
+  },
+  list_builtin_skills: {
+    icon: "🧩",
+    label: "查看内置技能",
+    verb: "查看内置技能",
+    simple: {
+      running: "正在查询内置技能...",
+      done: "内置技能已加载",
+      error: "查询失败",
+    },
+  },
+  install_builtin_skill: {
+    icon: "📥",
+    label: "安装内置技能",
+    verb: "安装内置技能",
+    simple: {
+      running: "正在安装内置技能...",
+      done: "内置技能已安装",
+      error: "安装失败",
     },
   },
 }

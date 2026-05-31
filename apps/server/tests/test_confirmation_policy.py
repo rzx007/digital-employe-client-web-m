@@ -30,8 +30,8 @@ def test_no_confirmation_for_simple_immediate_tasks():
     assert compute_requires_confirmation([
         {"task_name": "A"},
         {"task_name": "B"},
-    ]) is False
+    ]) is True
 
     assert compute_requires_confirmation([
         {"task_name": "A", "cron": None, "depends_on": None},
-    ]) is False
+    ]) is True

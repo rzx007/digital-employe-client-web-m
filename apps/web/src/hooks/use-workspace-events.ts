@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useAuthStore } from "@/stores/auth-store"
+import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import { getServerBaseUrl } from "@/lib/request"
 
 export type WorkspaceEvent =
@@ -11,12 +12,22 @@ export type WorkspaceEvent =
       employee_name: string
       task_name: string
     }
-  | { type: "task_completed"; task_id: number; conversation_id: number }
+  | {
+      type: "task_completed"
+      task_id: number | null
+      conversation_id: number
+      execution_log_id?: number
+      orchestrator_conversation_id?: number | null
+      summary_message_id?: number | null
+    }
   | {
       type: "task_failed"
-      task_id: number
+      task_id: number | null
       conversation_id: number
       error?: string
+      execution_log_id?: number
+      orchestrator_conversation_id?: number | null
+      summary_message_id?: number | null
     }
   | {
       type: "orchestration_plan_generated"
@@ -133,14 +144,15 @@ function disconnect() {
 export function useWorkspaceEvents(handler?: EventHandler) {
   const [isConnected, setIsConnected] = useState(_isConnected)
   const handlerRef = useRef<EventHandler | undefined>(undefined)
-  const workspaceId = useAuthStore((s) => s.workspaceId)
+  const authWorkspaceId = useAuthStore((s) => s.workspaceId)
+  const workspaceId = authWorkspaceId ?? getActiveWorkspaceId()
 
   useEffect(() => {
     handlerRef.current = handler
   }, [handler])
 
   useEffect(() => {
-    if (workspaceId == null) return
+    if (workspaceId == null || Number.isNaN(workspaceId)) return
 
     const connectionListener = (connected: boolean) => setIsConnected(connected)
     _connectionListeners.add(connectionListener)

@@ -62,14 +62,19 @@ export function useReconcileConversationSelection(
         return
       }
 
+      if (selectedConversationId == null) {
+        const next = pickFirstConversation(conversations)
+        if (next) {
+          selectConversationById(next.id)
+        }
+        return
+      }
+
       if (conversationExistsInList(conversations, selectedConversationId)) {
         return
       }
 
-      const next = pickFirstConversation(conversations)
-      if (next) {
-        selectConversationById(next.id)
-      }
+      // 新建会话刚选中时列表 refetch 可能尚未包含该 id，勿抢选回旧会话
       return
     }
 

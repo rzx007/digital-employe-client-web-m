@@ -322,9 +322,24 @@ def update_local_skill_display_name(
 
 @router.delete("/skills/local/{skill_name}", response_model=ResponseBase[None])
 def delete_workspace_local_skill(
-    request: Request, skill_name: str
+    request: Request,
+    skill_name: str,
+    db: Session = Depends(get_db),
 ) -> ResponseBase[None]:
     workspace_id = get_workspace_id_from_request(request)
+    normalized = LocalSkillService._normalize_skill_name(skill_name)
+    local_id: int | None = None
+    skill_dir = LocalSkillService._skill_dir(normalized, workspace_id)
+    if skill_dir.is_dir():
+        meta = LocalSkillService._read_meta(skill_dir)
+        local_id = LocalSkillService._parse_local_id(meta.get("localId"))
+
+    EmployeeService.unassign_local_skill_from_assignees(
+        db,
+        workspace_id=workspace_id,
+        skill_name=skill_name,
+        local_id=local_id,
+    )
     LocalSkillService.delete_workspace_skill(skill_name, workspace_id)
     return ResponseBase[None](data=None)
 

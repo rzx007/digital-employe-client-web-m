@@ -21,6 +21,7 @@ import { useChatStore } from "@/stores/chat-store"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { prepareDisplayMessages } from "@/lib/chat/hitl"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
+import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
 import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
 
 import { ChatPanel } from "../panel/chat-panel"
@@ -168,6 +169,7 @@ export function DraftChatView({
     }
     stop()
     chatTransport.cancelReconnect()
+    session.onStreamStopped()
     const conversationId = useChatStore.getState().selectedConversationId
     if (conversationId) {
       try {
@@ -176,7 +178,7 @@ export function DraftChatView({
         // ignore cancel errors
       }
     }
-  }, [createConversationMutation, stop])
+  }, [createConversationMutation, stop, session])
 
   const isSubmitDisabled = useMemo(() => {
     return !isBusy && !inputValue.trim()
@@ -297,8 +299,11 @@ export function DraftChatView({
   )
 
   const displayMessages = useMemo(
-    () => prepareDisplayMessages(messages),
-    [messages]
+    () =>
+      prepareDisplayMessages(
+        pickMessageDisplaySource(messages, initialMessages, status)
+      ),
+    [messages, initialMessages, status]
   )
 
   return (

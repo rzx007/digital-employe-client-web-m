@@ -25,6 +25,8 @@ import { useConversationSession } from "@/hooks/use-conversation-session"
 
 import { prepareDisplayMessages } from "@/lib/chat/hitl"
 
+import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
+
 import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
 
 import { ChatPanel } from "../panel/chat-panel"
@@ -159,12 +161,14 @@ export function ConversationChatView({
 
     chatTransport.cancelReconnect()
 
+    session.onStreamStopped()
+
     try {
       await cancelConversationStream(conversationId)
     } catch {
       toast.error("停止对话失败")
     }
-  }, [stop, conversationId])
+  }, [stop, conversationId, session])
 
   useEffect(() => {
     return () => {
@@ -174,10 +178,11 @@ export function ConversationChatView({
     }
   }, [stop])
 
-  const shouldUseLiveMessages =
-    messages.length > 0 ||
-    status === "submitted" ||
-    status === "streaming"
+  const displayMessages = useMemo(() => {
+    const source = pickMessageDisplaySource(messages, initialMessages, status)
+
+    return prepareDisplayMessages(source)
+  }, [initialMessages, messages, status])
 
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
@@ -192,12 +197,11 @@ export function ConversationChatView({
   const chatStatus = status === "ready" && isBusy ? "submitted" : status
 
   const isSubmitDisabled = useMemo(() => {
-    return (
-      !(inputValue.trim() || status) ||
-      status === "submitted" ||
-      (isBusy && status !== "streaming")
-    )
-  }, [inputValue, isBusy, status])
+    if (status === "submitted" || status === "streaming") {
+      return false
+    }
+    return !inputValue.trim()
+  }, [inputValue, status])
 
   const uploadedPathsRef = useRef<string[]>([])
 
@@ -316,12 +320,6 @@ export function ConversationChatView({
 
     [isBusy, enqueue, command, mentions, doSend]
   )
-
-  const displayMessages = useMemo(() => {
-    const source = shouldUseLiveMessages ? messages : initialMessages
-
-    return prepareDisplayMessages(source)
-  }, [initialMessages, messages, shouldUseLiveMessages])
 
   return (
     <ChatPanel

@@ -5,6 +5,7 @@ import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import type { TodayTask } from "@/types/schedule-monitor"
 import { TaskStatusBadge } from "./task-status-badge"
+import { selectConversationForContact } from "@/lib/chat/conversation-selection"
 import { useChatStore } from "@/stores/chat-store"
 
 interface TodayTaskListProps {
@@ -32,16 +33,18 @@ function formatDuration(ms: number | null): string {
 }
 
 export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
-  const selectConversation = useChatStore((s) => s.selectConversation)
   const setActiveTab = useChatStore((s) => s.setActiveTab)
 
   const openTaskConversation = useCallback(
     (task: TodayTask) => {
       if (task.conversation_id == null) return
-      selectConversation(String(task.employee_id), String(task.conversation_id))
+      selectConversationForContact(
+        String(task.employee_id),
+        String(task.conversation_id)
+      )
       setActiveTab("chat")
     },
-    [selectConversation, setActiveTab]
+    [setActiveTab]
   )
   const sorted = useMemo(() => {
     return [...executions].sort((a, b) => {

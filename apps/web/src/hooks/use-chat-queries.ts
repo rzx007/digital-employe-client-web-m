@@ -182,7 +182,7 @@ export function useMessagesQuery(conversationId: string | number | null) {
     queryFn: ({ signal }) =>
       fetchMessagesByConversationId(conversationId!, { signal }),
     enabled: Boolean(conversationId),
-    staleTime: 30_000,
+    staleTime: 0,
     /** 切回会话时不用创建会话时写入的空缓存，始终拉最新 DB */
     refetchOnMount: "always",
   })

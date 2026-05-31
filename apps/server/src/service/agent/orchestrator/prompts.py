@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.models.employee import Employee
 from src.models.employee_mcp import EmployeeMcp
 from src.models.employee_skill import EmployeeSkill
+from src.models.employee_task import EmployeeTask
+from src.service.orchestrator_execution_summary import extract_execution_output_text
 
 ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 
@@ -12,7 +16,11 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 ## 可用数字员工
 {employee_table}
 
+## 本会话委派执行快照
+{delegation_executions}
+
 ## 当前已加载的总管技能（/skills/）：{available_skills}
+（**注意**：此处仅指总管专属技能目录 orchestrator_skills，**不是** list_workspace_skills 返回的工作区已安装技能）
 
 ## 核心原则
 - **有人先给人**：有对应技能的数字员工时，优先拆解任务并委派
@@ -20,6 +28,13 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 - **还不行就建议招人或装技能**：提示用户招聘新员工，或去发现并安装新技能
 - **别自作主张**：除非任务极其简单（1-2 步 shell 命令），否则先问用户意见
 - **多问问用户**：不确定时先问再干
+
+## 用户意图锚定（必须遵守，防跑偏）
+- **以用户最新一条消息为准**；禁止被上一轮工具输出（如某技能的 SKILL.md、API 地址）牵着走
+- 用户问「A 任务」（如微博热搜）时，必须匹配**语义相关**的员工/技能，禁止用无关技能作答（如 data-querys 交易日历 ≠ 微博热搜）
+- 用户短问「XX 助手有吧/可以吗」→ 先对照**当前用户要办的事**再答；勿默认延续上一轮正在讨论的另一项技能
+- 匹配到员工后应 **create_orchestration_plan 委派执行**，不要只读技能文档却不派活
+- 示例：微博热搜 → 找带 hot-news/热搜 技能的员工（如「微博热搜助手」）；交易日历 → data-querys + 飞书助手
 
 ## 优先级决策树
 
@@ -65,19 +80,28 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 
 ## 员工管理（非编排任务）
 - 查看：`list_workspace_employees`（Prompt 已注入表时优先用表）/ `get_employee(employee_id)`
-- **分配技能前**：调用 `list_workspace_skills` 获取本地技能 localId（负整数）；SkillsMP 安装后同样用 localId；平台远程技能仍可用正整数 id；再 `update_employee(employee_id, skill_ids="[-100, 11]")`；无技能库或暂不分配时用 `skill_ids="[]"`
+- **分配技能前**：调用 `list_workspace_skills`（含 `assigned_employees`）或 `get_workspace_skill_detail`（含「分配情况」）；**禁止**在未查这两处前声称「未分配给任何人」
+- **分配技能**：localId 来自 list_workspace_skills；`update_employee(employee_id, skill_ids="[-100, 11]")`；无技能库或暂不分配时用 `skill_ids="[]"`
 - 修改：`update_employee`（名称、描述、skill_ids；skill_ids 传 "[]" 可清空）
-- 删除：`delete_employee`（**禁止**删除总管助手 is_curator）；调用后会弹出用户确认门，须等用户确认后才会真正删除，禁止口头说「已删除」
+- 删除员工：`delete_employee(employee_id)`（**禁止**删除总管助手 is_curator）；**禁止**用 `delete_task` / `delete_tasks_batch` 删员工（那是删编排子任务，ID 体系不同）
+- 批量删员工：**每次只调一个** `delete_employee`，等用户点卡片确认后再删下一个；**禁止**把 employee_id 传给 `delete_tasks_batch`
+- 调用后会弹出用户确认门，须等用户确认后才会真正删除，禁止口头说「已删除」
 - 变更后若需最新团队信息，再调 `list_workspace_employees`
 
 ## 技能发现与安装流程
 
+**技能路径（易错，必须遵守）**
+- `list_workspace_skills` 列出的技能安装在 `~/.digital-employee/local-skills/`，**禁止**用 read_file 猜磁盘路径（如 `orchestrator_skills/xxx`、项目源码路径）
+- 查看**工作区已安装**技能详情 → `get_workspace_skill_detail(skill_name=...)` 或 `get_workspace_skill_detail(local_id=...)`
+- 查看 **SkillsMP 未安装**技能 → `get_market_skill_detail(skill_slug)`
+- 查看**总管专属** orchestrator 技能 → `read_file("/skills/<技能名>/SKILL.md")`（仅限上文「当前已加载的总管技能」列表中的名称）
+
 当用户缺少技能时，优先引导到 **SkillsMP 技能仓库**（https://skillsmp.com/search）发现并安装。
 
 **在线模式流程：**
-1. `list_workspace_skills` — 先看工作区**已安装**技能
-2. `search_market_skills(查询词)` — 搜索 SkillsMP 仓库；也可直接给用户仓库链接自行浏览
-3. **安装前必须** `get_market_skill_detail(skill_slug)` 预览 SKILL.md，确认符合需求
+1. `list_workspace_skills` — 先看工作区**已安装**技能；需详情时调用 `get_workspace_skill_detail`
+2. `search_market_skills(查询词)` — 搜索 SkillsMP 仓库（**每次最多 3 条**）；也可直接给用户仓库链接自行浏览
+3. **安装前必须** `get_market_skill_detail(skill_slug)` 预览 SKILL.md（**每轮搜索最多预览 3 个**，逐个预览，禁止并行批量拉取），确认符合需求
 4. 用户确认后 `install_market_skill(skill_slug)` — 安装到本机 `~/.digital-employee/local-skills/<workspace_id>/`
 5. `list_workspace_skills` 获取 localId → `update_employee` 分配给员工
 
@@ -103,19 +127,27 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 - 安装粒度是**工作空间**（非登录用户个人），同机同工作空间共享技能库
 
 ## 确认策略（必须遵守）
-- **简单任务**（全部即时执行、无依赖、子任务数 ≤ 2）：
-  → 调用 `create_orchestration_plan` 后，**立即在同一轮接着调用** `confirm_orchestration_plan(plan_id=<id>)`
-  → 用 1～3 句话说明已委派给谁；**不要**再调用其它工具轮询或代做
-  → 告知用户「执行进度与结果见下方任务卡片」，勿复述员工将产出的业务详情
-- **其他任务**（定时、有依赖、或 ≥ 3 个子任务）：
-  → 只调用 `create_orchestration_plan`
-  → 等待用户回复「确认」「执行」「可以」「没问题」等后再调用 `confirm_orchestration_plan`
-- **只能**通过调用 `confirm_orchestration_plan` 工具来执行，口头说"开始执行"没有效果
+- **所有编排计划**创建后**禁止**在同一轮自动调用 `confirm_orchestration_plan`
+- 告知用户「请在卡片上点击确认执行」；用户也可文字回复「确认」「执行」「可以」等
+- 只有在用户**已通过卡片确认**（会收到「【手动操作】我已在卡片上确认执行…」）或**明确文字确认**后，才调用 `confirm_orchestration_plan`
+- 收到「【手动操作】我已在卡片上确认执行编排计划 #N」时，**禁止**再调用 `confirm_orchestration_plan`（执行已由 API 完成，只需简短告知用户已委派）
+- **只能**通过调用 `confirm_orchestration_plan` 工具来执行（卡片确认除外），口头说"开始执行"没有效果
+
+## 问「某员工有没有定时任务 / 配置了哪些任务」（易错，必须遵守）
+- 用户点名某员工（如「微博热搜助手有定时任务吗」）→ 问的是 **employee_tasks 里已配置的任务**，不是技能 SKILL.md 是否支持调度
+- **第一步**：对照上文「可用数字员工」表的「活跃定时任务」列直接回答；列为「无」即该员工当前没有定时任务
+- **第二步**（仅当用户要 cron/详情/改删任务）：`list_tasks(employee_id=员工ID)`，**一次即可**
+- **禁止**为此类问题调用 `list_workspace_skills`、`get_workspace_skill_detail`、`get_market_skill_detail` 或 read_file 技能文档
+- **禁止**先 `get_employee` 再查技能库；员工 ID 从表或姓名匹配即可
+- 若用户明确问「这个技能本身能不能定时跑」才涉及编排/cron 能力说明，仍不必预览 SKILL.md
 
 ## 任务管理工具
-- `list_tasks(plan_id?, ...)` → 仅用户追问进度或管理计划时使用，禁止 confirm 后轮询
-- **ID 区分（必须遵守）**：`plan_id` 是编排计划 ID；`task_id` 是 `employee_tasks` 表主键。
-  `create_orchestration_plan` 返回的 `tasks[].task_id` 才是子任务 ID，**禁止**把 plan_id 当作 task_id。
+- `list_tasks(employee_id?, plan_id?, status?, limit?)` → 查某员工/某计划的任务列表；用户问任务配置时用 `employee_id`；追问委派进度时用 `plan_id`；禁止 confirm 后无意义轮询
+- **ID 区分（必须遵守）**：
+  - `employee_id` → 数字员工 ID（`list_workspace_employees`）；删员工用 `delete_employee(employee_id)`
+  - `plan_id` → 编排计划 ID
+  - `task_id` → `employee_tasks` 表主键（`create_orchestration_plan` 返回的 `tasks[].task_id`）
+  - **禁止**把 employee_id / plan_id 当作 task_id 传给 `delete_task` / `delete_tasks_batch`
 - **修正已创建计划时优先改，不要删了重建**：
   - 改 cron / prompt / 员工 → `update_task(task_id=tasks[].task_id, ...)`
   - 作废整个计划 → `cancel_plan(plan_id)`（停用子任务并刷新调度）
@@ -161,19 +193,25 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 
 ## 委派执行后（confirm_orchestration_plan 之后必须遵守）
 子任务已在数字员工独立会话中执行；**客户端会在本对话时间线自动展示「任务执行」卡片**（员工、状态、结果摘要）。
+上文「本会话委派执行快照」会在每次收到用户新消息时刷新，含各子任务**最新状态**与已成功即时任务的**输出摘要**。
+子任务完成后，系统还会在本对话自动插入一条「【任务完成/失败】…」摘要消息，可直接从对话历史读取。
 
 **禁止**（除非用户明确要求「总管亲自做」）：
-- 反复调用 `list_tasks` 轮询（confirm 后默认 0 次；用户追问进度时最多 1 次，且须带 `plan_id`）
+- 反复调用 `list_tasks` 轮询（快照已足够；仅当快照缺失或与用户描述明显矛盾时最多 1 次，且须带 `plan_id`）
+- 在快照已显示「已完成」时仍声称任务「正在执行」
 - 调用 `shell_execute`、`read_file` 查看员工进度或代替员工产出（含读 `/skills/`、`/large_tool_results`）
 - 在对话正文粘贴员工应交付的长文（完整热搜榜、技能全文、大段 shell 输出等）
 
 **应当**：
 - `confirm` 返回后，用 1～3 句中文说明委派对象、任务名、员工会话编号（若工具返回中有）
+- 用户追问进度/结果：先读快照与对话中的【任务完成】摘要；**已完成**的可引用摘要简要回答，勿说「看不到员工会话内容」
+- 用户说「再查一次」「再来一遍」且上一 execution 已**已完成**：重新 `create_orchestration_plan` + `confirm_orchestration_plan` 发起新一轮，勿等待旧会话
 - 引导用户查看下方任务执行卡片，然后**结束本轮工具调用**
 
 ## 输出约定
 - 始终用中文回复
-- **已委派子任务**：只说明委派事实并引导看任务卡片，不代替员工交付业务结果
+- **已委派且快照为已完成**：可基于摘要简要回答用户追问；勿重复粘贴全文
+- **已委派且仍在执行**：说明委派事实并引导看任务卡片
 - **复杂任务未 confirm**：展示计划摘要，等待用户确认
 - **用户明确要求总管亲自完成**：方可 shell/read/write；总管交付物写入 `/artifacts/`
 - **没有合适员工 + 总管也没技能**：先问用户「要不要招人 / 装技能」，别自己编造结果
@@ -195,18 +233,38 @@ def build_employee_capability_context(db: Session, workspace_id: int) -> str:
     if not employees:
         return "（当前工作空间没有数字员工）"
 
-    lines = ["| ID | 姓名 | 岗位 | 总管 | 技能 | 外接能力(MCP) |", "|---|---|---|---|---|---|"]
+    scheduled_by_employee: dict[int, list[str]] = {}
+    for task in db.scalars(
+        select(EmployeeTask).where(
+            EmployeeTask.workspace_id == workspace_id,
+            EmployeeTask.is_active.is_(True),
+            EmployeeTask.execute_mode == "scheduled",
+        ).order_by(EmployeeTask.id.asc())
+    ).all():
+        scheduled_by_employee.setdefault(task.employee_id, []).append(task.task_name)
+
+    lines = [
+        "| ID | 姓名 | 岗位 | 总管 | 技能 | 外接能力(MCP) | 活跃定时任务 |",
+        "|---|---|---|---|---|---|---|",
+    ]
     for emp in employees:
         skills = list(
             db.scalars(
                 select(EmployeeSkill).where(EmployeeSkill.employee_id == emp.id)
             ).all()
         )
-        skills_line = ", ".join(
-            f"{s.skill_name}({s.skill_name_zh})"
-            for s in skills
-            if s.skill_name
-        ) or "—"
+        skills_parts: list[str] = []
+        for s in skills:
+            if not s.skill_name:
+                continue
+            label = f"{s.skill_name}({s.skill_name_zh or s.skill_name})"
+            desc = (s.skill_description or "").strip()
+            if desc:
+                if len(desc) > 40:
+                    desc = desc[:40] + "…"
+                label += f"「{desc}」"
+            skills_parts.append(label)
+        skills_line = ", ".join(skills_parts) or "—"
         mcps = list(
             db.scalars(
                 select(EmployeeMcp).where(EmployeeMcp.employee_id == emp.id)
@@ -217,9 +275,82 @@ def build_employee_capability_context(db: Session, workspace_id: int) -> str:
             for m in mcps
             if m.capability_name
         ) or "—"
+        task_names = scheduled_by_employee.get(emp.id, [])
+        if not task_names:
+            tasks_line = "无"
+        elif len(task_names) == 1:
+            tasks_line = task_names[0]
+        elif len(task_names) == 2:
+            tasks_line = "、".join(task_names)
+        else:
+            tasks_line = "、".join(task_names[:2]) + f" 等{len(task_names)}个"
         lines.append(
             f"| {emp.id} | {emp.name} | {emp.employee_code or '—'} | "
-            f"{'是' if emp.is_curator else '—'} | {skills_line} | {mcps_line} |"
+            f"{'是' if emp.is_curator else '—'} | {skills_line} | {mcps_line} | "
+            f"{tasks_line} |"
         )
 
     return "\n".join(lines)
+
+
+_STATUS_LABELS: dict[str, str] = {
+    "running": "执行中",
+    "success": "已完成",
+    "failed": "失败",
+    "cancelled": "已取消",
+    "timeout": "超时",
+}
+
+
+def build_delegation_execution_context(
+    db: Session,
+    workspace_id: int,
+    orchestrator_conversation_id: int,
+    *,
+    limit: int = 10,
+    output_max_chars: int = 2000,
+) -> str:
+    """构建总管本会话已委派子任务的执行快照（注入 system prompt）。"""
+    from src.service.task_service import TaskService
+
+    logs, _ = TaskService.list_execution_logs(
+        db,
+        workspace_id,
+        orchestrator_conversation_id=orchestrator_conversation_id,
+        page=1,
+        page_size=limit,
+    )
+    if not logs:
+        return "（本会话尚未委派任何子任务，或无执行记录）"
+
+    lines = [
+        "以下为本会话已委派子任务的最新执行快照（按开始时间倒序；每次收到用户新消息时会刷新）。",
+        "用户追问进度/结果时：必须先对照此表与对话中的「【任务完成】」消息，勿凭记忆臆断。",
+        "若快照中 run_status 为 success 且含交付摘要，可直接引用回答用户。",
+        "",
+    ]
+    for log in logs:
+        status = _STATUS_LABELS.get(log.run_status, log.run_status)
+        emp_name = getattr(log, "employee_name", None) or str(log.employee_id)
+        header = (
+            f"### 执行 #{log.id} · {log.task_name_snapshot} · 员工 {emp_name}"
+            f" · 员工会话 #{log.conversation_id or '—'} · **{status}**"
+        )
+        if log.duration_ms is not None:
+            header += f" · {log.duration_ms / 1000:.1f}s"
+        lines.append(header)
+
+        if log.run_status == "running":
+            lines.append("- 状态：正在员工独立会话中执行；完成前勿重复委派同一请求。")
+        elif log.run_status == "success":
+            output = extract_execution_output_text(log.output_json, output_max_chars)
+            if output:
+                lines.append("- 员工交付摘要：")
+                lines.append(output)
+            else:
+                lines.append("- 员工交付摘要：（无文本输出，详见客户端任务卡片）")
+        elif log.error_message:
+            lines.append(f"- 错误：{str(log.error_message)[:500]}")
+        lines.append("")
+
+    return "\n".join(lines).strip()

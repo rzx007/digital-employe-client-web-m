@@ -19,7 +19,7 @@ import type { UIMessage } from "ai"
 import type { Message } from "@/types/chat"
 
 import { conversationRuntimeBus } from "@/lib/chat/conversation-runtime-bus"
-import { refetchRecentContacts } from "@/lib/chat/touch-recent-contact"
+import { refetchRecentContacts, touchRecentContactById } from "@/lib/chat/touch-recent-contact"
 
 import {
   createApprovedAtTimestamp,
@@ -42,6 +42,15 @@ import {
 import { chatTransport } from "@/components/chat/shared/chat-view-shared"
 
 import { chatKeys } from "@/lib/query-keys/chat"
+
+import { useChatStore } from "@/stores/chat-store"
+
+import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
+
+import {
+  hydrateSignature,
+  messagesNeedHydrateFromDb,
+} from "@/lib/chat/pick-message-display-source"
 
 const REFETCH_DEBOUNCE_MS = 800
 
@@ -129,6 +138,12 @@ export function useConversationSession({
 
   const prevConversationIdRef = useRef(conversationId)
 
+  const lastHydratedSigRef = useRef<string>("")
+
+  const composerMessagesRef = useRef(composerMessages)
+
+  composerMessagesRef.current = composerMessages
+
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const convKey = conversationId != null ? String(conversationId) : null
@@ -145,11 +160,19 @@ export function useConversationSession({
 
       hydratedConvIdRef.current = null
 
+      lastHydratedSigRef.current = ""
+
       activeSessionRef.current = false
 
       setActiveHitl(null)
+
+      if (convKey) {
+        void queryClient.invalidateQueries({
+          queryKey: chatKeys.messages(convKey),
+        })
+      }
     }
-  }, [conversationId])
+  }, [conversationId, convKey, queryClient])
 
   useEffect(() => {
     if (!convKey || activeSessionRef.current) return
@@ -188,14 +211,30 @@ export function useConversationSession({
       return
     }
 
-    if (activeSessionRef.current && hydratedConvIdRef.current === convKey)
-      return
-
     if (initialMessages.length === 0 && storedMessages.length === 0) return
 
-    setMessages(initialMessages)
+    const sig = hydrateSignature(initialMessages)
+    const needsHydrate = messagesNeedHydrateFromDb(
+      composerMessagesRef.current,
+      initialMessages
+    )
+    const alreadySynced =
+      hydratedConvIdRef.current === convKey &&
+      lastHydratedSigRef.current === sig &&
+      !needsHydrate
 
-    hydratedConvIdRef.current = convKey
+    if (!alreadySynced) {
+      const blockedByActiveSession =
+        activeSessionRef.current &&
+        hydratedConvIdRef.current === convKey &&
+        !needsHydrate
+
+      if (!blockedByActiveSession) {
+        setMessages(initialMessages)
+        lastHydratedSigRef.current = sig
+        hydratedConvIdRef.current = convKey
+      }
+    }
 
     if (hitlActiveRef.current) return
 
@@ -217,7 +256,6 @@ export function useConversationSession({
 
     return () => cancelAnimationFrame(rafId)
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     convKey,
 
@@ -230,6 +268,8 @@ export function useConversationSession({
     setMessages,
 
     resumeStream,
+
+    status,
   ])
 
   useEffect(() => {
@@ -255,6 +295,11 @@ export function useConversationSession({
       },
 
       onTerminal: (info) => {
+        if (info.status === "cancelled") {
+          activeSessionRef.current = false
+          hydratedConvIdRef.current = null
+        }
+
         const streamState = terminalToStreamState(info.status)
 
         patchLastAssistantStreamState(queryClient, convKey, streamState)
@@ -289,8 +334,39 @@ export function useConversationSession({
 
     scheduleMessagesRefetch()
 
-    void refetchRecentContacts()
+    const selectedContactId = useChatStore.getState().selectedContactId
+    if (selectedContactId) {
+      void touchRecentContactById(selectedContactId)
+    } else {
+      void refetchRecentContacts()
+    }
   }, [convKey, queryClient, scheduleMessagesRefetch])
+
+  const onStreamStopped = useCallback(() => {
+    if (!convKey) return
+
+    activeSessionRef.current = false
+    hydratedConvIdRef.current = null
+
+    patchLastAssistantStreamState(queryClient, convKey, "cancelled")
+
+    const cached = queryClient.getQueryData<Message[]>(
+      chatKeys.messages(convKey)
+    )
+    if (cached?.length) {
+      setMessages(mapStoredMessagesToUIMessages(cached))
+      hydratedConvIdRef.current = convKey
+    }
+
+    if (refetchTimerRef.current) {
+      clearTimeout(refetchTimerRef.current)
+      refetchTimerRef.current = null
+    }
+
+    void queryClient.invalidateQueries({
+      queryKey: chatKeys.messages(convKey),
+    })
+  }, [convKey, queryClient, setMessages])
 
   const onHitlApproved = useCallback(
     async (options?: HitlPatchOptions) => {
@@ -402,6 +478,8 @@ export function useConversationSession({
     onHitlApproved,
 
     onStreamFinish,
+
+    onStreamStopped,
 
     prepareOutboundMessage,
   }

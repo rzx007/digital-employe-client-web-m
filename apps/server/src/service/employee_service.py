@@ -193,6 +193,56 @@ class EmployeeService:
         return []
 
     @staticmethod
+    def list_skill_assignees(
+        db: Session,
+        *,
+        workspace_id: int,
+        skill_name: str,
+        local_id: int | None = None,
+    ) -> list[dict[str, int | str]]:
+        """返回已分配该本地/工作区技能的员工（查 employee_skills 表）。"""
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        match_conditions = [EmployeeSkill.skill_name == normalized]
+        if local_id is not None:
+            match_conditions.append(EmployeeSkill.skill_id == local_id)
+
+        rows = list(
+            db.scalars(
+                select(EmployeeSkill).where(
+                    EmployeeSkill.workspace_id == workspace_id,
+                    or_(*match_conditions),
+                )
+            ).all()
+        )
+        if not rows:
+            return []
+
+        employee_ids = sorted({row.employee_id for row in rows})
+        employees = {
+            emp.id: emp
+            for emp in db.scalars(
+                select(Employee).where(Employee.id.in_(employee_ids))
+            ).all()
+        }
+
+        assignees: list[dict[str, int | str]] = []
+        seen: set[int] = set()
+        for eid in employee_ids:
+            if eid in seen:
+                continue
+            seen.add(eid)
+            emp = employees.get(eid)
+            if emp is None:
+                continue
+            assignees.append(
+                {
+                    "employee_id": emp.id,
+                    "employee_name": emp.name or f"员工#{emp.id}",
+                }
+            )
+        return assignees
+
+    @staticmethod
     def _employee_mcps_snapshot(db: Session, employee: Employee) -> list[dict]:
         """返回该员工已绑定的 MCP 列表（与 /mcp/list、远程详情字段一致，id 为远程能力 ID）。"""
         rows = list(
@@ -1021,6 +1071,84 @@ class EmployeeService:
         db.commit()
         logger.info(
             "Synced local skill %r to %s employee(s) in workspace %s",
+            normalized,
+            len(employee_ids),
+            workspace_id,
+        )
+        return len(employee_ids)
+
+    @staticmethod
+    def unassign_local_skill_from_assignees(
+        db: Session,
+        *,
+        workspace_id: int,
+        skill_name: str,
+        local_id: int | None = None,
+    ) -> int:
+        """删除本地技能时，同步解除已分配员工的绑定与私有目录副本。"""
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        match_conditions = [EmployeeSkill.skill_name == normalized]
+        if local_id is not None:
+            match_conditions.append(EmployeeSkill.skill_id == local_id)
+
+        rows = list(
+            db.scalars(
+                select(EmployeeSkill).where(
+                    EmployeeSkill.workspace_id == workspace_id,
+                    or_(*match_conditions),
+                )
+            ).all()
+        )
+        if not rows:
+            return 0
+
+        employee_ids = {row.employee_id for row in rows}
+        employees = {
+            emp.id: emp
+            for emp in db.scalars(
+                select(Employee).where(Employee.id.in_(employee_ids))
+            ).all()
+        }
+
+        for row in rows:
+            db.delete(row)
+
+        for employee_id in employee_ids:
+            employee = employees.get(employee_id)
+            if employee is None:
+                continue
+
+            target_dir = (
+                EmployeeService._resolve_skill_root()
+                / str(employee.id)
+                / "skills"
+                / normalized
+            )
+            if target_dir.exists():
+                shutil.rmtree(target_dir, ignore_errors=True)
+
+            try:
+                data = json.loads(employee.skills_json or "[]")
+            except json.JSONDecodeError:
+                data = []
+            if isinstance(data, list) and data:
+                first = data[0]
+                if isinstance(first, dict) and "skills_dir" not in first:
+                    filtered = [
+                        item
+                        for item in data
+                        if isinstance(item, dict)
+                        and str(item.get("skillName") or "").strip() != normalized
+                    ]
+                    employee.skills_json = json.dumps(
+                        filtered, ensure_ascii=False
+                    )
+
+            EmployeeService._refresh_employee_meta_skills(db, employee)
+
+        db.commit()
+        logger.info(
+            "Unassigned local skill %r from %s employee(s) in workspace %s",
             normalized,
             len(employee_ids),
             workspace_id,

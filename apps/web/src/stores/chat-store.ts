@@ -17,6 +17,8 @@ interface ChatStore {
   contacts: Contact[]
   selectedContactId: string | null
   selectedConversationId: string | number | null
+  /** 工作台右侧总管面板独立会话，不随聊天 Tab 切换员工而变 */
+  workbenchCuratorConversationId: string | number | null
   isDraftConversation: boolean
   draftSessionKey: number
   showWorkbench: boolean
@@ -26,6 +28,7 @@ interface ChatStore {
   setContacts: (contacts: Contact[]) => void
   setSelectedContactId: (id: string | null) => void
   setSelectedConversationId: (id: string | number | null) => void
+  setWorkbenchCuratorConversationId: (id: string | number | null) => void
   setDraftConversation: (isDraft: boolean) => void
   setShowWorkbench: (show: boolean) => void
   setActiveTab: (tab: ActiveTab) => void
@@ -44,6 +47,7 @@ export const useChatStore = create<ChatStore>()(
       contacts: [],
       selectedContactId: null,
       selectedConversationId: null,
+      workbenchCuratorConversationId: null,
       isDraftConversation: false,
       draftSessionKey: 0,
       showWorkbench: false,
@@ -61,6 +65,10 @@ export const useChatStore = create<ChatStore>()(
       setSelectedConversationId: (id) =>
         set({
           selectedConversationId: id,
+        }),
+      setWorkbenchCuratorConversationId: (id) =>
+        set({
+          workbenchCuratorConversationId: id,
         }),
       setDraftConversation: (isDraft) =>
         set((state) => ({
@@ -112,6 +120,7 @@ export const useChatStore = create<ChatStore>()(
       partialize: (state) => ({
         selectedContactId: state.selectedContactId,
         selectedConversationId: state.selectedConversationId,
+        workbenchCuratorConversationId: state.workbenchCuratorConversationId,
         activeTab: state.activeTab,
       }),
     }

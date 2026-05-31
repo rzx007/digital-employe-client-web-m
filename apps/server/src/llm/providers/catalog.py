@@ -39,6 +39,8 @@ _PROVIDERS: tuple[ProviderProfile, ...] = (
         default_models=(
             "deepseek-v4-flash",
             "deepseek-v4-pro",
+            "qwen-vl-max",
+            "qwen2.5-vl-72b-instruct",
             "qwen2.5-72b-instruct",
             "qwen3.7-max",
             "qwen3.6-plus",

@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Annotated, Any, cast
 
+from src.llm.vision import active_model_supports_vision
 from src.service.basic_file_reader import (
     estimate_base64_decoded_bytes,
     format_multimodal_size_error,
@@ -44,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 _patched = False
 
-_UNSUPPORTED_OPENAI_BLOCK_TYPES = frozenset({"file", "audio", "image"})
+_UNSUPPORTED_OPENAI_BLOCK_TYPES = frozenset({"file", "audio"})
 
 
 def _block_type(block: ContentBlock | dict[str, Any]) -> str:
@@ -71,16 +72,42 @@ def _oversized_image_message(path: str, size_bytes: int) -> ContentBlock:
     )
 
 
-def _message_needs_sanitize(message: BaseMessage) -> bool:
+def _message_needs_sanitize(
+    message: BaseMessage, *, allow_images: bool
+) -> bool:
     for block in message.content_blocks:
-        if _block_type(block) in _UNSUPPORTED_OPENAI_BLOCK_TYPES:
+        block_type = _block_type(block)
+        if block_type in _UNSUPPORTED_OPENAI_BLOCK_TYPES:
+            return True
+        if block_type == "image":
+            return True
+        if block_type == "image_url" and not allow_images:
             return True
     return False
 
 
-def _sanitize_message_for_openai_compatible(message: BaseMessage) -> BaseMessage:
+def _normalize_image_block_for_api(
+    block: ContentBlock | dict[str, Any],
+) -> ContentBlock:
+    """LangChain OpenAI 兼容 API 更稳的 image_url data URI 格式。"""
+    base64_data = str(block.get("base64") or block.get("data") or "")
+    mime_type = str(block.get("mime_type") or "application/octet-stream")
+    return cast(
+        "ContentBlock",
+        {
+            "type": "image_url",
+            "image_url": {"url": f"data:{mime_type};base64,{base64_data}"},
+        },
+    )
+
+
+def _sanitize_message_for_openai_compatible(
+    message: BaseMessage,
+    *,
+    allow_images: bool,
+) -> BaseMessage:
     """将 checkpoint 中不兼容的内容块转为文本，避免 DashScope 400。"""
-    if not _message_needs_sanitize(message):
+    if not _message_needs_sanitize(message, allow_images=allow_images):
         return message
 
     new_blocks: list[ContentBlock] = []
@@ -114,6 +141,8 @@ def _sanitize_message_for_openai_compatible(message: BaseMessage) -> BaseMessage
                 new_blocks.append(
                     _oversized_image_message(path or "image", size_bytes)
                 )
+            elif allow_images:
+                new_blocks.append(_normalize_image_block_for_api(block))
             else:
                 new_blocks.append(
                     cast(
@@ -121,12 +150,15 @@ def _sanitize_message_for_openai_compatible(message: BaseMessage) -> BaseMessage
                         {
                             "type": "text",
                             "text": (
-                                f"[当前模型 API 不支持图片输入"
-                                f"{' (' + path + ')' if path else ''}]"
+                                f"[当前模型不支持图片理解"
+                                f"{' (' + path + ')' if path else ''}；"
+                                f"请在设置中切换到视觉模型（如 qwen-vl-max）后重试]"
                             ),
                         },
                     )
                 )
+        elif block_type == "image_url" and allow_images:
+            new_blocks.append(block)
         elif block_type == "audio":
             new_blocks.append(
                 cast(
@@ -149,8 +181,15 @@ def _sanitize_message_for_openai_compatible(message: BaseMessage) -> BaseMessage
 
 def sanitize_messages_for_openai_compatible(
     messages: list[BaseMessage],
+    *,
+    allow_images: bool | None = None,
 ) -> list[BaseMessage]:
-    sanitized = [_sanitize_message_for_openai_compatible(m) for m in messages]
+    if allow_images is None:
+        allow_images = active_model_supports_vision()
+    sanitized = [
+        _sanitize_message_for_openai_compatible(m, allow_images=allow_images)
+        for m in messages
+    ]
     changed = sum(
         1
         for before, after in zip(messages, sanitized)
@@ -264,7 +303,11 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
         request: ModelRequest[ContextT],
         handler: Callable[[ModelRequest[ContextT]], ModelResponse[ResponseT]],
     ) -> ModelResponse[ResponseT]:
-        messages = sanitize_messages_for_openai_compatible(list(request.messages))
+        allow_images = active_model_supports_vision()
+        messages = sanitize_messages_for_openai_compatible(
+            list(request.messages),
+            allow_images=allow_images,
+        )
         if messages != list(request.messages):
             request = request.override(messages=messages)
         return super().wrap_model_call(request, handler)
@@ -276,7 +319,11 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
             [ModelRequest[ContextT]], Awaitable[ModelResponse[ResponseT]]
         ],
     ) -> ModelResponse[ResponseT]:
-        messages = sanitize_messages_for_openai_compatible(list(request.messages))
+        allow_images = active_model_supports_vision()
+        messages = sanitize_messages_for_openai_compatible(
+            list(request.messages),
+            allow_images=allow_images,
+        )
         if messages != list(request.messages):
             request = request.override(messages=messages)
         return await super().awrap_model_call(request, handler)

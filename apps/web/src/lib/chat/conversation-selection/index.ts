@@ -3,6 +3,8 @@ export {
   enterDraftConversation,
   selectContactById,
   selectConversationById,
+  selectConversationForContact,
+  selectWorkbenchCuratorConversation,
   switchToContact,
 } from "./apply"
 export { focusAfterContactRemoved } from "./focus-after-contact-removed"

@@ -5,11 +5,14 @@ import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { useConversationsQuery } from "@/hooks/use-chat-queries"
 import { useCreateCuratorConversation } from "@/hooks/use-create-curator-conversation"
+import type { CuratorConversationSelectScope } from "@/lib/chat/curator-conversation-actions"
 import {
   enterDraftConversation,
   selectConversationById,
 } from "@/lib/chat/conversation-selection"
+import { touchRecentContactById } from "@/lib/chat/touch-recent-contact"
 import { useChatStore } from "@/stores/chat-store"
+import type { Contact } from "@/types/chat"
 import {
   EmployeeContactAvatar,
   GroupMembersAvatar,
@@ -21,11 +24,20 @@ export function ConversationList({
   hideNewButton,
   onSelectConversation,
   onClose,
+  contactOverride,
+  selectedConversationIdOverride,
+  onSelectConversationId,
+  createConversationSelectScope,
   ...props
 }: ComponentProps<"div"> & {
   hideNewButton?: boolean
   onSelectConversation?: () => void
   onClose?: () => void
+  /** 固定展示某联系人会话（如工作台总管侧栏），不读全局 selectedContactId */
+  contactOverride?: Contact
+  selectedConversationIdOverride?: string | number | null
+  onSelectConversationId?: (conversationId: string | number) => void
+  createConversationSelectScope?: CuratorConversationSelectScope
 }) {
   const { selectedContactId, selectedConversationId } = useChatStore(
     useShallow((state) => ({
@@ -33,12 +45,23 @@ export function ConversationList({
       selectedConversationId: state.selectedConversationId,
     }))
   )
-  const selectedContact = useChatStore((s) => s.getSelectedContact())
+  const selectedContactFromStore = useChatStore((s) => s.getSelectedContact())
+  const selectedContact = contactOverride ?? selectedContactFromStore
+  const activeContactId =
+    contactOverride?.type === "curator"
+      ? contactOverride.curator?.id ?? null
+      : contactOverride?.type === "employee"
+        ? contactOverride.employee?.id ?? null
+        : contactOverride?.type === "group"
+          ? contactOverride.group?.id ?? null
+          : selectedContactId
+  const activeConversationId =
+    selectedConversationIdOverride ?? selectedConversationId
   const { createCuratorConversation, isPending: isCreatingCurator } =
     useCreateCuratorConversation()
 
   const { data: conversations = [], isPending: conversationsPending } =
-    useConversationsQuery(selectedContactId, selectedContact)
+    useConversationsQuery(activeContactId, selectedContact)
 
   return (
     <div
@@ -112,7 +135,9 @@ export function ConversationList({
           disabled={isCreatingCurator}
           onClick={() => {
             if (selectedContact?.type === "curator") {
-              void createCuratorConversation(selectedContact).then(() => {
+              void createCuratorConversation(selectedContact, undefined, {
+                selectScope: createConversationSelectScope,
+              }).then(() => {
                 onSelectConversation?.()
               })
               return
@@ -128,7 +153,7 @@ export function ConversationList({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-0.5 p-2">
-          {selectedContactId && conversationsPending && (
+          {activeContactId && conversationsPending && (
             <div className="py-6 text-center text-xs text-muted-foreground">
               加载会话…
             </div>
@@ -137,14 +162,21 @@ export function ConversationList({
             <ConversationItem
               key={conversation.id}
               conversation={conversation}
-              isSelected={selectedConversationId === conversation.id}
+              isSelected={String(activeConversationId) === String(conversation.id)}
               onClick={() => {
-                selectConversationById(conversation.id)
+                if (onSelectConversationId) {
+                  onSelectConversationId(conversation.id)
+                } else {
+                  selectConversationById(conversation.id)
+                }
+                if (activeContactId) {
+                  void touchRecentContactById(activeContactId)
+                }
                 onSelectConversation?.()
               }}
             />
           ))}
-          {selectedContactId &&
+          {activeContactId &&
             !conversationsPending &&
             conversations.length === 0 && (
               <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">

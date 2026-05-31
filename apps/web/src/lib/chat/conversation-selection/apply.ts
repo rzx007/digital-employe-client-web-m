@@ -17,6 +17,27 @@ export function selectConversationById(conversationId: string | number) {
   state.setDraftConversation(false)
 }
 
+/** 工作台右侧总管面板选中会话（不影响聊天 Tab 当前联系人/会话） */
+export function selectWorkbenchCuratorConversation(
+  conversationId: string | number
+) {
+  useChatStore.getState().setWorkbenchCuratorConversationId(conversationId)
+}
+
+/** 选中联系人的指定会话，并更新最近消息 */
+export function selectConversationForContact(
+  contactId: string,
+  conversationId: string | number,
+  options?: { touch?: boolean }
+) {
+  useChatStore
+    .getState()
+    .selectConversation(String(contactId), String(conversationId))
+  if (options?.touch !== false) {
+    void touchRecentContactById(contactId)
+  }
+}
+
 export function switchToContact(
   contactId: string,
   options?: { touch?: boolean }

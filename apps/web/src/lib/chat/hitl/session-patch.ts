@@ -84,6 +84,7 @@ export function patchAssistantWithInterruptParts(
   const next = [...prev]
   next[index] = {
     ...target,
+    ...(dbMessageId != null ? { id: dbMessageId } : {}),
     parts:
       newParts.length > 0 ? [...target.parts, ...newParts] : target.parts,
     metadata: nextMeta,

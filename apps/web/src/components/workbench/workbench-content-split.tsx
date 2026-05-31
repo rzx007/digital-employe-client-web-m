@@ -17,9 +17,9 @@ import { cn } from "@workspace/ui/lib/utils"
 import { ArtifactPanel } from "@/components/artifact"
 import { CuratorView } from "@/components/chat/curator/curator-view"
 import {
-  conversationExistsInList,
-  selectConversationById,
+  selectWorkbenchCuratorConversation,
 } from "@/lib/chat/conversation-selection"
+import { ensureCuratorConversationAndSelect } from "@/lib/chat/curator-conversation-actions"
 import { resolveWorkbenchCuratorPanel } from "./resolve-workbench-curator-panel"
 import {
   useConversationsQuery,
@@ -115,14 +115,18 @@ export function WorkbenchContentSplit({
     useCreateCuratorConversation()
 
   const contacts = useChatStore((s) => s.contacts)
-  const selectedContact = useChatStore((s) => s.getSelectedContact())
-  const selectedConversationId = useChatStore((s) => s.selectedConversationId)
+  const workbenchCuratorConversationId = useChatStore(
+    (s) => s.workbenchCuratorConversationId
+  )
+  const setWorkbenchCuratorConversationId = useChatStore(
+    (s) => s.setWorkbenchCuratorConversationId
+  )
   const { data: defaultCuratorConv } = useCuratorConversationQuery()
 
-  const curatorContact = useMemo(() => {
-    if (selectedContact?.type === "curator") return selectedContact
-    return contacts.find((c) => c.type === "curator")
-  }, [selectedContact, contacts])
+  const curatorContact = useMemo(
+    () => contacts.find((c) => c.type === "curator"),
+    [contacts]
+  )
 
   const curatorContactId = curatorContact?.curator?.id ?? null
   const defaultCuratorConversationId = defaultCuratorConv?.id ?? null
@@ -134,7 +138,7 @@ export function WorkbenchContentSplit({
     () =>
       resolveWorkbenchCuratorPanel({
         curatorContactId,
-        selectedConversationId,
+        workbenchCuratorConversationId,
         curatorConversations,
         curatorConversationsReady,
         defaultCuratorConversationId,
@@ -144,7 +148,7 @@ export function WorkbenchContentSplit({
       curatorConversations,
       curatorConversationsReady,
       defaultCuratorConversationId,
-      selectedConversationId,
+      workbenchCuratorConversationId,
     ]
   )
 
@@ -163,27 +167,29 @@ export function WorkbenchContentSplit({
     queryClient,
   ])
 
+  useEffect(() => {
+    if (!curatorContact || panel.mode !== "loading") return
+    if (isCreatingCurator) return
+    void ensureCuratorConversationAndSelect(queryClient, curatorContact, {
+      selectScope: "workbench",
+    }).catch(() => {})
+  }, [curatorContact, panel.mode, isCreatingCurator, queryClient])
+
   const activeConversationId = panel.conversationId ?? null
 
   useEffect(() => {
     if (panel.mode === "loading") return
     if (activeConversationId == null || !curatorConversationsReady) return
 
-    const { selectedConversationId: currentId } = useChatStore.getState()
+    const currentId = useChatStore.getState().workbenchCuratorConversationId
     if (String(currentId) === String(activeConversationId)) return
 
-    const currentIsValidCurator =
-      currentId != null &&
-      conversationExistsInList(curatorConversations, currentId)
-
-    if (!currentIsValidCurator) {
-      selectConversationById(activeConversationId)
-    }
+    setWorkbenchCuratorConversationId(activeConversationId)
   }, [
     activeConversationId,
-    curatorConversations,
     curatorConversationsReady,
     panel.mode,
+    setWorkbenchCuratorConversationId,
   ])
 
   const conversationTitle = useMemo(() => {
@@ -195,43 +201,31 @@ export function WorkbenchContentSplit({
     )
   }, [activeConversationId, curatorConversations])
 
-  const ensureCuratorContact = useCallback(() => {
-    if (!curatorContactId) return
-    const state = useChatStore.getState()
-    if (state.selectedContactId === curatorContactId) return
-
-    const preservedConversationId =
-      state.selectedConversationId != null &&
-      conversationExistsInList(curatorConversations, state.selectedConversationId)
-        ? state.selectedConversationId
-        : null
-
-    useChatStore.setState({
-      selectedContactId: curatorContactId,
-      selectedConversationId: preservedConversationId,
-      isDraftConversation: false,
-      draftSessionKey: state.draftSessionKey + 1,
-    })
-  }, [curatorContactId, curatorConversations])
-
   const handleNewCuratorConversation = useCallback(() => {
     if (!curatorContact || isCreatingCurator) return
-    ensureCuratorContact()
-    void createCuratorConversation(curatorContact).then(() => {
+    void createCuratorConversation(curatorContact, undefined, {
+      selectScope: "workbench",
+    }).then(() => {
       setCuratorSessionsOpen(false)
       setResourcesOpen(false)
     })
   }, [
     curatorContact,
     createCuratorConversation,
-    ensureCuratorContact,
     isCreatingCurator,
   ])
 
   const handleOpenCuratorConversations = useCallback(() => {
-    ensureCuratorContact()
     setCuratorSessionsOpen(true)
-  }, [ensureCuratorContact])
+  }, [])
+
+  const handleSelectWorkbenchCuratorConversation = useCallback(
+    (conversationId: string | number) => {
+      selectWorkbenchCuratorConversation(conversationId)
+      setCuratorSessionsOpen(false)
+    },
+    []
+  )
 
   const showResources = resourcesOpen && activeConversationId != null
 
@@ -400,6 +394,9 @@ export function WorkbenchContentSplit({
       <WorkbenchCuratorSessionsSheet
         open={curatorSessionsOpen}
         onOpenChange={setCuratorSessionsOpen}
+        curatorContact={curatorContact}
+        selectedConversationId={activeConversationId}
+        onSelectConversation={handleSelectWorkbenchCuratorConversation}
       />
     </div>
   )

@@ -31,6 +31,13 @@ function truncate(text: string, max = MAX_LABEL_LENGTH): string {
   return text.length > max ? text.slice(0, max - 1) + "..." : text
 }
 
+function shortMarketSkillSlug(slug: unknown): string | null {
+  if (typeof slug !== "string" || !slug.trim()) return null
+  const parts = slug.trim().split("-")
+  const tail = parts.slice(-3).join("-")
+  return truncate(tail || slug.trim(), 36)
+}
+
 function extractScriptBasename(command: string): string | null {
   const match = command.match(/([^\s/\\]+\.(?:py|sh|js|ts))\b/)
   return match ? match[1] : null
@@ -79,6 +86,41 @@ export function summarizeToolCall(options: {
   }
 
   if (isBusinessTool(toolName)) {
+    if (toolName === "get_market_skill_detail") {
+      const short = shortMarketSkillSlug(input?.skill_slug)
+      return {
+        toolName,
+        label: short ? `预览技能 ${short}` : display.label,
+        icon: display.icon,
+      }
+    }
+    if (toolName === "get_workspace_skill_detail") {
+      const name =
+        typeof input?.skill_name === "string" ? input.skill_name.trim() : ""
+      const lid = input?.local_id
+      const label = name
+        ? `预览技能 ${truncate(name, 20)}`
+        : typeof lid === "number"
+          ? `预览技能 #${lid}`
+          : display.label
+      return { toolName, label, icon: display.icon }
+    }
+    if (toolName === "install_market_skill") {
+      const short = shortMarketSkillSlug(input?.skill_slug)
+      return {
+        toolName,
+        label: short ? `安装技能 ${short}` : display.label,
+        icon: display.icon,
+      }
+    }
+    if (toolName === "search_market_skills") {
+      const q = input?.query
+      const label =
+        typeof q === "string" && q.trim()
+          ? `搜索技能「${truncate(q.trim(), 24)}」`
+          : display.label
+      return { toolName, label, icon: display.icon }
+    }
     return { toolName, label: display.label, icon: display.icon }
   }
 

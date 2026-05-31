@@ -102,7 +102,6 @@ async function createWindow() {
 
   if (is.dev) {
     win.loadURL(VITE_DEV_SERVER_URL as string)
-    win.webContents.openDevTools()
   } else {
     win.loadFile(paths.indexHtml)
   }

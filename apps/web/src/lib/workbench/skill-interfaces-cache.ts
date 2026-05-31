@@ -6,6 +6,25 @@ const STORAGE_PREFIX = "workbench-skill-ifaces-v1:"
 /** 内存缓存，同一会话内读写最快 */
 const memory = new Map<string, QueryInterface[]>()
 
+function readStorage(cacheKey: string): QueryInterface[] | null {
+  if (typeof localStorage === "undefined") return null
+  try {
+    const raw = localStorage.getItem(storageKey(cacheKey))
+    if (!raw) return null
+    return JSON.parse(raw) as QueryInterface[]
+  } catch {
+    return null
+  }
+}
+
+function writeStorage(cacheKey: string, interfaces: QueryInterface[]): void {
+  try {
+    localStorage.setItem(storageKey(cacheKey), JSON.stringify(interfaces))
+  } catch {
+    /* 配额或隐私模式：仅保留内存 */
+  }
+}
+
 function storageKey(cacheKey: string): string {
   return `${STORAGE_PREFIX}${cacheKey}`
 }
@@ -30,16 +49,12 @@ export function getCachedParsedInterfaces(
 ): QueryInterface[] | null {
   const m = memory.get(cacheKey)
   if (m) return m
-  if (typeof sessionStorage === "undefined") return null
-  try {
-    const raw = sessionStorage.getItem(storageKey(cacheKey))
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as QueryInterface[]
-    memory.set(cacheKey, parsed)
-    return parsed
-  } catch {
-    return null
+  const stored = readStorage(cacheKey)
+  if (stored) {
+    memory.set(cacheKey, stored)
+    return stored
   }
+  return null
 }
 
 export function setCachedParsedInterfaces(
@@ -47,17 +62,13 @@ export function setCachedParsedInterfaces(
   interfaces: QueryInterface[]
 ): void {
   memory.set(cacheKey, interfaces)
-  try {
-    sessionStorage.setItem(storageKey(cacheKey), JSON.stringify(interfaces))
-  } catch {
-    /* 配额或隐私模式：仅保留内存 */
-  }
+  writeStorage(cacheKey, interfaces)
 }
 
 export function invalidateSkillInterfacesCache(cacheKey: string): void {
   memory.delete(cacheKey)
   try {
-    sessionStorage.removeItem(storageKey(cacheKey))
+    localStorage.removeItem(storageKey(cacheKey))
   } catch {
     /* ignore */
   }

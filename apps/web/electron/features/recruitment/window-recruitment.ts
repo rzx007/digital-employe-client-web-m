@@ -1,4 +1,3 @@
-import { is } from "@electron-toolkit/utils"
 import { getWindowManager } from "../../core/services/window-registry"
 import { pinBrowserWindowTitle } from "../../main/pin-window-title"
 
@@ -6,7 +5,7 @@ export function createRecruitmentWindow(): void {
   const wm = getWindowManager()
   if (wm.focus("recruitment")) return
 
-  const win = wm.createWindow({
+  wm.createWindow({
     id: "recruitment",
     route: "/recruitment",
     overrides: {
@@ -18,7 +17,6 @@ export function createRecruitmentWindow(): void {
     },
     onCreated: (w) => {
       pinBrowserWindowTitle(w, "招聘员工")
-      if (is.dev) w.webContents.openDevTools()
     },
   })
 }

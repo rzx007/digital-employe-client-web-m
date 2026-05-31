@@ -35,6 +35,7 @@ from src.service.agent.prompts import (
 )
 from src.service.agent.orchestrator.prompts import (
     ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE,
+    build_delegation_execution_context,
     build_employee_capability_context,
 )
 from src.service.agent.orchestrator.runtime import set_context
@@ -47,6 +48,7 @@ from src.service.agent.orchestrator.employee_tools import (
     delete_employee,
     get_employee,
     list_workspace_skills,
+    get_workspace_skill_detail,
     update_employee,
 )
 from src.service.agent.orchestrator.tools import (
@@ -156,9 +158,25 @@ def get_orchestrator_agent(
 
     employee_context = build_employee_capability_context(db, workspace_id)
     available_skills_str = ", ".join(available_skills) if available_skills else "无"
+    if conversation_id:
+        from src.service.orchestrator_execution_summary import (
+            backfill_missing_orchestrator_summaries,
+        )
+
+        backfill_missing_orchestrator_summaries(
+            db, workspace_id, conversation_id, limit=10
+        )
+    delegation_context = (
+        build_delegation_execution_context(
+            db, workspace_id, conversation_id, output_max_chars=600
+        )
+        if conversation_id
+        else "（无会话上下文）"
+    )
     orchestrator_prompt = ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE.format(
         current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         employee_table=employee_context,
+        delegation_executions=delegation_context,
         available_skills=available_skills_str,
     )
     fs_section = build_filesystem_prompt_section(
@@ -206,6 +224,7 @@ def get_orchestrator_agent(
             *orchestrator_tools,
             list_workspace_employees,
             list_workspace_skills,
+            get_workspace_skill_detail,
             get_employee,
             update_employee,
             delete_employee,

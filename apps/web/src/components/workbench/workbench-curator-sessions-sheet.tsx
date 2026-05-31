@@ -4,13 +4,20 @@ import {
 } from "@workspace/ui/components/sheet"
 
 import { ConversationList } from "@/components/chat/conversations/conversation-list"
+import type { Contact } from "@/types/chat"
 
 export function WorkbenchCuratorSessionsSheet({
   open,
   onOpenChange,
+  curatorContact,
+  selectedConversationId,
+  onSelectConversation,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  curatorContact?: Contact
+  selectedConversationId?: string | number | null
+  onSelectConversation?: (conversationId: string | number) => void
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -21,6 +28,10 @@ export function WorkbenchCuratorSessionsSheet({
       >
         <ConversationList
           className="h-full min-h-0"
+          contactOverride={curatorContact}
+          selectedConversationIdOverride={selectedConversationId}
+          onSelectConversationId={onSelectConversation}
+          createConversationSelectScope="workbench"
           onClose={() => onOpenChange(false)}
           onSelectConversation={() => onOpenChange(false)}
         />

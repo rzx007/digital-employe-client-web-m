@@ -80,25 +80,38 @@ def create_app() -> FastAPI:
         from src.service.stream_registry import registry as _stream_registry
         from src.service.workspace_events import WorkspaceEventBus
 
-        def _on_task_finalized(conversation_id: int, stream_state: str, task_id: int, workspace_id: int) -> None:
+        def _on_task_finalized(
+            conversation_id: int,
+            stream_state: str,
+            task_id: int,
+            workspace_id: int,
+            *,
+            orchestrator_conversation_id: int | None = None,
+            summary_message_id: int | None = None,
+            execution_log_id: int | None = None,
+        ) -> None:
+            base = {
+                "task_id": task_id,
+                "conversation_id": conversation_id,
+                "execution_log_id": execution_log_id,
+                "orchestrator_conversation_id": orchestrator_conversation_id,
+                "summary_message_id": summary_message_id,
+            }
             if stream_state == "completed":
                 WorkspaceEventBus.push(workspace_id, {
                     "type": "task_completed",
-                    "task_id": task_id,
-                    "conversation_id": conversation_id,
+                    **base,
                 })
             elif stream_state == "cancelled":
                 WorkspaceEventBus.push(workspace_id, {
                     "type": "task_failed",
-                    "task_id": task_id,
-                    "conversation_id": conversation_id,
+                    **base,
                     "error": "任务已取消",
                 })
             else:
                 WorkspaceEventBus.push(workspace_id, {
                     "type": "task_failed",
-                    "task_id": task_id,
-                    "conversation_id": conversation_id,
+                    **base,
                 })
 
         _stream_registry.on_task_finalized = _on_task_finalized

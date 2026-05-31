@@ -116,7 +116,11 @@ export function ToolDetailPanel({
             contentClassName="p-0"
           >
             <div className="relative">
-              <CodeHighlight code={previewContent ?? ""} language={detectedLang} />
+              <CodeHighlight
+                code={previewContent ?? ""}
+                language={detectedLang}
+                streaming={isInputStreaming || isPreliminaryOutput}
+              />
               {shouldTruncatePreview && (
                 <div
                   aria-hidden

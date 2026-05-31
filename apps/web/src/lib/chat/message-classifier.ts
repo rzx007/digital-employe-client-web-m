@@ -11,6 +11,46 @@ function stripErrorMarker(text: string): string {
   return text.slice(ERROR_MARKER.length).trim()
 }
 
+/** 将常见英文网络/工具错误转为中文展示 */
+export function localizeErrorMessage(text: string): string {
+  const trimmed = text.trim()
+  if (!trimmed) return trimmed
+  const lower = trimmed.toLowerCase()
+  if (lower.includes("tool result too large")) {
+    return (
+      "工具返回内容过大，已写入内部缓存。请缩小查询范围" +
+      "（例如只查单个员工），或直接用 update_employee 传入 skill_ids。"
+    )
+  }
+  if (lower.includes("connection error")) {
+    return "无法连接当前语言模型，请检查设置中的 API Key、Base URL 与模型名称。"
+  }
+  if (lower.includes("server disconnected without sending a response")) {
+    return "远程服务未响应（连接已断开），请稍后重试。"
+  }
+  if (lower.includes("timed out") || lower.includes("timeout")) {
+    return "远程服务请求超时，请稍后重试。"
+  }
+  if (lower.includes("connection refused") || lower.includes("connect error")) {
+    return "无法连接远程服务，请检查网络与模型配置。"
+  }
+  if (lower.includes("network error") || lower.includes("failed to fetch")) {
+    return "网络请求失败，请检查网络连接。"
+  }
+  if (trimmed.startsWith("错误：") || trimmed.startsWith("错误:")) {
+    return trimmed
+  }
+  if (trimmed.startsWith("无法连接当前语言模型")) {
+    return trimmed
+  }
+  return trimmed
+}
+
+export function formatErrorDisplayText(text: string): string {
+  const raw = isErrorText(text) ? stripErrorMarker(text) : text
+  return localizeErrorMessage(raw)
+}
+
 import {
   isSkillToolCall,
   extractSkillName,
@@ -226,7 +266,7 @@ export function classifyMessageParts(
                 {
                   kind: "error",
                   key: `${message.id}:error:0`,
-                  text: stripErrorMarker(c),
+                  text: formatErrorDisplayText(c),
                 },
               ]
             }
@@ -252,7 +292,7 @@ export function classifyMessageParts(
             {
               kind: "error",
               key: `${message.id}:error:0`,
-              text: stripErrorMarker(c),
+              text: formatErrorDisplayText(c),
             },
           ]
         }
@@ -380,7 +420,7 @@ export function classifyMessageParts(
               blocks.push({
                 kind: "error",
                 key: `${message.id}:error:flush-${i}`,
-                text: stripErrorMarker(respCleaned),
+                text: formatErrorDisplayText(respCleaned),
               })
             } else {
               blocks.push({
@@ -456,7 +496,7 @@ export function classifyMessageParts(
       blocks.push({
         kind: "error",
         key: `${message.id}:error:final`,
-        text: stripErrorMarker(cleaned),
+        text: formatErrorDisplayText(cleaned),
       })
     } else {
       blocks.push({

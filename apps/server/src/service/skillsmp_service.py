@@ -46,6 +46,27 @@ class SkillsMpError(Exception):
     """SkillsMP 或 GitHub 拉取失败。"""
 
 
+def humanize_http_error(exc: Exception, *, context: str = "远程技能服务") -> str:
+    """将 httpx/网络异常转为用户可读的中文说明。"""
+    msg = str(exc).strip()
+    lower = msg.lower()
+    if "server disconnected without sending a response" in lower:
+        return f"{context}未响应（连接已断开），请稍后重试。"
+    if "timed out" in lower or "timeout" in lower:
+        return f"{context}请求超时，请稍后重试。"
+    if "connection refused" in lower:
+        return f"无法连接{context}，请检查网络。"
+    if "connect" in lower and ("failed" in lower or "error" in lower):
+        return f"无法连接{context}，请检查网络后重试。"
+    if "403" in lower or "forbidden" in lower:
+        return f"{context}拒绝访问（可能被限流）。"
+    if "429" in lower or "rate limit" in lower:
+        return f"{context}请求过于频繁，请稍后再试。"
+    if "ssl" in lower or "certificate" in lower:
+        return f"{context} TLS 证书校验失败。"
+    return f"{context}网络异常：{msg}"
+
+
 class SkillsMpService:
     @staticmethod
     def _headers() -> dict[str, str]:
@@ -141,7 +162,9 @@ class SkillsMpService:
             with httpx.Client(timeout=30.0, follow_redirects=True) as client:
                 resp = client.get(SEARCH_URL, params=params, headers=SkillsMpService._headers())
         except httpx.HTTPError as exc:
-            raise SkillsMpError(f"SkillsMP 搜索请求失败: {exc}") from exc
+            raise SkillsMpError(
+                humanize_http_error(exc, context="SkillsMP 搜索")
+            ) from exc
 
         try:
             payload = resp.json()
@@ -209,7 +232,9 @@ class SkillsMpService:
                 call_resp.raise_for_status()
                 envelope = call_resp.json()
         except httpx.HTTPError as exc:
-            raise SkillsMpError(f"SkillsMP 技能详情请求失败: {exc}") from exc
+            raise SkillsMpError(
+                humanize_http_error(exc, context="SkillsMP 技能详情")
+            ) from exc
         except json.JSONDecodeError as exc:
             raise SkillsMpError("SkillsMP MCP 返回非 JSON 响应。") from exc
 

@@ -65,7 +65,7 @@ const CHART_TYPES: { value: ChartDisplayType; label: string; icon: string }[] =
 
 type WorkbenchSelectSkill = MetadataSkill & {
   displayNameZh?: string | null
-  workbenchSource?: "remote" | "local"
+  workbenchSource?: "local" | "builtin"
   workbenchSkillLabel?: string
   workbenchRowKey?: string
 }
@@ -78,11 +78,17 @@ function skillTitleZh(s: MetadataSkill): string {
   return s.skillName
 }
 
-function workbenchSourceFromSkill(s: MetadataSkill): "remote" | "local" {
+function workbenchSourceFromSkill(s: MetadataSkill): "local" | "builtin" {
   const r = s as WorkbenchSelectSkill
-  if (r.workbenchSource) return r.workbenchSource
+  if (r.workbenchSource === "builtin") return "builtin"
+  if (r.workbenchSource === "local") return "local"
+  if (s.directoryName?.includes("内置")) return "builtin"
   if (s.directoryName?.includes("本地")) return "local"
-  return "remote"
+  return "local"
+}
+
+function skillSourceLabel(src: "local" | "builtin"): string {
+  return src === "builtin" ? "内置技能" : "本地技能"
 }
 
 function SkillSelectRow({ skill }: { skill: MetadataSkill }) {
@@ -99,9 +105,9 @@ function SkillSelectRow({ skill }: { skill: MetadataSkill }) {
       <span
         className={cn(
           "size-1.5 shrink-0 rounded-full ring-1 ring-background",
-          src === "local" ? "bg-amber-500" : "bg-sky-500"
+          src === "builtin" ? "bg-amber-500" : "bg-sky-500"
         )}
-        title={src === "local" ? "本地技能" : "远程技能"}
+        title={skillSourceLabel(src)}
         aria-hidden
       />
     </span>
@@ -179,6 +185,7 @@ export function AddBlockDialog({
           return
         }
       }
+      setInterfaces([])
       parseAbortRef.current?.abort()
       const ac = new AbortController()
       parseAbortRef.current = ac
@@ -239,7 +246,6 @@ export function AddBlockDialog({
   React.useEffect(() => {
     if (!open) return
     setSelectedIds(new Set())
-    setInterfaces([])
     setBaseUrlOverrides({})
     setChartTypeSelections({})
     setHeadersJsonOverrides({})
@@ -249,27 +255,6 @@ export function AddBlockDialog({
     if (!open) return
     void loadInterfaces(false)
   }, [open, cacheKey, loadInterfaces])
-
-  /** 切换所选技能时强制重新解析（仅当前选中技能） */
-  const skipSelectReparse = React.useRef(true)
-  React.useEffect(() => {
-    if (!open) {
-      skipSelectReparse.current = true
-      return
-    }
-    if (skills.length === 0 || !selectedSkillKey) return
-    if (skipSelectReparse.current) {
-      skipSelectReparse.current = false
-      return
-    }
-    setSelectedIds(new Set())
-    setBaseUrlOverrides({})
-    setChartTypeSelections({})
-    setHeadersJsonOverrides({})
-    void loadInterfaces(true)
-    // Intentionally omit skills.length: list updates from API should refresh via cacheKey, not this branch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- selection-change reparsing only
-  }, [open, selectedSkillKey, loadInterfaces])
 
   const handleToggle = (id: string) => {
     const newSelected = new Set(selectedIds)
@@ -370,7 +355,7 @@ export function AddBlockDialog({
                 添加数据模块
               </DialogTitle>
               <DialogDescription className="text-xs leading-relaxed">
-                下方列表为当前技能解析出的接口（技能来源：工作空间全部远程技能与本地技能，与是否绑定数字员工无关）；切换上方技能将重新解析；勾选后可配置地址与图表并预览（列表已缓存，可点刷新）
+                下方列表为当前技能解析出的接口（技能来源：工作空间本地技能与内置技能，不含远程平台技能）；切换技能优先读缓存，不会重复消耗 Token；需重新解析时点右上角「刷新」；勾选后可配置地址与图表并预览
               </DialogDescription>
             </div>
             <Button
@@ -380,7 +365,7 @@ export function AddBlockDialog({
               className="shrink-0 gap-1.5 text-xs"
               disabled={isLoading}
               onClick={() => void loadInterfaces(true)}
-              title="重新从技能解析接口列表"
+              title="忽略缓存，重新调用 AI 解析当前技能的接口列表"
             >
               <IconRefresh
                 className={cn("size-3.5", isLoading && "animate-spin")}
@@ -392,7 +377,7 @@ export function AddBlockDialog({
 
         <div className="shrink-0 border-b border-border/60 bg-muted/10 px-6 py-3">
           <label className="mb-1.5 block text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-            选择技能（切换后将重新解析该技能）
+            选择技能
           </label>
           <Select
             value={

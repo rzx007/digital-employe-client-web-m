@@ -8,7 +8,7 @@ import {
 } from "@/lib/chat/pending-resources/sync-from-composer"
 import type { UIMessage } from "ai"
 
-const STREAMING_FLUSH_MS = 400
+const STREAMING_FLUSH_MS = 800
 
 type TrackedSnapshot = {
   path: string

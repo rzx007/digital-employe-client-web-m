@@ -48,6 +48,7 @@ function DestructiveDeleteConfirmCardInner({
   const isPending =
     !resolved && !isAborted && state === "input-available"
   const isConfirmed = !isAborted && state === "output-available"
+  const canApprove = isValidApproveMessageId(messageId)
 
   const submitDecisions = async (
     decisions: HitlDecision[],
@@ -159,6 +160,11 @@ function DestructiveDeleteConfirmCardInner({
 
       {isPending && (
         <>
+          {!canApprove && (
+            <p className="text-muted-foreground mt-2 text-[10px]">
+              等待消息同步，请稍候再确认…
+            </p>
+          )}
           <p className="text-muted-foreground mt-2 text-[10px]">
             确认后将立即执行，且无法撤销。
           </p>
@@ -167,7 +173,7 @@ function DestructiveDeleteConfirmCardInner({
               type="button"
               size="sm"
               className="h-7 text-xs"
-              disabled={submitting}
+              disabled={submitting || !canApprove}
               onClick={() => submitDecisions([{ type: "approve" }])}
             >
               {submitting ? "提交中..." : "确认删除"}
@@ -177,7 +183,7 @@ function DestructiveDeleteConfirmCardInner({
               size="sm"
               variant="ghost"
               className="h-7 text-xs"
-              disabled={submitting}
+              disabled={submitting || !canApprove}
               onClick={() =>
                 submitDecisions([
                   {
@@ -193,7 +199,7 @@ function DestructiveDeleteConfirmCardInner({
           </div>
           <button
             type="button"
-            disabled={submitting}
+            disabled={submitting || !canApprove}
             className="text-muted-foreground mt-2 text-[11px] underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
             onClick={() => submitDecisions([{ type: "approve" }], true)}
           >

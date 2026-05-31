@@ -67,7 +67,7 @@ export function parsePlanGeneratedOutput(
 export function planRequiresManualConfirmation(
   output: PlanGeneratedOutput | null | undefined
 ): boolean {
-  return output?.requires_confirmation === true
+  return output != null
 }
 
 export function buildPlanManualConfirmFeedback(planId: number, summary?: string) {
