@@ -52,3 +52,16 @@ export function collectPendingToolSnapshots(
 
   return snapshots
 }
+
+/** 流式阶段只需扫描最后一条 assistant，避免每条 delta 遍历全历史 */
+export function collectPendingToolSnapshotsForActiveTurn(
+  messages: UIMessage[]
+): PendingToolSnapshot[] {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.role === "assistant") {
+      return collectPendingToolSnapshots([message])
+    }
+  }
+  return []
+}

@@ -25,11 +25,21 @@ export function isHtmlPath(path: string | null | undefined): boolean {
   return ext === "html" || ext === "htm"
 }
 
+export function isPptxPath(path: string | null | undefined): boolean {
+  return getFileExtension(path) === "pptx"
+}
+
+export function isLegacyPptPath(path: string | null | undefined): boolean {
+  return getFileExtension(path) === "ppt"
+}
+
 export type ArtifactRendererKind =
   | "markdown"
   | "html"
   | "sheet"
   | "image"
+  | "pptx"
+  | "legacy-ppt"
   | "document"
   | "code"
 
@@ -39,6 +49,8 @@ export function resolveArtifactRendererKind(
 ): ArtifactRendererKind {
   if (isMarkdownPath(filePath)) return "markdown"
   if (isHtmlPath(filePath)) return "html"
+  if (isPptxPath(filePath)) return "pptx"
+  if (isLegacyPptPath(filePath)) return "legacy-ppt"
   if (artifact.type === "sheet") return "sheet"
   if (artifact.type === "image") return "image"
   if (artifact.type === "document") return "document"

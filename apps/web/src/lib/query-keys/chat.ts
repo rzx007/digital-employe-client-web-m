@@ -15,6 +15,10 @@ export const chatKeys = {
     [...chatKeys.all, "resources", conversationId] as const,
   resourceContent: (conversationId: string, path: string) =>
     [...chatKeys.all, "resource-content", conversationId, path] as const,
+  resourceBlob: (conversationId: string, path: string) =>
+    [...chatKeys.all, "resource-blob", conversationId, path] as const,
+  resourcePptxPreview: (conversationId: string, path: string) =>
+    [...chatKeys.all, "resource-pptx-preview", conversationId, path] as const,
   curator: () => [...chatKeys.all, "curator"] as const,
   curatorExecutions: (conversationId: string) =>
     [...chatKeys.all, "curator-executions", conversationId] as const,

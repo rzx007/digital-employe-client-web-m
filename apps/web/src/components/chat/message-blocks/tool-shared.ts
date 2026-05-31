@@ -26,6 +26,51 @@ export const LARGE_FILE_PREVIEW_CHARS = 500
 /** 流式 write_file/edit_file 时是否自动打开资源管理器（大文件）；暂关以减轻卡顿 */
 export const AUTO_OPEN_ARTIFACT_ON_STREAM = false
 
+const FILE_WRITE_TOOLS = new Set(["write_file", "edit_file"])
+
+export function formatCompactCharCount(chars: number): string {
+  if (chars < 1024) return `${chars} 字`
+  if (chars < 1024 * 1024) return `${(chars / 1024).toFixed(1)} KB`
+  return `${(chars / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/** 流式写文件时在工具行显示的轻量进度文案 */
+export function getWriteFileStreamProgressLabel(
+  input: unknown,
+  toolName: string,
+  state: string,
+  isRunning: boolean
+): string | null {
+  if (!FILE_WRITE_TOOLS.has(toolName)) return null
+  if (state === "input-streaming") {
+    const len = getContentLength(input, toolName)
+    if (len > 0) return formatCompactCharCount(len)
+    return getFilePathFromToolInput(input, toolName) ? "接收中…" : "准备写入…"
+  }
+  if (isRunning && state === "input-available") {
+    const len = getContentLength(input, toolName)
+    if (len > LARGE_FILE_PREVIEW_CHARS) {
+      return `写入 ${formatCompactCharCount(len)}…`
+    }
+  }
+  return null
+}
+
+export function isFileWriteLightweightPhase(
+  toolName: string,
+  state: string,
+  isRunning: boolean,
+  contentLength: number
+): boolean {
+  if (!FILE_WRITE_TOOLS.has(toolName)) return false
+  if (state === "input-streaming") return true
+  return (
+    isRunning &&
+    state === "input-available" &&
+    contentLength > LARGE_FILE_PREVIEW_CHARS
+  )
+}
+
 export function getFilePathFromToolInput(
   input: unknown,
   toolName: string

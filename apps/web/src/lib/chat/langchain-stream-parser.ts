@@ -36,7 +36,14 @@ interface PendingToolCall {
   inputText: string
   sentInputStart: boolean
   sentInputAvailable: boolean
+  /** 已下发仅含 file_path 的早期 input-available */
+  sentEarlyPathInput: boolean
+  /** 上次尝试 JSON.parse 时的 inputText 长度 */
+  lastParseAttemptLength: number
 }
+
+const FILE_TOOL_NAMES = new Set(["write_file", "edit_file"])
+const PARSE_RETRY_MIN_CHARS = 2048
 
 type ParsePhase = "idle" | "text" | "tool"
 
@@ -192,6 +199,27 @@ function tryParseToolInput(inputText: string) {
   }
 }
 
+/** write_file/edit_file：JSON 未闭合时尽早提取 file_path，便于 UI 显示文件名 */
+function tryExtractEarlyFilePathInput(
+  inputText: string
+): { file_path: string } | null {
+  const match = inputText.match(/"file_path"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+  if (!match?.[1]) return null
+  try {
+    const file_path = JSON.parse(`"${match[1]}"`) as string
+    return file_path ? { file_path } : null
+  } catch {
+    return null
+  }
+}
+
+function shouldRetryToolInputParse(pending: PendingToolCall): boolean {
+  const len = pending.inputText.length
+  if (len === 0) return false
+  if (pending.inputText.endsWith("}")) return true
+  return len - pending.lastParseAttemptLength >= PARSE_RETRY_MIN_CHARS
+}
+
 /** resume 回放 ToolMessage 缺 name 时，仍须登记 invocation 供 useChat 消费 output */
 const FALLBACK_TOOL_NAME_FOR_OUTPUT = "tool"
 
@@ -268,18 +296,19 @@ function appendToolInputDelta(
   result: UIMessageChunk[]
 ) {
   emitToolInputStartIfReady(pending, state, result)
-  if (!pending.sentInputStart || !pending.toolCallId || !pending.toolName) {
-    pending.inputText += inputTextDelta
-    emitToolInputStartIfReady(pending, state, result)
-    if (!pending.sentInputStart) return
-  }
 
-  if (!pending.toolCallId || !pending.toolName) return
+  pending.inputText += inputTextDelta
+
+  if (!pending.sentInputStart || !pending.toolCallId || !pending.toolName) {
+    emitToolInputStartIfReady(pending, state, result)
+    if (!pending.sentInputStart || !pending.toolCallId || !pending.toolName) {
+      return
+    }
+  }
 
   const toolCallId = pending.toolCallId
   const toolName = pending.toolName
-
-  pending.inputText += inputTextDelta
+  if (!toolCallId || !toolName) return
 
   result.push({
     type: "tool-input-delta",
@@ -287,17 +316,42 @@ function appendToolInputDelta(
     inputTextDelta,
   })
 
-  const parsedInput = tryParseToolInput(pending.inputText)
-  if (!pending.sentInputAvailable && parsedInput !== null) {
-    result.push({
-      type: "tool-input-available",
-      toolCallId,
-      toolName,
-      input: parsedInput,
-    })
-    pending.sentInputAvailable = true
-    state.activeToolCallId = toolCallId
+  if (
+    !pending.sentEarlyPathInput &&
+    FILE_TOOL_NAMES.has(toolName)
+  ) {
+    const earlyPath = tryExtractEarlyFilePathInput(pending.inputText)
+    if (earlyPath) {
+      result.push({
+        type: "tool-input-available",
+        toolCallId,
+        toolName,
+        input: earlyPath,
+      })
+      pending.sentEarlyPathInput = true
+      pending.sentInputAvailable = true
+      state.activeToolCallId = toolCallId
+    }
   }
+
+  if (!shouldRetryToolInputParse(pending)) {
+    return
+  }
+  pending.lastParseAttemptLength = pending.inputText.length
+
+  const parsedInput = tryParseToolInput(pending.inputText)
+  if (parsedInput === null) {
+    return
+  }
+
+  result.push({
+    type: "tool-input-available",
+    toolCallId,
+    toolName,
+    input: parsedInput,
+  })
+  pending.sentInputAvailable = true
+  state.activeToolCallId = toolCallId
 }
 
 /**
@@ -417,6 +471,8 @@ function getOrCreatePendingToolCall(options: {
     inputText: "",
     sentInputStart: false,
     sentInputAvailable: false,
+    sentEarlyPathInput: false,
+    lastParseAttemptLength: 0,
   }
 
   state.pendingToolCalls.set(key, pending)

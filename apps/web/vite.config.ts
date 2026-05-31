@@ -101,6 +101,15 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
         "@": path.resolve(__dirname, "./src"),
       },
     },
+    optimizeDeps: {
+      include: [
+        "@kandiforge/pptx-renderer",
+        "@mui/material",
+        "@mui/icons-material",
+        "@emotion/react",
+        "@emotion/styled",
+      ],
+    },
     server: {
       port: 3399,
       host: "0.0.0.0",

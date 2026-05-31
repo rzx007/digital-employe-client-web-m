@@ -14,6 +14,7 @@ import {
 } from "@workspace/ui/components/collapsible"
 import { ToolTypeIcon } from "./tool-type-icon"
 import { ToolDetailPanel, toolDetailHasContent } from "./tool-detail-panel"
+import { getWriteFileStreamProgressLabel, getContentLength, isFileWriteLightweightPhase } from "./tool-shared"
 
 import type { ToolCallSummary } from "@/lib/chat/tool-summarizer"
 
@@ -53,16 +54,46 @@ function ToolActionRowInner({
   const isPreliminaryOutput =
     state === "output-available" && preliminary === true
 
-  const hasContent = toolDetailHasContent(input, summary.toolName, resultText)
+  const isFileWriteTool =
+    summary.toolName === "write_file" || summary.toolName === "edit_file"
+  const fileWriteContentLength = isFileWriteTool
+    ? getContentLength(input, summary.toolName)
+    : 0
+  const useLightweightFileWrite = isFileWriteLightweightPhase(
+    summary.toolName,
+    state,
+    isRunning,
+    fileWriteContentLength
+  )
+  const skipAutoExpandOnStream = useLightweightFileWrite && isRunning
+
+  const hasContent = toolDetailHasContent(
+    input,
+    summary.toolName,
+    resultText,
+    state,
+    isRunning
+  )
+
+  const streamProgressLabel = getWriteFileStreamProgressLabel(
+    input,
+    summary.toolName,
+    state,
+    isRunning
+  )
+  const rowLabel = streamProgressLabel
+    ? `${summary.label} · ${streamProgressLabel}`
+    : summary.label
 
   const [isOpen, setIsOpen] = useState(false)
   const didAutoCollapse = useRef(false)
 
   useEffect(() => {
+    if (skipAutoExpandOnStream) return
     if (isStreaming && hasContent && !isOpen) {
       queueMicrotask(() => setIsOpen(true))
     }
-  }, [isStreaming, hasContent, isOpen])
+  }, [skipAutoExpandOnStream, isStreaming, hasContent, isOpen])
 
   useEffect(() => {
     if (isPreliminaryOutput && !isOpen) {
@@ -76,7 +107,10 @@ function ToolActionRowInner({
     queueMicrotask(() => setIsOpen(false))
   }, [shouldAutoCollapse])
 
-  const collapsibleOpen = isRunning || isPreliminaryOutput ? true : isOpen
+  const collapsibleOpen =
+    (isRunning || isPreliminaryOutput) && !skipAutoExpandOnStream
+      ? true
+      : isOpen
   const collapsibleToggle =
     isRunning || isPreliminaryOutput ? undefined : () => setIsOpen((v) => !v)
 
@@ -108,7 +142,7 @@ function ToolActionRowInner({
         />
         <span className="flex min-w-0 flex-1 items-center gap-1">
           <span className="truncate text-xs font-thin text-foreground/70">
-            {summary.label}
+            {rowLabel}
           </span>
           {hasContent &&
             !isRunning &&

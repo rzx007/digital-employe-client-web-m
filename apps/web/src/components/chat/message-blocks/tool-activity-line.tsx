@@ -14,6 +14,11 @@ import type { ComponentProps } from "react"
 import { useEffect, useRef, useState, memo } from "react"
 import type { ToolCallSummary } from "@/lib/chat/tool-summarizer"
 import { ToolDetailPanel, toolDetailHasContent } from "./tool-detail-panel"
+import {
+  getContentLength,
+  getWriteFileStreamProgressLabel,
+  isFileWriteLightweightPhase,
+} from "./tool-shared"
 import { ToolTypeIcon } from "./tool-type-icon"
 
 const stateIconMap: Record<string, typeof IconCircleCheck> = {
@@ -51,16 +56,42 @@ function ToolActivityLineInner({
   const isPreliminaryOutput =
     state === "output-available" && preliminary === true
 
-  const hasDetail = toolDetailHasContent(input, summary.toolName, resultText)
+  const fileWriteContentLength = getContentLength(input, summary.toolName)
+  const useLightweightFileWrite = isFileWriteLightweightPhase(
+    summary.toolName,
+    state,
+    isRunning,
+    fileWriteContentLength
+  )
+  const skipAutoExpandOnStream = useLightweightFileWrite && isRunning
+
+  const hasDetail = toolDetailHasContent(
+    input,
+    summary.toolName,
+    resultText,
+    state,
+    isRunning
+  )
+
+  const streamProgressLabel = getWriteFileStreamProgressLabel(
+    input,
+    summary.toolName,
+    state,
+    isRunning
+  )
+  const rowLabel = streamProgressLabel
+    ? `${summary.label} · ${streamProgressLabel}`
+    : summary.label
 
   const [isOpen, setIsOpen] = useState(false)
   const didAutoCollapse = useRef(false)
 
   useEffect(() => {
+    if (skipAutoExpandOnStream) return
     if (isStreaming && hasDetail && !isOpen) {
       queueMicrotask(() => setIsOpen(true))
     }
-  }, [isStreaming, hasDetail, isOpen])
+  }, [skipAutoExpandOnStream, isStreaming, hasDetail, isOpen])
 
   useEffect(() => {
     if (isPreliminaryOutput && hasDetail && !isOpen) {
@@ -74,7 +105,10 @@ function ToolActivityLineInner({
     queueMicrotask(() => setIsOpen(false))
   }, [shouldAutoCollapse])
 
-  const collapsibleOpen = isRunning || isPreliminaryOutput ? true : isOpen
+  const collapsibleOpen =
+    (isRunning || isPreliminaryOutput) && !skipAutoExpandOnStream
+      ? true
+      : isOpen
   const collapsibleToggle =
     isRunning || isPreliminaryOutput
       ? undefined
@@ -115,7 +149,7 @@ function ToolActivityLineInner({
           className="size-3.5 shrink-0 text-muted-foreground/70"
         />
         <span className="flex min-w-0 flex-1 items-center gap-0.5">
-          <span className="truncate text-foreground/70">{summary.label}</span>
+          <span className="truncate text-foreground/70">{rowLabel}</span>
           {hasDetail &&
             !isRunning &&
             (isOpen ? (

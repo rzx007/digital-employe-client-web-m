@@ -37,6 +37,40 @@ function mergeAdjacentTextDeltas(chunks: UIMessageChunk[]): UIMessageChunk[] {
   return out
 }
 
+/** 合并连续同 toolCallId 的 tool-input-delta（write_file 流式 args） */
+function mergeAdjacentToolInputDeltas(
+  chunks: UIMessageChunk[]
+): UIMessageChunk[] {
+  const out: UIMessageChunk[] = []
+  for (const chunk of chunks) {
+    if (chunk.type === "tool-input-delta" && out.length > 0) {
+      const last = out[out.length - 1]
+      if (last.type === "tool-input-delta") {
+        const prev = last as {
+          type: "tool-input-delta"
+          toolCallId: string
+          inputTextDelta: string
+        }
+        const cur = chunk as {
+          type: "tool-input-delta"
+          toolCallId: string
+          inputTextDelta: string
+        }
+        if (prev.toolCallId === cur.toolCallId) {
+          prev.inputTextDelta += cur.inputTextDelta
+          continue
+        }
+      }
+    }
+    out.push(chunk)
+  }
+  return out
+}
+
+function compactStreamChunks(chunks: UIMessageChunk[]): UIMessageChunk[] {
+  return mergeAdjacentToolInputDeltas(mergeAdjacentTextDeltas(chunks))
+}
+
 /**
  * rAF 批处理 enqueue；结束前须 flushSync，保证顺序与收尾。
  */
@@ -48,7 +82,7 @@ function createChunkFlushBatcher(
 
   const drainPending = () => {
     if (pending.length === 0) return
-    const batch = mergeAdjacentTextDeltas(pending)
+    const batch = compactStreamChunks(pending)
     pending = []
     for (const c of batch) {
       controller.enqueue(c)
@@ -99,7 +133,7 @@ function createReconnectChunkFlushBatcher(
 
   const drainPending = () => {
     if (pending.length === 0) return
-    const batch = mergeAdjacentTextDeltas(pending)
+    const batch = compactStreamChunks(pending)
     pending = []
     if (stats) {
       stats.flushRounds += 1

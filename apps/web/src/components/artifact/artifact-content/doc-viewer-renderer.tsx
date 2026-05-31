@@ -52,7 +52,40 @@ export const DocViewerRenderer = ({
     )
   }
 
+  const lowerPath = resourcePath.toLowerCase()
+  const usesOfficeOnline =
+    lowerPath.endsWith(".doc") ||
+    lowerPath.endsWith(".docx") ||
+    lowerPath.endsWith(".xls") ||
+    lowerPath.endsWith(".xlsx")
+
   const base = getRequestBaseUrl()
+  const isLocalHost =
+    /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i.test(base) ||
+    base.startsWith("/")
+
+  if (usesOfficeOnline && isLocalHost) {
+    const filename = resourcePath.split("/").pop() ?? "document"
+    return (
+      <div
+        className={cn(
+          "flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-sm text-muted-foreground",
+          className
+        )}
+      >
+        <p className="font-medium text-foreground/80">
+          无法在应用内预览此 Office 文档
+        </p>
+        <p className="max-w-md text-xs">
+          Word / Excel / 旧版 PPT 依赖 Microsoft 在线预览服务，无法访问本机地址（
+          {base || "localhost"}）。.pptx 已支持本地预览；其他格式请下载后用 Office /
+          WPS 打开。
+        </p>
+        <p className="font-mono text-xs text-foreground/60">{filename}</p>
+      </div>
+    )
+  }
+
   const uri = `${base}chat/conversations/${conversationId}/resources/download?path=${encodeURIComponent(resourcePath)}`
 
   return (

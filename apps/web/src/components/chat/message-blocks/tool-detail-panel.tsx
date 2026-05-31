@@ -1,13 +1,17 @@
 import { DiffViewer } from "@workspace/ui/components/diff-viewer"
+import { IconLoader } from "@tabler/icons-react"
 import { useEffect, useRef } from "react"
 import { CodeHighlight, detectLanguage } from "../shared/code-highlight"
 import { useArtifactStore } from "@/stores/artifact-store"
 import {
   AUTO_OPEN_ARTIFACT_ON_STREAM,
+  formatCompactCharCount,
+  getContentLength,
   getDisplayContent,
   getEditDiff,
   getFilePathFromToolInput,
   isArtifactLikePath,
+  isFileWriteLightweightPhase,
   LARGE_FILE_PREVIEW_CHARS,
   normalizeToolFilePath,
 } from "./tool-shared"
@@ -22,6 +26,42 @@ export type ToolDetailPanelProps = {
   preliminary?: boolean
   isRunning: boolean
   isOpen: boolean
+}
+
+function FileWriteStreamingProgress({
+  toolName,
+  state,
+  input,
+}: {
+  toolName: string
+  state: string
+  input?: unknown
+}) {
+  const filePath = getFilePathFromToolInput(input, toolName)
+  const basename = filePath?.split(/[/\\]/).pop()
+  const contentLength = getContentLength(input, toolName)
+  const phaseLabel =
+    state === "input-streaming"
+      ? contentLength > 0
+        ? `已接收 ${formatCompactCharCount(contentLength)}`
+        : "正在接收内容"
+      : "正在写入磁盘"
+
+  return (
+    <div className="flex items-center gap-1.5 px-1 py-1 text-xs text-muted-foreground">
+      <IconLoader className="size-3 shrink-0 animate-spin" />
+      <span className="min-w-0 truncate">
+        {basename ? (
+          <>
+            <span className="font-mono text-foreground/70">{basename}</span>
+            <span className="text-muted-foreground/80"> · {phaseLabel}</span>
+          </>
+        ) : (
+          phaseLabel
+        )}
+      </span>
+    </div>
+  )
 }
 
 export function ToolDetailPanel({
@@ -39,6 +79,7 @@ export function ToolDetailPanel({
     state === "output-available" && preliminary === true
 
   const displayContent = getDisplayContent(input, toolName)
+  const contentLength = displayContent?.length ?? 0
   const filePath = getFilePathFromToolInput(input, toolName)
   const normalizedFilePath = filePath ? normalizeToolFilePath(filePath) : null
   const editDiff = toolName === "edit_file" ? getEditDiff(input) : null
@@ -46,11 +87,22 @@ export function ToolDetailPanel({
     (input as Record<string, unknown> | null)?.file_path as string
   )
   const hasResult = !!resultText
-  const hasContent = !!displayContent || hasResult
+  const isInputStreaming = state === "input-streaming"
+  const useLightweightFileWrite = isFileWriteLightweightPhase(
+    toolName,
+    state,
+    isRunning,
+    contentLength
+  )
+  const hasContent =
+    useLightweightFileWrite ||
+    !!displayContent ||
+    hasResult ||
+    (toolName === "edit_file" && !!editDiff)
 
   const shouldTruncatePreview =
     (toolName === "write_file" || toolName === "edit_file") &&
-    (displayContent?.length ?? 0) > LARGE_FILE_PREVIEW_CHARS
+    contentLength > LARGE_FILE_PREVIEW_CHARS
   const previewContent = shouldTruncatePreview
     ? displayContent?.slice(0, LARGE_FILE_PREVIEW_CHARS) ?? null
     : displayContent
@@ -58,7 +110,6 @@ export function ToolDetailPanel({
   const openResource = useArtifactStore((s) => s.openResource)
   const didAutoOpenRef = useRef<string | null>(null)
   const isStdoutStreaming = isRunning || isPreliminaryOutput
-  const isInputStreaming = state === "input-streaming"
 
   useEffect(() => {
     if (!AUTO_OPEN_ARTIFACT_ON_STREAM) return
@@ -87,6 +138,16 @@ export function ToolDetailPanel({
   ])
 
   if (!hasContent) return null
+
+  if (useLightweightFileWrite && !editDiff) {
+    return (
+      <FileWriteStreamingProgress
+        toolName={toolName}
+        state={state}
+        input={input}
+      />
+    )
+  }
 
   return (
     <div className="space-y-2 px-1 pt-0.5 pb-1">
@@ -119,7 +180,7 @@ export function ToolDetailPanel({
               <CodeHighlight
                 code={previewContent ?? ""}
                 language={detectedLang}
-                streaming={isInputStreaming || isPreliminaryOutput}
+                streaming={isInputStreaming || isPreliminaryOutput || isRunning}
               />
               {shouldTruncatePreview && (
                 <div
@@ -150,8 +211,18 @@ export function ToolDetailPanel({
 export function toolDetailHasContent(
   input: unknown,
   toolName: string,
-  resultText?: string | null
+  resultText?: string | null,
+  state?: string,
+  isRunning?: boolean
 ): boolean {
+  const contentLength = getContentLength(input, toolName)
+  if (
+    state &&
+    isRunning !== undefined &&
+    isFileWriteLightweightPhase(toolName, state, isRunning, contentLength)
+  ) {
+    return true
+  }
   return (
     !!getDisplayContent(input, toolName) ||
     !!resultText ||

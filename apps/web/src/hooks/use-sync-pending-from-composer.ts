@@ -4,6 +4,7 @@ import { useArtifactStore } from "@/stores/artifact-store"
 import { chatKeys } from "@/lib/query-keys/chat"
 import {
   collectPendingToolSnapshots,
+  collectPendingToolSnapshotsForActiveTurn,
   type PendingToolSnapshot,
 } from "@/lib/chat/pending-resources/sync-from-composer"
 import type { UIMessage } from "ai"
@@ -47,7 +48,10 @@ export function useSyncPendingFromComposer(
     if (!conversationId) return
 
     const convKey = String(conversationId)
-    const snapshots = collectPendingToolSnapshots(composerMessages)
+    const isActiveStream = status === "streaming" || status === "submitted"
+    const snapshots = isActiveStream
+      ? collectPendingToolSnapshotsForActiveTurn(composerMessages)
+      : collectPendingToolSnapshots(composerMessages)
     const activeToolCallIds = new Set(snapshots.map((s) => s.toolCallId))
 
     const flushSnapshot = (snap: PendingToolSnapshot) => {
