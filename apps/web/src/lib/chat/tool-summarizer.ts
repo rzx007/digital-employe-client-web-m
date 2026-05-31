@@ -2,6 +2,7 @@ import {
   getToolDisplay,
   INTENT_MAX_LENGTH,
   isBusinessTool,
+  normalizeShellIntent,
   SHELL_TOOL_NAMES,
 } from "./tool-label-registry"
 
@@ -36,11 +37,9 @@ function extractScriptBasename(command: string): string | null {
 }
 
 function labelFromIntent(input?: Record<string, unknown>): string | null {
-  const raw = input?.intent
-  if (typeof raw !== "string") return null
-  const trimmed = raw.trim()
-  if (!trimmed) return null
-  return truncate(trimmed, INTENT_MAX_LENGTH)
+  const normalized = normalizeShellIntent(input?.intent)
+  if (!normalized) return null
+  return truncate(normalized, INTENT_MAX_LENGTH)
 }
 
 function summarizeShellCommand(

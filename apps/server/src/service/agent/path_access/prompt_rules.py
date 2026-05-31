@@ -22,6 +22,8 @@ def build_file_tool_rules(
         - **禁止**在虚拟路径前拼接磁盘绝对路径（如 /artifacts/Users/...、/artifacts/C:/...）
         - **禁止**把上表「真实物理路径」当作 write_file 的路径（那是磁盘路径，不是虚拟路径）
         - 调用 **write_file** / **edit_file** 时，工具参数 JSON **须先写 `file_path`，再写 `content`（`edit_file` 为 `new_string`）**
+        - **write_file 仅用于新建**（目标路径尚不存在）；**禁止**对已有文件再次 write_file（会报 already exists）
+        - 修改已有文件、重写脚本：先用 read_file，再用 **edit_file**；或 write_file 到新文件名（如 xxx_v2.py）
 
         ### shell_execute（python、cmd 等，替代内置 execute）
         - 使用工具 **`shell_execute`**，不要调用已废弃的 `execute`
@@ -44,6 +46,8 @@ def build_file_tool_rules(
         - **read_file 支持**：PDF/Office 自动提取文本；图片多模态
         - **禁止**把虚拟前缀与磁盘路径混拼（如 `/artifacts/Users/...`、`/artifacts/C:/...`）；本机绝对路径直接写 `D:/...` 或 `/Users/...`
         - 调用 **write_file** / **edit_file** 时，JSON **须先写 `file_path`，再写 `content`**
+        - **write_file 仅用于新建**（目标路径尚不存在）；**禁止**对已有文件再次 write_file（会报 already exists）
+        - 修改已有文件、重写脚本：先用 read_file，再用 **edit_file**；或 write_file 到新文件名（如 xxx_v2.py）
 
         ### shell_execute（python、cmd 等，替代内置 execute）
         - 使用 **`shell_execute`**；默认 **cwd = 产物目录**（`{artifacts_hint}`）

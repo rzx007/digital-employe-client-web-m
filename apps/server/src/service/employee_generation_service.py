@@ -9,10 +9,6 @@ from src.service.local_skill_service import LocalSkillService
 
 logger = logging.getLogger(__name__)
 
-# 招聘匹配：全量技能 + 每条 ≤20 字摘要进 LLM（约 100 技能 <1000 token）
-RECRUIT_SUMMARY_MAX_CHARS = 20
-
-
 class EmployeeGenerationService:
     """员工生成服务类 - 使用AI模型生成员工信息"""
 
@@ -44,7 +40,7 @@ class EmployeeGenerationService:
                 recruit_summary = (item.get("recruitSummary") or "").strip()
                 if not recruit_summary:
                     recruit_summary = LocalSkillService.build_recruit_summary(
-                        description, skill_name, RECRUIT_SUMMARY_MAX_CHARS
+                        description, skill_name
                     )
                 local_skill_items.append(
                     {
@@ -96,21 +92,22 @@ class EmployeeGenerationService:
     def _skills_for_recruit_prompt(
         skills_list: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        """全量技能清单：id + 名称 + ≤20 字摘要，供 LLM 一次性匹配。"""
+        """全量技能清单：id + 名称 + 完整 description，供 LLM 一次性匹配。"""
         compact: list[dict[str, Any]] = []
         for skill in skills_list:
-            summary = str(skill.get("recruitSummary") or "").strip()
-            if not summary:
-                summary = LocalSkillService.build_recruit_summary(
+            desc = str(skill.get("description") or "").strip()
+            if not desc:
+                desc = str(skill.get("recruitSummary") or "").strip()
+            if not desc:
+                desc = LocalSkillService.build_recruit_summary(
                     str(skill.get("description") or ""),
                     str(skill.get("skillName") or ""),
-                    RECRUIT_SUMMARY_MAX_CHARS,
                 )
             compact.append(
                 {
                     "id": skill.get("id"),
                     "name": skill.get("skillName"),
-                    "sum": summary[:RECRUIT_SUMMARY_MAX_CHARS],
+                    "description": desc,
                 }
             )
         return compact
@@ -192,7 +189,7 @@ class EmployeeGenerationService:
 
         用户需求：{user_request}
 
-        可用技能列表（共{len(compact_skills)}项，sum为20字以内能力摘要）：{json.dumps(compact_skills, ensure_ascii=False, separators=(",", ":"))}
+        可用技能列表（共{len(compact_skills)}项，含完整 description）：{json.dumps(compact_skills, ensure_ascii=False, separators=(",", ":"))}
 
         规则：
         1. 只能从「可用技能列表」中选择 skill_ids，必须使用列表中的 id 字段。

@@ -3,12 +3,26 @@
 from typing import Annotated
 
 from langchain_core.tools import BaseTool, InjectedToolCallId, StructuredTool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from deepagents.backends.protocol import ExecuteResponse
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
 INTENT_MAX_LENGTH = 20
+
+
+def normalize_shell_intent(value: object) -> str | None:
+    """规范化 intent：去引号、截断至 UI 上限，避免因超长导致工具调用失败。"""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return None
+    text = value.strip().strip('"').strip("'").strip()
+    if not text:
+        return None
+    if len(text) > INTENT_MAX_LENGTH:
+        return text[:INTENT_MAX_LENGTH]
+    return text
 
 
 def format_execute_response(
@@ -26,12 +40,16 @@ class ShellExecuteInput(BaseModel):
     )
     intent: str | None = Field(
         default=None,
-        max_length=INTENT_MAX_LENGTH,
         description=(
-            "可选：界面标题，20字内中文，写正在做的事（如「验证示例代码输出」）。"
-            "禁止含文件名(.py/.js等)、路径、「执行」「运行 xxx」"
+            "可选：界面标题，20字内中文短语，写正在做的事（如：验证示例代码输出）。"
+            "勿加引号；禁止含文件名(.py/.js等)、路径、「执行」「运行 xxx」"
         ),
     )
+
+    @field_validator("intent", mode="before")
+    @classmethod
+    def _normalize_intent(cls, value: object) -> str | None:
+        return normalize_shell_intent(value)
 
 
 def create_shell_execute_tool(
@@ -69,6 +87,7 @@ def create_shell_execute_tool(
         description=(
             "在 shell 中执行命令（替代 execute）。command 为实际命令；"
             "intent 可选：20字内中文业务目的，勿含文件名或「执行 xxx」。"
+            "intent 为纯文本，勿加引号。"
             f"{artifacts_hint}"
             "交付给用户的 .docx/.xlsx 等二进制须 python 生成并 save 到产物目录；"
             "勿假设 listdir('.') 能扫到 save 到其他盘符路径的文件。"

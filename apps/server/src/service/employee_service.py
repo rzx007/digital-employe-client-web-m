@@ -19,6 +19,7 @@ from src.models.employee_skill import EmployeeSkill
 from src.models.workspace import Workspace
 from src.schemas.employee import EmployeeCreate, EmployeeUpdate, ShiftScheduleCreateWithoutEmployee
 from src.service.mcp_service import McpService
+from src.service.skill_service import SkillService
 from src.service.local_skill_service import LocalSkillService
 from src.service.task_scheduler_service import TaskSchedulerService
 from src.service.task_service import TaskService
@@ -539,6 +540,72 @@ class EmployeeService:
         return details
 
     @staticmethod
+    def _remote_skill_detail_to_payload(skill_id: int, raw: dict) -> dict:
+        skill_name = raw.get("skillName") or raw.get("skill_name")
+        if not skill_name or not str(skill_name).strip():
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="远程技能详情缺少 skillName。",
+            )
+        display_zh = raw.get("displayNameZh") or raw.get("display_name_zh")
+        return {
+            "id": skill_id,
+            "skillName": str(skill_name).strip(),
+            "displayNameZh": (
+                str(display_zh).strip()
+                if isinstance(display_zh, str) and display_zh.strip()
+                else str(skill_name).strip()
+            ),
+            "description": raw.get("description"),
+            "prompt": raw.get("prompt"),
+            "skillContent": raw.get("skillContent"),
+            "source": "remote",
+        }
+
+    @staticmethod
+    def _validate_and_fetch_remote_skills(
+        skill_ids: list[int] | None,
+        token: str,
+    ) -> list[dict]:
+        if not skill_ids:
+            return []
+        remote_ids = sorted({int(v) for v in skill_ids if int(v) > 0})
+        if not remote_ids:
+            return []
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="未登录，无法分配远程技能（正整数 skill_id）。",
+            )
+
+        details: list[dict] = []
+        for skill_id in remote_ids:
+            raw = SkillService.get_remote_skill(skill_id, token)
+            if int(raw.get("status") or 0) != 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"远程技能未启用，无法分配: skill_id={skill_id}",
+                )
+            payload = EmployeeService._remote_skill_detail_to_payload(skill_id, raw)
+            details.append(payload)
+        return details
+
+    @staticmethod
+    def _resolve_skills_for_assignment(
+        skill_ids: list[int] | None,
+        *,
+        workspace_id: int,
+        token: str,
+    ) -> tuple[list[dict], list[dict]]:
+        """拆分为远程技能与本地技能详情（供落盘与 EmployeeSkill 写入）。"""
+        ids = skill_ids or []
+        remote_skills = EmployeeService._validate_and_fetch_remote_skills(ids, token)
+        local_skills = EmployeeService._validate_and_fetch_local_skills(
+            ids, workspace_id
+        )
+        return remote_skills, local_skills
+
+    @staticmethod
     def _build_skills_json_payload(
         employee: Employee,
         remote_skills: list[dict],
@@ -714,11 +781,14 @@ class EmployeeService:
 
         if "skill_ids" in payload.model_fields_set:
             skill_ids = payload.skill_ids or []
-            remote_skills: list[dict] = []
-            local_skills = EmployeeService._validate_and_fetch_local_skills(
-                skill_ids, employee.workspace_id
+            remote_skills, local_skills = EmployeeService._resolve_skills_for_assignment(
+                skill_ids,
+                workspace_id=employee.workspace_id,
+                token=token,
             )
-            EmployeeService._replace_employee_skills(db, employee, local_skills)
+            EmployeeService._replace_employee_skills(
+                db, employee, [*remote_skills, *local_skills]
+            )
             employee.skills_json = EmployeeService._build_skills_json_payload(
                 employee,
                 remote_skills,
@@ -1054,9 +1124,10 @@ class EmployeeService:
                 status_code=status.HTTP_400_BAD_REQUEST, detail="员工名称已存在")
 
         skill_ids = obj_in.skill_ids or []
-        remote_skills: list[dict] = []
-        local_skills = EmployeeService._validate_and_fetch_local_skills(
-            skill_ids, workspace_id
+        remote_skills, local_skills = EmployeeService._resolve_skills_for_assignment(
+            skill_ids,
+            workspace_id=workspace_id,
+            token=token,
         )
         mcp_details = EmployeeService._validate_and_fetch_mcps(obj_in.mcp_ids, token)
 
@@ -1083,7 +1154,9 @@ class EmployeeService:
         db.flush()
         employee.employee_code = str(employee.id)
 
-        EmployeeService._replace_employee_skills(db, employee, local_skills)
+        EmployeeService._replace_employee_skills(
+            db, employee, [*remote_skills, *local_skills]
+        )
         EmployeeService._replace_employee_mcps(db, employee, mcp_details)
         EmployeeService._replace_shift_schedule(db, employee, shift_schedule)
         employee.skills_json = EmployeeService._build_skills_json_payload(

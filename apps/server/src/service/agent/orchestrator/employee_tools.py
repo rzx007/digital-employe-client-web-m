@@ -8,6 +8,7 @@ from langchain_core.tools import tool
 from src.db.session import get_session_local
 from src.models.employee import Employee
 from src.schemas.employee import EmployeeUpdate
+from src.service.agent.orchestrator.json_list_parse import parse_json_int_list
 from src.service.agent.orchestrator.recruitment import _RESERVED_EMPLOYEE_NAMES
 from src.service.agent.orchestrator.runtime import (
     get_auth_token,
@@ -17,9 +18,6 @@ from src.service.agent.orchestrator.runtime import (
 )
 from src.service.employee_service import EmployeeService
 from src.service.local_skill_service import LocalSkillService
-from src.service.mcp_service import McpService
-
-_RECRUIT_SUMMARY_MAX_CHARS = 20
 
 _RESERVED_NAMES_LOWER = {n.lower() for n in _RESERVED_EMPLOYEE_NAMES}
 
@@ -39,17 +37,16 @@ def format_workspace_skills_list(workspace_id: int) -> list[dict]:
             if isinstance(zh_raw, str) and zh_raw.strip()
             else skill_name
         )
-        summary = (item.get("recruitSummary") or "").strip()
+        summary = (item.get("recruitSummary") or description).strip()
         if not summary:
-            summary = LocalSkillService.build_recruit_summary(
-                description, skill_name, _RECRUIT_SUMMARY_MAX_CHARS
-            )
+            summary = LocalSkillService.build_recruit_summary(description, skill_name)
         items.append(
             {
                 "id": int(local_id),
                 "name": skill_name,
                 "display_name_zh": display_zh,
-                "summary": summary[:_RECRUIT_SUMMARY_MAX_CHARS],
+                "description": description or summary,
+                "summary": summary,
                 "source": "builtin" if item.get("isBuiltin") else "workspace",
             }
         )
@@ -72,89 +69,12 @@ def list_workspace_skills() -> str:
         "total": len(skills),
         "skills": skills,
         "hint": (
-            "为员工分配技能：update_employee(employee_id, skill_ids=\"[<id>, ...]\");"
-            "清空技能：skill_ids=\"[]\"。id 必须来自本列表，禁止编造。"
+            "为员工分配技能：update_employee(employee_id, skill_ids=\"[-100, 11]\");"
+            "负整数=本地已安装技能 localId；正整数=SkillsMP 远程技能 id（无需先安装）。"
+            "清空技能：skill_ids=\"[]\"。localId 来自 list_workspace_skills；SkillsMP 安装后同样用 localId。"
         ),
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)
-
-
-def format_workspace_mcps_list(token: str | None) -> tuple[list[dict], str | None]:
-    """远程 MCP 列表，与 update_employee 的 mcp_ids 使用同一套正整数 id。"""
-    from src.core.runtime_capabilities import get_capabilities
-
-    if not get_capabilities().remote_mcp:
-        return [], "当前为离线模式，无可分配的远程 MCP。"
-
-    try:
-        raw = McpService.list_remote_mcps(token)
-    except HTTPException as exc:
-        detail = exc.detail
-        if isinstance(detail, list):
-            detail = "; ".join(str(d) for d in detail)
-        return [], str(detail or "无法获取 MCP 列表。")
-
-    items: list[dict] = []
-    for item in raw:
-        mcp_id = item.get("id")
-        if mcp_id is None:
-            continue
-        name = (
-            item.get("capability_name")
-            or item.get("mcp_tool_name")
-            or item.get("mcp_server_name")
-            or str(mcp_id)
-        )
-        desc = (item.get("capability_desc") or "").strip()
-        items.append({
-            "id": int(mcp_id),
-            "name": str(name),
-            "server": item.get("mcp_server_name"),
-            "tool": item.get("mcp_tool_name"),
-            "description": desc[:80] if desc else None,
-        })
-    return items, None
-
-
-@tool
-def list_workspace_mcps() -> str:
-    """列出当前工作空间可分配给数字员工的远程 MCP（含 mcp id）。
-
-    在 update_employee 需要 mcp_ids 时先调用本工具；
-    返回的 id 为正整数，须原样传入 mcp_ids JSON 数组。
-    离线模式或远程不可用时 total=0，仍可更新无 MCP 员工（mcp_ids="[]"）。
-    """
-    token = get_auth_token()
-    mcps, notice = format_workspace_mcps_list(token)
-    payload: dict = {
-        "type": "workspace_mcps",
-        "workspace_id": get_workspace_id(),
-        "total": len(mcps),
-        "mcps": mcps,
-        "hint": (
-            "为员工分配 MCP：update_employee(employee_id, mcp_ids=\"[<id>, ...]\");"
-            "清空 MCP：mcp_ids=\"[]\"。id 必须来自本列表，禁止编造。"
-        ),
-    }
-    if notice:
-        payload["notice"] = notice
-    return json.dumps(payload, ensure_ascii=False, indent=2)
-
-
-def _parse_json_int_list(raw: str, field_name: str) -> tuple[list[int] | None, str | None]:
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        return None, f"错误：{field_name} 不是合法的 JSON 数组: {exc}"
-    if not isinstance(parsed, list):
-        return None, f"错误：{field_name} 必须为 JSON 数组。"
-    normalized: list[int] = []
-    for i, item in enumerate(parsed):
-        try:
-            normalized.append(int(item))
-        except (TypeError, ValueError):
-            return None, f"错误：{field_name}[{i}] 不是有效整数: {item!r}"
-    return normalized, None
 
 
 def _is_reserved_name(name: str) -> bool:
@@ -227,13 +147,15 @@ def update_employee(
     employee_id: int,
     employee_name: str | None = None,
     capability_desc: str | None = None,
-    skill_ids: str | None = None,
-    mcp_ids: str | None = None,
+    skill_ids: str | list[int] | int | None = None,
+    mcp_ids: str | list[int] | int | None = None,
 ) -> str:
-    """修改已有数字员工（名称、描述、技能、MCP）。
+    """修改已有数字员工（名称、描述、技能）。
 
-    仅更新传入的非空参数。skill_ids / mcp_ids 为 JSON 数组字符串，传 "[]" 可清空。
+    skill_ids 可为 JSON 数组字符串（如 "[-100, 11]"）、整数列表或单个整数。
+    负整数 skill_id=本地 localId；正整数=SkillsMP 远程技能 id。传 "[]" 可清空。
     禁止修改总管助手（is_curator=true）的任何字段。
+    MCP 分配请在客户端员工编辑页操作，总管不提供 MCP 查询工具。
     """
     workspace_id = get_workspace_id()
     token = get_auth_token() or ""
@@ -260,7 +182,7 @@ def update_employee(
             return "错误：未提供任何要更新的字段。"
 
         if skill_ids is not None:
-            parsed, err = _parse_json_int_list(skill_ids, "skill_ids")
+            parsed, err = parse_json_int_list(skill_ids, "skill_ids")
             if err:
                 return err
         else:
@@ -268,7 +190,7 @@ def update_employee(
 
         parsed_mcp_ids: list[int] | None = None
         if mcp_ids is not None:
-            parsed_mcp_ids, err = _parse_json_int_list(mcp_ids, "mcp_ids")
+            parsed_mcp_ids, err = parse_json_int_list(mcp_ids, "mcp_ids")
             if err:
                 return err
 

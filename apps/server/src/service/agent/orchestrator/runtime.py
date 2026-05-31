@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import func, select
@@ -20,6 +21,78 @@ _db_session_ctx: ContextVar[Session | None] = ContextVar("orchestrator_db", defa
 _workspace_id_ctx: ContextVar[int | None] = ContextVar("orchestrator_ws", default=None)
 _conversation_id_ctx: ContextVar[int | None] = ContextVar("orchestrator_conv", default=None)
 _auth_token_ctx: ContextVar[str | None] = ContextVar("orchestrator_token", default=None)
+
+
+@dataclass(slots=True)
+class OrchestratorStreamSession:
+    workspace_id: int
+    auth_token: str | None
+
+
+_stream_sessions: dict[int, OrchestratorStreamSession] = {}
+
+
+def conversation_id_from_runtime(runtime: Any | None) -> int | None:
+    if runtime is None:
+        return None
+    config = getattr(runtime, "config", None)
+    if not isinstance(config, dict):
+        return None
+    configurable = config.get("configurable")
+    if not isinstance(configurable, dict):
+        return None
+    thread_id = configurable.get("thread_id")
+    try:
+        return int(thread_id) if thread_id is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def register_stream_session(
+    conversation_id: int,
+    *,
+    workspace_id: int,
+    auth_token: str | None,
+) -> None:
+    _stream_sessions[conversation_id] = OrchestratorStreamSession(
+        workspace_id=workspace_id,
+        auth_token=(auth_token or "").strip() or None,
+    )
+
+
+def unregister_stream_session(conversation_id: int) -> None:
+    _stream_sessions.pop(conversation_id, None)
+
+
+def resolve_auth_token(runtime: Any | None = None) -> str | None:
+    token = _auth_token_ctx.get()
+    if token:
+        return token
+
+    conversation_id = conversation_id_from_runtime(runtime) or _conversation_id_ctx.get()
+    if conversation_id is not None:
+        session = _stream_sessions.get(conversation_id)
+        if session and session.auth_token:
+            return session.auth_token
+
+    from src.core.config import get_settings
+
+    fallback = (get_settings().skill_remote_token or "").strip()
+    return fallback or None
+
+
+def resolve_workspace_id(runtime: Any | None = None) -> int:
+    workspace_id = _workspace_id_ctx.get()
+    if workspace_id is not None:
+        return workspace_id
+
+    conversation_id = conversation_id_from_runtime(runtime) or _conversation_id_ctx.get()
+    if conversation_id is not None:
+        session = _stream_sessions.get(conversation_id)
+        if session is not None:
+            return session.workspace_id
+
+    raise RuntimeError("orchestrator workspace_id not set")
 
 
 def set_main_event_loop(loop: asyncio.AbstractEventLoop) -> None:
@@ -80,14 +153,23 @@ def set_context(
     _conversation_id_ctx.set(conversation_id)
     if bind_auth_token:
         _auth_token_ctx.set(auth_token)
+    if conversation_id is not None and bind_auth_token:
+        register_stream_session(
+            conversation_id,
+            workspace_id=workspace_id,
+            auth_token=auth_token,
+        )
 
 
 def get_auth_token() -> str | None:
-    return _auth_token_ctx.get()
+    return resolve_auth_token()
 
 
 def reset_context() -> None:
     """清除总管 Tool 的 ContextVar（后台流结束后调用，避免泄漏到其他任务）。"""
+    conversation_id = _conversation_id_ctx.get()
+    if conversation_id is not None:
+        unregister_stream_session(conversation_id)
     _db_session_ctx.set(None)
     _workspace_id_ctx.set(None)
     _conversation_id_ctx.set(None)

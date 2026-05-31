@@ -199,7 +199,7 @@ class SkillAwareShellBackend(LocalShellBackend):
         # 临时文件替代 subprocess.PIPE，避免子进程启动的后代进程（如浏览器）
         # 持有 PIPE 写端句柄不释放，导致 proc.stdout 永远等不到 EOF 而挂起
         _tmp_path: str | None = None
-        _POLL_SECONDS = 0.5
+        _POLL_SECONDS = 0.1
         _READ_CHUNK = 65536       # 文件分块读取大小，控制内存峰值
         _MAX_TMPFILE_BYTES = 1024 * 1024  # 临时文件上限 1MB，防磁盘写满
 

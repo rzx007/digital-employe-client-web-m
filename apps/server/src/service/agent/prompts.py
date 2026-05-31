@@ -59,6 +59,7 @@ def build_filesystem_prompt_section(
 {path_table}
 {file_tool_rules}
         - 可选参数 **`intent`**：给用户界面展示的一句中文（20字以内），描述**正在做的事/要达到的目的**，不要复述 command
+        - **intent 写纯文本短语**，不要加引号包裹（✅ `检查Pillow安装路径` ❌ `"检查Pillow安装路径"`）
         - **intent 禁止出现**：脚本/文件名（含 .py .js .sh）、路径片段、「执行」「运行 xxx」、工具名 shell_execute
         - **intent 推荐写法**：结合用户任务与 write_todos 当前步骤，用动词短语（如「验证示例代码输出」「检查站点是否可访问」）
         - 对照：`command` 含 `hello.js` 时，`intent` 写「验证示例代码输出」✅，勿写「运行 hello.js」❌

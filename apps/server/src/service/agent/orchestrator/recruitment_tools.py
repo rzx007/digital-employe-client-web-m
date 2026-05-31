@@ -4,6 +4,7 @@ import json
 
 from langchain_core.tools import tool
 
+from src.service.agent.orchestrator.json_list_parse import parse_json_int_list
 from src.service.agent.orchestrator.recruitment import (
     MAX_HIRE_BATCH,
     hire_candidate,
@@ -16,23 +17,6 @@ from src.service.agent.orchestrator.runtime import (
     invalidate_orchestrator_db_cache,
 )
 
-
-def _parse_skill_ids_string(skill_ids: str) -> tuple[list[int] | None, str | None]:
-    try:
-        parsed = json.loads(skill_ids)
-    except json.JSONDecodeError as exc:
-        return None, f"错误：skill_ids 不是合法的 JSON 数组: {exc}"
-
-    if not isinstance(parsed, list):
-        return None, "错误：skill_ids 必须为 JSON 数组。"
-
-    normalized: list[int] = []
-    for i, raw in enumerate(parsed):
-        try:
-            normalized.append(int(raw))
-        except (TypeError, ValueError):
-            return None, f"错误：skill_ids[{i}] 不是有效整数: {raw!r}"
-    return normalized, None
 
 
 @tool
@@ -57,7 +41,7 @@ def recruit_employee(user_request: str, count: int = 1) -> str:
 
 
 @tool
-def hire_employee(name: str, description: str, skill_ids: str = "[]") -> str:
+def hire_employee(name: str, description: str, skill_ids: str | list[int] | int = "[]") -> str:
     """用户确认录用**单个**候选人，创建正式数字员工。
 
     仅录用 1 人时使用。若一次录用 2 人及以上，必须用 hire_employees，禁止同一轮
@@ -71,7 +55,7 @@ def hire_employee(name: str, description: str, skill_ids: str = "[]") -> str:
     workspace_id = get_workspace_id()
     token = get_auth_token()
 
-    normalized, err = _parse_skill_ids_string(skill_ids)
+    normalized, err = parse_json_int_list(skill_ids, "skill_ids")
     if err:
         return err
 

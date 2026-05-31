@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 _patched = False
 
-_UNSUPPORTED_OPENAI_BLOCK_TYPES = frozenset({"file", "audio"})
+_UNSUPPORTED_OPENAI_BLOCK_TYPES = frozenset({"file", "audio", "image"})
 
 
 def _block_type(block: ContentBlock | dict[str, Any]) -> str:
@@ -73,12 +73,7 @@ def _oversized_image_message(path: str, size_bytes: int) -> ContentBlock:
 
 def _message_needs_sanitize(message: BaseMessage) -> bool:
     for block in message.content_blocks:
-        block_type = _block_type(block)
-        if block_type in _UNSUPPORTED_OPENAI_BLOCK_TYPES:
-            return True
-        if block_type == "image" and is_multimodal_payload_too_large(
-            base64_data=str(block.get("base64") or block.get("data") or "")
-        ):
+        if _block_type(block) in _UNSUPPORTED_OPENAI_BLOCK_TYPES:
             return True
     return False
 
@@ -108,16 +103,30 @@ def _sanitize_message_for_openai_compatible(message: BaseMessage) -> BaseMessage
                     },
                 )
             )
-        elif block_type == "image" and is_multimodal_payload_too_large(
-            base64_data=str(block.get("base64") or block.get("data") or "")
-        ):
+        elif block_type == "image":
             path = ""
             if isinstance(message, ToolMessage):
                 path = str(message.additional_kwargs.get("read_file_path") or "")
-            size_bytes = _image_block_byte_size(block)
-            new_blocks.append(
-                _oversized_image_message(path or "image", size_bytes)
-            )
+            if is_multimodal_payload_too_large(
+                base64_data=str(block.get("base64") or block.get("data") or "")
+            ):
+                size_bytes = _image_block_byte_size(block)
+                new_blocks.append(
+                    _oversized_image_message(path or "image", size_bytes)
+                )
+            else:
+                new_blocks.append(
+                    cast(
+                        "ContentBlock",
+                        {
+                            "type": "text",
+                            "text": (
+                                f"[当前模型 API 不支持图片输入"
+                                f"{' (' + path + ')' if path else ''}]"
+                            ),
+                        },
+                    )
+                )
         elif block_type == "audio":
             new_blocks.append(
                 cast(

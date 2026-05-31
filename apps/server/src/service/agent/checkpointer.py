@@ -27,8 +27,8 @@ register_harness_profile(
         tool_description_overrides={
             "shell_execute": (
                 "在 shell 中执行命令（替代 execute）。command 为真实物理路径。"
-                "intent 可选：20字内中文，写业务目的（如「验证示例代码输出」），"
-                "禁止出现文件名/路径/「执行」字样。"
+                "intent 可选：20字内中文，写业务目的（如：验证示例代码输出）。"
+                "禁止出现文件名/路径/「执行」字样；勿加引号。"
             ),
         },
     ),

@@ -99,7 +99,6 @@ export const TOOL_ICON_MAP: Record<string, typeof IconFileDescription> = {
   confirm_orchestration_plan: IconPlayerPlay,
   list_workspace_employees: IconUsers,
   list_workspace_skills: IconPuzzle,
-  list_workspace_mcps: IconPlug,
   recruit_employee: IconUserPlus,
   hire_employee: IconCircleCheck,
   hire_employees: IconCircleCheck,

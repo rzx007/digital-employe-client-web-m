@@ -4,6 +4,16 @@ export const INTENT_MAX_LENGTH = 20
 
 export const SHELL_TOOL_NAMES = new Set(["execute", "shell_execute"])
 
+/** 与后端 normalize_shell_intent 一致：去首尾引号并截断。 */
+export function normalizeShellIntent(raw: unknown): string | null {
+  if (typeof raw !== "string") return null
+  const text = raw.trim().replace(/^["']+|["']+$/g, "").trim()
+  if (!text) return null
+  return text.length > INTENT_MAX_LENGTH
+    ? text.slice(0, INTENT_MAX_LENGTH)
+    : text
+}
+
 export type ToolSimpleLabels = {
   running: string
   done: string
@@ -27,7 +37,6 @@ export const BUSINESS_TOOL_NAMES = new Set([
   "confirm_orchestration_plan",
   "list_workspace_employees",
   "list_workspace_skills",
-  "list_workspace_mcps",
   "recruit_employee",
   "hire_employee",
   "hire_employees",
@@ -198,16 +207,6 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
     simple: {
       running: "正在查询技能库...",
       done: "技能库已加载",
-      error: "查询失败",
-    },
-  },
-  list_workspace_mcps: {
-    icon: "🔌",
-    label: "查看 MCP",
-    verb: "查看 MCP 列表",
-    simple: {
-      running: "正在查询 MCP...",
-      done: "MCP 列表已加载",
       error: "查询失败",
     },
   },

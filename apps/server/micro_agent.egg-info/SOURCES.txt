@@ -235,6 +235,7 @@ tests/test_employee_generation.py
 tests/test_employee_service.py
 tests/test_employee_tools.py
 tests/test_host_paths.py
+tests/test_llm_registry_bootstrap.py
 tests/test_message_parts_extractor.py
 tests/test_orchestration_lifecycle.py
 tests/test_orchestration_task_list.py

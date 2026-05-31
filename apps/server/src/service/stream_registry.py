@@ -377,6 +377,7 @@ class StreamRegistry:
         orchestrator_owned_db: Session | None = None,
         orchestrator_workspace_id: int | None = None,
         orchestrator_conversation_id: int | None = None,
+        orchestrator_auth_token: str | None = None,
     ) -> bool:
         """启动Agent流式任务。
 
@@ -431,6 +432,7 @@ class StreamRegistry:
             orchestrator_owned_db=orchestrator_owned_db,
             orchestrator_workspace_id=orchestrator_workspace_id,
             orchestrator_conversation_id=orchestrator_conversation_id,
+            orchestrator_auth_token=orchestrator_auth_token,
         )
         task._asyncio_task = asyncio.create_task(coro)
         return True
@@ -465,6 +467,7 @@ class StreamRegistry:
         orchestrator_owned_db: Session | None = None,
         orchestrator_workspace_id: int | None = None,
         orchestrator_conversation_id: int | None = None,
+        orchestrator_auth_token: str | None = None,
     ) -> bool:
         """HITL approve: 新建 task + 新 buffer，用 Command(resume) 继续 agent 执行。"""
         from langgraph.types import Command
@@ -498,6 +501,7 @@ class StreamRegistry:
             orchestrator_owned_db=orchestrator_owned_db,
             orchestrator_workspace_id=orchestrator_workspace_id,
             orchestrator_conversation_id=orchestrator_conversation_id,
+            orchestrator_auth_token=orchestrator_auth_token,
         )
         task._asyncio_task = asyncio.create_task(coro)
         logger.info(
@@ -541,8 +545,22 @@ class StreamRegistry:
         orchestrator_owned_db: Session | None = None,
         orchestrator_workspace_id: int | None = None,
         orchestrator_conversation_id: int | None = None,
+        orchestrator_auth_token: str | None = None,
     ) -> None:
         from src.service.chat_service import ChatService
+
+        stream_conv_id = orchestrator_conversation_id or conversation_id
+        if orchestrator_workspace_id is not None:
+            from src.service.agent.orchestrator.runtime import (
+                register_stream_session,
+                set_context,
+            )
+
+            register_stream_session(
+                stream_conv_id,
+                workspace_id=orchestrator_workspace_id,
+                auth_token=orchestrator_auth_token,
+            )
 
         if orchestrator_owned_db is not None:
             if orchestrator_workspace_id is None:
@@ -555,6 +573,8 @@ class StreamRegistry:
                 orchestrator_owned_db,
                 orchestrator_workspace_id,
                 orchestrator_conversation_id,
+                auth_token=orchestrator_auth_token,
+                bind_auth_token=True,
             )
 
         stream_start_time = time.monotonic()
@@ -852,6 +872,12 @@ class StreamRegistry:
 
                 reset_context()
                 orchestrator_owned_db.close()
+            elif orchestrator_workspace_id is not None:
+                from src.service.agent.orchestrator.runtime import (
+                    unregister_stream_session,
+                )
+
+                unregister_stream_session(stream_conv_id)
 
     async def _ensure_terminal_state(self, stream_msg_id: int, state: str) -> None:
         """flush 失败兜底：仅写 stream_state，不写 content/parts，保证不卡在 streaming。"""

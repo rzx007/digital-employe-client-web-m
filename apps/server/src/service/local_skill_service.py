@@ -25,26 +25,21 @@ class LocalSkillService:
     SKILL_MD_NAME = "SKILL.md"
     SKILL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
     LOCAL_SKILL_ID_START = -100
-    RECRUIT_SUMMARY_MAX_CHARS = 20
-
     @staticmethod
     def build_recruit_summary(
         description: str,
         skill_name: str = "",
-        max_chars: int = RECRUIT_SUMMARY_MAX_CHARS,
+        max_chars: int | None = None,
     ) -> str:
-        """将技能描述压缩为招聘 prompt 用短摘要（默认 20 字以内）。"""
-        text = re.sub(r"\s+", "", (description or "").strip())
+        """将技能描述规范化为招聘用摘要（默认保留全文，不截断）。"""
+        text = (description or "").strip()
         if not text:
             text = (skill_name or "").strip()
         if not text:
             return ""
-        for prefix in ("当用户需要", "当用户", "用于", "适用于", "使用", "支持"):
-            if text.startswith(prefix):
-                text = text[len(prefix) :].lstrip("时").lstrip("要").lstrip("了")
-        if len(text) <= max_chars:
-            return text
-        return text[:max_chars]
+        if max_chars is not None and len(text) > max_chars:
+            return text[:max_chars]
+        return text
 
     @staticmethod
     def _resolve_local_root(workspace_id: int | None = None) -> Path:

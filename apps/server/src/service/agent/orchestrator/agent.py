@@ -46,7 +46,6 @@ from src.service.agent.orchestrator.recruitment_tools import (
 from src.service.agent.orchestrator.employee_tools import (
     delete_employee,
     get_employee,
-    list_workspace_mcps,
     list_workspace_skills,
     update_employee,
 )
@@ -56,8 +55,13 @@ from src.service.agent.orchestrator.tools import (
     create_orchestration_plan,
     delete_task,
     delete_tasks_batch,
+    install_builtin_skill,
+    install_market_skill,
+    list_builtin_skills,
     list_tasks,
     list_workspace_employees,
+    get_market_skill_detail,
+    search_market_skills,
     update_task,
 )
 from src.service.conversation_summarization import ConversationSummarizationMiddleware
@@ -151,11 +155,12 @@ def get_orchestrator_agent(
     backend = CompositeBackend(default=shell_backend, routes=routes)
 
     employee_context = build_employee_capability_context(db, workspace_id)
+    available_skills_str = ", ".join(available_skills) if available_skills else "无"
     orchestrator_prompt = ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE.format(
         current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         employee_table=employee_context,
+        available_skills=available_skills_str,
     )
-    skills_line = ", ".join(available_skills) if available_skills else "无"
     fs_section = build_filesystem_prompt_section(
         skills_real_path=str(skills_root),
         uploads_real_path=str(uploads_dir) if uploads_dir is not None else "",
@@ -167,8 +172,6 @@ def get_orchestrator_agent(
     )
     system_prompt = (
         orchestrator_prompt
-        + f"\n\n当前已加载的技能（/skills/）：{skills_line}。"
-        " 用户使用客户端或开发相关问题时，优先查阅 /skills/user-usage-manual/ 与 /skills/dev-usage-manual/。"
         + fs_section
         + build_long_document_writing_section(for_orchestrator=True)
     )
@@ -203,7 +206,6 @@ def get_orchestrator_agent(
             *orchestrator_tools,
             list_workspace_employees,
             list_workspace_skills,
-            list_workspace_mcps,
             get_employee,
             update_employee,
             delete_employee,
@@ -220,6 +222,12 @@ def get_orchestrator_agent(
             # 用户明确要求总管亲自执行（含长文档）时与员工 agent 相同的 HITL 门
             submit_clarifying_questions,
             submit_document_plan,
+            # 技能发现与安装（SkillsMP 仓库 + 内置技能）
+            list_builtin_skills,
+            install_builtin_skill,
+            search_market_skills,
+            get_market_skill_detail,
+            install_market_skill,
         ],
         system_prompt=system_prompt,
         backend=backend,

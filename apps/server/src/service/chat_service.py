@@ -587,6 +587,15 @@ class ChatService:
                 stream_msg_id=assistant_msg.id,
                 skill_name=skill_name,
                 debug_content_only=debug_content_only,
+                orchestrator_workspace_id=(
+                    conversation.workspace_id if target_type == "curator" else None
+                ),
+                orchestrator_conversation_id=(
+                    conversation_id if target_type == "curator" else None
+                ),
+                orchestrator_auth_token=(
+                    auth_token if target_type == "curator" else None
+                ),
             )
             
             if not started:
@@ -896,6 +905,15 @@ class ChatService:
             config=config,
             stream_msg_id=new_msg.id,
             decisions=decisions,
+            orchestrator_workspace_id=(
+                conversation.workspace_id if target_type == "curator" else None
+            ),
+            orchestrator_conversation_id=(
+                conversation_id if target_type == "curator" else None
+            ),
+            orchestrator_auth_token=(
+                auth_token if target_type == "curator" else None
+            ),
         )
 
         if not resumed:
