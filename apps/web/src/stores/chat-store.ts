@@ -2,6 +2,7 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
 import { findContactInList } from "@/lib/chat/contact-utils"
+import type { CuratorNavigationReturn } from "@/lib/chat/curator-navigation"
 import type { Contact } from "@/types/chat"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
@@ -25,6 +26,8 @@ interface ChatStore {
   activeTab: ActiveTab
   isCompactMode: boolean
   isConversationListOpen: boolean
+  /** 从总管/工作台跳转到员工对话后，用于「返回总管」 */
+  curatorNavigationReturn: CuratorNavigationReturn | null
   setContacts: (contacts: Contact[]) => void
   setSelectedContactId: (id: string | null) => void
   setSelectedConversationId: (id: string | number | null) => void
@@ -35,6 +38,8 @@ interface ChatStore {
   setCompactMode: (compact: boolean) => void
   openConversationList: () => void
   closeConversationList: () => void
+  setCuratorNavigationReturn: (ctx: CuratorNavigationReturn | null) => void
+  clearCuratorNavigationReturn: () => void
   startDraftConversation: (contactId: string) => void
   selectConversation: (contactId: string, conversationId: string) => void
   switchToContact: (contactId: string) => void
@@ -54,6 +59,7 @@ export const useChatStore = create<ChatStore>()(
       activeTab: "chat" as ActiveTab,
       isCompactMode: false,
       isConversationListOpen: false,
+      curatorNavigationReturn: null,
       setContacts: (contacts) => set({ contacts }),
       setSelectedContactId: (id) =>
         set({
@@ -87,6 +93,10 @@ export const useChatStore = create<ChatStore>()(
         set({ isConversationListOpen: true, activeTab: "chat" as ActiveTab })
       },
       closeConversationList: () => set({ isConversationListOpen: false }),
+      setCuratorNavigationReturn: (ctx) =>
+        set({ curatorNavigationReturn: ctx }),
+      clearCuratorNavigationReturn: () =>
+        set({ curatorNavigationReturn: null }),
       startDraftConversation: (contactId) =>
         set((state) => ({
           selectedContactId: contactId,

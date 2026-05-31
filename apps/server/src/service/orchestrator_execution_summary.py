@@ -81,7 +81,7 @@ def build_execution_summary_content(
         lines.append(f"原因：{str(log.error_message)[:500]}")
 
     lines.append("")
-    lines.append("详情见下方任务执行卡片。")
+    lines.append("可点击下方卡片进入员工对话查看详情。")
     return "\n".join(lines).strip()
 
 

@@ -25,6 +25,7 @@ import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input
 import type { SlashCommandItem } from "@/components/lexical-editor/slash-command-plugin"
 import type { MentionCandidate } from "@/components/lexical-editor/mention-plugin"
 import { ChatPanelHeader } from "./chat-panel-header"
+import { CuratorReturnBar } from "../curator/curator-return-bar"
 import type { PendingMessage } from "@/hooks/use-pending-messages"
 import { MessageLoadingSkeleton } from "./message-loading-skeleton"
 import {
@@ -281,6 +282,7 @@ export function ChatPanel({
               onNewConversation={onNewConversation}
             />
           )}
+          <CuratorReturnBar />
           <>
             <Conversation className="min-h-0 flex-1 pt-4">
               <ConversationContent className="px-4 pb-4">

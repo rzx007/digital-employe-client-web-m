@@ -8,8 +8,7 @@ import { submitSkillRating } from "@/api/skill-ratings"
 import { StarRating } from "./star-rating"
 import type { TaskExecution } from "@/types/schedule-monitor"
 import { formatExecutionDuration } from "./execution-card"
-import { selectConversationForContact } from "@/lib/chat/conversation-selection"
-import { useChatStore } from "@/stores/chat-store"
+import { navigateToEmployeeFromCurator } from "@/lib/chat/curator-navigation"
 
 const STATUS_CONFIG: Record<
   string,
@@ -40,13 +39,29 @@ const STATUS_CONFIG: Record<
   },
 }
 
+const COMPACT_OUTPUT_MAX = 120
+
+function truncateOutput(text: string, max: number): string {
+  if (text.length <= max) return text
+  return `${text.slice(0, max)}…`
+}
+
+export type ExecutionReportCardProps = {
+  execution: TaskExecution
+  className?: string
+  /** 总管会话已有结果摘要时，卡片只保留状态与跳转 */
+  compact?: boolean
+  curatorContactId?: string | null
+  curatorConversationId?: string | number | null
+}
+
 export function ExecutionReportCard({
   execution,
   className,
-}: {
-  execution: TaskExecution
-  className?: string
-}) {
+  compact = false,
+  curatorContactId,
+  curatorConversationId,
+}: ExecutionReportCardProps) {
   const ratingMutation = useMutation({
     mutationFn: (score: number) =>
       submitSkillRating({
@@ -64,6 +79,65 @@ export function ExecutionReportCard({
     execution.run_status === "timeout" ||
     execution.run_status === "cancelled"
 
+  const canJumpToEmployee =
+    execution.conversation_id != null &&
+    curatorContactId &&
+    curatorConversationId != null
+
+  const handleJumpToEmployee = () => {
+    if (!canJumpToEmployee) return
+    navigateToEmployeeFromCurator({
+      curatorContactId,
+      curatorConversationId,
+      employeeId: String(execution.employee_id),
+      employeeConversationId: execution.conversation_id!,
+    })
+  }
+
+  if (compact) {
+    return (
+      <div
+        className={cn(
+          "flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-dashed bg-muted/20 px-2.5 py-1.5 text-[11px]",
+          className
+        )}
+      >
+        <Badge
+          variant="outline"
+          className={cn("px-1.5 py-0 text-[10px]", statusCfg?.className ?? "")}
+        >
+          {statusCfg?.label ?? execution.run_status}
+        </Badge>
+        <span className="min-w-0 truncate font-medium text-foreground/80">
+          {execution.task_name}
+        </span>
+        {execution.duration_ms != null && (
+          <span className="text-muted-foreground/70">
+            {formatExecutionDuration(execution.duration_ms)}
+          </span>
+        )}
+        {canJumpToEmployee ? (
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto px-0 py-0 text-[11px] text-primary"
+            onClick={handleJumpToEmployee}
+          >
+            查看 {execution.employee_name} 的对话
+            <IconExternalLink className="size-3" />
+          </Button>
+        ) : null}
+        {isFinished && (
+          <StarRating
+            value={execution.skill_rating?.score ?? 0}
+            onChange={(score) => ratingMutation.mutate(score)}
+            size={11}
+          />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div
       className={cn(
@@ -77,13 +151,13 @@ export function ExecutionReportCard({
             className={cn(
               "rounded border-2 px-2 py-0.5 text-[11px] font-bold tracking-wider uppercase opacity-20",
               execution.run_status === "success" &&
-              "rotate-[-12deg] border-green-600 text-green-700 dark:border-green-400 dark:text-green-400",
+                "rotate-[-12deg] border-green-600 text-green-700 dark:border-green-400 dark:text-green-400",
               execution.run_status === "failed" &&
-              "rotate-[-12deg] border-red-600 text-red-700 dark:border-red-400 dark:text-red-400",
+                "rotate-[-12deg] border-red-600 text-red-700 dark:border-red-400 dark:text-red-400",
               execution.run_status === "timeout" &&
-              "rotate-[-12deg] border-amber-600 text-amber-700 dark:border-amber-400 dark:text-amber-400",
+                "rotate-[-12deg] border-amber-600 text-amber-700 dark:border-amber-400 dark:text-amber-400",
               execution.run_status === "cancelled" &&
-              "rotate-[-12deg] border-gray-500 text-gray-600 dark:border-gray-400 dark:text-gray-400"
+                "rotate-[-12deg] border-gray-500 text-gray-600 dark:border-gray-400 dark:text-gray-400"
             )}
           >
             {statusCfg.stampText}
@@ -92,7 +166,7 @@ export function ExecutionReportCard({
       )}
 
       <div className="space-y-2">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge
             variant="outline"
             className={cn(
@@ -113,31 +187,33 @@ export function ExecutionReportCard({
         </div>
 
         {outputText && (
-          <MessageResponse className="max-h-48 overflow-y-auto text-xs leading-relaxed text-muted-foreground [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-            {outputText}
+          <MessageResponse className="max-h-32 overflow-y-auto text-xs leading-relaxed text-muted-foreground [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+            {truncateOutput(outputText, COMPACT_OUTPUT_MAX)}
           </MessageResponse>
         )}
 
-        <div className="flex items-center gap-2 pt-0.5">
-          <StarRating
-            value={execution.skill_rating?.score ?? 0}
-            onChange={(score) => ratingMutation.mutate(score)}
-            size={12}
-          />
-          {execution.conversation_id && (
+        {execution.error_message && !outputText && (
+          <p className="text-xs text-red-600/80 dark:text-red-400/80">
+            {truncateOutput(execution.error_message, COMPACT_OUTPUT_MAX)}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+          {isFinished && (
+            <StarRating
+              value={execution.skill_rating?.score ?? 0}
+              onChange={(score) => ratingMutation.mutate(score)}
+              size={12}
+            />
+          )}
+          {canJumpToEmployee && (
             <Button
-              variant="ghost"
-              size="icon-sm"
-              className="size-5 shrink-0"
-              aria-label="打开对应会话"
-              onClick={() => {
-                selectConversationForContact(
-                  String(execution.employee_id),
-                  String(execution.conversation_id)
-                )
-                useChatStore.getState().setActiveTab("chat")
-              }}
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 text-[11px]"
+              onClick={handleJumpToEmployee}
             >
+              查看 {execution.employee_name} 的对话
               <IconExternalLink className="size-3" />
             </Button>
           )}

@@ -682,6 +682,11 @@ export function CuratorView({
   const { data: executions = [] } =
     useCuratorTaskExecutions(curatorConversationId)
 
+  const executionSummaryIds = useMemo(() => {
+    const map = buildExecutionSummaryTsMap(storedMessages)
+    return new Set(map.keys())
+  }, [storedMessages])
+
   /* ── Build unified timeline ── */
   const timeline: TimelineEntry[] = useMemo(() => {
     const entries: TimelineEntry[] = []
@@ -822,11 +827,29 @@ export function CuratorView({
               {timeline.map((entry) => {
                 if (entry.kind === "execution") {
                   const exec = entry.data
+                  const hasSummary = executionSummaryIds.has(exec.id)
                   const employeeContact = contacts.find(
                     (c) =>
                       c.type === "employee" &&
                       c.employee?.id === String(exec.employee_id)
                   )
+
+                  if (hasSummary) {
+                    return (
+                      <div
+                        key={`exec-${exec.id}`}
+                        className={cn("w-full", layout.message)}
+                      >
+                        <ExecutionReportCard
+                          compact
+                          execution={exec}
+                          curatorContactId={curatorContactId}
+                          curatorConversationId={curatorConversationId}
+                        />
+                      </div>
+                    )
+                  }
+
                   return (
                     <Message
                       key={`exec-${exec.id}`}
@@ -848,7 +871,11 @@ export function CuratorView({
                         </span>
                       </div>
                       <MessageContent className="w-auto">
-                        <ExecutionReportCard execution={exec} />
+                        <ExecutionReportCard
+                          execution={exec}
+                          curatorContactId={curatorContactId}
+                          curatorConversationId={curatorConversationId}
+                        />
                       </MessageContent>
                     </Message>
                   )
