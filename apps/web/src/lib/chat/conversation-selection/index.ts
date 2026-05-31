@@ -2,6 +2,7 @@ export {
   clearSelectedContact,
   enterDraftConversation,
   selectContactById,
+  selectContactForDetail,
   selectConversationById,
   selectConversationForContact,
   selectWorkbenchCuratorConversation,

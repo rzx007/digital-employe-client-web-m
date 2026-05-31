@@ -196,6 +196,7 @@ export function ContactsPanel({
                   key={contact.curator?.id}
                   contact={contact}
                   isCollapsed={false}
+                  clickAction="select"
                   onDoubleClick={() =>
                     handleDoubleClickContact(contact.curator?.id ?? "")
                   }
@@ -213,6 +214,7 @@ export function ContactsPanel({
                     key={contact.group?.id}
                     contact={contact}
                     isCollapsed={false}
+                    clickAction="select"
                     onDoubleClick={() =>
                       handleDoubleClickContact(contact.group?.id ?? "")
                     }
@@ -233,6 +235,7 @@ export function ContactsPanel({
                     key={contact.employee?.id}
                     contact={contact}
                     isCollapsed={false}
+                    clickAction="select"
                     onDoubleClick={() =>
                       handleDoubleClickContact(contact.employee?.id ?? "")
                     }

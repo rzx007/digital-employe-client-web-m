@@ -31,6 +31,7 @@ import { deleteEmployee } from "@/api/employee"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import {
   clearSelectedContact,
+  selectContactForDetail,
   switchToContact,
 } from "@/lib/chat/conversation-selection"
 import { deleteRecentContact } from "@/api/recent-contacts"
@@ -43,12 +44,15 @@ import { GroupDetailDialog } from "../dialogs/group-detail-dialog"
 interface ContactItemProps extends React.ComponentProps<"div"> {
   contact: Contact
   isCollapsed: boolean
+  /** select：仅选中（联系人 Tab）；openChat：进入对话（默认） */
+  clickAction?: "select" | "openChat"
   onDoubleClick?: () => void
 }
 
 export function ContactItem({
   contact,
   isCollapsed,
+  clickAction = "openChat",
   onDoubleClick,
   className,
   ...props
@@ -81,9 +85,12 @@ export function ContactItem({
         : contact.employee?.name
 
   const handleClick = () => {
-    if (contactId) {
-      switchToContact(contactId)
+    if (!contactId) return
+    if (clickAction === "select") {
+      selectContactForDetail(contactId)
+      return
     }
+    switchToContact(contactId)
   }
 
   const handleDetail = () => {

@@ -66,9 +66,11 @@ export function useRecentConversations() {
   const handleSelectItem = (item: RecentConversationItem) => {
     const conversationId = parseRecentItemConversationId(item)
     if (conversationId) {
-      selectConversationForContact(item.contactId, conversationId)
+      selectConversationForContact(item.contactId, conversationId, {
+        touch: false,
+      })
     } else {
-      switchToContact(item.contactId)
+      switchToContact(item.contactId, { touch: false })
     }
     useChatStore.getState().setActiveTab("chat")
   }

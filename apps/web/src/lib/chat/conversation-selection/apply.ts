@@ -38,6 +38,11 @@ export function selectConversationForContact(
   }
 }
 
+/** 联系人页：仅选中查看详情，不切换 Tab、不更新最近消息排序 */
+export function selectContactForDetail(contactId: string) {
+  useChatStore.getState().setSelectedContactId(contactId)
+}
+
 export function switchToContact(
   contactId: string,
   options?: { touch?: boolean }

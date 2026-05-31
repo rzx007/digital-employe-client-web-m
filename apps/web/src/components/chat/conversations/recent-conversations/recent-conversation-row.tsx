@@ -153,7 +153,7 @@ export function RecentConversationRow({
         <div
           title={collapsed ? item.contactName : undefined}
           className={cn(
-            "group flex cursor-pointer items-center transition-colors",
+            "group flex cursor-pointer items-center transition-[background-color,transform] duration-200 ease-out",
             collapsed
               ? "justify-center rounded-lg px-0 py-2"
               : "gap-3 rounded-md px-3 py-2.5 text-xs",
