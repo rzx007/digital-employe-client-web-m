@@ -570,6 +570,7 @@ class ChatService:
                 request_messages[-1] = {"role": "user", "content": skill_question}
             
             from src.service.stream_registry import registry
+            from src.service.agent_stream_queue import StartResult
             
             # 启动后台任务
             run_config: dict = {
@@ -579,7 +580,7 @@ class ChatService:
                 run_config["configurable"]["last_reported_input_tokens"] = (
                     last_input_tokens
                 )
-            started = registry.start(
+            start_result = registry.request_start(
                 conversation_id=conversation_id,
                 agent=agent,
                 messages=request_messages,
@@ -596,16 +597,19 @@ class ChatService:
                 orchestrator_auth_token=(
                     auth_token if target_type == "curator" else None
                 ),
+                source="user_chat",
             )
             
-            if not started:
+            if start_result == StartResult.REJECTED:
                 assistant_msg.stream_state = "error"
                 assistant_msg.content = "当前会话已有正在执行的任务"
                 db.commit()
                 yield f"data: {json.dumps({'error': '当前会话已有正在执行的任务'}, ensure_ascii=False)}\n\n"
                 return
 
-            assistant_msg.stream_state = "streaming"
+            assistant_msg.stream_state = (
+                "queued" if start_result == StartResult.QUEUED else "streaming"
+            )
             conversation.status = "running"
             db.commit()
             try:
@@ -620,6 +624,15 @@ class ChatService:
             except Exception:
                 logger.warning("push start conversation_status_changed failed conv=%s", conversation_id, exc_info=True)
             db.refresh(assistant_msg)
+
+            if start_result == StartResult.QUEUED:
+                queued_payload = {
+                    "type": "agent_queued",
+                    "data": {},
+                    "position": registry.queue_depth(),
+                    "message": "已加入执行队列，等待其他对话完成",
+                }
+                yield f"data: {json.dumps(queued_payload, ensure_ascii=False)}\n\n"
 
             # 返回恢复流的生成器
             async for chunk in ChatService.resume_conversation_stream(db, conversation_id, debug_content_only):
@@ -651,13 +664,13 @@ class ChatService:
             return
 
         task = registry.get_task(conversation_id)
-        if not task or not task.is_active:
+        if not task or (not task.is_active and task.status != "queued"):
             stmt = (
                 select(ConversationMessage)
                 .where(
                     ConversationMessage.conversation_id == conversation_id,
                     ConversationMessage.role == "assistant",
-                    ConversationMessage.stream_state == "streaming",
+                    ConversationMessage.stream_state.in_(("streaming", "queued")),
                 )
                 .order_by(ConversationMessage.id.desc())
                 .limit(1)
@@ -665,8 +678,10 @@ class ChatService:
             stale_msg = db.scalar(stmt)
             if stale_msg:
                 logger.warning(
-                    "[resume] conv=%s stale streaming message msg_id=%s, auto-repairing to error",
-                    conversation_id, stale_msg.id,
+                    "[resume] conv=%s stale %s message msg_id=%s, auto-repairing to error",
+                    conversation_id,
+                    stale_msg.stream_state,
+                    stale_msg.id,
                 )
                 stale_msg.stream_state = "error"
                 stale_msg.content = stale_msg.content or "流已中断，无法恢复"
@@ -778,7 +793,10 @@ class ChatService:
                     evt = await asyncio.wait_for(queue.get(), timeout=5.0)
                 except asyncio.TimeoutError:
                     current_task = registry.get_task(conversation_id)
-                    if not current_task or not current_task.is_active:
+                    if not current_task or (
+                        not current_task.is_active
+                        and current_task.status != "queued"
+                    ):
                         logger.info(
                             "[resume] conv=%s queue.get() timeout and task no longer active, exiting",
                             conversation_id,
@@ -849,7 +867,6 @@ class ChatService:
             content="",
             extra_meta=None,
         )
-        new_msg.stream_state = "streaming"
         new_msg.stream_cursor = 0
         conversation.status = "running"
         db.commit()
@@ -901,7 +918,9 @@ class ChatService:
         config = {"configurable": {"thread_id": conversation_id}}
 
         # 4. 通过 registry approve_and_resume 启动新 task
-        resumed = await registry.approve_and_resume(
+        from src.service.agent_stream_queue import StartResult
+
+        start_result = await registry.approve_and_resume(
             conversation_id=conversation_id,
             agent=agent,
             config=config,
@@ -918,15 +937,25 @@ class ChatService:
             ),
         )
 
-        if not resumed:
+        if start_result == StartResult.REJECTED:
             new_msg.stream_state = "error"
             new_msg.content = new_msg.content or "恢复执行失败：已有活跃任务"
             db.commit()
             return {"accepted": False, "message": "恢复执行失败：已有活跃任务"}
 
+        new_msg.stream_state = (
+            "queued" if start_result == StartResult.QUEUED else "streaming"
+        )
+        if start_result == StartResult.QUEUED:
+            new_msg.content = (
+                new_msg.content or "已加入执行队列，等待其他对话完成"
+            )
+        db.commit()
+
         return {
             "accepted": True,
-            "resumed": True,
+            "resumed": start_result == StartResult.STARTED,
+            "queued": start_result == StartResult.QUEUED,
             "approved_message_id": msg.id,
             "assistant_message_id": new_msg.id,
         }

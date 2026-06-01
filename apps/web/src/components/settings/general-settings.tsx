@@ -1,10 +1,12 @@
 import * as React from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import {
   IconSun,
   IconMoon,
   IconDeviceDesktop,
   IconRocket,
 } from "@tabler/icons-react"
+import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 import {
   Card,
@@ -14,17 +16,22 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card"
 import { Switch } from "@workspace/ui/components/switch"
+import { getConfigKv, setConfigKv } from "@/api/config-kv"
 import { useTheme } from "@/components/theme-provider"
 import { useOnboardingStore } from "@/stores/onboarding-store"
 import { ThemeCard } from "./theme-card"
 import { isElectron, withElectronApi } from "@/lib/electron/host"
 
 export function GeneralSettings() {
+  const queryClient = useQueryClient()
   const { theme, setTheme } = useTheme()
   const resetOnboarding = useOnboardingStore((s) => s.resetOnboarding)
   const [autoLaunch, setAutoLaunch] = React.useState(false)
   const [autoUpdate, setAutoUpdate] = React.useState(true)
   const [notifications, setNotifications] = React.useState(true)
+  const [agentSerialMode, setAgentSerialMode] = React.useState(false)
+  const [savingAgentSerialMode, setSavingAgentSerialMode] =
+    React.useState(false)
 
   React.useEffect(() => {
     if (!isElectron()) return
@@ -39,6 +46,12 @@ export function GeneralSettings() {
       setAutoUpdate(autoUpdateVal)
       setNotifications(notificationsVal)
     })
+  }, [])
+
+  React.useEffect(() => {
+    void getConfigKv("AGENT_SERIAL_MODE")
+      .then((kv) => setAgentSerialMode(kv?.config_value === "1"))
+      .catch(() => {})
   }, [])
 
   const handleAutoLaunchChange = async (checked: boolean) => {
@@ -59,6 +72,23 @@ export function GeneralSettings() {
     setNotifications(checked)
     if (isElectron()) {
       await withElectronApi((api) => api.setNotifications(checked))
+    }
+  }
+
+  const handleAgentSerialModeChange = async (checked: boolean) => {
+    setAgentSerialMode(checked)
+    setSavingAgentSerialMode(true)
+    try {
+      await setConfigKv("AGENT_SERIAL_MODE", checked ? "1" : "0")
+      await queryClient.invalidateQueries({
+        queryKey: ["system", "runtime"],
+      })
+      toast.success("Agent 串行模式已更新")
+    } catch {
+      setAgentSerialMode(!checked)
+      toast.error("保存 Agent 串行模式失败")
+    } finally {
+      setSavingAgentSerialMode(false)
     }
   }
 
@@ -138,6 +168,30 @@ export function GeneralSettings() {
             <Switch
               checked={notifications}
               onCheckedChange={handleNotificationsChange}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>性能与资源</CardTitle>
+          <CardDescription>
+            在资源受限设备上控制 Agent 对话的并发执行方式
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium">Agent 串行对话模式</span>
+              <span className="text-xs text-muted-foreground">
+                开启后同一时间只运行一个 Agent，对话、委派和定时任务会排队执行
+              </span>
+            </div>
+            <Switch
+              checked={agentSerialMode}
+              disabled={savingAgentSerialMode}
+              onCheckedChange={handleAgentSerialModeChange}
             />
           </div>
         </CardContent>

@@ -76,6 +76,7 @@ def join_base_and_path(base_url: str | None, path: str | None) -> str | None:
 @dataclass(slots=True)
 class Settings:
     offline_mode: bool
+    agent_serial_mode: bool
     default_workspace_root: str | None
     default_workspace_id: int
     default_workspace_name: str | None
@@ -138,6 +139,13 @@ def _get_kv_value(kv_data: dict[str, str], key: str) -> str | None:
         return None
     normalized = str(value).strip()
     return normalized if normalized else None
+
+
+def _get_kv_bool(kv_data: dict[str, str], key: str, default: bool = False) -> bool:
+    value = _get_kv_value(kv_data, key)
+    if value is None:
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
 
 
 def _read_config_kv_data() -> dict[str, str]:
@@ -325,6 +333,7 @@ def get_settings() -> Settings:
 
     return Settings(
         offline_mode=is_offline_mode(),
+        agent_serial_mode=_get_kv_bool(kv_data, "AGENT_SERIAL_MODE"),
         default_workspace_root=_get_kv_value(kv_data, "DEFAULT_WORKSPACE_ROOT"),
         default_workspace_id=default_workspace_id,
         default_workspace_name=_get_kv_value(kv_data, "DEFAULT_WORKSPACE_NAME")

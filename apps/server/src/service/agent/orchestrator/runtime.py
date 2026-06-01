@@ -165,11 +165,17 @@ def get_auth_token() -> str | None:
     return resolve_auth_token()
 
 
-def reset_context() -> None:
-    """清除总管 Tool 的 ContextVar（后台流结束后调用，避免泄漏到其他任务）。"""
-    conversation_id = _conversation_id_ctx.get()
-    if conversation_id is not None:
-        unregister_stream_session(conversation_id)
+def reset_context(conversation_id: int | None = None) -> None:
+    """清除总管 Tool 的 ContextVar。
+
+    若传入 conversation_id，仅当当前上下文属于该会话时才清除，
+    避免串行模式下其他流结束时误清正在排队/执行的总管任务上下文。
+    """
+    current_conv = _conversation_id_ctx.get()
+    if conversation_id is not None and current_conv != conversation_id:
+        return
+    if current_conv is not None:
+        unregister_stream_session(current_conv)
     _db_session_ctx.set(None)
     _workspace_id_ctx.set(None)
     _conversation_id_ctx.set(None)
@@ -189,7 +195,7 @@ def count_running_tasks(db: Session, employee_id: int) -> int:
     return db.scalar(
         select(func.count(TaskExecutionLog.id)).where(
             TaskExecutionLog.employee_id == employee_id,
-            TaskExecutionLog.run_status == "running",
+            TaskExecutionLog.run_status.in_(("running", "queued")),
         )
     ) or 0
 
@@ -203,6 +209,25 @@ def get_employee_name(db: Session, employee_id: int) -> str:
     return emp.name if emp else f"#{employee_id}"
 
 
+def notify_task_failed_for_conversation(conversation_id: int, error: str) -> None:
+    """按会话查找执行日志并推送 task_failed（委派启动失败等）。"""
+    from src.db.session import get_session_local
+    from src.models.task_execution_log import TaskExecutionLog
+
+    db = get_session_local()()
+    try:
+        log = db.scalars(
+            select(TaskExecutionLog).where(
+                TaskExecutionLog.conversation_id == conversation_id,
+                TaskExecutionLog.run_status.in_(("running", "queued")),
+            )
+        ).first()
+        if log:
+            mark_task_failed(log.task_id, conversation_id, error)
+    finally:
+        db.close()
+
+
 def mark_task_failed(task_id: int, conversation_id: int, error: str) -> None:
     from src.db.session import get_session_local
     from src.models.task_execution_log import TaskExecutionLog
@@ -214,7 +239,7 @@ def mark_task_failed(task_id: int, conversation_id: int, error: str) -> None:
         log = db.scalars(
             select(TaskExecutionLog).where(
                 TaskExecutionLog.task_id == task_id,
-                TaskExecutionLog.run_status == "running",
+                TaskExecutionLog.run_status.in_(("running", "queued")),
             )
         ).first()
         if log:

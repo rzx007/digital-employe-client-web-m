@@ -20,9 +20,17 @@ export interface ActivationRuntime {
   reason: string | null
 }
 
+export interface AgentRuntime {
+  serial_mode: boolean
+  max_concurrent_streams: number
+  active_streams: number
+  queued_starts: number
+}
+
 export interface RuntimeConfig {
   offline_mode: boolean
   capabilities: Capabilities
+  agent_runtime?: AgentRuntime
   activation?: ActivationRuntime
 }
 

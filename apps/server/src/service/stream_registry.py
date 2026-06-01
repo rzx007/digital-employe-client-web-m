@@ -12,7 +12,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 
+from src.core.agent_runtime_policy import (
+    HITL_RESUME_PRIORITY,
+    ORCHESTRATION_PRIORITY,
+    USER_CHAT_PRIORITY,
+    get_agent_runtime_policy,
+)
 from src.models.conversation import ConversationMessage
+from src.service.agent_stream_queue import AgentStreamQueue, PendingStart, StartResult
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +143,63 @@ def _flush_to_db_sync(
                 db.rollback()
                 return False
         return False
+    finally:
+        db.close()
+
+
+def _mark_stream_state_sync(
+    stream_msg_id: int,
+    conversation_id: int,
+    state: str,
+    *,
+    error_message: str | None = None,
+) -> None:
+    """更新消息与执行日志的启动状态，供排队/出队路径使用。"""
+    from src.db.session import get_session_local
+    from src.models.task_execution_log import TaskExecutionLog
+
+    db = get_session_local()()
+    try:
+        msg = db.get(ConversationMessage, stream_msg_id)
+        if msg:
+            msg.stream_state = state
+            if state == "queued":
+                msg.content = msg.content or "已加入执行队列，等待其他对话完成"
+            elif state == "error":
+                msg.content = error_message or msg.content or "启动失败"
+
+        logs = list(
+            db.scalars(
+                select(TaskExecutionLog).where(
+                    TaskExecutionLog.conversation_id == conversation_id,
+                    TaskExecutionLog.run_status.in_(("running", "queued")),
+                )
+            ).all()
+        )
+        for log in logs:
+            if state == "queued":
+                log.run_status = "queued"
+                log.run_result = "排队中，等待执行"
+            elif state == "cancelled":
+                log.run_status = "cancelled"
+                log.run_result = "排队任务已取消"
+            elif state == "error":
+                log.run_status = "failed"
+                log.run_result = "任务执行失败"
+                log.error_message = (error_message or "启动失败")[:2000]
+            else:
+                log.run_status = "running"
+                log.run_result = "执行中"
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "[state] failed to mark stream msg_id=%s conv=%s state=%s",
+            stream_msg_id,
+            conversation_id,
+            state,
+            exc_info=True,
+        )
     finally:
         db.close()
 
@@ -284,8 +348,9 @@ class StreamEventBuffer:
 
 
 class ActiveStreamTask:
-    def __init__(self, conversation_id: int):
+    def __init__(self, conversation_id: int, *, stream_msg_id: int | None = None):
         self.conversation_id = conversation_id
+        self.stream_msg_id = stream_msg_id
         self.status: str = "streaming"
         self.buffer = StreamEventBuffer(conversation_id)
         self.subscribers: set[Subscriber] = set()
@@ -308,11 +373,33 @@ class ActiveStreamTask:
 class StreamRegistry:
     def __init__(self) -> None:
         self._tasks: dict[int, ActiveStreamTask] = {}
+        self._queue = AgentStreamQueue()
         self.on_task_finalized: Callable[..., None] | None = None
 
     def is_active(self, conversation_id: int) -> bool:
         task = self._tasks.get(conversation_id)
         return task is not None and task.is_active
+
+    def is_busy(self, conversation_id: int) -> bool:
+        """会话是否占用流槽（正在执行或已在全局队列中等待）。"""
+        task = self._tasks.get(conversation_id)
+        if not task:
+            return False
+        return task.is_active or task.status == "queued"
+
+    def count_active_streams(self) -> int:
+        active = 0
+        for conversation_id, task in list(self._tasks.items()):
+            if not task.is_active:
+                continue
+            if self._stream_task_is_stale_active(task):
+                self._clear_stale_active_task(conversation_id, task)
+                continue
+            active += 1
+        return active
+
+    def queue_depth(self) -> int:
+        return self._queue.depth()
 
     def get_task(self, conversation_id: int) -> ActiveStreamTask | None:
         return self._tasks.get(conversation_id)
@@ -324,6 +411,8 @@ class StreamRegistry:
     def get_stream_status(self, conversation_id: int, db: Any) -> dict | None:
         task = self._tasks.get(conversation_id)
         if task:
+            if task.status == "queued":
+                return None
             if not task.is_active:
                 return {
                     "status": task.status,
@@ -358,6 +447,189 @@ class StreamRegistry:
             result["message_id"] = msg.id
         return result
 
+    def _can_start_now(self) -> bool:
+        policy = get_agent_runtime_policy()
+        if policy.max_concurrent_streams <= 0:
+            return True
+        return self.count_active_streams() < policy.max_concurrent_streams
+
+    def _default_priority(
+        self,
+        *,
+        orchestrator_conversation_id: int | None,
+    ) -> tuple[int, str]:
+        if orchestrator_conversation_id is not None:
+            return ORCHESTRATION_PRIORITY, "orchestration"
+        return USER_CHAT_PRIORITY, "user_chat"
+
+    def _launch_pending(self, pending: PendingStart) -> None:
+        task = pending.task or ActiveStreamTask(pending.conversation_id)
+        task.status = "streaming"
+        task.error_message = None
+        self._tasks[pending.conversation_id] = task
+        _mark_stream_state_sync(
+            pending.stream_msg_id,
+            pending.conversation_id,
+            "streaming",
+        )
+        coro = self._run_agent_background(
+            conversation_id=pending.conversation_id,
+            agent=pending.agent,
+            messages=pending.messages,
+            config=pending.config,
+            stream_msg_id=pending.stream_msg_id,
+            skill_name=pending.skill_name,
+            debug_content_only=pending.debug_content_only,
+            task=task,
+            agent_input=pending.agent_input,
+            orchestrator_owned_db=pending.orchestrator_owned_db,
+            orchestrator_workspace_id=pending.orchestrator_workspace_id,
+            orchestrator_conversation_id=pending.orchestrator_conversation_id,
+            orchestrator_auth_token=pending.orchestrator_auth_token,
+        )
+        task._asyncio_task = asyncio.create_task(coro)
+
+    @staticmethod
+    def _stream_task_is_stale_active(task: ActiveStreamTask) -> bool:
+        if not task.is_active:
+            return False
+        if task._asyncio_task is None:
+            return True
+        return task._asyncio_task.done()
+
+    def _clear_stale_active_task(self, conversation_id: int, task: ActiveStreamTask) -> None:
+        logger.warning(
+            "clearing stale active stream conv=%s asyncio_done=%s",
+            conversation_id,
+            task._asyncio_task.done() if task._asyncio_task else None,
+        )
+        task.status = "error"
+        task.error_message = "流任务异常结束，已清理"
+        if task._asyncio_task and not task._asyncio_task.done():
+            task._asyncio_task.cancel()
+        self._drain_queue_if_slot_available()
+
+    def _drain_queue_if_slot_available(self) -> None:
+        if self._can_start_now() and self._queue.depth() > 0:
+            self._drain_queue()
+
+    def _drain_queue(self) -> None:
+        while self._can_start_now():
+            pending = self._queue.pop_next()
+            if pending is None:
+                return
+            existing = self._tasks.get(pending.conversation_id)
+            if existing and existing.is_active:
+                if self._stream_task_is_stale_active(existing):
+                    self._clear_stale_active_task(pending.conversation_id, existing)
+                else:
+                    if not self._queue.enqueue(pending):
+                        logger.error(
+                            "drain: failed to re-enqueue conv=%s (duplicate?)",
+                            pending.conversation_id,
+                        )
+                    else:
+                        logger.info(
+                            "drain: re-enqueued conv=%s, slot still busy",
+                            pending.conversation_id,
+                        )
+                    continue
+            logger.info(
+                "dequeue agent stream conv=%s source=%s priority=%s remaining=%s",
+                pending.conversation_id,
+                pending.source,
+                pending.priority,
+                self._queue.depth(),
+            )
+            self._launch_pending(pending)
+
+    def request_start(
+        self,
+        conversation_id: int,
+        agent: Any,
+        messages: list[dict],
+        config: dict,
+        stream_msg_id: int,
+        skill_name: str,
+        debug_content_only: bool,
+        *,
+        priority: int | None = None,
+        source: str | None = None,
+        agent_input: Any | None = None,
+        orchestrator_owned_db: Session | None = None,
+        orchestrator_workspace_id: int | None = None,
+        orchestrator_conversation_id: int | None = None,
+        orchestrator_auth_token: str | None = None,
+    ) -> StartResult:
+        existing = self._tasks.get(conversation_id)
+        if existing and existing.is_active:
+            logger.warning(
+                "start refused: conversation %s already has active stream",
+                conversation_id,
+            )
+            return StartResult.REJECTED
+        if existing and existing.status == "queued":
+            logger.warning(
+                "start refused: conversation %s already queued", conversation_id
+            )
+            return StartResult.REJECTED
+
+        if existing and existing._cleanup_task and not existing._cleanup_task.done():
+            existing._cleanup_task.cancel()
+            logger.info(
+                "start: cancelled stale cleanup for conversation %s", conversation_id
+            )
+
+        default_priority, default_source = self._default_priority(
+            orchestrator_conversation_id=orchestrator_conversation_id,
+        )
+        task = ActiveStreamTask(conversation_id, stream_msg_id=stream_msg_id)
+        pending = PendingStart(
+            conversation_id=conversation_id,
+            agent=agent,
+            messages=messages,
+            config=config,
+            stream_msg_id=stream_msg_id,
+            skill_name=skill_name,
+            debug_content_only=debug_content_only,
+            priority=priority if priority is not None else default_priority,
+            source=source or default_source,
+            agent_input=agent_input,
+            task=task,
+            orchestrator_owned_db=orchestrator_owned_db,
+            orchestrator_workspace_id=orchestrator_workspace_id,
+            orchestrator_conversation_id=orchestrator_conversation_id,
+            orchestrator_auth_token=orchestrator_auth_token,
+        )
+
+        self._drain_queue_if_slot_available()
+        if self._can_start_now():
+            self._launch_pending(pending)
+            return StartResult.STARTED
+
+        task.status = "queued"
+        self._tasks[conversation_id] = task
+        position = self._queue.depth() + 1
+        task.buffer.add({
+            "type": "agent_queued",
+            "data": {},
+            "position": position,
+            "source": pending.source,
+            "message": "已加入执行队列，等待其他对话完成",
+        })
+        if not self._queue.enqueue(pending):
+            self._tasks.pop(conversation_id, None)
+            return StartResult.REJECTED
+        _mark_stream_state_sync(stream_msg_id, conversation_id, "queued")
+        logger.info(
+            "agent stream queued conv=%s source=%s priority=%s position=%s",
+            conversation_id,
+            pending.source,
+            pending.priority,
+            position,
+        )
+        return StartResult.QUEUED
+
     def broadcast(self, conversation_id: int, event: dict) -> None:
         task = self._tasks.get(conversation_id)
         if not task:
@@ -382,49 +654,11 @@ class StreamRegistry:
         orchestrator_workspace_id: int | None = None,
         orchestrator_conversation_id: int | None = None,
         orchestrator_auth_token: str | None = None,
-    ) -> bool:
-        """启动Agent流式任务。
-
-        为指定的会话创建并启动一个后台Agent执行任务，用于处理流式响应。
-        如果该会话已有活跃的任务，则拒绝启动新任务。
-
-        Args:
-            conversation_id: 会话ID，用于标识和追踪流式任务
-            agent: Agent实例，负责处理消息和生成响应
-            messages: 消息列表，包含对话历史或当前需要处理的消息
-            config: 配置字典，包含Agent运行所需的配置参数
-            stream_msg_id: 流式消息ID，用于关联流式输出的消息记录
-            skill_name: 技能名称，标识当前使用的Agent技能
-            debug_content_only: 是否仅返回调试内容，用于开发调试模式
-            orchestrator_owned_db: 可选，协调器拥有的数据库会话对象
-            orchestrator_workspace_id: 可选，协调器工作空间ID
-            orchestrator_conversation_id: 可选，协调器会话ID
-
-        Returns:
-            bool: 任务是否成功启动。如果会话已有活跃任务则返回False，否则返回True
-        """
-        # 检查是否已存在活跃任务，避免重复启动
-        existing = self._tasks.get(conversation_id)
-        if existing and existing.is_active:
-            logger.warning(
-                "start refused: conversation %s already has active stream",
-                conversation_id,
-            )
-            return False
-
-        # 清理未完成的历史清理任务，防止资源泄漏
-        if existing and existing._cleanup_task and not existing._cleanup_task.done():
-            existing._cleanup_task.cancel()
-            logger.info(
-                "start: cancelled stale cleanup for conversation %s", conversation_id
-            )
-
-        # 创建新的活动流任务并注册到任务管理器
-        task = ActiveStreamTask(conversation_id)
-        self._tasks[conversation_id] = task
-
-        # 构建后台运行协程并启动异步任务
-        coro = self._run_agent_background(
+        priority: int | None = None,
+        source: str | None = None,
+    ) -> StartResult:
+        """启动 Agent 流式任务，返回 started / queued / rejected。"""
+        return self.request_start(
             conversation_id=conversation_id,
             agent=agent,
             messages=messages,
@@ -432,20 +666,33 @@ class StreamRegistry:
             stream_msg_id=stream_msg_id,
             skill_name=skill_name,
             debug_content_only=debug_content_only,
-            task=task,
             orchestrator_owned_db=orchestrator_owned_db,
             orchestrator_workspace_id=orchestrator_workspace_id,
             orchestrator_conversation_id=orchestrator_conversation_id,
             orchestrator_auth_token=orchestrator_auth_token,
+            priority=priority,
+            source=source,
         )
-        task._asyncio_task = asyncio.create_task(coro)
-        return True
 
     def cancel(self, conversation_id: int) -> bool:
         task = self._tasks.get(conversation_id)
         if not task:
             logger.warning("[cancel] conv=%s no active task in registry, cancel missed", conversation_id)
             return False
+        if task.status == "queued":
+            pending = self._queue.remove(conversation_id)
+            self._tasks.pop(conversation_id, None)
+            task.status = "cancelled"
+            evt = task.buffer.add({"status": "cancelled"})
+            self.broadcast(conversation_id, evt)
+            stream_msg_id = (
+                pending.stream_msg_id
+                if pending
+                else (task.stream_msg_id or 0)
+            )
+            _mark_stream_state_sync(stream_msg_id, conversation_id, "cancelled")
+            logger.info("[cancel] conv=%s queued task removed", conversation_id)
+            return True
         if not task.is_active:
             logger.warning("[cancel] conv=%s task not active (status=%s), cancel missed", conversation_id, task.status)
             return False
@@ -472,27 +719,12 @@ class StreamRegistry:
         orchestrator_workspace_id: int | None = None,
         orchestrator_conversation_id: int | None = None,
         orchestrator_auth_token: str | None = None,
-    ) -> bool:
+    ) -> StartResult:
         """HITL approve: 新建 task + 新 buffer，用 Command(resume) 继续 agent 执行。"""
         from langgraph.types import Command
 
-        existing = self._tasks.get(conversation_id)
-        if existing and existing.is_active:
-            logger.warning(
-                "[approve] conv=%s refused: active task exists (status=%s)",
-                conversation_id, existing.status,
-            )
-            return False
-
-        if existing and existing._cleanup_task and not existing._cleanup_task.done():
-            existing._cleanup_task.cancel()
-
-        task = ActiveStreamTask(conversation_id)
-        self._tasks[conversation_id] = task
-
         resume_input = Command(resume={"decisions": decisions})
-
-        coro = self._run_agent_background(
+        result = self.request_start(
             conversation_id=conversation_id,
             agent=agent,
             messages=[],
@@ -500,19 +732,19 @@ class StreamRegistry:
             stream_msg_id=stream_msg_id,
             skill_name="",
             debug_content_only=False,
-            task=task,
             agent_input=resume_input,
             orchestrator_owned_db=orchestrator_owned_db,
             orchestrator_workspace_id=orchestrator_workspace_id,
             orchestrator_conversation_id=orchestrator_conversation_id,
             orchestrator_auth_token=orchestrator_auth_token,
+            priority=HITL_RESUME_PRIORITY,
+            source="hitl_resume",
         )
-        task._asyncio_task = asyncio.create_task(coro)
         logger.info(
-            "[approve] conv=%s resume task created with Command(resume)",
-            conversation_id,
+            "[approve] conv=%s resume request result=%s",
+            conversation_id, result,
         )
-        return True
+        return result
 
     def _schedule_cleanup(self, conversation_id: int) -> None:
         task = self._tasks.get(conversation_id)
@@ -877,14 +1109,14 @@ class StreamRegistry:
             if orchestrator_owned_db is not None:
                 from src.service.agent.orchestrator.runtime import reset_context
 
-                reset_context()
+                reset_context(stream_conv_id)
                 orchestrator_owned_db.close()
             elif orchestrator_workspace_id is not None:
-                from src.service.agent.orchestrator.runtime import (
-                    unregister_stream_session,
-                )
+                from src.service.agent.orchestrator.runtime import reset_context
 
-                unregister_stream_session(stream_conv_id)
+                reset_context(stream_conv_id)
+
+            self._drain_queue()
 
     async def _ensure_terminal_state(self, stream_msg_id: int, state: str) -> None:
         """flush 失败兜底：仅写 stream_state，不写 content/parts，保证不卡在 streaming。"""

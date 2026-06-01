@@ -15,6 +15,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
+from src.core.agent_runtime_policy import SCHEDULED_PRIORITY
 from src.llm.factory import build_chat_model
 from src.db.session import get_session_local
 from src.models.employee import Employee
@@ -563,12 +564,22 @@ class TaskSchedulerService:
     @classmethod
     def _start_curator_task(cls, db: Session, task: EmployeeTask, employee: Employee) -> None:
         """总管员工的定时任务：投递到 curator 会话，由 orchestrator agent 执行。"""
+        from src.core.agent_runtime_policy import get_agent_runtime_policy
         from src.models.conversation import Conversation, ConversationMessage
         from src.service.agent.orchestrator import get_orchestrator_agent, _get_main_loop
         from src.service.stream_registry import registry as _stream_registry
         from src.service.workspace_events import WorkspaceEventBus
 
         workspace_id = task.workspace_id
+        policy = get_agent_runtime_policy()
+        slot_busy = (
+            policy.serial_mode
+            and _stream_registry.count_active_streams()
+            >= policy.max_concurrent_streams
+        )
+        initial_log_status = "queued" if slot_busy else "running"
+        initial_log_result = "排队中，等待执行" if slot_busy else "执行中"
+        initial_msg_state = "queued" if slot_busy else "streaming"
 
         # 1. 解析总管会话：优先任务绑定的 source_conversation_id，否则 ensure 默认会话
         from src.service.chat_service import ChatService
@@ -608,8 +619,8 @@ class TaskSchedulerService:
             employee_id=employee.id,
             skill_id=task.skill_id,
             task_name_snapshot=task.task_name,
-            run_status="running",
-            run_result="执行中",
+            run_status=initial_log_status,
+            run_result=initial_log_result,
             input_json=task.task_input_json or "{}",
             output_json="{}",
             conversation_id=conv.id,
@@ -633,10 +644,15 @@ class TaskSchedulerService:
             conversation_id=conv.id,
             role="assistant",
             content="",
-            stream_state="streaming",
+            stream_state=initial_msg_state,
         )
         db.add(assistant_msg)
         db.flush()
+
+        if initial_msg_state == "queued":
+            assistant_msg.content = (
+                assistant_msg.content or "已加入执行队列，等待其他对话完成"
+            )
 
         conv_id = conv.id
         asst_msg_id = assistant_msg.id
@@ -661,8 +677,11 @@ class TaskSchedulerService:
                     orch_db,
                     conv_id,
                     employee_id=employee_id_snap,
+                    bind_context=False,
                 )
-                started = _stream_registry.start(
+                from src.service.agent_stream_queue import StartResult
+
+                result = _stream_registry.start(
                     conversation_id=conv_id,
                     agent=agent,
                     messages=messages,
@@ -673,12 +692,14 @@ class TaskSchedulerService:
                     orchestrator_owned_db=orch_db,
                     orchestrator_workspace_id=workspace_id_snap,
                     orchestrator_conversation_id=conv_id,
+                    priority=SCHEDULED_PRIORITY,
+                    source="scheduled",
                 )
-                if not started:
-                    reset_context()
+                if result == StartResult.REJECTED:
+                    reset_context(conv_id)
                     orch_db.close()
             except Exception:
-                reset_context()
+                reset_context(conv_id)
                 orch_db.close()
                 logger.error(
                     "总管定时任务启动流失败 task_id=%s conv_id=%s",
@@ -723,7 +744,14 @@ class TaskSchedulerService:
                         cls._start_curator_task(db, task, employee)
                     else:
                         from src.service.agent.orchestrator import _start_task_as_conversation
-                        _start_task_as_conversation(db, task, employee, task.workspace_id)
+                        _start_task_as_conversation(
+                            db,
+                            task,
+                            employee,
+                            task.workspace_id,
+                            priority=SCHEDULED_PRIORITY,
+                            source="scheduled",
+                        )
                     task.last_run_at = cst_now()
                     task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=task.last_run_at)
                     db.add(task)

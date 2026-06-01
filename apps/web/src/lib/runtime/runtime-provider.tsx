@@ -1,7 +1,7 @@
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
 import { fetchRuntimeConfig } from "@/api/system"
-import type { Capabilities, RuntimeConfig } from "./runtime-types"
+import type { AgentRuntime, Capabilities, RuntimeConfig } from "./runtime-types"
 
 const defaultCapabilities: Capabilities = {
   remote_login: true,
@@ -19,6 +19,12 @@ const defaultCapabilities: Capabilities = {
 
 const defaultRuntimeConfig: RuntimeConfig = {
   offline_mode: false,
+  agent_runtime: {
+    serial_mode: false,
+    max_concurrent_streams: 0,
+    active_streams: 0,
+    queued_starts: 0,
+  },
   capabilities: defaultCapabilities,
 }
 
@@ -44,9 +50,7 @@ export function RuntimeProvider({ children }: { children: React.ReactNode }) {
   }, [data])
 
   return (
-    <RuntimeContext.Provider value={config}>
-      {children}
-    </RuntimeContext.Provider>
+    <RuntimeContext.Provider value={config}>{children}</RuntimeContext.Provider>
   )
 }
 
@@ -62,4 +66,9 @@ export function useCapability(name: keyof Capabilities): boolean {
 export function useOfflineMode(): boolean {
   const config = React.useContext(RuntimeContext)
   return config.offline_mode
+}
+
+export function useAgentRuntime(): AgentRuntime {
+  const config = React.useContext(RuntimeContext)
+  return config.agent_runtime ?? defaultRuntimeConfig.agent_runtime!
 }

@@ -123,6 +123,7 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 ### 架构文档（apps/server/docs）
 
 - [可恢复流](./apps/server/docs/resumable-stream-architecture.md) — SSE buffer、resume、落库
+- [Agent 串行模式](./docs/agent-serial-mode.md) — 客户端可切换的全局 Agent 串行执行与启动队列
 - [总管委派 SSE 串流](./apps/server/docs/orchestrator-employee-stream-isolation.md) — 总管/员工并发 `astream` 串流根因与 `execution.py` 修复
 - [HITL 人机协同](./apps/server/docs/hitl-architecture.md) — 澄清/方案审批、`message_id` 模型、数据流与待办
 - [HITL tool invocation 报错](./apps/server/docs/hitl-tool-invocation-not-found.md) — `No tool invocation found for tool call ID` 成因与修复
