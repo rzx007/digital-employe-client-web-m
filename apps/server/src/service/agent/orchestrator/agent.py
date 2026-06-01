@@ -9,10 +9,7 @@ from sqlalchemy.orm import Session
 
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend
-from src.service.agent.basic_file_backend import (
-    BasicFileFilesystemBackend,
-    EncodingAwareFilesystemBackend,
-)
+from src.service.agent.basic_file_backend import BasicFileFilesystemBackend
 from deepagents.middleware.permissions import FilesystemPermission
 from deepagents.middleware.summarization import SummarizationToolMiddleware
 
@@ -129,12 +126,8 @@ def get_orchestrator_agent(
     if uploads_dir is not None:
         uploads_dir.mkdir(parents=True, exist_ok=True)
 
-    agent_fs = EncodingAwareFilesystemBackend(
-        root_dir=str(base_dir), virtual_mode=True
-    )
-    memories_fs = EncodingAwareFilesystemBackend(
-        root_dir=str(memories_dir), virtual_mode=True
-    )
+    agent_fs = FilesystemBackend(root_dir=str(base_dir), virtual_mode=True)
+    memories_fs = FilesystemBackend(root_dir=str(memories_dir), virtual_mode=True)
     routes: dict[str, Any] = {
         "/memories/": memories_fs,
         "/skills/": skills_fs,

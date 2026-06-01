@@ -14,6 +14,7 @@ function hasOfflineMarker(): boolean {
 }
 
 export function isOfflineMode(): boolean {
+  console.log("-----------------isOfflineMode-------------", hasOfflineMarker())
   if (hasOfflineMarker()) return true
   const v = process.env.OFFLINE_MODE?.trim().toLowerCase()
   return v === "1" || v === "true" || v === "yes" || v === "on"
