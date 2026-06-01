@@ -19,7 +19,6 @@ from langchain.tools import ToolRuntime
 from langchain_core.tools import tool
 from sqlalchemy.orm import Session
 
-from src.core.runtime_capabilities import get_capabilities
 from src.service.agent.orchestrator.runtime import (
     get_db,
     get_workspace_id,
@@ -311,7 +310,7 @@ def get_workspace_skill_detail(
 def list_builtin_skills(query: str = "") -> str:
     """列出安装包自带的内置技能（build-in-skills），按名称/描述过滤。
 
-    在线模式请优先 search_market_skills 搜索 SkillsMP 技能仓库。
+    优先 search_market_skills 搜索 SkillsMP 技能仓库；无合适结果时再查内置技能。
     内置技能安装用 install_builtin_skill。
 
     Args:
@@ -413,7 +412,7 @@ def search_market_skills(
     query: str,
     runtime: ToolRuntime[None, None] = None,
 ) -> str:
-    """从 SkillsMP 公开目录搜索可安装技能（在线模式，无需登录）。
+    """从 SkillsMP 公开目录搜索可安装技能（无需登录，离线模式也可用）。
 
     每次搜索最多返回 3 个结果；预览详情最多 3 个（get_market_skill_detail）。
     完整浏览请打开 https://skillsmp.com/search
@@ -422,12 +421,6 @@ def search_market_skills(
     Args:
         query: 搜索关键词（如「标书」「测试」「ppt」），必填
     """
-    if not get_capabilities().remote_skills:
-        return (
-            "当前为离线模式，无法访问 SkillsMP 技能仓库。\n"
-            "请用 list_builtin_skills 查看内置技能，或在客户端「技能」页导入 ZIP。"
-        )
-
     q = query.strip()
     if not q:
         return (
@@ -512,9 +505,6 @@ def get_market_skill_detail(
     Args:
         skill_slug: search_market_skills 返回的 slug 字符串
     """
-    if not get_capabilities().remote_skills:
-        return "当前为离线模式，无法访问 SkillsMP 技能目录。"
-
     slug = skill_slug.strip()
     if not slug:
         return "错误：skill_slug 不能为空。"
@@ -574,7 +564,7 @@ def install_market_skill(
     overwrite: bool = False,
     runtime: ToolRuntime[None, None] = None,
 ) -> str:
-    """从 SkillsMP 目录安装技能到当前工作区本地目录（无需登录）。
+    """从 SkillsMP 目录安装技能到当前工作区本地目录（无需登录，离线模式也可用）。
 
     安装路径：~/.digital-employee/local-skills/<workspace_id>/<skill_name>/
     安装后调用 list_workspace_skills 获取 localId，再 update_employee 分配给员工。
@@ -583,9 +573,6 @@ def install_market_skill(
         skill_slug: search_market_skills 或 get_market_skill_detail 返回的 slug 字符串
         overwrite: 是否覆盖已安装的同名技能（默认 False）
     """
-    if not get_capabilities().remote_skills:
-        return "当前为离线模式，无法从 SkillsMP 安装。请使用 list_builtin_skills 或 ZIP 导入。"
-
     slug = skill_slug.strip()
     if not slug:
         return "错误：skill_slug 不能为空。"

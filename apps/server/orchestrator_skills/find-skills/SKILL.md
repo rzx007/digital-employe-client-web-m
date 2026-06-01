@@ -1,6 +1,6 @@
 ---
 name: find-skills
-description: 帮助用户从 SkillsMP 技能仓库发现并安装 Agent 技能。当用户问「有没有 XX 技能」「怎么写标书/做测试」「找个技能」「扩展能力」时使用。在线模式优先引导 https://skillsmp.com/search ，离线模式使用内置技能或 ZIP 导入。
+description: 帮助用户从 SkillsMP 技能仓库发现并安装 Agent 技能。当用户问「有没有 XX 技能」「怎么写标书/做测试」「找个技能」「扩展能力」时使用。优先引导 https://skillsmp.com/search ；无合适结果时用内置技能或 ZIP 导入。
 ---
 
 # Find Skills — 技能发现与安装
@@ -16,13 +16,12 @@ description: 帮助用户从 SkillsMP 技能仓库发现并安装 Agent 技能�
 
 ## 技能仓库
 
-**在线模式（默认）：**
+**SkillsMP 公开仓库（在线/离线模式均可用，仅需网络）：**
 
 - 浏览地址：**https://skillsmp.com/search**
-- 客户端：**左侧「技能」→「远程技能」** 可分类浏览、一键安装
 - 总管工具：`search_market_skills` → `get_market_skill_detail` → `install_market_skill`
 
-**离线模式：**
+**兜底（仓库无合适结果）：**
 
 - 使用 `list_builtin_skills` + `install_builtin_skill` 安装内置技能
 - 或在客户端「技能」页 **导入 ZIP**
@@ -40,7 +39,7 @@ list_workspace_skills          # 工作区已安装
 list_workspace_employees       # 是否已有员工自带技能
 ```
 
-### 3. 搜索仓库（在线）
+### 3. 搜索仓库
 
 每次搜索 **最多 3 条**；预览详情 **最多 3 个**（须逐个预览，勿并行批量拉取）。
 
@@ -113,4 +112,4 @@ install_builtin_skill("skill-name")
 
 1. 说明仓库暂无匹配项，给出 https://skillsmp.com/search 自行浏览
 2. 提供总管/员工直接协助完成任务的选项
-3. 离线模式建议 ZIP 导入或内置技能
+3. 建议 ZIP 导入或内置技能
