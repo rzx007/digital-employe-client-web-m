@@ -33,7 +33,7 @@ export function SettingsPage() {
   }, [tabFromSearch, canAccount, activeTab])
 
   return (
-    <div className="flex h-svh w-screen bg-background">
+    <div className="flex h-full min-h-0 w-full bg-background">
       <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
       <ScrollArea className="flex-1 p-6">
         {activeTab === "account" && <AccountSettings />}

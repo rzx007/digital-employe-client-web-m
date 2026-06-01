@@ -89,16 +89,46 @@ flowchart TB
 
 ```json
 {
+  "llm_label": "通义 / qwen-max",
   "agent_runtime": {
     "serial_mode": true,
     "max_concurrent_streams": 1,
     "active_streams": 1,
-    "queued_starts": 2
+    "queued_starts": 2,
+    "active_items": [
+      {
+        "conversation_id": 12,
+        "title": "总管",
+        "source": "user_chat"
+      }
+    ],
+    "queued_items": [
+      {
+        "conversation_id": 34,
+        "title": "任务A",
+        "source": "scheduled",
+        "priority": 30
+      }
+    ]
   }
 }
 ```
 
-前端可用该信息展示当前是否处于串行模式，以及是否存在排队任务。
+- `llm_label`：当前激活的供应商与模型（API 仍返回，状态栏不展示）。
+- `active_items` / `queued_items`：各最多 5 条会话摘要（含 `title`、`source`）。
+
+## 底部状态栏（AppStatusBar）
+
+全局挂在根布局 [`apps/web/src/routes/__root.tsx`](../apps/web/src/routes/__root.tsx) 底部，**常驻**一行（登录/激活等页隐藏）。
+
+| 区域 | 内容 |
+|------|------|
+| 左 | 部署在线/离线 · 串行/并行（链到设置）· Agent 状态文案 |
+| 右 | 浏览器网络断开 · 授权剩余天数 |
+
+- 串行模式约 **4s** 轮询 `/system/runtime`，并行约 **15s**。
+- 左侧在存在排队或快照项时可点击，Popover 列出执行中/排队会话，点击跳转对应聊天。
+- 组件：[`apps/web/src/components/app-status-bar.tsx`](../apps/web/src/components/app-status-bar.tsx)。
 
 ## SSE 事件
 
@@ -127,7 +157,7 @@ flowchart TB
   会被清理后再出队。
 - 有新启动请求且槽位空闲时，会 **先 drain 队首** 再决定是否立即启动，避免插队。
 - 进程重启后 DB 中残留的 `queued` 消息在 `resume` 时会自动修复为 `error`。
-- 聊天主界面底部在串行模式且存在排队/执行时会显示 `AgentRuntimeBanner`（约 5s 轮询 runtime）。
+- 底部 `AppStatusBar` 常驻展示 Agent/模型/授权等状态（见上一节）。
 - 委派启动 `REJECTED` 时会推送 `task_failed` 工作区事件。
 - 总管定时任务在 `registry.start` 前使用 `get_orchestrator_agent(bind_context=False)`，
   仅在流真正 `_run_agent_background` 时 `set_context`；`reset_context(conv_id)` 按会话

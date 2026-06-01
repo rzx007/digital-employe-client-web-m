@@ -19,11 +19,14 @@ const defaultCapabilities: Capabilities = {
 
 const defaultRuntimeConfig: RuntimeConfig = {
   offline_mode: false,
+  llm_label: undefined,
   agent_runtime: {
     serial_mode: false,
     max_concurrent_streams: 0,
     active_streams: 0,
     queued_starts: 0,
+    active_items: [],
+    queued_items: [],
   },
   capabilities: defaultCapabilities,
 }

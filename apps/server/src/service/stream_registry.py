@@ -18,7 +18,7 @@ from src.core.agent_runtime_policy import (
     USER_CHAT_PRIORITY,
     get_agent_runtime_policy,
 )
-from src.models.conversation import ConversationMessage
+from src.models.conversation import Conversation, ConversationMessage
 from src.service.agent_stream_queue import AgentStreamQueue, PendingStart, StartResult
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,7 @@ Subscriber = Callable[[dict], None]
 HEARTBEAT_INTERVAL_SECONDS = 30.0
 TASK_TTL_SECONDS = 20
 BUFFER_CHECKPOINT_LEN = 10000
+RUNTIME_SNAPSHOT_PREVIEW_LIMIT = 5
 AGENT_CHUNK_TIMEOUT = 1800.0
 DB_LOCK_RETRY_COUNT = 2
 DB_LOCK_RETRY_SLEEP_SECONDS = 0.05
@@ -347,10 +348,40 @@ class StreamEventBuffer:
         return list(self._events)
 
 
+def _resolve_conversation_titles(conversation_ids: set[int]) -> dict[int, str]:
+    if not conversation_ids:
+        return {}
+    from src.db.session import get_session_local
+
+    db = get_session_local()()
+    try:
+        result: dict[int, str] = {}
+        for row in db.execute(
+            select(Conversation.id, Conversation.title).where(
+                Conversation.id.in_(conversation_ids)
+            )
+        ).all():
+            cid, title = row[0], row[1]
+            result[int(cid)] = (title or "").strip() or f"会话 #{cid}"
+        return result
+    except Exception:
+        logger.warning("resolve conversation titles failed", exc_info=True)
+        return {cid: f"会话 #{cid}" for cid in conversation_ids}
+    finally:
+        db.close()
+
+
 class ActiveStreamTask:
-    def __init__(self, conversation_id: int, *, stream_msg_id: int | None = None):
+    def __init__(
+        self,
+        conversation_id: int,
+        *,
+        stream_msg_id: int | None = None,
+        source: str = "user_chat",
+    ):
         self.conversation_id = conversation_id
         self.stream_msg_id = stream_msg_id
+        self.source = source
         self.status: str = "streaming"
         self.buffer = StreamEventBuffer(conversation_id)
         self.subscribers: set[Subscriber] = set()
@@ -400,6 +431,45 @@ class StreamRegistry:
 
     def queue_depth(self) -> int:
         return self._queue.depth()
+
+    def snapshot_agent_runtime_status(
+        self,
+        *,
+        preview_limit: int = RUNTIME_SNAPSHOT_PREVIEW_LIMIT,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """供 /system/runtime 展示执行中与排队会话摘要。"""
+        active_rows: list[tuple[int, str]] = []
+        for conv_id, task in self._tasks.items():
+            if task.is_active and not self._stream_task_is_stale_active(task):
+                active_rows.append((conv_id, task.source or "user_chat"))
+
+        queued_rows: list[tuple[int, str, int]] = []
+        for item in self._queue._items[:preview_limit]:
+            queued_rows.append(
+                (item.conversation_id, item.source, item.priority)
+            )
+
+        conv_ids = {cid for cid, _ in active_rows} | {cid for cid, _, _ in queued_rows}
+        titles = _resolve_conversation_titles(conv_ids)
+
+        active_items = [
+            {
+                "conversation_id": cid,
+                "source": src,
+                "title": titles.get(cid, f"会话 #{cid}"),
+            }
+            for cid, src in active_rows[:preview_limit]
+        ]
+        queued_items = [
+            {
+                "conversation_id": cid,
+                "source": src,
+                "priority": priority,
+                "title": titles.get(cid, f"会话 #{cid}"),
+            }
+            for cid, src, priority in queued_rows
+        ]
+        return {"active_items": active_items, "queued_items": queued_items}
 
     def get_task(self, conversation_id: int) -> ActiveStreamTask | None:
         return self._tasks.get(conversation_id)
@@ -463,7 +533,12 @@ class StreamRegistry:
         return USER_CHAT_PRIORITY, "user_chat"
 
     def _launch_pending(self, pending: PendingStart) -> None:
-        task = pending.task or ActiveStreamTask(pending.conversation_id)
+        task = pending.task or ActiveStreamTask(
+            pending.conversation_id,
+            stream_msg_id=pending.stream_msg_id,
+            source=pending.source,
+        )
+        task.source = pending.source
         task.status = "streaming"
         task.error_message = None
         self._tasks[pending.conversation_id] = task
@@ -583,7 +658,12 @@ class StreamRegistry:
         default_priority, default_source = self._default_priority(
             orchestrator_conversation_id=orchestrator_conversation_id,
         )
-        task = ActiveStreamTask(conversation_id, stream_msg_id=stream_msg_id)
+        resolved_source = source or default_source
+        task = ActiveStreamTask(
+            conversation_id,
+            stream_msg_id=stream_msg_id,
+            source=resolved_source,
+        )
         pending = PendingStart(
             conversation_id=conversation_id,
             agent=agent,
@@ -593,7 +673,7 @@ class StreamRegistry:
             skill_name=skill_name,
             debug_content_only=debug_content_only,
             priority=priority if priority is not None else default_priority,
-            source=source or default_source,
+            source=resolved_source,
             agent_input=agent_input,
             task=task,
             orchestrator_owned_db=orchestrator_owned_db,

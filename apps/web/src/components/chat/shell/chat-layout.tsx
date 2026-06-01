@@ -5,8 +5,6 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useQueryClient } from "@tanstack/react-query"
 import { ArtifactPanel } from "@/components/artifact"
 import { MonitorPanel } from "@/components/schedule-monitor"
-import { AgentRuntimeBanner } from "@/components/agent-runtime-banner"
-import { OfflineBanner } from "@/components/offline-banner"
 import { useIsMobile } from "@/hooks/use-mobile"
 import {
   useContactsQuery,
@@ -353,8 +351,6 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
 
       {isMobile && <MobileTabBar />}
 
-      <AgentRuntimeBanner className="bottom-0" />
-      <OfflineBanner className="bottom-8" />
     </div>
   )
 }
