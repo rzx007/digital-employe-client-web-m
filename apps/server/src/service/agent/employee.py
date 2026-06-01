@@ -31,6 +31,7 @@ from src.service.model_context import (
     resolve_summarization_keep,
     resolve_summarization_trigger,
 )
+from src.service.agent.shell_execute_tool import create_shell_execute_tool
 from src.service.agent.remember_memory_tool import create_remember_memory_tool
 from src.service.agent.clarifying_questions_tool import submit_clarifying_questions
 from src.service.agent.document_plan_tool import submit_document_plan
