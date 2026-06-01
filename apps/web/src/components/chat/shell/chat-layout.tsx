@@ -34,8 +34,12 @@ import { ConversationList } from "../conversations/conversation-list"
 import { MobileTabBar } from "./mobile-tab-bar"
 import { RecentConversations } from "../conversations/recent-conversations"
 import { WorkbenchView } from "../views/workbench-view"
+import { BrowserConfirmationHost } from "../right-panels/browser-confirmation-host"
+import { BrowserPanel } from "../right-panels/browser-panel"
+import { BrowserWidthSlider } from "../right-panels/browser-width-slider"
+import { useBrowserStore } from "@/stores/browser-store"
 
-type RightPanel = "artifact" | "monitor" | "conversations"
+type RightPanel = "artifact" | "monitor" | "conversations" | "browser"
 
 const RIGHT_PANEL_SHELL = "shrink-0 overflow-hidden border-l bg-muted/20 p-3"
 
@@ -179,6 +183,14 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const isConversationListOpen = useChatStore((s) => s.isConversationListOpen)
   const openConversationList = useChatStore((s) => s.openConversationList)
   const closeConversationList = useChatStore((s) => s.closeConversationList)
+  const isBrowserOpen = useBrowserStore((s) => s.isOpen)
+  const closeBrowser = useBrowserStore((s) => s.closeBrowser)
+  const browserWidthRatio = useBrowserStore((s) => s.widthRatio)
+
+  useEffect(() => {
+    if (activeTab === "chat") return
+    if (isBrowserOpen) closeBrowser()
+  }, [activeTab, isBrowserOpen, closeBrowser])
 
   const selectedContactId = useChatStore((s) => s.selectedContactId)
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
@@ -240,15 +252,18 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const layoutSize = useSize(layoutRef)
   const layoutWidth = layoutSize?.width ?? 0
 
-  const rightPanel: RightPanel | null = isPanelOpen
-    ? "artifact"
-    : isMonitorOpen
-      ? "monitor"
-      : isConversationListOpen
-        ? "conversations"
-        : null
+  const rightPanel: RightPanel | null = isBrowserOpen
+    ? "browser"
+    : isPanelOpen
+      ? "artifact"
+      : isMonitorOpen
+        ? "monitor"
+        : isConversationListOpen
+          ? "conversations"
+          : null
 
   const hasRightPanel = rightPanel !== null
+  const isBrowserRightPanel = rightPanel === "browser"
 
   const shouldCollapseRecent =
     activeTab === "chat" && hasRightPanel && layoutWidth < 1902
@@ -270,7 +285,8 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
     >
       <WelcomeDialog />
       <UserTour />
-      <div className="flex min-h-0 min-w-0 flex-1">
+      <BrowserConfirmationHost />
+      <div className="chat-layout-root flex min-h-0 min-w-0 flex-1">
         {!isMobile && <AppToolbar />}
 
         {!isMobile &&
@@ -301,8 +317,17 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
             onNewConversation={handleNewConversation}
             className={cn(
               "min-h-0 min-w-0",
-              hasRightPanel ? "flex-3" : "flex-1"
+              isBrowserRightPanel
+                ? "shrink-0"
+                : hasRightPanel
+                  ? "flex-3"
+                  : "flex-1"
             )}
+            style={
+              isBrowserRightPanel
+                ? { width: `${(1 - browserWidthRatio) * 100}%` }
+                : undefined
+            }
           />
         )}
 
@@ -348,6 +373,21 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
               />
             </div>
           )}
+
+        {hasRightPanel && activeTab === "chat" && rightPanel === "browser" && (
+          <>
+            <BrowserWidthSlider />
+            <div
+              className={cn(
+                RIGHT_PANEL_SHELL,
+                "flex min-h-0 min-w-0 flex-col border-l bg-muted/20 p-3"
+              )}
+              style={{ width: `${browserWidthRatio * 100}%` }}
+            >
+              <BrowserPanel />
+            </div>
+          </>
+        )}
       </div>
 
       {isMobile && <MobileTabBar />}

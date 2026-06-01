@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, protocol } from "electron"
+import { app, BrowserWindow, shell, protocol, ipcMain } from "electron"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 import { is } from "@electron-toolkit/utils"
@@ -7,8 +7,12 @@ import { createTray, showMainWindow } from "../features/notification-tray/tray"
 import { getSetting } from "../features/settings/settings-store"
 import { createPetWindow, showPetWindow } from "../features/pet/pet-window"
 import { syncPetOnMainForegroundState } from "../features/pet/pet-main-sync"
+import { getBrowserController } from "../features/browser/window-controller"
+import { startBrowserHttpBridge } from "../features/browser/browser-http-bridge"
+import { resolveBrowserConfirmation } from "../features/browser/browser-confirmation"
+import { IpcChannels } from "../shared/ipc-channels"
 import { APP_DISPLAY_NAME } from "./app-product"
-import { initMainLogger } from "../core/logger"
+import { initMainLogger, rootLogger as logger } from "../core/logger"
 import { bootstrapApp } from "../core/bootstrap"
 
 initMainLogger()
@@ -138,7 +142,10 @@ async function createWindow() {
   })
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("https:")) shell.openExternal(url)
+    if (url.startsWith("https:") || url.startsWith("http:")) {
+      win?.webContents.send("browser:request-open", { url })
+      return { action: "deny" }
+    }
     return { action: "deny" }
   })
 
@@ -171,7 +178,70 @@ app.whenReady().then(() => {
     windowManager,
     createMainWindow: createWindow,
   })
+  registerBrowserIpcHandlers()
+  startBrowserHttpBridge()
 })
+
+function registerBrowserIpcHandlers(): void {
+  const controller = getBrowserController()
+
+  ipcMain.handle(IpcChannels.browserOpen, (_event, url: unknown) => {
+    if (typeof url !== "string" || !url) {
+      logger.warn("[browser] open called with invalid url")
+      return
+    }
+    controller.open(url)
+  })
+
+  ipcMain.handle(IpcChannels.browserNavigate, (_event, url: unknown) => {
+    if (typeof url !== "string" || !url) return
+    controller.navigate(url)
+  })
+
+  ipcMain.handle(IpcChannels.browserResize, (_event, widthRatio: unknown) => {
+    const ratio =
+      typeof widthRatio === "number" && !Number.isNaN(widthRatio)
+        ? widthRatio
+        : 0.6
+    controller.setWidthRatio(ratio)
+  })
+
+  ipcMain.handle(IpcChannels.browserHide, () => {
+    controller.hide()
+  })
+
+  ipcMain.handle(IpcChannels.browserClose, () => {
+    controller.close()
+  })
+
+  ipcMain.handle(
+    IpcChannels.browserConfirmResolve,
+    (_event, id: unknown, approved: unknown) => {
+      if (typeof id !== "string" || typeof approved !== "boolean") return false
+      return resolveBrowserConfirmation(id, approved)
+    }
+  )
+
+  ipcMain.handle(IpcChannels.browserSyncBounds, (_event, bounds: unknown) => {
+    if (
+      !bounds ||
+      typeof bounds !== "object" ||
+      typeof (bounds as { x?: unknown }).x !== "number" ||
+      typeof (bounds as { y?: unknown }).y !== "number" ||
+      typeof (bounds as { width?: unknown }).width !== "number" ||
+      typeof (bounds as { height?: unknown }).height !== "number"
+    ) {
+      return
+    }
+    const b = bounds as {
+      x: number
+      y: number
+      width: number
+      height: number
+    }
+    controller.syncBounds(b)
+  })
+}
 
 app.on("window-all-closed", () => {
   win = null

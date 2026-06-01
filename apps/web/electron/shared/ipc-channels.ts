@@ -59,6 +59,14 @@ export const IpcChannels = {
   openLogsDirectory: "open-logs-directory",
   exportLogs: "export-logs",
   activationSuccess: "activation-success",
+  // browser panel
+  browserOpen: "browser:open",
+  browserNavigate: "browser:navigate",
+  browserResize: "browser:resize",
+  browserHide: "browser:hide",
+  browserClose: "browser:close",
+  browserConfirmResolve: "browser:confirm-resolve",
+  browserSyncBounds: "browser:sync-bounds",
 } as const
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]
@@ -243,6 +251,22 @@ export interface IpcInvokeMap {
   [IpcChannels.petHide]: { args: []; result: void }
   [IpcChannels.petSetPosition]: { args: [x: number, y: number]; result: void }
   [IpcChannels.petGetPosition]: { args: []; result: PetPosition | null }
+  // browser panel
+  [IpcChannels.browserOpen]: { args: [url: string]; result: void }
+  [IpcChannels.browserNavigate]: { args: [url: string]; result: void }
+  [IpcChannels.browserResize]: { args: [widthRatio: number]; result: void }
+  [IpcChannels.browserHide]: { args: []; result: void }
+  [IpcChannels.browserClose]: { args: []; result: void }
+  [IpcChannels.browserConfirmResolve]: {
+    args: [id: string, approved: boolean]
+    result: boolean
+  }
+  [IpcChannels.browserSyncBounds]: {
+    args: [
+      bounds: { x: number; y: number; width: number; height: number },
+    ]
+    result: void
+  }
 }
 
 /** 类型安全的 invoke 辅助：从 IpcInvokeMap 推导 return type */
