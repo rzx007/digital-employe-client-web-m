@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,8 @@ from src.llm.registry_service import (
     update_provider,
 )
 from src.models.response import ResponseBase
+from src.core.deps import require_capability
+from src.service.config_kv_service import ConfigKvService
 from src.service.modal_service import ModelCallRequest, ModelService
 
 router = APIRouter(tags=["模型调用"])
@@ -115,6 +117,46 @@ class SetActiveModelRequest(BaseModel):
 
 class TestProviderRequest(BaseModel):
     model_id: str | None = None
+
+
+class SyncFromRemoteResponse(BaseModel):
+    synced: bool
+    registry: LlmRegistryResponse
+
+
+@router.post(
+    "/model/sync-from-remote",
+    summary="从平台手动同步模型配置",
+    response_model=ResponseBase[SyncFromRemoteResponse],
+    dependencies=[Depends(require_capability("remote_model_sync"))],
+)
+async def sync_model_from_remote(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    token = (request.headers.get("token") or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="需要登录 token，请先登录后再同步")
+
+    synced = ConfigKvService.sync_model_provider_from_remote(
+        db, token=token, force=True
+    )
+    if not synced:
+        raise HTTPException(
+            status_code=502,
+            detail="同步失败，请检查网络、平台地址或登录状态",
+        )
+
+    ConfigKvService._refresh_settings_cache()
+    get_settings.cache_clear()
+    data = get_registry_for_api(db)
+    return ResponseBase(
+        data=SyncFromRemoteResponse(
+            synced=True,
+            registry=LlmRegistryResponse.model_validate(data),
+        ),
+        msg="已从平台同步模型配置",
+    )
 
 
 @router.get(

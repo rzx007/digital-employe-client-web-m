@@ -30,6 +30,7 @@ TASK_TTL_SECONDS = 20
 BUFFER_CHECKPOINT_LEN = 10000
 RUNTIME_SNAPSHOT_PREVIEW_LIMIT = 5
 AGENT_CHUNK_TIMEOUT = 1800.0
+FIRST_AGENT_CHUNK_TIMEOUT = 45.0
 DB_LOCK_RETRY_COUNT = 2
 DB_LOCK_RETRY_SLEEP_SECONDS = 0.05
 
@@ -71,10 +72,9 @@ def _flush_to_db_sync(
     elapsed_ms: int | None = None,
 ) -> bool:
     """同步写入会话消息流状态；在 asyncio.to_thread 中调用，勿跨线程复用 Session。"""
-    from src.db.session import get_session_local
+    from src.db.session import sqlite_db_session
 
-    db = get_session_local()()
-    try:
+    with sqlite_db_session() as db:
         for attempt in range(DB_LOCK_RETRY_COUNT):
             try:
                 msg = db.get(ConversationMessage, stream_msg_id)
@@ -144,8 +144,6 @@ def _flush_to_db_sync(
                 db.rollback()
                 return False
         return False
-    finally:
-        db.close()
 
 
 def _mark_stream_state_sync(
@@ -156,79 +154,75 @@ def _mark_stream_state_sync(
     error_message: str | None = None,
 ) -> None:
     """更新消息与执行日志的启动状态，供排队/出队路径使用。"""
-    from src.db.session import get_session_local
+    from src.db.session import sqlite_db_session
     from src.models.task_execution_log import TaskExecutionLog
 
-    db = get_session_local()()
-    try:
-        msg = db.get(ConversationMessage, stream_msg_id)
-        if msg:
-            msg.stream_state = state
-            if state == "queued":
-                msg.content = msg.content or "已加入执行队列，等待其他对话完成"
-            elif state == "error":
-                msg.content = error_message or msg.content or "启动失败"
+    with sqlite_db_session() as db:
+        try:
+            msg = db.get(ConversationMessage, stream_msg_id)
+            if msg:
+                msg.stream_state = state
+                if state == "queued":
+                    msg.content = msg.content or "已加入执行队列，等待其他对话完成"
+                elif state == "error":
+                    msg.content = error_message or msg.content or "启动失败"
 
-        logs = list(
-            db.scalars(
-                select(TaskExecutionLog).where(
-                    TaskExecutionLog.conversation_id == conversation_id,
-                    TaskExecutionLog.run_status.in_(("running", "queued")),
-                )
-            ).all()
-        )
-        for log in logs:
-            if state == "queued":
-                log.run_status = "queued"
-                log.run_result = "排队中，等待执行"
-            elif state == "cancelled":
-                log.run_status = "cancelled"
-                log.run_result = "排队任务已取消"
-            elif state == "error":
-                log.run_status = "failed"
-                log.run_result = "任务执行失败"
-                log.error_message = (error_message or "启动失败")[:2000]
-            else:
-                log.run_status = "running"
-                log.run_result = "执行中"
-        db.commit()
-    except Exception:
-        db.rollback()
-        logger.warning(
-            "[state] failed to mark stream msg_id=%s conv=%s state=%s",
-            stream_msg_id,
-            conversation_id,
-            state,
-            exc_info=True,
-        )
-    finally:
-        db.close()
+            logs = list(
+                db.scalars(
+                    select(TaskExecutionLog).where(
+                        TaskExecutionLog.conversation_id == conversation_id,
+                        TaskExecutionLog.run_status.in_(("running", "queued")),
+                    )
+                ).all()
+            )
+            for log in logs:
+                if state == "queued":
+                    log.run_status = "queued"
+                    log.run_result = "排队中，等待执行"
+                elif state == "cancelled":
+                    log.run_status = "cancelled"
+                    log.run_result = "排队任务已取消"
+                elif state == "error":
+                    log.run_status = "failed"
+                    log.run_result = "任务执行失败"
+                    log.error_message = (error_message or "启动失败")[:2000]
+                else:
+                    log.run_status = "running"
+                    log.run_result = "执行中"
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.warning(
+                "[state] failed to mark stream msg_id=%s conv=%s state=%s",
+                stream_msg_id,
+                conversation_id,
+                state,
+                exc_info=True,
+            )
 
 
 def _flush_heartbeat_sync(conversation_id: int) -> None:
-    from src.db.session import get_session_local
+    from src.db.session import sqlite_db_session
     from src.models.task_execution_log import TaskExecutionLog
     from src.models.workspace import cst_now
 
-    db = get_session_local()()
-    try:
-        log = db.scalars(
-            select(TaskExecutionLog).where(
-                TaskExecutionLog.conversation_id == conversation_id,
-                TaskExecutionLog.run_status == "running",
-            )
-        ).first()
-        if not log:
-            return
-        log.last_heartbeat_at = cst_now()
-        db.commit()
-    except Exception:
+    with sqlite_db_session() as db:
         try:
-            db.rollback()
+            log = db.scalars(
+                select(TaskExecutionLog).where(
+                    TaskExecutionLog.conversation_id == conversation_id,
+                    TaskExecutionLog.run_status == "running",
+                )
+            ).first()
+            if not log:
+                return
+            log.last_heartbeat_at = cst_now()
+            db.commit()
         except Exception:
-            pass
-    finally:
-        db.close()
+            try:
+                db.rollback()
+            except Exception:
+                pass
 
 
 def _checkpoint_flush_sync(
@@ -951,18 +945,30 @@ class StreamRegistry:
                 version="v2",
             ).__aiter__()
 
+            event_count = 0
             while True:
+                chunk_timeout = (
+                    AGENT_CHUNK_TIMEOUT
+                    if event_count > 0
+                    else FIRST_AGENT_CHUNK_TIMEOUT
+                )
                 try:
                     chunk = await asyncio.wait_for(
                         _agent_it.__anext__(),
-                        timeout=AGENT_CHUNK_TIMEOUT,
+                        timeout=chunk_timeout,
                     )
                 except StopAsyncIteration:
                     break
                 except asyncio.TimeoutError:
+                    if event_count == 0:
+                        raise Exception(
+                            "无法连接当前语言模型或首包响应超时，"
+                            f"请检查设置中的 API Key、Base URL 与模型名称（等待超过 {int(chunk_timeout)} 秒）。"
+                        ) from None
                     raise Exception(
-                        f"Agent stream timed out after {AGENT_CHUNK_TIMEOUT}s"
-                    )
+                        f"Agent stream timed out after {int(chunk_timeout)}s"
+                    ) from None
+                event_count += 1
                 serializable = ChatService.convert_to_serializable(chunk)
                 updates_content = _extract_updates_content(serializable)
                 if updates_content:
@@ -1201,22 +1207,21 @@ class StreamRegistry:
     async def _ensure_terminal_state(self, stream_msg_id: int, state: str) -> None:
         """flush 失败兜底：仅写 stream_state，不写 content/parts，保证不卡在 streaming。"""
         def _do():
-            from src.db.session import get_session_local
-            db = get_session_local()()
-            try:
-                msg = db.get(ConversationMessage, stream_msg_id)
-                if msg and msg.stream_state == "streaming":
-                    msg.stream_state = state
-                    msg.stream_cursor = 0
-                    db.commit()
-                    logger.info(
-                        "[ensure] msg_id=%s terminal state set to %s (fallback after flush failure)",
-                        stream_msg_id, state,
-                    )
-            except Exception:
-                pass
-            finally:
-                db.close()
+            from src.db.session import sqlite_db_session
+
+            with sqlite_db_session() as db:
+                try:
+                    msg = db.get(ConversationMessage, stream_msg_id)
+                    if msg and msg.stream_state == "streaming":
+                        msg.stream_state = state
+                        msg.stream_cursor = 0
+                        db.commit()
+                        logger.info(
+                            "[ensure] msg_id=%s terminal state set to %s (fallback after flush failure)",
+                            stream_msg_id, state,
+                        )
+                except Exception:
+                    pass
         await asyncio.to_thread(_do)
 
     async def _flush_terminal(

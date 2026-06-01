@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   IconChevronDown,
   IconCircleCheck,
+  IconCloudDownload,
   IconLoader2,
   IconPlus,
   IconSparkles,
@@ -29,10 +30,12 @@ import { cn } from "@workspace/ui/lib/utils"
 import {
   fetchAvailableCatalogIds,
   fetchLlmRegistry,
+  syncModelFromRemote,
   type LlmRegistry,
 } from "@/api/model"
 import { getConfigKv, setManyConfigKv } from "@/api/config-kv"
 import { modelKeys } from "@/lib/query-keys/model"
+import { useCapability } from "@/lib/runtime/runtime-provider"
 import { AddProviderDialog } from "./add-provider-dialog"
 import { ConnectedProvidersList } from "./connected-providers-list"
 
@@ -54,8 +57,10 @@ function resolveActiveParts(registry: LlmRegistry): {
 
 export function ModelsSettings() {
   const queryClient = useQueryClient()
+  const canSyncRemoteModel = useCapability("remote_model_sync")
   const [addOpen, setAddOpen] = React.useState(false)
   const [activating, setActivating] = React.useState(false)
+  const [syncingRemote, setSyncingRemote] = React.useState(false)
   const [advancedOpen, setAdvancedOpen] = React.useState(false)
   const [maxInputTokens, setMaxInputTokens] = React.useState("")
   const [savingTokens, setSavingTokens] = React.useState(false)
@@ -80,6 +85,19 @@ export function ModelsSettings() {
     queryClient.setQueryData(modelKeys.registry(), next)
     void queryClient.invalidateQueries({ queryKey: modelKeys.runtimeConfig() })
     void queryClient.invalidateQueries({ queryKey: modelKeys.availableCatalog() })
+  }
+
+  const handleSyncRemoteModel = async () => {
+    setSyncingRemote(true)
+    try {
+      const result = await syncModelFromRemote()
+      handleRegistryChange(result.registry)
+      toast.success("已从平台同步模型配置")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "同步失败")
+    } finally {
+      setSyncingRemote(false)
+    }
   }
 
   const handleSaveMaxTokens = async () => {
@@ -116,15 +134,28 @@ export function ModelsSettings() {
             多家供应商凭证可并存；在下方列表中单选一个模型作为 Agent 当前使用
           </CardDescription>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          className="shrink-0"
-          onClick={() => setAddOpen(true)}
-        >
-          <IconPlus className="size-4" />
-          添加供应商
-        </Button>
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+          {canSyncRemoteModel && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={syncingRemote}
+              onClick={() => void handleSyncRemoteModel()}
+            >
+              {syncingRemote ? (
+                <IconLoader2 className="size-4 animate-spin" />
+              ) : (
+                <IconCloudDownload className="size-4" />
+              )}
+              同步平台模型
+            </Button>
+          )}
+          <Button type="button" size="sm" onClick={() => setAddOpen(true)}>
+            <IconPlus className="size-4" />
+            添加供应商
+          </Button>
+        </div>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-6 pt-0">

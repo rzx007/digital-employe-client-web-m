@@ -63,8 +63,11 @@ function buildDevBackendCommand(): { command: string[]; cwd: string } {
     DEV_UVICORN_HOST,
     "--port",
     String(BACKEND_PORT),
-    "--reload",
   ]
+  // Windows 上 --reload 易残留多个监听进程，导致旧代码仍响应 API
+  if (process.platform !== "win32") {
+    uvArgs.push("--reload")
+  }
   const useArchArm64 = shouldUseArchArm64ForDevUvOnAppleSilicon()
   if (useArchArm64) {
     log.info("Apple Silicon: spawning uv via arch -arm64")
@@ -163,6 +166,7 @@ export function getBackendStatus() {
     ready: backendReady,
     port: BACKEND_PORT,
     running: backendHandle !== null,
+    offlinePackage: isOfflineMode(),
   }
 }
 

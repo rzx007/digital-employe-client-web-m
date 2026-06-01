@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
@@ -14,6 +15,25 @@ from src.models.employee import Employee
 logger = logging.getLogger(__name__)
 
 MAX_CONCURRENT_PER_EMPLOYEE = 2
+
+@contextmanager
+def orchestrator_sqlite_guard():
+    """兼容旧调用；与 src.db.session.SQLITE_ACCESS_LOCK 共用同一把锁。"""
+    from src.db.session import SQLITE_ACCESS_LOCK
+
+    SQLITE_ACCESS_LOCK.acquire()
+    try:
+        yield
+    finally:
+        SQLITE_ACCESS_LOCK.release()
+
+
+@contextmanager
+def locked_orchestrator_db():
+    """流式会话绑定的共享 Session 也须与独立 Session 共用锁。"""
+    with orchestrator_sqlite_guard():
+        yield get_db()
+
 
 _main_loop: asyncio.AbstractEventLoop | None = None
 
@@ -130,10 +150,7 @@ def get_db() -> Session:
 
 
 def get_workspace_id() -> int:
-    ws = _workspace_id_ctx.get()
-    if ws is None:
-        raise RuntimeError("orchestrator workspace_id not set")
-    return ws
+    return resolve_workspace_id()
 
 
 def get_conversation_id() -> int | None:
@@ -186,7 +203,8 @@ def invalidate_orchestrator_db_cache() -> None:
     """fresh Session 写入后，使流式会话中的 ORM 缓存失效。"""
     db = _db_session_ctx.get()
     if db is not None:
-        db.expire_all()
+        with orchestrator_sqlite_guard():
+            db.expire_all()
 
 
 def count_running_tasks(db: Session, employee_id: int) -> int:

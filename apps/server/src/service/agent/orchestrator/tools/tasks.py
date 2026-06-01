@@ -5,14 +5,15 @@ from __future__ import annotations
 import json
 
 from langchain_core.tools import tool
-from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
 
-from src.models.employee import Employee
-from src.models.employee_task import EmployeeTask
 from src.service.agent.orchestrator.runtime import (
-    get_db,
     get_workspace_id,
     invalidate_orchestrator_db_cache,
+)
+from src.service.agent.orchestrator.task_listing import (
+    _is_sqlite_session_error,
+    list_tasks_text,
 )
 from src.service.agent.orchestrator.task_mutations import (
     MAX_TASK_DELETE_BATCH,
@@ -112,6 +113,7 @@ def list_tasks(
     plan_id: int | None = None,
     employee_id: int | None = None,
     limit: int = 20,
+    include_result_detail: bool = False,
 ) -> str:
     """查询工作空间已配置任务（employee_tasks 表快照，非员工实时流）。
 
@@ -120,97 +122,23 @@ def list_tasks(
     - 用户追问某编排计划进度 → plan_id=计划 ID
     - 委派快照缺失或与用户描述矛盾时的补充查询
     禁止：confirm 后反复轮询；Prompt 表已能回答「有没有」时勿重复调用。
-    建议：带 employee_id 或 plan_id 精确查询；limit 宜 ≤ 5。
+    默认只返回紧凑表格，不含完整交付正文。
+    仅当任务 ≤5 条且 include_result_detail=true 时，可附带极短结果摘要。
     """
-    db = get_db()
     workspace_id = get_workspace_id()
-
-    query = select(EmployeeTask).where(
-        EmployeeTask.workspace_id == workspace_id,
-        EmployeeTask.is_active.is_(True),
-    )
-
-    if plan_id is not None:
-        query = query.where(EmployeeTask.orchestration_plan_id == plan_id)
-    if employee_id is not None:
-        query = query.where(EmployeeTask.employee_id == employee_id)
-    if status is not None:
-        from src.models.task_execution_log import TaskExecutionLog
-
-        if status in ("executing",):
-            sub = select(TaskExecutionLog.task_id).where(
-                TaskExecutionLog.run_status == "running"
-            ).distinct()
-            query = query.where(
-                (EmployeeTask.execute_mode == "scheduled")
-                | (EmployeeTask.id.in_(sub))
-            )
-        elif status in ("completed", "success"):
-            sub = select(TaskExecutionLog.task_id).where(
-                TaskExecutionLog.run_status == "success"
-            ).distinct()
-            query = query.where(EmployeeTask.id.in_(sub))
-        elif status in ("failed", "timeout", "cancelled"):
-            sub = select(TaskExecutionLog.task_id).where(
-                TaskExecutionLog.run_status.in_(["failed", "timeout", "cancelled"])
-            ).distinct()
-            query = query.where(EmployeeTask.id.in_(sub))
-        elif status == "pending":
-            query = query.where(
-                EmployeeTask.execute_mode == "scheduled",
-                ~EmployeeTask.id.in_(
-                    select(TaskExecutionLog.task_id).distinct()
-                ),
-            )
-
-    tasks = list(
-        db.scalars(
-            query.order_by(EmployeeTask.priority.desc(), EmployeeTask.id.desc()).limit(limit)
-        ).all()
-    )
-
-    if not tasks:
-        return "没有找到匹配的任务。"
-
-    lines = [
-        "| ID | 任务名 | 员工 | 执行模式 | 状态 | 员工会话 |",
-        "|---|---|---|---|---|---|",
-    ]
-    from src.models.task_execution_log import TaskExecutionLog
-    from src.service.orchestrator_execution_summary import (
-        extract_execution_output_text,
-    )
-
-    detail_blocks: list[str] = []
-
-    for t in tasks:
-        emp = db.get(Employee, t.employee_id)
-        emp_name = emp.name if emp else (t.employee_name_snapshot or str(t.employee_id))
-        mode = "定时" if t.execute_mode == "scheduled" else "即时"
-        latest_log = db.scalars(
-            select(TaskExecutionLog).where(
-                TaskExecutionLog.task_id == t.id
-            ).order_by(TaskExecutionLog.id.desc()).limit(1)
-        ).first()
-        task_status = (
-            latest_log.run_status
-            if latest_log
-            else ("运行中" if t.execute_mode == "scheduled" else "未执行")
+    try:
+        return list_tasks_text(
+            workspace_id,
+            status=status,
+            plan_id=plan_id,
+            employee_id=employee_id,
+            limit=limit,
+            include_result_detail=include_result_detail,
         )
-        emp_conv = latest_log.conversation_id if latest_log else "—"
-        lines.append(
-            f"| {t.id} | {t.task_name} | {emp_name} | {mode} | {task_status} | {emp_conv} |"
-        )
-        if latest_log and latest_log.run_status == "success":
-            excerpt = extract_execution_output_text(
-                latest_log.output_json, max_chars=600
+    except DBAPIError as exc:
+        if _is_sqlite_session_error(exc):
+            return (
+                "错误：数据库连接暂时不可用（SQLite 并发冲突）。"
+                "请稍后重试一次；若仍失败请重启应用。"
             )
-            if excerpt:
-                detail_blocks.append(
-                    f"任务 #{t.id}（{t.task_name}）最新结果摘要：\n{excerpt}"
-                )
-
-    result = "\n".join(lines)
-    if detail_blocks:
-        result += "\n\n" + "\n\n".join(detail_blocks)
-    return result
+        raise

@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.core.config import get_settings, is_offline_mode, join_base_and_path
+from src.core.config import clear_settings_cache, get_settings, is_offline_mode, join_base_and_path
 from src.llm.registry import (
     OFFLINE_BOOTSTRAP_PROVIDER_ID,
     ONLINE_BOOTSTRAP_PROVIDER_ID,
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class ConfigKvService:
     @staticmethod
     def _refresh_settings_cache() -> None:
-        get_settings.cache_clear()
+        clear_settings_cache()
         try:
             from src.db.session import reset_session_state
 
@@ -166,7 +166,12 @@ class ConfigKvService:
         return inserted
 
     @staticmethod
-    def sync_model_provider_from_remote(db: Session, token: str | None = None) -> bool:
+    def sync_model_provider_from_remote(
+        db: Session,
+        token: str | None = None,
+        *,
+        force: bool = False,
+    ) -> bool:
         """从远程拉取模型服务商配置并覆盖本地关键配置。
         
         该函数从远程API获取模型服务商的配置信息（包括模型名称、API密钥和API地址），
@@ -245,24 +250,25 @@ class ConfigKvService:
             should_apply_remote_model_sync,
         )
 
-        registry = load_registry(db)
-        if not should_apply_remote_model_sync(registry):
-            restored = maybe_restore_local_active_provider(registry)
-            if restored:
-                save_registry(db, registry)
-                logger.info(
-                    "Skip remote model sync and restored local active=%s/%s",
-                    registry.active_provider_id,
-                    registry.active_model_id,
-                )
-            else:
-                logger.info(
-                    "Skip remote model provider sync: local preference active=%s/%s policy=%s",
-                    registry.active_provider_id,
-                    registry.active_model_id,
-                    registry.model_sync_policy,
-                )
-            return False
+        if not force:
+            registry = load_registry(db)
+            if not should_apply_remote_model_sync(registry):
+                restored = maybe_restore_local_active_provider(registry)
+                if restored:
+                    save_registry(db, registry)
+                    logger.info(
+                        "Skip remote model sync and restored local active=%s/%s",
+                        registry.active_provider_id,
+                        registry.active_model_id,
+                    )
+                else:
+                    logger.info(
+                        "Skip remote model provider sync: local preference active=%s/%s policy=%s",
+                        registry.active_provider_id,
+                        registry.active_model_id,
+                        registry.model_sync_policy,
+                    )
+                return False
 
         # 将配置同步到本地LLM注册表
         from src.llm.registry_service import upsert_from_remote_sync

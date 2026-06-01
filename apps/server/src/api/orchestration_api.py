@@ -74,10 +74,15 @@ def _compute_plan_progress(db: Session, plan: OrchestrationPlan) -> tuple[int, i
 
 
 def _build_task_items(db: Session, plan: OrchestrationPlan) -> list[OrchestrationTaskItem]:
+    from src.service.task_service import TaskService
+
     tasks = list(
         db.scalars(
             select(EmployeeTask).where(EmployeeTask.orchestration_plan_id == plan.id).order_by(EmployeeTask.id.asc())
         ).all()
+    )
+    latest_logs = TaskService.latest_execution_logs_by_task_ids(
+        db, [t.id for t in tasks]
     )
     items: list[OrchestrationTaskItem] = []
     for t in tasks:
@@ -86,11 +91,7 @@ def _build_task_items(db: Session, plan: OrchestrationPlan) -> list[Orchestratio
         if t.execute_mode == "scheduled":
             task_status = "pending"
         else:
-            latest_log = db.scalars(
-                select(TaskExecutionLog).where(
-                    TaskExecutionLog.task_id == t.id,
-                ).order_by(TaskExecutionLog.id.desc()).limit(1)
-            ).first()
+            latest_log = latest_logs.get(t.id)
             if latest_log:
                 if latest_log.run_status == "success":
                     task_status = "success"

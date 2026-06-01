@@ -39,5 +39,18 @@ def get_capabilities() -> RuntimeCapabilities:
 
     activation = is_activation_enforced()
     if is_offline_mode():
-        return RuntimeCapabilities(*(False,) * 10, activation_enforced=activation)
+        # 离线仍允许 SkillsMP / 平台技能与手动模型同步；其余远程集成保持关闭
+        return RuntimeCapabilities(
+            remote_login=False,
+            remote_model_sync=True,
+            remote_skills=True,
+            remote_mcp=False,
+            remote_performance=False,
+            dispatch_order_sync=False,
+            oauth=False,
+            feishu_platform=False,
+            skill_rating_upload=False,
+            mcp_task_execution=False,
+            activation_enforced=activation,
+        )
     return RuntimeCapabilities(*(True,) * 10, activation_enforced=activation)

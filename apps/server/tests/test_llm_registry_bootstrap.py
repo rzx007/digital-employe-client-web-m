@@ -63,6 +63,45 @@ def test_apply_bootstrap_active_profile(
     data = json.loads(prepared)
     assert data["active_provider_id"] == provider_id
     assert data["active_model_id"] == model_id
+    assert data["model_sync_policy"] == "local"
+
+
+def test_ensure_offline_bootstrap_active_restores_hanhai(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.llm.registry import (
+        LlmRegistry,
+        ensure_offline_bootstrap_active,
+        load_registry,
+        save_registry,
+    )
+
+    monkeypatch.setenv("OFFLINE_MODE", "1")
+    from src.core.config import get_settings
+
+    get_settings.cache_clear()
+
+    registry = LlmRegistry.model_validate(
+        {
+            **SEED,
+            "active_provider_id": "dashscope",
+            "active_model_id": "deepseek-v4-flash",
+        }
+    )
+
+    class _FakeDb:
+        pass
+
+    db = _FakeDb()
+    from unittest.mock import patch
+
+    with patch("src.llm.registry.load_registry", return_value=registry), patch(
+        "src.llm.registry.save_registry"
+    ) as save_mock:
+        assert ensure_offline_bootstrap_active(db) is True
+        assert registry.active_provider_id == "hanhai"
+        assert registry.active_model_id == "Hanhai"
+        save_mock.assert_called_once()
 
 
 def test_apply_bootstrap_active_profile_missing_provider(

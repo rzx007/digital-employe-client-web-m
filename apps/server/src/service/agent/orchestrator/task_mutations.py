@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from src.db.session import get_session_local
+from src.db.session import sqlite_db_session
 from src.models.employee import Employee
 from src.models.employee_task import EmployeeTask
 
@@ -57,11 +57,8 @@ def _delete_task_with_fresh_session(
     task_id: int,
 ) -> dict[str, Any]:
     """每次删除使用独立 Session，避免污染总管流式会话的 DB 连接。"""
-    db = get_session_local()()
-    try:
+    with sqlite_db_session() as db:
         return _delete_task_in_session(db, workspace_id, task_id)
-    finally:
-        db.close()
 
 
 def delete_tasks_batch(
@@ -197,8 +194,7 @@ def _update_task_with_fresh_session(
     employee_id: int | None = None,
 ) -> dict[str, Any]:
     """每次更新使用独立 Session。"""
-    db = get_session_local()()
-    try:
+    with sqlite_db_session() as db:
         return _update_task_in_session(
             db,
             workspace_id,
@@ -208,5 +204,3 @@ def _update_task_with_fresh_session(
             cron=cron,
             employee_id=employee_id,
         )
-    finally:
-        db.close()

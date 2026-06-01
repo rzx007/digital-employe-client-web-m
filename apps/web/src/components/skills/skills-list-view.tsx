@@ -7,7 +7,10 @@ import { Separator } from "@workspace/ui/components/separator"
 import { Input } from "@workspace/ui/components/input"
 import type { SkillListItem } from "@/api/types"
 import { installRemoteSkillToLocal } from "@/api/skill"
-import { useSkillListQuery } from "@/hooks/use-skill-queries"
+import {
+  useLocalSkillListQuery,
+  useRemotePlatformSkillListQuery,
+} from "@/hooks/use-skill-queries"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { ImportSkillDialog } from "./import-skill-dialog"
 import { InstalledSkillsSection } from "./installed-skills-section"
@@ -36,20 +39,22 @@ export function SkillsListView({
   const skeletonCount = skillGridCols * 2
   const installedCollapsedMax = skeletonCount
 
-  const { data: allSkills = [], isLoading: loading } = useSkillListQuery()
+  const { data: localSkills = [], isLoading: localLoading } =
+    useLocalSkillListQuery()
+  const { data: remoteSkills = [], isLoading: remoteLoading } =
+    useRemotePlatformSkillListQuery()
 
   const handleImportSuccess = () => {
     queryClient.invalidateQueries({ queryKey: chatKeys.skills() })
     queryClient.invalidateQueries({ queryKey: chatKeys.skillsPickerLocal() })
+    queryClient.invalidateQueries({
+      queryKey: [...chatKeys.skills(), "remote-platform"],
+    })
   }
 
-  const remoteSkills = React.useMemo(
-    () => allSkills.filter((s) => s.source === "remote"),
-    [allSkills]
-  )
   const installedSkills = React.useMemo(
-    () => allSkills.filter((s) => isInstalledSource(s)),
-    [allSkills]
+    () => localSkills.filter((s) => isInstalledSource(s)),
+    [localSkills]
   )
 
   const remoteCategories = React.useMemo(
@@ -99,6 +104,9 @@ export function SkillsListView({
       await queryClient.invalidateQueries({
         queryKey: chatKeys.skillsPickerLocal(),
       })
+      await queryClient.invalidateQueries({
+        queryKey: [...chatKeys.skills(), "remote-platform"],
+      })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "安装失败"
       const conflict =
@@ -116,6 +124,9 @@ export function SkillsListView({
             })
             await queryClient.invalidateQueries({
               queryKey: chatKeys.skillsPickerLocal(),
+            })
+            await queryClient.invalidateQueries({
+              queryKey: [...chatKeys.skills(), "remote-platform"],
             })
           } catch (e2: unknown) {
             toast.error(e2 instanceof Error ? e2.message : "覆盖安装失败")
@@ -159,7 +170,7 @@ export function SkillsListView({
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-10 p-6">
           <InstalledSkillsSection
-            loading={loading}
+            loading={localLoading}
             searchQuery={searchQuery}
             filteredCount={filteredInstalled.length}
             skills={visibleInstalled}
@@ -173,7 +184,7 @@ export function SkillsListView({
           <Separator className="shrink-0 bg-border/70" />
 
           <RemoteSkillsSection
-            loading={loading}
+            loading={remoteLoading}
             searchQuery={searchQuery}
             remoteCategory={remoteCategory}
             filteredCount={filteredRemote.length}

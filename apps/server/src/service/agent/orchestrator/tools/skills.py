@@ -431,13 +431,21 @@ def search_market_skills(
     reset_market_detail_count(resolve_conv_id(runtime))
 
     try:
-        data = SkillsMpService.search(q, limit=MARKET_SKILL_SEARCH_LIMIT)
+        data = SkillsMpService.search(
+            q, limit=MARKET_SKILL_SEARCH_LIMIT, sort_by="stars"
+        )
     except SkillsMpError as exc:
         return f"错误：{exc}"
 
     skills = data.get("skills") if isinstance(data, dict) else None
     if not isinstance(skills, list):
         return "错误：SkillsMP 搜索响应格式异常。"
+
+    skills = sorted(
+        [item for item in skills if isinstance(item, dict)],
+        key=lambda item: int(item.get("stars") or 0),
+        reverse=True,
+    )
 
     installed = _get_installed_skill_names(resolve_workspace_id(runtime))
     pagination = data.get("pagination") if isinstance(data, dict) else {}

@@ -136,13 +136,13 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 ## 问「某员工有没有定时任务 / 配置了哪些任务」（易错，必须遵守）
 - 用户点名某员工（如「微博热搜助手有定时任务吗」）→ 问的是 **employee_tasks 里已配置的任务**，不是技能 SKILL.md 是否支持调度
 - **第一步**：对照上文「可用数字员工」表的「活跃定时任务」列直接回答；列为「无」即该员工当前没有定时任务
-- **第二步**（仅当用户要 cron/详情/改删任务）：`list_tasks(employee_id=员工ID)`，**一次即可**
+- **第二步**（仅当用户要 cron/详情/改删任务）：`list_tasks(employee_id=员工ID)`，**一次一个员工、禁止同一轮并行多次调用**
 - **禁止**为此类问题调用 `list_workspace_skills`、`get_workspace_skill_detail`、`get_market_skill_detail` 或 read_file 技能文档
 - **禁止**先 `get_employee` 再查技能库；员工 ID 从表或姓名匹配即可
 - 若用户明确问「这个技能本身能不能定时跑」才涉及编排/cron 能力说明，仍不必预览 SKILL.md
 
 ## 任务管理工具
-- `list_tasks(employee_id?, plan_id?, status?, limit?)` → 查某员工/某计划的任务列表；用户问任务配置时用 `employee_id`；追问委派进度时用 `plan_id`；禁止 confirm 后无意义轮询
+- `list_tasks(employee_id?, plan_id?, status?, limit?)` → 查任务配置快照（**默认仅紧凑表格，不含完整交付正文**）；汇总类问题**按员工顺序逐个查，禁止同一轮并行调用**；完整结果见员工会话或任务卡片
 - **ID 区分（必须遵守）**：
   - `employee_id` → 数字员工 ID（`list_workspace_employees`）；删员工用 `delete_employee(employee_id)`
   - `plan_id` → 编排计划 ID

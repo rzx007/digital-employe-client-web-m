@@ -120,6 +120,7 @@ class Settings:
     performance_monthly_balance_path: str | None = None
     performance_dispatch_orders_path: str | None = None
     execute_timeout: int = 600
+    llm_request_timeout: float = 60.0
     feishu_app_id: str | None = None
     feishu_app_secret: str | None = None
     feishu_redirect_uri: str | None = None
@@ -146,6 +147,15 @@ def _get_kv_bool(kv_data: dict[str, str], key: str, default: bool = False) -> bo
     if value is None:
         return default
     return value.strip().lower() in ("1", "true", "yes", "on")
+
+
+def read_agent_serial_mode(default: bool = False) -> bool:
+    """每次从 config_kvs 读取串行模式（设置页热更新，不走 get_settings 缓存）。"""
+    return _get_kv_bool(_read_config_kv_data(), "AGENT_SERIAL_MODE", default=default)
+
+
+def clear_settings_cache() -> None:
+    get_settings.cache_clear()
 
 
 def _read_config_kv_data() -> dict[str, str]:
@@ -284,6 +294,14 @@ def get_settings() -> Settings:
         skill_remote_timeout = float(skill_remote_timeout_raw or "15")
     except ValueError:
         skill_remote_timeout = 15.0
+
+    llm_request_timeout_raw = _get_kv_value(kv_data, "LLM_REQUEST_TIMEOUT")
+    try:
+        llm_request_timeout = float(llm_request_timeout_raw or "60")
+    except ValueError:
+        llm_request_timeout = 60.0
+    if llm_request_timeout < 15.0:
+        llm_request_timeout = 15.0
     default_workspace_id_raw = _get_kv_value(kv_data, "DEFAULT_WORKSPACE_ID")
     try:
         default_workspace_id = int(default_workspace_id_raw or "1")
@@ -383,6 +401,7 @@ def get_settings() -> Settings:
         ),
         performance_monthly_balance_path=performance_monthly_balance_path,
         performance_dispatch_orders_path=performance_dispatch_orders_path,
+        llm_request_timeout=llm_request_timeout,
         feishu_app_id=_get_kv_value(kv_data, "FEISHU_APP_ID"),
         feishu_app_secret=_get_kv_value(kv_data, "FEISHU_APP_SECRET"),
         feishu_redirect_uri=_get_kv_value(kv_data, "FEISHU_REDIRECT_URI"),

@@ -13,7 +13,11 @@ import {
   formatAgentStatus,
   mergeRuntimeQueueItems,
 } from "@/lib/runtime/format-agent-status"
-import { useRuntimeStatusQuery } from "@/lib/runtime/use-runtime-status-query"
+import {
+  useAgentRuntime,
+  useOfflineMode,
+  useRuntimeConfig,
+} from "@/lib/runtime/runtime-provider"
 import { useChatStore } from "@/stores/chat-store"
 
 const HIDDEN_PATH_PREFIXES = [
@@ -117,8 +121,9 @@ export function AppStatusBar() {
     typeof navigator !== "undefined" && navigator.onLine === false
   )
 
-  const { data } = useRuntimeStatusQuery()
-  const config = data?.data
+  const runtimeConfig = useRuntimeConfig()
+  const agent = useAgentRuntime()
+  const offlineMode = useOfflineMode()
 
   React.useEffect(() => {
     const onOffline = () => setBrowserOffline(true)
@@ -135,11 +140,10 @@ export function AppStatusBar() {
     return null
   }
 
-  const agent = config?.agent_runtime
   const agentStatus = formatAgentStatus(agent)
   const { running, waiting } = mergeRuntimeQueueItems(agent)
-  const deployOnline = !config?.offline_mode
-  const serialLabel = agent?.serial_mode ? "串行" : "并行"
+  const deployOnline = !offlineMode
+  const serialLabel = agent.serial_mode ? "串行" : "并行"
 
   const handleSelectConversation = (conversationId: number) => {
     setSelectedConversationId(conversationId)
@@ -196,7 +200,7 @@ export function AppStatusBar() {
     </div>
   )
 
-  const activation = config?.activation
+  const activation = runtimeConfig.activation
   const showActivation =
     activation?.enforced && activation.activated && activation.days_remaining != null
 

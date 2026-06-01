@@ -639,6 +639,33 @@ export class LangChainChatTransport<
                 }
                 this.onInterrupted?.(interruptPayload)
               }
+
+              if (
+                eventData?.status === "error" &&
+                typeof eventData.error === "string" &&
+                eventData.error.trim()
+              ) {
+                const errorText = eventData.error.trim()
+                flushSync()
+                closeTextPhaseIfNeeded(state).forEach((chunk) =>
+                  controller.enqueue(chunk)
+                )
+                controller.enqueue({ type: "text-start", id: "stream-error" })
+                controller.enqueue({
+                  type: "text-delta",
+                  id: "stream-error",
+                  delta: ERROR_MARKER + errorText,
+                })
+                controller.enqueue({ type: "text-end", id: "stream-error" })
+                state.didSendFinish = true
+                controller.enqueue({
+                  type: "finish",
+                  finishReason: "error" as const,
+                })
+                controller.close()
+                return true
+              }
+
               flushSync()
               closeTextPhaseIfNeeded(state).forEach((chunk) =>
                 controller.enqueue(chunk)

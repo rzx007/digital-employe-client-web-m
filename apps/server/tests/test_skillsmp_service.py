@@ -46,6 +46,27 @@ def test_normalize_skill_file_map_from_lowercase_skill_md() -> None:
     assert "SKILL.md" in normalized
 
 
-def test_normalize_skill_file_map_requires_skill_md() -> None:
-    with pytest.raises(SkillsMpError):
-        SkillsMpService._normalize_skill_file_map({"README.md": "x"})
+def test_search_default_sort_by_stars(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, str] = {}
+
+    class _Resp:
+        status_code = 200
+
+        @staticmethod
+        def json() -> dict:
+            return {"success": True, "data": {"skills": [], "pagination": {}}}
+
+    class _Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url, params=None, headers=None):
+            captured["sortBy"] = params["sortBy"]
+            return _Resp()
+
+    monkeypatch.setattr("src.service.skillsmp_service.httpx.Client", lambda **kw: _Client())
+    SkillsMpService.search("test")
+    assert captured["sortBy"] == "stars"

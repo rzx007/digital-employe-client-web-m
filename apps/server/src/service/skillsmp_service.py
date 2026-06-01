@@ -144,7 +144,7 @@ class SkillsMpService:
         *,
         limit: int = 20,
         page: int = 1,
-        sort_by: str = "recent",
+        sort_by: str = "stars",
     ) -> dict[str, Any]:
         q = query.strip()
         if not q:

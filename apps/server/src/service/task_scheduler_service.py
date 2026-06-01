@@ -182,6 +182,9 @@ class TaskSchedulerService:
         
         for capability, fn, cron, job_id in SYSTEM_JOBS:
             if not getattr(caps, capability, False):
+                if scheduler.get_job(job_id):
+                    scheduler.remove_job(job_id)
+                    logger.info("已移除系统任务（能力已禁用） job_id=%s", job_id)
                 continue
             scheduler.add_job(
                 fn,
@@ -195,9 +198,19 @@ class TaskSchedulerService:
 
     @staticmethod
     def run_dispatch_order_sync_job() -> None:
+        from src.core.runtime_capabilities import get_capabilities
         from src.service.dispatch_order_sync_service import DispatchOrderSyncService
 
-        result = DispatchOrderSyncService.sync_and_trigger()
+        if not get_capabilities().dispatch_order_sync:
+            logger.debug("跳过派单同步：dispatch_order_sync 能力已禁用")
+            return
+
+        try:
+            result = DispatchOrderSyncService.sync_and_trigger()
+        except Exception as exc:
+            logger.warning("派单同步失败（已忽略，不影响调度器）: %s", exc)
+            return
+
         logger.info(
             "派单同步完成 synced=%s inserted=%s updated=%s triggered=%s",
             result.get("synced_count"),

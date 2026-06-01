@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.core.config import get_settings
+from src.core.config import read_agent_serial_mode
 
 
 USER_CHAT_PRIORITY = 10
@@ -18,7 +18,7 @@ class AgentRuntimePolicy:
 
 
 def get_agent_runtime_policy() -> AgentRuntimePolicy:
-    serial_mode = get_settings().agent_serial_mode
+    serial_mode = read_agent_serial_mode()
     return AgentRuntimePolicy(
         serial_mode=serial_mode,
         max_concurrent_streams=1 if serial_mode else 0,

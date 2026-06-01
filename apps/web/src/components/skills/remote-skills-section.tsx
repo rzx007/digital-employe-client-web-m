@@ -31,8 +31,9 @@ export function RemoteSkillsSection({
   onSelectSkill: (skill: SkillListItem) => void
   onInstall: (skill: SkillListItem) => void
 }) {
-  const canRemoteSkills = useCapability("remote_skills")
-  if (!canRemoteSkills) return null
+  // 企业远程技能平台依赖 REMOTE_API_BASE_URL，与 SkillsMP（remote_skills）不同
+  const canRemotePlatform = useCapability("remote_login")
+  if (!canRemotePlatform) return null
 
   return (
     <section className="space-y-3">

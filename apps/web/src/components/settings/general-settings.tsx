@@ -17,6 +17,7 @@ import {
 } from "@workspace/ui/components/card"
 import { Switch } from "@workspace/ui/components/switch"
 import { getConfigKv, setConfigKv } from "@/api/config-kv"
+import { fetchRuntimeConfig } from "@/api/system"
 import { useTheme } from "@/components/theme-provider"
 import { useOnboardingStore } from "@/stores/onboarding-store"
 import { ThemeCard } from "./theme-card"
@@ -80,8 +81,32 @@ export function GeneralSettings() {
     setSavingAgentSerialMode(true)
     try {
       await setConfigKv("AGENT_SERIAL_MODE", checked ? "1" : "0")
+      queryClient.setQueryData(["config-kv", "AGENT_SERIAL_MODE"], {
+        config_key: "AGENT_SERIAL_MODE",
+        config_value: checked ? "1" : "0",
+      })
+      queryClient.setQueryData(
+        ["system", "runtime"],
+        (prev: Awaited<ReturnType<typeof fetchRuntimeConfig>> | undefined) => {
+          if (!prev?.data?.agent_runtime) return prev
+          return {
+            ...prev,
+            data: {
+              ...prev.data,
+              agent_runtime: {
+                ...prev.data.agent_runtime,
+                serial_mode: checked,
+                max_concurrent_streams: checked ? 1 : 0,
+              },
+            },
+          }
+        }
+      )
       await queryClient.invalidateQueries({
         queryKey: ["system", "runtime"],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ["config-kv", "AGENT_SERIAL_MODE"],
       })
       toast.success("Agent 串行模式已更新")
     } catch {
