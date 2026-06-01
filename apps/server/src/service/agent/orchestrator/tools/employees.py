@@ -1,16 +1,38 @@
+"""总管工具 · 员工管理（员工列表 / 详情 / 更新 / 删除 / 招聘录用）。
+
+按"职能域"统一组织：
+- 列表：list_workspace_employees
+- 详情：get_employee
+- 修改：update_employee
+- 删除：delete_employee
+- 招聘：recruit_employee、hire_employee、hire_employees
+
+招聘相关的招聘（recruit）后端逻辑（生成候选人、批量录用、单人录用）见
+`src.service.agent.orchestrator.recruitment` 模块；本文件只把业务函数包成
+@tool 供 LangChain 工具系统使用。
+
+工作区技能列表 / 详情已并入 `tools.skills`，工具调用时通过 import 复用。
+"""
+
 from __future__ import annotations
 
 import json
 
 from fastapi import HTTPException
 from langchain_core.tools import tool
-from sqlalchemy.orm import Session
 
 from src.db.session import get_session_local
 from src.models.employee import Employee
 from src.schemas.employee import EmployeeUpdate
 from src.service.agent.orchestrator.json_list_parse import parse_json_int_list
-from src.service.agent.orchestrator.recruitment import _RESERVED_EMPLOYEE_NAMES
+from src.service.agent.orchestrator.prompts import build_employee_capability_context
+from src.service.agent.orchestrator.recruitment import (
+    MAX_HIRE_BATCH,
+    _RESERVED_EMPLOYEE_NAMES,
+    hire_candidate,
+    hire_candidates_batch,
+    recruit_candidates,
+)
 from src.service.agent.orchestrator.runtime import (
     get_auth_token,
     get_db,
@@ -18,205 +40,14 @@ from src.service.agent.orchestrator.runtime import (
     invalidate_orchestrator_db_cache,
 )
 from src.service.employee_service import EmployeeService
-from src.service.local_skill_service import LocalSkillService
+
 
 _RESERVED_NAMES_LOWER = {n.lower() for n in _RESERVED_EMPLOYEE_NAMES}
 
 
-def format_workspace_skills_list(
-    workspace_id: int,
-    *,
-    compact: bool = False,
-    db: Session | None = None,
-) -> list[dict]:
-    """builtin + workspace 本地技能，与招聘/员工配置使用同一套 localId。"""
-    items: list[dict] = []
-    for item in LocalSkillService.list_local_skills(workspace_id):
-        local_id = item.get("localId")
-        if local_id is None:
-            continue
-        skill_name = str(item.get("skillName") or "")
-        description = (item.get("description") or "").strip()
-        zh_raw = item.get("displayNameZh")
-        display_zh = (
-            zh_raw.strip()
-            if isinstance(zh_raw, str) and zh_raw.strip()
-            else skill_name
-        )
-        assignees: list[dict[str, int | str]] | None = None
-        if db is not None:
-            assignees = EmployeeService.list_skill_assignees(
-                db,
-                workspace_id=workspace_id,
-                skill_name=skill_name,
-                local_id=int(local_id),
-            )
-        if compact:
-            entry: dict = {
-                "id": int(local_id),
-                "name": skill_name,
-                "display_name_zh": display_zh,
-                "source": "builtin" if item.get("isBuiltin") else "workspace",
-            }
-            if assignees is not None:
-                entry["assigned_employees"] = assignees
-            items.append(entry)
-            continue
-        summary = (item.get("recruitSummary") or description).strip()
-        if not summary:
-            summary = LocalSkillService.build_recruit_summary(description, skill_name)
-        items.append(
-            {
-                "id": int(local_id),
-                "name": skill_name,
-                "display_name_zh": display_zh,
-                "description": description or summary,
-                "summary": summary,
-                "source": "builtin" if item.get("isBuiltin") else "workspace",
-            }
-        )
-    return items
-
-
-@tool
-def list_workspace_skills() -> str:
-    """列出当前工作空间可分配给数字员工的本地技能库（含 skill id）。
-
-    在 update_employee / hire_employee 需要 skill_ids 时先调用本工具；
-    返回的 id 为负整数 localId（如 -101），须原样传入 skill_ids JSON 数组。
-    技能库为空时 total=0，仍可录用/更新无技能员工（skill_ids="[]"）。
-    """
-    workspace_id = get_workspace_id()
-    db = get_db()
-    skills = format_workspace_skills_list(workspace_id, compact=True, db=db)
-    payload = {
-        "type": "workspace_skills",
-        "workspace_id": workspace_id,
-        "total": len(skills),
-        "skills": skills,
-        "hint": (
-            "为员工分配技能：update_employee(employee_id, skill_ids=\"[-100, 11]\");"
-            "负整数=本地已安装技能 localId；正整数=SkillsMP 远程技能 id（无需先安装）。"
-            "清空技能：skill_ids=\"[]\"。localId 来自 list_workspace_skills；SkillsMP 安装后同样用 localId。"
-            "每项 skills[].assigned_employees 为已分配员工；详情见 get_workspace_skill_detail。"
-            "禁止在未查 assigned_employees / 员工表前声称「未分配给任何人」。"
-        ),
-    }
-    return json.dumps(payload, ensure_ascii=False, indent=2)
-
-
-def _find_workspace_skill_name_by_local_id(
-    workspace_id: int, local_id: int
-) -> str | None:
-    for item in LocalSkillService.list_local_skills(workspace_id):
-        if item.get("localId") == local_id:
-            name = str(item.get("skillName") or "").strip()
-            return name or None
-    return None
-
-
-def _preview_skill_md(content: str | None, *, max_lines: int = 40) -> str:
-    if not content or not content.strip():
-        return "（未包含 SKILL.md 预览）"
-    lines = content.splitlines()
-    preview = "\n".join(lines[:max_lines])
-    if len(lines) > max_lines:
-        preview += f"\n...（共 {len(lines)} 行，仅显示前 {max_lines} 行）"
-    return preview
-
-
-def _format_skill_file_list(files: list[str], *, max_names: int = 12) -> str:
-    if not files:
-        return "（无文件清单）"
-    shown = files[:max_names]
-    lines = [f"- {name}" for name in shown]
-    if len(files) > max_names:
-        lines.append(f"... 还有 {len(files) - max_names} 个文件")
-    return "\n".join(lines)
-
-
-def _format_skill_assignees(
-    assignees: list[dict[str, int | str]],
-) -> str:
-    if not assignees:
-        return "尚未分配给任何员工（以本段为准）。"
-    lines = ["已分配给以下员工："]
-    for item in assignees:
-        eid = item.get("employee_id")
-        name = item.get("employee_name") or f"员工#{eid}"
-        lines.append(f"- {name} (employee_id={eid})")
-    lines.append("可直接 create_orchestration_plan 委派给上述员工，无需再问用户是否分配。")
-    return "\n".join(lines)
-
-
-@tool
-def get_workspace_skill_detail(
-    skill_name: str | None = None,
-    local_id: int | None = None,
-) -> str:
-    """预览工作区已安装本地技能的 SKILL.md（只读，不安装不修改）。
-
-    list_workspace_skills 列出的技能须用本工具查看详情；
-    **禁止**用 read_file 猜测 orchestrator_skills 或磁盘绝对路径。
-
-    Args:
-        skill_name: 技能目录名，如 data-querys（与 list_workspace_skills 的 name 一致）
-        local_id: list_workspace_skills 返回的 localId（负整数）
-    """
-    workspace_id = get_workspace_id()
-    resolved_name: str | None = None
-
-    if skill_name and skill_name.strip():
-        resolved_name = skill_name.strip()
-    elif local_id is not None:
-        resolved_name = _find_workspace_skill_name_by_local_id(
-            workspace_id, int(local_id)
-        )
-        if not resolved_name:
-            return (
-                f"错误：未找到 localId={local_id} 的工作区技能。"
-                "请先 list_workspace_skills 核对 id。"
-            )
-    else:
-        return "错误：请提供 skill_name 或 local_id 之一。"
-
-    try:
-        detail = LocalSkillService.get_local_skill_detail(
-            resolved_name, workspace_id
-        )
-    except HTTPException as exc:
-        detail_msg = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
-        return f"错误：{detail_msg}"
-
-    skill_name_for_lookup = str(detail.get("skillName") or resolved_name)
-    lid = detail.get("localId")
-    display_zh = detail.get("displayNameZh") or skill_name_for_lookup
-    source = "builtin" if detail.get("isBuiltin") else "workspace"
-    files = detail.get("files") or []
-    preview = _preview_skill_md(detail.get("skillMdContent"))
-    file_list = _format_skill_file_list(files)
-
-    assignees = EmployeeService.list_skill_assignees(
-        get_db(),
-        workspace_id=workspace_id,
-        skill_name=skill_name_for_lookup,
-        local_id=int(lid) if lid is not None else None,
-    )
-    assignee_block = _format_skill_assignees(assignees)
-
-    lid_line = f"localId: {lid}\n" if lid is not None else ""
-    return (
-        f"📄 工作区技能 name={skill_name_for_lookup}\n"
-        f"显示名: {display_zh}\n"
-        f"{lid_line}"
-        f"来源: {source}\n"
-        f"\n--- 分配情况 ---\n{assignee_block}\n"
-        f"\n--- 文件清单 ---\n{file_list}\n"
-        f"\n--- SKILL.md 预览 ---\n{preview}\n"
-        f"\n---\n"
-        "若尚未分配：update_employee(employee_id, skill_ids=\"[<localId>]\")。"
-        "禁止用 read_file 读取本技能磁盘路径。"
-    )
+# ---------------------------------------------------------------------------
+# 内部 helper
+# ---------------------------------------------------------------------------
 
 
 def _is_reserved_name(name: str) -> bool:
@@ -255,6 +86,22 @@ def build_employee_update_payload(
     if mcp_ids is not None:
         data["mcp_ids"] = mcp_ids
     return EmployeeUpdate.model_validate(data)
+
+
+# ---------------------------------------------------------------------------
+# 员工列表 / 详情
+# ---------------------------------------------------------------------------
+
+
+@tool
+def list_workspace_employees() -> str:
+    """列出当前工作空间所有数字员工及其角色、技能、MCP 外接能力。
+
+    系统 Prompt 已注入员工表时优先用表；招聘后或表可能过期时再调用。
+    """
+    db = get_db()
+    workspace_id = get_workspace_id()
+    return build_employee_capability_context(db, workspace_id)
 
 
 @tool
@@ -298,6 +145,11 @@ def get_employee(employee_id: int) -> str:
         "mcps": (detail.get("metadata") or {}).get("mcps") or [],
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# 员工修改 / 删除
+# ---------------------------------------------------------------------------
 
 
 @tool
@@ -433,3 +285,101 @@ def delete_employee(employee_id: int) -> str:
         return json.dumps(result, ensure_ascii=False, indent=2)
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# 招聘 / 录用
+# ---------------------------------------------------------------------------
+
+
+@tool
+def recruit_employee(user_request: str, count: int = 1) -> str:
+    """根据用户的招聘需求生成数字员工候选人列表。
+
+    在用户提出招聘、扩充团队、新增某类岗位时使用。调用后向用户展示候选人，
+    等待用户明确选择后再录用，不要跳过确认直接入职。
+
+    参数:
+      user_request: 招聘需求描述（岗位、能力、场景等）
+      count: 生成候选人数量，1-5，默认 1
+    """
+    workspace_id = get_workspace_id()
+    token = get_auth_token()
+    return recruit_candidates(
+        workspace_id,
+        user_request,
+        count=count,
+        token=token,
+    )
+
+
+@tool
+def hire_employee(name: str, description: str, skill_ids: str | list[int] | int = "[]") -> str:
+    """用户确认录用**单个**候选人，创建正式数字员工。
+
+    仅录用 1 人时使用。若一次录用 2 人及以上，必须用 hire_employees，禁止同一轮
+    并行或连续多次调用本工具。
+
+    参数:
+      name: 员工名称
+      description: 员工能力描述
+      skill_ids: JSON 数组字符串，例如 "[-101, -102]" 或 "[]"
+    """
+    workspace_id = get_workspace_id()
+    token = get_auth_token()
+
+    normalized, err = parse_json_int_list(skill_ids, "skill_ids")
+    if err:
+        return err
+
+    result = hire_candidate(
+        workspace_id,
+        name,
+        description,
+        normalized or [],
+        token=token,
+        user_id="1",
+    )
+    if not result.startswith("错误"):
+        invalidate_orchestrator_db_cache()
+    return result
+
+
+@tool
+def hire_employees(candidates: str) -> str:
+    """用户确认后批量录用多名数字员工（一次调用，独立事务逐人创建）。
+
+    当用户要求「全部录用」「录用这 3 个」等多人场景时使用本工具，不要用多次 hire_employee。
+
+    参数 candidates: JSON 数组字符串，每项格式:
+      {"name": "员工名", "description": "职责描述", "skill_ids": []}
+      skill_ids 无技能时为 []；有技能时为整数 ID 数组。
+
+    示例:
+      [{"name":"数据分析师","description":"…","skill_ids":[]},
+       {"name":"法务助手","description":"…","skill_ids":[-101]}]
+    """
+    workspace_id = get_workspace_id()
+    token = get_auth_token()
+
+    try:
+        parsed = json.loads(candidates)
+    except json.JSONDecodeError as exc:
+        return f"错误：candidates 不是合法的 JSON 数组: {exc}"
+
+    if not isinstance(parsed, list):
+        return "错误：candidates 必须为 JSON 数组。"
+    if len(parsed) == 0:
+        return "错误：candidates 不能为空。"
+    if len(parsed) > MAX_HIRE_BATCH:
+        return f"错误：单次最多录用 {MAX_HIRE_BATCH} 人。"
+
+    result = hire_candidates_batch(
+        workspace_id,
+        parsed,
+        token=token,
+        user_id="1",
+    )
+    if not result.startswith("错误"):
+        invalidate_orchestrator_db_cache()
+    return result

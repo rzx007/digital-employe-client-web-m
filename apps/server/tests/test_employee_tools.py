@@ -1,4 +1,4 @@
-"""employee_tools：payload、技能库 listing、CRUD tool 与 Session 失效。"""
+"""tools.employees / tools.skills：员工 CRUD、payload 与工作区技能库 listing、Session 失效。"""
 
 from __future__ import annotations
 
@@ -6,14 +6,16 @@ import json
 
 from src.models.employee import Employee
 from src.models.employee_skill import EmployeeSkill
-from src.service.agent.orchestrator.employee_tools import (
+from src.service.agent.orchestrator.tools.employees import (
     build_employee_update_payload,
     delete_employee,
-    format_workspace_skills_list,
     get_employee,
+    update_employee,
+)
+from src.service.agent.orchestrator.tools.skills import (
+    format_workspace_skills_list,
     get_workspace_skill_detail,
     list_workspace_skills,
-    update_employee,
 )
 from src.service.agent.orchestrator.runtime import set_context
 from tests.conftest import add_employee
@@ -40,7 +42,7 @@ def test_build_payload_includes_only_provided_fields():
 
 def test_format_workspace_skills_list_empty(monkeypatch):
     monkeypatch.setattr(
-        "src.service.agent.orchestrator.employee_tools.LocalSkillService.list_local_skills",
+        "src.service.agent.orchestrator.tools.skills.LocalSkillService.list_local_skills",
         lambda workspace_id: [],
     )
     assert format_workspace_skills_list(1) == []
@@ -48,7 +50,7 @@ def test_format_workspace_skills_list_empty(monkeypatch):
 
 def test_format_workspace_skills_list_maps_local_id(monkeypatch):
     monkeypatch.setattr(
-        "src.service.agent.orchestrator.employee_tools.LocalSkillService.list_local_skills",
+        "src.service.agent.orchestrator.tools.skills.LocalSkillService.list_local_skills",
         lambda workspace_id: [
             {
                 "localId": -101,
@@ -67,7 +69,7 @@ def test_format_workspace_skills_list_maps_local_id(monkeypatch):
 
 def test_list_workspace_skills_tool_returns_json(db_session, workspace, monkeypatch):
     monkeypatch.setattr(
-        "src.service.agent.orchestrator.employee_tools.LocalSkillService.list_local_skills",
+        "src.service.agent.orchestrator.tools.skills.LocalSkillService.list_local_skills",
         lambda workspace_id: [
             {
                 "localId": -102,
@@ -90,7 +92,7 @@ def test_list_workspace_skills_tool_returns_json(db_session, workspace, monkeypa
 
 def test_get_workspace_skill_detail_by_local_id(db_session, workspace, monkeypatch):
     monkeypatch.setattr(
-        "src.service.agent.orchestrator.employee_tools.LocalSkillService.list_local_skills",
+        "src.service.agent.orchestrator.tools.skills.LocalSkillService.list_local_skills",
         lambda workspace_id: [
             {
                 "localId": -103,
@@ -101,7 +103,7 @@ def test_get_workspace_skill_detail_by_local_id(db_session, workspace, monkeypat
         ],
     )
     monkeypatch.setattr(
-        "src.service.agent.orchestrator.employee_tools.LocalSkillService.get_local_skill_detail",
+        "src.service.agent.orchestrator.tools.skills.LocalSkillService.get_local_skill_detail",
         lambda skill_name, workspace_id: {
             "skillName": skill_name,
             "localId": -103,
@@ -138,7 +140,7 @@ def test_get_workspace_skill_detail_shows_assignees(
     db_session.commit()
 
     monkeypatch.setattr(
-        "src.service.agent.orchestrator.employee_tools.LocalSkillService.get_local_skill_detail",
+        "src.service.agent.orchestrator.tools.skills.LocalSkillService.get_local_skill_detail",
         lambda skill_name, workspace_id: {
             "skillName": skill_name,
             "localId": -103,

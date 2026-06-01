@@ -521,7 +521,7 @@ get_agent / get_orchestrator_agent:
 | `chat_service.py`                       | `target_type=group` → scoped orchestrator      |
 | `employee.py` / `orchestrator/agent.py` | `group_id` → 挂载 `groups/<id>/`                 |
 | `orchestrator/execution.py`             | 派活写入 `group_id`；`get_agent(..., group_id=...)` |
-| `orchestrator/tools.py`                 | 群上下文校验成员；plan 关联群会话                            |
+| `orchestrator/tools/`                   | 群上下文校验成员；plan 关联群会话（详见 `apps/server/docs/orchestrator-tools-layout.md`）       |
 | `resource_service.py`                   | 群会话 / `GET /groups/{id}/resources` 扫群目录        |
 | `group_service.py`                      | 建群时 `mkdir groups/<group_id>/`                 |
 | 前端群视图                                   | 复用 CuratorView 时间线 + scoped executions API     |

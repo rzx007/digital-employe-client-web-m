@@ -19,7 +19,7 @@
 |------|------|
 | `src/service/stream_registry.py` | 按 `conversation_id` 隔离 buffer；`_run_agent_background` 消费 `agent.astream()` |
 | `src/service/agent/orchestrator/execution.py` | `confirm` → `start_task_as_conversation`；**等总管流结束再 `registry.start(员工)`** |
-| `src/service/agent/orchestrator/tools.py` | `confirm_orchestration_plan` / `list_tasks` |
+| `src/service/agent/orchestrator/tools/` | `confirm_orchestration_plan` / `list_tasks`（详见 `orchestrator-tools-layout.md`） |
 | `src/service/agent/orchestrator/prompts.py` | 委派后禁止轮询、禁止代员工执行 |
 | `apps/web/src/components/chat/curator/curator-view.tsx` | 总管时间线：`messages` + `ExecutionReportCard`（`executions` API） |
 
@@ -133,7 +133,7 @@ main_loop.call_soon_threadsafe(_schedule_employee_stream)
 产品层总管 UI 已区分：`messages` 编排 + `ExecutionReportCard` 展示员工结果。总管仍刷屏/代劳时，多为模型行为，见：
 
 - `src/service/agent/orchestrator/prompts.py`：「委派执行后」、收紧「输出约定」、禁止 confirm 后 `list_tasks` 轮询与代员工 shell/read。
-- `src/service/agent/orchestrator/tools.py`：`confirm_orchestration_plan`、`list_tasks`、`list_workspace_employees` 的 tool docstring。
+- `src/service/agent/orchestrator/tools/`：`confirm_orchestration_plan`（`plans.py`）、`list_tasks`（`tasks.py`）、`list_workspace_employees`（`employees.py`）的 tool docstring。
 
 ---
 

@@ -71,10 +71,14 @@ def patched_task_mutations_db(db_engine, monkeypatch):
 
 @pytest.fixture()
 def patched_employee_tools_db(db_engine, monkeypatch):
-    """让 employee_tools 模块的 get_session_local 使用测试库。"""
+    """让 tools.employees 模块的 get_session_local 使用测试库。
+
+    历史名称保留（test_employee_tools.py 仍以该 fixture 命名引用），
+    但 mock 目标已切到 `src.service.agent.orchestrator.tools.employees`。
+    """
     session_factory = sessionmaker(bind=db_engine)
     monkeypatch.setattr(
-        "src.service.agent.orchestrator.employee_tools.get_session_local",
+        "src.service.agent.orchestrator.tools.employees.get_session_local",
         lambda: session_factory,
     )
     return session_factory

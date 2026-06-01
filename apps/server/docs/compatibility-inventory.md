@@ -207,7 +207,7 @@ load_registry         ← 已有 registry 则跳过 _migrate_from_legacy
 | 同上 | `backfill_orchestrator_conversation_links()` | 启动回填 NULL 行 | 全库列已填满后可改为 no-op |
 | [`src/service/orchestrator_conversation_links.py`](../src/service/orchestrator_conversation_links.py) | `resolve_orchestrator_conversation_id` | 任务 → 总管会话 id | 保留 |
 | 同上 | `backfill_orchestrator_conversation_links` | 三段 SQL 回填 | 同上 |
-| [`src/service/agent/orchestrator/tools.py`](../src/service/agent/orchestrator/tools.py) | `create_orchestration_plan` | 写 `source_conversation_id` | 保留 |
+| [`src/service/agent/orchestrator/tools/plans.py`](../src/service/agent/orchestrator/tools/plans.py) | `create_orchestration_plan` | 写 `source_conversation_id` | 保留 |
 | [`src/service/agent/orchestrator/execution.py`](../src/service/agent/orchestrator/execution.py) | `start_task_as_conversation` | 写 log 列 + `registry.start(orchestrator_conversation_id=...)` | 保留 |
 | [`src/service/task_scheduler_service.py`](../src/service/task_scheduler_service.py) | `_start_curator_task` | 优先 `task.source_conversation_id`，否则 `ensure_curator_conversation(workspace_id)`；写 `orchestrator_conversation_id` | 保留 |
 | [`src/service/task_service.py`](../src/service/task_service.py) | `list_execution_logs` `or_` 列 + JOIN fallback | 兼容未回填历史行 | 无 NULL `orchestrator_conversation_id` 且编排 log 均已填列 |

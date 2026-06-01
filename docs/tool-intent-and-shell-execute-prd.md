@@ -84,8 +84,8 @@
 
 | 模块 | 工具 | 前端固定标题（示例） |
 |------|------|----------------------|
-| `recruitment_tools.py` | `recruit_employee`, `hire_employee` | 招聘候选人、录用员工 |
-| `tools.py` | 编排 7 工具 | 生成编排计划、执行编排计划、查看团队… |
+| `orchestrator/tools/employees.py` | `recruit_employee`, `hire_employee` | 招聘候选人、录用员工 |
+| `orchestrator/tools/` | 编排 21 工具（4 大类） | 生成编排计划、执行编排计划、查看团队… |
 | `employee.py` | `session_search` | 检索历史 |
 
 #### 前端注册表
@@ -195,8 +195,8 @@ flowchart TB
 |------|----------|
 | `agent/shell_execute_tool.py` | `shell_execute` + `intent`（`INTENT_MAX_LENGTH=20`） |
 | `agent/checkpointer.py` | 排除 `execute`；仅 `shell_execute` override |
-| `agent/orchestrator/recruitment_tools.py` | 无 intent |
-| `agent/orchestrator/tools.py` | 无 intent |
+| `agent/orchestrator/tools/employees.py` | 无 intent（含原 `recruitment_tools` 的招聘工具） |
+| `agent/orchestrator/tools/` | 无 intent（其余 18 工具） |
 | `agent/employee.py` | `session_search` 无 intent |
 | `agent/orchestrator/prompts.py` | 无「工具 intent」专节 |
 | `skill_shell_backend.py` | 流式 `tool_name` → `shell_execute` |

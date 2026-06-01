@@ -57,7 +57,7 @@ GET /executions?orchestrator_conversation_id=xxx  →  前端卡片数据
 | `src/service/agent/orchestrator/execution.py` | 计划调度、员工会话创建 |
 | `src/service/orchestrator_execution_summary.py` | 执行结果回注总管会话消息 |
 | `src/service/stream_registry.py` | 流生命周期、`_finalize_task_stream()` |
-| `src/service/agent/orchestrator/tools.py` | 总管工具定义（创建/确认计划等） |
+| `src/service/agent/orchestrator/tools/` | 总管工具定义（按 `employees` / `plans` / `tasks` / `skills` 四大类分模块；详见 `orchestrator-tools-layout.md`） |
 | `src/service/agent/orchestrator/prompts.py` | 构建委派执行上下文 |
 
 ## 总结
