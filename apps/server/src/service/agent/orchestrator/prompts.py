@@ -98,14 +98,14 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """今天的时间是{current_time}
 
 当用户缺少技能时，优先引导到 **SkillsMP 技能仓库**（https://skillsmp.com/search）发现并安装。
 
-**在线模式流程：**
+**推荐流程（在线/离线模式均可用 SkillsMP，仅需网络）：**
 1. `list_workspace_skills` — 先看工作区**已安装**技能；需详情时调用 `get_workspace_skill_detail`
 2. `search_market_skills(查询词)` — 搜索 SkillsMP 仓库（**每次最多 3 条**）；也可直接给用户仓库链接自行浏览
 3. **安装前必须** `get_market_skill_detail(skill_slug)` 预览 SKILL.md（**每轮搜索最多预览 3 个**，逐个预览，禁止并行批量拉取），确认符合需求
 4. 用户确认后 `install_market_skill(skill_slug)` — 安装到本机 `~/.digital-employee/local-skills/<workspace_id>/`
 5. `list_workspace_skills` 获取 localId → `update_employee` 分配给员工
 
-**离线模式：** 仅用 `list_builtin_skills` + `install_builtin_skill`，或引导用户在客户端「技能」页导入 ZIP。
+**SkillsMP 无合适结果时：** `list_builtin_skills` + `install_builtin_skill`，或引导用户在客户端「技能」页导入 ZIP。
 
 **流程示例**：
 ```
