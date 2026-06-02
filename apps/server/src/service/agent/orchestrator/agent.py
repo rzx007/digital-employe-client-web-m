@@ -35,6 +35,7 @@ from src.service.agent.prompts import (
     build_memory_update_section,
 )
 from src.service.agent.orchestrator.prompts import (
+    ORCHESTRATOR_RUNTIME_CONTEXT_TEMPLATE,
     ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE,
     build_delegation_execution_context,
     build_employee_capability_context,
@@ -174,7 +175,7 @@ def get_orchestrator_agent(
         if conversation_id
         else "（无会话上下文）"
     )
-    orchestrator_prompt = ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE.format(
+    runtime_context = ORCHESTRATOR_RUNTIME_CONTEXT_TEMPLATE.format(
         current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         employee_table=employee_context,
         delegation_executions=delegation_context,
@@ -190,10 +191,11 @@ def get_orchestrator_agent(
         virtual_mode=is_agent_virtual_mode(),
     )
     system_prompt = (
-        orchestrator_prompt
+        ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE
         + fs_section
         + build_memory_update_section()
         + build_long_document_writing_section(for_orchestrator=True)
+        + runtime_context
     )
 
     checkpointer = get_checkpointer()

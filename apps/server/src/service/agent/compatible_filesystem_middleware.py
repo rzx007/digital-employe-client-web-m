@@ -12,7 +12,10 @@ from src.service.basic_file_reader import (
     format_multimodal_size_error,
     is_multimodal_payload_too_large,
 )
-from src.service.image_multimodal import prepare_image_bytes_for_llm
+from src.service.image_multimodal import (
+    LLM_IMAGE_MAX_VISUAL_TOKENS,
+    prepare_image_bytes_for_llm,
+)
 from deepagents.backends.protocol import ReadResult
 from deepagents.backends.utils import (
     _get_file_type,
@@ -292,6 +295,7 @@ def handle_compatible_read_result(
             image = prepare_image_bytes_for_llm(
                 raw,
                 source_name=validated_path,
+                max_visual_tokens=LLM_IMAGE_MAX_VISUAL_TOKENS,
             )
         except (binascii.Error, ValueError) as exc:
             if is_multimodal_payload_too_large(base64_data=content):

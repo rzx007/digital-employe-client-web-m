@@ -16,6 +16,7 @@ from src.service.basic_file_reader import (
 from src.service.image_multimodal import (
     LLM_IMAGE_HISTORY_BYTE_BUDGET,
     LLM_IMAGE_MAX_BYTES,
+    plan_image_budget,
     prepare_image_for_llm,
     to_image_url_block,
 )
@@ -183,6 +184,7 @@ def build_image_blocks_from_files(
     blocks: list[dict[str, Any]] = []
     used_bytes = 0
     fallback_texts: list[str] = []
+    image_files: list[tuple[str, Path]] = []
 
     # 遍历所有文件，筛选并处理图像文件
     for file in _normalize_files(files):
@@ -192,12 +194,16 @@ def build_image_blocks_from_files(
             continue
         if categorize_file(resolved) != BasicFileCategory.IMAGE:
             continue
+        image_files.append((virtual_path, resolved))
 
+    max_visual_tokens = plan_image_budget(len(image_files))
+
+    for virtual_path, resolved in image_files:
         # 如果模型不支持图像，将图像路径作为回退文本
         if not allow_images:
             fallback_texts.append(_unsupported_image_text(virtual_path))
             continue
-        
+
         # 检查字节预算是否已耗尽
         if remaining_byte_budget is not None and remaining_byte_budget <= used_bytes:
             fallback_texts.append(
@@ -207,7 +213,10 @@ def build_image_blocks_from_files(
 
         # 尝试准备图像数据供LLM使用
         try:
-            prepared = prepare_image_for_llm(resolved)
+            prepared = prepare_image_for_llm(
+                resolved,
+                max_visual_tokens=max_visual_tokens,
+            )
         except ValueError as exc:
             fallback_texts.append(str(exc).removeprefix("Error: "))
             continue

@@ -32,6 +32,9 @@ class WorkspaceService:
             )
         )
         if existing_curator:
+            # 兼容增量发布：即使 workspace 已初始化，也要幂等补齐新增内置员工
+            # （例如后续新增的“环境管家”种子员工）。
+            EmployeeService.ensure_builtin_seed_employees(db, workspace)
             return
 
         EmployeeService.ensure_builtin_seed_employees(db, workspace)

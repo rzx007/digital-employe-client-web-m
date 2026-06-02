@@ -1,6 +1,9 @@
 import { useState } from "react"
 import type { PromptAttachmentFile } from "@workspace/ui/components/ai-elements/prompt-input"
-import { Spinner } from "@/components/spinner"
+import {
+  AttachmentStatusDot,
+  resolveAttachmentStatus,
+} from "./attachment-status-dot"
 import { AttachmentRemoveButton } from "./attachment-remove-button"
 import type { UploadFileState } from "./types"
 
@@ -44,11 +47,7 @@ function ChatPromptImageThumb({
   onRemove: () => void
 }) {
   const [imgFailed, setImgFailed] = useState(false)
-
-  const showPending = !conversationId
-  const showUploading = Boolean(conversationId) && state?.status === "uploading"
-  const showDone = state?.status === "done"
-  const showError = state?.status === "error"
+  const statusVariant = resolveAttachmentStatus(conversationId, state)
 
   return (
     <div className="group relative h-10 max-w-[min(42cqw,9rem)] shrink-0 @[18rem]/prompt-input:h-12 @[18rem]/prompt-input:max-w-[min(42cqw,12rem)]">
@@ -71,36 +70,12 @@ function ChatPromptImageThumb({
           </div>
         )}
 
-        {showPending && (
-          <span className="pointer-events-none absolute right-1 bottom-1 rounded-full bg-yellow-100 px-1.5 py-0.5 text-[9px] text-yellow-800 shadow-sm">
-            待上传
-          </span>
-        )}
-
-        {showUploading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/60">
-            <Spinner className="size-5 text-muted-foreground" />
-          </div>
-        )}
-
-        {showDone && !showUploading && (
-          <span
-            className="pointer-events-none absolute right-1 bottom-1 flex size-3 items-center justify-center rounded-full bg-green-600 text-xs text-white shadow-sm"
-            aria-hidden
-          >
-            ✓
-          </span>
-        )}
-
-        {showError && !showUploading && (
-          <span
-            className="pointer-events-none absolute right-1 bottom-1 flex size-5 cursor-help items-center justify-center rounded-full bg-red-600 text-[11px] font-semibold text-white shadow-sm"
-            title={state?.error}
-            aria-label={state?.error}
-          >
-            ✗
-          </span>
-        )}
+        {statusVariant ? (
+          <AttachmentStatusDot
+            variant={statusVariant}
+            detail={statusVariant === "error" ? state?.error : undefined}
+          />
+        ) : null}
       </div>
     </div>
   )

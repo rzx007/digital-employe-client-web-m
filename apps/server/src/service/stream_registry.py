@@ -1330,10 +1330,19 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
         log = db.scalars(
             select(TaskExecutionLog).where(
                 TaskExecutionLog.conversation_id == conversation_id,
-                TaskExecutionLog.run_status == "running",
+                TaskExecutionLog.run_status.in_(("running", "queued")),
             )
         ).first()
         if not log:
+            db.close()
+            return
+
+        # HITL interrupt 只是暂停等待，不应落为失败终态。
+        if stream_state == "interrupted":
+            log.run_status = "running"
+            log.run_result = "等待人工确认"
+            db.commit()
+            db.refresh(log)
             db.close()
             return
 
