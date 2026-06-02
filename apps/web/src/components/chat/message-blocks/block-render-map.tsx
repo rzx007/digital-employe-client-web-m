@@ -20,12 +20,16 @@ import { SkillExplorationBlock } from "./skill-exploration-block"
 import { SummarizationCheckpointBlock } from "./summarization-checkpoint-block"
 import { ThinkingBlock } from "./thinking-block"
 import { MessageResponse } from "@workspace/ui/components/ai-elements/message"
+import { cn } from "@workspace/ui/lib/utils"
 import { IconAlertTriangle, IconFile } from "@tabler/icons-react"
+import { useCuratorFile } from "@/components/chat/curator/use-curator-file"
 import {
   isDestructiveDeleteRejected,
   isHitlAbortedOutput,
   type HitlPatchOptions,
 } from "@/lib/chat/hitl"
+import { normalizeToolFilePath } from "@/lib/chat/pending-resources/paths"
+import { useArtifactStore } from "@/stores/artifact-store"
 import type { CommandMeta, FileMeta, MentionMeta } from "../shared/chat-view-shared"
 
 export interface BlockRenderContext {
@@ -52,6 +56,10 @@ export function MessageMetaBadges({
   filesMeta?: FileMeta
   messageId: string
 }) {
+  const openResource = useArtifactStore((s) => s.openResource)
+  const curatorFile = useCuratorFile()
+  const handleOpenFile = curatorFile?.onOpenFile ?? openResource
+
   if (!commandMeta?.title && mentionMeta.length === 0 && !filesMeta?.length)
     return null
   return (
@@ -69,15 +77,34 @@ export function MessageMetaBadges({
           @{mention.name ?? "unknown"}
         </span>
       ))}
-      {filesMeta?.map((file, index) => (
-        <span
-          key={`${messageId}:file:${index}`}
-          className="inline-flex items-center gap-1 rounded-md bg-green-500/10 px-2 py-0.5 text-[11px] text-green-600"
-        >
-          <IconFile className="size-3" />
-          {file.name}
-        </span>
-      ))}
+      {filesMeta?.map((file, index) => {
+        const fileKey = `${messageId}:file:${index}`
+        const badgeClassName = cn(
+          "inline-flex items-center gap-1 rounded-md bg-green-500/10 px-2 py-0.5 text-[11px] text-green-600",
+          file.path &&
+            "cursor-pointer transition-colors hover:bg-green-500/20 hover:underline"
+        )
+        if (!file.path) {
+          return (
+            <span key={fileKey} className={badgeClassName}>
+              <IconFile className="size-3" />
+              {file.name}
+            </span>
+          )
+        }
+        return (
+          <button
+            key={fileKey}
+            type="button"
+            className={badgeClassName}
+            title={file.path}
+            onClick={() => handleOpenFile(normalizeToolFilePath(file.path))}
+          >
+            <IconFile className="size-3" />
+            {file.name}
+          </button>
+        )
+      })}
     </div>
   )
 }
