@@ -31,6 +31,7 @@ Requires-Dist: digital-employee-activation-core
 Requires-Dist: pypdf>=5.0
 Requires-Dist: openpyxl>=3.1
 Requires-Dist: python-docx>=1.1
+Requires-Dist: pillow>=12.2.0
 
 # Actus Employee Client
 

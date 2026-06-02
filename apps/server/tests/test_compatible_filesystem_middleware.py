@@ -11,6 +11,11 @@ from src.service.agent.compatible_filesystem_middleware import (
     sanitize_messages_for_openai_compatible,
 )
 
+_PNG_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgaG"
+    "AAAAIEAIFb8XqMAAAAAElFTkSuQmCC"
+)
+
 
 def _truncate(content: str, _file_path: str, _limit: int) -> str:
     return content
@@ -39,7 +44,7 @@ def test_pdf_extracted_as_utf8_returns_text_not_file_block():
 
 def test_image_returns_image_block():
     read_result = ReadResult(
-        file_data=FileData(content="aGVsbG8=", encoding="base64")
+        file_data=FileData(content=_PNG_B64, encoding="base64")
     )
     msg = handle_compatible_read_result(
         read_result,

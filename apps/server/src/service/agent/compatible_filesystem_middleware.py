@@ -1,9 +1,9 @@
 """DashScope / OpenAI 兼容模式：read_file 按 encoding 区分文本与多模态。"""
 
+import base64
+import binascii
 import logging
-import mimetypes
 from collections.abc import Awaitable, Callable
-from pathlib import Path
 from typing import Annotated, Any, cast
 
 from src.llm.vision import active_model_supports_vision
@@ -12,6 +12,7 @@ from src.service.basic_file_reader import (
     format_multimodal_size_error,
     is_multimodal_payload_too_large,
 )
+from src.service.image_multimodal import prepare_image_bytes_for_llm
 from deepagents.backends.protocol import ReadResult
 from deepagents.backends.utils import (
     _get_file_type,
@@ -73,7 +74,8 @@ def _oversized_image_message(path: str, size_bytes: int) -> ContentBlock:
 
 
 def _message_needs_sanitize(
-    message: BaseMessage, *, allow_images: bool
+    message: BaseMessage, *,
+    allow_images: bool
 ) -> bool:
     for block in message.content_blocks:
         block_type = _block_type(block)
@@ -106,13 +108,30 @@ def _sanitize_message_for_openai_compatible(
     *,
     allow_images: bool,
 ) -> BaseMessage:
-    """将 checkpoint 中不兼容的内容块转为文本，避免 DashScope 400。"""
+    """将 checkpoint 中不兼容的内容块转为文本，避免 DashScope 400。
+
+    该函数用于清理消息中的内容块，将其转换为 OpenAI 兼容格式。主要处理以下场景：
+    - 文件类型内容块转换为提示文本
+    - 图片类型内容块根据模型能力进行标准化或转换
+    - 音频类型内容块转换为不支持提示
+    - 超大图片检测并生成错误提示
+
+    Args:
+        message: 需要清理的原始消息对象，包含多个内容块
+        allow_images: 是否允许图片内容传递给模型，用于控制图片内容的处理方式
+
+    Returns:
+        清理后的消息对象，所有不兼容的内容块已转换为文本格式或标准化格式
+    """
+    # 如果消息不需要清理，直接返回原消息
     if not _message_needs_sanitize(message, allow_images=allow_images):
         return message
 
     new_blocks: list[ContentBlock] = []
     for block in message.content_blocks:
         block_type = _block_type(block)
+
+        # 处理文件类型内容块：转换为无法发送的提示文本
         if block_type == "file":
             path = ""
             if isinstance(message, ToolMessage):
@@ -130,10 +149,13 @@ def _sanitize_message_for_openai_compatible(
                     },
                 )
             )
+        # 处理图片类型内容块：根据大小和模型能力决定处理方式
         elif block_type == "image":
             path = ""
             if isinstance(message, ToolMessage):
                 path = str(message.additional_kwargs.get("read_file_path") or "")
+
+            # 检查图片是否超过大小限制
             if is_multimodal_payload_too_large(
                 base64_data=str(block.get("base64") or block.get("data") or "")
             ):
@@ -141,8 +163,10 @@ def _sanitize_message_for_openai_compatible(
                 new_blocks.append(
                     _oversized_image_message(path or "image", size_bytes)
                 )
+            # 如果模型支持图片且未超限，标准化图片格式
             elif allow_images:
                 new_blocks.append(_normalize_image_block_for_api(block))
+            # 模型不支持图片时，转换为提示文本
             else:
                 new_blocks.append(
                     cast(
@@ -157,8 +181,10 @@ def _sanitize_message_for_openai_compatible(
                         },
                     )
                 )
+        # 处理图片 URL 类型：仅在允许图片时保留
         elif block_type == "image_url" and allow_images:
             new_blocks.append(block)
+        # 处理音频类型内容块：转换为不支持提示
         elif block_type == "audio":
             new_blocks.append(
                 cast(
@@ -169,9 +195,11 @@ def _sanitize_message_for_openai_compatible(
                     },
                 )
             )
+        # 其他类型内容块保持不变
         else:
             new_blocks.append(block)
 
+    # 优化：如果只有一个文本块，直接使用字符串内容而非列表
     if len(new_blocks) == 1 and _block_type(new_blocks[0]) == "text":
         text = str(new_blocks[0].get("text") or "")
         return message.model_copy(update={"content": text})
@@ -259,26 +287,43 @@ def handle_compatible_read_result(
         )
 
     if file_type == "image":
-        if is_multimodal_payload_too_large(base64_data=content):
-            size_bytes = estimate_base64_decoded_bytes(content)
+        try:
+            raw = base64.b64decode(content, validate=True)
+            image = prepare_image_bytes_for_llm(
+                raw,
+                source_name=validated_path,
+            )
+        except (binascii.Error, ValueError) as exc:
+            if is_multimodal_payload_too_large(base64_data=content):
+                size_bytes = estimate_base64_decoded_bytes(content)
+                error_content = format_multimodal_size_error(
+                    validated_path,
+                    size_bytes,
+                )
+            else:
+                error_content = str(exc)
             return ToolMessage(
-                content=format_multimodal_size_error(validated_path, size_bytes),
+                content=error_content,
                 name="read_file",
                 tool_call_id=tool_call_id,
                 status="error",
             )
-        mime_type = mimetypes.guess_type("file" + Path(validated_path).suffix)[0]
-        mime_type = mime_type or "application/octet-stream"
         return ToolMessage(
             content_blocks=cast(
                 "list[ContentBlock]",
-                [{"type": "image", "base64": content, "mime_type": mime_type}],
+                [
+                    {
+                        "type": "image",
+                        "base64": image.base64_data,
+                        "mime_type": image.mime_type,
+                    }
+                ],
             ),
             name="read_file",
             tool_call_id=tool_call_id,
             additional_kwargs={
                 "read_file_path": validated_path,
-                "read_file_media_type": mime_type,
+                "read_file_media_type": image.mime_type,
             },
             status="success",
         )

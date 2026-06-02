@@ -17,7 +17,14 @@ from src.schemas.conversation import ConversationRead
 from src.models.conversation import Conversation, ConversationMessage
 from src.models.employee import Employee
 from src.models.workspace import Workspace, cst_now
+from src.llm.vision import active_model_supports_vision
 from src.service.employee_service import EmployeeService
+from src.service.agent_message_builder import (
+    build_history_user_content,
+    build_user_agent_content,
+    history_image_budget,
+)
+from src.service.image_multimodal import LLM_IMAGE_HISTORY_MESSAGE_LIMIT
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend
 from langchain_openai import ChatOpenAI
@@ -333,7 +340,7 @@ class ChatService:
         db: Session,
         conversation_id: int,
         limit: int,
-    ) -> tuple[list[dict[str, str]], int | None]:
+    ) -> tuple[list[dict[str, Any]], int | None]:
         if limit <= 0:
             return [], None
         stmt: Select[tuple[ConversationMessage]] = (
@@ -361,11 +368,43 @@ class ChatService:
             if raw_tokens is not None:
                 last_input_tokens = int(raw_tokens)
                 break
-        payload = []
+        allow_images = active_model_supports_vision()
+        remaining_image_budget = history_image_budget()
+        included_image_messages = 0
+        enriched_messages: dict[int, dict[str, Any]] = {}
+
+        for message in messages:
+            if message.role != "user" or not message.content:
+                continue
+            can_include_images = (
+                allow_images
+                and included_image_messages < LLM_IMAGE_HISTORY_MESSAGE_LIMIT
+                and remaining_image_budget > 0
+            )
+            enriched, used_bytes, included_image = build_history_user_content(
+                message,
+                artifacts_root=get_settings().artifacts_path,
+                conversation_id=conversation_id,
+                allow_images=allow_images,
+                remaining_byte_budget=(
+                    remaining_image_budget if can_include_images else 0
+                ),
+            )
+            enriched_messages[message.id] = enriched
+            if included_image:
+                included_image_messages += 1
+                remaining_image_budget = max(0, remaining_image_budget - used_bytes)
+
+        payload: list[dict[str, Any]] = []
         for message in reversed(messages):
             if not message.content:
                 continue
-            payload.append({"role": message.role, "content": message.content})
+            payload.append(
+                enriched_messages.get(
+                    message.id,
+                    {"role": message.role, "content": message.content},
+                )
+            )
         return payload, last_input_tokens
 
     @staticmethod
@@ -494,15 +533,14 @@ class ChatService:
                 last_input_tokens,
             )
 
-        ChatService._append_message(db, conversation=conversation, role="user", content=question, extra_meta=extra_meta)
-        request_messages = [*history_messages, {"role": "user", "content": question}]
-
-        # 将 extra_meta 中的文件信息注入 agent 上下文的 question（不污染 DB 中的原始消息）
-        if extra_meta and extra_meta.get("files"):
-            file_lines = [f"- {f.get('name', f['path'])} (路径: {f['path']})" for f in extra_meta["files"]]
-            file_context = "[上传的文件]:\n" + "\n".join(file_lines)
-            question = file_context + "\n\n" + question
-            request_messages[-1] = {"role": "user", "content": question}
+        ChatService._append_message(
+            db,
+            conversation=conversation,
+            role="user",
+            content=question,
+            extra_meta=extra_meta,
+        )
+        request_messages: list[dict[str, Any]] = [*history_messages]
         
         # 创建一个空的 assistant 消息占位（不标记 streaming 状态，
         # 等 registry.start 成功后再标记，避免 start 失败时留下僵尸消息）
@@ -542,7 +580,6 @@ class ChatService:
                 employee_id=target_id,
                 auth_token=auth_token,
             )
-            request_messages = [*history_messages, {"role": "user", "content": question}]
         elif target_type == "employee":
             employee = db.get(Employee, target_id)
             if not employee:
@@ -566,8 +603,13 @@ class ChatService:
             skill_question = question
             if skill_name and target_type != "curator":
                 skill_question = f"请使用{skill_name}技能回答这个问题：{question}"
-            if request_messages:
-                request_messages[-1] = {"role": "user", "content": skill_question}
+            user_content = build_user_agent_content(
+                skill_question,
+                extra_meta.get("files") if extra_meta else None,
+                artifacts_root=settings.artifacts_path,
+                conversation_id=conversation_id,
+            )
+            request_messages.append({"role": "user", "content": user_content})
             
             from src.service.stream_registry import registry
             from src.service.agent_stream_queue import StartResult

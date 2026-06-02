@@ -24,3 +24,4 @@ digital-employee-activation-core
 pypdf>=5.0
 openpyxl>=3.1
 python-docx>=1.1
+pillow>=12.2.0
