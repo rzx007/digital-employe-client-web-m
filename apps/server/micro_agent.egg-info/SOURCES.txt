@@ -155,6 +155,7 @@ src/service/__init__.py
 src/service/activation_service.py
 src/service/agent copy.py
 src/service/agent_interface_service.py
+src/service/agent_message_builder.py
 src/service/agent_stream_queue.py
 src/service/basic_file_reader.py
 src/service/chat_service.py
@@ -168,6 +169,7 @@ src/service/feishu_token_service.py
 src/service/file_service.py
 src/service/group_service.py
 src/service/hitl_pending_parts.py
+src/service/image_multimodal.py
 src/service/local_skill_service.py
 src/service/mcp_service.py
 src/service/message_parts_extractor.py
@@ -241,6 +243,7 @@ src/utils/http_client.py
 tests/conftest.py
 tests/test_activation_service.py
 tests/test_agent_error_messages.py
+tests/test_agent_message_builder.py
 tests/test_agent_runtime_policy.py
 tests/test_agent_stream_queue.py
 tests/test_basic_file_backend.py
@@ -256,6 +259,7 @@ tests/test_employee_service.py
 tests/test_employee_tools.py
 tests/test_encoding_aware_backend.py
 tests/test_host_paths.py
+tests/test_image_multimodal.py
 tests/test_json_list_parse.py
 tests/test_llm_registry_bootstrap.py
 tests/test_llm_vision.py

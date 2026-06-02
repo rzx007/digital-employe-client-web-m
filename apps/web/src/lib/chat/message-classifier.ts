@@ -192,6 +192,15 @@ export type ClassifiedBlock =
       toolCallId: string
       resultText: string
     }
+  | {
+      kind: "orchestrator-task-summary"
+      key: string
+      heading: string
+      body: string
+      runStatus: string | null
+      employeeConversationId: number | null
+      taskId: number | null
+    }
 
 interface ClassifyMessagePartsOptions {
   includeFileChanges?: boolean
@@ -231,6 +240,50 @@ function mergeSummarizationCheckpointBlock(
   })
 }
 
+function extractOrchestratorTaskSummary(
+  message: UIMessage
+): ClassifiedBlock | null {
+  const meta = (message as unknown as { metadata?: unknown }).metadata
+  if (!meta || typeof meta !== "object") return null
+  const m = meta as Record<string, unknown>
+  if (m.source !== "orchestrator_execution_summary") return null
+
+  let rawText = ""
+  for (const p of message.parts) {
+    if (p.type === "text" && "text" in p && typeof p.text === "string") {
+      rawText += p.text
+    }
+  }
+  rawText = rawText.trim()
+  if (!rawText && typeof (message as unknown as { content?: unknown }).content === "string") {
+    rawText = ((message as unknown as { content?: string }).content ?? "").trim()
+  }
+  if (!rawText) return null
+
+  const firstLineBreak = rawText.indexOf("\n")
+  const heading = (firstLineBreak === -1 ? rawText : rawText.slice(0, firstLineBreak)).trim()
+  const body = (firstLineBreak === -1 ? "" : rawText.slice(firstLineBreak + 1))
+    .replace(/\n*可点击下方卡片进入员工对话查看详情。\s*$/u, "")
+    .trim()
+
+  const runStatus = typeof m.run_status === "string" ? m.run_status : null
+  const employeeConversationId =
+    typeof m.employee_conversation_id === "number"
+      ? m.employee_conversation_id
+      : null
+  const taskId = typeof m.task_id === "number" ? m.task_id : null
+
+  return {
+    kind: "orchestrator-task-summary",
+    key: `${message.id}:orch-summary`,
+    heading,
+    body,
+    runStatus,
+    employeeConversationId,
+    taskId,
+  }
+}
+
 /**
  * 将 UI 消息的部分内容分类为不同的块（思考过程、工具调用组、最终响应）。
  *
@@ -246,6 +299,11 @@ export function classifyMessageParts(
 ): ClassifiedBlock[] {
   const parts = message.parts
   if (parts.length === 0) return []
+
+  const orchestratorSummary = extractOrchestratorTaskSummary(message)
+  if (orchestratorSummary) {
+    return [orchestratorSummary]
+  }
 
   const hasAnyTool = parts.some(isToolUIPart)
 

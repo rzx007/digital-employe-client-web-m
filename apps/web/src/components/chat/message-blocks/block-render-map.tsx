@@ -1,4 +1,5 @@
 import type { ClassifiedBlock } from "@/lib/chat/message-classifier"
+import { OrchestratorTaskSummaryCard } from "./orchestrator-task-summary-card"
 import { ToolGroupBlock } from "./tool-group-block"
 import { TodoPlanBlock } from "./todo-plan-block"
 import { PlanGeneratedCard } from "./plan-generated-card"
@@ -309,6 +310,17 @@ export function BlockRenderer({
         className="w-full"
         key={block.key}
         text={block.text}
+      />
+    )
+  }
+  if (block.kind === "orchestrator-task-summary") {
+    return (
+      <OrchestratorTaskSummaryCard
+        key={block.key}
+        heading={block.heading}
+        body={block.body}
+        runStatus={block.runStatus}
+        className="w-full"
       />
     )
   }

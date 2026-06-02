@@ -120,7 +120,7 @@ class Settings:
     performance_monthly_balance_path: str | None = None
     performance_dispatch_orders_path: str | None = None
     execute_timeout: int = 600
-    llm_request_timeout: float = 60.0
+    llm_request_timeout: float = 300.0
     feishu_app_id: str | None = None
     feishu_app_secret: str | None = None
     feishu_redirect_uri: str | None = None
@@ -297,9 +297,9 @@ def get_settings() -> Settings:
 
     llm_request_timeout_raw = _get_kv_value(kv_data, "LLM_REQUEST_TIMEOUT")
     try:
-        llm_request_timeout = float(llm_request_timeout_raw or "60")
+        llm_request_timeout = float(llm_request_timeout_raw or "300")
     except ValueError:
-        llm_request_timeout = 60.0
+        llm_request_timeout = 300.0
     if llm_request_timeout < 15.0:
         llm_request_timeout = 15.0
     default_workspace_id_raw = _get_kv_value(kv_data, "DEFAULT_WORKSPACE_ID")

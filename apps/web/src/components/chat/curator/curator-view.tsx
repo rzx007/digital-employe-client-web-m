@@ -433,7 +433,13 @@ export function CuratorView({
 
   const displayMessages = useMemo(() => {
     const source = pickMessageDisplaySource(messages, initialMessages, status)
-    return prepareDisplayMessages(source)
+    const filtered = source.filter((msg) => {
+      const meta = (msg as unknown as { metadata?: unknown }).metadata
+      if (!meta || typeof meta !== "object") return true
+      return (meta as Record<string, unknown>).source !==
+        "orchestrator_execution_summary"
+    })
+    return prepareDisplayMessages(filtered)
   }, [messages, initialMessages, status])
 
   const lastAssistantMessageId = useMemo(() => {
@@ -681,10 +687,8 @@ export function CuratorView({
   const { data: executions = [] } =
     useCuratorTaskExecutions(curatorConversationId)
 
-  const executionSummaryIds = useMemo(() => {
-    const map = buildExecutionSummaryTsMap(storedMessages)
-    return new Set(map.keys())
-  }, [storedMessages])
+  // 摘要消息已在 UI 层隐藏，执行卡片始终用 full 模式（带状态印章、输出预览、星级、跳转）
+  const executionSummaryIds = useMemo(() => new Set<number>(), [])
 
   /* ── Build unified timeline ── */
   const timeline: TimelineEntry[] = useMemo(() => {
