@@ -4,6 +4,7 @@ import {
   IconArrowRight,
   IconWorld,
   IconRefresh,
+  IconMinus,
   IconX,
 } from "@tabler/icons-react"
 
@@ -11,7 +12,9 @@ import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { cn } from "@workspace/ui/lib/utils"
 
+import { BrowserCloseConfirmDialog } from "@/components/chat/right-panels/browser-close-confirm-dialog"
 import { useBrowserViewportSync } from "@/hooks/use-browser-viewport-sync"
+import { isBrowserCloseConfirmDismissed } from "@/lib/browser/close-confirm"
 import { formatBrowserLoadError } from "@/lib/browser/load-error-message"
 import { getElectronApi } from "@/lib/electron/host"
 import { useBrowserStore } from "@/stores/browser-store"
@@ -25,7 +28,8 @@ export function BrowserPanel() {
     currentTitle,
     isLoading,
     error,
-    closeBrowser,
+    minimizeBrowser,
+    destroyBrowser,
     navigate,
     refresh,
     setCurrentUrl,
@@ -34,6 +38,27 @@ export function BrowserPanel() {
 
   const viewportRef = React.useRef<HTMLDivElement>(null)
   const [urlInput, setUrlInput] = React.useState(currentUrl)
+  const [closeConfirmOpen, setCloseConfirmOpen] = React.useState(false)
+
+  const handleCloseClick = () => {
+    if (isBrowserCloseConfirmDismissed()) {
+      destroyBrowser()
+      return
+    }
+    setCloseConfirmOpen(true)
+  }
+
+  /** WebContentsView 在 contentView 原生层，会盖住 React 弹窗；确认期间临时隐藏 */
+  React.useEffect(() => {
+    if (!isOpen) return
+    const api = getElectronApi()
+    if (!api?.browser) return
+    if (closeConfirmOpen) {
+      void api.browser.hide()
+      return
+    }
+    void api.browser.show()
+  }, [closeConfirmOpen, isOpen])
 
   useBrowserViewportSync(viewportRef, isOpen)
 
@@ -81,7 +106,10 @@ export function BrowserPanel() {
   if (!isOpen) return null
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
+    <div
+      data-browser-panel
+      className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border bg-background shadow-sm"
+    >
       <div className="flex shrink-0 items-center gap-2 border-b bg-muted/30 px-2 py-2">
         <div className="flex items-center gap-0.5">
           <Button
@@ -136,12 +164,28 @@ export function BrowserPanel() {
           variant="ghost"
           size="icon"
           className="h-7 w-7 shrink-0"
-          onClick={closeBrowser}
-          title="关闭浏览器面板"
+          onClick={minimizeBrowser}
+          title="最小化浏览器"
+        >
+          <IconMinus className="h-3.5 w-3.5" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0"
+          onClick={handleCloseClick}
+          title="关闭并销毁浏览器"
         >
           <IconX className="h-3.5 w-3.5" />
         </Button>
       </div>
+
+      <BrowserCloseConfirmDialog
+        open={closeConfirmOpen}
+        onOpenChange={setCloseConfirmOpen}
+        onConfirm={destroyBrowser}
+      />
 
       {error && (
         <div className="shrink-0 border-b bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
@@ -169,7 +213,10 @@ export function BrowserPanel() {
         ) : null}
       </div>
 
-      <div className="shrink-0 truncate border-t bg-muted/20 px-3 py-1.5 font-mono text-[10px] text-muted-foreground">
+      <div
+        data-browser-footer
+        className="shrink-0 truncate border-t bg-muted/20 px-3 py-1.5 font-mono text-[10px] text-muted-foreground"
+      >
         {currentUrl || "未加载 URL"}
       </div>
     </div>

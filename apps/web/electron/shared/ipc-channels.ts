@@ -64,6 +64,7 @@ export const IpcChannels = {
   browserNavigate: "browser:navigate",
   browserResize: "browser:resize",
   browserHide: "browser:hide",
+  browserShow: "browser:show",
   browserClose: "browser:close",
   browserConfirmResolve: "browser:confirm-resolve",
   browserSyncBounds: "browser:sync-bounds",
@@ -256,6 +257,7 @@ export interface IpcInvokeMap {
   [IpcChannels.browserNavigate]: { args: [url: string]; result: void }
   [IpcChannels.browserResize]: { args: [widthRatio: number]; result: void }
   [IpcChannels.browserHide]: { args: []; result: void }
+  [IpcChannels.browserShow]: { args: []; result: void }
   [IpcChannels.browserClose]: { args: []; result: void }
   [IpcChannels.browserConfirmResolve]: {
     args: [id: string, approved: boolean]

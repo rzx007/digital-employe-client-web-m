@@ -80,7 +80,7 @@ async def _browser_navigate(url: str, intent: str | None = None) -> str:
     del intent
     result = await asyncio.wait_for(
         _get_client().navigate(_session(), url),
-        timeout=30,
+        timeout=50,
     )
     if not result.ok:
         return _format_error("navigate", result.error)

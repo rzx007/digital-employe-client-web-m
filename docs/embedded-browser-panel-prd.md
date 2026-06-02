@@ -99,7 +99,7 @@ win.webContents.setWindowOpenHandler(({ url }) => {
   │  │    └─ BrowserWindow { webPreferences.session:                 │
   │  │                          "persist:browser-panel" }            │
   │  └─ BrowserDebuggerController (webContents.debugger, CDP)         │
-  │       │ HTTP 127.0.0.1:58555 (aiohttp, 复用后端进程)              │
+  │       │ HTTP 127.0.0.1:34555 (aiohttp, 复用后端进程)              │
   │       ▼                                                          │
   │  FastAPI 路由 /internal/browser/*                                │
   │  BrowserRuntimeClient → @tool × 7                                 │
@@ -161,7 +161,7 @@ PRD 设计**两条平行路径**，用户视角都是自然语言，LLM 按场�
 员工对话 "把百度首页所有链接列出来"
   → 无对应 skill → LLM 调 browser_navigate("https://baidu.com")
   → @tool 调 FastAPI POST /internal/browser/default/navigate
-  → BrowserRuntimeClient → HTTP 127.0.0.1:58555
+  → BrowserRuntimeClient → HTTP 127.0.0.1:34555
   → BrowserDebuggerController.navigate(url)
   → webContents.debugger.sendCommand("Page.navigate", { url })
   → 等 Page.loadEventFired
@@ -204,7 +204,7 @@ apps/web/src/
 
 apps/server/src/service/
   ├── browser/
-  │   ├── browser_runtime_client.py      # 调 127.0.0.1:58555
+  │   ├── browser_runtime_client.py      # 调 127.0.0.1:34555
   │   ├── audit_log.py                   # SQLite 审计表
   │   └── http_routes.py                 # FastAPI 路由
   └── agent/tools/browser.py             # @tool × 7
@@ -715,7 +715,7 @@ apps/server/src/service/employee_service.py               # 默认员工 += "浏
 ```python
 # tests/test_browser_e2e.py
 async def test_browser_navigate_then_snapshot():
-    client = BrowserRuntimeClient("http://127.0.0.1:58555")
+    client = BrowserRuntimeClient("http://127.0.0.1:34555")
     nav = await client.navigate("default", "https://example.com")
     assert nav.ok
 
@@ -724,7 +724,7 @@ async def test_browser_navigate_then_snapshot():
     assert any(r["role"] == "link" for r in snap.refs)
 
 async def test_browser_click_ref():
-    client = BrowserRuntimeClient("http://127.0.0.1:58555")
+    client = BrowserRuntimeClient("http://127.0.0.1:34555")
     await client.navigate("default", "https://example.com")
     snap = await client.snapshot("default")
     first_link = next(r for r in snap.refs if r["role"] == "link")

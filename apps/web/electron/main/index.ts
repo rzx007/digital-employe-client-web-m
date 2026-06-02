@@ -210,6 +210,10 @@ function registerBrowserIpcHandlers(): void {
     controller.hide()
   })
 
+  ipcMain.handle(IpcChannels.browserShow, () => {
+    controller.show()
+  })
+
   ipcMain.handle(IpcChannels.browserClose, () => {
     controller.close()
   })

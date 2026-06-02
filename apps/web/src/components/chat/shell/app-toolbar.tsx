@@ -9,7 +9,6 @@ import {
   IconSettings,
   IconSparkles,
   IconSparklesFilled,
-  IconWorld,
 } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -32,7 +31,6 @@ import { useAuthStore } from "@/stores/auth-store"
 import { withElectronApi } from "@/lib/electron/host"
 import { useChatStore, type ActiveTab } from "@/stores/chat-store"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
-import { useBrowserStore } from "@/stores/browser-store"
 import { NotificationBell } from "../notifications/notification-center"
 
 // 导入所有头像资源
@@ -99,9 +97,6 @@ export function AppToolbar({
 }: React.ComponentProps<"div">) {
   const activeTab = useChatStore((s) => s.activeTab)
   const setActiveTab = useChatStore((s) => s.setActiveTab)
-  const isBrowserOpen = useBrowserStore((s) => s.isOpen)
-  const closeBrowser = useBrowserStore((s) => s.closeBrowser)
-  const openBrowser = useBrowserStore((s) => s.openBrowser)
   const logout = useAuthStore((s) => s.logout)
   const user = useAuthStore((s) => s.user)
   const restoreSession = useAuthStore((s) => s.restoreSession)
@@ -200,34 +195,6 @@ export function AppToolbar({
           <div data-tour-id="notification-bell">
             <NotificationBell />
           </div>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "size-10 rounded-lg",
-                  isBrowserOpen
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-                onClick={() => {
-                  if (isBrowserOpen) {
-                    closeBrowser()
-                  } else {
-                    openBrowser("https://www.baidu.com")
-                  }
-                }}
-                title={isBrowserOpen ? "关闭浏览器面板" : "打开浏览器面板"}
-              >
-                <IconWorld className="size-5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={8}>
-              {isBrowserOpen ? "关闭浏览器" : "浏览器"}
-            </TooltipContent>
-          </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>

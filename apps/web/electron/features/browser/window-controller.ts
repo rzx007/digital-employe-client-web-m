@@ -1,6 +1,7 @@
 import {
   BrowserWindow,
   session,
+  View,
   WebContentsView,
   type Rectangle,
 } from "electron"
@@ -10,6 +11,10 @@ import type { WebContents } from "electron"
 import { getWindowManager } from "../../core/services/window-registry"
 import { rootLogger as logger } from "../../core/logger"
 import { injectHighlightStyles } from "./browser-highlight"
+import {
+  cssViewportBoxToDipBounds,
+  MEASURE_BROWSER_VIEWPORT_SCRIPT,
+} from "./viewport-bounds"
 
 const PARTITION_NAME = "persist:browser-panel"
 const DEFAULT_WIDTH_RATIO = 0.6
@@ -17,8 +22,6 @@ const MIN_WIDTH_RATIO = 0.3
 const MAX_WIDTH_RATIO = 0.8
 const HEADER_OFFSET_Y = 40
 const MIN_VIEWPORT_PX = 40
-/** 叠在 React 主 WebContents 之上（Windows 需 remove/add 置顶） */
-const BROWSER_VIEW_Z_INDEX = 1_000_000
 
 /** Chromium：导航被取消（连续 load / 改 bounds 时常见），勿当网络错误 */
 const ERR_ABORTED = -3
@@ -53,18 +56,20 @@ function clampWidthRatio(value: number): number {
 }
 
 /**
- * 内嵌浏览器：WebContentsView 贴在主窗口 contentView 上。
- *
- * setBounds 与渲染进程 getBoundingClientRect 同坐标系；置顶后避免被 React 层遮挡。
+ * 内嵌浏览器：contentView → 裁剪容器 View → WebContentsView(0,0)。
+ * 视口对齐见本目录 README.md。
  */
 export class BrowserWindowController {
   private widthRatio: number = DEFAULT_WIDTH_RATIO
   private browserView: WebContentsView | null = null
+  private browserContainer: View | null = null
   private mainResizeHandler: (() => void) | null = null
   private viewportBounds: BrowserContentBounds | null = null
   private pendingLoadUrl: string | null = null
   private sessionPrepared = false
   private fallbackLoadTimer: ReturnType<typeof setTimeout> | null = null
+  private lastMeasuredBounds: BrowserContentBounds | null = null
+  private stableBoundsCount = 0
 
   open(url: string): void {
     const wm = getWindowManager()
@@ -76,11 +81,12 @@ export class BrowserWindowController {
 
     const view = this.ensureView(main)
     this.pendingLoadUrl = url || null
-    this.applyBounds(main)
-    this.bringBrowserViewToFront(main)
-    view.setVisible(true)
-    this.tryStartPendingLoad(main)
-    this.scheduleFallbackLoad(main)
+    this.lastMeasuredBounds = null
+    this.stableBoundsCount = 0
+    view.setVisible(false)
+    this.attachBrowserSubview(main)
+    void this.applyViewportLayout(main)
+    this.scheduleFallbackLayout(main)
     this.attachMainResizeSync(main)
   }
 
@@ -98,14 +104,52 @@ export class BrowserWindowController {
     })
   }
 
+  /**
+   * Agent HTTP 桥接：轮询布局视口直至可 setBounds（不依赖 stableBounds / pendingLoadUrl）。
+   */
+  async prepareViewportForBridge(): Promise<WebContents> {
+    const wm = getWindowManager()
+    const main = wm.get("main")
+    if (!main || main.isDestroyed()) {
+      throw new Error("BROWSER_UNAVAILABLE")
+    }
+
+    this.pendingLoadUrl = null
+    this.clearFallbackLoadTimer()
+
+    const view = this.ensureView(main)
+    view.setVisible(false)
+    this.attachBrowserSubview(main)
+
+    const deadline = Date.now() + 5000
+    while (Date.now() < deadline) {
+      await this.applyViewportLayout(main)
+      if (this.hasValidBounds()) break
+      await new Promise((r) => setTimeout(r, 80))
+    }
+
+    if (!this.hasValidBounds()) {
+      throw new Error("BROWSER_VIEWPORT_NOT_READY")
+    }
+
+    view.setVisible(true)
+    this.applyBounds(main)
+    this.attachBrowserSubview(main)
+
+    const wc = this.getBrowserWebContents()
+    if (!wc || wc.isDestroyed()) {
+      throw new Error("BROWSER_UNAVAILABLE")
+    }
+    return wc
+  }
+
   setWidthRatio(ratio: number): void {
     const wm = getWindowManager()
     const main = wm.get("main")
     if (!main || main.isDestroyed()) return
 
     this.widthRatio = clampWidthRatio(ratio)
-    this.applyBounds(main)
-    this.bringBrowserViewToFront(main)
+    void this.applyViewportLayout(main)
   }
 
   syncBounds(bounds: BrowserContentBounds): void {
@@ -113,29 +157,8 @@ export class BrowserWindowController {
     const main = wm.get("main")
     if (!main || main.isDestroyed()) return
 
-    this.viewportBounds = {
-      x: Math.max(0, Math.round(bounds.x)),
-      y: Math.max(0, Math.round(bounds.y)),
-      width: Math.max(0, Math.round(bounds.width)),
-      height: Math.max(0, Math.round(bounds.height)),
-    }
-
-    const view = this.browserView
-    if (!view || view.webContents.isDestroyed()) return
-
-    const tooSmall =
-      this.viewportBounds.width < MIN_VIEWPORT_PX ||
-      this.viewportBounds.height < MIN_VIEWPORT_PX
-
-    if (tooSmall) {
-      view.setVisible(false)
-      return
-    }
-
-    if (!view.getVisible()) view.setVisible(true)
-    this.applyBounds(main)
-    this.bringBrowserViewToFront(main)
-    this.tryStartPendingLoad(main)
+    this.viewportBounds = this.cssBoundsToDip(main, bounds)
+    void this.applyViewportLayout(main)
   }
 
   getWidthRatio(): number {
@@ -154,7 +177,7 @@ export class BrowserWindowController {
     const main = wm.get("main")
     if (main && !main.isDestroyed()) {
       this.applyBounds(main)
-      this.bringBrowserViewToFront(main)
+      this.attachBrowserSubview(main)
     }
     view.setVisible(true)
   }
@@ -167,19 +190,18 @@ export class BrowserWindowController {
     const view = this.browserView
     if (view) {
       if (main && !main.isDestroyed()) {
-        try {
-          main.contentView.removeChildView(view)
-        } catch {
-          /* already removed */
-        }
+        this.detachBrowserSubview(main)
       }
       if (!view.webContents.isDestroyed()) {
         view.webContents.close()
       }
     }
     this.browserView = null
+    this.browserContainer = null
     this.viewportBounds = null
     this.pendingLoadUrl = null
+    this.lastMeasuredBounds = null
+    this.stableBoundsCount = 0
   }
 
   isOpen(): boolean {
@@ -220,7 +242,8 @@ export class BrowserWindowController {
 
     view.setBackgroundColor("#ffffff")
     this.browserView = view
-    this.bringBrowserViewToFront(main)
+    this.browserContainer = new View()
+    this.attachBrowserSubview(main)
 
     view.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
       if (
@@ -254,32 +277,67 @@ export class BrowserWindowController {
     })
   }
 
-  private bringBrowserViewToFront(main: BrowserWindow): void {
+  private detachBrowserSubview(main: BrowserWindow): void {
     const view = this.browserView
-    if (!view || view.webContents.isDestroyed() || main.isDestroyed()) return
+    const container = this.browserContainer
+    if (!view && !container) return
 
-    view.setZIndex(BROWSER_VIEW_Z_INDEX)
-    try {
-      main.contentView.removeChildView(view)
-    } catch {
-      /* 尚未加入 contentView */
+    if (container && view) {
+      try {
+        container.removeChildView(view)
+      } catch {
+        /* not a child */
+      }
     }
-    main.contentView.addChildView(view)
+
+    if (view) {
+      try {
+        main.contentView.removeChildView(view)
+      } catch {
+        /* not a direct child */
+      }
+    }
+
+    if (container) {
+      try {
+        main.contentView.removeChildView(container)
+      } catch {
+        /* not a direct child */
+      }
+    }
   }
 
-  private hasValidBounds(main: BrowserWindow): boolean {
-    const b = this.computeBounds(main)
-    return b.width >= MIN_VIEWPORT_PX && b.height >= MIN_VIEWPORT_PX
+  private attachBrowserSubview(main: BrowserWindow): void {
+    const view = this.browserView
+    const container = this.browserContainer
+    if (
+      !view ||
+      !container ||
+      view.webContents.isDestroyed() ||
+      main.isDestroyed()
+    ) {
+      return
+    }
+
+    this.detachBrowserSubview(main)
+    main.contentView.addChildView(container)
+    container.addChildView(view)
   }
 
-  private scheduleFallbackLoad(main: BrowserWindow): void {
+  private hasValidBounds(): boolean {
+    const vp = this.viewportBounds
+    return (
+      vp !== null &&
+      vp.width >= MIN_VIEWPORT_PX &&
+      vp.height >= MIN_VIEWPORT_PX
+    )
+  }
+
+  private scheduleFallbackLayout(main: BrowserWindow): void {
     this.clearFallbackLoadTimer()
     this.fallbackLoadTimer = setTimeout(() => {
       this.fallbackLoadTimer = null
-      if (!this.pendingLoadUrl) return
-      if (this.viewportBounds) return
-      logger.info("[browser] fallback load (no syncBounds yet)")
-      this.tryStartPendingLoad(main)
+      void this.applyViewportLayout(main)
     }, 300)
   }
 
@@ -296,12 +354,11 @@ export class BrowserWindowController {
     if (!url || !view || view.webContents.isDestroyed() || main.isDestroyed()) {
       return
     }
-    if (!this.hasValidBounds(main)) return
+    if (!this.hasValidBounds() || this.stableBoundsCount < 2) return
 
     this.clearFallbackLoadTimer()
     this.pendingLoadUrl = null
-    const bounds = this.computeBounds(main)
-    logger.info("[browser] loadURL", { url, bounds })
+    logger.info("[browser] loadURL", { url })
 
     void view.webContents.loadURL(url).catch((err: unknown) => {
       const msg = String(err)
@@ -328,13 +385,110 @@ export class BrowserWindowController {
     }
   }
 
-  private applyBounds(main: BrowserWindow): void {
-    const view = this.browserView
-    if (!view || view.webContents.isDestroyed()) return
-    view.setBounds(this.computeBounds(main))
+  private cssBoundsToDip(
+    main: BrowserWindow,
+    bounds: BrowserContentBounds
+  ): BrowserContentBounds {
+    return cssViewportBoxToDipBounds(
+      {
+        left: bounds.x,
+        top: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+      },
+      main.webContents.getZoomFactor()
+    )
   }
 
-  /** contentView 坐标，与 getBoundingClientRect 一致 */
+  private async pullBoundsFromDom(
+    main: BrowserWindow
+  ): Promise<BrowserContentBounds | null> {
+    if (main.isDestroyed() || main.webContents.isDestroyed()) return null
+    try {
+      const raw = await main.webContents.executeJavaScript(
+        MEASURE_BROWSER_VIEWPORT_SCRIPT
+      )
+      if (
+        !raw ||
+        typeof raw !== "object" ||
+        typeof (raw as { left?: unknown }).left !== "number" ||
+        typeof (raw as { top?: unknown }).top !== "number" ||
+        typeof (raw as { width?: unknown }).width !== "number" ||
+        typeof (raw as { height?: unknown }).height !== "number"
+      ) {
+        return null
+      }
+      return cssViewportBoxToDipBounds(
+        raw as {
+          left: number
+          top: number
+          width: number
+          height: number
+        },
+        main.webContents.getZoomFactor()
+      )
+    } catch (err) {
+      logger.warn("[browser] pullBoundsFromDom failed", {
+        error: String(err),
+      })
+      return null
+    }
+  }
+
+  private noteBoundsStability(next: BrowserContentBounds): void {
+    const prev = this.lastMeasuredBounds
+    const stable =
+      prev !== null &&
+      prev.x === next.x &&
+      prev.y === next.y &&
+      prev.width === next.width &&
+      prev.height === next.height
+    this.lastMeasuredBounds = next
+    this.stableBoundsCount = stable ? this.stableBoundsCount + 1 : 1
+  }
+
+  private async applyViewportLayout(main: BrowserWindow): Promise<void> {
+    const dom = await this.pullBoundsFromDom(main)
+    if (dom && dom.width >= MIN_VIEWPORT_PX && dom.height >= MIN_VIEWPORT_PX) {
+      this.viewportBounds = dom
+      this.noteBoundsStability(dom)
+    }
+
+    const view = this.browserView
+    if (!view || view.webContents.isDestroyed()) return
+
+    const vp = this.viewportBounds
+    const tooSmall =
+      !vp ||
+      vp.width < MIN_VIEWPORT_PX ||
+      vp.height < MIN_VIEWPORT_PX
+
+    if (tooSmall) {
+      view.setVisible(false)
+      return
+    }
+
+    if (!view.getVisible()) view.setVisible(true)
+    this.applyBounds(main)
+    this.attachBrowserSubview(main)
+    this.tryStartPendingLoad(main)
+  }
+
+  private applyBounds(main: BrowserWindow): void {
+    const view = this.browserView
+    const container = this.browserContainer
+    if (!view || !container || view.webContents.isDestroyed()) return
+
+    const bounds = this.computeBounds(main)
+    container.setBounds(bounds)
+    view.setBounds({
+      x: 0,
+      y: 0,
+      width: bounds.width,
+      height: bounds.height,
+    })
+  }
+
   private computeBounds(main: BrowserWindow): Rectangle {
     const vp = this.viewportBounds
     if (vp && vp.width >= MIN_VIEWPORT_PX && vp.height >= MIN_VIEWPORT_PX) {
@@ -406,10 +560,7 @@ export class BrowserWindowController {
     wc.on("page-title-updated", () => sendUrlChange())
 
     wc.removeAllListeners("did-stop-loading")
-    wc.on("did-stop-loading", () => {
-      logger.info("[browser] did-stop-loading", { url: wc.getURL() })
-      sendUrlChange()
-    })
+    wc.on("did-stop-loading", () => sendUrlChange())
   }
 
   private attachMainResizeSync(main: BrowserWindow): void {
@@ -417,8 +568,7 @@ export class BrowserWindowController {
     const handler = () => {
       const view = this.browserView
       if (!view || view.webContents.isDestroyed() || !view.getVisible()) return
-      this.applyBounds(main)
-      this.bringBrowserViewToFront(main)
+      void this.applyViewportLayout(main)
       if (!main.isDestroyed()) {
         main.webContents.send("browser:layout-changed")
       }

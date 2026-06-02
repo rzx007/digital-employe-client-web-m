@@ -33,6 +33,8 @@ Electron 主进程与 Python 后端日志统一在 `~/.digital-employee/logs/`�
 
 聊天 API/UI 类型分层见 [`CHAT_DATA_TYPES.md`](apps/web/src/lib/chat/CHAT_DATA_TYPES.md)；会话消息流转（Query / useChat / SSE / hydrate / HITL 展示）见 [`conversation-message-flow.md`](apps/web/src/lib/chat/conversation-message-flow.md)。
 
+内嵌浏览器（右栏 `BrowserPanel` + `WebContentsView` 视口对齐、CSS→DIP、勿用子窗口）见 [`apps/web/electron/features/browser/README.md`](apps/web/electron/features/browser/README.md)。
+
 ```bash
 pnpm install          # 安装依赖（需要 Node >= 20, pnpm >= 10.33）
 pnpm dev              # Web 开发服务器，默认 http://localhost:3399

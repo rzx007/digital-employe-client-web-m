@@ -23,7 +23,7 @@ def test_navigate_success(monkeypatch):
         )
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
-    client = BrowserRuntimeClient("http://127.0.0.1:58555")
+    client = BrowserRuntimeClient("http://127.0.0.1:34555")
 
     async def run():
         result = await client.navigate("default", "https://example.com")
@@ -43,7 +43,7 @@ def test_click_element_not_found(monkeypatch):
         )
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
-    client = BrowserRuntimeClient("http://127.0.0.1:58555")
+    client = BrowserRuntimeClient("http://127.0.0.1:34555")
 
     async def run():
         result = await client.click("default", "#missing")
@@ -53,3 +53,20 @@ def test_click_element_not_found(monkeypatch):
     result = asyncio.run(run())
     assert not result.ok
     assert result.error == "ELEMENT_NOT_FOUND"
+
+
+def test_post_empty_body_returns_clear_error(monkeypatch):
+    async def mock_post(self, url, **kwargs):
+        return httpx.Response(200, content=b"")
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+    client = BrowserRuntimeClient("http://127.0.0.1:34555")
+
+    async def run():
+        result = await client.navigate("default", "https://www.bilibili.com")
+        await client.close()
+        return result
+
+    result = asyncio.run(run())
+    assert not result.ok
+    assert "空响应" in (result.error or "")

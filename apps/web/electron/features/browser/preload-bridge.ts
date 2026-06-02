@@ -36,6 +36,7 @@ export const browserBridge = {
   resize: (widthRatio: number) =>
     invoke(IpcChannels.browserResize, widthRatio),
   hide: () => invoke(IpcChannels.browserHide),
+  show: () => invoke(IpcChannels.browserShow),
   close: () => invoke(IpcChannels.browserClose),
   onUrlChange: (callback: (data: BrowserUrlChangeEvent) => void) =>
     onChannel("browser:url-change", (data) => {

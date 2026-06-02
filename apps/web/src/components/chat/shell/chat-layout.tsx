@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, type ComponentProps } from "react"
 import { useSize } from "ahooks"
+import { IconWorld } from "@tabler/icons-react"
 
+import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { useQueryClient } from "@tanstack/react-query"
 import { ArtifactPanel } from "@/components/artifact"
@@ -184,16 +186,19 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const openConversationList = useChatStore((s) => s.openConversationList)
   const closeConversationList = useChatStore((s) => s.closeConversationList)
   const isBrowserOpen = useBrowserStore((s) => s.isOpen)
-  const closeBrowser = useBrowserStore((s) => s.closeBrowser)
+  const isBrowserMinimized = useBrowserStore((s) => s.isMinimized)
+  const restoreBrowser = useBrowserStore((s) => s.restoreBrowser)
+  const destroyBrowser = useBrowserStore((s) => s.destroyBrowser)
   const browserWidthRatio = useBrowserStore((s) => s.widthRatio)
 
   useEffect(() => {
     if (activeTab === "chat") return
-    if (isBrowserOpen) closeBrowser()
-  }, [activeTab, isBrowserOpen, closeBrowser])
+    destroyBrowser()
+  }, [activeTab, destroyBrowser])
 
   const selectedContactId = useChatStore((s) => s.selectedContactId)
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
+  const isDraftConversation = useChatStore((s) => s.isDraftConversation)
   const selectedContact = useChatStore((s) => s.getSelectedContact())
   const { data: conversations = [] } = useConversationsQuery(
     selectedContactId,
@@ -204,6 +209,22 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const resetRightPanels = useCallback(() => {
     resetChatRightPanels()
   }, [])
+
+  const conversationKey = isDraftConversation
+    ? `draft:${selectedContactId ?? "none"}`
+    : selectedConversationId != null
+      ? `conversation:${selectedConversationId}`
+      : selectedContactId != null
+        ? `contact:${selectedContactId}`
+        : "none"
+
+  const prevConversationKeyRef = useRef(conversationKey)
+
+  useEffect(() => {
+    if (prevConversationKeyRef.current === conversationKey) return
+    prevConversationKeyRef.current = conversationKey
+    destroyBrowser()
+  }, [conversationKey, destroyBrowser])
 
   const prevConversationCountRef = useRef<number | null>(null)
   const prevContactIdForConvRef = useRef<string | null>(null)
@@ -264,6 +285,11 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
 
   const hasRightPanel = rightPanel !== null
   const isBrowserRightPanel = rightPanel === "browser"
+  const showBrowserRestoreFab =
+    activeTab === "chat" &&
+    isBrowserMinimized &&
+    !isBrowserOpen &&
+    !hasRightPanel
 
   const shouldCollapseRecent =
     activeTab === "chat" && hasRightPanel && layoutWidth < 1902
@@ -389,6 +415,18 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
           </>
         )}
       </div>
+
+      {showBrowserRestoreFab && (
+        <Button
+          variant="secondary"
+          size="icon"
+          className="absolute top-1/2 right-3 z-30 -translate-y-1/2 rounded-full border shadow-lg"
+          onClick={restoreBrowser}
+          title="恢复浏览器"
+        >
+          <IconWorld className="size-5" />
+        </Button>
+      )}
 
       {isMobile && <MobileTabBar />}
 

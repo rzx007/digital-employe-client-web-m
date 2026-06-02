@@ -378,7 +378,7 @@ export async function flashHighlight(
 """HTTP client for Electron browser CDP operations.
 
 All requests go to Electron's internal HTTP bridge (Phase 1 uses IPC,
-Phase 2 switches to aiohttp on port 58555 for tool-level access).
+Phase 2 switches to aiohttp on port 34555 for tool-level access).
 For MVP, we use the existing FastAPI + IPC path.
 """
 from __future__ import annotations

@@ -15,10 +15,13 @@ interface BrowserState {
   currentTitle: string
   widthRatio: number
   isLoading: boolean
+  isMinimized: boolean
   error: string | null
 
   openBrowser: (url: string) => void
-  closeBrowser: () => void
+  minimizeBrowser: () => void
+  restoreBrowser: () => void
+  destroyBrowser: () => void
   navigate: (url: string) => void
   refresh: () => void
   setWidthRatio: (ratio: number) => void
@@ -53,6 +56,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   widthRatio: DEFAULT_WIDTH_RATIO,
   isLoading: false,
   error: null,
+  isMinimized: false,
 
   openBrowser: (url: string) => {
     closeOtherRightPanels()
@@ -68,6 +72,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     const normalized = normalizeUrl(url)
     set({
       isOpen: true,
+      isMinimized: false,
       currentUrl: normalized,
       currentTitle: "",
       isLoading: true,
@@ -76,10 +81,32 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     void api.browser.open(normalized)
   },
 
-  closeBrowser: () => {
+  minimizeBrowser: () => {
     const api = getElectronApi()
     void api?.browser.hide()
-    set({ isOpen: false, error: null })
+    set({ isOpen: false, isMinimized: true, error: null })
+  },
+
+  restoreBrowser: () => {
+    const { currentUrl } = get()
+    if (!currentUrl) return
+    const api = getElectronApi()
+    if (!api?.browser) return
+    void api.browser.open(currentUrl)
+    set({ isOpen: true, isMinimized: false, isLoading: true, error: null })
+  },
+
+  destroyBrowser: () => {
+    const api = getElectronApi()
+    void api?.browser.close()
+    set({
+      isOpen: false,
+      isMinimized: false,
+      currentUrl: "",
+      currentTitle: "",
+      isLoading: false,
+      error: null,
+    })
   },
 
   navigate: (url: string) => {
@@ -122,6 +149,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   reset: () => {
     set({
       isOpen: false,
+      isMinimized: false,
       currentUrl: "",
       currentTitle: "",
       isLoading: false,

@@ -8,5 +8,5 @@ export function resetChatRightPanels() {
   useArtifactStore.getState().closeArtifact()
   useMonitorStore.getState().closeMonitor()
   useChatStore.getState().closeConversationList()
-  useBrowserStore.getState().closeBrowser()
+  useBrowserStore.getState().destroyBrowser()
 }

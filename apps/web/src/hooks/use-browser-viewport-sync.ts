@@ -1,16 +1,11 @@
 import * as React from "react"
 
+import { measureViewportFromElement } from "@/lib/browser/viewport-bounds"
 import { getElectronApi } from "@/lib/electron/host"
 
-export interface BrowserViewportRect {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
 /**
- * 将 BrowserPanel 内「网页视口」的 DOM 矩形同步给主进程 WebContentsView（与 getBoundingClientRect 同坐标系）。
+ * 将 BrowserPanel 视口矩形（CSS px）同步给主进程；DIP 换算见
+ * apps/web/electron/features/browser/README.md。
  */
 export function useBrowserViewportSync(
   viewportRef: React.RefObject<HTMLElement | null>,
@@ -23,15 +18,10 @@ export function useBrowserViewportSync(
     const api = getElectronApi()
     if (!el || !api?.browser?.syncBounds) return
 
-    const rect = el.getBoundingClientRect()
-    if (rect.width < 8 || rect.height < 8) return
+    const bounds = measureViewportFromElement(el)
+    if (!bounds) return
 
-    void api.browser.syncBounds({
-      x: Math.round(rect.left),
-      y: Math.round(rect.top),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height),
-    })
+    void api.browser.syncBounds(bounds)
   }, [viewportRef])
 
   const scheduleSync = React.useCallback(() => {
@@ -51,6 +41,12 @@ export function useBrowserViewportSync(
 
     const ro = new ResizeObserver(() => scheduleSync())
     ro.observe(el)
+
+    const panel = el.closest("[data-browser-panel]")
+    const footer = panel?.querySelector("[data-browser-footer]")
+    if (footer) {
+      ro.observe(footer)
+    }
 
     const onLayout = () => scheduleSync()
     window.addEventListener("resize", onLayout)
