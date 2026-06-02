@@ -586,6 +586,36 @@ class TaskService:
         return items, total
 
     @staticmethod
+    def latest_execution_logs_by_task_ids(
+        db: Session,
+        task_ids: list[int],
+    ) -> dict[int, TaskExecutionLog]:
+        """每个 task_id 对应最新一条 execution log（批量查询，避免循环 LIMIT 1）。"""
+        if not task_ids:
+            return {}
+
+        max_log_ids = list(
+            db.scalars(
+                select(func.max(TaskExecutionLog.id))
+                .where(TaskExecutionLog.task_id.in_(task_ids))
+                .group_by(TaskExecutionLog.task_id)
+            ).all()
+        )
+        if not max_log_ids:
+            return {}
+
+        logs = list(
+            db.scalars(
+                select(TaskExecutionLog).where(TaskExecutionLog.id.in_(max_log_ids))
+            ).all()
+        )
+        return {
+            log.task_id: log
+            for log in logs
+            if log.task_id is not None
+        }
+
+    @staticmethod
     def confirm_task_execution_log(
         db: Session,
         workspace_id: int,

@@ -28,6 +28,7 @@ import { prepareDisplayMessages } from "@/lib/chat/hitl"
 import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
 
 import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
+import { useChatConnectingHint } from "@/hooks/use-chat-connecting-hint"
 
 import { ChatPanel } from "../panel/chat-panel"
 
@@ -129,7 +130,11 @@ export function ConversationChatView({
       onStreamFinishRef.current()
     },
 
-    onError: () => {},
+    onError: (chatError) => {
+      toast.error("发送失败", {
+        description: chatError.message || "请稍后重试",
+      })
+    },
   })
 
   const session = useConversationSession({
@@ -151,6 +156,8 @@ export function ConversationChatView({
   })
 
   useSyncPendingFromComposer(conversationId, messages, status)
+
+  useChatConnectingHint(status, messages)
 
   useEffect(() => {
     onStreamFinishRef.current = session.onStreamFinish

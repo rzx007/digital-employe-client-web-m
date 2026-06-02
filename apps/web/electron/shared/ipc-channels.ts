@@ -69,6 +69,8 @@ export interface BackendStatus {
   ready: boolean
   port: number
   running: boolean
+  /** 桌面包是否为离线版（py-server/.offline 或 OFFLINE_MODE） */
+  offlinePackage: boolean
 }
 
 export interface PlatformInfo {

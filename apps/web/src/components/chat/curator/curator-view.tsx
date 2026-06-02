@@ -32,6 +32,7 @@ import { shouldIncludeFileChangesForMessage } from "@/lib/chat/file-change-utils
 import { useConversationSession } from "@/hooks/use-conversation-session"
 import { useInvalidateContactsOnTeamChanges } from "@/hooks/use-invalidate-contacts-on-team-changes"
 import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
+import { useChatConnectingHint } from "@/hooks/use-chat-connecting-hint"
 import {
   useMessagesQuery,
   useResetCuratorConversation,
@@ -369,6 +370,8 @@ export function CuratorView({
   })
 
   useSyncPendingFromComposer(curatorConversationId, messages, status)
+
+  useChatConnectingHint(status, messages)
 
   useInvalidateContactsOnTeamChanges(messages, status, queryClient)
 

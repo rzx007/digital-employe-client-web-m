@@ -17,6 +17,13 @@ from src.service.performance_balance_service import PerformanceBalanceService
 
 logger = logging.getLogger(__name__)
 
+_EMPTY_SYNC_RESULT = {
+    "synced_count": 0,
+    "inserted_count": 0,
+    "updated_count": 0,
+    "triggered_count": 0,
+}
+
 
 class DispatchOrderSyncService:
     @staticmethod
@@ -153,6 +160,12 @@ class DispatchOrderSyncService:
 
     @staticmethod
     def sync_and_trigger() -> dict[str, int]:
+        from src.core.runtime_capabilities import get_capabilities
+
+        if not get_capabilities().dispatch_order_sync:
+            logger.debug("跳过派单同步：dispatch_order_sync 能力已禁用")
+            return dict(_EMPTY_SYNC_RESULT)
+
         with get_session_local()() as db:
             result = run_coro_on_main_loop(DispatchOrderSyncService._sync_once(db))
         logger.info(

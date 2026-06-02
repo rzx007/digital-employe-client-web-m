@@ -6,9 +6,7 @@ from fastapi import APIRouter, Body, HTTPException, Request, Depends
 
 from src.core.config import get_settings
 from src.core.deps import require_capability
-from src.db.session import get_session_local
 from src.schemas.login import LoginRequest, UpdatePasswordRequest
-from src.service.config_kv_service import ConfigKvService
 
 router = APIRouter(tags=["登录"])
 logger = logging.getLogger(__name__)
@@ -56,17 +54,6 @@ def login(request: LoginRequest):
         response = httpx.post(login_url, json=login_params, timeout=30.0)
         response.raise_for_status()
         payload = response.json()
-        token = _extract_login_token(payload if isinstance(payload, dict) else {})
-        if token:
-            try:
-                with get_session_local()() as db:
-                    from src.core.remote_gateway import RemoteGateway
-                    RemoteGateway.ensure("remote_model_sync")
-                    ConfigKvService.sync_model_provider_from_remote(db, token=token)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.warning("登录后同步模型服务商配置失败: %s", exc)
-        else:
-            logger.info("登录成功但未在返回体中提取到 token，跳过模型服务商同步")
         return payload
     except httpx.HTTPError as exc:
         logger.error("登录转发 HTTP 失败: %s", exc, exc_info=True)

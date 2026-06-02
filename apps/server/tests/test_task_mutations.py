@@ -231,3 +231,66 @@ def test_update_tool_refreshes_shared_session_for_list_tasks(
     listing = list_tasks.invoke({})
     assert "新名称" in listing
     assert "旧名称" not in listing
+
+
+def test_list_tasks_with_execution_logs(
+    db_session, workspace, patched_task_mutations_db
+):
+    import json
+
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.models.workspace import cst_now
+    from src.service.agent.orchestrator.tools import list_tasks
+
+    employee = add_employee(db_session, workspace.id, name="执行员工")
+    task = add_task(db_session, workspace.id, employee.id, task_name="带日志任务")
+    db_session.add(
+        TaskExecutionLog(
+            task_id=task.id,
+            workspace_id=workspace.id,
+            employee_id=employee.id,
+            task_name_snapshot=task.task_name,
+            run_status="success",
+            run_result="完成",
+            output_json=json.dumps({"text": "执行结果摘要"}, ensure_ascii=False),
+            started_at=cst_now(),
+        )
+    )
+    db_session.commit()
+
+    set_context(db=db_session, workspace_id=workspace.id, conversation_id=1)
+    listing = list_tasks.invoke({"employee_id": employee.id, "limit": 50})
+
+    assert "带日志任务" in listing
+    assert "success" in listing
+    assert "执行结果摘要" not in listing
+
+
+def test_list_tasks_concurrent(db_session, workspace, patched_task_mutations_db):
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from src.service.agent.orchestrator.task_listing import list_tasks_text
+
+    employees = [
+        add_employee(db_session, workspace.id, name=f"员工{i}") for i in range(4)
+    ]
+    for index, employee in enumerate(employees):
+        add_task(
+            db_session,
+            workspace.id,
+            employee.id,
+            task_name=f"任务{index}",
+        )
+
+    def _invoke(employee_id: int) -> str:
+        return list_tasks_text(
+            workspace.id, employee_id=employee_id, limit=50
+        )
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [pool.submit(_invoke, emp.id) for emp in employees]
+        results = [future.result() for future in as_completed(futures)]
+
+    assert len(results) == 4
+    assert all("错误" not in result for result in results)
+    assert all("任务" in result for result in results)

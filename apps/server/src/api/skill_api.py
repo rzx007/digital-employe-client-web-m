@@ -19,6 +19,7 @@ from src.core.request_utils import (
     get_username,
     get_workspace_id_from_request,
 )
+from src.core.config import is_offline_mode
 from src.core.runtime_capabilities import get_capabilities
 from src.core.deps import require_capability
 from sqlalchemy.orm import Session
@@ -87,12 +88,17 @@ def list_skills(
             )
         )
 
-    if local_only or not get_capabilities().remote_skills:
+    # 离线或未启用远程平台时只返回本地/内置；SkillsMP 走独立 API，不在此阻塞。
+    if (
+        local_only
+        or is_offline_mode()
+        or not get_capabilities().remote_skills
+    ):
         return ResponseBase[list[SkillListItem]](data=local_data)
 
     token = request.headers.get("token")
     remote_data: list[SkillListItem] = []
-    remote_skills = SkillService.list_remote_skills(token)
+    remote_skills = SkillService.list_remote_skills(token, timeout=5.0)
     for item in remote_skills:
         mapped = SkillService.map_remote_to_list_item(item)
         mapped["source"] = "remote"

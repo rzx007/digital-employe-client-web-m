@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+import httpx
 from langchain_openai import ChatOpenAI
 
 from src.core.config import Settings, get_settings
@@ -98,11 +99,21 @@ def build_chat_model(
     resolved_base = _resolve_base_url(settings, base_url)
     llm_kwargs = _merge_deepseek_v4_extra_body(resolved_model, dict(extra_kwargs))
 
+    req_timeout = max(15.0, float(settings.llm_request_timeout))
+    connect_cap = min(12.0, req_timeout)
+    llm_timeout = httpx.Timeout(
+        connect=connect_cap,
+        read=req_timeout,
+        write=30.0,
+        pool=connect_cap,
+    )
+
     chat = ChatOpenAI(
         model=resolved_model,
         temperature=temperature,
         api_key=resolved_key,
         base_url=resolved_base,
+        timeout=llm_timeout,
         **llm_kwargs,
     )
     # 如果需要应用模型配置文件，则导入相关模块并应用配置

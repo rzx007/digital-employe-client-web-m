@@ -81,14 +81,17 @@ def get_orchestrator_agent(
     conversation_id: int | None = None,
     employee_id: int | None = None,
     auth_token: str | None = None,
+    *,
+    bind_context: bool = True,
 ):
-    set_context(
-        db,
-        workspace_id,
-        conversation_id,
-        auth_token=auth_token,
-        bind_auth_token=True,
-    )
+    if bind_context:
+        set_context(
+            db,
+            workspace_id,
+            conversation_id,
+            auth_token=auth_token,
+            bind_auth_token=True,
+        )
 
     settings = get_settings()
     model = build_chat_model()

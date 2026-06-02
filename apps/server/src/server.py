@@ -60,10 +60,11 @@ def create_app() -> FastAPI:
                         "Initialized config_kvs from seed file (insert-only): inserted=%s",
                         inserted,
                     )
-                from src.llm.registry import load_registry
+                from src.llm.registry import ensure_offline_bootstrap_active, load_registry
 
                 load_registry(db)
-                get_settings.cache_clear()
+                if ensure_offline_bootstrap_active(db):
+                    get_settings.cache_clear()
                 from src.service import model_patch
 
                 model_patch.apply_if_needed(get_settings())

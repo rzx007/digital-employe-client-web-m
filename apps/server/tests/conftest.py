@@ -8,6 +8,7 @@ from collections.abc import Generator
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from src import models  # noqa: F401
 from src.db.base import Base
@@ -18,8 +19,9 @@ from src.models.workspace import Workspace
 @pytest.fixture()
 def db_engine():
     engine = create_engine(
-        "sqlite:///:memory:",
+        "sqlite://",
         connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
     try:
@@ -60,10 +62,10 @@ def patched_recruitment_db(db_engine, monkeypatch):
 
 @pytest.fixture()
 def patched_task_mutations_db(db_engine, monkeypatch):
-    """让 task_mutations 模块的 get_session_local 使用测试库。"""
+    """让 task 相关模块通过 sqlite_db_session 使用测试库。"""
     session_factory = sessionmaker(bind=db_engine)
     monkeypatch.setattr(
-        "src.service.agent.orchestrator.task_mutations.get_session_local",
+        "src.db.session.get_session_local",
         lambda: session_factory,
     )
     return session_factory

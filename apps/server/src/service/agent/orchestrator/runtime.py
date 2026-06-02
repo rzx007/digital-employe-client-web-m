@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
@@ -14,6 +15,25 @@ from src.models.employee import Employee
 logger = logging.getLogger(__name__)
 
 MAX_CONCURRENT_PER_EMPLOYEE = 2
+
+@contextmanager
+def orchestrator_sqlite_guard():
+    """兼容旧调用；与 src.db.session.SQLITE_ACCESS_LOCK 共用同一把锁。"""
+    from src.db.session import SQLITE_ACCESS_LOCK
+
+    SQLITE_ACCESS_LOCK.acquire()
+    try:
+        yield
+    finally:
+        SQLITE_ACCESS_LOCK.release()
+
+
+@contextmanager
+def locked_orchestrator_db():
+    """流式会话绑定的共享 Session 也须与独立 Session 共用锁。"""
+    with orchestrator_sqlite_guard():
+        yield get_db()
+
 
 _main_loop: asyncio.AbstractEventLoop | None = None
 
@@ -130,10 +150,7 @@ def get_db() -> Session:
 
 
 def get_workspace_id() -> int:
-    ws = _workspace_id_ctx.get()
-    if ws is None:
-        raise RuntimeError("orchestrator workspace_id not set")
-    return ws
+    return resolve_workspace_id()
 
 
 def get_conversation_id() -> int | None:
@@ -165,11 +182,17 @@ def get_auth_token() -> str | None:
     return resolve_auth_token()
 
 
-def reset_context() -> None:
-    """清除总管 Tool 的 ContextVar（后台流结束后调用，避免泄漏到其他任务）。"""
-    conversation_id = _conversation_id_ctx.get()
-    if conversation_id is not None:
-        unregister_stream_session(conversation_id)
+def reset_context(conversation_id: int | None = None) -> None:
+    """清除总管 Tool 的 ContextVar。
+
+    若传入 conversation_id，仅当当前上下文属于该会话时才清除，
+    避免串行模式下其他流结束时误清正在排队/执行的总管任务上下文。
+    """
+    current_conv = _conversation_id_ctx.get()
+    if conversation_id is not None and current_conv != conversation_id:
+        return
+    if current_conv is not None:
+        unregister_stream_session(current_conv)
     _db_session_ctx.set(None)
     _workspace_id_ctx.set(None)
     _conversation_id_ctx.set(None)
@@ -180,7 +203,8 @@ def invalidate_orchestrator_db_cache() -> None:
     """fresh Session 写入后，使流式会话中的 ORM 缓存失效。"""
     db = _db_session_ctx.get()
     if db is not None:
-        db.expire_all()
+        with orchestrator_sqlite_guard():
+            db.expire_all()
 
 
 def count_running_tasks(db: Session, employee_id: int) -> int:
@@ -189,7 +213,7 @@ def count_running_tasks(db: Session, employee_id: int) -> int:
     return db.scalar(
         select(func.count(TaskExecutionLog.id)).where(
             TaskExecutionLog.employee_id == employee_id,
-            TaskExecutionLog.run_status == "running",
+            TaskExecutionLog.run_status.in_(("running", "queued")),
         )
     ) or 0
 
@@ -203,6 +227,25 @@ def get_employee_name(db: Session, employee_id: int) -> str:
     return emp.name if emp else f"#{employee_id}"
 
 
+def notify_task_failed_for_conversation(conversation_id: int, error: str) -> None:
+    """按会话查找执行日志并推送 task_failed（委派启动失败等）。"""
+    from src.db.session import get_session_local
+    from src.models.task_execution_log import TaskExecutionLog
+
+    db = get_session_local()()
+    try:
+        log = db.scalars(
+            select(TaskExecutionLog).where(
+                TaskExecutionLog.conversation_id == conversation_id,
+                TaskExecutionLog.run_status.in_(("running", "queued")),
+            )
+        ).first()
+        if log:
+            mark_task_failed(log.task_id, conversation_id, error)
+    finally:
+        db.close()
+
+
 def mark_task_failed(task_id: int, conversation_id: int, error: str) -> None:
     from src.db.session import get_session_local
     from src.models.task_execution_log import TaskExecutionLog
@@ -214,7 +257,7 @@ def mark_task_failed(task_id: int, conversation_id: int, error: str) -> None:
         log = db.scalars(
             select(TaskExecutionLog).where(
                 TaskExecutionLog.task_id == task_id,
-                TaskExecutionLog.run_status == "running",
+                TaskExecutionLog.run_status.in_(("running", "queued")),
             )
         ).first()
         if log:

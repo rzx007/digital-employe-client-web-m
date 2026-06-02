@@ -9,6 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
+from src.core.agent_runtime_policy import (
+    ORCHESTRATION_PRIORITY,
+    get_agent_runtime_policy,
+)
+from src.service.agent_stream_queue import StartResult
 from src.models.employee import Employee
 from src.models.employee_task import EmployeeTask
 from src.models.orchestration_plan import OrchestrationPlan
@@ -37,12 +42,14 @@ async def _start_employee_stream_when_orchestrator_idle(
     agent: Any,
     messages: list[dict],
     assistant_msg_id: int,
+    priority: int = ORCHESTRATION_PRIORITY,
+    source: str = "orchestration",
 ) -> None:
     from src.service.stream_registry import registry
 
     if orchestrator_conversation_id is not None:
         polls = 0
-        while registry.is_active(orchestrator_conversation_id):
+        while registry.is_busy(orchestrator_conversation_id):
             polls += 1
             if polls > _ORCH_STREAM_IDLE_MAX_POLLS:
                 logger.warning(
@@ -68,7 +75,7 @@ async def _start_employee_stream_when_orchestrator_idle(
                 conversation_id,
             )
 
-    started = registry.start(
+    result = registry.start(
         conversation_id=conversation_id,
         agent=agent,
         messages=messages,
@@ -77,10 +84,31 @@ async def _start_employee_stream_when_orchestrator_idle(
         skill_name="",
         debug_content_only=False,
         orchestrator_conversation_id=orchestrator_conversation_id,
+        priority=priority,
+        source=source,
     )
-    if not started:
+    if result == StartResult.REJECTED:
         logger.warning(
             "employee stream start refused conv=%s (orchestrator=%s)",
+            conversation_id,
+            orchestrator_conversation_id,
+        )
+        from src.service.agent.orchestrator.runtime import (
+            notify_task_failed_for_conversation,
+        )
+        from src.service.stream_registry import _mark_stream_state_sync
+
+        error_text = "启动被拒绝：会话已有活跃或排队中的流"
+        _mark_stream_state_sync(
+            assistant_msg_id,
+            conversation_id,
+            "error",
+            error_message=error_text,
+        )
+        notify_task_failed_for_conversation(conversation_id, error_text)
+    elif result == StartResult.QUEUED:
+        logger.info(
+            "employee stream queued conv=%s (orchestrator=%s)",
             conversation_id,
             orchestrator_conversation_id,
         )
@@ -179,7 +207,7 @@ def start_immediate_tasks(
             employee = db.get(Employee, task.employee_id)
             try:
                 conv_id = start_task_as_conversation(db, task, employee, workspace_id)
-                results.append(f"任务 {task.task_name}: 已启动（会话 #{conv_id}）")
+                results.append(f"任务 {task.task_name}: 已创建会话 #{conv_id}")
                 started_ids.add(task.id)
                 ready_ids.discard(task.id)
 
@@ -221,12 +249,25 @@ def start_task_as_conversation(
     task: EmployeeTask,
     employee: Employee,
     workspace_id: int,
+    *,
+    priority: int = ORCHESTRATION_PRIORITY,
+    source: str = "orchestration",
 ) -> int:
     from src.models.conversation import Conversation, ConversationMessage
     from src.models.task_execution_log import TaskExecutionLog
     from src.service.agent.employee import get_agent
     from src.service.chat_service import ChatService
+    from src.service.stream_registry import registry
     from src.service.workspace_events import WorkspaceEventBus
+
+    policy = get_agent_runtime_policy()
+    slot_busy = (
+        policy.serial_mode
+        and registry.count_active_streams() >= policy.max_concurrent_streams
+    )
+    initial_log_status = "queued" if slot_busy else "running"
+    initial_log_result = "排队中，等待执行" if slot_busy else "执行中"
+    initial_msg_state = "queued" if slot_busy else "streaming"
 
     conversation = Conversation(
         workspace_id=workspace_id,
@@ -247,8 +288,8 @@ def start_task_as_conversation(
         employee_id=employee.id,
         skill_id=task.skill_id,
         task_name_snapshot=task.task_name,
-        run_status="running",
-        run_result="执行中",
+        run_status=initial_log_status,
+        run_result=initial_log_result,
         input_json=task.task_input_json or "{}",
         output_json="{}",
         conversation_id=conversation.id,
@@ -269,10 +310,15 @@ def start_task_as_conversation(
         conversation_id=conversation.id,
         role="assistant",
         content="",
-        stream_state="streaming",
+        stream_state=initial_msg_state,
     )
     db.add(assistant_msg)
     db.flush()
+
+    if initial_msg_state == "queued":
+        assistant_msg.content = (
+            assistant_msg.content or "已加入执行队列，等待其他对话完成"
+        )
 
     conversation_id = conversation.id
     assistant_msg_id = assistant_msg.id
@@ -322,6 +368,8 @@ def start_task_as_conversation(
                 agent=agent,
                 messages=messages,
                 assistant_msg_id=assistant_msg_id,
+                priority=priority,
+                source=source,
             )
         )
 

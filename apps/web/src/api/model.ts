@@ -215,3 +215,19 @@ export async function fetchRuntimeModelConfig(): Promise<RuntimeModelConfig> {
   }
   return res.data
 }
+
+export interface SyncFromRemoteResult {
+  synced: boolean
+  registry: LlmRegistry
+}
+
+export async function syncModelFromRemote(): Promise<SyncFromRemoteResult> {
+  const res = await request<ApiResponse<SyncFromRemoteResult>>(
+    "/model/sync-from-remote",
+    { method: "POST" }
+  )
+  if (!res.data?.registry) {
+    throw new Error(res.msg || "同步平台模型配置失败")
+  }
+  return res.data
+}

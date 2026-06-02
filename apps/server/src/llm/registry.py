@@ -164,7 +164,50 @@ def apply_bootstrap_active_profile(registry: LlmRegistry) -> LlmRegistry:
 
     registry.active_provider_id = provider_id
     registry.active_model_id = model_id
+    mark_registry_local_preference(registry)
     return registry
+
+
+def ensure_offline_bootstrap_active(db: Session) -> bool:
+    """离线启动时若仍激活在线默认/远程同步模型，则切回 Hanhai。"""
+    from src.core.config import is_offline_mode
+
+    if not is_offline_mode():
+        return False
+
+    registry = load_registry(db)
+    hanhai = find_provider(registry, OFFLINE_BOOTSTRAP_PROVIDER_ID)
+    if hanhai is None or not any(
+        model.id == OFFLINE_BOOTSTRAP_MODEL_ID for model in hanhai.models
+    ):
+        return False
+
+    active = (
+        find_provider(registry, registry.active_provider_id)
+        if registry.active_provider_id
+        else None
+    )
+    needs_fix = (
+        active is None
+        or is_remote_synced_provider(active)
+        or (
+            registry.active_provider_id == ONLINE_BOOTSTRAP_PROVIDER_ID
+            and registry.active_model_id == ONLINE_BOOTSTRAP_MODEL_ID
+        )
+    )
+    if not needs_fix:
+        return False
+
+    registry.active_provider_id = OFFLINE_BOOTSTRAP_PROVIDER_ID
+    registry.active_model_id = OFFLINE_BOOTSTRAP_MODEL_ID
+    mark_registry_local_preference(registry)
+    save_registry(db, registry)
+    logger.info(
+        "Offline bootstrap restored active model to %s/%s",
+        OFFLINE_BOOTSTRAP_PROVIDER_ID,
+        OFFLINE_BOOTSTRAP_MODEL_ID,
+    )
+    return True
 
 
 def prepare_llm_registry_seed(raw: str) -> str | None:

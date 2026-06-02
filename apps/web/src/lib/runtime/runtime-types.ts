@@ -20,9 +20,27 @@ export interface ActivationRuntime {
   reason: string | null
 }
 
+export interface AgentRuntimeItem {
+  conversation_id: number
+  title: string
+  source: string
+  priority?: number
+}
+
+export interface AgentRuntime {
+  serial_mode: boolean
+  max_concurrent_streams: number
+  active_streams: number
+  queued_starts: number
+  active_items?: AgentRuntimeItem[]
+  queued_items?: AgentRuntimeItem[]
+}
+
 export interface RuntimeConfig {
   offline_mode: boolean
+  llm_label?: string
   capabilities: Capabilities
+  agent_runtime?: AgentRuntime
   activation?: ActivationRuntime
 }
 

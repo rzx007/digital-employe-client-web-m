@@ -46,14 +46,26 @@ class SkillService:
         return payload
 
     @staticmethod
-    def _request_remote(path: str, token: str) -> dict[str, Any]:
+    def _request_remote(
+        path: str,
+        token: str,
+        *,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
         try:
             settings = get_settings()
             url = SkillService._build_url(path)
             headers = {"token": f"{token}"}
-            timeout = settings.skill_remote_timeout
+            request_timeout = (
+                timeout if timeout is not None else settings.skill_remote_timeout
+            )
 
-            response = RemoteGateway.sync_get("remote_skills", url, headers=headers, timeout=timeout)
+            response = RemoteGateway.sync_get(
+                "remote_skills",
+                url,
+                headers=headers,
+                timeout=request_timeout,
+            )
             response.raise_for_status()
             payload = SkillService._ensure_success_payload(response.json())
         except httpx.TimeoutException as exc:
@@ -74,9 +86,17 @@ class SkillService:
         return payload
 
     @staticmethod
-    def list_remote_skills(token: str) -> list[dict[str, Any]]:
+    def list_remote_skills(
+        token: str,
+        *,
+        timeout: float | None = None,
+    ) -> list[dict[str, Any]]:
         settings = get_settings()
-        payload = SkillService._request_remote(settings.skill_remote_list_path, token)
+        payload = SkillService._request_remote(
+            settings.skill_remote_list_path,
+            token,
+            timeout=timeout,
+        )
         data = payload.get("data")
         if not isinstance(data, list):
             logger.error("远程技能列表数据格式错误: %s", data)

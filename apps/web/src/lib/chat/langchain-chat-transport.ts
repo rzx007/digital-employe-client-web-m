@@ -523,7 +523,9 @@ export class LangChainChatTransport<
               closeTextPhaseIfNeeded(state).forEach((chunk) =>
                 controller.enqueue(chunk)
               )
-              for (const chunk of buildHitlInterruptStreamChunks(messageParts)) {
+              for (const chunk of buildHitlInterruptStreamChunks(
+                messageParts
+              )) {
                 controller.enqueue(chunk)
               }
               enqueueFinish(controller, state)
@@ -537,6 +539,33 @@ export class LangChainChatTransport<
             }
 
             const event = parsed.data
+
+            if (
+              event &&
+              typeof event === "object" &&
+              "type" in event &&
+              (event as { type: string }).type === "agent_queued"
+            ) {
+              const queued = event as {
+                message?: string
+                position?: number
+              }
+              const message =
+                queued.message ??
+                `已加入执行队列${queued.position ? `（第 ${queued.position} 位）` : ""}`
+              flushSync()
+              closeTextPhaseIfNeeded(state).forEach((chunk) =>
+                controller.enqueue(chunk)
+              )
+              controller.enqueue({ type: "text-start", id: "agent-queued" })
+              controller.enqueue({
+                type: "text-delta",
+                id: "agent-queued",
+                delta: message,
+              })
+              controller.enqueue({ type: "text-end", id: "agent-queued" })
+              return false
+            }
 
             // 检测流式错误事件: {"error": "<message>"}
             if (event && typeof event === "object" && "error" in event) {
@@ -610,6 +639,33 @@ export class LangChainChatTransport<
                 }
                 this.onInterrupted?.(interruptPayload)
               }
+
+              if (
+                eventData?.status === "error" &&
+                typeof eventData.error === "string" &&
+                eventData.error.trim()
+              ) {
+                const errorText = eventData.error.trim()
+                flushSync()
+                closeTextPhaseIfNeeded(state).forEach((chunk) =>
+                  controller.enqueue(chunk)
+                )
+                controller.enqueue({ type: "text-start", id: "stream-error" })
+                controller.enqueue({
+                  type: "text-delta",
+                  id: "stream-error",
+                  delta: ERROR_MARKER + errorText,
+                })
+                controller.enqueue({ type: "text-end", id: "stream-error" })
+                state.didSendFinish = true
+                controller.enqueue({
+                  type: "finish",
+                  finishReason: "error" as const,
+                })
+                controller.close()
+                return true
+              }
+
               flushSync()
               closeTextPhaseIfNeeded(state).forEach((chunk) =>
                 controller.enqueue(chunk)
@@ -685,15 +741,12 @@ export class LangChainChatTransport<
               const didFinish = await flushEvent(eventText)
               if (didFinish) {
                 if (import.meta.env.DEV && reconnectStats) {
-                  console.info(
-                    "[sse:resume] reconnect batching",
-                    {
-                      sseEvents: reconnectSseEvents,
-                      chunksScheduled: reconnectStats.scheduled,
-                      chunksEnqueued: reconnectStats.enqueued,
-                      flushRounds: reconnectStats.flushRounds,
-                    }
-                  )
+                  console.info("[sse:resume] reconnect batching", {
+                    sseEvents: reconnectSseEvents,
+                    chunksScheduled: reconnectStats.scheduled,
+                    chunksEnqueued: reconnectStats.enqueued,
+                    flushRounds: reconnectStats.flushRounds,
+                  })
                 }
                 return
               }
