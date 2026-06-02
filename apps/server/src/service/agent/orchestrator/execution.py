@@ -344,12 +344,22 @@ def start_task_as_conversation(
         root_path,
         employee_id=employee_id,
         conversation_id=conversation_id,
+        enable_hitl=False,
     )
 
+    dispatch_directive = (
+        "【系统指令】你正在被总管自动派单执行，没有真人坐在对面。"
+        "请按下方任务描述直接产出最终结果，"
+        "不要请求澄清、不要让用户填写表单、不要等待确认。"
+        "信息不足时用合理默认值或在产出中说明假设即可。"
+    )
     messages: list[dict] = [
         {"role": msg["role"], "content": msg["content"]}
         for msg in [
-            {"role": "user", "content": task.user_prompt or ""},
+            {
+                "role": "user",
+                "content": f"{dispatch_directive}\n\n{task.user_prompt or ''}",
+            },
         ]
     ]
 

@@ -30,7 +30,7 @@ TASK_TTL_SECONDS = 20
 BUFFER_CHECKPOINT_LEN = 10000
 RUNTIME_SNAPSHOT_PREVIEW_LIMIT = 5
 AGENT_CHUNK_TIMEOUT = 1800.0
-FIRST_AGENT_CHUNK_TIMEOUT = 45.0
+FIRST_AGENT_CHUNK_TIMEOUT = 600.0
 DB_LOCK_RETRY_COUNT = 2
 DB_LOCK_RETRY_SLEEP_SECONDS = 0.05
 
@@ -893,6 +893,11 @@ class StreamRegistry:
         state_final = "completed"
         _last_checkpoint_count = 0
 
+        from src.service.stream_metrics import metrics as _stream_metrics
+
+        _stream_metrics.record_start(conversation_id, task.source)
+        _first_token_recorded = False
+
         async def _heartbeat_loop():
             try:
                 while True:
@@ -990,6 +995,16 @@ class StreamRegistry:
                 text_part = ChatService._extract_text_from_chunk(serializable)
                 if text_part:
                     assistant_text_parts.append(text_part)
+                    if not _first_token_recorded:
+                        _stream_metrics.record_first_token(conversation_id)
+                        _first_token_recorded = True
+                        logger.info(
+                            "[metrics] conv=%s first_token_ms=%d source=%s",
+                            conversation_id,
+                            int((time.monotonic() - stream_start_time) * 1000),
+                            task.source,
+                        )
+                    _stream_metrics.add_tokens(conversation_id, 1)
 
                 if not debug_content_only:
                     evt = task.buffer.add(serializable)
@@ -1184,6 +1199,18 @@ class StreamRegistry:
             logger.info(
                 "[run] conv=%s finally: state_final=%s, buffer_cursor=%d",
                 conversation_id, state_final, task.buffer.cursor,
+            )
+            _stream_metrics.record_finish(
+                conversation_id,
+                state_final,
+                error=task.error_message,
+            )
+            logger.info(
+                "[metrics] conv=%s finished status=%s total_ms=%d source=%s",
+                conversation_id,
+                state_final,
+                int((time.monotonic() - stream_start_time) * 1000),
+                task.source,
             )
             task.status = state_final
             loop = asyncio.get_running_loop()

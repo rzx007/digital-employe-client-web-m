@@ -1,6 +1,7 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router"
 import { ActivationExpiryNotice } from "@/components/activation/activation-expiry-notice"
 import { AppStatusBar } from "@/components/app-status-bar"
+import { StreamMetricsOverlay } from "@/components/stream-metrics-overlay"
 import { RuntimeProvider } from "@/lib/runtime/runtime-provider"
 
 const RootLayout = () => (
@@ -11,6 +12,7 @@ const RootLayout = () => (
         <Outlet />
       </div>
       <AppStatusBar />
+      <StreamMetricsOverlay />
     </div>
   </RuntimeProvider>
 )

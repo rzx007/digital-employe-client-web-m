@@ -47,6 +47,7 @@ def get_agent(
     employee_id: int | None = None,
     include_sqlite_tools: bool = False,
     conversation_id: int | None = None,
+    enable_hitl: bool = True,
 ):
     checkpointer = get_checkpointer()
 
@@ -196,7 +197,8 @@ def get_agent(
     if sql_tools:
         extra_tools.extend(sql_tools)
     extra_tools.extend(_session_search_tools)
-    extra_tools.extend([submit_clarifying_questions, submit_document_plan])
+    if enable_hitl:
+        extra_tools.extend([submit_clarifying_questions, submit_document_plan])
 
     agent = create_deep_agent(
         model=model,
@@ -219,7 +221,7 @@ def get_agent(
         backend=backend,
         checkpointer=checkpointer,
         tools=extra_tools,
-        interrupt_on=HITL_INTERRUPT_ON,
+        interrupt_on=HITL_INTERRUPT_ON if enable_hitl else {},
         middleware=[summarization_mw, summarization_tool_mw],
         permissions=[
             FilesystemPermission(

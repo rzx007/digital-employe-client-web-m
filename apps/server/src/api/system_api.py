@@ -20,6 +20,7 @@ def get_runtime_config(db: Session = Depends(get_db)) -> ResponseBase[dict[str, 
     activation = ActivationService.get_status()
     active_items: list[dict[str, Any]] = []
     queued_items: list[dict[str, Any]] = []
+    metrics_snapshot: dict[str, Any] = {}
     try:
         from src.service.stream_registry import registry
 
@@ -31,6 +32,13 @@ def get_runtime_config(db: Session = Depends(get_db)) -> ResponseBase[dict[str, 
     except Exception:
         active_streams = 0
         queued_starts = 0
+
+    try:
+        from src.service.stream_metrics import metrics as _stream_metrics
+
+        metrics_snapshot = _stream_metrics.snapshot()
+    except Exception:
+        metrics_snapshot = {"inflight": [], "recent": [], "summary": {"count": 0}}
 
     try:
         llm_label = resolve_llm_label(load_registry(db))
@@ -48,6 +56,7 @@ def get_runtime_config(db: Session = Depends(get_db)) -> ResponseBase[dict[str, 
                 "queued_starts": queued_starts,
                 "active_items": active_items,
                 "queued_items": queued_items,
+                "metrics": metrics_snapshot,
             },
             "capabilities": {
                 "remote_login": caps.remote_login,
