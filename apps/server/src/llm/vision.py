@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from src.llm.providers.catalog import is_catalog_vision_model
 from src.llm.registry import (
@@ -12,6 +13,19 @@ from src.llm.registry import (
     OFFLINE_BOOTSTRAP_SUPPORTS_VISION,
     resolve_active_model_entry,
 )
+
+QWEN3_VL_IMAGE_FACTOR = 32
+QWEN3_VL_PX_PER_TOKEN = QWEN3_VL_IMAGE_FACTOR * QWEN3_VL_IMAGE_FACTOR
+
+
+@dataclass(frozen=True, slots=True)
+class VisionResizeProfile:
+    px_per_token: int = QWEN3_VL_PX_PER_TOKEN
+    image_factor: int = QWEN3_VL_IMAGE_FACTOR
+    default_max_tokens: int = 1024
+
+
+DEFAULT_VISION_RESIZE_PROFILE = VisionResizeProfile()
 
 _VISION_MODEL_PATTERN = re.compile(
     r"(?i)"
@@ -35,6 +49,19 @@ _VISION_MODEL_PATTERN = re.compile(
     r"[-_]vl(?:\b|[-_.]|$)"
     r")"
 )
+
+
+def resolve_vision_resize_profile(
+    provider_id: str | None,
+    model_id: str | None,
+) -> VisionResizeProfile:
+    """Return the resize profile for a vision model.
+
+    Qwen3-VL/Hanhai uses patch16 x merge2 (32px alignment, 1024 px/token).
+    Other providers currently share the same conservative default until they
+    need provider-specific calibration.
+    """
+    return DEFAULT_VISION_RESIZE_PROFILE
 
 
 def is_vision_capable_model(
@@ -98,3 +125,23 @@ def active_model_supports_vision() -> bool:
         provider_id=provider_id,
         registry_entry=registry_entry,
     )
+
+
+def active_vision_resize_profile() -> VisionResizeProfile:
+    """Resize profile for the currently configured active model."""
+    from src.core.config import _read_config_kv_data, get_settings
+
+    settings = get_settings()
+    provider_id = settings.llm_provider
+    model_id = settings.deepagent_model
+
+    try:
+        pid, mid, _entry = resolve_active_model_entry(_read_config_kv_data())
+        if pid:
+            provider_id = pid
+        if mid:
+            model_id = mid
+    except Exception:
+        pass
+
+    return resolve_vision_resize_profile(provider_id, model_id)
