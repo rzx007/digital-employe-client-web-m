@@ -66,7 +66,7 @@ export function ConnectedProvidersList({
     try {
       const next = await setActiveLlmModel(parsed.providerId, parsed.modelId)
       onRegistryChange(next)
-      toast.success("已切换当前使用模型，请重启后端使新对话生效")
+      toast.success("已切换当前使用模型，新开对话将立即生效")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "切换失败")
     } finally {

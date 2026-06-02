@@ -29,6 +29,10 @@ USER_AGENT = "digital-employee-client/1.0 (+https://skillsmp.com)"
 GITHUB_API = "https://api.github.com"
 CODELOAD_BASE = "https://codeload.github.com"
 
+GITHUB_ZIP_TIMEOUT = 90.0
+GITHUB_API_TIMEOUT = 15.0
+SKILLSMP_CONTENTS_TIMEOUT = 12.0
+
 MAX_SKILL_FILES = 200
 MAX_SKILL_BYTES = 10 * 1024 * 1024
 MAX_GITHUB_ZIP_BYTES = 50 * 1024 * 1024
@@ -126,15 +130,22 @@ class SkillsMpService:
         return f"{GITHUB_CONTENTS_URL}?{urlencode(SkillsMpService.github_contents_params(parsed, path))}"
 
     @staticmethod
-    def _skillsmp_proxy_headers() -> dict[str, str]:
+    def _skillsmp_proxy_headers(skill_slug: str | None = None) -> dict[str, str]:
+        slug = (skill_slug or "").strip()
+        referer = (
+            f"{SKILLSMP_BASE}/skills/{slug}"
+            if slug
+            else f"{SKILLSMP_BASE}/search"
+        )
         return {
             "Accept": "application/json, application/zip, */*",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/131.0.0.0 Safari/537.36"
             ),
-            "Referer": f"{SKILLSMP_BASE}/search",
+            "Referer": referer,
             "Origin": SKILLSMP_BASE,
         }
 
@@ -144,7 +155,7 @@ class SkillsMpService:
         *,
         limit: int = 20,
         page: int = 1,
-        sort_by: str = "recent",
+        sort_by: str = "stars",
     ) -> dict[str, Any]:
         q = query.strip()
         if not q:
@@ -418,19 +429,30 @@ class SkillsMpService:
         raise SkillsMpError("SkillsMP github-contents 响应格式异常。")
 
     @staticmethod
-    def _fetch_via_skillsmp_github_contents(parsed: ParsedGitHubUrl) -> dict[str, str]:
+    def _fetch_via_skillsmp_github_contents(
+        parsed: ParsedGitHubUrl,
+        *,
+        skill_slug: str | None = None,
+    ) -> dict[str, str]:
         prefix = parsed.subpath.strip("/")
         file_map: dict[str, str] = {}
+        proxy_headers = SkillsMpService._skillsmp_proxy_headers(skill_slug)
 
-        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+        with httpx.Client(
+            timeout=SKILLSMP_CONTENTS_TIMEOUT, follow_redirects=True
+        ) as client:
 
             def fetch_entries(repo_path: str) -> list[dict[str, Any]] | dict[str, Any]:
                 params = SkillsMpService.github_contents_params(parsed, repo_path)
                 resp = client.get(
                     GITHUB_CONTENTS_URL,
                     params=params,
-                    headers=SkillsMpService._skillsmp_proxy_headers(),
+                    headers=proxy_headers,
                 )
+                if resp.status_code == 403:
+                    raise SkillsMpError(
+                        "SkillsMP github-contents 不可用（HTTP 403），将改用 GitHub 源。"
+                    )
                 if resp.status_code != 200:
                     raise SkillsMpError(
                         f"SkillsMP github-contents 请求失败 (HTTP {resp.status_code})。"
@@ -487,7 +509,9 @@ class SkillsMpService:
         def fetch_entries(repo_path: str) -> list[dict[str, Any]] | dict[str, Any]:
             api_path = repo_path.strip("/")
             url = f"{GITHUB_API}/repos/{parsed.owner}/{parsed.repo}/contents/{api_path}"
-            with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+            with httpx.Client(
+                timeout=GITHUB_API_TIMEOUT, follow_redirects=True
+            ) as client:
                 resp = client.get(
                     url,
                     params={"ref": parsed.ref},
@@ -505,23 +529,37 @@ class SkillsMpService:
             return SkillsMpService._parse_skillsmp_github_contents_payload(payload)
 
         file_map: dict[str, str] = {}
-        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
-            SkillsMpService._collect_github_entries_recursive(
-                client,
-                fetch_entries=fetch_entries,
-                parsed=parsed,
-                repo_path=prefix,
-                prefix=prefix,
-                file_map=file_map,
-                total_bytes=0,
-            )
+        try:
+            with httpx.Client(
+                timeout=GITHUB_API_TIMEOUT, follow_redirects=True
+            ) as client:
+                SkillsMpService._collect_github_entries_recursive(
+                    client,
+                    fetch_entries=fetch_entries,
+                    parsed=parsed,
+                    repo_path=prefix,
+                    prefix=prefix,
+                    file_map=file_map,
+                    total_bytes=0,
+                )
+        except httpx.HTTPError as exc:
+            raise SkillsMpError(
+                humanize_http_error(exc, context="GitHub API")
+            ) from exc
         return SkillsMpService._normalize_skill_file_map(file_map)
 
     @staticmethod
     def _fetch_via_repo_zip(parsed: ParsedGitHubUrl) -> dict[str, str]:
         zip_url = f"{CODELOAD_BASE}/{parsed.owner}/{parsed.repo}/zip/refs/heads/{parsed.ref}"
-        with httpx.Client(timeout=120.0, follow_redirects=True) as client:
-            resp = client.get(zip_url, headers={"User-Agent": USER_AGENT})
+        try:
+            with httpx.Client(
+                timeout=GITHUB_ZIP_TIMEOUT, follow_redirects=True
+            ) as client:
+                resp = client.get(zip_url, headers={"User-Agent": USER_AGENT})
+        except httpx.HTTPError as exc:
+            raise SkillsMpError(
+                humanize_http_error(exc, context="GitHub ZIP 下载")
+            ) from exc
         if resp.status_code != 200:
             raise SkillsMpError(
                 f"GitHub 仓库 ZIP 下载失败 (HTTP {resp.status_code})。"
@@ -586,24 +624,35 @@ class SkillsMpService:
         return normalized
 
     @staticmethod
-    def fetch_skill_file_map(github_url: str) -> dict[str, str]:
+    def fetch_skill_file_map(
+        github_url: str,
+        *,
+        skill_slug: str | None = None,
+    ) -> dict[str, str]:
         parsed = SkillsMpService.parse_github_tree_url(github_url)
         errors: list[str] = []
 
-        for fetcher in (
-            SkillsMpService._fetch_via_skillsmp_github_contents,
+        # SkillsMP 代理只拉技能子目录，通常最快；403/失败时快速回退 GitHub 源。
+        fetchers = (
+            lambda p: SkillsMpService._fetch_via_skillsmp_github_contents(
+                p, skill_slug=skill_slug
+            ),
             SkillsMpService._fetch_via_github_api,
             SkillsMpService._fetch_via_repo_zip,
-        ):
+        )
+        for fetcher in fetchers:
             try:
                 return fetcher(parsed)
             except SkillsMpError as exc:
                 logger.info("%s 失败: %s", fetcher.__name__, exc)
                 errors.append(str(exc))
+            except httpx.HTTPError as exc:
+                logger.info("%s 网络失败: %s", fetcher.__name__, exc)
+                errors.append(humanize_http_error(exc, context="GitHub 拉取"))
 
-        joined = "；".join(errors[:2])
+        joined = "；".join(errors[:3])
         raise SkillsMpError(
-            f"无法拉取技能文件（已尝试 SkillsMP github-contents 与 GitHub 源）。{joined}"
+            f"无法拉取技能文件（已尝试 SkillsMP 代理 / GitHub API / ZIP）。{joined}"
         )
 
     @staticmethod
@@ -618,7 +667,7 @@ class SkillsMpService:
         if not github_url:
             raise SkillsMpError("该技能缺少 GitHub 源地址，无法自动安装。")
 
-        file_map = SkillsMpService.fetch_skill_file_map(github_url)
+        file_map = SkillsMpService.fetch_skill_file_map(github_url, skill_slug=slug)
         skill_name = str(skill.get("name") or "").strip()
         if not skill_name:
             skill_name = LocalSkillService._normalize_skill_name(slug)
