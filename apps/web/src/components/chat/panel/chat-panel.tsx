@@ -6,18 +6,13 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from "@workspace/ui/components/ai-elements/conversation"
-import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
-import {
-  Message,
-  MessageContent,
-} from "@workspace/ui/components/ai-elements/message"
+
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import { cn } from "@workspace/ui/lib/utils"
 import { IconSparkles } from "@tabler/icons-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useStickToBottomContext } from "use-stick-to-bottom"
 import logo from "@/assets/logo.png"
-import { Spinner } from "@/components/spinner"
 import { useChatStore } from "@/stores/chat-store"
 
 import { ChatComposerArea } from "./chat-composer-area"
@@ -27,6 +22,7 @@ import type { MentionCandidate } from "@/components/lexical-editor/mention-plugi
 import { ChatPanelHeader } from "./chat-panel-header"
 import { CuratorReturnBar } from "../curator/curator-return-bar"
 import type { PendingMessage } from "@/hooks/use-pending-messages"
+import { ChatStreamingIndicator } from "./chat-streaming-indicator"
 import { MessageLoadingSkeleton } from "./message-loading-skeleton"
 import {
   getContactDisplayName,
@@ -358,20 +354,11 @@ export function ChatPanel({
                 )}
 
                 {showStreamingIndicator && (
-                  <Message
-                    from="assistant"
+                  <ChatStreamingIndicator
+                    status={status}
+                    messages={composerMessages ?? messages}
                     className="mx-auto -mt-10 max-w-4xl"
-                  >
-                    <MessageContent className="rounded-lg bg-muted/40 px-3 py-2.5">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Spinner
-                          className="size-3.5"
-                          style={{ color: "#8B5CF6" }}
-                        />
-                        <Shimmer className="text-xs">正在生成回复...</Shimmer>
-                      </div>
-                    </MessageContent>
-                  </Message>
+                  />
                 )}
               </ConversationContent>
               <ConversationScrollButton />

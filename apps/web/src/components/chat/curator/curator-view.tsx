@@ -22,8 +22,6 @@ import {
   MessageContent,
   MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
-import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
-import { Spinner } from "@/components/spinner"
 import {
   getCopyableMessageText,
   mapStoredMessagesToUIMessages,
@@ -32,7 +30,6 @@ import { shouldIncludeFileChangesForMessage } from "@/lib/chat/file-change-utils
 import { useConversationSession } from "@/hooks/use-conversation-session"
 import { useInvalidateContactsOnTeamChanges } from "@/hooks/use-invalidate-contacts-on-team-changes"
 import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
-import { useChatConnectingHint } from "@/hooks/use-chat-connecting-hint"
 import {
   useMessagesQuery,
   useResetCuratorConversation,
@@ -61,6 +58,7 @@ import { CuratorCompactToolbar } from "./curator-compact-toolbar"
 import { getCuratorLayout } from "./curator-layout"
 import { ExecutionReportCard } from "../message-blocks/execution-report-card"
 import { ChatComposerArea } from "../panel/chat-composer-area"
+import { ChatStreamingIndicator } from "../panel/chat-streaming-indicator"
 import { CuratorRotatingPlaceholder } from "./curator-rotating-placeholder"
 import { CuratorEmptyWelcome } from "./curator-empty-welcome"
 import { CuratorFileProvider } from "./curator-file-provider"
@@ -370,8 +368,6 @@ export function CuratorView({
   })
 
   useSyncPendingFromComposer(curatorConversationId, messages, status)
-
-  useChatConnectingHint(status, messages)
 
   useInvalidateContactsOnTeamChanges(messages, status, queryClient)
 
@@ -914,20 +910,11 @@ export function CuratorView({
               })}
 
               {showStreamingIndicator && (
-                <Message
-                  from="assistant"
+                <ChatStreamingIndicator
+                  status={status}
+                  messages={messages}
                   className={cn("-mt-4", layout.message)}
-                >
-                  <MessageContent className="rounded-lg bg-muted/40 px-3 py-2.5">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Spinner
-                        className="size-3.5"
-                        style={{ color: "#8B5CF6" }}
-                      />
-                      <Shimmer className="text-xs">正在生成回复...</Shimmer>
-                    </div>
-                  </MessageContent>
-                </Message>
+                />
               )}
             </ConversationContent>
             <ConversationScrollButton />
