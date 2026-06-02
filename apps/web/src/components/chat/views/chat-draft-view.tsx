@@ -120,6 +120,7 @@ export function DraftChatView({
 
   const session = useConversationSession({
     conversationId: selectedConversationId,
+    contactId: selectedContactId,
     storedMessages,
     initialMessages,
     composerMessages: messages,
