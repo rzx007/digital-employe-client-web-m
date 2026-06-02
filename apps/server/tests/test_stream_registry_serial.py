@@ -175,6 +175,56 @@ def test_new_request_queues_behind_pending_head(serial_registry: StreamRegistry)
     assert reg.queue_depth() == 1
 
 
+def test_two_slots_third_queued(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "src.service.stream_registry.get_agent_runtime_policy",
+        lambda: AgentRuntimePolicy(serial_mode=True, max_concurrent_streams=2),
+    )
+    reg = StreamRegistry()
+    monkeypatch.setattr(reg, "_launch_pending", _mock_launch.__get__(reg, StreamRegistry))
+
+    conv_a, conv_b, conv_c = 501, 502, 503
+    assert (
+        reg.request_start(
+            conv_a,
+            _fake_agent(),
+            [],
+            {"configurable": {"thread_id": conv_a}},
+            stream_msg_id=5001,
+            skill_name="",
+            debug_content_only=False,
+        )
+        == StartResult.STARTED
+    )
+    assert (
+        reg.request_start(
+            conv_b,
+            _fake_agent(),
+            [],
+            {"configurable": {"thread_id": conv_b}},
+            stream_msg_id=5002,
+            skill_name="",
+            debug_content_only=False,
+        )
+        == StartResult.STARTED
+    )
+    assert (
+        reg.request_start(
+            conv_c,
+            _fake_agent(),
+            [],
+            {"configurable": {"thread_id": conv_c}},
+            stream_msg_id=5003,
+            skill_name="",
+            debug_content_only=False,
+        )
+        == StartResult.QUEUED
+    )
+    assert reg.queue_depth() == 1
+    assert reg.get_task(conv_a).status == "streaming"
+    assert reg.get_task(conv_b).status == "streaming"
+
+
 def test_is_busy_includes_queued(serial_registry: StreamRegistry) -> None:
     reg = serial_registry
     conv = 301

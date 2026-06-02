@@ -90,10 +90,13 @@ export function RuntimeProvider({ children }: { children: React.ReactNode }) {
   const config = React.useMemo((): RuntimeConfig => {
     const base = apiConfig ?? defaultRuntimeConfig
     const offlineMode = base.offline_mode || packageOffline
+    const apiAgent = base.agent_runtime ?? defaultAgentRuntime
     const agentRuntime: AgentRuntime = {
-      ...(base.agent_runtime ?? defaultAgentRuntime),
+      ...apiAgent,
       serial_mode: serialMode,
-      max_concurrent_streams: serialMode ? 1 : 0,
+      max_concurrent_streams: serialMode
+        ? Math.max(1, apiAgent.max_concurrent_streams || 1)
+        : 0,
     }
     return {
       ...base,

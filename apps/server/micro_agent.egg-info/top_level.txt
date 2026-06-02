@@ -1,5 +1,7 @@
 build-in-skills
 docs
+logs
 orchestrator_skills
+scripts
 src
 tests
