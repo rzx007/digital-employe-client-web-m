@@ -13,7 +13,13 @@ node_modules
 apps/simple-agents/*
 apps/web/py-server/*
 apps/server/data/*
-apps/server/__pycache__/*
+
+# Python bytecode / cache (任意位置)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
 apps/server/.venv
 apps/server/.python-version
 apps/server/.pytest_cache
