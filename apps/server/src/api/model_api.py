@@ -10,6 +10,7 @@ from src.db.session import get_db
 from src.llm.connection import ConnectionTestRequest, test_connection
 from src.llm.providers import list_providers
 from src.llm.registry import LlmModelEntry
+from src.llm.vision import active_model_supports_vision
 from src.llm.registry_service import (
     activate_model,
     add_custom_provider,
@@ -40,6 +41,7 @@ class RuntimeModelConfigResponse(BaseModel):
     base_url: str
     api_key_present: bool
     provider_id: str | None = None
+    supports_vision: bool = False
 
 
 class ProviderCatalogItem(BaseModel):
@@ -47,6 +49,7 @@ class ProviderCatalogItem(BaseModel):
     display_name: str
     base_url: str
     default_models: list[str]
+    vision_models: list[str] = Field(default_factory=list)
     suggested_max_input_tokens: int | None = None
 
 
@@ -68,6 +71,7 @@ class TestConnectionResponse(BaseModel):
 class RegistryModelItem(BaseModel):
     id: str
     display_name: str | None = None
+    supports_vision: bool | None = None
 
 
 class RegistryProviderItem(BaseModel):
@@ -89,6 +93,7 @@ class LlmRegistryResponse(BaseModel):
 class RegistryModelInput(BaseModel):
     id: str
     display_name: str | None = None
+    supports_vision: bool | None = None
 
 
 class AddProviderRequest(BaseModel):
@@ -171,6 +176,7 @@ async def list_llm_providers():
             display_name=p.display_name,
             base_url=p.base_url,
             default_models=list(p.default_models),
+            vision_models=sorted(p.vision_models),
             suggested_max_input_tokens=p.suggested_max_input_tokens,
         )
         for p in list_providers()
@@ -235,7 +241,14 @@ async def create_llm_provider(
         if not payload.catalog_id:
             raise HTTPException(status_code=400, detail="catalog_id 必填")
         models = (
-            [LlmModelEntry(id=m.id, display_name=m.display_name) for m in payload.models]
+            [
+                LlmModelEntry(
+                    id=m.id,
+                    display_name=m.display_name,
+                    supports_vision=m.supports_vision,
+                )
+                for m in payload.models
+            ]
             if payload.models
             else None
         )
@@ -261,7 +274,11 @@ async def create_llm_provider(
             base_url=payload.base_url,
             api_key=payload.api_key,
             models=[
-                LlmModelEntry(id=m.id, display_name=m.display_name)
+                LlmModelEntry(
+                    id=m.id,
+                    display_name=m.display_name,
+                    supports_vision=m.supports_vision,
+                )
                 for m in payload.models
             ],
             set_as_active=payload.set_as_active,
@@ -280,7 +297,14 @@ async def update_llm_provider(
     db: Session = Depends(get_db),
 ):
     models = (
-        [LlmModelEntry(id=m.id, display_name=m.display_name) for m in payload.models]
+        [
+            LlmModelEntry(
+                id=m.id,
+                display_name=m.display_name,
+                supports_vision=m.supports_vision,
+            )
+            for m in payload.models
+        ]
         if payload.models is not None
         else None
     )
@@ -356,6 +380,7 @@ async def get_runtime_model_config():
             or "https://dashscope.aliyuncs.com/compatible-mode/v1",
             api_key_present=bool(settings.api_key),
             provider_id=settings.llm_provider,
+            supports_vision=active_model_supports_vision(),
         )
     )
 

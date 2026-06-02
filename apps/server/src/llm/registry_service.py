@@ -59,7 +59,13 @@ def _normalize_models(models: list[LlmModelEntry]) -> list[LlmModelEntry]:
             continue
         seen.add(mid)
         display = (item.display_name or "").strip() or None
-        out.append(LlmModelEntry(id=mid, display_name=display))
+        out.append(
+            LlmModelEntry(
+                id=mid,
+                display_name=display,
+                supports_vision=item.supports_vision,
+            )
+        )
     if not out:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

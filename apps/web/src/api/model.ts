@@ -8,6 +8,7 @@ export interface LlmProviderCatalogItem {
   display_name: string
   base_url: string
   default_models: string[]
+  vision_models?: string[]
   suggested_max_input_tokens?: number | null
 }
 
@@ -16,6 +17,7 @@ export interface RuntimeModelConfig {
   base_url: string
   api_key_present: boolean
   provider_id?: string | null
+  supports_vision?: boolean
 }
 
 export interface TestLlmConnectionPayload {
@@ -36,6 +38,7 @@ export interface TestLlmConnectionResult {
 export interface LlmRegistryModel {
   id: string
   display_name?: string | null
+  supports_vision?: boolean | null
 }
 
 export interface LlmRegistryProvider {
@@ -57,6 +60,7 @@ export interface LlmRegistry {
 export interface RegistryModelInput {
   id: string
   display_name?: string | null
+  supports_vision?: boolean | null
 }
 
 export interface AddLlmProviderPayload {

@@ -64,6 +64,10 @@ def test_apply_bootstrap_active_profile(
     assert data["active_provider_id"] == provider_id
     assert data["active_model_id"] == model_id
     assert data["model_sync_policy"] == "local"
+    hanhai_models = next(
+        p["models"] for p in data["providers"] if p["id"] == "hanhai"
+    )
+    assert hanhai_models[0]["supports_vision"] is True
 
 
 def test_ensure_offline_bootstrap_active_restores_hanhai(

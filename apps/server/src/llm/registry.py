@@ -22,6 +22,7 @@ ONLINE_BOOTSTRAP_PROVIDER_ID = "dashscope"
 ONLINE_BOOTSTRAP_MODEL_ID = "deepseek-v4-flash"
 OFFLINE_BOOTSTRAP_PROVIDER_ID = "hanhai"
 OFFLINE_BOOTSTRAP_MODEL_ID = "Hanhai"
+OFFLINE_BOOTSTRAP_SUPPORTS_VISION = True
 
 REMOTE_SYNC_PROVIDER_DISPLAY_NAME = "远程同步供应商"
 ModelSyncPolicy = Literal["remote", "local"]
@@ -31,6 +32,7 @@ CUSTOM_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 class LlmModelEntry(BaseModel):
     id: str
     display_name: str | None = None
+    supports_vision: bool | None = None
 
     @field_validator("id")
     @classmethod
@@ -210,11 +212,31 @@ def ensure_offline_bootstrap_active(db: Session) -> bool:
     return True
 
 
+def ensure_offline_bootstrap_model_defaults(registry: LlmRegistry) -> bool:
+    """Stamp offline Hanhai defaults (e.g. multimodal) when not explicitly set."""
+    if not OFFLINE_BOOTSTRAP_SUPPORTS_VISION:
+        return False
+    provider = find_provider(registry, OFFLINE_BOOTSTRAP_PROVIDER_ID)
+    if provider is None:
+        return False
+    changed = False
+    for index, model in enumerate(provider.models):
+        if model.id != OFFLINE_BOOTSTRAP_MODEL_ID:
+            continue
+        if model.supports_vision is not None:
+            return False
+        provider.models[index] = model.model_copy(update={"supports_vision": True})
+        changed = True
+        break
+    return changed
+
+
 def prepare_llm_registry_seed(raw: str) -> str | None:
     """Normalize LLM_REGISTRY seed JSON and apply offline/online active profile."""
     parsed = _parse_registry_raw(raw)
     if parsed is None:
         return None
+    ensure_offline_bootstrap_model_defaults(parsed)
     return _registry_to_json(apply_bootstrap_active_profile(parsed))
 
 
@@ -491,3 +513,19 @@ def resolve_active_from_kv(kv_data: dict[str, str]) -> tuple[str | None, str | N
         registry.active_model_id,
         llm_provider,
     )
+
+
+def resolve_active_model_entry(
+    kv_data: dict[str, str],
+) -> tuple[str | None, str | None, LlmModelEntry | None]:
+    """Return (provider_id, model_id, model_entry) for the active LLM selection."""
+    registry = _parse_registry_raw(kv_data.get(REGISTRY_KV_KEY))
+    if registry is None or not registry.active_provider_id or not registry.active_model_id:
+        return None, None, None
+    provider = find_provider(registry, registry.active_provider_id)
+    if provider is None:
+        return registry.active_provider_id, registry.active_model_id, None
+    for model in provider.models:
+        if model.id == registry.active_model_id:
+            return provider.id, model.id, model
+    return registry.active_provider_id, registry.active_model_id, None
