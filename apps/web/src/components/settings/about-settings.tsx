@@ -57,7 +57,7 @@ export function AboutSettings() {
             <div className="flex size-16 items-center justify-center rounded-2xl text-2xl font-bold text-primary-foreground">
               <img src={logoSvg} className="w-10" alt="" />
             </div>
-            <span className="text-xl font-semibold">Boban</span>
+            <span className="text-xl font-semibold">BobanStaff</span>
             <span className="text-xs text-muted-foreground">
               数字员工智能助手
             </span>
