@@ -34,6 +34,7 @@ import { ChatPanel } from "../panel/chat-panel"
 import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
 
 import { cancelConversationStream } from "@/api/chat"
+import { getContactId } from "@/lib/chat/contact-utils"
 
 import { toast } from "sonner"
 
@@ -138,6 +139,7 @@ export function ConversationChatView({
 
   const session = useConversationSession({
     conversationId,
+    contactId: getContactId(contact),
 
     storedMessages,
 

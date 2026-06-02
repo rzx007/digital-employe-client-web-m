@@ -43,9 +43,6 @@ import { chatTransport } from "@/components/chat/shared/chat-view-shared"
 
 import { chatKeys } from "@/lib/query-keys/chat"
 
-import { useChatStore } from "@/stores/chat-store"
-
-import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 
 import {
   hydrateSignature,
@@ -90,6 +87,7 @@ function seedActiveHitlFromStoredMessages(
 
 export function useConversationSession({
   conversationId,
+  contactId,
 
   storedMessages,
 
@@ -106,6 +104,8 @@ export function useConversationSession({
   queryClient,
 }: {
   conversationId: string | number | null
+  /** 本会话所属联系人；流结束时 touch 最近列表，勿读全局 selectedContactId */
+  contactId: string | null
 
   storedMessages: Message[]
 
@@ -343,13 +343,12 @@ export function useConversationSession({
 
     scheduleMessagesRefetch()
 
-    const selectedContactId = useChatStore.getState().selectedContactId
-    if (selectedContactId) {
-      void touchRecentContactById(selectedContactId)
+    if (contactId) {
+      void touchRecentContactById(contactId)
     } else {
       void refetchRecentContacts()
     }
-  }, [convKey, queryClient, scheduleMessagesRefetch])
+  }, [contactId, convKey, queryClient, scheduleMessagesRefetch])
 
   const onStreamStopped = useCallback(() => {
     if (!convKey) return

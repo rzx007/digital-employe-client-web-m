@@ -28,6 +28,7 @@ import {
 } from "@/lib/chat/message-utils"
 import { shouldIncludeFileChangesForMessage } from "@/lib/chat/file-change-utils"
 import { useConversationSession } from "@/hooks/use-conversation-session"
+import { getContactId } from "@/lib/chat/contact-utils"
 import { useInvalidateContactsOnTeamChanges } from "@/hooks/use-invalidate-contacts-on-team-changes"
 import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
 import {
@@ -358,6 +359,7 @@ export function CuratorView({
 
   const session = useConversationSession({
     conversationId: curatorConversationId,
+    contactId: getContactId(contact),
     storedMessages,
     initialMessages,
     composerMessages: messages,
