@@ -18,19 +18,19 @@ automation:
 ## 适用场景
 
 - 用户说「打开百度搜索 XXX」「搜一下 XXX」时启用
-- 需桌面端内嵌浏览器（`browser_*` 工具）
+- 需员工已分配 `browser-runtime` Skill
 
 ## LLM 行为提示
 
 1. 从用户提问提取 `{ user_query: "..." }`
-2. 依次调用：
-   - `browser_navigate("https://www.baidu.com")`
-   - `browser_fill("#kw", user_query)`
-   - `browser_click("#su")`
-3. 可选 `browser_snapshot` 确认结果页
+2. 通过 `shell_execute` 依次调用：
+   - `browserctl open https://www.baidu.com`
+   - `browserctl fill "#kw" "<user_query>"`
+   - `browserctl click "#su"`
+3. 可选 `browserctl snapshot` 确认结果页
 4. 用自然语言总结搜索结果
 
 ## 注意
 
-- 若 `#kw` / `#su` 失效（百度改版），先 `browser_snapshot` 再改用 `@eN` 引用
-- 执行前可先提示用户打开工具栏「浏览器」面板以便查看页面
+- 若 `#kw` / `#su` 失效（百度改版），先 `browserctl snapshot` 再改用 `@eN` 引用
+- 若 `browserctl` 不在 PATH 中，按 `browser-runtime` Skill 的开发环境命令调用

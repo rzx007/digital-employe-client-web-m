@@ -1,0 +1,17 @@
+{
+  "name": "@workspace/browserctl",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "browserctl": "./src/index.js"
+  },
+  "scripts": {
+    "browserctl": "node ./src/index.js",
+    "build": "node ./src/index.js --version",
+    "typecheck": "node ./src/index.js --version"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

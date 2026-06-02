@@ -29,7 +29,6 @@ from src.service.model_context import (
     resolve_summarization_trigger,
 )
 from src.service.agent.shell_execute_tool import create_shell_execute_tool
-from src.service.agent.browser_tool import create_browser_tools
 from src.service.agent.remember_memory_tool import create_remember_memory_tool
 from src.service.agent.clarifying_questions_tool import submit_clarifying_questions
 from src.service.agent.document_plan_tool import submit_document_plan
@@ -194,7 +193,6 @@ def get_agent(
     )
     remember_memory_tool = create_remember_memory_tool(memories_dir)
     extra_tools: list = [shell_execute_tool, remember_memory_tool]
-    extra_tools.extend(create_browser_tools())
     if sql_tools:
         extra_tools.extend(sql_tools)
     extra_tools.extend(_session_search_tools)

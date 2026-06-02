@@ -1,6 +1,6 @@
 # 内嵌浏览器（BrowserPanel + WebContentsView）
 
-聊天右栏 `BrowserPanel` 通过主进程 `BrowserWindowController` 将独立会话的 `WebContentsView` 叠在 React 视口上；Agent 经本地 HTTP（34555）+ CDP 操作同一 `webContents`。
+聊天右栏 `BrowserPanel` 通过主进程 `BrowserWindowController` 将独立会话的 `WebContentsView` 叠在 React 视口上；Agent 通过 `browser-runtime` Skill 调用 `browserctl`，再经本地 HTTP（34555）+ CDP 操作同一 `webContents`。
 
 ## 文件
 
@@ -8,7 +8,7 @@
 |------|------|
 | `window-controller.ts` | 视口布局、`WebContentsView` 生命周期、URL/错误 IPC |
 | `viewport-bounds.ts` | DOM 测量脚本、CSS px → DIP |
-| `browser-http-bridge.ts` | Agent 本地 HTTP |
+| `browser-http-bridge.ts` | `browserctl` 本地 HTTP runtime |
 | `browser-debugger-controller.ts` | CDP |
 | `preload-bridge.ts` | `browser.syncBounds` 等 |
 
@@ -43,13 +43,14 @@ main.contentView
 - **最小化**：调用 `browser.hide()`，只隐藏右栏 panel，保留 `WebContentsView`、当前 URL 与会话状态；会话页右边缘显示悬浮浏览器图标用于恢复。
 - **关闭（X）**：首次会弹出确认（可勾选「不再提醒」）；弹窗期间会 `browser.hide()` 隐藏原生 `WebContentsView`（否则盖住 React `AlertDialog`），取消后 `browser.show()` 恢复。
 - **切换对话 / 离开聊天页**：主动执行关闭销毁，避免浏览上下文跨会话泄露。
-- `AppToolbar` 不提供浏览器入口；浏览器只由对话/Agent 工具唤醒。
+- `AppToolbar` 不提供浏览器入口；浏览器只由对话/`browserctl` 唤醒。
 
-## Agent HTTP 桥接（34555）
+## browserctl HTTP 桥接（34555）
 
+- `GET /internal/browser/health`：供 `browserctl health` 检测 Electron bridge 与当前内嵌浏览器状态。
 - `POST /internal/browser/default/navigate`：先 `browser:request-open` 打开右栏，再 `prepareViewportForBridge()` 轮询视口，最后 `loadURL` + 等待 `did-finish-load`。
-- Python `BrowserRuntimeClient.navigate` 使用 **55s** 超时（与 Electron 45s 加载等待匹配）；勿用默认 30s，否则客户端会先断开并出现「空响应 HTTP 502」。
-- Python `BrowserRuntimeClient` 必须 `trust_env=False` 直连本机 bridge；`httpx` 默认会读取 Windows/系统代理配置，可能把 `127.0.0.1:34555` 发到代理并得到**空 502**。
+- 响应统一为 `{ ok, data, error, code }`，`browserctl` 默认按 JSON 输出。
+- Python `browser_*` 工具链已移除；浏览器能力通过员工分配 `browser-runtime` Skill 获得。
 - 勿在桥接里先 `open()` 再 `notifyRequestOpen()` 重复打开，也勿在视口未就绪时用 `!isLoading()` 误判导航完成。
 
 ## 修改后自检

@@ -235,6 +235,8 @@ importers:
         specifier: ^0.14.6
         version: 0.14.7
 
+  packages/browserctl: {}
+
   packages/ui:
     dependencies:
       '@base-ui/react':

@@ -16,6 +16,24 @@ const NAVIGATE_LOAD_TIMEOUT_MS = 45_000
 const NAVIGATE_VIEWPORT_WAIT_MS = 5_000
 
 type JsonBody = Record<string, unknown>
+type BrowserResponse<T = unknown> = {
+  ok: boolean
+  data?: T
+  error?: string
+  code?: string
+}
+
+function errorCode(message: unknown, fallback = "BROWSER_ERROR"): string {
+  const raw = String(message || fallback)
+  if (raw.includes("BROWSER_UNAVAILABLE")) return "BROWSER_UNAVAILABLE"
+  if (raw.includes("ELEMENT_NOT_FOUND")) return "ELEMENT_NOT_FOUND"
+  if (raw.includes("USER_CANCELLED")) return "USER_CANCELLED"
+  if (raw.includes("TIMEOUT")) return "TIMEOUT"
+  if (raw.includes("BROWSER_VIEWPORT_NOT_READY")) {
+    return "BROWSER_VIEWPORT_NOT_READY"
+  }
+  return fallback
+}
 
 function readJson(req: IncomingMessage): Promise<JsonBody> {
   return new Promise((resolve, reject) => {
@@ -37,21 +55,34 @@ function readJson(req: IncomingMessage): Promise<JsonBody> {
   })
 }
 
+function normalizeBody(status: number, body: unknown): BrowserResponse {
+  if (typeof body !== "object" || body === null) {
+    return status >= 400
+      ? { ok: false, error: String(body), code: errorCode(body) }
+      : { ok: true, data: body }
+  }
+  const current = body as BrowserResponse
+  if (current.ok === false) {
+    return {
+      ...current,
+      code: current.code ?? errorCode(current.error),
+    }
+  }
+  if (current.ok === true) return current
+  return { ok: status < 400, data: current }
+}
+
 function reply(res: ServerResponse, status: number, body: unknown): void {
+  const normalized = normalizeBody(status, body)
   logger.info("[browser-http] response", {
     status,
-    ok:
-      typeof body === "object" && body !== null
-        ? (body as { ok?: unknown }).ok
-        : undefined,
-    error:
-      typeof body === "object" && body !== null
-        ? (body as { error?: unknown }).error
-        : undefined,
+    ok: normalized.ok,
+    error: normalized.error,
+    code: normalized.code,
   })
 
   if (res.headersSent) return
-  const payload = JSON.stringify(body)
+  const payload = JSON.stringify(normalized)
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(payload),
@@ -77,6 +108,21 @@ function notifyRequestOpen(url: string): void {
 
 function ensureBrowserSession(sessionId: string): boolean {
   return sessionId === DEFAULT_SESSION
+}
+
+function handleHealth(res: ServerResponse): void {
+  const wc = getBrowserController().getBrowserWebContents()
+  reply(res, 200, {
+    ok: true,
+    data: {
+      electron_up: true,
+      bridge_port: DEFAULT_PORT,
+      session: DEFAULT_SESSION,
+      browser_available: Boolean(wc && !wc.isDestroyed()),
+      url: wc && !wc.isDestroyed() ? wc.getURL() : "",
+      title: wc && !wc.isDestroyed() ? wc.getTitle() : "",
+    },
+  })
 }
 
 function attachDebugger(): boolean {
@@ -181,7 +227,11 @@ async function handleNavigate(
     wc = await waitForBrowserWebContents(2000)
   }
   if (!wc) {
-    reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE" })
+    reply(res, 503, {
+      ok: false,
+      error: "BROWSER_UNAVAILABLE",
+      code: "BROWSER_UNAVAILABLE",
+    })
     return
   }
 
@@ -199,7 +249,11 @@ async function handleNavigate(
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     logger.warn("[browser-http] navigate failed", { url, error: message })
-    reply(res, 502, { ok: false, error: message })
+    reply(res, 502, {
+      ok: false,
+      error: message,
+      code: errorCode(message),
+    })
   }
 }
 
@@ -207,12 +261,26 @@ async function handleBrowserRequest(
   req: IncomingMessage,
   res: ServerResponse
 ): Promise<void> {
+  const path = req.url?.split("?")[0] ?? ""
+
+  if (path === "/internal/browser/health") {
+    if (req.method !== "GET" && req.method !== "POST") {
+      reply(res, 405, {
+        ok: false,
+        error: "method not allowed",
+        code: "METHOD_NOT_ALLOWED",
+      })
+      return
+    }
+    handleHealth(res)
+    return
+  }
+
   if (req.method !== "POST") {
     reply(res, 405, { ok: false, error: "method not allowed" })
     return
   }
 
-  const path = req.url?.split("?")[0] ?? ""
   const parsed = parsePath(path)
   if (!parsed) {
     reply(res, 404, { ok: false, error: "not found" })

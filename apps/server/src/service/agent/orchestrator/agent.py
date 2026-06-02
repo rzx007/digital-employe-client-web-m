@@ -68,7 +68,6 @@ from src.service.model_context import (
     resolve_summarization_keep,
     resolve_summarization_trigger,
 )
-from src.service.agent.browser_tool import create_browser_tools
 from src.service.agent.remember_memory_tool import create_remember_memory_tool
 from src.service.agent.shell_execute_tool import create_shell_execute_tool
 from src.service.skill_shell_backend import SkillAwareShellBackend
@@ -213,7 +212,6 @@ def get_orchestrator_agent(
     orchestrator_tools: list = [
         shell_execute_tool,
         remember_memory_tool,
-        *create_browser_tools(),
     ]
 
     session_flags = (

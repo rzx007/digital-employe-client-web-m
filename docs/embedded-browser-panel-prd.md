@@ -1,6 +1,8 @@
 # 内嵌三方业务系统浏览器面板 PRD
 
 > 版本：v1.2 | 日期：2026-06-01 | 状态：待评审（v1.2：automation 合并到 SKILL.md frontmatter；路径命名"技能加速 / 自然语言探索"）
+>
+> 当前实现更新：浏览器能力已从 Python `browser_*` 工具链迁移为 `browser-runtime` Skill + `browserctl` CLI；Electron 内嵌浏览器仍是唯一 runtime，`browserctl` 连接本地 `127.0.0.1:34555` bridge。
 
 ## 1. 问题陈述
 
