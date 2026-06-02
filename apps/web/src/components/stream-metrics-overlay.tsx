@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Activity, X } from "lucide-react"
+import { IconActivity, IconX } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { fetchRuntimeConfig } from "@/api/system"
@@ -258,7 +258,7 @@ export function StreamMetricsOverlay() {
         onClick={() => setOpen(true)}
         className="fixed bottom-10 right-3 z-50 inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-background/80 text-muted-foreground shadow-sm backdrop-blur transition hover:text-foreground"
       >
-        <Activity className="size-3.5" />
+        <IconActivity className="size-3.5" />
       </button>
     )
   }
@@ -274,7 +274,7 @@ export function StreamMetricsOverlay() {
     <div className="fixed bottom-10 right-3 z-50 w-80 overflow-hidden rounded-md border border-border/60 bg-background/95 shadow-lg backdrop-blur">
       <div className="flex items-center justify-between border-b border-border/50 bg-muted/40 px-3 py-1.5">
         <div className="inline-flex items-center gap-1.5 text-[11px] font-medium">
-          <Activity className="size-3.5" />
+          <IconActivity className="size-3.5" />
           流监控
           <span className="text-muted-foreground">
             · {serial}
@@ -288,7 +288,7 @@ export function StreamMetricsOverlay() {
           onClick={() => setOpen(false)}
           title="关闭 (Ctrl+Shift+M)"
         >
-          <X className="size-3" />
+          <IconX className="size-3" />
         </Button>
       </div>
 

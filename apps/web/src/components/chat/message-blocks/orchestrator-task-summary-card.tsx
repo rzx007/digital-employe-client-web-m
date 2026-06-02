@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ChevronRight } from "lucide-react"
+import { IconChevronRight } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 import { MessageResponse } from "@workspace/ui/components/ai-elements/message"
 
@@ -83,7 +83,7 @@ export function OrchestratorTaskSummaryCard({
           {heading}
         </span>
         {hasBody ? (
-          <ChevronRight
+          <IconChevronRight
             className={cn(
               "size-3.5 shrink-0 text-muted-foreground transition-transform",
               expanded && "rotate-90"
