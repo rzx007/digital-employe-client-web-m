@@ -46,8 +46,8 @@
 | 类型 | 路径 | 说明 |
 |---|---|---|
 | 新增 | `apps/server/build-in-skills/env-steward/SKILL.md` | 技能定义与工作流 |
-| 新增 | `apps/server/src/service/env_steward_bootstrap.py` | 默认员工注册（幂等） |
-| 修改 | `apps/server/src/service/employee_service.py` | 默认工作空间初始化时注入环境管家 |
+| 修改 | `apps/server/src/service/employee_service.py` | 在内置种子员工列表加入环境管家，并在 seed 前防御式同步内置技能 |
+| 修改 | `apps/server/src/service/workspace_service.py` | 已初始化 workspace 也执行种子员工幂等补齐（增量发布可见） |
 
 ---
 
@@ -159,25 +159,23 @@ tail -20 ~/.digital-employee/logs/install-python.log
 
 ---
 
-## 5. 代码实施
+## 5. 代码实施（当前实际方案）
 
-### 5.1 新增 `env_steward_bootstrap.py`
+### 5.1 修改 `employee_service.py`
 
-实现 `ensure_env_steward_employee(db, workspace_id)`：
+- 在 `_BUILTIN_SEED_EMPLOYEES` 增加：
+  - 名称：`环境管家`
+  - 技能：`env-steward`
+  - 描述：环境诊断与修复
+- 在 `ensure_builtin_seed_employees(...)` 开头调用
+  `LocalSkillService.seed_builtin_skills()`，确保新增内置技能目录可见。
 
-- 按 `workspace_id + name="环境管家"` 查重
-- 已存在则直接返回
-- 可选校验 `Skill.id == "env-steward"` 是否可用
-- 调用 `create_employee(...)` 创建员工
+### 5.2 修改 `workspace_service.py`
 
-### 5.2 修改 `employee_service.py`
-
-在 `ensure_default_workspace()` 的种子员工创建逻辑后追加：
-
-```python
-from src.service.env_steward_bootstrap import ensure_env_steward_employee
-ensure_env_steward_employee(db, workspace_id)
-```
+- 在 `ensure_workspace_initialized(...)` 中，若检测到已有总管（说明已初始化）：
+  - 仍执行 `EmployeeService.ensure_builtin_seed_employees(db, workspace)`
+  - 再返回
+- 目的：增量发布新增种子员工时，老 workspace 无需重建也能补齐。
 
 ---
 
@@ -186,8 +184,8 @@ ensure_env_steward_employee(db, workspace_id)
 ### 6.1 实施步骤
 
 1. 新建 `apps/server/build-in-skills/env-steward/SKILL.md`
-2. 新建 `apps/server/src/service/env_steward_bootstrap.py`
-3. 修改 `apps/server/src/service/employee_service.py`
+2. 修改 `apps/server/src/service/employee_service.py`
+3. 修改 `apps/server/src/service/workspace_service.py`
 4. 本地冒烟验证（员工出现、可检测、可安装、可镜像配置）
 
 ### 6.2 验收清单
@@ -199,6 +197,22 @@ ensure_env_steward_employee(db, workspace_id)
 - [ ] 断网时给出明确反馈而非静默失败
 - [ ] pip/npm 镜像可设置并可读回
 - [ ] 镜像回滚优先恢复旧值，旧值缺失时回官方源
+
+### 6.3 最小自动化测试草案（建议补齐）
+
+建议在 `apps/server/tests/` 增加以下用例：
+
+1. `test_seed_contains_env_steward`
+   - 断言 `_BUILTIN_SEED_EMPLOYEES` 中存在 `("环境管家", ("env-steward",), ...)`
+
+2. `test_workspace_initialized_backfill_seed_when_curator_exists`
+   - 构造已有 curator 的 workspace
+   - 调用 `WorkspaceService.ensure_workspace_initialized(...)`
+   - 断言会触发 `ensure_builtin_seed_employees(...)`（可通过 spy/mock）
+
+3. `test_env_steward_created_after_seed`
+   - 调用 `LocalSkillService.seed_builtin_skills()` + `ensure_builtin_seed_employees(...)`
+   - 断言 workspace 下存在 name=`环境管家` 的员工
 
 ---
 

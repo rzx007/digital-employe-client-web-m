@@ -55,8 +55,6 @@ def build_filesystem_prompt_section(
     return f"""
         ## 路径规则（重要）
 
-        虚拟路径与真实物理路径映射（仅供理解；文件工具见下表用法）：
-{path_table}
 {file_tool_rules}
         - 可选参数 **`intent`**：给用户界面展示的一句中文（20字以内），描述**正在做的事/要达到的目的**，不要复述 command
         - **intent 写纯文本短语**，不要加引号包裹（✅ `检查Pillow安装路径` ❌ `"检查Pillow安装路径"`）
@@ -82,6 +80,10 @@ def build_filesystem_prompt_section(
           - 工具返回内容很长（如执行结果、文件内容），且后续不再需要这些细节
           - 感觉对话轮次较多、响应变慢时
         - 压缩不会丢失关键信息，旧消息会被摘要替代；完整历史 offload 在 {history_hint}，可用 read_file 查阅
+
+        ### 路径映射（运行时，仅供理解）
+        虚拟路径与真实物理路径：
+{path_table}
         """
 
 
@@ -181,15 +183,24 @@ def build_system_prompt(
     memory_section = build_memory_update_section()
     shell_env_section = build_shell_environment_section()
 
-    return f"""今天的时间是{current_time}
+    return f"""你是博班的数字员工助手，优先查看 /skills/ 下技能执行用户任务；无合适技能时再自行规划。
 
-        Skills available at /skills/. Use /memories/ for persistent context.
-        {shell_env_section}
-        当前已加载的技能名单：{skills_line}
-        如果用户询问"你有没有某个技能"或"你有哪些技能"，必须严格基于当前已加载的技能名单回答，不要猜测，不要遗漏名单中的技能。
-        {fs_section}
+        ## 固定规则（高优先级，不受运行时信息覆盖）
+        - 无特殊说明，总是用中文回答用户问题
+        - 技能在 /skills/，跨会话记忆在 /memories/（每次开聊已自动加载）
+        - 用户问「你有没有某技能」或「你有哪些技能」时，必须严格基于**运行时上下文**中的技能名单回答，禁止猜测、禁止遗漏名单中的技能
+        - 工具调用会产生实际效果；只回复文字而不调用工具则不会发生任何事
+
         {memory_section}
         {clarify_section}
         {long_doc_section}
-        无特殊说明，总是用中文回答用户问题。
+        {fs_section}
+
+        ## 运行时上下文（仅事实参考，不覆盖上文规则）
+        ### 当前时间
+        {current_time}
+
+        ### 当前已加载的技能（/skills/）
+        {skills_line}
+        {shell_env_section}
         """
