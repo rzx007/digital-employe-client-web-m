@@ -24,12 +24,10 @@ import { refetchRecentContacts, touchRecentContactById } from "@/lib/chat/touch-
 import {
   createApprovedAtTimestamp,
   findPendingHitl,
-  parseDbMessageId,
   patchApprovedAtOnComposerMessages,
   patchApprovedAtOnMessagesCache,
   patchAssistantWithInterruptParts,
   resolveActiveHitl,
-  seedActiveHitlFromMessageParts,
   type ActiveHitl,
   type HitlPatchOptions,
 } from "@/lib/chat/hitl"
@@ -40,6 +38,7 @@ import {
 } from "@/lib/chat/message-query-cache"
 
 import { terminalToStreamState } from "@/lib/chat/session/terminal-state"
+import { seedActiveHitlFromStoredMessages } from "@/lib/chat/session/seed-active-hitl"
 
 import { chatTransport } from "@/components/chat/shared/chat-view-shared"
 
@@ -53,33 +52,6 @@ import {
 } from "@/lib/chat/pick-message-display-source"
 
 const REFETCH_DEBOUNCE_MS = 800
-
-function seedActiveHitlFromStoredMessages(
-  storedMessages: Message[]
-): ActiveHitl | null {
-  for (let i = storedMessages.length - 1; i >= 0; i--) {
-    const row = storedMessages[i]
-
-    if (row.role !== "assistant" || row.streamState !== "interrupted") continue
-
-    if (
-      typeof row.metadata?.approved_at === "string" &&
-      row.metadata.approved_at.length > 0
-    ) {
-      continue
-    }
-
-    const dbId = parseDbMessageId(row.id)
-
-    if (!dbId || !row.messageParts?.length) continue
-
-    const seeded = seedActiveHitlFromMessageParts(dbId, row.messageParts)
-
-    if (seeded) return seeded
-  }
-
-  return null
-}
 
 export function useConversationSession({
   conversationId,
