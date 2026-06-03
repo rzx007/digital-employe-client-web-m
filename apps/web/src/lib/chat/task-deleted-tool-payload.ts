@@ -1,3 +1,5 @@
+import { isToolOutputPending } from "./tool-output-pending"
+
 export interface TasksDeletedSucceededItem {
   index: number
   task_id: number
@@ -102,12 +104,11 @@ export function parseTasksDeletedPayload(
   }
 }
 
-export function isTaskMutationToolRunning(state: string): boolean {
-  return (
-    state === "call" ||
-    state === "input-streaming" ||
-    state === "input-available"
-  )
+export function isTaskMutationToolRunning(
+  state: string,
+  preliminary?: boolean
+): boolean {
+  return isToolOutputPending(state, preliminary)
 }
 
 export function isTaskMutationPlainError(
@@ -121,24 +122,29 @@ export function isTaskMutationPlainError(
 export function shouldRenderTasksDeletedBlock(
   state: string,
   resultText: string | null | undefined,
-  hasParsedPayload: boolean
+  hasParsedPayload: boolean,
+  preliminary?: boolean
 ): boolean {
+  const pending = isToolOutputPending(state, preliminary)
   return (
     hasParsedPayload ||
-    isTaskMutationToolRunning(state) ||
+    pending ||
     state === "output-error" ||
-    isTaskMutationPlainError(resultText)
+    (!pending && isTaskMutationPlainError(resultText))
   )
 }
 
 export function resolveTasksDeletedBlockKind(
   toolName: string,
   state: string,
-  resultText: string | null | undefined
+  resultText: string | null | undefined,
+  preliminary?: boolean
 ): "tasks-deleted" | null {
   if (toolName !== "delete_tasks_batch") return null
   const payload = parseTasksDeletedPayload(resultText)
-  if (shouldRenderTasksDeletedBlock(state, resultText, payload != null)) {
+  if (
+    shouldRenderTasksDeletedBlock(state, resultText, payload != null, preliminary)
+  ) {
     return "tasks-deleted"
   }
   return null

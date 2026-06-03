@@ -7,8 +7,10 @@ import {
   type ReactNode,
 } from "react"
 
+import type { ToolUiActionOutbound } from "@/lib/chat/tool-ui-action"
+
 export interface CuratorPlanFeedbackContextValue {
-  sendPlanFeedback: (text: string) => Promise<void>
+  sendPlanFeedback: (payload: ToolUiActionOutbound) => Promise<void>
 }
 
 const CuratorPlanFeedbackContext =

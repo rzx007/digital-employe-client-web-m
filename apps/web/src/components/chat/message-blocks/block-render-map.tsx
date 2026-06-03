@@ -16,6 +16,7 @@ import {
 } from "./employee-crud-result-card"
 import { TasksDeletedBatchCard } from "./tasks-deleted-batch-card"
 import { EmployeesDismissedBatchCard } from "./employees-dismissed-batch-card"
+import { UserActionSummaryCard } from "./user-action-summary-card"
 import { DestructiveDeleteConfirmCard } from "./destructive-delete-confirm-card"
 import { FileChangeCards } from "./file-change-cards"
 import { SkillExplorationBlock } from "./skill-exploration-block"
@@ -229,6 +230,7 @@ export function BlockRenderer({
         key={block.key}
         state={block.state}
         resultText={block.resultText}
+        preliminary={block.preliminary}
         className="w-full"
       />
     )
@@ -239,6 +241,7 @@ export function BlockRenderer({
         key={block.key}
         state={block.state}
         resultText={block.resultText}
+        preliminary={block.preliminary}
         celebrateOnSuccess={isLastAssistantMessage}
       />
     )
@@ -249,6 +252,7 @@ export function BlockRenderer({
         key={block.key}
         state={block.state}
         resultText={block.resultText}
+        preliminary={block.preliminary}
         celebrateOnSuccess={isLastAssistantMessage}
         className="w-full"
       />
@@ -260,6 +264,7 @@ export function BlockRenderer({
         key={block.key}
         state={block.state}
         resultText={block.resultText}
+        preliminary={block.preliminary}
         className="w-full"
       />
     )
@@ -270,6 +275,7 @@ export function BlockRenderer({
         key={block.key}
         state={block.state}
         resultText={block.resultText}
+        preliminary={block.preliminary}
         className="w-full"
       />
     )
@@ -280,6 +286,7 @@ export function BlockRenderer({
         key={block.key}
         state={block.state}
         resultText={block.resultText}
+        preliminary={block.preliminary}
         className="w-full"
       />
     )
@@ -290,6 +297,7 @@ export function BlockRenderer({
         key={block.key}
         state={block.state}
         resultText={block.resultText}
+        preliminary={block.preliminary}
         className="w-full"
       />
     )
@@ -300,6 +308,17 @@ export function BlockRenderer({
         key={block.key}
         state={block.state}
         resultText={block.resultText}
+        preliminary={block.preliminary}
+        className="w-full"
+      />
+    )
+  }
+  if (block.kind === "user-action-summary") {
+    return (
+      <UserActionSummaryCard
+        key={block.key}
+        text={block.text}
+        uiAction={block.uiAction}
         className="w-full"
       />
     )

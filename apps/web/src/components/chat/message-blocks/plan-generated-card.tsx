@@ -15,13 +15,14 @@ import { useOrchestrationPlansQuery } from "@/hooks/use-chat-queries"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { CronPreviewBadge } from "./cron-preview-badge"
 import {
-  buildPlanManualCancelFeedback,
-  buildPlanManualConfirmFeedback,
+  buildPlanManualCancelOutbound,
+  buildPlanManualConfirmOutbound,
   parsePlanGeneratedOutput,
   resolvePlanTasksForCard,
   type PlanTaskPreview,
 } from "@/lib/chat/plan-generated-payload"
 import { useCuratorPlanFeedback } from "@/components/chat/curator/curator-plan-feedback-context"
+import type { ToolUiActionOutbound } from "@/lib/chat/tool-ui-action"
 
 const STATE_CONFIG: Record<string, { title: string; titleClass: string }> = {
   call: {
@@ -59,8 +60,7 @@ function PlanGeneratedCardInner({
 }) {
   const queryClient = useQueryClient()
   const planFeedback = useCuratorPlanFeedback()
-  const sendPlanFeedback =
-    planFeedback?.sendPlanFeedback ?? onSendUserMessage ?? null
+  const sendPlanFeedbackFromContext = planFeedback?.sendPlanFeedback ?? null
   const [manualStatus, setManualStatus] = useState<ManualPlanStatus>("idle")
 
   const planOutput = React.useMemo(
@@ -115,15 +115,19 @@ function PlanGeneratedCardInner({
     manualStatus === "cancelled" || remoteStatus === "cancelled"
 
   const notifyModelAfterPlanAction = async (
-    feedback: string,
+    outbound: ToolUiActionOutbound,
     actionLabel: string
   ) => {
-    if (!sendPlanFeedback) {
+    if (!sendPlanFeedbackFromContext && !onSendUserMessage) {
       toast.warning(`${actionLabel}成功，但无法自动通知总管`)
       return
     }
     try {
-      await sendPlanFeedback(feedback)
+      if (sendPlanFeedbackFromContext) {
+        await sendPlanFeedbackFromContext(outbound)
+      } else if (onSendUserMessage) {
+        await onSendUserMessage(outbound.agentText)
+      }
     } catch (err) {
       toast.error(`${actionLabel}成功，但通知总管失败`, {
         description: err instanceof Error ? err.message : "请手动告知总管",
@@ -141,7 +145,7 @@ function PlanGeneratedCardInner({
         queryKey: [...chatKeys.all, "orchestration-plans"],
       })
       await notifyModelAfterPlanAction(
-        buildPlanManualConfirmFeedback(planOutput.plan_id, data?.summary),
+        buildPlanManualConfirmOutbound(planOutput.plan_id, data?.summary),
         "确认执行"
       )
     } catch (err) {
@@ -160,7 +164,7 @@ function PlanGeneratedCardInner({
         queryKey: [...chatKeys.all, "orchestration-plans"],
       })
       await notifyModelAfterPlanAction(
-        buildPlanManualCancelFeedback(planOutput.plan_id, data?.summary),
+        buildPlanManualCancelOutbound(planOutput.plan_id, data?.summary),
         "取消计划"
       )
     } catch (err) {

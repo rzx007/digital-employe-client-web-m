@@ -9,6 +9,7 @@ import {
   isTaskMutationToolRunning,
   parseTasksDeletedPayload,
 } from "@/lib/chat/task-deleted-tool-payload"
+import { isBatchMutationAllFailed } from "@/lib/chat/tool-output-pending"
 
 const BATCH_STATE_CONFIG: Record<string, { title: string; titleClass: string }> =
   {
@@ -53,10 +54,12 @@ function DeleteSkeletons() {
 function TasksDeletedBatchCardInner({
   state,
   resultText,
+  preliminary,
   className,
 }: {
   state?: string
   resultText?: string | null
+  preliminary?: boolean
   className?: string
 }) {
   const payload = React.useMemo(
@@ -64,13 +67,13 @@ function TasksDeletedBatchCardInner({
     [resultText]
   )
 
-  const isRunning = isTaskMutationToolRunning(state ?? "")
+  const isPending = isTaskMutationToolRunning(state ?? "", preliminary)
   const isError = state === "output-error"
   const hasSuccess = (payload?.succeeded.length ?? 0) > 0
 
   const plainError =
+    !isPending &&
     !payload &&
-    !isRunning &&
     resultText?.trim() &&
     !resultText.trim().startsWith("{")
 
@@ -91,12 +94,12 @@ function TasksDeletedBatchCardInner({
     )
   }
 
-  if (!payload && !isRunning) return null
+  if (!payload && !isPending) return null
 
-  const cfg =
-    BATCH_STATE_CONFIG[state ?? ""] ?? BATCH_STATE_CONFIG["output-available"]
-  const allFailed =
-    payload != null && payload.succeeded_count === 0 && payload.failed_count > 0
+  const cfg = isPending
+    ? BATCH_STATE_CONFIG["input-available"]
+    : (BATCH_STATE_CONFIG[state ?? ""] ?? BATCH_STATE_CONFIG["output-available"])
+  const allFailed = !isPending && isBatchMutationAllFailed(payload)
 
   return (
     <div
@@ -109,27 +112,27 @@ function TasksDeletedBatchCardInner({
       <div className="mb-2 flex flex-col gap-1.5 @[18rem]/tasks:mb-2.5 @[18rem]/tasks:flex-row @[18rem]/tasks:items-start @[18rem]/tasks:justify-between @[18rem]/tasks:gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            {!isRunning && !isError && hasSuccess && (
+            {!isPending && !isError && hasSuccess && (
               <IconCircleCheck className="size-3.5 shrink-0 text-green-600 dark:text-green-400" />
             )}
             <p className={cn("text-xs font-semibold", cfg.titleClass)}>
               {allFailed ? "批量删除失败" : cfg.title}
             </p>
           </div>
-          {payload?.message && !isRunning && (
+          {payload?.message && !isPending && (
             <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
               {payload.message}
             </p>
           )}
         </div>
-        {payload && !isRunning && (
+        {payload && !isPending && (
           <span className="w-fit shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
             {payload.succeeded_count}/{payload.total} 已删除
           </span>
         )}
       </div>
 
-      {isRunning ? (
+      {isPending ? (
         <DeleteSkeletons />
       ) : payload ? (
         <>

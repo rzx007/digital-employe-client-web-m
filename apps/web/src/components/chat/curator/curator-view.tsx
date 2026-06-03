@@ -79,10 +79,14 @@ import type { TaskExecution } from "@/types/schedule-monitor"
 import type { Message as ChatMessage } from "@/types/chat"
 import { curatorUnreadKey } from "@/lib/constants"
 import {
-  buildRecruitmentHireAllMessage,
-  buildRecruitmentHireMessage,
+  buildRecruitmentHireAllOutbound,
+  buildRecruitmentHireOutbound,
   type RecruitmentCandidateItem,
 } from "@/lib/chat/recruitment-tool-payload"
+import {
+  toolUiActionMetadata,
+  type ToolUiActionOutbound,
+} from "@/lib/chat/tool-ui-action"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import {
@@ -562,10 +566,10 @@ export function CuratorView({
     moveDown: pendingMoveDown,
   } = usePendingMessages({ status, onSend: doSend, onStop: handleStop })
 
-  const sendFeedbackMessage = useCallback(
-    async (text: string) => {
-      const messageText = text.trim()
-      if (!messageText || !curatorConversationId) {
+  const sendToolUiAction = useCallback(
+    async (outbound: ToolUiActionOutbound) => {
+      const agentText = outbound.agentText.trim()
+      if (!agentText || !curatorConversationId) {
         throw new Error("会话未就绪，无法发送反馈")
       }
 
@@ -574,14 +578,15 @@ export function CuratorView({
         await waitForChatReady()
       }
 
+      const meta = toolUiActionMetadata(outbound)
       session.prepareOutboundMessage()
       await sendMessage(
-        { text: messageText },
+        { text: agentText, metadata: meta },
         {
           body: {
             conversationId: curatorConversationId,
             skill: "",
-            metadata: {},
+            metadata: meta,
           },
         }
       )
@@ -602,13 +607,13 @@ export function CuratorView({
   )
 
   const curatorPlanFeedbackValue = useMemo(
-    () => ({ sendPlanFeedback: sendFeedbackMessage }),
-    [sendFeedbackMessage]
+    () => ({ sendPlanFeedback: sendToolUiAction }),
+    [sendToolUiAction]
   )
 
   const handleRecruitmentHire = useCallback(
     (candidate: RecruitmentCandidateItem) => {
-      const text = buildRecruitmentHireMessage(candidate)
+      const outbound = buildRecruitmentHireOutbound(candidate)
       if (!curatorConversationId) {
         toast.error("会话未就绪，请稍后再试")
         return
@@ -616,20 +621,22 @@ export function CuratorView({
       if (isBusy) {
         enqueue({
           id: `pending-hire-${Date.now()}`,
-          text,
+          text: outbound.agentText,
           command: null,
         })
-        toast.success("已加入发送队列", { description: text })
+        toast.success("已加入发送队列", {
+          description: outbound.displayText,
+        })
         return
       }
-      void doSend(text)
+      void sendToolUiAction(outbound)
     },
-    [curatorConversationId, isBusy, enqueue, doSend]
+    [curatorConversationId, isBusy, enqueue, sendToolUiAction]
   )
 
   const handleRecruitmentHireAll = useCallback(
     (candidates: RecruitmentCandidateItem[]) => {
-      const text = buildRecruitmentHireAllMessage(candidates)
+      const outbound = buildRecruitmentHireAllOutbound(candidates)
       if (!curatorConversationId) {
         toast.error("会话未就绪，请稍后再试")
         return
@@ -637,15 +644,17 @@ export function CuratorView({
       if (isBusy) {
         enqueue({
           id: `pending-hire-all-${Date.now()}`,
-          text,
+          text: outbound.agentText,
           command: null,
         })
-        toast.success("已加入发送队列", { description: "全部录用" })
+        toast.success("已加入发送队列", {
+          description: outbound.displayText,
+        })
         return
       }
-      void doSend(text)
+      void sendToolUiAction(outbound)
     },
-    [curatorConversationId, isBusy, enqueue, doSend]
+    [curatorConversationId, isBusy, enqueue, sendToolUiAction]
   )
 
   const handleSendMessage = useCallback(
@@ -910,7 +919,6 @@ export function CuratorView({
                     ts={entry.ts}
                     session={session}
                     curatorConversationId={curatorConversationId}
-                    onSendUserMessage={sendFeedbackMessage}
                   />
                 )
               })}

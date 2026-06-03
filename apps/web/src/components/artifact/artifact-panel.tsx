@@ -15,6 +15,8 @@ import {
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
 import {
+  IconChevronLeft,
+  IconChevronRight,
   IconCopy,
   IconDownload,
   IconX,
@@ -29,6 +31,7 @@ import {
   IconFileImport,
   IconLoader,
 } from "@tabler/icons-react"
+import { useLocalStorageState } from "ahooks"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -78,6 +81,7 @@ const ARTIFACT_TREE_NAME_ROW_CLASS =
 const ARTIFACT_TREE_FILE_NAME_MAX_W = "max-w-[11rem]"
 /** 预览区标题栏文件名 */
 const ARTIFACT_DETAIL_NAME_MAX_W = "max-w-[min(100%,22rem)]"
+const RESOURCE_EXPLORER_OPEN_STORAGE_KEY = "artifact:resource-explorer:open"
 
 function getParentPaths(path: string) {
   const segments = path.split("/").filter(Boolean)
@@ -410,6 +414,10 @@ export const ArtifactPanel = ({
   const [expandedPaths, setExpandedPaths] = React.useState<Set<string>>(
     () => new Set()
   )
+  const [isExplorerOpen = true, setIsExplorerOpen] = useLocalStorageState<boolean>(
+    RESOURCE_EXPLORER_OPEN_STORAGE_KEY,
+    { defaultValue: true }
+  )
   const [searchQuery, setSearchQuery] = React.useState("")
   const [importDraftSkillEntry, setImportDraftSkillEntry] =
     React.useState<ResourceEntry | null>(null)
@@ -496,23 +504,35 @@ export const ArtifactPanel = ({
     hasSearchQuery,
   ])
 
-  const autoExpandPaths = React.useMemo(() => {
-    if (!selectionPath) return new Set<string>()
-    return new Set(getParentPaths(selectionPath))
+  React.useEffect(() => {
+    if (!selectionPath) return
+    setExpandedPaths((prev) => {
+      const next = new Set(prev)
+      let changed = false
+      for (const path of getParentPaths(selectionPath)) {
+        if (!next.has(path)) {
+          next.add(path)
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
   }, [selectionPath])
 
-  const fileTreeExpanded = React.useMemo(() => {
-    const next = new Set(expandedPaths)
-    for (const path of autoExpandPaths) {
-      next.add(path)
-    }
-    if (searchExpandedPaths) {
+  React.useEffect(() => {
+    if (!searchExpandedPaths) return
+    setExpandedPaths((prev) => {
+      const next = new Set(prev)
+      let changed = false
       for (const path of searchExpandedPaths) {
-        next.add(path)
+        if (!next.has(path)) {
+          next.add(path)
+          changed = true
+        }
       }
-    }
-    return next
-  }, [autoExpandPaths, expandedPaths, searchExpandedPaths])
+      return changed ? next : prev
+    })
+  }, [searchExpandedPaths])
 
   const selectedEntry = React.useMemo(
     () => resolveEntryForPath(selectionPath),
@@ -709,34 +729,53 @@ export const ArtifactPanel = ({
       </div>
 
       <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        <div className="flex w-72 min-w-0 shrink-0 flex-col overflow-hidden border-r bg-muted/10">
-          <div className="space-y-2 border-b p-3">
-            <div className="relative">
-              <IconSearch className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                aria-label="搜索资源文件"
-                className="h-8 pl-7"
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="搜索文件或路径"
-                value={searchQuery}
-              />
+        {isExplorerOpen ? (
+          <div className="flex w-72 min-w-0 shrink-0 flex-col overflow-hidden border-r bg-muted/10">
+            <div className="space-y-2 border-b p-3">
+              <div className="flex items-center gap-1">
+                <div className="relative min-w-0 flex-1">
+                  <IconSearch className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    aria-label="搜索资源文件"
+                    className="h-8 pl-7"
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="搜索文件或路径"
+                    value={searchQuery}
+                  />
+                </div>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        aria-label="收起文件树"
+                        className="size-8 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setIsExplorerOpen(false)}
+                      >
+                        <IconChevronLeft className="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>收起文件树</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              {hasSearchQuery && (
+                <p className="text-[11px] text-muted-foreground">
+                  找到 {filteredFiles} 个匹配文件
+                </p>
+              )}
             </div>
-            {hasSearchQuery && (
-              <p className="text-[11px] text-muted-foreground">
-                找到 {filteredFiles} 个匹配文件
-              </p>
-            )}
-          </div>
 
-          <ScrollArea className="min-h-0 min-w-0 flex-1">
-            {hasResources && hasFilteredResources ? (
-              <FileTree
-                expanded={fileTreeExpanded}
-                selectedPath={selectionPath ?? undefined}
-                onExpandedChange={setExpandedPaths}
-                onSelect={setSelectedPath}
-                className="h-full rounded-none border-0 bg-transparent"
-              >
+            <ScrollArea className="min-h-0 min-w-0 flex-1">
+              {hasResources && hasFilteredResources ? (
+                <FileTree
+                  expanded={expandedPaths}
+                  selectedPath={selectionPath ?? undefined}
+                  onExpandedChange={setExpandedPaths}
+                  onSelect={setSelectedPath}
+                  className="h-full rounded-none border-0 bg-transparent"
+                >
                 {filteredArtifacts.length > 0 && (
                   <FileTreeFolder
                     className={ARTIFACT_TREE_NAME_ROW_CLASS}
@@ -816,24 +855,63 @@ export const ArtifactPanel = ({
                     ))}
                   </FileTreeFolder>
                 )}
-              </FileTree>
-            ) : (
-              <div className="flex min-h-48 flex-col items-center justify-center px-4 text-center">
-                <IconFile className="mb-2 size-8 text-muted-foreground/50" />
-                <p className="text-sm text-muted-foreground">
-                  {hasSearchQuery ? "没有匹配的资源" : "暂无资源文件"}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground/80">
-                  {hasSearchQuery ? "换个关键词试试" : "产物文件会在这里展示"}
-                </p>
-              </div>
-            )}
-          </ScrollArea>
-        </div>
+                </FileTree>
+              ) : (
+                <div className="flex min-h-48 flex-col items-center justify-center px-4 text-center">
+                  <IconFile className="mb-2 size-8 text-muted-foreground/50" />
+                  <p className="text-sm text-muted-foreground">
+                    {hasSearchQuery ? "没有匹配的资源" : "暂无资源文件"}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground/80">
+                    {hasSearchQuery ? "换个关键词试试" : "产物文件会在这里展示"}
+                  </p>
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+        ) : (
+          <div className="flex w-10 shrink-0 flex-col items-center border-r bg-muted/10 py-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    aria-label="展开文件树"
+                    className="size-8 p-0 text-muted-foreground hover:text-foreground"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setIsExplorerOpen(true)}
+                  >
+                    <IconChevronRight className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">展开文件树</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        )}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-w-0 items-center justify-between gap-3 border-b bg-background/95 px-4 py-3">
-            <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              {!isExplorerOpen && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        aria-label="展开文件树"
+                        className="size-8 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setIsExplorerOpen(true)}
+                      >
+                        <IconChevronRight className="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>展开文件树</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
                 {selectedEntry && getFileIcon(selectedEntry.artifact_type)}
                 <h3
@@ -865,6 +943,7 @@ export const ArtifactPanel = ({
                     </span>
                   </>
                 )}
+              </div>
               </div>
             </div>
           </div>

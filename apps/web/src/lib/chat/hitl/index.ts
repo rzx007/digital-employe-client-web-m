@@ -18,6 +18,7 @@ export {
 export {
   dedupeHitlPartsInMessage,
   dedupeHitlPartsInMessages,
+  normalizeAssistantMessageParts,
 } from "./parts-dedupe"
 export {
   activeHitlMatchesPending,

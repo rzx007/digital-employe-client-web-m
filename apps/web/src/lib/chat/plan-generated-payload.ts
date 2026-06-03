@@ -1,3 +1,5 @@
+import type { ToolUiActionOutbound } from "./tool-ui-action"
+
 export interface PlanTaskPreview {
   task_id?: number
   employee_id?: number
@@ -70,7 +72,11 @@ export function planRequiresManualConfirmation(
   return output != null
 }
 
-export function buildPlanManualConfirmFeedback(planId: number, summary?: string) {
+/** 总管 Agent 指令：卡片已确认计划（勿再调 confirm_orchestration_plan） */
+export function buildPlanManualConfirmAgentFeedback(
+  planId: number,
+  summary?: string
+) {
   const label = summary ? `（${summary}）` : ""
   return (
     `【手动操作】我已在卡片上确认执行编排计划 #${planId}${label}，` +
@@ -78,12 +84,62 @@ export function buildPlanManualConfirmFeedback(planId: number, summary?: string)
   )
 }
 
-export function buildPlanManualCancelFeedback(planId: number, summary?: string) {
+/** @deprecated 使用 buildPlanManualConfirmAgentFeedback */
+export const buildPlanManualConfirmFeedback = buildPlanManualConfirmAgentFeedback
+
+export function buildPlanManualConfirmDisplayText(
+  planId: number,
+  summary?: string
+) {
+  const s = summary?.trim()
+  return s
+    ? `已确认执行编排计划「${s}」`
+    : `已确认执行编排计划 #${planId}`
+}
+
+export function buildPlanManualConfirmOutbound(
+  planId: number,
+  summary?: string
+): ToolUiActionOutbound {
+  return {
+    agentText: buildPlanManualConfirmAgentFeedback(planId, summary),
+    displayText: buildPlanManualConfirmDisplayText(planId, summary),
+    uiAction: "plan_confirm",
+  }
+}
+
+/** 总管 Agent 指令：卡片已取消计划 */
+export function buildPlanManualCancelAgentFeedback(
+  planId: number,
+  summary?: string
+) {
   const label = summary ? `（${summary}）` : ""
   return (
     `【手动操作】我已在卡片上取消编排计划 #${planId}${label}，` +
     "请知晓，无需再调用 cancel_plan。"
   )
+}
+
+/** @deprecated 使用 buildPlanManualCancelAgentFeedback */
+export const buildPlanManualCancelFeedback = buildPlanManualCancelAgentFeedback
+
+export function buildPlanManualCancelDisplayText(
+  planId: number,
+  summary?: string
+) {
+  const s = summary?.trim()
+  return s ? `已取消编排计划「${s}」` : `已取消编排计划 #${planId}`
+}
+
+export function buildPlanManualCancelOutbound(
+  planId: number,
+  summary?: string
+): ToolUiActionOutbound {
+  return {
+    agentText: buildPlanManualCancelAgentFeedback(planId, summary),
+    displayText: buildPlanManualCancelDisplayText(planId, summary),
+    uiAction: "plan_cancel",
+  }
 }
 
 export function parsePlanTasksFromOutput(

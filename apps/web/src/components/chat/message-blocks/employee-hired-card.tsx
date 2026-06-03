@@ -61,11 +61,13 @@ function HiredSkeleton() {
 function EmployeeHiredCardInner({
   state,
   resultText,
+  preliminary,
   celebrateOnSuccess = false,
   className,
 }: {
   state?: string
   resultText?: string | null
+  preliminary?: boolean
   /** 当前轮最后一条 assistant 消息内录用成功时允许庆祝 */
   celebrateOnSuccess?: boolean
   className?: string
@@ -82,23 +84,23 @@ function EmployeeHiredCardInner({
     [employeeId]
   )
 
-  const wasRunningRef = React.useRef(false)
+  const wasPendingRef = React.useRef(false)
 
-  const isRunning = isRecruitmentToolRunning(state ?? "")
+  const isPending = isRecruitmentToolRunning(state ?? "", preliminary)
   const isError = state === "output-error"
   const isSuccess =
-    state === "output-available" && payload != null && !isRunning && !isError
+    state === "output-available" && payload != null && !isPending && !isError
 
   React.useEffect(() => {
-    const justCompleted = wasRunningRef.current && isSuccess && payload != null
-    wasRunningRef.current = isRunning
+    const justCompleted = wasPendingRef.current && isSuccess && payload != null
+    wasPendingRef.current = isPending
 
     if (!justCompleted || !celebrateOnSuccess) return
     fireRealisticConfetti()
-  }, [isRunning, isSuccess, payload, celebrateOnSuccess])
+  }, [isPending, isSuccess, payload, celebrateOnSuccess])
   const plainError =
+    !isPending &&
     !payload &&
-    !isRunning &&
     resultText?.trim() &&
     !resultText.trim().startsWith("{")
 
@@ -119,9 +121,11 @@ function EmployeeHiredCardInner({
     )
   }
 
-  if (!payload && !isRunning) return null
+  if (!payload && !isPending) return null
 
-  const cfg = STATE_CONFIG[state ?? ""] ?? STATE_CONFIG["output-available"]
+  const cfg = isPending
+    ? STATE_CONFIG["input-available"]
+    : (STATE_CONFIG[state ?? ""] ?? STATE_CONFIG["output-available"])
   const hiredSkills: string[] = payload?.skills ?? []
 
   return (
@@ -133,7 +137,7 @@ function EmployeeHiredCardInner({
       )}
     >
       <div className="mb-2 flex items-center gap-1.5">
-        {!isRunning && !isError && (
+        {!isPending && !isError && (
           <IconCircleCheck className="size-3.5 shrink-0 text-green-600 dark:text-green-400" />
         )}
         <p className={cn("text-xs font-semibold", cfg.titleClass)}>
@@ -141,7 +145,7 @@ function EmployeeHiredCardInner({
         </p>
       </div>
 
-      {isRunning ? (
+      {isPending ? (
         <HiredSkeleton />
       ) : payload ? (
         <div className="flex items-start gap-3">

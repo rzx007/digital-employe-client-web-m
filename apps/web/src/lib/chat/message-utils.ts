@@ -29,7 +29,11 @@ export function getCopyableMessageText(
   const blocks = classifyMessageParts(message, options)
   const parts: string[] = []
   for (const block of blocks) {
-    if (block.kind === "final-response" || block.kind === "error") {
+    if (
+      block.kind === "final-response" ||
+      block.kind === "error" ||
+      block.kind === "user-action-summary"
+    ) {
       const t = block.text.trim()
       if (t) parts.push(t)
     }

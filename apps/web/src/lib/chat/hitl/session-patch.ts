@@ -14,12 +14,8 @@ function findLastAssistantIndex(messages: UIMessage[]): number {
   return -1
 }
 
-function partMergeKey(part: UIMessage["parts"][number]): string {
-  const toolCallId =
-    "toolCallId" in part && typeof part.toolCallId === "string"
-      ? part.toolCallId
-      : ""
-  return toolCallId ? `${part.type}:${toolCallId}` : part.type
+function isNonEmptyMessageParts(value: unknown): value is UIMessage["parts"] {
+  return Array.isArray(value) && value.length > 0
 }
 
 function resolveInterruptTargetIndex(
@@ -44,7 +40,10 @@ function resolveInterruptTargetIndex(
   return findLastAssistantIndex(prev)
 }
 
-/** interrupt SSE 将后端 message_parts 合并进 composer 目标 assistant 行 */
+/**
+ * interrupt SSE：用后端落库的 message_parts **整体替换** 目标 assistant 的 parts，
+ * 避免与流式累积的 text/tool 叠加（双卡、双行思考文案）。
+ */
 export function patchAssistantWithInterruptParts(
   prev: UIMessage[],
   payload: {
@@ -55,21 +54,15 @@ export function patchAssistantWithInterruptParts(
   if (prev.length === 0 || !payload.message_parts) return prev
 
   const dbMessageId = parseDbMessageId(payload.message_id)
+  const storedParts = payload.message_parts
   const index = resolveInterruptTargetIndex(
     prev,
     dbMessageId,
-    payload.message_parts
+    storedParts
   )
   if (index < 0) return prev
 
   const target = prev[index]
-  const storedParts = payload.message_parts as UIMessage["parts"]
-  const existingKeys = new Set(target.parts.map(partMergeKey))
-  const newParts = storedParts.filter(
-    (p) => !existingKeys.has(partMergeKey(p))
-  )
-  if (newParts.length === 0 && dbMessageId == null) return prev
-
   const baseMeta =
     (target as UIMessage & { metadata?: Record<string, unknown> }).metadata ??
     {}
@@ -82,11 +75,21 @@ export function patchAssistantWithInterruptParts(
   }
 
   const next = [...prev]
+  if (isNonEmptyMessageParts(storedParts)) {
+    next[index] = {
+      ...target,
+      ...(dbMessageId != null ? { id: dbMessageId } : {}),
+      parts: storedParts,
+      metadata: nextMeta,
+    } as UIMessage
+    return next
+  }
+
+  if (dbMessageId == null) return prev
+
   next[index] = {
     ...target,
-    ...(dbMessageId != null ? { id: dbMessageId } : {}),
-    parts:
-      newParts.length > 0 ? [...target.parts, ...newParts] : target.parts,
+    id: dbMessageId,
     metadata: nextMeta,
   } as UIMessage
   return next

@@ -1,3 +1,8 @@
+import {
+  isBatchMutationAllFailed,
+  isToolOutputPending,
+} from "./tool-output-pending"
+
 export interface EmployeesDismissedSucceededItem {
   index: number
   employee_id: number
@@ -103,13 +108,14 @@ export function parseEmployeesDismissedPayload(
   }
 }
 
-export function isEmployeeDismissToolRunning(state: string): boolean {
-  return (
-    state === "call" ||
-    state === "input-streaming" ||
-    state === "input-available"
-  )
+export function isEmployeeDismissToolRunning(
+  state: string,
+  preliminary?: boolean
+): boolean {
+  return isToolOutputPending(state, preliminary)
 }
+
+export { isBatchMutationAllFailed as isEmployeesDismissedAllFailed }
 
 export function isEmployeeDismissPlainError(
   resultText: string | null | undefined
@@ -122,24 +128,34 @@ export function isEmployeeDismissPlainError(
 export function shouldRenderEmployeesDismissedBlock(
   state: string,
   resultText: string | null | undefined,
-  hasParsedPayload: boolean
+  hasParsedPayload: boolean,
+  preliminary?: boolean
 ): boolean {
+  const pending = isToolOutputPending(state, preliminary)
   return (
     hasParsedPayload ||
-    isEmployeeDismissToolRunning(state) ||
+    pending ||
     state === "output-error" ||
-    isEmployeeDismissPlainError(resultText)
+    (!pending && isEmployeeDismissPlainError(resultText))
   )
 }
 
 export function resolveEmployeesDismissedBlockKind(
   toolName: string,
   state: string,
-  resultText: string | null | undefined
+  resultText: string | null | undefined,
+  preliminary?: boolean
 ): "employees-dismissed" | null {
   if (toolName !== "delete_employees_batch") return null
   const payload = parseEmployeesDismissedPayload(resultText)
-  if (shouldRenderEmployeesDismissedBlock(state, resultText, payload != null)) {
+  if (
+    shouldRenderEmployeesDismissedBlock(
+      state,
+      resultText,
+      payload != null,
+      preliminary
+    )
+  ) {
     return "employees-dismissed"
   }
   return null

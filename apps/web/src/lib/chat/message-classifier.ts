@@ -1,5 +1,10 @@
 import type { UIMessage } from "ai"
 
+import {
+  resolveUserMessageDisplay,
+  type ToolUiActionKind,
+} from "./tool-ui-action"
+
 /** 流式错误事件注入 text part 时的前缀标记 */
 export const ERROR_MARKER = "⚠️ERROR:"
 
@@ -114,6 +119,7 @@ export type ClassifiedBlock =
       toolCallId: string
       state: string
       resultText: string | null
+      preliminary?: boolean
     }
   | {
       kind: "employee-hired"
@@ -121,6 +127,7 @@ export type ClassifiedBlock =
       toolCallId: string
       state: string
       resultText: string | null
+      preliminary?: boolean
     }
   | {
       kind: "employees-hired"
@@ -128,6 +135,7 @@ export type ClassifiedBlock =
       toolCallId: string
       state: string
       resultText: string | null
+      preliminary?: boolean
     }
   | {
       kind: "employee-detail"
@@ -135,6 +143,7 @@ export type ClassifiedBlock =
       toolCallId: string
       state: string
       resultText: string | null
+      preliminary?: boolean
     }
   | {
       kind: "employee-updated"
@@ -142,6 +151,7 @@ export type ClassifiedBlock =
       toolCallId: string
       state: string
       resultText: string | null
+      preliminary?: boolean
     }
   | {
       kind: "employee-deleted"
@@ -149,6 +159,7 @@ export type ClassifiedBlock =
       toolCallId: string
       state: string
       resultText: string | null
+      preliminary?: boolean
     }
   | {
       kind: "tasks-deleted"
@@ -156,6 +167,7 @@ export type ClassifiedBlock =
       toolCallId: string
       state: string
       resultText: string | null
+      preliminary?: boolean
     }
   | {
       kind: "employees-dismissed"
@@ -163,6 +175,7 @@ export type ClassifiedBlock =
       toolCallId: string
       state: string
       resultText: string | null
+      preliminary?: boolean
     }
   | {
       kind: "destructive-delete"
@@ -174,6 +187,12 @@ export type ClassifiedBlock =
       resultText: string | null
     }
   | { kind: "summarization-checkpoint"; key: string; text: string }
+  | {
+      kind: "user-action-summary"
+      key: string
+      text: string
+      uiAction?: ToolUiActionKind
+    }
   | { kind: "final-response"; key: string; text: string }
   | { kind: "file-changes"; key: string; files: FileChangeItem[] }
   | { kind: "error"; key: string; text: string }
@@ -306,6 +325,20 @@ export function classifyMessageParts(
 ): ClassifiedBlock[] {
   const parts = message.parts
   if (parts.length === 0) return []
+
+  if (message.role === "user") {
+    const userAction = resolveUserMessageDisplay(message)
+    if (userAction) {
+      return [
+        {
+          kind: "user-action-summary",
+          key: `${message.id}:user-action`,
+          text: userAction.displayText,
+          uiAction: userAction.uiAction,
+        },
+      ]
+    }
+  }
 
   const orchestratorSummary = extractOrchestratorTaskSummary(message)
   if (orchestratorSummary) {

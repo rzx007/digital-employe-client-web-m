@@ -12,6 +12,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# 中断（interrupted）时给未收到 ToolMessage 的工具合成的占位结果哨兵。
+# 它并非真实工具输出，HITL 待确认流程据此识别并替换该占位 part。
+INTERRUPT_PAUSE_SENTINEL = "[已暂停，等待继续]"
+
 
 def extract_message_parts(stream_chunks_json: str) -> list[dict] | None:
     """从 stream_chunks JSON 提取有序的 parts 列表。
@@ -274,7 +278,7 @@ def _append_pending_tool_parts(
         stream_text = tool_streaming_output.get(tid, "").strip()
 
         if terminal_state == "interrupted":
-            suffix = "[已暂停，等待继续]"
+            suffix = INTERRUPT_PAUSE_SENTINEL
             result_text = (
                 f"{stream_text}\n\n{suffix}" if stream_text else suffix
             )

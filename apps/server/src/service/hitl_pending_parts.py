@@ -6,7 +6,10 @@ import copy
 from typing import Any
 
 from src.service.agent.destructive_hitl import DESTRUCTIVE_HITL_TOOLS
-from src.service.message_parts_extractor import extract_message_parts_from_buffer
+from src.service.message_parts_extractor import (
+    INTERRUPT_PAUSE_SENTINEL,
+    extract_message_parts_from_buffer,
+)
 
 HITL_TOOL_NAMES = frozenset(
     {"submit_clarifying_questions", "submit_document_plan", *DESTRUCTIVE_HITL_TOOLS}
@@ -58,6 +61,21 @@ def _extract_tool_call_id_from_buffer(events: list[dict]) -> str | None:
     return None
 
 
+def _is_interrupt_pause_part(part: dict) -> bool:
+    """识别中断兜底合成的占位 part（output-available + "[已暂停，等待继续]" 哨兵）。
+
+    该 part 并非真实工具结果，仅表示工具调用被 HITL 中断、尚未执行，
+    应被视为待确认占位删除，避免与重新追加的 input-available part 重复成卡。
+    """
+    if part.get("state") != "output-available":
+        return False
+    output = part.get("output")
+    if not isinstance(output, dict):
+        return False
+    text = output.get("text")
+    return isinstance(text, str) and text.rstrip().endswith(INTERRUPT_PAUSE_SENTINEL)
+
+
 def _part_is_pending_hitl(part: dict) -> bool:
     ptype = part.get("type")
     if not isinstance(ptype, str) or not ptype.startswith("tool-"):
@@ -65,6 +83,8 @@ def _part_is_pending_hitl(part: dict) -> bool:
     tool_name = ptype.removeprefix("tool-")
     if not _is_hitl_tool_name(tool_name):
         return False
+    if _is_interrupt_pause_part(part):
+        return True
     state = part.get("state")
     if state in ("output-available", "output-error"):
         return False

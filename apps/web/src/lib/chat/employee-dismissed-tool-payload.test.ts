@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   parseEmployeesDismissedPayload,
   resolveEmployeesDismissedBlockKind,
+  shouldRenderEmployeesDismissedBlock,
 } from "./employee-dismissed-tool-payload"
 
 describe("parseEmployeesDismissedPayload", () => {
@@ -86,5 +87,27 @@ describe("resolveEmployeesDismissedBlockKind", () => {
         "{}"
       )
     ).toBeNull()
+  })
+
+  it("keeps block visible while preliminary JSON streams", () => {
+    expect(
+      shouldRenderEmployeesDismissedBlock(
+        "output-available",
+        '{"type":"employees_dismissed","failed":[',
+        false,
+        true
+      )
+    ).toBe(true)
+  })
+
+  it("does not treat partial JSON as plain error while preliminary", () => {
+    expect(
+      shouldRenderEmployeesDismissedBlock(
+        "output-available",
+        "错误：尚未完成",
+        false,
+        true
+      )
+    ).toBe(true)
   })
 })

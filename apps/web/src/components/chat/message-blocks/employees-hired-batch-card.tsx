@@ -10,6 +10,7 @@ import {
   isRecruitmentToolRunning,
   parseEmployeesHiredPayload,
 } from "@/lib/chat/recruitment-tool-payload"
+import { isBatchMutationAllFailed } from "@/lib/chat/tool-output-pending"
 import { EmployeeHiredPreview } from "./employee-hired-preview"
 
 const BATCH_STATE_CONFIG: Record<string, { title: string; titleClass: string }> =
@@ -67,11 +68,13 @@ function BatchHiredSkeletons() {
 function EmployeesHiredBatchCardInner({
   state,
   resultText,
+  preliminary,
   celebrateOnSuccess = false,
   className,
 }: {
   state?: string
   resultText?: string | null
+  preliminary?: boolean
   celebrateOnSuccess?: boolean
   className?: string
 }) {
@@ -80,27 +83,27 @@ function EmployeesHiredBatchCardInner({
     [resultText]
   )
 
-  const wasRunningRef = React.useRef(false)
-  const isRunning = isRecruitmentToolRunning(state ?? "")
+  const wasPendingRef = React.useRef(false)
+  const isPending = isRecruitmentToolRunning(state ?? "", preliminary)
   const isError = state === "output-error"
   const hasSuccess = (payload?.succeeded.length ?? 0) > 0
   const isSuccess =
     state === "output-available" &&
     payload != null &&
-    !isRunning &&
+    !isPending &&
     !isError &&
     hasSuccess
 
   React.useEffect(() => {
-    const justCompleted = wasRunningRef.current && isSuccess
-    wasRunningRef.current = isRunning
+    const justCompleted = wasPendingRef.current && isSuccess
+    wasPendingRef.current = isPending
     if (!justCompleted || !celebrateOnSuccess) return
     fireRealisticConfetti()
-  }, [isRunning, isSuccess, celebrateOnSuccess])
+  }, [isPending, isSuccess, celebrateOnSuccess])
 
   const plainError =
+    !isPending &&
     !payload &&
-    !isRunning &&
     resultText?.trim() &&
     !resultText.trim().startsWith("{")
 
@@ -121,12 +124,12 @@ function EmployeesHiredBatchCardInner({
     )
   }
 
-  if (!payload && !isRunning) return null
+  if (!payload && !isPending) return null
 
-  const cfg =
-    BATCH_STATE_CONFIG[state ?? ""] ?? BATCH_STATE_CONFIG["output-available"]
-  const allFailed =
-    payload != null && payload.succeeded_count === 0 && payload.failed_count > 0
+  const cfg = isPending
+    ? BATCH_STATE_CONFIG["input-available"]
+    : (BATCH_STATE_CONFIG[state ?? ""] ?? BATCH_STATE_CONFIG["output-available"])
+  const allFailed = !isPending && isBatchMutationAllFailed(payload)
 
   return (
     <div
@@ -139,27 +142,27 @@ function EmployeesHiredBatchCardInner({
       <div className="mb-2 flex flex-col gap-1.5 @[18rem]/recruitment:mb-2.5 @[18rem]/recruitment:flex-row @[18rem]/recruitment:items-start @[18rem]/recruitment:justify-between @[18rem]/recruitment:gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            {!isRunning && !isError && hasSuccess && (
+            {!isPending && !isError && hasSuccess && (
               <IconCircleCheck className="size-3.5 shrink-0 text-green-600 dark:text-green-400" />
             )}
             <p className={cn("text-xs font-semibold", cfg.titleClass)}>
               {allFailed ? "批量入职失败" : cfg.title}
             </p>
           </div>
-          {payload?.message && !isRunning && (
+          {payload?.message && !isPending && (
             <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
               {payload.message}
             </p>
           )}
         </div>
-        {payload && !isRunning && (
+        {payload && !isPending && (
           <span className="w-fit shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
             {payload.succeeded_count}/{payload.total} 已录用
           </span>
         )}
       </div>
 
-      {isRunning ? (
+      {isPending ? (
         <BatchHiredSkeletons />
       ) : payload ? (
         <>

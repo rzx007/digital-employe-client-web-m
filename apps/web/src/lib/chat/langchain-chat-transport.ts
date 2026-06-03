@@ -13,7 +13,10 @@ import {
 import { sseEventSchema, type ToolOutputData } from "./langchain-sse-schema"
 import { ERROR_MARKER } from "./message-classifier"
 import { conversationRuntimeBus } from "./conversation-runtime-bus"
-import { buildHitlInterruptStreamChunks } from "./hitl/interrupt-stream-chunks"
+import {
+  buildHitlInterruptStreamChunks,
+  collectHitlToolCallIdsAlreadyStreamed,
+} from "./hitl/interrupt-stream-chunks"
 const useMock =
   import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_SSE === "true"
 
@@ -523,10 +526,19 @@ export class LangChainChatTransport<
               closeTextPhaseIfNeeded(state).forEach((chunk) =>
                 controller.enqueue(chunk)
               )
-              for (const chunk of buildHitlInterruptStreamChunks(
-                messageParts
-              )) {
-                controller.enqueue(chunk)
+              // 已有落库 message_parts 时由 onInterrupted 整体替换 composer parts，勿再灌 tool chunks
+              const hasAuthoritativeParts =
+                Array.isArray(messageParts) && messageParts.length > 0
+              if (!hasAuthoritativeParts) {
+                for (const chunk of buildHitlInterruptStreamChunks(
+                  messageParts,
+                  {
+                    skipToolCallIds:
+                      collectHitlToolCallIdsAlreadyStreamed(state),
+                  }
+                )) {
+                  controller.enqueue(chunk)
+                }
               }
               enqueueFinish(controller, state)
               controller.close()

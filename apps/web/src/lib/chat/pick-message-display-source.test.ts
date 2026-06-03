@@ -2,61 +2,65 @@ import { describe, expect, it } from "vitest"
 import type { UIMessage } from "ai"
 
 import {
-  patchComposerFromStoredWhenSameTurn,
+  applyStoredPartsToInterruptedAssistants,
   pickMessageDisplaySource,
 } from "./pick-message-display-source"
 
-function msg(id: string): UIMessage {
-  return { id, role: "user", parts: [{ type: "text", text: id, state: "done" }] }
-}
-
-describe("pickMessageDisplaySource", () => {
-  it("uses live messages while streaming", () => {
-    const live = [msg("a")]
-    const stored = [msg("a"), msg("b")]
-    expect(pickMessageDisplaySource(live, stored, "streaming")).toBe(live)
-  })
-
-  it("prefers stored history when live composer is shorter after stop", () => {
-    const live = [msg("c")]
-    const stored = [msg("a"), msg("b"), msg("c")]
-    expect(pickMessageDisplaySource(live, stored, "ready")).toBe(stored)
-  })
-
-  it("keeps live composer after stream when DB only assigns numeric ids", () => {
-    const live = [msg("1"), msg("client-temp")]
-    const stored = [msg("1"), msg("2")]
-    expect(pickMessageDisplaySource(live, stored, "ready")).toBe(live)
-  })
-})
-
-describe("patchComposerFromStoredWhenSameTurn", () => {
-  it("patches assistant id and streamState without replacing parts", () => {
+describe("applyStoredPartsToInterruptedAssistants", () => {
+  it("uses stored parts for interrupted assistant awaiting approval", () => {
     const live: UIMessage[] = [
-      { id: "1", role: "user", parts: [{ type: "text", text: "hi", state: "done" }] },
       {
-        id: "client-assistant",
+        id: "42",
         role: "assistant",
-        parts: [{ type: "text", text: "answer", state: "done" }],
-        metadata: { streamState: "streaming" },
+        parts: [
+          { type: "text", text: "live 重复" },
+          { type: "text", text: "live 重复" },
+        ],
+        metadata: { streamState: "interrupted" },
       },
     ]
     const stored: UIMessage[] = [
-      { id: "1", role: "user", parts: [{ type: "text", text: "hi", state: "done" }] },
       {
-        id: "2",
+        id: "42",
         role: "assistant",
-        parts: [{ type: "text", text: "from-db", state: "done" }],
-        metadata: { streamState: "completed" },
+        parts: [{ type: "text", text: "db 单段文案" }],
+        metadata: { streamState: "interrupted" },
       },
     ]
 
-    const patched = patchComposerFromStoredWhenSameTurn(live, stored)
-    expect(patched).not.toBeNull()
-    expect(patched![1].id).toBe("2")
-    expect(patched![1].parts).toEqual(live[1].parts)
-    expect((patched![1] as { metadata?: { streamState?: string } }).metadata?.streamState).toBe(
-      "completed"
-    )
+    const next = applyStoredPartsToInterruptedAssistants(live, stored)
+    expect(next[0].parts).toHaveLength(1)
+    expect(next[0].parts[0]).toMatchObject({ text: "db 单段文案" })
+  })
+})
+
+describe("pickMessageDisplaySource", () => {
+  it("merges stored parts into live when counts match and not streaming", () => {
+    const live: UIMessage[] = [
+      { id: "1", role: "user", parts: [{ type: "text", text: "hi" }] },
+      {
+        id: "42",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "dup" },
+          { type: "text", text: "dup" },
+        ],
+        metadata: { streamState: "interrupted" },
+      },
+    ]
+    const stored: UIMessage[] = [
+      { id: "1", role: "user", parts: [{ type: "text", text: "hi" }] },
+      {
+        id: "42",
+        role: "assistant",
+        parts: [{ type: "text", text: "canonical" }],
+        metadata: { streamState: "interrupted" },
+      },
+    ]
+
+    const source = pickMessageDisplaySource(live, stored, "ready")
+    const assistant = source.find((m) => m.role === "assistant")
+    expect(assistant?.parts).toHaveLength(1)
+    expect(assistant?.parts[0]).toMatchObject({ text: "canonical" })
   })
 })

@@ -1,3 +1,5 @@
+import { isToolOutputPending } from "./tool-output-pending"
+
 export interface EmployeeDetailPayload {
   type: "employee_detail"
   employee_id: number
@@ -124,35 +126,44 @@ export function isPlainToolResultError(
   return !text.startsWith("{")
 }
 
-export function isEmployeeCrudToolRunning(state: string): boolean {
-  return (
-    state === "call" ||
-    state === "input-streaming" ||
-    state === "input-available"
-  )
+export function isEmployeeCrudToolRunning(
+  state: string,
+  preliminary?: boolean
+): boolean {
+  return isToolOutputPending(state, preliminary)
 }
 
 export function shouldRenderEmployeeCrudToolBlock(
   state: string,
   resultText: string | null | undefined,
-  hasParsedPayload: boolean
+  hasParsedPayload: boolean,
+  preliminary?: boolean
 ): boolean {
+  const pending = isToolOutputPending(state, preliminary)
   return (
     hasParsedPayload ||
-    isEmployeeCrudToolRunning(state) ||
+    pending ||
     state === "output-error" ||
-    isPlainToolResultError(resultText)
+    (!pending && isPlainToolResultError(resultText))
   )
 }
 
 export function resolveEmployeeCrudBlockKind(
   toolName: string,
   state: string,
-  resultText: string | null | undefined
+  resultText: string | null | undefined,
+  preliminary?: boolean
 ): EmployeeCrudBlockKind | null {
   if (toolName === "get_employee") {
     const payload = parseEmployeeDetailPayload(resultText)
-    if (shouldRenderEmployeeCrudToolBlock(state, resultText, payload != null)) {
+    if (
+      shouldRenderEmployeeCrudToolBlock(
+        state,
+        resultText,
+        payload != null,
+        preliminary
+      )
+    ) {
       return "employee-detail"
     }
     return null
@@ -160,7 +171,14 @@ export function resolveEmployeeCrudBlockKind(
 
   if (toolName === "update_employee") {
     const payload = parseEmployeeUpdatedPayload(resultText)
-    if (shouldRenderEmployeeCrudToolBlock(state, resultText, payload != null)) {
+    if (
+      shouldRenderEmployeeCrudToolBlock(
+        state,
+        resultText,
+        payload != null,
+        preliminary
+      )
+    ) {
       return "employee-updated"
     }
     return null
@@ -168,7 +186,14 @@ export function resolveEmployeeCrudBlockKind(
 
   if (toolName === "delete_employee") {
     const payload = parseEmployeeDeletedPayload(resultText)
-    if (shouldRenderEmployeeCrudToolBlock(state, resultText, payload != null)) {
+    if (
+      shouldRenderEmployeeCrudToolBlock(
+        state,
+        resultText,
+        payload != null,
+        preliminary
+      )
+    ) {
       return "employee-deleted"
     }
     return null

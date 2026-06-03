@@ -304,11 +304,13 @@ function EmployeeCrudResultCardInner({
   variant,
   state,
   resultText,
+  preliminary,
   className,
 }: {
   variant: keyof typeof VARIANT_CONFIG
   state?: string
   resultText?: string | null
+  preliminary?: boolean
   className?: string
 }) {
   const detailPayload = React.useMemo(
@@ -324,16 +326,16 @@ function EmployeeCrudResultCardInner({
     [resultText]
   )
 
-  const isRunning = isEmployeeCrudToolRunning(state ?? "")
+  const isPending = isEmployeeCrudToolRunning(state ?? "", preliminary)
   const isError = state === "output-error"
   const cfg = VARIANT_CONFIG[variant]
   const Icon = cfg.icon
 
   const plainError =
+    !isPending &&
     !detailPayload &&
     !updatedPayload &&
     !deletedPayload &&
-    !isRunning &&
     resultText?.trim() &&
     !resultText.trim().startsWith("{")
 
@@ -354,11 +356,11 @@ function EmployeeCrudResultCardInner({
     )
   }
 
-  if (!detailPayload && !updatedPayload && !deletedPayload && !isRunning) {
+  if (!detailPayload && !updatedPayload && !deletedPayload && !isPending) {
     return null
   }
 
-  if (variant === "detail" && detailPayload && !isRunning) {
+  if (variant === "detail" && detailPayload && !isPending) {
     const skillLabels = skillLabelsFromDetailSkills(detailPayload.skills)
     const mcpLabels = mcpLabelsFromDetailMcps(detailPayload.mcps)
     return (
@@ -371,7 +373,7 @@ function EmployeeCrudResultCardInner({
     )
   }
 
-  if (variant === "updated" && updatedPayload && !isRunning) {
+  if (variant === "updated" && updatedPayload && !isPending) {
     return (
       <EmployeeUpdatedExpandable payload={updatedPayload} className={className} />
     )
@@ -386,7 +388,7 @@ function EmployeeCrudResultCardInner({
       )}
     >
       <div className="mb-2 flex items-center gap-1.5">
-        {!isRunning && !isError && (
+        {!isPending && !isError && (
           <Icon
             className={cn(
               "size-3.5 shrink-0",
@@ -399,19 +401,19 @@ function EmployeeCrudResultCardInner({
         <p
           className={cn(
             "text-xs font-semibold",
-            isRunning ? "text-muted-foreground animate-pulse" : cfg.titleClass
+            isPending ? "text-muted-foreground animate-pulse" : cfg.titleClass
           )}
         >
-          {isRunning ? cfg.runningTitle : cfg.title}
+          {isPending ? cfg.runningTitle : cfg.title}
         </p>
-        {detailPayload?.is_curator && !isRunning && (
+        {detailPayload?.is_curator && !isPending && (
           <Badge variant="secondary" className="ml-auto text-[10px]">
             总管
           </Badge>
         )}
       </div>
 
-      {isRunning ? (
+      {isPending ? (
         <CrudSkeleton />
       ) : deletedPayload ? (
         <div className="space-y-1">

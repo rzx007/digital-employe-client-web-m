@@ -1,3 +1,6 @@
+import { isToolOutputPending } from "./tool-output-pending"
+import type { ToolUiActionOutbound } from "./tool-ui-action"
+
 export interface RecruitmentCandidateItem {
   index: number
   name: string
@@ -138,8 +141,8 @@ export function splitSkillsSummary(summary: string): string[] {
     .filter(Boolean)
 }
 
-/** 总管对话中一键录用时发送给 orchestrator 的文案 */
-export function buildRecruitmentHireMessage(
+/** 总管 Agent 指令：单人录用（保留工具参数字段） */
+export function buildRecruitmentHireAgentMessage(
   candidate: Pick<
     RecruitmentCandidateItem,
     "name" | "description" | "skill_ids"
@@ -154,12 +157,34 @@ export function buildRecruitmentHireMessage(
   return lines.join("\n")
 }
 
-export function isRecruitmentToolRunning(state: string): boolean {
-  return (
-    state === "call" ||
-    state === "input-streaming" ||
-    state === "input-available"
-  )
+/** @deprecated 使用 buildRecruitmentHireAgentMessage */
+export const buildRecruitmentHireMessage = buildRecruitmentHireAgentMessage
+
+export function buildRecruitmentHireDisplayText(
+  candidate: Pick<RecruitmentCandidateItem, "name">
+): string {
+  const name = candidate.name.trim()
+  return name ? `已录用候选人：${name}` : "已录用该候选人"
+}
+
+export function buildRecruitmentHireOutbound(
+  candidate: Pick<
+    RecruitmentCandidateItem,
+    "name" | "description" | "skill_ids"
+  >
+): ToolUiActionOutbound {
+  return {
+    agentText: buildRecruitmentHireAgentMessage(candidate),
+    displayText: buildRecruitmentHireDisplayText(candidate),
+    uiAction: "recruitment_hire_one",
+  }
+}
+
+export function isRecruitmentToolRunning(
+  state: string,
+  preliminary?: boolean
+): boolean {
+  return isToolOutputPending(state, preliminary)
 }
 
 export interface EmployeesHiredSucceededItem {
@@ -283,24 +308,34 @@ export function isRecruitmentPlainToolError(
 export function shouldRenderRecruitmentToolBlock(
   state: string,
   resultText: string | null | undefined,
-  hasParsedPayload: boolean
+  hasParsedPayload: boolean,
+  preliminary?: boolean
 ): boolean {
+  const pending = isToolOutputPending(state, preliminary)
   return (
     hasParsedPayload ||
-    isRecruitmentToolRunning(state) ||
+    pending ||
     state === "output-error" ||
-    isRecruitmentPlainToolError(resultText)
+    (!pending && isRecruitmentPlainToolError(resultText))
   )
 }
 
 export function resolveRecruitmentToolBlockKind(
   toolName: string,
   state: string,
-  resultText: string | null | undefined
+  resultText: string | null | undefined,
+  preliminary?: boolean
 ): RecruitmentToolBlockKind | null {
   if (toolName === "recruit_employee") {
     const payload = parseRecruitmentCandidatesPayload(resultText)
-    if (shouldRenderRecruitmentToolBlock(state, resultText, payload != null)) {
+    if (
+      shouldRenderRecruitmentToolBlock(
+        state,
+        resultText,
+        payload != null,
+        preliminary
+      )
+    ) {
       return "recruitment-candidates"
     }
     return null
@@ -308,7 +343,14 @@ export function resolveRecruitmentToolBlockKind(
 
   if (toolName === "hire_employee") {
     const payload = parseEmployeeHiredPayload(resultText)
-    if (shouldRenderRecruitmentToolBlock(state, resultText, payload != null)) {
+    if (
+      shouldRenderRecruitmentToolBlock(
+        state,
+        resultText,
+        payload != null,
+        preliminary
+      )
+    ) {
       return "employee-hired"
     }
     return null
@@ -316,7 +358,14 @@ export function resolveRecruitmentToolBlockKind(
 
   if (toolName === "hire_employees") {
     const payload = parseEmployeesHiredPayload(resultText)
-    if (shouldRenderRecruitmentToolBlock(state, resultText, payload != null)) {
+    if (
+      shouldRenderRecruitmentToolBlock(
+        state,
+        resultText,
+        payload != null,
+        preliminary
+      )
+    ) {
       return "employees-hired"
     }
     return null
@@ -325,8 +374,8 @@ export function resolveRecruitmentToolBlockKind(
   return null
 }
 
-/** 总管对话中「全部录用」时发送给 orchestrator 的文案 */
-export function buildRecruitmentHireAllMessage(
+/** 总管 Agent 指令：批量录用 */
+export function buildRecruitmentHireAllAgentMessage(
   candidates: RecruitmentCandidateItem[]
 ): string {
   const normalized = candidates
@@ -342,4 +391,28 @@ export function buildRecruitmentHireAllMessage(
     `全部录用以下 ${count} 位候选人，请调用 hire_employees，candidates 参数为：`,
     payload,
   ].join("\n")
+}
+
+/** @deprecated 使用 buildRecruitmentHireAllAgentMessage */
+export const buildRecruitmentHireAllMessage = buildRecruitmentHireAllAgentMessage
+
+export function buildRecruitmentHireAllDisplayText(
+  candidates: RecruitmentCandidateItem[]
+): string {
+  const names = candidates.map((c) => c.name.trim()).filter(Boolean)
+  const count = names.length
+  if (count === 0) return "已请求批量录用候选人"
+  const preview = names.slice(0, 5).join("、")
+  const suffix = names.length > 5 ? " 等" : ""
+  return `已请求录用 ${count} 位候选人：${preview}${suffix}`
+}
+
+export function buildRecruitmentHireAllOutbound(
+  candidates: RecruitmentCandidateItem[]
+): ToolUiActionOutbound {
+  return {
+    agentText: buildRecruitmentHireAllAgentMessage(candidates),
+    displayText: buildRecruitmentHireAllDisplayText(candidates),
+    uiAction: "recruitment_hire_batch",
+  }
 }

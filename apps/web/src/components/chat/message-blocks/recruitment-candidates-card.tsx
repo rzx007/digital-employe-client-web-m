@@ -72,10 +72,12 @@ function CandidateSkeletons() {
 function RecruitmentCandidatesCardInner({
   state,
   resultText,
+  preliminary,
   className,
 }: {
   state?: string
   resultText?: string | null
+  preliminary?: boolean
   className?: string
 }) {
   const recruitment = useCuratorRecruitment()
@@ -89,11 +91,11 @@ function RecruitmentCandidatesCardInner({
     recruitment.onHireAll(payload.candidates)
   }, [payload, recruitment])
 
-  const isRunning = isRecruitmentToolRunning(state ?? "")
+  const isPending = isRecruitmentToolRunning(state ?? "", preliminary)
   const isError = state === "output-error"
   const plainError =
+    !isPending &&
     !payload &&
-    !isRunning &&
     resultText?.trim() &&
     !resultText.trim().startsWith("{")
 
@@ -113,9 +115,11 @@ function RecruitmentCandidatesCardInner({
     )
   }
 
-  if (!payload && !isRunning) return null
+  if (!payload && !isPending) return null
 
-  const cfg = STATE_CONFIG[state ?? ""] ?? STATE_CONFIG["output-available"]
+  const cfg = isPending
+    ? STATE_CONFIG["input-available"]
+    : (STATE_CONFIG[state ?? ""] ?? STATE_CONFIG["output-available"])
 
   return (
     <div
@@ -126,20 +130,20 @@ function RecruitmentCandidatesCardInner({
           <p className={cn("text-xs font-semibold", cfg.titleClass)}>
             {cfg.title}
           </p>
-          {payload?.hint && !isRunning && (
+          {payload?.hint && !isPending && (
             <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground/80">
               {payload.hint}
             </p>
           )}
         </div>
-        {payload && !isRunning && (
+        {payload && !isPending && (
           <span className="w-fit shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
             {payload.total} 位候选人
           </span>
         )}
       </div>
 
-      {isRunning ? (
+      {isPending ? (
         <CandidateSkeletons />
       ) : payload ? (
         <div className={CANDIDATES_GRID}>
@@ -152,7 +156,10 @@ function RecruitmentCandidatesCardInner({
         </div>
       ) : null}
 
-      {payload && payload.candidates.length >= 2 && !isRunning && recruitment?.onHireAll ? (
+      {payload &&
+      payload.candidates.length >= 2 &&
+      !isPending &&
+      recruitment?.onHireAll ? (
         <div className="mt-2 @[18rem]/recruitment:mt-2.5">
           <Button
             type="button"

@@ -187,7 +187,7 @@ sequenceDiagram
 | `status === ready` 且已有 DB 数据 | `setMessages(initialMessages)` **整表 hydrate** |
 | `status === streaming` / `submitted` | **不 hydrate**（避免覆盖 SSE 累积的 parts） |
 | `onFinish` + bus `onTerminal` | Query cache 乐观改最后 assistant `stream_state`；**800ms 后** `invalidate` → GET `/messages` |
-| `onInterrupted` | `patchAssistantWithInterruptParts` + `scheduleMessagesRefetch` |
+| `onInterrupted` | `patchAssistantWithInterruptParts`（**整体替换** `message_parts`）+ `scheduleMessagesRefetch`；transport 有 `message_parts` 时不再 `buildHitlInterruptStreamChunks` |
 | `onHitlApproved` | `patchApprovedAtOnComposerMessages` + cache；`scheduleMessagesRefetch`；`resumeStream` |
 | 切走会话 | 组件 `stop()` 断本端 SSE；**不**调 `/stream/cancel`；后台任务可继续 |
 | 再进会话 | `refetchOnMount` 拉全量；若最后一条 `stream_state === streaming` 则 `GET /stream/resume` |

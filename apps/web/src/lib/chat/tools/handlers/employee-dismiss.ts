@@ -15,7 +15,8 @@ export const employeeDismissHandler: ToolBlockHandler = {
     const blockKind = resolveEmployeesDismissedBlockKind(
       vm.toolName,
       vm.state,
-      vm.resultText
+      vm.resultText,
+      vm.preliminary
     )
     if (!blockKind) return null
 
@@ -25,6 +26,7 @@ export const employeeDismissHandler: ToolBlockHandler = {
       toolCallId: vm.toolCallId,
       state: vm.state,
       resultText: vm.resultText,
+      preliminary: vm.preliminary,
     }
   },
 }
