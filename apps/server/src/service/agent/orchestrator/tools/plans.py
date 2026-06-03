@@ -44,6 +44,8 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
           "priority": <int>,
           "depends_on": <int | null>
         }
+      cron：标准 5 段「分 时 日 月 周」。"30 9 * * *"=每天 9:30；"*/10 * * * *"=每 10 分钟重复。
+        标准 cron **无法表达"仅一次"**（"33 14 * * *" 会每天重复）；只跑一次用 cron=null（confirm 后立即执行）。
     """
     db = get_db()
     workspace_id = get_workspace_id()

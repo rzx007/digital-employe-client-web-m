@@ -67,10 +67,7 @@ def build_filesystem_prompt_section(
         - 代码、报告、导出数据等交付给用户看的文件：write_file("/artifacts/...", ...)
         - 单次交付可用 /artifacts/report.md；**长文档任务**须用 /artifacts/<doc-slug>/ 子目录（见「长文档写作」）
         - **不要**在 /artifacts/ 下创建 Users、.digital-employee 等磁盘路径镜像
-
-        ### 长期记忆（/memories/，每次开聊已自动加载，不在会话资源列表中展示）
-        - /agent/AGENTS.md：产品级说明（只读，已注入上下文）
-        - **禁止**用 write_file("/artifacts/...") 或磁盘绝对路径保存记忆；**禁止**把用户交付物写入 /memories/
+        - 长期记忆（/memories/）相关规则见「## 长期记忆」一节（唯一权威），此处不重复
         {draft_instruction}
 
         ## 上下文管理
@@ -107,47 +104,31 @@ def build_memory_update_section() -> str:
 
 
 def build_clarifying_questions_section() -> str:
-    """澄清门（Clarify HITL）要点。"""
+    """澄清门（Clarify HITL）：详规以 /agent/AGENTS.md 为单一权威（已注入），此处仅留指针。"""
     return """
         ## 需求澄清（Clarify HITL）
-        当用户需求模糊、关键信息缺失时（含长文档开写前）：
-        - **必须先**调用 `submit_clarifying_questions` 向用户提问，等待用户 **respond** 作答
-        - `questions` 须为 **JSON 字符串**；优先出 **选择题**（`type: "choice"` + `options` 数组，3～6 项），无法列选项时用 `type: "text"`
-        - 每项含 `id`、`prompt`、可选 `required`；一次可提 2～6 题（前端逐题分页展示）
-        - `context` 示例：`long_document`（长文档）、`general`（通用模糊任务）
-        - 用户 **Skip** 会终止本轮对话
-        - **禁止**在澄清完成前 write_file 到 `/artifacts/`（长文档）
-        - 短句明确指令（如「把这段改短」）或用户说「直接写别问了」时，**不要**弹澄清门
+        需求模糊或关键信息缺失时，先用 `submit_clarifying_questions` 提问、待用户作答再动手；
+        短句明确指令或用户说「直接写别问了」时不要弹门。完整规则（题型、JSON 字符串、
+        respond/Skip 语义、何时不弹门）见已注入的 /agent/AGENTS.md「需求澄清（Clarify HITL）」小节，本处不复述。
         """
 
 
 def build_long_document_writing_section(*, for_orchestrator: bool = False) -> str:
-    """长文档写作要点（详规见 /agent/AGENTS.md）。"""
-    orchestrator_prefix = ""
+    """长文档写作：详规以已注入的 /agent/AGENTS.md「长文档写作协作流程」为单一权威，此处仅留指针。"""
+    orchestrator_pointer = ""
     if for_orchestrator:
-        orchestrator_prefix = """
-        ### 总管助手（默认只编排）
-        - 默认不要自己直接执行任务，职责是拆解与分配；
-          **除非用户明确要求总管助手干活**（如「你写」「总管帮我做」「别分给别的员工」），
-          此时你可亲自调用工具完成任务（含下文澄清门 / 方案门，仅亲自写长文档时使用）。
-        """
+        orchestrator_pointer = (
+            "\n        - 总管默认只编排、不亲自执行；仅当用户明确要求总管干活"
+            "（如「你写」「别分给别的员工」）时才亲自写，规则见 /agent/AGENTS.md「总管助手说明」。"
+        )
 
     return f"""
         ## 长文档写作（标书 / 方案 / 报告）
-        {orchestrator_prefix}
-        识别到长文档类任务时：
-        - 先用 `write_todos` 拆解章节与附录
-        - **第一步**：若关键信息不足，调用 `submit_clarifying_questions`（context=`long_document`）收集用户答案
-        - **第二步**：澄清完成后调用 `submit_document_plan` 提交标题、大纲、计划产物路径；**禁止**在用户确认方案前 write_file 到 `/artifacts/`
-        - **同一次长文档任务**：澄清门与方案门各 interrupt 一次；方案 approve/edit 后直接分章写作，**禁止**再次 `submit_document_plan`
-        - 仅当用户 **reject 方案** 并给出修订反馈后，才可修订 outline 并再次 submit
-        - 每次任务先定 `/artifacts/<doc-slug>/`（由 title 生成简短 slug，同会话多文档须不同 slug）
-        - `planned_artifacts` 须为 **JSON 字符串**，路径均在同一子目录下（如 `'["/artifacts/tech-proposal/chapter-01-背景.md","/artifacts/tech-proposal/完整版.md"]'`）；方案门 **不再**使用 `open_questions`（澄清由上一工具完成）
-        - 用户确认后按章写入 `/artifacts/<doc-slug>/chapter-N-标题.md`，勿在 `/artifacts/` 根目录写 chapter；勿在聊天正文粘贴全文
-        - 全部章节完成后在同一子目录合并为 `/artifacts/<doc-slug>/完整版.md` 或用户指定文件名
-        - 流程/架构用 mermaid；公式用 LaTeX（$...$ 或 $$...$$）
-        - 交付时在回复中说明虚拟路径，便于工作台下载
-        - 完整步骤与质量标准见已加载的 /agent/AGENTS.md「长文档写作规范」
+        识别到长文档类任务时，严格遵循已注入的 /agent/AGENTS.md「长文档写作协作流程」三步：
+        - 按其「第一步」先与用户确认协作方式并用 `submit_clarifying_questions` 澄清需求
+        - 澄清后 `submit_document_plan` 提交标题、大纲、`planned_artifacts`（**JSON 字符串**，路径统一在 `/artifacts/<doc-slug>/` 子目录）；用户确认方案前禁止 write_file 到 `/artifacts/`
+        - 确认后按章写入 `/artifacts/<doc-slug>/chapter-N-标题.md`，最后合并为「完整版.md」
+        完整步骤、目录约定与质量标准以 AGENTS.md 为准，本处不复述。{orchestrator_pointer}
         """
 
 

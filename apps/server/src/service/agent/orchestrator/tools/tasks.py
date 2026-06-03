@@ -31,7 +31,12 @@ def update_task(
     cron: str | None = None,
     employee_id: int | None = None,
 ) -> str:
-    """修改已存在的子任务。参数均可选，只更新传入的非 None 字段。"""
+    """修改已存在的子任务。参数均可选，只更新传入的非 None 字段。
+
+    task_id 来自 create_orchestration_plan 返回的 tasks[].task_id（不是 employee_id / plan_id）。
+    cron：标准 5 段表达式「分 时 日 月 周」。如 "30 9 * * *"=每天 9:30；"*/10 * * * *"=每 10 分钟重复。
+    标准 cron **无法表达"仅一次"**——"33 14 * * *" 会每天 14:33 重复；只跑一次用 cron=null（confirm 后立即执行）。
+    """
     workspace_id = get_workspace_id()
     result = _update_task_with_fresh_session(
         workspace_id,
