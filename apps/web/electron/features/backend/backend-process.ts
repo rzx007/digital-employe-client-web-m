@@ -86,6 +86,38 @@ function buildProdBackendCommand(): { command: string[]; cwd: string } {
 }
 
 /**
+ * browserctl 环境注入：让 Agent 的 shell_execute 无需硬编码绝对路径即可调用。
+ *
+ * 后端 SkillAwareShellBackend(inherit_env=True) 会把本进程注入的 env 透传给每次
+ * shell_execute 子进程，故此处：
+ * - BROWSERCTL_PATH：CLI 入口绝对路径（fallback / 文档备用）
+ * - PATH 前置 wrapper 目录：使裸命令 `browserctl` 可用（bin/browserctl.cmd|browserctl）
+ *
+ * packaged：browserctl 经 electron-builder extraResources 打包到 resources/browserctl，
+ * 并用 Electron 自带 node 运行（BROWSERCTL_NODE=process.execPath + wrapper 设
+ * ELECTRON_RUN_AS_NODE=1），无需目标机器安装 node。
+ */
+function getBrowserctlEnv(): Record<string, string> {
+  const root = app.isPackaged
+    ? path.join(process.resourcesPath, "browserctl")
+    : path.join(process.env.APP_ROOT!, "..", "..", "packages", "browserctl")
+  const binDir = path.join(root, "bin")
+  const indexPath = path.join(root, "src", "index.js")
+  // Windows 上 process.env 的键名可能是 "Path"；覆盖原键避免大小写重复键歧义
+  const pathKey =
+    process.platform === "win32"
+      ? (Object.keys(process.env).find((k) => k.toUpperCase() === "PATH") ??
+        "Path")
+      : "PATH"
+  return {
+    BROWSERCTL_PATH: indexPath,
+    // wrapper 用此变量运行 CLI：packaged 用 Electron 自带 node（配合 ELECTRON_RUN_AS_NODE），dev 用系统 node
+    BROWSERCTL_NODE: app.isPackaged ? process.execPath : "node",
+    [pathKey]: `${binDir}${path.delimiter}${process.env[pathKey] ?? ""}`,
+  }
+}
+
+/**
  * 启动 Python 后端进程（内部使用 ManagedProcess）
  */
 export function startBackend(): Promise<void> {
@@ -137,6 +169,8 @@ export function startBackend(): Promise<void> {
       ...(process.env.AGENT_VIRTUAL_MODE === undefined
         ? { AGENT_VIRTUAL_MODE: "0" }
         : {}),
+      // browserctl 可调用性：注入 BROWSERCTL_PATH + 前置 wrapper 目录到 PATH
+      ...getBrowserctlEnv(),
     },
     onExit: (code, signal) => {
       log.info("process exit", { code, signal })

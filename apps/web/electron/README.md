@@ -67,6 +67,12 @@ electron/
 │   │   ├── manifest-schema.ts
 │   │   ├── ipc.ts
 │   │   └── preload-bridge.ts
+│   ├── browser/               # 聊天右栏内嵌浏览器（WebContentsView）
+│   │   ├── README.md          # 视口对齐与踩坑说明（必读）
+│   │   ├── window-controller.ts
+│   │   ├── viewport-bounds.ts
+│   │   ├── browser-http-bridge.ts
+│   │   └── …
 │   └── window/
 │       ├── ipc.ts
 │       └── preload-bridge.ts

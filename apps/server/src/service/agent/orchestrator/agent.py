@@ -219,7 +219,10 @@ def get_orchestrator_agent(
     )
     remember_memory_tool = create_remember_memory_tool(memories_dir)
 
-    orchestrator_tools: list = [shell_execute_tool, remember_memory_tool]
+    orchestrator_tools: list = [
+        shell_execute_tool,
+        remember_memory_tool,
+    ]
 
     session_flags = (
         get_session_flags(db, conversation_id) if conversation_id else {}

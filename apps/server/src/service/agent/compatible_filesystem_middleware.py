@@ -179,7 +179,7 @@ def _sanitize_message_for_openai_compatible(
                             "text": (
                                 f"[当前模型不支持图片理解"
                                 f"{' (' + path + ')' if path else ''}；"
-                                f"请在设置中切换到视觉模型（如 qwen-vl-max）后重试]"
+                                f"请在设置中切换到视觉模型后重试]"
                             ),
                         },
                     )

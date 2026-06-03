@@ -1,0 +1,159 @@
+import { create } from "zustand"
+
+import { getElectronApi } from "@/lib/electron/host"
+import { useArtifactStore } from "@/stores/artifact-store"
+import { useChatStore } from "@/stores/chat-store"
+import { useMonitorStore } from "@/stores/monitor-store"
+
+const MIN_WIDTH_RATIO = 0.3
+const MAX_WIDTH_RATIO = 0.8
+const DEFAULT_WIDTH_RATIO = 0.6
+
+interface BrowserState {
+  isOpen: boolean
+  currentUrl: string
+  currentTitle: string
+  widthRatio: number
+  isLoading: boolean
+  isMinimized: boolean
+  error: string | null
+
+  openBrowser: (url: string) => void
+  minimizeBrowser: () => void
+  restoreBrowser: () => void
+  destroyBrowser: () => void
+  navigate: (url: string) => void
+  refresh: () => void
+  setWidthRatio: (ratio: number) => void
+  setCurrentUrl: (url: string, title: string) => void
+  setLoading: (loading: boolean) => void
+  setError: (error: string | null) => void
+  reset: () => void
+}
+
+function clampRatio(value: number): number {
+  if (Number.isNaN(value)) return DEFAULT_WIDTH_RATIO
+  return Math.max(MIN_WIDTH_RATIO, Math.min(MAX_WIDTH_RATIO, value))
+}
+
+function closeOtherRightPanels() {
+  useMonitorStore.getState().closeMonitor()
+  useArtifactStore.getState().closeArtifact()
+  useChatStore.getState().closeConversationList()
+}
+
+function normalizeUrl(input: string): string {
+  const trimmed = input.trim()
+  if (!trimmed) return trimmed
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return `https://${trimmed}`
+}
+
+export const useBrowserStore = create<BrowserState>((set, get) => ({
+  isOpen: false,
+  currentUrl: "",
+  currentTitle: "",
+  widthRatio: DEFAULT_WIDTH_RATIO,
+  isLoading: false,
+  error: null,
+  isMinimized: false,
+
+  openBrowser: (url: string) => {
+    closeOtherRightPanels()
+    useChatStore.getState().setActiveTab("chat")
+
+    const api = getElectronApi()
+    if (!api?.browser) {
+      console.warn(
+        "[browser-store] window.electronApi.browser is missing — preload 可能未加载新版 (需要重启 Electron)"
+      )
+      return
+    }
+    const normalized = normalizeUrl(url)
+    set({
+      isOpen: true,
+      isMinimized: false,
+      currentUrl: normalized,
+      currentTitle: "",
+      isLoading: true,
+      error: null,
+    })
+    void api.browser.open(normalized)
+  },
+
+  minimizeBrowser: () => {
+    const api = getElectronApi()
+    void api?.browser.hide()
+    set({ isOpen: false, isMinimized: true, error: null })
+  },
+
+  restoreBrowser: () => {
+    const { currentUrl } = get()
+    if (!currentUrl) return
+    const api = getElectronApi()
+    if (!api?.browser) return
+    void api.browser.open(currentUrl)
+    set({ isOpen: true, isMinimized: false, isLoading: true, error: null })
+  },
+
+  destroyBrowser: () => {
+    const api = getElectronApi()
+    void api?.browser.close()
+    set({
+      isOpen: false,
+      isMinimized: false,
+      currentUrl: "",
+      currentTitle: "",
+      isLoading: false,
+      error: null,
+    })
+  },
+
+  navigate: (url: string) => {
+    const api = getElectronApi()
+    if (!api?.browser) return
+    const normalized = normalizeUrl(url)
+    void api.browser.navigate(normalized)
+    set({ currentUrl: normalized, isLoading: true, error: null })
+  },
+
+  refresh: () => {
+    const { currentUrl } = get()
+    if (!currentUrl) return
+    const api = getElectronApi()
+    if (!api?.browser) return
+    void api.browser.navigate(currentUrl)
+    set({ isLoading: true, error: null })
+  },
+
+  setWidthRatio: (ratio: number) => {
+    const clamped = clampRatio(ratio)
+    set({ widthRatio: clamped })
+    const api = getElectronApi()
+    if (!api?.browser) return
+    void api.browser.resize(clamped)
+  },
+
+  setCurrentUrl: (url: string, title: string) => {
+    set({ currentUrl: url, currentTitle: title, isLoading: false })
+  },
+
+  setLoading: (loading: boolean) => {
+    set({ isLoading: loading })
+  },
+
+  setError: (error: string | null) => {
+    set({ error, isLoading: false })
+  },
+
+  reset: () => {
+    set({
+      isOpen: false,
+      isMinimized: false,
+      currentUrl: "",
+      currentTitle: "",
+      isLoading: false,
+      error: null,
+    })
+  },
+}))

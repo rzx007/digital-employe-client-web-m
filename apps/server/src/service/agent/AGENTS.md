@@ -15,6 +15,7 @@
 ## 复杂分析问题规划
 
 针对复杂分析类问题：
+
 1. 使用 `write_todos` 工具拆解任务步骤
 2. 列出需要查阅的数据表
 3. 规划 SQL 查询结构
@@ -67,17 +68,20 @@
 ### 第二步：大纲确认与分章写作（Refinement & Structure）
 
 #### 规划
+
 1. 先用 `write_todos` 拆解文档结构（章节、附录、图表等）
 2. 关键信息不足时**要先** `submit_clarifying_questions`，完成后再进方案门
 3. 澄清完成后 **调用 `submit_document_plan`** 提交标题、大纲（outline）、计划产物路径（planned_artifacts）
 4. **用户确认方案前**，禁止 write_file / edit_file 到 `/artifacts/`（含任务子目录下任何文件）
 
 #### 产物目录（每次长文档任务单独子目录）
+
 - 根据 **title** 在 `submit_document_plan` 中生成 `<doc-slug>`（简短英文/拼音/数字，小写，连字符分隔）
 - **同一次长文档任务**内，分章与终稿均写在 `/artifacts/<doc-slug>/` 下
 - 同一会话若有多份长文档，须用**不同** `<doc-slug>`
 
 #### 逐章写作
+
 1. **澄清** — 每章开始前简要询问是否有特定内容需要包含（对话中提问，不用工具）
 2. **Brainstorm** — 为本章建议 5-15 个可能包含的要点
 3. **筛选** — 请用户选择保留/删除/合并哪些要点
@@ -86,6 +90,7 @@
 6. **完成** — 连续 3 次迭代无实质更改后，询问是否可删除一些内容而不损失价值
 
 #### 质量标准
+
 - 章节间用 `## 标题` 分隔，保持 Markdown 标题层级一致
 - 复杂流程/架构使用 mermaid 图表（flowchart、sequenceDiagram 等）
 - 涉及数据计算/公式的场景使用 LaTeX 数学公式（$...$ 或 $$...$$）
@@ -95,12 +100,14 @@
 - 引用外部资料时注明来源
 
 #### 方案确认（HITL）
+
 - `submit_document_plan` 会触发用户确认门：approve / reject / edit
 - **同一次长文档任务**：澄清门与方案门各 interrupt 一次；approve/edit 后**直接分章 write_file**，**不得**再次 submit
 - 仅当 **reject 方案** 并说明如何改时，才修订 outline 后再次 submit
 - `planned_artifacts` 须为 **JSON 字符串**，路径均在 `/artifacts/<doc-slug>/` 下；**不再**在方案门使用 `open_questions`
 
 #### 合并与交付
+
 - 所有章节完成后，在同一子目录合并为 `/artifacts/<doc-slug>/完整版.md`
 - 合并前快速检查：各章节是否有重复、矛盾、遗漏
 - 回复中给出**虚拟路径**，便于用户在工作台下载
@@ -117,6 +124,7 @@
 4. **最终确认** — 告知用户虚拟路径，建议最终通读一遍确认事实、链接和技术细节无误
 
 ### 边界
+
 - 用户交付物写入 `/artifacts/`，跨会话记忆写入 `/memories/`，二者不要混用
 - 产物目录由 `submit_document_plan` 的 title 字段确定 slug；slug 生成后在本任务内保持不变
 - 同一会话中有多个不同文档时，各自用独立 slug，不互相覆盖

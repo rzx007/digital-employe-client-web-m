@@ -26,6 +26,16 @@
         "!logs/**",
         "!tmp/**"
       ]
+    },
+    {
+      // browserctl CLI（resources/browserctl），用 Electron 自带 node 运行
+      "from": "../../packages/browserctl",
+      "to": "browserctl",
+      "filter": [
+        "src/**",
+        "bin/**",
+        "package.json"
+      ]
     }
   ],
   "afterPack": "../../scripts/afterPack.js",

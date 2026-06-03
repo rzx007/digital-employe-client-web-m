@@ -1,0 +1,415 @@
+import type { WebContents } from "electron"
+
+import { rootLogger as logger } from "../../core/logger"
+import { buildRefs } from "./ax-tree"
+import type { AxNode, RefNode } from "./ax-tree"
+
+export type { RefNode }
+
+export interface CdpResult<T = unknown> {
+  ok: boolean
+  data?: T
+  error?: string
+}
+
+export class BrowserDebuggerController {
+  private wc: WebContents | null = null
+  private attached = false
+  private refCache: RefNode[] = []
+
+  attach(webContents: WebContents): boolean {
+    if (webContents.isDestroyed()) return false
+    if (this.attached && this.wc === webContents) return true
+    this.detach()
+    try {
+      if (webContents.debugger.isAttached()) {
+        webContents.debugger.detach()
+      }
+      webContents.debugger.attach("1.3")
+      this.wc = webContents
+      this.attached = true
+      return true
+    } catch (err) {
+      logger.warn("[browser-debugger] attach failed", {
+        error: String(err),
+      })
+      return false
+    }
+  }
+
+  detach(): void {
+    if (this.attached && this.wc && !this.wc.isDestroyed()) {
+      try {
+        if (this.wc.debugger.isAttached()) {
+          this.wc.debugger.detach()
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    this.attached = false
+    this.wc = null
+    this.refCache = []
+  }
+
+  isAttached(): boolean {
+    return (
+      this.attached &&
+      this.wc !== null &&
+      !this.wc.isDestroyed() &&
+      this.wc.debugger.isAttached()
+    )
+  }
+
+  private async sendCommand(
+    method: string,
+    params: Record<string, unknown> = {}
+  ): Promise<unknown> {
+    if (!this.isAttached() || !this.wc) {
+      throw new Error("BROWSER_UNAVAILABLE")
+    }
+    return this.wc.debugger.sendCommand(method, params)
+  }
+
+  async navigate(url: string): Promise<CdpResult<{ url: string; title: string }>> {
+    try {
+      await this.sendCommand("Page.enable")
+      await this.sendCommand("Page.navigate", { url })
+      await this.waitForLoadComplete(30_000)
+      const title = await this.getTitle()
+      return { ok: true, data: { url, title } }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  }
+
+  async snapshot(maxNodes = 200): Promise<CdpResult<{ refs: RefNode[] }>> {
+    try {
+      // Chromium 的 a11y tree 惰性构建：未 enable 时纯客户端 SPA 只返回退化的
+      // RootWebArea（无子节点）。enable 后 renderer 异步重建树，立即取会拿到旧的空树，
+      // 故轮询直到 RootWebArea 暴露子节点或超时。
+      await this.sendCommand("Accessibility.enable")
+      let nodes: unknown[] = []
+      let rootChildCount = 0
+      const deadline = Date.now() + 3000
+      for (;;) {
+        const result = (await this.sendCommand(
+          "Accessibility.getFullAXTree"
+        )) as { nodes?: unknown[] }
+        nodes = result.nodes ?? []
+        const root = nodes.find(
+          (n) => (n as AxNode).role?.value === "RootWebArea"
+        ) as AxNode | undefined
+        rootChildCount = root?.childIds?.length ?? 0
+        if (rootChildCount > 0 || Date.now() >= deadline) break
+        await new Promise((r) => setTimeout(r, 150))
+      }
+      const refs = buildRefs(nodes, maxNodes)
+      this.refCache = refs
+      // 诊断：若 rawNodes<=1/rootChildCount=0 仍空，则非时序问题（iframe/无语义/canvas）
+      logger.info("[browser-debugger] snapshot", {
+        rawNodes: nodes.length,
+        rootChildCount,
+        refs: refs.length,
+      })
+      return { ok: true, data: { refs } }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  }
+
+  async click(refOrSelector: string): Promise<CdpResult> {
+    try {
+      const nodeInfo = await this.resolveNode(refOrSelector)
+      if (!nodeInfo) return { ok: false, error: "ELEMENT_NOT_FOUND" }
+
+      const { x, y } = nodeInfo.center
+      await this.sendCommand("Input.dispatchMouseEvent", {
+        type: "mousePressed",
+        x,
+        y,
+        button: "left",
+        clickCount: 1,
+      })
+      await this.sendCommand("Input.dispatchMouseEvent", {
+        type: "mouseReleased",
+        x,
+        y,
+        button: "left",
+        clickCount: 1,
+      })
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  }
+
+  async fill(refOrSelector: string, text: string): Promise<CdpResult> {
+    try {
+      const nodeInfo = await this.resolveNode(refOrSelector)
+      if (!nodeInfo) return { ok: false, error: "ELEMENT_NOT_FOUND" }
+
+      const { x, y } = nodeInfo.center
+      await this.sendCommand("Input.dispatchMouseEvent", {
+        type: "mousePressed",
+        x,
+        y,
+        button: "left",
+        clickCount: 1,
+      })
+      await this.sendCommand("Input.dispatchMouseEvent", {
+        type: "mouseReleased",
+        x,
+        y,
+        button: "left",
+        clickCount: 1,
+      })
+
+      // 可靠清空：Ctrl+A 在自定义/受控组件上常失效，导致 fill 变成追加拼接。
+      // 改用 JS 直接清空 value 并派发 input 事件（React/Vue 受控组件友好）。
+      await this.clearElement(refOrSelector, nodeInfo.backendNodeId)
+
+      for (const char of text) {
+        await this.sendCommand("Input.dispatchKeyEvent", {
+          type: "char",
+          text: char,
+        })
+      }
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  }
+
+  /**
+   * 清空输入框内容。Ctrl+A 全选在很多受控/自定义组件上不可靠，故直接用 JS：
+   * 通过原型 value setter 置空并派发 input 事件，让 React/Vue 等框架同步状态。
+   * @eN 走 DOM.resolveNode → callFunctionOn；selector 走 Runtime.evaluate。
+   * 清空失败不抛错（退化为追加，但不中断 fill）。
+   */
+  private async clearElement(
+    refOrSelector: string,
+    backendNodeId: number
+  ): Promise<void> {
+    const clearBody = `
+      el.focus();
+      const tag = el.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') {
+        const proto = tag === 'TEXTAREA'
+          ? window.HTMLTextAreaElement.prototype
+          : window.HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+        setter.call(el, '');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      } else if (el.isContentEditable) {
+        el.textContent = '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    `
+    try {
+      if (backendNodeId) {
+        const resolved = (await this.sendCommand("DOM.resolveNode", {
+          backendNodeId,
+        })) as { object?: { objectId?: string } }
+        const objectId = resolved.object?.objectId
+        if (!objectId) return
+        await this.sendCommand("Runtime.callFunctionOn", {
+          objectId,
+          functionDeclaration: `function() { const el = this; ${clearBody} }`,
+        })
+      } else {
+        const escaped = refOrSelector
+          .replace(/\\/g, "\\\\")
+          .replace(/'/g, "\\'")
+        await this.sendCommand("Runtime.evaluate", {
+          expression: `(() => { const el = document.querySelector('${escaped}'); if (!el) return; ${clearBody} })()`,
+        })
+      }
+    } catch {
+      /* 清空失败不阻断后续输入 */
+    }
+  }
+
+  /** 等待页面 readyState=complete；超时返回 ok:false（调用方可选择忽略） */
+  async waitForReady(timeoutMs = 10_000): Promise<CdpResult> {
+    try {
+      await this.waitForLoadComplete(timeoutMs)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  }
+
+  /**
+   * 轮询等待条件满足：
+   * - selector：document.querySelector 命中
+   * - text：document.body.innerText 包含
+   * - 都不传：等待 readyState=complete
+   * 用 JSON.stringify 安全转义，避免引号/特殊字符注入。
+   */
+  async waitFor(opts: {
+    selector?: string
+    text?: string
+    timeoutMs?: number
+  }): Promise<CdpResult<{ matched: boolean; waitedMs: number }>> {
+    const timeoutMs = opts.timeoutMs ?? 10_000
+    const expression = opts.selector
+      ? `!!document.querySelector(${JSON.stringify(opts.selector)})`
+      : opts.text
+        ? `(document.body?.innerText || "").includes(${JSON.stringify(opts.text)})`
+        : `document.readyState === "complete"`
+    const start = Date.now()
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const r = (await this.sendCommand("Runtime.evaluate", {
+          expression,
+          returnByValue: true,
+        })) as { result?: { value?: boolean } }
+        if (r.result?.value === true) {
+          return { ok: true, data: { matched: true, waitedMs: Date.now() - start } }
+        }
+      } catch {
+        /* retry until timeout */
+      }
+      await new Promise((r) => setTimeout(r, 200))
+    }
+    return { ok: false, error: "TIMEOUT" }
+  }
+
+  async extractText(): Promise<CdpResult<{ text: string }>> {
+    try {
+      const result = (await this.sendCommand("Runtime.evaluate", {
+        expression: "document.body?.innerText || ''",
+        returnByValue: true,
+      })) as { result?: { value?: string } }
+      return { ok: true, data: { text: result.result?.value ?? "" } }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  }
+
+  async screenshot(): Promise<CdpResult<{ base64: string }>> {
+    try {
+      const result = (await this.sendCommand("Page.captureScreenshot", {
+        format: "png",
+      })) as { data?: string }
+      return { ok: true, data: { base64: result.data ?? "" } }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  }
+
+  async getUrl(): Promise<CdpResult<{ url: string }>> {
+    try {
+      if (this.wc && !this.wc.isDestroyed()) {
+        return { ok: true, data: { url: this.wc.getURL() } }
+      }
+      const result = (await this.sendCommand("Runtime.evaluate", {
+        expression: "window.location.href",
+        returnByValue: true,
+      })) as { result?: { value?: string } }
+      return { ok: true, data: { url: result.result?.value ?? "" } }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  }
+
+  async getTitle(): Promise<string> {
+    try {
+      if (this.wc && !this.wc.isDestroyed()) {
+        return this.wc.getTitle()
+      }
+      const result = (await this.sendCommand("Runtime.evaluate", {
+        expression: "document.title",
+        returnByValue: true,
+      })) as { result?: { value?: string } }
+      return result.result?.value ?? ""
+    } catch {
+      return ""
+    }
+  }
+
+  getWebContents(): WebContents | null {
+    return this.wc && !this.wc.isDestroyed() ? this.wc : null
+  }
+
+  private async waitForLoadComplete(timeoutMs: number): Promise<void> {
+    const start = Date.now()
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const r = (await this.sendCommand("Runtime.evaluate", {
+          expression: "document.readyState",
+          returnByValue: true,
+        })) as { result?: { value?: string } }
+        if (r.result?.value === "complete") return
+      } catch {
+        /* retry */
+      }
+      await new Promise((r) => setTimeout(r, 200))
+    }
+    throw new Error("TIMEOUT")
+  }
+
+  private async resolveNode(
+    refOrSelector: string
+  ): Promise<{ backendNodeId: number; center: { x: number; y: number } } | null> {
+    if (refOrSelector.startsWith("@e")) {
+      let found = this.refCache.find((r) => r.ref === refOrSelector)
+      if (!found) {
+        const snap = await this.snapshot()
+        if (!snap.ok || !snap.data) return null
+        found = snap.data.refs.find((r) => r.ref === refOrSelector)
+      }
+      if (!found) return null
+      const bbox = await this.getBbox(found.backendNodeId)
+      if (!bbox) return null
+      return { backendNodeId: found.backendNodeId, center: bbox.center }
+    }
+
+    const escaped = refOrSelector.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+    const evalResult = (await this.sendCommand("Runtime.evaluate", {
+      expression: `(() => {
+        const el = document.querySelector('${escaped}')
+        if (!el) return null
+        const r = el.getBoundingClientRect()
+        return { x: r.x + r.width/2, y: r.y + r.height/2 }
+      })()`,
+      returnByValue: true,
+    })) as { result?: { value?: { x: number; y: number } | null } }
+    const val = evalResult.result?.value
+    if (!val) return null
+    return { backendNodeId: 0, center: { x: val.x, y: val.y } }
+  }
+
+  private async getBbox(
+    backendNodeId: number
+  ): Promise<{ center: { x: number; y: number } } | null> {
+    if (!backendNodeId) return null
+    try {
+      const dom = (await this.sendCommand("DOM.getBoxModel", {
+        backendNodeId,
+      })) as { model?: { content?: number[] } }
+      const content = dom.model?.content
+      if (!content || content.length < 8) return null
+      const xs = [content[0], content[2], content[4], content[6]]
+      const ys = [content[1], content[3], content[5], content[7]]
+      return {
+        center: {
+          x: (Math.min(...xs) + Math.max(...xs)) / 2,
+          y: (Math.min(...ys) + Math.max(...ys)) / 2,
+        },
+      }
+    } catch {
+      return null
+    }
+  }
+}
+
+let debuggerController: BrowserDebuggerController | null = null
+
+export function getBrowserDebuggerController(): BrowserDebuggerController {
+  if (!debuggerController) {
+    debuggerController = new BrowserDebuggerController()
+  }
+  return debuggerController
+}

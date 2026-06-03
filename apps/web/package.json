@@ -1,6 +1,6 @@
 {
   "name": "digital-employee",
-  "version": "0.0.58",
+  "version": "0.0.59",
   "description": "数字员工客户端",
   "homepage": "https://digital-employee.app",
   "author": {
@@ -19,6 +19,8 @@
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test electron/**/*.test.ts",
+    "test:unit": "vitest run",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -93,6 +95,7 @@
     "typescript-eslint": "^8.54.0",
     "vite": "^7.2.4",
     "vite-plugin-electron": "^0.29.1",
-    "vite-plugin-electron-renderer": "^0.14.6"
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "vitest": "^4.1.8"
   }
 }

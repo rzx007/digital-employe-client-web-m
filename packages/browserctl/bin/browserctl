@@ -1,0 +1,5 @@
+#!/bin/sh
+# browserctl POSIX wrapper：转发到 CLI 入口
+# BROWSERCTL_NODE 由 Electron 注入：packaged 为 Electron 可执行（配合 ELECTRON_RUN_AS_NODE），dev 为系统 node
+NODE_BIN="${BROWSERCTL_NODE:-node}"
+ELECTRON_RUN_AS_NODE=1 exec "$NODE_BIN" "$(dirname "$0")/../src/index.js" "$@"
