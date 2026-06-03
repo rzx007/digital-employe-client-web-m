@@ -511,6 +511,7 @@ Expected: 仅既有的 `resolve-workbench-curator-panel.test.ts` 预存在失败
 | 流式中切走 → 切回 | 不被 hydrate 覆盖，内容连续 |
 | 流式中点停止 | 立即停，streamState=cancelled，不残留 resume |
 | 进入一个 DB 里 streaming 状态的会话 | 自动 GET /resume 续流一次（不重复） |
+| **【重点·最终评审标记】** HITL 中断 → 切走 → 切回；以及流式中点停止 | 审批卡只出现一次、不被重复 seed（seed effect 现对 `machine.active` 响应式，需确认 active 翻转不会重复弹卡）|
 
 - [ ] **Step 6: Commit**
 ```bash
