@@ -408,6 +408,31 @@ class ChatService:
         return payload, last_input_tokens
 
     @staticmethod
+    def _select_head_tail(
+        messages: list[dict[str, Any]],
+        limit: int,
+        keep_head: int = 4,
+    ) -> list[dict[str, Any]]:
+        """历史超限时：保留最早 keep_head 条 + 最近 (limit-keep_head) 条，丢弃中间。
+
+        取代旧的"减半重载只留最近一半"——后者丢掉最早几条会使 [system][早段 history]
+        的前缀起点整体平移、KV-cache 失效。保头让前缀更稳，同时保住任务锚点（最早的
+        目标/设定）。注：语义压缩中间段由 SummarizationMiddleware 在 token 阈值另行处理；
+        本函数只做计数级安全截断。
+        """
+        if limit <= 0:
+            return []
+        if len(messages) <= limit:
+            return messages
+        keep_head = max(0, min(keep_head, limit))
+        keep_tail = limit - keep_head
+        if keep_head == 0:
+            return messages[-keep_tail:]
+        if keep_tail <= 0:
+            return messages[:limit]
+        return messages[:keep_head] + messages[-keep_tail:]
+
+    @staticmethod
     def _resolve_effective_history_limit(
         settings,
         last_input_tokens: int | None,
@@ -519,14 +544,15 @@ class ChatService:
             settings,
             last_input_tokens,
         )
-        if effective_limit < history_limit:
-            history_messages, last_input_tokens = ChatService._load_history_for_agent(
-                db,
-                conversation_id=conversation_id,
-                limit=effective_limit,
+        if effective_limit < len(history_messages):
+            # 保头+保尾、压中间：不再"减半重载"丢最早几条（那会平移前缀起点、砸 KV-cache），
+            # 改为保留已加载窗口最早几条 + 最近若干条；前缀更稳且保住任务锚点。
+            # 直接在已加载窗口上切片，省掉一次 DB 重查。
+            history_messages = ChatService._select_head_tail(
+                history_messages, effective_limit
             )
             logger.info(
-                "conv=%s history pre-truncated limit %s -> %s (last_input_tokens=%s)",
+                "conv=%s history head+tail truncated %s -> %s (last_input_tokens=%s)",
                 conversation_id,
                 history_limit,
                 effective_limit,
