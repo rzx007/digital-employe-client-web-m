@@ -6,6 +6,19 @@ import { QueryClient } from "@tanstack/react-query"
 import type { Message } from "@/types/chat"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 
+// 集成测试与网络隔离：底层 HTTP 走 ofetch（@/lib/request），整模块 mock 掉，
+// 避免 happy-dom 下杂散请求产生 ECONNREFUSED 未处理拒绝污染输出 / 变脆。
+// 工厂会被 hoist，内部不得引用外部变量。
+vi.mock("ofetch", () => {
+  const blocked = () => Promise.reject(new Error("network disabled in test"))
+  const fn = Object.assign(blocked, {
+    create: () => fn,
+    raw: blocked,
+    native: blocked,
+  })
+  return { ofetch: fn, $fetch: fn, createFetch: () => fn }
+})
+
 import { useConversationSession } from "./use-conversation-session"
 
 const CONV_ID = 339
