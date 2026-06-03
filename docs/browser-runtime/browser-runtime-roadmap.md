@@ -1,8 +1,9 @@
 # browser-runtime 复盘与后续计划
 
 > 最后更新：2026-06-03  
+> 目录索引：[README.md](./README.md) ｜ 能力待办：[capability-gaps.md](./capability-gaps.md)  
 > 关联调研：[agent-browser-research.md](./agent-browser-research.md)  
-> 架构入口：[apps/web/electron/features/browser/README.md](../apps/web/electron/features/browser/README.md)
+> 架构入口：[apps/web/electron/features/browser/README.md](../../apps/web/electron/features/browser/README.md)
 
 ---
 
@@ -166,6 +167,16 @@ CLI 客户端另有一处小缺陷：`requestJson` 未设 socket timeout（`pack
 `active_model_supports_vision()`（`llm/vision.py`）基于 `settings.deepagent_model` **名称正则**判断（白名单：`qwen-vl` / `glm-4v` / `gpt-4o` / `claude-3.x` / `gemini-*-pro|flash` / 含 `vision` 等）。
 
 **结论**：截图看不了 = 当前员工配的是非视觉模型。**解决：把该员工模型切到视觉模型**（如 `qwen-vl-max`）。无需改代码；链路本身正确且含友好降级。
+
+### 3.10 已修复：fill 追加拼接（多次 fill 内容串成乱码）
+
+**现象**：某登录页（`/web/digital/#/kanban`）账号/密码经常错。实测是 `fill` **追加模式**——每次 fill 在原内容后拼接，多次调用后变成 `Aab1b2a3d4m5i6nbba…`。
+
+**根因**：`fill` 原实现是 click → **Ctrl+A 全选** → 逐字符输入，依赖"全选后输入替换选中"。该页输入框（受控/自定义组件）对 Ctrl+A 不响应、或输入不替换选中，于是每次 fill 都追加。
+
+**修复**（`browser-debugger-controller.ts`）：用 JS 可靠清空替代 Ctrl+A——通过原型 `value` setter 置空并派发 `input` 事件（React/Vue 受控友好）；`@eN` 走 `DOM.resolveNode`+`callFunctionOn`，selector 走 `Runtime.evaluate`；清空失败不阻断输入。
+
+**待验证**：在该页对同一输入框连续 `fill` 两次，确认第二次是覆盖而非追加。
 
 ---
 

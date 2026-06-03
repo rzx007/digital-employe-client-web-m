@@ -13,7 +13,7 @@
 > - **Electron HTTP bridge** `127.0.0.1:34555`（TypeScript `browser-http-bridge.ts`），复用 Electron 自带 Chromium + CDP
 > - Agent 经 `shell_execute` 调用 `browserctl`，**已无 Python `browser_*` @tool / `BrowserRuntimeClient` / FastAPI browser 路由**
 >
-> **权威文档**：[browser-runtime SKILL](../apps/server/build-in-skills/browser-runtime/SKILL.md) · [reference](../apps/server/build-in-skills/browser-runtime/reference.md) · [browserctl README](../packages/browserctl/README.md) · [roadmap](./browser-runtime-roadmap.md)
+> **权威文档**：[browser-runtime SKILL](../../apps/server/build-in-skills/browser-runtime/SKILL.md) · [reference](../../apps/server/build-in-skills/browser-runtime/reference.md) · [browserctl README](../../packages/browserctl/README.md) · [roadmap](./browser-runtime-roadmap.md)
 >
 > **过时章节（仅作设计背景历史记录）**：2.1–2.6（架构图 / IPC / @tool 清单 / 数据流的 Python 部分）、3.x（实施阶段）、4（文件改动总览）、5（依赖打包）、7.1（Python 测试脚本）、9.1（代码位置）。
 > **仍大体有效**：1（问题陈述 / 痛点 / 目标）、2.7（HITL 与安全护栏）、6（风险与缓解）。
@@ -236,7 +236,7 @@ apps/server/build-in-skills/
 
 ### 2.5 7 个 @tool 工具清单
 
-> ⚠️ **已废弃**：这 7 个 Python `browser_*` @tool 从未实现/已移除。等价能力现由 `browserctl` 子命令提供：`health` / `open|navigate` / `snapshot [--tree|--interactive]` / `click` / `fill [--text-file|--text-stdin]` / `wait` / `get` / `extract-text` / `screenshot` / `close`。详见 [browserctl reference](../apps/server/build-in-skills/browser-runtime/reference.md)。
+> ⚠️ **已废弃**：这 7 个 Python `browser_*` @tool 从未实现/已移除。等价能力现由 `browserctl` 子命令提供：`health` / `open|navigate` / `snapshot [--tree|--interactive]` / `click` / `fill [--text-file|--text-stdin]` / `wait` / `get` / `extract-text` / `screenshot` / `close`。详见 [browserctl reference](../../apps/server/build-in-skills/browser-runtime/reference.md)。
 
 | @tool 名 | 入参 | 行为 | 失败模式 |
 |----------|------|------|----------|

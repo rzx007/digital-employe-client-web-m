@@ -59,7 +59,7 @@ agent-browser 采用 **「薄 Skill stub + CLI 动态文档」** 两层结构。
 
 ### 3.1 仓库内：discovery stub
 
-项目内示例见 [`.agents/skills/agent-browser/SKILL.md`](../.agents/skills/agent-browser/SKILL.md)（约 50 行）：
+项目内示例见 [`.agents/skills/agent-browser/SKILL.md`](../../.agents/skills/agent-browser/SKILL.md)（约 50 行）：
 
 - 安装说明
 - **真正工作流从 CLI 拉取**：`agent-browser skills get core`
@@ -98,7 +98,7 @@ agent-browser skills path [name]
 - `--json` 返回结构化 `{ snapshot, refs }`
 - **页面变化后必须重新 snapshot**，旧 ref 失效
 
-与数字员工现状：[`browser-debugger-controller.ts`](../apps/web/electron/features/browser/browser-debugger-controller.ts) 已用 `Accessibility.getFullAXTree` 生成 `@eN`，模型一致。
+与数字员工现状：[`browser-debugger-controller.ts`](../../apps/web/electron/features/browser/browser-debugger-controller.ts) 已用 `Accessibility.getFullAXTree` 生成 `@eN`，模型一致。
 
 ### 4.2 操作：ref 与选择器
 
@@ -151,7 +151,7 @@ agent-browser --auto-connect open example.com
 |--|---------------|-------------------|
 | 浏览器实例 | 独立 Chromium / 云浏览器 | 主窗口 **WebContentsView** |
 | UI | headless 或 `--headed` 另窗 | **右栏面板** + 视口 sync |
-| HITL | CLI `--confirm-*` / policy | React 确认 + [`requestBrowserConfirmation`](../apps/web/electron/features/browser/browser-http-bridge.ts) |
+| HITL | CLI `--confirm-*` / policy | React 确认 + [`requestBrowserConfirmation`](../../apps/web/electron/features/browser/browser-http-bridge.ts) |
 | 调用链 | Shell → daemon → CDP | Skill → `shell_execute` → **HTTP 127.0.0.1:34555** → 主进程 |
 
 **结论**：不要用 agent-browser 替换内嵌面板；学 **CLI + Skill + ref 工作流**，runtime 仍绑自有 Electron。
@@ -169,7 +169,7 @@ README 推荐三种：
 数字员工对应：
 
 - 基础 Skill：`build-in-skills/browser-runtime`
-- 执行：`shell_execute` + `browserctl`（已有 [`employee.py`](../apps/server/src/service/agent/employee.py) shell 工具）
+- 执行：`shell_execute` + `browserctl`（已有 [`employee.py`](../../apps/server/src/service/agent/employee.py) shell 工具）
 - **删除** `create_browser_tools()`，能力靠 **员工分配 Skill**
 
 ---
@@ -195,12 +195,12 @@ README 推荐三种：
 
 | agent-browser 能力 | 数字员工现状 | 缺口 |
 |--------------------|--------------|------|
-| `@eN` + a11y snapshot | [`browser-debugger-controller.ts`](../apps/web/electron/features/browser/browser-debugger-controller.ts) | snapshot 过滤选项（-i/-c/-d）可增强 |
+| `@eN` + a11y snapshot | [`browser-debugger-controller.ts`](../../apps/web/electron/features/browser/browser-debugger-controller.ts) | snapshot 过滤选项（-i/-c/-d）可增强 |
 | CSS selector | 支持 | — |
 | `find role/text/label` | 无 | 可后期加 |
 | `wait networkidle` | navigate 内部分等待 | 可独立 wait 命令 |
-| HTTP bridge | [`browser-http-bridge.ts`](../apps/web/electron/features/browser/browser-http-bridge.ts) `:34555` | 加 `/health`、统一 envelope |
-| Python `browser_*` tools | [`browser_tool.py`](../apps/server/src/service/agent/browser_tool.py) | **计划删除** |
+| HTTP bridge | [`browser-http-bridge.ts`](../../apps/web/electron/features/browser/browser-http-bridge.ts) `:34555` | 加 `/health`、统一 envelope |
+| Python `browser_*` tools | [`browser_tool.py`](../../apps/server/src/service/agent/browser_tool.py) | **计划删除** |
 | `batch` / daemon | 无 | **browserctl batch + rpc --stdio** |
 | 多 session | 仅 `default` | 可按对话扩展 session id |
 | 连接外部 Electron CDP | agent-browser 支持 | **不需要**（内嵌 runtime） |
@@ -219,7 +219,7 @@ README 推荐三种：
 
 ### 9.2 必须保留的产品差异
 
-1. 导航时 `browser:request-open` + 视口 layout（[`handleNavigate`](../apps/web/electron/features/browser/browser-http-bridge.ts)）
+1. 导航时 `browser:request-open` + 视口 layout（[`handleNavigate`](../../apps/web/electron/features/browser/browser-http-bridge.ts)）
 2. 右栏生命周期（最小化 / 关闭确认 / 切会话 `destroyBrowser`）
 3. HITL 走桌面 UI，非纯 TTY
 4. Bridge 仅 `127.0.0.1`，与桌面端同机
@@ -274,4 +274,4 @@ apps/server/build-in-skills/browser-runtime/
 - 文档站：https://agent-browser.dev/  
 - Skills 安装：`npx skills add vercel-labs/agent-browser`  
 - 本项目内嵌浏览器 PRD：[embedded-browser-panel-prd.md](./embedded-browser-panel-prd.md)  
-- Electron 浏览器实现说明：[apps/web/electron/features/browser/README.md](../apps/web/electron/features/browser/README.md)
+- Electron 浏览器实现说明：[apps/web/electron/features/browser/README.md](../../apps/web/electron/features/browser/README.md)

@@ -165,19 +165,9 @@ export class BrowserDebuggerController {
         clickCount: 1,
       })
 
-      const mod = process.platform === "darwin" ? 4 : 2
-      await this.sendCommand("Input.dispatchKeyEvent", {
-        type: "keyDown",
-        key: "a",
-        code: "KeyA",
-        modifiers: mod,
-      })
-      await this.sendCommand("Input.dispatchKeyEvent", {
-        type: "keyUp",
-        key: "a",
-        code: "KeyA",
-        modifiers: mod,
-      })
+      // 可靠清空：Ctrl+A 在自定义/受控组件上常失效，导致 fill 变成追加拼接。
+      // 改用 JS 直接清空 value 并派发 input 事件（React/Vue 受控组件友好）。
+      await this.clearElement(refOrSelector, nodeInfo.backendNodeId)
 
       for (const char of text) {
         await this.sendCommand("Input.dispatchKeyEvent", {
@@ -188,6 +178,55 @@ export class BrowserDebuggerController {
       return { ok: true }
     } catch (e) {
       return { ok: false, error: (e as Error).message }
+    }
+  }
+
+  /**
+   * 清空输入框内容。Ctrl+A 全选在很多受控/自定义组件上不可靠，故直接用 JS：
+   * 通过原型 value setter 置空并派发 input 事件，让 React/Vue 等框架同步状态。
+   * @eN 走 DOM.resolveNode → callFunctionOn；selector 走 Runtime.evaluate。
+   * 清空失败不抛错（退化为追加，但不中断 fill）。
+   */
+  private async clearElement(
+    refOrSelector: string,
+    backendNodeId: number
+  ): Promise<void> {
+    const clearBody = `
+      el.focus();
+      const tag = el.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') {
+        const proto = tag === 'TEXTAREA'
+          ? window.HTMLTextAreaElement.prototype
+          : window.HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+        setter.call(el, '');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      } else if (el.isContentEditable) {
+        el.textContent = '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    `
+    try {
+      if (backendNodeId) {
+        const resolved = (await this.sendCommand("DOM.resolveNode", {
+          backendNodeId,
+        })) as { object?: { objectId?: string } }
+        const objectId = resolved.object?.objectId
+        if (!objectId) return
+        await this.sendCommand("Runtime.callFunctionOn", {
+          objectId,
+          functionDeclaration: `function() { const el = this; ${clearBody} }`,
+        })
+      } else {
+        const escaped = refOrSelector
+          .replace(/\\/g, "\\\\")
+          .replace(/'/g, "\\'")
+        await this.sendCommand("Runtime.evaluate", {
+          expression: `(() => { const el = document.querySelector('${escaped}'); if (!el) return; ${clearBody} })()`,
+        })
+      }
+    } catch {
+      /* 清空失败不阻断后续输入 */
     }
   }
 

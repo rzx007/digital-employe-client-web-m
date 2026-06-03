@@ -61,7 +61,7 @@ isProject: false
 
 # browser-runtime 复盘与后续计划
 
-> 仓库内详细版：[docs/browser-runtime-roadmap.md](docs/browser-runtime-roadmap.md)
+> 仓库内详细版：[docs/browser-runtime/browser-runtime-roadmap.md](docs/browser-runtime/browser-runtime-roadmap.md)
 
 ## 复盘摘要（2026-06-03）
 
@@ -72,7 +72,7 @@ isProject: false
 - [`apps/server/build-in-skills/browser-runtime/`](apps/server/build-in-skills/browser-runtime/)
 - Electron bridge：`/internal/browser/health`、响应 envelope
 - 删除 `browser_tool`、`browser_runtime_client`、`http_routes` 等
-- 调研文档：[docs/agent-browser-research.md](docs/agent-browser-research.md)
+- 调研文档：[docs/browser-runtime/agent-browser-research.md](docs/browser-runtime/agent-browser-research.md)
 
 ### 关键认知
 
@@ -125,7 +125,7 @@ isProject: false
 ### Phase D — 打包与文档
 
 - 安装目录附带 browserctl
-- [embedded-browser-panel-prd.md](docs/embedded-browser-panel-prd.md) 架构章节修订
+- [embedded-browser-panel-prd.md](docs/browser-runtime/embedded-browser-panel-prd.md) 架构章节修订
 
 ---
 
