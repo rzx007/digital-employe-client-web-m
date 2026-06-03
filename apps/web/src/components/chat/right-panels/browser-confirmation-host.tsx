@@ -30,10 +30,9 @@ export function BrowserConfirmationHost() {
     const api = getElectronApi()
     if (!api?.browser?.onConfirmationRequest) return
 
+    // 不要在确认时 openBrowser()：open() 会重新显示并可能重载内嵌浏览器，
+    // 在原生合成层盖住本确认弹窗（即遮挡根因）。确认弹窗自带截图预览，无需浏览器面板。
     const unsubRequest = api.browser.onConfirmationRequest((data) => {
-      openBrowser(
-        useBrowserStore.getState().currentUrl || "https://www.baidu.com"
-      )
       setPending(data)
     })
 

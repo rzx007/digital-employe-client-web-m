@@ -1,23 +1,16 @@
 import type { WebContents } from "electron"
 
 import { rootLogger as logger } from "../../core/logger"
+import { buildRefs } from "./ax-tree"
+import type { AxNode, RefNode } from "./ax-tree"
 
-export interface RefNode {
-  ref: string
-  role: string
-  name: string | null
-  value: string | null
-  backendNodeId: number
-  depth: number
-}
+export type { RefNode }
 
 export interface CdpResult<T = unknown> {
   ok: boolean
   data?: T
   error?: string
 }
-
-const MASKED_ROLES = new Set(["password"])
 
 export class BrowserDebuggerController {
   private wc: WebContents | null = null
@@ -92,11 +85,33 @@ export class BrowserDebuggerController {
 
   async snapshot(maxNodes = 200): Promise<CdpResult<{ refs: RefNode[] }>> {
     try {
-      const result = (await this.sendCommand(
-        "Accessibility.getFullAXTree"
-      )) as { nodes?: unknown[] }
-      const refs = this.buildRefs(result.nodes ?? [], maxNodes)
+      // Chromium 的 a11y tree 惰性构建：未 enable 时纯客户端 SPA 只返回退化的
+      // RootWebArea（无子节点）。enable 后 renderer 异步重建树，立即取会拿到旧的空树，
+      // 故轮询直到 RootWebArea 暴露子节点或超时。
+      await this.sendCommand("Accessibility.enable")
+      let nodes: unknown[] = []
+      let rootChildCount = 0
+      const deadline = Date.now() + 3000
+      for (;;) {
+        const result = (await this.sendCommand(
+          "Accessibility.getFullAXTree"
+        )) as { nodes?: unknown[] }
+        nodes = result.nodes ?? []
+        const root = nodes.find(
+          (n) => (n as AxNode).role?.value === "RootWebArea"
+        ) as AxNode | undefined
+        rootChildCount = root?.childIds?.length ?? 0
+        if (rootChildCount > 0 || Date.now() >= deadline) break
+        await new Promise((r) => setTimeout(r, 150))
+      }
+      const refs = buildRefs(nodes, maxNodes)
       this.refCache = refs
+      // 诊断：若 rawNodes<=1/rootChildCount=0 仍空，则非时序问题（iframe/无语义/canvas）
+      logger.info("[browser-debugger] snapshot", {
+        rawNodes: nodes.length,
+        rootChildCount,
+        refs: refs.length,
+      })
       return { ok: true, data: { refs } }
     } catch (e) {
       return { ok: false, error: (e as Error).message }
@@ -296,65 +311,6 @@ export class BrowserDebuggerController {
     throw new Error("TIMEOUT")
   }
 
-  private buildRefs(nodes: unknown[], maxNodes: number): RefNode[] {
-    const refs: RefNode[] = []
-    let counter = 0
-
-    const nodeMap = new Map<number, AxNode>()
-    for (const n of nodes) {
-      const node = n as AxNode
-      if (typeof node.nodeId === "number") nodeMap.set(node.nodeId, node)
-    }
-
-    const walk = (node: AxNode, depth: number) => {
-      if (refs.length >= maxNodes) return
-      const role = node.role?.value ?? "generic"
-      if (node.ignored) return
-      if (MASKED_ROLES.has(role)) {
-        refs.push({
-          ref: `@e${counter++}`,
-          role,
-          name: "[masked]",
-          value: null,
-          backendNodeId: node.backendDOMNodeId ?? 0,
-          depth,
-        })
-        return
-      }
-      if (
-        ["presentation", "none"].includes(role) &&
-        !node.name?.value &&
-        depth > 2
-      ) {
-        return
-      }
-
-      refs.push({
-        ref: `@e${counter++}`,
-        role,
-        name: node.name?.value ?? null,
-        value: node.value?.value ?? null,
-        backendNodeId: node.backendDOMNodeId ?? 0,
-        depth,
-      })
-
-      if (node.childIds) {
-        for (const childId of node.childIds) {
-          const child = nodeMap.get(childId)
-          if (child) walk(child, depth + 1)
-        }
-      }
-    }
-
-    const root = nodes.find(
-      (n) => (n as AxNode).role?.value === "RootWebArea"
-    ) as AxNode | undefined
-    if (root) walk(root, 0)
-    else for (const n of nodes) walk(n as AxNode, 0)
-
-    return refs
-  }
-
   private async resolveNode(
     refOrSelector: string
   ): Promise<{ backendNodeId: number; center: { x: number; y: number } } | null> {
@@ -408,16 +364,6 @@ export class BrowserDebuggerController {
       return null
     }
   }
-}
-
-interface AxNode {
-  nodeId?: number
-  ignored?: boolean
-  role?: { value?: string }
-  name?: { value?: string }
-  value?: { value?: string }
-  backendDOMNodeId?: number
-  childIds?: number[]
 }
 
 let debuggerController: BrowserDebuggerController | null = null

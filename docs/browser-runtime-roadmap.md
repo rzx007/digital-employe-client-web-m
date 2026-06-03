@@ -128,6 +128,45 @@ CLI 客户端另有一处小缺陷：`requestJson` 未设 socket timeout（`pack
 
 `ensureBrowserSession` 写死只认 `"default"`（`browser-http-bridge.ts:109`），全局仅一个 WebContents。两个会话/员工同时操作会静默互相覆盖。MVP 可接受，但建议 navigate/health 时给「忙碌中」提示，避免两路静默踩踏。
 
+### 3.7 已修复：HITL 确认弹窗被内嵌浏览器遮挡（2026-06，已验证）
+
+**现象**：`click --confirm` 的 React `AlertDialog` 被内嵌浏览器挡住，看不到、点不到。
+
+**根因（两层）**：
+1. 内嵌浏览器是 Electron 原生 `WebContentsView`，合成层永远盖在 React DOM 之上，`z-index` 无效。
+2. 更关键：确认请求到达 renderer 时，`browser-confirmation-host.tsx` 的 `onConfirmationRequest` 调 `openBrowser()` → `controller.open()` → `setVisible(true)` **重新显示视图**，抵消 main 的 hide（附带重置 `pendingLoadUrl` 还会重载当前页）。
+
+**修复**：
+- `browser-http-bridge.ts` click 确认分支：确认期间 `getBrowserController().hide()` 让出层级、`finally` 中 `show()` 恢复（`wasVisible` 守卫 + try/finally）。
+- `browser-confirmation-host.tsx`：移除 `onConfirmationRequest` 里的 `openBrowser()`（确认弹窗自带截图预览，无需浏览器面板）。
+
+**第三层（残留路径发作，已根治）**：`syncBounds`→`applyViewportLayout` 在确认期间确实会 `setVisible(true)` 抵消单点 hide（BrowserPanel 周期性发 syncBounds）。穷举 `window-controller` 所有 `setVisible(true)` 调用点（`applyViewportLayout` / `show` / `prepareViewportForBridge`），在 controller 加 `visibilitySuppressed` 锁：`setVisibilitySuppressed(true)` 期间 `applyViewportLayout` 与 `show` 都被拦（`prepareViewportForBridge` 是 navigate 路径，与确认不并发，未拦）。bridge 确认分支改用该锁替代 hide/show。这是 defense-in-depth，不再是逐个堵路径。
+
+### 3.8 已修复（已验证）：a11y snapshot 整树为空 /「@eN 从未真正工作过」
+
+**现象**：纯 SPA（ACTUS/Vue 后台）上 `snapshot`/`--interactive`/`--tree` 全空，只返回 `RootWebArea`；Agent 退回 `extract-text` + CSS 选择器。
+
+**真根因（诊断踩了几坑才定位）**：`buildRefs` 构建 `nodeMap` 时按 `typeof nodeId === "number"` 判断，但 **CDP 的 `AXNode.nodeId` / `childIds` 是 string**，导致 nodeMap **恒空**、子节点无法遍历，refs 永远只有 root。铁证：诊断字段 `rawNodes=5549`（树是满的）但 `rootChildCount=1` 且 refs 只有 root。**`@eN` 机制其实从未工作过**——之前百度"通过"是因 `baidu-search` 用 CSS 选择器 `#kw`/`#su`，掩盖了此 bug。
+
+**修复链（三处叠加才完整）**：
+1. `Accessibility.enable` + enable 后轮询（确保 a11y 树真的建起来，`rawNodes` 即证据）
+2. `ignored` 节点穿透（自身不暴露但继续遍历子节点，否则整棵子树被剪）
+3. **`nodeId`/`childIds` 当 string 处理**（让 nodeMap 非空、遍历进子树）— 真正的修复
+
+**工程化**：`buildRefs` 提取为纯函数 `ax-tree.ts`（无 Electron 依赖），加 `ax-tree.test.ts`（node:test + tsx，5 项回归，锁住 string nodeId / ignored 穿透 / mask / 截断）；apps/web 加 `test` 脚本并入 turbo test。
+
+**关联**：iframe 内文档 a11y 不在主树，是另一类问题（未触发，待需要时做）。
+
+### 3.9 已查明（非 bug）：screenshot 需视觉模型才能被 Agent 看到
+
+**现象**：Agent `read` 落盘的 `browser-screenshot-*.png` 返回"无法查看截图"。
+
+**查明**：vision 链路完整——`basic_file_read` 读图返回 base64 → `compatible_filesystem_middleware.handle_compatible_read_result` 生成 `image` content block → `sanitize_messages_for_openai_compatible` 按 `active_model_supports_vision()` 决定：模型支持则转 `image_url` 发出，不支持则降级为文本提示「当前模型不支持图片理解，请切换视觉模型」。
+
+`active_model_supports_vision()`（`llm/vision.py`）基于 `settings.deepagent_model` **名称正则**判断（白名单：`qwen-vl` / `glm-4v` / `gpt-4o` / `claude-3.x` / `gemini-*-pro|flash` / 含 `vision` 等）。
+
+**结论**：截图看不了 = 当前员工配的是非视觉模型。**解决：把该员工模型切到视觉模型**（如 `qwen-vl-max`）。无需改代码；链路本身正确且含友好降级。
+
 ---
 
 ## 4. 验收对照
@@ -210,7 +249,7 @@ CLI 客户端另有一处小缺陷：`requestJson` 未设 socket timeout（`pack
 | 任务 | 说明 |
 |------|------|
 | Electron 打包附带 `browserctl`（配置就绪，待安装包验证） | electron-builder(+offline) extraResources 加 `../../packages/browserctl` → `resources/browserctl`；`BROWSERCTL_NODE=process.execPath` + wrapper `ELECTRON_RUN_AS_NODE=1` 复用 Electron 自带 node，**免装 node**。dev 已验；真实安装包需验 `from` 的 `..` 路径解析与无-node 机器 |
-| 内置技能种子 | 新员工模板默认含 `browser-runtime`（可配置关闭） |
+| ~~内置技能种子~~（已决策不做） | 用户决定不默认分配；`browser-runtime` 在内置技能库可见，按需手动给员工挂载 |
 | PRD 修订 | 架构图改为 Skill + browserctl；删 Python 章节或标废弃 |
 
 ---

@@ -37,6 +37,8 @@ browserctl health
 
 > click 后页面常异步加载（SPA / XHR），不要紧接着就 snapshot/extract-text；用 `wait` 等到关键元素或文本出现。无明确目标时可 `browserctl wait --ms 800` 兜底。
 
+> **理解页面只用 `snapshot --interactive` + `extract-text`，不要靠 `screenshot` 去"看"页面**：截图主要供人工查看 / HITL 确认。若数字员工配的是非视觉模型，`read` 截图会返回「无法查看」——别在这上面浪费步骤。a11y 快照 + 文本提取已足够定位元素与读取内容；若 `snapshot` 为空，优先 `extract-text` 读内容、再用 CSS 选择器兜底。
+
 ## 安全规则
 
 - 提交、删除、付款、审批、发送消息等敏感动作必须使用 `--confirm`

@@ -1,8 +1,22 @@
 # 内嵌三方业务系统浏览器面板 PRD
 
-> 版本：v1.2 | 日期：2026-06-01 | 状态：待评审（v1.2：automation 合并到 SKILL.md frontmatter；路径命名"技能加速 / 自然语言探索"）
+> 版本：v1.2 | 日期：2026-06-01 | 原始状态：待评审
+
+---
+
+> ## ⚠️ 实现现状（2026-06，权威说明）
 >
-> 当前实现更新：浏览器能力已从 Python `browser_*` 工具链迁移为 `browser-runtime` Skill + `browserctl` CLI；Electron 内嵌浏览器仍是唯一 runtime，`browserctl` 连接本地 `127.0.0.1:34555` bridge。
+> **本 PRD 的原始方案（Python `browser_*` 7×@tool + FastAPI `/internal/browser/*` + `BrowserRuntimeClient`）未被采用。** 实际落地架构为：
+>
+> - **`browser-runtime` 基础 Skill**（`apps/server/build-in-skills/browser-runtime/`）：教 Agent 浏览器工作流
+> - **`packages/browserctl`**：零依赖 Node CLI 客户端（私有包，经 electron-builder extraResources 随安装包附带，用 Electron 自带 node 运行）
+> - **Electron HTTP bridge** `127.0.0.1:34555`（TypeScript `browser-http-bridge.ts`），复用 Electron 自带 Chromium + CDP
+> - Agent 经 `shell_execute` 调用 `browserctl`，**已无 Python `browser_*` @tool / `BrowserRuntimeClient` / FastAPI browser 路由**
+>
+> **权威文档**：[browser-runtime SKILL](../apps/server/build-in-skills/browser-runtime/SKILL.md) · [reference](../apps/server/build-in-skills/browser-runtime/reference.md) · [browserctl README](../packages/browserctl/README.md) · [roadmap](./browser-runtime-roadmap.md)
+>
+> **过时章节（仅作设计背景历史记录）**：2.1–2.6（架构图 / IPC / @tool 清单 / 数据流的 Python 部分）、3.x（实施阶段）、4（文件改动总览）、5（依赖打包）、7.1（Python 测试脚本）、9.1（代码位置）。
+> **仍大体有效**：1（问题陈述 / 痛点 / 目标）、2.7（HITL 与安全护栏）、6（风险与缓解）。
 
 ## 1. 问题陈述
 
@@ -74,6 +88,8 @@ win.webContents.setWindowOpenHandler(({ url }) => {
 ## 2. 架构设计
 
 ### 2.1 整体架构对比
+
+> ⚠️ **已变更**：下方"改造后"架构图（FastAPI `/internal/browser/*` + `BrowserRuntimeClient` + `@tool×7`）为**未采用的原方案**。实际为 `browser-runtime` Skill + `browserctl` CLI + Electron HTTP bridge（见顶部导读）。
 
 ```
   ┌──── 改造前 ───────────────────────────────────────────────────────┐
@@ -219,6 +235,8 @@ apps/server/build-in-skills/
 ```
 
 ### 2.5 7 个 @tool 工具清单
+
+> ⚠️ **已废弃**：这 7 个 Python `browser_*` @tool 从未实现/已移除。等价能力现由 `browserctl` 子命令提供：`health` / `open|navigate` / `snapshot [--tree|--interactive]` / `click` / `fill [--text-file|--text-stdin]` / `wait` / `get` / `extract-text` / `screenshot` / `close`。详见 [browserctl reference](../apps/server/build-in-skills/browser-runtime/reference.md)。
 
 | @tool 名 | 入参 | 行为 | 失败模式 |
 |----------|------|------|----------|
@@ -393,6 +411,8 @@ LLM 调 browser_click(selector="#submit", confirmation_required=True, message=".
 ---
 
 ## 3. 实施阶段
+
+> ⚠️ **已过时**：以下分阶段计划基于原 Python @tool 方案。实际实施进度（含 Skill 化、browserctl CLI、HITL、wait/screenshot/snapshot 文本、打包内置）以 [browser-runtime-roadmap.md](./browser-runtime-roadmap.md) 为准。
 
 ### 3.1 阶段 1 — MVP「内嵌三方页面 + 手动浏览」 ⏱ 1 周
 
@@ -620,6 +640,8 @@ CREATE INDEX idx_audit_conv_ts ON browser_audit_log(conversation_id, ts);
 
 ## 4. 文件改动总览
 
+> ⚠️ **已过时**：本节的 Python `browser_tool.py` / `BrowserRuntimeClient` / FastAPI 路由等改动未采用。实际涉及文件：`packages/browserctl/`、`apps/web/electron/features/browser/`、`apps/web/electron/features/backend/backend-process.ts`、`apps/server/build-in-skills/browser-runtime/`。
+
 **新增 14 个**：
 
 ```
@@ -752,6 +774,8 @@ async def test_browser_click_ref():
 ## 9. 附录
 
 ### 9.1 现有相关代码位置速查
+
+> ⚠️ **部分过时**：涉及 Python browser 层的条目已移除。当前实现入口：`packages/browserctl/src/index.js`（CLI）、`apps/web/electron/features/browser/browser-http-bridge.ts`（bridge）、`browser-debugger-controller.ts`（CDP）、`apps/server/build-in-skills/browser-runtime/`（Skill）。
 
 - 主窗口右抽屉机制：`apps/web/src/components/chat/shell/chat-layout.tsx:243-350`
 - BrowserWindow 工厂：`apps/web/electron/core/services/window-manager.ts:86-138`

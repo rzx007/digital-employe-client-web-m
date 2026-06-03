@@ -349,11 +349,24 @@ async function handleBrowserRequest(
 
         if (confirmationRequired) {
           const shot = await dbg.screenshot()
-          const approved = await requestBrowserConfirmation({
-            message: confirmationMessage,
-            refOrSelector,
-            screenshotBase64: shot.ok ? shot.data?.base64 : undefined,
-          })
+          // 内嵌浏览器是原生 WebContentsView，合成层永远盖在 React 之上（z-index 无效），
+          // 会挡住确认弹窗；确认期间临时隐藏视图让出层级，确认后恢复。
+          // 截图已先取，弹窗显示截图预览，隐藏实时视图不影响 HITL 判断。
+          const browserController = getBrowserController()
+          const wasVisible = browserController.isOpen()
+          // 锁定隐藏：拦住确认期间所有重新显示路径（syncBounds/resize→applyViewportLayout），
+          // 单点 hide() 会被这些路径抵消
+          if (wasVisible) browserController.setVisibilitySuppressed(true)
+          let approved = false
+          try {
+            approved = await requestBrowserConfirmation({
+              message: confirmationMessage,
+              refOrSelector,
+              screenshotBase64: shot.ok ? shot.data?.base64 : undefined,
+            })
+          } finally {
+            if (wasVisible) browserController.setVisibilitySuppressed(false)
+          }
           if (!approved) {
             reply(res, 200, { ok: false, error: "USER_CANCELLED" })
             return

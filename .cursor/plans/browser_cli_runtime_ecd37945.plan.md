@@ -48,11 +48,14 @@ todos:
     content: "P2(已完成): browserctl close(bridge case + browser:request-close 事件 + renderer reset 收起右栏)、CLI node --test 单测(14 项)接入 turbo test、packages/browserctl README 三场景表"
     status: completed
   - id: electron-bundle
-    content: "P3(打包配置就绪,待安装包验证): electron-builder(+offline) extraResources 加 ../../packages/browserctl→resources/browserctl；BROWSERCTL_NODE=process.execPath + wrapper ELECTRON_RUN_AS_NODE=1 复用 Electron 自带 node(免装 node)；dev 全验证通过，真实安装包需验 from '..' 路径解析与无-node 机器"
-    status: in-progress
+    content: "P3(已完成,安装包已验证): electron-builder(+offline) extraResources 加 ../../packages/browserctl→resources/browserctl；BROWSERCTL_NODE=process.execPath + wrapper ELECTRON_RUN_AS_NODE=1 复用 Electron 自带 node(免装 node)；打包安装版实测正常"
+    status: completed
   - id: prd-revision
-    content: "P3: embedded-browser-panel-prd.md 全文修订(架构改 Skill+browserctl，删/标废 Python 章节)"
-    status: pending
+    content: "P3(已完成): embedded-browser-panel-prd.md 顶部加权威实现现状导读 + 2.1/2.5/3/4/9.1 内联标注废弃(Python @tool/FastAPI 方案)，保留问题动机/HITL/风险作历史；不全文重写"
+    status: completed
+  - id: default-skill-seed
+    content: "P3(已决策-不做): 用户决定不默认分配。browser-runtime 在内置技能库可见、按需手动给员工挂载；浏览器能力按需开启更保守"
+    status: completed
 isProject: false
 ---
 

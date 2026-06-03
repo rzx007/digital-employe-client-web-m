@@ -70,6 +70,8 @@ export class BrowserWindowController {
   private fallbackLoadTimer: ReturnType<typeof setTimeout> | null = null
   private lastMeasuredBounds: BrowserContentBounds | null = null
   private stableBoundsCount = 0
+  // 锁定隐藏：确认弹窗等需 React 层置顶时设 true，期间所有重新显示路径都被拦
+  private visibilitySuppressed = false
 
   open(url: string): void {
     const wm = getWindowManager()
@@ -171,10 +173,32 @@ export class BrowserWindowController {
   }
 
   show(): void {
+    if (this.visibilitySuppressed) return
     const view = this.browserView
     if (!view || view.webContents.isDestroyed()) return
     const wm = getWindowManager()
     const main = wm.get("main")
+    if (main && !main.isDestroyed()) {
+      this.applyBounds(main)
+      this.attachBrowserSubview(main)
+    }
+    view.setVisible(true)
+  }
+
+  /**
+   * 锁定/解锁内嵌浏览器视图的隐藏。锁定期间所有重新显示路径
+   * （applyViewportLayout via syncBounds/resize、show）都被拦，
+   * 用于让 React 确认弹窗在原生合成层之上可见。
+   */
+  setVisibilitySuppressed(suppressed: boolean): void {
+    this.visibilitySuppressed = suppressed
+    const view = this.browserView
+    if (!view || view.webContents.isDestroyed()) return
+    if (suppressed) {
+      view.setVisible(false)
+      return
+    }
+    const main = getWindowManager().get("main")
     if (main && !main.isDestroyed()) {
       this.applyBounds(main)
       this.attachBrowserSubview(main)
@@ -464,6 +488,11 @@ export class BrowserWindowController {
       vp.height < MIN_VIEWPORT_PX
 
     if (tooSmall) {
+      view.setVisible(false)
+      return
+    }
+
+    if (this.visibilitySuppressed) {
       view.setVisible(false)
       return
     }
