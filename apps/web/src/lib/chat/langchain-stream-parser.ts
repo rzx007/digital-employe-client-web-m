@@ -62,9 +62,18 @@ export interface LangChainStreamParseState {
   activeToolCallId: string | null
   /** 同一 AIMessageChunk 流内首个带 id 的工具 call（用于 index 错位的 args 片段） */
   primaryToolCallIdByMessageChunk: Map<string, string>
+  /**
+   * 已在中断消息（msg_A）里封存的 toolCallId。仅 resume 解析播种：
+   * deepagents HumanInTheLoopMiddleware.after_model 会在 resume 头部重放触发中断的
+   * AIMessage(tool_call) + ToolMessage，这些 toolCallId 已属 msg_A，重发会导致合并气泡重复，
+   * 故对它们跳过所有 input/output chunk。
+   */
+  sealedToolCallIds: Set<string>
 }
 
-export function createLangChainStreamParseState(): LangChainStreamParseState {
+export function createLangChainStreamParseState(options?: {
+  sealedToolCallIds?: Iterable<string>
+}): LangChainStreamParseState {
   return {
     pendingToolCalls: new Map(),
     toolCallKeysById: new Map(),
@@ -77,6 +86,7 @@ export function createLangChainStreamParseState(): LangChainStreamParseState {
     toolNamesById: new Map(),
     activeToolCallId: null,
     primaryToolCallIdByMessageChunk: new Map(),
+    sealedToolCallIds: new Set(options?.sealedToolCallIds ?? []),
   }
 }
 
@@ -835,6 +845,8 @@ function buildToolInputChunksFromAiMessage(
     const toolCallId = getStringValue(toolCall.id)
     const toolName = getStringValue(toolCall.name)
     if (!toolCallId || !toolName) return
+    // resume 重放：该 toolCallId 已封存在 msg_A，跳过以免合并气泡重复
+    if (state.sealedToolCallIds.has(toolCallId)) return
 
     const rawArgs = toolCall.args
     const inputText =
@@ -931,6 +943,11 @@ function buildToolOutputChunks(
   const outputText =
     typeof chunk.kwargs?.content === "string" ? chunk.kwargs.content : ""
   const status = getStringValue(chunk.kwargs?.status)
+
+  // resume 重放：该 toolCallId 已封存在 msg_A，跳过其 output 以免合并气泡重复
+  if (toolCallId && state.sealedToolCallIds.has(toolCallId)) {
+    return []
+  }
 
   const result: UIMessageChunk[] = []
 

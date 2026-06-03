@@ -390,6 +390,10 @@ export function useConversationSession({
 
       dispatch({ type: "RESUME_RESET" })
 
+      // 封存中断消息里的 HITL toolCallId：resume 时 deepagents 会重放该 AIMessage+ToolMessage，
+      // 跳过其重发以免合并气泡内工具块重复（见 resume-seal 测试与 langchain-stream-parser）。
+      chatTransport.setResumeSealedToolCallIds(toolCallId ? [toolCallId] : [])
+
       chatTransport.setResumeConversationId(convKey)
 
       requestAnimationFrame(() => {

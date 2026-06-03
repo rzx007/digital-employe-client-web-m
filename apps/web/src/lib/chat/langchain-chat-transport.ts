@@ -318,6 +318,8 @@ export class LangChainChatTransport<
 > implements ChatTransport<UI_MESSAGE> {
   private _reconnectAbort: AbortController | null = null
   _resumeConversationId: string | null = null
+  /** 下一次 resume 时要跳过的、已封存在中断消息里的 toolCallId（防 HITL 重放重复） */
+  private _resumeSealedToolCallIds: string[] = []
   onInterrupted:
     | ((payload: {
         message_id?: string | number | null
@@ -345,6 +347,11 @@ export class LangChainChatTransport<
 
   setResumeConversationId = (id: string | null) => {
     this._resumeConversationId = id
+  }
+
+  /** 审批后 resume 前调用：登记中断消息里已封存的 toolCallId，resume 解析将跳过其重放 */
+  setResumeSealedToolCallIds = (ids: string[]) => {
+    this._resumeSealedToolCallIds = ids
   }
 
   sendMessages = async ({
@@ -415,12 +422,16 @@ export class LangChainChatTransport<
     }
 
     this._resumeConversationId = null
+    // 读取并清空封存集合（仅本次 resume 生效，避免影响后续普通续传）
+    const sealedToolCallIds = this._resumeSealedToolCallIds
+    this._resumeSealedToolCallIds = []
 
     return this.processResponseStream(
       stream,
       effectiveChatId,
       abortController,
-      abortController.signal
+      abortController.signal,
+      sealedToolCallIds
     )
   }
 
@@ -428,7 +439,8 @@ export class LangChainChatTransport<
     stream: ReadableStream<Uint8Array>,
     conversationId?: string,
     reconnectAbort?: AbortController | null,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
+    sealedToolCallIds?: string[]
   ) => {
     const decoder = new TextDecoder()
     const reader = stream.getReader()
@@ -451,7 +463,7 @@ export class LangChainChatTransport<
           : undefined
         let buffer = ""
         let reconnectSseEvents = 0
-        const state = createLangChainStreamParseState()
+        const state = createLangChainStreamParseState({ sealedToolCallIds })
         const { schedule, flushSync } = createChunkBatcherForMode(
           isReconnect,
           controller,
