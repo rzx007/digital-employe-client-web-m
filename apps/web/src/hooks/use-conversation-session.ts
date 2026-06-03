@@ -191,17 +191,18 @@ export function useConversationSession({
     }
 
     const lastAssistant = getLastAssistantMessage(storedMessages)
+    const lastAssistantId = lastAssistant?.id
 
     const willResume = shouldAttemptResume({
       hitlActive: machine.activeHitl !== null,
       lastAssistantStreamState: lastAssistant?.streamState,
-      lastAssistantId: lastAssistant?.id,
+      lastAssistantId,
       resumeAttemptedFor: machine.resumeAttemptedFor,
     })
 
-    if (!willResume) return
+    if (!willResume || !lastAssistantId) return
 
-    dispatch({ type: "RESUME_ATTEMPTED", assistantId: lastAssistant!.id })
+    dispatch({ type: "RESUME_ATTEMPTED", assistantId: lastAssistantId })
 
     chatTransport.setResumeConversationId(convKey)
 
