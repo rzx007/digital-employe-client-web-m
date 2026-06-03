@@ -135,7 +135,15 @@ HITL 生命周期判断被拆在：`hitl/constants.ts`（工具集合）、`hitl
 
 > 验证：`tsc --noEmit` 通过；`vitest run` 71 例中仅 1 例 `resolve-workbench-curator-panel.test.ts` 失败，经 stash 比对确认为**改动前已存在**的无关失败；eslint 改动文件零告警。
 
+> **校准（基于当前代码复核）**：分析初稿提到的「interrupt parts 双写 → 靠展示层 `dedupeHitlParts` 去重」在当前代码中**已基本解决**——`langchain-chat-transport.ts` 的 interrupted 分支已加 `hasAuthoritativeParts` 守卫：有落库 `message_parts` 时不再灌 HITL chunks（由 session 的 `patchAssistantWithInterruptParts` 整体替换），无 parts 时也用 `skipToolCallIds` 去重。因此 `dedupeDuplicatePendingHitlParts` 现为 defense-in-depth，P1 不再以「消双写」为切入点。
+
 ### P1 · 收敛状态（中风险、最高收益，直击根因）
+
+**已完成的增量：HITL 判定逻辑去重（P1-3 第一刀）** ✅
+- 发现并消除两处真实重复：`getResolvedHitlToolCallIds`（`pending.ts` 与 `parts-dedupe.ts` 各一份）、`kindFromToolType`/`kindFromPartType`（`pending.ts` 与 `active-hitl.ts` 各一份「tool 类型→HITL kind」映射）。
+- 收敛为单一来源：新增 `hitl/kind.ts`（`hitlKindFromToolType` + `PendingHitlKind`）、`hitl/part-utils.ts` 增 `getResolvedHitlToolCallIds`；`pending.ts`/`active-hitl.ts`/`parts-dedupe.ts` 改为引用。
+- 行为逐字保持，新增 `hitl/kind.test.ts`；`tsc` 通过、`vitest` 73 过（唯一失败为预先存在的无关 workbench 用例）、eslint 零告警。
+
 
 **P1-1 单一 streamState 真相源**
 以 DB `Message.streamState` 为唯一权威，`composer.metadata.streamState` 仅作镜像；提供**一个 selector** 派生 UI 所需状态，禁止业务代码各自 patch 多处。消除 R1 的手动多点同步。

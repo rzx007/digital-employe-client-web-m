@@ -1,17 +1,12 @@
 import type { UIMessage } from "ai"
 
-import {
-  CLARIFY_TOOL_NAME,
-  DOCUMENT_PLAN_TOOL_NAME,
-  HITL_TOOL_NAMES,
-  isDestructiveHitlToolName,
-} from "./constants"
+import { HITL_TOOL_NAMES } from "./constants"
 import {
   findHitlToolCallIdInParts,
   parseDbMessageId,
   type DbMessageId,
 } from "./message-id"
-import type { PendingHitlKind } from "./pending"
+import { hitlKindFromToolType, type PendingHitlKind } from "./kind"
 import { findPendingHitl } from "./pending"
 
 /** POST /approve 唯一真相：来自 interrupt SSE（或冷启动 DB seed），与 UIMessage.id 无关 */
@@ -27,14 +22,6 @@ type StoredHitlPart = {
   toolCallId?: string
   state?: string
   input?: unknown
-}
-
-function kindFromPartType(type: string): PendingHitlKind | null {
-  if (type === `tool-${CLARIFY_TOOL_NAME}`) return "clarify"
-  if (type === `tool-${DOCUMENT_PLAN_TOOL_NAME}`) return "document-plan"
-  const toolName = type.startsWith("tool-") ? type.slice("tool-".length) : ""
-  if (isDestructiveHitlToolName(toolName)) return "destructive-delete"
-  return null
 }
 
 function hitlPartFromMessageParts(
@@ -66,7 +53,7 @@ export function buildActiveHitlFromInterruptPayload(payload: {
   const part = hitlPartFromMessageParts(payload.message_parts)
   if (!part?.toolCallId || typeof part.type !== "string") return null
 
-  const kind = kindFromPartType(part.type)
+  const kind = hitlKindFromToolType(part.type)
   if (!kind) return null
 
   return {
@@ -109,7 +96,7 @@ export function seedActiveHitlFromMessageParts(
 ): ActiveHitl | null {
   const part = hitlPartFromMessageParts(messageParts)
   if (!part?.toolCallId || typeof part.type !== "string") return null
-  const kind = kindFromPartType(part.type)
+  const kind = hitlKindFromToolType(part.type)
   if (!kind) return null
   return {
     dbMessageId,
