@@ -1,27 +1,36 @@
 import type { UIMessage } from "ai"
 
+/**
+ * DB `conversation_messages.id` 的品牌类型（POST /approve 唯一接受的 id）。
+ *
+ * 与 `UIMessage.id`（composer 客户端 id，可能是 "assistant-<ts>" 之类）刻意区分：
+ * 只有走 `parseDbMessageId` / `isValidApproveMessageId` 校验过的字符串才能拿到 `DbMessageId`，
+ * 从而在编译期阻止把客户端 id 误传给 `/approve`。
+ */
+export type DbMessageId = string & { readonly __brand: "DbMessageId" }
+
 /** DB `conversation_messages.id`，用于 POST /approve */
 export const HITL_APPROVE_MESSAGE_ID_META_KEY = "approveMessageId"
 
-export function parseDbMessageId(value: unknown): string | null {
+export function parseDbMessageId(value: unknown): DbMessageId | null {
   if (typeof value === "number" && Number.isFinite(value)) {
-    return String(Math.trunc(value))
+    return String(Math.trunc(value)) as DbMessageId
   }
   if (typeof value === "string" && value.length > 0) {
     const trimmed = value.trim()
-    if (/^\d+$/.test(trimmed)) return trimmed
+    if (/^\d+$/.test(trimmed)) return trimmed as DbMessageId
   }
   return null
 }
 
-export function isValidApproveMessageId(value: unknown): value is string {
+export function isValidApproveMessageId(value: unknown): value is DbMessageId {
   const id = parseDbMessageId(value)
   return id != null && Number.isFinite(Number(id))
 }
 
 export function getApproveMessageIdFromMeta(
   meta: Record<string, unknown> | undefined
-): string | null {
+): DbMessageId | null {
   if (!meta || typeof meta !== "object") return null
   return parseDbMessageId(meta[HITL_APPROVE_MESSAGE_ID_META_KEY])
 }
@@ -30,7 +39,7 @@ export function getApproveMessageIdFromMeta(
 export function getDbMessageIdFromAssistantMessage(message: {
   id: string
   metadata?: Record<string, unknown>
-}): string | null {
+}): DbMessageId | null {
   return (
     getApproveMessageIdFromMeta(message.metadata) ?? parseDbMessageId(message.id)
   )

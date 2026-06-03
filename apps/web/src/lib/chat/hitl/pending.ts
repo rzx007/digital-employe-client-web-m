@@ -7,6 +7,7 @@ import {
   HITL_TOOL_TYPES,
 } from "./constants"
 import { toolPartHasFinalOutput } from "./part-utils"
+import type { DbMessageId } from "./message-id"
 
 export type PendingHitlKind = "clarify" | "document-plan" | "destructive-delete"
 
@@ -22,7 +23,7 @@ export type HitlPatchOptions = {
   kind?: PendingHitlKind
   toolCallId?: string
   /** 已审批并封存的 assistant 行（POST /approve 的 message_id） */
-  approvedMessageId?: string | number
+  approvedMessageId?: DbMessageId
   resumed?: boolean
   assistantMessageId?: string | number
 }

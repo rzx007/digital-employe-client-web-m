@@ -124,14 +124,16 @@ HITL 生命周期判断被拆在：`hitl/constants.ts`（工具集合）、`hitl
 
 ## 四、改进建议（按优先级 + 风险/收益）
 
-### P0 · 止血（低风险、立即可做）
+### P0 · 止血（低风险、立即可做）—— ✅ 已完成
 
-| # | 动作 | 收益 | 文件 |
-|---|------|------|------|
-| P0-1 | **删除死代码** `use-chat-stream.ts` + `sse-parts-builder.ts`（或显式标注用途/迁出）。先 `grep` 确认无引用 | 消除"改了不生效"、砍掉一份重复 SSE 逻辑 | hooks/use-chat-stream.ts, lib/chat/sse-parts-builder.ts |
-| P0-2 | `mapStoredMessagesToUIMessages` 给 `messageParts` 加 **try/catch + 回退 content** | 杜绝坏数据崩溃整个会话 | message-utils.ts |
-| P0-3 | `doSend` 的空 `catch` 补回**用户可见错误反馈**（统一走 toast） | "点了没反应"变可诊断 | chat-conversation-view.tsx:256 |
-| P0-4 | 用 **branded type** 区分 `DbMessageId` 与 `ComposerMessageId`，`/approve` 只接受 `DbMessageId` | 编译期挡掉 id 混用 | types/chat.ts, hitl/message-id.ts |
+| # | 动作 | 收益 | 文件 | 状态 |
+|---|------|------|------|------|
+| P0-1 | **删除死代码** `use-chat-stream.ts` + `sse-parts-builder.ts`（已 `grep` 确认零引用、无 barrel/测试引用） | 消除"改了不生效"、砍掉一份重复 SSE 逻辑 | hooks/use-chat-stream.ts, lib/chat/sse-parts-builder.ts | ✅ 已删除 |
+| P0-2 | `mapStoredMessagesToUIMessages` 增加 `sanitizeStoredParts` 校验，损坏的 `messageParts` 回退 content | 杜绝坏数据崩溃整个会话 | message-utils.ts | ✅ |
+| P0-3 | `doSend` 的空 `catch` 改为 DEV 日志（用户提示仍由 `useChat.onError` 统一负责，避免重复弹窗） | 错误不再被静默吞掉、可诊断 | chat-conversation-view.tsx | ✅ |
+| P0-4 | 新增 branded `DbMessageId` 类型，`parseDbMessageId`/`isValidApproveMessageId` 产出该类型，`ActiveHitl.dbMessageId`、`HitlPatchOptions.approvedMessageId`、`approveHitl()` 均收紧为 `DbMessageId` | 编译期挡掉把 composer id 误传给 `/approve` | hitl/message-id.ts, hitl/active-hitl.ts, hitl/pending.ts, api/conversation.ts | ✅ |
+
+> 验证：`tsc --noEmit` 通过；`vitest run` 71 例中仅 1 例 `resolve-workbench-curator-panel.test.ts` 失败，经 stash 比对确认为**改动前已存在**的无关失败；eslint 改动文件零告警。
 
 ### P1 · 收敛状态（中风险、最高收益，直击根因）
 

@@ -9,13 +9,14 @@ import {
 import {
   findHitlToolCallIdInParts,
   parseDbMessageId,
+  type DbMessageId,
 } from "./message-id"
 import type { PendingHitlKind } from "./pending"
 import { findPendingHitl } from "./pending"
 
 /** POST /approve 唯一真相：来自 interrupt SSE（或冷启动 DB seed），与 UIMessage.id 无关 */
 export type ActiveHitl = {
-  dbMessageId: string
+  dbMessageId: DbMessageId
   toolCallId: string
   kind: PendingHitlKind
   input?: unknown
@@ -103,7 +104,7 @@ export function resolveActiveHitl(
 
 /** F5 / 切会话 hydrate：从 DB 行恢复 interrupted 待办 */
 export function seedActiveHitlFromMessageParts(
-  dbMessageId: string,
+  dbMessageId: DbMessageId,
   messageParts: unknown
 ): ActiveHitl | null {
   const part = hitlPartFromMessageParts(messageParts)
