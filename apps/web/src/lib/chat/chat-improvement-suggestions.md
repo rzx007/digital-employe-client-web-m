@@ -183,7 +183,7 @@ type SessionState =
 | # | 动作 | 文件 |
 |---|------|------|
 | P2-1 | `flushEvent` 改**表驱动**：`Record<eventType, handler>`，把 `interrupted` 合并成单一路径，统一收尾（`closeTextPhase` + `finish`） | langchain-chat-transport.ts |
-| P2-2 | 抽 `lib/chat/parse-utils.ts`（`parseJsonObject` / `asNumber`），各 `*-payload.ts` 复用 | tools/handlers/*, *-payload.ts |
+| P2-2 ✅ | 已抽 `lib/chat/parse-utils.ts`（`parseJsonObject` / `asNumber`）+ 测试；6 个 `*-payload.ts` 改为引用（去重 5+5 份） | *-payload.ts |
 | P2-3 | 分类器多趟 collapse 合并为单趟 pipeline，或在文件头**显式声明 pass 顺序契约** | message-classifier.ts |
 | P2-4 | `block-render-map` 默认分支改 **exhaustive check**（`never` 兜底），显式区分 `final-response` 与未知 kind | block-render-map.tsx |
 
