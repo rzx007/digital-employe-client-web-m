@@ -37,8 +37,6 @@ from src.service.agent.prompts import (
 from src.service.agent.orchestrator.prompts import (
     ORCHESTRATOR_RUNTIME_CONTEXT_TEMPLATE,
     ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE,
-    build_delegation_execution_context,
-    build_employee_capability_context,
 )
 from src.service.agent.orchestrator.runtime import set_context
 from src.service.agent.orchestrator.tools import (
@@ -161,30 +159,12 @@ def get_orchestrator_agent(
     )
     backend = CompositeBackend(default=shell_backend, routes=routes)
 
-    employee_context = build_employee_capability_context(db, workspace_id)
     available_skills_str = ", ".join(available_skills) if available_skills else "无"
-    if conversation_id:
-        from src.service.orchestrator_execution_summary import (
-            backfill_missing_orchestrator_summaries,
-        )
-
-        backfill_missing_orchestrator_summaries(
-            db, workspace_id, conversation_id, limit=10
-        )
-    delegation_context = (
-        build_delegation_execution_context(
-            db, workspace_id, conversation_id, output_max_chars=600
-        )
-        if conversation_id
-        else "（无会话上下文）"
-    )
+    # 团队名册（employee_table）与委派执行快照（delegation_executions）原本每轮变化、
+    # 注入可缓存前缀会毒化缓存；现移出前缀，改由总管按需用 list_workspace_employees /
+    # list_tasks 实时查（这两个工具已挂载）。前缀只保留天级日期 + 总管自身技能两项稳定信息。
     runtime_context = ORCHESTRATOR_RUNTIME_CONTEXT_TEMPLATE.format(
-        # 降到天级，避免秒级时间戳每轮使可缓存前缀失效（见 employee.py 同处说明）。
-        # 注意：employee_table / delegation_executions 仍每轮变化，总管缓存尚未完全治理，
-        # 彻底修复需把这两张动态表移出 system（移位或改按需取，见下一步）。
         current_time=datetime.now().strftime("%Y-%m-%d"),
-        employee_table=employee_context,
-        delegation_executions=delegation_context,
         available_skills=available_skills_str,
     )
     fs_section = build_filesystem_prompt_section(
