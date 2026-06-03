@@ -176,6 +176,52 @@ export class BrowserDebuggerController {
     }
   }
 
+  /** 等待页面 readyState=complete；超时返回 ok:false（调用方可选择忽略） */
+  async waitForReady(timeoutMs = 10_000): Promise<CdpResult> {
+    try {
+      await this.waitForLoadComplete(timeoutMs)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  }
+
+  /**
+   * 轮询等待条件满足：
+   * - selector：document.querySelector 命中
+   * - text：document.body.innerText 包含
+   * - 都不传：等待 readyState=complete
+   * 用 JSON.stringify 安全转义，避免引号/特殊字符注入。
+   */
+  async waitFor(opts: {
+    selector?: string
+    text?: string
+    timeoutMs?: number
+  }): Promise<CdpResult<{ matched: boolean; waitedMs: number }>> {
+    const timeoutMs = opts.timeoutMs ?? 10_000
+    const expression = opts.selector
+      ? `!!document.querySelector(${JSON.stringify(opts.selector)})`
+      : opts.text
+        ? `(document.body?.innerText || "").includes(${JSON.stringify(opts.text)})`
+        : `document.readyState === "complete"`
+    const start = Date.now()
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const r = (await this.sendCommand("Runtime.evaluate", {
+          expression,
+          returnByValue: true,
+        })) as { result?: { value?: boolean } }
+        if (r.result?.value === true) {
+          return { ok: true, data: { matched: true, waitedMs: Date.now() - start } }
+        }
+      } catch {
+        /* retry until timeout */
+      }
+      await new Promise((r) => setTimeout(r, 200))
+    }
+    return { ok: false, error: "TIMEOUT" }
+  }
+
   async extractText(): Promise<CdpResult<{ text: string }>> {
     try {
       const result = (await this.sendCommand("Runtime.evaluate", {

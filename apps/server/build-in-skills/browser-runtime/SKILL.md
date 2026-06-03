@@ -17,26 +17,25 @@ description: 操作数字员工桌面端内嵌浏览器。用于网页导航、s
 - 当前员工已分配本 Skill
 - 通过 `shell_execute` 调用 `browserctl`，不要调用 Python `browser_*` 工具
 
-开发环境可用：
-
-```bash
-pnpm --dir "<workspace-root>" --filter @workspace/browserctl browserctl health
-```
-
-若 `browserctl` 已在 PATH 中，也可直接：
+桌面端运行时已自动把 `browserctl` 注入到 shell PATH，**直接用裸命令即可**：
 
 ```bash
 browserctl health
 ```
 
+> 仅当脱离桌面端单独调试 CLI 时，才在仓库内用：
+> `pnpm --filter @workspace/browserctl browserctl health`
+
 ## 标准工作流
 
 1. `browserctl health` 检查 Electron bridge 是否可用
-2. `browserctl open <url>` 打开网页
-3. `browserctl snapshot` 获取 `@eN` 引用
+2. `browserctl open <url>` 打开网页（已自动等到 `readyState=complete`）
+3. `browserctl snapshot --interactive` 获取可交互节点的 `@eN`（紧凑文本，省 token；需要完整结构用 `--tree`，需机读 JSON 用默认）
 4. 使用 `browserctl click @eN` / `browserctl fill @eN "文本"` 操作
-5. 页面变化后重新 `browserctl snapshot`
+5. **操作触发页面变化后，先 `browserctl wait --selector <css>` 或 `--text <关键词>` 等目标出现，再 `browserctl snapshot`**——避免抓到仍在加载的半成品页面
 6. 用 `browserctl extract-text`、`browserctl get url` 或新 snapshot 验证结果
+
+> click 后页面常异步加载（SPA / XHR），不要紧接着就 snapshot/extract-text；用 `wait` 等到关键元素或文本出现。无明确目标时可 `browserctl wait --ms 800` 兜底。
 
 ## 安全规则
 
@@ -55,7 +54,9 @@ browserctl click @e8 --confirm "确认提交申请？"
 browserctl fill @e4 "输入内容"
 browserctl get url
 browserctl extract-text
-browserctl screenshot
+browserctl screenshot                    # 截图落盘，返回文件路径（非 base64）
+browserctl wait --selector "#result"     # 操作后等目标元素，再 snapshot
+browserctl close                         # 任务结束关闭内嵌浏览器、收起右栏
 ```
 
 更多命令与错误码见 [reference.md](reference.md)。业务组合示例见 [examples.md](examples.md)。

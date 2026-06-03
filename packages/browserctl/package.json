@@ -9,7 +9,8 @@
   "scripts": {
     "browserctl": "node ./src/index.js",
     "build": "node ./src/index.js --version",
-    "typecheck": "node ./src/index.js --version"
+    "typecheck": "node ./src/index.js --version",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"

@@ -41,9 +41,15 @@ export function BrowserConfirmationHost() {
       if (data.url) openBrowser(data.url)
     })
 
+    // HTTP 侧 browserctl close：bridge 已销毁内嵌浏览器，这里仅收起右栏 UI
+    const unsubClose = api.browser.onRequestClose?.(() => {
+      useBrowserStore.getState().reset()
+    })
+
     return () => {
       unsubRequest()
       unsubOpen?.()
+      unsubClose?.()
     }
   }, [openBrowser])
 

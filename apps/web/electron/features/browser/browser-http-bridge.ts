@@ -239,6 +239,9 @@ async function handleNavigate(
     wc = await controller.prepareViewportForBridge()
     await loadUrlWithTimeout(wc, url)
     attachDebugger()
+    // 等到 readyState=complete，避免主文档 load 后 DOM 仍未就绪即被 snapshot；
+    // 超时不阻断导航（页面可能本就慢），交由后续 wait/snapshot 处理
+    await getBrowserDebuggerController().waitForReady(10_000)
     reply(res, 200, {
       ok: true,
       data: {
@@ -383,6 +386,20 @@ async function handleBrowserRequest(
         reply(res, result.ok ? 200 : 502, result)
         return
       }
+      case "wait": {
+        if (!attachDebugger()) {
+          reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE" })
+          return
+        }
+        const selector =
+          typeof body.selector === "string" ? body.selector : undefined
+        const text = typeof body.text === "string" ? body.text : undefined
+        const timeoutMs =
+          typeof body.timeout_ms === "number" ? body.timeout_ms : 10_000
+        const result = await dbg.waitFor({ selector, text, timeoutMs })
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
       case "extract-text": {
         if (!attachDebugger()) {
           reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE" })
@@ -417,6 +434,17 @@ async function handleBrowserRequest(
           return
         }
         reply(res, 200, { ok: true, data: { title: wc.getTitle() } })
+        return
+      }
+      case "close": {
+        // 运行时关闭：detach CDP + 销毁内嵌浏览器；并通知 renderer 收起右栏
+        getBrowserDebuggerController().detach()
+        getBrowserController().close()
+        const main = getWindowManager().get("main")
+        if (main && !main.isDestroyed()) {
+          main.webContents.send("browser:request-close")
+        }
+        reply(res, 200, { ok: true, data: { closed: true } })
         return
       }
       default:

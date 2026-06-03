@@ -1,0 +1,4 @@
+# Windows 批处理必须 CRLF，否则 cmd 解析异常
+bin/browserctl.cmd text eol=crlf
+# POSIX wrapper 必须 LF，否则 CRLF 会破坏 shebang
+bin/browserctl text eol=lf

@@ -1,11 +1,17 @@
 #!/usr/bin/env node
 
 import http from "node:http"
+import fs from "node:fs"
+import path from "node:path"
+import { pathToFileURL } from "node:url"
 
 const VERSION = "0.1.0"
 const DEFAULT_BASE_URL =
   process.env.BROWSER_RUNTIME_BRIDGE_URL || "http://127.0.0.1:34555"
 const DEFAULT_SESSION = process.env.BROWSER_RUNTIME_SESSION || "default"
+// 单次请求 socket 超时；默认 60s 以容纳慢导航，可用 env 覆盖
+const REQUEST_TIMEOUT_MS =
+  Number(process.env.BROWSER_RUNTIME_TIMEOUT_MS) || 60000
 
 function usage() {
   return `browserctl ${VERSION}
@@ -14,21 +20,23 @@ Usage:
   browserctl health [--pretty]
   browserctl open <url> [--pretty]
   browserctl navigate <url> [--pretty]
-  browserctl snapshot [--max-nodes 200] [--pretty]
+  browserctl snapshot [--max-nodes 200] [--tree | --interactive] [--pretty]
   browserctl click <@eN|selector> [--confirm "message"] [--pretty]
-  browserctl fill <@eN|selector> <text> [--pretty]
+  browserctl wait (--selector <css> | --text <text> | --ms <n>) [--timeout 10000] [--pretty]
+  browserctl fill <@eN|selector> (<text> | --text-file <path> | --text-stdin) [--pretty]
   browserctl get url|title [--pretty]
   browserctl get-url [--pretty]
   browserctl get-title [--pretty]
   browserctl extract-text [--pretty]
-  browserctl screenshot [--pretty]
+  browserctl screenshot [--out <path>] [--pretty]
+  browserctl close [--pretty]
 
 Environment:
   BROWSER_RUNTIME_BRIDGE_URL  default ${DEFAULT_BASE_URL}
   BROWSER_RUNTIME_SESSION     default ${DEFAULT_SESSION}`
 }
 
-function parseFlags(argv) {
+export function parseFlags(argv) {
   const args = []
   const flags = {}
   for (let i = 0; i < argv.length; i += 1) {
@@ -41,6 +49,24 @@ function parseFlags(argv) {
       flags.maxNodes = Number(argv[++i] || 200)
     } else if (value === "--confirm") {
       flags.confirm = argv[++i] || ""
+    } else if (value === "--text-file") {
+      flags.textFile = argv[++i] || ""
+    } else if (value === "--text-stdin") {
+      flags.textStdin = true
+    } else if (value === "--selector") {
+      flags.selector = argv[++i] || ""
+    } else if (value === "--text") {
+      flags.text = argv[++i] || ""
+    } else if (value === "--ms") {
+      flags.ms = Number(argv[++i])
+    } else if (value === "--timeout") {
+      flags.timeout = Number(argv[++i])
+    } else if (value === "--out") {
+      flags.out = argv[++i] || ""
+    } else if (value === "--tree") {
+      flags.tree = true
+    } else if (value === "--interactive" || value === "-i") {
+      flags.interactive = true
     } else if (value === "--help" || value === "-h") {
       flags.help = true
     } else if (value === "--version" || value === "-v") {
@@ -52,7 +78,7 @@ function parseFlags(argv) {
   return { args, flags }
 }
 
-function normalizeUrl(input) {
+export function normalizeUrl(input) {
   const value = String(input || "").trim()
   if (!value) return value
   if (/^https?:\/\//i.test(value)) return value
@@ -61,6 +87,78 @@ function normalizeUrl(input) {
 
 function bridgeUrl(path) {
   return new URL(path, DEFAULT_BASE_URL.replace(/\/$/, ""))
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+const INTERACTIVE_ROLES = new Set([
+  "button",
+  "link",
+  "textbox",
+  "searchbox",
+  "checkbox",
+  "radio",
+  "combobox",
+  "listbox",
+  "option",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "tab",
+  "switch",
+  "slider",
+  "spinbutton",
+])
+
+// 把 snapshot 的 refs 数组渲染为紧凑文本，省去 JSON 键名/backendNodeId，降 token：
+// - interactiveOnly=false：按 depth 缩进的树
+// - interactiveOnly=true：仅保留可交互角色，平铺
+export function formatSnapshotText(refs, interactiveOnly) {
+  const rows = interactiveOnly
+    ? refs.filter((r) => INTERACTIVE_ROLES.has(r.role))
+    : refs
+  return rows
+    .map((r) => {
+      const indent = interactiveOnly
+        ? ""
+        : "  ".repeat(Math.min(r.depth ?? 0, 8))
+      const name = r.name ? ` "${r.name}"` : ""
+      const value = r.value ? ` = ${JSON.stringify(r.value)}` : ""
+      return `${indent}${r.ref} ${r.role}${name}${value}`
+    })
+    .join("\n")
+}
+
+function readStdin() {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    process.stdin.on("data", (chunk) => chunks.push(chunk))
+    process.stdin.on("end", () =>
+      resolve(Buffer.concat(chunks).toString("utf8"))
+    )
+    process.stdin.on("error", reject)
+  })
+}
+
+// fill 文本来源优先级：--text-file > --text-stdin > 位置参数
+// file/stdin 用于规避命令行特殊字符 quoting；去掉单个尾随换行（echo/编辑器常见）
+async function resolveFillText(rest, flags) {
+  if (typeof flags.textFile === "string" && flags.textFile) {
+    let raw
+    try {
+      raw = fs.readFileSync(flags.textFile, "utf8")
+    } catch (error) {
+      throw new Error(`cannot read --text-file ${flags.textFile}: ${error.message}`)
+    }
+    return raw.replace(/\r?\n$/, "")
+  }
+  if (flags.textStdin) {
+    const raw = await readStdin()
+    return raw.replace(/\r?\n$/, "")
+  }
+  return rest.slice(1).join(" ")
 }
 
 function requestJson(method, path, payload = {}) {
@@ -110,11 +208,18 @@ function requestJson(method, path, payload = {}) {
         })
       }
     )
+    let timedOut = false
+    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      timedOut = true
+      req.destroy()
+    })
     req.on("error", (error) => {
       resolve({
         ok: false,
-        error: `cannot connect browser runtime at ${DEFAULT_BASE_URL}: ${error.message}`,
-        code: "BRIDGE_CONNECT_FAILED",
+        error: timedOut
+          ? `browser runtime request timed out after ${REQUEST_TIMEOUT_MS}ms`
+          : `cannot connect browser runtime at ${DEFAULT_BASE_URL}: ${error.message}`,
+        code: timedOut ? "BRIDGE_TIMEOUT" : "BRIDGE_CONNECT_FAILED",
       })
     })
     if (body) req.write(body)
@@ -162,12 +267,21 @@ async function run(argv) {
   }
 
   if (command === "snapshot") {
-    print(
-      await postAction("snapshot", {
-        max_nodes: Number.isFinite(flags.maxNodes) ? flags.maxNodes : 200,
-      }),
-      flags.pretty
-    )
+    const result = await postAction("snapshot", {
+      max_nodes: Number.isFinite(flags.maxNodes) ? flags.maxNodes : 200,
+    })
+    if (
+      (flags.tree || flags.interactive) &&
+      result.ok &&
+      result.data &&
+      Array.isArray(result.data.refs)
+    ) {
+      process.stdout.write(
+        `${formatSnapshotText(result.data.refs, Boolean(flags.interactive))}\n`
+      )
+      return
+    }
+    print(result, flags.pretty)
     return
   }
 
@@ -187,12 +301,33 @@ async function run(argv) {
 
   if (command === "fill") {
     const refOrSelector = rest[0]
-    const text = rest.slice(1).join(" ")
     if (!refOrSelector) throw new Error("ref or selector required")
+    const text = await resolveFillText(rest, flags)
     print(
       await postAction("fill", {
         ref_or_selector: refOrSelector,
         text,
+      }),
+      flags.pretty
+    )
+    return
+  }
+
+  if (command === "wait") {
+    // --ms：纯客户端固定等待，不经 bridge
+    if (Number.isFinite(flags.ms)) {
+      await sleep(Math.max(0, flags.ms))
+      print({ ok: true, data: { waitedMs: flags.ms } }, flags.pretty)
+      return
+    }
+    if (!flags.selector && !flags.text) {
+      throw new Error("wait requires --selector, --text or --ms")
+    }
+    print(
+      await postAction("wait", {
+        selector: flags.selector,
+        text: flags.text,
+        timeout_ms: Number.isFinite(flags.timeout) ? flags.timeout : 10000,
       }),
       flags.pretty
     )
@@ -217,14 +352,63 @@ async function run(argv) {
     return
   }
 
-  if (command === "extract-text" || command === "screenshot") {
+  if (command === "extract-text") {
     print(await postAction(command, {}), flags.pretty)
+    return
+  }
+
+  if (command === "close") {
+    print(await postAction("close", {}), flags.pretty)
+    return
+  }
+
+  if (command === "screenshot") {
+    // bridge 回 base64（走 HTTP，不入 Agent 上下文）；CLI 落盘到产物目录，只回路径
+    const result = await postAction("screenshot", {})
+    if (!result.ok) {
+      print(result, flags.pretty)
+      return
+    }
+    const base64 = result.data && result.data.base64 ? result.data.base64 : ""
+    if (!base64) {
+      print(
+        { ok: false, error: "empty screenshot data", code: "EMPTY_SCREENSHOT" },
+        flags.pretty
+      )
+      return
+    }
+    const outPath = flags.out
+      ? path.resolve(flags.out)
+      : path.resolve(`browser-screenshot-${Date.now()}.png`)
+    try {
+      fs.writeFileSync(outPath, Buffer.from(base64, "base64"))
+    } catch (error) {
+      print(
+        {
+          ok: false,
+          error: `cannot write screenshot to ${outPath}: ${error.message}`,
+          code: "WRITE_FAILED",
+        },
+        flags.pretty
+      )
+      return
+    }
+    print(
+      { ok: true, data: { path: outPath, bytes: fs.statSync(outPath).size } },
+      flags.pretty
+    )
     return
   }
 
   throw new Error(`unknown command: ${command}`)
 }
 
-run(process.argv.slice(2)).catch((error) => {
-  print({ ok: false, error: error.message, code: "CLI_USAGE_ERROR" })
-})
+// 仅当作为可执行入口直接运行时才执行（被测试 import 时不触发）
+const invokedDirectly =
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+if (invokedDirectly) {
+  run(process.argv.slice(2)).catch((error) => {
+    print({ ok: false, error: error.message, code: "CLI_USAGE_ERROR" })
+  })
+}

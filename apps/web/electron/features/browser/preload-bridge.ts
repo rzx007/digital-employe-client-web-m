@@ -56,6 +56,10 @@ export const browserBridge = {
     onChannel("browser:request-open", (data) => {
       callback(data as BrowserRequestOpenEvent)
     }),
+  onRequestClose: (callback: () => void) =>
+    onChannel("browser:request-close", () => {
+      callback()
+    }),
   resolveConfirmation: (id: string, approved: boolean) =>
     invoke(IpcChannels.browserConfirmResolve, id, approved),
   syncBounds: (bounds: BrowserViewportBounds) =>

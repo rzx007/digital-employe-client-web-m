@@ -1,0 +1,3 @@
+#!/bin/sh
+# browserctl POSIX wrapper：转发到 CLI 入口
+exec node "$(dirname "$0")/../src/index.js" "$@"
