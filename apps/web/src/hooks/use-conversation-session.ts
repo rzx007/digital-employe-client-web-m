@@ -108,6 +108,19 @@ export function useConversationSession({
 
   composerMessagesRef.current = composerMessages
 
+  /**
+   * 非响应式镜像：effect 内读 machine 走 ref，避免本 effect 内的 dispatch
+   * （RESUME_ATTEMPTED / HYDRATED 等会改 machine 簿记字段）把自己重跑、
+   * 进而 cleanup 取消掉刚调度的 resume rAF。machine 仍是唯一真相源（reducer），
+   * 仅 effect 的「读取」走 ref —— 复刻重构前 ref 簿记的非响应式语义。
+   */
+  const machineRef = useRef(machine)
+
+  // latest-value ref（与上方 composerMessagesRef 同模式）：render 期同步赋值以保证
+  // effect 内读到最新 machine；这是有意为之的非响应式读取。
+  // eslint-disable-next-line react-hooks/refs
+  machineRef.current = machine
+
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const convKey = conversationId != null ? String(conversationId) : null
@@ -127,13 +140,13 @@ export function useConversationSession({
   }, [conversationId, convKey, queryClient])
 
   useEffect(() => {
-    if (!convKey || machine.active) return
+    if (!convKey || machineRef.current.active) return
 
     dispatch({
       type: "SEED_HITL",
       hitl: seedActiveHitlFromStoredMessages(storedMessages),
     })
-  }, [convKey, machine.active, storedMessages])
+  }, [convKey, storedMessages])
 
   const scheduleMessagesRefetch = useCallback(() => {
     if (!convKey) return
@@ -172,9 +185,9 @@ export function useConversationSession({
       convKey,
       sig,
       needsHydrate,
-      active: machine.active,
-      hydratedConvId: machine.hydratedConvId,
-      lastHydratedSig: machine.lastHydratedSig,
+      active: machineRef.current.active,
+      hydratedConvId: machineRef.current.hydratedConvId,
+      lastHydratedSig: machineRef.current.lastHydratedSig,
     })
 
     if (decision.action === "patch") {
@@ -194,10 +207,10 @@ export function useConversationSession({
     const lastAssistantId = lastAssistant?.id
 
     const willResume = shouldAttemptResume({
-      hitlActive: machine.activeHitl !== null,
+      hitlActive: machineRef.current.activeHitl !== null,
       lastAssistantStreamState: lastAssistant?.streamState,
       lastAssistantId,
-      resumeAttemptedFor: machine.resumeAttemptedFor,
+      resumeAttemptedFor: machineRef.current.resumeAttemptedFor,
     })
 
     if (!willResume || !lastAssistantId) return
@@ -214,6 +227,8 @@ export function useConversationSession({
 
     return () => cancelAnimationFrame(rafId)
 
+    // 依赖只列外部输入：machine.* 经 machineRef 读取（非响应式），
+    // 以免本 effect 内的 dispatch 触发自重跑、cleanup 取消 resume rAF。
   }, [
     convKey,
 
@@ -228,16 +243,6 @@ export function useConversationSession({
     resumeStream,
 
     status,
-
-    machine.active,
-
-    machine.activeHitl,
-
-    machine.hydratedConvId,
-
-    machine.lastHydratedSig,
-
-    machine.resumeAttemptedFor,
   ])
 
   useEffect(() => {
