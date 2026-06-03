@@ -29,6 +29,47 @@ def _truncation_notice(limit_desc: str) -> str:
     )
 
 
+# 常见命令失败 → 可纠偏建议（给可执行方向，而非把裸 stderr/堆栈丢回模型瞎试）。
+# 依据 Anthropic《Writing tools for agents》：工具报错应 steering。
+_ERROR_HINTS: list = [
+    (
+        re.compile(r"ModuleNotFoundError: No module named ['\"]([\w.]+)['\"]"),
+        lambda m: (
+            f"缺少 Python 库 {m.group(1)}。先 `pip install {m.group(1).split('.')[0]}` "
+            "再重试；离线环境装不了则改用标准库等价实现。"
+        ),
+    ),
+    (
+        re.compile(r"(No such file or directory|FileNotFoundError|系统找不到指定的)"),
+        lambda m: (
+            "文件/路径不存在。先用 ls 或 read_file 确认真实路径"
+            "（注意 /artifacts/ 等虚拟前缀的物理映射），再重试。"
+        ),
+    ),
+    (
+        re.compile(r"(command not found|不是内部或外部命令|未找到命令)"),
+        lambda m: "命令不存在或未安装。换用已有的等价工具，或先确认该命令在当前环境可用。",
+    ),
+    (
+        re.compile(r"(SyntaxError|IndentationError)"),
+        lambda m: "代码语法/缩进错误。按报错行号修正后重试，不要原样重跑。",
+    ),
+    (
+        re.compile(r"(Permission denied|拒绝访问|PermissionError)"),
+        lambda m: "权限不足。改写到 /artifacts/ 产物目录，勿写系统或只读路径。",
+    ),
+]
+
+
+def _steer_on_error(output: str) -> str:
+    """命令失败时按常见错误模式追加一句可执行建议；无匹配返回空串。"""
+    for pattern, hint in _ERROR_HINTS:
+        match = pattern.search(output)
+        if match:
+            return f"\n[建议] {hint(match)}"
+    return ""
+
+
 class SkillAwareShellBackend(LocalShellBackend):
     """执行前将虚拟技能路径映射为真实物理路径。"""
 
@@ -438,7 +479,8 @@ class SkillAwareShellBackend(LocalShellBackend):
             truncated = True
 
         if exit_code != 0:
-            output = f"{output.rstrip()}\n\nExit code: {exit_code}"
+            hint = _steer_on_error(output)
+            output = f"{output.rstrip()}\n\nExit code: {exit_code}{hint}"
 
         return ExecuteResponse(output=output, exit_code=exit_code, truncated=truncated)
 
@@ -483,7 +525,8 @@ class SkillAwareShellBackend(LocalShellBackend):
                 truncated = True
 
             if result.returncode != 0:
-                output = f"{output.rstrip()}\n\nExit code: {result.returncode}"
+                hint = _steer_on_error(output)
+                output = f"{output.rstrip()}\n\nExit code: {result.returncode}{hint}"
 
             return ExecuteResponse(
                 output=output,

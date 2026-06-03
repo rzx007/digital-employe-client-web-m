@@ -205,6 +205,13 @@ def test_orchestrator_delegation_default_present(orchestrator_prompt: str) -> No
     assert "亲自" in orchestrator_prompt
 
 
+def test_orchestrator_subtask_contract_has_non_goal(orchestrator_prompt: str) -> None:
+    """派活契约四件事，尤其"非目标"（防越界/防多员工重复劳动）不可丢。"""
+    assert "非目标" in orchestrator_prompt
+    for part in ("目标", "输出", "可用资源"):
+        assert part in orchestrator_prompt
+
+
 def test_orchestrator_list_tasks_no_parallel_rule(orchestrator_prompt: str) -> None:
     """list_tasks 一次一个员工、禁止同轮并行（易错点）。"""
     assert "list_tasks" in orchestrator_prompt
