@@ -39,6 +39,8 @@ import {
   patchLastAssistantStreamState,
 } from "@/lib/chat/message-query-cache"
 
+import { terminalToStreamState } from "@/lib/chat/session/terminal-state"
+
 import { chatTransport } from "@/components/chat/shared/chat-view-shared"
 
 import { chatKeys } from "@/lib/query-keys/chat"
@@ -51,12 +53,6 @@ import {
 } from "@/lib/chat/pick-message-display-source"
 
 const REFETCH_DEBOUNCE_MS = 800
-
-function terminalToStreamState(status: string): string {
-  if (status === "no_stream") return "error"
-
-  return status
-}
 
 function seedActiveHitlFromStoredMessages(
   storedMessages: Message[]
