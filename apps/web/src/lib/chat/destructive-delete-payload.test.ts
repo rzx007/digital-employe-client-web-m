@@ -10,8 +10,16 @@ describe("buildDestructiveDeletePreview", () => {
     const preview = buildDestructiveDeletePreview("delete_employee", {
       employee_id: 12,
     })
-    expect(preview?.title).toBe("删除数字员工")
+    expect(preview?.title).toBe("解聘数字员工")
     expect(preview?.detailLines).toEqual(["员工 ID：12"])
+  })
+
+  it("parses delete_employees_batch employee_ids JSON", () => {
+    const preview = buildDestructiveDeletePreview("delete_employees_batch", {
+      employee_ids: "[12, 13]",
+    })
+    expect(preview?.title).toBe("批量解聘数字员工")
+    expect(preview?.detailLines).toEqual(["员工 ID：12", "员工 ID：13"])
   })
 
   it("builds delete_task preview", () => {

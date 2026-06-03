@@ -139,8 +139,21 @@ function RecruitmentCandidatesCardInner({
         )}
       </div>
 
+      {isRunning ? (
+        <CandidateSkeletons />
+      ) : payload ? (
+        <div className={CANDIDATES_GRID}>
+          {payload.candidates.map((candidate) => (
+            <RecruitmentCandidateBadge
+              key={`${candidate.index}-${candidate.name}`}
+              candidate={candidate}
+            />
+          ))}
+        </div>
+      ) : null}
+
       {payload && payload.candidates.length >= 2 && !isRunning && recruitment?.onHireAll ? (
-        <div className="mb-2 @[18rem]/recruitment:mb-2.5">
+        <div className="mt-2 @[18rem]/recruitment:mt-2.5">
           <Button
             type="button"
             variant="secondary"
@@ -152,19 +165,6 @@ function RecruitmentCandidatesCardInner({
             <IconCircleCheck className="size-3.5" />
             全部录用 ({payload.candidates.length} 人)
           </Button>
-        </div>
-      ) : null}
-
-      {isRunning ? (
-        <CandidateSkeletons />
-      ) : payload ? (
-        <div className={CANDIDATES_GRID}>
-          {payload.candidates.map((candidate) => (
-            <RecruitmentCandidateBadge
-              key={`${candidate.index}-${candidate.name}`}
-              candidate={candidate}
-            />
-          ))}
         </div>
       ) : null}
     </div>

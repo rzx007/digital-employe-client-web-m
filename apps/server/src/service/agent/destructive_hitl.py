@@ -10,6 +10,7 @@ from src.service.agent.hitl_interrupt_on import HITL_INTERRUPT_ON
 
 DESTRUCTIVE_HITL_TOOLS: frozenset[str] = frozenset({
     "delete_employee",
+    "delete_employees_batch",
     "delete_task",
     "delete_tasks_batch",
 })

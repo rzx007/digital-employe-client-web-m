@@ -15,6 +15,7 @@ import {
   EmployeeUpdatedCard,
 } from "./employee-crud-result-card"
 import { TasksDeletedBatchCard } from "./tasks-deleted-batch-card"
+import { EmployeesDismissedBatchCard } from "./employees-dismissed-batch-card"
 import { DestructiveDeleteConfirmCard } from "./destructive-delete-confirm-card"
 import { FileChangeCards } from "./file-change-cards"
 import { SkillExplorationBlock } from "./skill-exploration-block"
@@ -286,6 +287,16 @@ export function BlockRenderer({
   if (block.kind === "tasks-deleted") {
     return (
       <TasksDeletedBatchCard
+        key={block.key}
+        state={block.state}
+        resultText={block.resultText}
+        className="w-full"
+      />
+    )
+  }
+  if (block.kind === "employees-dismissed") {
+    return (
+      <EmployeesDismissedBatchCard
         key={block.key}
         state={block.state}
         resultText={block.resultText}

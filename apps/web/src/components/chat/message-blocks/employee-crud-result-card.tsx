@@ -55,8 +55,8 @@ const VARIANT_CONFIG = {
     titleClass: "text-foreground",
   },
   deleted: {
-    title: "员工已删除",
-    runningTitle: "正在删除员工...",
+    title: "员工已解聘",
+    runningTitle: "正在解聘员工...",
     icon: IconTrash,
     titleClass: "text-destructive",
   },

@@ -158,6 +158,13 @@ export type ClassifiedBlock =
       resultText: string | null
     }
   | {
+      kind: "employees-dismissed"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+    }
+  | {
       kind: "destructive-delete"
       key: string
       toolCallId: string
@@ -658,9 +665,10 @@ export function classifyMessageParts(
  *   | "employees-hired"   — 批量入职工牌卡片 (hire_employees)
  *   | "employee-detail"   — 员工详情卡片 (get_employee)
  *   | "employee-updated"  — 员工更新卡片 (update_employee)
- *   | "employee-deleted"  — 员工删除卡片 (delete_employee)
+ *   | "employee-deleted"  — 员工解聘卡片 (delete_employee)
  *   | "tasks-deleted"     — 批量删除任务卡片 (delete_tasks_batch)
- *   | "destructive-delete" — 危险删除确认卡 (delete_employee/delete_task/delete_tasks_batch pending)
+ *   | "employees-dismissed" — 批量解聘卡片 (delete_employees_batch)
+ *   | "destructive-delete" — 危险删除确认卡 (delete_employee/delete_employees_batch/delete_task/delete_tasks_batch pending)
  *   | "final-response"    — 所有工具调用完成后的最终回复
  *   | "file-changes"      — write_file/edit_file 产生的文件变更卡片
  */

@@ -13,7 +13,7 @@ function asNumber(value: unknown): number | null {
   return null
 }
 
-function parseTaskIds(raw: unknown): number[] {
+function parseIdList(raw: unknown): number[] {
   if (typeof raw !== "string" || !raw.trim()) return []
   try {
     const parsed: unknown = JSON.parse(raw)
@@ -38,8 +38,18 @@ export function buildDestructiveDeletePreview(
     if (employeeId == null) return null
     return {
       toolName,
-      title: "删除数字员工",
+      title: "解聘数字员工",
       detailLines: [`员工 ID：${employeeId}`],
+    }
+  }
+
+  if (toolName === "delete_employees_batch") {
+    const employeeIds = parseIdList(record.employee_ids)
+    if (employeeIds.length === 0) return null
+    return {
+      toolName,
+      title: "批量解聘数字员工",
+      detailLines: employeeIds.map((id) => `员工 ID：${id}`),
     }
   }
 
@@ -54,7 +64,7 @@ export function buildDestructiveDeletePreview(
   }
 
   if (toolName === "delete_tasks_batch") {
-    const taskIds = parseTaskIds(record.task_ids)
+    const taskIds = parseIdList(record.task_ids)
     if (taskIds.length === 0) return null
     return {
       toolName,

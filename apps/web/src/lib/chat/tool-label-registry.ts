@@ -44,6 +44,7 @@ export const BUSINESS_TOOL_NAMES = new Set([
   "get_employee",
   "update_employee",
   "delete_employee",
+  "delete_employees_batch",
   "update_task",
   "delete_task",
   "delete_tasks_batch",
@@ -278,12 +279,22 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
   },
   delete_employee: {
     icon: "🗑️",
-    label: "删除员工",
-    verb: "删除员工",
+    label: "解聘员工",
+    verb: "解聘员工",
     simple: {
-      running: "正在删除员工...",
-      done: "员工已删除",
-      error: "删除失败",
+      running: "正在解聘员工...",
+      done: "员工已解聘",
+      error: "解聘失败",
+    },
+  },
+  delete_employees_batch: {
+    icon: "🗑️",
+    label: "批量解聘",
+    verb: "批量解聘员工",
+    simple: {
+      running: "正在批量解聘...",
+      done: "批量解聘完成",
+      error: "批量解聘失败",
     },
   },
   update_task: {

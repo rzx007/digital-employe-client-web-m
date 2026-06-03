@@ -24,6 +24,10 @@ from langchain_core.tools import tool
 from src.db.session import get_session_local
 from src.models.employee import Employee
 from src.schemas.employee import EmployeeUpdate
+from src.service.agent.orchestrator.employee_mutations import (
+    MAX_DISMISS_BATCH,
+    delete_employees_batch as run_delete_employees_batch,
+)
 from src.service.agent.orchestrator.json_list_parse import parse_json_int_list
 from src.service.agent.orchestrator.prompts import build_employee_capability_context
 from src.service.agent.orchestrator.recruitment import (
@@ -247,9 +251,10 @@ def update_employee(
 
 @tool
 def delete_employee(employee_id: int) -> str:
-    """删除数字员工（物理删除，关联任务调度会刷新）。
+    """解聘单个数字员工（物理删除，关联任务调度会刷新）。
 
-    禁止删除总管助手（is_curator=true）。删除前建议 get_employee 确认 ID。
+    仅解聘 1 人时使用；2 人及以上必须用 delete_employees_batch。
+    禁止解聘总管助手（is_curator=true）。解聘前建议 get_employee 确认 ID。
     """
     workspace_id = get_workspace_id()
     db = get_session_local()()
@@ -279,12 +284,49 @@ def delete_employee(employee_id: int) -> str:
             "type": "employee_deleted",
             "employee_id": employee_id,
             "employee_name": name,
-            "message": f"员工「{name}」（ID={employee_id}）已删除。",
+            "message": f"员工「{name}」（ID={employee_id}）已解聘。",
         }
         invalidate_orchestrator_db_cache()
         return json.dumps(result, ensure_ascii=False, indent=2)
     finally:
         db.close()
+
+
+@tool
+def delete_employees_batch(employee_ids: str) -> str:
+    """批量解聘多名数字员工（一次调用，逐人独立 Session，整批只刷新调度一次）。
+
+    当用户要求解聘 2 名及以上员工时使用本工具，不要用同一轮多次 delete_employee。
+    禁止解聘总管助手（is_curator=true）。调用后会弹出用户确认门，须等用户确认后
+    才会真正解聘，禁止口头说「已解聘」。
+
+    参数 employee_ids: JSON 整数数组字符串，例如 "[12, 13, 14]"
+    """
+    workspace_id = get_workspace_id()
+
+    try:
+        parsed = json.loads(employee_ids)
+    except json.JSONDecodeError as exc:
+        return f"错误：employee_ids 不是合法的 JSON 数组: {exc}"
+
+    if not isinstance(parsed, list):
+        return "错误：employee_ids 必须为 JSON 数组。"
+    if len(parsed) == 0:
+        return "错误：employee_ids 不能为空。"
+    if len(parsed) > MAX_DISMISS_BATCH:
+        return f"错误：单次最多解聘 {MAX_DISMISS_BATCH} 人。"
+
+    normalized: list[int] = []
+    for i, raw in enumerate(parsed):
+        try:
+            normalized.append(int(raw))
+        except (TypeError, ValueError):
+            return f"错误：employee_ids[{i}] 不是有效整数: {raw!r}"
+
+    raw = run_delete_employees_batch(workspace_id, normalized, reload_scheduler=True)
+    if not raw.startswith("错误："):
+        invalidate_orchestrator_db_cache()
+    return raw
 
 
 # ---------------------------------------------------------------------------

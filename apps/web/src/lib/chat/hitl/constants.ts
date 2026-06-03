@@ -1,5 +1,6 @@
 export const DESTRUCTIVE_HITL_TOOL_NAMES = new Set([
   "delete_employee",
+  "delete_employees_batch",
   "delete_task",
   "delete_tasks_batch",
 ])

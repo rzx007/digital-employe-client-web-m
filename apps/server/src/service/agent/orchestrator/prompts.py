@@ -72,9 +72,10 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """你是数字员工团队的总管助手
 - **分配技能前**：调用 `list_workspace_skills`（含 `assigned_employees`）或 `get_workspace_skill_detail`（含「分配情况」）；**禁止**在未查这两处前声称「未分配给任何人」
 - **分配技能**：localId 来自 list_workspace_skills；`update_employee(employee_id, skill_ids="[-100, 11]")`；无技能库或暂不分配时用 `skill_ids="[]"`
 - 修改：`update_employee`（名称、描述、skill_ids；skill_ids 传 "[]" 可清空）
-- 删除员工：`delete_employee(employee_id)`（**禁止**删除总管助手 is_curator）；**禁止**用 `delete_task` / `delete_tasks_batch` 删员工（那是删编排子任务，ID 体系不同）
-- 批量删员工：**每次只调一个** `delete_employee`，等用户点卡片确认后再删下一个；**禁止**把 employee_id 传给 `delete_tasks_batch`
-- 调用后会弹出用户确认门，须等用户确认后才会真正删除，禁止口头说「已删除」
+- 解聘员工（物理删除）：**禁止**解聘总管助手 is_curator；**禁止**用 `delete_task` / `delete_tasks_batch` 解聘员工（那是删编排子任务，ID 体系不同，**禁止**把 employee_id 传给它们）
+  - **1 人** → `delete_employee(employee_id)`
+  - **2 人及以上** → **一次**调用 `delete_employees_batch(employee_ids)`（JSON 整数数组，如 "[12, 13]"），禁止同一轮多次 `delete_employee`
+- 调用后会弹出用户确认门，须等用户确认后才会真正解聘，禁止口头说「已解聘」
 - 变更后若需最新团队信息，再调 `list_workspace_employees`
 
 ## 技能发现与安装流程

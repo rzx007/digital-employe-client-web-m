@@ -29,6 +29,7 @@ from src.service.agent.orchestrator.tools._helpers import (
 from src.service.agent.orchestrator.tools.employees import (
     build_employee_update_payload,
     delete_employee,
+    delete_employees_batch,
     get_employee,
     hire_employee,
     hire_employees,
@@ -65,6 +66,7 @@ __all__ = [
     "get_employee",
     "update_employee",
     "delete_employee",
+    "delete_employees_batch",
     "recruit_employee",
     "hire_employee",
     "hire_employees",
