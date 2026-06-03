@@ -45,6 +45,9 @@ from langchain_core.messages import BaseMessage, ToolMessage
 from langchain_core.messages.content import ContentBlock
 from langchain_core.tools import BaseTool, StructuredTool
 
+from src.service.agent.read_file_dedupe import dedupe_read_file_tool_messages
+from src.service.agent.read_file_path_compression import compress_large_read_file_history
+
 logger = logging.getLogger(__name__)
 
 _patched = False
@@ -344,6 +347,13 @@ def handle_compatible_read_result(
     )
 
 
+def _prepare_read_file_messages_for_llm(
+    messages: list[BaseMessage],
+) -> list[BaseMessage]:
+    messages = dedupe_read_file_tool_messages(messages)
+    return compress_large_read_file_history(messages)
+
+
 class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
     """read_file 结果与 DashScope 兼容：禁止向模型发送 type=file 内容块。"""
 
@@ -353,8 +363,9 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
         handler: Callable[[ModelRequest[ContextT]], ModelResponse[ResponseT]],
     ) -> ModelResponse[ResponseT]:
         allow_images = active_model_supports_vision()
+        messages = _prepare_read_file_messages_for_llm(list(request.messages))
         messages = sanitize_messages_for_openai_compatible(
-            list(request.messages),
+            messages,
             allow_images=allow_images,
         )
         if messages != list(request.messages):
@@ -369,8 +380,9 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
         ],
     ) -> ModelResponse[ResponseT]:
         allow_images = active_model_supports_vision()
+        messages = _prepare_read_file_messages_for_llm(list(request.messages))
         messages = sanitize_messages_for_openai_compatible(
-            list(request.messages),
+            messages,
             allow_images=allow_images,
         )
         if messages != list(request.messages):

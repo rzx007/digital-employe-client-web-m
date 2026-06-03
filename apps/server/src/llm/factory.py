@@ -9,6 +9,7 @@ import httpx
 from langchain_openai import ChatOpenAI
 
 from src.core.config import Settings, get_settings
+from src.llm.cache_chat_model import PromptCacheChatOpenAI, build_prompt_cache_strategy
 from src.llm.providers import get_provider, normalize_openai_base_url, resolve_provider_id
 
 DEFAULT_MODEL = "qwen2.5-72b-instruct"
@@ -98,6 +99,12 @@ def build_chat_model(
     resolved_key = (resolved_key or "").strip() or DEFAULT_API_KEY
     resolved_base = _resolve_base_url(settings, base_url)
     llm_kwargs = _merge_deepseek_v4_extra_body(resolved_model, dict(extra_kwargs))
+    provider_id = settings.llm_provider or resolve_provider_id(resolved_base)
+    cache_strategy = build_prompt_cache_strategy(
+        base_url=resolved_base,
+        provider_id=provider_id,
+        config_mode=settings.prompt_cache_mode,
+    )
 
     req_timeout = max(15.0, float(settings.llm_request_timeout))
     connect_cap = min(12.0, req_timeout)
@@ -108,12 +115,13 @@ def build_chat_model(
         pool=connect_cap,
     )
 
-    chat = ChatOpenAI(
+    chat: ChatOpenAI = PromptCacheChatOpenAI(
         model=resolved_model,
         temperature=temperature,
         api_key=resolved_key,
         base_url=resolved_base,
         timeout=llm_timeout,
+        prompt_cache_strategy=cache_strategy,
         **llm_kwargs,
     )
     # 如果需要应用模型配置文件，则导入相关模块并应用配置

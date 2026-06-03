@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "total": 1,
+    "rule_passed": 1,
+    "judge_avg": 5.0,
+    "errored": 0
+  },
+  "results": [
+    {
+      "id": "multi-employee-split",
+      "category": "delegation",
+      "rule_pass": true,
+      "checks": [
+        {
+          "name": "tools_called_any",
+          "passed": true,
+          "detail": "需其一 ['create_orchestration_plan']；实际调用 ['list_workspace_employees', 'create_orchestration_plan']"
+        }
+      ],
+      "judge_score": 5,
+      "judge_reason": "回复清晰地将任务拆分为两个子任务并分配给对应员工，明确了各自的目标和产出路径，完全符合评分标准。",
+      "tool_calls": [
+        "list_workspace_employees",
+        "create_orchestration_plan"
+      ],
+      "interrupted": false,
+      "final_text": "编排计划已生成，包含两个并行任务：\n\n| 任务 | 员工 | 内容 |\n|------|------|------|\n| 活动落地页文案 | 文案策划 | 撰写标题、卖点、详情、CTA 等完整文案 |\n| 活动落地页前端页面 | 前端工程师 | 制作响应式 HTML 落地页 |\n\n请确认是否执行此编排计划？确认后两位员工将同时开始工作，产出物统一存放在 `/artifacts/event-landing/` 目录下。"
+    }
+  ]
+}

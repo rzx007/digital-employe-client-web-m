@@ -35,3 +35,21 @@ def resolve_summarization_trigger(
 
 def resolve_summarization_keep(settings: Settings) -> tuple[str, float]:
     return ("fraction", settings.summarization_keep_fraction)
+
+
+def resolve_summarization_token_threshold(settings: Settings) -> int:
+    """Token count at which full LLM summarization should trigger."""
+    return int(
+        resolve_max_input_tokens(settings) * settings.summarization_trigger_fraction
+    )
+
+
+def should_apply_head_tail_truncation(
+    settings: Settings,
+    last_input_tokens: int | None,
+) -> bool:
+    """Skip dumb middle drop when semantic summarization should run instead."""
+    if last_input_tokens is None:
+        return True
+    threshold = resolve_summarization_token_threshold(settings)
+    return last_input_tokens < int(threshold * 0.80)

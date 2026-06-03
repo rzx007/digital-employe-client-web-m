@@ -219,6 +219,24 @@ def list_conversation_messages(conversation_id: int, db: Session = Depends(get_d
     return ListResponse[ConversationMessageRead](data=messages)
 
 
+@router.get(
+    "/chat/conversations/{conversation_id}/context-budget",
+    response_model=ResponseBase,
+)
+def get_conversation_context_budget(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+) -> ResponseBase:
+    """返回会话上下文用量与压缩阈值进度（供 Chat UI 展示）。"""
+    from src.service.context_budget import (
+        ContextBudgetRead,
+        resolve_context_budget_for_conversation,
+    )
+
+    data = resolve_context_budget_for_conversation(db, conversation_id)
+    return ResponseBase[ContextBudgetRead](data=data)
+
+
 @router.patch(
     "/chat/conversations/{conversation_id}",
     response_model=ResponseBase[ConversationRead],

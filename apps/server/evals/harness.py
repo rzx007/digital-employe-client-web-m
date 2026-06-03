@@ -12,9 +12,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import tempfile
 import uuid
 from pathlib import Path
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -43,10 +45,12 @@ def _seed(db, workspace_id: int, setup: dict) -> dict[str, int]:
         db.commit()
         db.refresh(emp)
         name_to_id[emp.name] = emp.id
-        for skill in spec.get("skills", []) or []:
+        for skill_idx, skill in enumerate(spec.get("skills", []) or []):
             db.add(
                 EmployeeSkill(
+                    workspace_id=workspace_id,
                     employee_id=emp.id,
+                    skill_id=-(skill_idx + 1),
                     skill_name=skill,
                     skill_name_zh=skill,
                     skill_description="评估用技能",
@@ -75,6 +79,11 @@ def _seed(db, workspace_id: int, setup: dict) -> dict[str, int]:
 async def invoke_agent(case: dict):
     """跑一个用例，返回 AgentResult。"""
     from evals.run import extract_agent_result  # 避免循环导入
+    from src.service.agent.checkpointer import init_memory_checkpointer
+    from src.service.agent.orchestrator.runtime import set_main_event_loop
+
+    init_memory_checkpointer()
+    set_main_event_loop(asyncio.get_running_loop())
 
     engine = create_engine(
         "sqlite://",
@@ -86,41 +95,42 @@ async def invoke_agent(case: dict):
     db = Session()
     workspace_root = tempfile.mkdtemp(prefix="de-eval-ws-")
     try:
-        ws = Workspace(id=1, name="Eval WS", root_path=workspace_root)
-        db.add(ws)
-        db.commit()
-        _seed(db, ws.id, case.get("setup") or {})
+        with patch("src.db.session.get_session_local", lambda: Session):
+            ws = Workspace(id=1, name="Eval WS", root_path=workspace_root)
+            db.add(ws)
+            db.commit()
+            _seed(db, ws.id, case.get("setup") or {})
 
-        conversation_id = 1
-        thread_id = f"eval-{case['id']}-{uuid.uuid4().hex[:6]}"
-        user_input = case.get("input", "")
+            conversation_id = 1
+            thread_id = f"eval-{case['id']}-{uuid.uuid4().hex[:6]}"
+            user_input = case.get("input", "")
 
-        if case.get("target") == "orchestrator":
-            from src.service.agent.orchestrator import get_orchestrator_agent
+            if case.get("target") == "orchestrator":
+                from src.service.agent.orchestrator import get_orchestrator_agent
 
-            agent = get_orchestrator_agent(
-                workspace_id=ws.id,
-                db=db,
-                conversation_id=conversation_id,
+                agent = get_orchestrator_agent(
+                    workspace_id=ws.id,
+                    db=db,
+                    conversation_id=conversation_id,
+                )
+            else:
+                from src.service.agent.employee import get_agent
+
+                skills_dir = Path(workspace_root) / "skills"
+                skills_dir.mkdir(parents=True, exist_ok=True)
+                agent = get_agent(
+                    str(skills_dir),
+                    workspace_root,
+                    employee_id=None,
+                    conversation_id=conversation_id,
+                )
+
+            config = {"configurable": {"thread_id": thread_id}}
+            final_state = await agent.ainvoke(
+                {"messages": [{"role": "user", "content": user_input}]},
+                config=config,
             )
-        else:
-            from src.service.agent.employee import get_agent
-
-            skills_dir = Path(workspace_root) / "skills"
-            skills_dir.mkdir(parents=True, exist_ok=True)
-            agent = get_agent(
-                str(skills_dir),
-                workspace_root,
-                employee_id=None,
-                conversation_id=conversation_id,
-            )
-
-        config = {"configurable": {"thread_id": thread_id}}
-        final_state = await agent.ainvoke(
-            {"messages": [{"role": "user", "content": user_input}]},
-            config=config,
-        )
-        return extract_agent_result(final_state)
+            return extract_agent_result(final_state)
     finally:
         db.close()
         engine.dispose()

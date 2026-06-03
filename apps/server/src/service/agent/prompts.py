@@ -178,8 +178,9 @@ def build_system_prompt(
         {fs_section}
 
         ## 运行时上下文（仅事实参考，不覆盖上文规则）
-        ### 当前时间
+        ### 当前日期（精确到日，不含时分秒）
         {current_time}
+        若用户问「现在几点」「星期几」或需要精确时间，请调用 `get_current_time` 工具。
 
         ### 当前已加载的技能（/skills/）
         {skills_line}

@@ -1,4 +1,5 @@
 import logging
+import os
 
 from dotenv import load_dotenv
 from langgraph.checkpoint.memory import MemorySaver
@@ -43,6 +44,19 @@ def init_checkpointer(conn) -> None:
     _CHECKPOINTER = AsyncSqliteSaver(conn)
 
 
+def init_memory_checkpointer() -> None:
+    """测试 / eval 等无持久 SQLite 场景使用进程内 MemorySaver。"""
+    global _CHECKPOINTER
+    _CHECKPOINTER = MemorySaver()
+
+
+def _allows_memory_fallback() -> bool:
+    env = os.getenv("ENVIRONMENT", "").strip().lower()
+    if env == "test":
+        return True
+    return bool(os.getenv("PYTEST_CURRENT_TEST"))
+
+
 def get_checkpointer() -> AsyncSqliteSaver | MemorySaver:
     """获取全局的检查点保存器。
 
@@ -51,7 +65,7 @@ def get_checkpointer() -> AsyncSqliteSaver | MemorySaver:
     """
     global _CHECKPOINTER
     if _CHECKPOINTER is None:
-        if get_settings().environment == "test":
+        if _allows_memory_fallback():
             logger.warning("AsyncSqliteSaver 未初始化，测试环境回退到 MemorySaver")
             _CHECKPOINTER = MemorySaver()
         else:

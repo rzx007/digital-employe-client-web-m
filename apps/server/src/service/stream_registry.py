@@ -277,6 +277,7 @@ def _flush_terminal_sync(
     error_message: str | None = None,
     elapsed_ms: int | None = None,
     interrupt_payload: dict | None = None,
+    conversation_id: int | None = None,
 ) -> bool:
     from src.service.hitl_pending_parts import extract_message_parts_for_interrupt
     from src.service.message_parts_extractor import extract_message_parts_from_buffer
@@ -305,6 +306,24 @@ def _flush_terminal_sync(
         )
 
     usage_meta = _extract_last_usage_from_buffer(buffer_events_snapshot)
+    if usage_meta is None and conversation_id is not None:
+        from src.service.usage_estimation import (
+            estimate_usage_for_conversation_turn_sync,
+        )
+
+        usage_meta = estimate_usage_for_conversation_turn_sync(
+            conversation_id,
+            stream_msg_id,
+            content,
+            message_parts_json,
+        )
+        if usage_meta:
+            logger.info(
+                "[flush] msg_id=%s usage estimated: input=%s output=%s",
+                stream_msg_id,
+                usage_meta.get("input_tokens"),
+                usage_meta.get("output_tokens"),
+            )
 
     return _flush_to_db_sync(
         stream_msg_id,
@@ -1273,6 +1292,7 @@ class StreamRegistry:
             error_message,
             elapsed_ms,
             interrupt_payload,
+            task.conversation_id,
         )
         if not ok:
             logger.error(

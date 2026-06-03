@@ -91,6 +91,37 @@ function killProcessTree(pid: number, log: Logger): void {
   forceKillTimeout.unref()
 }
 
+function attachProcessLogForwarders(
+  child: ChildProcess,
+  log: Logger,
+  handlers?: {
+    onLine?: (line: string, stream: "stdout" | "stderr") => void
+    fatalLogPatterns?: string[]
+    onFatal?: (line: string) => void
+  },
+): void {
+  const fatalRegexes = (handlers?.fatalLogPatterns ?? []).map((p) => new RegExp(p))
+
+  const handleChunk =
+    (stream: "stdout" | "stderr") =>
+    (data: Buffer) => {
+      const text = data.toString()
+      for (const rawLine of text.split(/\r?\n/)) {
+        const line = rawLine.trim()
+        if (!line) continue
+        if (fatalRegexes.some((regex) => regex.test(line))) {
+          handlers?.onFatal?.(line)
+        }
+        handlers?.onLine?.(line, stream)
+        // Python logging / uvicorn often use stderr; surface both at info in dev.
+        log.info(line, { stream })
+      }
+    }
+
+  child.stdout?.on("data", handleChunk("stdout"))
+  child.stderr?.on("data", handleChunk("stderr"))
+}
+
 function waitForStdoutReady(
   child: ChildProcess,
   pattern: string,
@@ -118,28 +149,18 @@ function waitForStdoutReady(
       finish(() => reject(err))
     }
 
-    attachFatalLogWatchers(child, fatalLogPatterns, (line) => {
-      fail(new Error(`Service failed during startup: ${line}`))
-    })
-
-    const checkLine = (line: string) => {
-      if (regex.test(line)) {
-        clearTimeout(timeout)
-        log.info("ready (stdout)", { pattern })
-        finish(() => resolve())
-      }
-    }
-
-    child.stdout?.on("data", (data: Buffer) => {
-      const line = data.toString()
-      log.debug("stdout", { line: line.trim() })
-      checkLine(line)
-    })
-
-    child.stderr?.on("data", (data: Buffer) => {
-      const line = data.toString()
-      log.debug("stderr", { line: line.trim() })
-      checkLine(line)
+    attachProcessLogForwarders(child, log, {
+      fatalLogPatterns,
+      onFatal: (line) => {
+        fail(new Error(`Service failed during startup: ${line}`))
+      },
+      onLine: (line) => {
+        if (regex.test(line)) {
+          clearTimeout(timeout)
+          log.info("ready (stdout)", { pattern })
+          finish(() => resolve())
+        }
+      },
     })
 
     child.once("error", (err) => {
@@ -159,22 +180,6 @@ function waitForStdoutReady(
       )
     })
   })
-}
-
-function attachFatalLogWatchers(
-  child: ChildProcess,
-  patterns: string[],
-  onFatal: (message: string) => void,
-): void {
-  if (!patterns.length) return
-  const regexes = patterns.map((p) => new RegExp(p))
-  const check = (line: string) => {
-    if (regexes.some((r) => r.test(line))) {
-      onFatal(line.trim())
-    }
-  }
-  child.stdout?.on("data", (data: Buffer) => check(data.toString()))
-  child.stderr?.on("data", (data: Buffer) => check(data.toString()))
 }
 
 function waitForHealthReady(
@@ -202,8 +207,11 @@ function waitForHealthReady(
       finish(() => reject(err))
     }
 
-    attachFatalLogWatchers(child, fatalLogPatterns, (line) => {
-      fail(new Error(`Service failed during startup: ${line}`))
+    attachProcessLogForwarders(child, log, {
+      fatalLogPatterns,
+      onFatal: (line) => {
+        fail(new Error(`Service failed during startup: ${line}`))
+      },
     })
 
     child.once("error", (err) => fail(err))

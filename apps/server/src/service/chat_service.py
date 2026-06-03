@@ -437,17 +437,24 @@ class ChatService:
         settings,
         last_input_tokens: int | None,
     ) -> int:
-        """若上一轮 API 报告用量已接近压缩阈值，减少加载的历史条数。"""
+        """Reduce loaded message count only in the mid token band.
+
+        When API usage is already near the summarization threshold, load the full
+        message window and let SummarizationMiddleware handle semantic compression
+        instead of head/tail dropping the middle twice.
+        """
+        from src.service.model_context import (
+            resolve_summarization_token_threshold,
+            should_apply_head_tail_truncation,
+        )
+
         base_limit = settings.chat_history_max_messages
         if last_input_tokens is None:
             return base_limit
-        from src.service.model_context import resolve_max_input_tokens
-
-        max_tokens = resolve_max_input_tokens(settings)
-        threshold = int(
-            max_tokens * settings.summarization_trigger_fraction
-        )
-        if last_input_tokens >= int(threshold * 0.9):
+        if not should_apply_head_tail_truncation(settings, last_input_tokens):
+            return base_limit
+        threshold = resolve_summarization_token_threshold(settings)
+        if last_input_tokens >= int(threshold * 0.6):
             return max(4, base_limit // 2)
         return base_limit
 
@@ -544,10 +551,15 @@ class ChatService:
             settings,
             last_input_tokens,
         )
-        if effective_limit < len(history_messages):
+        from src.service.model_context import should_apply_head_tail_truncation
+
+        if (
+            should_apply_head_tail_truncation(settings, last_input_tokens)
+            and effective_limit < len(history_messages)
+        ):
             # 保头+保尾、压中间：不再"减半重载"丢最早几条（那会平移前缀起点、砸 KV-cache），
             # 改为保留已加载窗口最早几条 + 最近若干条；前缀更稳且保住任务锚点。
-            # 直接在已加载窗口上切片，省掉一次 DB 重查。
+            # 接近 token 摘要阈值时跳过，避免与 SummarizationMiddleware 双重丢中间。
             history_messages = ChatService._select_head_tail(
                 history_messages, effective_limit
             )
@@ -647,6 +659,23 @@ class ChatService:
             if last_input_tokens is not None:
                 run_config["configurable"]["last_reported_input_tokens"] = (
                     last_input_tokens
+                )
+            from src.service.context_compression_checkpoint import (
+                resolve_checkpoint_compact_reason,
+            )
+
+            compact_reason = resolve_checkpoint_compact_reason(
+                conversation_id,
+                question,
+                extra_meta,
+            )
+            if compact_reason:
+                run_config["configurable"]["force_context_compact"] = True
+                run_config["configurable"]["context_compact_reason"] = compact_reason
+                logger.info(
+                    "conv=%s injecting context compact checkpoint reason=%s",
+                    conversation_id,
+                    compact_reason,
                 )
             start_result = registry.request_start(
                 conversation_id=conversation_id,

@@ -42,6 +42,7 @@ import { useMonitorStore } from "@/stores/monitor-store"
 import { cn } from "@workspace/ui/lib/utils"
 import { Separator } from "@workspace/ui/components/separator"
 import type { ChatViewContact } from "../shared/chat-view-shared"
+
 import {
   EmployeeContactAvatar,
   GroupMembersAvatar,

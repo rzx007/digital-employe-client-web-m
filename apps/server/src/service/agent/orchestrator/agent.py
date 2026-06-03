@@ -11,7 +11,6 @@ from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend
 from src.service.agent.basic_file_backend import BasicFileFilesystemBackend
 from deepagents.middleware.permissions import FilesystemPermission
-from deepagents.middleware.summarization import SummarizationToolMiddleware
 
 from src.core.config import get_settings, is_agent_virtual_mode
 from src.llm.factory import build_chat_model
@@ -30,6 +29,7 @@ from src.service.agent.destructive_hitl import (
     get_session_flags,
 )
 from src.service.agent.prompts import (
+    build_clarifying_questions_section,
     build_filesystem_prompt_section,
     build_long_document_writing_section,
     build_memory_update_section,
@@ -63,13 +63,11 @@ from src.service.agent.orchestrator.tools import (
     update_employee,
     update_task,
 )
-from src.service.conversation_summarization import ConversationSummarizationMiddleware
-from src.service.model_context import (
-    resolve_summarization_keep,
-    resolve_summarization_trigger,
-)
+from src.service.context_compression import build_summarization_middleware_stack
 from src.service.agent.remember_memory_tool import create_remember_memory_tool
+from src.service.agent.get_current_time_tool import get_current_time_tool
 from src.service.agent.shell_execute_tool import create_shell_execute_tool
+from src.models.workspace import CST
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
 load_dotenv()
@@ -164,7 +162,7 @@ def get_orchestrator_agent(
     # 注入可缓存前缀会毒化缓存；现移出前缀，改由总管按需用 list_workspace_employees /
     # list_tasks 实时查（这两个工具已挂载）。前缀只保留天级日期 + 总管自身技能两项稳定信息。
     runtime_context = ORCHESTRATOR_RUNTIME_CONTEXT_TEMPLATE.format(
-        current_time=datetime.now().strftime("%Y-%m-%d"),
+        current_time=datetime.now(CST).strftime("%Y-%m-%d"),
         available_skills=available_skills_str,
     )
     fs_section = build_filesystem_prompt_section(
@@ -180,20 +178,19 @@ def get_orchestrator_agent(
         ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE
         + fs_section
         + build_memory_update_section()
+        + build_clarifying_questions_section()
         + build_long_document_writing_section(for_orchestrator=True)
         + runtime_context
     )
 
     checkpointer = get_checkpointer()
 
-    summarization_mw = ConversationSummarizationMiddleware(
+    summarization_mw, summarization_tool_mw = build_summarization_middleware_stack(
         model=model,
         backend=backend,
-        trigger=resolve_summarization_trigger(settings),
-        keep=resolve_summarization_keep(settings),
+        settings=settings,
+        use_session_history_file=use_session_history,
     )
-    summarization_mw.use_session_history_file = use_session_history
-    summarization_tool_mw = SummarizationToolMiddleware(summarization_mw)
 
     shell_execute_tool = create_shell_execute_tool(
         shell_backend, artifacts_dir=str(artifacts_dir)
@@ -203,6 +200,7 @@ def get_orchestrator_agent(
     orchestrator_tools: list = [
         shell_execute_tool,
         remember_memory_tool,
+        get_current_time_tool,
     ]
 
     session_flags = (

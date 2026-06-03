@@ -132,6 +132,7 @@ class Settings:
     feishu_bitable_app_token: str = "JjbwbZqiQaT2ZosTeJPcRxF5npc"
     feishu_bitable_table_id: str = "tblY6kGa1btVqkH3"
     feishu_bitable_view_id: str = "vewhP7JKEa"
+    prompt_cache_mode: str | None = None
 
 
 def _get_kv_value(kv_data: dict[str, str], key: str) -> str | None:
@@ -152,6 +153,18 @@ def _get_kv_bool(kv_data: dict[str, str], key: str, default: bool = False) -> bo
 def read_agent_serial_mode(default: bool = False) -> bool:
     """每次从 config_kvs 读取串行模式（设置页热更新，不走 get_settings 缓存）。"""
     return _get_kv_bool(_read_config_kv_data(), "AGENT_SERIAL_MODE", default=default)
+
+
+def normalize_prompt_cache_mode(raw: str | None) -> str | None:
+    """Normalize PROMPT_CACHE_MODE from config_kvs. Empty/default → None (auto by provider)."""
+    if raw is None:
+        return None
+    normalized = str(raw).strip().lower()
+    if not normalized or normalized in ("default", "auto-detect", "provider"):
+        return None
+    if normalized in ("off", "auto", "explicit"):
+        return normalized
+    return None
 
 
 def clear_settings_cache() -> None:
@@ -417,6 +430,9 @@ def get_settings() -> Settings:
         or "tblGUEhjytwRMNAn",
         feishu_bitable_view_id=_get_kv_value(kv_data, "FEISHU_BITABLE_VIEW_ID")
         or "vewr46ceAD",
+        prompt_cache_mode=normalize_prompt_cache_mode(
+            _get_kv_value(kv_data, "PROMPT_CACHE_MODE")
+        ),
     )
 
 

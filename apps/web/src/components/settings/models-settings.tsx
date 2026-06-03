@@ -25,6 +25,13 @@ import {
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { Separator } from "@workspace/ui/components/separator"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
 import {
@@ -38,6 +45,37 @@ import { modelKeys } from "@/lib/query-keys/model"
 import { useCapability } from "@/lib/runtime/runtime-provider"
 import { AddProviderDialog } from "./add-provider-dialog"
 import { ConnectedProvidersList } from "./connected-providers-list"
+
+/** config_kvs PROMPT_CACHE_MODE；空字符串表示按当前供应商自动选择 */
+type PromptCacheModeSetting = "" | "auto" | "explicit" | "off"
+
+const PROMPT_CACHE_MODE_OPTIONS: {
+  value: PromptCacheModeSetting
+  label: string
+  description: string
+}[] = [
+  {
+    value: "",
+    label: "自动（按供应商）",
+    description:
+      "DashScope 用 cache_control；OpenAI/DeepSeek/其它云端用兼容策略；本地 llama.cpp 自动关闭",
+  },
+  {
+    value: "auto",
+    label: "通用兼容（prompt_cache_key）",
+    description: "只附加 cache key，不改消息结构，适合多数 OpenAI 兼容网关",
+  },
+  {
+    value: "explicit",
+    label: "显式 cache_control",
+    description: "在 system 消息加 cache_control 块，适合 Qwen/DashScope 等",
+  },
+  {
+    value: "off",
+    label: "关闭",
+    description: "不注入任何缓存字段（本地 llama.cpp 推荐保持自动或关闭）",
+  },
+]
 
 function resolveActiveParts(registry: LlmRegistry): {
   providerName: string
@@ -63,6 +101,8 @@ export function ModelsSettings() {
   const [syncingRemote, setSyncingRemote] = React.useState(false)
   const [advancedOpen, setAdvancedOpen] = React.useState(false)
   const [maxInputTokens, setMaxInputTokens] = React.useState("")
+  const [promptCacheMode, setPromptCacheMode] =
+    React.useState<PromptCacheModeSetting>("")
   const [savingTokens, setSavingTokens] = React.useState(false)
 
   const registryQuery = useQuery({
@@ -76,8 +116,19 @@ export function ModelsSettings() {
   })
 
   React.useEffect(() => {
-    void getConfigKv("MODEL_MAX_INPUT_TOKENS")
-      .then((kv) => setMaxInputTokens(kv?.config_value?.trim() ?? ""))
+    void Promise.all([
+      getConfigKv("MODEL_MAX_INPUT_TOKENS"),
+      getConfigKv("PROMPT_CACHE_MODE"),
+    ])
+      .then(([tokensKv, cacheKv]) => {
+        setMaxInputTokens(tokensKv?.config_value?.trim() ?? "")
+        const raw = (cacheKv?.config_value ?? "").trim().toLowerCase()
+        if (raw === "auto" || raw === "explicit" || raw === "off") {
+          setPromptCacheMode(raw)
+        } else {
+          setPromptCacheMode("")
+        }
+      })
       .catch(() => { })
   }, [])
 
@@ -113,6 +164,7 @@ export function ModelsSettings() {
     try {
       await setManyConfigKv([
         { key: "MODEL_MAX_INPUT_TOKENS", value: trimmed },
+        { key: "PROMPT_CACHE_MODE", value: promptCacheMode },
       ])
       toast.success("高级选项已保存")
     } catch {
@@ -121,6 +173,10 @@ export function ModelsSettings() {
       setSavingTokens(false)
     }
   }
+
+  const selectedPromptCacheOption = PROMPT_CACHE_MODE_OPTIONS.find(
+    (o) => o.value === promptCacheMode
+  )
 
   const registry = registryQuery.data
   const active = registry ? resolveActiveParts(registry) : null
@@ -265,17 +321,51 @@ export function ModelsSettings() {
               <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
                 控制 Agent 上下文压缩预算。留空保存时使用服务端默认 131072。
               </p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-fit"
-                disabled={savingTokens}
-                onClick={() => void handleSaveMaxTokens()}
-              >
-                {savingTokens ? "保存中…" : "保存高级选项"}
-              </Button>
             </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="prompt-cache-mode" className="text-sm">
+                提示词缓存（PROMPT_CACHE_MODE）
+              </Label>
+              <Select
+                value={promptCacheMode === "" ? "default" : promptCacheMode}
+                onValueChange={(value) => {
+                  if (value === "default") {
+                    setPromptCacheMode("")
+                  } else if (
+                    value === "auto" ||
+                    value === "explicit" ||
+                    value === "off"
+                  ) {
+                    setPromptCacheMode(value)
+                  }
+                }}
+              >
+                <SelectTrigger id="prompt-cache-mode" className="max-w-md">
+                  <SelectValue placeholder="选择缓存策略" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">自动（按供应商）</SelectItem>
+                  <SelectItem value="auto">通用兼容（prompt_cache_key）</SelectItem>
+                  <SelectItem value="explicit">显式 cache_control</SelectItem>
+                  <SelectItem value="off">关闭</SelectItem>
+                </SelectContent>
+              </Select>
+              {selectedPromptCacheOption && (
+                <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
+                  {selectedPromptCacheOption.description}
+                </p>
+              )}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-fit"
+              disabled={savingTokens}
+              onClick={() => void handleSaveMaxTokens()}
+            >
+              {savingTokens ? "保存中…" : "保存高级选项"}
+            </Button>
           </CollapsibleContent>
         </Collapsible>
       </CardContent>

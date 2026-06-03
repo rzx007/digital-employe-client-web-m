@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from src.service.agent.prompts import (
+    build_clarifying_questions_section,
     build_long_document_writing_section,
     build_system_prompt,
 )
@@ -52,8 +53,10 @@ def orchestrator_prompt() -> str:
 
     （运行时表 employee_table/delegation 需 DB，不在此确定性层断言。）
     """
-    static = ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE + build_long_document_writing_section(
-        for_orchestrator=True
+    static = (
+        ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE
+        + build_clarifying_questions_section()
+        + build_long_document_writing_section(for_orchestrator=True)
     )
     return static + "\n" + _AGENTS_MD
 
@@ -109,6 +112,16 @@ def test_employee_skill_listing_grounded_in_runtime(employee_prompt: str) -> Non
 # --------------------------------------------------------------------------- #
 # 总管提示词不变量
 # --------------------------------------------------------------------------- #
+
+
+def test_orchestrator_clarify_gate_tool_present(orchestrator_prompt: str) -> None:
+    assert "submit_clarifying_questions" in orchestrator_prompt
+
+
+def test_orchestrator_multi_split_direct_plan_rule(orchestrator_prompt: str) -> None:
+    assert "create_orchestration_plan" in orchestrator_prompt
+    assert "submit_clarifying_questions" in orchestrator_prompt
+    assert "禁止" in orchestrator_prompt and "分工" in orchestrator_prompt
 
 
 def test_orchestrator_answers_in_chinese(orchestrator_prompt: str) -> None:

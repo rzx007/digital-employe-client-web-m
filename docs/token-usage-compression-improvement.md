@@ -44,9 +44,9 @@ DashScope 返回 `"InternalError.Algo.InvalidParameter: Range of input length sh
 
 一次用户消息可能触发**多轮**模型调用（工具循环），应取 buffer 中**最后一次**出现的 usage。
 
-### 问题 5（补充）：参数截断未启用
+### 问题 5（补充）：参数截断
 
-`ConversationSummarizationMiddleware` 当前只设置 `trigger` / `keep`，`truncate_args_settings=None` 表示**关闭**大 tool 参数截断。对 `write_file` / `execute` 等大参数场景，仅靠调 fraction 帮助有限。
+`ConversationSummarizationMiddleware` 通过 `context_compression.build_summarization_middleware_stack` 启用 `truncate_args_settings`（50% 触发，keep 与摘要一致，单参数 max 2000 字符）。对 `write_file` / `execute` 等大参数场景，在完整 LLM 摘要之前先做轻量截断。
 
 ## 改进计划（三阶段）
 
@@ -233,6 +233,18 @@ def _load_history_for_agent(
     return payload, last_input_tokens
 ```
 
+#### 2d. API 无 usage 时的估算 fallback（2026-06-03）
+
+**文件：** `apps/server/src/service/usage_estimation.py` · 挂接于 `stream_registry._flush_terminal_sync`
+
+当 `_extract_last_usage_from_buffer` 为空（常见于部分 OpenAI 兼容网关流式不返 usage）时：
+
+- 用 tiktoken（`cl100k_base`）估算对话历史 + 本轮 assistant 输出
+- 写入 `extra_meta.usage`，并设 `estimated: true`
+- 日志：`[flush] msg_id=… usage estimated: input=… output=…`
+
+**产品说明：** 估算用于 P5 摘要校准与调试；**聊天标题栏不展示**上下文百分比（偏差易误导）。`GET /chat/conversations/{id}/context-budget` API 仍保留。
+
 ---
 
 ### Phase 3：用实际用量改进压缩（低优先级）
@@ -241,22 +253,16 @@ def _load_history_for_agent(
 
 **文件：** `apps/server/src/service/chat_service.py` → `stream_conversation_answer()`
 
-```python
-history, last_input_tokens = ChatService._load_history_for_agent(...)
-if last_input_tokens is not None:
-    config["configurable"]["last_reported_input_tokens"] = last_input_tokens
-```
+已实现：`last_reported_input_tokens` 注入 `run_config["configurable"]`。
 
 #### 3b. 消费方式（推荐优先级）
 
-| 方案 | 说明 | 推荐 |
+| 方案 | 说明 | 状态 |
 |------|------|------|
-| **ChatService 预截断** | 若 `last_input_tokens` + 估算的新消息 > 阈值 × 安全系数，加载历史时截断条数或字符 | ✅ 首选，不 fork 依赖 |
-| **调低 `MODEL_MAX_INPUT_TOKENS`** | 与设置页推荐值对齐，让 fraction 基于更保守的预算 | ✅ 与 1a 配合 |
-| **langchain `use_usage_metadata_scaling`** | 计数器用历史 usage 缩放近似值（需查当前 langchain/deepagents 是否暴露） | 待调研 |
-| **改 deepagents middleware** | 在 `_should_summarize` 读 config | ❌ 勿改 `.venv`；可向 deepagents 提 PR |
-
-**不推荐：** 修改 `.venv/Lib/site-packages/deepagents/middleware/summarization.py`。
+| **SummarizationMiddleware 读 config** | `ConversationSummarizationMiddleware._should_summarize` 在 API 用量 ≥ 阈值时触发摘要 | ✅ |
+| **检查点 force compact** | `force_context_compact` + `context_compact_reason`（委派完成 / 换话题） | ✅ |
+| **ChatService 预截断** | head/tail 仅在 token 未达 80% 阈值时启用，避免与摘要双重丢中间 | ✅ |
+| **改 deepagents middleware** | 在 `.venv` 内改 `_should_summarize` | ❌ 勿改 |
 
 #### 3c. 可选：启用 truncate_args_settings
 

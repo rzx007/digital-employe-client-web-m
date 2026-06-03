@@ -10,8 +10,6 @@ from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend
 from src.service.agent.basic_file_backend import BasicFileFilesystemBackend
 from deepagents.middleware.permissions import FilesystemPermission
-from deepagents.middleware.summarization import SummarizationToolMiddleware
-
 from src.core.config import get_settings, is_agent_virtual_mode
 from src.llm.factory import build_chat_model
 from src.service.agent.checkpointer import get_checkpointer
@@ -23,16 +21,14 @@ from src.service.agent.paths import (
     resolve_skills_root,
 )
 from src.service.agent.prompts import build_system_prompt
-from src.service.conversation_summarization import ConversationSummarizationMiddleware
-from src.service.model_context import (
-    resolve_summarization_keep,
-    resolve_summarization_trigger,
-)
+from src.service.context_compression import build_summarization_middleware_stack
+from src.service.agent.get_current_time_tool import get_current_time_tool
 from src.service.agent.shell_execute_tool import create_shell_execute_tool
 from src.service.agent.remember_memory_tool import create_remember_memory_tool
 from src.service.agent.clarifying_questions_tool import submit_clarifying_questions
 from src.service.agent.document_plan_tool import submit_document_plan
 from src.service.agent.hitl_interrupt_on import HITL_INTERRUPT_ON
+from src.models.workspace import CST
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
 load_dotenv()
@@ -53,7 +49,7 @@ def get_agent(
 
     # 仅保留到天级：时间戳位于可缓存前缀内，秒级每轮变化会使其后的 KV-cache
     # （剩余 system + 整段 history）全部失效；降到天级后缓存可在一整天内持续命中。
-    current_time = datetime.now().strftime("%Y-%m-%d")
+    current_time = datetime.now(CST).strftime("%Y-%m-%d")
     skills_root = resolve_skills_root(skill_path)
     available_skills = list_available_skills(skills_root)
     logger.info(
@@ -185,20 +181,18 @@ def get_agent(
 
     backend = CompositeBackend(default=shell_backend, routes=routes)
 
-    summarization_mw = ConversationSummarizationMiddleware(
+    summarization_mw, summarization_tool_mw = build_summarization_middleware_stack(
         model=model,
         backend=backend,
-        trigger=resolve_summarization_trigger(settings),
-        keep=resolve_summarization_keep(settings),
+        settings=settings,
+        use_session_history_file=use_session_history,
     )
-    summarization_mw.use_session_history_file = use_session_history
-    summarization_tool_mw = SummarizationToolMiddleware(summarization_mw)
 
     shell_execute_tool = create_shell_execute_tool(
         shell_backend, artifacts_dir=str(artifacts_dir)
     )
     remember_memory_tool = create_remember_memory_tool(memories_dir)
-    extra_tools: list = [shell_execute_tool, remember_memory_tool]
+    extra_tools: list = [shell_execute_tool, remember_memory_tool, get_current_time_tool]
     if sql_tools:
         extra_tools.extend(sql_tools)
     extra_tools.extend(_session_search_tools)

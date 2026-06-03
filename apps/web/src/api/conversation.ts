@@ -70,6 +70,16 @@ export async function fetchConversationMessages(
     opts?.signal ? { signal: opts.signal } : undefined
   )
 }
+
+export async function fetchConversationContextBudget(
+  conversationId: number | string,
+  opts?: { signal?: AbortSignal }
+) {
+  return request<ApiResponse<import("@/lib/chat/context-budget").ContextBudgetSnapshot>>(
+    `/chat/conversations/${conversationId}/context-budget`,
+    opts?.signal ? { signal: opts.signal } : undefined
+  )
+}
 export async function deleteConversation(conversationId: number | string) {
   return request<ApiResponse<null>>(`/chat/conversations/${conversationId}`, {
     method: "DELETE",

@@ -102,6 +102,18 @@ def create_app() -> FastAPI:
             summary_message_id: int | None = None,
             execution_log_id: int | None = None,
         ) -> None:
+            if (
+                stream_state == "completed"
+                and orchestrator_conversation_id is not None
+            ):
+                from src.service.context_compression_checkpoint import (
+                    mark_pending_compact,
+                )
+
+                mark_pending_compact(
+                    orchestrator_conversation_id,
+                    "delegation_completed",
+                )
             base = {
                 "task_id": task_id,
                 "conversation_id": conversation_id,

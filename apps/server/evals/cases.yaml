@@ -225,13 +225,14 @@
 - id: multi-employee-split
   target: orchestrator
   category: delegation
-  input: "做一个活动落地页：前端页面 + 文案，两个人分工"
+  input: "做一个活动落地页：前端工程师负责页面，文案策划负责文案，两个人分工做"
   setup:
     employees:
       - {name: "前端工程师", skills: ["frontend"]}
       - {name: "文案策划", skills: ["copywriting"]}
   expect:
     tools_called_any: [create_orchestration_plan]
+    tools_not_called: [submit_clarifying_questions]
   rubric: "是否按员工拆成各自子任务、每条 prompt 写清目标/输出/路径（理想含'非目标'边界）？1-5 分。"
 
 # ----------------------------------------------------------------------------
