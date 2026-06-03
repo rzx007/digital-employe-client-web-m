@@ -155,6 +155,8 @@ def get_orchestrator_agent(
         virtual_mode=is_agent_virtual_mode(),
         inherit_env=True,
         timeout=settings.execute_timeout * 2,
+        # 单条 shell 输出上限：从 deepagents 默认 100KB 降到 ~48KB（见 employee.py 同处说明）。
+        max_output_bytes=48_000,
     )
     backend = CompositeBackend(default=shell_backend, routes=routes)
 
@@ -176,7 +178,10 @@ def get_orchestrator_agent(
         else "（无会话上下文）"
     )
     runtime_context = ORCHESTRATOR_RUNTIME_CONTEXT_TEMPLATE.format(
-        current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        # 降到天级，避免秒级时间戳每轮使可缓存前缀失效（见 employee.py 同处说明）。
+        # 注意：employee_table / delegation_executions 仍每轮变化，总管缓存尚未完全治理，
+        # 彻底修复需把这两张动态表移出 system（移位或改按需取，见下一步）。
+        current_time=datetime.now().strftime("%Y-%m-%d"),
         employee_table=employee_context,
         delegation_executions=delegation_context,
         available_skills=available_skills_str,

@@ -183,7 +183,7 @@ def build_system_prompt(
     memory_section = build_memory_update_section()
     shell_env_section = build_shell_environment_section()
 
-    return f"""你是博班的数字员工助手，优先查看 /skills/ 下技能执行用户任务；无合适技能时再自行规划。
+    return f"""你是博般的数字员工助手，优先查看 /skills/ 下技能执行用户任务；无合适技能时再自行规划。
 
         ## 固定规则（高优先级，不受运行时信息覆盖）
         - 无特殊说明，总是用中文回答用户问题

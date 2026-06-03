@@ -51,7 +51,9 @@ def get_agent(
 ):
     checkpointer = get_checkpointer()
 
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # 仅保留到天级：时间戳位于可缓存前缀内，秒级每轮变化会使其后的 KV-cache
+    # （剩余 system + 整段 history）全部失效；降到天级后缓存可在一整天内持续命中。
+    current_time = datetime.now().strftime("%Y-%m-%d")
     skills_root = resolve_skills_root(skill_path)
     available_skills = list_available_skills(skills_root)
     logger.info(
@@ -176,6 +178,9 @@ def get_agent(
         virtual_mode=is_agent_virtual_mode(),
         inherit_env=True,
         timeout=settings.execute_timeout * 2,
+        # 单条 shell 输出上限：从 deepagents 默认 100KB 降到 ~48KB（中文≈24k token），
+        # 减少超长输出对上下文/缓存的占用；截断时给可纠偏提示。
+        max_output_bytes=48_000,
     )
 
     backend = CompositeBackend(default=shell_backend, routes=routes)

@@ -20,6 +20,15 @@ from src.service.agent.path_access.virtual_paths import map_virtual_token
 logger = logging.getLogger(__name__)
 
 
+def _truncation_notice(limit_desc: str) -> str:
+    """可纠偏的截断提示：告诉模型输出被截断了、以及如何拿到剩余内容，
+    避免模型误以为结果到此为止（参考 Anthropic「工具报错/截断应给可执行的纠正方向」）。"""
+    return (
+        f"\n\n[输出已截断（{limit_desc}）。这不是完整结果；如需更多，请缩小命令范围"
+        "或分页（如 head/tail/grep/sed -n），或先把结果写入文件再用 read_file 分段查看。]"
+    )
+
+
 class SkillAwareShellBackend(LocalShellBackend):
     """执行前将虚拟技能路径映射为真实物理路径。"""
 
@@ -34,12 +43,14 @@ class SkillAwareShellBackend(LocalShellBackend):
         virtual_mode: bool = True,
         inherit_env: bool = True,
         timeout: int = 30,
+        max_output_bytes: int = 100_000,
     ):
         super().__init__(
             root_dir=root_dir,
             virtual_mode=virtual_mode,
             inherit_env=inherit_env,
             timeout=timeout,
+            max_output_bytes=max_output_bytes,
         )
         self._artifacts_dir = Path(root_dir).resolve()
         self._skills_root = skills_root.resolve()
@@ -297,7 +308,7 @@ class SkillAwareShellBackend(LocalShellBackend):
                     if last_size > _MAX_TMPFILE_BYTES:
                         loop.call_soon_threadsafe(
                             queue.put_nowait,
-                            "... Output truncated (超过 1MB)",
+                            _truncation_notice("超过 1MB").lstrip("\n"),
                         )
                         break
 
@@ -412,7 +423,7 @@ class SkillAwareShellBackend(LocalShellBackend):
             output = "\n".join(lines) if lines else ""
             if len(output) > self._max_output_bytes:
                 output = output[: self._max_output_bytes]
-                output += f"\n\n... Output truncated at {self._max_output_bytes} bytes."
+                output += _truncation_notice(f"{self._max_output_bytes} 字节上限")
             return ExecuteResponse(
                 output=output or " ",
                 exit_code=124,
@@ -423,7 +434,7 @@ class SkillAwareShellBackend(LocalShellBackend):
         truncated = False
         if len(output) > self._max_output_bytes:
             output = output[: self._max_output_bytes]
-            output += f"\n\n... Output truncated at {self._max_output_bytes} bytes."
+            output += _truncation_notice(f"{self._max_output_bytes} 字节上限")
             truncated = True
 
         if exit_code != 0:
@@ -468,9 +479,7 @@ class SkillAwareShellBackend(LocalShellBackend):
             truncated = False
             if len(output) > self._max_output_bytes:
                 output = output[: self._max_output_bytes]
-                output += (
-                    f"\n\n... Output truncated at {self._max_output_bytes} bytes."
-                )
+                output += _truncation_notice(f"{self._max_output_bytes} 字节上限")
                 truncated = True
 
             if result.returncode != 0:
