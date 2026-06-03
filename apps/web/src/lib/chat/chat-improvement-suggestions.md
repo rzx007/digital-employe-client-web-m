@@ -187,9 +187,16 @@ type SessionState =
 | P2-3 | 分类器多趟 collapse 合并为单趟 pipeline，或在文件头**显式声明 pass 顺序契约** | message-classifier.ts |
 | P2-4 | `block-render-map` 默认分支改 **exhaustive check**（`never` 兜底），显式区分 `final-response` 与未知 kind | block-render-map.tsx |
 
-### P3 · 质量保障
+### P3 · 质量保障 —— 🟡 进行中
 
-时序类 bug 单测难覆盖，建议补**关键路径集成测试**（已有 Vitest 配置）：
+**已完成**：
+- 加测试基建 `@testing-library/react` + `happy-dom`（vitest `include` 扩到 `.tsx`，按文件 `// @vitest-environment happy-dom`）。
+- `hooks/use-conversation-session.test.tsx`：renderHook 集成测试，覆盖「切回/进入 streaming 会话 → resumeStream 恰好一次」——**自动化了此前只能人肉冒烟发现的 P1-2 rAF 自取消回归**，以及 completed/本地 streaming 不 resume。
+- `langchain-stream-parser-resume-seal.test.ts`：用**真实 resume SSE 抓包**回归"审批后工具块重复"（含基线证明重放）。
+
+> 顺带修复（源于本节调查）：**审批后 resume 工具块/文本重复** —— deepagents `HumanInTheLoopMiddleware.after_model` 在 resume 头部重放触发中断的 AIMessage+ToolMessage，其 toolCallId 已封存在 msg_A，前端合并 msg_A+msg_B 致重复。修复 A（parser `sealedToolCallIds` 跳过重放）+ B（`dedupeToolPartsByToolCallId` 按 toolCallId 兜底去重）。
+
+**待补**（剩余关键路径集成测试）：
 
 1. resume × HITL 交叉：流式中断 → 审批 → resume 续流，断言不重复 resume、不丢 chunk；
 2. 切会话竞态：streaming 中切走再切回，断言不被 hydrate 覆盖；
