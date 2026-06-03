@@ -46,4 +46,15 @@ describe("sessionReducer", () => {
     expect(s.hydratedConvId).toBe("1")
     expect(s.lastHydratedSig).toBe("3:42")
   })
+
+  it("ACTIVATED returns the same object reference when already active", () => {
+    const s = { ...initialSessionMachine, active: true }
+    expect(sessionReducer(s, { type: "ACTIVATED" })).toBe(s)
+  })
+
+  it("INTERRUPTED with null hitl is a no-op (same state reference)", () => {
+    expect(
+      sessionReducer(initialSessionMachine, { type: "INTERRUPTED", hitl: null })
+    ).toBe(initialSessionMachine)
+  })
 })

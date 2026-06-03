@@ -10,7 +10,7 @@
 
  */
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useReducer, useRef } from "react"
 
 import type { QueryClient } from "@tanstack/react-query"
 
@@ -28,7 +28,6 @@ import {
   patchApprovedAtOnMessagesCache,
   patchAssistantWithInterruptParts,
   resolveActiveHitl,
-  type ActiveHitl,
   type HitlPatchOptions,
 } from "@/lib/chat/hitl"
 
@@ -39,6 +38,12 @@ import {
 
 import { terminalToStreamState } from "@/lib/chat/session/terminal-state"
 import { seedActiveHitlFromStoredMessages } from "@/lib/chat/session/seed-active-hitl"
+import {
+  initialSessionMachine,
+  sessionReducer,
+} from "@/lib/chat/session/session-machine"
+import { shouldAttemptResume } from "@/lib/chat/session/resume-decision"
+import { decideHydration } from "@/lib/chat/session/hydrate-decision"
 
 import { chatTransport } from "@/components/chat/shared/chat-view-shared"
 
@@ -91,23 +96,13 @@ export function useConversationSession({
 
   queryClient: QueryClient
 }) {
-  const [activeHitl, setActiveHitl] = useState<ActiveHitl | null>(null)
+  const [machine, dispatch] = useReducer(sessionReducer, initialSessionMachine)
 
   const pendingHitl = findPendingHitl(composerMessages)
 
-  const hitlInterrupted = activeHitl !== null
-
-  const resumeAttemptedForRef = useRef<string | null>(null)
-
-  const activeSessionRef = useRef<boolean>(false)
-
-  const hydratedConvIdRef = useRef<string | null>(null)
-
-  const hitlActiveRef = useRef(false)
+  const hitlInterrupted = machine.activeHitl !== null
 
   const prevConversationIdRef = useRef(conversationId)
-
-  const lastHydratedSigRef = useRef<string>("")
 
   const composerMessagesRef = useRef(composerMessages)
 
@@ -118,22 +113,10 @@ export function useConversationSession({
   const convKey = conversationId != null ? String(conversationId) : null
 
   useEffect(() => {
-    hitlActiveRef.current = hitlInterrupted || activeHitl !== null
-  }, [hitlInterrupted, activeHitl])
-
-  useEffect(() => {
     if (prevConversationIdRef.current !== conversationId) {
-      resumeAttemptedForRef.current = null
-
       prevConversationIdRef.current = conversationId
 
-      hydratedConvIdRef.current = null
-
-      lastHydratedSigRef.current = ""
-
-      activeSessionRef.current = false
-
-      setActiveHitl(null)
+      dispatch({ type: "CONVERSATION_SWITCHED" })
 
       if (convKey) {
         void queryClient.invalidateQueries({
@@ -144,12 +127,13 @@ export function useConversationSession({
   }, [conversationId, convKey, queryClient])
 
   useEffect(() => {
-    if (!convKey || activeSessionRef.current) return
+    if (!convKey || machine.active) return
 
-    const seeded = seedActiveHitlFromStoredMessages(storedMessages)
-
-    setActiveHitl(seeded)
-  }, [convKey, storedMessages])
+    dispatch({
+      type: "SEED_HITL",
+      hitl: seedActiveHitlFromStoredMessages(storedMessages),
+    })
+  }, [convKey, machine.active, storedMessages])
 
   const scheduleMessagesRefetch = useCallback(() => {
     if (!convKey) return
@@ -167,15 +151,11 @@ export function useConversationSession({
     }, REFETCH_DEBOUNCE_MS)
   }, [convKey, queryClient])
 
-  const resetResumeAttempt = useCallback(() => {
-    resumeAttemptedForRef.current = null
-  }, [])
-
   useEffect(() => {
     if (!convKey) return
 
     if (status === "streaming" || status === "submitted") {
-      activeSessionRef.current = true
+      dispatch({ type: "ACTIVATED" })
 
       return
     }
@@ -187,41 +167,41 @@ export function useConversationSession({
       composerMessagesRef.current,
       initialMessages
     )
-    const alreadySynced =
-      hydratedConvIdRef.current === convKey &&
-      lastHydratedSigRef.current === sig &&
-      !needsHydrate
 
-    if (!alreadySynced) {
-      const blockedByActiveSession =
-        activeSessionRef.current &&
-        hydratedConvIdRef.current === convKey &&
-        !needsHydrate
+    const decision = decideHydration({
+      convKey,
+      sig,
+      needsHydrate,
+      active: machine.active,
+      hydratedConvId: machine.hydratedConvId,
+      lastHydratedSig: machine.lastHydratedSig,
+    })
 
-      if (!blockedByActiveSession) {
-        if (activeSessionRef.current && needsHydrate) {
-          const patched = patchComposerFromStoredWhenSameTurn(
-            composerMessagesRef.current,
-            initialMessages
-          )
-          setMessages(patched ?? initialMessages)
-        } else {
-          setMessages(initialMessages)
-        }
-        lastHydratedSigRef.current = sig
-        hydratedConvIdRef.current = convKey
-      }
+    if (decision.action === "patch") {
+      setMessages(
+        patchComposerFromStoredWhenSameTurn(
+          composerMessagesRef.current,
+          initialMessages
+        ) ?? initialMessages
+      )
+      dispatch({ type: "HYDRATED", convKey, sig })
+    } else if (decision.action === "replace") {
+      setMessages(initialMessages)
+      dispatch({ type: "HYDRATED", convKey, sig })
     }
-
-    if (hitlActiveRef.current) return
 
     const lastAssistant = getLastAssistantMessage(storedMessages)
 
-    if (lastAssistant?.streamState !== "streaming") return
+    const willResume = shouldAttemptResume({
+      hitlActive: machine.activeHitl !== null,
+      lastAssistantStreamState: lastAssistant?.streamState,
+      lastAssistantId: lastAssistant?.id,
+      resumeAttemptedFor: machine.resumeAttemptedFor,
+    })
 
-    if (resumeAttemptedForRef.current === lastAssistant.id) return
+    if (!willResume) return
 
-    resumeAttemptedForRef.current = lastAssistant.id
+    dispatch({ type: "RESUME_ATTEMPTED", assistantId: lastAssistant!.id })
 
     chatTransport.setResumeConversationId(convKey)
 
@@ -247,6 +227,16 @@ export function useConversationSession({
     resumeStream,
 
     status,
+
+    machine.active,
+
+    machine.activeHitl,
+
+    machine.hydratedConvId,
+
+    machine.lastHydratedSig,
+
+    machine.resumeAttemptedFor,
   ])
 
   useEffect(() => {
@@ -263,7 +253,7 @@ export function useConversationSession({
 
           const hitl = resolveActiveHitl(payload, next)
 
-          if (hitl) setActiveHitl(hitl)
+          dispatch({ type: "INTERRUPTED", hitl })
 
           return next
         })
@@ -272,10 +262,7 @@ export function useConversationSession({
       },
 
       onTerminal: (info) => {
-        if (info.status === "cancelled") {
-          activeSessionRef.current = false
-          hydratedConvIdRef.current = null
-        }
+        dispatch({ type: "TERMINAL", status: info.status })
 
         const streamState = terminalToStreamState(info.status)
 
@@ -321,8 +308,7 @@ export function useConversationSession({
   const onStreamStopped = useCallback(() => {
     if (!convKey) return
 
-    activeSessionRef.current = false
-    hydratedConvIdRef.current = null
+    dispatch({ type: "STREAM_STOPPED" })
 
     patchLastAssistantStreamState(queryClient, convKey, "cancelled")
 
@@ -338,13 +324,11 @@ export function useConversationSession({
     async (options?: HitlPatchOptions) => {
       if (!convKey) return
 
-      activeSessionRef.current = true
-
       const approvedMessageId =
-        options?.approvedMessageId ?? activeHitl?.dbMessageId ?? null
+        options?.approvedMessageId ?? machine.activeHitl?.dbMessageId ?? null
 
       const toolCallId =
-        options?.toolCallId ?? activeHitl?.toolCallId ?? undefined
+        options?.toolCallId ?? machine.activeHitl?.toolCallId ?? undefined
 
       if (approvedMessageId != null) {
         const approvedAt = createApprovedAtTimestamp()
@@ -370,11 +354,9 @@ export function useConversationSession({
             toolCallId
           )
         )
-
-        hitlActiveRef.current = false
       }
 
-      setActiveHitl(null)
+      dispatch({ type: "HITL_APPROVED" })
 
       scheduleMessagesRefetch()
 
@@ -400,7 +382,7 @@ export function useConversationSession({
         })
       }
 
-      resumeAttemptedForRef.current = null
+      dispatch({ type: "RESUME_RESET" })
 
       chatTransport.setResumeConversationId(convKey)
 
@@ -410,7 +392,7 @@ export function useConversationSession({
     },
 
     [
-      activeHitl,
+      machine.activeHitl,
 
       convKey,
 
@@ -425,19 +407,15 @@ export function useConversationSession({
   )
 
   const prepareOutboundMessage = useCallback(() => {
-    activeSessionRef.current = true
-
-    setActiveHitl(null)
-
-    resetResumeAttempt()
-  }, [resetResumeAttempt])
+    dispatch({ type: "OUTBOUND_PREPARED" })
+  }, [])
 
   return {
-    activeHitl,
+    activeHitl: machine.activeHitl,
 
     /** POST /approve 用 DB message_id（= activeHitl.dbMessageId） */
 
-    hitlMessageId: activeHitl?.dbMessageId ?? null,
+    hitlMessageId: machine.activeHitl?.dbMessageId ?? null,
 
     hitlInterrupted,
 
