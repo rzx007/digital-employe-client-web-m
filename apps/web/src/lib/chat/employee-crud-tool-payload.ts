@@ -1,4 +1,5 @@
 import { isToolOutputPending } from "./tool-output-pending"
+import { asNumber, parseJsonObject } from "./parse-utils"
 
 export interface EmployeeDetailPayload {
   type: "employee_detail"
@@ -31,30 +32,8 @@ export type EmployeeCrudBlockKind =
   | "employee-updated"
   | "employee-deleted"
 
-function parseJsonObject(text: string): Record<string, unknown> | null {
-  const trimmed = text.trim()
-  if (!trimmed.startsWith("{")) return null
-  try {
-    const parsed: unknown = JSON.parse(trimmed)
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null
-  } catch {
-    return null
-  }
-}
-
 function asString(value: unknown): string {
   return typeof value === "string" ? value : String(value ?? "")
-}
-
-function asNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value
-  if (typeof value === "string" && value.trim()) {
-    const n = Number(value)
-    return Number.isFinite(n) ? n : null
-  }
-  return null
 }
 
 export function parseEmployeeDetailPayload(

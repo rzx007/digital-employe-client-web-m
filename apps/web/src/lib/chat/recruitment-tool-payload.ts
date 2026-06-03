@@ -1,5 +1,6 @@
 import { isToolOutputPending } from "./tool-output-pending"
 import type { ToolUiActionOutbound } from "./tool-ui-action"
+import { asNumber, parseJsonObject } from "./parse-utils"
 
 export interface RecruitmentCandidateItem {
   index: number
@@ -24,20 +25,6 @@ export interface EmployeeHiredPayload {
   employee_code?: string
   skills: string[]
   message: string
-}
-
-function parseJsonObject(text: string): Record<string, unknown> | null {
-  const trimmed = text.trim()
-  if (!trimmed.startsWith("{")) return null
-  try {
-    const parsed: unknown = JSON.parse(trimmed)
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>
-    }
-  } catch {
-    return null
-  }
-  return null
 }
 
 function normalizeSkillIds(raw: unknown): number[] {
@@ -216,15 +203,6 @@ export type RecruitmentToolBlockKind =
   | "employee-hired"
   | "employees-hired"
 
-function asNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value
-  if (typeof value === "string" && value.trim()) {
-    const n = Number(value)
-    return Number.isFinite(n) ? n : null
-  }
-  return null
-}
-
 function normalizeEmployeesHiredSucceeded(
   raw: unknown
 ): EmployeesHiredSucceededItem | null {
@@ -282,8 +260,7 @@ export function parseEmployeesHiredPayload(
     : []
 
   const total = asNumber(obj.total) ?? succeeded.length + failed.length
-  const succeededCount =
-    asNumber(obj.succeeded_count) ?? succeeded.length
+  const succeededCount = asNumber(obj.succeeded_count) ?? succeeded.length
   const failedCount = asNumber(obj.failed_count) ?? failed.length
 
   return {
@@ -394,7 +371,8 @@ export function buildRecruitmentHireAllAgentMessage(
 }
 
 /** @deprecated 使用 buildRecruitmentHireAllAgentMessage */
-export const buildRecruitmentHireAllMessage = buildRecruitmentHireAllAgentMessage
+export const buildRecruitmentHireAllMessage =
+  buildRecruitmentHireAllAgentMessage
 
 export function buildRecruitmentHireAllDisplayText(
   candidates: RecruitmentCandidateItem[]
