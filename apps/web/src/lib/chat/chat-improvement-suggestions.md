@@ -148,7 +148,17 @@ HITL 生命周期判断被拆在：`hitl/constants.ts`（工具集合）、`hitl
 **P1-1 单一 streamState 真相源**
 以 DB `Message.streamState` 为唯一权威，`composer.metadata.streamState` 仅作镜像；提供**一个 selector** 派生 UI 所需状态，禁止业务代码各自 patch 多处。消除 R1 的手动多点同步。
 
-**P1-2 会话 FSM 显式化**（替换 R3 的 6 个 ref）
+**P1-2 会话 FSM 显式化（替换 R3 的 6 个 ref）** ✅ 已完成
+- 计划：`docs/superpowers/plans/2026-06-03-conversation-session-fsm.md`（经两轮 plan-document-reviewer 评审通过）。
+- 落地：6 个 ref（`activeSessionRef`/`hydratedConvIdRef`/`lastHydratedSigRef`/`resumeAttemptedForRef`/`hitlActiveRef` + `useState activeHitl`）收敛为单一 `useReducer(sessionReducer, …)`；hydrate/resume 的纠缠条件抽成纯函数。
+- 新增纯模块（全部带测试，独立可测）：`lib/chat/session/session-machine.ts`（reducer + `SessionEvent`）、`resume-decision.ts`（`shouldAttemptResume`）、`hydrate-decision.ts`（`decideHydration`）、`terminal-state.ts`、`seed-active-hitl.ts`。
+- **行为逐字保持**，公共 API 不变（三视图 conversation/draft/curator 未改）；经 spec + 代码质量两阶段评审确认无回归。验证：`tsc` 通过、`vitest` 93 过（唯一失败为预存在无关 workbench 用例）、hook 无新增 lint。
+- 关键防回归点（评审捕获并锁定）：`HITL_APPROVED` 不清 `resumeAttemptedFor`（仅 `RESUME_RESET` 在 `resumed===false` 早返回之后清）；流式中 `ACTIVATED` 早返回不跑 hydrate；`INTERRUPTED` 的 hitl 用 patched 后的消息解析。
+- ⚠️ **未自动覆盖**：6 项运行时时序场景（resume×HITL、切会话、断流重连等）只能靠手动冒烟（计划 Task 6 Step 5），本次未执行交互式验证，建议上线前手动走查。
+- 后续可选：`dedupeDuplicatePendingHitlParts` 在双写已修 + FSM 收敛后是否可降级，待手动冒烟确认后单独评估。
+
+<details><summary>原始设计草案（已实现，保留备查）</summary>
+
 把 `useConversationSession` 的隐式状态机改为显式状态枚举 + reducer：
 
 ```ts
@@ -162,6 +172,8 @@ type SessionState =
 ```
 
 转换集中在一个 `reducer`，effect 只负责"派发事件"而非"读写 ref 做决策"。可用 `useReducer`，复杂度再高可引入轻量 FSM（如 XState）。**这是消除偶现竞态的关键一步。**
+
+</details>
 
 **P1-3 HITL 统一状态模块**
 新建 `hitl/hitl-state.ts`，把 `findPendingHitl` / `resolveActiveHitl` / 拒绝判定 / approved 判定收敛为一组纯函数 + 单一类型，对外暴露 `getHitlState(messages): HitlState`。新增 HITL 工具时只改 `constants.ts` 一处。
