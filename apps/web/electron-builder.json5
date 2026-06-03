@@ -29,6 +29,16 @@
         "!logs/**",
         "!tmp/**"
       ]
+    },
+    {
+      // browserctl CLI（resources/browserctl），用 Electron 自带 node 运行
+      "from": "../../packages/browserctl",
+      "to": "browserctl",
+      "filter": [
+        "src/**",
+        "bin/**",
+        "package.json"
+      ]
     }
   ],
   // 脚本在 monorepo 根目录 scripts/（apps/web → 仓库根须 ../../）

@@ -90,8 +90,9 @@ function buildProdBackendCommand(): { command: string[]; cwd: string } {
  * - BROWSERCTL_PATH：CLI 入口绝对路径（fallback / 文档备用）
  * - PATH 前置 wrapper 目录：使裸命令 `browserctl` 可用（bin/browserctl.cmd|browserctl）
  *
- * 注意：packaged 模式需 Phase D 把 packages/browserctl 打包到 resources/browserctl，
- * 且目标机器需有 node；当前主要保障 dev（pnpm dev:app）下的端到端可用。
+ * packaged：browserctl 经 electron-builder extraResources 打包到 resources/browserctl，
+ * 并用 Electron 自带 node 运行（BROWSERCTL_NODE=process.execPath + wrapper 设
+ * ELECTRON_RUN_AS_NODE=1），无需目标机器安装 node。
  */
 function getBrowserctlEnv(): Record<string, string> {
   const root = app.isPackaged
@@ -107,6 +108,8 @@ function getBrowserctlEnv(): Record<string, string> {
       : "PATH"
   return {
     BROWSERCTL_PATH: indexPath,
+    // wrapper 用此变量运行 CLI：packaged 用 Electron 自带 node（配合 ELECTRON_RUN_AS_NODE），dev 用系统 node
+    BROWSERCTL_NODE: app.isPackaged ? process.execPath : "node",
     [pathKey]: `${binDir}${path.delimiter}${process.env[pathKey] ?? ""}`,
   }
 }

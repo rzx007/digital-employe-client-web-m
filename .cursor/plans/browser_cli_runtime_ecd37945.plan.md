@@ -48,7 +48,10 @@ todos:
     content: "P2(已完成): browserctl close(bridge case + browser:request-close 事件 + renderer reset 收起右栏)、CLI node --test 单测(14 项)接入 turbo test、packages/browserctl README 三场景表"
     status: completed
   - id: electron-bundle
-    content: "P3: Electron 打包附带 browserctl + PRD 全文修订"
+    content: "P3(打包配置就绪,待安装包验证): electron-builder(+offline) extraResources 加 ../../packages/browserctl→resources/browserctl；BROWSERCTL_NODE=process.execPath + wrapper ELECTRON_RUN_AS_NODE=1 复用 Electron 自带 node(免装 node)；dev 全验证通过，真实安装包需验 from '..' 路径解析与无-node 机器"
+    status: in-progress
+  - id: prd-revision
+    content: "P3: embedded-browser-panel-prd.md 全文修订(架构改 Skill+browserctl，删/标废 Python 章节)"
     status: pending
 isProject: false
 ---

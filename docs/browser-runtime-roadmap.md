@@ -209,7 +209,7 @@ CLI 客户端另有一处小缺陷：`requestJson` 未设 socket timeout（`pack
 
 | 任务 | 说明 |
 |------|------|
-| Electron 打包附带 `browserctl` | 如 `resources/browserctl/` + 启动时设 `BROWSERCTL_PATH` |
+| Electron 打包附带 `browserctl`（配置就绪，待安装包验证） | electron-builder(+offline) extraResources 加 `../../packages/browserctl` → `resources/browserctl`；`BROWSERCTL_NODE=process.execPath` + wrapper `ELECTRON_RUN_AS_NODE=1` 复用 Electron 自带 node，**免装 node**。dev 已验；真实安装包需验 `from` 的 `..` 路径解析与无-node 机器 |
 | 内置技能种子 | 新员工模板默认含 `browser-runtime`（可配置关闭） |
 | PRD 修订 | 架构图改为 Skill + browserctl；删 Python 章节或标废弃 |
 
