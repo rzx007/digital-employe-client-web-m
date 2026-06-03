@@ -7,6 +7,7 @@ import {
   type ManagedProcessHandle,
 } from "../../core/services/managed-process"
 import { isOfflineMode } from "../../core/runtime-env"
+import { freeBackendPortIfBusy } from "./backend-port"
 
 const log = createLogger("backend")
 
@@ -21,16 +22,18 @@ const DEV_UVICORN_HOST =
 let backendHandle: ManagedProcessHandle | null = null
 let backendReady = false
 
-function getBackendReadyPattern(): string {
-  const port = String(BACKEND_PORT)
-  // dev + --reload：reloader 先打印 Uvicorn running，worker 尚未 startup complete
-  if (!app.isPackaged) {
-    return "Application startup complete"
-  }
-  return (
-    `(?:Uvicorn running|Application startup complete).*${port}` +
-    `|${port}.*(?:Uvicorn running|Application startup complete)`
-  )
+/** uvicorn 端口占用等：勿把 "Application startup complete" 当作已可服务 */
+const BACKEND_FATAL_LOG_PATTERNS = [
+  "error while attempting to bind",
+  "EADDRINUSE",
+  "Errno 10048",
+  "WinError 10048",
+]
+
+const BACKEND_HEALTH_READY = {
+  type: "health" as const,
+  path: "/system/runtime",
+  intervalMs: 250,
 }
 
 function shouldUseArchArm64ForDevUvOnAppleSilicon(): boolean {
@@ -120,12 +123,18 @@ function getBrowserctlEnv(): Record<string, string> {
 /**
  * 启动 Python 后端进程（内部使用 ManagedProcess）
  */
-export function startBackend(): Promise<void> {
+export async function startBackend(): Promise<void> {
   if (backendHandle && backendReady) {
-    return Promise.resolve()
+    return
   }
 
   const isDev = !app.isPackaged
+  const backendHost = "127.0.0.1"
+
+  if (isDev) {
+    await freeBackendPortIfBusy(backendHost, BACKEND_PORT)
+  }
+
   const { command, cwd } = isDev
     ? buildDevBackendCommand()
     : buildProdBackendCommand()
@@ -144,9 +153,10 @@ export function startBackend(): Promise<void> {
     command,
     cwd,
     port: BACKEND_PORT,
-    host: "127.0.0.1",
-    ready: { type: "stdout", pattern: getBackendReadyPattern() },
+    host: backendHost,
+    ready: BACKEND_HEALTH_READY,
     readyTimeoutMs: BACKEND_READY_TIMEOUT,
+    fatalLogPatterns: BACKEND_FATAL_LOG_PATTERNS,
     logScope: "backend",
     detached: isDev ? false : undefined,
     env: {

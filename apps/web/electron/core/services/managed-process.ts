@@ -27,6 +27,8 @@ export interface ManagedProcessStartOptions {
   logScope?: string
   /** 默认非 Windows 为 true；主后端 dev uv 可传 false */
   detached?: boolean
+  /** 子进程日志匹配任一则立即失败（如 uvicorn 端口占用） */
+  fatalLogPatterns?: string[]
   onExit?: (code: number | null, signal: NodeJS.Signals | null) => void
 }
 
@@ -94,6 +96,7 @@ function waitForStdoutReady(
   pattern: string,
   timeoutMs: number,
   log: Logger,
+  fatalLogPatterns: string[],
 ): Promise<void> {
   const regex = new RegExp(pattern)
   return new Promise((resolve, reject) => {
@@ -109,6 +112,15 @@ function waitForStdoutReady(
         reject(new Error(`Service ready timeout (${timeoutMs}ms, stdout)`)),
       )
     }, timeoutMs)
+
+    const fail = (err: Error) => {
+      clearTimeout(timeout)
+      finish(() => reject(err))
+    }
+
+    attachFatalLogWatchers(child, fatalLogPatterns, (line) => {
+      fail(new Error(`Service failed during startup: ${line}`))
+    })
 
     const checkLine = (line: string) => {
       if (regex.test(line)) {
@@ -149,23 +161,68 @@ function waitForStdoutReady(
   })
 }
 
+function attachFatalLogWatchers(
+  child: ChildProcess,
+  patterns: string[],
+  onFatal: (message: string) => void,
+): void {
+  if (!patterns.length) return
+  const regexes = patterns.map((p) => new RegExp(p))
+  const check = (line: string) => {
+    if (regexes.some((r) => r.test(line))) {
+      onFatal(line.trim())
+    }
+  }
+  child.stdout?.on("data", (data: Buffer) => check(data.toString()))
+  child.stderr?.on("data", (data: Buffer) => check(data.toString()))
+}
+
 function waitForHealthReady(
+  child: ChildProcess,
   host: string,
   port: number,
   path: string,
   intervalMs: number,
   timeoutMs: number,
   log: Logger,
+  fatalLogPatterns: string[],
 ): Promise<void> {
   const url = `http://${host}:${port}${path.startsWith("/") ? path : `/${path}`}`
 
   return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (fn: () => void) => {
+      if (settled) return
+      settled = true
+      fn()
+    }
+
+    const fail = (err: Error) => {
+      clearInterval(timer)
+      finish(() => reject(err))
+    }
+
+    attachFatalLogWatchers(child, fatalLogPatterns, (line) => {
+      fail(new Error(`Service failed during startup: ${line}`))
+    })
+
+    child.once("error", (err) => fail(err))
+
+    child.once("exit", (code, signal) => {
+      if (settled) return
+      fail(
+        new Error(
+          `Service exited before ready (code ${code}${signal ? `, signal ${signal}` : ""})`,
+        ),
+      )
+    })
+
     const started = Date.now()
 
     const tryOnce = () => {
+      if (settled) return
       if (Date.now() - started >= timeoutMs) {
-        clearInterval(timer)
-        reject(new Error(`Service ready timeout (${timeoutMs}ms, health ${url})`))
+        fail(new Error(`Service ready timeout (${timeoutMs}ms, health ${url})`))
         return
       }
 
@@ -174,7 +231,7 @@ function waitForHealthReady(
         if (res.statusCode && res.statusCode >= 200 && res.statusCode < 500) {
           clearInterval(timer)
           log.info("ready (health)", { url, status: res.statusCode })
-          resolve()
+          finish(() => resolve())
         }
       })
       req.on("error", () => {
@@ -230,19 +287,28 @@ export async function startManagedProcess(
   }
 
   const readyTimeoutMs = options.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS
+  const fatalLogPatterns = options.fatalLogPatterns ?? []
 
   if (options.ready.type === "stdout") {
-    await waitForStdoutReady(child, options.ready.pattern, readyTimeoutMs, log)
+    await waitForStdoutReady(
+      child,
+      options.ready.pattern,
+      readyTimeoutMs,
+      log,
+      fatalLogPatterns,
+    )
   } else {
     const intervalMs = options.ready.intervalMs ?? 500
     const healthTimeoutMs = options.ready.timeoutMs ?? readyTimeoutMs
     await waitForHealthReady(
+      child,
       host,
       port,
       options.ready.path,
       intervalMs,
       healthTimeoutMs,
       log,
+      fatalLogPatterns,
     )
   }
 
