@@ -1,10 +1,13 @@
 import type { UIMessage } from "ai"
 
+import { isTerminalAssistantStreamState } from "./assistant-stream-state"
 import { parseDbMessageId } from "./hitl/message-id"
 
 function lastDbMessageId(messages: UIMessage[]): number {
   for (let i = messages.length - 1; i >= 0; i--) {
-    const parsed = parseDbMessageId(messages[i].id)
+    const msg = messages[i]
+    if (!msg) continue
+    const parsed = parseDbMessageId(msg.id)
     if (parsed != null) {
       const n = Number(parsed)
       if (Number.isFinite(n)) return n
@@ -18,6 +21,7 @@ export function messagesNeedHydrateFromDb(
   storedMessages: UIMessage[]
 ): boolean {
   if (storedMessages.length === 0) return false
+  if (shouldForceHydrateFromStored(liveMessages, storedMessages)) return true
   if (liveMessages.length === 0) return true
   if (storedMessages.length > liveMessages.length) return true
   return lastDbMessageId(storedMessages) > lastDbMessageId(liveMessages)
@@ -32,8 +36,73 @@ type MessageWithMeta = UIMessage & {
   metadata?: Record<string, unknown>
 }
 
-function readMetadata(message: UIMessage): Record<string, unknown> | undefined {
+function readMetadata(
+  message: UIMessage | undefined
+): Record<string, unknown> | undefined {
+  if (!message) return undefined
   return (message as MessageWithMeta).metadata
+}
+
+function lastAssistantMessage(
+  messages: UIMessage[]
+): MessageWithMeta | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.role === "assistant") {
+      return messages[i] as MessageWithMeta
+    }
+  }
+  return undefined
+}
+
+function assistantTextLength(message: UIMessage | undefined): number {
+  if (!message?.parts?.length) return 0
+  return message.parts.reduce((sum, part) => {
+    if (part.type === "text" && typeof part.text === "string") {
+      return sum + part.text.length
+    }
+    return sum
+  }, 0)
+}
+
+/** DB 已终态但 composer 仍残留 queued/streaming 占位时，必须从 DB 覆盖。 */
+export function shouldForceHydrateFromStored(
+  liveMessages: UIMessage[],
+  storedMessages: UIMessage[]
+): boolean {
+  if (storedMessages.length === 0) return false
+
+  const storedLast = lastAssistantMessage(storedMessages)
+  if (!storedLast) return false
+
+  const storedState = readMetadata(storedLast)?.streamState
+  if (
+    typeof storedState !== "string" ||
+    !isTerminalAssistantStreamState(storedState)
+  ) {
+    return false
+  }
+
+  const liveLast = lastAssistantMessage(liveMessages)
+  if (!liveLast) return true
+
+  const liveState = readMetadata(liveLast)?.streamState
+  if (liveState !== storedState) return true
+
+  return assistantTextLength(storedLast) > assistantTextLength(liveLast)
+}
+
+/** DB 为 queued 但 composer 残留 streaming/其他状态时，展示 DB 快照。 */
+export function shouldPreferStoredOverStaleComposer(
+  liveMessages: UIMessage[],
+  storedMessages: UIMessage[]
+): boolean {
+  if (shouldForceHydrateFromStored(liveMessages, storedMessages)) return true
+  const storedLast = lastAssistantMessage(storedMessages)
+  if (!storedLast) return false
+  if (readMetadata(storedLast)?.streamState !== "queued") return false
+  const liveLast = lastAssistantMessage(liveMessages)
+  if (!liveLast) return true
+  return readMetadata(liveLast)?.streamState !== "queued"
 }
 
 function isInterruptedAwaitingApproval(
@@ -139,7 +208,23 @@ export function patchComposerFromStoredWhenSameTurn(
       isInterruptedAwaitingApproval(storedMeta) &&
       (storedMsg.parts?.length ?? 0) > 0
 
-    if (!shouldPatchId && !shouldPatchMeta && !shouldSyncInterruptedParts) {
+    const storedTerminal = isTerminalAssistantStreamState(
+      typeof storedMeta?.streamState === "string"
+        ? storedMeta.streamState
+        : undefined
+    )
+    const shouldSyncTerminalParts =
+      liveMsg.role === "assistant" &&
+      storedTerminal &&
+      (storedMeta?.streamState !== liveMeta?.streamState ||
+        assistantTextLength(storedMsg) > assistantTextLength(liveMsg))
+
+    if (
+      !shouldPatchId &&
+      !shouldPatchMeta &&
+      !shouldSyncInterruptedParts &&
+      !shouldSyncTerminalParts
+    ) {
       return liveMsg
     }
 
@@ -147,9 +232,16 @@ export function patchComposerFromStoredWhenSameTurn(
     const patched: MessageWithMeta = {
       ...liveMsg,
       id: shouldPatchId ? storedMsg.id : liveMsg.id,
-      ...(shouldSyncInterruptedParts ? { parts: storedMsg.parts } : {}),
+      ...(shouldSyncInterruptedParts || shouldSyncTerminalParts
+        ? { parts: storedMsg.parts }
+        : {}),
     }
-    if (shouldPatchMeta || shouldPatchId || shouldSyncInterruptedParts) {
+    if (
+      shouldPatchMeta ||
+      shouldPatchId ||
+      shouldSyncInterruptedParts ||
+      shouldSyncTerminalParts
+    ) {
       patched.metadata = {
         ...liveMeta,
         ...storedMeta,
@@ -174,6 +266,9 @@ export function pickMessageDisplaySource(
   status: string
 ): UIMessage[] {
   if (status === "streaming" || status === "submitted") {
+    if (shouldPreferStoredOverStaleComposer(liveMessages, storedMessages)) {
+      return storedMessages.length > 0 ? storedMessages : liveMessages
+    }
     return liveMessages
   }
 

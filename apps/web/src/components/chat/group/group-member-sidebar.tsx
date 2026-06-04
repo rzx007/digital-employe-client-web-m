@@ -17,14 +17,37 @@ const STATE_META: Record<
   { label: string; dot: string; text: string }
 > = {
   ready: { label: "待命", dot: "bg-muted-foreground/40", text: "text-muted-foreground" },
+  queued: {
+    label: "排队中",
+    dot: "bg-amber-400 animate-pulse",
+    text: "text-amber-600",
+  },
   running: { label: "进行中", dot: "bg-blue-500 animate-pulse", text: "text-blue-600" },
   sleeping: { label: "休眠", dot: "bg-amber-400", text: "text-amber-600" },
   done: { label: "已交付", dot: "bg-green-500", text: "text-green-600" },
 }
 
+/** 文字头像：取名字前两个字 */
 function initialOf(name: string | null | undefined): string {
   const trimmed = (name ?? "").trim()
-  return trimmed ? trimmed.slice(0, 1) : "员"
+  return trimmed ? trimmed.slice(0, 2) : "员"
+}
+
+/** 按名字 hash 稳定取色（同一成员恒定一种配色） */
+const NAME_PALETTE = [
+  "bg-blue-100 text-blue-700",
+  "bg-violet-100 text-violet-700",
+  "bg-emerald-100 text-emerald-700",
+  "bg-rose-100 text-rose-700",
+  "bg-cyan-100 text-cyan-700",
+  "bg-fuchsia-100 text-fuchsia-700",
+  "bg-teal-100 text-teal-700",
+]
+function colorOf(seed: string | null | undefined): string {
+  const s = (seed ?? "").trim() || "员"
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return NAME_PALETTE[h % NAME_PALETTE.length]
 }
 
 function MemberRow({
@@ -67,8 +90,10 @@ function MemberRow({
       <Avatar className="size-8 shrink-0">
         <AvatarFallback
           className={cn(
-            "text-xs",
-            isLeader ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
+            "text-[11px] font-semibold",
+            isLeader
+              ? "bg-amber-100 text-amber-700"
+              : colorOf(member.employee_name)
           )}
         >
           {initialOf(member.employee_name)}
@@ -90,7 +115,18 @@ function MemberRow({
         </div>
         <div className={cn("flex items-center gap-1 text-xs", meta.text)}>
           <span className={cn("size-1.5 rounded-full", meta.dot)} />
-          {meta.label}
+          {member.state === "running" ? (
+            <span className="inline-flex items-center gap-1">
+              {isLeader ? "正在拆解任务、安排人手" : "正在工作"}
+              <span className="inline-flex gap-0.5">
+                <span className="size-1 animate-bounce rounded-full bg-current [animation-delay:-0.3s]" />
+                <span className="size-1 animate-bounce rounded-full bg-current [animation-delay:-0.15s]" />
+                <span className="size-1 animate-bounce rounded-full bg-current" />
+              </span>
+            </span>
+          ) : (
+            meta.label
+          )}
         </div>
       </div>
     </button>

@@ -58,7 +58,9 @@ import {
   hydrateSignature,
   messagesNeedHydrateFromDb,
   patchComposerFromStoredWhenSameTurn,
+  shouldForceHydrateFromStored,
 } from "@/lib/chat/pick-message-display-source"
+import { isTerminalAssistantStreamState } from "@/lib/chat/assistant-stream-state"
 
 const REFETCH_DEBOUNCE_MS = 800
 
@@ -74,11 +76,15 @@ export function useConversationSession({
 
   status,
 
+  isMessagesFetching = false,
+
   setMessages,
 
   resumeStream,
 
   queryClient,
+
+  disableStreamResume = false,
 }: {
   conversationId: string | number | null
   /** 本会话所属联系人；流结束时 touch 最近列表，勿读全局 selectedContactId */
@@ -91,6 +97,12 @@ export function useConversationSession({
   composerMessages: UIMessage[]
 
   status: string
+
+  /** 消息 query 仍在拉取时不 resume，避免 placeholder 快照触发误 resume */
+  isMessagesFetching?: boolean
+
+  /** 群深链执行会话：不 resume SSE，只轮询 DB */
+  disableStreamResume?: boolean
 
   setMessages: (
     messages: UIMessage[] | ((prev: UIMessage[]) => UIMessage[])
@@ -143,7 +155,7 @@ export function useConversationSession({
 
   const tryScheduleResume = useCallback(
     (assistantId: string, options?: { allowBusyStatus?: boolean }) => {
-      if (!convKey) return false
+      if (!convKey || disableStreamResume) return false
 
       const willResume = shouldAttemptResume({
         hitlActive: machineRef.current.activeHitl !== null,
@@ -180,7 +192,7 @@ export function useConversationSession({
 
       return true
     },
-    [convKey, resumeStream]
+    [convKey, resumeStream, disableStreamResume]
   )
 
   useEffect(() => {
@@ -248,10 +260,38 @@ export function useConversationSession({
         : undefined
 
       dispatch({ type: "ACTIVATED" })
+
+      if (
+        lastAssistant?.streamState === "queued" &&
+        initialMessages.length > 0
+      ) {
+        const sig = hydrateSignature(initialMessages)
+        setMessages(initialMessages)
+        dispatch({ type: "HYDRATED", convKey, sig })
+        return () => cancelScheduledStreamResume(resumeScheduleRef.current)
+      }
+
+      if (
+        lastAssistant &&
+        isTerminalAssistantStreamState(lastAssistant.streamState ?? undefined) &&
+        initialMessages.length > 0 &&
+        shouldForceHydrateFromStored(
+          composerMessagesRef.current,
+          initialMessages
+        )
+      ) {
+        const sig = hydrateSignature(initialMessages)
+        setMessages(initialMessages)
+        dispatch({ type: "HYDRATED", convKey, sig })
+        return () => cancelScheduledStreamResume(resumeScheduleRef.current)
+      }
+
       hydrateFromDbIfBehind()
 
       // 切走再切回：useChat 可能残留 streaming，但 SSE 已断 —— 需重新 resume
       if (
+        !disableStreamResume &&
+        !isMessagesFetching &&
         lastAssistant?.streamState === "streaming" &&
         lastAssistantId &&
         !wasActive
@@ -302,7 +342,7 @@ export function useConversationSession({
       resumeAttempts: machineRef.current.resumeAttempts,
     })
 
-    if (!willResume || !lastAssistantId) return
+    if (!willResume || !lastAssistantId || isMessagesFetching || disableStreamResume) return
 
     tryScheduleResume(String(lastAssistantId))
 
@@ -317,6 +357,8 @@ export function useConversationSession({
 
     initialMessages,
 
+    isMessagesFetching,
+
     storedMessages,
 
     setMessages,
@@ -326,10 +368,12 @@ export function useConversationSession({
     status,
 
     tryScheduleResume,
+
+    disableStreamResume,
   ])
 
   const retryResumeIfNeeded = useCallback((): boolean => {
-    if (!convKey) return false
+    if (!convKey || disableStreamResume) return false
 
     const cached = queryClient.getQueryData<Message[]>(
       chatKeys.messages(convKey)

@@ -27,6 +27,11 @@ import { prepareDisplayMessages } from "@/lib/chat/hitl"
 
 import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
 import { isBenignStreamAbortError } from "@/lib/chat/stream-abort"
+import {
+  isTerminalAssistantStreamState,
+  lastStoredAssistantStreamState,
+} from "@/lib/chat/assistant-stream-state"
+import { getLastAssistantMessage } from "@/lib/chat/message-query-cache"
 
 import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
 
@@ -36,6 +41,11 @@ import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
 
 import { cancelConversationStream } from "@/api/chat"
 import { getContactId } from "@/lib/chat/contact-utils"
+import {
+  isGroupDeepLinkExecutionView,
+} from "@/lib/chat/group-navigation"
+import { chatKeys } from "@/lib/query-keys/chat"
+import { useChatStore } from "@/stores/chat-store"
 
 import { toast } from "sonner"
 
@@ -85,11 +95,18 @@ export function ConversationChatView({
   >([])
 
   const queryClient = useQueryClient()
+  const groupNavigationReturn = useChatStore((s) => s.groupNavigationReturn)
+  const isGroupExecutionView = isGroupDeepLinkExecutionView(
+    groupNavigationReturn,
+    conversationId
+  )
 
   const {
     data: storedMessages = [],
 
     isPending: isMessagesLoading,
+
+    isFetching: isMessagesFetching,
 
     isError: isMessagesError,
   } = useMessagesQuery(conversationId)
@@ -155,11 +172,15 @@ export function ConversationChatView({
 
     status,
 
+    isMessagesFetching,
+
     setMessages,
 
     resumeStream,
 
     queryClient,
+
+    disableStreamResume: isGroupExecutionView,
   })
 
   useSyncPendingFromComposer(conversationId, messages, status)
@@ -168,6 +189,34 @@ export function ConversationChatView({
     onStreamFinishRef.current = session.onStreamFinish
     onRetryResumeRef.current = session.retryResumeIfNeeded
   }, [session.onStreamFinish, session.retryResumeIfNeeded])
+
+  // 群聊点进成员：DB 已终态/queued 但 useChat 残留 streaming → 清掉误显示的「正在生成…」
+  useEffect(() => {
+    const last = getLastAssistantMessage(storedMessages)
+    const busy = status === "streaming" || status === "submitted"
+    if (!busy || !last) return
+
+    const dbQueued = last.streamState === "queued"
+    const dbTerminal = isTerminalAssistantStreamState(last.streamState ?? undefined)
+    if (isGroupExecutionView || dbQueued || dbTerminal) {
+      stop()
+    }
+  }, [conversationId, storedMessages, status, stop, isGroupExecutionView])
+
+  const storedStreamState = lastStoredAssistantStreamState(storedMessages)
+  const pollGroupExecution = isGroupExecutionView &&
+    !isTerminalAssistantStreamState(storedStreamState ?? undefined) &&
+    storedStreamState !== "interrupted"
+
+  useEffect(() => {
+    if (!pollGroupExecution) return
+    const timer = setInterval(() => {
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(String(conversationId)),
+      })
+    }, 3000)
+    return () => clearInterval(timer)
+  }, [pollGroupExecution, conversationId, queryClient])
 
   const handleStop = useCallback(async () => {
     stop()
@@ -196,10 +245,13 @@ export function ConversationChatView({
     error && !isBenignStreamAbortError(error) ? error : undefined
 
   const displayMessages = useMemo(() => {
+    if (isGroupExecutionView && initialMessages.length > 0) {
+      return prepareDisplayMessages(initialMessages)
+    }
     const source = pickMessageDisplaySource(messages, initialMessages, status)
 
     return prepareDisplayMessages(source)
-  }, [initialMessages, messages, status])
+  }, [initialMessages, messages, status, isGroupExecutionView])
 
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
@@ -348,6 +400,8 @@ export function ConversationChatView({
       title={title}
       messages={displayMessages}
       composerMessages={messages}
+      storedAssistantStreamState={lastStoredAssistantStreamState(storedMessages)}
+      hideStreamingIndicator={isGroupExecutionView}
       inputValue={inputValue}
       status={chatStatus}
       error={displayError}

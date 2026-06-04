@@ -65,7 +65,7 @@ export function GroupRoomView({
           conversationId={conversationId}
           groupContactId={groupContactId ?? `group:${conversationId}`}
           memberConversationByEmployeeId={memberConversationByEmployeeId}
-          className="hidden w-72 shrink-0 border-l bg-background/60 md:flex"
+          className="hidden w-80 shrink-0 border-l bg-background/60 md:flex"
         />
       ) : (
         <GroupMemberSidebar

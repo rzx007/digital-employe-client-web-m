@@ -1,7 +1,12 @@
 import { request } from "@/lib/request"
 import type { ApiResponse } from "@/api/types"
 
-export type GroupRoomMemberState = "ready" | "running" | "sleeping" | "done"
+export type GroupRoomMemberState =
+  | "ready"
+  | "queued"
+  | "running"
+  | "sleeping"
+  | "done"
 
 export interface GroupRoomMember {
   member_id: number
@@ -37,7 +42,7 @@ export async function fetchGroupRoomState(
 }
 
 export type DagNodeType = "user" | "leader" | "worker"
-export type DagNodeState = "pending" | "running" | "done" | "failed"
+export type DagNodeState = "pending" | "queued" | "running" | "done" | "failed"
 
 export interface DagNode {
   id: string

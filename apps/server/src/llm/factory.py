@@ -122,6 +122,11 @@ def build_chat_model(
         base_url=resolved_base,
         timeout=llm_timeout,
         prompt_cache_strategy=cache_strategy,
+        # 显式开启流式：agent 用 astream_events 消费，streaming=False 时 langchain
+        # 走非流式合成事件，对部分端点(如本地 llama.cpp)收不到 [DONE] 结束帧会卡死
+        # （模型 /slots is_processing=false 但应用永远 streaming）。开 streaming 后
+        # 走标准 SSE，正确识别 data:[DONE] → astream 正常结束。
+        streaming=True,
         **llm_kwargs,
     )
     # 如果需要应用模型配置文件，则导入相关模块并应用配置

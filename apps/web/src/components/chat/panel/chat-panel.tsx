@@ -23,6 +23,11 @@ import { ChatPanelHeader } from "./chat-panel-header"
 import { CuratorReturnBar } from "../curator/curator-return-bar"
 import { GroupReturnBar } from "../group/group-return-bar"
 import type { PendingMessage } from "@/hooks/use-pending-messages"
+import {
+  isAssistantQueued,
+  isStoredAssistantQueued,
+  isTerminalAssistantStreamState,
+} from "@/lib/chat/assistant-stream-state"
 import { ChatStreamingIndicator } from "./chat-streaming-indicator"
 import { MessageLoadingSkeleton } from "./message-loading-skeleton"
 import {
@@ -163,6 +168,8 @@ export function ChatPanel({
   conversationId,
   onAttachmentsChange,
   composerMessages,
+  storedAssistantStreamState,
+  hideStreamingIndicator = false,
   activeHitl = null,
   onHitlApproved,
   onDraftSuggestionSelect,
@@ -193,6 +200,10 @@ export function ChatPanel({
   conversationId?: string | number | null
   onAttachmentsChange?: (paths: string[]) => void
   composerMessages?: UIMessage[]
+  /** DB 侧最后一条 assistant 的 streamState，用于抑制误显示的 streaming 指示器 */
+  storedAssistantStreamState?: string | null
+  /** 群深链执行会话：只读 DB 快照，不显示底部「正在生成…」 */
+  hideStreamingIndicator?: boolean
   activeHitl?: ActiveHitl | null
   onHitlApproved?: (options?: HitlPatchOptions) => void
   /** 总管草稿：引导语填入输入框 */
@@ -208,10 +219,14 @@ export function ChatPanel({
   const hasCurrentTurnEnded =
     status === "ready" || status === "error" || !!error
   const showStreamingIndicator =
+    !hideStreamingIndicator &&
     !isDraftMode &&
     (status === "submitted" || status === "streaming") &&
     !error &&
-    displayMessages.length > 0
+    displayMessages.length > 0 &&
+    !isAssistantQueued(composerMessages ?? messages) &&
+    !isStoredAssistantQueued(storedAssistantStreamState) &&
+    !isTerminalAssistantStreamState(storedAssistantStreamState ?? undefined)
 
   const slashCommands = React.useMemo<SlashCommandItem[]>(() => {
     const skills =

@@ -94,6 +94,16 @@ export function useReconcileConversationSelection(
     }
 
     if (isDraftConversation) {
+      // 群聊草稿：首条消息发出后会话已落库进列表 → 退出草稿态，
+      // 让 chat-view 切到 GroupRoomView（带成员侧栏 / DAG 面板）。
+      // 放在这里（列表刷新后）而非发送时切，避免打断发送 / 重复发消息。
+      if (
+        contact?.type === "group" &&
+        selectedConversationId != null &&
+        conversationExistsInList(conversations, selectedConversationId)
+      ) {
+        selectConversationById(selectedConversationId)
+      }
       return
     }
 
@@ -119,6 +129,7 @@ export function useReconcileConversationSelection(
   }, [
     conversations,
     conversationsQuerySuccess,
+    contact,
     isCurator,
     isDraftConversation,
     selectedContactId,

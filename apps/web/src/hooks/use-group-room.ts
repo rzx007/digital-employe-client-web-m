@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 
@@ -17,9 +17,22 @@ import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
  * - 监听工作空间事件流里的 room_message / room_member_state，
  *   收到时刷新群时间线（messages）与房间状态。
  */
+export interface GroupStreamingMessage {
+  sourceConversationId: number
+  senderId: number | null
+  senderLabel: string
+  text: string
+  /** 累计已生成字符数（后端 acc 权威值，用于“正在生成 N 字”进度，超长生成时尤其有用） */
+  charCount: number
+}
+
 export function useGroupRoom(conversationId: string | number | null) {
   const queryClient = useQueryClient()
   const convKey = String(conversationId ?? "")
+  // 成员逐字流式：sourceConvId -> 累积文本（完成后由 room_message 落库并清除）
+  const [streaming, setStreaming] = useState<
+    Record<number, GroupStreamingMessage>
+  >({})
 
   const roomQuery = useQuery<GroupRoomState | null>({
     queryKey: chatKeys.groupRoom(convKey),
@@ -45,9 +58,40 @@ export function useGroupRoom(conversationId: string | number | null) {
   }
 
   useWorkspaceEvents((event) => {
+    if (event.type === "room_message_stream") {
+      if (String(event.room_conversation_id) !== convKey) return
+      // 成员/组长逐字流式：累积到对应 source 的进行中消息
+      setStreaming((prev) => {
+        const src = event.source_conversation_id
+        const cur = prev[src]
+        const nextText = event.first
+          ? event.delta
+          : (cur?.text ?? "") + event.delta
+        return {
+          ...prev,
+          [src]: {
+            sourceConversationId: src,
+            senderId: event.sender_id,
+            senderLabel: event.sender_label || "成员",
+            text: nextText,
+            // 优先用后端权威累计字数 acc；缺失时回退到本地文本长度
+            charCount: event.acc ?? nextText.length,
+          },
+        }
+      })
+      return
+    }
     if (event.type === "room_message") {
       if (String(event.room_conversation_id) !== convKey) return
-      // 群时间线有新消息（成员交付结论 / 用户发言投影）→ 刷新消息 + 房间 + DAG
+      // 落库的完整消息到了 → 清掉对应的流式临时态（避免重复显示）
+      setStreaming((prev) => {
+        const next = { ...prev }
+        for (const k of Object.keys(next)) {
+          const m = next[Number(k)]
+          if (m && m.senderId === event.sender_id) delete next[Number(k)]
+        }
+        return next
+      })
       void queryClient.invalidateQueries({
         queryKey: chatKeys.messages(convKey),
       })
@@ -67,8 +111,12 @@ export function useGroupRoom(conversationId: string | number | null) {
     }
   })
 
-  // 切换会话时确保拉一次最新房间状态
+  // 切换会话时：清空上一个会话的流式临时态 + 拉一次最新房间状态。
+  // 清空是切会话的合理副作用（旧会话的逐字流式不应残留到新会话），故此处
+  // 显式 setState；规则误判，精确 disable。
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStreaming({})
     if (conversationId) {
       refresh()
     }
@@ -79,6 +127,7 @@ export function useGroupRoom(conversationId: string | number | null) {
     room: roomQuery.data ?? null,
     members: roomQuery.data?.members ?? [],
     dag: dagQuery.data ?? null,
+    streaming: Object.values(streaming),
     isLoading: roomQuery.isPending,
   }
 }

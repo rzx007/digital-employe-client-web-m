@@ -16,6 +16,7 @@ import { useConversationsQuery } from "@/hooks/use-chat-queries"
 import { ensureCuratorConversationAndSelect } from "@/lib/chat/curator-conversation-actions"
 import { useChatStore } from "@/stores/chat-store"
 import type { Contact } from "@/types/chat"
+import { groupDeepLinkConversationViewKey } from "@/lib/chat/group-navigation"
 
 import { CuratorView } from "../curator/curator-view"
 import { GroupRoomView } from "../group/group-room-view"
@@ -90,6 +91,8 @@ export function ChatView({
   const selectedContactId = useChatStore((s) => s.selectedContactId)
   const isDraftConversation = useChatStore((s) => s.isDraftConversation)
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
+  const groupNavigationReturn = useChatStore((s) => s.groupNavigationReturn)
+  const groupDeepLinkMountKey = useChatStore((s) => s.groupDeepLinkMountKey)
   const contact = useChatStore((s) => s.getSelectedContact())
   const { isEnsuring, error: ensureError } = useCuratorEnsureState()
 
@@ -212,7 +215,11 @@ export function ChatView({
     />
   ) : (
     <ConversationChatView
-      key={String(selectedConversationId)}
+      key={groupDeepLinkConversationViewKey(
+        selectedConversationId,
+        groupNavigationReturn,
+        groupDeepLinkMountKey
+      )}
       contact={contact}
       title={conversationTitle}
       conversationId={selectedConversationId}

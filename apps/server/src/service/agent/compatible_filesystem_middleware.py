@@ -28,7 +28,6 @@ from deepagents.middleware.filesystem import (
     DEFAULT_READ_OFFSET,
     NUM_CHARS_PER_TOKEN,
     READ_FILE_TOOL_DESCRIPTION,
-    READ_FILE_TRUNCATION_MSG,
     FilesystemMiddleware,
     FilesystemState,
     ReadFileSchema,
@@ -45,10 +44,89 @@ from langchain_core.messages import BaseMessage, ToolMessage
 from langchain_core.messages.content import ContentBlock
 from langchain_core.tools import BaseTool, StructuredTool
 
-from src.service.agent.read_file_dedupe import dedupe_read_file_tool_messages
+from src.service.agent.read_file_dedupe import (
+    dedupe_read_file_tool_messages,
+    inject_excessive_read_stop_hint,
+)
 from src.service.agent.read_file_path_compression import compress_large_read_file_history
 
 logger = logging.getLogger(__name__)
+
+# deepagents 默认 read_file 每次只读 100 行（DEFAULT_READ_LIMIT），大文件被切成
+# 几十段；叠加 deepagents 自带截断提示“文件太大，考虑重新格式化”——这是误导，
+# 模型既读不完又不知该用 offset 续读，于是反复 read 前 100 行陷入死循环
+# （观测到“读取报告.md”刷十几遍）。把默认 limit 放大到 2000 行，绝大多数文档
+# 一次读完，从源头消除“因分页而反复读取”的循环。
+LARGE_READ_LIMIT = 2000
+
+# 覆盖 deepagents 自带的 read 工具描述。原描述写死“默认 100 行”、还手把手
+# 教模型“先 limit=100 扫一遍、再 offset 分段读”——本地小模型照做，把一个几百
+# 行的文件读十几次，陷入“反复读取”的卡死。这里改成：默认一次读完整个文件，
+# 只有超大文件才分页，从源头消除不必要的分段读取。
+_READ_FILE_TOOL_DESCRIPTION_OVERRIDE = (
+    "读取一个文件的内容。\n\n"
+    "用法：\n"
+    "- **默认一次性读取整个文件**（最多 2000 行），不要分段小步读取。\n"
+    "- 绝大多数文档/报告/代码一次就能读完，读完后请直接基于内容继续任务，"
+    "不要重复读取同一个文件。\n"
+    "- 仅当文件**极大**（明确收到「文件未读完」或「内容已截断」提示）时，才用 offset 读取后续部分"
+    "（offset 设为已读末尾行号），且不要重复读已读过的区间。\n"
+    "- **禁止**根据「本次读到的末行号」推断文件总行数；只有 footer 明确写「文件已读完」才算读毕。\n"
+    "- 结果以 cat -n 格式返回，带行号。\n"
+    "- 图片/音频/视频/PDF 作为多模态内容返回，不要对其使用 offset/limit。\n"
+)
+
+# 截断时给模型的明确续读指引（替换 deepagents 那条会误导的提示）。
+_READ_CONTINUE_HINT = (
+    "\n\n[内容较长已截断。要继续阅读后续部分，请用更大的 offset 再次 "
+    "read_file（offset 设为当前已读的末尾行号）；不要重复读取同一段。]"
+)
+
+
+def format_read_progress_footer(
+    *,
+    validated_path: str,
+    offset: int,
+    raw_line_count: int,
+    truncated: bool,
+    requested_limit: int,
+    total_file_lines: int | None = None,
+    has_more: bool | None = None,
+) -> str:
+    """在每次 read_file 结果末尾标注行号区间，避免模型把「本次读到的末行」当成文件总行数。"""
+    if raw_line_count <= 0:
+        return ""
+
+    start_line = offset + 1
+    end_line = offset + raw_line_count
+    next_offset = offset + raw_line_count
+
+    if truncated:
+        has_more = True
+    elif has_more is None:
+        if total_file_lines is not None:
+            has_more = end_line < total_file_lines
+        else:
+            has_more = raw_line_count >= requested_limit
+
+    if total_file_lines is not None:
+        progress = f"文件共 {total_file_lines} 行，已读至第 {end_line} 行"
+    else:
+        progress = f"本次读取行号 {start_line}-{end_line}（offset={offset}，返回 {raw_line_count} 行）"
+
+    if has_more:
+        tail = (
+            f"⚠ 文件未读完（{progress}）。"
+            f"第 {end_line} 行不是文件末尾，必须继续 read_file offset={next_offset}；"
+            f"在收到「文件已读完」提示前，禁止断言已读毕或估算文件总行数。"
+        )
+    else:
+        tail = (
+            f"{progress}；文件已读完。"
+            f"请直接基于上文继续任务，勿再 read_file。"
+        )
+
+    return f"\n\n[read_file 进度 · {validated_path} · {tail}]"
 
 _patched = False
 
@@ -285,10 +363,28 @@ def handle_compatible_read_result(
                 status="success",
             )
         formatted = format_content_with_line_numbers(content, start_line=offset + 1)
+        raw_line_count = len(content.splitlines()) if content else 0
+        truncated_body = truncate(formatted, validated_path, limit)
+        truncated = _READ_CONTINUE_HINT in truncated_body
+        pagination_meta = getattr(read_result, "pagination_meta", None) or {}
+        footer = format_read_progress_footer(
+            validated_path=validated_path,
+            offset=offset,
+            raw_line_count=raw_line_count,
+            truncated=truncated,
+            requested_limit=limit,
+            total_file_lines=pagination_meta.get("total_lines"),
+            has_more=pagination_meta.get("has_more"),
+        )
         return ToolMessage(
-            content=truncate(formatted, validated_path, limit),
+            content=truncated_body + footer,
             name="read_file",
             tool_call_id=tool_call_id,
+            additional_kwargs={
+                "read_file_path": validated_path,
+                "read_file_offset": offset,
+                "read_file_limit": limit,
+            },
             status="success",
         )
 
@@ -351,6 +447,8 @@ def _prepare_read_file_messages_for_llm(
     messages: list[BaseMessage],
 ) -> list[BaseMessage]:
     messages = dedupe_read_file_tool_messages(messages)
+    # 反复读同一文件时注入“停止读取”强指令，掐断本地模型的读取循环
+    messages = inject_excessive_read_stop_hint(messages)
     return compress_large_read_file_history(messages)
 
 
@@ -390,9 +488,11 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
         return await super().awrap_model_call(request, handler)
 
     def _create_read_file_tool(self) -> BaseTool:
+        # 优先用户自定义；否则用我们的“默认整读、勿分段”描述（不再用 deepagents
+        # 那段教模型分页小步读、导致反复读取的原始描述）。
         tool_description = (
             self._custom_tool_descriptions.get("read_file")
-            or READ_FILE_TOOL_DESCRIPTION
+            or _READ_FILE_TOOL_DESCRIPTION_OVERRIDE
         )
         token_limit = self._tool_token_limit_before_evict
 
@@ -403,7 +503,9 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
                 content = "".join(lines)
 
             if token_limit and len(content) >= NUM_CHARS_PER_TOKEN * token_limit:
-                truncation_msg = READ_FILE_TRUNCATION_MSG.format(file_path=file_path)
+                # 用明确的“offset 续读”指引替换 deepagents 那条会误导模型的
+                # “文件太大，考虑重新格式化”提示（后者导致模型反复读同一段）。
+                truncation_msg = _READ_CONTINUE_HINT
                 max_content_length = (
                     NUM_CHARS_PER_TOKEN * token_limit - len(truncation_msg)
                 )
@@ -422,8 +524,9 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
             ] = DEFAULT_READ_OFFSET,
             limit: Annotated[
                 int,
-                "Maximum number of lines to read. Use for pagination of large files.",
-            ] = DEFAULT_READ_LIMIT,
+                "Maximum number of lines to read (default 2000, 一般一次即可读完整个文件). "
+                "Use offset for pagination only if explicitly truncated.",
+            ] = LARGE_READ_LIMIT,
         ) -> ToolMessage:
             """Synchronous wrapper for read_file tool."""
             resolved_backend = self._get_backend(runtime)
@@ -466,8 +569,9 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
             ] = DEFAULT_READ_OFFSET,
             limit: Annotated[
                 int,
-                "Maximum number of lines to read. Use for pagination of large files.",
-            ] = DEFAULT_READ_LIMIT,
+                "Maximum number of lines to read (default 2000, 一般一次即可读完整个文件). "
+                "Use offset for pagination only if explicitly truncated.",
+            ] = LARGE_READ_LIMIT,
         ) -> ToolMessage:
             """Asynchronous wrapper for read_file tool."""
             resolved_backend = self._get_backend(runtime)

@@ -2,7 +2,7 @@ import * as React from "react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-import { createDiceBearAvatar, CURATOR_AVATAR_URL } from "@/lib/avatar"
+import { CURATOR_AVATAR_URL } from "@/lib/avatar"
 import { navigateToEmployeeFromGroup } from "@/lib/chat/group-navigation"
 import { switchToContact } from "@/lib/chat/conversation-selection"
 import type {
@@ -24,6 +24,12 @@ const STATE_META: Record<
     dot: "bg-muted-foreground/30",
     text: "text-muted-foreground",
     card: "border-border/70 bg-muted/30",
+  },
+  queued: {
+    label: "排队中",
+    dot: "bg-amber-400",
+    text: "text-amber-600",
+    card: "border-amber-200 bg-amber-50/50 ring-1 ring-amber-200/60",
   },
   running: {
     label: "进行中",
@@ -59,9 +65,27 @@ function fileName(path: string): string {
   return parts[parts.length - 1] || path
 }
 
+/** 员工文字头像：取名字前两个字（英文名取前两字母） */
 function initialOf(name: string): string {
   const t = (name || "").trim()
-  return t ? t.slice(0, 1) : "员"
+  return t ? t.slice(0, 2) : "员"
+}
+
+/** 按名字 hash 稳定取色（同一员工恒定一种配色） */
+const NAME_PALETTE = [
+  "bg-blue-100 text-blue-700 ring-blue-200",
+  "bg-violet-100 text-violet-700 ring-violet-200",
+  "bg-emerald-100 text-emerald-700 ring-emerald-200",
+  "bg-rose-100 text-rose-700 ring-rose-200",
+  "bg-cyan-100 text-cyan-700 ring-cyan-200",
+  "bg-amber-100 text-amber-700 ring-amber-200",
+  "bg-fuchsia-100 text-fuchsia-700 ring-fuchsia-200",
+  "bg-teal-100 text-teal-700 ring-teal-200",
+]
+function colorOf(seed: string): string {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
+  return NAME_PALETTE[h % NAME_PALETTE.length]
 }
 
 /** 计算每个节点的层级（拓扑深度），用于竖向分层布局 */
@@ -104,12 +128,9 @@ function computeLevels(dag: GroupRoomDag): Map<string, number> {
   return level
 }
 
-/** 节点头像 URL：成员用 DiceBear(员工id)，组长用总管头像，用户用占位 */
+/** 节点头像 URL：组长用总管头像图片；成员/用户用文字头像（返回 null） */
 function avatarUrlOf(node: DagNode): string | null {
   if (node.type === "leader") return CURATOR_AVATAR_URL
-  if (node.type === "worker" && node.employee_id != null) {
-    return createDiceBearAvatar(String(node.employee_id))
-  }
   return null
 }
 
@@ -117,6 +138,9 @@ function NodeAvatar({ node }: { node: DagNode }) {
   const t = TYPE_ICON[node.type]
   const meta = STATE_META[node.state] ?? STATE_META.pending
   const url = avatarUrlOf(node)
+  // 成员头像：名字前两字 + 按名字稳定取色的文字头像（不再用 DiceBear 图片）
+  const isWorker = node.type === "worker"
+  const workerRing = isWorker ? colorOf(node.name) : t.ring
   return (
     <div className="relative shrink-0">
       {url ? (
@@ -128,11 +152,11 @@ function NodeAvatar({ node }: { node: DagNode }) {
       ) : (
         <div
           className={cn(
-            "flex size-8 items-center justify-center rounded-full text-xs font-semibold ring-2",
-            t.ring
+            "flex size-8 items-center justify-center rounded-full text-[11px] font-semibold ring-2",
+            workerRing
           )}
         >
-          {node.type === "worker" ? initialOf(node.name) : t.glyph}
+          {isWorker ? initialOf(node.name) : t.glyph}
         </div>
       )}
       <span
@@ -150,10 +174,13 @@ function NodeCardBody({
   node,
   onOpenArtifact,
   onOpenMember,
+  runningSeconds,
 }: {
   node: DagNode
   onOpenArtifact?: (path: string) => void
   onOpenMember?: (node: DagNode) => void
+  /** 节点进行中已持续秒数（让本地模型的慢首包可见，不像卡死） */
+  runningSeconds?: number
 }) {
   const meta = STATE_META[node.state] ?? STATE_META.pending
   const canJump =
@@ -198,13 +225,34 @@ function NodeCardBody({
           </span>
         </div>
         {node.task ? (
-          <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-relaxed text-muted-foreground">
+          <p
+            className={cn(
+              "mt-0.5 text-[11.5px] leading-relaxed text-muted-foreground",
+              // 用户节点的 task 是整段需求原文（左侧时间线已完整展示），
+              // 这里只截 1 行避免右栏头部塞满长文；其它节点保留 2 行。
+              node.type === "user" ? "line-clamp-1" : "line-clamp-2"
+            )}
+          >
             {node.task}
           </p>
         ) : null}
-        {canJump && node.state === "running" ? (
-          <p className="mt-1 text-[10.5px] font-medium text-blue-600">
-            点击查看执行中会话 →
+        {node.state === "queued" ? (
+          <p className="mt-1 text-[10.5px] font-medium text-amber-600">
+            等待槽位或总管会话结束…
+          </p>
+        ) : node.state === "running" ? (
+          <p className="mt-1 flex items-center gap-1 text-[10.5px] font-medium text-blue-600">
+            {node.type === "leader" ? "正在拆解任务、安排人手" : "正在处理"}
+            <span className="inline-flex gap-0.5">
+              <span className="size-1 animate-bounce rounded-full bg-current [animation-delay:-0.3s]" />
+              <span className="size-1 animate-bounce rounded-full bg-current [animation-delay:-0.15s]" />
+              <span className="size-1 animate-bounce rounded-full bg-current" />
+            </span>
+            {runningSeconds != null && runningSeconds >= 3 ? (
+              <span className="ml-0.5 tabular-nums text-muted-foreground">
+                已 {runningSeconds}s
+              </span>
+            ) : null}
           </p>
         ) : null}
         {node.artifacts.length > 0 ? (
@@ -293,6 +341,47 @@ export function GroupSopPanel({
     [openResource]
   )
 
+  // 节点“进行中”计时：记录每个节点首次变 running 的时刻，配合每秒 tick 显示
+  // “已处理 N 秒”。本地模型首包常需几十秒，让等待可见、不像卡死。
+  const [runningSince, setRunningSince] = React.useState<
+    Record<string, number>
+  >({})
+  const [nowTick, setNowTick] = React.useState(() => Date.now())
+  const runningKey = React.useMemo(
+    () =>
+      dag.nodes
+        .filter((n) => n.state === "running")
+        .map((n) => n.id)
+        .sort()
+        .join(","),
+    [dag]
+  )
+  React.useEffect(() => {
+    const ids = runningKey ? runningKey.split(",") : []
+    const now = Date.now()
+    // 派生计时态：running 集合变化时记录各节点起始时刻（已记录的保留）。
+    // 这是对 props 变化的合理副作用，规则误判，精确 disable。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRunningSince((prev) => {
+      const next: Record<string, number> = {}
+      for (const id of ids) next[id] = prev[id] ?? now
+      return next
+    })
+  }, [runningKey])
+  React.useEffect(() => {
+    if (!runningKey) return
+    const t = setInterval(() => setNowTick(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [runningKey])
+  const runningSecondsOf = React.useCallback(
+    (nodeId: string): number | undefined => {
+      const since = runningSince[nodeId]
+      if (since == null) return undefined
+      return Math.max(0, Math.floor((nowTick - since) / 1000))
+    },
+    [nowTick, runningSince]
+  )
+
   const levels = React.useMemo(() => computeLevels(dag), [dag])
 
   const rows = React.useMemo(() => {
@@ -371,6 +460,11 @@ export function GroupSopPanel({
                           node={node}
                           onOpenArtifact={onOpenArtifact}
                           onOpenMember={onOpenMember}
+                          runningSeconds={
+                            node.state === "running"
+                              ? runningSecondsOf(node.id)
+                              : undefined
+                          }
                         />
                       </div>
                     </div>

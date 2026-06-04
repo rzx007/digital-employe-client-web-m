@@ -290,12 +290,34 @@ async def stream_conversation(
 @router.get("/chat/conversations/{conversation_id}/stream/resume")
 async def resume_conversation_stream(
     conversation_id: int,
+    request: Request,
     debug_content_only: bool = False,
+    after_seq: int | None = None,
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """恢复流式会话回答（SSE），全量回放 buffer 历史后衔接实时事件。"""
+    """恢复流式会话回答（SSE）：从 after_seq 之后增量回放 buffer，再衔接实时事件。
+
+    续传游标来源（优先级从高到低）：
+    1) 显式 query 参数 after_seq；
+    2) SSE 标准 Last-Event-ID 请求头（EventSource 重连时浏览器自动带上，
+       值为上次收到的 `id:` = 事件 seq）。
+    都没有时回放整个 buffer（首次进入）。这避免了切回会话/重连时把上万条
+    历史事件全量重放压垮前端（超长输出场景下前端会卡死、渲染不出）。
+    """
+    resume_after = after_seq
+    if resume_after is None:
+        raw = request.headers.get("last-event-id")
+        if raw:
+            try:
+                resume_after = int(raw)
+            except (TypeError, ValueError):
+                resume_after = None
     return StreamingResponse(
-        ChatService.resume_conversation_stream(db, conversation_id, debug_content_only=debug_content_only),
+        ChatService.resume_conversation_stream(
+            db, conversation_id,
+            debug_content_only=debug_content_only,
+            after_seq=resume_after,
+        ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )

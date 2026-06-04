@@ -14,10 +14,10 @@ AGENT_MAX_INFLIGHT_DEFAULT = 4
 AGENT_MAX_INFLIGHT_CAP = 32
 
 # heavy/light 分级：重活(长文档/批量交付)的并发上限，给交互问答(light)留余量。
-# 默认 0 = 不单独限制重活（仅受 AGENT_MAX_INFLIGHT 总闸约束，行为同切片 A）；
-# 运维把它调小（如 3）即开启"预留槽给轻活"。
+# 默认 1 = 编排/组长等 heavy 串行，避免多路重活占满 GPU 槽导致轻活与慢流卡死。
+# 设为 0 表示不单独限制重活（仅受 AGENT_MAX_INFLIGHT 总闸约束）。
 AGENT_MAX_HEAVY_KV = "AGENT_MAX_HEAVY"
-AGENT_MAX_HEAVY_DEFAULT = 0
+AGENT_MAX_HEAVY_DEFAULT = 1
 
 USER_CHAT_PRIORITY = 10
 ORCHESTRATION_PRIORITY = 20
@@ -37,7 +37,16 @@ def resolve_stream_class(explicit: str | None, source: str | None) -> str:
     """
     if explicit in (STREAM_CLASS_HEAVY, STREAM_CLASS_LIGHT):
         return explicit  # type: ignore[return-value]
-    if source in ("orchestration", "scheduled"):
+    # 编排/定时/群协作都算 heavy（批量交付、并发敏感）。
+    # 群相关流（组长统筹/成员派活/汇总）并发执行时易触发死锁，
+    # 归为 heavy 后可经 AGENT_MAX_HEAVY 闸串行兜底（方向A：稳定优先）。
+    if source in (
+        "orchestration",
+        "scheduled",
+        "group_room",
+        "group_leader",
+        "group_leader_summary",
+    ):
         return STREAM_CLASS_HEAVY
     return STREAM_CLASS_LIGHT
 

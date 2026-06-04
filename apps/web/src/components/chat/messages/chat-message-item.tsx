@@ -8,6 +8,7 @@ import {
 } from "@workspace/ui/components/ai-elements/message"
 import { getCopyableMessageText } from "@/lib/chat/message-utils"
 import { CURATOR_AVATAR_URL } from "@/lib/avatar"
+import { useAuthStore } from "@/stores/auth-store"
 import { cn } from "@workspace/ui/lib/utils"
 import {
   resolveHitlApproveMessageId,
@@ -52,6 +53,7 @@ function ChatMessageItemInner({
   onHitlApproved,
 }: ChatMessageItemProps) {
   const contactDisplayName = getContactDisplayName(contact)
+  const userName = useAuthStore((s) => s.user?.name) || "我"
   const deferredMessage = React.useDeferredValue(message)
   const {
     blocks: classifiedBlocks,
@@ -189,6 +191,14 @@ function ChatMessageItemInner({
               return s || contactDisplayName
             })()}
           </span>
+        </div>
+      )}
+      {message.role === "user" && !isDispatchedByOrchestrator && (
+        <div className="mb-2 flex items-center justify-end gap-2">
+          <span className="text-xs text-muted-foreground">{userName}</span>
+          <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary ring-1 ring-primary/15">
+            {userName.trim().slice(0, 2)}
+          </div>
         </div>
       )}
       {isDispatchedByOrchestrator && (

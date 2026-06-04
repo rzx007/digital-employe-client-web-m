@@ -844,12 +844,24 @@ class ChatService:
             yield f"data: {json.dumps({'error': format_agent_error_for_user(e)}, ensure_ascii=False)}\n\n"
 
     @staticmethod
-    async def resume_conversation_stream(db: Session, conversation_id: int, debug_content_only: bool = False):
-        """恢复流式会话，全量回放 buffer 历史后衔接实时事件。"""
+    async def resume_conversation_stream(
+        db: Session,
+        conversation_id: int,
+        debug_content_only: bool = False,
+        after_seq: int | None = None,
+    ):
+        """恢复流式会话：从 after_seq 之后增量回放 buffer，再衔接实时事件。
+
+        after_seq=None 时回放整个 buffer（首次进入）；切回会话/重连时前端带上
+        已收到的最后一个 seq，只补增量，避免超长输出全量重放压垮前端。
+        """
         from src.service.stream_registry import registry
         import asyncio
 
-        logger.info("[resume] conv=%s debug=%s", conversation_id, debug_content_only)
+        logger.info(
+            "[resume] conv=%s debug=%s after_seq=%s",
+            conversation_id, debug_content_only, after_seq,
+        )
 
         status_info = registry.get_stream_status(conversation_id, db)
         if status_info:
@@ -937,17 +949,66 @@ class ChatService:
                 )
                 return False, [_sse_line(payload_str)]
 
-        # Phase 1: 全量回放 buffer 中的所有历史事件
+        # Phase 1: 回放 buffer 历史事件。带 after_seq 时只回放它之后的增量，
+        # 避免超长输出（上万事件）切回会话时全量重放压垮前端。
         all_events = list(task.buffer._events)
+        if after_seq is not None:
+            all_events = [e for e in all_events if e.get("seq", 0) > after_seq]
         last_buffered_seq = task.buffer.cursor
-        logger.info("[resume] conv=%s full buffer replay: %d events", conversation_id, len(all_events))
-        for event in all_events:
-            done, payloads = await _emit_event_payloads(event)
-            for payload in payloads:
-                yield payload
-            if done:
-                logger.info("[resume] conv=%s terminated during full buffer replay", conversation_id)
-                return
+        logger.info(
+            "[resume] conv=%s buffer replay: %d events (after_seq=%s, total_in_buffer=%d)",
+            conversation_id, len(all_events), after_seq, len(task.buffer._events),
+        )
+        # 历史事件一次性在单个线程里批量序列化，避免逐事件 await to_thread 造成
+        # 成百上千次线程切换（超长输出回放会因此极慢、把前端拖卡）。
+        def _serialize_history_batch() -> tuple[list[str], bool]:
+            out: list[str] = []
+            terminated = False
+            for ev in all_events:
+                data = ev.get("data")
+                if not data:
+                    continue
+                seq = ev.get("seq")
+                prefix = f"id: {seq}\n" if seq is not None else ""
+                if (
+                    isinstance(data, dict)
+                    and data.get("status")
+                    in ("completed", "cancelled", "error", "interrupted")
+                ):
+                    if data.get("status") == "error":
+                        out.append(
+                            prefix
+                            + f"data: {json.dumps({'error': data.get('error')}, ensure_ascii=False)}\n\n"
+                        )
+                    elif data.get("status") == "interrupted":
+                        out.append(
+                            prefix
+                            + f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+                        )
+                    out.append(prefix + "data: [DONE]\n\n")
+                    terminated = True
+                    break
+                if debug_content_only:
+                    text_part = ChatService._extract_text_from_chunk(data)
+                    if text_part:
+                        out.append(prefix + f"data: {text_part}\n\n")
+                else:
+                    out.append(
+                        prefix
+                        + f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+                    )
+            return out, terminated
+
+        history_payloads, history_terminated = await _to_thread(
+            _serialize_history_batch
+        )
+        for payload in history_payloads:
+            yield payload
+        if history_terminated:
+            logger.info(
+                "[resume] conv=%s terminated during buffer replay", conversation_id
+            )
+            return
 
         # Phase 2: 订阅实时事件
         queue = asyncio.Queue(maxsize=5000)

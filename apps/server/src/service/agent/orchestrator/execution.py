@@ -68,6 +68,42 @@ def _resolve_room_shared_artifacts_dir(
         return None
 
 
+def _register_room_stream_relay_if_in_room(
+    db: Session,
+    member_conversation_id: int,
+    orchestrator_conversation_id: int | None,
+    employee,
+) -> None:
+    """若该编排任务属于某群房间，登记流式中继：成员产出 token 逐字推到群时间线。"""
+    if orchestrator_conversation_id is None:
+        return
+    try:
+        from src.models.group_room import GroupRoom
+        from src.service.group_room_service import register_group_stream_relay
+
+        room = db.scalars(
+            select(GroupRoom).where(
+                GroupRoom.leader_conversation_id == orchestrator_conversation_id
+            )
+        ).first()
+        if room is None:
+            return
+        register_group_stream_relay(
+            member_conversation_id,
+            room_id=room.id,
+            room_conversation_id=room.room_conversation_id,
+            workspace_id=room.workspace_id,
+            sender_id=employee.id if employee else None,
+            sender_label=(employee.name if employee else "成员"),
+        )
+    except Exception:
+        logger.warning(
+            "register room stream relay failed conv=%s",
+            member_conversation_id,
+            exc_info=True,
+        )
+
+
 async def _start_employee_stream_when_orchestrator_idle(
     *,
     orchestrator_conversation_id: int | None,
@@ -78,12 +114,14 @@ async def _start_employee_stream_when_orchestrator_idle(
     priority: int = ORCHESTRATION_PRIORITY,
     source: str = "orchestration",
     stream_class: str | None = None,
+    skip_orchestrator_wait: bool = False,
 ) -> None:
     from src.service.stream_registry import registry
 
-    if orchestrator_conversation_id is not None:
+    if orchestrator_conversation_id is not None and not skip_orchestrator_wait:
         polls = 0
-        while registry.is_busy(orchestrator_conversation_id):
+        # 只等总管「正在流式输出」，不等 queued（排队不占 astream，白等会拖死派单）
+        while registry.is_active(orchestrator_conversation_id):
             polls += 1
             if polls > _ORCH_STREAM_IDLE_MAX_POLLS:
                 logger.warning(
@@ -278,9 +316,13 @@ def start_task_as_conversation(
     # 与资源阀门同源：按该任务类别判断初始日志状态(running/queued)，
     # 避免阀门已满却把日志记成"执行中"。
     slot_busy = not registry.can_admit(resolved_class)
+    # 编排派单异步拉起（registry.start 在协程里）：在真正占槽前勿标 streaming，
+    # 否则前端长时间「正在生成…」却无 token（等总管结束 / 排队 drain）。
     initial_log_status = "queued" if slot_busy else "running"
     initial_log_result = "排队中，等待执行" if slot_busy else "执行中"
-    initial_msg_state = "queued" if slot_busy else "streaming"
+    initial_msg_state = (
+        "queued" if (slot_busy or source == "orchestration") else "streaming"
+    )
 
     conversation = Conversation(
         workspace_id=workspace_id,
@@ -335,9 +377,13 @@ def start_task_as_conversation(
     db.flush()
 
     if initial_msg_state == "queued":
-        assistant_msg.content = (
-            assistant_msg.content or "已加入执行队列，等待其他对话完成"
-        )
+        if slot_busy:
+            queue_hint = "已加入执行队列，等待其他对话完成"
+        elif source == "orchestration":
+            queue_hint = "等待总管会话结束，即将开始执行…"
+        else:
+            queue_hint = "已加入执行队列，等待其他对话完成"
+        assistant_msg.content = assistant_msg.content or queue_hint
 
     conversation_id = conversation.id
     assistant_msg_id = assistant_msg.id
@@ -361,6 +407,11 @@ def start_task_as_conversation(
     # 群协作：若本任务属于某房间（组长派的活），让它用房间共享产物目录，
     # 这样上游成员产出的文件对下游成员可见（解决"下游找不到上游产物"）。
     shared_artifacts_dir = _resolve_room_shared_artifacts_dir(db, orch_conv_id, root_path)
+
+    # 群协作：登记流式中继，让成员产出 token 逐字推到群时间线。
+    _register_room_stream_relay_if_in_room(
+        db, conversation_id, orch_conv_id, employee
+    )
 
     agent = get_agent(
         skills_path,
@@ -395,6 +446,9 @@ def start_task_as_conversation(
     main_loop = get_main_loop()
 
     def _schedule_employee_stream() -> None:
+        skip_orch_wait = should_skip_orchestrator_wait(
+            prereq_briefing=prereq_briefing,
+        )
         asyncio.create_task(
             _start_employee_stream_when_orchestrator_idle(
                 orchestrator_conversation_id=orch_conv_id,
@@ -405,6 +459,7 @@ def start_task_as_conversation(
                 priority=priority,
                 source=source,
                 stream_class=resolved_class,
+                skip_orchestrator_wait=skip_orch_wait,
             )
         )
 
@@ -420,6 +475,16 @@ def start_task_as_conversation(
     })
 
     return conversation_id
+
+
+def should_skip_orchestrator_wait(*, prereq_briefing: str = "") -> bool:
+    """是否跳过「等编排会话 astream 结束再启员工流」。
+
+    仅依赖调度器派发的后继任务（带前置产物简报）可跳过——此时组长流通常已结束。
+    群房间虽有 shared_artifacts_dir，但首轮派活仍须等组长 create/confirm 流结束，
+    否则 group_leader + orchestration 双 heavy 并行占满 GPU 槽（观测到 385s/6tok 僵死）。
+    """
+    return bool(prereq_briefing and prereq_briefing.strip())
 
 
 _start_task_as_conversation = start_task_as_conversation

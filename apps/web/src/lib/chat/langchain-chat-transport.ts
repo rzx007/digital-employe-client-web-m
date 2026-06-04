@@ -225,8 +225,24 @@ function buildChatApiUrl(options: { conversationId: string }) {
   return `/chat/conversations/${options.conversationId}/stream`
 }
 
+/**
+ * 每个会话“已收到的最后一个事件 seq”。后端 SSE 帧带 `id: {seq}`，前端在解析时
+ * 记录最大 seq；切回会话/重连发 resume 时作为 ?after_seq= 回传，后端只补增量，
+ * 避免超长输出（上万事件）每次切回都全量重放压垮前端（卡死、渲染不出）。
+ */
+const _lastSeqByConv = new Map<string, number>()
+
+export function recordResumeSeq(conversationId: string, seq: number) {
+  const prev = _lastSeqByConv.get(conversationId)
+  if (prev === undefined || seq > prev) {
+    _lastSeqByConv.set(conversationId, seq)
+  }
+}
+
 function buildResumeApiUrl(conversationId: string) {
-  return `/chat/conversations/${conversationId}/stream/resume`
+  const lastSeq = _lastSeqByConv.get(conversationId)
+  const base = `/chat/conversations/${conversationId}/stream/resume`
+  return lastSeq !== undefined ? `${base}?after_seq=${lastSeq}` : base
 }
 
 function getConversationIdFromBody(body: object | undefined) {
@@ -505,6 +521,18 @@ export class LangChainChatTransport<
         const flushEvent = async (eventText: string): Promise<boolean> => {
           const allLines = eventText.split(/\r?\n/)
 
+          // 记录 SSE 事件 id（= 后端 buffer seq），供 resume 断点续传用，
+          // 避免切回会话时全量重放整个 buffer。
+          if (conversationId) {
+            const idLine = allLines.find((line) => line.startsWith("id:"))
+            if (idLine) {
+              const seq = Number(idLine.slice(3).trim())
+              if (Number.isFinite(seq)) {
+                recordResumeSeq(conversationId, seq)
+              }
+            }
+          }
+
           const dataLines = allLines
             .filter((line) => line.startsWith("data:"))
             .map((line) => line.slice(5).trim())
@@ -517,6 +545,10 @@ export class LangChainChatTransport<
 
           // [DONE] → 流正常结束
           if (data === "[DONE]") {
+            // 流结束 → 清掉该会话的 resume seq，避免下一条新流复用旧 seq 漏放增量
+            if (conversationId) {
+              _lastSeqByConv.delete(conversationId)
+            }
             flushSync()
             closeTextPhaseIfNeeded(state).forEach((chunk) =>
               controller.enqueue(chunk)

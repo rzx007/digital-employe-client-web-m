@@ -11,6 +11,7 @@ import logging
 from langchain_core.messages import BaseMessage, ToolMessage
 
 from src.service.agent.read_file_dedupe import (
+    extract_read_file_offset,
     extract_read_file_path,
     is_read_file_dedupe_placeholder,
     is_success_read_file_tool,
@@ -57,6 +58,20 @@ def compress_large_read_file_history(
     if not read_indices:
         return messages
 
+    # 同一文件正在分页阅读（多个 offset）时，保留全部片段，避免模型“忘记读到哪里”
+    offsets_by_path: dict[str, set[int]] = {}
+    for index in read_indices:
+        message = messages[index]
+        if not isinstance(message, ToolMessage):
+            continue
+        path = extract_read_file_path(message, messages, index)
+        if not path:
+            continue
+        offsets_by_path.setdefault(path, set()).add(
+            extract_read_file_offset(message, messages, index)
+        )
+    paginated_paths = {p for p, offs in offsets_by_path.items() if len(offs) > 1}
+
     keep_indices = set(read_indices[-keep_recent_count:])
 
     to_compress: set[int] = set()
@@ -65,6 +80,9 @@ def compress_large_read_file_history(
             continue
         message = messages[index]
         if not isinstance(message, ToolMessage):
+            continue
+        path = extract_read_file_path(message, messages, index)
+        if path and path in paginated_paths:
             continue
         content = str(message.content or "")
         if is_read_file_dedupe_placeholder(content) or is_path_only_placeholder(content):
