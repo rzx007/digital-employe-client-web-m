@@ -125,6 +125,14 @@ export function useConversationSession({
   // eslint-disable-next-line react-hooks/refs
   machineRef.current = machine
 
+  // latest-value ref：延迟 resume 回调内读「实时」status（而非调度时的快照），
+  // 并让 retryResumeIfNeeded 不必依赖 status —— 否则 status 变化会重跑总线 effect、
+  // 误清掉刚调度的 refetch 防抖定时器（见 use-conversation-session.test「Bug1 回归」）。
+  const statusRef = useRef(status)
+
+  // eslint-disable-next-line react-hooks/refs
+  statusRef.current = status
+
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const resumeScheduleRef = useRef<
@@ -134,11 +142,7 @@ export function useConversationSession({
   const convKey = conversationId != null ? String(conversationId) : null
 
   const tryScheduleResume = useCallback(
-    (
-      assistantId: string,
-      statusSnapshot: string,
-      options?: { allowBusyStatus?: boolean }
-    ) => {
+    (assistantId: string, options?: { allowBusyStatus?: boolean }) => {
       if (!convKey) return false
 
       const willResume = shouldAttemptResume({
@@ -159,13 +163,15 @@ export function useConversationSession({
 
       cancelScheduledStreamResume(resumeScheduleRef.current)
       resumeScheduleRef.current = scheduleStreamResume(() => {
-        const busy =
-          statusSnapshot === "submitted" || statusSnapshot === "streaming"
+        // 读「实时」status，而非调度时的快照 —— 否则退避延迟期间用户发了新消息，
+        // 旧快照会误判 ready 而放行，与新发送的流撞车。
+        const current = statusRef.current
+        const busy = current === "submitted" || current === "streaming"
         if (busy && !options?.allowBusyStatus) return
         if (
           !options?.allowBusyStatus &&
-          statusSnapshot !== "ready" &&
-          statusSnapshot !== "error"
+          current !== "ready" &&
+          current !== "error"
         ) {
           return
         }
@@ -250,7 +256,7 @@ export function useConversationSession({
         lastAssistantId &&
         !wasActive
       ) {
-        tryScheduleResume(lastAssistantId, status, { allowBusyStatus: true })
+        tryScheduleResume(lastAssistantId, { allowBusyStatus: true })
       }
 
       return () => cancelScheduledStreamResume(resumeScheduleRef.current)
@@ -291,14 +297,14 @@ export function useConversationSession({
 
     const willResume = shouldAttemptResume({
       hitlActive: machineRef.current.activeHitl !== null,
-      lastAssistantStreamState: lastAssistant?.streamState,
+      lastAssistantStreamState: lastAssistant?.streamState ?? undefined,
       lastAssistantId,
       resumeAttempts: machineRef.current.resumeAttempts,
     })
 
     if (!willResume || !lastAssistantId) return
 
-    tryScheduleResume(String(lastAssistantId), status)
+    tryScheduleResume(String(lastAssistantId))
 
     return () => cancelScheduledStreamResume(resumeScheduleRef.current)
 
@@ -336,8 +342,8 @@ export function useConversationSession({
     }
 
     chatTransport.cancelReconnect()
-    return tryScheduleResume(assistantId, status, { allowBusyStatus: true })
-  }, [convKey, queryClient, status, tryScheduleResume])
+    return tryScheduleResume(assistantId, { allowBusyStatus: true })
+  }, [convKey, queryClient, tryScheduleResume])
 
   useEffect(() => {
     if (!convKey) return
