@@ -39,6 +39,7 @@ def _schedule_stream_start(
     orchestrator_workspace_id: int | None = None,
     orchestrator_conversation_id: int | None = None,
     orchestrator_auth_token: str | None = None,
+    orchestrator_owned_db: Any | None = None,
     source: str = "group_room",
 ) -> None:
     """把 registry.request_start 投递到主事件循环执行。
@@ -46,6 +47,10 @@ def _schedule_stream_start(
     群派活/汇总常由 agent 工具调用线程或完成回调触发，那些线程没有运行中的
     asyncio loop，直接 request_start 内部的 create_task 会报 "no running event loop"。
     统一经主循环 call_soon_threadsafe 启动；取不到主循环则同步兜底。
+
+    orchestrator_owned_db：给该编排流一个**独立** DB session，避免与调用方
+    （如总管自身的流式会话）共用 session 触发并发会话错误
+    （"concurrent operations are not permitted"）。
     """
     from src.service.stream_registry import registry
 
@@ -61,6 +66,7 @@ def _schedule_stream_start(
             orchestrator_workspace_id=orchestrator_workspace_id,
             orchestrator_conversation_id=orchestrator_conversation_id,
             orchestrator_auth_token=orchestrator_auth_token,
+            orchestrator_owned_db=orchestrator_owned_db,
             source=source,
         )
 
@@ -545,14 +551,18 @@ class GroupRoomService:
         成员产出再投影回群时间线。
         """
         from src.service.agent.orchestrator import get_orchestrator_agent
-        from src.service.agent_stream_queue import StartResult
         from src.service.chat_service import ChatService
-        from src.service.stream_registry import registry
+        from src.db.session import get_session_local
+
+        # 全程用独立 session：本方法常由总管的工具调用线程触发，此时总管自身的
+        # 流式会话正占用调用方 db，复用它做读写会与异步流并发，触发
+        # "concurrent operations are not permitted"。用 leader_db 隔离。
+        leader_db = get_session_local()()
 
         # 历史房间可能没有组长会话，惰性补建
         leader_conv = None
         if room.leader_conversation_id is not None:
-            leader_conv = db.get(Conversation, room.leader_conversation_id)
+            leader_conv = leader_db.get(Conversation, room.leader_conversation_id)
         if leader_conv is None:
             leader_conv = Conversation(
                 workspace_id=room.workspace_id,
@@ -560,18 +570,22 @@ class GroupRoomService:
                 target_id=room.room_conversation_id,
                 title=f"[群:{room.id}] 组长",
             )
-            db.add(leader_conv)
-            db.flush()
+            leader_db.add(leader_conv)
+            leader_db.flush()
+            # 同步把 leader_conversation_id 写回 room（用 leader_db 持久化）
+            room_row = leader_db.get(GroupRoom, room.id)
+            if room_row is not None:
+                room_row.leader_conversation_id = leader_conv.id
+            leader_db.commit()
             room.leader_conversation_id = leader_conv.id
-            db.commit()
 
         # 组长可调度的成员名单（注入上下文，引导它把活分给群成员）
-        members = GroupRoomService.list_members(db, room)
+        members = GroupRoomService.list_members(leader_db, room)
         roster_lines = []
         for m in members:
             if m.role_in_room == "leader":
                 continue
-            emp = db.get(Employee, m.employee_id)
+            emp = leader_db.get(Employee, m.employee_id)
             if emp:
                 roster_lines.append(f"- {emp.name}（员工ID: {emp.id}）")
         roster = "\n".join(roster_lines) or "（暂无可用成员）"
@@ -589,28 +603,31 @@ class GroupRoomService:
         )
 
         history_messages, _ = ChatService._load_history_for_agent(
-            db, conversation_id=leader_conv.id,
+            leader_db, conversation_id=leader_conv.id,
             limit=get_settings().chat_history_max_messages,
         )
         ChatService._append_message(
-            db, conversation=leader_conv, role="user", content=question,
+            leader_db, conversation=leader_conv, role="user", content=question,
         )
         assistant_msg = ChatService._append_message(
-            db, conversation=leader_conv, role="assistant", content="",
+            leader_db, conversation=leader_conv, role="assistant", content="",
         )
-        db.commit()
+        leader_db.commit()
 
         from pathlib import Path as _Path
 
         _shared = str(
             _Path(get_settings().artifacts_path) / f"room-{room.id}" / "artifacts"
         )
+        # bind_context=False：构建时不把 session 绑进 orchestrator 上下文，
+        # 由 request_start 用 orchestrator_owned_db=leader_db 统一绑定独立 session。
         agent = get_orchestrator_agent(
             workspace_id=room.workspace_id,
-            db=db,
+            db=leader_db,
             conversation_id=leader_conv.id,
             auth_token=auth_token,
             shared_artifacts_dir=_shared,
+            bind_context=False,
         )
 
         request_messages: list[dict[str, Any]] = [*history_messages]
@@ -620,7 +637,7 @@ class GroupRoomService:
         # 必须把 request_start 投递到主循环，否则 asyncio.create_task 会报
         # "no running event loop"。
         assistant_msg.stream_state = "streaming"
-        db.commit()
+        leader_db.commit()
         _schedule_stream_start(
             conversation_id=leader_conv.id,
             agent=agent,
@@ -629,6 +646,7 @@ class GroupRoomService:
             orchestrator_workspace_id=room.workspace_id,
             orchestrator_conversation_id=leader_conv.id,
             orchestrator_auth_token=auth_token,
+            orchestrator_owned_db=leader_db,
             source="group_leader",
         )
         logger.info(
@@ -684,12 +702,17 @@ class GroupRoomService:
         )
         db.commit()
 
-        # 组长也用房间共享产物目录，才能读到成员产出
+        # 组长也用房间共享产物目录，才能读到成员产出。
+        # 用独立 DB session + bind_context=False，避免与完成回调的 session 并发冲突。
+        from src.db.session import get_session_local
+
+        leader_db = get_session_local()()
         agent = get_orchestrator_agent(
             workspace_id=room.workspace_id,
-            db=db,
+            db=leader_db,
             conversation_id=leader_conv.id,
             shared_artifacts_dir=str(shared_dir),
+            bind_context=False,
         )
 
         request_messages: list[dict[str, Any]] = [*history_messages]
@@ -698,34 +721,16 @@ class GroupRoomService:
         assistant_msg.stream_state = "streaming"
         db.commit()
 
-        leader_conv_id = leader_conv.id
-        assistant_msg_id = assistant_msg.id
-        workspace_id = room.workspace_id
-
-        # 关键：本方法由完成回调（_finalize_task_stream）触发，可能不在主事件循环线程，
-        # 直接 registry.request_start 里的 asyncio.create_task 会拿不到运行中的 loop。
-        # 与 start_task_as_conversation 一致，投递到主循环执行。
-        def _start_summary_stream() -> None:
-            registry.request_start(
-                conversation_id=leader_conv_id,
-                agent=agent,
-                messages=request_messages,
-                config={"configurable": {"thread_id": leader_conv_id}},
-                stream_msg_id=assistant_msg_id,
-                skill_name="",
-                debug_content_only=False,
-                orchestrator_workspace_id=workspace_id,
-                orchestrator_conversation_id=leader_conv_id,
-                source="group_leader_summary",
-            )
-
-        try:
-            from src.service.agent.orchestrator.runtime import get_main_loop
-
-            get_main_loop().call_soon_threadsafe(_start_summary_stream)
-        except Exception:
-            # 兜底：若无法取到主循环，直接同步尝试
-            _start_summary_stream()
+        _schedule_stream_start(
+            conversation_id=leader_conv.id,
+            agent=agent,
+            messages=request_messages,
+            stream_msg_id=assistant_msg.id,
+            orchestrator_workspace_id=room.workspace_id,
+            orchestrator_conversation_id=leader_conv.id,
+            orchestrator_owned_db=leader_db,
+            source="group_leader_summary",
+        )
         return leader_conv_id
 
     @staticmethod

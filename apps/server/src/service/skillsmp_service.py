@@ -29,9 +29,32 @@ USER_AGENT = "digital-employee-client/1.0 (+https://skillsmp.com)"
 GITHUB_API = "https://api.github.com"
 CODELOAD_BASE = "https://codeload.github.com"
 
-GITHUB_ZIP_TIMEOUT = 90.0
-GITHUB_API_TIMEOUT = 15.0
-SKILLSMP_CONTENTS_TIMEOUT = 12.0
+# 直连 GitHub 的超时收紧：受限网络（无代理）下 GitHub 不可达时快速失败，
+# 避免卡到 90s 才报错。优先走 SkillsMP 代理（国内可达、快）。
+GITHUB_ZIP_TIMEOUT = 20.0
+GITHUB_API_TIMEOUT = 8.0
+SKILLSMP_CONTENTS_TIMEOUT = 15.0
+
+
+def _direct_github_fallback_enabled() -> bool:
+    """是否允许在 SkillsMP 代理失败后回退直连 GitHub。
+
+    受限网络（无梯子）下直连 GitHub 会超时拖慢甚至卡死，可通过 KV/env
+    SKILL_DIRECT_GITHUB_FALLBACK=false 关闭回退，只走 SkillsMP 代理。
+    默认开启（但已收紧超时快速失败）。
+    """
+    val = os.getenv("SKILL_DIRECT_GITHUB_FALLBACK", "").strip().lower()
+    if val in ("0", "false", "no", "off"):
+        return False
+    try:
+        from src.core.config import get_settings
+
+        kv = getattr(get_settings(), "skill_direct_github_fallback", None)
+        if kv is False:
+            return False
+    except Exception:
+        pass
+    return True
 
 MAX_SKILL_FILES = 200
 MAX_SKILL_BYTES = 10 * 1024 * 1024
@@ -632,15 +655,33 @@ class SkillsMpService:
         parsed = SkillsMpService.parse_github_tree_url(github_url)
         errors: list[str] = []
 
-        # SkillsMP 代理只拉技能子目录，通常最快；403/失败时快速回退 GitHub 源。
-        fetchers = (
-            lambda p: SkillsMpService._fetch_via_skillsmp_github_contents(
-                p, skill_slug=skill_slug
-            ),
+        # 优先走 SkillsMP 代理（国内可达、快），瞬时失败重试一次再考虑回退。
+        for attempt in range(2):
+            try:
+                return SkillsMpService._fetch_via_skillsmp_github_contents(
+                    parsed, skill_slug=skill_slug
+                )
+            except SkillsMpError as exc:
+                logger.info("SkillsMP 代理失败(第%s次): %s", attempt + 1, exc)
+                errors.append(str(exc))
+                break  # 403/格式等业务错误重试无意义，直接进回退判断
+            except httpx.HTTPError as exc:
+                logger.info("SkillsMP 代理网络失败(第%s次): %s", attempt + 1, exc)
+                errors.append(humanize_http_error(exc, context="SkillsMP 代理"))
+                # 网络瞬时抖动才重试
+
+        # 回退直连 GitHub（受限网络下可关闭，避免长时间卡死）
+        if not _direct_github_fallback_enabled():
+            joined = "；".join(errors[:3])
+            raise SkillsMpError(
+                "SkillsMP 代理不可用，且已禁用 GitHub 直连回退"
+                "（SKILL_DIRECT_GITHUB_FALLBACK=false）。" + joined
+            )
+
+        for fetcher in (
             SkillsMpService._fetch_via_github_api,
             SkillsMpService._fetch_via_repo_zip,
-        )
-        for fetcher in fetchers:
+        ):
             try:
                 return fetcher(parsed)
             except SkillsMpError as exc:

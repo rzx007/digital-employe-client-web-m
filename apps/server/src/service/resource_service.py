@@ -116,10 +116,83 @@ def _scan_skills_draft(directory: Path) -> list[ResourceEntry]:
     return entries
 
 
+def _resolve_conversation_dir(root_path: str, conversation_id: int) -> Path:
+    """解析会话的产物根目录。
+
+    普通会话：<root>/<conversation_id>/（含 artifacts/uploads/skills-draft）。
+    群协作会话（成员/组长任务会话或群时间线会话）：产物写在房间共享目录
+    <root>/room-<room_id>/，需要据此读取，否则按 conversation_id 找会扑空。
+    """
+    default_dir = Path(root_path) / str(conversation_id)
+    try:
+        from sqlalchemy import select
+
+        from src.db.session import get_session_local
+        from src.models.conversation import Conversation
+        from src.models.group_room import GroupRoom, GroupRoomMember
+        from src.models.task_execution_log import TaskExecutionLog
+
+        db = get_session_local()()
+        try:
+            room_id: int | None = None
+            # 1) 群时间线会话（target_type="group"）→ 直接是房间
+            conv = db.get(Conversation, conversation_id)
+            if conv is not None and conv.target_type == "group":
+                room = db.scalars(
+                    select(GroupRoom).where(
+                        GroupRoom.room_conversation_id == conversation_id
+                    )
+                ).first()
+                if room is not None:
+                    room_id = room.id
+            # 2) 组长会话
+            if room_id is None:
+                room = db.scalars(
+                    select(GroupRoom).where(
+                        GroupRoom.leader_conversation_id == conversation_id
+                    )
+                ).first()
+                if room is not None:
+                    room_id = room.id
+            # 3) @ 直接派的成员私有会话
+            if room_id is None:
+                member = db.scalars(
+                    select(GroupRoomMember).where(
+                        GroupRoomMember.conversation_id == conversation_id
+                    )
+                ).first()
+                if member is not None:
+                    room_id = member.room_id
+            # 4) 组长编排派的任务会话：经 TaskExecutionLog 反查组长会话→房间
+            if room_id is None:
+                log = db.scalars(
+                    select(TaskExecutionLog)
+                    .where(TaskExecutionLog.conversation_id == conversation_id)
+                    .order_by(TaskExecutionLog.id.desc())
+                ).first()
+                if log is not None and log.orchestrator_conversation_id is not None:
+                    room = db.scalars(
+                        select(GroupRoom).where(
+                            GroupRoom.leader_conversation_id
+                            == log.orchestrator_conversation_id
+                        )
+                    ).first()
+                    if room is not None:
+                        room_id = room.id
+
+            if room_id is not None:
+                return Path(root_path) / f"room-{room_id}"
+        finally:
+            db.close()
+    except Exception:
+        pass
+    return default_dir
+
+
 class ResourceService:
     @staticmethod
     def list_resources(root_path: str, conversation_id: int) -> ResourceList:
-        conversation_dir = Path(root_path) / str(conversation_id)
+        conversation_dir = _resolve_conversation_dir(root_path, conversation_id)
         artifacts_dir = conversation_dir / "artifacts"
         skills_draft_dir = conversation_dir / "skills-draft"
         uploads_dir = conversation_dir / "uploads"
@@ -135,7 +208,7 @@ class ResourceService:
         if not any(path.startswith(prefix) for prefix in _ALLOWED_PREFIXES):
             return None
 
-        conversation_dir = Path(root_path) / str(conversation_id)
+        conversation_dir = _resolve_conversation_dir(root_path, conversation_id)
         resolved = _resolve_safe_path(conversation_dir, path)
         if resolved is None or not resolved.is_file():
             return None
@@ -248,7 +321,7 @@ class ResourceService:
     ) -> tuple[Path, bool] | None:
         if not any(virtual_path.startswith(p) for p in _ALLOWED_PREFIXES):
             return None
-        conversation_dir = Path(root_path) / str(conversation_id)
+        conversation_dir = _resolve_conversation_dir(root_path, conversation_id)
         resolved = _resolve_safe_path(conversation_dir, virtual_path)
         if resolved is None or not resolved.exists():
             return None

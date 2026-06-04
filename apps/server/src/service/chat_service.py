@@ -211,7 +211,59 @@ class ChatService:
             )
             .order_by(Conversation.updated_at.desc(), Conversation.id.desc())
         )
-        return list(db.scalars(stmt).all())
+        convs = list(db.scalars(stmt).all())
+        # 过滤掉群协作的内部任务会话：用户在某员工下看到的应是真正的 1:1 会话，
+        # 而不是该员工在各个群里被派活产生的任务会话（那些属于群内部）。
+        if target_type == "employee":
+            convs = ChatService._exclude_group_internal_convs(db, convs)
+        return convs
+
+    @staticmethod
+    def _exclude_group_internal_convs(
+        db: Session, convs: list[Conversation]
+    ) -> list[Conversation]:
+        """剔除属于群协作的员工任务会话（经 TaskExecutionLog 指向群组长，
+        或挂在某 GroupRoomMember 上）。"""
+        if not convs:
+            return convs
+        from src.models.group_room import GroupRoom, GroupRoomMember
+        from src.models.task_execution_log import TaskExecutionLog
+
+        conv_ids = [c.id for c in convs]
+        internal: set[int] = set()
+
+        # @ 直接派的成员私有会话
+        for row in db.execute(
+            select(GroupRoomMember.conversation_id).where(
+                GroupRoomMember.conversation_id.in_(conv_ids)
+            )
+        ).all():
+            if row[0] is not None:
+                internal.add(int(row[0]))
+
+        # 组长编排派的任务会话：其 TaskExecutionLog.orchestrator_conversation_id
+        # 指向某房间的组长会话
+        leader_conv_ids = {
+            int(r[0])
+            for r in db.execute(
+                select(GroupRoom.leader_conversation_id).where(
+                    GroupRoom.leader_conversation_id.isnot(None)
+                )
+            ).all()
+            if r[0] is not None
+        }
+        if leader_conv_ids:
+            for row in db.execute(
+                select(
+                    TaskExecutionLog.conversation_id,
+                    TaskExecutionLog.orchestrator_conversation_id,
+                ).where(TaskExecutionLog.conversation_id.in_(conv_ids))
+            ).all():
+                cid, orch = row[0], row[1]
+                if cid is not None and orch in leader_conv_ids:
+                    internal.add(int(cid))
+
+        return [c for c in convs if c.id not in internal]
 
     @staticmethod
     def get_conversation(db: Session, conversation_id: int) -> Conversation:
