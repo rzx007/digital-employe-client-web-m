@@ -1,6 +1,7 @@
 import * as React from "react"
 import {
   IconArrowLeft,
+  IconCopy,
   IconDeviceFloppy,
   IconLoader2,
   IconSparkles,
@@ -20,7 +21,11 @@ import type { SkillListItem } from "@/api/types"
 import { deleteWorkspaceLocalSkill, updateLocalSkill } from "@/api/skill"
 import { useLocalSkillDetailQuery } from "@/hooks/use-skill-queries"
 import { chatKeys } from "@/lib/query-keys/chat"
+import { SkillMarkdownEditor } from "./skill-markdown-editor"
 import { isInstalledSource, sourceBadgeProps } from "./skill-utils"
+
+type SkillSource = SkillListItem["source"]
+type SaveTarget = "workspace" | "builtin"
 
 export function SkillDetailView({
   skill,
@@ -31,26 +36,38 @@ export function SkillDetailView({
 }) {
   const queryClient = useQueryClient()
   const [deleting, setDeleting] = React.useState(false)
-  const [saving, setSaving] = React.useState(false)
-  const [displayNameZhDraft, setDisplayNameZhDraft] = React.useState("")
-  const [skillMdDraft, setSkillMdDraft] = React.useState("")
+  const [saving, setSaving] = React.useState<SaveTarget | null>(null)
+  // 内置技能"复制另存"成功后，本工作区视角下它已变为本地技能。
+  const [sourceOverride, setSourceOverride] =
+    React.useState<SkillSource | null>(null)
+  const [editorMaximized, setEditorMaximized] = React.useState(false)
   const isInstalled = isInstalledSource(skill)
+  const effectiveSource = sourceOverride ?? skill.source
+  const isBuiltin = effectiveSource === "builtin"
   const { data: localDetail, isLoading: loadingLocal } =
     useLocalSkillDetailQuery(isInstalled ? skill.skillName : null)
-  const canDelete = skill.source === "local"
+  const canDelete = effectiveSource === "local"
   const canEdit = isInstalled && Boolean(localDetail)
+  const isSaving = saving !== null
 
   const savedDisplayNameZh =
     localDetail?.displayNameZh ?? skill.displayNameZh ?? ""
   const savedSkillMd = localDetail?.skillMdContent ?? ""
 
-  React.useEffect(() => {
+  const [displayNameZhDraft, setDisplayNameZhDraft] =
+    React.useState(savedDisplayNameZh)
+  const [skillMdDraft, setSkillMdDraft] = React.useState(savedSkillMd)
+  // 服务端保存值变化时（详情加载完成或保存后）在渲染期对齐草稿，
+  // 避免在 effect 内同步 setState 触发级联渲染。
+  const [syncedSaved, setSyncedSaved] = React.useState({
+    zh: savedDisplayNameZh,
+    md: savedSkillMd,
+  })
+  if (syncedSaved.zh !== savedDisplayNameZh || syncedSaved.md !== savedSkillMd) {
+    setSyncedSaved({ zh: savedDisplayNameZh, md: savedSkillMd })
     setDisplayNameZhDraft(savedDisplayNameZh)
-  }, [savedDisplayNameZh])
-
-  React.useEffect(() => {
     setSkillMdDraft(savedSkillMd)
-  }, [savedSkillMd])
+  }
 
   const isDirty =
     displayNameZhDraft.trim() !== savedDisplayNameZh.trim() ||
@@ -82,10 +99,6 @@ export function SkillDetailView({
     "field-sizing-fixed max-h-48 min-h-20 cursor-default overflow-y-auto",
     "bg-muted/30 font-mono text-xs"
   )
-  const editableSkillMdTextareaClass = cn(
-    "field-sizing-fixed max-h-[min(60vh,28rem)] min-h-32 overflow-y-auto",
-    "font-mono text-xs"
-  )
 
   const invalidateSkillQueries = async () => {
     await queryClient.invalidateQueries({ queryKey: chatKeys.skills() })
@@ -97,28 +110,41 @@ export function SkillDetailView({
     })
   }
 
-  const handleSave = async () => {
-    if (!canEdit || saving || !isDirty) return
-    setSaving(true)
+  const handleSave = async (target?: SaveTarget) => {
+    if (!canEdit || isSaving || !isDirty) return
+    // 本地技能直接写工作区副本；内置技能必须显式选择 复制另存 / 覆盖保存。
+    const effectiveTarget: SaveTarget = isBuiltin
+      ? (target ?? "workspace")
+      : "workspace"
+    setSaving(effectiveTarget)
     try {
       const result = await updateLocalSkill(skill.skillName, {
         displayNameZh: displayNameZhDraft.trim(),
         skillMdContent: skillMdDraft,
+        target: isBuiltin ? effectiveTarget : undefined,
       })
       setDisplayNameZhDraft(result.displayNameZh ?? "")
       if (result.skillMdContent != null) {
         setSkillMdDraft(result.skillMdContent)
       }
+      const forkedToWorkspace = isBuiltin && result.isBuiltin === false
+      if (forkedToWorkspace) {
+        // 内置技能已复制到工作区，本视图后续按本地技能处理（可再编辑、可删除）。
+        setSourceOverride("local")
+      }
       const synced = result.syncedEmployeeCount ?? 0
-      toast.success(
-        synced > 0 ? `已保存，并同步至 ${synced} 名员工` : "已保存"
-      )
+      const base = forkedToWorkspace
+        ? "已复制到当前工作区并保存"
+        : effectiveTarget === "builtin"
+          ? "已覆盖内置技能"
+          : "已保存"
+      toast.success(synced > 0 ? `${base}，并同步至 ${synced} 名员工` : base)
       await invalidateSkillQueries()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "保存失败，请稍后重试"
       toast.error(msg)
     } finally {
-      setSaving(false)
+      setSaving(null)
     }
   }
 
@@ -160,38 +186,73 @@ export function SkillDetailView({
           <h2 className="min-w-0 flex-1 truncate text-base font-semibold">
             {title}
           </h2>
-          <Badge {...sourceBadgeProps(skill.source)}>
-            {skill.sourceLabel ||
-              (skill.source === "builtin"
-                ? "内置"
-                : skill.source === "local"
-                  ? "本地"
-                  : "远程")}
+          <Badge {...sourceBadgeProps(effectiveSource)}>
+            {effectiveSource === "builtin"
+              ? "内置"
+              : effectiveSource === "local"
+                ? "本地"
+                : skill.sourceLabel || "远程"}
           </Badge>
-          {canEdit && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="shrink-0 gap-1"
-              disabled={!isDirty || saving}
-              onClick={() => void handleSave()}
-            >
-              {saving ? (
-                <IconLoader2 className="size-3.5 animate-spin" />
-              ) : (
-                <IconDeviceFloppy className="size-3.5" />
-              )}
-              保存
-            </Button>
-          )}
+          {canEdit &&
+            (isBuiltin ? (
+              <>
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  className="shrink-0 gap-1"
+                  disabled={!isDirty || isSaving}
+                  onClick={() => void handleSave("workspace")}
+                  title="复制到当前工作区后保存，不影响全局内置技能"
+                >
+                  {saving === "workspace" ? (
+                    <IconLoader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <IconCopy className="size-3.5" />
+                  )}
+                  复制另存
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 gap-1"
+                  disabled={!isDirty || isSaving}
+                  onClick={() => void handleSave("builtin")}
+                  title="直接修改全局内置技能，所有工作区共享此改动"
+                >
+                  {saving === "builtin" ? (
+                    <IconLoader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <IconDeviceFloppy className="size-3.5" />
+                  )}
+                  覆盖保存
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0 gap-1"
+                disabled={!isDirty || isSaving}
+                onClick={() => void handleSave()}
+              >
+                {isSaving ? (
+                  <IconLoader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <IconDeviceFloppy className="size-3.5" />
+                )}
+                保存
+              </Button>
+            ))}
           {canDelete && (
             <Button
               type="button"
               variant="outline"
               size="sm"
               className="shrink-0 gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              disabled={deleting}
+              disabled={deleting || isSaving}
               onClick={() => void handleDelete()}
             >
               {deleting ? (
@@ -205,7 +266,19 @@ export function SkillDetailView({
         </div>
       </header>
 
-      <ScrollArea className="min-h-0 flex-1 bg-muted/10">
+      {editorMaximized && isInstalled && localDetail ? (
+        <div className="min-h-0 flex-1 px-4 py-4 sm:px-6">
+          <SkillMarkdownEditor
+            value={skillMdDraft}
+            onChange={setSkillMdDraft}
+            disabled={isSaving}
+            maximized
+            onToggleMaximize={() => setEditorMaximized(false)}
+            className="h-full"
+          />
+        </div>
+      ) : (
+        <ScrollArea className="min-h-0 flex-1 bg-muted/10">
         <div className="mx-auto w-full max-w-4xl px-4 py-4 sm:px-6">
           {isInstalled ? (
             loadingLocal ? (
@@ -237,7 +310,7 @@ export function SkillDetailView({
                     onChange={(e) => setDisplayNameZhDraft(e.target.value)}
                     placeholder={skill.skillName}
                     maxLength={255}
-                    disabled={saving}
+                    disabled={isSaving}
                   />
                   <p className="text-xs text-muted-foreground">
                     留空时将显示技能 ID（目录名）
@@ -270,13 +343,11 @@ export function SkillDetailView({
                 )}
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="skill-detail-md">SKILL.md</Label>
-                  <Textarea
-                    id="skill-detail-md"
-                    rows={100}
+                  <SkillMarkdownEditor
                     value={skillMdDraft}
-                    onChange={(e) => setSkillMdDraft(e.target.value)}
-                    disabled={saving}
-                    className={editableSkillMdTextareaClass}
+                    onChange={setSkillMdDraft}
+                    disabled={isSaving}
+                    onToggleMaximize={() => setEditorMaximized(true)}
                   />
                 </div>
               </div>
@@ -327,7 +398,8 @@ export function SkillDetailView({
             </div>
           )}
         </div>
-      </ScrollArea>
+        </ScrollArea>
+      )}
     </div>
   )
 }

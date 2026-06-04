@@ -93,13 +93,16 @@ export function ChatComposerArea({
   const destructiveDeleteActive = pendingHitl?.kind === "destructive-delete"
   const blocksComposer = clarifyActive || planActive || destructiveDeleteActive
 
-  const dockPending = React.useMemo((): (PendingHitl & {
-    input: Record<string, unknown>
-  }) | null => {
+  const dockPending = React.useMemo(():
+    | (PendingHitl & {
+        input: Record<string, unknown>
+      })
+    | null => {
     if (!activeHitl || activeHitl.kind !== "clarify") return null
-    const input = (pendingHitl?.input ??
-      activeHitl.input ??
-      {}) as Record<string, unknown>
+    const input = (pendingHitl?.input ?? activeHitl.input ?? {}) as Record<
+      string,
+      unknown
+    >
     return {
       kind: "clarify",
       messageId: pendingHitl?.messageId ?? "",
@@ -175,6 +178,7 @@ export function ChatComposerArea({
             conversationId != null ? String(conversationId) : null
           }
           onAttachmentsChange={onAttachmentsChange}
+          messages={messages}
         />
       </div>
 

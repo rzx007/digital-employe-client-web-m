@@ -10,6 +10,7 @@ import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 
 from fastapi import HTTPException, status
@@ -627,12 +628,52 @@ class LocalSkillService:
         )
 
     @staticmethod
+    def _is_under_builtin(skill_dir: Path) -> bool:
+        builtin_root = LocalSkillService._resolve_builtin_root().resolve()
+        try:
+            return skill_dir.resolve().is_relative_to(builtin_root)
+        except ValueError:
+            return False
+
+    @staticmethod
+    def _fork_builtin_to_workspace(skill_name: str, workspace_id: int) -> Path:
+        """把全局内置技能复制一份到当前工作区，返回工作区目录。
+
+        复制后该技能在本工作区即成为可独立编辑、可删除的本地技能，
+        全局内置原版保持不变。若工作区已存在同名目录则直接返回。
+        """
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        builtin_dir = LocalSkillService._skill_dir(normalized, None)
+        if not builtin_dir.is_dir():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"未找到内置技能: {normalized}",
+            )
+        target_dir = LocalSkillService._skill_dir(normalized, workspace_id)
+        if target_dir.is_dir():
+            return target_dir
+
+        local_root = LocalSkillService._resolve_local_root(workspace_id)
+        local_root.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(builtin_dir, target_dir, dirs_exist_ok=False)
+
+        meta = LocalSkillService._read_meta(target_dir)
+        reserved = LocalSkillService._reserved_negative_ids_universal()
+        meta["skillName"] = normalized
+        meta["localId"] = LocalSkillService._next_id_below_reserved(reserved)
+        meta["importedAt"] = datetime.now().isoformat(timespec="seconds")
+        meta["sourceFileName"] = f"fork:builtin:{normalized}"
+        LocalSkillService._write_meta(target_dir, meta)
+        return target_dir
+
+    @staticmethod
     def update_local_skill(
         skill_name: str,
         workspace_id: int | None = None,
         *,
         display_name_zh: str | None = None,
         skill_md_content: str | None = None,
+        target: Literal["workspace", "builtin"] | None = None,
     ) -> dict:
         if display_name_zh is None and skill_md_content is None:
             raise HTTPException(
@@ -641,9 +682,31 @@ class LocalSkillService:
             )
 
         normalized = LocalSkillService._normalize_skill_name(skill_name)
-        skill_dir = LocalSkillService._resolve_editable_skill_dir(
-            normalized, workspace_id
-        )
+
+        # 工作区已有同名副本时，始终写副本（target 无意义）。
+        workspace_dir: Path | None = None
+        if workspace_id is not None:
+            candidate = LocalSkillService._skill_dir(normalized, workspace_id)
+            if candidate.is_dir():
+                workspace_dir = candidate
+
+        if workspace_dir is not None:
+            skill_dir = workspace_dir
+        elif target == "workspace":
+            # 内置技能"复制另存"：先 fork 到工作区，再写入副本。
+            if workspace_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="缺少工作区，无法将内置技能复制到工作区。",
+                )
+            skill_dir = LocalSkillService._fork_builtin_to_workspace(
+                normalized, workspace_id
+            )
+        else:
+            # 内置技能"覆盖保存"或本地技能：沿用原解析（工作区优先，其次内置）。
+            skill_dir = LocalSkillService._resolve_editable_skill_dir(
+                normalized, workspace_id
+            )
         meta = LocalSkillService._read_meta(skill_dir)
         meta["skillName"] = meta.get("skillName") or normalized
         result: dict = {"skillName": normalized}
@@ -684,6 +747,7 @@ class LocalSkillService:
             result["skillMdContent"] = skill_md_content
 
         LocalSkillService._write_meta(skill_dir, meta)
+        result["isBuiltin"] = LocalSkillService._is_under_builtin(skill_dir)
         return result
 
     @staticmethod

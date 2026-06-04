@@ -15,8 +15,6 @@ import {
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
 import {
-  IconChevronLeft,
-  IconChevronRight,
   IconCopy,
   IconDownload,
   IconX,
@@ -30,6 +28,8 @@ import {
   IconTrash,
   IconFileImport,
   IconLoader,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
 } from "@tabler/icons-react"
 import { useLocalStorageState } from "ahooks"
 import {
@@ -668,8 +668,32 @@ export const ArtifactPanel = ({
     <>
       <div className="flex min-w-0 items-center justify-between gap-3 border-b px-4 py-3">
         <div className="min-w-0">
-          <h2 className="text-sm font-medium">资源管理器</h2>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-sm font-medium">资源管理器</h2>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    aria-label={isExplorerOpen ? "收起文件树" : "展开文件树"}
+                    className="-ml-1 size-7 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setIsExplorerOpen(!isExplorerOpen)}
+                  >
+                    {isExplorerOpen ? (
+                      <IconLayoutSidebarLeftCollapse className="size-4" />
+                    ) : (
+                      <IconLayoutSidebarLeftExpand className="size-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isExplorerOpen ? "收起文件树" : "展开文件树"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <p className="mt-0.5 truncate pl-6 text-xs text-muted-foreground">
             {hasResources
               ? `${totalFiles} 个文件${hasSearchQuery ? `，匹配 ${filteredFiles} 个` : ""}`
               : "本轮暂无资源文件"}
@@ -732,33 +756,15 @@ export const ArtifactPanel = ({
         {isExplorerOpen ? (
           <div className="flex w-72 min-w-0 shrink-0 flex-col overflow-hidden border-r bg-muted/10">
             <div className="space-y-2 border-b p-3">
-              <div className="flex items-center gap-1">
-                <div className="relative min-w-0 flex-1">
-                  <IconSearch className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    aria-label="搜索资源文件"
-                    className="h-8 pl-7"
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="搜索文件或路径"
-                    value={searchQuery}
-                  />
-                </div>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        aria-label="收起文件树"
-                        className="size-8 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setIsExplorerOpen(false)}
-                      >
-                        <IconChevronLeft className="size-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>收起文件树</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+              <div className="relative">
+                <IconSearch className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="搜索资源文件"
+                  className="h-8 pl-7"
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="搜索文件或路径"
+                  value={searchQuery}
+                />
               </div>
               {hasSearchQuery && (
                 <p className="text-[11px] text-muted-foreground">
@@ -776,85 +782,85 @@ export const ArtifactPanel = ({
                   onSelect={setSelectedPath}
                   className="h-full rounded-none border-0 bg-transparent"
                 >
-                {filteredArtifacts.length > 0 && (
-                  <FileTreeFolder
-                    className={ARTIFACT_TREE_NAME_ROW_CLASS}
-                    path="/artifacts"
-                    name="产物"
-                    title="artifacts"
-                  >
-                    {filteredArtifacts.map((e) =>
-                      renderEntry(
-                        e,
-                        conversationId!,
-                        handleDelete,
-                        handleRefreshResources,
-                        getPendingForPath
-                      )
-                    )}
-                  </FileTreeFolder>
-                )}
-                {filteredUploads.length > 0 && (
-                  <FileTreeFolder
-                    className={ARTIFACT_TREE_NAME_ROW_CLASS}
-                    path="/uploads"
-                    name="上传文件"
-                    title="uploads"
-                  >
-                    {filteredUploads.map((e) =>
-                      renderEntry(
-                        e,
-                        conversationId!,
-                        handleDelete,
-                        handleRefreshResources,
-                        getPendingForPath
-                      )
-                    )}
-                  </FileTreeFolder>
-                )}
-                {filteredSkillsDraft.length > 0 && (
-                  <FileTreeFolder
-                    className={ARTIFACT_TREE_NAME_ROW_CLASS}
-                    path="/skills-draft"
-                    name="技能草稿"
-                    title="skills-draft"
-                  >
-                    {filteredSkillsDraft.map((skill) => (
-                      <ContextMenu key={skill.path}>
-                        <ContextMenuTrigger asChild>
-                          <div>
-                            <FileTreeFolder
-                              className={ARTIFACT_TREE_NAME_ROW_CLASS}
-                              path={skill.path}
-                              name={skill.name}
-                              title={skill.name}
-                            >
-                              <span className="flex items-center gap-1">
-                                <IconSparkles className="size-3 text-amber-500" />
-                              </span>
-                              {skill.children?.map((e) =>
-                                renderEntry(
-                                  e,
-                                  conversationId!,
-                                  handleDelete,
-                                  handleRefreshResources,
-                                  getPendingForPath
-                                )
-                              )}
-                            </FileTreeFolder>
-                          </div>
-                        </ContextMenuTrigger>
-                        <SkillDraftContextMenu
-                          entry={skill}
-                          conversationId={conversationId!}
-                          onDelete={handleDelete}
-                          onRefresh={handleRefreshResources}
-                          onImport={handleImportSkill}
-                        />
-                      </ContextMenu>
-                    ))}
-                  </FileTreeFolder>
-                )}
+                  {filteredArtifacts.length > 0 && (
+                    <FileTreeFolder
+                      className={ARTIFACT_TREE_NAME_ROW_CLASS}
+                      path="/artifacts"
+                      name="产物"
+                      title="artifacts"
+                    >
+                      {filteredArtifacts.map((e) =>
+                        renderEntry(
+                          e,
+                          conversationId!,
+                          handleDelete,
+                          handleRefreshResources,
+                          getPendingForPath
+                        )
+                      )}
+                    </FileTreeFolder>
+                  )}
+                  {filteredUploads.length > 0 && (
+                    <FileTreeFolder
+                      className={ARTIFACT_TREE_NAME_ROW_CLASS}
+                      path="/uploads"
+                      name="上传文件"
+                      title="uploads"
+                    >
+                      {filteredUploads.map((e) =>
+                        renderEntry(
+                          e,
+                          conversationId!,
+                          handleDelete,
+                          handleRefreshResources,
+                          getPendingForPath
+                        )
+                      )}
+                    </FileTreeFolder>
+                  )}
+                  {filteredSkillsDraft.length > 0 && (
+                    <FileTreeFolder
+                      className={ARTIFACT_TREE_NAME_ROW_CLASS}
+                      path="/skills-draft"
+                      name="技能草稿"
+                      title="skills-draft"
+                    >
+                      {filteredSkillsDraft.map((skill) => (
+                        <ContextMenu key={skill.path}>
+                          <ContextMenuTrigger asChild>
+                            <div>
+                              <FileTreeFolder
+                                className={ARTIFACT_TREE_NAME_ROW_CLASS}
+                                path={skill.path}
+                                name={skill.name}
+                                title={skill.name}
+                              >
+                                <span className="flex items-center gap-1">
+                                  <IconSparkles className="size-3 text-amber-500" />
+                                </span>
+                                {skill.children?.map((e) =>
+                                  renderEntry(
+                                    e,
+                                    conversationId!,
+                                    handleDelete,
+                                    handleRefreshResources,
+                                    getPendingForPath
+                                  )
+                                )}
+                              </FileTreeFolder>
+                            </div>
+                          </ContextMenuTrigger>
+                          <SkillDraftContextMenu
+                            entry={skill}
+                            conversationId={conversationId!}
+                            onDelete={handleDelete}
+                            onRefresh={handleRefreshResources}
+                            onImport={handleImportSkill}
+                          />
+                        </ContextMenu>
+                      ))}
+                    </FileTreeFolder>
+                  )}
                 </FileTree>
               ) : (
                 <div className="flex min-h-48 flex-col items-center justify-center px-4 text-center">
@@ -869,49 +875,11 @@ export const ArtifactPanel = ({
               )}
             </ScrollArea>
           </div>
-        ) : (
-          <div className="flex w-10 shrink-0 flex-col items-center border-r bg-muted/10 py-2">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="展开文件树"
-                    className="size-8 p-0 text-muted-foreground hover:text-foreground"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setIsExplorerOpen(true)}
-                  >
-                    <IconChevronRight className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="right">展开文件树</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        )}
+        ) : null}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-w-0 items-center justify-between gap-3 border-b bg-background/95 px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2">
-              {!isExplorerOpen && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        aria-label="展开文件树"
-                        className="size-8 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setIsExplorerOpen(true)}
-                      >
-                        <IconChevronRight className="size-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>展开文件树</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-              <div className="min-w-0">
+            <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
                 {selectedEntry && getFileIcon(selectedEntry.artifact_type)}
                 <h3
@@ -944,7 +912,6 @@ export const ArtifactPanel = ({
                   </>
                 )}
               </div>
-              </div>
             </div>
           </div>
           {previewStateWithContent.showStreamingPlaceholder ? (
@@ -975,8 +942,10 @@ export const ArtifactPanel = ({
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground/80">
                   {selectedEntry?.entry_type === "directory"
-                    ? "展开左侧目录并选择具体文件进行预览"
-                    : "可在左侧搜索或浏览资源文件"}
+                    ? "展开文件树并选择具体文件进行预览"
+                    : isExplorerOpen
+                      ? "可在左侧搜索或浏览资源文件"
+                      : "点击标题栏左侧按钮展开文件树"}
                 </p>
               </div>
             </div>

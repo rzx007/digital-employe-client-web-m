@@ -286,6 +286,7 @@ def update_local_skill(
         workspace_id,
         display_name_zh=payload.displayNameZh,
         skill_md_content=payload.skillMdContent,
+        target=payload.target,
     )
     synced_count = EmployeeService.sync_local_skill_to_assignees(
         db,

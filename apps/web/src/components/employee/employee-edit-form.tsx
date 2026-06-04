@@ -27,6 +27,7 @@ import {
 import { useEmployeePickerSkillsQuery } from "@/hooks/use-skill-queries"
 
 import { CapabilityPickerDialog } from "./capability-picker-dialog"
+import { EmployeeSkillBadge } from "./employee-skill-badge"
 import { ScheduleTaskConfig } from "./schedule-task-config"
 
 const EMPTY_SCHEDULE: ShiftScheduleForm = {
@@ -204,12 +205,12 @@ function EmployeeEditFormFields({
                     <Badge
                       key={item.id}
                       variant="secondary"
-                      className="gap-1 text-xs"
+                      className="group gap-1 text-xs"
                     >
                       {item.capability_name}
                       <button
                         type="button"
-                        className="ml-0.5 rounded-full hover:bg-muted-foreground/20"
+                        className="ml-0.5 rounded-full text-destructive opacity-0 transition-opacity group-hover:opacity-100 hover:bg-destructive/15 focus-visible:opacity-100"
                         onClick={() => handleRemoveMcp(item.id)}
                       >
                         <IconX className="size-3" />
@@ -225,20 +226,11 @@ function EmployeeEditFormFields({
                 <span className="text-[10px] text-muted-foreground">技能</span>
                 <div className="flex flex-wrap gap-1.5">
                   {selectedSkillItems.map((item) => (
-                    <Badge
+                    <EmployeeSkillBadge
                       key={item.id}
-                      variant="outline"
-                      className="gap-1 text-xs"
-                    >
-                      {item.displayNameZh || item.skillName}
-                      <button
-                        type="button"
-                        className="ml-0.5 rounded-full hover:bg-muted-foreground/20"
-                        onClick={() => handleRemoveSkill(item.id)}
-                      >
-                        <IconX className="size-3" />
-                      </button>
-                    </Badge>
+                      skill={item}
+                      onRemove={() => handleRemoveSkill(item.id)}
+                    />
                   ))}
                 </div>
               </div>
