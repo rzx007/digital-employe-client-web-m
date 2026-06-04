@@ -7,6 +7,7 @@ import { GroupDetailDialog } from "../../dialogs/group-detail-dialog"
 import { EmployeeDetailDialog } from "../../../employee/employee-detail-dialog"
 import { RecentConversationRow } from "./recent-conversation-row"
 import { RecentConversationsToolbar } from "./recent-conversations-toolbar"
+import { getRecentItemUnreadKey } from "./model"
 import { useRecentConversations } from "./use-recent-conversations"
 
 export function RecentConversations({
@@ -84,7 +85,9 @@ export function RecentConversations({
         <ScrollArea className="min-h-0 w-full flex-1">
           <div className={cn("px-1 py-2", collapsed && "px-1.5")}>
             {displayItems.map((item) => (
-              <React.Fragment key={item.contactId}>
+              // key 必须带类型前缀：群与员工的裸数字 id 可能相同（如都为 1/2），
+              // 仅用 contactId 会造成 React key 碰撞 → 导航/事件重渲染时出现重复/残影行。
+              <React.Fragment key={getRecentItemUnreadKey(item)}>
                 <RecentConversationRow
                   item={item}
                   collapsed={collapsed}
