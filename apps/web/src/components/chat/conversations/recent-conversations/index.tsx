@@ -18,7 +18,6 @@ export function RecentConversations({
     displayItems,
     searchQuery,
     setSearchQuery,
-    selectedContactId,
     employeeList,
     isDialogOpen,
     setIsDialogOpen,
@@ -89,7 +88,6 @@ export function RecentConversations({
                 <RecentConversationRow
                   item={item}
                   collapsed={collapsed}
-                  selectedContactId={selectedContactId}
                   isSelected={isItemSelected(item)}
                   onSelect={handleSelectItem}
                   onDetail={handleDetail}
