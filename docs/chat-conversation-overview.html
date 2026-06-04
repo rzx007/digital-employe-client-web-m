@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>会话数据流鸟瞰图 + 修复报告</title>
+<style>
+  :root{
+    --bg:#0f1117; --panel:#171a22; --panel2:#1e222c; --line:#2c313d;
+    --txt:#e7eaf0; --muted:#9aa3b2; --accent:#6ea8fe;
+    --db:#3fb68b; --live:#e0a458; --display:#b48ef0; --hitl:#e06c75; --infra:#56b6c2;
+    --warn:#ffb454; --ok:#52c41a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    line-height:1.65;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  h1{font-size:26px;margin:0 0 6px}
+  h2{font-size:20px;margin:40px 0 14px;padding-left:10px;border-left:4px solid var(--accent)}
+  h3{font-size:16px;margin:22px 0 8px;color:var(--accent)}
+  .sub{color:var(--muted);margin:0 0 8px}
+  code{background:#11141b;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:13px;color:#cbd3e1}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+  .dot{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .flow{display:flex;flex-direction:column;gap:0}
+  .lane{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:9px 0;position:relative}
+  .lane .tag{position:absolute;top:-10px;left:14px;font-size:11px;letter-spacing:.5px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:2px 10px;color:var(--muted)}
+  .lane h4{margin:6px 0 10px;font-size:15px}
+  .row{display:flex;flex-wrap:wrap;gap:10px}
+  .box{flex:1 1 180px;min-width:150px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:9px;padding:10px 12px}
+  .box b{display:block;font-size:14px;margin-bottom:3px}
+  .box .f{font-size:12px;color:var(--muted);word-break:break-word}
+  .arrow{text-align:center;color:var(--muted);font-size:20px;line-height:1;margin:2px 0}
+  .bar{height:5px;border-radius:3px;margin:-2px -16px 12px;border-top-left-radius:12px;border-top-right-radius:12px}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}
+  th,td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--muted);font-weight:600}
+  td code{font-size:12px}
+  .pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:20px;border:1px solid var(--line)}
+  .callout{background:#161a22;border:1px solid var(--line);border-left:4px solid var(--warn);
+    border-radius:8px;padding:12px 16px;margin:14px 0}
+  .callout.ok{border-left-color:var(--ok)}
+  .callout.bug{border-left-color:var(--hitl)}
+  .small{font-size:13px;color:var(--muted)}
+  ul{margin:6px 0;padding-left:22px}
+  li{margin:4px 0}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:720px){.two{grid-template-columns:1fr}}
+  .fixcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0}
+  .fixcard .h{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  .fixcard .h b{font-size:15px}
+  .kbd{font-size:12px;color:var(--muted)}
+  .hl{color:var(--warn)}
+  hr{border:none;border-top:1px solid var(--line);margin:30px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>会话（聊天）数据流鸟瞰图 + 修复报告</h1>
+  <p class="sub">一页看懂：消息怎么从后端流到屏幕、三份"真相"各管什么、出 bug 时第一时间该翻哪个文件。</p>
+
+  <div class="legend">
+    <span class="chip"><span class="dot" style="background:var(--db)"></span>DB 快照（持久态）</span>
+    <span class="chip"><span class="dot" style="background:var(--live)"></span>Live / Composer（进行中）</span>
+    <span class="chip"><span class="dot" style="background:var(--display)"></span>Display（只读派生）</span>
+    <span class="chip"><span class="dot" style="background:var(--hitl)"></span>HITL 审批</span>
+    <span class="chip"><span class="dot" style="background:var(--infra)"></span>传输 / 解析</span>
+  </div>
+
+  <!-- ============ 一句话心智模型 ============ -->
+  <h2>① 先记住一句话：有「三份消息」</h2>
+  <div class="two">
+    <div class="lane"><div class="bar" style="background:var(--db)"></div>
+      <h4>🗄️ DB 快照 <code>storedMessages</code></h4>
+      <p class="small">来自 <code>GET /messages</code>（React Query 缓存）。<b>谁是权威？</b> 持久化的事实、以及"要不要 resume"的判断都看它。字段 <code>streamState</code>=streaming/interrupted/completed…</p>
+    </div>
+    <div class="lane"><div class="bar" style="background:var(--live)"></div>
+      <h4>⚡ Live / Composer <code>useChat.messages</code></h4>
+      <p class="small">来自 SSE 实时流。<b>谁是权威？</b> 当前这一泡正在写的内容以它为准。HITL 审批、乐观更新也改它。</p>
+    </div>
+  </div>
+  <div class="lane" style="margin-top:12px"><div class="bar" style="background:var(--display)"></div>
+    <h4>🖥️ Display <code>displayMessages</code></h4>
+    <p class="small">= <code>prepareDisplayMessages( pickMessageDisplaySource(live, db, status) )</code>。<b>它不存自己的状态</b>，只是把上面两份「挑一份 + 合并/去重/分类」后丢给气泡渲染。<span class="hl">很多"奇怪现象"其实是这层在替上面两层擦屁股。</span></p>
+  </div>
+
+  <!-- ============ 端到端流向 ============ -->
+  <h2>② 端到端流向（从用户敲字到屏幕）</h2>
+  <p class="sub small">后端 4 个口子：<code>POST /stream</code>（发送）· <code>GET /stream/resume</code>（断点续）· <code>POST /approve</code>（审批）· <code>GET /messages</code>（历史）。</p>
+
+  <div class="flow">
+
+    <div class="lane"><span class="tag">入口 · 视图</span>
+      <div class="row">
+        <div class="box"><b>ConversationChatView</b><span class="f">useChat({transport}) · 输入框 · 发送</span></div>
+        <div class="box"><b>useMessagesQuery</b><span class="f">GET /messages → storedMessages → initialMessages</span></div>
+      </div>
+    </div>
+    <div class="arrow">↓ 发送 / 续流 / 审批</div>
+
+    <div class="lane"><div class="bar" style="background:var(--infra)"></div><span class="tag">传输层 transport</span>
+      <h4>LangChainChatTransport <span class="kbd">langchain-chat-transport.ts</span></h4>
+      <div class="row">
+        <div class="box"><b>sendMessages()</b><span class="f">POST /stream</span></div>
+        <div class="box"><b>reconnectToStream()</b><span class="f">GET /resume（带 sealedToolCallIds）</span></div>
+        <div class="box"><b>processResponseStream()</b><span class="f">读 SSE → flushEvent → 终态判定</span></div>
+      </div>
+    </div>
+    <div class="arrow">↓ 每个 SSE data 帧</div>
+
+    <div class="lane"><div class="bar" style="background:var(--infra)"></div><span class="tag">解析层 parser</span>
+      <h4>parseLangChainPayloadToChunks <span class="kbd">langchain-stream-parser.ts</span></h4>
+      <p class="small">把 LangGraph 的 <code>messages</code>/<code>updates</code> 事件翻译成 AI SDK 的 <code>UIMessageChunk</code>（text-delta / tool-input / tool-output / finish）。维护 <code>pendingToolCalls</code>、<code>sealedToolCallIds</code> 等状态。</p>
+    </div>
+    <div class="arrow">↓ UIMessageChunk</div>
+
+    <div class="lane"><div class="bar" style="background:var(--live)"></div><span class="tag">运行时 · Live</span>
+      <h4>useChat → composer.messages</h4>
+      <div class="row">
+        <div class="box"><b>逐块累积 parts</b><span class="f">text / 工具卡 …</span></div>
+        <div class="box"><b>status</b><span class="f">ready / submitted / streaming / error</span></div>
+      </div>
+    </div>
+
+    <div class="arrow">↕ 中断/终态 经事件总线回写</div>
+    <div class="lane"><div class="bar" style="background:var(--hitl)"></div><span class="tag">编排 · 会话状态机</span>
+      <h4>useConversationSession（薄适配层）<span class="kbd">hooks/use-conversation-session.ts</span></h4>
+      <div class="row">
+        <div class="box"><b>sessionReducer（纯）</b><span class="f">active / activeHitl / hydratedConvId / lastHydratedSig / resumeAttemptedFor</span></div>
+        <div class="box"><b>决策（纯函数）</b><span class="f">decideHydration · shouldAttemptResume</span></div>
+        <div class="box"><b>副作用</b><span class="f">setMessages · patch DB cache · resumeStream · refetch</span></div>
+      </div>
+      <p class="small" style="margin-top:8px">监听 <code>conversationRuntimeBus</code>：transport 收到 interrupted/terminal → 这里 patch <code>streamState</code> + 塞 HITL parts + dispatch。</p>
+    </div>
+    <div class="arrow">↓ live + db</div>
+
+    <div class="lane"><div class="bar" style="background:var(--display)"></div><span class="tag">展示层 display</span>
+      <h4>displayMessages</h4>
+      <div class="row">
+        <div class="box"><b>pickMessageDisplaySource</b><span class="f">挑 live 还是 db</span></div>
+        <div class="box"><b>mergeConsecutive</b><span class="f">连续 assistant 合并为一泡</span></div>
+        <div class="box"><b>parts-dedupe</b><span class="f">去重补偿（HITL/工具/文本）</span></div>
+        <div class="box"><b>classifyMessageParts</b><span class="f">parts → 块；block-registry/handlers</span></div>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="lane"><div class="bar" style="background:var(--display)"></div><span class="tag">渲染</span>
+      <h4>block-render-map → 各种卡片 <span class="kbd">components/chat/message-blocks/</span></h4>
+      <p class="small">思考块 / 工具组 / 审批卡（destructive-delete · clarify · document-plan）/ 招聘·员工·任务卡 / 最终回复 …</p>
+    </div>
+  </div>
+
+  <!-- ============ 三条特殊流程 ============ -->
+  <h2>③ 三条容易出错的特殊流程</h2>
+  <div class="two">
+    <div class="fixcard">
+      <div class="h"><span class="pill" style="border-color:var(--hitl);color:var(--hitl)">HITL 审批</span></div>
+      <p class="small">流式中遇到澄清/危险删除/文档计划工具 → 后端 <code>interrupt</code> →
+      transport 收到 <code>status:interrupted</code> → 总线通知 session → 封存这条 <b>msg_A</b>、弹审批卡。
+      <br>用户点通过 → <code>approveHitl(POST /approve)</code> → 后端封存 msg_A + <b>新建 msg_B</b> + resume →
+      前端 <code>onHitlApproved</code>：打 <code>approved_at</code> → dispatch HITL_APPROVED → <b>登记 sealed</b> → resume。</p>
+    </div>
+    <div class="fixcard">
+      <div class="h"><span class="pill" style="border-color:var(--accent);color:var(--accent)">Resume 续流</span></div>
+      <p class="small">两种触发：① 审批后续跑；② 重进/切回一个"后端还在 streaming"的会话（<code>shouldAttemptResume</code> 判定）。
+      都走 <code>reconnectToStream → GET /resume</code>，复用同一套解析。
+      <br><span class="hl">关键坑</span>：resume 会把"触发中断的旧消息"<b>重放</b>，要靠 <code>sealedToolCallIds</code> 跳过，否则与 msg_A 重复。</p>
+    </div>
+  </div>
+  <div class="fixcard">
+    <div class="h"><span class="pill" style="border-color:var(--live);color:var(--live)">Hydrate 水合</span></div>
+    <p class="small">切回会话 / 流结束后，把 DB 的 <code>initialMessages</code> 同步进 composer。
+    由 <code>decideHydration</code> 决定：<code>none</code>（不动）/ <code>replace</code>（整表换）/ <code>patch</code>（同轮只补 id/状态，保留 SSE 累积的 parts，防闪屏）。
+    <span class="hl">流式进行中（status=streaming）直接早返回，绝不 hydrate</span>，否则会覆盖正在写的内容。</p>
+  </div>
+
+  <!-- ============ Bug 定位地图 ============ -->
+  <h2>④ 出 bug 时去哪找（定位地图）</h2>
+  <p class="sub small">先按"现象"对到层，再翻对应文件。八成的 bug 都在这张表里。</p>
+  <table>
+    <tr><th style="width:30%">现象</th><th>最先翻这里</th><th>属于哪层</th></tr>
+    <tr><td>流式不出字 / 工具不显示 / 结束一直转圈</td>
+      <td><code>processResponseStream</code> 终态分支 · <code>parseLangChainPayloadToChunks</code> · <code>enqueueFinish</code></td>
+      <td><span class="dot" style="background:var(--infra)"></span> 传输/解析</td></tr>
+    <tr><td><b>文本/工具块重复</b>（尤其审批后）</td>
+      <td><code>sealedToolCallIds</code>（parser/transport）· <code>parts-dedupe</code> · 后端 resume 重放</td>
+      <td><span class="dot" style="background:var(--infra)"></span><span class="dot" style="background:var(--display)"></span> 解析+展示</td></tr>
+    <tr><td>审批点了<b>不续流</b> / 卡片不收 / 要点两次</td>
+      <td><code>onHitlApproved</code>（HITL_APPROVED→RESUME_RESET 顺序）· <code>reconnectToStream</code></td>
+      <td><span class="dot" style="background:var(--hitl)"></span> 审批/编排</td></tr>
+    <tr><td>切回 streaming 会话<b>不恢复</b> / 重复恢复</td>
+      <td><code>shouldAttemptResume</code> · session resume effect（<code>machineRef</code> 防自取消 rAF）</td>
+      <td><span class="dot" style="background:var(--hitl)"></span> 编排</td></tr>
+    <tr><td>切回内容被<b>旧快照覆盖</b> / 闪屏 / parts 消失</td>
+      <td><code>decideHydration</code> · <code>pickMessageDisplaySource</code> · <code>patchComposerFromStoredWhenSameTurn</code></td>
+      <td><span class="dot" style="background:var(--live)"></span><span class="dot" style="background:var(--display)"></span> Live+展示</td></tr>
+    <tr><td>审批卡<b>重复/消失/不能点</b>（切走切回）</td>
+      <td><code>findPendingHitl</code> · <code>seedActiveHitlFromStoredMessages</code> · <code>resolveActiveHitl</code> · <code>mergeConsecutive</code></td>
+      <td><span class="dot" style="background:var(--hitl)"></span> 审批</td></tr>
+    <tr><td>消息<b>状态错</b>（该完成还显示 streaming 等）</td>
+      <td><code>patchLastAssistantStreamState</code> · <code>onStreamFinish</code>/<code>onTerminal</code> · <code>streamState</code></td>
+      <td><span class="dot" style="background:var(--db)"></span> DB 快照</td></tr>
+    <tr><td><code>/approve</code> 报错 / 传错 id</td>
+      <td><code>DbMessageId</code>（品牌类型）· <code>message-id.ts</code> · <code>activeHitl.dbMessageId</code></td>
+      <td><span class="dot" style="background:var(--hitl)"></span> 审批</td></tr>
+    <tr><td>卡片内容解析错（员工/任务/招聘/计划）</td>
+      <td><code>*-payload.ts</code> · <code>parse-utils.ts</code> · <code>tools/handlers/</code></td>
+      <td><span class="dot" style="background:var(--display)"></span> 展示</td></tr>
+  </table>
+
+  <div class="callout">
+    <b>一条朴素的排查心法：</b>先问自己——这个现象，是<b>哪份消息</b>不对？
+    <br>· composer（live）不对 → 往上游查 transport/parser；
+    · DB 快照不对 → 查 <code>patch*</code> 写入 / 后端；
+    · 两份都对、只是<b>屏幕</b>不对 → 查 display 的 pick/merge/dedupe/classify。
+  </div>
+
+  <hr/>
+
+  <!-- ============ 修复报告 ============ -->
+  <h2>⑤ 本次修复报告</h2>
+  <p class="sub small">围绕"对话逻辑复杂、偶发小 bug"做的一轮系统整治。共约 19 个提交，全部带验证（typecheck + vitest + 人工冒烟）。</p>
+
+  <h3>A. 止血 & 去重（低风险）</h3>
+  <table>
+    <tr><th style="width:22%">项</th><th>问题（通俗）</th><th>修复</th></tr>
+    <tr><td><span class="pill">P0</span> 死代码</td><td>有一整套没人用的 SSE 解析栈（<code>use-chat-stream</code>/<code>sse-parts-builder</code>），改它以为生效其实是死的</td><td>删除，只留真正生产路径</td></tr>
+    <tr><td><span class="pill">P0</span> 崩溃防护</td><td>历史消息 <code>messageParts</code> 损坏会崩整屏</td><td>加校验，坏数据回退到纯文本</td></tr>
+    <tr><td><span class="pill">P0</span> 错误吞没</td><td>发送失败被静默吞掉、查不到</td><td>错误可诊断（提示交给 onError 统一处理）</td></tr>
+    <tr><td><span class="pill">P0</span> id 混用</td><td>容易把"客户端消息 id"误传给 <code>/approve</code></td><td>品牌类型 <code>DbMessageId</code>，编译期挡住</td></tr>
+    <tr><td><span class="pill">P1-3</span> 重复逻辑</td><td>同一段判定（HITL 类型映射、已解析工具集）多个文件各抄一份，改一处忘另一处</td><td>收敛到单一来源（<code>hitl/kind.ts</code>、<code>part-utils.ts</code>）</td></tr>
+    <tr><td><span class="pill">P2-2</span> 重复逻辑</td><td><code>parseJsonObject</code>/<code>asNumber</code> 在 5+ 个文件各一份</td><td>抽到 <code>parse-utils.ts</code></td></tr>
+  </table>
+
+  <h3>B. 会话状态机重构（P1-2 · 核心）</h3>
+  <div class="fixcard">
+    <p class="small"><b>问题：</b><code>useConversationSession</code> 用 6 个 <code>useRef</code> + 多个 effect 拼出一个"看不见的状态机"，时序敏感，是偶发 bug 的温床。</p>
+    <p class="small"><b>修复：</b>重构成 <b>纯 reducer + 纯决策函数 + 薄 hook</b>（<code>session/</code> 目录，全部带单测）。行为逐字保持，公共 API 不变。经 7 次评审 + 人工冒烟通过。</p>
+    <div class="callout bug" style="margin:10px 0 0">
+      <b>过程中抓到一个真回归（已修）：</b>重构时把簿记从 ref 搬进 reducer 又放进了 effect 依赖 → effect 内 dispatch 触发<b>自重跑</b>，cleanup 把刚排好的 <code>requestAnimationFrame</code> resume <b>取消</b>了 → "切回 streaming 会话不恢复"。
+      <br>修复：引入 <code>machineRef</code> 非响应式读取，依赖只列外部输入（复刻旧 ref 语义）。<span class="small">— 这正是只有人工冒烟才能发现、现已写成自动化测试的那类时序 bug。</span>
+    </div>
+  </div>
+
+  <h3>C. 审批后"工具块/文本重复"（你最在意的偶发 bug）</h3>
+  <div class="fixcard">
+    <p class="small"><b>根因（真实 SSE 抓包确证）：</b>审批后 <code>/resume</code> 时，后端 deepagents 的 HumanInTheLoopMiddleware 会把"触发中断的那条 AIMessage(工具调用) + ToolMessage" <b>作为头部事件重放一遍</b>；它的 toolCallId 已经封存在中断消息 <b>msg_A</b> 里，而续跑内容写进新建的 <b>msg_B</b>，前端把 msg_A+msg_B 合并显示 → <b>同一工具调用出现两份</b>。原来的去重只在状态对齐时生效 → 所以"偶发、补丁不确定修没修好"。</p>
+    <div class="two" style="margin-top:8px">
+      <div class="callout ok" style="margin:0">
+        <b>修复 A（源头）</b><br><span class="small">parser 新增 <code>sealedToolCallIds</code>，resume 时跳过这些已封存 id 的重放（transport 经 <code>setResumeSealedToolCallIds</code> 播种，<code>onHitlApproved</code> 登记 HITL toolCallId）。</span>
+      </div>
+      <div class="callout ok" style="margin:0">
+        <b>修复 B（兜底）</b><br><span class="small"><code>parts-dedupe</code> 增 <code>dedupeToolPartsByToolCallId</code>：合并气泡内同 toolCallId 工具块只留一份（优先有 output 的），不依赖类型/状态对齐。</span>
+      </div>
+    </div>
+    <p class="small" style="margin-top:8px">✅ 人工冒烟确认：审批后不再重复。</p>
+  </div>
+
+  <h3>D. 测试基建 & 自动化回归</h3>
+  <ul class="small">
+    <li>引入 <code>@testing-library/react</code> + <code>happy-dom</code>，可写 hook/集成测试（<code>.tsx</code> + <code>// @vitest-environment happy-dom</code>）。</li>
+    <li><code>use-conversation-session.test.tsx</code>：<b>把"切回 streaming 会话自动恢复"做成自动回归</b>——以前只能人肉冒烟发现的那类时序 bug，现在 CI 能抓。</li>
+    <li><code>langchain-stream-parser-resume-seal.test.ts</code>：用<b>真实 resume SSE 抓包</b>回归"审批后重复"（含基线证明重放）。</li>
+    <li>集成测试已与网络隔离（mock <code>ofetch</code>），输出干净。</li>
+  </ul>
+
+  <div class="callout">
+    <b>仍开放（按需继续）：</b>
+    <ul class="small" style="margin-top:4px">
+      <li>预存在的 <code>resolve-workbench-curator-panel</code> 单测失败（与本次无关，已单独分流）。</li>
+      <li>P3 剩余集成测试：HITL 审批流端到端、切会话竞态、终态收尾。</li>
+      <li>观察项：<code>useConversationSession</code> 挂载时会经 ofetch 发一次请求，是否符合预期可日后核。</li>
+      <li>P2-1（SSE 终态表驱动）/ P2-3（分类器 collapse）——价值边际、碰运行时，建议靠后。</li>
+    </ul>
+  </div>
+
+  <p class="small" style="margin-top:30px;color:var(--muted)">配套源码文档：<code>apps/web/src/lib/chat/chat-improvement-suggestions.md</code>（改进建议总览）·
+  <code>conversation-message-flow.md</code>（流转细节）· <code>docs/superpowers/plans/2026-06-03-conversation-session-fsm.md</code>（FSM 重构计划）。</p>
+
+</div>
+</body>
+</html>
