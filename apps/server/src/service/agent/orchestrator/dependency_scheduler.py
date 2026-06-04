@@ -34,8 +34,20 @@ logger = logging.getLogger(__name__)
 # 注意：TaskExecutionLog.run_status 在完成时被置为 "success"（见 _finalize_task_stream），
 # 而 stream_state 终态是 "completed"。两边取值都纳入，避免前置永远不算完成。
 _PREREQ_DONE_STATES = ("completed", "success")
-# 代表"已经在跑或已派出，不应重复派发"的状态
-_ALREADY_DISPATCHED_STATES = ("running", "queued", "completed", "success")
+# 失败终态：前置失败 → 下游级联跳过（fail-fast）。
+_TERMINAL_FAIL_STATES = ("failed", "cancelled", "timeout", "error")
+# 因前置失败而被级联跳过（合成日志状态，非真实执行）。
+_SKIPPED_STATE = "skipped"
+# "已定局"的终态集合：成功 / 失败 / 跳过。用于判断计划是否全部结束（触发汇总）。
+_SETTLED_STATES = _PREREQ_DONE_STATES + _TERMINAL_FAIL_STATES + (_SKIPPED_STATE,)
+# 代表"已经在跑或已派出/已定局，不应重复派发"的状态
+_ALREADY_DISPATCHED_STATES = (
+    "running",
+    "queued",
+    *_PREREQ_DONE_STATES,
+    *_TERMINAL_FAIL_STATES,
+    _SKIPPED_STATE,
+)
 
 
 def _load_plan_tasks(db: Session, plan_id: int) -> list:
@@ -142,6 +154,44 @@ def _already_dispatched(task_id: int, status_by_task: dict[int, set[str]]) -> bo
     return any(s in _ALREADY_DISPATCHED_STATES for s in states)
 
 
+def _any_prereq_failed(dep_ids: list[int], status_by_task: dict[int, set[str]]) -> bool:
+    """任一前置处于失败终态或已被级联跳过 → 该任务拿不到完整输入。"""
+    fail_or_skip = set(_TERMINAL_FAIL_STATES) | {_SKIPPED_STATE}
+    for dep_id in dep_ids:
+        if status_by_task.get(dep_id, set()) & fail_or_skip:
+            return True
+    return False
+
+
+def _is_settled(task_id: int, status_by_task: dict[int, set[str]]) -> bool:
+    """任务是否已定局（成功/失败/跳过），用于判断整盘是否结束。"""
+    return any(s in _SETTLED_STATES for s in status_by_task.get(task_id, set()))
+
+
+def _record_skip(db: Session, task, workspace_id: int, reason: str) -> None:
+    """为被级联跳过的任务写一条 skipped 执行日志（纳入 DB 派生状态）。"""
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.models.workspace import cst_now
+
+    now = cst_now()
+    db.add(
+        TaskExecutionLog(
+            task_id=task.id,
+            workspace_id=workspace_id,
+            employee_id=task.employee_id,
+            skill_id=getattr(task, "skill_id", None),
+            task_name_snapshot=task.task_name,
+            run_status=_SKIPPED_STATE,
+            run_result=reason[:255],
+            input_json=task.task_input_json or "{}",
+            output_json="{}",
+            started_at=now,
+            ended_at=now,
+        )
+    )
+    db.commit()
+
+
 def _collect_prereq_artifacts(
     db: Session, dep_ids: list[int]
 ) -> list[tuple[str, str]]:
@@ -212,9 +262,12 @@ def _build_prereq_briefing(refs: list[tuple[str, str]]) -> str:
 
 
 def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
-    """某员工任务完成时的回调入口：解析并派发现在可执行的后继任务。
+    """某员工任务进入终态时的回调入口（成功/失败/取消均会触发）。
 
-    由 server._on_task_finalized 在 stream_state=="completed" 分支调用。
+    由 server._on_task_finalized 在终态分支调用。每次都从 DB 真实状态重新评估整盘：
+      ① 级联跳过：前置失败 → 下游 fail-fast 标 skipped（传播到底）；
+      ② 派发：前置全部成功的后继现在可派；
+      ③ 整盘全部定局（成功/失败/跳过）→ 触发组长汇总（不再因失败永久僵死）。
     使用独立 Session（回调发生在流终态化的 DB 上下文之外）。
     """
     if task_id is None:
@@ -240,82 +293,80 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
             return
         plan_json_obj: list[dict] = json.loads(plan.plan_json or "[]")
 
-        dep_map, successors = build_dependency_maps(tasks, plan_json_obj)
+        dep_map, _successors = build_dependency_maps(tasks, plan_json_obj)
         cls_by_id = build_class_map(tasks, plan_json_obj)  # 总管显式 heavy/light
 
-        # 候选 = 刚完成任务的直接后继 + 其它"有前置依赖"的任务。
-        # 只纳入"有依赖"的任务（dep_map 非空）做容量重试，避免把无依赖的根任务
-        # 误当作"待重试"重新派出 —— 无依赖的根任务由 start_immediate_tasks 负责首发，
-        # 其因并发上限被推迟时，会在某员工腾出槽后由其后继链或下次完成事件带动。
-        # 排除刚完成的任务自身。
-        dependent_ids = [
-            t.id for t in tasks if t.id != task_id and dep_map.get(t.id)
-        ]
-        candidate_ids = list(
-            dict.fromkeys(successors.get(task_id, []) + dependent_ids)
-        )
+        # 计划内任务通常很少，直接全量加载状态——逻辑更简单，且天然支持级联传播。
+        status_by_task = _log_status_by_task(db, [t.id for t in tasks])
 
-        # 一次性聚合相关任务的日志状态（候选 + 它们的前置）
-        relevant_ids: set[int] = set(candidate_ids)
-        for cid in candidate_ids:
-            relevant_ids.update(dep_map.get(cid, []))
-        status_by_task = _log_status_by_task(db, list(relevant_ids))
+        # ① 级联跳过（fail-fast）：前置失败 → 下游拿不到完整输入，标 skipped；
+        #    循环传播直到稳定（被跳过的任务又会让它的下游级联跳过）。
+        skipped: list[int] = []
+        changed = True
+        while changed:
+            changed = False
+            for t in tasks:
+                if _is_settled(t.id, status_by_task) or _already_dispatched(
+                    t.id, status_by_task
+                ):
+                    continue
+                if _any_prereq_failed(dep_map.get(t.id, []), status_by_task):
+                    _record_skip(db, t, workspace_id, "前置任务失败，已级联跳过")
+                    status_by_task.setdefault(t.id, set()).add(_SKIPPED_STATE)
+                    skipped.append(t.id)
+                    changed = True
+        if skipped:
+            logger.info(
+                "task=%s failed → cascade-skipped=%s (plan=%s)",
+                task_id, skipped, plan.id,
+            )
 
-        task_by_id = {t.id: t for t in tasks}
+        # ② 派发：前置全部成功、且未派过/未定局的"有依赖任务"现在可派。
+        #    无依赖的根任务由 start_immediate_tasks 首发，这里不抢（见历史注释）。
         dispatched: list[int] = []
-
-        for cid in candidate_ids:
-            successor = task_by_id.get(cid)
-            if successor is None:
-                continue
+        for t in tasks:
+            cid = t.id
             if _already_dispatched(cid, status_by_task):
-                continue  # 已在跑/已派/已完成，跳过（幂等）
+                continue  # 已在跑/已派/已定局（含 skipped），幂等跳过
             dep_ids = dep_map.get(cid, [])
+            if not dep_ids:
+                continue
             if not _all_prereqs_done(dep_ids, status_by_task):
                 continue  # 还有前置没完成，等下一次完成事件再来
-            employee = db.get(Employee, successor.employee_id)
+            employee = db.get(Employee, t.employee_id)
             if employee is None:
                 logger.warning("successor task=%s employee missing, skip", cid)
                 continue
-            if not can_assign_to_employee(db, successor.employee_id):
+            if not can_assign_to_employee(db, t.employee_id):
                 logger.info(
                     "successor task=%s employee=%s at capacity, defer",
-                    cid,
-                    successor.employee_id,
+                    cid, t.employee_id,
                 )
                 continue
 
-            # 拼接前置产物引用到简报
             prereq_refs = _collect_prereq_artifacts(db, dep_ids)
             briefing = _build_prereq_briefing(prereq_refs)
-
             try:
                 _dispatch_successor(
-                    db, successor, employee, workspace_id, briefing,
+                    db, t, employee, workspace_id, briefing,
                     stream_class=cls_by_id.get(cid),
                 )
                 dispatched.append(cid)
+                status_by_task.setdefault(cid, set()).add("running")
             except Exception:
-                logger.error(
-                    "dispatch successor task=%s failed", cid, exc_info=True
-                )
+                logger.error("dispatch successor task=%s failed", cid, exc_info=True)
 
         if dispatched:
             logger.info(
-                "task=%s completed → dispatched successors=%s (plan=%s)",
-                task_id,
-                dispatched,
-                plan.id,
+                "task=%s settled → dispatched successors=%s (plan=%s)",
+                task_id, dispatched, plan.id,
             )
 
-        # 全部任务完成且没有新派发 → 触发组长汇总（若属于群房间）
+        # ③ 整盘定局（全部 成功/失败/跳过）且本轮无新派发 → 触发组长汇总。
+        #    用 _SETTLED_STATES（含失败/跳过）而非仅成功，避免有失败时汇总永不触发。
         if not dispatched:
-            all_status = _log_status_by_task(db, [t.id for t in tasks])
-            all_done = all(
-                any(s in _PREREQ_DONE_STATES for s in all_status.get(t.id, set()))
-                for t in tasks
-            )
-            if all_done:
+            all_settled = all(_is_settled(t.id, status_by_task) for t in tasks)
+            if all_settled:
                 _trigger_leader_summary_if_room(db, plan, workspace_id)
     except Exception:
         logger.error(

@@ -126,19 +126,6 @@ def create_app() -> FastAPI:
                     "type": "task_completed",
                     **base,
                 })
-                # 完成驱动调度：前置任务真正完成后，派发现在可执行的后继任务
-                # （真·DAG 串行；修复历史"启动即递减"伪 DAG）。
-                try:
-                    from src.service.agent.orchestrator.dependency_scheduler import (
-                        on_employee_task_completed,
-                    )
-                    on_employee_task_completed(task_id, workspace_id)
-                except Exception:
-                    logger.warning(
-                        "completion-driven scheduler failed task_id=%s",
-                        task_id,
-                        exc_info=True,
-                    )
             elif stream_state == "cancelled":
                 WorkspaceEventBus.push(workspace_id, {
                     "type": "task_failed",
@@ -150,6 +137,23 @@ def create_app() -> FastAPI:
                     "type": "task_failed",
                     **base,
                 })
+
+            # 完成驱动调度：任务进入终态后都要驱动 DAG——
+            # 成功→派发就绪后继；失败/取消→级联跳过下游（fail-fast），
+            # 并让整盘在全部定局后触发汇总（不再因失败而永久僵死）。
+            # interrupted 是 HITL 暂停、非终态，不驱动。
+            if stream_state in ("completed", "cancelled", "failed", "timeout", "error"):
+                try:
+                    from src.service.agent.orchestrator.dependency_scheduler import (
+                        on_employee_task_completed,
+                    )
+                    on_employee_task_completed(task_id, workspace_id)
+                except Exception:
+                    logger.warning(
+                        "completion-driven scheduler failed task_id=%s",
+                        task_id,
+                        exc_info=True,
+                    )
 
         _stream_registry.on_task_finalized = _on_task_finalized
 
