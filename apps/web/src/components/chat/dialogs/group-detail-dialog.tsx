@@ -38,7 +38,7 @@ export function GroupDetailDialog({
   const handleSendMessage = () => {
     onOpenChange(false)
     if (group?.id) {
-      switchToContact(group.id)
+      switchToContact(`group:${group.id}`)
     }
   }
 

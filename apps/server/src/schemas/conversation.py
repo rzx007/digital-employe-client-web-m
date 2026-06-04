@@ -53,6 +53,8 @@ class ConversationMessageRead(BaseModel):
     stream_cursor: int | None = None
     extra_meta: dict | None = None
     message_parts: list[dict] | None = None
+    sender_id: int | None = None
+    sender_label: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

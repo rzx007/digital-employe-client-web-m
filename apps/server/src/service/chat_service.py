@@ -529,6 +529,42 @@ class ChatService:
         return ""
 
     @staticmethod
+    async def _stream_group_message(
+        db: Session,
+        *,
+        conversation: Conversation,
+        question: str,
+        extra_meta: dict | None,
+        auth_token: str | None,
+    ):
+        """群会话消息处理：写时间线 + 解析 @ + 派发成员，返回 SSE 回执。
+
+        群的"流"语义不同于 1:1：用户 SSE 收到的是一条派发回执，
+        随后群时间线由各成员投影事件（room_message，经 WorkspaceEventBus）实时驱动，
+        前端订阅工作空间事件流即可看到成员陆续交付的结论。
+        """
+        from src.service.group_room_service import GroupRoomService
+
+        try:
+            summary = GroupRoomService.handle_group_message(
+                db,
+                conversation,
+                question,
+                extra_meta=extra_meta,
+                auth_token=auth_token,
+            )
+            payload = {
+                "type": "group_dispatched",
+                "data": summary,
+            }
+            yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            logger.error("群消息处理失败: %s", e, exc_info=True)
+            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+
+    @staticmethod
     async def stream_conversation_answer(
         db: Session,
         conversation_id: int,
@@ -541,6 +577,20 @@ class ChatService:
         settings = get_settings()
         
         conversation = ChatService.get_conversation(db, conversation_id)
+
+        # 群协作：群会话没有"单一 agent"，改为路由到被 @ 的成员私有会话，
+        # 群时间线通过投影 + WorkspaceEventBus(room_message) 实时更新。
+        if conversation.target_type == "group":
+            async for chunk in ChatService._stream_group_message(
+                db,
+                conversation=conversation,
+                question=question,
+                extra_meta=extra_meta,
+                auth_token=auth_token,
+            ):
+                yield chunk
+            return
+
         history_limit = settings.chat_history_max_messages
         history_messages, last_input_tokens = ChatService._load_history_for_agent(
             db,

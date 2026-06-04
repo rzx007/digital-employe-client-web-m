@@ -1,12 +1,15 @@
 import * as React from "react"
 import { toast } from "sonner"
 import { useShallow } from "zustand/react/shallow"
+import { useQueryClient } from "@tanstack/react-query"
 import {
   useDeleteAllConversationsForContactMutation,
   useRecentContactsQuery,
   useToggleRecentPinMutation,
 } from "@/hooks/use-chat-queries"
-import { findContactInList } from "@/lib/chat/contact-utils"
+import { createContactGroup } from "@/api/chat"
+import { chatKeys } from "@/lib/query-keys/chat"
+import { findContactInList, getContactId } from "@/lib/chat/contact-utils"
 import {
   focusAfterContactRemoved,
   selectConversationForContact,
@@ -48,8 +51,31 @@ export function useRecentConversations() {
     [contacts]
   )
 
-  const handleCreateGroup = () => {
-    setIsDialogOpen(false)
+  const queryClient = useQueryClient()
+
+  const handleCreateGroup = async (selectedEmployees: AIEmployee[] = []) => {
+    if (!selectedEmployees || selectedEmployees.length < 2) {
+      toast.error("群聊至少需要 2 名成员")
+      return
+    }
+    const defaultName = selectedEmployees
+      .map((e) => e.name)
+      .slice(0, 3)
+      .join("、")
+    const name = `${defaultName} 协作群`
+    const employeeIds = selectedEmployees
+      .map((e) => Number(e.id))
+      .filter((id) => !Number.isNaN(id))
+    try {
+      await createContactGroup({ name, employeeIds })
+      await queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
+      toast.success(`群聊「${name}」已创建`)
+      setIsDialogOpen(false)
+    } catch (err) {
+      toast.error("创建群聊失败", {
+        description: err instanceof Error ? err.message : "请稍后重试",
+      })
+    }
   }
 
   const deleteAllConversationsMutation =
@@ -63,20 +89,37 @@ export function useRecentConversations() {
     [storedItems, contacts]
   )
 
+  // 最近会话项的 contactId 是裸数字；选择/查找需带 type 前缀以避免群与员工串号。
+  const resolveSelectionId = (item: RecentConversationItem): string => {
+    const hint: Contact["type"] = item.isCurator
+      ? "curator"
+      : item.isGroup
+        ? "group"
+        : "employee"
+    const contact = findContactInList(contacts, item.contactId, hint)
+    return getContactId(contact) ?? item.contactId
+  }
+
   const handleSelectItem = (item: RecentConversationItem) => {
+    const selectionId = resolveSelectionId(item)
     const conversationId = parseRecentItemConversationId(item)
     if (conversationId) {
-      selectConversationForContact(item.contactId, conversationId, {
+      selectConversationForContact(selectionId, conversationId, {
         touch: false,
       })
     } else {
-      switchToContact(item.contactId, { touch: false })
+      switchToContact(selectionId, { touch: false })
     }
     useChatStore.getState().setActiveTab("chat")
   }
 
   const handleDetail = (item: RecentConversationItem) => {
-    const contact = findContactInList(contacts, item.contactId)
+    const hint: Contact["type"] = item.isCurator
+      ? "curator"
+      : item.isGroup
+        ? "group"
+        : "employee"
+    const contact = findContactInList(contacts, item.contactId, hint)
     if (contact) {
       setDetailContact(contact)
       setDetailOpen(true)
@@ -146,8 +189,11 @@ export function useRecentConversations() {
     )
   }, [recentItems, searchQuery])
 
-  const isItemSelected = (item: RecentConversationItem) =>
-    selectedContactId === item.contactId
+  const isItemSelected = (item: RecentConversationItem) => {
+    if (!selectedContactId) return false
+    // 严格匹配前缀化选择 id；避免裸 contactId 命中多个同名/同 id 项导致多个高亮
+    return selectedContactId === resolveSelectionId(item)
+  }
 
   return {
     displayItems,

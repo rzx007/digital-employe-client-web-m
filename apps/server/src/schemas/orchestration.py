@@ -19,7 +19,7 @@ class OrchestrationTaskItem(BaseModel):
     cron: str | None = None
     execute_mode: str = "immediate"
     priority: int = 0
-    depends_on: int | None = None
+    depends_on: int | list[int] | None = None
     status: OrchestrationTaskStatus = "pending"
     conversation_id: int | None = None
     orchestrator_conversation_id: int | None = None

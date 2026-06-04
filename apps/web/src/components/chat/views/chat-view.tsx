@@ -16,6 +16,7 @@ import { useChatStore } from "@/stores/chat-store"
 import type { Contact } from "@/types/chat"
 
 import { CuratorView } from "../curator/curator-view"
+import { GroupRoomView } from "../group/group-room-view"
 import { ConversationChatView } from "./chat-conversation-view"
 import { DraftChatView } from "./chat-draft-view"
 
@@ -161,6 +162,28 @@ export function ChatView({
     selectedConversationId != null &&
     (!conversationsQuerySuccess ||
       conversationExistsInList(conversations, selectedConversationId))
+
+  // 群协作房间：有有效会话时走房间视图（时间线 + 成员侧栏 + @成员派活）
+  if (
+    contact?.type === "group" &&
+    !isDraftConversation &&
+    hasValidSelection &&
+    selectedConversationId != null
+  ) {
+    return (
+      <GroupRoomView
+        key={String(selectedConversationId)}
+        contact={contact}
+        title={selectedConversation?.title ?? contact.group?.name ?? "群协作"}
+        conversationId={selectedConversationId}
+        onOpenContacts={onOpenContacts}
+        onOpenConversations={onOpenConversations}
+        onNewConversation={onNewConversation}
+        className={cn(className)}
+        {...props}
+      />
+    )
+  }
 
   return isDraftConversation || !hasValidSelection ? (
     <DraftChatView

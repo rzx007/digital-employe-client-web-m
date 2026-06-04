@@ -13,6 +13,7 @@ import {
   useConversationsQuery,
 } from "@/hooks/use-chat-queries"
 import { enterDraftConversation } from "@/lib/chat/conversation-selection"
+import { getContactId } from "@/lib/chat/contact-utils"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import { useCreateCuratorConversation } from "@/hooks/use-create-curator-conversation"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
@@ -141,15 +142,16 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
     if (apiContacts) {
       setContacts(apiContacts)
       const { selectedContactId } = useChatStore.getState()
-      const hasSelected = apiContacts.some((c) => {
-        if (c.type === "curator") return c.curator?.id === selectedContactId
-        if (c.type === "employee") return c.employee?.id === selectedContactId
-        return c.group?.id === selectedContactId
-      })
+      // 用 getContactId（带 type 前缀）统一匹配，避免裸 id 与前缀化选择 id 不一致
+      const hasSelected = apiContacts.some(
+        (c) => getContactId(c) === selectedContactId
+      )
       if (!hasSelected) {
         const firstCurator = apiContacts.find((c) => c.type === "curator")
         if (firstCurator?.curator) {
-          useChatStore.getState().setSelectedContactId(firstCurator.curator.id)
+          useChatStore
+            .getState()
+            .setSelectedContactId(getContactId(firstCurator) ?? firstCurator.curator.id)
         }
       }
     }

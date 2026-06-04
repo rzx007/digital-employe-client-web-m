@@ -3,6 +3,7 @@ import type { QueryClient } from "@tanstack/react-query"
 import { createConversation, fetchCuratorConversation } from "@/api/chat"
 import { mapConversationListItemToConversation } from "@/lib/chat/chat-mappers"
 import { selectConversationById } from "@/lib/chat/conversation-selection"
+import { getContactId } from "@/lib/chat/contact-utils"
 import { selectWorkbenchCuratorConversation } from "@/lib/chat/conversation-selection/apply"
 import { chatKeys } from "@/lib/query-keys/chat"
 import type { Contact, Conversation, Message } from "@/types/chat"
@@ -99,7 +100,9 @@ export async function ensureCuratorConversationAndSelect(
     throw new Error("不是总管联系人")
   }
 
-  const contactId = contact.curator.id
+  // 用带 type 前缀的 contactId（curator:5），与 selectedContactId / 会话缓存 key 一致，
+  // 否则总管会话被缓存在裸 id "5" 下、chat-view 用 "curator:5" 读 → 列表同步异常。
+  const contactId = getContactId(contact) ?? contact.curator.id
 
   if (ensureInFlight && ensureInFlightContactId === contactId) {
     return ensureInFlight
@@ -179,7 +182,7 @@ export async function createAndSelectCuratorConversation(options: {
       }))
 
   const conversation = await create({
-    contactId: contact.curator.id,
+    contactId: getContactId(contact) ?? contact.curator.id,
     title,
     contact,
   })

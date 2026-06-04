@@ -34,15 +34,17 @@ export function filterRecentItemsExistingContacts(
     if (item.isCurator) {
       return curatorId != null && item.contactId === curatorId
     }
-    return findContactInList(contacts, item.contactId) != null
+    const hint: Contact["type"] = item.isGroup ? "group" : "employee"
+    return findContactInList(contacts, item.contactId, hint) != null
   })
 }
 
 export function getContactInfo(
   contacts: Contact[],
-  contactId: string
+  contactId: string,
+  typeHint?: Contact["type"]
 ): ContactInfo | null {
-  const contact = findContactInList(contacts, contactId)
+  const contact = findContactInList(contacts, contactId, typeHint)
   if (!contact) return null
   if (contact.type === "curator") {
     return {
@@ -75,13 +77,21 @@ export function enrichRecentItemFromContacts(
   contacts: Contact[],
   curatorContactId: string | undefined
 ): RecentConversationItem {
-  const contact = findContactInList(contacts, item.contactId)
-  const info = getContactInfo(contacts, item.contactId)
-  const isCurator =
-    item.isCurator ||
-    contact?.type === "curator" ||
-    item.contactId === curatorContactId
+  const hint: Contact["type"] = item.isCurator
+    ? "curator"
+    : item.isGroup
+      ? "group"
+      : "employee"
+  const contact = findContactInList(contacts, item.contactId, hint)
+  const info = getContactInfo(contacts, item.contactId, hint)
+  // isGroup 优先：群的 target_id 可能与 curator id 数值相同（如都为 5），
+  // 不能再用裸 id 比对 curatorContactId 判 curator，否则群被误判成总管。
   const isGroup = item.isGroup || contact?.type === "group"
+  const isCurator =
+    !isGroup &&
+    (item.isCurator ||
+      contact?.type === "curator" ||
+      item.contactId === curatorContactId)
 
   const participants = isGroup
     ? contact?.group?.participants.map((p) => ({

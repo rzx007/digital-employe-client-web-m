@@ -105,7 +105,9 @@ export function EmployeeDetailDialog({
 
   const handleSendMessage = () => {
     onOpenChange(false)
-    switchToContact(employeeId)
+    if (employeeId) {
+      switchToContact(`employee:${employeeId}`)
+    }
   }
 
   const metadata = employee?.metadata

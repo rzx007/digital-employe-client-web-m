@@ -35,6 +35,40 @@ _ORCH_STREAM_IDLE_POLL_SECONDS = 0.5
 _ORCH_STREAM_IDLE_MAX_POLLS = 600  # 最多等待 5 分钟
 
 
+def _resolve_room_shared_artifacts_dir(
+    db: Session, orchestrator_conversation_id: int | None, root_path: str
+) -> str | None:
+    """若该编排会话是某群房间的组长会话，返回房间共享产物目录，否则 None。
+
+    群协作时所有成员共享 `<root_path>/room-<room_id>/artifacts`，
+    上游产出对下游可见。非群编排返回 None（保持原有按会话隔离）。
+    """
+    if orchestrator_conversation_id is None:
+        return None
+    try:
+        from pathlib import Path
+
+        from src.models.group_room import GroupRoom
+
+        room = db.scalars(
+            select(GroupRoom).where(
+                GroupRoom.leader_conversation_id == orchestrator_conversation_id
+            )
+        ).first()
+        if room is None:
+            return None
+        shared = Path(root_path) / f"room-{room.id}" / "artifacts"
+        shared.mkdir(parents=True, exist_ok=True)
+        return str(shared)
+    except Exception:
+        logger.warning(
+            "resolve room shared artifacts dir failed orch_conv=%s",
+            orchestrator_conversation_id,
+            exc_info=True,
+        )
+        return None
+
+
 async def _start_employee_stream_when_orchestrator_idle(
     *,
     orchestrator_conversation_id: int | None,
@@ -156,90 +190,60 @@ def start_immediate_tasks(
 ) -> list[str]:
     plan_json_obj: list[dict] = json.loads(plan.plan_json or "[]")
 
-    task_lookup: dict[int, EmployeeTask] = {t.id: t for t in tasks}
-    dep_map: dict[int, list[int]] = {}
-    dep_count: dict[int, int] = {}
-    for i, t in enumerate(tasks):
-        deps: list[int] = []
-        try:
-            raw = plan_json_obj[i].get("depends_on") if i < len(plan_json_obj) else None
-            if isinstance(raw, int):
-                dep_task = tasks[raw] if raw < len(tasks) else None
-                if dep_task and dep_task.id in task_lookup:
-                    deps = [dep_task.id]
-        except (IndexError, TypeError):
-            pass
-        dep_map[t.id] = deps
-        dep_count[t.id] = len(deps)
+    from src.service.agent.orchestrator.dependency_scheduler import (
+        build_dependency_maps,
+    )
 
-    ready_ids: set[int] = {
-        t.id for t in tasks if dep_count.get(t.id, 0) == 0
-    }
+    task_lookup: dict[int, EmployeeTask] = {t.id: t for t in tasks}
+    # 真·DAG：依赖映射统一由 dependency_scheduler 构造，支持 int / int[] 多依赖。
+    # 注意 build_dependency_maps 按 tasks 的传入顺序对应 plan_json 下标，
+    # 这里 tasks 已按 priority/id 排序，须用与 plan_json 一致的"创建顺序"。
+    plan_tasks = sorted(tasks, key=lambda t: t.id)
+    dep_map, _successors = build_dependency_maps(plan_tasks, plan_json_obj)
+    dep_count: dict[int, int] = {t.id: len(dep_map.get(t.id, [])) for t in tasks}
+
+    # 完成驱动：这里**只派根任务**（无前置）。有前置的任务由
+    # dependency_scheduler.on_employee_task_completed 在前置真正完成后再派，
+    # 从而实现"A 干完才起 B"的真·串行（修复历史的"启动即递减"伪 DAG）。
+    root_ids: list[int] = [t.id for t in tasks if dep_count.get(t.id, 0) == 0]
     started_ids: set[int] = set()
     skipped_ids: set[int] = set()
     results: list[str] = []
 
-    while ready_ids:
-        batch: list[EmployeeTask] = []
-        for tid in list(ready_ids):
-            if tid in started_ids or tid in skipped_ids:
-                ready_ids.discard(tid)
-                continue
-            t = task_lookup.get(tid)
-            if not t:
-                continue
+    for tid in root_ids:
+        task = task_lookup.get(tid)
+        if not task:
+            continue
+        employee = db.get(Employee, task.employee_id)
+        if not employee:
+            results.append(f"任务 {task.task_name}: 员工不存在，跳过")
+            skipped_ids.add(tid)
+            continue
+        if not can_assign_to_employee(db, task.employee_id):
+            results.append(
+                f"任务 {task.task_name}: 员工 {get_employee_name(db, task.employee_id)} "
+                f"达到并发上限({MAX_CONCURRENT_PER_EMPLOYEE})，稍后由调度器重试"
+            )
+            continue
+        try:
+            conv_id = start_task_as_conversation(db, task, employee, workspace_id)
+            results.append(f"任务 {task.task_name}: 已创建会话 #{conv_id}")
+            started_ids.add(tid)
+        except Exception as exc:
+            logger.error(
+                "启动即时任务失败 task_id=%s: %s", task.id, exc, exc_info=True
+            )
+            results.append(f"任务 {task.task_name}: 启动失败 - {exc}")
+            skipped_ids.add(tid)
 
-            emp = db.get(Employee, t.employee_id)
-            if not emp:
-                results.append(f"任务 {t.task_name}: 员工不存在，跳过")
-                skipped_ids.add(tid)
-                ready_ids.discard(tid)
-                continue
-
-            if not can_assign_to_employee(db, t.employee_id):
-                continue
-            batch.append(t)
-
-        if not batch:
-            break
-
-        for task in batch:
-            employee = db.get(Employee, task.employee_id)
-            try:
-                conv_id = start_task_as_conversation(db, task, employee, workspace_id)
-                results.append(f"任务 {task.task_name}: 已创建会话 #{conv_id}")
-                started_ids.add(task.id)
-                ready_ids.discard(task.id)
-
-                for other_id, other_deps in dep_map.items():
-                    if task.id in other_deps:
-                        dep_count[other_id] = dep_count.get(other_id, 0) - 1
-                        if dep_count[other_id] <= 0:
-                            ready_ids.add(other_id)
-            except Exception as exc:
-                logger.error(
-                    "启动即时任务失败 task_id=%s: %s", task.id, exc, exc_info=True
-                )
-                results.append(f"任务 {task.task_name}: 启动失败 - {exc}")
-                skipped_ids.add(task.id)
-                ready_ids.discard(task.id)
-
-    pending = set(t.id for t in tasks) - started_ids - skipped_ids
-    if pending:
-        unreachable: list[str] = []
-        at_capacity: list[str] = []
-        for tid in pending:
-            t = task_lookup.get(tid)
-            if not t:
-                continue
-            if dep_count.get(tid, 0) > 0:
-                unreachable.append(f"任务 {t.task_name}: 前置任务未完成")
-            elif not can_assign_to_employee(db, t.employee_id):
-                at_capacity.append(
-                    f"任务 {t.task_name}: 员工 {get_employee_name(db, t.employee_id)} 达到并发上限({MAX_CONCURRENT_PER_EMPLOYEE})"
-                )
-        results.extend(unreachable)
-        results.extend(at_capacity)
+    waiting = [
+        t for t in tasks
+        if dep_count.get(t.id, 0) > 0 and t.id not in skipped_ids
+    ]
+    if waiting:
+        results.append(
+            f"{len(waiting)} 个任务等待前置完成后由调度器自动派发"
+        )
 
     return results
 
@@ -252,6 +256,7 @@ def start_task_as_conversation(
     *,
     priority: int = ORCHESTRATION_PRIORITY,
     source: str = "orchestration",
+    prereq_briefing: str = "",
 ) -> int:
     from src.models.conversation import Conversation, ConversationMessage
     from src.models.task_execution_log import TaskExecutionLog
@@ -339,12 +344,17 @@ def start_task_as_conversation(
     settings = get_settings()
     root_path = settings.artifacts_path
 
+    # 群协作：若本任务属于某房间（组长派的活），让它用房间共享产物目录，
+    # 这样上游成员产出的文件对下游成员可见（解决"下游找不到上游产物"）。
+    shared_artifacts_dir = _resolve_room_shared_artifacts_dir(db, orch_conv_id, root_path)
+
     agent = get_agent(
         skills_path,
         root_path,
         employee_id=employee_id,
         conversation_id=conversation_id,
         enable_hitl=False,
+        shared_artifacts_dir=shared_artifacts_dir,
     )
 
     dispatch_directive = (
@@ -353,14 +363,14 @@ def start_task_as_conversation(
         "不要请求澄清、不要让用户填写表单、不要等待确认。"
         "信息不足时用合理默认值或在产出中说明假设即可。"
     )
+    dispatch_body = f"{dispatch_directive}\n\n{task.user_prompt or ''}"
+    if prereq_briefing:
+        dispatch_body = f"{dispatch_body}\n{prereq_briefing}"
     messages: list[dict] = [
-        {"role": msg["role"], "content": msg["content"]}
-        for msg in [
-            {
-                "role": "user",
-                "content": f"{dispatch_directive}\n\n{task.user_prompt or ''}",
-            },
-        ]
+        {
+            "role": "user",
+            "content": dispatch_body,
+        },
     ]
 
     conversation_id = conversation.id

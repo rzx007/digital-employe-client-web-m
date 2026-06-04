@@ -49,3 +49,43 @@ def delete_group(group_id: int, db: Session = Depends(get_db)) -> BaseResponse:
     GroupService.delete_group(db, group_id)
     return BaseResponse(data=None)
 
+
+@router.get("/chat/conversations/{conversation_id}/room", response_model=BaseResponse)
+def get_group_room_state(conversation_id: int, db: Session = Depends(get_db)) -> BaseResponse:
+    """获取群会话对应的协作房间状态（成员 + 角色/状态），用于渲染成员侧栏。"""
+    from src.service.group_room_service import GroupRoomService
+
+    state = GroupRoomService.get_room_state(db, conversation_id)
+    if state is None:
+        return BaseResponse(code=404, msg="该会话不是群会话或不存在", data=None)
+    return BaseResponse(data=state)
+
+
+@router.get("/chat/conversations/{conversation_id}/room/dag", response_model=BaseResponse)
+def get_group_room_dag(conversation_id: int, db: Session = Depends(get_db)) -> BaseResponse:
+    """获取群协作的 DAG 流程图（节点+边），用于渲染 SOP 面板。
+
+    仅"组长统筹"模式有 DAG；纯 @ 直接派活返回 has_dag=False。
+    """
+    from src.service.group_room_service import GroupRoomService
+
+    dag = GroupRoomService.get_room_dag(db, conversation_id)
+    if dag is None:
+        return BaseResponse(code=404, msg="该会话不是群会话或不存在", data=None)
+    return BaseResponse(data=dag)
+
+
+@router.get("/chat/conversations/{conversation_id}/room/artifact", response_model=BaseResponse)
+def read_group_room_artifact(
+    conversation_id: int,
+    path: str,
+    db: Session = Depends(get_db),
+) -> BaseResponse:
+    """读取群房间共享产物文件内容（弹窗预览用）。"""
+    from src.service.group_room_service import GroupRoomService
+
+    data = GroupRoomService.read_room_artifact(db, conversation_id, path)
+    if data is None:
+        return BaseResponse(code=404, msg="文件不存在或无权访问", data=None)
+    return BaseResponse(data=data)
+

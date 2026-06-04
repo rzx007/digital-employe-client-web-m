@@ -1,13 +1,18 @@
 import * as React from "react"
 import { useNavigate } from "@tanstack/react-router"
+import { useQueryClient } from "@tanstack/react-query"
 import { IconSearch, IconUser, IconUserPlus } from "@tabler/icons-react"
+import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
 import type { AIEmployee, Contact } from "@/types/chat"
 import { switchToContact } from "@/lib/chat/conversation-selection"
+import { getContactId } from "@/lib/chat/contact-utils"
 import { useChatStore } from "@/stores/chat-store"
+import { createContactGroup } from "@/api/chat"
+import { chatKeys } from "@/lib/query-keys/chat"
 import { ContactItem } from "./contact-item"
 import { CreateGroupDialog } from "../dialogs/create-group-dialog"
 import { getElectronApi } from "@/lib/electron/host"
@@ -79,6 +84,7 @@ export function ContactsPanel({
   ...props
 }: React.ComponentProps<"div">) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState("")
 
@@ -103,9 +109,29 @@ export function ContactsPanel({
     [employeeContacts]
   )
 
-  const handleCreateGroup = (selectedEmployees: AIEmployee[]) => {
-    console.log("创建群聊，选择员工:", selectedEmployees)
-    setIsDialogOpen(false)
+  const handleCreateGroup = async (selectedEmployees: AIEmployee[]) => {
+    if (selectedEmployees.length < 2) {
+      toast.error("群聊至少需要 2 名成员")
+      return
+    }
+    const defaultName = selectedEmployees
+      .map((e) => e.name)
+      .slice(0, 3)
+      .join("、")
+    const name = `${defaultName} 协作群`
+    const employeeIds = selectedEmployees
+      .map((e) => Number(e.id))
+      .filter((id) => !Number.isNaN(id))
+    try {
+      await createContactGroup({ name, employeeIds })
+      await queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
+      toast.success(`群聊「${name}」已创建`)
+      setIsDialogOpen(false)
+    } catch (err) {
+      toast.error("创建群聊失败", {
+        description: err instanceof Error ? err.message : "请稍后重试",
+      })
+    }
   }
 
   const handleDoubleClickContact = (contactId: string) => {
@@ -198,7 +224,7 @@ export function ContactsPanel({
                   isCollapsed={false}
                   clickAction="select"
                   onDoubleClick={() =>
-                    handleDoubleClickContact(contact.curator?.id ?? "")
+                    handleDoubleClickContact(getContactId(contact) ?? "")
                   }
                 />
               ))}
@@ -216,7 +242,7 @@ export function ContactsPanel({
                     isCollapsed={false}
                     clickAction="select"
                     onDoubleClick={() =>
-                      handleDoubleClickContact(contact.group?.id ?? "")
+                      handleDoubleClickContact(getContactId(contact) ?? "")
                     }
                   />
                 ))}
@@ -237,7 +263,7 @@ export function ContactsPanel({
                     isCollapsed={false}
                     clickAction="select"
                     onDoubleClick={() =>
-                      handleDoubleClickContact(contact.employee?.id ?? "")
+                      handleDoubleClickContact(getContactId(contact) ?? "")
                     }
                   />
                 ))}

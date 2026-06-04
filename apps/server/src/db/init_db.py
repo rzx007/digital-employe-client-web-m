@@ -172,6 +172,19 @@ def init_db() -> None:
     # 预计算的结构化 parts（JSON），前端直接渲染
     ensure_column("conversation_messages", "message_parts", "message_parts TEXT")
 
+    # 群时间线作者归属（多员工群聊协作）：仅 target_type="group" 会话使用
+    ensure_column("conversation_messages", "sender_id", "sender_id INTEGER")
+    ensure_column(
+        "conversation_messages", "sender_label", "sender_label VARCHAR(255)"
+    )
+
+    # 群房间：发起拉群的总管会话（汇总回流）
+    ensure_column(
+        "group_rooms",
+        "origin_curator_conversation_id",
+        "origin_curator_conversation_id INTEGER",
+    )
+
     # Migration: conversations.title 从 VARCHAR(255) 改为 TEXT（去掉长度限制）
     if "conversations" in inspector.get_table_names():
         _migrate_conversation_title_to_text(engine, inspector)
@@ -194,6 +207,50 @@ def init_db() -> None:
     )
 
     backfill_orchestrator_conversation_links(engine)
+
+    _reset_orphaned_streams(engine)
+
+
+def _reset_orphaned_streams(engine) -> None:
+    """启动时清理上次进程遗留的"运行中"流状态。
+
+    后端重启/崩溃会让正在跑的流被打断，但 DB 里的
+    conversation_messages.stream_state='streaming'、
+    task_execution_logs.run_status in ('running','queued')、
+    conversations.status='running' 会永久卡死，导致：
+    - 群协作的完成事件永不触发 → 后续任务永远不派发；
+    - 前端一直转圈。
+    这里把它们重置为终态（中断/失败），让链路可恢复、不卡死。
+    """
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    with engine.begin() as conn:
+        if "conversation_messages" in tables:
+            cols = {c["name"] for c in inspector.get_columns("conversation_messages")}
+            if "stream_state" in cols:
+                r = conn.execute(text(
+                    "UPDATE conversation_messages SET stream_state='error' "
+                    "WHERE stream_state IN ('streaming','queued')"
+                ))
+                if getattr(r, "rowcount", 0):
+                    logger.info("reset %s orphaned streaming messages", r.rowcount)
+        if "task_execution_logs" in tables:
+            cols = {c["name"] for c in inspector.get_columns("task_execution_logs")}
+            if "run_status" in cols:
+                r = conn.execute(text(
+                    "UPDATE task_execution_logs SET run_status='failed', "
+                    "run_result='进程重启中断' "
+                    "WHERE run_status IN ('running','queued')"
+                ))
+                if getattr(r, "rowcount", 0):
+                    logger.info("reset %s orphaned running task logs", r.rowcount)
+        if "conversations" in tables:
+            cols = {c["name"] for c in inspector.get_columns("conversations")}
+            if "status" in cols:
+                conn.execute(text(
+                    "UPDATE conversations SET status='idle' "
+                    "WHERE status IN ('running','interrupted')"
+                ))
 
 
 def _migrate_task_id_nullable(engine, inspector) -> None:

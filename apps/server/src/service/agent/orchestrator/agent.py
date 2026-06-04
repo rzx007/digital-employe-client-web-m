@@ -42,6 +42,7 @@ from src.service.agent.orchestrator.runtime import set_context
 from src.service.agent.orchestrator.tools import (
     cancel_plan,
     confirm_orchestration_plan,
+    create_group_and_dispatch,
     create_orchestration_plan,
     delete_employee,
     delete_employees_batch,
@@ -81,6 +82,7 @@ def get_orchestrator_agent(
     auth_token: str | None = None,
     *,
     bind_context: bool = True,
+    shared_artifacts_dir: str | None = None,
 ):
     if bind_context:
         set_context(
@@ -118,6 +120,9 @@ def get_orchestrator_agent(
     else:
         conversation_dir = artifacts_path / "orchestrator"
         artifacts_dir = conversation_dir / "artifacts"
+    # 群协作：组长用房间共享产物目录，才能读到成员产出做汇总
+    if shared_artifacts_dir:
+        artifacts_dir = Path(shared_artifacts_dir)
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     conversation_dir.mkdir(parents=True, exist_ok=True)
     if uploads_dir is not None:
@@ -226,6 +231,7 @@ def get_orchestrator_agent(
             hire_employees,
             create_orchestration_plan,
             confirm_orchestration_plan,
+            create_group_and_dispatch,
             update_task,
             delete_task,
             delete_tasks_batch,

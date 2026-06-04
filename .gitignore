@@ -38,6 +38,10 @@ coverage
 .claude
 .CLAUDE.md
 
+# IDE
+.idea/
+.vscode/
+
 # Turbo
 .turbo
 

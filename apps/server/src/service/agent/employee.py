@@ -44,6 +44,7 @@ def get_agent(
     include_sqlite_tools: bool = False,
     conversation_id: int | None = None,
     enable_hitl: bool = True,
+    shared_artifacts_dir: str | None = None,
 ):
     checkpointer = get_checkpointer()
 
@@ -108,7 +109,10 @@ def get_agent(
     ensure_employee_memory_file(memories_dir)
     memories_fs = FilesystemBackend(root_dir=str(memories_dir), virtual_mode=True)
 
-    if conversation_id and root_path:
+    if shared_artifacts_dir:
+        # 群协作：所有成员共享同一产物目录，上游产出对下游可见
+        artifacts_dir = Path(shared_artifacts_dir)
+    elif conversation_id and root_path:
         artifacts_dir = Path(root_path) / str(conversation_id) / "artifacts"
     elif employee_id:
         artifacts_dir = skills_root.parent / "artifacts"

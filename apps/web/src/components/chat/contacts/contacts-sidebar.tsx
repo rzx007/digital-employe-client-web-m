@@ -8,7 +8,7 @@ import {
   IconUser,
 } from "@tabler/icons-react"
 import { useLocalStorageState } from "ahooks"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useShallow } from "zustand/react/shallow"
 import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
@@ -16,7 +16,9 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useContactsQuery } from "@/hooks/use-chat-queries"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { request } from "@/lib/request"
-import { findContactInList } from "@/lib/chat/contact-utils"
+import { createContactGroup } from "@/api/chat"
+import { chatKeys } from "@/lib/query-keys/chat"
+import { findContactInList, getContactId } from "@/lib/chat/contact-utils"
 import { switchToContact } from "@/lib/chat/conversation-selection"
 import type { AIEmployee, Contact } from "@/types/chat"
 import { useChatStore } from "@/stores/chat-store"
@@ -47,6 +49,7 @@ export function ContactsSidebar({
     }))
   )
   const { data: apiContacts } = useContactsQuery()
+  const queryClient = useQueryClient()
   const isMobile = useIsMobile()
   const setTargetEmployee = useMonitorStore((s) => s.setTargetEmployee)
 
@@ -75,7 +78,7 @@ export function ContactsSidebar({
     ) {
       const firstCurator = contacts.find((c) => c.type === "curator")
       if (firstCurator?.curator) {
-        setSelectedContactId(firstCurator.curator.id)
+        setSelectedContactId(getContactId(firstCurator) ?? firstCurator.curator.id)
       }
     }
   }, [contacts, selectedContactId, setSelectedContactId])
@@ -98,9 +101,29 @@ export function ContactsSidebar({
     [contacts]
   )
 
-  const handleCreateGroup = (selectedEmployees: AIEmployee[]) => {
-    console.log("创建群聊，选择员工:", selectedEmployees)
-    setIsDialogOpen(false)
+  const handleCreateGroup = async (selectedEmployees: AIEmployee[]) => {
+    if (selectedEmployees.length < 2) {
+      toast.error("群聊至少需要 2 名成员")
+      return
+    }
+    const defaultName = selectedEmployees
+      .map((e) => e.name)
+      .slice(0, 3)
+      .join("、")
+    const name = `${defaultName} 协作群`
+    const employeeIds = selectedEmployees
+      .map((e) => Number(e.id))
+      .filter((id) => !Number.isNaN(id))
+    try {
+      await createContactGroup({ name, employeeIds })
+      await queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
+      toast.success(`群聊「${name}」已创建`)
+      setIsDialogOpen(false)
+    } catch (err) {
+      toast.error("创建群聊失败", {
+        description: err instanceof Error ? err.message : "请稍后重试",
+      })
+    }
   }
 
   const groupContacts = React.useMemo(
@@ -180,7 +203,7 @@ export function ContactsSidebar({
                   contact={contact}
                   isCollapsed={isCollapsed}
                   onDoubleClick={() =>
-                    handleDoubleClickContact(contact.curator?.id ?? "")
+                    handleDoubleClickContact(getContactId(contact) ?? "")
                   }
                 />
               ))}
@@ -193,7 +216,7 @@ export function ContactsSidebar({
                   contact={contact}
                   isCollapsed={isCollapsed}
                   onDoubleClick={() =>
-                    handleDoubleClickContact(contact.group?.id ?? "")
+                    handleDoubleClickContact(getContactId(contact) ?? "")
                   }
                 />
               ))}
@@ -206,7 +229,7 @@ export function ContactsSidebar({
                   contact={contact}
                   isCollapsed={isCollapsed}
                   onDoubleClick={() =>
-                    handleDoubleClickContact(contact.employee?.id ?? "")
+                    handleDoubleClickContact(getContactId(contact) ?? "")
                   }
                 />
               ))}
@@ -223,7 +246,7 @@ export function ContactsSidebar({
                     contact={contact}
                     isCollapsed={isCollapsed}
                     onDoubleClick={() =>
-                      handleDoubleClickContact(contact.curator?.id ?? "")
+                      handleDoubleClickContact(getContactId(contact) ?? "")
                     }
                   />
                 ))}
@@ -240,7 +263,7 @@ export function ContactsSidebar({
                       contact={contact}
                       isCollapsed={isCollapsed}
                       onDoubleClick={() =>
-                        handleDoubleClickContact(contact.group?.id ?? "")
+                        handleDoubleClickContact(getContactId(contact) ?? "")
                       }
                     />
                   ))}
@@ -258,7 +281,7 @@ export function ContactsSidebar({
                       contact={contact}
                       isCollapsed={isCollapsed}
                       onDoubleClick={() =>
-                        handleDoubleClickContact(contact.employee?.id ?? "")
+                        handleDoubleClickContact(getContactId(contact) ?? "")
                       }
                     />
                   ))}

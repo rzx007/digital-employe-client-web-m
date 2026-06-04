@@ -10,6 +10,7 @@ import {
 } from "@workspace/ui/components/tabs"
 import { cn } from "@workspace/ui/lib/utils"
 import { switchToContact } from "@/lib/chat/conversation-selection"
+import { getContactId } from "@/lib/chat/contact-utils"
 import { useChatStore } from "@/stores/chat-store"
 import {
   useExecutionMetrics7d,
@@ -38,12 +39,7 @@ export function ContactDetailPanel({
   const handleSendMessage = () => {
     const contact = useChatStore.getState().getSelectedContact()
     if (!contact) return
-    const id =
-      contact.type === "curator"
-        ? contact.curator?.id
-        : contact.type === "employee"
-          ? contact.employee?.id
-          : contact.group?.id
+    const id = getContactId(contact)
     if (id) {
       switchToContact(id)
     }

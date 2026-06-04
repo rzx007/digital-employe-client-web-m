@@ -1333,6 +1333,22 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
             except Exception:
                 logger.warning("push conversation_status_changed failed conv=%s", conversation_id, exc_info=True)
 
+        # 1.5 群协作投影：若该会话是某房间成员的私有会话，把其终态结论投影到群时间线。
+        # 放在 log 检查之前，因为群内 @ 派发的成员流没有 TaskExecutionLog，
+        # 否则会在下方 `if not log: return` 处提前退出，永远投影不出去。
+        try:
+            from src.service.group_room_service import (
+                project_member_conversation_if_in_room,
+            )
+
+            project_member_conversation_if_in_room(conversation_id, stream_state)
+        except Exception:
+            logger.warning(
+                "group room projection failed conv=%s",
+                conversation_id,
+                exc_info=True,
+            )
+
         # 2. 后执行反思（仅 completed，从 Conversation 获取 employee_id）
         if stream_state == "completed":
             employee_id = None

@@ -55,6 +55,23 @@ export type WorkspaceEvent =
       target_id: number
       status: string
     }
+  | {
+      type: "room_message"
+      room_id: number
+      room_conversation_id: number
+      message_id: number
+      role: "user" | "assistant"
+      content: string
+      sender_id: number | null
+      sender_label: string | null
+    }
+  | {
+      type: "room_member_state"
+      room_id: number
+      member_id: number
+      employee_id: number
+      state: "ready" | "running" | "sleeping" | "done"
+    }
 
 type EventHandler = (event: WorkspaceEvent) => void
 

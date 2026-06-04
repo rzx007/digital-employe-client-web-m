@@ -1,0 +1,66 @@
+import * as React from "react"
+
+import { cn } from "@workspace/ui/lib/utils"
+
+import { useGroupRoom } from "@/hooks/use-group-room"
+import type { ChatViewContact } from "../shared/chat-view-shared"
+
+import { ConversationChatView } from "../views/chat-conversation-view"
+import { GroupMemberSidebar } from "./group-member-sidebar"
+import { GroupSopPanel } from "./group-sop-panel"
+
+/**
+ * 群协作房间视图：左侧复用 1:1 的会话聊天（群时间线 + 输入框，支持 @成员），
+ * 右侧成员侧栏展示谁在群里、各自状态（待命/进行中/已交付）。
+ *
+ * 群时间线由后端投影驱动：用户 @ 成员 → 成员私有会话干活 → 完成后结论
+ * 经 room_message 事件投影回群时间线，useGroupRoom 监听后刷新消息。
+ */
+export function GroupRoomView({
+  contact,
+  title,
+  conversationId,
+  onOpenContacts,
+  onOpenConversations,
+  onNewConversation,
+  className,
+  ...props
+}: React.ComponentProps<"div"> & {
+  contact?: ChatViewContact
+  title: string
+  conversationId: string | number
+  onOpenContacts?: () => void
+  onOpenConversations?: () => void
+  onNewConversation?: () => void
+}) {
+  const { members, dag } = useGroupRoom(conversationId)
+  const hasDag = Boolean(dag?.has_dag && dag.nodes.length > 0)
+
+  return (
+    <div className={cn("flex h-full min-h-0 w-full", className)} {...props}>
+      <ConversationChatView
+        contact={contact}
+        title={title}
+        conversationId={conversationId}
+        onOpenContacts={onOpenContacts}
+        onOpenConversations={onOpenConversations}
+        onNewConversation={onNewConversation}
+        className="min-w-0 flex-1"
+      />
+      {/* 组长统筹模式 → DAG 流程图；@直接派活 → 简单成员列表 */}
+      {hasDag && dag ? (
+        <GroupSopPanel
+          dag={dag}
+          conversationId={conversationId}
+          className="hidden w-72 shrink-0 border-l bg-background/60 md:flex"
+        />
+      ) : (
+        <GroupMemberSidebar
+          members={members}
+          title={title || "群成员"}
+          className="hidden md:flex"
+        />
+      )}
+    </div>
+  )
+}

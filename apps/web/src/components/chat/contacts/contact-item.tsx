@@ -36,6 +36,7 @@ import {
 } from "@/lib/chat/conversation-selection"
 import { deleteRecentContact } from "@/api/recent-contacts"
 import { mapContactToTarget } from "@/lib/chat/contact-target"
+import { getContactId } from "@/lib/chat/contact-utils"
 
 import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
 import { EmployeeDetailDialog } from "@/components/employee/employee-detail-dialog"
@@ -65,7 +66,10 @@ export function ContactItem({
       setContacts: state.setContacts,
     }))
   )
-  const contactId =
+  // 选择标识：带 type 前缀，避免群与员工同 id 串号
+  const contactId = getContactId(contact)
+  // 原始主键：用于删除等需要真实 id 的后端操作
+  const rawId =
     contact.type === "curator"
       ? contact.curator?.id
       : contact.type === "employee"
@@ -110,9 +114,9 @@ export function ContactItem({
   const handleDeleteConfirm = async () => {
     setAlertOpen(false)
 
-    if (contact.type === "employee" && contactId) {
+    if (contact.type === "employee" && rawId) {
       try {
-        await deleteEmployee(contactId)
+        await deleteEmployee(rawId)
         const target = mapContactToTarget(contact)
         if (target) {
           void deleteRecentContact(target.target_type, target.target_id, {
@@ -124,7 +128,7 @@ export function ContactItem({
         }
         setContacts(
           contacts.filter(
-            (c) => !(c.type === "employee" && c.employee?.id === contactId)
+            (c) => !(c.type === "employee" && c.employee?.id === rawId)
           )
         )
         await queryClient.invalidateQueries({
@@ -142,7 +146,7 @@ export function ContactItem({
       // 如果是群组，暂时只在前端删除（需要后端支持群组删除API）
       const updated = contacts.filter((c) => {
         const id = c.group?.id
-        return id !== contactId
+        return id !== rawId
       })
       setContacts(updated)
       const target = mapContactToTarget(contact)

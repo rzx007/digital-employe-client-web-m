@@ -42,8 +42,13 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
           "skill_id": <int | null>,
           "cron": "<cron 表达式 | null>",
           "priority": <int>,
-          "depends_on": <int | null>
+          "depends_on": <int | int[] | null>
         }
+      depends_on：该子任务依赖的前置任务下标（数组中第几个，从 0 开始）。
+        - null/省略：无依赖，确认后立即并行执行；
+        - 单个 int：等该前置任务**完成后**才开始（真·串行）；
+        - int[]：等列出的多个前置全部完成后才开始（多依赖汇合）。
+        依赖任务只有在前置真正产出结果后才会被派发，前置产物会自动作为简报引用注入。
       cron：标准 5 段「分 时 日 月 周」。"30 9 * * *"=每天 9:30；"*/10 * * * *"=每 10 分钟重复。
         标准 cron **无法表达"仅一次"**（"33 14 * * *" 会每天重复）；只跑一次用 cron=null（confirm 后立即执行）。
     """

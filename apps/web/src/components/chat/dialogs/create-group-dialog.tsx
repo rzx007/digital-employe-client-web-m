@@ -19,7 +19,7 @@ interface CreateGroupDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   employees: AIEmployee[]
-  onCreate: (selectedEmployees: AIEmployee[]) => void
+  onCreate: (selectedEmployees: AIEmployee[]) => void | Promise<void>
 }
 
 export function CreateGroupDialog({
@@ -31,6 +31,7 @@ export function CreateGroupDialog({
   const [selectedEmployees, setSelectedEmployees] = React.useState<Set<string>>(
     new Set()
   )
+  const [submitting, setSubmitting] = React.useState(false)
 
   const toggleEmployee = (id: string) => {
     const newSelected = new Set(selectedEmployees)
@@ -46,9 +47,15 @@ export function CreateGroupDialog({
     selectedEmployees.has(emp.id)
   )
 
-  const handleCreate = () => {
-    onCreate(selectedEmployeesList)
-    setSelectedEmployees(new Set())
+  const handleCreate = async () => {
+    if (submitting) return
+    setSubmitting(true)
+    try {
+      await onCreate(selectedEmployeesList)
+      setSelectedEmployees(new Set())
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -102,8 +109,11 @@ export function CreateGroupDialog({
           >
             取消
           </Button>
-          <Button disabled={selectedEmployees.size < 2} onClick={handleCreate}>
-            创建群聊（{selectedEmployees.size}）
+          <Button
+            disabled={selectedEmployees.size < 2 || submitting}
+            onClick={handleCreate}
+          >
+            {submitting ? "创建中…" : `创建群聊（${selectedEmployees.size}）`}
           </Button>
         </DialogFooter>
       </DialogContent>

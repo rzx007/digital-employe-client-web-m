@@ -7,7 +7,7 @@ Pipeline order (each LLM call, outer → inner):
 3. ``SummarizationMiddleware.wrap_model_call`` — 大 tool args 截断 → token 阈值 → LLM 摘要
 4. ``PromptCacheChatOpenAI._get_request_payload`` — system + 摘要指纹 → cache 断点 / key
 
-See ``docs/token-usage-compression-improvement.md`` and ``docs/提示词治理-问答整理.html`` §3.7.
+See ``docs/token-usage-compression-improvement.md`` and ``docs/提示词治理.html`` §2.
 """
 
 from __future__ import annotations
