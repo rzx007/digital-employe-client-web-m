@@ -731,7 +731,7 @@ class GroupRoomService:
             orchestrator_owned_db=leader_db,
             source="group_leader_summary",
         )
-        return leader_conv_id
+        return leader_conv.id
 
     @staticmethod
     def get_room_state(db: Session, group_conversation_id: int) -> dict | None:
