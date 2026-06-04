@@ -355,8 +355,14 @@ export function CuratorView({
       onStreamFinishRef.current()
     },
     onError: (chatError) => {
+      // 切换会话/恢复流被中止（AbortError）是良性的，不弹错误吓人。
+      const msg = chatError?.message || ""
+      const isAbort =
+        chatError?.name === "AbortError" ||
+        /abort|aborted|signal is aborted|no response/i.test(msg)
+      if (isAbort) return
       toast.error("发送失败", {
-        description: chatError.message || "请稍后重试",
+        description: msg || "请稍后重试",
       })
     },
   })
@@ -533,10 +539,15 @@ export function CuratorView({
             })
         }
       } catch (sendError) {
-        toast.error("发送失败", {
-          description:
-            sendError instanceof Error ? sendError.message : "请稍后重试",
-        })
+        const m = sendError instanceof Error ? sendError.message : ""
+        const isAbort =
+          (sendError instanceof Error && sendError.name === "AbortError") ||
+          /abort|aborted|signal is aborted|no response/i.test(m)
+        if (!isAbort) {
+          toast.error("发送失败", {
+            description: m || "请稍后重试",
+          })
+        }
       }
     },
     [curatorConversationId, sendMessage, command, mentions, session, conversationTitle, displayMessages.length, curatorContactId, contact, updateTitleMutation]

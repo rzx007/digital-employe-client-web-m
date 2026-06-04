@@ -11,7 +11,7 @@ import type {
   GroupRoomDag,
 } from "@/api/group-room"
 
-import { GroupArtifactDialog } from "./group-artifact-dialog"
+import { useArtifactStore } from "@/stores/artifact-store"
 
 /** 节点状态 → 颜色/文案 */
 const STATE_META: Record<
@@ -242,14 +242,19 @@ export function GroupSopPanel({
   conversationId: string | number
   className?: string
 }) {
-  const [artifactPath, setArtifactPath] = React.useState<string | null>(null)
+  const openResource = useArtifactStore((s) => s.openResource)
   const onOpenMember = React.useCallback((employeeId: number) => {
     // 点成员节点 → 跳到该员工的 1:1 会话（带 type 前缀避免串号）
     switchToContact(`employee:${employeeId}`)
   }, [])
-  const onOpenArtifact = React.useCallback((p: string) => {
-    setArtifactPath(p)
-  }, [])
+  const onOpenArtifact = React.useCallback(
+    (p: string) => {
+      // 复用资源管理器面板（专业渲染器 + 预览/源码切换，形式统一）。
+      // 后端 ResourceService 已能把群会话解析到房间共享目录。
+      openResource(p)
+    },
+    [openResource]
+  )
 
   const levels = React.useMemo(() => computeLevels(dag), [dag])
 
@@ -343,15 +348,6 @@ export function GroupSopPanel({
       <div className="border-t px-4 py-2 text-[11px] leading-relaxed text-muted-foreground">
         成员共享产物，下游可读取上游产出；全部完成后组长汇总。
       </div>
-
-      <GroupArtifactDialog
-        conversationId={conversationId}
-        path={artifactPath}
-        open={Boolean(artifactPath)}
-        onOpenChange={(v) => {
-          if (!v) setArtifactPath(null)
-        }}
-      />
     </div>
   )
 }

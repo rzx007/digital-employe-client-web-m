@@ -71,6 +71,9 @@ export function mapStoredMessagesToUIMessages(
         const assistantMeta: Record<string, unknown> = {
           ...messageMeta,
           streamState: message.streamState ?? undefined,
+          // 群时间线作者归属：让渲染层按发言人显示头像（组长/成员），而非群拼图
+          senderName: message.senderName || undefined,
+          senderId: message.senderId || undefined,
           approved_at:
             typeof messageMeta?.approved_at === "string"
               ? messageMeta.approved_at

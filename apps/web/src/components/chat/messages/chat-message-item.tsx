@@ -6,6 +6,7 @@ import {
   MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
 import { getCopyableMessageText } from "@/lib/chat/message-utils"
+import { CURATOR_AVATAR_URL } from "@/lib/avatar"
 import { cn } from "@workspace/ui/lib/utils"
 import {
   resolveHitlApproveMessageId,
@@ -78,13 +79,51 @@ function ChatMessageItemInner({
       {message.role === "assistant" && (
         <div className="mb-2 flex items-center gap-2">
           {contact.type === "group" ? (
-            <GroupMembersAvatar
-              participants={contact.group?.participants}
-              className="size-6"
-              itemClassName="h-3 w-3"
-              fallbackClassName="text-[8px]"
-              placeholderClassName="h-3 w-3"
-            />
+            (() => {
+              // 群时间线：按消息发言人显示头像（组长/某成员），而非群拼图
+              const meta = (
+                message as { metadata?: Record<string, unknown> }
+              ).metadata
+              const senderName =
+                typeof meta?.senderName === "string"
+                  ? meta.senderName
+                  : undefined
+              const senderId =
+                typeof meta?.senderId === "string" ? meta.senderId : undefined
+              const member = contact.group?.participants.find(
+                (p) => p.id === senderId || p.name === senderName
+              )
+              if (member) {
+                return (
+                  <EmployeeContactAvatar
+                    name={member.name}
+                    avatar={member.avatar}
+                    avatarClassName="size-6"
+                    fallbackClassName="text-[10px]"
+                  />
+                )
+              }
+              // 组长（无 sender_id）用总管头像；用户/无法识别则回退群拼图
+              if (senderName === "组长") {
+                return (
+                  <EmployeeContactAvatar
+                    name="组长"
+                    avatar={CURATOR_AVATAR_URL}
+                    avatarClassName="size-6"
+                    fallbackClassName="text-[10px]"
+                  />
+                )
+              }
+              return (
+                <GroupMembersAvatar
+                  participants={contact.group?.participants}
+                  className="size-6"
+                  itemClassName="h-3 w-3"
+                  fallbackClassName="text-[8px]"
+                  placeholderClassName="h-3 w-3"
+                />
+              )
+            })()
           ) : contact.type === "curator" ? (
             <EmployeeContactAvatar
               name={contact.curator?.name}
@@ -103,7 +142,17 @@ function ChatMessageItemInner({
             />
           )}
           <span className="text-xs text-muted-foreground">
-            {contactDisplayName}
+            {(() => {
+              if (contact.type !== "group") return contactDisplayName
+              const meta = (
+                message as { metadata?: Record<string, unknown> }
+              ).metadata
+              const s =
+                typeof meta?.senderName === "string"
+                  ? meta.senderName
+                  : undefined
+              return s || contactDisplayName
+            })()}
           </span>
         </div>
       )}
