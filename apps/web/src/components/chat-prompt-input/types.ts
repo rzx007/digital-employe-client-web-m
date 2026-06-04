@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import type { UIMessage } from "ai"
 import type { PromptChangeEvent } from "../lexical-editor/prompt-input-textarea"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import type { SlashCommandItem } from "../lexical-editor/slash-command-plugin"
@@ -35,4 +36,6 @@ export interface ChatPromptInputProps {
   mentionCandidates?: MentionCandidate[]
   conversationId?: string | number | null
   onAttachmentsChange?: (paths: string[]) => void
+  /** 用于上下文用量指示器的乐观读取（可选） */
+  messages?: UIMessage[]
 }
