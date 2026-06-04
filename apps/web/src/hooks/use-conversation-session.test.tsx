@@ -5,6 +5,7 @@ import { QueryClient } from "@tanstack/react-query"
 
 import type { Message } from "@/types/chat"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
+import { chatKeys } from "@/lib/query-keys/chat"
 
 // 集成测试与网络隔离：底层 HTTP 走 ofetch（@/lib/request），整模块 mock 掉，
 // 避免 happy-dom 下杂散请求产生 ECONNREFUSED 未处理拒绝污染输出 / 变脆。
@@ -109,5 +110,58 @@ describe("useConversationSession — resume on re-enter", () => {
     })
 
     await waitFor(() => expect(resumeStream).toHaveBeenCalledTimes(1))
+  })
+})
+
+describe("useConversationSession — refetch 防抖不应被 status 变化清掉（Bug1 回归）", () => {
+  it("onStreamFinish 调度的 800ms 回拉，即便期间 status 变化也要触发", () => {
+    vi.useFakeTimers()
+    try {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      })
+      const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries")
+      const stored = storedWithLastAssistant("completed")
+      const initial = mapStoredMessagesToUIMessages(stored)
+      // 桩须「稳定引用」（模拟 useChat 的 setMessages/resumeStream 跨渲染不变），
+      // 否则 rerender 时新 fn 引用本身就会重跑总线 effect，掩盖 status 这个真正变量。
+      const setMessages = vi.fn()
+      const resumeStream = vi.fn()
+      const makeProps = (status: string) => ({
+        conversationId: CONV_ID,
+        contactId: "emp-1", // 命不中 store 联系人 → 不发网络
+        storedMessages: stored,
+        initialMessages: initial,
+        composerMessages: [] as never[],
+        status,
+        setMessages,
+        resumeStream,
+        queryClient,
+      })
+
+      const { rerender, result } = renderHook(
+        (p: ReturnType<typeof makeProps>) => useConversationSession(p),
+        { initialProps: makeProps("submitted") }
+      )
+
+      invalidateSpy.mockClear()
+
+      // 流结束：调度 800ms 后回拉 /messages
+      result.current.onStreamFinish()
+      // 紧接着 status 变化（触发 bug 的关键：总线 effect 重跑 → 清 refetch 定时器）
+      rerender(makeProps("ready"))
+      // 推进过防抖点
+      vi.advanceTimersByTime(900)
+
+      const messagesKey = JSON.stringify(chatKeys.messages(String(CONV_ID)))
+      const calledForMessages = invalidateSpy.mock.calls.some(([arg]) => {
+        const key = (arg as { queryKey?: unknown } | undefined)?.queryKey
+        return JSON.stringify(key) === messagesKey
+      })
+
+      expect(calledForMessages).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
