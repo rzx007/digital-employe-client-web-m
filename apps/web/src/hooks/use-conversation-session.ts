@@ -297,7 +297,7 @@ export function useConversationSession({
 
     const willResume = shouldAttemptResume({
       hitlActive: machineRef.current.activeHitl !== null,
-      lastAssistantStreamState: lastAssistant?.streamState,
+      lastAssistantStreamState: lastAssistant?.streamState ?? undefined,
       lastAssistantId,
       resumeAttempts: machineRef.current.resumeAttempts,
     })
