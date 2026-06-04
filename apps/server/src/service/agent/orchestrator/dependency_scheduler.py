@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -152,21 +153,39 @@ def _collect_prereq_artifacts(
             continue
         name = log.task_name_snapshot or f"任务#{dep_id}"
         summary = ""
+        blob = log.output_json or "{}"
+        paths: list[str] = []
         try:
-            output = json.loads(log.output_json or "{}")
-            # 常见结构：{"result": "...", "artifacts": ["path", ...]}
-            artifacts = output.get("artifacts") if isinstance(output, dict) else None
-            if artifacts:
-                summary = "产物路径：" + "；".join(str(a) for a in artifacts)
-            elif isinstance(output, dict) and output.get("result"):
-                text = str(output["result"]).strip()
-                summary = text[:300] + ("…" if len(text) > 300 else "")
+            output = json.loads(blob)
+            if isinstance(output, dict):
+                # 结构化 artifacts 字段（若有）
+                arts = output.get("artifacts")
+                if isinstance(arts, list):
+                    paths.extend(str(a) for a in arts)
+                # 多数情况产物路径写在 content 文本里
+                if output.get("content"):
+                    blob = str(output["content"])
+                elif output.get("result"):
+                    blob = str(output["result"])
         except (json.JSONDecodeError, TypeError):
             pass
-        if not summary and log.run_result:
-            summary = str(log.run_result).strip()[:300]
-        refs.append((name, summary or "（已完成，详见其会话）"))
+        # 从文本里抽出 /artifacts/... 路径（员工通常会写明存到哪）
+        for m in _ARTIFACT_PATH_RE.findall(blob + " " + (log.run_result or "")):
+            if m not in paths:
+                paths.append(m)
+        if paths:
+            # 关键：明确告诉下游"上游产物在这些共享路径，直接 read 读取"
+            summary = "产物文件（在共享 /artifacts/ 下，请用 read 工具读取）：" + "；".join(paths)
+        else:
+            # 没有显式路径就给一段结论摘要
+            text = blob.strip()
+            summary = (text[:300] + "…") if len(text) > 300 else text
+        refs.append((name, summary or "（已完成）"))
     return refs
+
+
+# 从文本里提取 /artifacts/... 产物路径
+_ARTIFACT_PATH_RE = re.compile(r"/artifacts/[^\s`\"'）)，。、]+")
 
 
 def _build_prereq_briefing(refs: list[tuple[str, str]]) -> str:
