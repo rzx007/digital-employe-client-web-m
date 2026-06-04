@@ -102,13 +102,12 @@ describe("useConversationSession — resume on re-enter", () => {
     expect(resumeStream).not.toHaveBeenCalled()
   })
 
-  it("does not resume while the conversation is actively streaming locally (status=streaming)", async () => {
+  it("resumes on remount when local status is streaming but session was inactive", async () => {
     const { resumeStream } = renderSession({
       storedMessages: storedWithLastAssistant("streaming"),
       status: "streaming",
     })
 
-    await new Promise((r) => setTimeout(r, 60))
-    expect(resumeStream).not.toHaveBeenCalled()
+    await waitFor(() => expect(resumeStream).toHaveBeenCalledTimes(1))
   })
 })

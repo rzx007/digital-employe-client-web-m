@@ -94,6 +94,7 @@ import {
   resolveHitlApproveMessageId,
 } from "@/lib/chat/hitl"
 import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
+import { isBenignStreamAbortError } from "@/lib/chat/stream-abort"
 
 type TimelineEntry =
   | { kind: "message"; data: UIMessage; ts: number }
@@ -339,6 +340,7 @@ export function CuratorView({
   )
 
   const onStreamFinishRef = useRef<() => void>(() => {})
+  const onRetryResumeRef = useRef<() => boolean>(() => false)
 
   const {
     messages,
@@ -355,14 +357,12 @@ export function CuratorView({
       onStreamFinishRef.current()
     },
     onError: (chatError) => {
-      // 切换会话/恢复流被中止（AbortError）是良性的，不弹错误吓人。
-      const msg = chatError?.message || ""
-      const isAbort =
-        chatError?.name === "AbortError" ||
-        /abort|aborted|signal is aborted|no response/i.test(msg)
-      if (isAbort) return
+      if (isBenignStreamAbortError(chatError)) {
+        onRetryResumeRef.current()
+        return
+      }
       toast.error("发送失败", {
-        description: msg || "请稍后重试",
+        description: chatError?.message || "请稍后重试",
       })
     },
   })
@@ -385,7 +385,8 @@ export function CuratorView({
 
   useEffect(() => {
     onStreamFinishRef.current = session.onStreamFinish
-  }, [session.onStreamFinish])
+    onRetryResumeRef.current = session.retryResumeIfNeeded
+  }, [session.onStreamFinish, session.retryResumeIfNeeded])
 
   const handleStop = useCallback(async () => {
     stop()
@@ -400,12 +401,17 @@ export function CuratorView({
     session.onStreamStopped()
   }, [stop, curatorConversationId, session])
 
+  const prevCuratorConversationIdRef = useRef(curatorConversationId)
+
   useEffect(() => {
-    return () => {
-      stop()
+    if (prevCuratorConversationIdRef.current !== curatorConversationId) {
       chatTransport.cancelReconnect()
+      prevCuratorConversationIdRef.current = curatorConversationId
     }
-  }, [stop])
+  }, [curatorConversationId])
+
+  const displayError =
+    error && !isBenignStreamAbortError(error) ? error : undefined
 
   const handleReset = useCallback(async () => {
     if (!curatorConversationId || !curatorContactId) return
@@ -974,7 +980,7 @@ export function CuratorView({
             onPendingSendNow={pendingSendNow}
             onPendingMoveUp={pendingMoveUp}
             onPendingMoveDown={pendingMoveDown}
-            error={error}
+            error={displayError}
             pendingQueueClassName="mx-auto w-[98%]"
           />
         ) : null}

@@ -12,6 +12,7 @@ import {
 } from "./langchain-stream-parser"
 import { sseEventSchema, type ToolOutputData } from "./langchain-sse-schema"
 import { ERROR_MARKER } from "./message-classifier"
+import { isBenignStreamAbortError } from "./stream-abort"
 import { conversationRuntimeBus } from "./conversation-runtime-bus"
 import {
   buildHitlInterruptStreamChunks,
@@ -287,30 +288,37 @@ async function createResumeEventSourceResponse(options: {
   conversationId: string
   abortSignal: AbortSignal | undefined
 }) {
-  const response = await request.raw(
-    buildResumeApiUrl(options.conversationId),
-    {
-      method: "GET",
-      headers: getRequestHeaders({
-        Accept: "text/event-stream",
-      }),
-      signal: options.abortSignal,
+  try {
+    const response = await request.raw(
+      buildResumeApiUrl(options.conversationId),
+      {
+        method: "GET",
+        headers: getRequestHeaders({
+          Accept: "text/event-stream",
+        }),
+        signal: options.abortSignal,
+      }
+    )
+
+    if (response.status === 204) {
+      return null
     }
-  )
 
-  if (response.status === 204) {
-    return null
+    if (!response.ok) {
+      throw new Error(`恢复聊天请求失败 (${response.status})`)
+    }
+
+    if (!response.body) {
+      throw new Error("恢复聊天响应为空")
+    }
+
+    return response.body
+  } catch (error) {
+    if (options.abortSignal?.aborted || isBenignStreamAbortError(error)) {
+      return null
+    }
+    throw error
   }
-
-  if (!response.ok) {
-    throw new Error(`恢复聊天请求失败 (${response.status})`)
-  }
-
-  if (!response.body) {
-    throw new Error("恢复聊天响应为空")
-  }
-
-  return response.body
 }
 
 export class LangChainChatTransport<
@@ -411,10 +419,22 @@ export class LangChainChatTransport<
     const abortController = new AbortController()
     this._reconnectAbort = abortController
 
-    const stream = await createResumeEventSourceResponse({
-      conversationId: effectiveChatId,
-      abortSignal: abortController.signal,
-    })
+    let stream: ReadableStream<Uint8Array> | null
+    try {
+      stream = await createResumeEventSourceResponse({
+        conversationId: effectiveChatId,
+        abortSignal: abortController.signal,
+      })
+    } catch (error) {
+      if (
+        abortController.signal.aborted ||
+        isBenignStreamAbortError(error)
+      ) {
+        this._reconnectAbort = null
+        return null
+      }
+      throw error
+    }
 
     if (!stream) {
       this._reconnectAbort = null
@@ -798,7 +818,7 @@ export class LangChainChatTransport<
           enqueueFinish(controller, state)
           controller.close()
         } catch (error) {
-          if (error instanceof Error && error.name === "AbortError") {
+          if (isBenignStreamAbortError(error)) {
             flushSync()
             controller.close()
           } else {

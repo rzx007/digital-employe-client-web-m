@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest"
-import { shouldAttemptResume } from "./resume-decision"
+import {
+  MAX_STREAM_RESUME_ATTEMPTS,
+  shouldAttemptResume,
+} from "./resume-decision"
 
 const ok = {
   hitlActive: false,
   lastAssistantStreamState: "streaming",
   lastAssistantId: "42",
-  resumeAttemptedFor: null as string | null,
+  resumeAttempts: {} as Record<string, number>,
 }
 
 describe("shouldAttemptResume", () => {
@@ -16,12 +19,29 @@ describe("shouldAttemptResume", () => {
     expect(shouldAttemptResume({ ...ok, hitlActive: true })).toBe(false)
   })
   it("does not resume when last assistant is not streaming", () => {
-    expect(shouldAttemptResume({ ...ok, lastAssistantStreamState: "completed" })).toBe(false)
+    expect(
+      shouldAttemptResume({ ...ok, lastAssistantStreamState: "completed" })
+    ).toBe(false)
   })
-  it("does not resume twice for the same assistant id", () => {
-    expect(shouldAttemptResume({ ...ok, resumeAttemptedFor: "42" })).toBe(false)
+  it("allows retry up to MAX_STREAM_RESUME_ATTEMPTS for the same assistant", () => {
+    for (let i = 0; i < MAX_STREAM_RESUME_ATTEMPTS; i++) {
+      expect(
+        shouldAttemptResume({ ...ok, resumeAttempts: { "42": i } })
+      ).toBe(true)
+    }
+    expect(
+      shouldAttemptResume({
+        ...ok,
+        resumeAttempts: { "42": MAX_STREAM_RESUME_ATTEMPTS },
+      })
+    ).toBe(false)
   })
   it("resumes again for a different assistant id", () => {
-    expect(shouldAttemptResume({ ...ok, resumeAttemptedFor: "41" })).toBe(true)
+    expect(
+      shouldAttemptResume({
+        ...ok,
+        resumeAttempts: { "41": MAX_STREAM_RESUME_ATTEMPTS },
+      })
+    ).toBe(true)
   })
 })
