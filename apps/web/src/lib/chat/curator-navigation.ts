@@ -23,13 +23,18 @@ export function navigateToEmployeeFromCurator(options: {
   const returnCtx: CuratorNavigationReturn = {
     curatorContactId: options.curatorContactId,
     curatorConversationId: options.curatorConversationId,
-    employeeId: options.employeeId,
+    employeeId: options.employeeId.startsWith("employee:")
+      ? options.employeeId
+      : `employee:${options.employeeId}`,
     employeeConversationId: options.employeeConversationId,
     returnTab: state.activeTab,
   }
   state.setCuratorNavigationReturn(returnCtx)
+  const employeeContactId = options.employeeId.startsWith("employee:")
+    ? options.employeeId
+    : `employee:${options.employeeId}`
   selectConversationForContact(
-    options.employeeId,
+    employeeContactId,
     options.employeeConversationId
   )
   state.setActiveTab("chat")

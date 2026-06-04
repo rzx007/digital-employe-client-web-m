@@ -9,6 +9,8 @@ import type {
   GroupRoomMember,
   GroupRoomMemberState,
 } from "@/api/group-room"
+import { navigateToEmployeeFromGroup } from "@/lib/chat/group-navigation"
+import { switchToContact } from "@/lib/chat/conversation-selection"
 
 const STATE_META: Record<
   GroupRoomMemberState,
@@ -25,11 +27,43 @@ function initialOf(name: string | null | undefined): string {
   return trimmed ? trimmed.slice(0, 1) : "员"
 }
 
-function MemberRow({ member }: { member: GroupRoomMember }) {
+function MemberRow({
+  member,
+  groupContactId,
+  groupConversationId,
+}: {
+  member: GroupRoomMember
+  groupContactId?: string
+  groupConversationId?: string | number
+}) {
   const meta = STATE_META[member.state] ?? STATE_META.ready
   const isLeader = member.role_in_room === "leader"
+  const canJump =
+    member.employee_id != null &&
+    member.conversation_id != null &&
+    groupContactId != null &&
+    groupConversationId != null
+
+  const handleClick = () => {
+    if (member.employee_id == null) return
+    if (canJump) {
+      navigateToEmployeeFromGroup({
+        groupContactId: groupContactId!,
+        groupConversationId: groupConversationId!,
+        employeeId: member.employee_id,
+        employeeConversationId: member.conversation_id!,
+      })
+      return
+    }
+    switchToContact(`employee:${member.employee_id}`)
+  }
+
   return (
-    <div className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted/50">
+    <button
+      type="button"
+      onClick={handleClick}
+      className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-muted/50"
+    >
       <Avatar className="size-8 shrink-0">
         <AvatarFallback
           className={cn(
@@ -59,7 +93,7 @@ function MemberRow({ member }: { member: GroupRoomMember }) {
           {meta.label}
         </div>
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -67,10 +101,14 @@ export function GroupMemberSidebar({
   members,
   className,
   title = "群成员",
+  groupContactId,
+  groupConversationId,
 }: {
   members: GroupRoomMember[]
   className?: string
   title?: string
+  groupContactId?: string
+  groupConversationId?: string | number
 }) {
   return (
     <aside
@@ -92,7 +130,14 @@ export function GroupMemberSidebar({
               暂无成员
             </p>
           ) : (
-            members.map((m) => <MemberRow key={m.member_id} member={m} />)
+            members.map((m) => (
+              <MemberRow
+                key={m.member_id}
+                member={m}
+                groupContactId={groupContactId}
+                groupConversationId={groupConversationId}
+              />
+            ))
           )}
         </div>
       </ScrollArea>

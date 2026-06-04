@@ -7,6 +7,7 @@ import { useChatStore } from "@/stores/chat-store"
 import type { ChatViewContact } from "@/components/chat/chat-view-shared"
 
 import { enterDraftConversation, selectConversationById } from "./apply"
+import { isPreservedEmployeeConversationSelection } from "./employee-deep-link"
 import { conversationExistsInList, pickFirstConversation } from "./pick"
 
 /**
@@ -97,6 +98,17 @@ export function useReconcileConversationSelection(
     }
 
     if (conversationExistsInList(conversations, selectedConversationId)) {
+      return
+    }
+
+    // 群 / 总管深链的执行会话不在列表里时，勿抢选旧会话
+    if (
+      isPreservedEmployeeConversationSelection(
+        selectedContactId,
+        selectedConversationId,
+        conversations
+      )
+    ) {
       return
     }
 
