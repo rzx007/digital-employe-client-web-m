@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from src.core.config import get_settings
 from src.core.agent_runtime_policy import (
     ORCHESTRATION_PRIORITY,
-    get_agent_runtime_policy,
 )
 from src.service.agent_stream_queue import StartResult
 from src.models.employee import Employee
@@ -78,6 +77,7 @@ async def _start_employee_stream_when_orchestrator_idle(
     assistant_msg_id: int,
     priority: int = ORCHESTRATION_PRIORITY,
     source: str = "orchestration",
+    stream_class: str | None = None,
 ) -> None:
     from src.service.stream_registry import registry
 
@@ -120,6 +120,7 @@ async def _start_employee_stream_when_orchestrator_idle(
         orchestrator_conversation_id=orchestrator_conversation_id,
         priority=priority,
         source=source,
+        stream_class=stream_class,
     )
     if result == StartResult.REJECTED:
         logger.warning(
@@ -191,6 +192,7 @@ def start_immediate_tasks(
     plan_json_obj: list[dict] = json.loads(plan.plan_json or "[]")
 
     from src.service.agent.orchestrator.dependency_scheduler import (
+        build_class_map,
         build_dependency_maps,
     )
 
@@ -201,6 +203,7 @@ def start_immediate_tasks(
     plan_tasks = sorted(tasks, key=lambda t: t.id)
     dep_map, _successors = build_dependency_maps(plan_tasks, plan_json_obj)
     dep_count: dict[int, int] = {t.id: len(dep_map.get(t.id, [])) for t in tasks}
+    cls_by_id = build_class_map(plan_tasks, plan_json_obj)  # 总管显式 heavy/light
 
     # 完成驱动：这里**只派根任务**（无前置）。有前置的任务由
     # dependency_scheduler.on_employee_task_completed 在前置真正完成后再派，
@@ -226,7 +229,10 @@ def start_immediate_tasks(
             )
             continue
         try:
-            conv_id = start_task_as_conversation(db, task, employee, workspace_id)
+            conv_id = start_task_as_conversation(
+                db, task, employee, workspace_id,
+                stream_class=cls_by_id.get(tid),
+            )
             results.append(f"任务 {task.task_name}: 已创建会话 #{conv_id}")
             started_ids.add(tid)
         except Exception as exc:
@@ -257,6 +263,7 @@ def start_task_as_conversation(
     priority: int = ORCHESTRATION_PRIORITY,
     source: str = "orchestration",
     prereq_briefing: str = "",
+    stream_class: str | None = None,
 ) -> int:
     from src.models.conversation import Conversation, ConversationMessage
     from src.models.task_execution_log import TaskExecutionLog
@@ -265,11 +272,12 @@ def start_task_as_conversation(
     from src.service.stream_registry import registry
     from src.service.workspace_events import WorkspaceEventBus
 
-    policy = get_agent_runtime_policy()
-    slot_busy = (
-        policy.serial_mode
-        and registry.count_active_streams() >= policy.max_concurrent_streams
-    )
+    from src.core.agent_runtime_policy import resolve_stream_class
+
+    resolved_class = resolve_stream_class(stream_class, source)
+    # 与资源阀门同源：按该任务类别判断初始日志状态(running/queued)，
+    # 避免阀门已满却把日志记成"执行中"。
+    slot_busy = not registry.can_admit(resolved_class)
     initial_log_status = "queued" if slot_busy else "running"
     initial_log_result = "排队中，等待执行" if slot_busy else "执行中"
     initial_msg_state = "queued" if slot_busy else "streaming"
@@ -390,6 +398,7 @@ def start_task_as_conversation(
                 assistant_msg_id=assistant_msg_id,
                 priority=priority,
                 source=source,
+                stream_class=resolved_class,
             )
         )
 

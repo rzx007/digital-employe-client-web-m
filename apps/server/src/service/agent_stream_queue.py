@@ -24,6 +24,7 @@ class PendingStart:
     debug_content_only: bool
     priority: int
     source: str
+    stream_class: str = "light"
     agent_input: Any | None = None
     task: Any | None = None
     orchestrator_owned_db: Any | None = None

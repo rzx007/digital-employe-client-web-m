@@ -96,6 +96,19 @@ def build_dependency_maps(
     return dep_map, successors
 
 
+def build_class_map(tasks: list, plan_json_obj: list[dict]) -> dict[int, str | None]:
+    """task.id -> 总管显式标注的难度类别（plan_json 的 'cls'，heavy/light）。
+
+    无标注则为 None，由下游 resolve_stream_class 按来源推导默认值。
+    与 build_dependency_maps 同样按 tasks 顺序对应 plan_json 下标。
+    """
+    out: dict[int, str | None] = {}
+    for i, t in enumerate(tasks):
+        raw = plan_json_obj[i].get("cls") if i < len(plan_json_obj) else None
+        out[t.id] = raw if raw in ("heavy", "light") else None
+    return out
+
+
 def _log_status_by_task(db: Session, task_ids: list[int]) -> dict[int, set[str]]:
     """聚合每个任务的所有执行日志状态集合（一个任务可能有多条日志）。"""
     from src.models.task_execution_log import TaskExecutionLog
@@ -228,6 +241,7 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
         plan_json_obj: list[dict] = json.loads(plan.plan_json or "[]")
 
         dep_map, successors = build_dependency_maps(tasks, plan_json_obj)
+        cls_by_id = build_class_map(tasks, plan_json_obj)  # 总管显式 heavy/light
 
         # 候选 = 刚完成任务的直接后继 + 其它"有前置依赖"的任务。
         # 只纳入"有依赖"的任务（dep_map 非空）做容量重试，避免把无依赖的根任务
@@ -276,7 +290,10 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
             briefing = _build_prereq_briefing(prereq_refs)
 
             try:
-                _dispatch_successor(db, successor, employee, workspace_id, briefing)
+                _dispatch_successor(
+                    db, successor, employee, workspace_id, briefing,
+                    stream_class=cls_by_id.get(cid),
+                )
                 dispatched.append(cid)
             except Exception:
                 logger.error(
@@ -345,6 +362,8 @@ def _dispatch_successor(
     employee,
     workspace_id: int,
     prereq_briefing: str,
+    *,
+    stream_class: str | None = None,
 ) -> int:
     """派发一个后继任务：复用 start_task_as_conversation，并把前置产物简报注入 prompt。"""
     from src.service.agent.orchestrator.execution import start_task_as_conversation
@@ -355,4 +374,5 @@ def _dispatch_successor(
         employee,
         workspace_id,
         prereq_briefing=prereq_briefing,
+        stream_class=stream_class,
     )

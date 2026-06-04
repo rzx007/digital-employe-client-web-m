@@ -17,6 +17,7 @@ from src.core.agent_runtime_policy import (
     ORCHESTRATION_PRIORITY,
     USER_CHAT_PRIORITY,
     get_agent_runtime_policy,
+    resolve_stream_class,
 )
 from src.models.conversation import Conversation, ConversationMessage
 from src.service.agent_stream_queue import AgentStreamQueue, PendingStart, StartResult
@@ -391,10 +392,12 @@ class ActiveStreamTask:
         *,
         stream_msg_id: int | None = None,
         source: str = "user_chat",
+        stream_class: str = "light",
     ):
         self.conversation_id = conversation_id
         self.stream_msg_id = stream_msg_id
         self.source = source
+        self.stream_class = stream_class
         self.status: str = "streaming"
         self.buffer = StreamEventBuffer(conversation_id)
         self.subscribers: set[Subscriber] = set()
@@ -441,6 +444,19 @@ class StreamRegistry:
                 continue
             active += 1
         return active
+
+    def count_active_heavy(self) -> int:
+        """统计当前在跑的"重活"数量（资源阀门 heavy/light 分级用）。"""
+        heavy = 0
+        for conversation_id, task in list(self._tasks.items()):
+            if not task.is_active:
+                continue
+            if self._stream_task_is_stale_active(task):
+                self._clear_stale_active_task(conversation_id, task)
+                continue
+            if getattr(task, "stream_class", "light") == "heavy":
+                heavy += 1
+        return heavy
 
     def queue_depth(self) -> int:
         return self._queue.depth()
@@ -530,11 +546,25 @@ class StreamRegistry:
             result["message_id"] = msg.id
         return result
 
-    def _can_start_now(self) -> bool:
+    def can_admit(self, stream_class: str = "light") -> bool:
+        """资源阀门：给定类别的任务此刻能否入场。
+
+        两道闸门：
+        ① 总闸 effective_max_inflight（=GPU槽，对所有任务生效，0=不限）；
+        ② heavy 闸 effective_max_heavy（仅约束重活，给轻活留余量，0=不单独限）。
+        """
         policy = get_agent_runtime_policy()
-        if policy.max_concurrent_streams <= 0:
-            return True
-        return self.count_active_streams() < policy.max_concurrent_streams
+        cap = policy.effective_max_inflight()
+        if cap > 0 and self.count_active_streams() >= cap:
+            return False
+        if stream_class == "heavy":
+            max_heavy = policy.effective_max_heavy()
+            if max_heavy > 0 and self.count_active_heavy() >= max_heavy:
+                return False
+        return True
+
+    def _can_start_now(self, stream_class: str = "light") -> bool:
+        return self.can_admit(stream_class)
 
     def _default_priority(
         self,
@@ -550,8 +580,10 @@ class StreamRegistry:
             pending.conversation_id,
             stream_msg_id=pending.stream_msg_id,
             source=pending.source,
+            stream_class=pending.stream_class,
         )
         task.source = pending.source
+        task.stream_class = pending.stream_class
         task.status = "streaming"
         task.error_message = None
         self._tasks[pending.conversation_id] = task
@@ -598,14 +630,30 @@ class StreamRegistry:
         self._drain_queue_if_slot_available()
 
     def _drain_queue_if_slot_available(self) -> None:
-        if self._can_start_now() and self._queue.depth() > 0:
+        # "light" 是最宽松的类别；只要它能入场就说明还有总槽，值得尝试 drain。
+        if self._can_start_now("light") and self._queue.depth() > 0:
             self._drain_queue()
 
+    def _pop_next_admittable(self, skip: set[int]) -> PendingStart | None:
+        """按优先级取出第一个【此刻可入场】的排队项。
+
+        队列已按 (priority, sequence) 排序；逐个看其类别能否入场——
+        若队头是被 heavy 闸卡住的重活，则跳过它，让后面的轻活先上
+        （消除队头阻塞 HOL，正是 heavy/light 分级的目的）。
+        """
+        for item in self._queue._items:
+            if item.conversation_id in skip:
+                continue
+            if self.can_admit(item.stream_class):
+                return self._queue.remove(item.conversation_id)
+        return None
+
     def _drain_queue(self) -> None:
-        while self._can_start_now():
-            pending = self._queue.pop_next()
+        skip: set[int] = set()
+        while self._queue.depth() > 0:
+            pending = self._pop_next_admittable(skip)
             if pending is None:
-                return
+                return  # 没有任何可入场的排队项了
             existing = self._tasks.get(pending.conversation_id)
             if existing and existing.is_active:
                 if self._stream_task_is_stale_active(existing):
@@ -621,11 +669,13 @@ class StreamRegistry:
                             "drain: re-enqueued conv=%s, slot still busy",
                             pending.conversation_id,
                         )
+                    skip.add(pending.conversation_id)  # 防本轮重复选中导致死循环
                     continue
             logger.info(
-                "dequeue agent stream conv=%s source=%s priority=%s remaining=%s",
+                "dequeue agent stream conv=%s source=%s class=%s priority=%s remaining=%s",
                 pending.conversation_id,
                 pending.source,
+                pending.stream_class,
                 pending.priority,
                 self._queue.depth(),
             )
@@ -643,6 +693,7 @@ class StreamRegistry:
         *,
         priority: int | None = None,
         source: str | None = None,
+        stream_class: str | None = None,
         agent_input: Any | None = None,
         orchestrator_owned_db: Session | None = None,
         orchestrator_workspace_id: int | None = None,
@@ -672,10 +723,12 @@ class StreamRegistry:
             orchestrator_conversation_id=orchestrator_conversation_id,
         )
         resolved_source = source or default_source
+        resolved_class = resolve_stream_class(stream_class, resolved_source)
         task = ActiveStreamTask(
             conversation_id,
             stream_msg_id=stream_msg_id,
             source=resolved_source,
+            stream_class=resolved_class,
         )
         pending = PendingStart(
             conversation_id=conversation_id,
@@ -687,6 +740,7 @@ class StreamRegistry:
             debug_content_only=debug_content_only,
             priority=priority if priority is not None else default_priority,
             source=resolved_source,
+            stream_class=resolved_class,
             agent_input=agent_input,
             task=task,
             orchestrator_owned_db=orchestrator_owned_db,
@@ -696,7 +750,7 @@ class StreamRegistry:
         )
 
         self._drain_queue_if_slot_available()
-        if self._can_start_now():
+        if self._can_start_now(resolved_class):
             self._launch_pending(pending)
             return StartResult.STARTED
 
@@ -749,6 +803,7 @@ class StreamRegistry:
         orchestrator_auth_token: str | None = None,
         priority: int | None = None,
         source: str | None = None,
+        stream_class: str | None = None,
     ) -> StartResult:
         """启动 Agent 流式任务，返回 started / queued / rejected。"""
         return self.request_start(
@@ -765,6 +820,7 @@ class StreamRegistry:
             orchestrator_auth_token=orchestrator_auth_token,
             priority=priority,
             source=source,
+            stream_class=stream_class,
         )
 
     def cancel(self, conversation_id: int) -> bool:

@@ -585,10 +585,10 @@ class TaskSchedulerService:
 
         workspace_id = task.workspace_id
         policy = get_agent_runtime_policy()
+        # 与 _can_start_now 同源：按生效并发上限判断初始日志状态。
+        _cap = policy.effective_max_inflight()
         slot_busy = (
-            policy.serial_mode
-            and _stream_registry.count_active_streams()
-            >= policy.max_concurrent_streams
+            _cap > 0 and _stream_registry.count_active_streams() >= _cap
         )
         initial_log_status = "queued" if slot_busy else "running"
         initial_log_result = "排队中，等待执行" if slot_busy else "执行中"
