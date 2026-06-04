@@ -42,7 +42,11 @@ import {
   initialSessionMachine,
   sessionReducer,
 } from "@/lib/chat/session/session-machine"
-import { shouldAttemptResume } from "@/lib/chat/session/resume-decision"
+import {
+  cancelScheduledStreamResume,
+  scheduleStreamResume,
+  shouldAttemptResume,
+} from "@/lib/chat/session/resume-decision"
 import { decideHydration } from "@/lib/chat/session/hydrate-decision"
 
 import { chatTransport } from "@/components/chat/shared/chat-view-shared"
@@ -123,7 +127,55 @@ export function useConversationSession({
 
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const resumeScheduleRef = useRef<
+    ReturnType<typeof setTimeout> | number | null
+  >(null)
+
   const convKey = conversationId != null ? String(conversationId) : null
+
+  const tryScheduleResume = useCallback(
+    (
+      assistantId: string,
+      statusSnapshot: string,
+      options?: { allowBusyStatus?: boolean }
+    ) => {
+      if (!convKey) return false
+
+      const willResume = shouldAttemptResume({
+        hitlActive: machineRef.current.activeHitl !== null,
+        lastAssistantStreamState: "streaming",
+        lastAssistantId: assistantId,
+        resumeAttempts: machineRef.current.resumeAttempts,
+      })
+
+      if (!willResume) return false
+
+      const attemptIndex =
+        machineRef.current.resumeAttempts[assistantId] ?? 0
+
+      dispatch({ type: "RESUME_ATTEMPTED", assistantId })
+
+      chatTransport.setResumeConversationId(convKey)
+
+      cancelScheduledStreamResume(resumeScheduleRef.current)
+      resumeScheduleRef.current = scheduleStreamResume(() => {
+        const busy =
+          statusSnapshot === "submitted" || statusSnapshot === "streaming"
+        if (busy && !options?.allowBusyStatus) return
+        if (
+          !options?.allowBusyStatus &&
+          statusSnapshot !== "ready" &&
+          statusSnapshot !== "error"
+        ) {
+          return
+        }
+        resumeStream()
+      }, attemptIndex)
+
+      return true
+    },
+    [convKey, resumeStream]
+  )
 
   useEffect(() => {
     if (prevConversationIdRef.current !== conversationId) {
@@ -167,10 +219,41 @@ export function useConversationSession({
   useEffect(() => {
     if (!convKey) return
 
-    if (status === "streaming" || status === "submitted") {
-      dispatch({ type: "ACTIVATED" })
+    const hydrateFromDbIfBehind = () => {
+      if (initialMessages.length === 0) return false
+      const composer = composerMessagesRef.current
+      if (!messagesNeedHydrateFromDb(composer, initialMessages)) {
+        return false
+      }
+      const sig = hydrateSignature(initialMessages)
+      const next =
+        patchComposerFromStoredWhenSameTurn(composer, initialMessages) ??
+        initialMessages
+      setMessages(next)
+      dispatch({ type: "HYDRATED", convKey, sig })
+      return true
+    }
 
-      return
+    if (status === "streaming" || status === "submitted") {
+      const wasActive = machineRef.current.active
+      const lastAssistant = getLastAssistantMessage(storedMessages)
+      const lastAssistantId = lastAssistant?.id
+        ? String(lastAssistant.id)
+        : undefined
+
+      dispatch({ type: "ACTIVATED" })
+      hydrateFromDbIfBehind()
+
+      // 切走再切回：useChat 可能残留 streaming，但 SSE 已断 —— 需重新 resume
+      if (
+        lastAssistant?.streamState === "streaming" &&
+        lastAssistantId &&
+        !wasActive
+      ) {
+        tryScheduleResume(lastAssistantId, status, { allowBusyStatus: true })
+      }
+
+      return () => cancelScheduledStreamResume(resumeScheduleRef.current)
     }
 
     if (initialMessages.length === 0 && storedMessages.length === 0) return
@@ -210,22 +293,14 @@ export function useConversationSession({
       hitlActive: machineRef.current.activeHitl !== null,
       lastAssistantStreamState: lastAssistant?.streamState,
       lastAssistantId,
-      resumeAttemptedFor: machineRef.current.resumeAttemptedFor,
+      resumeAttempts: machineRef.current.resumeAttempts,
     })
 
     if (!willResume || !lastAssistantId) return
 
-    dispatch({ type: "RESUME_ATTEMPTED", assistantId: lastAssistantId })
+    tryScheduleResume(String(lastAssistantId), status)
 
-    chatTransport.setResumeConversationId(convKey)
-
-    const rafId = requestAnimationFrame(() => {
-      if (status !== "ready" && status !== "error") return
-
-      resumeStream()
-    })
-
-    return () => cancelAnimationFrame(rafId)
+    return () => cancelScheduledStreamResume(resumeScheduleRef.current)
 
     // 依赖只列外部输入：machine.* 经 machineRef 读取（非响应式），
     // 以免本 effect 内的 dispatch 触发自重跑、cleanup 取消 resume rAF。
@@ -243,7 +318,26 @@ export function useConversationSession({
     resumeStream,
 
     status,
+
+    tryScheduleResume,
   ])
+
+  const retryResumeIfNeeded = useCallback((): boolean => {
+    if (!convKey) return false
+
+    const cached = queryClient.getQueryData<Message[]>(
+      chatKeys.messages(convKey)
+    )
+    const lastAssistant = cached ? getLastAssistantMessage(cached) : undefined
+    const assistantId = lastAssistant?.id ? String(lastAssistant.id) : undefined
+
+    if (lastAssistant?.streamState !== "streaming" || !assistantId) {
+      return false
+    }
+
+    chatTransport.cancelReconnect()
+    return tryScheduleResume(assistantId, status, { allowBusyStatus: true })
+  }, [convKey, queryClient, status, tryScheduleResume])
 
   useEffect(() => {
     if (!convKey) return
@@ -268,6 +362,12 @@ export function useConversationSession({
       },
 
       onTerminal: (info) => {
+        if (info.status === "no_stream") {
+          retryResumeIfNeeded()
+          scheduleMessagesRefetch()
+          return
+        }
+
         dispatch({ type: "TERMINAL", status: info.status })
 
         const streamState = terminalToStreamState(info.status)
@@ -287,7 +387,7 @@ export function useConversationSession({
         refetchTimerRef.current = null
       }
     }
-  }, [convKey, queryClient, scheduleMessagesRefetch, setMessages])
+  }, [convKey, queryClient, retryResumeIfNeeded, scheduleMessagesRefetch, setMessages])
 
   const onStreamFinish = useCallback(() => {
     if (!convKey) return
@@ -436,5 +536,7 @@ export function useConversationSession({
     onStreamStopped,
 
     prepareOutboundMessage,
+
+    retryResumeIfNeeded,
   }
 }

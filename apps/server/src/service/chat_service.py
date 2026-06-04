@@ -877,15 +877,12 @@ class ChatService:
             stale_msg = db.scalar(stmt)
             if stale_msg:
                 logger.warning(
-                    "[resume] conv=%s stale %s message msg_id=%s, auto-repairing to error",
+                    "[resume] conv=%s stale %s message msg_id=%s, returning no_stream (client may retry)",
                     conversation_id,
                     stale_msg.stream_state,
                     stale_msg.id,
                 )
-                stale_msg.stream_state = "error"
-                stale_msg.content = stale_msg.content or "流已中断，无法恢复"
-                db.commit()
-                yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': 'error', 'error': '流已中断，无法恢复'}}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'no_stream', 'data': {'message': '流尚未就绪，请稍后重试'}}, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
                 return
 

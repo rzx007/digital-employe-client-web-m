@@ -185,6 +185,8 @@ export function useMessagesQuery(conversationId: string | number | null) {
     staleTime: 0,
     /** 切回会话时不用创建会话时写入的空缓存，始终拉最新 DB */
     refetchOnMount: "always",
+    /**  refetch 期间保留上一份消息，避免切走再切回闪成空白 */
+    placeholderData: (previous) => previous,
   })
 }
 

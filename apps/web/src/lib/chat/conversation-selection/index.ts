@@ -16,3 +16,7 @@ export {
   pickNextRecentContactId,
 } from "./pick"
 export { useReconcileConversationSelection } from "./reconcile"
+export {
+  getEmployeeDeepLinkConversationId,
+  isPreservedEmployeeConversationSelection,
+} from "./employee-deep-link"

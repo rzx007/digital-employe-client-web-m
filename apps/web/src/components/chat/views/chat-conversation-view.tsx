@@ -26,6 +26,7 @@ import { useConversationSession } from "@/hooks/use-conversation-session"
 import { prepareDisplayMessages } from "@/lib/chat/hitl"
 
 import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
+import { isBenignStreamAbortError } from "@/lib/chat/stream-abort"
 
 import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
 
@@ -106,6 +107,7 @@ export function ConversationChatView({
   )
 
   const onStreamFinishRef = useRef<() => void>(() => {})
+  const onRetryResumeRef = useRef<() => boolean>(() => false)
 
   const {
     messages,
@@ -131,14 +133,12 @@ export function ConversationChatView({
     },
 
     onError: (chatError) => {
-      // 切换会话/恢复流被中止（AbortError）是良性的，不弹错误吓人。
-      const msg = chatError?.message || ""
-      const isAbort =
-        chatError?.name === "AbortError" ||
-        /abort|aborted|signal is aborted|no response/i.test(msg)
-      if (isAbort) return
+      if (isBenignStreamAbortError(chatError)) {
+        onRetryResumeRef.current()
+        return
+      }
       toast.error("发送失败", {
-        description: msg || "请稍后重试",
+        description: chatError?.message || "请稍后重试",
       })
     },
   })
@@ -166,7 +166,8 @@ export function ConversationChatView({
 
   useEffect(() => {
     onStreamFinishRef.current = session.onStreamFinish
-  }, [session.onStreamFinish])
+    onRetryResumeRef.current = session.retryResumeIfNeeded
+  }, [session.onStreamFinish, session.retryResumeIfNeeded])
 
   const handleStop = useCallback(async () => {
     stop()
@@ -182,13 +183,17 @@ export function ConversationChatView({
     session.onStreamStopped()
   }, [stop, conversationId, session])
 
-  useEffect(() => {
-    return () => {
-      stop()
+  const prevConversationIdRef = useRef(conversationId)
 
+  useEffect(() => {
+    if (prevConversationIdRef.current !== conversationId) {
       chatTransport.cancelReconnect()
+      prevConversationIdRef.current = conversationId
     }
-  }, [stop])
+  }, [conversationId])
+
+  const displayError =
+    error && !isBenignStreamAbortError(error) ? error : undefined
 
   const displayMessages = useMemo(() => {
     const source = pickMessageDisplaySource(messages, initialMessages, status)
@@ -345,7 +350,7 @@ export function ConversationChatView({
       composerMessages={messages}
       inputValue={inputValue}
       status={chatStatus}
-      error={error}
+      error={displayError}
       isDraftMode={false}
       isMessagesLoading={isMessagesLoading}
       isSubmitDisabled={isSubmitDisabled}

@@ -12,14 +12,17 @@ describe("sessionReducer", () => {
     expect(s).toEqual(initialSessionMachine)
   })
 
-  it("HITL approved clears activeHitl + activates, but does NOT clear resume dedupe (only RESUME_RESET does)", () => {
-    let s = sessionReducer({ ...initialSessionMachine, resumeAttemptedFor: "7" }, { type: "INTERRUPTED", hitl })
+  it("HITL approved clears activeHitl + activates, but does NOT clear resume attempts (only RESUME_RESET does)", () => {
+    let s = sessionReducer(
+      { ...initialSessionMachine, resumeAttempts: { "7": 1 } },
+      { type: "INTERRUPTED", hitl }
+    )
     s = sessionReducer(s, { type: "HITL_APPROVED" })
     expect(s.activeHitl).toBeNull()
     expect(s.active).toBe(true)
-    expect(s.resumeAttemptedFor).toBe("7")
+    expect(s.resumeAttempts).toEqual({ "7": 1 })
     s = sessionReducer(s, { type: "RESUME_RESET" })
-    expect(s.resumeAttemptedFor).toBeNull()
+    expect(s.resumeAttempts).toEqual({})
   })
 
   it("terminal cancelled deactivates and forgets hydration", () => {
@@ -33,14 +36,16 @@ describe("sessionReducer", () => {
     expect(sessionReducer(start, { type: "TERMINAL", status: "completed" })).toEqual(start)
   })
 
-  it("resume attempt records assistant id; outbound prepare clears it but keeps hydration", () => {
+  it("resume attempt increments per assistant id; outbound prepare clears attempts but keeps hydration", () => {
     let s = sessionReducer(
       { ...initialSessionMachine, hydratedConvId: "1", lastHydratedSig: "3:42" },
       { type: "RESUME_ATTEMPTED", assistantId: "42" }
     )
-    expect(s.resumeAttemptedFor).toBe("42")
+    expect(s.resumeAttempts).toEqual({ "42": 1 })
+    s = sessionReducer(s, { type: "RESUME_ATTEMPTED", assistantId: "42" })
+    expect(s.resumeAttempts).toEqual({ "42": 2 })
     s = sessionReducer(s, { type: "OUTBOUND_PREPARED" })
-    expect(s.resumeAttemptedFor).toBeNull()
+    expect(s.resumeAttempts).toEqual({})
     expect(s.active).toBe(true)
     expect(s.activeHitl).toBeNull()
     expect(s.hydratedConvId).toBe("1")

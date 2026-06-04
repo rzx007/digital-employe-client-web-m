@@ -316,6 +316,12 @@ def start_task_as_conversation(
         role="user",
         content=task.user_prompt,
         stream_state="completed",
+        # 标记此条 user 消息为"总管自动派单"，供前端区分真人消息并展示邮戳。
+        # 仅用于展示：构建 LLM 历史时只读取 assistant 的 extra_meta，不会污染上下文。
+        extra_meta=json.dumps(
+            {"dispatchedByOrchestrator": True, "sourceTaskId": task.id},
+            ensure_ascii=False,
+        ),
     )
     db.add(user_msg)
 

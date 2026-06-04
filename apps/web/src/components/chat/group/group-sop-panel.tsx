@@ -3,6 +3,7 @@ import * as React from "react"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { createDiceBearAvatar, CURATOR_AVATAR_URL } from "@/lib/avatar"
+import { navigateToEmployeeFromGroup } from "@/lib/chat/group-navigation"
 import { switchToContact } from "@/lib/chat/conversation-selection"
 import type {
   DagNode,
@@ -152,24 +153,35 @@ function NodeCardBody({
 }: {
   node: DagNode
   onOpenArtifact?: (path: string) => void
-  onOpenMember?: (employeeId: number) => void
+  onOpenMember?: (node: DagNode) => void
 }) {
   const meta = STATE_META[node.state] ?? STATE_META.pending
-  const canJump = node.type === "worker" && node.employee_id != null
+  const canJump =
+    node.type === "worker" &&
+    node.employee_id != null &&
+    node.conversation_id != null
+  const canOpenEmployee =
+    node.type === "worker" && node.employee_id != null
   return (
     <>
       <div
         className={cn(
           "min-w-0 flex-1 rounded-xl border px-3 py-2 transition-colors",
           meta.card,
-          canJump && "cursor-pointer hover:border-primary/50 hover:shadow-sm"
+          canOpenEmployee && "cursor-pointer hover:border-primary/50 hover:shadow-sm"
         )}
         onClick={
-          canJump
-            ? () => onOpenMember?.(node.employee_id as number)
+          canOpenEmployee
+            ? () => onOpenMember?.(node)
             : undefined
         }
-        title={canJump ? `查看 ${node.name} 的会话` : undefined}
+        title={
+          canJump
+            ? `查看 ${node.name} 的执行会话`
+            : canOpenEmployee
+              ? `${node.name}（暂无执行会话，将打开员工聊天）`
+              : undefined
+        }
       >
         <div className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">
@@ -188,6 +200,11 @@ function NodeCardBody({
         {node.task ? (
           <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-relaxed text-muted-foreground">
             {node.task}
+          </p>
+        ) : null}
+        {canJump && node.state === "running" ? (
+          <p className="mt-1 text-[10.5px] font-medium text-blue-600">
+            点击查看执行中会话 →
           </p>
         ) : null}
         {node.artifacts.length > 0 ? (
@@ -236,17 +253,37 @@ function NodeCardBody({
 export function GroupSopPanel({
   dag,
   conversationId,
+  groupContactId,
+  memberConversationByEmployeeId,
   className,
 }: {
   dag: GroupRoomDag
   conversationId: string | number
+  groupContactId: string
+  /** @直接派活时成员表上的 conversation_id，DAG 节点缺省时兜底 */
+  memberConversationByEmployeeId?: Map<number, number>
   className?: string
 }) {
   const openResource = useArtifactStore((s) => s.openResource)
-  const onOpenMember = React.useCallback((employeeId: number) => {
-    // 点成员节点 → 跳到该员工的 1:1 会话（带 type 前缀避免串号）
-    switchToContact(`employee:${employeeId}`)
-  }, [])
+  const onOpenMember = React.useCallback(
+    (node: DagNode) => {
+      if (node.type !== "worker" || node.employee_id == null) return
+      const convId =
+        node.conversation_id ??
+        memberConversationByEmployeeId?.get(node.employee_id)
+      if (convId != null) {
+        navigateToEmployeeFromGroup({
+          groupContactId,
+          groupConversationId: conversationId,
+          employeeId: node.employee_id,
+          employeeConversationId: convId,
+        })
+        return
+      }
+      switchToContact(`employee:${node.employee_id}`)
+    },
+    [conversationId, groupContactId, memberConversationByEmployeeId]
+  )
   const onOpenArtifact = React.useCallback(
     (p: string) => {
       // 复用资源管理器面板（专业渲染器 + 预览/源码切换，形式统一）。

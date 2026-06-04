@@ -21,6 +21,7 @@ import type { SlashCommandItem } from "@/components/lexical-editor/slash-command
 import type { MentionCandidate } from "@/components/lexical-editor/mention-plugin"
 import { ChatPanelHeader } from "./chat-panel-header"
 import { CuratorReturnBar } from "../curator/curator-return-bar"
+import { GroupReturnBar } from "../group/group-return-bar"
 import type { PendingMessage } from "@/hooks/use-pending-messages"
 import { ChatStreamingIndicator } from "./chat-streaming-indicator"
 import { MessageLoadingSkeleton } from "./message-loading-skeleton"
@@ -279,6 +280,7 @@ export function ChatPanel({
             />
           )}
           <CuratorReturnBar />
+          <GroupReturnBar />
           <>
             <Conversation className="min-h-0 flex-1 pt-4">
               <ConversationContent className="px-4 pb-4">
