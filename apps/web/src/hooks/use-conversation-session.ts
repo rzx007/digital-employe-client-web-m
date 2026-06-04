@@ -10,7 +10,7 @@
 
  */
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useReducer, useRef } from "react"
 
 import type { QueryClient } from "@tanstack/react-query"
 
@@ -24,13 +24,10 @@ import { refetchRecentContacts, touchRecentContactById } from "@/lib/chat/touch-
 import {
   createApprovedAtTimestamp,
   findPendingHitl,
-  parseDbMessageId,
   patchApprovedAtOnComposerMessages,
   patchApprovedAtOnMessagesCache,
   patchAssistantWithInterruptParts,
   resolveActiveHitl,
-  seedActiveHitlFromMessageParts,
-  type ActiveHitl,
   type HitlPatchOptions,
 } from "@/lib/chat/hitl"
 
@@ -38,6 +35,15 @@ import {
   getLastAssistantMessage,
   patchLastAssistantStreamState,
 } from "@/lib/chat/message-query-cache"
+
+import { terminalToStreamState } from "@/lib/chat/session/terminal-state"
+import { seedActiveHitlFromStoredMessages } from "@/lib/chat/session/seed-active-hitl"
+import {
+  initialSessionMachine,
+  sessionReducer,
+} from "@/lib/chat/session/session-machine"
+import { shouldAttemptResume } from "@/lib/chat/session/resume-decision"
+import { decideHydration } from "@/lib/chat/session/hydrate-decision"
 
 import { chatTransport } from "@/components/chat/shared/chat-view-shared"
 
@@ -51,39 +57,6 @@ import {
 } from "@/lib/chat/pick-message-display-source"
 
 const REFETCH_DEBOUNCE_MS = 800
-
-function terminalToStreamState(status: string): string {
-  if (status === "no_stream") return "error"
-
-  return status
-}
-
-function seedActiveHitlFromStoredMessages(
-  storedMessages: Message[]
-): ActiveHitl | null {
-  for (let i = storedMessages.length - 1; i >= 0; i--) {
-    const row = storedMessages[i]
-
-    if (row.role !== "assistant" || row.streamState !== "interrupted") continue
-
-    if (
-      typeof row.metadata?.approved_at === "string" &&
-      row.metadata.approved_at.length > 0
-    ) {
-      continue
-    }
-
-    const dbId = parseDbMessageId(row.id)
-
-    if (!dbId || !row.messageParts?.length) continue
-
-    const seeded = seedActiveHitlFromMessageParts(dbId, row.messageParts)
-
-    if (seeded) return seeded
-  }
-
-  return null
-}
 
 export function useConversationSession({
   conversationId,
@@ -123,49 +96,40 @@ export function useConversationSession({
 
   queryClient: QueryClient
 }) {
-  const [activeHitl, setActiveHitl] = useState<ActiveHitl | null>(null)
+  const [machine, dispatch] = useReducer(sessionReducer, initialSessionMachine)
 
   const pendingHitl = findPendingHitl(composerMessages)
 
-  const hitlInterrupted = activeHitl !== null
-
-  const resumeAttemptedForRef = useRef<string | null>(null)
-
-  const activeSessionRef = useRef<boolean>(false)
-
-  const hydratedConvIdRef = useRef<string | null>(null)
-
-  const hitlActiveRef = useRef(false)
+  const hitlInterrupted = machine.activeHitl !== null
 
   const prevConversationIdRef = useRef(conversationId)
-
-  const lastHydratedSigRef = useRef<string>("")
 
   const composerMessagesRef = useRef(composerMessages)
 
   composerMessagesRef.current = composerMessages
+
+  /**
+   * 非响应式镜像：effect 内读 machine 走 ref，避免本 effect 内的 dispatch
+   * （RESUME_ATTEMPTED / HYDRATED 等会改 machine 簿记字段）把自己重跑、
+   * 进而 cleanup 取消掉刚调度的 resume rAF。machine 仍是唯一真相源（reducer），
+   * 仅 effect 的「读取」走 ref —— 复刻重构前 ref 簿记的非响应式语义。
+   */
+  const machineRef = useRef(machine)
+
+  // latest-value ref（与上方 composerMessagesRef 同模式）：render 期同步赋值以保证
+  // effect 内读到最新 machine；这是有意为之的非响应式读取。
+  // eslint-disable-next-line react-hooks/refs
+  machineRef.current = machine
 
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const convKey = conversationId != null ? String(conversationId) : null
 
   useEffect(() => {
-    hitlActiveRef.current = hitlInterrupted || activeHitl !== null
-  }, [hitlInterrupted, activeHitl])
-
-  useEffect(() => {
     if (prevConversationIdRef.current !== conversationId) {
-      resumeAttemptedForRef.current = null
-
       prevConversationIdRef.current = conversationId
 
-      hydratedConvIdRef.current = null
-
-      lastHydratedSigRef.current = ""
-
-      activeSessionRef.current = false
-
-      setActiveHitl(null)
+      dispatch({ type: "CONVERSATION_SWITCHED" })
 
       if (convKey) {
         void queryClient.invalidateQueries({
@@ -176,11 +140,12 @@ export function useConversationSession({
   }, [conversationId, convKey, queryClient])
 
   useEffect(() => {
-    if (!convKey || activeSessionRef.current) return
+    if (!convKey || machineRef.current.active) return
 
-    const seeded = seedActiveHitlFromStoredMessages(storedMessages)
-
-    setActiveHitl(seeded)
+    dispatch({
+      type: "SEED_HITL",
+      hitl: seedActiveHitlFromStoredMessages(storedMessages),
+    })
   }, [convKey, storedMessages])
 
   const scheduleMessagesRefetch = useCallback(() => {
@@ -199,15 +164,11 @@ export function useConversationSession({
     }, REFETCH_DEBOUNCE_MS)
   }, [convKey, queryClient])
 
-  const resetResumeAttempt = useCallback(() => {
-    resumeAttemptedForRef.current = null
-  }, [])
-
   useEffect(() => {
     if (!convKey) return
 
     if (status === "streaming" || status === "submitted") {
-      activeSessionRef.current = true
+      dispatch({ type: "ACTIVATED" })
 
       return
     }
@@ -219,41 +180,42 @@ export function useConversationSession({
       composerMessagesRef.current,
       initialMessages
     )
-    const alreadySynced =
-      hydratedConvIdRef.current === convKey &&
-      lastHydratedSigRef.current === sig &&
-      !needsHydrate
 
-    if (!alreadySynced) {
-      const blockedByActiveSession =
-        activeSessionRef.current &&
-        hydratedConvIdRef.current === convKey &&
-        !needsHydrate
+    const decision = decideHydration({
+      convKey,
+      sig,
+      needsHydrate,
+      active: machineRef.current.active,
+      hydratedConvId: machineRef.current.hydratedConvId,
+      lastHydratedSig: machineRef.current.lastHydratedSig,
+    })
 
-      if (!blockedByActiveSession) {
-        if (activeSessionRef.current && needsHydrate) {
-          const patched = patchComposerFromStoredWhenSameTurn(
-            composerMessagesRef.current,
-            initialMessages
-          )
-          setMessages(patched ?? initialMessages)
-        } else {
-          setMessages(initialMessages)
-        }
-        lastHydratedSigRef.current = sig
-        hydratedConvIdRef.current = convKey
-      }
+    if (decision.action === "patch") {
+      setMessages(
+        patchComposerFromStoredWhenSameTurn(
+          composerMessagesRef.current,
+          initialMessages
+        ) ?? initialMessages
+      )
+      dispatch({ type: "HYDRATED", convKey, sig })
+    } else if (decision.action === "replace") {
+      setMessages(initialMessages)
+      dispatch({ type: "HYDRATED", convKey, sig })
     }
 
-    if (hitlActiveRef.current) return
-
     const lastAssistant = getLastAssistantMessage(storedMessages)
+    const lastAssistantId = lastAssistant?.id
 
-    if (lastAssistant?.streamState !== "streaming") return
+    const willResume = shouldAttemptResume({
+      hitlActive: machineRef.current.activeHitl !== null,
+      lastAssistantStreamState: lastAssistant?.streamState,
+      lastAssistantId,
+      resumeAttemptedFor: machineRef.current.resumeAttemptedFor,
+    })
 
-    if (resumeAttemptedForRef.current === lastAssistant.id) return
+    if (!willResume || !lastAssistantId) return
 
-    resumeAttemptedForRef.current = lastAssistant.id
+    dispatch({ type: "RESUME_ATTEMPTED", assistantId: lastAssistantId })
 
     chatTransport.setResumeConversationId(convKey)
 
@@ -265,6 +227,8 @@ export function useConversationSession({
 
     return () => cancelAnimationFrame(rafId)
 
+    // 依赖只列外部输入：machine.* 经 machineRef 读取（非响应式），
+    // 以免本 effect 内的 dispatch 触发自重跑、cleanup 取消 resume rAF。
   }, [
     convKey,
 
@@ -295,7 +259,7 @@ export function useConversationSession({
 
           const hitl = resolveActiveHitl(payload, next)
 
-          if (hitl) setActiveHitl(hitl)
+          dispatch({ type: "INTERRUPTED", hitl })
 
           return next
         })
@@ -304,10 +268,7 @@ export function useConversationSession({
       },
 
       onTerminal: (info) => {
-        if (info.status === "cancelled") {
-          activeSessionRef.current = false
-          hydratedConvIdRef.current = null
-        }
+        dispatch({ type: "TERMINAL", status: info.status })
 
         const streamState = terminalToStreamState(info.status)
 
@@ -353,8 +314,7 @@ export function useConversationSession({
   const onStreamStopped = useCallback(() => {
     if (!convKey) return
 
-    activeSessionRef.current = false
-    hydratedConvIdRef.current = null
+    dispatch({ type: "STREAM_STOPPED" })
 
     patchLastAssistantStreamState(queryClient, convKey, "cancelled")
 
@@ -370,13 +330,11 @@ export function useConversationSession({
     async (options?: HitlPatchOptions) => {
       if (!convKey) return
 
-      activeSessionRef.current = true
-
       const approvedMessageId =
-        options?.approvedMessageId ?? activeHitl?.dbMessageId ?? null
+        options?.approvedMessageId ?? machine.activeHitl?.dbMessageId ?? null
 
       const toolCallId =
-        options?.toolCallId ?? activeHitl?.toolCallId ?? undefined
+        options?.toolCallId ?? machine.activeHitl?.toolCallId ?? undefined
 
       if (approvedMessageId != null) {
         const approvedAt = createApprovedAtTimestamp()
@@ -402,11 +360,9 @@ export function useConversationSession({
             toolCallId
           )
         )
-
-        hitlActiveRef.current = false
       }
 
-      setActiveHitl(null)
+      dispatch({ type: "HITL_APPROVED" })
 
       scheduleMessagesRefetch()
 
@@ -432,7 +388,11 @@ export function useConversationSession({
         })
       }
 
-      resumeAttemptedForRef.current = null
+      dispatch({ type: "RESUME_RESET" })
+
+      // 封存中断消息里的 HITL toolCallId：resume 时 deepagents 会重放该 AIMessage+ToolMessage，
+      // 跳过其重发以免合并气泡内工具块重复（见 resume-seal 测试与 langchain-stream-parser）。
+      chatTransport.setResumeSealedToolCallIds(toolCallId ? [toolCallId] : [])
 
       chatTransport.setResumeConversationId(convKey)
 
@@ -442,7 +402,7 @@ export function useConversationSession({
     },
 
     [
-      activeHitl,
+      machine.activeHitl,
 
       convKey,
 
@@ -457,19 +417,15 @@ export function useConversationSession({
   )
 
   const prepareOutboundMessage = useCallback(() => {
-    activeSessionRef.current = true
-
-    setActiveHitl(null)
-
-    resetResumeAttempt()
-  }, [resetResumeAttempt])
+    dispatch({ type: "OUTBOUND_PREPARED" })
+  }, [])
 
   return {
-    activeHitl,
+    activeHitl: machine.activeHitl,
 
     /** POST /approve 用 DB message_id（= activeHitl.dbMessageId） */
 
-    hitlMessageId: activeHitl?.dbMessageId ?? null,
+    hitlMessageId: machine.activeHitl?.dbMessageId ?? null,
 
     hitlInterrupted,
 

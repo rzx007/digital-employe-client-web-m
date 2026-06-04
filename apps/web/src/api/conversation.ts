@@ -1,4 +1,5 @@
 import { request } from "@/lib/request"
+import type { DbMessageId } from "@/lib/chat/hitl/message-id"
 import type {
   ApiResponse,
   ChatMessageDto,
@@ -292,7 +293,7 @@ export type HitlDecision =
 
 export async function approveHitl(
   conversationId: number | string,
-  messageId: number | string,
+  messageId: DbMessageId,
   decisions: HitlDecision[],
   options?: {
     destructive_hitl?: { skip_for_conversation?: boolean }

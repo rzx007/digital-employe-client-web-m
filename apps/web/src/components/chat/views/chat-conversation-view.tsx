@@ -253,8 +253,12 @@ export function ConversationChatView({
             },
           }
         )
-      } catch {
-        // toast.error("发送失败!", { description: sendError instanceof Error ? sendError.message : "请稍后重试" })
+      } catch (sendError) {
+        // 用户可见的失败提示由 useChat 的 onError 统一负责（避免重复弹窗）；
+        // 这里仅保证发送前/同步抛出的错误不被静默吞掉，便于诊断。
+        if (import.meta.env.DEV) {
+          console.error("[chat] doSend failed:", sendError)
+        }
       }
     },
 

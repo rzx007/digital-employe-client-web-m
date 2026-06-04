@@ -1,4 +1,5 @@
 import type { ToolUiActionOutbound } from "./tool-ui-action"
+import { parseJsonObject } from "./parse-utils"
 
 export interface PlanTaskPreview {
   task_id?: number
@@ -16,19 +17,6 @@ export interface PlanGeneratedOutput {
   total_tasks?: number
   requires_confirmation?: boolean
   tasks?: PlanTaskPreview[]
-}
-
-function parseJsonObject(text: string): Record<string, unknown> | null {
-  const trimmed = text.trim()
-  if (!trimmed.startsWith("{")) return null
-  try {
-    const parsed: unknown = JSON.parse(trimmed)
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null
-  } catch {
-    return null
-  }
 }
 
 function isPlanTaskPreview(value: unknown): value is PlanTaskPreview {
@@ -85,16 +73,15 @@ export function buildPlanManualConfirmAgentFeedback(
 }
 
 /** @deprecated 使用 buildPlanManualConfirmAgentFeedback */
-export const buildPlanManualConfirmFeedback = buildPlanManualConfirmAgentFeedback
+export const buildPlanManualConfirmFeedback =
+  buildPlanManualConfirmAgentFeedback
 
 export function buildPlanManualConfirmDisplayText(
   planId: number,
   summary?: string
 ) {
   const s = summary?.trim()
-  return s
-    ? `已确认执行编排计划「${s}」`
-    : `已确认执行编排计划 #${planId}`
+  return s ? `已确认执行编排计划「${s}」` : `已确认执行编排计划 #${planId}`
 }
 
 export function buildPlanManualConfirmOutbound(

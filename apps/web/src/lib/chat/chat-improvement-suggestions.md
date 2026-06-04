@@ -124,21 +124,41 @@ HITL 生命周期判断被拆在：`hitl/constants.ts`（工具集合）、`hitl
 
 ## 四、改进建议（按优先级 + 风险/收益）
 
-### P0 · 止血（低风险、立即可做）
+### P0 · 止血（低风险、立即可做）—— ✅ 已完成
 
-| # | 动作 | 收益 | 文件 |
-|---|------|------|------|
-| P0-1 | **删除死代码** `use-chat-stream.ts` + `sse-parts-builder.ts`（或显式标注用途/迁出）。先 `grep` 确认无引用 | 消除"改了不生效"、砍掉一份重复 SSE 逻辑 | hooks/use-chat-stream.ts, lib/chat/sse-parts-builder.ts |
-| P0-2 | `mapStoredMessagesToUIMessages` 给 `messageParts` 加 **try/catch + 回退 content** | 杜绝坏数据崩溃整个会话 | message-utils.ts |
-| P0-3 | `doSend` 的空 `catch` 补回**用户可见错误反馈**（统一走 toast） | "点了没反应"变可诊断 | chat-conversation-view.tsx:256 |
-| P0-4 | 用 **branded type** 区分 `DbMessageId` 与 `ComposerMessageId`，`/approve` 只接受 `DbMessageId` | 编译期挡掉 id 混用 | types/chat.ts, hitl/message-id.ts |
+| # | 动作 | 收益 | 文件 | 状态 |
+|---|------|------|------|------|
+| P0-1 | **删除死代码** `use-chat-stream.ts` + `sse-parts-builder.ts`（已 `grep` 确认零引用、无 barrel/测试引用） | 消除"改了不生效"、砍掉一份重复 SSE 逻辑 | hooks/use-chat-stream.ts, lib/chat/sse-parts-builder.ts | ✅ 已删除 |
+| P0-2 | `mapStoredMessagesToUIMessages` 增加 `sanitizeStoredParts` 校验，损坏的 `messageParts` 回退 content | 杜绝坏数据崩溃整个会话 | message-utils.ts | ✅ |
+| P0-3 | `doSend` 的空 `catch` 改为 DEV 日志（用户提示仍由 `useChat.onError` 统一负责，避免重复弹窗） | 错误不再被静默吞掉、可诊断 | chat-conversation-view.tsx | ✅ |
+| P0-4 | 新增 branded `DbMessageId` 类型，`parseDbMessageId`/`isValidApproveMessageId` 产出该类型，`ActiveHitl.dbMessageId`、`HitlPatchOptions.approvedMessageId`、`approveHitl()` 均收紧为 `DbMessageId` | 编译期挡掉把 composer id 误传给 `/approve` | hitl/message-id.ts, hitl/active-hitl.ts, hitl/pending.ts, api/conversation.ts | ✅ |
+
+> 验证：`tsc --noEmit` 通过；`vitest run` 71 例中仅 1 例 `resolve-workbench-curator-panel.test.ts` 失败，经 stash 比对确认为**改动前已存在**的无关失败；eslint 改动文件零告警。
+
+> **校准（基于当前代码复核）**：分析初稿提到的「interrupt parts 双写 → 靠展示层 `dedupeHitlParts` 去重」在当前代码中**已基本解决**——`langchain-chat-transport.ts` 的 interrupted 分支已加 `hasAuthoritativeParts` 守卫：有落库 `message_parts` 时不再灌 HITL chunks（由 session 的 `patchAssistantWithInterruptParts` 整体替换），无 parts 时也用 `skipToolCallIds` 去重。因此 `dedupeDuplicatePendingHitlParts` 现为 defense-in-depth，P1 不再以「消双写」为切入点。
 
 ### P1 · 收敛状态（中风险、最高收益，直击根因）
+
+**已完成的增量：HITL 判定逻辑去重（P1-3 第一刀）** ✅
+- 发现并消除两处真实重复：`getResolvedHitlToolCallIds`（`pending.ts` 与 `parts-dedupe.ts` 各一份）、`kindFromToolType`/`kindFromPartType`（`pending.ts` 与 `active-hitl.ts` 各一份「tool 类型→HITL kind」映射）。
+- 收敛为单一来源：新增 `hitl/kind.ts`（`hitlKindFromToolType` + `PendingHitlKind`）、`hitl/part-utils.ts` 增 `getResolvedHitlToolCallIds`；`pending.ts`/`active-hitl.ts`/`parts-dedupe.ts` 改为引用。
+- 行为逐字保持，新增 `hitl/kind.test.ts`；`tsc` 通过、`vitest` 73 过（唯一失败为预先存在的无关 workbench 用例）、eslint 零告警。
+
 
 **P1-1 单一 streamState 真相源**
 以 DB `Message.streamState` 为唯一权威，`composer.metadata.streamState` 仅作镜像；提供**一个 selector** 派生 UI 所需状态，禁止业务代码各自 patch 多处。消除 R1 的手动多点同步。
 
-**P1-2 会话 FSM 显式化**（替换 R3 的 6 个 ref）
+**P1-2 会话 FSM 显式化（替换 R3 的 6 个 ref）** ✅ 已完成
+- 计划：`docs/superpowers/plans/2026-06-03-conversation-session-fsm.md`（经两轮 plan-document-reviewer 评审通过）。
+- 落地：6 个 ref（`activeSessionRef`/`hydratedConvIdRef`/`lastHydratedSigRef`/`resumeAttemptedForRef`/`hitlActiveRef` + `useState activeHitl`）收敛为单一 `useReducer(sessionReducer, …)`；hydrate/resume 的纠缠条件抽成纯函数。
+- 新增纯模块（全部带测试，独立可测）：`lib/chat/session/session-machine.ts`（reducer + `SessionEvent`）、`resume-decision.ts`（`shouldAttemptResume`）、`hydrate-decision.ts`（`decideHydration`）、`terminal-state.ts`、`seed-active-hitl.ts`。
+- **行为逐字保持**，公共 API 不变（三视图 conversation/draft/curator 未改）；经 spec + 代码质量两阶段评审确认无回归。验证：`tsc` 通过、`vitest` 93 过（唯一失败为预存在无关 workbench 用例）、hook 无新增 lint。
+- 关键防回归点（评审捕获并锁定）：`HITL_APPROVED` 不清 `resumeAttemptedFor`（仅 `RESUME_RESET` 在 `resumed===false` 早返回之后清）；流式中 `ACTIVATED` 早返回不跑 hydrate；`INTERRUPTED` 的 hitl 用 patched 后的消息解析。
+- ⚠️ **未自动覆盖**：6 项运行时时序场景（resume×HITL、切会话、断流重连等）只能靠手动冒烟（计划 Task 6 Step 5），本次未执行交互式验证，建议上线前手动走查。
+- 后续可选：`dedupeDuplicatePendingHitlParts` 在双写已修 + FSM 收敛后是否可降级，待手动冒烟确认后单独评估。
+
+<details><summary>原始设计草案（已实现，保留备查）</summary>
+
 把 `useConversationSession` 的隐式状态机改为显式状态枚举 + reducer：
 
 ```ts
@@ -153,6 +173,8 @@ type SessionState =
 
 转换集中在一个 `reducer`，effect 只负责"派发事件"而非"读写 ref 做决策"。可用 `useReducer`，复杂度再高可引入轻量 FSM（如 XState）。**这是消除偶现竞态的关键一步。**
 
+</details>
+
 **P1-3 HITL 统一状态模块**
 新建 `hitl/hitl-state.ts`，把 `findPendingHitl` / `resolveActiveHitl` / 拒绝判定 / approved 判定收敛为一组纯函数 + 单一类型，对外暴露 `getHitlState(messages): HitlState`。新增 HITL 工具时只改 `constants.ts` 一处。
 
@@ -161,13 +183,20 @@ type SessionState =
 | # | 动作 | 文件 |
 |---|------|------|
 | P2-1 | `flushEvent` 改**表驱动**：`Record<eventType, handler>`，把 `interrupted` 合并成单一路径，统一收尾（`closeTextPhase` + `finish`） | langchain-chat-transport.ts |
-| P2-2 | 抽 `lib/chat/parse-utils.ts`（`parseJsonObject` / `asNumber`），各 `*-payload.ts` 复用 | tools/handlers/*, *-payload.ts |
+| P2-2 ✅ | 已抽 `lib/chat/parse-utils.ts`（`parseJsonObject` / `asNumber`）+ 测试；6 个 `*-payload.ts` 改为引用（去重 5+5 份） | *-payload.ts |
 | P2-3 | 分类器多趟 collapse 合并为单趟 pipeline，或在文件头**显式声明 pass 顺序契约** | message-classifier.ts |
 | P2-4 | `block-render-map` 默认分支改 **exhaustive check**（`never` 兜底），显式区分 `final-response` 与未知 kind | block-render-map.tsx |
 
-### P3 · 质量保障
+### P3 · 质量保障 —— 🟡 进行中
 
-时序类 bug 单测难覆盖，建议补**关键路径集成测试**（已有 Vitest 配置）：
+**已完成**：
+- 加测试基建 `@testing-library/react` + `happy-dom`（vitest `include` 扩到 `.tsx`，按文件 `// @vitest-environment happy-dom`）。
+- `hooks/use-conversation-session.test.tsx`：renderHook 集成测试，覆盖「切回/进入 streaming 会话 → resumeStream 恰好一次」——**自动化了此前只能人肉冒烟发现的 P1-2 rAF 自取消回归**，以及 completed/本地 streaming 不 resume。
+- `langchain-stream-parser-resume-seal.test.ts`：用**真实 resume SSE 抓包**回归"审批后工具块重复"（含基线证明重放）。
+
+> 顺带修复（源于本节调查）：**审批后 resume 工具块/文本重复** —— deepagents `HumanInTheLoopMiddleware.after_model` 在 resume 头部重放触发中断的 AIMessage+ToolMessage，其 toolCallId 已封存在 msg_A，前端合并 msg_A+msg_B 致重复。修复 A（parser `sealedToolCallIds` 跳过重放）+ B（`dedupeToolPartsByToolCallId` 按 toolCallId 兜底去重）。
+
+**待补**（剩余关键路径集成测试）：
 
 1. resume × HITL 交叉：流式中断 → 审批 → resume 续流，断言不重复 resume、不丢 chunk；
 2. 切会话竞态：streaming 中切走再切回，断言不被 hydrate 覆盖；

@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest"
 import type { UIMessage } from "ai"
 
 import { resolveHitlApproveMessageId } from "./approve-message-id"
-import { HITL_APPROVE_MESSAGE_ID_META_KEY } from "./message-id"
+import {
+  HITL_APPROVE_MESSAGE_ID_META_KEY,
+  type DbMessageId,
+} from "./message-id"
 
 describe("resolveHitlApproveMessageId", () => {
   it("reads approveMessageId from merged assistant metadata", () => {
@@ -33,7 +36,7 @@ describe("resolveHitlApproveMessageId", () => {
 
     expect(
       resolveHitlApproveMessageId(message, {
-        dbMessageId: "99",
+        dbMessageId: "99" as DbMessageId,
         toolCallId: "call_abc",
         kind: "destructive-delete",
       })

@@ -179,7 +179,8 @@ sequenceDiagram
 
 ## 六、`useConversationSession` 同步规则
 
-实现：`apps/web/src/hooks/use-conversation-session.ts`  
+实现：`apps/web/src/hooks/use-conversation-session.ts`（自 P1-2 起为薄适配层：`useReducer(sessionReducer)` + 纯决策函数，effect 只派发事件）。  
+纯决策/状态：`apps/web/src/lib/chat/session/`（`session-machine.ts` reducer、`hydrate-decision.ts`、`resume-decision.ts`、`seed-active-hitl.ts`、`terminal-state.ts`，均带单测）。  
 查询：`apps/web/src/hooks/use-chat-queries.ts`（`useMessagesQuery`：`staleTime 30s`，`refetchOnMount: "always"`）。
 
 | 时机 | 行为 |
@@ -194,11 +195,11 @@ sequenceDiagram
 
 ### 6.1 流结束 refetch
 
-`completed` 与其它终态均在 `onTerminal` / `onStreamFinish` 后 **800ms debounce** 合并为一次 `GET /messages`，对齐 DB 与 Query cache。同会话内 **`activeSessionRef`** 阻止 `ready` 时用 `initialMessages` 覆盖 composer（SSE 累积的 parts 仍为准）。`onHitlApproved` 单独 schedule refetch，供 resume 后 cache 含新 assistant 行。
+`completed` 与其它终态均在 `onTerminal` / `onStreamFinish` 后 **800ms debounce** 合并为一次 `GET /messages`，对齐 DB 与 Query cache。同会话内 **`machine.active`**（旧 `activeSessionRef`）阻止 `ready` 时用 `initialMessages` 覆盖 composer（SSE 累积的 parts 仍为准）；该闸门现由 `decideHydration` 纯函数判定。`onHitlApproved` 单独 schedule refetch，供 resume 后 cache 含新 assistant 行。
 
 ### 6.2 界面「闪一下」
 
-refetch → `storedMessages` 更新 → 若未持 `activeSessionRef` 可能 hydrate 整表替换 composer；持锁时仅 cache 更新。HITL Dock 收起靠 approve **乐观 `approved_at`**（`hitl/approve-optimistic.ts`）。
+refetch → `storedMessages` 更新 → 若未持 `machine.active`（`decideHydration` 返回 `replace`）可能 hydrate 整表替换 composer；持锁时（返回 `none`/`patch`）仅 cache 更新或同轮补丁。HITL Dock 收起靠 approve **乐观 `approved_at`**（`hitl/approve-optimistic.ts`）。
 
 ---
 

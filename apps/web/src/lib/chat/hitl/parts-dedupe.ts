@@ -1,23 +1,10 @@
 import type { UIMessage } from "ai"
 
 import { HITL_TOOL_TYPES } from "./constants"
-import { toolPartHasFinalOutput } from "./part-utils"
-
-function getResolvedHitlToolCallIds(parts: UIMessage["parts"]): Set<string> {
-  const resolved = new Set<string>()
-  for (const part of parts) {
-    if (!HITL_TOOL_TYPES.has(part.type)) continue
-    if (!toolPartHasFinalOutput(part as { state?: string; output?: unknown })) {
-      continue
-    }
-    const toolCallId =
-      "toolCallId" in part && typeof part.toolCallId === "string"
-        ? part.toolCallId
-        : ""
-    if (toolCallId) resolved.add(toolCallId)
-  }
-  return resolved
-}
+import {
+  getResolvedHitlToolCallIds,
+  toolPartHasFinalOutput,
+} from "./part-utils"
 
 /** 同一条 assistant 消息内，已有 output 的 toolCallId 对应的 pending part 视为陈旧副本 */
 function isStalePendingHitlPart(
@@ -90,6 +77,50 @@ function dedupeDuplicatePendingHitlParts(
   return parts.filter((_, i) => !drop.has(i))
 }
 
+function toolPartToolCallId(part: UIMessage["parts"][number]): string {
+  if (typeof part.type !== "string" || !part.type.startsWith("tool-")) return ""
+  return "toolCallId" in part && typeof part.toolCallId === "string"
+    ? part.toolCallId
+    : ""
+}
+
+/**
+ * 防御层：同一 toolCallId 的工具块只保留一份（优先有最终 output 的，否则最后一个）。
+ * 不依赖 HITL 类型与 pending/resolved 对齐，兜住 resume 重放在 msg_A/msg_B 间产生的
+ * 残余重复（主修在源头：langchain-stream-parser 的 sealedToolCallIds）。
+ */
+function dedupeToolPartsByToolCallId(
+  parts: UIMessage["parts"]
+): UIMessage["parts"] {
+  const indicesById = new Map<string, number[]>()
+  for (let i = 0; i < parts.length; i++) {
+    const id = toolPartToolCallId(parts[i])
+    if (!id) continue
+    const list = indicesById.get(id) ?? []
+    list.push(i)
+    indicesById.set(id, list)
+  }
+
+  const drop = new Set<number>()
+  for (const indices of indicesById.values()) {
+    if (indices.length <= 1) continue
+    let keep = indices[indices.length - 1]
+    for (const idx of indices) {
+      if (
+        toolPartHasFinalOutput(parts[idx] as { state?: string; output?: unknown })
+      ) {
+        keep = idx
+      }
+    }
+    for (const idx of indices) {
+      if (idx !== keep) drop.add(idx)
+    }
+  }
+
+  if (drop.size === 0) return parts
+  return parts.filter((_, i) => !drop.has(i))
+}
+
 function normalizeTextForDedupe(text: string): string {
   return text.trim().replace(/\s+/g, " ")
 }
@@ -133,8 +164,8 @@ export function normalizeAssistantMessageParts(
       : parts.filter(
           (part) => !isStalePendingHitlPart(part, resolvedToolCallIds)
         )
-  return dedupeDuplicateTextParts(
-    dedupeDuplicatePendingHitlParts(withoutStale)
+  return dedupeToolPartsByToolCallId(
+    dedupeDuplicateTextParts(dedupeDuplicatePendingHitlParts(withoutStale))
   )
 }
 

@@ -1,4 +1,5 @@
 import { isToolOutputPending } from "./tool-output-pending"
+import { asNumber, parseJsonObject } from "./parse-utils"
 
 export interface TasksDeletedSucceededItem {
   index: number
@@ -22,31 +23,7 @@ export interface TasksDeletedPayload {
   message?: string
 }
 
-function parseJsonObject(text: string): Record<string, unknown> | null {
-  const trimmed = text.trim()
-  if (!trimmed.startsWith("{")) return null
-  try {
-    const parsed: unknown = JSON.parse(trimmed)
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null
-  } catch {
-    return null
-  }
-}
-
-function asNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value
-  if (typeof value === "string" && value.trim()) {
-    const n = Number(value)
-    return Number.isFinite(n) ? n : null
-  }
-  return null
-}
-
-function normalizeSucceeded(
-  raw: unknown
-): TasksDeletedSucceededItem | null {
+function normalizeSucceeded(raw: unknown): TasksDeletedSucceededItem | null {
   if (!raw || typeof raw !== "object") return null
   const item = raw as Record<string, unknown>
   const taskId = asNumber(item.task_id)
@@ -143,7 +120,12 @@ export function resolveTasksDeletedBlockKind(
   if (toolName !== "delete_tasks_batch") return null
   const payload = parseTasksDeletedPayload(resultText)
   if (
-    shouldRenderTasksDeletedBlock(state, resultText, payload != null, preliminary)
+    shouldRenderTasksDeletedBlock(
+      state,
+      resultText,
+      payload != null,
+      preliminary
+    )
   ) {
     return "tasks-deleted"
   }

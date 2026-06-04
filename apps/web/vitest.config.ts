@@ -9,6 +9,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/**/*.test.ts"],
+    // .tsx 用于需要 React 渲染的 hook/集成测试（按文件用 `// @vitest-environment happy-dom`）
+    include: ["src/**/*.test.{ts,tsx}"],
   },
 })

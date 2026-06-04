@@ -42,6 +42,21 @@ export function getCopyableMessageText(
   return getTextFromUIMessage(message).trim()
 }
 
+/**
+ * 历史数据里的 message_parts 可能损坏（非数组 / part 缺 type）。
+ * 校验失败时返回 null，让调用方安全回退到 content，避免把坏数据塞进渲染导致整屏崩溃。
+ */
+function sanitizeStoredParts(raw: unknown): UIMessage["parts"] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null
+  const allValid = raw.every(
+    (part) =>
+      part != null &&
+      typeof part === "object" &&
+      typeof (part as { type?: unknown }).type === "string"
+  )
+  return allValid ? (raw as UIMessage["parts"]) : null
+}
+
 export function mapStoredMessagesToUIMessages(
   messages: Message[]
 ): UIMessage[] {
@@ -69,12 +84,12 @@ export function mapStoredMessagesToUIMessages(
         ) {
           assistantMeta[HITL_APPROVE_MESSAGE_ID_META_KEY] = dbId
         }
-        if (message.messageParts && message.messageParts.length > 0) {
-          const parts = message.messageParts as UIMessage["parts"]
+        const storedParts = sanitizeStoredParts(message.messageParts)
+        if (storedParts) {
           const uiMessage: UIMessage = {
             id: message.id,
             role: message.role,
-            parts,
+            parts: storedParts,
           }
           ;(
             uiMessage as UIMessage & { metadata?: Record<string, unknown> }
