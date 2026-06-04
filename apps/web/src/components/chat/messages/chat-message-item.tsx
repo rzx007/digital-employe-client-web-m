@@ -1,5 +1,6 @@
 import * as React from "react"
 import type { UIMessage } from "ai"
+import { IconClipboardList } from "@tabler/icons-react"
 import {
   Message,
   MessageContent,
@@ -72,6 +73,40 @@ function ChatMessageItemInner({
   const hitlApproveMessageId = React.useMemo(
     () => resolveHitlApproveMessageId(message, activeHitl),
     [message, activeHitl]
+  )
+
+  // 总管自动派单的首条 user 消息：后端在 extra_meta 写入了标记，用邮戳与真人消息区分。
+  const isDispatchedByOrchestrator =
+    message.role === "user" &&
+    Boolean(
+      (message as { metadata?: Record<string, unknown> }).metadata
+        ?.dispatchedByOrchestrator
+    )
+
+  const messageBody = (
+    <div className="space-y-1.5">
+      {classifiedBlocks.length > 0 ? (
+        classifiedBlocks.map((block) => (
+          <BlockRenderer
+            key={block.key}
+            block={block}
+            ctx={{
+              messageId: hitlApproveMessageId,
+              conversationId,
+              toolAutoCollapseMap,
+              isLastAssistantMessage,
+              isTurnEnded,
+              onHitlApproved,
+              commandMeta: commandMeta ?? {},
+              mentionMeta,
+              filesMeta,
+            }}
+          />
+        ))
+      ) : (
+        <MessageResponse />
+      )}
+    </div>
   )
 
   return (
@@ -156,31 +191,16 @@ function ChatMessageItemInner({
           </span>
         </div>
       )}
-      <MessageContent className="w-auto">
-        <div className="space-y-1.5">
-          {classifiedBlocks.length > 0 ? (
-            classifiedBlocks.map((block) => (
-              <BlockRenderer
-                key={block.key}
-                block={block}
-                ctx={{
-                  messageId: hitlApproveMessageId,
-                  conversationId,
-                  toolAutoCollapseMap,
-                  isLastAssistantMessage,
-                  isTurnEnded,
-                  onHitlApproved,
-                  commandMeta: commandMeta ?? {},
-                  mentionMeta,
-                  filesMeta,
-                }}
-              />
-            ))
-          ) : (
-            <MessageResponse />
-          )}
+      {isDispatchedByOrchestrator && (
+        <div
+          className="ml-auto flex w-fit items-center gap-1 text-[11px] font-medium text-amber-600/90 dark:text-amber-400/90"
+          title="总管自动派单消息（非真人发送）"
+        >
+          <IconClipboardList className="size-3" />
+          总管派单
         </div>
-      </MessageContent>
+      )}
+      <MessageContent className="w-auto">{messageBody}</MessageContent>
       {message.role === "assistant" ? (
         <MessageAssistantActions
           copyText={copyText}

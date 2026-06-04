@@ -55,20 +55,15 @@ function StreamingActivityBadge({ item }: { item: RecentConversationItem }) {
 }
 
 function PinnedIndicator({
-  item,
-  selectedContactId,
+  isSelected,
 }: {
-  item: RecentConversationItem
-  selectedContactId: string | null
+  isSelected: boolean
 }) {
-  if (!item.isPinned) return null
   return (
     <IconPin
       className={cn(
         "size-3.5 shrink-0",
-        selectedContactId === item.contactId
-          ? "text-primary-foreground/70"
-          : "text-muted-foreground"
+        isSelected ? "text-primary-foreground/90" : "text-muted-foreground"
       )}
     />
   )
@@ -119,7 +114,6 @@ function RecentConversationContextMenu({
 interface RecentConversationRowProps {
   item: RecentConversationItem
   collapsed?: boolean
-  selectedContactId: string | null
   isSelected: boolean
   onSelect: (item: RecentConversationItem) => void
   onDetail: (item: RecentConversationItem) => void
@@ -131,7 +125,6 @@ interface RecentConversationRowProps {
 export function RecentConversationRow({
   item,
   collapsed,
-  selectedContactId,
   isSelected,
   onSelect,
   onDetail,
@@ -158,7 +151,7 @@ export function RecentConversationRow({
               ? "justify-center rounded-lg px-0 py-2"
               : "gap-3 rounded-md px-3 py-2.5 text-xs",
             isSelected
-              ? "bg-primary/90 text-primary-foreground"
+              ? "bg-primary text-primary-foreground"
               : "hover:bg-accent/50 hover:text-accent-foreground"
           )}
           onClick={() => {
@@ -199,19 +192,21 @@ export function RecentConversationRow({
                     <IconPin
                       className={cn(
                         "size-3.5",
-                        selectedContactId === item.contactId
-                          ? "text-primary-foreground/70"
+                        isSelected
+                          ? "text-primary-foreground/90"
                           : "text-muted-foreground"
                       )}
                     />
                   )}
-                  {!item.isCurator && (
-                    <PinnedIndicator
-                      item={item}
-                      selectedContactId={selectedContactId}
-                    />
+                  {!item.isCurator && item.isPinned && (
+                    <PinnedIndicator isSelected={isSelected} />
                   )}
-                  <span className="w-26 truncate text-sm font-medium">
+                  <span
+                    className={cn(
+                      "w-26 truncate text-sm font-medium",
+                      isSelected && "text-primary-foreground"
+                    )}
+                  >
                     {item.contactName}
                   </span>
                 </div>
@@ -219,8 +214,8 @@ export function RecentConversationRow({
                   <span
                     className={cn(
                       "shrink-0 text-[10px]",
-                      selectedContactId === item.contactId
-                        ? "text-primary-foreground/70"
+                      isSelected
+                        ? "text-primary-foreground/90"
                         : "text-muted-foreground"
                     )}
                   >
@@ -232,15 +227,14 @@ export function RecentConversationRow({
                 <span
                   className={cn(
                     "max-w-[160px] truncate",
-                    selectedContactId === item.contactId
-                      ? "text-primary-foreground/70"
+                    isSelected
+                      ? "text-primary-foreground/90"
                       : "text-muted-foreground"
                   )}
                 >
                   {item.title || "新对话"}
                 </span>
-                {item.unreadCount > 0 &&
-                  selectedContactId !== item.contactId && (
+                {item.unreadCount > 0 && !isSelected && (
                     <span
                       className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground"
                       aria-label={`${item.unreadCount} 条未读消息`}
