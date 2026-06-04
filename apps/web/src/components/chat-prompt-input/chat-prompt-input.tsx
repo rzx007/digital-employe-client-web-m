@@ -16,6 +16,7 @@ import { ChatPromptInputAttachments } from "./chat-prompt-input-attachments"
 import { ACCEPTED_FILE_TYPES, MAX_UPLOAD_SIZE_BYTES } from "./constants"
 import type { ChatPromptInputProps } from "./types"
 import { cn } from "@workspace/ui/lib/utils"
+import { ContextBudgetIndicator } from "@/components/chat/panel/context-budget-indicator"
 
 export function ChatPromptInput({
   value,
@@ -31,6 +32,7 @@ export function ChatPromptInput({
   mentionCandidates,
   conversationId,
   onAttachmentsChange,
+  messages,
 }: ChatPromptInputProps) {
   const isCompact = size === "compact"
 
@@ -81,6 +83,11 @@ export function ChatPromptInput({
             </PromptInputActionMenuContent>
           </PromptInputActionMenu>
           <Separator orientation="vertical" className="mt-2 mr-3 h-3" />
+          <ContextBudgetIndicator
+            conversationId={conversationId}
+            messages={messages ?? []}
+            chatStatus={status}
+          />
         </PromptInputTools>
         <PromptInputTools>
           <PromptInputSubmit

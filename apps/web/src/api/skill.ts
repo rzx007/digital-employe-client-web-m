@@ -117,12 +117,18 @@ export async function updateLocalSkill(
   payload: {
     displayNameZh?: string
     skillMdContent?: string
+    // 仅对内置技能生效：
+    //   "workspace" 复制到当前工作区再保存（不改全局内置）；
+    //   "builtin" 直接覆盖全局内置（所有工作区共享）。
+    target?: "workspace" | "builtin"
   }
 ): Promise<{
   skillName: string
   displayNameZh: string | null
   skillMdContent: string | null
   syncedEmployeeCount?: number
+  // 保存后该技能是否仍位于全局内置目录（复制另存后为 false）。
+  isBuiltin?: boolean
 }> {
   const res = await request<
     ApiResponse<{
@@ -130,6 +136,7 @@ export async function updateLocalSkill(
       displayNameZh: string | null
       skillMdContent: string | null
       syncedEmployeeCount?: number
+      isBuiltin?: boolean
     }>
   >(`/skills/local/${encodeURIComponent(skillName)}`, {
     method: "PATCH",

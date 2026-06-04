@@ -16,6 +16,7 @@ import {
   zoneColorClass,
   type ContextBudgetZone,
 } from "@/lib/chat/context-budget"
+import { ContextRing } from "@/components/chat/panel/context-ring"
 
 type ContextBudgetIndicatorProps = {
   conversationId?: string | number | null
@@ -63,23 +64,29 @@ export function ContextBudgetIndicator({
         <button
           type="button"
           className={cn(
-            "inline-flex h-8 min-w-[4.5rem] items-center justify-center gap-1 rounded-md px-2 text-xs",
+            "inline-flex h-8 items-center justify-center gap-1.5 rounded-md text-xs",
             "text-muted-foreground hover:bg-muted/60",
             className
           )}
           title="上下文用量"
         >
-          {isLoading && used == null ? (
-            <span>上下文 …</span>
-          ) : usedPercent != null ? (
+          {usedPercent != null ? (
             <>
-              <span className={cn("font-medium tabular-nums", zoneColorClass(zone))}>
+              <ContextRing
+                percent={usedPercent}
+                className={zoneColorClass(zone)}
+              />
+              {/* <span
+                className={cn("font-medium tabular-nums", zoneColorClass(zone))}
+              >
                 {usedPercent.toFixed(0)}%
-              </span>
-              <span className="hidden sm:inline">上下文</span>
+              </span> */}
             </>
           ) : (
-            <span>上下文 —</span>
+            <>
+              <ContextRing percent={0} className="text-muted-foreground/40" />
+              {/* <span className="tabular-nums">{isLoading ? "…" : "—"}</span> */}
+            </>
           )}
         </button>
       </HoverCardTrigger>
@@ -126,11 +133,8 @@ export function ContextBudgetIndicator({
                 {budget.usage_percent_of_summarize >= 100
                   ? "已超过"
                   : `还有 ${formatTokenCount(
-                      Math.max(
-                        0,
-                        (budget.summarization_threshold ?? 0) - used
-                      )
-                    )}`}
+                    Math.max(0, (budget.summarization_threshold ?? 0) - used)
+                  )}`}
                 （摘要线 {formatTokenCount(budget.summarization_threshold)}）
               </p>
             )}

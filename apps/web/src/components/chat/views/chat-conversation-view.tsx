@@ -131,8 +131,14 @@ export function ConversationChatView({
     },
 
     onError: (chatError) => {
+      // 切换会话/恢复流被中止（AbortError）是良性的，不弹错误吓人。
+      const msg = chatError?.message || ""
+      const isAbort =
+        chatError?.name === "AbortError" ||
+        /abort|aborted|signal is aborted|no response/i.test(msg)
+      if (isAbort) return
       toast.error("发送失败", {
-        description: chatError.message || "请稍后重试",
+        description: msg || "请稍后重试",
       })
     },
   })
