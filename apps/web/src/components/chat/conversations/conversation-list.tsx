@@ -8,6 +8,8 @@ import { useCreateCuratorConversation } from "@/hooks/use-create-curator-convers
 import type { CuratorConversationSelectScope } from "@/lib/chat/curator-conversation-actions"
 import {
   enterDraftConversation,
+  getEmployeeDeepLinkConversationId,
+  isPreservedEmployeeConversationSelection,
   selectConversationById,
 } from "@/lib/chat/conversation-selection"
 import { touchRecentContactById } from "@/lib/chat/touch-recent-contact"
@@ -62,6 +64,18 @@ export function ConversationList({
 
   const { data: conversations = [], isPending: conversationsPending } =
     useConversationsQuery(activeContactId, selectedContact)
+
+  const deepLinkConversationId = getEmployeeDeepLinkConversationId(
+    selectedContactId,
+    selectedConversationId
+  )
+  const showDeepLinkInList =
+    deepLinkConversationId != null &&
+    isPreservedEmployeeConversationSelection(
+      selectedContactId,
+      selectedConversationId,
+      conversations
+    )
 
   return (
     <div
@@ -158,6 +172,29 @@ export function ConversationList({
               加载会话…
             </div>
           )}
+          {showDeepLinkInList && deepLinkConversationId != null ? (
+            <ConversationItem
+              key={`deep-link-${deepLinkConversationId}`}
+              conversation={{
+                id: deepLinkConversationId,
+                title: `群任务执行 #${deepLinkConversationId}`,
+                contactId: String(activeContactId ?? ""),
+                updatedAt: new Date(),
+                unreadCount: 0,
+              }}
+              isSelected={
+                String(activeConversationId) === String(deepLinkConversationId)
+              }
+              onClick={() => {
+                if (onSelectConversationId) {
+                  onSelectConversationId(deepLinkConversationId)
+                } else {
+                  selectConversationById(deepLinkConversationId)
+                }
+                onSelectConversation?.()
+              }}
+            />
+          ) : null}
           {conversations.map((conversation) => (
             <ConversationItem
               key={conversation.id}

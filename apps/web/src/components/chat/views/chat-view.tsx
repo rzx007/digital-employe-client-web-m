@@ -6,6 +6,8 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import {
   conversationExistsInList,
+  getEmployeeDeepLinkConversationId,
+  isPreservedEmployeeConversationSelection,
   useReconcileConversationSelection,
 } from "@/lib/chat/conversation-selection"
 import { useBootstrapCuratorDefaultConversation } from "@/hooks/use-bootstrap-curator-conversations"
@@ -158,10 +160,24 @@ export function ChatView({
   const selectedConversation = conversations.find(
     (conversation) => String(conversation.id) === String(selectedConversationId)
   )
+  const deepLinkConversationId = getEmployeeDeepLinkConversationId(
+    selectedContactId,
+    selectedConversationId
+  )
   const hasValidSelection =
     selectedConversationId != null &&
     (!conversationsQuerySuccess ||
-      conversationExistsInList(conversations, selectedConversationId))
+      conversationExistsInList(conversations, selectedConversationId) ||
+      isPreservedEmployeeConversationSelection(
+        selectedContactId,
+        selectedConversationId,
+        conversations
+      ))
+  const conversationTitle =
+    selectedConversation?.title ??
+    (deepLinkConversationId != null
+      ? `群任务执行 #${deepLinkConversationId}`
+      : "新对话")
 
   // 群协作房间：有有效会话时走房间视图（时间线 + 成员侧栏 + @成员派活）
   if (
@@ -198,7 +214,7 @@ export function ChatView({
     <ConversationChatView
       key={String(selectedConversationId)}
       contact={contact}
-      title={selectedConversation?.title ?? "新对话"}
+      title={conversationTitle}
       conversationId={selectedConversationId}
       onOpenContacts={onOpenContacts}
       onOpenConversations={onOpenConversations}

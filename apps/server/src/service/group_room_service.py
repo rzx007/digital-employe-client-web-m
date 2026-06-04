@@ -925,6 +925,7 @@ class GroupRoomService:
             log = logs_by_task.get(t.id)
             emp = db.get(Employee, t.employee_id)
             node_id = f"task-{t.id}"
+            exec_conv_id = log.conversation_id if log and log.conversation_id else None
             nodes.append({
                 "id": node_id,
                 "type": "worker",
@@ -933,6 +934,7 @@ class GroupRoomService:
                 "task": t.task_name or "",
                 "state": _task_state(log),
                 "artifacts": _artifacts(log),
+                "conversation_id": exec_conv_id,
             })
             deps = dep_map.get(t.id, [])
             if not deps:

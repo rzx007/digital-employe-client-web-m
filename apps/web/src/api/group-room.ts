@@ -47,6 +47,8 @@ export interface DagNode {
   task: string
   state: DagNodeState
   artifacts: string[]
+  /** 该子任务正在执行的员工会话 id（有则点成员可直达） */
+  conversation_id?: number | null
 }
 
 export interface DagEdge {

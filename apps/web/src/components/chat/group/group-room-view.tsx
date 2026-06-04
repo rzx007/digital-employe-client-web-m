@@ -2,6 +2,7 @@ import * as React from "react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
+import { getContactId } from "@/lib/chat/contact-utils"
 import { useGroupRoom } from "@/hooks/use-group-room"
 import type { ChatViewContact } from "../shared/chat-view-shared"
 
@@ -35,6 +36,16 @@ export function GroupRoomView({
 }) {
   const { members, dag } = useGroupRoom(conversationId)
   const hasDag = Boolean(dag?.has_dag && dag.nodes.length > 0)
+  const groupContactId = contact ? getContactId(contact) ?? undefined : undefined
+  const memberConversationByEmployeeId = React.useMemo(() => {
+    const map = new Map<number, number>()
+    for (const m of members) {
+      if (m.employee_id != null && m.conversation_id != null) {
+        map.set(m.employee_id, m.conversation_id)
+      }
+    }
+    return map
+  }, [members])
 
   return (
     <div className={cn("flex h-full min-h-0 w-full", className)} {...props}>
@@ -52,12 +63,16 @@ export function GroupRoomView({
         <GroupSopPanel
           dag={dag}
           conversationId={conversationId}
+          groupContactId={groupContactId ?? `group:${conversationId}`}
+          memberConversationByEmployeeId={memberConversationByEmployeeId}
           className="hidden w-72 shrink-0 border-l bg-background/60 md:flex"
         />
       ) : (
         <GroupMemberSidebar
           members={members}
           title={title || "群成员"}
+          groupContactId={groupContactId}
+          groupConversationId={conversationId}
           className="hidden md:flex"
         />
       )}

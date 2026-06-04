@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware"
 
 import { findContactInList } from "@/lib/chat/contact-utils"
 import type { CuratorNavigationReturn } from "@/lib/chat/curator-navigation"
+import type { GroupNavigationReturn } from "@/lib/chat/group-navigation"
 import type { Contact } from "@/types/chat"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
@@ -28,6 +29,8 @@ interface ChatStore {
   isConversationListOpen: boolean
   /** 从总管/工作台跳转到员工对话后，用于「返回总管」 */
   curatorNavigationReturn: CuratorNavigationReturn | null
+  /** 从群协作跳到员工执行会话后，用于「返回群聊」 */
+  groupNavigationReturn: GroupNavigationReturn | null
   setContacts: (contacts: Contact[]) => void
   setSelectedContactId: (id: string | null) => void
   setSelectedConversationId: (id: string | number | null) => void
@@ -40,6 +43,8 @@ interface ChatStore {
   closeConversationList: () => void
   setCuratorNavigationReturn: (ctx: CuratorNavigationReturn | null) => void
   clearCuratorNavigationReturn: () => void
+  setGroupNavigationReturn: (ctx: GroupNavigationReturn | null) => void
+  clearGroupNavigationReturn: () => void
   startDraftConversation: (contactId: string) => void
   selectConversation: (contactId: string, conversationId: string) => void
   switchToContact: (contactId: string) => void
@@ -60,6 +65,7 @@ export const useChatStore = create<ChatStore>()(
       isCompactMode: false,
       isConversationListOpen: false,
       curatorNavigationReturn: null,
+      groupNavigationReturn: null,
       setContacts: (contacts) => set({ contacts }),
       setSelectedContactId: (id) =>
         set({
@@ -97,6 +103,9 @@ export const useChatStore = create<ChatStore>()(
         set({ curatorNavigationReturn: ctx }),
       clearCuratorNavigationReturn: () =>
         set({ curatorNavigationReturn: null }),
+      setGroupNavigationReturn: (ctx: GroupNavigationReturn | null) =>
+        set({ groupNavigationReturn: ctx }),
+      clearGroupNavigationReturn: () => set({ groupNavigationReturn: null }),
       startDraftConversation: (contactId) =>
         set((state) => ({
           selectedContactId: contactId,
