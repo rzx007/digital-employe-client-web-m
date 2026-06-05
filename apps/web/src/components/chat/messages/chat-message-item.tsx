@@ -94,6 +94,7 @@ function ChatMessageItemInner({
   // 群澄清卡片：检测群消息 extra_meta 含组长会话 id + 中断消息 id，
   // 从 parts 解析 pending 澄清 input，渲染内嵌卡片提交到组长会话。
   const groupClarifyDock = React.useMemo(() => {
+    if (contact.type !== "group") return null  // 仅群会话渲染澄清卡片
     if (message.role !== "assistant") return null
     const meta = (message as { metadata?: Record<string, unknown> }).metadata
     const target = resolveGroupClarifyTarget(meta ?? null)
@@ -111,7 +112,10 @@ function ChatMessageItemInner({
     if (!pendingPart) return null
 
     const toolCallId =
-      typeof pendingPart.toolCallId === "string" ? pendingPart.toolCallId : ""
+      typeof pendingPart.toolCallId === "string" && pendingPart.toolCallId
+        ? pendingPart.toolCallId
+        : null
+    if (!toolCallId) return null  // 无效 toolCallId 不渲染卡片,避免空串进 approve
     const input = (pendingPart.input ?? {}) as Record<string, unknown>
 
     // 群消息自身的 DB id，用于提交后乐观隐藏卡片（approved_at patch）
@@ -143,7 +147,7 @@ function ChatMessageItemInner({
       targetConversationId: target.conversationId,
       groupMsgDbId,
     }
-  }, [message])
+  }, [message, contact.type])
 
   const handleGroupClarifySubmitted = React.useCallback(
     (opts?: { resumed?: boolean; assistantMessageId?: string | number }) => {
