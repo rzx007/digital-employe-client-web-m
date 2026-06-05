@@ -718,25 +718,36 @@ class GroupRoomService:
                     )
                     .order_by(ConversationMessage.id.desc())
                 ).first()
-                if last_interrupted is not None:
-                    from src.service.chat_service import ChatService
-                    from src.service.agent.orchestrator.runtime import get_main_loop
-                    import asyncio
-                    asyncio.run_coroutine_threadsafe(
-                        ChatService.approve_trigger(
-                            db,
-                            room.leader_conversation_id,
-                            last_interrupted.id,
-                            decisions=[{"type": "respond", "message": question}],
-                            auth_token=auth_token,
-                        ),
-                        get_main_loop(),
+                if last_interrupted is None:
+                    # 竞态：两次查询之间中断态已被更新，跳过 resume 避免误派活
+                    logger.warning(
+                        "leader_awaiting_clarification 为 True 但未找到 interrupted 消息"
+                        "（可能已被并发更新），跳过 resume room=%s", room.id,
                     )
-                    return {
-                        "room_id": room.id,
-                        "dispatched": [],
-                        "note": "已作为澄清作答恢复组长",
-                    }
+                    return {"room_id": room.id, "dispatched": [], "note": "待澄清态已消失，已跳过"}
+                from src.service.chat_service import ChatService
+                from src.service.agent.orchestrator.runtime import get_main_loop
+                import asyncio
+                fut = asyncio.run_coroutine_threadsafe(
+                    ChatService.approve_trigger(
+                        db,
+                        room.leader_conversation_id,
+                        last_interrupted.id,
+                        decisions=[{"type": "respond", "message": question}],
+                        auth_token=auth_token,
+                    ),
+                    get_main_loop(),
+                )
+                fut.add_done_callback(
+                    lambda f: logger.error(
+                        "approve_trigger 兜底 resume 异常 room=%s: %s", room.id, f.exception()
+                    ) if f.exception() else None
+                )
+                return {
+                    "room_id": room.id,
+                    "dispatched": [],
+                    "note": "已作为澄清作答恢复组长",
+                }
             leader_conv_id = GroupRoomService.dispatch_to_leader(
                 db, room, question, auth_token=auth_token
             )
