@@ -168,6 +168,14 @@ def create_app() -> FastAPI:
         conn = await aiosqlite.connect(str(sqlite_path), check_same_thread=False)
         await conn.execute("PRAGMA journal_mode=WAL")
         await conn.execute("PRAGMA busy_timeout=30000")
+        # synchronous=NORMAL：WAL 模式下安全（断电最多丢最后一个事务，checkpoint
+        # 可重建），但写不必每次 fsync，大幅加速 checkpoint 落盘。原默认 FULL 会让
+        # 每个 super-step 写近 1MB 的 state 都 fsync，是全局串行瓶颈的主因之一。
+        await conn.execute("PRAGMA synchronous=NORMAL")
+        # 加大 page cache，减少大 blob（checkpoint state 可达数百 KB）读写的 IO
+        await conn.execute("PRAGMA cache_size=-16000")  # ~16MB
+        # WAL 自动 checkpoint 阈值调大，减少写放大
+        await conn.execute("PRAGMA wal_autocheckpoint=2000")
         await conn.commit()
         init_checkpointer(conn)
         logger.info("AsyncSqliteSaver initialized")
