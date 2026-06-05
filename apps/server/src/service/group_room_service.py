@@ -224,6 +224,13 @@ def _get_room_create_lock(room_conversation_id: int) -> _threading.Lock:
 
 
 def build_leader_brief(question: str, roster: str) -> str:
+    """组长会话的系统 prompt/用户消息拼装。
+
+    roster 格式为每行一条：- 姓名（员工ID: N）
+    例：
+        - 张三（员工ID: 1）
+        - 李四（员工ID: 2）
+    """
     return (
         "你是这个群的组长（调度员）。没有真人会替你点「确认执行」，"
         "但当用户需求模糊时你必须先澄清，不能凭空臆测。\n"
@@ -394,8 +401,13 @@ class GroupRoomService:
         sender_id: int | None,
         sender_label: str | None,
         extra_meta: dict | None = None,
+        message_parts: list | None = None,
     ) -> ConversationMessage:
-        """向群时间线（房间会话）追加一条带作者归属的消息，并推送 SSE 事件。"""
+        """向群时间线（房间会话）追加一条带作者归属的消息，并推送 SSE 事件。
+
+        message_parts: 可选结构化 parts（如澄清问题卡片），非空时写入
+        ConversationMessage.message_parts 列，前端直接渲染。
+        """
         meta = dict(extra_meta) if extra_meta else {}
         meta["created_at"] = cst_now().isoformat()
         msg = ConversationMessage(
@@ -406,6 +418,11 @@ class GroupRoomService:
             sender_label=sender_label,
             stream_state="completed",
             extra_meta=json.dumps(meta, ensure_ascii=False),
+            message_parts=(
+                json.dumps(message_parts, ensure_ascii=False)
+                if message_parts is not None
+                else None
+            ),
         )
         db.add(msg)
         conv = db.get(Conversation, room.room_conversation_id)
@@ -1517,6 +1534,32 @@ def project_member_conversation_if_in_room(
             )
         ).first()
         if leader_room is not None:
+            # 中断（HITL 澄清）：把组长 interrupted 消息里的 clarifying_questions
+            # parts 投影成群时间线的一条卡片，让用户在群里看到并作答。
+            if stream_state == "interrupted":
+                last = db.scalars(
+                    select(ConversationMessage)
+                    .where(
+                        ConversationMessage.conversation_id == conversation_id,
+                        ConversationMessage.role == "assistant",
+                        ConversationMessage.stream_state == "interrupted",
+                    )
+                    .order_by(ConversationMessage.id.desc())
+                ).first()
+                if last is not None and last.message_parts:
+                    GroupRoomService.post_to_timeline(
+                        db, leader_room,
+                        role="assistant",
+                        content=(last.content or "").strip() or "请补充以下信息后我再安排：",
+                        sender_id=None,
+                        sender_label="组长",
+                        extra_meta={
+                            "clarify_target_conversation_id": conversation_id,
+                            "clarify_message_id": last.id,
+                        },
+                        message_parts=json.loads(last.message_parts),
+                    )
+                return  # early-return：不落入 completed/_project_simple，不回流总管
             _project_simple(
                 db, leader_room, conversation_id, stream_state, "组长", sender_id=None
             )
