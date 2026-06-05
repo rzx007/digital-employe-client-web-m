@@ -15,6 +15,8 @@ export type ActiveHitl = {
   toolCallId: string
   kind: PendingHitlKind
   input?: unknown
+  /** 群 HITL：approve 打到此会话而非当前群会话 */
+  conversationIdOverride?: number
 }
 
 type StoredHitlPart = {
