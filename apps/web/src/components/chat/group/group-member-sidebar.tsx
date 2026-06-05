@@ -1,5 +1,6 @@
 import * as React from "react"
 
+import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
 import { Badge } from "@workspace/ui/components/badge"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
@@ -8,15 +9,11 @@ import type {
   GroupRoomMember,
   GroupRoomMemberState,
 } from "@/api/group-room"
+import { CURATOR_ASSISTANT_AVATAR_URL_1 } from "@/lib/avatar"
 import { navigateToEmployeeFromGroup } from "@/lib/chat/group-navigation"
 import { switchToContact } from "@/lib/chat/conversation-selection"
-import type { AIEmployee } from "@/types/chat"
 
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
-import {
-  buildParticipantById,
-  resolveGroupRoomMemberAvatar,
-} from "./group-avatar-utils"
 
 const STATE_META: Record<
   GroupRoomMemberState,
@@ -33,23 +30,42 @@ const STATE_META: Record<
   done: { label: "已交付", dot: "bg-green-500", text: "text-green-600" },
 }
 
+/** 文字头像：取名字前两个字 */
+function initialOf(name: string | null | undefined): string {
+  const trimmed = (name ?? "").trim()
+  return trimmed ? trimmed.slice(0, 2) : "员"
+}
+
+/** 按名字 hash 稳定取色（同一成员恒定一种配色） */
+const NAME_PALETTE = [
+  "bg-blue-100 text-blue-700",
+  "bg-violet-100 text-violet-700",
+  "bg-emerald-100 text-emerald-700",
+  "bg-rose-100 text-rose-700",
+  "bg-cyan-100 text-cyan-700",
+  "bg-fuchsia-100 text-fuchsia-700",
+  "bg-teal-100 text-teal-700",
+]
+function colorOf(seed: string | null | undefined): string {
+  const s = (seed ?? "").trim() || "员"
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return NAME_PALETTE[h % NAME_PALETTE.length]
+}
+
 function MemberRow({
   member,
-  participantById,
   groupContactId,
   groupConversationId,
 }: {
   member: GroupRoomMember
-  participantById: Map<string, AIEmployee>
   groupContactId?: string
   groupConversationId?: string | number
 }) {
   const meta = STATE_META[member.state] ?? STATE_META.ready
   const isLeader = member.role_in_room === "leader"
-  const { name, avatar, status } = resolveGroupRoomMemberAvatar(
-    member,
-    participantById
-  )
+  const displayName =
+    member.employee_name ?? (member.employee_id != null ? `员工#${member.employee_id}` : "组长")
   const canJump =
     member.employee_id != null &&
     member.conversation_id != null &&
@@ -76,19 +92,24 @@ function MemberRow({
       onClick={handleClick}
       className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-muted/50"
     >
-      <EmployeeContactAvatar
-        name={name}
-        avatar={avatar}
-        status={status}
-        showStatus={Boolean(status)}
-        avatarClassName="size-8"
-        statusClassName="h-2 w-2"
-      />
+      {isLeader ? (
+        <EmployeeContactAvatar
+          name="组长"
+          avatar={CURATOR_ASSISTANT_AVATAR_URL_1}
+          avatarClassName="size-8"
+        />
+      ) : (
+        <Avatar className="size-8 shrink-0">
+          <AvatarFallback
+            className={cn("text-[11px] font-semibold", colorOf(member.employee_name))}
+          >
+            {initialOf(member.employee_name)}
+          </AvatarFallback>
+        </Avatar>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="truncate text-sm font-medium">
-            {member.employee_name ?? name}
-          </span>
+          <span className="truncate text-sm font-medium">{displayName}</span>
           {isLeader ? (
             <Badge
               variant="secondary"
@@ -120,24 +141,17 @@ function MemberRow({
 
 export function GroupMemberSidebar({
   members,
-  participants,
   className,
   title = "群成员",
   groupContactId,
   groupConversationId,
 }: {
   members: GroupRoomMember[]
-  participants?: AIEmployee[]
   className?: string
   title?: string
   groupContactId?: string
   groupConversationId?: string | number
 }) {
-  const participantById = React.useMemo(
-    () => buildParticipantById(participants),
-    [participants]
-  )
-
   return (
     <aside
       className={cn(
@@ -167,7 +181,6 @@ export function GroupMemberSidebar({
               <MemberRow
                 key={m.member_id}
                 member={m}
-                participantById={participantById}
                 groupContactId={groupContactId}
                 groupConversationId={groupConversationId}
               />
