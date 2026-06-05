@@ -271,3 +271,74 @@ def inject_excessive_read_stop_hint(
         "excessive read_file detected (%s) → 注入停止指令", over,
     )
     return out
+
+
+# 反复「改脚本→跑→报错→再改」循环的阈值。本地模型写 Python 生成 docx/pptx 时
+# 常陷入此循环（每次 edit 改一点、shell 跑、报错、再 edit），不收敛直到被递归
+# 上限截断（曾观测 edit_file 同一脚本 9 次、耗时 5+ 分钟）。
+# # 阈值设 5（不是 3）：正常写代码会合理地多次编辑同一文件逐步完善（如前端写
+# index.html 改几版），只拦真正失控的反复修改，避免误伤正常迭代。
+_EXCESSIVE_EDIT_THRESHOLD = 5
+_EDIT_RUN_TOOLS = ("edit_file", "write_file", "shell_execute", "execute")
+
+
+def inject_excessive_edit_run_stop_hint(
+    messages: list[BaseMessage],
+) -> list[BaseMessage]:
+    """若反复 edit / 重跑同一脚本超过阈值，注入「停止反复修改、换思路」强提示。"""
+    # 统计每个文件被 edit_file/write_file 的次数 + shell 调用总次数
+    edit_counts: dict[str, int] = {}
+    shell_runs = 0
+    for message in messages:
+        if not isinstance(message, AIMessage):
+            continue
+        for tc in (message.tool_calls or []):
+            if not isinstance(tc, dict):
+                continue
+            name = tc.get("name")
+            if name not in _EDIT_RUN_TOOLS:
+                continue
+            args = _tool_call_args(tc.get("args"))
+            if name in ("edit_file", "write_file"):
+                fp = args.get("file_path") or args.get("path")
+                if fp:
+                    edit_counts[str(fp)] = edit_counts.get(str(fp), 0) + 1
+            else:  # shell_execute / execute
+                shell_runs += 1
+
+    over_edits = {p: c for p, c in edit_counts.items() if c >= _EXCESSIVE_EDIT_THRESHOLD}
+    # 反复改脚本 或 反复跑命令，任一超阈值都叫停
+    if not over_edits and shell_runs < _EXCESSIVE_EDIT_THRESHOLD + 2:
+        return messages
+
+    marker = "⚠️[系统提醒·停止反复改脚本]"
+    # 找最后一条 tool 结果追加提示（保持消息结构合法）
+    last_tool_idx = -1
+    for index, message in enumerate(messages):
+        if isinstance(message, ToolMessage):
+            last_tool_idx = index
+    if last_tool_idx < 0:
+        return messages
+    target = messages[last_tool_idx]
+    current = str(target.content or "")
+    if marker in current:
+        return messages
+
+    detail = ""
+    if over_edits:
+        detail = "、".join(f"{p}（已改 {c} 次）" for p, c in over_edits.items())
+    hint = (
+        f"\n\n{marker} 你在反复修改/重跑脚本却不收敛"
+        + (f"：{detail}。" if detail else f"（已执行命令 {shell_runs} 次）。")
+        + "请停止这种「改一点→跑→报错→再改」的循环，换个思路："
+        "① 一次性把脚本写完整、写正确再跑；② 若某库不可用或反复报同样的错，"
+        "改用更简单可靠的方式（如直接用 docx/pptx 技能而非手写脚本）；"
+        "③ 不要再对同一文件做零碎的小修改。"
+    )
+    out = list(messages)
+    out[last_tool_idx] = target.model_copy(update={"content": current + hint})
+    logger.warning(
+        "excessive edit/run loop detected (edits=%s, shell_runs=%d) → 注入停止指令",
+        over_edits, shell_runs,
+    )
+    return out

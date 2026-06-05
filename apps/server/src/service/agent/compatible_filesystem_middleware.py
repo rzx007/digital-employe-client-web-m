@@ -46,6 +46,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 
 from src.service.agent.read_file_dedupe import (
     dedupe_read_file_tool_messages,
+    inject_excessive_edit_run_stop_hint,
     inject_excessive_read_stop_hint,
 )
 from src.service.agent.read_file_path_compression import compress_large_read_file_history
@@ -449,6 +450,8 @@ def _prepare_read_file_messages_for_llm(
     messages = dedupe_read_file_tool_messages(messages)
     # 反复读同一文件时注入“停止读取”强指令，掐断本地模型的读取循环
     messages = inject_excessive_read_stop_hint(messages)
+    # 反复「改脚本→跑→报错→再改」时注入“换思路”强指令，掐断 edit/shell 循环
+    messages = inject_excessive_edit_run_stop_hint(messages)
     return compress_large_read_file_history(messages)
 
 
