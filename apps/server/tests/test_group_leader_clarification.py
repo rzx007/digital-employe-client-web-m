@@ -164,3 +164,55 @@ def test_interrupted_leader_no_parts_posts_fallback(
     assert meta["clarify_message_id"] == interrupted_id
     assert card.content, "兜底内容不能为空"
     read.close()
+
+
+def test_approve_trigger_group_leader_branch(db_session, db_engine, workspace, monkeypatch):
+    """approve_trigger 对 group_leader 会话应重建 agent、注册 relay 并调 approve_and_resume。"""
+    import asyncio
+
+    from sqlalchemy.orm import sessionmaker
+
+    import src.service.group_room_service as grs
+    from src.service.chat_service import ChatService
+
+    TestSession = sessionmaker(bind=db_engine)
+    monkeypatch.setattr("src.db.session.get_session_local", lambda: TestSession)
+
+    room, group_conv, leader_conv = _make_room_with_leader(db_session, workspace)
+    interrupted = ConversationMessage(
+        conversation_id=leader_conv.id,
+        role="assistant",
+        content="",
+        stream_state="interrupted",
+        message_parts=json.dumps([{"type": "clarifying_questions"}], ensure_ascii=False),
+        extra_meta="{}",
+    )
+    db_session.add(interrupted)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.get_orchestrator_agent",
+        lambda **kw: object(),
+    )
+    captured = {}
+
+    async def fake_resume(**kw):
+        captured.update(kw)
+        from src.service.agent_stream_queue import StartResult
+        return StartResult.STARTED
+
+    from src.service.stream_registry import registry
+    monkeypatch.setattr(registry, "approve_and_resume", fake_resume)
+
+    result = asyncio.run(ChatService.approve_trigger(
+        db_session, leader_conv.id, interrupted.id,
+        decisions=[{"type": "respond", "message": "市场周报,管理层,1页,markdown"}],
+        auth_token="t",
+    ))
+
+    assert result["accepted"] is True
+    assert leader_conv.id in grs._GROUP_STREAM_RELAY          # relay 已重注册
+    assert captured["orchestrator_conversation_id"] == leader_conv.id
+    assert captured["orchestrator_workspace_id"] == workspace.id
+    assert captured["orchestrator_owned_db"] is not None       # 独立 leader_db
+    assert captured["decisions"][0]["type"] == "respond"
