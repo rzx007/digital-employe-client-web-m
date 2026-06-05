@@ -33,8 +33,6 @@ BUILTIN_SKILL_DISPLAY_NAMES: dict[str, str] = {
     "pptx": "PPT 演示文稿",
     "xlsx": "Excel 表格",
     "html-ppt": "HTML 幻灯片",
-    "baidu-search": "百度搜索",
-    "oa-overtime": "OA 加班申请",
 }
 
 
@@ -331,6 +329,44 @@ class LocalSkillService:
         return description
 
     @staticmethod
+    def _packaged_builtin_skill_names(source_root: Path) -> set[str]:
+        """build-in-skills 中合法内置技能目录名（与 seed 判定规则一致）。"""
+        names: set[str] = set()
+        if not source_root.is_dir():
+            return names
+        for item in source_root.iterdir():
+            if not item.is_dir():
+                continue
+            if not LocalSkillService.SKILL_NAME_PATTERN.match(item.name):
+                continue
+            if not (item / LocalSkillService.SKILL_MD_NAME).is_file():
+                continue
+            names.add(item.name)
+        return names
+
+    @staticmethod
+    def _prune_stale_builtin_skills(
+        local_root: Path,
+        packaged_names: set[str],
+    ) -> int:
+        """以 build-in-skills 为权威，删除本机 builtin 中已下架的技能目录。"""
+        removed = 0
+        if not local_root.is_dir():
+            return removed
+        for child in local_root.iterdir():
+            if not child.is_dir():
+                continue
+            if child.name in packaged_names:
+                continue
+            logger.info(
+                "Remove stale builtin skill not in build-in-skills: %s",
+                child.name,
+            )
+            shutil.rmtree(child)
+            removed += 1
+        return removed
+
+    @staticmethod
     def seed_builtin_skills() -> dict[str, int]:
         """
         将包内 build-in-skills 同步到 LOCAL_SKILLS_PATH/builtin（共享目录）。
@@ -342,9 +378,14 @@ class LocalSkillService:
         logger.info("local_root: %s", local_root)
         if not source_root.is_dir():
             logger.info("Skip builtin skill seed: packaged source missing %s", source_root)
-            return {"copied_items": 0}
+            return {"copied_items": 0, "removed_items": 0}
 
+        packaged_names = LocalSkillService._packaged_builtin_skill_names(source_root)
         local_root.mkdir(parents=True, exist_ok=True)
+        removed_items = LocalSkillService._prune_stale_builtin_skills(
+            local_root,
+            packaged_names,
+        )
         copied_items = 0
         reserved_global = LocalSkillService._reserved_negative_ids_universal()
         for item in sorted(source_root.iterdir(), key=lambda p: p.name.lower()):
@@ -403,12 +444,14 @@ class LocalSkillService:
             copied_items += 1
 
         logger.info(
-            "Seeded builtin skills into local-skills: source=%s target=%s copied_items=%s",
+            "Seeded builtin skills into local-skills: source=%s target=%s "
+            "copied_items=%s removed_items=%s",
             source_root,
             local_root,
             copied_items,
+            removed_items,
         )
-        return {"copied_items": copied_items}
+        return {"copied_items": copied_items, "removed_items": removed_items}
 
     @staticmethod
     def local_skill_exists(skill_name: str, workspace_id: int | None = None) -> bool:
