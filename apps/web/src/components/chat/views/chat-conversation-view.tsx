@@ -25,7 +25,13 @@ import { usePendingMessages } from "@/hooks/use-pending-messages"
 
 import { useConversationSession } from "@/hooks/use-conversation-session"
 
-import { prepareDisplayMessages } from "@/lib/chat/hitl"
+import {
+  prepareDisplayMessages,
+  parseDbMessageId,
+  type ActiveHitl,
+} from "@/lib/chat/hitl"
+import { hitlKindFromToolType } from "@/lib/chat/hitl/kind"
+import { resolveGroupClarifyTarget } from "@/lib/chat/hitl/group-clarify-target"
 
 import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
 import { isBenignStreamAbortError } from "@/lib/chat/stream-abort"
@@ -112,6 +118,46 @@ export function ConversationChatView({
 
     [storedMessages]
   )
+
+  // 群会话：从已落库的消息检测待处理的 HITL 投影卡片（组长澄清/大纲等）
+  const groupActiveHitl = useMemo((): ActiveHitl | null => {
+    if (contact?.type !== "group" || !initialMessages?.length) return null
+    for (let i = initialMessages.length - 1; i >= 0; i--) {
+      const msg = initialMessages[i]
+      if (msg.role !== "assistant") continue
+      const meta = (msg as { metadata?: Record<string, unknown> }).metadata
+      if (!meta) continue
+      const target = resolveGroupClarifyTarget(meta)
+      if (!target || meta.approved_at) continue
+      // 找 input-available 的 HITL tool part（支持任意 submit_* 工具类型）
+      const hitlPart = msg.parts?.find(
+        (p) =>
+          typeof p.type === "string" &&
+          p.type.startsWith("tool-submit_") &&
+          (p as { state?: string }).state === "input-available"
+      ) as
+        | {
+            type: string
+            toolCallId?: string
+            input?: unknown
+            state?: string
+          }
+        | undefined
+      if (!hitlPart) continue
+      const dbMessageId = parseDbMessageId(target.messageId)
+      if (!dbMessageId) continue
+      const kind = hitlKindFromToolType(hitlPart.type)
+      if (!kind) continue
+      return {
+        dbMessageId,
+        toolCallId: hitlPart.toolCallId ?? "",
+        kind,
+        input: (hitlPart.input ?? {}) as Record<string, unknown>,
+        conversationIdOverride: target.conversationId,
+      }
+    }
+    return null
+  }, [contact?.type, initialMessages])
 
   const onStreamFinishRef = useRef<() => void>(() => {})
   const onRetryResumeRef = useRef<() => boolean>(() => false)
@@ -380,7 +426,7 @@ export function ConversationChatView({
       onPendingMoveDown={pendingMoveDown}
       conversationId={conversationId}
       onAttachmentsChange={handleAttachmentsChange}
-      activeHitl={session.activeHitl}
+      activeHitl={groupActiveHitl ?? session.activeHitl}
       onHitlApproved={session.onHitlApproved}
       className={className}
       {...props}

@@ -149,7 +149,7 @@ export function ChatComposerArea({
         <ClarifyingQuestionsDock
           activeHitl={activeHitl}
           pending={dockPending}
-          conversationId={conversationId}
+          conversationId={activeHitl.conversationIdOverride ?? conversationId}
           optionalDetails={inputValue}
           onSubmitted={handleClarifySubmitted}
           className="mx-auto w-full max-w-4xl"

@@ -13,13 +13,9 @@ import { useAuthStore } from "@/stores/auth-store"
 import { cn } from "@workspace/ui/lib/utils"
 import {
   resolveHitlApproveMessageId,
-  parseDbMessageId,
-  getDbMessageIdFromAssistantMessage,
-  CLARIFY_TOOL_NAME,
   type ActiveHitl,
   type HitlPatchOptions,
 } from "@/lib/chat/hitl"
-import { resolveGroupClarifyTarget } from "@/lib/chat/hitl/group-clarify-target"
 import {
   EmployeeContactAvatar,
   GroupMembersAvatar,
@@ -33,7 +29,6 @@ import { MessageAssistantActions } from "./message-assistant-actions"
 import { MessageCopyAction } from "./message-copy-action"
 import { useClassifiedMessageBlocks } from "@/hooks/use-classified-message-blocks"
 import { BlockRenderer } from "../message-blocks/block-render-map"
-import { ClarifyingQuestionsDock } from "../message-blocks/clarifying-questions-dock"
 
 export interface ChatMessageItemProps {
   message: UIMessage
@@ -91,81 +86,6 @@ function ChatMessageItemInner({
     )
   }, [message])
 
-  // 群澄清卡片：检测群消息 extra_meta 含组长会话 id + 中断消息 id，
-  // 从 parts 解析 pending 澄清 input，渲染内嵌卡片提交到组长会话。
-  const groupClarifyDock = React.useMemo(() => {
-    if (contact.type !== "group") return null  // 仅群会话渲染澄清卡片
-    if (message.role !== "assistant") return null
-    const meta = (message as { metadata?: Record<string, unknown> }).metadata
-    const target = resolveGroupClarifyTarget(meta ?? null)
-    if (!target) return null
-    // 已作答(approved_at 已写入) → 隐藏卡片
-    if (meta?.approved_at) return null
-
-    // 从 parts 找 submit_clarifying_questions 的 input-available part
-    const clarifyToolType = `tool-${CLARIFY_TOOL_NAME}`
-    const pendingPart = message.parts.find(
-      (p) =>
-        p.type === clarifyToolType &&
-        (p as { state?: string }).state === "input-available"
-    ) as
-      | { type: string; toolCallId?: string; state?: string; input?: unknown }
-      | undefined
-    if (!pendingPart) return null
-
-    const toolCallId =
-      typeof pendingPart.toolCallId === "string" && pendingPart.toolCallId
-        ? pendingPart.toolCallId
-        : null
-    if (!toolCallId) return null  // 无效 toolCallId 不渲染卡片,避免空串进 approve
-    const input = (pendingPart.input ?? {}) as Record<string, unknown>
-
-    // 群消息自身的 DB id，用于提交后乐观隐藏卡片（approved_at patch）
-    const groupMsgDbId = getDbMessageIdFromAssistantMessage({
-      id: message.id,
-      metadata: meta,
-    })
-
-    // 组长会话中断消息 id（/approve 的 message_id）
-    const leaderMsgDbId = parseDbMessageId(target.messageId)
-    if (!leaderMsgDbId) return null
-
-    const fakeActiveHitl: ActiveHitl = {
-      dbMessageId: leaderMsgDbId,
-      toolCallId,
-      kind: "clarify",
-      input,
-    }
-    const fakePending = {
-      kind: "clarify" as const,
-      messageId: message.id,
-      toolCallId,
-      input,
-    }
-
-    return {
-      activeHitl: fakeActiveHitl,
-      pending: fakePending,
-      targetConversationId: target.conversationId,
-      groupMsgDbId,
-    }
-  }, [message, contact.type])
-
-  const handleGroupClarifySubmitted = React.useCallback(
-    (opts?: { resumed?: boolean; assistantMessageId?: string | number }) => {
-      if (!groupClarifyDock) return
-      onHitlApproved?.({
-        kind: "clarify",
-        toolCallId: groupClarifyDock.activeHitl.toolCallId,
-        approvedMessageId: groupClarifyDock.groupMsgDbId ?? undefined,
-        // 群澄清提交后不 resume 群会话（组长会话自行 resume）
-        resumed: false,
-        assistantMessageId: opts?.assistantMessageId,
-      })
-    },
-    [groupClarifyDock, onHitlApproved]
-  )
-
   const messageBody = (
     <div className="space-y-1.5">
       {classifiedBlocks.length > 0 ? (
@@ -188,15 +108,6 @@ function ChatMessageItemInner({
         ))
       ) : (
         <MessageResponse />
-      )}
-      {groupClarifyDock && (
-        <ClarifyingQuestionsDock
-          activeHitl={groupClarifyDock.activeHitl}
-          pending={groupClarifyDock.pending}
-          conversationId={groupClarifyDock.targetConversationId}
-          onSubmitted={handleGroupClarifySubmitted}
-          className="w-full"
-        />
       )}
     </div>
   )
