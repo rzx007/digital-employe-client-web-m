@@ -23,7 +23,7 @@
 | 群里澄清卡片渲染组件(`ClarifyingQuestionsDock` 调用处) | 提交时用解析器换双 id | 修改 |
 | `apps/server/tests/test_group_leader_clarification.py` | 后端桥出/桥回/路由测试 | 新建 |
 
-**约定**:后端测试用 `tests/conftest.py` 的 `db_session` / `workspace` / `add_employee` fixtures。所有后端命令在 `apps/server/` 下执行。
+**约定**:后端测试用 `tests/conftest.py` 的 `db_session` / `workspace` fixtures(`add_employee` 是 conftest 里的**普通 helper 函数**,需 import 调用,非注入)。所有后端命令在 `apps/server/` 下执行。
 
 ---
 
@@ -164,7 +164,7 @@ def test_interrupted_leader_projects_clarify_card(db_session, workspace, monkeyp
     assert "clarifying_questions" in (card.message_parts or "")
 ```
 
-> 注:`monkeypatch` 把 `get_session_local` 换成返回当前测试 session,因为 `project_member_conversation_if_in_room` 内部自建 session。若工程已有更标准的 DB patch 方式(参考 conftest 的 `patched_*_db`),改用之。
+> 注:`project_member_conversation_if_in_room` 内部 `from src.db.session import get_session_local` 自建 session 且末尾 `finally: db.close()`。上面把它换成返回**同一** `db_session` 会在调用后被 close(后续查询虽仍能工作但脆弱)。**更稳妥**:对齐 conftest 的 `patched_task_mutations_db` 写法——`monkeypatch` 成 `sessionmaker(bind=db_engine)` 工厂(每次返回新 session),断言时另开一个 session 读取群卡片,避免依赖 close 后行为。`db_engine` fixture 已在 conftest 提供。
 
 - [ ] **Step 2: 运行,确认失败**
 
@@ -289,6 +289,7 @@ Expected: FAIL（命中 `else: 不支持的 target_type` → accepted False）
             from src.service.agent.orchestrator import get_orchestrator_agent
             from src.models.group_room import GroupRoom
             from src.service.group_room_service import register_group_stream_relay
+            from src.db.session import get_session_local
 
             room = db.scalars(
                 select(GroupRoom).where(
@@ -298,11 +299,15 @@ Expected: FAIL（命中 `else: 不支持的 target_type` → accepted False）
             if room is None:
                 return {"accepted": False, "message": "未找到组长所属房间"}
 
+            # 用独立 session(对齐 dispatch_to_leader:组长 resume 必与工具线程争用
+            # session,共享会撞 "concurrent operations are not permitted")。
+            # 该 leader_db 由 approve_and_resume 在终态统一 close(orchestrator_owned_db)。
+            leader_db = get_session_local()()
             from pathlib import Path
             shared = str(Path(settings.artifacts_path) / f"room-{room.id}" / "artifacts")
             agent = get_orchestrator_agent(
                 workspace_id=conversation.workspace_id,
-                db=db,
+                db=leader_db,
                 conversation_id=conversation_id,
                 auth_token=auth_token,
                 shared_artifacts_dir=shared,
@@ -319,7 +324,7 @@ Expected: FAIL（命中 `else: 不支持的 target_type` → accepted False）
             )
 ```
 
-并把 `approve_and_resume` 的 orchestrator_* 透传条件从"仅 curator"扩为"curator 或 group_leader":
+并把 `approve_and_resume` 的 orchestrator_* 透传条件从"仅 curator"扩为"curator 或 group_leader",且 group_leader 额外传 `orchestrator_owned_db=leader_db`:
 
 ```python
         _is_orch = target_type in ("curator", "group_leader")
@@ -329,13 +334,14 @@ Expected: FAIL（命中 `else: 不支持的 target_type` → accepted False）
             config=config,
             stream_msg_id=new_msg.id,
             decisions=decisions,
+            orchestrator_owned_db=(leader_db if target_type == "group_leader" else None),
             orchestrator_workspace_id=(conversation.workspace_id if _is_orch else None),
             orchestrator_conversation_id=(conversation_id if _is_orch else None),
             orchestrator_auth_token=(auth_token if _is_orch else None),
         )
 ```
 
-> 注:若运行期出现 "concurrent operations are not permitted"(组长会话与工具线程共享 session),改为像 `dispatch_to_leader` 用独立 `leader_db` 并传 `orchestrator_owned_db=leader_db`。先按上面最简实现,联调暴露再加。
+> 注:`leader_db` 仅在 group_leader 分支定义,故 `orchestrator_owned_db` 三元表达式必须用 `target_type == "group_leader"` 守卫,避免 NameError。`approve_and_resume` 会在流终态 close 该 `orchestrator_owned_db`(见 `stream_registry.py` finalize),无需在此手动 close。Task 3 的单测把 `approve_and_resume` 整体 monkeypatch 掉,不会真正 close,断言 `captured["orchestrator_owned_db"]` 非空即可。
 
 - [ ] **Step 4: 运行,确认通过**
 
@@ -419,6 +425,7 @@ Expected: FAIL（方法不存在）
                 if last is not None:
                     import asyncio
                     from src.service.chat_service import ChatService
+                    from src.service.agent.orchestrator.runtime import get_main_loop
                     asyncio.run_coroutine_threadsafe(
                         ChatService.approve_trigger(
                             db, room.leader_conversation_id, last.id,
@@ -434,7 +441,7 @@ Expected: FAIL（方法不存在）
             return {...}  # 原返回保持
 ```
 
-> `get_main_loop` 已在本模块用于 `_schedule_stream_start`,复用其 import。线程/事件循环细节按现有 `_schedule_stream_start` 的方式对齐(本步以通过单测为准,联调时核对协程投递)。
+> `get_main_loop` 在本模块是**函数内局部 import**(`_schedule_stream_start` 里 `from src.service.agent.orchestrator.runtime import get_main_loop`),模块顶层无此名 → 兜底分支须**自行 import**(如上)。`approve_trigger` 是协程,必须用 `asyncio.run_coroutine_threadsafe(coro, get_main_loop())`,**不要**照搬 `_schedule_stream_start` 的 `call_soon_threadsafe`(那是给同步 callable 的)。单测里直接 `asyncio.run(ChatService.approve_trigger(...))` 验证,不经主循环。
 
 - [ ] **Step 4: 运行,确认通过**
 
@@ -519,7 +526,7 @@ Expected: PASS
 
 - [ ] **Step 5: 接入卡片提交**
 
-在群时间线渲染澄清卡片的组件里(`ClarifyingQuestionsDock` 群上下文调用点):提交前 `const t = resolveGroupClarifyTarget(message.metadata)`;若 `t` 非空,调用 `approveHitl(t.conversationId, t.messageId, decisions)`(`decisions` 用 respond 形态),否则沿用原 1:1 逻辑。确保走的是合法 DbMessageId 分支(`isValidApproveMessageId`)。
+**注意:群时间线目前没有渲染澄清卡片的入口**——现有 `ClarifyingQuestionsDock` 调用点只在 1:1 的 `chat-composer-area.tsx`,且组件内部从 `conversationId` prop + `activeHitl.dbMessageId` 推导提交目标(无单独 messageId override 形参)。因此本步需在**群时间线渲染处新建一个澄清卡片渲染分支**:当群消息含 `extra_meta.clarify_*`(用 `resolveGroupClarifyTarget(message.metadata)` 判定非空)时,渲染澄清卡片,并把解析出的 `conversationId` 作为组件 `conversationId` prop 传入、`messageId` 作为 `activeHitl.dbMessageId` 来源,使提交 `approveHitl(t.conversationId, t.messageId, respondDecisions)` 打到组长会话。确保走合法 DbMessageId 分支(`isValidApproveMessageId`)。`decisions` 复用现有 respond 构造(`buildClarifyRespondMessage` / `clarifying-questions` 模块)。
 
 - [ ] **Step 6: 类型检查 + 提交**
 
