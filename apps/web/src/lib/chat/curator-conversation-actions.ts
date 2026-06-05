@@ -4,23 +4,18 @@ import { createConversation, fetchCuratorConversation } from "@/api/chat"
 import { mapConversationListItemToConversation } from "@/lib/chat/chat-mappers"
 import { selectConversationById } from "@/lib/chat/conversation-selection"
 import { getContactId } from "@/lib/chat/contact-utils"
+import { shouldRenameConversationOnFirstMessage } from "@/lib/chat/conversation-title"
 import { selectWorkbenchCuratorConversation } from "@/lib/chat/conversation-selection/apply"
 import { chatKeys } from "@/lib/query-keys/chat"
 import type { Contact, Conversation, Message } from "@/types/chat"
 
 export const CURATOR_DEFAULT_CONVERSATION_TITLE = "新对话"
 
-const PLACEHOLDER_CURATOR_TITLES = new Set([
-  CURATOR_DEFAULT_CONVERSATION_TITLE,
-  "总管对话",
-])
-
-/** 首条用户消息后是否应把占位标题改成消息摘要 */
+/** 首条用户消息后是否应把占位标题改成语义标题 */
 export function shouldRenameCuratorConversationOnFirstMessage(
   title: string | undefined
 ): boolean {
-  const t = title?.trim()
-  return !t || PLACEHOLDER_CURATOR_TITLES.has(t)
+  return shouldRenameConversationOnFirstMessage(title)
 }
 
 export function primeCuratorConversationInCache(

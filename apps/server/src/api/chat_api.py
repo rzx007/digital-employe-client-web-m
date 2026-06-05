@@ -23,6 +23,8 @@ from src.schemas.conversation import (
     ConversationCreate,
     ConversationMessageRead,
     ConversationRead,
+    ConversationTitleSuggestRequest,
+    ConversationTitleSuggestResponse,
     ConversationUpdate,
     ConversationsBulkDeleteResult,
     StreamConversationRequest,
@@ -35,6 +37,7 @@ from src.schemas.recent_contact import (
 )
 from src.schemas.resource import ResourceContent, ResourceList, ResourceUploadResult
 from src.service.chat_service import ChatService
+from src.service.conversation_title_service import suggest_conversation_title
 from src.service.recent_contact_service import RecentContactService
 from src.service.resource_service import ResourceService
 
@@ -246,6 +249,20 @@ def get_conversation_context_budget(
 
     data = resolve_context_budget_for_conversation(db, conversation_id)
     return ResponseBase[ContextBudgetRead](data=data)
+
+
+@router.post(
+    "/chat/conversations/suggest-title",
+    response_model=ResponseBase[ConversationTitleSuggestResponse],
+)
+def suggest_conversation_title_endpoint(
+    payload: ConversationTitleSuggestRequest,
+) -> ResponseBase[ConversationTitleSuggestResponse]:
+    """根据首条用户消息生成语义化会话标题（无状态）。"""
+    title, source = suggest_conversation_title(payload.message)
+    return ResponseBase(
+        data=ConversationTitleSuggestResponse(title=title, source=source)
+    )
 
 
 @router.patch(

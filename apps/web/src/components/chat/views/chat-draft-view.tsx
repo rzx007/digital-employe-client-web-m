@@ -15,6 +15,7 @@ import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input
 import {
   useCreateConversationMutation,
   useMessagesQuery,
+  useUpdateConversationTitleMutation,
 } from "@/hooks/use-chat-queries"
 import { useConversationSession } from "@/hooks/use-conversation-session"
 import { useChatStore } from "@/stores/chat-store"
@@ -23,6 +24,11 @@ import { prepareDisplayMessages } from "@/lib/chat/hitl"
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
 import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
+import {
+  applySemanticConversationTitle,
+  DEFAULT_CONVERSATION_TITLE,
+} from "@/lib/chat/conversation-title"
+import { getContactId } from "@/lib/chat/contact-utils"
 
 import { ChatPanel } from "../panel/chat-panel"
 import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
@@ -55,6 +61,7 @@ async function uploadDraftFiles(
 
 export function DraftChatView({
   contact,
+  title,
   onOpenContacts,
   onOpenConversations,
   onNewConversation,
@@ -63,6 +70,7 @@ export function DraftChatView({
   ...props
 }: ComponentProps<"div"> & {
   contact?: ChatViewContact
+  title?: string
   onOpenContacts?: () => void
   onOpenConversations?: () => void
   onNewConversation?: () => void
@@ -84,6 +92,7 @@ export function DraftChatView({
   )
   const conversationIdRef = useRef<string | number | null>(null)
   const createConversationMutation = useCreateConversationMutation()
+  const updateTitleMutation = useUpdateConversationTitleMutation()
   const queryClient = useQueryClient()
 
   const { data: storedMessages = [] } = useMessagesQuery(selectedConversationId)
@@ -200,18 +209,20 @@ export function DraftChatView({
 
       try {
         let conversationId = useChatStore.getState().selectedConversationId
+        let createdOnThisSend = false
 
         if (!conversationId) {
           const createdConversation =
             await createConversationMutation.mutateAsync({
               contactId: selectedContactId ?? "",
-              title: messageText,
+              title: DEFAULT_CONVERSATION_TITLE,
               contact: selectedContact,
             })
 
           conversationId = createdConversation.id
           setSelectedConversationId(conversationId)
           conversationIdRef.current = conversationId
+          createdOnThisSend = true
         }
 
         conversationIdRef.current = conversationId
@@ -242,6 +253,22 @@ export function DraftChatView({
             },
           }
         )
+
+        if (createdOnThisSend) {
+          const contactId =
+            selectedContactId ?? getContactId(selectedContact) ?? ""
+          if (contactId) {
+            void applySemanticConversationTitle({
+              conversationId,
+              messageText,
+              contactId,
+              updateTitle: updateTitleMutation.mutateAsync,
+              onError: () => {
+                toast.error("更新会话标题失败")
+              },
+            })
+          }
+        }
       } catch (sendError) {
         toast.error("发送失败", {
           description:
@@ -258,6 +285,7 @@ export function DraftChatView({
       sendMessage,
       setSelectedConversationId,
       session,
+      updateTitleMutation,
     ]
   )
 
@@ -310,7 +338,7 @@ export function DraftChatView({
   return (
     <ChatPanel
       contact={contact}
-      title="新对话"
+      title={title ?? DEFAULT_CONVERSATION_TITLE}
       messages={displayMessages}
       composerMessages={messages}
       inputValue={inputValue}
