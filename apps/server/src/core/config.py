@@ -121,6 +121,13 @@ class Settings:
     performance_dispatch_orders_path: str | None = None
     execute_timeout: int = 600
     llm_request_timeout: float = 300.0
+    # Agent 流：chunk 间无事件的最长等待（工具+模型思考）；过短会误判「已完成」
+    agent_chunk_timeout: float = 180.0
+    agent_first_chunk_timeout: float = 120.0
+    # 单流硬墙：超过此秒数仍 active 则强制清理（运行时 ≥ stall + 120s）
+    agent_stale_hard_timeout: float = 720.0
+    # 无进展超时（AGENT_STALL_TIMEOUT）：重任务单步思考/工具可能数分钟无 chunk，默认 30min
+    agent_stall_timeout: float = 1800.0
     feishu_app_id: str | None = None
     feishu_app_secret: str | None = None
     feishu_redirect_uri: str | None = None
@@ -315,6 +322,53 @@ def get_settings() -> Settings:
         llm_request_timeout = 300.0
     if llm_request_timeout < 15.0:
         llm_request_timeout = 15.0
+
+    agent_chunk_timeout_raw = _get_kv_value(kv_data, "AGENT_CHUNK_TIMEOUT")
+    try:
+        agent_chunk_timeout = float(agent_chunk_timeout_raw or "180")
+    except ValueError:
+        agent_chunk_timeout = 180.0
+    if agent_chunk_timeout < 60.0:
+        agent_chunk_timeout = 60.0
+
+    agent_first_chunk_timeout_raw = _get_kv_value(
+        kv_data, "AGENT_FIRST_CHUNK_TIMEOUT"
+    )
+    try:
+        agent_first_chunk_timeout = float(agent_first_chunk_timeout_raw or "120")
+    except ValueError:
+        agent_first_chunk_timeout = 120.0
+    if agent_first_chunk_timeout < 30.0:
+        agent_first_chunk_timeout = 30.0
+
+    execute_timeout_raw = _get_kv_value(kv_data, "EXECUTE_TIMEOUT")
+    try:
+        execute_timeout = int(execute_timeout_raw or "600")
+    except ValueError:
+        execute_timeout = 600
+    if execute_timeout < 60:
+        execute_timeout = 600
+
+    agent_stale_hard_timeout_raw = _get_kv_value(kv_data, "AGENT_STALE_HARD_TIMEOUT")
+    try:
+        agent_stale_hard_timeout = float(agent_stale_hard_timeout_raw or "720")
+    except ValueError:
+        agent_stale_hard_timeout = 720.0
+
+    agent_stall_timeout_raw = _get_kv_value(kv_data, "AGENT_STALL_TIMEOUT")
+    try:
+        agent_stall_timeout = float(agent_stall_timeout_raw or "1800")
+    except ValueError:
+        agent_stall_timeout = 1800.0
+    if agent_stall_timeout < 30.0:
+        agent_stall_timeout = 30.0
+
+    agent_stale_hard_timeout = max(
+        agent_stale_hard_timeout,
+        float(execute_timeout) + 120.0,
+        agent_stall_timeout + 120.0,
+    )
+
     default_workspace_id_raw = _get_kv_value(kv_data, "DEFAULT_WORKSPACE_ID")
     try:
         default_workspace_id = int(default_workspace_id_raw or "1")
@@ -414,7 +468,12 @@ def get_settings() -> Settings:
         ),
         performance_monthly_balance_path=performance_monthly_balance_path,
         performance_dispatch_orders_path=performance_dispatch_orders_path,
+        execute_timeout=execute_timeout,
         llm_request_timeout=llm_request_timeout,
+        agent_chunk_timeout=agent_chunk_timeout,
+        agent_first_chunk_timeout=agent_first_chunk_timeout,
+        agent_stale_hard_timeout=agent_stale_hard_timeout,
+        agent_stall_timeout=agent_stall_timeout,
         feishu_app_id=_get_kv_value(kv_data, "FEISHU_APP_ID"),
         feishu_app_secret=_get_kv_value(kv_data, "FEISHU_APP_SECRET"),
         feishu_redirect_uri=_get_kv_value(kv_data, "FEISHU_REDIRECT_URI"),

@@ -72,6 +72,18 @@ export type WorkspaceEvent =
       employee_id: number
       state: "ready" | "running" | "sleeping" | "done"
     }
+  | {
+      type: "room_message_stream"
+      room_id: number
+      room_conversation_id: number
+      source_conversation_id: number
+      sender_id: number | null
+      sender_label: string | null
+      delta: string
+      first: boolean
+      /** 累计已生成字符数（用于显示“正在生成 N 字”进度） */
+      acc?: number
+    }
 
 type EventHandler = (event: WorkspaceEvent) => void
 

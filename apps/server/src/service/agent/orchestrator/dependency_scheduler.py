@@ -279,6 +279,23 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
     from src.models.orchestration_plan import OrchestrationPlan
     from src.service.agent.orchestrator.runtime import can_assign_to_employee
 
+    # 终态通知前端：任务进入终态（成功/失败/跳过）→ 推 task_completed，
+    # 让群聊右侧 DAG 面板把该节点从"进行中"刷新到"已交付/失败"。
+    # 后端历史上只在任务“开始”时发 task_started，从不发 task_completed，
+    # 导致前端 DAG 停在 running 不更新；这里补齐完成侧事件。
+    try:
+        from src.service.workspace_events import WorkspaceEventBus
+
+        WorkspaceEventBus.push(workspace_id, {
+            "type": "task_completed",
+            "task_id": task_id,
+            "conversation_id": None,
+        })
+    except Exception:
+        logger.warning(
+            "push task_completed failed task=%s", task_id, exc_info=True
+        )
+
     db = get_session_local()()
     try:
         task = db.get(EmployeeTask, task_id)
@@ -341,6 +358,21 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
                 logger.info(
                     "successor task=%s employee=%s at capacity, defer",
                     cid, t.employee_id,
+                )
+                continue
+
+            from src.core.agent_runtime_policy import resolve_stream_class
+            from src.service.stream_registry import registry
+
+            stream_cls = resolve_stream_class(cls_by_id.get(cid), "orchestration")
+            if not registry.can_admit(stream_cls):
+                logger.info(
+                    "successor task=%s deferred: no stream slot (class=%s "
+                    "inflight=%s heavy=%s)",
+                    cid,
+                    stream_cls,
+                    registry.count_active_streams(),
+                    registry.count_active_heavy(),
                 )
                 continue
 

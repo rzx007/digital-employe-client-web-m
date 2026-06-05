@@ -104,3 +104,27 @@ def test_skips_already_path_only() -> None:
     ]
     out = compress_large_read_file_history(messages)
     assert out[0].content == stub
+
+
+def test_paginated_same_path_not_compressed() -> None:
+    """分页阅读同一文件时，较早的大段正文不能压成 path-only stub。"""
+    path = "/artifacts/big.md"
+    body0 = _large_body("A")
+    body200 = _large_body("B")
+    messages = [
+        ToolMessage(
+            content=body0,
+            name="read_file",
+            tool_call_id="c1",
+            additional_kwargs={"read_file_path": path, "read_file_offset": 0},
+        ),
+        ToolMessage(
+            content=body200,
+            name="read_file",
+            tool_call_id="c2",
+            additional_kwargs={"read_file_path": path, "read_file_offset": 200},
+        ),
+    ]
+    out = compress_large_read_file_history(messages)
+    assert out[0].content == body0
+    assert out[1].content == body200

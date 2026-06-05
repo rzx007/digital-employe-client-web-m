@@ -56,21 +56,27 @@ def _paginate_text_read_result(
         return ReadResult(file_data=FileData(content=empty_msg, encoding="utf-8"))
 
     lines = text.splitlines(keepends=True)
+    total_lines = len(lines)
     start_idx = offset
-    end_idx = min(start_idx + limit, len(lines))
-    if start_idx >= len(lines):
+    end_idx = min(start_idx + limit, total_lines)
+    if start_idx >= total_lines:
         return ReadResult(
             error=(
                 f"Line offset {offset} exceeds file length "
-                f"({len(lines)} lines)"
+                f"({total_lines} lines)"
             )
         )
-    return ReadResult(
+    result = ReadResult(
         file_data=FileData(
             content="".join(lines[start_idx:end_idx]),
             encoding="utf-8",
         )
     )
+    result.pagination_meta = {
+        "total_lines": total_lines,
+        "has_more": end_idx < total_lines,
+    }
+    return result
 
 
 def basic_file_read(

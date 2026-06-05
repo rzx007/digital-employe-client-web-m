@@ -151,3 +151,48 @@ def test_success_does_not_skip(
             assert "skipped" not in _statuses(sess, tid)
     finally:
         sess.close()
+
+
+def test_successor_deferred_when_no_stream_slot(
+    patched_task_mutations_db, db_session, workspace, monkeypatch
+) -> None:
+    """槽位满时后继不派发，等下次完成事件再试。"""
+    emp = add_employee(db_session, workspace.id, name="worker3")
+    plan, (a, b, _) = _make_plan_with_chain(db_session, workspace.id, emp.id)
+
+    db_session.add(
+        TaskExecutionLog(
+            task_id=a.id,
+            workspace_id=workspace.id,
+            employee_id=emp.id,
+            task_name_snapshot="A",
+            run_status="success",
+            run_result="ok",
+            output_json=json.dumps({"content": "done"}),
+            started_at=cst_now(),
+            ended_at=cst_now(),
+        )
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(
+        "src.service.stream_registry.registry.can_admit",
+        lambda _cls: False,
+    )
+    dispatch_calls: list[int] = []
+    monkeypatch.setattr(
+        ds,
+        "_dispatch_successor",
+        lambda db, task, employee, ws_id, briefing, **kw: dispatch_calls.append(
+            task.id
+        ),
+    )
+
+    ds.on_employee_task_completed(a.id, workspace.id)
+
+    assert dispatch_calls == []
+    sess = patched_task_mutations_db()
+    try:
+        assert _statuses(sess, b.id) == set()
+    finally:
+        sess.close()

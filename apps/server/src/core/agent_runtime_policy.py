@@ -6,18 +6,22 @@ AGENT_MAX_CONCURRENT_STREAMS_KV = "AGENT_MAX_CONCURRENT_STREAMS"
 AGENT_MAX_CONCURRENT_STREAMS_DEFAULT = 1
 AGENT_MAX_CONCURRENT_STREAMS_CAP = 8
 
-# 资源阀门：常驻并发上限（与 serial_mode 解耦），默认对齐推理后端的并发槽。
-# 当前 llama.cpp 启动参数 -np=4（见 scripts/apply-hanhai-tune.py 的 docker-compose），
-# 换后端/换模型时改这一个 KV 即可。设为 0 表示不限（逃生阀）。
+# 资源阀门（默认开启，保守值）：总闸 4、重活闸 2。
+# 历史默认是 0（不限），但群聊会并发拉起组长+多成员+汇总多条 heavy(orchestration) 流，
+# 每条每个 super-step 都往全局唯一 checkpointer 连接写大 checkpoint（observed 110KB+），
+# 不限并发时写队列雪崩 → 全流卡在 checkpoint、写锁长占、ORM 也 database is locked → 崩溃。
+# 把重活并发压到 2（+1 轻预留，见 light_slot_reserve），把 checkpoint 写速率控制在
+# 单连接可排空的范围；其余流排队。可经 config_kvs AGENT_MAX_INFLIGHT / AGENT_MAX_HEAVY 覆盖
+# （设 0 = 关闭逃生阀）。
 AGENT_MAX_INFLIGHT_KV = "AGENT_MAX_INFLIGHT"
 AGENT_MAX_INFLIGHT_DEFAULT = 4
 AGENT_MAX_INFLIGHT_CAP = 32
 
-# heavy/light 分级：重活(长文档/批量交付)的并发上限，给交互问答(light)留余量。
-# 默认 0 = 不单独限制重活（仅受 AGENT_MAX_INFLIGHT 总闸约束，行为同切片 A）；
-# 运维把它调小（如 3）即开启"预留槽给轻活"。
 AGENT_MAX_HEAVY_KV = "AGENT_MAX_HEAVY"
-AGENT_MAX_HEAVY_DEFAULT = 0
+AGENT_MAX_HEAVY_DEFAULT = 2
+
+# 启用槽位闸且总闸 >= 2 时，为 light 预留、heavy 不可占满的格数。
+LIGHT_SLOT_RESERVE = 1
 
 USER_CHAT_PRIORITY = 10
 ORCHESTRATION_PRIORITY = 20
@@ -37,7 +41,14 @@ def resolve_stream_class(explicit: str | None, source: str | None) -> str:
     """
     if explicit in (STREAM_CLASS_HEAVY, STREAM_CLASS_LIGHT):
         return explicit  # type: ignore[return-value]
-    if source in ("orchestration", "scheduled"):
+    # 编排/定时/组长统筹=heavy（批量交付、长任务）。
+    # 群 @ 直接对话(group_room) 归为 light：交互式短对话，不应占唯一 heavy 槽挡总管。
+    if source in (
+        "orchestration",
+        "scheduled",
+        "group_leader",
+        "group_leader_summary",
+    ):
         return STREAM_CLASS_HEAVY
     return STREAM_CLASS_LIGHT
 
@@ -87,6 +98,30 @@ class AgentRuntimePolicy:
         if self.serial_mode and self.max_concurrent_streams > 0:
             caps.append(self.max_concurrent_streams)
         return min(caps) if caps else 0
+
+    def effective_max_inflight_for(self, stream_class: str) -> int:
+        """heavy 可见的总槽上限（0=不限）；light 始终用 ``effective_max_inflight()`` 全池。
+
+        heavy 最多占 ``总闸 - LIGHT_SLOT_RESERVE``，为 light 留至少 1 格。
+        light 入场只看总闸，heavy 未满时可占用空 heavy 槽（见 ``StreamRegistry.can_admit``）。
+        """
+        cap = self.effective_max_inflight()
+        if cap <= 0 or stream_class != STREAM_CLASS_HEAVY:
+            return cap
+        if cap >= 2 and LIGHT_SLOT_RESERVE > 0:
+            return max(1, cap - LIGHT_SLOT_RESERVE)
+        return cap
+
+    def light_slot_reserve(self) -> int:
+        """为 light 预留、heavy 不可占用的槽位数（总闸 < 2 时为 0）。"""
+        cap = self.effective_max_inflight()
+        if cap >= 2 and LIGHT_SLOT_RESERVE > 0:
+            return LIGHT_SLOT_RESERVE
+        return 0
+
+    def slot_gating_enabled(self) -> bool:
+        """总闸或 heavy 闸任一 >0 时启用槽位排队；默认两者均为 0（禁用）。"""
+        return self.effective_max_inflight() > 0 or self.effective_max_heavy() > 0
 
 
 def parse_agent_max_concurrent_streams(

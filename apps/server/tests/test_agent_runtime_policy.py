@@ -63,7 +63,7 @@ def test_parse_agent_max_concurrent_when_serial_off() -> None:
 
 
 def test_max_inflight_default_when_serial_off(monkeypatch) -> None:
-    """串行关闭时仍有常驻 GPU 上限（默认 4），不再"无限放行"。"""
+    """串行关闭且未配 KV 时槽位闸默认关闭（0=不限）。"""
     monkeypatch.setattr(
         "src.core.agent_runtime_policy._read_config_kv_data",
         lambda: {"AGENT_SERIAL_MODE": "0"},
@@ -71,7 +71,8 @@ def test_max_inflight_default_when_serial_off(monkeypatch) -> None:
     policy = get_agent_runtime_policy()
     assert policy.serial_mode is False
     assert policy.max_inflight == AGENT_MAX_INFLIGHT_DEFAULT
-    assert policy.effective_max_inflight() == AGENT_MAX_INFLIGHT_DEFAULT
+    assert policy.effective_max_inflight() == 0
+    assert policy.slot_gating_enabled() is False
 
 
 def test_max_inflight_from_kv(monkeypatch) -> None:
@@ -112,3 +113,25 @@ def test_effective_max_inflight_serial_takes_min() -> None:
     # inflight=0（不限）+ 串行关闭 → 0（不限）
     p = AgentRuntimePolicy(serial_mode=False, max_concurrent_streams=0, max_inflight=0)
     assert p.effective_max_inflight() == 0
+
+
+def test_heavy_reserves_light_slot() -> None:
+    p = AgentRuntimePolicy(
+        serial_mode=False, max_concurrent_streams=0, max_inflight=4, max_heavy=3
+    )
+    assert p.slot_gating_enabled() is True
+    assert p.effective_max_inflight_for("light") == 4
+    assert p.effective_max_inflight_for("heavy") == 3
+
+
+def test_group_room_is_light() -> None:
+    from src.core.agent_runtime_policy import resolve_stream_class
+
+    assert resolve_stream_class(None, "group_room") == "light"
+    assert resolve_stream_class(None, "group_leader") == "heavy"
+    assert resolve_stream_class(None, "user_chat") == "light"
+
+
+def test_slot_gating_off_by_default() -> None:
+    p = AgentRuntimePolicy(serial_mode=False, max_concurrent_streams=0)
+    assert p.slot_gating_enabled() is False

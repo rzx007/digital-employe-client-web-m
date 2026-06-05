@@ -31,6 +31,8 @@ interface ChatStore {
   curatorNavigationReturn: CuratorNavigationReturn | null
   /** 从群协作跳到员工执行会话后，用于「返回群聊」 */
   groupNavigationReturn: GroupNavigationReturn | null
+  /** 群深链每次进入递增，迫使员工会话视图 remount、丢弃 useChat 残留 streaming */
+  groupDeepLinkMountKey: number
   setContacts: (contacts: Contact[]) => void
   setSelectedContactId: (id: string | null) => void
   setSelectedConversationId: (id: string | number | null) => void
@@ -45,6 +47,7 @@ interface ChatStore {
   clearCuratorNavigationReturn: () => void
   setGroupNavigationReturn: (ctx: GroupNavigationReturn | null) => void
   clearGroupNavigationReturn: () => void
+  bumpGroupDeepLinkMount: () => void
   startDraftConversation: (contactId: string) => void
   selectConversation: (contactId: string, conversationId: string) => void
   switchToContact: (contactId: string) => void
@@ -66,6 +69,7 @@ export const useChatStore = create<ChatStore>()(
       isConversationListOpen: false,
       curatorNavigationReturn: null,
       groupNavigationReturn: null,
+      groupDeepLinkMountKey: 0,
       setContacts: (contacts) => set({ contacts }),
       setSelectedContactId: (id) =>
         set({
@@ -106,6 +110,10 @@ export const useChatStore = create<ChatStore>()(
       setGroupNavigationReturn: (ctx: GroupNavigationReturn | null) =>
         set({ groupNavigationReturn: ctx }),
       clearGroupNavigationReturn: () => set({ groupNavigationReturn: null }),
+      bumpGroupDeepLinkMount: () =>
+        set((state) => ({
+          groupDeepLinkMountKey: state.groupDeepLinkMountKey + 1,
+        })),
       startDraftConversation: (contactId) =>
         set((state) => ({
           selectedContactId: contactId,

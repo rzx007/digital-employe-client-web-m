@@ -27,7 +27,7 @@ def test_same_path_keeps_latest_only() -> None:
                 {
                     "id": "c1",
                     "name": "read_file",
-                    "args": {"file_path": path},
+                    "args": {"file_path": path, "offset": 0},
                 }
             ],
         ),
@@ -38,7 +38,7 @@ def test_same_path_keeps_latest_only() -> None:
                 {
                     "id": "c2",
                     "name": "read_file",
-                    "args": {"file_path": path},
+                    "args": {"file_path": path, "offset": 0},
                 }
             ],
         ),
@@ -47,6 +47,48 @@ def test_same_path_keeps_latest_only() -> None:
     out = dedupe_read_file_tool_messages(messages)
     assert read_file_dedupe_placeholder(path) in str(out[1].content)
     assert out[3].content == "NEW BODY"
+
+
+def test_same_path_different_offsets_both_kept() -> None:
+    """分页阅读：offset 0 与 offset 200 的片段必须同时保留，否则模型会迷失读到哪里。"""
+    path = "/artifacts/report.md"
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "c1",
+                    "name": "read_file",
+                    "args": {"file_path": path, "offset": 0, "limit": 200},
+                }
+            ],
+        ),
+        ToolMessage(
+            content="PART1",
+            name="read_file",
+            tool_call_id="c1",
+            additional_kwargs={"read_file_path": path, "read_file_offset": 0},
+        ),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "c2",
+                    "name": "read_file",
+                    "args": {"file_path": path, "offset": 200, "limit": 300},
+                }
+            ],
+        ),
+        ToolMessage(
+            content="PART2",
+            name="read_file",
+            tool_call_id="c2",
+            additional_kwargs={"read_file_path": path, "read_file_offset": 200},
+        ),
+    ]
+    out = dedupe_read_file_tool_messages(messages)
+    assert out[1].content == "PART1"
+    assert out[3].content == "PART2"
 
 
 def test_different_paths_both_kept() -> None:

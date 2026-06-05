@@ -13,6 +13,8 @@ import { useChat } from "@ai-sdk/react"
 
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 
+import type { UIMessage } from "ai"
+
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
@@ -52,6 +54,8 @@ export function ConversationChatView({
 
   onNewConversation,
 
+  extraStreamingMessages,
+
   className,
 
   ...props
@@ -67,6 +71,9 @@ export function ConversationChatView({
   onOpenConversations?: () => void
 
   onNewConversation?: () => void
+
+  /** 群协作：进行中成员/组长的逐字流式临时消息，追加到时间线末尾像单聊一样逐字 */
+  extraStreamingMessages?: UIMessage[]
 }) {
   const [inputValue, setInputValue] = useState("")
 
@@ -198,8 +205,14 @@ export function ConversationChatView({
   const displayMessages = useMemo(() => {
     const source = pickMessageDisplaySource(messages, initialMessages, status)
 
-    return prepareDisplayMessages(source)
-  }, [initialMessages, messages, status])
+    const prepared = prepareDisplayMessages(source)
+    // 群协作：把进行中成员/组长的逐字流式临时消息追加到时间线末尾，
+    // 用与单聊完全相同的气泡逐字渲染；完成后由落库消息接管、临时消息清除。
+    if (extraStreamingMessages && extraStreamingMessages.length > 0) {
+      return [...prepared, ...extraStreamingMessages]
+    }
+    return prepared
+  }, [initialMessages, messages, status, extraStreamingMessages])
 
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)

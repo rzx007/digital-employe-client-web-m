@@ -3,6 +3,7 @@ import type { UIMessage } from "ai"
 import type { Message } from "@/types/chat"
 
 import { classifyMessageParts } from "./message-classifier"
+import { shouldHideStaleQueuePlaceholder } from "./assistant-stream-state"
 import {
   HITL_APPROVE_MESSAGE_ID_META_KEY,
   parseDbMessageId,
@@ -101,6 +102,28 @@ export function mapStoredMessagesToUIMessages(
         }
 
         if (message.content) {
+          if (
+            shouldHideStaleQueuePlaceholder(
+              message.streamState,
+              message.content
+            )
+          ) {
+            const uiMessage: UIMessage = {
+              id: message.id,
+              role: message.role,
+              parts: [
+                {
+                  type: "text",
+                  text: "正在执行…",
+                  state: "streaming" as const,
+                },
+              ],
+            }
+            ;(
+              uiMessage as UIMessage & { metadata?: Record<string, unknown> }
+            ).metadata = assistantMeta
+            return uiMessage
+          }
           const uiMessage: UIMessage = {
             id: message.id,
             role: message.role,

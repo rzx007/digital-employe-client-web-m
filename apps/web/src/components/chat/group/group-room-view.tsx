@@ -1,4 +1,5 @@
 import * as React from "react"
+import type { UIMessage } from "ai"
 
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -34,7 +35,7 @@ export function GroupRoomView({
   onOpenConversations?: () => void
   onNewConversation?: () => void
 }) {
-  const { members, dag } = useGroupRoom(conversationId)
+  const { members, dag, streaming } = useGroupRoom(conversationId)
   const hasDag = Boolean(dag?.has_dag && dag.nodes.length > 0)
   const groupContactId = contact ? getContactId(contact) ?? undefined : undefined
   const memberConversationByEmployeeId = React.useMemo(() => {
@@ -47,6 +48,24 @@ export function GroupRoomView({
     return map
   }, [members])
 
+  // 进行中成员/组长的逐字流式 → 转成时间线临时消息，像单聊一样逐字渲染。
+  // 完成后由落库的 room_message 接管，streaming 被清空。
+  const extraStreamingMessages = React.useMemo<UIMessage[]>(() => {
+    return streaming
+      .filter((s) => s.text.trim().length > 0)
+      .map((s) => ({
+        id: `group-stream-${s.sourceConversationId}`,
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: s.text }],
+        metadata: {
+          // 群时间线按发言人显示头像（组长 / 某成员）
+          senderName: s.senderLabel,
+          senderId: s.senderId != null ? String(s.senderId) : undefined,
+          streamState: "streaming",
+        },
+      }))
+  }, [streaming])
+
   return (
     <div className={cn("flex h-full min-h-0 w-full", className)} {...props}>
       <ConversationChatView
@@ -56,6 +75,7 @@ export function GroupRoomView({
         onOpenContacts={onOpenContacts}
         onOpenConversations={onOpenConversations}
         onNewConversation={onNewConversation}
+        extraStreamingMessages={extraStreamingMessages}
         className="min-w-0 flex-1"
       />
       {/* 组长统筹模式 → DAG 流程图；@直接派活 → 简单成员列表 */}
@@ -65,12 +85,13 @@ export function GroupRoomView({
           conversationId={conversationId}
           groupContactId={groupContactId ?? `group:${conversationId}`}
           memberConversationByEmployeeId={memberConversationByEmployeeId}
-          className="hidden w-72 shrink-0 border-l bg-background/60 md:flex"
+          className="hidden w-80 shrink-0 border-l bg-background/60 md:flex"
         />
       ) : (
         <GroupMemberSidebar
           members={members}
-          title={title || "群成员"}
+          // 用群名做标题，绝不用会话标题（=用户任务全文，会把右栏顶部塞满长文）
+          title={contact?.group?.name || "群成员"}
           groupContactId={groupContactId}
           groupConversationId={conversationId}
           className="hidden md:flex"

@@ -53,9 +53,10 @@ def _schedule_stream_start(
     （"concurrent operations are not permitted"）。
     """
     from src.service.stream_registry import registry
+    from src.service.agent_stream_queue import StartResult
 
     def _do_start() -> None:
-        registry.request_start(
+        result = registry.request_start(
             conversation_id=conversation_id,
             agent=agent,
             messages=messages,
@@ -69,6 +70,24 @@ def _schedule_stream_start(
             orchestrator_owned_db=orchestrator_owned_db,
             source=source,
         )
+        # 启动被拒（该会话已有活跃/排队流——常见于组长会话复用同一
+        # conversation_id 先 dispatch 后 summarize 时撞车）→ 必须回滚：
+        # 否则 DB 已被写成 streaming、relay 已注册，留下永久僵尸流占槽。
+        if result == StartResult.REJECTED:
+            logger.warning(
+                "stream start REJECTED conv=%s source=%s → 回滚 streaming/relay",
+                conversation_id, source,
+            )
+            try:
+                from src.service.stream_registry import _mark_stream_state_sync
+
+                _mark_stream_state_sync(stream_msg_id, conversation_id, "failed")
+            except Exception:
+                logger.warning(
+                    "rollback stream_state failed conv=%s", conversation_id,
+                    exc_info=True,
+                )
+            unregister_group_stream_relay(conversation_id)
 
     try:
         from src.service.agent.orchestrator.runtime import get_main_loop
@@ -79,10 +98,129 @@ def _schedule_stream_start(
 
 
 ROOM_MESSAGE_EVENT = "room_message"
+ROOM_MESSAGE_STREAM_EVENT = "room_message_stream"  # 逐字流式增量
 ROOM_MEMBER_STATE_EVENT = "room_member_state"
+
+
+# 群流式中继：conversation_id -> 该流在群里的归属信息。
+# 成员/组长流产出 token 时，经 relay_group_stream_delta 实时推到群时间线。
+_GROUP_STREAM_RELAY: dict[int, dict] = {}
+
+
+def register_group_stream_relay(
+    conversation_id: int,
+    *,
+    room_id: int,
+    room_conversation_id: int,
+    workspace_id: int,
+    sender_id: int | None,
+    sender_label: str,
+) -> None:
+    """登记一个流到群的流式中继（派活时调用）。"""
+    _GROUP_STREAM_RELAY[conversation_id] = {
+        "room_id": room_id,
+        "room_conversation_id": room_conversation_id,
+        "workspace_id": workspace_id,
+        "sender_id": sender_id,
+        "sender_label": sender_label,
+        "acc": 0,  # 已推送的累计字符数（用于前端判断是否新消息）
+    }
+
+
+def unregister_group_stream_relay(conversation_id: int) -> None:
+    _GROUP_STREAM_RELAY.pop(conversation_id, None)
+
+
+def relay_group_stream_delta(conversation_id: int, delta_text: str) -> None:
+    """成员/组长流产出文本增量时，实时推到群时间线（逐字流式）。
+
+    由 stream_registry 的运行循环在每个文本 chunk 调用。无中继登记则直接返回。
+    """
+    info = _GROUP_STREAM_RELAY.get(conversation_id)
+    if not info or not delta_text:
+        return
+    try:
+        from src.service.workspace_events import WorkspaceEventBus
+
+        first = info["acc"] == 0
+        info["acc"] += len(delta_text)
+        WorkspaceEventBus.push(info["workspace_id"], {
+            "type": ROOM_MESSAGE_STREAM_EVENT,
+            "room_id": info["room_id"],
+            "room_conversation_id": info["room_conversation_id"],
+            "source_conversation_id": conversation_id,
+            "sender_id": info["sender_id"],
+            "sender_label": info["sender_label"],
+            "delta": delta_text,
+            "first": first,  # 该流首个增量 → 前端新建一条"进行中"消息
+            "acc": info["acc"],  # 累计已生成字符数 → 前端显示“正在生成 N 字”进度
+        })
+    except Exception:
+        logger.warning(
+            "relay group stream delta failed conv=%s", conversation_id, exc_info=True
+        )
+
+
+def auto_confirm_leader_plan_if_pending(leader_conversation_id: int) -> None:
+    """组长流结束后：若组长刚创建了未确认（pending）的编排计划，自动确认执行。
+
+    群组长场景没有真人点“确认执行”，但总管 agent 的系统 prompt / 工具返回值
+    都强制“创建计划后等用户确认”，导致组长生成计划后停在 pending、成员永不开工。
+    这里做代码层兜底：组长会话对应的最新 pending 计划，直接 execute_plan 派活，
+    不依赖 LLM 是否记得调 confirm_orchestration_plan。
+    """
+    from src.db.session import get_session_local
+    from src.models.conversation import Conversation
+    from src.models.orchestration_plan import OrchestrationPlan
+    from src.service.agent.orchestrator.execution import execute_plan
+
+    db = get_session_local()()
+    try:
+        conv = db.get(Conversation, leader_conversation_id)
+        # 仅处理群组长会话（target_type=group_leader），避免影响普通总管的人审流程
+        if conv is None or conv.target_type != "group_leader":
+            return
+        plan = db.scalars(
+            select(OrchestrationPlan)
+            .where(OrchestrationPlan.conversation_id == leader_conversation_id)
+            .order_by(OrchestrationPlan.id.desc())
+        ).first()
+        if plan is None or plan.status != "pending":
+            return  # 没有计划，或已确认/已取消，无需处理
+        logger.info(
+            "auto-confirming leader plan #%s (conv=%s) — 群组长无真人确认，代为执行",
+            plan.id, leader_conversation_id,
+        )
+        execute_plan(db, plan, conv.workspace_id)
+    except Exception:
+        logger.warning(
+            "auto_confirm_leader_plan failed conv=%s",
+            leader_conversation_id, exc_info=True,
+        )
+    finally:
+        db.close()
+
 
 # @提及解析：@员工名 或 @[员工名]（支持名字含空格）
 _MENTION_RE = re.compile(r"@\[([^\]]+)\]|@(\S+)")
+
+# 房间创建锁：防止同一群会话被并发 ensure_room（前端常同时打 /room、/room/dag、
+# 发消息，每个 session 各自 check-then-act 都查不到房间 → 各建一个，产生多个
+# 房间 + 多个组长会话 → 多个组长流抢慢模型 → 首包超时全失败）。
+# 按 room_conversation_id 串行化创建段，杜绝重复房间。
+import threading as _threading
+
+_ROOM_CREATE_LOCKS: dict[int, _threading.Lock] = {}
+_ROOM_CREATE_LOCKS_GUARD = _threading.Lock()
+
+
+def _get_room_create_lock(room_conversation_id: int) -> _threading.Lock:
+    with _ROOM_CREATE_LOCKS_GUARD:
+        lock = _ROOM_CREATE_LOCKS.get(room_conversation_id)
+        if lock is None:
+            lock = _threading.Lock()
+            _ROOM_CREATE_LOCKS[room_conversation_id] = lock
+        return lock
 
 
 class GroupRoomService:
@@ -95,13 +233,33 @@ class GroupRoomService:
         group_conversation: target_type="group" 的会话，target_id=ChatGroup.id。
         """
         room = db.scalars(
-            select(GroupRoom).where(
-                GroupRoom.room_conversation_id == group_conversation.id
-            )
+            select(GroupRoom)
+            .where(GroupRoom.room_conversation_id == group_conversation.id)
+            .order_by(GroupRoom.id.asc())  # 历史重复房间时稳定返回最早那个
         ).first()
         if room is not None:
             return room
 
+        # 进入创建段：按群会话加锁串行化，并在锁内 double-check 重查，
+        # 防止并发请求各自创建出多个房间 + 多个组长。
+        lock = _get_room_create_lock(group_conversation.id)
+        with lock:
+            # 让本 session 看到其它 session 刚提交的房间（清掉本地身份映射缓存）
+            db.expire_all()
+            room = db.scalars(
+                select(GroupRoom).where(
+                    GroupRoom.room_conversation_id == group_conversation.id
+                )
+            ).first()
+            if room is not None:
+                return room
+            return GroupRoomService._create_room_locked(db, group_conversation)
+
+    @staticmethod
+    def _create_room_locked(
+        db: Session, group_conversation: Conversation
+    ) -> GroupRoom:
+        """实际创建房间 + 登记成员 + 建组长会话。仅在 ensure_room 的创建锁内调用。"""
         chat_group = db.get(ChatGroup, group_conversation.target_id)
         room = GroupRoom(
             workspace_id=group_conversation.workspace_id,
@@ -362,6 +520,17 @@ class GroupRoomService:
         request_messages: list[dict[str, Any]] = [*history_messages]
         request_messages.append({"role": "user", "content": question})
 
+        # 登记流式中继：成员产出 token 时逐字推到群时间线
+        employee = db.get(Employee, member.employee_id)
+        register_group_stream_relay(
+            member_conv_id,
+            room_id=room.id,
+            room_conversation_id=room.room_conversation_id,
+            workspace_id=room.workspace_id,
+            sender_id=member.employee_id,
+            sender_label=employee.name if employee else f"员工#{member.employee_id}",
+        )
+
         # 投递到主循环启动（可能由 agent 工具线程触发，无运行中的事件循环）
         assistant_msg.stream_state = "streaming"
         db.commit()
@@ -594,6 +763,9 @@ class GroupRoomService:
             "群里现有以下成员可供你分派任务：\n"
             f"{roster}\n\n"
             "工作流程：\n"
+            "0) **第一步：先用一句话告诉大家你打算怎么安排（例如"
+            "“收到，我来拆解一下：微博热搜交给X，Python版本交给Y…”），"
+            "让群里立刻看到你在动手——这一步很重要，必须先输出这句话再调工具；**\n"
             "1) 把用户需求分解为子任务，优先分配给上述群成员；\n"
             "2) 调 create_orchestration_plan 生成计划（互不依赖的任务可并行，"
             "有先后关系用 depends_on 串起来）；\n"
@@ -632,6 +804,16 @@ class GroupRoomService:
 
         request_messages: list[dict[str, Any]] = [*history_messages]
         request_messages.append({"role": "user", "content": leader_brief})
+
+        # 组长也逐字流式推到群时间线（分解派活/汇总的过程可见）
+        register_group_stream_relay(
+            leader_conv.id,
+            room_id=room.id,
+            room_conversation_id=room.room_conversation_id,
+            workspace_id=room.workspace_id,
+            sender_id=None,
+            sender_label="组长",
+        )
 
         # 本方法可能由 agent 工具调用线程触发（无运行中的事件循环），
         # 必须把 request_start 投递到主循环，否则 asyncio.create_task 会报
@@ -717,6 +899,16 @@ class GroupRoomService:
 
         request_messages: list[dict[str, Any]] = [*history_messages]
         request_messages.append({"role": "user", "content": summary_brief})
+
+        # 组长汇总也逐字流式推到群时间线
+        register_group_stream_relay(
+            leader_conv.id,
+            room_id=room.id,
+            room_conversation_id=room.room_conversation_id,
+            workspace_id=room.workspace_id,
+            sender_id=None,
+            sender_label="组长",
+        )
 
         assistant_msg.stream_state = "streaming"
         db.commit()
@@ -843,7 +1035,9 @@ class GroupRoomService:
             s = (log.run_status or "").lower()
             if s in ("success", "completed"):
                 return "done"
-            if s in ("running", "queued"):
+            if s == "queued":
+                return "queued"
+            if s == "running":
                 return "running"
             if s in ("failed", "error", "cancelled"):
                 return "failed"
@@ -915,6 +1109,11 @@ class GroupRoomService:
             "id": "leader", "type": "leader", "name": "组长",
             "task": "分解与派活", "state": "running" if leader_running else "done",
             "artifacts": [],
+            "running_since": (
+                GroupRoomService._stream_started_at_iso(room.leader_conversation_id)
+                if leader_running
+                else None
+            ),
         })
         edges.append({"from": "user", "to": "leader"})
 
@@ -926,15 +1125,19 @@ class GroupRoomService:
             emp = db.get(Employee, t.employee_id)
             node_id = f"task-{t.id}"
             exec_conv_id = log.conversation_id if log and log.conversation_id else None
+            task_state = _task_state(log)
             nodes.append({
                 "id": node_id,
                 "type": "worker",
                 "name": emp.name if emp else f"员工#{t.employee_id}",
                 "employee_id": t.employee_id,
                 "task": t.task_name or "",
-                "state": _task_state(log),
+                "state": task_state,
                 "artifacts": _artifacts(log),
                 "conversation_id": exec_conv_id,
+                "running_since": GroupRoomService._task_running_since_iso(
+                    log, task_state, exec_conv_id
+                ),
             })
             deps = dep_map.get(t.id, [])
             if not deps:
@@ -973,13 +1176,52 @@ class GroupRoomService:
 
     @staticmethod
     def _conv_is_streaming(conversation_id: int) -> bool:
-        """该会话当前是否有活跃流（正在执行）。"""
+        """该会话当前是否正在流式输出（不含仅排队未启动）。"""
         try:
             from src.service.stream_registry import registry
 
-            return registry.is_busy(conversation_id)
+            return registry.is_active(conversation_id)
         except Exception:
             return False
+
+    @staticmethod
+    def _log_started_at_iso(log: Any) -> str | None:
+        if log is None or getattr(log, "started_at", None) is None:
+            return None
+        return log.started_at.isoformat()
+
+    @staticmethod
+    def _stream_started_at_iso(conversation_id: int | None) -> str | None:
+        """从 stream_metrics 取会话流式启动时刻（ISO8601）。"""
+        if conversation_id is None:
+            return None
+        try:
+            from datetime import datetime, timezone
+
+            from src.service.stream_metrics import metrics
+
+            ts = metrics.get_started_at(conversation_id)
+            if ts is not None:
+                return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _task_running_since_iso(
+        log: Any,
+        state: str,
+        exec_conv_id: int | None,
+    ) -> str | None:
+        """任务节点进行中/排队时的权威起始时刻（优先 DB 日志，其次流指标）。"""
+        if state not in ("running", "queued"):
+            return None
+        since = GroupRoomService._log_started_at_iso(log)
+        if since is not None:
+            return since
+        if state == "running":
+            return GroupRoomService._stream_started_at_iso(exec_conv_id)
+        return None
 
     @staticmethod
     def _live_member_state(
@@ -1001,15 +1243,21 @@ class GroupRoomService:
 
         # 组长编排派的任务会话：查该员工在本房间(组长会话)下是否有 running/queued 日志
         if room.leader_conversation_id is not None:
-            running_log = db.scalars(
+            active_log = db.scalars(
                 select(TaskExecutionLog).where(
                     TaskExecutionLog.orchestrator_conversation_id
                     == room.leader_conversation_id,
                     TaskExecutionLog.employee_id == member.employee_id,
                     TaskExecutionLog.run_status.in_(("running", "queued")),
                 )
+                .order_by(TaskExecutionLog.id.desc())
             ).first()
-            if running_log is not None:
+            if active_log is not None:
+                cid = active_log.conversation_id
+                if (active_log.run_status or "").lower() == "queued":
+                    if cid is not None and GroupRoomService._conv_is_streaming(cid):
+                        return "running"
+                    return "queued"
                 return "running"
 
         return member.state or "ready"

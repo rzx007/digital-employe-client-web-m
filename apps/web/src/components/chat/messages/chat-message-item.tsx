@@ -7,7 +7,9 @@ import {
   MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
 import { getCopyableMessageText } from "@/lib/chat/message-utils"
+import { getDispatchBadge } from "@/lib/chat/assistant-stream-state"
 import { CURATOR_AVATAR_URL } from "@/lib/avatar"
+import { useAuthStore } from "@/stores/auth-store"
 import { cn } from "@workspace/ui/lib/utils"
 import {
   resolveHitlApproveMessageId,
@@ -52,6 +54,7 @@ function ChatMessageItemInner({
   onHitlApproved,
 }: ChatMessageItemProps) {
   const contactDisplayName = getContactDisplayName(contact)
+  const userName = useAuthStore((s) => s.user?.name) || "我"
   const deferredMessage = React.useDeferredValue(message)
   const {
     blocks: classifiedBlocks,
@@ -75,13 +78,13 @@ function ChatMessageItemInner({
     [message, activeHitl]
   )
 
-  // 总管自动派单的首条 user 消息：后端在 extra_meta 写入了标记，用邮戳与真人消息区分。
-  const isDispatchedByOrchestrator =
-    message.role === "user" &&
-    Boolean(
+  // 自动派单的首条 user 消息：后端 extra_meta 标记，邮戳与真人消息区分。
+  const dispatchBadge = React.useMemo(() => {
+    if (message.role !== "user") return null
+    return getDispatchBadge(
       (message as { metadata?: Record<string, unknown> }).metadata
-        ?.dispatchedByOrchestrator
     )
+  }, [message])
 
   const messageBody = (
     <div className="space-y-1.5">
@@ -191,15 +194,23 @@ function ChatMessageItemInner({
           </span>
         </div>
       )}
-      {isDispatchedByOrchestrator && (
-        <div
-          className="ml-auto flex w-fit items-center gap-1 text-[11px] font-medium text-amber-600/90 dark:text-amber-400/90"
-          title="总管自动派单消息（非真人发送）"
-        >
-          <IconClipboardList className="size-3" />
-          总管派单
+      {message.role === "user" && !dispatchBadge && (
+        <div className="mb-2 flex items-center justify-end gap-2">
+          <span className="text-xs text-muted-foreground">{userName}</span>
+          <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary ring-1 ring-primary/15">
+            {userName.trim().slice(0, 2)}
+          </div>
         </div>
       )}
+      {dispatchBadge ? (
+        <div
+          className="ml-auto flex w-fit items-center gap-1 text-[11px] font-medium text-amber-600/90 dark:text-amber-400/90"
+          title={dispatchBadge.title}
+        >
+          <IconClipboardList className="size-3" />
+          {dispatchBadge.label}
+        </div>
+      ) : null}
       <MessageContent className="w-auto">{messageBody}</MessageContent>
       {message.role === "assistant" ? (
         <MessageAssistantActions

@@ -2,6 +2,8 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+import logging
+
 from src.core.config import is_offline_mode
 from src.core.agent_runtime_policy import get_agent_runtime_policy
 from src.core.runtime_capabilities import get_capabilities
@@ -12,6 +14,38 @@ from src.models.response import ResponseBase
 from src.service.activation_service import ActivationService
 
 router = APIRouter(tags=["系统"])
+logger = logging.getLogger(__name__)
+
+
+@router.get("/system/streams/debug", response_model=ResponseBase[dict[str, Any]])
+def debug_streams() -> ResponseBase[dict[str, Any]]:
+    """运行时自省：dump 所有流（含僵尸）的完整状态，不重启即可定位卡死。
+
+    用法：浏览器 / curl 直接打 GET <server>/system/streams/debug 即可。
+    关注点：
+    - gates.can_admit_heavy=false 且 active_heavy 已满 → 槽被占满；
+    - tasks 里 age_seconds 很大、is_stale=true / asyncio_task_done=true
+      的就是僵尸流（占槽元凶），用 force-clear 接口解封。
+    """
+    from src.service.stream_registry import registry
+
+    return ResponseBase(data=registry.debug_dump_streams())
+
+
+@router.post(
+    "/system/streams/{conversation_id}/force-clear",
+    response_model=ResponseBase[dict[str, Any]],
+)
+def force_clear_stream(conversation_id: int) -> ResponseBase[dict[str, Any]]:
+    """运行时手动解封：强制清掉一个卡死的流并释放槽位（不重启）。
+
+    用法：curl -X POST <server>/system/streams/<conversation_id>/force-clear
+    """
+    from src.service.stream_registry import registry
+
+    result = registry.force_clear_stream(conversation_id)
+    logger.warning("force_clear_stream via API: %s", result)
+    return ResponseBase(data=result)
 
 @router.get("/system/runtime", response_model=ResponseBase[dict[str, Any]])
 def get_runtime_config(db: Session = Depends(get_db)) -> ResponseBase[dict[str, Any]]:
@@ -56,6 +90,11 @@ def get_runtime_config(db: Session = Depends(get_db)) -> ResponseBase[dict[str, 
                 "effective_max_inflight": agent_policy.effective_max_inflight(),
                 "max_heavy": agent_policy.max_heavy,
                 "effective_max_heavy": agent_policy.effective_max_heavy(),
+                "slot_gating_enabled": agent_policy.slot_gating_enabled(),
+                "light_slot_reserve": agent_policy.light_slot_reserve(),
+                "heavy_inflight_ceiling": agent_policy.effective_max_inflight_for(
+                    "heavy"
+                ),
                 "active_streams": active_streams,
                 "queued_starts": queued_starts,
                 "active_items": active_items,
