@@ -1467,7 +1467,7 @@ class StreamRegistry:
                                 tail = [
                                     f"{f.f_code.co_filename.rsplit('/', 1)[-1].rsplit(chr(92), 1)[-1]}"
                                     f":{f.f_lineno} {f.f_code.co_name}"
-                                    for f in frames[-8:]
+                                    for f in frames[-22:]
                                 ]
                                 task_lines.append(
                                     f"{t.get_name()}: " + " <- ".join(tail)

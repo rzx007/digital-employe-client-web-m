@@ -121,12 +121,26 @@ def build_chat_model(
         pool=connect_cap,
     )
 
+    # httpx 连接策略：禁用 keep-alive 连接复用（max_keepalive_connections=0）。
+    # 根因——模型端会强制关闭空闲 keep-alive 连接（observed 大量
+    # `WinError 10054 远程主机强迫关闭了连接`）；httpx 连接池一旦复用到这些已被
+    # 重置的死连接，请求就卡在首包或流中途直到超时（observed 群聊偶发 120s 卡死、
+    # 流中途拿几个 token 后僵住）。改为每次请求用新鲜连接，彻底规避复用死连接；
+    # 代价是每次多一次 TCP/TLS 握手（几十 ms），换取不再卡死，值得。
+    # 同步/异步客户端都设：agent 走 astream(异步)，非流式路径走同步。
+    _http_limits = httpx.Limits(max_keepalive_connections=0)
+    http_async_client = httpx.AsyncClient(timeout=llm_timeout, limits=_http_limits)
+    http_sync_client = httpx.Client(timeout=llm_timeout, limits=_http_limits)
+
     chat: ChatOpenAI = PromptCacheChatOpenAI(
         model=resolved_model,
         temperature=temperature,
         api_key=resolved_key,
         base_url=resolved_base,
         timeout=llm_timeout,
+        # 禁用复用的 httpx 客户端（见上方说明），杜绝复用被重置的死连接致卡死。
+        http_async_client=http_async_client,
+        http_client=http_sync_client,
         # 连接错误 / 首包超时 / 5xx 时自动重试，避免单次抖动就让整个流失败。
         # 注意：这只对「请求级失败」重试，不会重试已开始的流式中途卡住——那由
         # read_timeout 断连 + 应用层 watchdog（后续步骤）负责。
