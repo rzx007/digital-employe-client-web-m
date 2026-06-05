@@ -291,3 +291,80 @@ def test_leader_awaiting_clarification(db_session, workspace):
     ))
     db_session.commit()
     assert GroupRoomService.leader_awaiting_clarification(db_session, room) is False
+
+
+def test_handle_group_message_fallback_resume(db_session, workspace, monkeypatch):
+    """待澄清态下普通消息走 approve_trigger 兜底 resume，而非重新 dispatch_to_leader。"""
+    import asyncio
+
+    # suppress WorkspaceEventBus.push（post_to_timeline 内部调用，测试无需真实推送）
+    monkeypatch.setattr(
+        "src.service.workspace_events.WorkspaceEventBus.push",
+        lambda *a, **kw: None,
+    )
+
+    room, group_conv, leader_conv = _make_room_with_leader(db_session, workspace)
+
+    # 组长会话有一条 interrupted 消息 → leader_awaiting_clarification = True
+    interrupted = ConversationMessage(
+        conversation_id=leader_conv.id,
+        role="assistant",
+        content="",
+        stream_state="interrupted",
+        message_parts=json.dumps([{"type": "clarifying_questions"}], ensure_ascii=False),
+    )
+    db_session.add(interrupted)
+    db_session.commit()
+
+    approve_called_with: dict = {}
+    dispatched_to_leader: list = []
+
+    async def fake_approve_trigger(db, conv_id, msg_id, decisions, auth_token=None):
+        approve_called_with.update(
+            {"conv_id": conv_id, "msg_id": msg_id, "decisions": decisions}
+        )
+        return {"accepted": True}
+
+    # 准备一个真实但尚未运行的 event loop，供 run_coroutine_threadsafe 使用
+    real_loop = asyncio.new_event_loop()
+
+    monkeypatch.setattr(
+        "src.service.group_room_service.GroupRoomService.dispatch_to_leader",
+        lambda *a, **kw: dispatched_to_leader.append(True) or 0,
+    )
+    monkeypatch.setattr(
+        "src.service.chat_service.ChatService.approve_trigger",
+        fake_approve_trigger,
+    )
+
+    # handle_group_message 里局部 import get_main_loop，monkeypatch 模块属性
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.runtime.get_main_loop",
+        lambda: real_loop,
+    )
+
+    from src.service.group_room_service import GroupRoomService
+
+    result = GroupRoomService.handle_group_message(
+        db_session,
+        group_conv,
+        question="市场周报,管理层,1页,markdown",
+        extra_meta=None,
+        auth_token="tok",
+    )
+
+    # 启动 loop 把 run_coroutine_threadsafe 积压的任务跑完
+    real_loop.run_until_complete(asyncio.sleep(0))
+    real_loop.close()
+
+    # 不走 dispatch_to_leader
+    assert not dispatched_to_leader, "兜底路径不应再调 dispatch_to_leader"
+    # 返回 note 正确
+    assert result["note"] == "已作为澄清作答恢复组长"
+    # approve_trigger 被调用，目标是组长会话 + interrupted 消息
+    assert approve_called_with.get("conv_id") == leader_conv.id, (
+        f"approve_trigger 未被调用或 conv_id 不符，实际: {approve_called_with}"
+    )
+    assert approve_called_with.get("msg_id") == interrupted.id
+    assert approve_called_with["decisions"][0]["type"] == "respond"
+    assert "市场周报" in approve_called_with["decisions"][0]["message"]
