@@ -2,17 +2,18 @@ import * as React from "react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-import { CURATOR_AVATAR_URL } from "@/lib/avatar"
 import { navigateToEmployeeFromGroup } from "@/lib/chat/group-navigation"
 import { switchToContact } from "@/lib/chat/conversation-selection"
 import type {
   DagNode,
   DagNodeState,
-  DagNodeType,
   GroupRoomDag,
 } from "@/api/group-room"
+import type { AIEmployee } from "@/types/chat"
 
 import { useArtifactStore } from "@/stores/artifact-store"
+import { EmployeeContactAvatar } from "../contacts/contact-avatars"
+import { buildParticipantById, resolveDagNodeAvatar } from "./group-avatar-utils"
 
 /** 节点状态 → 颜色/文案 */
 const STATE_META: Record<
@@ -51,41 +52,9 @@ const STATE_META: Record<
   },
 }
 
-const TYPE_ICON: Record<
-  DagNodeType,
-  { glyph: string; ring: string }
-> = {
-  user: { glyph: "你", ring: "bg-slate-100 text-slate-600 ring-slate-200" },
-  leader: { glyph: "组", ring: "bg-amber-100 text-amber-700 ring-amber-200" },
-  worker: { glyph: "", ring: "bg-blue-100 text-blue-700 ring-blue-200" },
-}
-
 function fileName(path: string): string {
   const parts = path.split(/[/\\]/)
   return parts[parts.length - 1] || path
-}
-
-/** 员工文字头像：取名字前两个字（英文名取前两字母） */
-function initialOf(name: string): string {
-  const t = (name || "").trim()
-  return t ? t.slice(0, 2) : "员"
-}
-
-/** 按名字 hash 稳定取色（同一员工恒定一种配色） */
-const NAME_PALETTE = [
-  "bg-blue-100 text-blue-700 ring-blue-200",
-  "bg-violet-100 text-violet-700 ring-violet-200",
-  "bg-emerald-100 text-emerald-700 ring-emerald-200",
-  "bg-rose-100 text-rose-700 ring-rose-200",
-  "bg-cyan-100 text-cyan-700 ring-cyan-200",
-  "bg-amber-100 text-amber-700 ring-amber-200",
-  "bg-fuchsia-100 text-fuchsia-700 ring-fuchsia-200",
-  "bg-teal-100 text-teal-700 ring-teal-200",
-]
-function colorOf(seed: string): string {
-  let h = 0
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
-  return NAME_PALETTE[h % NAME_PALETTE.length]
 }
 
 /** 计算每个节点的层级（拓扑深度），用于竖向分层布局 */
@@ -128,37 +97,23 @@ function computeLevels(dag: GroupRoomDag): Map<string, number> {
   return level
 }
 
-/** 节点头像 URL：组长用总管头像图片；成员/用户用文字头像（返回 null） */
-function avatarUrlOf(node: DagNode): string | null {
-  if (node.type === "leader") return CURATOR_AVATAR_URL
-  return null
-}
-
-function NodeAvatar({ node }: { node: DagNode }) {
-  const t = TYPE_ICON[node.type]
+function NodeAvatar({
+  node,
+  participantById,
+}: {
+  node: DagNode
+  participantById: Map<string, AIEmployee>
+}) {
   const meta = STATE_META[node.state] ?? STATE_META.pending
-  const url = avatarUrlOf(node)
-  // 成员头像：名字前两字 + 按名字稳定取色的文字头像（不再用 DiceBear 图片）
-  const isWorker = node.type === "worker"
-  const workerRing = isWorker ? colorOf(node.name) : t.ring
+  const { name, avatar } = resolveDagNodeAvatar(node, participantById)
   return (
     <div className="relative shrink-0">
-      {url ? (
-        <img
-          src={url}
-          alt={node.name}
-          className="size-8 rounded-full object-cover ring-2 ring-background"
-        />
-      ) : (
-        <div
-          className={cn(
-            "flex size-8 items-center justify-center rounded-full text-[11px] font-semibold ring-2",
-            workerRing
-          )}
-        >
-          {isWorker ? initialOf(node.name) : t.glyph}
-        </div>
-      )}
+      <EmployeeContactAvatar
+        name={name}
+        avatar={avatar}
+        status={status}
+        avatarClassName="size-8"
+      />
       <span
         className={cn(
           "absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-background",
@@ -303,6 +258,7 @@ export function GroupSopPanel({
   conversationId,
   groupContactId,
   memberConversationByEmployeeId,
+  participants,
   className,
 }: {
   dag: GroupRoomDag
@@ -310,8 +266,13 @@ export function GroupSopPanel({
   groupContactId: string
   /** @直接派活时成员表上的 conversation_id，DAG 节点缺省时兜底 */
   memberConversationByEmployeeId?: Map<number, number>
+  participants?: AIEmployee[]
   className?: string
 }) {
+  const participantById = React.useMemo(
+    () => buildParticipantById(participants),
+    [participants]
+  )
   const openResource = useArtifactStore((s) => s.openResource)
   const onOpenMember = React.useCallback(
     (node: DagNode) => {
@@ -431,7 +392,10 @@ export function GroupSopPanel({
                         />
                       ) : null}
                       <div className="z-10">
-                        <NodeAvatar node={node} />
+                        <NodeAvatar
+                          node={node}
+                          participantById={participantById}
+                        />
                       </div>
                       <div className="min-w-0 flex-1">
                         <NodeCardBody

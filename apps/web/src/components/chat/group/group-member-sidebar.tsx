@@ -8,12 +8,15 @@ import type {
   GroupRoomMember,
   GroupRoomMemberState,
 } from "@/api/group-room"
-import { CURATOR_ASSISTANT_AVATAR_URL_1 } from "@/lib/avatar"
 import { navigateToEmployeeFromGroup } from "@/lib/chat/group-navigation"
 import { switchToContact } from "@/lib/chat/conversation-selection"
 import type { AIEmployee } from "@/types/chat"
 
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
+import {
+  buildParticipantById,
+  resolveGroupRoomMemberAvatar,
+} from "./group-avatar-utils"
 
 const STATE_META: Record<
   GroupRoomMemberState,
@@ -30,33 +33,6 @@ const STATE_META: Record<
   done: { label: "已交付", dot: "bg-green-500", text: "text-green-600" },
 }
 
-function resolveMemberAvatar(
-  member: GroupRoomMember,
-  participantById: Map<string, AIEmployee>
-): {
-  name: string
-  avatar?: string
-  status?: AIEmployee["status"]
-} {
-  if (member.role_in_room === "leader") {
-    return { name: "组长", avatar: CURATOR_ASSISTANT_AVATAR_URL_1, status: "online" }
-  }
-
-  const employeeId =
-    member.employee_id != null ? String(member.employee_id) : null
-  const participant = employeeId ? participantById.get(employeeId) : undefined
-  const name =
-    member.employee_name ??
-    participant?.name ??
-    (employeeId ? `员工#${employeeId}` : "员工")
-
-  return {
-    name,
-    avatar: participant?.avatar,
-    status: participant?.status,
-  }
-}
-
 function MemberRow({
   member,
   participantById,
@@ -70,7 +46,10 @@ function MemberRow({
 }) {
   const meta = STATE_META[member.state] ?? STATE_META.ready
   const isLeader = member.role_in_room === "leader"
-  const { name, avatar, status } = resolveMemberAvatar(member, participantById)
+  const { name, avatar, status } = resolveGroupRoomMemberAvatar(
+    member,
+    participantById
+  )
   const canJump =
     member.employee_id != null &&
     member.conversation_id != null &&
@@ -154,13 +133,10 @@ export function GroupMemberSidebar({
   groupContactId?: string
   groupConversationId?: string | number
 }) {
-  const participantById = React.useMemo(() => {
-    const map = new Map<string, AIEmployee>()
-    for (const participant of participants ?? []) {
-      map.set(participant.id, participant)
-    }
-    return map
-  }, [participants])
+  const participantById = React.useMemo(
+    () => buildParticipantById(participants),
+    [participants]
+  )
 
   return (
     <aside

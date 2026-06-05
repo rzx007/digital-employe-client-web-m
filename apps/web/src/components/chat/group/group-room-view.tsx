@@ -85,6 +85,7 @@ export function GroupRoomView({
           conversationId={conversationId}
           groupContactId={groupContactId ?? `group:${conversationId}`}
           memberConversationByEmployeeId={memberConversationByEmployeeId}
+          participants={contact?.group?.participants}
           className="hidden w-80 shrink-0 border-l bg-background/60 md:flex"
         />
       ) : (
