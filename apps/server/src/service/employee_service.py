@@ -580,11 +580,15 @@ class EmployeeService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"本地技能信息不完整，skill_id={local_id}",
                 )
+            display_name_zh = LocalSkillService.resolve_display_name_zh(
+                skill_name,
+                {"displayNameZh": item.get("displayNameZh")},
+            )
             details.append(
                 {
                     "id": local_id,
                     "skillName": skill_name,
-                    "displayNameZh": skill_name,
+                    "displayNameZh": display_name_zh,
                     "description": f"本地技能：{skill_name}",
                     "prompt": None,
                     "skillContent": None,
@@ -919,11 +923,12 @@ class EmployeeService:
                 if desc_raw is not None and str(desc_raw).strip()
                 else f"本地技能：{sn}"
             )
+            display_name_zh = LocalSkillService.resolve_display_name_zh(sn, meta)
             out.append(
                 {
                     "id": local_id,
                     "skillName": sn,
-                    "displayNameZh": sn,
+                    "displayNameZh": display_name_zh,
                     "description": description,
                     "prompt": None,
                     "skillContent": None,

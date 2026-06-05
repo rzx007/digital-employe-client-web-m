@@ -51,7 +51,7 @@ export function SkillMarkdownEditor({
   onToggleMaximize?: () => void
   className?: string
 }) {
-  const [mode, setMode] = React.useState<EditorMode>("edit")
+  const [mode, setMode] = React.useState<EditorMode>("preview")
   const [copied, setCopied] = React.useState(false)
   const isDark = useIsDarkTheme()
 
@@ -89,16 +89,16 @@ export function SkillMarkdownEditor({
         <div className="ml-auto flex items-center gap-1">
           <div className="flex items-center rounded-md border bg-background p-0.5">
             <ModeButton
-              active={mode === "edit"}
-              onClick={() => setMode("edit")}
-              icon={<IconEdit className="size-3.5" />}
-              label="编辑"
-            />
-            <ModeButton
               active={mode === "preview"}
               onClick={() => setMode("preview")}
               icon={<IconEye className="size-3.5" />}
               label="预览"
+            />
+            <ModeButton
+              active={mode === "edit"}
+              onClick={() => setMode("edit")}
+              icon={<IconEdit className="size-3.5" />}
+              label="编辑"
             />
           </div>
           <Button

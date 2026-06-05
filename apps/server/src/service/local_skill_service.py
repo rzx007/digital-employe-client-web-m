@@ -20,12 +20,46 @@ from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# 内置技能目录名 → 页面展示中文名（build-in-skills/）
+BUILTIN_SKILL_DISPLAY_NAMES: dict[str, str] = {
+    "lark-base": "飞书多维表格",
+    "feishu-workbench": "飞书工作台",
+    "skill-creator": "技能制作",
+    "env-steward": "环境管家",
+    "browser-runtime": "内嵌浏览器",
+    "docx": "Word 文档",
+    "doc-coauthoring": "文档协作写作",
+    "pdf": "PDF 处理",
+    "pptx": "PPT 演示文稿",
+    "xlsx": "Excel 表格",
+    "html-ppt": "HTML 幻灯片",
+    "baidu-search": "百度搜索",
+    "oa-overtime": "OA 加班申请",
+}
+
 
 class LocalSkillService:
     META_FILE_NAME = ".skill-meta.json"
     SKILL_MD_NAME = "SKILL.md"
     SKILL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
     LOCAL_SKILL_ID_START = -100
+
+    @staticmethod
+    def resolve_display_name_zh(
+        skill_name: str,
+        meta: dict | None = None,
+    ) -> str:
+        """解析技能中文展示名：meta → 内置映射 → 目录名。"""
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        if meta:
+            zh_raw = meta.get("displayNameZh")
+            if isinstance(zh_raw, str) and zh_raw.strip():
+                return zh_raw.strip()
+        mapped = BUILTIN_SKILL_DISPLAY_NAMES.get(normalized)
+        if mapped:
+            return mapped
+        return normalized
+
     @staticmethod
     def build_recruit_summary(
         description: str,
@@ -345,7 +379,14 @@ class LocalSkillService:
             description = LocalSkillService._extract_description_from_skill_md(
                 target_dir / LocalSkillService.SKILL_MD_NAME
             )
-            existing_display_zh = existing_meta.get("displayNameZh")
+            source_meta = LocalSkillService._read_meta(item)
+            display_zh = LocalSkillService.resolve_display_name_zh(
+                normalized,
+                {
+                    "displayNameZh": existing_meta.get("displayNameZh")
+                    or source_meta.get("displayNameZh"),
+                },
+            )
             meta = {
                 "skillName": normalized,
                 "localId": local_id,
@@ -356,9 +397,8 @@ class LocalSkillService:
                 "recruitSummary": LocalSkillService.build_recruit_summary(
                     description, normalized
                 ),
+                "displayNameZh": display_zh,
             }
-            if isinstance(existing_display_zh, str) and existing_display_zh.strip():
-                meta["displayNameZh"] = existing_display_zh.strip()
             LocalSkillService._write_meta(target_dir, meta)
             copied_items += 1
 
