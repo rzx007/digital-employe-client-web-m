@@ -707,6 +707,36 @@ class GroupRoomService:
 
         # 2.5) 未 @ 任何成员 → 交给组长统筹（分解→派活→汇总）
         if not targets:
+            if GroupRoomService.leader_awaiting_clarification(db, room):
+                # 兜底：普通消息视为澄清作答，resume 组长流
+                last_interrupted = db.scalars(
+                    select(ConversationMessage)
+                    .where(
+                        ConversationMessage.conversation_id == room.leader_conversation_id,
+                        ConversationMessage.role == "assistant",
+                        ConversationMessage.stream_state == "interrupted",
+                    )
+                    .order_by(ConversationMessage.id.desc())
+                ).first()
+                if last_interrupted is not None:
+                    from src.service.chat_service import ChatService
+                    from src.service.agent.orchestrator.runtime import get_main_loop
+                    import asyncio
+                    asyncio.run_coroutine_threadsafe(
+                        ChatService.approve_trigger(
+                            db,
+                            room.leader_conversation_id,
+                            last_interrupted.id,
+                            decisions=[{"type": "respond", "message": question}],
+                            auth_token=auth_token,
+                        ),
+                        get_main_loop(),
+                    )
+                    return {
+                        "room_id": room.id,
+                        "dispatched": [],
+                        "note": "已作为澄清作答恢复组长",
+                    }
             leader_conv_id = GroupRoomService.dispatch_to_leader(
                 db, room, question, auth_token=auth_token
             )
@@ -1342,6 +1372,21 @@ class GroupRoomService:
             "is_text": False,
             "content": "",
         }
+
+    @staticmethod
+    def leader_awaiting_clarification(db: Session, room: "GroupRoom") -> bool:
+        """组长会话最后一条 assistant 消息是否为 interrupted(待澄清)态。"""
+        if room.leader_conversation_id is None:
+            return False
+        last = db.scalars(
+            select(ConversationMessage)
+            .where(
+                ConversationMessage.conversation_id == room.leader_conversation_id,
+                ConversationMessage.role == "assistant",
+            )
+            .order_by(ConversationMessage.id.desc())
+        ).first()
+        return bool(last and last.stream_state == "interrupted")
 
     @staticmethod
     def _allowed(member: GroupRoomMember, source: str) -> bool:

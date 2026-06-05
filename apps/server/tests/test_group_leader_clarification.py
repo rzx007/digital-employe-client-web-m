@@ -9,6 +9,7 @@ from sqlalchemy import select
 from src.models.conversation import Conversation, ConversationMessage
 from src.models.group_room import GroupRoom
 from src.service.group_room_service import (
+    GroupRoomService,
     build_leader_brief,
     project_member_conversation_if_in_room,
 )
@@ -269,3 +270,24 @@ def test_approve_trigger_group_leader_rejected_no_relay_residue(
 
     assert result["accepted"] is False                              # 拒绝返回
     assert leader_conv2.id not in grs._GROUP_STREAM_RELAY           # C-2：relay 无残留
+
+
+def test_leader_awaiting_clarification(db_session, workspace):
+    room, group_conv, leader_conv = _make_room_with_leader(db_session, workspace)
+    # 无 assistant 消息 → 非待澄清
+    assert GroupRoomService.leader_awaiting_clarification(db_session, room) is False
+    # 加一条 interrupted assistant 消息 → 待澄清
+    db_session.add(ConversationMessage(
+        conversation_id=leader_conv.id, role="assistant", content="",
+        stream_state="interrupted",
+        message_parts=json.dumps([{"type": "clarifying_questions"}], ensure_ascii=False),
+    ))
+    db_session.commit()
+    assert GroupRoomService.leader_awaiting_clarification(db_session, room) is True
+    # completed 消息不算待澄清
+    db_session.add(ConversationMessage(
+        conversation_id=leader_conv.id, role="assistant", content="done",
+        stream_state="completed",
+    ))
+    db_session.commit()
+    assert GroupRoomService.leader_awaiting_clarification(db_session, room) is False
