@@ -1546,19 +1546,30 @@ def project_member_conversation_if_in_room(
                     )
                     .order_by(ConversationMessage.id.desc())
                 ).first()
-                if last is not None and last.message_parts:
-                    GroupRoomService.post_to_timeline(
-                        db, leader_room,
-                        role="assistant",
-                        content=(last.content or "").strip() or "请补充以下信息后我再安排：",
-                        sender_id=None,
-                        sender_label="组长",
-                        extra_meta={
-                            "clarify_target_conversation_id": conversation_id,
-                            "clarify_message_id": last.id,
-                        },
-                        message_parts=json.loads(last.message_parts),
+                if last is None:
+                    logger.warning(
+                        "组长会话 %s interrupted 但无 assistant 消息，跳过澄清投影",
+                        conversation_id,
                     )
+                    return
+                parts = json.loads(last.message_parts) if last.message_parts else None
+                if parts is None:
+                    logger.warning(
+                        "组长会话 %s interrupted 但澄清消息无 parts，已投影纯文本兜底",
+                        conversation_id,
+                    )
+                GroupRoomService.post_to_timeline(
+                    db, leader_room,
+                    role="assistant",
+                    content=(last.content or "").strip() or "我需要先确认一些信息，请在群里补充说明。",
+                    sender_id=None,
+                    sender_label="组长",
+                    extra_meta={
+                        "clarify_target_conversation_id": conversation_id,
+                        "clarify_message_id": last.id,
+                    },
+                    message_parts=parts,
+                )
                 return  # early-return：不落入 completed/_project_simple，不回流总管
             _project_simple(
                 db, leader_room, conversation_id, stream_state, "组长", sender_id=None

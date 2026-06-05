@@ -97,3 +97,70 @@ def test_interrupted_leader_projects_clarify_card(
     assert meta["clarify_message_id"] == interrupted_id
     assert "clarifying_questions" in (card.message_parts or "")
     read.close()
+
+
+def test_interrupted_leader_no_message_does_not_post(
+    db_session, db_engine, workspace, monkeypatch
+):
+    """组长会话无任何 assistant 消息时，interrupted 投影应静默 return（无卡片，不抛异常）。"""
+    from sqlalchemy.orm import sessionmaker
+
+    TestSession = sessionmaker(bind=db_engine)
+    monkeypatch.setattr("src.db.session.get_session_local", lambda: TestSession)
+    room, group_conv, leader_conv = _make_room_with_leader(db_session, workspace)
+    # 故意不添加任何 assistant 消息
+
+    project_member_conversation_if_in_room(leader_conv.id, "interrupted")
+
+    read = TestSession()
+    card = read.scalars(
+        select(ConversationMessage)
+        .where(
+            ConversationMessage.conversation_id == group_conv.id,
+            ConversationMessage.role == "assistant",
+        )
+        .order_by(ConversationMessage.id.desc())
+    ).first()
+    assert card is None, "无 assistant 消息时不应在群时间线生成任何卡片"
+    read.close()
+
+
+def test_interrupted_leader_no_parts_posts_fallback(
+    db_session, db_engine, workspace, monkeypatch
+):
+    """组长会话有 interrupted assistant 消息但 message_parts 为 None 时，
+    应投影纯文本兜底卡片（extra_meta 含 clarify_target_conversation_id/clarify_message_id，内容非空）。
+    """
+    from sqlalchemy.orm import sessionmaker
+
+    TestSession = sessionmaker(bind=db_engine)
+    monkeypatch.setattr("src.db.session.get_session_local", lambda: TestSession)
+    room, group_conv, leader_conv = _make_room_with_leader(db_session, workspace)
+    interrupted = ConversationMessage(
+        conversation_id=leader_conv.id,
+        role="assistant",
+        content="",
+        stream_state="interrupted",
+        message_parts=None,  # 无结构化 parts
+    )
+    db_session.add(interrupted)
+    db_session.commit()
+    interrupted_id = interrupted.id
+
+    project_member_conversation_if_in_room(leader_conv.id, "interrupted")
+
+    read = TestSession()
+    card = read.scalars(
+        select(ConversationMessage)
+        .where(
+            ConversationMessage.conversation_id == group_conv.id,
+            ConversationMessage.role == "assistant",
+        )
+        .order_by(ConversationMessage.id.desc())
+    ).first()
+    assert card is not None, "无 parts 时仍应投影兜底卡片"
+    meta = json.loads(card.extra_meta or "{}")
+    assert meta["clarify_target_conversation_id"] == leader_conv.id
+    assert meta["clarify_message_id"] == interrupted_id
+    assert card.content, "兜底内容不能为空"
+    read.close()
