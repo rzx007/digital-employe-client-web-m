@@ -6,20 +6,16 @@ AGENT_MAX_CONCURRENT_STREAMS_KV = "AGENT_MAX_CONCURRENT_STREAMS"
 AGENT_MAX_CONCURRENT_STREAMS_DEFAULT = 1
 AGENT_MAX_CONCURRENT_STREAMS_CAP = 8
 
-# 资源阀门：常驻并发上限（与 serial_mode 解耦），默认对齐推理后端的并发槽。
-# 当前 llama.cpp 启动参数 -np=4（见 scripts/apply-hanhai-tune.py 的 docker-compose），
-# 换后端/换模型时改这一个 KV 即可。设为 0 表示不限（逃生阀）。
+# 资源阀门（默认关闭）：设为 >0 才启用总闸 / heavy 分级排队。
+# 启用示例：AGENT_MAX_INFLIGHT=4、AGENT_MAX_HEAVY=3（3 重 + 1 轻预留，见 light_slot_reserve）。
 AGENT_MAX_INFLIGHT_KV = "AGENT_MAX_INFLIGHT"
-AGENT_MAX_INFLIGHT_DEFAULT = 4
+AGENT_MAX_INFLIGHT_DEFAULT = 0
 AGENT_MAX_INFLIGHT_CAP = 32
 
-# heavy/light 分级：默认 3 重 + 1 轻（总闸 AGENT_MAX_INFLIGHT=4）。
-# heavy 最多占 3 路；最后 1 格预留给 light，但 light 空闲时可借用未满的 heavy 槽。
-# 设为 0 表示不单独限制重活（仅受 AGENT_MAX_INFLIGHT 总闸约束）。
 AGENT_MAX_HEAVY_KV = "AGENT_MAX_HEAVY"
-AGENT_MAX_HEAVY_DEFAULT = 3
+AGENT_MAX_HEAVY_DEFAULT = 0
 
-# 总闸中为 light（总管 user_chat、群 @ 等）预留的槽位数；heavy 不可占满这格。
+# 启用槽位闸且总闸 >= 2 时，为 light 预留、heavy 不可占满的格数。
 LIGHT_SLOT_RESERVE = 1
 
 USER_CHAT_PRIORITY = 10
@@ -117,6 +113,10 @@ class AgentRuntimePolicy:
         if cap >= 2 and LIGHT_SLOT_RESERVE > 0:
             return LIGHT_SLOT_RESERVE
         return 0
+
+    def slot_gating_enabled(self) -> bool:
+        """总闸或 heavy 闸任一 >0 时启用槽位排队；默认两者均为 0（禁用）。"""
+        return self.effective_max_inflight() > 0 or self.effective_max_heavy() > 0
 
 
 def parse_agent_max_concurrent_streams(

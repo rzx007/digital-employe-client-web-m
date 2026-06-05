@@ -13,6 +13,8 @@ import { useChat } from "@ai-sdk/react"
 
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 
+import type { UIMessage } from "ai"
+
 import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
@@ -27,11 +29,6 @@ import { prepareDisplayMessages } from "@/lib/chat/hitl"
 
 import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
 import { isBenignStreamAbortError } from "@/lib/chat/stream-abort"
-import {
-  isTerminalAssistantStreamState,
-  lastStoredAssistantStreamState,
-} from "@/lib/chat/assistant-stream-state"
-import { getLastAssistantMessage } from "@/lib/chat/message-query-cache"
 
 import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
 
@@ -41,7 +38,6 @@ import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
 
 import { cancelConversationStream } from "@/api/chat"
 import { getContactId } from "@/lib/chat/contact-utils"
-import { chatKeys } from "@/lib/query-keys/chat"
 
 import { toast } from "sonner"
 
@@ -58,6 +54,8 @@ export function ConversationChatView({
 
   onNewConversation,
 
+  extraStreamingMessages,
+
   className,
 
   ...props
@@ -73,6 +71,9 @@ export function ConversationChatView({
   onOpenConversations?: () => void
 
   onNewConversation?: () => void
+
+  /** 群协作：进行中成员/组长的逐字流式临时消息，追加到时间线末尾像单聊一样逐字 */
+  extraStreamingMessages?: UIMessage[]
 }) {
   const [inputValue, setInputValue] = useState("")
 
@@ -96,8 +97,6 @@ export function ConversationChatView({
     data: storedMessages = [],
 
     isPending: isMessagesLoading,
-
-    isFetching: isMessagesFetching,
 
     isError: isMessagesError,
   } = useMessagesQuery(conversationId)
@@ -163,8 +162,6 @@ export function ConversationChatView({
 
     status,
 
-    isMessagesFetching,
-
     setMessages,
 
     resumeStream,
@@ -178,36 +175,6 @@ export function ConversationChatView({
     onStreamFinishRef.current = session.onStreamFinish
     onRetryResumeRef.current = session.retryResumeIfNeeded
   }, [session.onStreamFinish, session.retryResumeIfNeeded])
-
-  // DB 已终态/queued 但 useChat 残留 streaming → 清掉误显示的「正在生成…」
-  useEffect(() => {
-    const last = getLastAssistantMessage(storedMessages)
-    const busy = status === "streaming" || status === "submitted"
-    if (!busy || !last) return
-
-    const dbQueued = last.streamState === "queued"
-    const dbTerminal = isTerminalAssistantStreamState(last.streamState ?? undefined)
-    if (dbQueued || dbTerminal) {
-      stop()
-    }
-  }, [conversationId, storedMessages, status, stop])
-
-  const storedStreamState = lastStoredAssistantStreamState(storedMessages)
-  // SSE 未接上时轮询 DB checkpoint（hydrate 进 composer，非双通道展示切换）
-  const pollWhileDbStreaming =
-    storedStreamState === "streaming" &&
-    status !== "streaming" &&
-    status !== "submitted"
-
-  useEffect(() => {
-    if (!pollWhileDbStreaming) return
-    const timer = setInterval(() => {
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.messages(String(conversationId)),
-      })
-    }, 2000)
-    return () => clearInterval(timer)
-  }, [pollWhileDbStreaming, conversationId, queryClient])
 
   const handleStop = useCallback(async () => {
     stop()
@@ -238,8 +205,14 @@ export function ConversationChatView({
   const displayMessages = useMemo(() => {
     const source = pickMessageDisplaySource(messages, initialMessages, status)
 
-    return prepareDisplayMessages(source)
-  }, [initialMessages, messages, status])
+    const prepared = prepareDisplayMessages(source)
+    // 群协作：把进行中成员/组长的逐字流式临时消息追加到时间线末尾，
+    // 用与单聊完全相同的气泡逐字渲染；完成后由落库消息接管、临时消息清除。
+    if (extraStreamingMessages && extraStreamingMessages.length > 0) {
+      return [...prepared, ...extraStreamingMessages]
+    }
+    return prepared
+  }, [initialMessages, messages, status, extraStreamingMessages])
 
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
@@ -388,7 +361,6 @@ export function ConversationChatView({
       title={title}
       messages={displayMessages}
       composerMessages={messages}
-      storedAssistantStreamState={lastStoredAssistantStreamState(storedMessages)}
       inputValue={inputValue}
       status={chatStatus}
       error={displayError}

@@ -90,6 +90,7 @@ def get_runtime_config(db: Session = Depends(get_db)) -> ResponseBase[dict[str, 
                 "effective_max_inflight": agent_policy.effective_max_inflight(),
                 "max_heavy": agent_policy.max_heavy,
                 "effective_max_heavy": agent_policy.effective_max_heavy(),
+                "slot_gating_enabled": agent_policy.slot_gating_enabled(),
                 "light_slot_reserve": agent_policy.light_slot_reserve(),
                 "heavy_inflight_ceiling": agent_policy.effective_max_inflight_for(
                     "heavy"

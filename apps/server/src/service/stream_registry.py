@@ -673,6 +673,7 @@ class StreamRegistry:
                 "active_streams": self.count_active_streams(),
                 "active_heavy": self.count_active_heavy(),
                 "queue_depth": self._queue.depth(),
+                "slot_gating_enabled": policy.slot_gating_enabled(),
                 "can_admit_heavy": self.can_admit("heavy"),
                 "can_admit_light": self.can_admit("light"),
             },
@@ -778,6 +779,8 @@ class StreamRegistry:
         from src.core.agent_runtime_policy import STREAM_CLASS_HEAVY
 
         policy = get_agent_runtime_policy()
+        if not policy.slot_gating_enabled():
+            return True
         total_cap = policy.effective_max_inflight()
         active = self.count_active_streams()
         if total_cap > 0 and active >= total_cap:

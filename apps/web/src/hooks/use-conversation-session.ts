@@ -50,7 +50,6 @@ import {
 import { decideHydration } from "@/lib/chat/session/hydrate-decision"
 
 import { chatTransport } from "@/components/chat/shared/chat-view-shared"
-import { seedResumeAfterSeq } from "@/lib/chat/langchain-chat-transport"
 
 import { chatKeys } from "@/lib/query-keys/chat"
 
@@ -59,11 +58,7 @@ import {
   hydrateSignature,
   messagesNeedHydrateFromDb,
   patchComposerFromStoredWhenSameTurn,
-  shouldBootstrapStoredAssistantRow,
-  shouldForceHydrateFromStored,
 } from "@/lib/chat/pick-message-display-source"
-import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
-import { isTerminalAssistantStreamState } from "@/lib/chat/assistant-stream-state"
 
 const REFETCH_DEBOUNCE_MS = 800
 
@@ -79,15 +74,11 @@ export function useConversationSession({
 
   status,
 
-  isMessagesFetching = false,
-
   setMessages,
 
   resumeStream,
 
   queryClient,
-
-  disableStreamResume = false,
 }: {
   conversationId: string | number | null
   /** 本会话所属联系人；流结束时 touch 最近列表，勿读全局 selectedContactId */
@@ -100,12 +91,6 @@ export function useConversationSession({
   composerMessages: UIMessage[]
 
   status: string
-
-  /** 消息 query 仍在拉取时不 resume，避免 placeholder 快照触发误 resume */
-  isMessagesFetching?: boolean
-
-  /** 群深链执行会话：不 resume SSE，只轮询 DB */
-  disableStreamResume?: boolean
 
   setMessages: (
     messages: UIMessage[] | ((prev: UIMessage[]) => UIMessage[])
@@ -158,8 +143,7 @@ export function useConversationSession({
 
   const tryScheduleResume = useCallback(
     (assistantId: string, options?: { allowBusyStatus?: boolean }) => {
-      if (!convKey || disableStreamResume) return false
-      if (chatTransport.isReconnectInFlight(convKey)) return false
+      if (!convKey) return false
 
       const willResume = shouldAttemptResume({
         hitlActive: machineRef.current.activeHitl !== null,
@@ -179,6 +163,8 @@ export function useConversationSession({
 
       cancelScheduledStreamResume(resumeScheduleRef.current)
       resumeScheduleRef.current = scheduleStreamResume(() => {
+        // 读「实时」status，而非调度时的快照 —— 否则退避延迟期间用户发了新消息，
+        // 旧快照会误判 ready 而放行，与新发送的流撞车。
         const current = statusRef.current
         const busy = current === "submitted" || current === "streaming"
         if (busy && !options?.allowBusyStatus) return
@@ -189,23 +175,12 @@ export function useConversationSession({
         ) {
           return
         }
-
-        const cached = queryClient.getQueryData<Message[]>(
-          chatKeys.messages(convKey)
-        )
-        const lastAssistant = cached
-          ? getLastAssistantMessage(cached)
-          : undefined
-        if (lastAssistant?.streamCursor && lastAssistant.streamCursor > 0) {
-          seedResumeAfterSeq(convKey, lastAssistant.streamCursor)
-        }
-
         resumeStream()
       }, attemptIndex)
 
       return true
     },
-    [convKey, resumeStream, disableStreamResume, queryClient]
+    [convKey, resumeStream]
   )
 
   useEffect(() => {
@@ -273,49 +248,10 @@ export function useConversationSession({
         : undefined
 
       dispatch({ type: "ACTIVATED" })
-
-      if (
-        lastAssistant?.streamState === "queued" &&
-        initialMessages.length > 0
-      ) {
-        const sig = hydrateSignature(initialMessages)
-        setMessages(initialMessages)
-        dispatch({ type: "HYDRATED", convKey, sig })
-        return () => cancelScheduledStreamResume(resumeScheduleRef.current)
-      }
-
-      if (
-        lastAssistant &&
-        isTerminalAssistantStreamState(lastAssistant.streamState ?? undefined) &&
-        initialMessages.length > 0 &&
-        shouldForceHydrateFromStored(
-          composerMessagesRef.current,
-          initialMessages
-        )
-      ) {
-        const sig = hydrateSignature(initialMessages)
-        setMessages(initialMessages)
-        dispatch({ type: "HYDRATED", convKey, sig })
-        return () => cancelScheduledStreamResume(resumeScheduleRef.current)
-      }
-
       hydrateFromDbIfBehind()
-
-      if (
-        shouldBootstrapStoredAssistantRow(
-          composerMessagesRef.current,
-          initialMessages
-        )
-      ) {
-        const sig = hydrateSignature(initialMessages)
-        setMessages(initialMessages)
-        dispatch({ type: "HYDRATED", convKey, sig })
-      }
 
       // 切走再切回：useChat 可能残留 streaming，但 SSE 已断 —— 需重新 resume
       if (
-        !disableStreamResume &&
-        !isMessagesFetching &&
         lastAssistant?.streamState === "streaming" &&
         lastAssistantId &&
         !wasActive
@@ -366,7 +302,7 @@ export function useConversationSession({
       resumeAttempts: machineRef.current.resumeAttempts,
     })
 
-    if (!willResume || !lastAssistantId || isMessagesFetching || disableStreamResume) return
+    if (!willResume || !lastAssistantId) return
 
     tryScheduleResume(String(lastAssistantId))
 
@@ -381,8 +317,6 @@ export function useConversationSession({
 
     initialMessages,
 
-    isMessagesFetching,
-
     storedMessages,
 
     setMessages,
@@ -392,12 +326,10 @@ export function useConversationSession({
     status,
 
     tryScheduleResume,
-
-    disableStreamResume,
   ])
 
   const retryResumeIfNeeded = useCallback((): boolean => {
-    if (!convKey || disableStreamResume) return false
+    if (!convKey) return false
 
     const cached = queryClient.getQueryData<Message[]>(
       chatKeys.messages(convKey)
@@ -409,10 +341,7 @@ export function useConversationSession({
       return false
     }
 
-    if (chatTransport.isReconnectInFlight(convKey)) {
-      return false
-    }
-
+    chatTransport.cancelReconnect()
     return tryScheduleResume(assistantId, { allowBusyStatus: true })
   }, [convKey, queryClient, tryScheduleResume])
 
@@ -440,31 +369,7 @@ export function useConversationSession({
 
       onTerminal: (info) => {
         if (info.status === "no_stream") {
-          dispatch({ type: "RESUME_RESET" })
-          const cached = queryClient.getQueryData<Message[]>(
-            chatKeys.messages(convKey)
-          )
-          const lastAssistant = cached
-            ? getLastAssistantMessage(cached)
-            : undefined
-          if (
-            lastAssistant &&
-            isTerminalAssistantStreamState(
-              lastAssistant.streamState ?? undefined
-            ) &&
-            cached &&
-            cached.length > 0
-          ) {
-            const uiMessages = mapStoredMessagesToUIMessages(cached)
-            setMessages(uiMessages)
-            dispatch({
-              type: "HYDRATED",
-              convKey,
-              sig: hydrateSignature(uiMessages),
-            })
-          } else {
-            retryResumeIfNeeded()
-          }
+          retryResumeIfNeeded()
           scheduleMessagesRefetch()
           return
         }
