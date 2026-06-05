@@ -99,6 +99,8 @@ function ChatMessageItemInner({
     const meta = (message as { metadata?: Record<string, unknown> }).metadata
     const target = resolveGroupClarifyTarget(meta ?? null)
     if (!target) return null
+    // 已作答(approved_at 已写入) → 隐藏卡片
+    if (meta?.approved_at) return null
 
     // 从 parts 找 submit_clarifying_questions 的 input-available part
     const clarifyToolType = `tool-${CLARIFY_TOOL_NAME}`
