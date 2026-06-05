@@ -47,6 +47,12 @@ RUNTIME_SNAPSHOT_PREVIEW_LIMIT = 5
 # 默认 180s，可通过 config_kvs AGENT_CHUNK_TIMEOUT 调整。
 AGENT_CHUNK_TIMEOUT = 180.0
 FIRST_AGENT_CHUNK_TIMEOUT = 120.0
+# 首包停滞看门狗：流启动后若 event_count==0 持续超过此秒数仍无任何 chunk，
+# 自动 dump「卡住协程的 await 链 + 全线程栈」，钉死究竟卡在 aget_tuple（checkpointer
+# 单连接/锁）、模型连接、还是别处。仅诊断用，不改变流本身的超时行为。
+FIRST_CHUNK_STALL_DUMP_SECONDS = 15.0
+# 最多 dump 几次（避免长时间无首包时把日志刷爆）
+FIRST_CHUNK_STALL_DUMP_MAX = 3
 # 活跃流硬墙：单流存在超过此秒数仍 active → 僵死清理。运行时 ≥ AGENT_STALL_TIMEOUT + 120s。
 STALE_ACTIVE_HARD_TIMEOUT = 720.0
 # 无进展超时（config_kvs AGENT_STALL_TIMEOUT）：默认 30min，仅约束「多久无 chunk 事件」清槽。
@@ -1344,6 +1350,7 @@ class StreamRegistry:
         # 未定义变量会再抛错、掩盖真因。
         _first_token_recorded = False
         _heartbeat_task: asyncio.Task | None = None
+        _stall_watchdog_task: asyncio.Task | None = None
         _agent_it = None
         _metrics_started = False
 
@@ -1414,6 +1421,82 @@ class StreamRegistry:
             event_count = 0
             pending_chunk_timeouts = 0
             chunk_timeout_default, first_chunk_timeout, _ = _agent_stream_timeouts()
+
+            async def _first_chunk_stall_watchdog():
+                """首包迟迟不来时，自动 dump 协程 await 链 + 全线程栈，钉死卡点。
+
+                本看门狗是独立 asyncio task：即便 _run_agent_background 的协程卡在
+                aget_tuple（checkpointer 单连接）这类 await 上，事件循环仍在跑，本
+                task 照常被调度，能对「卡住协程」get_stack() 拿到它停在哪个 await，
+                并用 _dump_all_thread_stacks() 看 aiosqlite 后台线程是否卡在某操作。
+                """
+                dumps = 0
+                try:
+                    while dumps < FIRST_CHUNK_STALL_DUMP_MAX:
+                        await asyncio.sleep(FIRST_CHUNK_STALL_DUMP_SECONDS)
+                        if event_count > 0:
+                            return  # 首包已到，无需 dump
+                        dumps += 1
+                        at = task._asyncio_task
+                        coro_stack: list[str] = []
+                        if at is not None and not at.done():
+                            try:
+                                for frame in at.get_stack(limit=25):
+                                    co = frame.f_code
+                                    coro_stack.append(
+                                        f"{co.co_filename.rsplit('/', 1)[-1].rsplit(chr(92), 1)[-1]}"
+                                        f":{frame.f_lineno} {co.co_name}"
+                                    )
+                            except Exception:
+                                pass
+                        # 外层协程被 asyncio.wait_for 包裹，真正卡点（aget_tuple /
+                        # Lock.acquire / httpx）在内层 __anext__ 这个独立 task 里，
+                        # 只有遍历 all_tasks 才看得到。取每个 task 栈最深 8 帧=当前卡点。
+                        cur = asyncio.current_task()
+                        task_lines: list[str] = []
+                        try:
+                            for t in asyncio.all_tasks():
+                                if t is cur or t.done():
+                                    continue
+                                try:
+                                    frames = t.get_stack(limit=40)
+                                except Exception:
+                                    frames = []
+                                if not frames:
+                                    continue
+                                tail = [
+                                    f"{f.f_code.co_filename.rsplit('/', 1)[-1].rsplit(chr(92), 1)[-1]}"
+                                    f":{f.f_lineno} {f.f_code.co_name}"
+                                    for f in frames[-8:]
+                                ]
+                                task_lines.append(
+                                    f"{t.get_name()}: " + " <- ".join(tail)
+                                )
+                        except Exception:
+                            pass
+                        thread_lines = [
+                            f"[{t['name']}] " + " <- ".join(t["stack"])
+                            for t in _dump_all_thread_stacks(top_frames=12)
+                        ]
+                        logger.warning(
+                            "[stall-watchdog] conv=%s source=%s 首包 %.0fs 无 chunk"
+                            "(event_count=0, dump %d/%d)\n"
+                            "  >>> 卡住协程 await 链(外层):\n    %s\n"
+                            "  >>> 所有 asyncio task 栈尾(真正卡点):\n    %s\n"
+                            "  >>> 全线程栈:\n    %s",
+                            conversation_id,
+                            task.source,
+                            dumps * FIRST_CHUNK_STALL_DUMP_SECONDS,
+                            dumps,
+                            FIRST_CHUNK_STALL_DUMP_MAX,
+                            "\n    ".join(coro_stack) or "(取不到协程栈)",
+                            "\n    ".join(task_lines) or "(无 pending task)",
+                            "\n    ".join(thread_lines) or "(取不到线程栈)",
+                        )
+                except asyncio.CancelledError:
+                    pass
+
+            _stall_watchdog_task = asyncio.create_task(_first_chunk_stall_watchdog())
             while True:
                 chunk_timeout = (
                     chunk_timeout_default
@@ -1464,6 +1547,8 @@ class StreamRegistry:
                     break
                 pending_chunk_timeouts = 0
                 event_count += 1
+                if event_count == 1 and _stall_watchdog_task is not None:
+                    _stall_watchdog_task.cancel()
                 task.touch_progress()
                 serializable = ChatService.convert_to_serializable(chunk)
                 updates_content = _extract_updates_content(serializable)
@@ -1725,6 +1810,13 @@ class StreamRegistry:
                 _heartbeat_task.cancel()
                 try:
                     await _heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+
+            if _stall_watchdog_task is not None:
+                _stall_watchdog_task.cancel()
+                try:
+                    await _stall_watchdog_task
                 except asyncio.CancelledError:
                     pass
 

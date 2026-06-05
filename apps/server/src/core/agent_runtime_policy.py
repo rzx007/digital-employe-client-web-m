@@ -6,14 +6,19 @@ AGENT_MAX_CONCURRENT_STREAMS_KV = "AGENT_MAX_CONCURRENT_STREAMS"
 AGENT_MAX_CONCURRENT_STREAMS_DEFAULT = 1
 AGENT_MAX_CONCURRENT_STREAMS_CAP = 8
 
-# 资源阀门（默认关闭）：设为 >0 才启用总闸 / heavy 分级排队。
-# 启用示例：AGENT_MAX_INFLIGHT=4、AGENT_MAX_HEAVY=3（3 重 + 1 轻预留，见 light_slot_reserve）。
+# 资源阀门（默认开启，保守值）：总闸 4、重活闸 2。
+# 历史默认是 0（不限），但群聊会并发拉起组长+多成员+汇总多条 heavy(orchestration) 流，
+# 每条每个 super-step 都往全局唯一 checkpointer 连接写大 checkpoint（observed 110KB+），
+# 不限并发时写队列雪崩 → 全流卡在 checkpoint、写锁长占、ORM 也 database is locked → 崩溃。
+# 把重活并发压到 2（+1 轻预留，见 light_slot_reserve），把 checkpoint 写速率控制在
+# 单连接可排空的范围；其余流排队。可经 config_kvs AGENT_MAX_INFLIGHT / AGENT_MAX_HEAVY 覆盖
+# （设 0 = 关闭逃生阀）。
 AGENT_MAX_INFLIGHT_KV = "AGENT_MAX_INFLIGHT"
-AGENT_MAX_INFLIGHT_DEFAULT = 0
+AGENT_MAX_INFLIGHT_DEFAULT = 4
 AGENT_MAX_INFLIGHT_CAP = 32
 
 AGENT_MAX_HEAVY_KV = "AGENT_MAX_HEAVY"
-AGENT_MAX_HEAVY_DEFAULT = 0
+AGENT_MAX_HEAVY_DEFAULT = 2
 
 # 启用槽位闸且总闸 >= 2 时，为 light 预留、heavy 不可占满的格数。
 LIGHT_SLOT_RESERVE = 1
