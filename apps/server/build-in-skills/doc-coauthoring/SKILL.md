@@ -31,6 +31,7 @@
 ### 1b. 初始澄清
 
 调用 `submit_clarifying_questions`（context=`long_document`），收集：
+（前端 choice 题支持手填，未选选项时用户作答为 `其他：…`；选项列 3～6 个具体项即可，不必每题加「其他」。）
 1. 文档类型
 2. 目标读者
 3. 期望的阅读效果

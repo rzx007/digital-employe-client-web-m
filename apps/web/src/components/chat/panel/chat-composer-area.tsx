@@ -22,7 +22,8 @@ import {
   type PendingHitl,
 } from "@/lib/chat/hitl"
 
-const CLARIFY_OPTIONAL_PLACEHOLDER = "补充更多可选细节（可选）"
+const CLARIFY_OPTIONAL_PLACEHOLDER =
+  "整份澄清的额外补充说明（可选，非单题答案）"
 const HITL_PENDING_PLACEHOLDER = "请先确认或中止当前待办"
 
 export function ChatComposerArea({

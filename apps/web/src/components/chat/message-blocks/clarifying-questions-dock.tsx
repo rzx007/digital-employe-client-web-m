@@ -10,6 +10,7 @@ import {
 } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 import { Button } from "@workspace/ui/components/button"
+import { Input } from "@workspace/ui/components/input"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { toast } from "sonner"
 import { approveHitl, type HitlDecision } from "@/api/chat"
@@ -49,6 +50,7 @@ function ClarifyingQuestionsDockInner({
   const dockRef = useRef<HTMLDivElement>(null)
   const continueButtonRef = useRef<HTMLButtonElement>(null)
   const answerTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const choiceCustomInputRef = useRef<HTMLInputElement>(null)
 
   const questionsInput = pending.input?.questions
   const context =
@@ -77,6 +79,15 @@ function ClarifyingQuestionsDockInner({
 
   const current = questions[index]
   const currentAnswer = current ? (answers[current.id] ?? "") : ""
+  const isChoiceQuestion = Boolean(
+    current?.type === "choice" && current.options && current.options.length > 0
+  )
+  const choiceSelectedOption =
+    isChoiceQuestion && current?.options?.includes(currentAnswer)
+      ? currentAnswer
+      : ""
+  const choiceCustomText =
+    isChoiceQuestion && !choiceSelectedOption ? currentAnswer : ""
 
   const setCurrentAnswer = useCallback(
     (value: string) => {
@@ -198,13 +209,13 @@ function ClarifyingQuestionsDockInner({
   React.useEffect(() => {
     if (!current) return
     requestAnimationFrame(() => {
-      if (current.type === "choice" && current.options?.length) {
-        continueButtonRef.current?.focus()
+      if (isChoiceQuestion) {
+        choiceCustomInputRef.current?.focus()
       } else {
         answerTextareaRef.current?.focus()
       }
     })
-  }, [current, index])
+  }, [current, index, isChoiceQuestion])
 
   const handleTextareaKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>
@@ -216,9 +227,25 @@ function ClarifyingQuestionsDockInner({
     }
   }
 
+  const handleChoiceCustomKeyDown = (
+    event: React.KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault()
+      event.stopPropagation()
+      handleContinue()
+    }
+  }
+
   const handleChoiceSelect = (opt: string) => {
     setCurrentAnswer(opt)
     focusContinueButton()
+  }
+
+  const handleChoiceCustomChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    setCurrentAnswer(event.target.value)
   }
 
   if (!current) return null
@@ -274,22 +301,35 @@ function ClarifyingQuestionsDockInner({
           )}
         </p>
 
-        {current.type === "choice" && current.options?.length ? (
-          <div className="mt-2.5 flex flex-wrap gap-1.5">
-            {current.options.map((opt, i) => (
-              <Button
-                key={optionLabel(i)}
-                type="button"
-                variant={currentAnswer === opt ? "default" : "outline"}
-                size="sm"
-                className="h-auto min-w-20 px-3 py-1.5 text-xs"
-                onClick={() => handleChoiceSelect(opt)}
-              >
-                <span className="mr-1 font-medium">{optionLabel(i)}.</span>
-                {opt}
-              </Button>
-            ))}
-          </div>
+        {isChoiceQuestion && current.options ? (
+          <>
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {current.options.map((opt, i) => (
+                <Button
+                  key={optionLabel(i)}
+                  type="button"
+                  variant={choiceSelectedOption === opt ? "default" : "outline"}
+                  size="sm"
+                  className="h-auto min-w-20 px-3 py-1.5 text-xs"
+                  onClick={() => handleChoiceSelect(opt)}
+                >
+                  <span className="mr-1 font-medium">{optionLabel(i)}.</span>
+                  {opt}
+                </Button>
+              ))}
+            </div>
+            <Input
+              ref={choiceCustomInputRef}
+              value={choiceCustomText}
+              onChange={handleChoiceCustomChange}
+              onKeyDown={handleChoiceCustomKeyDown}
+              placeholder="以上都不符合？请手动填写（Enter 继续）"
+              className="mt-2.5 h-9 text-sm"
+            />
+            <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
+              每题可在上方选择或填写；底部输入框仅用于整份澄清的额外补充说明。
+            </p>
+          </>
         ) : (
           <Textarea
             ref={answerTextareaRef}

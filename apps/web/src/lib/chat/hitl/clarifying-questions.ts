@@ -1,6 +1,9 @@
 /** 与 ClarifyingQuestionsDock reject 文案一致 */
 export const CLARIFY_SKIP_REJECT_MESSAGE = "用户跳过澄清"
 
+/** 选择题手填答案在 respond 文本中的前缀，便于 Agent 识别 */
+export const CLARIFY_CHOICE_CUSTOM_PREFIX = "其他："
+
 export type ClarifyingQuestionType = "choice" | "text"
 
 export interface ClarifyingQuestion {
@@ -70,6 +73,24 @@ export function optionLabel(index: number): string {
   return String.fromCharCode(65 + index)
 }
 
+/** 将单题原始作答格式化为提交给 Agent 的文本 */
+export function formatClarifyAnswer(
+  question: ClarifyingQuestion,
+  rawAnswer: string | undefined
+): string {
+  const trimmed = (rawAnswer ?? "").trim()
+  if (!trimmed) return "（未作答）"
+  if (
+    question.type === "choice" &&
+    question.options &&
+    question.options.length > 0 &&
+    !question.options.includes(trimmed)
+  ) {
+    return `${CLARIFY_CHOICE_CUSTOM_PREFIX}${trimmed}`
+  }
+  return trimmed
+}
+
 export function buildClarifyRespondMessage(
   questions: ClarifyingQuestion[],
   answers: Record<string, string>,
@@ -83,7 +104,7 @@ export function buildClarifyRespondMessage(
 
   const body = questions
     .map((q, i) => {
-      const answer = answers[q.id]?.trim() || "（未作答）"
+      const answer = formatClarifyAnswer(q, answers[q.id])
       return `${i + 1}. ${q.prompt}\n   答：${answer}`
     })
     .join("\n\n")

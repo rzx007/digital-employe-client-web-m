@@ -35,7 +35,7 @@
 
 1. 调用 `submit_clarifying_questions`（`context` 如 `long_document` / `general`）
 2. `questions` 为 **JSON 字符串**；优先 **选择题**（`type: "choice"` + `options`，3～6 项），否则 `type: "text"`
-3. 每项含 `id`、`prompt`、可选 `required`；一次 2～6 题，前端在**输入框上方**逐题分页展示
+3. 每项含 `id`、`prompt`、可选 `required`；一次 2～6 题，前端在**输入框上方**逐题分页展示；**choice 题下方有手填框**，用户未选选项时作答会以 `其他：…` 回传，**不必**每题都加「其他」选项
 4. 用户 **respond** 后你会收到 ToolMessage 中的作答；消息区展示 **Answers** 摘要
 5. 用户点 **Skip** 会**终止本轮对话**
 6. **不要**对短句明确指令或用户说「直接写别问了」时弹澄清门

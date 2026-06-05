@@ -28,7 +28,10 @@ def submit_clarifying_questions(
             - type: "choice" | "text"（可选；有 options 时自动为 choice）
             - options: 选择题选项字符串数组（展示为 A/B/C…）
 
-            例: '[{"id":"q1","prompt":"读者是谁？","required":true,"type":"choice","options":["内部技术方案","对外标书","其他"]}]'
+            前端对 choice 题在选项下方提供手填输入框；用户手填时 respond 文本为「其他：…」。
+            不必每题都加「其他」选项，3～6 个具体选项即可。
+
+            例: '[{"id":"q1","prompt":"读者是谁？","required":true,"type":"choice","options":["内部技术方案","对外标书"]}]'
 
     用户通过 respond 提交答案后，你会收到 ToolMessage 中的作答内容；
     长文档场景下应再调用 submit_document_plan，禁止在澄清完成前 write_file 到 /artifacts/。
