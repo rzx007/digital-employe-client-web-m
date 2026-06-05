@@ -4,7 +4,10 @@ import asyncio
 import atexit
 import json
 import logging
+import sys
+import threading
 import time
+import traceback
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
@@ -386,6 +389,33 @@ def _chunk_is_tool_message(serializable: Any) -> bool:
         return False
 
 
+def _dump_all_thread_stacks(top_frames: int = 6) -> list[dict[str, Any]]:
+    """dump 所有线程当前栈顶若干帧，定位卡在线程内同步阻塞的元凶。
+
+    asyncio task 的 get_stack() 只能看到协程 await 点，看不到 run_in_executor /
+    to_thread 线程内部的同步阻塞（subprocess 读、文件写、锁等待）。用
+    sys._current_frames() + threading.enumerate() 把每个线程的真实栈顶 dump 出来。
+    """
+    out: list[dict[str, Any]] = []
+    try:
+        name_by_id = {t.ident: t.name for t in threading.enumerate()}
+        frames = sys._current_frames()
+        for tid, frame in frames.items():
+            stack = traceback.extract_stack(frame)[-top_frames:]
+            out.append({
+                "thread_id": tid,
+                "name": name_by_id.get(tid, "?"),
+                "stack": [
+                    f"{f.filename.rsplit('/', 1)[-1].rsplit(chr(92), 1)[-1]}"
+                    f":{f.lineno} {f.name}"
+                    for f in stack
+                ],
+            })
+    except Exception:
+        pass
+    return out
+
+
 def _checkpoint_flush_sync(
     stream_msg_id: int,
     buffer_cursor: int,
@@ -737,6 +767,9 @@ class StreamRegistry:
             },
             "tasks": tasks_info,
             "queued": queued_info,
+            # 全线程栈：定位「卡在线程内同步阻塞」的元凶（shell 读输出 / 文件写 /
+            # 子进程），asyncio task 栈看不到线程内部，这里 dump 所有线程当前栈顶。
+            "threads": _dump_all_thread_stacks(),
         }
 
     def force_clear_stream(self, conversation_id: int) -> dict[str, Any]:
@@ -1739,7 +1772,21 @@ class StreamRegistry:
             )
             task.status = state_final
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, _finalize_task_stream, conversation_id, state_final)
+            # 用 shield 保护终态收尾：切换会话/重入会 cancel 本协程，若 cancel 命中
+            # 这里的 await，finally 会半途中断 → task 状态没清、_schedule_cleanup 没跑，
+            # 留下 status=error/done=False 的僵尸（曾观测：切群聊后组长卡死在此行）。
+            # shield 让 _finalize_task_stream 一定跑完；再吞掉 CancelledError 走完后续清理。
+            try:
+                await asyncio.shield(
+                    loop.run_in_executor(
+                        None, _finalize_task_stream, conversation_id, state_final
+                    )
+                )
+            except asyncio.CancelledError:
+                logger.info(
+                    "[run] conv=%s finalize 期间被 cancel，已 shield 保证收尾完成",
+                    conversation_id,
+                )
 
             task.subscribers.clear()
             # 只在 self._tasks[id] 仍是“本 task”时才安排清理：若已被新流覆盖
