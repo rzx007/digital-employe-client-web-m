@@ -6,6 +6,7 @@ import json
 import logging
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
 from sqlalchemy import select
@@ -56,6 +57,29 @@ MAX_PENDING_CHUNK_TIMEOUT_RETRIES = 20
 AGENT_RECURSION_LIMIT = 60
 DB_LOCK_RETRY_COUNT = 2
 DB_LOCK_RETRY_SLEEP_SECONDS = 0.05
+
+# 专用「DB 写」单线程执行器：所有流的 checkpoint / 心跳 / 终态落库都走这一个
+# 线程，串行排队执行。根因——多流并发时，每条流的心跳(30s一次)+checkpoint+终态
+# flush 都用默认 asyncio 线程池且都写同一个 SQLite，既抢 SQLite 单写锁、又抢有限
+# 的默认线程，导致某些 flush 卡死几分钟（栈停在 _flush_terminal 的 to_thread）。
+# SQLite 本来就只能单写，串行化不损失吞吐，反而消除锁竞争与线程池耗尽。
+_DB_WRITE_EXECUTOR = ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="db-write"
+)
+
+
+async def _run_db_write(fn, *args):
+    """把一次 DB 写提交到专用单线程执行器（替代 asyncio.to_thread，避免锁/线程竞争）。"""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_DB_WRITE_EXECUTOR, fn, *args)
+
+
+@atexit.register
+def _shutdown_db_write_executor() -> None:
+    try:
+        _DB_WRITE_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+    except Exception:
+        pass
 
 
 def _agent_stream_timeouts() -> tuple[float, float, float]:
@@ -324,6 +348,42 @@ def _flush_heartbeat_sync(conversation_id: int) -> None:
                 db.rollback()
             except Exception:
                 pass
+
+
+def _chunk_is_tool_message(serializable: Any) -> bool:
+    """判断一个 v2 messages 事件是否来自 ToolMessage（工具返回，非模型自然语言）。
+
+    群协作 relay 只该把「模型说的话（AIMessage）」推到群时间线；工具的输入/输出
+    （read 读到的文件原文、create_orchestration_plan 返回的 JSON、shell 输出等）
+    都是 ToolMessage，绝不能糊到群里。结构：
+      {"type":"messages","data":[[<序列化 message>, <metadata>]]}
+    序列化 message 形如 {"id":[...,"ToolMessage"], "kwargs":{"type":"tool",...}}。
+    """
+    try:
+        if not isinstance(serializable, dict):
+            return False
+        if serializable.get("type") != "messages":
+            return False
+        data = serializable.get("data")
+        if not isinstance(data, list) or not data:
+            return False
+        inner = data[0]
+        msg = inner[0] if isinstance(inner, list) and inner else inner
+        if not isinstance(msg, dict):
+            return False
+        # id 数组里带 "ToolMessage"
+        id_field = msg.get("id")
+        if isinstance(id_field, list) and any(
+            isinstance(x, str) and "ToolMessage" in x for x in id_field
+        ):
+            return True
+        # kwargs.type == "tool"
+        kwargs = msg.get("kwargs")
+        if isinstance(kwargs, dict) and kwargs.get("type") == "tool":
+            return True
+        return False
+    except Exception:
+        return False
 
 
 def _checkpoint_flush_sync(
@@ -1259,7 +1319,7 @@ class StreamRegistry:
                 while True:
                     await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
                     try:
-                        await asyncio.to_thread(
+                        await _run_db_write(
                             _flush_heartbeat_sync, conversation_id
                         )
                     except Exception:
@@ -1393,15 +1453,19 @@ class StreamRegistry:
                 text_part = ChatService._extract_text_from_chunk(serializable)
                 if text_part:
                     assistant_text_parts.append(text_part)
-                    # 群协作：把成员/组长产出的文本增量逐字推到群时间线
-                    try:
-                        from src.service.group_room_service import (
-                            relay_group_stream_delta,
-                        )
+                    # 群协作：把成员/组长产出的文本增量逐字推到群时间线。
+                    # 但只推「模型自然语言（AIMessage）」，跳过「工具返回（ToolMessage）」
+                    # ——否则 create_orchestration_plan 等工具返回的结构化 JSON
+                    # （{"type":"plan_generated",...}）会被当文本糊在群里，很难看。
+                    if not _chunk_is_tool_message(serializable):
+                        try:
+                            from src.service.group_room_service import (
+                                relay_group_stream_delta,
+                            )
 
-                        relay_group_stream_delta(conversation_id, text_part)
-                    except Exception:
-                        pass
+                            relay_group_stream_delta(conversation_id, text_part)
+                        except Exception:
+                            pass
                     if not _first_token_recorded:
                         _stream_metrics.record_first_token(conversation_id)
                         _first_token_recorded = True
@@ -1426,7 +1490,7 @@ class StreamRegistry:
                     current_text = "".join(assistant_text_parts)
                     # checkpoint 只落 content + cursor（O(1)），不再快照/重放整个
                     # buffer（曾导致 O(n²) 卡死大文档任务）。完整 parts 终态再解析。
-                    ok = await asyncio.to_thread(
+                    ok = await _run_db_write(
                         _checkpoint_flush_sync,
                         stream_msg_id,
                         cursor_snapshot,
@@ -1719,7 +1783,7 @@ class StreamRegistry:
                         )
                 except Exception:
                     pass
-        await asyncio.to_thread(_do)
+        await _run_db_write(_do)
 
     async def _flush_terminal(
         self,
@@ -1733,7 +1797,7 @@ class StreamRegistry:
     ) -> bool:
         events_snapshot = list(task.buffer._events)
         cursor_snapshot = task.buffer.cursor
-        ok = await asyncio.to_thread(
+        ok = await _run_db_write(
             _flush_terminal_sync,
             stream_msg_id,
             cursor_snapshot,

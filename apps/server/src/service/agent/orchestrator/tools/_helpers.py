@@ -3,9 +3,56 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from langchain.tools import ToolRuntime
+
+
+def _loads_lenient(text: str) -> Any | None:
+    """宽松解析 LLM 生成的 JSON：先严格 json.loads，失败再修复常见错误重试。
+
+    本地小模型常生成不严格的 JSON（元素间缺逗号、尾逗号、单引号、```json 围栏、
+    字符串内裸换行）。直接 json.loads 报错会让组长派活整盘失败。这里尽力修复。
+    """
+    if not text or not text.strip():
+        return None
+    # 1) 严格解析
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    s = text.strip()
+    # 2) 去掉 markdown 代码围栏 ```json ... ```
+    s = re.sub(r"^```(?:json)?\s*", "", s)
+    s = re.sub(r"\s*```$", "", s).strip()
+    # 3) 截取最外层数组/对象（去掉前后多余文字）
+    first = min(
+        [i for i in (s.find("["), s.find("{")) if i != -1] or [-1]
+    )
+    last = max(s.rfind("]"), s.rfind("}"))
+    if first != -1 and last != -1 and last > first:
+        s = s[first : last + 1]
+
+    candidates = [s]
+    # 4) 修复：缺逗号 `} {` / `} "` / `] [` → 补逗号
+    fixed = re.sub(r"(\}|\]|\"|\d|true|false|null)\s*\n\s*(\{|\[|\")", r"\1,\2", s)
+    fixed = re.sub(r"(\})\s*(\{)", r"\1,\2", fixed)
+    candidates.append(fixed)
+    # 5) 去尾逗号 `,}` `,]`
+    no_trailing = re.sub(r",\s*(\}|\])", r"\1", fixed)
+    candidates.append(no_trailing)
+    # 6) 单引号 → 双引号（仅当没有双引号时，避免破坏正常内容）
+    if '"' not in s and "'" in s:
+        candidates.append(no_trailing.replace("'", '"'))
+
+    for cand in candidates:
+        try:
+            return json.loads(cand)
+        except json.JSONDecodeError:
+            continue
+    return None
 
 from src.service.agent.orchestrator.runtime import (
     conversation_id_from_runtime,
@@ -47,10 +94,13 @@ def parse_orchestration_task_list(tasks: Any) -> tuple[list[dict] | None, str | 
     if isinstance(tasks, list):
         task_list = tasks
     elif isinstance(tasks, str):
-        try:
-            parsed = json.loads(tasks)
-        except json.JSONDecodeError as exc:
-            return None, f"错误：tasks 参数格式不是合法的 JSON 数组: {exc}"
+        parsed = _loads_lenient(tasks)
+        if parsed is None:
+            return None, (
+                "错误：tasks 参数不是合法的 JSON 数组（已尝试容错修复仍失败）。"
+                "请重新输出严格合法的 JSON 数组：元素间用逗号分隔、无尾逗号、"
+                "键和字符串用双引号、字符串内的换行写成 \\n。"
+            )
         if not isinstance(parsed, list):
             return None, "错误：tasks JSON 必须是数组。"
         task_list = parsed
