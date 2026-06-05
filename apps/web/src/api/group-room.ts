@@ -54,6 +54,8 @@ export interface DagNode {
   artifacts: string[]
   /** 该子任务正在执行的员工会话 id（有则点成员可直达） */
   conversation_id?: number | null
+  /** 进行中/排队时的权威起始时刻（ISO8601，来自 DB 或流指标） */
+  running_since?: string | null
 }
 
 export interface DagEdge {

@@ -1109,6 +1109,11 @@ class GroupRoomService:
             "id": "leader", "type": "leader", "name": "组长",
             "task": "分解与派活", "state": "running" if leader_running else "done",
             "artifacts": [],
+            "running_since": (
+                GroupRoomService._stream_started_at_iso(room.leader_conversation_id)
+                if leader_running
+                else None
+            ),
         })
         edges.append({"from": "user", "to": "leader"})
 
@@ -1120,15 +1125,19 @@ class GroupRoomService:
             emp = db.get(Employee, t.employee_id)
             node_id = f"task-{t.id}"
             exec_conv_id = log.conversation_id if log and log.conversation_id else None
+            task_state = _task_state(log)
             nodes.append({
                 "id": node_id,
                 "type": "worker",
                 "name": emp.name if emp else f"员工#{t.employee_id}",
                 "employee_id": t.employee_id,
                 "task": t.task_name or "",
-                "state": _task_state(log),
+                "state": task_state,
                 "artifacts": _artifacts(log),
                 "conversation_id": exec_conv_id,
+                "running_since": GroupRoomService._task_running_since_iso(
+                    log, task_state, exec_conv_id
+                ),
             })
             deps = dep_map.get(t.id, [])
             if not deps:
@@ -1174,6 +1183,45 @@ class GroupRoomService:
             return registry.is_active(conversation_id)
         except Exception:
             return False
+
+    @staticmethod
+    def _log_started_at_iso(log: Any) -> str | None:
+        if log is None or getattr(log, "started_at", None) is None:
+            return None
+        return log.started_at.isoformat()
+
+    @staticmethod
+    def _stream_started_at_iso(conversation_id: int | None) -> str | None:
+        """从 stream_metrics 取会话流式启动时刻（ISO8601）。"""
+        if conversation_id is None:
+            return None
+        try:
+            from datetime import datetime, timezone
+
+            from src.service.stream_metrics import metrics
+
+            ts = metrics.get_started_at(conversation_id)
+            if ts is not None:
+                return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _task_running_since_iso(
+        log: Any,
+        state: str,
+        exec_conv_id: int | None,
+    ) -> str | None:
+        """任务节点进行中/排队时的权威起始时刻（优先 DB 日志，其次流指标）。"""
+        if state not in ("running", "queued"):
+            return None
+        since = GroupRoomService._log_started_at_iso(log)
+        if since is not None:
+            return since
+        if state == "running":
+            return GroupRoomService._stream_started_at_iso(exec_conv_id)
+        return None
 
     @staticmethod
     def _live_member_state(

@@ -41,11 +41,7 @@ import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
 
 import { cancelConversationStream } from "@/api/chat"
 import { getContactId } from "@/lib/chat/contact-utils"
-import {
-  isGroupDeepLinkExecutionView,
-} from "@/lib/chat/group-navigation"
 import { chatKeys } from "@/lib/query-keys/chat"
-import { useChatStore } from "@/stores/chat-store"
 
 import { toast } from "sonner"
 
@@ -95,11 +91,6 @@ export function ConversationChatView({
   >([])
 
   const queryClient = useQueryClient()
-  const groupNavigationReturn = useChatStore((s) => s.groupNavigationReturn)
-  const isGroupExecutionView = isGroupDeepLinkExecutionView(
-    groupNavigationReturn,
-    conversationId
-  )
 
   const {
     data: storedMessages = [],
@@ -202,22 +193,21 @@ export function ConversationChatView({
   }, [conversationId, storedMessages, status, stop])
 
   const storedStreamState = lastStoredAssistantStreamState(storedMessages)
-  // SSE 未接上时轮询 DB checkpoint，避免群深链执行会话长时间空白
-  const pollGroupExecution =
-    isGroupExecutionView &&
+  // SSE 未接上时轮询 DB checkpoint（hydrate 进 composer，非双通道展示切换）
+  const pollWhileDbStreaming =
     storedStreamState === "streaming" &&
     status !== "streaming" &&
     status !== "submitted"
 
   useEffect(() => {
-    if (!pollGroupExecution) return
+    if (!pollWhileDbStreaming) return
     const timer = setInterval(() => {
       void queryClient.invalidateQueries({
         queryKey: chatKeys.messages(String(conversationId)),
       })
-    }, 1500)
+    }, 2000)
     return () => clearInterval(timer)
-  }, [pollGroupExecution, conversationId, queryClient])
+  }, [pollWhileDbStreaming, conversationId, queryClient])
 
   const handleStop = useCallback(async () => {
     stop()
@@ -246,15 +236,10 @@ export function ConversationChatView({
     error && !isBenignStreamAbortError(error) ? error : undefined
 
   const displayMessages = useMemo(() => {
-    const source = pickMessageDisplaySource(
-      messages,
-      initialMessages,
-      status,
-      { preferStoredWhileDbStreaming: isGroupExecutionView }
-    )
+    const source = pickMessageDisplaySource(messages, initialMessages, status)
 
     return prepareDisplayMessages(source)
-  }, [initialMessages, messages, status, isGroupExecutionView])
+  }, [initialMessages, messages, status])
 
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)

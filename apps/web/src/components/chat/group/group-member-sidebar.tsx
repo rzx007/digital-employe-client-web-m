@@ -153,9 +153,14 @@ export function GroupMemberSidebar({
         className
       )}
     >
-      <div className="flex items-center justify-between px-4 py-3">
-        <span className="text-sm font-semibold">{title}</span>
-        <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
+      <div className="flex items-center justify-between gap-2 px-4 py-3">
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold" title={title}>
+          {title}
+        </span>
+        <Badge
+          variant="outline"
+          className="h-5 shrink-0 px-1.5 text-[11px]"
+        >
           {members.length}
         </Badge>
       </div>

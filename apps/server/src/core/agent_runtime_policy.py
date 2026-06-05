@@ -13,11 +13,14 @@ AGENT_MAX_INFLIGHT_KV = "AGENT_MAX_INFLIGHT"
 AGENT_MAX_INFLIGHT_DEFAULT = 4
 AGENT_MAX_INFLIGHT_CAP = 32
 
-# heavy/light 分级：重活(长文档/批量交付)的并发上限，给交互问答(light)留余量。
-# 默认 1 = 编排/组长等 heavy 串行，避免多路重活占满 GPU 槽导致轻活与慢流卡死。
+# heavy/light 分级：默认 3 重 + 1 轻（总闸 AGENT_MAX_INFLIGHT=4）。
+# heavy 最多占 3 路；最后 1 格预留给 light，但 light 空闲时可借用未满的 heavy 槽。
 # 设为 0 表示不单独限制重活（仅受 AGENT_MAX_INFLIGHT 总闸约束）。
 AGENT_MAX_HEAVY_KV = "AGENT_MAX_HEAVY"
-AGENT_MAX_HEAVY_DEFAULT = 1
+AGENT_MAX_HEAVY_DEFAULT = 3
+
+# 总闸中为 light（总管 user_chat、群 @ 等）预留的槽位数；heavy 不可占满这格。
+LIGHT_SLOT_RESERVE = 1
 
 USER_CHAT_PRIORITY = 10
 ORCHESTRATION_PRIORITY = 20
@@ -37,13 +40,11 @@ def resolve_stream_class(explicit: str | None, source: str | None) -> str:
     """
     if explicit in (STREAM_CLASS_HEAVY, STREAM_CLASS_LIGHT):
         return explicit  # type: ignore[return-value]
-    # 编排/定时/群协作都算 heavy（批量交付、并发敏感）。
-    # 群相关流（组长统筹/成员派活/汇总）并发执行时易触发死锁，
-    # 归为 heavy 后可经 AGENT_MAX_HEAVY 闸串行兜底（方向A：稳定优先）。
+    # 编排/定时/组长统筹=heavy（批量交付、长任务）。
+    # 群 @ 直接对话(group_room) 归为 light：交互式短对话，不应占唯一 heavy 槽挡总管。
     if source in (
         "orchestration",
         "scheduled",
-        "group_room",
         "group_leader",
         "group_leader_summary",
     ):
@@ -96,6 +97,26 @@ class AgentRuntimePolicy:
         if self.serial_mode and self.max_concurrent_streams > 0:
             caps.append(self.max_concurrent_streams)
         return min(caps) if caps else 0
+
+    def effective_max_inflight_for(self, stream_class: str) -> int:
+        """heavy 可见的总槽上限（0=不限）；light 始终用 ``effective_max_inflight()`` 全池。
+
+        heavy 最多占 ``总闸 - LIGHT_SLOT_RESERVE``，为 light 留至少 1 格。
+        light 入场只看总闸，heavy 未满时可占用空 heavy 槽（见 ``StreamRegistry.can_admit``）。
+        """
+        cap = self.effective_max_inflight()
+        if cap <= 0 or stream_class != STREAM_CLASS_HEAVY:
+            return cap
+        if cap >= 2 and LIGHT_SLOT_RESERVE > 0:
+            return max(1, cap - LIGHT_SLOT_RESERVE)
+        return cap
+
+    def light_slot_reserve(self) -> int:
+        """为 light 预留、heavy 不可占用的槽位数（总闸 < 2 时为 0）。"""
+        cap = self.effective_max_inflight()
+        if cap >= 2 and LIGHT_SLOT_RESERVE > 0:
+            return LIGHT_SLOT_RESERVE
+        return 0
 
 
 def parse_agent_max_concurrent_streams(

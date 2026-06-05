@@ -36,7 +36,7 @@ Subscriber = Callable[[dict], None]
 
 HEARTBEAT_INTERVAL_SECONDS = 30.0
 TASK_TTL_SECONDS = 20
-BUFFER_CHECKPOINT_LEN = 10000
+BUFFER_CHECKPOINT_LEN = 500
 RUNTIME_SNAPSHOT_PREVIEW_LIMIT = 5
 # chunk 间超时：两个 chunk（token 或工具事件）之间最长等待。
 # 过短会在「工具执行 + 模型思考」间隙误判流已结束（曾观测到 ~2.5min 任务被截断）。
@@ -668,6 +668,8 @@ class StreamRegistry:
                 "effective_max_inflight": policy.effective_max_inflight(),
                 "max_heavy": policy.max_heavy,
                 "effective_max_heavy": policy.effective_max_heavy(),
+                "light_slot_reserve": policy.light_slot_reserve(),
+                "heavy_inflight_ceiling": policy.effective_max_inflight_for("heavy"),
                 "active_streams": self.count_active_streams(),
                 "active_heavy": self.count_active_heavy(),
                 "queue_depth": self._queue.depth(),
@@ -768,17 +770,24 @@ class StreamRegistry:
     def can_admit(self, stream_class: str = "light") -> bool:
         """资源阀门：给定类别的任务此刻能否入场。
 
-        两道闸门：
-        ① 总闸 effective_max_inflight（=GPU槽，对所有任务生效，0=不限）；
-        ② heavy 闸 effective_max_heavy（仅约束重活，给轻活留余量，0=不单独限）。
+        - **总闸** ``AGENT_MAX_INFLIGHT``：所有流共享（默认 4）。
+        - **heavy 闸** ``AGENT_MAX_HEAVY``：仅限制 heavy 路数（默认 3）。
+        - **light 预留**：heavy 最多占 ``总闸 - 1``，但 **light 只看总闸**，
+          heavy 没跑满时 light 可借用空 heavy 槽（例如 1 路 heavy + 3 路 light）。
         """
+        from src.core.agent_runtime_policy import STREAM_CLASS_HEAVY
+
         policy = get_agent_runtime_policy()
-        cap = policy.effective_max_inflight()
-        if cap > 0 and self.count_active_streams() >= cap:
+        total_cap = policy.effective_max_inflight()
+        active = self.count_active_streams()
+        if total_cap > 0 and active >= total_cap:
             return False
-        if stream_class == "heavy":
+        if stream_class == STREAM_CLASS_HEAVY:
             max_heavy = policy.effective_max_heavy()
             if max_heavy > 0 and self.count_active_heavy() >= max_heavy:
+                return False
+            heavy_ceiling = policy.effective_max_inflight_for(STREAM_CLASS_HEAVY)
+            if heavy_ceiling > 0 and active >= heavy_ceiling:
                 return False
         return True
 

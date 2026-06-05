@@ -83,6 +83,12 @@ class StreamMetrics:
         with self._lock:
             self._inflight[conversation_id] = rec
 
+    def get_started_at(self, conversation_id: int) -> float | None:
+        """当前在飞流的 wall-clock 启动时间（time.time()），无则 None。"""
+        with self._lock:
+            rec = self._inflight.get(conversation_id)
+            return rec.started_at if rec is not None else None
+
     def record_first_token(self, conversation_id: int) -> None:
         with self._lock:
             rec = self._inflight.get(conversation_id)

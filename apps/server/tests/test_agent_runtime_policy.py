@@ -112,3 +112,17 @@ def test_effective_max_inflight_serial_takes_min() -> None:
     # inflight=0（不限）+ 串行关闭 → 0（不限）
     p = AgentRuntimePolicy(serial_mode=False, max_concurrent_streams=0, max_inflight=0)
     assert p.effective_max_inflight() == 0
+
+
+def test_heavy_reserves_light_slot() -> None:
+    p = AgentRuntimePolicy(serial_mode=False, max_concurrent_streams=0, max_inflight=4)
+    assert p.effective_max_inflight_for("light") == 4
+    assert p.effective_max_inflight_for("heavy") == 3
+
+
+def test_group_room_is_light() -> None:
+    from src.core.agent_runtime_policy import resolve_stream_class
+
+    assert resolve_stream_class(None, "group_room") == "light"
+    assert resolve_stream_class(None, "group_leader") == "heavy"
+    assert resolve_stream_class(None, "user_chat") == "light"

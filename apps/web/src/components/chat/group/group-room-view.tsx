@@ -70,7 +70,8 @@ export function GroupRoomView({
       ) : (
         <GroupMemberSidebar
           members={members}
-          title={title || "群成员"}
+          // 用群名做标题，绝不用会话标题（=用户任务全文，会把右栏顶部塞满长文）
+          title={contact?.group?.name || "群成员"}
           groupContactId={groupContactId}
           groupConversationId={conversationId}
           className="hidden md:flex"

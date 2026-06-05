@@ -119,20 +119,46 @@ describe("pickMessageDisplaySource", () => {
     })
   })
 
-  it("prefers stored checkpoint when DB streaming but live not connected", () => {
-    const live: UIMessage[] = []
+  it("bootstraps from stored when composer lacks assistant row during streaming", () => {
+    const live: UIMessage[] = [
+      { id: "1", role: "user", parts: [{ type: "text", text: "task" }] },
+    ]
     const stored: UIMessage[] = [
+      { id: "1", role: "user", parts: [{ type: "text", text: "task" }] },
       {
         id: "2",
         role: "assistant",
-        parts: [{ type: "text", text: "调研报告第一节…" }],
+        parts: [{ type: "text", text: "正在执行…" }],
         metadata: { streamState: "streaming" },
       },
     ]
-    const source = pickMessageDisplaySource(live, stored, "ready", {
-      preferStoredWhileDbStreaming: true,
-    })
-    expect(source[0]?.parts[0]).toMatchObject({ text: "调研报告第一节…" })
+    const source = pickMessageDisplaySource(live, stored, "streaming")
+    expect(source).toHaveLength(2)
+    expect(source[1]?.parts[0]).toMatchObject({ text: "正在执行…" })
+  })
+
+  it("syncs terminal parts when message counts match", () => {
+    const live: UIMessage[] = [
+      { id: "1", role: "user", parts: [{ type: "text", text: "task" }] },
+      {
+        id: "2",
+        role: "assistant",
+        parts: [],
+        metadata: { streamState: "streaming" },
+      },
+    ]
+    const stored: UIMessage[] = [
+      { id: "1", role: "user", parts: [{ type: "text", text: "task" }] },
+      {
+        id: "2",
+        role: "assistant",
+        parts: [{ type: "text", text: "调研报告已完成。" }],
+        metadata: { streamState: "completed" },
+      },
+    ]
+    const source = pickMessageDisplaySource(live, stored, "ready")
+    const assistant = source.find((m) => m.role === "assistant")
+    expect(assistant?.parts[0]).toMatchObject({ text: "调研报告已完成。" })
   })
 })
 

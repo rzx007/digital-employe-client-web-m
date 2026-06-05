@@ -341,45 +341,23 @@ export function GroupSopPanel({
     [openResource]
   )
 
-  // 节点“进行中”计时：记录每个节点首次变 running 的时刻，配合每秒 tick 显示
-  // “已处理 N 秒”。本地模型首包常需几十秒，让等待可见、不像卡死。
-  const [runningSince, setRunningSince] = React.useState<
-    Record<string, number>
-  >({})
+  // 节点计时用后端权威 running_since（TaskExecutionLog / stream_metrics），
+  // 切换会话再回来不会从 0 重计。
   const [nowTick, setNowTick] = React.useState(() => Date.now())
-  const runningKey = React.useMemo(
-    () =>
-      dag.nodes
-        .filter((n) => n.state === "running")
-        .map((n) => n.id)
-        .sort()
-        .join(","),
-    [dag]
-  )
+  const hasRunning = dag.nodes.some((n) => n.state === "running")
   React.useEffect(() => {
-    const ids = runningKey ? runningKey.split(",") : []
-    const now = Date.now()
-    // 派生计时态：running 集合变化时记录各节点起始时刻（已记录的保留）。
-    // 这是对 props 变化的合理副作用，规则误判，精确 disable。
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRunningSince((prev) => {
-      const next: Record<string, number> = {}
-      for (const id of ids) next[id] = prev[id] ?? now
-      return next
-    })
-  }, [runningKey])
-  React.useEffect(() => {
-    if (!runningKey) return
+    if (!hasRunning) return
     const t = setInterval(() => setNowTick(Date.now()), 1000)
     return () => clearInterval(t)
-  }, [runningKey])
+  }, [hasRunning])
   const runningSecondsOf = React.useCallback(
-    (nodeId: string): number | undefined => {
-      const since = runningSince[nodeId]
-      if (since == null) return undefined
+    (node: DagNode): number | undefined => {
+      if (!node.running_since) return undefined
+      const since = Date.parse(node.running_since)
+      if (Number.isNaN(since)) return undefined
       return Math.max(0, Math.floor((nowTick - since) / 1000))
     },
-    [nowTick, runningSince]
+    [nowTick]
   )
 
   const levels = React.useMemo(() => computeLevels(dag), [dag])
@@ -462,7 +440,7 @@ export function GroupSopPanel({
                           onOpenMember={onOpenMember}
                           runningSeconds={
                             node.state === "running"
-                              ? runningSecondsOf(node.id)
+                              ? runningSecondsOf(node)
                               : undefined
                           }
                         />

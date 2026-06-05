@@ -121,3 +121,28 @@ def test_drain_skips_blocked_heavy_for_light(monkeypatch) -> None:
     # conv2（重活）仍在排队，因为 heavy 闸还满
     assert reg._queue.contains(2)
     assert reg.queue_depth() == 1
+
+
+def test_light_admits_when_heavy_fills_reserved_ceiling(monkeypatch) -> None:
+    """3 重 + 1 轻：3 路 heavy 在跑时 light 仍可用剩余总槽。"""
+    reg = _make_registry(monkeypatch, max_inflight=4, max_heavy=3)
+
+    assert _start(reg, 1, "heavy") == StartResult.STARTED
+    assert _start(reg, 2, "heavy") == StartResult.STARTED
+    assert _start(reg, 3, "heavy") == StartResult.STARTED
+    assert _start(reg, 4, "heavy") == StartResult.QUEUED  # heavy 闸 / 天花板满
+    assert _start(reg, 100, "light") == StartResult.STARTED  # 第 4 总槽给 light
+    assert reg.count_active_streams() == 4
+
+
+def test_light_borrows_idle_heavy_slots(monkeypatch) -> None:
+    """heavy 未满时 light 可占空 heavy 槽（例如 1 heavy + 3 light）。"""
+    reg = _make_registry(monkeypatch, max_inflight=4, max_heavy=3)
+
+    assert _start(reg, 1, "heavy") == StartResult.STARTED
+    assert _start(reg, 101, "light") == StartResult.STARTED
+    assert _start(reg, 102, "light") == StartResult.STARTED
+    assert _start(reg, 103, "light") == StartResult.STARTED
+    assert _start(reg, 104, "light") == StartResult.QUEUED
+    assert reg.count_active_streams() == 4
+    assert reg.count_active_heavy() == 1

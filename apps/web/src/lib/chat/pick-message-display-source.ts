@@ -254,17 +254,31 @@ export function patchComposerFromStoredWhenSameTurn(
   return changed ? next : null
 }
 
-/** DB 仍在 streaming 但 live 未接上/落后时，展示 DB checkpoint 正文（群深链旁观执行）。 */
-export function shouldPreferStoredWhileDbStreaming(
+/** composer 尚无 assistant 行时，用 DB 快照引导展示（非 mid-stream 双通道切换）。 */
+export function shouldBootstrapStoredAssistantRow(
   liveMessages: UIMessage[],
   storedMessages: UIMessage[]
 ): boolean {
   const storedLast = lastAssistantMessage(storedMessages)
-  if (readMetadata(storedLast)?.streamState !== "streaming") return false
+  if (!storedLast) return false
   const liveLast = lastAssistantMessage(liveMessages)
-  if (!liveLast) return storedMessages.length > 0
-  if (readMetadata(liveLast)?.streamState === "queued") return true
-  return assistantTextLength(storedLast) > assistantTextLength(liveLast)
+  if (!liveLast) {
+    return storedMessages.length > liveMessages.length
+  }
+  if (
+    readMetadata(storedLast)?.streamState === "queued" &&
+    readMetadata(liveLast)?.streamState !== "queued"
+  ) {
+    return true
+  }
+  return (
+    isTerminalAssistantStreamState(
+      typeof readMetadata(storedLast)?.streamState === "string"
+        ? readMetadata(storedLast)!.streamState as string
+        : undefined
+    ) &&
+    assistantTextLength(storedLast) > assistantTextLength(liveLast)
+  )
 }
 
 /**
@@ -276,21 +290,16 @@ export function shouldPreferStoredWhileDbStreaming(
 export function pickMessageDisplaySource(
   liveMessages: UIMessage[],
   storedMessages: UIMessage[],
-  status: string,
-  options?: { preferStoredWhileDbStreaming?: boolean }
+  status: string
 ): UIMessage[] {
   if (status === "streaming" || status === "submitted") {
     if (shouldPreferStoredOverStaleComposer(liveMessages, storedMessages)) {
       return storedMessages.length > 0 ? storedMessages : liveMessages
     }
+    if (shouldBootstrapStoredAssistantRow(liveMessages, storedMessages)) {
+      return storedMessages
+    }
     return liveMessages
-  }
-
-  if (
-    options?.preferStoredWhileDbStreaming &&
-    shouldPreferStoredWhileDbStreaming(liveMessages, storedMessages)
-  ) {
-    return storedMessages
   }
 
   let source = liveMessages
@@ -299,13 +308,14 @@ export function pickMessageDisplaySource(
     source = storedMessages
   } else if (storedMessages.length === 0) {
     source = liveMessages
+  } else if (shouldForceHydrateFromStored(liveMessages, storedMessages)) {
+    source = storedMessages
   } else if (source.length > storedMessages.length) {
     source = liveMessages
   } else if (source.length === storedMessages.length) {
-    source = applyStoredPartsToInterruptedAssistants(
-      liveMessages,
-      storedMessages
-    )
+    source =
+      patchComposerFromStoredWhenSameTurn(liveMessages, storedMessages) ??
+      applyStoredPartsToInterruptedAssistants(liveMessages, storedMessages)
   } else {
     const storedLastId = lastDbMessageId(storedMessages)
     const liveLastId = lastDbMessageId(liveMessages)

@@ -225,11 +225,14 @@ function buildChatApiUrl(options: { conversationId: string }) {
   return `/chat/conversations/${options.conversationId}/stream`
 }
 
-/**
- * 每个会话“已收到的最后一个事件 seq”。后端 SSE 帧带 `id: {seq}`，前端在解析时
- * 记录最大 seq；切回会话/重连发 resume 时作为 ?after_seq= 回传，后端只补增量，
- * 避免超长输出（上万事件）每次切回都全量重放压垮前端（卡死、渲染不出）。
- */
+function buildResumeApiUrl(conversationId: string) {
+  const lastSeq = _lastSeqByConv.get(conversationId)
+  const base = `/chat/conversations/${conversationId}/stream/resume`
+  // 传输层增量：避免 8000+ buffer 全量 replay 卡死；展示仍走 composer 单通道
+  return lastSeq !== undefined ? `${base}?after_seq=${lastSeq}` : base
+}
+
+/** 记录 SSE id（= buffer seq），resume 时只补增量 */
 const _lastSeqByConv = new Map<string, number>()
 
 export function recordResumeSeq(conversationId: string, seq: number) {
@@ -239,10 +242,14 @@ export function recordResumeSeq(conversationId: string, seq: number) {
   }
 }
 
-function buildResumeApiUrl(conversationId: string) {
-  const lastSeq = _lastSeqByConv.get(conversationId)
-  const base = `/chat/conversations/${conversationId}/stream/resume`
-  return lastSeq !== undefined ? `${base}?after_seq=${lastSeq}` : base
+export function clearResumeSeq(conversationId: string) {
+  _lastSeqByConv.delete(conversationId)
+}
+
+export function seedResumeAfterSeq(conversationId: string, afterSeq: number) {
+  if (afterSeq > 0) {
+    recordResumeSeq(conversationId, afterSeq)
+  }
 }
 
 function getConversationIdFromBody(body: object | undefined) {
@@ -341,6 +348,7 @@ export class LangChainChatTransport<
   UI_MESSAGE extends UIMessage,
 > implements ChatTransport<UI_MESSAGE> {
   private _reconnectAbort: AbortController | null = null
+  private _reconnectInFlightConvId: string | null = null
   _resumeConversationId: string | null = null
   /** 下一次 resume 时要跳过的、已封存在中断消息里的 toolCallId（防 HITL 重放重复） */
   private _resumeSealedToolCallIds: string[] = []
@@ -367,6 +375,16 @@ export class LangChainChatTransport<
    */
   cancelReconnect = () => {
     this.cancelPreviousReconnect()
+    this._reconnectInFlightConvId = null
+  }
+
+  /** resume SSE 进行中时勿重复 cancel + 重连 */
+  isReconnectInFlight(conversationId?: string): boolean {
+    if (!this._reconnectAbort || this._reconnectAbort.signal.aborted) {
+      return false
+    }
+    if (conversationId == null) return true
+    return this._reconnectInFlightConvId === conversationId
   }
 
   setResumeConversationId = (id: string | null) => {
@@ -431,9 +449,14 @@ export class LangChainChatTransport<
       return null
     }
 
+    if (this.isReconnectInFlight(String(effectiveChatId))) {
+      return null
+    }
+
     this.cancelPreviousReconnect()
     const abortController = new AbortController()
     this._reconnectAbort = abortController
+    this._reconnectInFlightConvId = String(effectiveChatId)
 
     let stream: ReadableStream<Uint8Array> | null
     try {
@@ -447,6 +470,7 @@ export class LangChainChatTransport<
         isBenignStreamAbortError(error)
       ) {
         this._reconnectAbort = null
+        this._reconnectInFlightConvId = null
         return null
       }
       throw error
@@ -454,6 +478,7 @@ export class LangChainChatTransport<
 
     if (!stream) {
       this._reconnectAbort = null
+      this._reconnectInFlightConvId = null
       return null
     }
 
@@ -521,8 +546,10 @@ export class LangChainChatTransport<
         const flushEvent = async (eventText: string): Promise<boolean> => {
           const allLines = eventText.split(/\r?\n/)
 
-          // 记录 SSE 事件 id（= 后端 buffer seq），供 resume 断点续传用，
-          // 避免切回会话时全量重放整个 buffer。
+          const dataLines = allLines
+            .filter((line) => line.startsWith("data:"))
+            .map((line) => line.slice(5).trim())
+
           if (conversationId) {
             const idLine = allLines.find((line) => line.startsWith("id:"))
             if (idLine) {
@@ -533,10 +560,6 @@ export class LangChainChatTransport<
             }
           }
 
-          const dataLines = allLines
-            .filter((line) => line.startsWith("data:"))
-            .map((line) => line.slice(5).trim())
-
           if (dataLines.length === 0) {
             return false
           }
@@ -545,9 +568,8 @@ export class LangChainChatTransport<
 
           // [DONE] → 流正常结束
           if (data === "[DONE]") {
-            // 流结束 → 清掉该会话的 resume seq，避免下一条新流复用旧 seq 漏放增量
             if (conversationId) {
-              _lastSeqByConv.delete(conversationId)
+              clearResumeSeq(conversationId)
             }
             flushSync()
             closeTextPhaseIfNeeded(state).forEach((chunk) =>
@@ -864,9 +886,9 @@ export class LangChainChatTransport<
           }
         } finally {
           reader.releaseLock()
-          // 只清除属于当前 reconnect 的 AbortController，不覆盖新创建的
           if (reconnectAbort && this._reconnectAbort === reconnectAbort) {
             this._reconnectAbort = null
+            this._reconnectInFlightConvId = null
           }
         }
       },

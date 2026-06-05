@@ -70,9 +70,9 @@ def test_agent_stall_timeout_default_thirty_minutes() -> None:
     assert stall >= max(chunk, first) + 60.0
 
 
-def test_max_heavy_default_is_one() -> None:
-    assert AGENT_MAX_HEAVY_DEFAULT == 1
-    assert parse_agent_max_heavy({}) == 1
+def test_max_heavy_default_is_three() -> None:
+    assert AGENT_MAX_HEAVY_DEFAULT == 3
+    assert parse_agent_max_heavy({}) == 3
 
 
 def test_stale_active_on_stall(monkeypatch) -> None:

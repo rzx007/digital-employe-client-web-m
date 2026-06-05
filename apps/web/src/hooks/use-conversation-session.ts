@@ -50,6 +50,7 @@ import {
 import { decideHydration } from "@/lib/chat/session/hydrate-decision"
 
 import { chatTransport } from "@/components/chat/shared/chat-view-shared"
+import { seedResumeAfterSeq } from "@/lib/chat/langchain-chat-transport"
 
 import { chatKeys } from "@/lib/query-keys/chat"
 
@@ -58,8 +59,10 @@ import {
   hydrateSignature,
   messagesNeedHydrateFromDb,
   patchComposerFromStoredWhenSameTurn,
+  shouldBootstrapStoredAssistantRow,
   shouldForceHydrateFromStored,
 } from "@/lib/chat/pick-message-display-source"
+import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 import { isTerminalAssistantStreamState } from "@/lib/chat/assistant-stream-state"
 
 const REFETCH_DEBOUNCE_MS = 800
@@ -156,6 +159,7 @@ export function useConversationSession({
   const tryScheduleResume = useCallback(
     (assistantId: string, options?: { allowBusyStatus?: boolean }) => {
       if (!convKey || disableStreamResume) return false
+      if (chatTransport.isReconnectInFlight(convKey)) return false
 
       const willResume = shouldAttemptResume({
         hitlActive: machineRef.current.activeHitl !== null,
@@ -175,8 +179,6 @@ export function useConversationSession({
 
       cancelScheduledStreamResume(resumeScheduleRef.current)
       resumeScheduleRef.current = scheduleStreamResume(() => {
-        // 读「实时」status，而非调度时的快照 —— 否则退避延迟期间用户发了新消息，
-        // 旧快照会误判 ready 而放行，与新发送的流撞车。
         const current = statusRef.current
         const busy = current === "submitted" || current === "streaming"
         if (busy && !options?.allowBusyStatus) return
@@ -187,12 +189,23 @@ export function useConversationSession({
         ) {
           return
         }
+
+        const cached = queryClient.getQueryData<Message[]>(
+          chatKeys.messages(convKey)
+        )
+        const lastAssistant = cached
+          ? getLastAssistantMessage(cached)
+          : undefined
+        if (lastAssistant?.streamCursor && lastAssistant.streamCursor > 0) {
+          seedResumeAfterSeq(convKey, lastAssistant.streamCursor)
+        }
+
         resumeStream()
       }, attemptIndex)
 
       return true
     },
-    [convKey, resumeStream, disableStreamResume]
+    [convKey, resumeStream, disableStreamResume, queryClient]
   )
 
   useEffect(() => {
@@ -287,6 +300,17 @@ export function useConversationSession({
       }
 
       hydrateFromDbIfBehind()
+
+      if (
+        shouldBootstrapStoredAssistantRow(
+          composerMessagesRef.current,
+          initialMessages
+        )
+      ) {
+        const sig = hydrateSignature(initialMessages)
+        setMessages(initialMessages)
+        dispatch({ type: "HYDRATED", convKey, sig })
+      }
 
       // 切走再切回：useChat 可能残留 streaming，但 SSE 已断 —— 需重新 resume
       if (
@@ -385,7 +409,10 @@ export function useConversationSession({
       return false
     }
 
-    chatTransport.cancelReconnect()
+    if (chatTransport.isReconnectInFlight(convKey)) {
+      return false
+    }
+
     return tryScheduleResume(assistantId, { allowBusyStatus: true })
   }, [convKey, queryClient, tryScheduleResume])
 
@@ -413,7 +440,31 @@ export function useConversationSession({
 
       onTerminal: (info) => {
         if (info.status === "no_stream") {
-          retryResumeIfNeeded()
+          dispatch({ type: "RESUME_RESET" })
+          const cached = queryClient.getQueryData<Message[]>(
+            chatKeys.messages(convKey)
+          )
+          const lastAssistant = cached
+            ? getLastAssistantMessage(cached)
+            : undefined
+          if (
+            lastAssistant &&
+            isTerminalAssistantStreamState(
+              lastAssistant.streamState ?? undefined
+            ) &&
+            cached &&
+            cached.length > 0
+          ) {
+            const uiMessages = mapStoredMessagesToUIMessages(cached)
+            setMessages(uiMessages)
+            dispatch({
+              type: "HYDRATED",
+              convKey,
+              sig: hydrateSignature(uiMessages),
+            })
+          } else {
+            retryResumeIfNeeded()
+          }
           scheduleMessagesRefetch()
           return
         }
