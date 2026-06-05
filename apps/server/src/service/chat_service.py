@@ -597,19 +597,63 @@ class ChatService:
         """
         from src.service.group_room_service import GroupRoomService
 
+        # 1) 立即反馈：用户消息一进来先回一条「已收到，正在安排」，让前端马上有反馈，
+        #    不必等 handle_group_message（同步派活、构建组长 agent、启动流，可能几秒+）
+        #    整个跑完。否则发消息后会干等、卡住时永远收不到任何回应。
+        ack_payload = {
+            "type": "group_ack",
+            "data": {"message": "已收到，正在安排组长统筹…"},
+        }
+        yield f"data: {json.dumps(ack_payload, ensure_ascii=False)}\n\n"
+
+        conv_id = conversation.id
+
+        def _dispatch_in_thread() -> dict:
+            # 在独立线程用**独立 session**（SQLAlchemy session 非线程安全，不能跨线程
+            # 复用请求级 db）。重新取一次 conversation 再派活。
+            from src.db.session import get_session_local
+            from src.models.conversation import Conversation as _Conv
+
+            tdb = get_session_local()()
+            try:
+                conv = tdb.get(_Conv, conv_id)
+                if conv is None:
+                    raise RuntimeError(f"群会话 {conv_id} 不存在")
+                return GroupRoomService.handle_group_message(
+                    tdb,
+                    conv,
+                    question,
+                    extra_meta=extra_meta,
+                    auth_token=auth_token,
+                )
+            finally:
+                tdb.close()
+
         try:
-            summary = GroupRoomService.handle_group_message(
-                db,
-                conversation,
-                question,
-                extra_meta=extra_meta,
-                auth_token=auth_token,
+            # 2) 兜底：派活整体加超时保护。handle_group_message 同步、放线程跑并设
+            #    墙钟上限，卡住也能返回错误反馈而不是让用户永远等。
+            import asyncio
+
+            summary = await asyncio.wait_for(
+                asyncio.to_thread(_dispatch_in_thread),
+                timeout=60.0,
             )
             payload = {
                 "type": "group_dispatched",
                 "data": summary,
             }
             yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+        except asyncio.TimeoutError:
+            logger.error("群消息派活超时(>60s) conv=%s", conversation.id)
+            yield (
+                "data: "
+                + json.dumps(
+                    {"error": "组长安排任务超时，请稍后重试或检查模型服务。"},
+                    ensure_ascii=False,
+                )
+                + "\n\n"
+            )
             yield "data: [DONE]\n\n"
         except Exception as e:
             logger.error("群消息处理失败: %s", e, exc_info=True)

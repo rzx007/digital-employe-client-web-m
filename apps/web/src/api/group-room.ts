@@ -86,6 +86,20 @@ export async function fetchGroupRoomDag(
   return res?.data ?? null
 }
 
+/**
+ * 停止群协作：取消组长流 + 所有成员执行流 + 停用未完成任务。
+ * POST /chat/conversations/{conversation_id}/room/stop
+ */
+export async function stopGroupRoom(
+  conversationId: number | string
+): Promise<{ stopped: number } | null> {
+  const res = await request<ApiResponse<{ stopped: number }>>(
+    `/chat/conversations/${conversationId}/room/stop`,
+    { method: "POST" }
+  )
+  return res?.data ?? null
+}
+
 export interface RoomArtifact {
   name: string
   path: string

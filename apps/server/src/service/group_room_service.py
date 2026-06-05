@@ -672,6 +672,19 @@ class GroupRoomService:
 
         # 2.5) 未 @ 任何成员 → 交给组长统筹（分解→派活→汇总）
         if not targets:
+            # 立即给一条组长「已收到」的反馈再派活：组长构建 agent + 首包要几秒，
+            # 这几秒群里没动静会让用户以为没反应。先推一条即时反馈消息，组长真正
+            # 流式输出后是另一条（实际安排），两条都合理、用户明确知道在动。
+            try:
+                GroupRoomService.post_to_timeline(
+                    db, room,
+                    role="assistant",
+                    content="收到，我来统筹安排，正在拆解任务、分配人手…",
+                    sender_id=None,
+                    sender_label="组长",
+                )
+            except Exception:
+                logger.warning("post leader ack failed room=%s", room.id, exc_info=True)
             leader_conv_id = GroupRoomService.dispatch_to_leader(
                 db, room, question, auth_token=auth_token
             )
@@ -974,6 +987,83 @@ class GroupRoomService:
         }
 
     @staticmethod
+    def stop_room(db: Session, group_conversation_id: int) -> dict:
+        """停止一个群当前的协作：取消组长流 + 所有成员执行会话流 + 停用未完成任务。
+
+        让用户能中途叫停整个群任务（组长统筹/成员并行都停）。返回被停掉的流数量。
+        """
+        from src.models.orchestration_plan import OrchestrationPlan
+        from src.models.employee_task import EmployeeTask
+        from src.models.task_execution_log import TaskExecutionLog
+        from src.service.stream_registry import registry
+
+        conv = db.get(Conversation, group_conversation_id)
+        if conv is None or conv.target_type != "group":
+            return {"stopped": 0, "error": "非群会话"}
+        room = GroupRoomService.ensure_room(db, conv)
+
+        cancelled_convs: list[int] = []
+
+        # 1) 取消组长会话流（派活 / 汇总）
+        if room.leader_conversation_id is not None:
+            if registry.cancel(room.leader_conversation_id):
+                cancelled_convs.append(room.leader_conversation_id)
+
+        # 2) 取消所有成员任务的执行会话流，并停用未完成的任务（阻止后续派发）
+        if room.leader_conversation_id is not None:
+            plan = db.scalars(
+                select(OrchestrationPlan)
+                .where(
+                    OrchestrationPlan.conversation_id == room.leader_conversation_id
+                )
+                .order_by(OrchestrationPlan.id.desc())
+            ).first()
+            if plan is not None:
+                tasks = list(
+                    db.scalars(
+                        select(EmployeeTask).where(
+                            EmployeeTask.orchestration_plan_id == plan.id
+                        )
+                    ).all()
+                )
+                task_ids = [t.id for t in tasks]
+                if task_ids:
+                    for log in db.scalars(
+                        select(TaskExecutionLog).where(
+                            TaskExecutionLog.task_id.in_(task_ids)
+                        )
+                    ).all():
+                        cid = log.conversation_id
+                        if cid is not None and registry.cancel(cid):
+                            cancelled_convs.append(cid)
+                # 停用未完成任务，阻止 dependency_scheduler 继续派后续
+                for t in tasks:
+                    if t.is_active:
+                        t.is_active = False
+                # 计划整体标记取消
+                if plan.status not in ("completed", "cancelled"):
+                    plan.status = "cancelled"
+                db.commit()
+
+        # 3) 群时间线写一条「已停止」反馈
+        try:
+            GroupRoomService.post_to_timeline(
+                db, room,
+                role="assistant",
+                content="⏹️ 已停止本群的协作任务（用户手动停止）。",
+                sender_id=None,
+                sender_label="组长",
+            )
+        except Exception:
+            logger.warning("post stop notice failed room=%s", room.id, exc_info=True)
+
+        logger.info(
+            "stop_room conv=%s 取消 %d 个流: %s",
+            group_conversation_id, len(cancelled_convs), cancelled_convs,
+        )
+        return {"stopped": len(cancelled_convs), "conversations": cancelled_convs}
+
+    @staticmethod
     def get_room_dag(db: Session, group_conversation_id: int) -> dict | None:
         """返回房间当前协作的 DAG（节点+边），用于前端画 SOP 流程图。
 
@@ -1105,19 +1195,16 @@ class GroupRoomService:
             "id": "user", "type": "user", "name": "用户",
             "task": plan.user_input or "", "state": "done", "artifacts": [],
         })
-        leader_running = (
-            room.leader_conversation_id is not None
-            and GroupRoomService._conv_is_streaming(room.leader_conversation_id)
-        )
+        # 组长「分解与派活」节点：走到这里说明编排计划已生成（前面 plan is None 已
+        # return），即派活一定完成了 → 永久 done。绝不能用「组长会话是否在流式」判断：
+        # 组长会话被复用做「派活」和「汇总」两个阶段，成员全完成后触发汇总会让组长
+        # 会话再次流式，若据此把 leader 节点又判 running，就会出现「后面任务完成了
+        # 状态反而回滚到组长」的 bug。汇总的进行中状态由下方独立的 summary 节点表达。
         nodes.append({
             "id": "leader", "type": "leader", "name": "组长",
-            "task": "分解与派活", "state": "running" if leader_running else "done",
+            "task": "分解与派活", "state": "done",
             "artifacts": [],
-            "running_since": (
-                GroupRoomService._stream_started_at_iso(room.leader_conversation_id)
-                if leader_running
-                else None
-            ),
+            "running_since": None,
         })
         edges.append({"from": "user", "to": "leader"})
 
@@ -1158,14 +1245,36 @@ class GroupRoomService:
             if nid not in has_successor:
                 leaves.append(nid)
 
-        # 组长汇总节点：汇集本轮所有共享产物，方便一处查看
+        # 组长汇总节点：汇集本轮所有共享产物。状态三态——
+        # - 还有任务没完成 → pending（等成员）
+        # - 所有任务完成 且 组长会话正在流式 → running（组长正在汇总）
+        # - 所有任务完成 且 组长会话不在流式 → done（汇总已完成）
+        # 「组长会话流式」在这里表达汇总进行中（派活阶段的流式由计划生成与否区分，
+        # 不影响 leader 节点——它已永久 done）。
         all_done = all(
             _task_state(logs_by_task.get(t.id)) == "done" for t in plan_tasks
         )
+        summary_running = all_done and (
+            room.leader_conversation_id is not None
+            and GroupRoomService._conv_is_streaming(room.leader_conversation_id)
+        )
+        if not all_done:
+            summary_state = "pending"
+        elif summary_running:
+            summary_state = "running"
+        else:
+            summary_state = "done"
         nodes.append({
-            "id": "summary", "type": "leader", "name": "组长汇总",
-            "task": "汇总结果", "state": "done" if all_done else "pending",
+            # 名字不再叫「组长」，避免与开头的「组长·分解与派活」节点在视觉上像
+            # 两个重复的组长。语义：开头组长拆解派活 → 中间成员并行 → 结尾汇总交付。
+            "id": "summary", "type": "leader", "name": "汇总交付",
+            "task": "整合各成员产出", "state": summary_state,
             "artifacts": sorted(real_files),
+            "running_since": (
+                GroupRoomService._stream_started_at_iso(room.leader_conversation_id)
+                if summary_running
+                else None
+            ),
         })
         for nid in leaves:
             edges.append({"from": nid, "to": "summary"})
@@ -1497,6 +1606,47 @@ def _resolve_room_for_orchestration_conv(
     return room, log.employee_id
 
 
+# 工具结果噪音前缀：成员会话末段若以这些开头，说明不是模型的「交付结论」而是
+# 工具回执/提示，跳过它继续往前找真正的结论段。与前端 sanitize 同源的判定。
+_TOOL_NOISE_PREFIXES = (
+    "[shell 工作目录",
+    "[会话产物目录",
+    "[说明:",
+    "[read_file 进度",
+    "Cannot write to /",
+    "Error: String not found in file",
+    "Successfully replaced ",
+    "Updated file /",
+)
+
+
+def _extract_member_delivery(content: str, *, max_len: int = 280) -> str:
+    """从成员会话最终 assistant content 提取一句「最终交付总结」。
+
+    群时间线只展示交付结果，不刷过程独白。这里取末尾的「自然语言结论段」：
+    按空行分段，从后往前找第一段不是工具回执/带行号文件回显的文本，截断到 max_len。
+    """
+    if not content:
+        return ""
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", content) if p.strip()]
+    for para in reversed(paragraphs):
+        # 跳过工具回执/提示段
+        if any(para.startswith(pfx) for pfx in _TOOL_NOISE_PREFIXES):
+            continue
+        # 跳过 read_file 回显的「行号\t内容」整段
+        lines = para.splitlines()
+        numbered = sum(1 for ln in lines if re.match(r"^\s{0,6}\d+\t", ln))
+        if lines and numbered >= max(1, len(lines) // 2):
+            continue
+        text = para.strip()
+        if not text:
+            continue
+        if len(text) > max_len:
+            text = text[: max_len - 1].rstrip() + "…"
+        return text
+    return ""
+
+
 def project_member_conversation_if_in_room(
     conversation_id: int, stream_state: str
 ) -> None:
@@ -1531,12 +1681,15 @@ def project_member_conversation_if_in_room(
                 )
             return
 
-        # B) 组长派发的编排任务会话：成员产出**只进 DAG 面板**（更新状态），
-        #    不再刷群时间线，避免淹没。产物/结论由 DAG 接口从 TaskExecutionLog 实时读。
+        # B) 组长派发的编排任务会话：
+        #    - 干活过程**不刷群**（实时中继已禁用），进度看右侧「协作流程」面板；
+        #    - 完成时**只发一条「最终交付总结」**到群（任务名 + 末段结论），不刷整篇过程；
+        #    - 同步更新 DAG 面板状态（done/ready）。
         task_room, task_employee_id = _resolve_room_for_orchestration_conv(
             db, conversation_id
         )
         if task_room is not None:
+            done = stream_state in ("completed", "success")
             if task_employee_id is not None:
                 task_member = db.scalars(
                     select(GroupRoomMember).where(
@@ -1545,10 +1698,51 @@ def project_member_conversation_if_in_room(
                     )
                 ).first()
                 if task_member is not None:
-                    new_state = "done" if stream_state in ("completed", "success") else "ready"
-                    GroupRoomService.update_member_state(db, task_member, new_state)
+                    GroupRoomService.update_member_state(
+                        db, task_member, "done" if done else "ready"
+                    )
+            # 完成 → 往群发一条「最终交付总结」（仅末段结论，过程不进群）
+            if done:
+                from src.models.task_execution_log import TaskExecutionLog
+
+                log = db.scalars(
+                    select(TaskExecutionLog)
+                    .where(TaskExecutionLog.conversation_id == conversation_id)
+                    .order_by(TaskExecutionLog.id.desc())
+                ).first()
+                task_name = (log.task_name_snapshot if log else "") or "子任务"
+                last = db.scalars(
+                    select(ConversationMessage)
+                    .where(
+                        ConversationMessage.conversation_id == conversation_id,
+                        ConversationMessage.role == "assistant",
+                    )
+                    .order_by(ConversationMessage.id.desc())
+                ).first()
+                summary = _extract_member_delivery((last.content or "") if last else "")
+                employee = (
+                    db.get(Employee, task_employee_id)
+                    if task_employee_id is not None
+                    else None
+                )
+                sender_label = employee.name if employee else "成员"
+                body = f"✅ 已完成：{task_name}"
+                if summary:
+                    body += f"\n\n{summary}"
+                GroupRoomService.post_to_timeline(
+                    db,
+                    task_room,
+                    role="assistant",
+                    content=body,
+                    sender_id=task_employee_id,
+                    sender_label=sender_label,
+                    extra_meta={
+                        "member_conversation_id": conversation_id,
+                        "kind": "delivery",
+                    },
+                )
             logger.info(
-                "member task conv=%s (%s) → DAG only (room=%s)",
+                "member task conv=%s (%s) → DAG + delivery (room=%s)",
                 conversation_id, stream_state, task_room.id,
             )
             return

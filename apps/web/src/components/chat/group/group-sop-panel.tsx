@@ -1,15 +1,17 @@
 import * as React from "react"
+import { toast } from "sonner"
 
 import { cn } from "@workspace/ui/lib/utils"
 
 import { CURATOR_AVATAR_URL } from "@/lib/avatar"
 import { navigateToEmployeeFromGroup } from "@/lib/chat/group-navigation"
 import { switchToContact } from "@/lib/chat/conversation-selection"
-import type {
-  DagNode,
-  DagNodeState,
-  DagNodeType,
-  GroupRoomDag,
+import {
+  stopGroupRoom,
+  type DagNode,
+  type DagNodeState,
+  type DagNodeType,
+  type GroupRoomDag,
 } from "@/api/group-room"
 
 import { useArtifactStore } from "@/stores/artifact-store"
@@ -360,6 +362,21 @@ export function GroupSopPanel({
     [nowTick]
   )
 
+  // 停止本群协作（取消组长 + 所有成员流 + 停用未完成任务）
+  const [stopping, setStopping] = React.useState(false)
+  const handleStop = React.useCallback(async () => {
+    if (stopping) return
+    setStopping(true)
+    try {
+      const r = await stopGroupRoom(conversationId)
+      toast.success(`已停止协作（取消 ${r?.stopped ?? 0} 个执行流）`)
+    } catch {
+      toast.error("停止失败，请重试")
+    } finally {
+      setStopping(false)
+    }
+  }, [conversationId, stopping])
+
   const levels = React.useMemo(() => computeLevels(dag), [dag])
 
   const rows = React.useMemo(() => {
@@ -384,12 +401,25 @@ export function GroupSopPanel({
   return (
     <div className={cn("flex h-full flex-col", className)}>
       <div className="border-b px-4 py-3">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold">协作流程</span>
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {doneCount}/{totalWorkers} 已交付
-            {runningCount > 0 ? ` · ${runningCount} 进行中` : ""}
-          </span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="shrink-0 text-sm font-semibold">协作流程</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {doneCount}/{totalWorkers} 已交付
+              {runningCount > 0 ? ` · ${runningCount} 进行中` : ""}
+            </span>
+            {runningCount > 0 ? (
+              <button
+                type="button"
+                onClick={handleStop}
+                disabled={stopping}
+                className="shrink-0 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
+                title="停止本群所有正在执行的任务"
+              >
+                {stopping ? "停止中…" : "⏹ 停止"}
+              </button>
+            ) : null}
+          </div>
         </div>
         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
           <div
