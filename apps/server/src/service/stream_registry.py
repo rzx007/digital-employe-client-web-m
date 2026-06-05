@@ -332,23 +332,21 @@ def _checkpoint_flush_sync(
     buffer_events_snapshot: list[dict],
     content: str | None,
 ) -> bool:
-    from src.service.message_parts_extractor import extract_message_parts_from_buffer
+    """流式中途 checkpoint：只落 content + cursor，不解析 message_parts。
 
-    checkpoint_parts = extract_message_parts_from_buffer(buffer_events_snapshot)
-    if not checkpoint_parts:
-        return _flush_to_db_sync(
-            stream_msg_id,
-            buffer_cursor,
-            state="streaming",
-            content=content,
-        )
-    message_parts_json = json.dumps(checkpoint_parts, ensure_ascii=False)
+    历史缺陷：每次 checkpoint 都 extract_message_parts_from_buffer(全量 buffer)，
+    它从头重放所有事件。checkpoint 每 BUFFER_CHECKPOINT_LEN(500) 事件触发一次，
+    于是重放量 500+1000+...+N → O(n²)。产出大文档的任务（Word/PPT 生成几千事件）
+    会因此越跑越慢、最终卡死在 checkpoint。content（纯文本）足够支撑“崩溃恢复时
+    显示已生成文本”；完整 message_parts 在终态 _flush_terminal 时解析一次即可。
+    buffer_events_snapshot 不再使用，仅保留签名兼容调用方。
+    """
+    _ = buffer_events_snapshot  # noqa: F841 — 不再全量重放，消除 O(n²)
     return _flush_to_db_sync(
         stream_msg_id,
         buffer_cursor,
         state="streaming",
         content=content,
-        message_parts=message_parts_json,
     )
 
 
@@ -1424,14 +1422,15 @@ class StreamRegistry:
                     > BUFFER_CHECKPOINT_LEN
                 ):
                     _last_checkpoint_count = len(task.buffer._events)
-                    events_snapshot = list(task.buffer._events)
                     cursor_snapshot = task.buffer.cursor
                     current_text = "".join(assistant_text_parts)
+                    # checkpoint 只落 content + cursor（O(1)），不再快照/重放整个
+                    # buffer（曾导致 O(n²) 卡死大文档任务）。完整 parts 终态再解析。
                     ok = await asyncio.to_thread(
                         _checkpoint_flush_sync,
                         stream_msg_id,
                         cursor_snapshot,
-                        events_snapshot,
+                        [],
                         current_text or None,
                     )
                     if not ok:
