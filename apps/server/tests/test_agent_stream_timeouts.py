@@ -64,7 +64,10 @@ def test_max_pending_retries_reasonable() -> None:
 
 
 def test_agent_stall_timeout_default() -> None:
-    assert _agent_stall_timeout() >= 30.0
+    stall = _agent_stall_timeout()
+    chunk, first, _ = _agent_stream_timeouts()
+    assert stall >= 30.0
+    assert stall >= max(chunk, first) + 60.0
 
 
 def test_max_heavy_default_is_one() -> None:

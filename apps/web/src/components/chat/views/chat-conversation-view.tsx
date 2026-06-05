@@ -179,8 +179,6 @@ export function ConversationChatView({
     resumeStream,
 
     queryClient,
-
-    disableStreamResume: isGroupExecutionView,
   })
 
   useSyncPendingFromComposer(conversationId, messages, status)
@@ -190,7 +188,7 @@ export function ConversationChatView({
     onRetryResumeRef.current = session.retryResumeIfNeeded
   }, [session.onStreamFinish, session.retryResumeIfNeeded])
 
-  // 群聊点进成员：DB 已终态/queued 但 useChat 残留 streaming → 清掉误显示的「正在生成…」
+  // DB 已终态/queued 但 useChat 残留 streaming → 清掉误显示的「正在生成…」
   useEffect(() => {
     const last = getLastAssistantMessage(storedMessages)
     const busy = status === "streaming" || status === "submitted"
@@ -198,15 +196,18 @@ export function ConversationChatView({
 
     const dbQueued = last.streamState === "queued"
     const dbTerminal = isTerminalAssistantStreamState(last.streamState ?? undefined)
-    if (isGroupExecutionView || dbQueued || dbTerminal) {
+    if (dbQueued || dbTerminal) {
       stop()
     }
-  }, [conversationId, storedMessages, status, stop, isGroupExecutionView])
+  }, [conversationId, storedMessages, status, stop])
 
   const storedStreamState = lastStoredAssistantStreamState(storedMessages)
-  const pollGroupExecution = isGroupExecutionView &&
-    !isTerminalAssistantStreamState(storedStreamState ?? undefined) &&
-    storedStreamState !== "interrupted"
+  // SSE 未接上时轮询 DB checkpoint，避免群深链执行会话长时间空白
+  const pollGroupExecution =
+    isGroupExecutionView &&
+    storedStreamState === "streaming" &&
+    status !== "streaming" &&
+    status !== "submitted"
 
   useEffect(() => {
     if (!pollGroupExecution) return
@@ -214,7 +215,7 @@ export function ConversationChatView({
       void queryClient.invalidateQueries({
         queryKey: chatKeys.messages(String(conversationId)),
       })
-    }, 3000)
+    }, 1500)
     return () => clearInterval(timer)
   }, [pollGroupExecution, conversationId, queryClient])
 
@@ -245,10 +246,12 @@ export function ConversationChatView({
     error && !isBenignStreamAbortError(error) ? error : undefined
 
   const displayMessages = useMemo(() => {
-    if (isGroupExecutionView && initialMessages.length > 0) {
-      return prepareDisplayMessages(initialMessages)
-    }
-    const source = pickMessageDisplaySource(messages, initialMessages, status)
+    const source = pickMessageDisplaySource(
+      messages,
+      initialMessages,
+      status,
+      { preferStoredWhileDbStreaming: isGroupExecutionView }
+    )
 
     return prepareDisplayMessages(source)
   }, [initialMessages, messages, status, isGroupExecutionView])
@@ -401,7 +404,6 @@ export function ConversationChatView({
       messages={displayMessages}
       composerMessages={messages}
       storedAssistantStreamState={lastStoredAssistantStreamState(storedMessages)}
-      hideStreamingIndicator={isGroupExecutionView}
       inputValue={inputValue}
       status={chatStatus}
       error={displayError}

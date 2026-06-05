@@ -34,6 +34,35 @@ _ORCH_STREAM_IDLE_POLL_SECONDS = 0.5
 _ORCH_STREAM_IDLE_MAX_POLLS = 600  # 最多等待 5 分钟
 
 
+def _find_group_room_by_leader_conv(
+    db: Session, orchestrator_conversation_id: int | None,
+):
+    """编排会话若为某群房间的组长会话，返回 GroupRoom。"""
+    if orchestrator_conversation_id is None:
+        return None
+    try:
+        from src.models.group_room import GroupRoom
+
+        return db.scalars(
+            select(GroupRoom).where(
+                GroupRoom.leader_conversation_id == orchestrator_conversation_id
+            )
+        ).first()
+    except Exception:
+        return None
+
+
+def build_dispatch_extra_meta(*, task_id: int, is_group_leader: bool) -> dict[str, Any]:
+    """派单 user 消息的 extra_meta（前端邮戳：总管派单 vs 组长派单）。"""
+    meta: dict[str, Any] = {
+        "dispatchedByOrchestrator": True,
+        "sourceTaskId": task_id,
+    }
+    if is_group_leader:
+        meta["dispatchedByGroupLeader"] = True
+    return meta
+
+
 def _resolve_room_shared_artifacts_dir(
     db: Session, orchestrator_conversation_id: int | None, root_path: str
 ) -> str | None:
@@ -47,13 +76,7 @@ def _resolve_room_shared_artifacts_dir(
     try:
         from pathlib import Path
 
-        from src.models.group_room import GroupRoom
-
-        room = db.scalars(
-            select(GroupRoom).where(
-                GroupRoom.leader_conversation_id == orchestrator_conversation_id
-            )
-        ).first()
+        room = _find_group_room_by_leader_conv(db, orchestrator_conversation_id)
         if room is None:
             return None
         shared = Path(root_path) / f"room-{room.id}" / "artifacts"
@@ -337,6 +360,8 @@ def start_task_as_conversation(
     if task.source_conversation_id is None and orch_conv_id is not None:
         task.source_conversation_id = orch_conv_id
 
+    is_group_leader_dispatch = _find_group_room_by_leader_conv(db, orch_conv_id) is not None
+
     run_log = TaskExecutionLog(
         task_id=task.id,
         workspace_id=workspace_id,
@@ -358,10 +383,12 @@ def start_task_as_conversation(
         role="user",
         content=task.user_prompt,
         stream_state="completed",
-        # 标记此条 user 消息为"总管自动派单"，供前端区分真人消息并展示邮戳。
-        # 仅用于展示：构建 LLM 历史时只读取 assistant 的 extra_meta，不会污染上下文。
+        # 标记派单来源：总管 1:1 编排 vs 群协作组长编排（前端邮戳区分）。
         extra_meta=json.dumps(
-            {"dispatchedByOrchestrator": True, "sourceTaskId": task.id},
+            build_dispatch_extra_meta(
+                task_id=task.id,
+                is_group_leader=is_group_leader_dispatch,
+            ),
             ensure_ascii=False,
         ),
     )
@@ -380,7 +407,11 @@ def start_task_as_conversation(
         if slot_busy:
             queue_hint = "已加入执行队列，等待其他对话完成"
         elif source == "orchestration":
-            queue_hint = "等待总管会话结束，即将开始执行…"
+            queue_hint = (
+                "等待组长会话结束，即将开始执行…"
+                if is_group_leader_dispatch
+                else "等待总管会话结束，即将开始执行…"
+            )
         else:
             queue_hint = "已加入执行队列，等待其他对话完成"
         assistant_msg.content = assistant_msg.content or queue_hint
@@ -423,7 +454,10 @@ def start_task_as_conversation(
     )
 
     dispatch_directive = (
-        "【系统指令】你正在被总管自动派单执行，没有真人坐在对面。"
+        "【系统指令】你正在被组长自动派单执行，没有真人坐在对面。"
+        if is_group_leader_dispatch
+        else "【系统指令】你正在被总管自动派单执行，没有真人坐在对面。"
+    ) + (
         "请按下方任务描述直接产出最终结果，"
         "不要请求澄清、不要让用户填写表单、不要等待确认。"
         "信息不足时用合理默认值或在产出中说明假设即可。"

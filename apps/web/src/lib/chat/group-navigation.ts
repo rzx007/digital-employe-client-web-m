@@ -77,7 +77,7 @@ export function groupDeepLinkConversationViewKey(
   return String(conversationId)
 }
 
-/** 从群协作点进成员执行会话：只读展示 DB 快照，不走 live SSE/resume */
+/** 从群协作点进成员执行会话：独立 remount key；支持 resume SSE + DB checkpoint 双通道展示 */
 export function isGroupDeepLinkExecutionView(
   ctx: GroupNavigationReturn | null,
   conversationId: string | number | null | undefined

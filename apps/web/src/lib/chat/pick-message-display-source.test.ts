@@ -118,6 +118,22 @@ describe("pickMessageDisplaySource", () => {
       text: "等待总管会话结束，即将开始执行…",
     })
   })
+
+  it("prefers stored checkpoint when DB streaming but live not connected", () => {
+    const live: UIMessage[] = []
+    const stored: UIMessage[] = [
+      {
+        id: "2",
+        role: "assistant",
+        parts: [{ type: "text", text: "调研报告第一节…" }],
+        metadata: { streamState: "streaming" },
+      },
+    ]
+    const source = pickMessageDisplaySource(live, stored, "ready", {
+      preferStoredWhileDbStreaming: true,
+    })
+    expect(source[0]?.parts[0]).toMatchObject({ text: "调研报告第一节…" })
+  })
 })
 
 describe("shouldForceHydrateFromStored", () => {

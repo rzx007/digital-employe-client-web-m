@@ -127,7 +127,7 @@ class Settings:
     # 单流硬墙：超过此秒数仍 active 则强制清理（应 ≥ execute_timeout）
     agent_stale_hard_timeout: float = 720.0
     # 无进展超时：流 active 但长时间无 chunk/事件 → 释放槽位（防慢流占槽）
-    agent_stall_timeout: float = 120.0
+    agent_stall_timeout: float = 300.0
     feishu_app_id: str | None = None
     feishu_app_secret: str | None = None
     feishu_redirect_uri: str | None = None
@@ -361,9 +361,9 @@ def get_settings() -> Settings:
 
     agent_stall_timeout_raw = _get_kv_value(kv_data, "AGENT_STALL_TIMEOUT")
     try:
-        agent_stall_timeout = float(agent_stall_timeout_raw or "120")
+        agent_stall_timeout = float(agent_stall_timeout_raw or "300")
     except ValueError:
-        agent_stall_timeout = 120.0
+        agent_stall_timeout = 300.0
     if agent_stall_timeout < 30.0:
         agent_stall_timeout = 30.0
 

@@ -6,6 +6,7 @@ import {
   isOrchestrationQueuePlaceholder,
   isTerminalAssistantStreamState,
   lastAssistantStreamState,
+  getDispatchBadge,
   shouldHideStaleQueuePlaceholder,
 } from "./assistant-stream-state"
 
@@ -58,5 +59,21 @@ describe("assistant-stream-state", () => {
         "已加入执行队列，等待其他对话完成"
       )
     ).toBe(false)
+  })
+
+  it("dispatch badge distinguishes group leader", () => {
+    expect(getDispatchBadge({ dispatchedByOrchestrator: true })).toEqual({
+      label: "总管派单",
+      title: "总管自动派单消息（非真人发送）",
+    })
+    expect(
+      getDispatchBadge({
+        dispatchedByOrchestrator: true,
+        dispatchedByGroupLeader: true,
+      })
+    ).toEqual({
+      label: "组长派单",
+      title: "组长自动派单消息（非真人发送）",
+    })
   })
 })

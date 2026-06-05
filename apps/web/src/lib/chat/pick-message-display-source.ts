@@ -254,6 +254,19 @@ export function patchComposerFromStoredWhenSameTurn(
   return changed ? next : null
 }
 
+/** DB 仍在 streaming 但 live 未接上/落后时，展示 DB checkpoint 正文（群深链旁观执行）。 */
+export function shouldPreferStoredWhileDbStreaming(
+  liveMessages: UIMessage[],
+  storedMessages: UIMessage[]
+): boolean {
+  const storedLast = lastAssistantMessage(storedMessages)
+  if (readMetadata(storedLast)?.streamState !== "streaming") return false
+  const liveLast = lastAssistantMessage(liveMessages)
+  if (!liveLast) return storedMessages.length > 0
+  if (readMetadata(liveLast)?.streamState === "queued") return true
+  return assistantTextLength(storedLast) > assistantTextLength(liveLast)
+}
+
 /**
  * 流式结束后展示来源：
  * - 流式中用 live composer
@@ -263,13 +276,21 @@ export function patchComposerFromStoredWhenSameTurn(
 export function pickMessageDisplaySource(
   liveMessages: UIMessage[],
   storedMessages: UIMessage[],
-  status: string
+  status: string,
+  options?: { preferStoredWhileDbStreaming?: boolean }
 ): UIMessage[] {
   if (status === "streaming" || status === "submitted") {
     if (shouldPreferStoredOverStaleComposer(liveMessages, storedMessages)) {
       return storedMessages.length > 0 ? storedMessages : liveMessages
     }
     return liveMessages
+  }
+
+  if (
+    options?.preferStoredWhileDbStreaming &&
+    shouldPreferStoredWhileDbStreaming(liveMessages, storedMessages)
+  ) {
+    return storedMessages
   }
 
   let source = liveMessages

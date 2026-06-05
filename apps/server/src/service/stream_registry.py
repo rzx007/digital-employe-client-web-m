@@ -46,7 +46,8 @@ FIRST_AGENT_CHUNK_TIMEOUT = 120.0
 # 活跃流硬墙：单流存在超过此秒数仍 active → 僵死清理。默认 ≥ execute_timeout+120s。
 STALE_ACTIVE_HARD_TIMEOUT = 720.0
 # 无进展超时：active 流在这么久内无任何 chunk/工具事件 → 判定占槽僵死并清理。
-AGENT_STALL_TIMEOUT = 120.0
+# 重任务（2 万 token 级 prompt + 长思考）chunk 间隔 2～4 分钟属正常，默认 300s。
+AGENT_STALL_TIMEOUT = 300.0
 # chunk 超时但 LangGraph 仍有 pending 节点时，最多续等次数（每次 = chunk_timeout）
 MAX_PENDING_CHUNK_TIMEOUT_RETRIES = 20
 # LangGraph 递归上限：agent 的“think → 调工具 → 看结果”每轮算一步，超过此值
@@ -77,13 +78,20 @@ def _agent_stream_timeouts() -> tuple[float, float, float]:
 
 
 def _agent_stall_timeout() -> float:
-    """无进展判定阈值：超过此秒数无任何 stream 事件则释放槽位。"""
+    """无进展判定阈值：超过此秒数无任何 stream 事件则释放槽位。
+
+    生效值 ≥ max(chunk_timeout, first_chunk_timeout) + 60s，避免比 chunk 间
+    等待上限更短而误杀重任务（长 prompt 预处理 / 模型长思考）。
+    """
     try:
         from src.core.config import get_settings
 
-        return max(30.0, float(get_settings().agent_stall_timeout))
+        configured = max(30.0, float(get_settings().agent_stall_timeout))
+        chunk, first, _ = _agent_stream_timeouts()
+        floor = max(chunk, first) + 60.0
+        return max(configured, floor)
     except Exception:
-        return AGENT_STALL_TIMEOUT
+        return max(AGENT_STALL_TIMEOUT, AGENT_CHUNK_TIMEOUT + 60.0)
 
 
 async def _graph_has_pending_non_interrupt_work(agent: Any, config: dict) -> bool:
@@ -214,6 +222,7 @@ def _flush_to_db_sync(
 _ORCHESTRATION_QUEUE_PLACEHOLDERS = (
     "已加入执行队列，等待其他对话完成",
     "等待总管会话结束，即将开始执行…",
+    "等待组长会话结束，即将开始执行…",
     "排队中，等待执行",
 )
 
@@ -610,6 +619,19 @@ class StreamRegistry:
         for cid, task in list(self._tasks.items()):
             at = task._asyncio_task
             age = now - getattr(task, "_created_at", now)
+            # 卡死诊断：dump 协程当前调用栈最后几帧，直接看出它卡在哪一行 await。
+            # 活跃且 asyncio task 未完成时才采集（这正是“卡住不动”的流）。
+            stack_frames: list[str] = []
+            if at is not None and not at.done():
+                try:
+                    for frame in at.get_stack(limit=8):
+                        co = frame.f_code
+                        stack_frames.append(
+                            f"{co.co_filename.rsplit('/', 1)[-1].rsplit(chr(92), 1)[-1]}"
+                            f":{frame.f_lineno} {co.co_name}"
+                        )
+                except Exception:
+                    pass
             tasks_info.append({
                 "conversation_id": cid,
                 "source": task.source,
@@ -627,6 +649,8 @@ class StreamRegistry:
                 "subscribers": len(task.subscribers),
                 "error_message": task.error_message,
                 "stream_msg_id": task.stream_msg_id,
+                # 卡死时这里直接显示卡在哪几行代码（栈顶=当前 await 点）
+                "stack": stack_frames,
             })
         queued_info = [
             {
