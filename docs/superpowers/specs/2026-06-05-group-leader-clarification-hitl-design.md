@@ -27,7 +27,8 @@ HITL 澄清这套机器在 1:1 / 总管已完整存在,组长复用的就是同�
 
 - **组长 agent 已挂澄清能力**:`dispatch_to_leader` 用 `get_orchestrator_agent`,其 `interrupt_on = build_orchestrator_interrupt_on(session_flags)` 已包含 `submit_clarifying_questions`,工具也已注册(`apps/server/src/service/agent/orchestrator/agent.py:214,241,253`;`apps/server/src/service/agent/destructive_hitl.py:26`)。
 - **中断检测与落库**:`StreamRegistry` 运行循环检测 `state.tasks[].interrupts` → `_extract_interrupt_payload`(`stream_registry.py:449,1626-1650`)→ 终态 `interrupted` → 通过 `extract_message_parts_for_interrupt`(`hitl_pending_parts.py`)把澄清问题落库为该 assistant 消息的 `message_parts`,`stream_state="interrupted"`。
-- **作答恢复**:唯一提交端点 `POST /chat/conversations/{id}/approve`(`chat_api.py:365`)→ `ChatService.approve_trigger`(`chat_service.py:1086`)→ 封存中断段 + 新建 assistant 行 → `registry.approve_and_resume`(`stream_registry.py:1234`)用 `Command(resume={"decisions": decisions})` 继续 agent。澄清答案与破坏性 approve **共用**此端点(payload 为 decisions)。
+- **作答恢复**:唯一提交端点 `POST /chat/conversations/{id}/approve`(`chat_api.py:365`)→ `ChatService.approve_trigger`(`chat_service.py:1086`)→ 封存中断段 + 新建 assistant 行 → `registry.approve_and_resume`(`stream_registry.py:1234`)用 `Command(resume={"decisions": decisions})` 继续 agent。澄清答案与破坏性 approve **共用**此端点(传输层都是 `decisions`),但**决策类型不同**:`submit_clarifying_questions` 的 `allowed_decisions = ["respond", "reject"]`(`clarifying_questions_tool.py`),澄清作答是 `{type: "respond", message: <答案>}`;破坏性 HITL 才是 `["approve", "reject"]`。实现时组长澄清必须用 `respond` 决策,误用 approve 决策无法 resume。
+- **`approve_trigger` 现状的关键限制**:`approve_trigger`(`chat_service.py:1148-1173`)目前**只有 `target_type == "curator"` 和 `"employee"` 两个分支,其余一律 `return {"accepted": False}` 拒绝**;且把 `orchestrator_workspace_id / conversation_id / auth_token` 透传给 `approve_and_resume` 的逻辑**仅在 `curator` 分支**。组长会话 `target_type == "group_leader"` 当前会被直接拒绝——这是本设计**改动量最大、最易低估**的桥接点(见 §3.3)。
 - **群逐字流式**:`_GROUP_STREAM_RELAY` + `register_group_stream_relay` / `relay_group_stream_delta`(`group_room_service.py`),组长/成员产出 token 时逐字推到群时间线(`room_message_stream`),`_finalize_task_stream` 终态时 `unregister_group_stream_relay` + 投影完整消息(`stream_registry.py:1789+`)。
 
 **缺口**:整套 HITL 默认面向"会话本人"(组长会话 `target_type=group_leader`),而群用户是在**群时间线**(`target_type=group`)交互。组长一旦 `submit_clarifying_questions` 中断,问题只落在组长会话,群里既看不到也无法作答。**本设计只补两座桥**:中断**桥出**到群时间线,作答**桥回**去 resume 组长流。
@@ -47,23 +48,32 @@ HITL 澄清这套机器在 1:1 / 总管已完整存在,组长复用的就是同�
 ### 3.2 改动点 ②:桥出(中断 → 群时间线卡片)
 
 - **文件**:`apps/server/src/service/group_room_service.py`(`project_member_conversation_if_in_room` 分支 A,组长会话)。
-- **现状**:分支 A 仅处理 `completed`(投影组长汇总)。
-- **改动**:增加 `stream_state == "interrupted"` 分支:
+- **现状**:分支 A 对所有终态都会先调 `_project_simple`(对 `interrupted` 实际是 no-op),仅 `completed` 有实质投影。
+- **时序前提**(已验证):中断消息的 `message_parts` 由 run 循环的 `_flush_terminal_sync` 在 `_finalize_task_stream` **之前**提交到 DB;投影函数用独立 session 读取,届时 parts 已落库,无竞态。
+- **改动**:在分支 A 内**先于 `_project_simple`** 加 `stream_state == "interrupted"` 处理并 **early-return**(避免落入后续 completed 逻辑):
   1. 读组长会话(`leader_conversation_id == conversation_id`)最后一条 `stream_state="interrupted"` 的 assistant 消息的 `message_parts`(即澄清问题结构)。
   2. 用 `post_to_timeline` 投影成群时间线一条消息,**携带该 parts**(使前端用同一套卡片组件渲染),并写 `extra_meta = {"clarify_target_conversation_id": <leader_conv_id>, "clarify_message_id": <interrupted_assistant_msg_id>}`,作者 = 组长(`sender_id=None, sender_label="组长"`)。
   3. 因为消息已落库,**刷新 / 重进会话不丢卡片**。
 - **不触发误派**:`interrupted` 终态**不会**进入 `auto_confirm_leader_plan_if_pending`(它仅在 `stream_state == "completed"` 调用,见 `stream_registry.py:1789+`),且此时无 pending 计划。
 
-### 3.3 改动点 ③:桥回(卡片作答 → resume 组长)
+### 3.3 改动点 ③:桥回(卡片作答 → resume 组长)★ 核心、改动量最大
 
-- **前端**:群时间线渲染 HITL 澄清卡片时,**提交目标会话 id 取 `extra_meta.clarify_target_conversation_id`(组长会话),而非当前群会话 id**;提交仍打 `POST /chat/conversations/{clarify_target_conversation_id}/approve`(复用现有 `hitl/clarifying-questions` 提交逻辑,仅替换目标 conversation_id 来源)。
-- **后端**:`ChatService.approve_trigger` 在 resume 前,若 `conversation.target_type == "group_leader"` 且该会话属于某 `GroupRoom` → **重新注册群流中继** `register_group_stream_relay(leader_conv_id, ...)`,使组长 resume 后的输出继续逐字进群时间线。
+- **前端**:群时间线渲染 HITL 澄清卡片时,提交调用 `approveHitl(conversationId, messageId, decisions)`(`api/chat.ts` / `conversation.ts:307`)**两个 id 都要换**:
+  - `conversationId` ← `extra_meta.clarify_target_conversation_id`(组长会话,**非**当前群会话)。
+  - `messageId` ← `extra_meta.clarify_message_id`(组长会话里那条 `interrupted` assistant 消息 id,**非**群卡片消息自身 id)。
+  - `decisions` 用 `respond` 决策(见 §二)。复用现有 `hitl/clarifying-questions` 提交逻辑,仅替换这两个 id 的来源。
+- **后端**(`ChatService.approve_trigger`,**必须新增 `group_leader` 分支**——现状会直接拒绝):
+  1. 新增 `conversation.target_type == "group_leader"` 分支(对照 `curator` 分支实现)。
+  2. **重建组长 orchestrator agent**:`get_orchestrator_agent(workspace_id, db=leader_db, conversation_id=leader_conv_id, auth_token=..., shared_artifacts_dir=room-<id>/artifacts, bind_context=False)`(实参**逐一对齐** `dispatch_to_leader` 的调用,避免漏传/错传;注意 curator 分支传 `employee_id=target_id`,group_leader 的 `target_id` 语义不同,以 `dispatch_to_leader` 为准)。
+  3. **透传 orchestrator 运行时上下文**给 `approve_and_resume`:`orchestrator_owned_db / orchestrator_workspace_id / orchestrator_conversation_id / orchestrator_auth_token`(当前这些仅在 curator 分支透传,group_leader 必须同样透传,否则 resume 后拿不到运行时上下文)。
+  4. resume 前 **重新注册群流中继** `register_group_stream_relay(leader_conv_id, ...)`,使组长 resume 后的输出继续逐字进群时间线。
 - **resume 后**:组长信息足够 → `create_orchestration_plan` + `confirm_orchestration_plan` → `completed` → `auto_confirm_leader_plan_if_pending` 派活成员;信息仍不足 → 再次 `submit_clarifying_questions` → 回到 ②(**支持多轮澄清**)。
 
-### 3.4 改动点 ④:守卫(interrupted 轮不误回流总管)
+### 3.4 改动点 ④:守卫(interrupted 轮不误回流总管)— 验证为主
 
 - **文件**:`apps/server/src/service/group_room_service.py`(`project_member_conversation_if_in_room` 分支 A)。
-- **改动**:`_flow_summary_back_to_curator` 仅在**确实产出最终汇总/计划**(`completed` 且属于汇总轮)时触发;`interrupted` 轮**不得**回流(避免把澄清问题当成"群里的最终结果"转告总管会话)。
+- **现状(已验证)**:`_flow_summary_back_to_curator` 已被 `if stream_state == "completed"` 严格 gate(`group_room_service.py:1521`),`interrupted` 轮本就不会回流。
+- **改动**:本质是**验证 + 保证 ② 的 interrupted 分支 early-return**(不落入 completed 后续逻辑即可),无需额外改 gate。列为独立项仅为防止 ② 实现时遗漏 early-return 而误触发回流。
 
 ### 3.5 改动点 ⑤:awaiting-clarification 兜底
 
@@ -102,11 +112,11 @@ HITL 澄清这套机器在 1:1 / 总管已完整存在,组长复用的就是同�
 | --- | --- | --- | --- |
 | `dispatch_to_leader`(改 brief) | 引导组长"模糊则澄清,清晰则派活" | 用户群消息 | `get_orchestrator_agent` / `submit_clarifying_questions` |
 | `project_member_conversation_if_in_room` 分支 A(扩展 interrupted) | 把组长中断的澄清问题投影成群卡片消息 | `leader_conv_id`, `interrupted` | `post_to_timeline`、interrupted 消息 parts |
-| `approve_trigger`(扩展 group_leader 分支) | 作答恢复前重注册群 relay | `clarify_target_conversation_id`, decisions | `register_group_stream_relay`、`approve_and_resume` |
+| `approve_trigger`(**新增 group_leader 分支**) | 重建组长 agent + 透传 orchestrator 上下文 + 重注册 relay + resume | `clarify_target_conversation_id`, `clarify_message_id`, `respond` decisions | `get_orchestrator_agent`、`register_group_stream_relay`、`approve_and_resume` |
 | `handle_group_message`(扩展待澄清判定) | 区分"新一轮 vs 澄清作答兜底" | 群消息、组长会话状态 | 组长会话 `stream_state` |
-| 前端澄清卡片(群上下文) | 渲染澄清问题 + 提交到组长会话 | 群消息 parts + `extra_meta.clarify_target_conversation_id` | 现有 `hitl/clarifying-questions` |
+| 前端澄清卡片(群上下文) | 渲染澄清问题 + 提交到组长会话 | 群消息 parts + `extra_meta.{clarify_target_conversation_id, clarify_message_id}` | 现有 `hitl/clarifying-questions`、`approveHitl` |
 
-**接口契约(关键)**:群时间线澄清消息的 `extra_meta` 必含 `clarify_target_conversation_id`(组长会话 id)与 `clarify_message_id`;前端据此把 `/approve` 打到组长会话而非群会话。
+**接口契约(关键)**:群时间线澄清消息的 `extra_meta` 必含 `clarify_target_conversation_id`(组长会话 id)与 `clarify_message_id`(组长会话里 interrupted assistant 消息 id);前端 `approveHitl` 的 `conversationId` 与 `messageId` **两者都**取自该 `extra_meta`,把 `/approve` 打到组长会话而非群会话,决策用 `respond`。
 
 ## 六、边界与异常
 
@@ -124,7 +134,7 @@ HITL 澄清这套机器在 1:1 / 总管已完整存在,组长复用的就是同�
 
 **后端**
 - 组长流 `interrupted` → `project_member_conversation_if_in_room` 在群时间线落库一条携带 clarify parts + `extra_meta.clarify_target_conversation_id` 的消息。
-- 对 `target_type="group_leader"` 且属房间的会话调用 `approve_trigger` → 先 `register_group_stream_relay` 再 `approve_and_resume`。
+- 对 `target_type="group_leader"` 且属房间的会话调用 `approve_trigger` → 新增分支命中(不再被拒)→ 重建组长 agent + 透传 orchestrator 上下文 + 先 `register_group_stream_relay` 再 `approve_and_resume`;`respond` 决策能正确 resume。
 - `interrupted` 轮**不**触发 `auto_confirm_leader_plan_if_pending`、**不**触发 `_flow_summary_back_to_curator`。
 - `handle_group_message`:组长待澄清态下,普通消息走 resume 路径;非待澄清态走 `dispatch_to_leader`。
 
