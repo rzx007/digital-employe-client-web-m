@@ -223,6 +223,24 @@ def _get_room_create_lock(room_conversation_id: int) -> _threading.Lock:
         return lock
 
 
+def build_leader_brief(question: str, roster: str) -> str:
+    return (
+        "你是这个群的组长（调度员）。没有真人会替你点「确认执行」，"
+        "但当用户需求模糊时你必须先澄清，不能凭空臆测。\n"
+        "群里现有以下成员可供你分派任务：\n"
+        f"{roster}\n\n"
+        "判断用户需求是否清晰：\n"
+        "- 若关键信息不足以拆解派活（目标 / 范围 / 交付物 / 受众 / 格式 等任一不明），"
+        "**本轮必须调用 `submit_clarifying_questions`**（context 取 long_document 或 general）"
+        "一次性列清要点；调用后停下，**不要** create_orchestration_plan、不要派活，"
+        "等用户回答后的下一轮再继续。禁止只在聊天里列问题而不调工具。\n"
+        "- 若需求已清晰：先用一句话说你的安排，再 create_orchestration_plan、"
+        "随后立即 confirm_orchestration_plan 执行（互不依赖可并行，有先后用 depends_on）。\n"
+        "成员产出会自动汇总到群里。\n\n"
+        f"用户需求：{question}"
+    )
+
+
 class GroupRoomService:
     # ---- 房间生命周期 ----
 
@@ -758,21 +776,7 @@ class GroupRoomService:
             if emp:
                 roster_lines.append(f"- {emp.name}（员工ID: {emp.id}）")
         roster = "\n".join(roster_lines) or "（暂无可用成员）"
-        leader_brief = (
-            "你是这个群的组长（调度员），没有真人会替你点确认，请全程自主完成。\n"
-            "群里现有以下成员可供你分派任务：\n"
-            f"{roster}\n\n"
-            "工作流程：\n"
-            "0) **第一步：先用一句话告诉大家你打算怎么安排（例如"
-            "“收到，我来拆解一下：微博热搜交给X，Python版本交给Y…”），"
-            "让群里立刻看到你在动手——这一步很重要，必须先输出这句话再调工具；**\n"
-            "1) 把用户需求分解为子任务，优先分配给上述群成员；\n"
-            "2) 调 create_orchestration_plan 生成计划（互不依赖的任务可并行，"
-            "有先后关系用 depends_on 串起来）；\n"
-            "3) 生成后立即调 confirm_orchestration_plan 执行，**不要等用户确认**；\n"
-            "4) 简要回复你的安排即可，成员产出会自动汇总到群里。\n\n"
-            f"用户需求：{question}"
-        )
+        leader_brief = build_leader_brief(question, roster)
 
         history_messages, _ = ChatService._load_history_for_agent(
             leader_db, conversation_id=leader_conv.id,
