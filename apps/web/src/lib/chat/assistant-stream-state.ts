@@ -48,3 +48,29 @@ export function isStoredAssistantQueued(
 ): boolean {
   return streamState === "queued"
 }
+
+/** 编排派单排队占位文案（开流后不应再展示为正文） */
+export function isOrchestrationQueuePlaceholder(text: string | null | undefined): boolean {
+  if (!text) return false
+  const t = text.trim()
+  if (
+    t === "已加入执行队列，等待其他对话完成" ||
+    t === "等待总管会话结束，即将开始执行…" ||
+    t === "排队中，等待执行"
+  ) {
+    return true
+  }
+  return (
+    t.includes("已加入执行队列") ||
+    t.includes("等待总管会话结束") ||
+    t.includes("排队中，等待")
+  )
+}
+
+export function shouldHideStaleQueuePlaceholder(
+  streamState: string | null | undefined,
+  content: string | null | undefined
+): boolean {
+  if (streamState !== "streaming") return false
+  return isOrchestrationQueuePlaceholder(content)
+}

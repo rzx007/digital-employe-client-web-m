@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest"
 import type { UIMessage } from "ai"
 
-import { isAssistantQueued, isTerminalAssistantStreamState, lastAssistantStreamState } from "./assistant-stream-state"
+import {
+  isAssistantQueued,
+  isOrchestrationQueuePlaceholder,
+  isTerminalAssistantStreamState,
+  lastAssistantStreamState,
+  shouldHideStaleQueuePlaceholder,
+} from "./assistant-stream-state"
 
 describe("assistant-stream-state", () => {
   it("detects queued last assistant", () => {
@@ -34,5 +40,23 @@ describe("assistant-stream-state", () => {
     expect(isTerminalAssistantStreamState("completed")).toBe(true)
     expect(isTerminalAssistantStreamState("streaming")).toBe(false)
     expect(isTerminalAssistantStreamState("queued")).toBe(false)
+  })
+
+  it("detects orchestration queue placeholder", () => {
+    expect(
+      isOrchestrationQueuePlaceholder("已加入执行队列，等待其他对话完成")
+    ).toBe(true)
+    expect(
+      shouldHideStaleQueuePlaceholder(
+        "streaming",
+        "已加入执行队列，等待其他对话完成"
+      )
+    ).toBe(true)
+    expect(
+      shouldHideStaleQueuePlaceholder(
+        "queued",
+        "已加入执行队列，等待其他对话完成"
+      )
+    ).toBe(false)
   })
 })

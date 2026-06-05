@@ -211,6 +211,31 @@ def _flush_to_db_sync(
         return False
 
 
+_ORCHESTRATION_QUEUE_PLACEHOLDERS = (
+    "已加入执行队列，等待其他对话完成",
+    "等待总管会话结束，即将开始执行…",
+    "排队中，等待执行",
+)
+
+
+def _is_queue_placeholder_content(content: str | None) -> bool:
+    if not content:
+        return False
+    text = content.strip()
+    if text in _ORCHESTRATION_QUEUE_PLACEHOLDERS:
+        return True
+    return any(
+        marker in text
+        for marker in ("已加入执行队列", "等待总管会话结束", "排队中，等待")
+    )
+
+
+def _clear_queue_placeholder_content(msg: ConversationMessage) -> None:
+    """出队/开流时清掉排队占位文案，避免前端仍显示「等待其他对话完成」。"""
+    if _is_queue_placeholder_content(msg.content):
+        msg.content = ""
+
+
 def _mark_stream_state_sync(
     stream_msg_id: int,
     conversation_id: int,
@@ -231,6 +256,8 @@ def _mark_stream_state_sync(
                     msg.content = msg.content or "已加入执行队列，等待其他对话完成"
                 elif state == "error":
                     msg.content = error_message or msg.content or "启动失败"
+                elif state == "streaming":
+                    _clear_queue_placeholder_content(msg)
 
             logs = list(
                 db.scalars(
