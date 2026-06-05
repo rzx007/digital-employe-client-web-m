@@ -1431,11 +1431,19 @@ class StreamRegistry:
                 并用 _dump_all_thread_stacks() 看 aiosqlite 后台线程是否卡在某操作。
                 """
                 dumps = 0
+                last_dumped_progress = -1.0
                 try:
                     while dumps < FIRST_CHUNK_STALL_DUMP_MAX:
                         await asyncio.sleep(FIRST_CHUNK_STALL_DUMP_SECONDS)
-                        if event_count > 0:
-                            return  # 首包已到，无需 dump
+                        # 全程「无进展」监控：覆盖首包卡(event_count=0)与中途卡
+                        # (拿了若干 chunk 后僵住，如 agent 卡在 shell 工具/checkpoint 写)。
+                        # _last_progress_at 由 touch_progress() 在每个 chunk 更新。
+                        stalled = time.monotonic() - task._last_progress_at
+                        if stalled < FIRST_CHUNK_STALL_DUMP_SECONDS:
+                            continue  # 有进展，不算卡
+                        if task._last_progress_at == last_dumped_progress:
+                            continue  # 同一段 stall 已 dump 过，等它恢复或结束（防刷屏）
+                        last_dumped_progress = task._last_progress_at
                         dumps += 1
                         at = task._asyncio_task
                         coro_stack: list[str] = []
@@ -1479,14 +1487,15 @@ class StreamRegistry:
                             for t in _dump_all_thread_stacks(top_frames=12)
                         ]
                         logger.warning(
-                            "[stall-watchdog] conv=%s source=%s 首包 %.0fs 无 chunk"
-                            "(event_count=0, dump %d/%d)\n"
+                            "[stall-watchdog] conv=%s source=%s 无进展 %.0fs"
+                            "(event_count=%d, dump %d/%d)\n"
                             "  >>> 卡住协程 await 链(外层):\n    %s\n"
                             "  >>> 所有 asyncio task 栈尾(真正卡点):\n    %s\n"
                             "  >>> 全线程栈:\n    %s",
                             conversation_id,
                             task.source,
-                            dumps * FIRST_CHUNK_STALL_DUMP_SECONDS,
+                            stalled,
+                            event_count,
                             dumps,
                             FIRST_CHUNK_STALL_DUMP_MAX,
                             "\n    ".join(coro_stack) or "(取不到协程栈)",
@@ -1547,8 +1556,6 @@ class StreamRegistry:
                     break
                 pending_chunk_timeouts = 0
                 event_count += 1
-                if event_count == 1 and _stall_watchdog_task is not None:
-                    _stall_watchdog_task.cancel()
                 task.touch_progress()
                 serializable = ChatService.convert_to_serializable(chunk)
                 updates_content = _extract_updates_content(serializable)

@@ -800,6 +800,8 @@ class GroupRoomService:
             auth_token=auth_token,
             shared_artifacts_dir=_shared,
             bind_context=False,
+            # 组长自动驱动、无真人确认：关闭 HITL，避免调澄清/方案/删除工具时挂起等人审。
+            enable_hitl=False,
         )
 
         request_messages: list[dict[str, Any]] = [*history_messages]
@@ -895,6 +897,8 @@ class GroupRoomService:
             conversation_id=leader_conv.id,
             shared_artifacts_dir=str(shared_dir),
             bind_context=False,
+            # 组长汇总同样无真人确认：关闭 HITL。
+            enable_hitl=False,
         )
 
         request_messages: list[dict[str, Any]] = [*history_messages]

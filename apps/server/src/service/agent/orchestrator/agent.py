@@ -73,6 +73,52 @@ from src.service.skill_shell_backend import SkillAwareShellBackend
 
 load_dotenv()
 
+import threading as _threading
+from functools import wraps as _wraps
+
+# orchestrator 工具 DB 串行锁（按会话隔离）。根因：组长把一条共享 Session(leader_db)
+# 交给并发工具线程用（deepagents 一轮里多个工具走 asyncio.gather 并发执行），多个
+# 线程同时在该连接上 execute/fetch → `sqlite3.InterfaceError: bad parameter or other
+# API misuse`，组长流崩溃。给 DB 类工具加锁，让同一会话的工具整段(execute+fetch+commit)
+# 串行独占连接。用**专用** RLock（非 db.session.SQLITE_ACCESS_LOCK），只串行本会话自己的
+# 工具，不阻塞其它流的 flush、不影响成员流。按 conversation_id 隔离，不同组长互不串。
+_ORCH_DB_TOOL_LOCKS: dict[int, _threading.RLock] = {}
+_ORCH_DB_TOOL_LOCKS_GUARD = _threading.Lock()
+
+
+def _orch_db_tool_lock():
+    from src.service.agent.orchestrator.runtime import get_conversation_id
+
+    try:
+        cid = get_conversation_id()
+    except Exception:
+        cid = None
+    key = cid if cid is not None else -1
+    with _ORCH_DB_TOOL_LOCKS_GUARD:
+        lock = _ORCH_DB_TOOL_LOCKS.get(key)
+        if lock is None:
+            lock = _ORCH_DB_TOOL_LOCKS[key] = _threading.RLock()
+        return lock
+
+
+def _serialize_db_tool(tool):
+    """就地把工具的同步执行包进会话级 DB 锁（幂等；只包 .func，工具均为同步）。"""
+    fn = getattr(tool, "func", None)
+    if fn is None or getattr(fn, "_orch_db_serialized", False):
+        return tool
+
+    @_wraps(fn)
+    def _guarded(*args, **kwargs):
+        with _orch_db_tool_lock():
+            return fn(*args, **kwargs)
+
+    _guarded._orch_db_serialized = True
+    try:
+        tool.func = _guarded
+    except Exception:
+        pass  # 工具对象不可改则跳过（不影响功能，仅该工具未串行化）
+    return tool
+
 
 def get_orchestrator_agent(
     workspace_id: int,
@@ -83,6 +129,7 @@ def get_orchestrator_agent(
     *,
     bind_context: bool = True,
     shared_artifacts_dir: str | None = None,
+    enable_hitl: bool = True,
 ):
     if bind_context:
         set_context(
@@ -208,10 +255,17 @@ def get_orchestrator_agent(
         get_current_time_tool,
     ]
 
-    session_flags = (
-        get_session_flags(db, conversation_id) if conversation_id else {}
-    )
-    interrupt_on = build_orchestrator_interrupt_on(session_flags)
+    if enable_hitl:
+        session_flags = (
+            get_session_flags(db, conversation_id) if conversation_id else {}
+        )
+        interrupt_on = build_orchestrator_interrupt_on(session_flags)
+    else:
+        # 群组长等「自动驱动、无真人确认」场景：关闭所有 HITL 中断（澄清问题/文档方案/
+        # 删除类工具）。否则组长一旦调 submit_clarifying_questions / submit_document_plan /
+        # delete_* 就会 interrupt 挂起等人审，群里没人点确认 → 该会话永久停在 interrupted。
+        # None = create_deep_agent 默认「无 HITL」（不挂 HumanInTheLoopMiddleware）。
+        interrupt_on = None
 
     agent = create_deep_agent(
         model=model,
@@ -219,30 +273,33 @@ def get_orchestrator_agent(
         skills=["/skills/"],
         tools=[
             *orchestrator_tools,
-            list_workspace_employees,
-            list_workspace_skills,
-            get_workspace_skill_detail,
-            get_employee,
-            update_employee,
-            delete_employee,
-            delete_employees_batch,
-            recruit_employee,
-            hire_employee,
-            hire_employees,
-            create_orchestration_plan,
-            confirm_orchestration_plan,
+            # DB 类工具：包会话级串行锁，杜绝并发工具线程同时用共享 leader_db 连接致
+            # sqlite3.InterfaceError。非 DB / 走网络的工具（shell/memory/time、市场技能
+            # 搜索安装）不包，避免长操作占锁。
+            _serialize_db_tool(list_workspace_employees),
+            _serialize_db_tool(list_workspace_skills),
+            _serialize_db_tool(get_workspace_skill_detail),
+            _serialize_db_tool(get_employee),
+            _serialize_db_tool(update_employee),
+            _serialize_db_tool(delete_employee),
+            _serialize_db_tool(delete_employees_batch),
+            _serialize_db_tool(recruit_employee),
+            _serialize_db_tool(hire_employee),
+            _serialize_db_tool(hire_employees),
+            _serialize_db_tool(create_orchestration_plan),
+            _serialize_db_tool(confirm_orchestration_plan),
             create_group_and_dispatch,
-            update_task,
-            delete_task,
-            delete_tasks_batch,
-            cancel_plan,
-            list_tasks,
+            _serialize_db_tool(update_task),
+            _serialize_db_tool(delete_task),
+            _serialize_db_tool(delete_tasks_batch),
+            _serialize_db_tool(cancel_plan),
+            _serialize_db_tool(list_tasks),
             # 用户明确要求总管亲自执行（含长文档）时与员工 agent 相同的 HITL 门
             submit_clarifying_questions,
             submit_document_plan,
             # 技能发现与安装（SkillsMP 仓库 + 内置技能）
             list_builtin_skills,
-            install_builtin_skill,
+            _serialize_db_tool(install_builtin_skill),
             search_market_skills,
             get_market_skill_detail,
             install_market_skill,
