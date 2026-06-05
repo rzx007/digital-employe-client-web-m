@@ -8,7 +8,7 @@ import type {
   GroupRoomMember,
   GroupRoomMemberState,
 } from "@/api/group-room"
-import { CURATOR_AVATAR_URL } from "@/lib/avatar"
+import { CURATOR_ASSISTANT_AVATAR_URL_1 } from "@/lib/avatar"
 import { navigateToEmployeeFromGroup } from "@/lib/chat/group-navigation"
 import { switchToContact } from "@/lib/chat/conversation-selection"
 import type { AIEmployee } from "@/types/chat"
@@ -39,7 +39,7 @@ function resolveMemberAvatar(
   status?: AIEmployee["status"]
 } {
   if (member.role_in_room === "leader") {
-    return { name: "组长", avatar: CURATOR_AVATAR_URL, status: "online" }
+    return { name: "组长", avatar: CURATOR_ASSISTANT_AVATAR_URL_1, status: "online" }
   }
 
   const employeeId =
