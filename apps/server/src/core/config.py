@@ -124,10 +124,10 @@ class Settings:
     # Agent 流：chunk 间无事件的最长等待（工具+模型思考）；过短会误判「已完成」
     agent_chunk_timeout: float = 180.0
     agent_first_chunk_timeout: float = 120.0
-    # 单流硬墙：超过此秒数仍 active 则强制清理（应 ≥ execute_timeout）
+    # 单流硬墙：超过此秒数仍 active 则强制清理（运行时 ≥ stall + 120s）
     agent_stale_hard_timeout: float = 720.0
-    # 无进展超时：流 active 但长时间无 chunk/事件 → 释放槽位（防慢流占槽）
-    agent_stall_timeout: float = 300.0
+    # 无进展超时（AGENT_STALL_TIMEOUT）：重任务单步思考/工具可能数分钟无 chunk，默认 30min
+    agent_stall_timeout: float = 1800.0
     feishu_app_id: str | None = None
     feishu_app_secret: str | None = None
     feishu_redirect_uri: str | None = None
@@ -354,18 +354,20 @@ def get_settings() -> Settings:
         agent_stale_hard_timeout = float(agent_stale_hard_timeout_raw or "720")
     except ValueError:
         agent_stale_hard_timeout = 720.0
-    agent_stale_hard_timeout = max(
-        agent_stale_hard_timeout,
-        float(execute_timeout) + 120.0,
-    )
 
     agent_stall_timeout_raw = _get_kv_value(kv_data, "AGENT_STALL_TIMEOUT")
     try:
-        agent_stall_timeout = float(agent_stall_timeout_raw or "300")
+        agent_stall_timeout = float(agent_stall_timeout_raw or "1800")
     except ValueError:
-        agent_stall_timeout = 300.0
+        agent_stall_timeout = 1800.0
     if agent_stall_timeout < 30.0:
         agent_stall_timeout = 30.0
+
+    agent_stale_hard_timeout = max(
+        agent_stale_hard_timeout,
+        float(execute_timeout) + 120.0,
+        agent_stall_timeout + 120.0,
+    )
 
     default_workspace_id_raw = _get_kv_value(kv_data, "DEFAULT_WORKSPACE_ID")
     try:

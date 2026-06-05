@@ -43,11 +43,10 @@ RUNTIME_SNAPSHOT_PREVIEW_LIMIT = 5
 # 默认 180s，可通过 config_kvs AGENT_CHUNK_TIMEOUT 调整。
 AGENT_CHUNK_TIMEOUT = 180.0
 FIRST_AGENT_CHUNK_TIMEOUT = 120.0
-# 活跃流硬墙：单流存在超过此秒数仍 active → 僵死清理。默认 ≥ execute_timeout+120s。
+# 活跃流硬墙：单流存在超过此秒数仍 active → 僵死清理。运行时 ≥ AGENT_STALL_TIMEOUT + 120s。
 STALE_ACTIVE_HARD_TIMEOUT = 720.0
-# 无进展超时：active 流在这么久内无任何 chunk/工具事件 → 判定占槽僵死并清理。
-# 重任务（2 万 token 级 prompt + 长思考）chunk 间隔 2～4 分钟属正常，默认 300s。
-AGENT_STALL_TIMEOUT = 300.0
+# 无进展超时（config_kvs AGENT_STALL_TIMEOUT）：默认 30min，仅约束「多久无 chunk 事件」清槽。
+AGENT_STALL_TIMEOUT = 1800.0
 # chunk 超时但 LangGraph 仍有 pending 节点时，最多续等次数（每次 = chunk_timeout）
 MAX_PENDING_CHUNK_TIMEOUT_RETRIES = 20
 # LangGraph 递归上限：agent 的“think → 调工具 → 看结果”每轮算一步，超过此值
@@ -71,6 +70,7 @@ def _agent_stream_timeouts() -> tuple[float, float, float]:
             chunk + first + 120.0,
             float(s.agent_stale_hard_timeout),
             float(s.execute_timeout) + 120.0,
+            float(s.agent_stall_timeout) + 120.0,
         )
         return chunk, first, stale
     except Exception:
