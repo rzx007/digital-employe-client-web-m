@@ -101,7 +101,12 @@ export function mapStoredMessagesToUIMessages(
           return uiMessage
         }
 
-        if (message.content) {
+        // 流式进行中不渲染 DB.content：它是后端把每个 text chunk（含工具输出文本，如
+        // shell 结果 / 技能原文）平铺拼接的无结构脏文本，直接当正文会糊出一坨原始 dump，
+        // 且 state:"done" 还会和随后 resume SSE 的实时结构块打架。进行中内容由 resume SSE
+        // 重放 buffer 重建（见下方 streaming 占位分支）；content 仅作历史/终态无 message_parts
+        // 时的兜底。
+        if (message.content && message.streamState !== "streaming") {
           if (
             shouldHideStaleQueuePlaceholder(
               message.streamState,
@@ -142,10 +147,18 @@ export function mapStoredMessagesToUIMessages(
         }
 
         if (message.streamState === "streaming") {
+          // 进行中且尚无结构化 parts：给"正在执行…"占位（而非渲染脏 content / 空白），
+          // resume SSE 重放 buffer 后会用结构化 parts 接管这条消息。
           const uiMessage: UIMessage = {
             id: message.id,
             role: message.role,
-            parts: [],
+            parts: [
+              {
+                type: "text",
+                text: "正在执行…",
+                state: "streaming" as const,
+              },
+            ],
           }
           ;(
             uiMessage as UIMessage & { metadata?: Record<string, unknown> }

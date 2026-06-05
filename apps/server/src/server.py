@@ -21,7 +21,24 @@ install_safe_memory_decode()
 
 import logging
 import re
+import sys
 import asyncio
+
+# Windows: 强制用 SelectorEventLoop 取代默认的 ProactorEventLoop。
+# 根因（实测）：Proactor 在「大量连接重置 / 超长请求」后会把 IOCP 套接字处理搞坏——
+# 满屏 `_ProactorBasePipeTransport._call_connection_lost` WinError 10054，之后整个进程
+# 「再也连不上模型」，但同机 curl 同地址却秒连秒回（证明模型/网络无恙、是 Proactor 循环坏了）。
+# Selector 把连接错误正常传播、不积累卡死。本应用 shell 子进程走 subprocess.run+线程
+# （非 asyncio 异步子进程），不依赖 Proactor，故切换安全。必须在任何事件循环创建前设置。
+if sys.platform == "win32":
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        logging.getLogger(__name__).info(
+            "Windows: 已切换为 SelectorEventLoop（规避 Proactor 连接重置卡死）"
+        )
+    except Exception:
+        pass
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -48,6 +65,16 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         loop = asyncio.get_running_loop()
+
+        # 启动即确认实际事件循环类型：Windows 上必须是 SelectorEventLoop，
+        # 若是 ProactorEventLoop 则会在连接重置洪流后卡死、整进程连不上模型。
+        _loop_name = type(loop).__name__
+        _loop_ok = ("Selector" in _loop_name) or sys.platform != "win32"
+        logger.warning(
+            "事件循环 = %s  [%s]",
+            _loop_name,
+            "OK" if _loop_ok else "危险: 仍是 Proactor，群聊会卡死！请检查 --loop / start.py",
+        )
 
         # 离线 IO 密集型初始化到线程池，避免阻塞事件循环导致前端请求挂起
         def _startup_db_init():

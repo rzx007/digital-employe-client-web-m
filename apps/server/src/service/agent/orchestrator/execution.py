@@ -444,6 +444,18 @@ def start_task_as_conversation(
         db, conversation_id, orch_conv_id, employee
     )
 
+    # 输出档位：组长/总管派单时为该子任务指定的 output_tier（存在 task_input_json），
+    # 决定该成员单次最多生成多少 token（small≈1k / standard≈16k / large≈64k）。
+    from src.llm.factory import resolve_output_tokens
+
+    _task_output_tier = "standard"
+    try:
+        _ti = json.loads(task.task_input_json or "{}")
+        if isinstance(_ti, dict) and _ti.get("output_tier"):
+            _task_output_tier = str(_ti["output_tier"])
+    except (json.JSONDecodeError, TypeError):
+        pass
+
     agent = get_agent(
         skills_path,
         root_path,
@@ -451,6 +463,7 @@ def start_task_as_conversation(
         conversation_id=conversation_id,
         enable_hitl=False,
         shared_artifacts_dir=shared_artifacts_dir,
+        max_output_tokens=resolve_output_tokens(_task_output_tier),
     )
 
     dispatch_directive = (

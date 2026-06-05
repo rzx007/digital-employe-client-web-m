@@ -53,6 +53,19 @@ FIRST_AGENT_CHUNK_TIMEOUT = 120.0
 FIRST_CHUNK_STALL_DUMP_SECONDS = 15.0
 # 最多 dump 几次（避免长时间无首包时把日志刷爆）
 FIRST_CHUNK_STALL_DUMP_MAX = 3
+# 自动判死阈值：某流连续无进展（无任何 chunk）超过此秒数 → 看门狗强制取消该流、
+# 立即释放槽位。根因——模型端偶发卡死/无响应时，上层 chunk-timeout 的 pending 重试
+# 循环会把僵死流续命到 ~20min、占着槽位拖垮全局（observed conv 卡 445s 仍不死）。
+# 这是「成熟系统该有的故障隔离」：单条流卡死不拖累其它对话。150s 给正常长工具
+# （如几十秒的脚本）留足余量，又能较快回收真卡死。可后续按需调小/做工具感知。
+AUTO_KILL_NO_PROGRESS_SECONDS = 150.0
+# 「内容级」无进展判死（核心隔离）：只在「真正出正文 token / 工具产出 tool_output」时
+# 刷新内容计时；filler 事件（重复 messages/updates、空 chunk）不再续命。覆盖两类卡死：
+#   - 首包卡：从未出过正文/工具产出 → elapsed 达阈值即判死（曾 ttft=- / tok=0 干等）；
+#   - filler 空转：出过字后卡住、但 filler 事件仍在流 → 内容计时照样到点判死
+#     （曾观测 ttft=6.86s 后空转 736s/12min、tok/s=0.0 才 error）。
+# 工具执行期一有 tool_output 即刷新，不误杀正常长工具调用；嫌误杀可调大本值。
+AUTO_KILL_NO_CONTENT_SECONDS = 60.0
 # 活跃流硬墙：单流存在超过此秒数仍 active → 僵死清理。运行时 ≥ AGENT_STALL_TIMEOUT + 120s。
 STALE_ACTIVE_HARD_TIMEOUT = 720.0
 # 无进展超时（config_kvs AGENT_STALL_TIMEOUT）：默认 30min，仅约束「多久无 chunk 事件」清槽。
@@ -600,14 +613,23 @@ class ActiveStreamTask:
         self.error_message: str | None = None
         self._created_at: float = time.monotonic()
         self._last_progress_at: float = time.monotonic()
+        # 「内容级进展」时间：仅由真实正文 token / 工具产出刷新（见 touch_content）。
+        # 与 _last_progress_at（任意事件）区分，用于内容级判死，防 filler 续命僵尸流。
+        self._last_content_at: float = time.monotonic()
 
     @property
     def is_active(self) -> bool:
         return self.status == "streaming"
 
     def touch_progress(self) -> None:
-        """记录最近一次 stream chunk/工具事件时间（无进展超时检测用）。"""
+        """记录最近一次 stream chunk/工具事件时间（任意事件，无进展超时检测用）。"""
         self._last_progress_at = time.monotonic()
+
+    def touch_content(self) -> None:
+        """记录最近一次「真实内容进展」（模型正文 token / 工具产出 tool_output）。
+        filler 事件（重复 messages/updates、空 chunk）不调用本方法，故「事件在流、
+        正文不涨」的僵尸流不会被续命，会在 AUTO_KILL_NO_CONTENT_SECONDS 被判死释放槽位。"""
+        self._last_content_at = time.monotonic()
 
     def subscribe(self, fn: Subscriber) -> None:
         self.subscribers.add(fn)
@@ -819,6 +841,67 @@ class StreamRegistry:
             "prev_status": prev_status,
         }
 
+    def force_clear_all(
+        self,
+        *,
+        include_queued: bool = True,
+        stall_threshold_s: float = 30.0,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """清掉**卡住的**在飞流并腾空槽位（不重启进程）。
+
+        配合「清理僵尸流」按钮 POST /system/streams/force-clear-all 使用。
+        默认**只清真卡住的**（asyncio task 已结束 / 无进展超过 stall_threshold_s 秒），
+        **正在正常产出的健康流一律放过**——避免误杀用户当前正在跑的请求
+        （历史教训：旧版无脑清所有在飞流，点一下就把正在「查询微博热搜」的活流也清了，
+        显示“流超时仍未结束，已清理”）。force=True 时才连健康流一起清（核弹模式）。
+        """
+        cleared: list[int] = []
+        spared: list[int] = []
+        now = time.monotonic()
+        # 复制一份再迭代：force_clear 会改 self._tasks
+        for cid, task in list(self._tasks.items()):
+            if not (task.is_active or task.status == "queued"):
+                continue
+            at = task._asyncio_task
+            stalled = now - getattr(task, "_last_progress_at", now)
+            is_stuck = (
+                force
+                or at is None
+                or at.done()
+                or stalled >= stall_threshold_s
+            )
+            if not is_stuck:
+                spared.append(cid)  # 健康、正在产出 → 放过
+                continue
+            try:
+                res = self.force_clear_stream(cid)
+                if res.get("cleared"):
+                    cleared.append(cid)
+            except Exception:
+                logger.warning("force_clear_all: failed conv=%s", cid, exc_info=True)
+        # 清空全局排队项（未启动的）
+        drained_queue = 0
+        if include_queued:
+            try:
+                while self._queue.depth() > 0:
+                    item = self._queue._items[0]
+                    self._queue.remove(item.conversation_id)
+                    drained_queue += 1
+            except Exception:
+                logger.warning("force_clear_all: drain queue failed", exc_info=True)
+        logger.warning(
+            "force_clear_all: cleared %d stuck stream(s)=%s, spared %d healthy=%s, drained %d queued (force=%s)",
+            len(cleared), cleared, len(spared), spared, drained_queue, force,
+        )
+        return {
+            "cleared_count": len(cleared),
+            "cleared_conversation_ids": cleared,
+            "spared_count": len(spared),
+            "spared_conversation_ids": spared,
+            "drained_queue": drained_queue,
+        }
+
     def get_task(self, conversation_id: int) -> ActiveStreamTask | None:
         return self._tasks.get(conversation_id)
 
@@ -873,22 +956,16 @@ class StreamRegistry:
         - **light 预留**：heavy 最多占 ``总闸 - 1``，但 **light 只看总闸**，
           heavy 没跑满时 light 可借用空 heavy 槽（例如 1 路 heavy + 3 路 light）。
         """
-        from src.core.agent_runtime_policy import STREAM_CLASS_HEAVY
-
+        # 不再按 heavy/light 分级限流（重活/轻活的本质改为「单请求输出 token 上限」，
+        # 见 build_chat_model max_tokens）。这里只保留一道**不分类的总并发闸**，
+        # 防单 GPU 被瞬时高并发压垮。stream_class 入参保留仅为兼容调用方签名。
+        del stream_class
         policy = get_agent_runtime_policy()
         if not policy.slot_gating_enabled():
             return True
         total_cap = policy.effective_max_inflight()
-        active = self.count_active_streams()
-        if total_cap > 0 and active >= total_cap:
+        if total_cap > 0 and self.count_active_streams() >= total_cap:
             return False
-        if stream_class == STREAM_CLASS_HEAVY:
-            max_heavy = policy.effective_max_heavy()
-            if max_heavy > 0 and self.count_active_heavy() >= max_heavy:
-                return False
-            heavy_ceiling = policy.effective_max_inflight_for(STREAM_CLASS_HEAVY)
-            if heavy_ceiling > 0 and active >= heavy_ceiling:
-                return False
         return True
 
     def _can_start_now(self, stream_class: str = "light") -> bool:
@@ -1433,16 +1510,41 @@ class StreamRegistry:
                 dumps = 0
                 last_dumped_progress = -1.0
                 try:
-                    while dumps < FIRST_CHUNK_STALL_DUMP_MAX:
+                    while True:
                         await asyncio.sleep(FIRST_CHUNK_STALL_DUMP_SECONDS)
-                        # 全程「无进展」监控：覆盖首包卡(event_count=0)与中途卡
-                        # (拿了若干 chunk 后僵住，如 agent 卡在 shell 工具/checkpoint 写)。
-                        # _last_progress_at 由 touch_progress() 在每个 chunk 更新。
-                        stalled = time.monotonic() - task._last_progress_at
+                        now = time.monotonic()
+                        # 「内容级」无进展：仅 touch_content（真实正文 token/工具产出）刷新。
+                        # filler 事件（重复 messages/updates、空 chunk）不刷新它 → 僵尸流不被续命。
+                        no_content = now - task._last_content_at
+                        # 「任意事件」无进展：用于诊断 dump（判断是不是连事件都没有）。
+                        stalled = now - task._last_progress_at
+                        # 自动判死（核心隔离）：内容级无进展超阈值 → 强制取消该流、腾空槽位。
+                        # 同时覆盖首包卡(从未出过正文)与 filler 空转(出字后卡住但 filler 仍在流)，
+                        # 不再被 pending 重试循环续命到 ~12min、长期占槽拖垮全局。
+                        if no_content >= AUTO_KILL_NO_CONTENT_SECONDS:
+                            _at = task._asyncio_task
+                            logger.error(
+                                "[stall-watchdog] conv=%s source=%s 内容级无进展 %.0fs ≥ 自动判死 %.0fs，"
+                                "强制终止该流并释放槽位（event_count=%d, 任意事件无进展=%.0fs，"
+                                "疑模型无响应/首包卡/filler空转）",
+                                conversation_id, task.source, no_content,
+                                AUTO_KILL_NO_CONTENT_SECONDS, event_count, stalled,
+                            )
+                            task.status = "error"
+                            task.error_message = (
+                                f"流内容无进展超过 {int(AUTO_KILL_NO_CONTENT_SECONDS)}s，"
+                                "已自动终止（疑似模型无响应/卡死）"
+                            )
+                            if _at is not None and not _at.done():
+                                _at.cancel()
+                            return  # 主协程将被 cancel → 走 finally 收尾、释放槽位
                         if stalled < FIRST_CHUNK_STALL_DUMP_SECONDS:
-                            continue  # 有进展，不算卡
+                            continue  # 有事件流动，不必 dump（但内容级判死已在上面把关）
+                        # 诊断 dump：最多 MAX 次，按 stall 段去重（防刷屏）
+                        if dumps >= FIRST_CHUNK_STALL_DUMP_MAX:
+                            continue
                         if task._last_progress_at == last_dumped_progress:
-                            continue  # 同一段 stall 已 dump 过，等它恢复或结束（防刷屏）
+                            continue
                         last_dumped_progress = task._last_progress_at
                         dumps += 1
                         at = task._asyncio_task
@@ -1573,11 +1675,15 @@ class StreamRegistry:
                     ):
                         evt = task.buffer.add(custom_data)
                         self.broadcast(conversation_id, evt)
+                        # 工具产出 = 真实进展，刷新内容计时（工具执行期豁免判死）
+                        task.touch_content()
                     continue
 
                 text_part = ChatService._extract_text_from_chunk(serializable)
                 if text_part:
                     assistant_text_parts.append(text_part)
+                    # 模型正文 token = 真实进展，刷新内容计时
+                    task.touch_content()
                     # 群协作：把成员/组长产出的文本增量逐字推到群时间线。
                     # 但只推「模型自然语言（AIMessage）」，跳过「工具返回（ToolMessage）」
                     # ——否则 create_orchestration_plan 等工具返回的结构化 JSON

@@ -13,7 +13,7 @@ from src.service.agent.basic_file_backend import BasicFileFilesystemBackend
 from deepagents.middleware.permissions import FilesystemPermission
 
 from src.core.config import get_settings, is_agent_virtual_mode
-from src.llm.factory import build_chat_model
+from src.llm.factory import build_chat_model, resolve_output_tokens
 from src.service.agent.checkpointer import get_checkpointer
 from src.service.agent.paths import (
     SERVICE_DIR,
@@ -130,6 +130,7 @@ def get_orchestrator_agent(
     bind_context: bool = True,
     shared_artifacts_dir: str | None = None,
     enable_hitl: bool = True,
+    max_output_tokens: int | None = None,
 ):
     if bind_context:
         set_context(
@@ -141,7 +142,8 @@ def get_orchestrator_agent(
         )
 
     settings = get_settings()
-    model = build_chat_model()
+    # 组长/总管自身的输出（拆解派活/简短汇总）默认 standard 即够；不传则走默认。
+    model = build_chat_model(max_tokens=resolve_output_tokens(max_output_tokens))
 
     base_dir = SERVICE_DIR
     artifacts_path = Path(settings.artifacts_path)
@@ -244,6 +246,17 @@ def get_orchestrator_agent(
         use_session_history_file=use_session_history,
     )
 
+    # 【二分定位 2026-06-05】临时默认关闭 orchestrator 的 SummarizationMiddleware：
+    # 排查“组长模型调用卡在 pre-httpx 的 await、httpx 超时不触发、循环正常”的死锁——
+    # 最大嫌疑是上下文大时 summarization 嵌套发模型调用卡住。设 ORCH_SUMMARIZATION=1 恢复。
+    # 若关掉后群聊不再卡 → 锁定是 summarization；仍卡 → 排除它，再查别处。
+    import os as _os
+
+    _orch_summarization_on = _os.getenv("AGENT_SUMMARIZATION", "0").strip() == "1"
+    _orch_middleware = (
+        [summarization_mw, summarization_tool_mw] if _orch_summarization_on else []
+    )
+
     shell_execute_tool = create_shell_execute_tool(
         shell_backend, artifacts_dir=str(artifacts_dir)
     )
@@ -308,7 +321,7 @@ def get_orchestrator_agent(
         backend=backend,
         checkpointer=checkpointer,
         interrupt_on=interrupt_on,
-        middleware=[summarization_mw, summarization_tool_mw],
+        middleware=_orch_middleware,
         subagents=[],
         permissions=[
             FilesystemPermission(

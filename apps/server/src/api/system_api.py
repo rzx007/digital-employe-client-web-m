@@ -47,6 +47,23 @@ def force_clear_stream(conversation_id: int) -> ResponseBase[dict[str, Any]]:
     logger.warning("force_clear_stream via API: %s", result)
     return ResponseBase(data=result)
 
+@router.post(
+    "/system/streams/force-clear-all",
+    response_model=ResponseBase[dict[str, Any]],
+)
+def force_clear_all_streams() -> ResponseBase[dict[str, Any]]:
+    """一键清理所有在飞/排队（含僵尸）的流，立即腾空槽位——不重启进程。
+
+    用途：模型端抖动/超慢导致流卡住、占满槽位时，前端「清理僵尸流」按钮调用本接口
+    即可恢复，无需重启 backend。
+    """
+    from src.service.stream_registry import registry
+
+    result = registry.force_clear_all()
+    logger.warning("force_clear_all_streams via API: %s", result)
+    return ResponseBase(data=result)
+
+
 @router.get("/system/runtime", response_model=ResponseBase[dict[str, Any]])
 def get_runtime_config(db: Session = Depends(get_db)) -> ResponseBase[dict[str, Any]]:
     caps = get_capabilities()

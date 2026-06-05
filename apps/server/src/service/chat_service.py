@@ -37,6 +37,10 @@ from src.service.agent import delete_conversation_checkpoint, get_agent
 
 logger = logging.getLogger(__name__)
 
+# resume 冷启（前端未带 cursor）全量重放的事件上限：超过只回放最近这么多条，
+# 防 runaway 巨型 buffer 在反复切窗口时被全量重放、占满线程池/主循环致卡死。
+RESUME_COLD_REPLAY_CAP = 1500
+
 
 class ChatService:
     @staticmethod
@@ -627,8 +631,26 @@ class ChatService:
         auth_token: str | None = None,
     ):
         settings = get_settings()
-        
+
+        # 阶段计时：first-yield 前全是同步调用，任一步阻塞都会卡住事件循环→所有请求一起卡。
+        # 这组 [stream-phase] 日志精确钉出卡在哪一步（构建 agent / 加载历史 / request_start / ...）。
+        import time as _time
+
+        _t_start = _time.monotonic()
+        _t_last = _t_start
+
+        def _phase(name: str):
+            nonlocal _t_last
+            _now = _time.monotonic()
+            logger.info(
+                "[stream-phase] conv=%s %s (本段 +%.3fs, 累计 %.3fs)",
+                conversation_id, name, _now - _t_last, _now - _t_start,
+            )
+            _t_last = _now
+
+        _phase("enter")
         conversation = ChatService.get_conversation(db, conversation_id)
+        _phase("got_conversation")
 
         # 群协作：群会话没有"单一 agent"，改为路由到被 @ 的成员私有会话，
         # 群时间线通过投影 + WorkspaceEventBus(room_message) 实时更新。
@@ -649,6 +671,7 @@ class ChatService:
             conversation_id=conversation_id,
             limit=history_limit,
         )
+        _phase(f"loaded_history(n={len(history_messages)}, last_input_tokens={last_input_tokens})")
         effective_limit = ChatService._resolve_effective_history_limit(
             settings,
             last_input_tokens,
@@ -692,7 +715,8 @@ class ChatService:
             extra_meta=None,
         )
         db.commit()
-        
+        _phase("appended_user+assistant_msg+commit")
+
         # 根据会话ID获取会话详情，然后获取root_path
         workspace = db.get(Workspace, conversation.workspace_id)
         if not workspace:
@@ -700,6 +724,7 @@ class ChatService:
         
         target_type = conversation.target_type
         target_id = conversation.target_id
+        _phase(f"building_agent(target_type={target_type})")
         if target_type == "curator":
             # 注入 @mention 上下文，告知 orchestrator 用户指定了哪些员工
             if extra_meta and extra_meta.get("mentions"):
@@ -713,6 +738,9 @@ class ChatService:
                 question = mention_context + question
 
             from src.service.agent.orchestrator import get_orchestrator_agent
+            # 注意：必须在本协程上下文同步构建——get_orchestrator_agent 内部用 ContextVar
+            # (_db_session_ctx) 绑定 db，挪到线程池会绑到工作线程上下文、后台任务读不到
+            # → "orchestrator DB session not set"。构建耗时优化走「缓存 agent」而非线程池。
             agent = get_orchestrator_agent(
                 workspace_id=conversation.workspace_id,
                 db=db,
@@ -738,7 +766,8 @@ class ChatService:
             agent = get_agent(skills_path, root_path, employee_id=employee.id if target_type == "employee" else None, conversation_id=conversation_id)
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee、group 或 curator。")
-        
+        _phase("built_agent")
+
         try:
             skill_question = question
             if skill_name and target_type != "curator":
@@ -750,7 +779,8 @@ class ChatService:
                 conversation_id=conversation_id,
             )
             request_messages.append({"role": "user", "content": user_content})
-            
+            _phase("built_user_content")
+
             from src.service.stream_registry import registry
             from src.service.agent_stream_queue import StartResult
             
@@ -798,7 +828,8 @@ class ChatService:
                 ),
                 source="user_chat",
             )
-            
+            _phase(f"request_start_returned({start_result})")
+
             if start_result == StartResult.REJECTED:
                 assistant_msg.stream_state = "error"
                 assistant_msg.content = "当前会话已有正在执行的任务"
@@ -823,6 +854,7 @@ class ChatService:
             except Exception:
                 logger.warning("push start conversation_status_changed failed conv=%s", conversation_id, exc_info=True)
             db.refresh(assistant_msg)
+            _phase("marked_running+pushed+refresh")
 
             if start_result == StartResult.QUEUED:
                 queued_payload = {
@@ -834,6 +866,7 @@ class ChatService:
                 yield f"data: {json.dumps(queued_payload, ensure_ascii=False)}\n\n"
 
             # 返回恢复流的生成器
+            _phase("entering_resume_stream(以下进入实时流；若卡在这之后=卡在 buffer 回放/等首包)")
             async for chunk in ChatService.resume_conversation_stream(db, conversation_id, debug_content_only):
                 yield chunk
                 
@@ -954,6 +987,21 @@ class ChatService:
         all_events = list(task.buffer._events)
         if after_seq is not None:
             all_events = [e for e in all_events if e.get("seq", 0) > after_seq]
+        else:
+            # 防御：前端未带 cursor（after_seq=None）时会全量重放整个 buffer。runaway 流
+            # buffer 可达上万事件，来回切窗口反复全量重放会把默认线程池（批量序列化用）+
+            # 主循环占满，agent 流的同步工具执行被饿死 → 两边流一起卡死（observed
+            # conv=178/179 buffer 9458，切窗口反复重放）。冷启全量重放只回放最近 N 条即可
+            # 衔接实时流；完整历史在终态 message_parts 落库后由 GET /messages 提供。
+            if len(all_events) > RESUME_COLD_REPLAY_CAP:
+                dropped = len(all_events) - RESUME_COLD_REPLAY_CAP
+                all_events = all_events[-RESUME_COLD_REPLAY_CAP:]
+                logger.warning(
+                    "[resume] conv=%s 冷重放截断 buffer=%d → 只回放最近 %d 条"
+                    "（丢弃 %d 早期事件，防切窗口反复全量重放卡死）",
+                    conversation_id, len(task.buffer._events),
+                    RESUME_COLD_REPLAY_CAP, dropped,
+                )
         last_buffered_seq = task.buffer.cursor
         logger.info(
             "[resume] conv=%s buffer replay: %d events (after_seq=%s, total_in_buffer=%d)",
