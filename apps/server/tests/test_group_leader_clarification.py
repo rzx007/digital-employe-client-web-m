@@ -216,3 +216,56 @@ def test_approve_trigger_group_leader_branch(db_session, db_engine, workspace, m
     assert captured["orchestrator_workspace_id"] == workspace.id
     assert captured["orchestrator_owned_db"] is not None       # 独立 leader_db
     assert captured["decisions"][0]["type"] == "respond"
+    assert captured["decisions"][0]["message"] == "市场周报,管理层,1页,markdown"  # Minor
+
+
+def test_approve_trigger_group_leader_rejected_no_relay_residue(
+    db_session, db_engine, workspace, monkeypatch
+):
+    """REJECTED 时：leader_db 被 close（C-1）、relay 无残留（C-2）。"""
+    import asyncio
+
+    from sqlalchemy.orm import sessionmaker
+
+    import src.service.group_room_service as grs
+    from src.service.chat_service import ChatService
+
+    TestSession = sessionmaker(bind=db_engine)
+    monkeypatch.setattr("src.db.session.get_session_local", lambda: TestSession)
+
+    # 独立的 room/leader_conv，避免与其它测试共享 conversation_id
+    room2, group_conv2, leader_conv2 = _make_room_with_leader(db_session, workspace)
+    interrupted2 = ConversationMessage(
+        conversation_id=leader_conv2.id,
+        role="assistant",
+        content="",
+        stream_state="interrupted",
+        message_parts=json.dumps([{"type": "clarifying_questions"}], ensure_ascii=False),
+        extra_meta="{}",
+    )
+    db_session.add(interrupted2)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.get_orchestrator_agent",
+        lambda **kw: object(),
+    )
+
+    async def fake_resume_rejected(**kw):
+        from src.service.agent_stream_queue import StartResult
+        return StartResult.REJECTED
+
+    from src.service.stream_registry import registry
+    monkeypatch.setattr(registry, "approve_and_resume", fake_resume_rejected)
+
+    # 确保测试开始前 relay 中没有该 conversation_id
+    grs._GROUP_STREAM_RELAY.pop(leader_conv2.id, None)
+
+    result = asyncio.run(ChatService.approve_trigger(
+        db_session, leader_conv2.id, interrupted2.id,
+        decisions=[{"type": "respond", "message": "测试"}],
+        auth_token="t",
+    ))
+
+    assert result["accepted"] is False                              # 拒绝返回
+    assert leader_conv2.id not in grs._GROUP_STREAM_RELAY           # C-2：relay 无残留

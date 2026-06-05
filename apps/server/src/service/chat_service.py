@@ -1172,7 +1172,6 @@ class ChatService:
         elif target_type == "group_leader":
             from src.service.agent.orchestrator import get_orchestrator_agent
             from src.models.group_room import GroupRoom
-            from src.service.group_room_service import register_group_stream_relay
             from src.db.session import get_session_local
 
             room = db.scalars(
@@ -1199,14 +1198,8 @@ class ChatService:
                 shared_artifacts_dir=shared,
                 bind_context=False,
             )
-            register_group_stream_relay(
-                conversation_id,
-                room_id=room.id,
-                room_conversation_id=room.room_conversation_id,
-                workspace_id=room.workspace_id,
-                sender_id=None,
-                sender_label="组长",
-            )
+            # register_group_stream_relay 移到 approve_and_resume 返回后，
+            # 仅在非 REJECTED 时注册，避免 REJECTED 路径残留 relay（C-2）。
         else:
             return {"accepted": False, "message": "不支持的 target_type"}
 
@@ -1237,10 +1230,23 @@ class ChatService:
         )
 
         if start_result == StartResult.REJECTED:
+            if target_type == "group_leader":
+                leader_db.close()  # C-1：避免连接泄漏
             new_msg.stream_state = "error"
             new_msg.content = new_msg.content or "恢复执行失败：已有活跃任务"
             db.commit()
             return {"accepted": False, "message": "恢复执行失败：已有活跃任务"}
+
+        if target_type == "group_leader":
+            from src.service.group_room_service import register_group_stream_relay
+            register_group_stream_relay(
+                conversation_id,
+                room_id=room.id,
+                room_conversation_id=room.room_conversation_id,
+                workspace_id=room.workspace_id,
+                sender_id=None,
+                sender_label="组长",
+            )
 
         new_msg.stream_state = (
             "queued" if start_result == StartResult.QUEUED else "streaming"
