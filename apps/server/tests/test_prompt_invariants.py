@@ -104,6 +104,13 @@ def test_employee_virtual_paths_present(employee_prompt: str) -> None:
         assert prefix in employee_prompt
 
 
+def test_employee_user_chat_no_virtual_path_in_body(employee_prompt: str) -> None:
+    """对用户聊天正文不得暴露虚拟路径（工具侧仍保留 /artifacts/ 说明）。"""
+    assert "聊天正文" in employee_prompt
+    assert "禁止" in employee_prompt
+    assert "产物" in employee_prompt or "变更卡片" in employee_prompt
+
+
 def test_employee_skill_listing_grounded_in_runtime(employee_prompt: str) -> None:
     """"有哪些技能"必须基于运行时上下文回答（防幻觉），且当前时间段仍在。"""
     assert "运行时上下文" in employee_prompt
