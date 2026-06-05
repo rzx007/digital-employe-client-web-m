@@ -50,6 +50,27 @@ export function PetWindow() {
   const [currentSkin, setCurrentSkin] = useState<PetSkin | null>(null)
 
   useEffect(() => {
+    const html = document.documentElement
+    const body = document.body
+    const root = document.getElementById("root")
+    const prevHtmlBg = html.style.background
+    const prevBodyBg = body.style.background
+    const prevRootBg = root?.style.background ?? ""
+
+    html.classList.add("pet-window-route")
+    html.style.background = "transparent"
+    body.style.background = "transparent"
+    if (root) root.style.background = "transparent"
+
+    return () => {
+      html.classList.remove("pet-window-route")
+      html.style.background = prevHtmlBg
+      body.style.background = prevBodyBg
+      if (root) root.style.background = prevRootBg
+    }
+  }, [])
+
+  useEffect(() => {
     const api = getElectronApi()
     if (!api?.getSelectedPetSlug) {
       void loadPetSkin("eve").then(setCurrentSkin).catch(console.error)

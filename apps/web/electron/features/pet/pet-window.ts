@@ -8,6 +8,19 @@ import {
   PET_WINDOW_WIDTH,
 } from "./pet-window-size"
 
+const PET_TRANSPARENT_BG = "#00000000"
+
+function applyPetWindowSurface(win: BrowserWindow): void {
+  win.setBackgroundColor(PET_TRANSPARENT_BG)
+  if (process.platform === "linux") {
+    win.once("show", () => {
+      if (!win.isDestroyed()) {
+        win.setBackgroundColor(PET_TRANSPARENT_BG)
+      }
+    })
+  }
+}
+
 let petSession: Session | null = null
 
 function getPetSession(): Session {
@@ -58,7 +71,7 @@ export function createPetWindow(): void {
       title: "DigitalEmployee-Pet",
       frame: false,
       transparent: true,
-      backgroundColor: "#00000000",
+      backgroundColor: PET_TRANSPARENT_BG,
       alwaysOnTop: getSetting("petAlwaysOnTop"),
       resizable: false,
       skipTaskbar: true,
@@ -67,6 +80,7 @@ export function createPetWindow(): void {
     },
     onCreated: (win) => {
       win.hide()
+      applyPetWindowSurface(win)
       applyPetAlwaysOnTopFromStore()
     },
   })
@@ -97,6 +111,7 @@ export function showPetWindow(): void {
     false,
   )
   applyPetAlwaysOnTopFromStore()
+  applyPetWindowSurface(petWin)
   petWin.show()
   petWin.focus()
 }

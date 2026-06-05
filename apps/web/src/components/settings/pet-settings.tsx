@@ -42,7 +42,7 @@ export function PetSettings() {
   const api = getElectronApi()
   const inElectron = isElectron()
 
-  const [petEnabled, setPetEnabled] = React.useState(true)
+  const [petEnabled, setPetEnabled] = React.useState(false)
   const [petVisibilityMode, setPetVisibilityMode] =
     React.useState<PetVisibilityMode>("when_main_hidden")
   const [petAlwaysOnTop, setPetAlwaysOnTop] = React.useState(true)
