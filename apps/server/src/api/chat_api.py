@@ -1,6 +1,17 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
+import mimetypes
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -436,6 +447,28 @@ def download_conversation_resource(
         filename=resolved.name,
         media_type="application/octet-stream",
     )
+
+
+@router.get("/chat/conversations/{conversation_id}/resources/static/{path:path}")
+def serve_conversation_resource_static(
+    conversation_id: int,
+    path: str,
+    db: Session = Depends(get_db),
+):
+    """以 inline + 正确 Content-Type 提供会话产物文件，path-based 支持相对资源。"""
+    conversation = ChatService.get_conversation(db, conversation_id)
+    settings = get_settings()
+    virtual_path = "/" + path.lstrip("/")
+    result = ResourceService.resolve_download_path(
+        settings.artifacts_path, conversation.id, virtual_path
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="not found")
+    resolved, is_dir = result
+    if is_dir:
+        raise HTTPException(status_code=404, detail="not a file")
+    media_type, _ = mimetypes.guess_type(resolved.name)
+    return FileResponse(resolved, media_type=media_type or "application/octet-stream")
 
 
 @router.delete("/chat/conversations/{conversation_id}/resources")
