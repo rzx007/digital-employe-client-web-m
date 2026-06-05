@@ -38,4 +38,6 @@ export interface ChatPromptInputProps {
   onAttachmentsChange?: (paths: string[]) => void
   /** 用于上下文用量指示器的乐观读取（可选） */
   messages?: UIMessage[]
+  /** 是否显示上下文用量指示器；群聊等场景传 false */
+  showContextBudget?: boolean
 }

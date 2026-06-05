@@ -33,6 +33,7 @@ export function ChatPromptInput({
   conversationId,
   onAttachmentsChange,
   messages,
+  showContextBudget = true,
 }: ChatPromptInputProps) {
   const isCompact = size === "compact"
 
@@ -82,12 +83,16 @@ export function ChatPromptInput({
               />
             </PromptInputActionMenuContent>
           </PromptInputActionMenu>
-          <Separator orientation="vertical" className="mt-2 mr-3 h-3" />
-          <ContextBudgetIndicator
-            conversationId={conversationId}
-            messages={messages ?? []}
-            chatStatus={status}
-          />
+          {showContextBudget && (
+            <>
+              <Separator orientation="vertical" className="mt-2 mr-3 h-3" />
+              <ContextBudgetIndicator
+                conversationId={conversationId}
+                messages={messages ?? []}
+                chatStatus={status}
+              />
+            </>
+          )}
         </PromptInputTools>
         <PromptInputTools>
           <PromptInputSubmit
