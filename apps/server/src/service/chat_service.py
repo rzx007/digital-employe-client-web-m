@@ -954,6 +954,19 @@ class ChatService:
         all_events = list(task.buffer._events)
         if after_seq is not None:
             all_events = [e for e in all_events if e.get("seq", 0) > after_seq]
+        else:
+            # 冷启（前端未带 cursor）默认全量重放整个 buffer。runaway 流 buffer 可达
+            # 上万事件，反复切窗口全量重放会占满线程池/主循环致卡死。冷启回放上限由
+            # 系统设置 RESUME_COLD_REPLAY_CAP 控制（<=0 不限制）：超过只回放最近 N 条。
+            cold_cap = get_settings().resume_cold_replay_cap
+            if cold_cap > 0 and len(all_events) > cold_cap:
+                dropped = len(all_events) - cold_cap
+                logger.warning(
+                    "[resume] conv=%s 冷重放截断 buffer=%d → 只回放最近 %d 条"
+                    "（丢弃 %d 早期事件，防切窗口反复全量重放卡死）",
+                    conversation_id, len(all_events), cold_cap, dropped,
+                )
+                all_events = all_events[-cold_cap:]
         last_buffered_seq = task.buffer.cursor
         logger.info(
             "[resume] conv=%s buffer replay: %d events (after_seq=%s, total_in_buffer=%d)",
