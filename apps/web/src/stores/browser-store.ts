@@ -1,6 +1,7 @@
 import { create } from "zustand"
 
 import { getElectronApi } from "@/lib/electron/host"
+import { getRequestBaseUrl } from "@/lib/request"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
@@ -19,6 +20,10 @@ interface BrowserState {
   error: string | null
 
   openBrowser: (url: string) => void
+  openHtmlPreview: (
+    conversationId: string | number,
+    virtualPath: string
+  ) => void
   minimizeBrowser: () => void
   restoreBrowser: () => void
   destroyBrowser: () => void
@@ -79,6 +84,13 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
       error: null,
     })
     void api.browser.open(normalized)
+  },
+
+  openHtmlPreview: (conversationId, virtualPath) => {
+    const base = getRequestBaseUrl().replace(/\/$/, "")
+    const rel = virtualPath.replace(/^\//, "")
+    const url = `${base}/chat/conversations/${conversationId}/resources/static/${rel}`
+    get().openBrowser(url)
   },
 
   minimizeBrowser: () => {

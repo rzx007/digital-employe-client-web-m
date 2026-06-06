@@ -207,6 +207,7 @@ export function ChatView({
   return isDraftConversation || !hasValidSelection ? (
     <DraftChatView
       contact={contact}
+      title={conversationTitle}
       onOpenContacts={onOpenContacts}
       onOpenConversations={onOpenConversations}
       onNewConversation={onNewConversation}

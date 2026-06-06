@@ -3,7 +3,7 @@ import { toast } from "sonner"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-import { CURATOR_AVATAR_URL } from "@/lib/avatar"
+import { CURATOR_ASSISTANT_AVATAR_URL_1 } from "@/lib/avatar"
 import { navigateToEmployeeFromGroup } from "@/lib/chat/group-navigation"
 import { switchToContact } from "@/lib/chat/conversation-selection"
 import {
@@ -67,7 +67,7 @@ function fileName(path: string): string {
   return parts[parts.length - 1] || path
 }
 
-/** 员工文字头像：取名字前两个字（英文名取前两字母） */
+/** 员工文字头像：取名字前两个字 */
 function initialOf(name: string): string {
   const t = (name || "").trim()
   return t ? t.slice(0, 2) : "员"
@@ -130,9 +130,8 @@ function computeLevels(dag: GroupRoomDag): Map<string, number> {
   return level
 }
 
-/** 节点头像 URL：组长用总管头像图片；成员/用户用文字头像（返回 null） */
 function avatarUrlOf(node: DagNode): string | null {
-  if (node.type === "leader") return CURATOR_AVATAR_URL
+  if (node.type === "leader") return CURATOR_ASSISTANT_AVATAR_URL_1
   return null
 }
 
@@ -140,7 +139,6 @@ function NodeAvatar({ node }: { node: DagNode }) {
   const t = TYPE_ICON[node.type]
   const meta = STATE_META[node.state] ?? STATE_META.pending
   const url = avatarUrlOf(node)
-  // 成员头像：名字前两字 + 按名字稳定取色的文字头像（不再用 DiceBear 图片）
   const isWorker = node.type === "worker"
   const workerRing = isWorker ? colorOf(node.name) : t.ring
   return (
@@ -154,7 +152,7 @@ function NodeAvatar({ node }: { node: DagNode }) {
       ) : (
         <div
           className={cn(
-            "flex size-8 items-center justify-center rounded-full text-[11px] font-semibold ring-2",
+            "flex size-8 items-center justify-center rounded-full text-[11px] font-semibold ring-2 ring-background",
             workerRing
           )}
         >

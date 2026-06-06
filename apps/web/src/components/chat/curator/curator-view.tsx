@@ -41,6 +41,7 @@ import { useChatStore } from "@/stores/chat-store"
 import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { cancelConversationStream } from "@/api/chat"
 import { shouldRenameCuratorConversationOnFirstMessage } from "@/lib/chat/curator-conversation-actions"
+import { applySemanticConversationTitle } from "@/lib/chat/conversation-title"
 import { toast } from "sonner"
 import {
   AlertDialog,
@@ -533,16 +534,16 @@ export function CuratorView({
           curatorContactId &&
           contact?.type === "curator"
         ) {
-          const nextTitle = messageText.slice(0, 50)
-          void updateTitleMutation
-            .mutateAsync({
-              conversationId: curatorConversationId,
-              title: nextTitle,
-              contactId: curatorContactId,
-            })
-            .catch(() => {
+          const contactId = getContactId(contact) ?? String(curatorContactId)
+          void applySemanticConversationTitle({
+            conversationId: curatorConversationId,
+            messageText,
+            contactId,
+            updateTitle: updateTitleMutation.mutateAsync,
+            onError: () => {
               toast.error("更新会话标题失败")
-            })
+            },
+          })
         }
       } catch (sendError) {
         const m = sendError instanceof Error ? sendError.message : ""

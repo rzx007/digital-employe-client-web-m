@@ -223,6 +223,31 @@ def _get_room_create_lock(room_conversation_id: int) -> _threading.Lock:
         return lock
 
 
+def build_leader_brief(question: str, roster: str) -> str:
+    """组长会话的系统 prompt/用户消息拼装。
+
+    roster 格式为每行一条：- 姓名（员工ID: N）
+    例：
+        - 张三（员工ID: 1）
+        - 李四（员工ID: 2）
+    """
+    return (
+        "你是这个群的组长（调度员）。没有真人会替你点「确认执行」，"
+        "但当用户需求模糊时你必须先澄清，不能凭空臆测。\n"
+        "群里现有以下成员可供你分派任务：\n"
+        f"{roster}\n\n"
+        "判断用户需求是否清晰：\n"
+        "- 若关键信息不足以拆解派活（目标 / 范围 / 交付物 / 受众 / 格式 等任一不明），"
+        "**本轮必须调用 `submit_clarifying_questions`**（context 取 long_document 或 general）"
+        "一次性列清要点；调用后停下，**不要** create_orchestration_plan、不要派活，"
+        "等用户回答后的下一轮再继续。禁止只在聊天里列问题而不调工具。\n"
+        "- 若需求已清晰：先用一句话说你的安排，再 create_orchestration_plan、"
+        "随后立即 confirm_orchestration_plan 执行（互不依赖可并行，有先后用 depends_on）。\n"
+        "成员产出会自动汇总到群里。\n\n"
+        f"用户需求：{question}"
+    )
+
+
 class GroupRoomService:
     # ---- 房间生命周期 ----
 
@@ -376,8 +401,13 @@ class GroupRoomService:
         sender_id: int | None,
         sender_label: str | None,
         extra_meta: dict | None = None,
+        message_parts: list | None = None,
     ) -> ConversationMessage:
-        """向群时间线（房间会话）追加一条带作者归属的消息，并推送 SSE 事件。"""
+        """向群时间线（房间会话）追加一条带作者归属的消息，并推送 SSE 事件。
+
+        message_parts: 可选结构化 parts（如澄清问题卡片），非空时写入
+        ConversationMessage.message_parts 列，前端直接渲染。
+        """
         meta = dict(extra_meta) if extra_meta else {}
         meta["created_at"] = cst_now().isoformat()
         msg = ConversationMessage(
@@ -388,6 +418,11 @@ class GroupRoomService:
             sender_label=sender_label,
             stream_state="completed",
             extra_meta=json.dumps(meta, ensure_ascii=False),
+            message_parts=(
+                json.dumps(message_parts, ensure_ascii=False)
+                if message_parts is not None
+                else None
+            ),
         )
         db.add(msg)
         conv = db.get(Conversation, room.room_conversation_id)
@@ -672,9 +707,51 @@ class GroupRoomService:
 
         # 2.5) 未 @ 任何成员 → 交给组长统筹（分解→派活→汇总）
         if not targets:
-            # 立即给一条组长「已收到」的反馈再派活：组长构建 agent + 首包要几秒，
-            # 这几秒群里没动静会让用户以为没反应。先推一条即时反馈消息，组长真正
-            # 流式输出后是另一条（实际安排），两条都合理、用户明确知道在动。
+            # 先判：组长是否正在等用户澄清。若是，把这条普通消息当澄清作答、resume 组长流。
+            if GroupRoomService.leader_awaiting_clarification(db, room):
+                # 兜底：普通消息视为澄清作答，resume 组长流
+                last_interrupted = db.scalars(
+                    select(ConversationMessage)
+                    .where(
+                        ConversationMessage.conversation_id == room.leader_conversation_id,
+                        ConversationMessage.role == "assistant",
+                        ConversationMessage.stream_state == "interrupted",
+                    )
+                    .order_by(ConversationMessage.id.desc())
+                ).first()
+                if last_interrupted is None:
+                    # 竞态：两次查询之间中断态已被更新，跳过 resume 避免误派活
+                    logger.warning(
+                        "leader_awaiting_clarification 为 True 但未找到 interrupted 消息"
+                        "（可能已被并发更新），跳过 resume room=%s", room.id,
+                    )
+                    return {"room_id": room.id, "dispatched": [], "note": "待澄清态已消失，已跳过"}
+                from src.service.chat_service import ChatService
+                from src.service.agent.orchestrator.runtime import get_main_loop
+                import asyncio
+                fut = asyncio.run_coroutine_threadsafe(
+                    ChatService.approve_trigger(
+                        db,
+                        room.leader_conversation_id,
+                        last_interrupted.id,
+                        decisions=[{"type": "respond", "message": question}],
+                        auth_token=auth_token,
+                    ),
+                    get_main_loop(),
+                )
+                fut.add_done_callback(
+                    lambda f: logger.error(
+                        "approve_trigger 兜底 resume 异常 room=%s: %s", room.id, f.exception()
+                    ) if f.exception() else None
+                )
+                return {
+                    "room_id": room.id,
+                    "dispatched": [],
+                    "note": "已作为澄清作答恢复组长",
+                }
+            # 否则正常派活：先给一条组长「已收到」的即时反馈再派活——组长构建 agent + 首包
+            # 要几秒，这几秒群里没动静会让用户以为没反应。组长真正流式输出后是另一条（实际
+            # 安排），两条都合理、用户明确知道在动。
             try:
                 GroupRoomService.post_to_timeline(
                     db, room,
@@ -771,21 +848,7 @@ class GroupRoomService:
             if emp:
                 roster_lines.append(f"- {emp.name}（员工ID: {emp.id}）")
         roster = "\n".join(roster_lines) or "（暂无可用成员）"
-        leader_brief = (
-            "你是这个群的组长（调度员），没有真人会替你点确认，请全程自主完成。\n"
-            "群里现有以下成员可供你分派任务：\n"
-            f"{roster}\n\n"
-            "工作流程：\n"
-            "0) **第一步：先用一句话告诉大家你打算怎么安排（例如"
-            "“收到，我来拆解一下：微博热搜交给X，Python版本交给Y…”），"
-            "让群里立刻看到你在动手——这一步很重要，必须先输出这句话再调工具；**\n"
-            "1) 把用户需求分解为子任务，优先分配给上述群成员；\n"
-            "2) 调 create_orchestration_plan 生成计划（互不依赖的任务可并行，"
-            "有先后关系用 depends_on 串起来）；\n"
-            "3) 生成后立即调 confirm_orchestration_plan 执行，**不要等用户确认**；\n"
-            "4) 简要回复你的安排即可，成员产出会自动汇总到群里。\n\n"
-            f"用户需求：{question}"
-        )
+        leader_brief = build_leader_brief(question, roster)
 
         history_messages, _ = ChatService._load_history_for_agent(
             leader_db, conversation_id=leader_conv.id,
@@ -1436,6 +1499,21 @@ class GroupRoomService:
         }
 
     @staticmethod
+    def leader_awaiting_clarification(db: Session, room: "GroupRoom") -> bool:
+        """组长会话最后一条 assistant 消息是否为 interrupted(待澄清)态。"""
+        if room.leader_conversation_id is None:
+            return False
+        last = db.scalars(
+            select(ConversationMessage)
+            .where(
+                ConversationMessage.conversation_id == room.leader_conversation_id,
+                ConversationMessage.role == "assistant",
+            )
+            .order_by(ConversationMessage.id.desc())
+        ).first()
+        return bool(last and last.stream_state == "interrupted")
+
+    @staticmethod
     def _allowed(member: GroupRoomMember, source: str) -> bool:
         """白名单：source 是否允许唤醒该成员。allow_from=null → 不限。"""
         if not member.allow_from:
@@ -1667,6 +1745,43 @@ def project_member_conversation_if_in_room(
             )
         ).first()
         if leader_room is not None:
+            # 中断（HITL 澄清）：把组长 interrupted 消息里的 clarifying_questions
+            # parts 投影成群时间线的一条卡片，让用户在群里看到并作答。
+            if stream_state == "interrupted":
+                last = db.scalars(
+                    select(ConversationMessage)
+                    .where(
+                        ConversationMessage.conversation_id == conversation_id,
+                        ConversationMessage.role == "assistant",
+                        ConversationMessage.stream_state == "interrupted",
+                    )
+                    .order_by(ConversationMessage.id.desc())
+                ).first()
+                if last is None:
+                    logger.warning(
+                        "组长会话 %s interrupted 但无 assistant 消息，跳过澄清投影",
+                        conversation_id,
+                    )
+                    return
+                parts = json.loads(last.message_parts) if last.message_parts else None
+                if parts is None:
+                    logger.warning(
+                        "组长会话 %s interrupted 但澄清消息无 parts，已投影纯文本兜底",
+                        conversation_id,
+                    )
+                GroupRoomService.post_to_timeline(
+                    db, leader_room,
+                    role="assistant",
+                    content=(last.content or "").strip() or "我需要先确认一些信息，请在群里补充说明。",
+                    sender_id=None,
+                    sender_label="组长",
+                    extra_meta={
+                        "clarify_target_conversation_id": conversation_id,
+                        "clarify_message_id": last.id,
+                    },
+                    message_parts=parts,
+                )
+                return  # early-return：不落入 completed/_project_simple，不回流总管
             _project_simple(
                 db, leader_room, conversation_id, stream_state, "组长", sender_id=None
             )

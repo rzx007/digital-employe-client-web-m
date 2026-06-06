@@ -21,6 +21,15 @@ class ConversationUpdate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
 
 
+class ConversationTitleSuggestRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=12000)
+
+
+class ConversationTitleSuggestResponse(BaseModel):
+    title: str
+    source: Literal["rule", "llm", "fallback"]
+
+
 class ConversationRead(BaseModel):
     id: int
     workspace_id: int

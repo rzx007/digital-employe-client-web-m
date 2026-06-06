@@ -159,8 +159,8 @@ export function AppStatusBar() {
       </span>
       <span className="text-muted-foreground/60">·</span>
       <Link
-        to="/settings"
-        search={{ tab: "general" }}
+        to="/"
+        search={{ tab: "chat" }}
         className="hover:text-foreground hover:underline"
       >
         {serialLabel}

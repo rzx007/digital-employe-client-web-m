@@ -41,6 +41,19 @@ export async function updateConversationTitle(
   )
 }
 
+export async function suggestConversationTitle(
+  message: string,
+  opts?: { signal?: AbortSignal }
+) {
+  return request<
+    ApiResponse<{ title: string; source: "rule" | "llm" | "fallback" }>
+  >("/chat/conversations/suggest-title", {
+    method: "POST",
+    body: { message },
+    ...(opts?.signal ? { signal: opts.signal } : {}),
+  })
+}
+
 /**
  * 查询聊天会话列表
  * GET /workspaces/{workspace_id}/chat/conversations

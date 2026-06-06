@@ -49,7 +49,9 @@ export { collapseDocumentPlanBlocks } from "./collapse-document-plan-blocks"
 export {
   buildClarifyAnswerItems,
   buildClarifyRespondMessage,
+  CLARIFY_CHOICE_CUSTOM_PREFIX,
   CLARIFY_SKIP_REJECT_MESSAGE,
+  formatClarifyAnswer,
   optionLabel,
   parseClarifyingQuestions,
   parseClarifyAnswerItemsFromNumberedText,

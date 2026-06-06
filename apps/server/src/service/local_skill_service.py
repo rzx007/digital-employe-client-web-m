@@ -20,12 +20,44 @@ from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# 内置技能目录名 → 页面展示中文名（build-in-skills/）
+BUILTIN_SKILL_DISPLAY_NAMES: dict[str, str] = {
+    "lark-base": "飞书多维表格",
+    "feishu-workbench": "飞书工作台",
+    "skill-creator": "技能制作",
+    "env-steward": "环境管家",
+    "browser-runtime": "内嵌浏览器",
+    "docx": "Word 文档",
+    "doc-coauthoring": "文档协作写作",
+    "pdf": "PDF 处理",
+    "pptx": "PPT 演示文稿",
+    "xlsx": "Excel 表格",
+    "html-ppt": "HTML 幻灯片",
+}
+
 
 class LocalSkillService:
     META_FILE_NAME = ".skill-meta.json"
     SKILL_MD_NAME = "SKILL.md"
     SKILL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
     LOCAL_SKILL_ID_START = -100
+
+    @staticmethod
+    def resolve_display_name_zh(
+        skill_name: str,
+        meta: dict | None = None,
+    ) -> str:
+        """解析技能中文展示名：meta → 内置映射 → 目录名。"""
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        if meta:
+            zh_raw = meta.get("displayNameZh")
+            if isinstance(zh_raw, str) and zh_raw.strip():
+                return zh_raw.strip()
+        mapped = BUILTIN_SKILL_DISPLAY_NAMES.get(normalized)
+        if mapped:
+            return mapped
+        return normalized
+
     @staticmethod
     def build_recruit_summary(
         description: str,
@@ -297,6 +329,44 @@ class LocalSkillService:
         return description
 
     @staticmethod
+    def _packaged_builtin_skill_names(source_root: Path) -> set[str]:
+        """build-in-skills 中合法内置技能目录名（与 seed 判定规则一致）。"""
+        names: set[str] = set()
+        if not source_root.is_dir():
+            return names
+        for item in source_root.iterdir():
+            if not item.is_dir():
+                continue
+            if not LocalSkillService.SKILL_NAME_PATTERN.match(item.name):
+                continue
+            if not (item / LocalSkillService.SKILL_MD_NAME).is_file():
+                continue
+            names.add(item.name)
+        return names
+
+    @staticmethod
+    def _prune_stale_builtin_skills(
+        local_root: Path,
+        packaged_names: set[str],
+    ) -> int:
+        """以 build-in-skills 为权威，删除本机 builtin 中已下架的技能目录。"""
+        removed = 0
+        if not local_root.is_dir():
+            return removed
+        for child in local_root.iterdir():
+            if not child.is_dir():
+                continue
+            if child.name in packaged_names:
+                continue
+            logger.info(
+                "Remove stale builtin skill not in build-in-skills: %s",
+                child.name,
+            )
+            shutil.rmtree(child)
+            removed += 1
+        return removed
+
+    @staticmethod
     def seed_builtin_skills() -> dict[str, int]:
         """
         将包内 build-in-skills 同步到 LOCAL_SKILLS_PATH/builtin（共享目录）。
@@ -308,9 +378,14 @@ class LocalSkillService:
         logger.info("local_root: %s", local_root)
         if not source_root.is_dir():
             logger.info("Skip builtin skill seed: packaged source missing %s", source_root)
-            return {"copied_items": 0}
+            return {"copied_items": 0, "removed_items": 0}
 
+        packaged_names = LocalSkillService._packaged_builtin_skill_names(source_root)
         local_root.mkdir(parents=True, exist_ok=True)
+        removed_items = LocalSkillService._prune_stale_builtin_skills(
+            local_root,
+            packaged_names,
+        )
         copied_items = 0
         reserved_global = LocalSkillService._reserved_negative_ids_universal()
         for item in sorted(source_root.iterdir(), key=lambda p: p.name.lower()):
@@ -345,7 +420,14 @@ class LocalSkillService:
             description = LocalSkillService._extract_description_from_skill_md(
                 target_dir / LocalSkillService.SKILL_MD_NAME
             )
-            existing_display_zh = existing_meta.get("displayNameZh")
+            source_meta = LocalSkillService._read_meta(item)
+            display_zh = LocalSkillService.resolve_display_name_zh(
+                normalized,
+                {
+                    "displayNameZh": existing_meta.get("displayNameZh")
+                    or source_meta.get("displayNameZh"),
+                },
+            )
             meta = {
                 "skillName": normalized,
                 "localId": local_id,
@@ -356,19 +438,20 @@ class LocalSkillService:
                 "recruitSummary": LocalSkillService.build_recruit_summary(
                     description, normalized
                 ),
+                "displayNameZh": display_zh,
             }
-            if isinstance(existing_display_zh, str) and existing_display_zh.strip():
-                meta["displayNameZh"] = existing_display_zh.strip()
             LocalSkillService._write_meta(target_dir, meta)
             copied_items += 1
 
         logger.info(
-            "Seeded builtin skills into local-skills: source=%s target=%s copied_items=%s",
+            "Seeded builtin skills into local-skills: source=%s target=%s "
+            "copied_items=%s removed_items=%s",
             source_root,
             local_root,
             copied_items,
+            removed_items,
         )
-        return {"copied_items": copied_items}
+        return {"copied_items": copied_items, "removed_items": removed_items}
 
     @staticmethod
     def local_skill_exists(skill_name: str, workspace_id: int | None = None) -> bool:

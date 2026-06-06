@@ -49,6 +49,8 @@ If user declines, write freeform following the long-document conventions (slug, 
 
 Call `submit_clarifying_questions` with `context="long_document"` and these questions:
 
+(The UI shows a custom input under each choice question; free-text answers arrive as `其他：…`. Prefer 3–6 concrete options; no need for an "其他" option on every question.)
+
 1. What type of document? (技术方案/标书/可行性报告/PRD/设计文档/周报/其他)
 2. Who's the primary audience? (客户/领导/团队/评审专家/其他)
 3. What outcome should the reader have after reading? (批准方案/理解设计/知晓进度/其他)

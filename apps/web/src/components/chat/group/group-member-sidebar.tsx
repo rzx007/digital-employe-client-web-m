@@ -9,8 +9,11 @@ import type {
   GroupRoomMember,
   GroupRoomMemberState,
 } from "@/api/group-room"
+import { CURATOR_ASSISTANT_AVATAR_URL_1 } from "@/lib/avatar"
 import { navigateToEmployeeFromGroup } from "@/lib/chat/group-navigation"
 import { switchToContact } from "@/lib/chat/conversation-selection"
+
+import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 
 const STATE_META: Record<
   GroupRoomMemberState,
@@ -61,6 +64,8 @@ function MemberRow({
 }) {
   const meta = STATE_META[member.state] ?? STATE_META.ready
   const isLeader = member.role_in_room === "leader"
+  const displayName =
+    member.employee_name ?? (member.employee_id != null ? `员工#${member.employee_id}` : "组长")
   const canJump =
     member.employee_id != null &&
     member.conversation_id != null &&
@@ -87,23 +92,24 @@ function MemberRow({
       onClick={handleClick}
       className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-muted/50"
     >
-      <Avatar className="size-8 shrink-0">
-        <AvatarFallback
-          className={cn(
-            "text-[11px] font-semibold",
-            isLeader
-              ? "bg-amber-100 text-amber-700"
-              : colorOf(member.employee_name)
-          )}
-        >
-          {initialOf(member.employee_name)}
-        </AvatarFallback>
-      </Avatar>
+      {isLeader ? (
+        <EmployeeContactAvatar
+          name="组长"
+          avatar={CURATOR_ASSISTANT_AVATAR_URL_1}
+          avatarClassName="size-8"
+        />
+      ) : (
+        <Avatar className="size-8 shrink-0">
+          <AvatarFallback
+            className={cn("text-[11px] font-semibold", colorOf(member.employee_name))}
+          >
+            {initialOf(member.employee_name)}
+          </AvatarFallback>
+        </Avatar>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="truncate text-sm font-medium">
-            {member.employee_name ?? `员工#${member.employee_id}`}
-          </span>
+          <span className="truncate text-sm font-medium">{displayName}</span>
           {isLeader ? (
             <Badge
               variant="secondary"

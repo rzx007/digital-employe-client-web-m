@@ -1,6 +1,17 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
+import mimetypes
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -12,6 +23,8 @@ from src.schemas.conversation import (
     ConversationCreate,
     ConversationMessageRead,
     ConversationRead,
+    ConversationTitleSuggestRequest,
+    ConversationTitleSuggestResponse,
     ConversationUpdate,
     ConversationsBulkDeleteResult,
     StreamConversationRequest,
@@ -24,6 +37,7 @@ from src.schemas.recent_contact import (
 )
 from src.schemas.resource import ResourceContent, ResourceList, ResourceUploadResult
 from src.service.chat_service import ChatService
+from src.service.conversation_title_service import suggest_conversation_title
 from src.service.recent_contact_service import RecentContactService
 from src.service.resource_service import ResourceService
 
@@ -235,6 +249,20 @@ def get_conversation_context_budget(
 
     data = resolve_context_budget_for_conversation(db, conversation_id)
     return ResponseBase[ContextBudgetRead](data=data)
+
+
+@router.post(
+    "/chat/conversations/suggest-title",
+    response_model=ResponseBase[ConversationTitleSuggestResponse],
+)
+def suggest_conversation_title_endpoint(
+    payload: ConversationTitleSuggestRequest,
+) -> ResponseBase[ConversationTitleSuggestResponse]:
+    """根据首条用户消息生成语义化会话标题（无状态）。"""
+    title, source = suggest_conversation_title(payload.message)
+    return ResponseBase(
+        data=ConversationTitleSuggestResponse(title=title, source=source)
+    )
 
 
 @router.patch(
@@ -458,6 +486,28 @@ def download_conversation_resource(
         filename=resolved.name,
         media_type="application/octet-stream",
     )
+
+
+@router.get("/chat/conversations/{conversation_id}/resources/static/{path:path}")
+def serve_conversation_resource_static(
+    conversation_id: int,
+    path: str,
+    db: Session = Depends(get_db),
+):
+    """以 inline + 正确 Content-Type 提供会话产物文件，path-based 支持相对资源。"""
+    conversation = ChatService.get_conversation(db, conversation_id)
+    settings = get_settings()
+    virtual_path = "/" + path.lstrip("/")
+    result = ResourceService.resolve_download_path(
+        settings.artifacts_path, conversation.id, virtual_path
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="not found")
+    resolved, is_dir = result
+    if is_dir:
+        raise HTTPException(status_code=404, detail="not a file")
+    media_type, _ = mimetypes.guess_type(resolved.name)
+    return FileResponse(resolved, media_type=media_type or "application/octet-stream")
 
 
 @router.delete("/chat/conversations/{conversation_id}/resources")

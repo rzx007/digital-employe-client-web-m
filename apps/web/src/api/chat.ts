@@ -20,6 +20,7 @@ import {
   fetchCuratorConversation as fetchCuratorConversationApi,
   fetchResourceContent as fetchResourceContentApi,
   resetConversationStatus as resetConversationStatusApi,
+  suggestConversationTitle as suggestConversationTitleApi,
   updateConversationTitle as updateConversationTitleApi,
   uploadConversationFile as uploadConversationFileApi,
 } from "@/api/conversation"
@@ -53,6 +54,7 @@ export {
   fetchCuratorConversationApi as fetchCuratorConversation,
   fetchResourceContentApi as fetchResourceContent,
   resetConversationStatusApi as resetConversationStatus,
+  suggestConversationTitleApi as suggestConversationTitle,
   updateConversationTitleApi as updateConversationTitle,
   uploadConversationFileApi as uploadConversationFile,
 }

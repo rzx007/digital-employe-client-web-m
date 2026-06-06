@@ -406,6 +406,7 @@ export function ChatPanel({
                 onPendingMoveDown={onPendingMoveDown}
                 error={error}
                 pendingQueueClassName="mx-auto w-[98%]"
+                showContextBudget={contact?.type !== "group"}
               />
             </div>
           </>

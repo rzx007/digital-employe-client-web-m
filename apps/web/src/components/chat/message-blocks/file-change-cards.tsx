@@ -10,7 +10,9 @@ import { useCuratorFile } from "@/components/chat/curator/use-curator-file"
 import type { FileChangeItem } from "@/lib/chat/file-change-utils"
 import { EXTENSION_ICONS } from "@/lib/chat/file-icons"
 import { useArtifactStore } from "@/stores/artifact-store"
+import { useBrowserStore } from "@/stores/browser-store"
 import { useChatStore } from "@/stores/chat-store"
+import { resolveFileOpen } from "./file-open-routing"
 
 const FILE_SCROLL_THRESHOLD = 4
 const FILE_COLLAPSE_THRESHOLD = 8
@@ -178,10 +180,25 @@ function FileListScrollFog() {
 export function FileChangeCards({ files, className }: FileChangeCardsProps) {
   const curatorFile = useCuratorFile()
   const openResource = useArtifactStore((s) => s.openResource)
+  const openHtmlPreview = useBrowserStore((s) => s.openHtmlPreview)
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
 
   const conversationId = curatorFile?.conversationId ?? selectedConversationId
-  const handleOpen = curatorFile?.onOpenFile ?? openResource
+  const curatorOnOpenFile = curatorFile?.onOpenFile
+  const handleOpen = React.useCallback(
+    (path: string) => {
+      if (curatorOnOpenFile) {
+        curatorOnOpenFile(path)
+        return
+      }
+      resolveFileOpen(path, {
+        conversationId,
+        openHtmlPreview,
+        openResource,
+      })
+    },
+    [curatorOnOpenFile, conversationId, openHtmlPreview, openResource]
+  )
 
   const [importSkillFile, setImportSkillFile] =
     React.useState<FileChangeItem | null>(null)

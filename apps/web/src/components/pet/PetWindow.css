@@ -12,6 +12,14 @@ body,
   background: transparent;
 }
 
+html.pet-window-route,
+html.pet-window-route body,
+html.pet-window-route #root,
+html.pet-window-route .pet-root-layout {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
 .pet-shell {
   position: relative;
   display: grid;

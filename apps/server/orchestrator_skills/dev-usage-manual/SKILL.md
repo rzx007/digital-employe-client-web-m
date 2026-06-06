@@ -5,7 +5,7 @@ description: 数字员工客户端项目开发使用手册。当开发者询问�
 
 # 开发者使用手册
 
-数字员工客户端（Digital Employee Client Web）开发指南。Monorepo：React 19 + Electron 前端（`apps/web`）、Python FastAPI 后端（`apps/server`）、共享 UI 组件库（`packages/ui`）。
+数字员工客户端（Boban Staff Client Web）开发指南。Monorepo：React 19 + Electron 前端（`apps/web`）、Python FastAPI 后端（`apps/server`）、共享 UI 组件库（`packages/ui`）。
 
 ## 一、环境搭建
 

@@ -37,6 +37,10 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 
 app.commandLine.appendSwitch("lang", "zh-CN")
 
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("enable-transparent-visuals")
+}
+
 if (process.platform === "win32")
   app.setAppUserModelId("com.digital-employee-m.app")
 
@@ -152,13 +156,11 @@ async function createWindow() {
   windowManager.set("main", win)
   createTray(win)
 
-  createPetWindow()
-
-  if (
-    getSetting("petEnabled") &&
-    getSetting("petVisibilityMode") === "always"
-  ) {
-    showPetWindow()
+  if (getSetting("petEnabled")) {
+    createPetWindow()
+    if (getSetting("petVisibilityMode") === "always") {
+      showPetWindow()
+    }
   }
 }
 

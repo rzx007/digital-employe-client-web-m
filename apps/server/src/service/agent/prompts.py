@@ -66,6 +66,7 @@ def build_filesystem_prompt_section(
         ### 用户可见产物（/artifacts/）
         - 代码、报告、导出数据等交付给用户看的文件：write_file("/artifacts/...", ...)
         - 单次交付可用 /artifacts/report.md；**长文档任务**须用 /artifacts/<doc-slug>/ 子目录（见「长文档写作」）
+        - **聊天正文禁止**写出 `/artifacts/`、`/uploads/`、`/skills-draft/` 等虚拟路径及本机绝对路径；只说交付物名称/用途，文件由变更卡片与产物面板展示（详见 /agent/AGENTS.md「对用户回复」）
         - **不要**在 /artifacts/ 下创建 Users、.digital-employee 等磁盘路径镜像
         - 长期记忆（/memories/）相关规则见「## 长期记忆」一节（唯一权威），此处不重复
         {draft_instruction}
