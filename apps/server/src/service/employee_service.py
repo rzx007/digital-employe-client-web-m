@@ -161,6 +161,13 @@ class EmployeeService:
             "metadata": metadata,
             "shift_schedule": shift_schedule,
             "is_curator": bool(employee.is_curator),
+            # 自定义头像：有则给「带版本号的相对 URL」(前端拼后端 base 加载、版本号防缓存)，
+            # 无则 None → 前端回落到「名字前两个字」文本头像。
+            "avatar": (
+                f"/employees/{employee.id}/avatar?v={int(employee.updated_at.timestamp())}"
+                if getattr(employee, "avatar_url", None)
+                else None
+            ),
             "created_at": employee.created_at,
             "updated_at": employee.updated_at,
         }

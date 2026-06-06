@@ -38,10 +38,6 @@ from src.service.agent import delete_conversation_checkpoint, get_agent
 
 logger = logging.getLogger(__name__)
 
-# resume 冷启（前端未带 cursor）全量重放的事件上限：超过只回放最近这么多条，
-# 防 runaway 巨型 buffer 在反复切窗口时被全量重放、占满线程池/主循环致卡死。
-RESUME_COLD_REPLAY_CAP = 1500
-
 
 async def _commit_db_off_loop(db: Session) -> None:
     """把同步 db.commit() 放到 DB 写线程，避免阻塞事件循环。
@@ -408,8 +404,7 @@ class ChatService:
         db.add(message)
         conversation.updated_at = cst_now()
         db.add(conversation)
-        db.commit()
-        db.refresh(message)
+        # 注意：不再在此处 commit/refresh，由调用方统一提交（避免事件循环上同步 SQLite 写）
         return message
 
     @staticmethod
@@ -779,9 +774,9 @@ class ChatService:
             content="",
             extra_meta=None,
         )
-        # 把 commit 放到专用 DB 写线程，避免同步 I/O 阻塞事件循环
-        # （SQLite 写锁竞争时 commit 可阻塞 30s，期间事件循环无法调度任何协程/I/O）
+        # 两条消息都已 add 到 session，统一一次 commit（不阻塞事件循环）
         await _commit_db_off_loop(db)
+        await _refresh_db_off_loop(db, assistant_msg)
         _phase("appended_user+assistant_msg+commit")
 
         # 根据会话ID获取会话详情，然后获取root_path
@@ -1049,26 +1044,13 @@ class ChatService:
                 )
                 return False, [_sse_line(payload_str)]
 
-        # Phase 1: 回放 buffer 历史事件。带 after_seq 时只回放它之后的增量，
-        # 避免超长输出（上万事件）切回会话时全量重放压垮前端。
+        # Phase 1: 回放 buffer 历史事件。带 after_seq 时只回放它之后的增量；
+        # 不带 cursor（冷启，after_seq=None）时**全量回放整个 buffer**——streaming 中
+        # 前端不渲染 DB content，进行中内容全靠这次冷回放从头重建，截断前面会让画面
+        # 从中间冒字、显示残缺，所以这里必须从头放全。
         all_events = list(task.buffer._events)
         if after_seq is not None:
             all_events = [e for e in all_events if e.get("seq", 0) > after_seq]
-        else:
-            # 防御：前端未带 cursor（after_seq=None）时会全量重放整个 buffer。runaway 流
-            # buffer 可达上万事件，来回切窗口反复全量重放会把默认线程池（批量序列化用）+
-            # 主循环占满，agent 流的同步工具执行被饿死 → 两边流一起卡死（observed
-            # conv=178/179 buffer 9458，切窗口反复重放）。冷启全量重放只回放最近 N 条即可
-            # 衔接实时流；完整历史在终态 message_parts 落库后由 GET /messages 提供。
-            if len(all_events) > RESUME_COLD_REPLAY_CAP:
-                dropped = len(all_events) - RESUME_COLD_REPLAY_CAP
-                all_events = all_events[-RESUME_COLD_REPLAY_CAP:]
-                logger.warning(
-                    "[resume] conv=%s 冷重放截断 buffer=%d → 只回放最近 %d 条"
-                    "（丢弃 %d 早期事件，防切窗口反复全量重放卡死）",
-                    conversation_id, len(task.buffer._events),
-                    RESUME_COLD_REPLAY_CAP, dropped,
-                )
         last_buffered_seq = task.buffer.cursor
         logger.info(
             "[resume] conv=%s buffer replay: %d events (after_seq=%s, total_in_buffer=%d)",
@@ -1241,7 +1223,8 @@ class ChatService:
         )
         new_msg.stream_cursor = 0
         conversation.status = "running"
-        db.commit()
+        await _commit_db_off_loop(db)
+        await _refresh_db_off_loop(db, new_msg)
         try:
             from src.service.workspace_events import WorkspaceEventBus, CONVERSATION_STATUS_CHANGED
             WorkspaceEventBus.push(conversation.workspace_id, {
@@ -1312,6 +1295,11 @@ class ChatService:
                 auth_token=auth_token,
                 shared_artifacts_dir=shared,
                 bind_context=False,
+                # 必须与 dispatch_to_leader 一致：仅澄清 HITL。① 保留 HITL 中间件以
+                # 消费本次澄清 resume 决策；② 不重新武装删除/文档方案中断——否则用户
+                # 刚作答、组长继续派活时再撞上无审批者的中断又永久挂起。
+                enable_hitl=False,
+                clarify_only_hitl=True,
             )
             # register_group_stream_relay 移到 approve_and_resume 返回后，
             # 仅在非 REJECTED 时注册，避免 REJECTED 路径残留 relay（C-2）。
@@ -1349,11 +1337,14 @@ class ChatService:
                 leader_db.close()  # C-1：避免连接泄漏
             new_msg.stream_state = "error"
             new_msg.content = new_msg.content or "恢复执行失败：已有活跃任务"
-            db.commit()
+            await _commit_db_off_loop(db)
             return {"accepted": False, "message": "恢复执行失败：已有活跃任务"}
 
         if target_type == "group_leader":
-            from src.service.group_room_service import register_group_stream_relay
+            from src.service.group_room_service import (
+                GroupRoomService,
+                register_group_stream_relay,
+            )
             register_group_stream_relay(
                 conversation_id,
                 room_id=room.id,
@@ -1362,6 +1353,23 @@ class ChatService:
                 sender_id=None,
                 sender_label="组长",
             )
+            # 回标群时间线里对应的澄清投影卡片为已处理，否则前端 refetch 后
+            # groupActiveHitl 又把它算成待办、卡片复活、重复要求用户作答。
+            # 用主 db（投影卡片属群会话），随下方 _commit_db_off_loop(db) 一起提交。
+            try:
+                GroupRoomService.mark_clarify_card_approved(
+                    db,
+                    room_conversation_id=room.room_conversation_id,
+                    leader_conversation_id=conversation_id,
+                    leader_message_id=msg.id,
+                    approved_at=meta["approved_at"],
+                )
+            except Exception:
+                logger.warning(
+                    "回标群澄清卡片失败 room_conv=%s leader_conv=%s msg=%s",
+                    room.room_conversation_id, conversation_id, msg.id,
+                    exc_info=True,
+                )
 
         new_msg.stream_state = (
             "queued" if start_result == StartResult.QUEUED else "streaming"
@@ -1370,7 +1378,7 @@ class ChatService:
             new_msg.content = (
                 new_msg.content or "已加入执行队列，等待其他对话完成"
             )
-        db.commit()
+        await _commit_db_off_loop(db)
 
         return {
             "accepted": True,

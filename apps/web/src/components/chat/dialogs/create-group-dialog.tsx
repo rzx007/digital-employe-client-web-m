@@ -10,10 +10,15 @@ import {
 } from "@workspace/ui/components/dialog"
 import { Button } from "@workspace/ui/components/button"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
-import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@workspace/ui/components/avatar"
 import { Checkbox } from "@workspace/ui/components/checkbox"
 import { cn } from "@workspace/ui/lib/utils"
 import type { AIEmployee } from "@/types/chat"
+import { avatarColorClass, avatarInitials } from "@/lib/avatar"
 
 interface CreateGroupDialogProps {
   open: boolean
@@ -82,8 +87,16 @@ export function CreateGroupDialog({
                   onCheckedChange={() => toggleEmployee(employee.id)}
                 />
                 <Avatar className="h-10 w-10">
-                  <AvatarFallback className="bg-primary font-medium text-primary-foreground">
-                    {employee?.name?.slice(0, 1)}
+                  {employee.avatar ? (
+                    <AvatarImage src={employee.avatar} alt={employee.name} />
+                  ) : null}
+                  <AvatarFallback
+                    className={cn(
+                      "text-xs font-medium",
+                      avatarColorClass(employee?.name)
+                    )}
+                  >
+                    {avatarInitials(employee?.name)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">

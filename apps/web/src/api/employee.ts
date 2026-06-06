@@ -43,6 +43,23 @@ export async function fetchEmployees(opts?: { signal?: AbortSignal }) {
   )
 }
 
+/** 上传/替换员工自定义头像（图片，multipart）。POST /employees/{id}/avatar */
+export async function uploadEmployeeAvatar(employeeId: number, file: File) {
+  const form = new FormData()
+  form.append("file", file)
+  return request<ApiResponse<Employee>>(`/employees/${employeeId}/avatar`, {
+    method: "POST",
+    body: form,
+  })
+}
+
+/** 删除员工自定义头像，恢复为文字头像。DELETE /employees/{id}/avatar */
+export async function deleteEmployeeAvatar(employeeId: number) {
+  return request<ApiResponse<Employee>>(`/employees/${employeeId}/avatar`, {
+    method: "DELETE",
+  })
+}
+
 /**
  * 查询员工详情
  * GET /employees/{employee_id}

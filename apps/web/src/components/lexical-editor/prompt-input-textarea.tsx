@@ -17,11 +17,15 @@ import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
   $getRoot,
+  $getSelection,
+  $isRangeSelection,
   $createParagraphNode,
   $createTextNode,
   COMMAND_PRIORITY_LOW,
+  COMMAND_PRIORITY_HIGH,
   KEY_ENTER_COMMAND,
   KEY_BACKSPACE_COMMAND,
+  PASTE_COMMAND,
   $isElementNode,
 } from "lexical"
 import { useEffect, useRef } from "react"
@@ -226,6 +230,52 @@ function BackspaceAttachmentPlugin({
   return null
 }
 
+// 纯文本粘贴：拦截粘贴事件，仅插入纯文本。
+// 避免 Lexical 默认富文本粘贴在粘贴大段 / 带 HTML 的内容时，
+// 同步把 text/html 转换成大量节点导致主线程长时间阻塞（卡死）。
+function PlainTextPastePlugin() {
+  const [editor] = useLexicalComposerContext()
+
+  useEffect(() => {
+    return editor.registerCommand<ClipboardEvent>(
+      PASTE_COMMAND,
+      (event) => {
+        const clipboardData = event.clipboardData
+        if (!clipboardData) {
+          return false
+        }
+
+        // 含文件（图片等）时交由外层 onPaste 处理为附件，这里不拦截
+        const hasFiles = Array.from(clipboardData.items ?? []).some(
+          (item) => item.kind === "file"
+        )
+        if (hasFiles) {
+          return false
+        }
+
+        const text = clipboardData.getData("text/plain")
+        if (!text) {
+          return false
+        }
+
+        event.preventDefault()
+        editor.update(() => {
+          const selection = $getSelection()
+          if ($isRangeSelection(selection)) {
+            // insertRawText 按 \n 拆分为换行节点，且不触碰 text/html，开销恒定
+            selection.insertRawText(text)
+          }
+        })
+        return true
+      },
+      // 高于默认富文本粘贴处理（COMMAND_PRIORITY_LOW），优先拦截
+      COMMAND_PRIORITY_HIGH
+    )
+  }, [editor])
+
+  return null
+}
+
 function DisabledPlugin({ disabled }: { disabled: boolean }) {
   const [editor] = useLexicalComposerContext()
 
@@ -420,6 +470,7 @@ export function LexicalPromptInputTextarea({
           ErrorBoundary={LexicalErrorBoundary}
         />
         <HistoryPlugin />
+        <PlainTextPastePlugin />
         <DisabledPlugin disabled={disabled} />
         <OnChangePlugin value={value} onChange={handleChange} />
         <FocusOnMountPlugin autoFocus={autoFocus && !disabled} />

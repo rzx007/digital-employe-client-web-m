@@ -1849,17 +1849,9 @@ class StreamRegistry:
                 if not ok:
                     await self._ensure_terminal_state(stream_msg_id, "interrupted")
             else:
-                logger.info(
-                    "[run] conv=%s stream completed normally, event_count=%d, text_len=%d",
-                    conversation_id, task.buffer.cursor, len(final_text),
-                )
-                evt = task.buffer.add({"status": "completed"})
-                logger.info(
-                    "[run] conv=%s broadcasting completed event: seq=%d, subscribers=%d",
-                    conversation_id, evt["seq"], len(task.subscribers),
-                )
-                self.broadcast(conversation_id, evt)
-
+                # 先 flush 终态到 DB，再广播 completed 事件。
+                # 这样前端收到 completed 时 DB 已有 final_text，
+                # 避免因 flush 未提交而读到空内容。
                 elapsed_ms = int((time.monotonic() - stream_start_time) * 1000)
                 ok = await self._flush_terminal(
                     stream_msg_id,
@@ -1870,6 +1862,18 @@ class StreamRegistry:
                 )
                 if not ok:
                     await self._ensure_terminal_state(stream_msg_id, "completed")
+
+                # terminal event 带上 content，前端可直接显示，
+                # 不必再等 DB 查询（避免 flush/broadcast 竞态）
+                evt = task.buffer.add({
+                    "status": "completed",
+                    "content": final_text,
+                })
+                logger.info(
+                    "[run] conv=%s broadcasting completed event: seq=%d, subscribers=%d, text_len=%d",
+                    conversation_id, evt["seq"], len(task.subscribers), len(final_text),
+                )
+                self.broadcast(conversation_id, evt)
 
         except asyncio.CancelledError:
             if task.status == "error" and task.error_message:
@@ -2043,7 +2047,7 @@ class StreamRegistry:
             try:
                 await asyncio.shield(
                     loop.run_in_executor(
-                        None, _finalize_task_stream, conversation_id, state_final
+                        _DB_WRITE_EXECUTOR, _finalize_task_stream, conversation_id, state_final
                     )
                 )
             except asyncio.CancelledError:

@@ -15,6 +15,20 @@ export function createApprovedAtTimestamp(): string {
   return new Date().toISOString()
 }
 
+/**
+ * 群澄清卡片是「组长会话中断消息」投影到群时间线的一条消息：行 id 是群消息自己的 id，
+ * 但 metadata.clarify_message_id 才等于被 approve 的组长消息 id（approvedId）。乐观封存
+ * 必须靠这个字段命中投影卡片，否则群里的 dock（groupActiveHitl 依赖 meta.approved_at）
+ * 永远关不掉，用户重复提交后端只能回「该消息已审批」。
+ */
+function metaClarifyMessageIdMatches(
+  meta: Record<string, unknown> | undefined,
+  approvedId: string
+): boolean {
+  if (!meta) return false
+  return parseDbMessageId(meta.clarify_message_id) === approvedId
+}
+
 function assistantMatchesApproved(
   m: UIMessage,
   approvedId: string,
@@ -25,6 +39,7 @@ function assistantMatchesApproved(
   const meta = (m as UIMessage & { metadata?: Record<string, unknown> })
     .metadata
   if (getApproveMessageIdFromMeta(meta) === approvedId) return true
+  if (metaClarifyMessageIdMatches(meta, approvedId)) return true
   if (toolCallId && assistantMessageHasToolCallId(m, toolCallId)) return true
   return false
 }
@@ -69,7 +84,9 @@ function cacheRowMatchesApproved(
   approvedId: string
 ): boolean {
   if (String(row.id) === approvedId) return true
-  return getApproveMessageIdFromMeta(row.metadata) === approvedId
+  if (getApproveMessageIdFromMeta(row.metadata) === approvedId) return true
+  // 群投影卡片：靠 clarify_message_id 命中（见 metaClarifyMessageIdMatches 说明）。
+  return metaClarifyMessageIdMatches(row.metadata, approvedId)
 }
 
 /** 与 composer 同步，refetch 前 initialMessages 也能带上 approved_at */

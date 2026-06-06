@@ -25,8 +25,8 @@ from src.service.agent.paths import (
 from src.service.agent.clarifying_questions_tool import submit_clarifying_questions
 from src.service.agent.document_plan_tool import submit_document_plan
 from src.service.agent.destructive_hitl import (
-    build_orchestrator_interrupt_on,
     get_session_flags,
+    resolve_orchestrator_interrupt_on,
 )
 from src.service.agent.prompts import (
     build_clarifying_questions_section,
@@ -130,6 +130,7 @@ def get_orchestrator_agent(
     bind_context: bool = True,
     shared_artifacts_dir: str | None = None,
     enable_hitl: bool = True,
+    clarify_only_hitl: bool = False,
     max_output_tokens: int | None = None,
 ):
     if bind_context:
@@ -268,17 +269,16 @@ def get_orchestrator_agent(
         get_current_time_tool,
     ]
 
-    if enable_hitl:
-        session_flags = (
-            get_session_flags(db, conversation_id) if conversation_id else {}
-        )
-        interrupt_on = build_orchestrator_interrupt_on(session_flags)
-    else:
-        # 群组长等「自动驱动、无真人确认」场景：关闭所有 HITL 中断（澄清问题/文档方案/
-        # 删除类工具）。否则组长一旦调 submit_clarifying_questions / submit_document_plan /
-        # delete_* 就会 interrupt 挂起等人审，群里没人点确认 → 该会话永久停在 interrupted。
-        # None = create_deep_agent 默认「无 HITL」（不挂 HumanInTheLoopMiddleware）。
-        interrupt_on = None
+    session_flags = (
+        get_session_flags(db, conversation_id)
+        if (enable_hitl and conversation_id)
+        else {}
+    )
+    interrupt_on = resolve_orchestrator_interrupt_on(
+        enable_hitl=enable_hitl,
+        clarify_only_hitl=clarify_only_hitl,
+        session_flags=session_flags,
+    )
 
     agent = create_deep_agent(
         model=model,

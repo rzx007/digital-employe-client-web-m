@@ -876,8 +876,11 @@ class GroupRoomService:
             auth_token=auth_token,
             shared_artifacts_dir=_shared,
             bind_context=False,
-            # 组长自动驱动、无真人确认：关闭 HITL，避免调澄清/方案/删除工具时挂起等人审。
+            # 组长派活：删除/文档方案类无审批者照常关 HITL；但「澄清问题」必须开——
+            # 否则 submit_clarifying_questions 不挂起、直接返回「已收到回答」串，组长会
+            # 误以为用户已澄清而凭空派活。澄清中断会投影成群澄清卡片，用户作答后 resume。
             enable_hitl=False,
+            clarify_only_hitl=True,
         )
 
         request_messages: list[dict[str, Any]] = [*history_messages]
@@ -1497,6 +1500,49 @@ class GroupRoomService:
             "is_text": False,
             "content": "",
         }
+
+    @staticmethod
+    def mark_clarify_card_approved(
+        db: Session,
+        room_conversation_id: int,
+        leader_conversation_id: int,
+        leader_message_id: int,
+        approved_at: str,
+    ) -> bool:
+        """把群时间线里对应的澄清投影卡片回标为已处理（extra_meta.approved_at）。
+
+        组长澄清以「组长会话中断消息」投影成群里一条卡片，approve 只标记了组长那条
+        消息；群投影卡片本身的 approved_at 不会被写。前端群场景靠投影卡片的
+        approved_at 收起 dock（见 groupActiveHitl），不回标 → refetch 后卡片复活、
+        重复要求用户作答。这里按 extra_meta 的 clarify_target_conversation_id /
+        clarify_message_id 定位那条投影卡片并补标。返回是否命中。
+        """
+        rows = db.scalars(
+            select(ConversationMessage)
+            .where(
+                ConversationMessage.conversation_id == room_conversation_id,
+                ConversationMessage.role == "assistant",
+            )
+            .order_by(ConversationMessage.id.desc())
+            .limit(50)
+        ).all()
+        for row in rows:
+            if not row.extra_meta:
+                continue
+            try:
+                meta = json.loads(row.extra_meta)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if (
+                meta.get("clarify_target_conversation_id") == leader_conversation_id
+                and meta.get("clarify_message_id") == leader_message_id
+            ):
+                if meta.get("approved_at"):
+                    return True  # 已标记，幂等
+                meta["approved_at"] = approved_at
+                row.extra_meta = json.dumps(meta, ensure_ascii=False)
+                return True
+        return False
 
     @staticmethod
     def leader_awaiting_clarification(db: Session, room: "GroupRoom") -> bool:
