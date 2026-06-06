@@ -197,6 +197,16 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
       error: "执行计划失败",
     },
   },
+  create_group_and_dispatch: {
+    icon: "👥",
+    label: "拉群派活",
+    verb: "拉群派活",
+    simple: {
+      running: "正在拉群并分派任务...",
+      done: "已拉群并交给组长统筹",
+      error: "拉群派活失败",
+    },
+  },
   list_workspace_employees: {
     icon: "👥",
     label: "查看团队",

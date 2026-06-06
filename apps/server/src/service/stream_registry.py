@@ -1734,23 +1734,28 @@ class StreamRegistry:
                     continue
 
                 text_part = ChatService._extract_text_from_chunk(serializable)
-                if text_part:
+                # 工具返回（ToolMessage）绝不能进 assistant 正文：read 读到的文件原文、
+                # write/edit 的 "Cannot write to … already exists" 回执、shell 的
+                # "[工作目录: …]" 环境提示、create_orchestration_plan 的 JSON 等，都是
+                # 给模型看的工具结果，应走 tool part 折叠卡片（buffer 仍保留完整
+                # serializable 供 parts 解析），绝不能糊进 msg.content 当正文平铺展示。
+                _is_tool_chunk = _chunk_is_tool_message(serializable)
+                if text_part and not _is_tool_chunk:
                     assistant_text_parts.append(text_part)
-                    # 模型正文 token = 真实进展，刷新内容计时
+                    # 模型正文 token = 真实进展，刷新内容计时（防止被无进展看门狗误判死）
                     task.touch_content()
-                    # 群协作：把成员/组长产出的文本增量逐字推到群时间线。
-                    # 但只推「模型自然语言（AIMessage）」，跳过「工具返回（ToolMessage）」
-                    # ——否则 create_orchestration_plan 等工具返回的结构化 JSON
-                    # （{"type":"plan_generated",...}）会被当文本糊在群里，很难看。
-                    if not _chunk_is_tool_message(serializable):
-                        try:
-                            from src.service.group_room_service import (
-                                relay_group_stream_delta,
-                            )
+                    # 群协作：把成员/组长产出的「模型自然语言」增量逐字推到群时间线。
+                    # 外层 not _is_tool_chunk 已过滤掉 ToolMessage（工具返回的文件原文、
+                    # plan JSON 等不会进这里），无需再判一次。
+                    try:
+                        from src.service.group_room_service import (
+                            relay_group_stream_delta,
+                        )
 
-                            relay_group_stream_delta(conversation_id, text_part)
-                        except Exception:
-                            pass
+                        relay_group_stream_delta(conversation_id, text_part)
+                    except Exception:
+                        pass
+                if text_part:
                     if not _first_token_recorded:
                         _stream_metrics.record_first_token(conversation_id)
                         _first_token_recorded = True
