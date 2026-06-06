@@ -1,5 +1,6 @@
 import type { ChatMessageDto, ConversationListItemDto } from "@/api/types"
 import type { Conversation, Message } from "@/types/chat"
+import { sanitizeAssistantContent } from "./sanitize-assistant-content"
 
 export function mapChatMessageToMessage(
   msg: ChatMessageDto,
@@ -24,7 +25,11 @@ export function mapChatMessageToMessage(
       msg.sender_label ??
       (msg.role === "user" ? "我" : ""),
     role: msg.role === "system" ? "assistant" : msg.role,
-    content: msg.content,
+    // assistant 历史正文兜底净化：剥掉早期版本误拼进 content 的工具结果噪音
+    content:
+      msg.role === "user"
+        ? msg.content
+        : sanitizeAssistantContent(msg.content),
     chunkJson: msg.chunk_json,
     streamState: msg.stream_state,
     streamCursor: msg.stream_cursor,

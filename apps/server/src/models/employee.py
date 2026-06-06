@@ -23,6 +23,8 @@ class Employee(Base):
     meta_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     shift_schedule_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     is_curator: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    # 自定义头像文件的本地存储路径；为空时前端回落到「名字前两个字」文本头像。
+    avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import time
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from src.service.agent_interface_service import agent_interface_service
@@ -58,6 +61,88 @@ def get_employee(employee_id: int, db: Session = Depends(get_db)) -> ResponseBas
     """根据员工ID查询员工详情。"""
     employee = EmployeeService.get_employee(db, employee_id)
     return ResponseBase(data=EmployeeService.employee_detail_dict(db, employee))
+
+
+# ---- 员工头像：自定义上传 + 读取 ----
+_AVATAR_DIR = Path.home() / ".digital-employee" / "avatars"
+_AVATAR_ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+_AVATAR_MAX_BYTES = 5 * 1024 * 1024  # 5MB
+_AVATAR_MEDIA = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
+
+
+@router.post("/employees/{employee_id}/avatar", response_model=ResponseBase[EmployeeRead])
+async def upload_employee_avatar(
+    employee_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> ResponseBase[EmployeeRead]:
+    """上传/替换员工自定义头像（图片）。"""
+    employee = EmployeeService.get_employee(db, employee_id)
+
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in _AVATAR_ALLOWED_EXT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"头像仅支持 {', '.join(sorted(_AVATAR_ALLOWED_EXT))} 格式",
+        )
+    data = await file.read()
+    if len(data) > _AVATAR_MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="头像文件不能超过 5MB",
+        )
+
+    _AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+    # 先删旧文件（可能是不同扩展名），再写新文件，文件名带 employee_id 唯一。
+    for old in _AVATAR_DIR.glob(f"{employee_id}.*"):
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    dest = _AVATAR_DIR / f"{employee_id}{ext}"
+    dest.write_bytes(data)
+
+    employee.avatar_url = str(dest)
+    db.commit()
+    db.refresh(employee)
+    return ResponseBase(data=EmployeeService.employee_detail_dict(db, employee))
+
+
+@router.delete("/employees/{employee_id}/avatar", response_model=ResponseBase[EmployeeRead])
+def delete_employee_avatar(
+    employee_id: int, db: Session = Depends(get_db)
+) -> ResponseBase[EmployeeRead]:
+    """删除员工自定义头像，恢复为文字头像。"""
+    employee = EmployeeService.get_employee(db, employee_id)
+    for old in _AVATAR_DIR.glob(f"{employee_id}.*"):
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    employee.avatar_url = None
+    db.commit()
+    db.refresh(employee)
+    return ResponseBase(data=EmployeeService.employee_detail_dict(db, employee))
+
+
+@router.get("/employees/{employee_id}/avatar")
+def get_employee_avatar(employee_id: int, db: Session = Depends(get_db)):
+    """读取员工自定义头像文件。"""
+    employee = EmployeeService.get_employee(db, employee_id)
+    avatar_path = getattr(employee, "avatar_url", None)
+    if not avatar_path or not Path(avatar_path).is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="该员工无自定义头像")
+    ext = Path(avatar_path).suffix.lower()
+    return FileResponse(
+        avatar_path,
+        media_type=_AVATAR_MEDIA.get(ext, "application/octet-stream"),
+    )
 
 
 @router.put(

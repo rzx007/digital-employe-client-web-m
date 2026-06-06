@@ -7,7 +7,6 @@ import { Badge } from "@workspace/ui/components/badge"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
 import { EmployeeContactAvatar } from "@/components/chat/contacts/contact-avatars"
-import { createDiceBearAvatar } from "@/lib/avatar"
 import { fireRealisticConfetti } from "@/lib/celebration/realistic-confetti"
 import {
   isRecruitmentToolRunning,
@@ -77,12 +76,6 @@ function EmployeeHiredCardInner({
     [resultText]
   )
 
-  const employeeId = payload?.employee_id
-  const avatarSrc = React.useMemo(
-    () =>
-      employeeId != null ? createDiceBearAvatar(String(employeeId)) : undefined,
-    [employeeId]
-  )
 
   const wasPendingRef = React.useRef(false)
 
@@ -151,7 +144,6 @@ function EmployeeHiredCardInner({
         <div className="flex items-start gap-3">
           <EmployeeContactAvatar
             name={payload.employee_name}
-            avatar={avatarSrc}
             avatarClassName="size-11 rounded-lg"
             fallbackClassName="rounded-lg bg-primary/10 text-sm font-medium text-primary"
           />

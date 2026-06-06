@@ -101,28 +101,20 @@ export function mapStoredMessagesToUIMessages(
           return uiMessage
         }
 
-        if (message.content) {
+        // 流式进行中不渲染 DB.content：它是后端把每个 text chunk（含工具输出文本，如
+        // shell 结果 / 技能原文）平铺拼接的无结构脏文本，直接当正文会糊出一坨原始 dump，
+        // 且 state:"done" 还会和随后 resume SSE 的实时结构块打架。进行中内容由 resume SSE
+        // 重放 buffer 重建（见下方 streaming 占位分支）；content 仅作历史/终态无 message_parts
+        // 时的兜底。
+        if (message.content && message.streamState !== "streaming") {
           if (
             shouldHideStaleQueuePlaceholder(
               message.streamState,
               message.content
             )
           ) {
-            const uiMessage: UIMessage = {
-              id: message.id,
-              role: message.role,
-              parts: [
-                {
-                  type: "text",
-                  text: "正在执行…",
-                  state: "streaming" as const,
-                },
-              ],
-            }
-            ;(
-              uiMessage as UIMessage & { metadata?: Record<string, unknown> }
-            ).metadata = assistantMeta
-            return uiMessage
+            // 陈旧的队列占位提示（如"已加入执行队列"）：不渲染这条，也不塞"正在执行…"。
+            return null
           }
           const uiMessage: UIMessage = {
             id: message.id,
@@ -142,15 +134,10 @@ export function mapStoredMessagesToUIMessages(
         }
 
         if (message.streamState === "streaming") {
-          const uiMessage: UIMessage = {
-            id: message.id,
-            role: message.role,
-            parts: [],
-          }
-          ;(
-            uiMessage as UIMessage & { metadata?: Record<string, unknown> }
-          ).metadata = assistantMeta
-          return uiMessage
+          // 进行中且尚无结构化 parts：不渲染这条（不塞"正在执行…"假气泡、也不渲染脏 content）。
+          // 顶部"正在生成回复..."打字指示器负责 loading 态；resume SSE 重放 buffer 后会用
+          // 结构化 parts 接管并渲染真实内容。
+          return null
         }
 
         return null

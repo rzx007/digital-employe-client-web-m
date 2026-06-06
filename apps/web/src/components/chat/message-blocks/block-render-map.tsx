@@ -19,10 +19,10 @@ import { EmployeesDismissedBatchCard } from "./employees-dismissed-batch-card"
 import { UserActionSummaryCard } from "./user-action-summary-card"
 import { DestructiveDeleteConfirmCard } from "./destructive-delete-confirm-card"
 import { FileChangeCards } from "./file-change-cards"
+import { FinalResponseContent } from "./artifact-path-chip"
 import { SkillExplorationBlock } from "./skill-exploration-block"
 import { SummarizationCheckpointBlock } from "./summarization-checkpoint-block"
 import { ThinkingBlock } from "./thinking-block"
-import { MessageResponse } from "@workspace/ui/components/ai-elements/message"
 import { cn } from "@workspace/ui/lib/utils"
 import { IconAlertTriangle, IconFile } from "@tabler/icons-react"
 import { useCuratorFile } from "@/components/chat/curator/use-curator-file"
@@ -33,7 +33,11 @@ import {
 } from "@/lib/chat/hitl"
 import { normalizeToolFilePath } from "@/lib/chat/pending-resources/paths"
 import { useArtifactStore } from "@/stores/artifact-store"
-import type { CommandMeta, FileMeta, MentionMeta } from "../shared/chat-view-shared"
+import type {
+  CommandMeta,
+  FileMeta,
+  MentionMeta,
+} from "../shared/chat-view-shared"
 
 export interface BlockRenderContext {
   messageId: string | null
@@ -363,11 +367,7 @@ export function BlockRenderer({
   }
   if (block.kind === "thinking") {
     return (
-      <ThinkingBlock
-        className="w-full"
-        key={block.key}
-        text={block.text}
-      />
+      <ThinkingBlock className="w-full" key={block.key} text={block.text} />
     )
   }
   if (block.kind === "orchestrator-task-summary") {
@@ -392,7 +392,11 @@ export function BlockRenderer({
         filesMeta={filesMeta}
         messageId={messageId ?? ""}
       />
-      <MessageResponse className="flex-1">{block.text}</MessageResponse>
+      <FinalResponseContent
+        className="flex-1"
+        conversationId={conversationId}
+        text={block.text}
+      />
     </div>
   )
 }

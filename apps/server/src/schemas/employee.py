@@ -70,6 +70,7 @@ class EmployeeRead(BaseModel):
     metadata: dict[str, Any]
     shift_schedule: dict[str, Any]
     is_curator: bool
+    avatar: str | None = None
     created_at: datetime
     updated_at: datetime
 

@@ -4,7 +4,6 @@ import * as React from "react"
 import { Badge } from "@workspace/ui/components/badge"
 import { cn } from "@workspace/ui/lib/utils"
 import { EmployeeContactAvatar } from "@/components/chat/contacts/contact-avatars"
-import { createDiceBearAvatar } from "@/lib/avatar"
 
 export const HIRED_MINI_CARD =
   "min-w-0 overflow-hidden rounded-lg border bg-card p-2.5 @[22rem]/recruitment:p-3"
@@ -26,10 +25,6 @@ export function EmployeeHiredPreview({
   compact?: boolean
   className?: string
 }) {
-  const avatarSrc = React.useMemo(
-    () => createDiceBearAvatar(String(employeeId)),
-    [employeeId]
-  )
   const avatarSize = compact ? "size-9" : "size-11"
   const idLine = employeeCode
     ? `员工 ID ${employeeId} · ${employeeCode}`
@@ -45,7 +40,6 @@ export function EmployeeHiredPreview({
     >
       <EmployeeContactAvatar
         name={employeeName}
-        avatar={avatarSrc}
         avatarClassName={cn(avatarSize, "rounded-lg")}
         fallbackClassName={cn(
           "rounded-lg bg-primary/10 font-medium text-primary",

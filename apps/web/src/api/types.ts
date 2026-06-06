@@ -152,6 +152,8 @@ export interface Employee {
   metadata: EmployeeMetadata
   shift_schedule: ShiftSchedule
   is_curator: boolean
+  /** 自定义上传头像 URL；为空时前端回落到「名字前两个字」文本头像。 */
+  avatar?: string | null
   created_at: string
   updated_at: string
 }

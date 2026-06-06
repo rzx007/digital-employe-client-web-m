@@ -1,11 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
-import { IconActivity, IconX } from "@tabler/icons-react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { IconActivity, IconTrash, IconX } from "@tabler/icons-react"
+import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
-import { fetchRuntimeConfig } from "@/api/system"
+import { fetchRuntimeConfig, forceClearAllStreams } from "@/api/system"
 import type {
   StreamMetricsInflight,
   StreamMetricsRecent,
@@ -248,6 +249,30 @@ export function StreamMetricsOverlay() {
     staleTime: 0,
   })
 
+  // 注意：所有 hook 必须在任何提前 return 之前调用，否则 hook 数量随渲染变化
+  // → "Rendered more hooks than during the previous render"。
+  const queryClient = useQueryClient()
+  const [clearing, setClearing] = React.useState(false)
+  const handleClearZombies = React.useCallback(async () => {
+    setClearing(true)
+    try {
+      const res = await forceClearAllStreams()
+      const n = res?.data?.cleared_count ?? 0
+      const sp = res?.data?.spared_count ?? 0
+      const q = res?.data?.drained_queue ?? 0
+      toast.success(
+        `已清理 ${n} 条卡死流、${q} 条排队；放过 ${sp} 条正常运行的流`
+      )
+      queryClient.invalidateQueries({ queryKey: ["system", "runtime"] })
+    } catch (e) {
+      toast.error(
+        "清理僵尸流失败：" + (e instanceof Error ? e.message : String(e))
+      )
+    } finally {
+      setClearing(false)
+    }
+  }, [queryClient])
+
   if (!devMode) return null
 
   if (!open) {
@@ -281,15 +306,27 @@ export function StreamMetricsOverlay() {
             {maxC > 0 ? ` · cap ${maxC}` : ""}
           </span>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-5"
-          onClick={() => setOpen(false)}
-          title="关闭 (Ctrl+Shift+M)"
-        >
-          <IconX className="size-3" />
-        </Button>
+        <div className="inline-flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-5 text-muted-foreground hover:text-red-600"
+            onClick={handleClearZombies}
+            disabled={clearing}
+            title="清理僵尸流：一键清掉所有在飞/排队的流并腾空槽位（不重启）"
+          >
+            <IconTrash className={cn("size-3", clearing && "animate-pulse")} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-5"
+            onClick={() => setOpen(false)}
+            title="关闭 (Ctrl+Shift+M)"
+          >
+            <IconX className="size-3" />
+          </Button>
+        </div>
       </div>
 
       <Section title="并发">

@@ -66,6 +66,11 @@ function buildDevBackendCommand(): { command: string[]; cwd: string } {
     DEV_UVICORN_HOST,
     "--port",
     String(BACKEND_PORT),
+    // Windows: 强制 SelectorEventLoop 取代 uvicorn 默认的 ProactorEventLoop。
+    // Proactor 在大量连接重置(WinError 10054)/超长请求后会卡死、整进程再也连不上模型
+    // （curl 同机秒连，证明是 Proactor 坏了）。自定义 loop 工厂见 src/uvicorn_selector_loop.py。
+    "--loop",
+    "src.uvicorn_selector_loop:loop_factory",
   ]
   // Windows 上 --reload 易残留多个监听进程，导致旧代码仍响应 API
   if (process.platform !== "win32") {

@@ -14,7 +14,10 @@ AGENT_MAX_CONCURRENT_STREAMS_CAP = 8
 # 单连接可排空的范围；其余流排队。可经 config_kvs AGENT_MAX_INFLIGHT / AGENT_MAX_HEAVY 覆盖
 # （设 0 = 关闭逃生阀）。
 AGENT_MAX_INFLIGHT_KV = "AGENT_MAX_INFLIGHT"
-AGENT_MAX_INFLIGHT_DEFAULT = 4
+# 4→2：实测 orchestration 突发并发(组长一次派多员工，每条还多一次 SkillsMiddleware
+# before_agent 模型调用)会触发「调模型前卡 45s」竞态，~50% 流卡死。降到 2 减少同时
+# 在飞的流→显著降低触发概率（群聊变串行一点，但能用）。可经 config_kvs AGENT_MAX_INFLIGHT 覆盖。
+AGENT_MAX_INFLIGHT_DEFAULT = 2
 AGENT_MAX_INFLIGHT_CAP = 32
 
 AGENT_MAX_HEAVY_KV = "AGENT_MAX_HEAVY"
@@ -120,8 +123,9 @@ class AgentRuntimePolicy:
         return 0
 
     def slot_gating_enabled(self) -> bool:
-        """总闸或 heavy 闸任一 >0 时启用槽位排队；默认两者均为 0（禁用）。"""
-        return self.effective_max_inflight() > 0 or self.effective_max_heavy() > 0
+        """仅按**不分类的总并发闸**判定是否排队（heavy/light 不再用于槽位限流，
+        改为控制单请求输出 token 上限，见 build_chat_model max_tokens）。"""
+        return self.effective_max_inflight() > 0
 
 
 def parse_agent_max_concurrent_streams(

@@ -36,6 +36,7 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE employees ADD COLUMN shift_schedule_json TEXT DEFAULT '{}'"))
 
     ensure_column("employees", "is_curator", "is_curator BOOLEAN NOT NULL DEFAULT 0")
+    ensure_column("employees", "avatar_url", "avatar_url VARCHAR(512)")
 
     # 兼容历史任务表：补充新增字段
     ensure_column("employee_tasks", "next_run_at", "next_run_at DATETIME")

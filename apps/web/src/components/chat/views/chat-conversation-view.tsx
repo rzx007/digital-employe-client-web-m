@@ -44,6 +44,9 @@ import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
 
 import { cancelConversationStream } from "@/api/chat"
 import { getContactId } from "@/lib/chat/contact-utils"
+import { isGroupDeepLinkExecutionView } from "@/lib/chat/group-navigation"
+import { getLastAssistantMessage } from "@/lib/chat/message-query-cache"
+import { useChatStore } from "@/stores/chat-store"
 
 import { toast } from "sonner"
 
@@ -214,6 +217,28 @@ export function ConversationChatView({
 
     queryClient,
   })
+
+  // 群深链进成员执行会话：独立 key 重挂会清空本地流式内容，DB 又拿不到「正在
+  // 流式但未落库」的部分 → 内容消失。等 messages 加载完后，若该会话正在流式
+  // （DB 最后一条 assistant=streaming），强制触发一次 resume 从后端 buffer 拉回，
+  // 让点进正在跑的成员会话能看到实时逐字输出。
+  const groupNavReturn = useChatStore((s) => s.groupNavigationReturn)
+  const retryResume = session.retryResumeIfNeeded
+  useEffect(() => {
+    if (isMessagesLoading) return
+    if (!isGroupDeepLinkExecutionView(groupNavReturn, conversationId)) return
+    const last = getLastAssistantMessage(storedMessages)
+    if (last?.streamState === "streaming") {
+      retryResume()
+    }
+    // 仅在「深链目标会话 + 消息加载完」时尝试一次；storedMessages 变化驱动重判
+  }, [
+    conversationId,
+    groupNavReturn,
+    isMessagesLoading,
+    storedMessages,
+    retryResume,
+  ])
 
   useSyncPendingFromComposer(conversationId, messages, status)
 

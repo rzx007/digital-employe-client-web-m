@@ -25,19 +25,22 @@ from src.service.agent.orchestrator.runtime import (
 def create_group_and_dispatch(
     group_name: str,
     employee_ids: str | list,
-    task: str,
+    task: str = "",
 ) -> str:
-    """拉一个群并把任务派进去，由群里的组长统筹分解、派活给成员、协作完成后汇总。
+    """拉一个多员工协作群（只建群拉人，**不自动派活**）。
 
-    调用时机：用户要求"拉群协作"完成一个**需要多名员工配合**的任务时。
+    调用时机：用户要求"拉群协作"时。本工具只负责建群、把员工拉进去；**不会**把
+    任务派进群。建群后告知用户「进群发送具体任务」，用户在群里发任务后，群组长
+    才开始分解、派活、协作、汇总。这样保持「先建群、再发任务」的清晰节奏，避免
+    拉群后组长在没有明确目标时空忙。
     建议先用 list_workspace_employees 确认成员，必要时先 hire_employee 招人。
 
     参数：
       group_name: 群名称（如"活动落地页协作群"）。
       employee_ids: 要拉进群的员工ID列表（JSON 数组或真数组，如 [3, 4, 19]），至少 2 个。
-      task: 派给这个群要完成的任务描述（组长会据此分解并分配给成员）。
+      task: （可选）任务描述。即使填了也**不会**自动派活，仅用于给用户的进群提示。
 
-    返回：建群与派活结果。成员产出与组长最终汇总会自动回流到本会话。
+    返回：建群结果，并提示用户进群发送任务。
     """
     db = get_db()
     workspace_id = get_workspace_id()
@@ -124,22 +127,22 @@ def create_group_and_dispatch(
     room.origin_curator_conversation_id = curator_conversation_id
     db.commit()
 
-    # 4) 把任务派进群（无 @ → 交给组长统筹）
-    summary = GroupRoomService.handle_group_message(
-        db, group_conv, task, extra_meta=None, auth_token=None
-    )
-
+    # 4) 只建群、不自动派活：拉群仅完成「建群拉人」，不把任务派进去。
+    #    用户进群后发具体任务，组长才开始统筹。避免拉群后组长在没有明确目标时
+    #    就自顾自地「互相认识、查看成员信息」等无意义动作。
     member_names = "、".join(e.name for e in employees)
+    hint = ""
+    if task and task.strip():
+        # 总管带了任务也不自动派；提示用户进群发，保持「先建群、再发任务」的节奏
+        hint = f"如需开始，请进群发送任务（例如：{task.strip()[:40]}…）。"
     return json.dumps({
-        "type": "group_created_and_dispatched",
+        "type": "group_created",
         "group_id": group.id,
         "group_conversation_id": group_conv.id,
         "room_id": room.id,
         "members": member_names,
-        "dispatch": summary,
         "message": (
-            f"已拉群「{group_name}」（成员：{member_names}），"
-            f"并把任务交给群组长统筹。组长会分解任务、分配给成员、"
-            f"协作完成后把最终结果汇总回来给你。"
+            f"已拉群「{group_name}」（成员：{member_names}）。"
+            f"进群发送具体任务后，组长会分解并分配给成员协作完成。{hint}"
         ),
     }, ensure_ascii=False)

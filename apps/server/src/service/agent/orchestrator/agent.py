@@ -13,7 +13,7 @@ from src.service.agent.basic_file_backend import BasicFileFilesystemBackend
 from deepagents.middleware.permissions import FilesystemPermission
 
 from src.core.config import get_settings, is_agent_virtual_mode
-from src.llm.factory import build_chat_model
+from src.llm.factory import build_chat_model, resolve_output_tokens
 from src.service.agent.checkpointer import get_checkpointer
 from src.service.agent.paths import (
     SERVICE_DIR,
@@ -25,8 +25,8 @@ from src.service.agent.paths import (
 from src.service.agent.clarifying_questions_tool import submit_clarifying_questions
 from src.service.agent.document_plan_tool import submit_document_plan
 from src.service.agent.destructive_hitl import (
-    build_orchestrator_interrupt_on,
     get_session_flags,
+    resolve_orchestrator_interrupt_on,
 )
 from src.service.agent.prompts import (
     build_clarifying_questions_section,
@@ -73,6 +73,52 @@ from src.service.skill_shell_backend import SkillAwareShellBackend
 
 load_dotenv()
 
+import threading as _threading
+from functools import wraps as _wraps
+
+# orchestrator 工具 DB 串行锁（按会话隔离）。根因：组长把一条共享 Session(leader_db)
+# 交给并发工具线程用（deepagents 一轮里多个工具走 asyncio.gather 并发执行），多个
+# 线程同时在该连接上 execute/fetch → `sqlite3.InterfaceError: bad parameter or other
+# API misuse`，组长流崩溃。给 DB 类工具加锁，让同一会话的工具整段(execute+fetch+commit)
+# 串行独占连接。用**专用** RLock（非 db.session.SQLITE_ACCESS_LOCK），只串行本会话自己的
+# 工具，不阻塞其它流的 flush、不影响成员流。按 conversation_id 隔离，不同组长互不串。
+_ORCH_DB_TOOL_LOCKS: dict[int, _threading.RLock] = {}
+_ORCH_DB_TOOL_LOCKS_GUARD = _threading.Lock()
+
+
+def _orch_db_tool_lock():
+    from src.service.agent.orchestrator.runtime import get_conversation_id
+
+    try:
+        cid = get_conversation_id()
+    except Exception:
+        cid = None
+    key = cid if cid is not None else -1
+    with _ORCH_DB_TOOL_LOCKS_GUARD:
+        lock = _ORCH_DB_TOOL_LOCKS.get(key)
+        if lock is None:
+            lock = _ORCH_DB_TOOL_LOCKS[key] = _threading.RLock()
+        return lock
+
+
+def _serialize_db_tool(tool):
+    """就地把工具的同步执行包进会话级 DB 锁（幂等；只包 .func，工具均为同步）。"""
+    fn = getattr(tool, "func", None)
+    if fn is None or getattr(fn, "_orch_db_serialized", False):
+        return tool
+
+    @_wraps(fn)
+    def _guarded(*args, **kwargs):
+        with _orch_db_tool_lock():
+            return fn(*args, **kwargs)
+
+    _guarded._orch_db_serialized = True
+    try:
+        tool.func = _guarded
+    except Exception:
+        pass  # 工具对象不可改则跳过（不影响功能，仅该工具未串行化）
+    return tool
+
 
 def get_orchestrator_agent(
     workspace_id: int,
@@ -83,6 +129,9 @@ def get_orchestrator_agent(
     *,
     bind_context: bool = True,
     shared_artifacts_dir: str | None = None,
+    enable_hitl: bool = True,
+    clarify_only_hitl: bool = False,
+    max_output_tokens: int | None = None,
 ):
     if bind_context:
         set_context(
@@ -94,7 +143,8 @@ def get_orchestrator_agent(
         )
 
     settings = get_settings()
-    model = build_chat_model()
+    # 组长/总管自身的输出（拆解派活/简短汇总）默认 standard 即够；不传则走默认。
+    model = build_chat_model(max_tokens=resolve_output_tokens(max_output_tokens))
 
     base_dir = SERVICE_DIR
     artifacts_path = Path(settings.artifacts_path)
@@ -197,6 +247,17 @@ def get_orchestrator_agent(
         use_session_history_file=use_session_history,
     )
 
+    # 【二分定位 2026-06-05】临时默认关闭 orchestrator 的 SummarizationMiddleware：
+    # 排查“组长模型调用卡在 pre-httpx 的 await、httpx 超时不触发、循环正常”的死锁——
+    # 最大嫌疑是上下文大时 summarization 嵌套发模型调用卡住。设 ORCH_SUMMARIZATION=1 恢复。
+    # 若关掉后群聊不再卡 → 锁定是 summarization；仍卡 → 排除它，再查别处。
+    import os as _os
+
+    _orch_summarization_on = _os.getenv("AGENT_SUMMARIZATION", "0").strip() == "1"
+    _orch_middleware = (
+        [summarization_mw, summarization_tool_mw] if _orch_summarization_on else []
+    )
+
     shell_execute_tool = create_shell_execute_tool(
         shell_backend, artifacts_dir=str(artifacts_dir)
     )
@@ -209,9 +270,15 @@ def get_orchestrator_agent(
     ]
 
     session_flags = (
-        get_session_flags(db, conversation_id) if conversation_id else {}
+        get_session_flags(db, conversation_id)
+        if (enable_hitl and conversation_id)
+        else {}
     )
-    interrupt_on = build_orchestrator_interrupt_on(session_flags)
+    interrupt_on = resolve_orchestrator_interrupt_on(
+        enable_hitl=enable_hitl,
+        clarify_only_hitl=clarify_only_hitl,
+        session_flags=session_flags,
+    )
 
     agent = create_deep_agent(
         model=model,
@@ -219,30 +286,33 @@ def get_orchestrator_agent(
         skills=["/skills/"],
         tools=[
             *orchestrator_tools,
-            list_workspace_employees,
-            list_workspace_skills,
-            get_workspace_skill_detail,
-            get_employee,
-            update_employee,
-            delete_employee,
-            delete_employees_batch,
-            recruit_employee,
-            hire_employee,
-            hire_employees,
-            create_orchestration_plan,
-            confirm_orchestration_plan,
+            # DB 类工具：包会话级串行锁，杜绝并发工具线程同时用共享 leader_db 连接致
+            # sqlite3.InterfaceError。非 DB / 走网络的工具（shell/memory/time、市场技能
+            # 搜索安装）不包，避免长操作占锁。
+            _serialize_db_tool(list_workspace_employees),
+            _serialize_db_tool(list_workspace_skills),
+            _serialize_db_tool(get_workspace_skill_detail),
+            _serialize_db_tool(get_employee),
+            _serialize_db_tool(update_employee),
+            _serialize_db_tool(delete_employee),
+            _serialize_db_tool(delete_employees_batch),
+            _serialize_db_tool(recruit_employee),
+            _serialize_db_tool(hire_employee),
+            _serialize_db_tool(hire_employees),
+            _serialize_db_tool(create_orchestration_plan),
+            _serialize_db_tool(confirm_orchestration_plan),
             create_group_and_dispatch,
-            update_task,
-            delete_task,
-            delete_tasks_batch,
-            cancel_plan,
-            list_tasks,
+            _serialize_db_tool(update_task),
+            _serialize_db_tool(delete_task),
+            _serialize_db_tool(delete_tasks_batch),
+            _serialize_db_tool(cancel_plan),
+            _serialize_db_tool(list_tasks),
             # 用户明确要求总管亲自执行（含长文档）时与员工 agent 相同的 HITL 门
             submit_clarifying_questions,
             submit_document_plan,
             # 技能发现与安装（SkillsMP 仓库 + 内置技能）
             list_builtin_skills,
-            install_builtin_skill,
+            _serialize_db_tool(install_builtin_skill),
             search_market_skills,
             get_market_skill_detail,
             install_market_skill,
@@ -251,7 +321,7 @@ def get_orchestrator_agent(
         backend=backend,
         checkpointer=checkpointer,
         interrupt_on=interrupt_on,
-        middleware=[summarization_mw, summarization_tool_mw],
+        middleware=_orch_middleware,
         subagents=[],
         permissions=[
             FilesystemPermission(

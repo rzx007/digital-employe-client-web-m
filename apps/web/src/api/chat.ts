@@ -1,5 +1,6 @@
 import type { Employee, Group as ApiGroup } from "@/api/types"
-import { createDiceBearAvatar, CURATOR_AVATAR_URL } from "@/lib/avatar"
+import { CURATOR_AVATAR_URL } from "@/lib/avatar"
+import { getServerBaseUrl } from "@/lib/request"
 import { fetchEmployees } from "@/api/employee"
 import { createGroup as createGroupApi, fetchGroups } from "@/api/group"
 import {
@@ -69,9 +70,13 @@ function mapEmployeeToAIEmployee(emp: Employee): AIEmployee {
     id: String(emp.id),
     name: emp.name ?? emp.metadata?.employee_name,
     role: emp.description || "",
+    // 总管保留固定图片头像；普通员工不再用生成式头像（DiceBear），改为
+    // 自定义上传头像(emp.avatar，后端相对路径→拼后端 base) → 无则留空，渲染时回落到两字头像。
     avatar: emp.is_curator
       ? CURATOR_AVATAR_URL
-      : createDiceBearAvatar(String(emp.id)),
+      : emp.avatar
+        ? getServerBaseUrl() + emp.avatar
+        : undefined,
     status: mapStatus(emp.metadata?.status ?? 0),
     specialty: emp.metadata?.capability_desc ?? "",
     skills: emp.metadata?.skills ?? [],

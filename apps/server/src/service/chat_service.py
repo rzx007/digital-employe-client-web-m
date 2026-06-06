@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import logging
 import os
 import json
@@ -36,6 +37,26 @@ from src.service.agent import delete_conversation_checkpoint, get_agent
 
 
 logger = logging.getLogger(__name__)
+
+
+async def _commit_db_off_loop(db: Session) -> None:
+    """把同步 db.commit() 放到 DB 写线程，避免阻塞事件循环。
+
+    SQLite 写锁竞争时 commit 可阻塞 30s，期间事件循环无法调度任何协程/I/O，
+    导致 agent.astream() 无法发起 httpx 请求、run_coro_on_main_loop 超时。
+    """
+    from src.service.stream_registry import _DB_WRITE_EXECUTOR
+
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(_DB_WRITE_EXECUTOR, db.commit)
+
+
+async def _refresh_db_off_loop(db: Session, obj: Any) -> None:
+    """把同步 db.refresh() 放到 DB 写线程，避免阻塞事件循环。"""
+    from src.service.stream_registry import _DB_WRITE_EXECUTOR
+
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(_DB_WRITE_EXECUTOR, db.refresh, obj)
 
 
 class ChatService:
@@ -383,8 +404,7 @@ class ChatService:
         db.add(message)
         conversation.updated_at = cst_now()
         db.add(conversation)
-        db.commit()
-        db.refresh(message)
+        # 注意：不再在此处 commit/refresh，由调用方统一提交（避免事件循环上同步 SQLite 写）
         return message
 
     @staticmethod
@@ -597,19 +617,63 @@ class ChatService:
         """
         from src.service.group_room_service import GroupRoomService
 
+        # 1) 立即反馈：用户消息一进来先回一条「已收到，正在安排」，让前端马上有反馈，
+        #    不必等 handle_group_message（同步派活、构建组长 agent、启动流，可能几秒+）
+        #    整个跑完。否则发消息后会干等、卡住时永远收不到任何回应。
+        ack_payload = {
+            "type": "group_ack",
+            "data": {"message": "已收到，正在安排组长统筹…"},
+        }
+        yield f"data: {json.dumps(ack_payload, ensure_ascii=False)}\n\n"
+
+        conv_id = conversation.id
+
+        def _dispatch_in_thread() -> dict:
+            # 在独立线程用**独立 session**（SQLAlchemy session 非线程安全，不能跨线程
+            # 复用请求级 db）。重新取一次 conversation 再派活。
+            from src.db.session import get_session_local
+            from src.models.conversation import Conversation as _Conv
+
+            tdb = get_session_local()()
+            try:
+                conv = tdb.get(_Conv, conv_id)
+                if conv is None:
+                    raise RuntimeError(f"群会话 {conv_id} 不存在")
+                return GroupRoomService.handle_group_message(
+                    tdb,
+                    conv,
+                    question,
+                    extra_meta=extra_meta,
+                    auth_token=auth_token,
+                )
+            finally:
+                tdb.close()
+
         try:
-            summary = GroupRoomService.handle_group_message(
-                db,
-                conversation,
-                question,
-                extra_meta=extra_meta,
-                auth_token=auth_token,
+            # 2) 兜底：派活整体加超时保护。handle_group_message 同步、放线程跑并设
+            #    墙钟上限，卡住也能返回错误反馈而不是让用户永远等。
+            import asyncio
+
+            summary = await asyncio.wait_for(
+                asyncio.to_thread(_dispatch_in_thread),
+                timeout=60.0,
             )
             payload = {
                 "type": "group_dispatched",
                 "data": summary,
             }
             yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+        except asyncio.TimeoutError:
+            logger.error("群消息派活超时(>60s) conv=%s", conversation.id)
+            yield (
+                "data: "
+                + json.dumps(
+                    {"error": "组长安排任务超时，请稍后重试或检查模型服务。"},
+                    ensure_ascii=False,
+                )
+                + "\n\n"
+            )
             yield "data: [DONE]\n\n"
         except Exception as e:
             logger.error("群消息处理失败: %s", e, exc_info=True)
@@ -627,8 +691,26 @@ class ChatService:
         auth_token: str | None = None,
     ):
         settings = get_settings()
-        
+
+        # 阶段计时：first-yield 前全是同步调用，任一步阻塞都会卡住事件循环→所有请求一起卡。
+        # 这组 [stream-phase] 日志精确钉出卡在哪一步（构建 agent / 加载历史 / request_start / ...）。
+        import time as _time
+
+        _t_start = _time.monotonic()
+        _t_last = _t_start
+
+        def _phase(name: str):
+            nonlocal _t_last
+            _now = _time.monotonic()
+            logger.info(
+                "[stream-phase] conv=%s %s (本段 +%.3fs, 累计 %.3fs)",
+                conversation_id, name, _now - _t_last, _now - _t_start,
+            )
+            _t_last = _now
+
+        _phase("enter")
         conversation = ChatService.get_conversation(db, conversation_id)
+        _phase("got_conversation")
 
         # 群协作：群会话没有"单一 agent"，改为路由到被 @ 的成员私有会话，
         # 群时间线通过投影 + WorkspaceEventBus(room_message) 实时更新。
@@ -649,6 +731,7 @@ class ChatService:
             conversation_id=conversation_id,
             limit=history_limit,
         )
+        _phase(f"loaded_history(n={len(history_messages)}, last_input_tokens={last_input_tokens})")
         effective_limit = ChatService._resolve_effective_history_limit(
             settings,
             last_input_tokens,
@@ -691,8 +774,11 @@ class ChatService:
             content="",
             extra_meta=None,
         )
-        db.commit()
-        
+        # 两条消息都已 add 到 session，统一一次 commit（不阻塞事件循环）
+        await _commit_db_off_loop(db)
+        await _refresh_db_off_loop(db, assistant_msg)
+        _phase("appended_user+assistant_msg+commit")
+
         # 根据会话ID获取会话详情，然后获取root_path
         workspace = db.get(Workspace, conversation.workspace_id)
         if not workspace:
@@ -700,6 +786,7 @@ class ChatService:
         
         target_type = conversation.target_type
         target_id = conversation.target_id
+        _phase(f"building_agent(target_type={target_type})")
         if target_type == "curator":
             # 注入 @mention 上下文，告知 orchestrator 用户指定了哪些员工
             if extra_meta and extra_meta.get("mentions"):
@@ -713,6 +800,9 @@ class ChatService:
                 question = mention_context + question
 
             from src.service.agent.orchestrator import get_orchestrator_agent
+            # 注意：必须在本协程上下文同步构建——get_orchestrator_agent 内部用 ContextVar
+            # (_db_session_ctx) 绑定 db，挪到线程池会绑到工作线程上下文、后台任务读不到
+            # → "orchestrator DB session not set"。构建耗时优化走「缓存 agent」而非线程池。
             agent = get_orchestrator_agent(
                 workspace_id=conversation.workspace_id,
                 db=db,
@@ -738,7 +828,8 @@ class ChatService:
             agent = get_agent(skills_path, root_path, employee_id=employee.id if target_type == "employee" else None, conversation_id=conversation_id)
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee、group 或 curator。")
-        
+        _phase("built_agent")
+
         try:
             skill_question = question
             if skill_name and target_type != "curator":
@@ -750,7 +841,8 @@ class ChatService:
                 conversation_id=conversation_id,
             )
             request_messages.append({"role": "user", "content": user_content})
-            
+            _phase("built_user_content")
+
             from src.service.stream_registry import registry
             from src.service.agent_stream_queue import StartResult
             
@@ -798,11 +890,12 @@ class ChatService:
                 ),
                 source="user_chat",
             )
-            
+            _phase(f"request_start_returned({start_result})")
+
             if start_result == StartResult.REJECTED:
                 assistant_msg.stream_state = "error"
                 assistant_msg.content = "当前会话已有正在执行的任务"
-                db.commit()
+                await _commit_db_off_loop(db)
                 yield f"data: {json.dumps({'error': '当前会话已有正在执行的任务'}, ensure_ascii=False)}\n\n"
                 return
 
@@ -810,7 +903,7 @@ class ChatService:
                 "queued" if start_result == StartResult.QUEUED else "streaming"
             )
             conversation.status = "running"
-            db.commit()
+            await _commit_db_off_loop(db)
             try:
                 from src.service.workspace_events import WorkspaceEventBus, CONVERSATION_STATUS_CHANGED
                 WorkspaceEventBus.push(conversation.workspace_id, {
@@ -822,7 +915,8 @@ class ChatService:
                 })
             except Exception:
                 logger.warning("push start conversation_status_changed failed conv=%s", conversation_id, exc_info=True)
-            db.refresh(assistant_msg)
+            await _refresh_db_off_loop(db, assistant_msg)
+            _phase("marked_running+pushed+refresh")
 
             if start_result == StartResult.QUEUED:
                 queued_payload = {
@@ -834,6 +928,7 @@ class ChatService:
                 yield f"data: {json.dumps(queued_payload, ensure_ascii=False)}\n\n"
 
             # 返回恢复流的生成器
+            _phase("entering_resume_stream(以下进入实时流；若卡在这之后=卡在 buffer 回放/等首包)")
             async for chunk in ChatService.resume_conversation_stream(db, conversation_id, debug_content_only):
                 yield chunk
                 
@@ -949,8 +1044,10 @@ class ChatService:
                 )
                 return False, [_sse_line(payload_str)]
 
-        # Phase 1: 回放 buffer 历史事件。带 after_seq 时只回放它之后的增量，
-        # 避免超长输出（上万事件）切回会话时全量重放压垮前端。
+        # Phase 1: 回放 buffer 历史事件。带 after_seq 时只回放它之后的增量；
+        # 不带 cursor（冷启，after_seq=None）时**全量回放整个 buffer**——streaming 中
+        # 前端不渲染 DB content，进行中内容全靠这次冷回放从头重建，截断前面会让画面
+        # 从中间冒字、显示残缺，所以这里必须从头放全。
         all_events = list(task.buffer._events)
         if after_seq is not None:
             all_events = [e for e in all_events if e.get("seq", 0) > after_seq]
@@ -1139,7 +1236,8 @@ class ChatService:
         )
         new_msg.stream_cursor = 0
         conversation.status = "running"
-        db.commit()
+        await _commit_db_off_loop(db)
+        await _refresh_db_off_loop(db, new_msg)
         try:
             from src.service.workspace_events import WorkspaceEventBus, CONVERSATION_STATUS_CHANGED
             WorkspaceEventBus.push(conversation.workspace_id, {
@@ -1210,6 +1308,11 @@ class ChatService:
                 auth_token=auth_token,
                 shared_artifacts_dir=shared,
                 bind_context=False,
+                # 必须与 dispatch_to_leader 一致：仅澄清 HITL。① 保留 HITL 中间件以
+                # 消费本次澄清 resume 决策；② 不重新武装删除/文档方案中断——否则用户
+                # 刚作答、组长继续派活时再撞上无审批者的中断又永久挂起。
+                enable_hitl=False,
+                clarify_only_hitl=True,
             )
             # register_group_stream_relay 移到 approve_and_resume 返回后，
             # 仅在非 REJECTED 时注册，避免 REJECTED 路径残留 relay（C-2）。
@@ -1247,11 +1350,14 @@ class ChatService:
                 leader_db.close()  # C-1：避免连接泄漏
             new_msg.stream_state = "error"
             new_msg.content = new_msg.content or "恢复执行失败：已有活跃任务"
-            db.commit()
+            await _commit_db_off_loop(db)
             return {"accepted": False, "message": "恢复执行失败：已有活跃任务"}
 
         if target_type == "group_leader":
-            from src.service.group_room_service import register_group_stream_relay
+            from src.service.group_room_service import (
+                GroupRoomService,
+                register_group_stream_relay,
+            )
             register_group_stream_relay(
                 conversation_id,
                 room_id=room.id,
@@ -1260,6 +1366,23 @@ class ChatService:
                 sender_id=None,
                 sender_label="组长",
             )
+            # 回标群时间线里对应的澄清投影卡片为已处理，否则前端 refetch 后
+            # groupActiveHitl 又把它算成待办、卡片复活、重复要求用户作答。
+            # 用主 db（投影卡片属群会话），随下方 _commit_db_off_loop(db) 一起提交。
+            try:
+                GroupRoomService.mark_clarify_card_approved(
+                    db,
+                    room_conversation_id=room.room_conversation_id,
+                    leader_conversation_id=conversation_id,
+                    leader_message_id=msg.id,
+                    approved_at=meta["approved_at"],
+                )
+            except Exception:
+                logger.warning(
+                    "回标群澄清卡片失败 room_conv=%s leader_conv=%s msg=%s",
+                    room.room_conversation_id, conversation_id, msg.id,
+                    exc_info=True,
+                )
 
         new_msg.stream_state = (
             "queued" if start_result == StartResult.QUEUED else "streaming"
@@ -1268,7 +1391,7 @@ class ChatService:
             new_msg.content = (
                 new_msg.content or "已加入执行队列，等待其他对话完成"
             )
-        db.commit()
+        await _commit_db_off_loop(db)
 
         return {
             "accepted": True,

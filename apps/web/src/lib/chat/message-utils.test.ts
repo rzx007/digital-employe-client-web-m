@@ -4,7 +4,7 @@ import { mapStoredMessagesToUIMessages } from "./message-utils"
 import type { Message } from "@/types/chat"
 
 describe("mapStoredMessagesToUIMessages queue placeholder", () => {
-  it("shows 正在执行 when streaming but content is stale queue hint", () => {
+  it("does not render a placeholder bubble while streaming with no structured parts", () => {
     const messages: Message[] = [
       {
         id: "db:99",
@@ -14,12 +14,9 @@ describe("mapStoredMessagesToUIMessages queue placeholder", () => {
       },
     ]
     const ui = mapStoredMessagesToUIMessages(messages)
-    expect(ui).toHaveLength(1)
-    expect(ui[0]?.parts[0]).toMatchObject({
-      type: "text",
-      text: "正在执行…",
-      state: "streaming",
-    })
+    // 不再塞"正在执行…"假气泡：流式无结构化 parts 时不渲染这条，
+    // 由顶部"正在生成回复..."指示器负责 loading，真内容由 SSE 接管。
+    expect(ui).toHaveLength(0)
   })
 
   it("keeps queue hint when still queued", () => {

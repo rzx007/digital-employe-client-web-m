@@ -5,6 +5,7 @@ import {
 } from "@workspace/ui/components/avatar"
 import { Badge } from "@workspace/ui/components/badge"
 import { cn } from "@workspace/ui/lib/utils"
+import { avatarColorClass, avatarInitials } from "@/lib/avatar"
 
 type EmployeeStatus = "online" | "busy" | "offline"
 
@@ -33,11 +34,12 @@ export function EmployeeContactAvatar({
         {avatar ? <AvatarImage src={avatar} alt={name ?? ""} /> : null}
         <AvatarFallback
           className={cn(
-            "rounded-none! bg-primary font-medium text-primary-foreground",
+            "rounded-none! text-xs font-medium",
+            avatarColorClass(name),
             fallbackClassName
           )}
         >
-          {name?.slice(0, 1)}
+          {avatarInitials(name)}
         </AvatarFallback>
       </Avatar>
       {showStatus && (
@@ -84,7 +86,8 @@ export function GroupMembersAvatar({
           <AvatarImage src={participant.avatar} className="rounded-none" />
           <AvatarFallback
             className={cn(
-              "rounded-none! bg-primary text-[9px] font-medium text-primary-foreground",
+              "rounded-none! text-[9px] font-medium",
+              avatarColorClass(participant.name),
               fallbackClassName
             )}
           >

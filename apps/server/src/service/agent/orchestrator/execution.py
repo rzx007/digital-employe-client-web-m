@@ -97,34 +97,17 @@ def _register_room_stream_relay_if_in_room(
     orchestrator_conversation_id: int | None,
     employee,
 ) -> None:
-    """若该编排任务属于某群房间，登记流式中继：成员产出 token 逐字推到群时间线。"""
-    if orchestrator_conversation_id is None:
-        return
-    try:
-        from src.models.group_room import GroupRoom
-        from src.service.group_room_service import register_group_stream_relay
+    """编排任务（DAG 模式）的成员流**不再**登记实时中继。
 
-        room = db.scalars(
-            select(GroupRoom).where(
-                GroupRoom.leader_conversation_id == orchestrator_conversation_id
-            )
-        ).first()
-        if room is None:
-            return
-        register_group_stream_relay(
-            member_conversation_id,
-            room_id=room.id,
-            room_conversation_id=room.room_conversation_id,
-            workspace_id=room.workspace_id,
-            sender_id=employee.id if employee else None,
-            sender_label=(employee.name if employee else "成员"),
-        )
-    except Exception:
-        logger.warning(
-            "register room stream relay failed conv=%s",
-            member_conversation_id,
-            exc_info=True,
-        )
+    产品决策：群时间线只展示「最终交付」，不刷成员干活的过程独白。成员执行
+    进度由右侧「协作流程」面板（DAG 接口读 TaskExecutionLog）实时呈现；逐字
+    过程留在成员各自的执行会话里（点进去可看）；成员完成时只往群里发一条
+    「最终交付总结」（见 project_member_conversation_if_in_room 分支 B）。
+    因此这里刻意不注册 relay，保留函数签名与调用点不变，避免散弹式改动。
+    """
+    # 故意空实现：不再把编排成员流的逐字增量推到群时间线。
+    _ = (db, member_conversation_id, orchestrator_conversation_id, employee)
+    return
 
 
 async def _start_employee_stream_when_orchestrator_idle(
@@ -444,6 +427,18 @@ def start_task_as_conversation(
         db, conversation_id, orch_conv_id, employee
     )
 
+    # 输出档位：组长/总管派单时为该子任务指定的 output_tier（存在 task_input_json），
+    # 决定该成员单次最多生成多少 token（small≈1k / standard≈16k / large≈64k）。
+    from src.llm.factory import resolve_output_tokens
+
+    _task_output_tier = "standard"
+    try:
+        _ti = json.loads(task.task_input_json or "{}")
+        if isinstance(_ti, dict) and _ti.get("output_tier"):
+            _task_output_tier = str(_ti["output_tier"])
+    except (json.JSONDecodeError, TypeError):
+        pass
+
     agent = get_agent(
         skills_path,
         root_path,
@@ -451,6 +446,7 @@ def start_task_as_conversation(
         conversation_id=conversation_id,
         enable_hitl=False,
         shared_artifacts_dir=shared_artifacts_dir,
+        max_output_tokens=resolve_output_tokens(_task_output_tier),
     )
 
     dispatch_directive = (

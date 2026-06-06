@@ -42,8 +42,14 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
           "skill_id": <int | null>,
           "cron": "<cron 表达式 | null>",
           "priority": <int>,
-          "depends_on": <int | int[] | null>
+          "depends_on": <int | int[] | null>,
+          "output_tier": "<small | standard | large>"
         }
+      output_tier：该子任务**预期输出体量**，决定该成员单次最多生成多少 token：
+        - "small"   ≈1k：取数/查询/一句话结论等极短产出；
+        - "standard"≈16k：一般任务（默认，可省略）；
+        - "large"   ≈64k：长文档/完整报告（Word/PPT/PDF 专员写整篇）。
+        按任务实际需要选；选小可让该成员更快产出、尽早释放算力。
       depends_on：该子任务依赖的前置任务下标（数组中第几个，从 0 开始）。
         - null/省略：无依赖，确认后立即并行执行；
         - 单个 int：等该前置任务**完成后**才开始（真·串行）；
@@ -98,6 +104,12 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
             cron_expression=cron_expr if cron_expr else "",
             cron_expression_type="custom",
             user_prompt=t.get("prompt", ""),
+            # 输出档位（small/standard/large）存入 task_input_json，派单时取出设成
+            # 该成员模型的 max_tokens（见 start_task_as_conversation）。
+            task_input_json=json.dumps(
+                {"output_tier": (t.get("output_tier") or "standard")},
+                ensure_ascii=False,
+            ),
             execute_mode="scheduled" if cron_expr else "immediate",
             source="orchestration",
             orchestration_plan_id=plan.id,

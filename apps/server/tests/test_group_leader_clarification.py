@@ -13,7 +13,11 @@ from src.service.group_room_service import (
     build_leader_brief,
     project_member_conversation_if_in_room,
 )
-from src.service.agent.destructive_hitl import build_orchestrator_interrupt_on
+from src.service.agent.destructive_hitl import (
+    DESTRUCTIVE_HITL_TOOLS,
+    build_orchestrator_interrupt_on,
+    resolve_orchestrator_interrupt_on,
+)
 
 
 def test_leader_brief_includes_clarify_branch() -> None:
@@ -35,6 +39,44 @@ def test_orchestrator_interrupt_on_skip_flag_does_not_remove_clarify() -> None:
     interrupt_on = build_orchestrator_interrupt_on({"skip_destructive_hitl": True})
     assert "submit_clarifying_questions" in interrupt_on
     assert "respond" in interrupt_on["submit_clarifying_questions"]["allowed_decisions"]
+
+
+def test_resolve_interrupt_on_clarify_only_keeps_clarify_drops_destructive() -> None:
+    """组长派活/resume 用的 clarify_only 模式：只挂澄清中断，删除/文档方案全不挂。
+
+    回归保护：曾因组长 agent 走 enable_hitl=False → interrupt_on=None，
+    submit_clarifying_questions 不挂起、直接返回「已收到回答」串，组长凭空往下派活。
+    """
+    interrupt_on = resolve_orchestrator_interrupt_on(
+        enable_hitl=False, clarify_only_hitl=True, session_flags=None
+    )
+    assert interrupt_on is not None
+    assert "submit_clarifying_questions" in interrupt_on
+    assert "respond" in interrupt_on["submit_clarifying_questions"]["allowed_decisions"]
+    # 删除类与文档方案中断不得出现（群里无审批者，否则永久挂起）
+    for name in DESTRUCTIVE_HITL_TOOLS:
+        assert name not in interrupt_on
+    assert "submit_document_plan" not in interrupt_on
+
+
+def test_resolve_interrupt_on_all_off_is_none() -> None:
+    """组长汇总等场景：既无澄清也无审批者 → 完全不挂 HITL。"""
+    assert (
+        resolve_orchestrator_interrupt_on(
+            enable_hitl=False, clarify_only_hitl=False, session_flags=None
+        )
+        is None
+    )
+
+
+def test_resolve_interrupt_on_full_hitl_has_destructive_and_clarify() -> None:
+    """真人会话：全量 HITL，澄清 + 删除类都在。"""
+    interrupt_on = resolve_orchestrator_interrupt_on(
+        enable_hitl=True, clarify_only_hitl=False, session_flags=None
+    )
+    assert interrupt_on is not None
+    assert "submit_clarifying_questions" in interrupt_on
+    assert all(name in interrupt_on for name in DESTRUCTIVE_HITL_TOOLS)
 
 
 def _make_room_with_leader(db_session, workspace):
@@ -270,6 +312,75 @@ def test_approve_trigger_group_leader_rejected_no_relay_residue(
 
     assert result["accepted"] is False                              # 拒绝返回
     assert leader_conv2.id not in grs._GROUP_STREAM_RELAY           # C-2：relay 无残留
+
+
+def test_mark_clarify_card_approved(db_session, workspace):
+    """approve 后回标群投影卡片 approved_at，避免 refetch 卡片复活；幂等且不误伤。"""
+    room, group_conv, leader_conv = _make_room_with_leader(db_session, workspace)
+    leader_msg_id = 4321
+
+    # 群里那条澄清投影卡片（extra_meta 指向组长会话 + 组长中断消息）
+    card = ConversationMessage(
+        conversation_id=group_conv.id,
+        role="assistant",
+        content="我需要先确认一些信息",
+        extra_meta=json.dumps(
+            {
+                "clarify_target_conversation_id": leader_conv.id,
+                "clarify_message_id": leader_msg_id,
+            },
+            ensure_ascii=False,
+        ),
+    )
+    # 一条不相关的群消息，确保不被误标
+    other = ConversationMessage(
+        conversation_id=group_conv.id, role="assistant", content="无关消息",
+    )
+    db_session.add_all([card, other])
+    db_session.commit()
+
+    hit = GroupRoomService.mark_clarify_card_approved(
+        db_session,
+        room_conversation_id=group_conv.id,
+        leader_conversation_id=leader_conv.id,
+        leader_message_id=leader_msg_id,
+        approved_at="2026-06-06T00:00:00+00:00",
+    )
+    db_session.commit()
+    db_session.refresh(card)
+    db_session.refresh(other)
+
+    assert hit is True
+    assert json.loads(card.extra_meta)["approved_at"] == "2026-06-06T00:00:00+00:00"
+    assert other.extra_meta is None  # 未被误伤
+
+    # 幂等：再标一次（用不同时间）不应覆盖已有 approved_at
+    hit2 = GroupRoomService.mark_clarify_card_approved(
+        db_session,
+        room_conversation_id=group_conv.id,
+        leader_conversation_id=leader_conv.id,
+        leader_message_id=leader_msg_id,
+        approved_at="2099-01-01T00:00:00+00:00",
+    )
+    db_session.commit()
+    db_session.refresh(card)
+    assert hit2 is True
+    assert json.loads(card.extra_meta)["approved_at"] == "2026-06-06T00:00:00+00:00"
+
+
+def test_mark_clarify_card_approved_no_match_returns_false(db_session, workspace):
+    """无匹配投影卡片时返回 False，不抛异常。"""
+    room, group_conv, leader_conv = _make_room_with_leader(db_session, workspace)
+    assert (
+        GroupRoomService.mark_clarify_card_approved(
+            db_session,
+            room_conversation_id=group_conv.id,
+            leader_conversation_id=leader_conv.id,
+            leader_message_id=999,
+            approved_at="2026-06-06T00:00:00+00:00",
+        )
+        is False
+    )
 
 
 def test_leader_awaiting_clarification(db_session, workspace):

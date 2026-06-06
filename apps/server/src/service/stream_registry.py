@@ -53,6 +53,23 @@ FIRST_AGENT_CHUNK_TIMEOUT = 120.0
 FIRST_CHUNK_STALL_DUMP_SECONDS = 15.0
 # 最多 dump 几次（避免长时间无首包时把日志刷爆）
 FIRST_CHUNK_STALL_DUMP_MAX = 3
+# 自动判死阈值：某流连续无进展（无任何 chunk）超过此秒数 → 看门狗强制取消该流、
+# 立即释放槽位。根因——模型端偶发卡死/无响应时，上层 chunk-timeout 的 pending 重试
+# 循环会把僵死流续命到 ~20min、占着槽位拖垮全局（observed conv 卡 445s 仍不死）。
+# 这是「成熟系统该有的故障隔离」：单条流卡死不拖累其它对话。150s 给正常长工具
+# （如几十秒的脚本）留足余量，又能较快回收真卡死。可后续按需调小/做工具感知。
+AUTO_KILL_NO_PROGRESS_SECONDS = 150.0
+# 「内容级」无进展判死（核心隔离）：只在「真正出正文 token / 工具产出 tool_output」时
+# 刷新内容计时；filler 事件（重复 messages/updates、空 chunk）不再续命。覆盖两类卡死：
+#   - 首包卡：从未出过正文/工具产出 → elapsed 达阈值即判死（曾 ttft=- / tok=0 干等）；
+#   - filler 空转：出过字后卡住、但 filler 事件仍在流 → 内容计时照样到点判死
+#     （曾观测 ttft=6.86s 后空转 736s/12min、tok/s=0.0 才 error）。
+# 工具执行期一有 tool_output 即刷新，不误杀正常长工具调用；嫌误杀可调大本值。
+# 内容级判死阈值（兜底用，非主回收路径）。DB 锁(SQLITE_ACCESS_LOCK)那个真死锁已根治后，
+# 本判死只为兜住「真卡死」，不需要激进。60s 太短会误杀正常重活——模型生成长代码/文档
+# (如「创建 generate_docx.js」)、跑脚本时长时间不吐正文，却在干活。放宽默认到 240s，
+# 并经 _auto_kill_no_content_seconds() 取「不低于 chunk/首包超时 + 60s」，可经 env 覆盖。
+AUTO_KILL_NO_CONTENT_SECONDS = 240.0
 # 活跃流硬墙：单流存在超过此秒数仍 active → 僵死清理。运行时 ≥ AGENT_STALL_TIMEOUT + 120s。
 STALE_ACTIVE_HARD_TIMEOUT = 720.0
 # 无进展超时（config_kvs AGENT_STALL_TIMEOUT）：默认 30min，仅约束「多久无 chunk 事件」清槽。
@@ -108,6 +125,26 @@ def _agent_stream_timeouts() -> tuple[float, float, float]:
         return chunk, first, stale
     except Exception:
         return AGENT_CHUNK_TIMEOUT, FIRST_AGENT_CHUNK_TIMEOUT, STALE_ACTIVE_HARD_TIMEOUT
+
+
+def _auto_kill_no_content_seconds() -> float:
+    """内容级无进展判死阈值（兜底，非主回收）。默认 240s，避免误杀正常重活
+    （生成长代码/文档、跑脚本时模型长时间不吐正文）。生效值不低于
+    max(chunk_timeout, first_chunk_timeout) + 60s；可经 env AGENT_NO_CONTENT_KILL_SECONDS 覆盖。"""
+    import os
+
+    try:
+        configured = float(
+            os.getenv("AGENT_NO_CONTENT_KILL_SECONDS", AUTO_KILL_NO_CONTENT_SECONDS)
+        )
+    except Exception:
+        configured = AUTO_KILL_NO_CONTENT_SECONDS
+    try:
+        chunk, first, _ = _agent_stream_timeouts()
+        floor = max(chunk, first) + 60.0
+    except Exception:
+        floor = 120.0
+    return max(configured, floor)
 
 
 def _agent_stall_timeout() -> float:
@@ -333,6 +370,28 @@ def _mark_stream_state_sync(
                 state,
                 exc_info=True,
             )
+
+
+def _fire_and_forget_mark_state(
+    stream_msg_id: int,
+    conversation_id: int,
+    state: str,
+    *,
+    error_message: str | None = None,
+) -> None:
+    """将 _mark_stream_state_sync 提交到 DB 写线程，不阻塞事件循环。
+
+    历史问题：_mark_stream_state_sync 直接在事件循环上做同步 SQLite 写，
+    当 app.db 写锁被其他流持有时可阻塞 30s，期间事件循环无法调度任何协程，
+    导致 agent.astream() 无法发 httpx 请求、run_coro_on_main_loop 超时。
+    """
+    _DB_WRITE_EXECUTOR.submit(
+        _mark_stream_state_sync,
+        stream_msg_id,
+        conversation_id,
+        state,
+        error_message=error_message,
+    )
 
 
 def _flush_heartbeat_sync(conversation_id: int) -> None:
@@ -600,14 +659,23 @@ class ActiveStreamTask:
         self.error_message: str | None = None
         self._created_at: float = time.monotonic()
         self._last_progress_at: float = time.monotonic()
+        # 「内容级进展」时间：仅由真实正文 token / 工具产出刷新（见 touch_content）。
+        # 与 _last_progress_at（任意事件）区分，用于内容级判死，防 filler 续命僵尸流。
+        self._last_content_at: float = time.monotonic()
 
     @property
     def is_active(self) -> bool:
         return self.status == "streaming"
 
     def touch_progress(self) -> None:
-        """记录最近一次 stream chunk/工具事件时间（无进展超时检测用）。"""
+        """记录最近一次 stream chunk/工具事件时间（任意事件，无进展超时检测用）。"""
         self._last_progress_at = time.monotonic()
+
+    def touch_content(self) -> None:
+        """记录最近一次「真实内容进展」（模型正文 token / 工具产出 tool_output）。
+        filler 事件（重复 messages/updates、空 chunk）不调用本方法，故「事件在流、
+        正文不涨」的僵尸流不会被续命，会在 AUTO_KILL_NO_CONTENT_SECONDS 被判死释放槽位。"""
+        self._last_content_at = time.monotonic()
 
     def subscribe(self, fn: Subscriber) -> None:
         self.subscribers.add(fn)
@@ -792,7 +860,7 @@ class StreamRegistry:
         # 标记 DB 消息为 failed，避免前端永久 streaming 转圈
         if task.stream_msg_id is not None:
             try:
-                _mark_stream_state_sync(
+                _fire_and_forget_mark_state(
                     task.stream_msg_id, conversation_id, "failed"
                 )
             except Exception:
@@ -817,6 +885,67 @@ class StreamRegistry:
             "cleared": True,
             "conversation_id": conversation_id,
             "prev_status": prev_status,
+        }
+
+    def force_clear_all(
+        self,
+        *,
+        include_queued: bool = True,
+        stall_threshold_s: float = 30.0,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """清掉**卡住的**在飞流并腾空槽位（不重启进程）。
+
+        配合「清理僵尸流」按钮 POST /system/streams/force-clear-all 使用。
+        默认**只清真卡住的**（asyncio task 已结束 / 无进展超过 stall_threshold_s 秒），
+        **正在正常产出的健康流一律放过**——避免误杀用户当前正在跑的请求
+        （历史教训：旧版无脑清所有在飞流，点一下就把正在「查询微博热搜」的活流也清了，
+        显示“流超时仍未结束，已清理”）。force=True 时才连健康流一起清（核弹模式）。
+        """
+        cleared: list[int] = []
+        spared: list[int] = []
+        now = time.monotonic()
+        # 复制一份再迭代：force_clear 会改 self._tasks
+        for cid, task in list(self._tasks.items()):
+            if not (task.is_active or task.status == "queued"):
+                continue
+            at = task._asyncio_task
+            stalled = now - getattr(task, "_last_progress_at", now)
+            is_stuck = (
+                force
+                or at is None
+                or at.done()
+                or stalled >= stall_threshold_s
+            )
+            if not is_stuck:
+                spared.append(cid)  # 健康、正在产出 → 放过
+                continue
+            try:
+                res = self.force_clear_stream(cid)
+                if res.get("cleared"):
+                    cleared.append(cid)
+            except Exception:
+                logger.warning("force_clear_all: failed conv=%s", cid, exc_info=True)
+        # 清空全局排队项（未启动的）
+        drained_queue = 0
+        if include_queued:
+            try:
+                while self._queue.depth() > 0:
+                    item = self._queue._items[0]
+                    self._queue.remove(item.conversation_id)
+                    drained_queue += 1
+            except Exception:
+                logger.warning("force_clear_all: drain queue failed", exc_info=True)
+        logger.warning(
+            "force_clear_all: cleared %d stuck stream(s)=%s, spared %d healthy=%s, drained %d queued (force=%s)",
+            len(cleared), cleared, len(spared), spared, drained_queue, force,
+        )
+        return {
+            "cleared_count": len(cleared),
+            "cleared_conversation_ids": cleared,
+            "spared_count": len(spared),
+            "spared_conversation_ids": spared,
+            "drained_queue": drained_queue,
         }
 
     def get_task(self, conversation_id: int) -> ActiveStreamTask | None:
@@ -873,22 +1002,16 @@ class StreamRegistry:
         - **light 预留**：heavy 最多占 ``总闸 - 1``，但 **light 只看总闸**，
           heavy 没跑满时 light 可借用空 heavy 槽（例如 1 路 heavy + 3 路 light）。
         """
-        from src.core.agent_runtime_policy import STREAM_CLASS_HEAVY
-
+        # 不再按 heavy/light 分级限流（重活/轻活的本质改为「单请求输出 token 上限」，
+        # 见 build_chat_model max_tokens）。这里只保留一道**不分类的总并发闸**，
+        # 防单 GPU 被瞬时高并发压垮。stream_class 入参保留仅为兼容调用方签名。
+        del stream_class
         policy = get_agent_runtime_policy()
         if not policy.slot_gating_enabled():
             return True
         total_cap = policy.effective_max_inflight()
-        active = self.count_active_streams()
-        if total_cap > 0 and active >= total_cap:
+        if total_cap > 0 and self.count_active_streams() >= total_cap:
             return False
-        if stream_class == STREAM_CLASS_HEAVY:
-            max_heavy = policy.effective_max_heavy()
-            if max_heavy > 0 and self.count_active_heavy() >= max_heavy:
-                return False
-            heavy_ceiling = policy.effective_max_inflight_for(STREAM_CLASS_HEAVY)
-            if heavy_ceiling > 0 and active >= heavy_ceiling:
-                return False
         return True
 
     def _can_start_now(self, stream_class: str = "light") -> bool:
@@ -933,7 +1056,7 @@ class StreamRegistry:
             prev.status = "cancelled"
             prev._asyncio_task.cancel()
         self._tasks[pending.conversation_id] = task
-        _mark_stream_state_sync(
+        _fire_and_forget_mark_state(
             pending.stream_msg_id,
             pending.conversation_id,
             "streaming",
@@ -994,7 +1117,7 @@ class StreamRegistry:
         task.status = "error"
         task.error_message = reason
         if task.stream_msg_id:
-            _mark_stream_state_sync(
+            _fire_and_forget_mark_state(
                 task.stream_msg_id,
                 conversation_id,
                 "error",
@@ -1142,7 +1265,7 @@ class StreamRegistry:
         if not self._queue.enqueue(pending):
             self._tasks.pop(conversation_id, None)
             return StartResult.REJECTED
-        _mark_stream_state_sync(stream_msg_id, conversation_id, "queued")
+        _fire_and_forget_mark_state(stream_msg_id, conversation_id, "queued")
         logger.info(
             "agent stream queued conv=%s source=%s priority=%s position=%s",
             conversation_id,
@@ -1214,7 +1337,7 @@ class StreamRegistry:
                 if pending
                 else (task.stream_msg_id or 0)
             )
-            _mark_stream_state_sync(stream_msg_id, conversation_id, "cancelled")
+            _fire_and_forget_mark_state(stream_msg_id, conversation_id, "cancelled")
             logger.info("[cancel] conv=%s queued task removed", conversation_id)
             return True
         if not task.is_active:
@@ -1408,7 +1531,7 @@ class StreamRegistry:
 
             stream_input = agent_input if agent_input is not None else {"messages": messages}
             # 注入递归上限：失控的工具调用循环会被 GraphRecursionError 截断，
-            # 不再无限刷事件、永不结束。不覆盖调用方已显式传入的 recursion_limit。
+            # 不再无限刷事件、永不结束。不覆盖调用方已显式传入的 recur   sion_limit。
             stream_config = dict(config) if config else {}
             stream_config.setdefault("recursion_limit", AGENT_RECURSION_LIMIT)
             _agent_it = agent.astream(
@@ -1431,11 +1554,44 @@ class StreamRegistry:
                 并用 _dump_all_thread_stacks() 看 aiosqlite 后台线程是否卡在某操作。
                 """
                 dumps = 0
+                last_dumped_progress = -1.0
                 try:
-                    while dumps < FIRST_CHUNK_STALL_DUMP_MAX:
+                    while True:
                         await asyncio.sleep(FIRST_CHUNK_STALL_DUMP_SECONDS)
-                        if event_count > 0:
-                            return  # 首包已到，无需 dump
+                        now = time.monotonic()
+                        # 「内容级」无进展：仅 touch_content（真实正文 token/工具产出）刷新。
+                        # filler 事件（重复 messages/updates、空 chunk）不刷新它 → 僵尸流不被续命。
+                        no_content = now - task._last_content_at
+                        # 「任意事件」无进展：用于诊断 dump（判断是不是连事件都没有）。
+                        stalled = now - task._last_progress_at
+                        # 自动判死（兜底隔离）：内容级无进展超阈值 → 强制取消该流、腾空槽位。
+                        # 阈值放宽到默认 240s（可配置），避免误杀正常重活（生成长代码/文档、跑脚本）。
+                        _no_content_limit = _auto_kill_no_content_seconds()
+                        if no_content >= _no_content_limit:
+                            _at = task._asyncio_task
+                            logger.error(
+                                "[stall-watchdog] conv=%s source=%s 内容级无进展 %.0fs ≥ 自动判死 %.0fs，"
+                                "强制终止该流并释放槽位（event_count=%d, 任意事件无进展=%.0fs，"
+                                "疑模型无响应/卡死）",
+                                conversation_id, task.source, no_content,
+                                _no_content_limit, event_count, stalled,
+                            )
+                            task.status = "error"
+                            task.error_message = (
+                                f"流内容无进展超过 {int(_no_content_limit)}s，"
+                                "已自动终止（疑似模型无响应/卡死）"
+                            )
+                            if _at is not None and not _at.done():
+                                _at.cancel()
+                            return  # 主协程将被 cancel → 走 finally 收尾、释放槽位
+                        if stalled < FIRST_CHUNK_STALL_DUMP_SECONDS:
+                            continue  # 有事件流动，不必 dump（但内容级判死已在上面把关）
+                        # 诊断 dump：最多 MAX 次，按 stall 段去重（防刷屏）
+                        if dumps >= FIRST_CHUNK_STALL_DUMP_MAX:
+                            continue
+                        if task._last_progress_at == last_dumped_progress:
+                            continue
+                        last_dumped_progress = task._last_progress_at
                         dumps += 1
                         at = task._asyncio_task
                         coro_stack: list[str] = []
@@ -1459,18 +1615,26 @@ class StreamRegistry:
                                 if t is cur or t.done():
                                     continue
                                 try:
-                                    frames = t.get_stack(limit=40)
+                                    frames = t.get_stack(limit=60)
                                 except Exception:
                                     frames = []
-                                if not frames:
-                                    continue
+                                # 全帧（不再截断 [-22:]），保留库名 basename，定位最深卡点
                                 tail = [
                                     f"{f.f_code.co_filename.rsplit('/', 1)[-1].rsplit(chr(92), 1)[-1]}"
                                     f":{f.f_lineno} {f.f_code.co_name}"
-                                    for f in frames[-22:]
+                                    for f in frames
                                 ]
+                                # task repr 暴露它在 await 的对象（Future/Lock/Task/Event）——
+                                # 泄漏 async 原语时这里能直接看到 "wait_for=<Future pending>" 等。
+                                try:
+                                    trepr = repr(t)
+                                    if len(trepr) > 600:
+                                        trepr = trepr[:600] + "…"
+                                except Exception:
+                                    trepr = "<repr failed>"
+                                stack_str = " <- ".join(tail) if tail else "<无栈>"
                                 task_lines.append(
-                                    f"{t.get_name()}: " + " <- ".join(tail)
+                                    f"{t.get_name()} {trepr}\n        栈: {stack_str}"
                                 )
                         except Exception:
                             pass
@@ -1479,14 +1643,15 @@ class StreamRegistry:
                             for t in _dump_all_thread_stacks(top_frames=12)
                         ]
                         logger.warning(
-                            "[stall-watchdog] conv=%s source=%s 首包 %.0fs 无 chunk"
-                            "(event_count=0, dump %d/%d)\n"
+                            "[stall-watchdog] conv=%s source=%s 无进展 %.0fs"
+                            "(event_count=%d, dump %d/%d)\n"
                             "  >>> 卡住协程 await 链(外层):\n    %s\n"
                             "  >>> 所有 asyncio task 栈尾(真正卡点):\n    %s\n"
                             "  >>> 全线程栈:\n    %s",
                             conversation_id,
                             task.source,
-                            dumps * FIRST_CHUNK_STALL_DUMP_SECONDS,
+                            stalled,
+                            event_count,
                             dumps,
                             FIRST_CHUNK_STALL_DUMP_MAX,
                             "\n    ".join(coro_stack) or "(取不到协程栈)",
@@ -1547,8 +1712,6 @@ class StreamRegistry:
                     break
                 pending_chunk_timeouts = 0
                 event_count += 1
-                if event_count == 1 and _stall_watchdog_task is not None:
-                    _stall_watchdog_task.cancel()
                 task.touch_progress()
                 serializable = ChatService.convert_to_serializable(chunk)
                 updates_content = _extract_updates_content(serializable)
@@ -1566,24 +1729,33 @@ class StreamRegistry:
                     ):
                         evt = task.buffer.add(custom_data)
                         self.broadcast(conversation_id, evt)
+                        # 工具产出 = 真实进展，刷新内容计时（工具执行期豁免判死）
+                        task.touch_content()
                     continue
 
                 text_part = ChatService._extract_text_from_chunk(serializable)
-                if text_part:
+                # 工具返回（ToolMessage）绝不能进 assistant 正文：read 读到的文件原文、
+                # write/edit 的 "Cannot write to … already exists" 回执、shell 的
+                # "[工作目录: …]" 环境提示、create_orchestration_plan 的 JSON 等，都是
+                # 给模型看的工具结果，应走 tool part 折叠卡片（buffer 仍保留完整
+                # serializable 供 parts 解析），绝不能糊进 msg.content 当正文平铺展示。
+                _is_tool_chunk = _chunk_is_tool_message(serializable)
+                if text_part and not _is_tool_chunk:
                     assistant_text_parts.append(text_part)
-                    # 群协作：把成员/组长产出的文本增量逐字推到群时间线。
-                    # 但只推「模型自然语言（AIMessage）」，跳过「工具返回（ToolMessage）」
-                    # ——否则 create_orchestration_plan 等工具返回的结构化 JSON
-                    # （{"type":"plan_generated",...}）会被当文本糊在群里，很难看。
-                    if not _chunk_is_tool_message(serializable):
-                        try:
-                            from src.service.group_room_service import (
-                                relay_group_stream_delta,
-                            )
+                    # 模型正文 token = 真实进展，刷新内容计时（防止被无进展看门狗误判死）
+                    task.touch_content()
+                    # 群协作：把成员/组长产出的「模型自然语言」增量逐字推到群时间线。
+                    # 外层 not _is_tool_chunk 已过滤掉 ToolMessage（工具返回的文件原文、
+                    # plan JSON 等不会进这里），无需再判一次。
+                    try:
+                        from src.service.group_room_service import (
+                            relay_group_stream_delta,
+                        )
 
-                            relay_group_stream_delta(conversation_id, text_part)
-                        except Exception:
-                            pass
+                        relay_group_stream_delta(conversation_id, text_part)
+                    except Exception:
+                        pass
+                if text_part:
                     if not _first_token_recorded:
                         _stream_metrics.record_first_token(conversation_id)
                         _first_token_recorded = True
@@ -1677,17 +1849,9 @@ class StreamRegistry:
                 if not ok:
                     await self._ensure_terminal_state(stream_msg_id, "interrupted")
             else:
-                logger.info(
-                    "[run] conv=%s stream completed normally, event_count=%d, text_len=%d",
-                    conversation_id, task.buffer.cursor, len(final_text),
-                )
-                evt = task.buffer.add({"status": "completed"})
-                logger.info(
-                    "[run] conv=%s broadcasting completed event: seq=%d, subscribers=%d",
-                    conversation_id, evt["seq"], len(task.subscribers),
-                )
-                self.broadcast(conversation_id, evt)
-
+                # 先 flush 终态到 DB，再广播 completed 事件。
+                # 这样前端收到 completed 时 DB 已有 final_text，
+                # 避免因 flush 未提交而读到空内容。
                 elapsed_ms = int((time.monotonic() - stream_start_time) * 1000)
                 ok = await self._flush_terminal(
                     stream_msg_id,
@@ -1698,6 +1862,18 @@ class StreamRegistry:
                 )
                 if not ok:
                     await self._ensure_terminal_state(stream_msg_id, "completed")
+
+                # terminal event 带上 content，前端可直接显示，
+                # 不必再等 DB 查询（避免 flush/broadcast 竞态）
+                evt = task.buffer.add({
+                    "status": "completed",
+                    "content": final_text,
+                })
+                logger.info(
+                    "[run] conv=%s broadcasting completed event: seq=%d, subscribers=%d, text_len=%d",
+                    conversation_id, evt["seq"], len(task.subscribers), len(final_text),
+                )
+                self.broadcast(conversation_id, evt)
 
         except asyncio.CancelledError:
             if task.status == "error" and task.error_message:
@@ -1871,7 +2047,7 @@ class StreamRegistry:
             try:
                 await asyncio.shield(
                     loop.run_in_executor(
-                        None, _finalize_task_stream, conversation_id, state_final
+                        _DB_WRITE_EXECUTOR, _finalize_task_stream, conversation_id, state_final
                     )
                 )
             except asyncio.CancelledError:
@@ -1892,17 +2068,33 @@ class StreamRegistry:
                     conversation_id,
                 )
 
-            if orchestrator_owned_db is not None:
-                from src.service.agent.orchestrator.runtime import reset_context
+            # 编排流清理放进 try：reset_context/db.close 在判死后 db 处于坏状态时可能抛，
+            # 绝不能让它跳过下面的 _drain_queue()，否则排队流永远抽不出来 → 0活跃+N排队
+            # 永久卡死、只能重启（实测：批量判死后最后一条编排流 finally 抛异常即触发）。
+            try:
+                if orchestrator_owned_db is not None:
+                    from src.service.agent.orchestrator.runtime import reset_context
 
-                reset_context(stream_conv_id)
-                orchestrator_owned_db.close()
-            elif orchestrator_workspace_id is not None:
-                from src.service.agent.orchestrator.runtime import reset_context
+                    reset_context(stream_conv_id)
+                    orchestrator_owned_db.close()
+                elif orchestrator_workspace_id is not None:
+                    from src.service.agent.orchestrator.runtime import reset_context
 
-                reset_context(stream_conv_id)
-
-            self._drain_queue()
+                    reset_context(stream_conv_id)
+            except Exception:
+                logger.warning(
+                    "[run] conv=%s finally: orchestrator 清理失败（不影响抽队列）",
+                    conversation_id, exc_info=True,
+                )
+            finally:
+                # 无论如何都要抽队列：释放的槽位必须让排队流入场
+                try:
+                    self._drain_queue()
+                except Exception:
+                    logger.error(
+                        "[run] conv=%s finally: _drain_queue 失败", conversation_id,
+                        exc_info=True,
+                    )
 
     async def _ensure_terminal_state(self, stream_msg_id: int, state: str) -> None:
         """flush 失败兜底：仅写 stream_state，不写 content/parts，保证不卡在 streaming。"""

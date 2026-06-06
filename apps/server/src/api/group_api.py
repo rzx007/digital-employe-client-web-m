@@ -75,6 +75,15 @@ def get_group_room_dag(conversation_id: int, db: Session = Depends(get_db)) -> B
     return BaseResponse(data=dag)
 
 
+@router.post("/chat/conversations/{conversation_id}/room/stop", response_model=BaseResponse)
+def stop_group_room(conversation_id: int, db: Session = Depends(get_db)) -> BaseResponse:
+    """停止群协作：取消组长流 + 所有成员执行流 + 停用未完成任务。供前端「停止」按钮调用。"""
+    from src.service.group_room_service import GroupRoomService
+
+    result = GroupRoomService.stop_room(db, conversation_id)
+    return BaseResponse(data=result)
+
+
 @router.get("/chat/conversations/{conversation_id}/room/artifact", response_model=BaseResponse)
 def read_group_room_artifact(
     conversation_id: int,

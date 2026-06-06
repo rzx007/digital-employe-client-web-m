@@ -112,13 +112,13 @@ def _is_svg(path: Path) -> bool:
 
 
 def _has_transparency(raw: bytes) -> bool:
-    try:
-        with Image.open(io.BytesIO(raw)) as image:
-            return image.mode in {"RGBA", "LA"} or (
-                image.mode == "P" and "transparency" in image.info
-            )
-    except UnidentifiedImageError:
-        return False
+    # try:
+    #     with Image.open(io.BytesIO(raw)) as image:
+    #         return image.mode in {"RGBA", "LA"} or (
+    #             image.mode == "P" and "transparency" in image.info
+    #         )
+    # except UnidentifiedImageError:
+     return False
 
 
 def estimate_visual_tokens(
