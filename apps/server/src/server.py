@@ -1,3 +1,15 @@
+import os as _os
+
+# ⚠️ 必须在任何 langchain/langsmith/langgraph 导入之前设置！
+# 根因（实测 dump 铁证）：模型调用的 callback 链默认走「后台 task」(LANGCHAIN_CALLBACKS_BACKGROUND=true)，
+# langsmith 的 aio_to_thread 会为每次模型调用 spawn 后台协程；流被判死/切会话 cancel 时，这些
+# 后台 task + shield 把 CancelledError 挡在外面 → 一堆 `<Task cancelling>` 永远取消不掉、不断累积，
+# 占满事件循环资源，最终新流也跟着首包卡死（只能重启）。改成「内联回调」+ 彻底关 tracing 消除泄漏源。
+_os.environ["LANGCHAIN_CALLBACKS_BACKGROUND"] = "false"
+_os.environ.setdefault("LANGCHAIN_TRACING_V2", "false")
+_os.environ.setdefault("LANGSMITH_TRACING", "false")
+_os.environ.setdefault("LANGCHAIN_TRACING", "false")
+
 from src.core.logging_setup import setup_logging
 
 setup_logging()

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import logging
 import os
 import json
@@ -40,6 +41,26 @@ logger = logging.getLogger(__name__)
 # resume 冷启（前端未带 cursor）全量重放的事件上限：超过只回放最近这么多条，
 # 防 runaway 巨型 buffer 在反复切窗口时被全量重放、占满线程池/主循环致卡死。
 RESUME_COLD_REPLAY_CAP = 1500
+
+
+async def _commit_db_off_loop(db: Session) -> None:
+    """把同步 db.commit() 放到 DB 写线程，避免阻塞事件循环。
+
+    SQLite 写锁竞争时 commit 可阻塞 30s，期间事件循环无法调度任何协程/I/O，
+    导致 agent.astream() 无法发起 httpx 请求、run_coro_on_main_loop 超时。
+    """
+    from src.service.stream_registry import _DB_WRITE_EXECUTOR
+
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(_DB_WRITE_EXECUTOR, db.commit)
+
+
+async def _refresh_db_off_loop(db: Session, obj: Any) -> None:
+    """把同步 db.refresh() 放到 DB 写线程，避免阻塞事件循环。"""
+    from src.service.stream_registry import _DB_WRITE_EXECUTOR
+
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(_DB_WRITE_EXECUTOR, db.refresh, obj)
 
 
 class ChatService:
@@ -714,7 +735,9 @@ class ChatService:
             content="",
             extra_meta=None,
         )
-        db.commit()
+        # 把 commit 放到专用 DB 写线程，避免同步 I/O 阻塞事件循环
+        # （SQLite 写锁竞争时 commit 可阻塞 30s，期间事件循环无法调度任何协程/I/O）
+        await _commit_db_off_loop(db)
         _phase("appended_user+assistant_msg+commit")
 
         # 根据会话ID获取会话详情，然后获取root_path
@@ -833,7 +856,7 @@ class ChatService:
             if start_result == StartResult.REJECTED:
                 assistant_msg.stream_state = "error"
                 assistant_msg.content = "当前会话已有正在执行的任务"
-                db.commit()
+                await _commit_db_off_loop(db)
                 yield f"data: {json.dumps({'error': '当前会话已有正在执行的任务'}, ensure_ascii=False)}\n\n"
                 return
 
@@ -841,7 +864,7 @@ class ChatService:
                 "queued" if start_result == StartResult.QUEUED else "streaming"
             )
             conversation.status = "running"
-            db.commit()
+            await _commit_db_off_loop(db)
             try:
                 from src.service.workspace_events import WorkspaceEventBus, CONVERSATION_STATUS_CHANGED
                 WorkspaceEventBus.push(conversation.workspace_id, {
@@ -853,7 +876,7 @@ class ChatService:
                 })
             except Exception:
                 logger.warning("push start conversation_status_changed failed conv=%s", conversation_id, exc_info=True)
-            db.refresh(assistant_msg)
+            await _refresh_db_off_loop(db, assistant_msg)
             _phase("marked_running+pushed+refresh")
 
             if start_result == StartResult.QUEUED:

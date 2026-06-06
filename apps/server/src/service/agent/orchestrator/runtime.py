@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -135,11 +136,28 @@ def get_main_loop() -> asyncio.AbstractEventLoop:
 _get_main_loop = get_main_loop
 
 
+# run_coroutine_threadsafe(...).result() 是阻塞的线程调用，asyncio 的 cancel 打不断它。
+# 若投递的协程卡住（如它要的 SQLITE_ACCESS_LOCK 正被本 worker 线程自己持有 → 跨线程自锁），
+# worker 线程会永久阻塞、永远不释放锁 → orchestration 流首包卡死、且累积漏锁（只能重启）。
+# 加超时把「永久阻塞」降级为「超时报错+取消协程+释放线程/锁」，让流能被判死回收。
+_RUN_CORO_ON_MAIN_TIMEOUT = 60.0
+
+
 def run_coro_on_main_loop(coro: Any) -> Any:
-    """在线程上下文中将协程安全投递到主事件循环执行并等待结果。"""
+    """在线程上下文中将协程安全投递到主事件循环执行并等待结果（带超时，防永久自锁）。"""
     loop = get_main_loop()
     future = asyncio.run_coroutine_threadsafe(coro, loop)
-    return future.result()
+    try:
+        return future.result(timeout=_RUN_CORO_ON_MAIN_TIMEOUT)
+    except FuturesTimeoutError:
+        future.cancel()  # 取消投递到主循环的协程，避免它继续占资源
+        logger.error(
+            "run_coro_on_main_loop 超过 %.0fs 未完成，已取消（疑跨线程自锁/主循环饱和）",
+            _RUN_CORO_ON_MAIN_TIMEOUT,
+        )
+        raise TimeoutError(
+            f"主循环协程执行超过 {int(_RUN_CORO_ON_MAIN_TIMEOUT)}s 未返回（疑跨线程自锁）"
+        )
 
 
 def get_db() -> Session:
