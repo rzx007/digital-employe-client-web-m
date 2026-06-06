@@ -9,9 +9,10 @@ import {
 } from "@/hooks/use-chat-queries"
 import { createContactGroup } from "@/api/chat"
 import { chatKeys } from "@/lib/query-keys/chat"
-import { findContactInList, getContactId } from "@/lib/chat/contact-utils"
+import { findContactInList } from "@/lib/chat/contact-utils"
 import {
   focusAfterContactRemoved,
+  resolveRecentContactSelectionId,
   selectConversationForContact,
   switchToContact,
 } from "@/lib/chat/conversation-selection"
@@ -90,15 +91,8 @@ export function useRecentConversations() {
   )
 
   // 最近会话项的 contactId 是裸数字；选择/查找需带 type 前缀以避免群与员工串号。
-  const resolveSelectionId = (item: RecentConversationItem): string => {
-    const hint: Contact["type"] = item.isCurator
-      ? "curator"
-      : item.isGroup
-        ? "group"
-        : "employee"
-    const contact = findContactInList(contacts, item.contactId, hint)
-    return getContactId(contact) ?? item.contactId
-  }
+  const resolveSelectionId = (item: RecentConversationItem): string =>
+    resolveRecentContactSelectionId(item, contacts)
 
   const handleSelectItem = (item: RecentConversationItem) => {
     const selectionId = resolveSelectionId(item)
@@ -176,7 +170,13 @@ export function useRecentConversations() {
     const { selectedContactId: currentContactId } = useChatStore.getState()
     const remaining = recentItems.filter((i) => i.contactId !== item.contactId)
 
-    focusAfterContactRemoved(currentContactId, item.contactId, remaining)
+    focusAfterContactRemoved(
+      currentContactId,
+      item.contactId,
+      remaining,
+      contacts,
+      item
+    )
   }
 
   const displayItems = React.useMemo(() => {

@@ -46,3 +46,22 @@ export function findContactInList(
     return contact.group?.id === id
   })
 }
+
+/** 比较 store 前缀 id（employee:1）与最近会话裸 id（1）是否同一联系人 */
+export function contactIdsMatch(
+  a: string | null | undefined,
+  b: string | null | undefined,
+  contacts: readonly Contact[],
+  bTypeHint?: Contact["type"]
+): boolean {
+  if (!a || !b) return false
+  if (a === b) return true
+
+  const resolve = (id: string, hint?: Contact["type"]) => {
+    if (id.includes(":")) return id
+    const contact = findContactInList(contacts, id, hint)
+    return getContactId(contact) ?? id
+  }
+
+  return resolve(a) === resolve(b, bTypeHint)
+}

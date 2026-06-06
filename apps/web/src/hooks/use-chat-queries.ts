@@ -29,7 +29,7 @@ import {
 } from "@/api/recent-contacts"
 import type { Contact, Conversation, Message } from "@/types/chat"
 import { mapContactToTarget } from "@/lib/chat/contact-target"
-import { findContactInList } from "@/lib/chat/contact-utils"
+import { findContactInList, getContactId } from "@/lib/chat/contact-utils"
 import {
   enterDraftConversation,
   selectConversationById,
@@ -329,16 +329,23 @@ export function useDeleteAllConversationsForContactMutation() {
     }) => deleteAllConversationsForContact(contactId, contact),
     onSuccess: (deletedIds, { contactId, contact }) => {
       const workspaceId = useAuthStore.getState().workspaceId ?? getActiveWorkspaceId()
+      const selectionContactId = getContactId(contact) ?? contactId
       queryClient.setQueryData<Conversation[]>(
-        chatKeys.conversations(contactId),
+        chatKeys.conversations(selectionContactId),
         []
       )
+      if (selectionContactId !== contactId) {
+        queryClient.setQueryData<Conversation[]>(
+          chatKeys.conversations(contactId),
+          []
+        )
+      }
       for (const id of deletedIds) {
         queryClient.removeQueries({ queryKey: chatKeys.messages(id) })
         queryClient.removeQueries({ queryKey: chatKeys.resources(id) })
       }
       queryClient.invalidateQueries({
-        queryKey: chatKeys.conversations(contactId),
+        queryKey: chatKeys.conversations(selectionContactId),
       })
       const target = mapContactToTarget(contact)
       if (target) {

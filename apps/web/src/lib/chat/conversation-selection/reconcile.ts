@@ -86,9 +86,18 @@ export function useReconcileConversationSelection(
       if (isDraftConversation) {
         return
       }
-      if (selectedConversationId != null) {
+      // 群/总管深链执行会话不在 1:1 列表里，列表空是正常态
+      if (
+        selectedConversationId != null &&
+        isPreservedEmployeeConversationSelection(
+          selectedContactId,
+          selectedConversationId,
+          conversations
+        )
+      ) {
         return
       }
+      // 列表已空但选中 id 仍指向已删会话（如最近会话删除后 focus 未触发）
       enterDraftConversation()
       return
     }

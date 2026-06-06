@@ -40,12 +40,20 @@ export function useContextBudget(
     staleTime: 10_000,
   })
 
+  const prevChatStatusRef = React.useRef(chatStatus)
+
   React.useEffect(() => {
     if (!id) return
-    if (chatStatus === "ready" || chatStatus === "error") {
+
+    const prev = prevChatStatusRef.current
+    prevChatStatusRef.current = chatStatus
+
+    const wasBusy = prev === "streaming" || prev === "submitted"
+    const isIdle = chatStatus === "ready" || chatStatus === "error"
+    if (wasBusy && isIdle) {
       void query.refetch()
     }
-  }, [chatStatus, id, query])
+  }, [chatStatus, id, query.refetch])
 
   const optimistic = React.useMemo((): ContextBudgetSnapshot | null => {
     const usage = findLatestUsageFromMessages(messages)
