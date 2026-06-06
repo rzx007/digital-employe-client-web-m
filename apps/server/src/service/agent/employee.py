@@ -11,7 +11,7 @@ from deepagents.backends import CompositeBackend, FilesystemBackend
 from src.service.agent.basic_file_backend import BasicFileFilesystemBackend
 from deepagents.middleware.permissions import FilesystemPermission
 from src.core.config import get_settings, is_agent_virtual_mode
-from src.llm.factory import build_chat_model
+from src.llm.factory import build_chat_model, resolve_output_tokens
 from src.service.agent.checkpointer import get_checkpointer
 from src.service.agent.paths import (
     SERVICE_DIR,
@@ -45,6 +45,7 @@ def get_agent(
     conversation_id: int | None = None,
     enable_hitl: bool = True,
     shared_artifacts_dir: str | None = None,
+    max_output_tokens: int | None = None,
 ):
     checkpointer = get_checkpointer()
 
@@ -63,7 +64,8 @@ def get_agent(
     )
     base_dir = SERVICE_DIR
     settings = get_settings()
-    model = build_chat_model()
+    # 单请求输出上限（重活/轻活的本质）：派单时按子任务预算传入；缺省走 standard。
+    model = build_chat_model(max_tokens=resolve_output_tokens(max_output_tokens))
 
     from langchain_core.tools import tool
 
@@ -191,6 +193,17 @@ def get_agent(
         settings=settings,
         use_session_history_file=use_session_history,
     )
+    # 【卡死根因 2026-06-05】默认关闭会话摘要中间件：它在 token 超阈值时会**嵌套发一次
+    # 模型调用**压缩历史（conversation_summarization.awrap_model_call），那次嵌套调用
+    # 偶发卡在 pre-httpx 永不返回——实测「每次卡死的栈里必有它」。关掉它即消除该卡死源。
+    # 代价：超长对话不再自动压缩上下文（可能逼近 max_input_tokens），演示场景可接受。
+    # 设环境变量 AGENT_SUMMARIZATION=1 可恢复。
+    import os as _os
+
+    _summarization_on = _os.getenv("AGENT_SUMMARIZATION", "0").strip() == "1"
+    _emp_middleware = (
+        [summarization_mw, summarization_tool_mw] if _summarization_on else []
+    )
 
     shell_execute_tool = create_shell_execute_tool(
         shell_backend, artifacts_dir=str(artifacts_dir)
@@ -225,7 +238,7 @@ def get_agent(
         checkpointer=checkpointer,
         tools=extra_tools,
         interrupt_on=HITL_INTERRUPT_ON if enable_hitl else {},
-        middleware=[summarization_mw, summarization_tool_mw],
+        middleware=_emp_middleware,
         permissions=[
             FilesystemPermission(
                 operations=["write"],

@@ -120,8 +120,9 @@ class AgentRuntimePolicy:
         return 0
 
     def slot_gating_enabled(self) -> bool:
-        """总闸或 heavy 闸任一 >0 时启用槽位排队；默认两者均为 0（禁用）。"""
-        return self.effective_max_inflight() > 0 or self.effective_max_heavy() > 0
+        """仅按**不分类的总并发闸**判定是否排队（heavy/light 不再用于槽位限流，
+        改为控制单请求输出 token 上限，见 build_chat_model max_tokens）。"""
+        return self.effective_max_inflight() > 0
 
 
 def parse_agent_max_concurrent_streams(
