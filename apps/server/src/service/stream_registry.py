@@ -69,7 +69,7 @@ AUTO_KILL_NO_PROGRESS_SECONDS = 150.0
 # 本判死只为兜住「真卡死」，不需要激进。60s 太短会误杀正常重活——模型生成长代码/文档
 # (如「创建 generate_docx.js」)、跑脚本时长时间不吐正文，却在干活。放宽默认到 240s，
 # 并经 _auto_kill_no_content_seconds() 取「不低于 chunk/首包超时 + 60s」，可经 env 覆盖。
-AUTO_KILL_NO_CONTENT_SECONDS = 240.0
+AUTO_KILL_NO_CONTENT_SECONDS = 900.0
 # 活跃流硬墙：单流存在超过此秒数仍 active → 僵死清理。运行时 ≥ AGENT_STALL_TIMEOUT + 120s。
 STALE_ACTIVE_HARD_TIMEOUT = 720.0
 # 无进展超时（config_kvs AGENT_STALL_TIMEOUT）：默认 30min，仅约束「多久无 chunk 事件」清槽。
@@ -128,17 +128,26 @@ def _agent_stream_timeouts() -> tuple[float, float, float]:
 
 
 def _auto_kill_no_content_seconds() -> float:
-    """内容级无进展判死阈值（兜底，非主回收）。默认 240s，避免误杀正常重活
+    """内容级无进展判死阈值（兜底，非主回收）。默认 900s，避免误杀正常重活
     （生成长代码/文档、跑脚本时模型长时间不吐正文）。生效值不低于
-    max(chunk_timeout, first_chunk_timeout) + 60s；可经 env AGENT_NO_CONTENT_KILL_SECONDS 覆盖。"""
+    max(chunk_timeout, first_chunk_timeout) + 60s。
+    取值优先级：config_kvs AGENT_NO_CONTENT_KILL_SECONDS > env 同名 > 默认 900s。"""
     import os
 
+    configured = AUTO_KILL_NO_CONTENT_SECONDS
     try:
-        configured = float(
-            os.getenv("AGENT_NO_CONTENT_KILL_SECONDS", AUTO_KILL_NO_CONTENT_SECONDS)
-        )
+        from src.core.config import get_settings
+
+        configured = float(get_settings().agent_no_content_kill_seconds)
     except Exception:
-        configured = AUTO_KILL_NO_CONTENT_SECONDS
+        try:
+            configured = float(
+                os.getenv(
+                    "AGENT_NO_CONTENT_KILL_SECONDS", AUTO_KILL_NO_CONTENT_SECONDS
+                )
+            )
+        except Exception:
+            configured = AUTO_KILL_NO_CONTENT_SECONDS
     try:
         chunk, first, _ = _agent_stream_timeouts()
         floor = max(chunk, first) + 60.0

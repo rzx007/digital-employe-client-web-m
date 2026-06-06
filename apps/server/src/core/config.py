@@ -128,6 +128,9 @@ class Settings:
     agent_stale_hard_timeout: float = 720.0
     # 无进展超时（AGENT_STALL_TIMEOUT）：重任务单步思考/工具可能数分钟无 chunk，默认 30min
     agent_stall_timeout: float = 1800.0
+    # 内容级无进展判死阈值（AGENT_NO_CONTENT_KILL_SECONDS）：执行命令/跑脚本时长时间
+    # 不吐正文却在干活，超过此秒数才判死回收；默认 900s，过短会误杀正常长命令。
+    agent_no_content_kill_seconds: float = 900.0
     # resume 冷启（前端未带 cursor）全量重放的事件上限：超过只回放最近这么多条，
     # 防 runaway 巨型 buffer 在反复切窗口时被全量重放、占满线程池/主循环致卡死。
     # <=0 表示不限制（每次冷启全量回放整个 buffer）。
@@ -380,6 +383,18 @@ def get_settings() -> Settings:
     except ValueError:
         resume_cold_replay_cap = 1500
 
+    # AGENT_NO_CONTENT_KILL_SECONDS：内容级无进展判死阈值，默认 900s。
+    # 取值优先级：config_kvs > 同名环境变量 > 默认 900（保留旧的 env 覆盖能力）。
+    agent_no_content_kill_seconds_raw = _get_kv_value(
+        kv_data, "AGENT_NO_CONTENT_KILL_SECONDS"
+    ) or os.getenv("AGENT_NO_CONTENT_KILL_SECONDS")
+    try:
+        agent_no_content_kill_seconds = float(
+            agent_no_content_kill_seconds_raw or "900"
+        )
+    except ValueError:
+        agent_no_content_kill_seconds = 900.0
+
     default_workspace_id_raw = _get_kv_value(kv_data, "DEFAULT_WORKSPACE_ID")
     try:
         default_workspace_id = int(default_workspace_id_raw or "1")
@@ -486,6 +501,7 @@ def get_settings() -> Settings:
         agent_stale_hard_timeout=agent_stale_hard_timeout,
         agent_stall_timeout=agent_stall_timeout,
         resume_cold_replay_cap=resume_cold_replay_cap,
+        agent_no_content_kill_seconds=agent_no_content_kill_seconds,
         feishu_app_id=_get_kv_value(kv_data, "FEISHU_APP_ID"),
         feishu_app_secret=_get_kv_value(kv_data, "FEISHU_APP_SECRET"),
         feishu_redirect_uri=_get_kv_value(kv_data, "FEISHU_REDIRECT_URI"),

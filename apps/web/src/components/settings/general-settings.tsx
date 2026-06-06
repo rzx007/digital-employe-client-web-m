@@ -33,6 +33,18 @@ function clampAgentMaxConcurrent(value: number): number {
   return Math.floor(value)
 }
 
+// 执行命令/跑脚本时长时间不吐正文的判死阈值（秒）。过短会误杀正常长命令。
+const AGENT_NO_CONTENT_KILL_MIN = 60
+const AGENT_NO_CONTENT_KILL_MAX = 3600
+const AGENT_NO_CONTENT_KILL_DEFAULT = 900
+
+function clampAgentNoContentKill(value: number): number {
+  if (!Number.isFinite(value)) return AGENT_NO_CONTENT_KILL_DEFAULT
+  if (value < AGENT_NO_CONTENT_KILL_MIN) return AGENT_NO_CONTENT_KILL_MIN
+  if (value > AGENT_NO_CONTENT_KILL_MAX) return AGENT_NO_CONTENT_KILL_MAX
+  return Math.floor(value)
+}
+
 export function GeneralSettings() {
   const queryClient = useQueryClient()
   const { theme, setTheme } = useTheme()
@@ -44,9 +56,14 @@ export function GeneralSettings() {
   const [agentMaxConcurrent, setAgentMaxConcurrent] = React.useState(
     AGENT_MAX_CONCURRENT_DEFAULT
   )
+  const [agentNoContentKill, setAgentNoContentKill] = React.useState(
+    AGENT_NO_CONTENT_KILL_DEFAULT
+  )
   const [savingAgentSerialMode, setSavingAgentSerialMode] =
     React.useState(false)
   const [savingAgentMaxConcurrent, setSavingAgentMaxConcurrent] =
+    React.useState(false)
+  const [savingAgentNoContentKill, setSavingAgentNoContentKill] =
     React.useState(false)
 
   React.useEffect(() => {
@@ -68,13 +85,20 @@ export function GeneralSettings() {
     void Promise.all([
       getConfigKv("AGENT_SERIAL_MODE"),
       getConfigKv("AGENT_MAX_CONCURRENT_STREAMS"),
+      getConfigKv("AGENT_NO_CONTENT_KILL_SECONDS"),
     ])
-      .then(([serialKv, maxKv]) => {
+      .then(([serialKv, maxKv, noContentKv]) => {
         setAgentSerialMode(serialKv?.config_value === "1")
         const raw = Number.parseInt(maxKv?.config_value ?? "", 10)
         setAgentMaxConcurrent(
           clampAgentMaxConcurrent(
             Number.isFinite(raw) ? raw : AGENT_MAX_CONCURRENT_DEFAULT
+          )
+        )
+        const killRaw = Number.parseInt(noContentKv?.config_value ?? "", 10)
+        setAgentNoContentKill(
+          clampAgentNoContentKill(
+            Number.isFinite(killRaw) ? killRaw : AGENT_NO_CONTENT_KILL_DEFAULT
           )
         )
       })
@@ -188,6 +212,33 @@ export function GeneralSettings() {
 
   const handleAgentMaxConcurrentBlur = () => {
     void persistAgentMaxConcurrent(agentMaxConcurrent)
+  }
+
+  const persistAgentNoContentKill = async (raw: number) => {
+    const next = clampAgentNoContentKill(raw)
+    const prev = agentNoContentKill
+    setAgentNoContentKill(next)
+    setSavingAgentNoContentKill(true)
+    try {
+      await setConfigKv("AGENT_NO_CONTENT_KILL_SECONDS", String(next))
+      queryClient.setQueryData(
+        ["config-kv", "AGENT_NO_CONTENT_KILL_SECONDS"],
+        {
+          config_key: "AGENT_NO_CONTENT_KILL_SECONDS",
+          config_value: String(next),
+        }
+      )
+      toast.success("命令无输出判死阈值已更新（重启后端后生效）")
+    } catch {
+      setAgentNoContentKill(prev)
+      toast.error("保存命令无输出判死阈值失败")
+    } finally {
+      setSavingAgentNoContentKill(false)
+    }
+  }
+
+  const handleAgentNoContentKillBlur = () => {
+    void persistAgentNoContentKill(agentNoContentKill)
   }
 
   return (
@@ -315,6 +366,33 @@ export function GeneralSettings() {
               />
             </div>
           )}
+
+          <div className="flex items-center justify-between gap-4 border-t pt-4">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium">命令无输出判死阈值（秒）</span>
+              <span className="text-xs text-muted-foreground">
+                执行命令/跑脚本长时间不输出正文才判定卡死回收，过短会误杀正常长命令。
+                {AGENT_NO_CONTENT_KILL_MIN}–{AGENT_NO_CONTENT_KILL_MAX}，默认{" "}
+                {AGENT_NO_CONTENT_KILL_DEFAULT}（重启后端后生效）
+              </span>
+            </div>
+            <Input
+              type="number"
+              min={AGENT_NO_CONTENT_KILL_MIN}
+              max={AGENT_NO_CONTENT_KILL_MAX}
+              step={30}
+              className="w-24"
+              value={agentNoContentKill}
+              disabled={savingAgentNoContentKill}
+              onChange={(e) => {
+                const parsed = Number.parseInt(e.target.value, 10)
+                if (Number.isFinite(parsed)) {
+                  setAgentNoContentKill(parsed)
+                }
+              }}
+              onBlur={handleAgentNoContentKillBlur}
+            />
+          </div>
         </CardContent>
       </Card>
 
