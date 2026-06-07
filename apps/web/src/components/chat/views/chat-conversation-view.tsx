@@ -28,14 +28,18 @@ import { useConversationSession } from "@/hooks/use-conversation-session"
 import {
   prepareDisplayMessages,
   parseDbMessageId,
+  extractClarifyInputFromMessageParts,
   type ActiveHitl,
 } from "@/lib/chat/hitl"
-import { hitlKindFromToolType } from "@/lib/chat/hitl/kind"
 import { resolveGroupClarifyTarget } from "@/lib/chat/hitl/group-clarify-target"
 
 import { chatKeys } from "@/lib/query-keys/chat"
 import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
 import { stripGhostComposerAssistants } from "@/lib/chat/group-composer-ghosts"
+import {
+  isLeaderClarifyResolvedInTimeline,
+  resolveGroupActiveHitlFromTimeline,
+} from "@/lib/chat/hitl"
 import {
   isBenignStreamAbortError,
   isStreamDisconnectedError,
@@ -55,6 +59,40 @@ import { useChatStore } from "@/stores/chat-store"
 
 import { toast } from "sonner"
 
+function groupClarifyDismissStorageKey(conversationId: string | number) {
+  return `group-clarify-dismissed:${conversationId}`
+}
+
+function loadDismissedGroupClarifyIds(
+  conversationId: string | number
+): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(
+      groupClarifyDismissStorageKey(conversationId)
+    )
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return new Set()
+    return new Set(parsed.filter((x) => typeof x === "string"))
+  } catch {
+    return new Set()
+  }
+}
+
+function saveDismissedGroupClarifyIds(
+  conversationId: string | number,
+  ids: Set<string>
+) {
+  try {
+    sessionStorage.setItem(
+      groupClarifyDismissStorageKey(conversationId),
+      JSON.stringify([...ids])
+    )
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
 export function ConversationChatView({
   contact,
 
@@ -69,6 +107,10 @@ export function ConversationChatView({
   onNewConversation,
 
   extraStreamingMessages,
+
+  groupRoomBusy = false,
+
+  onGroupRoomStop,
 
   className,
 
@@ -88,6 +130,12 @@ export function ConversationChatView({
 
   /** 群协作：进行中成员/组长的逐字流式临时消息，追加到时间线末尾像单聊一样逐字 */
   extraStreamingMessages?: UIMessage[]
+
+  /** 群协作：组长/成员正在执行（与 useChat status 独立，用于显示停止按钮） */
+  groupRoomBusy?: boolean
+
+  /** 群协作：停止组长/成员流式输出 */
+  onGroupRoomStop?: () => void | Promise<void>
 }) {
   const [inputValue, setInputValue] = useState("")
 
@@ -106,6 +154,16 @@ export function ConversationChatView({
   >([])
 
   const queryClient = useQueryClient()
+  const dismissedGroupClarifyRef = useRef(
+    loadDismissedGroupClarifyIds(conversationId)
+  )
+  const [dismissedGroupClarifyTick, setDismissedGroupClarifyTick] = useState(0)
+
+  useEffect(() => {
+    dismissedGroupClarifyRef.current =
+      loadDismissedGroupClarifyIds(conversationId)
+    setDismissedGroupClarifyTick((t) => t + 1)
+  }, [conversationId])
 
   const {
     data: storedMessages = [],
@@ -127,45 +185,63 @@ export function ConversationChatView({
     [storedMessages]
   )
 
+  useEffect(() => {
+    if (contact?.type !== "group" || !initialMessages.length) return
+    let changed = false
+    for (const msg of initialMessages) {
+      if (msg.role !== "assistant") continue
+      const meta = (msg as { metadata?: Record<string, unknown> }).metadata
+      const leaderId = parseDbMessageId(
+        meta?.clarify_message_id as string | number | undefined
+      )
+      if (!leaderId) continue
+      if (!isLeaderClarifyResolvedInTimeline(initialMessages, leaderId)) {
+        continue
+      }
+      if (!dismissedGroupClarifyRef.current.has(leaderId)) {
+        dismissedGroupClarifyRef.current.add(leaderId)
+        changed = true
+      }
+    }
+    if (changed) {
+      saveDismissedGroupClarifyIds(
+        conversationId,
+        dismissedGroupClarifyRef.current
+      )
+      setDismissedGroupClarifyTick((t) => t + 1)
+    }
+  }, [contact?.type, conversationId, initialMessages])
+
   // 群会话：从已落库的消息检测待处理的 HITL 投影卡片（组长澄清/大纲等）
   const groupActiveHitl = useMemo((): ActiveHitl | null => {
     if (contact?.type !== "group" || !initialMessages?.length) return null
+    return resolveGroupActiveHitlFromTimeline(
+      initialMessages,
+      dismissedGroupClarifyRef.current
+    )
+  }, [contact?.type, initialMessages, dismissedGroupClarifyTick])
+
+  const groupClarifyInput = useMemo((): Record<string, unknown> | undefined => {
+    if (contact?.type !== "group" || !groupActiveHitl || !initialMessages.length) {
+      return undefined
+    }
     for (let i = initialMessages.length - 1; i >= 0; i--) {
       const msg = initialMessages[i]
       if (msg.role !== "assistant") continue
       const meta = (msg as { metadata?: Record<string, unknown> }).metadata
-      if (!meta) continue
       const target = resolveGroupClarifyTarget(meta)
-      if (!target || meta.approved_at) continue
-      // 找 input-available 的 HITL tool part（支持任意 submit_* 工具类型）
-      const hitlPart = msg.parts?.find(
-        (p) =>
-          typeof p.type === "string" &&
-          p.type.startsWith("tool-submit_") &&
-          (p as { state?: string }).state === "input-available"
-      ) as
-        | {
-            type: string
-            toolCallId?: string
-            input?: unknown
-            state?: string
-          }
-        | undefined
-      if (!hitlPart) continue
-      const dbMessageId = parseDbMessageId(target.messageId)
-      if (!dbMessageId) continue
-      const kind = hitlKindFromToolType(hitlPart.type)
-      if (!kind) continue
-      return {
-        dbMessageId,
-        toolCallId: hitlPart.toolCallId ?? "",
-        kind,
-        input: (hitlPart.input ?? {}) as Record<string, unknown>,
-        conversationIdOverride: target.conversationId,
+      if (!target || meta?.approved_at) continue
+      if (parseDbMessageId(target.messageId) !== groupActiveHitl.dbMessageId) {
+        continue
       }
+      const fromParts = extractClarifyInputFromMessageParts(msg.parts)
+      if (Object.keys(fromParts).length > 0) return fromParts
     }
-    return null
-  }, [contact?.type, initialMessages])
+    const hitlInput = groupActiveHitl.input
+    return hitlInput != null && typeof hitlInput === "object"
+      ? (hitlInput as Record<string, unknown>)
+      : undefined
+  }, [contact?.type, groupActiveHitl, initialMessages])
 
   const onStreamFinishRef = useRef<() => void>(() => {})
   const onRetryResumeRef = useRef<() => boolean>(() => false)
@@ -262,14 +338,34 @@ export function ConversationChatView({
 
     chatTransport.cancelReconnect()
 
-    try {
-      await cancelConversationStream(conversationId)
-    } catch {
-      toast.error("停止对话失败")
+    const chatWasBusy = status === "submitted" || status === "streaming"
+
+    if (contact?.type === "group" && groupRoomBusy) {
+      try {
+        await onGroupRoomStop?.()
+      } catch {
+        toast.error("停止失败")
+        return
+      }
+    } else if (chatWasBusy) {
+      try {
+        await cancelConversationStream(conversationId)
+      } catch {
+        toast.error("停止对话失败")
+        return
+      }
     }
 
     session.onStreamStopped()
-  }, [stop, conversationId, session])
+  }, [
+    contact?.type,
+    conversationId,
+    groupRoomBusy,
+    onGroupRoomStop,
+    session,
+    status,
+    stop,
+  ])
 
   const prevConversationIdRef = useRef(conversationId)
 
@@ -314,6 +410,18 @@ export function ConversationChatView({
 
   const handleHitlApproved = useCallback(
     (options?: Parameters<typeof session.onHitlApproved>[0]) => {
+      const leaderMsgId =
+        options?.approvedMessageId ?? groupActiveHitl?.dbMessageId ?? null
+      const leaderId = leaderMsgId != null ? parseDbMessageId(leaderMsgId) : null
+      if (leaderId) {
+        dismissedGroupClarifyRef.current.add(leaderId)
+        saveDismissedGroupClarifyIds(
+          conversationId,
+          dismissedGroupClarifyRef.current
+        )
+        setDismissedGroupClarifyTick((t) => t + 1)
+      }
+
       const remoteLeaderConv = groupActiveHitl?.conversationIdOverride
       const isRemoteGroupHitl =
         remoteLeaderConv != null &&
@@ -322,15 +430,20 @@ export function ConversationChatView({
         ...options,
         skipLocalResume: isRemoteGroupHitl || options?.skipLocalResume,
       })
-      if (isRemoteGroupHitl) {
+      if (isRemoteGroupHitl || contact?.type === "group") {
+        void queryClient.invalidateQueries({
+          queryKey: chatKeys.messages(String(conversationId)),
+        })
         void queryClient.invalidateQueries({
           queryKey: chatKeys.groupRoom(String(conversationId)),
         })
       }
     },
     [
+      contact?.type,
       conversationId,
       groupActiveHitl?.conversationIdOverride,
+      groupActiveHitl?.dbMessageId,
       queryClient,
       session.onHitlApproved,
     ]
@@ -344,16 +457,22 @@ export function ConversationChatView({
     setInputValue(event.value)
   }, [])
 
-  const isBusy = status === "submitted" || status === "streaming"
+  const isChatBusy = status === "submitted" || status === "streaming"
+  const isBusy = isChatBusy || groupRoomBusy
 
-  const chatStatus = status === "ready" && isBusy ? "submitted" : status
+  const chatStatus =
+    status === "ready" && isBusy
+      ? groupRoomBusy
+        ? "streaming"
+        : "submitted"
+      : status
 
   const isSubmitDisabled = useMemo(() => {
-    if (status === "submitted" || status === "streaming") {
+    if (isBusy) {
       return false
     }
     return !inputValue.trim()
-  }, [inputValue, status])
+  }, [inputValue, isBusy])
 
   const uploadedPathsRef = useRef<string[]>([])
 
@@ -503,6 +622,7 @@ export function ConversationChatView({
       conversationId={conversationId}
       onAttachmentsChange={handleAttachmentsChange}
       activeHitl={groupActiveHitl ?? session.activeHitl}
+      groupClarifyInput={groupClarifyInput}
       onHitlApproved={handleHitlApproved}
       className={className}
       {...props}

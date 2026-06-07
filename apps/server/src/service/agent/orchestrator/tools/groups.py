@@ -316,11 +316,12 @@ def create_group_and_dispatch(
     return json.dumps({
         "type": "group_created",
         "group_id": group.id,
+        "group_name": group.name,
         "group_conversation_id": group_conv.id,
         "room_id": room.id,
         "members": member_names,
         "message": (
-            f"已拉群「{group_name}」（成员：{member_names}）。"
+            f"已拉群「{group.name}」（成员：{member_names}）。"
             f"进群发送具体任务后，组长会分解并分配给成员协作完成。{hint}"
         ),
     }, ensure_ascii=False)

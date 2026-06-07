@@ -201,14 +201,11 @@ def get_agent(
         settings=settings,
         use_session_history_file=use_session_history,
     )
-    # 【卡死根因 2026-06-05】默认关闭会话摘要中间件：它在 token 超阈值时会**嵌套发一次
-    # 模型调用**压缩历史（conversation_summarization.awrap_model_call），那次嵌套调用
-    # 偶发卡在 pre-httpx 永不返回——实测「每次卡死的栈里必有它」。关掉它即消除该卡死源。
-    # 代价：超长对话不再自动压缩上下文（可能逼近 max_input_tokens），演示场景可接受。
-    # 设环境变量 AGENT_SUMMARIZATION=1 可恢复。
+    # SummarizationMiddleware：token 超阈值 / 检查点 force_context_compact 时嵌套发模型
+    # 压缩历史。偶发 pre-httpx 长挂；若复现可设 AGENT_SUMMARIZATION=0 关闭。
     import os as _os
 
-    _summarization_on = _os.getenv("AGENT_SUMMARIZATION", "0").strip() == "1"
+    _summarization_on = _os.getenv("AGENT_SUMMARIZATION", "1").strip() == "1"
     _emp_middleware = (
         [summarization_mw, summarization_tool_mw] if _summarization_on else []
     )

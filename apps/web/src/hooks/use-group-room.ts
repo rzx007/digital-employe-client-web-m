@@ -205,6 +205,10 @@ export function useGroupRoom(conversationId: string | number | null) {
     []
   )
 
+  const clearStreaming = () => {
+    setStreaming({})
+  }
+
   return {
     room: roomQuery.data ?? null,
     members: roomQuery.data?.members ?? [],
@@ -213,5 +217,6 @@ export function useGroupRoom(conversationId: string | number | null) {
     isLoading: roomQuery.isPending,
     autoConfirm: Boolean(roomQuery.data?.auto_confirm_member_tasks),
     setAutoConfirm,
+    clearStreaming,
   }
 }

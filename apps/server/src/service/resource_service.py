@@ -6,6 +6,10 @@ import io
 import zipfile
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 from src.schemas.resource import (
     ResourceContent,
@@ -116,6 +120,74 @@ def _scan_skills_draft(directory: Path) -> list[ResourceEntry]:
     return entries
 
 
+def _resolve_room_id_for_conversation(db: Session, conversation_id: int) -> int | None:
+    """若会话属于群协作房间，返回 room_id；否则 None。"""
+    from sqlalchemy import select
+
+    from src.models.conversation import Conversation
+    from src.models.group_room import GroupRoom, GroupRoomMember
+    from src.models.task_execution_log import TaskExecutionLog
+
+    room_id: int | None = None
+    # 1) 群时间线会话（target_type="group"）→ 直接是房间
+    conv = db.get(Conversation, conversation_id)
+    if conv is not None and conv.target_type == "group":
+        room = db.scalars(
+            select(GroupRoom).where(
+                GroupRoom.room_conversation_id == conversation_id
+            )
+        ).first()
+        if room is not None:
+            room_id = room.id
+    # 2) 组长会话
+    if room_id is None:
+        room = db.scalars(
+            select(GroupRoom).where(
+                GroupRoom.leader_conversation_id == conversation_id
+            )
+        ).first()
+        if room is not None:
+            room_id = room.id
+    # 3) @ 直接派的成员私有会话
+    if room_id is None:
+        member = db.scalars(
+            select(GroupRoomMember).where(
+                GroupRoomMember.conversation_id == conversation_id
+            )
+        ).first()
+        if member is not None:
+            room_id = member.room_id
+    # 4) 组长编排派的任务会话：经 TaskExecutionLog 反查组长会话→房间
+    if room_id is None:
+        log = db.scalars(
+            select(TaskExecutionLog)
+            .where(TaskExecutionLog.conversation_id == conversation_id)
+            .order_by(TaskExecutionLog.id.desc())
+        ).first()
+        if log is not None and log.orchestrator_conversation_id is not None:
+            room = db.scalars(
+                select(GroupRoom).where(
+                    GroupRoom.leader_conversation_id
+                    == log.orchestrator_conversation_id
+                )
+            ).first()
+            if room is not None:
+                room_id = room.id
+    return room_id
+
+
+def resolve_shared_artifacts_dir(
+    db: Session, root_path: str, conversation_id: int
+) -> str | None:
+    """群协作会话返回 room 共享 artifacts 物理目录；普通会话返回 None。"""
+    room_id = _resolve_room_id_for_conversation(db, conversation_id)
+    if room_id is None:
+        return None
+    shared = Path(root_path) / f"room-{room_id}" / "artifacts"
+    shared.mkdir(parents=True, exist_ok=True)
+    return str(shared)
+
+
 def _resolve_conversation_dir(root_path: str, conversation_id: int) -> Path:
     """解析会话的产物根目录。
 
@@ -125,61 +197,11 @@ def _resolve_conversation_dir(root_path: str, conversation_id: int) -> Path:
     """
     default_dir = Path(root_path) / str(conversation_id)
     try:
-        from sqlalchemy import select
-
         from src.db.session import get_session_local
-        from src.models.conversation import Conversation
-        from src.models.group_room import GroupRoom, GroupRoomMember
-        from src.models.task_execution_log import TaskExecutionLog
 
         db = get_session_local()()
         try:
-            room_id: int | None = None
-            # 1) 群时间线会话（target_type="group"）→ 直接是房间
-            conv = db.get(Conversation, conversation_id)
-            if conv is not None and conv.target_type == "group":
-                room = db.scalars(
-                    select(GroupRoom).where(
-                        GroupRoom.room_conversation_id == conversation_id
-                    )
-                ).first()
-                if room is not None:
-                    room_id = room.id
-            # 2) 组长会话
-            if room_id is None:
-                room = db.scalars(
-                    select(GroupRoom).where(
-                        GroupRoom.leader_conversation_id == conversation_id
-                    )
-                ).first()
-                if room is not None:
-                    room_id = room.id
-            # 3) @ 直接派的成员私有会话
-            if room_id is None:
-                member = db.scalars(
-                    select(GroupRoomMember).where(
-                        GroupRoomMember.conversation_id == conversation_id
-                    )
-                ).first()
-                if member is not None:
-                    room_id = member.room_id
-            # 4) 组长编排派的任务会话：经 TaskExecutionLog 反查组长会话→房间
-            if room_id is None:
-                log = db.scalars(
-                    select(TaskExecutionLog)
-                    .where(TaskExecutionLog.conversation_id == conversation_id)
-                    .order_by(TaskExecutionLog.id.desc())
-                ).first()
-                if log is not None and log.orchestrator_conversation_id is not None:
-                    room = db.scalars(
-                        select(GroupRoom).where(
-                            GroupRoom.leader_conversation_id
-                            == log.orchestrator_conversation_id
-                        )
-                    ).first()
-                    if room is not None:
-                        room_id = room.id
-
+            room_id = _resolve_room_id_for_conversation(db, conversation_id)
             if room_id is not None:
                 return Path(root_path) / f"room-{room_id}"
         finally:

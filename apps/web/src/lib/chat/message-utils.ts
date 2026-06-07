@@ -90,10 +90,32 @@ export function mapStoredMessagesToUIMessages(
         }
         const storedParts = sanitizeStoredParts(message.messageParts)
         if (storedParts) {
+          // 仅有工具 parts、无 text part 时，仍应展示 DB content（组长群投影常见：
+          // message_parts 只有 create_orchestration_plan / 澄清工具，content 有说明文字）。
+          const hasTextPart = storedParts.some(
+            (part) =>
+              part.type === "text" &&
+              "text" in part &&
+              typeof part.text === "string" &&
+              part.text.trim().length > 0
+          )
+          const parts: UIMessage["parts"] =
+            !hasTextPart &&
+            message.content?.trim() &&
+            message.streamState !== "streaming"
+              ? [
+                  {
+                    type: "text",
+                    text: message.content,
+                    state: "done" as const,
+                  },
+                  ...storedParts,
+                ]
+              : storedParts
           const uiMessage: UIMessage = {
             id: message.id,
             role: message.role,
-            parts: storedParts,
+            parts,
           }
           ;(
             uiMessage as UIMessage & { metadata?: Record<string, unknown> }

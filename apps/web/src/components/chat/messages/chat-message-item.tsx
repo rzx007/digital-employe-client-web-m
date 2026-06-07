@@ -8,7 +8,7 @@ import {
 } from "@workspace/ui/components/ai-elements/message"
 import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
 import { Spinner } from "@/components/spinner"
-import { getCopyableMessageText } from "@/lib/chat/message-utils"
+import { getCopyableMessageText, getTextFromUIMessage } from "@/lib/chat/message-utils"
 import {
   assistantMessageHasVisibleBody,
   isGroupTimelineAssistantMessage,
@@ -116,6 +116,17 @@ function ChatMessageItemInner({
   const groupStreamingAwaitingFirstToken =
     groupStreaming != null && classifiedBlocks.length === 0
 
+  const groupTimelineFallbackText = React.useMemo(() => {
+    if (contact.type !== "group" || message.role !== "assistant") return null
+    const text = getTextFromUIMessage(deferredMessage).trim()
+    if (text) return text
+    const meta = (message as { metadata?: Record<string, unknown> }).metadata
+    if (meta?.clarify_message_id != null) {
+      return "组长需要确认一些信息，请在下方输入框回答。"
+    }
+    return null
+  }, [contact.type, deferredMessage, message])
+
   // 群 composer 残留空 assistant（无发言人、无正文）→ 不渲染，避免「群拼图/空气泡」。
   if (
     contact.type === "group" &&
@@ -157,6 +168,8 @@ function ChatMessageItemInner({
           />
           <Shimmer className="text-xs">正在生成回复...</Shimmer>
         </div>
+      ) : groupTimelineFallbackText ? (
+        <MessageResponse>{groupTimelineFallbackText}</MessageResponse>
       ) : (
         <MessageResponse />
       )}

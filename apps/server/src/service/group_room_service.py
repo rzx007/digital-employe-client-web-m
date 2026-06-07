@@ -277,8 +277,14 @@ def build_leader_brief(
         "判断用户需求是否清晰：\n"
         "- 若关键信息不足以拆解派活（目标 / 范围 / 交付物 / 受众 / 格式 等任一不明），"
         "**本轮必须调用 `submit_clarifying_questions`**（context 取 long_document 或 general）"
-        "一次性列清要点；调用后停下，**不要** create_orchestration_plan、不要派活，"
+        "一次性列清要点；每题优先 **choice 选择题**（3～6 个具体选项），调用后停下，"
+        "**不要** create_orchestration_plan、不要派活，"
         "等用户回答后的下一轮再继续。禁止只在聊天里列问题而不调工具。\n"
+        "- 若用户已跳过澄清、或已给出任意补充说明、或选择了「用默认继续」："
+        "**禁止再次** submit_clarifying_questions；对「前端 demo」类需求默认现代简洁 UI、"
+        "React/Vite、单页可运行，直接 create_orchestration_plan。\n"
+        "- 用户**已 respond 提交过澄清答案**后：同一任务流程内**不得再次**澄清，"
+        "直接按用户答案拆解派活。\n"
         f"{plan_step}"
         "成员产出会自动汇总到群里。\n\n"
         f"用户需求：{question}"
@@ -1224,6 +1230,20 @@ class GroupRoomService:
                 if plan.status not in ("completed", "cancelled"):
                     plan.status = "cancelled"
                 db.commit()
+
+        # 2b) @直接派活：取消成员私有会话上仍在跑的流（无编排计划时也要能停）
+        for member in GroupRoomService.list_members(db, room):
+            if member.role_in_room == "leader":
+                continue
+            if member.conversation_id is None:
+                continue
+            if member.state not in ("running", "queued"):
+                continue
+            if registry.cancel(member.conversation_id):
+                if member.conversation_id not in cancelled_convs:
+                    cancelled_convs.append(member.conversation_id)
+            GroupRoomService.update_member_state(db, member, "ready")
+        db.commit()
 
         # 3) 群时间线写一条「已停止」反馈
         try:

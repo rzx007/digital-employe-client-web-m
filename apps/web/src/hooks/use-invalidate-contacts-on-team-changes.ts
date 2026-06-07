@@ -3,6 +3,7 @@ import type { QueryClient } from "@tanstack/react-query"
 import type { UIMessage } from "ai"
 
 import { extractResultText } from "@/lib/chat/tools/tool-part"
+import { parseGroupCreatedToolPayload } from "@/lib/chat/group-created-tool-payload"
 import { chatKeys } from "@/lib/query-keys/chat"
 
 const TEAM_CHANGE_TOOLS = new Set([
@@ -10,6 +11,7 @@ const TEAM_CHANGE_TOOLS = new Set([
   "hire_employees",
   "update_employee",
   "delete_employee",
+  "create_group_and_dispatch",
 ])
 
 function isSuccessfulTeamChangePart(part: UIMessage["parts"][number]): boolean {
@@ -27,7 +29,13 @@ function isSuccessfulTeamChangePart(part: UIMessage["parts"][number]): boolean {
     part as Parameters<typeof extractResultText>[0]
   )
   if (!resultText?.trim()) return false
-  return !resultText.trim().startsWith("错误")
+  if (resultText.trim().startsWith("错误")) return false
+
+  if (toolName === "create_group_and_dispatch") {
+    return parseGroupCreatedToolPayload(resultText) != null
+  }
+
+  return true
 }
 
 /** 总管对话中员工增删改/录用成功后刷新左侧通讯录 */

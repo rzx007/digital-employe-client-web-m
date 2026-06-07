@@ -35,6 +35,7 @@ export function ChatComposerArea({
   onStop,
   onHitlApproved,
   activeHitl = null,
+  groupClarifyInput,
   status,
   submitDisabled,
   placeholder,
@@ -60,6 +61,7 @@ export function ChatComposerArea({
   onStop: () => void
   onHitlApproved?: (options?: HitlPatchOptions) => void
   activeHitl?: ActiveHitl | null
+  groupClarifyInput?: Record<string, unknown>
   status: ChatPromptMessageStatus
   submitDisabled?: boolean
   placeholder?: React.ReactNode
@@ -92,27 +94,30 @@ export function ChatComposerArea({
     (!pendingHitl ||
       activeHitlMatchesPending(activeHitl, pendingHitl.toolCallId))
 
-  const planActive = pendingHitl?.kind === "document-plan"
-  const destructiveDeleteActive = pendingHitl?.kind === "destructive-delete"
-  const blocksComposer = clarifyActive || planActive || destructiveDeleteActive
-
   const dockPending = React.useMemo(():
     | (PendingHitl & {
         input: Record<string, unknown>
       })
     | null => {
     if (!activeHitl || activeHitl.kind !== "clarify") return null
-    const input = (pendingHitl?.input ?? activeHitl.input ?? {}) as Record<
-      string,
-      unknown
-    >
+    const input = ({
+      ...(groupClarifyInput ?? {}),
+      ...(pendingHitl?.input ?? activeHitl.input ?? {}),
+    }) as Record<string, unknown>
     return {
       kind: "clarify",
       messageId: pendingHitl?.messageId ?? "",
       toolCallId: activeHitl.toolCallId,
       input,
     }
-  }, [activeHitl, pendingHitl])
+  }, [activeHitl, groupClarifyInput, pendingHitl])
+
+  const planActive = pendingHitl?.kind === "document-plan"
+  const destructiveDeleteActive = pendingHitl?.kind === "destructive-delete"
+  const clarifyDockReady =
+    clarifyActive && activeHitl != null && dockPending != null
+  const blocksComposer =
+    clarifyDockReady || planActive || destructiveDeleteActive
 
   const handleClarifySubmitted = React.useCallback(
     (opts?: { resumed?: boolean; assistantMessageId?: string | number }) => {
@@ -147,12 +152,13 @@ export function ChatComposerArea({
           </div>
         )}
 
-      {clarifyActive && activeHitl && dockPending && (
+      {clarifyDockReady && activeHitl && dockPending && (
         <ClarifyingQuestionsDock
           activeHitl={activeHitl}
           pending={dockPending}
           conversationId={activeHitl.conversationIdOverride ?? conversationId}
           optionalDetails={inputValue}
+          clarifyInputOverride={groupClarifyInput}
           onSubmitted={handleClarifySubmitted}
           className="mx-auto w-full max-w-4xl"
         />
@@ -167,7 +173,7 @@ export function ChatComposerArea({
           status={status}
           disabled={submitDisabled || blocksComposer}
           placeholder={
-            clarifyActive
+            clarifyDockReady
               ? CLARIFY_OPTIONAL_PLACEHOLDER
               : blocksComposer
                 ? HITL_PENDING_PLACEHOLDER

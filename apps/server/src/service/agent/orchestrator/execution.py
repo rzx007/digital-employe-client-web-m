@@ -74,14 +74,11 @@ def _resolve_room_shared_artifacts_dir(
     if orchestrator_conversation_id is None:
         return None
     try:
-        from pathlib import Path
+        from src.service.resource_service import resolve_shared_artifacts_dir
 
-        room = _find_group_room_by_leader_conv(db, orchestrator_conversation_id)
-        if room is None:
-            return None
-        shared = Path(root_path) / f"room-{room.id}" / "artifacts"
-        shared.mkdir(parents=True, exist_ok=True)
-        return str(shared)
+        return resolve_shared_artifacts_dir(
+            db, root_path, orchestrator_conversation_id
+        )
     except Exception:
         logger.warning(
             "resolve room shared artifacts dir failed orch_conv=%s",

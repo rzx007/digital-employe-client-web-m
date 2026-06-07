@@ -83,4 +83,18 @@ describe("parseClarifyingQuestions", () => {
     expect(questions[0]?.type).toBe("choice")
     expect(questions[0]?.options).toEqual(["内部", "客户"])
   })
+
+  it("supports legacy string array", () => {
+    const questions = parseClarifyingQuestions(["主题？", "受众？"])
+    expect(questions).toHaveLength(2)
+    expect(questions[0]?.prompt).toBe("主题？")
+    expect(questions[0]?.id).toBe("q1")
+  })
+
+  it("supports question alias field", () => {
+    const questions = parseClarifyingQuestions([
+      { id: "a", question: "要什么 demo？" },
+    ])
+    expect(questions[0]?.prompt).toBe("要什么 demo？")
+  })
 })

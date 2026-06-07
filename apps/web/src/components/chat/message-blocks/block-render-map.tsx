@@ -9,6 +9,7 @@ import { DocumentPlanApprovedSummary } from "./document-plan-approved-summary"
 import { RecruitmentCandidatesCard } from "./recruitment-candidates-card"
 import { EmployeeHiredCard } from "./employee-hired-card"
 import { EmployeesHiredBatchCard } from "./employees-hired-batch-card"
+import { GroupCreatedCard } from "./group-created-card"
 import {
   EmployeeDeletedCard,
   EmployeeDetailCard,
@@ -265,6 +266,17 @@ export function BlockRenderer({
         resultText={block.resultText}
         preliminary={block.preliminary}
         celebrateOnSuccess={isLastAssistantMessage}
+        className="w-full"
+      />
+    )
+  }
+  if (block.kind === "group-created") {
+    return (
+      <GroupCreatedCard
+        key={block.key}
+        state={block.state}
+        resultText={block.resultText}
+        preliminary={block.preliminary}
         className="w-full"
       />
     )

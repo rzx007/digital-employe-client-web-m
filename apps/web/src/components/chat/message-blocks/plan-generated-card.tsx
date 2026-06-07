@@ -186,7 +186,72 @@ function PlanGeneratedCardInner({
     }
   }
 
-  if (!data) return null
+  if (!data) {
+    const cfg = STATE_CONFIG[state ?? ""] ?? STATE_CONFIG.call
+    const pendingState =
+      state === "call" ||
+      state === "input-streaming" ||
+      state === "input-available"
+    const summaryHint =
+      planOutput?.summary?.trim() ||
+      (input && typeof input === "object" && typeof (input as Record<string, unknown>).summary === "string"
+        ? String((input as Record<string, unknown>).summary).trim()
+        : "")
+
+    return (
+      <div
+        className={cn(
+          "relative overflow-hidden rounded-lg border bg-card p-3 text-sm",
+          className
+        )}
+      >
+        <p className={cn("text-xs font-semibold", cfg.titleClass)}>{cfg.title}</p>
+        {summaryHint ? (
+          <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
+            {summaryHint}
+          </p>
+        ) : pendingState ? (
+          <p className="text-muted-foreground mt-1 text-[11px]">
+            正在解析编排计划，请稍候…
+          </p>
+        ) : planOutput ? (
+          <>
+            <p className="text-muted-foreground mt-1 text-[11px]">
+              计划 #{planOutput.plan_id} 已生成，子任务列表加载中。
+            </p>
+            {showActionPanel && (
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-7 text-xs"
+                  disabled={manualStatus !== "idle"}
+                  onClick={() => void handleConfirm()}
+                >
+                  {manualStatus === "confirming" ? "确认中..." : "确认执行"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  disabled={manualStatus !== "idle"}
+                  onClick={() => void handleCancel()}
+                >
+                  <IconX className="mr-1 size-3" />
+                  {manualStatus === "cancelling" ? "取消中..." : "取消计划"}
+                </Button>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-muted-foreground mt-1 text-[11px]">
+            编排计划卡片数据不完整，请刷新页面后重试。
+          </p>
+        )}
+      </div>
+    )
+  }
 
   const cfg = STATE_CONFIG[state ?? ""] ?? STATE_CONFIG["output-available"]
 

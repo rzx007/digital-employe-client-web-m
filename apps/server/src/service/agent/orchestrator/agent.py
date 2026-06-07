@@ -251,13 +251,11 @@ def get_orchestrator_agent(
         use_session_history_file=use_session_history,
     )
 
-    # 【二分定位 2026-06-05】临时默认关闭 orchestrator 的 SummarizationMiddleware：
-    # 排查“组长模型调用卡在 pre-httpx 的 await、httpx 超时不触发、循环正常”的死锁——
-    # 最大嫌疑是上下文大时 summarization 嵌套发模型调用卡住。设 ORCH_SUMMARIZATION=1 恢复。
-    # 若关掉后群聊不再卡 → 锁定是 summarization；仍卡 → 排除它，再查别处。
+    # SummarizationMiddleware 与员工侧同源开关 AGENT_SUMMARIZATION（默认开）。
+    # 若组长/总管 pre-httpx 长挂可设 AGENT_SUMMARIZATION=0 关闭。
     import os as _os
 
-    _orch_summarization_on = _os.getenv("AGENT_SUMMARIZATION", "0").strip() == "1"
+    _orch_summarization_on = _os.getenv("AGENT_SUMMARIZATION", "1").strip() == "1"
     _orch_middleware = (
         [summarization_mw, summarization_tool_mw] if _orch_summarization_on else []
     )

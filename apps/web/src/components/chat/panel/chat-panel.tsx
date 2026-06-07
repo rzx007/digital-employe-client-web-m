@@ -171,6 +171,7 @@ export function ChatPanel({
   storedAssistantStreamState,
   hideStreamingIndicator = false,
   activeHitl = null,
+  groupClarifyInput,
   onHitlApproved,
   onDraftSuggestionSelect,
   hideHeader = false,
@@ -205,6 +206,8 @@ export function ChatPanel({
   /** 群深链执行会话：只读 DB 快照，不显示底部「正在生成…」 */
   hideStreamingIndicator?: boolean
   activeHitl?: ActiveHitl | null
+  /** 群澄清：从时间线 message_parts 补全 tool input */
+  groupClarifyInput?: Record<string, unknown>
   onHitlApproved?: (options?: HitlPatchOptions) => void
   /** 总管草稿：引导语填入输入框 */
   onDraftSuggestionSelect?: (text: string) => void
@@ -391,6 +394,7 @@ export function ChatPanel({
                 onStop={() => onStop?.()}
                 onHitlApproved={onHitlApproved}
                 activeHitl={activeHitl}
+                groupClarifyInput={groupClarifyInput}
                 status={status}
                 submitDisabled={isSubmitDisabled}
                 placeholder="请输入任务，然后交给我, 键入 / 指定调用技能"

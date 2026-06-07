@@ -1,5 +1,11 @@
-/** 与 ClarifyingQuestionsDock reject 文案一致 */
+/** 与 ClarifyingQuestionsDock reject 文案一致（仅真正取消时用） */
 export const CLARIFY_SKIP_REJECT_MESSAGE = "用户跳过澄清"
+
+/** 用户点「用默认继续」：让 Agent 按合理假设派活，勿再弹澄清 */
+export const CLARIFY_DEFAULT_ASSUMPTIONS_MESSAGE =
+  "用户选择不逐项澄清。请根据当前对话与常见合理默认直接拆解并 create_orchestration_plan；" +
+  "对「前端 demo」类需求默认：现代简洁 UI、React/Vite、单页可本地运行、无需后端；" +
+  "禁止再次调用 submit_clarifying_questions。"
 
 /** 选择题手填答案在 respond 文本中的前缀，便于 Agent 识别 */
 export const CLARIFY_CHOICE_CUSTOM_PREFIX = "其他："
@@ -31,12 +37,31 @@ function normalizeClarifyingQuestionsArray(
   parsed: unknown
 ): ClarifyingQuestion[] {
   if (!Array.isArray(parsed)) return []
-  return parsed.flatMap((item): ClarifyingQuestion[] => {
+  // 兼容旧格式：["问题一？", "问题二？"]
+  if (parsed.every((item) => typeof item === "string" && item.trim())) {
+    return parsed.map((item, index) => ({
+      id: `q${index + 1}`,
+      prompt: (item as string).trim(),
+      type: "text" as const,
+    }))
+  }
+  return parsed.flatMap((item, index): ClarifyingQuestion[] => {
     if (!item || typeof item !== "object") return []
     const record = item as Record<string, unknown>
-    const id = typeof record.id === "string" ? record.id : ""
-    const prompt = typeof record.prompt === "string" ? record.prompt : ""
-    if (!id || !prompt) return []
+    const id =
+      typeof record.id === "string" && record.id.trim()
+        ? record.id.trim()
+        : `q${index + 1}`
+    const promptRaw =
+      typeof record.prompt === "string"
+        ? record.prompt
+        : typeof record.question === "string"
+          ? record.question
+          : typeof record.text === "string"
+            ? record.text
+            : ""
+    const prompt = promptRaw.trim()
+    if (!prompt) return []
     const options = parseOptions(record.options)
     const explicitType =
       record.type === "choice" || record.type === "text"
@@ -195,4 +220,63 @@ export function buildClarifyAnswerItems(
   }
 
   return fromIds
+}
+
+type ClarifyToolPart = {
+  type?: string
+  state?: string
+  input?: unknown
+  output?: unknown
+}
+
+function recoverClarifyInputFromPart(part: ClarifyToolPart): Record<string, unknown> {
+  let input = part.input
+  if (input != null && typeof input === "object") {
+    const record = input as Record<string, unknown>
+    if (record.questions != null) {
+      return record
+    }
+  }
+  const output = part.output
+  const inputText =
+    output != null &&
+    typeof output === "object" &&
+    typeof (output as Record<string, unknown>).inputText === "string"
+      ? ((output as Record<string, unknown>).inputText as string)
+      : undefined
+  if (inputText?.trim()) {
+    try {
+      const parsed = JSON.parse(inputText) as unknown
+      if (parsed != null && typeof parsed === "object") {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      // ignore malformed streaming JSON
+    }
+  }
+  return input != null && typeof input === "object"
+    ? (input as Record<string, unknown>)
+    : {}
+}
+
+/** 从消息 parts 中提取待答澄清题的 tool input（群投影 / 冷启动 hydrate） */
+export function extractClarifyInputFromMessageParts(
+  parts: unknown
+): Record<string, unknown> {
+  if (!Array.isArray(parts)) return {}
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const raw = parts[i]
+    if (!raw || typeof raw !== "object") continue
+    const part = raw as ClarifyToolPart
+    if (part.type !== "tool-submit_clarifying_questions") continue
+    if (
+      part.state === "output-available" ||
+      part.state === "output-error"
+    ) {
+      continue
+    }
+    const input = recoverClarifyInputFromPart(part)
+    if (Object.keys(input).length > 0) return input
+  }
+  return {}
 }

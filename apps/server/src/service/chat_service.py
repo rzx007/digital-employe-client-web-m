@@ -812,7 +812,18 @@ class ChatService:
             except HTTPException:
                 skills_path = ""
             root_path = settings.artifacts_path
-            agent = get_agent(skills_path, root_path, employee_id=employee.id if target_type == "employee" else None, conversation_id=conversation_id)
+            from src.service.resource_service import resolve_shared_artifacts_dir
+
+            shared_artifacts_dir = resolve_shared_artifacts_dir(
+                db, root_path, conversation_id
+            )
+            agent = get_agent(
+                skills_path,
+                root_path,
+                employee_id=employee.id if target_type == "employee" else None,
+                conversation_id=conversation_id,
+                shared_artifacts_dir=shared_artifacts_dir,
+            )
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee、group 或 curator。")
         _phase("built_agent")
@@ -1286,7 +1297,18 @@ class ChatService:
                 employee_code=employee.employee_code,
             )
             root_path = settings.artifacts_path
-            agent = get_agent(skills_path, root_path, employee_id=employee.id, conversation_id=conversation_id)
+            from src.service.resource_service import resolve_shared_artifacts_dir
+
+            shared_artifacts_dir = resolve_shared_artifacts_dir(
+                db, root_path, conversation_id
+            )
+            agent = get_agent(
+                skills_path,
+                root_path,
+                employee_id=employee.id,
+                conversation_id=conversation_id,
+                shared_artifacts_dir=shared_artifacts_dir,
+            )
         elif target_type == "group_leader":
             from src.service.agent.orchestrator import get_orchestrator_agent
             from src.models.group_room import GroupRoom

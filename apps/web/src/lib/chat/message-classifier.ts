@@ -138,6 +138,14 @@ export type ClassifiedBlock =
       preliminary?: boolean
     }
   | {
+      kind: "group-created"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+      preliminary?: boolean
+    }
+  | {
       kind: "employee-detail"
       key: string
       toolCallId: string

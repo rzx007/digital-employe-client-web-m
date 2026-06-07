@@ -16,13 +16,25 @@ import { toast } from "sonner"
 import { approveHitl, type HitlDecision } from "@/api/chat"
 import {
   buildClarifyRespondMessage,
-  CLARIFY_SKIP_REJECT_MESSAGE,
+  CLARIFY_DEFAULT_ASSUMPTIONS_MESSAGE,
   isValidApproveMessageId,
+  isHitlAlreadyApprovedError,
   optionLabel,
+  parseClarifyingQuestions,
   type ActiveHitl,
   type ClarifyingQuestion,
   type PendingHitl,
 } from "@/lib/chat/hitl"
+
+/** 澄清题目解析失败时：单题开放式作答，避免误用无关 demo 选项 */
+const FALLBACK_MANUAL_CLARIFY_QUESTIONS: ClarifyingQuestion[] = [
+  {
+    id: "manual",
+    prompt: "组长题目未能加载，请根据上方组长说明，完整填写你的澄清回答：",
+    type: "text",
+    required: true,
+  },
+]
 
 function isComposerTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
@@ -34,6 +46,7 @@ function ClarifyingQuestionsDockInner({
   pending,
   conversationId,
   optionalDetails,
+  clarifyInputOverride,
   onSubmitted,
   className,
 }: {
@@ -41,6 +54,8 @@ function ClarifyingQuestionsDockInner({
   pending: PendingHitl & { input: Record<string, unknown> }
   conversationId: string | number
   optionalDetails?: string
+  /** 群时间线投影：从 message_parts 补全 tool input（composer 里没有） */
+  clarifyInputOverride?: Record<string, unknown>
   onSubmitted?: (opts?: {
     resumed?: boolean
     assistantMessageId?: string | number
@@ -52,25 +67,28 @@ function ClarifyingQuestionsDockInner({
   const answerTextareaRef = useRef<HTMLTextAreaElement>(null)
   const choiceCustomInputRef = useRef<HTMLInputElement>(null)
 
-  const questionsInput = pending.input?.questions
+  const mergedInput = React.useMemo(
+    () =>
+      ({
+        ...(clarifyInputOverride ?? {}),
+        ...pending.input,
+      }) as Record<string, unknown>,
+    [clarifyInputOverride, pending.input]
+  )
+
+  const questionsInput = mergedInput.questions
   const context =
-    typeof pending.input?.context === "string"
-      ? pending.input.context
-      : undefined
+    typeof mergedInput.context === "string" ? mergedInput.context : undefined
   const questions = React.useMemo(() => {
-    if (!questionsInput) return []
-    if (typeof questionsInput === "string") {
-      try {
-        const parsed = JSON.parse(questionsInput)
-        return Array.isArray(parsed) ? (parsed as ClarifyingQuestion[]) : []
-      } catch {
-        return []
-      }
-    }
-    return Array.isArray(questionsInput)
-      ? (questionsInput as ClarifyingQuestion[])
-      : []
+    const parsed = parseClarifyingQuestions(questionsInput)
+    if (parsed.length > 0) return parsed
+    return FALLBACK_MANUAL_CLARIFY_QUESTIONS
   }, [questionsInput])
+
+  const parsedFromLeader = React.useMemo(
+    () => parseClarifyingQuestions(questionsInput),
+    [questionsInput]
+  )
 
   const total = questions.length
   const [index, setIndex] = useState(0)
@@ -123,6 +141,10 @@ function ClarifyingQuestionsDockInner({
           decisions
         )
         if (res?.code && res.code !== 200) {
+          if (isHitlAlreadyApprovedError(res.msg)) {
+            await onSubmitted?.({ resumed: false })
+            return
+          }
           toast.error(res.msg || errorFallback)
           return
         }
@@ -177,8 +199,8 @@ function ClarifyingQuestionsDockInner({
 
   const handleSkip = useCallback(() => {
     void submitDecisions(
-      [{ type: "reject", message: CLARIFY_SKIP_REJECT_MESSAGE }],
-      "跳过失败"
+      [{ type: "respond", message: CLARIFY_DEFAULT_ASSUMPTIONS_MESSAGE }],
+      "提交失败"
     )
   }, [submitDecisions])
 
@@ -248,7 +270,11 @@ function ClarifyingQuestionsDockInner({
     setCurrentAnswer(event.target.value)
   }
 
-  if (!current) return null
+  if (!current) {
+    return null
+  }
+
+  const usingFallbackQuestions = parsedFromLeader.length === 0
 
   return (
     <div
@@ -262,7 +288,7 @@ function ClarifyingQuestionsDockInner({
       <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
         <div className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <IconMessageCircle className="size-3.5 shrink-0" />
-          <span>Questions</span>
+          <span>{usingFallbackQuestions ? "手动作答（组长题目加载失败）" : "Questions"}</span>
         </div>
         <div className="flex shrink-0 items-center gap-0.5 text-[11px] text-muted-foreground">
           <span className="tabular-nums">
@@ -352,7 +378,7 @@ function ClarifyingQuestionsDockInner({
           disabled={submitting}
           onClick={handleSkip}
         >
-          Skip
+          用默认继续
         </Button>
         <Button
           ref={continueButtonRef}

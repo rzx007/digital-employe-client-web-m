@@ -1,4 +1,4 @@
-import { CLARIFY_TOOL_NAME, buildClarifyAnswerItems, parseClarifyingQuestions } from "../../hitl"
+import { CLARIFY_TOOL_NAME, buildClarifyAnswerItems, parseClarifyingQuestions, CLARIFY_SKIP_REJECT_MESSAGE } from "../../hitl"
 import type { ToolBlockHandler } from "./plan-generated"
 
 export const clarifyAnswersHandler: ToolBlockHandler = {
@@ -12,6 +12,23 @@ export const clarifyAnswersHandler: ToolBlockHandler = {
       return []
     }
     if (toolState === "output-error") {
+      const text = (clarifyResultText ?? "").trim()
+      if (
+        text === CLARIFY_SKIP_REJECT_MESSAGE ||
+        text.includes("用户选择不逐项澄清")
+      ) {
+        return {
+          kind: "clarifying-answers",
+          key: `${messageId}:clarify-answers-skipped:${index}`,
+          toolCallId: vm.toolCallId,
+          items: [
+            {
+              question: "澄清方式",
+              answer: "已选择用默认假设继续，无需逐项作答",
+            },
+          ],
+        }
+      }
       return {
         kind: "clarifying-answers",
         key: `${messageId}:clarify-answers-error:${index}`,

@@ -182,6 +182,10 @@ export async function startBackend(): Promise<void> {
       ...(process.env.AGENT_VIRTUAL_MODE === undefined
         ? { AGENT_VIRTUAL_MODE: "0" }
         : {}),
+      // 上下文语义压缩（SummarizationMiddleware）；设 AGENT_SUMMARIZATION=0 可关闭
+      ...(process.env.AGENT_SUMMARIZATION !== undefined
+        ? { AGENT_SUMMARIZATION: process.env.AGENT_SUMMARIZATION }
+        : { AGENT_SUMMARIZATION: "1" }),
       // browserctl 可调用性：注入 BROWSERCTL_PATH + 前置 wrapper 目录到 PATH
       ...getBrowserctlEnv(),
     },

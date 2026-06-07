@@ -5,6 +5,7 @@ import { planGeneratedHandler, type ToolBlockHandler } from "./handlers/plan-gen
 import { documentPlanHandler } from "./handlers/document-plan"
 import { clarifyAnswersHandler } from "./handlers/clarify-answers"
 import { recruitmentHandler } from "./handlers/recruitment"
+import { groupCreatedHandler } from "./handlers/group-created"
 import { employeeCrudHandler } from "./handlers/employee-crud"
 import { employeeDismissHandler } from "./handlers/employee-dismiss"
 import { taskMutationsHandler } from "./handlers/task-mutations"
@@ -16,6 +17,7 @@ export const TOOL_BLOCK_HANDLERS: ToolBlockHandler[] = [
   clarifyAnswersHandler,
   destructiveDeleteHandler,
   recruitmentHandler,
+  groupCreatedHandler,
   employeeCrudHandler,
   employeeDismissHandler,
   taskMutationsHandler,

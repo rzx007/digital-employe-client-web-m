@@ -44,13 +44,22 @@ export {
   createApprovedAtTimestamp,
   patchApprovedAtOnComposerMessages,
   patchApprovedAtOnMessagesCache,
+  patchGroupClarifyProjectionResolved,
 } from "./approve-optimistic"
 export { collapseDocumentPlanBlocks } from "./collapse-document-plan-blocks"
+export {
+  isGroupClarifyProjectionPending,
+  isLeaderClarifyResolvedInTimeline,
+  resolveGroupActiveHitlFromTimeline,
+  isHitlAlreadyApprovedError,
+} from "./group-clarify-projection"
 export {
   buildClarifyAnswerItems,
   buildClarifyRespondMessage,
   CLARIFY_CHOICE_CUSTOM_PREFIX,
   CLARIFY_SKIP_REJECT_MESSAGE,
+  CLARIFY_DEFAULT_ASSUMPTIONS_MESSAGE,
+  extractClarifyInputFromMessageParts,
   formatClarifyAnswer,
   optionLabel,
   parseClarifyingQuestions,

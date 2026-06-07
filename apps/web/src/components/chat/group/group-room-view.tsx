@@ -1,9 +1,13 @@
 import * as React from "react"
 import type { UIMessage } from "ai"
+import { useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { cn } from "@workspace/ui/lib/utils"
 
+import { stopGroupRoom } from "@/api/group-room"
 import { getContactId } from "@/lib/chat/contact-utils"
+import { chatKeys } from "@/lib/query-keys/chat"
 import { useGroupRoom } from "@/hooks/use-group-room"
 import type { ChatViewContact } from "../shared/chat-view-shared"
 
@@ -35,8 +39,40 @@ export function GroupRoomView({
   onOpenConversations?: () => void
   onNewConversation?: () => void
 }) {
-  const { members, dag, streaming, autoConfirm, setAutoConfirm } =
+  const queryClient = useQueryClient()
+  const { members, dag, streaming, autoConfirm, setAutoConfirm, clearStreaming } =
     useGroupRoom(conversationId)
+
+  const groupRoomBusy = React.useMemo(() => {
+    const leaderRunning = members.some(
+      (m) => m.role_in_room === "leader" && m.state === "running"
+    )
+    const workerActive = members.some(
+      (m) =>
+        m.role_in_room !== "leader" &&
+        (m.state === "running" || m.state === "queued")
+    )
+    return leaderRunning || workerActive || streaming.length > 0
+  }, [members, streaming])
+
+  const handleGroupRoomStop = React.useCallback(async () => {
+    const result = await stopGroupRoom(conversationId)
+    clearStreaming()
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(String(conversationId)),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.groupRoom(String(conversationId)),
+      }),
+    ])
+    const stopped = result?.stopped ?? 0
+    if (stopped > 0) {
+      toast.success(`已停止生成（取消 ${stopped} 个执行流）`)
+    } else {
+      toast.success("已停止生成")
+    }
+  }, [clearStreaming, conversationId, queryClient])
   const hasDag = Boolean(dag?.has_dag && dag.nodes.length > 0)
   const groupContactId = contact ? getContactId(contact) ?? undefined : undefined
   const memberConversationByEmployeeId = React.useMemo(() => {
@@ -108,6 +144,8 @@ export function GroupRoomView({
         onOpenConversations={onOpenConversations}
         onNewConversation={onNewConversation}
         extraStreamingMessages={extraStreamingMessages}
+        groupRoomBusy={groupRoomBusy}
+        onGroupRoomStop={handleGroupRoomStop}
         className="min-w-0 flex-1"
       />
       {/* 组长统筹模式 → DAG 流程图；@直接派活 → 简单成员列表 */}

@@ -25,7 +25,7 @@ import {
   createApprovedAtTimestamp,
   findPendingHitl,
   patchApprovedAtOnComposerMessages,
-  patchApprovedAtOnMessagesCache,
+  patchGroupClarifyProjectionResolved,
   patchAssistantWithInterruptParts,
   resolveActiveHitl,
   type HitlPatchOptions,
@@ -510,7 +510,7 @@ export function useConversationSession({
       if (approvedMessageId != null) {
         const approvedAt = createApprovedAtTimestamp()
 
-        patchApprovedAtOnMessagesCache(
+        patchGroupClarifyProjectionResolved(
           queryClient,
 
           convKey,
