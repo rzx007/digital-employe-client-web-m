@@ -628,7 +628,7 @@ class ChatService:
 
         conv_id = conversation.id
 
-        def _dispatch_in_thread() -> dict:
+        def _dispatch_in_thread() -> None:
             # 在独立线程用**独立 session**（SQLAlchemy session 非线程安全，不能跨线程
             # 复用请求级 db）。重新取一次 conversation 再派活。
             from src.db.session import get_session_local
@@ -639,46 +639,33 @@ class ChatService:
                 conv = tdb.get(_Conv, conv_id)
                 if conv is None:
                     raise RuntimeError(f"群会话 {conv_id} 不存在")
-                return GroupRoomService.handle_group_message(
+                GroupRoomService.handle_group_message(
                     tdb,
                     conv,
                     question,
                     extra_meta=extra_meta,
                     auth_token=auth_token,
                 )
+            except Exception:
+                logger.error(
+                    "群消息派活后台线程失败 conv=%s", conv_id, exc_info=True
+                )
             finally:
                 tdb.close()
 
-        try:
-            # 2) 兜底：派活整体加超时保护。handle_group_message 同步、放线程跑并设
-            #    墙钟上限，卡住也能返回错误反馈而不是让用户永远等。
-            import asyncio
+        # 2) 派活**后台跑、立即收尾**：群的「用户 SSE」只是派发回执，不是组长/成员
+        #    的内容流（那些走 room_message_stream/room_message 经 WorkspaceEventBus 投影）。
+        #    旧实现 await 同步 dispatch（构建组长 agent / 历史 / DB 可能卡几十秒、撞线程
+        #    饥饿更久），这期间用户 SSE 不结束 → 前端 useChat 一直 streaming → 输入框
+        #    把后续消息当「忙」排队 = 用户「再也发不出消息」。改为 fire-and-forget：
+        #    ack 后立刻 [DONE]，前端 status 立即回 ready 可继续发；组长真正输出靠投影到达。
+        import asyncio
 
-            summary = await asyncio.wait_for(
-                asyncio.to_thread(_dispatch_in_thread),
-                timeout=60.0,
-            )
-            payload = {
-                "type": "group_dispatched",
-                "data": summary,
-            }
-            yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-            yield "data: [DONE]\n\n"
-        except asyncio.TimeoutError:
-            logger.error("群消息派活超时(>60s) conv=%s", conversation.id)
-            yield (
-                "data: "
-                + json.dumps(
-                    {"error": "组长安排任务超时，请稍后重试或检查模型服务。"},
-                    ensure_ascii=False,
-                )
-                + "\n\n"
-            )
-            yield "data: [DONE]\n\n"
-        except Exception as e:
-            logger.error("群消息处理失败: %s", e, exc_info=True)
-            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
-            yield "data: [DONE]\n\n"
+        loop = asyncio.get_running_loop()
+        # 用默认线程池（已扩到 64，见 server.py）后台执行，不阻塞本协程，也不等结果。
+        loop.run_in_executor(None, _dispatch_in_thread)
+
+        yield "data: [DONE]\n\n"
 
     @staticmethod
     async def stream_conversation_answer(
@@ -1020,14 +1007,15 @@ class ChatService:
             if isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error", "interrupted"):
                 payloads: list[str] = []
                 if data.get("status") == "error":
-                    yield_text = await _to_thread(
-                        json.dumps, {"error": data.get("error")}, ensure_ascii=False
-                    )
+                    # 同步 json.dumps：JSON 序列化是持 GIL 的 CPU 活，丢进 asyncio 默认
+                    # 线程池只增加调度开销、且会与「模型异步建连(anyio 在某些操作上需 worker
+                    # 线程)」「群派活 to_thread」抢同一个无大小限制的默认池。runaway 流(单条
+                    # 流可产上万事件、单 payload 达数十万字符)反复回放时，海量 to_thread 把默认
+                    # 池占满 → 新对话的 model 调用在 pre-httpx 阶段拿不到线程而永久挂死。
+                    yield_text = json.dumps({"error": data.get("error")}, ensure_ascii=False)
                     payloads.append(_sse_line(yield_text))
                 if data.get("status") == "interrupted":
-                    interrupt_json = await _to_thread(
-                        json.dumps, data, ensure_ascii=False, default=str
-                    )
+                    interrupt_json = json.dumps(data, ensure_ascii=False, default=str)
                     payloads.append(_sse_line(interrupt_json))
                 payloads.append(_sse_line("[DONE]"))
                 logger.info("[resume] conv=%s terminal event in buffer: seq=%s status=%s", conversation_id, seq, data.get("status"))
@@ -1039,9 +1027,8 @@ class ChatService:
                     return False, [_sse_line(text_part)]
                 return False, []
             else:
-                payload_str = await _to_thread(
-                    json.dumps, data, ensure_ascii=False, default=str
-                )
+                # 同理改同步，避免每个实时 chunk 一次 to_thread 毒化默认线程池（见上）。
+                payload_str = json.dumps(data, ensure_ascii=False, default=str)
                 return False, [_sse_line(payload_str)]
 
         # Phase 1: 回放 buffer 历史事件。带 after_seq 时只回放它之后的增量；
@@ -1055,12 +1042,25 @@ class ChatService:
             # 冷启（前端未带 cursor）默认全量重放整个 buffer。runaway 流 buffer 可达
             # 上万事件，反复切窗口全量重放会占满线程池/主循环致卡死。冷启回放上限由
             # 系统设置 RESUME_COLD_REPLAY_CAP 控制（<=0 不限制）：超过只回放最近 N 条。
+            #
+            # 但**正在 streaming 的活流**绝不能截断：用户此刻正切过来看进行中的执行，
+            # streaming 中前端不渲染 DB content、完全靠这次冷回放从头重建画面；截掉开头会
+            # 让工具调用配对错位、markdown 结构断裂 → 整段渲染残缺（实测"切换查看长任务
+            # 漏很多东西"即此因）。故 cap 只对**已结束的历史流**生效（防超长历史反复重放
+            # 卡死），活流一律全量回放。
             cold_cap = get_settings().resume_cold_replay_cap
-            if cold_cap > 0 and len(all_events) > cold_cap:
+            if task.is_active:
+                if cold_cap > 0 and len(all_events) > cold_cap:
+                    logger.info(
+                        "[resume] conv=%s 活流冷回放全量保留 buffer=%d（>cap %d，"
+                        "不截断以保进行中画面完整）",
+                        conversation_id, len(all_events), cold_cap,
+                    )
+            elif cold_cap > 0 and len(all_events) > cold_cap:
                 dropped = len(all_events) - cold_cap
                 logger.warning(
                     "[resume] conv=%s 冷重放截断 buffer=%d → 只回放最近 %d 条"
-                    "（丢弃 %d 早期事件，防切窗口反复全量重放卡死）",
+                    "（丢弃 %d 早期事件，防切窗口反复全量重放卡死；仅已结束历史流）",
                     conversation_id, len(all_events), cold_cap, dropped,
                 )
                 all_events = all_events[-cold_cap:]
@@ -1169,6 +1169,13 @@ class ChatService:
                             conversation_id,
                         )
                         break
+                    # 心跳保活：model 在 token 间隙思考时这条 SSE 长时间无数据，
+                    # 中间层（代理/网关）会判连接「空闲」而 buffer 住或掐断——连接仍
+                    # ESTABLISHED 但前端 reader.read() 永久 pending（「SSE 还在但收不到」）。
+                    # 每次 5s 空转吐一个 SSE 注释行（`: ...`）保活、冲破代理 buffer。
+                    # 注释行不带 id/seq、不进 buffer、EventSource 与我方 flushEvent 都忽略它，
+                    # 故不影响 after_seq 增量续流与终止判定，只用于让连接「有声音」。
+                    yield ": heartbeat\n\n"
                     continue
                 done, payloads = await _emit_event_payloads(evt)
                 for payload in payloads:

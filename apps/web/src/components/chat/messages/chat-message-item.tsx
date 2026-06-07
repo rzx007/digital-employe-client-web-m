@@ -6,6 +6,7 @@ import {
   MessageContent,
   MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
+import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
 import { getCopyableMessageText } from "@/lib/chat/message-utils"
 import { getDispatchBadge } from "@/lib/chat/assistant-stream-state"
 import { CURATOR_AVATAR_URL } from "@/lib/avatar"
@@ -78,12 +79,33 @@ function ChatMessageItemInner({
     [message, activeHitl]
   )
 
+  // 群时间线进行中消息（组长/成员逐字流式临时态）：显示「正在生成 N 字…」+ 流式
+  // 光标，给群里的流式输出和单聊/总管一致的观感（轻量视觉对齐，不改后端协议）。
+  const groupStreaming = React.useMemo(() => {
+    if (contact.type !== "group" || message.role !== "assistant") return null
+    const meta = (message as { metadata?: Record<string, unknown> }).metadata
+    if (!meta || meta.streamState !== "streaming") return null
+    const count =
+      typeof meta.streamCharCount === "number" ? meta.streamCharCount : null
+    return { charCount: count }
+  }, [contact.type, message])
+
   // 自动派单的首条 user 消息：后端 extra_meta 标记，邮戳与真人消息区分。
   const dispatchBadge = React.useMemo(() => {
     if (message.role !== "user") return null
     return getDispatchBadge(
       (message as { metadata?: Record<string, unknown> }).metadata
     )
+  }, [message])
+
+  // 群里组长的编排计划存在 leader 会话（非群会话）。把投影消息携带的
+  // source_conversation_id 透给计划卡，让它查到计划真实状态（否则按钮永不消失）。
+  const planConversationId = React.useMemo(() => {
+    const meta = (message as { metadata?: Record<string, unknown> }).metadata
+    const src = meta?.source_conversation_id ?? meta?.sourceConversationId
+    if (typeof src === "number") return src
+    if (typeof src === "string" && src.trim()) return src
+    return null
   }, [message])
 
   const messageBody = (
@@ -96,6 +118,7 @@ function ChatMessageItemInner({
             ctx={{
               messageId: hitlApproveMessageId,
               conversationId,
+              planConversationId,
               toolAutoCollapseMap,
               isLastAssistantMessage,
               isTurnEnded,
@@ -108,6 +131,13 @@ function ChatMessageItemInner({
         ))
       ) : (
         <MessageResponse />
+      )}
+      {groupStreaming && (
+        // 流式光标：跟在已生成文本末尾轻微闪烁，传达「还在打字」。
+        <span
+          aria-hidden
+          className="ml-0.5 inline-block h-3.5 w-[2px] -translate-y-px animate-pulse rounded-full bg-primary/70 align-middle"
+        />
       )}
     </div>
   )
@@ -212,7 +242,16 @@ function ChatMessageItemInner({
         </div>
       ) : null}
       <MessageContent className="w-auto">{messageBody}</MessageContent>
-      {message.role === "assistant" ? (
+      {groupStreaming && (
+        <div className="mt-1 flex items-center gap-1.5 text-muted-foreground">
+          <Shimmer className="text-[11px]">
+            {groupStreaming.charCount && groupStreaming.charCount > 0
+              ? `正在生成 ${groupStreaming.charCount} 字…`
+              : "正在生成…"}
+          </Shimmer>
+        </div>
+      )}
+      {groupStreaming ? null : message.role === "assistant" ? (
         <MessageAssistantActions
           copyText={copyText}
           elapsedMs={elapsedMs}

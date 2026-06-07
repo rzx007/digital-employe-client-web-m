@@ -8,11 +8,14 @@ from langchain_core.tools import tool
 from sqlalchemy.exc import DBAPIError
 
 from src.service.agent.orchestrator.runtime import (
+    get_conversation_id,
     get_workspace_id,
     invalidate_orchestrator_db_cache,
 )
 from src.service.agent.orchestrator.task_listing import (
+    _POLL_STOP_DIRECTIVE,
     _is_sqlite_session_error,
+    _record_poll_and_should_block,
     list_tasks_text,
 )
 from src.service.agent.orchestrator.task_mutations import (
@@ -131,6 +134,10 @@ def list_tasks(
     仅当任务 ≤5 条且 include_result_detail=true 时，可附带极短结果摘要。
     """
     workspace_id = get_workspace_id()
+    # 硬闸：同一会话短窗口内重复轮询超阈值 → 返回「停手」指令而非状态表，
+    # 终结「确认计划后反复 list_tasks」死循环（流永不结束、会话停不掉）。
+    if _record_poll_and_should_block(get_conversation_id()):
+        return _POLL_STOP_DIRECTIVE
     try:
         return list_tasks_text(
             workspace_id,

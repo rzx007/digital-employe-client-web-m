@@ -1,5 +1,5 @@
 [project]
-name = "micro-agent"
+name = "digital-employee-client"
 version = "0.1.0"
 description = "A natural language to SQL query agent powered by LangChain's DeepAgents framework and OpenAI GPT-4"
 readme = "README.md"
@@ -35,7 +35,7 @@ dependencies = [
 ]
 [dependency-groups]
 dev = [
-    "micro-agent",
+    "digital-employee-client",
     "pyinstaller>=6.0",
     "pytest>=8.0",
 ]

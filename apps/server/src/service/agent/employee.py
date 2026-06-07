@@ -25,7 +25,10 @@ from src.service.context_compression import build_summarization_middleware_stack
 from src.service.agent.get_current_time_tool import get_current_time_tool
 from src.service.agent.shell_execute_tool import create_shell_execute_tool
 from src.service.agent.remember_memory_tool import create_remember_memory_tool
-from src.service.agent.clarifying_questions_tool import submit_clarifying_questions
+from src.service.agent.clarifying_questions_tool import (
+    CLARIFYING_QUESTIONS_INTERRUPT_ON,
+    submit_clarifying_questions,
+)
 from src.service.agent.document_plan_tool import submit_document_plan
 from src.service.agent.hitl_interrupt_on import HITL_INTERRUPT_ON
 from src.models.workspace import CST
@@ -44,9 +47,14 @@ def get_agent(
     include_sqlite_tools: bool = False,
     conversation_id: int | None = None,
     enable_hitl: bool = True,
+    clarify_only_hitl: bool = False,
     shared_artifacts_dir: str | None = None,
     max_output_tokens: int | None = None,
 ):
+    # clarify_only_hitl：群「自动确认成员任务」开启时用——成员仍可对「模糊需求」
+    # 用 submit_clarifying_questions 挂起等用户作答（澄清不能自动确认），但「文档方案
+    # 确认」(submit_document_plan) 不再挂 HITL 中断、自动放行，让群任务全自动跑通。
+    # 三态：enable_hitl=全量；clarify_only_hitl=只挂澄清；都为假=完全不挂。
     checkpointer = get_checkpointer()
 
     # 仅保留到天级：时间戳位于可缓存前缀内，秒级每轮变化会使其后的 KV-cache
@@ -213,7 +221,9 @@ def get_agent(
     if sql_tools:
         extra_tools.extend(sql_tools)
     extra_tools.extend(_session_search_tools)
-    if enable_hitl:
+    # 工具暴露与是否挂 HITL 中断解耦：clarify_only 时两个 submit 工具仍可用
+    # （submit_document_plan 不挂中断=调用即返回、自动放行），但只对澄清挂中断。
+    if enable_hitl or clarify_only_hitl:
         extra_tools.extend([submit_clarifying_questions, submit_document_plan])
 
     agent = create_deep_agent(
@@ -237,7 +247,11 @@ def get_agent(
         backend=backend,
         checkpointer=checkpointer,
         tools=extra_tools,
-        interrupt_on=HITL_INTERRUPT_ON if enable_hitl else {},
+        interrupt_on=(
+            HITL_INTERRUPT_ON
+            if enable_hitl
+            else (dict(CLARIFYING_QUESTIONS_INTERRUPT_ON) if clarify_only_hitl else {})
+        ),
         middleware=_emp_middleware,
         permissions=[
             FilesystemPermission(

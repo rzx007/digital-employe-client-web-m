@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from langchain_core.tools import tool
+from sqlalchemy import select
 
 from src.models.employee import Employee
 from src.models.employee_task import EmployeeTask
@@ -184,7 +185,32 @@ def confirm_orchestration_plan(plan_id: int) -> str:
     if plan.status != "pending":
         return f"编排计划 #{plan_id} 当前状态为 {plan.status}，无法执行。"
 
+    # 硬闸：群组长会话且该群未开启「自动确认」时，**拒绝**自动执行——执行必须由
+    # 用户点击群里的「确认执行」卡片驱动。软 prompt 治不住模型擅自 confirm，故在
+    # 工具层硬拦，杜绝「没问用户就执行」。开关开时照常执行。
+    if _is_group_leader_plan_pending_user_confirm(db, plan):
+        return (
+            f"⛔ 该群未开启「自动确认」，编排计划 #{plan_id} **不能由你自动执行**。"
+            "计划已以「确认执行」卡片呈现给用户，请**结束本轮、停下等用户点击确认**，"
+            "不要再调用 confirm_orchestration_plan。"
+        )
+
     return execute_plan(db, plan, workspace_id)
+
+
+def _is_group_leader_plan_pending_user_confirm(db, plan) -> bool:
+    """该计划是否属于「未开自动确认的群组长会话」→ 须等用户点卡片确认，禁止工具自动执行。"""
+    from src.models.group_room import GroupRoom
+
+    conv_id = plan.conversation_id
+    if conv_id is None:
+        return False
+    room = db.scalars(
+        select(GroupRoom).where(GroupRoom.leader_conversation_id == conv_id)
+    ).first()
+    if room is None:
+        return False  # 不是群组长计划（普通总管走真人 HITL 卡片），不拦
+    return not bool(getattr(room, "auto_confirm_member_tasks", False))
 
 
 @tool

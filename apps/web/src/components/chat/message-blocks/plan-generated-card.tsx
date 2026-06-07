@@ -23,6 +23,9 @@ import {
 } from "@/lib/chat/plan-generated-payload"
 import { useCuratorPlanFeedback } from "@/components/chat/curator/curator-plan-feedback-context"
 import type { ToolUiActionOutbound } from "@/lib/chat/tool-ui-action"
+import { TaskProgressBar } from "./task-progress-bar"
+import { usePlanProgress } from "@/hooks/use-plan-progress"
+import type { OrchestrationTaskProgress } from "./orchestration-plan-card"
 
 const STATE_CONFIG: Record<string, { title: string; titleClass: string }> = {
   call: {
@@ -90,6 +93,16 @@ function PlanGeneratedCardInner({
     if (!summary && tasks.length === 0) return null
     return { summary, tasks }
   }, [input, resultText, planOutput?.summary])
+
+  // 子任务实时进度：确认执行后，按 task_started/completed/failed 事件聚合。
+  const planTaskIds = React.useMemo(
+    () =>
+      (data?.tasks ?? [])
+        .map((t) => t.task_id)
+        .filter((id): id is number => typeof id === "number"),
+    [data?.tasks]
+  )
+  const { statusByTaskId, completed, total } = usePlanProgress(planTaskIds)
 
   const isPlanPending =
     remoteStatus === "pending" ||
@@ -270,11 +283,31 @@ function PlanGeneratedCardInner({
           </p>
         )}
 
-      {showConfirmedMessage && (
-        <p className="text-muted-foreground mt-2.5 text-[11px]">
-          已确认执行，子任务将按编排开始运行。
-        </p>
-      )}
+      {showConfirmedMessage &&
+        (planTaskIds.length > 0 ? (
+          <TaskProgressBar
+            className="mt-2.5 max-w-none border-0 bg-transparent p-0 shadow-none"
+            planId={planOutput?.plan_id ?? 0}
+            summary={data.summary}
+            total={total}
+            completed={completed}
+            tasks={data.tasks.map<OrchestrationTaskProgress>((t, i) => ({
+              task_id: t.task_id ?? i,
+              task_name: t.task_name,
+              employee_name: t.employee_name ?? "",
+              status:
+                t.task_id != null
+                  ? (statusByTaskId[t.task_id] ?? "pending")
+                  : "pending",
+              cron: t.cron,
+              execute_mode: t.execute_mode ?? "immediate",
+            }))}
+          />
+        ) : (
+          <p className="text-muted-foreground mt-2.5 text-[11px]">
+            已确认执行，子任务将按编排开始运行。
+          </p>
+        ))}
       {showCancelledMessage && (
         <p className="text-muted-foreground mt-2.5 text-[11px]">
           已取消该编排计划。

@@ -55,7 +55,13 @@ python scripts/accept_changes.py input.docx output.docx
 
 ## Creating New Documents
 
-Generate .docx files with JavaScript, then validate. Install: `npm install -g docx`
+Generate .docx files with JavaScript, then validate.
+
+**Install once, globally:** `npm install -g docx`
+本运行环境已把全局 node_modules 注入 `NODE_PATH`，全局装好后产物目录里的脚本
+`require('docx')` 即可直接解析。**切勿**在产物目录执行 `npm install docx`——那会在
+产物目录刷出大量 `node_modules` 文件，且并非必要。若 `require('docx')` 报
+`Cannot find module`，先确认是否已**全局**安装（`npm ls -g docx`），而非改用本地安装。
 
 ### Setup
 ```javascript
@@ -585,6 +591,6 @@ After running `comment.py` (see Step 2), add markers to document.xml. For replie
 ## Dependencies
 
 - **pandoc**: Text extraction
-- **docx**: `npm install -g docx` (new documents)
+- **docx**: `npm install -g docx` (new documents; install **globally** only — NODE_PATH is preconfigured so global modules resolve from the artifacts dir. Never `npm install docx` locally in the artifacts dir.)
 - **LibreOffice**: PDF conversion (auto-configured for sandboxed environments via `scripts/office/soffice.py`)
 - **Poppler**: `pdftoppm` for images

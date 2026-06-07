@@ -24,6 +24,8 @@ export interface GroupRoomState {
   status: string
   title: string | null
   members: GroupRoomMember[]
+  /** 自动确认成员任务的非澄清类审批（默认 false=人工确认） */
+  auto_confirm_member_tasks?: boolean
 }
 
 /**
@@ -82,6 +84,22 @@ export async function fetchGroupRoomDag(
   const res = await request<ApiResponse<GroupRoomDag>>(
     `/chat/conversations/${conversationId}/room/dag`,
     { method: "GET", signal: opts?.signal }
+  )
+  return res?.data ?? null
+}
+
+/**
+ * 设置群「自动确认成员任务」开关。开启后成员的非澄清类审批（文档方案确认等）
+ * 自动放行；组长的澄清提问不受影响仍需用户作答。
+ * PATCH /chat/conversations/{conversation_id}/room/auto-confirm
+ */
+export async function setGroupRoomAutoConfirm(
+  conversationId: number | string,
+  enabled: boolean
+): Promise<GroupRoomState | null> {
+  const res = await request<ApiResponse<GroupRoomState>>(
+    `/chat/conversations/${conversationId}/room/auto-confirm`,
+    { method: "PATCH", body: { enabled } }
   )
   return res?.data ?? null
 }

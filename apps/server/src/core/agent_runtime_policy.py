@@ -14,14 +14,15 @@ AGENT_MAX_CONCURRENT_STREAMS_CAP = 8
 # 单连接可排空的范围；其余流排队。可经 config_kvs AGENT_MAX_INFLIGHT / AGENT_MAX_HEAVY 覆盖
 # （设 0 = 关闭逃生阀）。
 AGENT_MAX_INFLIGHT_KV = "AGENT_MAX_INFLIGHT"
-# 4→2：实测 orchestration 突发并发(组长一次派多员工，每条还多一次 SkillsMiddleware
-# before_agent 模型调用)会触发「调模型前卡 45s」竞态，~50% 流卡死。降到 2 减少同时
-# 在飞的流→显著降低触发概率（群聊变串行一点，但能用）。可经 config_kvs AGENT_MAX_INFLIGHT 覆盖。
-AGENT_MAX_INFLIGHT_DEFAULT = 2
+# 2→4（2026-06-07）：之前降到 2 是为压低「调模型前卡 45s」竞态触发面，但代价是只要
+# 攒 2 个挂死流就占满全局槽位 → 所有新对话被拒/排队 → 「随时间必然卡死」。根因（挂死流
+# 久占槽）已由 stream_registry 的「180s 无 chunk 即判死收尾、快速释放槽位」治住，故把
+# 并发上限放回 4：多 2 格缓冲，即便偶有挂死流也不易占满。可经 config_kvs AGENT_MAX_INFLIGHT 覆盖。
+AGENT_MAX_INFLIGHT_DEFAULT = 4
 AGENT_MAX_INFLIGHT_CAP = 32
 
 AGENT_MAX_HEAVY_KV = "AGENT_MAX_HEAVY"
-AGENT_MAX_HEAVY_DEFAULT = 2
+AGENT_MAX_HEAVY_DEFAULT = 4
 
 # 启用槽位闸且总闸 >= 2 时，为 light 预留、heavy 不可占满的格数。
 LIGHT_SLOT_RESERVE = 1

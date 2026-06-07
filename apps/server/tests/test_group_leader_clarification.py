@@ -28,6 +28,23 @@ def test_leader_brief_includes_clarify_branch() -> None:
     assert "张三" in brief
 
 
+def test_leader_brief_default_waits_for_user_confirm() -> None:
+    """默认（未开自动确认）：brief 应让组长建计划后停下等用户确认，不要自动 confirm。"""
+    brief = build_leader_brief(question="做个报告", roster="- 张三（员工ID: 1）")
+    assert "确认执行" in brief
+    assert "由用户点击确认后才会派活" in brief
+    assert "不要" in brief and "confirm_orchestration_plan" in brief
+
+
+def test_leader_brief_auto_confirm_executes_immediately() -> None:
+    """开启自动确认：brief 应允许组长立即 confirm_orchestration_plan 执行。"""
+    brief = build_leader_brief(
+        question="做个报告", roster="- 张三（员工ID: 1）", auto_confirm=True
+    )
+    assert "立即 confirm_orchestration_plan" in brief
+    assert "本群已开启自动确认" in brief
+
+
 def test_orchestrator_interrupt_on_has_clarify() -> None:
     interrupt_on = build_orchestrator_interrupt_on(None)
     assert "submit_clarifying_questions" in interrupt_on
@@ -206,6 +223,76 @@ def test_interrupted_leader_no_parts_posts_fallback(
     assert meta["clarify_target_conversation_id"] == leader_conv.id
     assert meta["clarify_message_id"] == interrupted_id
     assert card.content, "兜底内容不能为空"
+    read.close()
+
+
+def test_leader_error_projects_clear_reason(
+    db_session, db_engine, workspace, monkeypatch
+):
+    """组长流 error 时，群时间线应带「具体失败原因」而非模糊的「（组长error）」。"""
+    from sqlalchemy.orm import sessionmaker
+
+    TestSession = sessionmaker(bind=db_engine)
+    monkeypatch.setattr("src.db.session.get_session_local", lambda: TestSession)
+    room, group_conv, leader_conv = _make_room_with_leader(db_session, workspace)
+    # 出错时 stream_registry 把可读原因写进 content + extra_meta.error_message
+    failed = ConversationMessage(
+        conversation_id=leader_conv.id,
+        role="assistant",
+        content="请求模型 qwen-max 超时，请稍后重试。",
+        stream_state="error",
+        extra_meta=json.dumps(
+            {"error_message": "请求模型 qwen-max 超时，请稍后重试。"},
+            ensure_ascii=False,
+        ),
+    )
+    db_session.add(failed)
+    db_session.commit()
+
+    project_member_conversation_if_in_room(leader_conv.id, "error")
+
+    read = TestSession()
+    card = read.scalars(
+        select(ConversationMessage)
+        .where(
+            ConversationMessage.conversation_id == group_conv.id,
+            ConversationMessage.role == "assistant",
+        )
+        .order_by(ConversationMessage.id.desc())
+    ).first()
+    assert card is not None
+    assert "组长error" not in (card.content or ""), "不应再出现模糊的「组长error」"
+    assert "执行失败" in (card.content or "")
+    assert "超时" in (card.content or ""), "应把真实失败原因带到群里"
+    meta = json.loads(card.extra_meta or "{}")
+    assert meta.get("stream_state") == "error"
+    read.close()
+
+
+def test_leader_error_without_reason_gives_actionable_hint(
+    db_session, db_engine, workspace, monkeypatch
+):
+    """组长流 error 但没有任何可读原因时，应给出可操作的兜底提示（而非空 error）。"""
+    from sqlalchemy.orm import sessionmaker
+
+    TestSession = sessionmaker(bind=db_engine)
+    monkeypatch.setattr("src.db.session.get_session_local", lambda: TestSession)
+    room, group_conv, leader_conv = _make_room_with_leader(db_session, workspace)
+    # 无 assistant 消息：拿不到原因
+    project_member_conversation_if_in_room(leader_conv.id, "error")
+
+    read = TestSession()
+    card = read.scalars(
+        select(ConversationMessage)
+        .where(
+            ConversationMessage.conversation_id == group_conv.id,
+            ConversationMessage.role == "assistant",
+        )
+        .order_by(ConversationMessage.id.desc())
+    ).first()
+    assert card is not None
+    assert "执行失败" in (card.content or "")
+    assert "模型设置" in (card.content or ""), "无原因时应引导检查模型设置"
     read.close()
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
@@ -17,6 +18,54 @@ logger = logging.getLogger(__name__)
 
 RESULT_EXCERPT_MAX_CHARS = 120
 MAX_RESULT_EXCERPT_BLOCKS = 2
+
+# ── list_tasks 反复轮询硬闸 ────────────────────────────────────────────────
+# 组长（群编排）确认计划后，本应结束本轮、由完成驱动调度器自动派活+自动汇总
+# （dependency_scheduler.on_employee_task_completed → summarize_by_leader）。
+# 但模型常无视 prompt 里「别反复轮询」的软约束，确认后进入「让我再检查一次任务
+# 状态」→ list_tasks 看到 running → 再检查的死循环：本轮永不结束 → 流式会话永不
+# 释放（「组长会话停不掉」）→ 占满槽位/喂爆序列化层，是导致整体卡死的导火索之一。
+# 软提示治不了（同 read_file 软停止），故在工具层硬闸：同一会话短窗口内重复
+# list_tasks 超阈值，直接返回「停手」指令而非又一张邀请再轮询的状态表。
+_POLL_WINDOW_SECONDS = 90.0
+_POLL_HARD_LIMIT = 3
+# conversation_id -> [单调时间戳, ...]（仅保留窗口内的）
+_recent_list_task_calls: dict[int, list[float]] = {}
+
+_POLL_STOP_DIRECTIVE = (
+    "⛔ 你已在短时间内多次查询任务状态。**请立即停手并结束本轮，不要再调用 "
+    "list_tasks。**\n\n"
+    "原因：任务在各成员的独立会话里执行，**无需你轮询**。所有子任务完成后，"
+    "系统会**自动**触发你做最终汇总并发到群里（完成驱动，无需你介入）；任务失败"
+    "也会自动产生「【任务失败】」消息。反复 list_tasks 不会让任务更快完成，只会"
+    "让本轮一直挂着、占用资源。\n\n"
+    "现在请用一句话告诉用户「任务正在执行中，完成后会自动汇总」，然后**结束本轮，"
+    "停止任何工具调用**。"
+)
+
+
+def _record_poll_and_should_block(conversation_id: int | None) -> bool:
+    """登记一次 list_tasks 调用；返回是否应在本会话触发硬闸。
+
+    用单调时钟的滑动窗口：窗口内累计调用次数达上限即拦截。窗口外的旧记录被丢弃，
+    所以正常的「偶尔查一次」永远不会触发；只有短时间高频轮询才命中。
+    """
+    if conversation_id is None:
+        return False
+    now = time.monotonic()
+    window = [
+        ts for ts in _recent_list_task_calls.get(conversation_id, [])
+        if now - ts < _POLL_WINDOW_SECONDS
+    ]
+    window.append(now)
+    _recent_list_task_calls[conversation_id] = window
+    return len(window) >= _POLL_HARD_LIMIT
+
+
+def reset_poll_guard(conversation_id: int | None) -> None:
+    """清除某会话的轮询计数（流结束/新一轮用户消息时调用，避免跨轮误伤）。"""
+    if conversation_id is not None:
+        _recent_list_task_calls.pop(conversation_id, None)
 
 
 def _normalize_limit(limit: int) -> int:

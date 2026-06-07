@@ -23,6 +23,14 @@ function humanizeToolResult(text: string): string {
   try {
     const obj = JSON.parse(stripped)
     if (obj && typeof obj === "object" && typeof obj.message === "string") {
+      // 带 `type` 字段的结构化结果（如 employee_updated / employee_detail /
+      // employee_deleted）有专属卡片，需要完整 JSON 才能解析渲染。若在此处提前
+      // 提取成 message 纯文本，下游卡片会因 resultText 不再以 `{` 开头而解析失败 →
+      // 误判 plainError，把成功操作渲染成红色「操作失败」。故有 type 时保留原文，
+      // 只对「纯靠 message 显示一句话」的普通工具做 humanize 提取。
+      if (typeof (obj as Record<string, unknown>).type === "string") {
+        return text
+      }
       return obj.message
     }
   } catch {

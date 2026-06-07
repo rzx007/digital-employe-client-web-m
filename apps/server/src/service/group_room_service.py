@@ -162,15 +162,17 @@ def relay_group_stream_delta(conversation_id: int, delta_text: str) -> None:
 
 
 def auto_confirm_leader_plan_if_pending(leader_conversation_id: int) -> None:
-    """组长流结束后：若组长刚创建了未确认（pending）的编排计划，自动确认执行。
+    """组长流结束后：**仅当所属群开启「自动确认成员任务」时**，自动确认执行其
+    pending 编排计划。默认（开关关）**不自动执行**——把计划留在 pending，由群时间线上
+    的「确认执行」卡片等用户点击后才派活（真人确认）。
 
-    群组长场景没有真人点“确认执行”，但总管 agent 的系统 prompt / 工具返回值
-    都强制“创建计划后等用户确认”，导致组长生成计划后停在 pending、成员永不开工。
-    这里做代码层兜底：组长会话对应的最新 pending 计划，直接 execute_plan 派活，
-    不依赖 LLM 是否记得调 confirm_orchestration_plan。
+    历史上这里无条件自动执行（"群组长无真人确认"），导致计划一生成就跑、用户根本
+    来不及点确认。现在改为：开关是这条路径的唯一闸门，和成员任务 HITL 同一开关，
+    语义统一——开关关=全程人工把关（含组长计划），开关开=全自动跑通。
     """
     from src.db.session import get_session_local
     from src.models.conversation import Conversation
+    from src.models.group_room import GroupRoom
     from src.models.orchestration_plan import OrchestrationPlan
     from src.service.agent.orchestrator.execution import execute_plan
 
@@ -187,8 +189,27 @@ def auto_confirm_leader_plan_if_pending(leader_conversation_id: int) -> None:
         ).first()
         if plan is None or plan.status != "pending":
             return  # 没有计划，或已确认/已取消，无需处理
+
+        # 找到该组长会话所属房间，读「自动确认」开关。
+        room = db.scalars(
+            select(GroupRoom).where(
+                GroupRoom.leader_conversation_id == leader_conversation_id
+            )
+        ).first()
+        auto_confirm = bool(
+            room is not None
+            and getattr(room, "auto_confirm_member_tasks", False)
+        )
+        if not auto_confirm:
+            # 开关关（默认）：不自动执行，留 pending 等用户点「确认执行」卡片。
+            logger.info(
+                "leader plan #%s (conv=%s) 保持 pending，等用户确认（自动确认未开启）",
+                plan.id, leader_conversation_id,
+            )
+            return
+
         logger.info(
-            "auto-confirming leader plan #%s (conv=%s) — 群组长无真人确认，代为执行",
+            "auto-confirming leader plan #%s (conv=%s) — 群已开启自动确认，代为执行",
             plan.id, leader_conversation_id,
         )
         execute_plan(db, plan, conv.workspace_id)
@@ -223,17 +244,34 @@ def _get_room_create_lock(room_conversation_id: int) -> _threading.Lock:
         return lock
 
 
-def build_leader_brief(question: str, roster: str) -> str:
+def build_leader_brief(
+    question: str, roster: str, *, auto_confirm: bool = False
+) -> str:
     """组长会话的系统 prompt/用户消息拼装。
 
     roster 格式为每行一条：- 姓名（员工ID: N）
     例：
         - 张三（员工ID: 1）
         - 李四（员工ID: 2）
+
+    auto_confirm：群是否开启「自动确认成员任务」。决定组长建计划后是「等用户点
+    确认执行卡片」（默认）还是「立即 confirm_orchestration_plan 自动执行」。
     """
+    if auto_confirm:
+        plan_step = (
+            "- 若需求已清晰：先用一句话说你的安排，再 create_orchestration_plan、"
+            "随后立即 confirm_orchestration_plan 执行（本群已开启自动确认；互不依赖可"
+            "并行，有先后用 depends_on）。\n"
+        )
+    else:
+        plan_step = (
+            "- 若需求已清晰：先用一句话说你的安排，再 create_orchestration_plan，"
+            "**然后就结束本轮、停下**。计划会以「确认执行」卡片呈现给用户，"
+            "**由用户点击确认后才会派活**——你**不要**调用 confirm_orchestration_plan、"
+            "不要假设已开始执行（互不依赖可并行，有先后用 depends_on）。\n"
+        )
     return (
-        "你是这个群的组长（调度员）。没有真人会替你点「确认执行」，"
-        "但当用户需求模糊时你必须先澄清，不能凭空臆测。\n"
+        "你是这个群的组长（调度员）。当用户需求模糊时你必须先澄清，不能凭空臆测。\n"
         "群里现有以下成员可供你分派任务：\n"
         f"{roster}\n\n"
         "判断用户需求是否清晰：\n"
@@ -241,8 +279,7 @@ def build_leader_brief(question: str, roster: str) -> str:
         "**本轮必须调用 `submit_clarifying_questions`**（context 取 long_document 或 general）"
         "一次性列清要点；调用后停下，**不要** create_orchestration_plan、不要派活，"
         "等用户回答后的下一轮再继续。禁止只在聊天里列问题而不调工具。\n"
-        "- 若需求已清晰：先用一句话说你的安排，再 create_orchestration_plan、"
-        "随后立即 confirm_orchestration_plan 执行（互不依赖可并行，有先后用 depends_on）。\n"
+        f"{plan_step}"
         "成员产出会自动汇总到群里。\n\n"
         f"用户需求：{question}"
     )
@@ -402,11 +439,15 @@ class GroupRoomService:
         sender_label: str | None,
         extra_meta: dict | None = None,
         message_parts: list | None = None,
+        source_conversation_id: int | None = None,
     ) -> ConversationMessage:
         """向群时间线（房间会话）追加一条带作者归属的消息，并推送 SSE 事件。
 
         message_parts: 可选结构化 parts（如澄清问题卡片），非空时写入
         ConversationMessage.message_parts 列，前端直接渲染。
+        source_conversation_id: 产出该消息的源会话（组长/成员私有会话）id。带上它，
+        前端能**精确**清掉对应那条逐字流式临时态（按 source 而非 senderId 匹配），
+        避免「落库消息一到就把还在流的组长气泡整段清掉→闪烁」。
         """
         meta = dict(extra_meta) if extra_meta else {}
         meta["created_at"] = cst_now().isoformat()
@@ -443,6 +484,7 @@ class GroupRoomService:
                 "content": content,
                 "sender_id": sender_id,
                 "sender_label": sender_label,
+                "source_conversation_id": source_conversation_id,
             })
         except Exception:
             logger.warning("push room_message failed room=%s", room.id, exc_info=True)
@@ -544,12 +586,17 @@ class GroupRoomService:
         shared_dir = str(
             Path(settings.artifacts_path) / f"room-{room.id}" / "artifacts"
         )
+        # 群「自动确认成员任务」开启时：成员的「文档方案确认」等非澄清类审批自动放行
+        # （clarify_only_hitl），但「澄清提问」仍挂起等用户作答。默认关=保持全量人工确认。
+        auto_confirm = bool(getattr(room, "auto_confirm_member_tasks", False))
         agent = get_agent(
             skills_path,
             settings.artifacts_path,
             employee_id=employee.id,
             conversation_id=member_conv_id,
             shared_artifacts_dir=shared_dir,
+            enable_hitl=not auto_confirm,
+            clarify_only_hitl=auto_confirm,
         )
 
         request_messages: list[dict[str, Any]] = [*history_messages]
@@ -659,12 +706,27 @@ class GroupRoomService:
                 )
                 GroupRoomService.update_member_state(db, member, "done")
             else:
+                if status_val == "cancelled":
+                    body = f"⏹️ {sender_label}的任务已被取消。"
+                elif status_val == "interrupted":
+                    body = f"⏸️ {sender_label}的任务已中断，等待补充信息后继续。"
+                else:  # error
+                    reason = _extract_failure_reason(db, member_conv_id)
+                    body = f"⚠️ {sender_label}执行失败"
+                    body += f"：{reason}" if reason else (
+                        "，请稍后重试；若反复失败请检查模型设置"
+                        "（API Key / Base URL / 模型名）。"
+                    )
                 GroupRoomService.post_to_timeline(
                     db, room,
                     role="assistant",
-                    content=f"（{sender_label} 的任务{status_val}）",
+                    content=body,
                     sender_id=member.employee_id,
                     sender_label=sender_label,
+                    extra_meta={
+                        "member_conversation_id": member_conv_id,
+                        "stream_state": status_val,
+                    },
                 )
                 GroupRoomService.update_member_state(db, member, "ready")
         finally:
@@ -749,19 +811,8 @@ class GroupRoomService:
                     "dispatched": [],
                     "note": "已作为澄清作答恢复组长",
                 }
-            # 否则正常派活：先给一条组长「已收到」的即时反馈再派活——组长构建 agent + 首包
-            # 要几秒，这几秒群里没动静会让用户以为没反应。组长真正流式输出后是另一条（实际
-            # 安排），两条都合理、用户明确知道在动。
-            try:
-                GroupRoomService.post_to_timeline(
-                    db, room,
-                    role="assistant",
-                    content="收到，我来统筹安排，正在拆解任务、分配人手…",
-                    sender_id=None,
-                    sender_label="组长",
-                )
-            except Exception:
-                logger.warning("post leader ack failed room=%s", room.id, exc_info=True)
+            # 直接派活给组长。不再发「收到，我来统筹安排…」这条预设 ACK——用户嫌它多余，
+            # 且组长气泡已有流式光标 +「正在生成 N 字…」反馈，首包到达即可见在动。
             leader_conv_id = GroupRoomService.dispatch_to_leader(
                 db, room, question, auth_token=auth_token
             )
@@ -848,7 +899,57 @@ class GroupRoomService:
             if emp:
                 roster_lines.append(f"- {emp.name}（员工ID: {emp.id}）")
         roster = "\n".join(roster_lines) or "（暂无可用成员）"
-        leader_brief = build_leader_brief(question, roster)
+        # 群「自动确认」决定组长建计划后是等用户点确认卡片（默认）还是立即自动执行。
+        leader_auto_confirm = bool(
+            getattr(room, "auto_confirm_member_tasks", False)
+        )
+        leader_brief = build_leader_brief(
+            question, roster, auto_confirm=leader_auto_confirm
+        )
+
+        # 关键：派活前先回收组长会话上可能卡死的旧流。组长流若挂死（线程饥饿/
+        # pre-httpx 永挂，见 orchestrator-silent-stall），会一直 is_active=True 占着
+        # 该 conversation_id：新派活要么被 request_start REJECTED（但空 assistant 已建、
+        # 留个永久 streaming 的空气泡），要么排队永不执行 → 表现为「组长空气泡 +
+        # 再也发不出消息」。这里先 force_clear 把僵尸流取消、标 failed、释放槽位，
+        # 让本次派活能干净地起新流。
+        try:
+            from src.service.stream_registry import registry
+
+            if registry.is_active(leader_conv.id):
+                logger.warning(
+                    "dispatch_to_leader: 组长会话 %s 仍有活跃流，先 force_clear 回收"
+                    "（疑上轮卡死）",
+                    leader_conv.id,
+                )
+                registry.force_clear_stream(leader_conv.id)
+        except Exception:
+            logger.warning(
+                "force_clear stale leader stream failed conv=%s",
+                leader_conv.id, exc_info=True,
+            )
+
+        # 兜底：把该组长会话里**历史遗留**、仍标 streaming/queued 的旧 assistant 消息
+        # 收尾成 error（force_clear 只管 registry 内的活跃 task，管不到进程重启前留下的
+        # 僵尸 DB 行）。否则群时间线会一直挂着永不结束的空气泡。
+        try:
+            stale_rows = leader_db.scalars(
+                select(ConversationMessage).where(
+                    ConversationMessage.conversation_id == leader_conv.id,
+                    ConversationMessage.role == "assistant",
+                    ConversationMessage.stream_state.in_(("streaming", "queued")),
+                )
+            ).all()
+            for row in stale_rows:
+                row.stream_state = "error"
+            if stale_rows:
+                leader_db.commit()
+        except Exception:
+            logger.warning(
+                "reclaim stale leader assistant rows failed conv=%s",
+                leader_conv.id, exc_info=True,
+            )
+            leader_db.rollback()
 
         history_messages, _ = ChatService._load_history_for_agent(
             leader_db, conversation_id=leader_conv.id,
@@ -1050,7 +1151,23 @@ class GroupRoomService:
             "status": room.status,
             "title": room.title,
             "members": member_dicts,
+            "auto_confirm_member_tasks": bool(
+                getattr(room, "auto_confirm_member_tasks", False)
+            ),
         }
+
+    @staticmethod
+    def set_auto_confirm(
+        db: Session, group_conversation_id: int, enabled: bool
+    ) -> dict | None:
+        """设置/取消群「自动确认成员任务」开关。返回最新房间状态或 None（非群会话）。"""
+        conv = db.get(Conversation, group_conversation_id)
+        if conv is None or conv.target_type != "group":
+            return None
+        room = GroupRoomService.ensure_room(db, conv)
+        room.auto_confirm_member_tasks = bool(enabled)
+        db.commit()
+        return GroupRoomService.get_room_state(db, group_conversation_id)
 
     @staticmethod
     def stop_room(db: Session, group_conversation_id: int) -> dict:
@@ -1573,6 +1690,38 @@ class GroupRoomService:
         return True
 
 
+def _extract_failure_reason(db: Session, conversation_id: int) -> str:
+    """取某会话最近一次失败的用户可读原因。
+
+    出错时 stream_registry 会把 assistant 消息的 content 写成
+    format_agent_error_for_user 的中文文案，并在 extra_meta.error_message
+    留一份。优先取 extra_meta，其次取 content；都没有则空串。截断避免刷屏。
+    """
+    last = db.scalars(
+        select(ConversationMessage)
+        .where(
+            ConversationMessage.conversation_id == conversation_id,
+            ConversationMessage.role == "assistant",
+        )
+        .order_by(ConversationMessage.id.desc())
+    ).first()
+    if last is None:
+        return ""
+    reason = ""
+    if last.extra_meta:
+        try:
+            meta = json.loads(last.extra_meta)
+            if isinstance(meta, dict):
+                reason = str(meta.get("error_message") or "").strip()
+        except (json.JSONDecodeError, TypeError):
+            pass
+    if not reason:
+        reason = (last.content or "").strip()
+    if len(reason) > 280:
+        reason = reason[:279].rstrip() + "…"
+    return reason
+
+
 def _project_simple(
     db: Session,
     room: GroupRoom,
@@ -1595,6 +1744,19 @@ def _project_simple(
         content = (last.content or "").strip() if last else ""
         if not content:
             content = "（已完成）"
+        # 投影结构化 parts（与单聊/总管同源）：组长跟总管跑的是同一套 orchestrator
+        # 流，落库时 stream_registry 已把 text/工具调用写成 message_parts。只投 content
+        # 会把招聘 JSON、技能探索等结构块拍平成一坨原始文本（招聘 JSON 漏成裸代码块、
+        # 围栏被吞）。带上 parts，前端 classifier 就能渲成跟总管一致的招聘卡/工具块。
+        message_parts = None
+        if last is not None and last.message_parts:
+            try:
+                message_parts = json.loads(last.message_parts)
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(
+                    "组长会话 %s 的 message_parts 解析失败，回退纯文本投影",
+                    conversation_id,
+                )
         GroupRoomService.post_to_timeline(
             db, room,
             role="assistant",
@@ -1602,14 +1764,34 @@ def _project_simple(
             sender_id=sender_id,
             sender_label=sender_label,
             extra_meta={"source_conversation_id": conversation_id},
+            message_parts=message_parts,
+            source_conversation_id=conversation_id,
         )
     elif stream_state in ("cancelled", "error"):
+        # 旧实现只发「（组长error）」，用户完全看不懂出了什么问题。
+        # 改为：取该会话最后一条 assistant 的失败原因（出错时 content 已被
+        # stream_registry 写成 format_agent_error_for_user 的用户可读文案，
+        # 或落在 extra_meta.error_message），拼成清晰的中文提示。
+        reason = _extract_failure_reason(db, conversation_id)
+        if stream_state == "cancelled":
+            content = f"⏹️ {sender_label}的任务已被取消。"
+        else:
+            content = f"⚠️ {sender_label}执行失败"
+            if reason:
+                content += f"：{reason}"
+            else:
+                content += "，请稍后重试；若反复失败请检查模型设置（API Key / Base URL / 模型名）。"
         GroupRoomService.post_to_timeline(
             db, room,
             role="assistant",
-            content=f"（{sender_label}{stream_state}）",
+            content=content,
             sender_id=sender_id,
             sender_label=sender_label,
+            extra_meta={
+                "source_conversation_id": conversation_id,
+                "stream_state": stream_state,
+            },
+            source_conversation_id=conversation_id,
         )
     logger.info(
         "projected conv=%s (%s) as '%s' to room=%s",
@@ -1826,6 +2008,7 @@ def project_member_conversation_if_in_room(
                         "clarify_message_id": last.id,
                     },
                     message_parts=parts,
+                    source_conversation_id=conversation_id,
                 )
                 return  # early-return：不落入 completed/_project_simple，不回流总管
             _project_simple(
@@ -1901,6 +2084,7 @@ def project_member_conversation_if_in_room(
                         "member_conversation_id": conversation_id,
                         "kind": "delivery",
                     },
+                    source_conversation_id=conversation_id,
                 )
             logger.info(
                 "member task conv=%s (%s) → DAG + delivery (room=%s)",
@@ -1945,6 +2129,7 @@ def project_member_conversation_if_in_room(
                 sender_id=member.employee_id,
                 sender_label=sender_label,
                 extra_meta={"member_conversation_id": conversation_id},
+                source_conversation_id=conversation_id,
             )
             GroupRoomService.update_member_state(db, member, "done")
         elif stream_state in ("cancelled", "error", "interrupted"):

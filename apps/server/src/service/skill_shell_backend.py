@@ -51,6 +51,19 @@ _ERROR_HINTS: list = [
         lambda m: "命令不存在或未安装。换用已有的等价工具，或先确认该命令在当前环境可用。",
     ),
     (
+        re.compile(
+            r"(Cannot find module ['\"]([^'\"]+)['\"]|MODULE_NOT_FOUND)"
+        ),
+        lambda m: (
+            f"缺少 Node 模块 {m.group(2)}。" if m.lastindex and m.group(2)
+            else "缺少 Node 模块。"
+        ) + (
+            "本环境已把全局 node_modules 注入 NODE_PATH，请用全局安装 "
+            "`npm install -g <pkg>` 后直接重跑脚本即可解析；"
+            "**切勿**在产物目录 `npm install <pkg>`（会刷出大量 node_modules 文件）。"
+        ),
+    ),
+    (
         re.compile(r"(SyntaxError|IndentationError)"),
         lambda m: "代码语法/缩进错误。按报错行号修正后重试，不要原样重跑。",
     ),
@@ -68,6 +81,42 @@ def _steer_on_error(output: str) -> str:
         if match:
             return f"\n[建议] {hint(match)}"
     return ""
+
+
+# 进程级缓存全局 npm root，避免每次构建 backend 都 spawn 一次 `npm root -g`。
+# None=未探测；""=探测过但失败/无 npm。
+_GLOBAL_NPM_ROOT: str | None = None
+
+
+def resolve_global_node_modules() -> str:
+    """返回 `npm root -g`（全局 node_modules 路径），供注入 NODE_PATH。
+
+    根因：Node 默认**不**解析全局模块——`npm install -g docx` 装到全局后，
+    产物目录里的脚本 `require('docx')` 仍报 MODULE_NOT_FOUND，模型于是退而在
+    产物目录本地装，刷出 node_modules。把全局 root 注入 NODE_PATH 即可让全局
+    模块从任意 cwd 解析，一劳永逸。探测失败返回空串（无 npm 时静默降级）。
+    """
+    global _GLOBAL_NPM_ROOT
+    if _GLOBAL_NPM_ROOT is not None:
+        return _GLOBAL_NPM_ROOT
+    try:
+        result = subprocess.run(  # noqa: S603,S607
+            ["npm", "root", "-g"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            shell=(os.name == "nt"),  # Windows 上 npm 是 .cmd，需经 shell 解析
+        )
+        root = (result.stdout or "").strip()
+        if result.returncode == 0 and root and Path(root).is_dir():
+            _GLOBAL_NPM_ROOT = root
+        else:
+            _GLOBAL_NPM_ROOT = ""
+    except Exception as e:
+        logger.warning("[shell] failed to resolve global npm root: %s", e)
+        _GLOBAL_NPM_ROOT = ""
+    return _GLOBAL_NPM_ROOT
 
 
 class SkillAwareShellBackend(LocalShellBackend):
@@ -105,6 +154,22 @@ class SkillAwareShellBackend(LocalShellBackend):
         if os.name == "nt":
             self._env.setdefault("PYTHONUTF8", "1")
             self._env.setdefault("PYTHONIOENCODING", "utf-8")
+        self._inject_global_node_path()
+
+    def _inject_global_node_path(self) -> None:
+        """把全局 node_modules 注入 NODE_PATH，让 `npm install -g docx` 后
+        产物目录里的脚本 `require('docx')` 能从全局解析，无需本地再装。
+        已有 NODE_PATH 则前置追加，不覆盖用户/系统原有值。"""
+        global_root = resolve_global_node_modules()
+        if not global_root:
+            return
+        existing = self._env.get("NODE_PATH", "")
+        parts = [p for p in existing.split(os.pathsep) if p]
+        if global_root in parts:
+            return
+        parts.insert(0, global_root)
+        self._env["NODE_PATH"] = os.pathsep.join(parts)
+        logger.info("[shell] injected global node_modules into NODE_PATH: %s", global_root)
 
     @property
     def artifacts_dir(self) -> Path:
@@ -158,10 +223,33 @@ class SkillAwareShellBackend(LocalShellBackend):
         )
 
     def _extract_python_c_code(self, command: str) -> str | None:
-        """从 `python -c '...'` / `python -u -c "..."` 提取代码体。"""
+        """从 `python -c '...'` 提取代码体。
+
+        旧实现用单条正则，仅认 `python` / `python -u` 且要求引号严格闭合，遇到
+        `python3 -c`、带其它 flag（`-X utf8`）、或代码体含内层同类引号时匹配失败，
+        回退把多行命令原样丢给 Windows cmd → 多行静默失败 → agent 拿不到结果反复
+        重试，撞 LangGraph 递归上限刷几千事件、空烧 token（实测 conv 卡 74s/2527 事件）。
+
+        改为先用 shlex 正确拆分（能处理引号嵌套），定位首个 `-c` 并取其后一个 token
+        作为代码体——这覆盖 python/python3/py + 任意中间 flag 的所有常见形态。
+        shlex 失败（命令含 cmd 才认的语法）时再退回原正则兜底。
+        """
         stripped = command.strip()
+        try:
+            tokens = shlex.split(stripped, posix=True)
+        except ValueError:
+            tokens = []
+        for i, tok in enumerate(tokens):
+            base = os.path.basename(tok).lower()
+            if base in ("python", "python3", "py", "python.exe", "python3.exe"):
+                for j in range(i + 1, len(tokens)):
+                    if tokens[j] == "-c":
+                        return tokens[j + 1] if j + 1 < len(tokens) else None
+                break
+
+        # 兜底：shlex 拆不出时用原正则（兼容 python -u -c '...'）。
         match = re.match(
-            r"python(?:\s+-u)?\s+-c\s+(?P<q>['\"])(?P<code>[\s\S]*)(?P=q)\s*$",
+            r"python\d?(?:\s+-\S+)*\s+-c\s+(?P<q>['\"])(?P<code>[\s\S]*)(?P=q)\s*$",
             stripped,
             re.IGNORECASE,
         )
@@ -173,7 +261,10 @@ class SkillAwareShellBackend(LocalShellBackend):
         """Windows cmd 无法可靠执行多行 python -c；落盘为临时 .py 再运行。"""
         if os.name != "nt" or "\n" not in command:
             return command
-        if "python" not in command.lower() or "-c" not in command.lower():
+        lowered = command.lower()
+        if "-c" not in lowered:
+            return command
+        if not any(p in lowered for p in ("python", "py ", "py\t")):
             return command
 
         code = self._extract_python_c_code(command)

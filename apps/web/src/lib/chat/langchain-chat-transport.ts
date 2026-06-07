@@ -12,7 +12,11 @@ import {
 } from "./langchain-stream-parser"
 import { sseEventSchema, type ToolOutputData } from "./langchain-sse-schema"
 import { ERROR_MARKER } from "./message-classifier"
-import { isBenignStreamAbortError } from "./stream-abort"
+import {
+  isBenignStreamAbortError,
+  isStreamDisconnectedError,
+  StreamDisconnectedError,
+} from "./stream-abort"
 import { conversationRuntimeBus } from "./conversation-runtime-bus"
 import {
   buildHitlInterruptStreamChunks,
@@ -118,6 +122,14 @@ const RECONNECT_FLUSH_MS = 48
 const RECONNECT_MAX_CHUNKS_PER_FLUSH = 256
 /** 每处理 N 条 SSE 后 flush 并让出主线程，避免长时间占用 */
 const RECONNECT_YIELD_EVERY_EVENTS = 320
+
+/**
+ * SSE idle 看门狗超时：连续这么久没从连接收到**任何字节**（含后端每 5~10s 的心跳），
+ * 即判连接「假死」（TCP 还在但中间层 buffer 住/掐断了数据，reader.read() 永久 pending）。
+ * 超时后主动 cancel reader → 抛 StreamDisconnectedError → 上层 resume 续流。
+ * 取值须 > 后端心跳间隔的数倍，避免误杀正常的慢心跳；后端心跳 5s 一次，这里 20s。
+ */
+const SSE_IDLE_TIMEOUT_MS = 20_000
 
 type ChunkFlushBatcher = {
   schedule: (chunk: UIMessageChunk) => void
@@ -295,6 +307,13 @@ async function createResumeEventSourceResponse(options: {
         method: "GET",
         headers: getRequestHeaders({
           Accept: "text/event-stream",
+          // 注意：这里**故意不发** Last-Event-ID / after_seq 做增量续流。后端虽支持只回
+          // 放 seq>N，但前端解析器（langchain-stream-parser）每开一个 text 段都用
+          // generatePartId() 随机 id，且 resume 时 parse state 全新重建——增量续流只送
+          // 「尾部」会以一个**新随机 id 的 text part** 出现，AI SDK 据 id 归并时既接不回
+          // 断点前的前缀、又可能重复/碎片化。故 resume 一律走「从 seq 0 全量重放」，让
+          // useChat 从头重建整条消息（幂等）。真正要做增量续流，得先让 part id 跨 resume
+          // 稳定（按 seq/消息位置派生而非随机），属更大改动，另案。
         }),
         signal: options.abortSignal,
       }
@@ -765,9 +784,38 @@ export class LangChainChatTransport<
           return false
         }
 
+        // 是否见过权威终止信号（[DONE]/interrupted/stream_ended/no_stream/error）。
+        // reader done 时若仍为 false，说明连接在 turn 结束前被对端关闭——
+        // 不能当作正常 finish，否则执行会话会「假结束」。
+        let sawAuthoritativeFinish = false
+        // idle 看门狗：每次 read 都和一个超时赛跑；收到任何字节即重置。超时 = 连接
+        // 假死（中间层 buffer/掐断，read() 永久 pending），按断流处理交上层 resume。
+        let idleTimer: ReturnType<typeof setTimeout> | null = null
+        const readWithIdleWatchdog = (): Promise<
+          ReadableStreamReadResult<Uint8Array>
+        > => {
+          return new Promise((resolve, reject) => {
+            idleTimer = setTimeout(() => {
+              // 主动断开假死连接：cancel 会让 reader.read() reject/resolve，
+              // 但我们已用 StreamDisconnectedError 走 reject，下游统一当断流处理。
+              reader.cancel().catch(() => {})
+              reject(new StreamDisconnectedError())
+            }, SSE_IDLE_TIMEOUT_MS)
+            reader.read().then(
+              (result) => {
+                if (idleTimer) clearTimeout(idleTimer)
+                resolve(result)
+              },
+              (err) => {
+                if (idleTimer) clearTimeout(idleTimer)
+                reject(err)
+              }
+            )
+          })
+        }
         try {
           while (true) {
-            const { done, value } = await reader.read()
+            const { done, value } = await readWithIdleWatchdog()
             if (done) {
               break
             }
@@ -784,6 +832,7 @@ export class LangChainChatTransport<
 
               const didFinish = await flushEvent(eventText)
               if (didFinish) {
+                sawAuthoritativeFinish = true
                 if (import.meta.env.DEV && reconnectStats) {
                   console.info("[sse:resume] reconnect batching", {
                     sseEvents: reconnectSseEvents,
@@ -800,7 +849,17 @@ export class LangChainChatTransport<
           }
 
           if (buffer.trim()) {
-            await flushEvent(buffer)
+            // 残留 buffer 可能正好是 [DONE] 等终止事件，需据其返回值更新判定
+            sawAuthoritativeFinish =
+              (await flushEvent(buffer)) || sawAuthoritativeFinish
+          }
+
+          // 收到 done 但从未见权威终止信号 = 连接中途断开、turn 可能仍在跑。
+          // 抛可识别的中断错误交上层 resume 续流，而非 enqueueFinish 假收尾。
+          if (!sawAuthoritativeFinish) {
+            flushSync()
+            controller.error(new StreamDisconnectedError())
+            return
           }
 
           flushSync()
@@ -821,6 +880,11 @@ export class LangChainChatTransport<
           if (isBenignStreamAbortError(error)) {
             flushSync()
             controller.close()
+          } else if (isStreamDisconnectedError(error)) {
+            // idle 看门狗超时（连接假死）：不吐 error 块（否则会在气泡里冒一条
+            // 可见报错），只 error 出 StreamDisconnectedError 交上层 resume 续流。
+            flushSync()
+            controller.error(error)
           } else {
             flushSync()
             controller.enqueue({
@@ -831,6 +895,7 @@ export class LangChainChatTransport<
             controller.error(error)
           }
         } finally {
+          if (idleTimer) clearTimeout(idleTimer)
           reader.releaseLock()
           // 只清除属于当前 reconnect 的 AbortController，不覆盖新创建的
           if (reconnectAbort && this._reconnectAbort === reconnectAbort) {

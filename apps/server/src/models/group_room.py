@@ -51,6 +51,17 @@ class GroupRoom(Base):
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="active", index=True
     )
+    # 自动确认成员任务的非澄清类审批（文档方案/删除等执行类 HITL）。
+    # 默认关：保持「人任务需人工确认」的现状，用户在群里主动开启才全自动跑通。
+    # 注意：组长「澄清提问」(submit_clarifying_questions)**不受**此开关影响，
+    # 永远需要用户作答（澄清是补关键信息，自动「确认」无意义且会让组长凭空臆测）。
+    auto_confirm_member_tasks: Mapped[bool] = mapped_column(
+        "auto_confirm_member_tasks",
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=cst_now

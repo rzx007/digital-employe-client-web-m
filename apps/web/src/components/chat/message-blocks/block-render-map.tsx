@@ -42,6 +42,12 @@ import type {
 export interface BlockRenderContext {
   messageId: string | null
   conversationId?: string | number | null
+  /**
+   * 该消息所属编排计划/执行的**源会话** id（群里组长计划存在 leader 会话、不是群会话）。
+   * plan-generated 卡用它查计划真实状态——否则群卡用群会话 id 查不到 leader 的计划，
+   * remoteStatus 永远 null → 「确认执行」按钮永不消失、执行中仍显示可确认。
+   */
+  planConversationId?: string | number | null
   toolAutoCollapseMap: Map<string, boolean>
   isLastAssistantMessage: boolean
   isTurnEnded: boolean
@@ -126,6 +132,7 @@ export function BlockRenderer({
   const {
     messageId,
     conversationId,
+    planConversationId,
     toolAutoCollapseMap,
     isLastAssistantMessage,
     isTurnEnded,
@@ -163,7 +170,7 @@ export function BlockRenderer({
         input={block.input}
         state={block.state}
         resultText={block.resultText}
-        conversationId={conversationId}
+        conversationId={planConversationId ?? conversationId}
         isTurnEnded={isTurnEnded}
         onSendUserMessage={onSendUserMessage}
         className="w-full"

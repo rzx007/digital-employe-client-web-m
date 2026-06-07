@@ -47,6 +47,7 @@ import {
   scheduleStreamResume,
   shouldAttemptResume,
 } from "@/lib/chat/session/resume-decision"
+import { resetLastAssistantPartsForResume } from "@/lib/chat/session/reset-assistant-parts-for-resume"
 import { decideHydration } from "@/lib/chat/session/hydrate-decision"
 
 import { chatTransport } from "@/components/chat/shared/chat-view-shared"
@@ -61,6 +62,13 @@ import {
 } from "@/lib/chat/pick-message-display-source"
 
 const REFETCH_DEBOUNCE_MS = 800
+
+/**
+ * C 兜底轮询间隔：本地 SSE 已「假结束」（status 非 streaming）但 DB 仍 streaming 时，
+ * 每隔这么久拉一次 DB，让后台仍在跑的内容近实时补全。即便 SSE resume 始终续不上
+ * （代理彻底掐死 SSE），用户也不必手动重进会话。DB 转终态即停轮询。
+ */
+const DB_STALL_POLL_INTERVAL_MS = 4000
 
 export function useConversationSession({
   conversationId,
@@ -175,13 +183,30 @@ export function useConversationSession({
         ) {
           return
         }
+        // resume = 后端从 seq 0 全量重放重建整条消息。先把末尾 assistant 清成空壳，
+        // 否则重放的新 text part 会叠在断线前已渲染的旧 part 上→前缀重复（SDK 的
+        // text part 不按 id upsert）。清空后重放等于「权威快照原地覆盖整条气泡」，
+        // 不丢不重。同步 setMessages 后再 resumeStream，确保 SDK 读到的是空壳基底。
+        setMessages(resetLastAssistantPartsForResume)
         resumeStream()
       }, attemptIndex)
 
       return true
     },
-    [convKey, resumeStream]
+    [convKey, resumeStream, setMessages]
   )
+
+  // resume 成功重新接上流（status 跃迁回 streaming）→ 重置该 turn 的 resume 计数。
+  // 否则一个长 turn 多次断开会吃光 MAX_STREAM_RESUME_ATTEMPTS 配额，之后断开
+  // 不再续流（R-1）。仅在「曾经发起过 resume」时重置，避免无谓 dispatch 重渲染。
+  const prevStatusRef = useRef(status)
+  useEffect(() => {
+    const prev = prevStatusRef.current
+    prevStatusRef.current = status
+    if (status !== "streaming" || prev === "streaming") return
+    if (Object.keys(machineRef.current.resumeAttempts).length === 0) return
+    dispatch({ type: "RESUME_RESET" })
+  }, [status])
 
   useEffect(() => {
     if (prevConversationIdRef.current !== conversationId) {
@@ -221,6 +246,34 @@ export function useConversationSession({
       })
     }, REFETCH_DEBOUNCE_MS)
   }, [convKey, queryClient])
+
+  // C 兜底轮询：SSE 在长执行任务里常被中间层反复掐断（用户：「SSE 经常卡没了」），
+  // resume 续流不一定每次都能接上。当本地 status 已非 streaming（SSE「假结束」）但 DB
+  // 最后一条 assistant 仍为 streaming（后台仍在跑）时，定时拉 DB 把内容近实时补全，
+  // 不再依赖手动重进会话。一旦 DB 转终态或本地 status 回到 streaming（resume 接上了）
+  // 就停轮询。与 B（SSE 续流）互补：B 续上时 status→streaming 会停掉本轮询，避免双补。
+  const isLocallyStreaming = status === "streaming" || status === "submitted"
+  useEffect(() => {
+    if (!convKey) return
+    if (isLocallyStreaming) return
+
+    const lastAssistant = getLastAssistantMessage(storedMessages)
+    if (lastAssistant?.streamState !== "streaming") return
+
+    const timer = setInterval(() => {
+      const cached = queryClient.getQueryData<Message[]>(
+        chatKeys.messages(convKey)
+      )
+      const last = cached ? getLastAssistantMessage(cached) : undefined
+      // DB 已转终态 → 不再需要兜底（effect 会随 storedMessages 变化重算并停掉）
+      if (last && last.streamState !== "streaming") return
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(convKey),
+      })
+    }, DB_STALL_POLL_INTERVAL_MS)
+
+    return () => clearInterval(timer)
+  }, [convKey, isLocallyStreaming, storedMessages, queryClient])
 
   useEffect(() => {
     if (!convKey) return
@@ -339,6 +392,17 @@ export function useConversationSession({
 
     if (lastAssistant?.streamState !== "streaming" || !assistantId) {
       return false
+    }
+
+    // R-1：本次断流发生在「流此前已接上、正在跑」时（status 仍 streaming）——这是一次
+    // 全新的、独立的掉线，而非连不上的紧凑重试链。SSE 在长执行任务里会被中间层反复掐断
+    // （用户：「SSE 经常卡没了」），若沿用同一 assistant 的累计计数，几次掉线就吃光
+    // MAX_STREAM_RESUME_ATTEMPTS=3 配额，之后再断永久不续 → 「基本不会回复」。故在「接上后
+    // 又断」时先重置该 turn 的 resume 计数，让 3 次配额只用于拦「连不上」的死循环。
+    // 仅 RESUME_RESET 这一处依赖：status 跃迁 effect（:190）只在干净的 →streaming 时重置，
+    // 快速断开会漏掉，这里按「断流时仍 streaming」补一道更可靠的重置。
+    if (statusRef.current === "streaming") {
+      dispatch({ type: "RESUME_RESET", assistantId })
     }
 
     chatTransport.cancelReconnect()

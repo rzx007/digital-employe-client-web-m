@@ -5,8 +5,8 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { CURATOR_ASSISTANT_AVATAR_URL_1 } from "@/lib/avatar"
 import { navigateToEmployeeFromGroup } from "@/lib/chat/group-navigation"
-import { switchToContact } from "@/lib/chat/conversation-selection"
 import {
+  fetchGroupRoomDag,
   stopGroupRoom,
   type DagNode,
   type DagNodeState,
@@ -15,6 +15,8 @@ import {
 } from "@/api/group-room"
 
 import { useArtifactStore } from "@/stores/artifact-store"
+
+import { GroupAutoConfirmToggle } from "./group-auto-confirm-toggle"
 
 /** 节点状态 → 颜色/文案 */
 const STATE_META: Record<
@@ -178,7 +180,7 @@ function NodeCardBody({
 }: {
   node: DagNode
   onOpenArtifact?: (path: string) => void
-  onOpenMember?: (node: DagNode) => void
+  onOpenMember?: (node: DagNode) => void | Promise<void>
   /** 节点进行中已持续秒数（让本地模型的慢首包可见，不像卡死） */
   runningSeconds?: number
 }) {
@@ -199,14 +201,16 @@ function NodeCardBody({
         )}
         onClick={
           canOpenEmployee
-            ? () => onOpenMember?.(node)
+            ? () => {
+                void onOpenMember?.(node)
+              }
             : undefined
         }
         title={
           canJump
             ? `查看 ${node.name} 的执行会话`
             : canOpenEmployee
-              ? `${node.name}（暂无执行会话，将打开员工聊天）`
+              ? `查看 ${node.name} 的执行会话`
               : undefined
         }
       >
@@ -303,6 +307,8 @@ export function GroupSopPanel({
   conversationId,
   groupContactId,
   memberConversationByEmployeeId,
+  autoConfirm = false,
+  onAutoConfirmChange,
   className,
 }: {
   dag: GroupRoomDag
@@ -310,25 +316,47 @@ export function GroupSopPanel({
   groupContactId: string
   /** @直接派活时成员表上的 conversation_id，DAG 节点缺省时兜底 */
   memberConversationByEmployeeId?: Map<number, number>
+  autoConfirm?: boolean
+  onAutoConfirmChange?: (enabled: boolean) => Promise<void> | void
   className?: string
 }) {
   const openResource = useArtifactStore((s) => s.openResource)
   const onOpenMember = React.useCallback(
-    (node: DagNode) => {
+    async (node: DagNode) => {
       if (node.type !== "worker" || node.employee_id == null) return
-      const convId =
+      const employeeId = node.employee_id
+      let convId =
         node.conversation_id ??
-        memberConversationByEmployeeId?.get(node.employee_id)
+        memberConversationByEmployeeId?.get(employeeId) ??
+        null
+      // DAG 节点的 conversation_id 来自 TaskExecutionLog，可能因前端 DAG 缓存
+      // （staleTime / 漏事件）滞后于后端而暂为 null。此时不要直接 switchToContact
+      // ——那会清空已选会话、落到空白草稿视图（成员明明在干活却看不到内容）。
+      // 先抓一次最新 DAG，按 employee 命中其执行会话再跳转。
+      if (convId == null) {
+        try {
+          const fresh = await fetchGroupRoomDag(conversationId)
+          const freshNode = fresh?.nodes.find(
+            (n) => n.type === "worker" && n.employee_id === employeeId
+          )
+          if (freshNode?.conversation_id != null) {
+            convId = freshNode.conversation_id
+          }
+        } catch {
+          // 抓取失败则走下方兜底，不阻塞用户
+        }
+      }
       if (convId != null) {
         navigateToEmployeeFromGroup({
           groupContactId,
           groupConversationId: conversationId,
-          employeeId: node.employee_id,
+          employeeId,
           employeeConversationId: convId,
         })
         return
       }
-      switchToContact(`employee:${node.employee_id}`)
+      // 仍拿不到执行会话（任务尚未真正派发）：提示而非静默跳到空白页。
+      toast.info(`${node.name} 的执行会话还未就绪，请稍候再试`)
     },
     [conversationId, groupContactId, memberConversationByEmployeeId]
   )
@@ -482,6 +510,14 @@ export function GroupSopPanel({
         </div>
       </div>
 
+      {onAutoConfirmChange ? (
+        <div className="px-3 pt-2">
+          <GroupAutoConfirmToggle
+            enabled={autoConfirm}
+            onChange={onAutoConfirmChange}
+          />
+        </div>
+      ) : null}
       <div className="border-t px-4 py-2 text-[11px] leading-relaxed text-muted-foreground">
         成员共享产物，下游可读取上游产出；全部完成后组长汇总。
       </div>

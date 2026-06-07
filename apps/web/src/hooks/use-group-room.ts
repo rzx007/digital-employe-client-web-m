@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   fetchGroupRoomState,
   fetchGroupRoomDag,
+  setGroupRoomAutoConfirm,
   type GroupRoomState,
   type GroupRoomDag,
 } from "@/api/group-room"
@@ -57,6 +58,17 @@ export function useGroupRoom(conversationId: string | number | null) {
     })
   }
 
+  const setAutoConfirm = async (enabled: boolean) => {
+    if (!conversationId) return
+    const next = await setGroupRoomAutoConfirm(conversationId, enabled)
+    if (next) {
+      queryClient.setQueryData<GroupRoomState | null>(
+        chatKeys.groupRoom(convKey),
+        next
+      )
+    }
+  }
+
   useWorkspaceEvents((event) => {
     if (event.type === "room_message_stream") {
       if (String(event.room_conversation_id) !== convKey) return
@@ -83,15 +95,35 @@ export function useGroupRoom(conversationId: string | number | null) {
     }
     if (event.type === "room_message") {
       if (String(event.room_conversation_id) !== convKey) return
-      // 落库的完整消息到了 → 清掉对应的流式临时态（避免重复显示）
-      setStreaming((prev) => {
-        const next = { ...prev }
-        for (const k of Object.keys(next)) {
-          const m = next[Number(k)]
-          if (m && m.senderId === event.sender_id) delete next[Number(k)]
-        }
-        return next
-      })
+      // 落库的完整消息到了 → 只清掉**对应那条 source** 的流式临时态。
+      // 关键：按 source_conversation_id 精确匹配，而不是按 senderId。组长 senderId
+      // 恒为 null，旧逻辑「senderId 相等就删」会让任何 null-sender 的落库消息把还在
+      // 流的组长气泡整段抹掉 → 组长输出「一会有一会没」的闪烁。source 精确匹配后，
+      // 只有该 source 自己的最终消息落库才清它，流式过程不再被打断。
+      const src = event.source_conversation_id
+      if (src != null) {
+        setStreaming((prev) => {
+          if (!(src in prev)) return prev
+          const next = { ...prev }
+          delete next[src]
+          return next
+        })
+      } else {
+        // 兜底（旧后端无 source 字段）：退回按 senderId 清，但仅清非组长（senderId
+        // 非 null）的，避免误伤组长流。组长流会在自身 source 落库或切会话时清。
+        setStreaming((prev) => {
+          const next = { ...prev }
+          let changed = false
+          for (const k of Object.keys(next)) {
+            const m = next[Number(k)]
+            if (m && m.senderId != null && m.senderId === event.sender_id) {
+              delete next[Number(k)]
+              changed = true
+            }
+          }
+          return changed ? next : prev
+        })
+      }
       void queryClient.invalidateQueries({
         queryKey: chatKeys.messages(convKey),
       })
@@ -100,15 +132,45 @@ export function useGroupRoom(conversationId: string | number | null) {
       const room = roomQuery.data
       if (!room || event.room_id !== room.room_id) return
       refresh()
+    } else if (event.type === "orchestration_plan_generated") {
+      // 组长刚创建编排计划：这条事件先于（或不依赖）plan-card 的 room_message 到达。
+      // 必须**同时**补拉群时间线消息 + 编排计划状态，否则 plan-card 那条投影消息要等
+      // 到下一条 room_message 才被拉出来渲染 = 用户看到的「计划卡要下一轮才弹出来」。
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(convKey),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.orchestrationPlans(convKey),
+      })
+      refresh()
     } else if (
       event.type === "task_started" ||
       event.type === "task_completed" ||
-      event.type === "task_failed" ||
-      event.type === "orchestration_plan_generated"
+      event.type === "task_failed"
     ) {
-      // 组长派活/任务进展也会改变 DAG，刷新
+      // 任务进展会改变 DAG + 计划卡的进度条/按钮态（确认执行→执行中→已交付），
+      // 一并补拉计划状态与群消息，让卡片实时更新。
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.orchestrationPlans(convKey),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(convKey),
+      })
       refresh()
     }
+  }, () => {
+    // 断后重连：这条 SSE 无重放，断流窗口内的 room_message_stream/room_message
+    // 可能永久丢失。重连后从 DB 补拉时间线 + 房间状态，让已落库的组长/成员产出立即
+    // 显示，无需用户手动再发消息。
+    // 注意：**不要** setStreaming({})。线程饥饿期会高频断/重连，若每次重连都清空
+    // 逐字流式临时态，会把还在流的组长气泡反复抹掉→重建 = 用户看到的「一会有一会没」
+    // 闪烁。已落库的消息会通过下面的 messages 补拉接管显示；仍在流的 source 会继续
+    // 累积它自己的 delta，其最终消息落库时再按 source 精确清理即可。
+    if (!conversationId) return
+    void queryClient.invalidateQueries({
+      queryKey: chatKeys.messages(convKey),
+    })
+    refresh()
   })
 
   // 切换会话时：清空上一个会话的流式临时态 + 拉一次最新房间状态。
@@ -129,5 +191,7 @@ export function useGroupRoom(conversationId: string | number | null) {
     dag: dagQuery.data ?? null,
     streaming: Object.values(streaming),
     isLoading: roomQuery.isPending,
+    autoConfirm: Boolean(roomQuery.data?.auto_confirm_member_tasks),
+    setAutoConfirm,
   }
 }

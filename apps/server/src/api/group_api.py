@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.db.session import get_db
@@ -9,6 +10,12 @@ from src.schemas.chat_group import GroupCreate, GroupRead, GroupUpdate
 from src.service.group_service import GroupService
 
 router = APIRouter(tags=["群聊"])
+
+
+class AutoConfirmUpdate(BaseModel):
+    """群「自动确认成员任务」开关请求体。"""
+
+    enabled: bool
 
 
 @router.post("/workspaces/{workspace_id}/groups", response_model=ResponseBase[GroupRead], status_code=status.HTTP_201_CREATED)
@@ -73,6 +80,28 @@ def get_group_room_dag(conversation_id: int, db: Session = Depends(get_db)) -> B
     if dag is None:
         return BaseResponse(code=404, msg="该会话不是群会话或不存在", data=None)
     return BaseResponse(data=dag)
+
+
+@router.patch(
+    "/chat/conversations/{conversation_id}/room/auto-confirm",
+    response_model=BaseResponse,
+)
+def set_group_room_auto_confirm(
+    conversation_id: int,
+    payload: AutoConfirmUpdate,
+    db: Session = Depends(get_db),
+) -> BaseResponse:
+    """设置群「自动确认成员任务」开关。
+
+    开启后，成员（@ 直接派活）的非澄清类审批（文档方案确认等）自动放行、群任务全
+    自动跑通；组长的「澄清提问」不受影响，仍需用户作答。默认关。
+    """
+    from src.service.group_room_service import GroupRoomService
+
+    state = GroupRoomService.set_auto_confirm(db, conversation_id, payload.enabled)
+    if state is None:
+        return BaseResponse(code=404, msg="该会话不是群会话或不存在", data=None)
+    return BaseResponse(data=state)
 
 
 @router.post("/chat/conversations/{conversation_id}/room/stop", response_model=BaseResponse)

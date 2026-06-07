@@ -31,23 +31,7 @@ install_safe_memory_decode()
 
 import logging
 import re
-import sys
 import asyncio
-
-# Windows: 强制用 SelectorEventLoop 取代默认的 ProactorEventLoop。
-# 根因（实测）：Proactor 在「大量连接重置 / 超长请求」后会把 IOCP 套接字处理搞坏——
-# 满屏 `_ProactorBasePipeTransport._call_connection_lost` WinError 10054，之后整个进程
-# 「再也连不上模型」，但同机 curl 同地址却秒连秒回（证明模型/网络无恙、是 Proactor 循环坏了）。
-# Selector 把连接错误正常传播、不积累卡死。本应用 shell 子进程走 subprocess.run+线程
-# （非 asyncio 异步子进程），不依赖 Proactor，故切换安全。必须在任何事件循环创建前设置。
-if sys.platform == "win32":
-    try:
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        logging.getLogger(__name__).info(
-            "Windows: 已切换为 SelectorEventLoop（规避 Proactor 连接重置卡死）"
-        )
-    except Exception:
-        pass
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -76,15 +60,27 @@ def create_app() -> FastAPI:
     async def lifespan(_app: FastAPI):
         loop = asyncio.get_running_loop()
 
-        # 启动即确认实际事件循环类型：Windows 上必须是 SelectorEventLoop，
-        # 若是 ProactorEventLoop 则会在连接重置洪流后卡死、整进程连不上模型。
-        _loop_name = type(loop).__name__
-        _loop_ok = ("Selector" in _loop_name) or sys.platform != "win32"
-        logger.warning(
-            "事件循环 = %s  [%s]",
-            _loop_name,
-            "OK" if _loop_ok else "危险: 仍是 Proactor，群聊会卡死！请检查 --loop / start.py",
+        # 记录实际事件循环类型（Windows 已回退为默认 ProactorEventLoop）。
+        logger.info("事件循环 = %s", type(loop).__name__)
+
+        # ── 扩大 asyncio 默认线程池（根治线程饥饿）──────────────────────────
+        # Python 3.12 默认 ThreadPoolExecutor 仅 min(32, cpu+4)=本机约 12 线程。
+        # 全应用多处共用这个默认池：每个 workspace events SSE 的阻塞 q.get、群派活
+        # handle_group_message(to_thread)、各种 run_in_executor(None,...)、以及
+        # anyio 在部分操作上为 async-httpx 建连借的 worker 线程。一旦群协作并发起来
+        # （多成员流 + events 流 + 汇总节点重活），12 线程被瓜分殆尽 → 表现为：
+        # ① model 首包极慢甚至 pre-httpx 挂死、② 群组长/汇总节点卡住不输出、
+        # ③ 汇总流占线程时总管(curator)抢不到、「停掉群聊总管才能对话」。
+        # 扩到 64 给足缓冲（线程多数时间阻塞在 I/O/queue，开销极低），是对以上所有
+        # 症状对症且低风险的根治。配套已做：SSE 序列化改同步、events q.get 带超时+心跳。
+        from concurrent.futures import ThreadPoolExecutor as _TPE
+
+        _default_executor = _TPE(
+            max_workers=64, thread_name_prefix="asyncio-default"
         )
+        loop.set_default_executor(_default_executor)
+        logger.info("asyncio 默认线程池 max_workers=64（防线程饥饿）")
+        # ──────────────────────────────────────────────────────────────────
 
         # 离线 IO 密集型初始化到线程池，避免阻塞事件循环导致前端请求挂起
         def _startup_db_init():

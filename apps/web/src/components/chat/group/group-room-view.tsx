@@ -35,7 +35,8 @@ export function GroupRoomView({
   onOpenConversations?: () => void
   onNewConversation?: () => void
 }) {
-  const { members, dag, streaming } = useGroupRoom(conversationId)
+  const { members, dag, streaming, autoConfirm, setAutoConfirm } =
+    useGroupRoom(conversationId)
   const hasDag = Boolean(dag?.has_dag && dag.nodes.length > 0)
   const groupContactId = contact ? getContactId(contact) ?? undefined : undefined
   const memberConversationByEmployeeId = React.useMemo(() => {
@@ -62,6 +63,9 @@ export function GroupRoomView({
           senderName: s.senderLabel,
           senderId: s.senderId != null ? String(s.senderId) : undefined,
           streamState: "streaming",
+          // 逐字流式进度：让气泡显示「正在生成 N 字…」+ 流式光标，
+          // 给组长（及成员）的进行中输出和单聊/总管一致的流式观感。
+          streamCharCount: s.charCount,
         },
       }))
   }, [streaming])
@@ -85,6 +89,8 @@ export function GroupRoomView({
           conversationId={conversationId}
           groupContactId={groupContactId ?? `group:${conversationId}`}
           memberConversationByEmployeeId={memberConversationByEmployeeId}
+          autoConfirm={autoConfirm}
+          onAutoConfirmChange={setAutoConfirm}
           className="hidden w-80 shrink-0 border-l bg-background/60 md:flex"
         />
       ) : (
@@ -94,6 +100,8 @@ export function GroupRoomView({
           title={contact?.group?.name || "群成员"}
           groupContactId={groupContactId}
           groupConversationId={conversationId}
+          autoConfirm={autoConfirm}
+          onAutoConfirmChange={setAutoConfirm}
           className="hidden md:flex"
         />
       )}

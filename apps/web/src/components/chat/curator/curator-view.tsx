@@ -95,7 +95,10 @@ import {
   resolveHitlApproveMessageId,
 } from "@/lib/chat/hitl"
 import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
-import { isBenignStreamAbortError } from "@/lib/chat/stream-abort"
+import {
+  isBenignStreamAbortError,
+  isStreamDisconnectedError,
+} from "@/lib/chat/stream-abort"
 
 type TimelineEntry =
   | { kind: "message"; data: UIMessage; ts: number }
@@ -358,7 +361,12 @@ export function CuratorView({
       onStreamFinishRef.current()
     },
     onError: (chatError) => {
-      if (isBenignStreamAbortError(chatError)) {
+      // 主动 abort 或 SSE 在 turn 结束前断开 → resume 续流，不向用户报错。
+      // 总管同样跑长编排 turn，SSE 会被中间层掐断，需与执行会话一致地自动续流。
+      if (
+        isBenignStreamAbortError(chatError) ||
+        isStreamDisconnectedError(chatError)
+      ) {
         onRetryResumeRef.current()
         return
       }
@@ -412,7 +420,11 @@ export function CuratorView({
   }, [curatorConversationId])
 
   const displayError =
-    error && !isBenignStreamAbortError(error) ? error : undefined
+    error &&
+    !isBenignStreamAbortError(error) &&
+    !isStreamDisconnectedError(error)
+      ? error
+      : undefined
 
   const handleReset = useCallback(async () => {
     if (!curatorConversationId || !curatorContactId) return

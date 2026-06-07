@@ -8,48 +8,16 @@ from src.core.agent_runtime_policy import (
     parse_agent_max_heavy,
 )
 from src.service.stream_registry import (
-    MAX_PENDING_CHUNK_TIMEOUT_RETRIES,
     ActiveStreamTask,
     StreamRegistry,
     _agent_stall_timeout,
     _agent_stream_timeouts,
-    _graph_has_pending_non_interrupt_work,
 )
 
 
-def test_graph_pending_true_when_next_without_interrupt() -> None:
-    agent = SimpleNamespace(
-        aget_state=lambda _config: asyncio.sleep(
-            0,
-            result=SimpleNamespace(
-                next=("agent",),
-                tasks=(SimpleNamespace(interrupts=None),),
-            ),
-        )
-    )
-    assert asyncio.run(_graph_has_pending_non_interrupt_work(agent, {})) is True
-
-
-def test_graph_pending_false_when_no_next() -> None:
-    agent = SimpleNamespace(
-        aget_state=lambda _config: asyncio.sleep(
-            0, result=SimpleNamespace(next=(), tasks=())
-        )
-    )
-    assert asyncio.run(_graph_has_pending_non_interrupt_work(agent, {})) is False
-
-
-def test_graph_pending_false_when_hitl_interrupt() -> None:
-    agent = SimpleNamespace(
-        aget_state=lambda _config: asyncio.sleep(
-            0,
-            result=SimpleNamespace(
-                next=("tools",),
-                tasks=(SimpleNamespace(interrupts=("approve",)),),
-            ),
-        )
-    )
-    assert asyncio.run(_graph_has_pending_non_interrupt_work(agent, {})) is False
+# 注：原 test_graph_pending_* 与 test_max_pending_retries_reasonable 已随
+# 「图有 pending 节点 → 续等」机制于 2026-06-07 一并移除。判死改为「chunk 超时
+# (默认 180s 无任何 chunk) 即收尾」——chunk 间隔本身就是充分判死信号，不再问图状态。
 
 
 def test_agent_stream_timeouts_defaults() -> None:
@@ -57,10 +25,6 @@ def test_agent_stream_timeouts_defaults() -> None:
     assert chunk >= 60.0
     assert first >= 30.0
     assert stale >= chunk + first
-
-
-def test_max_pending_retries_reasonable() -> None:
-    assert MAX_PENDING_CHUNK_TIMEOUT_RETRIES >= 5
 
 
 def test_agent_stall_timeout_default_thirty_minutes() -> None:

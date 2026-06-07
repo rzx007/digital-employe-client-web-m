@@ -74,8 +74,6 @@ AUTO_KILL_NO_CONTENT_SECONDS = 900.0
 STALE_ACTIVE_HARD_TIMEOUT = 720.0
 # 无进展超时（config_kvs AGENT_STALL_TIMEOUT）：默认 30min，仅约束「多久无 chunk 事件」清槽。
 AGENT_STALL_TIMEOUT = 1800.0
-# chunk 超时但 LangGraph 仍有 pending 节点时，最多续等次数（每次 = chunk_timeout）
-MAX_PENDING_CHUNK_TIMEOUT_RETRIES = 20
 # LangGraph 递归上限：agent 的“think → 调工具 → 看结果”每轮算一步，超过此值
 # 抛 GraphRecursionError，被迫结束。防止 agent 陷入工具调用死循环（如反复 read
 # 同一文件却不收敛，曾观测到单流刷出 1400+ 事件不停）。LangGraph 默认 25，
@@ -171,20 +169,6 @@ def _agent_stall_timeout() -> float:
         return max(configured, floor)
     except Exception:
         return max(AGENT_STALL_TIMEOUT, AGENT_CHUNK_TIMEOUT + 60.0)
-
-
-async def _graph_has_pending_non_interrupt_work(agent: Any, config: dict) -> bool:
-    """LangGraph 是否仍有待执行节点（非 HITL interrupt）。"""
-    try:
-        state = await agent.aget_state(config)
-    except Exception:
-        return False
-    if not getattr(state, "next", None):
-        return False
-    for task_item in getattr(state, "tasks", ()) or ():
-        if getattr(task_item, "interrupts", None):
-            return False
-    return True
 
 
 def _extract_last_usage_from_buffer(events: list[dict]) -> dict | None:
@@ -1551,7 +1535,6 @@ class StreamRegistry:
             ).__aiter__()
 
             event_count = 0
-            pending_chunk_timeouts = 0
             chunk_timeout_default, first_chunk_timeout, _ = _agent_stream_timeouts()
 
             async def _first_chunk_stall_watchdog():
@@ -1690,36 +1673,24 @@ class StreamRegistry:
                             "无法连接当前语言模型或首包响应超时，"
                             f"请检查设置中的 API Key、Base URL 与模型名称（等待超过 {int(chunk_timeout)} 秒）。"
                         ) from None
-                    if await _graph_has_pending_non_interrupt_work(
-                        agent, stream_config
-                    ):
-                        pending_chunk_timeouts += 1
-                        if pending_chunk_timeouts <= MAX_PENDING_CHUNK_TIMEOUT_RETRIES:
-                            logger.info(
-                                "[run] conv=%s chunk 超时(%ds)但图仍有后续节点，"
-                                "继续等待 (%d/%d)",
-                                conversation_id,
-                                int(chunk_timeout),
-                                pending_chunk_timeouts,
-                                MAX_PENDING_CHUNK_TIMEOUT_RETRIES,
-                            )
-                            continue
-                        logger.warning(
-                            "[run] conv=%s chunk 超时多次仍有 pending，"
-                            "按部分完成收尾（event_count=%d）",
-                            conversation_id,
-                            event_count,
-                        )
-                    else:
-                        logger.warning(
-                            "[run] conv=%s astream 超时(%ds)但已产出 %d 事件，"
-                            "图无 pending，按已完成收尾（结束信号可能丢失）",
-                            conversation_id,
-                            int(chunk_timeout),
-                            event_count,
-                        )
+                    # chunk 间隔判死：走到本分支 = 刚刚整整 chunk_timeout(默认180s) 秒，
+                    # 迭代器一个 chunk 都没吐。正常生成时 token 是持续返回的（哪怕总时长 >900s，
+                    # chunk 之间也从不会空到 180s）；工具执行期也有 tool_output 事件刷新。所以
+                    # 「180s 无任何 chunk」必然是挂了——典型为 model 节点 ainvoke 在 pre-httpx
+                    # 阶段挂死（Future 永不 resolve，langchain AsyncBackgroundExecutor 后台 task
+                    # 卡住）。直接判死收尾，前端据此 resume/重试。
+                    #
+                    # 【2026-06-07 移除】旧逻辑「图有 pending 节点 → 续等 20×chunk_timeout」是
+                    # 错误容忍：挂死的 model 节点 state.next 恒非空 → _graph_has_pending 恒为 True
+                    # → 续等最长 ~1 小时、最后还假装 status=completed（用户一字未收）。这正是
+                    # 用户反馈的「对话锁住」。chunk 超时本身已是充分的判死信号，无需再问图状态。
+                    logger.warning(
+                        "[run] conv=%s chunk 超时(%ds 无任何 chunk)，判定流挂死"
+                        "（疑 model 节点 ainvoke 卡在 pre-httpx），按部分完成收尾"
+                        "（event_count=%d）",
+                        conversation_id, int(chunk_timeout), event_count,
+                    )
                     break
-                pending_chunk_timeouts = 0
                 event_count += 1
                 task.touch_progress()
                 serializable = ChatService.convert_to_serializable(chunk)

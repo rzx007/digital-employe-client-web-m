@@ -34,7 +34,10 @@ import { hitlKindFromToolType } from "@/lib/chat/hitl/kind"
 import { resolveGroupClarifyTarget } from "@/lib/chat/hitl/group-clarify-target"
 
 import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
-import { isBenignStreamAbortError } from "@/lib/chat/stream-abort"
+import {
+  isBenignStreamAbortError,
+  isStreamDisconnectedError,
+} from "@/lib/chat/stream-abort"
 
 import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
 
@@ -189,7 +192,12 @@ export function ConversationChatView({
     },
 
     onError: (chatError) => {
-      if (isBenignStreamAbortError(chatError)) {
+      // 主动 abort（切会话/卸载）或 SSE 在 turn 结束前断开 → 尝试 resume 续流，
+      // 不向用户报错。后者是执行会话「假结束」的根因修复（B 根治）。
+      if (
+        isBenignStreamAbortError(chatError) ||
+        isStreamDisconnectedError(chatError)
+      ) {
         onRetryResumeRef.current()
         return
       }
@@ -270,8 +278,15 @@ export function ConversationChatView({
     }
   }, [conversationId])
 
+  // 断流错误（StreamDisconnectedError）已由 onError 触发 resume 续流接管，不是用户
+  // 可见的失败；连同主动 abort 一并从展示错误里滤掉，否则会弹「SSE 流在收到终止信号
+  // 前断开」红条吓到用户（其实后台仍在跑/已自动续上）。
   const displayError =
-    error && !isBenignStreamAbortError(error) ? error : undefined
+    error &&
+    !isBenignStreamAbortError(error) &&
+    !isStreamDisconnectedError(error)
+      ? error
+      : undefined
 
   const displayMessages = useMemo(() => {
     const source = pickMessageDisplaySource(messages, initialMessages, status)

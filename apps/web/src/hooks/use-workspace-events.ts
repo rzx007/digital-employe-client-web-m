@@ -64,6 +64,8 @@ export type WorkspaceEvent =
       content: string
       sender_id: number | null
       sender_label: string | null
+      /** 产出该消息的源会话（组长/成员私有会话）id，用于精确清理对应逐字流式临时态 */
+      source_conversation_id?: number | null
     }
   | {
       type: "room_member_state"
@@ -96,11 +98,25 @@ const _handlers: Set<EventHandler> = new Set()
 let _reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let _reconnectCount = 0
 let _isConnected = false
+/** 是否曾经断开过——用于区分「首次连接」与「断后重连」。 */
+let _everDisconnected = false
 const _connectionListeners: Set<(connected: boolean) => void> = new Set()
+/**
+ * 重连成功（断后再 onopen）时触发的监听器。
+ *
+ * 这条全局 SSE 没有 buffer/重放/Last-Event-ID，断流窗口内的
+ * room_message_stream / room_message 等事件会永久丢失。重连后必须由订阅方
+ * 从 DB 补拉，否则会出现「组长 ack 之后不输出、必须再发条消息才显示」的卡死表象。
+ */
+const _reconnectListeners: Set<() => void> = new Set()
 
 function notifyConnectionChange(connected: boolean) {
   _isConnected = connected
   _connectionListeners.forEach((fn) => fn(connected))
+}
+
+function notifyReconnect() {
+  _reconnectListeners.forEach((fn) => fn())
 }
 
 function getBackoffMs(): number {
@@ -127,6 +143,12 @@ function connect(workspaceId: number) {
   es.onopen = () => {
     _reconnectCount = 0
     notifyConnectionChange(true)
+    // 断后重连成功：通知订阅方从 DB 补拉断流窗口内丢失的事件。
+    // 首次连接（从未断过）不触发，避免无谓的额外拉取。
+    if (_everDisconnected) {
+      _everDisconnected = false
+      notifyReconnect()
+    }
   }
 
   es.onmessage = (e) => {
@@ -141,6 +163,7 @@ function connect(workspaceId: number) {
   es.onerror = () => {
     if (es.readyState === EventSource.CLOSED) {
       notifyConnectionChange(false)
+      _everDisconnected = true
       _eventSource = null
 
       if (_reconnectCount < MAX_RECONNECT_COUNT) {
@@ -170,15 +193,27 @@ function disconnect() {
   _reconnectCount = 0
 }
 
-export function useWorkspaceEvents(handler?: EventHandler) {
+export function useWorkspaceEvents(
+  handler?: EventHandler,
+  /**
+   * 断后重连成功时回调——订阅方应在此从 DB 补拉断流窗口内丢失的事件
+   * （这条 SSE 无重放，否则会出现「组长不输出」的卡死表象）。
+   */
+  onReconnect?: () => void
+) {
   const [isConnected, setIsConnected] = useState(_isConnected)
   const handlerRef = useRef<EventHandler | undefined>(undefined)
+  const reconnectRef = useRef<(() => void) | undefined>(undefined)
   const authWorkspaceId = useAuthStore((s) => s.workspaceId)
   const workspaceId = authWorkspaceId ?? getActiveWorkspaceId()
 
   useEffect(() => {
     handlerRef.current = handler
   }, [handler])
+
+  useEffect(() => {
+    reconnectRef.current = onReconnect
+  }, [onReconnect])
 
   useEffect(() => {
     if (workspaceId == null || Number.isNaN(workspaceId)) return
@@ -191,11 +226,17 @@ export function useWorkspaceEvents(handler?: EventHandler) {
     }
     _handlers.add(wrapped)
 
+    const reconnectListener = () => {
+      reconnectRef.current?.()
+    }
+    _reconnectListeners.add(reconnectListener)
+
     connect(workspaceId)
 
     return () => {
       _connectionListeners.delete(connectionListener)
       _handlers.delete(wrapped)
+      _reconnectListeners.delete(reconnectListener)
       if (_handlers.size === 0) {
         disconnect()
       }

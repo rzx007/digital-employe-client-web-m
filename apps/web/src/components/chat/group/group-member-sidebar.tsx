@@ -1,19 +1,21 @@
 import * as React from "react"
+import { toast } from "sonner"
 
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
 import { Badge } from "@workspace/ui/components/badge"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
 
-import type {
-  GroupRoomMember,
-  GroupRoomMemberState,
+import {
+  fetchGroupRoomState,
+  type GroupRoomMember,
+  type GroupRoomMemberState,
 } from "@/api/group-room"
 import { CURATOR_ASSISTANT_AVATAR_URL_1 } from "@/lib/avatar"
 import { navigateToEmployeeFromGroup } from "@/lib/chat/group-navigation"
-import { switchToContact } from "@/lib/chat/conversation-selection"
 
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
+import { GroupAutoConfirmToggle } from "./group-auto-confirm-toggle"
 
 const STATE_META: Record<
   GroupRoomMemberState,
@@ -66,30 +68,47 @@ function MemberRow({
   const isLeader = member.role_in_room === "leader"
   const displayName =
     member.employee_name ?? (member.employee_id != null ? `员工#${member.employee_id}` : "组长")
-  const canJump =
-    member.employee_id != null &&
-    member.conversation_id != null &&
-    groupContactId != null &&
-    groupConversationId != null
+  const canNavigate = groupContactId != null && groupConversationId != null
 
-  const handleClick = () => {
-    if (member.employee_id == null) return
-    if (canJump) {
+  const handleClick = async () => {
+    if (member.employee_id == null || !canNavigate) return
+    const employeeId = member.employee_id
+    let convId = member.conversation_id
+    // member.conversation_id 来自房间状态，派活后短暂为 null（房间状态缓存滞后）时
+    // 旧代码会 switchToContact ——那会清空已选会话、落到空白草稿页（成员在干活却
+    // 看不到内容）。先抓一次最新房间状态按 employee 命中其私有会话再跳。
+    if (convId == null) {
+      try {
+        const fresh = await fetchGroupRoomState(groupConversationId!)
+        const freshMember = fresh?.members.find(
+          (m) => m.employee_id === employeeId
+        )
+        if (freshMember?.conversation_id != null) {
+          convId = freshMember.conversation_id
+        }
+      } catch {
+        // 抓取失败则走下方兜底，不阻塞用户
+      }
+    }
+    if (convId != null) {
       navigateToEmployeeFromGroup({
         groupContactId: groupContactId!,
         groupConversationId: groupConversationId!,
-        employeeId: member.employee_id,
-        employeeConversationId: member.conversation_id!,
+        employeeId,
+        employeeConversationId: convId,
       })
       return
     }
-    switchToContact(`employee:${member.employee_id}`)
+    // 成员还没被派过活、没有私有会话：提示而非静默跳到空白页。
+    toast.info(`${displayName} 还没有进行中的工作`)
   }
 
   return (
     <button
       type="button"
-      onClick={handleClick}
+      onClick={() => {
+        void handleClick()
+      }}
       className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-muted/50"
     >
       {isLeader ? (
@@ -145,12 +164,16 @@ export function GroupMemberSidebar({
   title = "群成员",
   groupContactId,
   groupConversationId,
+  autoConfirm = false,
+  onAutoConfirmChange,
 }: {
   members: GroupRoomMember[]
   className?: string
   title?: string
   groupContactId?: string
   groupConversationId?: string | number
+  autoConfirm?: boolean
+  onAutoConfirmChange?: (enabled: boolean) => Promise<void> | void
 }) {
   return (
     <aside
@@ -188,6 +211,14 @@ export function GroupMemberSidebar({
           )}
         </div>
       </ScrollArea>
+      {onAutoConfirmChange ? (
+        <div className="px-3 pt-2">
+          <GroupAutoConfirmToggle
+            enabled={autoConfirm}
+            onChange={onAutoConfirmChange}
+          />
+        </div>
+      ) : null}
       <div className="border-t px-4 py-2 text-[11px] leading-relaxed text-muted-foreground">
         @成员 派活；成员各自独立工作，结论汇总到群时间线。
       </div>

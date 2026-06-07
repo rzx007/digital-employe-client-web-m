@@ -5,7 +5,8 @@ import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import type { TodayTask } from "@/types/schedule-monitor"
 import { TaskStatusBadge } from "./task-status-badge"
-import { selectConversationForContact } from "@/lib/chat/conversation-selection"
+import { navigateToEmployeeFromCurator } from "@/lib/chat/curator-navigation"
+import { getContactId } from "@/lib/chat/contact-utils"
 import { useChatStore } from "@/stores/chat-store"
 
 interface TodayTaskListProps {
@@ -33,18 +34,28 @@ function formatDuration(ms: number | null): string {
 }
 
 export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
-  const setActiveTab = useChatStore((s) => s.setActiveTab)
-
   const openTaskConversation = useCallback(
     (task: TodayTask) => {
       if (task.conversation_id == null) return
-      selectConversationForContact(
-        String(task.employee_id),
-        String(task.conversation_id)
-      )
-      setActiveTab("chat")
+      // 任务执行会话常是「群内/编排内部会话」，会被后端从员工 1:1 列表过滤掉。
+      // 必须经 navigateToEmployeeFromCurator 写入深链返回态——否则
+      // getEmployeeDeepLinkConversationId 命不中、hasValidSelection=false，
+      // 直接落到空白草稿页（任务在跑却看不到内容）。它同时会带 employee: 前缀，
+      // 修掉旧代码传裸 id（"51" 而非 "employee:51"）导致联系人解析不到的问题。
+      const state = useChatStore.getState()
+      const curatorContact = state.contacts.find((c) => c.type === "curator")
+      const curatorContactId = curatorContact
+        ? getContactId(curatorContact)
+        : null
+      navigateToEmployeeFromCurator({
+        // 返回按钮用：回到工作台的总管会话（取不到也不影响跳转本身）
+        curatorContactId: curatorContactId ?? "",
+        curatorConversationId: state.workbenchCuratorConversationId ?? "",
+        employeeId: String(task.employee_id),
+        employeeConversationId: task.conversation_id,
+      })
     },
-    [setActiveTab]
+    []
   )
   const sorted = useMemo(() => {
     return [...executions].sort((a, b) => {

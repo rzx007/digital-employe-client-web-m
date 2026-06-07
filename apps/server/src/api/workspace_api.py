@@ -166,12 +166,29 @@ async def workspace_events(
 
     async def event_generator():
         import asyncio
+        import queue as _queue
+
         q = WorkspaceEventBus.subscribe(workspace_id)
         loop = asyncio.get_running_loop()
         try:
             while True:
-                # queue.Queue.get() is blocking, run in thread executor
-                data = await loop.run_in_executor(None, q.get)
+                # 关键：用「带超时的阻塞 get」而非无限阻塞 q.get。
+                # 旧写法 `run_in_executor(None, q.get)` 会让每个打开的 workspace
+                # events 连接**永久占住一个 asyncio 默认线程池线程**（直到下个事件
+                # 才返回）。默认池仅 ~12 线程，多开群聊/标签页/重连残留很快把它占满
+                # → 这条流自己也拿不到线程收事件 → 群组长逐字停住「不输出」，而 TCP
+                # 仍 ESTABLISHED、EventSource.readyState 不变 CLOSED → 前端 onerror
+                # 不触发、不重连，必须手动发消息才靠别处 invalidateQueries 补拉 DB。
+                # 改为 timeout=15s 轮询：拿不到事件就放回线程、yield 一个 SSE 心跳注释
+                # 行（不带 data 字段，前端 EventSource 忽略），既不长期占线程，又能
+                # 保活连接、让中间层不把空闲连接 buffer/掐断。
+                try:
+                    data = await loop.run_in_executor(
+                        None, q.get, True, 15.0
+                    )
+                except _queue.Empty:
+                    yield ": heartbeat\n\n"
+                    continue
                 yield f"data: {data}\n\n"
         except asyncio.CancelledError:
             pass

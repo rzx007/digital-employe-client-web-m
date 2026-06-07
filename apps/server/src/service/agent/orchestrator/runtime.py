@@ -211,6 +211,10 @@ def reset_context(conversation_id: int | None = None) -> None:
         return
     if current_conv is not None:
         unregister_stream_session(current_conv)
+        # 清掉本会话的 list_tasks 轮询计数，避免跨轮（下一轮用户消息）误伤。
+        from src.service.agent.orchestrator.task_listing import reset_poll_guard
+
+        reset_poll_guard(current_conv)
     _db_session_ctx.set(None)
     _workspace_id_ctx.set(None)
     _conversation_id_ctx.set(None)
