@@ -207,6 +207,46 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
       error: "拉群派活失败",
     },
   },
+  list_workspace_groups: {
+    icon: "👥",
+    label: "查看群聊列表",
+    verb: "查看群聊列表",
+    simple: {
+      running: "正在查询群聊...",
+      done: "群聊列表已加载",
+      error: "查询群聊失败",
+    },
+  },
+  get_group: {
+    icon: "👥",
+    label: "查看群聊详情",
+    verb: "查看群聊详情",
+    simple: {
+      running: "正在读取群聊详情...",
+      done: "群聊详情已加载",
+      error: "读取群聊失败",
+    },
+  },
+  update_group: {
+    icon: "👥",
+    label: "更新群聊",
+    verb: "更新群聊",
+    simple: {
+      running: "正在更新群聊...",
+      done: "群聊已更新",
+      error: "更新群聊失败",
+    },
+  },
+  delete_group: {
+    icon: "👥",
+    label: "删除群聊",
+    verb: "删除群聊",
+    simple: {
+      running: "正在删除群聊...",
+      done: "群聊已删除",
+      error: "删除群聊失败",
+    },
+  },
   list_workspace_employees: {
     icon: "👥",
     label: "查看团队",

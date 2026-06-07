@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
@@ -342,3 +343,50 @@ def inject_excessive_edit_run_stop_hint(
         over_edits, shell_runs,
     )
     return out
+
+
+_WRITE_ALREADY_EXISTS_MARKER = "⚠️[系统提醒·文件已存在勿 write_file]"
+_WRITE_ALREADY_EXISTS_RE = re.compile(
+    r"Cannot write to\s+(\S+)\s+because it already exists",
+    re.IGNORECASE,
+)
+
+
+def is_write_already_exists_error(content: str) -> bool:
+    text = (content or "").lower()
+    return "already exists" in text and "cannot write" in text
+
+
+def extract_path_from_write_exists_error(content: str) -> str | None:
+    m = _WRITE_ALREADY_EXISTS_RE.search(content or "")
+    return m.group(1) if m else None
+
+
+def inject_write_already_exists_hint(
+    messages: list[BaseMessage],
+) -> list[BaseMessage]:
+    """write_file 报 already exists 时注入强提示：改用 edit_file，勿再 write 同名路径。"""
+    out = list(messages)
+    changed = False
+    for index, message in enumerate(out):
+        if not isinstance(message, ToolMessage):
+            continue
+        content = str(message.content or "")
+        if not is_write_already_exists_error(content):
+            continue
+        if _WRITE_ALREADY_EXISTS_MARKER in content:
+            continue
+        path = extract_path_from_write_exists_error(content) or "该文件"
+        hint = (
+            f"\n\n{_WRITE_ALREADY_EXISTS_MARKER} 路径 {path} 已存在，"
+            "**禁止再次 write_file 同一路径**（系统不会覆盖，也勿删文件或换名）。"
+            "若刚 read_file 过：请立刻改用 **edit_file**，"
+            "`old_string` = 读到的**完整原文**，`new_string` = 重写后的**完整新内容**（整文件替换也填全文）。"
+            "改完再 shell_execute 运行；**不要**再试 write_file。"
+        )
+        out[index] = message.model_copy(update={"content": content + hint})
+        changed = True
+        logger.warning(
+            "write_file already exists on %s → 注入 edit_file 指引", path
+        )
+    return out if changed else messages

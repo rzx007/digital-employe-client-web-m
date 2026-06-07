@@ -125,13 +125,6 @@ function RoutineToolActivityBlock({
   // 整组收起与组内最后一项工具共用同一 policy 信号（见 tool-collapse-policy）
   const shouldCollapseGroup = toolAutoCollapseMap?.get(lastTool.key) ?? false
 
-  // 流式进行中保持组展开，便于看到当前子行
-  useEffect(() => {
-    if (anyRunning) {
-      queueMicrotask(() => setIsOpen(true))
-    }
-  }, [anyRunning])
-
   // 回合结束或后续工具已出现时，收起组头（只触发一次，用户可再手动展开）
   useEffect(() => {
     if (!shouldCollapseGroup || didAutoCollapseGroup.current) return

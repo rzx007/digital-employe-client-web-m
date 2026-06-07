@@ -44,6 +44,10 @@ from src.service.agent.orchestrator.tools.plans import (
 )
 from src.service.agent.orchestrator.tools.groups import (
     create_group_and_dispatch,
+    delete_group,
+    get_group,
+    list_workspace_groups,
+    update_group,
 )
 from src.service.agent.orchestrator.tools.skills import (
     format_workspace_skills_list,
@@ -80,6 +84,10 @@ __all__ = [
     "cancel_plan",
     # groups
     "create_group_and_dispatch",
+    "list_workspace_groups",
+    "get_group",
+    "update_group",
+    "delete_group",
     # tasks
     "list_tasks",
     "update_task",

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 
@@ -58,6 +58,16 @@ export function useGroupRoom(conversationId: string | number | null) {
     })
   }
 
+  // 用户消息 room_message 先于后台 dispatch_to_leader 到达；补拉几次房间状态，
+  // 才能在首 token 前把组长判为 running，时间线才能显示「正在生成回复…」。
+  const leaderRefreshTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  const scheduleLeaderStateRefresh = () => {
+    leaderRefreshTimersRef.current.forEach(clearTimeout)
+    leaderRefreshTimersRef.current = [400, 1_000, 2_500].map((ms) =>
+      setTimeout(() => refresh(), ms)
+    )
+  }
+
   const setAutoConfirm = async (enabled: boolean) => {
     if (!conversationId) return
     const next = await setGroupRoomAutoConfirm(conversationId, enabled)
@@ -95,6 +105,9 @@ export function useGroupRoom(conversationId: string | number | null) {
     }
     if (event.type === "room_message") {
       if (String(event.room_conversation_id) !== convKey) return
+      if (event.role === "user") {
+        scheduleLeaderStateRefresh()
+      }
       // 落库的完整消息到了 → 只清掉**对应那条 source** 的流式临时态。
       // 关键：按 source_conversation_id 精确匹配，而不是按 senderId。组长 senderId
       // 恒为 null，旧逻辑「senderId 相等就删」会让任何 null-sender 的落库消息把还在
@@ -184,6 +197,13 @@ export function useGroupRoom(conversationId: string | number | null) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [convKey])
+
+  useEffect(
+    () => () => {
+      leaderRefreshTimersRef.current.forEach(clearTimeout)
+    },
+    []
+  )
 
   return {
     room: roomQuery.data ?? null,

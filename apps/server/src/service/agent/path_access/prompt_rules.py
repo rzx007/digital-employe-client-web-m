@@ -23,7 +23,9 @@ def build_file_tool_rules(
         - **禁止**把上表「真实物理路径」当作 write_file 的路径（那是磁盘路径，不是虚拟路径）
         - 调用 **write_file** / **edit_file** 时，工具参数 JSON **须先写 `file_path`，再写 `content`（`edit_file` 为 `new_string`）**
         - **write_file 仅用于新建**（目标路径尚不存在）；**禁止**对已有文件再次 write_file（会报 already exists）
-        - 修改已有文件、重写脚本：先用 read_file，再用 **edit_file**；或 write_file 到新文件名（如 xxx_v2.py）
+        - **重写 / 改脚本 / 整段替换**：若 read_file 已成功 → **只用 edit_file**（`old_string`=读到的完整原文，`new_string`=新全文）；**禁止**对同一路径再 write_file；**勿**删文件、**勿**换文件名
+        - 口头说 rewrite 时仍须调 **edit_file**，不要误调 write_file（界面会显示「创建」且必然失败）
+        - 仅当确实要保留旧版并行留档时，才 write_file 到新路径（如 xxx_v2.py）
 
         ### shell_execute（python、cmd 等，替代内置 execute）
         - 使用工具 **`shell_execute`**，不要调用已废弃的 `execute`
@@ -47,7 +49,9 @@ def build_file_tool_rules(
         - **禁止**把虚拟前缀与磁盘路径混拼（如 `/artifacts/Users/...`、`/artifacts/C:/...`）；本机绝对路径直接写 `D:/...` 或 `/Users/...`
         - 调用 **write_file** / **edit_file** 时，JSON **须先写 `file_path`，再写 `content`**
         - **write_file 仅用于新建**（目标路径尚不存在）；**禁止**对已有文件再次 write_file（会报 already exists）
-        - 修改已有文件、重写脚本：先用 read_file，再用 **edit_file**；或 write_file 到新文件名（如 xxx_v2.py）
+        - **重写 / 改脚本 / 整段替换**：若 read_file 已成功 → **只用 edit_file**（`old_string`=读到的完整原文，`new_string`=新全文）；**禁止**对同一路径再 write_file；**勿**删文件、**勿**换文件名
+        - 口头说 rewrite 时仍须调 **edit_file**，不要误调 write_file（界面会显示「创建」且必然失败）
+        - 仅当确实要保留旧版并行留档时，才 write_file 到新路径（如 xxx_v2.py）
 
         ### shell_execute（python、cmd 等，替代内置 execute）
         - 使用 **`shell_execute`**；默认 **cwd = 产物目录**（`{artifacts_hint}`）

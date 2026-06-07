@@ -25,6 +25,11 @@ export type HitlPatchOptions = {
   approvedMessageId?: DbMessageId
   resumed?: boolean
   assistantMessageId?: string | number
+  /**
+   * 群澄清等：approve 打在组长私有会话，续流由后端完成。
+   * 勿向群 composer 塞空 assistant、勿对群会话 resumeStream。
+   */
+  skipLocalResume?: boolean
 }
 
 function messageIsApproved(message: UIMessage): boolean {

@@ -14,7 +14,7 @@ import {
 } from "@workspace/ui/components/collapsible"
 import { ToolTypeIcon } from "./tool-type-icon"
 import { ToolDetailPanel, toolDetailHasContent } from "./tool-detail-panel"
-import { getWriteFileStreamProgressLabel, getContentLength, isFileWriteLightweightPhase } from "./tool-shared"
+import { getWriteFileStreamProgressLabel } from "./tool-shared"
 
 import type { ToolCallSummary } from "@/lib/chat/tool-summarizer"
 
@@ -50,22 +50,6 @@ function ToolActionRowInner({
   const isDone =
     (state === "output-available" && !preliminary) || state === "output-error"
   const isRunning = !isDone
-  const isStreaming = state === "input-streaming"
-  const isPreliminaryOutput =
-    state === "output-available" && preliminary === true
-
-  const isFileWriteTool =
-    summary.toolName === "write_file" || summary.toolName === "edit_file"
-  const fileWriteContentLength = isFileWriteTool
-    ? getContentLength(input, summary.toolName)
-    : 0
-  const useLightweightFileWrite = isFileWriteLightweightPhase(
-    summary.toolName,
-    state,
-    isRunning,
-    fileWriteContentLength
-  )
-  const skipAutoExpandOnStream = useLightweightFileWrite && isRunning
 
   const hasContent = toolDetailHasContent(
     input,
@@ -89,30 +73,12 @@ function ToolActionRowInner({
   const didAutoCollapse = useRef(false)
 
   useEffect(() => {
-    if (skipAutoExpandOnStream) return
-    if (isStreaming && hasContent && !isOpen) {
-      queueMicrotask(() => setIsOpen(true))
-    }
-  }, [skipAutoExpandOnStream, isStreaming, hasContent, isOpen])
-
-  useEffect(() => {
-    if (isPreliminaryOutput && !isOpen) {
-      queueMicrotask(() => setIsOpen(true))
-    }
-  }, [isPreliminaryOutput, isOpen])
-
-  useEffect(() => {
     if (!shouldAutoCollapse || didAutoCollapse.current) return
     didAutoCollapse.current = true
     queueMicrotask(() => setIsOpen(false))
   }, [shouldAutoCollapse])
 
-  const collapsibleOpen =
-    (isRunning || isPreliminaryOutput) && !skipAutoExpandOnStream
-      ? true
-      : isOpen
-  const collapsibleToggle =
-    isRunning || isPreliminaryOutput ? undefined : () => setIsOpen((v) => !v)
+  const collapsibleToggle = hasContent ? () => setIsOpen((v) => !v) : undefined
 
   const chevronClass = cn(
     "size-3.5 shrink-0 text-muted-foreground/50 transition-transform",
@@ -124,10 +90,10 @@ function ToolActionRowInner({
     <div
       className={cn(
         "w-[90%] rounded-lg border border-border/50 bg-muted/30",
-        hasContent && !isRunning && "cursor-pointer select-none",
+        hasContent && "cursor-pointer select-none",
         className
       )}
-      onClick={hasContent && !isRunning ? collapsibleToggle : undefined}
+      onClick={collapsibleToggle}
       {...props}
     >
       <div
@@ -145,7 +111,6 @@ function ToolActionRowInner({
             {rowLabel}
           </span>
           {hasContent &&
-            !isRunning &&
             (isOpen ? (
               <IconChevronDown className={chevronClass} />
             ) : (
@@ -163,10 +128,7 @@ function ToolActionRowInner({
       </div>
 
       {hasContent && (
-        <Collapsible
-          open={collapsibleOpen}
-          onOpenChange={isRunning ? undefined : setIsOpen}
-        >
+        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
           <CollapsibleContent>
             <div className="px-3 pb-2.5">
               <ToolDetailPanel

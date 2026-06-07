@@ -60,6 +60,7 @@ import {
   messagesNeedHydrateFromDb,
   patchComposerFromStoredWhenSameTurn,
 } from "@/lib/chat/pick-message-display-source"
+import { stripGhostComposerAssistants } from "@/lib/chat/group-composer-ghosts"
 
 const REFETCH_DEBOUNCE_MS = 800
 
@@ -535,6 +536,11 @@ export function useConversationSession({
       dispatch({ type: "HITL_APPROVED" })
 
       scheduleMessagesRefetch()
+
+      if (options?.skipLocalResume) {
+        setMessages((prev) => stripGhostComposerAssistants(prev))
+        return
+      }
 
       if (options?.resumed === false) return
 

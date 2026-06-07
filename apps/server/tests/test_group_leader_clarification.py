@@ -566,3 +566,44 @@ def test_handle_group_message_fallback_resume(db_session, workspace, monkeypatch
     assert approve_called_with.get("msg_id") == interrupted.id
     assert approve_called_with["decisions"][0]["type"] == "respond"
     assert "市场周报" in approve_called_with["decisions"][0]["message"]
+
+
+def test_collect_member_delivery_texts_for_summary(
+    db_session, workspace,
+) -> None:
+    from src.service.group_room_service import _collect_member_delivery_texts_for_summary
+
+    room, group_conv, _ = _make_room_with_leader(db_session, workspace)
+    delivery = ConversationMessage(
+        conversation_id=group_conv.id,
+        role="assistant",
+        content="✅ 已完成：查询微博热搜\n\n当前热搜包括高考、马斯克相关话题。",
+        sender_label="微博热搜助手",
+        extra_meta=json.dumps({"kind": "delivery", "member_conversation_id": 99}),
+    )
+    leader_chatter = ConversationMessage(
+        conversation_id=group_conv.id,
+        role="assistant",
+        content="目前还没有成员产出任何成果。",
+        sender_label="组长",
+    )
+    db_session.add_all([delivery, leader_chatter])
+    db_session.commit()
+
+    text = _collect_member_delivery_texts_for_summary(db_session, room)
+    assert "微博热搜助手" in text
+    assert "高考" in text
+    assert "目前还没有成员产出" not in text
+
+
+def test_build_leader_summary_brief_uses_text_deliveries_without_files() -> None:
+    from src.service.group_room_service import _build_leader_summary_brief
+
+    brief = _build_leader_summary_brief(
+        files_text="（暂无产物文件）",
+        deliveries_text="#### 微博热搜助手\n✅ 已完成：查询微博热搜\n\n热搜：高考",
+    )
+    assert "文字交付" in brief
+    assert "高考" in brief
+    assert "禁止" in brief and "尚无成员产出" in brief
+    assert "（暂无产物文件）" in brief

@@ -4,7 +4,10 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from src.service.agent.read_file_dedupe import (
     dedupe_read_file_tool_messages,
+    extract_path_from_write_exists_error,
     extract_read_file_path,
+    inject_write_already_exists_hint,
+    is_write_already_exists_error,
     read_file_dedupe_placeholder,
 )
 
@@ -172,3 +175,32 @@ def test_image_read_clears_content_blocks_on_dedupe() -> None:
     assert read_file_dedupe_placeholder(path) in str(out[0].content)
     blocks = out[0].content_blocks or []
     assert not any(b.get("type") == "image" for b in blocks)
+
+
+def test_is_write_already_exists_error() -> None:
+    err = (
+        "Cannot write to /global-gaming-market/generate_doc.py "
+        "because it already exists. Read and then make an edit."
+    )
+    assert is_write_already_exists_error(err) is True
+    assert extract_path_from_write_exists_error(err) == (
+        "/global-gaming-market/generate_doc.py"
+    )
+
+
+def test_inject_write_already_exists_hint() -> None:
+    err = (
+        "Cannot write to /artifacts/generate_doc.py because it already exists. "
+        "Read and then make an edit, or write to a new path."
+    )
+    messages = [
+        ToolMessage(content="file body", name="read_file", tool_call_id="r1"),
+        ToolMessage(content=err, name="write_file", tool_call_id="w1"),
+    ]
+    out = inject_write_already_exists_hint(messages)
+    assert out[1].content != err
+    assert "edit_file" in str(out[1].content)
+    assert "禁止再次 write_file" in str(out[1].content)
+    # 幂等：二次注入不重复
+    out2 = inject_write_already_exists_hint(out)
+    assert out2[1].content == out[1].content

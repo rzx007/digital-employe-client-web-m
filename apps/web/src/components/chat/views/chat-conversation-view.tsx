@@ -33,7 +33,9 @@ import {
 import { hitlKindFromToolType } from "@/lib/chat/hitl/kind"
 import { resolveGroupClarifyTarget } from "@/lib/chat/hitl/group-clarify-target"
 
+import { chatKeys } from "@/lib/query-keys/chat"
 import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
+import { stripGhostComposerAssistants } from "@/lib/chat/group-composer-ghosts"
 import {
   isBenignStreamAbortError,
   isStreamDisconnectedError,
@@ -289,7 +291,10 @@ export function ConversationChatView({
       : undefined
 
   const displayMessages = useMemo(() => {
-    const source = pickMessageDisplaySource(messages, initialMessages, status)
+    let source = pickMessageDisplaySource(messages, initialMessages, status)
+    if (contact?.type === "group") {
+      source = stripGhostComposerAssistants(source)
+    }
 
     const prepared = prepareDisplayMessages(source)
     // 群协作：把进行中成员/组长的逐字流式临时消息追加到时间线末尾，
@@ -298,7 +303,38 @@ export function ConversationChatView({
       return [...prepared, ...extraStreamingMessages]
     }
     return prepared
-  }, [initialMessages, messages, status, extraStreamingMessages])
+  }, [contact?.type, initialMessages, messages, status, extraStreamingMessages])
+
+  // 群 SSE 仅 ack+[DONE]，useChat 会留下空 assistant；流结束后清掉 composer 残留。
+  useEffect(() => {
+    if (contact?.type !== "group") return
+    if (status !== "ready") return
+    setMessages((prev) => stripGhostComposerAssistants(prev))
+  }, [contact?.type, status, setMessages])
+
+  const handleHitlApproved = useCallback(
+    (options?: Parameters<typeof session.onHitlApproved>[0]) => {
+      const remoteLeaderConv = groupActiveHitl?.conversationIdOverride
+      const isRemoteGroupHitl =
+        remoteLeaderConv != null &&
+        String(remoteLeaderConv) !== String(conversationId)
+      session.onHitlApproved({
+        ...options,
+        skipLocalResume: isRemoteGroupHitl || options?.skipLocalResume,
+      })
+      if (isRemoteGroupHitl) {
+        void queryClient.invalidateQueries({
+          queryKey: chatKeys.groupRoom(String(conversationId)),
+        })
+      }
+    },
+    [
+      conversationId,
+      groupActiveHitl?.conversationIdOverride,
+      queryClient,
+      session.onHitlApproved,
+    ]
+  )
 
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
@@ -467,7 +503,7 @@ export function ConversationChatView({
       conversationId={conversationId}
       onAttachmentsChange={handleAttachmentsChange}
       activeHitl={groupActiveHitl ?? session.activeHitl}
-      onHitlApproved={session.onHitlApproved}
+      onHitlApproved={handleHitlApproved}
       className={className}
       {...props}
     />

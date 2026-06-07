@@ -1046,12 +1046,9 @@ class GroupRoomService:
                     rel = p.relative_to(shared_dir).as_posix()
                     files.append(f"/artifacts/{rel}")
         files_text = "\n".join(f"- {f}" for f in files) or "（暂无产物文件）"
-
-        summary_brief = (
-            "所有成员的子任务已完成。请你作为组长，读取以下共享产物文件，"
-            "把各成员的成果整合成一份**面向用户的最终汇总**（结构清晰、重点突出，"
-            "必要时引用关键数据）。直接给出汇总内容，不要再创建新计划。\n\n"
-            f"共享产物文件（用 read 工具读取 /artifacts/ 下路径）：\n{files_text}"
+        deliveries_text = _collect_member_delivery_texts_for_summary(db, room)
+        summary_brief = _build_leader_summary_brief(
+            files_text=files_text, deliveries_text=deliveries_text
         )
 
         history_messages, _ = ChatService._load_history_for_agent(
@@ -1910,6 +1907,61 @@ def _resolve_room_for_orchestration_conv(
     if room is None:
         return None, None
     return room, log.employee_id
+
+
+_MEMBER_DELIVERY_MARKER = "✅ 已完成"
+
+
+def _collect_member_delivery_texts_for_summary(
+    db: Session, room: GroupRoom, *, limit: int = 20
+) -> str:
+    """从群时间线收集成员「最终交付」消息，供组长汇总（无 artifact 文件时仍可总结）。"""
+    rows = db.scalars(
+        select(ConversationMessage)
+        .where(
+            ConversationMessage.conversation_id == room.room_conversation_id,
+            ConversationMessage.role == "assistant",
+        )
+        .order_by(ConversationMessage.id.asc())
+    ).all()
+
+    sections: list[str] = []
+    for msg in rows:
+        content = (msg.content or "").strip()
+        meta: dict[str, Any] = {}
+        if msg.extra_meta:
+            try:
+                meta = json.loads(msg.extra_meta)
+            except (json.JSONDecodeError, TypeError):
+                meta = {}
+        is_delivery = meta.get("kind") == "delivery"
+        is_completed_line = content.startswith(_MEMBER_DELIVERY_MARKER)
+        if not is_delivery and not is_completed_line:
+            continue
+        label = (msg.sender_label or "成员").strip()
+        if label == "组长":
+            continue
+        sections.append(f"#### {label}\n{content}")
+        if len(sections) >= limit:
+            break
+
+    return "\n\n".join(sections)
+
+
+def _build_leader_summary_brief(*, files_text: str, deliveries_text: str) -> str:
+    """组装组长最终汇总的 user brief（文字交付 + 可选共享产物文件）。"""
+    deliveries_block = deliveries_text or "（暂无成员文字交付）"
+    return (
+        "所有成员的子任务已完成。请你作为组长，整合各成员成果为一份**面向用户的最终汇总**"
+        "（结构清晰、重点突出，必要时引用关键数据）。直接给出汇总内容，不要再创建新计划。\n\n"
+        "**重要**：成员成果可能只在下方「文字交付」中，不一定有共享产物文件。"
+        "只要文字交付非空，就必须基于其汇总，**禁止**声称「尚无成员产出」或要求用户再次"
+        "确认执行计划（任务已完成即表示计划已执行）。\n\n"
+        "若下方「共享产物文件」列表非空，可用 read 工具补充细节；"
+        "若为空，仅依据文字交付即可。\n\n"
+        f"### 成员已在群时间线交付的文字结论（优先使用）\n{deliveries_block}\n\n"
+        f"### 共享产物文件（可选，/artifacts/ 下路径）\n{files_text}"
+    )
 
 
 # 工具结果噪音前缀：成员会话末段若以这些开头，说明不是模型的「交付结论」而是

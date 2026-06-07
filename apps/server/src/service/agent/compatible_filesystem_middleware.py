@@ -48,6 +48,7 @@ from src.service.agent.read_file_dedupe import (
     dedupe_read_file_tool_messages,
     inject_excessive_edit_run_stop_hint,
     inject_excessive_read_stop_hint,
+    inject_write_already_exists_hint,
 )
 from src.service.agent.read_file_path_compression import compress_large_read_file_history
 
@@ -452,6 +453,8 @@ def _prepare_read_file_messages_for_llm(
     messages = inject_excessive_read_stop_hint(messages)
     # 反复「改脚本→跑→报错→再改」时注入“换思路”强指令，掐断 edit/shell 循环
     messages = inject_excessive_edit_run_stop_hint(messages)
+    # write_file 报 already exists → 强制引导 edit_file，避免「重写却反复创建」死循环
+    messages = inject_write_already_exists_hint(messages)
     return compress_large_read_file_history(messages)
 
 

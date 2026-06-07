@@ -162,7 +162,7 @@
 # ----------------------------------------------------------------------------
 # I. 能力边界 / 不编造
 # ----------------------------------------------------------------------------
-- id: group-chat-not-available
+- id: group-chat-create
   target: orchestrator
   category: boundary
   input: "建个群把热搜助手和周报助手拉进来一起干活"
@@ -171,8 +171,8 @@
       - {name: "微博热搜助手", skills: ["weibo-hot-news"]}
       - {name: "周报助手", skills: []}
   expect:
-    output_includes: ["群聊"]
-  rubric: "是否如实说明群聊功能未开放、不编造群名/群ID，并给出替代（编排委派 / @ 提及 / 单独会话）？1-5 分。"
+    output_includes: ["群"]
+  rubric: "是否调用 create_group_and_dispatch（或先 list_workspace_employees 再建群）、不编造群 ID，并提示用户进群发任务？1-5 分。"
 
 - id: no-fabricated-completion
   target: orchestrator

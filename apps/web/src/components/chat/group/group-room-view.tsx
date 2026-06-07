@@ -50,25 +50,53 @@ export function GroupRoomView({
   }, [members])
 
   // 进行中成员/组长的逐字流式 → 转成时间线临时消息，像单聊一样逐字渲染。
+  // 组长在首 token 前：房间状态已 running 但尚无 stream 增量 → 占位「正在生成回复…」。
   // 完成后由落库的 room_message 接管，streaming 被清空。
   const extraStreamingMessages = React.useMemo<UIMessage[]>(() => {
-    return streaming
+    const leader = members.find((m) => m.role_in_room === "leader")
+    const leaderConvId = leader?.conversation_id ?? null
+    const leaderStream = streaming.find((s) =>
+      leaderConvId != null
+        ? s.sourceConversationId === leaderConvId
+        : s.senderLabel === "组长"
+    )
+    const leaderHasVisibleStream = Boolean(
+      leaderStream && leaderStream.text.trim().length > 0
+    )
+
+    const msgs: UIMessage[] = streaming
       .filter((s) => s.text.trim().length > 0)
       .map((s) => ({
         id: `group-stream-${s.sourceConversationId}`,
         role: "assistant" as const,
         parts: [{ type: "text" as const, text: s.text }],
         metadata: {
-          // 群时间线按发言人显示头像（组长 / 某成员）
           senderName: s.senderLabel,
           senderId: s.senderId != null ? String(s.senderId) : undefined,
           streamState: "streaming",
-          // 逐字流式进度：让气泡显示「正在生成 N 字…」+ 流式光标，
-          // 给组长（及成员）的进行中输出和单聊/总管一致的流式观感。
           streamCharCount: s.charCount,
         },
       }))
-  }, [streaming])
+
+    if (leader?.state === "running" && !leaderHasVisibleStream) {
+      msgs.push({
+        id:
+          leaderConvId != null
+            ? `group-stream-${leaderConvId}`
+            : "group-stream-pending-leader",
+        role: "assistant",
+        parts: [{ type: "text", text: "" }],
+        metadata: {
+          senderName: "组长",
+          streamState: "streaming",
+          streamCharCount: leaderStream?.charCount ?? 0,
+          pendingReply: true,
+        },
+      })
+    }
+
+    return msgs
+  }, [streaming, members])
 
   return (
     <div className={cn("flex h-full min-h-0 w-full", className)} {...props}>

@@ -7,7 +7,12 @@ import {
   MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
 import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
+import { Spinner } from "@/components/spinner"
 import { getCopyableMessageText } from "@/lib/chat/message-utils"
+import {
+  assistantMessageHasVisibleBody,
+  isGroupTimelineAssistantMessage,
+} from "@/lib/chat/group-composer-ghosts"
 import { getDispatchBadge } from "@/lib/chat/assistant-stream-state"
 import { CURATOR_AVATAR_URL } from "@/lib/avatar"
 import { useAuthStore } from "@/stores/auth-store"
@@ -108,6 +113,21 @@ function ChatMessageItemInner({
     return null
   }, [message])
 
+  const groupStreamingAwaitingFirstToken =
+    groupStreaming != null && classifiedBlocks.length === 0
+
+  // 群 composer 残留空 assistant（无发言人、无正文）→ 不渲染，避免「群拼图/空气泡」。
+  if (
+    contact.type === "group" &&
+    message.role === "assistant" &&
+    !groupStreaming &&
+    classifiedBlocks.length === 0 &&
+    !isGroupTimelineAssistantMessage(message) &&
+    !assistantMessageHasVisibleBody(message)
+  ) {
+    return null
+  }
+
   const messageBody = (
     <div className="space-y-1.5">
       {classifiedBlocks.length > 0 ? (
@@ -129,16 +149,24 @@ function ChatMessageItemInner({
             }}
           />
         ))
+      ) : groupStreamingAwaitingFirstToken ? (
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Spinner
+            className="size-3.5 shrink-0"
+            style={{ color: "#8B5CF6" }}
+          />
+          <Shimmer className="text-xs">正在生成回复...</Shimmer>
+        </div>
       ) : (
         <MessageResponse />
       )}
-      {groupStreaming && (
+      {groupStreaming && !groupStreamingAwaitingFirstToken ? (
         // 流式光标：跟在已生成文本末尾轻微闪烁，传达「还在打字」。
         <span
           aria-hidden
           className="ml-0.5 inline-block h-3.5 w-[2px] -translate-y-px animate-pulse rounded-full bg-primary/70 align-middle"
         />
-      )}
+      ) : null}
     </div>
   )
 
@@ -242,15 +270,16 @@ function ChatMessageItemInner({
         </div>
       ) : null}
       <MessageContent className="w-auto">{messageBody}</MessageContent>
-      {groupStreaming && (
+      {groupStreaming &&
+      !groupStreamingAwaitingFirstToken &&
+      groupStreaming.charCount &&
+      groupStreaming.charCount > 0 ? (
         <div className="mt-1 flex items-center gap-1.5 text-muted-foreground">
           <Shimmer className="text-[11px]">
-            {groupStreaming.charCount && groupStreaming.charCount > 0
-              ? `正在生成 ${groupStreaming.charCount} 字…`
-              : "正在生成…"}
+            {`正在生成 ${groupStreaming.charCount} 字…`}
           </Shimmer>
         </div>
-      )}
+      ) : null}
       {groupStreaming ? null : message.role === "assistant" ? (
         <MessageAssistantActions
           copyText={copyText}
