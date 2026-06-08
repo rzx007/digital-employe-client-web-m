@@ -18,6 +18,7 @@ from src.api.performance_record_api import router as performance_record_router
 from src.api.performance_balance_api import router as performance_balance_router
 from src.api.system_api import router as system_router
 from src.api.activation_api import router as activation_router
+from src.api.feedback_api import router as feedback_router
 
 api_router = APIRouter()
 api_router.include_router(workspace_router)
@@ -38,6 +39,7 @@ api_router.include_router(performance_record_router)
 api_router.include_router(performance_balance_router)
 api_router.include_router(system_router)
 api_router.include_router(activation_router)
+api_router.include_router(feedback_router)
 
 __all__ = ["api_router"]
 
