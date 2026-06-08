@@ -67,6 +67,38 @@ function BugReportCardInner({
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const handleScreenshotFile = useCallback((file: File) => {
+    if (file.size > MAX_SCREENSHOT_BYTES) {
+      toast.error("截图过大（>2MB），请压缩后再上传")
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const result = e.target?.result
+      if (typeof result === "string") {
+        setEditScreenshot(result)
+      }
+    }
+    reader.readAsDataURL(file)
+  }, [])
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLDivElement>) => {
+      if (mode !== "edit") return
+      const items = Array.from(e.clipboardData.items)
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile()
+          if (file) {
+            handleScreenshotFile(file)
+          }
+          break
+        }
+      }
+    },
+    [mode, handleScreenshotFile]
+  )
+
   if (!data) return null
 
   const isAborted = isHitlAbortedOutput(resultText ?? undefined)
@@ -192,40 +224,6 @@ function BugReportCardInner({
     ])
     setMode("view")
   }
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const handleScreenshotFile = useCallback((file: File) => {
-    if (file.size > MAX_SCREENSHOT_BYTES) {
-      toast.error("截图过大（>2MB），请压缩后再上传")
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const result = e.target?.result
-      if (typeof result === "string") {
-        setEditScreenshot(result)
-      }
-    }
-    reader.readAsDataURL(file)
-  }, [])
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const handlePaste = useCallback(
-    (e: React.ClipboardEvent<HTMLDivElement>) => {
-      if (mode !== "edit") return
-      const items = Array.from(e.clipboardData.items)
-      for (const item of items) {
-        if (item.type.startsWith("image/")) {
-          const file = item.getAsFile()
-          if (file) {
-            handleScreenshotFile(file)
-          }
-          break
-        }
-      }
-    },
-    [mode, handleScreenshotFile]
-  )
 
   return (
     <div
