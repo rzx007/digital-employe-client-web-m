@@ -54,7 +54,20 @@ echo ""
 
 mkdir -p "$RELEASE_DIR"
 
-echo "[1/3] 构建 Docker 构建镜像..."
+echo "[1/4] 确保 fpm 缓存（macOS → Docker 挂载）..."
+FPM_CACHE_DIR="$HOME/.cache/electron-builder"
+FPM_FILE="fpm-1.17.0-ruby-3.4.3-linux-arm64v8.7z"
+FPM_URL="https://github.com/electron-userland/electron-builder-binaries/releases/download/fpm@2.1.4/$FPM_FILE"
+mkdir -p "$FPM_CACHE_DIR/fpm"
+if [ ! -f "$FPM_CACHE_DIR/fpm/$FPM_FILE" ]; then
+  echo "  在 macOS 端下载 fpm..."
+  curl -fsSL "$FPM_URL" -o "$FPM_CACHE_DIR/fpm/$FPM_FILE"
+  echo "  fpm 已缓存到 $FPM_CACHE_DIR/fpm/$FPM_FILE"
+else
+  echo "  fpm 缓存已存在: $FPM_CACHE_DIR/fpm/$FPM_FILE"
+fi
+
+echo "[2/4] 构建 Docker 构建镜像..."
 docker buildx build \
   --platform linux/arm64 \
   -t "$IMAGE_NAME" \
@@ -62,15 +75,19 @@ docker buildx build \
   "$ROOT_DIR"
 
 echo ""
-echo "[2/3] 在容器内构建应用..."
+echo "[3/4] 在容器内构建应用..."
 echo "  构建命令: $BUILD_CMD"
 echo "  （项目源码以只读方式挂载，不会影响 macOS 上的 node_modules）"
 docker run --rm \
   --platform linux/arm64 \
+  --memory=8g \
   -v "$ROOT_DIR:/host-source:ro" \
   -v "$RELEASE_DIR:/output" \
-  -e ELECTRON_MIRROR="https://registry.npmmirror.com/-/binary/electron/" \
+  -v "$FPM_CACHE_DIR:/root/.cache/electron-builder" \
+  -e ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" \
+  -e ELECTRON_BUILDER_CACHE="/root/.cache/electron-builder" \
   -e BUILD_CMD="$BUILD_CMD" \
+  -e NODE_OPTIONS="--max-old-space-size=8192" \
   "$IMAGE_NAME" \
   bash -c '
 set -euo pipefail
@@ -108,5 +125,6 @@ echo "=========================================="
 echo "✅ 打包完成!"
 echo "   输出目录: $RELEASE_DIR"
 echo "   预期产物: $ARTIFACT_HINT"
+echo "   fpm 缓存: $FPM_CACHE_DIR/fpm/$FPM_FILE"
 ls -lh "$RELEASE_DIR"/*.deb 2>/dev/null || echo "   （未找到 deb 包，请检查构建日志）"
 echo "=========================================="

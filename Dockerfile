@@ -27,6 +27,16 @@ RUN npm install -g pnpm@10.33.0
 
 RUN curl -fsSL https://astral.sh/uv/install.sh | sh
 
+# 预下载 Electron 二进制（避免每次构建重新下载）
+ARG ELECTRON_VERSION=41.1.0
+ARG ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+ENV ELECTRON_MIRROR=$ELECTRON_MIRROR
+ENV ELECTRON_CACHE=/root/.cache/electron
+RUN mkdir -p /root/.cache/electron && \
+    curl -fsSL "${ELECTRON_MIRROR}v${ELECTRON_VERSION}/electron-v${ELECTRON_VERSION}-linux-arm64.zip" \
+      -o "/root/.cache/electron/electron-v${ELECTRON_VERSION}-linux-arm64.zip" && \
+    echo "Electron ${ELECTRON_VERSION} cached."
+
 WORKDIR /app
 
 CMD ["/bin/bash"]
