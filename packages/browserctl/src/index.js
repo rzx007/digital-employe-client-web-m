@@ -20,6 +20,7 @@ Usage:
   browserctl health [--pretty]
   browserctl open <url> [--pretty]
   browserctl navigate <url> [--pretty]
+  browserctl open-artifact <virtual-path>   # 打开会话产物目录里的 HTML 到内嵌浏览器
   browserctl snapshot [--max-nodes 200] [--tree | --interactive] [--pretty]
   browserctl click <@eN|selector> [--confirm "message"] [--pretty]
   browserctl wait (--selector <css> | --text <text> | --ms <n>) [--timeout 10000] [--pretty]
@@ -262,6 +263,31 @@ async function run(argv) {
   if (command === "open" || command === "navigate") {
     const url = normalizeUrl(rest[0])
     if (!url) throw new Error("url required")
+    print(await postAction("navigate", { url }), flags.pretty)
+    return
+  }
+
+  if (command === "open-artifact") {
+    const virtualPath = rest[0]
+    if (!virtualPath) throw new Error("virtual path required")
+    const conversationId = process.env.CONVERSATION_ID
+    if (!conversationId) {
+      print(
+        {
+          ok: false,
+          error:
+            "CONVERSATION_ID env not set; cannot resolve which conversation's artifacts to open",
+          code: "MISSING_CONVERSATION_ID",
+        },
+        flags.pretty
+      )
+      return
+    }
+    const backendBase = (
+      process.env.BROWSER_RUNTIME_BACKEND_URL || "http://127.0.0.1:34567"
+    ).replace(/\/$/, "")
+    const rel = String(virtualPath).replace(/^\//, "")
+    const url = `${backendBase}/chat/conversations/${conversationId}/resources/static/${rel}`
     print(await postAction("navigate", { url }), flags.pretty)
     return
   }

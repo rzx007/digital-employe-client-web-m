@@ -256,3 +256,71 @@ test("close 命中 close action", async () => {
     await closeServer(srv)
   }
 })
+
+test("open-artifact 用 CONVERSATION_ID 与 backend url 构造静态 url 并 navigate", async () => {
+  let reqUrl
+  let received
+  const srv = await startServer(async (req, res) => {
+    reqUrl = req.url
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["open-artifact", "/artifacts/report.html"], {
+      env: {
+        BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv),
+        CONVERSATION_ID: "42",
+        BROWSER_RUNTIME_BACKEND_URL: "http://127.0.0.1:34567",
+      },
+    })
+    assert.ok(reqUrl.endsWith("/navigate"))
+    assert.equal(
+      received.url,
+      "http://127.0.0.1:34567/chat/conversations/42/resources/static/artifacts/report.html"
+    )
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("open-artifact 无前导斜杠的相对路径不产生双斜杠", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["open-artifact", "artifacts/a.html"], {
+      env: {
+        BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv),
+        CONVERSATION_ID: "1",
+        BROWSER_RUNTIME_BACKEND_URL: "http://127.0.0.1:34567",
+      },
+    })
+    assert.equal(
+      received.url,
+      "http://127.0.0.1:34567/chat/conversations/1/resources/static/artifacts/a.html"
+    )
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("open-artifact 缺少 CONVERSATION_ID 时报错且不访问 bridge", async () => {
+  let hit = false
+  const srv = await startServer((req, res) => {
+    hit = true
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    const { stdout } = await runCli(["open-artifact", "/artifacts/a.html"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    const j = JSON.parse(stdout)
+    assert.equal(j.ok, false)
+    assert.equal(j.code, "MISSING_CONVERSATION_ID")
+    assert.equal(hit, false)
+  } finally {
+    await closeServer(srv)
+  }
+})
