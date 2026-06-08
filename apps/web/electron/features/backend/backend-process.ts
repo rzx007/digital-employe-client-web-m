@@ -119,6 +119,8 @@ function getBrowserctlEnv(): Record<string, string> {
     BROWSERCTL_PATH: indexPath,
     // wrapper 用此变量运行 CLI：packaged 用 Electron 自带 node（配合 ELECTRON_RUN_AS_NODE），dev 用系统 node
     BROWSERCTL_NODE: app.isPackaged ? process.execPath : "node",
+    // open-artifact 用：指向后端，拼会话产物静态 URL（区别于 bridge 的 34555）
+    BROWSER_RUNTIME_BACKEND_URL: `http://127.0.0.1:${BACKEND_PORT}`,
     [pathKey]: `${binDir}${path.delimiter}${process.env[pathKey] ?? ""}`,
   }
 }
