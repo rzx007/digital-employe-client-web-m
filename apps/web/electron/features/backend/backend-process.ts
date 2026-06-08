@@ -211,6 +211,8 @@ export async function startBackend(): Promise<void> {
         : {}),
       // 显式写入，避免 Windows 用户级 OFFLINE_MODE=1 经 process.env 泄漏到 Python
       OFFLINE_MODE: isOfflineMode() ? "1" : "0",
+      // 反馈上报需要 app 版本；注入供后端 feedback_service.collect_env 读取
+      APP_VERSION: app.getVersion(),
       // 离线开发默认跳过激活门控（与 AGENTS.md ACTIVATION_BYPASS 一致）
       ...(isDev && isOfflineMode() && !process.env.ACTIVATION_BYPASS
         ? { ACTIVATION_BYPASS: "1" }
