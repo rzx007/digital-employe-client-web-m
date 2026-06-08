@@ -270,6 +270,7 @@ tests/test_agent_stream_queue.py
 tests/test_agent_stream_timeouts.py
 tests/test_basic_file_backend.py
 tests/test_basic_file_reader.py
+tests/test_builtin_seed_employees.py
 tests/test_builtin_skill_display_names.py
 tests/test_compatible_filesystem_middleware.py
 tests/test_confirmation_policy.py
@@ -291,6 +292,7 @@ tests/test_encoding_aware_backend.py
 tests/test_evals_dataset.py
 tests/test_get_current_time_tool.py
 tests/test_group_leader_clarification.py
+tests/test_group_tools.py
 tests/test_history_head_tail.py
 tests/test_history_summarization_coordination.py
 tests/test_hitl_pending_parts.py
@@ -321,8 +323,10 @@ tests/test_read_file_path_compression.py
 tests/test_read_file_progress_footer.py
 tests/test_recent_contact_service.py
 tests/test_recruitment.py
+tests/test_resolve_shared_artifacts_dir.py
 tests/test_resource_static.py
 tests/test_seed_builtin_skills_prune.py
+tests/test_shell_conversation_env.py
 tests/test_shell_environment_prompt.py
 tests/test_shell_error_steering.py
 tests/test_shell_execute_tool.py

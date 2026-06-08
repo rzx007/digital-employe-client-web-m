@@ -36,11 +36,20 @@ def _new_pending_employee_code() -> str:
 _BUILTIN_SEED_EMPLOYEES: tuple[tuple[str, tuple[str, ...], str | None], ...] = (
     ("飞书助手", ("lark-base",), "内置飞书多维表格等能力。"),
     ("技能制作助手", ("skill-creator",), "协助编写与管理技能（Skills）。"),
-    ("工作台助手", ("feishu-workbench",), "工作台展示相关能力。"),
     (
         "环境管家",
         ("env-steward",),
         "诊断并修复 Python / Node.js / Git / curl 等主机环境问题。",
+    ),
+    (
+        "文档办公助手",
+        ("docx", "pptx", "xlsx", "pdf"),
+        "处理 Word、Excel、PPT、PDF 等办公文档的创建、编辑与转换。",
+    ),
+    (
+        "浏览器助手",
+        ("browser-runtime",),
+        "在桌面端内嵌浏览器中打开网页、填表、点击与抽取内容。",
     ),
 )
 
@@ -1183,7 +1192,7 @@ class EmployeeService:
 
     @staticmethod
     def ensure_builtin_seed_employees(db: Session, workspace: Workspace) -> None:
-        """将本地技能目录（含启动时同步的内置技能）绑定到默认三名员工；按名称+技能集合幂等。"""
+        """将本地技能目录（含启动时同步的内置技能）绑定到默认种子员工；按名称+技能集合幂等。"""
         # 防御式同步：避免调用方未先执行 seed_builtin_skills 时找不到新增内置技能。
         LocalSkillService.seed_builtin_skills()
         local_root = LocalSkillService._resolve_local_root().resolve()
