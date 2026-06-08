@@ -16,6 +16,7 @@ export interface PreviewSourceShellProps {
   renderPreview: () => React.ReactNode
   renderSource: () => React.ReactNode
   defaultMode?: PreviewSourceMode
+  headerActions?: React.ReactNode
 }
 
 export function PreviewSourceShell({
@@ -24,6 +25,7 @@ export function PreviewSourceShell({
   renderPreview,
   renderSource,
   defaultMode = "preview",
+  headerActions,
 }: PreviewSourceShellProps) {
   const [mode, setMode] = React.useState<PreviewSourceMode>(defaultMode)
   const resetKey = `${artifact.id}:${String(artifact.metadata?.resourcePath ?? "")}`
@@ -38,7 +40,7 @@ export function PreviewSourceShell({
       onValueChange={(value) => setMode(value as PreviewSourceMode)}
       className={cn("flex min-h-0 min-w-0 flex-1 flex-col gap-0", className)}
     >
-      <div className="shrink-0 border-b bg-muted/30 px-3 py-1.5">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b bg-muted/30 px-3 py-1.5">
         <TabsList className="h-8 bg-transparent p-0">
           <TabsTrigger value="preview" className="h-7 px-3 text-xs">
             预览
@@ -47,6 +49,9 @@ export function PreviewSourceShell({
             源码
           </TabsTrigger>
         </TabsList>
+        {headerActions ? (
+          <div className="flex shrink-0 items-center gap-1">{headerActions}</div>
+        ) : null}
       </div>
       <TabsContent
         value="preview"

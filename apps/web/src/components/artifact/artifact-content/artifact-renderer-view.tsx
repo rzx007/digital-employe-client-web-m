@@ -92,12 +92,14 @@ function XlsxArtifactRendererSuspense({
 export interface ArtifactRendererViewProps {
   artifact: Artifact
   filePath?: string | null
+  conversationId?: string | number | null
   className?: string
 }
 
 export function ArtifactRendererView({
   artifact,
   filePath = null,
+  conversationId = null,
   className,
 }: ArtifactRendererViewProps) {
   const kind = resolveArtifactRendererKind(artifact, filePath)
@@ -112,7 +114,12 @@ export function ArtifactRendererView({
       )
     case "html":
       return (
-        <HtmlArtifactRenderer artifact={artifact} className={className} />
+        <HtmlArtifactRenderer
+          artifact={artifact}
+          className={className}
+          conversationId={conversationId}
+          filePath={filePath}
+        />
       )
     case "sheet":
       return <SheetRenderer artifact={artifact} className={className} />
