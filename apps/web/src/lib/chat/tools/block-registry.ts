@@ -3,6 +3,7 @@ import type { ToolViewModel } from "./tool-view-model"
 
 import { planGeneratedHandler, type ToolBlockHandler } from "./handlers/plan-generated"
 import { documentPlanHandler } from "./handlers/document-plan"
+import { bugReportHandler } from "./handlers/bug-report"
 import { clarifyAnswersHandler } from "./handlers/clarify-answers"
 import { recruitmentHandler } from "./handlers/recruitment"
 import { groupCreatedHandler } from "./handlers/group-created"
@@ -14,6 +15,7 @@ import { destructiveDeleteHandler } from "./handlers/destructive-delete"
 export const TOOL_BLOCK_HANDLERS: ToolBlockHandler[] = [
   planGeneratedHandler,
   documentPlanHandler,
+  bugReportHandler,
   clarifyAnswersHandler,
   destructiveDeleteHandler,
   recruitmentHandler,

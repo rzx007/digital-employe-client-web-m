@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest"
 import { hitlKindFromToolType } from "./kind"
 
 describe("hitlKindFromToolType", () => {
-  it("maps clarify / document-plan tool types", () => {
+  it("maps clarify / document-plan / bug-report tool types", () => {
     expect(hitlKindFromToolType("tool-submit_clarifying_questions")).toBe(
       "clarify"
     )
     expect(hitlKindFromToolType("tool-submit_document_plan")).toBe(
       "document-plan"
     )
+    expect(hitlKindFromToolType("tool-submit_bug_report")).toBe("bug-report")
   })
 
   it("maps every destructive HITL tool to destructive-delete", () => {

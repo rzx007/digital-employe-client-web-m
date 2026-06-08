@@ -213,6 +213,14 @@ export type ClassifiedBlock =
       resultText: string | null
     }
   | {
+      kind: "bug-report"
+      key: string
+      toolCallId: string
+      input: unknown
+      state: string
+      resultText: string | null
+    }
+  | {
       kind: "clarifying-answers"
       key: string
       toolCallId: string

@@ -4,6 +4,7 @@ import { ToolGroupBlock } from "./tool-group-block"
 import { TodoPlanBlock } from "./todo-plan-block"
 import { PlanGeneratedCard } from "./plan-generated-card"
 import { DocumentPlanCard } from "./document-plan-card"
+import { BugReportCard } from "./bug-report-card"
 import { ClarifyingAnswersSummary } from "./clarifying-answers-summary"
 import { DocumentPlanApprovedSummary } from "./document-plan-approved-summary"
 import { RecruitmentCandidatesCard } from "./recruitment-candidates-card"
@@ -182,6 +183,25 @@ export function BlockRenderer({
   if (block.kind === "document-plan") {
     return (
       <DocumentPlanCard
+        key={block.key}
+        input={block.input}
+        state={
+          block.resultText && !isHitlAbortedOutput(block.resultText)
+            ? "output-available"
+            : block.state
+        }
+        resultText={block.resultText}
+        conversationId={conversationId}
+        messageId={messageId}
+        toolCallId={block.toolCallId}
+        onHitlApproved={onHitlApproved}
+        className="w-full"
+      />
+    )
+  }
+  if (block.kind === "bug-report") {
+    return (
+      <BugReportCard
         key={block.key}
         input={block.input}
         state={
