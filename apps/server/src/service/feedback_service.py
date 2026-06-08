@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import platform
 
 import httpx
@@ -20,8 +21,6 @@ def _feedback_url() -> str | None:
 
 def collect_env() -> dict:
     """自动采集环境信息（app 版本经 Electron 注入 APP_VERSION；缺失退化 unknown）。"""
-    import os
-
     return {
         "app_version": os.getenv("APP_VERSION") or "unknown",
         "os": platform.system(),

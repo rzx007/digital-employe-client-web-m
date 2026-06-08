@@ -1,4 +1,3 @@
-import logging
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Request
@@ -7,7 +6,6 @@ from src.core.deps import require_capability
 from src.service import feedback_service
 
 router = APIRouter(tags=["反馈"])
-logger = logging.getLogger(__name__)
 
 
 @router.post(

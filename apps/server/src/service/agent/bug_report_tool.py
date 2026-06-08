@@ -56,6 +56,9 @@ def submit_bug_report(
             payload["logs"] = logs
 
     result = feedback_service.submit_feedback(payload, token=_best_effort_token())
+    logger.info(
+        "bug_report submit ok=%s include_logs=%s", result.get("ok"), include_logs
+    )
     if result.get("ok"):
         remote = result.get("remote") or {}
         ticket = remote.get("ticket") if isinstance(remote, dict) else None
