@@ -51,6 +51,11 @@ _BUILTIN_SEED_EMPLOYEES: tuple[tuple[str, tuple[str, ...], str | None], ...] = (
         ("browser-runtime",),
         "在桌面端内嵌浏览器中打开网页、填表、点击与抽取内容。",
     ),
+    (
+        "问题反馈助手",
+        ("bug-reporter",),
+        "收集并提交 BUG 反馈到官方后台。",
+    ),
 )
 
 

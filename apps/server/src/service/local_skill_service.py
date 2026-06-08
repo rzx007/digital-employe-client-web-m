@@ -27,6 +27,7 @@ BUILTIN_SKILL_DISPLAY_NAMES: dict[str, str] = {
     "skill-creator": "技能制作",
     "env-steward": "环境管家",
     "browser-runtime": "内嵌浏览器",
+    "bug-reporter": "问题反馈",
     "docx": "Word 文档",
     "doc-coauthoring": "文档协作写作",
     "pdf": "PDF 处理",
