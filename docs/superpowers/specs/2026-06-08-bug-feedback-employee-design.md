@@ -22,7 +22,8 @@
 - **内置员工 seed**：`_BUILTIN_SEED_EMPLOYEES`（`apps/server/src/service/employee_service.py:36`）是 `(员工名, (技能名…), 描述)` 列表；`ensure_builtin_seed_employees`（同文件:1194）启动时 seed build-in-skills 到本地，再按 **名+技能集幂等** 建员工。名字不存在即创建 → **已有工作空间下次启动自动补出该员工**。
 - **内置技能源**：`apps/server/build-in-skills/<name>/SKILL.md`（如 `env-steward`）；带 frontmatter `name/description`。
 - **HITL 提交工具范式**：`apps/server/src/service/agent/document_plan_tool.py` 的 `submit_document_plan`；在 `employee.py:225` 加入 `extra_tools`，并由 `interrupt_on`/`HITL_INTERRUPT_ON`（employee.py:248）挂中断产出确认卡片。
-- **远端转发范式**：`apps/server/src/api/login_api.py` 用 `REMOTE_API_BASE_URL + *_PATH`（如 `REGISTER_PATH`）+ `remote_gateway`（`apps/server/src/core/remote_gateway.py` 的 `sync_post`）转发；配置键在 `config.py`。
+- **远端转发范式（实测）**：`apps/server/src/api/login_api.py` 路由用**直接 `httpx.post`** 转发到一个**预拼好的 `*_url`**（如 `get_settings().login_url`），并在路由装饰器加 `dependencies=[Depends(require_capability("remote_login"))]`（`src/core/deps.py`）做**离线门控**；用户 token 经 `_forward_token_headers` 走 **`token` 请求头**（非 `Authorization`）。配置侧：`*_PATH` kv（如 `LOGIN_PATH`，默认 `/yc/login`）经 `join_base_and_path(platform_base_url, path)`（`config.py:62`）拼成 `*_url` 字段（`config.py:487`）。kv 取自 SQLite `config_kvs` 表，非 OS 环境变量。
+- **不使用** `remote_gateway.sync_post`：现有 `api/` 路由无一处用它，feedback 沿用上面的 login 范式以保持一致。
 - **日志位置**：`~/.digital-employee/logs/{app,error}.log`（`config.py:34` `get_default_logs_dir()`、`logging_setup.py`）。
 - **离线标志/版本**：`OFFLINE_MODE` 已注入后端 env（`backend-process.ts`）；`APP_VERSION` 当前后端拿不到，需注入。
 
@@ -38,10 +39,10 @@
             feedback_service.submit_feedback()
                      │  组装载荷(正文 + 自动环境 + 可选日志截断)
                      ▼
-            POST /feedback (api/feedback_api.py)
-                     │  remote_gateway.sync_post
+            POST /feedback (api/feedback_api.py, require_capability 离线门控)
+                     │  httpx.post(feedback_url, headers={"token": …})
                      ▼
-            REMOTE_API_BASE_URL + FEEDBACK_PATH  (你的远端后台)
+            feedback_url = REMOTE_API_BASE_URL + FEEDBACK_PATH  (你的远端后台)
 ```
 
 ## 4. 组件设计（各单元：职责 / 接口 / 依赖）
@@ -61,25 +62,32 @@
   调用即触发 HITL 中断 → 产出**确认卡片**（含字段摘要 + 自动环境摘要 + "将附日志: 是/否"）。用户 approve 后，由 HITL resume 通路调用 `feedback_service.submit_feedback(...)` 真正上报。
 - **接口**：`submit_bug_report`（工具对象）。
 - **依赖**：`feedback_service`；HITL 机制（`interrupt_on`/`HITL_INTERRUPT_ON`）。
-- **注册**：`employee.py` `extra_tools.append(submit_bug_report)`；加入 `HITL_INTERRUPT_ON` 使其挂确认中断。（工具对全员可见无妨——只有本员工 SKILL.md 指示使用。）
+- **注册（按实测门控，非无条件）**：`employee.py:224-225` 里 `submit_document_plan` 只在 `if enable_hitl or clarify_only_hitl:` 分支内 append，且确认中断只在 `enable_hitl` 时生效（`:248-251`）。故：
+  - 把 `submit_bug_report` 加进**同一 HITL 分支**的 `extra_tools`；
+  - 把它的工具名加入 `HITL_INTERRUPT_ON`（`hitl_interrupt_on.py`），使调用产出确认卡片；
+  - **本员工会话须以 `enable_hitl=True` 运行**，确认中断才会触发——实现计划需确认 bug-reporter 走的是哪条 employee 装配分支，必要时为其强制 `enable_hitl`。
+  - 工具对全员可见无妨——只有本员工 SKILL.md 指示使用。
 
 ### 4.3 反馈服务 `service/feedback_service.py`
 - **职责**：纯逻辑，组装并发送上报。
   - `collect_env() -> dict`：app_version(env `APP_VERSION`)、os/arch(`platform`)、user(来自 auth/当前登录)、offline(`OFFLINE_MODE`)。
   - `collect_logs(cap_lines=500, cap_bytes=200_000) -> str | None`：读取 `app.log`+`error.log` 末尾，截断封顶；仅 `include_logs` 时调用。
-  - `submit_feedback(payload, auth_token) -> dict`：拼 `REMOTE_API_BASE_URL + FEEDBACK_PATH`，`remote_gateway.sync_post`，带 `Authorization`；返回远端结果或规范化错误。
+  - `submit_feedback(payload, token) -> dict`：用 **`httpx.post(get_settings().feedback_url, json=payload, headers={"token": token}, timeout=30)`**（与 login 范式一致），`raise_for_status` 后返回远端 JSON；未配置 `feedback_url`/网络错误时返回规范化错误（不抛栈给模型）。
 - **接口**：上述三函数。
-- **依赖**：`config`（`remote_api_base_url`、`feedback_path`）、`remote_gateway`、`platform`、日志路径。
-- **隔离**：不依赖 agent/HTTP 框架，可独立单测。
+- **依赖**：`config`（`feedback_url`）、`httpx`、`platform`、日志路径。
+- **隔离**：不依赖 agent 框架，可独立单测（mock `httpx`）。
 
 ### 4.4 本地端点 `api/feedback_api.py`
 - **职责**：`POST /feedback`，body=组装好的上报，转发到远端（调 `feedback_service.submit_feedback`），回传结果。供工具路径之外的调用方/将来 UI 复用。
-- **接口**：`POST /feedback`。
-- **依赖**：`feedback_service`、鉴权依赖（取当前用户 token）。
-- **说明**：agent 路径也可直接调 `feedback_service`（不强制走 HTTP 自环）；端点存在保证契约完整、可独立测。
+- **接口**：`POST /feedback`，装饰器加 `dependencies=[Depends(require_capability("remote_feedback"))]` 做**离线门控**（与 `login` 一致）；从 `token` 请求头取用户 token 转发。
+- **依赖**：`feedback_service`、`require_capability`。
+- **实现模板**：以 `login_api.py` 的 `register_proxy`（`:95-118`，同时有 capability dep + `_forward_token_headers` 读 `token` 头）为最近样板，而非不读 token 的 `login` 路由。
+- **说明**：agent 路径也可直接调 `feedback_service`（不强制走 HTTP 自环）；端点存在保证契约完整、可独立测。**注意**：agent 路径绕过路由级 capability 门控，故 `feedback_service.submit_feedback` 内部也应在 `OFFLINE_MODE` 时直接返回"离线不可上报"，双保险。
 
-### 4.5 配置 `core/config.py`
-- 新增 `feedback_path: str`（键 `FEEDBACK_PATH`，默认占位如 `/api/feedback`），与 `remote_api_base_url` 同源解析。
+### 4.5 配置与能力位 `core/config.py` + `RuntimeCapabilities`
+- 新增 `feedback_path` kv（键 `FEEDBACK_PATH`，默认占位如 `/yc/feedback`）→ 经 `join_base_and_path(platform_base_url, feedback_path)` 解析成 **`feedback_url: str | None`** 字段（完全镜像 `login_url`/`register_url`，见 `config.py:261-262,487`）。
+- 在 `RuntimeCapabilities`（`src/core/runtime_capabilities.py`）新增 `remote_feedback` 能力位：在线=True、离线=False；供 `require_capability("remote_feedback")` 门控。
+  - ⚠️ 实现注意：该 dataclass 在线分支用**位置参数**构造 `RuntimeCapabilities(*(True,) * 10, activation_enforced=...)`；加字段须把 `* 10` 改为 `* 11`，**并**在离线分支显式补该字段 `=False`，否则位置参数错位会静默 break。
 
 ### 4.6 Electron 一行改动 `electron/features/backend/backend-process.ts`
 - 启动 backend 时注入 `APP_VERSION`（取 `app.getVersion()`/`__APP_VERSION__`）到 env，供 `collect_env()` 读取。
@@ -111,19 +119,20 @@
 - **日志隐私**：默认不带；员工显式问 + 卡片明示"将附日志"，用户最后把关。
 - **错误**：
   - 远端不可达/超时 → 工具返回可读失败（"上报失败：网络不可达，请稍后重试"），不抛栈给模型。
-  - `REMOTE_API_BASE_URL`/`FEEDBACK_PATH` 未配置 → 明确提示"反馈服务未配置"。
+  - `feedback_url` 未配置（`REMOTE_API_BASE_URL`/`FEEDBACK_PATH` 缺失）→ 明确提示"反馈服务未配置"。
+  - **离线模式**（`OFFLINE_MODE=1`）→ 路由级 `require_capability("remote_feedback")` 直接拦截；agent 直调路径由 `submit_feedback` 内部判 `OFFLINE_MODE` 返回"离线不可上报"。
   - 日志文件不存在/读失败 → 跳过日志、照常提交正文+环境（不阻断）。
 
 ## 7. 鉴权
-- 转发带**当前登录用户 token**（与 `login_api` 转发一致）；远端据此识别上报人。后续若远端要服务密钥，再加配置键。
+- 转发带**当前登录用户 token**，经 **`token` 请求头**（与 `login_api._forward_token_headers` 一致，**非** `Authorization: Bearer`）；远端据此识别上报人。后续若远端要服务密钥，再加配置键。
 
 ## 8. 测试
 - `feedback_service`：
   - `collect_env` 字段齐全（mock env/platform/auth）。
   - `collect_logs` 截断封顶、文件缺失返回 None。
-  - `submit_feedback` URL 拼接正确、未配置时报错、远端错误规范化（mock `remote_gateway`）。
+  - `submit_feedback`：`feedback_url` 未配置时报错、`OFFLINE_MODE` 时返回离线错误、远端错误规范化（mock `httpx`）、`token` 头透传。
 - `bug_report_tool`：确认卡片结构正确；approve 后才调用 `submit_feedback`；`include_logs` 透传。
-- `/feedback` 端点：转发 mock 远端、鉴权透传。
+- `/feedback` 端点：`require_capability("remote_feedback")` 离线拦截、在线转发 mock 远端、`token` 头透传。
 - seed：`_BUILTIN_SEED_EMPLOYEES` 含新员工；`ensure_builtin_seed_employees` 幂等、对已有空间补建（沿用现有 seed 测试风格）。
 
 ## 9. 可配置/待定（你的远端那侧，不阻塞本期实现）
