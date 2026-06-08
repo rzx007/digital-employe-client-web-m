@@ -12,7 +12,12 @@ from src.service.message_parts_extractor import (
 )
 
 HITL_TOOL_NAMES = frozenset(
-    {"submit_clarifying_questions", "submit_document_plan", *DESTRUCTIVE_HITL_TOOLS}
+    {
+        "submit_clarifying_questions",
+        "submit_document_plan",
+        "submit_bug_report",
+        *DESTRUCTIVE_HITL_TOOLS,
+    }
 )
 
 

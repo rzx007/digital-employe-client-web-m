@@ -36,11 +36,13 @@ def submit_bug_report(
     expected: str = "",
     actual: str = "",
     include_logs: bool = False,
+    screenshot: str = "",
 ) -> str:
     """提交一条 BUG 反馈到官方后台（用户确认后才会真正发送）。
 
     title: 一句话标题；description: 详细描述；repro_steps: 复现步骤；
-    expected/actual: 期望与实际；include_logs: 是否附带最近运行日志（须用户同意）。
+    expected/actual: 期望与实际；include_logs: 是否附带最近运行日志（须用户同意）；
+    screenshot: 截图 base64 dataURI（由前端确认卡填入，通常无需模型自己填）。
     """
     payload: dict = {
         "title": title,
@@ -54,6 +56,8 @@ def submit_bug_report(
         logs = feedback_service.collect_logs()
         if logs:
             payload["logs"] = logs
+    if screenshot:
+        payload["screenshot"] = screenshot
 
     result = feedback_service.submit_feedback(payload, token=_best_effort_token())
     logger.info(
