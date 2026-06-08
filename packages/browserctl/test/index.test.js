@@ -66,6 +66,19 @@ test("toArtifactVirtualPath 规范化虚拟/无斜杠/物理绝对/反斜杠/纯
   )
   assert.equal(toArtifactVirtualPath("/uploads/a.png"), "/uploads/a.png")
   assert.equal(toArtifactVirtualPath("snake.html"), "/artifacts/snake.html")
+  // macOS / Linux 物理绝对路径（用 / 分隔，无盘符）
+  assert.equal(
+    toArtifactVirtualPath(
+      "/Users/ruanz/.digital-employee/conversations/430/artifacts/fa.html"
+    ),
+    "/artifacts/fa.html"
+  )
+  assert.equal(
+    toArtifactVirtualPath(
+      "/home/ruanz/.digital-employee/conversations/430/artifacts/fa.html"
+    ),
+    "/artifacts/fa.html"
+  )
 })
 
 test("open-artifact 接受物理绝对路径并抽出虚拟段拼 URL", async () => {
