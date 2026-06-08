@@ -237,7 +237,7 @@ export function ChatPanel({
     if (!skills?.length) return []
     return skills.map((skill) => ({
       id: String(skill.id),
-      title: skill.skillName || skill.skill_name,
+      title: skill.skill_name_zh ?? skill.skillName ?? skill.skill_name ?? "",
       icon: <IconSparkles className="h-4 w-4" />,
       description: skill.description || skill.skill_description || "",
       keywords: [
@@ -308,7 +308,7 @@ export function ChatPanel({
                       contact={contact}
                       displayName={contactDisplayName}
                       onSuggestionSelect={
-                        onDraftSuggestionSelect ?? (() => {})
+                        onDraftSuggestionSelect ?? (() => { })
                       }
                       suggestionsDisabled={
                         status === "submitted" || status === "streaming"

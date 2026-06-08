@@ -125,7 +125,6 @@ export async function fetchContacts(signal?: AbortSignal): Promise<Contact[]> {
         .filter(Boolean) as AIEmployee[],
     },
   }))
-
   return [...curatorContacts, ...employeeContacts, ...groups]
 }
 

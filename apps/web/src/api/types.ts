@@ -37,6 +37,7 @@ export interface McpListItem {
 export interface SkillListItem {
   id: number
   skillName: string
+  skill_name_zh: string | null
   description: string | null
   displayNameZh: string | null
   tags?: string[]
@@ -58,6 +59,8 @@ export interface SkillListItem {
 export interface MetadataSkill {
   id: number
   skillName: string
+  skill_name_zh: string | null
+  skill_name: string | null
   description: string
   prompt: string
   directoryId: number | null
@@ -122,6 +125,8 @@ export interface EmployeeMetadata {
 export interface Skill {
   id: number
   skillName: string
+  skill_name_zh: string | null
+  skill_name: string | null
   description: string
   prompt: string
   directoryId: number | null
@@ -285,24 +290,24 @@ export interface RegisterResponse {
  */
 export type LoginResponse =
   | {
-      code: 1
-      result: LoginUser[]
-      noMenus: boolean
-      token: string
-      msg: string
-    }
+    code: 1
+    result: LoginUser[]
+    noMenus: boolean
+    token: string
+    msg: string
+  }
   | {
-      code: -2
-      result: { id: number; userName?: string }
-      token: string
-      msg: string
-    }
+    code: -2
+    result: { id: number; userName?: string }
+    token: string
+    msg: string
+  }
   | {
-      code: 0
-      result?: undefined
-      token?: string
-      msg: string
-    }
+    code: 0
+    result?: undefined
+    token?: string
+    msg: string
+  }
 
 export interface LocalSkillItem {
   skillName: string
