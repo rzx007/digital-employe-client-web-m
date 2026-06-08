@@ -30,6 +30,7 @@ from src.service.agent.clarifying_questions_tool import (
     submit_clarifying_questions,
 )
 from src.service.agent.document_plan_tool import submit_document_plan
+from src.service.agent.bug_report_tool import submit_bug_report
 from src.service.agent.hitl_interrupt_on import HITL_INTERRUPT_ON
 from src.models.workspace import CST
 from src.service.skill_shell_backend import SkillAwareShellBackend
@@ -222,7 +223,9 @@ def get_agent(
     # 工具暴露与是否挂 HITL 中断解耦：clarify_only 时两个 submit 工具仍可用
     # （submit_document_plan 不挂中断=调用即返回、自动放行），但只对澄清挂中断。
     if enable_hitl or clarify_only_hitl:
-        extra_tools.extend([submit_clarifying_questions, submit_document_plan])
+        extra_tools.extend(
+            [submit_clarifying_questions, submit_document_plan, submit_bug_report]
+        )
 
     agent = create_deep_agent(
         model=model,
