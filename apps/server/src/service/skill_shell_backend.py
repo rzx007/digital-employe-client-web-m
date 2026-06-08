@@ -130,6 +130,7 @@ class SkillAwareShellBackend(LocalShellBackend):
         draft_root: Path | None,
         memories_root: Path | None = None,
         uploads_root: Path | None = None,
+        conversation_id: int | str | None = None,
         virtual_mode: bool = True,
         inherit_env: bool = True,
         timeout: int = 30,
@@ -154,6 +155,9 @@ class SkillAwareShellBackend(LocalShellBackend):
         if os.name == "nt":
             self._env.setdefault("PYTHONUTF8", "1")
             self._env.setdefault("PYTHONIOENCODING", "utf-8")
+        # 注入会话 ID，供子进程（如 browserctl open-artifact）按会话定位产物
+        if conversation_id is not None and str(conversation_id) != "":
+            self._env["CONVERSATION_ID"] = str(conversation_id)
         self._inject_global_node_path()
 
     def _inject_global_node_path(self) -> None:

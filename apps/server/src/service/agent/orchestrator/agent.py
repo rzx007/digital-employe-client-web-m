@@ -208,6 +208,7 @@ def get_orchestrator_agent(
         draft_root=None,
         memories_root=memories_dir,
         uploads_root=uploads_dir,
+        conversation_id=conversation_id,
         virtual_mode=is_agent_virtual_mode(),
         inherit_env=True,
         timeout=settings.execute_timeout * 2,
