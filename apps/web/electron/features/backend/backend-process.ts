@@ -1,4 +1,5 @@
 import { app } from "electron"
+import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { createLogger } from "../../core/logger"
@@ -126,6 +127,43 @@ function getBrowserctlEnv(): Record<string, string> {
 }
 
 /**
+ * 离线依赖注入：让文档类 skill 的 `python scripts/...` 子进程在离线机器上
+ * 无需联网安装即可 import 到运维预放的纯 Python 库。
+ *
+ * 约定：运维在机器上设环境变量 OFFLINE_DEPS_DIR=<某目录>，并把库装到其
+ * <dir>/python 子目录（`pip install --target=<dir>/python python-docx ...`）。
+ * 此处把该子目录前置注入 PYTHONPATH——经 SkillAwareShellBackend(inherit_env=True)
+ * 透传给每次 shell_execute 子进程的系统 python（解释器本身仍由机器自带）。
+ *
+ * backend.exe 自身是 PyInstaller frozen 应用（隔离模式，自身 import 不读
+ * PYTHONPATH），故注入到本进程 env 不会污染后端自身，仅作用于 skill 子进程。
+ *
+ * 未设置 OFFLINE_DEPS_DIR 或 <dir>/python 不存在时返回空对象，功能默认关闭、零副作用。
+ */
+function getOfflineDepsEnv(): Record<string, string> {
+  const depsDir = process.env.OFFLINE_DEPS_DIR
+  if (!depsDir) {
+    return {}
+  }
+  const pythonDir = path.join(depsDir, "python")
+  if (!fs.existsSync(pythonDir)) {
+    log.info("OFFLINE_DEPS_DIR set but python/ missing; skip", { pythonDir })
+    return {}
+  }
+  // Windows 上 process.env 键名大小写不定，沿用 browserctl 对 PATH 的兜底策略
+  const pythonPathKey =
+    Object.keys(process.env).find((k) => k.toUpperCase() === "PYTHONPATH") ??
+    "PYTHONPATH"
+  const existing = process.env[pythonPathKey] ?? ""
+  log.info("injecting offline deps into PYTHONPATH", { pythonDir })
+  return {
+    [pythonPathKey]: existing
+      ? `${pythonDir}${path.delimiter}${existing}`
+      : pythonDir,
+  }
+}
+
+/**
  * 启动 Python 后端进程（内部使用 ManagedProcess）
  */
 export async function startBackend(): Promise<void> {
@@ -190,6 +228,8 @@ export async function startBackend(): Promise<void> {
         : { AGENT_SUMMARIZATION: "1" }),
       // browserctl 可调用性：注入 BROWSERCTL_PATH + 前置 wrapper 目录到 PATH
       ...getBrowserctlEnv(),
+      // 离线依赖：OFFLINE_DEPS_DIR/python 前置注入 PYTHONPATH（默认关闭）
+      ...getOfflineDepsEnv(),
     },
     onExit: (code, signal) => {
       log.info("process exit", { code, signal })
