@@ -50,6 +50,7 @@ browserctl health
 
 ```bash
 browserctl open https://example.com
+browserctl open-artifact /artifacts/report.html   # 打开产物目录里的 HTML（无文件卡片时用）
 browserctl snapshot --max-nodes 200
 browserctl click @e3
 browserctl click @e8 --confirm "确认提交申请？"
@@ -60,5 +61,7 @@ browserctl screenshot                    # 截图落盘，返回文件路径（�
 browserctl wait --selector "#result"     # 操作后等目标元素，再 snapshot
 browserctl close                         # 任务结束关闭内嵌浏览器、收起右栏
 ```
+
+> **打开产物目录里的 HTML（重要）**：当对话生成、复制或编辑了产物目录里的 HTML，但界面上没有可点击的文件卡片时，用 `browserctl open-artifact <虚拟路径>`（如 `browserctl open-artifact /artifacts/report.html`）直接在内嵌浏览器打开。会话自动识别、无需传 id，支持相对资源。打开后照常用 `snapshot`/`click`/`fill` 交互。
 
 更多命令与错误码见 [reference.md](reference.md)。业务组合示例见 [examples.md](examples.md)。

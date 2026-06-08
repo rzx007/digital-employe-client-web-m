@@ -36,6 +36,7 @@
 | `TIMEOUT` | 操作超时（含 `wait` 超时） |
 | `EMPTY_SCREENSHOT` | 截图数据为空 |
 | `WRITE_FAILED` | 截图写盘失败 |
+| `MISSING_CONVERSATION_ID` | `open-artifact` 缺会话标识（shell 未注入 `CONVERSATION_ID`） |
 
 ## 命令
 
@@ -43,6 +44,7 @@
 browserctl health
 browserctl open <url>
 browserctl navigate <url>
+browserctl open-artifact <虚拟路径>   # 打开会话产物目录里的 HTML（自动识别会话，支持相对资源），无文件卡片时用
 browserctl snapshot [--max-nodes 200] [--tree|--interactive]   # 文本模式省 token；--interactive 仅可交互节点平铺，--tree 全量缩进树，默认 JSON
 browserctl click <@eN|selector> [--confirm "确认文案"]
 browserctl wait --selector <css>     # 等元素出现（默认超时 10s，--timeout 改）
