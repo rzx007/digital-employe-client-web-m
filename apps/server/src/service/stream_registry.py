@@ -171,6 +171,26 @@ def _agent_stall_timeout() -> float:
         return max(AGENT_STALL_TIMEOUT, AGENT_CHUNK_TIMEOUT + 60.0)
 
 
+async def _graph_has_pending_non_interrupt_work(agent: Any, config: dict) -> bool:
+    """LangGraph 是否仍有待执行节点（非 HITL interrupt）。
+
+    chunk 超时(180s 无任何 chunk)时据此区分「健康长流」与「真结束」：
+    - next 非空且无 interrupt → 图里还有节点要跑（静默长工具/模型长思考），续等；
+    - next 为空 / 仅 HITL interrupt / 读状态失败 → 不续等，按收尾处理。
+    读状态失败保守返回 False（宁可收尾也不无限续等；真挂死另有 900s 内容看门狗兜）。
+    """
+    try:
+        state = await agent.aget_state(config)
+    except Exception:
+        return False
+    if not getattr(state, "next", None):
+        return False
+    for task_item in getattr(state, "tasks", ()) or ():
+        if getattr(task_item, "interrupts", None):
+            return False
+    return True
+
+
 def _extract_last_usage_from_buffer(events: list[dict]) -> dict | None:
     """从 buffer 倒序取最后一次 AIMessageChunk 的 usage_metadata。"""
     for event in reversed(events):
@@ -1673,21 +1693,31 @@ class StreamRegistry:
                             "无法连接当前语言模型或首包响应超时，"
                             f"请检查设置中的 API Key、Base URL 与模型名称（等待超过 {int(chunk_timeout)} 秒）。"
                         ) from None
-                    # chunk 间隔判死：走到本分支 = 刚刚整整 chunk_timeout(默认180s) 秒，
-                    # 迭代器一个 chunk 都没吐。正常生成时 token 是持续返回的（哪怕总时长 >900s，
-                    # chunk 之间也从不会空到 180s）；工具执行期也有 tool_output 事件刷新。所以
-                    # 「180s 无任何 chunk」必然是挂了——典型为 model 节点 ainvoke 在 pre-httpx
-                    # 阶段挂死（Future 永不 resolve，langchain AsyncBackgroundExecutor 后台 task
-                    # 卡住）。直接判死收尾，前端据此 resume/重试。
+                    # chunk 超时：刚刚整整 chunk_timeout(默认180s) 秒迭代器一个 chunk 都没吐。
+                    # 但「180s 无 chunk」不等于挂死——健康长流也会出现：静默长工具（execute_timeout
+                    # 默认允许单个命令跑到 600s，期间脚本/转换不吐增量 stdout，astream 不产生任何
+                    # 事件）、或模型长思考/大上下文预处理。这类图里仍有待执行节点(state.next 非空且
+                    # 非 interrupt)，应继续等，不能当场 break——否则会把健康长流按「部分完成」收尾、
+                    # 表现为「长任务运行中途输出停下、就这么结束了」(2026-06-08 回归修复)。
                     #
-                    # 【2026-06-07 移除】旧逻辑「图有 pending 节点 → 续等 20×chunk_timeout」是
-                    # 错误容忍：挂死的 model 节点 state.next 恒非空 → _graph_has_pending 恒为 True
-                    # → 续等最长 ~1 小时、最后还假装 status=completed（用户一字未收）。这正是
-                    # 用户反馈的「对话锁住」。chunk 超时本身已是充分的判死信号，无需再问图状态。
+                    # 真挂死(model 节点 ainvoke 卡死、永不出 token/工具产出)由独立的「内容级 900s
+                    # 无进展看门狗」(_first_chunk_stall_watchdog) cancel 并标 error 回收——它才是
+                    # 权威的挂死判定。故此处既不用 180s 一刀切，也不再保留旧的「续等 20 次后假装
+                    # completed」（那才是 wangliang 当初要治的「对话锁住」）。
+                    if await _graph_has_pending_non_interrupt_work(
+                        agent, stream_config
+                    ):
+                        logger.info(
+                            "[run] conv=%s chunk 超时(%ds 无 chunk)但图仍有待执行节点，继续等待"
+                            "（真挂死交由 900s 内容看门狗回收，event_count=%d）",
+                            conversation_id, int(chunk_timeout), event_count,
+                        )
+                        continue
+                    # 图无 pending(非 interrupt)：astream 未抛 StopAsyncIteration 但已无后续节点，
+                    # 结束信号可能丢失，按已完成收尾。
                     logger.warning(
-                        "[run] conv=%s chunk 超时(%ds 无任何 chunk)，判定流挂死"
-                        "（疑 model 节点 ainvoke 卡在 pre-httpx），按部分完成收尾"
-                        "（event_count=%d）",
+                        "[run] conv=%s chunk 超时(%ds 无 chunk)且图无待执行节点，按已完成收尾"
+                        "（结束信号可能丢失，event_count=%d）",
                         conversation_id, int(chunk_timeout), event_count,
                     )
                     break

@@ -12,12 +12,58 @@ from src.service.stream_registry import (
     StreamRegistry,
     _agent_stall_timeout,
     _agent_stream_timeouts,
+    _graph_has_pending_non_interrupt_work,
 )
 
 
-# 注：原 test_graph_pending_* 与 test_max_pending_retries_reasonable 已随
-# 「图有 pending 节点 → 续等」机制于 2026-06-07 一并移除。判死改为「chunk 超时
-# (默认 180s 无任何 chunk) 即收尾」——chunk 间隔本身就是充分判死信号，不再问图状态。
+# 「图有 pending 节点 → 续等」于 2026-06-08 恢复：chunk 超时(180s 无 chunk) 不再当场
+# break——静默长工具(execute_timeout 允许跑到 600s)/模型长思考会 >180s 无事件，属健康
+# 长流，图里仍有待执行节点时应继续等；真挂死交由独立的 900s 内容看门狗标 error 回收。
+# 故重新引入 _graph_has_pending_non_interrupt_work 判定（不再保留 20 次续等上限/假装 completed）。
+
+
+def test_graph_pending_true_when_next_without_interrupt() -> None:
+    agent = SimpleNamespace(
+        aget_state=lambda _config: asyncio.sleep(
+            0,
+            result=SimpleNamespace(
+                next=("agent",),
+                tasks=(SimpleNamespace(interrupts=None),),
+            ),
+        )
+    )
+    assert asyncio.run(_graph_has_pending_non_interrupt_work(agent, {})) is True
+
+
+def test_graph_pending_false_when_no_next() -> None:
+    agent = SimpleNamespace(
+        aget_state=lambda _config: asyncio.sleep(
+            0, result=SimpleNamespace(next=(), tasks=())
+        )
+    )
+    assert asyncio.run(_graph_has_pending_non_interrupt_work(agent, {})) is False
+
+
+def test_graph_pending_false_when_hitl_interrupt() -> None:
+    agent = SimpleNamespace(
+        aget_state=lambda _config: asyncio.sleep(
+            0,
+            result=SimpleNamespace(
+                next=("tools",),
+                tasks=(SimpleNamespace(interrupts=("approve",)),),
+            ),
+        )
+    )
+    assert asyncio.run(_graph_has_pending_non_interrupt_work(agent, {})) is False
+
+
+def test_graph_pending_false_when_aget_state_raises() -> None:
+    """checkpointer 读不出状态时保守判 False（按收尾，不无限续等）。"""
+    def _boom(_config):
+        raise RuntimeError("checkpointer down")
+
+    agent = SimpleNamespace(aget_state=_boom)
+    assert asyncio.run(_graph_has_pending_non_interrupt_work(agent, {})) is False
 
 
 def test_agent_stream_timeouts_defaults() -> None:
@@ -34,9 +80,12 @@ def test_agent_stall_timeout_default_thirty_minutes() -> None:
     assert stall >= max(chunk, first) + 60.0
 
 
-def test_max_heavy_default_is_unlimited() -> None:
-    assert AGENT_MAX_HEAVY_DEFAULT == 0
-    assert parse_agent_max_heavy({}) == 0
+def test_max_heavy_default_matches_policy() -> None:
+    # heavy/light 分级限流已移除（StreamRegistry.can_admit 只剩不分类总闸），
+    # AGENT_MAX_HEAVY 不再参与槽位准入，仅作残留配置项保留；
+    # 默认值随并发策略调整为 4。
+    assert AGENT_MAX_HEAVY_DEFAULT == 4
+    assert parse_agent_max_heavy({}) == 4
 
 
 def test_stale_active_on_stall(monkeypatch) -> None:
