@@ -116,6 +116,7 @@ class Settings:
     login_url: str | None = None
     update_user_password_url: str | None = None
     register_url: str | None = None
+    feedback_url: str | None = None
     get_dept_tree_url: str | None = None
     performance_monthly_balance_path: str | None = None
     performance_dispatch_orders_path: str | None = None
@@ -261,6 +262,7 @@ def get_settings() -> Settings:
     login_path = _get_kv_value(kv_data, "LOGIN_PATH") or "/yc/login"
     update_user_password_path = _get_kv_value(kv_data, "UPDATE_USER_PASSWORD_PATH") or "/yc/updatePassword"
     register_path = _get_kv_value(kv_data, "REGISTER_PATH") or "/yc/register"
+    feedback_path = _get_kv_value(kv_data, "FEEDBACK_PATH") or "/yc/feedback"
     get_dept_tree_path = (
         _get_kv_value(kv_data, "GET_DEPT_TREE_PATH") or "/yc/getDeptTree"
     )
@@ -489,6 +491,7 @@ def get_settings() -> Settings:
             platform_base_url, update_user_password_path
         ),
         register_url=join_base_and_path(platform_base_url, register_path),
+        feedback_url=join_base_and_path(platform_base_url, feedback_path),
         get_dept_tree_url=join_base_and_path(
             platform_base_url, get_dept_tree_path
         ),
