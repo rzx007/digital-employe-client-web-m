@@ -36,6 +36,11 @@ test("normalizeUrl 补 https、保留已有协议、空值原样", () => {
   assert.equal(normalizeUrl("baidu.com"), "https://baidu.com")
   assert.equal(normalizeUrl("http://x.com"), "http://x.com")
   assert.equal(normalizeUrl("HTTPS://x.com"), "HTTPS://x.com")
+  // 回归：带协议的 URL 原样返回，不被加 https:// 破坏（file:// 曾被坑）
+  assert.equal(
+    normalizeUrl("file:///C:/Users/x/a.html"),
+    "file:///C:/Users/x/a.html"
+  )
   assert.equal(normalizeUrl(""), "")
 })
 

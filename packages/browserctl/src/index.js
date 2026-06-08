@@ -82,7 +82,9 @@ export function parseFlags(argv) {
 export function normalizeUrl(input) {
   const value = String(input || "").trim()
   if (!value) return value
-  if (/^https?:\/\//i.test(value)) return value
+  // 已带任意协议（http/https/file/data/...）的 URL 原样返回，
+  // 只对裸域名/路径补 https://（之前只放行 http(s)，会把 file:// 误加前缀破坏）。
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return value
   return `https://${value}`
 }
 
