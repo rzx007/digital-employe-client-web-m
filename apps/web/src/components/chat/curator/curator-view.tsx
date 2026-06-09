@@ -143,10 +143,13 @@ function CuratorMessageItem({
     isLastAssistantMessage,
     isTurnEnded: hasCurrentTurnEnded,
   })
-  
+
   const elapsedMs = getElapsedMsFromMeta(message)
   const copyText = getCopyableMessageText(message, { includeFileChanges })
-  const hitlApproveMessageId = resolveHitlApproveMessageId(message, session.activeHitl)
+  const hitlApproveMessageId = resolveHitlApproveMessageId(
+    message,
+    session.activeHitl
+  )
   const ctx = {
     messageId: hitlApproveMessageId,
     conversationId: curatorConversationId,
@@ -161,10 +164,7 @@ function CuratorMessageItem({
   }
 
   return (
-    <Message
-      from={message.role}
-      className={cn("group", layout.message)}
-    >
+    <Message from={message.role} className={cn("group", layout.message)}>
       {message.role === "assistant" && (
         <div className="mb-2 flex items-center gap-2">
           {resolvedContact?.type === "curator" ? (
@@ -409,8 +409,10 @@ export function CuratorView({
     const filtered = source.filter((msg) => {
       const meta = (msg as unknown as { metadata?: unknown }).metadata
       if (!meta || typeof meta !== "object") return true
-      return (meta as Record<string, unknown>).source !==
+      return (
+        (meta as Record<string, unknown>).source !==
         "orchestrator_execution_summary"
+      )
     })
     return prepareDisplayMessages(filtered)
   }, [messages, initialMessages, status])
@@ -483,6 +485,9 @@ export function CuratorView({
           }
         )
 
+        // 注：技能"调用"以对话中真正执行为准（在 useClassifiedMessageBlocks 里
+        // 依据工具读取 /skills/<名>/ 检测并上报），此处的"选中发送"不计为 invoke。
+
         if (
           shouldUpdateTitle &&
           curatorContactId &&
@@ -511,7 +516,18 @@ export function CuratorView({
         }
       }
     },
-    [curatorConversationId, sendMessage, command, mentions, session, conversationTitle, displayMessages.length, curatorContactId, contact, updateTitleMutation]
+    [
+      curatorConversationId,
+      sendMessage,
+      command,
+      mentions,
+      session,
+      conversationTitle,
+      displayMessages.length,
+      curatorContactId,
+      contact,
+      updateTitleMutation,
+    ]
   )
 
   const handleGuidanceSelect = useCallback(
@@ -667,8 +683,9 @@ export function CuratorView({
         role: c.employee!.role,
       }))
   }, [contacts])
-  const { data: executions = [] } =
-    useCuratorTaskExecutions(curatorConversationId)
+  const { data: executions = [] } = useCuratorTaskExecutions(
+    curatorConversationId
+  )
 
   // 摘要消息已在 UI 层隐藏，执行卡片始终用 full 模式（带状态印章、输出预览、星级、跳转）
   const executionSummaryIds = useMemo(() => new Set<number>(), [])
@@ -749,113 +766,115 @@ export function CuratorView({
       <CuratorFileProvider value={curatorFileValue}>
         <CuratorRecruitmentProvider value={curatorRecruitmentValue}>
           <CuratorPlanFeedbackProvider value={curatorPlanFeedbackValue}>
-          <ConversationUI className="min-h-0 flex-1">
-            <ConversationContent className={layout.conversationContent}>
-              {showEmptyWelcome && (
-                <CuratorEmptyWelcome
-                  contact={resolvedContact}
-                  displayName={contactDisplayName}
-                  onSuggestionSelect={handleGuidanceSelect}
-                  suggestionsDisabled={!curatorConversationId}
-                  size={size}
-                />
-              )}
+            <ConversationUI className="min-h-0 flex-1">
+              <ConversationContent className={layout.conversationContent}>
+                {showEmptyWelcome && (
+                  <CuratorEmptyWelcome
+                    contact={resolvedContact}
+                    displayName={contactDisplayName}
+                    onSuggestionSelect={handleGuidanceSelect}
+                    suggestionsDisabled={!curatorConversationId}
+                    size={size}
+                  />
+                )}
 
-              {timeline.map((entry) => {
-                if (entry.kind === "execution") {
-                  const exec = entry.data
-                  const hasSummary = executionSummaryIds.has(exec.id)
-                  const employeeContact = contacts.find(
-                    (c) =>
-                      c.type === "employee" &&
-                      c.employee?.id === String(exec.employee_id)
-                  )
+                {timeline.map((entry) => {
+                  if (entry.kind === "execution") {
+                    const exec = entry.data
+                    const hasSummary = executionSummaryIds.has(exec.id)
+                    const employeeContact = contacts.find(
+                      (c) =>
+                        c.type === "employee" &&
+                        c.employee?.id === String(exec.employee_id)
+                    )
 
-                  if (hasSummary) {
+                    if (hasSummary) {
+                      return (
+                        <div
+                          key={`exec-${exec.id}`}
+                          className={cn("w-full", layout.message)}
+                        >
+                          <ExecutionReportCard
+                            compact
+                            execution={exec}
+                            curatorContactId={curatorContactId}
+                            curatorConversationId={curatorConversationId}
+                          />
+                        </div>
+                      )
+                    }
+
                     return (
-                      <div
+                      <Message
                         key={`exec-${exec.id}`}
-                        className={cn("w-full", layout.message)}
+                        from="assistant"
+                        className={layout.message}
                       >
-                        <ExecutionReportCard
-                          compact
-                          execution={exec}
-                          curatorContactId={curatorContactId}
-                          curatorConversationId={curatorConversationId}
-                        />
-                      </div>
+                        <div className="mb-2 flex items-center gap-2">
+                          <EmployeeContactAvatar
+                            name={
+                              exec.employee_name || String(exec.employee_id)
+                            }
+                            avatar={employeeContact?.employee?.avatar}
+                            avatarClassName="size-6"
+                            fallbackClassName="text-[10px]"
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            {exec.employee_name || String(exec.employee_id)}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground/60">
+                            {formatTime(entry.ts)}
+                          </span>
+                        </div>
+                        <MessageContent className="w-auto">
+                          <ExecutionReportCard
+                            execution={exec}
+                            curatorContactId={curatorContactId}
+                            curatorConversationId={curatorConversationId}
+                          />
+                        </MessageContent>
+                      </Message>
                     )
                   }
 
-                  return (
-                    <Message
-                      key={`exec-${exec.id}`}
-                      from="assistant"
-                      className={layout.message}
-                    >
-                      <div className="mb-2 flex items-center gap-2">
-                        <EmployeeContactAvatar
-                          name={exec.employee_name || String(exec.employee_id)}
-                          avatar={employeeContact?.employee?.avatar}
-                          avatarClassName="size-6"
-                          fallbackClassName="text-[10px]"
-                        />
-                        <span className="text-xs text-muted-foreground">
-                          {exec.employee_name || String(exec.employee_id)}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground/60">
-                          {formatTime(entry.ts)}
-                        </span>
-                      </div>
-                      <MessageContent className="w-auto">
-                        <ExecutionReportCard
-                          execution={exec}
-                          curatorContactId={curatorContactId}
-                          curatorConversationId={curatorConversationId}
-                        />
-                      </MessageContent>
-                    </Message>
+                  /* message */
+                  const message = entry.data
+                  const isLastAssistantMessage =
+                    message.role === "assistant" &&
+                    message.id === lastAssistantMessageId
+                  const includeFileChanges = shouldIncludeFileChangesForMessage(
+                    message,
+                    displayMessages,
+                    hasCurrentTurnEnded
                   )
-                }
 
-                /* message */
-                const message = entry.data
-                const isLastAssistantMessage =
-                  message.role === "assistant" &&
-                  message.id === lastAssistantMessageId
-                const includeFileChanges = shouldIncludeFileChangesForMessage(
-                  message,
-                  displayMessages,
-                  hasCurrentTurnEnded
-                )
-                
-                return (
-                  <CuratorMessageItem
-                    key={message.id}
-                    message={message}
-                    isLastAssistantMessage={isLastAssistantMessage}
-                    hasCurrentTurnEnded={hasCurrentTurnEnded}
-                    includeFileChanges={includeFileChanges}
-                    layout={layout}
-                    resolvedContact={resolvedContact}
-                    contactDisplayName={contactDisplayName}
-                    ts={entry.ts}
-                    session={session}
-                    curatorConversationId={curatorConversationId}
+                  return (
+                    <CuratorMessageItem
+                      key={message.id}
+                      message={message}
+                      isLastAssistantMessage={isLastAssistantMessage}
+                      hasCurrentTurnEnded={hasCurrentTurnEnded}
+                      includeFileChanges={includeFileChanges}
+                      layout={layout}
+                      resolvedContact={resolvedContact}
+                      contactDisplayName={contactDisplayName}
+                      ts={entry.ts}
+                      session={session}
+                      curatorConversationId={curatorConversationId}
+                    />
+                  )
+                })}
+
+                {showStreamingIndicator && (
+                  <ChatStreamingIndicator
+                    status={status}
+                    messages={messages}
+                    className={cn("-mt-4", layout.message)}
                   />
-                )
-              })}
-
-              {showStreamingIndicator && (
-                <ChatStreamingIndicator
-                  status={status}
-                  messages={messages}
-                  className={cn("-mt-4", layout.message)}
-                />
-              )}
-            </ConversationContent>
-            <ConversationScrollButton />
-          </ConversationUI>
+                )}
+              </ConversationContent>
+              <ConversationScrollButton />
+            </ConversationUI>
           </CuratorPlanFeedbackProvider>
         </CuratorRecruitmentProvider>
       </CuratorFileProvider>
@@ -872,9 +891,7 @@ export function CuratorView({
             onSend={handleSendMessage}
             onStop={handleStop}
             status={chatStatus}
-            submitDisabled={
-              !isBusy && !inputValue.trim()
-            }
+            submitDisabled={!isBusy && !inputValue.trim()}
             size="compact"
             placeholder={<CuratorRotatingPlaceholder />}
             className="w-full"

@@ -12,6 +12,7 @@ import {
   useRemotePlatformSkillListQuery,
 } from "@/hooks/use-skill-queries"
 import { chatKeys } from "@/lib/query-keys/chat"
+import { trackSkill } from "@/lib/telemetry"
 import { ImportSkillDialog } from "./import-skill-dialog"
 import { InstalledSkillsSection } from "./installed-skills-section"
 import { RemoteSkillsSection } from "./remote-skills-section"
@@ -95,10 +96,24 @@ export function SkillsListView({
   )
   const showInstalledToggle = filteredInstalled.length > installedCollapsedMax
 
+  const handleSelectSkill = (skill: SkillListItem) => {
+    // 活跃度埋点：查看技能详情
+    trackSkill("skill_view", {
+      skillId: skill.id,
+      skillName: skill.skillName,
+    })
+    onSelectSkill(skill)
+  }
+
   const tryInstallRemote = async (skill: SkillListItem) => {
     setInstallingId(skill.id)
     try {
       await installRemoteSkillToLocal(skill.id)
+      // 活跃度埋点：技能安装
+      trackSkill("skill_install", {
+        skillId: skill.id,
+        skillName: skill.skillName,
+      })
       toast.success(`「${skill.displayNameZh || skill.skillName}」已安装到本地`)
       await queryClient.invalidateQueries({ queryKey: chatKeys.skills() })
       await queryClient.invalidateQueries({
@@ -116,6 +131,11 @@ export function SkillsListView({
         if (ok) {
           try {
             await installRemoteSkillToLocal(skill.id, { overwrite: true })
+            // 活跃度埋点：技能安装（覆盖）
+            trackSkill("skill_install", {
+              skillId: skill.id,
+              skillName: skill.skillName,
+            })
             toast.success(
               `「${skill.displayNameZh || skill.skillName}」已覆盖安装`
             )
@@ -178,7 +198,7 @@ export function SkillsListView({
             expanded={installedExpanded}
             onToggleExpanded={() => setInstalledExpanded((v) => !v)}
             skeletonCount={skeletonCount}
-            onSelectSkill={onSelectSkill}
+            onSelectSkill={handleSelectSkill}
           />
 
           <Separator className="shrink-0 bg-border/70" />
@@ -193,7 +213,7 @@ export function SkillsListView({
             skeletonCount={skeletonCount}
             installingId={installingId}
             onCategoryChange={setRemoteCategory}
-            onSelectSkill={onSelectSkill}
+            onSelectSkill={handleSelectSkill}
             onInstall={(skill) => void tryInstallRemote(skill)}
           />
         </div>

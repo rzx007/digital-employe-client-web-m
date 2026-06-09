@@ -117,6 +117,7 @@ class Settings:
     update_user_password_url: str | None = None
     register_url: str | None = None
     feedback_url: str | None = None
+    analytics_events_url: str | None = None
     get_dept_tree_url: str | None = None
     performance_monthly_balance_path: str | None = None
     performance_dispatch_orders_path: str | None = None
@@ -266,6 +267,13 @@ def get_settings() -> Settings:
     update_user_password_path = _get_kv_value(kv_data, "UPDATE_USER_PASSWORD_PATH") or "/yc/updatePassword"
     register_path = _get_kv_value(kv_data, "REGISTER_PATH") or "/yc/register"
     feedback_path = _get_kv_value(kv_data, "FEEDBACK_PATH") or "/api/v1/feedback"
+    analytics_events_path = (
+        os.environ.get("ANALYTICS_EVENTS_PATH")
+        or _get_kv_value(kv_data, "ANALYTICS_EVENTS_PATH")
+        or "/digital/api/v1/analytics/events"
+    )
+    # 活跃度上报转发基址：默认与平台同源；支持环境变量 ANALYTICS_BASE_URL 覆盖（本地联调用）
+    analytics_base_url = os.environ.get("ANALYTICS_BASE_URL") or platform_base_url
     get_dept_tree_path = (
         _get_kv_value(kv_data, "GET_DEPT_TREE_PATH") or "/yc/getDeptTree"
     )
@@ -499,6 +507,9 @@ def get_settings() -> Settings:
         register_url=join_base_and_path(platform_base_url, register_path),
         #  feedback_url=join_base_and_path('http://localhost:54321', feedback_path),
         feedback_url=join_base_and_path(platform_base_url, feedback_path),
+        analytics_events_url=join_base_and_path(
+            analytics_base_url, analytics_events_path
+        ),
         get_dept_tree_url=join_base_and_path(
             platform_base_url, get_dept_tree_path
         ),

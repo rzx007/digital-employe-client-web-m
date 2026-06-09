@@ -8,6 +8,7 @@ import {
   requireElectronApi,
   withElectronApi,
 } from "@/lib/electron/host"
+import { track } from "@/lib/telemetry"
 
 interface PendingPasswordChange {
   token: string
@@ -102,6 +103,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         const user = res.result[0]
 
         localStorage.setItem("token", token)
+        // 显示名（真实姓名）只在客户端有，token 里没有；写入供埋点上报
+        localStorage.setItem("displayName", user.name ?? "")
 
         if (isElectron()) {
           await requireElectronApi((api) =>
@@ -114,6 +117,9 @@ export const useAuthStore = create<AuthState>((set) => ({
         }
 
         set({ token, user, isAuthenticated: true, loading: false })
+
+        // 活跃度埋点：用户登录（DAU/WAU/MAU 主依据）
+        track("login")
 
         try {
           await setConfigKv("USERNAME", user.name)
@@ -147,6 +153,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: async () => {
     localStorage.removeItem("token")
     localStorage.removeItem("workspaceId")
+    localStorage.removeItem("displayName")
 
     const inElectron = isElectron()
     if (inElectron) {
@@ -166,6 +173,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (status?.token) {
       localStorage.setItem("token", status.token)
       const user = status.user as unknown as LoginUser
+      localStorage.setItem("displayName", user?.name ?? "")
       set({
         token: status.token,
         user,

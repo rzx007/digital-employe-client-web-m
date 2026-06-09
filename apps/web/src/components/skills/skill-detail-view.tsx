@@ -21,6 +21,7 @@ import type { SkillListItem } from "@/api/types"
 import { deleteWorkspaceLocalSkill, updateLocalSkill } from "@/api/skill"
 import { useLocalSkillDetailQuery } from "@/hooks/use-skill-queries"
 import { chatKeys } from "@/lib/query-keys/chat"
+import { trackSkill } from "@/lib/telemetry"
 import { SkillMarkdownEditor } from "./skill-markdown-editor"
 import { isInstalledSource, sourceBadgeProps } from "./skill-utils"
 
@@ -63,7 +64,10 @@ export function SkillDetailView({
     zh: savedDisplayNameZh,
     md: savedSkillMd,
   })
-  if (syncedSaved.zh !== savedDisplayNameZh || syncedSaved.md !== savedSkillMd) {
+  if (
+    syncedSaved.zh !== savedDisplayNameZh ||
+    syncedSaved.md !== savedSkillMd
+  ) {
     setSyncedSaved({ zh: savedDisplayNameZh, md: savedSkillMd })
     setDisplayNameZhDraft(savedDisplayNameZh)
     setSkillMdDraft(savedSkillMd)
@@ -82,9 +86,7 @@ export function SkillDetailView({
   }, [onBack])
 
   const title =
-    displayNameZhDraft.trim() ||
-    savedDisplayNameZh.trim() ||
-    skill.skillName
+    displayNameZhDraft.trim() || savedDisplayNameZh.trim() || skill.skillName
 
   const readOnlyInputClass = "cursor-default bg-muted/30"
   const readOnlyDescTextareaClass = cn(
@@ -138,6 +140,11 @@ export function SkillDetailView({
         : effectiveTarget === "builtin"
           ? "已覆盖内置技能"
           : "已保存"
+      // 活跃度埋点：技能编辑保存
+      trackSkill("skill_edit", {
+        skillId: skill.id,
+        skillName: skill.skillName,
+      })
       toast.success(synced > 0 ? `${base}，并同步至 ${synced} 名员工` : base)
       await invalidateSkillQueries()
     } catch (err: unknown) {
@@ -157,6 +164,11 @@ export function SkillDetailView({
     setDeleting(true)
     try {
       await deleteWorkspaceLocalSkill(skill.skillName)
+      // 活跃度埋点：技能卸载/删除
+      trackSkill("skill_uninstall", {
+        skillId: skill.id,
+        skillName: skill.skillName,
+      })
       toast.success("已删除本地技能")
       await invalidateSkillQueries()
       onBack()
@@ -279,125 +291,125 @@ export function SkillDetailView({
         </div>
       ) : (
         <ScrollArea className="min-h-0 flex-1 bg-muted/10">
-        <div className="mx-auto w-full max-w-4xl px-4 py-4 sm:px-6">
-          {isInstalled ? (
-            loadingLocal ? (
-              <div className="flex flex-col gap-3">
-                <Skeleton className="h-4 w-2/3" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-24 w-full" />
-              </div>
-            ) : localDetail ? (
-              <div className="flex flex-col gap-3">
-                {localDetail.skillName && (
+          <div className="mx-auto w-full max-w-4xl px-4 py-4 sm:px-6">
+            {isInstalled ? (
+              loadingLocal ? (
+                <div className="flex flex-col gap-3">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-24 w-full" />
+                </div>
+              ) : localDetail ? (
+                <div className="flex flex-col gap-3">
+                  {localDetail.skillName && (
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="skill-detail-id-name">
+                        技能 ID（目录名）
+                      </Label>
+                      <Input
+                        id="skill-detail-id-name"
+                        readOnly
+                        value={localDetail.skillName}
+                        className={cn(readOnlyInputClass, "font-mono text-xs")}
+                      />
+                    </div>
+                  )}
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="skill-detail-id-name">
-                      技能 ID（目录名）
-                    </Label>
+                    <Label htmlFor="skill-detail-zh">中文名称</Label>
                     <Input
-                      id="skill-detail-id-name"
+                      id="skill-detail-zh"
+                      value={displayNameZhDraft}
+                      onChange={(e) => setDisplayNameZhDraft(e.target.value)}
+                      placeholder={skill.skillName}
+                      maxLength={255}
+                      disabled={isSaving}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      留空时将显示技能 ID（目录名）
+                    </p>
+                  </div>
+                  {localDetail.importedAt && (
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="skill-detail-imported-at">导入时间</Label>
+                      <Input
+                        id="skill-detail-imported-at"
+                        readOnly
+                        value={new Date(localDetail.importedAt).toLocaleString(
+                          "zh-CN"
+                        )}
+                        className={readOnlyInputClass}
+                      />
+                    </div>
+                  )}
+                  {localDetail.files.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="skill-detail-files">文件列表</Label>
+                      <Textarea
+                        id="skill-detail-files"
+                        readOnly
+                        rows={16}
+                        value={localDetail.files.join("\n")}
+                        className={readOnlyFilesTextareaClass}
+                      />
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="skill-detail-md">SKILL.md</Label>
+                    <SkillMarkdownEditor
+                      value={skillMdDraft}
+                      onChange={setSkillMdDraft}
+                      disabled={isSaving}
+                      onToggleMaximize={() => setEditorMaximized(true)}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <p className="rounded-md border border-dashed bg-background p-4 text-sm text-muted-foreground">
+                  无法加载技能详情
+                </p>
+              )
+            ) : (
+              <div className="flex flex-col gap-3">
+                {skill.skillName && (
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="skill-detail-name">技能名称</Label>
+                    <Input
+                      id="skill-detail-name"
                       readOnly
-                      value={localDetail.skillName}
+                      value={skill.skillName}
                       className={cn(readOnlyInputClass, "font-mono text-xs")}
                     />
                   </div>
                 )}
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="skill-detail-zh">中文名称</Label>
-                  <Input
-                    id="skill-detail-zh"
-                    value={displayNameZhDraft}
-                    onChange={(e) => setDisplayNameZhDraft(e.target.value)}
-                    placeholder={skill.skillName}
-                    maxLength={255}
-                    disabled={isSaving}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    留空时将显示技能 ID（目录名）
-                  </p>
-                </div>
-                {localDetail.importedAt && (
+
+                {skill.description && (
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="skill-detail-imported-at">导入时间</Label>
-                    <Input
-                      id="skill-detail-imported-at"
-                      readOnly
-                      value={new Date(localDetail.importedAt).toLocaleString(
-                        "zh-CN"
-                      )}
-                      className={readOnlyInputClass}
-                    />
-                  </div>
-                )}
-                {localDetail.files.length > 0 && (
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="skill-detail-files">文件列表</Label>
+                    <Label htmlFor="skill-detail-description">描述</Label>
                     <Textarea
-                      id="skill-detail-files"
+                      id="skill-detail-description"
                       readOnly
-                      rows={16}
-                      value={localDetail.files.join("\n")}
-                      className={readOnlyFilesTextareaClass}
+                      rows={4}
+                      value={skill.description}
+                      className={readOnlyDescTextareaClass}
                     />
                   </div>
                 )}
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="skill-detail-md">SKILL.md</Label>
-                  <SkillMarkdownEditor
-                    value={skillMdDraft}
-                    onChange={setSkillMdDraft}
-                    disabled={isSaving}
-                    onToggleMaximize={() => setEditorMaximized(true)}
-                  />
-                </div>
+
+                {skill.prompt && (
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="skill-detail-prompt">指令</Label>
+                    <Textarea
+                      id="skill-detail-prompt"
+                      readOnly
+                      rows={8}
+                      value={skill.prompt}
+                      className={readOnlyInstructionTextareaClass}
+                    />
+                  </div>
+                )}
               </div>
-            ) : (
-              <p className="rounded-md border border-dashed bg-background p-4 text-sm text-muted-foreground">
-                无法加载技能详情
-              </p>
-            )
-          ) : (
-            <div className="flex flex-col gap-3">
-              {skill.skillName && (
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="skill-detail-name">技能名称</Label>
-                  <Input
-                    id="skill-detail-name"
-                    readOnly
-                    value={skill.skillName}
-                    className={cn(readOnlyInputClass, "font-mono text-xs")}
-                  />
-                </div>
-              )}
-
-              {skill.description && (
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="skill-detail-description">描述</Label>
-                  <Textarea
-                    id="skill-detail-description"
-                    readOnly
-                    rows={4}
-                    value={skill.description}
-                    className={readOnlyDescTextareaClass}
-                  />
-                </div>
-              )}
-
-              {skill.prompt && (
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="skill-detail-prompt">指令</Label>
-                  <Textarea
-                    id="skill-detail-prompt"
-                    readOnly
-                    rows={8}
-                    value={skill.prompt}
-                    className={readOnlyInstructionTextareaClass}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
         </ScrollArea>
       )}
     </div>
