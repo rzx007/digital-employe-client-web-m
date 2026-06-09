@@ -14,7 +14,7 @@ import {
   isGroupTimelineAssistantMessage,
 } from "@/lib/chat/group-composer-ghosts"
 import { getDispatchBadge } from "@/lib/chat/assistant-stream-state"
-import { CURATOR_AVATAR_URL } from "@/lib/avatar"
+import { CURATOR_AVATAR_URL, getUserAvatarSrc } from "@/lib/avatar"
 import { useAuthStore } from "@/stores/auth-store"
 import { cn } from "@workspace/ui/lib/utils"
 import {
@@ -60,7 +60,8 @@ function ChatMessageItemInner({
   onHitlApproved,
 }: ChatMessageItemProps) {
   const contactDisplayName = getContactDisplayName(contact)
-  const userName = useAuthStore((s) => s.user?.name) || "我"
+  const user = useAuthStore((s) => s.user)
+  const userName = user?.name || "我"
   const deferredMessage = React.useDeferredValue(message)
   const {
     blocks: classifiedBlocks,
@@ -268,8 +269,12 @@ function ChatMessageItemInner({
       {message.role === "user" && !dispatchBadge && (
         <div className="mb-2 flex items-center justify-end gap-2">
           <span className="text-xs text-muted-foreground">{userName}</span>
-          <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary ring-1 ring-primary/15">
-            {userName.trim().slice(0, 2)}
+          <div className="size-6 shrink-0 overflow-hidden rounded">
+            <img
+              src={getUserAvatarSrc(user?.id)}
+              alt={userName}
+              className="size-full object-cover"
+            />
           </div>
         </div>
       )}

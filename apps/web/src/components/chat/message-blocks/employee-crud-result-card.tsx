@@ -4,9 +4,11 @@ import * as React from "react"
 import { memo } from "react"
 import {
   IconCircleCheck,
+  IconMessageCircle,
   IconTrash,
   IconUserSearch,
 } from "@tabler/icons-react"
+import { switchToContact } from "@/lib/chat/conversation-selection"
 import { Badge } from "@workspace/ui/components/badge"
 import {
   MorphingDialog,
@@ -114,14 +116,17 @@ function CrudCardHeader({
   isRunning,
   isError,
   isCurator,
+  action,
 }: {
   variant: "detail" | "updated"
   isRunning: boolean
   isError: boolean
   isCurator?: boolean
+  action?: React.ReactNode
 }) {
   const cfg = VARIANT_CONFIG[variant]
   const Icon = cfg.icon
+  const showCurator = isCurator && !isRunning
 
   return (
     <div className="mb-2 flex items-center gap-1.5">
@@ -136,10 +141,15 @@ function CrudCardHeader({
       >
         {isRunning ? cfg.runningTitle : cfg.title}
       </p>
-      {isCurator && !isRunning && (
-        <Badge variant="secondary" className="ml-auto text-[10px]">
-          总管
-        </Badge>
+      {(showCurator || action) && (
+        <div className="ml-auto flex items-center gap-1">
+          {showCurator && (
+            <Badge variant="secondary" className="text-[10px]">
+              总管
+            </Badge>
+          )}
+          {action}
+        </div>
       )}
     </div>
   )
@@ -159,7 +169,26 @@ function EmployeeDetailExpandable({
   return (
     <MorphingDialog transition={{ type: "spring", bounce: 0, duration: 0.28 }}>
       <div className={cn(CARD_SHELL, className)}>
-        <CrudCardHeader variant="detail" isRunning={false} isError={false} isCurator={payload.is_curator} />
+        <CrudCardHeader
+          variant="detail"
+          isRunning={false}
+          isError={false}
+          isCurator={payload.is_curator}
+          action={
+            <button
+              type="button"
+              aria-label="发消息"
+              title="发消息"
+              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              onClick={(e) => {
+                e.stopPropagation()
+                switchToContact(`employee:${payload.employee_id}`)
+              }}
+            >
+              <IconMessageCircle className="size-4" />
+            </button>
+          }
+        />
         <MorphingDialogTrigger
           className={EXPAND_TRIGGER}
           aria-label={`查看员工 ${payload.employee_name} 详情`}

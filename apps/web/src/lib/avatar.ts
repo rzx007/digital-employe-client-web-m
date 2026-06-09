@@ -3,6 +3,35 @@ import { avataaars } from "@dicebear/collection"
 
 import curatorAssistantAvatar from "@/assets/avaters/assistant0.png"
 import curatorAssistantAvatar1 from "@/assets/avaters/assistant1.png"
+import Avatar1 from "@/assets/avaters/1.png"
+import Avatar2 from "@/assets/avaters/2.png"
+import Avatar3 from "@/assets/avaters/3.png"
+import Avatar4 from "@/assets/avaters/4.png"
+import Avatar5 from "@/assets/avaters/5.png"
+import Avatar6 from "@/assets/avaters/6.png"
+import Avatar7 from "@/assets/avaters/7.png"
+import Avatar8 from "@/assets/avaters/8.png"
+import Avatar9 from "@/assets/avaters/9.png"
+
+/** 用户头像池（按 userId % 10 选取，与侧栏一致） */
+export const USER_AVATARS = [
+  Avatar1,
+  Avatar2,
+  Avatar3,
+  Avatar4,
+  Avatar5,
+  Avatar6,
+  Avatar7,
+  Avatar8,
+  Avatar9,
+  Avatar1,
+] as const
+
+/** 根据用户 ID 返回预设头像 URL */
+export function getUserAvatarSrc(userId?: string | number | null): string {
+  if (userId == null || userId === "") return Avatar1
+  return USER_AVATARS[parseInt(String(userId), 10) % 10]
+}
 
 /** 总管助手固定头像（联系人、会话、工作台侧栏等） */
 export const CURATOR_AVATAR_URL: string = curatorAssistantAvatar

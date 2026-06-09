@@ -1,4 +1,5 @@
 import * as React from "react"
+import { useEffect } from "react"
 import {
   IconMessage,
   IconMessage2Filled,
@@ -33,31 +34,7 @@ import { useChatStore, type ActiveTab } from "@/stores/chat-store"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import { NotificationBell } from "../notifications/notification-center"
 
-// 导入所有头像资源
-import Avatar1 from "@/assets/avaters/1.png"
-import Avatar2 from "@/assets/avaters/2.png"
-import Avatar3 from "@/assets/avaters/3.png"
-import Avatar4 from "@/assets/avaters/4.png"
-import Avatar5 from "@/assets/avaters/5.png"
-import Avatar6 from "@/assets/avaters/6.png"
-import Avatar7 from "@/assets/avaters/7.png"
-import Avatar8 from "@/assets/avaters/8.png"
-import Avatar9 from "@/assets/avaters/9.png"
-import { useEffect } from "react"
-
-// 头像映射
-const avatars = [
-  Avatar1,
-  Avatar2,
-  Avatar3,
-  Avatar4,
-  Avatar5,
-  Avatar6,
-  Avatar7,
-  Avatar8,
-  Avatar9,
-  Avatar1, // 第10个使用第1个头像
-]
+import { getUserAvatarSrc } from "@/lib/avatar"
 
 const tabs: {
   id: ActiveTab
@@ -111,12 +88,6 @@ export function AppToolbar({
     Object.values(s.unreadCounts).reduce((sum, n) => sum + n, 0)
   )
 
-  // 根据用户ID计算头像索引（1-10）
-  const getAvatarIndex = () => {
-    if (!user?.id) return 0
-    return parseInt(user.id.toString()) % 10
-  }
-
   const handleLogout = () => {
     setShowLogoutDialog(false)
     logout()
@@ -150,7 +121,7 @@ export function AppToolbar({
       >
         <div className="mb-4 overflow-hidden rounded">
           <img
-            src={avatars[getAvatarIndex()]}
+            src={getUserAvatarSrc(user?.id)}
             alt={user?.name || "用户"}
             className="size-10 object-cover"
           />

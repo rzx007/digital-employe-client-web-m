@@ -13,33 +13,7 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import { useCurrentMonthPerformance } from "@/hooks/use-performance-queries"
 import { useAuthStore } from "@/stores/auth-store"
-import Avatar1 from "@/assets/avaters/1.png"
-import Avatar2 from "@/assets/avaters/2.png"
-import Avatar3 from "@/assets/avaters/3.png"
-import Avatar4 from "@/assets/avaters/4.png"
-import Avatar5 from "@/assets/avaters/5.png"
-import Avatar6 from "@/assets/avaters/6.png"
-import Avatar7 from "@/assets/avaters/7.png"
-import Avatar8 from "@/assets/avaters/8.png"
-import Avatar9 from "@/assets/avaters/9.png"
-
-const avatars = [
-  Avatar1,
-  Avatar2,
-  Avatar3,
-  Avatar4,
-  Avatar5,
-  Avatar6,
-  Avatar7,
-  Avatar8,
-  Avatar9,
-  Avatar1,
-]
-
-function getUserAvatarSrc(userId?: string | number | null) {
-  if (!userId) return Avatar1
-  return avatars[parseInt(userId.toString(), 10) % 10]
-}
+import { getUserAvatarSrc } from "@/lib/avatar"
 
 function formatMoney(value: number): string {
   return `¥ ${new Intl.NumberFormat("zh-CN", {
