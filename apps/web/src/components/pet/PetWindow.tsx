@@ -288,10 +288,11 @@ export function PetWindow() {
     const idle =
       !voiceBusy && !isRecording && feedback.variant === "none" && !actionState
 
-    // Second click within 400ms from idle → double-click action
+    // Second click within 400ms from idle → 双击：打开/聚焦主界面 + 保留随机动画
     if (now - doubleClickRef.current < 400 && idle) {
       clearClickTimer()
       doubleClickRef.current = 0
+      getElectronApi()?.showMainWindow?.()
       triggerAction()
       return
     }

@@ -49,6 +49,7 @@ export async function bootstrapApp(options: BootstrapOptions): Promise<void> {
     devServerUrl: options.devServerUrl,
     windowManager: options.windowManager,
     onLoginSuccess: options.createMainWindow,
+    createMainWindow: options.createMainWindow,
   })
 
   const registry = new IpcRegistry(ctx)

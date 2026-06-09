@@ -28,6 +28,9 @@ export const petIpcContribution: IpcContribution = {
             if (main.isMinimized()) main.restore()
             main.show()
             main.focus()
+          } else {
+            // 主窗已关闭/销毁（只剩宠物时）：重建主窗，否则点宠物没有任何反应
+            void ctx.createMainWindow()
           }
         },
       },

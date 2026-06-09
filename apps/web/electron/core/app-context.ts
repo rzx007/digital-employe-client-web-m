@@ -9,11 +9,14 @@ export interface AppContext {
   readonly rendererDist: string
   readonly windowManager: WindowManager
   onLoginSuccess: () => void | Promise<void>
+  /** 创建（或重建）主窗。主窗已被关闭/销毁时用于重新拉起。 */
+  createMainWindow: () => void | Promise<void>
 }
 
 export interface CreateAppContextOptions {
   devServerUrl?: string
   onLoginSuccess: () => void | Promise<void>
+  createMainWindow: () => void | Promise<void>
   windowManager: WindowManager
 }
 
@@ -48,6 +51,7 @@ export function createAppContext(
     rendererDist: paths.rendererDist,
     windowManager: options.windowManager,
     onLoginSuccess: options.onLoginSuccess,
+    createMainWindow: options.createMainWindow,
   }
 }
 
