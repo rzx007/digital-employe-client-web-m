@@ -497,6 +497,7 @@ def get_settings() -> Settings:
             platform_base_url, update_user_password_path
         ),
         register_url=join_base_and_path(platform_base_url, register_path),
+        #  feedback_url=join_base_and_path('http://localhost:54321', feedback_path),
         feedback_url=join_base_and_path(platform_base_url, feedback_path),
         get_dept_tree_url=join_base_and_path(
             platform_base_url, get_dept_tree_path
