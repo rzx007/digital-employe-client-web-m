@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react"
 import type { PetState } from "./types"
 import type { PetFrameAnimation } from "../pet-loader"
 import { PET_SHEET_COLS, PET_SHEET_FRAME_W, PET_SHEET_FRAME_H } from "./types"
+import { advanceSpriteFrame } from "./sprite-frame"
 
 type FrameOffset = {
   x: number
@@ -56,6 +57,7 @@ export function SpritePlayer({
     let frameCursor = 0
     let frameElapsedMs = 0
     let isDisposed = false
+    let started = false
 
     completeRef.current = false
 
@@ -88,36 +90,72 @@ export function SpritePlayer({
       if (lastTimestamp === 0) {
         lastTimestamp = timestamp
       }
-
-      frameElapsedMs += timestamp - lastTimestamp
+      const deltaMs = timestamp - lastTimestamp
       lastTimestamp = timestamp
 
-      while (frameCursor < frameCount) {
-        const dur = animation.durations[frameCursor] ?? 100
-        if (frameElapsedMs < dur) break
-        frameElapsedMs -= dur
-        frameCursor++
-      }
-
-      if (frameCursor >= frameCount) {
-        if (animation.loop) {
-          frameCursor = 0
-          frameElapsedMs = 0
-        } else if (!completeRef.current) {
-          completeRef.current = true
-          frameCursor = frameCount - 1
-          onAnimationComplete?.()
+      const result = advanceSpriteFrame(
+        { frameCursor, frameElapsedMs, completed: completeRef.current },
+        deltaMs,
+        {
+          frameCount,
+          durations: animation.durations,
+          loop: animation.loop,
         }
+      )
+      frameCursor = result.frameCursor
+      frameElapsedMs = result.frameElapsedMs
+
+      if (result.completed && !completeRef.current) {
+        completeRef.current = true
+        onAnimationComplete?.()
       }
 
-      drawFrame(animation.from + frameCursor)
+      // 修复①：仅在帧真正切换时重绘（避免 60fps 无差别重绘 + 透明窗反复软件合成）
+      if (result.shouldDraw) {
+        drawFrame(animation.from + frameCursor)
+      }
+
+      // 修复②：非循环动画播完即停 rAF，不再空转
+      if (result.finished) {
+        animationFrame = 0
+        return
+      }
       animationFrame = window.requestAnimationFrame(tick)
     }
 
+    function startLoop() {
+      if (isDisposed || !started) return
+      if (animationFrame !== 0) return // 已在运行
+      if (completeRef.current && !animation.loop) return // 非循环已播完，无需恢复
+      lastTimestamp = 0 // 重新锚定时间，避免隐藏期间累积时长快进多帧
+      animationFrame = window.requestAnimationFrame(tick)
+    }
+
+    function pauseLoop() {
+      if (animationFrame !== 0) {
+        window.cancelAnimationFrame(animationFrame)
+        animationFrame = 0
+      }
+    }
+
+    // 修复③：窗口隐藏/最小化（document.hidden）时彻底暂停动画，可见再恢复。
+    // 不挂 blur——宠物窗失焦时仍可见，blur 暂停会让可见的宠物冻住。
+    function handleVisibility() {
+      if (document.hidden) {
+        pauseLoop()
+      } else {
+        startLoop()
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility)
+
     img.onload = () => {
       frameOffsets = autoAlign ? measureFrameOffsets(img) : []
+      started = true
       drawFrame(animation.from)
-      animationFrame = window.requestAnimationFrame(tick)
+      if (!document.hidden) {
+        startLoop()
+      }
     }
     img.onerror = () => {
       console.warn("[SpritePlayer] Failed to load image:", image)
@@ -127,6 +165,7 @@ export function SpritePlayer({
 
     return () => {
       isDisposed = true
+      document.removeEventListener("visibilitychange", handleVisibility)
       window.cancelAnimationFrame(animationFrame)
     }
   }, [
