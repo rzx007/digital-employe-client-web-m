@@ -68,16 +68,15 @@ import { CuratorRecruitmentProvider } from "./curator-recruitment-provider"
 import { CuratorPlanFeedbackProvider } from "./curator-plan-feedback-context"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
+import { getElapsedMsFromMeta } from "../shared/chat-view-shared"
 import {
-  getElapsedMsFromMeta,
-  getMessageCreatedAtMs,
-} from "../shared/chat-view-shared"
+  buildCuratorTimeline,
+  type TimelineEntry,
+} from "./build-curator-timeline"
 import { MessageAssistantActions } from "../messages/message-assistant-actions"
 import { MessageCopyAction } from "../messages/message-copy-action"
 import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
-import type { TaskExecution } from "@/types/schedule-monitor"
-import type { Message as ChatMessage } from "@/types/chat"
 import { curatorUnreadKey } from "@/lib/constants"
 import {
   buildRecruitmentHireAllOutbound,
@@ -99,63 +98,6 @@ import {
   isBenignStreamAbortError,
   isStreamDisconnectedError,
 } from "@/lib/chat/stream-abort"
-
-type TimelineEntry =
-  | { kind: "message"; data: UIMessage; ts: number }
-  | { kind: "execution"; data: TaskExecution; ts: number }
-
-function getMsgTs(
-  msg: UIMessage,
-  storedMessages: Array<{
-    id: string
-    metadata?: Record<string, unknown>
-    timestamp?: Date
-  }>
-): number {
-  return getMessageCreatedAtMs(msg, storedMessages) ?? 0
-}
-
-const TERMINAL_EXECUTION_STATUSES = new Set([
-  "success",
-  "failed",
-  "timeout",
-  "cancelled",
-])
-
-function getExecutionTimelineTs(exec: TaskExecution): number | null {
-  const raw = exec.ended_at ?? exec.started_at
-  if (!raw) return null
-  const ms = new Date(raw).getTime()
-  return Number.isFinite(ms) ? ms : null
-}
-
-function getMaxExecutionTimelineTs(executions: TaskExecution[]): number {
-  let max = 0
-  for (const exec of executions) {
-    if (!TERMINAL_EXECUTION_STATUSES.has(exec.run_status)) continue
-    const ts = getExecutionTimelineTs(exec)
-    if (ts != null && ts > max) max = ts
-  }
-  return max
-}
-
-/** 摘要消息 execution_log_id → 时间戳（用于卡片排在摘要下方） */
-function buildExecutionSummaryTsMap(storedMessages: ChatMessage[]): Map<number, number> {
-  const map = new Map<number, number>()
-  for (const msg of storedMessages) {
-    if (msg.role !== "assistant") continue
-    const meta = msg.metadata
-    if (!meta || typeof meta !== "object") continue
-    if (meta.source !== "orchestrator_execution_summary") continue
-    const execId = meta.execution_log_id
-    if (typeof execId !== "number") continue
-    const ts = msg.timestamp?.getTime()
-    if (ts != null && Number.isFinite(ts)) {
-      map.set(execId, ts)
-    }
-  }
-  return map
-}
 
 function formatTime(ts: number): string {
   return format(new Date(ts), "HH:mm", { locale: zhCN })
@@ -732,59 +674,10 @@ export function CuratorView({
   const executionSummaryIds = useMemo(() => new Set<number>(), [])
 
   /* ── Build unified timeline ── */
-  const timeline: TimelineEntry[] = useMemo(() => {
-    const entries: TimelineEntry[] = []
-    const summaryTsByExecId = buildExecutionSummaryTsMap(storedMessages)
-
-    const maxExecutionTs = getMaxExecutionTimelineTs(executions)
-
-    let lastRealTsIndex = -1
-    for (let i = 0; i < displayMessages.length; i++) {
-      if (getMsgTs(displayMessages[i], storedMessages) > 0) {
-        lastRealTsIndex = i
-      }
-    }
-
-    // 无时间戳（如 useChat 客户端 id 尚未与 DB 对齐）时按展示顺序递推 ts，
-    // 避免 refetch 后 resume assistant 的真实 created_at 把 user 行排到其下方。
-    // 尾部 live 消息须压过任务卡片的 ended_at，否则新对话会排在执行卡片上方。
-    let lastKnownTs = 0
-    for (let i = 0; i < displayMessages.length; i++) {
-      const msg = displayMessages[i]
-      let ts = getMsgTs(msg, storedMessages)
-      if (ts === 0) {
-        const bump = lastKnownTs + 1000
-        ts =
-          i > lastRealTsIndex
-            ? Math.max(bump, maxExecutionTs + 1000)
-            : bump
-      } else if (ts <= lastKnownTs) {
-        ts = lastKnownTs + 1000
-      }
-      lastKnownTs = ts
-      entries.push({ kind: "message", data: msg, ts })
-    }
-
-    for (const exec of executions) {
-      if (!TERMINAL_EXECUTION_STATUSES.has(exec.run_status)) continue
-
-      const tsRaw = getExecutionTimelineTs(exec)
-      if (tsRaw == null) continue
-
-      const summaryTs = summaryTsByExecId.get(exec.id)
-      const ts =
-        summaryTs != null ? Math.max(tsRaw, summaryTs + 1000) : tsRaw
-
-      entries.push({
-        kind: "execution",
-        data: exec,
-        ts,
-      })
-    }
-
-    entries.sort((a, b) => a.ts - b.ts)
-    return entries
-  }, [displayMessages, executions, storedMessages])
+  const timeline: TimelineEntry[] = useMemo(
+    () => buildCuratorTimeline(displayMessages, executions, storedMessages),
+    [displayMessages, executions, storedMessages]
+  )
 
   const contactDisplayName = resolvedContact?.curator?.name ?? "总管助手"
 
