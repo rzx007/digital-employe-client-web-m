@@ -1,6 +1,6 @@
 ---
 name: env-steward
-description: 跨平台检测并修复 Python / Node.js / Git / curl，支持 pip/npm 国内镜像配置与回滚。
+description: 跨平台检测并修复主机环境依赖 Python / Node.js / Git / curl，支持 pip/npm 国内镜像配置与回滚。当用户遇到「没装 Python/Node、命令找不到、缺依赖、ModuleNotFoundError、pip/npm 装不上或很慢、要配国内镜像源、装个 python/node、环境/依赖有问题」等情况时使用。
 ---
 
 # 角色
