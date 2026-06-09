@@ -15,6 +15,7 @@
 - 不做硬锁定（只软提示，模型可忽略）。
 - v1 不覆盖自定义/市场技能（仅内置技能关键词表）；不改 SKILL.md。
 - group 派单路径不动。
+- **v1 仅 employee 直聊**接入；curator 暂不接入（其主职是派单、技能由员工执行，且其技能根是另一套 `resolve_orchestrator_skills_root()`、与员工分支不同源）。后续要加再单独处理 curator 分支。
 
 ## 2. 现状锚点
 - 用户消息在 `apps/server/src/service/chat_service.py:835-841` 构建：`user_content = build_user_agent_content(...)` → `request_messages.append({"role":"user","content":user_content})` → `registry.request_start(messages=request_messages, ...)`。
@@ -46,20 +47,28 @@
     ```
 - **隔离**：纯函数、无 IO、无 LLM；输入输出明确，单测覆盖。
 
-### 3.2 注入点 `chat_service.py`
-- 在 `:841` `request_messages.append(...)` **之前**，当满足：`settings.agent_skill_preroute` 为真 **且** 未显式 `skill_name`（自动模式）：
+### 3.2 注入点 `chat_service.py`（仅 employee 分支）
+- 位置：构建 `user_content`（`:835-840`）之后、`request_messages.append(...)`（`:841`）之前。
+- 触发条件：`target_type == "employee"` **且** `settings.agent_skill_preroute` 为真 **且** 未显式 `skill_name`（自动模式）。
+- **技能根取法（评审修正）**：注入层只有 `skills_path`（字符串），没有现成 `skills_root`；需先 `resolve_skills_root(skills_path)` 再列技能：
   ```python
-  available = list_available_skills(skills_root)         # 员工实际技能
-  hint = build_route_hint(match_skills(question, available))
-  if hint:
-      user_content = f"{user_content}{hint}"             # 尾部拼接
+  from src.service.agent.paths import resolve_skills_root, list_available_skills
+  # ... 在 employee 分支、append 之前：
+  try:
+      if get_settings().agent_skill_preroute and not skill_name:
+          available = list_available_skills(resolve_skills_root(skills_path))
+          hint = build_route_hint(match_skills(question, available))
+          if hint:
+              user_content = f"{user_content}{hint}"   # 尾部拼接
+  except Exception:
+      logger.warning("skill preroute failed, skip", exc_info=True)
   ```
-  - 用 `question`（原始用户文本）做匹配，而非已加工的 `skill_question`。
-  - `skills_root` 取当前员工/总管的技能根（与 `get_agent` 同源；实现计划落实精确取法）。
-- 仅 employee / curator 走此注入；group 派单不动。
+  - 用 `question`（原始用户文本，函数参数）做匹配，而非已加工的 `skill_question`。
+  - 任何异常吞掉、退化为不注入。
+- curator / group 不走此注入（curator 见 §1 非目标）。
 
 ### 3.3 配置 `core/config.py`
-- 新增 `agent_skill_preroute: bool = True`（kv 键 `AGENT_SKILL_PREROUTE`，缺省 True）。关 → 完全恢复现状。
+- 新增 `agent_skill_preroute: bool = True`：在 `Settings` dataclass 加字段；在 `get_settings()` 用 **`_get_kv_bool(kv_data, "AGENT_SKILL_PREROUTE", default=True)`**（注意：`_get_kv_bool` 默认 False，**必须显式传 `default=True`**）。`get_settings` 有 `lru_cache`，改 kv 后经 `clear_settings_cache()` 生效；无需 hot-reload helper。关（`AGENT_SKILL_PREROUTE=0`）→ 完全恢复现状。
 
 ## 4. 数据流
 用户消息 → `match_skills(question, 员工可用技能)` → `build_route_hint` →（命中则）拼到 `user_content` 尾 → 随消息进 agent → 模型在软提示引导下优先考虑该技能。系统提示前缀不变。
