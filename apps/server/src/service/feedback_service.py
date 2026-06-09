@@ -50,6 +50,27 @@ def collect_logs(cap_lines: int = 500, cap_bytes: int = 200_000) -> str | None:
     return text
 
 
+_FIELD_KEYS = ("title", "description", "repro_steps", "expected", "actual")
+
+
+def assemble_payload(fields: dict) -> dict:
+    """把前端表单字段组装成上报载荷：用户字段 + 自动环境 + 可选日志 + 可选截图。
+
+    env / logs 在服务端补齐（前端无需也无法可靠采集）；screenshot 由前端表单直接带来
+    （base64 dataURI），不经模型上下文。
+    """
+    payload: dict = {k: str(fields.get(k) or "") for k in _FIELD_KEYS}
+    payload["env"] = collect_env()
+    if fields.get("include_logs"):
+        logs = collect_logs()
+        if logs:
+            payload["logs"] = logs
+    screenshot = fields.get("screenshot")
+    if screenshot:
+        payload["screenshot"] = screenshot
+    return payload
+
+
 def submit_feedback(payload: dict, token: str | None) -> dict:
     """转发上报到远端后台。返回 {ok, message, remote?}，不抛异常给调用方。"""
     if is_offline_mode():

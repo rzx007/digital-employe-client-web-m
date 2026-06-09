@@ -334,3 +334,33 @@ export async function approveHitl(
     }),
   })
 }
+
+export interface BugFeedbackInput {
+  title?: string
+  description?: string
+  repro_steps?: string
+  expected?: string
+  actual?: string
+  include_logs?: boolean
+  /** 截图 base64 dataURI；直接发往后台、不经模型上下文 */
+  screenshot?: string
+}
+
+export interface BugFeedbackResult {
+  ok: boolean
+  message?: string
+  remote?: unknown
+}
+
+/**
+ * BUG 反馈表单直接提交：浏览器 → 本地 /feedback → 远端后台。
+ * 截图随此请求一起发送，**绝不经过模型/HITL 上下文**（避免图片撑爆上下文）。
+ */
+export async function submitBugFeedback(
+  payload: BugFeedbackInput
+): Promise<BugFeedbackResult> {
+  return request<BugFeedbackResult>("/feedback", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}

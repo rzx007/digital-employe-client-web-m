@@ -15,5 +15,7 @@ router = APIRouter(tags=["反馈"])
     dependencies=[Depends(require_capability("remote_feedback"))],
 )
 def submit_feedback_endpoint(request: Request, body: dict[str, Any] = Body(...)):
+    """前端反馈表单直接提交到此（含可选截图 base64）；服务端补 env/日志后转发远端。"""
     token = (request.headers.get("token") or "").strip() or None
-    return feedback_service.submit_feedback(body, token=token)
+    payload = feedback_service.assemble_payload(body)
+    return feedback_service.submit_feedback(payload, token=token)

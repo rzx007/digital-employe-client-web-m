@@ -47,6 +47,27 @@ def test_submit_feedback_blocks_offline(monkeypatch):
     assert "离线" in res["message"]
 
 
+def test_assemble_payload_adds_env_and_coerces_fields():
+    p = feedback_service.assemble_payload({"title": "t", "description": "d"})
+    assert p["title"] == "t" and p["description"] == "d"
+    assert p["repro_steps"] == "" and p["expected"] == "" and p["actual"] == ""
+    assert "env" in p
+    assert "logs" not in p and "screenshot" not in p
+
+
+def test_assemble_payload_includes_logs_when_requested(monkeypatch):
+    monkeypatch.setattr(feedback_service, "collect_logs", lambda: "LOGS")
+    p = feedback_service.assemble_payload({"title": "t", "include_logs": True})
+    assert p["logs"] == "LOGS"
+
+
+def test_assemble_payload_passes_screenshot():
+    p = feedback_service.assemble_payload(
+        {"title": "t", "screenshot": "data:image/png;base64,AAA"}
+    )
+    assert p["screenshot"] == "data:image/png;base64,AAA"
+
+
 def test_submit_feedback_posts_with_token(monkeypatch):
     monkeypatch.setattr(feedback_service, "_feedback_url", lambda: "https://x/feedback")
     monkeypatch.setattr(feedback_service, "is_offline_mode", lambda: False)

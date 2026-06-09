@@ -9,7 +9,13 @@ import { Input } from "@workspace/ui/components/input"
 import { Switch } from "@workspace/ui/components/switch"
 import { Label } from "@workspace/ui/components/label"
 import { toast } from "sonner"
-import { approveHitl, type HitlDecision } from "@/api/chat"
+import {
+  approveHitl,
+  submitBugFeedback,
+  type HitlDecision,
+  type BugFeedbackInput,
+  type BugFeedbackResult,
+} from "@/api/chat"
 import { isValidApproveMessageId } from "@/lib/chat/hitl"
 import {
   isHitlAbortedOutput,
@@ -163,43 +169,75 @@ function BugReportCardInner({
     }
   }
 
-  const hasEdits = (): boolean => {
-    if (editScreenshot !== null) return true
-    if (editTitle !== (data.title ?? "")) return true
-    if (editDescription !== (data.description ?? "")) return true
-    if (editReproSteps !== (data.repro_steps ?? "")) return true
-    if (editExpected !== (data.expected ?? "")) return true
-    if (editActual !== (data.actual ?? "")) return true
-    if (editIncludeLogs !== Boolean(data.include_logs)) return true
-    return false
+  // 提交反馈：直接 POST 到 /feedback（含截图，绝不经模型/HITL 上下文），成功后再用
+  // 空参 approve 解决中断、通知模型继续——避免截图 base64 进 HITL args 撑爆上下文。
+  const postAndResolve = async (report: BugFeedbackInput) => {
+    if (!report.title?.trim() && !report.description?.trim()) {
+      toast.error("请至少填写标题或问题描述")
+      return
+    }
+    if (!isValidApproveMessageId(messageId)) {
+      toast.error("无法提交：缺少有效的消息 ID，请刷新后重试")
+      return
+    }
+    if (!conversationId) {
+      toast.error("无法提交：缺少 conversationId")
+      return
+    }
+    if (isAborted) {
+      toast.error("本轮已中止，请重新发送消息")
+      return
+    }
+    if (state !== "input-available") {
+      toast.error("反馈表单仍在生成，请稍候")
+      return
+    }
+    if (submitting || resolved) return
+    setSubmitting(true)
+    try {
+      let res: BugFeedbackResult
+      try {
+        res = await submitBugFeedback(report)
+      } catch {
+        toast.error("上报失败：网络不可达或服务异常，请稍后重试")
+        return
+      }
+      if (!res?.ok) {
+        toast.error(res?.message || "上报失败")
+        return
+      }
+      // 上报已成功；用空参 approve 解决中断、通知模型（不带表单/截图）
+      try {
+        const ap = await approveHitl(conversationId, messageId, [
+          { type: "approve" },
+        ])
+        onHitlApproved?.({
+          kind: "bug-report",
+          toolCallId,
+          approvedMessageId: messageId,
+          resumed: true,
+          assistantMessageId: ap?.data?.assistant_message_id,
+        })
+      } catch {
+        // 上报已成功，approve 失败只影响模型继续，不打扰用户
+      }
+      setResolved(true)
+      setMode("view")
+      toast.success(res.message || "已提交反馈")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleApprove = () => {
-    if (mode === "edit" && hasEdits()) {
-      void submitDecisions([
-        {
-          type: "edit",
-          edited_action: {
-            name: "submit_bug_report",
-            args: {
-              title: editTitle,
-              description: editDescription,
-              repro_steps: editReproSteps,
-              expected: editExpected,
-              actual: editActual,
-              include_logs: editIncludeLogs,
-              ...(editScreenshot !== null ? { screenshot: editScreenshot } : {}),
-            },
-          },
-        },
-      ])
-    } else {
-      if (!data.title?.trim() && !data.description?.trim()) {
-        toast.error("请至少填写标题或问题描述")
-        return
-      }
-      void submitDecisions([{ type: "approve" }])
-    }
+    void postAndResolve({
+      title: data.title,
+      description: data.description,
+      repro_steps: data.repro_steps,
+      expected: data.expected,
+      actual: data.actual,
+      include_logs: Boolean(data.include_logs),
+    })
   }
 
   const enterEditMode = () => {
@@ -224,28 +262,15 @@ function BugReportCardInner({
   }
 
   const handleEditSubmit = () => {
-    if (!editTitle.trim() && !editDescription.trim()) {
-      toast.error("请至少填写标题或问题描述")
-      return
-    }
-    void submitDecisions([
-      {
-        type: "edit",
-        edited_action: {
-          name: "submit_bug_report",
-          args: {
-            title: editTitle,
-            description: editDescription,
-            repro_steps: editReproSteps,
-            expected: editExpected,
-            actual: editActual,
-            include_logs: editIncludeLogs,
-            ...(editScreenshot !== null ? { screenshot: editScreenshot } : {}),
-          },
-        },
-      },
-    ])
-    setMode("view")
+    void postAndResolve({
+      title: editTitle,
+      description: editDescription,
+      repro_steps: editReproSteps,
+      expected: editExpected,
+      actual: editActual,
+      include_logs: editIncludeLogs,
+      ...(editScreenshot ? { screenshot: editScreenshot } : {}),
+    })
   }
 
   return (

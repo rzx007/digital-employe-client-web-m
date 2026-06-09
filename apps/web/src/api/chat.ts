@@ -21,6 +21,7 @@ import {
   fetchCuratorConversation as fetchCuratorConversationApi,
   fetchResourceContent as fetchResourceContentApi,
   resetConversationStatus as resetConversationStatusApi,
+  submitBugFeedback as submitBugFeedbackApi,
   suggestConversationTitle as suggestConversationTitleApi,
   updateConversationTitle as updateConversationTitleApi,
   uploadConversationFile as uploadConversationFileApi,
@@ -39,10 +40,15 @@ import type {
   Message,
 } from "@/types/chat"
 
-export type { HitlDecision } from "@/api/conversation"
+export type {
+  HitlDecision,
+  BugFeedbackInput,
+  BugFeedbackResult,
+} from "@/api/conversation"
 
 export {
   approveHitlApi as approveHitl,
+  submitBugFeedbackApi as submitBugFeedback,
   cancelConversationStreamApi as cancelConversationStream,
   deleteAllTaskExecutionsApi as deleteAllTaskExecutions,
   deleteTaskExecutionsByOrchestratorConversation,
