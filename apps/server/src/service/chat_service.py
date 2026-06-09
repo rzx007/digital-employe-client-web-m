@@ -838,6 +838,29 @@ class ChatService:
                 artifacts_root=settings.artifacts_path,
                 conversation_id=conversation_id,
             )
+            # 技能预路由（软提示，尾部注入；不碰系统前缀=不伤 prefill）。仅 employee
+            # 自动模式（未显式 skill_name）；任何异常退化为不注入，绝不影响正常对话。
+            try:
+                if (
+                    target_type == "employee"
+                    and settings.agent_skill_preroute
+                    and not skill_name
+                ):
+                    from src.service.agent.paths import (
+                        list_available_skills,
+                        resolve_skills_root,
+                    )
+                    from src.service.agent.skill_prerouter import (
+                        build_route_hint,
+                        match_skills,
+                    )
+
+                    _avail = list_available_skills(resolve_skills_root(skills_path))
+                    _hint = build_route_hint(match_skills(question, _avail))
+                    if _hint:
+                        user_content = f"{user_content}{_hint}"
+            except Exception:
+                logger.warning("skill preroute failed, skip", exc_info=True)
             request_messages.append({"role": "user", "content": user_content})
             _phase("built_user_content")
 
