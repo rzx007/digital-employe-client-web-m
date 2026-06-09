@@ -21,8 +21,10 @@ import {
   isHitlAbortedOutput,
   type HitlPatchOptions,
 } from "@/lib/chat/hitl"
+import { compressImageToDataUrl } from "@/lib/chat/compress-image"
 
-const MAX_SCREENSHOT_BYTES = 2 * 1024 * 1024
+// 原图大小闸：仅防极端大文件被读进 canvas；正常截图会被压缩到很小再上报。
+const MAX_ORIGINAL_BYTES = 20 * 1024 * 1024
 
 interface BugReportInput {
   title?: string
@@ -89,18 +91,25 @@ function BugReportCardInner({
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleScreenshotFile = useCallback((file: File) => {
-    if (file.size > MAX_SCREENSHOT_BYTES) {
-      toast.error("截图过大（>2MB），请压缩后再上传")
+    if (file.size > MAX_ORIGINAL_BYTES) {
+      toast.error("图片过大，请换一张再试")
       return
     }
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const result = e.target?.result
-      if (typeof result === "string") {
-        setEditScreenshot(result)
+    // bug 截图无需高清：先压缩（缩放 + JPEG 降质）再存，体积更小；
+    // 压缩失败（解码/canvas 问题）回退原图。
+    const fallbackRaw = () => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const result = e.target?.result
+        if (typeof result === "string") {
+          setEditScreenshot(result)
+        }
       }
+      reader.readAsDataURL(file)
     }
-    reader.readAsDataURL(file)
+    compressImageToDataUrl(file)
+      .then((dataUrl) => setEditScreenshot(dataUrl))
+      .catch(fallbackRaw)
   }, [])
 
   const handlePaste = useCallback(
