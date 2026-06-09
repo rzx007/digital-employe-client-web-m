@@ -47,7 +47,16 @@ function BugReportCardInner({
   onHitlApproved?: (options?: HitlPatchOptions) => void
   className?: string
 }) {
-  const [mode, setMode] = useState<"view" | "edit" | "reject">("view")
+  const initialData: BugReportInput | null =
+    input && typeof input === "object" ? (input as BugReportInput) : null
+  // 反馈内容基本为空且待确认时，直接以「表单(edit)」打开，用户上来就能填，
+  // 不必先点「修改」——配合 SKILL：员工识别到反馈意图即调用工具、不再逐项追问。
+  const isEmptyReport =
+    !initialData?.title?.trim() && !initialData?.description?.trim()
+
+  const [mode, setMode] = useState<"view" | "edit" | "reject">(
+    isEmptyReport && state === "input-available" ? "edit" : "view"
+  )
   const [submitting, setSubmitting] = useState(false)
   const [resolved, setResolved] = useState(false)
   const [rejectMessage, setRejectMessage] = useState("")
@@ -57,12 +66,18 @@ function BugReportCardInner({
     return input as BugReportInput
   }, [input])
 
-  const [editTitle, setEditTitle] = useState("")
-  const [editDescription, setEditDescription] = useState("")
-  const [editReproSteps, setEditReproSteps] = useState("")
-  const [editExpected, setEditExpected] = useState("")
-  const [editActual, setEditActual] = useState("")
-  const [editIncludeLogs, setEditIncludeLogs] = useState(false)
+  const [editTitle, setEditTitle] = useState(initialData?.title ?? "")
+  const [editDescription, setEditDescription] = useState(
+    initialData?.description ?? ""
+  )
+  const [editReproSteps, setEditReproSteps] = useState(
+    initialData?.repro_steps ?? ""
+  )
+  const [editExpected, setEditExpected] = useState(initialData?.expected ?? "")
+  const [editActual, setEditActual] = useState(initialData?.actual ?? "")
+  const [editIncludeLogs, setEditIncludeLogs] = useState(
+    Boolean(initialData?.include_logs)
+  )
   const [editScreenshot, setEditScreenshot] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -179,6 +194,10 @@ function BugReportCardInner({
         },
       ])
     } else {
+      if (!data.title?.trim() && !data.description?.trim()) {
+        toast.error("请至少填写标题或问题描述")
+        return
+      }
       void submitDecisions([{ type: "approve" }])
     }
   }
@@ -205,6 +224,10 @@ function BugReportCardInner({
   }
 
   const handleEditSubmit = () => {
+    if (!editTitle.trim() && !editDescription.trim()) {
+      toast.error("请至少填写标题或问题描述")
+      return
+    }
     void submitDecisions([
       {
         type: "edit",
@@ -509,7 +532,7 @@ function BugReportCardInner({
                 disabled={submitting}
                 onClick={handleEditSubmit}
               >
-                {submitting ? "提交中..." : "确认修改"}
+                {submitting ? "提交中..." : "提交反馈"}
               </Button>
               <Button
                 type="button"
