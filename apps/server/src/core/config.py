@@ -132,6 +132,9 @@ class Settings:
     # 内容级无进展判死阈值（AGENT_NO_CONTENT_KILL_SECONDS）：执行命令/跑脚本时长时间
     # 不吐正文却在干活，超过此秒数才判死回收；默认 900s，过短会误杀正常长命令。
     agent_no_content_kill_seconds: float = 900.0
+    # 技能预路由（AGENT_SKILL_PREROUTE）：对员工消息先做确定性关键词匹配，命中内置技能
+    # 则在用户消息尾部注入软提示，提升技能识别一致性；默认开，设 0 完全恢复现状。
+    agent_skill_preroute: bool = True
     # resume 冷启（前端未带 cursor）全量重放的事件上限：超过只回放最近这么多条，
     # 防 runaway 巨型 buffer 在反复切窗口时被全量重放、占满线程池/主循环致卡死。
     # <=0 表示不限制（每次冷启全量回放整个 buffer）。
@@ -447,6 +450,9 @@ def get_settings() -> Settings:
     return Settings(
         offline_mode=is_offline_mode(),
         agent_serial_mode=_get_kv_bool(kv_data, "AGENT_SERIAL_MODE"),
+        agent_skill_preroute=_get_kv_bool(
+            kv_data, "AGENT_SKILL_PREROUTE", default=True
+        ),
         default_workspace_root=_get_kv_value(kv_data, "DEFAULT_WORKSPACE_ROOT"),
         default_workspace_id=default_workspace_id,
         default_workspace_name=_get_kv_value(kv_data, "DEFAULT_WORKSPACE_NAME")
