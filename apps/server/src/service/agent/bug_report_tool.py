@@ -30,19 +30,21 @@ def _best_effort_token() -> str | None:
 
 @tool
 def submit_bug_report(
-    title: str,
-    description: str,
+    title: str = "",
+    description: str = "",
     repro_steps: str = "",
     expected: str = "",
     actual: str = "",
     include_logs: bool = False,
     screenshot: str = "",
 ) -> str:
-    """提交一条 BUG 反馈到官方后台（用户确认后才会真正发送）。
+    """弹出 BUG 反馈表单让用户填写并提交（用户在表单里确认后才真正发送）。
 
-    title: 一句话标题；description: 详细描述；repro_steps: 复现步骤；
-    expected/actual: 期望与实际；include_logs: 是否附带最近运行日志（须用户同意）；
-    screenshot: 截图 base64 dataURI（由前端确认卡填入，通常无需模型自己填）。
+    用户一表达反馈意图就**立即调用**本工具弹出表单，**所有字段都可留空**——
+    把用户已说的放进对应字段、其余留空即可，**不要逐项追问**。用户会在前端表单卡里
+    补全字段、可选附截图，点「提交反馈」后才发送。
+    title/description/repro_steps/expected/actual：标题/描述/复现/期望/实际（通常留空由用户填）；
+    include_logs：是否附最近日志；screenshot：截图 base64（由前端表单填入，模型无需自填）。
     """
     payload: dict = {
         "title": title,
