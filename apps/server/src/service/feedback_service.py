@@ -68,6 +68,11 @@ def assemble_payload(fields: dict) -> dict:
     screenshot = fields.get("screenshot")
     if screenshot:
         payload["screenshot"] = screenshot
+    # 上报人身份（前端从登录态带入；远端按此识别，无需解码 token）
+    for key in ("reporter_id", "reporter_name"):
+        val = fields.get(key)
+        if val not in (None, ""):
+            payload[key] = val
     return payload
 
 
@@ -80,7 +85,10 @@ def submit_feedback(payload: dict, token: str | None) -> dict:
         return {"ok": False, "message": "反馈服务未配置（缺少 REMOTE_API_BASE_URL/FEEDBACK_PATH）。"}
     headers = {"token": token} if token else None
     try:
-        resp = httpx.post(url, json=payload, headers=headers, timeout=30.0)
+        # follow_redirects：远端路由可能带尾斜杠(/api/v1/feedback/)，307 时跟随保 POST+body
+        resp = httpx.post(
+            url, json=payload, headers=headers, timeout=30.0, follow_redirects=True
+        )
         resp.raise_for_status()
         return {"ok": True, "message": "已提交反馈。", "remote": resp.json()}
     except httpx.HTTPError as exc:

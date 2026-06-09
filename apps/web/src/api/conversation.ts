@@ -1,4 +1,5 @@
 import { request } from "@/lib/request"
+import { useAuthStore } from "@/stores/auth-store"
 import type { DbMessageId } from "@/lib/chat/hitl/message-id"
 import type {
   ApiResponse,
@@ -342,6 +343,9 @@ export interface BugFeedbackInput {
   expected?: string
   actual?: string
   include_logs?: boolean
+  /** 上报人用户ID/名（提交时自动从登录态带入；远端按此识别上报人） */
+  reporter_id?: number
+  reporter_name?: string
   /** 截图 base64 dataURI；直接发往后台、不经模型上下文 */
   screenshot?: string
 }
@@ -359,8 +363,15 @@ export interface BugFeedbackResult {
 export async function submitBugFeedback(
   payload: BugFeedbackInput
 ): Promise<BugFeedbackResult> {
+  // 自动带入登录用户作为上报人（远端 actus 无法解码 token，故由客户端提供身份）
+  const user = useAuthStore.getState().user
+  const body: BugFeedbackInput = {
+    ...payload,
+    reporter_id: payload.reporter_id ?? user?.id,
+    reporter_name: payload.reporter_name ?? user?.name,
+  }
   return request<BugFeedbackResult>("/feedback", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   })
 }
