@@ -91,15 +91,18 @@ export function normalizeUrl(input) {
 // 把 open-artifact 的输入规范化为 /artifacts|uploads|skills-draft/... 虚拟路径。
 // 兼容：虚拟路径(/artifacts/x)、无前导斜杠(artifacts/x)、物理绝对路径
 // (C:/Users/.../conversations/<id>/artifacts/x，含 Windows 反斜杠)、纯文件名(默认 artifacts)。
-// Agent 在 shell（cwd=产物目录）里常直接给物理路径，这里统一抽出虚拟段。
+// 返回 null 表示无法映射到产物目录（产物目录外的绝对路径，如 skill 的 output/）。
 export function toArtifactVirtualPath(input) {
   const p = String(input || "")
     .trim()
     .replace(/\\/g, "/")
-  if (!p) return ""
+  if (!p) return null
+  // 已含产物前缀（虚拟路径，或物理路径里的产物段）→ 抽出虚拟路径
   const m = p.match(/(?:^|\/)((?:artifacts|uploads|skills-draft)\/.+)$/)
   if (m) return `/${m[1]}`
-  // 无已知前缀：按 artifacts 兜底（Agent 常在 artifacts cwd 下给纯文件名）
+  // 绝对路径（盘符 C:/ 或以 / 开头）却不含产物前缀 → 在产物目录之外，无法映射
+  if (/^[a-z]:\//i.test(p) || p.startsWith("/")) return null
+  // 纯文件名 / 简单相对路径 → 默认产物目录 artifacts（Agent 常在 artifacts cwd 下给文件名）
   return `/artifacts/${p.replace(/^\.?\//, "")}`
 }
 
@@ -303,7 +306,20 @@ async function run(argv) {
     const backendBase = (
       process.env.BROWSER_RUNTIME_BACKEND_URL || "http://127.0.0.1:34567"
     ).replace(/\/$/, "")
-    const rel = toArtifactVirtualPath(virtualPath).replace(/^\//, "")
+    const virtual = toArtifactVirtualPath(virtualPath)
+    if (!virtual) {
+      print(
+        {
+          ok: false,
+          error:
+            "path is not under the conversation artifacts dir (/artifacts, /uploads, /skills-draft); for files outside it (e.g. a skill's output/), copy them into the artifacts dir first",
+          code: "PATH_NOT_IN_ARTIFACTS",
+        },
+        flags.pretty
+      )
+      return
+    }
+    const rel = virtual.replace(/^\//, "")
     const url = `${backendBase}/chat/conversations/${conversationId}/resources/static/${rel}`
     print(await postAction("navigate", { url }), flags.pretty)
     return

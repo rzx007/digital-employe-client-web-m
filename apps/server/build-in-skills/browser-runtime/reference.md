@@ -37,6 +37,7 @@
 | `EMPTY_SCREENSHOT` | 截图数据为空 |
 | `WRITE_FAILED` | 截图写盘失败 |
 | `MISSING_CONVERSATION_ID` | `open-artifact` 缺会话标识（shell 未注入 `CONVERSATION_ID`） |
+| `PATH_NOT_IN_ARTIFACTS` | `open-artifact` 路径在产物目录外（如 skill `output/`）；先复制到 `/artifacts` 再打开 |
 
 ## 命令
 

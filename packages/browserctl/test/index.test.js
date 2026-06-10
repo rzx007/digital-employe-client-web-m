@@ -79,6 +79,14 @@ test("toArtifactVirtualPath 规范化虚拟/无斜杠/物理绝对/反斜杠/纯
     ),
     "/artifacts/fa.html"
   )
+  // 产物目录外的绝对路径（如 skill 的 output/）→ null（无法映射，不再瞎塞 /artifacts/）
+  assert.equal(
+    toArtifactVirtualPath(
+      "C:/Users/ruanz/.digital-employee/conversations/469/skills/fa-skill/output/fa.html"
+    ),
+    null
+  )
+  assert.equal(toArtifactVirtualPath("/some/abs/path/x.html"), null)
 })
 
 test("open-artifact 接受物理绝对路径并抽出虚拟段拼 URL", async () => {
@@ -105,6 +113,35 @@ test("open-artifact 接受物理绝对路径并抽出虚拟段拼 URL", async ()
       body.url,
       "http://127.0.0.1:34567/chat/conversations/430/resources/static/artifacts/fa.html"
     )
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("open-artifact 对产物目录外的绝对路径报 PATH_NOT_IN_ARTIFACTS 且不发请求", async () => {
+  let hit = false
+  const srv = await startServer((req, res) => {
+    hit = true
+    res.end(JSON.stringify({ ok: true }))
+  })
+  try {
+    const { stdout } = await runCli(
+      [
+        "open-artifact",
+        "C:/Users/ruanz/.digital-employee/conversations/469/skills/fa-skill/output/fa.html",
+      ],
+      {
+        env: {
+          BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv),
+          CONVERSATION_ID: "469",
+          BROWSER_RUNTIME_BACKEND_URL: "http://127.0.0.1:34567",
+        },
+      }
+    )
+    const j = JSON.parse(stdout)
+    assert.equal(j.ok, false)
+    assert.equal(j.code, "PATH_NOT_IN_ARTIFACTS")
+    assert.equal(hit, false)
   } finally {
     await closeServer(srv)
   }
