@@ -21,6 +21,7 @@ vi.mock("ofetch", () => {
 })
 
 import { useConversationSession } from "./use-conversation-session"
+import { MAX_STREAM_RESUME_ATTEMPTS } from "@/lib/chat/session/resume-decision"
 
 const CONV_ID = 339
 
@@ -110,6 +111,51 @@ describe("useConversationSession — resume on re-enter", () => {
     })
 
     await waitFor(() => expect(resumeStream).toHaveBeenCalledTimes(1))
+  })
+
+  it("空续（no_stream）热循环：composer 不增长时 retryResume 受 MAX 配额封顶、不无限重试", async () => {
+    vi.useFakeTimers()
+    try {
+      const resumeStream = vi.fn()
+      const setMessages = vi.fn()
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      })
+      const stored = storedWithLastAssistant("streaming")
+      // retryResumeIfNeeded 从 query cache 读末尾 assistant
+      queryClient.setQueryData(chatKeys.messages(String(CONV_ID)), stored)
+      const initialMessages = mapStoredMessagesToUIMessages(stored)
+
+      const { result } = renderHook(() =>
+        useConversationSession({
+          conversationId: CONV_ID,
+          contactId: null,
+          storedMessages: stored,
+          initialMessages,
+          // 关键：composer 永不增长 = 每次 resume 都是「空续」（仅 start 无内容）。
+          // 旧实现据「status→streaming」重置配额会无限重试；新实现据「内容增长」判定，
+          // 空续不重置 → 8 次触顶后停。
+          composerMessages: [],
+          status: "streaming",
+          setMessages,
+          resumeStream,
+          queryClient,
+        })
+      )
+
+      // 模拟 onTerminal(no_stream) 反复触发续流；每轮推进过最长退避让已调度 resume 落地
+      for (let i = 0; i < 30; i++) {
+        result.current.retryResumeIfNeeded()
+        await vi.advanceTimersByTimeAsync(11_000)
+      }
+
+      expect(resumeStream.mock.calls.length).toBeGreaterThan(0)
+      expect(resumeStream.mock.calls.length).toBeLessThanOrEqual(
+        MAX_STREAM_RESUME_ATTEMPTS
+      )
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

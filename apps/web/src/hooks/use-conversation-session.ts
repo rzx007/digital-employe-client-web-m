@@ -65,6 +65,25 @@ import { stripGhostComposerAssistants } from "@/lib/chat/group-composer-ghosts"
 const REFETCH_DEBOUNCE_MS = 800
 
 /**
+ * 末尾 assistant 的内容体量（part 数 + 文本总长）。用于判断 resume 是否「真接上并产出
+ * 内容」——空续（仅 start chunk 无 delta）不会让它增长，故不应据此重置 resume 配额。
+ */
+function lastAssistantContentSize(messages: UIMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.role !== "assistant") continue
+    let size = m.parts?.length ?? 0
+    for (const part of m.parts ?? []) {
+      if (part.type === "text" && typeof part.text === "string") {
+        size += part.text.length
+      }
+    }
+    return size
+  }
+  return 0
+}
+
+/**
  * C 兜底轮询间隔：本地 SSE 已「假结束」（status 非 streaming）但 DB 仍 streaming 时，
  * 每隔这么久拉一次 DB，让后台仍在跑的内容近实时补全。即便 SSE resume 始终续不上
  * （代理彻底掐死 SSE），用户也不必手动重进会话。DB 转终态即停轮询。
@@ -197,17 +216,25 @@ export function useConversationSession({
     [convKey, resumeStream, setMessages]
   )
 
-  // resume 成功重新接上流（status 跃迁回 streaming）→ 重置该 turn 的 resume 计数。
-  // 否则一个长 turn 多次断开会吃光 MAX_STREAM_RESUME_ATTEMPTS 配额，之后断开
-  // 不再续流（R-1）。仅在「曾经发起过 resume」时重置，避免无谓 dispatch 重渲染。
-  const prevStatusRef = useRef(status)
+  // resume「真正接上并产出内容」才重置该 turn 的 resume 计数（让 MAX_STREAM_RESUME_ATTEMPTS
+  // 只拦「连不上」的热循环，长 turn 的反复断开不会耗尽配额——R-1）。
+  //
+  // 关键：不能用「status 跃迁到 streaming」当「接上」的信号。transport 对**每条** resume
+  // 都先 enqueue 一个 start chunk，会让 useChat status 瞬时跳 streaming——**哪怕后端紧接着
+  // 回 no_stream（零内容）**。若据此重置配额，则一个「DB 仍 streaming 但后端已无活跃流」的
+  // 会话会被反复 resume 且配额永不触顶 → 无限热循环（刷爆 GET /messages、耗尽浏览器连接池）。
+  // 改判据为「末尾 assistant 内容是否增长」：真续上→内容增长→重置；空续（no_stream，仅 start
+  // 无 delta）→不增长→不重置→8 次配额触顶后停止 resume，交由 DB 兜底轮询补全。
+  const liveContentSizeRef = useRef(0)
   useEffect(() => {
-    const prev = prevStatusRef.current
-    prevStatusRef.current = status
-    if (status !== "streaming" || prev === "streaming") return
+    const size = lastAssistantContentSize(composerMessages)
+    const grew = size > liveContentSizeRef.current
+    liveContentSizeRef.current = size
+    if (!grew) return
+    if (statusRef.current !== "streaming") return
     if (Object.keys(machineRef.current.resumeAttempts).length === 0) return
     dispatch({ type: "RESUME_RESET" })
-  }, [status])
+  }, [composerMessages])
 
   useEffect(() => {
     if (prevConversationIdRef.current !== conversationId) {
@@ -395,17 +422,10 @@ export function useConversationSession({
       return false
     }
 
-    // R-1：本次断流发生在「流此前已接上、正在跑」时（status 仍 streaming）——这是一次
-    // 全新的、独立的掉线，而非连不上的紧凑重试链。SSE 在长执行任务里会被中间层反复掐断
-    // （用户：「SSE 经常卡没了」），若沿用同一 assistant 的累计计数，几次掉线就吃光
-    // MAX_STREAM_RESUME_ATTEMPTS=3 配额，之后再断永久不续 → 「基本不会回复」。故在「接上后
-    // 又断」时先重置该 turn 的 resume 计数，让 3 次配额只用于拦「连不上」的死循环。
-    // 仅 RESUME_RESET 这一处依赖：status 跃迁 effect（:190）只在干净的 →streaming 时重置，
-    // 快速断开会漏掉，这里按「断流时仍 streaming」补一道更可靠的重置。
-    if (statusRef.current === "streaming") {
-      dispatch({ type: "RESUME_RESET", assistantId })
-    }
-
+    // R-1（接上后又断 = 独立掉线，不该共用「连不上」配额）由 liveContentSizeRef 那道
+    // 「内容增长才重置」统一兜底：流此前真接上必然产出过内容→配额已重置，故这里无需
+    // 再按 status 重置。绝不能在此无条件 RESUME_RESET：否则空续（no_stream，仅 start 无
+    // 内容）也会清零配额 → 无限热循环（与上方 liveContentSizeRef 注释同源）。
     chatTransport.cancelReconnect()
     return tryScheduleResume(assistantId, { allowBusyStatus: true })
   }, [convKey, queryClient, tryScheduleResume])

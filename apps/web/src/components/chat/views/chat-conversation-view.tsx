@@ -310,18 +310,29 @@ export function ConversationChatView({
   // 让点进正在跑的成员会话能看到实时逐字输出。
   const groupNavReturn = useChatStore((s) => s.groupNavigationReturn)
   const retryResume = session.retryResumeIfNeeded
+  // 群深链进成员执行会话：独立 key 重挂清空了本地流式内容，DB 又拿不到「正在流式但
+  // 未落库」的尾部 → 需 resume 从后端 buffer 拉回实时逐字。
+  //
+  // 触发条件按「未接上流」把关，而非「只试一次」：
+  // - 已 streaming/submitted（resume 已接上）→ 跳过。否则 storedMessages 随 DB
+  //   refetch/兜底轮询/resume 回写反复变更，会反复 cancelReconnect + 清空末尾气泡再从
+  //   seq 0 重放 → 「一直闪屏」（这是本来的症状）。
+  // - 反之（ready/error 且 DB 仍 streaming）→ kick 一次 resume。这样首次 resume 若
+  //   竞争失败/被打断，后续 storedMessages 变化（4s 兜底轮询驱动）会再续，不会出现
+  //   「来回切几次后流彻底没了」。续流的重试上限由 resumeAttempts 计数兜底。
   useEffect(() => {
     if (isMessagesLoading) return
     if (!isGroupDeepLinkExecutionView(groupNavReturn, conversationId)) return
+    if (status === "streaming" || status === "submitted") return
     const last = getLastAssistantMessage(storedMessages)
     if (last?.streamState === "streaming") {
       retryResume()
     }
-    // 仅在「深链目标会话 + 消息加载完」时尝试一次；storedMessages 变化驱动重判
   }, [
     conversationId,
     groupNavReturn,
     isMessagesLoading,
+    status,
     storedMessages,
     retryResume,
   ])
@@ -375,6 +386,23 @@ export function ConversationChatView({
       prevConversationIdRef.current = conversationId
     }
   }, [conversationId])
+
+  // 卸载（切走会话 / 切联系人 / 群深链 remount）时断开本会话尚在进行的 SSE 连接：
+  // - resume 流由 transport 内部独立 AbortController 持有，useChat 卸载**不会**自动中止它；
+  // - live POST 流走 stop()。
+  // 不主动断开会泄漏长连接——浏览器对同源并发连接数有限（HTTP/1.1 ~6），来回切几次就把
+  // 连接池占满，之后所有后台接口（含 GET /messages）都拿不到 socket → 整页「卡死、无法请求」。
+  // 后端 turn 仍在跑，切回会话时 effect 会重新 resume 续上，不丢内容。
+  const stopRef = useRef(stop)
+  useEffect(() => {
+    stopRef.current = stop
+  }, [stop])
+  useEffect(() => {
+    return () => {
+      chatTransport.cancelReconnect()
+      stopRef.current()
+    }
+  }, [])
 
   // 断流错误（StreamDisconnectedError）已由 onError 触发 resume 续流接管，不是用户
   // 可见的失败；连同主动 abort 一并从展示错误里滤掉，否则会弹「SSE 流在收到终止信号
