@@ -17,6 +17,7 @@ const defaultCapabilities: Capabilities = {
   feishu_platform: true,
   skill_rating_upload: true,
   mcp_task_execution: true,
+  remote_analytics: true,
   activation_enforced: false,
 }
 

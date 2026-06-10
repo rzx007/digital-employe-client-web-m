@@ -129,6 +129,7 @@ def get_runtime_config(db: Session = Depends(get_db)) -> ResponseBase[dict[str, 
                 "feishu_platform": caps.feishu_platform,
                 "skill_rating_upload": caps.skill_rating_upload,
                 "mcp_task_execution": caps.mcp_task_execution,
+                "remote_analytics": caps.remote_analytics,
                 "activation_enforced": caps.activation_enforced,
             },
             "activation": {

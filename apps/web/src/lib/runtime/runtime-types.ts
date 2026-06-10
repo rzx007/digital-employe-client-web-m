@@ -9,6 +9,7 @@ export interface Capabilities {
   feishu_platform: boolean
   skill_rating_upload: boolean
   mcp_task_execution: boolean
+  remote_analytics: boolean
   activation_enforced: boolean
 }
 

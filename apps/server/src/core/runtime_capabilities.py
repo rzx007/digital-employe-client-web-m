@@ -14,6 +14,7 @@ class RuntimeCapabilities:
     skill_rating_upload: bool
     mcp_task_execution: bool       # 调度器内远程 MCP 调用
     remote_feedback: bool          # /feedback 转发到远端后台（离线禁用）
+    remote_analytics: bool          # 活跃度埋点上报（离线禁用）
     activation_enforced: bool      # 是否强制设备激活（独立于在线/离线远程能力）
 
 def get_capabilities() -> RuntimeCapabilities:
@@ -53,6 +54,7 @@ def get_capabilities() -> RuntimeCapabilities:
             skill_rating_upload=False,
             mcp_task_execution=False,
             remote_feedback=False,
+            remote_analytics=False,
             activation_enforced=activation,
         )
-    return RuntimeCapabilities(*(True,) * 11, activation_enforced=activation)
+    return RuntimeCapabilities(*(True,) * 12, activation_enforced=activation)

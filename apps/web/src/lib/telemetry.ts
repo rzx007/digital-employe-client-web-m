@@ -7,6 +7,7 @@
  * - user_id / tenant_id 由服务端从 token 解析，前端不传，避免伪造。
  */
 import { getAuthToken, request } from "@/lib/request"
+import { isOfflineModeFlag } from "@/lib/runtime/runtime-provider"
 
 export type ActivityEventType =
   | "login"
@@ -88,6 +89,7 @@ export function track(
   opts: { skill?: SkillRef; extra?: Record<string, unknown> } = {}
 ): void {
   if (!isBrowser()) return
+  if (isOfflineModeFlag) return // 离线模式不上报活跃度
   try {
     // 显示名（真实姓名）随事件带上（token 里没有，只有客户端有）
     const displayName = localStorage.getItem("displayName") || undefined
@@ -145,6 +147,7 @@ export function reportSkillInvokeOnce(skillName: string, dedupeKey: string): voi
 export async function flush(): Promise<void> {
   if (!isBrowser() || flushing) return
   if (queue.length === 0) return
+  if (isOfflineModeFlag) return // 离线模式不上报活跃度
   if (!getAuthToken()) return // 未登录，留待登录后补发
 
   flushing = true

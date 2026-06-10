@@ -2,9 +2,10 @@ import logging
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
 from src.core.config import get_settings
+from src.core.deps import require_capability
 
 router = APIRouter(tags=["活跃度埋点"])
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ def _forward_token_headers(request: Request) -> dict[str, str]:
     "/digital/api/v1/analytics/events",
     summary="客户端活跃度事件上报（转发到远端 actus）",
     response_model=dict[str, Any],
+    dependencies=[Depends(require_capability("remote_analytics"))],
 )
 def report_analytics_events(request: Request, body: dict[str, Any] = Body(...)):
     """将客户端埋点事件转发到 REMOTE_API_BASE_URL + ANALYTICS_EVENTS_PATH。

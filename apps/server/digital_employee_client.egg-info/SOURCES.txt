@@ -79,6 +79,7 @@ src/api/activation_api.py
 src/api/chat_api.py
 src/api/config_kv_api.py
 src/api/employee_api.py
+src/api/feedback_api.py
 src/api/feishu_api.py
 src/api/group_api.py
 src/api/login_api.py
@@ -176,6 +177,7 @@ src/service/conversation_title_service.py
 src/service/dispatch_order_sync_service.py
 src/service/employee_generation_service.py
 src/service/employee_service.py
+src/service/feedback_service.py
 src/service/feishu_bitable_service.py
 src/service/feishu_token_service.py
 src/service/file_service.py
@@ -215,6 +217,7 @@ src/service/workspace_service.py
 src/service/agent/__init__.py
 src/service/agent/artifacts.py
 src/service/agent/basic_file_backend.py
+src/service/agent/bug_report_tool.py
 src/service/agent/checkpointer.py
 src/service/agent/clarifying_questions_tool.py
 src/service/agent/compatible_filesystem_middleware.py
@@ -232,6 +235,7 @@ src/service/agent/read_file_dedupe.py
 src/service/agent/read_file_path_compression.py
 src/service/agent/remember_memory_tool.py
 src/service/agent/shell_execute_tool.py
+src/service/agent/skill_prerouter.py
 src/service/agent/orchestrator/__init__.py
 src/service/agent/orchestrator/agent.py
 src/service/agent/orchestrator/confirmation_policy.py
@@ -270,6 +274,7 @@ tests/test_agent_stream_queue.py
 tests/test_agent_stream_timeouts.py
 tests/test_basic_file_backend.py
 tests/test_basic_file_reader.py
+tests/test_bug_report_tool.py
 tests/test_builtin_seed_employees.py
 tests/test_builtin_skill_display_names.py
 tests/test_compatible_filesystem_middleware.py
@@ -290,6 +295,11 @@ tests/test_employee_service.py
 tests/test_employee_tools.py
 tests/test_encoding_aware_backend.py
 tests/test_evals_dataset.py
+tests/test_feedback_api.py
+tests/test_feedback_capability.py
+tests/test_feedback_config.py
+tests/test_feedback_seed.py
+tests/test_feedback_service.py
 tests/test_get_current_time_tool.py
 tests/test_group_leader_clarification.py
 tests/test_group_tools.py
@@ -314,6 +324,7 @@ tests/test_orchestrator_execution_summary.py
 tests/test_orchestrator_prompts.py
 tests/test_orchestrator_runtime_auth.py
 tests/test_orchestrator_wait_policy.py
+tests/test_preroute_config.py
 tests/test_prompt_cache.py
 tests/test_prompt_cache_config.py
 tests/test_prompt_invariants.py
@@ -332,6 +343,7 @@ tests/test_shell_error_steering.py
 tests/test_shell_execute_tool.py
 tests/test_shell_stream_output.py
 tests/test_shell_virtual_rewrite.py
+tests/test_skill_prerouter.py
 tests/test_skillsmp_service.py
 tests/test_stream_queue_placeholder.py
 tests/test_stream_registry_classes.py

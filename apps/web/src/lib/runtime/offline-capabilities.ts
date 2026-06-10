@@ -16,6 +16,7 @@ export function applyOfflineCapabilities(
     feishu_platform: false,
     skill_rating_upload: false,
     mcp_task_execution: false,
+    remote_analytics: false,
     remote_model_sync: true,
     remote_skills: true,
   }
