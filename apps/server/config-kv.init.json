@@ -30,6 +30,7 @@
   "SKILL_DIR": "/digital/api/v1/client/skills/directories",
   "SKILL_REMOTE_IMPORT": "/digital/api/v1/client/skills/import",
   "SKILL_NAME_VALIDATE": "/digital/api/v1/client/skills/name/exists",
+  "FEEDBACK_PATH": "/digital/api/v1/feedback",
   "BUILTIN_SKILLS_PATH": "~/.digital-employee/build-in-skills",
   "LOCAL_SKILLS_PATH": "~/.digital-employee/local-skills",
   "CLIENT_SKILL_IMPORT_MAX_BYTES": "52428800",

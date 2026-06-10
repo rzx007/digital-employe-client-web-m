@@ -266,7 +266,7 @@ def get_settings() -> Settings:
     login_path = _get_kv_value(kv_data, "LOGIN_PATH") or "/yc/login"
     update_user_password_path = _get_kv_value(kv_data, "UPDATE_USER_PASSWORD_PATH") or "/yc/updatePassword"
     register_path = _get_kv_value(kv_data, "REGISTER_PATH") or "/yc/register"
-    feedback_path = _get_kv_value(kv_data, "FEEDBACK_PATH") or "/api/v1/feedback"
+    feedback_path = _get_kv_value(kv_data, "FEEDBACK_PATH") or "/digital/api/v1/feedback"
     analytics_events_path = (
         os.environ.get("ANALYTICS_EVENTS_PATH")
         or _get_kv_value(kv_data, "ANALYTICS_EVENTS_PATH")
