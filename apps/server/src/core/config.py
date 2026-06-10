@@ -133,6 +133,9 @@ class Settings:
     # 内容级无进展判死阈值（AGENT_NO_CONTENT_KILL_SECONDS）：执行命令/跑脚本时长时间
     # 不吐正文却在干活，超过此秒数才判死回收；默认 900s，过短会误杀正常长命令。
     agent_no_content_kill_seconds: float = 900.0
+    # Agent 图 recursion_limit（superstep 上限）：0=不限制（默认），避免把正常多步任务
+    # 在第 N 步腰斩成假 completed；真失控由硬墙/内容看门狗回收。设正整数可重新设限。
+    agent_recursion_limit: int = 0
     # 技能预路由（AGENT_SKILL_PREROUTE）：对员工消息先做确定性关键词匹配，命中内置技能
     # 则在用户消息尾部注入软提示，提升技能识别一致性；默认开，设 0 完全恢复现状。
     agent_skill_preroute: bool = True
@@ -408,6 +411,18 @@ def get_settings() -> Settings:
     except ValueError:
         agent_no_content_kill_seconds = 900.0
 
+    # AGENT_RECURSION_LIMIT：Agent 图 superstep 上限。默认 0=不限制（正常多步任务不被
+    # 腰斩）；设正整数可重新设限。优先级：config_kvs > 同名环境变量 > 默认 0。
+    agent_recursion_limit_raw = _get_kv_value(
+        kv_data, "AGENT_RECURSION_LIMIT"
+    ) or os.getenv("AGENT_RECURSION_LIMIT")
+    try:
+        agent_recursion_limit = int(float(agent_recursion_limit_raw or "0"))
+    except ValueError:
+        agent_recursion_limit = 0
+    if agent_recursion_limit < 0:
+        agent_recursion_limit = 0
+
     default_workspace_id_raw = _get_kv_value(kv_data, "DEFAULT_WORKSPACE_ID")
     try:
         default_workspace_id = int(default_workspace_id_raw or "1")
@@ -523,6 +538,7 @@ def get_settings() -> Settings:
         agent_stall_timeout=agent_stall_timeout,
         resume_cold_replay_cap=resume_cold_replay_cap,
         agent_no_content_kill_seconds=agent_no_content_kill_seconds,
+        agent_recursion_limit=agent_recursion_limit,
         feishu_app_id=_get_kv_value(kv_data, "FEISHU_APP_ID"),
         feishu_app_secret=_get_kv_value(kv_data, "FEISHU_APP_SECRET"),
         feishu_redirect_uri=_get_kv_value(kv_data, "FEISHU_REDIRECT_URI"),

@@ -74,11 +74,14 @@ AUTO_KILL_NO_CONTENT_SECONDS = 900.0
 STALE_ACTIVE_HARD_TIMEOUT = 720.0
 # 无进展超时（config_kvs AGENT_STALL_TIMEOUT）：默认 30min，仅约束「多久无 chunk 事件」清槽。
 AGENT_STALL_TIMEOUT = 1800.0
-# LangGraph 递归上限：agent 的“think → 调工具 → 看结果”每轮算一步，超过此值
-# 抛 GraphRecursionError，被迫结束。防止 agent 陷入工具调用死循环（如反复 read
-# 同一文件却不收敛，曾观测到单流刷出 1400+ 事件不停）。LangGraph 默认 25，
-# 但本项目此前从未显式设置；给个偏宽松的 60，容纳正常多步任务，又能截断失控循环。
-AGENT_RECURSION_LIMIT = 60
+# Agent 图 recursion_limit（LangGraph superstep 上限：每轮 think→调工具→看结果 ~2 步）。
+# 历史曾硬编码 60，但正常的多步任务（浏览器自动化 + 技能执行 + 调试，单轮 30+ 工具调用）
+# 会在第 60 步被 GraphRecursionError 腰斩、且伪装成 completed → 前端收到 [DONE] 误以为
+# 已完成（2026-06-10 根因：observed conv 反复触限被腰斩、用户连发 3 次重试）。改为
+# 「默认不限制」：注入这个大到正常任务永远触不到的哨兵；真失控（无限工具循环）交由
+# 720s 单流硬墙(STALE_ACTIVE_HARD_TIMEOUT) + 900s 内容看门狗回收。经 settings /
+# config_kvs AGENT_RECURSION_LIMIT 设正整数可重新设限（0/负 = 不限制）。
+_UNLIMITED_RECURSION = 1_000_000
 DB_LOCK_RETRY_COUNT = 2
 DB_LOCK_RETRY_SLEEP_SECONDS = 0.05
 
@@ -169,6 +172,21 @@ def _agent_stall_timeout() -> float:
         return max(configured, floor)
     except Exception:
         return max(AGENT_STALL_TIMEOUT, AGENT_CHUNK_TIMEOUT + 60.0)
+
+
+def _agent_recursion_limit() -> int:
+    """Agent 图 recursion_limit。默认 0=不限制 → 返回大哨兵(_UNLIMITED_RECURSION)，
+    正常多步任务永不触发 GraphRecursionError；真失控由 720s 硬墙 + 900s 内容看门狗回收。
+    settings / config_kvs AGENT_RECURSION_LIMIT 设正整数可重新设限（0/负 = 不限制）。"""
+    try:
+        from src.core.config import get_settings
+
+        configured = int(get_settings().agent_recursion_limit)
+    except Exception:
+        configured = 0
+    if configured <= 0:
+        return _UNLIMITED_RECURSION
+    return configured
 
 
 async def _graph_has_pending_non_interrupt_work(agent: Any, config: dict) -> bool:
@@ -1543,10 +1561,11 @@ class StreamRegistry:
             _heartbeat_task = asyncio.create_task(_heartbeat_loop())
 
             stream_input = agent_input if agent_input is not None else {"messages": messages}
-            # 注入递归上限：失控的工具调用循环会被 GraphRecursionError 截断，
-            # 不再无限刷事件、永不结束。不覆盖调用方已显式传入的 recur   sion_limit。
+            # 注入 recursion_limit：默认不限制（大哨兵），避免把正常多步任务在第 60 步
+            # 腰斩成假 completed；真失控由 720s 硬墙 + 900s 内容看门狗回收。不覆盖调用方
+            # 已显式传入的 recursion_limit。
             stream_config = dict(config) if config else {}
-            stream_config.setdefault("recursion_limit", AGENT_RECURSION_LIMIT)
+            stream_config.setdefault("recursion_limit", _agent_recursion_limit())
             _agent_it = agent.astream(
                 stream_input,
                 stream_mode=["messages", "updates", "custom"],
@@ -1939,13 +1958,13 @@ class StreamRegistry:
             raise
 
         except _GraphRecursionError:
-            # agent 触达递归上限（失控的工具调用循环，如反复 read 同一文件）。
+            # agent 触达递归上限。默认已「不限制」(大哨兵)，正常任务到不了这里；只有
+            # 显式把 AGENT_RECURSION_LIMIT 设成有限正整数时才会触发（或真撞上哨兵=失控）。
             # 不当作 error（否则下游 fail-fast 跳过、整盘僵死）；按“已完成”收尾，
             # 保留它在循环前已产出的内容（往往主体已写好，只是卡在重复读取）。
             logger.warning(
-                "[run] conv=%s 触达递归上限(%d)，疑似工具调用死循环，"
-                "按已产出内容收尾（event_count=%d）",
-                conversation_id, AGENT_RECURSION_LIMIT, task.buffer.cursor,
+                "[run] conv=%s 触达递归上限(%d)，按已产出内容收尾（event_count=%d）",
+                conversation_id, _agent_recursion_limit(), task.buffer.cursor,
             )
             final_text = (
                 latest_updates_text
