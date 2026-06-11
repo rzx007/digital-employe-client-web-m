@@ -40,6 +40,8 @@ import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { useChatStore } from "@/stores/chat-store"
 import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { cancelConversationStream } from "@/api/chat"
+import { prepareVoiceMeta } from "@/lib/voice/prepare-voice-meta"
+import type { VoiceMessageMeta } from "@/types/chat"
 import { shouldRenameCuratorConversationOnFirstMessage } from "@/lib/chat/curator-conversation-actions"
 import { applySemanticConversationTitle } from "@/lib/chat/conversation-title"
 import { toast } from "sonner"
@@ -462,10 +464,24 @@ export function CuratorView({
           ? paths.map((p) => ({ path: p, name: p.split("/").pop() ?? p }))
           : undefined
 
+      const voicePayload =
+        typeof message === "string" ? undefined : message.voice
+
+      let voiceMeta: VoiceMessageMeta | undefined
+      if (voicePayload) {
+        try {
+          voiceMeta = await prepareVoiceMeta(curatorConversationId, voicePayload)
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "语音上传失败")
+          return
+        }
+      }
+
       const pendingMeta = {
         command: command ? { id: command.id, title: command.title } : undefined,
         mentions: mentions.length > 0 ? mentions : undefined,
         files: filesMeta,
+        voice: voiceMeta,
       }
 
       try {
@@ -652,7 +668,11 @@ export function CuratorView({
       const hasFiles =
         typeof message !== "string" && (message.files?.length ?? 0) > 0
       if (!(messageText || hasFiles)) return
-      if (isBusy || !curatorConversationId) {
+      const voicePayload =
+        typeof message === "string" ? undefined : message.voice
+      // 语音不进 pending 队列（队列项不携带 voice 载荷会静默降级为纯文本），
+      // 且 useChat 客户端是单流模型：busy 时先停流再发（对齐 sendToolUiAction 先例）。
+      if ((isBusy || !curatorConversationId) && !voicePayload) {
         enqueue({
           id: `pending-${Date.now()}`,
           text: messageText,
@@ -662,10 +682,25 @@ export function CuratorView({
         setInputValue("")
         return
       }
-      setInputValue("")
+      if (isBusy && voicePayload) {
+        await handleStop()
+        await waitForChatReady()
+      }
+      if (!voicePayload) {
+        setInputValue("")
+      }
       await doSend(message)
     },
-    [isBusy, enqueue, command, mentions, doSend, curatorConversationId]
+    [
+      isBusy,
+      enqueue,
+      command,
+      mentions,
+      doSend,
+      curatorConversationId,
+      handleStop,
+      waitForChatReady,
+    ]
   )
 
   const contacts = useChatStore((s) => s.contacts)
@@ -892,6 +927,7 @@ export function CuratorView({
             onStop={handleStop}
             status={chatStatus}
             submitDisabled={!isBusy && !inputValue.trim()}
+            showVoiceInput
             size="compact"
             placeholder={<CuratorRotatingPlaceholder />}
             className="w-full"
