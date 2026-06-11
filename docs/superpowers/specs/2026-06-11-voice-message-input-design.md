@@ -17,7 +17,7 @@
 | 发送时机 | 微信式：停止录音 → 自动转写 → 自动发出 |
 | 录音交互 | 微信桌面版式：点麦克风开始，录音胶囊 + 实时声波，悬停出现「发送」，✕ 取消 |
 | 转写失败 | toast 报错、消息不发出，录音丢弃由用户重录 |
-| 录音声波组件 | ElevenLabs UI `LiveWaveform`（源码拷入 packages/ui，自包含、无额外依赖） |
+| 录音声波组件 | ElevenLabs UI `LiveWaveform`（源码拷入 packages/ui，自包含、无额外依赖）。已读源码验证：暴露 `onStreamReady(stream)`（可把它打开的麦克风流共享给 MediaRecorder）、`processing`（转写中动画）、`onError`（内部 `getUserMedia` 失败时的 DOMException 由此冒泡，接入权限错误文案映射） |
 | 音频存储 | 后端新增专用 voice 接口，存会话目录下 `voice/` 子目录，不进资源面板 |
 
 ## 整体数据流
@@ -37,7 +37,8 @@
 ## 录音交互细节
 
 - 麦克风按钮位于输入框底部右侧、发送按钮旁。
-- 可用条件：`conversationId != null` 且聊天状态非 streaming/submitted。草稿视图（会话未创建）不显示麦克风按钮——音频上传需要会话 ID。
+- 可用条件：`conversationId != null` 且聊天状态非 streaming/submitted。草稿视图（会话未创建）不显示麦克风按钮——音频上传需要会话 ID。**群聊会话同样不显示麦克风按钮**（首期仅单聊，见 YAGNI）。
+- 生命周期清理：`useVoiceRecorder` 在组件卸载（含录音中切换会话/关闭窗口）时等价于「取消」——stop MediaRecorder、`stream.getTracks().forEach(t => t.stop())` 释放麦克风、丢弃已录数据。
 - 点击麦克风后，输入区覆盖**录音层**：
   - 左侧 ✕ 按钮：取消录音，丢弃数据，恢复普通输入框
   - 右侧胶囊：`LiveWaveform`（scrolling 模式）实时声波 + 已录时长计时
@@ -58,8 +59,11 @@
 - 点击播放：
   - 通过 `GET /chat/conversations/{id}/voice/audio?path=` 拉取音频 blob（带鉴权头），`URL.createObjectURL` 后用 `HTMLAudioElement` 播放
   - 播放中图标做动画，再次点击暂停；同一时间只允许一条语音在播
-  - blob 按消息缓存（内存级），避免重复请求
   - 音频文件缺失/拉取失败：toast 提示「语音文件不存在」
+- **播放状态归属（重要）**：消息列表是 `@tanstack/react-virtual` 虚拟滚动，滚出视口的胶囊组件会被卸载。因此播放状态、`HTMLAudioElement` 实例、blob 缓存**不放在胶囊组件内**，而是放在模块级单例 `voice-playback-manager`（`apps/web/src/lib/voice/playback-manager.ts`）：
+  - 单例持有当前播放的 `{ messageId, audio, objectUrl }` 与 blob 缓存 Map（按消息 id）
+  - 胶囊组件仅订阅「当前播放消息 id + 播放中状态」，卸载不中断播放，滚回视口恢复动画
+  - 单实例播放（播 B 自动停 A）由单例天然保证
 - 右键 ContextMenu（复用 `packages/ui` 现有组件）：
   - **查看文本**：在胶囊下方展开/收起转写文本气泡
   - **复制文本**：复制转写文本到剪贴板
@@ -83,14 +87,15 @@ interface VoiceMessageMeta {
 `apps/server/src/api/chat_api.py` 新增两个端点，存储逻辑放 `ResourceService`：
 
 1. `POST /chat/conversations/{conversation_id}/voice/upload`
-   - 接收 `UploadFile`，存到会话工作目录下 `voice/` 子目录，文件名 `{uuid}.webm`
-   - `voice/` 目录不在资源面板的列举范围内（资源列举只扫既有目录，新子目录天然不可见，需验证确认）
-   - 返回 `{ audio_path: "voice/<uuid>.webm" }`
+   - 接收 `UploadFile`，存到 `<artifacts_root>/<conversation_id>/voice/` 子目录，文件名 `{uuid}.webm`
+   - **物理路径固定按 conversation_id 解析，不走 `_resolve_conversation_dir`**——后者对群会话会解析到共享的 `room-<room_id>/` 目录，与会话删除清理路径（`<artifacts_root>/<conversation_id>/`）不一致，会产生孤儿文件
+   - `voice/` 目录不在资源面板列举范围内（已验证：`resource_service.py` 的 `list_resources` 只扫 `artifacts`/`uploads`/`skills-draft` 三个固定子目录）
+   - 返回 `ResponseBase[VoiceUploadResult]`，`data = { audio_path: "voice/<uuid>.webm" }`（与 chat_api.py 现有端点的响应包裹风格一致）
 2. `GET /chat/conversations/{conversation_id}/voice/audio?path=`
    - 校验 path 必须位于该会话的 `voice/` 目录内（防路径穿越，复用 ResourceService 现有校验模式）
    - `FileResponse` 返回音频（`audio/webm`）
 
-会话删除时：会话工作目录整体清理的现有逻辑天然覆盖 `voice/` 子目录，无需额外处理（实现时验证）。
+会话删除时：`chat_service.py` 对 `<artifacts_root>/<conversation_id>/` 整目录 `rmtree`（已验证），天然覆盖 `voice/` 子目录，无需额外处理。
 
 ## 前端文件清单
 
@@ -98,7 +103,8 @@ interface VoiceMessageMeta {
 |---|---|---|
 | `packages/ui/src/components/ai-elements/live-waveform.tsx` | 新增 | 拷入 ElevenLabs `LiveWaveform` 源码（约 560 行），import 改为 `@workspace/ui/lib/utils` |
 | `apps/web/src/components/chat-prompt-input/voice-recorder.tsx` | 新增 | 录音覆盖层 UI + `useVoiceRecorder` hook（MediaRecorder 接 onStreamReady 流、计时、取消/发送/60s 超时/1s 过短） |
-| `apps/web/src/components/chat/messages/voice-message-capsule.tsx` | 新增 | 胶囊渲染 + 播放控制 + 右键菜单 + 文本展开 |
+| `apps/web/src/components/chat/messages/voice-message-capsule.tsx` | 新增 | 胶囊渲染 + 右键菜单 + 文本展开（播放状态订阅自 playback-manager） |
+| `apps/web/src/lib/voice/playback-manager.ts` | 新增 | 模块级单例：HTMLAudioElement、blob 缓存、当前播放消息 id、单实例播放协调 |
 | `apps/web/src/lib/voice/transcribe.ts` | 新增 | 将 `lib/pet/transcribe-audio.ts` 的实现提升为共享模块；宠物处改为转发引用，行为不变 |
 | `apps/web/src/api/conversation.ts` | 修改 | 新增 `uploadVoiceAudio(conversationId, blob)`、`fetchVoiceAudio(conversationId, path)` |
 | `apps/web/src/components/chat-prompt-input/chat-prompt-input.tsx` + `types.ts` | 修改 | 麦克风按钮、录音覆盖层挂载；onSubmit 消息类型扩展可选 `voice` 字段 |
@@ -108,14 +114,16 @@ interface VoiceMessageMeta {
 
 ## 测试
 
-- `useVoiceRecorder` 状态机单测：开始/取消/正常停止/60s 自动停止/不足 1s 丢弃
+- `useVoiceRecorder` 状态机单测：开始/取消/正常停止/60s 自动停止/不足 1s 丢弃/**卸载时释放麦克风与数据**
+- `voice-playback-manager` 单测：单实例播放（播 B 停 A）、blob 缓存命中
 - 转写共享模块迁移后，宠物语音入口行为不回归（现有引用全部更新、类型检查通过）
 - 后端：voice upload/download 端点的路径校验测试（含路径穿越拒绝）
-- 手动验证清单：录音 → 胶囊展示 → 点击播放 → 右键查看/复制文本 → 刷新页面后仍可播放 → 取消录音 → 转写失败路径（断开 ASR）
+- 手动验证清单：录音 → 胶囊展示 → 点击播放 → **播放中滚动消息列表使胶囊滚出视口，播放不中断、滚回后状态正确** → 右键查看/复制文本 → 刷新页面后仍可播放 → 取消录音 → 录音中切换会话（麦克风释放）→ 转写失败路径（断开 ASR）
 
 ## 明确不做（YAGNI）
 
 - 草稿视图（无会话 ID）的语音输入
+- 群聊会话的语音输入（后端 voice 目录按 conversation_id 存储的前提下，群聊涉及 room 共享目录语义，首期不做）
 - 语音消息的波形可视化回放（按真实音频幅度绘制）——胶囊用静态装饰纹
 - 转写文本发送前编辑
 - 音频格式转码（统一 webm）
