@@ -291,6 +291,12 @@ class SkillAwareShellBackend(LocalShellBackend):
     def _rewrite_command_virtual_paths(self, command: str) -> str:
         # 始终 rewrite /skills/ 等虚拟前缀为物理路径：这是 shell 命令映射的产品逻辑，
         # 与 LocalShellBackend.virtual_mode（控制 cwd / 沙箱）无关，物理模式下同样需要。
+        #
+        # 关键：用 posix=False 拆分会**保留**每个 token 外层的引号，因此未命中的
+        # token 必须原样回写、不能再过 subprocess.list2cmdline——否则 list2cmdline
+        # 会把 token 里已有的引号二次转义（`"http://x"` → `\"http://x\"`），经 cmd
+        # 解析后引号变成字面量混进参数值（如 --url 收到带引号的 URL）。
+        # 这里只重写「确实命中虚拟前缀」的 token，其余原样保留。
         try:
             parts = shlex.split(command, posix=False)
         except ValueError:
@@ -304,13 +310,22 @@ class SkillAwareShellBackend(LocalShellBackend):
                 quote = part[0]
                 raw = part[1:-1]
             mapped = self._map_virtual_token(raw)
-            if mapped != raw:
-                parts[i] = f"{quote}{mapped}{quote}" if quote else mapped
-                changed = True
+            if mapped == raw:
+                continue  # 未命中：原样保留该 token（含原始引号）
+            changed = True
+            if quote:
+                parts[i] = f"{quote}{mapped}{quote}"
+            elif any(c.isspace() for c in mapped):
+                # 原 token 无引号，但映射后的物理路径含空格 → 必须补引号
+                parts[i] = f'"{mapped}"'
+            else:
+                parts[i] = mapped
 
         if not changed:
             return command
-        return subprocess.list2cmdline(parts)
+        # 直接用空格拼接：posix=False 的 token 已保留各自引号，单空格拼接即可
+        # 还原命令（仅折叠 token 间多余空白，对 shell 执行无影响）。
+        return " ".join(parts)
 
     def _get_stream_writer(self) -> Callable[[dict], None]:
         try:
