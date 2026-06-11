@@ -72,18 +72,28 @@ def static_client(db_engine, monkeypatch):
     try:
         with TestClient(app) as client:
             client.conversation_id = conversation_id  # type: ignore[attr-defined]
+            client.artifacts_dir = artifacts_dir  # type: ignore[attr-defined]
             yield client
     finally:
         app.dependency_overrides.pop(get_db, None)
 
 
-def _url(client: TestClient, path: str) -> str:
+def _url(client: TestClient, real_path: str) -> str:
+    """静态服务改为真实路径查询参数：?path=<abs>。"""
     cid = client.conversation_id  # type: ignore[attr-defined]
-    return f"/chat/conversations/{cid}/resources/static/{path}"
+    return f"/chat/conversations/{cid}/resources/static"
+
+
+def _get(client: TestClient, real_path: str):
+    cid = client.conversation_id  # type: ignore[attr-defined]
+    return client.get(
+        f"/chat/conversations/{cid}/resources/static", params={"path": real_path}
+    )
 
 
 def test_html_served_inline_with_html_content_type(static_client):
-    resp = static_client.get(_url(static_client, "artifacts/report.html"))
+    real = str(static_client.artifacts_dir / "report.html")  # type: ignore[attr-defined]
+    resp = _get(static_client, real)
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/html")
     # 不能作为附件下载，否则浏览器不会渲染
@@ -93,17 +103,21 @@ def test_html_served_inline_with_html_content_type(static_client):
 
 
 def test_relative_css_asset_served_with_css_content_type(static_client):
-    resp = static_client.get(_url(static_client, "artifacts/style.css"))
+    real = str(static_client.artifacts_dir / "style.css")  # type: ignore[attr-defined]
+    resp = _get(static_client, real)
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/css")
     assert "color: red" in resp.text
 
 
 def test_path_traversal_rejected(static_client):
-    resp = static_client.get(_url(static_client, "artifacts/../../secret"))
+    # 会话根之外的真实路径 → 沙箱拒绝
+    outside = str(static_client.artifacts_dir.parent.parent / "secret")  # type: ignore[attr-defined]
+    resp = _get(static_client, outside)
     assert resp.status_code in (400, 404)
 
 
 def test_missing_file_returns_404(static_client):
-    resp = static_client.get(_url(static_client, "artifacts/does-not-exist.html"))
+    real = str(static_client.artifacts_dir / "does-not-exist.html")  # type: ignore[attr-defined]
+    resp = _get(static_client, real)
     assert resp.status_code == 404

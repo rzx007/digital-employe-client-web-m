@@ -38,22 +38,31 @@ export function getBucketRootSegment(bucket: ResourceBucket): string {
 }
 
 export function normalizeToolFilePath(path: string): string {
-  const normalized = path.replace(/\\/g, "/")
-  if (
-    normalized.startsWith("artifacts/") ||
-    normalized.startsWith("uploads/") ||
-    normalized.startsWith("skills-draft/")
-  ) {
-    return `/${normalized}`
-  }
-  return normalized
+  // 去虚拟前缀后路径均为真实绝对路径；这里只把反斜杠统一为正斜杠便于解析。
+  return path.replace(/\\/g, "/")
 }
 
+/**
+ * 推导路径所属交付物桶。去虚拟前缀后路径是真实绝对路径，但物理目录结构未变——
+ * 真实路径里仍含 `artifacts/`、`uploads/`、`skills-draft/` 目录段，按段匹配即可。
+ * 优先级：skills-draft > uploads > artifacts。
+ */
 export function getResourceBucket(path: string): ResourceBucket | null {
-  if (path.startsWith("/artifacts/")) return "artifacts"
-  if (path.startsWith("/uploads/")) return "uploads"
-  if (path.startsWith("/skills-draft/")) return "skills_draft"
+  const p = path.replace(/\\/g, "/")
+  if (/(^|\/)skills-draft(\/|$)/.test(p)) return "skills_draft"
+  if (/(^|\/)uploads(\/|$)/.test(p)) return "uploads"
+  if (/(^|\/)artifacts(\/|$)/.test(p)) return "artifacts"
   return null
+}
+
+/** 取路径中桶段之后的相对部分（含文件名），用于构建工作台文件树。无桶段返回 basename。 */
+export function toBucketRelativeSegments(path: string): string[] {
+  const p = path.replace(/\\/g, "/")
+  const m = p.match(/(?:^|\/)(?:artifacts|uploads|skills-draft)\/(.+)$/)
+  if (m && m[1]) return m[1].split("/").filter(Boolean)
+  const segs = p.split("/").filter(Boolean)
+  const last = segs.at(-1)
+  return last ? [last] : []
 }
 
 export function isConversationResourcePath(path: string): boolean {

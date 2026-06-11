@@ -408,7 +408,7 @@ def list_conversation_resources(
 @router.get("/chat/conversations/{conversation_id}/resources/content", response_model=ResponseBase[ResourceContent])
 def read_conversation_resource_content(
     conversation_id: int,
-    path: str = Query(..., description="虚拟文件路径，如 /artifacts/report.md"),
+    path: str = Query(..., description="真实磁盘绝对路径（会话根目录内）"),
     db: Session = Depends(get_db),
 ) -> ResponseBase[ResourceContent]:
     """读取会话资源文件的内容。"""
@@ -445,7 +445,7 @@ async def upload_conversation_resource(
 @router.delete("/chat/conversations/{conversation_id}/resources/uploads")
 def delete_conversation_upload(
     conversation_id: int,
-    path: str = Query(..., description="虚拟路径，如 /uploads/file.txt"),
+    path: str = Query(..., description="真实磁盘绝对路径（uploads 桶内）"),
     db: Session = Depends(get_db),
 ) -> BaseResponse:
     """删除会话 uploads 目录中的文件。"""
@@ -462,7 +462,7 @@ def delete_conversation_upload(
 @router.get("/chat/conversations/{conversation_id}/resources/download")
 def download_conversation_resource(
     conversation_id: int,
-    path: str = Query(..., description="虚拟路径，如 /artifacts/report.md"),
+    path: str = Query(..., description="真实磁盘绝对路径（会话根目录内）"),
     db: Session = Depends(get_db),
 ):
     conversation = ChatService.get_conversation(db, conversation_id)
@@ -488,18 +488,17 @@ def download_conversation_resource(
     )
 
 
-@router.get("/chat/conversations/{conversation_id}/resources/static/{path:path}")
+@router.get("/chat/conversations/{conversation_id}/resources/static")
 def serve_conversation_resource_static(
     conversation_id: int,
-    path: str,
+    path: str = Query(..., description="真实磁盘绝对路径（须在会话根目录内）"),
     db: Session = Depends(get_db),
 ):
-    """以 inline + 正确 Content-Type 提供会话产物文件，path-based 支持相对资源。"""
+    """以 inline + 正确 Content-Type 提供会话产物文件（真实路径 + 沙箱校验）。"""
     conversation = ChatService.get_conversation(db, conversation_id)
     settings = get_settings()
-    virtual_path = "/" + path.lstrip("/")
     result = ResourceService.resolve_download_path(
-        settings.artifacts_path, conversation.id, virtual_path
+        settings.artifacts_path, conversation.id, path
     )
     if result is None:
         raise HTTPException(status_code=404, detail="not found")
@@ -513,7 +512,7 @@ def serve_conversation_resource_static(
 @router.delete("/chat/conversations/{conversation_id}/resources")
 def delete_conversation_resource(
     conversation_id: int,
-    path: str = Query(..., description="虚拟路径，如 /artifacts/report.md"),
+    path: str = Query(..., description="真实磁盘绝对路径（会话根目录内）"),
     db: Session = Depends(get_db),
 ) -> BaseResponse:
     conversation = ChatService.get_conversation(db, conversation_id)

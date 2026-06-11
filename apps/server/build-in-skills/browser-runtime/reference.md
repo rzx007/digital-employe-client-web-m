@@ -37,7 +37,7 @@
 | `EMPTY_SCREENSHOT` | 截图数据为空 |
 | `WRITE_FAILED` | 截图写盘失败 |
 | `MISSING_CONVERSATION_ID` | `open-artifact` 缺会话标识（shell 未注入 `CONVERSATION_ID`） |
-| `PATH_NOT_IN_ARTIFACTS` | `open-artifact` 路径在产物目录外（如 skill `output/`）；先复制到 `/artifacts` 再打开 |
+| `CANNOT_RESOLVE_PATH` | `open-artifact` 给纯文件名但 `$ARTIFACTS_DIR` 未注入；改用绝对路径，或在产物目录 cwd 下。会话目录外的文件由后端 404（先复制进产物目录再打开） |
 
 ## 命令
 
@@ -45,7 +45,7 @@
 browserctl health
 browserctl open <url>
 browserctl navigate <url>
-browserctl open-artifact <虚拟路径>   # 打开会话产物目录里的 HTML（自动识别会话，支持相对资源），无文件卡片时用
+browserctl open-artifact <文件名或真实路径>   # 打开会话产物目录里的 HTML（纯文件名按 $ARTIFACTS_DIR 解析，自动识别会话，支持相对资源），无文件卡片时用
 browserctl snapshot [--max-nodes 200] [--tree|--interactive]   # 文本模式省 token；--interactive 仅可交互节点平铺，--tree 全量缩进树，默认 JSON
 browserctl click <@eN|selector> [--confirm "确认文案"]
 browserctl wait --selector <css>     # 等元素出现（默认超时 10s，--timeout 改）

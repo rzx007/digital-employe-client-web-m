@@ -283,7 +283,7 @@ function DocumentPlanCardInner({
                         e.target.value
                       )
                     }
-                    placeholder="/artifacts/doc-slug/chapter-01-背景.md"
+                    placeholder="doc-slug/chapter-01-背景.md"
                     className="h-7 font-mono text-xs"
                   />
                   <Button
