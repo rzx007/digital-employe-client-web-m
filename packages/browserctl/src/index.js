@@ -88,22 +88,19 @@ export function normalizeUrl(input) {
   return `https://${value}`
 }
 
-// 把 open-artifact 的输入规范化为 /artifacts|uploads|skills-draft/... 虚拟路径。
-// 兼容：虚拟路径(/artifacts/x)、无前导斜杠(artifacts/x)、物理绝对路径
-// (C:/Users/.../conversations/<id>/artifacts/x，含 Windows 反斜杠)、纯文件名(默认 artifacts)。
-// 返回 null 表示无法映射到产物目录（产物目录外的绝对路径，如 skill 的 output/）。
-export function toArtifactVirtualPath(input) {
-  const p = String(input || "")
-    .trim()
-    .replace(/\\/g, "/")
+// 把 open-artifact 的输入解析为**真实磁盘绝对路径**（去虚拟前缀后，agent 直接给真实路径）。
+// - 真实绝对路径（Windows 盘符 C:/ 或 C:\、Unix /...）→ 原样返回（后端按会话根沙箱校验）。
+// - 纯文件名 / 相对路径 → 拼 $ARTIFACTS_DIR（agent 常在产物目录 cwd 下给文件名）。
+// 返回 null 表示无法解析（纯文件名但 ARTIFACTS_DIR 未注入）。
+export function resolveArtifactRealPath(input) {
+  const p = String(input || "").trim()
   if (!p) return null
-  // 已含产物前缀（虚拟路径，或物理路径里的产物段）→ 抽出虚拟路径
-  const m = p.match(/(?:^|\/)((?:artifacts|uploads|skills-draft)\/.+)$/)
-  if (m) return `/${m[1]}`
-  // 绝对路径（盘符 C:/ 或以 / 开头）却不含产物前缀 → 在产物目录之外，无法映射
-  if (/^[a-z]:\//i.test(p) || p.startsWith("/")) return null
-  // 纯文件名 / 简单相对路径 → 默认产物目录 artifacts（Agent 常在 artifacts cwd 下给文件名）
-  return `/artifacts/${p.replace(/^\.?\//, "")}`
+  const isWinAbs = /^[a-zA-Z]:[\\/]/.test(p)
+  const isUnixAbs = p.startsWith("/")
+  if (isWinAbs || isUnixAbs) return p
+  const dir = process.env.ARTIFACTS_DIR
+  if (!dir) return null
+  return `${dir.replace(/[\\/]+$/, "")}/${p.replace(/^\.?[\\/]/, "")}`
 }
 
 function bridgeUrl(path) {
@@ -288,8 +285,8 @@ async function run(argv) {
   }
 
   if (command === "open-artifact") {
-    const virtualPath = rest[0]
-    if (!virtualPath) throw new Error("virtual path required")
+    const rawPath = rest[0]
+    if (!rawPath) throw new Error("path required")
     const conversationId = process.env.CONVERSATION_ID
     if (!conversationId) {
       print(
@@ -303,24 +300,26 @@ async function run(argv) {
       )
       return
     }
-    const backendBase = (
-      process.env.BROWSER_RUNTIME_BACKEND_URL || "http://127.0.0.1:34567"
-    ).replace(/\/$/, "")
-    const virtual = toArtifactVirtualPath(virtualPath)
-    if (!virtual) {
+    const realPath = resolveArtifactRealPath(rawPath)
+    if (!realPath) {
       print(
         {
           ok: false,
           error:
-            "path is not under the conversation artifacts dir (/artifacts, /uploads, /skills-draft); for files outside it (e.g. a skill's output/), copy them into the artifacts dir first",
-          code: "PATH_NOT_IN_ARTIFACTS",
+            "cannot resolve path: pass an absolute disk path, or a bare filename with $ARTIFACTS_DIR set",
+          code: "CANNOT_RESOLVE_PATH",
         },
         flags.pretty
       )
       return
     }
-    const rel = virtual.replace(/^\//, "")
-    const url = `${backendBase}/chat/conversations/${conversationId}/resources/static/${rel}`
+    const backendBase = (
+      process.env.BROWSER_RUNTIME_BACKEND_URL || "http://127.0.0.1:34567"
+    ).replace(/\/$/, "")
+    // 后端静态服务按真实路径 + 会话根沙箱校验（路径在会话根外时返回 404）
+    const url = `${backendBase}/chat/conversations/${conversationId}/resources/static?path=${encodeURIComponent(
+      realPath
+    )}`
     print(await postAction("navigate", { url }), flags.pretty)
     return
   }

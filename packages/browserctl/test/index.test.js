@@ -11,7 +11,7 @@ import {
   parseFlags,
   normalizeUrl,
   formatSnapshotText,
-  toArtifactVirtualPath,
+  resolveArtifactRealPath,
 } from "../src/index.js"
 
 const CLI = fileURLToPath(new URL("../src/index.js", import.meta.url))
@@ -49,98 +49,68 @@ test("normalizeUrl 补 https、保留已有协议、空值原样", () => {
   assert.equal(normalizeUrl(""), "")
 })
 
-test("toArtifactVirtualPath 规范化虚拟/无斜杠/物理绝对/反斜杠/纯文件名", () => {
-  assert.equal(toArtifactVirtualPath("/artifacts/x.html"), "/artifacts/x.html")
-  assert.equal(toArtifactVirtualPath("artifacts/x.html"), "/artifacts/x.html")
-  assert.equal(
-    toArtifactVirtualPath(
-      "C:/Users/ruanz/.digital-employee/conversations/430/artifacts/fa.html"
-    ),
-    "/artifacts/fa.html"
-  )
-  assert.equal(
-    toArtifactVirtualPath(
-      "C:\\Users\\ruanz\\.digital-employee\\conversations\\430\\artifacts\\fa.html"
-    ),
-    "/artifacts/fa.html"
-  )
-  assert.equal(toArtifactVirtualPath("/uploads/a.png"), "/uploads/a.png")
-  assert.equal(toArtifactVirtualPath("snake.html"), "/artifacts/snake.html")
-  // macOS / Linux 物理绝对路径（用 / 分隔，无盘符）
-  assert.equal(
-    toArtifactVirtualPath(
-      "/Users/ruanz/.digital-employee/conversations/430/artifacts/fa.html"
-    ),
-    "/artifacts/fa.html"
-  )
-  assert.equal(
-    toArtifactVirtualPath(
-      "/home/ruanz/.digital-employee/conversations/430/artifacts/fa.html"
-    ),
-    "/artifacts/fa.html"
-  )
-  // 产物目录外的绝对路径（如 skill 的 output/）→ null（无法映射，不再瞎塞 /artifacts/）
-  assert.equal(
-    toArtifactVirtualPath(
-      "C:/Users/ruanz/.digital-employee/conversations/469/skills/fa-skill/output/fa.html"
-    ),
-    null
-  )
-  assert.equal(toArtifactVirtualPath("/some/abs/path/x.html"), null)
+test("resolveArtifactRealPath: 真实绝对路径原样，纯文件名拼 ARTIFACTS_DIR", () => {
+  // Windows 盘符（正斜杠 / 反斜杠）原样
+  assert.equal(resolveArtifactRealPath("C:/x/y/a.html"), "C:/x/y/a.html")
+  assert.equal(resolveArtifactRealPath("C:\\x\\y\\a.html"), "C:\\x\\y\\a.html")
+  // Unix 绝对路径原样
+  assert.equal(resolveArtifactRealPath("/home/u/a.html"), "/home/u/a.html")
+  // 纯文件名 / 相对 → 拼 ARTIFACTS_DIR
+  const prev = process.env.ARTIFACTS_DIR
+  process.env.ARTIFACTS_DIR = "/tmp/art"
+  assert.equal(resolveArtifactRealPath("snake.html"), "/tmp/art/snake.html")
+  assert.equal(resolveArtifactRealPath("./snake.html"), "/tmp/art/snake.html")
+  // 无 ARTIFACTS_DIR 时纯文件名无法解析 → null
+  delete process.env.ARTIFACTS_DIR
+  assert.equal(resolveArtifactRealPath("snake.html"), null)
+  if (prev !== undefined) process.env.ARTIFACTS_DIR = prev
 })
 
-test("open-artifact 接受物理绝对路径并抽出虚拟段拼 URL", async () => {
+test("open-artifact 接受真实绝对路径并拼 ?path= 查询参数 URL", async () => {
   let body
   const srv = await startServer(async (req, res) => {
     body = JSON.parse(await readBody(req))
     res.end(JSON.stringify({ ok: true, data: {} }))
   })
+  const real =
+    "C:/Users/ruanz/.digital-employee/conversations/430/artifacts/fa.html"
   try {
-    await runCli(
-      [
-        "open-artifact",
-        "C:/Users/ruanz/.digital-employee/conversations/430/artifacts/fa.html",
-      ],
-      {
-        env: {
-          BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv),
-          CONVERSATION_ID: "430",
-          BROWSER_RUNTIME_BACKEND_URL: "http://127.0.0.1:34567",
-        },
-      }
-    )
+    await runCli(["open-artifact", real], {
+      env: {
+        BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv),
+        CONVERSATION_ID: "430",
+        BROWSER_RUNTIME_BACKEND_URL: "http://127.0.0.1:34567",
+      },
+    })
     assert.equal(
       body.url,
-      "http://127.0.0.1:34567/chat/conversations/430/resources/static/artifacts/fa.html"
+      `http://127.0.0.1:34567/chat/conversations/430/resources/static?path=${encodeURIComponent(
+        real
+      )}`
     )
   } finally {
     await closeServer(srv)
   }
 })
 
-test("open-artifact 对产物目录外的绝对路径报 PATH_NOT_IN_ARTIFACTS 且不发请求", async () => {
+test("open-artifact 纯文件名但无 ARTIFACTS_DIR → CANNOT_RESOLVE_PATH 且不发请求", async () => {
   let hit = false
   const srv = await startServer((req, res) => {
     hit = true
     res.end(JSON.stringify({ ok: true }))
   })
   try {
-    const { stdout } = await runCli(
-      [
-        "open-artifact",
-        "C:/Users/ruanz/.digital-employee/conversations/469/skills/fa-skill/output/fa.html",
-      ],
-      {
-        env: {
-          BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv),
-          CONVERSATION_ID: "469",
-          BROWSER_RUNTIME_BACKEND_URL: "http://127.0.0.1:34567",
-        },
-      }
-    )
+    const { stdout } = await runCli(["open-artifact", "fa.html"], {
+      env: {
+        BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv),
+        CONVERSATION_ID: "469",
+        BROWSER_RUNTIME_BACKEND_URL: "http://127.0.0.1:34567",
+        ARTIFACTS_DIR: "",
+      },
+    })
     const j = JSON.parse(stdout)
     assert.equal(j.ok, false)
-    assert.equal(j.code, "PATH_NOT_IN_ARTIFACTS")
+    assert.equal(j.code, "CANNOT_RESOLVE_PATH")
     assert.equal(hit, false)
   } finally {
     await closeServer(srv)
@@ -373,8 +343,9 @@ test("open-artifact 用 CONVERSATION_ID 与 backend url 构造静态 url 并 nav
     received = JSON.parse(await readBody(req))
     res.end(JSON.stringify({ ok: true, data: {} }))
   })
+  const real = "/Users/u/.digital-employee/conversations/42/artifacts/report.html"
   try {
-    await runCli(["open-artifact", "/artifacts/report.html"], {
+    await runCli(["open-artifact", real], {
       env: {
         BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv),
         CONVERSATION_ID: "42",
@@ -384,30 +355,35 @@ test("open-artifact 用 CONVERSATION_ID 与 backend url 构造静态 url 并 nav
     assert.ok(reqUrl.endsWith("/navigate"))
     assert.equal(
       received.url,
-      "http://127.0.0.1:34567/chat/conversations/42/resources/static/artifacts/report.html"
+      `http://127.0.0.1:34567/chat/conversations/42/resources/static?path=${encodeURIComponent(
+        real
+      )}`
     )
   } finally {
     await closeServer(srv)
   }
 })
 
-test("open-artifact 无前导斜杠的相对路径不产生双斜杠", async () => {
+test("open-artifact 纯文件名用 ARTIFACTS_DIR 拼真实路径", async () => {
   let received
   const srv = await startServer(async (req, res) => {
     received = JSON.parse(await readBody(req))
     res.end(JSON.stringify({ ok: true, data: {} }))
   })
   try {
-    await runCli(["open-artifact", "artifacts/a.html"], {
+    await runCli(["open-artifact", "a.html"], {
       env: {
         BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv),
         CONVERSATION_ID: "1",
         BROWSER_RUNTIME_BACKEND_URL: "http://127.0.0.1:34567",
+        ARTIFACTS_DIR: "/tmp/conv1/artifacts",
       },
     })
     assert.equal(
       received.url,
-      "http://127.0.0.1:34567/chat/conversations/1/resources/static/artifacts/a.html"
+      `http://127.0.0.1:34567/chat/conversations/1/resources/static?path=${encodeURIComponent(
+        "/tmp/conv1/artifacts/a.html"
+      )}`
     )
   } finally {
     await closeServer(srv)
