@@ -10,11 +10,16 @@ import {
   PromptInputSubmit,
   PromptInputTools,
 } from "@workspace/ui/components/ai-elements/prompt-input"
+import { toast } from "sonner"
+import { IconMicrophone } from "@tabler/icons-react"
+import { Button } from "@workspace/ui/components/button"
 import { LexicalPromptInputTextarea } from "../lexical-editor/prompt-input-textarea"
 import { Separator } from "@workspace/ui/components/separator"
 import { ChatPromptInputAttachments } from "./chat-prompt-input-attachments"
 import { ACCEPTED_FILE_TYPES, MAX_UPLOAD_SIZE_BYTES } from "./constants"
 import type { ChatPromptInputProps } from "./types"
+import { useVoiceRecorder } from "./use-voice-recorder"
+import { VoiceRecorderOverlay } from "./voice-recorder"
 import { cn } from "@workspace/ui/lib/utils"
 import { ContextBudgetIndicator } from "@/components/chat/panel/context-budget-indicator"
 
@@ -34,8 +39,24 @@ export function ChatPromptInput({
   onAttachmentsChange,
   messages,
   showContextBudget = true,
+  showVoiceInput = false,
 }: ChatPromptInputProps) {
   const isCompact = size === "compact"
+
+  const recorder = useVoiceRecorder({
+    onResult: (result) => {
+      onSubmit({
+        text: result.text,
+        files: [],
+        voice: {
+          durationMs: result.durationMs,
+          waveform: result.waveform,
+          blob: result.blob,
+        },
+      })
+    },
+    onError: (message) => toast.error(message),
+  })
 
   return (
     <PromptInput
@@ -45,7 +66,7 @@ export function ChatPromptInput({
       maxFileSize={MAX_UPLOAD_SIZE_BYTES}
       maxFiles={10}
       onSubmit={onSubmit}
-      className={cn("@container/prompt-input min-w-0", className)}
+      className={cn("@container/prompt-input relative min-w-0", className)}
     >
       <PromptInputHeader>
         {onAttachmentsChange && (
@@ -95,6 +116,21 @@ export function ChatPromptInput({
           )}
         </PromptInputTools>
         <PromptInputTools>
+          {showVoiceInput && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="rounded-full"
+              disabled={
+                disabled || status === "streaming" || status === "submitted"
+              }
+              onClick={recorder.start}
+              aria-label="语音输入"
+            >
+              <IconMicrophone className="size-4" />
+            </Button>
+          )}
           <PromptInputSubmit
             disabled={disabled}
             status={status}
@@ -103,6 +139,19 @@ export function ChatPromptInput({
           />
         </PromptInputTools>
       </PromptInputFooter>
+      {recorder.phase !== "idle" && (
+        <VoiceRecorderOverlay
+          phase={recorder.phase}
+          elapsedMs={recorder.elapsedMs}
+          onStreamReady={recorder.attachStream}
+          onSend={() => void recorder.finish()}
+          onCancel={recorder.cancel}
+          onMicError={(message) => {
+            toast.error(message)
+            recorder.cancel()
+          }}
+        />
+      )}
     </PromptInput>
   )
 }

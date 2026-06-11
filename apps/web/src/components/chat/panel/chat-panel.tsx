@@ -411,6 +411,7 @@ export function ChatPanel({
                 error={error}
                 pendingQueueClassName="mx-auto w-[98%]"
                 showContextBudget={contact?.type !== "group"}
+                showVoiceInput={contact?.type !== "group"}
               />
             </div>
           </>
