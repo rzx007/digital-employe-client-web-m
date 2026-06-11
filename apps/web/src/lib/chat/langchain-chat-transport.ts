@@ -344,6 +344,8 @@ export class LangChainChatTransport<
   UI_MESSAGE extends UIMessage,
 > implements ChatTransport<UI_MESSAGE> {
   private _reconnectAbort: AbortController | null = null
+  /** 当前在飞 resume 连接所属的会话 id（无在飞连接时为 null）。用于 resume 止抖判定。 */
+  private _reconnectChatId: string | null = null
   _resumeConversationId: string | null = null
   /** 下一次 resume 时要跳过的、已封存在中断消息里的 toolCallId（防 HITL 重放重复） */
   private _resumeSealedToolCallIds: string[] = []
@@ -362,6 +364,7 @@ export class LangChainChatTransport<
       this._reconnectAbort.abort()
       this._reconnectAbort = null
     }
+    this._reconnectChatId = null
   }
 
   /**
@@ -371,6 +374,14 @@ export class LangChainChatTransport<
   cancelReconnect = () => {
     this.cancelPreviousReconnect()
   }
+
+  /**
+   * 当前在飞 resume 连接所属的会话 id；无在飞连接时为 null。供上层在调度 resumeStream()
+   * 前止抖：同会话已有在飞连接时跳过新触发，避免反复 abort+全量重放导致画面从头重打。
+   * 假死连接由 idle 看门狗(SSE_IDLE_TIMEOUT_MS) 回收→届时返回 null→自然放行重连。
+   */
+  getInFlightResumeChatId = (): string | null =>
+    this._reconnectAbort != null ? this._reconnectChatId : null
 
   setResumeConversationId = (id: string | null) => {
     this._resumeConversationId = id
@@ -437,6 +448,7 @@ export class LangChainChatTransport<
     this.cancelPreviousReconnect()
     const abortController = new AbortController()
     this._reconnectAbort = abortController
+    this._reconnectChatId = effectiveChatId
 
     let stream: ReadableStream<Uint8Array> | null
     try {
@@ -450,6 +462,7 @@ export class LangChainChatTransport<
         isBenignStreamAbortError(error)
       ) {
         this._reconnectAbort = null
+        this._reconnectChatId = null
         return null
       }
       throw error
@@ -457,6 +470,7 @@ export class LangChainChatTransport<
 
     if (!stream) {
       this._reconnectAbort = null
+      this._reconnectChatId = null
       return null
     }
 
@@ -900,6 +914,7 @@ export class LangChainChatTransport<
           // 只清除属于当前 reconnect 的 AbortController，不覆盖新创建的
           if (reconnectAbort && this._reconnectAbort === reconnectAbort) {
             this._reconnectAbort = null
+            this._reconnectChatId = null
           }
         }
       },
