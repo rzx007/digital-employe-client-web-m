@@ -1,7 +1,7 @@
 # 宠物离线语音唤醒 + 可配转写 — 设计文档
 
 - 日期：2026-06-11
-- 状态：待评审
+- 状态：待评审（评审第 2 版，已修订单流架构 / 投递机制）
 - 作者：Danovan / Claude
 - 涉及仓库：`digital-employe-client-web-main`（Electron + React 桌面端，`apps/web`）
 
@@ -40,153 +40,188 @@
 ## 4. 现状（复用基础）
 
 - 宠物渲染与动画：`apps/web/src/components/pet/PetWindow.tsx`、`animation/SpritePlayer.tsx`、`animation/types.ts`。
-  - 录音时状态 `isRecording → "waving"`（挥手）；处理中 `voiceBusy → "waiting"`（思考）。这正是"录音动作"。
+  - 录音时 `isRecording → "waving"`（挥手，`PetWindow.tsx:126`）；处理中 `voiceBusy → "waiting"`（思考，`PetWindow.tsx:124`）。这正是"录音动作"。
 - 语音 Hook：`apps/web/src/components/pet/use-pet-voice-curator.ts`
-  - 暴露 `toggleVoiceClick()`：idle 时**开始录音**，recording 时**停录+转写+发送**；以及 `isRecording`、`voiceBusy`、`feedback`、`clearFeedback`。
-  - 内部 `startRecording()`（getUserMedia + MediaRecorder/WebM-Opus）、`finishRecordingAndSend()`（停录 → `transcribePetAudio` → `sendCuratorStreamMessage`）。
-- 转写：`apps/web/src/lib/pet/transcribe-audio.ts` → Finch，默认 `http://192.168.2.125:8082/finch/v1/audio/transcriptions`，**构建期** env `VITE_FINCH_TRANSCRIPTION_URL/_KEY/_LANGUAGE`。
+  - 现状对外仅暴露 `toggleVoiceClick()`、`isRecording`、`voiceBusy`、`feedback`、`clearFeedback`。
+  - **内部**：`startRecording()` 自己 `getUserMedia` 建 `streamRef` + MediaRecorder；`finishRecordingAndSend()` 停录→`transcribePetAudio`→`sendCuratorStreamMessage`；`cleanupStream()` 会 `stop()` 自有轨。
+  - ⚠️ 关键约束：该 Hook **自持私有麦克风流**，当前**无法注入外部流**——本设计需对它做受控改造（见 §6.1）。
+- 转写：`apps/web/src/lib/pet/transcribe-audio.ts` → Finch，默认 `http://192.168.2.125:8082/finch/v1/audio/transcriptions`，**构建期** env `VITE_FINCH_TRANSCRIPTION_URL/_KEY/_LANGUAGE`（`import.meta.env` 编译期内联，运行时不可改）。
 - 发送：`apps/web/src/lib/pet/send-curator-stream.ts` → `sendCuratorStreamMessage(text, { conversationId })`。
-- 宠物窗与 IPC：`electron/features/pet/pet-window.ts`（**已为窗口设置媒体权限 partition**）、`electron/features/pet/ipc.ts`（`petShow` 等）、`preload-bridge.ts`（`petBridge`）。
+- 宠物窗与 IPC：`electron/features/pet/pet-window.ts`
+  - 生产用 `file://…/dist/index.html#/pet` 加载；窗口有独立 `persist:pet-panel` partition 且**自动授予媒体权限**（不再弹权限框）。
+  - 已有**自定义协议处理**先例：`handlePetdexRequest`（`petdex://`）用于读取磁盘上的宠物资源——本设计的模型字节投递将**复刻此先例**（见 §6.3）。
 - 设置存储：`electron/features/settings/settings-store.ts`（electron-store，`~/.digital-employee/settings.json`，`getSetting/setSetting`）。
-- 离线资源路径范式：`electron/features/backend/backend-process.ts` 的 `OFFLINE_DEPS_DIR`（注入子进程）；模型/二进制走 `electron-builder.json5` 的 `extraResources`。
-- 打包：`apps/web/electron-builder.json5` —— 有 `extraResources`，**无 `asarUnpack`**。
+  - ⚠️ `electron/features/pet/ipc.ts` 的 `getPetSettings` 返回**固定 3 字段**、`setPetSettings` 仅白名单 `petEnabled/petVisibilityMode/petAlwaysOnTop`；新增字段若不扩白名单会被**静默丢弃**（见 §8.2）。
+- 离线资源路径范式：`electron/features/backend/backend-process.ts` 的 `OFFLINE_DEPS_DIR`。
+- 打包：`apps/web/electron-builder.json5` —— 有 `extraResources`，**无 `asarUnpack`**；`files: ["dist", ...]`。无 AudioWorklet 先例。
 
-## 5. 架构总览
+## 5. 架构总览（单条共享麦克风流）
+
+核心决策：**`useWakeWord` 独占持有一条持久麦克风流**；该流同时供给 (1) AudioWorklet→KWS/VAD，(2) 命中后录音的 MediaRecorder。录音不再新开流，而是**复用同一条**（需改造 Hook 接受注入流，§6.1）。这样 VAD 与录音是**同一路音频**，且全程只有一次设备捕获（无双流回声/AGC 冲突）。
 
 ```
-┌──────────────── 宠物渲染进程 (apps/web renderer) ────────────────┐
+┌──────────────── 宠物渲染进程 (file://…/pet) ─────────────────────┐
 │                                                                  │
-│  麦克风(getUserMedia, 持久流)                                     │
+│  useWakeWord 持久流 = getUserMedia(audio)                         │
 │        │                                                         │
-│        ├─► AudioWorklet(pcm-worklet) ─16kHz mono f32─► KWS(wasm) │
-│        │                                   │                     │
-│        │                              命中"你好博般"               │
-│        │                                   ▼                     │
-│        │                         useWakeWord.onWake()           │
-│        │                                   │                     │
-│        │           ┌───────────────────────┘                     │
-│        │           ▼                                             │
-│        │   usePetVoiceCurator.toggleVoiceClick() ── 开录(挥手)    │
-│        │           │                                             │
-│        └─► VAD(尾静音端点) ──说完──► toggleVoiceClick() ── 停录    │
-│                                          │                       │
-│                                  finishRecordingAndSend()        │
-│                                          │                       │
-│                              transcribePetAudio(可配URL) ──HTTP──►│ STT 服务
-│                                          │                       │ (Finch / 本机)
-│                                  sendCuratorStreamMessage ──────►│ 总管对话
+│        ├─► AudioContext.MediaStreamSource ─► AudioWorklet         │
+│        │        (pcm-worklet: → 16kHz mono f32 帧)                │
+│        │                 │                                       │
+│        │                 ├─► KWS.accept(f32) → poll()            │
+│        │                 │      命中"你好博般"(capture 外才采纳)    │
+│        │                 │            │                          │
+│        │                 └─► VAD.accept(f32) → isEndpoint()      │
+│        │                          (仅 capture 期间判端点)          │
+│        │                                                         │
+│        └─► (同一条流注入) MediaRecorder ◄── startRecording(stream)│
+│                                                                  │
+│   onWake → voice.startRecording({stream}) [挥手] → capture=on    │
+│   VAD 端点 → voice.finishRecordingAndSend() → 转写 → 发总管        │
+│              (停 MediaRecorder，但不停共享流的轨)                  │
+│   完成 → capture=off → 恢复采纳 KWS 命中                          │
+│                                                                  │
+│   模型字节：wakemodel:// 协议(主进程)流式读 ~/.digital-employee/… │
+│   wasm/worklet 资产：public/ 内随 dist 发，相对 index.html 加载    │
 └──────────────────────────────────────────────────────────────────┘
-
-模型/wasm 资产解析：Electron 主进程 IPC `wake:resolve-model`
-  → 查 WAKEWORD_MODEL_DIR(env) / settings / 默认 ~/.digital-employee/models/wake/
-  → 返回 {dir, present}
 ```
+
+**喂帧 vs 采纳分离**（解决"暂停喂 KWS"与 VAD 的矛盾）：capture 期间**继续喂波形**给 wasm（VAD 端点要用），但**忽略 KWS 关键词命中**（`capture=on` 时 `poll()` 结果不触发 onWake），从而既不自触发、又能端点。
 
 ## 6. 组件设计
 
-### 6.1 A — 唤醒词模块（新增）
+### 6.1 A — 唤醒词模块（新增）+ Hook 受控改造
 
 目录：`apps/web/src/lib/pet/wake/`
 
 | 文件 | 职责 | 对外接口 |
 |---|---|---|
-| `pcm-worklet.ts` | AudioWorklet 处理器：把麦克风音频重采样为 16kHz 单声道 Float32 帧，`postMessage` 给主线程 | worklet 模块 URL |
-| `sherpa-kws.ts` | 封装 sherpa-onnx wasm：加载 wasm + 模型、`createKeywordSpotter`、`acceptWaveform`、轮询 `getResult`；同 wasm 内的 VAD 端点封装 | `createKws(modelDir): { accept(f32), poll(): string\|null, vadIsEndpoint(): bool, free() }` |
-| `resolve-wake-model.ts` | 经 IPC 取模型目录与存在性 | `resolveWakeModel(): Promise<{dir, present}>` |
-| `useWakeWord.ts` | React Hook：持久麦克风流 + worklet + KWS 生命周期；`enabled` 控制启停；防抖；录音期间暂停喂帧 | `useWakeWord({ enabled, onWake }): { active, status }` |
+| `pcm-worklet.ts` | AudioWorklet 处理器：麦克风音频 → 16kHz 单声道 Float32 帧，`port.postMessage` | worklet 模块（`public/` 资产，相对 URL 加载） |
+| `sherpa-kws.ts` | 封装 sherpa-onnx wasm：经 `locateFile` 定位 `public/` 内 wasm；用 §6.3 协议把模型字节写入 wasm MEMFS；`createKeywordSpotter` + `createVad`；`accept(f32)`、`pollKeyword()`、`vadIsEndpoint()`、`free()` | `createSherpa(modelUrlBase): Promise<{accept, pollKeyword, vadIsEndpoint, vadReset, free}>` |
+| `resolve-wake-model.ts` | 经 IPC 取模型存在性与协议基址 | `resolveWakeModel(): Promise<{present, urlBase}>` |
+| `useWakeWord.ts` | Hook：持久流 + AudioContext + worklet + sherpa 生命周期；`enabled` 启停；`capture` 门控；命中防抖；VAD 端点回调 | `useWakeWord({ enabled, onWake, onEndpoint }): { active, status, getStream(): MediaStream \| null }` —— `getStream` 在权限/AudioContext 就绪前可能为 `null` |
 
-接入：`PetWindow.tsx` 中
+**`usePetVoiceCurator` 受控改造（API 确有变化）**：
+- `startRecording(opts?: { stream?: MediaStream })`：传入 `stream` 时复用该流建 MediaRecorder，并记 `externalStream=true`；否则保持现状自开流（点击说话不受影响）。
+- `cleanupStream()`：`externalStream` 为真时**只置空 ref、不 `stop()` 轨**（所有权归 `useWakeWord`）。
+- 返回值新增暴露 `startRecording`、`finishRecordingAndSend`（供唤醒驱动直接调"开/停"两端，而非只有 toggle）。
+- 现有 `toggleVoiceClick` 行为与签名不变（点击说话回归路径不动）。
+
+接入 `PetWindow.tsx`：
 ```ts
 const voice = usePetVoiceCurator()
 const wake = useWakeWord({
   enabled: voiceWakeEnabled && modelPresent && !voice.voiceBusy,
-  onWake: () => handleWake(voice),
+  onWake: async () => {
+    const stream = wake.getStream()          // 可能为 null（权限/AudioContext 未就绪）
+    if (!stream) return
+    await voice.startRecording({ stream })   // capture=on，宠物挥手
+  },
+  onEndpoint: () => voice.finishRecordingAndSend(), // VAD 端点 → 停录发送，capture=off
 })
 ```
-`handleWake`：若空闲 → `voice.toggleVoiceClick()` 开录；订阅 VAD 端点（说完）→ 再 `voice.toggleVoiceClick()` 停录发送。开录后**暂停向 KWS 喂帧**（防自触发/回声），发送完成或失败后恢复。
-
-> 说明：复用 `toggleVoiceClick` 的"开/停"语义即可，无需改动 `usePetVoiceCurator` 的对外 API；VAD 端点驱动"停"这一下，替代人手点击。
+端点驱动由 `useWakeWord` 内部 VAD 触发：capture 期间检测到端点 → 调用传入的 `onEndpoint`（即 `voice.finishRecordingAndSend`）。开录设**最长时长兜底**（如 15s），VAD 异常也能收尾。
 
 ### 6.2 B — 转写后端运行时可配
 
-- 新增运行时配置来源（electron-store，见 §8），字段：`transcriptionUrl`、`transcriptionKey`、`transcriptionLanguage`。
-- 改 `transcribe-audio.ts`：读取顺序 **运行时设置 > `VITE_FINCH_*`（向后兼容）> 内置默认**。通过 preload bridge 暴露 `getTranscriptionConfig()` 给渲染进程（同步或启动时拉取缓存）。
-- 不改请求体/响应解析逻辑（仍是 OpenAI Whisper 风格 multipart）。
+- `SettingsData` 增 `transcriptionUrl/transcriptionKey/transcriptionLanguage`（§8.2）。
+- 新增 IPC `settings:get-transcription-config` + bridge `getTranscriptionConfig(): Promise<{url,key,language}>`（pet 窗 preload 复用共享 `electronApi`，已注入）。
+- `transcribe-audio.ts` 改为 `await window.electronApi.getTranscriptionConfig()`，**读取顺序：运行时设置 > `VITE_FINCH_*` > 内置默认**；`transcribePetAudio` 改为先 await 配置再发请求（函数本就 async，无破坏）。请求体/响应解析逻辑不变。
+
+### 6.3 模型字节投递（解决 file:// 下渲染进程读外部磁盘）
+
+渲染进程在 `file://` 下**不能** `fetch` 应用包外的绝对磁盘路径，故模型字节必须经主进程跨界投递。**复刻现有 `petdex://` 先例**，在 pet 窗 session 注册 `wakemodel://` 协议：
+- 主进程 `electron/features/pet/wake-model.ts`：解析模型目录（`WAKEWORD_MODEL_DIR` env > 设置 `wakeModelDir` > 默认 `~/.digital-employee/models/wake/`），校验 §8.1 的**运行时必需文件集**齐全 → `present`。
+- 注册 `wakemodel://<file>` → 流式返回该目录下文件字节（仅限白名单文件名，防穿越）。
+- IPC `wake:resolve-model` 返回 `{ present, urlBase: "wakemodel://" }`。
+- `sherpa-kws.ts` 用 `urlBase + 文件名` 拉取字节写入 wasm MEMFS，再 `createKeywordSpotter`/`createVad`。
+
+> wasm 胶水 `.js/.wasm` 放 `public/`（随 `dist` 发，相对 index.html 可加载）；**模型不入包**走上述协议。两者分离避免 `extraResources` 落在渲染不可加载源的问题。
 
 ## 7. 数据流（关键时序）
 
-1. 启用且模型存在 → `useWakeWord` 开持久麦克风流 + worklet + KWS。
-2. worklet 持续输出 16k PCM → `kws.accept(frame)` → `kws.poll()`。
-3. `poll()` 返回「你好博般」→ 防抖去重 → `onWake()`。
-4. `onWake`：`toggleVoiceClick()` 开录（`isRecording=true` → 宠物 "waving"）；暂停喂 KWS；开始 VAD 端点检测（基于同一路 PCM）。
-5. 用户说话 → VAD 检测到尾静音（端点）→ `toggleVoiceClick()` 停录 → `finishRecordingAndSend()`：停 MediaRecorder → `transcribePetAudio`(可配URL) → `sendCuratorStreamMessage` → 成功气泡。
-6. 发送结束（成功/失败）→ 恢复向 KWS 喂帧，回到监听态。
-
-边界超时：开录后设**最长录音时长**（如 15s）兜底，VAD 异常也能收尾。
+1. 启用且 `present` → `useWakeWord` 开持久流 + AudioContext + worklet；`createSherpa(urlBase)`（MEMFS 载模型）。
+2. worklet 持续输出 16k PCM → `accept(frame)`；`capture=off` 时 `pollKeyword()` 生效。
+3. 命中「你好博般」→ 防抖去重 → `onWake()`。
+4. `onWake`：`capture=on`；`voice.startRecording({ stream })`（复用共享流，`isRecording=true` → "waving"）；继续喂波形但忽略 KWS 命中，开始 VAD 端点。
+5. 用户说话 → VAD 端点（尾静音）→ `voice.finishRecordingAndSend()`：停 MediaRecorder（**不停共享流轨**）→ `transcribePetAudio`(运行时配置) → `sendCuratorStreamMessage` → 成功气泡。
+6. 发送结束（成功/失败）→ `vadReset()`、`capture=off`，恢复采纳 KWS 命中。
 
 ## 8. 模型、唤醒词与配置
 
 ### 8.1 模型与唤醒词
-- 模型：`sherpa-onnx-kws-zipformer-wenetspeech-3.3M`（含 encoder/decoder/joiner.onnx、tokens.txt、bpe.model）。
-- 唤醒词：用 `sherpa-onnx-cli text2token` 把「你好博般」（拼音）转成 token，写入 `keywords.txt`，附触发阈值 `#`、可选提升分 `:`。阈值需现场调（误唤醒 vs 漏唤醒）。
-- 部署：模型目录由一体机/运维**自部署**，不进安装包。解析优先级：`WAKEWORD_MODEL_DIR`(env) > 设置项 `wakeModelDir` > 默认 `~/.digital-employee/models/wake/`。目录不全则视为 `present=false`。
+- 模型：`sherpa-onnx-kws-zipformer-wenetspeech-3.3M`（encoder/decoder/joiner.onnx、tokens.txt、bpe.model）+ silero-VAD（`silero_vad.onnx`，同 wasm 体系）。
+- 唤醒词：`sherpa-onnx-cli text2token`（用 `bpe.model`）把「你好博般」（拼音）转 token 写入 `keywords.txt`，附触发阈值 `#`（必要时提升分 `:`）。阈值现场调（误唤醒 vs 漏唤醒）。
+- **运行时必需文件集（`present` 判定，§6.3 引用此处为准）**：`encoder.onnx`、`decoder.onnx`、`joiner.onnx`、`tokens.txt`、`keywords.txt`、`silero_vad.onnx`。`bpe.model` 仅部署期 `text2token` 生成 `keywords.txt` 时用，**运行时非必需**。
+- 部署：模型目录由一体机/运维**自部署**，不进安装包。解析优先级见 §6.3；缺任一必需文件 → `present=false`。
 
-### 8.2 设置（electron-store，`SettingsData` 扩展）
+### 8.2 设置（exact 改动清单）
+新增 `SettingsData` 字段及默认（**两处 defaults 都要加**）：
+
 | 字段 | 默认 | 说明 |
 |---|---|---|
 | `voiceWakeEnabled` | `true` | 唤醒总开关（默认开） |
-| `wakeModelDir` | `""` | 模型目录覆盖（空=按默认解析） |
-| `transcriptionUrl` | `""` | 转写服务地址（空=回退 `VITE_FINCH_TRANSCRIPTION_URL`） |
+| `wakeModelDir` | `""` | 模型目录覆盖（空=默认解析） |
+| `transcriptionUrl` | `""` | 转写地址（空=回退 env） |
 | `transcriptionKey` | `""` | 转写密钥（空=回退 env） |
-| `transcriptionLanguage` | `""` | 语言（空=回退 env / `zh`） |
+| `transcriptionLanguage` | `""` | 语言（空=回退 env/`zh`） |
 
-设置页加：唤醒开关、模型目录、转写服务地址/密钥/语言。IPC 经现有 settings bridge（`getPetSettings/setPetSettings` 或等价）读写。
+需协同改动的文件（避免"设置存不进"的坑）：
+1. `settings-store.ts`：`SettingsData` 接口 + `defaults`。
+2. **新增**专用读写通道，不复用受限的 `getPetSettings`：
+   - IPC `wake:get-settings` / `wake:set-settings`（含上述 5 字段白名单）+ `settings:get-transcription-config`。
+   - `preload-bridge.ts` 增对应方法与类型。
+3. 设置页（`pet-settings.tsx` 或新增"语音"分区）：唤醒开关、模型目录、转写地址/密钥/语言。
 
 ## 9. 打包
 
-- sherpa-onnx **KWS wasm 资产**（`sherpa-onnx-wasm-*-kws.js/.wasm` 及 worklet）随包：放渲染可加载位置（`public/` 或 `extraResources`），运行时以 URL 加载。体积小、跨平台。
-- **模型不进包**（自部署，§8.1）。WASM 初始化时把模型文件读入 wasm 虚拟 FS（MEMFS），**不烤进 `.data`**，以支持外置模型。
+- sherpa-onnx **KWS+VAD wasm 资产**与 `pcm-worklet`：放 `apps/web/public/wake/`，随 `dist` 发布，运行时以**相对 index.html** 的 URL 加载（`audioWorklet.addModule`、wasm `locateFile`）。需在 PoC 验证 `file://` 下解析正常。
+- **模型不进包**，经 `wakemodel://`（§6.3）投递；外部自部署。
 - **不引入原生 `.node`，不需要 `asarUnpack`**。
-- 在线包：可不带模型（功能自动关闭）；离线包：随机部署模型 + 本机 STT 服务地址。
+- 在线包可不带模型（功能自动关闭）；离线包随机部署模型 + 本机 STT 地址。
 
 ## 10. 边界与错误处理
 
 | 场景 | 行为 |
 |---|---|
 | 无麦克风权限 / 无设备 | 唤醒静默关闭；首次复用 `getMicErrorCopy` 提示一次；点击说话仍可用 |
-| 模型目录缺失/不全 | `present=false`，唤醒不启动，无报错噪音 |
-| wasm 加载/初始化失败 | 记录日志 + 关闭唤醒，降级点击说话 |
-| 录音期间又触发唤醒 | 喂帧暂停期间不再触发；并加去重防抖 |
+| 模型缺失/不全 | `present=false`，唤醒不启动，无报错噪音 |
+| wasm/worklet 加载或 MEMFS 失败 | 记录日志 + 关闭唤醒，降级点击说话 |
+| capture 期间又命中关键词 | `capture=on` 时 `pollKeyword` 结果被忽略；另加去重防抖 |
 | VAD 不收敛 | 最长录音时长兜底停录 |
 | 转写地址未配且 env 缺失 | 复用现有错误气泡（"识别或发送失败"） |
-| 禁用/卸载/组件卸载 | 停 worklet、停麦克风轨、`kws.free()` 释放 wasm |
+| 禁用/卸载/组件卸载 | 停 worklet、停**共享流**轨、`free()` 释放 wasm、关 AudioContext |
+
+> 单流设计下全程只有一次设备捕获，无双 `getUserMedia` 并发/回声问题。
 
 ## 11. 测试计划
 
 单元测试（vitest）：
-- `resolve-wake-model`：目录有/无/不全 → present 判定。
-- 唤醒接线：mock `usePetVoiceCurator`，`onWake` → 开录；VAD 端点 → 停录（调用次数/顺序）。
-- VAD 端点判定：给定静音段 → 返回 endpoint。
-- `pcm-worklet` 降采样：输入采样率 → 16k 帧长/值正确性。
-- `transcribe-audio` 配置回退：运行时设置 > env > 默认 的优先级。
+- `resolve-wake-model`：文件齐/缺/目录无 → `present` 判定。
+- 唤醒接线：mock `usePetVoiceCurator`，`onWake`→`startRecording({stream})`；VAD 端点→`finishRecordingAndSend`（调用次数/顺序/参数）。
+- capture 门控：`capture=on` 时 `pollKeyword` 命中不触发 `onWake`。
+- VAD 端点：给定静音段 → `vadIsEndpoint()` 为真。
+- `pcm-worklet` 降采样：输入采样率 → 16k 帧长/值正确。
+- `transcribe-audio` 配置回退：运行时设置 > env > 默认。
+- Hook 改造：`startRecording({stream})` 不 `stop()` 外部轨；无参时仍自开流。
 
 手动测试：
-- 部署模型 → 说"你好博般" → 宠物挥手 → 说一句 → 自动转写并发总管。
+- 部署模型 → 说"你好博般" → 挥手 → 说一句 → 自动转写发总管。
 - 无模型 → 唤醒关闭，点击说话照常。
 - 拒绝麦克风 → 优雅降级、提示一次。
-- 离线机把 `transcriptionUrl` 指向本机 STT → 端到端无外网可用。
+- 离线机把 `transcriptionUrl` 指本机 STT → 端到端无外网可用。
+- `file://` 生产包：worklet/wasm 能加载、`wakemodel://` 能取模型。
 
 ## 12. 风险与未决
 
-- **误唤醒率**：常驻 KWS 必有误触发，靠 `keywords.txt` 阈值/提升分现场调；唤醒词四音节相对稳。
-- **WASM 外置模型加载**：需用 MEMFS 运行时挂载模型而非烤进 `.data`，要验证 sherpa-onnx wasm 该用法可行（实现期先做最小 PoC）。
-- **常驻麦克风**：一体机/kiosk 可接受；普通环境是否随宠物可见性收放，留作可选优化（v1 仅受 `voiceWakeEnabled` 控制）。
-- **本机 STT 服务**：部署与接口契合（须 Finch 兼容的 `/v1/audio/transcriptions`）由运维保证，客户端只对接地址。
+- **误唤醒率**：常驻 KWS 必有误触发，靠 `keywords.txt` 阈值/提升分现场调。
+- **WASM 资产/模型在 `file://` 下加载（最大未知）**：`audioWorklet.addModule` 相对 URL、wasm `locateFile`、`wakemodel://` 字节注入 MEMFS —— 三者均须在 §13 **PoC 阶段**先打通（不是关键词识别本身）。
+- **常驻麦克风**：一体机/kiosk 可接受；是否随宠物可见性收放留作 v1 后可选优化（v1 仅 `voiceWakeEnabled` 控制）。
+- **本机 STT 服务**：部署与 Finch 兼容接口（`/v1/audio/transcriptions`）由运维保证，客户端只对接地址。
 
 ## 13. 实现顺序（里程碑）
 
-1. B（转写运行时可配）：`transcribe-audio` 改造 + 设置字段/页 + bridge。小、独立、先落。
-2. A-PoC：sherpa-onnx KWS wasm + 外置模型 MEMFS 加载最小验证（命中即 log）。
-3. A：`useWakeWord` + worklet + 模型解析 IPC + 接入 `PetWindow` + VAD 端点。
-4. 设置页唤醒开关、边界降级、打包 wasm 资产。
-5. 测试（单元 + 手动三场景）+ 阈值调参。
+1. **B（转写运行时可配）**：`SettingsData` + 默认 + `settings:get-transcription-config` + bridge + `transcribe-audio` 改造 + 设置页。小、独立、先落，点击说话即受益。
+2. **A-PoC（打通三处投递，最大风险前置）**：`public/` 放 wasm+worklet；`wakemodel://` 协议；MEMFS 载模型；命中即 `log`。在 dev 与 `file://` 生产包**双环境验证**资产加载与字节注入。
+3. **A 主体**：`useWakeWord` + worklet + `resolve-wake-model` IPC + Hook 注入流改造 + 接入 `PetWindow` + VAD 端点 + capture 门控。
+4. 设置页唤醒开关/模型目录、边界降级、打包 `public/wake` 资产。
+5. 测试（单元 + 手动）+ 阈值调参。
