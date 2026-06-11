@@ -487,6 +487,12 @@ export const PromptInputActionAddScreenshot = ({
 export interface PromptInputMessage {
   text: string
   files: FileUIPart[]
+  /** 语音消息载荷：录音器产出，由视图层负责上传与发送 */
+  voice?: {
+    durationMs: number
+    waveform: number[]
+    blob: Blob
+  }
 }
 
 export type PromptInputProps = Omit<

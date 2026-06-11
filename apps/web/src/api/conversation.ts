@@ -375,3 +375,33 @@ export async function submitBugFeedback(
     body: JSON.stringify(body),
   })
 }
+
+export async function uploadVoiceAudio(
+  conversationId: number | string,
+  blob: Blob
+) {
+  const formData = new FormData()
+  formData.append("file", blob, "recording.webm")
+  return request<ApiResponse<{ audio_path: string }>>(
+    `/chat/conversations/${conversationId}/voice/upload`,
+    {
+      method: "POST",
+      body: formData,
+    }
+  )
+}
+
+export async function fetchVoiceAudioBlob(
+  conversationId: number | string,
+  path: string
+): Promise<Blob> {
+  const res = await request.raw(
+    `/chat/conversations/${conversationId}/voice/audio`,
+    { params: { path }, responseType: "blob" }
+  )
+  const raw = res._data
+  if (raw == null) {
+    throw new Error("语音文件不存在")
+  }
+  return raw instanceof Blob ? raw : new Blob([raw])
+}
