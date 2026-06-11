@@ -23,6 +23,9 @@ def build_file_tool_rules(
         - **交付给用户的成品**（报告、Word、导出数据）：写入**产物目录** `{artifacts_hint}`（也可用环境变量 `$ARTIFACTS_DIR`，shell 默认 cwd 即此目录）
         - **技能可读可改**：技能在 `$SKILLS_DIR`（草稿在 `$SKILLS_DRAFT_DIR`），可直接 read_file/edit_file 修改 SKILL.md 等
         - 用户上传附件在 `$UPLOADS_DIR`；记忆目录在 `$MEMORIES_DIR`
+        - **找自己过去的产物**：你的工作空间在 `$WORKSPACE_DIR`，过去会话产物按 `conv-*` 子目录分；要复用旧成果先 `ls $WORKSPACE_DIR` 再 read
+        - **共享给别的员工**：把成果复制/写到 `$PUBLIC_DIR`（你的公共区，随会话/你被删除自动清理）
+        - **取用别人共享的**：浏览/读 `$PUBLIC_ROOT`（所有人的共享都在这下面，按 `employee-*/conv-*/` 分）
         - **不要**把成品写到用户资料目录（如 D:/space/标书/…、/Users/…）除非用户明确要求；否则工作台看不到
         - `.docx/.xlsx/.pptx` 等二进制：**不能**用 write_file；用 shell_execute + python（docx 等库）**save 到产物目录**（相对文件名即可，shell cwd 即该目录）
         - **Windows 禁止多行 `python -c "..."`**（cmd 会静默失败、exit 0 但不生成文件）；应先 write_file 落盘 `.py` 再 `python -u xxx.py`

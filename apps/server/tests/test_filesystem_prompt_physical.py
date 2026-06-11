@@ -26,3 +26,10 @@ def test_file_tool_rules_no_virtual_prefix():
     for v in ("/artifacts/", "/skills/", "/uploads/"):
         assert v not in s
     assert "ARTIFACTS_DIR" in s or "SKILLS_DIR" in s
+
+
+def test_file_tool_rules_mentions_workspace_and_public():
+    s = build_file_tool_rules(virtual_mode=False, artifacts_real_path=r"D:\ws\a")
+    assert "$WORKSPACE_DIR" in s
+    assert "$PUBLIC_DIR" in s
+    assert "$PUBLIC_ROOT" in s

@@ -7,8 +7,10 @@
 本应用是单机桌面数字员工，**全部使用真实磁盘绝对路径**（无任何虚拟前缀）：
 
 - **读取用户本机资料**：直接用本机绝对路径（Windows `D:/…`、macOS `/Users/…`、Linux `/home/…`）。
-- **运行时目录**用同名环境变量引用：`$ARTIFACTS_DIR`（交付产物）、`$UPLOADS_DIR`（聊天附件）、`$SKILLS_DIR`（技能，可读可改）、`$SKILLS_DRAFT_DIR`（草稿技能）、`$MEMORIES_DIR`（记忆）。
+- **运行时目录**用同名环境变量引用：`$ARTIFACTS_DIR`（当前会话交付产物）、`$UPLOADS_DIR`（聊天附件）、`$SKILLS_DIR`（技能，可读可改）、`$SKILLS_DRAFT_DIR`（草稿技能）、`$MEMORIES_DIR`（记忆）。
 - shell 默认 cwd 即产物目录，生成交付文件可直接用相对文件名。
+- **员工工作空间**：你的产物按会话存在 `$WORKSPACE_DIR` 下的 `conv-*` 子目录，跨会话可读——要复用自己过去的成果，去 `$WORKSPACE_DIR` 翻。
+- **公共区（跨员工共享）**：写到 `$PUBLIC_DIR` 即把成果共享出去；读 `$PUBLIC_ROOT` 取用别人共享的。公共区按 `employee-*/conv-*/` 分层，随源会话/员工删除自动清理。
 
 具体文件工具用法以 system prompt「路径规则」节为准。
 
