@@ -1,15 +1,11 @@
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from dotenv import load_dotenv
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_community.utilities import SQLDatabase
 from deepagents import create_deep_agent
-from deepagents.backends import CompositeBackend, FilesystemBackend
-from src.service.agent.basic_file_backend import BasicFileFilesystemBackend
-from deepagents.middleware.permissions import FilesystemPermission
 from src.core.config import get_settings, is_agent_virtual_mode
 from src.llm.factory import build_chat_model, resolve_output_tokens
 from src.service.agent.checkpointer import get_checkpointer
@@ -108,9 +104,6 @@ def get_agent(
         except Exception as exc:
             logger.error("初始化 SQLDatabaseToolkit 失败: %s", exc, exc_info=True)
 
-    skills_fs = FilesystemBackend(root_dir=str(skills_root), virtual_mode=True)
-    agent_fs = FilesystemBackend(root_dir=str(base_dir), virtual_mode=True)
-
     memories_dir = resolve_employee_memories_dir(
         employee_id=employee_id,
         skills_root=skills_root if employee_id else None,
@@ -118,7 +111,6 @@ def get_agent(
     )
     memories_dir.mkdir(parents=True, exist_ok=True)
     ensure_employee_memory_file(memories_dir)
-    memories_fs = FilesystemBackend(root_dir=str(memories_dir), virtual_mode=True)
 
     if shared_artifacts_dir:
         # 群协作：所有成员共享同一产物目录，上游产出对下游可见
@@ -131,54 +123,32 @@ def get_agent(
         artifacts_dir = base_dir / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-    routes: dict[str, Any] = {
-        "/memories/": memories_fs,
-        "/skills/": skills_fs,
-        "/agent/": agent_fs,
-        "/artifacts/": BasicFileFilesystemBackend(
-            root_dir=str(artifacts_dir), virtual_mode=True
-        ),
-    }
-
+    # 删虚拟路由：agent 全部用真实绝对路径，由 shell_backend 统管。此处仅保留各目录
+    # 的计算与 mkdir（shell_backend / skills= / memory= / 摘要历史仍需这些真实目录）。
     draft_dir: Path | None = None
     has_draft_route = False
     if conversation_id and root_path:
         draft_dir = Path(root_path) / str(conversation_id) / "skills-draft"
         draft_dir.mkdir(parents=True, exist_ok=True)
-        routes["/skills-draft/"] = BasicFileFilesystemBackend(
-            root_dir=str(draft_dir), virtual_mode=True
-        )
         has_draft_route = True
 
     uploads_dir: Path | None = None
     if conversation_id and root_path:
         uploads_dir = Path(root_path) / str(conversation_id) / "uploads"
         uploads_dir.mkdir(parents=True, exist_ok=True)
-        routes["/uploads/"] = BasicFileFilesystemBackend(
-            root_dir=str(uploads_dir), virtual_mode=True
-        )
 
     use_session_history = bool(conversation_id and root_path)
     if use_session_history:
         conversation_dir = Path(root_path) / str(conversation_id)
         conversation_dir.mkdir(parents=True, exist_ok=True)
-        routes["/conversation_history/"] = FilesystemBackend(
-            root_dir=str(conversation_dir),
-            virtual_mode=True,
-        )
     else:
-        if employee_id:
-            history_root = skills_root.parent
-        else:
-            history_root = base_dir
+        history_root = skills_root.parent if employee_id else base_dir
         history_dir = history_root / "conversation_history"
         history_dir.mkdir(parents=True, exist_ok=True)
-        routes["/conversation_history/"] = FilesystemBackend(
-            root_dir=str(history_dir),
-            virtual_mode=True,
-        )
 
-    skill_sources = ["/skills/", "/skills-draft/"] if has_draft_route else ["/skills/"]
+    skill_sources = [str(skills_root)]
+    if has_draft_route and draft_dir is not None:
+        skill_sources.append(str(draft_dir))
 
     shell_backend = SkillAwareShellBackend(
         root_dir=str(artifacts_dir),
@@ -195,7 +165,9 @@ def get_agent(
         max_output_bytes=48_000,
     )
 
-    backend = CompositeBackend(default=shell_backend, routes=routes)
+    # 删复合路由后端：真实路径全部由 shell-aware 后端兜底（spike 确认其已实现
+    # read/write/edit/ls_info/download_files）。
+    backend = shell_backend
 
     summarization_mw, summarization_tool_mw = build_summarization_middleware_stack(
         model=model,
@@ -229,7 +201,7 @@ def get_agent(
 
     agent = create_deep_agent(
         model=model,
-        memory=["/agent/AGENTS.md", "/memories/AGENTS.md"],
+        memory=[str(base_dir / "AGENTS.md"), str(memories_dir / "AGENTS.md")],
         skills=skill_sources,
         subagents=[],
         system_prompt=build_system_prompt(
@@ -254,17 +226,9 @@ def get_agent(
             else (dict(CLARIFYING_QUESTIONS_INTERRUPT_ON) if clarify_only_hitl else {})
         ),
         middleware=_emp_middleware,
-        permissions=[
-            FilesystemPermission(
-                operations=["write"],
-                paths=["/skills/**", "/agent/**"],
-                mode="deny",
-            ),
-            FilesystemPermission(
-                operations=["write"],
-                paths=["/memories/AGENTS.md"],
-                mode="deny",
-            ),
-        ],
+        # 去虚拟路径后全部用真实绝对路径；deepagents 的 FilesystemPermission 仅支持
+        # `/` 开头的虚拟路径 glob，无法表达 Windows 盘符路径，且与「技能全放开」诉求
+        # 一致，故不再设写禁用。如需保护 AGENTS.md，应在 backend.write() 内按路径拦截。
+        permissions=[],
     )
     return agent
