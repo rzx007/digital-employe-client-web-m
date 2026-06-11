@@ -75,6 +75,20 @@ describe("VoicePlaybackManager", () => {
     expect(manager.getSnapshot().playingMessageId).toBeNull()
   })
 
+  it("并发 toggle：后发起的播放生效，先到的过期请求被丢弃", async () => {
+    let resolveA: (b: Blob) => void
+    fetchBlob.mockImplementationOnce(
+      () => new Promise<Blob>((r) => (resolveA = r))
+    )
+    const p1 = manager.toggle("m1", 1, "voice/a.webm")
+    const p2 = manager.toggle("m2", 1, "voice/b.webm")
+    await p2
+    resolveA!(new Blob(["a"]))
+    await p1
+    expect(manager.getSnapshot().playingMessageId).toBe("m2")
+    expect(FakeAudio.instances).toHaveLength(1)
+  })
+
   it("拉取失败时抛出且状态保持空", async () => {
     fetchBlob.mockRejectedValueOnce(new Error("404"))
     await expect(manager.toggle("m1", 1, "voice/a.webm")).rejects.toThrow()

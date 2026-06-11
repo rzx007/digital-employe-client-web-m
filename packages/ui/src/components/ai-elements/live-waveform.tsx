@@ -67,6 +67,16 @@ export const LiveWaveform = ({
   const gradientCacheRef = useRef<CanvasGradient | null>(null)
   const lastWidthRef = useRef(0)
 
+  const onErrorRef = useRef(onError)
+  const onStreamReadyRef = useRef(onStreamReady)
+  const onStreamEndRef = useRef(onStreamEnd)
+
+  useEffect(() => {
+    onErrorRef.current = onError
+    onStreamReadyRef.current = onStreamReady
+    onStreamEndRef.current = onStreamEnd
+  })
+
   const heightStyle = typeof height === "number" ? `${height}px` : height
 
   // Handle canvas resizing
@@ -234,7 +244,7 @@ export const LiveWaveform = ({
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop())
         streamRef.current = null
-        onStreamEnd?.()
+        onStreamEndRef.current?.()
       }
       if (
         audioContextRef.current &&
@@ -267,7 +277,7 @@ export const LiveWaveform = ({
               },
         })
         streamRef.current = stream
-        onStreamReady?.(stream)
+        onStreamReadyRef.current?.(stream)
 
         const AudioContextConstructor =
           window.AudioContext ||
@@ -287,7 +297,7 @@ export const LiveWaveform = ({
         // Clear history when starting
         historyRef.current = []
       } catch (error) {
-        onError?.(error as Error)
+        onErrorRef.current?.(error as Error)
       }
     }
 
@@ -297,7 +307,7 @@ export const LiveWaveform = ({
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop())
         streamRef.current = null
-        onStreamEnd?.()
+        onStreamEndRef.current?.()
       }
       if (
         audioContextRef.current &&
@@ -311,15 +321,8 @@ export const LiveWaveform = ({
         animationRef.current = 0
       }
     }
-  }, [
-    active,
-    deviceId,
-    fftSize,
-    smoothingTimeConstant,
-    onError,
-    onStreamReady,
-    onStreamEnd,
-  ])
+    // 回调经 ref 转发：调用方传内联函数时不应拆毁重建麦克风流（cleanup 会 stop 正在录音的 track）
+  }, [active, deviceId, fftSize, smoothingTimeConstant])
 
   // Animation loop
   useEffect(() => {

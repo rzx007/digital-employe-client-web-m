@@ -24,6 +24,8 @@ export class VoicePlaybackManager {
   private blobCache = new Map<string, Blob>()
   private listeners = new Set<() => void>()
   private state: VoicePlaybackState = IDLE
+  /** 并发 toggle 序号守卫：await fetch 期间被新 toggle 抢占时，过期请求直接放弃 */
+  private toggleSeq = 0
 
   constructor(private fetchBlob: BlobFetcher = fetchVoiceAudioBlob) {}
 
@@ -52,12 +54,14 @@ export class VoicePlaybackManager {
       return
     }
     this.stop()
+    const seq = ++this.toggleSeq
 
     let blob = this.blobCache.get(messageId)
     if (!blob) {
       blob = await this.fetchBlob(conversationId, audioPath)
       this.blobCache.set(messageId, blob)
     }
+    if (seq !== this.toggleSeq) return
 
     const url = URL.createObjectURL(blob)
     const audio = new Audio(url)
