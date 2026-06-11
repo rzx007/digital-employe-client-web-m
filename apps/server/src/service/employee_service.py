@@ -209,6 +209,8 @@ class EmployeeService:
                     "prompt": r.prompt,
                     "skillContent": r.skill_content,
                     "skill_content": r.skill_content,
+                    # 能进 employee_skills 表即代表已分配=已启用；表无禁用态，固定 status=1。
+                    "status": 1,
                 }
                 for r in rows
             ]
