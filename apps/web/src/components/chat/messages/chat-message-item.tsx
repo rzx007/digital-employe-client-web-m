@@ -33,6 +33,8 @@ import {
 } from "../shared/chat-view-shared"
 import { MessageAssistantActions } from "./message-assistant-actions"
 import { MessageCopyAction } from "./message-copy-action"
+import { VoiceMessageCapsule } from "./voice-message-capsule"
+import { getVoiceMeta } from "@/lib/voice/voice-meta"
 import { useClassifiedMessageBlocks } from "@/hooks/use-classified-message-blocks"
 import { BlockRenderer } from "../message-blocks/block-render-map"
 
@@ -103,6 +105,14 @@ function ChatMessageItemInner({
       (message as { metadata?: Record<string, unknown> }).metadata
     )
   }, [message])
+
+  // 用户语音消息：metadata.voice 合法时气泡换成微信式语音胶囊。
+  const voiceMeta =
+    message.role === "user"
+      ? getVoiceMeta(
+          (message as { metadata?: Record<string, unknown> }).metadata
+        )
+      : null
 
   // 群里组长的编排计划存在 leader 会话（非群会话）。把投影消息携带的
   // source_conversation_id 透给计划卡，让它查到计划真实状态（否则按钮永不消失）。
@@ -287,7 +297,16 @@ function ChatMessageItemInner({
           {dispatchBadge.label}
         </div>
       ) : null}
-      <MessageContent className="w-auto">{messageBody}</MessageContent>
+      {voiceMeta && conversationId != null ? (
+        <VoiceMessageCapsule
+          messageId={message.id}
+          conversationId={conversationId}
+          meta={voiceMeta}
+          transcript={copyText}
+        />
+      ) : (
+        <MessageContent className="w-auto">{messageBody}</MessageContent>
+      )}
       {groupStreaming &&
       !groupStreamingAwaitingFirstToken &&
       groupStreaming.charCount &&
