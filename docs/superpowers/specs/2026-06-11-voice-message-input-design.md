@@ -19,25 +19,33 @@
 | 转写失败 | toast 报错、消息不发出，录音丢弃由用户重录 |
 | 录音声波组件 | ElevenLabs UI `LiveWaveform`（源码拷入 packages/ui，自包含、无额外依赖）。已读源码验证：暴露 `onStreamReady(stream)`（可把它打开的麦克风流共享给 MediaRecorder）、`processing`（转写中动画）、`onError`（内部 `getUserMedia` 失败时的 DOMException 由此冒泡，接入权限错误文案映射） |
 | 音频存储 | 后端新增专用 voice 接口，存会话目录下 `voice/` 子目录，不进资源面板 |
+| 草稿视图 | 支持语音输入：首条消息发送时 `doSend` 先创建会话，音频上传随后进行 |
+| 胶囊波形 | 真实振幅波形：发送端解码 blob 计算约 40 个峰值，随 `extra_meta.voice.waveform` 持久化，播放时进度高亮 |
 
 ## 整体数据流
 
 ```
 点麦克风 → LiveWaveform 打开麦克风流（onStreamReady 共享给 MediaRecorder）
 → 点「发送」停止录音 → 得到 audio blob
-→ ① Finch ASR 转写（失败则 toast 终止）
-→ ② 上传音频到本地后端，得到 audio_path
-→ 走现有发送链路：question = 转写文本，extra_meta.voice = { duration_ms, audio_path }
+→ 录音器内：① Finch ASR 转写（失败则 toast 终止）
+            ② AudioContext 解码 blob，计算约 40 个振幅峰值（waveform 数组）
+→ onSubmit({ text: 转写文本, voice: { durationMs, waveform, blob } }) 交给视图层
+→ 视图层 doSend：确保会话 ID（草稿视图此处先创建会话）
+→ 上传 blob 到本地后端，得到 audio_path（失败则 toast 终止，不发出）
+→ 走现有发送链路：question = 转写文本，
+   extra_meta.voice = { duration_ms, audio_path, waveform }
 → 后端照常持久化用户消息（conversation_messages 表零改动，复用 extra_meta JSON 字段）
-→ 消息列表：metadata.voice 存在 → 渲染语音胶囊（点击播放 / 右键看文本）
+→ 消息列表：metadata.voice 存在 → 渲染语音胶囊（真实波形 / 点击播放 / 右键看文本）
 ```
 
-转写与上传**串行（先转写后上传）**：转写失败时直接终止，后端不留孤儿音频文件。上传走本地 FastAPI，耗时可忽略。「上传成功但发送消息失败」仍可能留下孤儿 `voice/*.webm`——本地小文件、会话删除时整目录清理兜底，显式接受该取舍。
+职责切分：**录音器只产出数据（转写文本、时长、波形峰值、blob），不接触会话 ID**；音频上传放在视图层 `doSend` 内、紧跟会话 ID 就绪之后——这使草稿视图（首条消息发送时才创建会话）与既有会话视图共用同一条路径。上传与发送的公共逻辑抽成 `prepareVoiceMeta(conversationId, voice)` 辅助函数。
+
+顺序为**先转写、后上传**：转写失败时直接终止，后端不留孤儿音频文件。上传走本地 FastAPI，耗时可忽略。「上传成功但发送消息失败」仍可能留下孤儿 `voice/*.webm`——本地小文件、会话删除时整目录清理兜底，显式接受该取舍。
 
 ## 录音交互细节
 
 - 麦克风按钮位于输入框底部右侧、发送按钮旁。
-- 可用条件：`conversationId != null` 且聊天状态非 streaming/submitted。草稿视图（会话未创建）不显示麦克风按钮——音频上传需要会话 ID。**群聊会话同样不显示麦克风按钮**（首期仅单聊，见 YAGNI）。
+- 可用条件：聊天状态非 streaming/submitted。**既有会话视图与草稿视图均支持**——草稿视图首条消息发送时 `doSend` 先创建会话再上传音频（见数据流）。**群聊不显示麦克风按钮**（既有群会话视图，以及草稿视图中目标联系人为群组 `contact.type === "group"` 时；首期仅单聊，见 YAGNI）。
 - 生命周期清理：`useVoiceRecorder` 在组件卸载（含录音中切换会话/关闭窗口）时等价于「取消」——stop MediaRecorder、`stream.getTracks().forEach(t => t.stop())` 释放麦克风、丢弃已录数据。
 - 点击麦克风后，输入区覆盖**录音层**：
   - 左侧 ✕ 按钮：取消录音，丢弃数据，恢复普通输入框
@@ -55,7 +63,8 @@
 ## 语音胶囊（消息列表）
 
 - 渲染位置：`chat-message-item.tsx` 用户消息分支。`metadata.voice` 存在时不渲染文本气泡，改渲染胶囊。
-- 胶囊外观：播放/暂停图标 + 静态声波纹 + 时长文本（如 `0:23`），宽度随时长适度增长（微信风格，设上下限）。
+- 胶囊外观：播放/暂停图标 + **真实振幅波形条** + 时长文本（如 `0:23`），宽度随时长适度增长（微信风格，设上下限）。
+- 真实波形：波形峰值数组在**发送端**用 AudioContext 解码 blob 一次性计算（约 40 个 0–100 整数，随 `extra_meta.voice.waveform` 持久化），渲染时零额外请求；播放时按播放进度高亮已播部分的波形条。波形条用简单 div/canvas 自绘（数据已归一化，无需引入组件）。`waveform` 缺失或为空时退化为均匀装饰条。
 - 点击播放：
   - 通过 `GET /chat/conversations/{id}/voice/audio?path=` 拉取音频 blob（带鉴权头），`URL.createObjectURL` 后用 `HTMLAudioElement` 播放
   - 播放中图标做动画，再次点击暂停；同一时间只允许一条语音在播
@@ -77,6 +86,7 @@
 interface VoiceMessageMeta {
   duration_ms: number   // 录音时长（毫秒）
   audio_path: string    // 相对路径，如 "voice/<uuid>.webm"
+  waveform: number[]    // 振幅峰值，约 40 个 0–100 整数，发送端计算
 }
 ```
 
@@ -102,13 +112,16 @@ interface VoiceMessageMeta {
 | 文件 | 动作 | 内容 |
 |---|---|---|
 | `packages/ui/src/components/ai-elements/live-waveform.tsx` | 新增 | 拷入 ElevenLabs `LiveWaveform` 源码（约 560 行），import 改为 `@workspace/ui/lib/utils` |
-| `apps/web/src/components/chat-prompt-input/voice-recorder.tsx` | 新增 | 录音覆盖层 UI + `useVoiceRecorder` hook（MediaRecorder 接 onStreamReady 流、计时、取消/发送/60s 超时/1s 过短） |
+| `apps/web/src/components/chat-prompt-input/voice-recorder.tsx` | 新增 | 录音覆盖层 UI + `useVoiceRecorder` hook（MediaRecorder 接 onStreamReady 流、计时、取消/发送/60s 超时/1s 过短）；停止后转写 + 计算波形峰值，产出 `{ text, voice: { durationMs, waveform, blob } }` |
+| `apps/web/src/lib/voice/prepare-voice-meta.ts` | 新增 | `prepareVoiceMeta(conversationId, voice)`：上传 blob → 返回 `extra_meta.voice` 对象；两个视图共用 |
+| `apps/web/src/lib/voice/compute-waveform.ts` | 新增 | AudioContext 解码 blob → 约 40 个归一化振幅峰值 |
 | `apps/web/src/components/chat/messages/voice-message-capsule.tsx` | 新增 | 胶囊渲染 + 右键菜单 + 文本展开（播放状态订阅自 playback-manager） |
 | `apps/web/src/lib/voice/playback-manager.ts` | 新增 | 模块级单例：HTMLAudioElement、blob 缓存、当前播放消息 id、单实例播放协调 |
 | `apps/web/src/lib/voice/transcribe.ts` | 新增 | 将 `lib/pet/transcribe-audio.ts` 的实现提升为共享模块；宠物处改为转发引用，行为不变 |
 | `apps/web/src/api/conversation.ts` | 修改 | 新增 `uploadVoiceAudio(conversationId, blob)`、`fetchVoiceAudio(conversationId, path)` |
 | `apps/web/src/components/chat-prompt-input/chat-prompt-input.tsx` + `types.ts` | 修改 | 麦克风按钮、录音覆盖层挂载；onSubmit 消息类型扩展可选 `voice` 字段 |
-| `apps/web/src/components/chat/views/chat-conversation-view.tsx` | 修改 | `doSend` 的 `pendingMeta` 增加 `voice` 透传（进 `extra_meta` 与乐观渲染 metadata） |
+| `apps/web/src/components/chat/views/chat-conversation-view.tsx` | 修改 | `doSend`：消息带 `voice` 时调 `prepareVoiceMeta` 上传，`pendingMeta` 增加 `voice`（进 `extra_meta` 与乐观渲染 metadata） |
+| `apps/web/src/components/chat/views/chat-draft-view.tsx` | 修改 | `doSend`：会话创建后同样调 `prepareVoiceMeta` 上传并透传 `voice`；群组联系人隐藏麦克风 |
 | `apps/web/src/components/chat/messages/chat-message-item.tsx` | 修改 | 用户消息分支按 `metadata.voice` 切换胶囊渲染 |
 | `apps/web/src/types/chat.ts` | 修改 | `VoiceMessageMeta` 类型 |
 
@@ -116,15 +129,16 @@ interface VoiceMessageMeta {
 
 - `useVoiceRecorder` 状态机单测：开始/取消/正常停止/60s 自动停止/不足 1s 丢弃/**卸载时释放麦克风与数据**
 - `voice-playback-manager` 单测：单实例播放（播 B 停 A）、blob 缓存命中
+- `compute-waveform` 单测：已知音频样本 → 峰值数量与归一化范围正确；空/异常 blob 不抛出（返回空数组）
 - 转写共享模块迁移后，宠物语音入口行为不回归（现有引用全部更新、类型检查通过）
 - 后端：voice upload/download 端点的路径校验测试（含路径穿越拒绝）
-- 手动验证清单：录音 → 胶囊展示 → 点击播放 → **播放中滚动消息列表使胶囊滚出视口，播放不中断、滚回后状态正确** → 右键查看/复制文本 → 刷新页面后仍可播放 → 取消录音 → 录音中切换会话（麦克风释放）→ 转写失败路径（断开 ASR）
+- 手动验证清单：录音 → 胶囊展示（真实波形）→ 点击播放（进度高亮）→ **播放中滚动消息列表使胶囊滚出视口，播放不中断、滚回后状态正确** → 右键查看/复制文本 → 刷新页面后仍可播放 → 取消录音 → 录音中切换会话（麦克风释放）→ 转写失败路径（断开 ASR）→ **草稿视图首条语音消息（建会话→上传→发送全链路）**
 
 ## 明确不做（YAGNI）
 
-- 草稿视图（无会话 ID）的语音输入
-- 群聊会话的语音输入（后端 voice 目录按 conversation_id 存储的前提下，群聊涉及 room 共享目录语义，首期不做）
-- 语音消息的波形可视化回放（按真实音频幅度绘制）——胶囊用静态装饰纹
-- 转写文本发送前编辑
-- 音频格式转码（统一 webm）
+- 群聊会话的语音输入（后端 voice 目录按 conversation_id 存储的前提下，群聊涉及 room 共享目录语义，首期不做；含草稿视图选中群组联系人的场景）
+- 转写文本发送前编辑（用户二次确认：维持微信式自动发出）
+- 音频格式转码（用户二次确认：统一 webm，本地录、本地播，零额外依赖）
 - 转写失败后保留录音重试
+
+> 修订记录：草稿视图语音输入、真实波形回放原列于此，2026-06-11 用户要求纳入范围，已并入正文设计。
