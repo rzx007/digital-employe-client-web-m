@@ -353,10 +353,20 @@ export function DraftChatView({
         return
       }
 
-      setInputValue("")
+      if (isBusy && voicePayload) {
+        // 语音不进 pending 队列（队列项不携带 voice 载荷），
+        // 而 useChat 客户端是单流模型：先停掉进行中的流再发送（对齐 sendNow 先例）。
+        await handleStop()
+      }
+
+      // 语音消息的文本来自转写，与输入框草稿无关：不清空草稿。
+      if (!voicePayload) {
+        setInputValue("")
+      }
+
       await doSend(message)
     },
-    [isBusy, enqueue, command, mentions, doSend]
+    [isBusy, enqueue, command, mentions, doSend, handleStop]
   )
 
   const displayMessages = useMemo(
