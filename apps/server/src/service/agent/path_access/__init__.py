@@ -3,7 +3,6 @@
 分层：
 - config        — 从 AGENT_VIRTUAL_MODE 派生 PathAccessConfig
 - host_paths    — 本机绝对路径判定（纯函数，长期保留）
-- virtual_paths — 虚拟前缀常量与映射（纯函数，长期保留）
 - prompt_rules  — 文件工具 prompt 文案（长期保留）
 
 物理路径放行已并入 compatible_filesystem_middleware.install_compatible_filesystem_middleware()
