@@ -129,6 +129,9 @@ class SkillAwareShellBackend(LocalShellBackend):
         draft_root: Path | None,
         memories_root: Path | None = None,
         uploads_root: Path | None = None,
+        workspace_root: Path | None = None,
+        public_dir: Path | None = None,
+        public_root: Path | None = None,
         conversation_id: int | str | None = None,
         virtual_mode: bool = True,
         inherit_env: bool = True,
@@ -151,6 +154,13 @@ class SkillAwareShellBackend(LocalShellBackend):
         self._uploads_root = (
             uploads_root.resolve() if uploads_root is not None else None
         )
+        self._workspace_root = (
+            workspace_root.resolve() if workspace_root is not None else None
+        )
+        self._public_dir = public_dir.resolve() if public_dir is not None else None
+        self._public_root = (
+            public_root.resolve() if public_root is not None else None
+        )
         if os.name == "nt":
             self._env.setdefault("PYTHONUTF8", "1")
             self._env.setdefault("PYTHONIOENCODING", "utf-8")
@@ -167,6 +177,13 @@ class SkillAwareShellBackend(LocalShellBackend):
             self._env["UPLOADS_DIR"] = str(self._uploads_root)
         if self._draft_root is not None:
             self._env["SKILLS_DRAFT_DIR"] = str(self._draft_root)
+        # 员工工作空间（读自己跨会话产物）+ 公共区（写自己子区 / 读全部）
+        if self._workspace_root is not None:
+            self._env["WORKSPACE_DIR"] = str(self._workspace_root)
+        if self._public_dir is not None:
+            self._env["PUBLIC_DIR"] = str(self._public_dir)
+        if self._public_root is not None:
+            self._env["PUBLIC_ROOT"] = str(self._public_root)
         self._inject_global_node_path()
 
     def _inject_global_node_path(self) -> None:
