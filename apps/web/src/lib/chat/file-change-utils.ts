@@ -2,6 +2,10 @@ import type { UIMessage } from "ai"
 import { normalizeToolPart } from "./tools/normalize-tool-part"
 import { isToolUIPart, type ToolUIPart } from "./tools/tool-part"
 import { normalizeToolFilePath } from "@/components/chat/message-blocks/tool-shared"
+import {
+  getResourceBucket,
+  toBucketRelativeSegments,
+} from "@/lib/chat/pending-resources/paths"
 
 export type FileChangeAction = "created" | "edited"
 
@@ -16,24 +20,11 @@ export interface FileChangeItem {
   toolCallId: string
 }
 
-/** 与后端非用户产物路径一致；此类 write/edit 不展示 FileChangeCard */
-const INTERNAL_FILE_PREFIXES = [
-  "/memories/",
-  "/agent/",
-  "/conversation_history/",
-  "/large_tool_results/",
-  "/skills/",
-  "/uploads/",
-] as const
-
 function isUserVisibleFileChange(path: string): boolean {
-  const normalized = normalizeToolFilePath(path)
-  if (normalized.startsWith("/artifacts/")) return true
-  if (normalized.startsWith("/skills-draft/")) return true
-  if (INTERNAL_FILE_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
-    return false
-  }
-  return false
+  // 仅交付物桶（产物 / 草稿技能）的写入展示 FileChangeCard；
+  // 真实路径里仍含 artifacts/ 或 skills-draft/ 段，按桶判定（uploads/skills 等不展示）。
+  const bucket = getResourceBucket(path)
+  return bucket === "artifacts" || bucket === "skills_draft"
 }
 
 function getBasename(path: string) {
@@ -63,14 +54,17 @@ function getContentSize(
 
 function getSkillDraftFolder(path: string) {
   const normalized = normalizeToolFilePath(path)
-  const segments = normalized.split("/").filter(Boolean)
-  if (segments[0] !== "skills-draft" || !segments[1]) {
+  if (getResourceBucket(normalized) !== "skills_draft") {
     return null
   }
-
+  const rel = toBucketRelativeSegments(normalized)
+  const name = rel[0]
+  if (!name) return null
+  // 草稿技能文件夹的真实绝对路径（截到 skills-draft/<name>）
+  const m = normalized.match(/^(.*\/skills-draft\/[^/]+)/)
   return {
-    name: segments[1],
-    path: `/skills-draft/${segments[1]}`,
+    name,
+    path: m ? m[1]! : name,
   }
 }
 

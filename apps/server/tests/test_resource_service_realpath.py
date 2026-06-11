@@ -21,7 +21,7 @@ def test_list_resources_has_real_path_and_bucket(tmp_path):
     data = ResourceService.list_resources(root, 7)
     art = data.artifacts[0]
     assert art.bucket == "artifacts"
-    assert art.path == str(conv / "artifacts" / "report.md")
+    assert art.path == (conv / "artifacts" / "report.md").as_posix()
     assert data.uploads[0].bucket == "uploads"
 
 

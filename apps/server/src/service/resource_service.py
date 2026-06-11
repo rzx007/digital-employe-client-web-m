@@ -66,7 +66,7 @@ def _resolve_safe_path(conversation_dir: Path, real_path: str) -> Path | None:
 
 
 def _scan_file(file_path: Path, bucket: str) -> ResourceEntry:
-    real = str(file_path)
+    real = file_path.as_posix()
     return ResourceEntry(
         name=file_path.name,
         path=real,
@@ -88,7 +88,7 @@ def _scan_dir_flat(directory: Path, bucket: str) -> list[ResourceEntry]:
             entries.append(
                 ResourceEntry(
                     name=item.name,
-                    path=str(item),
+                    path=item.as_posix(),
                     bucket=bucket,
                     entry_type="directory",
                     children=children,
@@ -113,7 +113,7 @@ def _scan_skills_draft(directory: Path) -> list[ResourceEntry]:
                 children.append(
                     ResourceEntry(
                         name=item.name,
-                        path=str(item),
+                        path=item.as_posix(),
                         bucket="skills_draft",
                         entry_type="directory",
                         children=sub_children,
@@ -124,7 +124,7 @@ def _scan_skills_draft(directory: Path) -> list[ResourceEntry]:
         entries.append(
             ResourceEntry(
                 name=skill_dir.name,
-                path=str(skill_dir),
+                path=skill_dir.as_posix(),
                 bucket="skills_draft",
                 entry_type="directory",
                 artifact_type="skill-draft",
@@ -321,7 +321,7 @@ class ResourceService:
 
         return ResourceUploadResult(
             name=target_path.name,
-            path=str(target_path),
+            path=target_path.as_posix(),
             bucket="uploads",
             size=len(file_bytes),
         )
