@@ -205,12 +205,14 @@ async def delete_conversations_by_target(
     workspace_id: int,
     target_type: str = Query(...),
     target_id: int = Query(...),
+    cascade: bool = Query(True, description="是否级联删除会话产物（默认是；否则只删会话保留产物）"),
     db: Session = Depends(get_db),
 ) -> ResponseBase[ConversationsBulkDeleteResult]:
     """按联系人（target_type + target_id）批量删除其下全部会话。"""
     deleted_ids = await ChatService.adelete_conversations_by_target(
         db=db,
         workspace_id=workspace_id,
+        cascade_artifacts=cascade,
         target_type=target_type,
         target_id=target_id,
     )
@@ -291,10 +293,14 @@ def update_conversation(
 
 @router.delete("/chat/conversations/{conversation_id}", response_model=BaseResponse, status_code=status.HTTP_200_OK)
 async def delete_conversation(
-    conversation_id: int, db: Session = Depends(get_db)
+    conversation_id: int,
+    cascade: bool = Query(True, description="是否级联删除会话产物（默认是；否则只删会话保留产物）"),
+    db: Session = Depends(get_db),
 ) -> BaseResponse:
-    """删除指定会话及其消息。"""
-    await ChatService.adelete_conversation(db, conversation_id)
+    """删除指定会话及其消息（可选级联删产物）。"""
+    await ChatService.adelete_conversation(
+        db, conversation_id, cascade_artifacts=cascade
+    )
     return BaseResponse(data=None)
 
 
