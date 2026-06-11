@@ -1,10 +1,19 @@
 # 物理路径能力复盘报告
 
-> 最后更新：2026-05-30（含 shell rewrite 加固、三端 prompt、虚拟 route 集成测试）
+> 最后更新：2026-06-11
 
-单机桌面数字员工默认 **物理路径模式**（`AGENT_VIRTUAL_MODE=0`）：Agent 可直接读写本机绝对路径，同时保留 `/artifacts/`、`/uploads/`、`/skills/` 等虚拟交付物体系。
+> ⚠️ **P1 已切换为「单轨真实路径」（去虚拟前缀）**：CompositeBackend 虚拟路由、
+> `/artifacts/` 等前缀寻址、`validate_path_shim`、shell rewrite **均已删除**；Agent
+> 全部使用真实磁盘绝对路径，目录经 env 注入（`$ARTIFACTS_DIR`/`$SKILLS_DIR`/
+> `$UPLOADS_DIR`/`$SKILLS_DRAFT_DIR`/`$MEMORIES_DIR`）；放行绝对路径的逻辑已并入
+> `compatible_filesystem_middleware.install_compatible_filesystem_middleware()`；
+> **技能目录放开写**（agent 可改技能）。设计见
+> [`docs/superpowers/specs/2026-06-11-remove-virtual-paths-design.md`](../../../docs/superpowers/specs/2026-06-11-remove-virtual-paths-design.md)，
+> P1 计划见
+> [`docs/superpowers/plans/2026-06-11-remove-virtual-paths-p1-server-core.md`](../../../docs/superpowers/plans/2026-06-11-remove-virtual-paths-p1-server-core.md)。
+> **资源 API / 工作台分桶 / browserctl（P2-P4）尚未适配**，下文「双轨」描述为被取代的旧设计，留作背景。
 
-实现位于 [`src/service/agent/path_access/`](../src/service/agent/path_access/)；框架 shim 剥离见 [`PEEL_OFF.md`](../src/service/agent/path_access/PEEL_OFF.md)。
+单机桌面数字员工（P1 前）默认 **物理路径模式**（`AGENT_VIRTUAL_MODE=0`）：Agent 可直接读写本机绝对路径，同时保留 `/artifacts/`、`/uploads/`、`/skills/` 等虚拟交付物体系。
 
 ---
 
