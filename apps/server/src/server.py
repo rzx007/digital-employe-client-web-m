@@ -203,6 +203,7 @@ def create_app() -> FastAPI:
         #   是「群聊组长流第一步卡死」的疑点根因）。
         # - sqlite（回滚老路径）：独立 checkpoints.db + AsyncSqliteSaver。
         # checkpoint 为按流瞬态数据，重启丢弃无碍业务表。
+        conn = None
         if settings.checkpointer_backend == "sqlite":
             checkpoint_path = sqlite_path.parent / "checkpoints.db"
             conn = await aiosqlite.connect(
@@ -232,8 +233,10 @@ def create_app() -> FastAPI:
             for conv_id in _active:
                 registry.cancel(conv_id)
         TaskSchedulerService.shutdown()
-        await conn.close()
-        logger.info("AsyncSqliteSaver connection closed")
+        # 仅 sqlite 后端持有 aiosqlite 连接需关闭；file 后端无连接。
+        if settings.checkpointer_backend == "sqlite" and conn is not None:
+            await conn.close()
+            logger.info("AsyncSqliteSaver connection closed")
         
     fastapi_app = FastAPI(
         title="欢迎来到数字员工客户端",

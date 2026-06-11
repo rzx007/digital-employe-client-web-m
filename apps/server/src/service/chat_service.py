@@ -303,6 +303,32 @@ class ChatService:
         )
         messages = list(db.scalars(stmt).all())
 
+        # file 后端：用进度 sidecar 覆盖在流消息的瞬时 state/cursor/content（更新鲜）。
+        # 终态落库后 sidecar 已删，历史消息读不到文件 → 走行上永久值。overlay 仅供
+        # 序列化展示，expunge_all 防止内存改动被 flush 回 DB（终态才是唯一落库点）。
+        from src.core.config import get_settings
+
+        if get_settings().stream_progress_backend != "sqlite":
+            from src.service.stream_progress_store import get_progress_store
+
+            store = get_progress_store()
+            overlaid = False
+            for m in messages:
+                if m.role != "assistant":
+                    continue
+                prog = store.read(m.id)
+                if not prog:
+                    continue
+                if prog.get("stream_state") is not None:
+                    m.stream_state = prog["stream_state"]
+                if prog.get("stream_cursor") is not None:
+                    m.stream_cursor = prog["stream_cursor"]
+                if prog.get("content") is not None:
+                    m.content = prog["content"]
+                overlaid = True
+            if overlaid:
+                db.expunge_all()
+
         return messages
 
     @staticmethod
