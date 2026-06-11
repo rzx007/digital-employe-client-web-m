@@ -1,4 +1,4 @@
-import { uploadVoiceAudio } from "@/api/conversation"
+import { uploadVoiceAudio } from "@/api/chat"
 import type { VoiceMessageMeta } from "@/types/chat"
 
 export interface VoiceDraft {

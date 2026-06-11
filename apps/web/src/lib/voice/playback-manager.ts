@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react"
-import { fetchVoiceAudioBlob } from "@/api/conversation"
+import { fetchVoiceAudioBlob } from "@/api/chat"
 
 export interface VoicePlaybackState {
   playingMessageId: string | null
