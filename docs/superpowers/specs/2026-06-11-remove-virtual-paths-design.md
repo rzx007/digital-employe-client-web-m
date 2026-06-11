@@ -120,7 +120,7 @@ agent 写文件的 file-change 事件（前端 `file-change-utils.ts` 消费）�
 - 删 `apps/server/src/service/agent/path_access/virtual_paths.py` 的 `VIRTUAL_PREFIXES`、`is_virtual_path`、`map_virtual_token`（整文件可删，确认无残余引用后）。
 - 删 `_rewrite_command_virtual_paths` / `_map_virtual_token`（`skill_shell_backend.py`）。
 - 删 `_ALLOWED_PREFIXES`（`resource_service.py`）。
-- 评估删 `validate_path_shim.py`（物理模式已放行绝对路径；deepagents 原生是否够用需在 P1 验证）。
+- **删 `validate_path_shim.py`（整文件）** —— 已定（Q4）。P1 先验证删除后绝对路径文件工具仍可用；若 deepagents 原生拒绝绝对路径，修复方向是在 `SkillAwareShellBackend` 内处理，**不**把 shim 加回来。
 
 ### P1 — 服务端 agent 核心
 
@@ -228,7 +228,7 @@ agent: browserctl open-artifact "$ARTIFACTS_DIR/report.html"
 - **Q1 技能写范围**：删写禁用后，是(a)全放开（内置技能也可被 agent 改，最贴近 hermes 自改哲学，但有误改风险）还是(b)仅放开草稿 `skills-draft` + 用户技能、内置技能仍禁？用户原话"我所有的技能要能够修改"倾向(a)。**暂定 (a) 全放开**，并保留 `/memories/AGENTS.md` 同步放开。
 - **Q2 `AGENT_VIRTUAL_MODE` 开关**：物理模式成为唯一模式后，是否删除虚拟模式全部分支与开关（更干净）还是保留 env 开关作回退（更保守）？**暂定删除**（符合"彻底"目标；如需回退用 git）。
 - **Q3 资源 API wire 格式**：见 §2.3，API 用纯绝对路径还是桶相对路径。**暂定纯绝对路径（纯 B）**。
-- **Q4 `validate_path_shim` 去留**：物理模式唯一后，shim 能否整文件删（取决于 deepagents 原生对绝对路径的放行），P1 验证后定。
+- **Q4 `validate_path_shim` 去留**：~~待 P1 实测~~ **已定：整文件删**。P1 先验证删除后绝对路径文件工具仍可用；若 deepagents 原生拒绝绝对路径，在 `SkillAwareShellBackend` 内修，不把 shim 加回来。
 
 ---
 
