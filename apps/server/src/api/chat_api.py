@@ -35,7 +35,7 @@ from src.schemas.recent_contact import (
     RecentContactRead,
     RecentContactTouch,
 )
-from src.schemas.resource import ResourceContent, ResourceList, ResourceUploadResult
+from src.schemas.resource import ResourceContent, ResourceList, ResourceUploadResult, VoiceUploadResult
 from src.service.chat_service import ChatService
 from src.service.conversation_title_service import suggest_conversation_title
 from src.service.recent_contact_service import RecentContactService
@@ -486,6 +486,41 @@ def download_conversation_resource(
         filename=resolved.name,
         media_type="application/octet-stream",
     )
+
+
+@router.post("/chat/conversations/{conversation_id}/voice/upload")
+async def upload_voice_audio(
+    conversation_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> ResponseBase[VoiceUploadResult]:
+    """上传语音消息音频，存到会话目录下 voice/ 子目录（不进资源面板）。"""
+    conversation = ChatService.get_conversation(db, conversation_id)
+    file_bytes = await file.read()
+    settings = get_settings()
+    result = ResourceService.save_voice_file(
+        settings.artifacts_path, conversation.id, file_bytes
+    )
+    if isinstance(result, str):
+        return ResponseBase(data=None, msg=result)
+    return ResponseBase(data=result)
+
+
+@router.get("/chat/conversations/{conversation_id}/voice/audio")
+def get_voice_audio(
+    conversation_id: int,
+    path: str = Query(..., description="语音相对路径，如 voice/<uuid>.webm"),
+    db: Session = Depends(get_db),
+):
+    """返回语音消息音频文件。"""
+    conversation = ChatService.get_conversation(db, conversation_id)
+    settings = get_settings()
+    resolved = ResourceService.resolve_voice_path(
+        settings.artifacts_path, conversation.id, path
+    )
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="语音文件不存在")
+    return FileResponse(resolved, media_type="audio/webm")
 
 
 @router.get("/chat/conversations/{conversation_id}/resources/static/{path:path}")

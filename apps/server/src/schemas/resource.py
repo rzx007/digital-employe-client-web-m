@@ -30,3 +30,7 @@ class ResourceUploadResult(BaseModel):
     name: str
     path: str
     size: int
+
+
+class VoiceUploadResult(BaseModel):
+    audio_path: str

@@ -5,6 +5,7 @@ import shutil
 import io
 import zipfile
 import shutil
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,7 @@ from src.schemas.resource import (
     ResourceEntry,
     ResourceList,
     ResourceUploadResult,
+    VoiceUploadResult,
 )
 from src.service.basic_file_reader import (
     BasicFileCategory,
@@ -42,6 +44,7 @@ ALLOWED_UPLOAD_EXTENSIONS: set[str] = {
 }
 
 MAX_UPLOAD_FILE_SIZE = 200 * 1024 * 1024
+MAX_VOICE_FILE_SIZE = 10 * 1024 * 1024
 
 
 def _resolve_safe_path(conversation_dir: Path, virtual_path: str) -> Path | None:
@@ -386,3 +389,40 @@ class ResourceService:
 
         logger.info("已删除资源: %s", virtual_path)
         return True
+
+    @staticmethod
+    def save_voice_file(
+        root_path: str, conversation_id: int, file_bytes: bytes
+    ) -> VoiceUploadResult | str:
+        """保存语音消息音频到 <root>/<conversation_id>/voice/。
+
+        语音目录独立于 uploads/，不进资源面板列举。
+        """
+        if not file_bytes:
+            return "语音文件为空"
+        if len(file_bytes) > MAX_VOICE_FILE_SIZE:
+            return f"语音文件过大（最大 {MAX_VOICE_FILE_SIZE // (1024 * 1024)}MB）"
+
+        voice_dir = Path(root_path) / str(conversation_id) / "voice"
+        voice_dir.mkdir(parents=True, exist_ok=True)
+        name = f"{uuid.uuid4().hex}.webm"
+        (voice_dir / name).write_bytes(file_bytes)
+        return VoiceUploadResult(audio_path=f"voice/{name}")
+
+    @staticmethod
+    def resolve_voice_path(
+        root_path: str, conversation_id: int, audio_path: str
+    ) -> Path | None:
+        """解析语音音频物理路径；非 voice/ 前缀或越出目录返回 None。"""
+        if not audio_path.startswith("voice/"):
+            return None
+        conversation_dir = Path(root_path) / str(conversation_id)
+        voice_dir = (conversation_dir / "voice").resolve()
+        target = (conversation_dir / audio_path).resolve()
+        try:
+            target.relative_to(voice_dir)
+        except ValueError:
+            return None
+        if not target.is_file():
+            return None
+        return target
