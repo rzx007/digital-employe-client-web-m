@@ -112,29 +112,31 @@ def get_agent(
     memories_dir.mkdir(parents=True, exist_ok=True)
     ensure_employee_memory_file(memories_dir)
 
-    if shared_artifacts_dir:
-        # 群协作：所有成员共享同一产物目录，上游产出对下游可见
-        artifacts_dir = Path(shared_artifacts_dir)
-    elif conversation_id and root_path:
-        artifacts_dir = Path(root_path) / str(conversation_id) / "artifacts"
-    elif employee_id:
-        artifacts_dir = skills_root.parent / "artifacts"
-    else:
-        artifacts_dir = base_dir / "artifacts"
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    # 员工工作空间模型：产物升到员工级（root/employee-<id>/artifacts/conv-<cid>），
+    # 加全局公共区（root/shared/employee-<id>/conv-<cid>）。群房间产出仍落房间共享。
+    from src.service.agent.workspace_paths import resolve_workspace_dirs
 
-    # 删虚拟路由：agent 全部用真实绝对路径，由 shell_backend 统管。此处仅保留各目录
-    # 的计算与 mkdir（shell_backend / skills= / memory= / 摘要历史仍需这些真实目录）。
+    ws = resolve_workspace_dirs(
+        root_path=root_path,
+        employee_id=employee_id,
+        conversation_id=conversation_id,
+        shared_artifacts_dir=shared_artifacts_dir,
+        base_dir=base_dir,
+    )
+    artifacts_dir = ws.artifacts_dir
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    ws.workspace_dir.mkdir(parents=True, exist_ok=True)
+    ws.public_root.mkdir(parents=True, exist_ok=True)
+    ws.public_dir.mkdir(parents=True, exist_ok=True)
+
     draft_dir: Path | None = None
     has_draft_route = False
-    if conversation_id and root_path:
-        draft_dir = Path(root_path) / str(conversation_id) / "skills-draft"
-        draft_dir.mkdir(parents=True, exist_ok=True)
-        has_draft_route = True
-
     uploads_dir: Path | None = None
     if conversation_id and root_path:
-        uploads_dir = Path(root_path) / str(conversation_id) / "uploads"
+        draft_dir = ws.workspace_dir / f"conv-{conversation_id}" / "skills-draft"
+        draft_dir.mkdir(parents=True, exist_ok=True)
+        has_draft_route = True
+        uploads_dir = ws.uploads_dir
         uploads_dir.mkdir(parents=True, exist_ok=True)
 
     use_session_history = bool(conversation_id and root_path)
@@ -156,6 +158,9 @@ def get_agent(
         draft_root=draft_dir,
         memories_root=memories_dir,
         uploads_root=uploads_dir,
+        workspace_root=ws.workspace_dir,
+        public_dir=ws.public_dir,
+        public_root=ws.public_root,
         conversation_id=conversation_id,
         virtual_mode=is_agent_virtual_mode(),
         inherit_env=True,
