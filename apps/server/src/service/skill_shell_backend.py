@@ -291,6 +291,12 @@ class SkillAwareShellBackend(LocalShellBackend):
     def _rewrite_command_virtual_paths(self, command: str) -> str:
         # 始终 rewrite /skills/ 等虚拟前缀为物理路径：这是 shell 命令映射的产品逻辑，
         # 与 LocalShellBackend.virtual_mode（控制 cwd / 沙箱）无关，物理模式下同样需要。
+        #
+        # 关键：用 posix=False 拆分会**保留**每个 token 外层的引号，因此未命中的
+        # token 必须原样回写、不能再过 subprocess.list2cmdline——否则 list2cmdline
+        # 会把 token 里已有的引号二次转义（`"http://x"` → `\"http://x\"`），经 cmd
+        # 解析后引号变成字面量混进参数值（如 --url 收到带引号的 URL）。
+        # 这里只重写「确实命中虚拟前缀」的 token，其余原样保留。
         try:
             parts = shlex.split(command, posix=False)
         except ValueError:
@@ -304,13 +310,22 @@ class SkillAwareShellBackend(LocalShellBackend):
                 quote = part[0]
                 raw = part[1:-1]
             mapped = self._map_virtual_token(raw)
-            if mapped != raw:
-                parts[i] = f"{quote}{mapped}{quote}" if quote else mapped
-                changed = True
+            if mapped == raw:
+                continue  # 未命中：原样保留该 token（含原始引号）
+            changed = True
+            if quote:
+                parts[i] = f"{quote}{mapped}{quote}"
+            elif any(c.isspace() for c in mapped):
+                # 原 token 无引号，但映射后的物理路径含空格 → 必须补引号
+                parts[i] = f'"{mapped}"'
+            else:
+                parts[i] = mapped
 
         if not changed:
             return command
-        return subprocess.list2cmdline(parts)
+        # 直接用空格拼接：posix=False 的 token 已保留各自引号，单空格拼接即可
+        # 还原命令（仅折叠 token 间多余空白，对 shell 执行无影响）。
+        return " ".join(parts)
 
     def _get_stream_writer(self) -> Callable[[dict], None]:
         try:
@@ -502,6 +517,31 @@ class SkillAwareShellBackend(LocalShellBackend):
             _batch.clear()
             _last_batch_emit = time.monotonic()
 
+        # 心跳：子进程存活但长时间零输出（如下载、编译、静默脚本）时，每 30s 推一个
+        # tool_keepalive 事件。它走 stream_writer 进 astream，同时喂活上层「chunk 间
+        # 超时(180s)」与「内容级无进展判死(240s)」两个看门狗——避免正常长命令被误判为
+        # 卡死而把整条流腰斩。30s 远小于两个阈值，留足余量。真正挂死（无子进程在跑）则
+        # 无心跳，看门狗照常回收，僵尸流保护不受影响。
+        _KEEPALIVE_SECONDS = 30
+        _last_output_at = time.monotonic()
+
+        async def _keepalive_loop():
+            while True:
+                await asyncio.sleep(_KEEPALIVE_SECONDS)
+                if completed_normally or timed_out:
+                    return
+                if time.monotonic() - _last_output_at < _KEEPALIVE_SECONDS:
+                    continue  # 近期有真实输出在流，无需心跳
+                try:
+                    payload: dict = {"tool_name": "shell_execute", "stream": "keepalive"}
+                    if tool_call_id:
+                        payload["tool_call_id"] = tool_call_id
+                    stream_writer({"type": "tool_keepalive", "data": payload})
+                except Exception:
+                    pass
+
+        _keepalive_task = asyncio.ensure_future(_keepalive_loop())
+
         # completed_normally 用于标记子进程是自行退出（收到 None），
         # 而非超时 / 取消 / 异常终止。finally 块据此决定是否杀进程。
         completed_normally = False
@@ -516,6 +556,7 @@ class SkillAwareShellBackend(LocalShellBackend):
                     completed_normally = True
                     break
 
+                _last_output_at = time.monotonic()  # 有真实输出 → 心跳让位
                 if current_output_size < self._max_output_bytes:
                     lines.append(line)
                     current_output_size += len(line) + 1
@@ -528,6 +569,7 @@ class SkillAwareShellBackend(LocalShellBackend):
 
             _emit_batch()
         finally:
+            _keepalive_task.cancel()
             # 非正常退出（超时 / 取消 / 异常）：通知线程杀子进程，避免孤儿进程
             if not completed_normally:
                 cancel_requested.set()
