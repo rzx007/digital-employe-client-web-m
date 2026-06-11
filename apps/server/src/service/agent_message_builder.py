@@ -52,15 +52,24 @@ def _parse_meta(extra_meta: object) -> dict[str, Any]:
 def resolve_upload_path(
     artifacts_root: str | Path,
     conversation_id: int,
-    virtual_path: str,
+    path: str,
 ) -> Path | None:
-    if not virtual_path.startswith(_UPLOADS_PREFIX):
-        return None
+    """解析上传文件路径并做 uploads 桶沙箱校验。
 
+    支持两种入参：真实磁盘绝对路径（P2 起 upload_file 返回的形态）；以及旧会话历史里
+    遗留的 `/uploads/<name>` 相对形态（读旧数据的兼容，不影响新寻址）。
+    """
     conversation_dir = Path(artifacts_root) / str(conversation_id)
-    target = (conversation_dir / virtual_path.lstrip("/")).resolve()
+    uploads_dir = conversation_dir / "uploads"
+    if path.startswith(_UPLOADS_PREFIX):
+        target = (conversation_dir / path.lstrip("/")).resolve()
+    else:
+        try:
+            target = Path(path).resolve()
+        except OSError:
+            return None
     try:
-        target.relative_to(conversation_dir.resolve())
+        target.relative_to(uploads_dir.resolve())
     except ValueError:
         return None
     return target
