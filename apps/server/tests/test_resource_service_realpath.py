@@ -81,3 +81,17 @@ def test_batch_delete_skips_illegal(ws):
     assert bad in res["skipped"]
     assert not Path(ok).exists()
     assert Path(bad).exists()  # 跨员工未删
+
+
+def test_legacy_layout_read_fallback(tmp_path, monkeypatch):
+    """迁移兼容：旧会话级布局 <root>/<cid>/artifacts 仍可读、可列。"""
+    root = tmp_path / "root"
+    legacy = root / "1" / "artifacts"
+    legacy.mkdir(parents=True)
+    (legacy / "old.md").write_text("legacy", encoding="utf-8")
+    monkeypatch.setattr(rs, "_resolve_employee_id_for_conversation", lambda cid: 7)
+    monkeypatch.setattr(rs, "_resolve_room_dir", lambda root_path, cid: None)
+
+    data = ResourceService.list_resources(str(root), 1)
+    assert any(e.name == "old.md" for e in data.artifacts)
+    assert ResourceService.read_content(str(root), 1, str(legacy / "old.md")) is not None

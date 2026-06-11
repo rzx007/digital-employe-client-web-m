@@ -279,13 +279,20 @@ def resolve_workspace_context(root_path: str, conversation_id: int):
 
 
 def _read_roots(root_path: str, conversation_id: int) -> list[Path]:
-    """资源读取允许的根：员工工作空间 + 整个公共区(+ 房间)。"""
+    """资源读取允许的根：员工工作空间 + 整个公共区(+ 房间)。
+
+    迁移兼容（惰性只读）：旧的会话级布局 <root>/<conversation_id>/ 若仍存在，也作为读根，
+    让存量会话的产物在升级后仍能读到（不主动搬迁）。
+    """
     workspace_dir, public_root, _conv, room_dir = resolve_workspace_context(
         root_path, conversation_id
     )
     roots = [workspace_dir.resolve(), public_root.resolve()]
     if room_dir is not None:
         roots.append(room_dir.resolve())
+    legacy = Path(root_path) / str(conversation_id)
+    if legacy.is_dir():
+        roots.append(legacy.resolve())
     return roots
 
 
@@ -319,13 +326,22 @@ class ResourceService:
         workspace_dir, public_root, conv_artifacts, room_dir = resolve_workspace_context(
             root_path, conversation_id
         )
-        # 当前会话产物（排除 uploads/skills-draft 子目录，它们单列）
-        current = (room_dir or conv_artifacts)
+        # 当前会话产物（排除 uploads/skills-draft 子目录，它们单列）。
+        # 迁移兼容：新布局会话子目录不存在但旧布局 <root>/<cid>/artifacts 存在时，回退扫旧目录。
+        legacy_dir = Path(root_path) / str(conversation_id)
+        current = room_dir or conv_artifacts
+        if room_dir is None and not conv_artifacts.exists() and (legacy_dir / "artifacts").is_dir():
+            current = legacy_dir / "artifacts"
+            uploads_src = legacy_dir / "uploads"
+            draft_src = legacy_dir / "skills-draft"
+        else:
+            uploads_src = conv_artifacts / "uploads"
+            draft_src = conv_artifacts / "skills-draft"
         artifacts = _scan_dir_flat(
             current, "artifacts", skip_names=("uploads", "skills-draft")
         )
-        uploads = _scan_dir_flat(conv_artifacts / "uploads", "uploads")
-        skills_draft = _scan_skills_draft(conv_artifacts / "skills-draft")
+        uploads = _scan_dir_flat(uploads_src, "uploads")
+        skills_draft = _scan_skills_draft(draft_src)
         # 员工工作空间全树（按 conv-* 分）+ 公共区全树（按来源分）
         workspace = _scan_dir_flat(workspace_dir, "workspace")
         public = _scan_dir_flat(public_root, "public")
