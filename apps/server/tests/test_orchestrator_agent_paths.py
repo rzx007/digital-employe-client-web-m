@@ -15,3 +15,11 @@ def test_orch_skills_memory_real_paths():
     src = inspect.getsource(orch.get_orchestrator_agent)
     assert 'memory=["/agent/AGENTS.md"' not in src
     assert 'skills=["/skills/"]' not in src
+
+
+def test_orch_uses_workspace_dirs_owner_orchestrator():
+    src = inspect.getsource(orch.get_orchestrator_agent)
+    assert "resolve_workspace_dirs(" in src
+    assert 'employee_id="orchestrator"' in src
+    assert "workspace_root=ws.workspace_dir" in src
+    assert "public_dir=ws.public_dir" in src

@@ -161,21 +161,31 @@ def get_orchestrator_agent(
     skills_root = resolve_orchestrator_skills_root()
     available_skills = list_available_skills(skills_root)
 
-    uploads_dir: Path | None = None
-    if conversation_id:
-        conversation_dir = artifacts_path / str(conversation_id)
-        artifacts_dir = conversation_dir / "artifacts"
-        uploads_dir = conversation_dir / "uploads"
-    else:
-        conversation_dir = artifacts_path / "orchestrator"
-        artifacts_dir = conversation_dir / "artifacts"
-    # 群协作：组长用房间共享产物目录，才能读到成员产出做汇总
-    if shared_artifacts_dir:
-        artifacts_dir = Path(shared_artifacts_dir)
+    # 总管当作特殊"员工"（owner=orchestrator）：产物升到工作空间 + 公共区，与员工一致。
+    from src.service.agent.workspace_paths import resolve_workspace_dirs
+
+    ws = resolve_workspace_dirs(
+        root_path=str(artifacts_path),
+        employee_id="orchestrator",
+        conversation_id=conversation_id,
+        shared_artifacts_dir=shared_artifacts_dir,
+        base_dir=base_dir,
+    )
+    artifacts_dir = ws.artifacts_dir
+    uploads_dir = ws.uploads_dir if conversation_id else None
     artifacts_dir.mkdir(parents=True, exist_ok=True)
-    conversation_dir.mkdir(parents=True, exist_ok=True)
+    ws.workspace_dir.mkdir(parents=True, exist_ok=True)
+    ws.public_root.mkdir(parents=True, exist_ok=True)
+    ws.public_dir.mkdir(parents=True, exist_ok=True)
     if uploads_dir is not None:
         uploads_dir.mkdir(parents=True, exist_ok=True)
+    # 会话历史目录（保留旧位置，与摘要 history 一致）
+    conversation_dir = (
+        artifacts_path / str(conversation_id)
+        if conversation_id
+        else artifacts_path / "orchestrator"
+    )
+    conversation_dir.mkdir(parents=True, exist_ok=True)
 
     # 删虚拟路由：agent 全部用真实绝对路径，由 shell_backend 统管。目录已在上文 mkdir。
     shell_backend = SkillAwareShellBackend(
@@ -184,6 +194,9 @@ def get_orchestrator_agent(
         draft_root=None,
         memories_root=memories_dir,
         uploads_root=uploads_dir,
+        workspace_root=ws.workspace_dir,
+        public_dir=ws.public_dir,
+        public_root=ws.public_root,
         conversation_id=conversation_id,
         virtual_mode=is_agent_virtual_mode(),
         inherit_env=True,
