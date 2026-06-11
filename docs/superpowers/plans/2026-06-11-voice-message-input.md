@@ -31,9 +31,10 @@
 
 ```bash
 curl -sL "https://raw.githubusercontent.com/elevenlabs/ui/main/apps/www/registry/elevenlabs-ui/ui/live-waveform.tsx" -o packages/ui/src/components/ai-elements/live-waveform.tsx
+wc -l packages/ui/src/components/ai-elements/live-waveform.tsx
 ```
 
-约 560 行。若网络失败，从 GitHub 仓库 `elevenlabs/ui` 路径 `apps/www/registry/elevenlabs-ui/ui/live-waveform.tsx` 获取。
+Expected: 约 560 行（规划会话已实测此 URL 可达）。下载后检查文件开头是否为 `"use client"`——若是 HTML（被防火墙拦截页污染）则删除重试。备选路径（按序尝试）：① 本机临时文件 `/tmp/live-waveform.tsx`（规划会话留存，可能已清理）；② `npx @elevenlabs/cli@latest components add live-waveform`（装到默认位置后移动）；③ 都失败则停下请求用户提供源码。
 
 - [ ] **Step 2: 修正 import 路径**
 
@@ -43,7 +44,7 @@ curl -sL "https://raw.githubusercontent.com/elevenlabs/ui/main/apps/www/registry
 import { cn } from "@workspace/ui/lib/utils"
 ```
 
-保留文件其余内容原样（含 `"use client"`）。确认存在以下导出与 props（spec 已验证）：`LiveWaveform`、`active`、`processing`、`onStreamReady`、`onError`、`mode`、`barColor`、`height`。
+保留文件其余内容原样（含 `"use client"`）。确认存在以下导出与 props（spec 已验证）：`LiveWaveform`、`active`、`processing`、`onStreamReady`、`onError`、`mode`、`barColor`、`height`。同时确认除 `cn` 与 react 外无其他 import——若发现额外依赖（如 motion），按最小化原则安装到 `packages/ui` 并在提交信息注明。
 
 - [ ] **Step 3: 跑格式化与类型检查**
 
@@ -68,8 +69,7 @@ git commit -m "feat(ui): 拷入 ElevenLabs LiveWaveform 实时声波组件"
 **Files:**
 - Create: `apps/web/src/lib/voice/transcribe.ts`
 - Create: `apps/web/src/lib/voice/mic-error.ts`
-- Modify: `apps/web/src/lib/pet/transcribe-audio.ts`（改为转发引用）
-- Modify: `apps/web/src/components/pet/use-pet-voice-curator.ts`（错误文案改用共享函数）
+- Modify: `apps/web/src/lib/pet/transcribe-audio.ts`（改为转发引用；宠物其余文件零修改）
 
 - [ ] **Step 1: 创建共享转写模块**
 
@@ -91,9 +91,9 @@ git commit -m "feat(ui): 拷入 ElevenLabs LiveWaveform 实时声波组件"
 export { transcribeAudio as transcribePetAudio } from "@/lib/voice/transcribe"
 ```
 
-- [ ] **Step 3: 提取麦克风错误文案**
+- [ ] **Step 3: 新增麦克风错误文案（string 版）**
 
-读 `apps/web/src/components/pet/use-pet-voice-curator.ts` 第 30-57 行附近的 DOMException → 中文文案映射逻辑，提取为 `apps/web/src/lib/voice/mic-error.ts`：
+**注意：** 宠物的 `getMicErrorCopy`（`use-pet-voice-curator.ts` 30-57 行附近）返回 `{ title, detail? }` 结构化对象，喂给宠物专属的 feedback UI——**保持原地不动，不要替换**。本步只为聊天侧新增一个返回 string 的共享函数 `apps/web/src/lib/voice/mic-error.ts`，**各 case 的文案措辞照抄宠物 `getMicErrorCopy` 的 title（有 detail 的拼接为 `title：detail`）**，下面代码仅为结构示意：
 
 ```typescript
 /** 把 getUserMedia / MediaRecorder 抛出的异常映射为用户可读的中文文案。 */
@@ -117,7 +117,7 @@ export function describeMicError(err: unknown): string {
 }
 ```
 
-**注意：** 以 `use-pet-voice-curator.ts` 实际现有文案为准——若它的文案与上面不同，照抄它的（保持宠物语音行为零变化），上面代码仅为结构示意。然后把 `use-pet-voice-curator.ts` 中原映射逻辑替换为对 `describeMicError` 的调用。
+本任务对 `use-pet-voice-curator.ts` 的唯一改动是 Step 2 转写函数的 import 路径不变（转发引用保证）——即**宠物文件零修改**，行为零变化。
 
 - [ ] **Step 4: 全局搜索确认无残留引用**
 
@@ -131,8 +131,8 @@ Expected: 只剩 `lib/pet/transcribe-audio.ts`（转发处）和 `use-pet-voice-
 
 ```bash
 pnpm typecheck
-git add -A apps/web/src/lib/voice apps/web/src/lib/pet apps/web/src/components/pet
-git commit -m "refactor(voice): 转写与麦克风错误文案提升为共享模块，宠物语音行为不变"
+git add -A apps/web/src/lib/voice apps/web/src/lib/pet
+git commit -m "refactor(voice): 转写提升为共享模块并新增麦克风错误文案，宠物语音行为不变"
 ```
 
 ---
@@ -798,7 +798,7 @@ git commit -m "feat(voice): 播放管理单例——单实例播放、blob 缓�
 测试环境需要 jsdom + fake timers，mock `MediaRecorder` 与转写/波形模块：
 
 ```typescript
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 import { act, renderHook } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -964,7 +964,7 @@ describe("useVoiceRecorder", () => {
 })
 ```
 
-**前置检查：** 若 `@testing-library/react` 未安装（`grep testing-library apps/web/package.json`），先 `pnpm --filter web add -D @testing-library/react`。若 vitest 配置无 jsdom 环境支持，确认 `jsdom` 在 devDependencies，缺则一并安装。
+**前置说明：** 项目 DOM 测试环境约定为 `happy-dom`（见 `apps/web/vitest.config.ts` 注释与现有 `use-conversation-session.test.tsx` 先例），`@testing-library/react` 已在 devDependencies——**不要安装 jsdom**。
 
 - [ ] **Step 2: 运行确认失败**
 
@@ -1438,7 +1438,17 @@ voice: voiceMeta,
 
 - [ ] **Step 3: chat-draft-view 集成**
 
-`doSend`（约 197-301 行）：在会话创建（约 214-228 行）与 `uploadDraftFiles`（约 230-233 行）之后、组装 metadata 之前，加与上面 (b) 完全相同的 `prepareVoiceMeta` 块（此处 `conversationId` 必已就绪）。metadata 对象同样加 `voice: voiceMeta`。
+`doSend`（约 197-301 行）：在会话创建（约 214-228 行）与 `uploadDraftFiles`（约 230-233 行）之后、组装 metadata 之前，加与上面 (b) 完全相同的 `prepareVoiceMeta` 块（此处 `conversationId` 必已就绪）。
+
+**注意 metadata 形状差异：** draft-view 的 pendingMeta 是条件展开（约 241-243 行 `const pendingMeta = filesMeta ? { ...pendingMetaBase, files: filesMeta } : pendingMetaBase`），不是对象字面量。改为统一写法：
+
+```typescript
+const pendingMeta = {
+  ...pendingMetaBase,
+  ...(filesMeta && { files: filesMeta }),
+  voice: voiceMeta,
+}
+```
 
 draft 视图同样检查其 busy 入队分支（约 325 行 `enqueue`）：语音消息绕过，处理方式同 (a)。
 
