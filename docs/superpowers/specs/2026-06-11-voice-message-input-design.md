@@ -47,6 +47,7 @@
 - 麦克风按钮位于输入框底部右侧、发送按钮旁。
 - 可用条件：聊天状态非 streaming/submitted。**既有会话视图与草稿视图均支持**——草稿视图首条消息发送时 `doSend` 先创建会话再上传音频（见数据流）。**群聊不显示麦克风按钮**（既有群会话视图，以及草稿视图中目标联系人为群组 `contact.type === "group"` 时；首期仅单聊，见 YAGNI）。
 - 生命周期清理：`useVoiceRecorder` 在组件卸载（含录音中切换会话/关闭窗口）时等价于「取消」——stop MediaRecorder、`stream.getTracks().forEach(t => t.stop())` 释放麦克风、丢弃已录数据。
+- **转写完成时恰逢 busy**：麦克风可用性只约束录音开始时机；录音最长 60 秒，期间状态可能回到 streaming/submitted。语音消息**绕过 pending 队列直接走 `doSend`**（发送链路支持并发落库）——现有 pending 队列入队项不携带 voice 载荷，若走队列会静默降级为纯文本，故明确绕过。
 - 点击麦克风后，输入区覆盖**录音层**：
   - 左侧 ✕ 按钮：取消录音，丢弃数据，恢复普通输入框
   - 右侧胶囊：`LiveWaveform`（scrolling 模式）实时声波 + 已录时长计时
@@ -119,7 +120,10 @@ interface VoiceMessageMeta {
 | `apps/web/src/lib/voice/playback-manager.ts` | 新增 | 模块级单例：HTMLAudioElement、blob 缓存、当前播放消息 id、单实例播放协调 |
 | `apps/web/src/lib/voice/transcribe.ts` | 新增 | 将 `lib/pet/transcribe-audio.ts` 的实现提升为共享模块；宠物处改为转发引用，行为不变 |
 | `apps/web/src/api/conversation.ts` | 修改 | 新增 `uploadVoiceAudio(conversationId, blob)`、`fetchVoiceAudio(conversationId, path)` |
-| `apps/web/src/components/chat-prompt-input/chat-prompt-input.tsx` + `types.ts` | 修改 | 麦克风按钮、录音覆盖层挂载；onSubmit 消息类型扩展可选 `voice` 字段 |
+| `packages/ui/src/components/ai-elements/prompt-input.tsx` | 修改 | `PromptInputMessage` 接口增加可选 `voice?` 字段（向后兼容，定义即在此处，勿在 apps/web 另造派生类型） |
+| `apps/web/src/components/chat-prompt-input/chat-prompt-input.tsx` + `types.ts` | 修改 | 麦克风按钮、录音覆盖层挂载；新增 `showVoiceInput` prop 控制麦克风显隐 |
+| `apps/web/src/components/chat/panel/chat-panel.tsx` | 修改 | 透传 `showVoiceInput`（群聊为 false，仿现有 `showContextBudget={contact?.type !== "group"}` 先例） |
+| `apps/web/src/components/chat/panel/chat-composer-area.tsx` | 修改 | 透传 `showVoiceInput` prop |
 | `apps/web/src/components/chat/views/chat-conversation-view.tsx` | 修改 | `doSend`：消息带 `voice` 时调 `prepareVoiceMeta` 上传，`pendingMeta` 增加 `voice`（进 `extra_meta` 与乐观渲染 metadata） |
 | `apps/web/src/components/chat/views/chat-draft-view.tsx` | 修改 | `doSend`：会话创建后同样调 `prepareVoiceMeta` 上传并透传 `voice`；群组联系人隐藏麦克风 |
 | `apps/web/src/components/chat/messages/chat-message-item.tsx` | 修改 | 用户消息分支按 `metadata.voice` 切换胶囊渲染 |
