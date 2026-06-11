@@ -2,6 +2,34 @@
 
 > 设计稿 · 2026-06-11 · 方案 B（连分桶命名空间一起删，原子切换，不向后兼容）
 
+## 0. 实现状态（2026-06-11 完成）
+
+P1-P4 全部实现并验证。验证基线：后端 `uv run pytest` 458 passed（3 个既存无关失败：
+agent_runtime_policy×2、orchestrator_execution_summary×1，目标文件不在本次改动集）；
+前端 `pnpm typecheck` 通过 + vitest 194/195（1 个既存无关失败 resolve-workbench-curator-panel）；
+browserctl `node --test` 20/20。
+
+| 相位 | 内容 | 关键提交 |
+|------|------|----------|
+| P1 | 服务端 agent 核心：删路由/shim/rewrite，真实路径 skills/memory，注入 env，技能可改 | `8601970`…`108a654` |
+| P2 | 资源服务/API：ResourceEntry 改 realPath+bucket，静态服务 `?path=<abs>`，沙箱按会话根 | resource P2 commit |
+| P3 | 前端工作台：按 bucket 分桶、真实路径预览 URL、树构建按桶相对段、后端 as_posix 一致 | web P3 commit |
+| P4 | browserctl open-artifact 收真实路径 + 技能文档 | browserctl P4 commit |
+
+**关键偏离（spec Q1）**：原暂定保留 AGENTS.md 写禁用，但实测 deepagents 的
+`FilesystemPermission` 仅支持 `/` 开头的虚拟 glob，**无法表达 Windows 真实路径**，故
+`permissions=[]` 全部去掉——技能与 AGENTS.md 均可写（与「技能全放开」一致）。如需保护
+AGENTS.md，应在 backend.write() 内按真实路径拦截（未做）。
+
+**其它实测修正**：运行时 deepagents（.venv）文件工具调 `validate_path`（无下划线），放行
+逻辑并入 `install_compatible_filesystem_middleware`；`LocalShellBackend` 已实现
+read/write/edit/ls/download_files，删路由后直接用作 backend 无需补方法。
+
+**已知边缘（未完全验证，需 app 实跑）**：agent 若在聊天正文里写真实路径，linkify→芯片→打开
+这条链只对含桶段的路径尽力解析（agent 已被 prompt 要求不在正文写路径，属边缘场景）。
+
+---
+
 ## 1. 背景与目标
 
 ### 1.1 现状
