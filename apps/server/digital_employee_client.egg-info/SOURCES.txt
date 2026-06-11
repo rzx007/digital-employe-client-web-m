@@ -76,6 +76,7 @@ scripts/stream_loadtest.py
 src/server.py
 src/api/__init__.py
 src/api/activation_api.py
+src/api/analytics_api.py
 src/api/chat_api.py
 src/api/config_kv_api.py
 src/api/employee_api.py

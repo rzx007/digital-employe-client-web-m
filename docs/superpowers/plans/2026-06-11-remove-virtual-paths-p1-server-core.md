@@ -14,13 +14,13 @@
 
 ---
 
-## 关键事实（实现前必读）
+## 关键事实（实现前必读 · 已由 Task 0 spike 在 `.venv` 运行时确认）
 
-1. deepagents 文件工具（ls/read/write/edit）在 `deepagents/middleware/filesystem.py` 里调**模块内** `_validate_path(...)`（定义于该文件 ~line 95），它对 `^[A-Za-z]:` 开头的 Windows 绝对路径**抛 ValueError**（拒绝）。
-2. cfm 覆盖的 `read_file` 用的是 `from deepagents.backends.utils import validate_path`（公有名）。
-3. 现有 `validate_path_shim.install_validate_path_shim()` 同时 patch 三处：`backends.utils.validate_path`、`middleware.filesystem.validate_path`（**注意：工具实际调的是 `_validate_path`，此处可能是历史遗留无效 patch，spike 会验证**）、`cfm.validate_path`。
+1. 运行时（`.venv`）deepagents 文件工具（ls/read/write/edit）调 `deepagents/middleware/filesystem.py` 的 **`validate_path`（无下划线）**（`_validate_path` 在此版本不存在），它对 `^[A-Za-z]:` 开头的 Windows 绝对路径**抛 ValueError**（spike 确认 `raised=True`）。
+2. `backends.utils.validate_path`（公有名）存在；cfm 覆盖的 `read_file` 用它。
+3. 删 shim 后只需把放行包装 patch 到 `fs_module.validate_path` + `backend_utils.validate_path` + cfm 自身导入名三处。
 4. `is_host_absolute_path()` / `normalize_host_path()`（`path_access/host_paths.py`）是放行判定纯函数，**保留复用**。
-5. `SkillAwareShellBackend` 当前已是 `CompositeBackend(default=...)` 的兜底后端，本机绝对路径的 read/edit 已由它的 `read()`/`edit()`（委托 `basic_file_read/edit`）处理；write/ls 继承自 `LocalShellBackend`。
+5. spike 确认 `LocalShellBackend` 已全实现 `read/write/edit/ls_info/als_info/download_files/aread` → 删 `CompositeBackend` 路由后直接用 `SkillAwareShellBackend` 作唯一 backend **无需补后端方法**。
 
 ---
 
@@ -118,23 +118,23 @@ def setup_module(_):
 
 
 def test_windows_absolute_allowed():
-    # 工具实际调用点
-    assert fsm._validate_path(r"D:\space\foo.txt") == "D:/space/foo.txt"
+    # 工具实际调用点（运行时为 validate_path，无下划线 — spike 确认）
+    assert fsm.validate_path(r"D:\space\foo.txt") == "D:/space/foo.txt"
 
 
 def test_unix_absolute_allowed():
-    assert fsm._validate_path("/home/u/x.md") == "/home/u/x.md"
+    assert fsm.validate_path("/home/u/x.md") == "/home/u/x.md"
 
 
 def test_traversal_still_rejected():
     import pytest
     with pytest.raises(ValueError):
-        fsm._validate_path("../etc/passwd")
+        fsm.validate_path("../etc/passwd")
 
 
 def test_virtual_like_path_passthrough():
     # 不再有虚拟前缀概念；以 / 开头的普通绝对路径按 host 放行
-    assert fsm._validate_path("/workspace/a.txt") == "/workspace/a.txt"
+    assert fsm.validate_path("/workspace/a.txt") == "/workspace/a.txt"
 ```
 
 - [ ] **Step 2：运行，确认失败**
@@ -178,9 +178,9 @@ def install_compatible_filesystem_middleware() -> None:
     fs_module.FilesystemMiddleware = OpenAICompatibleFilesystemMiddleware
     graph_module.FilesystemMiddleware = OpenAICompatibleFilesystemMiddleware
 
-    # 放行本机绝对路径：工具实际调用的是模块内 _validate_path；
+    # 放行本机绝对路径：运行时工具调 fs_module.validate_path（无下划线，spike 确认）；
     # cfm.read_file 与各 backend 用的是 backends.utils.validate_path。三处统一放行。
-    fs_module._validate_path = _validate_path_allow_physical
+    fs_module.validate_path = _validate_path_allow_physical
     backend_utils.validate_path = _validate_path_allow_physical
     globals()["bu_validate_path"] = _validate_path_allow_physical  # cfm 自身 read 路径
 
