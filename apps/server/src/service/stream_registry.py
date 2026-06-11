@@ -1760,6 +1760,13 @@ class StreamRegistry:
                         self.broadcast(conversation_id, evt)
                         # 工具产出 = 真实进展，刷新内容计时（工具执行期豁免判死）
                         task.touch_content()
+                    elif (
+                        isinstance(custom_data, dict)
+                        and custom_data.get("type") == "tool_keepalive"
+                    ):
+                        # 长命令静默运行期的心跳：刷新内容计时、豁免无进展判死，
+                        # 但不进 buffer、不广播——纯保活信号，不污染 UI 与持久化。
+                        task.touch_content()
                     continue
 
                 text_part = ChatService._extract_text_from_chunk(serializable)

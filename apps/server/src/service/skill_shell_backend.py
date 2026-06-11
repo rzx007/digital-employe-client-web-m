@@ -517,6 +517,31 @@ class SkillAwareShellBackend(LocalShellBackend):
             _batch.clear()
             _last_batch_emit = time.monotonic()
 
+        # 心跳：子进程存活但长时间零输出（如下载、编译、静默脚本）时，每 30s 推一个
+        # tool_keepalive 事件。它走 stream_writer 进 astream，同时喂活上层「chunk 间
+        # 超时(180s)」与「内容级无进展判死(240s)」两个看门狗——避免正常长命令被误判为
+        # 卡死而把整条流腰斩。30s 远小于两个阈值，留足余量。真正挂死（无子进程在跑）则
+        # 无心跳，看门狗照常回收，僵尸流保护不受影响。
+        _KEEPALIVE_SECONDS = 30
+        _last_output_at = time.monotonic()
+
+        async def _keepalive_loop():
+            while True:
+                await asyncio.sleep(_KEEPALIVE_SECONDS)
+                if completed_normally or timed_out:
+                    return
+                if time.monotonic() - _last_output_at < _KEEPALIVE_SECONDS:
+                    continue  # 近期有真实输出在流，无需心跳
+                try:
+                    payload: dict = {"tool_name": "shell_execute", "stream": "keepalive"}
+                    if tool_call_id:
+                        payload["tool_call_id"] = tool_call_id
+                    stream_writer({"type": "tool_keepalive", "data": payload})
+                except Exception:
+                    pass
+
+        _keepalive_task = asyncio.ensure_future(_keepalive_loop())
+
         # completed_normally 用于标记子进程是自行退出（收到 None），
         # 而非超时 / 取消 / 异常终止。finally 块据此决定是否杀进程。
         completed_normally = False
@@ -531,6 +556,7 @@ class SkillAwareShellBackend(LocalShellBackend):
                     completed_normally = True
                     break
 
+                _last_output_at = time.monotonic()  # 有真实输出 → 心跳让位
                 if current_output_size < self._max_output_bytes:
                     lines.append(line)
                     current_output_size += len(line) + 1
@@ -543,6 +569,7 @@ class SkillAwareShellBackend(LocalShellBackend):
 
             _emit_batch()
         finally:
+            _keepalive_task.cancel()
             # 非正常退出（超时 / 取消 / 异常）：通知线程杀子进程，避免孤儿进程
             if not completed_normally:
                 cancel_requested.set()
