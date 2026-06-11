@@ -158,6 +158,16 @@ class SkillAwareShellBackend(LocalShellBackend):
         # 注入会话 ID，供子进程（如 browserctl open-artifact）按会话定位产物
         if conversation_id is not None and str(conversation_id) != "":
             self._env["CONVERSATION_ID"] = str(conversation_id)
+        # 注入产物/技能/记忆等目录的真实绝对路径，供 agent 与子进程以真实路径定位，
+        # 取代已删除的虚拟前缀（/artifacts/ 等）。
+        self._env["ARTIFACTS_DIR"] = str(self._artifacts_dir)
+        self._env["SKILLS_DIR"] = str(self._skills_root)
+        if self._memories_root is not None:
+            self._env["MEMORIES_DIR"] = str(self._memories_root)
+        if self._uploads_root is not None:
+            self._env["UPLOADS_DIR"] = str(self._uploads_root)
+        if self._draft_root is not None:
+            self._env["SKILLS_DRAFT_DIR"] = str(self._draft_root)
         self._inject_global_node_path()
 
     def _inject_global_node_path(self) -> None:
