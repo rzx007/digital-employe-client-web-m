@@ -60,6 +60,18 @@ def static_client(db_engine, monkeypatch):
 
     monkeypatch.setattr(chat_api, "get_settings", lambda: _Settings())
 
+    # 隔离激活网关：静态路由单元测试不依赖激活状态（某些环境强制激活会 403）
+    from types import SimpleNamespace
+    from src.core import activation_gateway
+
+    monkeypatch.setattr(
+        activation_gateway.ActivationService,
+        "get_status",
+        staticmethod(
+            lambda: SimpleNamespace(enforced=False, activated=True, reason=None)
+        ),
+    )
+
     # 覆盖 get_db 依赖，使用测试库
     def _override_get_db():
         db = session_factory()
