@@ -50,7 +50,8 @@
 
 ```
 <artifacts_root>/                                  (settings.artifacts_path)
-├── shared/                                        ← 全局公共区  $PUBLIC_DIR（所有员工读写）
+├── shared/                                        ← 全局公共区根  $PUBLIC_ROOT（读：面向整个 shared/**）
+│   └── employee-<id>/conv-<cid>/                  ← 该会话的共享产物  $PUBLIC_DIR（写：自己往这放）
 ├── employee-<id>/
 │   └── artifacts/                                 ← 员工工作空间根  $WORKSPACE_DIR（整根可读）
 │       ├── conv-<conversation_id>/                ← 当前会话产物  $ARTIFACTS_DIR（= cwd，写新产物落这）
@@ -63,13 +64,19 @@
 skill_path/<employee_id>/{skills, memories}/       $SKILLS_DIR / $MEMORIES_DIR
 ```
 
+> **公共区按来源分层（做法 A）**：每个会话往 `$PUBLIC_DIR`（= `shared/employee-<id>/conv-<cid>/`）写自己的
+> 共享产物；要看别人共享的，读 `$PUBLIC_ROOT`（整个 `shared/**`）。好处：① 删会话/员工时其公共副本**天然级联**
+> （连删对应子目录）；② 不同员工同名共享互不覆盖；③ 无需元数据库，shell `cp` 进去的也照样级联。工作台展示时把
+> `shared/**` 拍平成一个"公共区"列表（条目带来源标签）。
+
 ### 2.1 注入的环境变量（在 §去虚拟路径 已注入的基础上增改）
 
 | env | 含义 | 值 |
 |-----|------|-----|
 | `$ARTIFACTS_DIR` | **当前会话**产物目录（cwd，写新产物） | `…/employee-<id>/artifacts/conv-<id>/` |
 | `$WORKSPACE_DIR` | **员工工作空间根**（读自己跨会话的全部产物） | `…/employee-<id>/artifacts/` |
-| `$PUBLIC_DIR` | **全局公共区**（跨员工读写共享） | `…/shared/` |
+| `$PUBLIC_DIR` | **写**：把成果共享出去（按来源分层，自动级联/防撞名） | `…/shared/employee-<id>/conv-<id>/` |
+| `$PUBLIC_ROOT` | **读**：浏览/取用所有人共享的 | `…/shared/` |
 | `$UPLOADS_DIR` | 本会话上传 | `…/conv-<id>/uploads/` |
 | `$SKILLS_DIR` / `$SKILLS_DRAFT_DIR` / `$MEMORIES_DIR` | 同前（不变） | 同前 |
 
@@ -82,12 +89,12 @@ skill_path/<employee_id>/{skills, memories}/       $SKILLS_DIR / $MEMORIES_DIR
 
 `get_agent` / `get_orchestrator_agent` 构造时按上下文解析三个目录（替换现有 `artifacts_dir` 单值逻辑）：
 
-| 上下文 | `$ARTIFACTS_DIR`（写） | `$WORKSPACE_DIR`（读自己） | `$PUBLIC_DIR` |
-|--------|----------------------|--------------------------|---------------|
-| **员工直聊**（有 employee_id + conversation_id） | `employee-<id>/artifacts/conv-<cid>/` | `employee-<id>/artifacts/` | `shared/` |
-| **员工无会话**（兜底） | `employee-<id>/artifacts/_scratch/` | `employee-<id>/artifacts/` | `shared/` |
-| **群房间成员**（shared_artifacts_dir 存在） | `room-<rid>/artifacts/`（协作产出落共享） | `employee-<id>/artifacts/`（仍可读自己） | `shared/` |
-| **总管 orchestrator** | `employee-orchestrator/artifacts/conv-<cid>/` | `employee-orchestrator/artifacts/` | `shared/` |
+| 上下文 | `$ARTIFACTS_DIR`（写产物） | `$WORKSPACE_DIR`（读自己） | `$PUBLIC_DIR`（写共享） | `$PUBLIC_ROOT`（读公共） |
+|--------|----------------------|--------------------------|------------------------|------------------------|
+| **员工直聊** | `employee-<id>/artifacts/conv-<cid>/` | `employee-<id>/artifacts/` | `shared/employee-<id>/conv-<cid>/` | `shared/` |
+| **员工无会话**（兜底） | `employee-<id>/artifacts/_scratch/` | `employee-<id>/artifacts/` | `shared/employee-<id>/_scratch/` | `shared/` |
+| **群房间成员** | `room-<rid>/artifacts/`（协作产出落共享） | `employee-<id>/artifacts/`（仍可读自己） | `shared/employee-<id>/conv-<cid>/` | `shared/` |
+| **总管 orchestrator** | `employee-orchestrator/artifacts/conv-<cid>/` | `employee-orchestrator/artifacts/` | `shared/employee-orchestrator/conv-<cid>/` | `shared/` |
 
 要点：
 - **群房间**：当前任务产出仍落 `room-<rid>/artifacts`（保持协作可见），但成员**额外**能读自己工作空间与公共区。
@@ -101,17 +108,25 @@ skill_path/<employee_id>/{skills, memories}/       $SKILLS_DIR / $MEMORIES_DIR
 资源读取/静态服务/下载的沙箱边界从"会话目录"**放宽到三个允许根的并集**：
 
 ```
-allowed_roots = [
-  employee-<id>/artifacts/   (员工工作空间，含所有 conv-*)
-  shared/                    (公共区)
+读 allowed_roots = [
+  employee-<id>/artifacts/   (员工自己工作空间，含所有 conv-*)
+  shared/                    (公共区根 $PUBLIC_ROOT，可读所有人共享)
   room-<rid>/artifacts/      (若在房间上下文)
 ]
-路径合法 ⟺ resolve() 落在任一 allowed_root 内（relative_to 任一成功）
+写 allowed_roots = [
+  employee-<id>/artifacts/conv-<cid>/   (当前会话产物 + uploads)
+  shared/employee-<id>/                  (只能往自己的公共子区写/删)
+  room-<rid>/artifacts/                  (房间上下文)
+]
+路径合法 ⟺ resolve() 落在对应（读/写）allowed_root 内
 ```
 
-- `_resolve_safe_path` / `_bucket_of` / `_resolve_conversation_dir`（`resource_service.py`）改为按"员工工作空间根 + 公共区 + 房间"解析，而非单会话目录。
-- **写**操作（删除/上传）仍限定到具体子桶（如 uploads、当前 conv），避免越权删别的会话产物（除非显式）。
-- 跨员工：员工 B 的资源请求**只允许** B 自己的工作空间 + 公共区（+ B 所在房间）；**不能**直接读 A 的私有工作空间——A→B 必须经公共区。这是隔离边界。
+- `_resolve_safe_path` / `_bucket_of` / `_resolve_conversation_dir`（`resource_service.py`）改为按上述读/写根解析，而非单会话目录。
+- **读公共**面向整个 `shared/**`；**写公共**只能写自己的 `shared/employee-<id>/…`（防越权改别人共享）。
+- 跨员工隔离：员工 B **不能**直接读 A 的私有工作空间（`employee-<A>/artifacts/`）——A→B 必须经公共区。但
+  公共区 `shared/**` 全员可读。
+- **删公共**：见 §7.3，`shared/` 内任意路径可删（无 ACL，平摊）；删自己会话/员工时其 `shared/employee-<id>/…`
+  子区**级联删**（§7.1）。
 
 ---
 
@@ -121,7 +136,8 @@ allowed_roots = [
 
 - **交付物**：写到产物目录（cwd / `$ARTIFACTS_DIR`），与现在一致。
 - **找自己过去的活**：在 `$WORKSPACE_DIR` 下按会话子目录（`conv-*`）翻；要复用旧产物先 `ls $WORKSPACE_DIR` 再 read。
-- **跨员工共享/取用**：要把成果给别的员工 → 复制/写到 `$PUBLIC_DIR`；要用别人共享的 → 从 `$PUBLIC_DIR` 读。公共区是全员平摊，**起描述性文件名/子目录**避免互相覆盖。
+- **共享给别的员工**：复制/写到 `$PUBLIC_DIR`（这是你自己的共享区，会随会话/你的删除自动清理）。
+- **取用别人共享的**：浏览/读 `$PUBLIC_ROOT`（所有人的共享都在这下面，按 `employee-*/conv-*/` 分）。
 
 ---
 
@@ -135,7 +151,7 @@ allowed_roots = [
 ResourceList {
   artifacts:    员工工作空间下【当前会话】子目录（默认聚焦视图）
   workspace:    员工工作空间全树（按 conv-* 分组；新字段，供"漫游全部"）
-  public:       公共区（新字段）
+  public:       公共区 shared/** 拍平（新字段；条目带来源 employee/conv 标签）
   uploads:      当前会话上传
   skills_draft: 同前
   room?:        房间共享（房间上下文）
@@ -163,15 +179,18 @@ ResourceList {
 
 ### 7.1 删单个会话（级联默认删产物，可选保留）
 
-删会话时联动三件事：① 会话记录（DB）② LangGraph checkpoint ③ 该会话产物目录
-`employee-<id>/artifacts/conv-<conversation_id>/`（含 `uploads/`）。
+删会话时联动四件事：① 会话记录（DB）② LangGraph checkpoint ③ 该会话产物目录
+`employee-<id>/artifacts/conv-<conversation_id>/`（含 `uploads/`）④ 该会话的公共副本子区
+`shared/employee-<id>/conv-<conversation_id>/`。
 
-- **默认级联删产物**。删除前弹确认框：
-  > 「此会话有 **N** 个产物。 [删除会话和产物] / [只删会话，保留产物] / 取消」
-- 选「只删会话，保留产物」→ 仅删会话记录 + checkpoint；`conv-<id>/` 留在工作空间成为**孤立产物**
-  （无对应会话，但工作台"工作空间全部"视图仍可见、可后续单独清理）。
-- **公共区不受影响**：若该会话曾把成果复制到 `$PUBLIC_DIR`，那些副本是独立文件，**不级联删**。
-- 群房间产物（`room-<rid>/artifacts`）也不随成员单个会话删除而动（房间有独立生命周期）。
+- **默认级联删产物（含公共副本）**。删除前弹确认框（N 含工作空间 + 公共区两处计数）：
+  > 「此会话有 **N** 个产物（含 **P** 个已共享到公共区）。 [删除会话和全部产物] / [只删会话，保留产物] / 取消」
+- 选「只删会话，保留产物」→ 仅删会话记录 + checkpoint；`conv-<id>/` 与 `shared/…/conv-<id>/` 都留下成为
+  **孤立产物**（工作台"工作空间全部 / 公共区"视图仍可见、可后续单独清理）。
+- **公共副本天然级联**（做法 A）：因公共区按 `shared/employee-<id>/conv-<id>/` 分层，删会话只需连删该子目录，
+  无需查表、无漏网。
+- 群房间产物（`room-<rid>/artifacts`）不随成员单个会话删除而动（房间有独立生命周期）。
+- **删除员工（解雇）**：级联删该员工整个工作空间 `employee-<id>/artifacts/` 与公共子区 `shared/employee-<id>/`。
 
 ### 7.2 批量删会话
 
@@ -192,8 +211,9 @@ ResourceList {
 
 ### 7.4 沙箱与越权
 
-所有删除（单/批、会话联动/产物）统一走 §4 沙箱：只能删**自己工作空间 / 公共区 / 所在房间**内的路径；
-员工 B 不能删 A 私有工作空间的产物。删会话联动产物时，按该会话所属员工解析其工作空间下的 `conv-<id>/`，不跨员工。
+所有删除（单/批、会话联动/产物）统一走 §4 沙箱：员工 B 不能删 A 私有工作空间的产物；写/删公共只限自己的
+`shared/employee-<B>/…` 子区（**经工作台手动删**公共项可放宽到整个 `shared/`，无 ACL）。删会话联动时，按该会话所属
+员工解析其 `employee-<id>/artifacts/conv-<id>/` 与 `shared/employee-<id>/conv-<id>/` 两处，不跨员工。
 
 ---
 
@@ -210,7 +230,8 @@ ResourceList {
 ## 9. 开放问题（review 时定夺）
 
 - **Q1 迁移策略**：惰性只读兼容旧布局（推荐）vs 启动一次性搬迁。**暂定惰性**。
-- **Q2 公共区命名冲突**：全员平摊写，靠 prompt 约束命名 vs 加 `employee-<id>/` 二级前缀（公共区内按来源分子目录，避免覆盖但稍弱化"公共"感）。**暂定加来源子目录** `shared/from-<employee_id>/…` 兜底防覆盖，同时允许顶层公共文件。
+- ~~**Q2 公共区命名冲突**~~ **已定（做法 A）**：公共区按 `shared/employee-<id>/conv-<cid>/` 分层，写各自子区，
+  天然不撞名、且支持级联删（见 §2「公共区按来源分层」、§7.1）。读面向整个 `shared/**`。
 - **Q3 总管工作空间**：总管是否需要独立工作空间，还是只读公共区 + 各员工产物汇总？**暂定给总管独立工作空间**（id=orchestrator），与员工一致。
 - **Q4 房间与工作空间的关系**：房间产物结束后是否自动沉淀到参与者工作空间或公共区？**暂定不自动**（房间是临时区，要留存由 agent/用户显式复制到公共区）。
 - **Q5 跨员工读权限**：是否允许员工**只读**别人的私有工作空间（不经公共区）？**暂定否**（私有=私有，共享必经公共区），保持清晰隔离边界。
@@ -223,7 +244,7 @@ ResourceList {
 ## 10. 受影响范围（实现时细化为分相位计划）
 
 **服务端**：
-- `agent/employee.py`、`agent/orchestrator/agent.py`：artifacts_dir 单值 → `$ARTIFACTS_DIR`/`$WORKSPACE_DIR`/`$PUBLIC_DIR` 三值解析；env 注入（`skill_shell_backend.py`）。
+- `agent/employee.py`、`agent/orchestrator/agent.py`：artifacts_dir 单值 → `$ARTIFACTS_DIR`/`$WORKSPACE_DIR`/`$PUBLIC_DIR`(写自己公共子区)/`$PUBLIC_ROOT`(读全部) 解析；按上下文建 `shared/employee-<id>/conv-<cid>/`；env 注入（`skill_shell_backend.py`）。
 - `resource_service.py`：`_resolve_conversation_dir` → 员工工作空间根解析；沙箱放宽到三根并集；`list_resources` 增 workspace/public；upload 落点改会话子目录；迁移兼容回退。
 - `api/chat_api.py`：资源端点沙箱/作用域调整；**新增批量删除产物端点**（收路径数组，逐条沙箱校验，§7.3）。
 - `schemas/resource.py`：`ResourceList` 增 `workspace`/`public` 字段，`bucket` 增值。
