@@ -28,8 +28,15 @@ export function useVoiceRecorder({
   onResult,
   onError,
 }: UseVoiceRecorderOptions) {
-  const [phase, setPhase] = React.useState<RecorderPhase>("idle")
+  const [phase, setPhaseState] = React.useState<RecorderPhase>("idle")
   const [elapsedMs, setElapsedMs] = React.useState(0)
+
+  // 与 phase state 同步的 ref：attachStream 等异步回调需要读到最新 phase
+  const phaseRef = React.useRef<RecorderPhase>("idle")
+  const setPhase = React.useCallback((next: RecorderPhase) => {
+    phaseRef.current = next
+    setPhaseState(next)
+  }, [])
 
   const recorderRef = React.useRef<MediaRecorder | null>(null)
   const streamRef = React.useRef<MediaStream | null>(null)
@@ -60,7 +67,7 @@ export function useVoiceRecorder({
     finishingRef.current = false
     setPhase("idle")
     setElapsedMs(0)
-  }, [releaseStream])
+  }, [releaseStream, setPhase])
 
   const finishRef = React.useRef<() => Promise<void>>(async () => {})
 
@@ -77,7 +84,11 @@ export function useVoiceRecorder({
     const durationMs = Date.now() - startedAtRef.current
 
     const blob = await new Promise<Blob>((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve(new Blob(chunksRef.current, { type: "audio/webm" }))
+      }, 3000)
       recorder.onstop = () => {
+        clearTimeout(timeout)
         resolve(new Blob(chunksRef.current, { type: "audio/webm" }))
       }
       recorder.stop()
@@ -110,19 +121,27 @@ export function useVoiceRecorder({
       setPhase("idle")
       setElapsedMs(0)
     }
-  }, [onError, onResult])
-  finishRef.current = finish
+  }, [onError, onResult, setPhase])
+
+  React.useEffect(() => {
+    finishRef.current = finish
+  })
 
   /** 用户点击麦克风：进入 recording 视觉态（LiveWaveform 随之 active 并申请麦克风） */
   const start = React.useCallback(() => {
     chunksRef.current = []
     setElapsedMs(0)
     setPhase("recording")
-  }, [])
+  }, [setPhase])
 
   /** LiveWaveform onStreamReady：把它打开的流接给 MediaRecorder */
   const attachStream = React.useCallback((stream: MediaStream) => {
-    if (recorderRef.current) return
+    // 取消/未开始时流才 ready（如授权弹窗期间点了取消），或重复 attach：
+    // 直接停掉这条流，避免麦克风泄漏与幽灵录音
+    if (phaseRef.current !== "recording" || recorderRef.current) {
+      stream.getTracks().forEach((t) => t.stop())
+      return
+    }
     streamRef.current = stream
     const recorder = new MediaRecorder(stream)
     recorderRef.current = recorder

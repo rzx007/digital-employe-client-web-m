@@ -152,6 +152,19 @@ describe("useVoiceRecorder", () => {
     expect(result.current.phase).toBe("idle")
   })
 
+  it("取消后流才 ready：不接录、立即释放 track", () => {
+    const stream = fakeStream()
+    const { result } = renderHook(() =>
+      useVoiceRecorder({ onResult: vi.fn(), onError: vi.fn() })
+    )
+    act(() => result.current.start())
+    act(() => result.current.cancel())
+    act(() => result.current.attachStream(stream))
+    expect(stream.getTracks()[0]!.stop).toHaveBeenCalled()
+    expect(result.current.phase).toBe("idle")
+    expect(FakeMediaRecorder.instances).toHaveLength(0)
+  })
+
   it("卸载时等价取消：释放 track", () => {
     const stream = fakeStream()
     const { result, unmount } = renderHook(() =>
