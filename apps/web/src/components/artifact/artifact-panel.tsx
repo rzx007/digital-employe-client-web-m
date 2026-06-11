@@ -455,6 +455,15 @@ export const ArtifactPanel = ({
     () => filterEntries(resources.uploads, searchQuery),
     [resources.uploads, searchQuery]
   )
+  // 员工工作空间全部（跨会话）+ 公共区（跨员工共享）
+  const filteredWorkspace = React.useMemo(
+    () => filterEntries(resources.workspace ?? [], searchQuery),
+    [resources.workspace, searchQuery]
+  )
+  const filteredPublic = React.useMemo(
+    () => filterEntries(resources.public ?? [], searchQuery),
+    [resources.public, searchQuery]
+  )
   const totalFiles = React.useMemo(
     () =>
       countFiles(resources.artifacts) +
@@ -475,7 +484,9 @@ export const ArtifactPanel = ({
   const hasFilteredResources =
     hasEntries(filteredArtifacts) ||
     hasEntries(filteredUploads) ||
-    hasEntries(filteredSkillsDraft)
+    hasEntries(filteredSkillsDraft) ||
+    hasEntries(filteredWorkspace) ||
+    hasEntries(filteredPublic)
 
   const searchExpandedPaths = React.useMemo(() => {
     if (!hasSearchQuery) return null
@@ -859,6 +870,42 @@ export const ArtifactPanel = ({
                           />
                         </ContextMenu>
                       ))}
+                    </FileTreeFolder>
+                  )}
+                  {filteredWorkspace.length > 0 && (
+                    <FileTreeFolder
+                      className={ARTIFACT_TREE_NAME_ROW_CLASS}
+                      path="/workspace"
+                      name="工作空间（全部会话）"
+                      title="workspace"
+                    >
+                      {filteredWorkspace.map((e) =>
+                        renderEntry(
+                          e,
+                          conversationId!,
+                          handleDelete,
+                          handleRefreshResources,
+                          getPendingForPath
+                        )
+                      )}
+                    </FileTreeFolder>
+                  )}
+                  {filteredPublic.length > 0 && (
+                    <FileTreeFolder
+                      className={ARTIFACT_TREE_NAME_ROW_CLASS}
+                      path="/public"
+                      name="公共区（跨员工共享）"
+                      title="public"
+                    >
+                      {filteredPublic.map((e) =>
+                        renderEntry(
+                          e,
+                          conversationId!,
+                          handleDelete,
+                          handleRefreshResources,
+                          getPendingForPath
+                        )
+                      )}
                     </FileTreeFolder>
                   )}
                 </FileTree>
