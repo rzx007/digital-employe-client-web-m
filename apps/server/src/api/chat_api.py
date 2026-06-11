@@ -35,7 +35,13 @@ from src.schemas.recent_contact import (
     RecentContactRead,
     RecentContactTouch,
 )
-from src.schemas.resource import ResourceContent, ResourceList, ResourceUploadResult
+from src.schemas.resource import (
+    ResourceBatchDeleteRequest,
+    ResourceBatchDeleteResult,
+    ResourceContent,
+    ResourceList,
+    ResourceUploadResult,
+)
 from src.service.chat_service import ChatService
 from src.service.conversation_title_service import suggest_conversation_title
 from src.service.recent_contact_service import RecentContactService
@@ -523,3 +529,21 @@ def delete_conversation_resource(
     if not ok:
         return BaseResponse(msg="资源不存在或删除失败")
     return BaseResponse()
+
+
+@router.post(
+    "/chat/conversations/{conversation_id}/resources/batch-delete",
+    response_model=ResponseBase[ResourceBatchDeleteResult],
+)
+def batch_delete_conversation_resources(
+    conversation_id: int,
+    payload: ResourceBatchDeleteRequest,
+    db: Session = Depends(get_db),
+) -> ResponseBase[ResourceBatchDeleteResult]:
+    """批量删产物：逐条沙箱校验（员工工作空间/公共区/房间内），合法删、非法跳过。"""
+    conversation = ChatService.get_conversation(db, conversation_id)
+    settings = get_settings()
+    result = ResourceService.batch_delete(
+        settings.artifacts_path, conversation.id, payload.paths
+    )
+    return ResponseBase(data=ResourceBatchDeleteResult(**result))

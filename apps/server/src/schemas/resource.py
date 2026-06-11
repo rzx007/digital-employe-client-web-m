@@ -19,6 +19,9 @@ class ResourceList(BaseModel):
     artifacts: list[ResourceEntry]
     uploads: list[ResourceEntry] = []
     skills_draft: list[ResourceEntry]
+    # 员工工作空间全树（按 conv-* 分）；公共区 shared/** 全树（按来源 employee-*/conv-* 分）
+    workspace: list[ResourceEntry] = []
+    public: list[ResourceEntry] = []
 
 
 class ResourceContent(BaseModel):
@@ -33,3 +36,12 @@ class ResourceUploadResult(BaseModel):
     path: str  # 真实磁盘绝对路径
     bucket: str | None = None
     size: int
+
+
+class ResourceBatchDeleteRequest(BaseModel):
+    paths: list[str]  # 一组真实磁盘绝对路径
+
+
+class ResourceBatchDeleteResult(BaseModel):
+    deleted: list[str] = []
+    skipped: list[str] = []

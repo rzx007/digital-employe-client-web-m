@@ -47,9 +47,12 @@ def static_client(db_engine, monkeypatch):
     finally:
         session.close()
 
-    # 临时 artifacts 目录：<root>/<conversation_id>/artifacts/{report.html, style.css}
+    # 员工工作空间布局：<root>/employee-<eid>/artifacts/conv-<cid>/{report.html, style.css}
+    # （会话 target_type=employee, target_id=1 → owner employee-1）
     artifacts_root = Path(tempfile.mkdtemp(prefix="de-test-artifacts-"))
-    artifacts_dir = artifacts_root / str(conversation_id) / "artifacts"
+    artifacts_dir = (
+        artifacts_root / "employee-1" / "artifacts" / f"conv-{conversation_id}"
+    )
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     (artifacts_dir / "report.html").write_text(HTML_BODY, encoding="utf-8")
     (artifacts_dir / "style.css").write_text(CSS_BODY, encoding="utf-8")
@@ -71,6 +74,12 @@ def static_client(db_engine, monkeypatch):
             lambda: SimpleNamespace(enforced=False, activated=True, reason=None)
         ),
     )
+
+    # 会话→员工/房间解析走全局 session（非测试 DB），直接打桩为 employee-1 / 无房间
+    from src.service import resource_service as _rs
+
+    monkeypatch.setattr(_rs, "_resolve_employee_id_for_conversation", lambda cid: 1)
+    monkeypatch.setattr(_rs, "_resolve_room_dir", lambda root_path, cid: None)
 
     # 覆盖 get_db 依赖，使用测试库
     def _override_get_db():

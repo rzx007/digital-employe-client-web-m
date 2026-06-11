@@ -1,54 +1,83 @@
-"""资源服务真实路径 + 分桶 + 沙箱校验。"""
+"""资源服务：员工工作空间 + 公共区 + 读根沙箱 + 跨员工隔离 + 批量删。"""
 from pathlib import Path
 
-from src.service.resource_service import ResourceService, _bucket_of
+import pytest
+
+from src.service import resource_service as rs
+from src.service.resource_service import ResourceService
 
 
-def _setup(tmp_path: Path):
+@pytest.fixture()
+def ws(tmp_path, monkeypatch):
+    """搭建员工 7 的工作空间 + 公共区，并把会话→员工/房间映射打桩为不依赖 DB。"""
     root = tmp_path / "root"
-    conv = root / "7"
-    (conv / "artifacts").mkdir(parents=True)
-    (conv / "uploads").mkdir(parents=True)
-    (conv / "artifacts" / "report.md").write_text("# hi", encoding="utf-8")
-    (conv / "uploads" / "a.txt").write_text("u", encoding="utf-8")
-    (conv / "conversation_history").mkdir(parents=True)
-    (conv / "conversation_history" / "h.md").write_text("secret", encoding="utf-8")
-    return str(root), conv
+    # 员工 7 工作空间：conv-1 当前会话 + conv-2 过去会话
+    (root / "employee-7" / "artifacts" / "conv-1").mkdir(parents=True)
+    (root / "employee-7" / "artifacts" / "conv-1" / "report.md").write_text("# r", encoding="utf-8")
+    (root / "employee-7" / "artifacts" / "conv-1" / "uploads").mkdir()
+    (root / "employee-7" / "artifacts" / "conv-1" / "uploads" / "a.txt").write_text("u", encoding="utf-8")
+    (root / "employee-7" / "artifacts" / "conv-2").mkdir(parents=True)
+    (root / "employee-7" / "artifacts" / "conv-2" / "old.md").write_text("old", encoding="utf-8")
+    # 公共区
+    (root / "shared" / "employee-7" / "conv-1").mkdir(parents=True)
+    (root / "shared" / "employee-7" / "conv-1" / "pub.md").write_text("pub", encoding="utf-8")
+    # 另一个员工 9 的私有工作空间（B 不能读）
+    (root / "employee-9" / "artifacts" / "conv-5").mkdir(parents=True)
+    (root / "employee-9" / "artifacts" / "conv-5" / "secret.md").write_text("x", encoding="utf-8")
+
+    monkeypatch.setattr(rs, "_resolve_employee_id_for_conversation", lambda cid: 7)
+    monkeypatch.setattr(rs, "_resolve_room_dir", lambda root_path, cid: None)
+    return str(root), root
 
 
-def test_list_resources_has_real_path_and_bucket(tmp_path):
-    root, conv = _setup(tmp_path)
-    data = ResourceService.list_resources(root, 7)
-    art = data.artifacts[0]
-    assert art.bucket == "artifacts"
-    assert art.path == (conv / "artifacts" / "report.md").as_posix()
-    assert data.uploads[0].bucket == "uploads"
+def test_list_resources_workspace_and_public(ws):
+    root, root_p = ws
+    data = ResourceService.list_resources(root, 1)
+    # 当前会话产物（不含 uploads 子目录）
+    art_names = {e.name for e in data.artifacts}
+    assert "report.md" in art_names
+    assert "uploads" not in art_names
+    # 上传单列
+    assert data.uploads and data.uploads[0].name == "a.txt"
+    # 工作空间全树含两个会话目录
+    ws_names = {e.name for e in data.workspace}
+    assert {"conv-1", "conv-2"} <= ws_names
+    # 公共区
+    pub_names = {e.name for e in data.public}
+    assert "employee-7" in pub_names
+    # bucket 标注
+    assert data.workspace[0].bucket == "workspace"
+    assert data.public[0].bucket == "public"
 
 
-def test_read_content_allows_bucket_file(tmp_path):
-    root, conv = _setup(tmp_path)
-    real = str(conv / "artifacts" / "report.md")
-    content = ResourceService.read_content(root, 7, real)
-    assert content is not None
-    assert content.path == real
+def test_read_content_allows_workspace_and_public(ws):
+    root, root_p = ws
+    own = str(root_p / "employee-7" / "artifacts" / "conv-2" / "old.md")
+    pub = str(root_p / "shared" / "employee-7" / "conv-1" / "pub.md")
+    assert ResourceService.read_content(root, 1, own) is not None
+    assert ResourceService.read_content(root, 1, pub) is not None
 
 
-def test_read_content_rejects_non_bucket(tmp_path):
-    root, conv = _setup(tmp_path)
-    # conversation_history 不是允许桶
-    real = str(conv / "conversation_history" / "h.md")
-    assert ResourceService.read_content(root, 7, real) is None
+def test_cross_employee_private_rejected(ws):
+    root, root_p = ws
+    other = str(root_p / "employee-9" / "artifacts" / "conv-5" / "secret.md")
+    assert ResourceService.read_content(root, 1, other) is None
+    assert ResourceService.resolve_download_path(root, 1, other) is None
 
 
-def test_read_content_rejects_sandbox_escape(tmp_path):
-    root, conv = _setup(tmp_path)
-    outside = str(tmp_path / "etc_passwd")
+def test_sandbox_escape_rejected(ws):
+    root, root_p = ws
+    outside = str(root_p.parent / "etc_passwd")
     Path(outside).write_text("x", encoding="utf-8")
-    assert ResourceService.read_content(root, 7, outside) is None
+    assert ResourceService.read_content(root, 1, outside) is None
 
 
-def test_bucket_of(tmp_path):
-    root, conv = _setup(tmp_path)
-    assert _bucket_of(conv / "artifacts" / "x", conv) == "artifacts"
-    assert _bucket_of(conv / "uploads" / "x", conv) == "uploads"
-    assert _bucket_of(conv / "conversation_history" / "x", conv) is None
+def test_batch_delete_skips_illegal(ws):
+    root, root_p = ws
+    ok = str(root_p / "employee-7" / "artifacts" / "conv-2" / "old.md")
+    bad = str(root_p / "employee-9" / "artifacts" / "conv-5" / "secret.md")
+    res = ResourceService.batch_delete(root, 1, [ok, bad])
+    assert ok in res["deleted"]
+    assert bad in res["skipped"]
+    assert not Path(ok).exists()
+    assert Path(bad).exists()  # 跨员工未删

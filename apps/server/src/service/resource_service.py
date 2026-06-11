@@ -78,11 +78,15 @@ def _scan_file(file_path: Path, bucket: str) -> ResourceEntry:
     )
 
 
-def _scan_dir_flat(directory: Path, bucket: str) -> list[ResourceEntry]:
+def _scan_dir_flat(
+    directory: Path, bucket: str, *, skip_names: tuple[str, ...] = ()
+) -> list[ResourceEntry]:
     if not directory.is_dir():
         return []
     entries: list[ResourceEntry] = []
     for item in sorted(directory.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+        if item.is_dir() and item.name in skip_names:
+            continue
         if item.is_dir():
             children = _scan_dir_flat(item, bucket)
             entries.append(
@@ -225,28 +229,120 @@ def _resolve_conversation_dir(root_path: str, conversation_id: int) -> Path:
     return default_dir
 
 
+def _resolve_employee_id_for_conversation(conversation_id: int) -> int | str | None:
+    """会话→员工 owner：target_type=employee→target_id；curator→orchestrator；群→None。"""
+    from src.db.session import get_session_local
+    from src.models.conversation import Conversation
+
+    db = get_session_local()()
+    try:
+        conv = db.get(Conversation, conversation_id)
+        if conv is None:
+            return None
+        if conv.target_type == "employee":
+            return conv.target_id
+        if conv.target_type == "curator":
+            return "orchestrator"
+        return None
+    finally:
+        db.close()
+
+
+def _resolve_room_dir(root_path: str, conversation_id: int) -> Path | None:
+    from src.db.session import get_session_local
+
+    db = get_session_local()()
+    try:
+        room_id = _resolve_room_id_for_conversation(db, conversation_id)
+    finally:
+        db.close()
+    if room_id is None:
+        return None
+    return Path(root_path) / f"room-{room_id}" / "artifacts"
+
+
+def resolve_workspace_context(root_path: str, conversation_id: int):
+    """返回该会话的 (workspace_dir, public_root, conv_artifacts_dir, room_dir|None)。"""
+    from src.service.agent.workspace_paths import resolve_workspace_dirs
+
+    room_dir = _resolve_room_dir(root_path, conversation_id)
+    employee_id = _resolve_employee_id_for_conversation(conversation_id)
+    ws = resolve_workspace_dirs(
+        root_path=root_path,
+        employee_id=employee_id,
+        conversation_id=conversation_id,
+        shared_artifacts_dir=str(room_dir) if room_dir else None,
+        base_dir=Path(root_path),
+    )
+    conv_artifacts = ws.workspace_dir / f"conv-{conversation_id}"
+    return ws.workspace_dir, ws.public_root, conv_artifacts, room_dir
+
+
+def _read_roots(root_path: str, conversation_id: int) -> list[Path]:
+    """资源读取允许的根：员工工作空间 + 整个公共区(+ 房间)。"""
+    workspace_dir, public_root, _conv, room_dir = resolve_workspace_context(
+        root_path, conversation_id
+    )
+    roots = [workspace_dir.resolve(), public_root.resolve()]
+    if room_dir is not None:
+        roots.append(room_dir.resolve())
+    return roots
+
+
+def _is_strictly_inside(target: Path, root: Path) -> bool:
+    """target 严格在 root 内部（不等于 root 自身）。"""
+    try:
+        rel = target.resolve().relative_to(root.resolve())
+    except (ValueError, OSError):
+        return False
+    return len(rel.parts) >= 1
+
+
+def _resolve_safe_in_roots(roots: list[Path], real_path: str) -> Path | None:
+    """真实路径落在任一允许根内则返回 resolve 后路径，否则 None（沙箱）。"""
+    try:
+        target = Path(real_path).resolve()
+    except OSError:
+        return None
+    for root in roots:
+        try:
+            target.relative_to(root)
+            return target
+        except ValueError:
+            continue
+    return None
+
+
 class ResourceService:
     @staticmethod
     def list_resources(root_path: str, conversation_id: int) -> ResourceList:
-        conversation_dir = _resolve_conversation_dir(root_path, conversation_id)
-        artifacts_dir = conversation_dir / "artifacts"
-        skills_draft_dir = conversation_dir / "skills-draft"
-        uploads_dir = conversation_dir / "uploads"
+        workspace_dir, public_root, conv_artifacts, room_dir = resolve_workspace_context(
+            root_path, conversation_id
+        )
+        # 当前会话产物（排除 uploads/skills-draft 子目录，它们单列）
+        current = (room_dir or conv_artifacts)
+        artifacts = _scan_dir_flat(
+            current, "artifacts", skip_names=("uploads", "skills-draft")
+        )
+        uploads = _scan_dir_flat(conv_artifacts / "uploads", "uploads")
+        skills_draft = _scan_skills_draft(conv_artifacts / "skills-draft")
+        # 员工工作空间全树（按 conv-* 分）+ 公共区全树（按来源分）
+        workspace = _scan_dir_flat(workspace_dir, "workspace")
+        public = _scan_dir_flat(public_root, "public")
 
         return ResourceList(
-            artifacts=_scan_dir_flat(artifacts_dir, "artifacts"),
-            uploads=_scan_dir_flat(uploads_dir, "uploads"),
-            skills_draft=_scan_skills_draft(skills_draft_dir),
+            artifacts=artifacts,
+            uploads=uploads,
+            skills_draft=skills_draft,
+            workspace=workspace,
+            public=public,
         )
 
     @staticmethod
     def read_content(root_path: str, conversation_id: int, path: str) -> ResourceContent | None:
-        conversation_dir = _resolve_conversation_dir(root_path, conversation_id)
-        resolved = _resolve_safe_path(conversation_dir, path)
+        resolved = _resolve_safe_in_roots(_read_roots(root_path, conversation_id), path)
         if resolved is None or not resolved.is_file():
-            return None
-        if _bucket_of(resolved, conversation_dir) is None:
-            return None  # 仅允许 artifacts/uploads/skills-draft 桶
+            return None  # 越界或非文件
 
         category = categorize_file(resolved)
         try:
@@ -299,8 +395,11 @@ class ResourceService:
         if not safe_name or safe_name.startswith("."):
             return "文件名不合法"
 
-        conversation_dir = Path(root_path) / str(conversation_id)
-        uploads_dir = conversation_dir / "uploads"
+        # 上传落到员工工作空间的当前会话 uploads 子目录
+        _ws, _pub, conv_artifacts, _room = resolve_workspace_context(
+            root_path, conversation_id
+        )
+        uploads_dir = conv_artifacts / "uploads"
         uploads_dir.mkdir(parents=True, exist_ok=True)
 
         target_path = uploads_dir / safe_name
@@ -330,16 +429,17 @@ class ResourceService:
     def delete_upload_file(
         root_path: str, conversation_id: int, path: str
     ) -> bool:
-        conversation_dir = Path(root_path) / str(conversation_id)
-        resolved = _resolve_safe_path(conversation_dir, path)
-        if resolved is None or not resolved.is_file():
-            return False
-
+        _ws, _pub, conv_artifacts, _room = resolve_workspace_context(
+            root_path, conversation_id
+        )
+        uploads_dir = (conv_artifacts / "uploads").resolve()
         try:
-            resolved.relative_to((conversation_dir / "uploads").resolve())
-        except ValueError:
-            return False  # 仅允许删 uploads 桶内文件
-
+            resolved = Path(path).resolve()
+            resolved.relative_to(uploads_dir)
+        except (ValueError, OSError):
+            return False  # 仅允许删当前会话 uploads 内文件
+        if not resolved.is_file():
+            return False
         resolved.unlink()
         logger.info("已删除上传文件: %s", resolved)
         return True
@@ -348,12 +448,9 @@ class ResourceService:
     def resolve_download_path(
         root_path: str, conversation_id: int, path: str
     ) -> tuple[Path, bool] | None:
-        conversation_dir = _resolve_conversation_dir(root_path, conversation_id)
-        resolved = _resolve_safe_path(conversation_dir, path)
+        resolved = _resolve_safe_in_roots(_read_roots(root_path, conversation_id), path)
         if resolved is None or not resolved.exists():
             return None
-        if _bucket_of(resolved, conversation_dir) is None:
-            return None  # 仅允许 artifacts/uploads/skills-draft 桶
         return resolved, resolved.is_dir()
 
     @staticmethod
@@ -371,20 +468,15 @@ class ResourceService:
     def delete_resource(
         root_path: str, conversation_id: int, path: str
     ) -> bool:
-        conversation_dir = Path(root_path) / str(conversation_id)
-        resolved = _resolve_safe_path(conversation_dir, path)
+        roots = _read_roots(root_path, conversation_id)
+        resolved = _resolve_safe_in_roots(roots, path)
         if resolved is None or not resolved.exists():
             return False
-        if _bucket_of(resolved, conversation_dir) is None:
+        # 不允许删某个允许根自身（须严格在其内：相对至少 1 段）
+        if not any(
+            _is_strictly_inside(resolved, root) for root in roots
+        ):
             return False
-        # 不允许删桶根自身（须严格在桶内：相对会话根至少 2 段）
-        try:
-            rel = resolved.relative_to(conversation_dir.resolve())
-        except ValueError:
-            return False
-        if len(rel.parts) < 2:
-            return False
-
         try:
             if resolved.is_dir():
                 shutil.rmtree(resolved)
@@ -393,6 +485,19 @@ class ResourceService:
         except Exception as exc:
             logger.error("删除资源失败 path=%s: %s", path, exc)
             return False
-
         logger.info("已删除资源: %s", resolved)
         return True
+
+    @staticmethod
+    def batch_delete(
+        root_path: str, conversation_id: int, paths: list[str]
+    ) -> dict[str, list[str]]:
+        """批量删产物：逐条沙箱校验，合法删、非法跳过。返回 {deleted, skipped}。"""
+        deleted: list[str] = []
+        skipped: list[str] = []
+        for p in paths:
+            if ResourceService.delete_resource(root_path, conversation_id, p):
+                deleted.append(p)
+            else:
+                skipped.append(p)
+        return {"deleted": deleted, "skipped": skipped}
