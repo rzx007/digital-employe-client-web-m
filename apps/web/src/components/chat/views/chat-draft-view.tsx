@@ -29,6 +29,8 @@ import {
   DEFAULT_CONVERSATION_TITLE,
 } from "@/lib/chat/conversation-title"
 import { getContactId } from "@/lib/chat/contact-utils"
+import { prepareVoiceMeta } from "@/lib/voice/prepare-voice-meta"
+import type { VoiceMessageMeta } from "@/types/chat"
 
 import { ChatPanel } from "../panel/chat-panel"
 import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
@@ -232,6 +234,19 @@ export function DraftChatView({
           uploadedPaths = await uploadDraftFiles(conversationId, message.files)
         }
 
+        const voicePayload =
+          typeof message === "string" ? undefined : message.voice
+
+        let voiceMeta: VoiceMessageMeta | undefined
+        if (voicePayload && conversationId != null) {
+          try {
+            voiceMeta = await prepareVoiceMeta(conversationId, voicePayload)
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : "语音上传失败")
+            return
+          }
+        }
+
         const filesMeta =
           uploadedPaths.length > 0
             ? uploadedPaths.map((p) => ({
@@ -239,9 +254,11 @@ export function DraftChatView({
                 name: p.split("/").pop() ?? p,
               }))
             : undefined
-        const pendingMeta = filesMeta
-          ? { ...pendingMetaBase, files: filesMeta }
-          : pendingMetaBase
+        const pendingMeta = {
+          ...pendingMetaBase,
+          ...(filesMeta && { files: filesMeta }),
+          voice: voiceMeta,
+        }
 
         await sendMessage(
           { text: messageText, metadata: pendingMeta },
@@ -321,7 +338,11 @@ export function DraftChatView({
         return
       }
 
-      if (isBusy) {
+      // 语音消息绕过 pending 队列：队列入队项不携带 voice 载荷，
+      // 走队列会静默降级为纯文本。
+      const voicePayload = message.voice
+
+      if (isBusy && !voicePayload) {
         enqueue({
           id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           text: messageText,

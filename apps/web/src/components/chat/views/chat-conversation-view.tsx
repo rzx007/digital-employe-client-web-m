@@ -56,6 +56,8 @@ import { getContactId } from "@/lib/chat/contact-utils"
 import { isGroupDeepLinkExecutionView } from "@/lib/chat/group-navigation"
 import { getLastAssistantMessage } from "@/lib/chat/message-query-cache"
 import { useChatStore } from "@/stores/chat-store"
+import { prepareVoiceMeta } from "@/lib/voice/prepare-voice-meta"
+import type { VoiceMessageMeta } from "@/types/chat"
 
 import { toast } from "sonner"
 
@@ -522,12 +524,27 @@ export function ConversationChatView({
           ? paths.map((p) => ({ path: p, name: p.split("/").pop() ?? p }))
           : undefined
 
+      const voicePayload =
+        typeof message === "string" ? undefined : message.voice
+
+      let voiceMeta: VoiceMessageMeta | undefined
+      if (voicePayload && conversationId != null) {
+        try {
+          voiceMeta = await prepareVoiceMeta(conversationId, voicePayload)
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "语音上传失败")
+          return
+        }
+      }
+
       const pendingMeta = {
         command: command ? { id: command.id, title: command.title } : undefined,
 
         mentions: mentions.length > 0 ? mentions : undefined,
 
         files: filesMeta,
+
+        voice: voiceMeta,
       }
 
       try {
@@ -600,7 +617,11 @@ export function ConversationChatView({
         return
       }
 
-      if (isBusy) {
+      // 语音消息绕过 pending 队列：队列入队项不携带 voice 载荷，
+      // 走队列会静默降级为纯文本。
+      const voicePayload = message.voice
+
+      if (isBusy && !voicePayload) {
         enqueue({
           id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 
