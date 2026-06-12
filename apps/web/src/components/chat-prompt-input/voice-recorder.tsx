@@ -53,13 +53,18 @@ export function VoiceRecorderPill({
           "rounded-full bg-muted px-3 text-primary"
         )}
       >
+        {/* 小画布上默认参数看不出起伏：条高 = value×高×0.8，18px 画布配
+            sensitivity 1 时几乎全被 4px 最小条高钳平，故提高灵敏度并用满高度 */}
         <LiveWaveform
           active={phase === "recording"}
           processing={transcribing}
           mode="scrolling"
-          height={18}
+          height={24}
           barWidth={3}
           barGap={2}
+          barHeight={2}
+          sensitivity={3}
+          fadeEdges={false}
           className="min-w-0 flex-1"
           onStreamReady={onStreamReady}
           onError={(err) => onMicError(describeMicError(err))}
