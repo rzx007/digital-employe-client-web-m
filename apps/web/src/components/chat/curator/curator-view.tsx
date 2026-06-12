@@ -41,6 +41,8 @@ import { useChatStore } from "@/stores/chat-store"
 import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { cancelConversationStream } from "@/api/chat"
 import { prepareVoiceMeta } from "@/lib/voice/prepare-voice-meta"
+import { getVoiceMeta } from "@/lib/voice/voice-meta"
+import { VoiceMessageCapsule } from "@/components/chat/messages/voice-message-capsule"
 import type { VoiceMessageMeta } from "@/types/chat"
 import { shouldRenameCuratorConversationOnFirstMessage } from "@/lib/chat/curator-conversation-actions"
 import { applySemanticConversationTitle } from "@/lib/chat/conversation-title"
@@ -148,6 +150,12 @@ function CuratorMessageItem({
 
   const elapsedMs = getElapsedMsFromMeta(message)
   const copyText = getCopyableMessageText(message, { includeFileChanges })
+  const voiceMeta =
+    message.role === "user"
+      ? getVoiceMeta(
+          (message as { metadata?: Record<string, unknown> }).metadata
+        )
+      : null
   const hitlApproveMessageId = resolveHitlApproveMessageId(
     message,
     session.activeHitl
@@ -200,17 +208,26 @@ function CuratorMessageItem({
           </span>
         </div>
       )}
-      <MessageContent className="w-auto">
-        <div className="space-y-3">
-          {classifiedBlocks.length > 0 ? (
-            classifiedBlocks.map((block) => (
-              <BlockRenderer key={block.key} block={block} ctx={ctx} />
-            ))
-          ) : message.role === "assistant" ? (
-            <MessageResponse />
-          ) : null}
-        </div>
-      </MessageContent>
+      {voiceMeta && curatorConversationId != null ? (
+        <VoiceMessageCapsule
+          messageId={message.id}
+          conversationId={curatorConversationId}
+          meta={voiceMeta}
+          transcript={copyText}
+        />
+      ) : (
+        <MessageContent className="w-auto">
+          <div className="space-y-3">
+            {classifiedBlocks.length > 0 ? (
+              classifiedBlocks.map((block) => (
+                <BlockRenderer key={block.key} block={block} ctx={ctx} />
+              ))
+            ) : message.role === "assistant" ? (
+              <MessageResponse />
+            ) : null}
+          </div>
+        </MessageContent>
+      )}
       {message.role === "assistant" ? (
         <MessageAssistantActions
           copyText={copyText}
