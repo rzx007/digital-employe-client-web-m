@@ -4,6 +4,8 @@ import { invoke, onChannel } from "../../preload/invoke"
 export interface BrowserUrlChangeEvent {
   url: string
   title: string
+  canGoBack: boolean
+  canGoForward: boolean
 }
 
 export interface BrowserLoadErrorEvent {
@@ -33,6 +35,8 @@ export interface BrowserViewportBounds {
 export const browserBridge = {
   open: (url: string) => invoke(IpcChannels.browserOpen, url),
   navigate: (url: string) => invoke(IpcChannels.browserNavigate, url),
+  goBack: () => invoke(IpcChannels.browserGoBack),
+  goForward: () => invoke(IpcChannels.browserGoForward),
   resize: (widthRatio: number) =>
     invoke(IpcChannels.browserResize, widthRatio),
   hide: () => invoke(IpcChannels.browserHide),
