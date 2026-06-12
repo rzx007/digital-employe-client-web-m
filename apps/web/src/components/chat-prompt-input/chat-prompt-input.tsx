@@ -122,9 +122,7 @@ export function ChatPromptInput({
               variant="ghost"
               size="icon"
               className="rounded-full"
-              disabled={
-                disabled || status === "streaming" || status === "submitted"
-              }
+              disabled={status === "streaming" || status === "submitted"}
               onClick={recorder.start}
               aria-label="语音输入"
             >
