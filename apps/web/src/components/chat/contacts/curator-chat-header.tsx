@@ -29,6 +29,7 @@ export function CuratorChatHeader({
   onOpenContacts,
   onOpenConversations,
   onNewConversation,
+  isCreatingConversation,
   className,
 }: {
   contact?: ChatViewContact
@@ -38,6 +39,7 @@ export function CuratorChatHeader({
   onOpenContacts?: () => void
   onOpenConversations?: () => void
   onNewConversation?: () => void
+  isCreatingConversation?: boolean
   className?: string
 }) {
   const handleNewConversation =
@@ -82,6 +84,7 @@ export function CuratorChatHeader({
             title="新建对话"
             variant="ghost"
             size="icon-sm"
+            disabled={isCreatingConversation}
             onClick={handleNewConversation}
           >
             <IconMessage2Plus className="size-4" />
