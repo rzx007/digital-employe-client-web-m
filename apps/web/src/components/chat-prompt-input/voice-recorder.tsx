@@ -1,5 +1,5 @@
 import * as React from "react"
-import { IconX } from "@tabler/icons-react"
+import { IconArrowUp, IconX } from "@tabler/icons-react"
 import { LiveWaveform } from "@workspace/ui/components/ai-elements/live-waveform"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
@@ -13,7 +13,11 @@ function formatElapsed(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`
 }
 
-export function VoiceRecorderOverlay({
+/**
+ * 内联录音胶囊：渲染在输入框底部工具栏右侧（替换发送按钮位置），
+ * 形如「✕ + 波形胶囊 + 发送箭头」，不覆盖整个输入框。
+ */
+export function VoiceRecorderPill({
   phase,
   elapsedMs,
   onStreamReady,
@@ -28,64 +32,52 @@ export function VoiceRecorderOverlay({
   onCancel: () => void
   onMicError: (message: string) => void
 }) {
-  const [hovering, setHovering] = React.useState(false)
   const transcribing = phase === "transcribing"
 
   return (
-    <div className="absolute inset-0 z-10 flex items-center gap-2 rounded-[inherit] bg-background/95 px-3 backdrop-blur-sm">
+    <div className="flex items-center gap-1.5">
       <Button
         type="button"
         variant="ghost"
         size="icon"
-        className="shrink-0 rounded-full"
+        className="size-8 shrink-0 rounded-full"
         onClick={onCancel}
         disabled={transcribing}
         aria-label="取消录音"
       >
         <IconX className="size-4" />
       </Button>
-      <button
-        type="button"
+      <div
         className={cn(
-          "relative flex h-10 flex-1 items-center justify-center overflow-hidden",
-          "rounded-full bg-primary/90 px-4 transition-colors",
-          hovering && !transcribing && "bg-primary"
+          "flex h-8 w-44 items-center gap-2 overflow-hidden",
+          "rounded-full bg-muted px-3 text-primary"
         )}
-        onMouseEnter={() => setHovering(true)}
-        onMouseLeave={() => setHovering(false)}
-        onClick={() => {
-          if (!transcribing) onSend()
-        }}
-        disabled={transcribing}
-        aria-label="发送语音"
       >
         <LiveWaveform
           active={phase === "recording"}
           processing={transcribing}
           mode="scrolling"
-          height={28}
-          barColor="rgba(255,255,255,0.9)"
-          className={cn(
-            "w-full transition-opacity",
-            hovering && !transcribing && "opacity-20"
-          )}
+          height={18}
+          barWidth={3}
+          barGap={2}
+          className="min-w-0 flex-1"
           onStreamReady={onStreamReady}
           onError={(err) => onMicError(describeMicError(err))}
         />
-        {hovering && !transcribing && (
-          <span className="absolute text-sm font-medium text-primary-foreground">
-            发送
-          </span>
-        )}
-        {transcribing && (
-          <span className="absolute text-sm text-primary-foreground/90">
-            转写中…
-          </span>
-        )}
-      </button>
-      <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-        {formatElapsed(elapsedMs)}
-      </span>
+        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+          {transcribing ? "转写中…" : formatElapsed(elapsedMs)}
+        </span>
+      </div>
+      <Button
+        type="button"
+        size="icon"
+        className="size-8 shrink-0 rounded-full bg-primary/80 transition-colors hover:bg-primary"
+        onClick={onSend}
+        disabled={transcribing}
+        aria-label="发送语音"
+      >
+        <IconArrowUp className="size-4" />
+      </Button>
     </div>
   )
 }
