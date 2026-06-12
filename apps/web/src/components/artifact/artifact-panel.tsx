@@ -30,6 +30,8 @@ import {
   IconLoader,
   IconLayoutSidebarLeftCollapse,
   IconLayoutSidebarLeftExpand,
+  IconArrowLeft,
+  IconListDetails,
 } from "@tabler/icons-react"
 import { useLocalStorageState } from "ahooks"
 import {
@@ -65,6 +67,7 @@ import { ArtifactRendererView } from "./artifact-content/artifact-renderer-view"
 import { getPreviewableTypeLabel } from "./artifact-content/resolve-renderer"
 import type { Artifact } from "./artifact-types"
 import { ImportDraftSkillDialog } from "./import-draft-skill-dialog"
+import { SubConversationPanel } from "./sub-conversation-panel"
 
 export interface ArtifactPanelProps {
   conversationId: string | number | null
@@ -422,6 +425,7 @@ export const ArtifactPanel = ({
   const [importDraftSkillEntry, setImportDraftSkillEntry] =
     React.useState<ResourceEntry | null>(null)
   const activeResourcePath = useArtifactStore((s) => s.activeResourcePath)
+  const activeSubConversationId = useArtifactStore((s) => s.activeSubConversationId)
   const [prevActiveResourcePath, setPrevActiveResourcePath] =
     React.useState<string | null>(null)
 
@@ -674,6 +678,58 @@ export const ArtifactPanel = ({
     presentation === "embedded" && "rounded-none border-0 shadow-none",
     className
   )
+
+  if (activeSubConversationId != null) {
+    const subConvBody = (
+      <>
+        <div className="flex min-w-0 items-center gap-2 border-b px-4 py-3">
+          <button
+            type="button"
+            onClick={() => useArtifactStore.getState().closeArtifact()}
+            className="flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="返回资源管理器"
+          >
+            <IconArrowLeft className="size-4" />
+          </button>
+          <IconListDetails className="size-4 shrink-0 text-muted-foreground" />
+          <h2 className="min-w-0 flex-1 truncate text-sm font-medium">执行详情</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="关闭"
+          >
+            <IconX className="size-4" />
+          </button>
+        </div>
+        <SubConversationPanel conversationId={activeSubConversationId} />
+      </>
+    )
+
+    return (
+      <>
+        {presentation === "embedded" ? (
+          isOpen ? (
+            <div className={panelShellClass}>{subConvBody}</div>
+          ) : null
+        ) : (
+          <AnimatePresence>
+            {isOpen && (
+              <motion.div
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                className={panelShellClass}
+              >
+                {subConvBody}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
+      </>
+    )
+  }
 
   const panelBody = (
     <>

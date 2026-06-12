@@ -416,6 +416,7 @@ export function BlockRenderer({
         heading={block.heading}
         body={block.body}
         runStatus={block.runStatus}
+        employeeConversationId={block.employeeConversationId}
         className="w-full"
       />
     )
