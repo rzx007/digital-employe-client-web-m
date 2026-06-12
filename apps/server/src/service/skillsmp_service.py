@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -27,13 +28,49 @@ GITHUB_CONTENTS_URL = f"{SKILLSMP_BASE}/api/github-contents"
 MCP_URL = f"{SKILLSMP_BASE}/mcp"
 USER_AGENT = "digital-employee-client/1.0 (+https://skillsmp.com)"
 GITHUB_API = "https://api.github.com"
+RAW_GITHUB = "https://raw.githubusercontent.com"
 CODELOAD_BASE = "https://codeload.github.com"
 
+# ghproxy 加速：国内（无梯子）下直连 GitHub 走不动，公共 ghproxy 域名可达。
+# 实测多数公共域名只代理 raw、不代理 api(trees)，且大量失效 → 必须多域名轮询。
+# gh-proxy.com 实测能两用（api + raw）。域名常变，做成可配置。
+DEFAULT_GHPROXY_HOSTS = ("https://gh-proxy.com",)
+GHPROXY_TIMEOUT = 20.0
+GHPROXY_FILE_CONCURRENCY = 10
+
 # 直连 GitHub 的超时收紧：受限网络（无代理）下 GitHub 不可达时快速失败，
-# 避免卡到 90s 才报错。优先走 SkillsMP 代理（国内可达、快）。
+# 避免卡到 90s 才报错。优先走 ghproxy 加速（国内可达、快）。
 GITHUB_ZIP_TIMEOUT = 20.0
 GITHUB_API_TIMEOUT = 8.0
 SKILLSMP_CONTENTS_TIMEOUT = 15.0
+
+
+def _ghproxy_hosts() -> list[str]:
+    """ghproxy 加速域名轮询列表（依次尝试）。
+
+    优先级：env SKILL_GHPROXY_HOSTS（逗号分隔）> KV skill_ghproxy_hosts
+    > 内置默认。公共域名失效率高，允许用户覆盖为自建/可用域名。
+    """
+    raw = os.getenv("SKILL_GHPROXY_HOSTS", "").strip()
+    if not raw:
+        try:
+            from src.core.config import get_settings
+
+            kv = getattr(get_settings(), "skill_ghproxy_hosts", None)
+            if isinstance(kv, str):
+                raw = kv.strip()
+            elif isinstance(kv, (list, tuple)):
+                raw = ",".join(str(h) for h in kv)
+        except Exception:
+            raw = ""
+    hosts: list[str] = []
+    for part in raw.split(","):
+        host = part.strip().rstrip("/")
+        if host:
+            hosts.append(host)
+    if not hosts:
+        hosts = [h.rstrip("/") for h in DEFAULT_GHPROXY_HOSTS]
+    return hosts
 
 
 def _direct_github_fallback_enabled() -> bool:
@@ -161,7 +198,9 @@ class SkillsMpService:
             else f"{SKILLSMP_BASE}/search"
         )
         return {
-            "Accept": "application/json, application/zip, */*",
+            # zip 优先：让代理一次性返回整个技能目录的 ZIP，避免逐文件递归
+            # （代理对同一 path 有限流，第二次请求即 403，递归会自残）。
+            "Accept": "application/zip, application/json, */*",
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -458,7 +497,6 @@ class SkillsMpService:
         skill_slug: str | None = None,
     ) -> dict[str, str]:
         prefix = parsed.subpath.strip("/")
-        file_map: dict[str, str] = {}
         proxy_headers = SkillsMpService._skillsmp_proxy_headers(skill_slug)
 
         with httpx.Client(
@@ -498,21 +536,18 @@ class SkillsMpService:
 
                 return SkillsMpService._parse_skillsmp_github_contents_payload(payload)
 
+            # 只发一次请求。代理对同一 path 有限流（第二次请求即 403），
+            # 所以这一次必须拿到整个目录的 ZIP（或代理一次性内联了全部 content）。
             first = fetch_entries(prefix)
             if isinstance(first, dict) and "__file_map__" in first:
                 return first["__file_map__"]
 
-            SkillsMpService._collect_github_entries_recursive(
-                client,
-                fetch_entries=fetch_entries,
-                parsed=parsed,
-                repo_path=prefix,
-                prefix=prefix,
-                file_map=file_map,
-                total_bytes=0,
+            # 没拿到 ZIP，只拿到逐文件清单。此时绝不递归逐文件下载——那会
+            # 立刻触发代理限流（403）并拖垮整条链。直接判定此代理不支持
+            # ZIP，干净地退出，让上层回退到 GitHub 直连源。
+            raise SkillsMpError(
+                "SkillsMP 代理未返回 ZIP（仅逐文件清单），跳过逐文件下载以避免限流，改用 GitHub 源。"
             )
-
-        return SkillsMpService._normalize_skill_file_map(file_map)
 
     @staticmethod
     def _github_headers() -> dict[str, str]:
@@ -524,6 +559,121 @@ class SkillsMpService:
         if token:
             headers["Authorization"] = f"Bearer {token}"
         return headers
+
+    # ---- ghproxy 加速路径（首选，国内可达）---------------------------------
+
+    @staticmethod
+    def _ghproxy_get(
+        client: httpx.Client,
+        target_url: str,
+        hosts: list[str],
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> httpx.Response | None:
+        """通过 ghproxy 域名轮询请求 target_url，返回首个 200 响应。
+
+        每个 host 失败（非 200 或网络异常）转下一个；全部失败返回 None。
+        """
+        for host in hosts:
+            url = f"{host}/{target_url}"
+            try:
+                resp = client.get(url, headers=headers, follow_redirects=True)
+            except httpx.HTTPError as exc:
+                logger.info("ghproxy host 失败 %s: %s", host, exc)
+                continue
+            if resp.status_code == 200:
+                return resp
+            logger.info("ghproxy host %s 返回 HTTP %s", host, resp.status_code)
+        return None
+
+    @staticmethod
+    def _fetch_via_ghproxy(parsed: ParsedGitHubUrl) -> dict[str, str]:
+        """首选下载路径：ghproxy 加速 + GitHub trees 拿全树 + 并发取 raw。
+
+        国内（无梯子）下直连 GitHub 走不动，故全程经 ghproxy 代理：
+        1. 一次请求拿整棵文件树（trees API），过滤出技能子目录下的文件；
+        2. 10 并发取每个文件的 raw 内容。
+        """
+        hosts = _ghproxy_hosts()
+        prefix = parsed.subpath.strip("/")
+        ref = parsed.ref
+        tree_url = (
+            f"{GITHUB_API}/repos/{parsed.owner}/{parsed.repo}"
+            f"/git/trees/{ref}?recursive=1"
+        )
+
+        with httpx.Client(timeout=GHPROXY_TIMEOUT) as client:
+            tree_resp = SkillsMpService._ghproxy_get(
+                client, tree_url, hosts, headers=SkillsMpService._github_headers()
+            )
+            if tree_resp is None:
+                raise SkillsMpError(
+                    "ghproxy 加速不可用（trees 请求全部失败），将改用其他源。"
+                )
+            try:
+                tree_payload = tree_resp.json()
+            except json.JSONDecodeError as exc:
+                raise SkillsMpError("ghproxy trees 返回非 JSON。") from exc
+
+            tree = tree_payload.get("tree") if isinstance(tree_payload, dict) else None
+            if not isinstance(tree, list):
+                raise SkillsMpError("ghproxy trees 响应格式异常。")
+
+            # 过滤出技能子目录下的文件（blob），算出相对路径
+            rel_paths: list[str] = []
+            for item in tree:
+                if not isinstance(item, dict) or item.get("type") != "blob":
+                    continue
+                path = str(item.get("path") or "")
+                if prefix:
+                    if path == prefix or not path.startswith(f"{prefix}/"):
+                        continue
+                    relative = path[len(prefix) + 1 :]
+                else:
+                    relative = path
+                if not relative or relative.split("/")[-1].startswith("."):
+                    continue
+                rel_paths.append(relative)
+                if len(rel_paths) > MAX_SKILL_FILES:
+                    raise SkillsMpError(
+                        f"技能文件过多（>{MAX_SKILL_FILES}），请改在浏览器下载 ZIP 后手动导入。"
+                    )
+
+            if not rel_paths:
+                raise SkillsMpError("ghproxy trees 中未找到技能目录文件。")
+
+            def fetch_one(relative: str) -> tuple[str, str | None]:
+                repo_path = f"{prefix}/{relative}" if prefix else relative
+                raw_url = (
+                    f"{RAW_GITHUB}/{parsed.owner}/{parsed.repo}/{ref}/{repo_path}"
+                )
+                resp = SkillsMpService._ghproxy_get(
+                    client, raw_url, hosts, headers={"User-Agent": USER_AGENT}
+                )
+                if resp is None:
+                    logger.warning("ghproxy 跳过无法下载的文件: %s", relative)
+                    return relative, None
+                try:
+                    return relative, resp.text
+                except UnicodeDecodeError:
+                    logger.warning("ghproxy 跳过二进制文件: %s", relative)
+                    return relative, None
+
+            file_map: dict[str, str] = {}
+            total_bytes = 0
+            with ThreadPoolExecutor(max_workers=GHPROXY_FILE_CONCURRENCY) as pool:
+                for relative, content in pool.map(fetch_one, rel_paths):
+                    if content is None:
+                        continue
+                    total_bytes += len(content.encode("utf-8"))
+                    if total_bytes > MAX_SKILL_BYTES:
+                        raise SkillsMpError(
+                            f"技能体积超过 {MAX_SKILL_BYTES // (1024 * 1024)}MB，"
+                            "请在浏览器下载 ZIP 后手动导入。"
+                        )
+                    file_map[relative.replace("\\", "/")] = content
+
+        return SkillsMpService._normalize_skill_file_map(file_map)
 
     @staticmethod
     def _fetch_via_github_api(parsed: ParsedGitHubUrl) -> dict[str, str]:
@@ -655,20 +805,27 @@ class SkillsMpService:
         parsed = SkillsMpService.parse_github_tree_url(github_url)
         errors: list[str] = []
 
-        # 优先走 SkillsMP 代理（国内可达、快），瞬时失败重试一次再考虑回退。
-        for attempt in range(2):
-            try:
-                return SkillsMpService._fetch_via_skillsmp_github_contents(
-                    parsed, skill_slug=skill_slug
-                )
-            except SkillsMpError as exc:
-                logger.info("SkillsMP 代理失败(第%s次): %s", attempt + 1, exc)
-                errors.append(str(exc))
-                break  # 403/格式等业务错误重试无意义，直接进回退判断
-            except httpx.HTTPError as exc:
-                logger.info("SkillsMP 代理网络失败(第%s次): %s", attempt + 1, exc)
-                errors.append(humanize_http_error(exc, context="SkillsMP 代理"))
-                # 网络瞬时抖动才重试
+        # 首选 ghproxy 加速（国内可达、快）：trees 拿全树 + 并发取 raw。
+        try:
+            return SkillsMpService._fetch_via_ghproxy(parsed)
+        except SkillsMpError as exc:
+            logger.info("ghproxy 加速失败: %s", exc)
+            errors.append(str(exc))
+        except httpx.HTTPError as exc:
+            logger.info("ghproxy 加速网络失败: %s", exc)
+            errors.append(humanize_http_error(exc, context="ghproxy 加速"))
+
+        # 次选 SkillsMP 代理（国内可达，但有限流；仅一次拿到 zip/内联时有用）。
+        try:
+            return SkillsMpService._fetch_via_skillsmp_github_contents(
+                parsed, skill_slug=skill_slug
+            )
+        except SkillsMpError as exc:
+            logger.info("SkillsMP 代理失败: %s", exc)
+            errors.append(str(exc))
+        except httpx.HTTPError as exc:
+            logger.info("SkillsMP 代理网络失败: %s", exc)
+            errors.append(humanize_http_error(exc, context="SkillsMP 代理"))
 
         # 回退直连 GitHub（受限网络下可关闭，避免长时间卡死）
         if not _direct_github_fallback_enabled():
@@ -693,7 +850,7 @@ class SkillsMpService:
 
         joined = "；".join(errors[:3])
         raise SkillsMpError(
-            f"无法拉取技能文件（已尝试 SkillsMP 代理 / GitHub API / ZIP）。{joined}"
+            f"无法拉取技能文件（已尝试 ghproxy 加速 / SkillsMP 代理 / GitHub API / ZIP）。{joined}"
         )
 
     @staticmethod
