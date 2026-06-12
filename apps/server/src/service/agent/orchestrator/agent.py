@@ -2,15 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 
 from deepagents import create_deep_agent
-from deepagents.backends import CompositeBackend, FilesystemBackend
-from src.service.agent.basic_file_backend import BasicFileFilesystemBackend
-from deepagents.middleware.permissions import FilesystemPermission
 
 from src.core.config import get_settings, is_agent_virtual_mode
 from src.llm.factory import build_chat_model, resolve_output_tokens
@@ -164,50 +160,43 @@ def get_orchestrator_agent(
 
     skills_root = resolve_orchestrator_skills_root()
     available_skills = list_available_skills(skills_root)
-    skills_fs = FilesystemBackend(root_dir=str(skills_root), virtual_mode=True)
 
-    uploads_dir: Path | None = None
-    if conversation_id:
-        conversation_dir = artifacts_path / str(conversation_id)
-        artifacts_dir = conversation_dir / "artifacts"
-        uploads_dir = conversation_dir / "uploads"
-    else:
-        conversation_dir = artifacts_path / "orchestrator"
-        artifacts_dir = conversation_dir / "artifacts"
-    # 群协作：组长用房间共享产物目录，才能读到成员产出做汇总
-    if shared_artifacts_dir:
-        artifacts_dir = Path(shared_artifacts_dir)
+    # 总管当作特殊"员工"（owner=orchestrator）：产物升到工作空间 + 公共区，与员工一致。
+    from src.service.agent.workspace_paths import resolve_workspace_dirs
+
+    ws = resolve_workspace_dirs(
+        root_path=str(artifacts_path),
+        employee_id="orchestrator",
+        conversation_id=conversation_id,
+        shared_artifacts_dir=shared_artifacts_dir,
+        base_dir=base_dir,
+    )
+    artifacts_dir = ws.artifacts_dir
+    uploads_dir = ws.uploads_dir if conversation_id else None
     artifacts_dir.mkdir(parents=True, exist_ok=True)
-    conversation_dir.mkdir(parents=True, exist_ok=True)
+    ws.workspace_dir.mkdir(parents=True, exist_ok=True)
+    ws.public_root.mkdir(parents=True, exist_ok=True)
+    ws.public_dir.mkdir(parents=True, exist_ok=True)
     if uploads_dir is not None:
         uploads_dir.mkdir(parents=True, exist_ok=True)
+    # 会话历史目录（保留旧位置，与摘要 history 一致）
+    conversation_dir = (
+        artifacts_path / str(conversation_id)
+        if conversation_id
+        else artifacts_path / "orchestrator"
+    )
+    conversation_dir.mkdir(parents=True, exist_ok=True)
 
-    agent_fs = FilesystemBackend(root_dir=str(base_dir), virtual_mode=True)
-    memories_fs = FilesystemBackend(root_dir=str(memories_dir), virtual_mode=True)
-    routes: dict[str, Any] = {
-        "/memories/": memories_fs,
-        "/skills/": skills_fs,
-        "/agent/": agent_fs,
-        "/artifacts/": BasicFileFilesystemBackend(
-            root_dir=str(artifacts_dir), virtual_mode=True
-        ),
-    }
-    if uploads_dir is not None:
-        routes["/uploads/"] = BasicFileFilesystemBackend(
-            root_dir=str(uploads_dir), virtual_mode=True
-        )
-    if use_session_history:
-        routes["/conversation_history/"] = FilesystemBackend(
-            root_dir=str(conversation_dir),
-            virtual_mode=True,
-        )
-
+    # 删虚拟路由：agent 全部用真实绝对路径，由 shell_backend 统管。目录已在上文 mkdir。
     shell_backend = SkillAwareShellBackend(
         root_dir=str(artifacts_dir),
         skills_root=skills_root,
         draft_root=None,
         memories_root=memories_dir,
         uploads_root=uploads_dir,
+        workspace_root=ws.workspace_dir,
+        public_dir=ws.public_dir,
+        public_root=ws.public_root,
         conversation_id=conversation_id,
         virtual_mode=is_agent_virtual_mode(),
         inherit_env=True,
@@ -215,7 +204,8 @@ def get_orchestrator_agent(
         # 单条 shell 输出上限：从 deepagents 默认 100KB 降到 ~48KB（见 employee.py 同处说明）。
         max_output_bytes=48_000,
     )
-    backend = CompositeBackend(default=shell_backend, routes=routes)
+    # 删复合路由后端：真实路径全部由 shell-aware 后端兜底。
+    backend = shell_backend
 
     available_skills_str = ", ".join(available_skills) if available_skills else "无"
     # 团队名册（employee_table）与委派执行快照（delegation_executions）原本每轮变化、
@@ -285,8 +275,8 @@ def get_orchestrator_agent(
 
     agent = create_deep_agent(
         model=model,
-        memory=["/agent/AGENTS.md", "/memories/AGENTS.md"],
-        skills=["/skills/"],
+        memory=[str(base_dir / "AGENTS.md"), str(memories_dir / "AGENTS.md")],
+        skills=[str(skills_root)],
         tools=[
             *orchestrator_tools,
             # DB 类工具：包会话级串行锁，杜绝并发工具线程同时用共享 leader_db 连接致
@@ -330,17 +320,8 @@ def get_orchestrator_agent(
         interrupt_on=interrupt_on,
         middleware=_orch_middleware,
         subagents=[],
-        permissions=[
-            FilesystemPermission(
-                operations=["write"],
-                paths=["/agent/**"],
-                mode="deny",
-            ),
-            FilesystemPermission(
-                operations=["write"],
-                paths=["/memories/AGENTS.md"],
-                mode="deny",
-            ),
-        ],
+        # 去虚拟路径后用真实绝对路径；FilesystemPermission 仅支持 / 开头虚拟路径 glob，
+        # 无法表达 Windows 盘符路径，且与「技能全放开」一致，故不再设写禁用（同 employee）。
+        permissions=[],
     )
     return agent

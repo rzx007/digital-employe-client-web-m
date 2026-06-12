@@ -15,7 +15,6 @@ from deepagents.backends import LocalShellBackend
 from deepagents.backends.protocol import EditResult, ExecuteResponse, ReadResult
 
 from src.service.agent.basic_file_backend import basic_file_edit, basic_file_read
-from src.service.agent.path_access.virtual_paths import map_virtual_token
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +129,9 @@ class SkillAwareShellBackend(LocalShellBackend):
         draft_root: Path | None,
         memories_root: Path | None = None,
         uploads_root: Path | None = None,
+        workspace_root: Path | None = None,
+        public_dir: Path | None = None,
+        public_root: Path | None = None,
         conversation_id: int | str | None = None,
         virtual_mode: bool = True,
         inherit_env: bool = True,
@@ -152,12 +154,36 @@ class SkillAwareShellBackend(LocalShellBackend):
         self._uploads_root = (
             uploads_root.resolve() if uploads_root is not None else None
         )
+        self._workspace_root = (
+            workspace_root.resolve() if workspace_root is not None else None
+        )
+        self._public_dir = public_dir.resolve() if public_dir is not None else None
+        self._public_root = (
+            public_root.resolve() if public_root is not None else None
+        )
         if os.name == "nt":
             self._env.setdefault("PYTHONUTF8", "1")
             self._env.setdefault("PYTHONIOENCODING", "utf-8")
         # 注入会话 ID，供子进程（如 browserctl open-artifact）按会话定位产物
         if conversation_id is not None and str(conversation_id) != "":
             self._env["CONVERSATION_ID"] = str(conversation_id)
+        # 注入产物/技能/记忆等目录的真实绝对路径，供 agent 与子进程以真实路径定位，
+        # 取代已删除的虚拟前缀（/artifacts/ 等）。
+        self._env["ARTIFACTS_DIR"] = str(self._artifacts_dir)
+        self._env["SKILLS_DIR"] = str(self._skills_root)
+        if self._memories_root is not None:
+            self._env["MEMORIES_DIR"] = str(self._memories_root)
+        if self._uploads_root is not None:
+            self._env["UPLOADS_DIR"] = str(self._uploads_root)
+        if self._draft_root is not None:
+            self._env["SKILLS_DRAFT_DIR"] = str(self._draft_root)
+        # 员工工作空间（读自己跨会话产物）+ 公共区（写自己子区 / 读全部）
+        if self._workspace_root is not None:
+            self._env["WORKSPACE_DIR"] = str(self._workspace_root)
+        if self._public_dir is not None:
+            self._env["PUBLIC_DIR"] = str(self._public_dir)
+        if self._public_root is not None:
+            self._env["PUBLIC_ROOT"] = str(self._public_root)
         self._inject_global_node_path()
 
     def _inject_global_node_path(self) -> None:
@@ -214,16 +240,6 @@ class SkillAwareShellBackend(LocalShellBackend):
             old_string,
             new_string,
             replace_all=replace_all,
-        )
-
-    def _map_virtual_token(self, token: str) -> str:
-        return map_virtual_token(
-            token,
-            skills_root=self._skills_root,
-            draft_root=self._draft_root,
-            memories_root=self._memories_root,
-            artifacts_root=self._artifacts_dir,
-            uploads_root=self._uploads_root,
         )
 
     def _extract_python_c_code(self, command: str) -> str | None:
@@ -285,47 +301,9 @@ class SkillAwareShellBackend(LocalShellBackend):
         return f'python -u "{script_path}"'
 
     def _prepare_shell_command(self, command: str) -> str:
-        command = self._materialize_multiline_python_c(command)
-        return self._rewrite_command_virtual_paths(command)
-
-    def _rewrite_command_virtual_paths(self, command: str) -> str:
-        # 始终 rewrite /skills/ 等虚拟前缀为物理路径：这是 shell 命令映射的产品逻辑，
-        # 与 LocalShellBackend.virtual_mode（控制 cwd / 沙箱）无关，物理模式下同样需要。
-        #
-        # 关键：用 posix=False 拆分会**保留**每个 token 外层的引号，因此未命中的
-        # token 必须原样回写、不能再过 subprocess.list2cmdline——否则 list2cmdline
-        # 会把 token 里已有的引号二次转义（`"http://x"` → `\"http://x\"`），经 cmd
-        # 解析后引号变成字面量混进参数值（如 --url 收到带引号的 URL）。
-        # 这里只重写「确实命中虚拟前缀」的 token，其余原样保留。
-        try:
-            parts = shlex.split(command, posix=False)
-        except ValueError:
-            return command
-
-        changed = False
-        for i, part in enumerate(parts):
-            quote = ""
-            raw = part
-            if len(part) >= 2 and part[0] == part[-1] and part[0] in {"'", '"'}:
-                quote = part[0]
-                raw = part[1:-1]
-            mapped = self._map_virtual_token(raw)
-            if mapped == raw:
-                continue  # 未命中：原样保留该 token（含原始引号）
-            changed = True
-            if quote:
-                parts[i] = f"{quote}{mapped}{quote}"
-            elif any(c.isspace() for c in mapped):
-                # 原 token 无引号，但映射后的物理路径含空格 → 必须补引号
-                parts[i] = f'"{mapped}"'
-            else:
-                parts[i] = mapped
-
-        if not changed:
-            return command
-        # 直接用空格拼接：posix=False 的 token 已保留各自引号，单空格拼接即可
-        # 还原命令（仅折叠 token 间多余空白，对 shell 执行无影响）。
-        return " ".join(parts)
+        # 不再做虚拟前缀 rewrite：agent 直接用真实绝对路径（或 $ARTIFACTS_DIR 等 env）。
+        # 仅保留 Windows 多行 python -c 落盘（与路径虚拟化无关）。
+        return self._materialize_multiline_python_c(command)
 
     def _get_stream_writer(self) -> Callable[[dict], None]:
         try:

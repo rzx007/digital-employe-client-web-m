@@ -303,10 +303,38 @@ class ChatService:
         )
         messages = list(db.scalars(stmt).all())
 
+        # file 后端：用进度 sidecar 覆盖在流消息的瞬时 state/cursor/content（更新鲜）。
+        # 终态落库后 sidecar 已删，历史消息读不到文件 → 走行上永久值。overlay 仅供
+        # 序列化展示，expunge_all 防止内存改动被 flush 回 DB（终态才是唯一落库点）。
+        from src.core.config import get_settings
+
+        if get_settings().stream_progress_backend != "sqlite":
+            from src.service.stream_progress_store import get_progress_store
+
+            store = get_progress_store()
+            overlaid = False
+            for m in messages:
+                if m.role != "assistant":
+                    continue
+                prog = store.read(m.id)
+                if not prog:
+                    continue
+                if prog.get("stream_state") is not None:
+                    m.stream_state = prog["stream_state"]
+                if prog.get("stream_cursor") is not None:
+                    m.stream_cursor = prog["stream_cursor"]
+                if prog.get("content") is not None:
+                    m.content = prog["content"]
+                overlaid = True
+            if overlaid:
+                db.expunge_all()
+
         return messages
 
     @staticmethod
-    async def adelete_conversation(db: Session, conversation_id: int) -> None:
+    async def adelete_conversation(
+        db: Session, conversation_id: int, *, cascade_artifacts: bool = True
+    ) -> None:
         from src.service.stream_registry import registry
 
         registry.cancel(conversation_id)
@@ -315,13 +343,34 @@ class ChatService:
         conversation = ChatService.get_conversation(db, conversation_id)
         workspace = db.get(Workspace, conversation.workspace_id)
 
-        dirs_to_remove: list[Path] = [
-            Path(get_settings().artifacts_path) / str(conversation_id),
-        ]
-        if workspace:
-            dirs_to_remove.append(
-                Path(workspace.root_path) / "conversations" / str(conversation_id)
+        dirs_to_remove: list[Path] = []
+        if cascade_artifacts:
+            from src.service.agent.workspace_paths import resolve_workspace_dirs
+
+            artifacts_path = get_settings().artifacts_path
+            owner: int | str | None
+            if conversation.target_type == "employee":
+                owner = conversation.target_id
+            elif conversation.target_type == "curator":
+                owner = "orchestrator"
+            else:
+                owner = None  # 群会话：产物在房间，不随单会话删除
+            ws = resolve_workspace_dirs(
+                root_path=artifacts_path,
+                employee_id=owner,
+                conversation_id=conversation_id,
+                shared_artifacts_dir=None,
+                base_dir=Path(artifacts_path),
             )
+            # 私有：员工工作空间下的本会话子目录；公共：自己公共子区
+            dirs_to_remove.append(ws.workspace_dir / f"conv-{conversation_id}")
+            dirs_to_remove.append(ws.public_dir)
+            # 旧会话级布局兼容（迁移前的存量）
+            dirs_to_remove.append(Path(artifacts_path) / str(conversation_id))
+            if workspace:
+                dirs_to_remove.append(
+                    Path(workspace.root_path) / "conversations" / str(conversation_id)
+                )
 
         db.delete(conversation)
         db.commit()
@@ -341,6 +390,8 @@ class ChatService:
         workspace_id: int,
         target_type: str,
         target_id: int,
+        *,
+        cascade_artifacts: bool = True,
     ) -> list[int]:
         """按联系人（target）批量删除会话，逐条清理 checkpoint、消息与产物目录。"""
         if target_type == "curator":
@@ -358,7 +409,9 @@ class ChatService:
         for conversation in conversations:
             conv_id = conversation.id
             try:
-                await ChatService.adelete_conversation(db, conv_id)
+                await ChatService.adelete_conversation(
+                    db, conv_id, cascade_artifacts=cascade_artifacts
+                )
                 deleted_ids.append(conv_id)
             except HTTPException:
                 raise

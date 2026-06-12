@@ -48,6 +48,7 @@ import {
   shouldAttemptResume,
 } from "@/lib/chat/session/resume-decision"
 import { resetLastAssistantPartsForResume } from "@/lib/chat/session/reset-assistant-parts-for-resume"
+import { shouldSkipResumeWhenInFlight } from "@/lib/chat/resume-inflight-guard"
 import { decideHydration } from "@/lib/chat/session/hydrate-decision"
 
 import { chatTransport } from "@/components/chat/shared/chat-view-shared"
@@ -200,6 +201,18 @@ export function useConversationSession({
           !options?.allowBusyStatus &&
           current !== "ready" &&
           current !== "error"
+        ) {
+          return
+        }
+        // 止抖动：同会话已有在飞 resume 连接时直接跳过——不清空气泡、不重连，
+        // 避免 effect 反复重跑触发的 abort+全量重放把画面从头重打（orchestration/群流
+        // 无 live 流、全靠 resume，最易暴露）。假死连接由 transport idle 看门狗回收后
+        // 不再在飞，下次调度自然放行。
+        if (
+          shouldSkipResumeWhenInFlight(
+            chatTransport.getInFlightResumeChatId(),
+            convKey
+          )
         ) {
           return
         }

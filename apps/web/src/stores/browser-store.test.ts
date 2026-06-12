@@ -28,8 +28,10 @@ vi.mock("@/stores/monitor-store", () => ({
 
 import { useBrowserStore } from "./browser-store"
 
-const EXPECTED_URL =
-  "http://127.0.0.1:34567/chat/conversations/123/resources/static/artifacts/report.html"
+const REAL_PATH = "D:/ws/conv/123/artifacts/report.html"
+const EXPECTED_URL = `http://127.0.0.1:34567/chat/conversations/123/resources/static?path=${encodeURIComponent(
+  REAL_PATH
+)}`
 
 describe("browser-store openHtmlPreview", () => {
   beforeEach(() => {
@@ -37,8 +39,8 @@ describe("browser-store openHtmlPreview", () => {
     useBrowserStore.getState().reset()
   })
 
-  it("builds the Task-1 static URL and opens it (leading slash path)", () => {
-    useBrowserStore.getState().openHtmlPreview(123, "/artifacts/report.html")
+  it("builds the static URL with real path query param and opens it", () => {
+    useBrowserStore.getState().openHtmlPreview(123, REAL_PATH)
 
     expect(browserOpen).toHaveBeenCalledTimes(1)
     expect(browserOpen).toHaveBeenCalledWith(EXPECTED_URL)
@@ -48,13 +50,13 @@ describe("browser-store openHtmlPreview", () => {
     expect(state.currentUrl).toBe(EXPECTED_URL)
   })
 
-  it("produces the same single-slash URL when path has no leading slash", () => {
-    useBrowserStore.getState().openHtmlPreview(123, "artifacts/report.html")
-
-    expect(browserOpen).toHaveBeenCalledWith(EXPECTED_URL)
-
-    const state = useBrowserStore.getState()
-    expect(state.isOpen).toBe(true)
-    expect(state.currentUrl).toBe(EXPECTED_URL)
+  it("url-encodes Windows backslash paths too", () => {
+    const winPath = "D:\\ws\\conv\\123\\artifacts\\a.html"
+    useBrowserStore.getState().openHtmlPreview(123, winPath)
+    expect(browserOpen).toHaveBeenCalledWith(
+      `http://127.0.0.1:34567/chat/conversations/123/resources/static?path=${encodeURIComponent(
+        winPath
+      )}`
+    )
   })
 })

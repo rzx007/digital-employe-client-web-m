@@ -25,7 +25,7 @@ def validate_orchestration_tasks(task_list: list[dict[str, Any]]) -> str | None:
         return (
             f"错误：所有子任务都指派给同一员工（ID={emp_id}）。"
             "请合并为一条子任务（在 prompt 中写清多步目标，"
-            "例如先 read_file(\"/uploads/...\") 再 write_file(\"/artifacts/...\")），"
+            "例如先 read_file($UPLOADS_DIR 下文件) 再 write_file 到产物目录），"
             "或分配给不同员工。子任务拆分仅用于多人协作。"
         )
 

@@ -155,6 +155,10 @@ class Settings:
     feishu_bitable_table_id: str = "tblY6kGa1btVqkH3"
     feishu_bitable_view_id: str = "vewhP7JKEa"
     prompt_cache_mode: str | None = None
+    # 流式会话存储后端：file（默认，per-thread/per-message 文件）| sqlite（回滚老路径）。
+    # checkpointer_backend 控 LangGraph 检查点；stream_progress_backend 控业务瞬时进度。
+    checkpointer_backend: str = "file"
+    stream_progress_backend: str = "file"
 
 
 def _get_kv_value(kv_data: dict[str, str], key: str) -> str | None:
@@ -557,6 +561,9 @@ def get_settings() -> Settings:
         prompt_cache_mode=normalize_prompt_cache_mode(
             _get_kv_value(kv_data, "PROMPT_CACHE_MODE")
         ),
+        checkpointer_backend=_get_kv_value(kv_data, "CHECKPOINTER_BACKEND") or "file",
+        stream_progress_backend=_get_kv_value(kv_data, "STREAM_PROGRESS_BACKEND")
+        or "file",
     )
 
 

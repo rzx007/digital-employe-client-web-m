@@ -517,6 +517,7 @@ def _checkpoint_flush_sync(
     buffer_cursor: int,
     buffer_events_snapshot: list[dict],
     content: str | None,
+    conversation_id: int | None = None,
 ) -> bool:
     """流式中途 checkpoint：只落 content + cursor，不解析 message_parts。
 
@@ -526,8 +527,25 @@ def _checkpoint_flush_sync(
     会因此越跑越慢、最终卡死在 checkpoint。content（纯文本）足够支撑“崩溃恢复时
     显示已生成文本”；完整 message_parts 在终态 _flush_terminal 时解析一次即可。
     buffer_events_snapshot 不再使用，仅保留签名兼容调用方。
+
+    存储后端按 settings.stream_progress_backend：file（默认）写 per-message 进度
+    sidecar 文件，高频写彻底离开 SQLite，消除并发流对 app.db 单写锁的争用；
+    sqlite（回滚）仍写 conversation_messages 行。
     """
     _ = buffer_events_snapshot  # noqa: F841 — 不再全量重放，消除 O(n²)
+    from src.core.config import get_settings
+
+    if get_settings().stream_progress_backend != "sqlite":
+        from src.service.stream_progress_store import get_progress_store
+
+        get_progress_store().write(
+            message_id=stream_msg_id,
+            conversation_id=conversation_id or 0,
+            state="streaming",
+            cursor=buffer_cursor,
+            content=content,
+        )
+        return True
     return _flush_to_db_sync(
         stream_msg_id,
         buffer_cursor,
@@ -610,7 +628,7 @@ def _flush_terminal_sync(
                 usage_meta.get("output_tokens"),
             )
 
-    return _flush_to_db_sync(
+    ok = _flush_to_db_sync(
         stream_msg_id,
         buffer_cursor,
         state=state,
@@ -620,6 +638,23 @@ def _flush_terminal_sync(
         usage_metadata=usage_meta,
         elapsed_ms=elapsed_ms,
     )
+
+    # 终态结果已落 app.db（历史永久记录），清理瞬时进度 sidecar——此后 DB 为唯一
+    # 真相，列表/resume 的 overlay 自动失效。仅 file 后端需要清理。
+    from src.core.config import get_settings
+
+    if get_settings().stream_progress_backend != "sqlite":
+        try:
+            from src.service.stream_progress_store import get_progress_store
+
+            get_progress_store().delete(stream_msg_id)
+        except Exception:
+            logger.warning(
+                "[flush] delete progress sidecar failed msg=%s",
+                stream_msg_id,
+                exc_info=True,
+            )
+    return ok
 
 
 class StreamEventBuffer:
@@ -1013,15 +1048,31 @@ class StreamRegistry:
         if not msg:
             return None
 
-        if msg.stream_state == "streaming":
+        # file 后端：用进度 sidecar 的瞬时 state/cursor 覆盖行上值（更新鲜）。
+        # 文件缺失（终态已删 / 升级前老消息）→ 回退读行旧列，向后兼容。
+        # 用局部变量，不改 ORM 对象，避免读路径误把 overlay 落库。
+        eff_state = msg.stream_state
+        eff_cursor = msg.stream_cursor or 0
+        from src.core.config import get_settings
+
+        if get_settings().stream_progress_backend != "sqlite":
+            from src.service.stream_progress_store import get_progress_store
+
+            prog = get_progress_store().read(msg.id)
+            if prog and prog.get("stream_state"):
+                eff_state = prog["stream_state"]
+                if prog.get("stream_cursor") is not None:
+                    eff_cursor = prog["stream_cursor"]
+
+        if eff_state == "streaming":
             return None
 
         result: dict = {
-            "status": msg.stream_state,
+            "status": eff_state,
             "error": None,
-            "cursor": msg.stream_cursor or 0,
+            "cursor": eff_cursor,
         }
-        if msg.stream_state == "interrupted":
+        if eff_state == "interrupted":
             result["message_id"] = msg.id
         return result
 
@@ -1822,6 +1873,7 @@ class StreamRegistry:
                         cursor_snapshot,
                         [],
                         current_text or None,
+                        conversation_id,
                     )
                     if not ok:
                         logger.warning(

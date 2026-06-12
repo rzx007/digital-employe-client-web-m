@@ -86,10 +86,12 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     void api.browser.open(normalized)
   },
 
-  openHtmlPreview: (conversationId, virtualPath) => {
+  openHtmlPreview: (conversationId, realPath) => {
     const base = getRequestBaseUrl().replace(/\/$/, "")
-    const rel = virtualPath.replace(/^\//, "")
-    const url = `${base}/chat/conversations/${conversationId}/resources/static/${rel}`
+    // 去虚拟前缀后静态服务按真实路径查询参数提供（后端会话根沙箱校验）
+    const url = `${base}/chat/conversations/${conversationId}/resources/static?path=${encodeURIComponent(
+      realPath
+    )}`
     get().openBrowser(url)
   },
 
