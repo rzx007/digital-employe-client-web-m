@@ -191,7 +191,7 @@ export function ChatComposerArea({
           onAttachmentsChange={onAttachmentsChange}
           messages={messages}
           showContextBudget={showContextBudget}
-          showVoiceInput={showVoiceInput}
+          showVoiceInput={showVoiceInput && !blocksComposer}
         />
       </div>
 

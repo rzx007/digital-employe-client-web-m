@@ -55,6 +55,7 @@ def build_shell_environment_section() -> str:
         - 若命令本身需要引号（如 findstr /c:"搜索文本"），外层用单引号括起来
         - 避免混用 PowerShell cmdlet 与 cmd 语法
         - **禁止多行** `python -c "..."`；应先 write_file 落盘 `xxx.py`（产物目录，相对文件名即可）再 python -u xxx.py
+        - **Python 脚本内禁止直接 `subprocess.run(["lark-cli", ...])`**：Windows subprocess 不走 PATHEXT，找不到 `.cmd` 包装命令；改用 `shell_execute` 直接执行，或用 `subprocess.run(["cmd", "/c", "lark-cli", ...])` 过 cmd.exe 代理
         - {python_hint}
         """
 
