@@ -81,12 +81,14 @@ export function ChatView({
   onOpenContacts,
   onOpenConversations,
   onNewConversation,
+  isNewConversationPending,
   className,
   ...props
 }: React.ComponentProps<"div"> & {
   onOpenContacts?: () => void
   onOpenConversations?: () => void
   onNewConversation?: () => void
+  isNewConversationPending?: boolean
 }) {
   const selectedContactId = useChatStore((s) => s.selectedContactId)
   const isDraftConversation = useChatStore((s) => s.isDraftConversation)
@@ -129,6 +131,7 @@ export function ChatView({
           onOpenContacts={onOpenContacts}
           onOpenConversations={onOpenConversations}
           onNewConversation={onNewConversation}
+          isCreatingConversation={isNewConversationPending}
           {...props}
         />
       )

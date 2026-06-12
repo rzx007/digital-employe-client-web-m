@@ -253,6 +253,7 @@ export function CuratorView({
   onOpenContacts,
   onOpenConversations,
   onNewConversation,
+  isCreatingConversation,
   className,
   ...props
 }: ComponentProps<"div"> & {
@@ -268,6 +269,7 @@ export function CuratorView({
   onOpenContacts?: () => void
   onOpenConversations?: () => void
   onNewConversation?: () => void
+  isCreatingConversation?: boolean
 }) {
   const [inputValue, setInputValue] = useState("")
   const [command, setCommand] = useState<{ id: string; title: string } | null>(
@@ -800,6 +802,7 @@ export function CuratorView({
           onReset={() => setShowResetDialog(true)}
           onOpenConversations={onOpenConversations}
           onNewConversation={onNewConversation}
+          isCreatingConversation={isCreatingConversation}
           resourcesOpen={resourcesOpen}
           onToggleResources={onToggleResources}
         />
@@ -812,6 +815,7 @@ export function CuratorView({
           onOpenContacts={onOpenContacts}
           onOpenConversations={onOpenConversations}
           onNewConversation={onNewConversation}
+          isCreatingConversation={isCreatingConversation}
         />
       )}
 

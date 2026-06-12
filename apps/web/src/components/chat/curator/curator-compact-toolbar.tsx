@@ -25,6 +25,7 @@ export function CuratorCompactToolbar({
   onReset,
   onOpenConversations,
   onNewConversation,
+  isCreatingConversation,
   resourcesOpen = false,
   onToggleResources,
   className,
@@ -36,6 +37,7 @@ export function CuratorCompactToolbar({
   onReset?: () => void
   onOpenConversations?: () => void
   onNewConversation?: () => void
+  isCreatingConversation?: boolean
   resourcesOpen?: boolean
   onToggleResources?: () => void
   className?: string
@@ -83,6 +85,7 @@ export function CuratorCompactToolbar({
             title="新建对话"
             variant="ghost"
             size="icon-sm"
+            disabled={isCreatingConversation}
             onClick={handleNewConversation}
           >
             <IconMessage2Plus className="size-4" />

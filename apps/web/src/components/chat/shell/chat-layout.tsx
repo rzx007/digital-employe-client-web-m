@@ -344,6 +344,7 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
             onOpenContacts={handleOpenContacts}
             onOpenConversations={handleOpenConversations}
             onNewConversation={handleNewConversation}
+            isNewConversationPending={isCreatingCurator}
             className={cn(
               "min-h-0 min-w-0",
               isBrowserRightPanel
