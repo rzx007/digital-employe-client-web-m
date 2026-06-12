@@ -41,8 +41,11 @@ _ERROR_HINTS: list = [
     (
         re.compile(r"(No such file or directory|FileNotFoundError|系统找不到指定的)"),
         lambda m: (
-            "文件/路径不存在。先用 ls 或 read_file 确认真实路径"
-            "（注意 /artifacts/ 等虚拟前缀的物理映射），再重试。"
+            "文件或可执行文件不存在。"
+            "① 读写文件路径有误：先 ls 或 read_file 确认；路径用 $ARTIFACTS_DIR/$UPLOADS_DIR/$WORKSPACE_DIR 等环境变量（无虚拟前缀）。"
+            "② Python subprocess 找不到可执行文件（Windows 常见）：Windows 的 subprocess 不走 PATHEXT，"
+            "找不到 .cmd/.bat 包装的命令（如 lark-cli）；"
+            "改用 shell_execute 直接执行命令，或改写成 subprocess.run(['cmd','/c','命令',...])。"
         ),
     ),
     (
@@ -68,7 +71,7 @@ _ERROR_HINTS: list = [
     ),
     (
         re.compile(r"(Permission denied|拒绝访问|PermissionError)"),
-        lambda m: "权限不足。改写到 /artifacts/ 产物目录，勿写系统或只读路径。",
+        lambda m: "权限不足。改写到产物目录（$ARTIFACTS_DIR），勿写系统或只读路径。",
     ),
 ]
 
