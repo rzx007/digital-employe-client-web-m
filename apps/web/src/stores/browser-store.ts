@@ -19,6 +19,8 @@ interface BrowserState {
   isMinimized: boolean
   isFullscreen: boolean
   error: string | null
+  canGoBack: boolean
+  canGoForward: boolean
 
   openBrowser: (url: string) => void
   openHtmlPreview: (
@@ -29,9 +31,15 @@ interface BrowserState {
   restoreBrowser: () => void
   destroyBrowser: () => void
   navigate: (url: string) => void
+  goBack: () => void
+  goForward: () => void
   refresh: () => void
   setWidthRatio: (ratio: number) => void
-  setCurrentUrl: (url: string, title: string) => void
+  setCurrentUrl: (
+    url: string,
+    title: string,
+    nav?: { canGoBack: boolean; canGoForward: boolean }
+  ) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
   toggleFullscreen: () => void
@@ -65,6 +73,8 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   error: null,
   isMinimized: false,
   isFullscreen: false,
+  canGoBack: false,
+  canGoForward: false,
 
   openBrowser: (url: string) => {
     closeOtherRightPanels()
@@ -124,6 +134,8 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
       currentTitle: "",
       isLoading: false,
       error: null,
+      canGoBack: false,
+      canGoForward: false,
     })
   },
 
@@ -133,6 +145,20 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     const normalized = normalizeUrl(url)
     void api.browser.navigate(normalized)
     set({ currentUrl: normalized, isLoading: true, error: null })
+  },
+
+  goBack: () => {
+    const api = getElectronApi()
+    if (!api?.browser) return
+    void api.browser.goBack()
+    set({ isLoading: true, error: null })
+  },
+
+  goForward: () => {
+    const api = getElectronApi()
+    if (!api?.browser) return
+    void api.browser.goForward()
+    set({ isLoading: true, error: null })
   },
 
   refresh: () => {
@@ -152,8 +178,15 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     void api.browser.resize(clamped)
   },
 
-  setCurrentUrl: (url: string, title: string) => {
-    set({ currentUrl: url, currentTitle: title, isLoading: false })
+  setCurrentUrl: (url, title, nav) => {
+    set({
+      currentUrl: url,
+      currentTitle: title,
+      isLoading: false,
+      ...(nav
+        ? { canGoBack: nav.canGoBack, canGoForward: nav.canGoForward }
+        : {}),
+    })
   },
 
   setLoading: (loading: boolean) => {
@@ -177,6 +210,8 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
       currentTitle: "",
       isLoading: false,
       error: null,
+      canGoBack: false,
+      canGoForward: false,
     })
   },
 }))

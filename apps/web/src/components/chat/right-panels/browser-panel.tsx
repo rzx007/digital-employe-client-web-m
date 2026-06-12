@@ -31,9 +31,13 @@ export function BrowserPanel() {
     isLoading,
     isFullscreen,
     error,
+    canGoBack,
+    canGoForward,
     minimizeBrowser,
     destroyBrowser,
     navigate,
+    goBack,
+    goForward,
     refresh,
     setCurrentUrl,
     setError,
@@ -84,7 +88,10 @@ export function BrowserPanel() {
     const api = getElectronApi()
     if (!api?.browser) return
     const unsubUrl = api.browser.onUrlChange((data) => {
-      setCurrentUrl(data.url, data.title)
+      setCurrentUrl(data.url, data.title, {
+        canGoBack: data.canGoBack,
+        canGoForward: data.canGoForward,
+      })
     })
     const unsubError = api.browser.onLoadError((data) => {
       const message = formatBrowserLoadError(
@@ -129,8 +136,9 @@ export function BrowserPanel() {
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            title="后退（暂未启用）"
-            disabled
+            onClick={goBack}
+            disabled={!canGoBack}
+            title="后退"
           >
             <IconArrowLeft className="h-3.5 w-3.5" />
           </Button>
@@ -138,8 +146,9 @@ export function BrowserPanel() {
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            title="前进（暂未启用）"
-            disabled
+            onClick={goForward}
+            disabled={!canGoForward}
+            title="前进"
           >
             <IconArrowRight className="h-3.5 w-3.5" />
           </Button>

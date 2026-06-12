@@ -42,6 +42,8 @@ export interface BrowserContentBounds {
 export interface BrowserUrlChangeEvent {
   url: string
   title: string
+  canGoBack: boolean
+  canGoForward: boolean
 }
 
 export interface BrowserLoadErrorEvent {
@@ -104,6 +106,26 @@ export class BrowserWindowController {
         this.emitLoadError(url, -1, msg)
       }
     })
+  }
+
+  goBack(): void {
+    const wc = this.getBrowserWebContents()
+    if (!wc) return
+    const nav = wc.navigationHistory
+    if (!nav.canGoBack()) return
+    this.pendingLoadUrl = null
+    this.clearFallbackLoadTimer()
+    nav.goBack()
+  }
+
+  goForward(): void {
+    const wc = this.getBrowserWebContents()
+    if (!wc) return
+    const nav = wc.navigationHistory
+    if (!nav.canGoForward()) return
+    this.pendingLoadUrl = null
+    this.clearFallbackLoadTimer()
+    nav.goForward()
   }
 
   /**
@@ -545,9 +567,12 @@ export class BrowserWindowController {
   ): void {
     const sendUrlChange = () => {
       if (wc.isDestroyed() || main.isDestroyed()) return
+      const nav = wc.navigationHistory
       const payload: BrowserUrlChangeEvent = {
         url: wc.getURL(),
         title: wc.getTitle(),
+        canGoBack: nav.canGoBack(),
+        canGoForward: nav.canGoForward(),
       }
       main.webContents.send("browser:url-change", payload)
     }

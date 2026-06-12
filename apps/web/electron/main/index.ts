@@ -200,6 +200,14 @@ function registerBrowserIpcHandlers(): void {
     controller.navigate(url)
   })
 
+  ipcMain.handle(IpcChannels.browserGoBack, () => {
+    controller.goBack()
+  })
+
+  ipcMain.handle(IpcChannels.browserGoForward, () => {
+    controller.goForward()
+  })
+
   ipcMain.handle(IpcChannels.browserResize, (_event, widthRatio: unknown) => {
     const ratio =
       typeof widthRatio === "number" && !Number.isNaN(widthRatio)

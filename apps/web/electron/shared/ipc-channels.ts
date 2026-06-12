@@ -62,6 +62,8 @@ export const IpcChannels = {
   // browser panel
   browserOpen: "browser:open",
   browserNavigate: "browser:navigate",
+  browserGoBack: "browser:go-back",
+  browserGoForward: "browser:go-forward",
   browserResize: "browser:resize",
   browserHide: "browser:hide",
   browserShow: "browser:show",
@@ -257,6 +259,8 @@ export interface IpcInvokeMap {
   // browser panel
   [IpcChannels.browserOpen]: { args: [url: string]; result: void }
   [IpcChannels.browserNavigate]: { args: [url: string]; result: void }
+  [IpcChannels.browserGoBack]: { args: []; result: void }
+  [IpcChannels.browserGoForward]: { args: []; result: void }
   [IpcChannels.browserResize]: { args: [widthRatio: number]; result: void }
   [IpcChannels.browserHide]: { args: []; result: void }
   [IpcChannels.browserShow]: { args: []; result: void }
