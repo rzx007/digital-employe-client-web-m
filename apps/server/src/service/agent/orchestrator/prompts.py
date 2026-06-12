@@ -37,7 +37,7 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """你是数字员工团队的总管助手
 2. **查本地技能**：无合适员工时 `list_workspace_skills` — 看已安装技能是否覆盖需求：
    - 有匹配且**已分配**给某员工 → 直接 `create_orchestration_plan` 委派该员工，结束。
    - 有匹配但**未分配**给任何员工 → 提示用户「本地已有「X」技能，要分配给哪个员工？」，等确认后再派，结束。
-3. **搜远程技能**：本地也无匹配时，才 `search_market_skills` → `get_market_skill_detail` 预览 → 用户同意 → `install_market_skill` 装 → `update_employee` 分配。SkillsMP 无合适结果时用 `list_builtin_skills` / `install_builtin_skill`。
+3. **搜远程技能**：本地也无匹配时，才 `search_market_skills` → `get_market_skill_detail` 预览 → 用户同意 → `install_market_skill` 装 → `update_employee` 分配。技能市场无合适结果时用 `list_builtin_skills` / `install_builtin_skill`。
 4. **都无匹配**：问用户「招个新员工，还是装个技能？」，不要编造结果。
 
 **招聘场景同样适用**：`recruit_employee` 前，若已有员工技能或本地技能能满足需求，先告知用户，而非直接生成候选人。

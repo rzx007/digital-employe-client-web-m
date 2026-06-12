@@ -1,11 +1,11 @@
 ---
 name: find-skills
-description: 帮助用户从 SkillsMP 技能仓库发现并安装 Agent 技能。当用户问「有没有 XX 技能」「怎么写标书/做测试」「找个技能」「扩展能力」时使用。优先引导 https://skillsmp.com/search ；无合适结果时用内置技能或 ZIP 导入。
+description: 帮助用户从 ClawHub 镜像技能市场发现并安装 Agent 技能。当用户问「有没有 XX 技能」「怎么写标书/做测试」「找个技能」「扩展能力」时使用。优先用 search_market_skills 搜索；无合适结果时用内置技能或 ZIP 导入。
 ---
 
 # Find Skills — 技能发现与安装
 
-帮助用户从 **SkillsMP 技能仓库**（https://skillsmp.com/search）发现、预览并安装技能。
+帮助用户从 **ClawHub 镜像技能市场**（https://cn.clawhub-mirror.com/skills）发现、预览并安装技能。该镜像国内可达、速度快：详情接口内联返回 SKILL.md（预览不绕 GitHub），安装时整包 ZIP 直接下发。
 
 ## 何时使用
 
@@ -16,9 +16,9 @@ description: 帮助用户从 SkillsMP 技能仓库发现并安装 Agent 技能�
 
 ## 技能仓库
 
-**SkillsMP 公开仓库（在线/离线模式均可用，仅需网络）：**
+**ClawHub 镜像技能市场（在线/离线模式均可用，仅需网络）：**
 
-- 浏览地址：**https://skillsmp.com/search**
+- 浏览地址：**https://cn.clawhub-mirror.com/skills**
 - 总管工具：`search_market_skills` → `get_market_skill_detail` → `install_market_skill`
 
 **兜底（仓库无合适结果）：**
@@ -47,7 +47,7 @@ list_workspace_employees       # 是否已有员工自带技能
 search_market_skills("关键词")
 ```
 
-同时给用户仓库链接：https://skillsmp.com/search
+同时给用户市场链接：https://cn.clawhub-mirror.com/skills
 
 若 API 无结果，仍建议用户去网站浏览分类。
 
@@ -59,15 +59,15 @@ search_market_skills("关键词")
 get_market_skill_detail(skill_slug)
 ```
 
-向用户展示：名称、描述、SKILL.md 预览（前 40 行）。`skill_slug` 为字符串，例如 `openclaw-openclaw-agents-skills-control-ui-e2e-skill-md`。
+向用户展示：名称、描述、SKILL.md 预览（前 40 行）。`skill_slug` 为字符串，例如 `autoreview`、`ppt`、`pptx`。
 
 ### 5. 向用户呈现选项
 
 示例：
 
 ```
-在 SkillsMP 找到「pptx」技能（slug=author-repo-...），用于创建和编辑 PowerPoint。
-仓库详情：https://skillsmp.com/search
+在技能市场找到「pptx」技能（slug=pptx），用于创建和编辑 PowerPoint。
+市场详情：https://cn.clawhub-mirror.com/skills/pptx
 
 要我预览 SKILL.md 内容吗？确认后可以帮你安装到本机。
 ```
@@ -80,7 +80,7 @@ get_market_skill_detail(skill_slug)
 install_market_skill(skill_slug)
 ```
 
-安装时会通过 SkillsMP 的 `github-contents` 代理（与网站「Download Zip」同源）拉取 GitHub 技能文件；失败时回退直连 GitHub API。
+安装时会从 ClawHub 镜像的 `download` 接口整包下载技能 ZIP（不绕 GitHub），解压后写入本地。
 
 安装位置：`~/.digital-employee/local-skills/<workspace_id>/<skill_name>/`
 
@@ -110,6 +110,6 @@ install_builtin_skill("skill-name")
 
 ## 找不到技能时
 
-1. 说明仓库暂无匹配项，给出 https://skillsmp.com/search 自行浏览
+1. 说明市场暂无匹配项，给出 https://cn.clawhub-mirror.com/skills 自行浏览
 2. 提供总管/员工直接协助完成任务的选项
 3. 建议 ZIP 导入或内置技能

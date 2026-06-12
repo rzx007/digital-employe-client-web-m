@@ -60,7 +60,17 @@ from src.service.agent.orchestrator.runtime import (
 )
 
 
-SKILL_MARKET_URL = "https://skillsmp.com/search"
+def _market_web_url() -> str:
+    """技能市场页面地址（随 base 配置动态解析），用于提示文案。"""
+    try:
+        from src.service.skillsmp_service import market_web_url
+
+        return market_web_url()
+    except Exception:
+        return "https://cn.clawhub-mirror.com/skills"
+
+
+SKILL_MARKET_URL = _market_web_url()
 MARKET_SKILL_SEARCH_LIMIT = 3
 MARKET_SKILL_DETAIL_MAX = 3
 
@@ -82,7 +92,7 @@ def take_market_detail_slot(conversation_id: int | None) -> str | None:
     count = _market_detail_count_by_conv.get(conversation_id, 0)
     if count >= MARKET_SKILL_DETAIL_MAX:
         return (
-            f"错误：本轮已从 SkillsMP 预览 {MARKET_SKILL_DETAIL_MAX} 个技能（已达上限）。"
+            f"错误：本轮已预览 {MARKET_SKILL_DETAIL_MAX} 个技能（已达上限）。"
             "请从已有结果中选定安装，或重新 search_market_skills 后再预览其他技能。"
         )
     _market_detail_count_by_conv[conversation_id] = count + 1

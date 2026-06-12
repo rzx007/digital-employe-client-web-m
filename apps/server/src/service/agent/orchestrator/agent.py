@@ -307,7 +307,7 @@ def get_orchestrator_agent(
             # 用户明确要求总管亲自执行（含长文档）时与员工 agent 相同的 HITL 门
             submit_clarifying_questions,
             submit_document_plan,
-            # 技能发现与安装（SkillsMP 仓库 + 内置技能）
+            # 技能发现与安装（ClawHub 镜像市场 + 内置技能）
             list_builtin_skills,
             _serialize_db_tool(install_builtin_skill),
             search_market_skills,

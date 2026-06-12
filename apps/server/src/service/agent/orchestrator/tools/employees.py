@@ -167,7 +167,7 @@ def update_employee(
     """修改已有数字员工（名称、描述、技能）。
 
     skill_ids 可为 JSON 数组字符串（如 "[-100, 11]"）、整数列表或单个整数。
-    负整数 skill_id=本地 localId；正整数=SkillsMP 远程技能 id。传 "[]" 可清空。
+    负整数 skill_id=本地 localId；正整数=企业远程技能 id。传 "[]" 可清空。
     禁止修改总管助手（is_curator=true）的任何字段。
     MCP 分配请在客户端员工编辑页操作，总管不提供 MCP 查询工具。
     """

@@ -100,6 +100,8 @@ class Settings:
     skill_remote_token: str | None
     skill_remote_timeout: float
     skill_remote_rating: str | None
+    # ClawHub 镜像技能市场基址（搜索/详情/下载）。可被 env SKILL_MARKET_BASE 覆盖。
+    skill_market_base: str | None
     mcp_remote_list_url: str | None
     mcp_remote_detail_url: str | None
     platform_base_url: str | None = None
@@ -505,6 +507,7 @@ def get_settings() -> Settings:
         skill_remote_timeout=skill_remote_timeout,
         skill_remote_rating=_get_kv_value(kv_data, "SKILL_REMOTE_RATING")
         or "/api/v1/skills/{skill_id}/rating",
+        skill_market_base=_get_kv_value(kv_data, "SKILL_MARKET_BASE"),
         mcp_remote_list_url=mcp_remote_list_url,
         mcp_remote_detail_url=mcp_remote_detail_url,
         mcp_client_base_path=mcp_client_base_path,

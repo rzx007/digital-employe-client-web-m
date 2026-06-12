@@ -1,4 +1,4 @@
-"""总管工具 · 技能管理（工作区技能列表 / 详情、内置技能、SkillsMP 市场）。
+"""总管工具 · 技能管理（工作区技能列表 / 详情、内置技能、ClawHub 市场）。
 
 按"职能域"统一组织：
 - 工作区技能：list_workspace_skills、get_workspace_skill_detail
@@ -222,8 +222,8 @@ def list_workspace_skills() -> str:
         "skills": skills,
         "hint": (
             "为员工分配技能：update_employee(employee_id, skill_ids=\"[-100, 11]\");"
-            "负整数=本地已安装技能 localId；正整数=SkillsMP 远程技能 id（无需先安装）。"
-            "清空技能：skill_ids=\"[]\"。localId 来自 list_workspace_skills；SkillsMP 安装后同样用 localId。"
+            "负整数=本地已安装技能 localId；正整数=企业远程技能 id（无需先安装）。"
+            "清空技能：skill_ids=\"[]\"。localId 来自 list_workspace_skills；市场技能安装后同样用 localId。"
             "每项 skills[].assigned_employees 为已分配员工；详情见 get_workspace_skill_detail。"
             "禁止在未查 assigned_employees / 员工表前声称「未分配给任何人」。"
         ),
@@ -310,7 +310,7 @@ def get_workspace_skill_detail(
 def list_builtin_skills(query: str = "") -> str:
     """列出安装包自带的内置技能（build-in-skills），按名称/描述过滤。
 
-    优先 search_market_skills 搜索 SkillsMP 技能仓库；无合适结果时再查内置技能。
+    优先 search_market_skills 搜索 ClawHub 技能市场；无合适结果时再查内置技能。
     内置技能安装用 install_builtin_skill。
 
     Args:
@@ -403,7 +403,7 @@ def install_builtin_skill(skill_name: str, overwrite: bool = False) -> str:
 
 
 # ---------------------------------------------------------------------------
-# SkillsMP 远程市场
+# ClawHub 远程市场
 # ---------------------------------------------------------------------------
 
 
@@ -412,10 +412,9 @@ def search_market_skills(
     query: str,
     runtime: ToolRuntime[None, None] = None,
 ) -> str:
-    """从 SkillsMP 公开目录搜索可安装技能（无需登录，离线模式也可用）。
+    """从 ClawHub 镜像技能市场搜索可安装技能（无需登录，离线模式也可用）。
 
     每次搜索最多返回 3 个结果；预览详情最多 3 个（get_market_skill_detail）。
-    完整浏览请打开 https://skillsmp.com/search
     安装前先用 get_market_skill_detail(skill_slug) 预览，确认后 install_market_skill(skill_slug)。
 
     Args:
@@ -431,28 +430,19 @@ def search_market_skills(
     reset_market_detail_count(resolve_conv_id(runtime))
 
     try:
-        data = SkillsMpService.search(
-            q, limit=MARKET_SKILL_SEARCH_LIMIT, sort_by="stars"
-        )
+        data = SkillsMpService.search(q, limit=MARKET_SKILL_SEARCH_LIMIT)
     except SkillsMpError as exc:
         return f"错误：{exc}"
 
     skills = data.get("skills") if isinstance(data, dict) else None
     if not isinstance(skills, list):
-        return "错误：SkillsMP 搜索响应格式异常。"
+        return "错误：技能市场搜索响应格式异常。"
 
-    skills = sorted(
-        [item for item in skills if isinstance(item, dict)],
-        key=lambda item: int(item.get("stars") or 0),
-        reverse=True,
-    )
-
+    skills = [item for item in skills if isinstance(item, dict)]
     installed = _get_installed_skill_names(resolve_workspace_id(runtime))
-    pagination = data.get("pagination") if isinstance(data, dict) else {}
-    total = pagination.get("total") if isinstance(pagination, dict) else len(skills)
 
     lines = [
-        f"SkillsMP 技能目录：{SKILL_MARKET_URL}",
+        f"技能市场：{SKILL_MARKET_URL}",
         f"搜索结果（「{q}」）：",
         "",
     ]
@@ -464,28 +454,16 @@ def search_market_skills(
         return "\n".join(lines)
 
     for item in skills:
-        if not isinstance(item, dict):
-            continue
-        slug = str(item.get("id") or "")
+        slug = str(item.get("slug") or item.get("id") or "")
         name = str(item.get("name") or slug)
-        author = str(item.get("author") or "")
         desc = str(item.get("description") or "")[:100]
-        skill_url = str(item.get("skillUrl") or f"https://skillsmp.com/skills/{slug}")
-        stars = item.get("stars")
+        skill_url = str(item.get("skillUrl") or f"{SKILL_MARKET_URL}/{slug}")
         status = "已安装" if name in installed else "可安装"
         lines.append(f"- slug={slug}")
-        lines.append(f"  名称: {name} ({author}) [{status}]")
+        lines.append(f"  名称: {name} [{status}]")
         if desc:
             lines.append(f"  描述: {desc}")
-        if isinstance(stars, int) and stars > 0:
-            lines.append(f"  Stars: {stars}")
         lines.append(f"  页面: {skill_url}")
-
-    if isinstance(total, int) and total > len(skills):
-        lines.append(
-            f"... 共约 {total} 个结果，仅显示前 {len(skills)} 个。"
-            f"可在 {SKILL_MARKET_URL} 继续浏览。"
-        )
 
     lines.extend(
         [
@@ -494,7 +472,7 @@ def search_market_skills(
             f"预览详情最多 {MARKET_SKILL_DETAIL_MAX} 个（请逐个预览，勿并行批量拉取）。",
             "预览: get_market_skill_detail(skill_slug)",
             "安装: install_market_skill(skill_slug)",
-            "slug 为字符串（如 openclaw-…-skill-md），不是 localId。",
+            "slug 为字符串（如 autoreview、ppt），不是 localId。",
         ]
     )
     return "\n".join(lines)
@@ -505,8 +483,9 @@ def get_market_skill_detail(
     skill_slug: str,
     runtime: ToolRuntime[None, None] = None,
 ) -> str:
-    """预览 SkillsMP 目录中的某个技能详情（不安装）。
+    """预览 ClawHub 镜像技能市场中的某个技能详情（不安装）。
 
+    详情接口已内联返回 SKILL.md，无需绕 GitHub，预览很快。
     每轮搜索后最多预览 3 个技能；请勿并行连续调用超过 3 次。
     确认符合需求后再调用 install_market_skill(skill_slug) 安装到本机工作区。
 
@@ -527,39 +506,24 @@ def get_market_skill_detail(
         return f"错误：获取技能详情失败 — {exc}"
 
     name = detail.get("name") or "?"
-    author = detail.get("author") or "?"
+    author = detail.get("author") or ""
     desc = detail.get("description") or "无"
-    github_url = detail.get("githubUrl") or "无"
-    skill_url = detail.get("skillUrl") or f"https://skillsmp.com/skills/{slug}"
-    stars = detail.get("stars")
+    version = detail.get("version")
+    skill_url = detail.get("skillUrl") or f"{SKILL_MARKET_URL}/{slug}"
 
-    preview = "（正在从 GitHub 拉取 SKILL.md…）"
-    file_list = ""
-    contents_url = "无"
-    github = str(github_url)
-    if github.startswith("http"):
-        try:
-            parsed = SkillsMpService.parse_github_tree_url(github)
-            contents_url = SkillsMpService.github_contents_url(parsed)
-            file_map = SkillsMpService.fetch_skill_file_map(github, skill_slug=slug)
-            preview = _preview_from_file_map(file_map)
-            file_list = _format_market_skill_files(file_map)
-        except SkillsMpError as exc:
-            preview = f"（无法拉取 SKILL.md: {exc}）"
-            contents_url = github
-    else:
-        contents_url = "无"
+    preview = _preview_skill_md(detail.get("skillMd"))
+    files = detail.get("files") if isinstance(detail.get("files"), list) else []
+    file_list = _format_skill_file_list([str(f) for f in files])
 
-    stars_line = f"Stars: {stars}\n" if isinstance(stars, int) and stars > 0 else ""
+    author_line = f"名称: {name} (作者: {author})\n" if author else f"名称: {name}\n"
+    version_line = f"版本: {version}\n" if version else ""
 
     return (
-        f"📄 SkillsMP 技能 slug={slug}\n"
-        f"名称: {name} (作者: {author})\n"
+        f"📄 技能 slug={slug}\n"
+        f"{author_line}"
+        f"{version_line}"
         f"描述: {desc}\n"
-        f"{stars_line}"
         f"页面: {skill_url}\n"
-        f"GitHub: {github_url}\n"
-        f"下载源: {contents_url}\n"
         f"\n--- 文件清单 ---\n{file_list or '（未能获取）'}\n"
         f"\n--- SKILL.md 预览 ---\n{preview}\n"
         f"\n---\n确认安装请调用 install_market_skill(\"{slug}\")"
@@ -572,7 +536,7 @@ def install_market_skill(
     overwrite: bool = False,
     runtime: ToolRuntime[None, None] = None,
 ) -> str:
-    """从 SkillsMP 目录安装技能到当前工作区本地目录（无需登录，离线模式也可用）。
+    """从 ClawHub 镜像技能市场安装技能到当前工作区本地目录（无需登录，离线模式也可用）。
 
     安装路径：~/.digital-employee/local-skills/<workspace_id>/<skill_name>/
     安装后调用 list_workspace_skills 获取 localId，再 update_employee 分配给员工。
@@ -605,7 +569,7 @@ def install_market_skill(
     action = "已覆盖" if result.get("overwritten") else "已安装"
     return (
         f"✅ {action}技能「{result['skillName']}」(localId={result['localId']})\n"
-        f"来源: SkillsMP (slug={slug})\n"
+        f"来源: ClawHub (slug={slug})\n"
         f"路径: {result['path']}\n"
         f"下一步: list_workspace_skills → update_employee 分配 skill_ids"
     )

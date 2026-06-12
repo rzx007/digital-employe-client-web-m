@@ -168,7 +168,7 @@ from src.service.agent.orchestrator.tools import (
 | `tests/test_create_orchestration_plan.py`（1 项） | `tools.create_orchestration_plan` | plan 数字 ID 返回 |
 | `tests/test_orchestration_task_list.py`（3 项） | `tools.parse_orchestration_task_list` | JSON/数组解析 |
 | `tests/test_task_mutations.py`（10 项） | `tools.delete_task` / `update_task` / `delete_tasks_batch` / `list_tasks` | 子任务 CRUD + Session 隔离 |
-| `tests/test_skillsmp_service.py`（5 项） | `skillsmp_service` 内部 | SkillsMP 协议 |
+| `tests/test_skillsmp_service.py`（15 项） | `skillsmp_service` 内部 | ClawHub 镜像协议（搜索/详情/下载/归一化） |
 | `tests/test_recruitment.py`（5 项） | `recruitment.py` 内部 | 招聘录用业务后端 |
 | `tests/test_orchestrator_runtime_auth.py`（1 项） | runtime.auth | Auth token 解析 |
 | `tests/conftest.py:73` fixture `patched_employee_tools_db` | `tools.employees.get_session_local` | 测试库 Session 注入 |
