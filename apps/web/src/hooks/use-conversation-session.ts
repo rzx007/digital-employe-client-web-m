@@ -162,6 +162,13 @@ export function useConversationSession({
   // eslint-disable-next-line react-hooks/refs
   statusRef.current = status
 
+  // latest-value ref：no_stream 补全时读「实时」initialMessages，用 DB 快照把
+  // resetLastAssistantPartsForResume 留下的空壳填回，避免气泡长时间空白。
+  const initialMessagesRef = useRef(initialMessages)
+
+  // eslint-disable-next-line react-hooks/refs
+  initialMessagesRef.current = initialMessages
+
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const resumeScheduleRef = useRef<
@@ -467,6 +474,33 @@ export function useConversationSession({
 
       onTerminal: (info) => {
         if (info.status === "no_stream") {
+          // resume 返回 no_stream 时，resetLastAssistantPartsForResume 已把末尾
+          // assistant 清成空壳。blockedByActiveSession 会阻断 session effect 用
+          // DB 补全（count/lastId 不变 → needsHydrate=false → "none"），导致气泡
+          // 长时间空白直到用户切换会话。
+          // 修复：立即从 initialMessages 快照把 parts 补回空壳，让用户看到 DB
+          // 已写入的内容；下次 retry 仍会先清空再全量重放，循环中始终可见 DB 内容。
+          setMessages((prev) => {
+            for (let i = prev.length - 1; i >= 0; i--) {
+              const live = prev[i]
+              if (live.role !== "assistant") continue
+              if ((live.parts?.length ?? 0) > 0) return prev // has content, skip
+              // Empty shell — restore from current DB snapshot
+              let stored: typeof live | undefined
+              const initial = initialMessagesRef.current
+              for (let j = initial.length - 1; j >= 0; j--) {
+                if (initial[j].role === "assistant") {
+                  stored = initial[j]
+                  break
+                }
+              }
+              if (!stored || (stored.parts?.length ?? 0) === 0) return prev
+              const next = [...prev]
+              next[i] = { ...live, parts: stored.parts }
+              return next
+            }
+            return prev
+          })
           retryResumeIfNeeded()
           scheduleMessagesRefetch()
           return
