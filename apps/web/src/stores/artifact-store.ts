@@ -23,12 +23,14 @@ function closeOtherSidePanels() {
 interface ArtifactStore {
   activeArtifactId: string | null
   activeResourcePath: string | null
+  activeSubConversationId: number | null
   isPanelOpen: boolean
   artifacts: Map<string, Artifact>
   pendingByConversation: Map<string, Map<string, PendingResource>>
 
   openArtifact: (id: string) => void
   openResource: (path: string) => void
+  openSubConversation: (conversationId: number) => void
   closeArtifact: () => void
   addArtifact: (artifact: Artifact) => void
   removeArtifact: (id: string) => void
@@ -53,22 +55,28 @@ function toConversationKey(conversationId: string | number) {
 export const useArtifactStore = create<ArtifactStore>((set, get) => ({
   activeArtifactId: null,
   activeResourcePath: null,
+  activeSubConversationId: null,
   isPanelOpen: false,
   artifacts: new Map(),
   pendingByConversation: new Map(),
 
   openArtifact: (id) => {
     closeOtherSidePanels()
-    set({ activeArtifactId: id, activeResourcePath: null, isPanelOpen: true })
+    set({ activeArtifactId: id, activeResourcePath: null, activeSubConversationId: null, isPanelOpen: true })
   },
   openResource: (path) => {
     closeOtherSidePanels()
-    set({ activeArtifactId: null, activeResourcePath: path, isPanelOpen: true })
+    set({ activeArtifactId: null, activeResourcePath: path, activeSubConversationId: null, isPanelOpen: true })
+  },
+  openSubConversation: (conversationId) => {
+    closeOtherSidePanels()
+    set({ activeArtifactId: null, activeResourcePath: null, activeSubConversationId: conversationId, isPanelOpen: true })
   },
   closeArtifact: () =>
     set({
       activeArtifactId: null,
       activeResourcePath: null,
+      activeSubConversationId: null,
       isPanelOpen: false,
     }),
   addArtifact: (artifact) =>
@@ -95,7 +103,7 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
     if (open) closeOtherSidePanels()
     set({
       isPanelOpen: open,
-      ...(open ? {} : { activeResourcePath: null }),
+      ...(open ? {} : { activeResourcePath: null, activeSubConversationId: null }),
     })
   },
   updateArtifactContent: (id, content) =>

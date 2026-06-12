@@ -1,14 +1,16 @@
 "use client"
 
 import * as React from "react"
-import { IconChevronRight } from "@tabler/icons-react"
+import { IconChevronRight, IconExternalLink } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 import { MessageResponse } from "@workspace/ui/components/ai-elements/message"
+import { useArtifactStore } from "@/stores/artifact-store"
 
 interface Props {
   heading: string
   body: string
   runStatus: string | null
+  employeeConversationId?: number | null
   className?: string
 }
 
@@ -46,11 +48,13 @@ export function OrchestratorTaskSummaryCard({
   heading,
   body,
   runStatus,
+  employeeConversationId,
   className,
 }: Props) {
   const [expanded, setExpanded] = React.useState(false)
   const tone = STATUS_TONE[runStatus ?? ""] ?? STATUS_TONE.success
   const hasBody = body.trim().length > 0
+  const openSubConversation = useArtifactStore((s) => s.openSubConversation)
 
   return (
     <div
@@ -59,39 +63,52 @@ export function OrchestratorTaskSummaryCard({
         className
       )}
     >
-      <button
-        type="button"
-        onClick={() => hasBody && setExpanded((v) => !v)}
-        className={cn(
-          "flex w-full items-center gap-2 px-3 py-2 text-left text-[13px]",
-          hasBody && "hover:bg-muted/60"
-        )}
-        disabled={!hasBody}
-        aria-expanded={expanded}
-      >
-        <span
+      <div className="flex w-full items-center gap-2 px-3 py-2 text-[13px]">
+        <button
+          type="button"
+          onClick={() => hasBody && setExpanded((v) => !v)}
           className={cn(
-            "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
-            tone.bg,
-            tone.text
+            "flex min-w-0 flex-1 items-center gap-2 text-left",
+            hasBody && "cursor-pointer"
           )}
+          disabled={!hasBody}
+          aria-expanded={expanded}
         >
-          <span className={cn("size-1.5 rounded-full", tone.dot)} aria-hidden />
-          {tone.label}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-foreground/90">
-          {heading}
-        </span>
-        {hasBody ? (
-          <IconChevronRight
+          <span
             className={cn(
-              "size-3.5 shrink-0 text-muted-foreground transition-transform",
-              expanded && "rotate-90"
+              "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+              tone.bg,
+              tone.text
             )}
-            aria-hidden
-          />
+          >
+            <span className={cn("size-1.5 rounded-full", tone.dot)} aria-hidden />
+            {tone.label}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-foreground/90">
+            {heading}
+          </span>
+          {hasBody ? (
+            <IconChevronRight
+              className={cn(
+                "size-3.5 shrink-0 text-muted-foreground transition-transform",
+                expanded && "rotate-90"
+              )}
+              aria-hidden
+            />
+          ) : null}
+        </button>
+        {employeeConversationId != null ? (
+          <button
+            type="button"
+            onClick={() => openSubConversation(employeeConversationId)}
+            className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title="查看执行详情"
+          >
+            <IconExternalLink className="size-3" />
+            详情
+          </button>
         ) : null}
-      </button>
+      </div>
       {expanded && hasBody ? (
         <div className="border-t border-border/40 bg-background/60 px-3 py-2 text-[12px]">
           <MessageResponse>{body}</MessageResponse>
