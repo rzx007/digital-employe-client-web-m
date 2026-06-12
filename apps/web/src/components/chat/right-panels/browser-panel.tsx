@@ -5,6 +5,8 @@ import {
   IconWorld,
   IconRefresh,
   IconMinus,
+  IconMaximize,
+  IconMinimize,
   IconX,
 } from "@tabler/icons-react"
 
@@ -27,6 +29,7 @@ export function BrowserPanel() {
     currentUrl,
     currentTitle,
     isLoading,
+    isFullscreen,
     error,
     minimizeBrowser,
     destroyBrowser,
@@ -34,6 +37,7 @@ export function BrowserPanel() {
     refresh,
     setCurrentUrl,
     setError,
+    toggleFullscreen,
   } = useBrowserStore()
 
   const viewportRef = React.useRef<HTMLDivElement>(null)
@@ -61,6 +65,15 @@ export function BrowserPanel() {
   }, [closeConfirmOpen, isOpen])
 
   useBrowserViewportSync(viewportRef, isOpen)
+
+  React.useEffect(() => {
+    if (!isFullscreen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") toggleFullscreen()
+    }
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [isFullscreen, toggleFullscreen])
 
   React.useEffect(() => {
     setUrlInput(currentUrl)
@@ -168,6 +181,20 @@ export function BrowserPanel() {
           title="最小化浏览器"
         >
           <IconMinus className="h-3.5 w-3.5" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0"
+          onClick={toggleFullscreen}
+          title={isFullscreen ? "退出全屏 (Esc)" : "全屏"}
+        >
+          {isFullscreen ? (
+            <IconMinimize className="h-3.5 w-3.5" />
+          ) : (
+            <IconMaximize className="h-3.5 w-3.5" />
+          )}
         </Button>
 
         <Button

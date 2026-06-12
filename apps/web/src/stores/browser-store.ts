@@ -17,6 +17,7 @@ interface BrowserState {
   widthRatio: number
   isLoading: boolean
   isMinimized: boolean
+  isFullscreen: boolean
   error: string | null
 
   openBrowser: (url: string) => void
@@ -33,6 +34,7 @@ interface BrowserState {
   setCurrentUrl: (url: string, title: string) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
+  toggleFullscreen: () => void
   reset: () => void
 }
 
@@ -62,6 +64,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   isLoading: false,
   error: null,
   isMinimized: false,
+  isFullscreen: false,
 
   openBrowser: (url: string) => {
     closeOtherRightPanels()
@@ -98,7 +101,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   minimizeBrowser: () => {
     const api = getElectronApi()
     void api?.browser.hide()
-    set({ isOpen: false, isMinimized: true, error: null })
+    set({ isOpen: false, isMinimized: true, error: null, isFullscreen: false })
   },
 
   restoreBrowser: () => {
@@ -116,6 +119,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     set({
       isOpen: false,
       isMinimized: false,
+      isFullscreen: false,
       currentUrl: "",
       currentTitle: "",
       isLoading: false,
@@ -160,10 +164,15 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     set({ error, isLoading: false })
   },
 
+  toggleFullscreen: () => {
+    set((s) => ({ isFullscreen: !s.isFullscreen }))
+  },
+
   reset: () => {
     set({
       isOpen: false,
       isMinimized: false,
+      isFullscreen: false,
       currentUrl: "",
       currentTitle: "",
       isLoading: false,
