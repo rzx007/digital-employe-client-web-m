@@ -387,10 +387,11 @@ class SkillsMpService:
         version = skill.get("version") if isinstance(skill.get("version"), str) else None
 
         file_map = SkillsMpService.fetch_skill_file_map(slug, version=version)
-        skill_name = str(skill.get("name") or "").strip()
-        if not skill_name:
-            skill_name = LocalSkillService._normalize_skill_name(slug)
-        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        # 目录名用 slug：slug 是 URL 安全标识（小写连字符，如 review-buying-advisor），
+        # 必过技能名校验。displayName（如 "Review Buying Advisor"、中文名）含空格/大小写/
+        # 中文，作为目录名会被 SKILL_NAME_PATTERN 拒，故仅作展示名 display_name_zh。
+        normalized = LocalSkillService._normalize_skill_name(slug)
+        display_name = str(skill.get("name") or "").strip() or None
         description = str(skill.get("description") or "").strip() or None
 
         return LocalSkillService.install_skill_from_file_map(
@@ -398,6 +399,7 @@ class SkillsMpService:
             file_map=file_map,
             workspace_id=workspace_id,
             overwrite=overwrite,
+            display_name_zh=display_name,
             description=description,
             source_file_name=f"clawhub:{slug}",
         )

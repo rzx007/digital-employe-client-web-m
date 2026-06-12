@@ -241,6 +241,50 @@ def test_fetch_skill_file_map_empty_slug() -> None:
         SkillsMpService.fetch_skill_file_map("  ")
 
 
+# ---- 安装 ---------------------------------------------------------------
+
+
+def test_install_uses_slug_as_dir_name_not_display_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """回归：displayName 含空格/大小写（如 "Review Buying Advisor"）不得作目录名，
+    否则被 SKILL_NAME_PATTERN 拒（「skillName 格式非法」）。应以 slug 作目录名、
+    displayName 作展示名。"""
+    monkeypatch.setattr(
+        SkillsMpService,
+        "get_skill",
+        staticmethod(
+            lambda slug: {
+                "slug": slug,
+                "name": "Review Buying Advisor",  # 含空格大小写，作目录名必失败
+                "description": "买前评估",
+                "version": "0.1.0",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        SkillsMpService,
+        "fetch_skill_file_map",
+        staticmethod(lambda slug, *, version=None: {"SKILL.md": "x"}),
+    )
+
+    captured = {}
+
+    def fake_install(**kwargs):
+        captured.update(kwargs)
+        return {"skillName": kwargs["skill_name"], "localId": -101, "path": "/x"}
+
+    monkeypatch.setattr(
+        skillsmp_service.LocalSkillService,
+        "install_skill_from_file_map",
+        staticmethod(fake_install),
+    )
+
+    SkillsMpService.install_from_slug("review-buying-advisor", workspace_id=1)
+    assert captured["skill_name"] == "review-buying-advisor"  # slug 作目录名
+    assert captured["display_name_zh"] == "Review Buying Advisor"  # 原名作展示
+
+
 # ---- 归一化 -------------------------------------------------------------
 
 
