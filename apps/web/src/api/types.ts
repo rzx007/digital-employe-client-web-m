@@ -343,6 +343,8 @@ export interface LocalSkillImportResult {
 export interface ResourceEntry {
   name: string
   path: string
+  /** 分桶 key（后端按真实子目录归属推导）：artifacts/uploads/skills_draft/workspace/public */
+  bucket?: string | null
   entry_type: "file" | "directory"
   artifact_type: string | null
   size: number
@@ -354,6 +356,9 @@ export interface ResourceList {
   artifacts: ResourceEntry[]
   uploads: ResourceEntry[]
   skills_draft: ResourceEntry[]
+  /** 员工工作空间全树（按 conv-* 分）；公共区 shared/** 全树（按来源分） */
+  workspace?: ResourceEntry[]
+  public?: ResourceEntry[]
 }
 
 export interface ResourceContent {

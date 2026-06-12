@@ -39,8 +39,8 @@ browserctl extract-text
 文本含引号、`&`、`|`、换行等会破坏命令行解析的字符时，先写入文件再用 `--text-file`：
 
 ```bash
-# 先用 write_file 把内容写到产物目录，例如 /artifacts/body.txt
-browserctl fill @e5 --text-file /artifacts/body.txt
+# 先用 write_file 把内容写到产物目录，例如 body.txt（cwd 即产物目录）
+browserctl fill @e5 --text-file "$ARTIFACTS_DIR/body.txt"
 ```
 
 或从管道读取：

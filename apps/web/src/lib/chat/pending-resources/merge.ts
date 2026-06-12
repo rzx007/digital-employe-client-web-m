@@ -1,6 +1,10 @@
 import type { ResourceEntry, ResourceList } from "@/api/types"
 
-import { getResourceBucket, getBucketRootSegment, type ResourceBucket } from "./paths"
+import {
+  getResourceBucket,
+  toBucketRelativeSegments,
+  type ResourceBucket,
+} from "./paths"
 import {
   getPendingDisplayName,
   shouldMergePendingIntoTree,
@@ -22,7 +26,7 @@ function inferArtifactType(path: string): string {
   ) {
     return "code"
   }
-  if (path.startsWith("/skills-draft/")) {
+  if (getResourceBucket(path) === "skills_draft") {
     return "skill-draft"
   }
   if (["pdf", "doc", "docx", "ppt", "pptx"].includes(ext)) {
@@ -56,11 +60,13 @@ export function dedupePendingList(
 }
 
 export function pendingToResourceEntry(pending: PendingResource): ResourceEntry {
+  // 归一化为正斜杠，与后端 as_posix 路径一致，保证树内/选中按路径相等比较命中。
+  const path = pending.path.replace(/\\/g, "/")
   return {
     name: getPendingDisplayName(pending),
-    path: pending.path,
+    path,
     entry_type: "file",
-    artifact_type: inferArtifactType(pending.path),
+    artifact_type: inferArtifactType(path),
     size: pending.content.length,
     modified_at: null,
     children: null,
@@ -88,20 +94,27 @@ function pathExistsInTree(entries: ResourceEntry[], path: string): boolean {
 function insertFileEntry(
   entries: ResourceEntry[],
   fileEntry: ResourceEntry,
-  bucket: ResourceBucket
+  _bucket: ResourceBucket
 ): ResourceEntry[] {
-  const path = fileEntry.path
+  const path = fileEntry.path.replace(/\\/g, "/")
   if (pathExistsInTree(entries, path)) {
     return entries
   }
 
-  const segments = path.split("/").filter(Boolean)
-  const rootSegment = getBucketRootSegment(bucket)
-  if (segments.length < 2 || segments[0] !== rootSegment) {
+  // 真实绝对路径：取桶段之后的相对部分构建树；桶根绝对路径用于拼接目录节点 path
+  // （与后端 as_posix 目录条目 path 一致）。
+  const rel = toBucketRelativeSegments(path)
+  if (rel.length < 1) {
     return entries
   }
+  const relJoined = rel.join("/")
+  const idx = path.lastIndexOf("/" + relJoined)
+  if (idx < 0) {
+    return entries
+  }
+  const bucketRootAbs = path.slice(0, idx)
 
-  const dirSegments = segments.slice(1, -1)
+  const dirSegments = rel.slice(0, -1)
 
   function insertAt(
     current: ResourceEntry[],
@@ -112,7 +125,7 @@ function insertFileEntry(
     }
 
     const dirName = dirSegments[depth]!
-    const dirPath = `/${rootSegment}/${dirSegments.slice(0, depth + 1).join("/")}`
+    const dirPath = `${bucketRootAbs}/${dirSegments.slice(0, depth + 1).join("/")}`
     const existingIndex = current.findIndex(
       (e) => e.path === dirPath && e.entry_type === "directory"
     )

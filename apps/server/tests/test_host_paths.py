@@ -19,18 +19,11 @@ def test_unix_absolute_paths_are_host():
     assert is_host_absolute_path("/tmp/scratch")
 
 
-def test_virtual_prefixes_are_not_host():
-    assert not is_host_absolute_path("/artifacts/report.md")
-    assert not is_host_absolute_path("/uploads/a.pdf")
-    assert not is_host_absolute_path("/skills/foo/SKILL.md")
-    assert not is_host_absolute_path("/memories/AGENTS.md")
-    assert not is_host_absolute_path("/skills")
-
-
-def test_mixed_prefix_with_drive_is_not_host():
-    # /artifacts/C:/... 是混拼的虚拟路径，不应被当作本机绝对路径
-    assert not is_host_absolute_path("/artifacts/C:/x")
-    assert not is_host_absolute_path("/artifacts/Users/me")
+def test_unix_style_paths_all_host_now():
+    # 删虚拟前缀后：所有以 / 开头的绝对路径均按 host 处理（不再排除 /artifacts/ 等）
+    assert is_host_absolute_path("/artifacts/report.md")
+    assert is_host_absolute_path("/skills/foo/SKILL.md")
+    assert is_host_absolute_path("/memories/AGENTS.md")
 
 
 def test_relative_and_empty_are_not_host():

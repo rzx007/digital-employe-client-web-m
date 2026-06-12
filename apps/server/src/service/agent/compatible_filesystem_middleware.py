@@ -619,14 +619,42 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
         )
 
 
+# 物理路径放行：deepagents 原生 validate_path 拒绝本机绝对路径（Windows 盘符 / 非虚拟
+# Unix 绝对）。删除独立的 validate_path_shim 后，把放行逻辑并入本模块的安装函数。
+# _ORIG_VALIDATE_PATH 在模块导入时绑定原函数（此时 line 24 导入的 validate_path 即原始）。
+from src.service.agent.path_access.host_paths import (  # noqa: E402
+    is_host_absolute_path,
+    normalize_host_path,
+)
+
+_ORIG_VALIDATE_PATH = validate_path
+
+
+def _validate_path_allow_physical(path, *, allowed_prefixes=None):
+    """放行本机绝对路径（Windows 盘符 / Unix 绝对）；其余沿用 deepagents 原校验。"""
+    if is_host_absolute_path(path):
+        return normalize_host_path(path)
+    return _ORIG_VALIDATE_PATH(path, allowed_prefixes=allowed_prefixes)
+
+
 def install_compatible_filesystem_middleware() -> None:
-    global _patched
+    global _patched, validate_path
     if _patched:
         return
     import deepagents.graph as graph_module
     import deepagents.middleware.filesystem as fs_module
+    from deepagents.backends import utils as backend_utils
 
     fs_module.FilesystemMiddleware = OpenAICompatibleFilesystemMiddleware
     graph_module.FilesystemMiddleware = OpenAICompatibleFilesystemMiddleware
+
+    # 放行本机绝对路径：基类工具（ls/write/edit）调 fs_module.validate_path；
+    # 各 backend 调 backend_utils.validate_path；本模块自身 read 用模块全局 validate_path。
+    fs_module.validate_path = _validate_path_allow_physical
+    backend_utils.validate_path = _validate_path_allow_physical
+    validate_path = _validate_path_allow_physical  # rebind 本模块全局（read_file 用）
+
     _patched = True
-    logger.info("Installed OpenAICompatibleFilesystemMiddleware for DashScope")
+    logger.info(
+        "Installed OpenAICompatibleFilesystemMiddleware + physical path passthrough"
+    )

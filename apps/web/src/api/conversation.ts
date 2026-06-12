@@ -95,9 +95,13 @@ export async function fetchConversationContextBudget(
     opts?.signal ? { signal: opts.signal } : undefined
   )
 }
-export async function deleteConversation(conversationId: number | string) {
+export async function deleteConversation(
+  conversationId: number | string,
+  cascade = true
+) {
   return request<ApiResponse<null>>(`/chat/conversations/${conversationId}`, {
     method: "DELETE",
+    params: { cascade },
   })
 }
 
@@ -111,14 +115,14 @@ export interface ConversationsBulkDeleteResult {
  * DELETE /workspaces/{workspace_id}/chat/conversations?target_type=&target_id=
  */
 export async function deleteConversationsByTarget(
-  query: { target_type: string; target_id: number },
+  query: { target_type: string; target_id: number; cascade?: boolean },
   opts?: { signal?: AbortSignal }
 ) {
   return request<ApiResponse<ConversationsBulkDeleteResult>>(
     `/workspaces/${WORKSPACE_ID}/chat/conversations`,
     {
       method: "DELETE",
-      params: query,
+      params: { cascade: true, ...query },
       ...(opts?.signal ? { signal: opts.signal } : {}),
     }
   )
@@ -286,6 +290,22 @@ export async function deleteResource(
   return request<ApiResponse<null>>(
     `/chat/conversations/${conversationId}/resources?path=${encodeURIComponent(path)}`,
     { method: "DELETE" }
+  )
+}
+
+export interface BatchDeleteResult {
+  deleted: string[]
+  skipped: string[]
+}
+
+/** 批量删产物：逐条沙箱校验，返回 {deleted, skipped} */
+export async function batchDeleteResources(
+  conversationId: number | string,
+  paths: string[]
+) {
+  return request<ApiResponse<BatchDeleteResult>>(
+    `/chat/conversations/${conversationId}/resources/batch-delete`,
+    { method: "POST", body: JSON.stringify({ paths }) }
   )
 }
 

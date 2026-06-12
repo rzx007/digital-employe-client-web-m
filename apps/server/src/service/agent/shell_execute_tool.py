@@ -36,7 +36,7 @@ def format_execute_response(
 
 class ShellExecuteInput(BaseModel):
     command: str = Field(
-        description="要执行的 shell 命令（须使用系统提示中的真实物理路径，勿用 /skills/ 等虚拟路径）"
+        description="要执行的 shell 命令（路径用真实绝对路径或 $ARTIFACTS_DIR/$SKILLS_DIR 等环境变量）"
     )
     intent: str | None = Field(
         default=None,

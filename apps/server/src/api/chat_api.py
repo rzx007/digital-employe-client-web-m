@@ -35,7 +35,14 @@ from src.schemas.recent_contact import (
     RecentContactRead,
     RecentContactTouch,
 )
-from src.schemas.resource import ResourceContent, ResourceList, ResourceUploadResult, VoiceUploadResult
+from src.schemas.resource import (
+    ResourceBatchDeleteRequest,
+    ResourceBatchDeleteResult,
+    ResourceContent,
+    ResourceList,
+    ResourceUploadResult,
+    VoiceUploadResult,
+)
 from src.service.chat_service import ChatService
 from src.service.conversation_title_service import suggest_conversation_title
 from src.service.recent_contact_service import RecentContactService
@@ -199,12 +206,14 @@ async def delete_conversations_by_target(
     workspace_id: int,
     target_type: str = Query(...),
     target_id: int = Query(...),
+    cascade: bool = Query(True, description="是否级联删除会话产物（默认是；否则只删会话保留产物）"),
     db: Session = Depends(get_db),
 ) -> ResponseBase[ConversationsBulkDeleteResult]:
     """按联系人（target_type + target_id）批量删除其下全部会话。"""
     deleted_ids = await ChatService.adelete_conversations_by_target(
         db=db,
         workspace_id=workspace_id,
+        cascade_artifacts=cascade,
         target_type=target_type,
         target_id=target_id,
     )
@@ -285,10 +294,14 @@ def update_conversation(
 
 @router.delete("/chat/conversations/{conversation_id}", response_model=BaseResponse, status_code=status.HTTP_200_OK)
 async def delete_conversation(
-    conversation_id: int, db: Session = Depends(get_db)
+    conversation_id: int,
+    cascade: bool = Query(True, description="是否级联删除会话产物（默认是；否则只删会话保留产物）"),
+    db: Session = Depends(get_db),
 ) -> BaseResponse:
-    """删除指定会话及其消息。"""
-    await ChatService.adelete_conversation(db, conversation_id)
+    """删除指定会话及其消息（可选级联删产物）。"""
+    await ChatService.adelete_conversation(
+        db, conversation_id, cascade_artifacts=cascade
+    )
     return BaseResponse(data=None)
 
 
@@ -408,7 +421,7 @@ def list_conversation_resources(
 @router.get("/chat/conversations/{conversation_id}/resources/content", response_model=ResponseBase[ResourceContent])
 def read_conversation_resource_content(
     conversation_id: int,
-    path: str = Query(..., description="虚拟文件路径，如 /artifacts/report.md"),
+    path: str = Query(..., description="真实磁盘绝对路径（会话根目录内）"),
     db: Session = Depends(get_db),
 ) -> ResponseBase[ResourceContent]:
     """读取会话资源文件的内容。"""
@@ -445,7 +458,7 @@ async def upload_conversation_resource(
 @router.delete("/chat/conversations/{conversation_id}/resources/uploads")
 def delete_conversation_upload(
     conversation_id: int,
-    path: str = Query(..., description="虚拟路径，如 /uploads/file.txt"),
+    path: str = Query(..., description="真实磁盘绝对路径（uploads 桶内）"),
     db: Session = Depends(get_db),
 ) -> BaseResponse:
     """删除会话 uploads 目录中的文件。"""
@@ -462,7 +475,7 @@ def delete_conversation_upload(
 @router.get("/chat/conversations/{conversation_id}/resources/download")
 def download_conversation_resource(
     conversation_id: int,
-    path: str = Query(..., description="虚拟路径，如 /artifacts/report.md"),
+    path: str = Query(..., description="真实磁盘绝对路径（会话根目录内）"),
     db: Session = Depends(get_db),
 ):
     conversation = ChatService.get_conversation(db, conversation_id)
@@ -523,18 +536,17 @@ def get_voice_audio(
     return FileResponse(resolved, media_type="audio/webm")
 
 
-@router.get("/chat/conversations/{conversation_id}/resources/static/{path:path}")
+@router.get("/chat/conversations/{conversation_id}/resources/static")
 def serve_conversation_resource_static(
     conversation_id: int,
-    path: str,
+    path: str = Query(..., description="真实磁盘绝对路径（须在会话根目录内）"),
     db: Session = Depends(get_db),
 ):
-    """以 inline + 正确 Content-Type 提供会话产物文件，path-based 支持相对资源。"""
+    """以 inline + 正确 Content-Type 提供会话产物文件（真实路径 + 沙箱校验）。"""
     conversation = ChatService.get_conversation(db, conversation_id)
     settings = get_settings()
-    virtual_path = "/" + path.lstrip("/")
     result = ResourceService.resolve_download_path(
-        settings.artifacts_path, conversation.id, virtual_path
+        settings.artifacts_path, conversation.id, path
     )
     if result is None:
         raise HTTPException(status_code=404, detail="not found")
@@ -548,7 +560,7 @@ def serve_conversation_resource_static(
 @router.delete("/chat/conversations/{conversation_id}/resources")
 def delete_conversation_resource(
     conversation_id: int,
-    path: str = Query(..., description="虚拟路径，如 /artifacts/report.md"),
+    path: str = Query(..., description="真实磁盘绝对路径（会话根目录内）"),
     db: Session = Depends(get_db),
 ) -> BaseResponse:
     conversation = ChatService.get_conversation(db, conversation_id)
@@ -559,3 +571,21 @@ def delete_conversation_resource(
     if not ok:
         return BaseResponse(msg="资源不存在或删除失败")
     return BaseResponse()
+
+
+@router.post(
+    "/chat/conversations/{conversation_id}/resources/batch-delete",
+    response_model=ResponseBase[ResourceBatchDeleteResult],
+)
+def batch_delete_conversation_resources(
+    conversation_id: int,
+    payload: ResourceBatchDeleteRequest,
+    db: Session = Depends(get_db),
+) -> ResponseBase[ResourceBatchDeleteResult]:
+    """批量删产物：逐条沙箱校验（员工工作空间/公共区/房间内），合法删、非法跳过。"""
+    conversation = ChatService.get_conversation(db, conversation_id)
+    settings = get_settings()
+    result = ResourceService.batch_delete(
+        settings.artifacts_path, conversation.id, payload.paths
+    )
+    return ResponseBase(data=ResourceBatchDeleteResult(**result))

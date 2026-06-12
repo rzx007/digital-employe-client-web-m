@@ -89,23 +89,25 @@ def test_employee_long_document_tooling_present(employee_prompt: str) -> None:
 
 
 def test_employee_memory_update_tool_present(employee_prompt: str) -> None:
-    """记忆更新唯一正确做法 remember_memory，且禁止直接写 /memories/AGENTS.md。"""
+    """记忆更新唯一正确做法 remember_memory，且仍说明记忆 AGENTS.md（真实路径形态）。"""
     assert "remember_memory" in employee_prompt
-    assert "/memories/AGENTS.md" in employee_prompt
+    assert "记忆" in employee_prompt and "AGENTS.md" in employee_prompt
 
 
 def test_employee_write_todos_present(employee_prompt: str) -> None:
     assert "write_todos" in employee_prompt
 
 
-def test_employee_virtual_paths_present(employee_prompt: str) -> None:
-    """三个虚拟路径前缀（交付/记忆/技能）必须仍被说明。"""
-    for prefix in ("/artifacts/", "/memories/", "/skills/"):
-        assert prefix in employee_prompt
+def test_employee_real_path_env_vars_present(employee_prompt: str) -> None:
+    """去虚拟前缀后：交付/技能目录改用真实路径环境变量说明，且无虚拟前缀残留。"""
+    assert "$ARTIFACTS_DIR" in employee_prompt
+    assert "$SKILLS_DIR" in employee_prompt
+    for prefix in ("/artifacts/", "/skills/", "/uploads/", "/skills-draft/"):
+        assert prefix not in employee_prompt, f"虚拟前缀仍存在: {prefix}"
 
 
-def test_employee_user_chat_no_virtual_path_in_body(employee_prompt: str) -> None:
-    """对用户聊天正文不得暴露虚拟路径（工具侧仍保留 /artifacts/ 说明）。"""
+def test_employee_user_chat_no_disk_path_in_body(employee_prompt: str) -> None:
+    """对用户聊天正文不得暴露磁盘绝对路径；只说交付物名称/用途。"""
     assert "聊天正文" in employee_prompt
     assert "禁止" in employee_prompt
     assert "产物" in employee_prompt or "变更卡片" in employee_prompt

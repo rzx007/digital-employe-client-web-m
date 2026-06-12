@@ -161,7 +161,8 @@ export function isSkillToolCall(input: unknown, toolName: string): boolean {
   const obj = input as Record<string, unknown>
   const val = obj[pathKey]
   if (typeof val !== "string") return false
-  return val.startsWith("/skills/") || val.startsWith("/skills-draft/")
+  // 真实路径含 skills/ 或 skills-draft/ 目录段（去虚拟前缀后按段匹配）
+  return /(^|\/)skills(?:-draft)?\//.test(val.replace(/\\/g, "/"))
 }
 
 export function extractSkillName(
@@ -173,7 +174,8 @@ export function extractSkillName(
   const obj = input as Record<string, unknown>
   const val = obj[pathKey]
   if (typeof val !== "string") return null
-  const match = val.match(/\/skills-(?:draft\/|\/)([^/]+)/)
+  // 取 skills/ 或 skills-draft/ 段之后的技能目录名（真实路径或旧虚拟路径均适用）
+  const match = val.replace(/\\/g, "/").match(/(?:^|\/)skills(?:-draft)?\/([^/]+)/)
   if (match) return match[1]
   return null
 }

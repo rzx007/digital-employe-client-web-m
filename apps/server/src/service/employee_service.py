@@ -916,6 +916,14 @@ class EmployeeService:
         RecentContactService.delete_by_target(
             db, workspace_id, "employee", employee_id
         )
+        # 级联删该员工的工作空间产物 + 公共区子区（解雇即清理其全部产物）
+        artifacts_path = Path(get_settings().artifacts_path)
+        for d in (
+            artifacts_path / f"employee-{employee_id}",
+            artifacts_path / "shared" / f"employee-{employee_id}",
+        ):
+            if d.exists():
+                shutil.rmtree(d, ignore_errors=True)
         TaskSchedulerService.reload_jobs()
 
     @staticmethod
