@@ -188,6 +188,7 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const closeConversationList = useChatStore((s) => s.closeConversationList)
   const isBrowserOpen = useBrowserStore((s) => s.isOpen)
   const isBrowserMinimized = useBrowserStore((s) => s.isMinimized)
+  const isBrowserFullscreen = useBrowserStore((s) => s.isFullscreen)
   const restoreBrowser = useBrowserStore((s) => s.restoreBrowser)
   const destroyBrowser = useBrowserStore((s) => s.destroyBrowser)
   const browserWidthRatio = useBrowserStore((s) => s.widthRatio)
@@ -314,9 +315,10 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
       <UserTour />
       <BrowserConfirmationHost />
       <div className="chat-layout-root flex min-h-0 min-w-0 flex-1">
-        {!isMobile && <AppToolbar />}
+        {!isMobile && !isBrowserFullscreen && <AppToolbar />}
 
         {!isMobile &&
+          !isBrowserFullscreen &&
           activeTab !== "workbench" &&
           activeTab !== "skills" && (
             <div
@@ -337,7 +339,7 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
             </div>
           )}
 
-        {activeTab === "chat" && (
+        {activeTab === "chat" && !isBrowserFullscreen && (
           <ChatView
             onOpenContacts={handleOpenContacts}
             onOpenConversations={handleOpenConversations}
@@ -403,13 +405,18 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
 
         {hasRightPanel && activeTab === "chat" && rightPanel === "browser" && (
           <>
-            <BrowserWidthSlider />
+            {!isBrowserFullscreen && <BrowserWidthSlider />}
             <div
               className={cn(
                 RIGHT_PANEL_SHELL,
-                "flex min-h-0 min-w-0 flex-col border-l bg-muted/20 p-3"
+                "flex min-h-0 min-w-0 flex-col border-l bg-muted/20 p-3",
+                isBrowserFullscreen && "flex-1 border-l-0"
               )}
-              style={{ width: `${browserWidthRatio * 100}%` }}
+              style={
+                isBrowserFullscreen
+                  ? undefined
+                  : { width: `${browserWidthRatio * 100}%` }
+              }
             >
               <BrowserPanel />
             </div>
