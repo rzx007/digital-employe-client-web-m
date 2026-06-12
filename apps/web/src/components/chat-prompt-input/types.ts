@@ -40,4 +40,6 @@ export interface ChatPromptInputProps {
   messages?: UIMessage[]
   /** 是否显示上下文用量指示器；群聊等场景传 false */
   showContextBudget?: boolean
+  /** 是否显示语音输入（麦克风）按钮；群聊等场景传 false，默认 false */
+  showVoiceInput?: boolean
 }

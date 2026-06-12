@@ -71,3 +71,10 @@ export interface Contact {
     participants: AIEmployee[]
   }
 }
+
+/** 语音消息元数据，随 extra_meta.voice 持久化（snake_case，前后端一致） */
+export interface VoiceMessageMeta {
+  duration_ms: number
+  audio_path: string
+  waveform: number[]
+}

@@ -52,6 +52,7 @@ export function ChatComposerArea({
   error,
   pendingQueueClassName,
   showContextBudget = true,
+  showVoiceInput,
 }: {
   messages: UIMessage[]
   conversationId: string | number | null
@@ -78,6 +79,7 @@ export function ChatComposerArea({
   error?: Error | null
   pendingQueueClassName?: string
   showContextBudget?: boolean
+  showVoiceInput?: boolean
 }) {
   const pendingHitl: (PendingHitl & { input: Record<string, unknown> }) | null =
     React.useMemo(() => {
@@ -189,6 +191,7 @@ export function ChatComposerArea({
           onAttachmentsChange={onAttachmentsChange}
           messages={messages}
           showContextBudget={showContextBudget}
+          showVoiceInput={showVoiceInput && !blocksComposer}
         />
       </div>
 

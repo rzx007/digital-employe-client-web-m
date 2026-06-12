@@ -38,6 +38,10 @@ class ResourceUploadResult(BaseModel):
     size: int
 
 
+class VoiceUploadResult(BaseModel):
+    audio_path: str
+
+
 class ResourceBatchDeleteRequest(BaseModel):
     paths: list[str]  # 一组真实磁盘绝对路径
 

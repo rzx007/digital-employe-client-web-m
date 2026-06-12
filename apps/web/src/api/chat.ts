@@ -25,6 +25,8 @@ import {
   suggestConversationTitle as suggestConversationTitleApi,
   updateConversationTitle as updateConversationTitleApi,
   uploadConversationFile as uploadConversationFileApi,
+  uploadVoiceAudio as uploadVoiceAudioApi,
+  fetchVoiceAudioBlob as fetchVoiceAudioBlobApi,
 } from "@/api/conversation"
 import {
   mapChatMessageToMessage,
@@ -64,6 +66,8 @@ export {
   suggestConversationTitleApi as suggestConversationTitle,
   updateConversationTitleApi as updateConversationTitle,
   uploadConversationFileApi as uploadConversationFile,
+  uploadVoiceAudioApi as uploadVoiceAudio,
+  fetchVoiceAudioBlobApi as fetchVoiceAudioBlob,
 }
 
 function mapStatus(status: number): AIEmployee["status"] {
