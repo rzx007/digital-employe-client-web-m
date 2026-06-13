@@ -34,7 +34,7 @@ import { useChatStore, type ActiveTab } from "@/stores/chat-store"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import { NotificationBell } from "../notifications/notification-center"
 
-import { getUserAvatarSrc } from "@/lib/avatar"
+import { UserAvatar } from "@/components/user-avatar"
 
 const tabs: {
   id: ActiveTab
@@ -120,8 +120,8 @@ export function AppToolbar({
         {...props}
       >
         <div className="mb-4 overflow-hidden rounded">
-          <img
-            src={getUserAvatarSrc(user?.id)}
+          <UserAvatar
+            userId={user?.id}
             alt={user?.name || "用户"}
             className="size-10 object-cover"
           />

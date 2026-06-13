@@ -18,6 +18,7 @@ import logoImage from "@/assets/logo.png"
 import bgImage from "@/assets/Group.png"
 import feishuIcon from "@/assets/feishu.svg"
 import { useAuthStore } from "@/stores/auth-store"
+import type { LoginUser } from "@/api/types"
 import { EndpointConfig } from "@/components/login/endpoint-config"
 import { ChangePasswordForm } from "@/components/login/change-password-form"
 import { useEndpointStore } from "@/stores/endpoint-store"
@@ -156,8 +157,21 @@ function LoginPage() {
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
-      if (e.data?.type === "oauth_callback") {
-        console.log("OAuth result:", e.data.payload)
+      if (e.data?.type !== "oauth_callback") return
+      const payload = e.data.payload as {
+        error?: string
+        login?: { code?: number; token?: string; result?: LoginUser[] }
+      }
+      if (payload?.error) {
+        console.error("飞书登录失败:", payload.error)
+        useAuthStore.setState({ error: "飞书登录失败，请重试" })
+        return
+      }
+      const login = payload?.login
+      if (login?.token && login.result?.length) {
+        void useAuthStore.getState().loginWithToken(login.token, login.result[0])
+      } else {
+        useAuthStore.setState({ error: "飞书登录未返回有效凭证" })
       }
     }
     window.addEventListener("message", handler)

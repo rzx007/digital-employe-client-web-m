@@ -14,7 +14,8 @@ import {
   isGroupTimelineAssistantMessage,
 } from "@/lib/chat/group-composer-ghosts"
 import { getDispatchBadge } from "@/lib/chat/assistant-stream-state"
-import { CURATOR_AVATAR_URL, getUserAvatarSrc } from "@/lib/avatar"
+import { CURATOR_AVATAR_URL } from "@/lib/avatar"
+import { UserAvatar } from "@/components/user-avatar"
 import { useAuthStore } from "@/stores/auth-store"
 import { cn } from "@workspace/ui/lib/utils"
 import {
@@ -280,8 +281,8 @@ function ChatMessageItemInner({
         <div className="mb-2 flex items-center justify-end gap-2">
           <span className="text-xs text-muted-foreground">{userName}</span>
           <div className="size-6 shrink-0 overflow-hidden rounded">
-            <img
-              src={getUserAvatarSrc(user?.id)}
+            <UserAvatar
+              userId={user?.id}
               alt={userName}
               className="size-full object-cover"
             />
