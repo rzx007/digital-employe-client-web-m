@@ -203,6 +203,12 @@ export type ClassifiedBlock =
     }
   | { kind: "final-response"; key: string; text: string }
   | { kind: "file-changes"; key: string; files: FileChangeItem[] }
+  | {
+      kind: "draft-skill-save"
+      key: string
+      skillName: string
+      skillPath: string
+    }
   | { kind: "error"; key: string; text: string }
   | {
       kind: "document-plan"
@@ -631,6 +637,16 @@ export function classifyMessageParts(
       key: `${message.id}:file-changes`,
       files: fileChanges,
     })
+    for (const item of fileChanges) {
+      if (item.kind === "skill-folder") {
+        blocks.push({
+          kind: "draft-skill-save",
+          key: `draft-skill-save:${item.path}`,
+          skillName: item.title,
+          skillPath: item.path,
+        })
+      }
+    }
   }
 
   return collapseDocumentPlanBlocks(
