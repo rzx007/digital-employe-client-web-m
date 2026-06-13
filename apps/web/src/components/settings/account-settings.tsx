@@ -1,5 +1,12 @@
 import * as React from "react"
-import { IconLock, IconLogout, IconTrash } from "@tabler/icons-react"
+import {
+  IconLock,
+  IconLogout,
+  IconTrash,
+  IconCamera,
+  IconLoader2,
+} from "@tabler/icons-react"
+import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 import {
   Card,
@@ -11,6 +18,12 @@ import { Label } from "@workspace/ui/components/label"
 import { Separator } from "@workspace/ui/components/separator"
 import { cn } from "@workspace/ui/lib/utils"
 import { useAuthStore } from "@/stores/auth-store"
+import {
+  uploadAvatar,
+  getAvatarUrl,
+  AVATAR_ACCEPT,
+  AVATAR_MAX_BYTES,
+} from "@/api/avatar"
 import { ChangePasswordDialog } from "./change-password-dialog"
 import { USER_AVATARS } from "./constants"
 
@@ -19,6 +32,13 @@ export function AccountSettings() {
   const logout = useAuthStore((s) => s.logout)
   const restoreSession = useAuthStore((s) => s.restoreSession)
   const [pwdDialogOpen, setPwdDialogOpen] = React.useState(false)
+  const [uploading, setUploading] = React.useState(false)
+  // cache-bust：上传成功后递增，强制 <img> 重新拉取后端头像
+  const [avatarVersion, setAvatarVersion] = React.useState(0)
+  // 后端头像加载失败（含未设置头像 404）时回退预设图
+  const [avatarFailed, setAvatarFailed] = React.useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+
   React.useEffect(() => {
     void (async () => {
       await restoreSession()
@@ -27,6 +47,46 @@ export function AccountSettings() {
 
   const avatarIndex = user?.id ? parseInt(user.id.toString()) % 10 : 0
   const department = user?.dpts?.[0]?.name
+
+  const fallbackAvatar = USER_AVATARS[avatarIndex]
+  const avatarSrc =
+    user?.id != null && !avatarFailed
+      ? getAvatarUrl(user.id, avatarVersion)
+      : fallbackAvatar
+
+  const handlePickAvatar = () => {
+    if (uploading) return
+    fileInputRef.current?.click()
+  }
+
+  const handleAvatarChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0]
+    e.target.value = "" // 允许重选同名文件
+    if (!file || user?.id == null) return
+
+    if (!AVATAR_ACCEPT.split(",").includes(file.type)) {
+      toast.error("仅支持 PNG / JPG / WEBP 图片")
+      return
+    }
+    if (file.size > AVATAR_MAX_BYTES) {
+      toast.error("图片不能超过 5MB")
+      return
+    }
+
+    setUploading(true)
+    try {
+      await uploadAvatar(user.id, file)
+      setAvatarFailed(false)
+      setAvatarVersion((v) => v + 1)
+      toast.success("头像已更新")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "头像上传失败")
+    } finally {
+      setUploading(false)
+    }
+  }
 
   return (
     <>
@@ -38,13 +98,36 @@ export function AccountSettings() {
         <Card>
           <CardContent className="pt-6">
             <div className="mb-6 flex items-center gap-4">
-              <div className="size-16 overflow-hidden rounded-full">
+              <button
+                type="button"
+                onClick={handlePickAvatar}
+                disabled={uploading}
+                title="点击更换头像"
+                className="group relative size-16 shrink-0 overflow-hidden rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
                 <img
-                  src={USER_AVATARS[avatarIndex]}
+                  src={avatarSrc}
                   alt={user?.name || "用户"}
                   className="size-full object-cover"
+                  onError={() => {
+                    if (!avatarFailed) setAvatarFailed(true)
+                  }}
                 />
-              </div>
+                <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
+                  {uploading ? (
+                    <IconLoader2 className="size-5 animate-spin text-white" />
+                  ) : (
+                    <IconCamera className="size-5 text-white" />
+                  )}
+                </span>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={AVATAR_ACCEPT}
+                className="hidden"
+                onChange={handleAvatarChange}
+              />
               <div>
                 <h3 className="text-xl font-medium">
                   {user?.name || "未知用户"}
