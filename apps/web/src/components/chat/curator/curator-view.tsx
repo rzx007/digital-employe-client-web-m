@@ -37,6 +37,7 @@ import {
   useUpdateConversationTitleMutation,
 } from "@/hooks/use-chat-queries"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
+import { useSyncConversationSubtasks } from "@/hooks/use-conversation-subtasks"
 import { useChatStore } from "@/stores/chat-store"
 import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { cancelConversationStream } from "@/api/chat"
@@ -352,6 +353,10 @@ export function CuratorView({
   })
 
   useSyncPendingFromComposer(curatorConversationId, messages, status)
+
+  // 把总管会话里派发的并行子任务（task 工具）同步进 subtask-panel-store，
+  // 让挂在 chat 布局右侧的子任务面板（与普通员工会话同源）能展示。
+  useSyncConversationSubtasks(messages)
 
   useInvalidateContactsOnTeamChanges(messages, status, queryClient)
 

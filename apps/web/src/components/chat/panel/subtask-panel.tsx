@@ -26,44 +26,24 @@ function statusOf(item: SubtaskCardItem): SubtaskStatus {
   return "running"
 }
 
-/** 状态 → 颜色/文案（沿用 group-sop-panel 的配色体系） */
-const STATUS_META: Record<
-  SubtaskStatus,
-  { label: string; dot: string; text: string; card: string }
-> = {
-  running: {
-    label: "进行中",
-    dot: "bg-blue-500",
-    text: "text-blue-600",
-    card: "border-blue-300 bg-blue-50/60 ring-1 ring-blue-200/60",
-  },
-  done: {
-    label: "已完成",
-    dot: "bg-emerald-500",
-    text: "text-emerald-600",
-    card: "border-emerald-200 bg-emerald-50/50",
-  },
-  failed: {
-    label: "失败",
-    dot: "bg-red-500",
-    text: "text-red-600",
-    card: "border-red-200 bg-red-50/50",
-  },
-}
-
 function StatusIcon({ status }: { status: SubtaskStatus }) {
   if (status === "running") {
-    return <IconLoader className="size-3.5 shrink-0 animate-spin text-blue-500" />
+    return (
+      <IconLoader className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+    )
   }
   if (status === "failed") {
-    return <IconXboxX className="size-3.5 shrink-0 text-red-500/80" />
+    return <IconXboxX className="size-3.5 shrink-0 text-destructive/70" />
   }
-  return <IconCircleCheck className="size-3.5 shrink-0 text-emerald-500/80" />
+  return <IconCircleCheck className="size-3.5 shrink-0 text-emerald-600/70" />
 }
 
-function SubtaskCard({ item }: { item: SubtaskCardItem }) {
+/**
+ * 单个子任务行 —— Claude Code Background tasks 风格：扁平、低饱和、无彩色卡背景。
+ * 左侧状态图标 + 标题（+ 副标题），可展开看实时输出。
+ */
+function SubtaskRow({ item }: { item: SubtaskCardItem }) {
   const status = statusOf(item)
-  const meta = STATUS_META[status]
   const title =
     item.description.trim() ||
     (item.subagentType ? `子任务 · ${item.subagentType}` : "子任务")
@@ -72,61 +52,40 @@ function SubtaskCard({ item }: { item: SubtaskCardItem }) {
   const toggle = hasOutput ? () => setIsOpen((v) => !v) : undefined
 
   return (
-    <div
-      className={cn(
-        "rounded-xl border px-3 py-2 transition-colors",
-        meta.card,
-        hasOutput && "cursor-pointer select-none hover:shadow-sm"
-      )}
-      onClick={toggle}
-    >
-      <div className="flex items-start gap-2">
-        <span
-          className={cn(
-            "mt-1 size-2.5 shrink-0 rounded-full",
-            meta.dot,
-            status === "running" && "animate-pulse"
-          )}
-          aria-hidden
-        />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">
-              {title}
-            </span>
-            <span
-              className={cn(
-                "shrink-0 rounded-full bg-background/70 px-1.5 py-0.5 text-[10px] font-medium",
-                meta.text
-              )}
-            >
-              {meta.label}
-            </span>
-            {hasOutput &&
-              (isOpen ? (
-                <IconChevronDown className="size-3.5 shrink-0 text-muted-foreground/50" />
-              ) : (
-                <IconChevronRight className="size-3.5 shrink-0 text-muted-foreground/50" />
-              ))}
-          </div>
-          {item.subagentType && item.description.trim() ? (
-            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-              {item.subagentType}
-            </p>
-          ) : null}
-          {hasOutput && !isOpen ? (
-            <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-muted-foreground">
-              {item.output}
-            </p>
-          ) : null}
-        </div>
+    <div className="rounded-md">
+      <div
+        className={cn(
+          "group/subtask flex items-start gap-2.5 rounded-md px-2.5 py-2 transition-colors",
+          hasOutput && "cursor-pointer select-none hover:bg-muted/50"
+        )}
+        onClick={toggle}
+      >
         <span className="mt-0.5">
           <StatusIcon status={status} />
         </span>
+        <div className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium text-foreground/90">
+            {title}
+          </span>
+          {hasOutput && !isOpen ? (
+            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+              {item.output}
+            </span>
+          ) : null}
+        </div>
+        {hasOutput ? (
+          <span className="mt-0.5 shrink-0 text-muted-foreground/40">
+            {isOpen ? (
+              <IconChevronDown className="size-3.5" />
+            ) : (
+              <IconChevronRight className="size-3.5 opacity-0 transition-opacity group-hover/subtask:opacity-100" />
+            )}
+          </span>
+        ) : null}
       </div>
 
       {hasOutput && isOpen ? (
-        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+        <div className="px-2.5 pb-2 pl-8" onClick={(e) => e.stopPropagation()}>
           <ToolOutputViewport
             text={item.output ?? ""}
             isStreaming={status === "running"}
@@ -139,14 +98,22 @@ function SubtaskCard({ item }: { item: SubtaskCardItem }) {
   )
 }
 
+/** 分区标题：Running / Finished 风格的小标签。 */
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="px-2.5 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60 first:pt-0">
+      {children}
+    </div>
+  )
+}
+
 export function SubtaskPanel({ className }: { className?: string }) {
   const subtasks = useSubtaskPanelStore((s) => s.subtasks)
   const close = useSubtaskPanelStore((s) => s.close)
 
-  const runningCount = subtasks.filter((s) => statusOf(s) === "running").length
-  const doneCount = subtasks.filter((s) => statusOf(s) === "done").length
+  const running = subtasks.filter((s) => statusOf(s) === "running")
+  const finished = subtasks.filter((s) => statusOf(s) !== "running")
   const total = subtasks.length
-  const pct = total ? Math.round((doneCount / total) * 100) : 0
 
   return (
     <div
@@ -155,57 +122,53 @@ export function SubtaskPanel({ className }: { className?: string }) {
         className
       )}
     >
-      <div className="border-b px-4 py-3">
-        <div className="flex items-center justify-between gap-2">
-          <span className="flex shrink-0 items-center gap-1.5 text-sm font-semibold">
-            <span aria-hidden>🧩</span>
-            并行子任务
-          </span>
-          <div className="flex items-center gap-2">
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {doneCount}/{total} 完成
-              {runningCount > 0 ? ` · ${runningCount} 进行中` : ""}
+      <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+        <span className="flex shrink-0 items-center gap-2 text-sm font-semibold">
+          子任务
+          {total > 0 ? (
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+              {total}
             </span>
-            <button
-              type="button"
-              onClick={close}
-              aria-label="关闭"
-              className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <IconX className="size-4" />
-            </button>
-          </div>
-        </div>
-        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-emerald-500 transition-all duration-500"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
+          ) : null}
+        </span>
+        <button
+          type="button"
+          onClick={close}
+          aria-label="关闭"
+          className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <IconX className="size-4" />
+        </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-2 py-2">
         {total === 0 ? (
           <div className="flex min-h-48 flex-col items-center justify-center px-4 text-center">
-            <span className="mb-2 text-2xl" aria-hidden>
-              🧩
-            </span>
-            <p className="text-sm text-muted-foreground">本轮暂无并行子任务</p>
-            <p className="mt-1 text-xs text-muted-foreground/80">
+            <p className="text-sm text-muted-foreground">暂无子任务</p>
+            <p className="mt-1 text-xs text-muted-foreground/70">
               员工派发并行子任务后会在这里展示
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
-            {subtasks.map((item) => (
-              <SubtaskCard key={item.toolCallId} item={item} />
-            ))}
-          </div>
+          <>
+            {running.length > 0 ? (
+              <>
+                <SectionLabel>进行中 · {running.length}</SectionLabel>
+                {running.map((item) => (
+                  <SubtaskRow key={item.toolCallId} item={item} />
+                ))}
+              </>
+            ) : null}
+            {finished.length > 0 ? (
+              <>
+                <SectionLabel>已完成 · {finished.length}</SectionLabel>
+                {finished.map((item) => (
+                  <SubtaskRow key={item.toolCallId} item={item} />
+                ))}
+              </>
+            ) : null}
+          </>
         )}
-      </div>
-
-      <div className="border-t px-4 py-2 text-[11px] leading-relaxed text-muted-foreground">
-        每张卡片是一个并行子任务，点击展开查看实时输出。
       </div>
     </div>
   )
