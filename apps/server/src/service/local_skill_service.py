@@ -462,9 +462,6 @@ class LocalSkillService:
     @staticmethod
     def pack_skill_dir_to_zip(skill_dir: Path) -> bytes:
         """把一个技能目录打包成 zip（zip 内以目录名为根）。要求含 SKILL.md。"""
-        import io
-        import zipfile
-
         skill_dir = Path(skill_dir)
         if not skill_dir.is_dir():
             raise HTTPException(
@@ -478,7 +475,7 @@ class LocalSkillService:
             )
         root_name = skill_dir.name
         buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        with ZipFile(buf, "w", ZIP_DEFLATED) as zf:
             for path in sorted(skill_dir.rglob("*")):
                 if path.is_file():
                     arcname = f"{root_name}/{path.relative_to(skill_dir).as_posix()}"
