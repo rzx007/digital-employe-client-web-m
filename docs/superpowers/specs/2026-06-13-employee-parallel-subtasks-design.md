@@ -43,35 +43,74 @@
 - 但父 agent 的本轮 `astream()` **必须等所有子任务返回后才结束**。它给你的是
   "3 个子任务同时跑"而非"先返回再后台跑完"。后者属于未选择的"长任务后台不掉线"层。
 
-### 1.4 为什么现在"感觉不支持"
+### 1.4 真正的根因（2026-06-13 实测修正）
 
-能力已在，缺的是三件事：
+> **重要修正**：本节早前写"task 现在就已生效、只缺提示词"——**这是错的**。
+> 实测（在真实后端上对员工跑两轮，task 调用 0 次）+ 源码排查发现：
+> **task 工具被一个安全 harness profile 显式关闭了。**
 
-1. **模型不知道要用** —— `build_system_prompt` 从未提及 `task`/并行 fan-out，
-   deepagents 自带的 `TASK_SYSTEM_PROMPT` 是通用英文，未对齐本产品"派单执行、
-   不要请求澄清"的约定，模型极少主动并行拆分。
-2. **没有并发上限/信号量** —— `task` 子任务在"一个已准入的会话流"内部跑，
-   **绕过**了现有 `registry.can_admit` / `MAX_CONCURRENT_PER_EMPLOYEE` 阀门。
-   员工一次性 fan-out 8 个子任务 = 单槽下 8 路嵌套图并发，可能重演昇腾单卡
-   GPU 槽饥饿（参见运维记录的 vLLM 单卡抢占问题）。
-3. **前端无呈现/可观测** —— 子任务作为嵌套子图，事件已被 deepagents 转发到父流
-   （`graph.py` 转发 callbacks + `SubagentTransformer` 打标），但前端未做"折叠呈现"。
+根因在 `apps/server/src/service/agent/checkpointer.py:22-36`：
+
+```python
+register_harness_profile(
+    f"openai:{settings.deepagent_model or 'qwen2.5-72b-instruct'}",
+    HarnessProfile(
+        general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=False),  # ← 关掉 task
+        excluded_middleware={"SummarizationMiddleware"},
+        excluded_tools=frozenset({"execute"}),  # 主 agent 禁内置 execute，只给受管 shell_execute
+        tool_description_overrides={"shell_execute": "..."},
+    ),
+)
+```
+
+- **为什么关**（注释原话）：避免子代理在未授权下通过 task tool 调用子代理执行 shell —— 是
+  有意为之的执行面安全措施，与 `excluded_tools={"execute"}` 配套。
+- **机制**：deepagents `graph.py:658` `if gp_profile.enabled is not False and not any(...)`
+  → `enabled=False` 时不注入 general-purpose → `inline_subagents` 空 →
+  `graph.py:725 if inline_subagents:` 假 → **SubAgentMiddleware 不挂、`task` 工具根本不暴露**。
+- **profile 命中**：`deepagent_model` 实测 = `qwopus3.6-35b-a3b-v1`（昇腾部署），
+  profile key = `openai:qwopus3.6-35b-a3b-v1`，与 `build_chat_model` 产出的模型精确匹配。
+- **验证陷阱**：直接 `create_deep_agent(subagents=[])` 验证会看到 task（auto-inject GP），
+  那是**绕过了 profile**，会误判"已生效"。必须走完整 `get_agent` 才反映真实行为。
+
+所以要支持并行子任务，**第一步不是提示词，而是重新打开 general-purpose subagent**，
+并在打开的同时**保住当初关它的安全理由**——这正是下面单元 B' 要做的。剩余缺口：
+
+1. **task 被安全 profile 关闭**（根因，单元 B' 解决）。
+2. **重开后子代理的安全管控** —— 决策（2026-06-13）：子代理**能干活但只走受管
+   `shell_execute`**（同样禁内置 `execute`、同样 intent/审计），与主 agent 同一道门。
+3. **没有并发上限/信号量** —— `task` 子任务在"一个已准入的会话流"内部跑，
+   **绕过**现有 `registry.can_admit` / `MAX_CONCURRENT_PER_EMPLOYEE` 阀门；员工一次
+   fan-out 8 个子任务 = 单槽下 8 路嵌套图并发，可能重演昇腾单卡 GPU 槽饥饿
+   （见 vLLM 单卡抢占记录）。默认上限 = **3**。
+4. **模型是否会自发 fan-out 未知** —— 重开前测不了（工具没暴露）；重开后需复测
+   `qwopus3.6-35b-a3b`，若仍不自发拆分，则提示词（单元 C）+ few-shot 是否够用待定。
+5. **前端无折叠呈现** —— 子任务作为嵌套子图，事件已被 deepagents 转发到父流
+   （`SubagentTransformer` 打标），但前端未做"折叠呈现"。
 
 ## 2. 总体方案
 
-不引入任何新基础设施。在已生效的 `task` 机制上加三层薄壳：
+不引入任何新基础设施。**先重开被安全 profile 关掉的 task，再加管控与呈现**：
 
-1. **显式 SubAgent spec**（替换 `subagents=[]`）—— 可控地挂 general-purpose subagent。
-2. **并发信号量**（限制单父 agent 同时跑的子任务数）。
-3. **提示词启用 + 前端折叠呈现**。
+1. **单元 B'（最高优先级，根因）**：重新打开 general-purpose subagent（`enabled=True`），
+   但给子代理与主 agent **同一道安全门**：禁内置 `execute`、只给受管 `shell_execute`。
+2. **单元 A**：显式 SubAgent spec（替换 `subagents=[]`）—— 可控地声明 general-purpose
+   及其工具/中间件（与 B' 协同：spec 里就把子代理工具限定为受管集合）。
+3. **单元 B**：并发信号量（限制单父 agent 同时跑的子任务数，默认 3，护单卡 GPU）。
+4. **单元 C**：提示词启用（已做，因 task 被关而暂未生效，B' 后才有意义）。
+5. **前端折叠呈现**。
 
 ### 2.1 决策记录
 
 | 决策点 | 选择 | 理由 |
 |--------|------|------|
-| subagent 挂载方式 | **显式 SubAgent spec** | 比 `subagents=[]` 默认注入可控；能挂信号量/限制；改动仍小 |
+| task 当前状态 | **被 `checkpointer.py` 安全 profile 显式关闭** | 实测根因；非模型问题（见 §1.4） |
+| 是否重开 task | **重开，但给子代理同样管控** | 拿回并行能力又不破当初的执行面安全边界 |
+| 子代理 shell 能力 | **能干活，只走受管 `shell_execute`** | 禁内置 execute、同样 intent/审计；与主 agent 同门（2026-06-13 决策） |
+| subagent 挂载方式 | **显式 SubAgent spec** | 比默认注入可控；能精确限定子代理工具集与信号量；改动仍小 |
 | 子任务产物/文件 | **共享父会话产物目录** | 符合 deepagents 默认（子继承父 backend）；上游产出下游可见 |
 | subagent 形态 | **单个通用 subagent + 并发批量** | 改动最小；不新增专业角色；靠 ToolNode 原生并发 |
+| 子任务并发上限 | **3（可配 `settings.subagent_max_parallel`）** | 中道：多路拆分有意义又不打爆昇腾单卡 GPU 槽 |
 | 前端呈现 | **折叠：只显进度 + 最终综合** | 与群协作"只展示最终交付"一致（`execution.py:91` 同源决策） |
 
 ## 3. 组件设计（三个独立单元）
