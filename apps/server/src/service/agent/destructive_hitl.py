@@ -16,6 +16,8 @@ DESTRUCTIVE_HITL_TOOLS: frozenset[str] = frozenset({
     "delete_employees_batch",
     "delete_task",
     "delete_tasks_batch",
+    "delete_workspace_skill",
+    "delete_workspace_skills_batch",
 })
 
 DESTRUCTIVE_HITL_INTERRUPT_ON: dict[str, dict[str, list[str]]] = {

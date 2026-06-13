@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from deepagents.backends import FilesystemBackend
-from deepagents.backends.protocol import EditResult, FileData, ReadResult
+from deepagents.backends.protocol import (
+    EditResult,
+    FileData,
+    ReadResult,
+    WriteResult,
+)
 from deepagents.backends.utils import check_empty_content, perform_string_replacement
 
 from src.service.basic_file_reader import (
@@ -42,6 +48,9 @@ class BasicFileFilesystemBackend(FilesystemBackend):
             new_string,
             replace_all=replace_all,
         )
+
+    def write(self, file_path: str, content: str) -> WriteResult:
+        return basic_file_write(self, file_path, content)
 
 
 def _paginate_text_read_result(
@@ -175,3 +184,36 @@ def basic_file_edit(
         return EditResult(error=f"Error editing file '{file_path}': {exc}")
 
     return EditResult(path=file_path, occurrences=int(occurrences))
+
+
+def basic_file_write(
+    backend: FilesystemBackend,
+    file_path: str,
+    content: str,
+) -> WriteResult:
+    """写文件：**同名直接覆盖**，不报 "already exists"。
+
+    deepagents 默认 write 在文件已存在时直接返回错误，逼模型改用 edit_file；本地小模型
+    常不照做、反复 write 同名路径陷入「创建→报错→再创建」死循环（如反复重建
+    wuhan_travel.py 修语法错误）。这里改成覆盖语义：保留父目录自动创建、O_NOFOLLOW
+    防穿越符号链接、UTF-8 无 CRLF 转换，仅去掉「已存在即报错」这一限制。
+    """
+    try:
+        resolved_path = backend._resolve_path(file_path)
+    except (OSError, RuntimeError) as exc:
+        return WriteResult(error=f"Error writing file '{file_path}': {exc}")
+
+    try:
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # O_TRUNC：存在则清空重写；O_NOFOLLOW：拒绝写穿符号链接。
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(resolved_path, flags, 0o644)
+        # newline="" 关掉 Windows CRLF 转换，磁盘上保持 LF。
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+            f.write(content)
+        return WriteResult(path=file_path)
+    except (OSError, UnicodeEncodeError) as exc:
+        return WriteResult(error=f"Error writing file '{file_path}': {exc}")
