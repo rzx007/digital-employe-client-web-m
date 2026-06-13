@@ -74,11 +74,41 @@ def test_save_draft_skill_imports_and_returns_localid(tmp_path, monkeypatch):
     assert captured["workspace_id"] == 5
 
 
-def test_resolve_draft_dir_rejects_traversal():
+def test_resolve_draft_dir_rejects_separator_name():
+    from fastapi import HTTPException
     from src.api.skill_api import _resolve_draft_skill_dir
 
-    try:
+    import pytest
+    with pytest.raises(HTTPException) as exc:
         _resolve_draft_skill_dir(conversation_id=1, skill_name="../evil")
-        assert False, "应拒绝穿越"
-    except Exception:
-        pass
+    assert exc.value.status_code == 400
+
+
+def test_resolve_draft_dir_valid_name_returns_dir(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    import src.api.skill_api as mod
+
+    # 让 resolve_workspace_context 返回受控的 workspace_dir，构造真实草稿目录
+    ws = tmp_path / "ws"
+    draft = ws / "conv-7" / "skills-draft" / "demo-skill"
+    draft.mkdir(parents=True)
+    (draft / "SKILL.md").write_text("---\nname: demo-skill\n---\n", encoding="utf-8")
+
+    monkeypatch.setattr(mod, "resolve_workspace_context", lambda root_path, conversation_id: (ws, None, None, None))
+
+    resolved = mod._resolve_draft_skill_dir(conversation_id=7, skill_name="demo-skill")
+    assert resolved == draft.resolve()
+
+
+def test_resolve_draft_dir_missing_dir_raises_404(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    import pytest
+    import src.api.skill_api as mod
+
+    ws = tmp_path / "ws"
+    (ws / "conv-7" / "skills-draft").mkdir(parents=True)  # base 存在但具体技能目录不存在
+    monkeypatch.setattr(mod, "resolve_workspace_context", lambda root_path, conversation_id: (ws, None, None, None))
+
+    with pytest.raises(HTTPException) as exc:
+        mod._resolve_draft_skill_dir(conversation_id=7, skill_name="nope")
+    assert exc.value.status_code == 404
