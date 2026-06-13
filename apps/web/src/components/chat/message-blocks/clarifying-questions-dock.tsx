@@ -17,6 +17,7 @@ import { approveHitl, type HitlDecision } from "@/api/chat"
 import {
   buildClarifyRespondMessage,
   CLARIFY_DEFAULT_ASSUMPTIONS_MESSAGE,
+  CLARIFY_SKIP_REJECT_MESSAGE,
   isValidApproveMessageId,
   isHitlAlreadyApprovedError,
   optionLabel,
@@ -204,13 +205,21 @@ function ClarifyingQuestionsDockInner({
     )
   }, [submitDecisions])
 
+  /** 取消澄清：中止本轮，关闭卡片、恢复输入框，便于重新对话 */
+  const handleCancel = useCallback(() => {
+    void submitDecisions(
+      [{ type: "reject", message: CLARIFY_SKIP_REJECT_MESSAGE }],
+      "取消失败"
+    )
+  }, [submitDecisions])
+
   const handleDockKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (isComposerTarget(event.target)) return
 
       if (event.key === "Escape") {
         event.preventDefault()
-        handleSkip()
+        handleCancel()
         return
       }
 
@@ -223,7 +232,7 @@ function ClarifyingQuestionsDockInner({
       event.preventDefault()
       handleContinue()
     },
-    [handleContinue, handleSkip]
+    [handleContinue, handleCancel]
   )
 
   useEventListener("keydown", handleDockKeyDown, dockRef)
@@ -288,7 +297,11 @@ function ClarifyingQuestionsDockInner({
       <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
         <div className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <IconMessageCircle className="size-3.5 shrink-0" />
-          <span>{usingFallbackQuestions ? "手动作答（组长题目加载失败）" : "Questions"}</span>
+          <span>
+            {usingFallbackQuestions
+              ? "手动作答（组长题目加载失败）"
+              : "Questions"}
+          </span>
         </div>
         <div className="flex shrink-0 items-center gap-0.5 text-[11px] text-muted-foreground">
           <span className="tabular-nums">
@@ -370,16 +383,28 @@ function ClarifyingQuestionsDockInner({
       </div>
 
       <div className="flex items-center justify-between gap-2 border-t border-border/60 px-3 py-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 text-xs text-muted-foreground"
-          disabled={submitting}
-          onClick={handleSkip}
-        >
-          用默认继续
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-muted-foreground"
+            disabled={submitting}
+            onClick={handleCancel}
+          >
+            取消
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-muted-foreground"
+            disabled={submitting}
+            onClick={handleSkip}
+          >
+            用默认继续
+          </Button>
+        </div>
         <Button
           ref={continueButtonRef}
           type="button"
