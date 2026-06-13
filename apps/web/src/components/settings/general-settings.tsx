@@ -45,6 +45,16 @@ function clampAgentNoContentKill(value: number): number {
   return Math.floor(value)
 }
 
+// 并行子任务（单员工内 deepagents task 子任务）最大并发数。
+const SUBAGENT_MAX_PARALLEL_CAP = 8
+const SUBAGENT_MAX_PARALLEL_DEFAULT = 3
+
+function clampSubagentMaxParallel(value: number): number {
+  if (!Number.isFinite(value) || value < 1) return 1
+  if (value > SUBAGENT_MAX_PARALLEL_CAP) return SUBAGENT_MAX_PARALLEL_CAP
+  return Math.floor(value)
+}
+
 export function GeneralSettings() {
   const queryClient = useQueryClient()
   const { theme, setTheme } = useTheme()
@@ -64,6 +74,14 @@ export function GeneralSettings() {
   const [savingAgentMaxConcurrent, setSavingAgentMaxConcurrent] =
     React.useState(false)
   const [savingAgentNoContentKill, setSavingAgentNoContentKill] =
+    React.useState(false)
+  const [subagentEnabled, setSubagentEnabled] = React.useState(true)
+  const [subagentMaxParallel, setSubagentMaxParallel] = React.useState(
+    SUBAGENT_MAX_PARALLEL_DEFAULT
+  )
+  const [savingSubagentEnabled, setSavingSubagentEnabled] =
+    React.useState(false)
+  const [savingSubagentMaxParallel, setSavingSubagentMaxParallel] =
     React.useState(false)
 
   React.useEffect(() => {
@@ -99,6 +117,24 @@ export function GeneralSettings() {
         setAgentNoContentKill(
           clampAgentNoContentKill(
             Number.isFinite(killRaw) ? killRaw : AGENT_NO_CONTENT_KILL_DEFAULT
+          )
+        )
+      })
+      .catch(() => { })
+  }, [])
+
+  React.useEffect(() => {
+    void Promise.all([
+      getConfigKv("SUBAGENT_ENABLED"),
+      getConfigKv("SUBAGENT_MAX_PARALLEL"),
+    ])
+      .then(([enabledKv, maxKv]) => {
+        // 默认开：仅当显式存了 "0" 才算关。
+        setSubagentEnabled(enabledKv?.config_value !== "0")
+        const raw = Number.parseInt(maxKv?.config_value ?? "", 10)
+        setSubagentMaxParallel(
+          clampSubagentMaxParallel(
+            Number.isFinite(raw) ? raw : SUBAGENT_MAX_PARALLEL_DEFAULT
           )
         )
       })
@@ -239,6 +275,51 @@ export function GeneralSettings() {
 
   const handleAgentNoContentKillBlur = () => {
     void persistAgentNoContentKill(agentNoContentKill)
+  }
+
+  const handleSubagentEnabledChange = async (checked: boolean) => {
+    const prev = subagentEnabled
+    setSubagentEnabled(checked)
+    setSavingSubagentEnabled(true)
+    try {
+      await setConfigKv("SUBAGENT_ENABLED", checked ? "1" : "0")
+      queryClient.setQueryData(["config-kv", "SUBAGENT_ENABLED"], {
+        config_key: "SUBAGENT_ENABLED",
+        config_value: checked ? "1" : "0",
+      })
+      toast.success(
+        checked ? "已开启并行子任务（新会话生效）" : "已关闭并行子任务（新会话生效）"
+      )
+    } catch {
+      setSubagentEnabled(prev)
+      toast.error("保存并行子任务开关失败")
+    } finally {
+      setSavingSubagentEnabled(false)
+    }
+  }
+
+  const persistSubagentMaxParallel = async (raw: number) => {
+    const next = clampSubagentMaxParallel(raw)
+    const prev = subagentMaxParallel
+    setSubagentMaxParallel(next)
+    setSavingSubagentMaxParallel(true)
+    try {
+      await setConfigKv("SUBAGENT_MAX_PARALLEL", String(next))
+      queryClient.setQueryData(["config-kv", "SUBAGENT_MAX_PARALLEL"], {
+        config_key: "SUBAGENT_MAX_PARALLEL",
+        config_value: String(next),
+      })
+      toast.success("子任务最大并发数已更新（新会话生效）")
+    } catch {
+      setSubagentMaxParallel(prev)
+      toast.error("保存子任务最大并发数失败")
+    } finally {
+      setSavingSubagentMaxParallel(false)
+    }
+  }
+
+  const handleSubagentMaxParallelBlur = () => {
+    void persistSubagentMaxParallel(subagentMaxParallel)
   }
 
   return (
@@ -393,6 +474,56 @@ export function GeneralSettings() {
               onBlur={handleAgentNoContentKillBlur}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>并行子任务</CardTitle>
+          <CardDescription>
+            员工把活拆成多个独立子任务并行执行（单员工内部）
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium">启用并行子任务</span>
+              <span className="text-xs text-muted-foreground">
+                关闭后员工不再拆分并行子任务（新会话/新任务生效）
+              </span>
+            </div>
+            <Switch
+              checked={subagentEnabled}
+              disabled={savingSubagentEnabled}
+              onCheckedChange={handleSubagentEnabledChange}
+            />
+          </div>
+          {subagentEnabled && (
+            <div className="flex items-center justify-between gap-4 border-t pt-4">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium">最大并发数</span>
+                <span className="text-xs text-muted-foreground">
+                  同时运行的子任务上限，1–{SUBAGENT_MAX_PARALLEL_CAP}，默认{" "}
+                  {SUBAGENT_MAX_PARALLEL_DEFAULT}（过高会占满单卡 GPU）
+                </span>
+              </div>
+              <Input
+                type="number"
+                min={1}
+                max={SUBAGENT_MAX_PARALLEL_CAP}
+                className="w-20"
+                value={subagentMaxParallel}
+                disabled={savingSubagentMaxParallel}
+                onChange={(e) => {
+                  const parsed = Number.parseInt(e.target.value, 10)
+                  if (Number.isFinite(parsed)) {
+                    setSubagentMaxParallel(parsed)
+                  }
+                }}
+                onBlur={handleSubagentMaxParallelBlur}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
