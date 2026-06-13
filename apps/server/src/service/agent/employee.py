@@ -209,6 +209,16 @@ def get_agent(
         [summarization_mw, summarization_tool_mw] if _summarization_on else []
     )
 
+    # 并行子任务总开关（设置页 SUBAGENT_ENABLED，默认开）：关时本中间件按构图时
+    # 读到的热值把 `task` 工具从模型可见工具中过滤掉，员工无法 fan-out 子任务。
+    # 下一个新会话/新任务生效。
+    from src.core.config import read_subagent_enabled
+    from src.service.agent.subagent_concurrency import DisableTaskToolMiddleware
+
+    _emp_middleware.append(
+        DisableTaskToolMiddleware(enabled=read_subagent_enabled())
+    )
+
     shell_execute_tool = create_shell_execute_tool(
         shell_backend, artifacts_dir=str(artifacts_dir)
     )

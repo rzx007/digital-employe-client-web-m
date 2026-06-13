@@ -187,6 +187,22 @@ def read_agent_serial_mode(default: bool = False) -> bool:
     return _get_kv_bool(_read_config_kv_data(), "AGENT_SERIAL_MODE", default=default)
 
 
+def read_subagent_enabled(default: bool = True) -> bool:
+    """每次从 config_kvs 读取「并行子任务总开关」（设置页热更新，不走 get_settings 缓存）。
+
+    默认开。关闭时 get_agent 构图会把 deepagents 的 `task` 工具从模型可见工具中排除，
+    员工无法再 fan-out 并行子任务。下一个新会话/新任务生效（已在跑的不受影响）。
+    """
+    return _get_kv_bool(_read_config_kv_data(), "SUBAGENT_ENABLED", default=default)
+
+
+def read_subagent_max_parallel(default: int = 3) -> int:
+    """每次从 config_kvs 读取「子任务最大并发数」（设置页热更新，不走 get_settings 缓存）。"""
+    return _parse_subagent_max_parallel(
+        _get_kv_value(_read_config_kv_data(), "SUBAGENT_MAX_PARALLEL"), default=default
+    )
+
+
 def _parse_subagent_max_parallel(raw: str | None, default: int = 3) -> int:
     """解析 SUBAGENT_MAX_PARALLEL；非法/缺省→default；下限 1。"""
     if raw is None:

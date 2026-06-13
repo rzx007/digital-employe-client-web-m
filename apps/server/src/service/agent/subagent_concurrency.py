@@ -88,10 +88,63 @@ class SubagentConcurrencyMiddleware(AgentMiddleware[Any, Any, Any]):
             return await handler(request)
 
 
-def build_subagent_concurrency_middleware() -> list[AgentMiddleware[Any, Any, Any]]:
-    """工厂：供 HarnessProfile.extra_middleware 使用（每次构图时读最新设置）。"""
-    from src.core.config import get_settings
+def _tool_name(tool: Any) -> str:
+    """从工具对象/字典取 name（兼容 BaseTool 与 OpenAI dict 工具）。"""
+    name = getattr(tool, "name", None)
+    if isinstance(name, str):
+        return name
+    if isinstance(tool, dict):
+        fn = tool.get("function")
+        if isinstance(fn, dict) and isinstance(fn.get("name"), str):
+            return fn["name"]
+        if isinstance(tool.get("name"), str):
+            return tool["name"]
+    return ""
 
-    limit = get_settings().subagent_max_parallel
+
+class DisableTaskToolMiddleware(AgentMiddleware[Any, Any, Any]):
+    """并行子任务总开关「关」时，把 `task` 工具从模型可见工具中过滤掉。
+
+    挂在主 agent 的 middleware 栈上。在 wrap_model_call 处按构图时读到的开关决定：
+    关 → 模型每轮都看不到 task 工具，无法 fan-out 子任务（与 _ToolExclusionMiddleware
+    同机制：只过滤模型请求的 tools，不动 ToolNode 注册，安全可逆）。构图时读热值 ⇒
+    下一个新会话/新任务生效；已在跑的会话不受影响。
+    """
+
+    def __init__(self, *, enabled: bool) -> None:
+        super().__init__()
+        # enabled=并行子任务是否开启；False 时本中间件过滤掉 task。
+        self._subtask_enabled = enabled
+
+    def _filter(self, request: ModelRequest[Any]) -> ModelRequest[Any]:
+        if self._subtask_enabled:
+            return request
+        tools = [t for t in request.tools if _tool_name(t) != "task"]
+        return request.override(tools=tools)
+
+    def wrap_model_call(
+        self,
+        request: ModelRequest[Any],
+        handler: Callable[[ModelRequest[Any]], ModelResponse[Any]],
+    ) -> ModelResponse[Any]:
+        return handler(self._filter(request))
+
+    async def awrap_model_call(
+        self,
+        request: ModelRequest[Any],
+        handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
+    ) -> ModelResponse[Any]:
+        return await handler(self._filter(request))
+
+
+def build_subagent_concurrency_middleware() -> list[AgentMiddleware[Any, Any, Any]]:
+    """工厂：供 HarnessProfile.extra_middleware 使用（每次构图时读最新设置）。
+
+    用热读 KV（read_subagent_max_parallel）而非 get_settings()——后者 lru_cache，
+    设置页改了不生效。热读后下一个新会话/新任务即用上新并发上限。
+    """
+    from src.core.config import read_subagent_max_parallel
+
+    limit = read_subagent_max_parallel()
     logger.info("subagent concurrency limit = %s (per parent conversation)", limit)
     return [SubagentConcurrencyMiddleware(limit=limit)]
