@@ -4,12 +4,10 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconDownload,
-  IconPlus,
 } from "@tabler/icons-react"
 
 import folderIcon from "@/assets/files/fold.png"
 import plainIcon from "@/assets/files/plain_dark.png"
-import { ImportDraftSkillDialog } from "@/components/artifact/import-draft-skill-dialog"
 import { downloadResource } from "@/api/chat"
 import { useCuratorFile } from "@/components/chat/curator/use-curator-file"
 import type { FileChangeItem } from "@/lib/chat/file-change-utils"
@@ -78,7 +76,6 @@ function FileChangeCardRow({
   dim = false,
   onOpen,
   onDownload,
-  onImportSkill,
 }: {
   file: FileChangeItem
   conversationId: string | number | null
@@ -86,7 +83,6 @@ function FileChangeCardRow({
   dim?: boolean
   onOpen: (path: string) => void
   onDownload: (file: FileChangeItem) => void
-  onImportSkill: (file: FileChangeItem) => void
 }) {
   const size = formatSize(file.size)
   const pathBasename = basename(file.path)
@@ -99,19 +95,6 @@ function FileChangeCardRow({
         "@[28rem]/file-changes:opacity-0 @[28rem]/file-changes:transition-opacity @[28rem]/file-changes:group-hover:opacity-100"
       )}
     >
-      {file.kind === "skill-folder" && (
-        <button
-          type="button"
-          className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-          onClick={(e) => {
-            e.stopPropagation()
-            onImportSkill(file)
-          }}
-          aria-label="导入到技能库"
-        >
-          <IconPlus className="size-3.5" />
-        </button>
-      )}
       <button
         type="button"
         className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -192,7 +175,6 @@ interface FileRowHandlers {
   conversationId: string | number | null
   onOpen: (path: string) => void
   onDownload: (file: FileChangeItem) => void
-  onImportSkill: (file: FileChangeItem) => void
 }
 
 /** 一段文件列表：含 grid 布局、滚动雾化、超阈值折叠/展开。交付物与脚本两段各用一个。 */
@@ -249,7 +231,6 @@ function FileGridList({
               conversationId={handlers.conversationId}
               onOpen={handlers.onOpen}
               onDownload={handlers.onDownload}
-              onImportSkill={handlers.onImportSkill}
             />
           ))}
         </div>
@@ -338,9 +319,6 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
     [curatorOnOpenFile, conversationId, openHtmlPreview, openResource]
   )
 
-  const [importSkillFile, setImportSkillFile] =
-    React.useState<FileChangeItem | null>(null)
-
   const handleDownload = React.useCallback(
     async (file: FileChangeItem) => {
       if (conversationId == null) return
@@ -348,10 +326,6 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
     },
     [conversationId]
   )
-
-  const handleImportSkill = React.useCallback((file: FileChangeItem) => {
-    setImportSkillFile(file)
-  }, [])
 
   const { deliverables, intermediates } = React.useMemo(() => {
     const deliverables: FileChangeItem[] = []
@@ -374,7 +348,6 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
     conversationId,
     onOpen: handleOpen,
     onDownload: handleDownload,
-    onImportSkill: handleImportSkill,
   }
 
   // 兜底：若本轮没有交付物（全是脚本/依赖），主区直接展示这些文件，
@@ -384,36 +357,21 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
   const showIntermediateSection = hasDeliverables && intermediates.length > 0
 
   return (
-    <>
-      <div className={cn(CARD_SHELL, className)}>
-        <div className="mb-2 flex items-center gap-2">
-          <span className="text-[10px] font-medium text-muted-foreground @[28rem]/file-changes:text-xs">
-            本轮文件变更
-          </span>
-          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {mainFiles.length}
-          </span>
-        </div>
-
-        <FileGridList files={mainFiles} handlers={handlers} />
-
-        {showIntermediateSection && (
-          <IntermediateSection files={intermediates} handlers={handlers} />
-        )}
+    <div className={cn(CARD_SHELL, className)}>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-[10px] font-medium text-muted-foreground @[28rem]/file-changes:text-xs">
+          本轮文件变更
+        </span>
+        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+          {mainFiles.length}
+        </span>
       </div>
 
-      {importSkillFile && conversationId != null && (
-        <ImportDraftSkillDialog
-          open={!!importSkillFile}
-          onOpenChange={(open) => {
-            if (!open) setImportSkillFile(null)
-          }}
-          onSuccess={() => {}}
-          conversationId={conversationId}
-          skillPath={importSkillFile.path}
-          skillName={importSkillFile.title}
-        />
+      <FileGridList files={mainFiles} handlers={handlers} />
+
+      {showIntermediateSection && (
+        <IntermediateSection files={intermediates} handlers={handlers} />
       )}
-    </>
+    </div>
   )
 }
