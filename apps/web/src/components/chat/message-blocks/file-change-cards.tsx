@@ -1,6 +1,11 @@
 import * as React from "react"
 import { cn } from "@workspace/ui/lib/utils"
-import { IconDownload, IconPlus } from "@tabler/icons-react"
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconDownload,
+  IconPlus,
+} from "@tabler/icons-react"
 
 import folderIcon from "@/assets/files/fold.png"
 import plainIcon from "@/assets/files/plain_dark.png"
@@ -70,12 +75,15 @@ function basename(path: string) {
 function FileChangeCardRow({
   file,
   conversationId,
+  dim = false,
   onOpen,
   onDownload,
   onImportSkill,
 }: {
   file: FileChangeItem
   conversationId: string | number | null
+  /** 中间产物（脚本/依赖）以更弱的视觉呈现 */
+  dim?: boolean
   onOpen: (path: string) => void
   onDownload: (file: FileChangeItem) => void
   onImportSkill: (file: FileChangeItem) => void
@@ -120,7 +128,7 @@ function FileChangeCardRow({
 
   return (
     <div
-      className={FILE_ROW}
+      className={cn(FILE_ROW, dim && "opacity-70 hover:opacity-100")}
       onClick={() => onOpen(file.path)}
       role="button"
       tabIndex={0}
@@ -131,7 +139,10 @@ function FileChangeCardRow({
       <img
         alt=""
         aria-hidden="true"
-        className="size-6 shrink-0 @[28rem]/file-changes:size-8"
+        className={cn(
+          "size-6 shrink-0 @[28rem]/file-changes:size-8",
+          dim && "grayscale"
+        )}
         draggable={false}
         src={getIcon(file)}
       />
@@ -177,6 +188,133 @@ function FileListScrollFog() {
   )
 }
 
+interface FileRowHandlers {
+  conversationId: string | number | null
+  onOpen: (path: string) => void
+  onDownload: (file: FileChangeItem) => void
+  onImportSkill: (file: FileChangeItem) => void
+}
+
+/** 一段文件列表：含 grid 布局、滚动雾化、超阈值折叠/展开。交付物与脚本两段各用一个。 */
+function FileGridList({
+  files,
+  dim = false,
+  handlers,
+}: {
+  files: FileChangeItem[]
+  dim?: boolean
+  handlers: FileRowHandlers
+}) {
+  const signature = React.useMemo(
+    () => files.map((f) => f.id).join("\0"),
+    [files]
+  )
+  const [expandedOverride, setExpandedOverride] = React.useState<{
+    signature: string
+    value: boolean
+  } | null>(null)
+
+  const defaultExpanded = files.length <= FILE_COLLAPSE_THRESHOLD
+  const expanded =
+    expandedOverride?.signature === signature
+      ? expandedOverride.value
+      : defaultExpanded
+
+  if (files.length === 0) {
+    return null
+  }
+
+  const displayFiles = expanded ? files : files.slice(0, FILE_COLLAPSED_COUNT)
+  const needsScroll =
+    files.length > FILE_SCROLL_THRESHOLD &&
+    (expanded || files.length <= FILE_COLLAPSE_THRESHOLD)
+  const canCollapse = files.length > FILE_COLLAPSE_THRESHOLD
+  const showExpand = canCollapse && !expanded
+
+  return (
+    <>
+      <div className="relative">
+        <div
+          className={cn(
+            FILE_GRID,
+            needsScroll &&
+              "max-h-64 overflow-y-auto overscroll-y-contain pr-0.5"
+          )}
+        >
+          {displayFiles.map((file) => (
+            <FileChangeCardRow
+              key={file.id}
+              file={file}
+              dim={dim}
+              conversationId={handlers.conversationId}
+              onOpen={handlers.onOpen}
+              onDownload={handlers.onDownload}
+              onImportSkill={handlers.onImportSkill}
+            />
+          ))}
+        </div>
+        {needsScroll && <FileListScrollFog />}
+      </div>
+
+      {showExpand && (
+        <button
+          type="button"
+          className="mt-2 w-full text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+          onClick={() => setExpandedOverride({ signature, value: true })}
+        >
+          查看全部 {files.length} 个文件
+        </button>
+      )}
+      {canCollapse && expanded && (
+        <button
+          type="button"
+          className="mt-2 w-full text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+          onClick={() => setExpandedOverride({ signature, value: false })}
+        >
+          收起
+        </button>
+      )}
+    </>
+  )
+}
+
+/** 次级区：生成交付物用的脚本/依赖，默认折叠，弱化展示。 */
+function IntermediateSection({
+  files,
+  handlers,
+}: {
+  files: FileChangeItem[]
+  handlers: FileRowHandlers
+}) {
+  const [open, setOpen] = React.useState(false)
+
+  if (files.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="mt-2 border-t border-border/40 pt-2">
+      <button
+        type="button"
+        className="flex w-full items-center gap-1 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? (
+          <IconChevronDown className="size-3.5 shrink-0" />
+        ) : (
+          <IconChevronRight className="size-3.5 shrink-0" />
+        )}
+        <span>{files.length} 个生成脚本 / 依赖</span>
+      </button>
+      {open && (
+        <div className="mt-2">
+          <FileGridList files={files} dim handlers={handlers} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function FileChangeCards({ files, className }: FileChangeCardsProps) {
   const curatorFile = useCuratorFile()
   const openResource = useArtifactStore((s) => s.openResource)
@@ -203,104 +341,64 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
   const [importSkillFile, setImportSkillFile] =
     React.useState<FileChangeItem | null>(null)
 
-  const filesSignature = React.useMemo(
-    () => files.map((f) => f.id).join("\0"),
-    [files]
+  const handleDownload = React.useCallback(
+    async (file: FileChangeItem) => {
+      if (conversationId == null) return
+      await downloadResource(conversationId, file.path)
+    },
+    [conversationId]
   )
-  const [expandedOverride, setExpandedOverride] = React.useState<{
-    signature: string
-    value: boolean
-  } | null>(null)
-
-  const defaultExpanded = files.length <= FILE_COLLAPSE_THRESHOLD
-  const expanded =
-    expandedOverride?.signature === filesSignature
-      ? expandedOverride.value
-      : defaultExpanded
-
-  const handleDownload = async (file: FileChangeItem) => {
-    if (conversationId == null) return
-    await downloadResource(conversationId, file.path)
-  }
 
   const handleImportSkill = React.useCallback((file: FileChangeItem) => {
     setImportSkillFile(file)
   }, [])
 
+  const { deliverables, intermediates } = React.useMemo(() => {
+    const deliverables: FileChangeItem[] = []
+    const intermediates: FileChangeItem[] = []
+    for (const file of files) {
+      if (file.category === "intermediate") {
+        intermediates.push(file)
+      } else {
+        deliverables.push(file)
+      }
+    }
+    return { deliverables, intermediates }
+  }, [files])
+
   if (files.length === 0) {
     return null
   }
 
-  const displayFiles = expanded ? files : files.slice(0, FILE_COLLAPSED_COUNT)
-  const needsScroll =
-    files.length > FILE_SCROLL_THRESHOLD &&
-    (expanded || files.length <= FILE_COLLAPSE_THRESHOLD)
-  const canCollapse = files.length > FILE_COLLAPSE_THRESHOLD
-  const showExpand = canCollapse && !expanded
+  const handlers: FileRowHandlers = {
+    conversationId,
+    onOpen: handleOpen,
+    onDownload: handleDownload,
+    onImportSkill: handleImportSkill,
+  }
+
+  // 兜底：若本轮没有交付物（全是脚本/依赖），主区直接展示这些文件，
+  // 避免出现「0 交付物」的空面板。
+  const hasDeliverables = deliverables.length > 0
+  const mainFiles = hasDeliverables ? deliverables : intermediates
+  const showIntermediateSection = hasDeliverables && intermediates.length > 0
 
   return (
     <>
       <div className={cn(CARD_SHELL, className)}>
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="text-[10px] font-medium text-muted-foreground @[28rem]/file-changes:text-xs">
-              本轮文件变更
-            </span>
-            <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-              {files.length}
-            </span>
-          </div>
-          {canCollapse && expanded && (
-            <button
-              type="button"
-              className="shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-              onClick={() =>
-                setExpandedOverride({
-                  signature: filesSignature,
-                  value: false,
-                })
-              }
-            >
-              收起
-            </button>
-          )}
+        <div className="mb-2 flex items-center gap-2">
+          <span className="text-[10px] font-medium text-muted-foreground @[28rem]/file-changes:text-xs">
+            本轮文件变更
+          </span>
+          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {mainFiles.length}
+          </span>
         </div>
 
-        <div className="relative">
-          <div
-            className={cn(
-              FILE_GRID,
-              needsScroll &&
-                "max-h-64 overflow-y-auto overscroll-y-contain pr-0.5"
-            )}
-          >
-            {displayFiles.map((file) => (
-              <FileChangeCardRow
-                key={file.id}
-                file={file}
-                conversationId={conversationId}
-                onOpen={handleOpen}
-                onDownload={handleDownload}
-                onImportSkill={handleImportSkill}
-              />
-            ))}
-          </div>
-          {needsScroll && <FileListScrollFog />}
-        </div>
+        <FileGridList files={mainFiles} handlers={handlers} />
 
-        {showExpand && (
-          <button
-            type="button"
-            className="mt-2 w-full text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-            onClick={() =>
-              setExpandedOverride({
-                signature: filesSignature,
-                value: true,
-              })
-            }
-          >
-            查看全部 {files.length} 个文件
-          </button>
+        {showIntermediateSection && (
+          <IntermediateSection files={intermediates} handlers={handlers} />
         )}
       </div>
 
