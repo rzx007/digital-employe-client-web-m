@@ -460,6 +460,32 @@ class LocalSkillService:
         return LocalSkillService._skill_dir(normalized, workspace_id).is_dir()
 
     @staticmethod
+    def pack_skill_dir_to_zip(skill_dir: Path) -> bytes:
+        """把一个技能目录打包成 zip（zip 内以目录名为根）。要求含 SKILL.md。"""
+        import io
+        import zipfile
+
+        skill_dir = Path(skill_dir)
+        if not skill_dir.is_dir():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"草稿技能目录不存在: {skill_dir}",
+            )
+        if not (skill_dir / LocalSkillService.SKILL_MD_NAME).is_file():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="草稿技能缺少 SKILL.md，无法保存",
+            )
+        root_name = skill_dir.name
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for path in sorted(skill_dir.rglob("*")):
+                if path.is_file():
+                    arcname = f"{root_name}/{path.relative_to(skill_dir).as_posix()}"
+                    zf.write(path, arcname)
+        return buf.getvalue()
+
+    @staticmethod
     def import_local_skill_zip(
         skill_name: str,
         file_name: str,
