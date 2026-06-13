@@ -376,6 +376,7 @@ export function BlockRenderer({
         key={block.key}
         skillName={block.skillName}
         skillPath={block.skillPath}
+        conversationId={conversationId}
         className="w-full"
       />
     )

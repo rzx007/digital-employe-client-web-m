@@ -9,15 +9,18 @@ import { useChatStore } from "@/stores/chat-store"
 
 export function DraftSkillSaveCard({
   skillName,
+  conversationId,
   className,
 }: {
   skillName: string
   skillPath: string
+  /** 由 BlockRenderContext 透传的会话 id，curator 视图下比全局 store 更可靠。 */
+  conversationId?: string | number | null
   className?: string
 }) {
-  const conversationId = useChatStore((s) => s.selectedConversationId)
-  // 员工 id 不是独立 store 字段：会话归属于当前选中联系人，员工类型联系人
-  // 的真实员工主键在 contact.employee.id（见 contact-utils 的 getContactId）。
+  // 员工 id 不是独立 store 字段，也不在 BlockRenderContext 里：会话归属于当前选中
+  // 联系人，员工类型联系人的真实员工主键在 contact.employee.id（见 contact-utils
+  // 的 getContactId）。会话 id 已由 ctx 透传，无需再读 store。
   const employeeId = useChatStore(
     (s) => s.getSelectedContact()?.employee?.id ?? null
   )
