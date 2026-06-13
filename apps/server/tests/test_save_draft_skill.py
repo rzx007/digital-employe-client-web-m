@@ -52,3 +52,23 @@ def test_get_employee_local_skill_ids_filters_negative(monkeypatch):
 
     ids = EmployeeService.get_employee_local_skill_ids(db=None, employee=_Emp())
     assert sorted(ids) == [-7, -3]
+
+
+def test_save_draft_skill_imports_and_returns_localid(tmp_path, monkeypatch):
+    draft = _make_draft(tmp_path)
+
+    captured = {}
+
+    def fake_import(skill_name, file_name, file_bytes, overwrite=False, workspace_id=None, display_name_zh=None):
+        captured["skill_name"] = skill_name
+        captured["workspace_id"] = workspace_id
+        return {"skillName": skill_name, "localId": -42, "path": "/x", "overwritten": False}
+
+    monkeypatch.setattr(LocalSkillService, "import_local_skill_zip", staticmethod(fake_import))
+
+    result = LocalSkillService.save_draft_skill(
+        draft_dir=draft, skill_name="demo-skill", workspace_id=5, overwrite=False
+    )
+    assert result["localId"] == -42
+    assert result["skillName"] == "demo-skill"
+    assert captured["workspace_id"] == 5

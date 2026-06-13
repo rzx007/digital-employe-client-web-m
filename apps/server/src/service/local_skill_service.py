@@ -554,6 +554,26 @@ class LocalSkillService:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
     @staticmethod
+    def save_draft_skill(
+        *,
+        draft_dir: Path,
+        skill_name: str,
+        workspace_id: int,
+        overwrite: bool = False,
+        display_name_zh: str | None = None,
+    ) -> dict:
+        """把草稿目录注册进本地技能库（复用 import 链路），返回 import 结果含 localId。"""
+        zip_bytes = LocalSkillService.pack_skill_dir_to_zip(draft_dir)
+        return LocalSkillService.import_local_skill_zip(
+            skill_name=skill_name,
+            file_name=f"{skill_name}.zip",
+            file_bytes=zip_bytes,
+            overwrite=overwrite,
+            workspace_id=workspace_id,
+            display_name_zh=display_name_zh,
+        )
+
+    @staticmethod
     def _safe_write_under_skill_dir(skill_dir: Path, relative_path: str) -> Path | None:
         relative = Path(relative_path)
         if relative.is_absolute() or ".." in relative.parts:
