@@ -77,6 +77,22 @@ export function summarizeToolCall(options: {
   const display = getToolDisplay(toolName)
   const input = options.input as Record<string, unknown> | undefined
 
+  // 并行子任务（deepagents task 工具）：task 未注册进 TOOL_DISPLAY_MAP，会落到
+  // 下面 !display 的兜底分支返回光秃的「task」。故在兜底前先处理：用子任务描述
+  // 当标签，让用户一眼看出每个并行子任务在干什么。
+  if (toolName === "task") {
+    const desc = input?.description
+    const subType =
+      typeof input?.subagent_type === "string" ? input.subagent_type : ""
+    const label =
+      typeof desc === "string" && desc.trim()
+        ? `子任务 · ${truncate(desc.trim())}`
+        : subType
+          ? `子任务 · ${subType}`
+          : "子任务"
+    return { toolName, label, icon: "🧩" }
+  }
+
   if (!display) {
     return { toolName, label: toolName, icon: "🔧" }
   }
@@ -126,21 +142,6 @@ export function summarizeToolCall(options: {
 
   if (toolName === "write_todos") {
     return { toolName, label: display.label, icon: display.icon }
-  }
-
-  // 并行子任务（deepagents task 工具）：用子任务描述当标签，让用户一眼看出
-  // 每个并行子任务在干什么，而不是一排没有信息的「task」。
-  if (toolName === "task") {
-    const desc = input?.description
-    const subType =
-      typeof input?.subagent_type === "string" ? input.subagent_type : ""
-    const label =
-      typeof desc === "string" && desc.trim()
-        ? `子任务 · ${truncate(desc.trim())}`
-        : subType
-          ? `子任务 · ${subType}`
-          : "子任务"
-    return { toolName, label, icon: "🧩" }
   }
 
   let filePath: string | undefined
