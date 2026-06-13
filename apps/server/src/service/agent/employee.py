@@ -17,6 +17,7 @@ from src.service.agent.paths import (
     resolve_skills_root,
 )
 from src.service.agent.prompts import build_system_prompt
+from src.service.agent.skill_sources import resolve_builtin_skill_creator_source
 from src.service.context_compression import build_summarization_middleware_stack
 from src.service.agent.get_current_time_tool import get_current_time_tool
 from src.service.agent.shell_execute_tool import create_shell_execute_tool
@@ -34,6 +35,21 @@ from src.service.skill_shell_backend import SkillAwareShellBackend
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+
+def _augment_skills_with_skill_creator(
+    skill_sources: list[str], available_skills: list[str]
+) -> tuple[list[str], list[str]]:
+    """全员运行时注入 skill-creator：员工已自有则不重复加载，仅保证 available 含之。"""
+    new_available = list(available_skills)
+    if "skill-creator" in new_available:
+        return list(skill_sources), new_available
+    src = resolve_builtin_skill_creator_source()
+    new_sources = list(skill_sources)
+    if src is not None:
+        new_sources.append(str(src))
+    new_available.append("skill-creator")
+    return new_sources, new_available
 
 
 def get_agent(
@@ -151,6 +167,10 @@ def get_agent(
     skill_sources = [str(skills_root)]
     if has_draft_route and draft_dir is not None:
         skill_sources.append(str(draft_dir))
+
+    skill_sources, available_skills = _augment_skills_with_skill_creator(
+        skill_sources, available_skills
+    )
 
     shell_backend = SkillAwareShellBackend(
         root_dir=str(artifacts_dir),
