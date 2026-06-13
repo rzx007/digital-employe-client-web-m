@@ -9,8 +9,9 @@
   cancel_plan
 - **tasks** 子任务管理：list_tasks、update_task、delete_task、delete_tasks_batch
 - **skills** 技能管理：list_workspace_skills、get_workspace_skill_detail、
-  list_builtin_skills、install_builtin_skill、search_market_skills、
-  get_market_skill_detail、install_market_skill
+  delete_workspace_skill、delete_workspace_skills_batch、list_builtin_skills、
+  install_builtin_skill、search_market_skills、get_market_skill_detail、
+  install_market_skill
 
 `from src.service.agent.orchestrator.tools import xxx` 仍可用，详见各子模块 re-export。
 """
@@ -50,6 +51,8 @@ from src.service.agent.orchestrator.tools.groups import (
     update_group,
 )
 from src.service.agent.orchestrator.tools.skills import (
+    delete_workspace_skill,
+    delete_workspace_skills_batch,
     format_workspace_skills_list,
     get_market_skill_detail,
     get_workspace_skill_detail,
@@ -96,6 +99,8 @@ __all__ = [
     # skills
     "list_workspace_skills",
     "get_workspace_skill_detail",
+    "delete_workspace_skill",
+    "delete_workspace_skills_batch",
     "list_builtin_skills",
     "install_builtin_skill",
     "search_market_skills",

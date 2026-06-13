@@ -57,6 +57,7 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """你是数字员工团队的总管助手
 ## 员工与技能管理
 - 查员工 `list_workspace_employees` / `get_employee`；改 `update_employee`；删 `delete_employee`（禁止删总管助手；批量删每次一个、等用户在卡片确认后再删下一个）。
 - 分配技能前先 `list_workspace_skills` 或 `get_workspace_skill_detail` 查清归属，再用 `update_employee` 分配。
+- 删技能 `delete_workspace_skill(skill_name)`；批量删 `delete_workspace_skills_batch(skill_names)`（JSON 字符串数组）。只能删本地/已安装技能，**内置技能删不掉**；删除会自动解除已分配员工的绑定，删前建议 `list_workspace_skills` 核对，用户在卡片确认后才真正删除。
 - 缺技能时按**需求处理决策链**第 2→3 步操作（先查本地 `list_workspace_skills`，本地无匹配才 `search_market_skills`）。
 - 各工具的参数格式（skill_ids、cron、id 等）见**对应工具的参数说明**，此处不复述。
 

@@ -12,9 +12,18 @@ from pathlib import Path
 from typing import Callable
 
 from deepagents.backends import LocalShellBackend
-from deepagents.backends.protocol import EditResult, ExecuteResponse, ReadResult
+from deepagents.backends.protocol import (
+    EditResult,
+    ExecuteResponse,
+    ReadResult,
+    WriteResult,
+)
 
-from src.service.agent.basic_file_backend import basic_file_edit, basic_file_read
+from src.service.agent.basic_file_backend import (
+    basic_file_edit,
+    basic_file_read,
+    basic_file_write,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +253,10 @@ class SkillAwareShellBackend(LocalShellBackend):
             new_string,
             replace_all=replace_all,
         )
+
+    def write(self, file_path: str, content: str) -> WriteResult:
+        """写文件同名直接覆盖（不报 already exists），避免反复重建同名文件的死循环。"""
+        return basic_file_write(self, file_path, content)
 
     def _extract_python_c_code(self, command: str) -> str | None:
         """从 `python -c '...'` 提取代码体。

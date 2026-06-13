@@ -301,6 +301,125 @@ def get_workspace_skill_detail(
     )
 
 
+MAX_SKILL_DELETE_BATCH = 20
+
+
+def _delete_one_workspace_skill(
+    db: Session, workspace_id: int, skill_name: str
+) -> dict:
+    """删除单个工作区本地技能（先解绑员工再删目录），与技能市场删除逻辑一致。
+
+    返回 {"ok": True, "skill_name": ..., "unassigned": n} 或
+    {"ok": False, "skill_name": ..., "error": ...}。内置技能不可删。
+    """
+    name = (skill_name or "").strip()
+    if not name:
+        return {"ok": False, "skill_name": skill_name, "error": "技能名为空"}
+
+    normalized = LocalSkillService._normalize_skill_name(name)
+    skill_dir = LocalSkillService._skill_dir(normalized, workspace_id)
+    if not skill_dir.is_dir():
+        return {
+            "ok": False,
+            "skill_name": normalized,
+            "error": "未找到可删除的工作区技能（可能仅为内置技能或名称不存在）",
+        }
+
+    meta = LocalSkillService._read_meta(skill_dir)
+    local_id = LocalSkillService._parse_local_id(meta.get("localId"))
+
+    unassigned = EmployeeService.unassign_local_skill_from_assignees(
+        db,
+        workspace_id=workspace_id,
+        skill_name=normalized,
+        local_id=local_id,
+    )
+    try:
+        LocalSkillService.delete_workspace_skill(normalized, workspace_id)
+    except HTTPException as exc:
+        db.rollback()
+        detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        return {"ok": False, "skill_name": normalized, "error": detail}
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        return {"ok": False, "skill_name": normalized, "error": str(exc)}
+
+    db.commit()
+    return {"ok": True, "skill_name": normalized, "unassigned": unassigned}
+
+
+@tool
+def delete_workspace_skill(skill_name: str) -> str:
+    """删除单个工作区本地技能（物理删除技能目录，并自动解除已分配员工的绑定）。
+
+    仅删 1 个技能时使用；2 个及以上必须用 delete_workspace_skills_batch。
+    只能删本地/已安装技能，**内置技能不可删**。删除前建议 list_workspace_skills 核对。
+    与技能市场的删除逻辑一致：先解绑员工、再删目录，不可撤销。
+
+    Args:
+        skill_name: 技能目录名（与 list_workspace_skills 返回的 name 一致）
+    """
+    workspace_id = get_workspace_id()
+    db = get_db()
+    result = _delete_one_workspace_skill(db, workspace_id, skill_name)
+    if not result.get("ok"):
+        return f"错误：删除技能「{result['skill_name']}」失败 — {result['error']}"
+    unassigned = result.get("unassigned") or 0
+    suffix = f"，已同步解除 {unassigned} 名员工的绑定" if unassigned else ""
+    return f"✅ 已删除工作区技能「{result['skill_name']}」{suffix}。"
+
+
+@tool
+def delete_workspace_skills_batch(skill_names: str) -> str:
+    """批量删除多个工作区本地技能（一次调用，逐个删除并解绑员工）。
+
+    当用户要求删除 2 个及以上技能时使用本工具，不要在同一轮多次 delete_workspace_skill。
+    只能删本地/已安装技能，**内置技能不可删**。逐个独立处理，部分失败不影响其余。
+    与技能市场的删除逻辑一致：先解绑员工、再删目录，不可撤销。
+
+    参数 skill_names: JSON 字符串数组，例如 "[\"data-querys\", \"ppt-maker\"]"
+    """
+    workspace_id = get_workspace_id()
+
+    try:
+        parsed = json.loads(skill_names)
+    except json.JSONDecodeError as exc:
+        return f"错误：skill_names 不是合法的 JSON 数组: {exc}"
+
+    if not isinstance(parsed, list):
+        return "错误：skill_names 必须为 JSON 数组。"
+    if len(parsed) == 0:
+        return "错误：skill_names 不能为空。"
+    if len(parsed) > MAX_SKILL_DELETE_BATCH:
+        return f"错误：单次最多删除 {MAX_SKILL_DELETE_BATCH} 个技能。"
+
+    names: list[str] = []
+    for i, raw in enumerate(parsed):
+        name = str(raw or "").strip()
+        if not name:
+            return f"错误：skill_names[{i}] 为空。"
+        names.append(name)
+
+    db = get_db()
+    ok_lines: list[str] = []
+    fail_lines: list[str] = []
+    for name in names:
+        result = _delete_one_workspace_skill(db, workspace_id, name)
+        if result.get("ok"):
+            unassigned = result.get("unassigned") or 0
+            suffix = f"（解绑 {unassigned} 名员工）" if unassigned else ""
+            ok_lines.append(f"- {result['skill_name']} ✅{suffix}")
+        else:
+            fail_lines.append(f"- {result['skill_name']} ❌ {result['error']}")
+
+    parts = [f"批量删除技能：成功 {len(ok_lines)} 个，失败 {len(fail_lines)} 个。"]
+    if ok_lines:
+        parts.append("已删除：\n" + "\n".join(ok_lines))
+    if fail_lines:
+        parts.append("失败：\n" + "\n".join(fail_lines))
+    return "\n\n".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # 内置技能（build-in-skills/）
 # ---------------------------------------------------------------------------

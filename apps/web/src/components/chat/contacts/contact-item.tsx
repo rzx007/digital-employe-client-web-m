@@ -28,6 +28,7 @@ import { useChatStore } from "@/stores/chat-store"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import { deleteEmployee } from "@/api/employee"
+import { deleteGroup } from "@/api/group"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import {
   clearSelectedContact,
@@ -142,27 +143,34 @@ export function ContactItem({
       } catch {
         toast.error("删除失败，请稍后重试")
       }
-    } else if (contact.type === "group" && contactId) {
-      // 如果是群组，暂时只在前端删除（需要后端支持群组删除API）
-      const updated = contacts.filter((c) => {
-        const id = c.group?.id
-        return id !== rawId
-      })
-      setContacts(updated)
-      const target = mapContactToTarget(contact)
-      if (target) {
-        void deleteRecentContact(target.target_type, target.target_id, {
-          workspaceId,
+    } else if (contact.type === "group" && rawId) {
+      try {
+        await deleteGroup(rawId)
+        const target = mapContactToTarget(contact)
+        if (target) {
+          void deleteRecentContact(target.target_type, target.target_id, {
+            workspaceId,
+          })
+          void queryClient.invalidateQueries({
+            queryKey: chatKeys.recentContacts(workspaceId),
+          })
+        }
+        setContacts(
+          contacts.filter(
+            (c) => !(c.type === "group" && c.group?.id === rawId)
+          )
+        )
+        await queryClient.invalidateQueries({
+          queryKey: chatKeys.contacts(),
         })
-        void queryClient.invalidateQueries({
-          queryKey: chatKeys.recentContacts(workspaceId),
+        queryClient.removeQueries({
+          queryKey: chatKeys.conversations(contactId),
         })
+        focusAfterContactRemoved(contactId)
+        toast.success(`已删除「${displayName}」`)
+      } catch {
+        toast.error("删除失败，请稍后重试")
       }
-      queryClient.removeQueries({
-        queryKey: chatKeys.conversations(contactId),
-      })
-      focusAfterContactRemoved(contactId)
-      toast.success(`已删除「${displayName}」`)
     }
   }
 

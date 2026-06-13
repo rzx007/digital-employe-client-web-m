@@ -13,11 +13,15 @@ from src.service.agent.orchestrator.tools.employees import (
     update_employee,
 )
 from src.service.agent.orchestrator.tools.skills import (
+    delete_workspace_skill,
+    delete_workspace_skills_batch,
     format_workspace_skills_list,
     get_workspace_skill_detail,
     list_workspace_skills,
 )
 from src.service.agent.orchestrator.runtime import set_context
+from src.service.employee_service import EmployeeService
+from src.service.local_skill_service import LocalSkillService
 from tests.conftest import add_employee
 
 
@@ -221,3 +225,84 @@ def test_delete_employee_rejects_curator(
     result = delete_employee.invoke({"employee_id": curator.id})
 
     assert result == "错误：不能删除总管助手。"
+
+
+def _make_local_skill(root, skill_name: str, local_id: int):
+    skill_dir = root / skill_name
+    skill_dir.mkdir(parents=True)
+    (skill_dir / LocalSkillService.SKILL_MD_NAME).write_text(
+        "---\ndescription: demo\n---\n# demo", encoding="utf-8"
+    )
+    (skill_dir / LocalSkillService.META_FILE_NAME).write_text(
+        json.dumps({"skillName": skill_name, "localId": local_id}),
+        encoding="utf-8",
+    )
+    return skill_dir
+
+
+def test_delete_workspace_skill_removes_dir_and_unassigns(
+    db_session, workspace, monkeypatch, tmp_path
+):
+    root = tmp_path / "local-skills" / str(workspace.id)
+    skill_dir = _make_local_skill(root, "demo-skill", -201)
+    monkeypatch.setattr(
+        LocalSkillService, "_resolve_local_root", lambda ws_id=None: root
+    )
+    monkeypatch.setattr(
+        EmployeeService, "_resolve_skill_root", lambda: tmp_path / "employees"
+    )
+    employee = add_employee(db_session, workspace.id, name="技能拥有者")
+    db_session.add(
+        EmployeeSkill(
+            workspace_id=workspace.id,
+            employee_id=employee.id,
+            skill_id=-201,
+            skill_name="demo-skill",
+        )
+    )
+    db_session.commit()
+    set_context(db=db_session, workspace_id=workspace.id, conversation_id=1)
+
+    result = delete_workspace_skill.invoke({"skill_name": "demo-skill"})
+
+    assert result.startswith("✅ 已删除工作区技能「demo-skill」")
+    assert "解除 1 名员工" in result
+    assert not skill_dir.is_dir()
+    assert db_session.query(EmployeeSkill).count() == 0
+
+
+def test_delete_workspace_skill_missing_returns_error(
+    db_session, workspace, monkeypatch, tmp_path
+):
+    root = tmp_path / "local-skills" / str(workspace.id)
+    root.mkdir(parents=True)
+    monkeypatch.setattr(
+        LocalSkillService, "_resolve_local_root", lambda ws_id=None: root
+    )
+    set_context(db=db_session, workspace_id=workspace.id, conversation_id=1)
+
+    result = delete_workspace_skill.invoke({"skill_name": "no-such-skill"})
+
+    assert result.startswith("错误：删除技能「no-such-skill」失败")
+
+
+def test_delete_workspace_skills_batch_partial(
+    db_session, workspace, monkeypatch, tmp_path
+):
+    root = tmp_path / "local-skills" / str(workspace.id)
+    _make_local_skill(root, "skill-a", -301)
+    _make_local_skill(root, "skill-b", -302)
+    monkeypatch.setattr(
+        LocalSkillService, "_resolve_local_root", lambda ws_id=None: root
+    )
+    set_context(db=db_session, workspace_id=workspace.id, conversation_id=1)
+
+    result = delete_workspace_skills_batch.invoke(
+        {"skill_names": json.dumps(["skill-a", "missing", "skill-b"])}
+    )
+
+    assert "成功 2 个，失败 1 个" in result
+    assert "skill-a ✅" in result
+    assert "missing ❌" in result
+    assert not (root / "skill-a").is_dir()
+    assert not (root / "skill-b").is_dir()
