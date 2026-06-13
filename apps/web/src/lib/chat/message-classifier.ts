@@ -631,21 +631,23 @@ export function classifyMessageParts(
   const fileChanges = shouldIncludeFileChanges
     ? getFileChangesFromUIMessage(message)
     : []
-  if (fileChanges.length > 0) {
+  // 草稿技能改由 DraftSkillSaveCard 卡片承载，文件变更面板里去重移除，避免重复。
+  const panelFileChanges = fileChanges.filter((c) => c.kind !== "skill-folder")
+  if (panelFileChanges.length > 0) {
     blocks.push({
       kind: "file-changes",
       key: `${message.id}:file-changes`,
-      files: fileChanges,
+      files: panelFileChanges,
     })
-    for (const item of fileChanges) {
-      if (item.kind === "skill-folder") {
-        blocks.push({
-          kind: "draft-skill-save",
-          key: `draft-skill-save:${item.path}`,
-          skillName: item.title,
-          skillPath: item.path,
-        })
-      }
+  }
+  for (const item of fileChanges) {
+    if (item.kind === "skill-folder") {
+      blocks.push({
+        kind: "draft-skill-save",
+        key: `draft-skill-save:${item.path}`,
+        skillName: item.title,
+        skillPath: item.path,
+      })
     }
   }
 
