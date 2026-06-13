@@ -128,6 +128,21 @@ export function summarizeToolCall(options: {
     return { toolName, label: display.label, icon: display.icon }
   }
 
+  // 并行子任务（deepagents task 工具）：用子任务描述当标签，让用户一眼看出
+  // 每个并行子任务在干什么，而不是一排没有信息的「task」。
+  if (toolName === "task") {
+    const desc = input?.description
+    const subType =
+      typeof input?.subagent_type === "string" ? input.subagent_type : ""
+    const label =
+      typeof desc === "string" && desc.trim()
+        ? `子任务 · ${truncate(desc.trim())}`
+        : subType
+          ? `子任务 · ${subType}`
+          : "子任务"
+    return { toolName, label, icon: "🧩" }
+  }
+
   let filePath: string | undefined
   if (display.pathKey && input) {
     const raw = input[display.pathKey]
