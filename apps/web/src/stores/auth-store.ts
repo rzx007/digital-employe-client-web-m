@@ -30,6 +30,12 @@ interface AuthState {
     password: string,
     rememberMe: boolean
   ) => Promise<void>
+  /** 用已签发的本系统 token + 用户信息建立登录态（飞书等第三方登录复用此出口） */
+  loginWithToken: (
+    token: string,
+    user: LoginUser,
+    rememberMe?: boolean
+  ) => Promise<void>
   logout: () => Promise<void>
   restoreSession: () => Promise<void>
   clearError: () => void
@@ -99,45 +105,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       }
 
       if (res.code === 1 && res.token && res.result?.length > 0) {
-        const token = res.token
-        const user = res.result[0]
-
-        localStorage.setItem("token", token)
-        // 显示名（真实姓名）只在客户端有，token 里没有；写入供埋点上报
-        localStorage.setItem("displayName", user.name ?? "")
-
-        if (isElectron()) {
-          await requireElectronApi((api) =>
-            api.saveAuth(
-              token,
-              user as unknown as Record<string, unknown>,
-              rememberMe
-            )
-          )
-        }
-
-        set({ token, user, isAuthenticated: true, loading: false })
-
-        // 活跃度埋点：用户登录（DAU/WAU/MAU 主依据）
-        track("login")
-
-        try {
-          await setConfigKv("USERNAME", user.name)
-        } catch (error) {
-          console.warn("Failed to persist USERNAME config kv:", error)
-        }
-
-        try {
-          const workspace = await getMyWorkspace(String(user.id), user.name)
-          localStorage.setItem("workspaceId", String(workspace.id))
-          set({ workspaceId: workspace.id })
-        } catch (error) {
-          console.warn("Failed to get workspace:", error)
-        }
-
-        if (isElectron()) {
-          await requireElectronApi((api) => api.loginSuccess())
-        }
+        await useAuthStore
+          .getState()
+          .loginWithToken(res.token, res.result[0], rememberMe)
       } else {
         set({
           loading: false,
@@ -147,6 +117,45 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch (err) {
       const message = err instanceof Error ? err.message : "网络错误，请重试"
       set({ loading: false, error: message })
+    }
+  },
+
+  loginWithToken: async (token, user, rememberMe = false) => {
+    localStorage.setItem("token", token)
+    // 显示名（真实姓名）只在客户端有，token 里没有；写入供埋点上报
+    localStorage.setItem("displayName", user.name ?? "")
+
+    if (isElectron()) {
+      await requireElectronApi((api) =>
+        api.saveAuth(
+          token,
+          user as unknown as Record<string, unknown>,
+          rememberMe
+        )
+      )
+    }
+
+    set({ token, user, isAuthenticated: true, loading: false })
+
+    // 活跃度埋点：用户登录（DAU/WAU/MAU 主依据）
+    track("login")
+
+    try {
+      await setConfigKv("USERNAME", user.name)
+    } catch (error) {
+      console.warn("Failed to persist USERNAME config kv:", error)
+    }
+
+    try {
+      const workspace = await getMyWorkspace(String(user.id), user.name)
+      localStorage.setItem("workspaceId", String(workspace.id))
+      set({ workspaceId: workspace.id })
+    } catch (error) {
+      console.warn("Failed to get workspace:", error)
+    }
+
+    if (isElectron()) {
+      await requireElectronApi((api) => api.loginSuccess())
     }
   },
 
