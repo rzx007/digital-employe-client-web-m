@@ -32,3 +32,23 @@ def test_pack_skill_dir_to_zip_rejects_missing_skill_md(tmp_path):
         assert False, "应因缺少 SKILL.md 抛错"
     except Exception:
         pass
+
+
+def test_get_employee_local_skill_ids_filters_negative(monkeypatch):
+    from src.service.employee_service import EmployeeService
+
+    fake_snapshot = [
+        {"skill_id": -3, "skillName": "a"},
+        {"skill_id": 10, "skillName": "remote-b"},  # 远程正数，排除
+        {"skill_id": -7, "skillName": "c"},
+    ]
+    monkeypatch.setattr(
+        EmployeeService, "_employee_skills_snapshot",
+        staticmethod(lambda db, employee: fake_snapshot),
+    )
+
+    class _Emp:  # 占位，_employee_skills_snapshot 被 mock 不会真用它
+        id = 1
+
+    ids = EmployeeService.get_employee_local_skill_ids(db=None, employee=_Emp())
+    assert sorted(ids) == [-7, -3]

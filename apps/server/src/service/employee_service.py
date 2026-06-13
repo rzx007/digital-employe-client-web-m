@@ -221,6 +221,17 @@ class EmployeeService:
         return []
 
     @staticmethod
+    def get_employee_local_skill_ids(db, employee) -> list[int]:
+        """该员工现有的本地/工作区技能 localId（负数）列表。"""
+        snapshot = EmployeeService._employee_skills_snapshot(db, employee)
+        ids: list[int] = []
+        for row in snapshot:
+            sid = row.get("skill_id")
+            if isinstance(sid, int) and sid < 0:
+                ids.append(sid)
+        return ids
+
+    @staticmethod
     def list_skill_assignees(
         db: Session,
         *,
