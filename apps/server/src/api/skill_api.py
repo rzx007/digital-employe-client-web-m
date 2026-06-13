@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+from pathlib import Path
 from typing import Any
 
 from fastapi import (
@@ -19,7 +20,7 @@ from src.core.request_utils import (
     get_username,
     get_workspace_id_from_request,
 )
-from src.core.config import is_offline_mode
+from src.core.config import get_settings, is_offline_mode
 from src.core.runtime_capabilities import get_capabilities
 from src.core.deps import require_capability
 from sqlalchemy.orm import Session
@@ -38,9 +39,13 @@ from src.schemas.skill import (
     UpdateSkillDisplayNameResult,
     UpdateLocalSkillRequest,
     UpdateLocalSkillResult,
+    SaveDraftSkillRequest,
+    SaveDraftSkillResult,
 )
+from src.schemas.employee import EmployeeUpdate
 from src.service.employee_service import EmployeeService
 from src.service.local_skill_service import LocalSkillService
+from src.service.resource_service import resolve_workspace_context
 from src.service.skill_service import SkillService
 from src.service.workspace_service import WorkspaceService
 
@@ -186,6 +191,95 @@ async def import_local_skill_zip(
         overwrite=overwrite,
         workspace_id=workspace_id,
         display_name_zh=displayNameZh,
+    )
+
+
+def _resolve_draft_skill_dir(conversation_id: int, skill_name: str) -> Path:
+    name = (skill_name or "").strip()
+    if not name or "/" in name or "\\" in name or ".." in name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"非法草稿技能名: {skill_name}",
+        )
+    settings = get_settings()
+    root_path = settings.skill_path
+    workspace_dir, _public, _conv, _room = resolve_workspace_context(
+        root_path, conversation_id
+    )
+    draft_dir = workspace_dir / f"conv-{conversation_id}" / "skills-draft" / name
+    resolved = draft_dir.resolve()
+    base = (workspace_dir / f"conv-{conversation_id}" / "skills-draft").resolve()
+    if base not in resolved.parents and resolved != base:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="草稿路径越界",
+        )
+    if not resolved.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"草稿技能不存在: {name}",
+        )
+    return resolved
+
+
+@router.post(
+    "/skills/local/save-draft",
+    response_model=ResponseBase[SaveDraftSkillResult],
+    status_code=status.HTTP_200_OK,
+)
+def save_draft_skill(
+    request: Request,
+    payload: SaveDraftSkillRequest,
+    db: Session = Depends(get_db),
+) -> ResponseBase[SaveDraftSkillResult]:
+    workspace_id = get_workspace_id_from_request(request)
+    token = request.headers.get("token") or ""
+
+    draft_dir = _resolve_draft_skill_dir(payload.conversationId, payload.skillName)
+
+    imported = LocalSkillService.save_draft_skill(
+        draft_dir=draft_dir,
+        skill_name=payload.skillName,
+        workspace_id=workspace_id,
+        overwrite=payload.overwrite,
+        display_name_zh=payload.displayNameZh,
+    )
+    local_id = int(imported["localId"])
+
+    attached = True
+    attach_error: str | None = None
+    try:
+        employee = EmployeeService.get_employee(db, payload.employeeId)
+        existing = EmployeeService.get_employee_local_skill_ids(db, employee)
+        new_ids = sorted(set(existing) | {local_id})
+        EmployeeService.update_employee(
+            db,
+            payload.employeeId,
+            EmployeeUpdate(skill_ids=new_ids),
+            token,
+        )
+    except Exception as exc:  # noqa: BLE001 - 入库已成功，挂员工失败降级
+        attached = False
+        attach_error = str(exc)
+        logger.warning(
+            "save_draft_skill attach-to-employee failed: emp=%s local_id=%s err=%s",
+            payload.employeeId, local_id, exc,
+        )
+
+    logger.info(
+        "save_draft_skill done: skill=%s local_id=%s emp=%s overwritten=%s attached=%s",
+        imported["skillName"], local_id, payload.employeeId,
+        imported.get("overwritten", False), attached,
+    )
+    return ResponseBase[SaveDraftSkillResult](
+        data=SaveDraftSkillResult(
+            skillName=imported["skillName"],
+            localId=local_id,
+            employeeId=payload.employeeId,
+            overwritten=bool(imported.get("overwritten", False)),
+            attachedToEmployee=attached,
+            attachError=attach_error,
+        )
     )
 
 

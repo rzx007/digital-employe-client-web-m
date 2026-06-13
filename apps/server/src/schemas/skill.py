@@ -95,3 +95,20 @@ class UpdateLocalSkillResult(BaseModel):
     # 保存后该技能最终所在位置是否仍为全局内置目录。
     # 当内置技能以 "workspace" 方式保存（复制另存）后会变为 False。
     isBuiltin: bool = False
+
+
+class SaveDraftSkillRequest(BaseModel):
+    conversationId: int
+    skillName: str
+    employeeId: int
+    overwrite: bool = False
+    displayNameZh: str | None = None
+
+
+class SaveDraftSkillResult(BaseModel):
+    skillName: str
+    localId: int
+    employeeId: int
+    overwritten: bool = False
+    attachedToEmployee: bool = True
+    attachError: str | None = None

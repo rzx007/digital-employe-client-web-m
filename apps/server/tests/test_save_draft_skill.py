@@ -72,3 +72,13 @@ def test_save_draft_skill_imports_and_returns_localid(tmp_path, monkeypatch):
     assert result["localId"] == -42
     assert result["skillName"] == "demo-skill"
     assert captured["workspace_id"] == 5
+
+
+def test_resolve_draft_dir_rejects_traversal():
+    from src.api.skill_api import _resolve_draft_skill_dir
+
+    try:
+        _resolve_draft_skill_dir(conversation_id=1, skill_name="../evil")
+        assert False, "应拒绝穿越"
+    except Exception:
+        pass
