@@ -69,6 +69,15 @@ export interface LangChainStreamParseState {
    * 故对它们跳过所有 input/output chunk。
    */
   sealedToolCallIds: Set<string>
+  /**
+   * 并行子任务（deepagents task 工具）逐字实时进度路由：
+   * - subagentNsToToolCallId：子图命名空间 ns（'tools:<uuid>'）→ 对应 task 行的 toolCallId。
+   *   后端开 subgraphs=True 后，子任务 token 事件带非空 ns；同一子任务 ns 稳定。
+   * - pendingTaskToolCallIds：已出现但尚未绑定 ns 的 task toolCallId 队列（按出现顺序）。
+   *   首次见到某个新 ns 时，从队首取一个 toolCallId 绑定（子任务同轮创建，顺序稳定）。
+   */
+  subagentNsToToolCallId: Map<string, string>
+  pendingTaskToolCallIds: string[]
 }
 
 export function createLangChainStreamParseState(options?: {
@@ -87,6 +96,8 @@ export function createLangChainStreamParseState(options?: {
     activeToolCallId: null,
     primaryToolCallIdByMessageChunk: new Map(),
     sealedToolCallIds: new Set(options?.sealedToolCallIds ?? []),
+    subagentNsToToolCallId: new Map(),
+    pendingTaskToolCallIds: [],
   }
 }
 
@@ -297,6 +308,15 @@ function emitToolInputStartIfReady(
   pending.sentInputStart = true
   state.activeToolCallId = pending.toolCallId
   state.toolNamesById.set(pending.toolCallId, pending.toolName)
+  // 并行子任务：task 工具调用一出现就把它的 toolCallId 入队，等子图首个 token 事件
+  // （非空 ns）出现时按出现顺序绑定，从而把子任务逐字输出路由到对应 task 行。
+  if (
+    pending.toolName === "task" &&
+    !state.pendingTaskToolCallIds.includes(pending.toolCallId) &&
+    ![...state.subagentNsToToolCallId.values()].includes(pending.toolCallId)
+  ) {
+    state.pendingTaskToolCallIds.push(pending.toolCallId)
+  }
 }
 
 function appendToolInputDelta(
@@ -888,6 +908,13 @@ function parseUpdatesPayloadToChunks(
     return []
   }
 
+  // 并行子任务：子图（非空 ns）的 updates 事件携带的是子任务**内部**的工具调用
+  // （shell_execute 等）。这些不应平铺成父流里的一排「执行」行——子任务过程只在
+  // 自己的 task 行内呈现（逐字正文走 messages 路由）。故此处直接跳过子图 updates。
+  if (extractSubagentNs(payload) !== null) {
+    return []
+  }
+
   const obj = payload as { type: string; data: unknown }
   if (obj.type !== "updates" || !obj.data || typeof obj.data !== "object") {
     return []
@@ -1080,6 +1107,16 @@ export function enqueueFinish(
   state.didSendFinish = true
 }
 
+/** 从 v2 事件取「子任务命名空间」首段（'tools:<uuid>'），顶层/无 ns 返回 null。 */
+function extractSubagentNs(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || !("ns" in payload)) return null
+  const ns = (payload as { ns?: unknown }).ns
+  if (Array.isArray(ns) && ns.length > 0 && ns[0]) {
+    return String(ns[0])
+  }
+  return null
+}
+
 function unwrapStreamModePayload(payload: unknown): unknown {
   // v2 格式: {type: "messages"|"updates", ns: [...], data: [...]}
   if (
@@ -1116,6 +1153,26 @@ export function parseLangChainPayloadToChunks(options: {
   const { state } = options
   const result: UIMessageChunk[] = []
   const payload = rawPayload
+
+  // 并行子任务路由：若本事件来自某子图（非空 ns），把它的逐字正文导向对应 task 行，
+  // 而不是父 agent 主气泡。ns→toolCallId 按出现顺序绑定（见 state 注释）。
+  const subagentNs = extractSubagentNs(options.payload)
+  if (subagentNs) {
+    let toolCallId = state.subagentNsToToolCallId.get(subagentNs)
+    if (!toolCallId && state.pendingTaskToolCallIds.length > 0) {
+      toolCallId = state.pendingTaskToolCallIds.shift()!
+      state.subagentNsToToolCallId.set(subagentNs, toolCallId)
+    }
+    if (toolCallId) {
+      const subText = extractAssistantText(payload)
+      if (subText) {
+        // 子任务正文累积进该 task 行的 tool-output（详情面板渲染），不开父 text 段。
+        return [buildToolsNodeStreamingChunk(subText, state, toolCallId)]
+      }
+    }
+    // 无法解析归属、或本事件无正文（如子图内部 tool 调用）：丢弃，不污染父气泡。
+    return []
+  }
 
   const toolOutputChunks = buildToolOutputChunks(payload, state)
 

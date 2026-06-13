@@ -449,6 +449,27 @@ def _flush_heartbeat_sync(conversation_id: int) -> None:
                 pass
 
 
+def _event_subagent_ns(chunk: Any) -> str | None:
+    """从原始 chunk 取「子任务命名空间」：subgraphs=True 后 task 工具派生的子图事件
+    带非空 ns=('tools:<uuid>', ...)。顶层事件 ns=()/None ⇒ 返回 None（非子任务）。
+
+    返回首段字符串（如 'tools:e0abbded-...'）作为该子任务的稳定标识；前端据此把
+    逐字 token 分流到对应子任务 lane。结构：{"type":..., "ns": (...), "data":...}。
+    """
+    try:
+        if not isinstance(chunk, dict):
+            return None
+        ns = chunk.get("ns")
+        if not ns:
+            return None
+        if isinstance(ns, (list, tuple)) and len(ns) > 0:
+            first = ns[0]
+            return str(first) if first else None
+        return None
+    except Exception:
+        return None
+
+
 def _chunk_is_tool_message(serializable: Any) -> bool:
     """判断一个 v2 messages 事件是否来自 ToolMessage（工具返回，非模型自然语言）。
 
@@ -1617,11 +1638,15 @@ class StreamRegistry:
             # 已显式传入的 recursion_limit。
             stream_config = dict(config) if config else {}
             stream_config.setdefault("recursion_limit", _agent_recursion_limit())
+            # subgraphs=True：让子代理（task 工具派生的子图）的 token 事件也流出，
+            # 带非空 ns=('tools:<uuid>',) 标识来自哪个子任务。用于「子任务逐字实时进度」。
+            # 顶层事件 ns=()，行为不变；子任务事件按 ns 分流（见下方 _event_subagent_ns）。
             _agent_it = agent.astream(
                 stream_input,
                 stream_mode=["messages", "updates", "custom"],
                 config=stream_config,
                 version="v2",
+                subgraphs=True,
             ).__aiter__()
 
             event_count = 0
@@ -1793,6 +1818,10 @@ class StreamRegistry:
                     break
                 event_count += 1
                 task.touch_progress()
+                # 子任务事件识别：subgraphs=True 后，task 工具派生的子图事件带非空
+                # ns=('tools:<uuid>',)。非空 ns ⇒ 这是某个并行子任务的产出，须按 ns 分流：
+                # 不拼进父 agent 主气泡、不 relay 群时间线，仅广播给前端按子任务 lane 渲染。
+                _subagent_ns = _event_subagent_ns(chunk)
                 serializable = ChatService.convert_to_serializable(chunk)
                 updates_content = _extract_updates_content(serializable)
                 if updates_content:
@@ -1807,8 +1836,12 @@ class StreamRegistry:
                         isinstance(custom_data, dict)
                         and custom_data.get("type") == "tool_output"
                     ):
-                        evt = task.buffer.add(custom_data)
-                        self.broadcast(conversation_id, evt)
+                        # 子任务（非空 ns）内部 shell 的 stdout 不广播到父流——否则子任务
+                        # curl 抓的网页/脚本输出会以「执行」行平铺到父 agent 主时间线。
+                        # 子任务过程只在其 task 行内呈现；这里仅刷新计时、不进父 buffer。
+                        if _subagent_ns is None:
+                            evt = task.buffer.add(custom_data)
+                            self.broadcast(conversation_id, evt)
                         # 工具产出 = 真实进展，刷新内容计时（工具执行期豁免判死）
                         task.touch_content()
                     elif (
@@ -1827,7 +1860,9 @@ class StreamRegistry:
                 # 给模型看的工具结果，应走 tool part 折叠卡片（buffer 仍保留完整
                 # serializable 供 parts 解析），绝不能糊进 msg.content 当正文平铺展示。
                 _is_tool_chunk = _chunk_is_tool_message(serializable)
-                if text_part and not _is_tool_chunk:
+                if text_part and not _is_tool_chunk and not _subagent_ns:
+                    # 仅顶层（ns 空）的模型正文进父气泡 + 群 relay；子任务正文按 ns 分流，
+                    # 走前端子任务 lane（下方 buffer.add 仍广播，带 ns），不糊进父主回复。
                     assistant_text_parts.append(text_part)
                     # 模型正文 token = 真实进展，刷新内容计时（防止被无进展看门狗误判死）
                     task.touch_content()
@@ -1842,6 +1877,9 @@ class StreamRegistry:
                         relay_group_stream_delta(conversation_id, text_part)
                     except Exception:
                         pass
+                elif text_part and not _is_tool_chunk and _subagent_ns:
+                    # 子任务正文 token：算真实进展（刷新判死计时），但不进父气泡/不 relay。
+                    task.touch_content()
                 if text_part:
                     if not _first_token_recorded:
                         _stream_metrics.record_first_token(conversation_id)
