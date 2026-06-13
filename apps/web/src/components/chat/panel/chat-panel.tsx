@@ -38,6 +38,7 @@ import type { ActiveHitl, HitlPatchOptions } from "@/lib/chat/hitl"
 import { shouldIncludeFileChangesForMessage } from "@/lib/chat/file-change-utils"
 import { ChatMessageItem } from "../messages/chat-message-item"
 import { CuratorEmptyWelcome } from "../curator/curator-empty-welcome"
+import { useSyncConversationSubtasks } from "@/hooks/use-conversation-subtasks"
 
 const EMPTY_MESSAGES: UIMessage[] = []
 
@@ -217,6 +218,10 @@ export function ChatPanel({
   const contactDisplayName = contact
     ? getContactDisplayName(contact)
     : "AI 助手"
+
+  // 把当前会话的并行子任务（task 工具调用）聚合进 subtask-panel-store，
+  // 供右侧子任务面板展示。用 composer（含实时流式 preliminary 输出）作为数据源。
+  useSyncConversationSubtasks(composerMessages ?? messages)
 
   const displayMessages = isDraftMode ? EMPTY_MESSAGES : messages
   const hasCurrentTurnEnded =

@@ -5,6 +5,7 @@ import { getRequestBaseUrl } from "@/lib/request"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
+import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
 
 const MIN_WIDTH_RATIO = 0.3
 const MAX_WIDTH_RATIO = 0.8
@@ -55,6 +56,7 @@ function closeOtherRightPanels() {
   useMonitorStore.getState().closeMonitor()
   useArtifactStore.getState().closeArtifact()
   useChatStore.getState().closeConversationList()
+  useSubtaskPanelStore.getState().close()
 }
 
 function normalizeUrl(input: string): string {
