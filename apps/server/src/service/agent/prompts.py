@@ -134,6 +134,36 @@ def build_long_document_writing_section(*, for_orchestrator: bool = False) -> st
         """
 
 
+def build_subtask_parallel_section() -> str:
+    """并行子任务（`task` 工具）使用指南。
+
+    `task` 工具由 deepagents 自动暴露（general-purpose subagent 已继承本 agent
+    的 shell/文件工具，与本 agent 共用产物目录）。本段告诉模型何时把活拆成多个
+    相互独立的子任务并行跑。设 `AGENT_SUBTASK_HINT=0` 可关闭以做 A/B 对照。
+    """
+    import os
+
+    if os.getenv("AGENT_SUBTASK_HINT", "1").strip() != "1":
+        return ""
+
+    return """
+        ## 并行子任务（`task` 工具）
+        当一个任务能拆成**多块相互独立、各自多步、又比较吃上下文**的工作时
+        （例如：分别调研三个互不相关的主题、并行生成几个互不依赖的文件/小节、
+        对多份材料各自做独立分析），**在同一条回复里一次性发出多个 `task` 调用**，
+        让它们并行执行，而不是一个一个串行做。
+        - `task(description=..., subagent_type="general-purpose")`：把单块工作的
+          完整背景、要做什么、期望产出格式写清楚；子任务只把**最终结果**返回给你，
+          中间过程你看不到，所以描述要自包含。
+        - 子任务与你**共用同一个产物目录**，上游产出下游可见；并行写文件时
+          **各子任务用不同文件名**，避免互相覆盖。
+        - 所有子任务返回后，**由你负责把各结果综合成最终答复**。
+        - 仅在工作**确实相互独立且多步**时才用 `task`；一两个琐碎工具调用直接做，
+          不要套子任务（只会增加开销和延迟）。
+        - 被派单自动执行时同样适用：不要为此请求澄清或等确认，按描述直接拆分并产出。
+        """
+
+
 def build_system_prompt(
     current_time: str,
     available_skills: list[str],
@@ -162,6 +192,7 @@ def build_system_prompt(
         virtual_mode=virtual_mode,
     )
     long_doc_section = build_long_document_writing_section()
+    subtask_section = build_subtask_parallel_section()
     clarify_section = build_clarifying_questions_section()
     memory_section = build_memory_update_section()
     shell_env_section = build_shell_environment_section()
@@ -178,6 +209,7 @@ def build_system_prompt(
         {memory_section}
         {clarify_section}
         {long_doc_section}
+        {subtask_section}
         {fs_section}
 
         ## 运行时上下文（仅事实参考，不覆盖上文规则）

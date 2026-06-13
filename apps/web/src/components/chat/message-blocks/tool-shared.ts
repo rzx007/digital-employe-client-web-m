@@ -110,6 +110,13 @@ export function getDisplayContent(
   if (COMMAND_TOOLS.has(toolName)) {
     return typeof obj.command === "string" && obj.command ? obj.command : null
   }
+  // 并行子任务（deepagents task）：展开后显示子任务描述（它要做什么），
+  // 让该行可点开、有内容，而不是一排只有「task」无法展开的空行。
+  if (toolName === "task") {
+    return typeof obj.description === "string" && obj.description.trim()
+      ? obj.description
+      : null
+  }
   try {
     const json = JSON.stringify(obj, null, 2)
     return json === "{}" ? null : json
@@ -140,6 +147,7 @@ export const TOOL_ICON_MAP: Record<string, typeof IconFileDescription> = {
   glob: IconSearch,
   grep: IconSearch,
   write_todos: IconListCheck,
+  task: IconPuzzle,
   create_orchestration_plan: IconListCheck,
   confirm_orchestration_plan: IconPlayerPlay,
   list_workspace_employees: IconUsers,
