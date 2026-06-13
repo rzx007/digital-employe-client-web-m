@@ -18,25 +18,17 @@ import { Label } from "@workspace/ui/components/label"
 import { Separator } from "@workspace/ui/components/separator"
 import { cn } from "@workspace/ui/lib/utils"
 import { useAuthStore } from "@/stores/auth-store"
-import {
-  uploadAvatar,
-  getAvatarUrl,
-  AVATAR_ACCEPT,
-  AVATAR_MAX_BYTES,
-} from "@/api/avatar"
+import { uploadAvatar, AVATAR_ACCEPT, AVATAR_MAX_BYTES } from "@/api/avatar"
+import { UserAvatar } from "@/components/user-avatar"
 import { ChangePasswordDialog } from "./change-password-dialog"
-import { USER_AVATARS } from "./constants"
 
 export function AccountSettings() {
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
   const restoreSession = useAuthStore((s) => s.restoreSession)
+  const bumpAvatarVersion = useAuthStore((s) => s.bumpAvatarVersion)
   const [pwdDialogOpen, setPwdDialogOpen] = React.useState(false)
   const [uploading, setUploading] = React.useState(false)
-  // cache-bust：上传成功后递增，强制 <img> 重新拉取后端头像
-  const [avatarVersion, setAvatarVersion] = React.useState(0)
-  // 后端头像加载失败（含未设置头像 404）时回退预设图
-  const [avatarFailed, setAvatarFailed] = React.useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
@@ -45,14 +37,7 @@ export function AccountSettings() {
     })()
   }, [restoreSession])
 
-  const avatarIndex = user?.id ? parseInt(user.id.toString()) % 10 : 0
   const department = user?.dpts?.[0]?.name
-
-  const fallbackAvatar = USER_AVATARS[avatarIndex]
-  const avatarSrc =
-    user?.id != null && !avatarFailed
-      ? getAvatarUrl(user.id, avatarVersion)
-      : fallbackAvatar
 
   const handlePickAvatar = () => {
     if (uploading) return
@@ -78,8 +63,7 @@ export function AccountSettings() {
     setUploading(true)
     try {
       await uploadAvatar(user.id, file)
-      setAvatarFailed(false)
-      setAvatarVersion((v) => v + 1)
+      bumpAvatarVersion()
       toast.success("头像已更新")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "头像上传失败")
@@ -105,13 +89,10 @@ export function AccountSettings() {
                 title="点击更换头像"
                 className="group relative size-16 shrink-0 overflow-hidden rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <img
-                  src={avatarSrc}
+                <UserAvatar
+                  userId={user?.id}
                   alt={user?.name || "用户"}
                   className="size-full object-cover"
-                  onError={() => {
-                    if (!avatarFailed) setAvatarFailed(true)
-                  }}
                 />
                 <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
                   {uploading ? (

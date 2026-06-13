@@ -14,6 +14,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useCurrentMonthPerformance } from "@/hooks/use-performance-queries"
 import { useAuthStore } from "@/stores/auth-store"
 import { getUserAvatarSrc } from "@/lib/avatar"
+import { getAvatarUrl } from "@/api/avatar"
 
 function formatMoney(value: number): string {
   return `¥ ${new Intl.NumberFormat("zh-CN", {
@@ -94,7 +95,12 @@ function MetricCard({
 function CompactPerformanceCard() {
   const { data, isLoading, isError } = useCurrentMonthPerformance()
   const user = useAuthStore((s) => s.user)
-  const avatarSrc = getUserAvatarSrc(user?.id)
+  const avatarVersion = useAuthStore((s) => s.avatarVersion)
+  // 优先后端上传头像；加载失败时 Radix AvatarFallback 显示名字首字
+  const avatarSrc =
+    user?.id != null
+      ? getAvatarUrl(user.id, avatarVersion)
+      : getUserAvatarSrc(user?.id)
 
   if (isError) return null
 

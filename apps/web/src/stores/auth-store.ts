@@ -24,6 +24,8 @@ interface AuthState {
   loading: boolean
   error: string | null
   pendingPasswordChange: PendingPasswordChange | null
+  /** 头像缓存失效计数：上传头像后 +1，所有头像渲染点据此重取（cache-bust） */
+  avatarVersion: number
 
   login: (
     username: string,
@@ -40,6 +42,8 @@ interface AuthState {
   restoreSession: () => Promise<void>
   clearError: () => void
   clearPendingPasswordChange: () => void
+  /** 头像上传成功后调用，触发全局头像重取 */
+  bumpAvatarVersion: () => void
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -50,6 +54,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   loading: false,
   error: null,
   pendingPasswordChange: null,
+  avatarVersion: 0,
 
   login: async (username, password, rememberMe) => {
     set({ loading: true, error: null })
@@ -209,4 +214,6 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   clearError: () => set({ error: null }),
   clearPendingPasswordChange: () => set({ pendingPasswordChange: null }),
+  bumpAvatarVersion: () =>
+    set((s) => ({ avatarVersion: s.avatarVersion + 1 })),
 }))
