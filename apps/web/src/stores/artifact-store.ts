@@ -8,6 +8,7 @@ import type {
 
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
+import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
 
 export type {
   ClearPendingResourceRef,
@@ -18,6 +19,7 @@ export type {
 function closeOtherSidePanels() {
   useMonitorStore.getState().closeMonitor()
   useChatStore.getState().closeConversationList()
+  useSubtaskPanelStore.getState().close()
 }
 
 interface ArtifactStore {

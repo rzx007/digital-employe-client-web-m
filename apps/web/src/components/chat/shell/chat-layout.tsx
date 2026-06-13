@@ -24,6 +24,8 @@ import { getElectronApi } from "@/lib/electron/host"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useChatStore } from "@/stores/chat-store"
+import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
+import { SubtaskPanel } from "../panel/subtask-panel"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import { useOnboardingStore } from "@/stores/onboarding-store"
 import { WelcomeDialog, UserTour } from "@/components/onboarding"
@@ -41,7 +43,12 @@ import { BrowserPanel } from "../right-panels/browser-panel"
 import { BrowserWidthSlider } from "../right-panels/browser-width-slider"
 import { useBrowserStore } from "@/stores/browser-store"
 
-type RightPanel = "artifact" | "monitor" | "conversations" | "browser"
+type RightPanel =
+  | "artifact"
+  | "monitor"
+  | "conversations"
+  | "browser"
+  | "subtask"
 
 const RIGHT_PANEL_SHELL = "shrink-0 overflow-hidden border-l bg-muted/20 p-3"
 
@@ -183,6 +190,7 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
 
   const { closeArtifact, isPanelOpen } = useArtifactStore()
   const { isOpen: isMonitorOpen, closeMonitor } = useMonitorStore()
+  const isSubtaskPanelOpen = useSubtaskPanelStore((s) => s.isOpen)
   const isConversationListOpen = useChatStore((s) => s.isConversationListOpen)
   const openConversationList = useChatStore((s) => s.openConversationList)
   const closeConversationList = useChatStore((s) => s.closeConversationList)
@@ -279,11 +287,13 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
     ? "browser"
     : isPanelOpen
       ? "artifact"
-      : isMonitorOpen
-        ? "monitor"
-        : isConversationListOpen
-          ? "conversations"
-          : null
+      : isSubtaskPanelOpen
+        ? "subtask"
+        : isMonitorOpen
+          ? "monitor"
+          : isConversationListOpen
+            ? "conversations"
+            : null
 
   const hasRightPanel = rightPanel !== null
   const isBrowserRightPanel = rightPanel === "browser"
@@ -379,6 +389,12 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
               onClose={closeArtifact}
               className="h-full rounded-xl"
             />
+          </div>
+        )}
+
+        {hasRightPanel && activeTab === "chat" && rightPanel === "subtask" && (
+          <div className={cn(RIGHT_PANEL_SHELL, NARROW_RIGHT_PANEL_WIDTH)}>
+            <SubtaskPanel className="h-full rounded-xl" />
           </div>
         )}
 
