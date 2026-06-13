@@ -161,6 +161,10 @@ class Settings:
     # checkpointer_backend 控 LangGraph 检查点；stream_progress_backend 控业务瞬时进度。
     checkpointer_backend: str = "file"
     stream_progress_backend: str = "file"
+    # 单员工内部并行子任务（deepagents task 工具）同时在跑的最大子任务数。
+    # 子任务在「一个已准入的会话流」内部并发跑，绕过 registry 槽阀门，故单独限流，
+    # 护昇腾单卡 GPU 不被一次 fan-out 的多路嵌套图打满。<=1 实质串行（仍保 task 隔离）。
+    subagent_max_parallel: int = 3
 
 
 def _get_kv_value(kv_data: dict[str, str], key: str) -> str | None:
@@ -181,6 +185,17 @@ def _get_kv_bool(kv_data: dict[str, str], key: str, default: bool = False) -> bo
 def read_agent_serial_mode(default: bool = False) -> bool:
     """每次从 config_kvs 读取串行模式（设置页热更新，不走 get_settings 缓存）。"""
     return _get_kv_bool(_read_config_kv_data(), "AGENT_SERIAL_MODE", default=default)
+
+
+def _parse_subagent_max_parallel(raw: str | None, default: int = 3) -> int:
+    """解析 SUBAGENT_MAX_PARALLEL；非法/缺省→default；下限 1。"""
+    if raw is None:
+        return default
+    try:
+        n = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+    return n if n >= 1 else 1
 
 
 def normalize_prompt_cache_mode(raw: str | None) -> str | None:
@@ -567,6 +582,9 @@ def get_settings() -> Settings:
         checkpointer_backend=_get_kv_value(kv_data, "CHECKPOINTER_BACKEND") or "file",
         stream_progress_backend=_get_kv_value(kv_data, "STREAM_PROGRESS_BACKEND")
         or "file",
+        subagent_max_parallel=_parse_subagent_max_parallel(
+            _get_kv_value(kv_data, "SUBAGENT_MAX_PARALLEL")
+        ),
     )
 
 

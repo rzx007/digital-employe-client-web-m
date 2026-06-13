@@ -5,6 +5,38 @@
 > 把一个活拆成多个**相互独立**的子任务并行跑，主流程不必逐个串行等待。
 > **不**涉及编排层（OrchestrationPlan/DAG）、**不**涉及跨进程后台长任务（远程 Agent Protocol）。
 
+## 0. 实现状态（2026-06-13 已落地并端到端验证）
+
+**已完成**：
+- 单元 B'：`checkpointer.py` 安全 profile 改 `general_purpose_subagent enabled=True`，
+  重开 task；`excluded_tools={"execute"}` 不变，子代理同样继承（实测 + 回归测试坐实
+  task 重开且 execute 仍排除 → 子代理只能走受管 shell_execute）。
+- 单元 B：`subagent_concurrency.py` 新增 `SubagentConcurrencyMiddleware`（per 父会话
+  `asyncio.Semaphore`），经 `HarnessProfile.extra_middleware` 工厂注入；上限
+  `settings.subagent_max_parallel`（默认 3，KV `SUBAGENT_MAX_PARALLEL` 可覆盖）。
+- 单元 C：`prompts.py` task 并行指南（早前已做，重开后才生效）。
+- 测试：`tests/test_subagent_parallel.py` 10 项全过（设置默认/解析、profile 安全边界、
+  信号量限流、跨会话隔离）。
+
+**端到端实测**（员工 58，三芯片调研活）：重开前两轮 task=0（串行）；**重开后模型
+真的 fan-out**，3 个子任务并行跑、各自用 shell 取数并把分析写入**共享** conv-644
+artifacts（ascend910b.md/h100.md 等），子任务结果以 ToolMessage 回父 agent。
+信号量日志确认 `concurrency limit = 3` 生效。
+
+**单元 A（显式 SubAgent spec）——未做，有意省略**：profile 自动注入的 general-purpose
+已继承正确工具集 + execute 排除 + 信号量中间件，安全目标已达成；再写显式 spec 会重复
+重建整套 middleware 栈、徒增风险。YAGNI。
+
+**已知遗留（本 spec 之外，单独跟进）**：
+1. **父 agent 在子任务全部返回后未立刻产出最终综合、流尾部长时间 heartbeat**。
+   疑似 finalize/等待时序问题，与 task 重开本身无关（重开前串行路径也有类似尾部等待）。
+2. **前端折叠呈现未做**：子任务过程目前以原始嵌套子图事件混在流里；需按 §3 给前端
+   `langchain-stream-parser.ts` 加折叠（"正在并行处理 N 个子任务"）。
+3. 偶见子代理把 `mkdir -p $ARTIFACTS_DIR` 字面量未展开建出垃圾目录（shell 卫生，
+   既有问题非本次引入）。
+4. `test_agent_runtime_policy.py` 两项（slot_gating/max_inflight）在本机因 live
+   config_kvs 状态而失败——**既有失败、与本次改动无关**（已用 git stash 在干净基线复现）。
+
 ## 1. 背景与结论
 
 ### 1.1 需求来源

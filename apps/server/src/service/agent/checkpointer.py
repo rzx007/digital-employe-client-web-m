@@ -16,15 +16,30 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# 禁用 deepagents 内置通用子代理（task tool），避免代理在未授权情况下
-# 通过 task tool 调用子代理来执行 shell 命令等操作
+# 开启 deepagents 内置通用子代理（task tool），支持「单员工内部并行子任务」：
+# 员工可在一轮里发出多个 task() 把相互独立的活并行跑（见
+# docs/superpowers/specs/2026-06-13-employee-parallel-subtasks-design.md）。
+#
+# 安全边界保持不变：`excluded_tools={"execute"}` 同时作用于主 agent 与子代理
+# （deepagents graph.py:677-678 给 general-purpose 子代理也挂 _ToolExclusionMiddleware），
+# 因此子代理也拿不到内置 execute、只能走受管 shell_execute（带 intent/审计）。
+# 这化解了当初禁用 task 的顾虑：不是「禁止子代理执行」，而是「子代理执行也必须
+# 经过受管 shell_execute 同一道门」。
 _settings = get_settings()
+# extra_middleware 用工厂形式：deepagents 给 general-purpose 子代理栈应用它
+# （graph.py:674 materialize_extra_middleware），从而给子任务模型调用挂并发信号量。
+# 工厂在每次构图时调用，能读到最新的 subagent_max_parallel 设置。
+from src.service.agent.subagent_concurrency import (  # noqa: E402
+    build_subagent_concurrency_middleware,
+)
+
 register_harness_profile(
     f"openai:{_settings.deepagent_model or 'qwen2.5-72b-instruct'}",
     HarnessProfile(
-        general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=False),
+        general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=True),
         excluded_middleware={"SummarizationMiddleware"},
         excluded_tools=frozenset({"execute"}),
+        extra_middleware=build_subagent_concurrency_middleware,
         tool_description_overrides={
             "shell_execute": (
                 "在 shell 中执行命令（替代 execute）。command 为真实物理路径。"
