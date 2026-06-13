@@ -129,6 +129,7 @@ def build_long_document_writing_section(*, for_orchestrator: bool = False) -> st
         - 按其「第一步」先与用户确认协作方式并用 `submit_clarifying_questions` 澄清需求
         - 澄清后 `submit_document_plan` 提交标题、大纲、`planned_artifacts`（**JSON 字符串**，路径统一在产物目录的 `<doc-slug>/` 子目录）；用户确认方案前禁止 write_file 到产物目录
         - 确认后按章写入产物目录 `<doc-slug>/chapter-N-标题.md`，最后合并为「完整版.md」
+        - **交付物须是真实文件**：用户要 Word/PPTX/Excel/PDF 时，须用对应技能或脚本 `shell_execute` 执行生成真实二进制文件，**不得**用 write_file 写个 md 充当；为产出交付物写的脚本（合并/转换/渲染）**写完必须执行**，以执行产物为交付（详见 AGENTS.md「交付物必须是真实文件」）
         完整步骤、目录约定与质量标准以 AGENTS.md 为准，本处不复述。{orchestrator_pointer}
         """
 
