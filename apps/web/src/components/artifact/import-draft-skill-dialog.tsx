@@ -17,25 +17,9 @@ import { Textarea } from "@workspace/ui/components/textarea"
 import { cn } from "@workspace/ui/lib/utils"
 import { importLocalSkill, checkLocalSkillNameExists } from "@/api/skill"
 import { downloadResourceBlob, fetchResourceContent } from "@/api/chat"
+import { parseSimpleFrontmatter } from "@/lib/chat/skill-frontmatter"
 
 type LoadState = "loading" | "loaded" | "error"
-
-function parseSimpleFrontmatter(content: string): {
-  description: string
-  body: string
-} {
-  const match = content.match(/^\s*---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?/)
-  if (!match) {
-    return { description: "", body: content }
-  }
-  const frontmatterText = match[1]
-  const body = content.slice(match[0].length)
-  const descMatch = frontmatterText.match(/description\s*[:：]\s*(.+)/)
-  const description = descMatch
-    ? descMatch[1].trim().replace(/^["']|["']$/g, "")
-    : ""
-  return { description, body }
-}
 
 export function ImportDraftSkillDialog({
   open,

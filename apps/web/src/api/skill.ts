@@ -167,6 +167,38 @@ export async function deleteWorkspaceLocalSkill(
   )
 }
 
+export interface SaveDraftSkillResult {
+  skillName: string
+  localId: number
+  employeeId: number
+  overwritten: boolean
+  attachedToEmployee: boolean
+  attachError: string | null
+}
+
+export async function saveDraftSkill(params: {
+  conversationId: number
+  skillName: string
+  employeeId: number
+  overwrite?: boolean
+  displayNameZh?: string
+}): Promise<SaveDraftSkillResult> {
+  const res = await request<ApiResponse<SaveDraftSkillResult>>(
+    "/skills/local/save-draft",
+    {
+      method: "POST",
+      body: {
+        conversationId: params.conversationId,
+        skillName: params.skillName,
+        employeeId: params.employeeId,
+        overwrite: params.overwrite ?? false,
+        displayNameZh: params.displayNameZh,
+      },
+    }
+  )
+  return res.data
+}
+
 export async function installRemoteSkillToLocal(
   skillId: number,
   opts?: { overwrite?: boolean }
