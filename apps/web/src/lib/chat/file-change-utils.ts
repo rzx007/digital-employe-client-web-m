@@ -199,7 +199,8 @@ export function getFileChangesFromUIMessage(
     changes.set(change.id, change)
   }
 
-  return Array.from(changes.values())
+  // 草稿技能改由 DraftSkillSaveCard 卡片承载，文件变更面板里去重移除，避免重复。
+  return Array.from(changes.values()).filter((c) => c.kind !== "skill-folder")
 }
 
 /** 当前轮（最后一条 user 之后）的首条 assistant；尚无回复时为 null */

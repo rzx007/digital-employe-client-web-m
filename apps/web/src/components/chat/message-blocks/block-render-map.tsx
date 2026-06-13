@@ -21,6 +21,7 @@ import { EmployeesDismissedBatchCard } from "./employees-dismissed-batch-card"
 import { UserActionSummaryCard } from "./user-action-summary-card"
 import { DestructiveDeleteConfirmCard } from "./destructive-delete-confirm-card"
 import { FileChangeCards } from "./file-change-cards"
+import { DraftSkillSaveCard } from "./draft-skill-save-card"
 import { FinalResponseContent } from "./artifact-path-chip"
 import { SkillExplorationBlock } from "./skill-exploration-block"
 import { SummarizationCheckpointBlock } from "./summarization-checkpoint-block"
@@ -368,6 +369,16 @@ export function BlockRenderer({
   }
   if (block.kind === "file-changes") {
     return <FileChangeCards files={block.files} key={block.key} />
+  }
+  if (block.kind === "draft-skill-save") {
+    return (
+      <DraftSkillSaveCard
+        key={block.key}
+        skillName={block.skillName}
+        skillPath={block.skillPath}
+        className="w-full"
+      />
+    )
   }
   if (block.kind === "error") {
     return (
