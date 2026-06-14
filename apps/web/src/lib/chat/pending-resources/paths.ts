@@ -58,8 +58,17 @@ export function getResourceBucket(path: string): ResourceBucket | null {
 /** 取路径中桶段之后的相对部分（含文件名），用于构建工作台文件树。无桶段返回 basename。 */
 export function toBucketRelativeSegments(path: string): string[] {
   const p = path.replace(/\\/g, "/")
-  const m = p.match(/(?:^|\/)(?:artifacts|uploads|skills-draft)\/(.+)$/)
-  if (m && m[1]) return m[1].split("/").filter(Boolean)
+  // 必须锚定路径**所属的桶**（getResourceBucket 已按 skills-draft > uploads >
+  // artifacts 的优先级判定），不能用「artifacts|uploads|skills-draft」首个出现者：
+  // 草稿技能真实路径形如 .../artifacts/conv-N/skills-draft/<skill>/...，同时含
+  // artifacts 与 skills-draft 段，旧正则会锚到靠前的 artifacts，rel[0] 错成 conv-N
+  // （save-draft 拿到错误 skillName → 404）。
+  const bucket = getResourceBucket(p)
+  if (bucket) {
+    const seg = getBucketRootSegment(bucket)
+    const m = p.match(new RegExp(`(?:^|/)${seg}/(.+)$`))
+    if (m && m[1]) return m[1].split("/").filter(Boolean)
+  }
   const segs = p.split("/").filter(Boolean)
   const last = segs.at(-1)
   return last ? [last] : []
