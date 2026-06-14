@@ -202,7 +202,10 @@ def _resolve_draft_skill_dir(conversation_id: int, skill_name: str) -> Path:
             detail=f"非法草稿技能名: {skill_name}",
         )
     settings = get_settings()
-    root_path = settings.skill_path
+    # 草稿由员工 agent 写在 artifacts_path（conversations）根下（见 chat_service
+    # get_agent root_path=settings.artifacts_path）；这里必须用同一根解析，否则去
+    # skill_path（employees-skills）找会恒 404「草稿技能不存在」。
+    root_path = settings.artifacts_path
     workspace_dir, _public, _conv, _room = resolve_workspace_context(
         root_path, conversation_id
     )
