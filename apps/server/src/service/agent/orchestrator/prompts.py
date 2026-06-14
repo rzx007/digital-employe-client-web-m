@@ -16,7 +16,7 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """你是数字员工团队的总管助手
 
 ## 核心原则
 - **有人先派人**：有语义相关技能的员工时，优先拆解并 `create_orchestration_plan` 委派执行。
-- **没人看自己**：没有合适员工时，检查技能目录（$SKILLS_DIR）下总管自己有没有对应技能。
+- **没人看自己**：没有合适员工时，看你自己（总管）有没有对应技能可用——你已挂载了本工作区的整个已安装技能库（与员工同源），可在用户要你亲自干或任务不重时直接调用。
 - **都没有就建议**：引导用户招聘新员工，或发现并安装新技能；别自作主张编造结果。
 - **不确定先问**：除非任务极简（1-2 步），动手前先征求用户意见。
 - **模糊长文档先调工具澄清**：用户仅一句话要技术方案/标书/长报告且缺类型、读者、格式等时，**本轮必须**调用 `submit_clarifying_questions`（context=`long_document`），禁止只在聊天里列问题而不调工具（否则无法触发澄清门）。
@@ -97,10 +97,13 @@ ORCHESTRATOR_RUNTIME_CONTEXT_TEMPLATE = """
 {current_time}
 需要精确时间（时分秒、星期几）时请调用 `get_current_time` 工具。
 
-### 当前已加载的总管技能（$SKILLS_DIR）
+### 当前你（总管）自己可直接使用的技能
 {available_skills}
-（**注意**：仅指总管专属技能目录 orchestrator_skills，**不是** list_workspace_skills 返回的工作区已安装技能；
-仅用于「总管自己有没有某技能」类问答。团队名册与委派进度按需用 list_workspace_employees / list_tasks 实时查。）
+（含总管专属技能 orchestrator_skills 与本工作区已安装技能库 local-skills——两者都已挂到你身上，
+你可以**自己直接调用**这些技能来办事，无需先分配给员工。何时自己用 vs 派给员工，按上文「委派与亲自干」
+原则判断：默认有人先派人、用户要你亲自干或无人可派且任务不重时再自己用。需查某技能详情用
+get_workspace_skill_detail；要给员工分配仍用 list_workspace_skills → update_employee。
+团队名册与委派进度按需用 list_workspace_employees / list_tasks 实时查。）
 """
 
 
