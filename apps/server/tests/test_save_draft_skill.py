@@ -112,3 +112,27 @@ def test_resolve_draft_dir_missing_dir_raises_404(tmp_path, monkeypatch):
     with pytest.raises(HTTPException) as exc:
         mod._resolve_draft_skill_dir(conversation_id=7, skill_name="nope")
     assert exc.value.status_code == 404
+
+
+def test_resolve_draft_dir_uses_artifacts_path_not_skill_path(tmp_path, monkeypatch):
+    """草稿由员工 agent 写在 artifacts_path（conversations）根下；save-draft 必须用同一根
+    解析，否则去 skill_path（employees-skills）找会恒 404「草稿技能不存在」。"""
+    import src.api.skill_api as mod
+
+    captured = {}
+
+    def fake_ctx(root_path, conversation_id):
+        captured["root_path"] = root_path
+        ws = tmp_path / "ws"
+        draft = ws / f"conv-{conversation_id}" / "skills-draft" / "demo-skill"
+        draft.mkdir(parents=True, exist_ok=True)
+        (draft / "SKILL.md").write_text("---\nname: demo-skill\n---\n", encoding="utf-8")
+        return (ws, None, None, None)
+
+    monkeypatch.setattr(mod, "resolve_workspace_context", fake_ctx)
+
+    settings = mod.get_settings()
+    mod._resolve_draft_skill_dir(conversation_id=7, skill_name="demo-skill")
+
+    assert captured["root_path"] == settings.artifacts_path
+    assert captured["root_path"] != settings.skill_path
