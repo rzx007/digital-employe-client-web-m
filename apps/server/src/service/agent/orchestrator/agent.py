@@ -163,6 +163,23 @@ def get_orchestrator_agent(
     skills_root = resolve_orchestrator_skills_root()
     available_skills = list_available_skills(skills_root)
 
+    # 总管自身的技能源：原固定目录（orchestrator_skills：使用手册/找技能等）之外，
+    # 叠加当前工作区的本地技能库（local-skills/<workspace_id>），与员工对称——总管
+    # 能给员工装/分配的技能，自己也能直接用，不再「只能分给别人、唯独自己用不了」。
+    # 全量自动加载：装了就能用，配合 find-skills 按需发现，无需逐个手动分配。
+    orchestrator_skill_sources = [str(skills_root)]
+    try:
+        from src.service.local_skill_service import LocalSkillService
+
+        workspace_skills_root = LocalSkillService._resolve_local_root(workspace_id)
+        if workspace_skills_root.is_dir():
+            orchestrator_skill_sources.append(str(workspace_skills_root))
+            for name in list_available_skills(workspace_skills_root):
+                if name not in available_skills:
+                    available_skills.append(name)
+    except Exception:  # noqa: BLE001 - 工作区技能解析失败不致命，退回仅固定技能
+        pass
+
     # 总管当作特殊"员工"（owner=orchestrator）：产物升到工作空间 + 公共区，与员工一致。
     from src.service.agent.workspace_paths import resolve_workspace_dirs
 
@@ -278,7 +295,7 @@ def get_orchestrator_agent(
     agent = create_deep_agent(
         model=model,
         memory=[str(base_dir / "AGENTS.md"), str(memories_dir / "AGENTS.md")],
-        skills=[str(skills_root)],
+        skills=orchestrator_skill_sources,
         tools=[
             *orchestrator_tools,
             # DB 类工具：包会话级串行锁，杜绝并发工具线程同时用共享 leader_db 连接致
