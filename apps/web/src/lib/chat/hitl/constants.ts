@@ -3,6 +3,8 @@ export const DESTRUCTIVE_HITL_TOOL_NAMES = new Set([
   "delete_employees_batch",
   "delete_task",
   "delete_tasks_batch",
+  "delete_workspace_skill",
+  "delete_workspace_skills_batch",
 ])
 
 /** 与 DestructiveDeleteConfirmCard reject 文案一致 */

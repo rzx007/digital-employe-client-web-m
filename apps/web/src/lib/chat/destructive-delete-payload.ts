@@ -19,6 +19,19 @@ function parseIdList(raw: unknown): number[] {
   }
 }
 
+function parseStringList(raw: unknown): string[] {
+  if (typeof raw !== "string" || !raw.trim()) return []
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((item) => (typeof item === "string" ? item.trim() : ""))
+      .filter((item): item is string => item.length > 0)
+  } catch {
+    return []
+  }
+}
+
 export function buildDestructiveDeletePreview(
   toolName: string,
   input: unknown
@@ -63,6 +76,27 @@ export function buildDestructiveDeletePreview(
       toolName,
       title: "批量删除子任务",
       detailLines: taskIds.map((id) => `任务 ID：#${id}`),
+    }
+  }
+
+  if (toolName === "delete_workspace_skill") {
+    const skillName =
+      typeof record.skill_name === "string" ? record.skill_name.trim() : ""
+    if (!skillName) return null
+    return {
+      toolName,
+      title: "删除工作区技能",
+      detailLines: [`技能：${skillName}`],
+    }
+  }
+
+  if (toolName === "delete_workspace_skills_batch") {
+    const skillNames = parseStringList(record.skill_names)
+    if (skillNames.length === 0) return null
+    return {
+      toolName,
+      title: "批量删除工作区技能",
+      detailLines: skillNames.map((name) => `技能：${name}`),
     }
   }
 

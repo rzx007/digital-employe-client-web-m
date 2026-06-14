@@ -42,12 +42,42 @@ describe("buildDestructiveDeletePreview", () => {
     ])
   })
 
+  it("builds delete_workspace_skill preview", () => {
+    const preview = buildDestructiveDeletePreview("delete_workspace_skill", {
+      skill_name: "frontend-demo",
+    })
+    expect(preview?.title).toBe("删除工作区技能")
+    expect(preview?.detailLines).toEqual(["技能：frontend-demo"])
+  })
+
+  it("parses delete_workspace_skills_batch skill_names JSON", () => {
+    const preview = buildDestructiveDeletePreview(
+      "delete_workspace_skills_batch",
+      { skill_names: '["frontend-demo", "ppt-maker"]' }
+    )
+    expect(preview?.title).toBe("批量删除工作区技能")
+    expect(preview?.detailLines).toEqual([
+      "技能：frontend-demo",
+      "技能：ppt-maker",
+    ])
+  })
+
   it("returns null for invalid input", () => {
     expect(
       buildDestructiveDeletePreview("delete_task", { task_id: "abc" })
     ).toBeNull()
     expect(
       buildDestructiveDeletePreview("delete_tasks_batch", { task_ids: "[]" })
+    ).toBeNull()
+    expect(
+      buildDestructiveDeletePreview("delete_workspace_skill", {
+        skill_name: "",
+      })
+    ).toBeNull()
+    expect(
+      buildDestructiveDeletePreview("delete_workspace_skills_batch", {
+        skill_names: "[]",
+      })
     ).toBeNull()
   })
 })
