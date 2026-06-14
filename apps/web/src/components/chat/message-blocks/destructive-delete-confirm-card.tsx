@@ -206,7 +206,7 @@ function DestructiveDeleteConfirmCardInner({
             本会话不再询问
           </button>
           <p className="text-muted-foreground mt-1 text-[10px]">
-            适用于当前总管对话内的所有删除员工/任务操作；新建或清空对话后将恢复确认。
+            适用于当前总管对话内的所有删除员工/任务/技能操作；新建或清空对话后将恢复确认。
           </p>
         </>
       )}
