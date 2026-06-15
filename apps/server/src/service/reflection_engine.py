@@ -77,19 +77,7 @@ def run_reflection(
         logger.info("reflection conv=%s employee=%s: no new entries found", conversation_id, employee_id)
         return
 
-    # 写入记忆文件（追加新条目到「---」分隔线之前）
-    new_entries = result.replace("§ ", "§")
-    if not current_memory.endswith("\n"):
-        current_memory += "\n"
-    lines = current_memory.split("\n")
-    insert_before = len(lines)
-    for i, line in enumerate(lines):
-        if line.strip().startswith("---"):
-            insert_before = i
-            break
-    lines.insert(insert_before, "")
-    lines.insert(insert_before, new_entries)
-    memory_file.write_text("\n".join(lines), encoding="utf-8")
+    _append_memory_entries(memory_file, current_memory, result)
     logger.info(
         "reflection conv=%s employee=%s: extracted new memory entries",
         conversation_id,
@@ -157,3 +145,60 @@ def detect_failure_then_success(db: Session, log) -> str | None:
     except Exception:
         logger.warning("detect_failure_then_success failed", exc_info=True)
         return None
+
+
+def maybe_reflect_on_signal(db: Session, log) -> None:
+    """信号闸门：仅在检测到信号时反思（v1：失败后成功）。无信号不调模型。"""
+    if log is None or log.employee_id is None or log.run_status != "success":
+        return
+    signal_ctx = detect_failure_then_success(db, log)
+    if signal_ctx is None:
+        return
+    _reflect_with_signal(db, log.conversation_id, log.employee_id, signal_ctx)
+
+
+def _reflect_with_signal(db: Session, conversation_id, employee_id: int, signal_ctx: str) -> None:
+    if employee_id is None:
+        return
+    if not _acquire_reflect_lock(employee_id):
+        return
+    messages = _get_conversation_messages(db, conversation_id) if conversation_id else ""
+    memories_path = _resolve_memories_path(employee_id)
+    memories_path.mkdir(parents=True, exist_ok=True)
+    memory_file = memories_path / "AGENTS.md"
+    current_memory = ""
+    if memory_file.exists():
+        from src.service.agent.memory_file import ensure_memory_file_utf8
+        from src.service.basic_file_reader import read_text_with_encoding_fallback
+
+        ensure_memory_file_utf8(memory_file)
+        current_memory = read_text_with_encoding_fallback(memory_file)
+    llm = _build_llm()
+    prompt = (
+        "你是经验提取助手。某员工的一个任务**先失败后成功**了。请对比提炼"
+        "「这次为何成功、上次的坑是什么、下次同类活怎么做」成 1-3 条**可复用教训**。\n\n"
+        f"{signal_ctx}\n\n"
+        f"已有记忆：\n{current_memory}\n\n"
+        f"本次（成功）对话：\n{messages}\n\n"
+        '输出：每行一条以「§」开头；不重复已有；无新发现输出「无」。'
+    )
+    result = llm.invoke(prompt).content.strip()
+    if not result or "无" in result[:10]:
+        return
+    _append_memory_entries(memory_file, current_memory, result)
+
+
+def _append_memory_entries(memory_file: Path, current_memory: str, result: str) -> None:
+    """把新条目插到「---」分隔线前（沿用 run_reflection 写法）。"""
+    new_entries = result.replace("§ ", "§")
+    if not current_memory.endswith("\n"):
+        current_memory += "\n"
+    lines = current_memory.split("\n")
+    insert_before = len(lines)
+    for i, line in enumerate(lines):
+        if line.strip().startswith("---"):
+            insert_before = i
+            break
+    lines.insert(insert_before, "")
+    lines.insert(insert_before, new_entries)
+    memory_file.write_text("\n".join(lines), encoding="utf-8")
