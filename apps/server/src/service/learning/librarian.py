@@ -104,3 +104,24 @@ def consolidate_memory(employee_id: int) -> None:
         mem_file.write_text(cleaned + ("\n" if not cleaned.endswith("\n") else ""), encoding="utf-8")
     except Exception:
         logger.warning("consolidate_memory failed eid=%s", employee_id, exc_info=True)
+
+
+def _acquire_librarian_lock(employee_id: int) -> bool:
+    now = time.time()
+    if now - _librarian_locks.get(employee_id, 0) < _LIBRARIAN_COOLDOWN:
+        return False
+    _librarian_locks[employee_id] = now
+    return True
+
+
+def run_librarian(employee_id: int) -> None:
+    """对单个员工跑复盘：生成画像 + 去重记忆。per-员工 5min 限流。容错。"""
+    if employee_id is None:
+        return
+    if not _acquire_librarian_lock(employee_id):
+        return
+    try:
+        generate_profile(employee_id)
+        consolidate_memory(employee_id)
+    except Exception:
+        logger.warning("run_librarian failed eid=%s", employee_id, exc_info=True)

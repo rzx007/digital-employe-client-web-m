@@ -85,3 +85,17 @@ def test_consolidate_memory_no_file_noop(monkeypatch, tmp_path):
     monkeypatch.setattr(librarian, "_build_llm",
                         lambda: (_ for _ in ()).throw(AssertionError("无记忆不该调 LLM")))
     librarian.consolidate_memory(77)
+
+
+# ── 2C-3: run_librarian 编排 + 限流 ─────────────────────────────────────────
+
+def test_run_librarian_calls_both_and_ratelimits(monkeypatch, tmp_path):
+    from src.service.learning import librarian
+    calls = {"profile": 0, "mem": 0}
+    monkeypatch.setattr(librarian, "generate_profile", lambda eid: calls.__setitem__("profile", calls["profile"]+1))
+    monkeypatch.setattr(librarian, "consolidate_memory", lambda eid: calls.__setitem__("mem", calls["mem"]+1))
+    librarian._librarian_locks.clear()
+    librarian.run_librarian(42)
+    assert calls == {"profile": 1, "mem": 1}
+    librarian.run_librarian(42)  # 冷却内
+    assert calls == {"profile": 1, "mem": 1}
