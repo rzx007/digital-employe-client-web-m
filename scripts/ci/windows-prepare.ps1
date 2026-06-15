@@ -16,7 +16,6 @@ function Remove-DeepDirectory {
     $empty = Join-Path $env:TEMP "de-empty-$([Guid]::NewGuid().ToString('N'))"
     New-Item -ItemType Directory -Force -Path $empty | Out-Null
     try {
-        # robocopy /MIR 可删除超过 MAX_PATH 的目录树；退出码 0-7 视为成功
         robocopy $empty $Path /MIR /NFL /NDL /NJH /NJS /nc /ns /np /R:1 /W:1 | Out-Null
         if ($LASTEXITCODE -gt 7) {
             throw "robocopy failed with exit code $LASTEXITCODE"
@@ -31,34 +30,36 @@ function Remove-DeepDirectory {
     }
 }
 
-$root = if ($env:CI_PROJECT_DIR) { $env:CI_PROJECT_DIR } else { (Get-Location).Path }
-Set-Location $root
+function Test-Is64BitPython {
+    param([Parameter(Mandatory = $true)][string]$Exe)
 
-foreach ($dir in @(
-        (Join-Path $root "node_modules"),
-        (Join-Path $root "apps\web\node_modules"),
-        (Join-Path $root "packages\ui\node_modules"),
-        (Join-Path $root ".venv")
-    )) {
-    Remove-DeepDirectory -Path $dir
+    if ($Exe -match 'Python311-32' -or $Exe -match '-32\\') {
+        return $false
+    }
+    & $Exe -c "import sys; raise SystemExit(0 if sys.maxsize > 2**32 else 1)" 2>$null
+    return ($LASTEXITCODE -eq 0)
 }
 
 function Set-UvPythonFromSystem {
+    if ($env:UV_PYTHON -and (Test-Is64BitPython $env:UV_PYTHON)) {
+        Write-Host "UV_PYTHON=$env:UV_PYTHON"
+        return
+    }
+    if ($env:UV_PYTHON) {
+        Write-Host "WARN: 忽略无效 UV_PYTHON: $($env:UV_PYTHON)"
+        Remove-Item Env:UV_PYTHON -ErrorAction SilentlyContinue
+    }
+
     $candidates = @(
+        @("py", "-3.11-64"),
+        @("py", "-3.12-64"),
         @("py", "-3.11"),
-        @("py", "-3.12"),
-        @("python3"),
-        @("python")
+        @("py", "-3.12")
     )
     foreach ($cmd in $candidates) {
         try {
-            if ($cmd.Length -eq 1) {
-                $exe = & $cmd[0] -c "import sys; print(sys.executable)" 2>$null
-            }
-            else {
-                $exe = & $cmd[0] $cmd[1] -c "import sys; print(sys.executable)" 2>$null
-            }
-            if ($LASTEXITCODE -eq 0 -and $exe) {
+            $exe = & $cmd[0] $cmd[1] -c "import sys; print(sys.executable)" 2>$null
+            if ($LASTEXITCODE -eq 0 -and $exe -and (Test-Is64BitPython $exe.Trim())) {
                 $env:UV_PYTHON = $exe.Trim()
                 Write-Host "UV_PYTHON=$env:UV_PYTHON"
                 if ($env:GITLAB_ENV) {
@@ -71,7 +72,19 @@ function Set-UvPythonFromSystem {
             continue
         }
     }
-    Write-Host "WARN: 未找到本机 Python 3.11+，请安装 64 位 Python 3.11"
+    Write-Host "WARN: 未找到 64 位 Python 3.11+，请安装 Python 3.11 x64"
+}
+
+$root = if ($env:CI_PROJECT_DIR) { $env:CI_PROJECT_DIR } else { (Get-Location).Path }
+Set-Location $root
+
+foreach ($dir in @(
+        (Join-Path $root "node_modules"),
+        (Join-Path $root "apps\web\node_modules"),
+        (Join-Path $root "packages\ui\node_modules"),
+        (Join-Path $root ".venv")
+    )) {
+    Remove-DeepDirectory -Path $dir
 }
 
 Set-UvPythonFromSystem

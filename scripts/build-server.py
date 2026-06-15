@@ -46,26 +46,67 @@ def subprocess_env() -> dict[str, str]:
     return env
 
 
+_PY_BIT_CHECK = (
+    "import sys; "
+    "assert sys.maxsize > 2**32, 'need 64-bit Python'; "
+    "print(sys.executable)"
+)
+
+
+def _is_64bit_python(exe: str) -> bool:
+    normalized = exe.replace("\\", "/").lower()
+    if "-32" in normalized or "python311-32" in normalized:
+        return False
+    try:
+        result = subprocess.run(
+            [exe, "-c", _PY_BIT_CHECK],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+        )
+        return bool((result.stdout or "").strip())
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return False
+
+
 def resolve_uv_python(env: dict[str, str]) -> None:
-    if env.get("UV_PYTHON"):
+    current = env.get("UV_PYTHON", "").strip()
+    if current and _is_64bit_python(current):
         return
+    if current:
+        print(f"⚠️  忽略无效 UV_PYTHON（需 64 位）: {current}")
+
     if sys.platform == "win32":
-        for cmd in (["py", "-3.11"], ["py", "-3.12"], ["python3"], ["python"]):
-            try:
-                result = subprocess.run(
-                    [*cmd, "-c", "import sys; print(sys.executable)"],
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    check=True,
-                )
-                exe = (result.stdout or "").strip()
-                if exe:
-                    env["UV_PYTHON"] = exe
-                    return
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                continue
+        candidates = [
+            ["py", "-3.11-64"],
+            ["py", "-3.12-64"],
+            ["py", "-3.11"],
+            ["py", "-3.12"],
+        ]
+    else:
+        candidates = [["python3"], ["python"]]
+
+    for cmd in candidates:
+        try:
+            result = subprocess.run(
+                [*cmd, "-c", _PY_BIT_CHECK],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=True,
+            )
+            exe = (result.stdout or "").strip()
+            if exe and _is_64bit_python(exe):
+                env["UV_PYTHON"] = exe
+                print(f"🐍 使用 Python: {exe}")
+                return
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            continue
+
+    env.pop("UV_PYTHON", None)
 
 
 def run_subprocess(
@@ -74,8 +115,13 @@ def run_subprocess(
     cwd: Path,
     check: bool = True,
     capture: bool = False,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    kwargs: dict = {"cwd": cwd, "check": check, "env": subprocess_env()}
+    kwargs: dict = {
+        "cwd": cwd,
+        "check": check,
+        "env": env if env is not None else subprocess_env(),
+    }
     if capture:
         kwargs.update(
             capture_output=True,
@@ -171,6 +217,14 @@ def install_dependencies():
     """安装 Python 依赖（包括 dev 依赖中的 pyinstaller）"""
     print("📦 安装 Python 依赖...")
 
+    env = subprocess_env()
+    if not env.get("UV_PYTHON"):
+        print("❌ 未找到可用的 64 位 Python 3.11+")
+        print("   Runner 当前仅有 32 位 Python（Python311-32），无法打包后端。")
+        print("   请安装 64 位 Python 3.11：https://www.python.org/downloads/release/python-3119/")
+        print("   安装后执行: py -3.11-64 -c \"import sys; print(sys.executable)\"")
+        return False
+
     sync_cmd = [
         "uv",
         "sync",
@@ -183,7 +237,7 @@ def install_dependencies():
 
     for attempt in range(1, max_attempts + 1):
         try:
-            run_subprocess(sync_cmd, cwd=ROOT_DIR, capture=True)
+            run_subprocess(sync_cmd, cwd=ROOT_DIR, capture=True, env=env)
             print("✅ 依赖安装完成")
             return True
         except subprocess.CalledProcessError as e:
