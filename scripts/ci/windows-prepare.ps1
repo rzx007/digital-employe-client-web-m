@@ -37,7 +37,8 @@ Set-Location $root
 foreach ($dir in @(
         (Join-Path $root "node_modules"),
         (Join-Path $root "apps\web\node_modules"),
-        (Join-Path $root "packages\ui\node_modules")
+        (Join-Path $root "packages\ui\node_modules"),
+        (Join-Path $root ".venv")
     )) {
     Remove-DeepDirectory -Path $dir
 }

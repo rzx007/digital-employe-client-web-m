@@ -37,6 +37,11 @@ def subprocess_env() -> dict[str, str]:
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
+    # CI/慢网络：拉长超时、走国内 PyPI 镜像、固定稳定 Python 版本
+    env.setdefault("UV_HTTP_TIMEOUT", "300")
+    env.setdefault("UV_HTTP_RETRIES", "5")
+    env.setdefault("UV_INDEX_URL", "https://pypi.tuna.tsinghua.edu.cn/simple")
+    env.setdefault("UV_PYTHON", "3.11")
     return env
 
 
@@ -143,22 +148,36 @@ def install_dependencies():
     """安装 Python 依赖（包括 dev 依赖中的 pyinstaller）"""
     print("📦 安装 Python 依赖...")
 
-    try:
-        run_subprocess(
-            ["uv", "sync", "--group", "dev"],
-            cwd=SERVER_DIR,
-            capture=True,
-        )
-        print("✅ 依赖安装完成")
-        return True
-    except subprocess.CalledProcessError as e:
-        print("❌ 依赖安装失败:")
-        detail = e.stderr or e.stdout or str(e)
-        print(f"   错误: {detail}")
-        return False
-    except FileNotFoundError:
-        print("❌ 错误: 未找到 uv 命令，请安装 uv (https://github.com/astral-sh/uv)")
-        return False
+    sync_cmd = [
+        "uv",
+        "sync",
+        "--project",
+        "digital-employee-client",
+        "--group",
+        "dev",
+    ]
+    max_attempts = 3
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            run_subprocess(sync_cmd, cwd=ROOT_DIR, capture=True)
+            print("✅ 依赖安装完成")
+            return True
+        except subprocess.CalledProcessError as e:
+            detail = e.stderr or e.stdout or str(e)
+            if attempt < max_attempts:
+                print(f"⚠️  依赖安装失败，{max_attempts - attempt} 次重试剩余…")
+                print(f"   错误: {detail[-2000:]}")
+                time.sleep(10 * attempt)
+                continue
+            print("❌ 依赖安装失败:")
+            print(f"   错误: {detail}")
+            return False
+        except FileNotFoundError:
+            print("❌ 错误: 未找到 uv 命令，请安装 uv (https://github.com/astral-sh/uv)")
+            return False
+
+    return False
 
 
 def run_pyinstaller():

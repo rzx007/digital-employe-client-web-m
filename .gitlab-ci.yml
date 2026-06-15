@@ -23,6 +23,11 @@ variables:
   # Windows shell 构建：Python/uv 子进程输出统一 UTF-8
   PYTHONUTF8: "1"
   PYTHONIOENCODING: "utf-8"
+  # uv 拉 PyPI：国内镜像 + 拉长超时，避免 anthropic 等大包 30s 超时
+  UV_HTTP_TIMEOUT: "300"
+  UV_HTTP_RETRIES: "5"
+  UV_INDEX_URL: "https://pypi.tuna.tsinghua.edu.cn/simple"
+  UV_PYTHON: "3.11"
 
 # 版本 tag（vX.Y.Z）才触发真打包
 .release_refs: &release_refs
