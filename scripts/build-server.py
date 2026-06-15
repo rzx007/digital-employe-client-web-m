@@ -32,11 +32,38 @@ OUTPUT_DIR = ROOT_DIR / "apps" / "web" / "py-server"
 BUILD_DIR = ROOT_DIR / "build" / "server"
 
 
-# 国内 PyPI 默认镜像（uv sync 勿用 --frozen，否则会直链 files.pythonhosted.org）
-PYPI_MIRROR = "https://npmmirror.com/mirror/pypi/simple"
-PYPI_MIRROR_FALLBACK = "https://pypi.org/simple"
-# Runner 持久化 uv 包缓存（跨 job 复用，避免重复下载）
-DEFAULT_UV_CACHE_DIR = "C:/Users/yaoji/Desktop/gitlabrunner/uv-cache"
+# 国内 PyPI 镜像（勿用 uv sync --frozen/--locked，会直链 files.pythonhosted.org）
+PYPI_MIRROR = "https://mirrors.aliyun.com/pypi/simple/"
+PYPI_MIRROR_FALLBACK = "https://npmmirror.com/mirror/pypi/simple"
+
+
+def _resolve_uv_cache_dir() -> str:
+    """Runner 以 systemprofile 运行，缓存须放在 builds 同级可写目录。"""
+    explicit = os.environ.get("UV_CACHE_DIR", "").strip()
+    if explicit:
+        return explicit
+
+    ci_project = os.environ.get("CI_PROJECT_DIR", "").strip()
+    if ci_project:
+        # .../builds/<runner-hash>/0/ns/project → .../builds/<runner-hash>/uv-cache
+        runner_root = Path(ci_project).parent.parent
+        return str(runner_root / "uv-cache")
+
+    return str(Path.home() / ".cache" / "uv")
+
+
+def _ensure_writable_cache(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    probe = path / ".write-test"
+    try:
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        return path
+    except OSError:
+        fallback = Path(os.environ.get("TEMP", os.environ.get("TMP", "."))) / "uv-cache"
+        fallback.mkdir(parents=True, exist_ok=True)
+        print(f"⚠️  uv 缓存不可写 {path}，改用 {fallback}", flush=True)
+        return fallback
 
 
 def subprocess_env() -> dict[str, str]:
@@ -44,38 +71,36 @@ def subprocess_env() -> dict[str, str]:
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
-    # CI/慢网络：拉长超时、走国内 PyPI 镜像、固定稳定 Python 版本
     env.setdefault("UV_HTTP_TIMEOUT", "300")
     env.setdefault("UV_HTTP_RETRIES", "5")
-    env.setdefault("UV_CONCURRENT_DOWNLOADS", "10")
+    env.setdefault("UV_CONCURRENT_DOWNLOADS", "16")
     env.setdefault("UV_INDEX_URL", PYPI_MIRROR)
     env.setdefault("UV_EXTRA_INDEX_URL", PYPI_MIRROR_FALLBACK)
-    env.setdefault("UV_CACHE_DIR", DEFAULT_UV_CACHE_DIR)
-    cache_dir = Path(env["UV_CACHE_DIR"])
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    # 使用 Runner 已安装的 Python，避免 uv 从镜像下载 CPython（npmmirror 易返回 Invalid gzip）
+    cache_dir = _ensure_writable_cache(Path(_resolve_uv_cache_dir()))
+    env["UV_CACHE_DIR"] = str(cache_dir)
     resolve_uv_python(env)
     return env
 
 
 def _uv_sync_cmd(env: dict[str, str]) -> list[str]:
-    """uv sync 命令：--locked 锁版本，走国内镜像下载（禁用 --frozen）。"""
+    """uv sync：版本由 uv.lock 约束，下载走国内镜像（禁用 frozen/locked）。"""
     mirror = env.get("UV_INDEX_URL", PYPI_MIRROR)
     extra = env.get("UV_EXTRA_INDEX_URL", PYPI_MIRROR_FALLBACK)
-    return [
+    cmd = [
         "uv",
         "sync",
         "--project",
         "apps/server",
         "--group",
         "dev",
-        # --frozen 会无视 UV_INDEX_URL，直链 lock 里 files.pythonhosted.org
-        "--locked",
         "--default-index",
         mirror,
         "--index",
         extra,
     ]
+    if os.environ.get("CI", "").lower() in ("1", "true"):
+        cmd.append("-v")
+    return cmd
 
 
 _PY_BIT_CHECK = (

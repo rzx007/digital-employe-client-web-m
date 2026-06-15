@@ -99,11 +99,17 @@ function Set-BuildEnvironment {
     $env:NPM_CONFIG_REGISTRY = "https://registry.npmmirror.com"
     $env:ELECTRON_MIRROR = "https://npmmirror.com/mirror/electron/"
     $env:ELECTRON_BUILDER_BINARIES_MIRROR = "https://npmmirror.com/mirror/electron-builder-binaries/"
-    $env:UV_INDEX_URL = "https://npmmirror.com/mirror/pypi/simple"
-    $env:UV_EXTRA_INDEX_URL = "https://pypi.org/simple"
-    $env:UV_CACHE_DIR = "C:/Users/yaoji/Desktop/gitlabrunner/uv-cache"
-    $env:UV_CONCURRENT_DOWNLOADS = "10"
-    $env:PIP_INDEX_URL = "https://npmmirror.com/mirror/pypi/simple"
+    $env:UV_INDEX_URL = "https://mirrors.aliyun.com/pypi/simple/"
+    $env:UV_EXTRA_INDEX_URL = "https://npmmirror.com/mirror/pypi/simple"
+    if ($env:CI_PROJECT_DIR) {
+        $runnerRoot = Split-Path (Split-Path $env:CI_PROJECT_DIR -Parent) -Parent
+        $env:UV_CACHE_DIR = Join-Path $runnerRoot "uv-cache"
+    }
+    else {
+        $env:UV_CACHE_DIR = "C:/Users/yaoji/Desktop/gitlabrunner/uv-cache"
+    }
+    $env:UV_CONCURRENT_DOWNLOADS = "16"
+    $env:PIP_INDEX_URL = "https://mirrors.aliyun.com/pypi/simple/"
     New-Item -ItemType Directory -Force -Path $env:UV_CACHE_DIR | Out-Null
     $env:UV_HTTP_TIMEOUT = "300"
     $env:UV_HTTP_RETRIES = "5"

@@ -16,10 +16,10 @@ members = [
     "apps/license-issuer",
 ]
 
-# 国内构建默认走 npmmirror；PyPI 作备用，避免 build-system（hatchling/setuptools）解析失败
+# 国内构建：阿里云 PyPI 为主，npmmirror 备用（勿用 uv sync --frozen/--locked）
 [tool.uv]
-index-url = "https://npmmirror.com/mirror/pypi/simple"
-extra-index-url = ["https://pypi.org/simple"]
+index-url = "https://mirrors.aliyun.com/pypi/simple/"
+extra-index-url = ["https://npmmirror.com/mirror/pypi/simple"]
 # CI/打包固定 Python 3.11，避免 lock 中 3.13 split 在 sync 时重新解析失败
 environments = ["python_version == '3.11'"]
 

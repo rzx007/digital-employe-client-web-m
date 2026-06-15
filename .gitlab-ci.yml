@@ -22,12 +22,12 @@ variables:
   NPM_CONFIG_REGISTRY: "https://registry.npmmirror.com"
   ELECTRON_MIRROR: "https://npmmirror.com/mirrors/electron/"
   ELECTRON_BUILDER_BINARIES_MIRROR: "https://npmmirror.com/mirrors/electron-builder-binaries/"
-  UV_INDEX_URL: "https://npmmirror.com/mirror/pypi/simple"
-  UV_EXTRA_INDEX_URL: "https://pypi.org/simple"
-  # uv 包缓存（跨 CI job 复用；勿用 uv sync --frozen，会直链 pythonhosted）
-  UV_CACHE_DIR: "C:/Users/yaoji/Desktop/gitlabrunner/uv-cache"
-  UV_CONCURRENT_DOWNLOADS: "10"
-  PIP_INDEX_URL: "https://npmmirror.com/mirror/pypi/simple"
+  UV_INDEX_URL: "https://mirrors.aliyun.com/pypi/simple/"
+  UV_EXTRA_INDEX_URL: "https://npmmirror.com/mirror/pypi/simple"
+  # 留空则 build-server 自动用 builds/<runner-id>/uv-cache（systemprofile 可写）
+  UV_CACHE_DIR: ""
+  UV_CONCURRENT_DOWNLOADS: "16"
+  PIP_INDEX_URL: "https://mirrors.aliyun.com/pypi/simple/"
   # Node 大型构建（Vite 26K 模块）提高堆上限
   NODE_OPTIONS: "--max-old-space-size=8192"
   # Windows shell 构建：Python/uv 子进程输出统一 UTF-8
