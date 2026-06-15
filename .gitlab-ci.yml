@@ -13,6 +13,7 @@
 
 stages:
   - build
+  - deploy
 
 variables:
   # ---------- 国内镜像（npmmirror，与根目录 .npmrc 一致）----------
@@ -118,3 +119,29 @@ build:linux:
     paths:
       - release/*.deb
     expire_in: 30 days
+
+# ------------------------------------------------------------------------------
+# 飞书知识库：上传 release 产物到指定 Wiki 页面下
+# 默认页面: https://scnj8otdvysf.feishu.cn/wiki/CGcIwUsSjif5yzktPFVcVBWlnNe
+# 需在 GitLab Variables 配置 FEISHU_APP_ID、FEISHU_APP_SECRET
+# ------------------------------------------------------------------------------
+publish:feishu:
+  stage: deploy
+  tags:
+    - win-builder
+  only: *release_refs
+  allow_failure: true
+  needs:
+    - job: build:windows
+      artifacts: true
+    - job: build:macos
+      artifacts: true
+      optional: true
+    - job: build:linux
+      artifacts: true
+      optional: true
+  variables:
+    FEISHU_WIKI_NODE_TOKEN: "CGcIwUsSjif5yzktPFVcVBWlnNe"
+    FEISHU_WIKI_URL: "https://scnj8otdvysf.feishu.cn/wiki/CGcIwUsSjif5yzktPFVcVBWlnNe"
+  script:
+    - python3 scripts/ci/publish-feishu.py
