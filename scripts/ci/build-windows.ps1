@@ -196,10 +196,16 @@ if ($Offline) {
     }
 }
 else {
-    Invoke-Timed "Python 后端 (PyInstaller → backend.exe)" {
+    Invoke-Timed "Python 依赖 (uv sync)" {
         Set-Location $RepoRoot
-        & $env:UV_PYTHON scripts/build-server.py --app
-        if ($LASTEXITCODE -ne 0) { throw "build-server.py failed" }
+        & $env:UV_PYTHON scripts/build-server.py --sync-only
+        if ($LASTEXITCODE -ne 0) { throw "build-server.py --sync-only failed" }
+    }
+
+    Invoke-Timed "PyInstaller (backend.exe)" {
+        Set-Location $RepoRoot
+        & $env:UV_PYTHON scripts/build-server.py --pack-only
+        if ($LASTEXITCODE -ne 0) { throw "build-server.py --pack-only failed" }
     }
 
     Invoke-Timed "Electron 客户端 (Vite + NSIS)" {

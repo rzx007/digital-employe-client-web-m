@@ -169,18 +169,51 @@ def resolve_uv_python(env: dict[str, str]) -> None:
     env.pop("UV_PYTHON", None)
 
 
+def _stream_subprocess() -> bool:
+    """CI / 终端下实时打印子进程输出，避免长时间无日志。"""
+    ci = os.environ.get("CI", "").lower()
+    return ci in ("1", "true") or sys.stdout.isatty()
+
+
 def run_subprocess(
     cmd: list[str],
     *,
     cwd: Path,
     check: bool = True,
     capture: bool = False,
+    stream: bool | None = None,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    if stream is None:
+        stream = _stream_subprocess() and not capture
+
+    run_env = env if env is not None else subprocess_env()
+
+    if stream:
+        print(f"   $ {' '.join(cmd)}", flush=True)
+        process = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            env=run_env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+        assert process.stdout is not None
+        for line in process.stdout:
+            print(line, end="", flush=True)
+        returncode = process.wait()
+        if check and returncode != 0:
+            raise subprocess.CalledProcessError(returncode, cmd)
+        return subprocess.CompletedProcess(cmd, returncode)
+
     kwargs: dict = {
         "cwd": cwd,
         "check": check,
-        "env": env if env is not None else subprocess_env(),
+        "env": run_env,
     }
     if capture:
         kwargs.update(
@@ -205,6 +238,16 @@ def parse_args():
     )
     parser.add_argument(
         "--app", action="store_true", help="打包 Python 后端后，再打包 Electron 应用"
+    )
+    parser.add_argument(
+        "--sync-only",
+        action="store_true",
+        help="仅 uv sync 安装依赖，不跑 PyInstaller",
+    )
+    parser.add_argument(
+        "--pack-only",
+        action="store_true",
+        help="跳过 uv sync，仅 PyInstaller 打包（需 .venv 已就绪）",
     )
     return parser.parse_args()
 
@@ -300,14 +343,12 @@ def install_dependencies():
         run_subprocess(
             sync_base + ["--no-install-workspace"],
             cwd=ROOT_DIR,
-            capture=True,
             env=env,
         )
         # 2) 用 venv 内 build 工具构建 workspace 可编辑包
         run_subprocess(
             sync_base + ["--no-build-isolation"],
             cwd=ROOT_DIR,
-            capture=True,
             env=env,
         )
         print("✅ 依赖安装完成")
@@ -341,6 +382,9 @@ def run_pyinstaller():
         "run",
         "pyinstaller",
         "--onefile",  # 打包为单个可执行文件
+        "--noupx",  # 避免 UPX 压缩拖慢构建
+        "--log-level",
+        "INFO",
         "--name",
         "backend",  # 输出文件名
         "--distpath",
@@ -396,6 +440,24 @@ def run_pyinstaller():
     for module in hidden_imports:
         pyinstaller_args.extend(["--hidden-import", module])
 
+    # 排除后端未使用的大模块，缩短 PyInstaller 分析时间
+    exclude_modules = (
+        "matplotlib",
+        "tkinter",
+        "unittest",
+        "test",
+        "tests",
+        "IPython",
+        "jupyter",
+        "notebook",
+        "scipy",
+        "pandas",
+        "pip",
+        "wheel",
+    )
+    for module in exclude_modules:
+        pyinstaller_args.extend(["--exclude-module", module])
+
     # 添加数据文件（数据库目录）
     data_dir = SERVER_DIR / "data"
     if data_dir.exists():
@@ -415,8 +477,16 @@ def run_pyinstaller():
     pyinstaller_args.append(str(SERVER_DIR / "start.py"))
 
     try:
-        print(f"   运行命令: {' '.join(pyinstaller_args[:10])}...")
-        run_subprocess(pyinstaller_args, cwd=SERVER_DIR, capture=True)
+        print(f"   运行命令: {' '.join(pyinstaller_args[:12])}...", flush=True)
+        print(
+            "   ⏳ PyInstaller 分析 LangChain 依赖树较慢，CI 上 10～20 分钟属正常，"
+            "请观察下方实时日志…",
+            flush=True,
+        )
+        t0 = time.perf_counter()
+        run_subprocess(pyinstaller_args, cwd=SERVER_DIR)
+        elapsed = time.perf_counter() - t0
+        print(f"   PyInstaller 耗时 {elapsed / 60:.1f} 分钟", flush=True)
 
         # 检查输出文件
         exe_path = OUTPUT_DIR / (
@@ -480,8 +550,11 @@ def main():
     """主函数"""
     if sys.platform == "win32":
         sys.stdout.reconfigure(encoding="utf-8")
-        
+
     args = parse_args()
+    if args.sync_only and args.pack_only:
+        print("❌ 不能同时使用 --sync-only 与 --pack-only")
+        sys.exit(1)
 
     print("🚀 Python 后端打包脚本")
     print(f"   项目根目录: {ROOT_DIR}")
@@ -489,20 +562,32 @@ def main():
     print(f"   输出目录: {OUTPUT_DIR}")
     print()
 
-    # 每次打包前清 py-server，避免 .offline 等残留污染在线/离线安装包
-    clean_build(output=True, work=args.clean)
+    if not args.sync_only:
+        # 每次打包前清 py-server，避免 .offline 等残留污染在线/离线安装包
+        clean_build(output=True, work=args.clean)
 
     # 检查前置条件
     if not check_prerequisites():
         sys.exit(1)
 
-    # 安装依赖
-    if not install_dependencies():
-        sys.exit(1)
+    total_t0 = time.perf_counter()
+
+    if not args.pack_only:
+        t0 = time.perf_counter()
+        if not install_dependencies():
+            sys.exit(1)
+        print(f"⏱️  uv sync 耗时 {(time.perf_counter() - t0) / 60:.1f} 分钟", flush=True)
+
+    if args.sync_only:
+        print()
+        print("✅ Python 依赖安装完成 (--sync-only)")
+        sys.exit(0)
 
     # 运行 PyInstaller
+    t0 = time.perf_counter()
     if not run_pyinstaller():
         sys.exit(1)
+    print(f"⏱️  PyInstaller 阶段耗时 {(time.perf_counter() - t0) / 60:.1f} 分钟", flush=True)
 
     # 复制额外文件
     copy_additional_files()
@@ -510,7 +595,7 @@ def main():
     # 检查 backend.exe 是否成功产出
     exe_path = OUTPUT_DIR / ("backend.exe" if sys.platform == "win32" else "backend")
     if not exe_path.exists():
-        print(f"❌ 错误: backend.exe 未成功产出，无法继续打包 Electron")
+        print("❌ 错误: backend.exe 未成功产出，无法继续打包 Electron")
         sys.exit(1)
 
     # 清理临时文件（除非调试模式）
@@ -518,15 +603,18 @@ def main():
         safe_rmtree(BUILD_DIR)
         print("🧹 已清理临时文件")
 
+    total_min = (time.perf_counter() - total_t0) / 60
     print()
     print("🎉 Python 后端打包完成!")
     print(f"   可执行文件: {exe_path}")
+    print(f"   总耗时: {total_min:.1f} 分钟")
     print()
 
     print("📝 使用说明:")
     print("   开发模式: pnpm dev:server")
-    print("   构建后端: python scripts/build-server.py")
-    print("   构建应用: python scripts/build-server.py --app")
+    print("   仅装依赖: python scripts/build-server.py --sync-only")
+    print("   仅打包:   python scripts/build-server.py --pack-only")
+    print("   完整构建: python scripts/build-server.py")
        
 
 
