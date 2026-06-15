@@ -58,3 +58,15 @@ def resolve_workspace_dirs(
         public_dir=public_dir,
         public_root=public_root,
     )
+
+
+def resolve_orchestrator_desk_dir(root_path: str, orchestrator_conversation_id: int) -> Path:
+    """总管共享桌根，按总管会话隔离。全队（总管 + 被派员工）共享这一张桌。"""
+    desk = Path(root_path) / "orchestrator-desk" / f"conv-{orchestrator_conversation_id}"
+    desk.mkdir(parents=True, exist_ok=True)
+    return desk
+
+
+def orchestrator_task_subdir(desk_dir: Path, task_id: int) -> Path:
+    """某子任务在共享桌内的写子目录（防撞名）。"""
+    return desk_dir / f"task-{task_id}"

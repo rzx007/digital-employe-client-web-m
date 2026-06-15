@@ -83,3 +83,22 @@ def test_shared_workspace_root_absent_keeps_own(tmp_path):
     )
     assert d.artifacts_dir == room
     assert d.workspace_dir == tmp_path / "employee-7" / "artifacts"  # 维持现状
+
+
+def test_resolve_orchestrator_desk_dir(tmp_path):
+    """共享桌按总管会话隔离，路径 = <root>/orchestrator-desk/conv-<orchConvId>，并 mkdir。"""
+    from src.service.agent.workspace_paths import resolve_orchestrator_desk_dir
+    desk = resolve_orchestrator_desk_dir(str(tmp_path), 9)
+    assert desk == tmp_path / "orchestrator-desk" / "conv-9"
+    assert desk.is_dir()
+
+
+def test_orchestrator_task_subdir(tmp_path):
+    """子任务写子目录 = 桌根/task-<taskId>。"""
+    from src.service.agent.workspace_paths import (
+        resolve_orchestrator_desk_dir,
+        orchestrator_task_subdir,
+    )
+    desk = resolve_orchestrator_desk_dir(str(tmp_path), 9)
+    sub = orchestrator_task_subdir(desk, 100)
+    assert sub == desk / "task-100"
