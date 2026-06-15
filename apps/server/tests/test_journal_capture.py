@@ -100,3 +100,26 @@ def test_journal_records_tools_used(db_session, workspace, monkeypatch, tmp_path
         next((tmp_path / str(emp.id) / "journal").glob("*.jsonl")).read_text("utf-8").strip().splitlines()[-1]
     )
     assert "shell_execute" in entry["tools_used"]
+
+
+def test_finalize_calls_journal_capture(monkeypatch):
+    """挂载点契约：_capture_journal_safe 会调 capture_journal_entry。"""
+    import src.service.learning.journal as journal_mod
+    calls = []
+    monkeypatch.setattr(journal_mod, "capture_journal_entry", lambda db, log: calls.append(log))
+    from src.service.stream_registry import _capture_journal_safe
+    class _L:
+        employee_id = 1
+    sentinel = _L()
+    _capture_journal_safe(object(), sentinel)
+    assert calls == [sentinel]
+
+
+def test_capture_journal_safe_swallows_errors(monkeypatch):
+    """_capture_journal_safe 容错：capture 抛异常也不上抛。"""
+    import src.service.learning.journal as journal_mod
+    def _boom(db, log):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(journal_mod, "capture_journal_entry", _boom)
+    from src.service.stream_registry import _capture_journal_safe
+    _capture_journal_safe(object(), object())  # 不抛即通过

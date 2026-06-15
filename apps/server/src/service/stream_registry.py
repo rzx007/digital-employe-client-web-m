@@ -2274,6 +2274,15 @@ class StreamRegistry:
         return ok
 
 
+def _capture_journal_safe(db, log) -> None:
+    """学习闭环 journal 捕获的容错封装，任何异常都只 warning 不上抛。"""
+    try:
+        from src.service.learning.journal import capture_journal_entry
+        capture_journal_entry(db, log)
+    except Exception:
+        logger.warning("journal capture hook failed", exc_info=True)
+
+
 def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
     try:
         from src.db.session import get_session_local
@@ -2407,6 +2416,7 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
 
         db.commit()
         db.refresh(log)
+        _capture_journal_safe(db, log)   # 学习闭环 journal 捕获
 
         summary_message = None
         orch_conv_id = log.orchestrator_conversation_id
