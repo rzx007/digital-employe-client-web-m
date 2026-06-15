@@ -32,6 +32,13 @@ OUTPUT_DIR = ROOT_DIR / "apps" / "web" / "py-server"
 BUILD_DIR = ROOT_DIR / "build" / "server"
 
 
+# 国内 PyPI 默认镜像（uv sync 勿用 --frozen，否则会直链 files.pythonhosted.org）
+PYPI_MIRROR = "https://npmmirror.com/mirror/pypi/simple"
+PYPI_MIRROR_FALLBACK = "https://pypi.org/simple"
+# Runner 持久化 uv 包缓存（跨 job 复用，避免重复下载）
+DEFAULT_UV_CACHE_DIR = "C:/Users/yaoji/Desktop/gitlabrunner/uv-cache"
+
+
 def subprocess_env() -> dict[str, str]:
     """子进程统一 UTF-8，避免 Windows GBK 解码 uv/PyInstaller 输出失败。"""
     env = os.environ.copy()
@@ -40,11 +47,35 @@ def subprocess_env() -> dict[str, str]:
     # CI/慢网络：拉长超时、走国内 PyPI 镜像、固定稳定 Python 版本
     env.setdefault("UV_HTTP_TIMEOUT", "300")
     env.setdefault("UV_HTTP_RETRIES", "5")
-    env.setdefault("UV_INDEX_URL", "https://npmmirror.com/mirror/pypi/simple")
-    env.setdefault("UV_EXTRA_INDEX_URL", "https://pypi.org/simple")
+    env.setdefault("UV_CONCURRENT_DOWNLOADS", "10")
+    env.setdefault("UV_INDEX_URL", PYPI_MIRROR)
+    env.setdefault("UV_EXTRA_INDEX_URL", PYPI_MIRROR_FALLBACK)
+    env.setdefault("UV_CACHE_DIR", DEFAULT_UV_CACHE_DIR)
+    cache_dir = Path(env["UV_CACHE_DIR"])
+    cache_dir.mkdir(parents=True, exist_ok=True)
     # 使用 Runner 已安装的 Python，避免 uv 从镜像下载 CPython（npmmirror 易返回 Invalid gzip）
     resolve_uv_python(env)
     return env
+
+
+def _uv_sync_cmd(env: dict[str, str]) -> list[str]:
+    """uv sync 命令：--locked 锁版本，走国内镜像下载（禁用 --frozen）。"""
+    mirror = env.get("UV_INDEX_URL", PYPI_MIRROR)
+    extra = env.get("UV_EXTRA_INDEX_URL", PYPI_MIRROR_FALLBACK)
+    return [
+        "uv",
+        "sync",
+        "--project",
+        "apps/server",
+        "--group",
+        "dev",
+        # --frozen 会无视 UV_INDEX_URL，直链 lock 里 files.pythonhosted.org
+        "--locked",
+        "--default-index",
+        mirror,
+        "--index",
+        extra,
+    ]
 
 
 _PY_BIT_CHECK = (
@@ -328,15 +359,9 @@ def install_dependencies():
         print("   安装后执行: py -3.11-64 -c \"import sys; print(sys.executable)\"")
         return False
 
-    sync_base = [
-        "uv",
-        "sync",
-        "--project",
-        "apps/server",
-        "--group",
-        "dev",
-        "--frozen",
-    ]
+    sync_base = _uv_sync_cmd(env)
+    print(f"   PyPI 镜像: {env.get('UV_INDEX_URL')}", flush=True)
+    print(f"   uv 缓存: {env.get('UV_CACHE_DIR')}", flush=True)
 
     try:
         # 1) 先装锁定依赖（含 dev 组 hatchling/setuptools），暂不构建 workspace
