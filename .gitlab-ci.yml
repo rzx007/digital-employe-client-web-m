@@ -121,9 +121,10 @@ build:linux:
     expire_in: 30 days
 
 # ------------------------------------------------------------------------------
-# 飞书知识库：上传 release 产物到指定 Wiki 页面下
-# 默认页面: https://scnj8otdvysf.feishu.cn/wiki/CGcIwUsSjif5yzktPFVcVBWlnNe
-# 需在 GitLab Variables 配置 FEISHU_APP_ID、FEISHU_APP_SECRET
+# 飞书多维表格：release 产物写入版本管理表（bitable:app）
+# 表格: https://scnj8otdvysf.feishu.cn/wiki/Zc3XwAhsMiJPUEk7IimcHMfKnoc?table=tblhM5KRRT2i8YsP
+# GitLab Variables（Masked）: FEISHU_APP_ID, FEISHU_APP_SECRET
+# 飞书侧: 多维表格 → … → 添加文档应用 → 可管理
 # ------------------------------------------------------------------------------
 publish:feishu:
   stage: deploy
@@ -141,7 +142,8 @@ publish:feishu:
       artifacts: true
       optional: true
   variables:
-    FEISHU_WIKI_NODE_TOKEN: "CGcIwUsSjif5yzktPFVcVBWlnNe"
-    FEISHU_WIKI_URL: "https://scnj8otdvysf.feishu.cn/wiki/CGcIwUsSjif5yzktPFVcVBWlnNe"
+    FEISHU_BITABLE_WIKI_NODE: "Zc3XwAhsMiJPUEk7IimcHMfKnoc"
+    FEISHU_BITABLE_TABLE_ID: "tblhM5KRRT2i8YsP"
+    FEISHU_BITABLE_URL: "https://scnj8otdvysf.feishu.cn/wiki/Zc3XwAhsMiJPUEk7IimcHMfKnoc?table=tblhM5KRRT2i8YsP&view=vewYirQnN3"
   script:
     - python3 scripts/ci/publish-feishu.py

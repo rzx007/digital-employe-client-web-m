@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """
-GitLab CI：将 release 构建产物上传飞书云盘，并挂载到指定知识库节点下。
+GitLab CI：将 release 构建产物写入飞书多维表格（Bitable）。
 
-配置（GitLab CI/CD Variables，Masked）：
-  FEISHU_APP_ID          飞书自建应用 App ID
-  FEISHU_APP_SECRET      飞书自建应用 App Secret
-  FEISHU_WIKI_NODE_TOKEN 目标知识库页面 node token（URL 中 /wiki/ 后一段）
-  FEISHU_DRIVE_FOLDER_TOKEN（可选）中转云盘文件夹 token；未设则用应用云空间根目录
+目标表（版本管理）：
+  https://scnj8otdvysf.feishu.cn/wiki/Zc3XwAhsMiJPUEk7IimcHMfKnoc?table=tblhM5KRRT2i8YsP
 
-默认知识库页：
-  https://scnj8otdvysf.feishu.cn/wiki/CGcIwUsSjif5yzktPFVcVBWlnNe
+GitLab CI/CD Variables（Masked，勿写入仓库）：
+  FEISHU_APP_ID
+  FEISHU_APP_SECRET
 
-应用权限（至少）：
-  drive:drive / drive:file:upload
-  wiki:wiki
+可选 Variables：
+  FEISHU_BITABLE_APP_TOKEN   多维表格 app_token；未设则从 FEISHU_BITABLE_WIKI_NODE 解析
+  FEISHU_BITABLE_WIKI_NODE   Wiki 中嵌入多维表格的 node token
+  FEISHU_BITABLE_TABLE_ID
+  FEISHU_BITABLE_URL         表格链接（仅日志展示）
+
+应用权限：bitable:app
+资源授权：目标多维表格 → … → 添加文档应用 → 可管理
 """
 
 from __future__ import annotations
@@ -22,7 +25,9 @@ import json
 import mimetypes
 import os
 import sys
+import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -30,16 +35,28 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 FEISHU_API = "https://open.feishu.cn/open-apis"
-DEFAULT_WIKI_NODE = "CGcIwUsSjif5yzktPFVcVBWlnNe"
+DEFAULT_WIKI_NODE = "Zc3XwAhsMiJPUEk7IimcHMfKnoc"
+DEFAULT_TABLE_ID = "tblhM5KRRT2i8YsP"
+DEFAULT_BITABLE_URL = (
+    "https://scnj8otdvysf.feishu.cn/wiki/Zc3XwAhsMiJPUEk7IimcHMfKnoc"
+    "?table=tblhM5KRRT2i8YsP&view=vewYirQnN3"
+)
 CHUNK_SIZE = 4 * 1024 * 1024
 UPLOAD_ALL_LIMIT = 20 * 1024 * 1024
 ROOT = Path(__file__).resolve().parents[2]
 
-ARTIFACT_GLOBS = [
-    ROOT / "apps/web/release",
-    ROOT / "release",
-]
-ARTIFACT_SUFFIXES = {".exe", ".dmg", ".zip", ".deb", ".yml", ".blockmap"}
+ARTIFACT_DIRS = [ROOT / "apps/web/release", ROOT / "release"]
+PACKAGE_SUFFIXES = {".exe", ".dmg", ".zip", ".deb"}
+
+FIELD_VERSION = "版本"
+FIELD_PLATFORM = "平台"
+FIELD_FILENAME = "文件名"
+FIELD_ATTACHMENT = "附件"
+FIELD_BUILD_TIME = "构建时间"
+FIELD_PIPELINE = "流水线"
+FIELD_TAG = "Tag"
+
+PLATFORM_OPTIONS = ["Windows", "macOS", "Linux", "其他"]
 
 
 def log(msg: str) -> None:
@@ -130,43 +147,94 @@ def get_tenant_token(app_id: str, app_secret: str) -> str:
     return str(token)
 
 
-def get_wiki_node(token: str, node_token: str) -> dict[str, Any]:
-    qs = urlencode({"token": node_token})
+def resolve_bitable_app_token(token: str, wiki_node: str) -> str:
+    preset = env("FEISHU_BITABLE_APP_TOKEN")
+    if preset:
+        return preset
+
+    qs = urlencode({"token": wiki_node})
     url = f"{FEISHU_API}/wiki/v2/spaces/get_node?{qs}"
     req = Request(url, headers={"Authorization": f"Bearer {token}"}, method="GET")
     with urlopen(req, timeout=60) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     if payload.get("code") != 0:
-        raise RuntimeError(f"获取知识库节点失败: {payload.get('msg')}")
+        raise RuntimeError(f"解析多维表格 app_token 失败: {payload.get('msg')}")
     node = (payload.get("data") or {}).get("node") or {}
-    if not node.get("space_id"):
-        raise RuntimeError(f"知识库节点无效: {node_token}")
-    return node
+    obj_type = node.get("obj_type")
+    obj_token = node.get("obj_token")
+    if obj_type != "bitable" or not obj_token:
+        raise RuntimeError(
+            f"Wiki 节点 {wiki_node} 不是多维表格 (obj_type={obj_type})"
+        )
+    return str(obj_token)
 
 
-def get_drive_root_folder_token(token: str) -> str:
-    url = f"{FEISHU_API}/drive/explorer/v2/root_folder/meta"
-    data = json_request("GET", url, token)
-    folder_token = data.get("token")
-    if not folder_token:
-        raise RuntimeError("无法获取云空间根目录 token")
-    return str(folder_token)
+def list_fields(token: str, app_token: str, table_id: str) -> dict[str, str]:
+    url = (
+        f"{FEISHU_API}/bitable/v1/apps/{app_token}/tables/{table_id}/fields"
+        "?page_size=100"
+    )
+    req = Request(url, headers={"Authorization": f"Bearer {token}"}, method="GET")
+    with urlopen(req, timeout=60) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    if payload.get("code") != 0:
+        raise RuntimeError(f"列出字段失败: {payload.get('msg')}")
+    items = (payload.get("data") or {}).get("items") or []
+    return {str(item.get("field_name")): str(item.get("field_id")) for item in items}
 
 
-def upload_to_drive(
+def create_field(
     token: str,
-    folder_token: str,
-    file_path: Path,
-) -> str:
+    app_token: str,
+    table_id: str,
+    field_name: str,
+    field_type: int,
+    *,
+    property_body: dict[str, Any] | None = None,
+) -> None:
+    body: dict[str, Any] = {"field_name": field_name, "type": field_type}
+    if property_body:
+        body["property"] = property_body
+    json_request(
+        "POST",
+        f"{FEISHU_API}/bitable/v1/apps/{app_token}/tables/{table_id}/fields",
+        token,
+        body,
+    )
+
+
+def ensure_table_fields(token: str, app_token: str, table_id: str) -> None:
+    existing = list_fields(token, app_token, table_id)
+    specs: list[tuple[str, int, dict[str, Any] | None]] = [
+        (FIELD_VERSION, 1, None),
+        (FIELD_TAG, 1, None),
+        (FIELD_PLATFORM, 3, {"options": [{"name": n} for n in PLATFORM_OPTIONS]}),
+        (FIELD_FILENAME, 1, None),
+        (FIELD_ATTACHMENT, 17, None),
+        (FIELD_BUILD_TIME, 5, None),
+        (FIELD_PIPELINE, 15, None),
+    ]
+    created = False
+    for name, ftype, prop in specs:
+        if name in existing:
+            continue
+        log(f"   + 创建字段: {name}")
+        create_field(token, app_token, table_id, name, ftype, property_body=prop)
+        created = True
+    if created:
+        time.sleep(1)
+
+
+def upload_bitable_file(token: str, app_token: str, file_path: Path) -> str:
     file_bytes = file_path.read_bytes()
     file_name = file_path.name
     size = len(file_bytes)
-    parent_type = "explorer"
-    parent_node = folder_token
+    parent_type = "bitable_file"
+    parent_node = app_token
 
     if size <= UPLOAD_ALL_LIMIT:
         data = multipart_upload(
-            f"{FEISHU_API}/drive/v1/files/upload_all",
+            f"{FEISHU_API}/drive/v1/medias/upload_all",
             token,
             {
                 "file_name": file_name,
@@ -180,12 +248,12 @@ def upload_to_drive(
         )
         file_token = data.get("file_token")
         if not file_token:
-            raise RuntimeError(f"upload_all 未返回 file_token: {data}")
+            raise RuntimeError(f"medias/upload_all 未返回 file_token: {data}")
         return str(file_token)
 
     prep = json_request(
         "POST",
-        f"{FEISHU_API}/drive/v1/files/upload_prepare",
+        f"{FEISHU_API}/drive/v1/medias/upload_prepare",
         token,
         {
             "file_name": file_name,
@@ -196,13 +264,13 @@ def upload_to_drive(
     )
     upload_id = prep.get("upload_id")
     if not upload_id:
-        raise RuntimeError(f"upload_prepare 失败: {prep}")
+        raise RuntimeError(f"medias/upload_prepare 失败: {prep}")
 
     block_num = (size + CHUNK_SIZE - 1) // CHUNK_SIZE
     for seq, offset in enumerate(range(0, size, CHUNK_SIZE)):
         chunk = file_bytes[offset : offset + CHUNK_SIZE]
         multipart_upload(
-            f"{FEISHU_API}/drive/v1/files/upload_part",
+            f"{FEISHU_API}/drive/v1/medias/upload_part",
             token,
             {
                 "upload_id": str(upload_id),
@@ -216,44 +284,61 @@ def upload_to_drive(
 
     done = json_request(
         "POST",
-        f"{FEISHU_API}/drive/v1/files/upload_finish",
+        f"{FEISHU_API}/drive/v1/medias/upload_finish",
         token,
         {"upload_id": str(upload_id), "block_num": block_num},
     )
     file_token = done.get("file_token")
     if not file_token:
-        raise RuntimeError(f"upload_finish 未返回 file_token: {done}")
+        raise RuntimeError(f"medias/upload_finish 未返回 file_token: {done}")
     return str(file_token)
 
 
-def move_file_to_wiki(
+def detect_platform(file_path: Path) -> str:
+    name = file_path.name.lower()
+    suffix = file_path.suffix.lower()
+    if suffix == ".exe" or "windows" in name:
+        return "Windows"
+    if suffix in {".dmg", ".zip"} and ("mac" in name or "darwin" in name):
+        return "macOS"
+    if suffix == ".zip" and "mac" not in name and "windows" not in name:
+        return "macOS"
+    if suffix == ".deb" or "linux" in name or "arm64" in name:
+        return "Linux"
+    return "其他"
+
+
+def create_record(
     token: str,
-    space_id: str,
-    parent_wiki_token: str,
-    file_token: str,
+    app_token: str,
+    table_id: str,
+    fields: dict[str, Any],
 ) -> None:
     json_request(
         "POST",
-        f"{FEISHU_API}/wiki/v2/spaces/{space_id}/nodes/move_docs_to_wiki",
+        f"{FEISHU_API}/bitable/v1/apps/{app_token}/tables/{table_id}/records",
         token,
-        {
-            "parent_wiki_token": parent_wiki_token,
-            "obj_type": "file",
-            "obj_token": file_token,
-            "apply": True,
-        },
+        {"fields": fields},
     )
 
 
-def collect_artifacts() -> list[Path]:
+def collect_packages() -> list[Path]:
     files: list[Path] = []
-    for base in ARTIFACT_GLOBS:
+    for base in ARTIFACT_DIRS:
         if not base.exists():
             continue
         for path in sorted(base.iterdir()):
-            if path.is_file() and path.suffix.lower() in ARTIFACT_SUFFIXES:
+            if path.is_file() and path.suffix.lower() in PACKAGE_SUFFIXES:
                 files.append(path)
     return files
+
+
+def pipeline_url() -> str:
+    project_url = env("CI_PROJECT_URL")
+    pipeline_id = env("CI_PIPELINE_ID")
+    if project_url and pipeline_id:
+        return f"{project_url}/-/pipelines/{pipeline_id}"
+    return ""
 
 
 def main() -> int:
@@ -263,49 +348,54 @@ def main() -> int:
         log("⏭️  未配置 FEISHU_APP_ID / FEISHU_APP_SECRET，跳过飞书发布。")
         return 0
 
-    wiki_node_token = env("FEISHU_WIKI_NODE_TOKEN", DEFAULT_WIKI_NODE)
+    table_id = env("FEISHU_BITABLE_TABLE_ID", DEFAULT_TABLE_ID)
+    wiki_node = env("FEISHU_BITABLE_WIKI_NODE", DEFAULT_WIKI_NODE)
+    bitable_url = env("FEISHU_BITABLE_URL", DEFAULT_BITABLE_URL)
     tag = env("CI_COMMIT_TAG", "local")
-    wiki_url = (
-        env("FEISHU_WIKI_URL")
-        or f"https://scnj8otdvysf.feishu.cn/wiki/{wiki_node_token}"
-    )
+    version = tag.lstrip("v") if tag.startswith("v") else tag
 
-    artifacts = collect_artifacts()
-    if not artifacts:
-        log("⚠️  未找到可发布的构建产物，跳过。")
+    packages = collect_packages()
+    if not packages:
+        log("⚠️  未找到安装包（.exe/.dmg/.zip/.deb），跳过。")
         return 0
 
-    log(f"📤 飞书发布 {tag} → {wiki_url}")
-    log(f"   待上传 {len(artifacts)} 个文件")
+    log(f"📤 飞书多维表格发布 {tag}")
+    log(f"   {bitable_url}")
+    log(f"   待写入 {len(packages)} 条记录")
 
     tenant = get_tenant_token(app_id, app_secret)
-    wiki_node = get_wiki_node(tenant, wiki_node_token)
-    space_id = str(wiki_node["space_id"])
-    parent_title = wiki_node.get("title") or wiki_node_token
-    log(f"   知识库: {parent_title} (space_id={space_id})")
+    app_token = resolve_bitable_app_token(tenant, wiki_node)
+    log(f"   app_token: {app_token[:12]}… table: {table_id}")
 
-    folder_token = env("FEISHU_DRIVE_FOLDER_TOKEN")
-    if not folder_token:
-        folder_token = get_drive_root_folder_token(tenant)
-        log(f"   使用云空间根目录中转: {folder_token[:8]}…")
+    ensure_table_fields(tenant, app_token, table_id)
 
-    uploaded: list[str] = []
-    for file_path in artifacts:
-        log(f"   ↑ {file_path.name} ({file_path.stat().st_size / (1024 * 1024):.1f} MB)")
-        file_token = upload_to_drive(tenant, folder_token, file_path)
-        move_file_to_wiki(
-            tenant,
-            space_id,
-            wiki_node_token,
-            file_token,
-        )
-        uploaded.append(file_path.name)
+    build_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    pipe = pipeline_url()
+    created = 0
+
+    for file_path in packages:
+        platform = detect_platform(file_path)
+        size_mb = file_path.stat().st_size / (1024 * 1024)
+        log(f"   ↑ {file_path.name} [{platform}] ({size_mb:.1f} MB)")
+
+        file_token = upload_bitable_file(tenant, app_token, file_path)
+        fields: dict[str, Any] = {
+            FIELD_VERSION: version,
+            FIELD_TAG: tag,
+            FIELD_PLATFORM: platform,
+            FIELD_FILENAME: file_path.name,
+            FIELD_ATTACHMENT: [{"file_token": file_token}],
+            FIELD_BUILD_TIME: build_ms,
+        }
+        if pipe:
+            fields[FIELD_PIPELINE] = {"text": f"Pipeline #{env('CI_PIPELINE_ID')}", "link": pipe}
+
+        create_record(tenant, app_token, table_id, fields)
+        created += 1
 
     log("")
-    log(f"✅ 已发布 {len(uploaded)} 个文件到知识库「{parent_title}」")
-    log(f"   {wiki_url}")
-    for name in uploaded:
-        log(f"   - {name}")
+    log(f"✅ 已写入 {created} 条记录到多维表格")
+    log(f"   {bitable_url}")
     return 0
 
 
