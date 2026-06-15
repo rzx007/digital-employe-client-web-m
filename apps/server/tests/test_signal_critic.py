@@ -75,3 +75,21 @@ def test_maybe_reflect_on_signal_writes_memory(db_session, workspace, monkeypatc
     mem = (tmp_path / str(emp.id) / "memories" / "AGENTS.md")
     assert mem.exists()
     assert "pip install" in mem.read_text(encoding="utf-8")
+
+
+def test_reflect_on_signal_safe_calls_gate(monkeypatch):
+    import src.service.reflection_engine as re
+    calls = []
+    monkeypatch.setattr(re, "maybe_reflect_on_signal", lambda db, log: calls.append(log))
+    from src.service.stream_registry import _reflect_on_signal_safe
+    sentinel = object()
+    _reflect_on_signal_safe(object(), sentinel)
+    assert calls == [sentinel]
+
+
+def test_reflect_on_signal_safe_swallows(monkeypatch):
+    import src.service.reflection_engine as re
+    monkeypatch.setattr(re, "maybe_reflect_on_signal",
+                        lambda db, log: (_ for _ in ()).throw(RuntimeError("boom")))
+    from src.service.stream_registry import _reflect_on_signal_safe
+    _reflect_on_signal_safe(object(), object())  # 不抛

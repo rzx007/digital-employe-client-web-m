@@ -2283,6 +2283,15 @@ def _capture_journal_safe(db, log) -> None:
         logger.warning("journal capture hook failed", exc_info=True)
 
 
+def _reflect_on_signal_safe(db, log) -> None:
+    """信号闸门反思的容错封装，任何异常都只 warning 不上抛。"""
+    try:
+        from src.service.reflection_engine import maybe_reflect_on_signal
+        maybe_reflect_on_signal(db, log)
+    except Exception:
+        logger.warning("signal reflection hook failed", exc_info=True)
+
+
 def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
     try:
         from src.db.session import get_session_local
@@ -2338,20 +2347,7 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
                 exc_info=True,
             )
 
-        # 2. 后执行反思（仅 completed，从 Conversation 获取 employee_id）
-        if stream_state == "completed":
-            employee_id = None
-            if conv and conv.target_type == "employee":
-                employee_id = conv.target_id
-            if employee_id is not None:
-                try:
-                    from src.service.reflection_engine import run_reflection
-
-                    run_reflection(conversation_id, employee_id, db)
-                except Exception:
-                    logger.warning("reflection failed conv=%s", conversation_id, exc_info=True)
-
-        # 3. 更新 TaskExecutionLog（仅当存在时）
+        # 2. 更新 TaskExecutionLog（仅当存在时）
         log = db.scalars(
             select(TaskExecutionLog).where(
                 TaskExecutionLog.conversation_id == conversation_id,
@@ -2417,6 +2413,7 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
         db.commit()
         db.refresh(log)
         _capture_journal_safe(db, log)   # 学习闭环 journal 捕获
+        _reflect_on_signal_safe(db, log)   # 信号闸门 critic（替代旧的无条件反思）
 
         summary_message = None
         orch_conv_id = log.orchestrator_conversation_id
