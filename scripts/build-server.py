@@ -32,6 +32,32 @@ OUTPUT_DIR = ROOT_DIR / "apps" / "web" / "py-server"
 BUILD_DIR = ROOT_DIR / "build" / "server"
 
 
+def subprocess_env() -> dict[str, str]:
+    """子进程统一 UTF-8，避免 Windows GBK 解码 uv/PyInstaller 输出失败。"""
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
+def run_subprocess(
+    cmd: list[str],
+    *,
+    cwd: Path,
+    check: bool = True,
+    capture: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    kwargs: dict = {"cwd": cwd, "check": check, "env": subprocess_env()}
+    if capture:
+        kwargs.update(
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    return subprocess.run(cmd, **kwargs)
+
+
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description="Python 后端打包脚本")
@@ -118,18 +144,17 @@ def install_dependencies():
     print("📦 安装 Python 依赖...")
 
     try:
-        subprocess.run(
+        run_subprocess(
             ["uv", "sync", "--group", "dev"],
             cwd=SERVER_DIR,
-            check=True,
-            capture_output=True,
-            text=True,
+            capture=True,
         )
         print("✅ 依赖安装完成")
         return True
     except subprocess.CalledProcessError as e:
-        print(f"❌ 依赖安装失败:")
-        print(f"   错误: {e.stderr}")
+        print("❌ 依赖安装失败:")
+        detail = e.stderr or e.stdout or str(e)
+        print(f"   错误: {detail}")
         return False
     except FileNotFoundError:
         print("❌ 错误: 未找到 uv 命令，请安装 uv (https://github.com/astral-sh/uv)")
@@ -230,9 +255,7 @@ def run_pyinstaller():
 
     try:
         print(f"   运行命令: {' '.join(pyinstaller_args[:10])}...")
-        result = subprocess.run(
-            pyinstaller_args, cwd=SERVER_DIR, check=True, capture_output=True, text=True
-        )
+        run_subprocess(pyinstaller_args, cwd=SERVER_DIR, capture=True)
 
         # 检查输出文件
         exe_path = OUTPUT_DIR / (
@@ -247,9 +270,10 @@ def run_pyinstaller():
             return False
 
     except subprocess.CalledProcessError as e:
-        print(f"❌ PyInstaller 打包失败:")
-        print(f"   错误: {e.stderr}")
-        if sys.platform == "win32" and "WinError 32" in (e.stderr or ""):
+        print("❌ PyInstaller 打包失败:")
+        detail = e.stderr or e.stdout or str(e)
+        print(f"   错误: {detail}")
+        if sys.platform == "win32" and "WinError 32" in detail:
             print()
             print("💡 Windows 文件被占用，常见原因：")
             print("   1. 仍有 dev:server / dev:app 或 backend.exe 在运行")
