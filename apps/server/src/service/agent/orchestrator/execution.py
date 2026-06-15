@@ -418,6 +418,18 @@ def start_task_as_conversation(
     # 群协作：若本任务属于某房间（组长派的活），让它用房间共享产物目录，
     # 这样上游成员产出的文件对下游成员可见（解决"下游找不到上游产物"）。
     shared_artifacts_dir = _resolve_room_shared_artifacts_dir(db, orch_conv_id, root_path)
+    shared_workspace_root = None
+    # 注：orch_conv_id 为 None 的孤儿任务（无 source_conversation_id 且无 plan）→ 不进桌，
+    #     回落到员工级目录（现状行为），这是预期分支不是遗漏。
+    if shared_artifacts_dir is None and orch_conv_id is not None:
+        # 非群派活：全队共享总管这一张桌
+        from src.service.agent.workspace_paths import (
+            resolve_orchestrator_desk_dir,
+            orchestrator_task_subdir,
+        )
+        _desk = resolve_orchestrator_desk_dir(root_path, orch_conv_id)
+        shared_artifacts_dir = str(orchestrator_task_subdir(_desk, task.id))
+        shared_workspace_root = str(_desk)
 
     # 群协作：登记流式中继，让成员产出 token 逐字推到群时间线。
     _register_room_stream_relay_if_in_room(
@@ -443,6 +455,7 @@ def start_task_as_conversation(
         conversation_id=conversation_id,
         enable_hitl=False,
         shared_artifacts_dir=shared_artifacts_dir,
+        shared_workspace_root=shared_workspace_root,   # 新增：非群派活时指向总管共享桌
         max_output_tokens=resolve_output_tokens(_task_output_tier),
     )
 
