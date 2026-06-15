@@ -13,7 +13,6 @@
 
 stages:
   - build
-  - deploy
 
 variables:
   # ---------- 国内镜像（npmmirror，与根目录 .npmrc 一致）----------
@@ -31,6 +30,9 @@ variables:
   UV_HTTP_TIMEOUT: "300"
   UV_HTTP_RETRIES: "5"
   # UV_PYTHON 由 windows-prepare.ps1 从本机 py -3.11 / python3 解析，勿强制 uv 在线下载
+  FEISHU_BITABLE_WIKI_NODE: "Zc3XwAhsMiJPUEk7IimcHMfKnoc"
+  FEISHU_BITABLE_TABLE_ID: "tblhM5KRRT2i8YsP"
+  FEISHU_BITABLE_URL: "https://scnj8otdvysf.feishu.cn/wiki/Zc3XwAhsMiJPUEk7IimcHMfKnoc?table=tblhM5KRRT2i8YsP&view=vewYirQnN3"
 
 # 版本 tag（vX.Y.Z）才触发真打包
 .release_refs: &release_refs
@@ -74,6 +76,8 @@ build:windows:
   script:
     - pnpm install --frozen-lockfile --config.node-linker=hoisted --registry=https://registry.npmmirror.com
     - pnpm build:app
+    # 旧版 GitLab 无 needs；飞书发布合并在 Windows 构建内（失败不阻断安装包）
+    - python3 scripts/ci/publish-feishu.py; if (-not $?) { Write-Host "Feishu publish failed (non-blocking)" }
   artifacts:
     name: "BobanStaff-Windows-$CI_COMMIT_TAG"
     paths:
@@ -118,31 +122,3 @@ build:linux:
     paths:
       - release/*.deb
     expire_in: 30 days
-
-# ------------------------------------------------------------------------------
-# 飞书多维表格：release 产物写入版本管理表（bitable:app）
-# 表格: https://scnj8otdvysf.feishu.cn/wiki/Zc3XwAhsMiJPUEk7IimcHMfKnoc?table=tblhM5KRRT2i8YsP
-# GitLab Variables（Masked）: FEISHU_APP_ID, FEISHU_APP_SECRET
-# 飞书侧: 多维表格 → … → 添加文档应用 → 可管理
-# ------------------------------------------------------------------------------
-publish:feishu:
-  stage: deploy
-  tags:
-    - win-builder
-  only: *release_refs
-  allow_failure: true
-  needs:
-    - job: build:windows
-      artifacts: true
-    - job: build:macos
-      artifacts: true
-      optional: true
-    - job: build:linux
-      artifacts: true
-      optional: true
-  variables:
-    FEISHU_BITABLE_WIKI_NODE: "Zc3XwAhsMiJPUEk7IimcHMfKnoc"
-    FEISHU_BITABLE_TABLE_ID: "tblhM5KRRT2i8YsP"
-    FEISHU_BITABLE_URL: "https://scnj8otdvysf.feishu.cn/wiki/Zc3XwAhsMiJPUEk7IimcHMfKnoc?table=tblhM5KRRT2i8YsP&view=vewYirQnN3"
-  script:
-    - python3 scripts/ci/publish-feishu.py
