@@ -149,3 +149,49 @@ def test_trigger_reentry_skips_group_plan(db_session, workspace, monkeypatch):
     monkeypatch.setattr(reentry, "_schedule_reentry_stream", lambda **kw: started.append(kw))
     reentry.trigger_orchestrator_reentry(db_session, plan, workspace.id)
     assert started == []
+
+
+def test_all_settled_triggers_reentry(
+    patched_task_mutations_db, db_session, workspace, monkeypatch
+):
+    """调度器 all_settled 非群分支 → trigger_orchestrator_reentry 被调用。"""
+    from src.service.agent.orchestrator import dependency_scheduler as ds
+    from src.service.agent.orchestrator import reentry
+
+    # 建总管会话（非群，无 GroupRoom）
+    conv = Conversation(
+        workspace_id=workspace.id, target_type="curator", target_id=0, title="总管"
+    )
+    db_session.add(conv)
+    db_session.flush()
+
+    emp = add_employee(db_session, workspace.id, name="w")
+    plan, (a, b) = _plan_with_two_tasks(db_session, workspace.id, emp.id, conv_id=conv.id)
+
+    # 两个任务均已 success
+    for t in (a, b):
+        db_session.add(TaskExecutionLog(
+            task_id=t.id, workspace_id=workspace.id, employee_id=emp.id,
+            task_name_snapshot=t.task_name, run_status="success",
+            output_json=json.dumps({"content": "done"}),
+            orchestrator_conversation_id=conv.id,
+            started_at=cst_now(), ended_at=cst_now(),
+        ))
+    db_session.commit()
+
+    # patch WorkspaceEventBus.push（on_employee_task_completed 内会调）
+    monkeypatch.setattr(
+        "src.service.workspace_events.WorkspaceEventBus.push",
+        lambda ws_id, event: None,
+    )
+
+    # patch 源模块属性——函数内 from ... import 会重新绑定，patch 源模块属性即可拦截
+    calls: list = []
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.reentry.trigger_orchestrator_reentry",
+        lambda db, pl, ws: calls.append((pl.id, ws)),
+    )
+
+    ds.on_employee_task_completed(a.id, workspace.id)
+
+    assert (plan.id, workspace.id) in calls

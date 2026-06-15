@@ -400,6 +400,11 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
             all_settled = all(_is_settled(t.id, status_by_task) for t in tasks)
             if all_settled:
                 _trigger_leader_summary_if_room(db, plan, workspace_id)
+                # 非群编排：全部完成 → 唤醒总管再入整合（群计划内部会跳过）
+                from src.service.agent.orchestrator.reentry import (
+                    trigger_orchestrator_reentry,
+                )
+                trigger_orchestrator_reentry(db, plan, workspace_id)
     except Exception:
         logger.error(
             "on_employee_task_completed failed task=%s", task_id, exc_info=True
