@@ -33,3 +33,25 @@ def test_build_profiles_section_empty_when_none(monkeypatch):
     class _Emp:
         def __init__(self, id, name): self.id = id; self.name = name
     assert prompts.build_employee_profiles_section([_Emp(1, "甲")]) == ""
+
+
+def test_capability_context_includes_profiles(monkeypatch, db_session, workspace):
+    from src.service.agent.orchestrator import prompts
+    from tests.conftest import add_employee
+    emp = add_employee(db_session, workspace.id, name="林晓")
+    monkeypatch.setattr(prompts, "_read_employee_profile",
+                        lambda eid: "- 擅长芯片调研" if eid == emp.id else "")
+    ctx = prompts.build_employee_capability_context(db_session, workspace.id)
+    assert "| ID | 姓名" in ctx
+    assert "能力画像" in ctx
+    assert "芯片调研" in ctx
+
+
+def test_capability_context_no_profiles_unchanged_tail(monkeypatch, db_session, workspace):
+    from src.service.agent.orchestrator import prompts
+    from tests.conftest import add_employee
+    add_employee(db_session, workspace.id, name="林晓")
+    monkeypatch.setattr(prompts, "_read_employee_profile", lambda eid: "")
+    ctx = prompts.build_employee_capability_context(db_session, workspace.id)
+    assert "| ID | 姓名" in ctx
+    assert "能力画像" not in ctx

@@ -178,7 +178,11 @@ def build_employee_capability_context(db: Session, workspace_id: int) -> str:
             f"{tasks_line} |"
         )
 
-    return "\n".join(lines)
+    table = "\n".join(lines)
+    profiles_section = build_employee_profiles_section(employees)
+    if profiles_section:
+        return table + "\n\n" + profiles_section
+    return table
 
 
 _STATUS_LABELS: dict[str, str] = {
