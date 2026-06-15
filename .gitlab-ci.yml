@@ -2,13 +2,13 @@
 # 数字员工客户端 - 三平台打包流水线
 #
 # 触发：推送形如 vX.Y.Z 的 tag（如 v0.1.5）时自动构建三平台安装包。
-#       也可在 GitLab Pipelines 页面手动触发（web）。
+#       分支 push 时只跑 smoke 冒烟测试，不触发真打包。
 #
 # 构建机（shell executor，按 tag 调度）：
 #   - win-builder  : Windows 服务器，原生打 Windows NSIS（含 backend.exe）
 #   - mac-builder  : Apple Silicon Mac，原生打 macOS dmg/zip + Docker 打 Linux arm64 deb
 #
-# 产物统一收集到 apps/web/release/，通过 GitLab Artifacts 下载。
+# 注：本仓库 GitLab 为旧版本，使用 only/except 语法（不支持 rules）。
 # ==============================================================================
 
 stages:
@@ -21,22 +21,19 @@ variables:
   # Node 大型构建（Vite 26K 模块）提高堆上限
   NODE_OPTIONS: "--max-old-space-size=8192"
 
-# 仅在打 tag 或手动触发时跑，避免每次 push 都全平台构建
-.release_rules: &release_rules
-  rules:
-    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/'
-    - if: '$CI_PIPELINE_SOURCE == "web"'
+# 版本 tag（vX.Y.Z）才触发真打包
+.release_refs: &release_refs
+  - /^v\d+\.\d+\.\d+/
 
 # ------------------------------------------------------------------------------
 # 冒烟测试：分支 push 时跑，验证 win-builder 服务账户能看到全套工具
-# （真打包只在打 tag 时触发，见下方 release_rules）
 # ------------------------------------------------------------------------------
 smoke:windows:
   stage: build
   tags:
     - win-builder
-  rules:
-    - if: '$CI_COMMIT_TAG == null'
+  except:
+    - tags
   script:
     - node -v
     - pnpm -v
@@ -52,7 +49,7 @@ build:windows:
   stage: build
   tags:
     - win-builder
-  <<: *release_rules
+  only: *release_refs
   script:
     - pnpm install --frozen-lockfile
     - pnpm build:app
@@ -71,7 +68,7 @@ build:macos:
   stage: build
   tags:
     - mac-builder
-  <<: *release_rules
+  only: *release_refs
   script:
     - pnpm install --frozen-lockfile
     - pnpm build:app
@@ -92,7 +89,7 @@ build:linux:
   stage: build
   tags:
     - mac-builder
-  <<: *release_rules
+  only: *release_refs
   script:
     - bash scripts/build-deb.sh
   artifacts:
