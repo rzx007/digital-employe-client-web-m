@@ -281,11 +281,20 @@ def resolve_workspace_context(root_path: str, conversation_id: int):
     return ws.workspace_dir, ws.public_root, conv_artifacts, room_dir
 
 
-def _read_roots(root_path: str, conversation_id: int) -> list[Path]:
-    """资源读取允许的根：员工工作空间 + 整个公共区(+ 房间)。
+def _read_roots_with_desk(
+    root_path: str,
+    conversation_id: int,
+    orchestrator_conversation_id: int | None = None,
+) -> list[Path]:
+    """资源读取允许的根：员工工作空间 + 整个公共区(+ 房间) + 可选共享桌。
 
-    迁移兼容（惰性只读）：旧的会话级布局 <root>/<conversation_id>/ 若仍存在，也作为读根，
-    让存量会话的产物在升级后仍能读到（不主动搬迁）。
+    若 orchestrator_conversation_id 不为 None，且对应的共享桌目录存在，
+    则将其追加到读根，让总管会话在资源面板可见全队产物。
+    防污染：只追加已存在的桌目录（is_dir() 检查），避免普通员工会话
+    拼出不存在的桌根。
+
+    迁移兼容（惰性只读）：旧的会话级布局 <root>/<conversation_id>/ 若仍存在，
+    也作为读根，让存量会话的产物在升级后仍能读到（不主动搬迁）。
     """
     workspace_dir, public_root, _conv, room_dir = resolve_workspace_context(
         root_path, conversation_id
@@ -296,7 +305,31 @@ def _read_roots(root_path: str, conversation_id: int) -> list[Path]:
     legacy = Path(root_path) / str(conversation_id)
     if legacy.is_dir():
         roots.append(legacy.resolve())
+    if orchestrator_conversation_id is not None:
+        # 纯路径拼接，不调用 resolve_orchestrator_desk_dir（避免 mkdir 副作用）
+        desk_path = (
+            Path(root_path)
+            / "orchestrator-desk"
+            / f"conv-{orchestrator_conversation_id}"
+        )
+        if desk_path.is_dir():
+            roots.append(desk_path.resolve())
     return roots
+
+
+def _read_roots(root_path: str, conversation_id: int) -> list[Path]:
+    """资源读取允许的根：员工工作空间 + 整个公共区(+ 房间)(+ 总管共享桌)。
+
+    委托给 _read_roots_with_desk，将 conversation_id 同时作为
+    orchestrator_conversation_id 传入——总管会话（conv_id 即总管会话）
+    自动纳入自己的共享桌；普通员工会话不存在对应桌目录，is_dir() 返回 False
+    故不会污染读根。
+    """
+    return _read_roots_with_desk(
+        root_path,
+        conversation_id,
+        orchestrator_conversation_id=conversation_id,
+    )
 
 
 def _is_strictly_inside(target: Path, root: Path) -> bool:

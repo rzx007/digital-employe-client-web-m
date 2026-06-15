@@ -4,6 +4,7 @@ from src.service.agent.workspace_paths import (
     orchestrator_task_subdir,
     resolve_workspace_dirs,
 )
+from src.service import resource_service
 
 
 def test_dispatched_employee_shares_desk(tmp_path):
@@ -37,3 +38,16 @@ def test_orchestrator_uses_desk_root(tmp_path):
     )
     assert d.artifacts_dir == desk
     assert d.workspace_dir == desk
+
+
+def test_read_roots_include_orchestrator_desk(tmp_path):
+    """总管会话的资源读根应包含其共享桌。"""
+    desk = resolve_orchestrator_desk_dir(str(tmp_path), 9)
+    (desk / "task-100").mkdir(parents=True, exist_ok=True)
+    (desk / "task-100" / "report.md").write_text("ok", encoding="utf-8")
+
+    roots = resource_service._read_roots_with_desk(
+        str(tmp_path), conversation_id=9, orchestrator_conversation_id=9
+    )
+    desk_r = desk.resolve()
+    assert any(r == desk_r for r in roots)
