@@ -38,14 +38,17 @@ PYPI_MIRROR_FALLBACK = "https://npmmirror.com/mirror/pypi/simple"
 
 
 def _resolve_uv_cache_dir() -> str:
-    """Runner 以 systemprofile 运行，缓存须放在 builds 同级可写目录。"""
+    """优先 yaoji 账户缓存；CI 可通过 UV_CACHE_DIR 覆盖。"""
     explicit = os.environ.get("UV_CACHE_DIR", "").strip()
     if explicit:
         return explicit
 
+    yaoji_cache = Path("C:/Users/yaoji/AppData/Local/uv-cache")
+    if yaoji_cache.parent.parent.exists():
+        return str(yaoji_cache)
+
     ci_project = os.environ.get("CI_PROJECT_DIR", "").strip()
     if ci_project:
-        # .../builds/<runner-hash>/0/ns/project → .../builds/<runner-hash>/uv-cache
         runner_root = Path(ci_project).parent.parent
         return str(runner_root / "uv-cache")
 

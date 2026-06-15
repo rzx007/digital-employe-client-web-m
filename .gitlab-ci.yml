@@ -1,7 +1,9 @@
 # ==============================================================================
 # 数字员工客户端 - 打包流水线
 #
-# Windows（win-builder = 那台 Windows 服务器，shell executor）：
+# Windows（win-builder = yaoji 账户下的 GitLab Runner，shell executor）：
+#   首次部署请用管理员执行 scripts/ci/setup-win-runner-yaoji.ps1
+#   将 Runner 服务从 systemprofile 改为 yaoji 运行。
 #   CI job 即「远程下发指令」，实际执行 scripts/ci/build-windows.ps1。
 #   默认保留 .venv / node_modules，比旧 CI 冷启动快。
 #   - 推 vX.Y.Z tag → build:windows 自动触发
@@ -24,8 +26,9 @@ variables:
   ELECTRON_BUILDER_BINARIES_MIRROR: "https://npmmirror.com/mirrors/electron-builder-binaries/"
   UV_INDEX_URL: "https://mirrors.aliyun.com/pypi/simple/"
   UV_EXTRA_INDEX_URL: "https://npmmirror.com/mirror/pypi/simple"
-  # 留空则 build-server 自动用 builds/<runner-id>/uv-cache（systemprofile 可写）
-  UV_CACHE_DIR: ""
+  # yaoji 账户：Python / uv 缓存 / 工具链 PATH
+  UV_PYTHON: "C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe"
+  UV_CACHE_DIR: "C:/Users/yaoji/AppData/Local/uv-cache"
   UV_CONCURRENT_DOWNLOADS: "16"
   PIP_INDEX_URL: "https://mirrors.aliyun.com/pypi/simple/"
   # Node 大型构建（Vite 26K 模块）提高堆上限
@@ -36,7 +39,7 @@ variables:
   # uv 拉 PyPI：拉长超时，避免 anthropic 等大包下载失败
   UV_HTTP_TIMEOUT: "300"
   UV_HTTP_RETRIES: "5"
-  # UV_PYTHON 固定为 win-builder 上 64 位 Python 3.11 绝对路径（Runner 服务账户无 py 启动器）
+  # UV_PYTHON / UV_CACHE_DIR 见全局 variables（yaoji 账户）
   FEISHU_BITABLE_WIKI_NODE: "Zc3XwAhsMiJPUEk7IimcHMfKnoc"
   FEISHU_BITABLE_TABLE_ID: "tblhM5KRRT2i8YsP"
   FEISHU_BITABLE_URL: "https://scnj8otdvysf.feishu.cn/wiki/Zc3XwAhsMiJPUEk7IimcHMfKnoc?table=tblhM5KRRT2i8YsP&view=vewYirQnN3"
@@ -45,16 +48,15 @@ variables:
 .release_refs: &release_refs
   - /^v\d+\.\d+\.\d+/
 
-# Windows smoke：只检测工具链，不删 .venv / node_modules（留给 build-windows.ps1 复用）
+# Windows smoke / build：yaoji 账户 Runner（见 setup-win-runner-yaoji.ps1）
 .win_smoke: &win_smoke
   variables:
     GIT_CLEAN_FLAGS: ""
-    UV_PYTHON: "C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe"
   before_script:
     - pwsh -NoProfile -File scripts/ci/windows-prepare.ps1 -SkipClean
 
 # ------------------------------------------------------------------------------
-# 冒烟测试：分支 push 时跑，验证 win-builder 服务账户能看到全套工具
+# 冒烟测试：分支 push 时跑，验证 yaoji 账户下工具链
 # ------------------------------------------------------------------------------
 smoke:windows:
   <<: *win_smoke
@@ -64,10 +66,10 @@ smoke:windows:
   except:
     - tags
   script:
+    - echo "CI user=$env:USERNAME"
     - node -v
     - pnpm -v
-    # Runner 以 systemprofile 运行，py 启动器不可用；打包实际用 UV_PYTHON 绝对路径
-    - '& $env:UV_PYTHON -c "import sys,platform; print(sys.executable); print(platform.architecture()); assert sys.maxsize > 2**32"'
+    - py -3.11-64 -c "import sys,platform; print(sys.executable); print(platform.architecture()); assert sys.maxsize > 2**32"
     - uv --version
     - git --version
     - echo "ALL TOOLS VISIBLE TO RUNNER"
@@ -76,7 +78,6 @@ smoke:windows:
 .win_build: &win_build
   variables:
     GIT_CLEAN_FLAGS: ""
-    UV_PYTHON: "C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe"
 
 # ------------------------------------------------------------------------------
 # Windows x64：推 tag 自动打包（快路径，保留 .venv）
