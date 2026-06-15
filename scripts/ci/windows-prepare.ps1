@@ -1,5 +1,8 @@
 # Windows CI：启用 git 长路径，并用 robocopy 安全删除 pnpm 深层 node_modules。
 # GitLab get_sources 阶段的 git clean 在 MAX_PATH 下会失败，需配合 GIT_CLEAN_FLAGS="" 使用。
+# -SkipClean：smoke / 本地 build-windows.ps1 场景，保留 .venv 与 node_modules。
+
+param([switch]$SkipClean)
 
 $ErrorActionPreference = "Stop"
 
@@ -105,13 +108,18 @@ function Set-UvPythonFromSystem {
 $root = if ($env:CI_PROJECT_DIR) { $env:CI_PROJECT_DIR } else { (Get-Location).Path }
 Set-Location $root
 
-foreach ($dir in @(
-        (Join-Path $root "node_modules"),
-        (Join-Path $root "apps\web\node_modules"),
-        (Join-Path $root "packages\ui\node_modules"),
-        (Join-Path $root ".venv")
-    )) {
-    Remove-DeepDirectory -Path $dir
+if (-not $SkipClean) {
+    foreach ($dir in @(
+            (Join-Path $root "node_modules"),
+            (Join-Path $root "apps\web\node_modules"),
+            (Join-Path $root "packages\ui\node_modules"),
+            (Join-Path $root ".venv")
+        )) {
+        Remove-DeepDirectory -Path $dir
+    }
+}
+else {
+    Write-Host "SkipClean: 保留 node_modules 与 .venv"
 }
 
 Set-UvPythonFromSystem

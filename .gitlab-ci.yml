@@ -1,12 +1,11 @@
 # ==============================================================================
-# 数字员工客户端 - 三平台打包流水线
+# 数字员工客户端 - 打包流水线
 #
-# 触发：推送形如 vX.Y.Z 的 tag（如 v0.1.5）时自动构建三平台安装包。
-#       分支 push 时只跑 smoke 冒烟测试，不触发真打包。
+# Windows：不在 CI 打 tag 包（太慢），改在 win-builder 上 RDP 执行：
+#   pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref vX.Y.Z
 #
-# 构建机（shell executor，按 tag 调度）：
-#   - win-builder  : Windows 服务器，原生打 Windows NSIS（含 backend.exe）
-#   - mac-builder  : Apple Silicon Mac，原生打 macOS dmg/zip + Docker 打 Linux arm64 deb
+# macOS / Linux：推送 vX.Y.Z tag 时仍由 CI 自动构建。
+# 分支 push：Windows 只跑 smoke 冒烟（验证 Runner 工具链）。
 #
 # 注：本仓库 GitLab 为旧版本，使用 only/except 语法（不支持 rules）。
 # ==============================================================================
@@ -39,21 +38,19 @@ variables:
 .release_refs: &release_refs
   - /^v\d+\.\d+\.\d+/
 
-# Windows：pnpm 嵌套 node_modules 路径极深，git clean 会触发 MAX_PATH 失败。
-# 跳过 get_sources 的 git clean，改由 windows-prepare.ps1 用 robocopy 清理。
-.win_ci: &win_ci
+# Windows smoke：只检测工具链，不删 .venv / node_modules（留给 build-windows.ps1 复用）
+.win_smoke: &win_smoke
   variables:
     GIT_CLEAN_FLAGS: ""
-    # win-builder：64 位 Python 绝对路径（Runner 服务账户可能找不到 py 启动器）
     UV_PYTHON: "C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe"
   before_script:
-    - pwsh -NoProfile -File scripts/ci/windows-prepare.ps1
+    - pwsh -NoProfile -File scripts/ci/windows-prepare.ps1 -SkipClean
 
 # ------------------------------------------------------------------------------
 # 冒烟测试：分支 push 时跑，验证 win-builder 服务账户能看到全套工具
 # ------------------------------------------------------------------------------
 smoke:windows:
-  <<: *win_ci
+  <<: *win_smoke
   stage: build
   tags:
     - win-builder
@@ -68,27 +65,14 @@ smoke:windows:
     - echo "ALL TOOLS VISIBLE TO RUNNER"
 
 # ------------------------------------------------------------------------------
-# Windows x64（NSIS 安装包）
+# Windows x64（已停用 CI 自动打包，见 scripts/ci/build-windows.ps1）
 # ------------------------------------------------------------------------------
-build:windows:
-  <<: *win_ci
-  stage: build
-  tags:
-    - win-builder
-  only: *release_refs
-  script:
-    - pnpm install --frozen-lockfile --config.node-linker=hoisted --registry=https://registry.npmmirror.com
-    # Runner 上 python3 可能是坏掉的 32 位 shim（0xc0000135），改用 UV_PYTHON
-    - '& $env:UV_PYTHON scripts/build-server.py --app'
-    - pnpm build:client
-    - '& $env:UV_PYTHON scripts/ci/publish-feishu.py; if (-not $?) { Write-Host "Feishu publish failed (non-blocking)" }'
-  artifacts:
-    name: "BobanStaff-Windows-$CI_COMMIT_TAG"
-    paths:
-      - apps/web/release/*.exe
-      - apps/web/release/*.yml
-      - apps/web/release/*.blockmap
-    expire_in: 30 days
+# build:windows:
+#   stage: build
+#   tags:
+#     - win-builder
+#   only: *release_refs
+#   ...
 
 # ------------------------------------------------------------------------------
 # macOS（dmg 手动分发 + zip 应用内更新源）
