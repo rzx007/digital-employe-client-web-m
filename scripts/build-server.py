@@ -291,6 +291,7 @@ def install_dependencies():
         "apps/server",
         "--group",
         "dev",
+        "--frozen",
     ]
     max_attempts = 3
 
