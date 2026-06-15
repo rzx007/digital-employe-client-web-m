@@ -42,3 +42,46 @@ def test_generate_profile_no_journal_noop(monkeypatch, tmp_path):
                         lambda: (_ for _ in ()).throw(AssertionError("无 journal 不该调 LLM")))
     librarian.generate_profile(99)
     assert not (tmp_path / "99" / "profile.md").exists()
+
+
+# ── 2C-2: consolidate_memory ────────────────────────────────────────────────
+
+def _seed_memory(brain: Path, body: str):
+    md = brain / "memories"; md.mkdir(parents=True, exist_ok=True)
+    (md / "AGENTS.md").write_text(body, encoding="utf-8")
+
+
+_MEM = "# 员工长期记忆\n\n## 用户偏好\n§喜欢简洁\n§喜欢简洁\n\n## 已知事实与约定\n§项目用 uv\n"
+
+
+def test_consolidate_memory_writes_when_safe(monkeypatch, tmp_path):
+    from src.service.learning import librarian
+    monkeypatch.setattr(librarian, "_brain_root_for", lambda eid: tmp_path / str(eid))
+    cleaned = "# 员工长期记忆\n\n## 用户偏好\n§喜欢简洁\n\n## 已知事实与约定\n§项目用 uv\n"
+    monkeypatch.setattr(librarian, "_build_llm",
+                        lambda: type("L", (), {"invoke": lambda self, p: type("R", (), {"content": cleaned})()})())
+    brain = tmp_path / "42"; _seed_memory(brain, _MEM)
+    librarian.consolidate_memory(42)
+    out = (brain / "memories" / "AGENTS.md").read_text(encoding="utf-8")
+    assert out.count("§喜欢简洁") == 1
+    assert "## 用户偏好" in out and "## 已知事实与约定" in out
+    assert (brain / "memories" / "AGENTS.md.bak").exists()
+
+
+def test_consolidate_memory_skips_unsafe_output(monkeypatch, tmp_path):
+    from src.service.learning import librarian
+    monkeypatch.setattr(librarian, "_brain_root_for", lambda eid: tmp_path / str(eid))
+    monkeypatch.setattr(librarian, "_build_llm",
+                        lambda: type("L", (), {"invoke": lambda self, p: type("R", (), {"content": "坏"})()})())
+    brain = tmp_path / "42"; _seed_memory(brain, _MEM)
+    librarian.consolidate_memory(42)
+    out = (brain / "memories" / "AGENTS.md").read_text(encoding="utf-8")
+    assert out == _MEM
+
+
+def test_consolidate_memory_no_file_noop(monkeypatch, tmp_path):
+    from src.service.learning import librarian
+    monkeypatch.setattr(librarian, "_brain_root_for", lambda eid: tmp_path / str(eid))
+    monkeypatch.setattr(librarian, "_build_llm",
+                        lambda: (_ for _ in ()).throw(AssertionError("无记忆不该调 LLM")))
+    librarian.consolidate_memory(77)
