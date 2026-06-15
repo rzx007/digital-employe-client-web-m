@@ -29,6 +29,7 @@ import { ExecutionDetail } from "@/components/schedule-monitor/sections/executio
 import { ExecutionMetricsCard } from "@/components/schedule-monitor/sections/execution-metrics-card"
 import { EmployeeEditForm } from "@/components/employee/employee-edit-form"
 import { CuratorOverviewSection } from "./curator-overview-section"
+import { GrowthBrainSection } from "./growth-brain-section"
 
 export function ContactDetailPanel({
   className,
@@ -80,6 +81,9 @@ export function ContactDetailPanel({
                   <TabsTrigger value="tasks" className="flex-1">
                     任务监控
                   </TabsTrigger>
+                  <TabsTrigger value="growth" className="flex-1">
+                    成长履历
+                  </TabsTrigger>
                   <TabsTrigger value="edit" className="flex-1">
                     编辑员工
                   </TabsTrigger>
@@ -93,6 +97,11 @@ export function ContactDetailPanel({
                 <TabsContent value="tasks">
                   <ContactMonitorSection
                     employeeId={selectedContact.employee?.id ?? ""}
+                  />
+                </TabsContent>
+                <TabsContent value="growth">
+                  <GrowthBrainSection
+                    employeeId={selectedContact.employee?.id ?? null}
                   />
                 </TabsContent>
               </Tabs>
