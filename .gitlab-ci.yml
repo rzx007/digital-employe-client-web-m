@@ -43,6 +43,8 @@ variables:
 .win_ci: &win_ci
   variables:
     GIT_CLEAN_FLAGS: ""
+    # win-builder：64 位 Python 绝对路径（Runner 服务账户可能找不到 py 启动器）
+    UV_PYTHON: "C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe"
   before_script:
     - pwsh -NoProfile -File scripts/ci/windows-prepare.ps1
 

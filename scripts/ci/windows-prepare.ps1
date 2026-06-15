@@ -40,7 +40,24 @@ function Test-Is64BitPython {
     return ($LASTEXITCODE -eq 0)
 }
 
+function Get-64BitPythonCandidates {
+    $paths = @(
+        "C:\Users\yaoji\AppData\Local\Programs\Python\Python311\python.exe",
+        "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
+        "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
+        "$env:ProgramFiles\Python311\python.exe"
+    )
+    foreach ($p in $paths) {
+        if ($p -and (Test-Path -LiteralPath $p) -and (Test-Is64BitPython $p)) {
+            return $p
+        }
+    }
+    return $null
+}
+
 function Set-UvPythonFromSystem {
+    Write-Host "CI user=$env:USERNAME LOCALAPPDATA=$env:LOCALAPPDATA"
+
     if ($env:UV_PYTHON -and (Test-Is64BitPython $env:UV_PYTHON)) {
         Write-Host "UV_PYTHON=$env:UV_PYTHON"
         return
@@ -48,6 +65,16 @@ function Set-UvPythonFromSystem {
     if ($env:UV_PYTHON) {
         Write-Host "WARN: 忽略无效 UV_PYTHON: $($env:UV_PYTHON)"
         Remove-Item Env:UV_PYTHON -ErrorAction SilentlyContinue
+    }
+
+    $direct = Get-64BitPythonCandidates
+    if ($direct) {
+        $env:UV_PYTHON = $direct
+        Write-Host "UV_PYTHON=$env:UV_PYTHON"
+        if ($env:GITLAB_ENV) {
+            Add-Content -Path $env:GITLAB_ENV -Value "UV_PYTHON=$env:UV_PYTHON"
+        }
+        return
     }
 
     $candidates = @(

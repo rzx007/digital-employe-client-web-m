@@ -71,40 +71,99 @@ def _is_64bit_python(exe: str) -> bool:
         return False
 
 
+def _windows_direct_python_exes() -> list[Path]:
+    """GitLab Runner 服务账户可能无 py 启动器，直接探测常见安装路径。"""
+    seen: set[str] = set()
+    out: list[Path] = []
+
+    def add(path: Path) -> None:
+        key = str(path)
+        if key not in seen and path.is_file():
+            seen.add(key)
+            out.append(path)
+
+    env_roots: list[Path] = []
+    for key in ("LOCALAPPDATA", "ProgramFiles"):
+        val = os.environ.get(key, "")
+        if val:
+            env_roots.append(Path(val))
+    userprofile = os.environ.get("USERPROFILE", "")
+    if userprofile:
+        env_roots.append(Path(userprofile) / "AppData" / "Local")
+
+    for root in env_roots:
+        for ver in ("Python311", "Python312"):
+            add(root / "Programs" / "Python" / ver / "python.exe")
+            add(root / ver / "python.exe")
+
+    return out
+
+
+def _windows_py_launcher_exes() -> list[str]:
+    launchers: list[str] = []
+    for candidate in (
+        shutil.which("py"),
+        os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "py.exe"),
+        r"C:\Windows\py.exe",
+    ):
+        if candidate and candidate not in launchers and Path(candidate).is_file():
+            launchers.append(candidate)
+    return launchers
+
+
 def resolve_uv_python(env: dict[str, str]) -> None:
     current = env.get("UV_PYTHON", "").strip()
     if current and _is_64bit_python(current):
+        print(f"🐍 使用 Python: {current}")
         return
     if current:
         print(f"⚠️  忽略无效 UV_PYTHON（需 64 位）: {current}")
 
     if sys.platform == "win32":
-        candidates = [
-            ["py", "-3.11-64"],
-            ["py", "-3.12-64"],
-            ["py", "-3.11"],
-            ["py", "-3.12"],
-        ]
-    else:
-        candidates = [["python3"], ["python"]]
-
-    for cmd in candidates:
-        try:
-            result = subprocess.run(
-                [*cmd, "-c", _PY_BIT_CHECK],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                check=True,
-            )
-            exe = (result.stdout or "").strip()
-            if exe and _is_64bit_python(exe):
+        for exe_path in _windows_direct_python_exes():
+            exe = str(exe_path)
+            if _is_64bit_python(exe):
                 env["UV_PYTHON"] = exe
                 print(f"🐍 使用 Python: {exe}")
                 return
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            continue
+
+        py_args = ["-3.11-64", "-3.12-64", "-3.11", "-3.12"]
+        for py_exe in _windows_py_launcher_exes():
+            for arg in py_args:
+                try:
+                    result = subprocess.run(
+                        [py_exe, arg, "-c", _PY_BIT_CHECK],
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        check=True,
+                    )
+                    exe = (result.stdout or "").strip()
+                    if exe and _is_64bit_python(exe):
+                        env["UV_PYTHON"] = exe
+                        print(f"🐍 使用 Python: {exe}")
+                        return
+                except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+                    continue
+    else:
+        for cmd in (["python3"], ["python"]):
+            try:
+                result = subprocess.run(
+                    [*cmd, "-c", _PY_BIT_CHECK],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    check=True,
+                )
+                exe = (result.stdout or "").strip()
+                if exe and _is_64bit_python(exe):
+                    env["UV_PYTHON"] = exe
+                    print(f"🐍 使用 Python: {exe}")
+                    return
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                continue
 
     env.pop("UV_PYTHON", None)
 
