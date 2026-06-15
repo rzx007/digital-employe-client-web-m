@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -240,3 +242,36 @@ def build_delegation_execution_context(
         lines.append("")
 
     return "\n".join(lines).strip()
+
+
+# ---------------------------------------------------------------------------
+# 2D-1: profile 读取 + 能力画像段构建 helper
+# ---------------------------------------------------------------------------
+
+def _profile_path_for(employee_id: int) -> Path:
+    from src.service.agent.paths import resolve_employee_memories_dir
+    return resolve_employee_memories_dir(employee_id=employee_id).parent / "profile.md"
+
+
+def _read_employee_profile(employee_id: int) -> str:
+    try:
+        p = _profile_path_for(employee_id)
+        if not p.is_file():
+            return ""
+        from src.service.basic_file_reader import read_text_with_encoding_fallback
+        return read_text_with_encoding_fallback(p).strip()
+    except Exception:
+        return ""
+
+
+def build_employee_profiles_section(employees) -> str:
+    """有 profile.md 的员工→拼成「能力画像」段；都没有则返回 ''。"""
+    blocks: list[str] = []
+    for emp in employees:
+        text = _read_employee_profile(emp.id)
+        if not text:
+            continue
+        blocks.append(f"### {emp.name}（ID {emp.id}）\n{text}")
+    if not blocks:
+        return ""
+    return "## 员工能力画像（历史复盘）\n\n" + "\n\n".join(blocks)
