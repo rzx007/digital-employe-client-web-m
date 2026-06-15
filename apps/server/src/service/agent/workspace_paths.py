@@ -14,6 +14,7 @@ class WorkspaceDirs:
     artifacts_dir: Path   # $ARTIFACTS_DIR 写当前会话产物（房间上下文=房间共享）
     workspace_dir: Path   # $WORKSPACE_DIR 员工工作空间根（读自己全部）
     uploads_dir: Path     # $UPLOADS_DIR
+    draft_dir: Path       # 技能草稿目录（员工私有，恒用 conv_artifacts 算定，不随共享桌漂移）
     public_dir: Path      # $PUBLIC_DIR 写自己公共子区
     public_root: Path     # $PUBLIC_ROOT 读全部公共
 
@@ -50,11 +51,13 @@ def resolve_workspace_dirs(
     else:
         artifacts_dir = conv_artifacts
     uploads_dir = conv_artifacts / "uploads"
+    draft_dir = conv_artifacts / "skills-draft"
 
     return WorkspaceDirs(
         artifacts_dir=artifacts_dir,
         workspace_dir=workspace_dir,
         uploads_dir=uploads_dir,
+        draft_dir=draft_dir,
         public_dir=public_dir,
         public_root=public_root,
     )

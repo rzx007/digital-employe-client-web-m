@@ -151,7 +151,7 @@ def get_agent(
     has_draft_route = False
     uploads_dir: Path | None = None
     if conversation_id and root_path:
-        draft_dir = ws.workspace_dir / f"conv-{conversation_id}" / "skills-draft"
+        draft_dir = ws.draft_dir
         draft_dir.mkdir(parents=True, exist_ok=True)
         has_draft_route = True
         uploads_dir = ws.uploads_dir

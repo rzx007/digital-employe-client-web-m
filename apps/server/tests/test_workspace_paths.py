@@ -102,3 +102,32 @@ def test_orchestrator_task_subdir(tmp_path):
     desk = resolve_orchestrator_desk_dir(str(tmp_path), 9)
     sub = orchestrator_task_subdir(desk, 100)
     assert sub == desk / "task-100"
+
+
+def test_draft_dir_is_employee_private_not_desk(tmp_path):
+    """草稿目录恒为员工私有（conv_artifacts/skills-draft），即便 workspace_dir 被重定向到共享桌。"""
+    desk = tmp_path / "orchestrator-desk" / "conv-9"
+    d = resolve_workspace_dirs(
+        root_path=str(tmp_path),
+        employee_id=7,
+        conversation_id=42,
+        shared_artifacts_dir=str(desk / "task-100"),
+        shared_workspace_root=desk,
+        base_dir=tmp_path / "svc",
+    )
+    # 草稿在员工私有 conv 目录下，不在共享桌下
+    assert d.draft_dir == tmp_path / "employee-7" / "artifacts" / "conv-42" / "skills-draft"
+    # 与 uploads 同级（都挂员工 conv 目录）
+    assert d.draft_dir.parent == d.uploads_dir.parent
+
+
+def test_draft_dir_without_redirect(tmp_path):
+    """无共享桌时草稿目录也是员工私有 conv 目录下。"""
+    d = resolve_workspace_dirs(
+        root_path=str(tmp_path),
+        employee_id=7,
+        conversation_id=42,
+        shared_artifacts_dir=None,
+        base_dir=tmp_path / "svc",
+    )
+    assert d.draft_dir == tmp_path / "employee-7" / "artifacts" / "conv-42" / "skills-draft"
