@@ -185,6 +185,32 @@ export async function createEmployee(
   )
 }
 
+export interface EmployeeGrowthBrain {
+  profile_md: string
+  skills_list: string[]
+  memories_md: string
+  journal_entries: Array<{
+    ts: string
+    task_name: string
+    status: string
+    duration_ms: number | null
+  }>
+}
+
+/**
+ * 获取员工成长脑图数据
+ * GET /employees/{employee_id}/growth/brain
+ */
+export async function fetchEmployeeGrowthBrain(
+  employeeId: number | string,
+  opts?: { signal?: AbortSignal }
+) {
+  return request<ApiResponse<EmployeeGrowthBrain>>(
+    `/employees/${employeeId}/growth/brain`,
+    opts?.signal ? { signal: opts.signal } : {}
+  )
+}
+
 /**
  * 更新员工信息
  * PUT /workspaces/{workspace_id}/employees/{employee_id}
