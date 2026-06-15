@@ -40,7 +40,10 @@ def subprocess_env() -> dict[str, str]:
     # CI/慢网络：拉长超时、走国内 PyPI 镜像、固定稳定 Python 版本
     env.setdefault("UV_HTTP_TIMEOUT", "300")
     env.setdefault("UV_HTTP_RETRIES", "5")
-    env.setdefault("UV_INDEX_URL", "https://pypi.tuna.tsinghua.edu.cn/simple")
+    env.setdefault("UV_INDEX_URL", "https://npmmirror.com/mirror/pypi/simple")
+    env.setdefault(
+        "UV_PYTHON_INSTALL_MIRROR", "https://npmmirror.com/mirror/python"
+    )
     env.setdefault("UV_PYTHON", "3.11")
     return env
 

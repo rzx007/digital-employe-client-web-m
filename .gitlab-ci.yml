@@ -15,18 +15,21 @@ stages:
   - build
 
 variables:
-  # 用国内镜像下载 Electron / electron-builder 二进制，避免拉取超时
+  # ---------- 国内镜像（npmmirror，与根目录 .npmrc 一致）----------
+  NPM_CONFIG_REGISTRY: "https://registry.npmmirror.com"
   ELECTRON_MIRROR: "https://npmmirror.com/mirrors/electron/"
   ELECTRON_BUILDER_BINARIES_MIRROR: "https://npmmirror.com/mirrors/electron-builder-binaries/"
+  UV_INDEX_URL: "https://npmmirror.com/mirror/pypi/simple"
+  UV_PYTHON_INSTALL_MIRROR: "https://npmmirror.com/mirror/python"
+  PIP_INDEX_URL: "https://npmmirror.com/mirror/pypi/simple"
   # Node 大型构建（Vite 26K 模块）提高堆上限
   NODE_OPTIONS: "--max-old-space-size=8192"
   # Windows shell 构建：Python/uv 子进程输出统一 UTF-8
   PYTHONUTF8: "1"
   PYTHONIOENCODING: "utf-8"
-  # uv 拉 PyPI：国内镜像 + 拉长超时，避免 anthropic 等大包 30s 超时
+  # uv 拉 PyPI：拉长超时，避免 anthropic 等大包下载失败
   UV_HTTP_TIMEOUT: "300"
   UV_HTTP_RETRIES: "5"
-  UV_INDEX_URL: "https://pypi.tuna.tsinghua.edu.cn/simple"
   UV_PYTHON: "3.11"
 
 # 版本 tag（vX.Y.Z）才触发真打包
@@ -69,8 +72,7 @@ build:windows:
     - win-builder
   only: *release_refs
   script:
-    # hoisted 缩短 node_modules 路径，降低 Windows MAX_PATH 风险
-    - pnpm install --frozen-lockfile --config.node-linker=hoisted
+    - pnpm install --frozen-lockfile --config.node-linker=hoisted --registry=https://registry.npmmirror.com
     - pnpm build:app
   artifacts:
     name: "BobanStaff-Windows-$CI_COMMIT_TAG"
@@ -89,7 +91,7 @@ build:macos:
     - mac-builder
   only: *release_refs
   script:
-    - pnpm install --frozen-lockfile
+    - pnpm install --frozen-lockfile --registry=https://registry.npmmirror.com
     - pnpm build:app
   artifacts:
     name: "BobanStaff-Mac-$CI_COMMIT_TAG"

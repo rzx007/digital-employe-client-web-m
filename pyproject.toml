@@ -16,6 +16,11 @@ members = [
     "apps/license-issuer",
 ]
 
+# 国内构建默认走 npmmirror（CI 可通过 UV_INDEX_URL 覆盖）
+[tool.uv]
+index-url = "https://npmmirror.com/mirror/pypi/simple"
+python-install-mirror = "https://npmmirror.com/mirror/python"
+
 [tool.uv.sources]
 digital-employee-client = { workspace = true }
 digital-employee-activation-core = { workspace = true }
