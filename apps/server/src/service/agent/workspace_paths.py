@@ -30,6 +30,7 @@ def resolve_workspace_dirs(
     employee_id: int | str | None,
     conversation_id: int | None,
     shared_artifacts_dir: str | None,
+    shared_workspace_root: Path | None = None,   # 新增：共享桌只读根
     base_dir: Path,
 ) -> WorkspaceDirs:
     """解析员工工作空间 + 公共区的五个目录（不创建目录，纯计算）。"""
@@ -40,7 +41,9 @@ def resolve_workspace_dirs(
     public_root = root / "shared"
     public_dir = public_root / owner / conv_seg
     workspace_dir = root / owner / "artifacts"
-    conv_artifacts = workspace_dir / conv_seg
+    conv_artifacts = workspace_dir / conv_seg          # uploads/会话私有，恒按员工算（先于重定向定下）
+    if shared_workspace_root is not None:
+        workspace_dir = Path(shared_workspace_root)    # 只改读根为共享桌，不动 conv_artifacts
 
     if shared_artifacts_dir:
         artifacts_dir = Path(shared_artifacts_dir)
