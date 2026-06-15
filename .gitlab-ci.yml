@@ -25,7 +25,7 @@ variables:
   ELECTRON_MIRROR: "https://npmmirror.com/mirrors/electron/"
   ELECTRON_BUILDER_BINARIES_MIRROR: "https://npmmirror.com/mirrors/electron-builder-binaries/"
   UV_INDEX_URL: "https://mirrors.aliyun.com/pypi/simple/"
-  UV_EXTRA_INDEX_URL: "https://npmmirror.com/mirror/pypi/simple"
+  UV_EXTRA_INDEX_URL: "https://npmmirror.com/mirror/pypi/simple https://pypi.org/simple"
   # yaoji 账户：Python / uv 缓存 / 工具链 PATH
   UV_PYTHON: "C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe"
   UV_CACHE_DIR: "C:/Users/yaoji/AppData/Local/uv-cache"

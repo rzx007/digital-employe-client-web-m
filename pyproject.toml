@@ -19,7 +19,11 @@ members = [
 # 国内构建：阿里云 PyPI 为主，npmmirror 备用（勿用 uv sync --frozen/--locked）
 [tool.uv]
 index-url = "https://mirrors.aliyun.com/pypi/simple/"
-extra-index-url = ["https://npmmirror.com/mirror/pypi/simple"]
+extra-index-url = [
+    "https://npmmirror.com/mirror/pypi/simple",
+    "https://pypi.org/simple",
+]
+index-strategy = "unsafe-best-match"
 # CI/打包固定 Python 3.11，避免 lock 中 3.13 split 在 sync 时重新解析失败
 environments = ["python_version == '3.11'"]
 
