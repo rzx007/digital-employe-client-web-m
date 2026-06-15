@@ -5,7 +5,6 @@ from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import cst_now
 from tests.conftest import add_employee
 from src.models.conversation import Conversation
-from src.models.group_room import GroupRoom
 
 
 def _plan_with_one_task(db, ws_id, emp_id, conv_id):
@@ -132,23 +131,6 @@ def test_trigger_reentry_schedules_turn_and_is_idempotent(db_session, workspace,
     assert started[0]["conversation_id"] == conv.id
     reentry.trigger_orchestrator_reentry(db_session, plan, workspace.id)  # 幂等
     assert len(started) == 1
-
-
-def test_trigger_reentry_skips_group_plan(db_session, workspace, monkeypatch):
-    from src.service.agent.orchestrator import reentry
-
-    leader = Conversation(workspace_id=workspace.id, target_type="group_leader", target_id=1, title="组长")
-    db_session.add(leader); db_session.flush()
-    room = GroupRoom(workspace_id=workspace.id, room_conversation_id=1, leader_conversation_id=leader.id)
-    db_session.add(room); db_session.flush()
-    emp = add_employee(db_session, workspace.id, name="w")
-    plan, _ = _plan_with_two_tasks(db_session, workspace.id, emp.id, conv_id=leader.id)
-    db_session.commit()
-
-    started: list[dict] = []
-    monkeypatch.setattr(reentry, "_schedule_reentry_stream", lambda **kw: started.append(kw))
-    reentry.trigger_orchestrator_reentry(db_session, plan, workspace.id)
-    assert started == []
 
 
 def test_all_settled_triggers_reentry(

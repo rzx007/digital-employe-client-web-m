@@ -33,7 +33,6 @@ class Employee(Base):
     )
 
     workspace = relationship("Workspace", back_populates="employees")
-    groups = relationship("ChatGroup", secondary="group_members", back_populates="members")
     skills = relationship(
         "EmployeeSkill",
         back_populates="employee",

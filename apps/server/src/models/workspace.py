@@ -30,6 +30,5 @@ class Workspace(Base):
     )
 
     employees = relationship("Employee", back_populates="workspace", cascade="all, delete-orphan")
-    groups = relationship("ChatGroup", back_populates="workspace", cascade="all, delete-orphan")
     conversations = relationship("Conversation", cascade="all, delete-orphan")
 

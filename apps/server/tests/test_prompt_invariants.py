@@ -240,14 +240,6 @@ def test_orchestrator_list_tasks_no_parallel_rule(orchestrator_prompt: str) -> N
     assert "并行" in orchestrator_prompt
 
 
-def test_orchestrator_group_chat_management_guidance(orchestrator_prompt: str) -> None:
-    """群聊 CRUD 工具须在 prompt 中可见。"""
-    assert "list_workspace_groups" in orchestrator_prompt
-    assert "create_group_and_dispatch" in orchestrator_prompt
-    assert "update_group" in orchestrator_prompt
-    assert "delete_group" in orchestrator_prompt
-
-
 def test_orchestrator_no_dev_file_references(orchestrator_prompt: str) -> None:
     """守住本次清理：不得注入模型读不到的开发内部文件引用。"""
     assert "PEEL_OFF.md" not in orchestrator_prompt

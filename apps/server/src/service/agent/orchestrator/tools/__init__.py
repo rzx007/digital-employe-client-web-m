@@ -43,13 +43,6 @@ from src.service.agent.orchestrator.tools.plans import (
     confirm_orchestration_plan,
     create_orchestration_plan,
 )
-from src.service.agent.orchestrator.tools.groups import (
-    create_group_and_dispatch,
-    delete_group,
-    get_group,
-    list_workspace_groups,
-    update_group,
-)
 from src.service.agent.orchestrator.tools.skills import (
     delete_workspace_skill,
     delete_workspace_skills_batch,
@@ -85,12 +78,6 @@ __all__ = [
     "create_orchestration_plan",
     "confirm_orchestration_plan",
     "cancel_plan",
-    # groups
-    "create_group_and_dispatch",
-    "list_workspace_groups",
-    "get_group",
-    "update_group",
-    "delete_group",
     # tasks
     "list_tasks",
     "update_task",
