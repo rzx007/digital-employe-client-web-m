@@ -37,19 +37,8 @@ _ORCH_STREAM_IDLE_MAX_POLLS = 600  # 最多等待 5 分钟
 def _find_group_room_by_leader_conv(
     db: Session, orchestrator_conversation_id: int | None,
 ):
-    """编排会话若为某群房间的组长会话，返回 GroupRoom。"""
-    if orchestrator_conversation_id is None:
-        return None
-    try:
-        from src.models.group_room import GroupRoom
-
-        return db.scalars(
-            select(GroupRoom).where(
-                GroupRoom.leader_conversation_id == orchestrator_conversation_id
-            )
-        ).first()
-    except Exception:
-        return None
+    """群组长会话查询（已退场）：恒返回 None。"""
+    return None
 
 
 def build_dispatch_extra_meta(*, task_id: int, is_group_leader: bool) -> dict[str, Any]:
@@ -66,26 +55,8 @@ def build_dispatch_extra_meta(*, task_id: int, is_group_leader: bool) -> dict[st
 def _resolve_room_shared_artifacts_dir(
     db: Session, orchestrator_conversation_id: int | None, root_path: str
 ) -> str | None:
-    """若该编排会话是某群房间的组长会话，返回房间共享产物目录，否则 None。
-
-    群协作时所有成员共享 `<root_path>/room-<room_id>/artifacts`，
-    上游产出对下游可见。非群编排返回 None（保持原有按会话隔离）。
-    """
-    if orchestrator_conversation_id is None:
-        return None
-    try:
-        from src.service.resource_service import resolve_shared_artifacts_dir
-
-        return resolve_shared_artifacts_dir(
-            db, root_path, orchestrator_conversation_id
-        )
-    except Exception:
-        logger.warning(
-            "resolve room shared artifacts dir failed orch_conv=%s",
-            orchestrator_conversation_id,
-            exc_info=True,
-        )
-        return None
+    """群协作共享产物目录（已退场）：恒返回 None，走总管共享桌路径。"""
+    return None
 
 
 def _register_room_stream_relay_if_in_room(

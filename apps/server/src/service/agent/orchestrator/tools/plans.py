@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 
 from langchain_core.tools import tool
-from sqlalchemy import select
 
 from src.models.employee import Employee
 from src.models.employee_task import EmployeeTask
@@ -199,18 +198,8 @@ def confirm_orchestration_plan(plan_id: int) -> str:
 
 
 def _is_group_leader_plan_pending_user_confirm(db, plan) -> bool:
-    """该计划是否属于「未开自动确认的群组长会话」→ 须等用户点卡片确认，禁止工具自动执行。"""
-    from src.models.group_room import GroupRoom
-
-    conv_id = plan.conversation_id
-    if conv_id is None:
-        return False
-    room = db.scalars(
-        select(GroupRoom).where(GroupRoom.leader_conversation_id == conv_id)
-    ).first()
-    if room is None:
-        return False  # 不是群组长计划（普通总管走真人 HITL 卡片），不拦
-    return not bool(getattr(room, "auto_confirm_member_tasks", False))
+    """群组长计划拦截（已退场）：恒返回 False，总管计划走真人 HITL 卡片。"""
+    return False
 
 
 @tool

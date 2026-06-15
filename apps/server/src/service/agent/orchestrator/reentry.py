@@ -95,20 +95,12 @@ def _schedule_reentry_stream(
 # ---------------------------------------------------------------------------
 
 def trigger_orchestrator_reentry(db: Session, plan, workspace_id: int) -> int | None:
-    """非群编排计划全部完成 → 唤醒总管起一轮整合 turn。群计划跳过。幂等。
+    """编排计划全部完成 → 唤醒总管起一轮整合 turn。幂等。
 
     返回触发的 conversation_id，或 None（跳过/幂等）。
     """
     from src.models.conversation import Conversation
-    from src.models.group_room import GroupRoom
     from src.service.chat_service import ChatService
-
-    # 群路径：leader_conversation_id 指向此计划的会话 → 跳过（由 summarize_by_leader 处理）
-    room = db.scalars(
-        select(GroupRoom).where(GroupRoom.leader_conversation_id == plan.conversation_id)
-    ).first()
-    if room is not None:
-        return None
 
     # 幂等：已整合过
     if plan.status == "summarized":

@@ -955,15 +955,6 @@ class StreamRegistry:
                     "force_clear: mark DB failed conv=%s", conversation_id,
                     exc_info=True,
                 )
-        # 群协作流：注销可能泄漏的 relay
-        try:
-            from src.service.group_room_service import (
-                unregister_group_stream_relay,
-            )
-
-            unregister_group_stream_relay(conversation_id)
-        except Exception:
-            pass
         logger.warning(
             "force_clear_stream conv=%s prev_status=%s → cleared",
             conversation_id, prev_status,
@@ -1861,22 +1852,11 @@ class StreamRegistry:
                 # serializable 供 parts 解析），绝不能糊进 msg.content 当正文平铺展示。
                 _is_tool_chunk = _chunk_is_tool_message(serializable)
                 if text_part and not _is_tool_chunk and not _subagent_ns:
-                    # 仅顶层（ns 空）的模型正文进父气泡 + 群 relay；子任务正文按 ns 分流，
+                    # 仅顶层（ns 空）的模型正文进父气泡；子任务正文按 ns 分流，
                     # 走前端子任务 lane（下方 buffer.add 仍广播，带 ns），不糊进父主回复。
                     assistant_text_parts.append(text_part)
                     # 模型正文 token = 真实进展，刷新内容计时（防止被无进展看门狗误判死）
                     task.touch_content()
-                    # 群协作：把成员/组长产出的「模型自然语言」增量逐字推到群时间线。
-                    # 外层 not _is_tool_chunk 已过滤掉 ToolMessage（工具返回的文件原文、
-                    # plan JSON 等不会进这里），无需再判一次。
-                    try:
-                        from src.service.group_room_service import (
-                            relay_group_stream_delta,
-                        )
-
-                        relay_group_stream_delta(conversation_id, text_part)
-                    except Exception:
-                        pass
                 elif text_part and not _is_tool_chunk and _subagent_ns:
                     # 子任务正文 token：算真实进展（刷新判死计时），但不进父气泡/不 relay。
                     task.touch_content()
@@ -2333,30 +2313,6 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
                 })
             except Exception:
                 logger.warning("push conversation_status_changed failed conv=%s", conversation_id, exc_info=True)
-
-        # 1.5 群协作投影：若该会话是某房间成员的私有会话，把其终态结论投影到群时间线。
-        # 放在 log 检查之前，因为群内 @ 派发的成员流没有 TaskExecutionLog，
-        # 否则会在下方 `if not log: return` 处提前退出，永远投影不出去。
-        try:
-            from src.service.group_room_service import (
-                auto_confirm_leader_plan_if_pending,
-                project_member_conversation_if_in_room,
-                unregister_group_stream_relay,
-            )
-
-            # 流式中继到此结束（终态投影会写一条完整消息收尾）
-            unregister_group_stream_relay(conversation_id)
-            project_member_conversation_if_in_room(conversation_id, stream_state)
-            # 组长会话正常结束 → 若它创建了未确认的编排计划，自动确认执行派活
-            # （群组长无真人确认，否则计划会停在 pending、成员永不开工）
-            if stream_state == "completed":
-                auto_confirm_leader_plan_if_pending(conversation_id)
-        except Exception:
-            logger.warning(
-                "group room projection failed conv=%s",
-                conversation_id,
-                exc_info=True,
-            )
 
         # 2. 更新 TaskExecutionLog（仅当存在时）
         log = db.scalars(

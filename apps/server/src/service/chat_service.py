@@ -13,7 +13,6 @@ from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
-from src.models.chat_group import ChatGroup
 from src.schemas.conversation import ConversationRead
 from src.models.conversation import Conversation, ConversationMessage
 from src.models.employee import Employee
@@ -176,11 +175,8 @@ class ChatService:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到员工。")
             return
         if target_type == "group":
-            group = db.get(ChatGroup, target_id)
-            if not group or group.workspace_id != workspace_id:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到群组。")
-            return
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee、group 或 curator。")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="群组功能已下线。")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee 或 curator。")
 
     @staticmethod
     def create_conversation(
@@ -243,48 +239,8 @@ class ChatService:
     def _exclude_group_internal_convs(
         db: Session, convs: list[Conversation]
     ) -> list[Conversation]:
-        """剔除属于群协作的员工任务会话（经 TaskExecutionLog 指向群组长，
-        或挂在某 GroupRoomMember 上）。"""
-        if not convs:
-            return convs
-        from src.models.group_room import GroupRoom, GroupRoomMember
-        from src.models.task_execution_log import TaskExecutionLog
-
-        conv_ids = [c.id for c in convs]
-        internal: set[int] = set()
-
-        # @ 直接派的成员私有会话
-        for row in db.execute(
-            select(GroupRoomMember.conversation_id).where(
-                GroupRoomMember.conversation_id.in_(conv_ids)
-            )
-        ).all():
-            if row[0] is not None:
-                internal.add(int(row[0]))
-
-        # 组长编排派的任务会话：其 TaskExecutionLog.orchestrator_conversation_id
-        # 指向某房间的组长会话
-        leader_conv_ids = {
-            int(r[0])
-            for r in db.execute(
-                select(GroupRoom.leader_conversation_id).where(
-                    GroupRoom.leader_conversation_id.isnot(None)
-                )
-            ).all()
-            if r[0] is not None
-        }
-        if leader_conv_ids:
-            for row in db.execute(
-                select(
-                    TaskExecutionLog.conversation_id,
-                    TaskExecutionLog.orchestrator_conversation_id,
-                ).where(TaskExecutionLog.conversation_id.in_(conv_ids))
-            ).all():
-                cid, orch = row[0], row[1]
-                if cid is not None and orch in leader_conv_ids:
-                    internal.add(int(cid))
-
-        return [c for c in convs if c.id not in internal]
+        """群协作内部会话过滤（已退场）：直接返回入参，不过滤。"""
+        return convs
 
     @staticmethod
     def get_conversation(db: Session, conversation_id: int) -> Conversation:
@@ -654,73 +610,6 @@ class ChatService:
         return ""
 
     @staticmethod
-    async def _stream_group_message(
-        db: Session,
-        *,
-        conversation: Conversation,
-        question: str,
-        extra_meta: dict | None,
-        auth_token: str | None,
-    ):
-        """群会话消息处理：写时间线 + 解析 @ + 派发成员，返回 SSE 回执。
-
-        群的"流"语义不同于 1:1：用户 SSE 收到的是一条派发回执，
-        随后群时间线由各成员投影事件（room_message，经 WorkspaceEventBus）实时驱动，
-        前端订阅工作空间事件流即可看到成员陆续交付的结论。
-        """
-        from src.service.group_room_service import GroupRoomService
-
-        # 1) 立即反馈：用户消息一进来先回一条「已收到，正在安排」，让前端马上有反馈，
-        #    不必等 handle_group_message（同步派活、构建组长 agent、启动流，可能几秒+）
-        #    整个跑完。否则发消息后会干等、卡住时永远收不到任何回应。
-        ack_payload = {
-            "type": "group_ack",
-            "data": {"message": "已收到，正在安排组长统筹…"},
-        }
-        yield f"data: {json.dumps(ack_payload, ensure_ascii=False)}\n\n"
-
-        conv_id = conversation.id
-
-        def _dispatch_in_thread() -> None:
-            # 在独立线程用**独立 session**（SQLAlchemy session 非线程安全，不能跨线程
-            # 复用请求级 db）。重新取一次 conversation 再派活。
-            from src.db.session import get_session_local
-            from src.models.conversation import Conversation as _Conv
-
-            tdb = get_session_local()()
-            try:
-                conv = tdb.get(_Conv, conv_id)
-                if conv is None:
-                    raise RuntimeError(f"群会话 {conv_id} 不存在")
-                GroupRoomService.handle_group_message(
-                    tdb,
-                    conv,
-                    question,
-                    extra_meta=extra_meta,
-                    auth_token=auth_token,
-                )
-            except Exception:
-                logger.error(
-                    "群消息派活后台线程失败 conv=%s", conv_id, exc_info=True
-                )
-            finally:
-                tdb.close()
-
-        # 2) 派活**后台跑、立即收尾**：群的「用户 SSE」只是派发回执，不是组长/成员
-        #    的内容流（那些走 room_message_stream/room_message 经 WorkspaceEventBus 投影）。
-        #    旧实现 await 同步 dispatch（构建组长 agent / 历史 / DB 可能卡几十秒、撞线程
-        #    饥饿更久），这期间用户 SSE 不结束 → 前端 useChat 一直 streaming → 输入框
-        #    把后续消息当「忙」排队 = 用户「再也发不出消息」。改为 fire-and-forget：
-        #    ack 后立刻 [DONE]，前端 status 立即回 ready 可继续发；组长真正输出靠投影到达。
-        import asyncio
-
-        loop = asyncio.get_running_loop()
-        # 用默认线程池（已扩到 64，见 server.py）后台执行，不阻塞本协程，也不等结果。
-        loop.run_in_executor(None, _dispatch_in_thread)
-
-        yield "data: [DONE]\n\n"
-
-    @staticmethod
     async def stream_conversation_answer(
         db: Session,
         conversation_id: int,
@@ -751,19 +640,6 @@ class ChatService:
         _phase("enter")
         conversation = ChatService.get_conversation(db, conversation_id)
         _phase("got_conversation")
-
-        # 群协作：群会话没有"单一 agent"，改为路由到被 @ 的成员私有会话，
-        # 群时间线通过投影 + WorkspaceEventBus(room_message) 实时更新。
-        if conversation.target_type == "group":
-            async for chunk in ChatService._stream_group_message(
-                db,
-                conversation=conversation,
-                question=question,
-                extra_meta=extra_meta,
-                auth_token=auth_token,
-            ):
-                yield chunk
-            return
 
         history_limit = settings.chat_history_max_messages
         history_messages, last_input_tokens = ChatService._load_history_for_agent(
@@ -1385,42 +1261,6 @@ class ChatService:
                 conversation_id=conversation_id,
                 shared_artifacts_dir=shared_artifacts_dir,
             )
-        elif target_type == "group_leader":
-            from src.service.agent.orchestrator import get_orchestrator_agent
-            from src.models.group_room import GroupRoom
-            from src.db.session import get_session_local
-
-            room = db.scalars(
-                select(GroupRoom).where(
-                    GroupRoom.leader_conversation_id == conversation_id
-                )
-            ).first()
-            if room is None:
-                return {"accepted": False, "message": "未找到组长所属房间"}
-
-            # 独立 session：对齐 dispatch_to_leader，避免组长 resume 与工具线程
-            # 争用 session（"concurrent operations are not permitted"）。
-            # 该 leader_db 由 approve_and_resume 在终态统一 close（orchestrator_owned_db）。
-            leader_db = get_session_local()()
-            from pathlib import Path
-            shared = str(
-                Path(settings.artifacts_path) / f"room-{room.id}" / "artifacts"
-            )
-            agent = get_orchestrator_agent(
-                workspace_id=conversation.workspace_id,
-                db=leader_db,
-                conversation_id=conversation_id,
-                auth_token=auth_token,
-                shared_artifacts_dir=shared,
-                bind_context=False,
-                # 必须与 dispatch_to_leader 一致：仅澄清 HITL。① 保留 HITL 中间件以
-                # 消费本次澄清 resume 决策；② 不重新武装删除/文档方案中断——否则用户
-                # 刚作答、组长继续派活时再撞上无审批者的中断又永久挂起。
-                enable_hitl=False,
-                clarify_only_hitl=True,
-            )
-            # register_group_stream_relay 移到 approve_and_resume 返回后，
-            # 仅在非 REJECTED 时注册，避免 REJECTED 路径残留 relay（C-2）。
         else:
             return {"accepted": False, "message": "不支持的 target_type"}
 
@@ -1429,16 +1269,14 @@ class ChatService:
         # 4. 通过 registry approve_and_resume 启动新 task
         from src.service.agent_stream_queue import StartResult
 
-        _is_orch = target_type in ("curator", "group_leader")
+        _is_orch = target_type == "curator"
         start_result = await registry.approve_and_resume(
             conversation_id=conversation_id,
             agent=agent,
             config=config,
             stream_msg_id=new_msg.id,
             decisions=decisions,
-            orchestrator_owned_db=(
-                leader_db if target_type == "group_leader" else None
-            ),
+            orchestrator_owned_db=None,
             orchestrator_workspace_id=(
                 conversation.workspace_id if _is_orch else None
             ),
@@ -1451,43 +1289,10 @@ class ChatService:
         )
 
         if start_result == StartResult.REJECTED:
-            if target_type == "group_leader":
-                leader_db.close()  # C-1：避免连接泄漏
             new_msg.stream_state = "error"
             new_msg.content = new_msg.content or "恢复执行失败：已有活跃任务"
             await _commit_db_off_loop(db)
             return {"accepted": False, "message": "恢复执行失败：已有活跃任务"}
-
-        if target_type == "group_leader":
-            from src.service.group_room_service import (
-                GroupRoomService,
-                register_group_stream_relay,
-            )
-            register_group_stream_relay(
-                conversation_id,
-                room_id=room.id,
-                room_conversation_id=room.room_conversation_id,
-                workspace_id=room.workspace_id,
-                sender_id=None,
-                sender_label="组长",
-            )
-            # 回标群时间线里对应的澄清投影卡片为已处理，否则前端 refetch 后
-            # groupActiveHitl 又把它算成待办、卡片复活、重复要求用户作答。
-            # 用主 db（投影卡片属群会话），随下方 _commit_db_off_loop(db) 一起提交。
-            try:
-                GroupRoomService.mark_clarify_card_approved(
-                    db,
-                    room_conversation_id=room.room_conversation_id,
-                    leader_conversation_id=conversation_id,
-                    leader_message_id=msg.id,
-                    approved_at=meta["approved_at"],
-                )
-            except Exception:
-                logger.warning(
-                    "回标群澄清卡片失败 room_conv=%s leader_conv=%s msg=%s",
-                    room.room_conversation_id, conversation_id, msg.id,
-                    exc_info=True,
-                )
 
         new_msg.stream_state = (
             "queued" if start_result == StartResult.QUEUED else "streaming"

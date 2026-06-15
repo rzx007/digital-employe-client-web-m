@@ -8,7 +8,6 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, delete, select
 from sqlalchemy.orm import Session
 
-from src.models.chat_group import ChatGroup
 from src.models.conversation import Conversation, ConversationMessage
 from src.models.employee import Employee
 from src.models.recent_contact import RecentContact
@@ -133,10 +132,8 @@ class RecentContactService:
                 False,
                 False,
             )
-        group = db.get(ChatGroup, target_id)
-        if not group:
-            return str(target_id), "未知", None, True, False
-        return (str(target_id), group.name or "未知", None, True, False)
+        # 群组功能已退场，fallback 为"未知"
+        return str(target_id), "未知", None, True, False
 
     @staticmethod
     def _row_to_read(

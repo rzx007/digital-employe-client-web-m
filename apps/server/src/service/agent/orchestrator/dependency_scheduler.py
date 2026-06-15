@@ -394,13 +394,11 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
                 task_id, dispatched, plan.id,
             )
 
-        # ③ 整盘定局（全部 成功/失败/跳过）且本轮无新派发 → 触发组长汇总。
+        # ③ 整盘定局（全部 成功/失败/跳过）且本轮无新派发 → 唤醒总管再入整合。
         #    用 _SETTLED_STATES（含失败/跳过）而非仅成功，避免有失败时汇总永不触发。
         if not dispatched:
             all_settled = all(_is_settled(t.id, status_by_task) for t in tasks)
             if all_settled:
-                _trigger_leader_summary_if_room(db, plan, workspace_id)
-                # 非群编排：全部完成 → 唤醒总管再入整合（群计划内部会跳过）
                 from src.service.agent.orchestrator.reentry import (
                     trigger_orchestrator_reentry,
                 )
@@ -411,37 +409,6 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
         )
     finally:
         db.close()
-
-
-def _trigger_leader_summary_if_room(db: Session, plan, workspace_id: int) -> None:
-    """编排计划全部完成后，若属于群房间，让组长读取成员产物做最终汇总。
-
-    幂等：用 plan 状态标记，避免重复触发。
-    """
-    from src.models.group_room import GroupRoom
-
-    room = db.scalars(
-        select(GroupRoom).where(
-            GroupRoom.leader_conversation_id == plan.conversation_id
-        )
-    ).first()
-    if room is None:
-        return
-    # 幂等标记：plan.status 置为 summarized 后不再触发
-    if plan.status == "summarized":
-        return
-    plan.status = "summarized"
-    db.commit()
-
-    try:
-        from src.service.group_room_service import GroupRoomService
-
-        GroupRoomService.summarize_by_leader(db, room)
-        logger.info("triggered leader summary for room=%s plan=%s", room.id, plan.id)
-    except Exception:
-        logger.error(
-            "leader summary failed room=%s plan=%s", room.id, plan.id, exc_info=True
-        )
 
 
 def _dispatch_successor(
