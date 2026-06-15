@@ -77,9 +77,10 @@ build:windows:
   only: *release_refs
   script:
     - pnpm install --frozen-lockfile --config.node-linker=hoisted --registry=https://registry.npmmirror.com
-    - pnpm build:app
-    # 旧版 GitLab 无 needs；飞书发布合并在 Windows 构建内（失败不阻断安装包）
-    - python3 scripts/ci/publish-feishu.py; if (-not $?) { Write-Host "Feishu publish failed (non-blocking)" }
+    # Runner 上 python3 可能是坏掉的 32 位 shim（0xc0000135），改用 UV_PYTHON
+    - '& $env:UV_PYTHON scripts/build-server.py --app'
+    - pnpm build:client
+    - '& $env:UV_PYTHON scripts/ci/publish-feishu.py; if (-not $?) { Write-Host "Feishu publish failed (non-blocking)" }'
   artifacts:
     name: "BobanStaff-Windows-$CI_COMMIT_TAG"
     paths:
