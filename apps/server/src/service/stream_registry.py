@@ -2292,6 +2292,17 @@ def _reflect_on_signal_safe(db, log) -> None:
         logger.warning("signal reflection hook failed", exc_info=True)
 
 
+def _maybe_librarian_safe(employee_id) -> None:
+    """阈值触发 librarian 后台复盘的容错封装，任何异常都只 warning 不上抛。"""
+    try:
+        if employee_id is None:
+            return
+        from src.service.learning.librarian import note_journal_and_maybe_run
+        note_journal_and_maybe_run(employee_id)
+    except Exception:
+        logger.warning("librarian trigger hook failed", exc_info=True)
+
+
 def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
     try:
         from src.db.session import get_session_local
@@ -2414,6 +2425,7 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
         db.refresh(log)
         _capture_journal_safe(db, log)   # 学习闭环 journal 捕获
         _reflect_on_signal_safe(db, log)   # 信号闸门 critic（替代旧的无条件反思）
+        _maybe_librarian_safe(log.employee_id if log else None)  # 阈值触发后台复盘
 
         summary_message = None
         orch_conv_id = log.orchestrator_conversation_id

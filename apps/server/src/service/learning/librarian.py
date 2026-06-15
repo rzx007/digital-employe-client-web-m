@@ -125,3 +125,27 @@ def run_librarian(employee_id: int) -> None:
         consolidate_memory(employee_id)
     except Exception:
         logger.warning("run_librarian failed eid=%s", employee_id, exc_info=True)
+
+
+# ── 阈值自动触发 ──────────────────────────────────────────────────────────────
+
+_journal_counters: dict[int, int] = {}
+_LIBRARIAN_THRESHOLD = 5  # journal 每累积 N 次跑一次复盘
+
+
+def _spawn_librarian(employee_id: int) -> None:
+    """后台 daemon 线程跑 run_librarian（不阻塞调用方/finalize）。"""
+    import threading
+    threading.Thread(target=run_librarian, args=(employee_id,), daemon=True).start()
+
+
+def note_journal_and_maybe_run(employee_id: int) -> None:
+    """journal 每捕获一次调一次；累积达阈值→后台跑复盘并重置计数。"""
+    if employee_id is None:
+        return
+    n = _journal_counters.get(employee_id, 0) + 1
+    if n >= _LIBRARIAN_THRESHOLD:
+        _journal_counters[employee_id] = 0
+        _spawn_librarian(employee_id)
+    else:
+        _journal_counters[employee_id] = n

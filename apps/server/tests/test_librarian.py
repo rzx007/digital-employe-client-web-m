@@ -99,3 +99,28 @@ def test_run_librarian_calls_both_and_ratelimits(monkeypatch, tmp_path):
     assert calls == {"profile": 1, "mem": 1}
     librarian.run_librarian(42)  # 冷却内
     assert calls == {"profile": 1, "mem": 1}
+
+
+# ── 2C-4: 阈值自动触发 ────────────────────────────────────────────────────────
+
+def test_threshold_triggers_after_n(monkeypatch):
+    from src.service.learning import librarian
+    ran = []
+    monkeypatch.setattr(librarian, "_spawn_librarian", lambda eid: ran.append(eid))
+    librarian._journal_counters.clear()
+    librarian._LIBRARIAN_THRESHOLD = 3
+    for _ in range(2):
+        librarian.note_journal_and_maybe_run(5)
+    assert ran == []
+    librarian.note_journal_and_maybe_run(5)
+    assert ran == [5]
+    librarian.note_journal_and_maybe_run(5)
+    assert ran == [5]
+
+
+def test_reflect_safe_hook_swallows(monkeypatch):
+    from src.service.stream_registry import _maybe_librarian_safe
+    import src.service.learning.librarian as lib
+    monkeypatch.setattr(lib, "note_journal_and_maybe_run",
+                        lambda eid: (_ for _ in ()).throw(RuntimeError("boom")))
+    _maybe_librarian_safe(1)  # 不抛
