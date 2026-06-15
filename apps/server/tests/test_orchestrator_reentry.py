@@ -4,6 +4,8 @@ from src.models.employee_task import EmployeeTask
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import cst_now
 from tests.conftest import add_employee
+from src.models.conversation import Conversation
+from src.models.group_room import GroupRoom
 
 
 def _plan_with_one_task(db, ws_id, emp_id, conv_id):
@@ -102,3 +104,48 @@ def test_build_reentry_brief():
     assert "调研B" in brief and ("失败" in brief or "boom" in brief)
     assert "整合" in brief
     assert "$WORKSPACE_DIR" in brief or "工作桌" in brief or "产物" in brief
+
+
+def test_trigger_reentry_schedules_turn_and_is_idempotent(db_session, workspace, monkeypatch):
+    from src.service.agent.orchestrator import reentry
+
+    conv = Conversation(workspace_id=workspace.id, target_type="curator", target_id=0, title="总管")
+    db_session.add(conv); db_session.flush()
+    emp = add_employee(db_session, workspace.id, name="w")
+    plan, (a, b) = _plan_with_two_tasks(db_session, workspace.id, emp.id, conv_id=conv.id)
+    for t, st in ((a, "success"), (b, "success")):
+        db_session.add(TaskExecutionLog(
+            task_id=t.id, workspace_id=workspace.id, employee_id=emp.id,
+            task_name_snapshot=t.task_name, run_status=st,
+            output_json=json.dumps({"content": f"{t.task_name} done"}),
+            orchestrator_conversation_id=conv.id, started_at=cst_now(), ended_at=cst_now(),
+        ))
+    db_session.commit()
+
+    started: list[dict] = []
+    monkeypatch.setattr(reentry, "_schedule_reentry_stream", lambda **kw: started.append(kw))
+    monkeypatch.setattr(reentry, "_new_session", lambda: db_session)
+    monkeypatch.setattr(reentry, "_build_orchestrator_agent", lambda **kw: object())
+
+    reentry.trigger_orchestrator_reentry(db_session, plan, workspace.id)
+    assert len(started) == 1
+    assert started[0]["conversation_id"] == conv.id
+    reentry.trigger_orchestrator_reentry(db_session, plan, workspace.id)  # 幂等
+    assert len(started) == 1
+
+
+def test_trigger_reentry_skips_group_plan(db_session, workspace, monkeypatch):
+    from src.service.agent.orchestrator import reentry
+
+    leader = Conversation(workspace_id=workspace.id, target_type="group_leader", target_id=1, title="组长")
+    db_session.add(leader); db_session.flush()
+    room = GroupRoom(workspace_id=workspace.id, room_conversation_id=1, leader_conversation_id=leader.id)
+    db_session.add(room); db_session.flush()
+    emp = add_employee(db_session, workspace.id, name="w")
+    plan, _ = _plan_with_two_tasks(db_session, workspace.id, emp.id, conv_id=leader.id)
+    db_session.commit()
+
+    started: list[dict] = []
+    monkeypatch.setattr(reentry, "_schedule_reentry_stream", lambda **kw: started.append(kw))
+    reentry.trigger_orchestrator_reentry(db_session, plan, workspace.id)
+    assert started == []
