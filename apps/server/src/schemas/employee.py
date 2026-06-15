@@ -128,3 +128,17 @@ class EmployeeProfile(BaseModel):
     description: str
     skill_ids: list[int] = Field(default_factory=list)
     skills_list: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class EmployeeGrowthJournalEntry(BaseModel):
+    ts: str
+    task_name: str
+    status: str
+    duration_ms: int | None = None
+
+
+class EmployeeGrowthBrainRead(BaseModel):
+    profile_md: str
+    skills_list: list[str]
+    memories_md: str
+    journal_entries: list[EmployeeGrowthJournalEntry]

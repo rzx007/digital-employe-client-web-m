@@ -27,6 +27,12 @@ from src.service.workspace_service import WorkspaceService
 
 logger = logging.getLogger(__name__)
 
+
+def _growth_brain_root_for(employee_id: int) -> Path:
+    from src.service.agent.paths import resolve_employee_memories_dir
+    return resolve_employee_memories_dir(employee_id=employee_id).parent
+
+
 def _new_pending_employee_code() -> str:
     """创建员工前的唯一占位 code，避免 (workspace_id, employee_code) 唯一约束冲突。"""
     return f"pending-{uuid.uuid4().hex}"
@@ -1354,3 +1360,54 @@ class EmployeeService:
             db.refresh(employee)
             TaskSchedulerService.reload_jobs()
         return employee
+
+    @staticmethod
+    def build_employee_growth_brain(db: Session, employee_id: int) -> dict:
+        """聚合员工大脑(profile/技能/记忆/journal)只读展示数据。缺失给空。容错。"""
+        import json as _json
+        from src.service.agent.paths import list_available_skills
+        from src.service.basic_file_reader import read_text_with_encoding_fallback
+
+        brain = _growth_brain_root_for(employee_id)
+
+        def _read(p: Path) -> str:
+            try:
+                return read_text_with_encoding_fallback(p) if p.is_file() else ""
+            except Exception:
+                return ""
+
+        profile_md = _read(brain / "profile.md")
+        memories_md = _read(brain / "memories" / "AGENTS.md")
+        skills_dir = brain / "skills"
+        try:
+            skills_list = list_available_skills(skills_dir) if skills_dir.is_dir() else []
+        except Exception:
+            skills_list = []
+        journal_entries: list[dict] = []
+        jdir = brain / "journal"
+        if jdir.is_dir():
+            for fp in sorted(jdir.glob("*.jsonl")):
+                try:
+                    for line in fp.read_text(encoding="utf-8").splitlines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            e = _json.loads(line)
+                        except ValueError:
+                            continue
+                        journal_entries.append({
+                            "ts": e.get("ts", ""),
+                            "task_name": e.get("task_name", ""),
+                            "status": e.get("status", ""),
+                            "duration_ms": e.get("duration_ms"),
+                        })
+                except OSError:
+                    continue
+        journal_entries = journal_entries[-30:]
+        return {
+            "profile_md": profile_md,
+            "skills_list": skills_list,
+            "memories_md": memories_md,
+            "journal_entries": journal_entries,
+        }
