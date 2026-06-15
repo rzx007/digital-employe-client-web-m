@@ -129,6 +129,31 @@
 - [ ] 前端 typecheck exit 0、零群引用(`grep -rn "group-room\|GroupRoom" apps/web/src`)。
 - [ ] **整体手测(用户)**：总管组队→后台并行→再入整合→共享桌→面板见桌→学习闭环(失败重试反思/journal/profile)→成长面板履历→点员工只读不可聊→无群入口→旧群功能确实没了。
 
+---
+
+## ★ 评审增补（必读，覆盖原文遗漏——照原文执行会 import 崩）
+
+依赖评审 grep 全仓后发现原文解耦/删除清单**遗漏多处群引用**。执行时**以本节为准补全**：
+
+### 后端补充（并入 Task1/Task2）
+- **B1 stream_registry 第三个群块**：除 `~L2340-2354`，还有 `L1873-1877` `from src.service.group_room_service import relay_group_stream_delta` + 调用（token delta 推群），以及 `L960` 的 `unregister_group_stream_relay`——**三块都要清**。
+- **B2 tools/plans.py:L201-215** `_is_group_leader_plan_pending_user_confirm`（import GroupRoom）：函数体改 `return False` + 删 GroupRoom import；L191 调用处去掉群分支直接 `execute_plan`。
+- **B3 chat_service.py 群分支远不止 handle_group_message**：还有 `L16 from ...chat_group import ChatGroup`(顶层)、`L179 create_conversation 的 group 分支`、`L243-281 _exclude_group_internal_convs`(用 GroupRoom/Member，改 passthrough，注意会让群内部会话在联系人列表可见——功能变更可接受)、`L1388-1480 elif target_type=="group_leader"` 大块。逐一删/404/passthrough。
+- **B4 recent_contact_service.py:L11/L136** `ChatGroup`(顶层 import)：清(group 分支 404/pass)。
+- **B5 三个 __init__.py 顶层 import**（删群文件前必清，否则 collect 崩）：`service/__init__.py` GroupService、`schemas/__init__.py` GroupCreate/Read/Update、`api/__init__.py` `group_router` 顶层 import 行(不止 include_router)。
+- **B6 测试不止 test_group_***：还需 `test_orchestrator_reentry.py`(删顶层 GroupRoom import + 删 `test_trigger_reentry_skips_group_plan`)、`test_resolve_shared_artifacts_dir.py`(整文件 rm)、`test_prompt_invariants.py:L243-248`(删 `test_orchestrator_group_chat_management_guidance`)。
+- **B7 模型 relationship 残留**（删 ChatGroup/group_members 表前必清，否则 SQLAlchemy mapper 配置崩）：`models/employee.py:L36 groups = relationship("ChatGroup", secondary="group_members", ...)`、`models/workspace.py:L33 groups = relationship("ChatGroup", ...)`——两处 relationship 删掉。
+
+### 前端补充（Task3 真实范围远超原文，且有"借用"陷阱）
+群在 dev 基底前端**深度纠缠 ~25 文件**，严格**typecheck 错误驱动**逐个清，别漏。重点文件：`api/{group.ts,group-room.ts,index.ts,chat.ts}`、`hooks/{use-group-room.ts,use-chat-queries.ts(fetchGroupById/useGroupDetailQuery),use-invalidate-contacts-on-team-changes.ts,use-conversation-session.ts}`、`stores/chat-store.ts(GroupNavigationReturn 状态 L6/33/35/48-50/71-72/110-115)`、`lib/chat/{group-navigation.ts,group-created-tool-payload.ts,group-composer-ghosts.ts,tools/handlers/group-created.ts,tools/block-registry.ts,hitl/group-clarify-*.ts,contact-utils.ts,contact-target.ts}`、`components/chat/{contacts/contact-item.tsx,contacts/contact-detail-panel.tsx(L126/156 group 分支),conversations/conversation-list.tsx,conversations/recent-conversations/*,panel/chat-panel.tsx(GroupReturnBar/groupClarifyInput),views/chat-draft-view.tsx(L294),views/chat-conversation-view.tsx,message-blocks/{group-created-card.tsx,block-render-map.tsx}}`、`types/chat.ts(ContactType "group")`。
+- **⚠️ 借用陷阱**：`group-composer-ghosts.ts` 的 `stripGhostComposerAssistants`/`patchGroupClarifyProjectionResolved` 被**非群视图** `chat-conversation-view.tsx` 和 `use-conversation-session.ts` 借用——**不能直接删文件**，须先在这两个借用方删 import+调用(确认删后非群渲染不变)，再删文件。
+- chat-view.tsx：group 分支实测 `L190-208`(+ L19/L22 import + L96-97/L222-225 store state)；无独立 employee type 判断(非 curator/group 走默认)，Task4 需**新增** `contact?.type==="employee"` 分支。
+
+### 执行铁律（退场专属）
+- **每删一批后 grep 零引用 + 全量 pytest（后端）/ typecheck（前端）**，红了就停、定位、不硬删。
+- 解耦(Task1+B1-B4)严格先于删文件(Task2)；模型 relationship(B7)/__init__(B5) 在删模型/文件**前**清。
+- 前端 typecheck 错误驱动：删一个引用→typecheck→按报错找下一个，直到 exit 0。
+
 ## 开放问题/风险
 - O1 模型删除若有隐藏 FK/relationship 残留→pytest import/建表会报，按报错清。
 - O2 chat_service handle_group_message 的前端调用方(若有)需同步处理(Task1 Step6 / Task3)。
