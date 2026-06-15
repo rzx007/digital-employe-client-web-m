@@ -278,6 +278,10 @@ def resolve_workspace_context(root_path: str, conversation_id: int):
         base_dir=Path(root_path),
     )
     conv_artifacts = ws.workspace_dir / f"conv-{conversation_id}"
+    # 总管共享桌：组队派活过的会话，面板"产物"桶以共享桌为根（与 agent 写产物落点一致）
+    desk = Path(root_path) / "orchestrator-desk" / f"conv-{conversation_id}"
+    if desk.is_dir():
+        conv_artifacts = desk
     return ws.workspace_dir, ws.public_root, conv_artifacts, room_dir
 
 
