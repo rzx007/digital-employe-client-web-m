@@ -89,3 +89,16 @@ def test_collect_plan_execution_results_unknown_branch(db_session, workspace):
     assert r["content"] == ""
     assert r["result"] == ""
     assert r["error"] is None
+
+
+def test_build_reentry_brief():
+    from src.service.agent.orchestrator.reentry import build_reentry_brief
+    results = [
+        {"task_name": "调研A", "status": "success", "content": "A结论", "result": "完成A", "error": None},
+        {"task_name": "调研B", "status": "failed", "content": "", "result": "失败B", "error": "boom"},
+    ]
+    brief = build_reentry_brief(results)
+    assert "调研A" in brief and "A结论" in brief
+    assert "调研B" in brief and ("失败" in brief or "boom" in brief)
+    assert "整合" in brief
+    assert "$WORKSPACE_DIR" in brief or "工作桌" in brief or "产物" in brief
