@@ -22,3 +22,18 @@ def test_dispatched_employee_shares_desk(tmp_path):
     )
     assert d.artifacts_dir == desk / "task-100"
     assert d.workspace_dir == desk
+
+
+def test_orchestrator_uses_desk_root(tmp_path):
+    """总管自己：artifacts 与 workspace 都指向桌根（与被派员工同桌）。"""
+    desk = resolve_orchestrator_desk_dir(str(tmp_path), 9)
+    d = resolve_workspace_dirs(
+        root_path=str(tmp_path),
+        employee_id="orchestrator",
+        conversation_id=9,
+        shared_artifacts_dir=str(desk),       # 总管写桌根
+        shared_workspace_root=desk,           # 总管读桌根
+        base_dir=tmp_path / "svc",
+    )
+    assert d.artifacts_dir == desk
+    assert d.workspace_dir == desk
