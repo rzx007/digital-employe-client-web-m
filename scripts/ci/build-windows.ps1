@@ -8,7 +8,12 @@
 
     pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref v0.1.17
 
-  首次使用前请确认已安装：Git、Node 20+、pnpm、uv、64 位 Python 3.11、NSIS（electron-builder）。
+  GitLab CI（win-builder shell executor）等价于在那台 Windows 上远程执行本脚本；
+  保留 .venv / node_modules，比旧 CI 冷启动快很多。
+
+  CI 触发方式：
+    - 推 vX.Y.Z tag → build:windows 自动跑
+    - 分支 Pipeline → build:windows:manual 网页点 Play
 
 .PARAMETER Ref
   要构建的分支或 tag，默认 dev。
@@ -31,8 +36,11 @@
 .EXAMPLE
   pwsh -File scripts/ci/build-windows.ps1 -Ref v0.1.17
 
+.PARAMETER SkipGitSync
+  跳过 git fetch/checkout（GitLab CI 已 checkout 时使用）。
+
 .EXAMPLE
-  pwsh -File scripts/ci/build-windows.ps1 -Ref dev -CleanVenv
+  pwsh -File scripts/ci/build-windows.ps1 -Ref v0.1.17 -SkipGitSync
 #>
 param(
     [string]$Ref = "dev",
@@ -41,6 +49,7 @@ param(
     [switch]$CleanNodeModules,
     [switch]$CleanVenv,
     [switch]$SkipFeishu,
+    [switch]$SkipGitSync,
     [switch]$Offline
 )
 
@@ -115,7 +124,12 @@ function Sync-Source {
 
 # ---------- 解析仓库根目录 ----------
 if (-not $RepoRoot) {
-    $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
+    if ($env:CI_PROJECT_DIR) {
+        $RepoRoot = $env:CI_PROJECT_DIR
+    }
+    else {
+        $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
+    }
 }
 if (-not (Test-Path (Join-Path $RepoRoot "package.json"))) {
     throw "未找到仓库根目录: $RepoRoot"
@@ -137,8 +151,16 @@ if ($LASTEXITCODE -ne 0) {
 
 Set-BuildEnvironment -PythonExe $UvPython
 
-Invoke-Timed "同步代码 (git fetch/checkout)" {
-    Sync-Source -Root $RepoRoot -TargetRef $Ref
+if ($SkipGitSync) {
+    Write-Step "跳过 git sync（CI 已 checkout）"
+    Set-Location $RepoRoot
+    git config core.longpaths true
+    Write-Host "    HEAD: $(git rev-parse --short HEAD) ($Ref)"
+}
+else {
+    Invoke-Timed "同步代码 (git fetch/checkout)" {
+        Sync-Source -Root $RepoRoot -TargetRef $Ref
+    }
 }
 
 if ($CleanNodeModules) {
@@ -188,7 +210,10 @@ else {
 }
 
 $releaseDir = Join-Path $RepoRoot "apps\web\release"
-$artifacts = @(Get-ChildItem -Path $releaseDir -Include *.exe, *.yml, *.blockmap -ErrorAction SilentlyContinue)
+$artifacts = @(
+    Get-ChildItem -Path $releaseDir -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -in ".exe", ".yml", ".blockmap" }
+)
 if (-not $artifacts) {
     throw "未找到产物，请检查 $releaseDir"
 }

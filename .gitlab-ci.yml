@@ -1,10 +1,14 @@
 # ==============================================================================
 # 数字员工客户端 - 打包流水线
 #
-# Windows：不在 CI 打 tag 包（太慢），改在 win-builder 上 RDP 执行：
-#   pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref vX.Y.Z
+# Windows（win-builder = 那台 Windows 服务器，shell executor）：
+#   CI job 即「远程下发指令」，实际执行 scripts/ci/build-windows.ps1。
+#   默认保留 .venv / node_modules，比旧 CI 冷启动快。
+#   - 推 vX.Y.Z tag → build:windows 自动触发
+#   - 分支 Pipeline → build:windows:manual 网页手动点 Play
+#   RDP 本地也可直接跑同一脚本。
 #
-# macOS / Linux：推送 vX.Y.Z tag 时仍由 CI 自动构建。
+# macOS / Linux：推送 tag 时由 mac-builder CI 自动构建。
 # 分支 push：Windows 只跑 smoke 冒烟（验证 Runner 工具链）。
 #
 # 注：本仓库 GitLab 为旧版本，使用 only/except 语法（不支持 rules）。
@@ -64,15 +68,51 @@ smoke:windows:
     - git --version
     - echo "ALL TOOLS VISIBLE TO RUNNER"
 
+# Windows 打包：CI 在那台机器上跑 build-windows.ps1（不删缓存）
+.win_build: &win_build
+  variables:
+    GIT_CLEAN_FLAGS: ""
+    UV_PYTHON: "C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe"
+
 # ------------------------------------------------------------------------------
-# Windows x64（已停用 CI 自动打包，见 scripts/ci/build-windows.ps1）
+# Windows x64：推 tag 自动打包（快路径，保留 .venv）
 # ------------------------------------------------------------------------------
-# build:windows:
-#   stage: build
-#   tags:
-#     - win-builder
-#   only: *release_refs
-#   ...
+build:windows:
+  <<: *win_build
+  stage: build
+  tags:
+    - win-builder
+  only: *release_refs
+  script:
+    - pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref $env:CI_COMMIT_TAG -SkipGitSync
+  artifacts:
+    name: "BobanStaff-Windows-$CI_COMMIT_TAG"
+    paths:
+      - apps/web/release/*.exe
+      - apps/web/release/*.yml
+      - apps/web/release/*.blockmap
+    expire_in: 30 days
+
+# ------------------------------------------------------------------------------
+# Windows x64：分支上手动触发（Pipeline 页点 Play）
+# ------------------------------------------------------------------------------
+build:windows:manual:
+  <<: *win_build
+  stage: build
+  tags:
+    - win-builder
+  when: manual
+  except:
+    - tags
+  script:
+    - pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref $env:CI_COMMIT_REF_NAME -SkipGitSync
+  artifacts:
+    name: "BobanStaff-Windows-$CI_COMMIT_REF_NAME"
+    paths:
+      - apps/web/release/*.exe
+      - apps/web/release/*.yml
+      - apps/web/release/*.blockmap
+    expire_in: 7 days
 
 # ------------------------------------------------------------------------------
 # macOS（dmg 手动分发 + zip 应用内更新源）
