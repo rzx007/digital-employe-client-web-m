@@ -56,3 +56,20 @@ def test_optional_dirs_absent(tmp_path):
     # 必有项仍在
     assert "ARTIFACTS_DIR" in b._env
     assert "SKILLS_DIR" in b._env
+
+
+def test_backend_workspace_root_points_to_shared_desk(tmp_path):
+    """backend 收到共享桌只读根时，注入的 WORKSPACE_DIR = 桌根。"""
+    skills = tmp_path / "skills"; skills.mkdir()
+    artifacts = tmp_path / "desk" / "task-100"; artifacts.mkdir(parents=True)
+    desk = tmp_path / "desk"
+    b = SkillAwareShellBackend(
+        root_dir=str(artifacts),
+        skills_root=skills,
+        draft_root=None,
+        workspace_root=desk,          # 共享桌根
+        conversation_id=42,
+        virtual_mode=False,
+    )
+    assert b._env["ARTIFACTS_DIR"] == str(artifacts.resolve())
+    assert b._env["WORKSPACE_DIR"] == str(desk.resolve())
