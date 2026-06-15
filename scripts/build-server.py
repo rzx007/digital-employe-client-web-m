@@ -41,6 +41,7 @@ def subprocess_env() -> dict[str, str]:
     env.setdefault("UV_HTTP_TIMEOUT", "300")
     env.setdefault("UV_HTTP_RETRIES", "5")
     env.setdefault("UV_INDEX_URL", "https://npmmirror.com/mirror/pypi/simple")
+    env.setdefault("UV_EXTRA_INDEX_URL", "https://pypi.org/simple")
     # 使用 Runner 已安装的 Python，避免 uv 从镜像下载 CPython（npmmirror 易返回 Invalid gzip）
     resolve_uv_python(env)
     return env
@@ -292,29 +293,22 @@ def install_dependencies():
         "--group",
         "dev",
         "--frozen",
+        # 使用 dev 组已锁定的 hatchling/setuptools，避免 build isolation 单独解析索引
+        "--no-build-isolation",
     ]
-    max_attempts = 3
 
-    for attempt in range(1, max_attempts + 1):
-        try:
-            run_subprocess(sync_cmd, cwd=ROOT_DIR, capture=True, env=env)
-            print("✅ 依赖安装完成")
-            return True
-        except subprocess.CalledProcessError as e:
-            detail = e.stderr or e.stdout or str(e)
-            if attempt < max_attempts:
-                print(f"⚠️  依赖安装失败，{max_attempts - attempt} 次重试剩余…")
-                print(f"   错误: {detail[-2000:]}")
-                time.sleep(10 * attempt)
-                continue
-            print("❌ 依赖安装失败:")
-            print(f"   错误: {detail}")
-            return False
-        except FileNotFoundError:
-            print("❌ 错误: 未找到 uv 命令，请安装 uv (https://github.com/astral-sh/uv)")
-            return False
-
-    return False
+    try:
+        run_subprocess(sync_cmd, cwd=ROOT_DIR, capture=True, env=env)
+        print("✅ 依赖安装完成")
+        return True
+    except subprocess.CalledProcessError as e:
+        detail = e.stderr or e.stdout or str(e)
+        print("❌ 依赖安装失败:")
+        print(f"   错误: {detail}")
+        return False
+    except FileNotFoundError:
+        print("❌ 错误: 未找到 uv 命令，请安装 uv (https://github.com/astral-sh/uv)")
+        return False
 
 
 def run_pyinstaller():

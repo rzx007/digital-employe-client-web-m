@@ -38,6 +38,9 @@ dev = [
     "digital-employee-client",
     "pyinstaller>=6.0",
     "pytest>=8.0",
+    # workspace 包构建所需（CI --frozen + --no-build-isolation）
+    "hatchling",
+    "setuptools>=61.0",
 ]
 
 [tool.pytest.ini_options]

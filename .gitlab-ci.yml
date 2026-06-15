@@ -20,6 +20,7 @@ variables:
   ELECTRON_MIRROR: "https://npmmirror.com/mirrors/electron/"
   ELECTRON_BUILDER_BINARIES_MIRROR: "https://npmmirror.com/mirrors/electron-builder-binaries/"
   UV_INDEX_URL: "https://npmmirror.com/mirror/pypi/simple"
+  UV_EXTRA_INDEX_URL: "https://pypi.org/simple"
   PIP_INDEX_URL: "https://npmmirror.com/mirror/pypi/simple"
   # Node 大型构建（Vite 26K 模块）提高堆上限
   NODE_OPTIONS: "--max-old-space-size=8192"
