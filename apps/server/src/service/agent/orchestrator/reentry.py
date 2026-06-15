@@ -27,8 +27,13 @@ def collect_plan_execution_results(db: Session, plan) -> list[dict[str, Any]]:
             .order_by(TaskExecutionLog.id.desc())
         ).first()
         if log is None:
-            results.append({"task_name": t.task_name, "status": "unknown",
-                            "content": "", "error": None})
+            results.append({
+                "task_name": t.task_name,
+                "status": "unknown",
+                "content": "",
+                "result": "",
+                "error": None,
+            })
             continue
         content = ""
         if log.output_json:
