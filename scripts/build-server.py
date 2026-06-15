@@ -41,11 +41,31 @@ def subprocess_env() -> dict[str, str]:
     env.setdefault("UV_HTTP_TIMEOUT", "300")
     env.setdefault("UV_HTTP_RETRIES", "5")
     env.setdefault("UV_INDEX_URL", "https://npmmirror.com/mirror/pypi/simple")
-    env.setdefault(
-        "UV_PYTHON_INSTALL_MIRROR", "https://npmmirror.com/mirror/python"
-    )
-    env.setdefault("UV_PYTHON", "3.11")
+    # 使用 Runner 已安装的 Python，避免 uv 从镜像下载 CPython（npmmirror 易返回 Invalid gzip）
+    resolve_uv_python(env)
     return env
+
+
+def resolve_uv_python(env: dict[str, str]) -> None:
+    if env.get("UV_PYTHON"):
+        return
+    if sys.platform == "win32":
+        for cmd in (["py", "-3.11"], ["py", "-3.12"], ["python3"], ["python"]):
+            try:
+                result = subprocess.run(
+                    [*cmd, "-c", "import sys; print(sys.executable)"],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    check=True,
+                )
+                exe = (result.stdout or "").strip()
+                if exe:
+                    env["UV_PYTHON"] = exe
+                    return
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                continue
 
 
 def run_subprocess(
@@ -155,7 +175,7 @@ def install_dependencies():
         "uv",
         "sync",
         "--project",
-        "digital-employee-client",
+        "apps/server",
         "--group",
         "dev",
     ]

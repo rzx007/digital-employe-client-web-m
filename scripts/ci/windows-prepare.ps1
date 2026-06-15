@@ -43,4 +43,36 @@ foreach ($dir in @(
     Remove-DeepDirectory -Path $dir
 }
 
+function Set-UvPythonFromSystem {
+    $candidates = @(
+        @("py", "-3.11"),
+        @("py", "-3.12"),
+        @("python3"),
+        @("python")
+    )
+    foreach ($cmd in $candidates) {
+        try {
+            if ($cmd.Length -eq 1) {
+                $exe = & $cmd[0] -c "import sys; print(sys.executable)" 2>$null
+            }
+            else {
+                $exe = & $cmd[0] $cmd[1] -c "import sys; print(sys.executable)" 2>$null
+            }
+            if ($LASTEXITCODE -eq 0 -and $exe) {
+                $env:UV_PYTHON = $exe.Trim()
+                Write-Host "UV_PYTHON=$env:UV_PYTHON"
+                if ($env:GITLAB_ENV) {
+                    Add-Content -Path $env:GITLAB_ENV -Value "UV_PYTHON=$env:UV_PYTHON"
+                }
+                return
+            }
+        }
+        catch {
+            continue
+        }
+    }
+    Write-Host "WARN: 未找到本机 Python 3.11+，请安装 64 位 Python 3.11"
+}
+
+Set-UvPythonFromSystem
 Write-Host "Windows CI prepare complete."
