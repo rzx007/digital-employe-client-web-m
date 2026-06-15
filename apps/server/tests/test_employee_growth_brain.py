@@ -35,3 +35,15 @@ def test_build_growth_brain_empty(db_session, workspace, monkeypatch, tmp_path):
     monkeypatch.setattr(es, "_growth_brain_root_for", lambda eid: tmp_path / str(emp.id))
     brain = es.EmployeeService.build_employee_growth_brain(db_session, emp.id)
     assert brain == {"profile_md": "", "skills_list": [], "memories_md": "", "journal_entries": []}
+
+
+def test_growth_brain_endpoint(db_session, workspace, monkeypatch, tmp_path):
+    from src.service import employee_service as es
+    from src.api import employee_api
+    emp = add_employee(db_session, workspace.id, name="林晓")
+    monkeypatch.setattr(es, "_growth_brain_root_for", lambda eid: tmp_path / str(emp.id))
+    _seed_brain(tmp_path / str(emp.id))
+    resp = employee_api.get_employee_growth_brain(emp.id, db=db_session)
+    assert resp.data.profile_md and "调研" in resp.data.profile_md
+    assert "my-skill" in resp.data.skills_list
+    assert resp.data.journal_entries[0].task_name == "调研A"
