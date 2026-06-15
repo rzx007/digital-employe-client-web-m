@@ -224,12 +224,19 @@ def test_journal_records_tools_used(db_session, workspace, monkeypatch, tmp_path
     emp = add_employee(db_session, workspace.id, name="调研员")
     conv = Conversation(workspace_id=workspace.id, target_type="employee", target_id=emp.id, title="t")
     db_session.add(conv); db_session.flush()
-    # 一条 assistant 消息，message_parts 含工具调用（结构以实际为准，下面是占位）
+    # 一条 assistant 消息，message_parts 含工具调用（真实结构：type="tool-<name>"，
+    # 工具名在 type 的 "tool-" 前缀里；toolName 嵌在 output 内，非顶层。已核对 message_parts_extractor._build_tool_part）
     msg = ConversationMessage(
         conversation_id=conv.id, role="assistant", content="done",
         message_parts=json.dumps([
-            {"type": "dynamic-tool", "toolName": "shell_execute"},
-            {"type": "text", "text": "done"},
+            {
+                "type": "tool-shell_execute",
+                "toolCallId": "call-abc",
+                "state": "output-available",
+                "input": {"command": "ls"},
+                "output": {"status": "success", "text": "ok", "toolName": "shell_execute"},
+            },
+            {"type": "text", "text": "done", "state": "done"},
         ], ensure_ascii=False),
     )
     db_session.add(msg); db_session.commit()
@@ -243,7 +250,7 @@ def test_journal_records_tools_used(db_session, workspace, monkeypatch, tmp_path
     assert "shell_execute" in entry["tools_used"]
 ```
 
-> **实现前必读真实 message_parts 结构**：读 `apps/server/src/service/message_parts_extractor.py`（或 grep `toolName`/`"type"` 在 parts 处理代码），确认工具 part 的 type/字段名。上面测试的 part 形状按实际改。若工具名在别的字段，解析与断言一起对齐。
+> **message_parts 工具 part 真实结构（已核对 `message_parts_extractor._build_tool_part` L233-257）**：`{"type": "tool-<工具名>", "toolCallId":..., "state":..., "input":{...}, "output":{...,"toolName":<工具名>}}`。**工具名在 `type` 的 `tool-` 前缀里**（顶层无 `toolName`，它嵌在 `output` 内）。所以解析主路径 = `ptype.startswith("tool-")` → 取 `ptype[5:]`。下面实现的双路径(toolName 兜底 + tool- 前缀)对真实数据按 tool- 前缀生效，正确；保留双路径无害。
 
 - [ ] **Step 2: 跑测试确认失败**
 Run: `cd apps/server && uv run pytest tests/test_journal_capture.py::test_journal_records_tools_used -v`
@@ -341,11 +348,15 @@ def _capture_journal_safe(db, log) -> None:
     except Exception:
         logger.warning("journal capture hook failed", exc_info=True)
 ```
-在 `_finalize_task_stream` 中 `log` 终态字段写完、`db.commit()`/`db.refresh(log)` 之后（success/failed/cancelled 都过完的那一点，约 L2408 之后、`db.close()` 之前）加：
+**精确插入点（评审核对）**：`_finalize_task_stream` 里只有一个汇合点——`db.commit()`(L2408) + `db.refresh(log)`(L2409),三个终态(success/failed/cancelled)都汇到这。**插在 `db.refresh(log)` 之后、`summary_message = None`(约 L2411)之前**(即在 orchestrator_execution_summary 块**之前**,别插进它的 try/except):
 ```python
-        _capture_journal_safe(db, log)
+        db.commit()
+        db.refresh(log)
+        _capture_journal_safe(db, log)   # ← 插这里
+        summary_message = None
+        # ...（下面是 append_orchestrator_execution_summary 等）
 ```
-（interrupted 分支 L2357 提前 return，天然不记。确认 cancelled/failed 分支也会走到这一点；若不同终态在不同 return 点，确保每个终态终点都调一次或统一到一个汇合点。）
+（interrupted 分支 L2362 提前 return,天然不记 journal,正确。以实际行号为准。）
 
 - [ ] **Step 4: 跑测试 + 回归**
 Run: `cd apps/server && uv run pytest tests/test_journal_capture.py -v`
