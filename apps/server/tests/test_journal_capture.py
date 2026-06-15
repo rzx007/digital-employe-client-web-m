@@ -69,3 +69,34 @@ def test_capture_journal_entry_no_employee_noop(db_session, workspace, monkeypat
     )
     journal.capture_journal_entry(db_session, log)  # 不抛
     assert list(tmp_path.glob("*/journal/*.jsonl")) == []
+
+
+def test_journal_records_tools_used(db_session, workspace, monkeypatch, tmp_path):
+    from src.service.learning import journal
+    from src.models.conversation import Conversation, ConversationMessage
+    monkeypatch.setattr(journal, "_brain_root_for", lambda eid: tmp_path / str(eid))
+    emp = add_employee(db_session, workspace.id, name="调研员")
+    conv = Conversation(workspace_id=workspace.id, target_type="employee", target_id=emp.id, title="t")
+    db_session.add(conv); db_session.flush()
+    msg = ConversationMessage(
+        conversation_id=conv.id, role="assistant", content="done",
+        message_parts=json.dumps([
+            {
+                "type": "tool-shell_execute",
+                "toolCallId": "call-abc",
+                "state": "output-available",
+                "input": {"command": "ls"},
+                "output": {"status": "success", "text": "ok", "toolName": "shell_execute"},
+            },
+            {"type": "text", "text": "done", "state": "done"},
+        ], ensure_ascii=False),
+    )
+    db_session.add(msg); db_session.commit()
+    log = _settle_log(db_session, workspace.id, emp.id, status="success")
+    log.conversation_id = conv.id; db_session.commit(); db_session.refresh(log)
+
+    journal.capture_journal_entry(db_session, log)
+    entry = json.loads(
+        next((tmp_path / str(emp.id) / "journal").glob("*.jsonl")).read_text("utf-8").strip().splitlines()[-1]
+    )
+    assert "shell_execute" in entry["tools_used"]
