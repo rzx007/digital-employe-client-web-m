@@ -133,3 +133,27 @@ def _resolve_memories_path(employee_id: int) -> Path:
 
 def _build_llm() -> ChatOpenAI:
     return build_chat_model(apply_profile=False)
+
+
+def detect_failure_then_success(db: Session, log) -> str | None:
+    """信号：同 task_id 先失败后成功。返回上次失败上下文(供 critic prompt)，无信号→None。"""
+    try:
+        if log is None or log.task_id is None or log.run_status != "success":
+            return None
+        from src.models.task_execution_log import TaskExecutionLog
+        prior_failed = db.scalars(
+            select(TaskExecutionLog)
+            .where(
+                TaskExecutionLog.task_id == log.task_id,
+                TaskExecutionLog.run_status == "failed",
+                TaskExecutionLog.id < log.id,
+            )
+            .order_by(TaskExecutionLog.id.desc())
+        ).first()
+        if prior_failed is None:
+            return None
+        err = (prior_failed.error_message or prior_failed.run_result or "未知原因")[:1000]
+        return f"上次执行（log#{prior_failed.id}）失败，原因：{err}"
+    except Exception:
+        logger.warning("detect_failure_then_success failed", exc_info=True)
+        return None
