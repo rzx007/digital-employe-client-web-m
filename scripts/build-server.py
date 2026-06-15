@@ -285,7 +285,7 @@ def install_dependencies():
         print("   安装后执行: py -3.11-64 -c \"import sys; print(sys.executable)\"")
         return False
 
-    sync_cmd = [
+    sync_base = [
         "uv",
         "sync",
         "--project",
@@ -293,12 +293,23 @@ def install_dependencies():
         "--group",
         "dev",
         "--frozen",
-        # 使用 dev 组已锁定的 hatchling/setuptools，避免 build isolation 单独解析索引
-        "--no-build-isolation",
     ]
 
     try:
-        run_subprocess(sync_cmd, cwd=ROOT_DIR, capture=True, env=env)
+        # 1) 先装锁定依赖（含 dev 组 hatchling/setuptools），暂不构建 workspace
+        run_subprocess(
+            sync_base + ["--no-install-workspace"],
+            cwd=ROOT_DIR,
+            capture=True,
+            env=env,
+        )
+        # 2) 用 venv 内 build 工具构建 workspace 可编辑包
+        run_subprocess(
+            sync_base + ["--no-build-isolation"],
+            cwd=ROOT_DIR,
+            capture=True,
+            env=env,
+        )
         print("✅ 依赖安装完成")
         return True
     except subprocess.CalledProcessError as e:

@@ -23,6 +23,12 @@ extra-index-url = ["https://pypi.org/simple"]
 # CI/打包固定 Python 3.11，避免 lock 中 3.13 split 在 sync 时重新解析失败
 environments = ["python_version == '3.11'"]
 
+# --no-build-isolation 时 uv 需先将 build 工具装入 venv 再构建 workspace 成员
+[tool.uv.extra-build-dependencies]
+digital-employee-activation-core = ["hatchling"]
+digital-employee-license-issuer = ["hatchling"]
+digital-employee-client = ["setuptools>=61.0"]
+
 [tool.uv.sources]
 digital-employee-client = { workspace = true }
 digital-employee-activation-core = { workspace = true }
