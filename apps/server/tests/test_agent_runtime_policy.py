@@ -124,14 +124,6 @@ def test_heavy_reserves_light_slot() -> None:
     assert p.effective_max_inflight_for("heavy") == 3
 
 
-def test_group_room_is_light() -> None:
-    from src.core.agent_runtime_policy import resolve_stream_class
-
-    assert resolve_stream_class(None, "group_room") == "light"
-    assert resolve_stream_class(None, "group_leader") == "heavy"
-    assert resolve_stream_class(None, "user_chat") == "light"
-
-
 def test_slot_gating_off_by_default() -> None:
     p = AgentRuntimePolicy(serial_mode=False, max_concurrent_streams=0)
     assert p.slot_gating_enabled() is False

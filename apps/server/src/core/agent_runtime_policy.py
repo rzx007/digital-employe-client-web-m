@@ -45,13 +45,10 @@ def resolve_stream_class(explicit: str | None, source: str | None) -> str:
     """
     if explicit in (STREAM_CLASS_HEAVY, STREAM_CLASS_LIGHT):
         return explicit  # type: ignore[return-value]
-    # 编排/定时/组长统筹=heavy（批量交付、长任务）。
-    # 群 @ 直接对话(group_room) 归为 light：交互式短对话，不应占唯一 heavy 槽挡总管。
+    # 编排/定时任务=heavy（批量交付、长任务），用户交互=light（对延迟敏感）。
     if source in (
         "orchestration",
         "scheduled",
-        "group_leader",
-        "group_leader_summary",
     ):
         return STREAM_CLASS_HEAVY
     return STREAM_CLASS_LIGHT

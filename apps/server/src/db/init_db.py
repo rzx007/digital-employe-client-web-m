@@ -179,19 +179,6 @@ def init_db() -> None:
         "conversation_messages", "sender_label", "sender_label VARCHAR(255)"
     )
 
-    # 群房间：发起拉群的总管会话（汇总回流）
-    ensure_column(
-        "group_rooms",
-        "origin_curator_conversation_id",
-        "origin_curator_conversation_id INTEGER",
-    )
-    # 群房间：自动确认成员任务的非澄清类审批（默认 0=关，保持人工确认现状）
-    ensure_column(
-        "group_rooms",
-        "auto_confirm_member_tasks",
-        "auto_confirm_member_tasks INTEGER NOT NULL DEFAULT 0",
-    )
-
     # Migration: conversations.title 从 VARCHAR(255) 改为 TEXT（去掉长度限制）
     if "conversations" in inspector.get_table_names():
         _migrate_conversation_title_to_text(engine, inspector)

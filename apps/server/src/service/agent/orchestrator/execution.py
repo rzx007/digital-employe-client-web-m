@@ -34,29 +34,12 @@ _ORCH_STREAM_IDLE_POLL_SECONDS = 0.5
 _ORCH_STREAM_IDLE_MAX_POLLS = 600  # 最多等待 5 分钟
 
 
-def _find_group_room_by_leader_conv(
-    db: Session, orchestrator_conversation_id: int | None,
-):
-    """群组长会话查询（已退场）：恒返回 None。"""
-    return None
-
-
-def build_dispatch_extra_meta(*, task_id: int, is_group_leader: bool) -> dict[str, Any]:
-    """派单 user 消息的 extra_meta（前端邮戳：总管派单 vs 组长派单）。"""
-    meta: dict[str, Any] = {
+def build_dispatch_extra_meta(*, task_id: int) -> dict[str, Any]:
+    """派单 user 消息的 extra_meta（前端邮戳：总管派单）。"""
+    return {
         "dispatchedByOrchestrator": True,
         "sourceTaskId": task_id,
     }
-    if is_group_leader:
-        meta["dispatchedByGroupLeader"] = True
-    return meta
-
-
-def _resolve_room_shared_artifacts_dir(
-    db: Session, orchestrator_conversation_id: int | None, root_path: str
-) -> str | None:
-    """群协作共享产物目录（已退场）：恒返回 None，走总管共享桌路径。"""
-    return None
 
 
 def _register_room_stream_relay_if_in_room(
@@ -311,8 +294,6 @@ def start_task_as_conversation(
     if task.source_conversation_id is None and orch_conv_id is not None:
         task.source_conversation_id = orch_conv_id
 
-    is_group_leader_dispatch = _find_group_room_by_leader_conv(db, orch_conv_id) is not None
-
     run_log = TaskExecutionLog(
         task_id=task.id,
         workspace_id=workspace_id,
@@ -336,10 +317,7 @@ def start_task_as_conversation(
         stream_state="completed",
         # 标记派单来源：总管 1:1 编排 vs 群协作组长编排（前端邮戳区分）。
         extra_meta=json.dumps(
-            build_dispatch_extra_meta(
-                task_id=task.id,
-                is_group_leader=is_group_leader_dispatch,
-            ),
+            build_dispatch_extra_meta(task_id=task.id),
             ensure_ascii=False,
         ),
     )
@@ -358,11 +336,7 @@ def start_task_as_conversation(
         if slot_busy:
             queue_hint = "已加入执行队列，等待其他对话完成"
         elif source == "orchestration":
-            queue_hint = (
-                "等待组长会话结束，即将开始执行…"
-                if is_group_leader_dispatch
-                else "等待总管会话结束，即将开始执行…"
-            )
+            queue_hint = "等待总管会话结束，即将开始执行…"
         else:
             queue_hint = "已加入执行队列，等待其他对话完成"
         assistant_msg.content = assistant_msg.content or queue_hint
@@ -386,13 +360,11 @@ def start_task_as_conversation(
     settings = get_settings()
     root_path = settings.artifacts_path
 
-    # 群协作：若本任务属于某房间（组长派的活），让它用房间共享产物目录，
-    # 这样上游成员产出的文件对下游成员可见（解决"下游找不到上游产物"）。
-    shared_artifacts_dir = _resolve_room_shared_artifacts_dir(db, orch_conv_id, root_path)
+    shared_artifacts_dir = None
     shared_workspace_root = None
     # 注：orch_conv_id 为 None 的孤儿任务（无 source_conversation_id 且无 plan）→ 不进桌，
     #     回落到员工级目录（现状行为），这是预期分支不是遗漏。
-    if shared_artifacts_dir is None and orch_conv_id is not None:
+    if orch_conv_id is not None:
         # 非群派活：全队共享总管这一张桌
         from src.service.agent.workspace_paths import (
             resolve_orchestrator_desk_dir,
@@ -402,7 +374,6 @@ def start_task_as_conversation(
         shared_artifacts_dir = str(orchestrator_task_subdir(_desk, task.id))
         shared_workspace_root = str(_desk)
 
-    # 群协作：登记流式中继，让成员产出 token 逐字推到群时间线。
     _register_room_stream_relay_if_in_room(
         db, conversation_id, orch_conv_id, employee
     )
@@ -430,11 +401,7 @@ def start_task_as_conversation(
         max_output_tokens=resolve_output_tokens(_task_output_tier),
     )
 
-    dispatch_directive = (
-        "【系统指令】你正在被组长自动派单执行，没有真人坐在对面。"
-        if is_group_leader_dispatch
-        else "【系统指令】你正在被总管自动派单执行，没有真人坐在对面。"
-    ) + (
+    dispatch_directive = "【系统指令】你正在被总管自动派单执行，没有真人坐在对面。" + (
         "请按下方任务描述直接产出最终结果，"
         "不要请求澄清、不要让用户填写表单、不要等待确认。"
         "信息不足时用合理默认值或在产出中说明假设即可。"
@@ -491,9 +458,9 @@ def start_task_as_conversation(
 def should_skip_orchestrator_wait(*, prereq_briefing: str = "") -> bool:
     """是否跳过「等编排会话 astream 结束再启员工流」。
 
-    仅依赖调度器派发的后继任务（带前置产物简报）可跳过——此时组长流通常已结束。
-    群房间虽有 shared_artifacts_dir，但首轮派活仍须等组长 create/confirm 流结束，
-    否则 group_leader + orchestration 双 heavy 并行占满 GPU 槽（观测到 385s/6tok 僵死）。
+    仅依赖调度器派发的后继任务（带前置产物简报）可跳过——此时总管流通常已结束。
+    首轮派活须等总管 create/confirm 流结束，否则 orchestration 双 heavy 并行
+    占满 GPU 槽（观测到 385s/6tok 僵死）。
     """
     return bool(prereq_briefing and prereq_briefing.strip())
 
