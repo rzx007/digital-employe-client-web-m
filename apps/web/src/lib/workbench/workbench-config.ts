@@ -1,5 +1,11 @@
 import type { HtmlArtifactRef, WorkbenchBlock, WorkbenchConfig } from "@/types/workbench"
 
+/**
+ * 单一全局工作台的 employeeId。钉住写入方（资源面板）与读取方（WorkbenchView）
+ * 必须共用此常量，否则写入的看板读不出来。
+ */
+export const GLOBAL_WORKBENCH_ID = "global"
+
 const STORAGE_KEY_PREFIX = "workbench-config-"
 
 function getStorageKey(employeeId: string): string {

@@ -71,6 +71,7 @@ import {
 } from "./artifact-content/resolve-renderer"
 import {
   addHtmlArtifactBlock,
+  GLOBAL_WORKBENCH_ID,
   initializeWorkbenchConfig,
   loadWorkbenchConfig,
 } from "@/lib/workbench/workbench-config"
@@ -340,8 +341,6 @@ function SkillDraftContextMenu({
   )
 }
 
-const WORKBENCH_ID = "global"
-
 /** 把某会话的 HTML 产物钉成工作台看板（直接读写 localStorage，工作台下次打开即生效） */
 function pinHtmlToWorkbench(
   conversationId: string | number,
@@ -349,7 +348,8 @@ function pinHtmlToWorkbench(
   name: string
 ) {
   const config =
-    loadWorkbenchConfig(WORKBENCH_ID) ?? initializeWorkbenchConfig(WORKBENCH_ID)
+    loadWorkbenchConfig(GLOBAL_WORKBENCH_ID) ??
+    initializeWorkbenchConfig(GLOBAL_WORKBENCH_ID)
   const title = name.replace(/\.html?$/i, "")
   addHtmlArtifactBlock(
     config,

@@ -2,12 +2,10 @@ import { IconX } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { useWorkbenchConfig } from "@/hooks/use-workbench-config"
+import { GLOBAL_WORKBENCH_ID } from "@/lib/workbench/workbench-config"
 import { WorkbenchLeftPanel } from "@/components/workbench/workbench-left-panel"
 import { DraggableWorkbenchGrid } from "@/components/workbench/draggable-workbench-grid"
 import { WorkbenchContentSplit } from "@/components/workbench/workbench-content-split"
-
-/** 单一全局工作台配置键 —— 见 workbench-config.ts localStorage 前缀 */
-const GLOBAL_WORKBENCH_ID = "global"
 
 interface WorkbenchViewProps {
   onClose?: () => void

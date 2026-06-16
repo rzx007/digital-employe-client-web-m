@@ -1,7 +1,6 @@
 import { useCallback, useState } from "react"
-import type { HtmlArtifactRef, WorkbenchConfig } from "@/types/workbench"
+import type { WorkbenchConfig } from "@/types/workbench"
 import {
-  addHtmlArtifactBlock,
   initializeWorkbenchConfig,
   loadWorkbenchConfig,
   removeBlock,
@@ -47,15 +46,6 @@ export function useWorkbenchConfig({ employeeId }: UseWorkbenchConfigOptions) {
     []
   )
 
-  const pinHtmlArtifact = useCallback(
-    (htmlRef: HtmlArtifactRef, title: string) => {
-      setConfig((prev) =>
-        prev ? addHtmlArtifactBlock(prev, htmlRef, title) : prev
-      )
-    },
-    []
-  )
-
   const removeBlockById = useCallback((blockId: string) => {
     setConfig((prev) => (prev ? removeBlock(prev, blockId) : prev))
   }, [])
@@ -72,7 +62,6 @@ export function useWorkbenchConfig({ employeeId }: UseWorkbenchConfigOptions) {
   return {
     config,
     reorderBlocks,
-    pinHtmlArtifact,
     removeBlock: removeBlockById,
     resizeBlock,
     refreshConfig,
