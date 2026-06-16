@@ -95,6 +95,8 @@ docker run --rm \
   -v "$ROOT_DIR:/host-source:ro" \
   -v "$RELEASE_DIR:/output" \
   -v "$FPM_CACHE_DIR:/fpm-seed:ro" \
+  -v "digital-employee-uv-cache:/root/.cache/uv" \
+  -v "digital-employee-pnpm-store:/root/.local/share/pnpm/store" \
   -e ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" \
   -e ELECTRON_BUILDER_BINARIES_MIRROR="https://registry.npmmirror.com/-/binary/electron-builder-binaries/" \
   -e ELECTRON_BUILDER_CACHE="/root/.cache/electron-builder" \
@@ -110,6 +112,8 @@ rsync -a --delete \
   --exclude=node_modules \
   --exclude="*/node_modules" \
   --exclude=.pnpm-store \
+  --exclude=.venv \
+  --exclude=".venv/" \
   --exclude=.git \
   --exclude=release \
   /host-source/ /build/
