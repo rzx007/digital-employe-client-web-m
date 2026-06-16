@@ -58,6 +58,7 @@ def init_db() -> None:
         "source_conversation_id",
         "source_conversation_id INTEGER",
     )
+    ensure_column("employee_tasks", "rework_count", "rework_count INTEGER NOT NULL DEFAULT 0")
     ensure_column(
         "task_execution_logs",
         "orchestrator_conversation_id",

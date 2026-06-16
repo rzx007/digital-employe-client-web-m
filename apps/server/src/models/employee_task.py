@@ -42,6 +42,13 @@ class EmployeeTask(Base):
     valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    rework_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now, onupdate=cst_now)
+
+    def __init__(self, **kwargs: object) -> None:
+        # SQLAlchemy 2.x mapped_column(default=) 仅在 INSERT 时生效；
+        # 此处显式补默认，使瞬态（未 flush）实例读到 0 而非 None。
+        kwargs.setdefault("rework_count", 0)
+        super().__init__(**kwargs)
 
