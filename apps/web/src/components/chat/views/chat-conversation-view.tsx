@@ -57,6 +57,8 @@ export function ConversationChatView({
 
   onNewConversation,
 
+  readOnly = false,
+
   className,
 
   ...props
@@ -72,6 +74,9 @@ export function ConversationChatView({
   onOpenConversations?: () => void
 
   onNewConversation?: () => void
+
+  /** 只读：员工任务执行会话钻取，仅查看转录、隐藏输入区 */
+  readOnly?: boolean
 }) {
   const [inputValue, setInputValue] = useState("")
 
@@ -442,6 +447,7 @@ export function ConversationChatView({
       onAttachmentsChange={handleAttachmentsChange}
       activeHitl={session.activeHitl}
       onHitlApproved={handleHitlApproved}
+      readOnly={readOnly}
       className={className}
       {...props}
     />

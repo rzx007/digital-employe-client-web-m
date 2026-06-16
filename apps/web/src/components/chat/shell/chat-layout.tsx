@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, type ComponentProps } from "react"
 import { useSize } from "ahooks"
 import { IconWorld } from "@tabler/icons-react"
+import { toast } from "sonner"
 
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
@@ -12,7 +13,6 @@ import {
   useContactsQuery,
   useConversationsQuery,
 } from "@/hooks/use-chat-queries"
-import { enterDraftConversation } from "@/lib/chat/conversation-selection"
 import { getContactId } from "@/lib/chat/contact-utils"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import { useCreateCuratorConversation } from "@/hooks/use-create-curator-conversation"
@@ -102,12 +102,12 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
           queryKey: [...chatKeys.all, "notifications"],
         })
         if (
-          (event.type === "task_completed" || event.type === "task_failed")
-          && event.orchestrator_conversation_id
+          (event.type === "task_completed" || event.type === "task_failed") &&
+          event.orchestrator_conversation_id
         ) {
           queryClient.invalidateQueries({
             queryKey: chatKeys.messages(
-              String(event.orchestrator_conversation_id),
+              String(event.orchestrator_conversation_id)
             ),
           })
         }
@@ -158,7 +158,9 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
         if (firstCurator?.curator) {
           useChatStore
             .getState()
-            .setSelectedContactId(getContactId(firstCurator) ?? firstCurator.curator.id)
+            .setSelectedContactId(
+              getContactId(firstCurator) ?? firstCurator.curator.id
+            )
         }
       }
     }
@@ -251,15 +253,15 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
     const prevCount = prevConversationCountRef.current
     prevConversationCountRef.current = count
 
-    if (selectedContactId && prevCount != null && prevCount > 0 && count === 0) {
+    if (
+      selectedContactId &&
+      prevCount != null &&
+      prevCount > 0 &&
+      count === 0
+    ) {
       resetRightPanels()
     }
-  }, [
-    activeTab,
-    selectedContactId,
-    conversations,
-    resetRightPanels,
-  ])
+  }, [activeTab, selectedContactId, conversations, resetRightPanels])
   const artifactPanelConversationId = selectedConversationId
 
   const handleNewConversation = () => {
@@ -268,7 +270,8 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
       void createCuratorConversation(selectedContact)
       return
     }
-    enterDraftConversation()
+    // 阶段4：员工单聊退场，不再新建员工会话；派活统一走总管。
+    toast.info("员工不再单独对话，请通过总管派活")
   }
 
   const handleOpenConversations = () => {
@@ -454,7 +457,6 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
       )}
 
       {isMobile && <MobileTabBar />}
-
     </div>
   )
 }

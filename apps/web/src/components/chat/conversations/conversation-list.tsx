@@ -7,7 +7,6 @@ import { useConversationsQuery } from "@/hooks/use-chat-queries"
 import { useCreateCuratorConversation } from "@/hooks/use-create-curator-conversation"
 import type { CuratorConversationSelectScope } from "@/lib/chat/curator-conversation-actions"
 import {
-  enterDraftConversation,
   getEmployeeDeepLinkConversationId,
   isPreservedEmployeeConversationSelection,
   selectConversationById,
@@ -48,9 +47,9 @@ export function ConversationList({
   const selectedContact = contactOverride ?? selectedContactFromStore
   const activeContactId =
     contactOverride?.type === "curator"
-      ? contactOverride.curator?.id ?? null
+      ? (contactOverride.curator?.id ?? null)
       : contactOverride?.type === "employee"
-        ? contactOverride.employee?.id ?? null
+        ? (contactOverride.employee?.id ?? null)
         : selectedContactId
   const activeConversationId =
     selectedConversationIdOverride ?? selectedConversationId
@@ -128,22 +127,18 @@ export function ConversationList({
         )}
       </div>
 
-      {!hideNewButton && (
+      {/* 阶段4：员工单聊退场，新建会话仅总管可用 */}
+      {!hideNewButton && selectedContact?.type === "curator" && (
         <Button
           className="m-2"
           variant="outline"
           disabled={isCreatingCurator}
           onClick={() => {
-            if (selectedContact?.type === "curator") {
-              void createCuratorConversation(selectedContact, undefined, {
-                selectScope: createConversationSelectScope,
-              }).then(() => {
-                onSelectConversation?.()
-              })
-              return
-            }
-            enterDraftConversation()
-            onSelectConversation?.()
+            void createCuratorConversation(selectedContact, undefined, {
+              selectScope: createConversationSelectScope,
+            }).then(() => {
+              onSelectConversation?.()
+            })
           }}
         >
           <IconCirclePlus className="size-4" />
@@ -163,7 +158,7 @@ export function ConversationList({
               key={`deep-link-${deepLinkConversationId}`}
               conversation={{
                 id: deepLinkConversationId,
-                title: `群任务执行 #${deepLinkConversationId}`,
+                title: `任务执行 #${deepLinkConversationId}`,
                 contactId: String(activeContactId ?? ""),
                 updatedAt: new Date(),
                 unreadCount: 0,
@@ -185,7 +180,9 @@ export function ConversationList({
             <ConversationItem
               key={conversation.id}
               conversation={conversation}
-              isSelected={String(activeConversationId) === String(conversation.id)}
+              isSelected={
+                String(activeConversationId) === String(conversation.id)
+              }
               onClick={() => {
                 if (onSelectConversationId) {
                   onSelectConversationId(conversation.id)

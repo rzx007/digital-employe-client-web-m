@@ -1,8 +1,11 @@
 import * as React from "react"
 
 import { useQueryClient } from "@tanstack/react-query"
+import { IconUsers } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
+
+import { useIsMobile } from "@/hooks/use-mobile"
 
 import {
   conversationExistsInList,
@@ -17,9 +20,10 @@ import { ensureCuratorConversationAndSelect } from "@/lib/chat/curator-conversat
 import { useChatStore } from "@/stores/chat-store"
 import type { Contact } from "@/types/chat"
 
+import { EmployeeContactAvatar } from "../contacts/contact-avatars"
+import { GrowthBrainSection } from "../contacts/growth-brain-section"
 import { CuratorView } from "../curator/curator-view"
 import { ConversationChatView } from "./chat-conversation-view"
-import { DraftChatView } from "./chat-draft-view"
 
 function CuratorChatLoading({ className }: { className?: string }) {
   return (
@@ -71,6 +75,52 @@ function CuratorEnsureRetry({
       >
         {retrying ? "重试中…" : "重试"}
       </Button>
+    </div>
+  )
+}
+
+/**
+ * 员工只读成长面板（阶段4：员工单聊退场）。点击员工不再进单聊对话，
+ * 改为查看其成长档案（能力画像/技能/记忆/学习日志）。派活统一走总管。
+ */
+function EmployeeGrowthView({
+  contact,
+  onOpenContacts,
+  className,
+}: {
+  contact?: Contact
+  onOpenContacts?: () => void
+  className?: string
+}) {
+  const isMobile = useIsMobile()
+  const employee = contact?.type === "employee" ? contact.employee : undefined
+
+  return (
+    <div className={cn("flex h-full flex-col", className)}>
+      <div className="flex items-center gap-3 border-b px-6 py-3">
+        {isMobile && onOpenContacts && (
+          <Button variant="ghost" size="icon-sm" onClick={onOpenContacts}>
+            <IconUsers className="size-4" />
+          </Button>
+        )}
+        <EmployeeContactAvatar
+          name={employee?.name}
+          avatar={employee?.avatar}
+          status={employee?.status}
+          showStatus
+        />
+        <div className="min-w-0">
+          <h3 className="truncate text-sm font-medium">
+            {employee?.name ?? "员工"}
+          </h3>
+          <p className="truncate text-xs text-muted-foreground">
+            成长档案 · 只读
+          </p>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+        <GrowthBrainSection employeeId={employee?.id ?? null} />
+      </div>
     </div>
   )
 }
@@ -178,20 +228,22 @@ export function ChatView({
   const conversationTitle =
     selectedConversation?.title ??
     (deepLinkConversationId != null
-      ? `群任务执行 #${deepLinkConversationId}`
-      : "新对话")
+      ? `任务执行 #${deepLinkConversationId}`
+      : "任务执行")
 
-  return isDraftConversation || !hasValidSelection ? (
-    <DraftChatView
-      contact={contact}
-      title={conversationTitle}
-      onOpenContacts={onOpenContacts}
-      onOpenConversations={onOpenConversations}
-      onNewConversation={onNewConversation}
-      className={cn(className)}
-      {...props}
-    />
-  ) : (
+  // 阶段4：员工单聊退场。普通选中/草稿 → 只读成长面板（不可对话）。
+  // 仅当从总管/工作台深链进具体任务执行会话时 → 只读转录（隐藏输入区）。
+  if (isDraftConversation || !hasValidSelection) {
+    return (
+      <EmployeeGrowthView
+        contact={contact}
+        onOpenContacts={onOpenContacts}
+        className={cn(className)}
+      />
+    )
+  }
+
+  return (
     <ConversationChatView
       key={String(selectedConversationId)}
       contact={contact}
@@ -199,7 +251,7 @@ export function ChatView({
       conversationId={selectedConversationId}
       onOpenContacts={onOpenContacts}
       onOpenConversations={onOpenConversations}
-      onNewConversation={onNewConversation}
+      readOnly
       className={cn(className)}
       {...props}
     />

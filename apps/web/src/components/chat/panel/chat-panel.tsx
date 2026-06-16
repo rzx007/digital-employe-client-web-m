@@ -174,6 +174,7 @@ export function ChatPanel({
   onHitlApproved,
   onDraftSuggestionSelect,
   hideHeader = false,
+  readOnly = false,
   className,
   ...props
 }: React.ComponentProps<"div"> & {
@@ -210,6 +211,8 @@ export function ChatPanel({
   onDraftSuggestionSelect?: (text: string) => void
   /** 工作台 compact：外层已有 CuratorCompactToolbar */
   hideHeader?: boolean
+  /** 只读模式：隐藏底部输入区（如员工任务执行会话钻取，仅查看转录） */
+  readOnly?: boolean
 }) {
   const contactDisplayName = contact
     ? getContactDisplayName(contact)
@@ -299,9 +302,7 @@ export function ChatPanel({
                     <CuratorEmptyWelcome
                       contact={contact}
                       displayName={contactDisplayName}
-                      onSuggestionSelect={
-                        onDraftSuggestionSelect ?? (() => { })
-                      }
+                      onSuggestionSelect={onDraftSuggestionSelect ?? (() => {})}
                       suggestionsDisabled={
                         status === "submitted" || status === "streaming"
                       }
@@ -376,33 +377,39 @@ export function ChatPanel({
               <ConversationScrollButton />
             </Conversation>
 
-            <div className="mx-auto w-full max-w-4xl border-none px-1 py-4">
-              <ChatComposerArea
-                messages={composerMessages ?? messages}
-                conversationId={conversationId!}
-                inputValue={inputValue}
-                onInputChange={onInputChange}
-                onSend={handleComposerSend}
-                onStop={() => onStop?.()}
-                onHitlApproved={onHitlApproved}
-                activeHitl={activeHitl}
-                status={status}
-                submitDisabled={isSubmitDisabled}
-                placeholder="请输入任务，然后交给我, 键入 / 指定调用技能"
-                size="compact"
-                className="w-full"
-                slashCommands={slashCommands}
-                mentionCandidates={mentionCandidates}
-                onAttachmentsChange={onAttachmentsChange}
-                pendingMessages={pendingMessages}
-                onPendingRemove={onPendingRemove}
-                onPendingSendNow={onPendingSendNow}
-                onPendingMoveUp={onPendingMoveUp}
-                onPendingMoveDown={onPendingMoveDown}
-                error={error}
-                pendingQueueClassName="mx-auto w-[98%]"
-              />
-            </div>
+            {readOnly ? (
+              <div className="mx-auto w-full max-w-4xl px-1 py-3 text-center text-xs text-muted-foreground">
+                只读 · 仅查看执行记录，如需派活请通过总管
+              </div>
+            ) : (
+              <div className="mx-auto w-full max-w-4xl border-none px-1 py-4">
+                <ChatComposerArea
+                  messages={composerMessages ?? messages}
+                  conversationId={conversationId!}
+                  inputValue={inputValue}
+                  onInputChange={onInputChange}
+                  onSend={handleComposerSend}
+                  onStop={() => onStop?.()}
+                  onHitlApproved={onHitlApproved}
+                  activeHitl={activeHitl}
+                  status={status}
+                  submitDisabled={isSubmitDisabled}
+                  placeholder="请输入任务，然后交给我, 键入 / 指定调用技能"
+                  size="compact"
+                  className="w-full"
+                  slashCommands={slashCommands}
+                  mentionCandidates={mentionCandidates}
+                  onAttachmentsChange={onAttachmentsChange}
+                  pendingMessages={pendingMessages}
+                  onPendingRemove={onPendingRemove}
+                  onPendingSendNow={onPendingSendNow}
+                  onPendingMoveUp={onPendingMoveUp}
+                  onPendingMoveDown={onPendingMoveDown}
+                  error={error}
+                  pendingQueueClassName="mx-auto w-[98%]"
+                />
+              </div>
+            )}
           </>
         </>
       )}
