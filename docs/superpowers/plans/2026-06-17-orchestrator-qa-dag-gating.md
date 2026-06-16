@@ -146,11 +146,12 @@ Expected: FAIL（函数不存在）
 
 - [ ] **Step 3: 实现谓词 + 加载器**
 
-`dependency_scheduler.py` 在 `_all_prereqs_done` 之后加（确认 `select` 与 `TaskExecutionLog` 已在文件 import；`_log_status_by_task` 已用 `select`）：
+`dependency_scheduler.py` 在 `_all_prereqs_done` 之后加（`select` 已在模块顶 import；`TaskExecutionLog` 按本文件既有风格在函数内 import）：
 ```python
 def _load_accepted_task_ids(db: Session, task_ids: list[int]) -> set[int]:
     """直查 DB 取"已 QA 接受"的前置 task 集合：存在 success/completed 且 qa_accepted_at 非空的 log。
     直查而非走 _log_status_by_task 的 set——后者表达不了"哪条 log 被接受"。"""
+    from src.models.task_execution_log import TaskExecutionLog
     if not task_ids:
         return set()
     rows = db.execute(
@@ -251,12 +252,15 @@ Expected: FAIL
 
 - [ ] **Step 3: 实现**
 
-`dependency_scheduler.py` 加（`get_session_local` 已在 `on_employee_task_completed` 内 import，提到模块级 import 或保持函数内 import 均可——测试 monkeypatch `ds.get_session_local`，故**须模块级可见**：在文件顶部 import 区加 `from src.db.session import get_session_local`，并把 `on_employee_task_completed` 内的局部 import 删除/保留不影响）：
+**必做前置（否则测试 monkeypatch 静默失效）**：`get_session_local` 当前是 `on_employee_task_completed` 内的**函数局部** import（`dependency_scheduler.py:276`）。**必须**把它提到**模块顶部** import 区：`from src.db.session import get_session_local`，并**删除** `on_employee_task_completed` 内那行局部 import。测试通过 `monkeypatch.setattr(ds, "get_session_local", ...)` 替换——只有模块级属性才被 patch 到；若保留函数内 import，patch 命不中、会静默走生产库。
+
+`dependency_scheduler.py` 加（`TaskExecutionLog` 按本文件风格在函数内 import）：
 
 ```python
 def release_accepted_downstream(orchestrator_conversation_id: int) -> int:
     """总管评审轮收尾对账：对已评审、仍 success、未被打回、尚未接受的 log 盖
     qa_accepted_at 并放行其下游。返回新接受数。幂等（qa_accepted_at 一次性）。"""
+    from src.models.task_execution_log import TaskExecutionLog
     from src.models.workspace import cst_now
     db = get_session_local()()
     try:
@@ -292,6 +296,7 @@ def release_accepted_downstream(orchestrator_conversation_id: int) -> int:
 
 def reconcile_accepted_downstream_all(db: Session) -> int:
     """启动对账：扫描所有总管会话中"漏接受"的 log，逐会话放行。返回总接受数。"""
+    from src.models.task_execution_log import TaskExecutionLog
     conv_ids = [
         r[0] for r in db.execute(
             select(TaskExecutionLog.orchestrator_conversation_id).where(
@@ -457,7 +462,8 @@ git commit -m "test(orchestrator): 情景B集成回归(下游门控至返工接�
 ---
 
 ## 风险与注意
-- **`get_session_local` 须模块级可见**（Task 3）：测试 monkeypatch `ds.get_session_local`。实现时在 dependency_scheduler 顶部 import，删除 `on_employee_task_completed` 内的局部 import（若有）以免遮蔽。
+- **`get_session_local` 须模块级可见**（Task 3 必做前置）：提到 dependency_scheduler 顶部 import 并删除 `on_employee_task_completed:276` 内的局部 import；否则 `monkeypatch.setattr(ds, "get_session_local", ...)` 命不中、测试静默走生产库。
+- **放行对账 `db.close()` 关到 fixture session**（Task 3/5 测试）：monkeypatch 让 `get_session_local()()` 返回 `db_session`，函数末 `db.close()` 会关它——但 SQLite StaticPool 下连接仍活，测试用 `db_session.expire_all()` + `db_session.get(...)` 重读即可（与 QA-rework Task 2 已验证的同款边界一致）。
 - **放行对账调 `on_employee_task_completed` 的重入**：放行→派下游→下游完成→评审→放行……每次接受一次性（qa_accepted_at），无环。
 - **capacity/slot 跳过非卡死**：放行时下游员工满载则 `continue`，待下个员工流结束重评估（既有重试链路）。
 - **重启打断返工**不在本特性兜底范围（→ 既有失败级联跳过，非死锁），见 spec §4.4。
