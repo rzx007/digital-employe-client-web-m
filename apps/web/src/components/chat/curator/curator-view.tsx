@@ -71,6 +71,7 @@ import { CuratorEmptyWelcome } from "./curator-empty-welcome"
 import { CuratorFileProvider } from "./curator-file-provider"
 import { CuratorRecruitmentProvider } from "./curator-recruitment-provider"
 import { CuratorPlanFeedbackProvider } from "./curator-plan-feedback-context"
+import { RunningTasksIndicator } from "./running-tasks-indicator"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import { getElapsedMsFromMeta } from "../shared/chat-view-shared"
@@ -873,6 +874,11 @@ export function CuratorView({
           </CuratorPlanFeedbackProvider>
         </CuratorRecruitmentProvider>
       </CuratorFileProvider>
+
+      <RunningTasksIndicator
+        curatorConversationId={curatorConversationId}
+        className="mb-2"
+      />
 
       <div className={layout.footer}>
         {curatorConversationId ? (
