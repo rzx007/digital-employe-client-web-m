@@ -41,8 +41,9 @@
       ]
     }
   ],
-  // 须在 workspace(apps/web)内：electron-builder ≥26.12 拒绝 workspace 外的 hook 路径
-  "afterPack": "build/afterPack.js",
+  // 须在 workspace(apps/web)内：electron-builder ≥26.12 拒绝 workspace 外的 hook 路径。
+  // 用 .cjs：apps/web 是 type:module，.js 会被当 ESM，而本脚本是 CommonJS。
+  "afterPack": "afterPack.cjs",
   "mac": {
     // mac.defaultArch 在 Rosetta Node 下不足以覆盖。
     // zip：electron-updater 应用内更新（latest-mac.yml 指向 .zip）
