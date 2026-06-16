@@ -1,3 +1,4 @@
+import fs from "node:fs"
 import path from "path"
 import pkg from "./package.json"
 import tailwindcss from "@tailwindcss/vite"
@@ -9,6 +10,13 @@ import { defineConfig, loadEnv, type ConfigEnv } from "vite"
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }: ConfigEnv) => {
+  // CI/打包环境通常没有 .env（被 gitignore），缺失时从 .env.example 兜底，
+  // 否则 import.meta.env.VITE_* 全为 undefined（后端地址会变成 undefined:undefined）。
+  const envFile = path.resolve(__dirname, ".env")
+  const envExample = path.resolve(__dirname, ".env.example")
+  if (!fs.existsSync(envFile) && fs.existsSync(envExample)) {
+    fs.copyFileSync(envExample, envFile)
+  }
   const env = loadEnv(mode, process.cwd())
   const isServe = command === "serve"
   const isBuild = command === "build"
