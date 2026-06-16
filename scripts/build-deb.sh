@@ -68,11 +68,17 @@ else
 fi
 
 echo "[2/4] 构建 Docker 构建镜像..."
-docker buildx build \
-  --platform linux/arm64 \
-  -t "$IMAGE_NAME" \
-  --load \
-  "$ROOT_DIR"
+# Apple Silicon 原生 linux/arm64 无需 buildx；buildx 在 Docker Desktop 上偶发
+# 「exec /bin/sh: transport endpoint is not connected」（VM/virtiofs 挂载断开）。
+if [[ "$(uname -s)" == "Darwin" && "$(uname -m)" == "arm64" ]]; then
+  docker build --platform linux/arm64 -t "$IMAGE_NAME" "$ROOT_DIR"
+else
+  docker buildx build \
+    --platform linux/arm64 \
+    -t "$IMAGE_NAME" \
+    --load \
+    "$ROOT_DIR"
+fi
 
 echo ""
 echo "[3/4] 在容器内构建应用..."
