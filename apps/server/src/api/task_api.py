@@ -67,6 +67,7 @@ def _task_execution_log_to_read(item) -> TaskExecutionLogRead:
         started_at=item.started_at,
         ended_at=item.ended_at,
         duration_ms=item.duration_ms,
+        rework_count=getattr(item, "rework_count", 0),
         last_heartbeat_at=getattr(item, "last_heartbeat_at", None),
         confirm_url=item.confirm_url,
         confirm_execution_result=getattr(item, "confirm_execution_result", None),

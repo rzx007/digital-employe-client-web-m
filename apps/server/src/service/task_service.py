@@ -565,6 +565,7 @@ class TaskService:
         task_ids = [item.task_id for item in items if getattr(item, "task_id", None) is not None]
         task_confirm_map: dict[int, bool] = {}
         task_dispatch_map: dict[int, str] = {}
+        task_rework_map: dict[int, int] = {}
         if task_ids:
             task_rows = list(
                 db.execute(
@@ -572,14 +573,17 @@ class TaskService:
                         EmployeeTask.id,
                         EmployeeTask.confirm_execution_result,
                         EmployeeTask.dispatch_type,
+                        EmployeeTask.rework_count,
                     ).where(EmployeeTask.id.in_(task_ids))
                 ).all()
             )
             task_confirm_map = {int(r[0]): bool(r[1]) for r in task_rows}
             task_dispatch_map = {int(r[0]): str(r[2]) for r in task_rows}
+            task_rework_map = {int(r[0]): int(r[3]) for r in task_rows}
         for item in items:
             item.confirm_execution_result = task_confirm_map.get(item.task_id)
             item.dispatch_type = task_dispatch_map.get(item.task_id)
+            item.rework_count = task_rework_map.get(item.task_id, 0)
 
         TaskService._attach_skill_ratings_for_logs(db, items)
 

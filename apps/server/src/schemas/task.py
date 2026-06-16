@@ -97,6 +97,7 @@ class TaskExecutionLogRead(BaseModel):
     started_at: datetime
     ended_at: datetime | None
     duration_ms: int | None
+    rework_count: int = 0
     last_heartbeat_at: datetime | None = None
     confirm_url: str | None = None
     confirm_execution_result: bool | None = None

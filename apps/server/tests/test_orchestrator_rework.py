@@ -123,3 +123,9 @@ def test_delegation_context_includes_output_contract(db_session):
     ws, emp, task, conv, log = _seed_task_with_settled_log(db_session)
     text = build_delegation_execution_context(db_session, ws.id, 999)
     assert "输出:TOP20" in text  # 原契约已注入，供总管对照质检
+
+
+def test_execution_dto_exposes_rework_count():
+    from src.schemas.task import TaskExecutionLogRead
+    fields = TaskExecutionLogRead.model_fields
+    assert "rework_count" in fields
