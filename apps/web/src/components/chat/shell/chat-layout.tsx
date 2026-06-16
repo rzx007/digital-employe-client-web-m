@@ -34,7 +34,6 @@ import { SkillsPage } from "@/components/skills"
 import { ChatView } from "../views/chat-view"
 import { ContactDetailPanel } from "../contacts/contact-detail-panel"
 import { ContactsPanel } from "../contacts/contacts-panel"
-import { ConversationList } from "../conversations/conversation-list"
 import { MobileTabBar } from "./mobile-tab-bar"
 import { ConversationSidebar } from "../conversations/conversation-sidebar"
 import { WorkbenchView } from "../views/workbench-view"
@@ -43,12 +42,7 @@ import { BrowserPanel } from "../right-panels/browser-panel"
 import { BrowserWidthSlider } from "../right-panels/browser-width-slider"
 import { useBrowserStore } from "@/stores/browser-store"
 
-type RightPanel =
-  | "artifact"
-  | "monitor"
-  | "conversations"
-  | "browser"
-  | "subtask"
+type RightPanel = "artifact" | "monitor" | "browser" | "subtask"
 
 const RIGHT_PANEL_SHELL = "shrink-0 overflow-hidden border-l bg-muted/20 p-3"
 
@@ -193,9 +187,6 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const { closeArtifact, isPanelOpen } = useArtifactStore()
   const { isOpen: isMonitorOpen, closeMonitor } = useMonitorStore()
   const isSubtaskPanelOpen = useSubtaskPanelStore((s) => s.isOpen)
-  const isConversationListOpen = useChatStore((s) => s.isConversationListOpen)
-  const openConversationList = useChatStore((s) => s.openConversationList)
-  const closeConversationList = useChatStore((s) => s.closeConversationList)
   const isBrowserOpen = useBrowserStore((s) => s.isOpen)
   const isBrowserMinimized = useBrowserStore((s) => s.isMinimized)
   const isBrowserFullscreen = useBrowserStore((s) => s.isFullscreen)
@@ -274,10 +265,6 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
     toast.info("员工不再单独对话，请通过总管派活")
   }
 
-  const handleOpenConversations = () => {
-    openConversationList()
-  }
-
   const handleOpenContacts = () => {
     useChatStore.getState().setActiveTab("contacts")
   }
@@ -294,9 +281,7 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
         ? "subtask"
         : isMonitorOpen
           ? "monitor"
-          : isConversationListOpen
-            ? "conversations"
-            : null
+          : null
 
   const hasRightPanel = rightPanel !== null
   const isBrowserRightPanel = rightPanel === "browser"
@@ -355,7 +340,6 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
         {activeTab === "chat" && !isBrowserFullscreen && (
           <ChatView
             onOpenContacts={handleOpenContacts}
-            onOpenConversations={handleOpenConversations}
             onNewConversation={handleNewConversation}
             isNewConversationPending={isCreatingCurator}
             className={cn(
@@ -410,18 +394,6 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
             />
           </div>
         )}
-
-        {hasRightPanel &&
-          activeTab === "chat" &&
-          rightPanel === "conversations" && (
-            <div className={cn(RIGHT_PANEL_SHELL, NARROW_RIGHT_PANEL_WIDTH)}>
-              <ConversationList
-                className="h-full rounded-xl border shadow-xl"
-                onClose={closeConversationList}
-                onSelectConversation={closeConversationList}
-              />
-            </div>
-          )}
 
         {hasRightPanel && activeTab === "chat" && rightPanel === "browser" && (
           <>

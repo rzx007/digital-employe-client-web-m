@@ -4,8 +4,6 @@ import { persist } from "zustand/middleware"
 import { findContactInList } from "@/lib/chat/contact-utils"
 import type { CuratorNavigationReturn } from "@/lib/chat/curator-navigation"
 import type { Contact } from "@/types/chat"
-import { useArtifactStore } from "@/stores/artifact-store"
-import { useMonitorStore } from "@/stores/monitor-store"
 
 export type ActiveTab =
   | "chat"
@@ -25,7 +23,6 @@ interface ChatStore {
   showWorkbench: boolean
   activeTab: ActiveTab
   isCompactMode: boolean
-  isConversationListOpen: boolean
   /** 从总管/工作台跳转到员工对话后，用于「返回总管」 */
   curatorNavigationReturn: CuratorNavigationReturn | null
   setContacts: (contacts: Contact[]) => void
@@ -36,8 +33,6 @@ interface ChatStore {
   setShowWorkbench: (show: boolean) => void
   setActiveTab: (tab: ActiveTab) => void
   setCompactMode: (compact: boolean) => void
-  openConversationList: () => void
-  closeConversationList: () => void
   setCuratorNavigationReturn: (ctx: CuratorNavigationReturn | null) => void
   clearCuratorNavigationReturn: () => void
   startDraftConversation: (contactId: string) => void
@@ -58,7 +53,6 @@ export const useChatStore = create<ChatStore>()(
       showWorkbench: false,
       activeTab: "chat" as ActiveTab,
       isCompactMode: false,
-      isConversationListOpen: false,
       curatorNavigationReturn: null,
       setContacts: (contacts) => set({ contacts }),
       setSelectedContactId: (id) =>
@@ -87,12 +81,6 @@ export const useChatStore = create<ChatStore>()(
       setShowWorkbench: (show) => set({ showWorkbench: show }),
       setActiveTab: (tab) => set({ activeTab: tab }),
       setCompactMode: (compact) => set({ isCompactMode: compact }),
-      openConversationList: () => {
-        useArtifactStore.getState().closeArtifact()
-        useMonitorStore.getState().closeMonitor()
-        set({ isConversationListOpen: true, activeTab: "chat" as ActiveTab })
-      },
-      closeConversationList: () => set({ isConversationListOpen: false }),
       setCuratorNavigationReturn: (ctx) =>
         set({ curatorNavigationReturn: ctx }),
       clearCuratorNavigationReturn: () =>

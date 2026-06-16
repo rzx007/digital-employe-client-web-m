@@ -1,7 +1,6 @@
 import { create } from "zustand"
 
 import { useArtifactStore } from "@/stores/artifact-store"
-import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 
 /** 单个并行子任务（deepagents task 工具）在侧栏中的视图模型 */
@@ -23,7 +22,6 @@ export interface SubtaskCardItem {
 function closeOtherSidePanels() {
   useArtifactStore.getState().closeArtifact()
   useMonitorStore.getState().closeMonitor()
-  useChatStore.getState().closeConversationList()
 }
 
 interface SubtaskPanelStore {

@@ -18,7 +18,6 @@ vi.mock("@/stores/chat-store", () => ({
   useChatStore: {
     getState: () => ({
       setActiveTab: vi.fn(),
-      closeConversationList: vi.fn(),
     }),
   },
 }))

@@ -55,7 +55,6 @@ function clampRatio(value: number): number {
 function closeOtherRightPanels() {
   useMonitorStore.getState().closeMonitor()
   useArtifactStore.getState().closeArtifact()
-  useChatStore.getState().closeConversationList()
   useSubtaskPanelStore.getState().close()
 }
 

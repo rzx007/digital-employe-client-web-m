@@ -6,7 +6,6 @@ import type {
   UpsertPendingResourceInput,
 } from "@/lib/chat/pending-resources"
 
-import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
 
@@ -18,7 +17,6 @@ export type {
 
 function closeOtherSidePanels() {
   useMonitorStore.getState().closeMonitor()
-  useChatStore.getState().closeConversationList()
   useSubtaskPanelStore.getState().close()
 }
 
@@ -64,15 +62,30 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
 
   openArtifact: (id) => {
     closeOtherSidePanels()
-    set({ activeArtifactId: id, activeResourcePath: null, activeSubConversationId: null, isPanelOpen: true })
+    set({
+      activeArtifactId: id,
+      activeResourcePath: null,
+      activeSubConversationId: null,
+      isPanelOpen: true,
+    })
   },
   openResource: (path) => {
     closeOtherSidePanels()
-    set({ activeArtifactId: null, activeResourcePath: path, activeSubConversationId: null, isPanelOpen: true })
+    set({
+      activeArtifactId: null,
+      activeResourcePath: path,
+      activeSubConversationId: null,
+      isPanelOpen: true,
+    })
   },
   openSubConversation: (conversationId) => {
     closeOtherSidePanels()
-    set({ activeArtifactId: null, activeResourcePath: null, activeSubConversationId: conversationId, isPanelOpen: true })
+    set({
+      activeArtifactId: null,
+      activeResourcePath: null,
+      activeSubConversationId: conversationId,
+      isPanelOpen: true,
+    })
   },
   closeArtifact: () =>
     set({
@@ -105,7 +118,9 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
     if (open) closeOtherSidePanels()
     set({
       isPanelOpen: open,
-      ...(open ? {} : { activeResourcePath: null, activeSubConversationId: null }),
+      ...(open
+        ? {}
+        : { activeResourcePath: null, activeSubConversationId: null }),
     })
   },
   updateArtifactContent: (id, content) =>
@@ -182,7 +197,9 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
       return { pendingByConversation }
     }),
   getPendingResources: (conversationId) => {
-    const map = get().pendingByConversation.get(toConversationKey(conversationId))
+    const map = get().pendingByConversation.get(
+      toConversationKey(conversationId)
+    )
     return map ? Array.from(map.values()) : []
   },
 }))

@@ -21,7 +21,6 @@ export const useMonitorStore = create<MonitorStore>((set) => ({
 
   openMonitor: (employeeId, employeeName) => {
     useArtifactStore.getState().closeArtifact()
-    useChatStore.getState().closeConversationList()
     useSubtaskPanelStore.getState().close()
     useChatStore.getState().setActiveTab("chat")
     set({
