@@ -4,8 +4,19 @@ import { IconExternalLink, IconLoader2 } from "@tabler/icons-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { MessageResponse } from "@workspace/ui/components/ai-elements/message"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@workspace/ui/components/alert-dialog"
 import { cn } from "@workspace/ui/lib/utils"
 import { submitSkillRating } from "@/api/skill-ratings"
+import { useCancelTaskExecution } from "@/hooks/use-schedule-monitor-queries"
 import { StarRating } from "./star-rating"
 import type { TaskExecution } from "@/types/schedule-monitor"
 import { formatExecutionDuration } from "./execution-card"
@@ -104,6 +115,8 @@ export function ExecutionReportCard({
       }),
   })
   const [expanded, setExpanded] = useState(false)
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const cancelMutation = useCancelTaskExecution(curatorConversationId)
 
   const outputText = execution.output?.content ?? execution.run_result ?? ""
   const statusCfg = STATUS_CONFIG[execution.run_status]
@@ -151,6 +164,39 @@ export function ExecutionReportCard({
     })
   }
 
+  // 「中止」仅在运行中可用；确认后端会终止会话流并标记 cancelled，
+  // 其依赖的后续任务由编排 DAG 一并跳过（弹窗已明确警告）。
+  const handleCancelConfirm = () => {
+    cancelMutation.mutate(execution.id, {
+      onSuccess: () => setCancelOpen(false),
+    })
+  }
+  const cancelDialog = (
+    <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>中止任务</AlertDialogTitle>
+          <AlertDialogDescription>
+            中止「{execution.task_name}
+            」后，其依赖的后续任务将一并跳过。确定中止？
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={cancelMutation.isPending}>
+            取消
+          </AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            onClick={handleCancelConfirm}
+            disabled={cancelMutation.isPending}
+          >
+            {cancelMutation.isPending ? "中止中…" : "确认中止"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+
   if (compact) {
     return (
       <div
@@ -159,6 +205,7 @@ export function ExecutionReportCard({
           className
         )}
       >
+        {cancelDialog}
         <Badge
           variant="outline"
           className={cn(
@@ -189,6 +236,15 @@ export function ExecutionReportCard({
             <IconExternalLink className="size-3" />
           </Button>
         ) : null}
+        {isRunning && (
+          <button
+            type="button"
+            onClick={() => setCancelOpen(true)}
+            className="text-[11px] text-muted-foreground/70 hover:text-destructive"
+          >
+            中止
+          </button>
+        )}
         {isFinished && (
           <StarRating
             value={execution.skill_rating?.score ?? 0}
@@ -207,6 +263,7 @@ export function ExecutionReportCard({
         className
       )}
     >
+      {cancelDialog}
       {isFinished && statusCfg && (
         <div className="pointer-events-none absolute top-2.5 right-2.5 select-none">
           <div
@@ -308,6 +365,16 @@ export function ExecutionReportCard({
             >
               查看 {execution.employee_name} 的对话
               <IconExternalLink className="size-3" />
+            </Button>
+          )}
+          {isRunning && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 text-[11px] text-muted-foreground hover:text-destructive"
+              onClick={() => setCancelOpen(true)}
+            >
+              中止
             </Button>
           )}
         </div>

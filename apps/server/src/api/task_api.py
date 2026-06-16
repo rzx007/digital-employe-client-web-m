@@ -280,6 +280,23 @@ def confirm_task_execution_result(
 
 
 @router.post(
+    "/workspaces/{workspace_id}/tasks/executions/{task_execution_log_id}/cancel",
+    response_model=ResponseBase[TaskExecutionLogRead],
+    summary="中止运行中的任务执行",
+)
+def cancel_task_execution(
+    workspace_id: int,
+    task_execution_log_id: int,
+    db: Session = Depends(get_db),
+) -> ResponseBase[TaskExecutionLogRead]:
+    """中止指定执行(终止会话流并标记 cancelled);其依赖的后续任务将一并跳过。"""
+    log = TaskService.cancel_task_execution_log(
+        db, workspace_id=workspace_id, execution_log_id=task_execution_log_id
+    )
+    return ResponseBase(data=_task_execution_log_to_read(log))
+
+
+@router.post(
     "/workspaces/{workspace_id}/tasks/executions/{task_execution_log_id}/read",
     response_model=ResponseBase[TaskExecutionLogRead],
     summary="确认任务日志已读",

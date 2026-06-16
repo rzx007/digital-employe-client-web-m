@@ -253,6 +253,33 @@ export function useMarkNotificationRead() {
   })
 }
 
+/**
+ * 中止运行中的任务执行（终止会话流并标记 cancelled）。
+ * 其依赖的后续任务将由编排 DAG 一并跳过。成功后刷新该总管会话的执行快照。
+ */
+export function useCancelTaskExecution(
+  curatorConversationId: string | number | null | undefined
+) {
+  const queryClient = useQueryClient()
+  const id =
+    curatorConversationId != null ? String(curatorConversationId) : null
+  return useMutation({
+    mutationFn: async (executionLogId: number) => {
+      await request(
+        `/workspaces/${WORKSPACE_ID}/tasks/executions/${executionLogId}/cancel`,
+        { method: "POST" }
+      )
+    },
+    onSuccess: () => {
+      if (id != null) {
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.curatorExecutions(id),
+        })
+      }
+    },
+  })
+}
+
 export function useMarkAllNotificationsRead() {
   const queryClient = useQueryClient()
   return useMutation({

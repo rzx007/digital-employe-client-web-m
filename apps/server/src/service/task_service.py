@@ -682,6 +682,60 @@ class TaskService:
         return log
 
     @staticmethod
+    def cancel_task_execution_log(
+        db: Session,
+        workspace_id: int,
+        execution_log_id: int,
+        *,
+        reason: str = "已由总管中止",
+    ) -> TaskExecutionLog:
+        """中止指定执行日志:终止其会话流并标记为 cancelled(已终态则原样返回,幂等)。"""
+        WorkspaceService.get_workspace(db, workspace_id)
+        log = db.get(TaskExecutionLog, execution_log_id)
+        if not log or log.workspace_id != workspace_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="未找到任务执行日志。",
+            )
+
+        # 仅对仍在进行(running/queued/pending)的执行做中止;已终态幂等返回。
+        if log.run_status in ("running", "queued", "pending"):
+            from src.service.chat_service import ChatService
+
+            if log.conversation_id:
+                ChatService.cancel_conversation_stream(log.conversation_id)
+            now = cst_now()
+            log.run_status = "cancelled"
+            log.run_result = reason
+            log.ended_at = now
+            if log.started_at:
+                log.duration_ms = int(
+                    (
+                        now.replace(tzinfo=None)
+                        - log.started_at.replace(tzinfo=None)
+                    ).total_seconds()
+                    * 1000
+                )
+            db.add(log)
+            db.commit()
+            db.refresh(log)
+
+        employees = list(
+            db.scalars(
+                select(Employee).where(Employee.workspace_id == workspace_id).order_by(Employee.id.asc())
+            ).all()
+        )
+        employee_name_map = {emp.id: emp.name for emp in employees}
+        log.employee_name = employee_name_map.get(log.employee_id, "")
+        task = db.get(EmployeeTask, log.task_id)
+        log.confirm_execution_result = (
+            bool(task.confirm_execution_result) if task is not None else None
+        )
+        log.dispatch_type = task.dispatch_type if task is not None else None
+        TaskService._attach_skill_ratings_for_logs(db, [log])
+        return log
+
+    @staticmethod
     def delete_all_execution_logs(
         db: Session,
         workspace_id: int,
