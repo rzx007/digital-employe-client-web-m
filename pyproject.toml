@@ -24,8 +24,8 @@ extra-index-url = [
     "https://pypi.org/simple",
 ]
 index-strategy = "unsafe-best-match"
-# CI/打包固定 Python 3.11，避免 lock 中 3.13 split 在 sync 时重新解析失败
-environments = ["python_version == '3.11'"]
+# 支持 3.11(Windows runner)与 3.12(Mac runner)；封顶 <3.13 避免 3.13 split 重新解析失败
+environments = ["python_version >= '3.11' and python_version < '3.13'"]
 
 # --no-build-isolation 时 uv 需先将 build 工具装入 venv 再构建 workspace 成员
 # hatchling 做可编辑安装(build_editable)还需 editables，单装 hatchling 不会带上
