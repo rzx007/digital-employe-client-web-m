@@ -129,3 +129,22 @@ def test_execution_dto_exposes_rework_count():
     from src.schemas.task import TaskExecutionLogRead
     fields = TaskExecutionLogRead.model_fields
     assert "rework_count" in fields
+
+
+def test_redispatch_rejects_when_log_has_no_orchestrator_conversation(db_session, monkeypatch):
+    """守卫：旧 log 无 orchestrator_conversation_id 时拒绝（否则新 log 选不中、静默失败）。"""
+    from src.service.agent.orchestrator import rework
+    monkeypatch.setattr(rework, "_new_session", lambda: db_session)
+    monkeypatch.setattr(rework, "_schedule_employee_rework_stream", lambda **k: None)
+    ws, emp, task, conv, log = _seed_task_with_settled_log(db_session)
+    log.orchestrator_conversation_id = None
+    db_session.commit()
+    old_id = log.id
+    msg = rework.redispatch_task_in_session(ws.id, task.id, "改一下")
+    assert "未关联总管会话" in msg
+    logs = db_session.scalars(
+        select(TaskExecutionLog).where(TaskExecutionLog.task_id == task.id)
+    ).all()
+    assert len(logs) == 1
+    assert db_session.get(TaskExecutionLog, old_id).run_status != "superseded"
+    assert db_session.get(EmployeeTask, task.id).rework_count == 0

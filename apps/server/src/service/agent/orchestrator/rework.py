@@ -85,6 +85,9 @@ def redispatch_task_in_session(
         ).first()
         if old is None or old.conversation_id is None:
             return f"错误：任务「{task.task_name}」无可续聊的员工对话，无法返工。"
+        # 守卫：新 log 继承此值，缺它则增量引擎选不中 → 返工会静默失败。
+        if old.orchestrator_conversation_id is None:
+            return f"错误：任务「{task.task_name}」的执行日志未关联总管会话，无法返工。"
 
         conv = db.get(Conversation, old.conversation_id)
         if conv is None:
