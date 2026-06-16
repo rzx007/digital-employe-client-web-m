@@ -82,6 +82,7 @@ def init_db() -> None:
     ensure_column("task_execution_logs", "conversation_id", "conversation_id INTEGER")
     ensure_column("task_execution_logs", "last_heartbeat_at", "last_heartbeat_at DATETIME")
     ensure_column("task_execution_logs", "reported_at", "reported_at DATETIME")
+    ensure_column("task_execution_logs", "qa_accepted_at", "qa_accepted_at DATETIME")
     ensure_column("skill_ratings", "task_execution_log_id", "task_execution_log_id INTEGER")
     ensure_column(
         "dispatch_orders_sync",

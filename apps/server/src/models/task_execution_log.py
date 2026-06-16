@@ -35,6 +35,8 @@ class TaskExecutionLog(Base):
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 已纳入某次总管增量汇报 turn 的时间；NULL = 待汇报
     reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 总管 QA 审核通过时间；NULL = 尚未接受（下游派发闸门）
+    qa_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     confirm_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     # 执行结果是否已由用户确认（默认未确认）
     result_confirmed: Mapped[bool] = mapped_column(
