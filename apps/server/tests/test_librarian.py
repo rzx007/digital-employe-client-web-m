@@ -44,6 +44,23 @@ def test_generate_profile_no_journal_noop(monkeypatch, tmp_path):
     assert not (tmp_path / "99" / "profile.md").exists()
 
 
+def test_generate_profile_strips_fence_and_dedup_header(monkeypatch, tmp_path):
+    """LLM 把输出裹在 ```markdown 围栏 + 自带「能力画像」标题 → 剥围栏、标题只留一个。"""
+    from src.service.learning import librarian
+    monkeypatch.setattr(librarian, "_brain_root_for", lambda eid: tmp_path / str(eid))
+    fenced = "```markdown\n# 能力画像\n\n- 擅长芯片调研\n```"
+    monkeypatch.setattr(librarian, "_build_llm",
+                        lambda: type("L", (), {"invoke": lambda self, p: type("R", (), {"content": fenced})()})())
+    brain = tmp_path / "42"
+    _seed_journal(brain, [{"task_name": "调研A", "status": "success", "tools_used": []}])
+    librarian.generate_profile(42)
+
+    txt = (brain / "profile.md").read_text(encoding="utf-8")
+    assert "```" not in txt              # 代码围栏被剥掉
+    assert txt.count("# 能力画像") == 1   # 标题只一个（不重复）
+    assert "芯片调研" in txt
+
+
 # ── 2C-2: consolidate_memory ────────────────────────────────────────────────
 
 def _seed_memory(brain: Path, body: str):

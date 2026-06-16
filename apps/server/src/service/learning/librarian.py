@@ -43,6 +43,27 @@ def _read_recent_journal(brain: Path, max_entries: int = _PROFILE_MAX_JOURNAL) -
     return entries[-max_entries:]
 
 
+def _clean_profile_content(raw: str) -> str:
+    """规整 LLM 画像输出：剥掉整体代码围栏(```markdown … ```)、去掉它自带的「能力画像」H1
+    与前导空行——避免与我们统一加的标题重复、避免在面板里被渲成代码块。"""
+    text = (raw or "").strip()
+    # 去整体代码围栏
+    if text.startswith("```"):
+        body = text.split("\n")[1:]  # 去首行 ``` / ```markdown
+        if body and body[-1].strip().startswith("```"):
+            body = body[:-1]
+        text = "\n".join(body).strip()
+    lines = text.split("\n")
+    while lines and not lines[0].strip():  # 前导空行
+        lines.pop(0)
+    # LLM 自带的「能力画像」顶级标题去掉
+    if lines and lines[0].strip().lstrip("#").strip() in ("能力画像", "能力画像（历史复盘）"):
+        lines.pop(0)
+        while lines and not lines[0].strip():
+            lines.pop(0)
+    return "\n".join(lines).strip()
+
+
 def generate_profile(employee_id: int) -> None:
     """读 journal 归纳能力画像 → 写 <brain>/profile.md。无 journal 则 noop。容错。"""
     try:
@@ -58,10 +79,11 @@ def generate_profile(employee_id: int) -> None:
         llm = _build_llm()
         prompt = (
             "基于以下某数字员工的历史任务流水，归纳一份简短**能力画像**(markdown)：\n"
-            "包含：擅长的活类型、常用打法/工具、值得注意的成败模式。3-6 条，简洁。\n\n"
+            "包含：擅长的活类型、常用打法/工具、值得注意的成败模式。3-6 条，简洁。\n"
+            "直接输出 markdown 正文，**不要用 ``` 代码块包裹**，**不要写「能力画像」标题**。\n\n"
             f"任务流水：\n{digest}\n"
         )
-        content = llm.invoke(prompt).content.strip()
+        content = _clean_profile_content(llm.invoke(prompt).content)
         if not content:
             return
         brain.mkdir(parents=True, exist_ok=True)
