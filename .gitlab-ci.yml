@@ -23,6 +23,7 @@ variables:
   # ---------- 国内镜像（npmmirror，与根目录 .npmrc 一致）----------
   NPM_CONFIG_REGISTRY: "https://registry.npmmirror.com"
   ELECTRON_MIRROR: "https://npmmirror.com/mirrors/electron/"
+  # dmg-builder 等须走 electron-builder-binaries 路径（非 electron/）；26.11.1+ 才与 ELECTRON_MIRROR 共存
   ELECTRON_BUILDER_BINARIES_MIRROR: "https://npmmirror.com/mirrors/electron-builder-binaries/"
   UV_INDEX_URL: "https://mirrors.aliyun.com/pypi/simple/"
   UV_EXTRA_INDEX_URL: "https://npmmirror.com/mirror/pypi/simple https://pypi.org/simple"
@@ -164,6 +165,8 @@ publish:feishu:
 
 # ------------------------------------------------------------------------------
 # macOS（dmg 手动分发 + zip 应用内更新源）
+# 需 electron-builder ≥ 26.11.1：与 ELECTRON_MIRROR 同时使用时才会正确走
+# ELECTRON_BUILDER_BINARIES_MIRROR（npmmirror），否则 dmg-builder 404。
 # ------------------------------------------------------------------------------
 build:macos:
   stage: build
