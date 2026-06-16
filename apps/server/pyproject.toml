@@ -39,7 +39,10 @@ dev = [
     "pyinstaller>=6.0",
     "pytest>=8.0",
     # workspace 包构建所需（CI --frozen + --no-build-isolation）
+    # editables: hatchling 可编辑安装(build_editable)需要；--no-build-isolation 下
+    # 不会从 extra-build-dependencies 注入，必须真实装进 .venv
     "hatchling",
+    "editables",
     "setuptools>=61.0",
 ]
 
