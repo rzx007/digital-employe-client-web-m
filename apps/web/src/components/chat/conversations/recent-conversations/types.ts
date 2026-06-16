@@ -10,7 +10,6 @@ export interface RecentConversationItem {
   avatar?: string
   status?: string
   isGroup?: boolean
-  isDraft?: boolean
   isCurator?: boolean
   isPinned?: boolean
   participants?: { name: string; avatar?: string }[]

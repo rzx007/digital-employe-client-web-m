@@ -323,7 +323,6 @@ def _flush_to_db_sync(
 _ORCHESTRATION_QUEUE_PLACEHOLDERS = (
     "已加入执行队列，等待其他对话完成",
     "等待总管会话结束，即将开始执行…",
-    "等待组长会话结束，即将开始执行…",
     "排队中，等待执行",
 )
 

@@ -94,7 +94,7 @@ def test_resolve_draft_dir_valid_name_returns_dir(tmp_path, monkeypatch):
     draft.mkdir(parents=True)
     (draft / "SKILL.md").write_text("---\nname: demo-skill\n---\n", encoding="utf-8")
 
-    monkeypatch.setattr(mod, "resolve_workspace_context", lambda root_path, conversation_id: (ws, None, None, None))
+    monkeypatch.setattr(mod, "resolve_workspace_context", lambda root_path, conversation_id: (ws, None, None))
 
     resolved = mod._resolve_draft_skill_dir(conversation_id=7, skill_name="demo-skill")
     assert resolved == draft.resolve()
@@ -107,7 +107,7 @@ def test_resolve_draft_dir_missing_dir_raises_404(tmp_path, monkeypatch):
 
     ws = tmp_path / "ws"
     (ws / "conv-7" / "skills-draft").mkdir(parents=True)  # base 存在但具体技能目录不存在
-    monkeypatch.setattr(mod, "resolve_workspace_context", lambda root_path, conversation_id: (ws, None, None, None))
+    monkeypatch.setattr(mod, "resolve_workspace_context", lambda root_path, conversation_id: (ws, None, None))
 
     with pytest.raises(HTTPException) as exc:
         mod._resolve_draft_skill_dir(conversation_id=7, skill_name="nope")
@@ -127,7 +127,7 @@ def test_resolve_draft_dir_uses_artifacts_path_not_skill_path(tmp_path, monkeypa
         draft = ws / f"conv-{conversation_id}" / "skills-draft" / "demo-skill"
         draft.mkdir(parents=True, exist_ok=True)
         (draft / "SKILL.md").write_text("---\nname: demo-skill\n---\n", encoding="utf-8")
-        return (ws, None, None, None)
+        return (ws, None, None)
 
     monkeypatch.setattr(mod, "resolve_workspace_context", fake_ctx)
 

@@ -7,10 +7,6 @@ import zipfile
 import shutil
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from sqlalchemy.orm import Session
 
 from src.schemas.resource import (
     ResourceContent,
@@ -141,41 +137,6 @@ def _scan_skills_draft(directory: Path) -> list[ResourceEntry]:
     return entries
 
 
-def _resolve_room_id_for_conversation(db: Session, conversation_id: int) -> int | None:
-    """群协作房间 ID（已退场）：恒返回 None。"""
-    return None
-
-
-def resolve_shared_artifacts_dir(
-    db: Session, root_path: str, conversation_id: int
-) -> str | None:
-    """群协作共享产物目录（已退场）：恒返回 None。"""
-    return None
-
-
-def _resolve_conversation_dir(root_path: str, conversation_id: int) -> Path:
-    """解析会话的产物根目录。
-
-    普通会话：<root>/<conversation_id>/（含 artifacts/uploads/skills-draft）。
-    群协作会话（成员/组长任务会话或群时间线会话）：产物写在房间共享目录
-    <root>/room-<room_id>/，需要据此读取，否则按 conversation_id 找会扑空。
-    """
-    default_dir = Path(root_path) / str(conversation_id)
-    try:
-        from src.db.session import get_session_local
-
-        db = get_session_local()()
-        try:
-            room_id = _resolve_room_id_for_conversation(db, conversation_id)
-            if room_id is not None:
-                return Path(root_path) / f"room-{room_id}"
-        finally:
-            db.close()
-    except Exception:
-        pass
-    return default_dir
-
-
 def _resolve_employee_id_for_conversation(conversation_id: int) -> int | str | None:
     """会话→员工 owner：target_type=employee→target_id；curator→orchestrator；群→None。"""
     from src.db.session import get_session_local
@@ -195,30 +156,16 @@ def _resolve_employee_id_for_conversation(conversation_id: int) -> int | str | N
         db.close()
 
 
-def _resolve_room_dir(root_path: str, conversation_id: int) -> Path | None:
-    from src.db.session import get_session_local
-
-    db = get_session_local()()
-    try:
-        room_id = _resolve_room_id_for_conversation(db, conversation_id)
-    finally:
-        db.close()
-    if room_id is None:
-        return None
-    return Path(root_path) / f"room-{room_id}" / "artifacts"
-
-
 def resolve_workspace_context(root_path: str, conversation_id: int):
-    """返回该会话的 (workspace_dir, public_root, conv_artifacts_dir, room_dir|None)。"""
+    """返回该会话的 (workspace_dir, public_root, conv_artifacts_dir)。"""
     from src.service.agent.workspace_paths import resolve_workspace_dirs
 
-    room_dir = _resolve_room_dir(root_path, conversation_id)
     employee_id = _resolve_employee_id_for_conversation(conversation_id)
     ws = resolve_workspace_dirs(
         root_path=root_path,
         employee_id=employee_id,
         conversation_id=conversation_id,
-        shared_artifacts_dir=str(room_dir) if room_dir else None,
+        shared_artifacts_dir=None,
         base_dir=Path(root_path),
     )
     conv_artifacts = ws.workspace_dir / f"conv-{conversation_id}"
@@ -226,7 +173,7 @@ def resolve_workspace_context(root_path: str, conversation_id: int):
     desk = Path(root_path) / "orchestrator-desk" / f"conv-{conversation_id}"
     if desk.is_dir():
         conv_artifacts = desk
-    return ws.workspace_dir, ws.public_root, conv_artifacts, room_dir
+    return ws.workspace_dir, ws.public_root, conv_artifacts
 
 
 def _read_roots_with_desk(
@@ -244,12 +191,10 @@ def _read_roots_with_desk(
     迁移兼容（惰性只读）：旧的会话级布局 <root>/<conversation_id>/ 若仍存在，
     也作为读根，让存量会话的产物在升级后仍能读到（不主动搬迁）。
     """
-    workspace_dir, public_root, _conv, room_dir = resolve_workspace_context(
+    workspace_dir, public_root, _conv = resolve_workspace_context(
         root_path, conversation_id
     )
     roots = [workspace_dir.resolve(), public_root.resolve()]
-    if room_dir is not None:
-        roots.append(room_dir.resolve())
     legacy = Path(root_path) / str(conversation_id)
     if legacy.is_dir():
         roots.append(legacy.resolve())
@@ -307,14 +252,14 @@ def _resolve_safe_in_roots(roots: list[Path], real_path: str) -> Path | None:
 class ResourceService:
     @staticmethod
     def list_resources(root_path: str, conversation_id: int) -> ResourceList:
-        workspace_dir, public_root, conv_artifacts, room_dir = resolve_workspace_context(
+        workspace_dir, public_root, conv_artifacts = resolve_workspace_context(
             root_path, conversation_id
         )
         # 当前会话产物（排除 uploads/skills-draft 子目录，它们单列）。
         # 迁移兼容：新布局会话子目录不存在但旧布局 <root>/<cid>/artifacts 存在时，回退扫旧目录。
         legacy_dir = Path(root_path) / str(conversation_id)
-        current = room_dir or conv_artifacts
-        if room_dir is None and not conv_artifacts.exists() and (legacy_dir / "artifacts").is_dir():
+        current = conv_artifacts
+        if not conv_artifacts.exists() and (legacy_dir / "artifacts").is_dir():
             current = legacy_dir / "artifacts"
             uploads_src = legacy_dir / "uploads"
             draft_src = legacy_dir / "skills-draft"
@@ -396,7 +341,7 @@ class ResourceService:
             return "文件名不合法"
 
         # 上传落到员工工作空间的当前会话 uploads 子目录
-        _ws, _pub, conv_artifacts, _room = resolve_workspace_context(
+        _ws, _pub, conv_artifacts = resolve_workspace_context(
             root_path, conversation_id
         )
         uploads_dir = conv_artifacts / "uploads"
@@ -429,7 +374,7 @@ class ResourceService:
     def delete_upload_file(
         root_path: str, conversation_id: int, path: str
     ) -> bool:
-        _ws, _pub, conv_artifacts, _room = resolve_workspace_context(
+        _ws, _pub, conv_artifacts = resolve_workspace_context(
             root_path, conversation_id
         )
         uploads_dir = (conv_artifacts / "uploads").resolve()

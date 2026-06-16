@@ -17,33 +17,6 @@ logger = logging.getLogger(__name__)
 INTERRUPT_PAUSE_SENTINEL = "[已暂停，等待继续]"
 
 
-def extract_message_parts(stream_chunks_json: str) -> list[dict] | None:
-    """从 stream_chunks JSON 提取有序的 parts 列表。
-
-    stream_chunks 格式：[{"seq":N, "data":payload}, ...]
-    每个 payload 是 SSE event 的 data 字段，经过 convert_to_serializable 后的 JSON。
-
-    单遍遍历所有 payload，按事件顺序交错输出 text 和 tool parts。
-    """
-    try:
-        events = json.loads(stream_chunks_json)
-    except (json.JSONDecodeError, TypeError):
-        return None
-
-    if not isinstance(events, list) or len(events) == 0:
-        return None
-
-    payloads: list = []
-    for evt in events:
-        if isinstance(evt, dict) and "data" in evt:
-            payloads.append(evt["data"])
-
-    if len(payloads) == 0:
-        return None
-
-    return _replay_payloads_to_parts(payloads)
-
-
 def extract_message_parts_from_buffer(
     events: list[dict],
     *,

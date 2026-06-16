@@ -61,19 +61,11 @@ describe("assistant-stream-state", () => {
     ).toBe(false)
   })
 
-  it("dispatch badge distinguishes group leader", () => {
+  it("dispatch badge for orchestrator", () => {
     expect(getDispatchBadge({ dispatchedByOrchestrator: true })).toEqual({
       label: "总管派单",
       title: "总管自动派单消息（非真人发送）",
     })
-    expect(
-      getDispatchBadge({
-        dispatchedByOrchestrator: true,
-        dispatchedByGroupLeader: true,
-      })
-    ).toEqual({
-      label: "组长派单",
-      title: "组长自动派单消息（非真人发送）",
-    })
+    expect(getDispatchBadge({})).toBeNull()
   })
 })

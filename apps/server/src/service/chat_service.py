@@ -229,17 +229,6 @@ class ChatService:
             .order_by(Conversation.updated_at.desc(), Conversation.id.desc())
         )
         convs = list(db.scalars(stmt).all())
-        # 过滤掉群协作的内部任务会话：用户在某员工下看到的应是真正的 1:1 会话，
-        # 而不是该员工在各个群里被派活产生的任务会话（那些属于群内部）。
-        if target_type == "employee":
-            convs = ChatService._exclude_group_internal_convs(db, convs)
-        return convs
-
-    @staticmethod
-    def _exclude_group_internal_convs(
-        db: Session, convs: list[Conversation]
-    ) -> list[Conversation]:
-        """群协作内部会话过滤（已退场）：直接返回入参，不过滤。"""
         return convs
 
     @staticmethod
@@ -741,17 +730,12 @@ class ChatService:
             except HTTPException:
                 skills_path = ""
             root_path = settings.artifacts_path
-            from src.service.resource_service import resolve_shared_artifacts_dir
-
-            shared_artifacts_dir = resolve_shared_artifacts_dir(
-                db, root_path, conversation_id
-            )
             agent = get_agent(
                 skills_path,
                 root_path,
                 employee_id=employee.id if target_type == "employee" else None,
                 conversation_id=conversation_id,
-                shared_artifacts_dir=shared_artifacts_dir,
+                shared_artifacts_dir=None,
             )
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee、group 或 curator。")
@@ -1249,17 +1233,12 @@ class ChatService:
                 employee_code=employee.employee_code,
             )
             root_path = settings.artifacts_path
-            from src.service.resource_service import resolve_shared_artifacts_dir
-
-            shared_artifacts_dir = resolve_shared_artifacts_dir(
-                db, root_path, conversation_id
-            )
             agent = get_agent(
                 skills_path,
                 root_path,
                 employee_id=employee.id,
                 conversation_id=conversation_id,
-                shared_artifacts_dir=shared_artifacts_dir,
+                shared_artifacts_dir=None,
             )
         else:
             return {"accepted": False, "message": "不支持的 target_type"}

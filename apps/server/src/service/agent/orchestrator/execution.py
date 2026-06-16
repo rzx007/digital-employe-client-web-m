@@ -42,25 +42,6 @@ def build_dispatch_extra_meta(*, task_id: int) -> dict[str, Any]:
     }
 
 
-def _register_room_stream_relay_if_in_room(
-    db: Session,
-    member_conversation_id: int,
-    orchestrator_conversation_id: int | None,
-    employee,
-) -> None:
-    """编排任务（DAG 模式）的成员流**不再**登记实时中继。
-
-    产品决策：群时间线只展示「最终交付」，不刷成员干活的过程独白。成员执行
-    进度由右侧「协作流程」面板（DAG 接口读 TaskExecutionLog）实时呈现；逐字
-    过程留在成员各自的执行会话里（点进去可看）；成员完成时只往群里发一条
-    「最终交付总结」（见 project_member_conversation_if_in_room 分支 B）。
-    因此这里刻意不注册 relay，保留函数签名与调用点不变，避免散弹式改动。
-    """
-    # 故意空实现：不再把编排成员流的逐字增量推到群时间线。
-    _ = (db, member_conversation_id, orchestrator_conversation_id, employee)
-    return
-
-
 async def _start_employee_stream_when_orchestrator_idle(
     *,
     orchestrator_conversation_id: int | None,
@@ -373,10 +354,6 @@ def start_task_as_conversation(
         _desk = resolve_orchestrator_desk_dir(root_path, orch_conv_id)
         shared_artifacts_dir = str(orchestrator_task_subdir(_desk, task.id))
         shared_workspace_root = str(_desk)
-
-    _register_room_stream_relay_if_in_room(
-        db, conversation_id, orch_conv_id, employee
-    )
 
     # 输出档位：组长/总管派单时为该子任务指定的 output_tier（存在 task_input_json），
     # 决定该成员单次最多生成多少 token（small≈1k / standard≈16k / large≈64k）。

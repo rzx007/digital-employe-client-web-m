@@ -50,13 +50,14 @@ export function isStoredAssistantQueued(
 }
 
 /** 编排派单排队占位文案（开流后不应再展示为正文） */
-export function isOrchestrationQueuePlaceholder(text: string | null | undefined): boolean {
+export function isOrchestrationQueuePlaceholder(
+  text: string | null | undefined
+): boolean {
   if (!text) return false
   const t = text.trim()
   if (
     t === "已加入执行队列，等待其他对话完成" ||
     t === "等待总管会话结束，即将开始执行…" ||
-    t === "等待组长会话结束，即将开始执行…" ||
     t === "排队中，等待执行"
   ) {
     return true
@@ -78,17 +79,11 @@ export function shouldHideStaleQueuePlaceholder(
 
 export type DispatchBadge = { label: string; title: string }
 
-/** 总管/组长自动派单邮戳（user 消息 extra_meta） */
+/** 总管自动派单邮戳（user 消息 extra_meta） */
 export function getDispatchBadge(
   metadata: Record<string, unknown> | undefined
 ): DispatchBadge | null {
   if (!metadata?.dispatchedByOrchestrator) return null
-  if (metadata.dispatchedByGroupLeader) {
-    return {
-      label: "组长派单",
-      title: "组长自动派单消息（非真人发送）",
-    }
-  }
   return {
     label: "总管派单",
     title: "总管自动派单消息（非真人发送）",

@@ -22,9 +22,8 @@ def test_resolve_workspace_context_points_artifacts_to_desk(
     desk.mkdir(parents=True, exist_ok=True)
     (desk / "sort.py").write_text("x", encoding="utf-8")
 
-    workspace_dir, public_root, conv_artifacts, room_dir = resolve_workspace_context(root, conv_id)
+    workspace_dir, public_root, conv_artifacts = resolve_workspace_context(root, conv_id)
     assert conv_artifacts == desk
-    assert room_dir is None
 
 
 def test_resolve_workspace_context_no_desk_unchanged(
@@ -32,7 +31,7 @@ def test_resolve_workspace_context_no_desk_unchanged(
 ):
     conv_id = _curator_conv(db_session, workspace.id)
     root = workspace.root_path
-    _ws, _pub, conv_artifacts, _room = resolve_workspace_context(root, conv_id)
+    _ws, _pub, conv_artifacts = resolve_workspace_context(root, conv_id)
     assert conv_artifacts == Path(root) / "employee-orchestrator" / "artifacts" / f"conv-{conv_id}"
 
 

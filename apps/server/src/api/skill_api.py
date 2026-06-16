@@ -206,7 +206,7 @@ def _resolve_draft_skill_dir(conversation_id: int, skill_name: str) -> Path:
     # get_agent root_path=settings.artifacts_path）；这里必须用同一根解析，否则去
     # skill_path（employees-skills）找会恒 404「草稿技能不存在」。
     root_path = settings.artifacts_path
-    workspace_dir, _public, _conv, _room = resolve_workspace_context(
+    workspace_dir, _public, _conv = resolve_workspace_context(
         root_path, conversation_id
     )
     draft_dir = workspace_dir / f"conv-{conversation_id}" / "skills-draft" / name

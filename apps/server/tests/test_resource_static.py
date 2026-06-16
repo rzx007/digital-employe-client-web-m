@@ -75,11 +75,10 @@ def static_client(db_engine, monkeypatch):
         ),
     )
 
-    # 会话→员工/房间解析走全局 session（非测试 DB），直接打桩为 employee-1 / 无房间
+    # 会话→员工解析走全局 session（非测试 DB），直接打桩为 employee-1
     from src.service import resource_service as _rs
 
     monkeypatch.setattr(_rs, "_resolve_employee_id_for_conversation", lambda cid: 1)
-    monkeypatch.setattr(_rs, "_resolve_room_dir", lambda root_path, cid: None)
 
     # 覆盖 get_db 依赖，使用测试库
     def _override_get_db():

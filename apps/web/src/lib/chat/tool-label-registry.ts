@@ -7,7 +7,10 @@ export const SHELL_TOOL_NAMES = new Set(["execute", "shell_execute"])
 /** 与后端 normalize_shell_intent 一致：去首尾引号并截断。 */
 export function normalizeShellIntent(raw: unknown): string | null {
   if (typeof raw !== "string") return null
-  const text = raw.trim().replace(/^["']+|["']+$/g, "").trim()
+  const text = raw
+    .trim()
+    .replace(/^["']+|["']+$/g, "")
+    .trim()
   if (!text) return null
   return text.length > INTENT_MAX_LENGTH
     ? text.slice(0, INTENT_MAX_LENGTH)
@@ -195,56 +198,6 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
       running: "正在执行编排计划...",
       done: "编排计划已执行",
       error: "执行计划失败",
-    },
-  },
-  create_group_and_dispatch: {
-    icon: "👥",
-    label: "拉群派活",
-    verb: "拉群派活",
-    simple: {
-      running: "正在拉群并分派任务...",
-      done: "已拉群并交给组长统筹",
-      error: "拉群派活失败",
-    },
-  },
-  list_workspace_groups: {
-    icon: "👥",
-    label: "查看群聊列表",
-    verb: "查看群聊列表",
-    simple: {
-      running: "正在查询群聊...",
-      done: "群聊列表已加载",
-      error: "查询群聊失败",
-    },
-  },
-  get_group: {
-    icon: "👥",
-    label: "查看群聊详情",
-    verb: "查看群聊详情",
-    simple: {
-      running: "正在读取群聊详情...",
-      done: "群聊详情已加载",
-      error: "读取群聊失败",
-    },
-  },
-  update_group: {
-    icon: "👥",
-    label: "更新群聊",
-    verb: "更新群聊",
-    simple: {
-      running: "正在更新群聊...",
-      done: "群聊已更新",
-      error: "更新群聊失败",
-    },
-  },
-  delete_group: {
-    icon: "👥",
-    label: "删除群聊",
-    verb: "删除群聊",
-    simple: {
-      running: "正在删除群聊...",
-      done: "群聊已删除",
-      error: "删除群聊失败",
     },
   },
   list_workspace_employees: {

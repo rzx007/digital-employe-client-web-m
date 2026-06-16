@@ -164,18 +164,6 @@ export interface Employee {
 }
 
 /**
- * 群聊（员工组）
- */
-export interface Group {
-  id: number
-  workspace_id: number
-  name: string
-  employee_ids: number[]
-  created_at: string
-  updated_at: string
-}
-
-/**
  * 聊天目标类型：单聊（员工）或群聊
  */
 export type ChatTargetType = "employee" | "group" | "curator"
@@ -290,24 +278,24 @@ export interface RegisterResponse {
  */
 export type LoginResponse =
   | {
-    code: 1
-    result: LoginUser[]
-    noMenus: boolean
-    token: string
-    msg: string
-  }
+      code: 1
+      result: LoginUser[]
+      noMenus: boolean
+      token: string
+      msg: string
+    }
   | {
-    code: -2
-    result: { id: number; userName?: string }
-    token: string
-    msg: string
-  }
+      code: -2
+      result: { id: number; userName?: string }
+      token: string
+      msg: string
+    }
   | {
-    code: 0
-    result?: undefined
-    token?: string
-    msg: string
-  }
+      code: 0
+      result?: undefined
+      token?: string
+      msg: string
+    }
 
 export interface LocalSkillItem {
   skillName: string

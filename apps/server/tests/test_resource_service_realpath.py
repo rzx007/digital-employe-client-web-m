@@ -26,7 +26,6 @@ def ws(tmp_path, monkeypatch):
     (root / "employee-9" / "artifacts" / "conv-5" / "secret.md").write_text("x", encoding="utf-8")
 
     monkeypatch.setattr(rs, "_resolve_employee_id_for_conversation", lambda cid: 7)
-    monkeypatch.setattr(rs, "_resolve_room_dir", lambda root_path, cid: None)
     return str(root), root
 
 
@@ -90,7 +89,6 @@ def test_legacy_layout_read_fallback(tmp_path, monkeypatch):
     legacy.mkdir(parents=True)
     (legacy / "old.md").write_text("legacy", encoding="utf-8")
     monkeypatch.setattr(rs, "_resolve_employee_id_for_conversation", lambda cid: 7)
-    monkeypatch.setattr(rs, "_resolve_room_dir", lambda root_path, cid: None)
 
     data = ResourceService.list_resources(str(root), 1)
     assert any(e.name == "old.md" for e in data.artifacts)
