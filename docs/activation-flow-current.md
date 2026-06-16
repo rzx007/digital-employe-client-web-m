@@ -132,6 +132,21 @@ UI 文案（[`activation-form.tsx`](../apps/web/src/components/activation/activa
 About 页（[`activation-about-section.tsx`](../apps/web/src/components/activation/activation-about-section.tsx)）
 内嵌同一个 `ActivationForm` 供重激活。
 
+## 一体机 deploy 激活（命令行通道，2026-06-16 落地）
+
+桌面 GUI 之外，**一体机安装器** `deploy.sh` 也能完成数字员工激活，与 GUI 填码**并存**：
+
+- `deploy.sh` 新增 `stage_activation` 阶段：用 `python3` 内联脚本**字节级复刻设备码算法**
+  （`SHA256(MAC | /etc/machine-id)[:20]`，与 App 一致），算出并打印设备码。
+- **双通道注入授权码**：授权码文件优先（`packages/activation.md` 等候选）→ 终端粘贴回退。
+- deploy 解析授权码 payload（不验签）后直接写 `~/.digital-employee/data/activation.json`，
+  App 启动时自行 `verify_license`（设备绑定 + 过期）兜底。
+- **幂等**：已激活且设备匹配且未过期则跳过。
+- 设计 / 计划：[deploy 激活阶段 spec](./superpowers/specs/2026-06-16-deploy-activation-stage-design.md) ·
+  [实现计划](./superpowers/plans/2026-06-16-deploy-activation-stage.md)；
+  激活函数库源码 [`scripts/activation/deploy-activation.sh`](../scripts/activation/deploy-activation.sh)。
+- **范围**：仅激活数字员工。hanhai-cli（Node 验签）/ 模型层（守卫）仍为 roadmap。
+
 ## 铁律
 
 - **私钥永不进客户端**；签发私钥必须与客户端内嵌 `public_key.pem` **同一对**，否则验签必失败。

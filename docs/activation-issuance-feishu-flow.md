@@ -94,19 +94,24 @@ docker run -d -p 8900:8900 \
 **也就是说**：你设想的「拿到激活文件 → 放到对应位置 → 客户端读到即激活」这一步，
 客户端侧目前**只支持「人把授权码字符串粘进未激活页」**，不支持「放文件」。
 
-**两条可选落地路径（本期不实施，仅记录方向）**：
+**两条落地路径：**
 
 - **路径甲（不改客户端，最省）**：飞书产出的就是「授权码字符串」，人**复制字符串粘进客户端未激活页**。
   本质 = 现有填码流程，飞书只是替代了「找管理员要码」。**零客户端改动**。
-- **路径乙（改客户端，支持放文件）**：客户端启动时若约定目录存在一个「证书文件」，
-  自动读取 → 验签通过 → 写成 `activation.json`。需要客户端新增「文件导入激活」入口，
-  并定义这个证书文件的格式（最简：就是一行授权码字符串的 `.lic` 文件，
-  客户端读进来后内部仍走 `verify_license` + 写 `activation.json`）。
+- **路径乙（放文件激活）**：约定目录存在授权码 → 自动读取 → 落 `activation.json` → App 启动验签。
 
-> 你最初的描述（「放激活文件到对应位置」）对应**路径乙**。若确定走乙，需要再开一份
-> 客户端侧 spec：定义证书文件格式、约定路径（沿用
-> [中立化 spec](./superpowers/specs/2026-06-16-neutral-license-cert-multi-program-design.md)
-> 的 `~/BobanStaff/activation/`）、启动时自动导入逻辑、与现有「粘贴填码」并存。
+> **进展（2026-06-16，已落地于一体机 deploy.sh）**：路径乙已在**一体机安装器**侧实现，
+> 见 [deploy 激活阶段 spec](./superpowers/specs/2026-06-16-deploy-activation-stage-design.md)
+> 与 [实现计划](./superpowers/plans/2026-06-16-deploy-activation-stage.md)。
+> `deploy.sh` 新增 `stage_activation`：**双通道注入**——授权码文件优先
+> （`packages/activation.md` 等候选）、终端粘贴回退——deploy 解析 payload 后直接写
+> `~/.digital-employee/data/activation.json`，App 启动自行 `verify_license` 兜底。
+> 已在 220 真机落位并通过幂等/对拍验证。
+>
+> **仍未做**：客户端 **GUI** 本身的「文件导入激活」入口（deploy 走的是命令行/文件，
+> 不是 App GUI）；以及证书统一到中立目录 `~/BobanStaff/activation/`（见
+> [中立化 spec](./superpowers/specs/2026-06-16-neutral-license-cert-multi-program-design.md)）。
+> hanhai-cli / 模型层守卫仍为 roadmap。
 
 ## 5. 安全铁律
 
