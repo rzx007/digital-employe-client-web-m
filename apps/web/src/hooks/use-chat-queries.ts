@@ -18,12 +18,7 @@ import {
   updateConversationTitle as updateConversationTitleApi,
   uploadConversationFile,
 } from "@/api/chat"
-import {
-  deleteRecentContact,
-  touchRecentContact,
-} from "@/api/recent-contacts"
 import type { Contact, Conversation, Message } from "@/types/chat"
-import { mapContactToTarget } from "@/lib/chat/contact-target"
 import { findContactInList } from "@/lib/chat/contact-utils"
 import {
   enterDraftConversation,
@@ -31,65 +26,12 @@ import {
 } from "@/lib/chat/conversation-selection"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import { chatKeys } from "@/lib/query-keys/chat"
-import { getActiveWorkspaceId } from "@/lib/workspace-id"
-import { useAuthStore } from "@/stores/auth-store"
 import { useChatStore } from "@/stores/chat-store"
-import type { RecentConversationItem } from "@/components/chat/conversations/recent-conversations/types"
 
 export function useContactsQuery() {
   return useQuery({
     queryKey: chatKeys.contacts(),
     queryFn: ({ signal }) => fetchContacts(signal),
-  })
-}
-
-export function useTouchRecentContactMutation() {
-  const queryClient = useQueryClient()
-  const workspaceId = useAuthStore((s) => s.workspaceId) ?? getActiveWorkspaceId()
-
-  return useMutation({
-    mutationFn: (contact: Contact) => {
-      const target = mapContactToTarget(contact)
-      if (!target) {
-        return Promise.reject(new Error("无法确定聊天目标类型"))
-      }
-      return touchRecentContact(target, { workspaceId })
-    },
-    onSuccess: () => {
-      void queryClient.refetchQueries({
-        queryKey: chatKeys.recentContacts(workspaceId),
-      })
-    },
-  })
-}
-
-export function useDeleteRecentContactMutation() {
-  const queryClient = useQueryClient()
-  const workspaceId = useAuthStore((s) => s.workspaceId) ?? getActiveWorkspaceId()
-
-  return useMutation({
-    mutationFn: (contact: Contact) => {
-      const target = mapContactToTarget(contact)
-      if (!target) {
-        return Promise.reject(new Error("无法确定聊天目标类型"))
-      }
-      return deleteRecentContact(target.target_type, target.target_id, {
-        workspaceId,
-      })
-    },
-    onSuccess: (_data, contact) => {
-      const contactId =
-        contact.type === "curator"
-          ? contact.curator?.id
-          : contact.type === "employee"
-            ? contact.employee?.id
-            : contact.group?.id
-      if (!contactId) return
-      queryClient.setQueryData<RecentConversationItem[]>(
-        chatKeys.recentContacts(workspaceId),
-        (current) => current?.filter((i) => i.contactId !== contactId)
-      )
-    },
   })
 }
 
@@ -133,16 +75,13 @@ export function useCuratorConversationQuery() {
 export function useOrchestrationPlansQuery(
   conversationId?: string | number | null
 ) {
-  const convKey =
-    conversationId != null ? String(conversationId) : null
+  const convKey = conversationId != null ? String(conversationId) : null
   return useQuery({
     queryKey: chatKeys.orchestrationPlans(convKey),
     queryFn: async ({ signal }) => {
       const { request } = await import("@/lib/request")
       const qs =
-        convKey != null
-          ? `?conversation_id=${encodeURIComponent(convKey)}`
-          : ""
+        convKey != null ? `?conversation_id=${encodeURIComponent(convKey)}` : ""
       const res = await request<{
         code: number
         data: Array<{
@@ -169,7 +108,6 @@ export function useCreateConversationMutation() {
   return useMutation({
     mutationFn: createConversation,
     onSuccess: (conversation) => {
-      const workspaceId = useAuthStore.getState().workspaceId ?? getActiveWorkspaceId()
       queryClient.setQueryData<Conversation[]>(
         chatKeys.conversations(conversation.contactId),
         (current) => {
@@ -185,9 +123,6 @@ export function useCreateConversationMutation() {
         chatKeys.messages(conversation.id),
         []
       )
-      void queryClient.refetchQueries({
-        queryKey: chatKeys.recentContacts(workspaceId),
-      })
     },
   })
 }
@@ -210,7 +145,6 @@ export function useUpdateConversationTitleMutation() {
       return res.data
     },
     onSuccess: (_data, variables) => {
-      const workspaceId = useAuthStore.getState().workspaceId ?? getActiveWorkspaceId()
       queryClient.setQueryData<Conversation[]>(
         chatKeys.conversations(variables.contactId),
         (current) =>
@@ -220,9 +154,6 @@ export function useUpdateConversationTitleMutation() {
               : item
           )
       )
-      void queryClient.refetchQueries({
-        queryKey: chatKeys.recentContacts(workspaceId),
-      })
     },
   })
 }
@@ -268,9 +199,7 @@ export function useDeleteConversationMutation() {
       queryClient.setQueryData<Conversation[]>(
         chatKeys.conversations(contactId),
         (current) =>
-          current?.filter(
-            (c) => String(c.id) !== String(conversationId)
-          )
+          current?.filter((c) => String(c.id) !== String(conversationId))
       )
 
       const remaining =
@@ -288,10 +217,7 @@ export function useDeleteConversationMutation() {
         String(selectedConversationId) === deletedId ||
         (selectedConversationId == null && remaining.length === 0)
 
-      if (
-        targetsCurrentSelection &&
-        contact?.type !== "curator"
-      ) {
+      if (targetsCurrentSelection && contact?.type !== "curator") {
         const next = remaining[0]
         if (next) {
           selectConversationById(next.id)

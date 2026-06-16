@@ -23,10 +23,8 @@ import {
 } from "@workspace/ui/components/context-menu"
 import { cn } from "@workspace/ui/lib/utils"
 import type { Contact } from "@/types/chat"
-import { useAuthStore } from "@/stores/auth-store"
 import { useChatStore } from "@/stores/chat-store"
 import { chatKeys } from "@/lib/query-keys/chat"
-import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import { deleteEmployee } from "@/api/employee"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import {
@@ -34,8 +32,6 @@ import {
   selectContactForDetail,
   switchToContact,
 } from "@/lib/chat/conversation-selection"
-import { deleteRecentContact } from "@/api/recent-contacts"
-import { mapContactToTarget } from "@/lib/chat/contact-target"
 import { getContactId } from "@/lib/chat/contact-utils"
 
 import { EmployeeContactAvatar } from "./contact-avatars"
@@ -57,7 +53,6 @@ export function ContactItem({
   className,
   ...props
 }: ContactItemProps) {
-  const workspaceId = useAuthStore((s) => s.workspaceId) ?? getActiveWorkspaceId()
   const { contacts, selectedContactId, setContacts } = useChatStore(
     useShallow((state) => ({
       contacts: state.contacts,
@@ -69,9 +64,7 @@ export function ContactItem({
   const contactId = getContactId(contact)
   // 原始主键：用于删除等需要真实 id 的后端操作
   const rawId =
-    contact.type === "curator"
-      ? contact.curator?.id
-      : contact.employee?.id
+    contact.type === "curator" ? contact.curator?.id : contact.employee?.id
   const isSelected = selectedContactId === contactId
 
   const [alertOpen, setAlertOpen] = React.useState(false)
@@ -110,15 +103,6 @@ export function ContactItem({
     if (contact.type === "employee" && rawId) {
       try {
         await deleteEmployee(rawId)
-        const target = mapContactToTarget(contact)
-        if (target) {
-          void deleteRecentContact(target.target_type, target.target_id, {
-            workspaceId,
-          })
-          void queryClient.invalidateQueries({
-            queryKey: chatKeys.recentContacts(workspaceId),
-          })
-        }
         setContacts(
           contacts.filter(
             (c) => !(c.type === "employee" && c.employee?.id === rawId)
