@@ -96,6 +96,7 @@ docker run --rm \
   -v "$RELEASE_DIR:/output" \
   -v "$FPM_CACHE_DIR:/fpm-seed:ro" \
   -e ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" \
+  -e ELECTRON_BUILDER_BINARIES_MIRROR="https://registry.npmmirror.com/-/binary/electron-builder-binaries/" \
   -e ELECTRON_BUILDER_CACHE="/root/.cache/electron-builder" \
   -e BUILD_CMD="$BUILD_CMD" \
   -e NODE_OPTIONS="--max-old-space-size=8192" \
