@@ -38,9 +38,12 @@ export function EmployeeTasksPanel({
   onClose: () => void
   className?: string
 }) {
-  const { data: executions = [], isPending } = useCuratorTaskExecutions(
-    curatorConversationId
-  )
+  const {
+    data: executions = [],
+    isPending,
+    isError,
+    refetch,
+  } = useCuratorTaskExecutions(curatorConversationId)
 
   const running = executions.filter(isActiveExecution)
   const finished = executions.filter((e) => !isActiveExecution(e))
@@ -73,7 +76,18 @@ export function EmployeeTasksPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-2">
-        {total === 0 ? (
+        {isError && total === 0 ? (
+          <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-4 text-center">
+            <p className="text-sm text-muted-foreground">加载失败</p>
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              className="rounded border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              点击重试
+            </button>
+          </div>
+        ) : total === 0 ? (
           <div className="flex min-h-48 flex-col items-center justify-center px-4 text-center">
             <p className="text-sm text-muted-foreground">
               {isPending ? "加载中…" : "暂无员工任务"}

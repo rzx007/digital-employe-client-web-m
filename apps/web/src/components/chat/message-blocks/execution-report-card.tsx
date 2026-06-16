@@ -101,6 +101,7 @@ export function ExecutionReportCard({
         comment: "",
       }),
   })
+  const [expanded, setExpanded] = useState(false)
 
   const outputText = execution.output?.content ?? execution.run_result ?? ""
   const statusCfg = STATUS_CONFIG[execution.run_status]
@@ -237,12 +238,31 @@ export function ExecutionReportCard({
         </div>
 
         {outputText && (
-          <MessageResponse className="max-h-32 overflow-y-auto text-xs leading-relaxed text-muted-foreground [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-            {truncateOutput(outputText, COMPACT_OUTPUT_MAX)}
-          </MessageResponse>
+          <div>
+            <MessageResponse
+              className={cn(
+                "overflow-y-auto text-xs leading-relaxed text-muted-foreground [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+                expanded ? "max-h-96" : "max-h-32"
+              )}
+            >
+              {expanded
+                ? outputText
+                : truncateOutput(outputText, COMPACT_OUTPUT_MAX)}
+            </MessageResponse>
+            {outputText.length > COMPACT_OUTPUT_MAX && (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="mt-0.5 text-[11px] text-primary hover:underline"
+              >
+                {expanded ? "收起" : "展开全部"}
+              </button>
+            )}
+          </div>
         )}
 
-        {execution.error_message && !outputText && (
+        {/* P1：失败原因始终展示（不再被 output 遮盖） */}
+        {execution.error_message && (
           <p className="text-xs text-red-600/80 dark:text-red-400/80">
             {truncateOutput(execution.error_message, COMPACT_OUTPUT_MAX)}
           </p>

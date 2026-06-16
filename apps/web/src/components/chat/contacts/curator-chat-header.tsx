@@ -16,6 +16,7 @@ import { useArtifactStore } from "@/stores/artifact-store"
 import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
 import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
 import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
+import { ACTIVE_TASK_RUN_STATUSES } from "@/types/schedule-monitor"
 import { Separator } from "@workspace/ui/components/separator"
 import {
   DropdownMenu,
@@ -58,12 +59,8 @@ export function CuratorChatHeader({
   const isEmployeeTasksPanelOpen = useEmployeeTasksPanelStore((s) => s.isOpen)
   const toggleEmployeeTasksPanel = useEmployeeTasksPanelStore((s) => s.toggle)
   const { data: executions = [] } = useCuratorTaskExecutions(conversationId)
-  const runningTaskCount = executions.filter(
-    (e) =>
-      e.run_status === "running" ||
-      e.run_status === "queued" ||
-      e.run_status === "pending" ||
-      e.run_status === "stuck"
+  const runningTaskCount = executions.filter((e) =>
+    ACTIVE_TASK_RUN_STATUSES.has(e.run_status)
   ).length
 
   return (

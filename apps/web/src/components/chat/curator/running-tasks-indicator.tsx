@@ -31,9 +31,10 @@ export function RunningTasksIndicator({
   return (
     <button
       type="button"
-      onClick={() => useEmployeeTasksPanelStore.getState().open()}
+      onClick={() => useEmployeeTasksPanelStore.getState().toggle()}
       className={cn(
         "mx-auto flex w-fit items-center gap-1.5 rounded-full border bg-muted/60 px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+        "animate-in duration-200 fade-in slide-in-from-bottom-1",
         className
       )}
     >
