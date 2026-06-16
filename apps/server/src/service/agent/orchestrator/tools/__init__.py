@@ -7,7 +7,7 @@
   hire_employees
 - **plans** 编排计划：create_orchestration_plan、confirm_orchestration_plan、
   cancel_plan
-- **tasks** 子任务管理：list_tasks、update_task、delete_task、delete_tasks_batch
+- **tasks** 子任务管理：list_tasks、update_task、delete_task、delete_tasks_batch、redispatch_task
 - **skills** 技能管理：list_workspace_skills、get_workspace_skill_detail、
   delete_workspace_skill、delete_workspace_skills_batch、list_builtin_skills、
   install_builtin_skill、search_market_skills、get_market_skill_detail、
@@ -59,6 +59,7 @@ from src.service.agent.orchestrator.tools.tasks import (
     delete_task,
     delete_tasks_batch,
     list_tasks,
+    redispatch_task,
     update_task,
 )
 
@@ -83,6 +84,7 @@ __all__ = [
     "update_task",
     "delete_task",
     "delete_tasks_batch",
+    "redispatch_task",
     # skills
     "list_workspace_skills",
     "get_workspace_skill_detail",

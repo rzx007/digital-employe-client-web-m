@@ -111,3 +111,8 @@ def test_redispatch_rejects_when_latest_log_inflight(db_session, monkeypatch):
     assert db_session.get(TaskExecutionLog, old_id).run_status == "running"
     # rework_count 未变
     assert db_session.get(EmployeeTask, task.id).rework_count == 0
+
+
+def test_redispatch_tool_registered():
+    from src.service.agent.orchestrator.tools import redispatch_task
+    assert redispatch_task.name == "redispatch_task"

@@ -154,3 +154,21 @@ def list_tasks(
                 "请稍后重试一次；若仍失败请重启应用。"
             )
         raise
+
+
+@tool
+def redispatch_task(task_id: int, rework_note: str) -> str:
+    """判定某子任务交付【不达标】时，打回让该员工在原对话续聊返工。
+
+    用于总管一线质检：对照该任务派活契约的「输出」，若交付缺项/跑偏/质量不够，
+    调本工具打回——员工会带着上一稿在同一对话里按你的说明修改。
+
+    task_id：来自 create_orchestration_plan 返回的 tasks[].task_id。
+    rework_note：把「哪里不达标 + 要改成什么样」讲清楚（员工据此修订）。
+    每个任务最多自动返工 2 次，超限本工具会拒绝并提示你升级给领导定夺。
+    """
+    from src.service.agent.orchestrator.rework import redispatch_task_in_session
+    workspace_id = get_workspace_id()
+    msg = redispatch_task_in_session(workspace_id, task_id, rework_note or "")
+    invalidate_orchestrator_db_cache()
+    return msg
