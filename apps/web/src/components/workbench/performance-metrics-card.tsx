@@ -1,9 +1,4 @@
-﻿import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@workspace/ui/components/avatar"
-import { IconHelpCircle } from "@tabler/icons-react"
+﻿import { IconHelpCircle } from "@tabler/icons-react"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import {
   Tooltip,
@@ -12,9 +7,6 @@ import {
 } from "@workspace/ui/components/tooltip"
 import { cn } from "@workspace/ui/lib/utils"
 import { useCurrentMonthPerformance } from "@/hooks/use-performance-queries"
-import { useAuthStore } from "@/stores/auth-store"
-import { getUserAvatarSrc } from "@/lib/avatar"
-import { getAvatarUrl } from "@/api/avatar"
 
 function formatMoney(value: number): string {
   return `¥ ${new Intl.NumberFormat("zh-CN", {
@@ -94,13 +86,6 @@ function MetricCard({
 
 function CompactPerformanceCard() {
   const { data, isLoading, isError } = useCurrentMonthPerformance()
-  const user = useAuthStore((s) => s.user)
-  const avatarVersion = useAuthStore((s) => s.avatarVersion)
-  // 优先后端上传头像；加载失败时 Radix AvatarFallback 显示名字首字
-  const avatarSrc =
-    user?.id != null
-      ? getAvatarUrl(user.id, avatarVersion)
-      : getUserAvatarSrc(user?.id)
 
   if (isError) return null
 
@@ -109,12 +94,9 @@ function CompactPerformanceCard() {
       <div className="overflow-hidden rounded-lg border">
         <div className="h-0.5 bg-primary/80" />
         <div className="space-y-2 p-3">
-          <div className="flex items-center gap-2.5">
-            <Skeleton className="size-8 shrink-0 rounded-full" />
-            <div className="flex-1 space-y-1">
-              <Skeleton className="h-3.5 w-20" />
-              <Skeleton className="h-2.5 w-28" />
-            </div>
+          <div className="space-y-1">
+            <Skeleton className="h-3.5 w-20" />
+            <Skeleton className="h-2.5 w-28" />
           </div>
           <Skeleton className="h-3 w-full" />
           <Skeleton className="h-3 w-full" />
@@ -130,23 +112,15 @@ function CompactPerformanceCard() {
     <div className="overflow-hidden rounded-lg border">
       <div className="h-0.5 bg-primary/80" />
       <div className="p-3">
-        <div className="flex items-center gap-2.5">
-          <Avatar className="size-8 shrink-0">
-            <AvatarImage src={avatarSrc} alt={data.name} />
-            <AvatarFallback className="bg-muted text-xs font-semibold text-muted-foreground">
-              {data.name.slice(0, 1)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-baseline justify-between">
-              <span className="text-sm font-semibold">{data.name}</span>
-              <span className="text-[10px] text-muted-foreground">
-                工号 {data.staff_no || "--"}
-              </span>
-            </div>
-            <div className="mt-0.5 text-[10px] text-muted-foreground">
-              {formatMonthPeriod(data.month)}
-            </div>
+        <div className="min-w-0">
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm font-semibold">{data.name}</span>
+            <span className="text-[10px] text-muted-foreground">
+              工号 {data.staff_no || "--"}
+            </span>
+          </div>
+          <div className="mt-0.5 text-[10px] text-muted-foreground">
+            {formatMonthPeriod(data.month)}
           </div>
         </div>
 

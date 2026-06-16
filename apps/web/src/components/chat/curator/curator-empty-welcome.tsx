@@ -1,18 +1,14 @@
 import { ConversationEmptyState } from "@workspace/ui/components/ai-elements/conversation"
 import { cn } from "@workspace/ui/lib/utils"
-import { EmployeeContactAvatar } from "../contacts/contact-avatars"
-import type { ChatViewContact } from "../shared/chat-view-shared"
 import { GuidanceSuggestions } from "./guidance-suggestions"
 import { getCuratorLayout } from "./curator-layout"
 
 export function CuratorEmptyWelcome({
-  contact,
   displayName,
   onSuggestionSelect,
   suggestionsDisabled = false,
   size = "default",
 }: {
-  contact?: ChatViewContact
   displayName: string
   onSuggestionSelect: (text: string) => void
   suggestionsDisabled?: boolean
@@ -31,22 +27,6 @@ export function CuratorEmptyWelcome({
       <div
         className={cn(layout.emptyWelcomeInner, isCompact ? "gap-4" : "gap-6")}
       >
-        {contact?.type === "curator" ? (
-          <EmployeeContactAvatar
-            name={contact.curator?.name ?? displayName}
-            avatar={contact.curator?.avatar}
-            status={contact.curator?.status}
-            avatarClassName={isCompact ? "size-12" : "size-14"}
-            fallbackClassName={isCompact ? "text-sm" : "text-base"}
-          />
-        ) : (
-          <EmployeeContactAvatar
-            name={displayName}
-            avatar={undefined}
-            avatarClassName={isCompact ? "size-12" : "size-14"}
-            fallbackClassName={isCompact ? "text-sm" : "text-base"}
-          />
-        )}
         <div className="space-y-2 text-center">
           <h2
             className={cn(
