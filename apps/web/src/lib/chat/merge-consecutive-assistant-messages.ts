@@ -51,6 +51,32 @@ function isGroupTimelineMessage(message: UIMessage): boolean {
   return Boolean(meta.senderId || meta.senderName)
 }
 
+/**
+ * 给一条消息末尾的 text part 补段落分隔(\n\n),用于合并时区分相邻轮次——
+ * 否则分类器把相邻 text part 直接拼接(responseText += text),两轮文字会连成一段
+ * (如「…完成后会自动同步结果。全部完成！…」)。末尾非 text(如工具)则不动。
+ */
+function withTrailingParagraphBreak(
+  parts: UIMessage["parts"]
+): UIMessage["parts"] {
+  if (parts.length === 0) return parts
+  const lastIdx = parts.length - 1
+  const last = parts[lastIdx]
+  if (
+    last &&
+    last.type === "text" &&
+    typeof (last as { text?: unknown }).text === "string" &&
+    !(last as { text: string }).text.endsWith("\n")
+  ) {
+    const cloned = {
+      ...last,
+      text: (last as { text: string }).text + "\n\n",
+    }
+    return [...parts.slice(0, lastIdx), cloned] as UIMessage["parts"]
+  }
+  return parts
+}
+
 function mergeAssistantGroup(group: UIMessage[]): UIMessage {
   const first = group[0]
   const last = group[group.length - 1]
@@ -82,7 +108,10 @@ function mergeAssistantGroup(group: UIMessage[]): UIMessage {
     ...first,
     id: first.id,
     role: "assistant",
-    parts: group.flatMap((m) => m.parts),
+    // 非最后一条补段落分隔,区分相邻轮次(末条/流式中那条不加)。
+    parts: group.flatMap((m, i) =>
+      i === group.length - 1 ? m.parts : withTrailingParagraphBreak(m.parts)
+    ),
     metadata: mergedMeta,
   } as UIMessage
 }
