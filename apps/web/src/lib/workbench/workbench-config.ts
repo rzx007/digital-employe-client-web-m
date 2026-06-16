@@ -73,12 +73,37 @@ export function initializeWorkbenchConfig(employeeId: string): WorkbenchConfig {
   return config
 }
 
-/** 把一个总管生成的 HTML 产物钉成看板块 */
+/** 同一会话 + 同一资源路径视为同一个产物（钉重复时原地更新而非新增重复看板） */
+function isSameHtmlRef(a: HtmlArtifactRef, b: HtmlArtifactRef): boolean {
+  return (
+    String(a.conversationId) === String(b.conversationId) &&
+    a.resourcePath === b.resourcePath
+  )
+}
+
+/**
+ * 把一个总管生成的 HTML 产物钉成看板块。
+ * 若该产物已被钉过（同会话同路径），更新其标题/钉住时间，不新增重复看板。
+ */
 export function addHtmlArtifactBlock(
   config: WorkbenchConfig,
   htmlRef: HtmlArtifactRef,
   title: string
 ): WorkbenchConfig {
+  const existing = config.blocks.find(
+    (b) => b.type === "html-artifact" && isSameHtmlRef(b.htmlRef, htmlRef)
+  )
+  if (existing) {
+    const updated: WorkbenchConfig = {
+      ...config,
+      blocks: config.blocks.map((b) =>
+        b.id === existing.id ? { ...b, title, htmlRef } : b
+      ),
+      lastModified: Date.now(),
+    }
+    saveWorkbenchConfig(updated)
+    return updated
+  }
   const newBlock: WorkbenchBlock = {
     id: generateBlockId(),
     type: "html-artifact",

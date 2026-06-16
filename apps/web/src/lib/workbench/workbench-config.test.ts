@@ -80,6 +80,20 @@ describe("addHtmlArtifactBlock", () => {
     })
     expect(loadWorkbenchConfig("global")?.blocks).toHaveLength(1)
   })
+
+  it("does not duplicate when pinning the same artifact twice; updates title in place", () => {
+    let cfg: WorkbenchConfig = {
+      employeeId: "global",
+      blocks: [],
+      lastModified: 1,
+    }
+    cfg = addHtmlArtifactBlock(cfg, makeRef("/artifacts/a.html"), "旧标题")
+    const firstId = cfg.blocks[0]!.id
+    cfg = addHtmlArtifactBlock(cfg, makeRef("/artifacts/a.html"), "新标题")
+    expect(cfg.blocks).toHaveLength(1)
+    expect(cfg.blocks[0]!.id).toBe(firstId)
+    expect(cfg.blocks[0]!.title).toBe("新标题")
+  })
 })
 
 describe("removeBlock / updateBlockOrder", () => {
