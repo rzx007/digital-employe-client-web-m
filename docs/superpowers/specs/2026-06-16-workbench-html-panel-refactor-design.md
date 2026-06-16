@@ -29,6 +29,29 @@
 - 不改总管对话本身、不改 artifact 渲染管道、不改左栏（日程/今日任务/绩效）。
 - 不做旧 `queryInterface` 块到新模型的数据迁移（无法映射，直接丢弃）。
 
+## 看板数据来源：实时（HTML 内 fetch）
+
+**已定**：看板是"活"的——总管生成的 HTML 里**自带 `fetch` 拉接口**，每次打开/刷新面板时在沙箱 iframe 内实时取数据出图。不是生成时的静态快照。
+
+技术现实（已核查现有沙箱）：
+
+- `HtmlArtifactRenderer` 用 `srcDoc` 注入、沙箱为 `allow-scripts allow-same-origin allow-forms allow-popups allow-modals`。**`allow-scripts` 在场，HTML 内的 JS / `fetch` 能执行**——技术上走得通。
+- 成败取决于**目标接口的 CORS**。这与现状同源：当前 `data-visualizer.tsx` 本就在渲染进程里直接 `fetch` 这些内网接口，CORS 问题一直存在并已被现有部署接受。新方案不新增 CORS 障碍。
+- **唯一新增风险**：`srcDoc` iframe 的请求 `Origin` 可能是 opaque（`null`），与渲染进程直发的 `Origin` 不同；个别后端若按 `Origin` 白名单校验可能表现不同。**这是实现阶段必须先验证的前置项**（见下方"前置验证"），不是阻塞项。
+
+接口地址、请求头、鉴权全部由总管写进 HTML（它本就掌握技能里的接口信息），工作台侧不再解析、不再注入——这正是"把图表/取数交给总管"的核心。
+
+## 前置验证（实现第一步，先做再写组件）
+
+在动任何组件前，先用一个最小 HTML 验证沙箱内 `fetch` 能否打到真实内网接口：
+
+1. 手动在某总管会话产物里放一个 `test-fetch.html`，内含 `fetch('<真实内网接口>').then(...).catch(渲染错误)`。
+2. 钉到工作台（或直接在资源面板预览），观察能否取到数据、`Origin` 是否被后端拒。
+3. **若通过** → 按本 spec 全量实现。
+4. **若被 CORS/Origin 挡** → 方案需补一层代理（Electron 主进程 `net.request` 转发，或后端加 `/proxy` 端点），此时回到设计阶段补充代理子方案，再继续。
+
+此验证结论直接决定后续是否需要新增代理工作量，务必最先做。
+
 ## 架构
 
 ### 数据模型
@@ -90,7 +113,7 @@ interface WorkbenchConfig {
 
 - 用现有 `useResourceContentQuery(htmlRef.conversationId, htmlRef.resourcePath)` 取内容（带缓存）。
 - 内容传入现有 `HtmlArtifactRenderer`（沙箱 iframe）。
-- 顶栏：标题 + 刷新（失效该 query 重取，对应"总管改了 HTML 后看板更新"）+ 删除（移出 config，不删源文件）+ 拖拽手柄。
+- 顶栏：标题 + 刷新（重载 iframe，重跑内层实时 fetch；总管改了 HTML 时同时失效源码缓存）+ 删除（移出 config，不删源文件）+ 拖拽手柄。
 - 源文件取不到 / 404：渲染"产物已不存在，可移除此看板"占位，不崩溃。
 
 ### 网格
@@ -112,8 +135,16 @@ workbench-config (localStorage)  ←→  useWorkbenchConfig (React state)
 DraggableWorkbenchGrid  →  每格 WorkbenchHtmlPanel
         │
         ▼
-useResourceContentQuery(conversationId, path)  →  HtmlArtifactRenderer (沙箱 iframe)
+useResourceContentQuery(conversationId, path)  →  取 HTML 源码
+        │
+        ▼
+HtmlArtifactRenderer (沙箱 iframe)  →  iframe 内 JS 自带 fetch 实时拉接口出图
 ```
+
+注意两层"取数"要分清：
+- **外层**（工作台→渲染器）取的是 **HTML 源码文件**（经 `useResourceContentQuery`，带缓存）。
+- **内层**（iframe 内 JS）才是 **实时业务数据 fetch**，由总管写的 HTML 自己负责。
+- 面板顶栏「刷新」=重载 iframe（重跑内层 fetch），不只是失效源码缓存。
 
 ## 文件去留清单
 
@@ -173,3 +204,5 @@ useResourceContentQuery(conversationId, path)  →  HtmlArtifactRenderer (沙箱
 
 - 面板标题重命名是否本期做？暂定否（先用文件名），留接口。
 - 总管改了同名 HTML 后，钉住的面板是否自动刷新？本期靠手动刷新按钮；自动刷新（监听资源变更）留观察。
+- **沙箱内 fetch 能否打到内网接口**——见"前置验证"，结论决定是否需补代理层。这是本方案最大不确定项。
+- 是否需要给总管一份"生成工作台看板 HTML"的提示约定（比如固定容器尺寸自适应、错误兜底、用哪个图表库）？暂不做硬约定，先看总管自由发挥的产物质量，必要时再补 system prompt / skill 引导。
