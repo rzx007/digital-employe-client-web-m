@@ -71,6 +71,7 @@ import {
 } from "./artifact-content/resolve-renderer"
 import {
   addHtmlArtifactBlock,
+  emitWorkbenchConfigChanged,
   GLOBAL_WORKBENCH_ID,
   initializeWorkbenchConfig,
   loadWorkbenchConfig,
@@ -341,7 +342,7 @@ function SkillDraftContextMenu({
   )
 }
 
-/** 把某会话的 HTML 产物钉成工作台看板（直接读写 localStorage，工作台下次打开即生效） */
+/** 把某会话的 HTML 产物钉成工作台看板（直接读写 localStorage，并通知工作台立即刷新） */
 function pinHtmlToWorkbench(
   conversationId: string | number,
   path: string,
@@ -356,6 +357,8 @@ function pinHtmlToWorkbench(
     { conversationId, resourcePath: path, pinnedAt: Date.now() },
     title
   )
+  // 通知 WorkbenchView 重读配置（钉住即出现，无需切菜单）
+  emitWorkbenchConfigChanged()
 }
 
 function renderEntry(

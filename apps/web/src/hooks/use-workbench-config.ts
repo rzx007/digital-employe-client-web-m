@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import type { WorkbenchConfig } from "@/types/workbench"
 import {
   initializeWorkbenchConfig,
@@ -6,6 +6,7 @@ import {
   removeBlock,
   updateBlockOrder,
   updateBlockSize,
+  WORKBENCH_CONFIG_CHANGED_EVENT,
 } from "@/lib/workbench/workbench-config"
 
 interface UseWorkbenchConfigOptions {
@@ -38,6 +39,17 @@ export function useWorkbenchConfig({ employeeId }: UseWorkbenchConfigOptions) {
       loadWorkbenchConfig(employeeId) ?? initializeWorkbenchConfig(employeeId)
     )
   }, [employeeId])
+
+  // 资源面板钉住产物后会派发 WORKBENCH_CONFIG_CHANGED_EVENT，这里重读配置，
+  // 让新看板立即出现（无需切菜单再切回）。
+  useEffect(() => {
+    if (!employeeId) return
+    const handler = () => refreshConfig()
+    window.addEventListener(WORKBENCH_CONFIG_CHANGED_EVENT, handler)
+    return () => {
+      window.removeEventListener(WORKBENCH_CONFIG_CHANGED_EVENT, handler)
+    }
+  }, [employeeId, refreshConfig])
 
   const reorderBlocks = useCallback(
     (blockIds: string[]) => {

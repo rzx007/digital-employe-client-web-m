@@ -1,5 +1,10 @@
 import * as React from "react"
-import { IconRefresh, IconAlertTriangle } from "@tabler/icons-react"
+import {
+  IconRefresh,
+  IconAlertTriangle,
+  IconMaximize,
+  IconMinimize,
+} from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { useResourceContentQuery } from "@/hooks/use-chat-queries"
@@ -31,17 +36,33 @@ export function WorkbenchHtmlPanel({
     htmlRef.resourcePath
   )
 
-  const srcDoc = React.useMemo(() => {
-    if (!data?.content) return null
-    return wrapHtmlForPreview(data.content)
-  }, [data?.content])
+  const [isFullscreen, setIsFullscreen] = React.useState(false)
 
-  const missing = isError || (!isLoading && !data?.content)
+  const content = data?.content
+  const srcDoc = React.useMemo(
+    () => (content ? wrapHtmlForPreview(content) : null),
+    [content]
+  )
+
+  const missing = isError || (!isLoading && !content)
+
+  // 全屏时按 Escape 退出
+  React.useEffect(() => {
+    if (!isFullscreen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsFullscreen(false)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [isFullscreen])
 
   return (
     <div
       className={cn(
-        "flex h-full flex-col overflow-hidden rounded-md border border-border/80 bg-card shadow-sm",
+        "flex flex-col overflow-hidden border border-border/80 bg-card shadow-sm",
+        isFullscreen
+          ? "fixed inset-0 z-50 h-screen w-screen rounded-none"
+          : "h-full rounded-md",
         className
       )}
     >
@@ -57,6 +78,19 @@ export function WorkbenchHtmlPanel({
           onClick={() => void refetch()}
         >
           <IconRefresh className="size-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="size-5"
+          title={isFullscreen ? "退出全屏 (Esc)" : "全屏"}
+          onClick={() => setIsFullscreen((v) => !v)}
+        >
+          {isFullscreen ? (
+            <IconMinimize className="size-3" />
+          ) : (
+            <IconMaximize className="size-3" />
+          )}
         </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
