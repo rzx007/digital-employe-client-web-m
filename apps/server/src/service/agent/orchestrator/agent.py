@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -33,6 +34,7 @@ from src.service.agent.prompts import (
 from src.service.agent.orchestrator.prompts import (
     ORCHESTRATOR_RUNTIME_CONTEXT_TEMPLATE,
     ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE,
+    build_delegation_execution_context,
 )
 from src.service.agent.orchestrator.runtime import set_context
 from src.service.agent.orchestrator.tools import (
@@ -69,6 +71,8 @@ from src.models.workspace import CST
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 import threading as _threading
 from functools import wraps as _wraps
@@ -251,6 +255,27 @@ def get_orchestrator_agent(
         use_session_history=use_session_history,
         virtual_mode=is_agent_virtual_mode(),
     )
+    # 整盘执行快照：本会话已委派子任务的最新状态，每次用户发消息时随 system prompt 刷新。
+    # conversation_id 即 orchestrator_conversation_id；无会话时跳过（空历史不注入）。
+    delegation_snapshot = ""
+    if conversation_id is not None:
+        # 信息性增强：取数失败不应拖垮总管 agent 构建，容错降级为不注入。
+        try:
+            snapshot_text = build_delegation_execution_context(
+                db, workspace_id, conversation_id
+            )
+        except Exception:
+            logger.warning(
+                "build_delegation_execution_context failed conv=%s",
+                conversation_id,
+                exc_info=True,
+            )
+            snapshot_text = ""
+        if snapshot_text:
+            delegation_snapshot = (
+                "\n\n## 本会话整盘执行快照（随每轮用户消息刷新）\n" + snapshot_text
+            )
+
     system_prompt = (
         ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE
         + fs_section
@@ -258,6 +283,7 @@ def get_orchestrator_agent(
         + build_clarifying_questions_section()
         + build_long_document_writing_section(for_orchestrator=True)
         + runtime_context
+        + delegation_snapshot
     )
 
     checkpointer = get_checkpointer()
