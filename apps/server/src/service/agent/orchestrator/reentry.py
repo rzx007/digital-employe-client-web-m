@@ -116,10 +116,7 @@ def trigger_orchestrator_reentry(db: Session, plan, workspace_id: int) -> int | 
     # 标记计划已整合（幂等门闩）
     plan.status = "summarized"
 
-    # 在总管会话写入用户占位消息 + assistant 流式占位
-    ChatService._append_message(
-        db, conversation=conv, role="user", content="（系统）请整合团队成果"
-    )
+    # 在总管会话写入 assistant 流式占位（不插 user 消息，总管自发整合）
     assistant_msg = ChatService._append_message(
         db, conversation=conv, role="assistant", content=""
     )
