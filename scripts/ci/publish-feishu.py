@@ -173,6 +173,9 @@ def multipart_upload(
                 headers={
                     "Authorization": f"Bearer {token}",
                     "Content-Type": f"multipart/form-data; boundary={boundary}",
+                    # 强制 HTTP/1.1 短连接，避免企业出网代理对长 keep-alive 切断
+                    # 导致的 "EOF occurred in violation of protocol"。
+                    "Connection": "close",
                 },
                 method="POST",
             )
