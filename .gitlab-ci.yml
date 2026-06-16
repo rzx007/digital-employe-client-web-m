@@ -191,11 +191,14 @@ build:macos:
   script:
     - pnpm install --frozen-lockfile --registry=https://registry.npmmirror.com
     - pnpm build:app
+    # dmg/zip 走飞书分发(publish-feishu.py)，不塞 GitLab 产物(老服务器 413 上限)。
+    # 先清掉根 release/ 里上次 Linux 留下的 deb，避免被误推；然后扫 apps/web/release 即可。
+    - rm -f release/*.deb
+    - python3 scripts/ci/publish-feishu.py
+  # dmg/zip 走飞书；GitLab 仅留体积极小的更新清单/blockmap。
   artifacts:
     name: "BobanStaff-Mac-$CI_COMMIT_TAG"
     paths:
-      - apps/web/release/*.dmg
-      - apps/web/release/*.zip
       - apps/web/release/*.yml
       - apps/web/release/*.blockmap
     expire_in: 30 days
