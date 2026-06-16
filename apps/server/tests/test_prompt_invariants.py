@@ -244,3 +244,14 @@ def test_orchestrator_no_dev_file_references(orchestrator_prompt: str) -> None:
     """守住本次清理：不得注入模型读不到的开发内部文件引用。"""
     assert "PEEL_OFF.md" not in orchestrator_prompt
     assert "path-access-recap.md" not in orchestrator_prompt
+
+
+def test_orchestrator_qa_gate_present(orchestrator_prompt: str) -> None:
+    """一线质检：redispatch_task 工具 + 质检/验收关键词不可丢。"""
+    assert "redispatch_task" in orchestrator_prompt
+    assert "质检" in orchestrator_prompt or "验收" in orchestrator_prompt
+
+
+def test_orchestrator_anti_polling_kept(orchestrator_prompt: str) -> None:
+    """质检改写后，反轮询护栏仍在。"""
+    assert "轮询" in orchestrator_prompt
