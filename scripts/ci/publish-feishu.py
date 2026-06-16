@@ -337,7 +337,8 @@ def pipeline_url() -> str:
     project_url = env("CI_PROJECT_URL")
     pipeline_id = env("CI_PIPELINE_ID")
     if project_url and pipeline_id:
-        return f"{project_url}/-/pipelines/{pipeline_id}"
+        # 旧版 GitLab(11.7)流水线 URL 不含 /-/，新版才是 /-/pipelines/
+        return f"{project_url}/pipelines/{pipeline_id}"
     return ""
 
 
