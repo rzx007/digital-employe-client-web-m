@@ -1,33 +1,25 @@
 import { useCallback, useState } from "react"
-import type { MetadataSkill } from "@/api/types"
-import type { QueryInterface, WorkbenchConfig } from "@/types/workbench"
+import type { HtmlArtifactRef, WorkbenchConfig } from "@/types/workbench"
 import {
-  addCustomBlock,
+  addHtmlArtifactBlock,
   initializeWorkbenchConfig,
   loadWorkbenchConfig,
   removeBlock,
-  toggleBlock,
   updateBlockOrder,
   updateBlockSize,
 } from "@/lib/workbench/workbench-config"
 
 interface UseWorkbenchConfigOptions {
+  /** null 时不加载（如数据未就绪）；工作台固定传 "global" */
   employeeId: string | null
-  skills: MetadataSkill[]
 }
 
-export function useWorkbenchConfig({
-  employeeId,
-  skills,
-}: UseWorkbenchConfigOptions) {
+export function useWorkbenchConfig({ employeeId }: UseWorkbenchConfigOptions) {
   const [prevEmployeeId, setPrevEmployeeId] = useState(employeeId)
 
   const [config, setConfig] = useState<WorkbenchConfig | null>(() => {
     if (!employeeId) return null
-    return (
-      loadWorkbenchConfig(employeeId) ??
-      initializeWorkbenchConfig(employeeId, skills)
-    )
+    return loadWorkbenchConfig(employeeId) ?? initializeWorkbenchConfig(employeeId)
   })
 
   if (employeeId !== prevEmployeeId) {
@@ -35,76 +27,52 @@ export function useWorkbenchConfig({
     if (!employeeId) {
       setConfig(null)
     } else {
-      const loaded = loadWorkbenchConfig(employeeId)
-      if (loaded) {
-        setConfig(loaded)
-      } else {
-        setConfig(initializeWorkbenchConfig(employeeId, skills))
-      }
+      setConfig(
+        loadWorkbenchConfig(employeeId) ?? initializeWorkbenchConfig(employeeId)
+      )
     }
   }
 
   const refreshConfig = useCallback(() => {
     if (!employeeId) return
-    const loaded = loadWorkbenchConfig(employeeId)
-    if (loaded) {
-      setConfig(loaded)
-    } else {
-      const initialized = initializeWorkbenchConfig(employeeId, skills)
-      setConfig(initialized)
-    }
-  }, [employeeId, skills])
-
-  const toggleBlockEnabled = useCallback(
-    (blockId: string) => {
-      if (!config) return
-      const updated = toggleBlock(config, blockId)
-      setConfig(updated)
-    },
-    [config]
-  )
+    setConfig(
+      loadWorkbenchConfig(employeeId) ?? initializeWorkbenchConfig(employeeId)
+    )
+  }, [employeeId])
 
   const reorderBlocks = useCallback(
     (blockIds: string[]) => {
-      if (!config) return
-      const updated = updateBlockOrder(config, blockIds)
-      setConfig(updated)
+      setConfig((prev) => (prev ? updateBlockOrder(prev, blockIds) : prev))
     },
-    [config]
+    []
   )
 
-  const addBlock = useCallback(
-    (queryInterface: QueryInterface) => {
-      if (!config) return
-      const updated = addCustomBlock(config, queryInterface)
-      setConfig(updated)
+  const pinHtmlArtifact = useCallback(
+    (htmlRef: HtmlArtifactRef, title: string) => {
+      setConfig((prev) =>
+        prev ? addHtmlArtifactBlock(prev, htmlRef, title) : prev
+      )
     },
-    [config]
+    []
   )
 
-  const removeBlockById = useCallback(
-    (blockId: string) => {
-      if (!config) return
-      const updated = removeBlock(config, blockId)
-      setConfig(updated)
-    },
-    [config]
-  )
+  const removeBlockById = useCallback((blockId: string) => {
+    setConfig((prev) => (prev ? removeBlock(prev, blockId) : prev))
+  }, [])
 
   const resizeBlock = useCallback(
     (blockId: string, width: number, height: number) => {
-      if (!config) return
-      const updated = updateBlockSize(config, blockId, width, height)
-      setConfig(updated)
+      setConfig((prev) =>
+        prev ? updateBlockSize(prev, blockId, width, height) : prev
+      )
     },
-    [config]
+    []
   )
 
   return {
     config,
-    toggleBlockEnabled,
     reorderBlocks,
-    addBlock,
+    pinHtmlArtifact,
     removeBlock: removeBlockById,
     resizeBlock,
     refreshConfig,
