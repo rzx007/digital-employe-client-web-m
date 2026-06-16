@@ -122,6 +122,26 @@ def create_app() -> FastAPI:
         from src.service.agent.orchestrator import set_main_event_loop
         set_main_event_loop(loop)
 
+        # 重启对账：补触发进程重启前遗漏的增量汇报（reported_at IS NULL 的终态任务）
+        try:
+            from src.service.agent.orchestrator.report_debouncer import (
+                get_report_debouncer,
+                reconcile_unreported_tasks,
+            )
+            with get_session_local()() as _recon_db:
+                _pending_conv_ids = reconcile_unreported_tasks(_recon_db)
+            _debouncer = get_report_debouncer()
+            for _cid in _pending_conv_ids:
+                _debouncer.notify(_cid)
+            if _pending_conv_ids:
+                logger.info(
+                    "重启对账：补触发 %d 个总管会话的增量汇报 %s",
+                    len(_pending_conv_ids),
+                    _pending_conv_ids,
+                )
+        except Exception:
+            logger.warning("重启对账失败（不影响启动）", exc_info=True)
+
         from src.service.stream_registry import registry as _stream_registry
         from src.service.workspace_events import WorkspaceEventBus
 

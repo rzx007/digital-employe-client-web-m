@@ -145,3 +145,36 @@ def get_report_debouncer() -> ReportDebouncer:
             is_busy=lambda conv_id: registry.is_busy(conv_id),
         )
     return _REPORT_DEBOUNCER
+
+
+# ---------------------------------------------------------------------------
+# 重启对账：补触发进程重启前遗漏的汇报
+# ---------------------------------------------------------------------------
+
+def reconcile_unreported_tasks(db) -> list[int]:
+    """扫描终态但 reported_at IS NULL 的 TaskExecutionLog，返回需补汇报的
+    orchestrator_conversation_id 去重列表（纯查询，调用方负责对每个 conv 调 notify）。
+
+    设计：
+    - 只选 run_status in _SETTLED_STATES（成功/失败/跳过等终态）且 reported_at IS NULL。
+    - 只选 orchestrator_conversation_id 非空的（非总管关联的任务无需汇报）。
+    - 去重后返回 conv id 列表，供调用方（server.py lifespan）做 notify；
+      函数本身不调 notify，保持可单测性（测试只验证"选对了哪些会话"）。
+
+    Returns:
+        需补汇报的 orchestrator_conversation_id 列表（已去重，顺序不定）。
+    """
+    from sqlalchemy import select
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.service.agent.orchestrator.dependency_scheduler import _SETTLED_STATES
+
+    rows = db.scalars(
+        select(TaskExecutionLog.orchestrator_conversation_id).where(
+            TaskExecutionLog.run_status.in_(_SETTLED_STATES),
+            TaskExecutionLog.reported_at.is_(None),
+            TaskExecutionLog.orchestrator_conversation_id.is_not(None),
+        )
+    ).all()
+
+    conv_ids = list({int(r) for r in rows if r is not None})
+    return conv_ids
