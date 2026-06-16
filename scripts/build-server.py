@@ -512,7 +512,9 @@ def run_pyinstaller():
         "scipy",
         "pandas",
         "pip",
-        "wheel",
+        # 不可排除 wheel：setuptools vendored 了 wheel，PyInstaller 的 hook-wheel.py
+        # 会给它建别名，若同时 --exclude-module wheel 会抛
+        # ValueError: Target module "wheel" already imported as ExcludedModule
     )
     for module in exclude_modules:
         pyinstaller_args.extend(["--exclude-module", module])
