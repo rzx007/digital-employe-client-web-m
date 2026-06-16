@@ -6,6 +6,7 @@ export {
   HITL_TOOL_TYPES,
   findLastToolCallIdByName,
   isDestructiveHitlToolName,
+  isHitlAlreadyApprovedError,
 } from "./constants"
 export { toolPartHasFinalOutput } from "./part-utils"
 export {
@@ -44,15 +45,8 @@ export {
   createApprovedAtTimestamp,
   patchApprovedAtOnComposerMessages,
   patchApprovedAtOnMessagesCache,
-  patchGroupClarifyProjectionResolved,
 } from "./approve-optimistic"
 export { collapseDocumentPlanBlocks } from "./collapse-document-plan-blocks"
-export {
-  isGroupClarifyProjectionPending,
-  isLeaderClarifyResolvedInTimeline,
-  resolveGroupActiveHitlFromTimeline,
-  isHitlAlreadyApprovedError,
-} from "./group-clarify-projection"
 export {
   buildClarifyAnswerItems,
   buildClarifyRespondMessage,

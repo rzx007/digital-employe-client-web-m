@@ -2,8 +2,6 @@ import * as React from "react"
 import { IconCirclePlus } from "@tabler/icons-react"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
-import { CreateGroupDialog } from "../../dialogs/create-group-dialog"
-import { GroupDetailDialog } from "../../dialogs/group-detail-dialog"
 import { EmployeeDetailDialog } from "../../../employee/employee-detail-dialog"
 import { RecentConversationRow } from "./recent-conversation-row"
 import { RecentConversationsToolbar } from "./recent-conversations-toolbar"
@@ -19,10 +17,6 @@ export function RecentConversations({
     displayItems,
     searchQuery,
     setSearchQuery,
-    employeeList,
-    isDialogOpen,
-    setIsDialogOpen,
-    handleCreateGroup,
     detailContact,
     detailOpen,
     setDetailOpen,
@@ -45,26 +39,11 @@ export function RecentConversations({
         />
       )
     }
-    if (detailContact.type === "group") {
-      return (
-        <GroupDetailDialog
-          contact={detailContact}
-          open={detailOpen}
-          onOpenChange={setDetailOpen}
-        />
-      )
-    }
     return null
   }
 
   return (
     <>
-      <CreateGroupDialog
-        open={isDialogOpen}
-        onOpenChange={setIsDialogOpen}
-        employees={employeeList}
-        onCreate={handleCreateGroup}
-      />
       {renderDetailDialog()}
       <div
         className={cn(
@@ -78,7 +57,6 @@ export function RecentConversations({
           <RecentConversationsToolbar
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
-            onOpenCreateGroup={() => setIsDialogOpen(true)}
           />
         )}
 

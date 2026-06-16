@@ -44,3 +44,9 @@ export function findLastToolCallIdByName(
 export function isDestructiveHitlToolName(toolName: string): boolean {
   return DESTRUCTIVE_HITL_TOOL_NAMES.has(toolName)
 }
+
+/** 审批接口返回「已审批」错误（重复审批 / 已被其它端处理）时的识别 */
+export function isHitlAlreadyApprovedError(message: string | undefined): boolean {
+  if (!message) return false
+  return message.includes("已审批")
+}

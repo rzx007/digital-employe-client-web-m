@@ -287,15 +287,6 @@ export function DraftChatView({
           }
         }
 
-        // 群聊：后端对群消息会立刻返回派发回执（[DONE]），上面的 sendMessage
-        // 很快结束、消息已落库。此时退出草稿态切到 GroupRoomView（带成员侧栏 /
-        // DAG），右侧立刻显示成员；群时间线后续由 SSE 投影刷新。
-        // 放在 sendMessage 之后切，避免切视图打断发送 / 触发重复发送。
-        if (contact?.type === "group" && selectedContactId && conversationId) {
-          useChatStore
-            .getState()
-            .selectConversation(selectedContactId, String(conversationId))
-        }
       } catch (sendError) {
         toast.error("发送失败", {
           description:

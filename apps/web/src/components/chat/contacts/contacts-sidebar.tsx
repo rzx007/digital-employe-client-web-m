@@ -2,13 +2,12 @@ import * as React from "react"
 import {
   IconChevronLeft,
   IconChevronRight,
-  IconCirclePlus,
   IconRefresh,
   IconSearch,
   IconUser,
 } from "@tabler/icons-react"
 import { useLocalStorageState } from "ahooks"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "@tanstack/react-query"
 import { useShallow } from "zustand/react/shallow"
 import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
@@ -16,16 +15,12 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useContactsQuery } from "@/hooks/use-chat-queries"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { request } from "@/lib/request"
-import { createContactGroup } from "@/api/chat"
-import { chatKeys } from "@/lib/query-keys/chat"
 import { findContactInList, getContactId } from "@/lib/chat/contact-utils"
 import { switchToContact } from "@/lib/chat/conversation-selection"
-import type { AIEmployee, Contact } from "@/types/chat"
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 
 import { ContactItem } from "./contact-item"
-import { CreateGroupDialog } from "../dialogs/create-group-dialog"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 
 const CONTACTS_SIDEBAR_COLLAPSED_STORAGE_KEY = "chat:contacts-sidebar:collapsed"
@@ -40,7 +35,6 @@ export function ContactsSidebar({
       defaultValue: false,
     }
   )
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const { setContacts, selectedContactId, setSelectedContactId } = useChatStore(
     useShallow((state) => ({
       setContacts: state.setContacts,
@@ -49,7 +43,6 @@ export function ContactsSidebar({
     }))
   )
   const { data: apiContacts } = useContactsQuery()
-  const queryClient = useQueryClient()
   const isMobile = useIsMobile()
   const setTargetEmployee = useMonitorStore((s) => s.setTargetEmployee)
 
@@ -101,54 +94,12 @@ export function ContactsSidebar({
     [contacts]
   )
 
-  const handleCreateGroup = async (selectedEmployees: AIEmployee[]) => {
-    if (selectedEmployees.length < 2) {
-      toast.error("群聊至少需要 2 名成员")
-      return
-    }
-    const defaultName = selectedEmployees
-      .map((e) => e.name)
-      .slice(0, 3)
-      .join("、")
-    const name = `${defaultName} 协作群`
-    const employeeIds = selectedEmployees
-      .map((e) => Number(e.id))
-      .filter((id) => !Number.isNaN(id))
-    try {
-      await createContactGroup({ name, employeeIds })
-      await queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
-      toast.success(`群聊「${name}」已创建`)
-      setIsDialogOpen(false)
-    } catch (err) {
-      toast.error("创建群聊失败", {
-        description: err instanceof Error ? err.message : "请稍后重试",
-      })
-    }
-  }
-
-  const groupContacts = React.useMemo(
-    () => contacts.filter((contact) => contact.type === "group"),
-    [contacts]
-  )
-
-  const employeeList = React.useMemo(
-    () =>
-      employeeContacts.map((c) => c.employee).filter(Boolean) as AIEmployee[],
-    [employeeContacts]
-  )
-
   const handleDoubleClickContact = (contactId: string) => {
     switchToContact(contactId)
   }
 
   return (
     <>
-      <CreateGroupDialog
-        open={isDialogOpen}
-        onOpenChange={setIsDialogOpen}
-        employees={employeeList}
-        onCreate={handleCreateGroup}
-      />
       <div
         className={cn(
           "flex h-full flex-col border-r bg-muted/50 transition-all duration-300",
@@ -180,15 +131,6 @@ export function ContactsSidebar({
             >
               <IconSearch className="size-4" />
             </Button>
-            <Button
-              onClick={() => setIsDialogOpen(true)}
-              variant="ghost"
-              size="icon-sm"
-              className="h-8 w-8"
-              title="新建群聊"
-            >
-              <IconCirclePlus className="size-4" />
-            </Button>
           </div>
         </div>
 
@@ -200,19 +142,6 @@ export function ContactsSidebar({
               {curatorContacts.map((contact) => (
                 <ContactItem
                   key={contact.curator?.id}
-                  contact={contact}
-                  isCollapsed={isCollapsed}
-                  onDoubleClick={() =>
-                    handleDoubleClickContact(getContactId(contact) ?? "")
-                  }
-                />
-              ))}
-
-              <div className="my-1 h-px w-7 bg-border" />
-
-              {groupContacts.map((contact) => (
-                <ContactItem
-                  key={contact.group?.id}
                   contact={contact}
                   isCollapsed={isCollapsed}
                   onDoubleClick={() =>
@@ -252,24 +181,6 @@ export function ContactsSidebar({
                 ))}
               </div>
 
-              {groupContacts.length > 0 && (
-                <div className="space-y-0.5">
-                  <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
-                    群聊
-                  </p>
-                  {groupContacts.map((contact) => (
-                    <ContactItem
-                      key={contact.group?.id}
-                      contact={contact}
-                      isCollapsed={isCollapsed}
-                      onDoubleClick={() =>
-                        handleDoubleClickContact(getContactId(contact) ?? "")
-                      }
-                    />
-                  ))}
-                </div>
-              )}
-
               {employeeContacts.length > 0 && (
                 <div className="space-y-0.5">
                   <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
@@ -288,7 +199,7 @@ export function ContactsSidebar({
                 </div>
               )}
 
-              {groupContacts.length === 0 && employeeContacts.length === 0 && (
+              {employeeContacts.length === 0 && (
                 <div className="flex flex-col items-center justify-center px-2 py-10 text-muted-foreground/60">
                   <IconUser className="size-8 stroke-1" />
                   <p className="mt-2 text-xs">暂无联系人</p>

@@ -6,15 +6,8 @@ import {
   MessageContent,
   MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
-import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
-import { Spinner } from "@/components/spinner"
-import { getCopyableMessageText, getTextFromUIMessage } from "@/lib/chat/message-utils"
-import {
-  assistantMessageHasVisibleBody,
-  isGroupTimelineAssistantMessage,
-} from "@/lib/chat/group-composer-ghosts"
+import { getCopyableMessageText } from "@/lib/chat/message-utils"
 import { getDispatchBadge } from "@/lib/chat/assistant-stream-state"
-import { CURATOR_AVATAR_URL } from "@/lib/avatar"
 import { UserAvatar } from "@/components/user-avatar"
 import { useAuthStore } from "@/stores/auth-store"
 import { cn } from "@workspace/ui/lib/utils"
@@ -23,10 +16,7 @@ import {
   type ActiveHitl,
   type HitlPatchOptions,
 } from "@/lib/chat/hitl"
-import {
-  EmployeeContactAvatar,
-  GroupMembersAvatar,
-} from "../contacts/contact-avatars"
+import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import {
   getContactDisplayName,
   getElapsedMsFromMeta,
@@ -88,17 +78,6 @@ function ChatMessageItemInner({
     [message, activeHitl]
   )
 
-  // 群时间线进行中消息（组长/成员逐字流式临时态）：显示「正在生成 N 字…」+ 流式
-  // 光标，给群里的流式输出和单聊/总管一致的观感（轻量视觉对齐，不改后端协议）。
-  const groupStreaming = React.useMemo(() => {
-    if (contact.type !== "group" || message.role !== "assistant") return null
-    const meta = (message as { metadata?: Record<string, unknown> }).metadata
-    if (!meta || meta.streamState !== "streaming") return null
-    const count =
-      typeof meta.streamCharCount === "number" ? meta.streamCharCount : null
-    return { charCount: count }
-  }, [contact.type, message])
-
   // 自动派单的首条 user 消息：后端 extra_meta 标记，邮戳与真人消息区分。
   const dispatchBadge = React.useMemo(() => {
     if (message.role !== "user") return null
@@ -125,32 +104,6 @@ function ChatMessageItemInner({
     return null
   }, [message])
 
-  const groupStreamingAwaitingFirstToken =
-    groupStreaming != null && classifiedBlocks.length === 0
-
-  const groupTimelineFallbackText = React.useMemo(() => {
-    if (contact.type !== "group" || message.role !== "assistant") return null
-    const text = getTextFromUIMessage(deferredMessage).trim()
-    if (text) return text
-    const meta = (message as { metadata?: Record<string, unknown> }).metadata
-    if (meta?.clarify_message_id != null) {
-      return "组长需要确认一些信息，请在下方输入框回答。"
-    }
-    return null
-  }, [contact.type, deferredMessage, message])
-
-  // 群 composer 残留空 assistant（无发言人、无正文）→ 不渲染，避免「群拼图/空气泡」。
-  if (
-    contact.type === "group" &&
-    message.role === "assistant" &&
-    !groupStreaming &&
-    classifiedBlocks.length === 0 &&
-    !isGroupTimelineAssistantMessage(message) &&
-    !assistantMessageHasVisibleBody(message)
-  ) {
-    return null
-  }
-
   const messageBody = (
     <div className="space-y-1.5">
       {classifiedBlocks.length > 0 ? (
@@ -172,26 +125,9 @@ function ChatMessageItemInner({
             }}
           />
         ))
-      ) : groupStreamingAwaitingFirstToken ? (
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Spinner
-            className="size-3.5 shrink-0"
-            style={{ color: "#8B5CF6" }}
-          />
-          <Shimmer className="text-xs">正在生成回复...</Shimmer>
-        </div>
-      ) : groupTimelineFallbackText ? (
-        <MessageResponse>{groupTimelineFallbackText}</MessageResponse>
       ) : (
         <MessageResponse />
       )}
-      {groupStreaming && !groupStreamingAwaitingFirstToken ? (
-        // 流式光标：跟在已生成文本末尾轻微闪烁，传达「还在打字」。
-        <span
-          aria-hidden
-          className="ml-0.5 inline-block h-3.5 w-[2px] -translate-y-px animate-pulse rounded-full bg-primary/70 align-middle"
-        />
-      ) : null}
     </div>
   )
 
@@ -199,53 +135,7 @@ function ChatMessageItemInner({
     <Message from={message.role} className={cn("group mx-auto max-w-4xl")}>
       {message.role === "assistant" && (
         <div className="mb-2 flex items-center gap-2">
-          {contact.type === "group" ? (
-            (() => {
-              // 群时间线：按消息发言人显示头像（组长/某成员），而非群拼图
-              const meta = (
-                message as { metadata?: Record<string, unknown> }
-              ).metadata
-              const senderName =
-                typeof meta?.senderName === "string"
-                  ? meta.senderName
-                  : undefined
-              const senderId =
-                typeof meta?.senderId === "string" ? meta.senderId : undefined
-              const member = contact.group?.participants.find(
-                (p) => p.id === senderId || p.name === senderName
-              )
-              if (member) {
-                return (
-                  <EmployeeContactAvatar
-                    name={member.name}
-                    avatar={member.avatar}
-                    avatarClassName="size-6"
-                    fallbackClassName="text-[10px]"
-                  />
-                )
-              }
-              // 组长（无 sender_id）用总管头像；用户/无法识别则回退群拼图
-              if (senderName === "组长") {
-                return (
-                  <EmployeeContactAvatar
-                    name="组长"
-                    avatar={CURATOR_AVATAR_URL}
-                    avatarClassName="size-6"
-                    fallbackClassName="text-[10px]"
-                  />
-                )
-              }
-              return (
-                <GroupMembersAvatar
-                  participants={contact.group?.participants}
-                  className="size-6"
-                  itemClassName="h-3 w-3"
-                  fallbackClassName="text-[8px]"
-                  placeholderClassName="h-3 w-3"
-                />
-              )
-            })()
-          ) : contact.type === "curator" ? (
+          {contact.type === "curator" ? (
             <EmployeeContactAvatar
               name={contact.curator?.name}
               avatar={contact.curator?.avatar}
@@ -263,17 +153,7 @@ function ChatMessageItemInner({
             />
           )}
           <span className="text-xs text-muted-foreground">
-            {(() => {
-              if (contact.type !== "group") return contactDisplayName
-              const meta = (
-                message as { metadata?: Record<string, unknown> }
-              ).metadata
-              const s =
-                typeof meta?.senderName === "string"
-                  ? meta.senderName
-                  : undefined
-              return s || contactDisplayName
-            })()}
+            {contactDisplayName}
           </span>
         </div>
       )}
@@ -308,17 +188,7 @@ function ChatMessageItemInner({
       ) : (
         <MessageContent className="w-auto">{messageBody}</MessageContent>
       )}
-      {groupStreaming &&
-      !groupStreamingAwaitingFirstToken &&
-      groupStreaming.charCount &&
-      groupStreaming.charCount > 0 ? (
-        <div className="mt-1 flex items-center gap-1.5 text-muted-foreground">
-          <Shimmer className="text-[11px]">
-            {`正在生成 ${groupStreaming.charCount} 字…`}
-          </Shimmer>
-        </div>
-      ) : null}
-      {groupStreaming ? null : message.role === "assistant" ? (
+      {message.role === "assistant" ? (
         <MessageAssistantActions
           copyText={copyText}
           elapsedMs={elapsedMs}

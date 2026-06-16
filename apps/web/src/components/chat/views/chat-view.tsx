@@ -16,10 +16,8 @@ import { useConversationsQuery } from "@/hooks/use-chat-queries"
 import { ensureCuratorConversationAndSelect } from "@/lib/chat/curator-conversation-actions"
 import { useChatStore } from "@/stores/chat-store"
 import type { Contact } from "@/types/chat"
-import { groupDeepLinkConversationViewKey } from "@/lib/chat/group-navigation"
 
 import { CuratorView } from "../curator/curator-view"
-import { GroupRoomView } from "../group/group-room-view"
 import { ConversationChatView } from "./chat-conversation-view"
 import { DraftChatView } from "./chat-draft-view"
 
@@ -93,8 +91,6 @@ export function ChatView({
   const selectedContactId = useChatStore((s) => s.selectedContactId)
   const isDraftConversation = useChatStore((s) => s.isDraftConversation)
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
-  const groupNavigationReturn = useChatStore((s) => s.groupNavigationReturn)
-  const groupDeepLinkMountKey = useChatStore((s) => s.groupDeepLinkMountKey)
   const contact = useChatStore((s) => s.getSelectedContact())
   const { isEnsuring, error: ensureError } = useCuratorEnsureState()
 
@@ -185,28 +181,6 @@ export function ChatView({
       ? `群任务执行 #${deepLinkConversationId}`
       : "新对话")
 
-  // 群协作房间：有有效会话时走房间视图（时间线 + 成员侧栏 + @成员派活）
-  if (
-    contact?.type === "group" &&
-    !isDraftConversation &&
-    hasValidSelection &&
-    selectedConversationId != null
-  ) {
-    return (
-      <GroupRoomView
-        key={String(selectedConversationId)}
-        contact={contact}
-        title={selectedConversation?.title ?? contact.group?.name ?? "群协作"}
-        conversationId={selectedConversationId}
-        onOpenContacts={onOpenContacts}
-        onOpenConversations={onOpenConversations}
-        onNewConversation={onNewConversation}
-        className={cn(className)}
-        {...props}
-      />
-    )
-  }
-
   return isDraftConversation || !hasValidSelection ? (
     <DraftChatView
       contact={contact}
@@ -219,11 +193,7 @@ export function ChatView({
     />
   ) : (
     <ConversationChatView
-      key={groupDeepLinkConversationViewKey(
-        selectedConversationId,
-        groupNavigationReturn,
-        groupDeepLinkMountKey
-      )}
+      key={String(selectedConversationId)}
       contact={contact}
       title={conversationTitle}
       conversationId={selectedConversationId}

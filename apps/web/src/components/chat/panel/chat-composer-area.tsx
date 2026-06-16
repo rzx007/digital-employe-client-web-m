@@ -35,7 +35,6 @@ export function ChatComposerArea({
   onStop,
   onHitlApproved,
   activeHitl = null,
-  groupClarifyInput,
   status,
   submitDisabled,
   placeholder,
@@ -62,7 +61,6 @@ export function ChatComposerArea({
   onStop: () => void
   onHitlApproved?: (options?: HitlPatchOptions) => void
   activeHitl?: ActiveHitl | null
-  groupClarifyInput?: Record<string, unknown>
   status: ChatPromptMessageStatus
   submitDisabled?: boolean
   placeholder?: React.ReactNode
@@ -103,7 +101,6 @@ export function ChatComposerArea({
     | null => {
     if (!activeHitl || activeHitl.kind !== "clarify") return null
     const input = ({
-      ...(groupClarifyInput ?? {}),
       ...(pendingHitl?.input ?? activeHitl.input ?? {}),
     }) as Record<string, unknown>
     return {
@@ -112,7 +109,7 @@ export function ChatComposerArea({
       toolCallId: activeHitl.toolCallId,
       input,
     }
-  }, [activeHitl, groupClarifyInput, pendingHitl])
+  }, [activeHitl, pendingHitl])
 
   const planActive = pendingHitl?.kind === "document-plan"
   const destructiveDeleteActive = pendingHitl?.kind === "destructive-delete"
@@ -160,7 +157,6 @@ export function ChatComposerArea({
           pending={dockPending}
           conversationId={activeHitl.conversationIdOverride ?? conversationId}
           optionalDetails={inputValue}
-          clarifyInputOverride={groupClarifyInput}
           onSubmitted={handleClarifySubmitted}
           className="mx-auto w-full max-w-4xl"
         />

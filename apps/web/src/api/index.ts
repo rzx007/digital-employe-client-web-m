@@ -12,15 +12,6 @@ export {
   deleteEmployee,
 } from "./employee"
 
-// 群聊管理
-export {
-  createGroup,
-  fetchGroups,
-  fetchGroupById,
-  deleteGroup,
-  type CreateGroupParams,
-} from "./group"
-
 // 聊天会话
 export {
   createConversation,

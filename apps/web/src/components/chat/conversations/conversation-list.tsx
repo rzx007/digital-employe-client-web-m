@@ -15,10 +15,7 @@ import {
 import { touchRecentContactById } from "@/lib/chat/touch-recent-contact"
 import { useChatStore } from "@/stores/chat-store"
 import type { Contact } from "@/types/chat"
-import {
-  EmployeeContactAvatar,
-  GroupMembersAvatar,
-} from "../contacts/contact-avatars"
+import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import { ConversationItem } from "./conversation-item"
 
 export function ConversationList({
@@ -54,9 +51,7 @@ export function ConversationList({
       ? contactOverride.curator?.id ?? null
       : contactOverride?.type === "employee"
         ? contactOverride.employee?.id ?? null
-        : contactOverride?.type === "group"
-          ? contactOverride.group?.id ?? null
-          : selectedContactId
+        : selectedContactId
   const activeConversationId =
     selectedConversationIdOverride ?? selectedConversationId
   const { createCuratorConversation, isPending: isCreatingCurator } =
@@ -88,12 +83,7 @@ export function ConversationList({
       <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
         {selectedContact ? (
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            {selectedContact.type === "group" ? (
-              <GroupMembersAvatar
-                participants={selectedContact.group?.participants}
-                className="h-8 w-8"
-              />
-            ) : selectedContact.type === "curator" ? (
+            {selectedContact.type === "curator" ? (
               <EmployeeContactAvatar
                 name={selectedContact.curator?.name}
                 avatar={selectedContact.curator?.avatar}
@@ -110,18 +100,14 @@ export function ConversationList({
             )}
             <div className="flex min-w-0 flex-col">
               <h2 className="truncate text-sm font-medium">
-                {selectedContact.type === "group"
-                  ? selectedContact.group?.name
-                  : selectedContact.type === "curator"
-                    ? selectedContact.curator?.name
-                    : selectedContact.employee?.name}
+                {selectedContact.type === "curator"
+                  ? selectedContact.curator?.name
+                  : selectedContact.employee?.name}
               </h2>
               <p className="truncate text-xs text-muted-foreground">
-                {selectedContact.type === "group"
-                  ? `${selectedContact.group?.participants.length ?? 0} 位成员`
-                  : selectedContact.type === "curator"
-                    ? selectedContact.curator?.role
-                    : selectedContact.employee?.role}
+                {selectedContact.type === "curator"
+                  ? selectedContact.curator?.role
+                  : selectedContact.employee?.role}
               </p>
             </div>
           </div>

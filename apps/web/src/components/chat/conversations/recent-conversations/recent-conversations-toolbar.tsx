@@ -3,7 +3,6 @@ import {
   IconCirclePlus,
   IconSearch,
   IconUserPlus,
-  IconUsers,
 } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -18,13 +17,11 @@ import { getElectronApi } from "@/lib/electron/host"
 interface RecentConversationsToolbarProps {
   searchQuery: string
   onSearchChange: (value: string) => void
-  onOpenCreateGroup: () => void
 }
 
 export function RecentConversationsToolbar({
   searchQuery,
   onSearchChange,
-  onOpenCreateGroup,
 }: RecentConversationsToolbarProps) {
   const navigate = useNavigate()
 
@@ -63,10 +60,6 @@ export function RecentConversationsToolbar({
           >
             <IconUserPlus className="size-4" />
             招聘员工
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={onOpenCreateGroup}>
-            <IconUsers className="size-5" />
-            添加群聊
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

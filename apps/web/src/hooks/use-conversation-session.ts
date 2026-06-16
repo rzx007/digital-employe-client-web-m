@@ -25,7 +25,6 @@ import {
   createApprovedAtTimestamp,
   findPendingHitl,
   patchApprovedAtOnComposerMessages,
-  patchGroupClarifyProjectionResolved,
   patchAssistantWithInterruptParts,
   resolveActiveHitl,
   type HitlPatchOptions,
@@ -61,7 +60,6 @@ import {
   messagesNeedHydrateFromDb,
   patchComposerFromStoredWhenSameTurn,
 } from "@/lib/chat/pick-message-display-source"
-import { stripGhostComposerAssistants } from "@/lib/chat/group-composer-ghosts"
 
 const REFETCH_DEBOUNCE_MS = 800
 
@@ -577,16 +575,6 @@ export function useConversationSession({
       if (approvedMessageId != null) {
         const approvedAt = createApprovedAtTimestamp()
 
-        patchGroupClarifyProjectionResolved(
-          queryClient,
-
-          convKey,
-
-          approvedMessageId,
-
-          approvedAt
-        )
-
         setMessages((prev) =>
           patchApprovedAtOnComposerMessages(
             prev,
@@ -605,7 +593,6 @@ export function useConversationSession({
       scheduleMessagesRefetch()
 
       if (options?.skipLocalResume) {
-        setMessages((prev) => stripGhostComposerAssistants(prev))
         return
       }
 

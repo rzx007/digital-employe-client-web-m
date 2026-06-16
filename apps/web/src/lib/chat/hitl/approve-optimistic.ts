@@ -88,28 +88,6 @@ function cacheRowMatchesApproved(
   return metaClarifyMessageIdMatches(row.metadata, approvedId)
 }
 
-function patchClarifyPartsResolved(
-  parts: unknown[] | undefined
-): unknown[] | undefined {
-  if (!Array.isArray(parts) || parts.length === 0) return parts
-  let changed = false
-  const next = parts.map((raw) => {
-    if (!raw || typeof raw !== "object") return raw
-    const part = raw as Record<string, unknown>
-    if (part.type !== "tool-submit_clarifying_questions") return raw
-    if (part.state === "output-available" || part.state === "output-error") {
-      return raw
-    }
-    changed = true
-    return {
-      ...part,
-      state: "output-available",
-      output: part.output ?? { type: "text", value: "用户已提交澄清" },
-    }
-  })
-  return changed ? next : parts
-}
-
 /** 与 composer 同步，refetch 前 initialMessages 也能带上 approved_at */
 export function patchApprovedAtOnMessagesCache(
   queryClient: QueryClient,
@@ -131,45 +109,6 @@ export function patchApprovedAtOnMessagesCache(
       if (meta.approved_at === row.metadata?.approved_at) return row
       changed = true
       return { ...row, metadata: meta }
-    })
-    return changed ? next : old
-  })
-}
-
-/** 群投影卡片：approved_at + 将澄清 tool part 标为已答，防止 refetch 前重复弹 Dock */
-export function patchGroupClarifyProjectionResolved(
-  queryClient: QueryClient,
-  conversationId: string,
-  leaderMessageId: string | number,
-  approvedAt: string
-) {
-  patchApprovedAtOnMessagesCache(
-    queryClient,
-    conversationId,
-    leaderMessageId,
-    approvedAt
-  )
-  const key = chatKeys.messages(conversationId)
-  const id = parseDbMessageId(leaderMessageId) ?? String(leaderMessageId)
-  queryClient.setQueryData<Message[]>(key, (old) => {
-    if (!old?.length) return old
-    let changed = false
-    const next = old.map((row) => {
-      if (!cacheRowMatchesApproved(row, id)) return row
-      const meta = { ...(row.metadata ?? {}), approved_at: approvedAt }
-      const parts = patchClarifyPartsResolved(row.messageParts as unknown[])
-      if (
-        meta.approved_at === row.metadata?.approved_at &&
-        parts === row.messageParts
-      ) {
-        return row
-      }
-      changed = true
-      return {
-        ...row,
-        metadata: meta,
-        ...(parts !== row.messageParts ? { messageParts: parts } : {}),
-      }
     })
     return changed ? next : old
   })

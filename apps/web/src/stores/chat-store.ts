@@ -3,7 +3,6 @@ import { persist } from "zustand/middleware"
 
 import { findContactInList } from "@/lib/chat/contact-utils"
 import type { CuratorNavigationReturn } from "@/lib/chat/curator-navigation"
-import type { GroupNavigationReturn } from "@/lib/chat/group-navigation"
 import type { Contact } from "@/types/chat"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
@@ -29,10 +28,6 @@ interface ChatStore {
   isConversationListOpen: boolean
   /** 从总管/工作台跳转到员工对话后，用于「返回总管」 */
   curatorNavigationReturn: CuratorNavigationReturn | null
-  /** 从群协作跳到员工执行会话后，用于「返回群聊」 */
-  groupNavigationReturn: GroupNavigationReturn | null
-  /** 群深链每次进入递增，迫使员工会话视图 remount、丢弃 useChat 残留 streaming */
-  groupDeepLinkMountKey: number
   setContacts: (contacts: Contact[]) => void
   setSelectedContactId: (id: string | null) => void
   setSelectedConversationId: (id: string | number | null) => void
@@ -45,9 +40,6 @@ interface ChatStore {
   closeConversationList: () => void
   setCuratorNavigationReturn: (ctx: CuratorNavigationReturn | null) => void
   clearCuratorNavigationReturn: () => void
-  setGroupNavigationReturn: (ctx: GroupNavigationReturn | null) => void
-  clearGroupNavigationReturn: () => void
-  bumpGroupDeepLinkMount: () => void
   startDraftConversation: (contactId: string) => void
   selectConversation: (contactId: string, conversationId: string) => void
   switchToContact: (contactId: string) => void
@@ -68,8 +60,6 @@ export const useChatStore = create<ChatStore>()(
       isCompactMode: false,
       isConversationListOpen: false,
       curatorNavigationReturn: null,
-      groupNavigationReturn: null,
-      groupDeepLinkMountKey: 0,
       setContacts: (contacts) => set({ contacts }),
       setSelectedContactId: (id) =>
         set({
@@ -107,13 +97,6 @@ export const useChatStore = create<ChatStore>()(
         set({ curatorNavigationReturn: ctx }),
       clearCuratorNavigationReturn: () =>
         set({ curatorNavigationReturn: null }),
-      setGroupNavigationReturn: (ctx: GroupNavigationReturn | null) =>
-        set({ groupNavigationReturn: ctx }),
-      clearGroupNavigationReturn: () => set({ groupNavigationReturn: null }),
-      bumpGroupDeepLinkMount: () =>
-        set((state) => ({
-          groupDeepLinkMountKey: state.groupDeepLinkMountKey + 1,
-        })),
       startDraftConversation: (contactId) =>
         set((state) => ({
           selectedContactId: contactId,
@@ -148,10 +131,9 @@ export const useChatStore = create<ChatStore>()(
         selectedContactId: state.selectedContactId,
         selectedConversationId: state.selectedConversationId,
         workbenchCuratorConversationId: state.workbenchCuratorConversationId,
-        // 群/总管深链到员工执行会话时，会话被后端过滤掉、不在 1:1 列表里，
-        // 全靠这两个上下文把选中态合法化（见 employee-deep-link.ts）。
+        // 总管深链到员工执行会话时，会话被后端过滤掉、不在 1:1 列表里，
+        // 全靠这个上下文把选中态合法化（见 employee-deep-link.ts）。
         // 不持久化的话，重载后选中 id 还在、上下文却丢了，会话再也定位不到。
-        groupNavigationReturn: state.groupNavigationReturn,
         curatorNavigationReturn: state.curatorNavigationReturn,
         activeTab: state.activeTab,
       }),

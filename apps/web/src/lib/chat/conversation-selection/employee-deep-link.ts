@@ -3,8 +3,7 @@ import { useChatStore } from "@/stores/chat-store"
 import { conversationExistsInList } from "./pick"
 
 /**
- * 从总管 / 群协作深链到员工执行会话时，该会话可能不在员工 1:1 列表里
- * （后端 _exclude_group_internal_convs 会过滤群任务会话）。
+ * 从总管深链到员工执行会话时，该会话可能不在员工 1:1 列表里。
  */
 export function getEmployeeDeepLinkConversationId(
   selectedContactId: string | null,
@@ -15,15 +14,6 @@ export function getEmployeeDeepLinkConversationId(
   }
   const state = useChatStore.getState()
   const convKey = String(selectedConversationId)
-
-  const group = state.groupNavigationReturn
-  if (
-    group &&
-    group.employeeId === selectedContactId &&
-    String(group.employeeConversationId) === convKey
-  ) {
-    return selectedConversationId
-  }
 
   const curator = state.curatorNavigationReturn
   if (

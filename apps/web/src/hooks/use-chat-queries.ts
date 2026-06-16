@@ -5,7 +5,6 @@ import {
   updateEmployee,
   type CreateEmployeeParams,
 } from "@/api/employee"
-import { fetchGroupById } from "@/api/group"
 import {
   createConversation,
   deleteAllConversationsForContact,
@@ -302,15 +301,6 @@ export function useEmployeeDetailQuery(id: string | null) {
   return useQuery({
     queryKey: chatKeys.employee(id ?? ""),
     queryFn: ({ signal }) => fetchEmployeeById(Number(id!), { signal }),
-    enabled: Boolean(id),
-    select: (res) => res.data,
-  })
-}
-
-export function useGroupDetailQuery(id: string | null) {
-  return useQuery({
-    queryKey: chatKeys.group(id ?? ""),
-    queryFn: ({ signal }) => fetchGroupById(Number(id!), { signal }),
     enabled: Boolean(id),
     select: (res) => res.data,
   })

@@ -21,7 +21,6 @@ import type { SlashCommandItem } from "@/components/lexical-editor/slash-command
 import type { MentionCandidate } from "@/components/lexical-editor/mention-plugin"
 import { ChatPanelHeader } from "./chat-panel-header"
 import { CuratorReturnBar } from "../curator/curator-return-bar"
-import { GroupReturnBar } from "../group/group-return-bar"
 import type { PendingMessage } from "@/hooks/use-pending-messages"
 import {
   isAssistantQueued,
@@ -172,7 +171,6 @@ export function ChatPanel({
   storedAssistantStreamState,
   hideStreamingIndicator = false,
   activeHitl = null,
-  groupClarifyInput,
   onHitlApproved,
   onDraftSuggestionSelect,
   hideHeader = false,
@@ -207,8 +205,6 @@ export function ChatPanel({
   /** 群深链执行会话：只读 DB 快照，不显示底部「正在生成…」 */
   hideStreamingIndicator?: boolean
   activeHitl?: ActiveHitl | null
-  /** 群澄清：从时间线 message_parts 补全 tool input */
-  groupClarifyInput?: Record<string, unknown>
   onHitlApproved?: (options?: HitlPatchOptions) => void
   /** 总管草稿：引导语填入输入框 */
   onDraftSuggestionSelect?: (text: string) => void
@@ -255,14 +251,6 @@ export function ChatPanel({
   }, [contact])
 
   const mentionCandidates = React.useMemo<MentionCandidate[]>(() => {
-    if (contact?.type === "group") {
-      return (contact.group?.participants ?? []).map((p) => ({
-        id: p.id,
-        name: p.name,
-        avatar: p.avatar,
-        role: p.role,
-      }))
-    }
     if (contact?.type === "curator") {
       const { contacts } = useChatStore.getState()
       return contacts
@@ -303,7 +291,6 @@ export function ChatPanel({
             />
           )}
           <CuratorReturnBar />
-          <GroupReturnBar />
           <>
             <Conversation className="min-h-0 flex-1 pt-4">
               <ConversationContent className="px-4 pb-4">
@@ -399,7 +386,6 @@ export function ChatPanel({
                 onStop={() => onStop?.()}
                 onHitlApproved={onHitlApproved}
                 activeHitl={activeHitl}
-                groupClarifyInput={groupClarifyInput}
                 status={status}
                 submitDisabled={isSubmitDisabled}
                 placeholder="请输入任务，然后交给我, 键入 / 指定调用技能"
@@ -415,8 +401,6 @@ export function ChatPanel({
                 onPendingMoveDown={onPendingMoveDown}
                 error={error}
                 pendingQueueClassName="mx-auto w-[98%]"
-                showContextBudget={contact?.type !== "group"}
-                showVoiceInput={contact?.type !== "group"}
               />
             </div>
           </>

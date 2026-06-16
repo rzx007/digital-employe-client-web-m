@@ -1,8 +1,7 @@
-import type { Employee, Group as ApiGroup } from "@/api/types"
+import type { Employee } from "@/api/types"
 import { CURATOR_AVATAR_URL } from "@/lib/avatar"
 import { getServerBaseUrl } from "@/lib/request"
 import { fetchEmployees } from "@/api/employee"
-import { createGroup as createGroupApi } from "@/api/group"
 import {
   approveHitl as approveHitlApi,
   cancelConversationStream as cancelConversationStreamApi,
@@ -122,17 +121,6 @@ export async function fetchContacts(signal?: AbortSignal): Promise<Contact[]> {
   }))
 
   return [...curatorContacts, ...employeeContacts]
-}
-
-export async function createContactGroup(params: {
-  name: string
-  employeeIds: number[]
-}): Promise<ApiGroup> {
-  const res = await createGroupApi({
-    name: params.name,
-    employee_ids: params.employeeIds,
-  })
-  return res.data ?? ({} as ApiGroup)
 }
 
 export async function fetchConversationsByContactId(

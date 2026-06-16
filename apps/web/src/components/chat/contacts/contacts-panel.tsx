@@ -1,20 +1,15 @@
 import * as React from "react"
 import { useNavigate } from "@tanstack/react-router"
-import { useQueryClient } from "@tanstack/react-query"
 import { IconSearch, IconUser, IconUserPlus } from "@tabler/icons-react"
-import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
-import type { AIEmployee, Contact } from "@/types/chat"
+import type { Contact } from "@/types/chat"
 import { switchToContact } from "@/lib/chat/conversation-selection"
 import { getContactId } from "@/lib/chat/contact-utils"
 import { useChatStore } from "@/stores/chat-store"
-import { createContactGroup } from "@/api/chat"
-import { chatKeys } from "@/lib/query-keys/chat"
 import { ContactItem } from "./contact-item"
-import { CreateGroupDialog } from "../dialogs/create-group-dialog"
 import { getElectronApi } from "@/lib/electron/host"
 
 function countEmployeeStatus(contacts: Contact[]) {
@@ -84,8 +79,6 @@ export function ContactsPanel({
   ...props
 }: React.ComponentProps<"div">) {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState("")
 
   const contacts = useChatStore((s) => s.contacts)
@@ -94,45 +87,10 @@ export function ContactsPanel({
     () => contacts.filter((c) => c.type === "curator"),
     [contacts]
   )
-  const groupContacts = React.useMemo(
-    () => contacts.filter((c) => c.type === "group"),
-    [contacts]
-  )
   const employeeContacts = React.useMemo(
     () => contacts.filter((c) => c.type === "employee"),
     [contacts]
   )
-
-  const employeeList = React.useMemo(
-    () =>
-      employeeContacts.map((c) => c.employee).filter(Boolean) as AIEmployee[],
-    [employeeContacts]
-  )
-
-  const handleCreateGroup = async (selectedEmployees: AIEmployee[]) => {
-    if (selectedEmployees.length < 2) {
-      toast.error("群聊至少需要 2 名成员")
-      return
-    }
-    const defaultName = selectedEmployees
-      .map((e) => e.name)
-      .slice(0, 3)
-      .join("、")
-    const name = `${defaultName} 协作群`
-    const employeeIds = selectedEmployees
-      .map((e) => Number(e.id))
-      .filter((id) => !Number.isNaN(id))
-    try {
-      await createContactGroup({ name, employeeIds })
-      await queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
-      toast.success(`群聊「${name}」已创建`)
-      setIsDialogOpen(false)
-    } catch (err) {
-      toast.error("创建群聊失败", {
-        description: err instanceof Error ? err.message : "请稍后重试",
-      })
-    }
-  }
 
   const handleDoubleClickContact = (contactId: string) => {
     switchToContact(contactId)
@@ -146,14 +104,6 @@ export function ContactsPanel({
         return c.curator?.name.toLowerCase().includes(q)
       }),
     [curatorContacts, q]
-  )
-  const filteredGroupContacts = React.useMemo(
-    () =>
-      groupContacts.filter((c) => {
-        if (!q) return true
-        return c.group?.name.toLowerCase().includes(q)
-      }),
-    [groupContacts, q]
   )
   const filteredEmployeeContacts = React.useMemo(
     () =>
@@ -171,12 +121,6 @@ export function ContactsPanel({
 
   return (
     <>
-      <CreateGroupDialog
-        open={isDialogOpen}
-        onOpenChange={setIsDialogOpen}
-        employees={employeeList}
-        onCreate={handleCreateGroup}
-      />
       <div
         className={cn(
           "flex h-full min-h-0 w-full flex-col border-r bg-muted/50 transition-all duration-300",
@@ -230,25 +174,6 @@ export function ContactsPanel({
               ))}
             </div>
 
-            {filteredGroupContacts.length > 0 && (
-              <div className="space-y-0.5">
-                <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
-                  群聊
-                </p>
-                {filteredGroupContacts.map((contact) => (
-                  <ContactItem
-                    key={contact.group?.id}
-                    contact={contact}
-                    isCollapsed={false}
-                    clickAction="select"
-                    onDoubleClick={() =>
-                      handleDoubleClickContact(getContactId(contact) ?? "")
-                    }
-                  />
-                ))}
-              </div>
-            )}
-
             {filteredEmployeeContacts.length > 0 && (
               <div className="space-y-0.5" data-tour-id="contact-employee">
                 <EmployeeContactsSectionHeader
@@ -271,7 +196,6 @@ export function ContactsPanel({
             )}
 
             {filteredCuratorContacts.length === 0 &&
-              filteredGroupContacts.length === 0 &&
               filteredEmployeeContacts.length === 0 && (
                 <div className="flex flex-col items-center justify-center px-2 py-10 text-muted-foreground/60">
                   <IconUser className="size-8 stroke-1" />

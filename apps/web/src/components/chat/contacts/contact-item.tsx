@@ -28,7 +28,6 @@ import { useChatStore } from "@/stores/chat-store"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import { deleteEmployee } from "@/api/employee"
-import { deleteGroup } from "@/api/group"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import {
   clearSelectedContact,
@@ -39,9 +38,8 @@ import { deleteRecentContact } from "@/api/recent-contacts"
 import { mapContactToTarget } from "@/lib/chat/contact-target"
 import { getContactId } from "@/lib/chat/contact-utils"
 
-import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
+import { EmployeeContactAvatar } from "./contact-avatars"
 import { EmployeeDetailDialog } from "@/components/employee/employee-detail-dialog"
-import { GroupDetailDialog } from "../dialogs/group-detail-dialog"
 
 interface ContactItemProps extends React.ComponentProps<"div"> {
   contact: Contact
@@ -73,9 +71,7 @@ export function ContactItem({
   const rawId =
     contact.type === "curator"
       ? contact.curator?.id
-      : contact.type === "employee"
-        ? contact.employee?.id
-        : contact.group?.id
+      : contact.employee?.id
   const isSelected = selectedContactId === contactId
 
   const [alertOpen, setAlertOpen] = React.useState(false)
@@ -83,11 +79,7 @@ export function ContactItem({
   const queryClient = useQueryClient()
 
   const displayName =
-    contact.type === "group"
-      ? contact.group?.name
-      : contact.type === "curator"
-        ? contact.curator?.name
-        : contact.employee?.name
+    contact.type === "curator" ? contact.curator?.name : contact.employee?.name
 
   const handleClick = () => {
     if (!contactId) return
@@ -143,53 +135,10 @@ export function ContactItem({
       } catch {
         toast.error("删除失败，请稍后重试")
       }
-    } else if (contact.type === "group" && rawId) {
-      try {
-        await deleteGroup(rawId)
-        const target = mapContactToTarget(contact)
-        if (target) {
-          void deleteRecentContact(target.target_type, target.target_id, {
-            workspaceId,
-          })
-          void queryClient.invalidateQueries({
-            queryKey: chatKeys.recentContacts(workspaceId),
-          })
-        }
-        setContacts(
-          contacts.filter(
-            (c) => !(c.type === "group" && c.group?.id === rawId)
-          )
-        )
-        await queryClient.invalidateQueries({
-          queryKey: chatKeys.contacts(),
-        })
-        queryClient.removeQueries({
-          queryKey: chatKeys.conversations(contactId),
-        })
-        focusAfterContactRemoved(contactId)
-        toast.success(`已删除「${displayName}」`)
-      } catch {
-        toast.error("删除失败，请稍后重试")
-      }
     }
   }
 
   const renderAvatar = () => {
-    if (contact.type === "group") {
-      return (
-        <GroupMembersAvatar
-          participants={contact.group?.participants}
-          className={cn(
-            isCollapsed ? "h-8 w-8" : "size-9 gap-1",
-            !isCollapsed && "item-[img]:h-[18px] item-[img]:w-[18px]"
-          )}
-          itemClassName={!isCollapsed ? "h-[18px] w-[18px]" : undefined}
-          fallbackClassName={!isCollapsed ? "text-[10px]" : undefined}
-          placeholderClassName={!isCollapsed ? "h-[18px] w-[18px]" : undefined}
-        />
-      )
-    }
-
     const data = contact.type === "curator" ? contact.curator : contact.employee
 
     return (
@@ -205,17 +154,6 @@ export function ContactItem({
   }
 
   const renderText = () => {
-    if (contact.type === "group") {
-      return (
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate font-medium">{contact.group?.name}</span>
-          <span className="truncate text-muted-foreground">
-            {contact.group?.participants.length} 位成员
-          </span>
-        </div>
-      )
-    }
-
     const data = contact.type === "curator" ? contact.curator : contact.employee
 
     return (
@@ -257,15 +195,6 @@ export function ContactItem({
     if (contact.type === "employee") {
       return (
         <EmployeeDetailDialog
-          contact={contact}
-          open={detailOpen}
-          onOpenChange={setDetailOpen}
-        />
-      )
-    }
-    if (contact.type === "group") {
-      return (
-        <GroupDetailDialog
           contact={contact}
           open={detailOpen}
           onOpenChange={setDetailOpen}

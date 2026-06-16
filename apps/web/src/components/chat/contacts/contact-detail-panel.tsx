@@ -22,7 +22,7 @@ import {
   getContactDisplayName,
   type ChatViewContact,
 } from "../shared/chat-view-shared"
-import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
+import { EmployeeContactAvatar } from "./contact-avatars"
 import { ScheduleCalendar } from "@/components/schedule-monitor/sections/schedule-calendar"
 import { TaskStatsCards } from "@/components/schedule-monitor/sections/task-stats-cards"
 import { ExecutionDetail } from "@/components/schedule-monitor/sections/execution-detail"
@@ -123,52 +123,33 @@ function ContactProfileCard({
   const displayName = getContactDisplayName(contact)
 
   const role =
-    contact.type === "group"
-      ? `${contact.group?.participants.length ?? 0} 位成员`
-      : contact.type === "curator"
-        ? contact.curator?.role
-        : contact.employee?.role
+    contact.type === "curator" ? contact.curator?.role : contact.employee?.role
 
   const status =
     contact.type === "curator"
       ? contact.curator?.status
-      : contact.type === "employee"
-        ? contact.employee?.status
-        : undefined
+      : contact.employee?.status
 
   const avatarData =
-    contact.type === "curator"
-      ? contact.curator
-      : contact.type === "employee"
-        ? contact.employee
-        : undefined
+    contact.type === "curator" ? contact.curator : contact.employee
 
   const specialty =
     contact.type === "curator"
       ? contact.curator?.specialty
-      : contact.type === "employee"
-        ? contact.employee?.specialty
-        : undefined
+      : contact.employee?.specialty
 
   return (
     <div className="border bg-background p-6">
       <div className="flex items-start gap-4">
-        {contact.type === "group" ? (
-          <GroupMembersAvatar
-            participants={contact.group?.participants ?? []}
-            className="size-16"
-          />
-        ) : (
-          <EmployeeContactAvatar
-            name={avatarData?.name}
-            avatar={avatarData?.avatar}
-            status={status}
-            showStatus
-            className="size-16"
-            avatarClassName="size-16"
-            statusClassName="h-3 w-3"
-          />
-        )}
+        <EmployeeContactAvatar
+          name={avatarData?.name}
+          avatar={avatarData?.avatar}
+          status={status}
+          showStatus
+          className="size-16"
+          avatarClassName="size-16"
+          statusClassName="h-3 w-3"
+        />
 
         <div className="flex flex-1 flex-col gap-1">
           <h2 className="text-lg font-semibold">{displayName}</h2>

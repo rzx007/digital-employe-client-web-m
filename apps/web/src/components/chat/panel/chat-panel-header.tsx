@@ -45,10 +45,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { Separator } from "@workspace/ui/components/separator"
 import type { ChatViewContact } from "../shared/chat-view-shared"
 
-import {
-  EmployeeContactAvatar,
-  GroupMembersAvatar,
-} from "../contacts/contact-avatars"
+import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 
 interface ChatPanelHeaderProps {
   title: string
@@ -135,12 +132,7 @@ export function ChatPanelHeader({
           )}
           {contact && (
             <>
-              {contact.type === "group" ? (
-                <GroupMembersAvatar
-                  participants={contact.group?.participants}
-                  className="h-8 w-8"
-                />
-              ) : contact.type === "curator" ? (
+              {contact.type === "curator" ? (
                 <EmployeeContactAvatar
                   name={contact.curator?.name}
                   avatar={contact.curator?.avatar}
