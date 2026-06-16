@@ -28,9 +28,10 @@ index-strategy = "unsafe-best-match"
 environments = ["python_version == '3.11'"]
 
 # --no-build-isolation 时 uv 需先将 build 工具装入 venv 再构建 workspace 成员
+# hatchling 做可编辑安装(build_editable)还需 editables，单装 hatchling 不会带上
 [tool.uv.extra-build-dependencies]
-digital-employee-activation-core = ["hatchling"]
-digital-employee-license-issuer = ["hatchling"]
+digital-employee-activation-core = ["hatchling", "editables"]
+digital-employee-license-issuer = ["hatchling", "editables"]
 digital-employee-client = ["setuptools>=61.0"]
 
 [tool.uv.sources]
