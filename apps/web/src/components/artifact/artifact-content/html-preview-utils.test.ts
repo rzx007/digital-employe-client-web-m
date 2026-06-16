@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import { HTML_PREVIEW_SANDBOX, wrapHtmlForPreview } from "./html-preview-utils"
+import {
+  HTML_PREVIEW_SANDBOX,
+  rewriteExternalFetchToProxy,
+  wrapHtmlForPreview,
+} from "./html-preview-utils"
 
 describe("HTML_PREVIEW_SANDBOX", () => {
   // 根因：srcDoc iframe 带 allow-same-origin 时，HTML 内的相对引用（如 dashboard_part1.html）
@@ -64,5 +68,58 @@ describe("wrapHtmlForPreview", () => {
     expect(wrapped.indexOf('<base href="about:blank"')).toBeLessThan(
       wrapped.indexOf("part1.html")
     )
+  })
+})
+
+describe("rewriteExternalFetchToProxy", () => {
+  const BASE = "http://localhost:34567"
+
+  it("rewrites a double-quoted external fetch to the backend proxy", () => {
+    const out = rewriteExternalFetchToProxy(
+      `fetch("https://uapis.cn/api?type=weibo")`,
+      BASE
+    )
+    expect(out).toBe(
+      `fetch("http://localhost:34567/proxy?url=${encodeURIComponent(
+        "https://uapis.cn/api?type=weibo"
+      )}")`
+    )
+  })
+
+  it("handles single quotes and backticks (no interpolation)", () => {
+    expect(rewriteExternalFetchToProxy(`fetch('http://x.com/a')`, BASE)).toContain(
+      "/proxy?url=" + encodeURIComponent("http://x.com/a")
+    )
+    expect(
+      rewriteExternalFetchToProxy("fetch(`https://x.com/b`)", BASE)
+    ).toContain("/proxy?url=" + encodeURIComponent("https://x.com/b"))
+  })
+
+  it("rewrites multiple fetches in one document", () => {
+    const html =
+      `fetch("https://a.com/1"); later fetch('https://b.com/2')`
+    const out = rewriteExternalFetchToProxy(html, BASE)
+    expect(out).toContain(encodeURIComponent("https://a.com/1"))
+    expect(out).toContain(encodeURIComponent("https://b.com/2"))
+  })
+
+  it("does NOT rewrite template literals with ${} interpolation", () => {
+    const html = "fetch(`https://x.com/${id}/data`)"
+    expect(rewriteExternalFetchToProxy(html, BASE)).toBe(html)
+  })
+
+  it("does NOT rewrite relative or non-http fetches", () => {
+    const html = `fetch("/local/api"); fetch("data:text/plain,hi")`
+    expect(rewriteExternalFetchToProxy(html, BASE)).toBe(html)
+  })
+
+  it("does NOT double-proxy requests already pointing at the backend", () => {
+    const html = `fetch("http://localhost:34567/proxy?url=x")`
+    expect(rewriteExternalFetchToProxy(html, BASE)).toBe(html)
+  })
+
+  it("returns html unchanged when no proxy base is provided", () => {
+    const html = `fetch("https://x.com/a")`
+    expect(rewriteExternalFetchToProxy(html, "")).toBe(html)
   })
 })

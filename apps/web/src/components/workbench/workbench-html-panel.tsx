@@ -9,8 +9,10 @@ import {
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { useResourceContentQuery } from "@/hooks/use-chat-queries"
+import { getRequestBaseUrl } from "@/lib/request"
 import {
   HTML_PREVIEW_SANDBOX,
+  rewriteExternalFetchToProxy,
   wrapHtmlForPreview,
 } from "@/components/artifact/artifact-content/html-preview-utils"
 import type { HtmlArtifactRef } from "@/types/workbench"
@@ -40,10 +42,13 @@ export function WorkbenchHtmlPanel({
   const [isFullscreen, setIsFullscreen] = React.useState(false)
 
   const content = data?.content
-  const srcDoc = React.useMemo(
-    () => (content ? wrapHtmlForPreview(content) : null),
-    [content]
-  )
+  const srcDoc = React.useMemo(() => {
+    if (!content) return null
+    // 先把外部 fetch 透明改写为走本地后端 /proxy（沙箱 iframe 直连第三方接口会被 CORS 拦死），
+    // 再包中性 base 防递归
+    const proxied = rewriteExternalFetchToProxy(content, getRequestBaseUrl())
+    return wrapHtmlForPreview(proxied)
+  }, [content])
 
   const missing = isError || (!isLoading && !content)
 

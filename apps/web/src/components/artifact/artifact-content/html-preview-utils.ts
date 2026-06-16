@@ -22,6 +22,43 @@ export const HTML_PREVIEW_SANDBOX =
 const NEUTRAL_BASE_TAG = '<base href="about:blank" target="_blank">'
 
 /**
+ * 把看板 HTML 里对外部接口的 `fetch("http(s)://...")` 透明改写为走本地后端代理
+ * `fetch("<proxyBaseUrl>/proxy?url=<原URL>")`。
+ *
+ * 背景：沙箱 iframe（Origin: null 不透明源）直接 fetch 不支持 CORS 的第三方接口会被浏览器
+ * 拦死，主进程改 CORS 头对不透明源无效。改走服务端代理（服务端到服务端无 CORS）是唯一可靠解。
+ *
+ * 边界（YAGNI，故意只覆盖字面量）：
+ * - 仅改写 `fetch("http…")` / `fetch('http…')` / `fetch(`http…`)` 这类**字面量绝对 URL**。
+ * - 含 `${…}` 插值的模板串、拼接变量、XMLHttpRequest 等不改写（无法安全静态识别）。
+ * - 已指向本地后端（proxyBaseUrl 同源）的 URL 不改写，避免代理套娃。
+ */
+export function rewriteExternalFetchToProxy(
+  html: string,
+  proxyBaseUrl: string,
+): string {
+  if (!proxyBaseUrl) return html
+  const base = proxyBaseUrl.replace(/\/$/, "")
+  let backendOrigin = ""
+  try {
+    backendOrigin = new URL(base).origin
+  } catch {
+    backendOrigin = ""
+  }
+
+  // 捕获 fetch( 引号 URL 引号 ）；URL 不含引号与 ${（排除插值模板）
+  const pattern =
+    /fetch\(\s*(["'`])(https?:\/\/(?:(?!\1|\$\{).)*?)\1/g
+
+  return html.replace(pattern, (match, quote: string, url: string) => {
+    // 已是本地后端的请求不代理（含已经走 /proxy 的）
+    if (backendOrigin && url.startsWith(backendOrigin)) return match
+    const proxied = `${base}/proxy?url=${encodeURIComponent(url)}`
+    return `fetch(${quote}${proxied}${quote}`
+  })
+}
+
+/**
  * 将 HTML 包裹/改写为可安全在 iframe srcDoc 中渲染的文档：
  * - 片段 → 包成完整文档并注入中性 base。
  * - 完整文档（总管生成的看板多为此类）→ 也必须注入/前置中性 base，否则其中的相对引用

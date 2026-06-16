@@ -15,7 +15,6 @@ import {
 import { initAutoUpdater } from "../features/update/auto-updater"
 import { createMacApplicationMenu } from "../main/application-menu"
 import { registerPetdexOnProtocol } from "./petdex-protocol"
-import { registerPreviewCorsGuard } from "../features/preview-cors/preview-cors-guard"
 import { createAppContext } from "./app-context"
 import { IpcRegistry } from "./ipc/registry"
 import { WindowManager } from "./services/window-manager"
@@ -45,7 +44,6 @@ export async function bootstrapApp(options: BootstrapOptions): Promise<void> {
   initSettingsStore()
 
   registerPetdexOnProtocol(protocol)
-  registerPreviewCorsGuard()
 
   const ctx = createAppContext(options.mainDirname, {
     devServerUrl: options.devServerUrl,
