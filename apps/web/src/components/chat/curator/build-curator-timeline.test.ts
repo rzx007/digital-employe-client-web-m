@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest"
 import type { UIMessage } from "ai"
-import type { TaskExecution } from "@/types/schedule-monitor"
 import type { Message as ChatMessage } from "@/types/chat"
 import { buildCuratorTimeline } from "./build-curator-timeline"
 
@@ -25,15 +24,6 @@ function msg(
   } as unknown as UIMessage
 }
 
-function exec(id: number, endedAtMs: number): TaskExecution {
-  return {
-    id,
-    run_status: "success",
-    started_at: iso(endedAtMs - 1000),
-    ended_at: iso(endedAtMs),
-  } as unknown as TaskExecution
-}
-
 function summaryStored(execId: number, tsMs: number): ChatMessage {
   return {
     id: `sum-${execId}`,
@@ -47,75 +37,64 @@ function summaryStored(execId: number, tsMs: number): ChatMessage {
 }
 
 function orderKeys(entries: ReturnType<typeof buildCuratorTimeline>): string[] {
-  return entries.map((e) =>
-    e.kind === "message" ? `msg:${e.data.id}` : `exec:${e.data.id}`
-  )
+  return entries.map((e) => `msg:${e.data.id}`)
 }
 
-describe("buildCuratorTimeline 尾部乐观消息排序", () => {
-  it("摘要消息时间晚于 ended_at 时，乐观用户消息仍排在任务卡片之后", () => {
-    // 历史 assistant（有真实 created_at，早于任务）+ 尾部乐观 user（无 created_at→ts=0）
-    const displayMessages = [
-      msg("a1", "assistant", T - 10_000),
-      msg("u-optimistic", "user"),
-    ]
-    const executions = [exec(1, T)] // 任务 ended_at = T
-    // 摘要消息 created_at = T + 5000（晚于 ended_at）→ 卡片 ts 被抬到 T+6000
+describe("buildCuratorTimeline 执行不入时间线", () => {
+  it("success 执行不出现在时间线（只含 msg:* 条目）", () => {
+    const displayMessages = [msg("a1", "assistant", T - 10_000)]
     const stored = [summaryStored(1, T + 5_000)]
 
-    const order = orderKeys(
-      buildCuratorTimeline(displayMessages, executions, stored)
-    )
-    const iExec = order.indexOf("exec:1")
-    const iUser = order.indexOf("msg:u-optimistic")
-    expect(iExec).toBeGreaterThanOrEqual(0)
-    expect(iUser).toBeGreaterThan(iExec) // 用户消息必须在任务卡片之后
+    const order = orderKeys(buildCuratorTimeline(displayMessages, stored))
+    expect(order).not.toContain("exec:1")
+    expect(order).toEqual(["msg:a1"])
   })
 
-  it("无摘要消息时也排在任务卡片之后（不回归）", () => {
+  it("running/queued 执行不出现在时间线", () => {
+    const displayMessages = [msg("u1", "user", T - 5_000)]
+    const order = orderKeys(buildCuratorTimeline(displayMessages, []))
+    expect(order).not.toContain("exec:7")
+    expect(order).toEqual(["msg:u1"])
+  })
+
+  it("只含 msg:* 条目，不含任何 exec:* 条目（混合消息场景）", () => {
     const displayMessages = [
       msg("a1", "assistant", T - 10_000),
-      msg("u-optimistic", "user"),
+      msg("u1", "user", T - 5_000),
     ]
-    const executions = [exec(1, T)]
-    const order = orderKeys(
-      buildCuratorTimeline(displayMessages, executions, [])
-    )
-    expect(order.indexOf("msg:u-optimistic")).toBeGreaterThan(
-      order.indexOf("exec:1")
-    )
+    const stored = [summaryStored(1, T + 5_000)]
+
+    const entries = buildCuratorTimeline(displayMessages, stored)
+    for (const entry of entries) {
+      expect(entry.kind).toBe("message")
+    }
+    const keys = orderKeys(entries)
+    expect(keys).toEqual(["msg:a1", "msg:u1"])
   })
 })
 
-describe("buildCuratorTimeline 运行中执行入线", () => {
-  function activeExec(id: number, status: string, startedAtMs: number) {
-    return {
-      id,
-      run_status: status,
-      started_at: iso(startedAtMs),
-      ended_at: null,
-    } as unknown as TaskExecution
-  }
+describe("buildCuratorTimeline 尾部乐观消息排序", () => {
+  it("有时间戳历史消息后的乐观 user 消息排在其后", () => {
+    const displayMessages = [
+      msg("a1", "assistant", T - 10_000),
+      msg("u-optimistic", "user"),
+    ]
 
-  it("运行中/排队执行按 started_at 进入时间线，排在派活消息之后", () => {
-    const displayMessages = [msg("u1", "user", T - 5_000)]
-    for (const status of ["running", "queued", "pending"]) {
-      const order = orderKeys(
-        buildCuratorTimeline(displayMessages, [activeExec(7, status, T)], [])
-      )
-      expect(order).toContain("exec:7")
-      expect(order.indexOf("exec:7")).toBeGreaterThan(order.indexOf("msg:u1"))
-    }
+    const order = orderKeys(buildCuratorTimeline(displayMessages, []))
+    const iA1 = order.indexOf("msg:a1")
+    const iUser = order.indexOf("msg:u-optimistic")
+    expect(iA1).toBeGreaterThanOrEqual(0)
+    expect(iUser).toBeGreaterThan(iA1)
   })
 
-  it("既非终态也非活动态（stuck）不入时间线", () => {
-    const order = orderKeys(
-      buildCuratorTimeline(
-        [msg("u1", "user", T - 5_000)],
-        [activeExec(8, "stuck", T)],
-        []
-      )
+  it("无 storedMessages 时乐观消息仍排在有时间戳消息之后", () => {
+    const displayMessages = [
+      msg("a1", "assistant", T - 10_000),
+      msg("u-optimistic", "user"),
+    ]
+    const order = orderKeys(buildCuratorTimeline(displayMessages, []))
+    expect(order.indexOf("msg:u-optimistic")).toBeGreaterThan(
+      order.indexOf("msg:a1")
     )
-    expect(order).not.toContain("exec:8")
   })
 })

@@ -39,7 +39,7 @@ import {
 import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { useSyncConversationSubtasks } from "@/hooks/use-conversation-subtasks"
 import { useChatStore } from "@/stores/chat-store"
-import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
+
 import { cancelConversationStream } from "@/api/chat"
 import { prepareVoiceMeta } from "@/lib/voice/prepare-voice-meta"
 import { getVoiceMeta } from "@/lib/voice/voice-meta"
@@ -63,7 +63,7 @@ import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
 import { CuratorChatHeader } from "../contacts/curator-chat-header"
 import { CuratorCompactToolbar } from "./curator-compact-toolbar"
 import { getCuratorLayout } from "./curator-layout"
-import { ExecutionReportCard } from "../message-blocks/execution-report-card"
+
 import { ChatComposerArea } from "../panel/chat-composer-area"
 import { ChatStreamingIndicator } from "../panel/chat-streaming-indicator"
 import { CuratorRotatingPlaceholder } from "./curator-rotating-placeholder"
@@ -742,17 +742,10 @@ export function CuratorView({
         role: c.employee!.role,
       }))
   }, [contacts])
-  const { data: executions = [] } = useCuratorTaskExecutions(
-    curatorConversationId
-  )
-
-  // 摘要消息已在 UI 层隐藏，执行卡片始终用 full 模式（带状态印章、输出预览、星级、跳转）
-  const executionSummaryIds = useMemo(() => new Set<number>(), [])
-
   /* ── Build unified timeline ── */
   const timeline: TimelineEntry[] = useMemo(
-    () => buildCuratorTimeline(displayMessages, executions, storedMessages),
-    [displayMessages, executions, storedMessages]
+    () => buildCuratorTimeline(displayMessages, storedMessages),
+    [displayMessages, storedMessages]
   )
 
   const contactDisplayName = resolvedContact?.curator?.name ?? "总管助手"
@@ -840,65 +833,6 @@ export function CuratorView({
                 )}
 
                 {timeline.map((entry) => {
-                  if (entry.kind === "execution") {
-                    const exec = entry.data
-                    const hasSummary = executionSummaryIds.has(exec.id)
-                    const employeeContact = contacts.find(
-                      (c) =>
-                        c.type === "employee" &&
-                        c.employee?.id === String(exec.employee_id)
-                    )
-
-                    if (hasSummary) {
-                      return (
-                        <div
-                          key={`exec-${exec.id}`}
-                          className={cn("w-full", layout.message)}
-                        >
-                          <ExecutionReportCard
-                            compact
-                            execution={exec}
-                            curatorContactId={curatorContactId}
-                            curatorConversationId={curatorConversationId}
-                          />
-                        </div>
-                      )
-                    }
-
-                    return (
-                      <Message
-                        key={`exec-${exec.id}`}
-                        from="assistant"
-                        className={layout.message}
-                      >
-                        <div className="mb-2 flex items-center gap-2">
-                          <EmployeeContactAvatar
-                            name={
-                              exec.employee_name || String(exec.employee_id)
-                            }
-                            avatar={employeeContact?.employee?.avatar}
-                            avatarClassName="size-6"
-                            fallbackClassName="text-[10px]"
-                          />
-                          <span className="text-xs text-muted-foreground">
-                            {exec.employee_name || String(exec.employee_id)}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground/60">
-                            {formatTime(entry.ts)}
-                          </span>
-                        </div>
-                        <MessageContent className="w-auto">
-                          <ExecutionReportCard
-                            execution={exec}
-                            curatorContactId={curatorContactId}
-                            curatorConversationId={curatorConversationId}
-                          />
-                        </MessageContent>
-                      </Message>
-                    )
-                  }
-
-                  /* message */
                   const message = entry.data
                   const isLastAssistantMessage =
                     message.role === "assistant" &&
