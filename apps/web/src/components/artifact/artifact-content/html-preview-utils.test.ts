@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  buildProxyInterceptorScript,
   HTML_PREVIEW_SANDBOX,
-  rewriteExternalFetchToProxy,
   wrapHtmlForPreview,
 } from "./html-preview-utils"
 
@@ -71,55 +71,70 @@ describe("wrapHtmlForPreview", () => {
   })
 })
 
-describe("rewriteExternalFetchToProxy", () => {
+describe("buildProxyInterceptorScript / wrapHtmlForPreview proxy injection", () => {
   const BASE = "http://localhost:34567"
 
-  it("rewrites a double-quoted external fetch to the backend proxy", () => {
-    const out = rewriteExternalFetchToProxy(
-      `fetch("https://uapis.cn/api?type=weibo")`,
-      BASE
+  it("wrapHtmlForPreview injects the interceptor script into <head> when a base is given", () => {
+    const out = wrapHtmlForPreview("<div>hi</div>", BASE)
+    expect(out).toContain("window.fetch")
+    expect(out).toContain("/proxy?url=")
+    // 脚本须在 base 之后、body 之前（早于看板自身脚本）
+    expect(out.indexOf("window.fetch")).toBeGreaterThan(
+      out.indexOf('<base href="about:blank"')
     )
-    expect(out).toBe(
-      `fetch("http://localhost:34567/proxy?url=${encodeURIComponent(
-        "https://uapis.cn/api?type=weibo"
-      )}")`
+    expect(out.indexOf("window.fetch")).toBeLessThan(out.indexOf("<body"))
+  })
+
+  it("wrapHtmlForPreview does NOT inject interceptor when no base (default)", () => {
+    const out = wrapHtmlForPreview("<div>hi</div>")
+    expect(out).not.toContain("window.fetch")
+  })
+
+  it("injects into a FULL document's <head> before its own scripts", () => {
+    const full =
+      '<!DOCTYPE html><html><head></head><body><script>fetch(API+t)</script></body></html>'
+    const out = wrapHtmlForPreview(full, BASE)
+    expect(out.indexOf("window.fetch")).toBeLessThan(out.indexOf("fetch(API+t)"))
+  })
+
+  // 运行时行为：在受控沙箱里执行注入脚本，验证 patch 后的 fetch 把外部 URL 改走 /proxy，
+  // 且相对/本地后端/非 http 的 URL 不动。覆盖 fetch(API_BASE + type) 这类拼接写法。
+  it("patched fetch routes ANY external url through proxy regardless of how it was built", () => {
+    const script = buildProxyInterceptorScript(BASE)
+    // 取出 <script>…</script> 内的 JS 主体
+    const body = script.replace(/^<script>/, "").replace(/<\/script>$/, "")
+
+    const calls: string[] = []
+    const fakeWindow: Record<string, unknown> = {
+      fetch: (u: unknown) => {
+        calls.push(String(u))
+        return Promise.resolve()
+      },
+      URL,
+      encodeURIComponent,
+      // 无 XMLHttpRequest，patch 时跳过 XHR 分支
+    }
+    // 用 with(window) 还原 iframe 内「全局即 window」语义
+    new Function("window", `with(window){${body}}`)(fakeWindow)
+
+    const patched = fakeWindow.fetch as (u: string) => unknown
+    // 拼接构造的外部 URL（这正是 fetch(API_BASE + type) 的最终形态）
+    patched("https://uapis.cn/api/v1/misc/hotboard?type=bilibili")
+    patched("/local/api") // 相对，不动
+    patched("http://localhost:34567/proxy?url=x") // 本地后端，不套娃
+
+    expect(calls[0]).toBe(
+      `http://localhost:34567/proxy?url=${encodeURIComponent(
+        "https://uapis.cn/api/v1/misc/hotboard?type=bilibili"
+      )}`
     )
+    expect(calls[1]).toBe("/local/api")
+    expect(calls[2]).toBe("http://localhost:34567/proxy?url=x")
   })
 
-  it("handles single quotes and backticks (no interpolation)", () => {
-    expect(rewriteExternalFetchToProxy(`fetch('http://x.com/a')`, BASE)).toContain(
-      "/proxy?url=" + encodeURIComponent("http://x.com/a")
-    )
-    expect(
-      rewriteExternalFetchToProxy("fetch(`https://x.com/b`)", BASE)
-    ).toContain("/proxy?url=" + encodeURIComponent("https://x.com/b"))
-  })
-
-  it("rewrites multiple fetches in one document", () => {
-    const html =
-      `fetch("https://a.com/1"); later fetch('https://b.com/2')`
-    const out = rewriteExternalFetchToProxy(html, BASE)
-    expect(out).toContain(encodeURIComponent("https://a.com/1"))
-    expect(out).toContain(encodeURIComponent("https://b.com/2"))
-  })
-
-  it("does NOT rewrite template literals with ${} interpolation", () => {
-    const html = "fetch(`https://x.com/${id}/data`)"
-    expect(rewriteExternalFetchToProxy(html, BASE)).toBe(html)
-  })
-
-  it("does NOT rewrite relative or non-http fetches", () => {
-    const html = `fetch("/local/api"); fetch("data:text/plain,hi")`
-    expect(rewriteExternalFetchToProxy(html, BASE)).toBe(html)
-  })
-
-  it("does NOT double-proxy requests already pointing at the backend", () => {
-    const html = `fetch("http://localhost:34567/proxy?url=x")`
-    expect(rewriteExternalFetchToProxy(html, BASE)).toBe(html)
-  })
-
-  it("returns html unchanged when no proxy base is provided", () => {
-    const html = `fetch("https://x.com/a")`
-    expect(rewriteExternalFetchToProxy(html, "")).toBe(html)
+  it("returns empty interceptor (no-op) script body when base is empty", () => {
+    // wrapHtmlForPreview 空 base 时根本不注入；buildProxyInterceptorScript 空 base 时脚本自身 early-return
+    const script = buildProxyInterceptorScript("")
+    expect(script).toContain("if(!B)return")
   })
 })
