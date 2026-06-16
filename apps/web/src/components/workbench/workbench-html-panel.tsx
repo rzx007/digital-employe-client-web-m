@@ -12,7 +12,6 @@ import { useResourceContentQuery } from "@/hooks/use-chat-queries"
 import { getRequestBaseUrl } from "@/lib/request"
 import {
   HTML_PREVIEW_SANDBOX,
-  rewriteExternalFetchToProxy,
   wrapHtmlForPreview,
 } from "@/components/artifact/artifact-content/html-preview-utils"
 import type { HtmlArtifactRef } from "@/types/workbench"
@@ -44,10 +43,8 @@ export function WorkbenchHtmlPanel({
   const content = data?.content
   const srcDoc = React.useMemo(() => {
     if (!content) return null
-    // 先把外部 fetch 透明改写为走本地后端 /proxy（沙箱 iframe 直连第三方接口会被 CORS 拦死），
-    // 再包中性 base 防递归
-    const proxied = rewriteExternalFetchToProxy(content, getRequestBaseUrl())
-    return wrapHtmlForPreview(proxied)
+    // 注入中性 base（防相对引用递归）+ 运行时代理拦截脚本（外部 fetch/XHR 走后端 /proxy 绕 CORS）
+    return wrapHtmlForPreview(content, getRequestBaseUrl())
   }, [content])
 
   const missing = isError || (!isLoading && !content)
