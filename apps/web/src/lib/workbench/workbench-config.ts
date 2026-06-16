@@ -60,9 +60,9 @@ export function saveWorkbenchConfig(config: WorkbenchConfig): void {
 export function initializeWorkbenchConfig(employeeId: string): WorkbenchConfig {
   const existing = loadWorkbenchConfig(employeeId)
   if (existing) {
-    existing.lastModified = Date.now()
-    saveWorkbenchConfig(existing)
-    return existing
+    const refreshed = { ...existing, lastModified: Date.now() }
+    saveWorkbenchConfig(refreshed)
+    return refreshed
   }
   const config: WorkbenchConfig = {
     employeeId,
