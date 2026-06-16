@@ -22,6 +22,22 @@ from src.models.config_kv import ConfigKv
 logger = logging.getLogger(__name__)
 
 
+# (key, 已知旧值, 新值)。bootstrap 时只覆盖「值精确等于旧值」的行，
+# 不动 None / 空串 / 用户自定义值，保护私有部署。每条目幂等。
+LEGACY_KV_MIGRATIONS: list[tuple[str, str, str]] = [
+    (
+        "FEISHU_APP_ID",
+        "cli_a97bcb15167b1bb4",
+        "cli_a9d1e24afb38dcc4",
+    ),
+    (
+        "FEISHU_APP_SECRET",
+        "xvccgjHzEdB8dV28c8R4KeI6jTjWsPWL",
+        "X26JhpNSmz7Ekb8qGkk4Pymeg64Jpcdm",
+    ),
+]
+
+
 class ConfigKvService:
     @staticmethod
     def _refresh_settings_cache() -> None:
@@ -163,7 +179,27 @@ class ConfigKvService:
             inserted,
             path,
         )
-        return inserted
+
+        migrated = ConfigKvService._apply_legacy_migrations(db)
+        return inserted + migrated
+
+    @staticmethod
+    def _apply_legacy_migrations(db: Session) -> int:
+        """把 KV 表里值「精确等于已知旧值」的行更新为新值；其它情况不动。
+        为已部署用户处理「config-kv.init.json 改了但 bootstrap 是 insert-only」的迁移缺口。
+        """
+        migrated = 0
+        for key, stale_value, new_value in LEGACY_KV_MIGRATIONS:
+            row = db.scalar(select(ConfigKv).where(ConfigKv.config_key == key))
+            if row is None or row.config_value != stale_value:
+                continue
+            row.config_value = new_value
+            migrated += 1
+            logger.info("Legacy KV migrated: %s -> ***", key)
+        if migrated > 0:
+            db.commit()
+            ConfigKvService._refresh_settings_cache()
+        return migrated
 
     @staticmethod
     def sync_model_provider_from_remote(
