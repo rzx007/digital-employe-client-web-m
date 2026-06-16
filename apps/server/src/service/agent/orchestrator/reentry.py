@@ -275,6 +275,26 @@ def trigger_incremental_report(
     for log in new_logs:
         log.reported_at = now
     db.commit()
+
+    # 关键:增量汇报是「服务端发起」的总管流,前端已打开的会话不会主动接住。
+    # 推一个事件让前端 refetch 总管会话消息 → 看到 streaming 占位 → resume/attach
+    # 到这条流 → 实时显示(否则只有下次手动查看历史才出现)。
+    try:
+        from src.service.workspace_events import WorkspaceEventBus
+
+        WorkspaceEventBus.push(
+            workspace_id,
+            {
+                "type": "orchestrator_turn_started",
+                "orchestrator_conversation_id": orchestrator_conversation_id,
+            },
+        )
+    except Exception:
+        logger.warning(
+            "push orchestrator_turn_started failed conv=%s",
+            orchestrator_conversation_id,
+            exc_info=True,
+        )
     return True
 
 

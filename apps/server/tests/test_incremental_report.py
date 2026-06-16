@@ -126,6 +126,60 @@ def test_incremental_report_idempotent_no_restream(
     assert len(started) == 1  # 未新增起流
 
 
+def test_incremental_report_pushes_turn_started_event(
+    db_session, workspace: Workspace, monkeypatch
+):
+    """成功起流后必须推 orchestrator_turn_started 事件,让前端 refetch→resume→实时显示。"""
+    from src.service.agent.orchestrator import reentry
+    from src.service.agent_stream_queue import StartResult
+    import src.service.workspace_events as we
+
+    pushes: list[tuple[int, dict]] = []
+    monkeypatch.setattr(
+        we.WorkspaceEventBus, "push", lambda wid, ev: pushes.append((wid, ev))
+    )
+
+    emp = add_employee(db_session, workspace.id, name="调研助手")
+    conv = _make_curator_conversation(db_session, workspace.id)
+    _make_success_log(
+        db_session, workspace.id, emp.id, conv.id, task_name="调研A", content="A 的结论"
+    )
+    _patch_stream(reentry, monkeypatch, db_session, StartResult.STARTED)
+
+    assert reentry.trigger_incremental_report(db_session, conv.id, workspace.id) is True
+    turn_events = [
+        ev for _, ev in pushes if ev.get("type") == "orchestrator_turn_started"
+    ]
+    assert len(turn_events) == 1
+    assert turn_events[0]["orchestrator_conversation_id"] == conv.id
+
+
+def test_incremental_report_rejected_no_turn_started_event(
+    db_session, workspace: Workspace, monkeypatch
+):
+    """占线被拒(REJECTED)时不该推 orchestrator_turn_started(没起成流)。"""
+    from src.service.agent.orchestrator import reentry
+    from src.service.agent_stream_queue import StartResult
+    import src.service.workspace_events as we
+
+    pushes: list[tuple[int, dict]] = []
+    monkeypatch.setattr(
+        we.WorkspaceEventBus, "push", lambda wid, ev: pushes.append((wid, ev))
+    )
+
+    emp = add_employee(db_session, workspace.id, name="调研助手")
+    conv = _make_curator_conversation(db_session, workspace.id)
+    _make_success_log(
+        db_session, workspace.id, emp.id, conv.id, task_name="调研A", content="A 的结论"
+    )
+    _patch_stream(reentry, monkeypatch, db_session, StartResult.REJECTED)
+
+    assert reentry.trigger_incremental_report(db_session, conv.id, workspace.id) is False
+    assert not [
+        ev for _, ev in pushes if ev.get("type") == "orchestrator_turn_started"
+    ]
+
+
 def test_incremental_report_rejected_keeps_reported_null(
     db_session, workspace: Workspace, monkeypatch
 ):

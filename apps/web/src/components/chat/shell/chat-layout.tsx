@@ -119,6 +119,17 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
           })
         }
         break
+      case "orchestrator_turn_started":
+        // 服务端发起的总管增量汇报流：refetch 总管会话消息，让 use-conversation-session
+        // 看到 streaming 占位后 resume/attach 到该流、实时显示。
+        if (event.orchestrator_conversation_id) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.messages(
+              String(event.orchestrator_conversation_id)
+            ),
+          })
+        }
+        break
       case "orchestration_plan_generated":
         queryClient.invalidateQueries({
           queryKey: [...chatKeys.all, "orchestration-plans"],

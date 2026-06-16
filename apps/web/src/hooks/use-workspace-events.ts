@@ -30,6 +30,12 @@ export type WorkspaceEvent =
       summary_message_id?: number | null
     }
   | {
+      // 服务端发起的总管增量汇报 turn 已起流：前端据此 refetch 总管会话消息,
+      // 看到 streaming 占位后 resume/attach 到该流,实时显示(否则只在查看历史时出现)。
+      type: "orchestrator_turn_started"
+      orchestrator_conversation_id: number
+    }
+  | {
       type: "orchestration_plan_generated"
       plan_id: number
       summary?: string
