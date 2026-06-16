@@ -110,6 +110,18 @@ export default defineConfig(({ command, mode }: ConfigEnv) => {
         "@emotion/styled",
         "docx-preview",
         "xlsx",
+        // mermaid(被 streamdown 打包、且 streamdown 在 exclude 里)内部 `import dayjs from 'dayjs'`，
+        // dayjs 是 CJS/UMD；显式预打包它，提供带 default 的 ESM 互操作，修
+        // "dayjs ... does not provide an export named 'default'"。
+        "dayjs",
+      ],
+      // streamdown 内部 lazy import 代码高亮 chunk；预构建后 hash 易与 HMR/缓存不同步
+      exclude: [
+        "streamdown",
+        "@streamdown/code",
+        "@streamdown/cjk",
+        "@streamdown/math",
+        "@streamdown/mermaid",
       ],
     },
     server: {
