@@ -75,21 +75,35 @@
   1. 收集该会话所有「待汇报且未汇报」的任务。
   2. 若总管会话**流槽空闲**(`request_start` 可成功)→ 起一轮总管 turn,brief =
      「**自上次以来的新结果**」+「**整盘任务快照**」(见 B3);把这些任务标记为已汇报。
-  3. 若总管**正忙**(在流式)→ 不触发;待汇报缓冲保留。**在总管流结束的 hook 上**
-     检查缓冲,若有未汇报任务→补触发(合并)。
+  3. 若总管**正忙**(在流式)→ 不触发;待汇报缓冲保留,等总管这一轮流结束补触发(合并)。
 - **末尾整合**不再特殊:最后一个任务完成的那次去抖唤醒即自然收尾。
 
-**幂等**:在 `TaskExecutionLog` 加 `reported_at`(timestamp,可空)持久标记;唤醒 brief 只
-含 `reported_at is null` 的终态任务,纳入后写 `reported_at`。重启不丢。**替代**原
-`plan.status=="summarized"` 一次性门闩(该门闩改为不再阻止增量;或保留为"最终整合已做"
-的弱标记,见下)。
+**"总管流结束补触发"需新增钩子(实现者务必按此,不要复用员工专用回调)**:当前没有现成
+可挂的"总管流结束"钩子 —— `_finalize_task_stream` 里的 `registry.on_task_finalized` 只在该
+会话存在 TaskExecutionLog(running/queued)行时触发(stream_registry.py 约 L2323 `if not log:
+return`),是**员工任务专用**,总管自身的 reentry/user_chat 流不会触发它。需在
+`_run_agent_background` 的 finally 块(总管流真正收尾处)判断该流 conversation 是某
+`orchestrator_conversation_id`,经 `call_soon_threadsafe` 通知去抖器"该会话流已空闲→检查
+待汇报缓冲,有未汇报终态任务则补触发一轮"。
 
-**与原 all_settled 触发的协调**:
-- 移除 `dependency_scheduler` 中 all_settled → `trigger_orchestrator_reentry` 的**一次性**调用,
-  改为 per-task 通知去抖器。
-- **安全网**:若某次去抖唤醒因总管长期占线/异常未能消费,缓冲与 `reported_at` 保证下次
-  总管流结束或下个完成事件到来时仍会补汇报;不会重复(reported_at 幂等)、不会丢(持久缓冲
-  可由 DB `reported_at is null` 重建)。
+**幂等(per-task,持久)**:
+- `TaskExecutionLog` 新增 `reported_at`(timestamp,可空)。唤醒 brief 只含 `reported_at IS NULL`
+  的终态任务,纳入本轮后即写 `reported_at`。重启不丢。
+- **迁移必做**:`reported_at` 是新列,须在 `init_db.py` 的 `ensure_column` 序列补一行
+  (`ensure_column("task_execution_logs", "reported_at", "reported_at TIMESTAMP")`,与现有同表
+  加列同模式)。**遗漏会导致升级后写 `reported_at` 报 OperationalError、B2 上线即崩。**
+
+**与原 all_settled 一次性触发的协调(明确,无歧义)**:
+- **移除** `dependency_scheduler` 中 all_settled → `trigger_orchestrator_reentry` 的一次性调用,
+  改为 per-task 完成时通知去抖器。
+- **唤醒幂等只靠 per-task `reported_at`**;**移除** `trigger_orchestrator_reentry` 里
+  `plan.status=="summarized"` 的早返回门闩(plan 级一次性门闩,与增量模型冲突)。`plan.status`
+  字段保留:可在"整盘全部任务 `reported_at` 非空"时置终态值供外部只读展示,但**它不再 gate
+  任何唤醒**。
+- **不双重整合**:每轮唤醒只纳入 `reported_at IS NULL` 的任务、纳入即标记;全部标记后再无可
+  纳入任务 → 不再唤醒。
+- **不丢最终整合**:最后一个完成事件触发的去抖唤醒即最终整合;若那次因总管占线未消费,靠
+  上面"总管流结束钩子"补触发;若进程中途重启,见 §7"重启对账"。
 
 **成本**:去抖天然合并近乎同时的完成;10 个任务陆续完成→只起少数几次唤醒而非 10 次。
 可选上限 `MIN_WAKE_INTERVAL` 防极端高频。
@@ -141,7 +155,10 @@
 
 - **并发**:完成事件在 `_DB_WRITE_EXECUTOR` 单写线程,去抖/唤醒在主事件循环 —— 跨线程用
   `call_soon_threadsafe`(沿用 reentry 现有做法);去抖器状态需线程安全。
-- **总管占线导致汇报积压**:靠"流结束 hook 补触发"+ `reported_at is null` 重建,保证不丢。
+- **总管占线导致汇报积压**:靠"总管流结束钩子补触发"+ `reported_at IS NULL` 保证不丢。
+- **重启对账(去抖器是内存态)**:去抖 timer + 待汇报缓冲是纯内存,进程重启会丢。持久性靠
+  DB:启动时(或下一个完成事件/总管流结束钩子触发时)扫描"终态且 `reported_at IS NULL`"的
+  任务,重建待汇报集并按去抖逻辑补一次唤醒。须在 startup 钩子里加这条对账扫描。
 - **唤醒频率/成本**:去抖 + 可选最小间隔;大计划仍线性但已大幅收敛。
 - **快照体量**:限定会话 + 截断,防上下文膨胀。
 - **前端面板与既有右面板槽位冲突**:纳入 rightPanel 互斥统一管理。
