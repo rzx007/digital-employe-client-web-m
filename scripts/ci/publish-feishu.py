@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import ssl
 import sys
 import time
 import uuid
@@ -33,6 +34,55 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+
+def _make_ssl_context() -> ssl.SSLContext | None:
+    """企业网关常做 TLS 中间人，Python 默认 certifi 不含其自签根证书。
+    优先使用 FEISHU_CA_BUNDLE / REQUESTS_CA_BUNDLE / SSL_CERT_FILE 指定的 CA；
+    都没有则尝试加载 Mac 系统钥匙串里的根证书；最后再回退 ssl.create_default_context。
+    """
+    ca = (
+        os.environ.get("FEISHU_CA_BUNDLE")
+        or os.environ.get("REQUESTS_CA_BUNDLE")
+        or os.environ.get("SSL_CERT_FILE")
+    )
+    if ca and Path(ca).is_file():
+        return ssl.create_default_context(cafile=ca)
+    if sys.platform == "darwin":
+        ctx = ssl.create_default_context()
+        try:
+            import truststore  # type: ignore
+            truststore.inject_into_ssl()
+            return ssl.create_default_context()
+        except ImportError:
+            pass
+        # 没有 truststore：用 Security 框架导出钥匙串根证书
+        try:
+            import subprocess
+            pem = subprocess.run(
+                ["security", "find-certificate", "-a", "-p",
+                 "/System/Library/Keychains/SystemRootCertificates.keychain"],
+                capture_output=True, text=True, check=True,
+            ).stdout
+            extra = subprocess.run(
+                ["security", "find-certificate", "-a", "-p",
+                 "/Library/Keychains/System.keychain"],
+                capture_output=True, text=True,
+            ).stdout
+            ctx.load_verify_locations(cadata=pem + (extra or ""))
+            return ctx
+        except Exception:
+            return None
+    return None
+
+
+_SSL_CTX = _make_ssl_context()
+
+
+def _urlopen(req: Request, **kwargs: Any):
+    if _SSL_CTX is not None and "context" not in kwargs:
+        kwargs["context"] = _SSL_CTX
+    return urlopen(req, **kwargs)
 
 FEISHU_API = "https://open.feishu.cn/open-apis"
 DEFAULT_WIKI_NODE = "Zc3XwAhsMiJPUEk7IimcHMfKnoc"
@@ -79,7 +129,7 @@ def json_request(
         data = json.dumps(body).encode("utf-8")
         headers["Content-Type"] = "application/json; charset=utf-8"
     req = Request(url, data=data, headers=headers, method=method)
-    with urlopen(req, timeout=120) as resp:
+    with _urlopen(req, timeout=120) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     if payload.get("code") != 0:
         raise RuntimeError(f"Feishu API error: {payload.get('msg')} ({payload})")
@@ -122,7 +172,7 @@ def multipart_upload(
         },
         method="POST",
     )
-    with urlopen(req, timeout=600) as resp:
+    with _urlopen(req, timeout=600) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     if payload.get("code") != 0:
         raise RuntimeError(f"Feishu upload error: {payload.get('msg')} ({payload})")
@@ -137,7 +187,7 @@ def get_tenant_token(app_id: str, app_secret: str) -> str:
         headers={"Content-Type": "application/json; charset=utf-8"},
         method="POST",
     )
-    with urlopen(req, timeout=60) as resp:
+    with _urlopen(req, timeout=60) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     if payload.get("code") != 0:
         raise RuntimeError(f"获取 tenant_access_token 失败: {payload.get('msg')}")
@@ -155,7 +205,7 @@ def resolve_bitable_app_token(token: str, wiki_node: str) -> str:
     qs = urlencode({"token": wiki_node})
     url = f"{FEISHU_API}/wiki/v2/spaces/get_node?{qs}"
     req = Request(url, headers={"Authorization": f"Bearer {token}"}, method="GET")
-    with urlopen(req, timeout=60) as resp:
+    with _urlopen(req, timeout=60) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     if payload.get("code") != 0:
         raise RuntimeError(f"解析多维表格 app_token 失败: {payload.get('msg')}")
@@ -175,7 +225,7 @@ def list_fields(token: str, app_token: str, table_id: str) -> dict[str, str]:
         "?page_size=100"
     )
     req = Request(url, headers={"Authorization": f"Bearer {token}"}, method="GET")
-    with urlopen(req, timeout=60) as resp:
+    with _urlopen(req, timeout=60) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     if payload.get("code") != 0:
         raise RuntimeError(f"列出字段失败: {payload.get('msg')}")
