@@ -55,15 +55,22 @@
 - `↻ 不达标` → 调**新工具 `redispatch_task(task_id, rework_note)`**，并在正文透明告知：
   「我判定 X 不达标（理由：…），已打回重做（第 N 次）」。
 
-**`redispatch_task` 机制（复用 `start_task_as_conversation`）**：
+**`redispatch_task` 机制（在**同一员工对话**里续聊返工，**不**新建会话）**：
 1. 校验 `rework_count < MAX_REWORK`（默认 2），否则**硬拒**并要求升级（见 §4.3）。
-2. 将该 `task_id` 上**当前那条已终态 log**（即触发本轮总管评审、已被 `reported_at` 盖戳的那条；按 `id desc` 取最新）标记为 `superseded`（打回，仅供展示，不再计入"待汇报"）。
+2. 取该 `task_id` 上**当前那条已终态 log**（即触发本轮总管评审、已被 `reported_at` 盖戳的那条；按 `id desc` 取最新），记下它的 `conversation_id`（=要续聊的员工对话），并把该 log 标记为 `superseded`（打回，仅供展示，不再计入"待汇报"）。
    - 注：`trigger_incremental_report` 按"所有 `reported_at IS NULL` 的终态 log"选取（非 latest-per-task），`collect_plan_execution_results` 才是 latest-per-task。`redispatch_task` 运行时该 log 必已被 `reported_at` 盖戳（总管只能经评审 turn 看到它），故转 `superseded` 不会误改未汇报行、也不会被重新选取。
-3. 调 `start_task_as_conversation(db, task, employee, ..., rework_briefing=rework_note)`——
-   建新会话 + **新** `TaskExecutionLog`（同 `task_id`），把 `rework_note`（不达标的点）追加进派发正文（复用现有 `prereq_briefing` 追加位的同款机制）。
+3. **在该 `conversation_id` 的现有员工对话里追加一轮返工 turn**（不新建 Conversation）：
+   - 向该会话 `_append_message` 一条 user 消息 = `rework_note`（不达标的点 + 改进要求）；再加 assistant 流式占位。
+   - 建**新** `TaskExecutionLog`（同 `task_id`、**复用同一 `conversation_id`**）记录本轮返工执行。
+   - 重建该会话的员工 agent 并起流（LangGraph `thread_id = conversation_id`，**天然带上轮 checkpoint 记忆**——员工看得到自己的初稿推理 + 产出 + 本次返工要求，在原稿上改）。
+   - 共享桌按 `task.id` 不变，员工续聊时上轮产物仍在桌上可 `ls/read`。
 4. `EmployeeTask.rework_count += 1`。
 
-**返工"循环"天然复用现有增量引擎**：新执行完成 → 触发新一轮增量汇报 → 总管再审，`reported_at` 幂等管每一轮。不新造循环，就是 `审 → 重派 → 完成 → 再审`。
+这是**新写的一条派发路径**（不能直接复用 `start_task_as_conversation`，它硬编码新建会话）——可抽取 `start_task_as_conversation` 中"建 log + 建 agent + 起员工流（含等总管 idle、占位、task_started 事件）"的公共部分，差异仅在"建新会话 vs 追加到现有会话"。
+
+**log ↔ 对话由 1:1 变 1:N**（一个员工对话下挂初稿 + 各次返工的多条 log）：snapshot/卡片按 latest-per-task 取最新一条，「查看员工对话」链接指向该 `conversation_id` → 点进去是一条完整的"初稿 → 打回 → 返工"线索。需核对无代码依赖 log↔conversation 严格 1:1。
+
+**返工"循环"天然复用现有增量引擎**：返工执行完成 → 触发新一轮增量汇报 → 总管再审，`reported_at` 幂等管每一轮。不新造循环，就是 `审 → 续聊重做 → 完成 → 再审`。
 
 ### 4.3 防失控：硬上限 + 升级
 - `MAX_REWORK`（默认 2）**硬卡在 `redispatch_task` 工具内**，不靠 prompt 自觉。
@@ -83,8 +90,8 @@
 ### 后端
 - `EmployeeTask` 新增 `rework_count INTEGER DEFAULT 0`（迁移 + startup ensure_column）。
 - `TaskExecutionLog.run_status` 新增/复用 `superseded`（打回）取值；不计入"待汇报终态集"`_SETTLED_STATES` 的汇报选取（避免打回的旧 log 重新入选）。
-- `start_task_as_conversation` 增 `rework_briefing: str = ""` 参数（与 `prereq_briefing` 同款追加），或直接复用 `prereq_briefing`——实现期定。
-- 新工具 `redispatch_task(task_id, rework_note)`（orchestrator/tools/tasks.py）：上限校验 + 标记旧 log + 调派发 + 计数。
+- 新派发路径"在现有员工对话续聊返工"：抽取 `start_task_as_conversation` 的公共部分（建 log / 建 agent / 起员工流：等总管 idle、占位消息、`task_started` 事件），新增分支"追加到现有 `conversation_id`"而非新建 Conversation。
+- 新工具 `redispatch_task(task_id, rework_note)`（orchestrator/tools/tasks.py）：上限校验 + 取最新 log 的 `conversation_id` + 标记旧 log `superseded` + 走续聊派发路径 + `rework_count += 1`。
 - 评审上下文注入原契约：`trigger_incremental_report` / `build_delegation_execution_context` 为每个新结果带上 `EmployeeTask.user_prompt` 的「输出」契约。
 - 增量汇报 brief 文案：从"请整合"升级为"请**对照各任务的输出契约逐项质检**，达标则汇报、不达标调 `redispatch_task` 打回"。
 
