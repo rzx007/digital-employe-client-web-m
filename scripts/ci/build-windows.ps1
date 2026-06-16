@@ -104,15 +104,12 @@ function Set-BuildEnvironment {
     $env:UV_CACHE_DIR = "C:/Users/yaoji/AppData/Local/uv-cache"
     $env:UV_CONCURRENT_DOWNLOADS = "16"
     $env:PIP_INDEX_URL = "https://mirrors.aliyun.com/pypi/simple/"
-    # SYSTEM 服务账户下 LOCALAPPDATA 会落到 systemprofile，makensis 会报 3221225781。
-    # 统一写到 C:/GitLab-Runner/localappdata（不依赖 yaoji 密码 / 服务登录）。
-    if (-not $env:LOCALAPPDATA -or $env:LOCALAPPDATA -match 'systemprofile') {
-        $env:LOCALAPPDATA = "C:/GitLab-Runner/localappdata"
-    }
+    # 32 位 makensis 从 systemprofile 下的 .cache 启动会触发 WOW64 重定向，报 3221225781。
+    # 只把 electron-builder 缓存单独移出 systemprofile —— 不要动 LOCALAPPDATA，
+    # 否则会顺带搬走 pnpm 的 store（%LOCALAPPDATA%\pnpm），导致冷装。
     if (-not $env:ELECTRON_BUILDER_CACHE) {
-        $env:ELECTRON_BUILDER_CACHE = "$env:LOCALAPPDATA/electron-builder/Cache"
+        $env:ELECTRON_BUILDER_CACHE = "C:/GitLab-Runner/localappdata/electron-builder/Cache"
     }
-    New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA | Out-Null
     New-Item -ItemType Directory -Force -Path $env:ELECTRON_BUILDER_CACHE | Out-Null
     New-Item -ItemType Directory -Force -Path $env:UV_CACHE_DIR | Out-Null
     $env:UV_HTTP_TIMEOUT = "300"

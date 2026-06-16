@@ -39,9 +39,9 @@ variables:
   # uv 拉 PyPI：拉长超时，避免 anthropic 等大包下载失败
   UV_HTTP_TIMEOUT: "300"
   UV_HTTP_RETRIES: "5"
-  # Runner 以 SYSTEM 服务运行时，须把 electron-builder 缓存移出 systemprofile，
-  # 否则 makensis.exe 报 3221225781。打包机需存在 C:/GitLab-Runner/localappdata。
-  LOCALAPPDATA: "C:/GitLab-Runner/localappdata"
+  # 32 位 makensis 从 systemprofile 下的 .cache 启动会因 WOW64 重定向报 3221225781。
+  # 只把 electron-builder 缓存移出 systemprofile，不覆盖 LOCALAPPDATA
+  # （否则会搬走 pnpm 的 store，导致冷装）。
   ELECTRON_BUILDER_CACHE: "C:/GitLab-Runner/localappdata/electron-builder/Cache"
   # UV_PYTHON / UV_CACHE_DIR 见全局 variables（yaoji 账户）
   FEISHU_BITABLE_WIKI_NODE: "Zc3XwAhsMiJPUEk7IimcHMfKnoc"
