@@ -174,11 +174,8 @@ build:linux:
   only: *release_refs
   script:
     - bash scripts/build-deb.sh
-  artifacts:
-    name: "BobanStaff-Linux-arm64-$CI_COMMIT_TAG"
-    paths:
-      - release/*.deb
-    expire_in: 30 days
+    # deb 走飞书分发(publish-feishu.py)，不塞 GitLab 产物(老服务器 413 上限)。
+    - python3 scripts/ci/publish-feishu.py
 
 # ------------------------------------------------------------------------------
 # macOS（dmg 手动分发 + zip 应用内更新源）
