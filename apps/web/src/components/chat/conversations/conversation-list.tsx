@@ -74,7 +74,11 @@ export function ConversationList({
     selectedContactId,
     selectedConversationId
   )
+  // 深链幽灵行只在「列表跟随全局选中」(无 contactOverride)时显示。
+  // 总管侧栏/工作台总管面板用 contactOverride=curator 列总管会话，深链进的是
+  // 员工执行会话，与这些列表无关——否则会冒出一条「任务执行 #N」幽灵记录。
   const showDeepLinkInList =
+    !contactOverride &&
     deepLinkConversationId != null &&
     isPreservedEmployeeConversationSelection(
       selectedContactId,
