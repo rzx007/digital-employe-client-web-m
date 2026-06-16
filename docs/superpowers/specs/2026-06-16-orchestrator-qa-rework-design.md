@@ -57,7 +57,8 @@
 
 **`redispatch_task` 机制（复用 `start_task_as_conversation`）**：
 1. 校验 `rework_count < MAX_REWORK`（默认 2），否则**硬拒**并要求升级（见 §4.3）。
-2. 将该 `task_id` 上**上一条**已终态 log 标记为 `superseded`（打回，仅供展示，不再计入"待汇报"）。
+2. 将该 `task_id` 上**当前那条已终态 log**（即触发本轮总管评审、已被 `reported_at` 盖戳的那条；按 `id desc` 取最新）标记为 `superseded`（打回，仅供展示，不再计入"待汇报"）。
+   - 注：`trigger_incremental_report` 按"所有 `reported_at IS NULL` 的终态 log"选取（非 latest-per-task），`collect_plan_execution_results` 才是 latest-per-task。`redispatch_task` 运行时该 log 必已被 `reported_at` 盖戳（总管只能经评审 turn 看到它），故转 `superseded` 不会误改未汇报行、也不会被重新选取。
 3. 调 `start_task_as_conversation(db, task, employee, ..., rework_briefing=rework_note)`——
    建新会话 + **新** `TaskExecutionLog`（同 `task_id`），把 `rework_note`（不达标的点）追加进派发正文（复用现有 `prereq_briefing` 追加位的同款机制）。
 4. `EmployeeTask.rework_count += 1`。
@@ -92,6 +93,7 @@
 
 ### prompt
 - 总管系统提示词新增/改写「一线质检」段：两层验收角色、对照「输出」契约判定、不达标调 `redispatch_task` 自主透明返工、上限升级；接到已有「进度汇报骨架」上（替换原"结果不达标可直接返工（用 create_orchestration_plan 重派）"软指令）。
+  - **保留**现有反轮询 / "看到任务仍 running 时结束本轮"指引：质检新增了一个总管可能想重查 `list_tasks` 的理由，须确保替换后这条防轮询护栏不被一并删掉。
 
 ## 6. 测试策略
 - **后端**：`redispatch_task` 上限硬拒（达 MAX 返工拒绝并提示升级）；返工产生同 `task_id` 新 log 且旧 log 转 `superseded`；`superseded` 不被增量汇报重新选取；`rework_count` 递增。
@@ -102,6 +104,7 @@
 ## 7. 风险
 - **总管放水**（把不达标判成达标）：本期不解决，恰是要用真实运行**攒数据**的对象——数据证明放水严重，才上 §8 独立 reviewer。
 - **返工与依赖 DAG 交互**：被打回任务的下游若已 skip/在跑，重派后下游是否重算——实现期需明确（初版：返工只重跑本任务，下游消费新结果由总管在再审轮决定是否一并重派）。
+  - 已知缓解：`dependency_scheduler` 的前置产物消费按"latest `_PREREQ_DONE_STATES` log by id desc"取——返工产生更新的 success log，下游**若被再派**会自然取到返工后的新产物，无需特殊处理。
 
 ## 8. 演进路线：独立 reviewer = 未来的"质检员岗位"
 在员工架构里，"独立 reviewer"**不需要新造 agent 子系统**——它就是**再派一个员工**：招一个**质检员**、给它"审核"技能，总管要独立评审时像派任何活一样派给它（「审核 X 的交付是否达标，标准：…」），走的还是现有派活/执行/汇报全套机制，**零架构改动**。
