@@ -3,9 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { HtmlArtifactRef, WorkbenchConfig } from "@/types/workbench"
 import {
   addHtmlArtifactBlock,
+  emitWorkbenchConfigChanged,
   loadWorkbenchConfig,
   removeBlock,
   updateBlockOrder,
+  WORKBENCH_CONFIG_CHANGED_EVENT,
 } from "./workbench-config"
 
 const KEY = "workbench-config-global"
@@ -115,5 +117,15 @@ describe("removeBlock / updateBlockOrder", () => {
     cfg = updateBlockOrder(cfg, [b!, a!])
     expect(cfg.blocks.map((x) => x.id)).toEqual([b, a])
     expect(cfg.blocks.map((x) => x.order)).toEqual([0, 1])
+  })
+})
+
+describe("emitWorkbenchConfigChanged", () => {
+  it("dispatches the config-changed event on window", () => {
+    const handler = vi.fn()
+    window.addEventListener(WORKBENCH_CONFIG_CHANGED_EVENT, handler)
+    emitWorkbenchConfigChanged()
+    expect(handler).toHaveBeenCalledTimes(1)
+    window.removeEventListener(WORKBENCH_CONFIG_CHANGED_EVENT, handler)
   })
 })

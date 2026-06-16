@@ -6,6 +6,18 @@ import type { HtmlArtifactRef, WorkbenchBlock, WorkbenchConfig } from "@/types/w
  */
 export const GLOBAL_WORKBENCH_ID = "global"
 
+/**
+ * 工作台配置变更事件名。资源面板钉住产物（直接写 localStorage，不经 useWorkbenchConfig）后
+ * 派发此事件，WorkbenchView 监听并重读配置，实现「点钉立即出现在看板」的跨视图联动。
+ */
+export const WORKBENCH_CONFIG_CHANGED_EVENT = "workbench-config-changed"
+
+/** 派发配置变更事件（仅在浏览器环境）。 */
+export function emitWorkbenchConfigChanged(): void {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new Event(WORKBENCH_CONFIG_CHANGED_EVENT))
+}
+
 const STORAGE_KEY_PREFIX = "workbench-config-"
 
 function getStorageKey(employeeId: string): string {
