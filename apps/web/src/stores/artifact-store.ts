@@ -8,6 +8,7 @@ import type {
 
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
+import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
 
 export type {
   ClearPendingResourceRef,
@@ -18,6 +19,7 @@ export type {
 function closeOtherSidePanels() {
   useMonitorStore.getState().closeMonitor()
   useSubtaskPanelStore.getState().close()
+  useEmployeeTasksPanelStore.getState().close()
 }
 
 interface ArtifactStore {

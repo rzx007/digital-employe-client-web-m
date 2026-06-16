@@ -1,4 +1,5 @@
 import {
+  IconChecklist,
   IconDots,
   IconFolder,
   IconHistory,
@@ -13,6 +14,8 @@ import { useDebouncedCuratorNewConversation } from "@/hooks/use-debounced-curato
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
+import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
+import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { Separator } from "@workspace/ui/components/separator"
 import {
   DropdownMenu,
@@ -52,6 +55,16 @@ export function CuratorChatHeader({
   const isSubtaskPanelOpen = useSubtaskPanelStore((s) => s.isOpen)
   const toggleSubtaskPanel = useSubtaskPanelStore((s) => s.toggle)
   const subtaskCount = useSubtaskPanelStore((s) => s.subtasks.length)
+  const isEmployeeTasksPanelOpen = useEmployeeTasksPanelStore((s) => s.isOpen)
+  const toggleEmployeeTasksPanel = useEmployeeTasksPanelStore((s) => s.toggle)
+  const { data: executions = [] } = useCuratorTaskExecutions(conversationId)
+  const runningTaskCount = executions.filter(
+    (e) =>
+      e.run_status === "running" ||
+      e.run_status === "queued" ||
+      e.run_status === "pending" ||
+      e.run_status === "stuck"
+  ).length
 
   return (
     <div
@@ -117,6 +130,22 @@ export function CuratorChatHeader({
             <span className="absolute -top-0.5 -right-0.5 flex min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground">
               {subtaskCount}
             </span>
+          </Button>
+        )}
+        {conversationId != null && (
+          <Button
+            title={isEmployeeTasksPanelOpen ? "收起员工任务" : "员工任务"}
+            variant="ghost"
+            size="icon-sm"
+            className="relative"
+            onClick={toggleEmployeeTasksPanel}
+          >
+            <IconChecklist className="size-4" />
+            {runningTaskCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground">
+                {runningTaskCount}
+              </span>
+            )}
           </Button>
         )}
         {conversationId != null && (

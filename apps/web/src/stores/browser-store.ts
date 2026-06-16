@@ -6,6 +6,7 @@ import { useArtifactStore } from "@/stores/artifact-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
+import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
 
 const MIN_WIDTH_RATIO = 0.3
 const MAX_WIDTH_RATIO = 0.8
@@ -56,6 +57,7 @@ function closeOtherRightPanels() {
   useMonitorStore.getState().closeMonitor()
   useArtifactStore.getState().closeArtifact()
   useSubtaskPanelStore.getState().close()
+  useEmployeeTasksPanelStore.getState().close()
 }
 
 function normalizeUrl(input: string): string {

@@ -2,6 +2,7 @@ import { create } from "zustand"
 
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
+import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
 
 /** 单个并行子任务（deepagents task 工具）在侧栏中的视图模型 */
 export interface SubtaskCardItem {
@@ -22,6 +23,7 @@ export interface SubtaskCardItem {
 function closeOtherSidePanels() {
   useArtifactStore.getState().closeArtifact()
   useMonitorStore.getState().closeMonitor()
+  useEmployeeTasksPanelStore.getState().close()
 }
 
 interface SubtaskPanelStore {

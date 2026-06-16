@@ -3,6 +3,7 @@ import { create } from "zustand"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
+import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
 
 interface MonitorStore {
   isOpen: boolean
@@ -22,6 +23,7 @@ export const useMonitorStore = create<MonitorStore>((set) => ({
   openMonitor: (employeeId, employeeName) => {
     useArtifactStore.getState().closeArtifact()
     useSubtaskPanelStore.getState().close()
+    useEmployeeTasksPanelStore.getState().close()
     useChatStore.getState().setActiveTab("chat")
     set({
       isOpen: true,

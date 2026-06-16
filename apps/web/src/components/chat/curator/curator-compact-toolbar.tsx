@@ -1,4 +1,5 @@
 import {
+  IconChecklist,
   IconDots,
   IconFolder,
   IconHistory,
@@ -13,6 +14,8 @@ import {
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
 import { useDebouncedCuratorNewConversation } from "@/hooks/use-debounced-curator-new-conversation"
+import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
+import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { cn } from "@workspace/ui/lib/utils"
 import type { ChatViewContact } from "../shared/chat-view-shared"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
@@ -44,6 +47,16 @@ export function CuratorCompactToolbar({
 }) {
   const handleNewConversation =
     useDebouncedCuratorNewConversation(onNewConversation)
+  const isEmployeeTasksPanelOpen = useEmployeeTasksPanelStore((s) => s.isOpen)
+  const toggleEmployeeTasksPanel = useEmployeeTasksPanelStore((s) => s.toggle)
+  const { data: executions = [] } = useCuratorTaskExecutions(conversationId)
+  const runningTaskCount = executions.filter(
+    (e) =>
+      e.run_status === "running" ||
+      e.run_status === "queued" ||
+      e.run_status === "pending" ||
+      e.run_status === "stuck"
+  ).length
   const name =
     contact?.type === "curator"
       ? (contact.curator?.name ?? displayName)
@@ -99,6 +112,22 @@ export function CuratorCompactToolbar({
             onClick={onOpenConversations}
           >
             <IconHistory className="size-4" />
+          </Button>
+        )}
+        {conversationId != null && (
+          <Button
+            title={isEmployeeTasksPanelOpen ? "收起员工任务" : "员工任务"}
+            variant="ghost"
+            size="icon-sm"
+            className="relative"
+            onClick={toggleEmployeeTasksPanel}
+          >
+            <IconChecklist className="size-4" />
+            {runningTaskCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground">
+                {runningTaskCount}
+              </span>
+            )}
           </Button>
         )}
         {conversationId != null && onToggleResources && (
