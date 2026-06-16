@@ -8,6 +8,14 @@ export type TaskRunStatus =
   | "stuck"
   | "cancelled"
 
+/** 未终态（仍在进行/排队/卡住）的任务执行状态集合——员工任务面板与「N 个在执行」指示共用，避免漂移。 */
+export const ACTIVE_TASK_RUN_STATUSES: ReadonlySet<TaskRunStatus> = new Set([
+  "running",
+  "queued",
+  "pending",
+  "stuck",
+])
+
 export interface TaskRun {
   id: string
   taskId: string

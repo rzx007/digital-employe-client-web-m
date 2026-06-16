@@ -4,17 +4,13 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { ExecutionReportCard } from "@/components/chat/message-blocks/execution-report-card"
 import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
-import type { TaskExecution, TaskRunStatus } from "@/types/schedule-monitor"
-
-const ACTIVE_STATUSES: ReadonlySet<TaskRunStatus> = new Set<TaskRunStatus>([
-  "running",
-  "queued",
-  "pending",
-  "stuck",
-])
+import {
+  ACTIVE_TASK_RUN_STATUSES,
+  type TaskExecution,
+} from "@/types/schedule-monitor"
 
 function isActiveExecution(exec: TaskExecution): boolean {
-  return ACTIVE_STATUSES.has(exec.run_status)
+  return ACTIVE_TASK_RUN_STATUSES.has(exec.run_status)
 }
 
 /** 分区标题：进行中 / 已完成。 */
