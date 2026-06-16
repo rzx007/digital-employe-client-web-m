@@ -15,9 +15,17 @@
 - `scripts/activation/test-deploy-activation.sh` — 真机对拍/单元验证脚本
 - 真机 `deploy.sh` 在 Task 6 整合并就地验证。
 
-**SSH 凭据（验证用）：** host `10.172.246.220` user `boban` pass `100200`；本机无 sshpass，
-用 `python3 + paramiko`（已确认可用）执行远程命令。**真机现有 `activation.json` 必须先备份**
-（Task 1），所有破坏性验证后还原。
+**SSH 凭据（验证用）：** host `10.172.246.220` user `boban`；**密码绝不写进脚本/仓库**，
+通过环境变量 `DE220_PWD` 在运行时传入（`_ssh.py` 从 env 读，缺失即报错退出）。本机无 sshpass，
+用 `python + paramiko`（conda 解释器，已确认可用）执行远程命令。后续所有 `_ssh.py` 调用统一形如
+`DE220_PWD=100200 python scripts/activation/_ssh.py run "..."`（密码在命令行环境变量里，不入库）。
+**真机现有 `activation.json` 必须先备份**（Task 1），所有破坏性验证后还原。
+
+**⚠️ SFTP chroot 坑（Task 2 实测）：** 220 的 SFTP 被 chroot 到 `boban` 家目录，
+`_ssh.py put` 到绝对路径 `/tmp/...` 会报 `[Errno 2] No such file`。**put 必须用家目录下的
+相对路径**（如 `de-act/xxx.sh`，落在 `/home/boban/de-act/`），需要时再用 `run`（exec 通道，
+不受 chroot 限制）`mv` 到 `/tmp`。`run` 命令本身用绝对路径无碍。下文示例里的 `put ... /tmp/...`
+请相应改为 put 到家目录相对路径后再处理。
 
 **已核实的真机基准值（对拍金标准）：**
 - 本机设备码（无分隔）：`3E5677F8E9179E207A30`
@@ -561,6 +569,14 @@ Expected: 无输出（成功）。
 `# 校验目录内 SHA256SUMS` 函数 `verify_sums()` 定义之前（约第 212 行前）。
 注意：`DE_LICENSE_FILE_CANDIDATES` 引用 `PKG_DIR`/`INSTALLER_DIR`，deploy.sh 顶部已定义，顺序 OK。
 
+**Task 5 实测的两个集成要点（务必遵守）：**
+1. **降级桩必须删除**：`type record/info/ok/warn/say ... || ...() {...}` 和 `: "${DE_USER:=...}"`
+   这几行**不要内联**——deploy.sh 已有这些函数；且真机 `info` 会被系统 texinfo 命令抢占，
+   桩反而有害。只内联 `de_*` 函数 + `DE_LICENSE_FILE_CANDIDATES` 数组 + `stage_activation`。
+2. **数组求值顺序**：`DE_LICENSE_FILE_CANDIDATES` 在「定义那一刻」用 `${PKG_DIR:-}` 求值固化。
+   插入位置（verify_sums 之前、约 212 行）晚于 deploy.sh 顶部 `PKG_DIR=`/`INSTALLER_DIR=` 定义
+   （约 21-23 行），所以求值时变量已就绪，正确。**不要把内联点提到顶部变量定义之前。**
+
 - [ ] **Step 4: 在 main() 调用 stage_activation**
 
 修改 deploy.sh `main()`：在 `stage_digital_employee` 之后插入激活阶段：
@@ -607,13 +623,24 @@ python3 scripts/activation/_ssh.py run "cp /tmp/deploy.new.sh /home/boban/BobanS
 ```
 Create `scripts/activation/deploy.sh.activation.patch.md`：记录插入位置（verify_sums 前内联库、main 中 stage_digital_employee 后调用、status_label 加 activation）、备份文件名、220 路径，供后续维护溯源。
 
-- [ ] **Step 9: 还原 Task 1 的激活态备份（清理安全网，确认线上文件完好）**
+- [ ] **Step 9: 确认线上激活态关键字段完好（保留备份）**
+
+> ⚠️ 实测修正：数字员工本体在运行时每 ~20s 心跳更新 `activation.json` 的 `last_seen_at`，
+> 故对备份做**逐字节 diff 永远不等**。正确校验是**忽略 last_seen_at、只比对集成字段**
+> （device_code/license_code/expires_at/activated_at）。备份 **不删**（继续留作安全网）。
 
 Run:
 ```bash
-python3 scripts/activation/_ssh.py run "diff /home/boban/.digital-employee/data/activation.json /home/boban/.digital-employee/data/activation.json.bak-plan && echo IDENTICAL && rm -f /home/boban/.digital-employee/data/activation.json.bak-plan && echo CLEANED"
+python3 scripts/activation/_ssh.py run "python3 -c \"
+import json
+a=json.load(open('/home/boban/.digital-employee/data/activation.json'))
+b=json.load(open('/home/boban/.digital-employee/data/activation.json.bak-plan'))
+k=['device_code','license_code','expires_at','activated_at']
+print('INTEGRITY_OK' if all(a[x]==b[x] for x in k) else 'INTEGRITY_FAIL')
+print('changed:', [x for x in a if a.get(x)!=b.get(x)])
+\""
 ```
-Expected: `IDENTICAL` + `CLEANED`（确认全程未污染线上激活文件）。
+Expected: `INTEGRITY_OK` + `changed: ['last_seen_at']`（只有心跳字段变化，关键激活字段未被污染）。
 
 - [ ] **Step 10: Commit**
 
