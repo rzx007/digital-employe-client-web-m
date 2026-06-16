@@ -95,10 +95,11 @@ build:windows:
   only: *release_refs
   script:
     - pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref $env:CI_COMMIT_TAG -SkipGitSync
+  # exe 走飞书分发(publish-feishu.py)，不塞 GitLab 产物(老服务器 413 上限)。
+  # 仅留体积极小的更新清单/blockmap 作轻量记录。
   artifacts:
     name: "BobanStaff-Windows-$CI_COMMIT_TAG"
     paths:
-      - apps/web/release/*.exe
       - apps/web/release/*.yml
       - apps/web/release/*.blockmap
     expire_in: 30 days
@@ -116,10 +117,10 @@ build:windows:manual:
     - tags
   script:
     - pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref $env:CI_COMMIT_REF_NAME -SkipGitSync
+  # exe 走飞书分发，不塞 GitLab 产物(老服务器 413 上限)。
   artifacts:
     name: "BobanStaff-Windows-$CI_COMMIT_REF_NAME"
     paths:
-      - apps/web/release/*.exe
       - apps/web/release/*.yml
       - apps/web/release/*.blockmap
     expire_in: 7 days

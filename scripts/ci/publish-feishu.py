@@ -403,5 +403,11 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except (HTTPError, URLError, RuntimeError, OSError) as exc:
-        log(f"❌ 飞书发布失败: {exc}")
+        detail = ""
+        if isinstance(exc, HTTPError):
+            try:
+                detail = " | 响应: " + exc.read().decode("utf-8", "replace")
+            except Exception:
+                pass
+        log(f"❌ 飞书发布失败: {exc}{detail}")
         raise SystemExit(1) from exc
