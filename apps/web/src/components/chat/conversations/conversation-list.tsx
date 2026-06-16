@@ -26,6 +26,8 @@ export function ConversationList({
   selectedConversationIdOverride,
   onSelectConversationId,
   createConversationSelectScope,
+  hideHeader,
+  searchQuery,
   ...props
 }: ComponentProps<"div"> & {
   hideNewButton?: boolean
@@ -36,6 +38,10 @@ export function ConversationList({
   selectedConversationIdOverride?: string | number | null
   onSelectConversationId?: (conversationId: string | number) => void
   createConversationSelectScope?: CuratorConversationSelectScope
+  /** 隐藏顶部联系人头部（外层已有工具栏时用，如对话侧边栏） */
+  hideHeader?: boolean
+  /** 按标题过滤会话（对话侧边栏搜索） */
+  searchQuery?: string
 }) {
   const { selectedContactId, selectedConversationId } = useChatStore(
     useShallow((state) => ({
@@ -59,6 +65,11 @@ export function ConversationList({
   const { data: conversations = [], isPending: conversationsPending } =
     useConversationsQuery(activeContactId, selectedContact)
 
+  const q = (searchQuery ?? "").trim().toLowerCase()
+  const visibleConversations = q
+    ? conversations.filter((c) => (c.title ?? "").toLowerCase().includes(q))
+    : conversations
+
   const deepLinkConversationId = getEmployeeDeepLinkConversationId(
     selectedContactId,
     selectedConversationId
@@ -79,53 +90,55 @@ export function ConversationList({
       )}
       {...props}
     >
-      <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
-        {selectedContact ? (
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            {selectedContact.type === "curator" ? (
-              <EmployeeContactAvatar
-                name={selectedContact.curator?.name}
-                avatar={selectedContact.curator?.avatar}
-                status={selectedContact.curator?.status}
-                showStatus
-              />
-            ) : (
-              <EmployeeContactAvatar
-                name={selectedContact.employee?.name}
-                avatar={selectedContact.employee?.avatar}
-                status={selectedContact.employee?.status}
-                showStatus
-              />
-            )}
-            <div className="flex min-w-0 flex-col">
-              <h2 className="truncate text-sm font-medium">
-                {selectedContact.type === "curator"
-                  ? selectedContact.curator?.name
-                  : selectedContact.employee?.name}
-              </h2>
-              <p className="truncate text-xs text-muted-foreground">
-                {selectedContact.type === "curator"
-                  ? selectedContact.curator?.role
-                  : selectedContact.employee?.role}
-              </p>
+      {!hideHeader && (
+        <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+          {selectedContact ? (
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              {selectedContact.type === "curator" ? (
+                <EmployeeContactAvatar
+                  name={selectedContact.curator?.name}
+                  avatar={selectedContact.curator?.avatar}
+                  status={selectedContact.curator?.status}
+                  showStatus
+                />
+              ) : (
+                <EmployeeContactAvatar
+                  name={selectedContact.employee?.name}
+                  avatar={selectedContact.employee?.avatar}
+                  status={selectedContact.employee?.status}
+                  showStatus
+                />
+              )}
+              <div className="flex min-w-0 flex-col">
+                <h2 className="truncate text-sm font-medium">
+                  {selectedContact.type === "curator"
+                    ? selectedContact.curator?.name
+                    : selectedContact.employee?.name}
+                </h2>
+                <p className="truncate text-xs text-muted-foreground">
+                  {selectedContact.type === "curator"
+                    ? selectedContact.curator?.role
+                    : selectedContact.employee?.role}
+                </p>
+              </div>
             </div>
-          </div>
-        ) : (
-          <h2 className="min-w-0 flex-1 text-sm font-medium">最近消息</h2>
-        )}
-        {onClose && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            type="button"
-            aria-label="关闭会话列表"
-            className="shrink-0"
-            onClick={onClose}
-          >
-            <IconX className="size-4" />
-          </Button>
-        )}
-      </div>
+          ) : (
+            <h2 className="min-w-0 flex-1 text-sm font-medium">最近消息</h2>
+          )}
+          {onClose && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              type="button"
+              aria-label="关闭会话列表"
+              className="shrink-0"
+              onClick={onClose}
+            >
+              <IconX className="size-4" />
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* 阶段4：员工单聊退场，新建会话仅总管可用 */}
       {!hideNewButton && selectedContact?.type === "curator" && (
@@ -153,7 +166,7 @@ export function ConversationList({
               加载会话…
             </div>
           )}
-          {showDeepLinkInList && deepLinkConversationId != null ? (
+          {!q && showDeepLinkInList && deepLinkConversationId != null ? (
             <ConversationItem
               key={`deep-link-${deepLinkConversationId}`}
               conversation={{
@@ -176,7 +189,7 @@ export function ConversationList({
               }}
             />
           ) : null}
-          {conversations.map((conversation) => (
+          {visibleConversations.map((conversation) => (
             <ConversationItem
               key={conversation.id}
               conversation={conversation}
@@ -198,12 +211,17 @@ export function ConversationList({
           ))}
           {activeContactId &&
             !conversationsPending &&
-            conversations.length === 0 && (
+            visibleConversations.length === 0 &&
+            (q ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+                <p className="text-xs">没有匹配的对话</p>
+              </div>
+            ) : (
               <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
                 <p className="text-xs">暂无会话记录</p>
-                <p className="mt-1 text-xs">选择联系人开始聊天</p>
+                <p className="mt-1 text-xs">点右上「+」开始新对话</p>
               </div>
-            )}
+            ))}
         </div>
       </div>
     </div>

@@ -6,9 +6,9 @@ const TOUR_STEPS = [
   {
     target: "[data-tour-id='add-button']",
     content:
-      "点击此按钮可以招聘数字员工。在招聘窗口中，描述您的需求，AI 将智能匹配候选人。选择候选人后，可以为其配置工具能力、技能，以及排班和定时任务。",
+      "点击「+」开始与总管的新对话。把需求直接交给总管，它会理解、规划，并在后台组织数字员工完成任务。",
     placement: "right" as const,
-    title: "招聘数字员工",
+    title: "新建对话",
     disableBeacon: true,
   },
   {

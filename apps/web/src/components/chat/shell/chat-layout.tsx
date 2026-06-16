@@ -36,7 +36,7 @@ import { ContactDetailPanel } from "../contacts/contact-detail-panel"
 import { ContactsPanel } from "../contacts/contacts-panel"
 import { ConversationList } from "../conversations/conversation-list"
 import { MobileTabBar } from "./mobile-tab-bar"
-import { RecentConversations } from "../conversations/recent-conversations"
+import { ConversationSidebar } from "../conversations/conversation-sidebar"
 import { WorkbenchView } from "../views/workbench-view"
 import { BrowserConfirmationHost } from "../right-panels/browser-confirmation-host"
 import { BrowserPanel } from "../right-panels/browser-panel"
@@ -341,7 +341,7 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
               )}
             >
               {activeTab === "chat" && (
-                <RecentConversations
+                <ConversationSidebar
                   className="h-full w-full"
                   collapsed={shouldCollapseRecent}
                 />
