@@ -1195,6 +1195,7 @@ Run: `cd apps/web && pnpm dev:app`
 
 ## 执行记录
 
+- **⚠️ typecheck 命令更正**：`pnpm typecheck` 跑的是 `tsc --noEmit`，但根/`apps/web` 的 tsconfig 都是 solution-style（`files:[]`+references），所以**它实际什么都不检查、永远绿**。真正类型检查须用 `cd apps/web && npx tsc --build`（`tsc -b`）。注意 `--build` 会暴露大量预存在的、与本次无关的仓库错误，所以验证方式＝build 后 grep 目标文件名，确认没有**新**错误指向我们改的文件，而非要求整体 build 全绿。
 - Task 0 沙箱 fetch 结论：____（OK / 需代理）
 - Task 4 Step 4 testing-library 是否可用：____
 - 端到端验证结果：____

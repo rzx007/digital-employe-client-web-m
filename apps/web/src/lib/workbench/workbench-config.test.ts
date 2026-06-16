@@ -5,7 +5,6 @@ import {
   addHtmlArtifactBlock,
   loadWorkbenchConfig,
   removeBlock,
-  saveWorkbenchConfig,
   updateBlockOrder,
 } from "./workbench-config"
 
