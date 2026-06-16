@@ -136,12 +136,15 @@ def test_trigger_reentry_schedules_turn(db_session, workspace, monkeypatch):
     assert started[0]["conversation_id"] == conv.id
 
 
-def test_all_settled_triggers_reentry(
+def test_all_settled_no_longer_oneshot_triggers_reentry(
     patched_task_mutations_db, db_session, workspace, monkeypatch
 ):
-    """调度器 all_settled 非群分支 → trigger_orchestrator_reentry 被调用。"""
+    """B6 起：调度器 all_settled 分支不再一次性调 trigger_orchestrator_reentry。
+
+    最终整合改由增量汇报去抖器（每任务完成 → notify → 去抖）覆盖，
+    幂等由 per-task reported_at 负责。本测断言 all_settled 分支不再触发该一次性调用。
+    """
     from src.service.agent.orchestrator import dependency_scheduler as ds
-    from src.service.agent.orchestrator import reentry
 
     # 建总管会话（非群，无 GroupRoom）
     conv = Conversation(
@@ -170,7 +173,7 @@ def test_all_settled_triggers_reentry(
         lambda ws_id, event: None,
     )
 
-    # patch 源模块属性——函数内 from ... import 会重新绑定，patch 源模块属性即可拦截
+    # patch 源模块属性——若调度器仍调一次性 reentry，这里会捕获到调用
     calls: list = []
     monkeypatch.setattr(
         "src.service.agent.orchestrator.reentry.trigger_orchestrator_reentry",
@@ -179,4 +182,5 @@ def test_all_settled_triggers_reentry(
 
     ds.on_employee_task_completed(a.id, workspace.id)
 
-    assert (plan.id, workspace.id) in calls
+    # 不再一次性触发整合（增量去抖接管）
+    assert calls == []

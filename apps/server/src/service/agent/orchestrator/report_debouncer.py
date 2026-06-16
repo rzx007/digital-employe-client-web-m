@@ -91,3 +91,57 @@ class ReportDebouncer:
                 "ReportDebouncer: orch_conv_id=%d fire 返回 False，保留 pending",
                 orch_conv_id,
             )
+
+
+# ---------------------------------------------------------------------------
+# 装配点：进程级单例（懒初始化）
+# ---------------------------------------------------------------------------
+
+_REPORT_DEBOUNCER: ReportDebouncer | None = None
+
+
+async def _fire_incremental_report(orch_conv_id: int) -> bool:
+    """ReportDebouncer.fire 的 async 包装：开独立 DB session、解析 workspace_id、
+    同步调用 trigger_incremental_report，返回其 bool。
+
+    本协程跑在主事件循环内（_flush -> await self._fire），故 trigger_incremental_report
+    内部的同步 request_start（需 running loop）满足前置条件。
+    """
+    from src.models.conversation import Conversation
+    from src.service.agent.orchestrator.reentry import (
+        _new_session,
+        trigger_incremental_report,
+    )
+
+    db = _new_session()
+    try:
+        conv = db.get(Conversation, orch_conv_id)
+        if conv is None:
+            # 会话已不存在：无从解析 workspace_id，视为已消费（无可重试）。
+            logger.warning(
+                "report_debouncer fire: conv=%s 不存在，跳过", orch_conv_id
+            )
+            return True
+        return trigger_incremental_report(db, orch_conv_id, conv.workspace_id)
+    finally:
+        db.close()
+
+
+def get_report_debouncer() -> ReportDebouncer:
+    """进程级 ReportDebouncer 单例（懒初始化）。
+
+    - loop：主事件循环（沿用 runtime.get_main_loop()，与 reentry 的跨线程投递一致）。
+    - fire：_fire_incremental_report（async 包装，见上）。
+    - is_busy：registry.is_busy（会话占用流槽：active 或 queued）。
+    """
+    global _REPORT_DEBOUNCER
+    if _REPORT_DEBOUNCER is None:
+        from src.service.agent.orchestrator.runtime import get_main_loop
+        from src.service.stream_registry import registry
+
+        _REPORT_DEBOUNCER = ReportDebouncer(
+            loop=get_main_loop(),
+            fire=_fire_incremental_report,
+            is_busy=lambda conv_id: registry.is_busy(conv_id),
+        )
+    return _REPORT_DEBOUNCER

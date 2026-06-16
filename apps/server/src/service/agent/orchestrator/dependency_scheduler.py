@@ -394,15 +394,18 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
                 task_id, dispatched, plan.id,
             )
 
-        # ③ 整盘定局（全部 成功/失败/跳过）且本轮无新派发 → 唤醒总管再入整合。
-        #    用 _SETTLED_STATES（含失败/跳过）而非仅成功，避免有失败时汇总永不触发。
+        # ③ 整盘定局（全部 成功/失败/跳过）且本轮无新派发 → 仅记录日志。
+        #    最终整合不再由此一次性触发：增量汇报去抖器（report_debouncer）已覆盖
+        #    「每个员工任务完成 → notify → 去抖 → 唤醒总管增量汇报」的全程，最后一个
+        #    任务的完成事件同样会经去抖落到一次最终整合。这里保留 all_settled 计算/
+        #    日志仅供观测，不再调用 trigger_orchestrator_reentry（幂等由 reported_at 负责）。
         if not dispatched:
             all_settled = all(_is_settled(t.id, status_by_task) for t in tasks)
             if all_settled:
-                from src.service.agent.orchestrator.reentry import (
-                    trigger_orchestrator_reentry,
+                logger.info(
+                    "plan=%s 全部任务定局（all_settled）；最终整合由增量汇报去抖器接管",
+                    plan.id,
                 )
-                trigger_orchestrator_reentry(db, plan, workspace_id)
     except Exception:
         logger.error(
             "on_employee_task_completed failed task=%s", task_id, exc_info=True

@@ -2201,6 +2201,25 @@ class StreamRegistry:
                         exc_info=True,
                     )
 
+            # 总管流真正收尾 → 通知去抖器：若该总管会话仍有待汇报（占线期间攒下的），
+            # 补触发一次去抖窗口。仅当 orchestrator_conversation_id 非空才调
+            # （on_stream_end 对非 pending id 是 no-op，但避免无谓调用）。
+            # 本 finally 已在主事件循环线程内，直接调用，无需 call_soon_threadsafe。
+            if orchestrator_conversation_id is not None:
+                try:
+                    from src.service.agent.orchestrator.report_debouncer import (
+                        get_report_debouncer,
+                    )
+
+                    get_report_debouncer().on_stream_end(
+                        orchestrator_conversation_id
+                    )
+                except Exception:
+                    logger.warning(
+                        "[run] conv=%s finally: report_debouncer on_stream_end 失败",
+                        conversation_id, exc_info=True,
+                    )
+
     async def _ensure_terminal_state(self, stream_msg_id: int, state: str) -> None:
         """flush 失败兜底：仅写 stream_state，不写 content/parts，保证不卡在 streaming。"""
         def _do():
@@ -2418,6 +2437,25 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
             except Exception:
                 logger.warning(
                     "on_task_finalized callback failed conv=%s", conversation_id, exc_info=True
+                )
+
+        # 员工任务完成 → 通知增量汇报去抖器。仅当确有 orch_conv_id（即这是一条
+        # 隶属于某总管会话的员工任务）时投递。本函数跑在 _DB_WRITE_EXECUTOR 线程，
+        # 而 ReportDebouncer.notify 须在主事件循环线程内调用 → 经 call_soon_threadsafe
+        # 投回主 loop（与 reentry._schedule_reentry_stream 的跨线程投递范式一致）。
+        if orch_conv_id is not None:
+            try:
+                from src.service.agent.orchestrator.report_debouncer import (
+                    get_report_debouncer,
+                )
+                from src.service.agent.orchestrator.runtime import get_main_loop
+
+                debouncer = get_report_debouncer()
+                get_main_loop().call_soon_threadsafe(debouncer.notify, orch_conv_id)
+            except Exception:
+                logger.warning(
+                    "report_debouncer notify 投递失败 conv=%s orch_conv=%s",
+                    conversation_id, orch_conv_id, exc_info=True,
                 )
 
         db.close()

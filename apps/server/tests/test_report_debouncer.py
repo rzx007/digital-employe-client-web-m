@@ -227,3 +227,127 @@ def test_on_stream_end_no_pending_noop() -> None:
         assert fire_count == 0
     finally:
         loop.close()
+
+
+# --------------------------------------------------------------------------
+# Test 6：fire async 包装 _fire_incremental_report —— 正确解析 workspace_id 并透传
+# --------------------------------------------------------------------------
+
+def test_fire_wrapper_resolves_workspace_and_delegates(
+    db_session, workspace, monkeypatch
+):
+    """种 1 个 curator 会话；_fire_incremental_report 应：
+    - 从 orch_conv_id 解析出该会话的 workspace_id，
+    - 透传给 trigger_incremental_report（同步），
+    - 返回其 bool。
+    """
+    import json
+
+    from src.models.conversation import Conversation
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.models.workspace import cst_now
+    from src.service.agent.orchestrator import report_debouncer
+    from src.service.agent.orchestrator import reentry
+    from tests.conftest import add_employee
+
+    workspace_id = workspace.id  # 先取出：fire 内 db.close() 会 detach 该实例
+    emp = add_employee(db_session, workspace_id, name="调研助手")
+    conv = Conversation(
+        workspace_id=workspace_id, target_type="curator", target_id=0, title="总管会话"
+    )
+    db_session.add(conv)
+    db_session.commit()
+    db_session.refresh(conv)
+    conv_id = conv.id
+
+    # 一条 reported_at NULL 的终态日志（让其确有可汇报内容，但我们 stub 掉 trigger）
+    db_session.add(TaskExecutionLog(
+        workspace_id=workspace_id, employee_id=emp.id,
+        orchestrator_conversation_id=conv_id, conversation_id=conv_id,
+        task_name_snapshot="调研A", run_status="success",
+        output_json=json.dumps({"content": "A 的结论"}), input_json="{}",
+        started_at=cst_now(), ended_at=cst_now(),
+    ))
+    db_session.commit()
+
+    # _fire_incremental_report 内部 _new_session() 取自 reentry 模块 → 指向测试库 session
+    monkeypatch.setattr(reentry, "_new_session", lambda: db_session)
+
+    captured: dict = {}
+
+    def _fake_trigger(db, orch_conv_id, ws_id):
+        captured["orch_conv_id"] = orch_conv_id
+        captured["workspace_id"] = ws_id
+        return True
+
+    monkeypatch.setattr(reentry, "trigger_incremental_report", _fake_trigger)
+
+    loop = asyncio.new_event_loop()
+    try:
+        result = loop.run_until_complete(
+            report_debouncer._fire_incremental_report(conv_id)
+        )
+    finally:
+        loop.close()
+
+    assert result is True
+    assert captured["orch_conv_id"] == conv_id
+    # 正确从 conv 解析出 workspace_id 并透传
+    assert captured["workspace_id"] == workspace_id
+
+
+def test_fire_wrapper_returns_trigger_bool(db_session, workspace, monkeypatch):
+    """_fire_incremental_report 返回值应原样透传 trigger_incremental_report 的 bool。"""
+    from src.models.conversation import Conversation
+    from src.service.agent.orchestrator import report_debouncer
+    from src.service.agent.orchestrator import reentry
+
+    conv = Conversation(
+        workspace_id=workspace.id, target_type="curator", target_id=0, title="总管会话"
+    )
+    db_session.add(conv)
+    db_session.commit()
+    db_session.refresh(conv)
+    conv_id = conv.id
+
+    monkeypatch.setattr(reentry, "_new_session", lambda: db_session)
+    monkeypatch.setattr(
+        reentry, "trigger_incremental_report", lambda db, c, w: False
+    )
+
+    loop = asyncio.new_event_loop()
+    try:
+        result = loop.run_until_complete(
+            report_debouncer._fire_incremental_report(conv_id)
+        )
+    finally:
+        loop.close()
+
+    assert result is False
+
+
+# --------------------------------------------------------------------------
+# Test 7：装配单例 get_report_debouncer —— 同一对象
+# --------------------------------------------------------------------------
+
+def test_get_report_debouncer_is_singleton(monkeypatch):
+    """get_report_debouncer() 懒初始化并返回同一单例对象。"""
+    from src.service.agent.orchestrator import report_debouncer
+    from src.service.agent.orchestrator import runtime
+
+    loop = asyncio.new_event_loop()
+    try:
+        # 注入主事件循环（get_report_debouncer 内会 get_main_loop()）
+        runtime.set_main_event_loop(loop)
+        # 清掉可能已存在的单例，确保本测从干净状态懒初始化
+        monkeypatch.setattr(report_debouncer, "_REPORT_DEBOUNCER", None)
+
+        d1 = report_debouncer.get_report_debouncer()
+        d2 = report_debouncer.get_report_debouncer()
+
+        assert d1 is d2
+        assert isinstance(d1, report_debouncer.ReportDebouncer)
+    finally:
+        # 还原全局单例，避免污染其它测试
+        report_debouncer._REPORT_DEBOUNCER = None
+        loop.close()
