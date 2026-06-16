@@ -11,7 +11,7 @@
 #   RDP 本地也可直接跑同一脚本。
 #
 # macOS / Linux：推送 tag 时由 mac-builder CI 自动构建。
-# 分支 push：Windows 只跑 smoke 冒烟（验证 Runner 工具链）。
+# 分支 push：Windows 无自动 job（smoke 冒烟已关；需打包用 build:windows:manual 手动 Play）。
 #
 # 注：本仓库 GitLab 为旧版本，使用 only/except 语法（不支持 rules）。
 # ==============================================================================
@@ -56,9 +56,10 @@ variables:
     - pwsh -NoProfile -File scripts/ci/windows-prepare.ps1 -SkipClean
 
 # ------------------------------------------------------------------------------
-# 冒烟测试：分支 push 时跑，验证 yaoji 账户下工具链
+# 冒烟测试：已关闭（job 名前加 . 变隐藏 job，不再运行）。
+# 真打包已跑通，分支 push 不再需要冒烟。如需重开：去掉下面 job 名前的点。
 # ------------------------------------------------------------------------------
-smoke:windows:
+.smoke:windows:
   <<: *win_smoke
   stage: build
   tags:
