@@ -142,6 +142,19 @@ def create_app() -> FastAPI:
         except Exception:
             logger.warning("重启对账失败（不影响启动）", exc_info=True)
 
+        # 启动对账（QA 接受）：补盖进程重启前漏接受的 qa_accepted_at 并放行下游，
+        # 避免"评审错过/重启 → 下游永久卡在等接受"。
+        try:
+            from src.service.agent.orchestrator.dependency_scheduler import (
+                reconcile_accepted_downstream_all,
+            )
+            with get_session_local()() as _qa_db:
+                _accepted = reconcile_accepted_downstream_all(_qa_db)
+            if _accepted:
+                logger.info("启动对账(QA接受)：补盖+放行下游 %d 条", _accepted)
+        except Exception:
+            logger.warning("启动对账(QA接受)失败（不影响启动）", exc_info=True)
+
         from src.service.stream_registry import registry as _stream_registry
         from src.service.workspace_events import WorkspaceEventBus
 

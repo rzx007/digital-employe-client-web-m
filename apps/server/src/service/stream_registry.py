@@ -2220,6 +2220,22 @@ class StreamRegistry:
                         conversation_id, exc_info=True,
                     )
 
+                # 总管自己的评审/对话流收尾 → 放行已被接受(评审过且未返工)的上游的下游。
+                # 用 conversation_id == orchestrator_conversation_id 只跑总管流：员工任务流
+                # 此刻刚完成的 log reported_at 尚空、不满足对账条件，无需为其跑。
+                if conversation_id == orchestrator_conversation_id:
+                    try:
+                        from src.service.agent.orchestrator.dependency_scheduler import (
+                            release_accepted_downstream,
+                        )
+
+                        release_accepted_downstream(orchestrator_conversation_id)
+                    except Exception:
+                        logger.warning(
+                            "[run] conv=%s finally: release_accepted_downstream 失败",
+                            conversation_id, exc_info=True,
+                        )
+
     async def _ensure_terminal_state(self, stream_msg_id: int, state: str) -> None:
         """flush 失败兜底：仅写 stream_state，不写 content/parts，保证不卡在 streaming。"""
         def _do():
