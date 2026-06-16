@@ -121,6 +121,28 @@ build:windows:manual:
     expire_in: 7 days
 
 # ------------------------------------------------------------------------------
+# 冒烟测试（Mac）：分支 push 时跑，验证 mac-builder 工具链 + docker buildx。
+# 验证通过后关掉：把下面 job 名前加 . 变隐藏 job。
+# ------------------------------------------------------------------------------
+smoke:mac:
+  stage: build
+  tags:
+    - mac-builder
+  except:
+    - tags
+  script:
+    - whoami
+    - 'echo "PATH=$PATH"'
+    - node -v
+    - pnpm -v
+    - python3 --version
+    - uv --version
+    - git --version
+    - docker --version
+    - docker buildx ls
+    - echo "ALL MAC TOOLS VISIBLE"
+
+# ------------------------------------------------------------------------------
 # macOS（dmg 手动分发 + zip 应用内更新源）
 # ------------------------------------------------------------------------------
 build:macos:
