@@ -96,6 +96,7 @@ export type TaskStatus =
   | "success"
   | "failed"
   | "pending"
+  | "queued"
   | "running"
   | "timeout"
   | "stuck"

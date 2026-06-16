@@ -1,5 +1,6 @@
+import { useEffect, useState } from "react"
 import { useMutation } from "@tanstack/react-query"
-import { IconExternalLink } from "@tabler/icons-react"
+import { IconExternalLink, IconLoader2 } from "@tabler/icons-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { MessageResponse } from "@workspace/ui/components/ai-elements/message"
@@ -37,6 +38,36 @@ const STATUS_CONFIG: Record<
       "bg-gray-100 text-gray-600 dark:bg-gray-800/40 dark:text-gray-400",
     stampText: "已取消",
   },
+  running: {
+    label: "进行中",
+    className:
+      "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400",
+    stampText: "",
+  },
+  queued: {
+    label: "排队中",
+    className:
+      "bg-slate-100 text-slate-600 dark:bg-slate-800/40 dark:text-slate-400",
+    stampText: "",
+  },
+  pending: {
+    label: "排队中",
+    className:
+      "bg-slate-100 text-slate-600 dark:bg-slate-800/40 dark:text-slate-400",
+    stampText: "",
+  },
+}
+
+/** 运行中时每秒 tick，驱动实时耗时显示（非运行态不计时）。 */
+function useElapsedNow(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active) return
+    setNow(Date.now())
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [active])
+  return now
 }
 
 const COMPACT_OUTPUT_MAX = 120
@@ -78,6 +109,22 @@ export function ExecutionReportCard({
     execution.run_status === "failed" ||
     execution.run_status === "timeout" ||
     execution.run_status === "cancelled"
+  const isRunning = execution.run_status === "running"
+  const isActive =
+    isRunning ||
+    execution.run_status === "queued" ||
+    execution.run_status === "pending"
+
+  // 运行中实时耗时（从 started_at 客户端 tick）；否则用后端 duration_ms。
+  const now = useElapsedNow(isRunning)
+  const liveElapsedMs = isRunning
+    ? Math.max(0, now - new Date(execution.started_at).getTime())
+    : null
+  const durationMs = liveElapsedMs ?? execution.duration_ms
+  const durationLabel =
+    durationMs != null && Number.isFinite(durationMs)
+      ? formatExecutionDuration(durationMs)
+      : null
 
   const canJumpToEmployee =
     execution.conversation_id != null &&
@@ -104,17 +151,19 @@ export function ExecutionReportCard({
       >
         <Badge
           variant="outline"
-          className={cn("px-1.5 py-0 text-[10px]", statusCfg?.className ?? "")}
+          className={cn(
+            "gap-1 px-1.5 py-0 text-[10px]",
+            statusCfg?.className ?? ""
+          )}
         >
+          {isRunning && <IconLoader2 className="size-2.5 animate-spin" />}
           {statusCfg?.label ?? execution.run_status}
         </Badge>
         <span className="min-w-0 truncate font-medium text-foreground/80">
           {execution.task_name}
         </span>
-        {execution.duration_ms != null && (
-          <span className="text-muted-foreground/70">
-            {formatExecutionDuration(execution.duration_ms)}
-          </span>
+        {durationLabel && (
+          <span className="text-muted-foreground/70">{durationLabel}</span>
         )}
         {canJumpToEmployee ? (
           <Button
@@ -170,18 +219,19 @@ export function ExecutionReportCard({
           <Badge
             variant="outline"
             className={cn(
-              "px-1.5 py-0 text-[10px]",
+              "gap-1 px-1.5 py-0 text-[10px]",
               statusCfg?.className ?? ""
             )}
           >
+            {isRunning && <IconLoader2 className="size-2.5 animate-spin" />}
             {statusCfg?.label ?? execution.run_status}
           </Badge>
           <span className="truncate text-[11px] text-muted-foreground">
             {execution.task_name}
           </span>
-          {execution.duration_ms != null && (
+          {durationLabel && (
             <span className="shrink-0 text-[10px] text-muted-foreground/60">
-              耗时 {formatExecutionDuration(execution.duration_ms)}
+              耗时 {durationLabel}
             </span>
           )}
         </div>
@@ -195,6 +245,12 @@ export function ExecutionReportCard({
         {execution.error_message && !outputText && (
           <p className="text-xs text-red-600/80 dark:text-red-400/80">
             {truncateOutput(execution.error_message, COMPACT_OUTPUT_MAX)}
+          </p>
+        )}
+
+        {isActive && !outputText && !execution.error_message && (
+          <p className="text-xs text-muted-foreground/70">
+            {isRunning ? "执行中…" : "排队等待中…"}
           </p>
         )}
 

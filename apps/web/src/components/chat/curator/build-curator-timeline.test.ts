@@ -78,9 +78,44 @@ describe("buildCuratorTimeline 尾部乐观消息排序", () => {
       msg("u-optimistic", "user"),
     ]
     const executions = [exec(1, T)]
-    const order = orderKeys(buildCuratorTimeline(displayMessages, executions, []))
+    const order = orderKeys(
+      buildCuratorTimeline(displayMessages, executions, [])
+    )
     expect(order.indexOf("msg:u-optimistic")).toBeGreaterThan(
       order.indexOf("exec:1")
     )
+  })
+})
+
+describe("buildCuratorTimeline 运行中执行入线", () => {
+  function activeExec(id: number, status: string, startedAtMs: number) {
+    return {
+      id,
+      run_status: status,
+      started_at: iso(startedAtMs),
+      ended_at: null,
+    } as unknown as TaskExecution
+  }
+
+  it("运行中/排队执行按 started_at 进入时间线，排在派活消息之后", () => {
+    const displayMessages = [msg("u1", "user", T - 5_000)]
+    for (const status of ["running", "queued", "pending"]) {
+      const order = orderKeys(
+        buildCuratorTimeline(displayMessages, [activeExec(7, status, T)], [])
+      )
+      expect(order).toContain("exec:7")
+      expect(order.indexOf("exec:7")).toBeGreaterThan(order.indexOf("msg:u1"))
+    }
+  })
+
+  it("既非终态也非活动态（stuck）不入时间线", () => {
+    const order = orderKeys(
+      buildCuratorTimeline(
+        [msg("u1", "user", T - 5_000)],
+        [activeExec(8, "stuck", T)],
+        []
+      )
+    )
+    expect(order).not.toContain("exec:8")
   })
 })

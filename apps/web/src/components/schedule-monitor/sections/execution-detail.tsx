@@ -24,6 +24,11 @@ const STATUS_CONFIG: Record<
     className:
       "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
   },
+  queued: {
+    label: "排队中",
+    className:
+      "bg-slate-100 text-slate-600 dark:bg-slate-800/40 dark:text-slate-400",
+  },
   running: {
     label: "执行中",
     className:

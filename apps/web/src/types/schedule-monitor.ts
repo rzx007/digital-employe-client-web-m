@@ -2,6 +2,7 @@ export type TaskRunStatus =
   | "success"
   | "failed"
   | "pending"
+  | "queued"
   | "running"
   | "timeout"
   | "stuck"

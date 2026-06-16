@@ -13,6 +13,8 @@ const TERMINAL_EXECUTION_STATUSES = new Set([
   "timeout",
   "cancelled",
 ])
+// 运行中/排队：也入时间线，让员工干活有「活的」在场感（按 started_at 定位）。
+const ACTIVE_EXECUTION_STATUSES = new Set(["running", "queued", "pending"])
 
 function getMsgTs(msg: UIMessage, storedMessages: ChatMessage[]): number {
   return getMessageCreatedAtMs(msg, storedMessages) ?? 0
@@ -26,16 +28,22 @@ function getExecutionTimelineTs(exec: TaskExecution): number | null {
 }
 
 /**
- * 执行卡片在时间线上的实际 ts：ended_at 与「摘要消息时间戳+1000」取较大者
- * （让卡片排在其摘要下方）。非终态/无有效时间返回 null（不入时间线）。
+ * 执行卡片在时间线上的实际 ts：
+ * - 终态：ended_at 与「摘要消息时间戳+1000」取较大者（排在其摘要下方）。
+ * - 运行中/排队：started_at（排在派活那条消息下方）。
+ * 无有效时间或既非终态也非活动态返回 null（不入时间线）。
  */
 function getExecutionCardTs(
   exec: TaskExecution,
   summaryTsByExecId: Map<number, number>
 ): number | null {
-  if (!TERMINAL_EXECUTION_STATUSES.has(exec.run_status)) return null
+  const isTerminal = TERMINAL_EXECUTION_STATUSES.has(exec.run_status)
+  const isActive = ACTIVE_EXECUTION_STATUSES.has(exec.run_status)
+  if (!isTerminal && !isActive) return null
   const tsRaw = getExecutionTimelineTs(exec)
   if (tsRaw == null) return null
+  // 运行中/排队：按 started_at 定位，尚无摘要消息、不做抬升。
+  if (!isTerminal) return tsRaw
   const summaryTs = summaryTsByExecId.get(exec.id)
   return summaryTs != null ? Math.max(tsRaw, summaryTs + 1000) : tsRaw
 }
