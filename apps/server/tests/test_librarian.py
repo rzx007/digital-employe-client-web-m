@@ -61,6 +61,34 @@ def test_generate_profile_strips_fence_and_dedup_header(monkeypatch, tmp_path):
     assert "芯片调研" in txt
 
 
+def test_generate_profile_strips_title_then_fence(monkeypatch, tmp_path):
+    """回归：LLM「标题在前、围栏在后」(# 能力画像 / ```markdown … ```)，
+    旧 cleaner 剥标题后露出的围栏未二次剥 → 面板渲成代码块。"""
+    from src.service.learning import librarian
+    monkeypatch.setattr(librarian, "_brain_root_for", lambda eid: tmp_path / str(eid))
+    fenced = "# 能力画像\n```markdown\n# 数字员工能力画像\n\n- 擅长芯片调研\n```"
+    monkeypatch.setattr(librarian, "_build_llm",
+                        lambda: type("L", (), {"invoke": lambda self, p: type("R", (), {"content": fenced})()})())
+    brain = tmp_path / "42"
+    _seed_journal(brain, [{"task_name": "调研A", "status": "success", "tools_used": []}])
+    librarian.generate_profile(42)
+
+    txt = (brain / "profile.md").read_text(encoding="utf-8")
+    assert "```" not in txt                # 围栏剥净
+    assert txt.count("# 能力画像") == 1     # 仅一个标题
+    assert "数字员工能力画像" not in txt    # LLM 自带变体标题去掉
+    assert "芯片调研" in txt
+
+
+def test_strip_outer_code_fence_keeps_inner_blocks():
+    """整体未被围栏包裹时（正文中间含代码块）不应误删。"""
+    from src.service.learning import librarian
+    s = "正文\n\n```py\ncode\n```\n\n结尾"
+    assert librarian._strip_outer_code_fence(s) == s
+    # 整体被包裹则剥
+    assert librarian._strip_outer_code_fence("```markdown\nhello\n```") == "hello"
+
+
 # ── 2C-2: consolidate_memory ────────────────────────────────────────────────
 
 def _seed_memory(brain: Path, body: str):
@@ -83,6 +111,20 @@ def test_consolidate_memory_writes_when_safe(monkeypatch, tmp_path):
     assert out.count("§喜欢简洁") == 1
     assert "## 用户偏好" in out and "## 已知事实与约定" in out
     assert (brain / "memories" / "AGENTS.md.bak").exists()
+
+
+def test_consolidate_memory_strips_outer_fence(monkeypatch, tmp_path):
+    """回归：LLM 把整份记忆裹进 ```markdown 围栏 → 必须剥掉再写，否则面板渲成代码块。"""
+    from src.service.learning import librarian
+    monkeypatch.setattr(librarian, "_brain_root_for", lambda eid: tmp_path / str(eid))
+    fenced = "```markdown\n# 员工长期记忆\n\n## 用户偏好\n§喜欢简洁\n\n## 已知事实与约定\n§项目用 uv\n```"
+    monkeypatch.setattr(librarian, "_build_llm",
+                        lambda: type("L", (), {"invoke": lambda self, p: type("R", (), {"content": fenced})()})())
+    brain = tmp_path / "42"; _seed_memory(brain, _MEM)
+    librarian.consolidate_memory(42)
+    out = (brain / "memories" / "AGENTS.md").read_text(encoding="utf-8")
+    assert "```" not in out                                  # 围栏剥净
+    assert "## 用户偏好" in out and "## 已知事实与约定" in out  # 分节保留
 
 
 def test_consolidate_memory_skips_unsafe_output(monkeypatch, tmp_path):

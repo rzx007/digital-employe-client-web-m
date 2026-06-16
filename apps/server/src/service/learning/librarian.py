@@ -43,25 +43,45 @@ def _read_recent_journal(brain: Path, max_entries: int = _PROFILE_MAX_JOURNAL) -
     return entries[-max_entries:]
 
 
+_PROFILE_TITLES = ("能力画像", "能力画像（历史复盘）", "数字员工能力画像", "数字员工能力画像（历史复盘）")
+
+
+def _strip_outer_code_fence(raw: str) -> str:
+    """若内容整体被一对 ```…``` 围栏包裹（语言标记任意），剥掉最外层围栏；否则原样返回。
+    判定：首行以 ``` 起、且最后一非空行恰为 ```（避免误删正文中间的代码块）。"""
+    text = (raw or "").strip()
+    if not text.startswith("```"):
+        return text
+    lines = text.split("\n")
+    # 去尾部空行后，末行须是单独的 ```
+    end = len(lines) - 1
+    while end > 0 and not lines[end].strip():
+        end -= 1
+    if end >= 1 and lines[end].strip() == "```":
+        return "\n".join(lines[1:end]).strip()
+    return text
+
+
 def _clean_profile_content(raw: str) -> str:
     """规整 LLM 画像输出：剥掉整体代码围栏(```markdown … ```)、去掉它自带的「能力画像」H1
-    与前导空行——避免与我们统一加的标题重复、避免在面板里被渲成代码块。"""
+    与前导空行——避免与我们统一加的标题重复、避免在面板里被渲成代码块。
+    LLM 可能「标题在前、围栏在后」或反过来嵌套，故循环剥到稳定。"""
     text = (raw or "").strip()
-    # 去整体代码围栏
-    if text.startswith("```"):
-        body = text.split("\n")[1:]  # 去首行 ``` / ```markdown
-        if body and body[-1].strip().startswith("```"):
-            body = body[:-1]
-        text = "\n".join(body).strip()
-    lines = text.split("\n")
-    while lines and not lines[0].strip():  # 前导空行
-        lines.pop(0)
-    # LLM 自带的「能力画像」顶级标题去掉
-    if lines and lines[0].strip().lstrip("#").strip() in ("能力画像", "能力画像（历史复盘）"):
-        lines.pop(0)
-        while lines and not lines[0].strip():
+    for _ in range(4):  # 标题↔围栏任意顺序/嵌套，迭代到稳定
+        before = text
+        text = _strip_outer_code_fence(text).strip()
+        lines = text.split("\n")
+        while lines and not lines[0].strip():  # 前导空行
             lines.pop(0)
-    return "\n".join(lines).strip()
+        # LLM 自带的顶级标题去掉（含「数字员工能力画像」等变体）
+        if lines and lines[0].strip().lstrip("#").strip() in _PROFILE_TITLES:
+            lines.pop(0)
+            while lines and not lines[0].strip():
+                lines.pop(0)
+        text = "\n".join(lines).strip()
+        if text == before:
+            break
+    return text
 
 
 def generate_profile(employee_id: int) -> None:
@@ -113,7 +133,8 @@ def consolidate_memory(employee_id: int) -> None:
             f"{original}\n\n"
             "直接输出整理后的完整文件内容。"
         )
-        cleaned = llm.invoke(prompt).content.strip()
+        # LLM 常把整份文件裹进 ```markdown 围栏 → 剥掉，否则面板里渲成代码块
+        cleaned = _strip_outer_code_fence(llm.invoke(prompt).content).strip()
         if not cleaned:
             return
         if not all(sec in cleaned for sec in _REQUIRED_SECTIONS):
