@@ -163,20 +163,30 @@ def multipart_upload(
     body.extend(f"Content-Type: {mime}\r\n\r\n".encode())
     body.extend(file_bytes)
     body.extend(f"\r\n--{boundary}--\r\n".encode())
-    req = Request(
-        url,
-        data=bytes(body),
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": f"multipart/form-data; boundary={boundary}",
-        },
-        method="POST",
-    )
-    with _urlopen(req, timeout=600) as resp:
-        payload = json.loads(resp.read().decode("utf-8"))
-    if payload.get("code") != 0:
-        raise RuntimeError(f"Feishu upload error: {payload.get('msg')} ({payload})")
-    return payload.get("data") or {}
+    # SSL EOF / 网络抖动重试：大文件上传偶发 EOF in violation of protocol
+    last_err: Exception | None = None
+    for attempt in range(3):
+        try:
+            req = Request(
+                url,
+                data=bytes(body),
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": f"multipart/form-data; boundary={boundary}",
+                },
+                method="POST",
+            )
+            with _urlopen(req, timeout=600) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            if payload.get("code") != 0:
+                raise RuntimeError(f"Feishu upload error: {payload.get('msg')} ({payload})")
+            return payload.get("data") or {}
+        except (URLError, OSError) as exc:
+            last_err = exc
+            wait = 3 * (attempt + 1)
+            log(f"   ⚠️  上传失败({type(exc).__name__}: {exc}); {wait}s 后重试 ({attempt + 2}/3)")
+            time.sleep(wait)
+    raise last_err if last_err else RuntimeError("multipart_upload 失败")
 
 
 def get_tenant_token(app_id: str, app_secret: str) -> str:
@@ -317,6 +327,7 @@ def upload_bitable_file(token: str, app_token: str, file_path: Path) -> str:
         raise RuntimeError(f"medias/upload_prepare 失败: {prep}")
 
     block_num = (size + CHUNK_SIZE - 1) // CHUNK_SIZE
+    log(f"   📦 分块上传：{block_num} 块 × {CHUNK_SIZE // (1024 * 1024)}MB")
     for seq, offset in enumerate(range(0, size, CHUNK_SIZE)):
         chunk = file_bytes[offset : offset + CHUNK_SIZE]
         multipart_upload(
@@ -331,6 +342,8 @@ def upload_bitable_file(token: str, app_token: str, file_path: Path) -> str:
             file_name,
             chunk,
         )
+        if (seq + 1) % 5 == 0 or seq + 1 == block_num:
+            log(f"      已传 {seq + 1}/{block_num}")
 
     done = json_request(
         "POST",
