@@ -3,8 +3,10 @@ import { IconRefresh, IconAlertTriangle } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { useResourceContentQuery } from "@/hooks/use-chat-queries"
-import { HtmlArtifactRenderer } from "@/components/artifact/artifact-content/html-artifact-renderer"
-import type { Artifact } from "@/components/artifact/artifact-types"
+import {
+  HTML_PREVIEW_SANDBOX,
+  wrapHtmlForPreview,
+} from "@/components/artifact/artifact-content/html-preview-utils"
 import type { HtmlArtifactRef } from "@/types/workbench"
 
 interface WorkbenchHtmlPanelProps {
@@ -14,8 +16,10 @@ interface WorkbenchHtmlPanelProps {
 }
 
 /**
- * 工作台单看板：取总管生成的 HTML 源码 → 复用 HtmlArtifactRenderer（沙箱 iframe，
- * iframe 内 JS 自带 fetch 实时拉数据出图）。源文件缺失时渲染占位，不崩溃。
+ * 工作台单看板：取总管生成的 HTML 源码 → 直接渲染到沙箱 iframe（iframe 内 JS 自带 fetch
+ * 实时拉数据出图）。与资源面板不同，工作台看板**只展示渲染结果**，不需要「预览/源码」切换，
+ * 故不走带 PreviewSourceShell 的 HtmlArtifactRenderer，直接用同一套 wrap + sandbox（递归
+ * 修复仍生效）。源文件缺失时渲染占位，不崩溃。
  */
 export function WorkbenchHtmlPanel({
   htmlRef,
@@ -27,16 +31,10 @@ export function WorkbenchHtmlPanel({
     htmlRef.resourcePath
   )
 
-  const artifact: Artifact | null = React.useMemo(() => {
+  const srcDoc = React.useMemo(() => {
     if (!data?.content) return null
-    return {
-      id: `workbench-html:${htmlRef.resourcePath}`,
-      type: "code",
-      title,
-      content: data.content,
-      language: "html",
-    }
-  }, [data?.content, htmlRef.resourcePath, title])
+    return wrapHtmlForPreview(data.content)
+  }, [data?.content])
 
   const missing = isError || (!isLoading && !data?.content)
 
@@ -72,8 +70,13 @@ export function WorkbenchHtmlPanel({
               可移除此看板，或在总管会话重新生成
             </p>
           </div>
-        ) : artifact ? (
-          <HtmlArtifactRenderer artifact={artifact} className="h-full" />
+        ) : srcDoc ? (
+          <iframe
+            title={title}
+            sandbox={HTML_PREVIEW_SANDBOX}
+            srcDoc={srcDoc}
+            className="h-full w-full border-0 bg-white dark:bg-zinc-950"
+          />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
             加载中…
