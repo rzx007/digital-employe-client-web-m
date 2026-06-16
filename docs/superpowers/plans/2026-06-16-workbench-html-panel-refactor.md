@@ -1196,9 +1196,11 @@ Run: `cd apps/web && pnpm dev:app`
 ## 执行记录
 
 - **⚠️ typecheck 命令更正**：`pnpm typecheck` 跑的是 `tsc --noEmit`，但根/`apps/web` 的 tsconfig 都是 solution-style（`files:[]`+references），所以**它实际什么都不检查、永远绿**。真正类型检查须用 `cd apps/web && npx tsc --build`（`tsc -b`）。注意 `--build` 会暴露大量预存在的、与本次无关的仓库错误，所以验证方式＝build 后 grep 目标文件名，确认没有**新**错误指向我们改的文件，而非要求整体 build 全绿。
-- Task 0 沙箱 fetch 结论：____（OK / 需代理）
-- Task 4 Step 4 testing-library 是否可用：____
-- 端到端验证结果：____
+- Task 0 沙箱 fetch 结论：**待用户在真实 Electron app + 真实内网接口验证**（代码实现不依赖此结论；若被 CORS 挡需另补代理层）。
+- Task 4 testing-library 是否可用：`@testing-library/react` 可用；`@testing-library/jest-dom` **缺失**，故测试改用纯 vitest 匹配器（`.toBeTruthy()`/`.toBeNull()`/`.textContent`），与仓库既有 `.tsx` 测试一致。
+- 代码任务 1-7 全部完成并通过两段评审（spec + 质量）。新增/改动测试全绿（workbench-config 7 例、workbench-html-panel 3 例）。
+- **已知预存在问题（非本次引入）**：`resolve-workbench-curator-panel.test.ts` 有 1 个测试失败 + 3 个 tsc 类型告警，该文件本次未触碰（上次改动在 refactor 之前的 commit 6beb561），与本重构无关。
+- 端到端验证结果：**待用户手动验证**（Task 8，需真实 app）。
 
 ---
 
