@@ -89,3 +89,39 @@ def test_release_skips_superseded_and_unreported(db_session, monkeypatch):
     _seed_log(db_session, task_id=1, ws_id=ws.id, emp_id=emp.id, run_status="superseded", orch_conv=888)
     _seed_log(db_session, task_id=2, ws_id=ws.id, emp_id=emp.id, reported=False, orch_conv=888)
     assert ds.release_accepted_downstream(888) == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 5: 情景B 集成回归（上游打回→返工→接受，下游门控至最终接受）
+# ---------------------------------------------------------------------------
+
+def test_scenario_b_downstream_gated_until_rework_accepted(db_session, monkeypatch):
+    """情景B:上游被打回→返工→接受,下游谓词只在最终接受后翻真;接受的是返工后的 log。"""
+    import src.service.agent.orchestrator.dependency_scheduler as ds
+    proxy = _NoCloseSession(db_session)
+    monkeypatch.setattr(ds, "get_session_local", lambda: (lambda: proxy))
+    monkeypatch.setattr(ds, "on_employee_task_completed", lambda tid, wid: None)
+    ws = Workspace(name="w", root_path="/tmp/w"); db_session.add(ws); db_session.flush()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    A, B = 1, 2  # A=热搜(前置), B=Word(下游)
+
+    # ① A 首次 success(已 reported,未接受) → B 还不能派
+    l1 = _seed_log(db_session, task_id=A, ws_id=ws.id, emp_id=emp.id, accepted=False, orch_conv=555)
+    assert ds._all_prereqs_accepted([A], ds._load_accepted_task_ids(db_session, [A, B])) is False
+
+    # ② 总管打回:l1 superseded,A 返工新 log l2(queued、未 reported)
+    l1.run_status = "superseded"; db_session.commit()
+    l2 = _seed_log(db_session, task_id=A, ws_id=ws.id, emp_id=emp.id,
+                   run_status="queued", reported=False, accepted=False, orch_conv=555)
+    # 评审流收尾对账:l1 superseded 排除、l2 未 success/未 reported → 无接受 → B 仍不可派
+    assert ds.release_accepted_downstream(555) == 0
+    assert ds._all_prereqs_accepted([A], ds._load_accepted_task_ids(db_session, [A, B])) is False
+
+    # ③ A 返工完成:l2 success + reported → 再评审接受 → 放行对账盖 l2.qa_accepted_at
+    l2.run_status = "success"; l2.reported_at = cst_now(); db_session.commit()
+    assert ds.release_accepted_downstream(555) == 1
+    db_session.expire_all()
+    # 现在 B 的前置(A)已接受 → 可派；接受的是返工后的 l2，不是被否决的 l1
+    assert ds._all_prereqs_accepted([A], ds._load_accepted_task_ids(db_session, [A, B])) is True
+    assert db_session.get(TaskExecutionLog, l2.id).qa_accepted_at is not None
+    assert db_session.get(TaskExecutionLog, l1.id).qa_accepted_at is None
