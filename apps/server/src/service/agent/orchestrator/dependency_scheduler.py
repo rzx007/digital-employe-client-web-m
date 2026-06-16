@@ -140,13 +140,27 @@ def _log_status_by_task(db: Session, task_ids: list[int]) -> dict[int, set[str]]
     return out
 
 
-def _all_prereqs_done(dep_ids: list[int], status_by_task: dict[int, set[str]]) -> bool:
-    """所有前置都至少有一条 completed 日志 → 视为产物已就绪。"""
-    for dep_id in dep_ids:
-        states = status_by_task.get(dep_id, set())
-        if not any(s in _PREREQ_DONE_STATES for s in states):
-            return False
-    return True
+def _load_accepted_task_ids(db: Session, task_ids: list[int]) -> set[int]:
+    """直查 DB 取"已 QA 接受"的前置 task 集合：存在 success/completed 且 qa_accepted_at 非空的 log。
+    直查而非走 _log_status_by_task 的 set——后者表达不了"哪条 log 被接受"。"""
+    from src.models.task_execution_log import TaskExecutionLog
+    if not task_ids:
+        return set()
+    rows = db.execute(
+        select(TaskExecutionLog.task_id)
+        .where(
+            TaskExecutionLog.task_id.in_(task_ids),
+            TaskExecutionLog.run_status.in_(_PREREQ_DONE_STATES),
+            TaskExecutionLog.qa_accepted_at.is_not(None),
+        )
+        .distinct()
+    ).all()
+    return {r[0] for r in rows}
+
+
+def _all_prereqs_accepted(dep_ids: list[int], accepted_ids: set[int]) -> bool:
+    """所有前置都已 QA 接受 → 下游可派。"""
+    return all(d in accepted_ids for d in dep_ids)
 
 
 def _already_dispatched(task_id: int, status_by_task: dict[int, set[str]]) -> bool:
@@ -315,6 +329,7 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
 
         # 计划内任务通常很少，直接全量加载状态——逻辑更简单，且天然支持级联传播。
         status_by_task = _log_status_by_task(db, [t.id for t in tasks])
+        accepted_ids = _load_accepted_task_ids(db, [t.id for t in tasks])
 
         # ① 级联跳过（fail-fast）：前置失败 → 下游拿不到完整输入，标 skipped；
         #    循环传播直到稳定（被跳过的任务又会让它的下游级联跳过）。
@@ -348,8 +363,8 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
             dep_ids = dep_map.get(cid, [])
             if not dep_ids:
                 continue
-            if not _all_prereqs_done(dep_ids, status_by_task):
-                continue  # 还有前置没完成，等下一次完成事件再来
+            if not _all_prereqs_accepted(dep_ids, accepted_ids):
+                continue  # 还有前置未被总管接受，等放行对账再来
             employee = db.get(Employee, t.employee_id)
             if employee is None:
                 logger.warning("successor task=%s employee missing, skip", cid)
