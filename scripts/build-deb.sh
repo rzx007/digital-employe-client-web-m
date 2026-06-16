@@ -94,7 +94,7 @@ docker run --rm \
   --memory=8g \
   -v "$ROOT_DIR:/host-source:ro" \
   -v "$RELEASE_DIR:/output" \
-  -v "$FPM_CACHE_DIR:/root/.cache/electron-builder" \
+  -v "$FPM_CACHE_DIR:/fpm-seed:ro" \
   -e ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" \
   -e ELECTRON_BUILDER_CACHE="/root/.cache/electron-builder" \
   -e BUILD_CMD="$BUILD_CMD" \
@@ -114,6 +114,10 @@ rsync -a --delete \
   /host-source/ /build/
 
 cd /build
+
+echo "  播种 fpm 缓存到容器本地层（virtiofs 挂载上 proper-lockfile 锁不可靠，会 stale）..."
+mkdir -p /root/.cache/electron-builder
+cp -a /fpm-seed/. /root/.cache/electron-builder/ 2>/dev/null || true
 
 echo "  安装 pnpm 依赖..."
 pnpm install --frozen-lockfile

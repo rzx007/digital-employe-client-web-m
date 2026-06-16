@@ -41,8 +41,8 @@
       ]
     }
   ],
-  // 脚本在 monorepo 根目录 scripts/（apps/web → 仓库根须 ../../）
-  "afterPack": "../../scripts/afterPack.js",
+  // 须在 workspace(apps/web)内：electron-builder ≥26.12 拒绝 workspace 外的 hook 路径
+  "afterPack": "build/afterPack.js",
   "mac": {
     // mac.defaultArch 在 Rosetta Node 下不足以覆盖。
     // zip：electron-updater 应用内更新（latest-mac.yml 指向 .zip）
