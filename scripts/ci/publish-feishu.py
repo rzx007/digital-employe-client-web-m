@@ -354,7 +354,15 @@ def main() -> int:
     tag = env("CI_COMMIT_TAG", "local")
     version = tag.lstrip("v") if tag.startswith("v") else tag
 
-    packages = collect_packages()
+    # 本地测试：可直接把安装包路径作为命令行参数传入，绕过工作区扫描。
+    cli_paths = [Path(p) for p in sys.argv[1:]]
+    if cli_paths:
+        packages = [p for p in cli_paths if p.is_file()]
+        missing = [str(p) for p in cli_paths if not p.is_file()]
+        if missing:
+            log(f"⚠️  以下路径不是文件，已忽略: {missing}")
+    else:
+        packages = collect_packages()
     if not packages:
         log("⚠️  未找到安装包（.exe/.dmg/.zip/.deb），跳过。")
         return 0
