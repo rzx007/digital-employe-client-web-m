@@ -105,7 +105,12 @@ def test_build_reentry_brief():
     assert "$WORKSPACE_DIR" in brief or "工作桌" in brief or "产物" in brief
 
 
-def test_trigger_reentry_schedules_turn_and_is_idempotent(db_session, workspace, monkeypatch):
+def test_trigger_reentry_schedules_turn(db_session, workspace, monkeypatch):
+    """trigger_orchestrator_reentry 起一轮整合流。
+
+    注：B5 起已移除 plan.status == "summarized" 门闩——幂等改由 per-task
+    reported_at 负责（见 test_incremental_report.py），故本函数不再断言「再调一次不重复起流」。
+    """
     from src.service.agent.orchestrator import reentry
 
     conv = Conversation(workspace_id=workspace.id, target_type="curator", target_id=0, title="总管")
@@ -129,8 +134,6 @@ def test_trigger_reentry_schedules_turn_and_is_idempotent(db_session, workspace,
     reentry.trigger_orchestrator_reentry(db_session, plan, workspace.id)
     assert len(started) == 1
     assert started[0]["conversation_id"] == conv.id
-    reentry.trigger_orchestrator_reentry(db_session, plan, workspace.id)  # 幂等
-    assert len(started) == 1
 
 
 def test_all_settled_triggers_reentry(

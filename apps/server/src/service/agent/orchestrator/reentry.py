@@ -90,21 +90,53 @@ def _schedule_reentry_stream(
         _do_start()
 
 
+def _start_incremental_stream(
+    *,
+    conversation_id: int,
+    agent: Any,
+    messages: list,
+    stream_msg_id: int,
+    workspace_id: int,
+    owned_db: Session,
+):
+    """同步起一轮增量汇报流，并返回 StartResult。
+
+    与 _schedule_reentry_stream 不同：本函数**同步**调用 request_start 并把结果
+    返回给调用方，使 trigger_incremental_report 能据此决定是否标记 reported_at。
+    调用方（去抖器 _flush）本身运行在主事件循环内，故无需跨线程投递。
+    """
+    from src.service.stream_registry import registry
+
+    return registry.request_start(
+        conversation_id=conversation_id,
+        agent=agent,
+        messages=messages,
+        config={"configurable": {"thread_id": conversation_id}},
+        stream_msg_id=stream_msg_id,
+        skill_name="",
+        debug_content_only=False,
+        orchestrator_workspace_id=workspace_id,
+        orchestrator_conversation_id=conversation_id,
+        orchestrator_owned_db=owned_db,
+        source="orchestrator_reentry",
+    )
+
+
 # ---------------------------------------------------------------------------
 # 主入口
 # ---------------------------------------------------------------------------
 
 def trigger_orchestrator_reentry(db: Session, plan, workspace_id: int) -> int | None:
-    """编排计划全部完成 → 唤醒总管起一轮整合 turn。幂等。
+    """编排计划全部完成 → 唤醒总管起一轮整合 turn。
 
-    返回触发的 conversation_id，或 None（跳过/幂等）。
+    注：增量汇报改造后，幂等不再由 plan.status 门闩负责（已删除该早返回），
+    而是由 per-task 的 TaskExecutionLog.reported_at 负责（见 trigger_incremental_report）。
+    plan.status 字段保留供只读展示用，但不再 gate 任何唤醒。
+
+    返回触发的 conversation_id，或 None（跳过）。
     """
     from src.models.conversation import Conversation
     from src.service.chat_service import ChatService
-
-    # 幂等：已整合过
-    if plan.status == "summarized":
-        return None
 
     conv = db.get(Conversation, plan.conversation_id)
     if conv is None:
@@ -113,7 +145,7 @@ def trigger_orchestrator_reentry(db: Session, plan, workspace_id: int) -> int | 
     results = collect_plan_execution_results(db, plan)
     brief = build_reentry_brief(results)
 
-    # 标记计划已整合（幂等门闩）
+    # 置计划终态值（仅供只读展示；不再 gate 任何唤醒，幂等由 reported_at 负责）
     plan.status = "summarized"
 
     # 在总管会话写入 assistant 流式占位（不插 user 消息，总管自发整合）
@@ -137,6 +169,113 @@ def trigger_orchestrator_reentry(db: Session, plan, workspace_id: int) -> int | 
         owned_db=owned_db,
     )
     return conv.id
+
+
+def _log_to_result(log: TaskExecutionLog) -> dict[str, Any]:
+    """把一条 TaskExecutionLog 转成 build_reentry_brief 期望的结果 dict 形状。
+
+    形状与 collect_plan_execution_results 产出一致（task_name/status/content/result/error）。
+    """
+    content = ""
+    if log.output_json:
+        try:
+            content = json.loads(log.output_json).get("content", "") or ""
+        except (ValueError, TypeError):
+            content = ""
+    return {
+        "task_name": log.task_name_snapshot,
+        "status": log.run_status,
+        "content": content,
+        "result": log.run_result or "",
+        "error": log.error_message,
+    }
+
+
+def trigger_incremental_report(
+    db: Session, orchestrator_conversation_id: int, workspace_id: int
+) -> bool:
+    """增量汇报：取本会话尚未汇报（reported_at IS NULL）的终态任务，组 brief
+    （新结果 + 整盘快照），起一轮总管 turn，成功则标记 reported_at。
+
+    返回 True 表示已消费（含「无未汇报任务」的空消费）；返回 False 表示起流被拒
+    （总管占线），不标记 reported_at，留待补触发。
+
+    幂等：reported_at 负责——已汇报过的终态任务不会再次入选。
+    """
+    from src.models.conversation import Conversation
+    from src.models.workspace import cst_now
+    from src.service.agent.orchestrator.dependency_scheduler import _SETTLED_STATES
+    from src.service.agent.orchestrator.prompts import (
+        build_delegation_execution_context,
+    )
+    from src.service.agent_stream_queue import StartResult
+    from src.service.chat_service import ChatService
+
+    # 取本会话尚未汇报且已终态的执行日志（按 id 升序，保持完成先后）
+    new_logs = db.scalars(
+        select(TaskExecutionLog)
+        .where(
+            TaskExecutionLog.orchestrator_conversation_id
+            == orchestrator_conversation_id,
+            TaskExecutionLog.reported_at.is_(None),
+            TaskExecutionLog.run_status.in_(_SETTLED_STATES),
+        )
+        .order_by(TaskExecutionLog.id.asc())
+    ).all()
+
+    # 无未汇报终态任务 → 无事可做，视为已消费
+    if not new_logs:
+        return True
+
+    conv = db.get(Conversation, orchestrator_conversation_id)
+    if conv is None:
+        # 会话已不存在：无从汇报，但也无可重试——视为已消费
+        return True
+
+    # 组 brief = 新结果摘要 + 整盘快照段（复用 B3）
+    results = [_log_to_result(log) for log in new_logs]
+    snapshot = build_delegation_execution_context(
+        db, workspace_id, orchestrator_conversation_id
+    )
+    brief = f"{build_reentry_brief(results)}\n\n{snapshot}"
+
+    # 写 assistant 流式占位（与 trigger_orchestrator_reentry 同：不插 user 消息）
+    assistant_msg = ChatService._append_message(
+        db, conversation=conv, role="assistant", content=""
+    )
+    assistant_msg.stream_state = "streaming"
+    db.commit()
+
+    # 用独立 session 构建 agent 并同步起流（拿到 StartResult 以决定是否标记）
+    owned_db = _new_session()
+    agent = _build_orchestrator_agent(
+        workspace_id=workspace_id, db=owned_db, conversation_id=conv.id
+    )
+    result = _start_incremental_stream(
+        conversation_id=conv.id,
+        agent=agent,
+        messages=[{"role": "user", "content": brief}],
+        stream_msg_id=assistant_msg.id,
+        workspace_id=workspace_id,
+        owned_db=owned_db,
+    )
+
+    if result == StartResult.REJECTED:
+        # 总管占线：回滚占位消息，不标记 reported_at，返回 False 留待补触发。
+        # owned_db 不在此关闭——与 _schedule_reentry_stream REJECTED 分支保持一致。
+        if assistant_msg.stream_state == "streaming":
+            assistant_msg.stream_state = "failed"
+            db.commit()
+        return False
+
+    # 非 REJECTED(STARTED/QUEUED)即视为成功消费:QUEUED 表示已稳妥排入队列、流终将起;
+    # 队列满溢时 request_start 直接返回 REJECTED(走上面分支),故不存在"标记了却没汇报"。
+    # 成功起流 → 标记这些日志为已汇报
+    now = cst_now()
+    for log in new_logs:
+        log.reported_at = now
+    db.commit()
+    return True
 
 
 def collect_plan_execution_results(db: Session, plan) -> list[dict[str, Any]]:
