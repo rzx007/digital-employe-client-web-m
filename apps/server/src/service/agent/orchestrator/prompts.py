@@ -211,6 +211,7 @@ _STATUS_LABELS: dict[str, str] = {
     "failed": "失败",
     "cancelled": "已取消",
     "timeout": "超时",
+    "superseded": "已打回",
 }
 
 
@@ -239,6 +240,8 @@ def build_delegation_execution_context(
         "以下为本会话已委派子任务的最新执行快照（按开始时间倒序；每次收到用户新消息时会刷新）。",
         "用户追问进度/结果时：必须先对照此表与对话中的「【任务完成】」消息，勿凭记忆臆断。",
         "若快照中 run_status 为 success 且含交付摘要，可直接引用回答用户。",
+        "你是一线质检：对照每条任务的「派活契约」逐项判定达标/不达标。",
+        "不达标调 redispatch_task(task_id, rework_note) 打回重做，达标才上报。",
         "",
     ]
     for log in logs:
@@ -251,6 +254,11 @@ def build_delegation_execution_context(
         if log.duration_ms is not None:
             header += f" · {log.duration_ms / 1000:.1f}s"
         lines.append(header)
+
+        task = db.get(EmployeeTask, log.task_id) if log.task_id else None
+        if task is not None and task.user_prompt:
+            lines.append("- 派活契约（达标基线，对照判定）：")
+            lines.append(task.user_prompt.strip())
 
         if log.run_status == "running":
             lines.append("- 状态：正在员工独立会话中执行；完成前勿重复委派同一请求。")
