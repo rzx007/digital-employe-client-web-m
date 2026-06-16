@@ -2,7 +2,7 @@ import type { Employee, Group as ApiGroup } from "@/api/types"
 import { CURATOR_AVATAR_URL } from "@/lib/avatar"
 import { getServerBaseUrl } from "@/lib/request"
 import { fetchEmployees } from "@/api/employee"
-import { createGroup as createGroupApi, fetchGroups } from "@/api/group"
+import { createGroup as createGroupApi } from "@/api/group"
 import {
   approveHitl as approveHitlApi,
   cancelConversationStream as cancelConversationStreamApi,
@@ -96,10 +96,8 @@ function mapEmployeeToAIEmployee(emp: Employee): AIEmployee {
 export { mapContactToTarget }
 
 export async function fetchContacts(signal?: AbortSignal): Promise<Contact[]> {
-  const [employeesRes, groupsRes] = await Promise.all([
-    fetchEmployees({ signal }),
-    fetchGroups({ signal }),
-  ])
+  // 群已退场（阶段4）：联系人仅总管 + 员工，不再拉群端点。
+  const employeesRes = await fetchEmployees({ signal })
 
   const allEmployees = (employeesRes?.data ?? []) as Employee[]
 
@@ -123,19 +121,7 @@ export async function fetchContacts(signal?: AbortSignal): Promise<Contact[]> {
     employee: mapEmployeeToAIEmployee(emp),
   }))
 
-  const allAIEmployees: AIEmployee[] = allEmployees.map(mapEmployeeToAIEmployee)
-
-  const groups: Contact[] = (groupsRes?.data ?? []).map((group: ApiGroup) => ({
-    type: "group" as const,
-    group: {
-      id: String(group.id),
-      name: group.name,
-      participants: (group.employee_ids ?? [])
-        .map((eid) => allAIEmployees.find((e) => e.id === String(eid)))
-        .filter(Boolean) as AIEmployee[],
-    },
-  }))
-  return [...curatorContacts, ...employeeContacts, ...groups]
+  return [...curatorContacts, ...employeeContacts]
 }
 
 export async function createContactGroup(params: {
