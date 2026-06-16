@@ -45,20 +45,20 @@ debouncer.notify(orch_conv)   # → 稍后唤醒总管 QA 评审
 
 ### 4.1 派发门槛改写（dependency_scheduler）
 后继可派条件从"前置 success"改为"前置 **已 QA 接受**"。
-- 新谓词 `_all_prereqs_accepted(dep_ids, ...)`：每个前置存在 `run_status in ("completed","success") 且 qa_accepted_at IS NOT NULL` 的 log。
+- 新谓词 `_all_prereqs_accepted(dep_ids, db)`：每个前置 task 存在一条 `run_status in ("completed","success") AND qa_accepted_at IS NOT NULL` 的 log。
+- **数据源（避坑）**：**直接查 DB**，不要塞进现有 `_log_status_by_task` 的聚合 `set`——`set` 无法表达"哪条 log 被接受"（返工后同一 task 下并存 `superseded` 旧 log + `success` 新 log）。实现建议：一条查询取"已接受前置"集合
+  `SELECT DISTINCT task_id FROM task_execution_logs WHERE task_id IN (dep_ids) AND run_status IN ('completed','success') AND qa_accepted_at IS NOT NULL`
+  → `accepted_set`；`_all_prereqs_accepted = all(d in accepted_set for d in dep_ids)`。
+  - 该查询天然排除 `superseded`（非 success）——被打回的旧 log 不会满足；只有被接受的 success log 满足。`_collect_prereq_artifacts`（取 latest success）与此一致：被接受的 success 即下游要消费的产物。
 - 替换 `on_employee_task_completed` 派发分支中 `_all_prereqs_done` 的调用点（`dependency_scheduler.py:351`）。
 - 根任务（无依赖）与失败级联跳过逻辑不受影响。
 
-### 4.2 终态时不再急派下游（stream_registry `_finalize_task_stream`）
-属于编排计划（`orch_conv_id` 非空）的员工任务完成 → **只**通知 QA 去抖器，**不再**经 `on_task_finalized` 急派下游。
-- 具体：终态化分支对 orchestrated 任务跳过"派发下游"动作（保留 `task_completed` 前端事件、保留 `debouncer.notify`）。
-- 下游改由 §4.3 的放行对账派发。
-- 注：`on_employee_task_completed` 同时还做"失败级联跳过"——该部分仍需触发（失败路径不等 QA）。因此不是简单不调 `on_employee_task_completed`，而是让其**派发分支**改用新接受谓词（§4.1），从而 success 前置在未接受前自然不派；§4.2 的"不急派"由谓词达成，无需在 `_finalize` 额外拦截。**实现期二选一**：(a) 仅靠 §4.1 谓词（success 但未接受 → `_all_prereqs_accepted` 为假 → 不派，最简）；(b) 额外在 `_finalize` 跳过派发。**首选 (a)**——改一处谓词即同时实现"不急派"，§4.2 无需独立改动。
-
-> 设计收敛：§4.1 的谓词改写**本身**就实现了"不急派下游"——因为终态时上游尚未 `qa_accepted_at`，`_all_prereqs_accepted` 为假。§4.2 因此降级为"无需独立改动，由谓词达成"。
+### 4.2 「终态不再急派下游」——**无独立改动，由 §4.1 谓词达成**
+不改 `_finalize_task_stream` / `on_task_finalized`。员工任务终态时 `on_employee_task_completed` 照常被调（失败级联跳过仍需它），但其派发分支已改用 §4.1 的接受谓词：终态时上游尚未盖 `qa_accepted_at` → `_all_prereqs_accepted` 为假 → 下游自然不派。**实现者不应改动 `_finalize`**——"不急派"是谓词的副作用，不是独立拦截。
 
 ### 4.3 放行对账钩子（总管评审轮结束）— 钩子点已确认
-**钩子点**：`stream_registry.py:2208-2216` 的流收尾 finally 块——任何流结束且 `orchestrator_conversation_id` 非空时调 `report_debouncer.on_stream_end(...)`。总管评审流（source=`orchestrator_reentry`）以**自己的会话**作 `orchestrator_conversation_id`，故其收尾**必经此处**（已读码确认）。在该处紧接 `on_stream_end` 之后挂"放行对账"。
+**钩子点**：`stream_registry.py:2208-2216` 的流收尾 finally 块——任何流结束且 `orchestrator_conversation_id` 非空时调 `report_debouncer.on_stream_end(orchestrator_conversation_id)`（`:2214`）。总管评审流（source=`orchestrator_reentry`）以**自己的会话**作 `orchestrator_conversation_id`，故其收尾**必经此处**（已读码确认）。
+**接线**：新放行对账函数签名 `release_accepted_downstream(orchestrator_conversation_id: int)`，在该 finally 内、紧接 `on_stream_end(orchestrator_conversation_id)` 调用点（`:2214` 一带）以同一 `orchestrator_conversation_id` 调用（该值此处现成可用）。
 
 **辨别"总管自己的评审流" vs "员工任务流"**：评审流 `conversation_id == orchestrator_conversation_id`（它就是总管会话）；员工任务流二者不等。放行对账只在前者运行（或无条件运行亦安全——见下）。
 
@@ -71,7 +71,9 @@ debouncer.notify(orch_conv)   # → 稍后唤醒总管 QA 评审
 - **在员工流收尾时误跑也无害**：刚完成的员工 log 此刻 `reported_at` 尚为空（评审还没起），对账条件不满足 → 跳过。故即便不加 `conversation_id==orchestrator_conversation_id` 辨别也安全；加辨别仅为省去无谓扫描。
 
 ### 4.4 防呆兜底（启动对账）
-启动对账（[QA-rework] 关联的 B7 重启对账同一处）补盖：对历史 `success AND reported_at 非空 AND 未 superseded AND qa_accepted_at 为空` 的 log 盖 `qa_accepted_at` 并触发一次下游放行评估，避免"评审错过/进程重启 → 下游永久卡在等接受"。
+启动对账（关联 B7 重启对账同一处）补盖：对历史 `success AND reported_at 非空 AND 未 superseded AND qa_accepted_at 为空` 的 log 盖 `qa_accepted_at` 并触发一次下游放行评估。
+- **覆盖范围**：解决"评审错过/进程重启 → 已 success 却没盖接受 → 下游卡在等接受"。
+- **不覆盖（明确）**：进程在返工流 queued 落库后、流真正起来前崩溃 → `_reset_orphaned_streams` 把该 queued 新 log 重置为 `failed`，此时 task 下无 success log，本对账（条件含 success）不会、也不应放行下游。该 case 走**既有失败级联跳过**路径（`_any_prereq_failed` → 下游 skipped），是"返工被重启打断"的既有降级（[QA-rework spec §7]），**不是死锁**；不要指望 §4.4 复活它。
 
 ### 4.5 边界与数据流
 - **共享桌产物**：下游放行时 `_collect_prereq_artifacts` 取前置最新 success log = 被接受的那条；若上游返工过，最新 success 即返工后的好数据，下游自然取到。
@@ -96,6 +98,7 @@ debouncer.notify(orch_conv)   # → 稍后唤醒总管 QA 评审
 - **新失败模式「下游卡在等接受」**：若总管评审永不发生，下游永不放行。缓解：QA 评审本就是已载重机制（增量引擎），且 §4.4 启动对账兜底。仍建议加日志：放行对账每轮记录"本轮盖接受 N 条/放行下游 M 条"。
 - **评审轮 `on_stream_end` 钩子的触发可靠性**：已读码确认总管评审流经 `stream_registry.py:2208-2216` finally（其 `orchestrator_conversation_id`=自身会话）。残余风险：评审流被 REJECTED（总管占线，从未真正起流）时不经此 finally——但此情形下 `reported_at` 也未盖（`trigger_incremental_report` 仅在非 REJECTED 才盖），评审会被补触发重来，对账自然在后续成功轮兜住；§4.4 启动对账为最终兜底。
 - **多轮评审批次**：放行对账不依赖"本轮评审了哪些"，而是全量扫描"reported 且未接受且未 superseded"——天然覆盖跨轮、漏评审补评审的情况，更稳。
+- **capacity/slot 跳过非卡死**：放行对账调 `on_employee_task_completed` 派下游时，若下游员工 capacity 满或无 stream slot，现有派发分支 `continue` 跳过（不派不记）。该下游会在 capacity 释放时（下一个员工流结束 → `on_employee_task_completed` 重评估）再次被尝试派发——这是现有 scheduler 既有的重试链路，**不是本特性引入的卡死**。盖了 `qa_accepted_at` 是持久的，重评估时谓词仍满足。
 
 ## 8. 验收对照
 冒烟情景 B 不再复现：文档岗只在热搜被总管接受后开跑，且取到的是（返工后的）被接受热搜数据；不再出现"文档先于其依赖的热搜交付"。
