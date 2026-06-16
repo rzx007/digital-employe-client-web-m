@@ -48,6 +48,11 @@ const STATUS_CONFIG: Record<
     label: "已取消",
     className: "bg-muted text-muted-foreground dark:bg-muted/60",
   },
+  superseded: {
+    label: "已打回",
+    className:
+      "bg-gray-100 text-gray-500 dark:bg-gray-800/40 dark:text-gray-400",
+  },
 }
 
 const STATUS_FALLBACK = {

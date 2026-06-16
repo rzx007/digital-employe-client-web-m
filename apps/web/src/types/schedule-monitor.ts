@@ -7,6 +7,7 @@ export type TaskRunStatus =
   | "timeout"
   | "stuck"
   | "cancelled"
+  | "superseded"
 
 /** 未终态（仍在进行/排队/卡住）的任务执行状态集合——员工任务面板与「N 个在执行」指示共用，避免漂移。 */
 export const ACTIVE_TASK_RUN_STATUSES: ReadonlySet<TaskRunStatus> = new Set([
@@ -101,6 +102,8 @@ export interface TaskExecution {
   duration_ms: number | null
   /** 运行中保活时间戳（每 ~30s 刷新）；用于判断「还活着」vs「卡死」。 */
   last_heartbeat_at?: string | null
+  /** 该执行被总管打回后重新派发的次数（0 或 undefined 表示从未返工）。 */
+  rework_count?: number
   skill_rating: null | SkillRatingOutput
   confirm_url: string | null
   confirm_execution_result: boolean

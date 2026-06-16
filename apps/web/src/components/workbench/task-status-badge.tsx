@@ -50,6 +50,11 @@ const STATUS_CONFIG: Record<
     className: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
     dotClassName: "bg-slate-500",
   },
+  superseded: {
+    label: "已打回",
+    className: "bg-gray-500/10 text-gray-500 dark:text-gray-400",
+    dotClassName: "bg-gray-400",
+  },
 }
 
 export function TaskStatusBadge({ status, className }: TaskStatusBadgeProps) {

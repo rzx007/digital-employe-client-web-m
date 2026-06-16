@@ -49,6 +49,12 @@ const STATUS_CONFIG: Record<
       "bg-gray-100 text-gray-600 dark:bg-gray-800/40 dark:text-gray-400",
     stampText: "已取消",
   },
+  superseded: {
+    label: "已打回",
+    className:
+      "bg-gray-100 text-gray-500 dark:bg-gray-800/40 dark:text-gray-400",
+    stampText: "已打回",
+  },
   running: {
     label: "进行中",
     className:
@@ -124,7 +130,8 @@ export function ExecutionReportCard({
     execution.run_status === "success" ||
     execution.run_status === "failed" ||
     execution.run_status === "timeout" ||
-    execution.run_status === "cancelled"
+    execution.run_status === "cancelled" ||
+    execution.run_status === "superseded"
   const isRunning = execution.run_status === "running"
   const isActive =
     isRunning ||
@@ -225,6 +232,11 @@ export function ExecutionReportCard({
         {heartbeatStale && (
           <span className="text-amber-600 dark:text-amber-400">· 可能卡死</span>
         )}
+        {(execution.rework_count ?? 0) > 0 && (
+          <span className="text-amber-600 dark:text-amber-400">
+            · 返工 {execution.rework_count} 次
+          </span>
+        )}
         {canJumpToEmployee ? (
           <Button
             variant="link"
@@ -276,7 +288,9 @@ export function ExecutionReportCard({
               execution.run_status === "timeout" &&
                 "rotate-[-12deg] border-amber-600 text-amber-700 dark:border-amber-400 dark:text-amber-400",
               execution.run_status === "cancelled" &&
-                "rotate-[-12deg] border-gray-500 text-gray-600 dark:border-gray-400 dark:text-gray-400"
+                "rotate-[-12deg] border-gray-500 text-gray-600 dark:border-gray-400 dark:text-gray-400",
+              execution.run_status === "superseded" &&
+                "rotate-[-12deg] border-gray-500 text-gray-500 dark:border-gray-400 dark:text-gray-400"
             )}
           >
             {statusCfg.stampText}
@@ -307,6 +321,11 @@ export function ExecutionReportCard({
           {heartbeatStale && (
             <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-400">
               · 可能卡死
+            </span>
+          )}
+          {(execution.rework_count ?? 0) > 0 && (
+            <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-400">
+              · 返工 {execution.rework_count} 次
             </span>
           )}
         </div>

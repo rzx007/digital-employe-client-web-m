@@ -101,3 +101,4 @@ export type TaskStatus =
   | "timeout"
   | "stuck"
   | "cancelled"
+  | "superseded"
