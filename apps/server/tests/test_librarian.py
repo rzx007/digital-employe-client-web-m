@@ -103,19 +103,40 @@ def test_run_librarian_calls_both_and_ratelimits(monkeypatch, tmp_path):
 
 # ── 2C-4: 阈值自动触发 ────────────────────────────────────────────────────────
 
-def test_threshold_triggers_after_n(monkeypatch):
+def test_threshold_triggers_from_disk_count(monkeypatch, tmp_path):
+    """基于磁盘 journal 条数触发（重启不丢）：<阈值不触发；攒够且无 profile→触发。"""
     from src.service.learning import librarian
     ran = []
     monkeypatch.setattr(librarian, "_spawn_librarian", lambda eid: ran.append(eid))
-    librarian._journal_counters.clear()
+    monkeypatch.setattr(librarian, "_brain_root_for", lambda eid: tmp_path / str(eid))
     librarian._LIBRARIAN_THRESHOLD = 3
-    for _ in range(2):
-        librarian.note_journal_and_maybe_run(5)
+    jd = tmp_path / "5" / "journal"
+    jd.mkdir(parents=True)
+    # 2 条 < 阈值 → 不触发
+    (jd / "a.jsonl").write_text('{"x":1}\n{"x":2}\n', encoding="utf-8")
+    librarian.note_journal_and_maybe_run(5)
     assert ran == []
+    # 补到 3 条 ≥ 阈值、无 profile → 触发
+    (jd / "a.jsonl").write_text('{"x":1}\n{"x":2}\n{"x":3}\n', encoding="utf-8")
     librarian.note_journal_and_maybe_run(5)
     assert ran == [5]
-    librarian.note_journal_and_maybe_run(5)
-    assert ran == [5]
+
+
+def test_threshold_skips_when_profile_fresh(monkeypatch, tmp_path):
+    """已有 profile 且比 journal 新（无新活）→ 不重复触发。"""
+    import time
+    from src.service.learning import librarian
+    ran = []
+    monkeypatch.setattr(librarian, "_spawn_librarian", lambda eid: ran.append(eid))
+    monkeypatch.setattr(librarian, "_brain_root_for", lambda eid: tmp_path / str(eid))
+    librarian._LIBRARIAN_THRESHOLD = 2
+    brain = tmp_path / "6"
+    jd = brain / "journal"; jd.mkdir(parents=True)
+    (jd / "a.jsonl").write_text('{"x":1}\n{"x":2}\n', encoding="utf-8")
+    time.sleep(0.02)
+    (brain / "profile.md").write_text("# 能力画像\n", encoding="utf-8")  # profile 比 journal 新
+    librarian.note_journal_and_maybe_run(6)
+    assert ran == []
 
 
 def test_reflect_safe_hook_swallows(monkeypatch):

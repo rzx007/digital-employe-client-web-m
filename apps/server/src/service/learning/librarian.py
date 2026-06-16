@@ -129,8 +129,7 @@ def run_librarian(employee_id: int) -> None:
 
 # ── 阈值自动触发 ──────────────────────────────────────────────────────────────
 
-_journal_counters: dict[int, int] = {}
-_LIBRARIAN_THRESHOLD = 5  # journal 每累积 N 次跑一次复盘
+_LIBRARIAN_THRESHOLD = 5  # journal 累计达 N 条才跑复盘
 
 
 def _spawn_librarian(employee_id: int) -> None:
@@ -139,13 +138,37 @@ def _spawn_librarian(employee_id: int) -> None:
     threading.Thread(target=run_librarian, args=(employee_id,), daemon=True).start()
 
 
+def _count_journal_entries(brain: Path) -> int:
+    """磁盘上该员工 journal 总条数（重启不丢，替代内存计数器）。"""
+    jdir = brain / "journal"
+    if not jdir.is_dir():
+        return 0
+    n = 0
+    for fp in jdir.glob("*.jsonl"):
+        try:
+            n += sum(1 for line in fp.read_text(encoding="utf-8").splitlines() if line.strip())
+        except OSError:
+            continue
+    return n
+
+
 def note_journal_and_maybe_run(employee_id: int) -> None:
-    """journal 每捕获一次调一次；累积达阈值→后台跑复盘并重置计数。"""
+    """journal 每捕获一次调一次。基于**磁盘** journal 条数判定（重启不丢）：
+    攒够阈值且画像缺失/过期 → 后台跑复盘。run_librarian 自带 5min 限流防频繁。"""
     if employee_id is None:
         return
-    n = _journal_counters.get(employee_id, 0) + 1
-    if n >= _LIBRARIAN_THRESHOLD:
-        _journal_counters[employee_id] = 0
-        _spawn_librarian(employee_id)
-    else:
-        _journal_counters[employee_id] = n
+    try:
+        brain = _brain_root_for(employee_id)
+        if _count_journal_entries(brain) < _LIBRARIAN_THRESHOLD:
+            return
+        profile = brain / "profile.md"
+        if not profile.exists():
+            _spawn_librarian(employee_id)
+            return
+        # 已有画像：journal 比画像新（有新活）才刷新；限流兜底防频繁
+        jdir = brain / "journal"
+        newest = max((f.stat().st_mtime for f in jdir.glob("*.jsonl")), default=0.0)
+        if newest > profile.stat().st_mtime:
+            _spawn_librarian(employee_id)
+    except Exception:
+        logger.warning("note_journal_and_maybe_run failed eid=%s", employee_id, exc_info=True)
