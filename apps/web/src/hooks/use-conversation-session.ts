@@ -19,7 +19,6 @@ import type { UIMessage } from "ai"
 import type { Message } from "@/types/chat"
 
 import { conversationRuntimeBus } from "@/lib/chat/conversation-runtime-bus"
-import { refetchRecentContacts, touchRecentContactById } from "@/lib/chat/touch-recent-contact"
 
 import {
   createApprovedAtTimestamp,
@@ -91,7 +90,6 @@ const DB_STALL_POLL_INTERVAL_MS = 4000
 
 export function useConversationSession({
   conversationId,
-  contactId,
 
   storedMessages,
 
@@ -108,7 +106,7 @@ export function useConversationSession({
   queryClient,
 }: {
   conversationId: string | number | null
-  /** 本会话所属联系人；流结束时 touch 最近列表，勿读全局 selectedContactId */
+  /** 本会话所属联系人（保留以兼容调用方传参） */
   contactId: string | null
 
   storedMessages: Message[]
@@ -539,13 +537,7 @@ export function useConversationSession({
     }
 
     scheduleMessagesRefetch()
-
-    if (contactId) {
-      void touchRecentContactById(contactId)
-    } else {
-      void refetchRecentContacts()
-    }
-  }, [contactId, convKey, queryClient, scheduleMessagesRefetch])
+  }, [convKey, queryClient, scheduleMessagesRefetch])
 
   const onStreamStopped = useCallback(() => {
     if (!convKey) return

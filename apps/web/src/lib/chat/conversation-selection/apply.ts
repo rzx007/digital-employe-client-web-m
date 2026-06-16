@@ -1,4 +1,3 @@
-import { touchRecentContactById } from "@/lib/chat/touch-recent-contact"
 import { useChatStore } from "@/stores/chat-store"
 
 /** 进入草稿（新建会话）；已在空草稿时不重复递增 draftSessionKey */
@@ -24,18 +23,14 @@ export function selectWorkbenchCuratorConversation(
   useChatStore.getState().setWorkbenchCuratorConversationId(conversationId)
 }
 
-/** 选中联系人的指定会话，并更新最近消息 */
+/** 选中联系人的指定会话 */
 export function selectConversationForContact(
   contactId: string,
-  conversationId: string | number,
-  options?: { touch?: boolean }
+  conversationId: string | number
 ) {
   useChatStore
     .getState()
     .selectConversation(String(contactId), String(conversationId))
-  if (options?.touch !== false) {
-    void touchRecentContactById(contactId)
-  }
 }
 
 /** 联系人页：仅选中查看详情，不切换 Tab、不更新最近消息排序 */
@@ -43,14 +38,8 @@ export function selectContactForDetail(contactId: string) {
   useChatStore.getState().setSelectedContactId(contactId)
 }
 
-export function switchToContact(
-  contactId: string,
-  options?: { touch?: boolean }
-) {
+export function switchToContact(contactId: string) {
   useChatStore.getState().switchToContact(contactId)
-  if (options?.touch !== false) {
-    void touchRecentContactById(contactId)
-  }
 }
 
 /** 选中联系人并进入聊天（与 switchToContact 等价，便于替换 setSelectedContactId） */

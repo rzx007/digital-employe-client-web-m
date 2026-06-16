@@ -14,9 +14,3 @@ export interface RecentConversationItem {
   isPinned?: boolean
   participants?: { name: string; avatar?: string }[]
 }
-
-export function getRecentConversationsKey(workspaceId: number): string {
-  return `app:recent-conversations:${workspaceId}`
-}
-
-export const MAX_RECENT = 50

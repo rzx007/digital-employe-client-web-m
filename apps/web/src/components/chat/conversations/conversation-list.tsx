@@ -11,7 +11,6 @@ import {
   isPreservedEmployeeConversationSelection,
   selectConversationById,
 } from "@/lib/chat/conversation-selection"
-import { touchRecentContactById } from "@/lib/chat/touch-recent-contact"
 import { useChatStore } from "@/stores/chat-store"
 import type { Contact } from "@/types/chat"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
@@ -205,9 +204,6 @@ export function ConversationList({
                   onSelectConversationId(conversation.id)
                 } else {
                   selectConversationById(conversation.id)
-                }
-                if (activeContactId) {
-                  void touchRecentContactById(activeContactId)
                 }
                 onSelectConversation?.()
               }}

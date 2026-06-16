@@ -7,7 +7,6 @@ import {
 } from "@/api/employee"
 import {
   createConversation,
-  deleteAllConversationsForContact,
   deleteConversation as deleteConversationApi,
   deleteTaskExecutionsByOrchestratorConversation,
   fetchContacts,
@@ -21,64 +20,26 @@ import {
 } from "@/api/chat"
 import {
   deleteRecentContact,
-  fetchRecentContacts,
-  importRecentContacts,
   touchRecentContact,
-  updateRecentContactPin,
 } from "@/api/recent-contacts"
 import type { Contact, Conversation, Message } from "@/types/chat"
 import { mapContactToTarget } from "@/lib/chat/contact-target"
-import { findContactInList, getContactId } from "@/lib/chat/contact-utils"
+import { findContactInList } from "@/lib/chat/contact-utils"
 import {
   enterDraftConversation,
   selectConversationById,
 } from "@/lib/chat/conversation-selection"
-import { mapRecentContactDtoToItem } from "@/lib/chat/recent-contact-mappers"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import { useAuthStore } from "@/stores/auth-store"
 import { useChatStore } from "@/stores/chat-store"
-import {
-  buildRecentContactImportPayload,
-  clearRecentConversationsStorage,
-  hasRecentContactsImported,
-  loadAndMigrateRecentConversations,
-  markRecentContactsImported,
-} from "@/components/chat/conversations/recent-conversations/persistence"
 import type { RecentConversationItem } from "@/components/chat/conversations/recent-conversations/types"
 
 export function useContactsQuery() {
   return useQuery({
     queryKey: chatKeys.contacts(),
     queryFn: ({ signal }) => fetchContacts(signal),
-  })
-}
-
-export function useRecentContactsQuery() {
-  const workspaceId = useAuthStore((s) => s.workspaceId) ?? getActiveWorkspaceId()
-
-  return useQuery({
-    queryKey: chatKeys.recentContacts(workspaceId),
-    queryFn: async ({ signal }) => {
-      const res = await fetchRecentContacts({ signal, workspaceId })
-      let dtos = res?.data ?? []
-
-      if (!hasRecentContactsImported(workspaceId)) {
-        const local = loadAndMigrateRecentConversations(workspaceId)
-        const importItems = buildRecentContactImportPayload(local)
-        if (importItems.length > 0) {
-          await importRecentContacts(importItems, { signal, workspaceId })
-          clearRecentConversationsStorage(workspaceId)
-          const retry = await fetchRecentContacts({ signal, workspaceId })
-          dtos = retry?.data ?? []
-        }
-        markRecentContactsImported(workspaceId)
-      }
-
-      return dtos.map(mapRecentContactDtoToItem)
-    },
-    staleTime: 30_000,
   })
 }
 
@@ -93,37 +54,6 @@ export function useTouchRecentContactMutation() {
         return Promise.reject(new Error("无法确定聊天目标类型"))
       }
       return touchRecentContact(target, { workspaceId })
-    },
-    onSuccess: () => {
-      void queryClient.refetchQueries({
-        queryKey: chatKeys.recentContacts(workspaceId),
-      })
-    },
-  })
-}
-
-export function useToggleRecentPinMutation() {
-  const queryClient = useQueryClient()
-  const workspaceId = useAuthStore((s) => s.workspaceId) ?? getActiveWorkspaceId()
-
-  return useMutation({
-    mutationFn: ({
-      contact,
-      isPinned,
-    }: {
-      contact: Contact
-      isPinned: boolean
-    }) => {
-      const target = mapContactToTarget(contact)
-      if (!target) {
-        return Promise.reject(new Error("无法确定聊天目标类型"))
-      }
-      return updateRecentContactPin(
-        target.target_type,
-        target.target_id,
-        isPinned,
-        { workspaceId }
-      )
     },
     onSuccess: () => {
       void queryClient.refetchQueries({
@@ -303,52 +233,6 @@ export function useEmployeeDetailQuery(id: string | null) {
     queryFn: ({ signal }) => fetchEmployeeById(Number(id!), { signal }),
     enabled: Boolean(id),
     select: (res) => res.data,
-  })
-}
-
-export function useDeleteAllConversationsForContactMutation() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: ({
-      contactId,
-      contact,
-    }: {
-      contactId: string
-      contact: Contact
-    }) => deleteAllConversationsForContact(contactId, contact),
-    onSuccess: (deletedIds, { contactId, contact }) => {
-      const workspaceId = useAuthStore.getState().workspaceId ?? getActiveWorkspaceId()
-      const selectionContactId = getContactId(contact) ?? contactId
-      queryClient.setQueryData<Conversation[]>(
-        chatKeys.conversations(selectionContactId),
-        []
-      )
-      if (selectionContactId !== contactId) {
-        queryClient.setQueryData<Conversation[]>(
-          chatKeys.conversations(contactId),
-          []
-        )
-      }
-      for (const id of deletedIds) {
-        queryClient.removeQueries({ queryKey: chatKeys.messages(id) })
-        queryClient.removeQueries({ queryKey: chatKeys.resources(id) })
-      }
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.conversations(selectionContactId),
-      })
-      const target = mapContactToTarget(contact)
-      if (target) {
-        void deleteRecentContact(target.target_type, target.target_id, {
-          workspaceId,
-        })
-        queryClient.setQueryData<RecentConversationItem[]>(
-          chatKeys.recentContacts(workspaceId),
-          (current) => current?.filter((i) => i.contactId !== contactId)
-        )
-      }
-      resetChatRightPanels()
-    },
   })
 }
 
