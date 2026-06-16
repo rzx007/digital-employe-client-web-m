@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 
 // mock 掉重资源查询，隔离测面板自身分支
 const mockUseResourceContentQuery = vi.fn()
@@ -39,6 +39,29 @@ describe("WorkbenchHtmlPanel", () => {
     expect(screen.getByText("看板A")).toBeTruthy()
     expect(screen.queryByText("源码")).toBeNull()
     expect(screen.queryByText("预览")).toBeNull()
+  })
+
+  it("portals to document.body and goes fixed inset-0 when fullscreen", () => {
+    mockUseResourceContentQuery.mockReturnValue({
+      data: { content: "<h1>hi</h1>", artifact_type: "code", language: "html" },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+    const { container } = render(
+      <WorkbenchHtmlPanel htmlRef={REF} title="看板A" />
+    )
+    // 进入全屏
+    fireEvent.click(screen.getByTitle("全屏"))
+    // 容器内只剩占位（aria-hidden），真实面板被 Portal 到 body
+    expect(container.querySelector("iframe")).toBeNull()
+    const fullscreenEl = document.body.querySelector(".fixed.inset-0")
+    expect(fullscreenEl).not.toBeNull()
+    expect(fullscreenEl?.querySelector("iframe")).not.toBeNull()
+    // 退出全屏后回到容器内联渲染
+    fireEvent.click(screen.getByTitle("退出全屏 (Esc)"))
+    expect(document.body.querySelector(".fixed.inset-0")).toBeNull()
+    expect(container.querySelector("iframe")).not.toBeNull()
   })
 
   it("renders missing placeholder on error", () => {
