@@ -1,78 +1,33 @@
 /**
- * Workbench block types
+ * 指向某个总管会话产出的 HTML 产物文件
  */
-export type BlockType =
-  | "lark-bitable"
-  | "data-stats"
-  | "schedule-view"
-  | "custom"
-
-/**
- * Chart display type for data visualization
- */
-export type ChartDisplayType =
-  | "pie"
-  | "bar"
-  | "line"
-  | "table"
-  | "metric"
-  | "list"
-
-/**
- * Query interface from skill prompt
- */
-export interface QueryInterface {
-  id: string
-  name: string
-  description: string
-  method: "GET" | "POST" | "PUT" | "DELETE"
-  path: string
-  /** Full base URL including IP and port, e.g. http://192.168.1.100:8080 */
-  baseUrl?: string
-  /** Fixed chart type for display */
-  chartType?: ChartDisplayType
-  /** Request headers to include in API calls */
-  headers?: Record<string, string>
-  /** AI-analyzed field binding for chart display */
-  fieldBinding?: {
-    /** Field name for category/label axis */
-    labelField?: string
-    /** Field names for value axis (can be multiple for comparison) */
-    valueFields?: string[]
-  }
-  /**
-   * 技能正文中为接口字段标注的中文说明（如 JSON 示例里 `"price":"1",//单价`），用于数据板块表头/图例
-   */
-  fieldLabels?: Record<string, string>
-  parameters?: Record<
-    string,
-    { type: string; description: string; required: boolean }
-  >
-  responseFormat?: string
+export interface HtmlArtifactRef {
+  /** 产出该 HTML 的总管会话 */
+  conversationId: string | number
+  /** 会话内资源路径，如 /artifacts/sales-dashboard.html */
+  resourcePath: string
+  /** 钉住时间戳 */
+  pinnedAt: number
 }
 
 /**
- * Skill block configuration stored in localStorage
+ * 工作台看板块：唯一类型为总管生成的 HTML 产物引用
  */
 export interface WorkbenchBlock {
   id: string
-  type: BlockType
+  type: "html-artifact"
   title: string
   enabled: boolean
-  skillId: number | null
   order: number
-  /** Fixed chart type for custom blocks */
-  chartType?: ChartDisplayType
-  // For custom blocks
-  queryInterface?: QueryInterface
-  /** Custom width in pixels (default: auto from grid) */
+  htmlRef: HtmlArtifactRef
+  /** 自定义宽度（像素），沿用现有网格逻辑 */
   width?: number
-  /** Custom height in pixels */
+  /** 自定义高度（像素） */
   height?: number
 }
 
 /**
- * Workbench configuration for an employee
+ * 工作台配置（按 employeeId 存 localStorage，工作台用 "global"）
  */
 export interface WorkbenchConfig {
   employeeId: string
@@ -81,16 +36,7 @@ export interface WorkbenchConfig {
 }
 
 /**
- * Mapping from skill pattern to block type
- */
-export interface SkillBlockMapping {
-  skillPattern: RegExp
-  blockType: BlockType
-  title: string
-}
-
-/**
- * Task status for badge display
+ * 任务状态（task-status-badge / today-task-list 用，保留）
  */
 export type TaskStatus =
   | "success"
