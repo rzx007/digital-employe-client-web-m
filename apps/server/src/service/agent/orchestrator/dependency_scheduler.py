@@ -27,6 +27,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from src.db.session import get_session_local
+
 logger = logging.getLogger(__name__)
 
 
@@ -287,7 +289,6 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
     if task_id is None:
         return
 
-    from src.db.session import get_session_local
     from src.models.employee import Employee
     from src.models.employee_task import EmployeeTask
     from src.models.orchestration_plan import OrchestrationPlan
@@ -427,6 +428,62 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
         )
     finally:
         db.close()
+
+
+def release_accepted_downstream(orchestrator_conversation_id: int) -> int:
+    """总管评审轮收尾对账：对已评审、仍 success、未被打回、尚未接受的 log 盖
+    qa_accepted_at 并放行其下游。返回新接受数。幂等（qa_accepted_at 一次性）。"""
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.models.workspace import cst_now
+    db = get_session_local()()
+    try:
+        logs = list(db.scalars(
+            select(TaskExecutionLog).where(
+                TaskExecutionLog.orchestrator_conversation_id == orchestrator_conversation_id,
+                TaskExecutionLog.run_status.in_(_PREREQ_DONE_STATES),
+                TaskExecutionLog.reported_at.is_not(None),
+                TaskExecutionLog.qa_accepted_at.is_(None),
+            )
+        ).all())
+        if not logs:
+            return 0
+        now = cst_now()
+        released: list[tuple[int, int]] = []
+        for log in logs:
+            log.qa_accepted_at = now
+            released.append((log.task_id, log.workspace_id))
+        db.commit()
+        for task_id, workspace_id in released:
+            try:
+                on_employee_task_completed(task_id, workspace_id)
+            except Exception:
+                logger.warning("release downstream for task=%s failed", task_id, exc_info=True)
+        logger.info(
+            "release_accepted_downstream conv=%s accepted=%d",
+            orchestrator_conversation_id, len(released),
+        )
+        return len(released)
+    finally:
+        db.close()
+
+
+def reconcile_accepted_downstream_all(db: Session) -> int:
+    """启动对账：扫描所有总管会话中"漏接受"的 log，逐会话放行。返回总接受数。"""
+    from src.models.task_execution_log import TaskExecutionLog
+    conv_ids = [
+        r[0] for r in db.execute(
+            select(TaskExecutionLog.orchestrator_conversation_id).where(
+                TaskExecutionLog.orchestrator_conversation_id.is_not(None),
+                TaskExecutionLog.run_status.in_(_PREREQ_DONE_STATES),
+                TaskExecutionLog.reported_at.is_not(None),
+                TaskExecutionLog.qa_accepted_at.is_(None),
+            ).distinct()
+        ).all()
+    ]
+    total = 0
+    for cid in conv_ids:
+        total += release_accepted_downstream(cid)
+    return total
 
 
 def _dispatch_successor(

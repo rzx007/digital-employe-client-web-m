@@ -68,6 +68,12 @@ def patched_task_mutations_db(db_engine, monkeypatch):
         "src.db.session.get_session_local",
         lambda: session_factory,
     )
+    # dependency_scheduler 在模块顶部 import 了 get_session_local，需同步 patch
+    # 模块级属性，否则 monkeypatch 打不到已绑定的引用。
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.dependency_scheduler.get_session_local",
+        lambda: session_factory,
+    )
     return session_factory
 
 
