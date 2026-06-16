@@ -97,6 +97,7 @@ class TaskExecutionLogRead(BaseModel):
     started_at: datetime
     ended_at: datetime | None
     duration_ms: int | None
+    last_heartbeat_at: datetime | None = None
     confirm_url: str | None = None
     confirm_execution_result: bool | None = None
     result_confirmed: bool = False
@@ -105,7 +106,7 @@ class TaskExecutionLogRead(BaseModel):
     orchestrator_conversation_id: int | None = None
     skill_rating: TaskExecutionSkillRatingRead | None = None
 
-    @field_serializer("started_at", "ended_at")
+    @field_serializer("started_at", "ended_at", "last_heartbeat_at")
     def serialize_datetime(self, value: datetime | None) -> str | None:
         if value is None:
             return None

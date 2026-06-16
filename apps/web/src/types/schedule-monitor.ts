@@ -99,6 +99,8 @@ export interface TaskExecution {
   started_at: string
   ended_at: string | null
   duration_ms: number | null
+  /** 运行中保活时间戳（每 ~30s 刷新）；用于判断「还活着」vs「卡死」。 */
+  last_heartbeat_at?: string | null
   skill_rating: null | SkillRatingOutput
   confirm_url: string | null
   confirm_execution_result: boolean

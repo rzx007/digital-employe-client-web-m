@@ -71,6 +71,8 @@ function useElapsedNow(active: boolean): number {
 }
 
 const COMPACT_OUTPUT_MAX = 120
+/** 心跳超过此时长未刷新（约 3 个 30s 心跳周期）视为「可能卡死」。 */
+const STALE_HEARTBEAT_MS = 90_000
 
 function truncateOutput(text: string, max: number): string {
   if (text.length <= max) return text
@@ -127,6 +129,13 @@ export function ExecutionReportCard({
       ? formatExecutionDuration(durationMs)
       : null
 
+  // 心跳活性：运行中但 last_heartbeat_at 超过 ~3 个心跳周期没刷新 → 可能卡死。
+  // 健康态由 spinner + 实时耗时已表达，这里只突出可操作信号（卡死提示）。
+  const heartbeatStale =
+    isRunning &&
+    execution.last_heartbeat_at != null &&
+    now - new Date(execution.last_heartbeat_at).getTime() > STALE_HEARTBEAT_MS
+
   const canJumpToEmployee =
     execution.conversation_id != null &&
     curatorContactId &&
@@ -165,6 +174,9 @@ export function ExecutionReportCard({
         </span>
         {durationLabel && (
           <span className="text-muted-foreground/70">{durationLabel}</span>
+        )}
+        {heartbeatStale && (
+          <span className="text-amber-600 dark:text-amber-400">· 可能卡死</span>
         )}
         {canJumpToEmployee ? (
           <Button
@@ -233,6 +245,11 @@ export function ExecutionReportCard({
           {durationLabel && (
             <span className="shrink-0 text-[10px] text-muted-foreground/60">
               耗时 {durationLabel}
+            </span>
+          )}
+          {heartbeatStale && (
+            <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-400">
+              · 可能卡死
             </span>
           )}
         </div>
