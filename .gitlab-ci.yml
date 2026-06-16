@@ -126,6 +126,21 @@ build:windows:manual:
     expire_in: 7 days
 
 # ------------------------------------------------------------------------------
+# 仅测试飞书推送：复用 release 目录里已打好的安装包跑 publish-feishu.py，不重新打包。
+# 手动触发（需上次 build:windows:manual 留下的 exe 还在工作区，GIT_CLEAN_FLAGS="" 会保留）。
+# ------------------------------------------------------------------------------
+publish:feishu:
+  <<: *win_build
+  stage: build
+  tags:
+    - win-builder
+  when: manual
+  except:
+    - tags
+  script:
+    - C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe scripts/ci/publish-feishu.py
+
+# ------------------------------------------------------------------------------
 # 冒烟测试（Mac）：已关闭（job 名前加 . 变隐藏 job）。mac-builder 已验证就绪。
 # 如需重开排查工具链：去掉下面 job 名前的点。
 # ------------------------------------------------------------------------------
