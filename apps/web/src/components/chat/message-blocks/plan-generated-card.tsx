@@ -42,7 +42,12 @@ const STATE_CONFIG: Record<string, { title: string; titleClass: string }> = {
   },
 }
 
-type ManualPlanStatus = "idle" | "confirming" | "cancelling" | "confirmed" | "cancelled"
+type ManualPlanStatus =
+  | "idle"
+  | "confirming"
+  | "cancelling"
+  | "confirmed"
+  | "cancelled"
 
 function PlanGeneratedCardInner({
   input,
@@ -71,7 +76,8 @@ function PlanGeneratedCardInner({
     [resultText]
   )
 
-  const { data: orchestrationPlans } = useOrchestrationPlansQuery(conversationId)
+  const { data: orchestrationPlans } =
+    useOrchestrationPlansQuery(conversationId)
 
   const planRecord = React.useMemo(
     () => orchestrationPlans?.find((plan) => plan.id === planOutput?.plan_id),
@@ -102,7 +108,10 @@ function PlanGeneratedCardInner({
         .filter((id): id is number => typeof id === "number"),
     [data?.tasks]
   )
-  const { statusByTaskId, completed, total } = usePlanProgress(planTaskIds)
+  const { statusByTaskId, completed, total } = usePlanProgress(
+    planTaskIds,
+    conversationId
+  )
 
   const isPlanPending =
     remoteStatus === "pending" ||
@@ -194,7 +203,9 @@ function PlanGeneratedCardInner({
       state === "input-available"
     const summaryHint =
       planOutput?.summary?.trim() ||
-      (input && typeof input === "object" && typeof (input as Record<string, unknown>).summary === "string"
+      (input &&
+      typeof input === "object" &&
+      typeof (input as Record<string, unknown>).summary === "string"
         ? String((input as Record<string, unknown>).summary).trim()
         : "")
 
@@ -205,18 +216,20 @@ function PlanGeneratedCardInner({
           className
         )}
       >
-        <p className={cn("text-xs font-semibold", cfg.titleClass)}>{cfg.title}</p>
+        <p className={cn("text-xs font-semibold", cfg.titleClass)}>
+          {cfg.title}
+        </p>
         {summaryHint ? (
-          <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
+          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
             {summaryHint}
           </p>
         ) : pendingState ? (
-          <p className="text-muted-foreground mt-1 text-[11px]">
+          <p className="mt-1 text-[11px] text-muted-foreground">
             正在解析编排计划，请稍候…
           </p>
         ) : planOutput ? (
           <>
-            <p className="text-muted-foreground mt-1 text-[11px]">
+            <p className="mt-1 text-[11px] text-muted-foreground">
               计划 #{planOutput.plan_id} 已生成，子任务列表加载中。
             </p>
             {showActionPanel && (
@@ -245,7 +258,7 @@ function PlanGeneratedCardInner({
             )}
           </>
         ) : (
-          <p className="text-muted-foreground mt-1 text-[11px]">
+          <p className="mt-1 text-[11px] text-muted-foreground">
             编排计划卡片数据不完整，请刷新页面后重试。
           </p>
         )}
@@ -310,7 +323,7 @@ function PlanGeneratedCardInner({
 
       {showActionPanel && (
         <>
-          <p className="text-muted-foreground mt-2.5 text-[11px]">
+          <p className="mt-2.5 text-[11px] text-muted-foreground">
             请确认任务拆解无误后再执行。
           </p>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -343,7 +356,7 @@ function PlanGeneratedCardInner({
         isPlanPending &&
         !isTurnEnded &&
         manualStatus === "idle" && (
-          <p className="text-muted-foreground mt-2.5 text-[11px]">
+          <p className="mt-2.5 text-[11px] text-muted-foreground">
             总管回复完成后可确认或取消。
           </p>
         )}
@@ -369,12 +382,12 @@ function PlanGeneratedCardInner({
             }))}
           />
         ) : (
-          <p className="text-muted-foreground mt-2.5 text-[11px]">
+          <p className="mt-2.5 text-[11px] text-muted-foreground">
             已确认执行，子任务将按编排开始运行。
           </p>
         ))}
       {showCancelledMessage && (
-        <p className="text-muted-foreground mt-2.5 text-[11px]">
+        <p className="mt-2.5 text-[11px] text-muted-foreground">
           已取消该编排计划。
         </p>
       )}
