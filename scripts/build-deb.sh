@@ -5,6 +5,11 @@
 # 不支持在 Windows / Linux 宿主机上直接运行本脚本。
 set -euo pipefail
 
+# GitLab CI 的 group 变量会注入 DOCKER_HOST=tcp://192.168.2.103:2375 等，
+# 导致 docker 连远端 daemon（非本机 Docker Desktop），在 Mac 上打 arm64 会报
+# "exec /bin/sh: transport endpoint is not connected"。强制走本机 Docker。
+unset DOCKER_HOST DOCKER_TLS_VERIFY DOCKER_CERT_PATH DOCKER_CONTEXT
+
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 RELEASE_DIR="$ROOT_DIR/release"
 IMAGE_NAME="digital-employee-builder:arm64"
