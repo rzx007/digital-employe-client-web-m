@@ -23,3 +23,18 @@ PY
 de_format_device_code() {  # 20 hex → XXXX-XXXX-XXXX-XXXX-XXXX
   echo "$1" | sed 's/.\{4\}/&-/g; s/-$//'
 }
+
+de_parse_license() {  # 入参=授权码 → 输出 "<device_in_code>\t<exp>"；非法则非零退出
+  python3 - "$1" <<'PY'
+import sys, json, base64
+code = sys.argv[1].strip()
+try:
+    b64 = code.split(".", 1)[0]
+    b64 += "=" * (-len(b64) % 4)
+    p = json.loads(base64.urlsafe_b64decode(b64))
+    print(f'{p["d"]}\t{p["exp"]}')
+except Exception as exc:
+    sys.stderr.write(f"parse_error: {exc}\n")
+    sys.exit(1)
+PY
+}
