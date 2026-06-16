@@ -1,4 +1,5 @@
 import * as React from "react"
+import { createPortal } from "react-dom"
 import {
   IconRefresh,
   IconAlertTriangle,
@@ -56,12 +57,14 @@ export function WorkbenchHtmlPanel({
     return () => window.removeEventListener("keydown", onKey)
   }, [isFullscreen])
 
-  return (
+  const panelBody = (
     <div
       className={cn(
         "flex flex-col overflow-hidden border border-border/80 bg-card shadow-sm",
         isFullscreen
-          ? "fixed inset-0 z-50 h-screen w-screen rounded-none"
+          ? // 全屏经 Portal 挂到 document.body：fixed 相对视口生效（不被 dnd-kit 的
+            // transform/isolate 祖先困住），z 足够高盖住总管栏/资源面板等
+            "fixed inset-0 z-[100] h-screen w-screen rounded-none"
           : "h-full rounded-md",
         className
       )}
@@ -126,4 +129,17 @@ export function WorkbenchHtmlPanel({
       </div>
     </div>
   )
+
+  // 全屏时 Portal 到 body，避开 dnd-kit 网格祖先的 transform/isolate 对 fixed 的束缚；
+  // 非全屏时占位（保持原网格槽位尺寸不塌陷）
+  if (isFullscreen) {
+    return (
+      <>
+        <div className={cn("h-full rounded-md", className)} aria-hidden />
+        {createPortal(panelBody, document.body)}
+      </>
+    )
+  }
+
+  return panelBody
 }
