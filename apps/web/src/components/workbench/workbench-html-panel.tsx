@@ -66,7 +66,14 @@ export function WorkbenchHtmlPanel({
         className
       )}
     >
-      <div className="flex shrink-0 items-center gap-2 border-b border-border/50 bg-muted/35 px-2 py-1">
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-2 border-b border-border/50 bg-muted/35 px-2 py-1",
+          // 非全屏时网格层的「删除」按钮（hover 浮于右上角 right-2，约 40px 宽）会盖到本栏
+          // 右侧，预留右内边距让刷新/全屏按钮左移，避开删除按钮
+          !isFullscreen && "pr-10"
+        )}
+      >
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
           {title}
         </span>
