@@ -9,21 +9,10 @@ import {
   type PanelImperativeHandle,
 } from "react-resizable-panels"
 import {
-  IconLayoutSidebarRightCollapse,
-  IconLayoutSidebarRightExpand,
-} from "@tabler/icons-react"
-import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@workspace/ui/components/resizable"
-import { Button } from "@workspace/ui/components/button"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@workspace/ui/components/tooltip"
 import { cn } from "@workspace/ui/lib/utils"
 import { ArtifactPanel } from "@/components/artifact"
 import { CuratorView } from "@/components/chat/curator/curator-view"
@@ -120,7 +109,6 @@ export function WorkbenchContentSplit({
   children: ReactNode
 }) {
   const [resourcesOpen, setResourcesOpen] = useState(false)
-  const [curatorCollapsed, setCuratorCollapsed] = useState(false)
   const [curatorSessionsOpen, setCuratorSessionsOpen] = useState(false)
   const queryClient = useQueryClient()
   const { createCuratorConversation, isPending: isCreatingCurator } =
@@ -240,8 +228,6 @@ export function WorkbenchContentSplit({
   )
 
   const showResources = resourcesOpen && activeConversationId != null
-  // 资源面板打开时必须显示总管栏，故只有资源关闭时折叠才生效
-  const curatorEffectivelyCollapsed = curatorCollapsed && !showResources
 
   const gridPanelRef = usePanelRef()
   const curatorPanelRef = usePanelRef()
@@ -290,27 +276,9 @@ export function WorkbenchContentSplit({
     return () => cancelAnimationFrame(id)
   }, [showResources, gridPanelRef, curatorPanelRef, resourcesPanelRef])
 
-  // 总管栏折叠/展开（仅资源关闭时生效）。折叠后宽度归还给左侧看板网格。
-  useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      if (curatorEffectivelyCollapsed) {
-        curatorPanelRef.current?.collapse()
-      } else if (!showResources) {
-        curatorPanelRef.current?.expand()
-      }
-    })
-    return () => cancelAnimationFrame(id)
-  }, [curatorEffectivelyCollapsed, showResources, curatorPanelRef])
-
-  const handleToggleCuratorCollapsed = useCallback(() => {
-    setCuratorCollapsed((v) => !v)
-  }, [])
-
   const handleLayoutChanged = useCallback(
     (layout: Layout) => {
       if (showResources) return
-      // 总管栏折叠态是临时的（不持久化），避免把 curator≈0 的瞬时布局写进 localStorage
-      if (curatorEffectivelyCollapsed) return
 
       const resources = layout.resources ?? 0
       if (typeof resources === "number" && resources > 0.5) {
@@ -320,7 +288,7 @@ export function WorkbenchContentSplit({
       const clamped = clampClosedResourcesLayout(layout)
       onLayoutChanged(clamped)
     },
-    [showResources, curatorEffectivelyCollapsed, onLayoutChanged, resourcesPanelRef],
+    [showResources, onLayoutChanged, resourcesPanelRef],
   )
 
   const curatorPanelBorder = showResources ? "border-r" : "border-l"
@@ -359,29 +327,8 @@ export function WorkbenchContentSplit({
     )
   }
 
-  // 总管栏可折叠的入口仅在资源面板关闭时提供（资源打开时总管必须可见）
-  const showCuratorCollapseToggle = !showResources
-
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
-      {showCuratorCollapseToggle && curatorEffectivelyCollapsed && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon-sm"
-                className="absolute top-2 right-2 z-20 shadow-sm"
-                aria-label="展开总管栏"
-                onClick={handleToggleCuratorCollapsed}
-              >
-                <IconLayoutSidebarRightExpand className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>展开总管栏</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
+    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
       <ResizablePanelGroup
         id={LAYOUT_STORAGE_ID}
         orientation="horizontal"
@@ -401,41 +348,19 @@ export function WorkbenchContentSplit({
           <div className="h-full min-h-0 overflow-auto p-3">{children}</div>
         </ResizablePanel>
 
-        {!showResources && !curatorEffectivelyCollapsed && (
+        {!showResources && (
           <ResizableHandle withHandle className="z-10 bg-border" />
         )}
 
         <ResizablePanel
           id="curator"
           panelRef={curatorPanelRef}
-          collapsible
-          collapsedSize={0}
           defaultSize={`${CURATOR_WIDTH_PX}px`}
           minSize={`${CURATOR_MIN_WIDTH_PX}px`}
           maxSize={showResources ? "60%" : "55%"}
           className="min-w-0"
         >
-          <div className="relative h-full min-h-0">
-            {showCuratorCollapseToggle && !curatorEffectivelyCollapsed && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className="absolute top-1.5 left-1.5 z-20 size-6 text-muted-foreground hover:text-foreground"
-                      aria-label="收起总管栏"
-                      onClick={handleToggleCuratorCollapsed}
-                    >
-                      <IconLayoutSidebarRightCollapse className="size-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>收起总管栏</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-            {renderCuratorPanel()}
-          </div>
+          {renderCuratorPanel()}
         </ResizablePanel>
 
         {showResources && (
