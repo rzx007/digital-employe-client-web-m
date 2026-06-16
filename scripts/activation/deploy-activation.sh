@@ -38,3 +38,24 @@ except Exception as exc:
     sys.exit(1)
 PY
 }
+
+de_now_iso() {  # UTC ISO，6 位微秒 + Z（与 Python isoformat 风格一致）
+  date -u +%Y-%m-%dT%H:%M:%S.%6NZ
+}
+
+# 数据目录默认 ~/.digital-employee/data，可用 DE_DATA_DIR 覆盖（测试用）。
+de_data_dir() { echo "${DE_DATA_DIR:-${HOME}/.digital-employee/data}"; }
+
+de_write_activation_json() {  # <device> <license> <expires_at>
+  local dev="$1" lic="$2" exp="$3" dir now
+  dir="$(de_data_dir)"; now="$(de_now_iso)"
+  mkdir -p "$dir"
+  python3 - "$dir/activation.json" "$dev" "$lic" "$exp" "$now" <<'PY'
+import sys, json
+path, dev, lic, exp, now = sys.argv[1:6]
+rec = {"device_code": dev, "license_code": lic, "expires_at": exp,
+       "activated_at": now, "last_seen_at": now}
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(rec, f, ensure_ascii=False, indent=2)
+PY
+}

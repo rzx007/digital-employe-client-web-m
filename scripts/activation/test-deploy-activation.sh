@@ -18,4 +18,14 @@ PARSED="$(de_parse_license "$GOLDEN_LIC")"
 check "parse device_code" "3E5677F8E9179E207A30" "$(echo "$PARSED" | cut -f1)"
 check "parse expires"     "2027-06-06T09:46:23.027754Z" "$(echo "$PARSED" | cut -f2)"
 
+TMPJSON="$(mktemp -d)/activation.json"
+DE_DATA_DIR="$(dirname "$TMPJSON")" \
+  de_write_activation_json "3E5677F8E9179E207A30" "$GOLDEN_LIC" "2027-06-06T09:46:23.027754Z"
+WROTE_DEV="$(python3 -c "import json;print(json.load(open('$TMPJSON'))['device_code'])")"
+WROTE_EXP="$(python3 -c "import json;print(json.load(open('$TMPJSON'))['expires_at'])")"
+check "written device_code" "3E5677F8E9179E207A30" "$WROTE_DEV"
+check "written expires_at"  "2027-06-06T09:46:23.027754Z" "$WROTE_EXP"
+HAS_ACT="$(python3 -c "import json;d=json.load(open('$TMPJSON'));print('yes' if d.get('activated_at') and d.get('last_seen_at') else 'no')")"
+check "has activated/last_seen" "yes" "$HAS_ACT"
+
 echo "----"; echo "PASS=$PASS FAIL=$FAIL"; [[ $FAIL -eq 0 ]]
