@@ -64,15 +64,20 @@ class WorkspaceService:
             db.refresh(default_workspace)
             return default_workspace
 
-        # 创建新的用户专属 workspace
+        # 创建新的用户专属 workspace：自动建托管项目目录（与 create_user_workspace 一致）。
+        from src.service.agent.workspace_paths import APP_PROJECTS_BASE
+
         workspace_name = username + "的工作空间" if username else "用户工作空间"
-        workspace_root = WorkspaceService._resolve_default_root()
         workspace = Workspace(
             name=workspace_name,
-            root_path=str(workspace_root),
+            root_path="",
             user_id=user_id,
         )
         db.add(workspace)
+        db.flush()  # 拿自增 id 给托管目录命名
+        managed_root = APP_PROJECTS_BASE / str(workspace.id)
+        managed_root.mkdir(parents=True, exist_ok=True)
+        workspace.root_path = str(managed_root)
         db.commit()
         db.refresh(workspace)
         return workspace
@@ -165,21 +170,31 @@ class WorkspaceService:
         name: str | None,
         root_path: str | None,
     ) -> Workspace:
-        """为用户新建一个空项目工作空间（不播种员工/任务）。"""
+        """为用户新建一个空项目工作空间（不播种员工/任务）。
+
+        - 未显式给 root_path：自动建托管项目目录 APP_PROJECTS_BASE/<id>/ 并 mkdir
+          （需先 flush 拿到自增 id）。
+        - 显式给外部 root_path（用户手选文件夹）：原样存储，不重定位、不 mkdir 其本体
+          （用户拥有该目录；产物后续懒建在其 .digital-employee/ 子目录）。
+        """
+        from src.service.agent.workspace_paths import APP_PROJECTS_BASE
+
         settings = get_settings()
         workspace_name = name or settings.default_workspace_name or "新项目"
-        if root_path is None:
-            resolved_root = str(WorkspaceService._resolve_default_root())
-        else:
-            resolved_root = str(root_path)
-            # 仅在显式给定 root_path 时确保目录存在；默认根（安装盘锚点）不创建。
-            Path(resolved_root).mkdir(parents=True, exist_ok=True)
+        explicit_root = bool(root_path)
+
         workspace = Workspace(
             name=workspace_name,
-            root_path=resolved_root,
+            root_path=str(root_path) if explicit_root else "",
             user_id=user_id,
         )
         db.add(workspace)
+        if not explicit_root:
+            # 托管目录需用自增 id 命名：先 flush 拿 id，再 mkdir 回填 root_path。
+            db.flush()
+            managed_root = APP_PROJECTS_BASE / str(workspace.id)
+            managed_root.mkdir(parents=True, exist_ok=True)
+            workspace.root_path = str(managed_root)
         db.commit()
         db.refresh(workspace)
         return workspace
