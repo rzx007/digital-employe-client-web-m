@@ -165,6 +165,85 @@ def _all_prereqs_accepted(dep_ids: list[int], accepted_ids: set[int]) -> bool:
     return all(d in accepted_ids for d in dep_ids)
 
 
+def task_prereqs_accepted(db: Session, task) -> bool:
+    """该任务的所有前置是否都已 QA 接受(根任务无前置 → True)。返工 gate 用。"""
+    from src.models.orchestration_plan import OrchestrationPlan
+
+    if task.orchestration_plan_id is None:
+        return True
+    plan = db.get(OrchestrationPlan, task.orchestration_plan_id)
+    if plan is None:
+        return True
+    tasks = _load_plan_tasks(db, plan.id)
+    plan_json_obj = json.loads(plan.plan_json or "[]")
+    dep_map, _successors = build_dependency_maps(tasks, plan_json_obj)
+    dep_ids = dep_map.get(task.id, [])
+    if not dep_ids:
+        return True
+    return _all_prereqs_accepted(dep_ids, _load_accepted_task_ids(db, dep_ids))
+
+
+def invalidate_downstream(task_id: int) -> list[int]:
+    """返工 task_id 时,递归作废其下游子树(传递闭包):
+    已交付(success/completed)→ superseded;在飞(running/queued/pending)→ 先 superseded
+    并 commit、再取消其流。failed/skipped/superseded 不动(非目标)。返回被作废的 task_id。
+    自管独立 session(在调用方 rework.py 自己 commit 之后调,读到已提交状态)。"""
+    from src.models.employee_task import EmployeeTask
+    from src.models.orchestration_plan import OrchestrationPlan
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.service.chat_service import ChatService
+
+    db = get_session_local()()
+    try:
+        task = db.get(EmployeeTask, task_id)
+        if task is None or task.orchestration_plan_id is None:
+            return []
+        plan = db.get(OrchestrationPlan, task.orchestration_plan_id)
+        if plan is None:
+            return []
+        tasks = _load_plan_tasks(db, plan.id)
+        plan_json_obj = json.loads(plan.plan_json or "[]")
+        _dep_map, successors = build_dependency_maps(tasks, plan_json_obj)
+
+        invalidated: list[int] = []
+        seen: set[int] = set()
+        queue: list[int] = list(successors.get(task_id, []))
+        while queue:
+            cid = queue.pop(0)
+            if cid in seen:
+                continue
+            seen.add(cid)
+            queue.extend(successors.get(cid, []))
+            log = db.scalars(
+                select(TaskExecutionLog)
+                .where(TaskExecutionLog.task_id == cid)
+                .order_by(TaskExecutionLog.id.desc())
+            ).first()
+            if log is None:
+                continue
+            if log.run_status in ("success", "completed"):
+                log.run_status = "superseded"
+                log.run_result = "上游返工，已作废待重跑"
+                db.commit()
+                invalidated.append(cid)
+            elif log.run_status in ("running", "queued", "pending"):
+                conv_id = log.conversation_id
+                log.run_status = "superseded"
+                log.run_result = "上游返工，已作废待重跑"
+                db.commit()
+                if conv_id:
+                    try:
+                        ChatService.cancel_conversation_stream(conv_id)
+                    except Exception:
+                        logger.warning("cancel in-flight downstream conv=%s failed", conv_id, exc_info=True)
+                invalidated.append(cid)
+        if invalidated:
+            logger.info("invalidate_downstream task=%s invalidated=%s", task_id, invalidated)
+        return invalidated
+    finally:
+        db.close()
+
+
 def _already_dispatched(task_id: int, status_by_task: dict[int, set[str]]) -> bool:
     states = status_by_task.get(task_id, set())
     return any(s in _ALREADY_DISPATCHED_STATES for s in states)
