@@ -8,7 +8,6 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.core.config import get_settings
 from src.core.agent_runtime_policy import (
     ORCHESTRATION_PRIORITY,
 )
@@ -339,8 +338,11 @@ def start_task_as_conversation(
         )
     except Exception:
         skills_path = ""
-    settings = get_settings()
-    root_path = settings.artifacts_path
+    # SP2: 派单产物根改为该任务所属（被派员工）会话的 per-project 项目根，而非全局产物目录。
+    # conversation 已 flush，按会话解析最直接（同一项目下与总管同桌）。
+    from src.service.product_paths import resolve_conversation_product_root
+
+    root_path = str(resolve_conversation_product_root(db, conversation))
 
     shared_artifacts_dir = None
     shared_workspace_root = None

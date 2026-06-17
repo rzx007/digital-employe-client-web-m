@@ -151,7 +151,30 @@ def get_orchestrator_agent(
     model = build_chat_model(max_tokens=resolve_output_tokens(max_output_tokens))
 
     base_dir = SERVICE_DIR
-    artifacts_path = Path(settings.artifacts_path)
+    # SP2: 产物根改为会话所钉项目的 per-project 根（不再全局 settings.artifacts_path）。
+    # 有 conversation_id 时优先按会话解析（最精确，且覆盖定时/再入旁路——它们都带 conv_id）；
+    # 否则退回按 workspace 解析；workspace 行缺失（已删）时回落孤儿目录，绝不回退 legacy 全局。
+    from src.models.conversation import Conversation
+    from src.models.workspace import Workspace
+    from src.service.agent.workspace_paths import resolve_workspace_product_root
+    from src.service.product_paths import resolve_conversation_product_root
+
+    from src.service.product_paths import _ORPHANED_BASE
+
+    product_root: Path | None = None
+    if db is not None:
+        if conversation_id is not None:
+            _conv = db.get(Conversation, conversation_id)
+            if _conv is not None:
+                product_root = resolve_conversation_product_root(db, _conv)
+        if product_root is None:
+            _ws = db.get(Workspace, workspace_id)
+            if _ws is not None:
+                product_root = resolve_workspace_product_root(_ws.root_path)
+    if product_root is None:
+        # db 缺失或工作空间已删 → 确定性孤儿目录，绝不回退 legacy 全局产物目录。
+        product_root = _ORPHANED_BASE / f"ws-{workspace_id}"
+    artifacts_path = product_root
     use_session_history = bool(conversation_id)
 
     memories_dir = resolve_employee_memories_dir(

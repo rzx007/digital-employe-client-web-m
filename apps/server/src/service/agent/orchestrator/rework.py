@@ -190,7 +190,6 @@ def redispatch_task_in_session(
 
 def _build_employee_agent_for_rework(db, task, employee, conversation_id: int):
     """复用 execution.py 的共享桌/技能/档位解析，构建续聊用员工 agent。"""
-    from src.core.config import get_settings
     from src.llm.factory import resolve_output_tokens
     from src.service.agent.employee import get_agent
     from src.service.chat_service import ChatService
@@ -205,7 +204,19 @@ def _build_employee_agent_for_rework(db, task, employee, conversation_id: int):
         )
     except Exception:
         skills_path = ""
-    root_path = get_settings().artifacts_path
+
+    # SP2: 续聊产物根改为该续聊会话所属项目的 per-project 根，而非全局产物目录。
+    from src.models.conversation import Conversation
+    from src.service.product_paths import resolve_conversation_product_root
+
+    _conv = db.get(Conversation, conversation_id)
+    if _conv is not None:
+        root_path = str(resolve_conversation_product_root(db, _conv))
+    else:
+        # 会话缺失（极端）→ 回落孤儿目录，绝不回退 legacy 全局。
+        from src.service.product_paths import _ORPHANED_BASE
+
+        root_path = str(_ORPHANED_BASE / f"conv-{conversation_id}")
 
     shared_artifacts_dir = None
     shared_workspace_root = None
