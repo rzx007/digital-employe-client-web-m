@@ -4,11 +4,12 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from src.core.request_utils import get_user_id
 from src.db.session import get_db, get_session_local
 from src.models.response import BaseResponse, ListResponse, ResponseBase
 from src.schemas.workspace import FileEntry, WorkspaceCreate, WorkspaceRead, WorkspaceUpdate
@@ -79,6 +80,55 @@ def update_workspace(
 @router.delete("/workspaces/delete/{workspace_id}", status_code=status.HTTP_200_OK, response_model=BaseResponse)
 def delete_workspace(workspace_id: int, db: Session = Depends(get_db)) -> BaseResponse:
     """删除指定工作空间。"""
+    WorkspaceService.delete_workspace(db, workspace_id)
+    return BaseResponse(data=None)
+
+
+# ---- 用户级 REST 端点（多工作空间，SP1 Task 5.1）----
+# 旧的 /workspaces/create|list|my|detail|update|delete 暂保留不动（Task 5.2 迁前端）。
+
+
+@router.get("/workspaces", response_model=ListResponse[WorkspaceRead])
+def list_user_workspaces(
+    request: Request, db: Session = Depends(get_db)
+) -> ListResponse[WorkspaceRead]:
+    """列出当前用户拥有的所有工作空间。"""
+    return ListResponse(
+        data=WorkspaceService.list_user_workspaces(db, get_user_id(request))
+    )
+
+
+@router.post(
+    "/workspaces",
+    response_model=ResponseBase[WorkspaceRead],
+    status_code=status.HTTP_201_CREATED,
+)
+def create_user_workspace(
+    request: Request,
+    payload: WorkspaceCreate,
+    db: Session = Depends(get_db),
+) -> ResponseBase[WorkspaceRead]:
+    """为当前用户新建一个空项目工作空间。"""
+    workspace = WorkspaceService.create_user_workspace(
+        db, get_user_id(request), payload.name, payload.root_path
+    )
+    return ResponseBase(data=workspace)
+
+
+@router.delete(
+    "/workspaces/{workspace_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=BaseResponse,
+)
+def delete_user_workspace(
+    workspace_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> BaseResponse:
+    """删除当前用户拥有的工作空间（归属校验：他人空间一律 404）。"""
+    ws = WorkspaceService.get_workspace(db, workspace_id)
+    if ws.user_id != get_user_id(request):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到工作空间。")
     WorkspaceService.delete_workspace(db, workspace_id)
     return BaseResponse(data=None)
 

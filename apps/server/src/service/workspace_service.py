@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
@@ -148,6 +148,43 @@ class WorkspaceService:
         return list[Workspace](db.scalars(select(Workspace).order_by(Workspace.id.desc())).all())
 
     @staticmethod
+    def list_user_workspaces(db: Session, user_id: str) -> list[Workspace]:
+        """列出指定用户拥有的所有工作空间（按 id 倒序）。"""
+        return list[Workspace](
+            db.scalars(
+                select(Workspace)
+                .where(Workspace.user_id == user_id)
+                .order_by(Workspace.id.desc())
+            ).all()
+        )
+
+    @staticmethod
+    def create_user_workspace(
+        db: Session,
+        user_id: str,
+        name: str | None,
+        root_path: str | None,
+    ) -> Workspace:
+        """为用户新建一个空项目工作空间（不播种员工/任务）。"""
+        settings = get_settings()
+        workspace_name = name or settings.default_workspace_name or "新项目"
+        if root_path is None:
+            resolved_root = str(WorkspaceService._resolve_default_root())
+        else:
+            resolved_root = str(root_path)
+            # 仅在显式给定 root_path 时确保目录存在；默认根（安装盘锚点）不创建。
+            Path(resolved_root).mkdir(parents=True, exist_ok=True)
+        workspace = Workspace(
+            name=workspace_name,
+            root_path=resolved_root,
+            user_id=user_id,
+        )
+        db.add(workspace)
+        db.commit()
+        db.refresh(workspace)
+        return workspace
+
+    @staticmethod
     def get_workspace(db: Session, workspace_id: int) -> Workspace:
         workspace = db.get(Workspace, workspace_id)
         if not workspace:
@@ -170,6 +207,25 @@ class WorkspaceService:
 
     @staticmethod
     def delete_workspace(db: Session, workspace_id: int) -> None:
+        """删除工作空间：显式清理项目级行，永不触及用户级资源。
+
+        项目级（随空间删）：TaskExecutionLog / EmployeeTask / OrchestrationPlan / RecentContact。
+        用户级（保留）：Employee / EmployeeSkill / EmployeeMcp / SkillRating / Conversation。
+        不删除 root_path 目录（可能含用户项目文件，保守起见仅删 DB 行）。
+        """
         workspace = WorkspaceService.get_workspace(db, workspace_id)
+
+        from src.models.employee_task import EmployeeTask
+        from src.models.orchestration_plan import OrchestrationPlan
+        from src.models.recent_contact import RecentContact
+        from src.models.task_execution_log import TaskExecutionLog
+
+        # 先删执行日志再删任务（TaskExecutionLog.task_id 引用 employee_tasks）。
+        # 运行时 FK OFF，顺序非强制，但为整洁仍按依赖顺序删。
+        for model in (TaskExecutionLog, EmployeeTask, OrchestrationPlan, RecentContact):
+            db.execute(delete(model).where(model.workspace_id == workspace_id))
+
+        # 会话/员工/技能/评分是用户级，不删；其 workspace_id 仍指向已删空间
+        # （FK 运行时 OFF，孤儿无害，仍按 user_id 出现在侧边栏；前端对已删项目名兜底）。
         db.delete(workspace)
         db.commit()
