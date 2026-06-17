@@ -104,6 +104,14 @@ def redispatch_task_in_session(
                 f"（{old.run_status}），完成后才能打回返工。"
             )
 
+        # gate：前置未通过质检/正在返工 → 拒绝(不消耗 rework_count、不打回)
+        from src.service.agent.orchestrator.dependency_scheduler import task_prereqs_accepted
+        if not task_prereqs_accepted(db, task):
+            return (
+                f"错误：任务「{task.task_name}」的前置尚未通过质检（或正在返工），"
+                f"无法返工它；请先处理前置——其下游会在前置重新达标后自动重跑。"
+            )
+
         # 1) 打回旧 log（仅展示语义；reported_at 已盖，不会被增量引擎重选）
         old.run_status = "superseded"
 
@@ -165,6 +173,13 @@ def redispatch_task_in_session(
             })
         except Exception:
             logger.warning("push task_started event failed task=%s", task.id, exc_info=True)
+
+        # 作废 X 的下游子树(它们基于旧产物的结果已失效)→ 待 X 重新达标后由放行闸自动重跑
+        try:
+            from src.service.agent.orchestrator.dependency_scheduler import invalidate_downstream
+            invalidate_downstream(task.id)
+        except Exception:
+            logger.warning("invalidate_downstream task=%s failed", task.id, exc_info=True)
 
         return (
             f"已判定「{task.task_name}」不达标，打回重做（第 {task.rework_count} 次返工）。"

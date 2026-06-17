@@ -92,3 +92,45 @@ def test_invalidate_downstream_skips_failed(db_session, monkeypatch):
     assert out == []
     db_session.expire_all()
     assert db_session.get(TaskExecutionLog, bl.id).run_status == "failed"
+
+
+def _make_conv(db, ws_id, emp_id):
+    c = Conversation(workspace_id=ws_id, target_type="employee", target_id=emp_id, title="t")
+    db.add(c); db.flush()
+    return c.id
+
+
+def test_redispatch_refuses_when_prereq_not_accepted(db_session, monkeypatch):
+    from src.service.agent.orchestrator import rework
+    monkeypatch.setattr(rework, "_new_session", lambda: _NoCloseSession(db_session))
+    monkeypatch.setattr(rework, "_schedule_employee_rework_stream", lambda **k: None)
+    monkeypatch.setattr(rework, "_build_employee_agent_for_rework", lambda *a, **k: None)
+    ws, emp, plan, A, B = _seed_plan_AB(db_session)
+    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, accepted=False)  # A 未接受
+    bconv = _make_conv(db_session, ws.id, emp.id)
+    bl = _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="success", conv_id=bconv)
+    db_session.commit()
+    msg = rework.redispatch_task_in_session(ws.id, B.id, "改B")
+    assert "前置" in msg  # gate 拒绝
+    db_session.expire_all()
+    assert db_session.get(EmployeeTask, B.id).rework_count == 0   # 未消耗
+    assert db_session.get(TaskExecutionLog, bl.id).run_status == "success"  # 未打回
+
+
+def test_redispatch_invalidates_downstream(db_session, monkeypatch):
+    from src.service.agent.orchestrator import rework
+    from src.service.agent.orchestrator import dependency_scheduler as ds
+    monkeypatch.setattr(rework, "_new_session", lambda: _NoCloseSession(db_session))
+    monkeypatch.setattr(rework, "_schedule_employee_rework_stream", lambda **k: None)
+    monkeypatch.setattr(rework, "_build_employee_agent_for_rework", lambda *a, **k: None)
+    monkeypatch.setattr(ds, "get_session_local", lambda: (lambda: _NoCloseSession(db_session)))
+    ws, emp, plan, A, B = _seed_plan_AB(db_session)
+    aconv = _make_conv(db_session, ws.id, emp.id)
+    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=aconv)
+    bconv = _make_conv(db_session, ws.id, emp.id)
+    bl = _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=bconv)
+    db_session.commit()
+    msg = rework.redispatch_task_in_session(ws.id, A.id, "改A")  # 返工根任务 A → 打回A + 作废下游B
+    assert "返工" in msg or "打回" in msg
+    db_session.expire_all()
+    assert db_session.get(TaskExecutionLog, bl.id).run_status == "superseded"  # B 被作废
