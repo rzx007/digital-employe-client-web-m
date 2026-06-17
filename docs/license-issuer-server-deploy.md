@@ -77,12 +77,12 @@ docker run -d --name de-issuer \
 curl -s -X POST http://<服务器>:8900/license/issue \
   -H "Authorization: Bearer <ISSUER_API_TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"device_code":"3E56-77F8-E917-9E20-7A30","expires":"+90d"}' | python3 -m json.tool
+  -d '{"device_code":"3E56-77F8-E917-9E20-7A30","expires":"2027-06-01"}' | python3 -m json.tool
 ```
 取响应里的 `license_code`，发给目标机：放进 deploy 的授权码文件或终端粘贴。
 
-`expires` 按飞书审批单「授权时长」字段对应填：90天=`+90d`、180天=`+180d`、
-1年=`+365d`、2年=`+730d`；也支持具体到期日 `YYYY-MM-DD`。不传则用默认 `+90d`。
+`expires` 直接用飞书审批单「到期日期」字段的值（`YYYY-MM-DD`）。
+也支持相对写法 `+90d`/`+12m`/`+1y`；不传则用默认 `+90d`。
 
 ## 端到端链路
 
