@@ -108,6 +108,17 @@ def list_conversations(
     return ListResponse(data=conversations)
 
 
+@router.get("/chat/conversations", response_model=ListResponse[ConversationRead])
+def list_user_conversations(
+    request: Request,
+    target_type: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> ListResponse[ConversationRead]:
+    """列出当前用户的所有对话（跨项目），每条带其 workspace_id。"""
+    convs = ChatService.list_user_conversations(db, get_user_id(request), target_type)
+    return ListResponse(data=convs)
+
+
 @router.get(
     "/workspaces/{workspace_id}/chat/recent-contacts",
     response_model=ListResponse[RecentContactRead],

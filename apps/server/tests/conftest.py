@@ -42,7 +42,9 @@ def db_session(db_engine) -> Generator[Session, None, None]:
 @pytest.fixture()
 def workspace(db_session: Session) -> Workspace:
     root = tempfile.mkdtemp(prefix="de-test-ws-")
-    ws = Workspace(id=1, name="Test Workspace", root_path=root)
+    # owner 与 add_employee 默认 user_id（f"u-ws{id}"）保持一致：
+    # _validate_target 现按 workspace owner 校验员工归属，二者须同源。
+    ws = Workspace(id=1, name="Test Workspace", root_path=root, user_id="u-ws1")
     db_session.add(ws)
     db_session.commit()
     db_session.refresh(ws)

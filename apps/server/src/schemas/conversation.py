@@ -33,6 +33,7 @@ class ConversationTitleSuggestResponse(BaseModel):
 class ConversationRead(BaseModel):
     id: int
     workspace_id: int
+    user_id: str | None = None
     target_type: TargetType
     target_id: int
     title: str | None

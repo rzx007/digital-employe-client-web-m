@@ -264,6 +264,7 @@ def start_task_as_conversation(
 
     conversation = Conversation(
         workspace_id=workspace_id,
+        user_id=employee.user_id,
         target_type="employee",
         target_id=employee.id,
         title=task.task_name,

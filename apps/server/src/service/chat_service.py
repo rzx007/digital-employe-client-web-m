@@ -171,7 +171,9 @@ class ChatService:
             return
         if target_type == "employee":
             employee = db.get(Employee, target_id)
-            if not employee or employee.workspace_id != workspace_id:
+            ws = db.get(Workspace, workspace_id)
+            owner = ws.user_id if ws is not None else None
+            if not employee or employee.user_id != owner:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到员工。")
             return
         if target_type == "group":
@@ -187,8 +189,11 @@ class ChatService:
         title: str | None,
     ) -> Conversation:
         ChatService._validate_target(db, workspace_id, target_type, target_id)
+        ws = db.get(Workspace, workspace_id)
+        _uid = ws.user_id if ws is not None else None
         conversation = Conversation(
             workspace_id=workspace_id,
+            user_id=_uid,
             target_type=target_type,
             target_id=target_id,
             title=title or None,
@@ -230,6 +235,17 @@ class ChatService:
         )
         convs = list(db.scalars(stmt).all())
         return convs
+
+    @staticmethod
+    def list_user_conversations(
+        db: Session, user_id: str, target_type: str | None = None
+    ) -> list[Conversation]:
+        """列出某用户的全部会话（跨工作空间/项目），每条带其 workspace_id。"""
+        stmt = select(Conversation).where(Conversation.user_id == user_id)
+        if target_type is not None:
+            stmt = stmt.where(Conversation.target_type == target_type)
+        stmt = stmt.order_by(Conversation.updated_at.desc(), Conversation.id.desc())
+        return list(db.scalars(stmt).all())
 
     @staticmethod
     def get_conversation(db: Session, conversation_id: int) -> Conversation:
