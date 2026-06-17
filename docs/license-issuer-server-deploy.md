@@ -204,10 +204,17 @@ docker run -d --name de-issuer-poller --restart always \
 排错：`docker logs de-issuer-poller`。正常日志：「轮询器启动」+ 出码时「实例 ... 已出码并回写评论」；
 已出码的实例后续轮次不再重复（评论存在=跳过）。
 
-回写评论形态（真机验证）：评论 = **激活码 + 使用指引 + 附件 `license.code`**。指引文本告诉用户：
+回写评论形态（真机验证）：评论 = **激活码 + 使用指引 + 可下载附件 `license.code`**。指引文本告诉用户：
 下载附件或复制激活码存为 `license.code` → 放到目标机 `~/BobanStaff/activation/` → 重跑 deploy.sh 即激活
-（也可 deploy 提示时直接粘贴）。附件上传走 `approval/v4/files/upload`；上传失败时降级为纯文本评论
-（仍含激活码与指引），保证激活码必达。`~/BobanStaff/activation/license.code` 是 deploy 的授权码文件候选之一。
+（也可 deploy 提示时直接粘贴）。`~/BobanStaff/activation/license.code` 是 deploy 的授权码文件候选之一。
+
+附件实现要点（踩坑记录）：
+- 先 `POST approval/v4/files/upload`（multipart，type=attachment）拿返回的 **url + code**；
+- 评论 `files` 字段**必须填上传返回的真实 url + file_size**，不能只填 code、url 留空——
+  否则附件挂上但实例查回来 url 为空、**下载不了**（真机验证过）。
+- 上传失败时降级为纯文本评论（仍含激活码与指引），保证激活码必达。
+- 防重 `has_license_comment` **跳过 is_delete 软删评论**（飞书 remove/clear 是软删），
+  否则清空评论后无法重新出码。
 
 > ⚠️ 飞书读评论返回字段为 `content`（非 comment）——代码已兼容；若改飞书 SDK 版本注意核对。
 > 已通过的审批单**不能改表单字段**（飞书限制），故回写用评论。
