@@ -157,9 +157,10 @@ def get_orchestrator_agent(
     from src.models.conversation import Conversation
     from src.models.workspace import Workspace
     from src.service.agent.workspace_paths import resolve_workspace_product_root
-    from src.service.product_paths import resolve_conversation_product_root
-
-    from src.service.product_paths import _ORPHANED_BASE
+    from src.service.product_paths import (
+        orphan_root_for_workspace,
+        resolve_conversation_product_root,
+    )
 
     product_root: Path | None = None
     if db is not None:
@@ -172,8 +173,9 @@ def get_orchestrator_agent(
             if _ws is not None:
                 product_root = resolve_workspace_product_root(_ws.root_path)
     if product_root is None:
+        # db is None 仅测试入参；生产恒非空（签名 db: Session）。
         # db 缺失或工作空间已删 → 确定性孤儿目录，绝不回退 legacy 全局产物目录。
-        product_root = _ORPHANED_BASE / f"ws-{workspace_id}"
+        product_root = orphan_root_for_workspace(workspace_id)
     artifacts_path = product_root
     use_session_history = bool(conversation_id)
 

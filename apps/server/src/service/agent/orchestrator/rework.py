@@ -214,9 +214,9 @@ def _build_employee_agent_for_rework(db, task, employee, conversation_id: int):
         root_path = str(resolve_conversation_product_root(db, _conv))
     else:
         # 会话缺失（极端）→ 回落孤儿目录，绝不回退 legacy 全局。
-        from src.service.product_paths import _ORPHANED_BASE
+        from src.service.product_paths import orphan_root_for_conversation
 
-        root_path = str(_ORPHANED_BASE / f"conv-{conversation_id}")
+        root_path = str(orphan_root_for_conversation(conversation_id))
 
     shared_artifacts_dir = None
     shared_workspace_root = None
