@@ -121,52 +121,6 @@ def _scan_skills_draft(directory: Path) -> list[ResourceEntry]:
     return entries
 
 
-def _resolve_employee_id_for_conversation(conversation_id: int) -> int | str | None:
-    """会话→员工 owner：target_type=employee→target_id；curator→orchestrator；群→None。
-
-    SP2 后 ResourceService 不再依赖此函数（产物按项目目录、桶直挂产物根）；
-    保留供 skill_api 草稿技能解析使用（Phase 3 收口）。
-    """
-    from src.db.session import get_session_local
-    from src.models.conversation import Conversation
-
-    db = get_session_local()()
-    try:
-        conv = db.get(Conversation, conversation_id)
-        if conv is None:
-            return None
-        if conv.target_type == "employee":
-            return conv.target_id
-        if conv.target_type == "curator":
-            return "orchestrator"
-        return None
-    finally:
-        db.close()
-
-
-def resolve_workspace_context(root_path: str, conversation_id: int):
-    """返回该会话的 (workspace_dir, public_root, conv_artifacts_dir)。
-
-    SP2 后 ResourceService 不再调用此函数；保留供 skill_api 草稿技能解析（Phase 3 收口）。
-    """
-    from src.service.agent.workspace_paths import resolve_workspace_dirs
-
-    employee_id = _resolve_employee_id_for_conversation(conversation_id)
-    ws = resolve_workspace_dirs(
-        root_path=root_path,
-        employee_id=employee_id,
-        conversation_id=conversation_id,
-        shared_artifacts_dir=None,
-        base_dir=Path(root_path),
-    )
-    conv_artifacts = ws.workspace_dir / f"conv-{conversation_id}"
-    # 总管共享桌：组队派活过的会话，面板"产物"桶以共享桌为根（与 agent 写产物落点一致）
-    desk = Path(root_path) / "orchestrator-desk" / f"conv-{conversation_id}"
-    if desk.is_dir():
-        conv_artifacts = desk
-    return ws.workspace_dir, ws.public_root, conv_artifacts
-
-
 class ResourceService:
     """产物资源服务。
 

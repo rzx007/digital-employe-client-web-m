@@ -8,9 +8,12 @@ def test_employee_conversation(tmp_path):
         root_path=str(tmp_path), employee_id=7, conversation_id=42,
         shared_artifacts_dir=None, base_dir=tmp_path / "svc",
     )
-    assert d.workspace_dir == tmp_path / "employee-7" / "artifacts"
-    assert d.artifacts_dir == tmp_path / "employee-7" / "artifacts" / "conv-42"
-    assert d.uploads_dir == d.artifacts_dir / "uploads"
+    # 三桶拍平直挂产物根（不再带 employee/conv 分层）
+    assert d.workspace_dir == tmp_path / "artifacts"
+    assert d.artifacts_dir == tmp_path / "artifacts"
+    assert d.uploads_dir == tmp_path / "uploads"
+    assert d.draft_dir == tmp_path / "skills-draft"
+    # 公共区本任务不动（Task 3.2 收口）
     assert d.public_root == tmp_path / "shared"
     assert d.public_dir == tmp_path / "shared" / "employee-7" / "conv-42"
 
@@ -21,8 +24,8 @@ def test_room_member_writes_to_room_but_keeps_own_workspace(tmp_path):
         root_path=str(tmp_path), employee_id=7, conversation_id=42,
         shared_artifacts_dir=str(room), base_dir=tmp_path / "svc",
     )
-    assert d.artifacts_dir == room                                   # 协作产出落房间
-    assert d.workspace_dir == tmp_path / "employee-7" / "artifacts"  # 仍读自己
+    assert d.artifacts_dir == room                  # 协作产出落房间（desk override 保留）
+    assert d.workspace_dir == tmp_path / "artifacts"  # 无 shared_workspace_root → 拍平产物根
     assert d.public_dir == tmp_path / "shared" / "employee-7" / "conv-42"
 
 
@@ -31,7 +34,7 @@ def test_orchestrator_owner(tmp_path):
         root_path=str(tmp_path), employee_id="orchestrator", conversation_id=9,
         shared_artifacts_dir=None, base_dir=tmp_path / "svc",
     )
-    assert d.workspace_dir == tmp_path / "employee-orchestrator" / "artifacts"
+    assert d.workspace_dir == tmp_path / "artifacts"
     assert d.public_dir == tmp_path / "shared" / "employee-orchestrator" / "conv-9"
 
 
@@ -40,7 +43,11 @@ def test_no_conversation_uses_scratch(tmp_path):
         root_path=str(tmp_path), employee_id=7, conversation_id=None,
         shared_artifacts_dir=None, base_dir=tmp_path / "svc",
     )
-    assert d.artifacts_dir == tmp_path / "employee-7" / "artifacts" / "_scratch"
+    # 三桶拍平后与 conv 无关
+    assert d.artifacts_dir == tmp_path / "artifacts"
+    assert d.uploads_dir == tmp_path / "uploads"
+    assert d.draft_dir == tmp_path / "skills-draft"
+    # 仅公共区仍用 _scratch conv 回退（公共区 Task 3.2 收口）
     assert d.public_dir == tmp_path / "shared" / "employee-7" / "_scratch"
 
 
@@ -51,7 +58,7 @@ def test_no_root_path_falls_back_to_base(tmp_path):
         shared_artifacts_dir=None, base_dir=base,
     )
     assert d.public_root == base / "shared"
-    assert d.workspace_dir == base / "employee-default" / "artifacts"
+    assert d.workspace_dir == base / "artifacts"
 
 
 def test_shared_workspace_root_redirects_read_root(tmp_path):
@@ -71,8 +78,8 @@ def test_shared_workspace_root_redirects_read_root(tmp_path):
     assert d.public_root == tmp_path / "shared"
 
 
-def test_shared_workspace_root_absent_keeps_own(tmp_path):
-    """不传 shared_workspace_root → workspace_dir 仍是员工自己（群模式行为不变）。"""
+def test_shared_workspace_root_absent_keeps_flat(tmp_path):
+    """不传 shared_workspace_root → workspace_dir 拍平为产物根 artifacts 桶。"""
     room = tmp_path / "room-3" / "artifacts"
     d = resolve_workspace_dirs(
         root_path=str(tmp_path),
@@ -82,7 +89,7 @@ def test_shared_workspace_root_absent_keeps_own(tmp_path):
         base_dir=tmp_path / "svc",
     )
     assert d.artifacts_dir == room
-    assert d.workspace_dir == tmp_path / "employee-7" / "artifacts"  # 维持现状
+    assert d.workspace_dir == tmp_path / "artifacts"  # 拍平共享
 
 
 def test_resolve_orchestrator_desk_dir(tmp_path):
@@ -104,8 +111,8 @@ def test_orchestrator_task_subdir(tmp_path):
     assert sub == desk / "task-100"
 
 
-def test_draft_dir_is_employee_private_not_desk(tmp_path):
-    """草稿目录恒为员工私有（conv_artifacts/skills-draft），即便 workspace_dir 被重定向到共享桌。"""
+def test_draft_dir_is_flat_not_desk(tmp_path):
+    """草稿目录拍平为产物根 skills-draft（不随共享桌/员工漂移）。"""
     desk = tmp_path / "orchestrator-desk" / "conv-9"
     d = resolve_workspace_dirs(
         root_path=str(tmp_path),
@@ -115,14 +122,14 @@ def test_draft_dir_is_employee_private_not_desk(tmp_path):
         shared_workspace_root=desk,
         base_dir=tmp_path / "svc",
     )
-    # 草稿在员工私有 conv 目录下，不在共享桌下
-    assert d.draft_dir == tmp_path / "employee-7" / "artifacts" / "conv-42" / "skills-draft"
-    # 与 uploads 同级（都挂员工 conv 目录）
-    assert d.draft_dir.parent == d.uploads_dir.parent
+    # 草稿拍平到产物根，不在共享桌下、不带 employee/conv
+    assert d.draft_dir == tmp_path / "skills-draft"
+    # 与 uploads 同级（都直挂产物根）
+    assert d.draft_dir.parent == d.uploads_dir.parent == tmp_path
 
 
 def test_draft_dir_without_redirect(tmp_path):
-    """无共享桌时草稿目录也是员工私有 conv 目录下。"""
+    """无共享桌时草稿目录也拍平到产物根 skills-draft。"""
     d = resolve_workspace_dirs(
         root_path=str(tmp_path),
         employee_id=7,
@@ -130,4 +137,4 @@ def test_draft_dir_without_redirect(tmp_path):
         shared_artifacts_dir=None,
         base_dir=tmp_path / "svc",
     )
-    assert d.draft_dir == tmp_path / "employee-7" / "artifacts" / "conv-42" / "skills-draft"
+    assert d.draft_dir == tmp_path / "skills-draft"

@@ -20,7 +20,7 @@ from src.core.request_utils import (
     get_username,
     get_workspace_id_from_request,
 )
-from src.core.config import get_settings, is_offline_mode
+from src.core.config import is_offline_mode
 from src.core.runtime_capabilities import get_capabilities
 from src.core.deps import require_capability
 from sqlalchemy.orm import Session
@@ -43,9 +43,10 @@ from src.schemas.skill import (
     SaveDraftSkillResult,
 )
 from src.schemas.employee import EmployeeUpdate
+from src.service.chat_service import ChatService
 from src.service.employee_service import EmployeeService
 from src.service.local_skill_service import LocalSkillService
-from src.service.resource_service import resolve_workspace_context
+from src.service.product_paths import resolve_conversation_product_root
 from src.service.skill_service import SkillService
 from src.service.workspace_service import WorkspaceService
 
@@ -194,35 +195,32 @@ async def import_local_skill_zip(
     )
 
 
-def _resolve_draft_skill_dir(conversation_id: int, skill_name: str) -> Path:
+def _resolve_draft_skill_dir(
+    db: Session, conversation_id: int, skill_name: str
+) -> Path:
     name = (skill_name or "").strip()
     if not name or "/" in name or "\\" in name or ".." in name:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"非法草稿技能名: {skill_name}",
         )
-    settings = get_settings()
-    # 草稿由员工 agent 写在 artifacts_path（conversations）根下（见 chat_service
-    # get_agent root_path=settings.artifacts_path）；这里必须用同一根解析，否则去
-    # skill_path（employees-skills）找会恒 404「草稿技能不存在」。
-    root_path = settings.artifacts_path
-    workspace_dir, _public, _conv = resolve_workspace_context(
-        root_path, conversation_id
-    )
-    draft_dir = workspace_dir / f"conv-{conversation_id}" / "skills-draft" / name
-    resolved = draft_dir.resolve()
-    base = (workspace_dir / f"conv-{conversation_id}" / "skills-draft").resolve()
-    if base not in resolved.parents and resolved != base:
+    # SP2 Task 3.1：草稿由 agent 写在项目产物根的 skills-draft 桶下（拍平）；
+    # 读侧必须用同一根（会话→所钉项目→产物根）解析，否则恒 404「草稿技能不存在」。
+    conv = ChatService.get_conversation(db, conversation_id)
+    product_root = resolve_conversation_product_root(db, conv)
+    base = (product_root / "skills-draft").resolve()
+    draft_dir = (base / name).resolve()
+    if base not in draft_dir.parents and draft_dir != base:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="草稿路径越界",
         )
-    if not resolved.is_dir():
+    if not draft_dir.is_dir():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"草稿技能不存在: {name}",
         )
-    return resolved
+    return draft_dir
 
 
 @router.post(
@@ -238,7 +236,7 @@ def save_draft_skill(
     workspace_id = get_workspace_id_from_request(request)
     token = request.headers.get("token") or ""
 
-    draft_dir = _resolve_draft_skill_dir(payload.conversationId, payload.skillName)
+    draft_dir = _resolve_draft_skill_dir(db, payload.conversationId, payload.skillName)
 
     imported = LocalSkillService.save_draft_skill(
         draft_dir=draft_dir,

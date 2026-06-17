@@ -74,65 +74,74 @@ def test_save_draft_skill_imports_and_returns_localid(tmp_path, monkeypatch):
     assert captured["workspace_id"] == 5
 
 
-def test_resolve_draft_dir_rejects_separator_name():
+def _make_conv(db, ws_id) -> int:
+    from src.models.conversation import Conversation
+
+    conv = Conversation(workspace_id=ws_id, target_type="employee", target_id=7, title="员工")
+    db.add(conv)
+    db.commit()
+    db.refresh(conv)
+    return conv.id
+
+
+def test_resolve_draft_dir_rejects_separator_name(db_session, workspace):
     from fastapi import HTTPException
     from src.api.skill_api import _resolve_draft_skill_dir
 
     import pytest
     with pytest.raises(HTTPException) as exc:
-        _resolve_draft_skill_dir(conversation_id=1, skill_name="../evil")
+        _resolve_draft_skill_dir(db_session, conversation_id=1, skill_name="../evil")
     assert exc.value.status_code == 400
 
 
-def test_resolve_draft_dir_valid_name_returns_dir(tmp_path, monkeypatch):
-    from fastapi import HTTPException
+def test_resolve_draft_dir_valid_name_returns_dir(db_session, workspace):
+    """草稿写在 <product_root>/skills-draft/<name>（拍平），save-draft 用同一根解析。"""
+    from src.service.product_paths import resolve_conversation_product_root
+    from src.models.conversation import Conversation
     import src.api.skill_api as mod
 
-    # 让 resolve_workspace_context 返回受控的 workspace_dir，构造真实草稿目录
-    ws = tmp_path / "ws"
-    draft = ws / "conv-7" / "skills-draft" / "demo-skill"
+    conv_id = _make_conv(db_session, workspace.id)
+    conv = db_session.get(Conversation, conv_id)
+    product_root = resolve_conversation_product_root(db_session, conv)
+    draft = product_root / "skills-draft" / "demo-skill"
     draft.mkdir(parents=True)
     (draft / "SKILL.md").write_text("---\nname: demo-skill\n---\n", encoding="utf-8")
 
-    monkeypatch.setattr(mod, "resolve_workspace_context", lambda root_path, conversation_id: (ws, None, None))
-
-    resolved = mod._resolve_draft_skill_dir(conversation_id=7, skill_name="demo-skill")
+    resolved = mod._resolve_draft_skill_dir(db_session, conversation_id=conv_id, skill_name="demo-skill")
     assert resolved == draft.resolve()
 
 
-def test_resolve_draft_dir_missing_dir_raises_404(tmp_path, monkeypatch):
-    from fastapi import HTTPException
+def test_resolve_draft_dir_missing_dir_raises_404(db_session, workspace):
     import pytest
+    from fastapi import HTTPException
+    from src.service.product_paths import resolve_conversation_product_root
+    from src.models.conversation import Conversation
     import src.api.skill_api as mod
 
-    ws = tmp_path / "ws"
-    (ws / "conv-7" / "skills-draft").mkdir(parents=True)  # base 存在但具体技能目录不存在
-    monkeypatch.setattr(mod, "resolve_workspace_context", lambda root_path, conversation_id: (ws, None, None))
+    conv_id = _make_conv(db_session, workspace.id)
+    conv = db_session.get(Conversation, conv_id)
+    product_root = resolve_conversation_product_root(db_session, conv)
+    (product_root / "skills-draft").mkdir(parents=True)  # base 存在但具体技能目录不存在
 
     with pytest.raises(HTTPException) as exc:
-        mod._resolve_draft_skill_dir(conversation_id=7, skill_name="nope")
+        mod._resolve_draft_skill_dir(db_session, conversation_id=conv_id, skill_name="nope")
     assert exc.value.status_code == 404
 
 
-def test_resolve_draft_dir_uses_artifacts_path_not_skill_path(tmp_path, monkeypatch):
-    """草稿由员工 agent 写在 artifacts_path（conversations）根下；save-draft 必须用同一根
-    解析，否则去 skill_path（employees-skills）找会恒 404「草稿技能不存在」。"""
+def test_resolve_draft_dir_uses_project_product_root(db_session, workspace):
+    """草稿读路径配平到项目产物根 skills-draft（与 agent 写落点一致），不去全局 skill_path。"""
+    from src.service.product_paths import resolve_conversation_product_root
+    from src.models.conversation import Conversation
     import src.api.skill_api as mod
 
-    captured = {}
+    conv_id = _make_conv(db_session, workspace.id)
+    conv = db_session.get(Conversation, conv_id)
+    product_root = resolve_conversation_product_root(db_session, conv)
+    draft = product_root / "skills-draft" / "demo-skill"
+    draft.mkdir(parents=True)
+    (draft / "SKILL.md").write_text("---\nname: demo-skill\n---\n", encoding="utf-8")
 
-    def fake_ctx(root_path, conversation_id):
-        captured["root_path"] = root_path
-        ws = tmp_path / "ws"
-        draft = ws / f"conv-{conversation_id}" / "skills-draft" / "demo-skill"
-        draft.mkdir(parents=True, exist_ok=True)
-        (draft / "SKILL.md").write_text("---\nname: demo-skill\n---\n", encoding="utf-8")
-        return (ws, None, None)
-
-    monkeypatch.setattr(mod, "resolve_workspace_context", fake_ctx)
-
-    settings = mod.get_settings()
-    mod._resolve_draft_skill_dir(conversation_id=7, skill_name="demo-skill")
-
-    assert captured["root_path"] == settings.artifacts_path
-    assert captured["root_path"] != settings.skill_path
+    resolved = mod._resolve_draft_skill_dir(db_session, conversation_id=conv_id, skill_name="demo-skill")
+    # 解析精确落在项目产物根的 skills-draft 桶下（与 agent 写落点一致），不去全局 skill_path
+    assert resolved == draft.resolve()
+    assert str(resolved).startswith(str((product_root / "skills-draft").resolve()))
