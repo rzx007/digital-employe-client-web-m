@@ -29,6 +29,6 @@ class Workspace(Base):
         onupdate=cst_now,
     )
 
-    employees = relationship("Employee", back_populates="workspace", cascade="all, delete-orphan")
-    conversations = relationship("Conversation", cascade="all, delete-orphan")
+    employees = relationship("Employee", back_populates="workspace", passive_deletes=True)
+    conversations = relationship("Conversation", passive_deletes=True)
 

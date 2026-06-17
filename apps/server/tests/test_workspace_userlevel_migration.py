@@ -65,3 +65,27 @@ def test_backfill_is_idempotent(db_session):
     backfill_user_id(db_session)
     db_session.expire_all()
     assert db_session.get(Employee, e.id).user_id == "u2"
+
+
+def test_delete_workspace_keeps_user_resources(db_session):
+    from src.models.workspace import Workspace
+    from src.models.employee import Employee
+    from src.models.conversation import Conversation
+    from src.db.init_db import backfill_user_id
+
+    ws = Workspace(name="w", root_path="/tmp/w", user_id="u1")
+    db_session.add(ws)
+    db_session.flush()
+    e = Employee(workspace_id=ws.id, name="e", employee_code="c")
+    db_session.add(e)
+    db_session.flush()
+    c = Conversation(workspace_id=ws.id, target_type="curator", target_id=e.id)
+    db_session.add(c)
+    db_session.commit()
+    backfill_user_id(db_session)
+    emp_id, conv_id = e.id, c.id
+    db_session.delete(ws)
+    db_session.commit()
+    db_session.expire_all()
+    assert db_session.get(Employee, emp_id) is not None
+    assert db_session.get(Conversation, conv_id) is not None
