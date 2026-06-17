@@ -72,17 +72,38 @@ def test_license_not_commented(monkeypatch):
     assert c.has_license_comment("I1", "u1") is False
 
 
-def test_write_license_comment(monkeypatch):
+def test_write_license_comment_with_attachment(monkeypatch):
     captured = {}
     def fake_http(method, url, body=None, headers=None):
-        captured["method"] = method
-        captured["url"] = url
         captured["body"] = body
         return {"code": 0, "data": {"comment_id": "cid1"}}
     monkeypatch.setattr(fa, "_http_json", fake_http)
     c = fa.FeishuApproval(FakeToken(), "APPCODE", "wdev", "wexp", "【激活授权码】")
+    # mock 文件上传，避免真连飞书
+    monkeypatch.setattr(c, "_upload_license_file", lambda lic: ("FILECODE", 8))
     c.write_license_comment("I1", "u1", "abc.def")
-    assert captured["method"] == "POST"
-    assert "/instances/I1/comments" in captured["url"]
     inner = json.loads(captured["body"]["content"])
-    assert inner["text"] == "【激活授权码】abc.def"
+    # 文本含前缀+激活码+使用指引（文件名与放置目录）
+    assert inner["text"].startswith("【激活授权码】abc.def")
+    assert fa.LICENSE_FILENAME in inner["text"]
+    assert fa.LICENSE_DIR in inner["text"]
+    # 带附件，code 为上传返回值
+    assert inner["files"][0]["code"] == "FILECODE"
+    assert inner["files"][0]["title"] == fa.LICENSE_FILENAME
+
+
+def test_write_license_comment_falls_back_to_text_when_upload_fails(monkeypatch):
+    captured = {}
+    def fake_http(method, url, body=None, headers=None):
+        captured["body"] = body
+        return {"code": 0, "data": {"comment_id": "cid1"}}
+    monkeypatch.setattr(fa, "_http_json", fake_http)
+    c = fa.FeishuApproval(FakeToken(), "APPCODE", "wdev", "wexp", "【激活授权码】")
+    def boom(lic):
+        raise fa.FeishuError("upload down")
+    monkeypatch.setattr(c, "_upload_license_file", boom)
+    c.write_license_comment("I1", "u1", "abc.def")
+    inner = json.loads(captured["body"]["content"])
+    # 降级：仍含激活码+指引，但无 files
+    assert inner["text"].startswith("【激活授权码】abc.def")
+    assert "files" not in inner
