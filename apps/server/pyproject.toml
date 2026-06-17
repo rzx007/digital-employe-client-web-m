@@ -3,7 +3,7 @@ name = "digital-employee-client"
 version = "0.1.0"
 description = "A natural language to SQL query agent powered by LangChain's DeepAgents framework and OpenAI GPT-4"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "deepagents==0.6.7",
     "apscheduler>=3.10.4",
