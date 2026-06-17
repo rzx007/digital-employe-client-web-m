@@ -19,6 +19,20 @@ class WorkspaceDirs:
     public_root: Path     # $PUBLIC_ROOT 读全部公共
 
 
+APP_PROJECTS_BASE = Path.home() / ".digital-employee" / "projects"
+
+
+def resolve_workspace_product_root(root_path: str) -> Path:
+    """项目产物根。
+    - app 托管目录（~/.digital-employee/projects/<id>/）：整个目录归 app，产物直接放其下。
+    - 外部用户文件夹（用户手选的源码目录）：套隐藏子目录 .digital-employee/ 防污染其文件树。
+    """
+    p = Path(root_path)
+    if p.is_relative_to(APP_PROJECTS_BASE):  # is_relative_to 已含相等（Py≥3.11）
+        return p
+    return p / ".digital-employee"
+
+
 def _owner_token(employee_id: int | str | None) -> str:
     if employee_id is None or str(employee_id) == "":
         return "employee-default"
