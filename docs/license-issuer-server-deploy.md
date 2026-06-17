@@ -181,6 +181,32 @@ docker rm -f de-issuer && docker run -d --name de-issuer --restart always -p 890
   -e ISSUER_DEFAULT_EXPIRES=+90d -v ~/issuer-keys:/keys:ro de-issuer-server
 ```
 
+## 轮询器（飞书审批自动出码，2026-06-17 上线 216）
+
+签发服务镜像内含飞书审批轮询器（`python -m license_issuer_server poll`）。它出站轮询飞书
+「数字员工激活申请」已通过实例 → 取设备码+截至日期 → 出码 → **以评论回写**到审批单
+（评论=防重标记）。**无需公网入口**。与 HTTP 签发容器并存、共享同一私钥挂载。
+
+起轮询容器（注意：CMD 是 exec 形式，必须给完整命令 `python -m license_issuer_server poll`，
+不能只追加 `poll`）：
+```bash
+docker run -d --name de-issuer-poller --restart always \
+  -e FEISHU_APP_ID=<app_id> -e FEISHU_APP_SECRET=<app_secret> \
+  -e FEISHU_APPROVAL_CODE=<审批定义 code> \
+  -e FEISHU_DEVICE_CODE_FIELD=<设备码控件 id> \
+  -e FEISHU_EXPIRES_FIELD=<截至日期控件 id> \
+  -e DE_LICENSE_PRIVATE_KEY=/keys/private_key.pem -e POLL_INTERVAL=30 \
+  -v /home/boban/issuer-keys:/keys:ro \
+  de-issuer-server python -m license_issuer_server poll
+```
+（真值见机密文件 `docs/secrets/216-issuer-credentials.md`。）
+
+排错：`docker logs de-issuer-poller`。正常日志：「轮询器启动」+ 出码时「实例 ... 已出码并回写评论」；
+已出码的实例后续轮次不再重复（评论存在=跳过）。
+
+> ⚠️ 飞书读评论返回字段为 `content`（非 comment）——代码已兼容；若改飞书 SDK 版本注意核对。
+> 已通过的审批单**不能改表单字段**（飞书限制），故回写用评论。
+
 ## 不在本服务范围
 
 - 飞书自动化（审批/轮询/回调驱动出码）—— 评估后**暂不做**，现阶段人工调 `/license/issue`。
