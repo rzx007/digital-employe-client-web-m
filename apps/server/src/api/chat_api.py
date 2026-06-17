@@ -584,7 +584,7 @@ def batch_delete_conversation_resources(
     payload: ResourceBatchDeleteRequest,
     db: Session = Depends(get_db),
 ) -> ResponseBase[ResourceBatchDeleteResult]:
-    """批量删产物：逐条沙箱校验（员工工作空间/公共区/房间内），合法删、非法跳过。"""
+    """批量删产物：逐条沙箱校验（项目产物根内），合法删、非法跳过。"""
     conversation = ChatService.get_conversation(db, conversation_id)
     product_root = resolve_conversation_product_root(db, conversation)
     result = ResourceService.batch_delete(product_root, payload.paths)

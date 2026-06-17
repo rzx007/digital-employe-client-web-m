@@ -4,7 +4,6 @@ import logging
 import shutil
 import io
 import zipfile
-import shutil
 import uuid
 from pathlib import Path
 
@@ -24,19 +23,6 @@ from src.service.basic_file_reader import (
     read_basic_file,
 )
 logger = logging.getLogger(__name__)
-
-# 允许对外暴露/读写的桶子目录（相对项目产物根）。其余目录不暴露。
-_BUCKET_DIR_TO_KEY = {"artifacts": "artifacts", "uploads": "uploads", "skills-draft": "skills_draft"}
-
-
-def _bucket_of(real_path: Path, product_root: Path) -> str | None:
-    """真实路径属于哪个桶（按相对产物根的首段目录推导）；不在允许桶内返回 None。"""
-    try:
-        rel = real_path.resolve().relative_to(product_root.resolve())
-    except (ValueError, OSError):
-        return None
-    first = rel.parts[0] if rel.parts else ""
-    return _BUCKET_DIR_TO_KEY.get(first)
 
 ALLOWED_UPLOAD_EXTENSIONS: set[str] = {
     ".txt", ".md", ".csv", ".tsv", ".json", ".xml", ".yaml", ".yml",
@@ -78,14 +64,12 @@ def _scan_file(file_path: Path, bucket: str) -> ResourceEntry:
 
 
 def _scan_dir_flat(
-    directory: Path, bucket: str, *, skip_names: tuple[str, ...] = ()
+    directory: Path, bucket: str
 ) -> list[ResourceEntry]:
     if not directory.is_dir():
         return []
     entries: list[ResourceEntry] = []
     for item in sorted(directory.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
-        if item.is_dir() and item.name in skip_names:
-            continue
         if item.is_dir():
             children = _scan_dir_flat(item, bucket)
             entries.append(
@@ -194,6 +178,7 @@ class ResourceService:
 
     @staticmethod
     def list_resources(product_root: Path) -> ResourceList:
+        # uploads/skills-draft 是 product_root 下的同级桶,不在 artifacts 内,无需 skip
         artifacts = _scan_dir_flat(
             product_root / "artifacts", "artifacts"
         )
@@ -204,6 +189,7 @@ class ResourceService:
             artifacts=artifacts,
             uploads=uploads,
             skills_draft=skills_draft,
+            # Phase 3: workspace/public 桶随目录拍平消解;暂返回空保持前端 ResourceList 契约
             workspace=[],
             public=[],
         )
