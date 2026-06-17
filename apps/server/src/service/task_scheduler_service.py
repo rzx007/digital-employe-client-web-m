@@ -346,12 +346,13 @@ class TaskSchedulerService:
         )
         if skill_name:
             return str(skill_name)
-        # 兜底：历史数据可能缺少 employee_id 维度时，按 workspace + skill_id 查一次
+        # 兜底：历史数据可能缺少 employee_id 维度时，按员工归属用户 + skill_id 查一次
+        # （员工已是用户级，按 user_id 解析；经 Employee join 以兼容 EmployeeSkill.user_id 为 NULL）
         fallback_name = db.scalar(
-            select(EmployeeSkill.skill_name).where(
-                EmployeeSkill.workspace_id == employee.workspace_id,
-                EmployeeSkill.skill_id == skill_id,
-            ).order_by(EmployeeSkill.id.desc()).limit(1)
+            select(EmployeeSkill.skill_name)
+            .join(Employee, EmployeeSkill.employee_id == Employee.id)
+            .where(Employee.user_id == employee.user_id, EmployeeSkill.skill_id == skill_id)
+            .order_by(EmployeeSkill.id.desc()).limit(1)
         )
         return str(fallback_name or "")
 

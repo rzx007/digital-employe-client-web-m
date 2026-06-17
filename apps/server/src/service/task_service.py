@@ -357,14 +357,6 @@ class TaskService:
         day_start = datetime.combine(target_date, time.min).replace(tzinfo=CST)
         day_end = day_start + timedelta(days=1)
 
-        employees = list(
-            db.scalars(
-                select(Employee).where(Employee.workspace_id == workspace_id)
-                .order_by(Employee.id.asc())
-            ).all()
-        )
-        emp_name_map = {e.id: e.name for e in employees}
-
         # === Part A: 已执行任务（直接查 logs 表）===
         logs = list(
             db.scalars(
@@ -375,6 +367,34 @@ class TaskService:
                 ).order_by(TaskExecutionLog.started_at.desc())
             ).all()
         )
+
+        # === Part B 查询（任务列表）前置，仅用于汇总 employee_id 以便构建名映射 ===
+        tasks = list(
+            db.scalars(
+                select(EmployeeTask).where(
+                    EmployeeTask.workspace_id == workspace_id,
+                    EmployeeTask.is_active.is_(True),
+                    EmployeeTask.dispatch_type.in_(("skill", "mcp")),
+                    EmployeeTask.execute_mode != "immediate",
+                    and_(
+                        EmployeeTask.cron_expression.isnot(None),
+                        func.trim(EmployeeTask.cron_expression) != "",
+                    ),
+                ).order_by(EmployeeTask.priority.desc(), EmployeeTask.id.asc())
+            ).all()
+        )
+
+        # 员工姓名按 logs/tasks 实际引用的 employee_id 解析（员工已是用户级，
+        # cosmetic workspace_id stamp 可能 != workspace，不能按 workspace 过滤）
+        referenced_ids = {
+            log.employee_id for log in logs if log.employee_id is not None
+        } | {t.employee_id for t in tasks if t.employee_id is not None}
+        emp_name_map = {
+            e.id: e.name
+            for e in db.scalars(
+                select(Employee).where(Employee.id.in_(referenced_ids))
+            ).all()
+        } if referenced_ids else {}
 
         executed_task_ids: set[int] = set()
         result: list[dict[str, Any]] = []
@@ -406,21 +426,6 @@ class TaskService:
             })
 
         # === Part B: 待执行任务（from employee_tasks，排除已有执行记录的）===
-        tasks = list(
-            db.scalars(
-                select(EmployeeTask).where(
-                    EmployeeTask.workspace_id == workspace_id,
-                    EmployeeTask.is_active.is_(True),
-                    EmployeeTask.dispatch_type.in_(("skill", "mcp")),
-                    EmployeeTask.execute_mode != "immediate",
-                    and_(
-                        EmployeeTask.cron_expression.isnot(None),
-                        func.trim(EmployeeTask.cron_expression) != "",
-                    ),
-                ).order_by(EmployeeTask.priority.desc(), EmployeeTask.id.asc())
-            ).all()
-        )
-
         for task in tasks:
             if task.id in executed_task_ids:
                 continue
@@ -555,10 +560,13 @@ class TaskService:
                 .limit(page_size)
             ).all()
         )
-        # 查询所有的员工
-        employees = list(db.scalars(select(Employee).where(Employee.workspace_id == workspace_id).order_by(Employee.id.asc())).all())
-        # 根据员工的ID和name生成k-v
-        employee_name_map = {emp.id: emp.name for emp in employees}
+        # 按 items 中实际出现的 employee_id 解析员工姓名（员工已是用户级，
+        # cosmetic workspace_id stamp 可能 != 日志 workspace，不能按 workspace 过滤）
+        emp_ids = {item.employee_id for item in items if item.employee_id is not None}
+        employee_name_map = {
+            e.id: e.name
+            for e in db.scalars(select(Employee).where(Employee.id.in_(emp_ids))).all()
+        } if emp_ids else {}
         # 给items加上员工姓名字段
         for item in items:
             item.employee_name = employee_name_map.get(item.employee_id, "")
@@ -637,13 +645,8 @@ class TaskService:
         db.add(log)
         db.commit()
         db.refresh(log)
-        employees = list(
-            db.scalars(
-                select(Employee).where(Employee.workspace_id == workspace_id).order_by(Employee.id.asc())
-            ).all()
-        )
-        employee_name_map = {emp.id: emp.name for emp in employees}
-        log.employee_name = employee_name_map.get(log.employee_id, "")
+        _emp = db.get(Employee, log.employee_id)
+        log.employee_name = _emp.name if _emp is not None else ""
         task = db.get(EmployeeTask, log.task_id)
         log.confirm_execution_result = (
             bool(task.confirm_execution_result) if task is not None else None
@@ -670,13 +673,8 @@ class TaskService:
         db.add(log)
         db.commit()
         db.refresh(log)
-        employees = list(
-            db.scalars(
-                select(Employee).where(Employee.workspace_id == workspace_id).order_by(Employee.id.asc())
-            ).all()
-        )
-        employee_name_map = {emp.id: emp.name for emp in employees}
-        log.employee_name = employee_name_map.get(log.employee_id, "")
+        _emp = db.get(Employee, log.employee_id)
+        log.employee_name = _emp.name if _emp is not None else ""
         task = db.get(EmployeeTask, log.task_id)
         log.confirm_execution_result = (
             bool(task.confirm_execution_result) if task is not None else None
@@ -724,13 +722,8 @@ class TaskService:
             db.commit()
             db.refresh(log)
 
-        employees = list(
-            db.scalars(
-                select(Employee).where(Employee.workspace_id == workspace_id).order_by(Employee.id.asc())
-            ).all()
-        )
-        employee_name_map = {emp.id: emp.name for emp in employees}
-        log.employee_name = employee_name_map.get(log.employee_id, "")
+        _emp = db.get(Employee, log.employee_id)
+        log.employee_name = _emp.name if _emp is not None else ""
         task = db.get(EmployeeTask, log.task_id)
         log.confirm_execution_result = (
             bool(task.confirm_execution_result) if task is not None else None
