@@ -90,6 +90,9 @@ class FeishuApproval:
         if r.get("code") != 0:
             raise FeishuError(f"读评论失败: {r.get('code')} {r.get('msg')}")
         for c in r.get("data", {}).get("comments", []):
+            # 跳过已删除评论（飞书 remove/clear 是软删，is_delete=1 仍带 content）
+            if c.get("is_delete"):
+                continue
             # 飞书读评论返回字段为 content（部分文档/版本写作 comment，两者都兼容）
             raw = c.get("content") or c.get("comment")
             text = ""

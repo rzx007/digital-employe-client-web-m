@@ -72,6 +72,16 @@ def test_license_not_commented(monkeypatch):
     assert c.has_license_comment("I1", "u1") is False
 
 
+def test_deleted_license_comment_ignored(monkeypatch):
+    # 软删的激活码评论（is_delete=1）不算"已出码"，应可重新出码
+    c = _client(monkeypatch, {
+        ("GET", "/comments"): {"code": 0, "data": {"comments": [
+            {"is_delete": 1,
+             "content": json.dumps({"text": "【激活授权码】old.deleted", "files": None})}]}},
+    })
+    assert c.has_license_comment("I1", "u1") is False
+
+
 def test_write_license_comment_with_attachment(monkeypatch):
     captured = {}
     def fake_http(method, url, body=None, headers=None):
