@@ -441,7 +441,9 @@ export function ExecutionReportCard({
           )}
         </div>
 
-        {execution.conversation_id != null && (
+        {/* 工具足迹是「事后」视图：message_parts 仅在流终态落库，运行中抽不到工具(显示 0)，
+            故仅对已完成的执行显示足迹条;运行中由 spinner/⏳/「可能卡死」表达进度。 */}
+        {execution.conversation_id != null && isFinished && (
           <div>
             <button
               type="button"
