@@ -255,3 +255,10 @@ def test_orchestrator_qa_gate_present(orchestrator_prompt: str) -> None:
 def test_orchestrator_anti_polling_kept(orchestrator_prompt: str) -> None:
     """质检改写后，反轮询护栏仍在。"""
     assert "轮询" in orchestrator_prompt
+
+
+def test_orchestrator_rework_single_task_rule(orchestrator_prompt: str) -> None:
+    """返工只针对出问题的单任务、下游自动重跑的指引不可丢。
+    断言新 bullet 独有短语(非别处也有的"作废"/"下游"),真正守住这条规则。"""
+    assert "自动作废并重跑" in orchestrator_prompt
+    assert "手动返工下游" in orchestrator_prompt
