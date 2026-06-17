@@ -103,7 +103,11 @@ class FeishuApproval:
         return False
 
     def _upload_license_file(self, license_code: str) -> tuple[str, int]:
-        """上传激活码为附件文件，返回 (file_code, size)。失败抛 FeishuError。"""
+        """上传激活码为附件文件，返回 (file_url, size)。失败抛 FeishuError。
+
+        关键：评论 files 字段需要上传返回的真实 url（带签名），不能只填 code、url 留空，
+        否则附件挂上但下载不了（实例查回来 url 为空）。真机验证过。
+        """
         data_bytes = (license_code + "\n").encode("utf-8")
         boundary = "----deiss" + uuid.uuid4().hex
         parts = []
@@ -139,9 +143,9 @@ class FeishuApproval:
         if r.get("code") != 0:
             raise FeishuError(f"上传激活文件失败: {r.get('code')} {r.get('msg')}")
         details = r.get("data", {}).get("urls_detail", [])
-        if not details or not details[0].get("code"):
-            raise FeishuError("上传激活文件未返回 file code")
-        return details[0]["code"], len(data_bytes)
+        if not details or not details[0].get("url"):
+            raise FeishuError("上传激活文件未返回可下载 url")
+        return details[0]["url"], len(data_bytes)
 
     def _guide_text(self, license_code: str) -> str:
         """评论正文：激活码 + 可操作指引（前缀开头，供防重识别）。"""
@@ -161,9 +165,10 @@ class FeishuApproval:
         """
         files = []
         try:
-            file_code, size = self._upload_license_file(license_code)
-            files = [{"url": "", "file_size": size, "title": LICENSE_FILENAME,
-                      "type": "attachment", "code": file_code}]
+            file_url, size = self._upload_license_file(license_code)
+            # 必须填真实 url + file_size，附件才可下载（真机验证）
+            files = [{"url": file_url, "file_size": size, "title": LICENSE_FILENAME,
+                      "type": "attachment"}]
         except FeishuError:
             files = []  # 降级：无附件，仅文本
 

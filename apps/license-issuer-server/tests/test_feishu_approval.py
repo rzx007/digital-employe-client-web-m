@@ -79,16 +79,17 @@ def test_write_license_comment_with_attachment(monkeypatch):
         return {"code": 0, "data": {"comment_id": "cid1"}}
     monkeypatch.setattr(fa, "_http_json", fake_http)
     c = fa.FeishuApproval(FakeToken(), "APPCODE", "wdev", "wexp", "【激活授权码】")
-    # mock 文件上传，避免真连飞书
-    monkeypatch.setattr(c, "_upload_license_file", lambda lic: ("FILECODE", 8))
+    # mock 文件上传，返回 (url, size)，避免真连飞书
+    monkeypatch.setattr(c, "_upload_license_file", lambda lic: ("https://feishucdn/x.code?sig=1", 8))
     c.write_license_comment("I1", "u1", "abc.def")
     inner = json.loads(captured["body"]["content"])
     # 文本含前缀+激活码+使用指引（文件名与放置目录）
     assert inner["text"].startswith("【激活授权码】abc.def")
     assert fa.LICENSE_FILENAME in inner["text"]
     assert fa.LICENSE_DIR in inner["text"]
-    # 带附件，code 为上传返回值
-    assert inner["files"][0]["code"] == "FILECODE"
+    # 带附件，url 为上传返回的真实可下载地址（不能空）
+    assert inner["files"][0]["url"] == "https://feishucdn/x.code?sig=1"
+    assert inner["files"][0]["file_size"] == 8
     assert inner["files"][0]["title"] == fa.LICENSE_FILENAME
 
 
