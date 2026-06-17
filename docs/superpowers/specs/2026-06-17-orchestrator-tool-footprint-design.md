@@ -52,8 +52,12 @@
 - 加一个折叠条「🔧 工具足迹 (N) ›」/「🔧 工具足迹」（N 未知时不显数字，点开后显）。**默认折叠**。
 - 展开时**懒加载**端点（`useToolFootprint(logId, { enabled: expanded })` —— TanStack Query，`enabled` 受展开态控制，只在首次展开取一次、缓存）。
 - 加载中显示 spinner；加载完：
-  - 优先：`parts` → 现有 `message-classifier`（`apps/web/src/lib/chat/message-classifier.ts`）分类出 `tool-group` block → `ToolGroupBlock` 渲染（Claude-Code 观感）。
-  - 退路：若 classifier 输入形态不便直接喂，渲染紧凑列表：每个 part 一行「<toolName> · <success/error>」。
+  - **主路径（已核实可行）**：`classifyMessageParts(message, ...)` 吃的是一个 `UIMessage` 壳（要 `.parts/.role/.id`），而存储的工具 part 形态（`{type:"tool-<name>", toolCallId, state, input, output}`）正是 `ToolUIPart`。故合成一个最小壳即可：
+    ```ts
+    classifyMessageParts({ id: `footprint-${logId}`, role: "assistant", parts: toolParts, content: "" })
+    ```
+    → 取其中 `kind:"tool-group"` 的 block → `ToolGroupBlock` 渲染（Claude-Code 观感）。
+  - 退路（仅防意外边界）：若上述合成在某些 part 形态下表现异常，渲染紧凑列表：每个 part 一行「<toolName> · <success/error>」。**先走主路径**。
 - 无工具（tool_count==0）→ 不显示足迹条（或显示「无工具调用」一行）。
 
 ### 3.3 取舍
