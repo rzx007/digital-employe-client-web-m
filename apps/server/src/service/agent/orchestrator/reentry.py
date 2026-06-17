@@ -353,9 +353,9 @@ def build_reentry_brief(results: list[dict[str, Any]]) -> str:
     body = "\n".join(lines).strip()
     return (
         "（系统）你派出的团队子任务已全部完成。以下是各子任务的结论，"
-        "团队的产物文件都在共享工作桌（$WORKSPACE_DIR，可直接 ls/read 查看）。\n\n"
+        "团队的产物文件都在项目共享产物区（$WORKSPACE_DIR / $ARTIFACTS_DIR，可直接 ls/read 查看）。\n\n"
         f"{body}\n\n"
-        "请你**整合**这些成果，必要时读取共享桌上的产物文件核对，"
+        "请你**整合**这些成果，必要时读取共享产物区的产物文件核对，"
         "然后向用户给出一份完整、连贯的交付与说明。"
         "若有子任务失败，请如实说明并给出后续建议。不要重新派活，除非确有必要。"
     )

@@ -8,8 +8,10 @@ SP2 Task 3.2a：消解 orchestrator-desk——产物已项目级扁平共享后�
 被派员工同写同读 root/artifacts，桌（shared_artifacts_dir/shared_workspace_root
 override）冗余，连同 resolve_orchestrator_desk_dir/orchestrator_task_subdir 一并删除。
 
-公共区 root/shared/employee-<owner>/conv-<cid> 仍为双层，留待 Task 3.2b 收口
-（故 employee_id/conversation_id 入参暂留，公共区仍需）。
+SP2 Task 3.2b：公共区收敛——不再有 per-employee 私有工作空间或公共子区，
+全项目只有**一个**扁平共享产物区：$WORKSPACE_DIR / $PUBLIC_DIR / $PUBLIC_ROOT
+全部 = root/artifacts，全队同写同读；同名覆盖按 last-write-wins（SP2 既定取舍）。
+employee_id/conversation_id 入参随之删除（公共区收敛后无人再用）。
 """
 from __future__ import annotations
 
@@ -19,12 +21,13 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class WorkspaceDirs:
-    artifacts_dir: Path   # $ARTIFACTS_DIR 写产物（拍平=root/artifacts）
-    workspace_dir: Path   # $WORKSPACE_DIR 读根（拍平=root/artifacts）
-    uploads_dir: Path     # $UPLOADS_DIR 拍平=root/uploads
-    draft_dir: Path       # 技能草稿目录（拍平=root/skills-draft）
-    public_dir: Path      # $PUBLIC_DIR 写自己公共子区（Task 3.2b 收口）
-    public_root: Path     # $PUBLIC_ROOT 读全部公共（Task 3.2b 收口）
+    # 以下 6 字段在 SP2 3.2b 后归一到 3 个互异路径：
+    artifacts_dir: Path   # $ARTIFACTS_DIR 项目级共享产物区 = root/artifacts
+    workspace_dir: Path   # $WORKSPACE_DIR 同上（= root/artifacts）
+    uploads_dir: Path     # $UPLOADS_DIR 拍平 = root/uploads
+    draft_dir: Path       # 技能草稿目录（拍平 = root/skills-draft）
+    public_dir: Path      # $PUBLIC_DIR 同 artifacts（= root/artifacts，单一共享区）
+    public_root: Path     # $PUBLIC_ROOT 同 artifacts（= root/artifacts，单一共享区）
 
 
 APP_PROJECTS_BASE = Path.home() / ".digital-employee" / "projects"
@@ -41,37 +44,27 @@ def resolve_workspace_product_root(root_path: str) -> Path:
     return p / ".digital-employee"
 
 
-def _owner_token(employee_id: int | str | None) -> str:
-    if employee_id is None or str(employee_id) == "":
-        return "employee-default"
-    return f"employee-{employee_id}"
-
-
 def resolve_workspace_dirs(
     *,
     root_path: str | None,
-    employee_id: int | str | None,
-    conversation_id: int | None,
     base_dir: Path,
 ) -> WorkspaceDirs:
-    """解析产物三桶 + 公共区目录（不创建目录，纯计算）。
+    """解析项目级单一共享产物区 + uploads/draft 桶（不创建目录，纯计算）。
 
-    Task 3.1/3.2a：三桶（artifacts/uploads/skills-draft）拍平直挂产物根，与
-    employee/conv 无关；workspace（读根）拍平为 root/artifacts。共享桌已消解，
-    全队（总管 + 被派员工）同写同读 root/artifacts。
-    公共区（public_dir/public_root）仍按来源/会话分层，留待 Task 3.2b 收口。
+    SP2 3.1/3.2a/3.2b：项目内只有**一个**扁平共享产物区，
+    $WORKSPACE_DIR / $PUBLIC_DIR / $PUBLIC_ROOT 全部 = root/artifacts，
+    全队（总管 + 被派员工）同写同读、扁平无子目录分层；同名覆盖按
+    last-write-wins（SP2 既定取舍）。uploads/draft 各自扁平直挂产物根。
     """
     root = Path(root_path) if root_path else Path(base_dir)
-    owner = _owner_token(employee_id)
-    conv_seg = f"conv-{conversation_id}" if conversation_id else "_scratch"
 
-    # 公共区本任务不动（Task 3.2b 收口）：仍按来源/会话分层
-    public_root = root / "shared"
-    public_dir = public_root / owner / conv_seg
-
-    # 三桶拍平直挂产物根；读根（workspace）= 写桶（artifacts）= root/artifacts
+    # 项目级单一共享产物区：四个读写口子（artifacts/workspace/public_dir/public_root）归一
     artifacts_dir = root / "artifacts"
     workspace_dir = root / "artifacts"
+    public_dir = root / "artifacts"
+    public_root = root / "artifacts"
+
+    # uploads / draft 各自扁平直挂产物根
     uploads_dir = root / "uploads"
     draft_dir = root / "skills-draft"
 

@@ -17,10 +17,12 @@ def test_orch_skills_memory_real_paths():
     assert 'skills=["/skills/"]' not in src
 
 
-def test_orch_uses_workspace_dirs_owner_orchestrator():
+def test_orch_uses_workspace_dirs_single_shared_area():
+    """SP2 3.2b：公共区收敛——总管经 resolve_workspace_dirs 解析项目级单一共享区，
+    不再传 employee_id/conversation_id（已从签名删除）。"""
     src = inspect.getsource(orch.get_orchestrator_agent)
     assert "resolve_workspace_dirs(" in src
-    assert 'employee_id="orchestrator"' in src
+    assert 'employee_id="orchestrator"' not in src
     assert "workspace_root=ws.workspace_dir" in src
     assert "public_dir=ws.public_dir" in src
 

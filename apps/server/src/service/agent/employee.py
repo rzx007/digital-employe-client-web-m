@@ -127,14 +127,12 @@ def get_agent(
     memories_dir.mkdir(parents=True, exist_ok=True)
     ensure_employee_memory_file(memories_dir)
 
-    # 员工工作空间模型（SP2 3.1/3.2a）：三桶拍平直挂项目产物根（root/artifacts 等），
-    # 全队同写同读 root/artifacts（共享桌已消解）；公共区 root/shared/... 待 3.2b 收口。
+    # 员工工作空间模型（SP2 3.1/3.2a/3.2b）：三桶拍平直挂项目产物根（root/artifacts 等），
+    # 全队同写同读 root/artifacts（共享桌已消解、公共区已收敛为单一共享区）。
     from src.service.agent.workspace_paths import resolve_workspace_dirs
 
     ws = resolve_workspace_dirs(
         root_path=root_path,
-        employee_id=employee_id,
-        conversation_id=conversation_id,
         base_dir=base_dir,
     )
     artifacts_dir = ws.artifacts_dir

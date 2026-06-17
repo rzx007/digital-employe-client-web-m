@@ -206,14 +206,12 @@ def get_orchestrator_agent(
     except Exception:  # noqa: BLE001 - 工作区技能解析失败不致命，退回仅固定技能
         pass
 
-    # 总管当作特殊"员工"（owner=orchestrator）：产物三桶拍平直挂项目产物根，与员工一致。
-    # SP2 3.2a：共享桌已消解——总管与被派员工同写同读 root/artifacts，无需 override。
+    # 总管与员工一致：产物三桶拍平直挂项目产物根。
+    # SP2 3.2a/3.2b：共享桌已消解、公共区已收敛——总管与被派员工同写同读 root/artifacts，无需 override。
     from src.service.agent.workspace_paths import resolve_workspace_dirs
 
     ws = resolve_workspace_dirs(
         root_path=str(artifacts_path),
-        employee_id="orchestrator",
-        conversation_id=conversation_id,
         base_dir=base_dir,
     )
     artifacts_dir = ws.artifacts_dir
