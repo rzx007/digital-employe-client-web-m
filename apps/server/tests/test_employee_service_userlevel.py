@@ -41,3 +41,26 @@ def test_list_skill_assignees_scoped_by_user(db_session):
     assignee_ids = {row["employee_id"] for row in out}
     assert e1.id in assignee_ids
     assert e2.id not in assignee_ids
+
+
+def test_list_skill_assignees_none_user_returns_empty(db_session):
+    from src.models.employee import Employee
+    from src.models.employee_skill import EmployeeSkill
+    from src.service.employee_service import EmployeeService
+
+    # user_id 为 None 的历史员工：Employee.user_id == None 会退化成 IS NULL，
+    # 必须被 None 兜底拦住，避免跨用户误匹配。
+    e = Employee(workspace_id=1, user_id=None, employee_code="a", name="A")
+    db_session.add(e)
+    db_session.flush()
+    db_session.add(
+        EmployeeSkill(
+            workspace_id=1, employee_id=e.id, skill_id=10, skill_name="docx"
+        )
+    )
+    db_session.commit()
+
+    out = EmployeeService.list_skill_assignees(
+        db_session, user_id=None, skill_name="docx"
+    )
+    assert out == []

@@ -245,6 +245,29 @@ class EmployeeService:
         return ids
 
     @staticmethod
+    def _assigned_skill_rows(
+        db: Session, user_id: str | None, skill_name: str, local_id: int | None = None
+    ) -> list[EmployeeSkill]:
+        """查某用户名下已分配某本地/工作区技能的 EmployeeSkill 行（按 employee 所有者 user_id 收口）。
+
+        user_id 为 None 时返回空列表——避免 `Employee.user_id == None` 退化成 IS NULL、
+        跨用户误匹配 user_id 为空的历史员工。
+        """
+        if user_id is None:
+            return []
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        conds = [EmployeeSkill.skill_name == normalized]
+        if local_id is not None:
+            conds.append(EmployeeSkill.skill_id == local_id)
+        return list(
+            db.scalars(
+                select(EmployeeSkill)
+                .join(Employee, EmployeeSkill.employee_id == Employee.id)
+                .where(Employee.user_id == user_id, or_(*conds))
+            ).all()
+        )
+
+    @staticmethod
     def list_skill_assignees(
         db: Session,
         *,
@@ -253,20 +276,8 @@ class EmployeeService:
         local_id: int | None = None,
     ) -> list[dict[str, int | str]]:
         """返回已分配该本地/工作区技能的员工（查 employee_skills 表，按 user 过滤）。"""
-        normalized = LocalSkillService._normalize_skill_name(skill_name)
-        match_conditions = [EmployeeSkill.skill_name == normalized]
-        if local_id is not None:
-            match_conditions.append(EmployeeSkill.skill_id == local_id)
-
-        rows = list(
-            db.scalars(
-                select(EmployeeSkill)
-                .join(Employee, EmployeeSkill.employee_id == Employee.id)
-                .where(
-                    Employee.user_id == user_id,
-                    or_(*match_conditions),
-                )
-            ).all()
+        rows = EmployeeService._assigned_skill_rows(
+            db, user_id, skill_name, local_id
         )
         if not rows:
             return []
@@ -1082,19 +1093,8 @@ class EmployeeService:
             else None
         )
 
-        match_conditions = [EmployeeSkill.skill_name == normalized]
-        if local_id is not None:
-            match_conditions.append(EmployeeSkill.skill_id == local_id)
-
-        rows = list(
-            db.scalars(
-                select(EmployeeSkill)
-                .join(Employee, EmployeeSkill.employee_id == Employee.id)
-                .where(
-                    Employee.user_id == user_id,
-                    or_(*match_conditions),
-                )
-            ).all()
+        rows = EmployeeService._assigned_skill_rows(
+            db, user_id, skill_name, local_id
         )
         if not rows:
             return 0
@@ -1141,7 +1141,7 @@ class EmployeeService:
 
         db.commit()
         logger.info(
-            "Synced local skill %r to %s employee(s) for user %s (workspace %s)",
+            "Synced local skill %r to %s employee(s) for user %s (source workspace %s)",
             normalized,
             len(employee_ids),
             user_id,
@@ -1159,19 +1159,8 @@ class EmployeeService:
     ) -> int:
         """删除本地技能时，同步解除已分配员工的绑定与私有目录副本（按 user 过滤）。"""
         normalized = LocalSkillService._normalize_skill_name(skill_name)
-        match_conditions = [EmployeeSkill.skill_name == normalized]
-        if local_id is not None:
-            match_conditions.append(EmployeeSkill.skill_id == local_id)
-
-        rows = list(
-            db.scalars(
-                select(EmployeeSkill)
-                .join(Employee, EmployeeSkill.employee_id == Employee.id)
-                .where(
-                    Employee.user_id == user_id,
-                    or_(*match_conditions),
-                )
-            ).all()
+        rows = EmployeeService._assigned_skill_rows(
+            db, user_id, skill_name, local_id
         )
         if not rows:
             return 0
