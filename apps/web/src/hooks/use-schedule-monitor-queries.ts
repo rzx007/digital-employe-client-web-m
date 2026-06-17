@@ -8,12 +8,13 @@ import { chatKeys } from "@/lib/query-keys/chat"
 import { request } from "@/lib/request"
 import type {
   EmployeeScheduleTask,
+  ExecutionMetrics7d,
   MonthlyOverview,
   TaskExecution,
   TaskRun,
   TaskSummary,
   TodayTask,
-  ExecutionMetrics7d,
+  ToolFootprint,
 } from "@/types/schedule-monitor"
 
 const WORKSPACE_ID = 1
@@ -297,5 +298,24 @@ export function useMarkAllNotificationsRead() {
         queryKey: [...chatKeys.all, "notifications"],
       })
     },
+  })
+}
+
+/** 执行的工具足迹(事后,会话级)。enabled 受卡片展开态控制——点开才取一次。 */
+export function useToolFootprint(
+  executionLogId: number | null | undefined,
+  opts?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: [...chatKeys.all, "tool-footprint", executionLogId ?? "none"],
+    queryFn: async ({ signal }) => {
+      const res = await request<{ code: number; data: ToolFootprint }>(
+        `/workspaces/${WORKSPACE_ID}/tasks/executions/${executionLogId}/tool-footprint`,
+        { signal }
+      )
+      return res.data
+    },
+    enabled: (opts?.enabled ?? false) && executionLogId != null,
+    staleTime: 60_000,
   })
 }

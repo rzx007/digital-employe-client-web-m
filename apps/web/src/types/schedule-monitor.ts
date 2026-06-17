@@ -176,3 +176,9 @@ export interface TodayTask {
   duration_ms: number | null
   conversation_id: number | null
 }
+
+export interface ToolFootprint {
+  tool_count: number
+  /** 工具 parts(ToolUIPart 形态),交前端 classifier → ToolGroupBlock 渲染 */
+  parts: Record<string, unknown>[]
+}
