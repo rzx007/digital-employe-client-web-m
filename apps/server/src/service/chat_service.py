@@ -3,7 +3,6 @@ import asyncio
 import logging
 import os
 import json
-import shutil
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -306,54 +305,23 @@ class ChatService:
     async def adelete_conversation(
         db: Session, conversation_id: int, *, cascade_artifacts: bool = True
     ) -> None:
+        # 产物现为项目级共享(SP2)：一个项目下所有会话共用同一份
+        # `<product_root>/{artifacts,uploads,skills-draft}`（含 uploads），删单个会话
+        # 不能删这些共享产物——否则会抹掉同项目其它会话仍在引用的产物。
+        # 因此本方法只清理「会话私有态」：DB 行（含级联消息）、checkpoint、
+        # 以及 stream/registry 取消；不再 rmtree 任何产物目录。
+        # 整个项目的产物随 WorkspaceService.delete_workspace 统一清理。
+        # `cascade_artifacts` 参数保留（API `cascade` 查询参数 + 批量删除调用方仍传入），
+        # 但在新扁平共享模型下对共享产物目录无操作——故意 no-op，不再删任何磁盘目录。
         from src.service.stream_registry import registry
 
         registry.cancel(conversation_id)
         await delete_conversation_checkpoint(conversation_id)
 
         conversation = ChatService.get_conversation(db, conversation_id)
-        workspace = db.get(Workspace, conversation.workspace_id)
-
-        dirs_to_remove: list[Path] = []
-        if cascade_artifacts:
-            from src.service.agent.workspace_paths import resolve_workspace_dirs
-
-            artifacts_path = get_settings().artifacts_path
-            owner: int | str | None
-            if conversation.target_type == "employee":
-                owner = conversation.target_id
-            elif conversation.target_type == "curator":
-                owner = "orchestrator"
-            else:
-                owner = None  # 群会话：产物在房间，不随单会话删除
-            ws = resolve_workspace_dirs(
-                root_path=artifacts_path,
-                employee_id=owner,
-                conversation_id=conversation_id,
-                shared_artifacts_dir=None,
-                base_dir=Path(artifacts_path),
-            )
-            # 私有：员工工作空间下的本会话子目录；公共：自己公共子区
-            dirs_to_remove.append(ws.workspace_dir / f"conv-{conversation_id}")
-            dirs_to_remove.append(ws.public_dir)
-            # 旧会话级布局兼容（迁移前的存量）
-            dirs_to_remove.append(Path(artifacts_path) / str(conversation_id))
-            if workspace:
-                dirs_to_remove.append(
-                    Path(workspace.root_path) / "conversations" / str(conversation_id)
-                )
 
         db.delete(conversation)
         db.commit()
-
-        seen: set[Path] = set()
-        for conversation_dir in dirs_to_remove:
-            resolved = conversation_dir.resolve()
-            if resolved in seen:
-                continue
-            seen.add(resolved)
-            if conversation_dir.exists():
-                shutil.rmtree(conversation_dir, ignore_errors=True)
 
     @staticmethod
     async def adelete_conversations_by_target(
