@@ -189,13 +189,10 @@ def redispatch_task_in_session(
 
 
 def _build_employee_agent_for_rework(db, task, employee, conversation_id: int):
-    """复用 execution.py 的共享桌/技能/档位解析，构建续聊用员工 agent。"""
+    """复用 execution.py 的项目根/技能/档位解析，构建续聊用员工 agent。"""
     from src.llm.factory import resolve_output_tokens
     from src.service.agent.employee import get_agent
     from src.service.chat_service import ChatService
-    from src.service.orchestrator_conversation_links import (
-        resolve_orchestrator_conversation_id,
-    )
 
     try:
         skills_path = ChatService.resolve_employee_skills_dir(
@@ -218,16 +215,8 @@ def _build_employee_agent_for_rework(db, task, employee, conversation_id: int):
 
         root_path = str(orphan_root_for_conversation(conversation_id))
 
-    shared_artifacts_dir = None
-    shared_workspace_root = None
-    orch_conv_id = resolve_orchestrator_conversation_id(db, task)
-    if orch_conv_id is not None:
-        from src.service.agent.workspace_paths import (
-            resolve_orchestrator_desk_dir, orchestrator_task_subdir,
-        )
-        _desk = resolve_orchestrator_desk_dir(root_path, orch_conv_id)
-        shared_artifacts_dir = str(orchestrator_task_subdir(_desk, task.id))
-        shared_workspace_root = str(_desk)
+    # SP2 3.2a：共享桌已消解——续聊员工用自己会话的项目根，得 <root>/artifacts，
+    # 与同项目的总管同写同读，无需 desk override。
 
     _tier = "standard"
     try:
@@ -240,7 +229,5 @@ def _build_employee_agent_for_rework(db, task, employee, conversation_id: int):
     return get_agent(
         skills_path, root_path, employee_id=employee.id,
         conversation_id=conversation_id, enable_hitl=False,
-        shared_artifacts_dir=shared_artifacts_dir,
-        shared_workspace_root=shared_workspace_root,
         max_output_tokens=resolve_output_tokens(_tier),
     )

@@ -131,7 +131,6 @@ def get_orchestrator_agent(
     *,
     user_id: str | None = None,
     bind_context: bool = True,
-    shared_artifacts_dir: str | None = None,
     enable_hitl: bool = True,
     clarify_only_hitl: bool = False,
     max_output_tokens: int | None = None,
@@ -207,27 +206,14 @@ def get_orchestrator_agent(
     except Exception:  # noqa: BLE001 - 工作区技能解析失败不致命，退回仅固定技能
         pass
 
-    # 总管当作特殊"员工"（owner=orchestrator）：产物升到工作空间 + 公共区，与员工一致。
-    from src.service.agent.workspace_paths import (
-        resolve_orchestrator_desk_dir,
-        resolve_workspace_dirs,
-    )
-
-    # 非群（shared_artifacts_dir 未由外部注入）且有会话时，总管自身也指向共享桌根，
-    # 与被派员工同桌，互相看得见产物。群场景（shared_artifacts_dir 由群逻辑传入）保持原样。
-    _shared_artifacts_dir = shared_artifacts_dir
-    _shared_workspace_root = None
-    if shared_artifacts_dir is None and conversation_id is not None:
-        _desk = resolve_orchestrator_desk_dir(str(artifacts_path), conversation_id)
-        _shared_artifacts_dir = str(_desk)
-        _shared_workspace_root = _desk
+    # 总管当作特殊"员工"（owner=orchestrator）：产物三桶拍平直挂项目产物根，与员工一致。
+    # SP2 3.2a：共享桌已消解——总管与被派员工同写同读 root/artifacts，无需 override。
+    from src.service.agent.workspace_paths import resolve_workspace_dirs
 
     ws = resolve_workspace_dirs(
         root_path=str(artifacts_path),
         employee_id="orchestrator",
         conversation_id=conversation_id,
-        shared_artifacts_dir=_shared_artifacts_dir,
-        shared_workspace_root=_shared_workspace_root,
         base_dir=base_dir,
     )
     artifacts_dir = ws.artifacts_dir

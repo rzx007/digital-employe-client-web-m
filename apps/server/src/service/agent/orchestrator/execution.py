@@ -339,24 +339,13 @@ def start_task_as_conversation(
     except Exception:
         skills_path = ""
     # SP2: 派单产物根改为该任务所属（被派员工）会话的 per-project 项目根，而非全局产物目录。
-    # conversation 已 flush，按会话解析最直接（同一项目下与总管同桌）。
+    # conversation 已 flush，按会话解析最直接（同一项目下与总管同写同一 artifacts 桶）。
     from src.service.product_paths import resolve_conversation_product_root
 
     root_path = str(resolve_conversation_product_root(db, conversation))
 
-    shared_artifacts_dir = None
-    shared_workspace_root = None
-    # 注：orch_conv_id 为 None 的孤儿任务（无 source_conversation_id 且无 plan）→ 不进桌，
-    #     回落到员工级目录（现状行为），这是预期分支不是遗漏。
-    if orch_conv_id is not None:
-        # 非群派活：全队共享总管这一张桌
-        from src.service.agent.workspace_paths import (
-            resolve_orchestrator_desk_dir,
-            orchestrator_task_subdir,
-        )
-        _desk = resolve_orchestrator_desk_dir(root_path, orch_conv_id)
-        shared_artifacts_dir = str(orchestrator_task_subdir(_desk, task.id))
-        shared_workspace_root = str(_desk)
+    # SP2 3.2a：共享桌已消解——被派员工用自己会话的项目根，得 <root>/artifacts，
+    # 与同项目的总管同写同读，无需 desk override。
 
     # 输出档位：组长/总管派单时为该子任务指定的 output_tier（存在 task_input_json），
     # 决定该成员单次最多生成多少 token（small≈1k / standard≈16k / large≈64k）。
@@ -376,8 +365,6 @@ def start_task_as_conversation(
         employee_id=employee_id,
         conversation_id=conversation_id,
         enable_hitl=False,
-        shared_artifacts_dir=shared_artifacts_dir,
-        shared_workspace_root=shared_workspace_root,   # 新增：非群派活时指向总管共享桌
         max_output_tokens=resolve_output_tokens(_task_output_tier),
     )
 

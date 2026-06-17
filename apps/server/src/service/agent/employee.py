@@ -61,8 +61,6 @@ def get_agent(
     conversation_id: int | None = None,
     enable_hitl: bool = True,
     clarify_only_hitl: bool = False,
-    shared_artifacts_dir: str | None = None,
-    shared_workspace_root: str | None = None,   # 新增：共享桌只读根
     max_output_tokens: int | None = None,
 ):
     # clarify_only_hitl：群「自动确认成员任务」开启时用——成员仍可对「模糊需求」
@@ -129,16 +127,14 @@ def get_agent(
     memories_dir.mkdir(parents=True, exist_ok=True)
     ensure_employee_memory_file(memories_dir)
 
-    # 员工工作空间模型：产物升到员工级（root/employee-<id>/artifacts/conv-<cid>），
-    # 加全局公共区（root/shared/employee-<id>/conv-<cid>）。群房间产出仍落房间共享。
+    # 员工工作空间模型（SP2 3.1/3.2a）：三桶拍平直挂项目产物根（root/artifacts 等），
+    # 全队同写同读 root/artifacts（共享桌已消解）；公共区 root/shared/... 待 3.2b 收口。
     from src.service.agent.workspace_paths import resolve_workspace_dirs
 
     ws = resolve_workspace_dirs(
         root_path=root_path,
         employee_id=employee_id,
         conversation_id=conversation_id,
-        shared_artifacts_dir=shared_artifacts_dir,
-        shared_workspace_root=Path(shared_workspace_root) if shared_workspace_root else None,
         base_dir=base_dir,
     )
     artifacts_dir = ws.artifacts_dir

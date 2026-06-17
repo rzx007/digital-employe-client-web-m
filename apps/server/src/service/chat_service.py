@@ -744,7 +744,6 @@ class ChatService:
                 root_path,
                 employee_id=employee.id if target_type == "employee" else None,
                 conversation_id=conversation_id,
-                shared_artifacts_dir=None,
             )
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee、group 或 curator。")
@@ -1249,7 +1248,6 @@ class ChatService:
                 root_path,
                 employee_id=employee.id,
                 conversation_id=conversation_id,
-                shared_artifacts_dir=None,
             )
         else:
             return {"accepted": False, "message": "不支持的 target_type"}
