@@ -557,6 +557,31 @@ def serve_conversation_resource_static(
     return FileResponse(resolved, media_type=media_type or "application/octet-stream")
 
 
+# 路径式静态服务：URL 形如 …/static/<posix-abs-path>。与上面 ?path= 形态等价但 URL 把
+# 绝对路径放在 path 段——这是为「在浏览器打开 HTML」准备的。query 形态下，HTML 内
+# `<link href="./style.css">` 的相对 URL 解析会丢 query，落到 …/resources/style.css 撞
+# 不到任何路由（404）；放进 path 段后浏览器只替换最后一段文件名，目录天然保留。沙箱仍
+# 走 _read_roots/_resolve_safe_in_roots（穿越 `..` 被 resolve() 展开后越界即拒）。
+@router.get("/chat/conversations/{conversation_id}/static/{relpath:path}")
+def serve_conversation_static_inline(
+    conversation_id: int,
+    relpath: str,
+    db: Session = Depends(get_db),
+):
+    conversation = ChatService.get_conversation(db, conversation_id)
+    settings = get_settings()
+    result = ResourceService.resolve_download_path(
+        settings.artifacts_path, conversation.id, relpath
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="not found")
+    resolved, is_dir = result
+    if is_dir:
+        raise HTTPException(status_code=404, detail="not a file")
+    media_type, _ = mimetypes.guess_type(resolved.name)
+    return FileResponse(resolved, media_type=media_type or "application/octet-stream")
+
+
 @router.delete("/chat/conversations/{conversation_id}/resources")
 def delete_conversation_resource(
     conversation_id: int,
