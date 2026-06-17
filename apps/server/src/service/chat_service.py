@@ -191,6 +191,13 @@ class ChatService:
         ChatService._validate_target(db, workspace_id, target_type, target_id)
         ws = db.get(Workspace, workspace_id)
         _uid = ws.user_id if ws is not None else None
+        if _uid is None:
+            # owner 缺失（workspace 不存在/未认领）→ 会话进不了用户级侧边栏(list_user_conversations)
+            # 的 WHERE user_id 过滤，成为孤儿。正常不该发生（离线默认用户 "1"、空间建时即认领）。
+            logger.warning(
+                "create_conversation: workspace_id=%s 缺 owner，会话将以 user_id=None 落库（孤儿）",
+                workspace_id,
+            )
         conversation = Conversation(
             workspace_id=workspace_id,
             user_id=_uid,
@@ -223,6 +230,8 @@ class ChatService:
 
     @staticmethod
     def list_conversations(db: Session, workspace_id: int, target_type: str, target_id: int) -> list[Conversation]:
+        # 故意保持 workspace+target 级：批量删除(adelete_conversations_by_target)依赖此范围，
+        # 改成 user 级会跨项目误删。跨项目的用户级侧边栏列表见 list_user_conversations。
         ChatService._validate_target(db, workspace_id, target_type, target_id)
         stmt: Select[tuple[Conversation]] = (
             select(Conversation)
