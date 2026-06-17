@@ -22,10 +22,21 @@ scp -r boban@10.172.246.220:/home/boban/BobanStaff-Installer boban@<目标机>:/
 - **只用数字员工**：只下核心包，解压即用。
 - **要本地模型**：核心包 + 模型包都下，**解压到同一个 `BobanStaff-Installer/` 目录**。
 
+> 安装介质里的素材（deploy.sh / 输入法 / 模型）不常变；**数字员工 deb 经常更新**，
+> 务必按下面"准备 第 2 步"换成最新版，别用介质里自带的旧 deb。
+
 ## 准备
 
 1. 把 `BobanStaff-Installer` 整个文件夹拷到机器（U盘 → 桌面/家目录均可）。
-2. 打开"终端"，进入该文件夹：
+
+2. **换上最新数字员工 deb**（重要——deb 版本经常更新）：
+   去飞书「**数字员工版本管理**」表拿最新 **Linux/arm64** 的 deb：
+   https://scnj8otdvysf.feishu.cn/wiki/Zc3XwAhsMiJPUEk7IimcHMfKnoc?table=tblhM5KRRT2i8YsP
+   - 在表里找**平台=Linux、版本号最高**那条，下载其附件（形如 `BobanStaff-Linux-arm64-<最新版>.deb`）。
+   - 把它放进 `BobanStaff-Installer/packages/`，**删掉该目录里旧的 `*.deb`**（避免装到旧版）。
+   > deploy 会自动选 packages 里版本号最高的 deb 安装；只放最新那个最稳妥。
+
+3. 打开"终端"，进入该文件夹：
    ```bash
    cd ~/BobanStaff-Installer
    ```
