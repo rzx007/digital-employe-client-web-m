@@ -18,7 +18,7 @@
 **SSH 凭据（验证用）：** host `10.172.246.220` user `boban`；**密码绝不写进脚本/仓库**，
 通过环境变量 `DE220_PWD` 在运行时传入（`_ssh.py` 从 env 读，缺失即报错退出）。本机无 sshpass，
 用 `python + paramiko`（conda 解释器，已确认可用）执行远程命令。后续所有 `_ssh.py` 调用统一形如
-`DE220_PWD=100200 python scripts/activation/_ssh.py run "..."`（密码在命令行环境变量里，不入库）。
+`DE220_PWD=<密码> python scripts/activation/_ssh.py run "..."`（密码在命令行环境变量里，不入库）。
 **真机现有 `activation.json` 必须先备份**（Task 1），所有破坏性验证后还原。
 
 **⚠️ SFTP chroot 坑（Task 2 实测）：** 220 的 SFTP 被 chroot 到 `boban` 家目录，
@@ -57,9 +57,14 @@ Create `scripts/activation/_ssh.py`:
 ```python
 #!/usr/bin/env python3
 """在 220 真机执行命令/传文件（验证用）。用法见 __main__。"""
-import sys, paramiko
+import os, sys, paramiko
 
-HOST, USER, PWD = "10.172.246.220", "boban", "100200"
+HOST = os.environ.get("DE220_HOST", "10.172.246.220")
+USER = os.environ.get("DE220_USER", "boban")
+PWD = os.environ.get("DE220_PWD")  # 密码走环境变量，绝不硬编码进仓库
+if not PWD:
+    sys.stderr.write("缺少 SSH 密码：请设置环境变量 DE220_PWD\n")
+    sys.exit(2)
 
 def _client():
     c = paramiko.SSHClient()
