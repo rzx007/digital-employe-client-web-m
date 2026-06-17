@@ -222,13 +222,40 @@ class WorkspaceService:
 
     @staticmethod
     def delete_workspace(db: Session, workspace_id: int) -> None:
-        """删除工作空间：显式清理项目级行，永不触及用户级资源。
+        """删除工作空间：显式清理项目级行 + 磁盘产物目录，永不触及用户级资源/外部文件。
 
         项目级（随空间删）：TaskExecutionLog / EmployeeTask / OrchestrationPlan / RecentContact。
         用户级（保留）：Employee / EmployeeSkill / EmployeeMcp / SkillRating / Conversation。
-        不删除 root_path 目录（可能含用户项目文件，保守起见仅删 DB 行）。
+
+        磁盘产物（SP2）：
+        - 托管目录（root_path 在 APP_PROJECTS_BASE 下）：整删 root_path 目录。
+        - 外部用户文件夹：仅删 <root_path>/.digital-employee 子目录，永不触碰外部本体及用户文件。
+        清理在 DB 行删除前进行且全程 try/except，磁盘失败绝不阻断 DB 删除。
         """
+        import shutil
+
+        from src.service.agent import workspace_paths
+        from src.service.agent.workspace_paths import resolve_workspace_product_root
+
         workspace = WorkspaceService.get_workspace(db, workspace_id)
+
+        # 先捕获 root_path（DB 行删除后 workspace 失效），再算产物目标。
+        root_path = workspace.root_path
+        if root_path:
+            p = Path(root_path)
+            # 在调用时按属性查 APP_PROJECTS_BASE（测试可 monkeypatch 模块属性命中托管分支）。
+            if p.is_relative_to(workspace_paths.APP_PROJECTS_BASE):
+                target = p  # 托管：整删
+            else:
+                target = resolve_workspace_product_root(root_path)  # 外部：仅 .digital-employee
+            try:
+                if target.exists():
+                    logger.warning("delete_workspace: 删除产物目录 %s", target)
+                    shutil.rmtree(target, ignore_errors=True)
+            except Exception:
+                logger.warning(
+                    "delete_workspace: 清理产物目录失败 %s", target, exc_info=True
+                )
 
         from src.models.employee_task import EmployeeTask
         from src.models.orchestration_plan import OrchestrationPlan
