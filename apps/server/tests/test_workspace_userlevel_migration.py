@@ -94,3 +94,39 @@ def test_delete_workspace_keeps_user_resources(db_session):
     # 未被 null-out：workspace_id 仍指向已删空间（FK 运行时 OFF，孤儿无害）
     assert surviving_emp.workspace_id == ws_id
     assert surviving_conv.workspace_id == ws_id
+
+
+# --- Task 1.3：员工唯一键 (user_id, employee_code) ---
+# conftest 的 db_session 用 create_all() 建库，已直接带新唯一键，
+# 故直接验证约束语义（而非 旧→新 重建路径，后者走 py_compile + 启动 smoke）。
+
+
+def test_same_user_same_code_rejected(db_session):
+    from sqlalchemy.exc import IntegrityError
+
+    import pytest
+
+    from src.models.employee import Employee
+
+    db_session.add(
+        Employee(workspace_id=1, user_id="u1", employee_code="dup", name="a")
+    )
+    db_session.commit()
+    db_session.add(
+        Employee(workspace_id=2, user_id="u1", employee_code="dup", name="b")
+    )
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_different_user_same_code_ok(db_session):
+    from src.models.employee import Employee
+
+    db_session.add(
+        Employee(workspace_id=1, user_id="u1", employee_code="dup", name="a")
+    )
+    db_session.add(
+        Employee(workspace_id=1, user_id="u2", employee_code="dup", name="b")
+    )
+    db_session.commit()  # must NOT raise

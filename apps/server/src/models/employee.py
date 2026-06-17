@@ -11,7 +11,7 @@ from src.db.base import Base
 
 class Employee(Base):
     __tablename__ = "employees"
-    __table_args__ = (UniqueConstraint("workspace_id", "employee_code", name="uq_workspace_employee_code"),)
+    __table_args__ = (UniqueConstraint("user_id", "employee_code", name="uq_user_employee_code"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)

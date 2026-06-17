@@ -208,6 +208,11 @@ def init_db() -> None:
     with get_session_local()() as _db:
         backfill_user_id(_db)
 
+    # 多工作空间+用户级(SP1)：员工唯一键从 (workspace_id, employee_code)
+    # 改为 (user_id, employee_code)。需在 backfill_user_id 之后，确保 user_id 已填。
+    if "employees" in inspector.get_table_names():
+        _migrate_employee_unique_key(engine, inspector)
+
     # FTS5 全文索引：conversation_messages.content
     _init_fts5(engine)
 
@@ -353,6 +358,61 @@ def _migrate_task_id_nullable(engine, inspector) -> None:
         ]:
             conn.execute(text(idx_sql))
     logger.info("Migrated task_execution_logs.task_id to nullable successfully")
+
+
+def _migrate_employee_unique_key(engine, inspector) -> None:
+    """SQLite 表重建：员工唯一键从 (workspace_id, employee_code) 改为 (user_id, employee_code)。
+
+    多工作空间+用户级(SP1)：员工归属 user_id（跨该用户多个工作空间共享），
+    唯一性键须随之从 workspace 级改为 user 级。
+
+    幂等：全新库（create_all 已直接建出 uq_user_employee_code）或已迁移过的库，
+    检测到 uq_user_employee_code 即提前返回；仅当旧的 uq_workspace_employee_code
+    存在时才重建。
+    """
+    constraint_names = {
+        uc.get("name") for uc in inspector.get_unique_constraints("employees")
+    }
+    if "uq_user_employee_code" in constraint_names:
+        return
+    if "uq_workspace_employee_code" not in constraint_names:
+        return
+
+    logger.info("Migrating employees unique key to (user_id, employee_code) ...")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE _employees_new ("
+                          "id INTEGER PRIMARY KEY,"
+                          "workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,"
+                          "user_id TEXT,"
+                          "employee_code VARCHAR(255) NOT NULL,"
+                          "name VARCHAR(255),"
+                          "description VARCHAR(1000),"
+                          "version VARCHAR(128),"
+                          "skills_json TEXT NOT NULL DEFAULT '[]',"
+                          "meta_json TEXT NOT NULL DEFAULT '{}',"
+                          "shift_schedule_json TEXT NOT NULL DEFAULT '{}',"
+                          "is_curator BOOLEAN NOT NULL DEFAULT 0,"
+                          "avatar_url VARCHAR(512),"
+                          "created_at DATETIME,"
+                          "updated_at DATETIME,"
+                          "CONSTRAINT uq_user_employee_code UNIQUE (user_id, employee_code)"
+                          ")"))
+        conn.execute(text("INSERT INTO _employees_new "
+                          "SELECT id, workspace_id, user_id, employee_code, name, "
+                          "description, version, skills_json, meta_json, "
+                          "shift_schedule_json, is_curator, avatar_url, "
+                          "created_at, updated_at "
+                          "FROM employees"))
+        conn.execute(text("DROP TABLE employees"))
+        conn.execute(text("ALTER TABLE _employees_new RENAME TO employees"))
+        for idx_sql in [
+            "CREATE INDEX ix_employees_id ON employees(id)",
+            "CREATE INDEX ix_employees_workspace_id ON employees(workspace_id)",
+            "CREATE INDEX ix_employees_user_id ON employees(user_id)",
+            "CREATE INDEX ix_employees_is_curator ON employees(is_curator)",
+        ]:
+            conn.execute(text(idx_sql))
+    logger.info("Migrated employees unique key to (user_id, employee_code) successfully")
 
 
 def _migrate_conversation_title_to_text(engine, inspector) -> None:
