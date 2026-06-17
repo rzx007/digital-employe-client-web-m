@@ -26,6 +26,7 @@ import {
 } from "@/lib/chat/conversation-selection"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import { chatKeys } from "@/lib/query-keys/chat"
+import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import { useChatStore } from "@/stores/chat-store"
 
 export function useContactsQuery() {
@@ -96,7 +97,9 @@ export function useOrchestrationPlansQuery(
           created_at: string
           updated_at: string
         }>
-      }>(`/workspaces/1/orchestration/plans${qs}`, { signal })
+      }>(`/workspaces/${getActiveWorkspaceId()}/orchestration/plans${qs}`, {
+        signal,
+      })
       return res?.data ?? []
     },
     refetchInterval: 5000,

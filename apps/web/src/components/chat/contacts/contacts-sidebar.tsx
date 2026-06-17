@@ -15,6 +15,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useContactsQuery } from "@/hooks/use-chat-queries"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { request } from "@/lib/request"
+import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import { findContactInList, getContactId } from "@/lib/chat/contact-utils"
 import { switchToContact } from "@/lib/chat/conversation-selection"
 import { useChatStore } from "@/stores/chat-store"
@@ -48,7 +49,9 @@ export function ContactsSidebar({
 
   const syncMutation = useMutation({
     mutationFn: () =>
-      request<{ code: number; msg: string }>(`/workspaces/1/tasks/sync`),
+      request<{ code: number; msg: string }>(
+        `/workspaces/${getActiveWorkspaceId()}/tasks/sync`
+      ),
     onSuccess: (res) => {
       toast.success(res.msg || "同步成功")
     },
@@ -71,7 +74,9 @@ export function ContactsSidebar({
     ) {
       const firstCurator = contacts.find((c) => c.type === "curator")
       if (firstCurator?.curator) {
-        setSelectedContactId(getContactId(firstCurator) ?? firstCurator.curator.id)
+        setSelectedContactId(
+          getContactId(firstCurator) ?? firstCurator.curator.id
+        )
       }
     }
   }, [contacts, selectedContactId, setSelectedContactId])

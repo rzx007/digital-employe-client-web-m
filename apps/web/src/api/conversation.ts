@@ -1,4 +1,5 @@
 import { request } from "@/lib/request"
+import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import { useAuthStore } from "@/stores/auth-store"
 import type { DbMessageId } from "@/lib/chat/hitl/message-id"
 import type {
@@ -12,16 +13,13 @@ import type {
   ResourceUploadResult,
 } from "./types"
 
-/** 当前固定工作空间 ID */
-const WORKSPACE_ID = 1
-
 /**
  * 创建聊天会话
  * POST /workspaces/{workspace_id}/chat/conversations
  */
 export async function createConversation(params: CreateConversationParams) {
   return request<ApiResponse<ConversationListItemDto>>(
-    `/workspaces/${WORKSPACE_ID}/chat/conversations`,
+    `/workspaces/${getActiveWorkspaceId()}/chat/conversations`,
     {
       method: "POST",
       body: params,
@@ -64,9 +62,26 @@ export async function fetchConversations(
   opts?: { signal?: AbortSignal }
 ) {
   return request<ApiResponse<ConversationListItemDto[]>>(
-    `/workspaces/${WORKSPACE_ID}/chat/conversations`,
+    `/workspaces/${getActiveWorkspaceId()}/chat/conversations`,
     {
       params: query,
+      ...(opts?.signal ? { signal: opts.signal } : {}),
+    }
+  )
+}
+
+/**
+ * 查询当前用户跨项目的会话列表（用户级，每项带 workspace_id 标识所属项目）
+ * GET /chat/conversations?target_type=
+ */
+export async function listUserConversations(
+  targetType?: string,
+  opts?: { signal?: AbortSignal }
+) {
+  return request<ApiResponse<ConversationListItemDto[]>>(
+    "/chat/conversations",
+    {
+      params: targetType ? { target_type: targetType } : undefined,
       ...(opts?.signal ? { signal: opts.signal } : {}),
     }
   )
@@ -90,7 +105,9 @@ export async function fetchConversationContextBudget(
   conversationId: number | string,
   opts?: { signal?: AbortSignal }
 ) {
-  return request<ApiResponse<import("@/lib/chat/context-budget").ContextBudgetSnapshot>>(
+  return request<
+    ApiResponse<import("@/lib/chat/context-budget").ContextBudgetSnapshot>
+  >(
     `/chat/conversations/${conversationId}/context-budget`,
     opts?.signal ? { signal: opts.signal } : undefined
   )
@@ -119,7 +136,7 @@ export async function deleteConversationsByTarget(
   opts?: { signal?: AbortSignal }
 ) {
   return request<ApiResponse<ConversationsBulkDeleteResult>>(
-    `/workspaces/${WORKSPACE_ID}/chat/conversations`,
+    `/workspaces/${getActiveWorkspaceId()}/chat/conversations`,
     {
       method: "DELETE",
       params: { cascade: true, ...query },
@@ -182,7 +199,7 @@ export async function fetchCuratorConversation(opts?: {
   signal?: AbortSignal
 }) {
   return request<ApiResponse<ConversationListItemDto>>(
-    `/workspaces/${WORKSPACE_ID}/chat/curator/conversation`,
+    `/workspaces/${getActiveWorkspaceId()}/chat/curator/conversation`,
     opts?.signal ? { signal: opts.signal } : undefined
   )
 }
@@ -203,7 +220,7 @@ export async function fetchResourceContent(
 
 export async function deleteAllTaskExecutions() {
   return request<ApiResponse<{ deleted: number }>>(
-    `/workspaces/${WORKSPACE_ID}/tasks/executions`,
+    `/workspaces/${getActiveWorkspaceId()}/tasks/executions`,
     { method: "DELETE" }
   )
 }
@@ -213,7 +230,7 @@ export async function deleteTaskExecutionsByOrchestratorConversation(
   orchestratorConversationId: number | string
 ) {
   return request<ApiResponse<{ deleted: number }>>(
-    `/workspaces/${WORKSPACE_ID}/tasks/executions`,
+    `/workspaces/${getActiveWorkspaceId()}/tasks/executions`,
     {
       method: "DELETE",
       params: {

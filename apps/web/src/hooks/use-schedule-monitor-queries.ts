@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { request } from "@/lib/request"
+import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import type {
   EmployeeScheduleTask,
   ExecutionMetrics7d,
@@ -16,8 +17,6 @@ import type {
   TodayTask,
   ToolFootprint,
 } from "@/types/schedule-monitor"
-
-const WORKSPACE_ID = 1
 
 function mapExecutionToTaskRun(exec: TaskExecution): TaskRun {
   return {
@@ -43,9 +42,17 @@ export function useMonthlyScheduleOverview(
 ) {
   const employeeKey =
     employeeId != null && employeeId !== "" ? String(employeeId) : null
+  const workspaceId = getActiveWorkspaceId()
 
   return useQuery({
-    queryKey: [...chatKeys.all, "schedule-overview", year, month, employeeKey],
+    queryKey: [
+      ...chatKeys.all,
+      "schedule-overview",
+      workspaceId,
+      year,
+      month,
+      employeeKey,
+    ],
     queryFn: async ({ signal }) => {
       const params = new URLSearchParams({
         year: String(year),
@@ -66,14 +73,15 @@ export function useMonthlyScheduleOverview(
 }
 
 export function useTodayTaskRuns(employeeId: string | null) {
+  const workspaceId = getActiveWorkspaceId()
   return useQuery({
-    queryKey: [...chatKeys.all, "today-task-runs", employeeId],
+    queryKey: [...chatKeys.all, "today-task-runs", workspaceId, employeeId],
     queryFn: async ({ signal }) => {
       const res = await request<{
         code: number
         data: TaskExecution[]
       }>(
-        `/workspaces/${WORKSPACE_ID}/tasks/executions?employee_id=${employeeId}`,
+        `/workspaces/${workspaceId}/tasks/executions?employee_id=${employeeId}`,
         { signal }
       )
       return res.data.map(mapExecutionToTaskRun)
@@ -84,8 +92,9 @@ export function useTodayTaskRuns(employeeId: string | null) {
 }
 
 export function useTaskSummary(employeeId: string | null) {
+  const workspaceId = getActiveWorkspaceId()
   return useQuery({
-    queryKey: [...chatKeys.all, "task-summary", employeeId],
+    queryKey: [...chatKeys.all, "task-summary", workspaceId, employeeId],
     queryFn: async ({ signal }) => {
       const [scheduleRes, execRes] = await Promise.all([
         request<{
@@ -96,7 +105,7 @@ export function useTaskSummary(employeeId: string | null) {
           code: number
           data: TaskExecution[]
         }>(
-          `/workspaces/${WORKSPACE_ID}/tasks/executions?employee_id=${employeeId}`,
+          `/workspaces/${workspaceId}/tasks/executions?employee_id=${employeeId}`,
           { signal }
         ),
       ])
@@ -151,13 +160,14 @@ export function useTaskSummary(employeeId: string | null) {
 }
 
 export function useAllTaskExecutions() {
+  const workspaceId = getActiveWorkspaceId()
   return useQuery({
-    queryKey: [...chatKeys.all, "all-task-executions"],
+    queryKey: [...chatKeys.all, "all-task-executions", workspaceId],
     queryFn: async ({ signal }) => {
       const res = await request<{
         code: number
         data: TaskExecution[]
-      }>(`/workspaces/${WORKSPACE_ID}/tasks/executions`, { signal })
+      }>(`/workspaces/${workspaceId}/tasks/executions`, { signal })
       return res.data
     },
     staleTime: 30_000,
@@ -179,7 +189,7 @@ export function useCuratorTaskExecutions(
         code: number
         data: TaskExecution[]
       }>(
-        `/workspaces/${WORKSPACE_ID}/tasks/executions?orchestrator_conversation_id=${id}&page_size=${CURATOR_EXECUTIONS_PAGE_SIZE}`,
+        `/workspaces/${getActiveWorkspaceId()}/tasks/executions?orchestrator_conversation_id=${id}&page_size=${CURATOR_EXECUTIONS_PAGE_SIZE}`,
         { signal }
       )
       return res.data ?? []
@@ -191,13 +201,14 @@ export function useCuratorTaskExecutions(
 }
 
 export function useTodayAllExecutions() {
+  const workspaceId = getActiveWorkspaceId()
   return useQuery({
-    queryKey: [...chatKeys.all, "today-all-executions"],
+    queryKey: [...chatKeys.all, "today-all-executions", workspaceId],
     queryFn: ({ signal }) =>
       request<{
         code: number
         data: TodayTask[]
-      }>(`/workspaces/${WORKSPACE_ID}/tasks/today`, { signal }).then(
+      }>(`/workspaces/${workspaceId}/tasks/today`, { signal }).then(
         (res) => res.data
       ),
     staleTime: 5_000,
@@ -206,14 +217,21 @@ export function useTodayAllExecutions() {
 }
 
 export function useExecutionMetrics7d(employeeId: string | null, days = 7) {
+  const workspaceId = getActiveWorkspaceId()
   return useQuery({
-    queryKey: [...chatKeys.all, "execution-metrics", employeeId, days],
+    queryKey: [
+      ...chatKeys.all,
+      "execution-metrics",
+      workspaceId,
+      employeeId,
+      days,
+    ],
     queryFn: async ({ signal }) => {
       const res = await request<{
         code: number
         data: ExecutionMetrics7d
       }>(
-        `/workspaces/${WORKSPACE_ID}/employees/${employeeId}/tasks/execution-metrics?days=${days}`,
+        `/workspaces/${workspaceId}/employees/${employeeId}/tasks/execution-metrics?days=${days}`,
         { signal }
       )
       return res.data
@@ -230,7 +248,7 @@ export function useNotifications() {
       const res = await request<{
         code: number
         data: TaskExecution[]
-      }>(`/workspaces/${WORKSPACE_ID}/tasks/executions`, { signal })
+      }>(`/workspaces/${getActiveWorkspaceId()}/tasks/executions`, { signal })
       return res.data.filter((e) => e.confirm_execution_result)
     },
     staleTime: 30_000,
@@ -242,9 +260,12 @@ export function useMarkNotificationRead() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (id: number) => {
-      await request(`/workspaces/${WORKSPACE_ID}/tasks/executions/${id}/read`, {
-        method: "POST",
-      })
+      await request(
+        `/workspaces/${getActiveWorkspaceId()}/tasks/executions/${id}/read`,
+        {
+          method: "POST",
+        }
+      )
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -267,7 +288,7 @@ export function useCancelTaskExecution(
   return useMutation({
     mutationFn: async (executionLogId: number) => {
       await request(
-        `/workspaces/${WORKSPACE_ID}/tasks/executions/${executionLogId}/cancel`,
+        `/workspaces/${getActiveWorkspaceId()}/tasks/executions/${executionLogId}/cancel`,
         { method: "POST" }
       )
     },
@@ -287,9 +308,12 @@ export function useMarkAllNotificationsRead() {
     mutationFn: async (ids: number[]) => {
       await Promise.all(
         ids.map((id) =>
-          request(`/workspaces/${WORKSPACE_ID}/tasks/executions/${id}/read`, {
-            method: "POST",
-          })
+          request(
+            `/workspaces/${getActiveWorkspaceId()}/tasks/executions/${id}/read`,
+            {
+              method: "POST",
+            }
+          )
         )
       )
     },
@@ -310,7 +334,7 @@ export function useToolFootprint(
     queryKey: [...chatKeys.all, "tool-footprint", executionLogId ?? "none"],
     queryFn: async ({ signal }) => {
       const res = await request<{ code: number; data: ToolFootprint }>(
-        `/workspaces/${WORKSPACE_ID}/tasks/executions/${executionLogId}/tool-footprint`,
+        `/workspaces/${getActiveWorkspaceId()}/tasks/executions/${executionLogId}/tool-footprint`,
         { signal }
       )
       return res.data

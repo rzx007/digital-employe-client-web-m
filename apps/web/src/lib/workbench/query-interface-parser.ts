@@ -1,6 +1,7 @@
 import type { MetadataSkill } from "@/api/types"
 import type { QueryInterface } from "@/types/workbench"
 import { request } from "@/lib/request"
+import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import { enrichInterfacesHeadersWithAi } from "@/lib/workbench/ai-extract-headers"
 import {
   resolveEmployeeIdForChatSend,
@@ -11,8 +12,6 @@ import {
   buildHeuristicQueryInterfaces,
   mergeHeuristicAndAiResults,
 } from "@/lib/workbench/skill-url-extract"
-
-const WORKSPACE_ID = 1
 
 function isAbortError(e: unknown): boolean {
   if (e == null || typeof e !== "object") return false
@@ -140,7 +139,7 @@ name, description, method, path, baseUrl（可选）, headers（可选）, respo
     data: {
       response: string
     }
-  }>(`/workspaces/${WORKSPACE_ID}/chat/send`, {
+  }>(`/workspaces/${getActiveWorkspaceId()}/chat/send`, {
     method: "POST",
     body: JSON.stringify({
       question: aiPrompt,

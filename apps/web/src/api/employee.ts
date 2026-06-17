@@ -1,4 +1,5 @@
 import { request } from "@/lib/request"
+import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import type {
   ApiResponse,
   Capability,
@@ -9,9 +10,6 @@ import type {
   SkillListItem,
 } from "./types"
 import type { TaskFormData, ShiftScheduleForm } from "@/types/task"
-
-/** 当前固定工作空间 ID */
-const WORKSPACE_ID = 1
 
 export async function fetchMcpList(): Promise<McpListItem[]> {
   const res = await request<{ code?: number; data?: McpListItem[] }>(
@@ -38,7 +36,7 @@ export async function fetchSkillList(opts?: {
  */
 export async function fetchEmployees(opts?: { signal?: AbortSignal }) {
   return request<ApiResponse<Employee[]>>(
-    `/workspaces/${WORKSPACE_ID}/employees`,
+    `/workspaces/${getActiveWorkspaceId()}/employees`,
     opts?.signal ? { signal: opts.signal } : {}
   )
 }
@@ -177,7 +175,7 @@ export async function createEmployee(
   params: CreateEmployeeParams
 ): Promise<ApiResponse<unknown>> {
   return request<ApiResponse<unknown>>(
-    `/workspaces/${WORKSPACE_ID}/employees`,
+    `/workspaces/${getActiveWorkspaceId()}/employees`,
     {
       method: "POST",
       body: buildEmployeeBody(params),
@@ -220,7 +218,7 @@ export async function updateEmployee(
   params: CreateEmployeeParams
 ): Promise<ApiResponse<unknown>> {
   return request<ApiResponse<unknown>>(
-    `/workspaces/${WORKSPACE_ID}/employees/${employeeId}`,
+    `/workspaces/${getActiveWorkspaceId()}/employees/${employeeId}`,
     {
       method: "PUT",
       body: buildEmployeeBody(params),

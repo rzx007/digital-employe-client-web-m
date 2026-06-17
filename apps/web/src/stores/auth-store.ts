@@ -39,6 +39,8 @@ interface AuthState {
     rememberMe?: boolean
   ) => Promise<void>
   logout: () => Promise<void>
+  /** 切换当前工作空间（工作空间切换器唯一出口）：写 localStorage + store */
+  setWorkspaceId: (id: number) => void
   restoreSession: () => Promise<void>
   clearError: () => void
   clearPendingPasswordChange: () => void
@@ -181,6 +183,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
+  setWorkspaceId: (id) => {
+    localStorage.setItem("workspaceId", String(id))
+    set({ workspaceId: id })
+  },
+
   restoreSession: async () => {
     if (!isElectron()) return
     const status = await requireElectronApi((api) => api.getAuthStatus())
@@ -214,6 +221,5 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   clearError: () => set({ error: null }),
   clearPendingPasswordChange: () => set({ pendingPasswordChange: null }),
-  bumpAvatarVersion: () =>
-    set((s) => ({ avatarVersion: s.avatarVersion + 1 })),
+  bumpAvatarVersion: () => set((s) => ({ avatarVersion: s.avatarVersion + 1 })),
 }))

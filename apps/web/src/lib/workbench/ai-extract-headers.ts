@@ -1,13 +1,12 @@
 import type { QueryInterface } from "@/types/workbench"
 import { request } from "@/lib/request"
+import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import { WORKBENCH_CHAT_SEND_TIMEOUT_MS } from "@/lib/workbench/chat-send-employee"
 import { normalizeHeadersFromUnknown } from "@/lib/workbench/http-headers"
 import {
   normalizePathKeyForMatch,
   originPathnameKey,
 } from "@/lib/workbench/skill-url-extract"
-
-const WORKSPACE_ID = 1
 
 /** Lines likely describing HTTP headers / auth (pulled to front so truncation keeps them) */
 const HEADER_RELEVANT_LINE =
@@ -187,7 +186,7 @@ ${ctx}
     const res = await request<{
       code: number
       data: { response: string }
-    }>(`/workspaces/${WORKSPACE_ID}/chat/send`, {
+    }>(`/workspaces/${getActiveWorkspaceId()}/chat/send`, {
       method: "POST",
       body: JSON.stringify({
         question: prompt,

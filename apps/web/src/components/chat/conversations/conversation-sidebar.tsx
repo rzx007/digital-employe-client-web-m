@@ -8,6 +8,7 @@ import { getContactId } from "@/lib/chat/contact-utils"
 import { selectConversationForContact } from "@/lib/chat/conversation-selection"
 import { useCreateCuratorConversation } from "@/hooks/use-create-curator-conversation"
 import { useChatStore } from "@/stores/chat-store"
+import { WorkspaceSwitcher } from "../shell/workspace-switcher"
 
 import { ConversationList } from "./conversation-list"
 
@@ -65,6 +66,9 @@ export function ConversationSidebar({
       )}
       {...props}
     >
+      <div className="border-b px-2 py-2">
+        <WorkspaceSwitcher />
+      </div>
       <div className="flex items-center gap-1.5 border-b px-3 py-4">
         <div className="relative flex-1">
           <IconSearch className="absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
