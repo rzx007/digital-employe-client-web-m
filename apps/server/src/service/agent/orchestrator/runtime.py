@@ -137,6 +137,7 @@ def resolve_user_id(runtime: Any | None = None) -> str | None:
         if ws is not None and ws.user_id is not None:
             return ws.user_id
     except Exception:
+        logger.debug("resolve_user_id workspace-owner 兜底失败", exc_info=True)
         return None
     return None
 

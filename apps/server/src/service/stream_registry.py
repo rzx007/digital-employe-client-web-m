@@ -1532,6 +1532,8 @@ class StreamRegistry:
                 set_context,
             )
 
+            # user_id 不在此显式透传：runtime.resolve_user_id 会从激活 workspace 的所有者兜底解析
+            # （workspace 与 user 是 N:1，owner 唯一即当前用户）。见 runtime.resolve_user_id。
             register_stream_session(
                 stream_conv_id,
                 workspace_id=orchestrator_workspace_id,
