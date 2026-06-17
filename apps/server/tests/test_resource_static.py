@@ -142,3 +142,44 @@ def test_missing_file_returns_404(static_client):
     real = str(static_client.artifacts_dir / "does-not-exist.html")  # type: ignore[attr-defined]
     resp = _get(static_client, real)
     assert resp.status_code == 404
+
+
+# 路径式静态路由 /static/{relpath:path}：URL 把绝对路径放进 path 段，让 HTML 内的相对引用
+# 按同目录解析（query 形态会丢 query 段，相对解析撞 404）。
+def _path_form(client: TestClient, real_path: str) -> str:
+    cid = client.conversation_id  # type: ignore[attr-defined]
+    posix = real_path.replace("\\", "/")
+    return f"/chat/conversations/{cid}/static/{posix.lstrip('/')}"
+
+
+def test_path_form_serves_html(static_client):
+    real = str(static_client.artifacts_dir / "report.html")  # type: ignore[attr-defined]
+    resp = static_client.get(_path_form(static_client, real))
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/html")
+    assert "Hello Preview" in resp.text
+
+
+def test_path_form_sibling_relative_css_resolves(static_client):
+    # 模拟浏览器对 ./style.css 的解析：把 report.html 替换为 style.css，URL 其余不变。
+    real_html = str(static_client.artifacts_dir / "report.html")  # type: ignore[attr-defined]
+    html_url = _path_form(static_client, real_html)
+    css_url = html_url.rsplit("/", 1)[0] + "/style.css"
+    resp = static_client.get(css_url)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/css")
+    assert "color: red" in resp.text
+
+
+def test_path_form_traversal_rejected(static_client):
+    outside = str(
+        static_client.artifacts_dir.parent.parent / "secret"  # type: ignore[attr-defined]
+    )
+    resp = static_client.get(_path_form(static_client, outside))
+    assert resp.status_code in (400, 404)
+
+
+def test_path_form_missing_returns_404(static_client):
+    real = str(static_client.artifacts_dir / "does-not-exist.html")  # type: ignore[attr-defined]
+    resp = static_client.get(_path_form(static_client, real))
+    assert resp.status_code == 404

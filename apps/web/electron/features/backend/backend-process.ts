@@ -13,7 +13,9 @@ import { freeBackendPortIfBusy } from "./backend-port"
 const log = createLogger("backend")
 
 const BACKEND_PORT = Number(process.env.VITE_BACKEND_PORT || 34567)
-const BACKEND_READY_TIMEOUT = 30_000
+// 冷启动覆盖：Python 子进程 import langchain/langgraph 栈在 Windows 实测 8–20s，叠加
+// uvicorn lifespan 启动事件后 30s 容易超时（用户实测主仓库冷启动 timeout）。给到 90s。
+const BACKEND_READY_TIMEOUT = 90_000
 
 /** 开发模式监听地址：Windows 上对 0.0.0.0 绑定易触发 WinError 10013 */
 const DEV_UVICORN_HOST =

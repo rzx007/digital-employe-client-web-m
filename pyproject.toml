@@ -2,7 +2,11 @@
 name = "digital-employee-workspace"
 version = "0.0.0"
 description = "Monorepo uv workspace root (Python apps)"
-requires-python = ">=3.11"
+# 与下方 [tool.uv].environments 一致封顶 <3.13，避免 uv 在 .venv 缺失时按
+# requires-python 选到 managed 的 3.13/3.14（lockfile 解析环境仅覆盖 <3.13，
+# 选超出版本会撞 "current Python platform is not compatible with the lockfile's
+# supported environments"）。
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "digital-employee-client",
     "digital-employee-activation-core",

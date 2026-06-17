@@ -3,7 +3,7 @@ name = "digital-employee-license-issuer"
 version = "0.1.0"
 description = "Digital Employee offline activation license issuer (admin CLI)"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "digital-employee-activation-core",
     "typer>=0.12.0",
