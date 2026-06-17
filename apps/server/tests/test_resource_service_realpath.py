@@ -1,95 +1,84 @@
-"""资源服务：员工工作空间 + 公共区 + 读根沙箱 + 跨员工隔离 + 批量删。"""
+"""资源服务（SP2 后）：项目产物根直挂三桶 + 沙箱 + 批量删。
+
+SP2 Task 2.1 后 ResourceService 不再有 workspace/public 桶与会话级布局/legacy
+回退，所有路径相对单一 product_root，桶 artifacts/uploads/skills-draft 直挂其下。
+"""
 from pathlib import Path
 
-import pytest
-
-from src.service import resource_service as rs
 from src.service.resource_service import ResourceService
 
 
-@pytest.fixture()
-def ws(tmp_path, monkeypatch):
-    """搭建员工 7 的工作空间 + 公共区，并把会话→员工/房间映射打桩为不依赖 DB。"""
-    root = tmp_path / "root"
-    # 员工 7 工作空间：conv-1 当前会话 + conv-2 过去会话
-    (root / "employee-7" / "artifacts" / "conv-1").mkdir(parents=True)
-    (root / "employee-7" / "artifacts" / "conv-1" / "report.md").write_text("# r", encoding="utf-8")
-    (root / "employee-7" / "artifacts" / "conv-1" / "uploads").mkdir()
-    (root / "employee-7" / "artifacts" / "conv-1" / "uploads" / "a.txt").write_text("u", encoding="utf-8")
-    (root / "employee-7" / "artifacts" / "conv-2").mkdir(parents=True)
-    (root / "employee-7" / "artifacts" / "conv-2" / "old.md").write_text("old", encoding="utf-8")
-    # 公共区
-    (root / "shared" / "employee-7" / "conv-1").mkdir(parents=True)
-    (root / "shared" / "employee-7" / "conv-1" / "pub.md").write_text("pub", encoding="utf-8")
-    # 另一个员工 9 的私有工作空间（B 不能读）
-    (root / "employee-9" / "artifacts" / "conv-5").mkdir(parents=True)
-    (root / "employee-9" / "artifacts" / "conv-5" / "secret.md").write_text("x", encoding="utf-8")
-
-    monkeypatch.setattr(rs, "_resolve_employee_id_for_conversation", lambda cid: 7)
-    return str(root), root
+def _seed(root: Path) -> None:
+    """在 product_root 下铺三桶样本。"""
+    (root / "artifacts").mkdir(parents=True)
+    (root / "artifacts" / "report.md").write_text("# r", encoding="utf-8")
+    (root / "artifacts" / "sub").mkdir()
+    (root / "artifacts" / "sub" / "nested.md").write_text("n", encoding="utf-8")
+    (root / "uploads").mkdir()
+    (root / "uploads" / "a.txt").write_text("u", encoding="utf-8")
 
 
-def test_list_resources_workspace_and_public(ws):
-    root, root_p = ws
-    data = ResourceService.list_resources(root, 1)
-    # 当前会话产物（不含 uploads 子目录）
+def test_list_resources_buckets_under_product_root(tmp_path):
+    root = tmp_path / "proj"
+    _seed(root)
+    data = ResourceService.list_resources(root)
     art_names = {e.name for e in data.artifacts}
     assert "report.md" in art_names
-    assert "uploads" not in art_names
-    # 上传单列
+    assert "sub" in art_names
+    # uploads 单列
     assert data.uploads and data.uploads[0].name == "a.txt"
-    # 工作空间全树含两个会话目录
-    ws_names = {e.name for e in data.workspace}
-    assert {"conv-1", "conv-2"} <= ws_names
-    # 公共区
-    pub_names = {e.name for e in data.public}
-    assert "employee-7" in pub_names
-    # bucket 标注
-    assert data.workspace[0].bucket == "workspace"
-    assert data.public[0].bucket == "public"
+    # 不再有 workspace/public 桶
+    assert data.workspace == []
+    assert data.public == []
+    assert data.artifacts[0].bucket == "artifacts"
 
 
-def test_read_content_allows_workspace_and_public(ws):
-    root, root_p = ws
-    own = str(root_p / "employee-7" / "artifacts" / "conv-2" / "old.md")
-    pub = str(root_p / "shared" / "employee-7" / "conv-1" / "pub.md")
-    assert ResourceService.read_content(root, 1, own) is not None
-    assert ResourceService.read_content(root, 1, pub) is not None
+def test_read_content_in_product_root(tmp_path):
+    root = tmp_path / "proj"
+    _seed(root)
+    target = str(root / "artifacts" / "report.md")
+    assert ResourceService.read_content(root, target) is not None
 
 
-def test_cross_employee_private_rejected(ws):
-    root, root_p = ws
-    other = str(root_p / "employee-9" / "artifacts" / "conv-5" / "secret.md")
-    assert ResourceService.read_content(root, 1, other) is None
-    assert ResourceService.resolve_download_path(root, 1, other) is None
-
-
-def test_sandbox_escape_rejected(ws):
-    root, root_p = ws
-    outside = str(root_p.parent / "etc_passwd")
+def test_sandbox_escape_rejected(tmp_path):
+    root = tmp_path / "proj"
+    _seed(root)
+    outside = str(tmp_path / "etc_passwd")
     Path(outside).write_text("x", encoding="utf-8")
-    assert ResourceService.read_content(root, 1, outside) is None
+    assert ResourceService.read_content(root, outside) is None
+    assert ResourceService.resolve_download_path(root, outside) is None
 
 
-def test_batch_delete_skips_illegal(ws):
-    root, root_p = ws
-    ok = str(root_p / "employee-7" / "artifacts" / "conv-2" / "old.md")
-    bad = str(root_p / "employee-9" / "artifacts" / "conv-5" / "secret.md")
-    res = ResourceService.batch_delete(root, 1, [ok, bad])
+def test_other_project_root_rejected(tmp_path):
+    """另一项目根下的文件不在本根沙箱内 → 拒绝读/删。"""
+    root = tmp_path / "proj"
+    other = tmp_path / "other"
+    _seed(root)
+    (other / "artifacts").mkdir(parents=True)
+    secret = other / "artifacts" / "secret.md"
+    secret.write_text("x", encoding="utf-8")
+    assert ResourceService.read_content(root, str(secret)) is None
+    assert ResourceService.delete_resource(root, str(secret)) is False
+    assert secret.exists()
+
+
+def test_batch_delete_skips_illegal(tmp_path):
+    root = tmp_path / "proj"
+    other = tmp_path / "other"
+    _seed(root)
+    (other / "artifacts").mkdir(parents=True)
+    bad = other / "artifacts" / "secret.md"
+    bad.write_text("x", encoding="utf-8")
+    ok = str(root / "artifacts" / "report.md")
+    res = ResourceService.batch_delete(root, [ok, str(bad)])
     assert ok in res["deleted"]
-    assert bad in res["skipped"]
+    assert str(bad) in res["skipped"]
     assert not Path(ok).exists()
-    assert Path(bad).exists()  # 跨员工未删
+    assert bad.exists()
 
 
-def test_legacy_layout_read_fallback(tmp_path, monkeypatch):
-    """迁移兼容：旧会话级布局 <root>/<cid>/artifacts 仍可读、可列。"""
-    root = tmp_path / "root"
-    legacy = root / "1" / "artifacts"
-    legacy.mkdir(parents=True)
-    (legacy / "old.md").write_text("legacy", encoding="utf-8")
-    monkeypatch.setattr(rs, "_resolve_employee_id_for_conversation", lambda cid: 7)
-
-    data = ResourceService.list_resources(str(root), 1)
-    assert any(e.name == "old.md" for e in data.artifacts)
-    assert ResourceService.read_content(str(root), 1, str(legacy / "old.md")) is not None
+def test_delete_resource_refuses_root_itself(tmp_path):
+    root = tmp_path / "proj"
+    _seed(root)
+    assert ResourceService.delete_resource(root, str(root)) is False
+    assert root.exists()

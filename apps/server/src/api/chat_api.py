@@ -15,7 +15,6 @@ from fastapi import (
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
-from src.core.config import get_settings
 from src.core.request_utils import get_user_id
 from src.db.session import get_db
 from src.models.response import BaseResponse, ListResponse, ResponseBase
@@ -46,6 +45,7 @@ from src.schemas.resource import (
 )
 from src.service.chat_service import ChatService
 from src.service.conversation_title_service import suggest_conversation_title
+from src.service.product_paths import resolve_conversation_product_root
 from src.service.recent_contact_service import RecentContactService
 from src.service.resource_service import ResourceService
 
@@ -428,8 +428,8 @@ def list_conversation_resources(
 ) -> ResponseBase[ResourceList]:
     """列出会话下的资源文件（artifacts + skills-draft）。"""
     conversation = ChatService.get_conversation(db, conversation_id)
-    settings = get_settings()
-    data = ResourceService.list_resources(settings.artifacts_path, conversation.id)
+    product_root = resolve_conversation_product_root(db, conversation)
+    data = ResourceService.list_resources(product_root)
     return ResponseBase(data=data)
 
 
@@ -441,8 +441,8 @@ def read_conversation_resource_content(
 ) -> ResponseBase[ResourceContent]:
     """读取会话资源文件的内容。"""
     conversation = ChatService.get_conversation(db, conversation_id)
-    settings = get_settings()
-    content = ResourceService.read_content(settings.artifacts_path, conversation.id, path)
+    product_root = resolve_conversation_product_root(db, conversation)
+    content = ResourceService.read_content(product_root, path)
     if content is None:
         return ResponseBase(data=None, msg="文件不存在或路径不合法")
     return ResponseBase(data=content)
@@ -458,10 +458,9 @@ async def upload_conversation_resource(
     conversation = ChatService.get_conversation(db, conversation_id)
     file_bytes = await file.read()
     filename = file.filename or "unnamed_file"
-    settings = get_settings()
+    product_root = resolve_conversation_product_root(db, conversation)
     result = ResourceService.upload_file(
-        settings.artifacts_path,
-        conversation.id,
+        product_root,
         filename,
         file_bytes,
     )
@@ -478,10 +477,8 @@ def delete_conversation_upload(
 ) -> BaseResponse:
     """删除会话 uploads 目录中的文件。"""
     conversation = ChatService.get_conversation(db, conversation_id)
-    settings = get_settings()
-    ok = ResourceService.delete_upload_file(
-        settings.artifacts_path, conversation.id, path
-    )
+    product_root = resolve_conversation_product_root(db, conversation)
+    ok = ResourceService.delete_upload_file(product_root, path)
     if not ok:
         return BaseResponse(msg="文件不存在或删除失败")
     return BaseResponse()
@@ -494,10 +491,8 @@ def download_conversation_resource(
     db: Session = Depends(get_db),
 ):
     conversation = ChatService.get_conversation(db, conversation_id)
-    settings = get_settings()
-    result = ResourceService.resolve_download_path(
-        settings.artifacts_path, conversation.id, path
-    )
+    product_root = resolve_conversation_product_root(db, conversation)
+    result = ResourceService.resolve_download_path(product_root, path)
     if result is None:
         return BaseResponse(msg="文件不存在或路径不合法")
     resolved, is_dir = result
@@ -525,10 +520,8 @@ async def upload_voice_audio(
     """上传语音消息音频，存到会话目录下 voice/ 子目录（不进资源面板）。"""
     conversation = ChatService.get_conversation(db, conversation_id)
     file_bytes = await file.read()
-    settings = get_settings()
-    result = ResourceService.save_voice_file(
-        settings.artifacts_path, conversation.id, file_bytes
-    )
+    product_root = resolve_conversation_product_root(db, conversation)
+    result = ResourceService.save_voice_file(product_root, file_bytes)
     if isinstance(result, str):
         return ResponseBase(data=None, msg=result)
     return ResponseBase(data=result)
@@ -542,10 +535,8 @@ def get_voice_audio(
 ):
     """返回语音消息音频文件。"""
     conversation = ChatService.get_conversation(db, conversation_id)
-    settings = get_settings()
-    resolved = ResourceService.resolve_voice_path(
-        settings.artifacts_path, conversation.id, path
-    )
+    product_root = resolve_conversation_product_root(db, conversation)
+    resolved = ResourceService.resolve_voice_path(product_root, path)
     if resolved is None:
         raise HTTPException(status_code=404, detail="语音文件不存在")
     return FileResponse(resolved, media_type="audio/webm")
@@ -559,10 +550,8 @@ def serve_conversation_resource_static(
 ):
     """以 inline + 正确 Content-Type 提供会话产物文件（真实路径 + 沙箱校验）。"""
     conversation = ChatService.get_conversation(db, conversation_id)
-    settings = get_settings()
-    result = ResourceService.resolve_download_path(
-        settings.artifacts_path, conversation.id, path
-    )
+    product_root = resolve_conversation_product_root(db, conversation)
+    result = ResourceService.resolve_download_path(product_root, path)
     if result is None:
         raise HTTPException(status_code=404, detail="not found")
     resolved, is_dir = result
@@ -579,10 +568,8 @@ def delete_conversation_resource(
     db: Session = Depends(get_db),
 ) -> BaseResponse:
     conversation = ChatService.get_conversation(db, conversation_id)
-    settings = get_settings()
-    ok = ResourceService.delete_resource(
-        settings.artifacts_path, conversation.id, path
-    )
+    product_root = resolve_conversation_product_root(db, conversation)
+    ok = ResourceService.delete_resource(product_root, path)
     if not ok:
         return BaseResponse(msg="资源不存在或删除失败")
     return BaseResponse()
@@ -599,8 +586,6 @@ def batch_delete_conversation_resources(
 ) -> ResponseBase[ResourceBatchDeleteResult]:
     """批量删产物：逐条沙箱校验（员工工作空间/公共区/房间内），合法删、非法跳过。"""
     conversation = ChatService.get_conversation(db, conversation_id)
-    settings = get_settings()
-    result = ResourceService.batch_delete(
-        settings.artifacts_path, conversation.id, payload.paths
-    )
+    product_root = resolve_conversation_product_root(db, conversation)
+    result = ResourceService.batch_delete(product_root, payload.paths)
     return ResponseBase(data=ResourceBatchDeleteResult(**result))

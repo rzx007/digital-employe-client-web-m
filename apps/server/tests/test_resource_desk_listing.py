@@ -2,7 +2,7 @@
 from pathlib import Path
 
 from src.models.conversation import Conversation
-from src.service.resource_service import ResourceService, resolve_workspace_context
+from src.service.resource_service import resolve_workspace_context
 
 
 def _curator_conv(db, ws_id) -> int:
@@ -35,25 +35,10 @@ def test_resolve_workspace_context_no_desk_unchanged(
     assert conv_artifacts == Path(root) / "employee-orchestrator" / "artifacts" / f"conv-{conv_id}"
 
 
-def test_list_resources_shows_desk_artifacts(
-    patched_task_mutations_db, db_session, workspace
-):
-    conv_id = _curator_conv(db_session, workspace.id)
-    root = workspace.root_path
-    desk = Path(root) / "orchestrator-desk" / f"conv-{conv_id}"
-    (desk / "task-47").mkdir(parents=True, exist_ok=True)
-    (desk / "task-47" / "sort.py").write_text("x", encoding="utf-8")
-    (desk / "bubble.py").write_text("y", encoding="utf-8")
-
-    rl = ResourceService.list_resources(root, conv_id)
-    names: set[str] = set()
-
-    def _walk(entries):
-        for e in entries:
-            names.add(e.name)
-            if getattr(e, "children", None):
-                _walk(e.children)
-
-    _walk(rl.artifacts)
-    assert "bubble.py" in names
-    assert "sort.py" in names
+# NOTE(SP2 Task 2.1): 资源面板的「共享桌产物合并」读路径已随 legacy/desk-merge
+# 读回退一并删除（spec §2「不做双轨读回退」）。SP2 后资源面板只读项目产物根下
+# 的 artifacts/uploads/skills-draft 三桶；总管/desk 产物落项目根是 Task 2.3 的事，
+# 届时再补对应面板可见性测试。原 test_list_resources_shows_desk_artifacts 因此移除。
+#
+# resolve_workspace_context 本身（含其内部 desk 重定向）仍保留，供 skill_api 草稿
+# 技能解析使用，上面两个测试继续覆盖其行为。

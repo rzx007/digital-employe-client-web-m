@@ -9,7 +9,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
-from src.api import chat_api
 from src.db.session import get_db
 from src.models.conversation import Conversation
 from src.models.workspace import Workspace
@@ -28,10 +27,12 @@ def static_client(db_engine, monkeypatch):
     """配置 TestClient：测试库 + 临时 artifacts 目录 + 一条带产物的会话。"""
     session_factory = sessionmaker(bind=db_engine)
 
-    # 创建 workspace + conversation（id=1）
+    # 创建 workspace + conversation（id=1）。workspace.root_path 为外部用户文件夹，
+    # 故项目产物根 = <root_path>/.digital-employee（resolve_workspace_product_root）。
+    ws_root = tempfile.mkdtemp()
     session = session_factory()
     try:
-        ws = Workspace(id=1, name="Test Workspace", root_path=tempfile.mkdtemp())
+        ws = Workspace(id=1, name="Test Workspace", root_path=ws_root)
         session.add(ws)
         session.flush()
         conv = Conversation(
@@ -47,21 +48,12 @@ def static_client(db_engine, monkeypatch):
     finally:
         session.close()
 
-    # 员工工作空间布局：<root>/employee-<eid>/artifacts/conv-<cid>/{report.html, style.css}
-    # （会话 target_type=employee, target_id=1 → owner employee-1）
-    artifacts_root = Path(tempfile.mkdtemp(prefix="de-test-artifacts-"))
-    artifacts_dir = (
-        artifacts_root / "employee-1" / "artifacts" / f"conv-{conversation_id}"
-    )
+    # SP2 布局：产物三桶直挂项目产物根 → <root>/.digital-employee/artifacts/{...}
+    product_root = Path(ws_root) / ".digital-employee"
+    artifacts_dir = product_root / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     (artifacts_dir / "report.html").write_text(HTML_BODY, encoding="utf-8")
     (artifacts_dir / "style.css").write_text(CSS_BODY, encoding="utf-8")
-
-    # 让端点内 get_settings() 返回指向临时目录的配置
-    class _Settings:
-        artifacts_path = str(artifacts_root)
-
-    monkeypatch.setattr(chat_api, "get_settings", lambda: _Settings())
 
     # 隔离激活网关：静态路由单元测试不依赖激活状态（某些环境强制激活会 403）
     from types import SimpleNamespace
@@ -74,11 +66,6 @@ def static_client(db_engine, monkeypatch):
             lambda: SimpleNamespace(enforced=False, activated=True, reason=None)
         ),
     )
-
-    # 会话→员工解析走全局 session（非测试 DB），直接打桩为 employee-1
-    from src.service import resource_service as _rs
-
-    monkeypatch.setattr(_rs, "_resolve_employee_id_for_conversation", lambda cid: 1)
 
     # 覆盖 get_db 依赖，使用测试库
     def _override_get_db():
