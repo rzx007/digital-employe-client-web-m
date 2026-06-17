@@ -81,6 +81,7 @@ class SkillRatingService:
 
         row = SkillRating(
             workspace_id=employee.workspace_id,
+            user_id=employee.user_id,
             employee_id=employee.id,
             conversation_id=None,
             message_id=None,

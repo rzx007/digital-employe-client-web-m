@@ -385,7 +385,7 @@ def hire_employee(name: str, description: str, skill_ids: str | list[int] | int 
         description,
         normalized or [],
         token=token,
-        user_id="1",
+        user_id=get_user_id(),
     )
     if not result.startswith("错误"):
         invalidate_orchestrator_db_cache()
@@ -425,7 +425,7 @@ def hire_employees(candidates: str) -> str:
         workspace_id,
         parsed,
         token=token,
-        user_id="1",
+        user_id=get_user_id(),
     )
     if not result.startswith("错误"):
         invalidate_orchestrator_db_cache()

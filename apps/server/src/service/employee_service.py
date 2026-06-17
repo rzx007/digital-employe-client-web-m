@@ -595,6 +595,7 @@ class EmployeeService:
             db.add(
                 EmployeeMcp(
                     workspace_id=employee.workspace_id,
+                    user_id=employee.user_id,
                     employee_id=employee.id,
                     mcp_id=mcp_id,
                     mcp_server_name=mcp_server_name,

@@ -27,8 +27,10 @@ def test_touch_creates_and_updates(db_session, workspace):
 
 
 def test_list_includes_curator(db_session, workspace):
+    # 总管为 USER 级，其 owner 必须与工作空间归属一致，
+    # 最近联系人查找现按 workspace.user_id 派生 owner 再查总管。
     curator = EmployeeService.ensure_curator_employee(
-        db_session, "u-test", workspace.id
+        db_session, workspace.user_id, workspace.id
     )
     items = RecentContactService.list_recent_contacts(db_session, workspace.id)
     curator_items = [i for i in items if i.is_curator]

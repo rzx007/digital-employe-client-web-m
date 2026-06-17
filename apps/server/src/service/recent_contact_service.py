@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from src.models.conversation import Conversation, ConversationMessage
 from src.models.employee import Employee
 from src.models.recent_contact import RecentContact
-from src.models.workspace import CST, cst_now
+from src.models.workspace import CST, Workspace, cst_now
 from src.schemas.recent_contact import (
     RecentContactImportItem,
     RecentContactRead,
@@ -48,9 +48,15 @@ class RecentContactService:
 
     @staticmethod
     def _get_curator_employee(db: Session, workspace_id: int) -> Employee | None:
+        # 总管已是 USER 级（每用户唯一，其 workspace_id 冻结到默认工作空间），
+        # 因此按工作空间归属的 user_id 查，而不是直接按 workspace_id。
+        ws = db.get(Workspace, workspace_id)
+        owner = ws.user_id if ws is not None else None
+        if owner is None:
+            return None
         return db.scalar(
             select(Employee).where(
-                Employee.workspace_id == workspace_id,
+                Employee.user_id == owner,
                 Employee.is_curator.is_(True),
             )
         )
