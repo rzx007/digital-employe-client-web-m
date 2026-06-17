@@ -65,6 +65,7 @@ def test_sync_local_skill_to_assignees_updates_employee_skill(
 
     count = EmployeeService.sync_local_skill_to_assignees(
         db_session,
+        user_id=f"u-ws{workspace.id}",
         workspace_id=workspace.id,
         skill_name=skill_name,
     )

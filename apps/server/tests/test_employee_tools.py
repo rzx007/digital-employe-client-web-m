@@ -154,7 +154,13 @@ def test_get_workspace_skill_detail_shows_assignees(
             "skillMdContent": "# 获取交易日历",
         },
     )
-    set_context(db=db_session, workspace_id=workspace.id, conversation_id=1)
+    # 技能分配查询按 user_id（add_employee 默认 user_id=f"u-ws{workspace_id}"）。
+    set_context(
+        db=db_session,
+        workspace_id=workspace.id,
+        conversation_id=1,
+        user_id=f"u-ws{workspace.id}",
+    )
 
     result = get_workspace_skill_detail.invoke({"skill_name": "data-querys"})
 
@@ -283,7 +289,13 @@ def test_delete_workspace_skill_removes_dir_and_unassigns(
         )
     )
     db_session.commit()
-    set_context(db=db_session, workspace_id=workspace.id, conversation_id=1)
+    # 解绑按 user_id（add_employee 默认 user_id=f"u-ws{workspace_id}"）。
+    set_context(
+        db=db_session,
+        workspace_id=workspace.id,
+        conversation_id=1,
+        user_id=f"u-ws{workspace.id}",
+    )
 
     result = delete_workspace_skill.invoke({"skill_name": "demo-skill"})
 

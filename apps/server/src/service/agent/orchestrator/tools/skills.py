@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from src.service.agent.orchestrator.runtime import (
     get_db,
+    get_user_id,
     get_workspace_id,
     resolve_workspace_id,
 )
@@ -168,7 +169,7 @@ def format_workspace_skills_list(
         if db is not None:
             assignees = EmployeeService.list_skill_assignees(
                 db,
-                workspace_id=workspace_id,
+                user_id=get_user_id(),
                 skill_name=skill_name,
                 local_id=int(local_id),
             )
@@ -280,7 +281,7 @@ def get_workspace_skill_detail(
 
     assignees = EmployeeService.list_skill_assignees(
         get_db(),
-        workspace_id=workspace_id,
+        user_id=get_user_id(),
         skill_name=skill_name_for_lookup,
         local_id=int(lid) if lid is not None else None,
     )
@@ -330,7 +331,7 @@ def _delete_one_workspace_skill(
 
     unassigned = EmployeeService.unassign_local_skill_from_assignees(
         db,
-        workspace_id=workspace_id,
+        user_id=get_user_id(),
         skill_name=normalized,
         local_id=local_id,
     )

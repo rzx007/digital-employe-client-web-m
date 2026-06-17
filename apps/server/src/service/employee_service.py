@@ -248,11 +248,11 @@ class EmployeeService:
     def list_skill_assignees(
         db: Session,
         *,
-        workspace_id: int,
+        user_id: str,
         skill_name: str,
         local_id: int | None = None,
     ) -> list[dict[str, int | str]]:
-        """返回已分配该本地/工作区技能的员工（查 employee_skills 表）。"""
+        """返回已分配该本地/工作区技能的员工（查 employee_skills 表，按 user 过滤）。"""
         normalized = LocalSkillService._normalize_skill_name(skill_name)
         match_conditions = [EmployeeSkill.skill_name == normalized]
         if local_id is not None:
@@ -260,8 +260,10 @@ class EmployeeService:
 
         rows = list(
             db.scalars(
-                select(EmployeeSkill).where(
-                    EmployeeSkill.workspace_id == workspace_id,
+                select(EmployeeSkill)
+                .join(Employee, EmployeeSkill.employee_id == Employee.id)
+                .where(
+                    Employee.user_id == user_id,
                     or_(*match_conditions),
                 )
             ).all()
@@ -789,6 +791,7 @@ class EmployeeService:
             db.add(
                 EmployeeSkill(
                     workspace_id=employee.workspace_id,
+                    user_id=employee.user_id,
                     employee_id=employee.id,
                     skill_id=int(item.get("id")),
                     skill_name=str(item.get("skillName") or ""),
@@ -836,11 +839,11 @@ class EmployeeService:
         return payload
 
     @staticmethod
-    def list_employees(db: Session, workspace_id: int) -> list[Employee]:
+    def list_employees(db: Session, user_id: str) -> list[Employee]:
         return list(
             db.scalars(
-                select(Employee).where(Employee.workspace_id ==
-                                       workspace_id).order_by(Employee.id.desc())
+                select(Employee).where(Employee.user_id ==
+                                       user_id).order_by(Employee.id.desc())
             ).all()
         )
 
@@ -1044,6 +1047,7 @@ class EmployeeService:
     def sync_local_skill_to_assignees(
         db: Session,
         *,
+        user_id: str,
         workspace_id: int,
         skill_name: str,
     ) -> int:
@@ -1084,8 +1088,10 @@ class EmployeeService:
 
         rows = list(
             db.scalars(
-                select(EmployeeSkill).where(
-                    EmployeeSkill.workspace_id == workspace_id,
+                select(EmployeeSkill)
+                .join(Employee, EmployeeSkill.employee_id == Employee.id)
+                .where(
+                    Employee.user_id == user_id,
                     or_(*match_conditions),
                 )
             ).all()
@@ -1135,9 +1141,10 @@ class EmployeeService:
 
         db.commit()
         logger.info(
-            "Synced local skill %r to %s employee(s) in workspace %s",
+            "Synced local skill %r to %s employee(s) for user %s (workspace %s)",
             normalized,
             len(employee_ids),
+            user_id,
             workspace_id,
         )
         return len(employee_ids)
@@ -1146,11 +1153,11 @@ class EmployeeService:
     def unassign_local_skill_from_assignees(
         db: Session,
         *,
-        workspace_id: int,
+        user_id: str,
         skill_name: str,
         local_id: int | None = None,
     ) -> int:
-        """删除本地技能时，同步解除已分配员工的绑定与私有目录副本。"""
+        """删除本地技能时，同步解除已分配员工的绑定与私有目录副本（按 user 过滤）。"""
         normalized = LocalSkillService._normalize_skill_name(skill_name)
         match_conditions = [EmployeeSkill.skill_name == normalized]
         if local_id is not None:
@@ -1158,8 +1165,10 @@ class EmployeeService:
 
         rows = list(
             db.scalars(
-                select(EmployeeSkill).where(
-                    EmployeeSkill.workspace_id == workspace_id,
+                select(EmployeeSkill)
+                .join(Employee, EmployeeSkill.employee_id == Employee.id)
+                .where(
+                    Employee.user_id == user_id,
                     or_(*match_conditions),
                 )
             ).all()
@@ -1213,10 +1222,10 @@ class EmployeeService:
 
         db.commit()
         logger.info(
-            "Unassigned local skill %r from %s employee(s) in workspace %s",
+            "Unassigned local skill %r from %s employee(s) for user %s",
             normalized,
             len(employee_ids),
-            workspace_id,
+            user_id,
         )
         return len(employee_ids)
 

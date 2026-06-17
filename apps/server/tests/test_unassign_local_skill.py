@@ -45,7 +45,7 @@ def test_unassign_local_skill_from_assignees(
 
     count = EmployeeService.unassign_local_skill_from_assignees(
         db_session,
-        workspace_id=workspace.id,
+        user_id=f"u-ws{workspace.id}",
         skill_name=skill_name,
         local_id=local_id,
     )

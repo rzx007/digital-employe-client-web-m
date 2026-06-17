@@ -387,6 +387,7 @@ def update_local_skill(
     )
     synced_count = EmployeeService.sync_local_skill_to_assignees(
         db,
+        user_id=get_user_id(request),
         workspace_id=workspace_id,
         skill_name=skill_name,
     )
@@ -416,6 +417,7 @@ def update_local_skill_display_name(
     )
     EmployeeService.sync_local_skill_to_assignees(
         db,
+        user_id=get_user_id(request),
         workspace_id=workspace_id,
         skill_name=skill_name,
     )
@@ -440,7 +442,7 @@ def delete_workspace_local_skill(
 
     EmployeeService.unassign_local_skill_from_assignees(
         db,
-        workspace_id=workspace_id,
+        user_id=get_user_id(request),
         skill_name=skill_name,
         local_id=local_id,
     )

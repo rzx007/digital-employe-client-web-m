@@ -47,10 +47,10 @@ router = APIRouter(tags=["员工"])
 
 
 @router.get("/workspaces/{workspace_id}/employees", response_model=ListResponse[EmployeeRead])
-def list_workspace_employees(workspace_id: int, db: Session = Depends(get_db)) -> ListResponse[EmployeeRead]:
-    """查询指定工作空间下的员工列表。"""
+def list_workspace_employees(workspace_id: int, request: Request, db: Session = Depends(get_db)) -> ListResponse[EmployeeRead]:
+    """查询当前用户的员工列表（员工为用户级，跨工作空间共享；仍校验工作空间存在）。"""
     WorkspaceService.get_workspace(db, workspace_id)
-    employees = EmployeeService.list_employees(db, workspace_id)
+    employees = EmployeeService.list_employees(db, get_user_id(request))
     return ListResponse(
         data=[EmployeeService.employee_detail_dict(db, emp) for emp in employees],
     )
