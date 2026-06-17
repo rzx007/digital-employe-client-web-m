@@ -13,6 +13,7 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
+from src.core.request_utils import DEFAULT_USER_ID
 from src.models.employee import Employee
 from src.models.employee_mcp import EmployeeMcp
 from src.models.employee_skill import EmployeeSkill
@@ -1314,7 +1315,7 @@ class EmployeeService:
         workspace = WorkspaceService.get_workspace(db, workspace_id)
         # 员工为用户级：归属以 workspace owner 为权威，未认领（owner=None）的
         # 工作空间回落到招聘侧传入的 obj_in.user_id（运行时用户）。
-        owner_user_id = workspace.user_id or obj_in.user_id
+        owner_user_id = workspace.user_id or obj_in.user_id or DEFAULT_USER_ID
 
         existing = db.scalar(
             select(Employee).where(

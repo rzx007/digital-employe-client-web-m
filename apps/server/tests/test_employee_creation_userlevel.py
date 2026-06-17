@@ -84,3 +84,30 @@ def test_create_employee_sets_user_id_to_workspace_owner(db_session):
     )
     # workspace owner（u7）为权威归属，覆盖 obj_in.user_id（None）
     assert employee.user_id == "u7"
+
+
+def test_create_employee_falls_back_to_default_user_when_workspace_unclaimed(
+    db_session,
+):
+    from src.core.request_utils import DEFAULT_USER_ID
+
+    ws = Workspace(
+        name="w", root_path="/tmp/w", user_id=None
+    )  # existing but unclaimed
+    db_session.add(ws)
+    db_session.commit()
+    emp = EmployeeService.create_employee(
+        db_session,
+        EmployeeCreate(
+            workspace_id=ws.id,
+            employee_name="Orphan",
+            status=1,
+            skill_ids=[],
+            mcp_ids=None,
+            shift_schedule=None,
+            tasks=None,
+            user_id=None,
+        ),
+        token="",
+    )
+    assert emp.user_id == DEFAULT_USER_ID  # never None

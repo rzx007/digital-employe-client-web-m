@@ -96,7 +96,7 @@ def _hire_one_in_session(
     # 员工为用户级：归属以 workspace owner 为权威，未认领的工作空间回落到运行时
     # 用户（user_id），再回落到离线默认用户。校验/创建均以 owner 为准。
     ws = db.get(Workspace, workspace_id)
-    owner = ws.user_id if ws is not None else (user_id or DEFAULT_USER_ID)
+    owner = (ws.user_id if ws is not None else user_id) or DEFAULT_USER_ID
     name_err = _validate_hire_name(db, owner, emp_name)
     if name_err:
         return {"name": emp_name or name, "error": name_err}
