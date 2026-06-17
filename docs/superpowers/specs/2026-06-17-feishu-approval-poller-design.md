@@ -63,20 +63,25 @@
   - `FeishuToken(app_id, app_secret)`：`get() -> str`，内部缓存 + 过期前刷新。
 - `feishu_approval.py`（飞书审批客户端，依赖 `feishu_token`）
   - `list_approved_instances(approval_code) -> list[str]`：返回已通过实例的 instance_id。
-  - `get_form(instance_id) -> dict`：取该实例表单控件值（解析出设备码、授权码字段当前值）。
+  - `get_form(instance_id) -> dict`：取该实例表单控件值（设备码、到期日期、授权码当前值）。
   - `get_device_code(instance_id) -> str | None`：从表单取设备码（按配置字段）。
+  - `get_expires(instance_id) -> str | None`：从表单取「到期日期」（YYYY-MM-DD）；
+    取不到则返回 None，由 poller 回退默认 expires。
   - `license_already_filled(instance_id) -> bool`：授权码字段是否已非空（防重）。
   - `write_license_field(instance_id, license_code) -> None`：把授权码写回表单字段。
 - `poller.py`（编排循环）
-  - `poll_once() -> int`：拉已通过实例 → 跳过授权码字段已非空的 → 取设备码 →
-    `IssueService().issue(device_code, expires, private_key_path)` →
+  - `poll_once() -> int`：拉已通过实例 → 跳过授权码字段已非空的 → 取设备码 + 到期日期 →
+    `IssueService().issue(device_code, expires_or_default, private_key_path)` →
     `write_license_field(...)`；返回本轮出码数。
   - `run_forever(interval)`：循环调 `poll_once`，异常捕获不崩、sleep 后续跑。
 - `config.py`（扩展现有）
   - 新增 env：`FEISHU_APP_ID`、`FEISHU_APP_SECRET`、`FEISHU_APPROVAL_CODE`、
     `FEISHU_DEVICE_CODE_FIELD`（设备码控件 id/名）、
+    `FEISHU_EXPIRES_FIELD`（到期日期控件 id/名）、
     `FEISHU_LICENSE_FIELD`（授权码回写控件 id/名）、
     `POLL_INTERVAL`（默认 60s）。沿用既有 `DE_LICENSE_PRIVATE_KEY` / `ISSUER_DEFAULT_EXPIRES`。
+  - 到期日期：审批单「到期日期」字段值（YYYY-MM-DD）直接作 `expires`；空则用
+    `ISSUER_DEFAULT_EXPIRES`（默认 +90d）。
 - `__main__.py`（扩展）
   - 现有：起 FastAPI（`/license/issue`）。新增可选启动轮询器：
     `python -m license_issuer_server poll` 跑 `run_forever`；不带参数仍只起 HTTP。
