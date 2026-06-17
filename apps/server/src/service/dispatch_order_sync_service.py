@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
+from src.core.request_utils import DEFAULT_USER_ID
 from src.db.session import get_session_local
 from src.models.dispatch_order_sync import DispatchOrderSync
 from src.models.workspace import Workspace, cst_now
@@ -93,7 +94,7 @@ class DispatchOrderSyncService:
         settings = get_settings()
         default_workspace_id = settings.default_workspace_id
         ws = db.get(Workspace, default_workspace_id)
-        _uid = ws.user_id if ws is not None else "1"
+        _uid = ws.user_id if ws is not None else DEFAULT_USER_ID
         curator = ChatService.ensure_curator_conversation(
             db, _uid, default_workspace_id
         )

@@ -51,6 +51,7 @@ def _delete_employee_in_session(
     try:
         db.delete(employee)
         db.commit()
+        # RecentContact 保持 workspace 级（spec §6：最近联系按项目），故清理仍用 workspace_id。
         RecentContactService.delete_by_target(
             db, workspace_id, "employee", employee_id
         )

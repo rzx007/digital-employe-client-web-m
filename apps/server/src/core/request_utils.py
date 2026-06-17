@@ -6,6 +6,9 @@ from fastapi import Request
 
 logger = logging.getLogger(__name__)
 
+# 离线/无 token 时的隐式单用户默认 id
+DEFAULT_USER_ID = "1"
+
 
 def get_user_id_from_token(token: str) -> str:
     """从token中提取用户ID"""
@@ -34,7 +37,7 @@ def get_user_id(request: Request) -> str:
         if user_id:
             return user_id
 
-    return "1";
+    return DEFAULT_USER_ID
     # 都获取不到则报错
     # raise HTTPException(status_code=401, detail="用户信息为空")
 

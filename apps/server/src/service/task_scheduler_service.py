@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
 from src.core.agent_runtime_policy import SCHEDULED_PRIORITY
+from src.core.request_utils import DEFAULT_USER_ID
 from src.llm.factory import build_chat_model
 from src.db.session import get_session_local
 from src.models.employee import Employee
@@ -615,7 +616,7 @@ class TaskSchedulerService:
 
         if conv is None:
             ws = db.get(Workspace, workspace_id)
-            _uid = ws.user_id if ws is not None else "1"
+            _uid = ws.user_id if ws is not None else DEFAULT_USER_ID
             curator_read = ChatService.ensure_curator_conversation(
                 db, _uid, workspace_id
             )
