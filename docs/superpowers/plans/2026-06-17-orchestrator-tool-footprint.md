@@ -321,7 +321,11 @@ const { data: footprint, isPending: footprintLoading } = useToolFootprint(
   </div>
 )}
 ```
-> NOTE：`as never` 是占位——**实现期按 `classifyMessageParts` / `ToolGroupBlock` 的真实类型替换**为正确类型(读 message-classifier.ts 的 `UIMessage`/`ClassifiedBlock` 定义)。若合成壳的类型很别扭,**退路**(spec §3.2):不走 classifier,直接渲染紧凑列表 `footprint.parts.map(p => <div>{String((p as any).type).replace("tool-","")} · {(p as any).state}</div>)`。先尝试主路径(ToolGroupBlock),类型实在拧巴再退紧凑列表。
+> NOTE（类型配方，评审已核实）：`classifyMessageParts` 从 `"ai"` 取 `UIMessage` 类型(与 message-classifier.ts 第 1 行同源)。把 `as never` 换成确切类型:
+> - 顶部 import：`import type { UIMessage } from "ai"`(parts 元素是 `ToolUIPart`，从 message-classifier.ts 追到其 re-export 处 import，如 `@/lib/chat/...`)。
+> - 壳：`{ id: \`footprint-${execution.id}\`, role: "assistant", parts: footprint.parts as unknown as ToolUIPart[] } satisfies Partial<UIMessage>` —— 或按 `classifyMessageParts` 实际入参类型构造(读其签名)。
+> - 返回 `ClassifiedBlock[]`，`.filter(b => b.kind === "tool-group")` 后元素即 `Extract<ClassifiedBlock,{kind:"tool-group"}>`，直接 `<ToolGroupBlock block={b} />`。
+> 若类型实在拧巴,**退路**(spec §3.2)：不走 classifier,渲染紧凑列表 `footprint.parts.map((p,i) => <div key={i} className="text-[11px] text-muted-foreground">{String((p as {type?:string}).type ?? "").replace("tool-","")} · {String((p as {state?:string}).state ?? "")}</div>)`。**先试主路径,拧巴再退。**
 
 - [ ] **Step 2: typecheck(基线 90,零新增)**
 
