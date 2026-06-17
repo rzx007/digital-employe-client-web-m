@@ -65,7 +65,8 @@ def _seed_plan_AB(db, *, dep=True):
     """建计划:A(根) → B(依赖A)。返回 (ws, emp, plan, A, B)。dep=False 则 B 无依赖。"""
     ws = Workspace(name="w", root_path="/tmp/w"); db.add(ws); db.flush()
     emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db.add(emp); db.flush()
-    plan = OrchestrationPlan(workspace_id=ws.id, conversation_id=555, status="confirmed", plan_json="[]")
+    plan = OrchestrationPlan(workspace_id=ws.id, conversation_id=555, status="confirmed",
+                             plan_json="[]", user_input="(test)")  # user_input 非空无默认,必给
     db.add(plan); db.flush()
     A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A", orchestration_plan_id=plan.id)
     db.add(A); db.flush()
@@ -471,6 +472,8 @@ git commit -m "test(orchestrator): 返工作废传播两序集成回归"
 ---
 
 ## 风险与注意
+- **测试种子两要点(评审发现)**:① `OrchestrationPlan.user_input` 非空无默认 → seed 必给(已在 `_seed_plan_AB` 修正);② **redispatch 测试需真实 Conversation 行**——`redispatch_task_in_session` 会 `db.get(Conversation, old.conversation_id)`,故凡要被**返工**(非仅作废)的任务,其 log 的 `conversation_id` 必须指向真实建出的 `Conversation`(裸 int 会让 redispatch 早返回"对话不存在",测试失真)。`_seed_log` 应为这类 log 建一条 `Conversation` 并用其 id。`invalidate` 测试里被作废的下游用裸 int conversation_id 即可(cancel 已 patch、不查 Conversation)。
+- **`_build_employee_agent_for_rework` 无需 patch**:QA-rework 既有测试(test_orchestrator_rework.py)只 patch `_schedule_employee_rework_stream` 即通过,且走到了它之后——证明测试环境能正常构建 agent。故 redispatch 测试只 patch `_schedule_employee_rework_stream`(+ `_new_session`)即可。若个别环境 `get_agent` 报错,再补 patch `rework._build_employee_agent_for_rework` 为 `lambda *a, **k: None`。
 - **`get_session_local` 须模块级可见**(已于 DAG-QA gating 提到 dependency_scheduler 顶);测试 monkeypatch `ds.get_session_local`。
 - **`invalidate_downstream` 自管 session**:在 rework.py 自己 `db.commit()` 之后调,读已提交状态;`_NoCloseSession` 代理避免关掉 fixture session。
 - **取消在飞次序**:先 superseded+commit 再 cancel(finalize 只动 running/queued → no-op)。
