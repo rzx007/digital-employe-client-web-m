@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version < '3.13'",
@@ -13,6 +13,7 @@ members = [
     "digital-employee-activation-core",
     "digital-employee-client",
     "digital-employee-license-issuer",
+    "digital-employee-license-issuer-server",
     "digital-employee-workspace",
 ]
 
@@ -646,6 +647,37 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "pyinstaller", specifier = ">=6.0" },
+    { name = "pytest", specifier = ">=8.0" },
+]
+
+[[package]]
+name = "digital-employee-license-issuer-server"
+version = "0.1.0"
+source = { editable = "apps/license-issuer-server" }
+dependencies = [
+    { name = "digital-employee-activation-core", marker = "python_full_version < '3.13'" },
+    { name = "digital-employee-license-issuer", marker = "python_full_version < '3.13'" },
+    { name = "fastapi", marker = "python_full_version < '3.13'" },
+    { name = "uvicorn", marker = "python_full_version < '3.13'" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "httpx", marker = "python_full_version < '3.13'" },
+    { name = "pytest", marker = "python_full_version < '3.13'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "digital-employee-activation-core", editable = "packages/activation-core" },
+    { name = "digital-employee-license-issuer", editable = "apps/license-issuer" },
+    { name = "fastapi", specifier = ">=0.104.0" },
+    { name = "uvicorn", specifier = ">=0.24.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.27.0" },
     { name = "pytest", specifier = ">=8.0" },
 ]
 
