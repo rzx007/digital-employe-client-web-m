@@ -33,7 +33,7 @@ stage_activation
 ...
 ```
 
-SSH 220：`DE220_PWD=100200 python scripts/activation/_ssh.py run "..."`（host 默认 220）。
+SSH 220：`DE220_PWD=<密码> python scripts/activation/_ssh.py run "..."`（host 默认 220）。
 SFTP chroot 到家目录：put 用家目录相对路径。
 
 安装包体积：runtime 23G（gguf）、images 4.2G（tar）、packages ~340M（deb+cli）、ime 29M。
@@ -198,7 +198,7 @@ git commit -m "feat(release): 安装包拆分脚本（核心包+模型包）+ �
 
 Run:
 ```bash
-DE220_PWD=100200 python scripts/activation/_ssh.py run "cp -a /home/boban/BobanStaff-Installer/deploy.sh /home/boban/BobanStaff-Installer/deploy.sh.bak.premodelopt-20260617 && cat /home/boban/BobanStaff-Installer/deploy.sh" > /tmp/deploy.modelopt.sh
+DE220_PWD=<密码> python scripts/activation/_ssh.py run "cp -a /home/boban/BobanStaff-Installer/deploy.sh /home/boban/BobanStaff-Installer/deploy.sh.bak.premodelopt-20260617 && cat /home/boban/BobanStaff-Installer/deploy.sh" > /tmp/deploy.modelopt.sh
 wc -l /tmp/deploy.modelopt.sh
 ```
 Expected: 约 782 行（含已落地的激活阶段），备份成功。
@@ -282,8 +282,8 @@ Expected: 约 782 行（含已落地的激活阶段），备份成功。
 
 Run:
 ```bash
-DE220_PWD=100200 python scripts/activation/_ssh.py put /tmp/deploy.modelopt.sh de-deploy.modelopt.sh
-DE220_PWD=100200 python scripts/activation/_ssh.py run "bash -n ~/de-deploy.modelopt.sh && echo SYNTAX_OK"
+DE220_PWD=<密码> python scripts/activation/_ssh.py put /tmp/deploy.modelopt.sh de-deploy.modelopt.sh
+DE220_PWD=<密码> python scripts/activation/_ssh.py run "bash -n ~/de-deploy.modelopt.sh && echo SYNTAX_OK"
 ```
 Expected: `SYNTAX_OK`。
 
@@ -293,7 +293,7 @@ Expected: `SYNTAX_OK`。
 
 机器当前**有模型**。临时验证「无模型」分支：用环境覆盖让模型文件“看不到”——直接 source 测函数不现实（main 末尾会执行），改用一个**临时 INSTALLER 目录**只放 deploy.sh + 空 packages，跑 inventory 看 HAS_MODEL：
 ```bash
-DE220_PWD=100200 python scripts/activation/_ssh.py run '
+DE220_PWD=<密码> python scripts/activation/_ssh.py run '
 set -e
 T=/tmp/nomodel-test; rm -rf "$T"; mkdir -p "$T/packages" "$T/runtime"
 cp ~/de-deploy.modelopt.sh "$T/deploy.sh"
@@ -320,13 +320,13 @@ Expected: 输出含「未检测到模型」「将只安装数字员工」+ `HAS_
 
 Run:
 ```bash
-DE220_PWD=100200 python scripts/activation/_ssh.py run "cp ~/de-deploy.modelopt.sh /home/boban/BobanStaff-Installer/deploy.sh && bash -n /home/boban/BobanStaff-Installer/deploy.sh && echo DEPLOYED && wc -l /home/boban/BobanStaff-Installer/deploy.sh"
+DE220_PWD=<密码> python scripts/activation/_ssh.py run "cp ~/de-deploy.modelopt.sh /home/boban/BobanStaff-Installer/deploy.sh && bash -n /home/boban/BobanStaff-Installer/deploy.sh && echo DEPLOYED && wc -l /home/boban/BobanStaff-Installer/deploy.sh"
 ```
 Create `scripts/activation/deploy.sh.modelopt.patch.md`：记录改动点（inventory die→warn+HAS_MODEL、main 条件跑模型、finalize 提示）、备份名 `deploy.sh.bak.premodelopt-20260617`、220 路径。
 
 - [ ] **Step 8: 清理 + Commit**
 
-Run: `DE220_PWD=100200 python scripts/activation/_ssh.py run "rm -f ~/de-deploy.modelopt.sh ~/deploy.lib.sh"`
+Run: `DE220_PWD=<密码> python scripts/activation/_ssh.py run "rm -f ~/de-deploy.modelopt.sh ~/deploy.lib.sh"`
 ```bash
 git add scripts/activation/deploy.sh.modelopt.patch.md
 git commit -m "feat(deploy): 模型自动可选（缺模型 die→warn+跳过，仅装数字员工）220 已落位"
