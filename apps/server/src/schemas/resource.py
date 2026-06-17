@@ -19,7 +19,8 @@ class ResourceList(BaseModel):
     artifacts: list[ResourceEntry]
     uploads: list[ResourceEntry] = []
     skills_draft: list[ResourceEntry]
-    # 员工工作空间全树（按 conv-* 分）；公共区 shared/** 全树（按来源 employee-*/conv-* 分）
+    # SP2 Phase3：产物已拍平为项目级单一共享区（artifacts 即全部）；
+    # workspace/public 两桶保留供前端契约兼容，恒空。
     workspace: list[ResourceEntry] = []
     public: list[ResourceEntry] = []
 

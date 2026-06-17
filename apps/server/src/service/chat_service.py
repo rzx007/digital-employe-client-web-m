@@ -735,9 +735,8 @@ class ChatService:
                 )
             except HTTPException:
                 skills_path = ""
-            # SP2：员工对话产物根 = 会话所钉项目根（取代全局 settings.artifacts_path）。
-            # 仅换 root_path；resolve_workspace_dirs 的内部 employee-<id>/conv-<cid>
-            # 结构保持不变（Phase 3 Task 3.1 再拍平）。
+            # SP2：员工对话产物根 = 会话所钉项目根（取代全局 settings.artifacts_path）；
+            # Phase3 已拍平为项目级扁平共享三桶（artifacts/uploads/skills-draft）。
             root_path = product_root
             agent = get_agent(
                 skills_path,

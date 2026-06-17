@@ -189,7 +189,7 @@ class SkillAwareShellBackend(LocalShellBackend):
             self._env["UPLOADS_DIR"] = str(self._uploads_root)
         if self._draft_root is not None:
             self._env["SKILLS_DRAFT_DIR"] = str(self._draft_root)
-        # 员工工作空间（读自己跨会话产物）+ 公共区（写自己子区 / 读全部）
+        # SP2 Phase3：项目级单一共享区——WORKSPACE_DIR/PUBLIC_DIR/PUBLIC_ROOT 均别名指向项目 artifacts
         if self._workspace_root is not None:
             self._env["WORKSPACE_DIR"] = str(self._workspace_root)
         if self._public_dir is not None:
