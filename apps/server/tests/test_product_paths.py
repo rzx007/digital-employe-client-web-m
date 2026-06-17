@@ -32,3 +32,13 @@ def test_conversation_product_root_from_workspace(db_session):
     db_session.add(c); db_session.commit()
     got = resolve_conversation_product_root(db_session, c)
     assert got == resolve_workspace_product_root("/tmp/proj-x")
+
+
+def test_conversation_with_deleted_workspace_returns_orphan_path(db_session):
+    from src.models.conversation import Conversation
+    from src.service.product_paths import resolve_conversation_product_root, _ORPHANED_BASE
+    # workspace_id 指向一个不存在的 workspace（模拟工作空间已删、会话仍在）
+    c = Conversation(workspace_id=99999, user_id="u1", target_type="curator", target_id=1)
+    db_session.add(c); db_session.commit()
+    got = resolve_conversation_product_root(db_session, c)
+    assert got == _ORPHANED_BASE / f"conv-{c.id}"
