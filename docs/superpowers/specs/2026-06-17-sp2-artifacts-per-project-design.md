@@ -41,7 +41,7 @@ def resolve_workspace_product_root(root_path: str) -> Path:
     - 外部用户文件夹（用户手选的源码目录）：套隐藏子目录 .digital-employee/ 防污染。
     """
     p = Path(root_path)
-    if p == APP_PROJECTS_BASE or p.is_relative_to(APP_PROJECTS_BASE):
+    if p.is_relative_to(APP_PROJECTS_BASE):   # is_relative_to 已含相等情形（Py≥3.9，本项目 ≥3.11）
         return p
     return p / ".digital-employee"
 ```
@@ -64,7 +64,7 @@ def resolve_conversation_product_root(db, conversation) -> Path:
 ```
 
 - **去掉 `employee-<id>` 层**：它本是全局大锅里区分员工的，产物按项目隔离后无意义。
-- **去掉 `conv-<会话id>` 隔离层**：刻意不加——工作空间的本意就是产物对该项目所有会话可见；用目录硬隔离会重新切碎共享。
+- **去掉 `conv-<会话id>` 隔离层**：刻意不加——工作空间的本意就是产物对该项目所有会话可见；用目录硬隔离会重新切碎共享。**注意**：`artifacts/`、`uploads/`、`skills-draft/` **三个**桶都拍平到项目级、都去掉 conv 段。现 `resolve_workspace_dirs` 是把三者都从 `conv_artifacts`（含 conv 段）派生的，实现期须有意识地一并改这三个桶的形状（不只是 `artifacts/`）。
 - **撞名按共享文件夹常识处理**：同名后写覆盖（last-write-wins），靠 AI / 总管起有意义文件名规避，不用层级硬隔离。
 
 ### 3.3 总管派活的"共享桌"消解
@@ -93,7 +93,7 @@ SP2 下扁平共享后，**全队天然写同一个项目 `artifacts/`，协作�
 
 - **(a) 派活并发撞名**：扁平共享下，一次总管 turn 里多个并发子任务若写同名文件可能互撞。是否给"派活"保留一个可选薄子目录（如 `artifacts/.task-<id>/`）兜底，plan 定。
 - **(b) `$WORKSPACE_DIR` / `$PUBLIC_DIR` / `public_root` 契约**：现 agent 文件系统提示词暴露"自己工作区 / 公共区"双层语义。per-project 扁平后，公共区收成项目级单一共享区还是直接并入 `artifacts/`——涉及 agent 提示词契约，plan 细化并配测试。
-- **(c) 员工级产物目录**：`employee_service.py:960` 按 `artifacts_path/employee-<id>` 删员工产物——员工现跨项目，其产物可能散在多个项目，plan 定"扫所有项目 / 或仅当前项目"。
+- **(c) 员工级产物目录**：`employee_service.py:960` 按 `artifacts_path/employee-<id>` 删员工产物——员工现跨项目（SP1），其产物可能散在多个项目，**倾向"扫所有项目"删**以免留孤儿产物；plan 定。
 - **(d) 不迁移的双轨读**：默认 per-project 路径不存在时**不**回退 legacy 全局（老对话产物作废）。是否加一行 legacy 读回退保住老对话产物可见，plan 定（倾向不做）。
 
 ## 6. 风险与注意
