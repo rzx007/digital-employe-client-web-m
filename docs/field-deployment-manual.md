@@ -30,6 +30,41 @@ scp -r boban@10.172.246.220:/home/boban/BobanStaff-Installer boban@<目标机>:/
    cd ~/BobanStaff-Installer
    ```
 
+## 目录结构（解压后应看到）
+
+**只装核心包**（不要本地模型）：
+```
+BobanStaff-Installer/
+├── deploy.sh                  ← 安装脚本（在这里运行）
+├── packages/
+│   ├── DigitalEmployee-Offline-Linux-arm64-<版本>.deb   数字员工
+│   ├── hanhai-cli-linux-arm64.tar.gz                    瀚海 CLI
+│   └── activation.md                                    （参考）
+├── ime/                       中文输入法离线包
+└── runtime/
+    └── docker-compose.yml     模型服务编排模板（仅模板，无模型文件）
+```
+
+**核心包 + 模型包**（要本地模型，两包解压到同一目录后）：
+```
+BobanStaff-Installer/
+├── deploy.sh
+├── packages/   ...（同上）
+├── ime/        ...
+├── runtime/
+│   ├── docker-compose.yml
+│   ├── Hanhai-Q4.gguf         ← 模型包带来（约 22G）
+│   └── mmproj-F16.gguf        ← 模型包带来（视觉头）
+└── images/
+    └── llama-cpp-*.tar        ← 模型包带来（llama.cpp 镜像，约 4.2G）
+```
+
+**激活相关文件放哪**：
+- 第 2 步拿到的 `license.code` → 放在**与 deploy.sh 同一层**（即 `BobanStaff-Installer/license.code`）。
+- 激活成功后系统自动生成 `~/.digital-employee/data/activation.json`（不用手动管）。
+
+> 介质里若看到 `*.bak` / `*.debbak` 等备份文件，忽略即可，不影响安装。
+
 ---
 
 ## 第 1 步：取设备码
