@@ -755,6 +755,7 @@ class TaskService:
     @staticmethod
     def build_monthly_calendar(
         db: Session,
+        user_id: str | None = None,
         year: int | None = None,
         month: int | None = None,
         employee_id: int | None = None,
@@ -769,7 +770,7 @@ class TaskService:
         start_of_month = date(target_year, target_month, 1)
         end_of_month = date(target_year, target_month, total_days)
 
-        employee_stmt = select(Employee)
+        employee_stmt = select(Employee).where(Employee.user_id == user_id)
         if employee_id is not None:
             employee_stmt = employee_stmt.where(Employee.id == employee_id)
         employees = list(db.scalars(employee_stmt.order_by(Employee.id.asc())).all())

@@ -4,9 +4,10 @@ import json
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
+from src.core.request_utils import get_user_id
 from src.db.session import get_db
 from src.models.workspace import cst_now
 from src.models.response import PageResponse, ResponseBase
@@ -155,6 +156,7 @@ def get_employee_task_schedule(
 
 @router.get("/tasks/calendar/monthly", response_model=ResponseBase[MonthlyCalendarRead])
 def get_monthly_task_calendar(
+    request: Request,
     employee_id: int | None = Query(default=None),
     year: int | None = Query(default=None, ge=1970, le=9999),
     month: int | None = Query(default=None, ge=1, le=12),
@@ -170,6 +172,7 @@ def get_monthly_task_calendar(
     """
     payload = TaskService.build_monthly_calendar(
         db=db,
+        user_id=get_user_id(request),
         year=year,
         month=month,
         employee_id=employee_id,
