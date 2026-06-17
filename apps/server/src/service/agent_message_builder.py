@@ -56,20 +56,27 @@ def resolve_upload_path(
 ) -> Path | None:
     """解析上传文件路径并做 uploads 桶沙箱校验。
 
-    支持两种入参：真实磁盘绝对路径（P2 起 upload_file 返回的形态）；以及旧会话历史里
-    遗留的 `/uploads/<name>` 相对形态（读旧数据的兼容，不影响新寻址）。
+    支持两种入参：
+    - 真实磁盘绝对路径（P2 起 upload_file 返回的形态）。SP2 起 artifacts_root 即
+      项目产物根 `product_root`，uploads 桶直挂其下（`<product_root>/uploads`，
+      conversation_id 不入磁盘路径），故绝对路径按扁平桶校验。
+    - 旧会话历史里遗留的 `/uploads/<name>` 相对形态：读旧数据的兼容，仍按旧的
+      会话级嵌套布局 `<root>/<conversation_id>/uploads` 解析，不影响新寻址。
     """
-    conversation_dir = Path(artifacts_root) / str(conversation_id)
-    uploads_dir = conversation_dir / "uploads"
+    flat_uploads_dir = (Path(artifacts_root) / "uploads").resolve()
     if path.startswith(_UPLOADS_PREFIX):
-        target = (conversation_dir / path.lstrip("/")).resolve()
+        # 旧相对形态：按会话级嵌套布局还原（历史数据兼容）。
+        legacy_conversation_dir = Path(artifacts_root) / str(conversation_id)
+        target = (legacy_conversation_dir / path.lstrip("/")).resolve()
+        sandbox = (legacy_conversation_dir / "uploads").resolve()
     else:
         try:
             target = Path(path).resolve()
         except OSError:
             return None
+        sandbox = flat_uploads_dir
     try:
-        target.relative_to(uploads_dir.resolve())
+        target.relative_to(sandbox)
     except ValueError:
         return None
     return target

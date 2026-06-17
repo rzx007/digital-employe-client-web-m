@@ -25,6 +25,7 @@ from src.service.agent_message_builder import (
     history_image_budget,
 )
 from src.service.image_multimodal import LLM_IMAGE_HISTORY_MESSAGE_LIMIT
+from src.service.product_paths import resolve_conversation_product_root
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend
 from langchain_openai import ChatOpenAI
@@ -435,6 +436,7 @@ class ChatService:
         db: Session,
         conversation_id: int,
         limit: int,
+        artifacts_root: str | Path,
     ) -> tuple[list[dict[str, Any]], int | None]:
         if limit <= 0:
             return [], None
@@ -478,7 +480,7 @@ class ChatService:
             )
             enriched, used_bytes, included_image = build_history_user_content(
                 message,
-                artifacts_root=get_settings().artifacts_path,
+                artifacts_root=artifacts_root,
                 conversation_id=conversation_id,
                 allow_images=allow_images,
                 remaining_byte_budget=(
@@ -661,11 +663,15 @@ class ChatService:
         conversation = ChatService.get_conversation(db, conversation_id)
         _phase("got_conversation")
 
+        # SP2：产物落会话所钉项目根（uploads/artifacts 直挂其下），不再用全局 artifacts_path。
+        product_root = resolve_conversation_product_root(db, conversation)
+
         history_limit = settings.chat_history_max_messages
         history_messages, last_input_tokens = ChatService._load_history_for_agent(
             db,
             conversation_id=conversation_id,
             limit=history_limit,
+            artifacts_root=product_root,
         )
         _phase(f"loaded_history(n={len(history_messages)}, last_input_tokens={last_input_tokens})")
         effective_limit = ChatService._resolve_effective_history_limit(
@@ -761,7 +767,10 @@ class ChatService:
                 )
             except HTTPException:
                 skills_path = ""
-            root_path = settings.artifacts_path
+            # SP2：员工对话产物根 = 会话所钉项目根（取代全局 settings.artifacts_path）。
+            # 仅换 root_path；resolve_workspace_dirs 的内部 employee-<id>/conv-<cid>
+            # 结构保持不变（Phase 3 Task 3.1 再拍平）。
+            root_path = product_root
             agent = get_agent(
                 skills_path,
                 root_path,
@@ -780,7 +789,7 @@ class ChatService:
             user_content = build_user_agent_content(
                 skill_question,
                 extra_meta.get("files") if extra_meta else None,
-                artifacts_root=settings.artifacts_path,
+                artifacts_root=product_root,
                 conversation_id=conversation_id,
             )
             # 技能预路由（软提示，尾部注入；不碰系统前缀=不伤 prefill）。仅 employee
@@ -1237,7 +1246,6 @@ class ChatService:
             pass
 
         # 3. 重建 agent
-        settings = get_settings()
         workspace = db.get(Workspace, conversation.workspace_id)
         if not workspace:
             return {"accepted": False, "message": "未找到工作空间"}
@@ -1265,7 +1273,9 @@ class ChatService:
                 employee_name=employee.name,
                 employee_code=employee.employee_code,
             )
-            root_path = settings.artifacts_path
+            # SP2：HITL approve 恢复时重建员工 agent，产物根须与流式回合一致，
+            # 同样落会话所钉项目根（否则恢复段产物会写回全局根 → 分裂）。
+            root_path = resolve_conversation_product_root(db, conversation)
             agent = get_agent(
                 skills_path,
                 root_path,
