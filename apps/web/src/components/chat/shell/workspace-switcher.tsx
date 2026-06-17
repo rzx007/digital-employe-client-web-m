@@ -44,6 +44,7 @@ import {
   type WorkspaceData,
 } from "@/api/workspace"
 import { useAuthStore } from "@/stores/auth-store"
+import { useChatStore } from "@/stores/chat-store"
 
 /** 工作空间（项目）切换器：列出当前用户项目、切换、新建空项目、删除非当前项目。 */
 export function WorkspaceSwitcher({
@@ -73,6 +74,10 @@ export function WorkspaceSwitcher({
     (id: number) => {
       if (id === activeWorkspaceId) return
       useAuthStore.getState().setWorkspaceId(id)
+      // 切换项目后旧选中态属于上个项目，清空避免悬挂会话/空白面板。
+      // setSelectedContactId(null) 连带清掉 selectedConversationId/草稿态。
+      useChatStore.getState().setSelectedContactId(null)
+      useChatStore.getState().clearCuratorNavigationReturn()
       // 切换项目应重取所有项目内数据
       void queryClient.invalidateQueries()
     },

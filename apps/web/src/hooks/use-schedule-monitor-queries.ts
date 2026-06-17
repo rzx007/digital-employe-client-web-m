@@ -331,6 +331,7 @@ export function useToolFootprint(
   opts?: { enabled?: boolean }
 ) {
   return useQuery({
+    // 不含 workspaceId：executionLogId 全局唯一，且按前缀失效
     queryKey: [...chatKeys.all, "tool-footprint", executionLogId ?? "none"],
     queryFn: async ({ signal }) => {
       const res = await request<{ code: number; data: ToolFootprint }>(
