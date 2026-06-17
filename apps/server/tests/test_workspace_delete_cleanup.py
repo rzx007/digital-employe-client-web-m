@@ -52,3 +52,22 @@ def test_delete_external_workspace_removes_only_subdir(db_session, tmp_path):
     assert (ext / "user_file.txt").exists()  # 用户文件存活
     assert ext.exists()  # 外部根本体不动
     assert db_session.get(Workspace, ws_id) is None  # DB 行删除保留 SP1 行为
+
+
+def test_delete_refuses_to_rmtree_managed_base_itself(db_session, tmp_path, monkeypatch):
+    import src.service.agent.workspace_paths as wp
+    from src.models.workspace import Workspace
+    from src.service.workspace_service import WorkspaceService
+
+    fake_base = tmp_path / "projects"
+    monkeypatch.setattr(wp, "APP_PROJECTS_BASE", fake_base)
+    fake_base.mkdir(parents=True)
+    (fake_base / "other-project-stuff.txt").write_text("must survive")
+    # a (malicious/corrupt) workspace whose root_path IS the managed base itself
+    ws = Workspace(name="evil", root_path=str(fake_base), user_id="u1")
+    db_session.add(ws)
+    db_session.commit()
+    WorkspaceService.delete_workspace(db_session, ws.id)
+    assert fake_base.exists()  # base NOT wiped
+    assert (fake_base / "other-project-stuff.txt").exists()  # siblings survive
+    assert db_session.get(Workspace, ws.id) is None  # DB row still deleted

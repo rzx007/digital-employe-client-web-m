@@ -14,6 +14,19 @@ from src.schemas.workspace import WorkspaceCreate, WorkspaceUpdate
 logger = logging.getLogger(__name__)
 
 
+def _is_unsafe_rmtree_target(target: Path) -> bool:
+    """拒绝删除文件系统根、托管基目录本身、或其任何祖先——防误删整个 projects 区。"""
+    from src.service.agent import workspace_paths
+
+    t = target.resolve()
+    base = workspace_paths.APP_PROJECTS_BASE.resolve()
+    if t == t.parent:  # 文件系统根（C:\ 或 /）
+        return True
+    if t == base or base.is_relative_to(t):  # base 本身或 base 的祖先
+        return True
+    return False
+
+
 class WorkspaceService:
     @staticmethod
     def ensure_workspace_initialized(db: Session, workspace: Workspace) -> None:
@@ -250,8 +263,15 @@ class WorkspaceService:
                 target = resolve_workspace_product_root(root_path)  # 外部：仅 .digital-employee
             try:
                 if target.exists():
-                    logger.warning("delete_workspace: 删除产物目录 %s", target)
-                    shutil.rmtree(target, ignore_errors=True)
+                    if _is_unsafe_rmtree_target(target):
+                        logger.error(
+                            "delete_workspace: 拒绝删除危险目标 %s"
+                            "（疑似托管基目录/根），跳过磁盘清理",
+                            target,
+                        )
+                    else:
+                        logger.warning("delete_workspace: 删除产物目录 %s", target)
+                        shutil.rmtree(target, ignore_errors=True)
             except Exception:
                 logger.warning(
                     "delete_workspace: 清理产物目录失败 %s", target, exc_info=True
