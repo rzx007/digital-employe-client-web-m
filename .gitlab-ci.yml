@@ -188,6 +188,12 @@ build:macos:
   tags:
     - mac-builder
   only: *release_refs
+  variables:
+    # mac runner home 已有 1.4G uv 缓存（yaojie 账户）。job 内 ~/.cache/uv 解析路径
+    # 取决于 HOME，不可靠；显式钉到绝对路径让 uv sync 直接吃这份 cache。lockfile 锁
+    # 的是 pythonhosted 直链，单设 mirror 在 --locked 时不绕过下载——只有 cache 命中
+    # 才能避免冷拉（同 build-deb.sh 用 docker named volume 的思路）。
+    UV_CACHE_DIR: "/Users/yaojie/.cache/uv"
   script:
     - pnpm install --frozen-lockfile --registry=https://registry.npmmirror.com
     - pnpm build:app
