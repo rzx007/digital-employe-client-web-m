@@ -942,6 +942,10 @@ class EmployeeService:
 
     @staticmethod
     def delete_employee(db: Session, employee_id: int) -> None:
+        # 注意（SP2）：不要在此清理产物。产物现为「项目共享」——同项目所有员工与
+        # 总管共用 <product_root>/{artifacts,uploads,skills-draft}。删单个员工只删
+        # DB 行 / 最近联系人 / 重排定时任务；产物清理只在删工作空间时发生
+        # （WorkspaceService.delete_workspace）。请勿在此恢复任何产物 rmtree。
         employee = EmployeeService.get_employee(db, employee_id)
         if employee.is_curator:
             raise HTTPException(
@@ -956,14 +960,6 @@ class EmployeeService:
         RecentContactService.delete_by_target(
             db, workspace_id, "employee", employee_id
         )
-        # 级联删该员工的工作空间产物 + 公共区子区（解雇即清理其全部产物）
-        artifacts_path = Path(get_settings().artifacts_path)
-        for d in (
-            artifacts_path / f"employee-{employee_id}",
-            artifacts_path / "shared" / f"employee-{employee_id}",
-        ):
-            if d.exists():
-                shutil.rmtree(d, ignore_errors=True)
         TaskSchedulerService.reload_jobs()
 
     @staticmethod
