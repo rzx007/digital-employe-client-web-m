@@ -204,6 +204,11 @@ docker run -d --name de-issuer-poller --restart always \
 排错：`docker logs de-issuer-poller`。正常日志：「轮询器启动」+ 出码时「实例 ... 已出码并回写评论」；
 已出码的实例后续轮次不再重复（评论存在=跳过）。
 
+回写评论形态（真机验证）：评论 = **激活码 + 使用指引 + 附件 `license.code`**。指引文本告诉用户：
+下载附件或复制激活码存为 `license.code` → 放到目标机 `~/BobanStaff/activation/` → 重跑 deploy.sh 即激活
+（也可 deploy 提示时直接粘贴）。附件上传走 `approval/v4/files/upload`；上传失败时降级为纯文本评论
+（仍含激活码与指引），保证激活码必达。`~/BobanStaff/activation/license.code` 是 deploy 的授权码文件候选之一。
+
 > ⚠️ 飞书读评论返回字段为 `content`（非 comment）——代码已兼容；若改飞书 SDK 版本注意核对。
 > 已通过的审批单**不能改表单字段**（飞书限制），故回写用评论。
 
