@@ -120,6 +120,64 @@ curl -s -X POST http://<服务器>:8900/license/issue \
 - **公钥**（`~/issuer-keys/public_key.pem`）需拷进客户端
   `apps/server/src/core/activation/public_key.pem` 后重打客户端，二者方为同一对。
 
+## 运维速查（216 现网，2026-06-17）
+
+> ⚠️ `ISSUER_API_TOKEN` 是机密，**不写进本文件**。真实值见 216 上
+> `~/issuer-keys/.api_token`（umask 077，仅 boban 可读），或本地机密速查（不进 git）。
+
+| 项 | 值 |
+|----|----|
+| 主机 | `bobandata-server` / `10.172.246.216`（AMD x86_64 · Ubuntu 24.04） |
+| 服务地址 | `http://10.172.246.216:8900`（接口 `POST /license/issue`） |
+| 容器名 | `de-issuer`（镜像 `de-issuer-server:latest` · 335MB · `--restart always`） |
+| 私钥（挂载） | 宿主 `~/issuer-keys/private_key.pem`（600）→ 容器 `/keys/private_key.pem`（只读） |
+| 公钥 | 宿主 `~/issuer-keys/public_key.pem`（644） |
+| 默认到期 | `+90d`（`ISSUER_DEFAULT_EXPIRES`） |
+| 镜像源 | daemon.json 配国内 mirror + DNS（见上节坑 2/3） |
+| **公钥指纹（须与客户端内嵌一致）** | `...O77cNd6JFvLHo2lxcIK5MTqJL1ZQZa1LsTrBWwQlwBw=` |
+
+> **关键不变量**：216 用的是**现网客户端配对的原始私钥**（公钥指纹 `...O77c...` ==
+> 客户端内嵌 `apps/server/src/core/activation/public_key.pem`）。故 **216 签出的码，
+> 所有已部署客户端都能验签激活，客户端无需重打。**
+
+### 常用运维命令（在 216 上）
+
+```bash
+# 看容器状态 / 日志
+docker ps --filter name=de-issuer
+docker logs --tail 50 de-issuer
+
+# 重启 / 停止 / 启动
+docker restart de-issuer
+
+# 出码（token 从本机文件读，不要写进命令历史明文）
+TOKEN=$(cat ~/issuer-keys/.api_token)
+curl -s -X POST http://127.0.0.1:8900/license/issue \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"device_code":"<设备码>"}' | python3 -m json.tool
+
+# 校验当前私钥与客户端公钥是否配对（应输出 ...O77c...）
+docker run --rm -v ~/issuer-keys:/keys de-issuer-server \
+  de-license keys export-public --private-key /keys/private_key.pem
+
+# 重建镜像（代码更新后）：先把三个包传到 ~/issuer-build，再
+cd ~/issuer-build && docker build -f apps/license-issuer-server/Dockerfile -t de-issuer-server . \
+  && docker rm -f de-issuer && docker run -d --name de-issuer --restart always -p 8900:8900 \
+     -e ISSUER_API_TOKEN="$(cat ~/issuer-keys/.api_token)" \
+     -e DE_LICENSE_PRIVATE_KEY=/keys/private_key.pem -e ISSUER_DEFAULT_EXPIRES=+90d \
+     -v ~/issuer-keys:/keys:ro de-issuer-server
+```
+
+### 轮换 token
+
+```bash
+NEW=deiss_$(openssl rand -base64 24 | tr -d '/+=' )
+umask 077; echo "$NEW" > ~/issuer-keys/.api_token
+docker rm -f de-issuer && docker run -d --name de-issuer --restart always -p 8900:8900 \
+  -e ISSUER_API_TOKEN="$NEW" -e DE_LICENSE_PRIVATE_KEY=/keys/private_key.pem \
+  -e ISSUER_DEFAULT_EXPIRES=+90d -v ~/issuer-keys:/keys:ro de-issuer-server
+```
+
 ## 不在本服务范围
 
 - 飞书自动化（审批/轮询/回调驱动出码）—— 评估后**暂不做**，现阶段人工调 `/license/issue`。
