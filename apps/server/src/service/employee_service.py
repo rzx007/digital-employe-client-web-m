@@ -127,11 +127,17 @@ class EmployeeService:
         )
 
     @staticmethod
-    def ensure_curator_employee(db: Session, workspace_id: int) -> Employee:
-        """确保总管员工存在（每工作空间唯一），不存在则自动创建。"""
+    def ensure_curator_employee(
+        db: Session, user_id: str | None, workspace_id: int
+    ) -> Employee:
+        """确保总管员工存在（每用户唯一），不存在则自动创建。
+
+        存在性按 user_id 判定；创建时同时盖 user_id 与 workspace_id（后者为
+        过渡期的装饰性列）。
+        """
         existing = db.scalar(
             select(Employee).where(
-                Employee.workspace_id == workspace_id,
+                Employee.user_id == user_id,
                 Employee.is_curator.is_(True),
             )
         )
@@ -139,6 +145,7 @@ class EmployeeService:
             return existing
 
         curator = Employee(
+            user_id=user_id,
             workspace_id=workspace_id,
             employee_code="curator",
             name="总管助手",
@@ -1223,8 +1230,14 @@ class EmployeeService:
         return names
 
     @staticmethod
-    def ensure_builtin_seed_employees(db: Session, workspace: Workspace) -> None:
-        """将本地技能目录（含启动时同步的内置技能）绑定到默认种子员工；按名称+技能集合幂等。"""
+    def ensure_builtin_seed_employees(
+        db: Session, user_id: str | None, workspace_id: int
+    ) -> None:
+        """将本地技能目录（含启动时同步的内置技能）绑定到默认种子员工；按用户+名称幂等。
+
+        存在性按 (user_id, name) 判定；创建时同时盖 user_id 与 workspace_id
+        （后者为过渡期的装饰性列）。
+        """
         # 防御式同步：避免调用方未先执行 seed_builtin_skills 时找不到新增内置技能。
         LocalSkillService.seed_builtin_skills()
         local_root = LocalSkillService._resolve_local_root().resolve()
@@ -1233,7 +1246,7 @@ class EmployeeService:
             expected = frozenset(skill_names)
             existing = db.scalar(
                 select(Employee).where(
-                    Employee.workspace_id == workspace.id,
+                    Employee.user_id == user_id,
                     Employee.name == name,
                 )
             )
@@ -1266,7 +1279,8 @@ class EmployeeService:
 
             meta = {"employee_name": name, "status": 1}
             employee = Employee(
-                workspace_id=workspace.id,
+                user_id=user_id,
+                workspace_id=workspace_id,
                 employee_code=_new_pending_employee_code(),
                 name=name,
                 description=description,

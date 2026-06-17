@@ -17,34 +17,8 @@ logger = logging.getLogger(__name__)
 class WorkspaceService:
     @staticmethod
     def ensure_workspace_initialized(db: Session, workspace: Workspace) -> None:
-        """
-        确保 workspace 拥有默认的 seed 员工、总管和任务。
-        幂等：已初始化过的 workspace 跳过（已有总管员工即为已初始化）。
-        """
-        from src.models.employee import Employee
-        from src.service.employee_service import EmployeeService
-        from src.service.task_service import TaskService
-
-        existing_curator = db.scalar(
-            select(Employee).where(
-                Employee.workspace_id == workspace.id,
-                Employee.is_curator.is_(True),
-            )
-        )
-        if existing_curator:
-            # 兼容增量发布：即使 workspace 已初始化，也要幂等补齐新增内置员工
-            # （例如后续新增的“环境管家”种子员工）。
-            EmployeeService.ensure_builtin_seed_employees(db, workspace)
-            return
-
-        EmployeeService.ensure_builtin_seed_employees(db, workspace)
-        EmployeeService.ensure_curator_employee(db, workspace.id)
-        TaskService.sync_workspace_tasks(db, workspace.id)
-        logger.info(
-            "Workspace initialized: id=%s name=%s",
-            workspace.id,
-            workspace.name,
-        )
+        """新建工作空间=空项目：不再播种员工/任务（团队改为 per-用户，见 ensure_user_team）。"""
+        return
 
     @staticmethod
     def _resolve_default_root() -> Path:
@@ -62,9 +36,11 @@ class WorkspaceService:
         return Path(Path.cwd().anchor or str(Path.cwd()))
 
     @staticmethod
-    def get_or_create_user_workspace(db: Session, user_id: str, username: str | None = None) -> Workspace:
+    def ensure_user_default_workspace(
+        db: Session, user_id: str, username: str | None = None
+    ) -> Workspace:
         """
-        根据用户ID获取或创建专属工作空间。
+        解析（或创建）用户的默认工作空间，不做任何播种。
 
         1. 如果已存在该用户的 workspace，直接返回
         2. 如果不存在：
@@ -76,7 +52,6 @@ class WorkspaceService:
             select(Workspace).where(Workspace.user_id == user_id)
         ).scalar_one_or_none()
         if existing_workspace:
-            WorkspaceService.ensure_workspace_initialized(db, existing_workspace)
             return existing_workspace
 
         # 尝试认领 workspace_id=1（如果还未被认领）
@@ -87,7 +62,6 @@ class WorkspaceService:
             default_workspace.name = username + "的工作空间" if username else "用户工作空间"
             db.commit()
             db.refresh(default_workspace)
-            WorkspaceService.ensure_workspace_initialized(db, default_workspace)
             return default_workspace
 
         # 创建新的用户专属 workspace
@@ -101,8 +75,35 @@ class WorkspaceService:
         db.add(workspace)
         db.commit()
         db.refresh(workspace)
-        WorkspaceService.ensure_workspace_initialized(db, workspace)
         return workspace
+
+    @staticmethod
+    def ensure_user_team(
+        db: Session, user_id: str, workspace_id: int | None = None
+    ) -> None:
+        """per-用户播种团队（总管 + 内置员工），幂等（存在性按 user_id 判定）。
+
+        员工改为用户级，NOT-NULL 的 workspace_id 此刻仅作装饰性盖戳：
+        未显式给定时，解析到用户默认工作空间的 id。
+        """
+        from src.service.employee_service import EmployeeService
+
+        if workspace_id is None:
+            workspace_id = WorkspaceService.ensure_user_default_workspace(
+                db, user_id
+            ).id
+
+        EmployeeService.ensure_builtin_seed_employees(db, user_id, workspace_id)
+        EmployeeService.ensure_curator_employee(db, user_id, workspace_id)
+
+    @staticmethod
+    def get_or_create_user_workspace(
+        db: Session, user_id: str, username: str | None = None
+    ) -> Workspace:
+        """获取或创建用户默认工作空间，并确保其团队已 per-用户播种。"""
+        ws = WorkspaceService.ensure_user_default_workspace(db, user_id, username)
+        WorkspaceService.ensure_user_team(db, user_id, ws.id)
+        return ws
 
     @staticmethod
     def ensure_default_workspace(db: Session) -> Workspace:

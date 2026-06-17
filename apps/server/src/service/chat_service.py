@@ -532,7 +532,11 @@ class ChatService:
     @staticmethod
     def ensure_curator_conversation(db: Session, workspace_id: int):
         """获取或创建默认总管会话（每工作空间至少一条，允许多条 curator 会话并存）。"""
-        curator_employee = EmployeeService.ensure_curator_employee(db, workspace_id)
+        ws = db.get(Workspace, workspace_id)
+        curator_user_id = ws.user_id if ws is not None else None
+        curator_employee = EmployeeService.ensure_curator_employee(
+            db, curator_user_id, workspace_id
+        )
         from sqlalchemy import case
 
         conv = db.scalars(

@@ -44,7 +44,7 @@ def test_ensure_builtin_seed_creates_office_and_browser_assistants(
         lambda: BUILD_IN_SKILLS_DIR,
     )
 
-    EmployeeService.ensure_builtin_seed_employees(db_session, workspace)
+    EmployeeService.ensure_builtin_seed_employees(db_session, "u-test", workspace.id)
 
     by_name: dict[str, set[str]] = {}
     for row in db_session.scalars(

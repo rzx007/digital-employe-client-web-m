@@ -27,7 +27,9 @@ def test_touch_creates_and_updates(db_session, workspace):
 
 
 def test_list_includes_curator(db_session, workspace):
-    curator = EmployeeService.ensure_curator_employee(db_session, workspace.id)
+    curator = EmployeeService.ensure_curator_employee(
+        db_session, "u-test", workspace.id
+    )
     items = RecentContactService.list_recent_contacts(db_session, workspace.id)
     curator_items = [i for i in items if i.is_curator]
     assert len(curator_items) >= 1
