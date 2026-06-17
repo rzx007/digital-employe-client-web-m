@@ -72,14 +72,14 @@ def test_delete_workspace_keeps_user_resources(db_session):
     ...
 ```
 - [ ] **Step 2:** 跑确认失败(现状级联会删掉)。
-- [ ] **Step 3:** `workspace.py`:`employees`/`conversations` relationship **去掉** `cascade="all, delete-orphan"`(改为无级联,或 `passive_deletes`)。员工/技能/外接/评分的 `workspace_id` 列:**去掉 `ForeignKey(..., ondelete="CASCADE")`**,保留为普通可空整数列(`workspace_id: Mapped[int | None]`)——它们不再受 workspace 删除牵连。注:SQLite 改 FK 需建表重建(见 Task 1.3 同款手法);若 ensure_column 加的新表无此 FK 也行——实现期确认现有表的 FK 是否实际生效(SQLite 默认 `PRAGMA foreign_keys` 未必开;若未开则 ORM 级联是主要风险,去 relationship cascade 即足够)。**先查 `PRAGMA foreign_keys`**:若 OFF,则只需去 ORM relationship 级联(简单);若 ON,才需建表重建去 FK。
+- [ ] **Step 3:** **已查证:运行时 `PRAGMA foreign_keys` 是 OFF**(`init_db.py:328` 仅在表重建时临时开/关,普通 session 不开)。故 DB 级 FK 级联**运行时不生效**,真正的删数据风险**只来自 ORM relationship 级联**。所以**走简单路**:`workspace.py` 的 `employees`/`conversations` relationship **去掉** `cascade="all, delete-orphan"`(改无级联)。员工/技能/外接/评分的 `workspace_id` 列**保留为普通列即可**(FK 运行时不生效,无需建表去 FK;后续清理另说)。**不做表重建。**
 - [ ] **Step 4:** 跑确认通过 + 全量。
 - [ ] **Step 5:** Commit `feat(workspace): 解除 Workspace→员工/会话/技能 的级联删除`。
 
 ### Task 1.3: Employee 唯一约束 `(workspace_id, employee_code)` → `(user_id, employee_code)`
 **Files:** `apps/server/src/models/employee.py`、`apps/server/src/db/init_db.py`(建表重建 helper,仿 `_migrate_task_id_nullable`)、Test 同文件。
 
-- [ ] **Step 1: 写失败测试**——同一 user 下不能有两个相同 employee_code;不同 user 可以。
+- [ ] **Step 1: 写失败测试**——同一 user 下不能有两个相同 employee_code;不同 user 可以。**注(评审)**:conftest 的 `db_engine` 用 `Base.metadata.create_all()` 建的是**新 schema**(已含新唯一键),故测试不是"跑老→新迁移",而是**直接验约束**:同 user+同 code 第二条 insert 触发 IntegrityError、不同 user 同 code 成功。`_migrate_employee_unique_key` 的"老库迁移"逻辑靠 py_compile + 启动不报错 + 人工冒烟覆盖(老库重建难进确定性单测层)。
 - [ ] **Step 2:** 跑确认失败。
 - [ ] **Step 3:** 模型 `UniqueConstraint("user_id", "employee_code", name="uq_user_employee_code")`。init_db 写 `_migrate_employee_unique_key()`(仿 init_db.py:253 的 `_migrate_task_id_nullable` 表重建套路:建新表带新唯一键 → 拷数据 → drop 旧 → rename),在回填之后调。
 - [ ] **Step 4:** 跑确认通过 + 全量。
@@ -109,7 +109,11 @@ def test_delete_workspace_keeps_user_resources(db_session):
 
 - [ ] **Step 1: 写失败测试**——`build_employee_capability_context(db, user_id="u1")` 列出 u1 的员工(跨其多个 workspace 共享);不同 user 的员工不串。
 - [ ] **Step 2:** 跑确认失败。
-- [ ] **Step 3:** `build_employee_capability_context` 签名加/改用 `user_id`,查询 `Employee.user_id == user_id`。其中"活跃定时任务"列仍可按 workspace(实现期定:列团队的任务概览可省/或按当前激活 workspace)。`get_orchestrator_agent` 加 `user_id: str | None`,传入 `build_employee_capability_context`。4 个调用点把 conversation 的 user_id 传进来(curator 对话有 user_id)。
+- [ ] **Step 3:**
+  - **新增 runtime ContextVar(blocker)**:编排 runtime(`orchestrator/runtime.py`)现有 `_workspace_id_ctx` + `get_workspace_id()`,但**没有** user_id 版。加 `_user_id_ctx` + `get_user_id()`,并在 `get_orchestrator_agent` 的 `bind_context` 处一并 bind(像 workspace_id 那样)。
+  - `build_employee_capability_context` 签名加/改用 `user_id`,查询 `Employee.user_id == user_id`。"活跃定时任务"列仍可按 workspace(列团队的任务概览可省/或按激活 workspace)。
+  - `get_orchestrator_agent` 加 `user_id: str | None`,传入 `build_employee_capability_context` + bind 进 ContextVar。4 个调用点把 conversation 的 user_id 传进来(Phase 1 后 conversation 已有 user_id 列)。
+  - **第二个调用点(blocker,清单遗漏)**:`tools/employees.py` 的 `list_workspace_employees` 工具也调 `build_employee_capability_context(db, workspace_id)`——它从 ContextVar 取;改成取新的 `get_user_id()`、传 user_id。
 - [ ] **Step 4:** 跑确认通过 + 不变量门 + 全量。
 - [ ] **Step 5:** Commit `feat(orchestrator): 总管按 user_id 列团队(get_orchestrator_agent 加 user_id)`。
 
@@ -127,17 +131,22 @@ def test_delete_workspace_keeps_user_resources(db_session):
 ## Phase 4 — 查询过滤改写(employee/skill/conversation → user_id)
 
 > 把"触点清单 B"里 employee/skill/conversation 的 workspace_id 过滤逐站改 user_id。**逐文件一个 Task,每个 Task 后全量测。**
+>
+> **实现期必做(评审)**:每个 Task 4.x 开工前,先把要改的**服务方法签名(前→后)+ 其所有 API 调用方**列成清单——user_id 在 HTTP 层经 `get_user_id(request)` 现成可取,但服务层方法多数只收 workspace_id,需逐方法补 `user_id` 参数并改其调用方(约 7–10 个服务方法 × 各 1–3 个 API 调用方)。这是本 SP1 的"线头穿透"集中点,别低估。
 
 ### Task 4.1: employee_service 改 user_id 过滤
 **Files:** `apps/server/src/service/employee_service.py`(list_employees:835、list_skill_assignees:257、_replace_employee_skills:1081、skill 校验:1155 等)、Test。
 - [ ] 写测试(list_employees(user_id) 返回该用户全部员工跨空间);改这些查询 `workspace_id` → `user_id`(入参从 workspace_id 改/补 user_id——上游 API 传 user_id);跑全量;Commit。
 
 ### Task 4.2: task_service / task_scheduler 的 employee/skill 查询改 user_id
-**Files:** `task_service.py:362/559/642/675/729`、`task_scheduler_service.py:351`。**注意区分**:这些函数里"找员工/技能"改 user_id,"任务/执行记录"保持 workspace_id。逐处改 + 测 + Commit。
+**Files:** `task_service.py:362/559/642/675/729`、`task_scheduler_service.py:351`。**注意区分**:"找员工/技能(派活/校验)"改 user_id;"任务/执行记录"保持 workspace_id。
+- **blocker 厘清**:`task_service.py:559/642/675/729` 多处是为执行日志/任务**拼 `employee_name_map`**——员工已用户级,这类"按 id 取名"**不需要 workspace 过滤**:直接 `select(Employee).where(Employee.user_id == <user>)`(或按日志里的 employee_id 直接 `db.get`)。`362`(sync_workspace_tasks 列员工)按 user_id。**user_id 来源**:这些 TaskService 方法现在只收 workspace_id → 需从调用方(API 端点/scheduler)透传 user_id;**实现期逐方法列出"签名前后 + 其 API 调用方"**(见 Phase 4 注)。逐处改 + 测 + Commit。
 
-### Task 4.3: 会话列表/侧边栏改 user_id
-**Files:** `chat_service.py:225` `list_conversations`、`_validate_target`、对话列表端点、`recent_contact_service.py:65`。
-- [ ] `list_conversations` 改为按 `user_id`(+ 可选 target 过滤);侧边栏端点传 user_id(从请求)。RecentContact 保持 workspace 级(项目内最近联系)——除非产品要跟人,这里**保持不动**(spec §6:对话跟人,最近联系按项目)。测 + Commit。
+### Task 4.3: 会话列表/侧边栏改 user_id（API 契约要写明）
+**Files:** `chat_service.py:225` `list_conversations`、`_validate_target`、对话列表端点(`chat_api.py`)、`recent_contact_service.py:65`。
+- **blocker——API 契约**:侧边栏"总管对话历史"端点须按**用户**列(ii)。现端点 URL 形如 `/workspaces/{workspace_id}/chat/conversations`。**决定**:该端点改为**从请求头取 `user_id`**(`get_user_id(request)`)过滤,URL 里的 `workspace_id` **降级为信息性**(或新开一个 `/chat/conversations`(无 workspace 前缀)的用户级列表端点——实现期二选一,推荐后者更清晰)。返回每条对话标注其 `workspace_id`(钉的项目),前端展示项目名。`list_conversations` 服务签名 `workspace_id` → `user_id`。
+- RecentContact 保持 workspace 级(spec §6:对话跟人、最近联系按项目),**不动**。
+- 测 + Commit。
 
 ---
 
@@ -145,7 +154,7 @@ def test_delete_workspace_keeps_user_resources(db_session):
 
 ### Task 5.1: 工作空间 CRUD API(列/建/删)+ X-Workspace-Id 校验归属
 **Files:** `apps/server/src/api/workspace_api.py`(或现有)、`request_utils.py`(X-Workspace-Id 校验属当前 user,否则回落默认)、Test。
-- [ ] `GET /workspaces`(当前 user 的项目列表)、`POST /workspaces`(建目录+行,空项目)、`DELETE /workspaces/{id}`(删行+目录+其 workspace 级记录,不删员工/会话)。`get_workspace_id_from_request`:X-Workspace-Id 存在时校验 `Workspace.user_id == current_user`,不匹配→回落该 user 默认空间。测 + Commit。
+- [ ] `GET /workspaces`(当前 user 的项目列表)、`POST /workspaces`(建目录+行,空项目)、`DELETE /workspaces/{id}`。**blocker——删除须显式**:FK 运行时 OFF,不会自动级联;DELETE 须在服务层**显式删** `EmployeeTask`/`TaskExecutionLog`/`OrchestrationPlan` `WHERE workspace_id==id`(+ 钉该空间的 Conversation 的 workspace_id 处理:对话是用户级、**不删**,但其 workspace_id 指向已删空间——置空或保留为历史标记,实现期定),再删 Workspace 行 + 目录。**绝不删**员工/技能/会话。`get_workspace_id_from_request`:X-Workspace-Id 存在时校验 `Workspace.user_id == current_user`,不匹配→回落该 user 默认空间。测 + Commit。
 
 ### Task 5.2: 前端去硬编码 + 工作空间切换器
 **Files:** `apps/web/src/api/{conversation,employee}.ts`、`hooks/use-schedule-monitor-queries.ts`、`lib/workbench/*` —— `WORKSPACE_ID=1` → `getActiveWorkspaceId()`;新增 workspace 列表/切换器 UI(挑现有侧边栏/设置区落点);切换写 `getActiveWorkspaceId` 的来源(auth store + localStorage)→ `request.ts` 已自动注入 `X-Workspace-Id`。对话历史侧边栏:后端已改 user_id,前端展示每条所属项目。
