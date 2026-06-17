@@ -378,6 +378,22 @@ def _migrate_employee_unique_key(engine, inspector) -> None:
     if "uq_workspace_employee_code" not in constraint_names:
         return
 
+    # 预检：INSERT 前探测同 user_id 的重复 employee_code，避免 IntegrityError 导致启动崩溃。
+    # SQLite 中 NULL 在 UNIQUE 约束里视为互不相等，故仅检查 user_id IS NOT NULL 的行。
+    with engine.connect() as conn:
+        dups = conn.execute(text(
+            "SELECT user_id, employee_code, COUNT(*) c FROM employees "
+            "WHERE user_id IS NOT NULL "
+            "GROUP BY user_id, employee_code HAVING c > 1"
+        )).fetchall()
+    if dups:
+        logger.error(
+            "跳过 employees 唯一键迁移：存在同 user_id 重复 employee_code，"
+            "需先人工去重后重启。冲突对：%s",
+            [(r[0], r[1], r[2]) for r in dups],
+        )
+        return
+
     logger.info("Migrating employees unique key to (user_id, employee_code) ...")
     with engine.begin() as conn:
         conn.execute(text("CREATE TABLE _employees_new ("

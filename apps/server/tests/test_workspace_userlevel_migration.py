@@ -130,3 +130,74 @@ def test_different_user_same_code_ok(db_session):
         Employee(workspace_id=1, user_id="u2", employee_code="dup", name="b")
     )
     db_session.commit()  # must NOT raise
+
+
+# --- Task 1.3：员工唯一键迁移预检（碰撞守卫）---
+
+
+def test_migrate_employee_unique_key_skips_on_collision():
+    """_migrate_employee_unique_key 遇到同 user_id 重复 employee_code 时不重建表。
+
+    构造一张旧式 employees 表（UNIQUE(workspace_id, employee_code)），插入两条
+    user_id+employee_code 相同的行，调用迁移函数后验证：
+    - 表仍保留旧约束名（uq_workspace_employee_code 仍存在）
+    - 两行数据完好（未被删除/回滚）
+    """
+    from sqlalchemy import create_engine, text as text
+    from sqlalchemy import inspect as sa_inspect
+
+    from src.db.init_db import _migrate_employee_unique_key
+
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE TABLE workspaces ("
+            "id INTEGER PRIMARY KEY, name TEXT, root_path TEXT, user_id TEXT"
+            ")"
+        ))
+        conn.execute(text(
+            "INSERT INTO workspaces(id, name, root_path, user_id) VALUES "
+            "(1, 'ws1', '/tmp/ws1', 'u1'), "
+            "(2, 'ws2', '/tmp/ws2', 'u1')"
+        ))
+        conn.execute(text(
+            "CREATE TABLE employees ("
+            "id INTEGER PRIMARY KEY,"
+            "workspace_id INTEGER NOT NULL REFERENCES workspaces(id),"
+            "user_id TEXT,"
+            "employee_code VARCHAR(255) NOT NULL,"
+            "name VARCHAR(255),"
+            "description VARCHAR(1000),"
+            "version VARCHAR(128),"
+            "skills_json TEXT NOT NULL DEFAULT '[]',"
+            "meta_json TEXT NOT NULL DEFAULT '{}',"
+            "shift_schedule_json TEXT NOT NULL DEFAULT '{}',"
+            "is_curator BOOLEAN NOT NULL DEFAULT 0,"
+            "avatar_url VARCHAR(512),"
+            "created_at DATETIME,"
+            "updated_at DATETIME,"
+            "CONSTRAINT uq_workspace_employee_code UNIQUE (workspace_id, employee_code)"
+            ")"
+        ))
+        # 两条记录：同 user_id、同 employee_code，来自不同 workspace——迁移会碰撞
+        conn.execute(text(
+            "INSERT INTO employees(id, workspace_id, user_id, employee_code, name) VALUES "
+            "(1, 1, 'u1', 'EMP001', 'Alice'), "
+            "(2, 2, 'u1', 'EMP001', 'Alice-copy')"
+        ))
+
+    inspector = sa_inspect(engine)
+    _migrate_employee_unique_key(engine, inspector)
+
+    # 旧约束仍在（表未被重建）
+    inspector2 = sa_inspect(engine)
+    constraint_names = {uc.get("name") for uc in inspector2.get_unique_constraints("employees")}
+    assert "uq_workspace_employee_code" in constraint_names, (
+        "旧约束应保留；迁移不应在有碰撞时继续重建"
+    )
+    assert "uq_user_employee_code" not in constraint_names
+
+    # 两行数据完好
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT COUNT(*) FROM employees")).scalar()
+    assert rows == 2
