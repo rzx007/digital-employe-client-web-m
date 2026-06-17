@@ -83,9 +83,14 @@ def test_delete_workspace_keeps_user_resources(db_session):
     db_session.add(c)
     db_session.commit()
     backfill_user_id(db_session)
-    emp_id, conv_id = e.id, c.id
+    emp_id, conv_id, ws_id = e.id, c.id, ws.id
     db_session.delete(ws)
     db_session.commit()
     db_session.expire_all()
-    assert db_session.get(Employee, emp_id) is not None
-    assert db_session.get(Conversation, conv_id) is not None
+    surviving_emp = db_session.get(Employee, emp_id)
+    surviving_conv = db_session.get(Conversation, conv_id)
+    assert surviving_emp is not None
+    assert surviving_conv is not None
+    # 未被 null-out：workspace_id 仍指向已删空间（FK 运行时 OFF，孤儿无害）
+    assert surviving_emp.workspace_id == ws_id
+    assert surviving_conv.workspace_id == ws_id

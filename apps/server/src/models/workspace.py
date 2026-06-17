@@ -29,6 +29,9 @@ class Workspace(Base):
         onupdate=cst_now,
     )
 
+    # 员工/会话已挂 user_id，不随 workspace 删除而消失。
+    # passive_deletes=True：避免 ORM 对 NOT NULL 的 workspace_id 发 null-out UPDATE；
+    # DB 级 ON DELETE CASCADE 运行时不触发（PRAGMA foreign_keys 默认 OFF）。
     employees = relationship("Employee", back_populates="workspace", passive_deletes=True)
     conversations = relationship("Conversation", passive_deletes=True)
 
