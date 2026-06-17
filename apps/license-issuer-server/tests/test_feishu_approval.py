@@ -59,7 +59,7 @@ def test_get_instance_missing_optional_fields(monkeypatch):
 def test_license_already_commented(monkeypatch):
     c = _client(monkeypatch, {
         ("GET", "/comments"): {"code": 0, "data": {"comments": [
-            {"comment": json.dumps({"text": "【激活授权码】abc.def", "files": None})}]}},
+            {"content": json.dumps({"text": "【激活授权码】abc.def", "files": None})}]}},
     })
     assert c.has_license_comment("I1", "u1") is True
 
@@ -67,7 +67,7 @@ def test_license_already_commented(monkeypatch):
 def test_license_not_commented(monkeypatch):
     c = _client(monkeypatch, {
         ("GET", "/comments"): {"code": 0, "data": {"comments": [
-            {"comment": json.dumps({"text": "随便一条人写的评论", "files": None})}]}},
+            {"content": json.dumps({"text": "随便一条人写的评论", "files": None})}]}},
     })
     assert c.has_license_comment("I1", "u1") is False
 
