@@ -8,8 +8,10 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from src.core.request_utils import DEFAULT_USER_ID
 from src.db.session import get_session_local
 from src.models.employee import Employee
+from src.models.workspace import Workspace
 from src.schemas.employee import EmployeeCreate, EmployeeProfile
 from src.service.employee_generation_service import EmployeeGenerationService
 from src.service.employee_service import EmployeeService
@@ -53,7 +55,7 @@ def _normalize_skill_ids(raw: Any) -> list[int] | str:
     return normalized
 
 
-def _validate_hire_name(db: Session, workspace_id: int, emp_name: str) -> str | None:
+def _validate_hire_name(db: Session, user_id: str | None, emp_name: str) -> str | None:
     if not emp_name:
         return "员工名称不能为空。"
     if emp_name.lower() in _RESERVED_EMPLOYEE_NAMES or emp_name == "总管助手":
@@ -61,7 +63,7 @@ def _validate_hire_name(db: Session, workspace_id: int, emp_name: str) -> str | 
 
     existing_curator = db.scalar(
         select(Employee).where(
-            Employee.workspace_id == workspace_id,
+            Employee.user_id == user_id,
             Employee.is_curator.is_(True),
         )
     )
@@ -70,12 +72,12 @@ def _validate_hire_name(db: Session, workspace_id: int, emp_name: str) -> str | 
 
     dup = db.scalar(
         select(Employee).where(
-            Employee.workspace_id == workspace_id,
+            Employee.user_id == user_id,
             Employee.name == emp_name,
         )
     )
     if dup:
-        return f"工作空间已存在名为「{emp_name}」的员工（ID={dup.id}）。"
+        return f"已存在名为「{emp_name}」的员工（ID={dup.id}）。"
     return None
 
 
@@ -91,7 +93,11 @@ def _hire_one_in_session(
 ) -> dict[str, Any]:
     """在已有 Session 内创建一名员工，成功返回 hired 条目，失败返回 error 字段。"""
     emp_name = (name or "").strip()
-    name_err = _validate_hire_name(db, workspace_id, emp_name)
+    # 员工为用户级：归属以 workspace owner 为权威，未认领的工作空间回落到运行时
+    # 用户（user_id），再回落到离线默认用户。校验/创建均以 owner 为准。
+    ws = db.get(Workspace, workspace_id)
+    owner = ws.user_id if ws is not None else (user_id or DEFAULT_USER_ID)
+    name_err = _validate_hire_name(db, owner, emp_name)
     if name_err:
         return {"name": emp_name or name, "error": name_err}
 
@@ -104,7 +110,7 @@ def _hire_one_in_session(
         mcp_ids=None,
         shift_schedule=None,
         tasks=None,
-        user_id=user_id or "1",
+        user_id=owner,
     )
 
     try:

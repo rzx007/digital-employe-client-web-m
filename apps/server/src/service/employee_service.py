@@ -885,7 +885,7 @@ class EmployeeService:
         if payload.employee_name is not None:
             existing_employee = db.scalar(
                 select(Employee).where(
-                    Employee.workspace_id == employee.workspace_id,
+                    Employee.user_id == employee.user_id,
                     Employee.name == payload.employee_name,
                     Employee.id != employee.id,
                 )
@@ -1311,11 +1311,14 @@ class EmployeeService:
     @staticmethod
     def create_employee(db: Session, obj_in: EmployeeCreate, token: str) -> Employee:
         workspace_id = obj_in.workspace_id or get_settings().default_workspace_id
-        WorkspaceService.get_workspace(db, workspace_id)
+        workspace = WorkspaceService.get_workspace(db, workspace_id)
+        # 员工为用户级：归属以 workspace owner 为权威，未认领（owner=None）的
+        # 工作空间回落到招聘侧传入的 obj_in.user_id（运行时用户）。
+        owner_user_id = workspace.user_id or obj_in.user_id
 
         existing = db.scalar(
             select(Employee).where(
-                Employee.workspace_id == workspace_id,
+                Employee.user_id == owner_user_id,
                 Employee.name == obj_in.employee_name,
             )
         )
@@ -1341,6 +1344,7 @@ class EmployeeService:
         }
 
         employee = Employee(
+            user_id=owner_user_id,
             workspace_id=workspace_id,
             employee_code=_new_pending_employee_code(),
             name=obj_in.employee_name,
