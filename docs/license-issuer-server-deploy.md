@@ -96,6 +96,30 @@ curl -s -X POST http://<服务器>:8900/license/issue \
 数字员工 App 启动 verify_license → 激活生效
 ```
 
+## 216 实测部署记录（2026-06-17，已跑通）
+
+签发服务已实际部署在 **10.172.246.216**（AMD x86_64 / Ubuntu 24.04），端到端验证通过
+（无 token→401、带 token→出码、容器内验签「授权码有效」）。落地中踩的坑与解法：
+
+1. **216 原无 docker** → `apt-get install docker.io docker-compose-v2 docker-buildx`
+   （Ubuntu 源自带 29.x），`usermod -aG docker boban` 免 sudo。
+2. **拉基础镜像超时（Docker Hub 国内不可达）** → `/etc/docker/daemon.json` 配
+   `registry-mirrors`（daocloud / 1panel / rat.dev）。**写 daemon.json 用 SFTP 上传纯文件，
+   别用 shell heredoc/echo 嵌套引号**——后者极易写坏 JSON 导致 dockerd 起不来。
+3. **build 时容器内 DNS 解析失败** → daemon.json 加 `"dns": ["223.5.5.5","114.114.114.114"]`
+   （宿主用 systemd-resolved 的 127.0.0.53，容器继承不了）。
+4. **uv 报 workspace 成员解析失败** → 本地包 pyproject 的 `[tool.uv.sources]` 用了
+   `workspace=true`，镜像无 workspace 根。Dockerfile 已加 `sed` 剥离该段 + 按目录装本地包
+   + 清华源装第三方依赖（见当前 Dockerfile）。
+
+部署位形：
+- 镜像 `de-issuer-server:latest`（335MB）
+- 密钥目录 `~/issuer-keys/`（`de-license keys generate` 生成；私钥 600/boban，公钥 644）
+- 容器 `de-issuer`：`-p 8900:8900 --restart always`，私钥只读挂载 `-v ~/issuer-keys:/keys:ro`，
+  `DE_LICENSE_PRIVATE_KEY=/keys/private_key.pem`，token 存 `~/issuer-keys/.api_token`（不进 git）
+- **公钥**（`~/issuer-keys/public_key.pem`）需拷进客户端
+  `apps/server/src/core/activation/public_key.pem` 后重打客户端，二者方为同一对。
+
 ## 不在本服务范围
 
 - 飞书自动化（审批/轮询/回调驱动出码）—— 评估后**暂不做**，现阶段人工调 `/license/issue`。
