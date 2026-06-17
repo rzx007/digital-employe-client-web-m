@@ -533,6 +533,12 @@ class ChatService:
     def ensure_curator_conversation(db: Session, workspace_id: int):
         """获取或创建默认总管会话（每工作空间至少一条，允许多条 curator 会话并存）。"""
         ws = db.get(Workspace, workspace_id)
+        if ws is None:
+            # 过渡期兜底：workspace_id 理应有效；Task 3.2 会改为直接传 user_id，届时移除本解析。
+            logger.warning(
+                "ensure_curator_conversation: workspace_id=%s 不存在，总管将以 user_id=None 兜底",
+                workspace_id,
+            )
         curator_user_id = ws.user_id if ws is not None else None
         curator_employee = EmployeeService.ensure_curator_employee(
             db, curator_user_id, workspace_id
