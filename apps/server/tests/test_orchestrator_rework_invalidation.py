@@ -134,3 +134,55 @@ def test_redispatch_invalidates_downstream(db_session, monkeypatch):
     assert "返工" in msg or "打回" in msg
     db_session.expire_all()
     assert db_session.get(TaskExecutionLog, bl.id).run_status == "superseded"  # B 被作废
+
+
+def test_ordering_A_then_B(db_session, monkeypatch):
+    """先返工A:作废B;再返工B → gate 拒(A不再接受)。"""
+    from src.service.agent.orchestrator import rework
+    from src.service.agent.orchestrator import dependency_scheduler as ds
+    monkeypatch.setattr(rework, "_new_session", lambda: _NoCloseSession(db_session))
+    monkeypatch.setattr(rework, "_schedule_employee_rework_stream", lambda **k: None)
+    monkeypatch.setattr(rework, "_build_employee_agent_for_rework", lambda *a, **k: None)
+    monkeypatch.setattr(ds, "get_session_local", lambda: (lambda: _NoCloseSession(db_session)))
+    ws, emp, plan, A, B = _seed_plan_AB(db_session)
+    aconv = _make_conv(db_session, ws.id, emp.id)
+    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=aconv)
+    bconv = _make_conv(db_session, ws.id, emp.id)
+    bl = _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=bconv)
+    db_session.commit()
+    rework.redispatch_task_in_session(ws.id, A.id, "改A")          # 返工A → 打回A + 作废B
+    db_session.expire_all()
+    assert db_session.get(TaskExecutionLog, bl.id).run_status == "superseded"
+    msg_b = rework.redispatch_task_in_session(ws.id, B.id, "改B")  # 再返工B → A不再接受 → gate 拒
+    assert "前置" in msg_b
+
+
+def test_ordering_B_then_A_cancels_inflight(db_session, monkeypatch):
+    """先返工B(A仍接受,gate过,B起返工queued);再返工A → 作废闭包含B的在飞返工 → superseded + cancel。"""
+    from sqlalchemy import select as _select
+    from src.service.agent.orchestrator import rework
+    from src.service.agent.orchestrator import dependency_scheduler as ds
+    from src.service.chat_service import ChatService
+    monkeypatch.setattr(rework, "_new_session", lambda: _NoCloseSession(db_session))
+    monkeypatch.setattr(rework, "_schedule_employee_rework_stream", lambda **k: None)
+    monkeypatch.setattr(rework, "_build_employee_agent_for_rework", lambda *a, **k: None)
+    monkeypatch.setattr(ds, "get_session_local", lambda: (lambda: _NoCloseSession(db_session)))
+    cancelled = []
+    monkeypatch.setattr(ChatService, "cancel_conversation_stream",
+                        staticmethod(lambda cid: cancelled.append(cid) or True))
+    ws, emp, plan, A, B = _seed_plan_AB(db_session)
+    aconv = _make_conv(db_session, ws.id, emp.id)
+    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=aconv)
+    bconv = _make_conv(db_session, ws.id, emp.id)
+    _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=bconv)
+    db_session.commit()
+    # 先返工 B(A 仍接受 → gate 过)→ B 起返工(新 queued log,conversation_id=bconv)
+    rework.redispatch_task_in_session(ws.id, B.id, "改B")
+    # 再返工 A → 作废 B 的下游闭包中含 B 自己的在飞返工 → 取消 + superseded
+    rework.redispatch_task_in_session(ws.id, A.id, "改A")
+    db_session.expire_all()
+    latest_b = db_session.scalars(
+        _select(TaskExecutionLog).where(TaskExecutionLog.task_id == B.id).order_by(TaskExecutionLog.id.desc())
+    ).first()
+    assert latest_b.run_status == "superseded"   # B 的在飞返工被作废
+    assert bconv in cancelled                      # 取消了 B 的在飞返工流
