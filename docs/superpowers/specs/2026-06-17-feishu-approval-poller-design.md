@@ -42,11 +42,14 @@
 - 拉实例列表：`GET /open-apis/approval/v4/instances`，参数 `approval_code` + 分页；
   按需用状态过滤，最终只处理 `APPROVED`（已通过）的实例。
 - 取实例详情：`GET /open-apis/approval/v4/instances/{instance_id}`，返回 `status`、
-  发起人、**表单控件值**（设备码在某个 form 控件里，按字段名/控件 id 取）。
-- 回写授权码：给该审批实例**加评论**
-  （`POST /open-apis/approval/v4/instances/{instance_id}/comments`，或等价评论接口），
-  评论正文含授权码 + 到期。评论同时充当「已出码」标记（见防重）。
-- 权限：应用需「查看原生审批实例」+「评论审批实例」权限。
+  发起人、**表单控件值**（设备码、授权码都在 form 控件里，按字段名/控件 id 取）。
+- 回写授权码：把授权码**写回审批表单的「授权码」字段**。原生审批实例的表单字段更新走
+  审批实例「修正 / 更新」相关接口（以官方文档为准）；该字段在审批定义里预先建为文本控件。
+  授权码字段「非空」即充当「已出码」标记（见防重）。
+- 权限：应用需「查看原生审批实例」+「更新原生审批实例」权限。
+
+> 飞书审批定义需**预先加两个字段**：设备码（申请人填）、授权码（轮询器回写、可只读）。
+> 字段的控件 id / 名称通过 env 配置给轮询器（见 §4 config）。
 
 > 接口以官方文档为准：
 > https://open.feishu.cn/document/server-docs/approval-v4/instance/get
@@ -60,17 +63,19 @@
   - `FeishuToken(app_id, app_secret)`：`get() -> str`，内部缓存 + 过期前刷新。
 - `feishu_approval.py`（飞书审批客户端，依赖 `feishu_token`）
   - `list_approved_instances(approval_code) -> list[str]`：返回已通过实例的 instance_id。
-  - `get_device_code(instance_id) -> str | None`：从表单控件取设备码（按配置的字段名）。
-  - `has_license_comment(instance_id) -> bool`：该实例是否已有「授权码」评论（防重）。
-  - `write_license_comment(instance_id, license_code, expires_at) -> None`：回写。
+  - `get_form(instance_id) -> dict`：取该实例表单控件值（解析出设备码、授权码字段当前值）。
+  - `get_device_code(instance_id) -> str | None`：从表单取设备码（按配置字段）。
+  - `license_already_filled(instance_id) -> bool`：授权码字段是否已非空（防重）。
+  - `write_license_field(instance_id, license_code) -> None`：把授权码写回表单字段。
 - `poller.py`（编排循环）
-  - `poll_once() -> int`：拉已通过实例 → 跳过已出码的 → 取设备码 →
+  - `poll_once() -> int`：拉已通过实例 → 跳过授权码字段已非空的 → 取设备码 →
     `IssueService().issue(device_code, expires, private_key_path)` →
-    `write_license_comment(...)`；返回本轮出码数。
+    `write_license_field(...)`；返回本轮出码数。
   - `run_forever(interval)`：循环调 `poll_once`，异常捕获不崩、sleep 后续跑。
 - `config.py`（扩展现有）
   - 新增 env：`FEISHU_APP_ID`、`FEISHU_APP_SECRET`、`FEISHU_APPROVAL_CODE`、
-    `FEISHU_DEVICE_CODE_FIELD`（表单里设备码控件的字段名/id）、
+    `FEISHU_DEVICE_CODE_FIELD`（设备码控件 id/名）、
+    `FEISHU_LICENSE_FIELD`（授权码回写控件 id/名）、
     `POLL_INTERVAL`（默认 60s）。沿用既有 `DE_LICENSE_PRIVATE_KEY` / `ISSUER_DEFAULT_EXPIRES`。
 - `__main__.py`（扩展）
   - 现有：起 FastAPI（`/license/issue`）。新增可选启动轮询器：
@@ -83,12 +88,11 @@
 
 ## 5. 防重出码
 
-轮询器只处理「已通过 **且** 未出码」的实例。判据 = 该审批实例**是否已有授权码评论**
-（`has_license_comment`）。已有 → 跳过。这样：
-- 无需本地状态文件（评论本身是幂等标记，落在飞书侧，重启/换机不丢）。
+轮询器只处理「已通过 **且** 未出码」的实例。判据 = 该审批实例**授权码字段是否已非空**
+（`license_already_filled`）。已非空 → 跳过。这样：
+- 无需本地状态文件（字段值落在飞书侧，是幂等标记，重启/换机不丢）。
 - 同一实例被轮询多轮也只出一次码。
-
-> 评论正文用固定前缀（如 `「激活授权码」` 开头）便于 `has_license_comment` 识别。
+- 字段「空/非空」比文本前缀匹配更干净可靠，且授权码整齐显示在结构化字段里，便于取码。
 
 ## 6. 错误处理
 
@@ -102,17 +106,17 @@
 
 - 私钥仍只在签发服务、运行时挂载，永不进客户端/镜像层（沿用现有铁律）。
 - 飞书 app_secret 走 env，不入库、不进镜像层。
-- 轮询器只读审批 + 写评论，不改审批结论；出码仅针对**已人工批准**的实例。
+- 轮询器只读审批 + 写授权码字段，不改审批结论；出码仅针对**已人工批准**的实例。
 - 设备码绑定由签发 `sign_license` 写进授权码、最终由 App 验签兜底——
   即便轮询器误出码，错误设备的码在目标机仍会 `device_mismatch` 失效。
 
 ## 8. 测试
 
 - `feishu_token`：mock HTTP，验证缓存命中 / 过期刷新。
-- `feishu_approval`：mock 飞书响应，验证 list/get_device_code/has_license_comment/
-  write_license_comment 的请求构造与解析（用官方返回样例 fixture）。
+- `feishu_approval`：mock 飞书响应，验证 list/get_device_code/license_already_filled/
+  write_license_field 的请求构造与解析（用官方返回样例 fixture）。
 - `poller.poll_once`：mock approval 客户端 + 真实 `IssueService`（用测试密钥对），
-  断言：① 已通过未出码 → 出码且回写一次；② 已出码 → 跳过（不重复）；
+  断言：① 授权码字段空 → 出码且写回一次；② 字段已非空 → 跳过（不重复）；
   ③ 取不到设备码 → 跳过不崩；④ 出码异常 → 跳过不阻塞其它。
 - 端到端（可选，手动）：真审批定义 + 测试密钥，发起一单→批准→轮询→看回写评论，
   再用 deploy 注入验证 App 激活。
@@ -124,16 +128,20 @@
 - 轮询器容器/服务设 `restart: always`。
 - env 清单：`DE_LICENSE_PRIVATE_KEY`（挂载私钥）、`ISSUER_API_TOKEN`（HTTP 用）、
   `FEISHU_APP_ID/SECRET`、`FEISHU_APPROVAL_CODE`、`FEISHU_DEVICE_CODE_FIELD`、
-  `POLL_INTERVAL`、`ISSUER_DEFAULT_EXPIRES`。
+  `FEISHU_LICENSE_FIELD`、`POLL_INTERVAL`、`ISSUER_DEFAULT_EXPIRES`。
 - 网络：出站可达 `open.feishu.cn`（已确认）；无需入站。
 
 ## 10. 范围外（roadmap）
 
-- 飞书审批定义本身的搭建（字段：设备码、申请人、机器备注）——属飞书后台配置，文档给指引。
+- 飞书审批定义本身的搭建（字段：设备码、申请人、机器备注、**授权码回写字段**）——
+  属飞书后台配置，文档给指引；字段控件 id 配到 `FEISHU_DEVICE_CODE_FIELD` /
+  `FEISHU_LICENSE_FIELD`。
 - hanhai-cli / 模型层激活校验（沿用既有 roadmap）。
 - 授权码自动回送到目标机（仍人工取码放码；自动回送需目标机可被够到，超出网络约束）。
 
 ## 11. 待确认
 
-- 回写用「评论」还是写回某个表单字段 / 审批单备注——本设计选评论（最通用、天然防重）。
-- 设备码在审批表单里的承载控件类型与字段名（`FEISHU_DEVICE_CODE_FIELD` 配什么）。
+- **回写方式已定：写回审批表单的「授权码」字段**（取码整齐、判重靠字段空/非空、零文本匹配）。
+- 设备码 / 授权码在审批表单里的控件类型与字段 id（配 `FEISHU_DEVICE_CODE_FIELD` /
+  `FEISHU_LICENSE_FIELD`）——需在飞书审批定义建好后取其控件 id。
+- 原生审批「更新表单字段」的具体接口形态以官方文档为准，实施首个 Task 先打通该写回调用。
