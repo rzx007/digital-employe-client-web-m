@@ -614,7 +614,11 @@ class TaskSchedulerService:
                 )
 
         if conv is None:
-            curator_read = ChatService.ensure_curator_conversation(db, workspace_id)
+            ws = db.get(Workspace, workspace_id)
+            _uid = ws.user_id if ws is not None else "1"
+            curator_read = ChatService.ensure_curator_conversation(
+                db, _uid, workspace_id
+            )
             conv = db.get(Conversation, curator_read.id)
             if conv is None:
                 raise RuntimeError(

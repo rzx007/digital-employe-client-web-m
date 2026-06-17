@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
+from src.core.request_utils import get_user_id
 from src.db.session import get_db
 from src.models.response import BaseResponse, ListResponse, ResponseBase
 from src.schemas.conversation import (
@@ -57,10 +58,13 @@ router = APIRouter(tags=["对话"])
 )
 def get_curator_conversation(
     workspace_id: int,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> ResponseBase[ConversationRead]:
-    """获取或创建总管对话（每个 workspace 仅一条）。"""
-    conversation = ChatService.ensure_curator_conversation(db, workspace_id)
+    """获取或创建总管对话（每个用户·workspace 仅一条）。"""
+    conversation = ChatService.ensure_curator_conversation(
+        db, get_user_id(request), workspace_id
+    )
     return ResponseBase(data=conversation)
 
 

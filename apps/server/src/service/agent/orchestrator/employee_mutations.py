@@ -25,6 +25,7 @@ MAX_DISMISS_BATCH = 5
 
 def _delete_employee_in_session(
     db: Session,
+    user_id: str | None,
     workspace_id: int,
     employee_id: int,
 ) -> dict[str, Any]:
@@ -32,10 +33,10 @@ def _delete_employee_in_session(
     employee = db.get(Employee, employee_id)
     if not employee:
         return {"employee_id": employee_id, "error": f"员工 ID={employee_id} 不存在。"}
-    if employee.workspace_id != workspace_id:
+    if employee.user_id != user_id:
         return {
             "employee_id": employee_id,
-            "error": f"员工 ID={employee_id} 不属于当前工作空间。",
+            "error": f"员工 ID={employee_id} 不属于当前用户。",
         }
     if employee.is_curator:
         return {
@@ -67,15 +68,17 @@ def _delete_employee_in_session(
 
 
 def _delete_employee_with_fresh_session(
+    user_id: str | None,
     workspace_id: int,
     employee_id: int,
 ) -> dict[str, Any]:
     """每次解聘使用独立 Session，避免污染总管流式会话的 DB 连接。"""
     with sqlite_db_session() as db:
-        return _delete_employee_in_session(db, workspace_id, employee_id)
+        return _delete_employee_in_session(db, user_id, workspace_id, employee_id)
 
 
 def delete_employees_batch(
+    user_id: str | None,
     workspace_id: int,
     employee_ids: list[int],
     *,
@@ -91,7 +94,7 @@ def delete_employees_batch(
     failed: list[dict[str, Any]] = []
 
     for i, employee_id in enumerate(employee_ids, start=1):
-        result = _delete_employee_with_fresh_session(workspace_id, employee_id)
+        result = _delete_employee_with_fresh_session(user_id, workspace_id, employee_id)
         if result.get("error"):
             failed.append({
                 "index": i,

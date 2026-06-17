@@ -64,12 +64,12 @@ def _is_reserved_name(name: str) -> bool:
     )
 
 
-def _ensure_workspace_employee(db, employee_id: int, workspace_id: int) -> Employee | str:
+def _ensure_user_employee(db, employee_id: int, user_id: str | None) -> Employee | str:
     employee = db.get(Employee, employee_id)
     if not employee:
         return f"错误：员工 ID={employee_id} 不存在。"
-    if employee.workspace_id != workspace_id:
-        return f"错误：员工 ID={employee_id} 不属于当前工作空间。"
+    if employee.user_id != user_id:
+        return f"错误：员工 ID={employee_id} 不属于当前用户。"
     return employee
 
 
@@ -118,8 +118,8 @@ def get_employee(employee_id: int) -> str:
     系统 Prompt 已注入员工表时可先用表；需要完整技能/MCP 快照时再调用。
     """
     db = get_db()
-    workspace_id = get_workspace_id()
-    employee_or_err = _ensure_workspace_employee(db, employee_id, workspace_id)
+    user_id = get_user_id()
+    employee_or_err = _ensure_user_employee(db, employee_id, user_id)
     if isinstance(employee_or_err, str):
         return employee_or_err
 
@@ -173,11 +173,11 @@ def update_employee(
     禁止修改总管助手（is_curator=true）的任何字段。
     MCP 分配请在客户端员工编辑页操作，总管不提供 MCP 查询工具。
     """
-    workspace_id = get_workspace_id()
+    user_id = get_user_id()
     token = get_auth_token() or ""
     db = get_session_local()()
     try:
-        employee_or_err = _ensure_workspace_employee(db, employee_id, workspace_id)
+        employee_or_err = _ensure_user_employee(db, employee_id, user_id)
         if isinstance(employee_or_err, str):
             return employee_or_err
         employee = employee_or_err
@@ -258,10 +258,10 @@ def delete_employee(employee_id: int) -> str:
     仅解聘 1 人时使用；2 人及以上必须用 delete_employees_batch。
     禁止解聘总管助手（is_curator=true）。解聘前建议 get_employee 确认 ID。
     """
-    workspace_id = get_workspace_id()
+    user_id = get_user_id()
     db = get_session_local()()
     try:
-        employee_or_err = _ensure_workspace_employee(db, employee_id, workspace_id)
+        employee_or_err = _ensure_user_employee(db, employee_id, user_id)
         if isinstance(employee_or_err, str):
             return employee_or_err
         employee = employee_or_err
@@ -304,6 +304,7 @@ def delete_employees_batch(employee_ids: str) -> str:
 
     参数 employee_ids: JSON 整数数组字符串，例如 "[12, 13, 14]"
     """
+    user_id = get_user_id()
     workspace_id = get_workspace_id()
 
     try:
@@ -325,7 +326,9 @@ def delete_employees_batch(employee_ids: str) -> str:
         except (TypeError, ValueError):
             return f"错误：employee_ids[{i}] 不是有效整数: {raw!r}"
 
-    raw = run_delete_employees_batch(workspace_id, normalized, reload_scheduler=True)
+    raw = run_delete_employees_batch(
+        user_id, workspace_id, normalized, reload_scheduler=True
+    )
     if not raw.startswith("错误："):
         invalidate_orchestrator_db_cache()
     return raw

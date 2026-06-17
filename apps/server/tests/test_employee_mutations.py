@@ -27,7 +27,9 @@ def test_delete_employee_with_fresh_session_success(
     employee = add_employee(db_session, workspace.id, name="待解聘员工")
     employee_id = employee.id
 
-    result = _delete_employee_with_fresh_session(workspace.id, employee_id)
+    result = _delete_employee_with_fresh_session(
+        f"u-ws{workspace.id}", workspace.id, employee_id
+    )
 
     assert result.get("error") is None
     assert result["employee_id"] == employee_id
@@ -38,7 +40,9 @@ def test_delete_employee_with_fresh_session_success(
 def test_delete_employee_with_fresh_session_not_found(
     db_session, workspace, patched_task_mutations_db
 ):
-    result = _delete_employee_with_fresh_session(workspace.id, 99999)
+    result = _delete_employee_with_fresh_session(
+        f"u-ws{workspace.id}", workspace.id, 99999
+    )
     assert "不存在" in result.get("error", "")
 
 
@@ -50,13 +54,15 @@ def test_delete_employee_with_fresh_session_rejects_curator(
     )
     curator_id = curator.id
 
-    result = _delete_employee_with_fresh_session(workspace.id, curator_id)
+    result = _delete_employee_with_fresh_session(
+        f"u-ws{workspace.id}", workspace.id, curator_id
+    )
 
     assert "总管助手" in result.get("error", "")
     assert reload_employee(db_session, curator_id) is not None
 
 
-def test_delete_employee_with_fresh_session_rejects_other_workspace(
+def test_delete_employee_with_fresh_session_rejects_other_user(
     db_session, workspace, patched_task_mutations_db
 ):
     other_ws = Workspace(
@@ -67,12 +73,15 @@ def test_delete_employee_with_fresh_session_rejects_other_workspace(
     db_session.add(other_ws)
     db_session.commit()
 
+    # 归属用户为 u-ws2；当前用户 u-ws1 不应能解聘它（鉴权改为 user_id 级）。
     outsider = add_employee(db_session, other_ws.id, name="外来员工")
     outsider_id = outsider.id
 
-    result = _delete_employee_with_fresh_session(workspace.id, outsider_id)
+    result = _delete_employee_with_fresh_session(
+        f"u-ws{workspace.id}", workspace.id, outsider_id
+    )
 
-    assert "不属于当前工作空间" in result.get("error", "")
+    assert "不属于当前用户" in result.get("error", "")
     assert reload_employee(db_session, outsider_id) is not None
 
 
@@ -91,6 +100,7 @@ def test_delete_employees_batch_partial_failure(
     )
 
     raw = delete_employees_batch(
+        f"u-ws{workspace.id}",
         workspace.id,
         [emp_a_id, 99999, emp_b_id],
         reload_scheduler=True,
@@ -114,7 +124,7 @@ def test_delete_employees_batch_all_failed_no_reload(
         lambda: reload_calls.append(1),
     )
 
-    raw = delete_employees_batch(workspace.id, [88888, 99999])
+    raw = delete_employees_batch(f"u-ws{workspace.id}", workspace.id, [88888, 99999])
     payload = json.loads(raw)
 
     assert payload["succeeded_count"] == 0
@@ -123,11 +133,13 @@ def test_delete_employees_batch_all_failed_no_reload(
 
 
 def test_delete_employees_batch_empty():
-    assert delete_employees_batch(1, []).startswith("错误：")
+    assert delete_employees_batch("u-ws1", 1, []).startswith("错误：")
 
 
 def test_delete_employees_batch_over_limit(workspace):
-    raw = delete_employees_batch(workspace.id, list(range(1, 20)))
+    raw = delete_employees_batch(
+        f"u-ws{workspace.id}", workspace.id, list(range(1, 20))
+    )
     assert raw.startswith("错误：")
     assert "最多" in raw
 
@@ -146,7 +158,14 @@ def test_delete_employees_batch_tool(
         lambda: reload_calls.append(1),
     )
 
-    set_context(db=db_session, workspace_id=workspace.id, conversation_id=1)
+    # add_employee 默认 user_id=f"u-ws{workspace_id}"；工具按 user_id 鉴权，
+    # 故 set_context 须显式注入匹配的 user_id，否则 workspace-owner 兜底得到 None。
+    set_context(
+        db=db_session,
+        workspace_id=workspace.id,
+        conversation_id=1,
+        user_id=f"u-ws{workspace.id}",
+    )
     from src.service.agent.orchestrator.tools import (
         delete_employees_batch as dismiss_tool,
     )

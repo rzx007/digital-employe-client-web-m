@@ -165,7 +165,14 @@ def test_get_workspace_skill_detail_shows_assignees(
 
 def test_get_employee_tool_returns_json(db_session, workspace):
     employee = add_employee(db_session, workspace.id, name="数据分析师")
-    set_context(db=db_session, workspace_id=workspace.id, conversation_id=1)
+    # 工具按 user_id 鉴权（add_employee 默认 user_id=f"u-ws{workspace_id}"），
+    # workspace fixture 的 owner 为 None，故须显式注入匹配 user_id。
+    set_context(
+        db=db_session,
+        workspace_id=workspace.id,
+        conversation_id=1,
+        user_id=f"u-ws{workspace.id}",
+    )
 
     result = get_employee.invoke({"employee_id": employee.id})
     payload = json.loads(result)
@@ -186,7 +193,12 @@ def test_update_employee_tool_accepts_skill_ids_list(
             [{"id": -100, "skillName": "feishu-workbench", "displayNameZh": "工作台", "source": "local", "path": "/tmp/x"}],
         ),
     )
-    set_context(db=db_session, workspace_id=workspace.id, conversation_id=1)
+    set_context(
+        db=db_session,
+        workspace_id=workspace.id,
+        conversation_id=1,
+        user_id=f"u-ws{workspace.id}",
+    )
 
     result = update_employee.invoke(
         {"employee_id": employee.id, "skill_ids": [-100, 11]}
@@ -202,7 +214,12 @@ def test_update_employee_tool_refreshes_shared_session(
     employee = add_employee(db_session, workspace.id, name="旧名称")
     db_session.get(Employee, employee.id)
 
-    set_context(db=db_session, workspace_id=workspace.id, conversation_id=1)
+    set_context(
+        db=db_session,
+        workspace_id=workspace.id,
+        conversation_id=1,
+        user_id=f"u-ws{workspace.id}",
+    )
     result = update_employee.invoke(
         {"employee_id": employee.id, "employee_name": "新名称"}
     )
@@ -220,7 +237,12 @@ def test_delete_employee_rejects_curator(
     curator = add_employee(
         db_session, workspace.id, name="总管助手", is_curator=True
     )
-    set_context(db=db_session, workspace_id=workspace.id, conversation_id=1)
+    set_context(
+        db=db_session,
+        workspace_id=workspace.id,
+        conversation_id=1,
+        user_id=f"u-ws{workspace.id}",
+    )
 
     result = delete_employee.invoke({"employee_id": curator.id})
 

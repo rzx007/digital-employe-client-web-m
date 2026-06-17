@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from src.core.config import get_settings
 from src.db.session import get_session_local
 from src.models.dispatch_order_sync import DispatchOrderSync
-from src.models.workspace import cst_now
+from src.models.workspace import Workspace, cst_now
 from src.service.chat_service import ChatService
 from src.service.agent.orchestrator import run_coro_on_main_loop
 from src.service.performance_balance_service import PerformanceBalanceService
@@ -92,7 +92,11 @@ class DispatchOrderSyncService:
 
         settings = get_settings()
         default_workspace_id = settings.default_workspace_id
-        curator = ChatService.ensure_curator_conversation(db, default_workspace_id)
+        ws = db.get(Workspace, default_workspace_id)
+        _uid = ws.user_id if ws is not None else "1"
+        curator = ChatService.ensure_curator_conversation(
+            db, _uid, default_workspace_id
+        )
         conversation_id = int(curator.id)
 
         for item in remote_orders:
