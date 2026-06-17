@@ -129,6 +129,7 @@ def get_orchestrator_agent(
     employee_id: int | None = None,
     auth_token: str | None = None,
     *,
+    user_id: str | None = None,
     bind_context: bool = True,
     shared_artifacts_dir: str | None = None,
     enable_hitl: bool = True,
@@ -142,6 +143,7 @@ def get_orchestrator_agent(
             conversation_id,
             auth_token=auth_token,
             bind_auth_token=True,
+            user_id=user_id,
         )
 
     settings = get_settings()

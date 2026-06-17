@@ -27,6 +27,8 @@ def _new_session() -> Session:
 def _build_orchestrator_agent(*, workspace_id: int, db: Session, conversation_id: int):
     """构建总管 agent（不绑定上下文变量，避免串扰当前线程的 contextvar）。"""
     from src.service.agent.orchestrator import get_orchestrator_agent
+    # user_id 由 runtime 兜底从激活 workspace 所有者解析（见 resolve_user_id），
+    # 此处 bind_context=False 不绑定。
     return get_orchestrator_agent(
         workspace_id, db, conversation_id,
         bind_context=False,

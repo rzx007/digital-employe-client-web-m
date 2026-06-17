@@ -724,6 +724,7 @@ class ChatService:
                 conversation_id=conversation_id,
                 employee_id=target_id,
                 auth_token=auth_token,
+                user_id=conversation.user_id,
             )
         elif target_type == "employee":
             employee = db.get(Employee, target_id)
@@ -1231,6 +1232,7 @@ class ChatService:
                 conversation_id=conversation_id,
                 employee_id=target_id,
                 auth_token=auth_token,
+                user_id=conversation.user_id,
             )
         elif target_type == "employee":
             employee = db.get(Employee, target_id)

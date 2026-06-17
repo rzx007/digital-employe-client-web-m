@@ -27,7 +27,7 @@ def test_employee_table_includes_scheduled_tasks(db_session, workspace: Workspac
     )
     db_session.commit()
 
-    table = build_employee_capability_context(db_session, workspace.id)
+    table = build_employee_capability_context(db_session, f"u-ws{workspace.id}", workspace.id)
 
     assert "活跃定时任务" in table
     assert "每日热搜播报" in table
@@ -37,7 +37,7 @@ def test_employee_table_includes_scheduled_tasks(db_session, workspace: Workspac
 def test_employee_table_shows_no_scheduled_tasks(db_session, workspace: Workspace):
     add_employee(db_session, workspace.id, name="空闲助手")
 
-    table = build_employee_capability_context(db_session, workspace.id)
+    table = build_employee_capability_context(db_session, f"u-ws{workspace.id}", workspace.id)
 
     assert "活跃定时任务" in table
     assert "| 无 |" in table

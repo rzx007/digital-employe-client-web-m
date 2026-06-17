@@ -137,24 +137,35 @@ get_workspace_skill_detail；要给员工分配仍用 list_workspace_skills → 
 """
 
 
-def build_employee_capability_context(db: Session, workspace_id: int) -> str:
+def build_employee_capability_context(
+    db: Session, user_id: str | None, workspace_id: int | None = None
+) -> str:
     employees = list(
         db.scalars(
             select(Employee)
-            .where(Employee.workspace_id == workspace_id)
+            .where(Employee.user_id == user_id)
             .order_by(Employee.id.asc())
         ).all()
     )
     if not employees:
         return "（当前工作空间没有数字员工）"
 
+    scheduled_stmt = select(EmployeeTask).where(
+        EmployeeTask.is_active.is_(True),
+        EmployeeTask.execute_mode == "scheduled",
+    )
+    if workspace_id is not None:
+        # 指定了激活工作空间：只展示该项目的活跃定时任务。
+        scheduled_stmt = scheduled_stmt.where(EmployeeTask.workspace_id == workspace_id)
+    else:
+        # 未指定 workspace：跨工作空间汇总这些员工的活跃定时任务。
+        scheduled_stmt = scheduled_stmt.where(
+            EmployeeTask.employee_id.in_([e.id for e in employees])
+        )
+
     scheduled_by_employee: dict[int, list[str]] = {}
     for task in db.scalars(
-        select(EmployeeTask).where(
-            EmployeeTask.workspace_id == workspace_id,
-            EmployeeTask.is_active.is_(True),
-            EmployeeTask.execute_mode == "scheduled",
-        ).order_by(EmployeeTask.id.asc())
+        scheduled_stmt.order_by(EmployeeTask.id.asc())
     ).all():
         scheduled_by_employee.setdefault(task.employee_id, []).append(task.task_name)
 

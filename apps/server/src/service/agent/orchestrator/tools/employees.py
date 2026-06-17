@@ -40,6 +40,7 @@ from src.service.agent.orchestrator.recruitment import (
 from src.service.agent.orchestrator.runtime import (
     get_auth_token,
     get_db,
+    get_user_id,
     get_workspace_id,
     invalidate_orchestrator_db_cache,
 )
@@ -104,8 +105,9 @@ def list_workspace_employees() -> str:
     系统 Prompt 已注入员工表时优先用表；招聘后或表可能过期时再调用。
     """
     db = get_db()
+    user_id = get_user_id()
     workspace_id = get_workspace_id()
-    return build_employee_capability_context(db, workspace_id)
+    return build_employee_capability_context(db, user_id, workspace_id)
 
 
 @tool

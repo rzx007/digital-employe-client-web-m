@@ -99,9 +99,12 @@ def add_employee(
     name: str,
     is_curator: bool = False,
     description: str | None = "测试描述",
+    user_id: str | None = None,
 ) -> Employee:
+    # 员工现为用户级（user_id 跨工作空间共享）；测试默认按 workspace 派生稳定 user_id。
     employee = Employee(
         workspace_id=workspace_id,
+        user_id=user_id if user_id is not None else f"u-ws{workspace_id}",
         employee_code=f"code-{name}",
         name=name,
         description=description,

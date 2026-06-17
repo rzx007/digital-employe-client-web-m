@@ -42,12 +42,14 @@ _db_session_ctx: ContextVar[Session | None] = ContextVar("orchestrator_db", defa
 _workspace_id_ctx: ContextVar[int | None] = ContextVar("orchestrator_ws", default=None)
 _conversation_id_ctx: ContextVar[int | None] = ContextVar("orchestrator_conv", default=None)
 _auth_token_ctx: ContextVar[str | None] = ContextVar("orchestrator_token", default=None)
+_user_id_ctx: ContextVar[str | None] = ContextVar("orchestrator_user", default=None)
 
 
 @dataclass(slots=True)
 class OrchestratorStreamSession:
     workspace_id: int
     auth_token: str | None
+    user_id: str | None = None
 
 
 _stream_sessions: dict[int, OrchestratorStreamSession] = {}
@@ -74,10 +76,12 @@ def register_stream_session(
     *,
     workspace_id: int,
     auth_token: str | None,
+    user_id: str | None = None,
 ) -> None:
     _stream_sessions[conversation_id] = OrchestratorStreamSession(
         workspace_id=workspace_id,
         auth_token=(auth_token or "").strip() or None,
+        user_id=user_id,
     )
 
 
@@ -114,6 +118,27 @@ def resolve_workspace_id(runtime: Any | None = None) -> int:
             return session.workspace_id
 
     raise RuntimeError("orchestrator workspace_id not set")
+
+
+def resolve_user_id(runtime: Any | None = None) -> str | None:
+    uid = _user_id_ctx.get()
+    if uid is not None:
+        return uid
+    conversation_id = conversation_id_from_runtime(runtime) or _conversation_id_ctx.get()
+    if conversation_id is not None:
+        session = _stream_sessions.get(conversation_id)
+        if session is not None and session.user_id is not None:
+            return session.user_id
+    # 兜底：当前激活工作空间的所有者即当前用户（workspace 与 user 永远 1:N，owner 唯一）
+    try:
+        from src.models.workspace import Workspace
+
+        ws = get_db().get(Workspace, resolve_workspace_id(runtime))
+        if ws is not None and ws.user_id is not None:
+            return ws.user_id
+    except Exception:
+        return None
+    return None
 
 
 def set_main_event_loop(loop: asyncio.AbstractEventLoop) -> None:
@@ -171,6 +196,10 @@ def get_workspace_id() -> int:
     return resolve_workspace_id()
 
 
+def get_user_id() -> str | None:
+    return resolve_user_id()
+
+
 def get_conversation_id() -> int | None:
     return _conversation_id_ctx.get()
 
@@ -182,10 +211,12 @@ def set_context(
     *,
     auth_token: str | None = None,
     bind_auth_token: bool = False,
+    user_id: str | None = None,
 ) -> None:
     _db_session_ctx.set(db)
     _workspace_id_ctx.set(workspace_id)
     _conversation_id_ctx.set(conversation_id)
+    _user_id_ctx.set(user_id)
     if bind_auth_token:
         _auth_token_ctx.set(auth_token)
     if conversation_id is not None and bind_auth_token:
@@ -193,6 +224,7 @@ def set_context(
             conversation_id,
             workspace_id=workspace_id,
             auth_token=auth_token,
+            user_id=user_id,
         )
 
 
@@ -219,6 +251,7 @@ def reset_context(conversation_id: int | None = None) -> None:
     _workspace_id_ctx.set(None)
     _conversation_id_ctx.set(None)
     _auth_token_ctx.set(None)
+    _user_id_ctx.set(None)
 
 
 def invalidate_orchestrator_db_cache() -> None:

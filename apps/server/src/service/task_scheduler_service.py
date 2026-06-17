@@ -685,6 +685,8 @@ class TaskSchedulerService:
 
             orch_db = get_session_local()()
             try:
+                # user_id 由 runtime 兜底从激活 workspace 所有者解析（见 resolve_user_id），
+                # 此处 bind_context=False 不绑定。
                 agent = get_orchestrator_agent(
                     workspace_id_snap,
                     orch_db,
