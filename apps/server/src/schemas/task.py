@@ -180,3 +180,8 @@ class TodayTaskRead(BaseModel):
     duration_ms: int | None = None
     conversation_id: int | None = None
 
+
+class ToolFootprintRead(BaseModel):
+    tool_count: int
+    parts: list[dict[str, Any]]
+

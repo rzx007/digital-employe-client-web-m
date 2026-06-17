@@ -20,6 +20,7 @@ from src.schemas.task import (
     TaskSyncResult,
     TodayTaskRead,
     ExecutionMetricsRead,
+    ToolFootprintRead,
 )
 from src.service.employee_service import EmployeeService
 from src.service.workspace_service import WorkspaceService
@@ -312,4 +313,21 @@ def mark_task_execution_read(
         db, workspace_id=workspace_id, execution_log_id=task_execution_log_id
     )
     return ResponseBase(data=_task_execution_log_to_read(log))
+
+
+@router.get(
+    "/workspaces/{workspace_id}/tasks/executions/{task_execution_log_id}/tool-footprint",
+    response_model=ResponseBase[ToolFootprintRead],
+    summary="执行的工具足迹(事后,会话级)",
+)
+def get_tool_footprint(
+    workspace_id: int,
+    task_execution_log_id: int,
+    db: Session = Depends(get_db),
+) -> ResponseBase[ToolFootprintRead]:
+    """该执行所属员工会话调用过的工具(从已存 message_parts 提取,只读)。"""
+    parts = TaskService.get_execution_tool_footprint(
+        db, workspace_id=workspace_id, execution_log_id=task_execution_log_id
+    )
+    return ResponseBase(data=ToolFootprintRead(tool_count=len(parts), parts=parts))
 

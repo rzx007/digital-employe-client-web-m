@@ -911,3 +911,52 @@ class TaskService:
             "failure_rate": failure_rate,
         }
 
+    @staticmethod
+    def get_conversation_tool_parts(db: Session, conversation_id: int | None) -> list[dict[str, Any]]:
+        """取某会话 assistant 消息 message_parts 里 type 以 'tool-' 开头的 part(按消息顺序)。"""
+        from src.models.conversation import ConversationMessage
+
+        if conversation_id is None:
+            return []
+        msgs = list(
+            db.scalars(
+                select(ConversationMessage)
+                .where(
+                    ConversationMessage.conversation_id == conversation_id,
+                    ConversationMessage.role == "assistant",
+                )
+                .order_by(ConversationMessage.id.asc())
+            ).all()
+        )
+        out: list[dict[str, Any]] = []
+        for m in msgs:
+            if not m.message_parts:
+                continue
+            try:
+                parts = json.loads(m.message_parts)
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(parts, list):
+                continue
+            for p in parts:
+                if (
+                    isinstance(p, dict)
+                    and isinstance(p.get("type"), str)
+                    and p["type"].startswith("tool-")
+                ):
+                    out.append(p)
+        return out
+
+    @staticmethod
+    def get_execution_tool_footprint(
+        db: Session, workspace_id: int, execution_log_id: int
+    ) -> list[dict[str, Any]]:
+        """据执行日志取其会话级工具足迹(校验 workspace,404 若不存在/跨 workspace)。"""
+        WorkspaceService.get_workspace(db, workspace_id)
+        log = db.get(TaskExecutionLog, execution_log_id)
+        if not log or log.workspace_id != workspace_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="未找到任务执行日志。"
+            )
+        return TaskService.get_conversation_tool_parts(db, log.conversation_id)
+
