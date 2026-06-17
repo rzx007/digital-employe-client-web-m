@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react"
 import { useMutation } from "@tanstack/react-query"
-import { IconExternalLink, IconLoader2 } from "@tabler/icons-react"
+import {
+  IconChevronRight,
+  IconExternalLink,
+  IconLoader2,
+  IconTool,
+} from "@tabler/icons-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { MessageResponse } from "@workspace/ui/components/ai-elements/message"
@@ -16,11 +21,44 @@ import {
 } from "@workspace/ui/components/alert-dialog"
 import { cn } from "@workspace/ui/lib/utils"
 import { submitSkillRating } from "@/api/skill-ratings"
-import { useCancelTaskExecution } from "@/hooks/use-schedule-monitor-queries"
+import {
+  useCancelTaskExecution,
+  useToolFootprint,
+} from "@/hooks/use-schedule-monitor-queries"
+import { classifyMessageParts } from "@/lib/chat/message-classifier"
+import type { ToolUIPart } from "@/lib/chat/tools/tool-part"
 import { StarRating } from "./star-rating"
+import { ToolGroupBlock } from "./tool-group-block"
 import type { TaskExecution } from "@/types/schedule-monitor"
 import { formatExecutionDuration } from "./execution-card"
 import { navigateToEmployeeFromCurator } from "@/lib/chat/curator-navigation"
+import type { UIMessage } from "ai"
+
+function ToolFootprintBlocks({
+  logId,
+  parts,
+}: {
+  logId: number
+  parts: Record<string, unknown>[]
+}) {
+  const blocks = classifyMessageParts({
+    id: `footprint-${logId}`,
+    role: "assistant",
+    parts: parts as unknown as ToolUIPart[],
+  } as UIMessage)
+  const toolGroups = blocks.filter((b) => b.kind === "tool-group")
+  if (toolGroups.length === 0) return null
+  return (
+    <div className="space-y-1">
+      {toolGroups.map((b, i) => (
+        <ToolGroupBlock
+          key={i}
+          block={b as Extract<typeof b, { kind: "tool-group" }>}
+        />
+      ))}
+    </div>
+  )
+}
 
 const STATUS_CONFIG: Record<
   string,
@@ -122,6 +160,11 @@ export function ExecutionReportCard({
   })
   const [expanded, setExpanded] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
+  const [footprintOpen, setFootprintOpen] = useState(false)
+  const { data: footprint, isPending: footprintLoading } = useToolFootprint(
+    execution.id,
+    { enabled: footprintOpen }
+  )
   const cancelMutation = useCancelTaskExecution(curatorConversationId)
 
   const outputText = execution.output?.content ?? execution.run_result ?? ""
@@ -397,6 +440,41 @@ export function ExecutionReportCard({
             </Button>
           )}
         </div>
+
+        {execution.conversation_id != null && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setFootprintOpen((v) => !v)}
+              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              <IconTool className="size-3" />
+              工具足迹{footprint ? ` (${footprint.tool_count})` : ""}
+              <IconChevronRight
+                className={cn(
+                  "size-3 transition-transform",
+                  footprintOpen && "rotate-90"
+                )}
+              />
+            </button>
+            {footprintOpen && (
+              <div className="mt-1">
+                {footprintLoading ? (
+                  <IconLoader2 className="size-3 animate-spin text-muted-foreground" />
+                ) : footprint && footprint.tool_count > 0 ? (
+                  <ToolFootprintBlocks
+                    logId={execution.id}
+                    parts={footprint.parts}
+                  />
+                ) : (
+                  <p className="text-[11px] text-muted-foreground/70">
+                    无工具调用
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
