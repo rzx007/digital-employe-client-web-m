@@ -157,6 +157,13 @@ def init_db() -> None:
     # 兼容历史工作空间表：补充 user_id 字段（用户隔离）
     ensure_column("workspaces", "user_id", "user_id TEXT")
 
+    # 多工作空间+用户级(SP1)：员工/技能/会话/评分 跟随 user_id（启动回填）
+    ensure_column("employees", "user_id", "user_id TEXT")
+    ensure_column("employee_skills", "user_id", "user_id TEXT")
+    ensure_column("employee_mcps", "user_id", "user_id TEXT")
+    ensure_column("skill_ratings", "user_id", "user_id TEXT")
+    ensure_column("conversations", "user_id", "user_id TEXT")
+
     # 兼容历史会话消息表：补充 metadata 字段
     ensure_column("conversation_messages", "extra_meta", "extra_meta TEXT")
 
@@ -196,6 +203,11 @@ def init_db() -> None:
     if "task_execution_logs" in inspector.get_table_names():
         _migrate_task_id_nullable(engine, inspector)
 
+    # 多工作空间+用户级(SP1)：从各行所属 workspace 回填 user_id
+    from src.db.session import get_session_local
+    with get_session_local()() as _db:
+        backfill_user_id(_db)
+
     # FTS5 全文索引：conversation_messages.content
     _init_fts5(engine)
 
@@ -206,6 +218,34 @@ def init_db() -> None:
     backfill_orchestrator_conversation_links(engine)
 
     _reset_orphaned_streams(engine)
+
+
+def backfill_user_id(db) -> None:
+    """从各行所属 workspace 回填 user_id（多工作空间+用户级 SP1，纯加列回填）。
+
+    仅处理 user_id 为空的行；workspace.user_id 为 NULL 时无来源可填，跳过。
+    """
+    from src.models.workspace import Workspace
+
+    tables = [
+        "employees",
+        "employee_skills",
+        "employee_mcps",
+        "skill_ratings",
+        "conversations",
+    ]
+    for ws in db.query(Workspace).all():
+        if ws.user_id is None:
+            continue
+        for t in tables:
+            db.execute(
+                text(
+                    f"UPDATE {t} SET user_id = :uid "
+                    "WHERE workspace_id = :wid AND user_id IS NULL"
+                ),
+                {"uid": ws.user_id, "wid": ws.id},
+            )
+    db.commit()
 
 
 def _reset_orphaned_streams(engine) -> None:

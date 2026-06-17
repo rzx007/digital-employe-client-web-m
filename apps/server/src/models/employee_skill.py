@@ -16,6 +16,7 @@ class EmployeeSkill(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
     skill_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     skill_name: Mapped[str] = mapped_column(String(255), nullable=False)
     skill_name_zh: Mapped[str | None] = mapped_column(String(255), nullable=True)

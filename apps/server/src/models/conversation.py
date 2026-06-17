@@ -14,6 +14,7 @@ class Conversation(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
     target_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     target_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
