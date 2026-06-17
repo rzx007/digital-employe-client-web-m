@@ -36,8 +36,8 @@ DAG-QA gating 给**初次派发**装了"前置已 QA 接受才放行下游"的�
 - 便利封装：`dependency_scheduler.task_prereqs_accepted(db, task) -> bool`（内部 load plan + build_dependency_maps 取 dep_map[task.id] → 查接受）。
 
 ### 3.2 作废传播（返工成功打回 X 后）
-`redispatch_task_in_session` 在打回 X、起 X 返工流之后，调
-`dependency_scheduler.invalidate_downstream(db, X.id) -> list[int]`：
+`redispatch_task_in_session` 在打回 X、起 X 返工流、**且 rework.py 自己的 `db.commit()` 之后**，调
+`dependency_scheduler.invalidate_downstream(X.id) -> list[int]`（**自管独立 session**，与 `release_accepted_downstream` 一致——不复用 rework.py 的 db，避免 session 生命周期纠缠；它读到的是 rework 已提交的状态）：
 1. 求 X 的**传递闭包下游** `succ_ids`（BFS over `build_dependency_maps` 的 `successors` 映射）。
 2. 对每个下游 task：取其**最新一条 log**（id desc）：
    - 最新为 `success`/`completed`（已交付）→ 标 `superseded`，`run_result="上游返工，已作废待重跑"`。
@@ -63,7 +63,7 @@ DAG-QA gating 给**初次派发**装了"前置已 QA 接受才放行下游"的�
 ## 4. 数据 / 机制改动面（纯后端）
 - `dependency_scheduler.py`：
   - `task_prereqs_accepted(db, task) -> bool`（返工 gate 用）。
-  - `invalidate_downstream(db, task_id) -> list[int]`（传递闭包作废 + 取消在飞）。
+  - `invalidate_downstream(task_id) -> list[int]`（传递闭包作废 + 取消在飞；自管独立 session）。
   - 复用现有 `build_dependency_maps`（successors）、`_load_accepted_task_ids`、`_all_prereqs_accepted`、放行闸。
 - `rework.py` `redispatch_task_in_session`：起流前加 gate（3.1）；打回+起流后加 `invalidate_downstream`（3.2）。
 - `prompts.py`：3.5 的 prompt 补充 + 不变量门断言。
@@ -75,12 +75,14 @@ DAG-QA gating 给**初次派发**装了"前置已 QA 接受才放行下游"的�
 - **作废传播**：返工 X → 已交付下游 B（success+accepted）转 superseded；在飞下游（running）被取消（mock cancel）+ 转 superseded；传递闭包（A→B→C，返工 A 作废 B、C）；最新为 failed/skipped 的下游不动。
 - **次序无关**：先 B 后 A 序——返工 A 作废并取消 B 的在飞返工。
 - **重跑闭环**：作废 B 后，X 重新达标 → `release_accepted_downstream` → B 经放行闸可派（`_all_prereqs_accepted` 翻真）。
+- **作废后可再派**（关键机制守护）：B 的 success log 被原地翻 `superseded` 后，`_already_dispatched(B)` 应为 **False**（superseded 不在 `_ALREADY_DISPATCHED_STATES`）——直接断言这点，守住"作废→可重派"通路。
 - **prompt 不变量门**：新增"作废/下游自动重跑"关键词锚点。
 - **基线**：后端 5 failed / 589 passed（+本特性新测试），零新增；前端不动。
 
 ## 6. 风险
 - **取消在飞下游 vs finalize 覆盖（已查证、无需改 finalize）**：`_finalize_task_stream`（stream_registry.py:2352-2357）只更新 `run_status IN ("running","queued")` 的 log——一旦 invalidate 把该 log 标 `superseded`，finalize 的 SELECT 选不中、直接 `return` no-op。因此 §3.2 规定**先 commit superseded、再 cancel**：异步的取消善后跑到时该行已是 superseded，不会被改回 `cancelled`/`failed`。**不需要改 finalize**。（反序则有窗口：cancel 先触发 finalize 写 cancelled，再被 superseded 覆盖——虽最终也对，但先 superseded 更干净、无中间态。）
 - **作废与放行的重入**：作废发生在返工 X 时；下游重跑发生在 X 再接受后的放行闸。两阶段不交叠，无环（每次接受一次性 qa_accepted_at）。
+- **取消在飞下游的 conv.status 副作用（已知、可接受）**：`_finalize_task_stream` 第 1 步无条件把会话置 `idle`（在 log SELECT 之前），故被取消的下游会话会短暂显示 `idle`——**不影响 log 终态**（log 已是 superseded、SELECT no-op）与重跑路径，仅会话状态轻微不一致。属现有行为，本期接受不处理。
 - **传递闭包规模**：计划内任务通常很少，BFS 成本可忽略。
 - **下游 failed/skipped 不重跑**（非目标）：若上游返工后下游本应有机会成功，本期不自动 un-skip；如成痛点再做。
 
