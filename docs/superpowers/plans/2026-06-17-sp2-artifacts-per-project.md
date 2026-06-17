@@ -19,7 +19,7 @@
 ## 触点清单（实现期照此穷尽；来自探查 + 评审）
 
 **产物读写站点（Phase 2 把全局 `settings.artifacts_path` 换 per-project 根）：**
-- `api/chat_api.py` 资源端点 ~10 处（list/read/upload/download/static/delete/batch-delete，约 :432–:604）：`ResourceService.xxx(settings.artifacts_path, conv.id, ...)`。
+- `api/chat_api.py` 资源端点 ~10 处（list/read/upload/download/static/delete/batch-delete，约 :432–:604）：`ResourceService.xxx(settings.artifacts_path, conv.id, ...)`。**含语音端点**（:519 voice/upload、:546 voice/audio，`save_voice_file`/`resolve_voice_path`，现写 legacy `<root>/<conv_id>/voice/`，一并换根）。
 - `service/chat_service.py`：员工对话构建（:764 一带 `root_path = settings.artifacts_path`）、会话删除清理（:320–:342）、:481 `artifacts_root=get_settings().artifacts_path`。
 - `service/agent/employee.py:136`（`resolve_workspace_dirs(root_path=root_path,...)`，root_path 上游来自 chat_service 传的 artifacts_path）。
 - `service/agent/orchestrator/agent.py`（:154 `artifacts_path=Path(settings.artifacts_path)`、:196 desk、:200 workspace_dirs）。
@@ -193,8 +193,9 @@ def test_delete_external_workspace_removes_only_subdir(db_session, tmp_path):
 - **实现期先做**:读 ResourceService 每个公有方法签名,确定"conversation_dir 怎么算出来的"。把它改成**直接吃 `product_root`(项目产物根,桶直接在其下)**,`conversation_id` 仅 API 层用于"conv→project 解析",不再进路径。
 - [ ] 写测试:`list_resources(product_root)` 列出 `<product_root>/{artifacts,uploads,skills-draft}` 桶内文件,与 conv 无关(同项目两 conv 看到同一批)。
 - [ ] 改 ResourceService 公有方法签名:`artifacts_root`→`product_root`,去掉路径里的 conv 段(沙箱根 = product_root)。
-- [ ] 改 chat_api ~10 端点:每处先 `conv = ChatService.get_conversation(db, conversation_id); root = resolve_conversation_product_root(db, conv)`,再 `ResourceService.xxx(root, ...)`。**逐个端点改 + 本地验证。**
-- [ ] 全量测;Commit `feat(sp2): ResourceService 吃项目产物根 + chat_api 资源端点穿透`。
+- [ ] 改 chat_api ~10 端点(**含语音 :519/:546**):每处先 `conv = ChatService.get_conversation(db, conversation_id); root = resolve_conversation_product_root(db, conv)`,再 `ResourceService.xxx(root, ...)`。**逐个端点改 + 本地验证。**
+- [ ] **删死代码(评审)**:ResourceService 里现有的 legacy 双轨读回退分支(`legacy = Path(root_path)/str(conversation_id)` 之类)与 `_read_roots_with_desk` 迁移兼容路径,签名改 product_root 后会算出陈旧/错误路径——一并**删除**(spec §2 明确"不做双轨读回退",§4(d) 默认不回退 legacy)。
+- [ ] 全量测;Commit `feat(sp2): ResourceService 吃项目产物根 + chat_api(含语音)穿透 + 删 legacy 双轨读`。
 
 ### Task 2.2: 员工对话 agent 构建穿透
 **Files:** `apps/server/src/service/chat_service.py`（:764 一带、:481）、`apps/server/src/service/agent/employee.py:136`。
