@@ -234,18 +234,22 @@ def backfill_user_id(db) -> None:
         "skill_ratings",
         "conversations",
     ]
+    total = 0
     for ws in db.query(Workspace).all():
         if ws.user_id is None:
             continue
         for t in tables:
-            db.execute(
+            r = db.execute(
                 text(
                     f"UPDATE {t} SET user_id = :uid "
                     "WHERE workspace_id = :wid AND user_id IS NULL"
                 ),
                 {"uid": ws.user_id, "wid": ws.id},
             )
+            total += getattr(r, "rowcount", 0)
     db.commit()
+    if total > 0:
+        logger.info("backfilled user_id: %s rows", total)
 
 
 def _reset_orphaned_streams(engine) -> None:
