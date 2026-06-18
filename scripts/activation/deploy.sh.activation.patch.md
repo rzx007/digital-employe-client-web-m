@@ -155,3 +155,16 @@ print('INTEGRITY_IDENTICAL' if all(a[k]==b[k] for k in keys) else 'DIFF')
   - 若新码 ≤24h 到期：`⚠ 新授权码即将到期…可能是临时码`。
   - 全部为告知，不读取确认、不阻塞，非交互装机不受影响。
 - 已随上面同一次内联落到 220 deploy.sh；降级分支与覆盖分支均 e2e 验证打印正确。
+
+### 2026-06-18 增强 2：幂等跳过时也比对磁盘 license.code 并告知
+
+- 背景：上一条「覆盖提示」活在写入路径里，而**已有效激活时 `stage_activation` 顶部幂等分支
+  直接 return**，根本到不了写入路径——用户把 license.code 换成更短的码重跑，脚本静默跳过、
+  毫无反馈，误以为「提示没生效」。
+- 决策＝**跳过时也比对并告知**（仍跳过、保护当前有效激活不被降级，只多打一行）：
+  - 幂等分支 return 前，读磁盘 license.code（`de_read_license_from_file`）解出到期日，
+    与 activation.json 的 `expires_at` 比对；不一致则 `⚠ 磁盘授权码到期 X 与当前激活 Y
+    不一致；已保持当前激活不变`，并提示「删 activation.json 后重跑可切换」。
+  - 不改跳过决策：activation.json 不被覆盖（e2e 验证后仍为 2027-07-01）。
+- 已重新内联进 220 deploy.sh（→883 行），备份 `deploy.sh.bak.preskipnote-*`；
+  真实场景（活 2027-07-01 + 盘 6-18）e2e 通过：打印不一致告知且不降级。

@@ -141,6 +141,16 @@ stage_activation() {
     cur_dev="$(python3 -c "import json;print(json.load(open('$json')).get('device_code',''))" 2>/dev/null)"
     cur_lic="$(python3 -c "import json;print(json.load(open('$json')).get('license_code',''))" 2>/dev/null)"
     if [[ "${cur_dev//-/}" == "${dev//-/}" ]] && de_license_valid_for_device "$cur_lic" "$dev" 2>/dev/null; then
+      # 仍跳过（保护当前有效激活不被降级），但磁盘 license.code 与当前不一致时告知
+      local cur_exp disk_lic disk_parsed disk_exp
+      cur_exp="$(python3 -c "import json;print(json.load(open('$json')).get('expires_at',''))" 2>/dev/null)"
+      if disk_lic="$(de_read_license_from_file)" && disk_parsed="$(de_parse_license "$disk_lic" 2>/dev/null)"; then
+        disk_exp="$(echo "$disk_parsed" | cut -f2)"
+        if [[ -n "$disk_exp" && "$disk_exp" != "$cur_exp" ]]; then
+          warn "磁盘授权码到期 ${disk_exp} 与当前激活 ${cur_exp} 不一致；已保持当前激活不变（未变更）。"
+          say "  如需切换到磁盘授权码，删除 ${json} 后重跑 deploy.sh。"
+        fi
+      fi
       ok "已激活（设备码 $disp）"; record activation OK "已激活"; return 0
     fi
   fi
