@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { memo, useState } from "react"
-import { IconPencil, IconX } from "@tabler/icons-react"
+import { IconPencil, IconRoute, IconX } from "@tabler/icons-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
@@ -291,38 +291,42 @@ function PlanGeneratedCardInner({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-lg border bg-card p-3 text-sm",
+        "relative overflow-hidden rounded-xl border border-border/60 bg-card p-3.5 text-sm shadow-sm",
         className
       )}
     >
-      <div className="mb-2.5 flex items-start justify-between gap-2">
+      <div className="mb-3 flex items-start gap-2.5">
+        <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+          <IconRoute className="size-3.5" />
+        </div>
         <div className="min-w-0 flex-1">
-          <p className={cn("text-xs font-semibold", cfg.titleClass)}>
+          <p className={cn("text-sm font-semibold leading-tight", cfg.titleClass)}>
             {cfg.title}
           </p>
           {data.summary && (
-            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               {data.summary}
             </p>
           )}
         </div>
-        <span className="shrink-0 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
-          {data.tasks.length} 个子任务
+        <span className="mt-0.5 shrink-0 text-[11px] tabular-nums text-muted-foreground">
+          {data.tasks.length} 项
         </span>
       </div>
 
       {/* 确认前展示可读/可编辑的任务列表；确认后由下方进度条接管，避免重复渲染 */}
       {!showConfirmedMessage && !showCancelledMessage && (
-      <div className="space-y-1">
+      <div className="space-y-0.5">
         {data.tasks.map((task: PlanTaskPreview, i: number) => (
           <div
             key={task.task_id ?? i}
-            className="flex items-center gap-2 rounded-md bg-muted/40 px-2 py-1.5 text-xs"
+            className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-xs transition-colors hover:bg-muted/50"
           >
-            <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
-            <span className="min-w-0 flex-1 truncate font-medium">
+            <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground/30" />
+            <span className="min-w-0 flex-1 truncate font-medium text-foreground/90">
               {task.task_name}
             </span>
+            <CronPreviewBadge cron={task.cron} />
             {(() => {
               const empName =
                 (task.task_id != null
@@ -334,17 +338,6 @@ function PlanGeneratedCardInner({
                 </span>
               ) : null
             })()}
-            <CronPreviewBadge cron={task.cron} />
-            <span
-              className={cn(
-                "shrink-0 text-[10px]",
-                task.cron
-                  ? "text-blue-600 dark:text-blue-400"
-                  : "text-muted-foreground"
-              )}
-            >
-              {task.cron ? "定时" : "即时"}
-            </span>
           </div>
         ))}
       </div>
@@ -352,10 +345,7 @@ function PlanGeneratedCardInner({
 
       {showActionPanel && (
         <>
-          <p className="mt-2.5 text-[11px] text-muted-foreground">
-            请确认任务拆解无误后再执行。
-          </p>
-          <div className="mt-2.5 flex flex-wrap gap-1.5">
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/50 pt-3">
             <Button
               type="button"
               size="sm"
@@ -368,8 +358,8 @@ function PlanGeneratedCardInner({
             <Button
               type="button"
               size="sm"
-              variant="outline"
-              className="h-7 text-xs"
+              variant="ghost"
+              className="h-7 text-xs text-muted-foreground"
               disabled={manualStatus !== "idle"}
               onClick={() => setEditOpen(true)}
             >
