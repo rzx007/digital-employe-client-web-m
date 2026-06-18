@@ -38,18 +38,21 @@
 - 纯只读,复用现成 DAG 函数。
 
 ### 3.2 显示面 1：list_tasks（task_listing.py）
-`task_listing.py:197-199` 现逻辑：`latest_log.run_status` if log else `("运行中" if scheduled else "未执行")`。
-改为：无 live log 时先调 `waiting_status_for_task`；返回非 None 用它（待放行/等待前置/待派发），返回 None 才回落原「未执行」/「运行中」。
+`task_listing.py:196-200` 现逻辑：`latest_log.run_status` if log else `("运行中" if execute_mode=="scheduled" else "未执行")`。
+改为：无 log **且非 scheduled** 时调 `waiting_status_for_task`；返回非 None 用它（待放行/等待前置/待派发），返回 None 或 scheduled 才回落原「运行中」/「未执行」。
+- **scheduled 任务不调 helper**（保持「运行中」语义）。
+- **性能(评审 advisory)**：list_tasks 可能跨同一 plan 多个任务；`waiting_status_for_task` 每调载一次 plan，循环内**按 plan_id 缓存** plan/dep_map/accepted，避免 N 次重复加载。
 
 ### 3.3 显示面 2：整盘快照（prompts.py `build_delegation_execution_context`）
-现只列有 log 的任务。补充：
-- 由 `orchestrator_conversation_id` 查其 `OrchestrationPlan`(`conversation_id == orch_conv_id`)→ `_load_plan_tasks`。
-- 对计划内**没有 live log**(不在已列出的 logged 任务集)的任务,追加一段「**待派发/等待中的子任务**」，每行 `任务名 · <waiting_status_for_task 结果>`。
-- 这样总管**每轮默认就看到**完整 DAG（已跑的 + 待放行的），不用 dig。
-- 若计划全部已派/有 log → 该段为空，不显示。
+现只列有 log 的任务、且 `if not logs: return "（尚未委派…）"` 早返回。补充一段"待派发/等待中"：
+
+1. **选当前活跃计划(避免列历史计划任务,评审 Issue 1)**：由 `orchestrator_conversation_id` 查 `OrchestrationPlan`(`conversation_id == orch_conv_id`)，取**最近一个未完成**的(`status != "completed"` 且非 cancelled；按 `created_at`/`id` 倒序取第一)。无活跃计划 → 不加该段。
+2. **只列"无 live log"的任务(避免重复列,评审 Issue 2)**：`live log` 定义为**该 task.id 出现在本函数已取的 `logs`(`list_execution_logs` 返回)集合中**。凡 task.id **已在 logs 集**→ 已由现有 per-log 段展示(含已打回等),**跳过**;只对**不在 logs 集**的计划任务追加 `任务名 · <waiting_status_for_task 结果>`。
+3. **放宽早返回(评审 Issue 3)**：现 `if not logs: return ...` 会在"计划刚确认、零 log"时提前返回,导致待派发段显示不出来。改为:即便 `not logs`,也继续走计划查询 + 待派发段;两者皆空时才回落"尚未委派"。
+4. 这样总管**每轮默认看到**完整 DAG(已跑的 + 待放行/等待中的),不用 dig。计划内任务全有 log → 待派发段为空、不显示。
 
 ### 3.4 prompt 对齐（prompts.py 模板）
-把第 89 行「看到下游显示『未执行』是正常的」改为「看到下游『待放行』即正常——它会在你收尾后自动开始」（措辞跟新状态一致；不新增禁令）。
+第 89 行那句「…所以下游显示「未执行」是正常的，**别 panic、别**用 `update_task`…」里,把「下游显示「未执行」是正常的」改成「下游显示「待放行」是正常的(它会在你收尾后自动开始)」。**只换这半句措辞**,保留同段「别 panic/别 update_task」+ 第 90 行「绝不复述给用户」等周边约束,别误删。
 
 ## 4. 改动面（纯后端只读/展示）
 - `dependency_scheduler.py`：新增 `waiting_status_for_task`。
