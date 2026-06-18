@@ -62,6 +62,7 @@ activaton-keys/*
 .history
 dist-electron
 /release
+apps/web/release/
 apps/server/micro_agent.egg-info/PKG-INFO
 apps/server/micro_agent.egg-info/requires.txt
 apps/server/micro_agent.egg-info/SOURCES.txt
