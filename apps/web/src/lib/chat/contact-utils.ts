@@ -1,9 +1,9 @@
 import type { Contact } from "@/types/chat"
 
 /**
- * 联系人唯一标识带 type 前缀（curator/employee/group），
- * 避免不同类型主键自增 id 重合（如 group.id===3 与 employee.id===3）
- * 导致点群聊却跳到同 id 员工的串号问题。
+ * 联系人唯一标识带 type 前缀（curator/employee），
+ * 避免不同类型主键自增 id 重合（如 curator.id===3 与 employee.id===3）
+ * 导致点馆长却跳到同 id 员工的串号问题。
  */
 export function getContactId(contact: Contact | undefined | null): string | null {
   if (!contact) return null
@@ -13,7 +13,7 @@ export function getContactId(contact: Contact | undefined | null): string | null
   if (contact.type === "employee") {
     return contact.employee?.id ? `employee:${contact.employee.id}` : null
   }
-  return contact.group?.id ? `group:${contact.group.id}` : null
+  return null
 }
 
 /**
@@ -35,15 +35,13 @@ export function findContactInList(
     return contacts.find((contact) => {
       if (contact.type !== typeHint) return false
       if (contact.type === "curator") return contact.curator?.id === id
-      if (contact.type === "employee") return contact.employee?.id === id
-      return contact.group?.id === id
+      return contact.employee?.id === id
     })
   }
-  // 裸 id 无提示：旧行为，任意类型匹配（curator 优先于 employee 优先于 group 按列表顺序）
+  // 裸 id 无提示：旧行为，任意类型匹配（curator 优先于 employee 按列表顺序）
   return contacts.find((contact) => {
     if (contact.type === "curator") return contact.curator?.id === id
-    if (contact.type === "employee") return contact.employee?.id === id
-    return contact.group?.id === id
+    return contact.employee?.id === id
   })
 }
 

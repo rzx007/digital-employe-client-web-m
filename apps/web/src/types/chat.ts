@@ -49,7 +49,7 @@ export interface AIEmployee {
   skills?: MetadataSkill[]
 }
 
-export type ContactType = "curator" | "employee" | "group"
+export type ContactType = "curator" | "employee"
 
 /** 总管助手：独立身份，不属于员工列表 */
 export interface CuratorProfile {
@@ -65,11 +65,6 @@ export interface Contact {
   type: ContactType
   curator?: CuratorProfile
   employee?: AIEmployee
-  group?: {
-    id: string
-    name: string
-    participants: AIEmployee[]
-  }
 }
 
 /** 语音消息元数据，随 extra_meta.voice 持久化（snake_case，前后端一致） */
