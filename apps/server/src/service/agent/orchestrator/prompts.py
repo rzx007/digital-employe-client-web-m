@@ -288,6 +288,15 @@ def build_delegation_execution_context(
                 lines.append(output)
             else:
                 lines.append("- 员工交付摘要：（无文本输出，详见客户端任务卡片）")
+            # #3 QA 代码兜底：员工自报二进制交付物却没真实落盘 → 直接在快照里标红，
+            # 不依赖总管主动抽检（补 P0-A「抽检全靠模型遵从」的短板）。
+            from src.service.agent.orchestrator.qa_delivery_check import (
+                check_log_delivery,
+            )
+
+            delivery_warn = check_log_delivery(db, log)
+            if delivery_warn:
+                lines.append(delivery_warn)
         elif log.error_message:
             lines.append(f"- 错误：{str(log.error_message)[:500]}")
         lines.append("")
