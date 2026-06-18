@@ -89,8 +89,10 @@ export function DraggableWorkbenchGrid({
         >
           {visible.map((block) => (
             <div key={block.id} className="group/card relative">
+              {/* 拖拽手柄只盖看板头栏左侧（标题区），右侧留白避开面板自带的刷新/全屏/删除按钮，
+                  否则这条 z-10 strip 会吞掉那些按钮的点击 */}
               <div
-                className="wb-drag-handle absolute top-0 right-0 left-0 z-10 h-7 cursor-grab rounded-t-md bg-muted/40 opacity-0 transition-opacity group-hover/card:opacity-100"
+                className="wb-drag-handle absolute top-0 left-0 right-16 z-10 h-7 cursor-grab rounded-tl-md bg-muted/40 opacity-0 transition-opacity group-hover/card:opacity-100"
                 title="拖动"
               />
               {onRemoveBlock && (
