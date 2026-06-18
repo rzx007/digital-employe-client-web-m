@@ -147,9 +147,54 @@ def detect_failure_then_success(db: Session, log) -> str | None:
         return None
 
 
+def detect_rework_then_success(db: Session, log) -> str | None:
+    """信号：同 task_id 先被总管打回返工（superseded）后成功。
+
+    返工是「人在环里」最高质量的纠错信号——总管亲口判定上轮不达标。返回上下文
+    （供 critic prompt），无信号→None。返工说明（rework_note）在员工会话里以
+    「【系统·返工】」开头，由 critic 读会话内容提炼，故此处只需确认信号存在。
+    """
+    try:
+        if log is None or log.task_id is None or log.run_status != "success":
+            return None
+        from src.models.task_execution_log import TaskExecutionLog
+        prior_superseded = db.scalars(
+            select(TaskExecutionLog)
+            .where(
+                TaskExecutionLog.task_id == log.task_id,
+                TaskExecutionLog.run_status == "superseded",
+                TaskExecutionLog.id < log.id,
+            )
+            .order_by(TaskExecutionLog.id.desc())
+        ).first()
+        if prior_superseded is None:
+            return None
+        prior_note = (prior_superseded.run_result or "").strip()[:500]
+        ctx = (
+            f"上轮交付（log#{prior_superseded.id}）被总管判定不达标、打回返工，"
+            f"本轮为修订后达标的结果。"
+        )
+        if prior_note:
+            ctx += f" 上轮状态备注：{prior_note}"
+        return ctx
+    except Exception:
+        logger.warning("detect_rework_then_success failed", exc_info=True)
+        return None
+
+
 def maybe_reflect_on_signal(db: Session, log) -> None:
-    """信号闸门：仅在检测到信号时反思（v1：失败后成功）。无信号不调模型。"""
+    """信号闸门：仅在检测到信号时反思。无信号不调模型。
+
+    信号优先级：**返工后达标** > **失败后成功**——返工是总管亲口纠错，比员工
+    自己炸了重试更具体、更强，故优先用返工 critic 提炼。
+    """
     if log is None or log.employee_id is None or log.run_status != "success":
+        return
+    rework_ctx = detect_rework_then_success(db, log)
+    if rework_ctx is not None:
+        _reflect_with_signal(
+            db, log.conversation_id, log.employee_id, rework_ctx, kind="rework"
+        )
         return
     signal_ctx = detect_failure_then_success(db, log)
     if signal_ctx is None:
@@ -157,7 +202,23 @@ def maybe_reflect_on_signal(db: Session, log) -> None:
     _reflect_with_signal(db, log.conversation_id, log.employee_id, signal_ctx)
 
 
-def _reflect_with_signal(db: Session, conversation_id, employee_id: int, signal_ctx: str) -> None:
+_SIGNAL_CRITIC_PROMPTS = {
+    "failure": (
+        "你是经验提取助手。某员工的一个任务**先失败后成功**了。请对比提炼"
+        "「这次为何成功、上次的坑是什么、下次同类活怎么做」成 1-3 条**可复用教训**。"
+    ),
+    "rework": (
+        "你是经验提取助手。某员工的一个任务**被总管打回返工后才达标**（会话里"
+        "「【系统·返工】」是总管指出的不达标点与改进要求）。请对比上一稿与修订稿，"
+        "提炼「上轮哪里不达标、这轮怎么改对的、下次同类活如何一次做对」成 1-3 条"
+        "**可复用教训**，尤其注意交付格式/完整性这类反复踩的坑。"
+    ),
+}
+
+
+def _reflect_with_signal(
+    db: Session, conversation_id, employee_id: int, signal_ctx: str, *, kind: str = "failure"
+) -> None:
     if employee_id is None:
         return
     if not _acquire_reflect_lock(employee_id):
@@ -174,9 +235,9 @@ def _reflect_with_signal(db: Session, conversation_id, employee_id: int, signal_
         ensure_memory_file_utf8(memory_file)
         current_memory = read_text_with_encoding_fallback(memory_file)
     llm = _build_llm()
+    intro = _SIGNAL_CRITIC_PROMPTS.get(kind, _SIGNAL_CRITIC_PROMPTS["failure"])
     prompt = (
-        "你是经验提取助手。某员工的一个任务**先失败后成功**了。请对比提炼"
-        "「这次为何成功、上次的坑是什么、下次同类活怎么做」成 1-3 条**可复用教训**。\n\n"
+        f"{intro}\n\n"
         f"{signal_ctx}\n\n"
         f"已有记忆：\n{current_memory}\n\n"
         f"本次（成功）对话：\n{messages}\n\n"

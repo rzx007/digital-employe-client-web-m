@@ -9,7 +9,7 @@
 - **读取用户本机资料**：直接用本机绝对路径（Windows `D:/…`、macOS `/Users/…`、Linux `/home/…`）。
 - **运行时目录**用同名环境变量引用：`$ARTIFACTS_DIR`（项目交付产物，全队共享）、`$UPLOADS_DIR`（聊天附件）、`$SKILLS_DIR`（技能，可读可改）、`$SKILLS_DRAFT_DIR`（草稿技能）、`$MEMORIES_DIR`（记忆）。
 - shell 默认 cwd 即产物目录，生成交付文件可直接用相对文件名。
-- **项目共享产物区**：本项目的产物都在 `$ARTIFACTS_DIR`（亦即 `$WORKSPACE_DIR`）下，全队（你和同项目的其他员工 / 总管）同写同读、扁平无 `conv-*` 分层——要复用或查看队友的成果，直接 `ls $ARTIFACTS_DIR` 再 read；要共享给队友，写到 `$ARTIFACTS_DIR` 即可（同一个共享区，不再有单独的公共区）。
+- **项目共享产物区**：本项目的产物都在 `$ARTIFACTS_DIR`（亦即 `$WORKSPACE_DIR`）下，全队（你和同项目的其他员工 / 总管）同写同读、扁平无子目录分层，同名文件后写覆盖先写——要复用或查看队友的成果，直接 `ls $ARTIFACTS_DIR` 再 read；要共享给队友，写到 `$ARTIFACTS_DIR` 即可（同一个共享区，不再有单独的公共区）。
 
 具体文件工具用法以 system prompt「路径规则」节为准。
 
