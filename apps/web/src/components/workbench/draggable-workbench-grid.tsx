@@ -9,8 +9,8 @@ import { cn } from "@workspace/ui/lib/utils"
 import type { GridSpan, GridPos, WorkbenchBlock } from "@/types/workbench"
 import { GRID_COLS, GRID_ROW_HEIGHT } from "@/lib/workbench/grid"
 import { WorkbenchHtmlPanel } from "./workbench-html-panel"
+// react-grid-layout v2 自带 resize 手柄样式，不再依赖 react-resizable（v1 才需要）。
 import "react-grid-layout/css/styles.css"
-import "react-resizable/css/styles.css"
 
 interface DraggableWorkbenchGridProps {
   blocks: WorkbenchBlock[]
