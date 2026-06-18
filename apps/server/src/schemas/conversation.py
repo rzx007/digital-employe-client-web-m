@@ -58,7 +58,6 @@ class ConversationMessageRead(BaseModel):
     conversation_id: int
     role: MessageRole
     content: str | None
-    chunk_json: str | None
     stream_state: str | None = None
     stream_cursor: int | None = None
     extra_meta: dict | None = None

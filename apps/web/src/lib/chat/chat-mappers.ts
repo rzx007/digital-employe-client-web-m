@@ -18,7 +18,6 @@ export function mapChatMessageToMessage(
       msg.role === "user"
         ? msg.content
         : sanitizeAssistantContent(msg.content),
-    chunkJson: msg.chunk_json,
     streamState: msg.stream_state,
     streamCursor: msg.stream_cursor,
     metadata: msg.extra_meta ?? undefined,

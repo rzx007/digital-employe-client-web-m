@@ -36,14 +36,10 @@ class ConversationMessage(Base):
     )
     role: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    chunk_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # Deprecated: 后续版本移除，仅保留供旧前端 fallback 用
     extra_meta: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     stream_state: Mapped[str | None] = mapped_column(String(32), nullable=True)     # 取值: "streaming" | "completed" | "error" | NULL（旧消息无此字段
     stream_cursor: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)     # 已发送的最后一个事件序列号
     message_parts: Mapped[str | None] = mapped_column(Text, nullable=True)     # 预计算的结构化 parts（JSON），前端直接渲染
-    # 群时间线作者归属（仅 target_type="group" 的房间会话使用；1:1 会话恒为 NULL）
-    sender_id: Mapped[int | None] = mapped_column(Integer, nullable=True)       # 发言成员的 employee_id（或 NULL=用户/系统）
-    sender_label: Mapped[str | None] = mapped_column(String(255), nullable=True)  # 展示名（员工名/"用户"/"组长"）
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now, index=True)
 
     conversation = relationship("Conversation", back_populates="messages")
