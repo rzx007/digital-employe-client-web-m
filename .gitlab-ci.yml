@@ -18,6 +18,7 @@
 
 stages:
   - build
+  - publish
 
 variables:
   # ---------- 国内镜像（npmmirror，与根目录 .npmrc 一致）----------
@@ -140,6 +141,40 @@ publish:feishu:
     - tags
   script:
     - C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe scripts/ci/publish-feishu.py
+
+# ------------------------------------------------------------------------------
+# electron 自动更新 feed：把 build:windows 产物（exe + latest.yml + blockmap）推到
+# nginx 更新服务器 win32/。复用 build:windows 留下的 apps/web/release/（同一 win-builder，
+# GIT_CLEAN_FLAGS="" 工作区保留）。脚本会按现算 sha512 兜底重生成 latest.yml，杜绝漏传。
+#
+# 凭据走 GitLab CI/CD Variables（Masked，勿入库）：
+#   UPDATE_TEST_HOST / UPDATE_TEST_USER / UPDATE_TEST_PASS / UPDATE_TEST_BASE
+#   UPDATE_PROD_HOST / UPDATE_PROD_USER / UPDATE_PROD_PASS / UPDATE_PROD_BASE
+#   （BASE 为平台目录的上一层，脚本自动追加 /win32）
+# ------------------------------------------------------------------------------
+.update_push: &update_push
+  <<: *win_build
+  stage: publish
+  tags:
+    - win-builder
+  before_script:
+    - C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe -m pip install --quiet --disable-pip-version-check paramiko
+
+# 测试环境：推 tag 后自动推送（allow_failure：推送失败不挡发布，飞书分发不受影响）
+publish:update:win:test:
+  <<: *update_push
+  only: *release_refs
+  allow_failure: true
+  script:
+    - C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe scripts/ci/publish-update-server.py --platform win32 --target test
+
+# 正式环境：需人工确认，Pipeline 页点 Play 才推送
+publish:update:win:prod:
+  <<: *update_push
+  only: *release_refs
+  when: manual
+  script:
+    - C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe scripts/ci/publish-update-server.py --platform win32 --target prod
 
 # ------------------------------------------------------------------------------
 # 冒烟测试（Mac）：已关闭（job 名前加 . 变隐藏 job）。mac-builder 已验证就绪。
