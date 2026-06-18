@@ -13,7 +13,7 @@ interface WorkbenchViewProps {
 }
 
 export function WorkbenchView({ onClose, className }: WorkbenchViewProps) {
-  const { config, reorderBlocks, removeBlock, resizeBlock } = useWorkbenchConfig({
+  const { config, removeBlock, resizeBlock, moveBlock } = useWorkbenchConfig({
     employeeId: GLOBAL_WORKBENCH_ID,
   })
 
@@ -39,9 +39,11 @@ export function WorkbenchView({ onClose, className }: WorkbenchViewProps) {
           {config ? (
             <DraggableWorkbenchGrid
               blocks={config.blocks}
-              onReorder={reorderBlocks}
+              onMoveResize={(id, pos, span) => {
+                moveBlock(id, pos)
+                resizeBlock(id, span)
+              }}
               onRemoveBlock={removeBlock}
-              onResizeBlock={resizeBlock}
             />
           ) : null}
         </WorkbenchContentSplit>
