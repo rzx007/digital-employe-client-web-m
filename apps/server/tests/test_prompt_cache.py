@@ -129,14 +129,56 @@ def test_mark_system_message_string_content() -> None:
     assert block["cache_control"] == {"type": "ephemeral"}
 
 
-def test_apply_explicit_cache_markers_first_system_only() -> None:
+def _has_marker(msg: dict) -> bool:
+    content = msg.get("content")
+    if isinstance(content, list):
+        return any(
+            isinstance(b, dict) and b.get("cache_control") == {"type": "ephemeral"}
+            for b in content
+        )
+    return msg.get("cache_control") == {"type": "ephemeral"}
+
+
+def test_apply_explicit_cache_markers_first_system_and_tail() -> None:
+    # system_and_3: system prefix + the last non-system message(s) both cached.
     messages = [
         {"role": "system", "content": "静态前缀"},
         {"role": "user", "content": "你好"},
     ]
     out = apply_explicit_cache_markers(messages)
     assert out[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
-    assert out[1]["content"] == "你好"
+    # tail message now also carries a breakpoint so growing history is cacheable
+    assert _has_marker(out[1])
+
+
+def test_apply_explicit_cache_markers_tail_last_three() -> None:
+    # 1 system + 5 turns; breakpoints = system + last 3 non-system (cap 4 total).
+    messages = [
+        {"role": "system", "content": "静态前缀"},
+        {"role": "user", "content": "q1"},
+        {"role": "assistant", "content": "a1"},
+        {"role": "user", "content": "q2"},
+        {"role": "assistant", "content": "a2"},
+        {"role": "user", "content": "q3"},
+    ]
+    out = apply_explicit_cache_markers(messages)
+    marked = [i for i, m in enumerate(out) if _has_marker(m)]
+    # system(0) + last 3 non-system (indices 3,4,5)
+    assert 0 in marked
+    assert marked == [0, 3, 4, 5]
+    # at most 4 breakpoints (provider hard limit)
+    assert len(marked) <= 4
+
+
+def test_apply_explicit_cache_markers_caps_at_four() -> None:
+    # 1 system + 10 user turns → at most 4 breakpoints total.
+    messages = [{"role": "system", "content": "前缀"}]
+    messages += [{"role": "user", "content": f"q{i}"} for i in range(10)]
+    out = apply_explicit_cache_markers(messages)
+    marked = [i for i, m in enumerate(out) if _has_marker(m)]
+    assert len(marked) == 4
+    assert marked[0] == 0  # system always cached
+    assert marked[-1] == len(out) - 1  # newest message cached
 
 
 def test_apply_prompt_cache_openai_auto_adds_key() -> None:
@@ -190,9 +232,12 @@ def test_apply_explicit_cache_markers_summary_boundary() -> None:
         {"role": "user", "content": "最新问题"},
     ]
     out = apply_explicit_cache_markers(messages)
+    # system prefix cached
     assert out[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+    # summary block cached (stable rolled-up prefix)
     assert out[1]["content"][0]["cache_control"] == {"type": "ephemeral"}
-    assert out[2]["content"] == "最新问题"
+    # newest message now also cached as the tail breakpoint
+    assert _has_marker(out[2])
 
 
 def test_apply_prompt_cache_auto_summary_fingerprint_changes_key() -> None:

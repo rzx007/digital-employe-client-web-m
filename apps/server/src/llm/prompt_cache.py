@@ -154,24 +154,53 @@ def _system_message_text(messages: list[dict[str, Any]]) -> str:
     return "".join(chunks)
 
 
+# Anthropic/DashScope/vLLM 显式缓存的断点上限通常为 4。
+_MAX_CACHE_BREAKPOINTS = 4
+
+
 def apply_explicit_cache_markers(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Mark cache boundaries: static system prefix, then summary block if present."""
+    """system_and_3 策略：缓存 system 前缀 + 摘要块 + 尾部最近若干条消息。
+
+    旧实现只打 system + 摘要两个断点：稳定前缀能命中，但每轮新增的 user/assistant/
+    tool 历史没有断点，断点之后的增量历史无法被缓存复用，多轮长对话每轮都为整段
+    历史重新计费。对齐 hermes-agent 的 system_and_3：再给最后几条非 system 消息
+    打断点，让滚动增长的历史也能命中（实测 GPUStack：第二轮 cached_tokens 命中、
+    TTFT 降 ~3x）。断点总数封顶 _MAX_CACHE_BREAKPOINTS（厂商硬限）。
+    """
     if not messages:
         return messages
 
-    out: list[dict[str, Any]] = []
-    marked_system = False
-    marked_summary = False
-    for msg in messages:
-        role = msg.get("role")
-        if not marked_system and role == "system":
-            out.append(mark_system_message_cache_control(msg))
-            marked_system = True
-        elif not marked_summary and role in ("user", "human") and is_summarization_message(msg):
-            out.append(mark_message_cache_control(msg))
-            marked_summary = True
-        else:
-            out.append(msg)
+    marked_indices: set[int] = set()
+    out: list[dict[str, Any]] = list(messages)
+
+    # 1) system 前缀（首条 system）
+    for idx, msg in enumerate(out):
+        if msg.get("role") == "system":
+            out[idx] = mark_system_message_cache_control(msg)
+            marked_indices.add(idx)
+            break
+
+    # 2) 摘要块（稳定的滚动摘要前缀，若有）
+    for idx, msg in enumerate(out):
+        if idx in marked_indices:
+            continue
+        if msg.get("role") in ("user", "human") and is_summarization_message(msg):
+            out[idx] = mark_message_cache_control(msg)
+            marked_indices.add(idx)
+            break
+
+    # 3) 尾部最近的非 system 消息，补满到上限
+    remaining = _MAX_CACHE_BREAKPOINTS - len(marked_indices)
+    if remaining > 0:
+        non_system = [
+            i for i, m in enumerate(out) if m.get("role") != "system"
+        ]
+        for idx in non_system[-remaining:]:
+            if idx in marked_indices:
+                continue
+            out[idx] = mark_message_cache_control(out[idx])
+            marked_indices.add(idx)
+
     return out
 
 
