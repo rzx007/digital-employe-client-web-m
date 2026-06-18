@@ -4,13 +4,11 @@ import {
   IconFolder,
   IconHistory,
   IconLayoutGrid,
-  IconMessage2Plus,
   IconTrash,
   IconUsers,
 } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 import { Button } from "@workspace/ui/components/button"
-import { useDebouncedCuratorNewConversation } from "@/hooks/use-debounced-curator-new-conversation"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
@@ -34,8 +32,6 @@ export function CuratorChatHeader({
   onReset,
   onOpenContacts,
   onOpenConversations,
-  onNewConversation,
-  isCreatingConversation,
   className,
 }: {
   contact?: ChatViewContact
@@ -44,12 +40,11 @@ export function CuratorChatHeader({
   onReset?: () => void
   onOpenContacts?: () => void
   onOpenConversations?: () => void
+  // 新建对话入口已统一到侧栏「+」，聊天头不再渲染该按钮（保留 prop 兼容调用方）。
   onNewConversation?: () => void
   isCreatingConversation?: boolean
   className?: string
 }) {
-  const handleNewConversation =
-    useDebouncedCuratorNewConversation(onNewConversation)
   const isMobile = useIsMobile()
   const isArtifactPanelOpen = useArtifactStore((s) => s.isPanelOpen)
   const setArtifactPanelOpen = useArtifactStore((s) => s.setPanelOpen)
@@ -94,17 +89,6 @@ export function CuratorChatHeader({
       </div>
 
       <div className="flex items-center gap-1">
-        {onNewConversation && (
-          <Button
-            title="新建对话"
-            variant="ghost"
-            size="icon-sm"
-            disabled={isCreatingConversation}
-            onClick={handleNewConversation}
-          >
-            <IconMessage2Plus className="size-4" />
-          </Button>
-        )}
         {onOpenConversations && (
           <Button
             title="历史会话"

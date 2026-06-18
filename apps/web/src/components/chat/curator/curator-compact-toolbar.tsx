@@ -3,7 +3,6 @@ import {
   IconDots,
   IconFolder,
   IconHistory,
-  IconMessage2Plus,
   IconTrash,
 } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
@@ -13,7 +12,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
-import { useDebouncedCuratorNewConversation } from "@/hooks/use-debounced-curator-new-conversation"
 import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
 import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { ACTIVE_TASK_RUN_STATUSES } from "@/types/schedule-monitor"
@@ -28,8 +26,6 @@ export function CuratorCompactToolbar({
   conversationTitle,
   onReset,
   onOpenConversations,
-  onNewConversation,
-  isCreatingConversation,
   resourcesOpen = false,
   onToggleResources,
   className,
@@ -40,14 +36,13 @@ export function CuratorCompactToolbar({
   conversationTitle?: string
   onReset?: () => void
   onOpenConversations?: () => void
+  // 新建对话入口已统一到侧栏「+」，紧凑工具栏不再渲染该按钮（保留 prop 兼容调用方）。
   onNewConversation?: () => void
   isCreatingConversation?: boolean
   resourcesOpen?: boolean
   onToggleResources?: () => void
   className?: string
 }) {
-  const handleNewConversation =
-    useDebouncedCuratorNewConversation(onNewConversation)
   const isEmployeeTasksPanelOpen = useEmployeeTasksPanelStore((s) => s.isOpen)
   const toggleEmployeeTasksPanel = useEmployeeTasksPanelStore((s) => s.toggle)
   const { data: executions = [] } = useCuratorTaskExecutions(conversationId)
@@ -90,17 +85,6 @@ export function CuratorCompactToolbar({
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5">
-        {onNewConversation && (
-          <Button
-            title="新建对话"
-            variant="ghost"
-            size="icon-sm"
-            disabled={isCreatingConversation}
-            onClick={handleNewConversation}
-          >
-            <IconMessage2Plus className="size-4" />
-          </Button>
-        )}
         {onOpenConversations && (
           <Button
             title="历史会话"
