@@ -6,7 +6,6 @@ import {
   removeBlock,
   setBlockPos,
   setBlockSpan,
-  updateBlockOrder,
   WORKBENCH_CONFIG_CHANGED_EVENT,
 } from "@/lib/workbench/workbench-config"
 
@@ -52,13 +51,6 @@ export function useWorkbenchConfig({ employeeId }: UseWorkbenchConfigOptions) {
     }
   }, [employeeId, refreshConfig])
 
-  const reorderBlocks = useCallback(
-    (blockIds: string[]) => {
-      setConfig((prev) => (prev ? updateBlockOrder(prev, blockIds) : prev))
-    },
-    []
-  )
-
   const removeBlockById = useCallback((blockId: string) => {
     setConfig((prev) => (prev ? removeBlock(prev, blockId) : prev))
   }, [])
@@ -73,7 +65,6 @@ export function useWorkbenchConfig({ employeeId }: UseWorkbenchConfigOptions) {
 
   return {
     config,
-    reorderBlocks,
     removeBlock: removeBlockById,
     resizeBlock,
     moveBlock,
