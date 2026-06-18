@@ -1,6 +1,7 @@
 import { create } from "zustand"
 
 import { useArtifactStore } from "@/stores/artifact-store"
+import { useBrowserStore } from "@/stores/browser-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
 
@@ -24,6 +25,8 @@ function closeOtherSidePanels() {
   useArtifactStore.getState().closeArtifact()
   useMonitorStore.getState().closeMonitor()
   useEmployeeTasksPanelStore.getState().close()
+  // 浏览器改为最小化（保活）而非销毁——切到本 panel 不中断浏览器操作。
+  useBrowserStore.getState().minimizeBrowser()
 }
 
 interface SubtaskPanelStore {

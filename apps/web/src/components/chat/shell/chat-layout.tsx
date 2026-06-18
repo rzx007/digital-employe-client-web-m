@@ -307,11 +307,10 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
 
   const hasRightPanel = rightPanel !== null
   const isBrowserRightPanel = rightPanel === "browser"
+  // 浏览器最小化后即显示恢复入口——即便其它 panel 正占着右栏（点恢复会收起该 panel
+   // 并重显浏览器），让用户随时把后台保活的浏览器调回来。
   const showBrowserRestoreFab =
-    activeTab === "chat" &&
-    isBrowserMinimized &&
-    !isBrowserOpen &&
-    !hasRightPanel
+    activeTab === "chat" && isBrowserMinimized && !isBrowserOpen
 
   const shouldCollapseRecent =
     activeTab === "chat" && hasRightPanel && layoutWidth < 1902

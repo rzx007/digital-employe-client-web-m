@@ -9,7 +9,7 @@ function closeOtherSidePanels() {
   useArtifactStore.getState().closeArtifact()
   useMonitorStore.getState().closeMonitor()
   useSubtaskPanelStore.getState().close()
-  useBrowserStore.getState().destroyBrowser()
+  useBrowserStore.getState().minimizeBrowser()
 }
 
 interface EmployeeTasksPanelStore {

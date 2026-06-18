@@ -114,6 +114,10 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   },
 
   minimizeBrowser: () => {
+    // 仅最小化「正在显示」的浏览器：隐藏原生视图但保活（webContents 不销毁、
+    // backgroundThrottling=false 故后台操作继续跑），切到其它 panel 不中断浏览器操作。
+    // 浏览器未开时此调用为 no-op，便于各 panel 打开时无条件调用。
+    if (!get().isOpen) return
     const api = getElectronApi()
     void api?.browser.hide()
     set({ isOpen: false, isMinimized: true, error: null, isFullscreen: false })
@@ -122,10 +126,10 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   restoreBrowser: () => {
     const { currentUrl } = get()
     if (!currentUrl) return
-    const api = getElectronApi()
-    if (!api?.browser) return
-    void api.browser.open(currentUrl)
-    set({ isOpen: true, isMinimized: false, isLoading: true, error: null })
+    // 让浏览器重新占据右栏：先收起其它右侧 panel。置 isOpen=true 后 BrowserPanel
+    // 挂载会 api.browser.show() + 同步 bounds——重显同一视图，不重新导航、保留页面状态。
+    closeOtherRightPanels()
+    set({ isOpen: true, isMinimized: false, error: null })
   },
 
   destroyBrowser: () => {
