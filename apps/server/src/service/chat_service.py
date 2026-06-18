@@ -839,6 +839,14 @@ class ChatService:
                 )
                 question = mention_context + question
 
+            # 注入「工作台现状」快照（仅工作台总管面板会附带 workbench；其他会话无此键）。
+            # 在用户消息已落库之后才拼到 in-flight question，故不污染历史/气泡。
+            if extra_meta and extra_meta.get("workbench"):
+                workbench_context = (
+                    f"[工作台现状] {extra_meta['workbench']}\n\n"
+                )
+                question = workbench_context + question
+
             from src.service.agent.orchestrator import get_orchestrator_agent
             # 注意：必须在本协程上下文同步构建——get_orchestrator_agent 内部用 ContextVar
             # (_db_session_ctx) 绑定 db，挪到线程池会绑到工作线程上下文、后台任务读不到
