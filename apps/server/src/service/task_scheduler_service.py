@@ -5,13 +5,12 @@ import logging
 import re
 import urllib.parse
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 import httpx
 from apscheduler.schedulers.background import BackgroundScheduler  # pylint: disable=import-error
 from apscheduler.triggers.cron import CronTrigger  # pylint: disable=import-error
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
@@ -21,13 +20,10 @@ from src.llm.factory import build_chat_model
 from src.db.session import get_session_local
 from src.models.employee import Employee
 from src.models.employee_mcp import EmployeeMcp
-from src.models.employee_skill import EmployeeSkill
 from src.models.employee_task import EmployeeTask
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import CST, Workspace, cst_now
 from src.service.task_service import TaskService
-from src.service.agent import get_agent
-from src.service.skill_confirm_url import load_confirm_url_for_skill
 
 logger = logging.getLogger(__name__)
 
@@ -221,30 +217,6 @@ class TaskSchedulerService:
         )
 
     @staticmethod
-    def _resolve_skills_dir(skills_payload: str | list | dict | None) -> str:
-        if not skills_payload:
-            return ""
-
-        data: Any = skills_payload
-        if isinstance(skills_payload, str):
-            try:
-                data = json.loads(skills_payload)
-            except json.JSONDecodeError:
-                return skills_payload
-
-        if isinstance(data, dict):
-            path = data.get("skills_dir") or data.get("stored_path") or data.get("path")
-            return str(path or "")
-        if isinstance(data, list) and data:
-            first = data[0]
-            if isinstance(first, str):
-                return first
-            if isinstance(first, dict):
-                path = first.get("skills_dir") or first.get("stored_path") or first.get("path")
-                return str(path or "")
-        return ""
-
-    @staticmethod
     def _loads_json(raw: str | None, default: Any) -> Any:
         if not raw:
             return default
@@ -334,28 +306,6 @@ class TaskSchedulerService:
             getattr(last, "content", "")
         ).strip()
 
-    @staticmethod
-    def _resolve_skill_name(db: Session, employee: Employee, skill_id: int | None) -> str:
-        if skill_id is None:
-            return ""
-        skill_name = db.scalar(
-            select(EmployeeSkill.skill_name).where(
-                EmployeeSkill.employee_id == employee.id,
-                EmployeeSkill.skill_id == skill_id,
-            ).limit(1)
-        )
-        if skill_name:
-            return str(skill_name)
-        # 兜底：历史数据可能缺少 employee_id 维度时，按员工归属用户 + skill_id 查一次
-        # （员工已是用户级，按 user_id 解析；经 Employee join 以兼容 EmployeeSkill.user_id 为 NULL）
-        fallback_name = db.scalar(
-            select(EmployeeSkill.skill_name)
-            .join(Employee, EmployeeSkill.employee_id == Employee.id)
-            .where(Employee.user_id == employee.user_id, EmployeeSkill.skill_id == skill_id)
-            .order_by(EmployeeSkill.id.desc()).limit(1)
-        )
-        return str(fallback_name or "")
-
     @classmethod
     def _execute_mcp_tool_call(cls, db: Session, task: EmployeeTask) -> dict[str, Any]:
         from src.core.remote_gateway import RemoteGateway
@@ -437,143 +387,6 @@ class TaskSchedulerService:
             "response": response,
             "server_name": server_name,
             "tool_name": tool_name,
-        }
-
-    @classmethod
-    def _invoke_sql_agent_update_confirm_url(
-        cls,
-        *,
-        run_log_id: int,
-        confirm_url: str,
-        skills_dir: str,
-        workspace_root: str,
-    ) -> None:
-        """通过挂载了 LangChain SQLDatabaseToolkit 的 Agent 更新 task_execution_logs.confirm_url。"""
-        safe_url = confirm_url.replace("'", "''")
-        skills_arg = str(Path(skills_dir).resolve()) if skills_dir.strip() else ""
-        agent = get_agent(
-            skills_arg,
-            workspace_root or "",
-            include_sqlite_tools=True,
-        )
-        thread_id = f"task-confirm-sql-{run_log_id}-{int(datetime.now().timestamp())}"
-        prompt = (
-            "你是一个只操作本应用 SQLite 数据库的助手。请使用提供的 SQL 相关工具执行更新，"
-            "不要做与本次更新无关的大规模全表扫描。"
-            f"将表 `task_execution_logs` 中主键 `id = {run_log_id}` 的行的字段 `confirm_url` "
-            f"设置为（整段字符串作为列值）：{confirm_url!r}  "
-            "等价 SQL 示例（请用工具执行语义一致的 UPDATE，注意字符串转义）："
-            f"UPDATE task_execution_logs SET confirm_url = '{safe_url}' WHERE id = {run_log_id};"
-            "执行完成后用一句话说明是否已更新。"
-        )
-        agent.invoke(
-            {"messages": [{"role": "user", "content": prompt}]},
-            config={"configurable": {"thread_id": thread_id}},
-        )
-
-    @classmethod
-    def _maybe_write_confirm_url(
-        cls,
-        db: Session,
-        *,
-        run_log: TaskExecutionLog,
-        task: EmployeeTask,
-        employee: Employee | None,
-        workspace: Workspace | None,
-    ) -> None:
-        if not employee or not workspace:
-            return
-        # 如果该任务不需要确认，则直接跳过
-        if not getattr(task, "confirm_execution_result", False):
-            return
-        if task.skill_id is None:
-            return
-        skill_name = cls._resolve_skill_name(db, employee, task.skill_id)
-        skills_dir = cls._resolve_skills_dir(employee.skills_json)
-        if not skill_name or not skills_dir.strip():
-            return
-        resolved_dir = str(Path(skills_dir).resolve())
-        confirm_url = load_confirm_url_for_skill(resolved_dir, skill_name)
-        logger.info("confirm_url: %s", confirm_url)
-        if not confirm_url:
-            logger.info(
-                "任务要求确认执行结果但未在 SKILL.md 中解析到 confirm_url，"
-                "task_id=%s skill=%s",
-                task.id,
-                skill_name,
-            )
-            return
-        try:
-            cls._invoke_sql_agent_update_confirm_url(
-                run_log_id=run_log.id,
-                confirm_url=confirm_url,
-                skills_dir=resolved_dir,
-                workspace_root=str(workspace.root_path or ""),
-            )
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.error(
-                "Agent SQL 工具写入 confirm_url 失败 run_log_id=%s: %s",
-                run_log.id,
-                exc,
-                exc_info=True,
-            )
-        db.refresh(run_log)
-        if run_log.confirm_url:
-            return
-        try:
-            db.execute(
-                text(
-                    "UPDATE task_execution_logs SET confirm_url = :u WHERE id = :i"
-                ),
-                {"u": confirm_url, "i": run_log.id},
-            )
-            run_log.confirm_url = confirm_url
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.error(
-                "confirm_url 直连回写失败 run_log_id=%s: %s",
-                run_log.id,
-                exc,
-                exc_info=True,
-            )
-
-    @classmethod
-    def _execute_task_call(cls, db: Session, task: EmployeeTask) -> dict[str, Any]:
-        employee = db.get(Employee, task.employee_id)
-        workspace = db.get(Workspace, task.workspace_id)
-        if not employee or not workspace:
-            raise ValueError("任务关联员工或工作空间不存在。")
-
-        input_payload = TaskSchedulerService._loads_json(task.task_input_json, {})
-        table_prompt = str(getattr(task, "user_prompt", "") or "").strip()
-        prompt = (
-            table_prompt
-            or str(input_payload.get("prompt") or "").strip()
-            or str(input_payload.get("user_prompt") or "").strip()
-            or f"执行任务：{task.task_name}"
-        )
-        scene = str(input_payload.get("scene") or "")
-        skill_name = cls._resolve_skill_name(db, employee, task.skill_id)
-        question = prompt
-        if skill_name:
-            question = f"请使用{skill_name}技能完成以下任务：{prompt}"
-
-        skills_dir = cls._resolve_skills_dir(employee.skills_json)
-        if skills_dir:
-            skills_dir = str(Path(skills_dir))
-
-
-
-        agent = get_agent(skills_dir, workspace.root_path, employee_id=employee.id)
-        thread_id = f"task-{task.id}-{int(datetime.now().timestamp())}"
-        response = agent.invoke(
-            {"messages": [{"role": "user", "content": question}]},
-            config={"configurable": {"thread_id": thread_id}},
-        )
-        return {
-            "scene": scene,
-            "prompt": prompt,
-            "skill_name": skill_name,
-            "response": response,
         }
 
     @classmethod
