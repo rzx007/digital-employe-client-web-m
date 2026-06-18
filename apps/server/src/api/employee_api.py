@@ -70,9 +70,25 @@ def get_employee(employee_id: int, db: Session = Depends(get_db)) -> ResponseBas
 def get_employee_growth_brain(
     employee_id: int, db: Session = Depends(get_db)
 ) -> ResponseBase[EmployeeGrowthBrainRead]:
-    """只读：员工成长大脑(profile/技能/记忆/journal)。"""
+    """只读：员工成长大脑(profile/技能/记忆/journal/技能候选)。"""
     brain = EmployeeService.build_employee_growth_brain(db, employee_id)
     return ResponseBase[EmployeeGrowthBrainRead](data=EmployeeGrowthBrainRead(**brain))
+
+
+@router.post("/employees/{employee_id}/growth/skill-candidates/{slug}/adopt")
+def adopt_skill_candidate(
+    employee_id: int, slug: str, db: Session = Depends(get_db)
+) -> ResponseBase[dict]:
+    """采纳技能候选 → 转为该员工正式技能（人确认动作）。"""
+    return ResponseBase(data=EmployeeService.adopt_skill_candidate(db, employee_id, slug))
+
+
+@router.post("/employees/{employee_id}/growth/skill-candidates/{slug}/dismiss")
+def dismiss_skill_candidate(
+    employee_id: int, slug: str, db: Session = Depends(get_db)
+) -> ResponseBase[dict]:
+    """忽略技能候选 → 删除候选。"""
+    return ResponseBase(data=EmployeeService.dismiss_skill_candidate(db, employee_id, slug))
 
 
 # ---- 员工头像：自定义上传 + 读取 ----

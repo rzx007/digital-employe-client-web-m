@@ -183,6 +183,12 @@ export async function createEmployee(
   )
 }
 
+export interface EmployeeSkillCandidate {
+  name: string
+  zh: string
+  description: string
+}
+
 export interface EmployeeGrowthBrain {
   profile_md: string
   skills_list: string[]
@@ -193,6 +199,7 @@ export interface EmployeeGrowthBrain {
     status: string
     duration_ms: number | null
   }>
+  skill_candidates: EmployeeSkillCandidate[]
 }
 
 /**
@@ -206,6 +213,34 @@ export async function fetchEmployeeGrowthBrain(
   return request<ApiResponse<EmployeeGrowthBrain>>(
     `/employees/${employeeId}/growth/brain`,
     opts?.signal ? { signal: opts.signal } : {}
+  )
+}
+
+/**
+ * 采纳技能候选 → 转为该员工正式技能
+ * POST /employees/{employee_id}/growth/skill-candidates/{slug}/adopt
+ */
+export async function adoptSkillCandidate(
+  employeeId: number | string,
+  slug: string
+) {
+  return request<ApiResponse<{ adopted: string }>>(
+    `/employees/${employeeId}/growth/skill-candidates/${encodeURIComponent(slug)}/adopt`,
+    { method: "POST" }
+  )
+}
+
+/**
+ * 忽略技能候选 → 删除候选
+ * POST /employees/{employee_id}/growth/skill-candidates/{slug}/dismiss
+ */
+export async function dismissSkillCandidate(
+  employeeId: number | string,
+  slug: string
+) {
+  return request<ApiResponse<{ dismissed: string }>>(
+    `/employees/${employeeId}/growth/skill-candidates/${encodeURIComponent(slug)}/dismiss`,
+    { method: "POST" }
   )
 }
 

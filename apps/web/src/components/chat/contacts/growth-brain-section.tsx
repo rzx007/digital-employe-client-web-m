@@ -1,11 +1,16 @@
+import { useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 import { MessageResponse } from "@workspace/ui/components/ai-elements/message"
 import { Badge } from "@workspace/ui/components/badge"
+import { Button } from "@workspace/ui/components/button"
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card"
+import { adoptSkillCandidate, dismissSkillCandidate } from "@/api/employee"
 import { useEmployeeGrowthBrain } from "@/hooks/use-employee-growth"
 
 export function GrowthBrainSection({
@@ -14,6 +19,41 @@ export function GrowthBrainSection({
   employeeId: string | number | null
 }) {
   const { data: brain, isLoading } = useEmployeeGrowthBrain(employeeId)
+  const queryClient = useQueryClient()
+  const [pendingSlug, setPendingSlug] = useState<string | null>(null)
+
+  const refetchBrain = () =>
+    queryClient.invalidateQueries({
+      queryKey: ["employee-growth-brain", employeeId],
+    })
+
+  const handleCandidateAction = async (
+    slug: string,
+    action: "adopt" | "dismiss"
+  ) => {
+    if (!employeeId || pendingSlug) return
+    setPendingSlug(slug)
+    try {
+      if (action === "adopt") {
+        await adoptSkillCandidate(employeeId, slug)
+        toast.success(`已采纳技能「${slug}」`)
+      } else {
+        await dismissSkillCandidate(employeeId, slug)
+        toast.success(`已忽略技能候选「${slug}」`)
+      }
+      await refetchBrain()
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : action === "adopt"
+            ? "采纳失败"
+            : "忽略失败"
+      )
+    } finally {
+      setPendingSlug(null)
+    }
+  }
 
   if (!employeeId) return null
   if (isLoading)
@@ -24,11 +64,13 @@ export function GrowthBrainSection({
     )
   if (!brain) return null
 
+  const candidates = brain.skill_candidates ?? []
   const hasAny =
     brain.profile_md ||
     brain.skills_list.length > 0 ||
     brain.memories_md ||
-    brain.journal_entries.length > 0
+    brain.journal_entries.length > 0 ||
+    candidates.length > 0
 
   if (!hasAny) {
     return (
@@ -47,6 +89,69 @@ export function GrowthBrainSection({
           </CardHeader>
           <CardContent>
             <MessageResponse>{brain.profile_md}</MessageResponse>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {candidates.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>技能候选 · 待确认</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-3 text-xs text-muted-foreground">
+              系统从该员工反复成功的打法中提炼出以下可复用技能，采纳后将成为其正式技能。
+            </p>
+            <div className="space-y-3">
+              {candidates.map((c) => {
+                const busy = pendingSlug === c.name
+                return (
+                  <div
+                    key={c.name}
+                    className="rounded-lg border bg-muted/30 p-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">
+                        {c.zh || c.name}
+                      </span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {c.name}
+                      </Badge>
+                    </div>
+                    {c.description ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {c.description}
+                      </p>
+                    ) : null}
+                    <div className="mt-2.5 flex gap-1.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={busy}
+                        onClick={() =>
+                          void handleCandidateAction(c.name, "adopt")
+                        }
+                      >
+                        {busy ? "处理中…" : "采纳"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs"
+                        disabled={busy}
+                        onClick={() =>
+                          void handleCandidateAction(c.name, "dismiss")
+                        }
+                      >
+                        忽略
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </CardContent>
         </Card>
       ) : null}

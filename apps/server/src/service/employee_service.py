@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import uuid
 from datetime import date
@@ -27,6 +28,9 @@ from src.service.task_service import TaskService
 from src.service.workspace_service import WorkspaceService
 
 logger = logging.getLogger(__name__)
+
+# 技能候选 slug：小写字母数字 + 连字符（与 librarian 产出一致），用于防路径穿越校验。
+_SKILL_CANDIDATE_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 def _growth_brain_root_for(employee_id: int) -> Path:
@@ -1459,3 +1463,58 @@ class EmployeeService:
             "zh": meta.get("zh", name),
             "description": meta.get("description", ""),
         }
+
+    @staticmethod
+    def _validate_skill_slug(slug: str) -> str:
+        """技能候选 slug 必须是小写连字符（防路径穿越）；非法 → 400。"""
+        if not slug or not _SKILL_CANDIDATE_SLUG_RE.match(slug):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="非法技能标识（仅允许小写字母、数字、连字符）。",
+            )
+        return slug
+
+    @staticmethod
+    def adopt_skill_candidate(db: Session, employee_id: int, slug: str) -> dict:
+        """采纳技能候选 → 转为该员工的正式技能 skills/<slug>/SKILL.md，并消费掉候选。
+
+        人确认动作：候选只有经此才转正。已存在同名 active 技能 → 409 不覆盖。
+        """
+        EmployeeService.get_employee(db, employee_id)  # 不存在 → 404
+        slug = EmployeeService._validate_skill_slug(slug)
+        from src.service.basic_file_reader import read_text_with_encoding_fallback
+
+        brain = _growth_brain_root_for(employee_id)
+        cand = brain / "skill_candidates" / f"{slug}.md"
+        if not cand.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"未找到技能候选「{slug}」。",
+            )
+        target_dir = brain / "skills" / slug
+        if (target_dir / "SKILL.md").is_file():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"已存在同名技能「{slug}」，未覆盖。",
+            )
+        content = read_text_with_encoding_fallback(cand)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        (target_dir / "SKILL.md").write_text(content, encoding="utf-8")
+        try:
+            cand.unlink()
+        except OSError:
+            logger.warning("adopt: failed to remove candidate %s", cand, exc_info=True)
+        logger.info("adopt_skill_candidate eid=%s slug=%s", employee_id, slug)
+        return {"adopted": slug}
+
+    @staticmethod
+    def dismiss_skill_candidate(db: Session, employee_id: int, slug: str) -> dict:
+        """忽略技能候选 → 删除候选文件（幂等：不存在也算成功）。"""
+        EmployeeService.get_employee(db, employee_id)  # 不存在 → 404
+        slug = EmployeeService._validate_skill_slug(slug)
+        brain = _growth_brain_root_for(employee_id)
+        cand = brain / "skill_candidates" / f"{slug}.md"
+        if cand.is_file():
+            cand.unlink()
+        logger.info("dismiss_skill_candidate eid=%s slug=%s", employee_id, slug)
+        return {"dismissed": slug}
