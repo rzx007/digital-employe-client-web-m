@@ -11,6 +11,7 @@ import { employeeCrudHandler } from "./handlers/employee-crud"
 import { employeeDismissHandler } from "./handlers/employee-dismiss"
 import { taskMutationsHandler } from "./handlers/task-mutations"
 import { destructiveDeleteHandler } from "./handlers/destructive-delete"
+import { workbenchArrangeHandler } from "./handlers/workbench-arrange"
 
 export const TOOL_BLOCK_HANDLERS: ToolBlockHandler[] = [
   planGeneratedHandler,
@@ -23,6 +24,7 @@ export const TOOL_BLOCK_HANDLERS: ToolBlockHandler[] = [
   employeeCrudHandler,
   employeeDismissHandler,
   taskMutationsHandler,
+  workbenchArrangeHandler,
 ]
 
 export function getToolBlockFromRegistry(
