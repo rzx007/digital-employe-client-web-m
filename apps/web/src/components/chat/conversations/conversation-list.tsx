@@ -6,6 +6,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useConversationsQuery } from "@/hooks/use-chat-queries"
 import { useCreateCuratorConversation } from "@/hooks/use-create-curator-conversation"
 import type { CuratorConversationSelectScope } from "@/lib/chat/curator-conversation-actions"
+import { getContactId } from "@/lib/chat/contact-utils"
 import {
   getEmployeeDeepLinkConversationId,
   isPreservedEmployeeConversationSelection,
@@ -15,6 +16,22 @@ import { useChatStore } from "@/stores/chat-store"
 import type { Contact } from "@/types/chat"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import { ConversationItem } from "./conversation-item"
+
+/**
+ * 列表查询/缓存用的 contactId。
+ *
+ * 固定联系人（contactOverride，如总管侧栏/工作台总管面板）必须用**带前缀**的
+ * contactId（curator:5），与 create / delete / ensure 写缓存的 key 一致。
+ * 用裸 id（5）会与前缀 key desync：新建对话写在 curator:5、列表读 5 → 列表不刷新；
+ * 删除后 focusAfterDeletedConversation 从 curator:5 读 remaining → 选不到下一条 → 不跳转。
+ * 无 override 时跟随全局 selectedContactId（已是带前缀形态）。
+ */
+export function resolveListContactId(
+  contactOverride: Contact | undefined,
+  selectedContactId: string | null
+): string | null {
+  return contactOverride ? getContactId(contactOverride) : selectedContactId
+}
 
 export function ConversationList({
   className,
@@ -50,12 +67,7 @@ export function ConversationList({
   )
   const selectedContactFromStore = useChatStore((s) => s.getSelectedContact())
   const selectedContact = contactOverride ?? selectedContactFromStore
-  const activeContactId =
-    contactOverride?.type === "curator"
-      ? (contactOverride.curator?.id ?? null)
-      : contactOverride?.type === "employee"
-        ? (contactOverride.employee?.id ?? null)
-        : selectedContactId
+  const activeContactId = resolveListContactId(contactOverride, selectedContactId)
   const activeConversationId =
     selectedConversationIdOverride ?? selectedConversationId
   const { createCuratorConversation, isPending: isCreatingCurator } =
