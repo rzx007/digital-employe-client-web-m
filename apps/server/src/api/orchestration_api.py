@@ -11,10 +11,13 @@ from src.models.employee_task import EmployeeTask
 from src.models.orchestration_plan import OrchestrationPlan
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.response import BaseResponse, ListResponse, ResponseBase
-from src.schemas.orchestration import OrchestrationPlanDetail, OrchestrationPlanRead, OrchestrationTaskEdit, OrchestrationTaskItem
+from src.schemas.orchestration import OrchestrationPlanDetail, OrchestrationPlanRead, OrchestrationTaskEdit, OrchestrationTaskItem, OrchestrationTaskRework
+from src.service.agent.orchestrator.rework import redispatch_task_in_session
 
 router = APIRouter(tags=["编排"])
 logger = logging.getLogger(__name__)
+
+_REWORK_DEFAULT_NOTE = "请在上一稿基础上修订重做。"
 
 
 def _compute_plan_progress(db: Session, plan: OrchestrationPlan) -> tuple[int, int, str]:
@@ -252,6 +255,27 @@ def update_plan_task(
         prompt=body.prompt, employee_id=body.employee_id,
     )
     return BaseResponse(data=data)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/orchestration/tasks/{task_id}/rework",
+    response_model=BaseResponse,
+)
+def rework_plan_task(
+    workspace_id: int,
+    task_id: int,
+    body: OrchestrationTaskRework,
+    db: Session = Depends(get_db),
+) -> BaseResponse:
+    """用户对已交付/失败子任务发起返修(#3/#7)：在原员工会话续聊重做。
+
+    复用总管一线质检的返工通道(redispatch_task_in_session)：含返工次数上限、
+    前置 gate、作废下游等既有约束。返回 {ok, message}，ok=False 表示被拒/达上限。
+    """
+    note = (body.note or "").strip() or _REWORK_DEFAULT_NOTE
+    message = redispatch_task_in_session(workspace_id, task_id, note)
+    ok = not (message.startswith("错误") or "已达上限" in message)
+    return BaseResponse(data={"ok": ok, "message": message})
 
 
 @router.put("/orchestration/plans/{plan_id}/confirm", response_model=BaseResponse)

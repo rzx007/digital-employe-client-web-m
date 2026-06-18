@@ -14,6 +14,11 @@ class OrchestrationTaskEdit(BaseModel):
     employee_id: int | None = None
 
 
+class OrchestrationTaskRework(BaseModel):
+    """用户对已交付/失败子任务发起返修（#3/#7）：可选返修说明。"""
+    note: str | None = None
+
+
 class OrchestrationTaskItem(BaseModel):
     task_id: int
     employee_id: int

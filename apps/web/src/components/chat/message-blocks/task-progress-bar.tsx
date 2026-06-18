@@ -1,6 +1,7 @@
 import { cn } from "@workspace/ui/lib/utils"
 import { useChatStore } from "@/stores/chat-store"
 import type { OrchestrationTaskProgress } from "./orchestration-plan-card"
+import { TaskReworkButton } from "./task-rework-button"
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "待执行",
@@ -117,6 +118,12 @@ export function TaskProgressBar({
               >
                 查看
               </button>
+            ) : null}
+            {task.status === "success" ? (
+              <TaskReworkButton taskId={task.task_id} mode="revise" />
+            ) : null}
+            {task.status === "failed" ? (
+              <TaskReworkButton taskId={task.task_id} mode="retry" />
             ) : null}
             <span
               className={cn(

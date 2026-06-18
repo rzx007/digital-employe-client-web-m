@@ -106,3 +106,24 @@ export async function updateOrchestrationPlanTask(
   }
   return res.data
 }
+
+/** POST 对已交付/失败子任务发起返修（#3 改改 / #7 重试）→ 原员工会话续聊重做。 */
+export async function reworkOrchestrationTask(
+  taskId: number,
+  note: string,
+  workspaceId?: number
+): Promise<{ ok: boolean; message: string }> {
+  const wsId = resolveWorkspaceId(workspaceId)
+  const res = await request<{
+    code: number
+    msg: string
+    data: { ok: boolean; message: string } | null
+  }>(`/workspaces/${wsId}/orchestration/tasks/${taskId}/rework`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  })
+  if (!isApiSuccess(res.code) || !res.data) {
+    throw new Error(res.msg || "返修请求失败")
+  }
+  return res.data
+}
