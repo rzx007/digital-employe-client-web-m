@@ -573,10 +573,8 @@ def serve_conversation_static_inline(
     db: Session = Depends(get_db),
 ):
     conversation = ChatService.get_conversation(db, conversation_id)
-    settings = get_settings()
-    result = ResourceService.resolve_download_path(
-        settings.artifacts_path, conversation.id, relpath
-    )
+    product_root = resolve_conversation_product_root(db, conversation)
+    result = ResourceService.resolve_download_path(product_root, relpath)
     if result is None:
         raise HTTPException(status_code=404, detail="not found")
     resolved, is_dir = result
