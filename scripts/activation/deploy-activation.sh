@@ -135,86 +135,73 @@ stage_activation() {
   dev="$(de_compute_device_code)"; disp="$(de_format_device_code "$dev")"
   dir="$(de_data_dir)"; json="$dir/activation.json"
 
-  # 幂等：已激活且设备匹配且未过期 → 跳过
+  say "  设备码（序列号）：${disp}"
+  say "  请凭此码在飞书申请激活码。"
+
+  # 当前激活态：cur_valid=1 表示已激活且设备匹配且未过期；cur_exp=当前到期
+  local cur_valid="" cur_exp=""
   if [[ -f "$json" ]]; then
     local cur_dev cur_lic
     cur_dev="$(python3 -c "import json;print(json.load(open('$json')).get('device_code',''))" 2>/dev/null)"
     cur_lic="$(python3 -c "import json;print(json.load(open('$json')).get('license_code',''))" 2>/dev/null)"
+    cur_exp="$(python3 -c "import json;print(json.load(open('$json')).get('expires_at',''))" 2>/dev/null)"
     if [[ "${cur_dev//-/}" == "${dev//-/}" ]] && de_license_valid_for_device "$cur_lic" "$dev" 2>/dev/null; then
-      # 仍跳过（保护当前有效激活不被降级），但磁盘 license.code 与当前不一致时告知
-      local cur_exp disk_lic disk_parsed disk_exp
-      cur_exp="$(python3 -c "import json;print(json.load(open('$json')).get('expires_at',''))" 2>/dev/null)"
-      if disk_lic="$(de_read_license_from_file)" && disk_parsed="$(de_parse_license "$disk_lic" 2>/dev/null)"; then
-        disk_exp="$(echo "$disk_parsed" | cut -f2)"
-        if [[ -n "$disk_exp" && "$disk_exp" != "$cur_exp" ]]; then
-          warn "磁盘授权码到期 ${disk_exp} 与当前激活 ${cur_exp} 不一致；已保持当前激活不变（未变更）。"
-          say "  如需切换到磁盘授权码，删除 ${json} 后重跑 deploy.sh。"
-        fi
-      fi
-      ok "已激活（设备码 $disp）"; record activation OK "已激活"; return 0
+      cur_valid=1
     fi
   fi
 
-  say "  设备码（序列号）：${disp}"
-  say "  请凭此码在飞书申请激活码。"
-
-  # 取码：文件优先 → 终端粘贴回退
+  # 取码：文件优先 → 终端粘贴回退（已有效激活时不打扰粘贴）
   local lic=""
   if lic="$(de_read_license_from_file)"; then
     info "已从文件读取授权码"
-  elif [[ -t 0 ]]; then
+  elif [[ -z "$cur_valid" && -t 0 ]]; then
     say "  未发现授权码文件。粘入授权码后回车（留空跳过）："
     read -r lic
   fi
 
+  # 无新授权码：已激活则跳过，否则提示等待
   if [[ -z "${lic// /}" ]]; then
+    if [[ -n "$cur_valid" ]]; then
+      ok "已激活（设备码 ${disp}，有效期至 ${cur_exp}）"; record activation OK "已激活"; return 0
+    fi
     warn "未激活：无授权码来源（设备码 ${disp}；放入授权码文件或重跑粘贴）"
     record activation WARN "未激活：等待授权码" "凭设备码 ${disp} 去飞书换码，写入授权码文件后重跑 deploy.sh"
     return 0
   fi
 
-  # 先单独跑解析,把"格式错"和"设备/有效期不符"分开提示
+  # 解析 + 设备/有效期校验
   local parsed
   if ! parsed="$(de_parse_license "$lic" 2>/dev/null)"; then
     warn "授权码格式错误（不是有效的授权码字符串），未激活"
-    record activation WARN "授权码格式错误" "确认 license.code/activation.md 内只放授权码主体（base64URL.签名）"
+    record activation WARN "授权码格式错误" "确认 license.code 内只放授权码主体（base64URL.签名）"
     return 0
   fi
-
   if ! de_license_valid_for_device "$lic" "$dev"; then
     warn "授权码无效（设备不符或已过期），未激活"
     record activation WARN "授权码无效（设备不符/过期）" "确认授权码对应设备码 ${disp} 且未过期"
     return 0
   fi
-
   local exp; exp="$(echo "$parsed" | cut -f2)"
 
-  # 覆盖提示（仅告知，不改判定）：已有激活时比对到期日，降级/临时码高声提醒
-  if [[ -f "$json" ]]; then
-    local prev_exp
-    prev_exp="$(python3 -c "import json;print(json.load(open('$json')).get('expires_at',''))" 2>/dev/null)"
-    if [[ -n "$prev_exp" ]]; then
-      warn "即将覆盖已有激活：当前到期 ${prev_exp} → 新授权码到期 ${exp}"
-      if python3 - "$exp" "$prev_exp" <<'PY'
-import sys, datetime
-def p(s): return datetime.datetime.fromisoformat(s.replace("Z", "+00:00"))
-sys.exit(0 if p(sys.argv[1]) < p(sys.argv[2]) else 1)  # exit 0 == 新码更早==降级
-PY
-      then
-        say "  ⚠ 新授权码到期更早（降级）。若非本意，请放入更长有效期的授权码后重跑 deploy.sh。"
-      fi
+  # 覆盖确认：仅当「当前已是有效激活」且「新码与当前不同」时询问
+  if [[ -n "$cur_valid" ]]; then
+    if [[ "$exp" == "$cur_exp" ]]; then
+      ok "已激活（设备码 ${disp}，有效期至 ${cur_exp}）"; record activation OK "已激活"; return 0
     fi
-  fi
-  # 新授权码若即将到期（≤24h），提醒可能是临时码
-  if python3 - "$exp" <<'PY'
-import sys, datetime
-exp = datetime.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00"))
-now = datetime.datetime.now(datetime.timezone.utc)
-hrs = (exp - now).total_seconds() / 3600
-sys.exit(0 if 0 <= hrs <= 24 else 1)
-PY
-  then
-    warn "新授权码 ${exp} 即将到期（不足 24 小时），请确认这是长期授权码而非临时码"
+    say "  当前已激活，有效期至 ${cur_exp}。"
+    say "  新授权码有效期至 ${exp}。"
+    if [[ -t 0 ]]; then
+      local ans=""
+      read -r -p "  是否用新授权码覆盖当前激活？[y/N] " ans
+      if [[ ! "$ans" =~ ^[Yy]$ ]]; then
+        ok "已保持当前激活（有效期至 ${cur_exp}），未覆盖"
+        record activation OK "保持当前激活（用户未确认覆盖）"; return 0
+      fi
+    else
+      warn "检测到不同授权码，但非交互环境未确认覆盖；保持当前激活（有效期至 ${cur_exp}）不变"
+      say "  如需覆盖：删除 ${json} 后重跑，或在交互终端运行 deploy.sh。"
+      record activation OK "保持当前激活（非交互未覆盖）"; return 0
+    fi
   fi
 
   de_write_activation_json "$dev" "$lic" "$exp"
