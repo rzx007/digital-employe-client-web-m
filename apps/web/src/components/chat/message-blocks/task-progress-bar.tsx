@@ -55,6 +55,21 @@ export function TaskProgressBar({
   )
 
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0
+  const anyFailed = tasks.some((t) => t.status === "failed")
+  const allSettled = total > 0 && completed >= total
+  const headerLabel = allSettled ? (anyFailed ? "部分失败" : "已完成") : "执行中"
+  const headerClass = allSettled
+    ? anyFailed
+      ? "text-amber-600 dark:text-amber-400"
+      : "text-green-600 dark:text-green-400"
+    : "text-foreground"
+  const barClass = allSettled
+    ? anyFailed
+      ? "bg-amber-500"
+      : "bg-green-500"
+    : "bg-blue-500"
+  // 单任务计划无需「N/N (x%)」进度条——状态由任务行自身表达，避免冗余。
+  const isMulti = total > 1
 
   return (
     <div
@@ -64,18 +79,25 @@ export function TaskProgressBar({
       )}
     >
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-sm font-semibold">执行中</p>
-        <span className="text-xs text-muted-foreground">
-          {completed}/{total} ({pct}%)
-        </span>
+        <p className={cn("text-sm font-semibold", headerClass)}>{headerLabel}</p>
+        {isMulti ? (
+          <span className="text-xs text-muted-foreground">
+            {completed}/{total} ({pct}%)
+          </span>
+        ) : null}
       </div>
 
-      <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-blue-500 transition-all duration-500"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      {isMulti ? (
+        <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className={cn(
+              "h-full rounded-full transition-all duration-500",
+              barClass
+            )}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      ) : null}
 
       <div className="space-y-1">
         {tasks.map((task) => (

@@ -311,6 +311,8 @@ function PlanGeneratedCardInner({
         </span>
       </div>
 
+      {/* 确认前展示可读/可编辑的任务列表；确认后由下方进度条接管，避免重复渲染 */}
+      {!showConfirmedMessage && !showCancelledMessage && (
       <div className="space-y-1">
         {data.tasks.map((task: PlanTaskPreview, i: number) => (
           <div
@@ -346,6 +348,7 @@ function PlanGeneratedCardInner({
           </div>
         ))}
       </div>
+      )}
 
       {showActionPanel && (
         <>
