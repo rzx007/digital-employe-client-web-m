@@ -86,7 +86,7 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """你是数字员工团队的总管助手
   **不要轮询 `list_tasks`**——连续多次查询会被系统硬性拦截。
   看到任务仍 running 时，正确做法是**结束本轮**（按下文「进度汇报骨架」给计数+状态清单即可）。
 - **返工只针对出问题的那个任务**：返工一个任务会**自动作废并重跑它的所有下游**（下游基于旧产物的结果已失效）——**不要手动返工下游**，它会在该任务重新达标后自动重跑、再交你评审。若你要返工的任务其前置尚未达标/在返工，系统会拒绝（先处理前置）。
-- **下游由系统自动放行（内部行为指引，不对用户说）**：你判定某上游**达标**后，系统会在你结束本轮时**自动放行其下游**——所以下游显示「未执行」是正常的，**别 panic、别**用 `update_task`「解依赖」/重复 `confirm` 去强行催派（也改不动 DAG，纯空忙）。接受上游后正常结束本轮即可。
+- **下游由系统自动放行（内部行为指引，不对用户说）**：你判定某上游**达标**后，系统会在你结束本轮时**自动放行其下游**——所以下游显示「待放行」是正常的（它会在你收尾后自动开始），**别 panic、别**用 `update_task`「解依赖」/重复 `confirm` 去强行催派（也改不动 DAG，纯空忙）。接受上游后正常结束本轮即可。
   ——**这套放行机制是给你的内部规则，绝不要复述给用户**：禁止对用户说「未执行是正常的 / 系统会自动放行下游 / 我结束本轮它就开始」之类。下游在汇报骨架里用 `⏳ 等待中` 表示就够，**不加任何机制解释**。
 
 ## 进度汇报骨架（委派后、每次增量汇报、收尾——三类「进度类」回复统一用此紧凑格式，不写散文过场）
@@ -251,8 +251,6 @@ def build_delegation_execution_context(
         page=1,
         page_size=limit,
     )
-    if not logs:
-        return "（本会话尚未委派任何子任务，或无执行记录）"
 
     lines = [
         "以下为本会话已委派子任务的最新执行快照（按开始时间倒序；每次收到用户新消息时会刷新）。",
@@ -293,7 +291,41 @@ def build_delegation_execution_context(
             lines.append(f"- 错误：{str(log.error_message)[:500]}")
         lines.append("")
 
-    return "\n".join(lines).strip()
+    logged_ids = {log.task_id for log in logs if log.task_id}
+
+    # 待派发/等待中：当前活跃计划里尚无 live log 的任务(让总管看到完整 DAG,不误判"卡住")
+    from src.models.orchestration_plan import OrchestrationPlan
+    from src.service.agent.orchestrator.dependency_scheduler import (
+        _load_plan_tasks,
+        waiting_status_for_task,
+    )
+
+    pending_lines: list[str] = []
+    plan = db.scalars(
+        select(OrchestrationPlan)
+        .where(
+            OrchestrationPlan.conversation_id == orchestrator_conversation_id,
+            OrchestrationPlan.status.notin_(("completed", "cancelled")),
+        )
+        .order_by(OrchestrationPlan.id.desc())
+    ).first()
+    if plan is not None:
+        _cache: dict = {}
+        for t in _load_plan_tasks(db, plan.id):
+            if t.id in logged_ids:
+                continue
+            st = waiting_status_for_task(db, t, _plan_cache=_cache)
+            if st:
+                pending_lines.append(f"- {t.task_name} · **{st}**")
+    if pending_lines:
+        lines.append("### 待派发/等待中的子任务（系统会在其前置达标后自动放行，无需你催派）")
+        lines.extend(pending_lines)
+        lines.append("")
+
+    result = "\n".join(lines).strip()
+    if not logs and not pending_lines:
+        return "（本会话尚未委派任何子任务，或无执行记录）"
+    return result
 
 
 # ---------------------------------------------------------------------------

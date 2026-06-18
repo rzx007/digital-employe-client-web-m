@@ -59,3 +59,14 @@ def test_waiting_status_root_and_nonplan(db_session):
     orphan = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="x", orchestration_plan_id=None)
     db_session.add(orphan); db_session.commit()
     assert waiting_status_for_task(db_session, orphan) is None
+
+
+def test_snapshot_shows_pending_release_section(db_session):
+    from src.service.agent.orchestrator.prompts import build_delegation_execution_context
+    ws, emp, plan, A, B = _seed_plan_AB(db_session)
+    _accept_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id)  # A: log+accepted; B: no log
+    text = build_delegation_execution_context(db_session, ws.id, 555)
+    assert "待派发/等待中" in text
+    assert "待放行" in text and "文档办公" in text   # B shows as 待放行
+    # A is logged → should NOT appear in the pending section (only in per-log section)
+    assert text.count("文档办公") >= 1
