@@ -12,8 +12,6 @@ export function mapChatMessageToMessage(
       msg.conversationId != null
         ? String(msg.conversationId)
         : String(conversationId),
-    senderId: msg.senderId ?? (msg.role === "user" ? "user" : ""),
-    senderName: msg.senderName ?? (msg.role === "user" ? "我" : ""),
     role: msg.role === "system" ? "assistant" : msg.role,
     // assistant 历史正文兜底净化：剥掉早期版本误拼进 content 的工具结果噪音
     content:

@@ -68,8 +68,6 @@ export type WorkspaceEvent =
       message_id: number
       role: "user" | "assistant"
       content: string
-      sender_id: number | null
-      sender_label: string | null
       /** 产出该消息的源会话（组长/成员私有会话）id，用于精确清理对应逐字流式临时态 */
       source_conversation_id?: number | null
     }
@@ -85,8 +83,6 @@ export type WorkspaceEvent =
       room_id: number
       room_conversation_id: number
       source_conversation_id: number
-      sender_id: number | null
-      sender_label: string | null
       delta: string
       first: boolean
       /** 累计已生成字符数（用于显示“正在生成 N 字”进度） */

@@ -210,8 +210,6 @@ export interface ChatMessageDto {
   id: string
   conversationId?: number
   conversation_id?: number
-  senderId?: string
-  senderName?: string
   role: "user" | "assistant" | "system"
   content: string
   chunk_json?: string

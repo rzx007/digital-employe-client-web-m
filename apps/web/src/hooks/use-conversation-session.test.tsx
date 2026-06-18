@@ -28,8 +28,6 @@ const CONV_ID = 339
 function makeMessage(partial: Partial<Message> & Pick<Message, "id" | "role">): Message {
   return {
     conversationId: String(CONV_ID),
-    senderId: "s",
-    senderName: "n",
     content: "",
     timestamp: new Date("2026-01-01T00:00:00Z"),
     ...partial,
