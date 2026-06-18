@@ -488,7 +488,17 @@ releaseDate: '2024-04-09T14:28:00.000Z'
 
 ## 发布更新流程
 
-构建产物在 `apps/web/release/`（`pnpm --filter digital-employee build:app`）。
+> **自动化（推荐）**：推 `vX.Y.Z` tag 后，CI 的 `publish:update:win:test` 会自动把 Windows
+> 产物推到测试更新服务器；`publish:update:win:prod` 需在 Pipeline 页手动点 Play 推正式。
+> 脚本 [`scripts/ci/publish-update-server.py`](../../../scripts/ci/publish-update-server.py)
+> 会**按安装包现算 sha512 兜底重生成 latest.yml**，杜绝「只传 exe 忘更新 latest.yml」。
+> 凭据走 GitLab CI/CD Variables：`UPDATE_{TEST,PROD}_{HOST,USER,PASS,BASE}`。
+> 手动跑：`python scripts/ci/publish-update-server.py --platform win32 --target test`。
+>
+> ⚠️ **只传安装包不更新 latest.yml = 客户端永远看不到新版**——electron-updater 只读
+> `latest.yml` 的 `version` 判断，根本不看你传的 exe。
+
+以下为手动 scp 流程（构建产物在 `apps/web/release/`，`pnpm --filter digital-employee build:app`）。
 
 ### Windows
 

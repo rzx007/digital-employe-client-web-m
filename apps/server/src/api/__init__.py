@@ -20,6 +20,7 @@ from src.api.activation_api import router as activation_router
 from src.api.feedback_api import router as feedback_router
 from src.api.analytics_api import router as analytics_router
 from src.api.avatar_api import router as avatar_router
+from src.api.proxy_api import router as proxy_router
 
 api_router = APIRouter()
 api_router.include_router(workspace_router)
@@ -42,6 +43,7 @@ api_router.include_router(activation_router)
 api_router.include_router(feedback_router)
 api_router.include_router(analytics_router)
 api_router.include_router(avatar_router)
+api_router.include_router(proxy_router)
 
 __all__ = ["api_router"]
 

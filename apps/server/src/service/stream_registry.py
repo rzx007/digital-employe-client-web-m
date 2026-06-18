@@ -1286,6 +1286,7 @@ class StreamRegistry:
         source: str | None = None,
         stream_class: str | None = None,
         agent_input: Any | None = None,
+        preempt: bool = False,
         orchestrator_owned_db: Session | None = None,
         orchestrator_workspace_id: int | None = None,
         orchestrator_conversation_id: int | None = None,
@@ -1293,11 +1294,30 @@ class StreamRegistry:
     ) -> StartResult:
         existing = self._tasks.get(conversation_id)
         if existing and existing.is_active:
-            logger.warning(
-                "start refused: conversation %s already has active stream",
-                conversation_id,
-            )
-            return StartResult.REJECTED
+            # 僵尸活跃流（SSE 断开后协程已死/卡死但 status 仍 streaming）会永久占住会话槽，
+            # 使「切换对话 / 重试」时每次发送都被 REJECTED → 报「当前会话已有正在执行的任务」。
+            # 与 _drain_queue 行为对齐：先回收僵尸再判断，僵尸清掉后本会话不再 is_active，
+            # 落到下方正常入场逻辑。仅回收「真僵尸」，活流仍按原样拒绝（不会打断在跑的流）。
+            if self._stream_task_is_stale_active(existing):
+                self._clear_stale_active_task(conversation_id, existing)
+                existing = self._tasks.get(conversation_id)
+            # 用户主动重发（preempt=True）：即便旧流仍真在跑（未到 stall 超时墙、非僵尸），
+            # 也抢占——用户重发等于明确放弃上一轮，应当场 cancel 旧流起新流，而非让他干等
+            # 3-5 分钟超时墙（卡死协程恰好挂着不产出时正是这种情况）。抢占只属于这一条
+            # 用户入口；编排派单/群派活 preempt=False，仍按原语义拒绝/排队，绝不互相打断。
+            elif existing and existing.is_active and preempt:
+                logger.warning(
+                    "start preempt: conv=%s 用户主动重发，抢占在跑的活流(msg=%s)",
+                    conversation_id, existing.stream_msg_id,
+                )
+                self._clear_stale_active_task(conversation_id, existing)
+                existing = self._tasks.get(conversation_id)
+            if existing and existing.is_active:
+                logger.warning(
+                    "start refused: conversation %s already has active stream",
+                    conversation_id,
+                )
+                return StartResult.REJECTED
         if existing and existing.status == "queued":
             logger.warning(
                 "start refused: conversation %s already queued", conversation_id

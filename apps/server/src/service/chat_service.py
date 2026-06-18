@@ -830,6 +830,9 @@ class ChatService:
                     auth_token if target_type == "curator" else None
                 ),
                 source="user_chat",
+                # 用户主动发消息=明确放弃上一轮：抢占本会话仍在跑/卡死但未到超时墙的旧流，
+                # 不让用户干等 3-5 分钟才能重试（见 stream_registry.request_start preempt）。
+                preempt=True,
             )
             _phase(f"request_start_returned({start_result})")
 

@@ -126,6 +126,148 @@ def test_drain_clears_stale_active_and_launches(serial_registry: StreamRegistry)
     assert reg.get_task(conv_b).status == "streaming"
 
 
+def test_request_start_clears_stale_active_then_admits(
+    serial_registry: StreamRegistry,
+) -> None:
+    """会话残留僵尸活跃流（status=streaming 但 asyncio task 已死）时，新发送不应被
+    REJECTED 卡死——request_start 须先回收僵尸再放行（与 _drain_queue 行为对齐）。
+
+    复现「切换对话 / 重试时报『当前会话已有正在执行的任务』」：SSE 断开后后台 task
+    变僵尸却仍占槽，此前 request_start 不查僵尸 → 永久拒绝，用户怎么发都报错。
+    """
+    reg = serial_registry
+    conv = 601
+
+    assert (
+        reg.request_start(
+            conv,
+            _fake_agent(),
+            [],
+            {"configurable": {"thread_id": conv}},
+            stream_msg_id=6001,
+            skill_name="",
+            debug_content_only=False,
+        )
+        == StartResult.STARTED
+    )
+
+    # 把这条流变成「僵尸」：仍 streaming，但其 asyncio task 已不存在（协程异常退出）。
+    zombie = reg.get_task(conv)
+    assert zombie is not None
+    assert zombie.is_active
+    zombie._asyncio_task = None
+
+    # 同一会话再次发送：不应 REJECTED，应回收僵尸后重新 STARTED。
+    assert (
+        reg.request_start(
+            conv,
+            _fake_agent(),
+            [],
+            {"configurable": {"thread_id": conv}},
+            stream_msg_id=6002,
+            skill_name="",
+            debug_content_only=False,
+        )
+        == StartResult.STARTED
+    )
+    fresh = reg.get_task(conv)
+    assert fresh is not None
+    assert fresh.stream_msg_id == 6002
+    assert fresh.status == "streaming"
+
+
+def test_user_chat_preempts_live_active_stream(
+    serial_registry: StreamRegistry,
+) -> None:
+    """用户在同一会话主动重发（preempt=True）时，即便旧流仍真在跑（非僵尸），
+    也应抢占：cancel 旧流后立刻起新流 → STARTED，而非 REJECTED。
+
+    复现「重试报『当前会话已有正在执行的任务』、要等 3-5 分钟才好」：旧流卡死但
+    未到 stall 超时墙，_stream_task_is_stale_active 仍 False；用户主动重发等于明确
+    放弃上一轮，应当场抢占而非干等超时。
+    """
+    reg = serial_registry
+    conv = 701
+
+    assert (
+        reg.request_start(
+            conv,
+            _fake_agent(),
+            [],
+            {"configurable": {"thread_id": conv}},
+            stream_msg_id=7001,
+            skill_name="",
+            debug_content_only=False,
+        )
+        == StartResult.STARTED
+    )
+
+    # 旧流「真在跑」：asyncio task 存在且未完成（非僵尸，不到任何超时墙）。
+    live = reg.get_task(conv)
+    assert live is not None
+    assert live.is_active
+    assert live._asyncio_task is not None and not live._asyncio_task.done()
+    old_asyncio_task = live._asyncio_task
+
+    # 用户主动重发：preempt=True → 抢占。
+    assert (
+        reg.request_start(
+            conv,
+            _fake_agent(),
+            [],
+            {"configurable": {"thread_id": conv}},
+            stream_msg_id=7002,
+            skill_name="",
+            debug_content_only=False,
+            preempt=True,
+        )
+        == StartResult.STARTED
+    )
+    # 旧 asyncio task 被取消。
+    old_asyncio_task.cancel.assert_called()
+    fresh = reg.get_task(conv)
+    assert fresh is not None
+    assert fresh.stream_msg_id == 7002
+    assert fresh.status == "streaming"
+
+
+def test_orchestration_does_not_preempt_live_stream(
+    serial_registry: StreamRegistry,
+) -> None:
+    """编排派单（preempt 默认 False）撞上同会话在跑的活流时，仍按原语义拒绝，
+    绝不抢占——抢占只属于「用户主动重发」这一条入口。"""
+    reg = serial_registry
+    conv = 702
+
+    assert (
+        reg.request_start(
+            conv,
+            _fake_agent(),
+            [],
+            {"configurable": {"thread_id": conv}},
+            stream_msg_id=7101,
+            skill_name="",
+            debug_content_only=False,
+        )
+        == StartResult.STARTED
+    )
+
+    # 不传 preempt（默认 False）→ 真活流不被抢占，照旧拒绝。
+    assert (
+        reg.request_start(
+            conv,
+            _fake_agent(),
+            [],
+            {"configurable": {"thread_id": conv}},
+            stream_msg_id=7102,
+            skill_name="",
+            debug_content_only=False,
+        )
+        == StartResult.REJECTED
+    )
+    assert reg.get_task(conv).stream_msg_id == 7101
+
+
 def test_new_request_queues_behind_pending_head(serial_registry: StreamRegistry) -> None:
     reg = serial_registry
     conv_a = 401

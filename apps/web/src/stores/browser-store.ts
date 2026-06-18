@@ -104,10 +104,12 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
 
   openHtmlPreview: (conversationId, realPath) => {
     const base = getRequestBaseUrl().replace(/\/$/, "")
-    // 去虚拟前缀后静态服务按真实路径查询参数提供（后端会话根沙箱校验）
-    const url = `${base}/chat/conversations/${conversationId}/resources/static?path=${encodeURIComponent(
-      realPath
-    )}`
+    // 路径式静态服务：把绝对路径放在 URL path 段（反斜杠归一为 /，逐段 encodeURIComponent
+    // 保留 / 作分隔），让浏览器对 HTML 内 ./xxx 的相对引用按同目录解析。
+    // 旧的 ?path= 形态相对解析会丢 query，落到 …/resources/xxx 撞 404。
+    const posix = realPath.replace(/\\/g, "/")
+    const encoded = posix.split("/").map(encodeURIComponent).join("/")
+    const url = `${base}/chat/conversations/${conversationId}/static/${encoded}`
     get().openBrowser(url)
   },
 

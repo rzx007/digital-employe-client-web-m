@@ -1,14 +1,19 @@
 """综合 SSH 检查 hanhai 宿主机 GPU/CPU/内存利用率。
 只读；连续 5 次采样，每次间隔 2s，能看出活动模式。
 """
+import os
+import sys
 import paramiko
 import warnings
 
 warnings.filterwarnings("ignore")
 
-HOST = "10.172.246.220"
-USER = "boban"
-PASS = "100200"
+HOST = os.environ.get("HANHAI_HOST", "10.172.246.220")
+USER = os.environ.get("HANHAI_USER", "boban")
+PASS = os.environ.get("HANHAI_PASS")
+if not PASS:
+    sys.stderr.write("缺少 SSH 密码：请设置环境变量 HANHAI_PASS\n")
+    sys.exit(2)
 
 ONE_SHOT = [
     ("uname/系统", "uname -a; lsb_release -a 2>/dev/null | head -4"),

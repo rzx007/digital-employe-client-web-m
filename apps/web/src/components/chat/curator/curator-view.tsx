@@ -825,7 +825,6 @@ export function CuratorView({
               <ConversationContent className={layout.conversationContent}>
                 {showEmptyWelcome && (
                   <CuratorEmptyWelcome
-                    contact={resolvedContact}
                     displayName={contactDisplayName}
                     onSuggestionSelect={handleGuidanceSelect}
                     suggestionsDisabled={!curatorConversationId}

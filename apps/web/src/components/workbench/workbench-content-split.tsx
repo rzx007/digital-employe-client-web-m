@@ -20,6 +20,7 @@ import {
   selectWorkbenchCuratorConversation,
 } from "@/lib/chat/conversation-selection"
 import { ensureCuratorConversationAndSelect } from "@/lib/chat/curator-conversation-actions"
+import { getContactId } from "@/lib/chat/contact-utils"
 import { resolveWorkbenchCuratorPanel } from "./resolve-workbench-curator-panel"
 import {
   useConversationsQuery,
@@ -128,7 +129,9 @@ export function WorkbenchContentSplit({
     [contacts]
   )
 
-  const curatorContactId = curatorContact?.curator?.id ?? null
+  // 用带前缀的 contactId（curator:5），与全局选中态 / 创建会话写入的会话列表缓存 key 一致；
+  // 否则裸 id "5" 读不到创建时写到 "curator:5" 下的新会话 → 新建对话不刷新、要切菜单才出现。
+  const curatorContactId = getContactId(curatorContact) ?? null
   const defaultCuratorConversationId = defaultCuratorConv?.id ?? null
 
   const { data: curatorConversations = [], isSuccess: curatorConversationsReady } =

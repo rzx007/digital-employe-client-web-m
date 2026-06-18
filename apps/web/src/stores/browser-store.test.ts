@@ -27,10 +27,15 @@ vi.mock("@/stores/monitor-store", () => ({
 
 import { useBrowserStore } from "./browser-store"
 
+// 期望：把绝对路径放进 URL path 段（反斜杠归一为 /，逐段 encodeURIComponent 保留 / 作分隔）
+// —— 这样浏览器对 HTML 内 ./xxx 的相对引用按同目录解析，命中后端 /static/{relpath:path}。
+function expectPathFormUrl(posix: string): string {
+  const encoded = posix.split("/").map(encodeURIComponent).join("/")
+  return `http://127.0.0.1:34567/chat/conversations/123/static/${encoded}`
+}
+
 const REAL_PATH = "D:/ws/conv/123/artifacts/report.html"
-const EXPECTED_URL = `http://127.0.0.1:34567/chat/conversations/123/resources/static?path=${encodeURIComponent(
-  REAL_PATH
-)}`
+const EXPECTED_URL = expectPathFormUrl(REAL_PATH)
 
 describe("browser-store openHtmlPreview", () => {
   beforeEach(() => {
@@ -38,7 +43,7 @@ describe("browser-store openHtmlPreview", () => {
     useBrowserStore.getState().reset()
   })
 
-  it("builds the static URL with real path query param and opens it", () => {
+  it("builds a path-form static URL so relative refs in HTML resolve to siblings", () => {
     useBrowserStore.getState().openHtmlPreview(123, REAL_PATH)
 
     expect(browserOpen).toHaveBeenCalledTimes(1)
@@ -49,13 +54,11 @@ describe("browser-store openHtmlPreview", () => {
     expect(state.currentUrl).toBe(EXPECTED_URL)
   })
 
-  it("url-encodes Windows backslash paths too", () => {
+  it("normalizes Windows backslash paths to POSIX before path-segment encoding", () => {
     const winPath = "D:\\ws\\conv\\123\\artifacts\\a.html"
     useBrowserStore.getState().openHtmlPreview(123, winPath)
     expect(browserOpen).toHaveBeenCalledWith(
-      `http://127.0.0.1:34567/chat/conversations/123/resources/static?path=${encodeURIComponent(
-        winPath
-      )}`
+      expectPathFormUrl("D:/ws/conv/123/artifacts/a.html")
     )
   })
 })

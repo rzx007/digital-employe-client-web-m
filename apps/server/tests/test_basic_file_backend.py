@@ -72,3 +72,84 @@ def test_basic_file_write_creates_parent_dirs(tmp_path: Path) -> None:
 
     assert result.error is None
     assert target.read_text(encoding="utf-8") == "hello"
+
+
+# ---- edit_file 行末空白容忍 fallback ----
+# 模型常因 old_string 行尾多/少空格、或文件末换行差异反复撞 "String not found"。
+# fallback：精确匹配 0 次时按 rstrip 重试；唯一命中才替换，否则保留原错误（不错改）。
+
+
+def _edit_setup(tmp_path: Path, body: str, name: str = "doc.md"):
+    """先建 backend（会 mkdir artifacts），再写目标文件 —— 避免顺序冲突。"""
+    backend = _shell_backend(tmp_path)
+    target = tmp_path / "artifacts" / name
+    target.write_text(body, encoding="utf-8")
+    return backend, target
+
+
+def test_edit_tolerates_trailing_whitespace_diff(tmp_path: Path) -> None:
+    # 文件第一行尾有空格，模型 old_string 没带 → 精确匹配失败 → fallback 救场
+    backend, target = _edit_setup(tmp_path, "foo bar \nbaz\n")
+
+    result = basic_file_edit(
+        backend, str(target.resolve()), "foo bar\nbaz", "NEW\nLINE"
+    )
+
+    assert result.error is None
+    assert result.occurrences == 1
+    assert target.read_text(encoding="utf-8") == "NEW\nLINE\n"
+
+
+def test_edit_tolerates_missing_trailing_newline(tmp_path: Path) -> None:
+    # 文件实际没有末尾换行，模型 old_string 多带了一个 → fallback 忽略 old 末尾空行
+    backend, target = _edit_setup(tmp_path, "line one\nline two")
+
+    result = basic_file_edit(
+        backend, str(target.resolve()), "line one\nline two\n", "REPLACED\n"
+    )
+
+    assert result.error is None
+    assert result.occurrences == 1
+    assert target.read_text(encoding="utf-8") == "REPLACED\n"
+
+
+def test_edit_rejects_indent_difference(tmp_path: Path) -> None:
+    # 行首缩进风格不同（tab vs 4 空格）：fallback 不归一化行首空白 → 保留原错误
+    body = "\tGood: foo\n"
+    backend, target = _edit_setup(tmp_path, body)
+
+    result = basic_file_edit(
+        backend, str(target.resolve()), "    Good: foo", "Bad: foo"
+    )
+
+    assert result.error is not None
+    assert "String not found" in result.error
+    assert "read_file" in result.error  # hint 已附加
+    assert target.read_text(encoding="utf-8") == body
+
+
+def test_edit_rejects_when_multiple_matches_after_normalize(tmp_path: Path) -> None:
+    # 两段独立的 "foo+bar"，每段 foo 行尾空格数不同；精确匹配都不中、归一化后都中
+    # → fallback 检测到歧义，拒绝替换、保留原错误
+    body = "foo \nbar\nfoo  \nbar\n"
+    backend, target = _edit_setup(tmp_path, body)
+
+    result = basic_file_edit(backend, str(target.resolve()), "foo\nbar", "X")
+
+    assert result.error is not None
+    assert "String not found" in result.error
+    assert "read_file" in result.error
+    # 文件未被改动
+    assert target.read_text(encoding="utf-8") == body
+
+
+def test_edit_genuine_miss_returns_hint(tmp_path: Path) -> None:
+    backend, target = _edit_setup(tmp_path, "alpha\nbeta\n")
+
+    result = basic_file_edit(
+        backend, str(target.resolve()), "non-existent text", "X"
+    )
+
+    assert result.error is not None
+    assert "String not found" in result.error
+    assert "read_file" in result.error  # hint 已附加

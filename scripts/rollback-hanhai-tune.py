@@ -1,13 +1,18 @@
 """回滚 hanhai docker-compose 到调优前的备份并重启容器。"""
+import os
+import sys
 import paramiko
 import warnings
 import time
 
 warnings.filterwarnings("ignore")
 
-HOST = "10.172.246.220"
-USER = "boban"
-PASS = "100200"
+HOST = os.environ.get("HANHAI_HOST", "10.172.246.220")
+USER = os.environ.get("HANHAI_USER", "boban")
+PASS = os.environ.get("HANHAI_PASS")
+if not PASS:
+    sys.stderr.write("缺少 SSH 密码：请设置环境变量 HANHAI_PASS\n")
+    sys.exit(2)
 COMPOSE_PATH = "/home/boban/BobanStaff/models/docker-compose.yml"
 BACKUP_PATH = "/home/boban/BobanStaff/models/docker-compose.yml.bak-20260602-165829"
 

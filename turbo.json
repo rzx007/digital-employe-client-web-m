@@ -1,6 +1,22 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
+  "globalPassThroughEnv": [
+    "ELECTRON_MIRROR",
+    "ELECTRON_BUILDER_BINARIES_MIRROR",
+    "ELECTRON_CUSTOM_DIR",
+    "ELECTRON_CACHE",
+    "ELECTRON_BUILDER_CACHE",
+    "LOCALAPPDATA",
+    "NODE_OPTIONS",
+    "NPM_CONFIG_REGISTRY",
+    "CSC_LINK",
+    "CSC_KEY_PASSWORD",
+    "APPLE_ID",
+    "APPLE_APP_SPECIFIC_PASSWORD",
+    "APPLE_TEAM_ID",
+    "GH_TOKEN"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

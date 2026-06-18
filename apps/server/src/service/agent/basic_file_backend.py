@@ -169,6 +169,41 @@ def basic_file_read(
     )
 
 
+def _replace_with_line_endwsp_tolerance(
+    content: str, old_string: str, new_string: str
+) -> str | None:
+    """精确匹配失败时的容忍 fallback：行末空白与文件末换行差异。
+
+    归一化策略（仅这两类容忍，不动行首缩进/行内空白）：
+    1. 每行 rstrip（行末空白差异）
+    2. old_string 末尾的空行被忽略（模型常给文件没有的末尾 \\n）
+
+    仅当归一化后**唯一命中**时才替换（在原 content 行序列上替换、保留原行格式）；
+    多于一处即视为歧义、保留原错误，避免错改。
+    """
+    content_lines = content.split("\n")
+    norm_content = [line.rstrip() for line in content_lines]
+    norm_old = [line.rstrip() for line in old_string.split("\n")]
+    # 去掉 old 末尾的空行：等价于「忽略 old 末尾多余的 \n」
+    while norm_old and norm_old[-1] == "":
+        norm_old.pop()
+    n = len(norm_old)
+    if n == 0 or n > len(norm_content):
+        return None
+    matches: list[int] = []
+    for i in range(len(norm_content) - n + 1):
+        if norm_content[i : i + n] == norm_old:
+            matches.append(i)
+            if len(matches) > 1:
+                return None
+    if len(matches) != 1:
+        return None
+    start = matches[0]
+    new_lines = new_string.split("\n")
+    result_lines = content_lines[:start] + new_lines + content_lines[start + n :]
+    return "\n".join(result_lines)
+
+
 def basic_file_edit(
     backend: FilesystemBackend,
     file_path: str,
@@ -207,6 +242,28 @@ def basic_file_edit(
         content, old_string, new_string, replace_all
     )
     if isinstance(result, str):
+        # 兜底：行末空白容忍重试。模型常因 old_string 行尾多/少一个空格、或文件末
+        # 尾换行差异反复撞 "String not found"。把 content 与 old_string 都按行
+        # rstrip 后再找；仅当归一化后唯一命中时才接受替换（多于一处则保留原错误，
+        # 避免错改）。行内缩进/制表符不动，保留代码结构敏感性。
+        if not replace_all and result.startswith("Error: String not found"):
+            fuzzy = _replace_with_line_endwsp_tolerance(
+                content, old_string, new_string
+            )
+            if fuzzy is not None:
+                new_content = fuzzy
+                try:
+                    write_text_as_utf8(Path(resolved_path), new_content)
+                except OSError as exc:
+                    return EditResult(
+                        error=f"Error editing file '{file_path}': {exc}"
+                    )
+                return EditResult(path=file_path, occurrences=1)
+            # fallback 也失败：在原错误上追加 hint，引导模型重读最新文件
+            result = (
+                f"{result}\nHint: 请先 read_file 拿到最新内容再构造 old_string，"
+                "并保留原文件的行内空白与缩进。"
+            )
         return EditResult(error=result)
 
     new_content, occurrences = result
