@@ -156,6 +156,20 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
         "tasks": tasks_for_event,
     }, ensure_ascii=False)
 
+    # 低风险单任务（只读/查询类）免确认：直接自动执行，不再等用户确认。
+    # 前端卡片不消费 requires_confirmation，故免确认必须在服务端落地为自动 execute_plan；
+    # 执行后计划状态离开 pending，卡片自然不再显示「确认执行」按钮、改显进度。
+    if not requires_confirmation:
+        exec_result = execute_plan(db, plan, workspace_id)
+        return (
+            plan_json_output
+            + "\n\n"
+            + f"编排计划 #{plan.id}（{len(task_list)} 个子任务，低风险只读单任务）"
+            "已**自动执行**，无需用户确认、**不要**再调用 confirm_orchestration_plan。\n"
+            + exec_result
+            + "\n按「进度汇报骨架」给计数+状态清单后结束本轮。"
+        )
+
     return (
         plan_json_output
         + "\n\n"
