@@ -38,6 +38,17 @@ def _normalize_span(span: object) -> dict[str, int] | None:
     return None
 
 
+def _normalize_pos(pos: object) -> dict[str, int] | None:
+    """把 pos 归一化为 {x,y} 整数；x/y 非数字（如 null、字符串）则返回 None，
+    避免 int() 抛异常击穿外层的「返回错误字符串」契约。"""
+    if not isinstance(pos, dict):
+        return None
+    try:
+        return {"x": int(pos.get("x", 0)), "y": int(pos.get("y", 0))}
+    except (TypeError, ValueError):
+        return None
+
+
 def normalize_operations(
     ops: object,
     valid_paths: set[str],
@@ -79,8 +90,12 @@ def normalize_operations(
                     errors.append(f"operations[{i}]：span 非法 {op['span']!r}")
                     continue
                 norm["span"] = span
-            if isinstance(op.get("pos"), dict):
-                norm["pos"] = {"x": int(op["pos"].get("x", 0)), "y": int(op["pos"].get("y", 0))}
+            if "pos" in op:
+                pos = _normalize_pos(op["pos"])
+                if pos is None:
+                    errors.append(f"operations[{i}]：pin 的 pos 非法 {op['pos']!r}")
+                    continue
+                norm["pos"] = pos
             out.append(norm)
 
         elif kind == "resize":
@@ -91,12 +106,11 @@ def normalize_operations(
             out.append({"op": "resize", "blockRef": op["blockRef"], "span": span})
 
         elif kind == "move":
-            pos = op.get("pos")
-            if not isinstance(op.get("blockRef"), str) or not isinstance(pos, dict):
-                errors.append(f"operations[{i}]：move 缺 blockRef 或 pos")
+            pos = _normalize_pos(op.get("pos"))
+            if not isinstance(op.get("blockRef"), str) or pos is None:
+                errors.append(f"operations[{i}]：move 缺 blockRef 或 pos 非法")
                 continue
-            out.append({"op": "move", "blockRef": op["blockRef"],
-                        "pos": {"x": int(pos.get("x", 0)), "y": int(pos.get("y", 0))}})
+            out.append({"op": "move", "blockRef": op["blockRef"], "pos": pos})
 
         elif kind == "rename":
             if not isinstance(op.get("blockRef"), str) or not isinstance(op.get("title"), str):
