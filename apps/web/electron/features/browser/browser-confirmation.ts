@@ -8,6 +8,7 @@ export interface BrowserConfirmationRequest {
   message: string
   refOrSelector: string
   screenshotBase64?: string
+  conversationId?: string | null
 }
 
 interface PendingConfirmation {
@@ -23,6 +24,7 @@ export function requestBrowserConfirmation(options: {
   message: string
   refOrSelector: string
   screenshotBase64?: string
+  conversationId?: string | null
 }): Promise<boolean> {
   const id = randomUUID()
   const payload: BrowserConfirmationRequest = {
@@ -30,6 +32,7 @@ export function requestBrowserConfirmation(options: {
     message: options.message,
     refOrSelector: options.refOrSelector,
     screenshotBase64: options.screenshotBase64,
+    conversationId: options.conversationId,
   }
 
   const main = getWindowManager().get("main")
