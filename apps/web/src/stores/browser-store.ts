@@ -24,8 +24,8 @@ interface BrowserState {
   canGoForward: boolean
   // 当前活跃浏览器归属的会话 id（与前台一致时才渲染）；null = 无归属/调试路径
   activeBrowserConversationId: string | null
-  // 有浏览器命令在跑、但不属于当前前台会话 → 静默记录，不渲染
-  backgroundSessions: Set<string>
+  // 有浏览器命令在跑、但不属于当前前台会话 → 静默记录（conversationId → 最后导航的 url），不渲染
+  backgroundSessions: Map<string, string>
 
   openBrowser: (url: string) => void
   openHtmlPreview: (
@@ -48,8 +48,9 @@ interface BrowserState {
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
   toggleFullscreen: () => void
-  noteBackgroundOpen: (conversationId: string) => void
+  noteBackgroundOpen: (conversationId: string, url: string) => void
   clearBackground: (conversationId: string) => void
+  adoptForeground: (conversationId: string) => void
   setActiveBrowserConversationId: (conversationId: string | null) => void
   reset: () => void
 }
@@ -85,7 +86,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   canGoBack: false,
   canGoForward: false,
   activeBrowserConversationId: null,
-  backgroundSessions: new Set<string>(),
+  backgroundSessions: new Map<string, string>(),
 
   openBrowser: (url: string) => {
     closeOtherRightPanels()
@@ -214,10 +215,10 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     set((s) => ({ isFullscreen: !s.isFullscreen }))
   },
 
-  noteBackgroundOpen: (conversationId: string) => {
+  noteBackgroundOpen: (conversationId: string, url: string) => {
     set((s) => {
-      const next = new Set(s.backgroundSessions)
-      next.add(conversationId)
+      const next = new Map(s.backgroundSessions)
+      next.set(conversationId, url)
       return { backgroundSessions: next }
     })
   },
@@ -225,10 +226,18 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   clearBackground: (conversationId: string) => {
     set((s) => {
       if (!s.backgroundSessions.has(conversationId)) return {}
-      const next = new Set(s.backgroundSessions)
+      const next = new Map(s.backgroundSessions)
       next.delete(conversationId)
       return { backgroundSessions: next }
     })
+  },
+
+  adoptForeground: (conversationId: string) => {
+    const url = get().backgroundSessions.get(conversationId)
+    if (!url) return
+    get().openBrowser(url)
+    get().setActiveBrowserConversationId(conversationId)
+    get().clearBackground(conversationId)
   },
 
   setActiveBrowserConversationId: (conversationId: string | null) => {

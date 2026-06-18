@@ -24,6 +24,7 @@ export interface BrowserConfirmationPayload {
 
 export function BrowserConfirmationHost() {
   const openBrowser = useBrowserStore((s) => s.openBrowser)
+  const selectedConversationId = useChatStore((s) => s.selectedConversationId)
   const [pending, setPending] =
     React.useState<BrowserConfirmationPayload | null>(null)
 
@@ -58,7 +59,7 @@ export function BrowserConfirmationHost() {
         store.setActiveBrowserConversationId(owner)
         store.clearBackground(owner)
       } else {
-        store.noteBackgroundOpen(owner)
+        store.noteBackgroundOpen(owner, data.url)
       }
     })
 
@@ -83,6 +84,13 @@ export function BrowserConfirmationHost() {
       unsubClose?.()
     }
   }, [openBrowser])
+
+  // 切到某会话时，若它有后台浏览器在跑（之前因非前台被静默记录），自动重现其最后页面。
+  React.useEffect(() => {
+    const fg = String(selectedConversationId ?? "")
+    if (!fg) return
+    useBrowserStore.getState().adoptForeground(fg)
+  }, [selectedConversationId])
 
   const handleResolve = (approved: boolean) => {
     if (!pending) return
