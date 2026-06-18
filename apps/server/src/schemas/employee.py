@@ -137,8 +137,16 @@ class EmployeeGrowthJournalEntry(BaseModel):
     duration_ms: int | None = None
 
 
+class EmployeeSkillCandidate(BaseModel):
+    """自动晋升出的技能候选（待人确认才转为正式技能）。"""
+    name: str
+    zh: str = ""
+    description: str = ""
+
+
 class EmployeeGrowthBrainRead(BaseModel):
     profile_md: str
     skills_list: list[str]
     memories_md: str
     journal_entries: list[EmployeeGrowthJournalEntry]
+    skill_candidates: list[EmployeeSkillCandidate] = Field(default_factory=list)

@@ -1419,9 +1419,43 @@ class EmployeeService:
                 except OSError:
                     continue
         journal_entries = journal_entries[-30:]
+
+        # 技能候选（librarian 从重复成功打法自动晋升出的候选，待人确认才转正式技能）
+        skill_candidates: list[dict] = []
+        cand_dir = brain / "skill_candidates"
+        if cand_dir.is_dir():
+            for fp in sorted(cand_dir.glob("*.md")):
+                meta = EmployeeService._parse_skill_candidate_meta(_read(fp))
+                if meta:
+                    skill_candidates.append(meta)
+
         return {
             "profile_md": profile_md,
             "skills_list": skills_list,
             "memories_md": memories_md,
             "journal_entries": journal_entries,
+            "skill_candidates": skill_candidates,
+        }
+
+    @staticmethod
+    def _parse_skill_candidate_meta(text: str) -> dict | None:
+        """从技能候选 md 的 frontmatter 解析 name/zh/description。无 name 则忽略。"""
+        if not text or not text.lstrip().startswith("---"):
+            return None
+        body = text.lstrip()[3:]
+        end = body.find("\n---")
+        if end == -1:
+            return None
+        meta: dict[str, str] = {}
+        for line in body[:end].splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                meta[k.strip()] = v.strip()
+        name = meta.get("name", "")
+        if not name:
+            return None
+        return {
+            "name": name,
+            "zh": meta.get("zh", name),
+            "description": meta.get("description", ""),
         }

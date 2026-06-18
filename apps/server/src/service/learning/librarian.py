@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -11,6 +12,11 @@ logger = logging.getLogger(__name__)
 _PROFILE_MAX_JOURNAL = 60
 _librarian_locks: dict[int, float] = {}
 _LIBRARIAN_COOLDOWN = 300  # 秒
+
+# 硬技能晋升：成功流水累计 ≥ 此数才考虑提炼技能（单次不晋升，防 fluke）。
+_PROMOTE_MIN_SUCCESS = 3
+_SUCCESS_STATES = ("success", "completed")
+_SKILL_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 def _brain_root_for(employee_id: int) -> Path:
@@ -175,6 +181,126 @@ def consolidate_memory(employee_id: int) -> None:
         logger.warning("consolidate_memory failed eid=%s", employee_id, exc_info=True)
 
 
+def _slugify_skill(raw: str) -> str:
+    """把 critic 给的 slug 规整成小写连字符（非字母数字→连字符，去首尾连字符）。"""
+    s = (raw or "").strip().lower()
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+    return s
+
+
+def _parse_skill_candidate(text: str) -> dict | None:
+    """解析 critic 输出的技能候选：`SKILL/NAME/DESC` 头 + `---` + SOP 正文。
+
+    无可复用模式（输出「无」/NONE/空）或缺关键字段（slug 不合法、正文为空）→ None。
+    用确定性分隔格式而非 JSON——本地模型对固定行格式更稳。
+    """
+    t = (text or "").strip()
+    if not t:
+        return None
+    t = _strip_outer_code_fence(t).strip()
+    if t.startswith("无") or t.upper().startswith("NONE"):
+        return None
+    lines = t.split("\n")
+    slug = zh = desc = ""
+    seen_field = False
+    body_start = len(lines)
+    for i, line in enumerate(lines):
+        s = line.strip()
+        # `---` 仅在已读到至少一个头字段后才算「头/正文分隔符」——否则视作
+        # 模型把头部裹成 YAML frontmatter 的前导围栏，跳过即可（防误判丢弃）。
+        if s == "---":
+            if seen_field:
+                body_start = i + 1
+                break
+            continue
+        upper = s.upper()
+        if upper.startswith("SKILL:"):
+            slug = _slugify_skill(s.split(":", 1)[1])
+            seen_field = True
+        elif upper.startswith("NAME:"):
+            zh = s.split(":", 1)[1].strip()
+            seen_field = True
+        elif upper.startswith("DESC:"):
+            desc = s.split(":", 1)[1].strip()
+            seen_field = True
+    body = "\n".join(lines[body_start:]).strip()
+    if not slug or not _SKILL_SLUG_RE.match(slug) or not body:
+        return None
+    return {"slug": slug, "zh": zh or slug, "desc": desc, "body": body}
+
+
+def promote_skills(employee_id: int) -> None:
+    """扫成功流水识别**重复且验证过**的打法 → 写技能候选 skill_candidates/<slug>.md。
+
+    保守护栏：
+    - 单次不晋升：成功流水 < _PROMOTE_MIN_SUCCESS 直接 noop（不调模型，防 fluke）；
+      critic prompt 也要求"至少 3 个任务体现同一套做法、拿不准就输出无"。
+    - 只造**候选**：写 skill_candidates/，**绝不**写进 active skills/、**绝不**自动安装——
+      晋升为正式技能须人确认（对齐 AGENTS.md「保存到我的技能库」与 2C「易造垃圾」之诫）。
+    - 不覆盖、不 churn：同 slug 的候选或 active 技能已存在 → 跳过。
+    无可复用模式 → noop。全程容错。
+    """
+    try:
+        brain = _brain_root_for(employee_id)
+        entries = _read_recent_journal(brain)
+        success = [e for e in entries if e.get("status") in _SUCCESS_STATES]
+        if len(success) < _PROMOTE_MIN_SUCCESS:
+            return
+        digest = "\n".join(
+            f"- {e.get('task_name','')} 工具:{','.join(e.get('tools_used') or [])} "
+            f"结论:{(e.get('conclusion') or '')[:120]}"
+            for e in success
+        )
+        llm = _build_llm()
+        prompt = (
+            "下面是某数字员工**成功完成**的历史任务流水。判断其中是否存在一类"
+            "**反复出现、且每次都成功验证过**的可复用打法/SOP（至少 3 个任务体现同一套做法）。\n"
+            "- 有：提炼成一个可复用技能，**严格**按下面格式输出（SKILL 为英文小写连字符 slug）：\n"
+            "SKILL: <slug>\nNAME: <中文技能名>\nDESC: <一句话描述>\n---\n"
+            "<markdown 正文：## 何时使用 / ## 步骤 等>\n"
+            "- 没有（任务各不相同、或只是一次性侥幸）：只输出两个字「无」。\n"
+            "**务必防止把一次性/偶然成功当成可复用技能**——拿不准就输出「无」。\n\n"
+            f"成功任务流水：\n{digest}\n"
+        )
+        parsed = _parse_skill_candidate(llm.invoke(prompt).content)
+        if parsed is None:
+            return
+        slug = parsed["slug"]
+
+        # 已有同名 active 技能 → 不重复造候选
+        from src.service.agent.paths import list_available_skills
+        skills_dir = brain / "skills"
+        try:
+            active = list_available_skills(skills_dir) if skills_dir.is_dir() else []
+        except Exception:
+            active = []
+        if slug in active:
+            logger.info("promote_skills eid=%s skip: active skill %s exists", employee_id, slug)
+            return
+
+        cand_path = brain / "skill_candidates" / f"{slug}.md"
+        if cand_path.exists():
+            logger.info("promote_skills eid=%s skip: candidate %s exists", employee_id, slug)
+            return  # 不覆盖、不 churn
+
+        cand_path.parent.mkdir(parents=True, exist_ok=True)
+        content = (
+            "---\n"
+            f"name: {slug}\n"
+            f"zh: {parsed['zh']}\n"
+            f"description: {parsed['desc']}\n"
+            "status: candidate\n"
+            "source: auto-promoted-from-journal\n"
+            "---\n\n"
+            f"# {parsed['zh']}\n\n"
+            f"{parsed['body']}\n"
+        )
+        cand_path.write_text(content, encoding="utf-8")
+        logger.info("promote_skills eid=%s wrote candidate %s", employee_id, slug)
+    except Exception:
+        logger.warning("promote_skills failed eid=%s", employee_id, exc_info=True)
+
+
 def _acquire_librarian_lock(employee_id: int) -> bool:
     now = time.time()
     if now - _librarian_locks.get(employee_id, 0) < _LIBRARIAN_COOLDOWN:
@@ -192,6 +318,7 @@ def run_librarian(employee_id: int) -> None:
     try:
         generate_profile(employee_id)
         consolidate_memory(employee_id)
+        promote_skills(employee_id)
     except Exception:
         logger.warning("run_librarian failed eid=%s", employee_id, exc_info=True)
 

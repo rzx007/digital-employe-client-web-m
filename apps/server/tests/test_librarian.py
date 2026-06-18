@@ -188,16 +188,17 @@ def test_consolidate_memory_no_file_noop(monkeypatch, tmp_path):
 
 # ── 2C-3: run_librarian 编排 + 限流 ─────────────────────────────────────────
 
-def test_run_librarian_calls_both_and_ratelimits(monkeypatch, tmp_path):
+def test_run_librarian_calls_all_and_ratelimits(monkeypatch, tmp_path):
     from src.service.learning import librarian
-    calls = {"profile": 0, "mem": 0}
+    calls = {"profile": 0, "mem": 0, "promote": 0}
     monkeypatch.setattr(librarian, "generate_profile", lambda eid: calls.__setitem__("profile", calls["profile"]+1))
     monkeypatch.setattr(librarian, "consolidate_memory", lambda eid: calls.__setitem__("mem", calls["mem"]+1))
+    monkeypatch.setattr(librarian, "promote_skills", lambda eid: calls.__setitem__("promote", calls["promote"]+1))
     librarian._librarian_locks.clear()
     librarian.run_librarian(42)
-    assert calls == {"profile": 1, "mem": 1}
+    assert calls == {"profile": 1, "mem": 1, "promote": 1}
     librarian.run_librarian(42)  # 冷却内
-    assert calls == {"profile": 1, "mem": 1}
+    assert calls == {"profile": 1, "mem": 1, "promote": 1}
 
 
 # ── 2C-4: 阈值自动触发 ────────────────────────────────────────────────────────
@@ -244,3 +245,112 @@ def test_reflect_safe_hook_swallows(monkeypatch):
     monkeypatch.setattr(lib, "note_journal_and_maybe_run",
                         lambda eid: (_ for _ in ()).throw(RuntimeError("boom")))
     _maybe_librarian_safe(1)  # 不抛
+
+
+# ── 硬技能晋升（重复且验证过的打法 → 技能候选）────────────────────────────────
+
+_PROMOTE_OUT = (
+    "SKILL: chip-research-report\n"
+    "NAME: 芯片调研报告\n"
+    "DESC: 标准化的芯片选型调研与报告产出流程\n"
+    "---\n"
+    "## 何时使用\n需要对某类芯片做选型调研时\n## 步骤\n1. 查规格\n2. 对比\n3. 出报告\n"
+)
+
+
+def test_parse_skill_candidate_ok():
+    from src.service.learning import librarian
+    got = librarian._parse_skill_candidate(_PROMOTE_OUT)
+    assert got is not None
+    assert got["slug"] == "chip-research-report"
+    assert got["zh"] == "芯片调研报告"
+    assert "选型调研" in got["desc"]
+    assert "步骤" in got["body"]
+
+
+def test_parse_skill_candidate_none_when_no_pattern():
+    from src.service.learning import librarian
+    assert librarian._parse_skill_candidate("无") is None
+    assert librarian._parse_skill_candidate("") is None
+
+
+def test_parse_skill_candidate_tolerates_leading_frontmatter_fence():
+    """本地模型常把头部裹成 YAML frontmatter（前导 ---）；不应被误判为分隔符而丢弃。"""
+    from src.service.learning import librarian
+    wrapped = (
+        "---\n"
+        "SKILL: chip-research-report\nNAME: 芯片调研报告\nDESC: 标准化调研流程\n"
+        "---\n## 步骤\n1. 查规格\n"
+    )
+    got = librarian._parse_skill_candidate(wrapped)
+    assert got is not None
+    assert got["slug"] == "chip-research-report"
+    assert got["zh"] == "芯片调研报告"
+    assert "步骤" in got["body"]
+
+
+def test_promote_skills_below_threshold_noop(monkeypatch, tmp_path):
+    """成功流水 < 阈值 → 不调 LLM、不造候选（单次不晋升，防 fluke）。"""
+    from src.service.learning import librarian
+    monkeypatch.setattr(librarian, "_brain_root_for", lambda eid: tmp_path / str(eid))
+    monkeypatch.setattr(librarian, "_build_llm",
+                        lambda: (_ for _ in ()).throw(AssertionError("不足阈值不该调 LLM")))
+    brain = tmp_path / "42"
+    _seed_journal(brain, [
+        {"task_name": "调研A芯片", "status": "success", "tools_used": ["shell_execute"]},
+        {"task_name": "调研B芯片", "status": "success", "tools_used": ["shell_execute"]},
+    ])  # 仅 2 条成功 < 3
+    librarian.promote_skills(42)
+    assert not (brain / "skill_candidates").exists()
+
+
+def test_promote_skills_writes_candidate(monkeypatch, tmp_path):
+    """≥3 条成功且 critic 识别出可复用打法 → 写技能候选（不进 active skills）。"""
+    from src.service.learning import librarian
+    monkeypatch.setattr(librarian, "_brain_root_for", lambda eid: tmp_path / str(eid))
+    monkeypatch.setattr(librarian, "_build_llm",
+                        lambda: type("L", (), {"invoke": lambda self, p: type("R", (), {"content": _PROMOTE_OUT})()})())
+    brain = tmp_path / "42"
+    _seed_journal(brain, [
+        {"task_name": "调研A芯片", "status": "success", "tools_used": ["shell_execute"]},
+        {"task_name": "调研B芯片", "status": "success", "tools_used": ["shell_execute"]},
+        {"task_name": "调研C芯片", "status": "success", "tools_used": ["shell_execute"]},
+    ])
+    librarian.promote_skills(42)
+    cand = brain / "skill_candidates" / "chip-research-report.md"
+    assert cand.exists()
+    txt = cand.read_text(encoding="utf-8")
+    assert "name: chip-research-report" in txt
+    assert "芯片调研报告" in txt
+    assert "步骤" in txt
+    # 不得写进 active skills 目录（候选须人确认才晋升）
+    assert not (brain / "skills" / "chip-research-report").exists()
+
+
+def test_promote_skills_none_pattern_no_candidate(monkeypatch, tmp_path):
+    from src.service.learning import librarian
+    monkeypatch.setattr(librarian, "_brain_root_for", lambda eid: tmp_path / str(eid))
+    monkeypatch.setattr(librarian, "_build_llm",
+                        lambda: type("L", (), {"invoke": lambda self, p: type("R", (), {"content": "无"})()})())
+    brain = tmp_path / "42"
+    _seed_journal(brain, [
+        {"task_name": f"杂活{i}", "status": "success", "tools_used": []} for i in range(4)
+    ])
+    librarian.promote_skills(42)
+    assert not (brain / "skill_candidates").exists()
+
+
+def test_promote_skills_no_clobber_existing(monkeypatch, tmp_path):
+    """同 slug 候选已存在 → 不覆盖（避免后台每轮反复造）。"""
+    from src.service.learning import librarian
+    monkeypatch.setattr(librarian, "_brain_root_for", lambda eid: tmp_path / str(eid))
+    monkeypatch.setattr(librarian, "_build_llm",
+                        lambda: type("L", (), {"invoke": lambda self, p: type("R", (), {"content": _PROMOTE_OUT})()})())
+    brain = tmp_path / "42"
+    cand_dir = brain / "skill_candidates"; cand_dir.mkdir(parents=True)
+    (cand_dir / "chip-research-report.md").write_text("旧候选-勿覆盖", encoding="utf-8")
+    _seed_journal(brain, [
+        {"task_name": "调研芯片", "status": "success", "tools_used": []} for _ in range(3)
+    ])
+    librarian.promote_skills(42)
+    assert (cand_dir / "chip-research-report.md").read_text(encoding="utf-8") == "旧候选-勿覆盖"
