@@ -1,4 +1,12 @@
-import type { HtmlArtifactRef, WorkbenchBlock, WorkbenchConfig } from "@/types/workbench"
+import type {
+  GridPos,
+  GridSpan,
+  HtmlArtifactRef,
+  WorkbenchArrangeOp,
+  WorkbenchBlock,
+  WorkbenchConfig,
+} from "@/types/workbench"
+import { findFreeSlot, SPAN_PRESETS } from "./grid"
 
 /**
  * 单一全局工作台的 employeeId。钉住写入方（资源面板）与读取方（WorkbenchView）
@@ -40,7 +48,11 @@ function isValidConfig(raw: unknown): raw is WorkbenchConfig {
       typeof b === "object" &&
       (b as WorkbenchBlock).type === "html-artifact" &&
       !!(b as WorkbenchBlock).htmlRef &&
-      typeof (b as WorkbenchBlock).htmlRef.resourcePath === "string"
+      typeof (b as WorkbenchBlock).htmlRef.resourcePath === "string" &&
+      !!(b as WorkbenchBlock).gridSpan &&
+      typeof (b as WorkbenchBlock).gridSpan.w === "number" &&
+      !!(b as WorkbenchBlock).gridPos &&
+      typeof (b as WorkbenchBlock).gridPos.x === "number"
   )
 }
 
@@ -106,7 +118,9 @@ function isSameHtmlRef(a: HtmlArtifactRef, b: HtmlArtifactRef): boolean {
 export function addHtmlArtifactBlock(
   config: WorkbenchConfig,
   htmlRef: HtmlArtifactRef,
-  title: string
+  title: string,
+  span: GridSpan = SPAN_PRESETS.medium,
+  pos?: GridPos
 ): WorkbenchConfig {
   const existing = config.blocks.find(
     (b) => b.type === "html-artifact" && isSameHtmlRef(b.htmlRef, htmlRef)
@@ -122,6 +136,8 @@ export function addHtmlArtifactBlock(
     saveWorkbenchConfig(updated)
     return updated
   }
+  const occupied = config.blocks.map((b) => ({ ...b.gridPos, ...b.gridSpan }))
+  const resolvedPos = pos ?? findFreeSlot(occupied, span)
   const newBlock: WorkbenchBlock = {
     id: generateBlockId(),
     type: "html-artifact",
@@ -129,6 +145,8 @@ export function addHtmlArtifactBlock(
     enabled: true,
     order: config.blocks.length,
     htmlRef,
+    gridSpan: span,
+    gridPos: resolvedPos,
   }
   const updated: WorkbenchConfig = {
     ...config,
@@ -176,20 +194,198 @@ export function removeBlock(
   return updated
 }
 
-export function updateBlockSize(
+/** 改尺寸（保存）。 */
+export function setBlockSpan(
   config: WorkbenchConfig,
   blockId: string,
-  width: number,
-  height: number
+  span: GridSpan
 ): WorkbenchConfig {
-  const updatedBlocks = config.blocks.map((b) =>
-    b.id === blockId ? { ...b, width, height } : b
+  const blocks = config.blocks.map((b) =>
+    b.id === blockId ? { ...b, gridSpan: span } : b
   )
-  const updated: WorkbenchConfig = {
-    ...config,
-    blocks: updatedBlocks,
-    lastModified: Date.now(),
-  }
+  const updated = { ...config, blocks, lastModified: Date.now() }
   saveWorkbenchConfig(updated)
   return updated
 }
+
+/** 改位置（保存）。 */
+export function setBlockPos(
+  config: WorkbenchConfig,
+  blockId: string,
+  pos: GridPos
+): WorkbenchConfig {
+  const blocks = config.blocks.map((b) =>
+    b.id === blockId ? { ...b, gridPos: pos } : b
+  )
+  const updated = { ...config, blocks, lastModified: Date.now() }
+  saveWorkbenchConfig(updated)
+  return updated
+}
+
+/** 改标题（保存）。 */
+export function setBlockTitle(
+  config: WorkbenchConfig,
+  blockId: string,
+  title: string
+): WorkbenchConfig {
+  const blocks = config.blocks.map((b) =>
+    b.id === blockId ? { ...b, title } : b
+  )
+  const updated = { ...config, blocks, lastModified: Date.now() }
+  saveWorkbenchConfig(updated)
+  return updated
+}
+
+/** 显隐（保存）。 */
+export function setBlockEnabled(
+  config: WorkbenchConfig,
+  blockId: string,
+  enabled: boolean
+): WorkbenchConfig {
+  const blocks = config.blocks.map((b) =>
+    b.id === blockId ? { ...b, enabled } : b
+  )
+  const updated = { ...config, blocks, lastModified: Date.now() }
+  saveWorkbenchConfig(updated)
+  return updated
+}
+
+/** 把 blockRef（标题或 1 基序号）解析为 blockId；找不到返回 null。 */
+function resolveBlockRef(
+  config: WorkbenchConfig,
+  ref: string
+): string | null {
+  const byTitle = config.blocks.find((b) => b.title === ref)
+  if (byTitle) return byTitle.id
+  const idx = Number(ref)
+  if (Number.isInteger(idx) && idx >= 1 && idx <= config.blocks.length) {
+    return config.blocks[idx - 1].id
+  }
+  return null
+}
+
+/** 内存版加块（不 save），供事务复用。 */
+function addBlockInMemory(
+  config: WorkbenchConfig,
+  args: { htmlRef: HtmlArtifactRef; title: string; span: GridSpan; pos?: GridPos }
+): WorkbenchConfig {
+  const existing = config.blocks.find(
+    (b) => b.type === "html-artifact" && isSameHtmlRef(b.htmlRef, args.htmlRef)
+  )
+  if (existing) {
+    return {
+      ...config,
+      blocks: config.blocks.map((b) =>
+        b.id === existing.id ? { ...b, title: args.title, htmlRef: args.htmlRef } : b
+      ),
+    }
+  }
+  const occupied = config.blocks.map((b) => ({ ...b.gridPos, ...b.gridSpan }))
+  const pos = args.pos ?? findFreeSlot(occupied, args.span)
+  const newBlock: WorkbenchBlock = {
+    id: generateBlockId(),
+    type: "html-artifact",
+    title: args.title,
+    enabled: true,
+    order: config.blocks.length,
+    htmlRef: args.htmlRef,
+    gridSpan: args.span,
+    gridPos: pos,
+  }
+  return { ...config, blocks: [...config.blocks, newBlock] }
+}
+
+/** 内存版改块（不 save）。 */
+function mapBlock(
+  config: WorkbenchConfig,
+  blockId: string,
+  fn: (b: WorkbenchBlock) => WorkbenchBlock
+): WorkbenchConfig {
+  return {
+    ...config,
+    blocks: config.blocks.map((b) => (b.id === blockId ? fn(b) : b)),
+  }
+}
+
+/**
+ * 事务性应用一批归一化 arrange 指令：在内存里逐条算出新 config，
+ * 全部处理完一次性 save。blockRef 找不到的条目跳过。
+ * conversationId 用于 pin 指令构造 htmlRef。
+ */
+export function applyArrangeOperations(
+  config: WorkbenchConfig,
+  ops: WorkbenchArrangeOp[],
+  conversationId: string | number
+): WorkbenchConfig {
+  let next: WorkbenchConfig = { ...config, blocks: [...config.blocks] }
+
+  for (const op of ops) {
+    switch (op.op) {
+      case "pin": {
+        next = addBlockInMemory(next, {
+          htmlRef: { conversationId, resourcePath: op.resourcePath, pinnedAt: Date.now() },
+          title: op.title ?? op.resourcePath.split("/").pop()!.replace(/\.html?$/i, ""),
+          span: op.span ?? SPAN_PRESETS.medium,
+          pos: op.pos,
+        })
+        break
+      }
+      case "resize": {
+        const id = resolveBlockRef(next, op.blockRef)
+        if (id) next = mapBlock(next, id, (b) => ({ ...b, gridSpan: op.span }))
+        break
+      }
+      case "move": {
+        const id = resolveBlockRef(next, op.blockRef)
+        if (id) next = mapBlock(next, id, (b) => ({ ...b, gridPos: op.pos }))
+        break
+      }
+      case "rename": {
+        const id = resolveBlockRef(next, op.blockRef)
+        if (id) next = mapBlock(next, id, (b) => ({ ...b, title: op.title }))
+        break
+      }
+      case "hide": {
+        const id = resolveBlockRef(next, op.blockRef)
+        if (id) next = mapBlock(next, id, (b) => ({ ...b, enabled: false }))
+        break
+      }
+      case "remove": {
+        const id = resolveBlockRef(next, op.blockRef)
+        if (id) {
+          next = {
+            ...next,
+            blocks: next.blocks
+              .filter((b) => b.id !== id)
+              .map((b, i) => ({ ...b, order: i })),
+          }
+        }
+        break
+      }
+      case "reorder": {
+        const ids = op.order
+          .map((ref) => resolveBlockRef(next, ref))
+          .filter((x): x is string => x !== null)
+        const map = new Map(next.blocks.map((b) => [b.id, b]))
+        const reordered = ids
+          .map((id, i) => {
+            const b = map.get(id)
+            return b ? { ...b, order: i } : null
+          })
+          .filter((b): b is WorkbenchBlock => b !== null)
+        // 补上未在 order 里出现的块，接在后面
+        const seen = new Set(ids)
+        const rest = next.blocks.filter((b) => !seen.has(b.id))
+        next = {
+          ...next,
+          blocks: [...reordered, ...rest].map((b, i) => ({ ...b, order: i })),
+        }
+        break
+      }
+    }
+  }
+  const result = { ...next, lastModified: Date.now() }
+  saveWorkbenchConfig(result)
+  return result
+}
+// 注：errors（blockRef 跳过）当前不外传；如需在卡片上提示，可改返回 {config, skipped}。
