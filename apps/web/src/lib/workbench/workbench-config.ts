@@ -122,37 +122,9 @@ export function addHtmlArtifactBlock(
   span: GridSpan = SPAN_PRESETS.medium,
   pos?: GridPos
 ): WorkbenchConfig {
-  const existing = config.blocks.find(
-    (b) => b.type === "html-artifact" && isSameHtmlRef(b.htmlRef, htmlRef)
-  )
-  if (existing) {
-    const updated: WorkbenchConfig = {
-      ...config,
-      blocks: config.blocks.map((b) =>
-        b.id === existing.id ? { ...b, title, htmlRef } : b
-      ),
-      lastModified: Date.now(),
-    }
-    saveWorkbenchConfig(updated)
-    return updated
-  }
-  const occupied = config.blocks.map((b) => ({ ...b.gridPos, ...b.gridSpan }))
-  const resolvedPos = pos ?? findFreeSlot(occupied, span)
-  const newBlock: WorkbenchBlock = {
-    id: generateBlockId(),
-    type: "html-artifact",
-    title,
-    enabled: true,
-    order: config.blocks.length,
-    htmlRef,
-    gridSpan: span,
-    gridPos: resolvedPos,
-  }
-  const updated: WorkbenchConfig = {
-    ...config,
-    blocks: [...config.blocks, newBlock],
-    lastModified: Date.now(),
-  }
+  // 钉逻辑（去重/自动寻位/带网格字段）统一在 addBlockInMemory，这里只补 save。
+  const next = addBlockInMemory(config, { htmlRef, title, span, pos })
+  const updated: WorkbenchConfig = { ...next, lastModified: Date.now() }
   saveWorkbenchConfig(updated)
   return updated
 }
@@ -250,7 +222,10 @@ export function setBlockEnabled(
   return updated
 }
 
-/** 把 blockRef（标题或 1 基序号）解析为 blockId；找不到返回 null。 */
+/**
+ * 把 blockRef（标题或 1 基序号）解析为 blockId；找不到返回 null。
+ * 优先按标题精确匹配（同名取第一个），再退化为 1 基序号；故标题"2"会先于序号 2 命中。
+ */
 function resolveBlockRef(
   config: WorkbenchConfig,
   ref: string
