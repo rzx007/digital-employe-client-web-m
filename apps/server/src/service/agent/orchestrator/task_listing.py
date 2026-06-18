@@ -187,17 +187,24 @@ def _list_tasks_in_session(
     detail_blocks: list[str] = []
     show_details = include_result_detail and len(tasks) <= 5
 
+    _pending_cache: dict = {}
     for t in tasks:
         emp_name = employee_names.get(t.employee_id) or (
             t.employee_name_snapshot or str(t.employee_id)
         )
         mode = "定时" if t.execute_mode == "scheduled" else "即时"
         latest_log = latest_logs.get(t.id)
-        task_status = (
-            latest_log.run_status
-            if latest_log
-            else ("运行中" if t.execute_mode == "scheduled" else "未执行")
-        )
+        if latest_log:
+            task_status = latest_log.run_status
+        elif t.execute_mode == "scheduled":
+            task_status = "运行中"
+        else:
+            from src.service.agent.orchestrator.dependency_scheduler import (
+                waiting_status_for_task,
+            )
+            task_status = (
+                waiting_status_for_task(db, t, _plan_cache=_pending_cache) or "未执行"
+            )
         emp_conv = latest_log.conversation_id if latest_log else "—"
         lines.append(
             f"| {t.id} | {t.task_name} | {emp_name} | {mode} | {task_status} | {emp_conv} |"
