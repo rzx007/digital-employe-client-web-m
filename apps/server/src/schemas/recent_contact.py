@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer
 
-TargetType = Literal["employee", "group", "curator"]
+from src.schemas.conversation import TargetType
 
 
 class RecentContactTouch(BaseModel):
@@ -38,7 +37,6 @@ class RecentContactRead(BaseModel):
     last_message_time: datetime | None = None
     unread_count: int = 0
     updated_at: datetime
-    is_group: bool = False
     is_curator: bool = False
     is_pinned: bool = False
     latest_conversation_id: int | None = None

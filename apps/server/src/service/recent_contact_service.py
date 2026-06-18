@@ -102,22 +102,21 @@ class RecentContactService:
         workspace_id: int,
         target_type: str,
         target_id: int,
-    ) -> tuple[str, str, str | None, bool, bool]:
+    ) -> tuple[str, str, str | None, bool]:
         if target_type == "curator":
             employee = db.get(Employee, target_id)
             if not employee:
-                return str(target_id), "总管助手", None, False, True
+                return str(target_id), "总管助手", None, True
             return (
                 str(target_id),
                 employee.name or "总管助手",
                 None,
-                False,
                 True,
             )
         if target_type == "employee":
             employee = db.get(Employee, target_id)
             if not employee:
-                return str(target_id), "未知", None, False, False
+                return str(target_id), "未知", None, False
             meta: dict = {}
             try:
                 meta = json.loads(employee.meta_json or "{}")
@@ -136,10 +135,9 @@ class RecentContactService:
                 employee.name or "未知",
                 status_str,
                 False,
-                False,
             )
-        # 群组功能已退场，fallback 为"未知"
-        return str(target_id), "未知", None, True, False
+        # 仅 employee/curator 两类目标；其它 target_type 兜底为"未知"
+        return str(target_id), "未知", None, False
 
     @staticmethod
     def _row_to_read(
@@ -152,7 +150,7 @@ class RecentContactService:
         ):
             return None
 
-        contact_id, contact_name, status_str, is_group, is_curator = (
+        contact_id, contact_name, status_str, is_curator = (
             RecentContactService._resolve_display(
                 db, workspace_id, row.target_type, row.target_id
             )
@@ -180,7 +178,6 @@ class RecentContactService:
             last_message_time=last_message_time,
             unread_count=0,
             updated_at=row.last_accessed_at,
-            is_group=is_group,
             is_curator=is_curator,
             is_pinned=row.is_pinned,
             latest_conversation_id=latest.id if latest else None,

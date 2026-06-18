@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_serializer, field_validator
 from pydantic_core.core_schema import NoneSchema
 
 
-TargetType = Literal["employee", "group", "curator"]
+TargetType = Literal["employee", "curator"]
 MessageRole = Literal["user", "assistant", "tool"]
 
 

@@ -745,7 +745,7 @@ class ChatService:
                 conversation_id=conversation_id,
             )
         else:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee、group 或 curator。")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee 或 curator。")
         _phase("built_agent")
 
         try:
