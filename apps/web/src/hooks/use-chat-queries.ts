@@ -39,6 +39,7 @@ import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import { useAuthStore } from "@/stores/auth-store"
+import { useBrowserStore } from "@/stores/browser-store"
 import { useChatStore } from "@/stores/chat-store"
 import {
   buildRecentContactImportPayload,
@@ -357,6 +358,9 @@ export function useDeleteAllConversationsForContactMutation() {
           (current) => current?.filter((i) => i.contactId !== contactId)
         )
       }
+      for (const id of deletedIds) {
+        useBrowserStore.getState().clearBackground(String(id))
+      }
       resetChatRightPanels()
     },
   })
@@ -457,7 +461,9 @@ export function useDeleteConversationMutation() {
         })
       }
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      // 被删会话若有后台浏览器标记 → 回收，避免 id 永久滞留 backgroundSessions
+      useBrowserStore.getState().clearBackground(String(variables.conversationId))
       resetChatRightPanels()
     },
   })
@@ -487,6 +493,7 @@ export function useResetCuratorConversation() {
       await Promise.all(promises)
     },
     onSuccess: (_data, variables) => {
+      useBrowserStore.getState().clearBackground(String(variables.conversationId))
       queryClient.invalidateQueries({ queryKey: chatKeys.curator() })
       queryClient.invalidateQueries({
         queryKey: chatKeys.conversations(variables.contactId),
