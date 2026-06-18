@@ -212,9 +212,6 @@ export interface ChatMessageDto {
   conversation_id?: number
   senderId?: string
   senderName?: string
-  /** 群时间线作者归属（后端 snake_case 字段） */
-  sender_id?: number | null
-  sender_label?: string | null
   role: "user" | "assistant" | "system"
   content: string
   chunk_json?: string

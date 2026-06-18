@@ -11,8 +11,6 @@ type AssistantMeta = {
   hitlAnchorMessageId?: string
   approveMessageId?: string
   approved_at?: string
-  senderName?: string
-  senderId?: string
 }
 
 function getAssistantMeta(message: UIMessage): AssistantMeta {
@@ -35,20 +33,7 @@ function getAssistantMeta(message: UIMessage): AssistantMeta {
         : undefined,
     approved_at:
       typeof raw.approved_at === "string" ? raw.approved_at : undefined,
-    senderName: typeof raw.senderName === "string" ? raw.senderName : undefined,
-    senderId: typeof raw.senderId === "string" ? raw.senderId : undefined,
   }
-}
-
-/**
- * 群时间线里每条 assistant 消息都是某发言人（组长/某成员）的一条独立、完整的
- * 发言，彼此即便发言人相同（如组长「已收到」+ 组长正式回复）也是两轮，绝不能并到
- * 同一气泡。带 senderName/senderId 的消息即来自群投影，一律单独成泡；单聊消息两者
- * 皆空，相邻 assistant 仍按原逻辑（HITL 封存段 + 续写段同泡）合并。
- */
-function isGroupTimelineMessage(message: UIMessage): boolean {
-  const meta = getAssistantMeta(message)
-  return Boolean(meta.senderId || meta.senderName)
 }
 
 /**
@@ -133,12 +118,11 @@ export function mergeConsecutiveAssistantMessages(
   }
 
   for (const message of messages) {
-    if (message.role === "assistant" && !isGroupTimelineMessage(message)) {
+    if (message.role === "assistant") {
       group.push(message)
       continue
     }
-    // user 消息、或群时间线里任何一条独立 assistant 发言：都是气泡边界。
-    // 群消息各自单独成泡（不与前后任何消息合并），故先 flush 再原样 push。
+    // user 消息是气泡边界：先 flush 当前 assistant 组，再原样 push。
     flush()
     result.push(message)
   }
