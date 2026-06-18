@@ -38,7 +38,7 @@ def test_build_execution_summary_content_success():
     assert "员工会话 #64" in text
     assert "25.4s" in text
     assert "TOP1 测试话题" in text
-    assert "任务执行卡片" in text
+    assert "可点击下方卡片进入员工对话查看详情" in text
 
 
 def test_build_execution_summary_content_failed():

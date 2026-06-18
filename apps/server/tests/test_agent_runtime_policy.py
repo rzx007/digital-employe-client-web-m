@@ -63,7 +63,11 @@ def test_parse_agent_max_concurrent_when_serial_off() -> None:
 
 
 def test_max_inflight_default_when_serial_off(monkeypatch) -> None:
-    """串行关闭且未配 KV 时槽位闸默认关闭（0=不限）。"""
+    """串行关闭且未配 KV 时，槽位闸默认开启（= AGENT_MAX_INFLIGHT_DEFAULT，保守值）。
+
+    历史默认是 0（不限），2026-06-07 起改为常驻并发上限 4（治 checkpoint 写雪崩
+    导致的 database is locked），故默认即开闸；设 AGENT_MAX_INFLIGHT=0 才是逃生阀关闸。
+    """
     monkeypatch.setattr(
         "src.core.agent_runtime_policy._read_config_kv_data",
         lambda: {"AGENT_SERIAL_MODE": "0"},
@@ -71,8 +75,8 @@ def test_max_inflight_default_when_serial_off(monkeypatch) -> None:
     policy = get_agent_runtime_policy()
     assert policy.serial_mode is False
     assert policy.max_inflight == AGENT_MAX_INFLIGHT_DEFAULT
-    assert policy.effective_max_inflight() == 0
-    assert policy.slot_gating_enabled() is False
+    assert policy.effective_max_inflight() == AGENT_MAX_INFLIGHT_DEFAULT
+    assert policy.slot_gating_enabled() is True
 
 
 def test_max_inflight_from_kv(monkeypatch) -> None:
@@ -124,6 +128,7 @@ def test_heavy_reserves_light_slot() -> None:
     assert p.effective_max_inflight_for("heavy") == 3
 
 
-def test_slot_gating_off_by_default() -> None:
+def test_slot_gating_on_by_default() -> None:
+    """构造默认（max_inflight=AGENT_MAX_INFLIGHT_DEFAULT）→ 槽位闸默认开启。"""
     p = AgentRuntimePolicy(serial_mode=False, max_concurrent_streams=0)
-    assert p.slot_gating_enabled() is False
+    assert p.slot_gating_enabled() is True

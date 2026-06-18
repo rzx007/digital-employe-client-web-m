@@ -25,12 +25,12 @@ def test_submodule_name_uses_top_package() -> None:
 
 
 def test_file_not_found_suggests_check_path() -> None:
-    assert "确认真实路径" in _steer_on_error("FileNotFoundError: ...")
-    assert "确认真实路径" in _steer_on_error("cat: x: No such file or directory")
+    assert "read_file 确认" in _steer_on_error("FileNotFoundError: ...")
+    assert "read_file 确认" in _steer_on_error("cat: x: No such file or directory")
 
 
 def test_permission_denied() -> None:
-    assert "/artifacts/" in _steer_on_error("PermissionError: [Errno 13] Permission denied")
+    assert "$ARTIFACTS_DIR" in _steer_on_error("PermissionError: [Errno 13] Permission denied")
 
 
 def test_no_hint_for_clean_output() -> None:
