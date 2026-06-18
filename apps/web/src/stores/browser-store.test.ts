@@ -63,3 +63,36 @@ describe("browser-store openHtmlPreview", () => {
     )
   })
 })
+
+describe("browser-store backgroundSessions 回收契约", () => {
+  beforeEach(() => {
+    useBrowserStore.getState().reset()
+  })
+
+  it("noteBackgroundOpen 记录后台会话，clearBackground 精确删除单个 id", () => {
+    const store = useBrowserStore.getState()
+    store.noteBackgroundOpen("a", "https://a.example")
+    store.noteBackgroundOpen("b", "https://b.example")
+    expect(useBrowserStore.getState().backgroundSessions.has("a")).toBe(true)
+    expect(useBrowserStore.getState().backgroundSessions.has("b")).toBe(true)
+
+    store.clearBackground("a")
+    const after = useBrowserStore.getState().backgroundSessions
+    expect(after.has("a")).toBe(false)
+    expect(after.has("b")).toBe(true)
+  })
+
+  it("clearBackground 对不存在的 id 幂等、不抛错、不误删", () => {
+    const store = useBrowserStore.getState()
+    store.noteBackgroundOpen("b", "https://b.example")
+    expect(() => store.clearBackground("nope")).not.toThrow()
+    expect(useBrowserStore.getState().backgroundSessions.has("b")).toBe(true)
+  })
+
+  it("reset 故意保留 backgroundSessions（跨前台留存）", () => {
+    const store = useBrowserStore.getState()
+    store.noteBackgroundOpen("b", "https://b.example")
+    store.reset()
+    expect(useBrowserStore.getState().backgroundSessions.has("b")).toBe(true)
+  })
+})
