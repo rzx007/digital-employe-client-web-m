@@ -11,7 +11,7 @@ from src.models.employee_task import EmployeeTask
 from src.models.orchestration_plan import OrchestrationPlan
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.response import BaseResponse, ListResponse, ResponseBase
-from src.schemas.orchestration import OrchestrationPlanDetail, OrchestrationPlanRead, OrchestrationTaskItem
+from src.schemas.orchestration import OrchestrationPlanDetail, OrchestrationPlanRead, OrchestrationTaskEdit, OrchestrationTaskItem
 
 router = APIRouter(tags=["编排"])
 logger = logging.getLogger(__name__)
@@ -231,6 +231,27 @@ def cancel_plan_in_workspace(
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
     return _cancel_plan(db, plan)
+
+
+@router.put(
+    "/workspaces/{workspace_id}/orchestration/plans/{plan_id}/tasks/{task_id}",
+    response_model=BaseResponse,
+)
+def update_plan_task(
+    workspace_id: int,
+    plan_id: int,
+    task_id: int,
+    body: OrchestrationTaskEdit,
+    db: Session = Depends(get_db),
+) -> BaseResponse:
+    """编辑待确认计划的子任务（inline-edit：仅 prompt / 换员工，confirm 前可改）。"""
+    from src.service.orchestration_lifecycle import update_pending_plan_task
+
+    data = update_pending_plan_task(
+        db, workspace_id, plan_id, task_id,
+        prompt=body.prompt, employee_id=body.employee_id,
+    )
+    return BaseResponse(data=data)
 
 
 @router.put("/orchestration/plans/{plan_id}/confirm", response_model=BaseResponse)

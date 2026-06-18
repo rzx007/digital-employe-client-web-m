@@ -2,15 +2,17 @@
 
 import * as React from "react"
 import { memo, useState } from "react"
-import { IconX } from "@tabler/icons-react"
-import { useQueryClient } from "@tanstack/react-query"
+import { IconPencil, IconX } from "@tabler/icons-react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { toast } from "sonner"
 import {
   cancelOrchestrationPlan,
   confirmOrchestrationPlan,
+  fetchOrchestrationPlanDetail,
 } from "@/api/orchestration"
+import { PlanEditDialog } from "./plan-edit-dialog"
 import { useOrchestrationPlansQuery } from "@/hooks/use-chat-queries"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { CronPreviewBadge } from "./cron-preview-badge"
@@ -70,6 +72,7 @@ function PlanGeneratedCardInner({
   const planFeedback = useCuratorPlanFeedback()
   const sendPlanFeedbackFromContext = planFeedback?.sendPlanFeedback ?? null
   const [manualStatus, setManualStatus] = useState<ManualPlanStatus>("idle")
+  const [editOpen, setEditOpen] = useState(false)
 
   const planOutput = React.useMemo(
     () => parsePlanGeneratedOutput(resultText),
@@ -125,6 +128,23 @@ function PlanGeneratedCardInner({
     (manualStatus === "idle" ||
       manualStatus === "confirming" ||
       manualStatus === "cancelling")
+
+  // 可编辑（待确认）时拉取实时子任务，用其 employee_name 覆盖卡片显示，
+  // 与编辑弹窗共用同一 query key——弹窗保存后 refetch 会同步刷新卡片。
+  const canEdit = showActionPanel && planOutput != null
+  const planDetailQuery = useQuery({
+    queryKey: [...chatKeys.all, "orchestration-plan-detail", planOutput?.plan_id],
+    queryFn: ({ signal }) =>
+      fetchOrchestrationPlanDetail(planOutput!.plan_id, { signal }),
+    enabled: canEdit,
+    staleTime: 0,
+  })
+  // task_id → 最新 employee_name（编辑换员工后据此刷新卡片行显示）
+  const detailEmployeeNameById = React.useMemo(() => {
+    const m: Record<number, string> = {}
+    for (const t of planDetailQuery.data ?? []) m[t.task_id] = t.employee_name
+    return m
+  }, [planDetailQuery.data])
 
   const showConfirmedMessage =
     manualStatus === "confirmed" ||
@@ -301,11 +321,17 @@ function PlanGeneratedCardInner({
             <span className="min-w-0 flex-1 truncate font-medium">
               {task.task_name}
             </span>
-            {task.employee_name && (
-              <span className="shrink-0 text-[11px] text-muted-foreground">
-                {task.employee_name}
-              </span>
-            )}
+            {(() => {
+              const empName =
+                (task.task_id != null
+                  ? detailEmployeeNameById[task.task_id]
+                  : undefined) ?? task.employee_name
+              return empName ? (
+                <span className="shrink-0 text-[11px] text-muted-foreground">
+                  {empName}
+                </span>
+              ) : null
+            })()}
             <CronPreviewBadge cron={task.cron} />
             <span
               className={cn(
@@ -339,6 +365,17 @@ function PlanGeneratedCardInner({
             <Button
               type="button"
               size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              disabled={manualStatus !== "idle"}
+              onClick={() => setEditOpen(true)}
+            >
+              <IconPencil className="mr-1 size-3" />
+              编辑
+            </Button>
+            <Button
+              type="button"
+              size="sm"
               variant="ghost"
               className="h-7 text-xs"
               disabled={manualStatus !== "idle"}
@@ -348,6 +385,18 @@ function PlanGeneratedCardInner({
               {manualStatus === "cancelling" ? "取消中..." : "取消计划"}
             </Button>
           </div>
+          {planOutput != null ? (
+            <PlanEditDialog
+              planId={planOutput.plan_id}
+              open={editOpen}
+              onOpenChange={setEditOpen}
+              onSaved={() => {
+                void queryClient.invalidateQueries({
+                  queryKey: [...chatKeys.all, "orchestration-plans"],
+                })
+              }}
+            />
+          ) : null}
         </>
       )}
 

@@ -8,6 +8,12 @@ from pydantic import BaseModel, Field
 OrchestrationTaskStatus = Literal["pending", "running", "success", "failed", "queued"]
 
 
+class OrchestrationTaskEdit(BaseModel):
+    """编辑待确认计划子任务的可选字段（inline-edit，仅 prompt / 换员工）。"""
+    prompt: str | None = None
+    employee_id: int | None = None
+
+
 class OrchestrationTaskItem(BaseModel):
     task_id: int
     employee_id: int
