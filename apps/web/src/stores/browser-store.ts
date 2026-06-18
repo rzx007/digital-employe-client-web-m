@@ -223,6 +223,10 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     })
   },
 
+  // 回收路径有两条：①browserctl close 事件带匹配 conversationId（见 browser-confirmation-host）
+  // ②会话删除（见 use-chat-queries 三个删除 mutation 的 onSuccess）。
+  // 故意不接 task-end：任务结束不必然关浏览器（面板/内嵌浏览器可在 run 结束后留存供查看），
+  // 在 task-end 清标记会误删仍有效的后台标记。
   clearBackground: (conversationId: string) => {
     set((s) => {
       if (!s.backgroundSessions.has(conversationId)) return {}
