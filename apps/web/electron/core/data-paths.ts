@@ -2,9 +2,9 @@ import { app } from "electron"
 import fs from "node:fs"
 import path from "node:path"
 
-/** 用户数据根目录，与 Python 后端 ~/.digital-employee 一致 */
+/** 用户数据根目录，与 Python 后端 ~/.boban-staff 一致 */
 export function getDataDir(): string {
-  const dir = path.join(app.getPath("home"), ".digital-employee")
+  const dir = path.join(app.getPath("home"), ".boban-staff")
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
   }

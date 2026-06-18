@@ -1,11 +1,11 @@
 {
   "name": "digital-employee",
   "version": "0.1.22",
-  "description": "数字员工客户端",
-  "homepage": "https://digital-employee.app",
+  "description": "BobanStaff 客户端",
+  "homepage": "https://boban-staff.app",
   "author": {
-    "name": "Digital Employee",
-    "email": "support@digital-employee.app"
+    "name": "BobanStaff",
+    "email": "support@boban-staff.app"
   },
   "type": "module",
   "private": true,

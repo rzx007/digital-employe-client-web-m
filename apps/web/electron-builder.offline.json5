@@ -1,7 +1,7 @@
 // @see https://www.electron.build/configuration/configuration
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.digital-employee-m.app",
+  "appId": "com.boban-staff.app",
   "asar": true,
   "productName": "BobanStaff",
   "directories": {
@@ -44,7 +44,7 @@
       "dmg",
       "zip"
     ],
-    "artifactName": "DigitalEmployee-Offline-Mac-${version}-Installer.${ext}"
+    "artifactName": "BobanStaff-Offline-Mac-${version}-Installer.${ext}"
   },
   "win": {
     "icon": "build/icon.ico",
@@ -56,7 +56,7 @@
         ]
       }
     ],
-    "artifactName": "DigitalEmployee-Offline-Windows-${version}-Setup.${ext}"
+    "artifactName": "BobanStaff-Offline-Windows-${version}-Setup.${ext}"
   },
   "nsis": {
     "oneClick": false,
@@ -74,6 +74,6 @@
       }
     ],
     "category": "Office",
-    "artifactName": "DigitalEmployee-Offline-Linux-arm64-${version}.${ext}"
+    "artifactName": "BobanStaff-Offline-Linux-arm64-${version}.${ext}"
   }
 }
