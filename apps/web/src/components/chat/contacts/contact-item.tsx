@@ -122,18 +122,33 @@ export function ContactItem({
     }
   }
 
+  const candidateCount =
+    contact.type === "employee"
+      ? (contact.employee?.skillCandidateCount ?? 0)
+      : 0
+
   const renderAvatar = () => {
     const data = contact.type === "curator" ? contact.curator : contact.employee
 
     return (
-      <EmployeeContactAvatar
-        name={data?.name}
-        avatar={data?.avatar}
-        status={data?.status}
-        showStatus
-        avatarClassName={isCollapsed ? "h-8 w-8" : "h-10 w-10"}
-        statusClassName={isCollapsed ? "h-2 w-2" : "h-2.5 w-2.5"}
-      />
+      <div className="relative">
+        <EmployeeContactAvatar
+          name={data?.name}
+          avatar={data?.avatar}
+          status={data?.status}
+          showStatus
+          avatarClassName={isCollapsed ? "h-8 w-8" : "h-10 w-10"}
+          statusClassName={isCollapsed ? "h-2 w-2" : "h-2.5 w-2.5"}
+        />
+        {candidateCount > 0 ? (
+          <span
+            className="absolute -right-1 -top-1 flex min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-medium leading-4 text-white shadow"
+            title={`${candidateCount} 个新技能待确认`}
+          >
+            ✨{candidateCount}
+          </span>
+        ) : null}
+      </div>
     )
   }
 

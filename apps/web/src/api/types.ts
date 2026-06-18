@@ -159,6 +159,8 @@ export interface Employee {
   is_curator: boolean
   /** 自定义上传头像 URL；为空时前端回落到「名字前两个字」文本头像。 */
   avatar?: string | null
+  /** 待确认技能候选数（>0 时联系人卡片显示「✨N」角标）。 */
+  skill_candidate_count?: number
   created_at: string
   updated_at: string
 }

@@ -96,6 +96,43 @@ def test_dismiss_rejects_illegal_slug(db_session, workspace, monkeypatch, tmp_pa
     assert ei.value.status_code == 400
 
 
+def test_employee_detail_includes_skill_candidate_count(
+    db_session, workspace, monkeypatch, tmp_path
+):
+    """员工详情带技能候选计数（联系人列表角标用），无目录→0。"""
+    from src.service import employee_service as es
+    emp = add_employee(db_session, workspace.id, name="芯片助手")
+    brain = tmp_path / str(emp.id)
+    monkeypatch.setattr(es, "_growth_brain_root_for", lambda eid: brain)
+
+    data0 = es.EmployeeService.employee_detail_dict(db_session, emp)
+    assert data0["skill_candidate_count"] == 0
+
+    cand = brain / "skill_candidates"
+    cand.mkdir(parents=True)
+    (cand / "a.md").write_text("---\nname: a\n---\n", encoding="utf-8")
+    (cand / "b.md").write_text("---\nname: b\n---\n", encoding="utf-8")
+    data2 = es.EmployeeService.employee_detail_dict(db_session, emp)
+    assert data2["skill_candidate_count"] == 2
+
+
+def test_get_employee_endpoint_exposes_candidate_count(
+    db_session, workspace, monkeypatch, tmp_path
+):
+    """计数须穿过 EmployeeRead 序列化(否则前端拿不到)。"""
+    from src.service import employee_service as es
+    from src.api import employee_api
+    emp = add_employee(db_session, workspace.id, name="芯片助手")
+    brain = tmp_path / str(emp.id)
+    monkeypatch.setattr(es, "_growth_brain_root_for", lambda eid: brain)
+    _seed_candidate(brain)
+    resp = employee_api.get_employee(emp.id, db=db_session)
+    assert resp.data["skill_candidate_count"] == 1
+    # 关键：须穿过 EmployeeRead 序列化而不被 pydantic 丢弃
+    from src.schemas.employee import EmployeeRead
+    assert EmployeeRead(**resp.data).skill_candidate_count == 1
+
+
 def test_adopt_endpoint_wiring(db_session, workspace, monkeypatch, tmp_path):
     from src.service import employee_service as es
     from src.api import employee_api

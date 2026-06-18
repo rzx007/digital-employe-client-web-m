@@ -44,6 +44,8 @@ export interface AIEmployee {
   status: "online" | "busy" | "offline"
   specialty: string
   skills?: MetadataSkill[]
+  /** 待确认技能候选数（>0 时卡片显示「✨N」角标）。 */
+  skillCandidateCount?: number
 }
 
 export type ContactType = "curator" | "employee"

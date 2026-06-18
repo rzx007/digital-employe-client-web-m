@@ -352,7 +352,20 @@ class EmployeeService:
         meta["tasks"] = TaskService.list_employee_tasks_as_dict(db, employee.id)
         data["metadata"] = meta
         data["mcps"] = meta["mcps"]
+        # 技能候选计数：联系人列表/卡片用来显示「✨N 个新技能待确认」角标。
+        data["skill_candidate_count"] = EmployeeService._skill_candidate_count(employee.id)
         return data
+
+    @staticmethod
+    def _skill_candidate_count(employee_id: int) -> int:
+        """该员工待确认的技能候选数（<brain>/skill_candidates/*.md）。容错→0。"""
+        try:
+            cand_dir = _growth_brain_root_for(employee_id) / "skill_candidates"
+            if not cand_dir.is_dir():
+                return 0
+            return sum(1 for p in cand_dir.glob("*.md") if p.is_file())
+        except Exception:
+            return 0
 
     @staticmethod
     def _load_json_file(path: Path) -> dict:

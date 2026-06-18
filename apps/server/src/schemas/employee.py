@@ -71,6 +71,8 @@ class EmployeeRead(BaseModel):
     shift_schedule: dict[str, Any]
     is_curator: bool
     avatar: str | None = None
+    # 待确认技能候选数（联系人列表/卡片用以显示「✨N」角标）。
+    skill_candidate_count: int = 0
     created_at: datetime
     updated_at: datetime
 

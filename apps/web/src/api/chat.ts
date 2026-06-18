@@ -89,6 +89,7 @@ function mapEmployeeToAIEmployee(emp: Employee): AIEmployee {
     status: mapStatus(emp.metadata?.status ?? 0),
     specialty: emp.metadata?.capability_desc ?? "",
     skills: emp.metadata?.skills ?? [],
+    skillCandidateCount: emp.skill_candidate_count ?? 0,
   }
 }
 

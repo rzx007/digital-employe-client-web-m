@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card"
 import { adoptSkillCandidate, dismissSkillCandidate } from "@/api/employee"
+import { chatKeys } from "@/lib/query-keys/chat"
 import { useEmployeeGrowthBrain } from "@/hooks/use-employee-growth"
 
 export function GrowthBrainSection({
@@ -22,10 +23,13 @@ export function GrowthBrainSection({
   const queryClient = useQueryClient()
   const [pendingSlug, setPendingSlug] = useState<string | null>(null)
 
-  const refetchBrain = () =>
-    queryClient.invalidateQueries({
+  const refetchBrain = async () => {
+    await queryClient.invalidateQueries({
       queryKey: ["employee-growth-brain", employeeId],
     })
+    // 同步刷新联系人列表，让卡片上的「✨N」角标即时增减。
+    await queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
+  }
 
   const handleCandidateAction = async (
     slug: string,
