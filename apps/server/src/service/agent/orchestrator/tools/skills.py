@@ -658,7 +658,7 @@ def install_market_skill(
 ) -> str:
     """从 ClawHub 镜像技能市场安装技能到当前工作区本地目录（无需登录，离线模式也可用）。
 
-    安装路径：~/.digital-employee/local-skills/<workspace_id>/<skill_name>/
+    安装路径：~/.boban-staff/local-skills/<workspace_id>/<skill_name>/
     安装后调用 list_workspace_skills 获取 localId，再 update_employee 分配给员工。
 
     Args:

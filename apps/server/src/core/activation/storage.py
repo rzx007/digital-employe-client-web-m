@@ -1,6 +1,6 @@
 """activation.json 读写 —— 激活状态的唯一 IO 点。
 
-路径与 Electron ``getDataDir()`` 一致：``~/.digital-employee/data/activation.json``。
+路径与 Electron ``getDataDir()`` 一致：``~/.boban-staff/data/activation.json``。
 service 层只调用本模块，不直接 open 文件。
 """
 

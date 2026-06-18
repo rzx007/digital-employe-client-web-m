@@ -34,7 +34,7 @@ class WindowsSafeTimedRotatingFileHandler(TimedRotatingFileHandler):
                 except OSError:
                     pass
 
-# ~/.digital-employee/logs/
+# ~/.boban-staff/logs/
 _LOG_DIR = get_default_logs_dir()
 _APP_LOG = _LOG_DIR / "app.log"
 _ERROR_LOG = _LOG_DIR / "error.log"
@@ -65,7 +65,7 @@ def _timed_log_attached(root: logging.Logger, log_path: Path) -> bool:
 
 
 def setup_logging() -> Path:
-    """将应用日志按日写入 ~/.digital-employee/logs/app.log，ERROR 及以上单独按日写入 error.log，并输出到控制台。"""
+    """将应用日志按日写入 ~/.boban-staff/logs/app.log，ERROR 及以上单独按日写入 error.log，并输出到控制台。"""
     _LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     root = logging.getLogger()

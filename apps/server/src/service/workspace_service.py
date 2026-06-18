@@ -188,7 +188,7 @@ class WorkspaceService:
         - 未显式给 root_path：自动建托管项目目录 APP_PROJECTS_BASE/<id>/ 并 mkdir
           （需先 flush 拿到自增 id）。
         - 显式给外部 root_path（用户手选文件夹）：原样存储，不重定位、不 mkdir 其本体
-          （用户拥有该目录；产物后续懒建在其 .digital-employee/ 子目录）。
+          （用户拥有该目录；产物后续懒建在其 .boban-staff/ 子目录）。
         """
         from src.service.agent.workspace_paths import APP_PROJECTS_BASE
 
@@ -242,7 +242,7 @@ class WorkspaceService:
 
         磁盘产物（SP2）：
         - 托管目录（root_path 在 APP_PROJECTS_BASE 下）：整删 root_path 目录。
-        - 外部用户文件夹：仅删 <root_path>/.digital-employee 子目录，永不触碰外部本体及用户文件。
+        - 外部用户文件夹：仅删 <root_path>/.boban-staff 子目录，永不触碰外部本体及用户文件。
         清理在 DB 行删除前进行且全程 try/except，磁盘失败绝不阻断 DB 删除。
         """
         import shutil
@@ -260,7 +260,7 @@ class WorkspaceService:
             if p.is_relative_to(workspace_paths.APP_PROJECTS_BASE):
                 target = p  # 托管：整删
             else:
-                target = resolve_workspace_product_root(root_path)  # 外部：仅 .digital-employee
+                target = resolve_workspace_product_root(root_path)  # 外部：仅 .boban-staff
             try:
                 if target.exists():
                     if _is_unsafe_rmtree_target(target):

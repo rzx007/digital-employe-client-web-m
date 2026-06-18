@@ -119,7 +119,7 @@ export async function loadPetSkin(slug: string): Promise<PetSkin> {
     }
   }
 
-  // 2. Try custom pets (~/.digital-employee/pets or ~/.codex/pets)
+  // 2. Try custom pets (~/.boban-staff/pets or ~/.codex/pets)
   const api = getElectronApi()
   if (api?.getPetdexMeta) {
     const meta = await api.getPetdexMeta(slug)

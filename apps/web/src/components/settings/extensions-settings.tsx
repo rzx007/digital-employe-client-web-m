@@ -144,7 +144,7 @@ export function ExtensionsSettings() {
         <p className="text-sm text-muted-foreground">
           将插件 zip 安装到扩展目录，或手动解压到{" "}
           <code className="text-xs">
-            ~/.digital-employee/extensions/&lt;id&gt;/
+            ~/.boban-staff/extensions/&lt;id&gt;/
           </code>
           。manifest 为{" "}
           <code className="text-xs">digital-employee.extension.json</code>

@@ -116,7 +116,7 @@ function removeDirRecursive(dir: string): void {
 }
 
 /**
- * 从 zip 安装宠物到 ~/.digital-employee/pets/
+ * 从 zip 安装宠物到 ~/.boban-staff/pets/
  */
 export async function installPetFromZip(
   zipFilePath: string,

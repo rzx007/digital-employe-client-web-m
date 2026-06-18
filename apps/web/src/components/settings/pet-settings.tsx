@@ -196,7 +196,7 @@ export function PetSettings() {
                 <Label className="text-sm font-medium">当前宠物</Label>
                 <p className="text-xs text-muted-foreground">
                   内置宠物自动发现；zip 安装到{" "}
-                  <code className="text-xs">~/.digital-employee/pets/</code>
+                  <code className="text-xs">~/.boban-staff/pets/</code>
                   ；Codex 生态兼容{" "}
                 </p>
                 <Button

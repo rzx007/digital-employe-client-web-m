@@ -5,7 +5,7 @@ import { getDataDir } from "../../core/data-paths"
 
 export const PET_JSON_FILE = "pet.json"
 
-/** 本应用宠物安装目录 ~/.digital-employee/pets */
+/** 本应用宠物安装目录 ~/.boban-staff/pets */
 export function getPetsRoot(): string {
   const root = path.join(getDataDir(), "pets")
   if (!fs.existsSync(root)) {
