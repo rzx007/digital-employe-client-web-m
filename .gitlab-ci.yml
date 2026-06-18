@@ -18,7 +18,6 @@
 
 stages:
   - build
-  - publish
 
 variables:
   # ---------- 国内镜像（npmmirror，与根目录 .npmrc 一致）----------
@@ -96,7 +95,9 @@ build:windows:
     - win-builder
   only: *release_refs
   script:
-    - pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref $env:CI_COMMIT_TAG -SkipGitSync
+    # 自动推 test 更新服务器（同 job 内能看到 release/ 产物；与 arm/macos 解耦，
+    # Windows 打完即推，无需等其他平台）。失败不阻断。
+    - pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref $env:CI_COMMIT_TAG -SkipGitSync -PushUpdate test
   # exe 走飞书分发(publish-feishu.py)，不塞 GitLab 产物(老服务器 413 上限)。
   # 仅留体积极小的更新清单/blockmap 作轻量记录。
   artifacts:
@@ -143,38 +144,24 @@ publish:feishu:
     - C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe scripts/ci/publish-feishu.py
 
 # ------------------------------------------------------------------------------
-# electron 自动更新 feed：把 build:windows 产物（exe + latest.yml + blockmap）推到
-# nginx 更新服务器 win32/。复用 build:windows 留下的 apps/web/release/（同一 win-builder，
-# GIT_CLEAN_FLAGS="" 工作区保留）。脚本会按现算 sha512 兜底重生成 latest.yml，杜绝漏传。
-#
-# 凭据走 GitLab CI/CD Variables（Masked，勿入库）：
+# electron 自动更新 feed 推送（凭据走 GitLab CI/CD Variables）：
 #   UPDATE_TEST_HOST / UPDATE_TEST_USER / UPDATE_TEST_PASS / UPDATE_TEST_BASE
 #   UPDATE_PROD_HOST / UPDATE_PROD_USER / UPDATE_PROD_PASS / UPDATE_PROD_BASE
 #   （BASE 为平台目录的上一层，脚本自动追加 /win32）
+#
+# 测试推送已合并进 build:windows 内部（同 job 工作区有 release/，不需要等 arm/macos）。
+# 正式推送独立 manual job：自带重新构建（跨 job 工作区清空，没法只跑推送），点 Play 才跑。
+# 老 GitLab artifact 413 上限不允许把 200M exe 上传中转，所以"重构建一次"是唯一可靠路径。
 # ------------------------------------------------------------------------------
-.update_push: &update_push
+publish:update:win:prod:
   <<: *win_build
-  stage: publish
+  stage: build
   tags:
     - win-builder
-  before_script:
-    - C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe -m pip install --quiet --disable-pip-version-check paramiko
-
-# 测试环境：推 tag 后自动推送（allow_failure：推送失败不挡发布，飞书分发不受影响）
-publish:update:win:test:
-  <<: *update_push
-  only: *release_refs
-  allow_failure: true
-  script:
-    - C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe scripts/ci/publish-update-server.py --platform win32 --target test
-
-# 正式环境：需人工确认，Pipeline 页点 Play 才推送
-publish:update:win:prod:
-  <<: *update_push
   only: *release_refs
   when: manual
   script:
-    - C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe scripts/ci/publish-update-server.py --platform win32 --target prod
+    - pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref $env:CI_COMMIT_TAG -SkipGitSync -PushUpdate prod -SkipFeishu
 
 # ------------------------------------------------------------------------------
 # 冒烟测试（Mac）：已关闭（job 名前加 . 变隐藏 job）。mac-builder 已验证就绪。

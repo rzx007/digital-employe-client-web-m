@@ -39,6 +39,13 @@
 .PARAMETER SkipGitSync
   跳过 git fetch/checkout（GitLab CI 已 checkout 时使用）。
 
+.PARAMETER PushUpdate
+  构建完成后把 exe + latest.yml 推到更新服务器：
+    none（默认）→ 不推
+    test         → 推测试更新服务器（凭据 UPDATE_TEST_* 环境变量）
+    prod         → 推正式更新服务器（凭据 UPDATE_PROD_* 环境变量）
+  仅在推 tag 时才推送（脚本会校验 CI_COMMIT_TAG）。
+
 .EXAMPLE
   pwsh -File scripts/ci/build-windows.ps1 -Ref v0.1.17 -SkipGitSync
 #>
@@ -50,7 +57,9 @@ param(
     [switch]$CleanVenv,
     [switch]$SkipFeishu,
     [switch]$SkipGitSync,
-    [switch]$Offline
+    [switch]$Offline,
+    [ValidateSet("none", "test", "prod")]
+    [string]$PushUpdate = "none"
 )
 
 $ErrorActionPreference = "Stop"
@@ -240,6 +249,34 @@ if (-not $SkipFeishu) {
         & $env:UV_PYTHON scripts/ci/publish-feishu.py
         if ($LASTEXITCODE -ne 0) {
             Write-Host "    飞书发布失败（已忽略）" -ForegroundColor Yellow
+        }
+    }
+}
+
+# 构建产物在本 job 工作区里；GitLab 跨 stage 工作区会清空，所以推送必须在此 job 内完成。
+# -PushUpdate test/prod：推 tag 时自动推到对应更新服务器。失败不阻断（不影响飞书分发）。
+if ($PushUpdate -ne "none") {
+    if (-not $env:CI_COMMIT_TAG) {
+        Write-Host "» 跳过更新服务器推送：未在 tag 流水线（CI_COMMIT_TAG 为空）" -ForegroundColor Yellow
+    }
+    else {
+        $hostVar = if ($PushUpdate -eq "test") { "UPDATE_TEST_HOST" } else { "UPDATE_PROD_HOST" }
+        if (-not (Get-Item -Path "Env:$hostVar" -ErrorAction SilentlyContinue)) {
+            Write-Host "» 跳过更新服务器推送：$hostVar 未配置" -ForegroundColor Yellow
+        }
+        else {
+            Invoke-Timed "更新服务器推送 - $PushUpdate（失败不阻断）" {
+                Set-Location $RepoRoot
+                & $env:UV_PYTHON -m pip install --quiet --disable-pip-version-check paramiko
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host "    paramiko 安装失败（已忽略）" -ForegroundColor Yellow
+                    return
+                }
+                & $env:UV_PYTHON scripts/ci/publish-update-server.py --platform win32 --target $PushUpdate
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host "    更新服务器推送失败（已忽略）" -ForegroundColor Yellow
+                }
+            }
         }
     }
 }
