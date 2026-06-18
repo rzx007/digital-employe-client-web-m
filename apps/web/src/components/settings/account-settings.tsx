@@ -20,6 +20,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useAuthStore } from "@/stores/auth-store"
 import { uploadAvatar, AVATAR_ACCEPT, AVATAR_MAX_BYTES } from "@/api/avatar"
 import { useFileDropzone } from "@/hooks/use-file-dropzone"
+import { withElectronApi } from "@/lib/electron/host"
 import { UserAvatar } from "@/components/user-avatar"
 import { ChangePasswordDialog } from "./change-password-dialog"
 
@@ -61,7 +62,9 @@ export function AccountSettings() {
     setUploading(true)
     try {
       await uploadAvatar(user.id, file)
-      bumpAvatarVersion()
+      bumpAvatarVersion() // 本窗口立即刷新
+      // 设置通常是独立窗口，广播让主窗口等其它窗口也刷新头像
+      void withElectronApi((api) => api.broadcastAvatarUpdated())
       toast.success("头像已更新")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "头像上传失败")
