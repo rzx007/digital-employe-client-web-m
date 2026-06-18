@@ -62,10 +62,12 @@ export function PlanEditDialog({
   >({})
   const [savingId, setSavingId] = React.useState<number | null>(null)
 
+  const planTasks = planQuery.data?.tasks ?? []
+
   React.useEffect(() => {
     if (planQuery.data) {
       const next: Record<number, { prompt: string; employeeId: number }> = {}
-      for (const t of planQuery.data) {
+      for (const t of planQuery.data.tasks) {
         next[t.task_id] = { prompt: t.prompt, employeeId: t.employee_id }
       }
       setDrafts(next)
@@ -105,13 +107,13 @@ export function PlanEditDialog({
           <p className="py-6 text-center text-sm text-muted-foreground">
             加载中…
           </p>
-        ) : (planQuery.data?.length ?? 0) === 0 ? (
+        ) : planTasks.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
             无可编辑的子任务。
           </p>
         ) : (
           <div className="space-y-4">
-            {planQuery.data!.map((t) => {
+            {planTasks.map((t) => {
               const draft = drafts[t.task_id] ?? {
                 prompt: t.prompt,
                 employeeId: t.employee_id,

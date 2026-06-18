@@ -52,6 +52,16 @@ class OrchestrationPlanRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class OrchestrationDeliverable(BaseModel):
+    """子任务产出的文件（归属到任务），供主对话「团队交付物」聚合卡展示。"""
+    path: str
+    basename: str
+    task_id: int
+    task_name: str
+    action: str = "created"
+
+
 class OrchestrationPlanDetail(BaseModel):
     plan: OrchestrationPlanRead
     tasks: list[OrchestrationTaskItem] = Field(default_factory=list)
+    artifacts: list[OrchestrationDeliverable] = Field(default_factory=list)

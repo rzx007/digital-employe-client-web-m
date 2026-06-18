@@ -15,6 +15,72 @@ from src.models.workspace import cst_now
 logger = logging.getLogger(__name__)
 
 
+def _looks_like_product(path: str) -> bool:
+    """该 write/edit 的目标是否算「项目产物」：排除 uploads/memories/已装 skills；
+    草稿技能(skills-draft)算交付物；相对名(无目录段,落在产物 cwd)算产物。"""
+    n = (path or "").replace("\\", "/").lower()
+    if not n:
+        return False
+    if "/skills-draft/" in n:
+        return True
+    for seg in ("/uploads/", "/memories/", "/skills/"):
+        if seg in n:
+            return False
+    return True
+
+
+def collect_plan_deliverables(db: Session, plan_id: int) -> list[dict]:
+    """聚合某编排计划各子任务产出的文件（归属到任务）。
+
+    来源：每个子任务最新执行日志所在员工会话的 write_file/edit_file 工具 parts 的
+    file_path（排除非产物桶、去重）。返回 [{path, basename, task_id, task_name, action}]。
+    注：shell 直接写的文件不在 parts 里、会漏（v1 已知限制）。
+    """
+    from src.service.task_service import TaskService
+
+    tasks = list(
+        db.scalars(
+            select(EmployeeTask)
+            .where(EmployeeTask.orchestration_plan_id == plan_id)
+            .order_by(EmployeeTask.id.asc())
+        ).all()
+    )
+    seen: dict[str, dict] = {}
+    order: list[str] = []
+    for t in tasks:
+        log = db.scalars(
+            select(TaskExecutionLog)
+            .where(TaskExecutionLog.task_id == t.id)
+            .order_by(TaskExecutionLog.id.desc())
+        ).first()
+        conv_id = log.conversation_id if log else None
+        for p in TaskService.get_conversation_tool_parts(db, conv_id):
+            ptype = p.get("type", "")
+            action = (
+                "created" if ptype == "tool-write_file"
+                else "edited" if ptype == "tool-edit_file"
+                else None
+            )
+            if action is None:
+                continue
+            inp = p.get("input")
+            fp = inp.get("file_path") if isinstance(inp, dict) else None
+            if not isinstance(fp, str) or not fp or not _looks_like_product(fp):
+                continue
+            norm = fp.replace("\\", "/")
+            base = norm.rstrip("/").split("/")[-1]
+            if norm not in seen:
+                order.append(norm)
+            seen[norm] = {
+                "path": fp,
+                "basename": base,
+                "task_id": t.id,
+                "task_name": t.task_name,
+                "action": action,
+            }
+    return [seen[k] for k in order]
+
+
 def cancel_running_executions_for_task(
     db: Session,
     task_id: int,

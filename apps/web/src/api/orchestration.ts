@@ -56,15 +56,31 @@ export interface OrchestrationPlanTaskDetail {
   status?: string
 }
 
-/** GET /orchestration/plans/{plan_id} — 拉取计划实时子任务（含 prompt/employee_id 供编辑）。 */
+export interface OrchestrationDeliverable {
+  path: string
+  basename: string
+  task_id: number
+  task_name: string
+  action: string
+}
+
+export interface OrchestrationPlanFull {
+  tasks: OrchestrationPlanTaskDetail[]
+  artifacts: OrchestrationDeliverable[]
+}
+
+/** GET /orchestration/plans/{plan_id} — 实时子任务(含 prompt/employee_id) + 团队产物。 */
 export async function fetchOrchestrationPlanDetail(
   planId: number,
   opts?: { signal?: AbortSignal }
-): Promise<OrchestrationPlanTaskDetail[]> {
+): Promise<OrchestrationPlanFull> {
   const res = await request<{
     code: number
     msg: string
-    data: { tasks?: OrchestrationPlanTaskDetail[] } | null
+    data: {
+      tasks?: OrchestrationPlanTaskDetail[]
+      artifacts?: OrchestrationDeliverable[]
+    } | null
   }>(
     `/orchestration/plans/${planId}`,
     opts?.signal ? { signal: opts.signal } : {}
@@ -72,7 +88,7 @@ export async function fetchOrchestrationPlanDetail(
   if (!isApiSuccess(res.code) || !res.data) {
     throw new Error(res.msg || "获取编排计划详情失败")
   }
-  return res.data.tasks ?? []
+  return { tasks: res.data.tasks ?? [], artifacts: res.data.artifacts ?? [] }
 }
 
 /** PUT 编辑待确认计划的子任务（仅 prompt / 换员工，confirm 前可改）。 */

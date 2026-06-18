@@ -84,6 +84,11 @@ function classifyFileCategory(
   return "deliverable"
 }
 
+/** 据路径判定交付物 / 中间产物（供「团队交付物」聚合卡分区，复用同一口径）。 */
+export function categorizeArtifactPath(path: string): FileChangeCategory {
+  return classifyFileCategory(getBasename(path), getExtension(path))
+}
+
 function isUserVisibleFileChange(path: string): boolean {
   // 仅交付物桶（产物 / 草稿技能）的写入展示 FileChangeCard；
   // 真实路径里仍含 artifacts/ 或 skills-draft/ 段，按桶判定（uploads/skills 等不展示）。

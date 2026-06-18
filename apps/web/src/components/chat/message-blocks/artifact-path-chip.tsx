@@ -16,7 +16,7 @@ import { useChatStore } from "@/stores/chat-store"
 import { resolveFileOpen } from "./file-open-routing"
 
 /** 行内可点的产物芯片：显示文件名 + 图标，点击在右侧面板打开（.html 走预览） */
-function ArtifactPathChip({
+export function ArtifactPathChip({
   path,
   label,
   onOpen,

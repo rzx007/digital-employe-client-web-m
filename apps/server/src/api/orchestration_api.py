@@ -172,9 +172,12 @@ def get_plan(plan_id: int, db: Session = Depends(get_db)) -> ResponseBase[Orches
     plan_data.completed_tasks = completed
     plan_data.total_tasks = max(total, plan.total_tasks)
     plan_data.status = status
+    from src.service.orchestration_lifecycle import collect_plan_deliverables
+
     return ResponseBase(data=OrchestrationPlanDetail(
         plan=plan_data,
         tasks=_build_task_items(db, plan),
+        artifacts=collect_plan_deliverables(db, plan.id),
     ))
 
 

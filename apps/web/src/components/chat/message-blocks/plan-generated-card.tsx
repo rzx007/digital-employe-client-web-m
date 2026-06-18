@@ -13,6 +13,7 @@ import {
   fetchOrchestrationPlanDetail,
 } from "@/api/orchestration"
 import { PlanEditDialog } from "./plan-edit-dialog"
+import { PlanDeliverablesCard } from "./plan-deliverables-card"
 import { useOrchestrationPlansQuery } from "@/hooks/use-chat-queries"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { CronPreviewBadge } from "./cron-preview-badge"
@@ -132,19 +133,27 @@ function PlanGeneratedCardInner({
   // 可编辑（待确认）时拉取实时子任务，用其 employee_name 覆盖卡片显示，
   // 与编辑弹窗共用同一 query key——弹窗保存后 refetch 会同步刷新卡片。
   const canEdit = showActionPanel && planOutput != null
+  // 计划已生成且本轮结束后拉取详情：待确认→供编辑;执行/完成→供「团队交付物」聚合。
+  const planDetailEnabled = planOutput != null && isTurnEnded
   const planDetailQuery = useQuery({
     queryKey: [...chatKeys.all, "orchestration-plan-detail", planOutput?.plan_id],
     queryFn: ({ signal }) =>
       fetchOrchestrationPlanDetail(planOutput!.plan_id, { signal }),
-    enabled: canEdit,
+    enabled: planDetailEnabled,
     staleTime: 0,
   })
   // task_id → 最新 employee_name（编辑换员工后据此刷新卡片行显示）
   const detailEmployeeNameById = React.useMemo(() => {
     const m: Record<number, string> = {}
-    for (const t of planDetailQuery.data ?? []) m[t.task_id] = t.employee_name
+    for (const t of planDetailQuery.data?.tasks ?? []) m[t.task_id] = t.employee_name
     return m
   }, [planDetailQuery.data])
+  const planArtifacts = planDetailQuery.data?.artifacts ?? []
+  // 子任务陆续完成时刷新详情，让「团队交付物」随产出增长。
+  const refetchPlanDetail = planDetailQuery.refetch
+  React.useEffect(() => {
+    if (planDetailEnabled) void refetchPlanDetail()
+  }, [completed, planDetailEnabled, refetchPlanDetail])
 
   const showConfirmedMessage =
     manualStatus === "confirmed" ||
@@ -428,6 +437,13 @@ function PlanGeneratedCardInner({
             已确认执行，子任务将按编排开始运行。
           </p>
         ))}
+      {showConfirmedMessage && planArtifacts.length > 0 ? (
+        <PlanDeliverablesCard
+          className="mt-2.5"
+          artifacts={planArtifacts}
+          conversationId={conversationId}
+        />
+      ) : null}
       {showCancelledMessage && (
         <p className="mt-2.5 text-[11px] text-muted-foreground">
           已取消该编排计划。
