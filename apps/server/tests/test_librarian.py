@@ -35,6 +35,46 @@ def test_generate_profile_writes_md(monkeypatch, tmp_path):
     assert "芯片调研" in txt
 
 
+def test_generate_profile_includes_memory_lessons(monkeypatch, tmp_path):
+    """生成画像时把 memories/AGENTS.md 里提炼的教训也读进 prompt——
+    教训才会浓缩进画像、在路由/回喂时被总管看到（闭合学习闭环消费端）。"""
+    from src.service.learning import librarian
+    monkeypatch.setattr(librarian, "_brain_root_for", lambda eid: tmp_path / str(eid))
+
+    seen = {}
+
+    class _LLM:
+        def invoke(self, prompt):
+            seen["prompt"] = prompt
+            class _R: content = "## 核心能力\n- 擅长芯片调研"
+            return _R()
+    monkeypatch.setattr(librarian, "_build_llm", lambda: _LLM())
+
+    brain = tmp_path / "42"
+    _seed_journal(brain, [
+        {"task_name": "调研A芯片", "status": "success", "tools_used": ["shell_execute"]},
+    ])
+    _seed_memory(brain, "# 员工长期记忆\n\n## 经验教训\n§交付 Word 前先确认是 docx 而非 md\n")
+
+    librarian.generate_profile(42)
+
+    # 教训进入了 critic 的 prompt，且画像照常落盘
+    assert "docx 而非 md" in seen["prompt"]
+    assert (brain / "profile.md").exists()
+
+
+def test_generate_profile_no_memory_still_writes(monkeypatch, tmp_path):
+    """无 memories/AGENTS.md（新员工）时不报错，仍据 journal 生成画像。"""
+    from src.service.learning import librarian
+    monkeypatch.setattr(librarian, "_brain_root_for", lambda eid: tmp_path / str(eid))
+    monkeypatch.setattr(librarian, "_build_llm",
+                        lambda: type("L", (), {"invoke": lambda self, p: type("R", (), {"content": "## 能力\n- x"})()})())
+    brain = tmp_path / "43"
+    _seed_journal(brain, [{"task_name": "调研A", "status": "success", "tools_used": []}])
+    librarian.generate_profile(43)
+    assert (brain / "profile.md").exists()
+
+
 def test_generate_profile_no_journal_noop(monkeypatch, tmp_path):
     from src.service.learning import librarian
     monkeypatch.setattr(librarian, "_brain_root_for", lambda eid: tmp_path / str(eid))

@@ -84,8 +84,26 @@ def _clean_profile_content(raw: str) -> str:
     return text
 
 
+def _read_memory_lessons(brain: Path, max_chars: int = 2000) -> str:
+    """读该员工已沉淀的长期记忆/教训（memories/AGENTS.md），供归纳画像时参考。
+
+    这些教训由 reflection_engine 在「失败后成功 / 返工后达标」等信号上提炼写入；
+    把它们喂进画像 critic，成败模式/避坑经验才会浓缩进画像、在路由时被总管看到——
+    闭合「①捕获→②提炼→③复盘→④回喂」里复盘消费教训的一环。无文件则空串。
+    """
+    try:
+        mem_file = brain / "memories" / "AGENTS.md"
+        if not mem_file.is_file():
+            return ""
+        from src.service.basic_file_reader import read_text_with_encoding_fallback
+        text = read_text_with_encoding_fallback(mem_file).strip()
+        return text[-max_chars:] if len(text) > max_chars else text
+    except Exception:
+        return ""
+
+
 def generate_profile(employee_id: int) -> None:
-    """读 journal 归纳能力画像 → 写 <brain>/profile.md。无 journal 则 noop。容错。"""
+    """读 journal + 教训记忆归纳能力画像 → 写 <brain>/profile.md。无 journal 则 noop。容错。"""
     try:
         brain = _brain_root_for(employee_id)
         entries = _read_recent_journal(brain)
@@ -96,12 +114,20 @@ def generate_profile(employee_id: int) -> None:
             for e in entries
         ]
         digest = "\n".join(lines)
+        lessons = _read_memory_lessons(brain)
         llm = _build_llm()
+        lessons_block = (
+            f"\n该员工已沉淀的长期记忆/教训（归纳「成败模式、避坑经验」时务必参考、"
+            f"提炼进画像）：\n{lessons}\n" if lessons else ""
+        )
         prompt = (
-            "基于以下某数字员工的历史任务流水，归纳一份简短**能力画像**(markdown)：\n"
-            "包含：擅长的活类型、常用打法/工具、值得注意的成败模式。3-6 条，简洁。\n"
+            "基于以下某数字员工的历史任务流水"
+            + ("与已沉淀教训" if lessons else "")
+            + "，归纳一份简短**能力画像**(markdown)：\n"
+            "包含：擅长的活类型、常用打法/工具、值得注意的成败模式（含已踩过/被纠正过的坑）。3-6 条，简洁。\n"
             "直接输出 markdown 正文，**不要用 ``` 代码块包裹**，**不要写「能力画像」标题**。\n\n"
             f"任务流水：\n{digest}\n"
+            f"{lessons_block}"
         )
         content = _clean_profile_content(llm.invoke(prompt).content)
         if not content:
