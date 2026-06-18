@@ -1,4 +1,4 @@
-"""删工作空间清理产物目录：托管整删 / 外部只删 .digital-employee 子目录。
+"""删工作空间清理产物目录：托管整删 / 外部只删 .boban-staff 子目录。
 
 安全关键：外部用户文件夹本体与用户文件必须永不被触碰（断言验证）。
 托管删除测试 monkeypatch APP_PROJECTS_BASE 到 tmp_path，永不 rmtree 真实 home 下任何目录。
@@ -36,7 +36,7 @@ def test_delete_external_workspace_removes_only_subdir(db_session, tmp_path):
     ext = tmp_path / "user-repo"
     ext.mkdir()
     (ext / "user_file.txt").write_text("keep me")  # 用户自己的文件
-    de = ext / ".digital-employee"
+    de = ext / ".boban-staff"
     de.mkdir()
     (de / "artifacts").mkdir()
     (de / "artifacts" / "p.txt").write_text("product")
@@ -48,7 +48,7 @@ def test_delete_external_workspace_removes_only_subdir(db_session, tmp_path):
 
     WorkspaceService.delete_workspace(db_session, ws_id)
 
-    assert not de.exists()  # 仅 .digital-employee 子目录被删
+    assert not de.exists()  # 仅 .boban-staff 子目录被删
     assert (ext / "user_file.txt").exists()  # 用户文件存活
     assert ext.exists()  # 外部根本体不动
     assert db_session.get(Workspace, ws_id) is None  # DB 行删除保留 SP1 行为

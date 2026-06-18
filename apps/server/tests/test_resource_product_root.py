@@ -46,8 +46,8 @@ def test_list_resources_reads_project_product_root(db_session, tmp_path):
     conv = _mk_conv(db_session, ws, target_id=1)
 
     product_root = resolve_conversation_product_root(db_session, conv)
-    # 外部用户文件夹 → 套 .digital-employee 隐藏子目录
-    assert product_root == proj / ".digital-employee"
+    # 外部用户文件夹 → 套 .boban-staff 隐藏子目录
+    assert product_root == proj / ".boban-staff"
 
     artifacts_dir = product_root / "artifacts"
     artifacts_dir.mkdir(parents=True)

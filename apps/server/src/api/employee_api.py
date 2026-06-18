@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from src.core.config import app_data_dir
 from src.service.agent_interface_service import agent_interface_service
 from src.service.employee_generation_service import EmployeeGenerationService
 from src.core.request_utils import (
@@ -92,7 +93,7 @@ def dismiss_skill_candidate(
 
 
 # ---- 员工头像：自定义上传 + 读取 ----
-_AVATAR_DIR = Path.home() / ".digital-employee" / "avatars"
+_AVATAR_DIR = app_data_dir() / "avatars"
 _AVATAR_ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _AVATAR_MAX_BYTES = 5 * 1024 * 1024  # 5MB
 _AVATAR_MEDIA = {

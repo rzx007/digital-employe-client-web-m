@@ -6,13 +6,14 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 
+from src.core.config import app_data_dir
 from src.models.response import ResponseBase
 
 router = APIRouter(tags=["用户头像"])
 logger = logging.getLogger(__name__)
 
 # 头像存储目录：与 conversations / local-skills 同级，本机用户数据根下。
-AVATAR_DIR = Path.home() / ".digital-employee" / "avatars"
+AVATAR_DIR = app_data_dir() / "avatars"
 
 # 允许的图片类型 → 落盘扩展名
 _ALLOWED_CONTENT_TYPES = {

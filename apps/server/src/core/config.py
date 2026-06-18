@@ -9,29 +9,36 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# 后端本机数据目录单一来源（BobanStaff 独立项目，与旧 app 数据隔离，不迁移老数据）。
+APP_DIR_NAME = "boban-staff"
+
+
+def app_data_dir() -> Path:
+    return Path.home() / f".{APP_DIR_NAME}"
+
 
 def get_default_artifacts_path() -> str:
-    return str(Path.home() / ".digital-employee" / "conversations")
+    return str(app_data_dir() / "conversations")
 
 def get_default_sqlite_path() -> str:
-    return str(Path.home() / ".digital-employee" / "data" / "app.db")
+    return str(app_data_dir() / "data" / "app.db")
 
 
 def get_default_skill_path() -> str:
-    return str(Path.home() / ".digital-employee" / "employees-skills")
+    return str(app_data_dir() / "employees-skills")
 
 
 def get_default_builtin_skills_path() -> str:
-    return str(Path.home() / ".digital-employee" / "build-in-skills")
+    return str(app_data_dir() / "build-in-skills")
 
 
 def get_default_local_skills_path() -> str:
-    return str(Path.home() / ".digital-employee" / "local-skills")
+    return str(app_data_dir() / "local-skills")
 
 
 def get_default_logs_dir() -> Path:
-    # 与 Electron getLogsDir()（~/.digital-employee/logs）一致
-    return Path.home() / ".digital-employee" / "logs"
+    # 与 Electron getLogsDir()（~/.boban-staff/logs）一致
+    return app_data_dir() / "logs"
 
 
 def is_offline_mode() -> bool:

@@ -113,7 +113,7 @@ def test_build_user_content_accepts_flat_product_root_upload(tmp_path: Path) -> 
     extra_meta.files[].path 为真实绝对路径 <product_root>/uploads/<name>。
     传入 artifacts_root=product_root 时，绝对路径形态应通过 uploads 沙箱校验。
     """
-    product_root = tmp_path / "proj" / ".digital-employee"
+    product_root = tmp_path / "proj" / ".boban-staff"
     uploads = product_root / "uploads"
     uploads.mkdir(parents=True)
     image_path = uploads / "photo.png"
@@ -133,7 +133,7 @@ def test_build_user_content_accepts_flat_product_root_upload(tmp_path: Path) -> 
 
 
 def test_build_history_accepts_flat_product_root_upload(tmp_path: Path) -> None:
-    product_root = tmp_path / "proj" / ".digital-employee"
+    product_root = tmp_path / "proj" / ".boban-staff"
     uploads = product_root / "uploads"
     uploads.mkdir(parents=True)
     image_path = uploads / "photo.png"
