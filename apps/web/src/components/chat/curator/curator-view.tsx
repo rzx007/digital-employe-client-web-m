@@ -39,6 +39,7 @@ import {
 import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { useSyncConversationSubtasks } from "@/hooks/use-conversation-subtasks"
 import { useChatStore } from "@/stores/chat-store"
+import { getLastAssistantMessage } from "@/lib/chat/message-query-cache"
 
 import { cancelConversationStream } from "@/api/chat"
 import { prepareVoiceMeta } from "@/lib/voice/prepare-voice-meta"
@@ -428,7 +429,12 @@ export function CuratorView({
     setInputValue(event.value)
   }, [])
 
-  const isBusy = status === "submitted" || status === "streaming"
+  // 后端仍在跑(DB 末条 assistant streamState=streaming)但本地 SSE 假结束(status=ready)时
+  // 也算忙——发送走排队、显忙、不抢占在跑的流（与主对话 ConversationChatView 同源修复）。
+  const backendStreaming =
+    getLastAssistantMessage(storedMessages)?.streamState === "streaming"
+  const isBusy =
+    status === "submitted" || status === "streaming" || backendStreaming
   const chatStatus = status === "ready" && isBusy ? "submitted" : status
 
   const displayMessages = useMemo(() => {
@@ -455,7 +461,7 @@ export function CuratorView({
     status === "ready" || status === "error" || !!error
   const showStreamingIndicator =
     !isMessagesLoading &&
-    (status === "submitted" || status === "streaming") &&
+    (status === "submitted" || status === "streaming" || backendStreaming) &&
     !error &&
     displayMessages.length > 0
 
@@ -593,7 +599,12 @@ export function CuratorView({
     sendNow: pendingSendNow,
     moveUp: pendingMoveUp,
     moveDown: pendingMoveDown,
-  } = usePendingMessages({ status, onSend: doSend, onStop: handleStop })
+  } = usePendingMessages({
+    status,
+    onSend: doSend,
+    onStop: handleStop,
+    backendBusy: backendStreaming,
+  })
 
   const sendToolUiAction = useCallback(
     async (outbound: ToolUiActionOutbound) => {
