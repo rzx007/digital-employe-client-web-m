@@ -165,6 +165,40 @@ def _all_prereqs_accepted(dep_ids: list[int], accepted_ids: set[int]) -> bool:
     return all(d in accepted_ids for d in dep_ids)
 
 
+def waiting_status_for_task(db: Session, task, *, _plan_cache: dict | None = None) -> str | None:
+    """编排计划内、当前无 live log 的任务"为何没动"的可读状态。非计划任务 → None。
+    待放行(前置全 QA 接受) / 等待前置「X」(前置未接受) / 待派发(根任务无前置)。纯只读。
+    _plan_cache：调用方可传 {} 跨多任务复用同一 plan 的 dep_map/accepted，避免重复加载。"""
+    from src.models.orchestration_plan import OrchestrationPlan
+
+    plan_id = getattr(task, "orchestration_plan_id", None)
+    if plan_id is None:
+        return None
+    cache = _plan_cache if _plan_cache is not None else {}
+    if plan_id not in cache:
+        plan = db.get(OrchestrationPlan, plan_id)
+        if plan is None:
+            cache[plan_id] = None
+        else:
+            ptasks = _load_plan_tasks(db, plan_id)
+            dep_map, _succ = build_dependency_maps(ptasks, json.loads(plan.plan_json or "[]"))
+            accepted = _load_accepted_task_ids(db, [t.id for t in ptasks])
+            cache[plan_id] = (dep_map, accepted, {t.id: t for t in ptasks})
+    entry = cache[plan_id]
+    if entry is None:
+        return None
+    dep_map, accepted, by_id = entry
+    dep_ids = dep_map.get(task.id, [])
+    if not dep_ids:
+        return "待派发"
+    if all(d in accepted for d in dep_ids):
+        return "待放行"
+    pending = [by_id[d].task_name for d in dep_ids if d not in accepted and d in by_id]
+    if pending:
+        return f"等待前置「{pending[0]}」" + ("等" if len(pending) > 1 else "")
+    return "等待前置"
+
+
 def task_prereqs_accepted(db: Session, task) -> bool:
     """该任务的所有前置是否都已 QA 接受(根任务无前置 → True)。返工 gate 用。"""
     from src.models.orchestration_plan import OrchestrationPlan
