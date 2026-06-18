@@ -3,6 +3,7 @@ import { OrchestratorTaskSummaryCard } from "./orchestrator-task-summary-card"
 import { ToolGroupBlock } from "./tool-group-block"
 import { TodoPlanBlock } from "./todo-plan-block"
 import { PlanGeneratedCard } from "./plan-generated-card"
+import { WorkbenchArrangeCard } from "./workbench-arrange-card"
 import { DocumentPlanCard } from "./document-plan-card"
 import { BugReportCard } from "./bug-report-card"
 import { ClarifyingAnswersSummary } from "./clarifying-answers-summary"
@@ -178,6 +179,18 @@ export function BlockRenderer({
         onSendUserMessage={onSendUserMessage}
         className="w-full"
         key={block.key}
+      />
+    )
+  }
+  if (block.kind === "workbench-arrange") {
+    return (
+      <WorkbenchArrangeCard
+        key={block.key}
+        blockKey={block.key}
+        operations={block.operations}
+        summary={block.summary}
+        conversationId={conversationId}
+        className="w-full"
       />
     )
   }
