@@ -195,6 +195,8 @@ build:linux:
     - mac-builder
   only: *release_refs
   script:
+    # 写 .env（VITE_* from CI variables）—— 转写凭证等编译进 bundle
+    - python3 scripts/ci/write-vite-env.py
     - bash scripts/build-deb.sh
     # deb 走飞书分发(publish-feishu.py)，不塞 GitLab 产物(老服务器 413 上限)。
     # 显式传路径，避免误推 apps/web/release 里 macOS 上次留下的 dmg/zip。
@@ -218,6 +220,8 @@ build:macos:
     UV_CACHE_DIR: "/Users/yaojie/.cache/uv"
   script:
     - pnpm install --frozen-lockfile --registry=https://registry.npmmirror.com
+    # 写 .env（VITE_* from CI variables）—— 转写凭证等编译进 bundle
+    - python3 scripts/ci/write-vite-env.py
     - pnpm build:app
     # dmg/zip 走飞书分发(publish-feishu.py)，不塞 GitLab 产物(老服务器 413 上限)。
     # 先清掉根 release/ 里上次 Linux 留下的 deb，避免被误推；然后扫 apps/web/release 即可。

@@ -207,6 +207,16 @@ Invoke-Timed "pnpm install" {
     if ($LASTEXITCODE -ne 0) { throw "pnpm install failed" }
 }
 
+# 把 GitLab CI/CD Variables 里的 VITE_*（转写凭证等）落到 apps/web/.env，
+# 让 vite 构建时能编译进 bundle。.env 不入库，凭证只放 GitLab 一处管理。
+Invoke-Timed "写入 .env（VITE_* from CI variables）" {
+    Set-Location $RepoRoot
+    & $env:UV_PYTHON scripts/ci/write-vite-env.py
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "    write-vite-env 失败（已忽略，构建将走 .env 既有值或缺失）" -ForegroundColor Yellow
+    }
+}
+
 if ($Offline) {
     Invoke-Timed "Python 后端 + 离线 Electron 打包" {
         Set-Location $RepoRoot
