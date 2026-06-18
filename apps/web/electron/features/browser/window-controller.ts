@@ -74,6 +74,9 @@ export class BrowserWindowController {
   private stableBoundsCount = 0
   // 锁定隐藏：确认弹窗等需 React 层置顶时设 true，期间所有重新显示路径都被拦
   private visibilitySuppressed = false
+  // 最近一次 navigate 的发起会话 id（数字 conv_id 或 null）。页面内 _blank 弹窗
+  // 走 setWindowOpenHandler 的 request-open 时复用它，使弹窗归属到同一会话。
+  private activeConversationId: string | null = null
 
   open(url: string): void {
     const wm = getWindowManager()
@@ -265,6 +268,10 @@ export class BrowserWindowController {
     return view.webContents
   }
 
+  setActiveConversationId(conversationId: string | null): void {
+    this.activeConversationId = conversationId
+  }
+
   private ensureView(main: BrowserWindow): WebContentsView {
     if (
       this.browserView &&
@@ -299,6 +306,7 @@ export class BrowserWindowController {
         if (!main.isDestroyed()) {
           main.webContents.send("browser:request-open", {
             url: targetUrl,
+            conversationId: this.activeConversationId,
           })
         }
       }

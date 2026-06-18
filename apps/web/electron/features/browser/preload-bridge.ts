@@ -19,10 +19,12 @@ export interface BrowserConfirmationRequestEvent {
   message: string
   refOrSelector: string
   screenshotBase64?: string
+  conversationId?: string | null
 }
 
 export interface BrowserRequestOpenEvent {
   url: string
+  conversationId?: string | null
 }
 
 export interface BrowserViewportBounds {
@@ -60,9 +62,11 @@ export const browserBridge = {
     onChannel("browser:request-open", (data) => {
       callback(data as BrowserRequestOpenEvent)
     }),
-  onRequestClose: (callback: () => void) =>
-    onChannel("browser:request-close", () => {
-      callback()
+  onRequestClose: (
+    callback: (data: { conversationId?: string | null }) => void
+  ) =>
+    onChannel("browser:request-close", (data) => {
+      callback((data ?? {}) as { conversationId?: string | null })
     }),
   resolveConfirmation: (id: string, approved: boolean) =>
     invoke(IpcChannels.browserConfirmResolve, id, approved),

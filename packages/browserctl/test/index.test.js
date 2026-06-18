@@ -12,6 +12,7 @@ import {
   normalizeUrl,
   formatSnapshotText,
   resolveArtifactRealPath,
+  resolveSession,
 } from "../src/index.js"
 
 const CLI = fileURLToPath(new URL("../src/index.js", import.meta.url))
@@ -64,6 +65,16 @@ test("resolveArtifactRealPath: 真实绝对路径原样，纯文件名拼 ARTIFA
   delete process.env.ARTIFACTS_DIR
   assert.equal(resolveArtifactRealPath("snake.html"), null)
   if (prev !== undefined) process.env.ARTIFACTS_DIR = prev
+})
+
+test("resolveSession: 显式 SESSION 优先，其次 CONVERSATION_ID，否则 default", () => {
+  assert.equal(
+    resolveSession({ BROWSER_RUNTIME_SESSION: "abc", CONVERSATION_ID: "42" }),
+    "abc"
+  )
+  assert.equal(resolveSession({ CONVERSATION_ID: "42" }), "42")
+  assert.equal(resolveSession({ CONVERSATION_ID: "" }), "default")
+  assert.equal(resolveSession({}), "default")
 })
 
 test("open-artifact 接受真实绝对路径并拼 ?path= 查询参数 URL", async () => {
@@ -330,6 +341,48 @@ test("close 命中 close action", async () => {
     const j = JSON.parse(stdout)
     assert.equal(j.ok, true)
     assert.equal(j.data.closed, true)
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("navigate 把 CONVERSATION_ID 作为 bridge 路径 session 段", async () => {
+  let reqUrl
+  const srv = await startServer((req, res) => {
+    reqUrl = req.url
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["open", "example.com"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv), CONVERSATION_ID: "77" },
+    })
+    assert.ok(
+      reqUrl.startsWith("/internal/browser/77/navigate"),
+      `expected session segment 77, got ${reqUrl}`
+    )
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("navigate 无 CONVERSATION_ID 时回落 default session 段", async () => {
+  let reqUrl
+  const srv = await startServer((req, res) => {
+    reqUrl = req.url
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["open", "example.com"], {
+      env: {
+        BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv),
+        CONVERSATION_ID: "",
+        BROWSER_RUNTIME_SESSION: "",
+      },
+    })
+    assert.ok(
+      reqUrl.startsWith("/internal/browser/default/navigate"),
+      `expected default segment, got ${reqUrl}`
+    )
   } finally {
     await closeServer(srv)
   }
