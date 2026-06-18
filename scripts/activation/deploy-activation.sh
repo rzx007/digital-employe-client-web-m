@@ -43,8 +43,18 @@ de_now_iso() {  # UTC ISO，6 位微秒 + Z（与 Python isoformat 风格一致�
   date -u +%Y-%m-%dT%H:%M:%S.%6NZ
 }
 
+# 调用者真实家目录：sudo 下 $HOME=/root，必须回查 SUDO_USER，
+# 否则 ${HOME}/BobanStaff/... / ${HOME}/.digital-employee/... 全部指错。
+de_caller_home() {
+  if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER}" != "root" ]]; then
+    getent passwd "$SUDO_USER" | cut -d: -f6
+  else
+    echo "${HOME}"
+  fi
+}
+
 # 数据目录默认 ~/.digital-employee/data，可用 DE_DATA_DIR 覆盖（测试用）。
-de_data_dir() { echo "${DE_DATA_DIR:-${HOME}/.digital-employee/data}"; }
+de_data_dir() { echo "${DE_DATA_DIR:-$(de_caller_home)/.digital-employee/data}"; }
 
 de_write_activation_json() {  # <device> <license> <expires_at>
   local dev="$1" lic="$2" exp="$3" dir now
@@ -60,23 +70,37 @@ with open(path, "w", encoding="utf-8") as f:
 PY
 }
 
-# 授权码文件候选（按序）。第一行非空内容即授权码。
+# 授权码文件候选（按序）。文件内抓第一段 base64URL.base64URL 即授权码。
+# 主路径 license.code 与现场手册 (docs/field-deployment-manual.md) 对齐；
+# activation.code 是历史命名，留作兼容。
 DE_LICENSE_FILE_CANDIDATES=(
-  "${PKG_DIR:-}/activation.md"
+  "${INSTALLER_DIR:-}/license.code"
   "${INSTALLER_DIR:-}/activation.code"
-  "${HOME}/BobanStaff/activation/license.code"
+  "$(de_caller_home)/BobanStaff/activation/license.code"
 )
 
-de_read_license_from_file() {  # [显式路径] → 第一行非空；无则非零
-  local f
+# 抓第一段长得像 base64URL.base64URL 的内容（payload+sig）。
+# 这样能跳过 BOM / 注释 / 设备码行 / Markdown 包装，并自动剥掉行内空白和 \r。
+de_extract_license_token() {  # <file> → 第一段授权码；无则非零
+  awk 'match($0,/[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/){
+         print substr($0,RSTART,RLENGTH); found=1; exit
+       }
+       END{exit found?0:1}' "$1"
+}
+
+de_read_license_from_file() {  # [显式路径] → 第一段授权码；无则非零
+  local f line
   if [[ -n "${1:-}" ]]; then
     [[ -f "$1" ]] || return 1
-    awk 'NF{print;exit}' "$1"; return 0
+    line="$(de_extract_license_token "$1")" || return 1
+    [[ -n "$line" ]] || return 1
+    echo "$line"; return 0
   fi
   for f in "${DE_LICENSE_FILE_CANDIDATES[@]}"; do
     [[ -n "$f" && -f "$f" ]] || continue
-    local line; line="$(awk 'NF{print;exit}' "$f")"
-    if [[ -n "$line" ]]; then echo "$line"; return 0; fi
+    line="$(de_extract_license_token "$f")" || continue
+    [[ -n "$line" ]] || continue
+    echo "$line"; return 0
   done
   return 1
 }
@@ -139,13 +163,50 @@ stage_activation() {
     return 0
   fi
 
+  # 先单独跑解析,把"格式错"和"设备/有效期不符"分开提示
+  local parsed
+  if ! parsed="$(de_parse_license "$lic" 2>/dev/null)"; then
+    warn "授权码格式错误（不是有效的授权码字符串），未激活"
+    record activation WARN "授权码格式错误" "确认 license.code/activation.md 内只放授权码主体（base64URL.签名）"
+    return 0
+  fi
+
   if ! de_license_valid_for_device "$lic" "$dev"; then
     warn "授权码无效（设备不符或已过期），未激活"
     record activation WARN "授权码无效（设备不符/过期）" "确认授权码对应设备码 ${disp} 且未过期"
     return 0
   fi
 
-  local exp; exp="$(de_parse_license "$lic" | cut -f2)"
+  local exp; exp="$(echo "$parsed" | cut -f2)"
+
+  # 覆盖提示（仅告知，不改判定）：已有激活时比对到期日，降级/临时码高声提醒
+  if [[ -f "$json" ]]; then
+    local prev_exp
+    prev_exp="$(python3 -c "import json;print(json.load(open('$json')).get('expires_at',''))" 2>/dev/null)"
+    if [[ -n "$prev_exp" ]]; then
+      warn "即将覆盖已有激活：当前到期 ${prev_exp} → 新授权码到期 ${exp}"
+      if python3 - "$exp" "$prev_exp" <<'PY'
+import sys, datetime
+def p(s): return datetime.datetime.fromisoformat(s.replace("Z", "+00:00"))
+sys.exit(0 if p(sys.argv[1]) < p(sys.argv[2]) else 1)  # exit 0 == 新码更早==降级
+PY
+      then
+        say "  ⚠ 新授权码到期更早（降级）。若非本意，请放入更长有效期的授权码后重跑 deploy.sh。"
+      fi
+    fi
+  fi
+  # 新授权码若即将到期（≤24h），提醒可能是临时码
+  if python3 - "$exp" <<'PY'
+import sys, datetime
+exp = datetime.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00"))
+now = datetime.datetime.now(datetime.timezone.utc)
+hrs = (exp - now).total_seconds() / 3600
+sys.exit(0 if 0 <= hrs <= 24 else 1)
+PY
+  then
+    warn "新授权码 ${exp} 即将到期（不足 24 小时），请确认这是长期授权码而非临时码"
+  fi
+
   de_write_activation_json "$dev" "$lic" "$exp"
   chown "${DE_USER}:${DE_USER}" "$json" 2>/dev/null || true
   ok "已激活，有效期至 ${exp}"

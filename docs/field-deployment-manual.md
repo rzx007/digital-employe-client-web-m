@@ -49,8 +49,7 @@ BobanStaff-Installer/
 ├── deploy.sh                  ← 安装脚本（在这里运行）
 ├── packages/
 │   ├── DigitalEmployee-Offline-Linux-arm64-<版本>.deb   数字员工
-│   ├── hanhai-cli-linux-arm64.tar.gz                    瀚海 CLI
-│   └── activation.md                                    （参考）
+│   └── hanhai-cli-linux-arm64.tar.gz                    瀚海 CLI
 ├── ime/                       中文输入法离线包
 └── runtime/
     └── docker-compose.yml     模型服务编排模板（仅模板，无模型文件）

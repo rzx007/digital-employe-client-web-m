@@ -28,9 +28,39 @@ check "written expires_at"  "2027-06-06T09:46:23.027754Z" "$WROTE_EXP"
 HAS_ACT="$(python3 -c "import json;d=json.load(open('$TMPJSON'));print('yes' if d.get('activated_at') and d.get('last_seen_at') else 'no')")"
 check "has activated/last_seen" "yes" "$HAS_ACT"
 
-# 文件取码：第一行非空即码
+# 调用者家目录解算：sudo 下必须回查 SUDO_USER 而不是用 $HOME=/root
+# 模拟 sudo 环境：SUDO_USER 设为当前用户，HOME 强制改成 /root
+SELF="$(id -un)"; SELF_HOME="$(getent passwd "$SELF" | cut -d: -f6)"
+CALLER_UNDER_SUDO="$(SUDO_USER=$SELF HOME=/root bash -c "source $HERE/deploy-activation.sh; de_caller_home")"
+check "caller_home: under sudo resolves SUDO_USER" "$SELF_HOME" "$CALLER_UNDER_SUDO"
+CALLER_NO_SUDO="$(env -u SUDO_USER HOME=/tmp/some-home bash -c "source $HERE/deploy-activation.sh; de_caller_home")"
+check "caller_home: no sudo falls back to HOME" "/tmp/some-home" "$CALLER_NO_SUDO"
+# 候选 3 在 sudo 下应该指向真用户的家，不是 /root
+CAND3="$(SUDO_USER=$SELF HOME=/root bash -c "source $HERE/deploy-activation.sh; echo \"\${DE_LICENSE_FILE_CANDIDATES[2]}\"")"
+check "candidate-3 honors SUDO_USER home" "$SELF_HOME/BobanStaff/activation/license.code" "$CAND3"
+
+# 文件取码：纯一行授权码（原行为保留）
 LICFILE="$(mktemp)"; printf '%s\n' "$GOLDEN_LIC" > "$LICFILE"
-check "read license from file" "$GOLDEN_LIC" "$(de_read_license_from_file "$LICFILE")"
+check "read license: bare line" "$GOLDEN_LIC" "$(de_read_license_from_file "$LICFILE")"
+
+# 文件取码：首行设备码 + 次行授权码（飞书审批回执的实际格式，本次回归）
+LICFILE2="$(mktemp)"; printf '%s\n%s\n' "3E56-77F8-E917-9E20-7A30" "$GOLDEN_LIC" > "$LICFILE2"
+check "read license: skips device-code line" "$GOLDEN_LIC" "$(de_read_license_from_file "$LICFILE2")"
+
+# 文件取码：Markdown 包装 + 注释 + 空行
+LICFILE3="$(mktemp)"
+{ echo "# 授权码"; echo ""; echo "设备: 3E56-77F8-E917-9E20-7A30"; echo "license: $GOLDEN_LIC"; } > "$LICFILE3"
+check "read license: markdown noise" "$GOLDEN_LIC" "$(de_read_license_from_file "$LICFILE3")"
+
+# 文件取码：UTF-8 BOM + CRLF
+LICFILE4="$(mktemp)"
+printf '\xef\xbb\xbf%s\r\n' "$GOLDEN_LIC" > "$LICFILE4"
+check "read license: BOM+CRLF tolerated" "$GOLDEN_LIC" "$(de_read_license_from_file "$LICFILE4")"
+
+# 文件取码：纯设备码（没有授权码）→ 必须报「没找到」而不是吐出设备码
+LICFILE5="$(mktemp)"; printf '%s\n' "3E56-77F8-E917-9E20-7A30" > "$LICFILE5"
+de_read_license_from_file "$LICFILE5" >/dev/null 2>&1
+check "read license: device-only file rejected" "1" "$?"
 
 # 校验：设备匹配 + 未过期 → 0
 de_license_valid_for_device "$GOLDEN_LIC" "3E5677F8E9179E207A30" 2>/dev/null

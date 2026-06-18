@@ -91,3 +91,67 @@ keys=['device_code','license_code','expires_at','activated_at']
 print('INTEGRITY_IDENTICAL' if all(a[k]==b[k] for k in keys) else 'DIFF')
 "
 ```
+
+## 后续维护：lib 改动后必须重新内联
+
+本仓库 `deploy-activation.sh` 是真源；现场 `deploy.sh` 是其内联副本。
+任何对 lib 函数（特别是 `de_read_license_from_file` / `de_license_valid_for_device` /
+`stage_activation`）的修改，都必须按上面「三处改动点」流程重新内联进
+`/home/boban/BobanStaff-Installer/deploy.sh`，否则现场 deploy 跑的还是旧版。
+
+### 2026-06-18 修复：双行 activation.md（设备码 + 授权码）兼容
+
+- 现象：现场 `packages/activation.md` 实际是「第一行设备码 / 第二行授权码」两行格式，
+  旧 `de_read_license_from_file` 用 `awk 'NF{print;exit}'` 取首行非空 → 取到设备码当
+  授权码送进 base64URL 解码 → `json.loads` 报 `'utf-8' codec can't decode byte 0xdc`，
+  然后被笼统兜底成「授权码无效（设备不符或已过期）」，误导现场。
+- 修复（仓库已落）：
+  - `de_extract_license_token` 用 `awk match(...)` 抓第一段 `base64URL.base64URL`，
+    跳过设备码行、注释、Markdown 包装、UTF-8 BOM、CRLF。
+  - `stage_activation` 拆开「格式错」与「设备/有效期不符」两种 warn/record。
+  - `test-deploy-activation.sh` 加 5 条回归用例（含本 bug 复现），220 真机 14/14 PASS。
+- 下次出 installer 包前：按本文档「三处改动点」把改后的 lib 重新内联进 `deploy.sh`。
+
+### 2026-06-18 清理：废弃 packages/activation.md
+
+- `packages/activation.md` 是历史模板，现场手册早已改用 `INSTALLER_DIR/license.code`（与 deploy.sh
+  同层）。废弃动作（仓库已落）：
+  - `scripts/release/pack-installer.sh` 打核心包时显式 `! -name 'activation.md'`，不再随包流转。
+  - `DE_LICENSE_FILE_CANDIDATES` 移除 `${PKG_DIR}/activation.md`；候选 1 改为
+    `${INSTALLER_DIR}/license.code`（与 [`docs/field-deployment-manual.md`](../../docs/field-deployment-manual.md)
+    对齐），`${INSTALLER_DIR}/activation.code` 作为历史兼容降至候选 2。
+  - `docs/field-deployment-manual.md` 目录树移除 `activation.md ...（参考）` 一行。
+- 220 真机已 `rm packages/activation.md`，并确认 `~/BobanStaff/activation/license.code`
+  仍在候选 3 处可被读到（当前 license 当天到期，需后续换长期码）。
+
+### 2026-06-18 修复：sudo 下 `$HOME=/root` 导致候选 3 / activation.json 全部指错
+
+- 现象：飞书签发模板让装机员把附件 `license.code` 放到 `~/BobanStaff/activation/license.code`，
+  装机员通常 `sudo bash deploy.sh` 跑安装 → `$HOME` 变成 `/root` → 候选 3 的
+  `${HOME}/BobanStaff/activation/license.code` 被解算成 `/root/BobanStaff/activation/license.code`，
+  装机员明明放对了路径，deploy 还是报「未发现授权码文件」。`de_data_dir` 也同样错位
+  （`activation.json` 会被写到 `/root/.digital-employee/data/`，而 App 跑在真用户下从
+  `/home/<user>/.digital-employee/data/` 读，永远见不到刚写的激活态）。
+- 修复（仓库已落）：
+  - 新增 `de_caller_home`：sudo 下回查 `SUDO_USER` 的 passwd 家目录，否则降级 `$HOME`。
+  - `de_data_dir` 与候选 3 都改用 `de_caller_home`，根本上修掉 sudo 错位。
+  - `test-deploy-activation.sh` 加 3 条用例：sudo 下解 SUDO_USER 家、无 sudo 走 $HOME、
+    候选 3 在 sudo 下指向真用户家（220 真机 17/17 PASS）。
+- 现场 220 上 deploy.sh 仍是旧内联版，临时绕过：
+  `sudo -E bash ~/BobanStaff-Installer/deploy.sh`（保留 `$HOME`）或
+  `sudo HOME=/home/boban bash ~/BobanStaff-Installer/deploy.sh`。下次出 installer 包要把
+  改后的 lib 重新内联进 `deploy.sh`。
+- **2026-06-18 已重新内联进 220 deploy.sh**（811→873 行），备份
+  `deploy.sh.bak.preinline-20260618-102321` / `deploy.sh.bak.prewarn-*`。sudo 模拟
+  （HOME=/root + SUDO_USER=boban）e2e 通过；裸 `sudo bash deploy.sh` 现已可直接激活。
+
+### 2026-06-18 增强：覆盖已有激活时给出告知（只加提示，不改判定）
+
+- 背景：用户反馈「重激活要先删 activation.json，没有任何覆盖提示，容易把长效激活
+  降级成临时码」。决策＝**只加提示、不改控制流**（保持现有删 json 重激活的流程）。
+- 改动（`stage_activation` 写入前）：
+  - 若已存在 activation.json：打印 `⚠ 即将覆盖已有激活：当前到期 X → 新授权码到期 Y`。
+  - 若新码到期更早：追加 `⚠ 新授权码到期更早（降级）…` 提醒。
+  - 若新码 ≤24h 到期：`⚠ 新授权码即将到期…可能是临时码`。
+  - 全部为告知，不读取确认、不阻塞，非交互装机不受影响。
+- 已随上面同一次内联落到 220 deploy.sh；降级分支与覆盖分支均 e2e 验证打印正确。

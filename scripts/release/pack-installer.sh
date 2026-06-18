@@ -32,8 +32,8 @@ cd "$INST"
 
 echo "» 打核心包 $core ..."
 zip -q "$core" deploy.sh >/dev/null
-# packages：排除所有 .deb / .debbak（旧版本不进包），其余文件（cli/activation.md/SHA256SUMS）照打
-find packages -type f ! -name '*.deb' ! -name '*.debbak*' -print0 | xargs -0 zip -q "$core" 2>/dev/null || true
+# packages：排除所有 .deb / .debbak（旧版本不进包）；也排除 activation.md（已废弃，现场改用 license.code）。
+find packages -type f ! -name '*.deb' ! -name '*.debbak*' ! -name 'activation.md' -print0 | xargs -0 zip -q "$core" 2>/dev/null || true
 # 只把最高版那个数字员工 deb 加进去
 zip -q "$core" "packages/$(basename "$deb")" >/dev/null
 [[ -d ime ]] && find ime -type f -print0 | xargs -0 zip -q "$core" 2>/dev/null || true
