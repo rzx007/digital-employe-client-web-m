@@ -22,6 +22,10 @@ interface BrowserState {
   error: string | null
   canGoBack: boolean
   canGoForward: boolean
+  // 当前活跃浏览器归属的会话 id（与前台一致时才渲染）；null = 无归属/调试路径
+  activeBrowserConversationId: string | null
+  // 有浏览器命令在跑、但不属于当前前台会话 → 静默记录，不渲染
+  backgroundSessions: Set<string>
 
   openBrowser: (url: string) => void
   openHtmlPreview: (
@@ -44,6 +48,9 @@ interface BrowserState {
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
   toggleFullscreen: () => void
+  noteBackgroundOpen: (conversationId: string) => void
+  clearBackground: (conversationId: string) => void
+  setActiveBrowserConversationId: (conversationId: string | null) => void
   reset: () => void
 }
 
@@ -77,6 +84,8 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   isFullscreen: false,
   canGoBack: false,
   canGoForward: false,
+  activeBrowserConversationId: null,
+  backgroundSessions: new Set<string>(),
 
   openBrowser: (url: string) => {
     closeOtherRightPanels()
@@ -205,6 +214,27 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     set((s) => ({ isFullscreen: !s.isFullscreen }))
   },
 
+  noteBackgroundOpen: (conversationId: string) => {
+    set((s) => {
+      const next = new Set(s.backgroundSessions)
+      next.add(conversationId)
+      return { backgroundSessions: next }
+    })
+  },
+
+  clearBackground: (conversationId: string) => {
+    set((s) => {
+      if (!s.backgroundSessions.has(conversationId)) return {}
+      const next = new Set(s.backgroundSessions)
+      next.delete(conversationId)
+      return { backgroundSessions: next }
+    })
+  },
+
+  setActiveBrowserConversationId: (conversationId: string | null) => {
+    set({ activeBrowserConversationId: conversationId })
+  },
+
   reset: () => {
     set({
       isOpen: false,
@@ -216,6 +246,9 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
       error: null,
       canGoBack: false,
       canGoForward: false,
+      activeBrowserConversationId: null,
+      // 故意不清 backgroundSessions：其他后台会话的「有浏览器在跑」标记应跨前台
+      // reset 留存，否则切走再回来会丢失归属。其回收走按 conversationId 的 close 事件。
     })
   },
 }))
