@@ -3,7 +3,7 @@
 将 `com.example.demo-invoke` 复制到：
 
 ```text
-~/.digital-employee/extensions/com.example.demo-invoke/
+~/.boban-staff/extensions/com.example.demo-invoke/
 ├── digital-employee.extension.json
 └── ui/index.html
 ```

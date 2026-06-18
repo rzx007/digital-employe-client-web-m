@@ -249,7 +249,7 @@ flowchart LR
 
 ### 插件（Extension）机制
 
-插件 UI **与主应用 SPA 完全解耦**：任意 `index.html` 或独立 SPA，安装在 `~/.digital-employee/extensions/<id>/`。
+插件 UI **与主应用 SPA 完全解耦**：任意 `index.html` 或独立 SPA，安装在 `~/.boban-staff/extensions/<id>/`。
 
 **插件开发规范（面向作者）**：[docs/extension-development-guide.md](../../../docs/extension-development-guide.md) · **示例**：[examples/](../../../examples/)
 
@@ -271,7 +271,7 @@ Channel 约定见 [`shared/extension-ipc-channels.ts`](shared/extension-ipc-chan
 
 **Manifest**：`digital-employee.extension.json`（见 [`examples/extension-demo`](../../../examples/extension-demo)）。
 
-**开发**：复制示例到 `~/.digital-employee/extensions/com.example.demo/`，或设置 `EXTENSION_DEV_COM_EXAMPLE_DEMO=http://127.0.0.1:端口/`。
+**开发**：复制示例到 `~/.boban-staff/extensions/com.example.demo/`，或设置 `EXTENSION_DEV_COM_EXAMPLE_DEMO=http://127.0.0.1:端口/`。
 
 #### 二期：manifest `service`（独立 UI + 本地子进程）
 
@@ -356,13 +356,13 @@ invoke 方法：见 [`extension-permissions.ts`](features/extension/extension-pe
 ### 主进程日志（electron-log）
 
 - 初始化：[`core/logger.ts`](core/logger.ts) 的 `initMainLogger()`（在 `main/index.ts` 最早调用）
-- 路径：[`core/data-paths.ts`](core/data-paths.ts) 的 `getLogsDir()` → `~/.digital-employee/logs/`（与 Python 后端 `app.log` / `error.log` 同目录）
+- 路径：[`core/data-paths.ts`](core/data-paths.ts) 的 `getLogsDir()` → `~/.boban-staff/logs/`（与 Python 后端 `app.log` / `error.log` 同目录）
 - 按模块创建：`createLogger("auth")` → 输出带 `[auth]` 前缀
-- 生产环境：写入 `~/.digital-employee/logs/main.log`，控制台默认 `warn` 及以上
+- 生产环境：写入 `~/.boban-staff/logs/main.log`，控制台默认 `warn` 及以上
 - 开发环境：控制台 `debug` 及以上
 - 插件 service 子进程的 stdout/stderr 以 `[extension:service:<id>]` 转发到 `main.log`（debug 级别）；插件自身业务日志（如 Spring logback）仍由插件配置决定，不在此目录
 
-**宿主日志目录一览**（`~/.digital-employee/logs/`）：
+**宿主日志目录一览**（`~/.boban-staff/logs/`）：
 
 | 文件 | 来源 |
 |------|------|

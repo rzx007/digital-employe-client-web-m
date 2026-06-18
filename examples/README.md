@@ -7,7 +7,7 @@
 将 `<id>` 文件夹复制到：
 
 ```text
-~/.digital-employee/extensions/<id>/
+~/.boban-staff/extensions/<id>/
 ```
 
 或在宿主 **设置 → 插件** 中「从 zip 安装」（zip 内需含 `digital-employee.extension.json`）。

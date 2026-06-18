@@ -68,7 +68,7 @@ def build_filesystem_prompt_section(
         - 代码、报告、导出数据等交付给用户看的文件：写入产物目录（相对文件名即可，cwd 即该目录；或用 `$ARTIFACTS_DIR/<名>`）
         - 单次交付可用 `report.md`；**长文档任务**须用 `<doc-slug>/` 子目录（见「长文档写作」）
         - **聊天正文禁止**写出磁盘绝对路径；只说交付物名称/用途，文件由变更卡片与产物面板展示（详见已注入的 AGENTS.md「对用户回复」）
-        - **不要**在产物目录下创建 Users、.digital-employee 等磁盘路径镜像
+        - **不要**在产物目录下创建 Users、.boban-staff 等磁盘路径镜像
         - 长期记忆相关规则见「## 长期记忆」一节（唯一权威），此处不重复
         {draft_instruction}
 

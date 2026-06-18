@@ -15,7 +15,7 @@ Channel 定义见 [`../../shared/extension-ipc-channels.ts`](../../shared/extens
 | 文件 | 职责 |
 |------|------|
 | [`manifest-schema.ts`](manifest-schema.ts) | `digital-employee.extension.json` 的 Zod 校验；`permissions`、`network.allowlist`、`ui` / `service` 结构 |
-| [`extension-paths.ts`](extension-paths.ts) | 插件根目录 `~/.digital-employee/extensions/`、路径解析、`isAllowedDevUrl`（仅 `127.0.0.1` / `localhost`） |
+| [`extension-paths.ts`](extension-paths.ts) | 插件根目录 `~/.boban-staff/extensions/`、路径解析、`isAllowedDevUrl`（仅 `127.0.0.1` / `localhost`） |
 | [`extension-store.ts`](extension-store.ts) | 启用/禁用、dev URL 覆盖（electron-store） |
 | [`extension-registry.ts`](extension-registry.ts) | 扫描磁盘 manifest、激活标记、`resolveExtensionUiTarget`（`loadFile` / dev `loadUrl`）、`getExtensionDevOrigin` |
 | [`extension-loader.ts`](extension-loader.ts) | `initExtensions`：扫描、注册网络 guard、恢复 enabled 插件；`activate` / `deactivate` / `listExtensions` |
@@ -86,7 +86,7 @@ flowchart LR
 
 ## Manifest 要点
 
-- 路径：`~/.digital-employee/extensions/<id>/digital-employee.extension.json`
+- 路径：`~/.boban-staff/extensions/<id>/digital-employee.extension.json`
 - 至少包含 `ui` 和/或 `service` 之一
 - 外网访问需声明 `permissions: ["host.network"]` 且配置 `network.allowlist`
 - 示例：[`examples/extension-demo-fetch`](../../../../../examples/extension-demo-fetch)、[`extension-demo-service`](../../../../../examples/extension-demo-service)、[`extension-demo-invoke`](../../../../../examples/extension-demo-invoke)

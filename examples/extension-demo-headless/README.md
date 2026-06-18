@@ -3,7 +3,7 @@
 仅含 `service` 块、无 `ui`。启用后由宿主自动启动子进程，**不会**打开插件窗口。
 
 ```text
-~/.digital-employee/extensions/com.example.demo-headless/
+~/.boban-staff/extensions/com.example.demo-headless/
 ├── digital-employee.extension.json
 └── service/
     └── server.mjs

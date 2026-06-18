@@ -11,7 +11,7 @@ Monorepo：React 19 + Electron 前端（`apps/web`）、Python FastAPI 后端（
 
 ### 宿主日志目录
 
-Electron 主进程与 Python 后端日志统一在 `~/.digital-employee/logs/`：
+Electron 主进程与 Python 后端日志统一在 `~/.boban-staff/logs/`：
 
 | 文件 | 来源 |
 |------|------|
@@ -24,7 +24,7 @@ Electron 主进程与 Python 后端日志统一在 `~/.digital-employee/logs/`�
 
 | 路径 | 用途 |
 |------|------|
-| `~/.digital-employee/pets/<folder>/` | 本应用 zip 安装 / 手动导入（[`pet-paths.ts`](apps/web/electron/features/pet/pet-paths.ts)） |
+| `~/.boban-staff/pets/<folder>/` | 本应用 zip 安装 / 手动导入（[`pet-paths.ts`](apps/web/electron/features/pet/pet-paths.ts)） |
 | `~/.codex/pets/<folder>/` | Codex/Petdex 生态兼容；只读扫描 |
 
 每包需 `pet.json` + 雪碧图。列表 slug 为**文件夹名**；`resolvePetFolder` 支持 `meta.id` 与目录名不一致时的回退匹配。
@@ -183,7 +183,7 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 
 | 变量                       | 默认值                                              | 说明                                                                                             |
 | -------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `SQLITE_PATH`              | `~/.digital-employee/data/app.db`                   | **注意**：`.env.example` 里的路径已过时，实际默认值在 `config.py` 的 `get_default_sqlite_path()` |
+| `SQLITE_PATH`              | `~/.boban-staff/data/app.db`                   | **注意**：`.env.example` 里的路径已过时，实际默认值在 `config.py` 的 `get_default_sqlite_path()` |
 | `SERVER_PORT`              | `58000`                                             | 服务端口                                                                                         |
 | `ENVIRONMENT`              | `dev`                                               | dev/prod                                                                                         |
 | `LLM_REGISTRY`             | —                                                   | 多供应商注册表 JSON（唯一 LLM 配置存储）；`active_*` 为当前使用的供应商与模型 |

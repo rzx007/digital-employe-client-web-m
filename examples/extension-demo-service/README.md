@@ -3,7 +3,7 @@
 将 `com.example.demo-service` 目录复制到扩展安装目录：
 
 ```text
-~/.digital-employee/extensions/com.example.demo-service/
+~/.boban-staff/extensions/com.example.demo-service/
 ├── digital-employee.extension.json
 ├── ui/
 │   └── index.html

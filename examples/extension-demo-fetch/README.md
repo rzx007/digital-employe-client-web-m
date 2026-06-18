@@ -4,7 +4,7 @@
 
 ## 安装
 
-复制 `com.example.demo-fetch` 到 `~/.digital-employee/extensions/`，或在设置页「从 zip 安装」。
+复制 `com.example.demo-fetch` 到 `~/.boban-staff/extensions/`，或在设置页「从 zip 安装」。
 
 ## 验证
 
