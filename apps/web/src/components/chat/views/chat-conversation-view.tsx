@@ -26,6 +26,7 @@ import { useConversationSession } from "@/hooks/use-conversation-session"
 import { prepareDisplayMessages } from "@/lib/chat/hitl"
 
 import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
+import { getLastAssistantMessage } from "@/lib/chat/message-query-cache"
 import {
   isBenignStreamAbortError,
   isStreamDisconnectedError,
@@ -116,6 +117,13 @@ export function ConversationChatView({
     [storedMessages]
   )
 
+  // 后端是否仍在跑：DB 末条 assistant streamState=streaming。长执行/子任务期间 SSE 常
+  // 「假结束」(本地 status=ready) 但后端仍活跃——据此把会话识别为「忙」，让发送走排队、
+  // 不误判空闲而把在跑的流抢占掉（修：子任务在跑时发消息报「流超时仍未结束，已清理」）。
+  const lastStoredStreamState =
+    getLastAssistantMessage(storedMessages)?.streamState ?? null
+  const backendStreaming = lastStoredStreamState === "streaming"
+
   const onStreamFinishRef = useRef<() => void>(() => {})
   const onRetryResumeRef = useRef<() => boolean>(() => false)
 
@@ -189,7 +197,8 @@ export function ConversationChatView({
 
     chatTransport.cancelReconnect()
 
-    const chatWasBusy = status === "submitted" || status === "streaming"
+    const chatWasBusy =
+      status === "submitted" || status === "streaming" || backendStreaming
 
     if (chatWasBusy) {
       try {
@@ -201,7 +210,7 @@ export function ConversationChatView({
     }
 
     session.onStreamStopped()
-  }, [conversationId, session, status, stop])
+  }, [conversationId, session, status, stop, backendStreaming])
 
   const prevConversationIdRef = useRef(conversationId)
 
@@ -261,14 +270,17 @@ export function ConversationChatView({
 
   const isBusy = status === "submitted" || status === "streaming"
 
+  // 含「后端仍在跑」：用于发送决策(走排队)、停止、禁用态——本地 SSE 假结束时仍算忙。
+  const effectiveBusy = isBusy || backendStreaming
+
   const chatStatus = status
 
   const isSubmitDisabled = useMemo(() => {
-    if (isBusy) {
+    if (effectiveBusy) {
       return false
     }
     return !inputValue.trim()
-  }, [inputValue, isBusy])
+  }, [inputValue, effectiveBusy])
 
   const uploadedPathsRef = useRef<string[]>([])
 
@@ -363,6 +375,8 @@ export function ConversationChatView({
     onSend: doSend,
 
     onStop: handleStop,
+
+    backendBusy: backendStreaming,
   })
 
   const handleSendMessage = useCallback(
@@ -387,7 +401,7 @@ export function ConversationChatView({
       // 走队列会静默降级为纯文本。
       const voicePayload = message.voice
 
-      if (isBusy && !voicePayload) {
+      if (effectiveBusy && !voicePayload) {
         enqueue({
           id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 
@@ -403,7 +417,7 @@ export function ConversationChatView({
         return
       }
 
-      if (isBusy && voicePayload) {
+      if (effectiveBusy && voicePayload) {
         // 语音不进 pending 队列（队列项不携带 voice 载荷），
         // 而 useChat 客户端是单流模型：先停掉进行中的流再发送（对齐 sendNow 先例）。
         await handleStop()
@@ -417,7 +431,7 @@ export function ConversationChatView({
       await doSend(message)
     },
 
-    [isBusy, enqueue, command, mentions, doSend, handleStop]
+    [effectiveBusy, enqueue, command, mentions, doSend, handleStop]
   )
 
   return (
@@ -428,6 +442,7 @@ export function ConversationChatView({
       composerMessages={messages}
       inputValue={inputValue}
       status={chatStatus}
+      storedAssistantStreamState={lastStoredStreamState}
       error={displayError}
       isDraftMode={false}
       isMessagesLoading={isMessagesLoading}

@@ -11,6 +11,12 @@ interface UsePendingMessagesOptions {
   status: "submitted" | "streaming" | "ready" | "error"
   onSend: (text: string) => Promise<void>
   onStop?: () => void
+  /**
+   * 后端仍在跑（DB 末条 assistant streamState=streaming）但本地 SSE 已「假结束」
+   * （status=ready）时为 true。此时不能 flush 队列——否则会在后台流仍活跃时发送，
+   * 触发后端抢占/「流超时」。仅当后端真正终态后才放行排队消息。
+   */
+  backendBusy?: boolean
 }
 
 interface UsePendingMessagesReturn {
@@ -26,6 +32,7 @@ export function usePendingMessages({
   status,
   onSend,
   onStop,
+  backendBusy = false,
 }: UsePendingMessagesOptions): UsePendingMessagesReturn {
   const [queue, setQueue] = useState<PendingMessage[]>([])
   const isSendingRef = useRef(false)
@@ -80,6 +87,7 @@ export function usePendingMessages({
   useEffect(() => {
     if (
       (status === "ready" || status === "error") &&
+      !backendBusy &&
       queue.length > 0 &&
       !isSendingRef.current
     ) {
@@ -90,7 +98,7 @@ export function usePendingMessages({
         isSendingRef.current = false
       })
     }
-  }, [status, queue, onSend])
+  }, [status, backendBusy, queue, onSend])
 
   return { queue, enqueue, remove, sendNow, moveUp, moveDown }
 }

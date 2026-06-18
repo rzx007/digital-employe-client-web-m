@@ -228,7 +228,11 @@ export function ChatPanel({
   const showStreamingIndicator =
     !hideStreamingIndicator &&
     !isDraftMode &&
-    (status === "submitted" || status === "streaming") &&
+    // 本地 SSE 假结束但后端仍在跑(DB streamState=streaming)时也显示忙碌——
+    // 让用户知道总管仍在执行(子任务进行中),发送会进排队而非抢占。
+    (status === "submitted" ||
+      status === "streaming" ||
+      storedAssistantStreamState === "streaming") &&
     !error &&
     displayMessages.length > 0 &&
     !isAssistantQueued(composerMessages ?? messages) &&

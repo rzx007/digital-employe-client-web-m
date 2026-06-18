@@ -1199,8 +1199,17 @@ class StreamRegistry:
             return f"流长时间无进展（>{int(stall_limit)}s），已释放槽位"
         return "流超时仍未结束，已清理"
 
-    def _clear_stale_active_task(self, conversation_id: int, task: ActiveStreamTask) -> None:
-        reason = self._stale_clear_reason(task)
+    def _clear_stale_active_task(
+        self,
+        conversation_id: int,
+        task: ActiveStreamTask,
+        *,
+        reason: str | None = None,
+    ) -> None:
+        # reason 缺省按"僵死/超时"判定文案；抢占等主动取消应显式传准确文案，
+        # 否则会把"用户主动重发取代上一轮"误显示成"流超时仍未结束，已清理"。
+        if reason is None:
+            reason = self._stale_clear_reason(task)
         logger.warning(
             "clearing stale active stream conv=%s asyncio_done=%s reason=%s",
             conversation_id,
@@ -1310,7 +1319,11 @@ class StreamRegistry:
                     "start preempt: conv=%s 用户主动重发，抢占在跑的活流(msg=%s)",
                     conversation_id, existing.stream_msg_id,
                 )
-                self._clear_stale_active_task(conversation_id, existing)
+                self._clear_stale_active_task(
+                    conversation_id,
+                    existing,
+                    reason="已停止上一轮，改为执行你的新消息",
+                )
                 existing = self._tasks.get(conversation_id)
             if existing and existing.is_active:
                 logger.warning(
