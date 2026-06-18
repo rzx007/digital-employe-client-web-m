@@ -2,6 +2,7 @@ import {
   selectConversationForContact,
   selectWorkbenchCuratorConversation,
 } from "@/lib/chat/conversation-selection"
+import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import type { ActiveTab } from "@/stores/chat-store"
 import { useChatStore } from "@/stores/chat-store"
 
@@ -33,6 +34,9 @@ export function navigateToEmployeeFromCurator(options: {
   const employeeContactId = options.employeeId.startsWith("employee:")
     ? options.employeeId
     : `employee:${options.employeeId}`
+  // 跳到员工对话前收起总管侧的右栏（员工任务/子任务/产物/监控/浏览器）——
+  // 它们都是总管会话上下文的面板，留着会与员工对话错位（修：查看任务详情后 panel 没收起）。
+  resetChatRightPanels()
   selectConversationForContact(
     employeeContactId,
     options.employeeConversationId
