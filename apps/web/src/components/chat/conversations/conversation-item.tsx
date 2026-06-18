@@ -42,6 +42,55 @@ interface ConversationItemProps extends React.ComponentProps<"div"> {
   isSelected: boolean
 }
 
+/**
+ * 折叠态(窄侧栏)的紧凑会话项：首字 + 状态点 + 选中高亮 + 标题 tooltip，可点切换。
+ * 让折叠的最近会话侧栏不再是大片空白，仍可导航。
+ */
+export function CollapsedConversationItem({
+  conversation,
+  isSelected,
+  onClick,
+}: {
+  conversation: Conversation
+  isSelected: boolean
+  onClick: () => void
+}) {
+  const liveStatus = useConversationStatusStore(
+    (s) => s.statuses[Number(conversation.id)]
+  )
+  const displayStatus = liveStatus ?? conversation.status
+  const title = conversation.title?.trim() || "新对话"
+  const initial = Array.from(title)[0] ?? "话"
+
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className={cn(
+        "relative flex size-9 shrink-0 items-center justify-center rounded-md text-sm font-medium transition-colors",
+        isSelected
+          ? "bg-accent text-primary"
+          : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+      )}
+    >
+      <span className="truncate">{initial}</span>
+      {displayStatus === "running" && (
+        <Spinner
+          className="absolute -top-0.5 -right-0.5 size-2.5"
+          style={{ color: "#8B5CF6" }}
+        />
+      )}
+      {displayStatus === "error" && (
+        <span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-destructive" />
+      )}
+      {displayStatus === "unread" && (
+        <span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-primary" />
+      )}
+    </button>
+  )
+}
+
 export function ConversationItem({
   conversation,
   isSelected,

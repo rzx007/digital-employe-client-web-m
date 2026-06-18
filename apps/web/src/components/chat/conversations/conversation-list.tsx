@@ -15,7 +15,7 @@ import {
 import { useChatStore } from "@/stores/chat-store"
 import type { Contact } from "@/types/chat"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
-import { ConversationItem } from "./conversation-item"
+import { CollapsedConversationItem, ConversationItem } from "./conversation-item"
 
 /**
  * 列表查询/缓存用的 contactId。
@@ -44,6 +44,7 @@ export function ConversationList({
   createConversationSelectScope,
   hideHeader,
   searchQuery,
+  collapsed,
   ...props
 }: ComponentProps<"div"> & {
   hideNewButton?: boolean
@@ -58,6 +59,8 @@ export function ConversationList({
   hideHeader?: boolean
   /** 按标题过滤会话（对话侧边栏搜索） */
   searchQuery?: string
+  /** 折叠态(窄侧栏)：渲染紧凑可点的会话图标列，避免大片空白 */
+  collapsed?: boolean
 }) {
   const { selectedContactId, selectedConversationId } = useChatStore(
     useShallow((state) => ({
@@ -96,6 +99,40 @@ export function ConversationList({
       selectedConversationId,
       conversations
     )
+
+  const handleSelect = (id: string | number) => {
+    if (onSelectConversationId) {
+      onSelectConversationId(id)
+    } else {
+      selectConversationById(id)
+    }
+    onSelectConversation?.()
+  }
+
+  // 折叠态：紧凑会话图标列（首字 + 状态点 + 选中高亮 + 标题 tooltip），可点切换。
+  if (collapsed) {
+    return (
+      <div
+        className={cn("flex h-full min-h-0 w-full flex-col", className)}
+        {...props}
+      >
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="flex flex-col items-center gap-1 py-1">
+            {visibleConversations.map((conversation) => (
+              <CollapsedConversationItem
+                key={conversation.id}
+                conversation={conversation}
+                isSelected={
+                  String(activeConversationId) === String(conversation.id)
+                }
+                onClick={() => handleSelect(conversation.id)}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div

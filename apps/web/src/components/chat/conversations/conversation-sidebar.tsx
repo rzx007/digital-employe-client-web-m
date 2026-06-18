@@ -36,11 +36,19 @@ export function ConversationSidebar({
     useChatStore.getState().setActiveTab("chat")
   }
 
+  const handleSelectConversation = (conversationId: string | number) => {
+    if (!curator) return
+    const id = getContactId(curator) ?? curator.curator?.id
+    if (!id) return
+    selectConversationForContact(id, conversationId)
+    useChatStore.getState().setActiveTab("chat")
+  }
+
   if (collapsed) {
     return (
       <div
         className={cn(
-          "flex h-full flex-col items-center border-r bg-muted/50 py-4",
+          "flex h-full min-h-0 flex-col items-center border-r bg-muted/50 py-2",
           className
         )}
         {...props}
@@ -51,9 +59,18 @@ export function ConversationSidebar({
           onClick={handleNew}
           disabled={isPending || !curator}
           title="新增对话"
+          className="mb-1 shrink-0"
         >
           <IconCirclePlus className="size-5" />
         </Button>
+        <ConversationList
+          className="min-h-0 flex-1 bg-transparent"
+          contactOverride={curator}
+          collapsed
+          hideHeader
+          hideNewButton
+          onSelectConversationId={handleSelectConversation}
+        />
       </div>
     )
   }
@@ -98,13 +115,7 @@ export function ConversationSidebar({
         searchQuery={searchQuery}
         hideHeader
         hideNewButton
-        onSelectConversationId={(conversationId) => {
-          if (!curator) return
-          const id = getContactId(curator) ?? curator.curator?.id
-          if (!id) return
-          selectConversationForContact(id, conversationId)
-          useChatStore.getState().setActiveTab("chat")
-        }}
+        onSelectConversationId={handleSelectConversation}
       />
     </div>
   )
