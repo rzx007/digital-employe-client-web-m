@@ -1,0 +1,2 @@
+# Shell 脚本必须 LF 行尾：会落到 Linux 真机执行，CRLF 会破坏 shebang / heredoc。
+*.sh text eol=lf

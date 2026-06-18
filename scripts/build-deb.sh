@@ -5,6 +5,11 @@
 # 不支持在 Windows / Linux 宿主机上直接运行本脚本。
 set -euo pipefail
 
+# GitLab CI 的 group 变量会注入 DOCKER_HOST=tcp://192.168.2.103:2375 等，
+# 导致 docker 连远端 daemon（非本机 Docker Desktop），在 Mac 上打 arm64 会报
+# "exec /bin/sh: transport endpoint is not connected"。强制走本机 Docker。
+unset DOCKER_HOST DOCKER_TLS_VERIFY DOCKER_CERT_PATH DOCKER_CONTEXT
+
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 RELEASE_DIR="$ROOT_DIR/release"
 IMAGE_NAME="digital-employee-builder:arm64"
@@ -68,11 +73,17 @@ else
 fi
 
 echo "[2/4] 构建 Docker 构建镜像..."
-docker buildx build \
-  --platform linux/arm64 \
-  -t "$IMAGE_NAME" \
-  --load \
-  "$ROOT_DIR"
+# Apple Silicon 原生 linux/arm64 无需 buildx；buildx 在 Docker Desktop 上偶发
+# 「exec /bin/sh: transport endpoint is not connected」（VM/virtiofs 挂载断开）。
+if [[ "$(uname -s)" == "Darwin" && "$(uname -m)" == "arm64" ]]; then
+  docker build --platform linux/arm64 -t "$IMAGE_NAME" "$ROOT_DIR"
+else
+  docker buildx build \
+    --platform linux/arm64 \
+    -t "$IMAGE_NAME" \
+    --load \
+    "$ROOT_DIR"
+fi
 
 echo ""
 echo "[3/4] 在容器内构建应用..."
@@ -83,8 +94,11 @@ docker run --rm \
   --memory=8g \
   -v "$ROOT_DIR:/host-source:ro" \
   -v "$RELEASE_DIR:/output" \
-  -v "$FPM_CACHE_DIR:/root/.cache/electron-builder" \
+  -v "$FPM_CACHE_DIR:/fpm-seed:ro" \
+  -v "digital-employee-uv-cache:/root/.cache/uv" \
+  -v "digital-employee-pnpm-store:/root/.local/share/pnpm/store" \
   -e ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" \
+  -e ELECTRON_BUILDER_BINARIES_MIRROR="https://registry.npmmirror.com/-/binary/electron-builder-binaries/" \
   -e ELECTRON_BUILDER_CACHE="/root/.cache/electron-builder" \
   -e BUILD_CMD="$BUILD_CMD" \
   -e NODE_OPTIONS="--max-old-space-size=8192" \
@@ -98,11 +112,17 @@ rsync -a --delete \
   --exclude=node_modules \
   --exclude="*/node_modules" \
   --exclude=.pnpm-store \
+  --exclude=.venv \
+  --exclude=".venv/" \
   --exclude=.git \
   --exclude=release \
   /host-source/ /build/
 
 cd /build
+
+echo "  播种 fpm 缓存到容器本地层（virtiofs 挂载上 proper-lockfile 锁不可靠，会 stale）..."
+mkdir -p /root/.cache/electron-builder
+cp -a /fpm-seed/. /root/.cache/electron-builder/ 2>/dev/null || true
 
 echo "  安装 pnpm 依赖..."
 pnpm install --frozen-lockfile

@@ -32,6 +32,7 @@ import {
   IconLayoutSidebarLeftExpand,
   IconArrowLeft,
   IconListDetails,
+  IconPin,
 } from "@tabler/icons-react"
 import { useLocalStorageState } from "ahooks"
 import {
@@ -64,7 +65,17 @@ import { toast } from "sonner"
 import { ArtifactPreviewStreamingPlaceholder } from "./artifact-content/artifact-preview-streaming-placeholder"
 import { ArtifactStreamingTextPreview } from "./artifact-content/artifact-streaming-text-preview"
 import { ArtifactRendererView } from "./artifact-content/artifact-renderer-view"
-import { getPreviewableTypeLabel } from "./artifact-content/resolve-renderer"
+import {
+  getPreviewableTypeLabel,
+  isHtmlPath,
+} from "./artifact-content/resolve-renderer"
+import {
+  addHtmlArtifactBlock,
+  emitWorkbenchConfigChanged,
+  GLOBAL_WORKBENCH_ID,
+  initializeWorkbenchConfig,
+  loadWorkbenchConfig,
+} from "@/lib/workbench/workbench-config"
 import type { Artifact } from "./artifact-types"
 import { ImportDraftSkillDialog } from "./import-draft-skill-dialog"
 import { SubConversationPanel } from "./sub-conversation-panel"
@@ -245,12 +256,14 @@ function ResourceContextMenu({
   conversationId,
   onDelete,
   onRefresh,
+  onPin,
   pendingOnly = false,
 }: {
   entry: ResourceEntry
   conversationId: string | number
   onDelete: (entry: ResourceEntry) => void
   onRefresh: () => void
+  onPin?: (entry: ResourceEntry) => void
   pendingOnly?: boolean
 }) {
   const handleDownload = async () => {
@@ -263,6 +276,12 @@ function ResourceContextMenu({
         <ContextMenuItem onSelect={handleDownload}>
           <IconDownload className="size-4 text-muted-foreground" />
           <span>下载</span>
+        </ContextMenuItem>
+      )}
+      {!pendingOnly && onPin && isHtmlPath(entry.path) && (
+        <ContextMenuItem onSelect={() => onPin(entry)}>
+          <IconPin className="size-4 text-muted-foreground" />
+          <span>钉到工作台</span>
         </ContextMenuItem>
       )}
       <ContextMenuItem onSelect={onRefresh}>
@@ -323,12 +342,32 @@ function SkillDraftContextMenu({
   )
 }
 
+/** 把某会话的 HTML 产物钉成工作台看板（直接读写 localStorage，并通知工作台立即刷新） */
+function pinHtmlToWorkbench(
+  conversationId: string | number,
+  path: string,
+  name: string
+) {
+  const config =
+    loadWorkbenchConfig(GLOBAL_WORKBENCH_ID) ??
+    initializeWorkbenchConfig(GLOBAL_WORKBENCH_ID)
+  const title = name.replace(/\.html?$/i, "")
+  addHtmlArtifactBlock(
+    config,
+    { conversationId, resourcePath: path, pinnedAt: Date.now() },
+    title
+  )
+  // 通知 WorkbenchView 重读配置（钉住即出现，无需切菜单）
+  emitWorkbenchConfigChanged()
+}
+
 function renderEntry(
   entry: ResourceEntry,
   conversationId: string | number,
   onDelete: (entry: ResourceEntry) => void,
   onRefresh: () => void,
-  getPendingForPath: (path: string) => PendingResource | null
+  getPendingForPath: (path: string) => PendingResource | null,
+  onPin?: (entry: ResourceEntry) => void
 ) {
   if (entry.entry_type === "directory") {
     return (
@@ -347,7 +386,8 @@ function renderEntry(
                   conversationId,
                   onDelete,
                   onRefresh,
-                  getPendingForPath
+                  getPendingForPath,
+                  onPin
                 )
               )}
             </FileTreeFolder>
@@ -400,6 +440,7 @@ function renderEntry(
         conversationId={conversationId}
         onDelete={onDelete}
         onRefresh={onRefresh}
+        onPin={onPin}
         pendingOnly={isPendingStreaming}
       />
     </ContextMenu>
@@ -673,6 +714,15 @@ export const ArtifactPanel = ({
     setImportDraftSkillEntry(entry)
   }, [])
 
+  const handlePin = React.useCallback(
+    (entry: ResourceEntry) => {
+      if (!conversationId) return
+      pinHtmlToWorkbench(conversationId, entry.path, entry.name)
+      toast.success(`已钉到工作台：${entry.name.replace(/\.html?$/i, "")}`)
+    },
+    [conversationId]
+  )
+
   const panelShellClass = cn(
     "flex h-full min-w-0 flex-col overflow-hidden rounded-lg border bg-background shadow-xl",
     presentation === "embedded" && "rounded-none border-0 shadow-none",
@@ -862,7 +912,8 @@ export const ArtifactPanel = ({
                           conversationId!,
                           handleDelete,
                           handleRefreshResources,
-                          getPendingForPath
+                          getPendingForPath,
+                          handlePin
                         )
                       )}
                     </FileTreeFolder>
@@ -880,7 +931,8 @@ export const ArtifactPanel = ({
                           conversationId!,
                           handleDelete,
                           handleRefreshResources,
-                          getPendingForPath
+                          getPendingForPath,
+                          handlePin
                         )
                       )}
                     </FileTreeFolder>
@@ -911,7 +963,8 @@ export const ArtifactPanel = ({
                                     conversationId!,
                                     handleDelete,
                                     handleRefreshResources,
-                                    getPendingForPath
+                                    getPendingForPath,
+                                    handlePin
                                   )
                                 )}
                               </FileTreeFolder>
@@ -941,7 +994,8 @@ export const ArtifactPanel = ({
                           conversationId!,
                           handleDelete,
                           handleRefreshResources,
-                          getPendingForPath
+                          getPendingForPath,
+                          handlePin
                         )
                       )}
                     </FileTreeFolder>
@@ -959,7 +1013,8 @@ export const ArtifactPanel = ({
                           conversationId!,
                           handleDelete,
                           handleRefreshResources,
-                          getPendingForPath
+                          getPendingForPath,
+                          handlePin
                         )
                       )}
                     </FileTreeFolder>
