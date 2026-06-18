@@ -42,6 +42,9 @@ export interface WorkbenchBlock {
   gridPos: GridPos
 }
 
+/**
+ * 工作台配置（按 employeeId 存 localStorage，工作台用 "global"）。
+ */
 export interface WorkbenchConfig {
   employeeId: string
   blocks: WorkbenchBlock[]
