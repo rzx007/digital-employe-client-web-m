@@ -1,6 +1,7 @@
 import { ConversationEmptyState } from "@workspace/ui/components/ai-elements/conversation"
 import { cn } from "@workspace/ui/lib/utils"
 import { GuidanceSuggestions } from "./guidance-suggestions"
+import { CuratorTeamCard } from "./curator-team-card"
 import { getCuratorLayout } from "./curator-layout"
 
 export function CuratorEmptyWelcome({
@@ -46,6 +47,7 @@ export function CuratorEmptyWelcome({
             可指定经办人
           </p>
         </div>
+        <CuratorTeamCard />
         <GuidanceSuggestions
           onSelect={onSuggestionSelect}
           disabled={suggestionsDisabled}
