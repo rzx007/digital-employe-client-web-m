@@ -211,13 +211,14 @@ def test_snapshot_shows_pending_release_section(db_session):
 ```
 改为：先不返回——把 logs 段与待派发段都构建,末尾若两者皆空才回落该文案。最简改法:删掉这个早返回,在函数末尾判断 `lines` 是否只有引导头(无实质内容)→ 回落。**实现期保证:零 log 且无活跃计划未派任务时仍回落原文案。**
 
-(b) **遍历 logs 后**,记 `logged_ids = {log.task_id for log in logs if log.task_id}`,追加待派发段:
+(b) **遍历 logs 后**,记 `logged_ids = {log.task_id for log in logs if log.task_id}`,追加待派发段。**注意 `pending_lines` 必须在 `if plan is not None:` 之前声明**(末尾回落条件要用它,否则 NameError，评审 advisory):
 ```python
     # 待派发/等待中：当前活跃计划里尚无 live log 的任务(让总管看到完整 DAG,不误判"卡住")
     from src.models.orchestration_plan import OrchestrationPlan
     from src.service.agent.orchestrator.dependency_scheduler import (
         _load_plan_tasks, waiting_status_for_task,
     )
+    pending_lines: list[str] = []   # 在 plan 检查外声明，供末尾回落条件使用
     plan = db.scalars(
         select(OrchestrationPlan)
         .where(
@@ -227,7 +228,6 @@ def test_snapshot_shows_pending_release_section(db_session):
         .order_by(OrchestrationPlan.id.desc())
     ).first()
     if plan is not None:
-        pending_lines: list[str] = []
         cache: dict = {}
         for t in _load_plan_tasks(db, plan.id):
             if t.id in logged_ids:
