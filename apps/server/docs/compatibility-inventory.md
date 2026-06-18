@@ -13,7 +13,7 @@
 2. **总管会话关联**（§11）：确认 `source_conversation_id` / `orchestrator_conversation_id` 已回填后再删 JOIN fallback
 3. **先 LLM 四键迁移链**（本节 §1）— 影响面最清晰
 4. **再 Settings 命名 / factory 硬编码默认**（§2）
-5. **DB `init_db` ensure_column** 仅在新装环境验证后可删对应段（§3）
+5. ~~**DB `init_db` ensure_column**~~ ✅ 已移除（2026-06-18 BobanStaff fork，见 §3）
 6. **前端 localStorage / 消息格式**（§5–§6）需配合版本说明
 7. **远程 API 字段双读**（§7）需确认上游已统一
 
@@ -103,19 +103,15 @@ load_registry         ← 已有 registry 则跳过 _migrate_from_legacy
 
 ---
 
-## §3 SQLite 表结构：`init_db()` 增量迁移
+## §3 SQLite 表结构：`init_db()` 增量迁移 — ✅ [x] 已移除（2026-06-18，BobanStaff fork）
 
-文件：[`src/db/init_db.py`](../src/db/init_db.py)
+整套 `ensure_column` 兼容层 + 表重建迁移（`_migrate_conversation_title_to_text` / `_migrate_task_id_nullable` / `_migrate_employee_unique_key`）+ user_id/orchestrator 回填**已全部删除**。BobanStaff 为独立新项目、新数据目录（`~/.boban-staff`），无历史库可升级，schema 由 `Base.metadata.create_all()` 从 models 一步建全。`init_db()` 现仅保留 `create_all` + `_init_fts5`（全文搜索）+ `_reset_orphaned_streams`（启动流复位）。详见 [设计 spec](../../../docs/superpowers/specs/2026-06-18-bobanstaff-fork-and-schema-cleanup-design.md)。下表为历史记录：
 
 | 类型 | 说明 |
 |------|------|
-| `ensure_column(...)` | 大量 `ALTER TABLE ADD COLUMN`，无 Alembic |
-| 同上 | `conversations.session_flags`（2026-05-28，危险删除 HITL 会话偏好，见 §12） |
-| `_migrate_conversation_title_to_text()` | 会话标题列类型迁移 |
-| `_migrate_task_id_nullable()` | task_id 可空重建表 |
-
-**移除条件**：新装仅用最新 schema；或引入正式 migration 工具后删除 ensure 块。  
-**风险**：删错会导致旧库升级失败。
+| ~~`ensure_column(...)`~~ | 已删：大量 `ALTER TABLE ADD COLUMN`，无 Alembic |
+| ~~`_migrate_conversation_title_to_text()`~~ | 已删：会话标题列类型迁移（model 已声明 Text） |
+| ~~`_migrate_task_id_nullable()`~~ | 已删：task_id 可空重建表（model 已声明 nullable+SET NULL） |
 
 ---
 
