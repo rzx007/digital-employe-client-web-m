@@ -24,6 +24,15 @@ describe("workbenchArrangeHandler", () => {
     expect(parseArrangeResult("普通文本")).toBeNull()
   })
 
+  it("摘要含花括号（被忽略错误的 repr）时仍能定位到真正的 payload", () => {
+    // 部分成功：1 条有效 + 1 条被拒，错误文本含 Python repr 花括号
+    const resultText =
+      "已下发 1 条工作台编排指令。（1 条被忽略：operations[1]：span 非法 {'w': 'x'}）\n" +
+      '{"marker":"WORKBENCH_ARRANGE_V1","operations":[{"op":"reorder","order":["A"]}]}'
+    const ops = parseArrangeResult(resultText)
+    expect(ops).toEqual([{ op: "reorder", order: ["A"] }])
+  })
+
   it("classify 返回 workbench-arrange block", () => {
     const resultText =
       '已下发 1 条。\n{"marker":"WORKBENCH_ARRANGE_V1","operations":[{"op":"reorder","order":["A"]}]}'

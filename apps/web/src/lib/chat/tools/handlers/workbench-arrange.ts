@@ -7,9 +7,12 @@ const MARKER = "WORKBENCH_ARRANGE_V1"
 export function parseArrangeResult(
   resultText: string | null | undefined
 ): WorkbenchArrangeOp[] | null {
-  if (!resultText || !resultText.includes(MARKER)) return null
-  // marker JSON 在文本里独占一段，找到第一个 '{' 起的 JSON。
-  const start = resultText.indexOf("{")
+  const markerAt = resultText ? resultText.indexOf(MARKER) : -1
+  if (markerAt < 0) return null
+  // 锚定到 marker，再回退到它前面最近的 '{'（即 payload 对象的左括号）。
+  // 不能用第一个 '{'：摘要里被忽略的错误可能含 Python repr 的花括号（如 span 非法 {'w':...}），
+  // 那样会把起点定到摘要里的假括号，导致整段 JSON 解析失败、看板卡静默消失。
+  const start = resultText.lastIndexOf("{", markerAt)
   if (start < 0) return null
   try {
     const parsed = JSON.parse(resultText.slice(start))
