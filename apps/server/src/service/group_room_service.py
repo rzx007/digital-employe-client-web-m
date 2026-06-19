@@ -355,6 +355,76 @@ class _MilestoneDebouncer:
 _milestone_debouncer = _MilestoneDebouncer()
 
 
+def _diff_completed_todos(prev: list[dict] | None, cur: list[dict] | None) -> list[str]:
+    """对比前后 todo 列表，返回本次新变为 completed 的条目 content 列表。"""
+    prev = prev or []
+    cur = cur or []
+    prev_done = {
+        (t.get("content") or "").strip()
+        for t in prev
+        if t.get("status") == "completed"
+    }
+    newly: list[str] = []
+    for t in cur:
+        c = (t.get("content") or "").strip()
+        if c and t.get("status") == "completed" and c not in prev_done:
+            newly.append(c)
+    return newly
+
+
+def _extract_write_todos_from_event(data: Any) -> list[dict] | None:
+    """从一个 buffer 事件的 data 里取 write_todos 工具调用携带的 todos 列表。
+
+    成员流以 stream_mode=["messages","updates","custom"] 跑，订阅者收到的
+    event["data"] 即序列化后的 chunk。**只有 `updates` 模式的事件**才带「完整、
+    已解析」的 tool_calls.args（messages 模式只有逐字增量的 tool_call_chunks，
+    args 是半截 JSON 串，拿不到 todos 列表），故这里只认 type=="updates"：
+
+      {"type":"updates","data":{ <节点名>: {"messages":[<AIMessage>, ...]} }}
+
+    AIMessage 可能是 LC constructor 序列化（todos 在 kwargs.tool_calls）或兜底
+    序列化（__type__=="AIMessage"，tool_calls 在顶层）。节点名不固定（model/agent/
+    deepagents 节点），故遍历所有节点的 messages。找到 name=="write_todos" 且
+    args.todos 为 list 的工具调用即返回该 todos（同一事件多条取最后一条）。
+    无则返回 None。
+    """
+    if not isinstance(data, dict) or data.get("type") != "updates":
+        return None
+    payload = data.get("data")
+    if not isinstance(payload, dict):
+        return None
+
+    found: list[dict] | None = None
+    for node_update in payload.values():
+        if not isinstance(node_update, dict):
+            continue
+        messages = node_update.get("messages")
+        if not isinstance(messages, list):
+            continue
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            # LC constructor: {"type":"constructor","kwargs":{...}}；
+            # 兜底序列化: {"__type__":"AIMessage", "tool_calls":[...]}（顶层）。
+            kwargs = msg.get("kwargs") if isinstance(msg.get("kwargs"), dict) else msg
+            tool_calls = kwargs.get("tool_calls")
+            if not isinstance(tool_calls, list):
+                continue
+            for tc in tool_calls:
+                if not isinstance(tc, dict):
+                    continue
+                inner = tc.get("kwargs") if isinstance(tc.get("kwargs"), dict) else tc
+                if inner.get("name") != "write_todos":
+                    continue
+                args = inner.get("args")
+                if not isinstance(args, dict):
+                    continue
+                todos = args.get("todos")
+                if isinstance(todos, list):
+                    found = todos  # 同一事件多条 write_todos 取最后一条
+    return found
+
+
 class GroupRoomService:
     # ---- 房间生命周期 ----
 
@@ -722,8 +792,31 @@ class GroupRoomService:
         if not task:
             return
 
+        # 本订阅维度的上一次 todos 快照（闭包盒，按成员私有流跨事件累积），
+        # 用于检测「某条 todo 新变为 completed」并投 progress 里程碑。
+        prev_todos_box: dict[str, list[dict]] = {"v": []}
+
         def _on_event(event: dict) -> None:
             data = event.get("data") if isinstance(event, dict) else None
+
+            # write_todos 进度检测：成员 agent 每勾掉一个 todo（in_progress→completed），
+            # 把它作为 progress 里程碑（经去抖）投到群时间线，让群里看得到「干到哪步」。
+            cur_todos = _extract_write_todos_from_event(data)
+            if cur_todos is not None:
+                newly = _diff_completed_todos(prev_todos_box["v"], cur_todos)
+                prev_todos_box["v"] = cur_todos
+                for content in newly:
+                    try:
+                        GroupRoomService._project_progress_milestone(
+                            room_id, member_id, member_conv_id, content
+                        )
+                    except Exception:
+                        logger.warning(
+                            "project progress milestone failed conv=%s",
+                            member_conv_id,
+                            exc_info=True,
+                        )
+
             status_val = None
             if isinstance(data, dict):
                 status_val = data.get("status")
@@ -782,6 +875,34 @@ class GroupRoomService:
         )
         if new_member_state is not None and member is not None:
             GroupRoomService.update_member_state(db, member, new_member_state)
+
+    @staticmethod
+    def _project_progress_milestone(
+        room_id: int, member_id: int, member_conv_id: int, content: str
+    ) -> None:
+        """把一个新完成的 todo 作为 progress 里程碑投影到群（经去抖，独立 Session）。"""
+        import time
+        from src.db.session import get_session_local
+
+        if not _milestone_debouncer.allow(
+            conv_id=member_conv_id, kind="progress", text=content, now=time.monotonic()
+        ):
+            return
+        db = get_session_local()()
+        try:
+            room = db.get(GroupRoom, room_id)
+            member = db.get(GroupRoomMember, member_id)
+            if room is None or member is None:
+                return
+            employee = db.get(Employee, member.employee_id)
+            sender_label = employee.name if employee else f"员工#{member.employee_id}"
+            GroupRoomService._project_member_milestone(
+                room=room, db=db, member_employee_id=member.employee_id,
+                sender_label=sender_label, member_conversation_id=member_conv_id,
+                kind="progress", text=f"已完成：{content}",
+            )
+        finally:
+            db.close()
 
     @staticmethod
     def _project_accepted_milestone(

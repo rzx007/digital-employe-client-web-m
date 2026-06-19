@@ -105,3 +105,110 @@ def test_milestone_debouncer_collapses_rapid_progress():
     # accepted/delivered 不参与去抖，永远放行
     assert d.allow(conv_id=42, kind="delivered", text="done", now=now + 4.1) is True
     assert d.allow(conv_id=42, kind="accepted", text="x", now=now + 4.2) is True
+
+
+def test_diff_completed_todos_detects_new_completions():
+    from src.service.group_room_service import _diff_completed_todos
+    prev = [
+        {"content": "检索资料", "status": "completed"},
+        {"content": "起草", "status": "in_progress"},
+    ]
+    cur = [
+        {"content": "检索资料", "status": "completed"},
+        {"content": "起草", "status": "completed"},
+        {"content": "校对", "status": "in_progress"},
+    ]
+    newly = _diff_completed_todos(prev, cur)
+    assert newly == ["起草"]
+
+
+def test_diff_completed_todos_handles_empty_and_none():
+    from src.service.group_room_service import _diff_completed_todos
+    assert _diff_completed_todos(None, None) == []
+    assert _diff_completed_todos([], [{"content": "A", "status": "completed"}]) == ["A"]
+    # 已完成的不重复报
+    assert _diff_completed_todos(
+        [{"content": "A", "status": "completed"}],
+        [{"content": "A", "status": "completed"}],
+    ) == []
+
+
+def _make_updates_event(todos):
+    """构造一个与真实流一致的 updates 事件（buffer 包了一层 {seq,data}）。
+
+    成员流 stream_mode=["messages","updates","custom"]，updates 事件携带完整、
+    已解析的 tool_calls.args。AIMessage 走 LC constructor 序列化，todos 在
+    kwargs.tool_calls[].args.todos（节点名不固定，这里用 'model'）。
+    """
+    ai_msg = {
+        "type": "constructor",
+        "id": ["langchain", "schema", "messages", "AIMessage"],
+        "kwargs": {
+            "content": "",
+            "tool_calls": [
+                {"name": "write_todos", "args": {"todos": todos}, "id": "tc1"}
+            ],
+        },
+    }
+    return {
+        "seq": 1,
+        "data": {
+            "type": "updates",
+            "data": {"model": {"messages": [ai_msg]}},
+        },
+    }
+
+
+def test_extract_write_todos_from_event_reads_updates_tool_args():
+    from src.service.group_room_service import _extract_write_todos_from_event
+    todos = [
+        {"content": "检索资料", "status": "completed"},
+        {"content": "起草", "status": "in_progress"},
+    ]
+    evt = _make_updates_event(todos)
+    assert _extract_write_todos_from_event(evt["data"]) == todos
+    # messages 模式 / 非 write_todos / 无 tool_calls 一律 None
+    assert _extract_write_todos_from_event({"type": "messages", "data": []}) is None
+    assert _extract_write_todos_from_event({"type": "updates", "data": {}}) is None
+
+
+def test_on_event_projects_progress_for_newly_completed_todos(monkeypatch):
+    """驱动 _attach_projector 注册的 _on_event：write_todos 里某条新 completed →
+    调 _project_progress_milestone 投 progress；已完成的不重复、in_progress 不投。"""
+    import src.service.stream_registry as sr
+    from src.service.group_room_service import GroupRoomService
+
+    captured = []
+    monkeypatch.setattr(
+        GroupRoomService,
+        "_project_progress_milestone",
+        staticmethod(lambda room_id, member_id, conv_id, content: captured.append(content)),
+    )
+
+    # 假 task：只需 subscribe 能把 _on_event 收下来供我们手动喂事件。
+    class _FakeTask:
+        def __init__(self):
+            self.fn = None
+
+        def subscribe(self, fn):
+            self.fn = fn
+
+    fake = _FakeTask()
+    monkeypatch.setitem(sr.registry._tasks, 999, fake)
+
+    GroupRoomService._attach_projector(room_id=1, member_id=2, member_conv_id=999)
+    assert fake.fn is not None
+
+    # 第 1 个事件：「检索资料」已 completed、「起草」in_progress → 投「检索资料」
+    fake.fn(_make_updates_event([
+        {"content": "检索资料", "status": "completed"},
+        {"content": "起草", "status": "in_progress"},
+    ]))
+    # 第 2 个事件：「起草」也 completed → 只新投「起草」（检索资料不重复）
+    fake.fn(_make_updates_event([
+        {"content": "检索资料", "status": "completed"},
+        {"content": "起草", "status": "completed"},
+        {"content": "校对", "status": "in_progress"},
+    ]))
+
+    assert captured == ["检索资料", "起草"]
