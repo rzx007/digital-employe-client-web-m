@@ -270,19 +270,29 @@ function ChatMessageItemInner({
               fallbackClassName="text-[10px]"
             />
           )}
-          <span className="text-xs text-muted-foreground">
-            {(() => {
-              if (contact.type !== "group") return contactDisplayName
-              const meta = (
-                message as { metadata?: Record<string, unknown> }
-              ).metadata
-              const s =
-                typeof meta?.senderName === "string"
-                  ? meta.senderName
-                  : undefined
-              return s || contactDisplayName
-            })()}
-          </span>
+          {(() => {
+            if (contact.type !== "group") {
+              return (
+                <span className="text-xs text-muted-foreground">
+                  {contactDisplayName}
+                </span>
+              )
+            }
+            const meta = (
+              message as { metadata?: Record<string, unknown> }
+            ).metadata
+            const s =
+              typeof meta?.senderName === "string" ? meta.senderName : undefined
+            const senderRole =
+              typeof meta?.role === "string" ? meta.role : undefined
+            // 组长头像块已自带「组长」徽标，这里不再重复显示名字（否则「组长 组长」）。
+            if (senderRole === "leader" || s === "组长") return null
+            return (
+              <span className="text-xs text-muted-foreground">
+                {s || contactDisplayName}
+              </span>
+            )
+          })()}
         </div>
       )}
       {message.role === "user" && !dispatchBadge && (
