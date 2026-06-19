@@ -89,3 +89,19 @@ def test_schedule_stream_start_fires_on_started_only_when_not_rejected(monkeypat
         source="test", on_started=lambda: calls.append("ok"),
     )
     assert calls == []
+
+
+def test_milestone_debouncer_collapses_rapid_progress():
+    from src.service.group_room_service import _MilestoneDebouncer
+    d = _MilestoneDebouncer(min_interval_s=3.0)
+    now = 1000.0
+    assert d.allow(conv_id=42, kind="progress", text="A", now=now) is True
+    # 同会话同类短时间内第二条被抑制
+    assert d.allow(conv_id=42, kind="progress", text="B", now=now + 1) is False
+    # 超过间隔后放行
+    assert d.allow(conv_id=42, kind="progress", text="C", now=now + 4) is True
+    # 重复文本永远抑制
+    assert d.allow(conv_id=42, kind="progress", text="C", now=now + 100) is False
+    # accepted/delivered 不参与去抖，永远放行
+    assert d.allow(conv_id=42, kind="delivered", text="done", now=now + 4.1) is True
+    assert d.allow(conv_id=42, kind="accepted", text="x", now=now + 4.2) is True

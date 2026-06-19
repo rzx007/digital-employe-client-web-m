@@ -326,6 +326,35 @@ def _build_accepted_milestone_text(question: str) -> str:
     return f"收到，开始处理：{head}" if head else "收到，开始处理"
 
 
+class _MilestoneDebouncer:
+    """里程碑去抖：仅对 progress 类做「同会话最小间隔 + 文本去重」。
+    accepted/delivered/failed/cancelled 必出，不参与去抖。
+    """
+
+    _DEBOUNCED_KINDS = {"progress"}
+
+    def __init__(self, min_interval_s: float = 3.0):
+        self._min = min_interval_s
+        self._last_ts: dict[int, float] = {}
+        self._seen_text: dict[int, set[str]] = {}
+
+    def allow(self, *, conv_id: int, kind: str, text: str, now: float) -> bool:
+        if kind not in self._DEBOUNCED_KINDS:
+            return True
+        seen = self._seen_text.setdefault(conv_id, set())
+        if text in seen:
+            return False
+        last = self._last_ts.get(conv_id)
+        if last is not None and (now - last) < self._min:
+            return False
+        self._last_ts[conv_id] = now
+        seen.add(text)
+        return True
+
+
+_milestone_debouncer = _MilestoneDebouncer()
+
+
 class GroupRoomService:
     # ---- 房间生命周期 ----
 
