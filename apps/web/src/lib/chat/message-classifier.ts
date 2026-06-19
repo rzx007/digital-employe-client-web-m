@@ -69,6 +69,7 @@ import { collapseWriteTodosBlocks } from "./collapse-write-todos-blocks"
 import { collapseDocumentPlanBlocks } from "./hitl/collapse-document-plan-blocks"
 import { mergeRoutineToolGroups } from "./merge-routine-tool-groups"
 import type { TodoItem } from "@/components/chat/message-blocks/tool-shared"
+import { getMessageMetadataRecord } from "@/components/chat/shared/chat-view-shared"
 import { normalizeToolPart } from "./tools/normalize-tool-part"
 import { isToolUIPart } from "./tools/tool-part"
 import type { ToolViewModel } from "./tools/tool-view-model"
@@ -92,6 +93,14 @@ export interface SkillExploreItem {
 
 export type ClassifiedBlock =
   | { kind: "thinking"; key: string; text: string }
+  | {
+      kind: "member-milestone"
+      key: string
+      senderName: string
+      milestoneKind: "accepted" | "progress" | "delivered" | "failed" | "cancelled"
+      text: string
+      artifacts?: string[]
+    }
   | { kind: "tool-group"; key: string; tools: ToolGroupItem[]; summary: string }
   | {
       kind: "todo-plan"
@@ -352,6 +361,32 @@ export function classifyMessageParts(
   message: UIMessage,
   options: ClassifyMessagePartsOptions = {}
 ): ClassifiedBlock[] {
+  const milestone = getMessageMetadataRecord(message)?.milestone as
+    | { kind?: string; text?: string; artifacts?: string[] }
+    | undefined
+  if (milestone && typeof milestone.kind === "string") {
+    const meta = getMessageMetadataRecord(message)
+    const senderName =
+      typeof meta?.senderName === "string" ? meta.senderName : "成员"
+    return [
+      {
+        kind: "member-milestone",
+        key: `${message.id}:milestone`,
+        senderName,
+        milestoneKind: milestone.kind as
+          | "accepted"
+          | "progress"
+          | "delivered"
+          | "failed"
+          | "cancelled",
+        text: typeof milestone.text === "string" ? milestone.text : "",
+        artifacts: Array.isArray(milestone.artifacts)
+          ? milestone.artifacts.filter((a): a is string => typeof a === "string")
+          : undefined,
+      },
+    ]
+  }
+
   const parts = message.parts
   if (parts.length === 0) return []
 
