@@ -360,6 +360,8 @@ class SkillAwareShellBackend(LocalShellBackend):
         # 把临时输出文件留给后台注册表继续读取，避免删文件竞态
         _background_handoff = threading.Event()
         # 线程把临时文件路径与已读字节量暴露给 async 侧，移交时传给注册表
+        # 跨线程快照：path/last_size 由读线程写、async 侧在超时转后台时读作注册表 read_offset。
+        # ⚠️ last_size 必须在**每次** _read_incremental_from_tmp 之后同步更新，否则后台续读会重读/漏读。
         _tmp_path_holder: dict = {"path": None, "last_size": 0}
         _POLL_SECONDS = 0.1
         _PARTIAL_EMIT_SECONDS = 0.3
