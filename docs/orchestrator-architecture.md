@@ -224,7 +224,7 @@ flowchart LR
 - **软知识（教训）**：单次强信号即写 `memories/AGENTS.md`（失败后成功、返工后达标）。
 - **硬知识（技能）**：**单次不晋升**——`promote_skills` 要求成功流水 ≥3 且体现同一套打法，才提炼成**技能候选**（`skill_candidates/<slug>.md`），且**只造候选、不自动转正**，人在成长面板点「采纳」才转为正式技能（`skills/<slug>/SKILL.md`）。
 
-**QA 代码兜底**（`qa_delivery_check.py`）：注入执行快照时，若员工自报了二进制交付物（.docx/.pptx/.xlsx/.pdf）却在产物区找不到对应非空文件，快照里直接标红「疑似假交付」，不依赖总管主动抽检。
+**QA 代码兜底**（`qa_delivery_check.py`）：注入执行快照时，若员工自报了交付物却在产物区找不到对应非空文件，快照里直接标红「疑似假交付」，不依赖总管主动抽检。自报判定两路控误报：① 二进制交付物（docx/pptx/xlsx/pdf）全文匹配；② 其余文件仅在含「交付动词」的行里取、排除脚本扩展名。
 
 ---
 
@@ -254,7 +254,8 @@ flowchart LR
 | `orchestrator/task_validation.py` | `validate_orchestration_tasks` | 同员工拆分拦截 + DAG 成环/越界/自依赖自检 |
 | `orchestrator/execution.py` | `execute_plan`、`start_immediate_tasks`、`start_task_as_conversation` | 确认后派发根任务、起员工流 |
 | `orchestrator/dependency_scheduler.py` | `on_employee_task_completed`、`release_accepted_downstream`、`invalidate_downstream` | 完成驱动放行、级联跳过、QA 接受放行、返工作废下游 |
-| `orchestrator/rework.py` | `redispatch_task_in_session` | 同员工会话续聊返工（上限 2、gate 前置） |
+| `orchestrator/rework.py` | `redispatch_task_in_session` | 同员工会话续聊返工（上限 2、gate 前置）；亦供用户「改改/重试」端点复用 |
+| `orchestration_lifecycle.py` | `cancel_orchestration_plan`、`update_pending_plan_task`、`collect_plan_deliverables` | 取消计划；确认前编辑子任务(prompt/换员工)；聚合各子任务产出文件(回流主对话「团队交付物」卡，存在性过滤去临时脚本) |
 | `orchestrator/reentry.py` | `trigger_incremental_report`、`trigger_orchestrator_reentry` | 用新结果+快照唤醒总管整合/质检 |
 | `orchestrator/report_debouncer.py` | `ReportDebouncer`、`get_report_debouncer` | 去抖批量唤醒，防风暴，占线时延后补触发 |
 | `reflection_engine.py` | `maybe_reflect_on_signal`、`detect_failure_then_success`、`detect_rework_then_success` | 信号闸门 critic → 写教训记忆 |
