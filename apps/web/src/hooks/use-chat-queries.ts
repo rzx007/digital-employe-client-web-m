@@ -475,7 +475,6 @@ export function useResetCuratorConversation() {
   return useMutation({
     mutationFn: async ({
       conversationId,
-      contactId,
       clearTaskLogs,
     }: {
       conversationId: number | string
