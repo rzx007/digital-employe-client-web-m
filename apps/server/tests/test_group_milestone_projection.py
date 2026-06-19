@@ -1,4 +1,4 @@
-from src.service.group_room_service import GroupRoomService, _conclusion_kind
+from src.service.group_room_service import GroupRoomService
 
 
 class _FakeMsg:
@@ -29,15 +29,6 @@ def test_conclusion_completed_carries_delivered_milestone(monkeypatch):
     assert captured["extra_meta"]["role"] == "worker"
     assert captured["extra_meta"]["milestone"]["kind"] == "delivered"
     assert captured["extra_meta"]["milestone"]["artifacts"] == ["a/report.md"]
-
-
-def test_conclusion_kind_maps_status_to_milestone_kind():
-    """终态→kind 映射：completed=delivered, cancelled=cancelled,
-    interrupted/error 都归 failed（粗粒度桶，精确语义在文案 body）。"""
-    assert _conclusion_kind("completed") == "delivered"
-    assert _conclusion_kind("cancelled") == "cancelled"
-    assert _conclusion_kind("interrupted") == "failed"
-    assert _conclusion_kind("error") == "failed"
 
 
 def test_dispatch_emits_accepted_milestone():
@@ -170,48 +161,6 @@ def test_extract_write_todos_from_event_reads_updates_tool_args():
     # messages 模式 / 非 write_todos / 无 tool_calls 一律 None
     assert _extract_write_todos_from_event({"type": "messages", "data": []}) is None
     assert _extract_write_todos_from_event({"type": "updates", "data": {}}) is None
-
-
-def test_on_event_projects_progress_for_newly_completed_todos(monkeypatch):
-    """驱动 _attach_projector 注册的 _on_event：write_todos 里某条新 completed →
-    调 _project_progress_milestone 投 progress；已完成的不重复、in_progress 不投。"""
-    import src.service.stream_registry as sr
-    from src.service.group_room_service import GroupRoomService
-
-    captured = []
-    monkeypatch.setattr(
-        GroupRoomService,
-        "_project_progress_milestone",
-        staticmethod(lambda room_id, member_id, conv_id, content: captured.append(content)),
-    )
-
-    # 假 task：只需 subscribe 能把 _on_event 收下来供我们手动喂事件。
-    class _FakeTask:
-        def __init__(self):
-            self.fn = None
-
-        def subscribe(self, fn):
-            self.fn = fn
-
-    fake = _FakeTask()
-    monkeypatch.setitem(sr.registry._tasks, 999, fake)
-
-    GroupRoomService._attach_projector(room_id=1, member_id=2, member_conv_id=999)
-    assert fake.fn is not None
-
-    # 第 1 个事件：「检索资料」已 completed、「起草」in_progress → 投「检索资料」
-    fake.fn(_make_updates_event([
-        {"content": "检索资料", "status": "completed"},
-        {"content": "起草", "status": "in_progress"},
-    ]))
-    # 第 2 个事件：「起草」也 completed → 只新投「起草」（检索资料不重复）
-    fake.fn(_make_updates_event([
-        {"content": "检索资料", "status": "completed"},
-        {"content": "起草", "status": "completed"},
-        {"content": "校对", "status": "in_progress"},
-    ]))
-
-    assert captured == ["检索资料", "起草"]
 
 
 def test_relay_group_todo_progress_projects_once_per_new_completion(monkeypatch):

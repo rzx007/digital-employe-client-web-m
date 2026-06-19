@@ -211,8 +211,8 @@ def relay_group_todo_progress(conversation_id: int, serializable: Any) -> None:
             ):
                 continue
             # 直接复用中继登记里已知的 room_id + sender_id + sender_label，
-            # 无需把 employee_id 反解成 GroupRoomMember.id（_project_progress_milestone
-            # 需要 member_id，这里走 _project_member_milestone 更直接）。
+            # 无需把 employee_id 反解成 GroupRoomMember.id，这里走
+            # _project_member_milestone 更直接。
             db = get_session_local()()
             try:
                 room = db.get(GroupRoom, room_id)
@@ -364,19 +364,6 @@ def build_leader_brief(
         "成员产出会自动汇总到群里。\n\n"
         f"用户需求：{question}"
     )
-
-
-def _conclusion_kind(status_val: str) -> str:
-    """成员流终态 → 里程碑 kind。
-
-    completed=delivered；cancelled=cancelled；interrupted/error 都归 failed
-    （粗粒度视觉桶，精确语义见投影文案 body）。
-    """
-    if status_val == "completed":
-        return "delivered"
-    if status_val == "cancelled":
-        return "cancelled"
-    return "failed"  # interrupted / error
 
 
 def _build_accepted_milestone_text(question: str) -> str:
@@ -835,67 +822,6 @@ class GroupRoomService:
         # （DB 映射查找，不依赖脆弱的即时 buffer 订阅）。
         return member_conv_id
 
-    # ---- 投影订阅器 ----
-
-    @staticmethod
-    def _attach_projector(room_id: int, member_id: int, member_conv_id: int) -> None:
-        """订阅成员私有流的终态，完成时把结论投影到群时间线。
-
-        采用轻量方式：不逐 token 转发（防上下文爆炸），只在成员流**完成**时，
-        读取其最终 assistant 消息内容作为"结论"投影到房间。
-        成员完成的信号由 stream_registry.on_task_finalized 提供，但那是任务编排专用；
-        对于群内 @ 派发的非任务流，这里用 buffer 订阅监听 stream_ended。
-        """
-        from src.service.stream_registry import registry
-
-        task = registry._tasks.get(member_conv_id)
-        if not task:
-            return
-
-        # 本订阅维度的上一次 todos 快照（闭包盒，按成员私有流跨事件累积），
-        # 用于检测「某条 todo 新变为 completed」并投 progress 里程碑。
-        prev_todos_box: dict[str, list[dict]] = {"v": []}
-
-        def _on_event(event: dict) -> None:
-            data = event.get("data") if isinstance(event, dict) else None
-
-            # write_todos 进度检测：成员 agent 每勾掉一个 todo（in_progress→completed），
-            # 把它作为 progress 里程碑（经去抖）投到群时间线，让群里看得到「干到哪步」。
-            cur_todos = _extract_write_todos_from_event(data)
-            if cur_todos is not None:
-                newly = _diff_completed_todos(prev_todos_box["v"], cur_todos)
-                prev_todos_box["v"] = cur_todos
-                for content in newly:
-                    try:
-                        GroupRoomService._project_progress_milestone(
-                            room_id, member_id, member_conv_id, content
-                        )
-                    except Exception:
-                        logger.warning(
-                            "project progress milestone failed conv=%s",
-                            member_conv_id,
-                            exc_info=True,
-                        )
-
-            status_val = None
-            if isinstance(data, dict):
-                status_val = data.get("status")
-            elif isinstance(data, str):
-                status_val = data
-            if status_val in ("completed", "cancelled", "error", "interrupted"):
-                try:
-                    GroupRoomService._project_member_conclusion(
-                        room_id, member_id, member_conv_id, status_val
-                    )
-                except Exception:
-                    logger.warning(
-                        "project member conclusion failed conv=%s",
-                        member_conv_id,
-                        exc_info=True,
-                    )
-
-        task.subscribe(_on_event)
-
     @staticmethod
     def _project_member_milestone(
         *,
@@ -937,34 +863,6 @@ class GroupRoomService:
             GroupRoomService.update_member_state(db, member, new_member_state)
 
     @staticmethod
-    def _project_progress_milestone(
-        room_id: int, member_id: int, member_conv_id: int, content: str
-    ) -> None:
-        """把一个新完成的 todo 作为 progress 里程碑投影到群（经去抖，独立 Session）。"""
-        import time
-        from src.db.session import get_session_local
-
-        if not _milestone_debouncer.allow(
-            conv_id=member_conv_id, kind="progress", text=content, now=time.monotonic()
-        ):
-            return
-        db = get_session_local()()
-        try:
-            room = db.get(GroupRoom, room_id)
-            member = db.get(GroupRoomMember, member_id)
-            if room is None or member is None:
-                return
-            employee = db.get(Employee, member.employee_id)
-            sender_label = employee.name if employee else f"员工#{member.employee_id}"
-            GroupRoomService._project_member_milestone(
-                room=room, db=db, member_employee_id=member.employee_id,
-                sender_label=sender_label, member_conversation_id=member_conv_id,
-                kind="progress", text=f"已完成：{content}",
-            )
-        finally:
-            db.close()
-
-    @staticmethod
     def _project_accepted_milestone(
         room_id: int, member_id: int, member_conv_id: int, question: str
     ) -> None:
@@ -984,62 +882,6 @@ class GroupRoomService:
                 sender_label=sender_label, member_conversation_id=member_conv_id,
                 kind="accepted", text=_build_accepted_milestone_text(question),
             )
-        finally:
-            db.close()
-
-    @staticmethod
-    def _project_member_conclusion(
-        room_id: int, member_id: int, member_conv_id: int, status_val: str
-    ) -> None:
-        """读取成员私有会话最终结论，写到群时间线（独立 Session）。"""
-        from src.db.session import get_session_local
-
-        db = get_session_local()()
-        try:
-            room = db.get(GroupRoom, room_id)
-            member = db.get(GroupRoomMember, member_id)
-            if room is None or member is None:
-                return
-            employee = db.get(Employee, member.employee_id)
-            sender_label = employee.name if employee else f"员工#{member.employee_id}"
-
-            if status_val == "completed":
-                last = db.scalars(
-                    select(ConversationMessage)
-                    .where(
-                        ConversationMessage.conversation_id == member_conv_id,
-                        ConversationMessage.role == "assistant",
-                    )
-                    .order_by(ConversationMessage.id.desc())
-                ).first()
-                content = (last.content or "").strip() if last else ""
-                if not content:
-                    content = "（已完成）"
-                GroupRoomService._project_member_milestone(
-                    room=room, db=db, member_employee_id=member.employee_id,
-                    sender_label=sender_label, member_conversation_id=member_conv_id,
-                    kind="delivered", text=content,
-                    new_member_state="done", member=member,
-                )
-            else:
-                if status_val == "cancelled":
-                    body = f"⏹️ {sender_label}的任务已被取消。"
-                elif status_val == "interrupted":
-                    body = f"⏸️ {sender_label}的任务已中断，等待补充信息后继续。"
-                else:  # error
-                    reason = _extract_failure_reason(db, member_conv_id)
-                    body = f"⚠️ {sender_label}执行失败"
-                    body += f"：{reason}" if reason else (
-                        "，请稍后重试；若反复失败请检查模型设置"
-                        "（API Key / Base URL / 模型名）。"
-                    )
-                kind = _conclusion_kind(status_val)
-                GroupRoomService._project_member_milestone(
-                    room=room, db=db, member_employee_id=member.employee_id,
-                    sender_label=sender_label, member_conversation_id=member_conv_id,
-                    kind=kind, text=body,
-                    new_member_state="ready", member=member,
-                )
         finally:
             db.close()
 
