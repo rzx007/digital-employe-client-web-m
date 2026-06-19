@@ -71,7 +71,11 @@ from src.service.agent.orchestrator.tools import (
 from src.service.context_compression import build_summarization_middleware_stack
 from src.service.agent.remember_memory_tool import create_remember_memory_tool
 from src.service.agent.get_current_time_tool import get_current_time_tool
-from src.service.agent.shell_execute_tool import create_shell_execute_tool
+from src.service.agent.shell_execute_tool import (
+    create_shell_execute_tool,
+    create_shell_poll_tool,
+    create_shell_kill_tool,
+)
 from src.models.workspace import CST
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
@@ -283,6 +287,8 @@ def get_orchestrator_agent(
         remember_memory_tool,
         get_current_time_tool,
     ]
+    orchestrator_tools.append(create_shell_poll_tool())
+    orchestrator_tools.append(create_shell_kill_tool())
 
     session_flags = (
         get_session_flags(db, conversation_id)

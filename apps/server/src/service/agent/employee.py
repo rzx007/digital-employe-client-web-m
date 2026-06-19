@@ -20,7 +20,11 @@ from src.service.agent.prompts import build_system_prompt
 from src.service.agent.skill_sources import resolve_builtin_skill_creator_source
 from src.service.context_compression import build_summarization_middleware_stack
 from src.service.agent.get_current_time_tool import get_current_time_tool
-from src.service.agent.shell_execute_tool import create_shell_execute_tool
+from src.service.agent.shell_execute_tool import (
+    create_shell_execute_tool,
+    create_shell_poll_tool,
+    create_shell_kill_tool,
+)
 from src.service.agent.remember_memory_tool import create_remember_memory_tool
 from src.service.agent.clarifying_questions_tool import (
     CLARIFYING_QUESTIONS_INTERRUPT_ON,
@@ -224,6 +228,8 @@ def get_agent(
     )
     remember_memory_tool = create_remember_memory_tool(memories_dir)
     extra_tools: list = [shell_execute_tool, remember_memory_tool, get_current_time_tool]
+    extra_tools.append(create_shell_poll_tool())
+    extra_tools.append(create_shell_kill_tool())
     if sql_tools:
         extra_tools.extend(sql_tools)
     extra_tools.extend(_session_search_tools)
