@@ -390,7 +390,8 @@ export function ConversationChatView({
 
   useEffect(() => {
     if (prevConversationIdRef.current !== conversationId) {
-      chatTransport.cancelReconnect()
+      // 整体 reset，而非仅 cancelReconnect——清掉上个会话的 resume 归属，防串台（现象2）
+      chatTransport.resetForConversation()
       prevConversationIdRef.current = conversationId
     }
   }, [conversationId])

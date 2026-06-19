@@ -376,6 +376,19 @@ export class LangChainChatTransport<
   }
 
   /**
+   * 会话切换时整体重置 in-flight resume 归属状态，杜绝上个会话的 reconnect/resume
+   * 状态污染下个会话（现象2：切总管/助手偶发漏内容、来回切两次才正常）。
+   * 对齐 hermes turnController.reset() 的「切 session 整体清缓冲」。
+   * cancelReconnect 已 abort 在飞连接并清 _reconnectAbort/_reconnectChatId；
+   * 这里再清两个 resume 归属字段。
+   */
+  resetForConversation = () => {
+    this.cancelReconnect()
+    this._resumeConversationId = null
+    this._resumeSealedToolCallIds = []
+  }
+
+  /**
    * 当前在飞 resume 连接所属的会话 id；无在飞连接时为 null。供上层在调度 resumeStream()
    * 前止抖：同会话已有在飞连接时跳过新触发，避免反复 abort+全量重放导致画面从头重打。
    * 假死连接由 idle 看门狗(SSE_IDLE_TIMEOUT_MS) 回收→届时返回 null→自然放行重连。
