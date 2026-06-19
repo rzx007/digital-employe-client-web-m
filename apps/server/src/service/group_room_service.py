@@ -1285,31 +1285,88 @@ class GroupRoomService:
             return None
         room = GroupRoomService.ensure_room(db, conv)
 
-        # 找组长最新的编排计划
-        plan = None
+        # 聚合「本轮在执行的 task 全集」，而非只锚最新一份 plan。
+        # 组长为同一请求可能生成多份编排计划：真正在跑的任务可能落在较早的计划里，
+        # 而最新计划只是个尚未执行的空壳。只锚最新计划会漏掉在跑的任务（只画出 1 个
+        # pending 节点）。因此先按组长会话的执行日志找出本轮在执行的 task_id 全集。
+        plan_tasks: list[EmployeeTask] = []
         if room.leader_conversation_id is not None:
-            plan = db.scalars(
+            inflight_task_ids = [
+                tid
+                for tid in db.scalars(
+                    select(TaskExecutionLog.task_id)
+                    .where(
+                        TaskExecutionLog.orchestrator_conversation_id
+                        == room.leader_conversation_id
+                    )
+                    .distinct()
+                ).all()
+                if tid is not None
+            ]
+            if inflight_task_ids:
+                plan_tasks = list(
+                    db.scalars(
+                        select(EmployeeTask)
+                        .where(EmployeeTask.id.in_(inflight_task_ids))
+                        .order_by(EmployeeTask.id.asc())
+                    ).all()
+                )
+
+        # 兜底：没有任何执行日志（计划已生成但尚未确认/执行）→ 退回「最新计划的任务」，
+        # 让刚生成未执行的计划也能画出 DAG（旧行为）。
+        if not plan_tasks and room.leader_conversation_id is not None:
+            newest_plan = db.scalars(
                 select(OrchestrationPlan)
                 .where(
                     OrchestrationPlan.conversation_id == room.leader_conversation_id
                 )
                 .order_by(OrchestrationPlan.id.desc())
             ).first()
-        if plan is None:
-            return {"has_dag": False, "room_id": room.id, "nodes": [], "edges": []}
+            if newest_plan is not None:
+                plan_tasks = list(
+                    db.scalars(
+                        select(EmployeeTask)
+                        .where(EmployeeTask.orchestration_plan_id == newest_plan.id)
+                        .order_by(EmployeeTask.id.asc())
+                    ).all()
+                )
 
-        plan_tasks = list(
-            db.scalars(
-                select(EmployeeTask)
-                .where(EmployeeTask.orchestration_plan_id == plan.id)
-                .order_by(EmployeeTask.id.asc())
-            ).all()
-        )
         if not plan_tasks:
             return {"has_dag": False, "room_id": room.id, "nodes": [], "edges": []}
 
-        plan_json_obj = json.loads(plan.plan_json or "[]")
-        dep_map, _succ = build_dependency_maps(plan_tasks, plan_json_obj)
+        # 聚合的任务可能跨多份计划；依赖只在同一计划内成立 → 按 plan 分组分别构造依赖
+        # 映射再合并。build_dependency_maps 返回 (dep_map, successors)，均以 task.id 为
+        # 键，跨计划的 task.id 不冲突，故 update 合并安全。
+        dep_map: dict[int, list[int]] = {}
+        tasks_by_plan: dict[int | None, list[EmployeeTask]] = {}
+        for t in plan_tasks:
+            tasks_by_plan.setdefault(t.orchestration_plan_id, []).append(t)
+        plan_json_cache: dict[int, list] = {}
+        for plan_id_key, group_tasks in tasks_by_plan.items():
+            plan_json_obj: list = []
+            if plan_id_key is not None:
+                if plan_id_key not in plan_json_cache:
+                    grp_plan = db.get(OrchestrationPlan, plan_id_key)
+                    plan_json_cache[plan_id_key] = json.loads(
+                        (grp_plan.plan_json if grp_plan else None) or "[]"
+                    )
+                plan_json_obj = plan_json_cache[plan_id_key]
+            per_plan_map, _succ = build_dependency_maps(group_tasks, plan_json_obj)
+            dep_map.update(per_plan_map)
+
+        # 「主计划」：聚合任务里出现最多的 orchestration_plan_id，用于 plan_id 返回与
+        # 取用户原始诉求（user_input）。plan_tasks 非空（前面已 return），故必有结果。
+        from collections import Counter
+
+        plan_id_counts = Counter(
+            t.orchestration_plan_id for t in plan_tasks if t.orchestration_plan_id
+        )
+        primary_plan_id = plan_id_counts.most_common(1)[0][0] if plan_id_counts else None
+        primary_plan = (
+            db.get(OrchestrationPlan, primary_plan_id)
+            if primary_plan_id is not None
+            else None
+        )
 
         # 每个任务的最新执行日志（状态 + 产物）
         task_ids = [t.id for t in plan_tasks]
@@ -1393,7 +1450,8 @@ class GroupRoomService:
         # 固定节点：用户、组长
         nodes.append({
             "id": "user", "type": "user", "name": "用户",
-            "task": plan.user_input or "", "state": "done", "artifacts": [],
+            "task": (primary_plan.user_input if primary_plan else "") or "",
+            "state": "done", "artifacts": [],
         })
         # 组长「分解与派活」节点：走到这里说明编排计划已生成（前面 plan is None 已
         # return），即派活一定完成了 → 永久 done。绝不能用「组长会话是否在流式」判断：
@@ -1482,7 +1540,7 @@ class GroupRoomService:
         return {
             "has_dag": True,
             "room_id": room.id,
-            "plan_id": plan.id,
+            "plan_id": primary_plan_id,
             "nodes": nodes,
             "edges": edges,
         }
