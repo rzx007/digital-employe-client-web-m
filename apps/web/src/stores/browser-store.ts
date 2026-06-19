@@ -34,6 +34,7 @@ interface BrowserState {
   ) => void
   minimizeBrowser: () => void
   restoreBrowser: () => void
+  suspendForConversationSwitch: () => void
   destroyBrowser: () => void
   navigate: (url: string) => void
   goBack: () => void
@@ -135,6 +136,23 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     if (!api?.browser) return
     void api.browser.open(currentUrl)
     set({ isOpen: true, isMinimized: false, isLoading: true, error: null })
+  },
+
+  // 切对话时收起浏览器 UI，但**不销毁视口**（不调 api.browser.close）。
+  // destroyBrowser 会销毁单例 WebContentsView + 卸载承载视口测量的面板 DOM，
+  // 打断 agent（尤其后台执行会话）此刻正跑的 browserctl → BROWSER_VIEWPORT_NOT_READY。
+  // 仅 hide：electron 视口存活、agent 继续可用；切回该会话靠 adoptForeground /
+  // restoreBrowser 重现。currentUrl 保留以供重现。
+  suspendForConversationSwitch: () => {
+    const api = getElectronApi()
+    void api?.browser.hide()
+    set({
+      isOpen: false,
+      isMinimized: true,
+      isFullscreen: false,
+      isLoading: false,
+      error: null,
+    })
   },
 
   destroyBrowser: () => {

@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const browserOpen = vi.fn()
+const browserClose = vi.fn()
+const browserHide = vi.fn()
 
 vi.mock("@/lib/electron/host", () => ({
-  getElectronApi: () => ({ browser: { open: browserOpen } }),
+  getElectronApi: () => ({
+    browser: { open: browserOpen, close: browserClose, hide: browserHide },
+  }),
 }))
 
 vi.mock("@/lib/request", () => ({
@@ -94,5 +98,37 @@ describe("browser-store backgroundSessions 回收契约", () => {
     store.noteBackgroundOpen("b", "https://b.example")
     store.reset()
     expect(useBrowserStore.getState().backgroundSessions.has("b")).toBe(true)
+  })
+})
+
+describe("browser-store suspendForConversationSwitch 切对话收起不销毁", () => {
+  beforeEach(() => {
+    browserClose.mockClear()
+    browserHide.mockClear()
+    useBrowserStore.getState().reset()
+  })
+
+  it("收起浏览器 UI（isOpen=false）但绝不调用 api.browser.close 销毁视口", () => {
+    const store = useBrowserStore.getState()
+    store.openBrowser("https://s.weibo.com/top/summary")
+    expect(useBrowserStore.getState().isOpen).toBe(true)
+
+    store.suspendForConversationSwitch()
+
+    // UI 收起
+    expect(useBrowserStore.getState().isOpen).toBe(false)
+    // 关键：不销毁视口，否则 agent 正在跑的 browserctl 会 BROWSER_VIEWPORT_NOT_READY
+    expect(browserClose).not.toHaveBeenCalled()
+  })
+
+  it("保留 currentUrl，便于切回会话时 restoreBrowser/adoptForeground 重现", () => {
+    const store = useBrowserStore.getState()
+    store.openBrowser("https://s.weibo.com/top/summary")
+
+    store.suspendForConversationSwitch()
+
+    expect(useBrowserStore.getState().currentUrl).toBe(
+      "https://s.weibo.com/top/summary"
+    )
   })
 })
