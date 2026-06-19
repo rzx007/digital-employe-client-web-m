@@ -122,6 +122,8 @@ export function ConversationChatView({
 
   onGroupRoomStop,
 
+  onUserSend,
+
   className,
 
   ...props
@@ -146,6 +148,9 @@ export function ConversationChatView({
 
   /** 群协作：停止组长/成员流式输出 */
   onGroupRoomStop?: () => void | Promise<void>
+
+  /** 群协作：用户本地发出本轮消息时触发（用于立即显示组长首响应占位） */
+  onUserSend?: () => void
 }) {
   const [inputValue, setInputValue] = useState("")
 
@@ -590,6 +595,7 @@ export function ConversationChatView({
 
       try {
         session.prepareOutboundMessage()
+        onUserSend?.()
 
         await sendMessage(
           { text: messageText, metadata: pendingMeta },
@@ -613,7 +619,7 @@ export function ConversationChatView({
       }
     },
 
-    [command, mentions, sendMessage, conversationId, session]
+    [command, mentions, sendMessage, conversationId, session, onUserSend]
   )
 
   const handleAttachmentsChange = useCallback((paths: string[]) => {
