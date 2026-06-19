@@ -69,6 +69,34 @@ def test_partial_missing_flags_only_missing(tmp_path):
     assert "deck.pdf" not in msg
 
 
+def test_extract_claimed_files_verb_gated_nonbinary():
+    from src.service.agent.orchestrator.qa_delivery_check import extract_claimed_files
+    text = "已生成 report.html\n参考了 notes.md\n保存为 报告.docx"
+    got = extract_claimed_files(text)
+    assert "report.html" in got       # 交付动词句里的非二进制文件
+    assert "报告.docx" in got          # 二进制(全文匹配)
+    assert "notes.md" not in got       # 「参考」非交付动词 → 不算自报交付
+
+
+def test_detect_flags_missing_html_on_verb_line(tmp_path):
+    from src.service.agent.orchestrator.qa_delivery_check import detect_missing_delivery_artifacts
+    (tmp_path / "占位.txt").write_text("x", encoding="utf-8")
+    msg = detect_missing_delivery_artifacts("已生成 原理展示页 report.html", tmp_path)
+    assert msg is not None and "report.html" in msg
+
+
+def test_detect_ignores_script_ext_even_with_verb(tmp_path):
+    """脚本/依赖(.py 等)即便在交付动词句里、即便已删，也不算假交付。"""
+    from src.service.agent.orchestrator.qa_delivery_check import detect_missing_delivery_artifacts
+    assert detect_missing_delivery_artifacts("已生成 gen.py 跑完产出结果", tmp_path) is None
+
+
+def test_detect_ignores_file_without_delivery_verb(tmp_path):
+    from src.service.agent.orchestrator.qa_delivery_check import detect_missing_delivery_artifacts
+    # data.csv 缺失但没有交付动词 → 不误报
+    assert detect_missing_delivery_artifacts("我看了下 data.csv 做了分析", tmp_path) is None
+
+
 def test_check_log_delivery_flags_missing(monkeypatch, tmp_path):
     """wrapper：从 success 日志 output 取自报文件，对照解析出的产物区核验。"""
     monkeypatch.setattr(

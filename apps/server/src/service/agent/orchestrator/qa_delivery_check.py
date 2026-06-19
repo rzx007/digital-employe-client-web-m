@@ -1,12 +1,13 @@
 """QA 代码兜底（#3）：核验员工自报的二进制交付物是否真实落盘且非空。
 
 补 P0-A 的短板——P0-A 让总管「判达标前抽检」，但抽不抽全靠模型遵从。这里在
-**总管读到的执行快照里**注入一条代码核验：若员工产出文本里自报了二进制交付物
-（.docx/.pptx/.xlsx/.pdf）却在共享产物区找不到对应的**非空**文件，就明确标出
-「疑似假交付」，让总管即便没主动抽检也会看到、据此打回。
+**总管读到的执行快照里**注入一条代码核验：若员工产出文本里自报了交付物却在共享
+产物区找不到对应的**非空**文件，就明确标出「疑似假交付」，让总管即便没主动抽检
+也会看到、据此打回。
 
-只核「员工自报的具体文件」对不对得上磁盘（高信号、近零误报）——员工没点名具体
-二进制文件时不报（那类含糊交付仍由 P0-A 的提示词抽检覆盖）。
+自报判定（控误报）：① 二进制交付物（docx/pptx/xlsx/pdf）全文匹配（高信号）；
+② 其余交付物类文件仅在含「交付动词」（生成/保存/导出…）的行里取，且排除脚本/
+依赖扩展名（跑完即删属正常）。员工没明确点名交付文件时不报。
 """
 from __future__ import annotations
 
@@ -16,23 +17,79 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# 自报的二进制交付物文件名（含中文名）；只认这四类「格式即交付」的二进制产物。
+# 自报的二进制交付物文件名（含中文名）；这四类「格式即交付」全文匹配（高信号）。
 _BINARY_DELIVERABLE_RE = re.compile(
     r"([\w一-鿿\-]+\.(?:docx|pptx|xlsx|pdf))", re.IGNORECASE
 )
+# 一般文件名：扩展名须以字母开头（排除 9.9k / v1.2 这类非文件）。
+_FILENAME_RE = re.compile(r"([\w一-鿿\-]+\.[A-Za-z][A-Za-z0-9]{0,5})")
+# 「交付动词」：仅当文件名所在行含这些词，才视为员工自报的交付物（防把读过/提到的文件误判）。
+_DELIVERY_VERBS = (
+    "生成", "保存", "导出", "创建", "写入", "输出", "产出",
+    "另存", "存为", "存到", "做好", "交付", "已存", "落盘",
+)
+# 脚本/依赖扩展名：跑完即删属正常，缺失不算假交付（口径对齐前端 file-change-utils）。
+_INTERMEDIATE_EXTS = frozenset({
+    "ts", "tsx", "js", "jsx", "json", "py", "sql", "css", "java", "go",
+    "rs", "cpp", "c", "h", "sh", "bat", "ps1", "rb", "lock", "toml",
+    "ini", "cfg", "yaml", "yml",
+})
+_BINARY_EXTS = frozenset({"docx", "pptx", "xlsx", "pdf"})
+
+
+def _basename(p: str) -> str:
+    return p.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+
+
+def _ext_of(name: str) -> str:
+    return name.rsplit(".", 1)[-1].lower() if "." in name else ""
+
+
+def extract_claimed_files(text: str) -> list[str]:
+    """从产出文本抽出员工**自报已交付**的文件名（basename，去重保序）。
+
+    两路：① 二进制交付物（docx/pptx/xlsx/pdf）全文匹配；② 其余「交付物类」文件仅在
+    含「交付动词」的行里取（排除脚本/依赖扩展名——删了不算假交付，防误报）。
+    """
+    if not text:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+
+    def _add(base: str) -> None:
+        key = base.lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(base)
+
+    # ① 二进制交付物：高信号，全文匹配
+    for m in _BINARY_DELIVERABLE_RE.findall(text):
+        _add(_basename(m))
+
+    # ② 交付动词句里的非脚本文件
+    for line in text.splitlines():
+        if not any(v in line for v in _DELIVERY_VERBS):
+            continue
+        for fn in _FILENAME_RE.findall(line):
+            base = _basename(fn)
+            ext = _ext_of(base)
+            if ext in _INTERMEDIATE_EXTS or ext in _BINARY_EXTS:
+                continue  # 脚本/依赖跳过；二进制已在 ① 处理
+            _add(base)
+
+    return out
 
 
 def extract_claimed_binary_files(text: str) -> list[str]:
-    """从产出文本抽出自报的二进制交付物文件名（取 basename，去重保序，大小写不敏感去重）。"""
+    """（保留）仅抽二进制交付物文件名。"""
     if not text:
         return []
     seen: set[str] = set()
     out: list[str] = []
     for m in _BINARY_DELIVERABLE_RE.findall(text):
-        base = m.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
-        key = base.lower()
-        if key not in seen:
-            seen.add(key)
+        base = _basename(m)
+        if base.lower() not in seen:
+            seen.add(base.lower())
             out.append(base)
     return out
 
@@ -45,7 +102,7 @@ def detect_missing_delivery_artifacts(
     容错：任何异常都返回 None（兜底核验不该影响主流程）。
     """
     try:
-        claimed = extract_claimed_binary_files(output_text)
+        claimed = extract_claimed_files(output_text)
         if not claimed:
             return None
         adir = Path(artifacts_dir)
