@@ -28,6 +28,8 @@ import { usePendingMessages } from "@/hooks/use-pending-messages"
 
 import { useConversationSession } from "@/hooks/use-conversation-session"
 
+import { useStreamCleanupOnUnmount } from "@/hooks/use-stream-cleanup-on-unmount"
+
 import {
   prepareDisplayMessages,
   parseDbMessageId,
@@ -415,22 +417,9 @@ export function ConversationChatView({
     }
   }, [conversationId])
 
-  // 卸载（切走会话 / 切联系人 / 群深链 remount）时断开本会话尚在进行的 SSE 连接：
-  // - resume 流由 transport 内部独立 AbortController 持有，useChat 卸载**不会**自动中止它；
-  // - live POST 流走 stop()。
-  // 不主动断开会泄漏长连接——浏览器对同源并发连接数有限（HTTP/1.1 ~6），来回切几次就把
-  // 连接池占满，之后所有后台接口（含 GET /messages）都拿不到 socket → 整页「卡死、无法请求」。
-  // 后端 turn 仍在跑，切回会话时 effect 会重新 resume 续上，不丢内容。
-  const stopRef = useRef(stop)
-  useEffect(() => {
-    stopRef.current = stop
-  }, [stop])
-  useEffect(() => {
-    return () => {
-      chatTransport.cancelReconnect()
-      stopRef.current()
-    }
-  }, [])
+  // 卸载（切走会话 / 切联系人 / 群深链 remount）时断开本会话尚在进行的 SSE 连接，
+  // 与 CuratorView 共用同一 hook（避免两处重复——曾因总管面板漏了这步而切回空白）。
+  useStreamCleanupOnUnmount(stop)
 
   // 断流错误（StreamDisconnectedError）已由 onError 触发 resume 续流接管，不是用户
   // 可见的失败；连同主动 abort 一并从展示错误里滤掉，否则会弹「SSE 流在收到终止信号
