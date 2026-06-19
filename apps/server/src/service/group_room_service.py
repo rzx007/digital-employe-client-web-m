@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any
+from typing import Any, Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -41,6 +41,7 @@ def _schedule_stream_start(
     orchestrator_auth_token: str | None = None,
     orchestrator_owned_db: Any | None = None,
     source: str = "group_room",
+    on_started: Callable[[], None] | None = None,
 ) -> None:
     """把 registry.request_start 投递到主事件循环执行。
 
@@ -88,6 +89,17 @@ def _schedule_stream_start(
                     exc_info=True,
                 )
             unregister_group_stream_relay(conversation_id)
+        else:
+            # 真正启动成功（非 REJECTED）才触发回调（如投 accepted 里程碑），
+            # 避免给被拒的僵尸流误报「已接活」。
+            if on_started is not None:
+                try:
+                    on_started()
+                except Exception:
+                    logger.warning(
+                        "on_started callback failed conv=%s", conversation_id,
+                        exc_info=True,
+                    )
 
     try:
         from src.service.agent.orchestrator.runtime import get_main_loop
@@ -305,6 +317,13 @@ def _conclusion_kind(status_val: str) -> str:
     if status_val == "cancelled":
         return "cancelled"
     return "failed"  # interrupted / error
+
+
+def _build_accepted_milestone_text(question: str) -> str:
+    """接活里程碑文案：'收到，开始处理：<任务摘要>'，截断到 40 字内。"""
+    q = (question or "").strip().replace("\n", " ")
+    head = q[:22] + ("…" if len(q) > 22 else "")
+    return f"收到，开始处理：{head}" if head else "收到，开始处理"
 
 
 class GroupRoomService:
@@ -644,6 +663,11 @@ class GroupRoomService:
             messages=request_messages,
             stream_msg_id=assistant_msg.id,
             source="group_room",
+            # 真正启动成功（非 REJECTED）才投 accepted 里程碑——回调在主循环延迟执行，
+            # 故捕获 room.id/member.id 等纯值（不持 ORM 对象，回调里另开独立 Session）。
+            on_started=lambda: GroupRoomService._project_accepted_milestone(
+                room.id, member.id, member_conv_id, question
+            ),
         )
 
         GroupRoomService.update_member_state(db, member, "running")
@@ -729,6 +753,29 @@ class GroupRoomService:
         )
         if new_member_state is not None and member is not None:
             GroupRoomService.update_member_state(db, member, new_member_state)
+
+    @staticmethod
+    def _project_accepted_milestone(
+        room_id: int, member_id: int, member_conv_id: int, question: str
+    ) -> None:
+        """派活成功（非 REJECTED）时投 accepted 里程碑。独立 Session（回调在主循环延迟执行）。"""
+        from src.db.session import get_session_local
+
+        db = get_session_local()()
+        try:
+            room = db.get(GroupRoom, room_id)
+            member = db.get(GroupRoomMember, member_id)
+            if room is None or member is None:
+                return
+            employee = db.get(Employee, member.employee_id)
+            sender_label = employee.name if employee else f"员工#{member.employee_id}"
+            GroupRoomService._project_member_milestone(
+                room=room, db=db, member_employee_id=member.employee_id,
+                sender_label=sender_label, member_conversation_id=member_conv_id,
+                kind="accepted", text=_build_accepted_milestone_text(question),
+            )
+        finally:
+            db.close()
 
     @staticmethod
     def _project_member_conclusion(

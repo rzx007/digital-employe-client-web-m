@@ -38,3 +38,54 @@ def test_conclusion_kind_maps_status_to_milestone_kind():
     assert _conclusion_kind("cancelled") == "cancelled"
     assert _conclusion_kind("interrupted") == "failed"
     assert _conclusion_kind("error") == "failed"
+
+
+def test_dispatch_emits_accepted_milestone():
+    from src.service.group_room_service import _build_accepted_milestone_text
+    text = _build_accepted_milestone_text("帮我写一份关于X的市场调研报告并给出结论建议")
+    assert text.startswith("收到")
+    assert len(text) <= 40
+
+
+def test_schedule_stream_start_fires_on_started_only_when_not_rejected(monkeypatch):
+    """on_started 仅在非 REJECTED 时触发（accepted 不会为僵尸流误报）。"""
+    import src.service.group_room_service as grs
+    from src.service.agent_stream_queue import StartResult
+
+    calls = []
+    calls_result = {"v": None}
+
+    class _FakeRegistry:
+        def request_start(self, **kw):
+            return calls_result["v"]
+
+    # request_start 经 from src.service.stream_registry import registry 在
+    # _schedule_stream_start 内部引用 → 打 stream_registry 模块属性即可。
+    import src.service.stream_registry as sr
+    monkeypatch.setattr(sr, "registry", _FakeRegistry())
+    # 强制走同步兜底分支（取不到主循环 → 直接 _do_start()）
+    import src.service.agent.orchestrator.runtime as rt
+
+    def _boom():
+        raise RuntimeError("no loop in test")
+
+    monkeypatch.setattr(rt, "get_main_loop", _boom)
+
+    # 非 REJECTED → 触发
+    calls_result["v"] = StartResult.STARTED
+    grs._schedule_stream_start(
+        conversation_id=1, agent=object(), messages=[], stream_msg_id=2,
+        source="test", on_started=lambda: calls.append("ok"),
+    )
+    assert calls == ["ok"]
+
+    # REJECTED → 不触发
+    calls.clear()
+    calls_result["v"] = StartResult.REJECTED
+    monkeypatch.setattr(grs, "unregister_group_stream_relay", lambda *a, **k: None)
+    monkeypatch.setattr(sr, "_mark_stream_state_sync", lambda *a, **k: None, raising=False)
+    grs._schedule_stream_start(
+        conversation_id=1, agent=object(), messages=[], stream_msg_id=2,
+        source="test", on_started=lambda: calls.append("ok"),
+    )
+    assert calls == []
