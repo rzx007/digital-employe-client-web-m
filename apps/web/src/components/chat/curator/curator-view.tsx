@@ -40,7 +40,10 @@ import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { useSyncConversationSubtasks } from "@/hooks/use-conversation-subtasks"
 import { useChatStore } from "@/stores/chat-store"
 import { getLastAssistantMessage } from "@/lib/chat/message-query-cache"
-import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
+import {
+  useCuratorTaskExecutions,
+  useCancelTaskExecution,
+} from "@/hooks/use-schedule-monitor-queries"
 import { ACTIVE_TASK_RUN_STATUSES } from "@/types/schedule-monitor"
 
 import { cancelConversationStream } from "@/api/chat"
@@ -369,6 +372,15 @@ export function CuratorView({
     onRetryResumeRef.current = session.retryResumeIfNeeded
   }, [session.onStreamFinish, session.retryResumeIfNeeded])
 
+  // 总管派发的员工任务执行(后台异步跑)。在 handleStop 之前定义，供「点停止=中止所有任务」。
+  const { data: curatorExecutions = [] } =
+    useCuratorTaskExecutions(curatorConversationId)
+  const runningExecutions = curatorExecutions.filter((e) =>
+    ACTIVE_TASK_RUN_STATUSES.has(e.run_status)
+  )
+  const tasksRunning = runningExecutions.length > 0
+  const cancelExec = useCancelTaskExecution(curatorConversationId)
+
   const handleStop = useCallback(async () => {
     stop()
     chatTransport.cancelReconnect()
@@ -379,8 +391,19 @@ export function CuratorView({
         /* best-effort cancel */
       }
     }
+    // 中止所有在跑的员工任务(点停止=真的停掉编排，依赖的后续任务后端会一并跳过)。
+    if (runningExecutions.length > 0) {
+      const results = await Promise.allSettled(
+        runningExecutions.map((e) => cancelExec.mutateAsync(e.id))
+      )
+      if (results.some((r) => r.status === "rejected")) {
+        toast.error("部分任务中止失败，请稍后重试")
+      } else {
+        toast.success(`已中止 ${runningExecutions.length} 个任务`)
+      }
+    }
     session.onStreamStopped()
-  }, [stop, curatorConversationId, session])
+  }, [stop, curatorConversationId, session, runningExecutions, cancelExec])
 
   const prevCuratorConversationIdRef = useRef(curatorConversationId)
 
@@ -435,18 +458,17 @@ export function CuratorView({
   // 也算忙——发送走排队、显忙、不抢占在跑的流（与主对话 ConversationChatView 同源修复）。
   const backendStreaming =
     getLastAssistantMessage(storedMessages)?.streamState === "streaming"
-  // 总管派发的员工任务在后台异步跑时也算忙(发送走排队)。与头部「N 个任务在执行」
-  // 同一份缓存(react-query 去重)。tasksRunning 不进 chatStatus(总管已空闲、无流可停,
-  // 避免误显示停止键)——「显忙」由该指示器承担。
-  const { data: curatorExecutions = [] } =
-    useCuratorTaskExecutions(curatorConversationId)
-  const tasksRunning = curatorExecutions.some((e) =>
-    ACTIVE_TASK_RUN_STATUSES.has(e.run_status)
-  )
-  const streamBusy =
-    status === "submitted" || status === "streaming" || backendStreaming
-  const isBusy = streamBusy || tasksRunning
-  const chatStatus = status === "ready" && streamBusy ? "submitted" : status
+  // 忙 = 总管自身的流在跑 / 后端假结束仍在跑 / 员工任务在后台跑。
+  // (curatorExecutions/tasksRunning/cancelExec 已在 handleStop 前定义。)
+  const isBusy =
+    status === "submitted" ||
+    status === "streaming" ||
+    backendStreaming ||
+    tasksRunning
+  // 忙时(本地 status=ready 但后端/任务在跑)提交按钮显示「停止」(■)，
+  // 点 handleStop 取消总管流并中止所有在跑任务。
+  const chatStatus: typeof status =
+    status === "ready" && isBusy ? "submitted" : status
 
   const displayMessages = useMemo(() => {
     const source = pickMessageDisplaySource(messages, initialMessages, status)

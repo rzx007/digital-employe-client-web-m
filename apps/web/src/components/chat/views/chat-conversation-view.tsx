@@ -19,7 +19,10 @@ import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input
 
 import { useMessagesQuery } from "@/hooks/use-chat-queries"
 
-import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
+import {
+  useCuratorTaskExecutions,
+  useCancelTaskExecution,
+} from "@/hooks/use-schedule-monitor-queries"
 
 import { ACTIVE_TASK_RUN_STATUSES } from "@/types/schedule-monitor"
 
@@ -134,9 +137,11 @@ export function ConversationChatView({
   const { data: curatorExecutions = [] } = useCuratorTaskExecutions(
     contact?.type === "curator" ? conversationId : null
   )
-  const tasksRunning = curatorExecutions.some((e) =>
+  const runningExecutions = curatorExecutions.filter((e) =>
     ACTIVE_TASK_RUN_STATUSES.has(e.run_status)
   )
+  const tasksRunning = runningExecutions.length > 0
+  const cancelExec = useCancelTaskExecution(conversationId)
 
   const onStreamFinishRef = useRef<() => void>(() => {})
   const onRetryResumeRef = useRef<() => boolean>(() => false)
@@ -223,8 +228,28 @@ export function ConversationChatView({
       }
     }
 
+    // 中止所有在跑的员工任务(点停止=真的停掉编排，其依赖的后续任务后端会一并跳过)。
+    if (runningExecutions.length > 0) {
+      const results = await Promise.allSettled(
+        runningExecutions.map((e) => cancelExec.mutateAsync(e.id))
+      )
+      if (results.some((r) => r.status === "rejected")) {
+        toast.error("部分任务中止失败，请稍后重试")
+      } else {
+        toast.success(`已中止 ${runningExecutions.length} 个任务`)
+      }
+    }
+
     session.onStreamStopped()
-  }, [conversationId, session, status, stop, backendStreaming])
+  }, [
+    conversationId,
+    session,
+    status,
+    stop,
+    backendStreaming,
+    runningExecutions,
+    cancelExec,
+  ])
 
   const prevConversationIdRef = useRef(conversationId)
 
@@ -287,7 +312,10 @@ export function ConversationChatView({
   // 含「后端仍在跑」(总管自身的流) + 「员工任务在后台跑」：用于发送决策(走排队)、禁用态。
   const effectiveBusy = isBusy || backendStreaming || tasksRunning
 
-  const chatStatus = status
+  // 忙但本地 status=ready(后端仍在跑/员工任务在后台跑)时，提交按钮显示「停止」(■)，
+  // 点击 handleStop 会取消总管流并中止所有在跑任务。
+  const chatStatus: typeof status =
+    effectiveBusy && status === "ready" ? "submitted" : status
 
   const isSubmitDisabled = useMemo(() => {
     if (effectiveBusy) {
