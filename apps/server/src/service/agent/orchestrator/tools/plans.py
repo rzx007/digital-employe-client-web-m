@@ -81,7 +81,7 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
         if not emp:
             return f"错误：子任务 #{i} 指定的员工 ID={t.get('employee_id')} 不存在。"
 
-    # 幂等闸：同会话已有 pending 计划时拒绝再建，杜绝重复创建（confirmed/cancelled 不拦）。
+    # 幂等闸：同会话已有 pending 计划时，静默合并而非拒绝（confirmed/cancelled 不拦）。
     existing = db.scalars(
         select(OrchestrationPlan)
         .where(
@@ -91,10 +91,102 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
         .order_by(OrchestrationPlan.id.desc())
     ).first()
     if existing is not None:
+        # 静默合并：把本次 tasks 中「员工+任务名」不与已有计划重复的条目追加进去。
+        # 不报错、不诱导 cancel——杜绝组长取消正确计划重建残缺的回归。
+        existing_keys = {
+            (t.employee_id, t.task_name)
+            for t in db.scalars(
+                select(EmployeeTask).where(
+                    EmployeeTask.orchestration_plan_id == existing.id
+                )
+            ).all()
+        }
+        existing_plan_json = json.loads(existing.plan_json or "[]")
+        appended: list[EmployeeTask] = []
+        for t in task_list:
+            key = (t["employee_id"], t["task_name"])
+            if key in existing_keys:
+                continue
+            existing_keys.add(key)
+            cron_expr = t.get("cron")
+            emp = db.get(Employee, t["employee_id"])
+            new_task = EmployeeTask(
+                workspace_id=workspace_id,
+                employee_id=t["employee_id"],
+                employee_name_snapshot=emp.name if emp else "",
+                task_name=t["task_name"],
+                dispatch_type=t.get("dispatch_type", "skill"),
+                skill_id=t.get("skill_id"),
+                cron_expression=cron_expr if cron_expr else "",
+                cron_expression_type="custom",
+                user_prompt=t.get("prompt", ""),
+                task_input_json=json.dumps(
+                    {"output_tier": (t.get("output_tier") or "standard")},
+                    ensure_ascii=False,
+                ),
+                execute_mode="scheduled" if cron_expr else "immediate",
+                source="orchestration",
+                orchestration_plan_id=existing.id,
+                source_conversation_id=conversation_id,
+                priority=t.get("priority", 0),
+                is_active=True,
+            )
+            db.add(new_task)
+            appended.append(new_task)
+            merged_entry = dict(t)
+            merged_entry.pop("depends_on", None)
+            existing_plan_json.append(merged_entry)
+
+        existing.plan_json = json.dumps(existing_plan_json, ensure_ascii=False)
+        existing.total_tasks = len(existing_plan_json)
+        db.add(existing)
+        db.commit()
+        for nt in appended:
+            db.refresh(nt)
+        db.refresh(existing)
+
+        from src.service.workspace_events import WorkspaceEventBus
+
+        all_tasks = db.scalars(
+            select(EmployeeTask)
+            .where(EmployeeTask.orchestration_plan_id == existing.id)
+            .order_by(EmployeeTask.id.asc())
+        ).all()
+        merged_requires_confirmation = compute_requires_confirmation(
+            json.loads(existing.plan_json or "[]")
+        )
+        tasks_for_event = [
+            {
+                "task_id": tk.id,
+                "task_name": tk.task_name,
+                "employee_id": tk.employee_id,
+                "employee_name": tk.employee_name_snapshot or "",
+                "cron": tk.cron_expression or None,
+                "execute_mode": tk.execute_mode,
+            }
+            for tk in all_tasks
+        ]
+        WorkspaceEventBus.push(workspace_id, {
+            "type": "orchestration_plan_generated",
+            "plan_id": existing.id,
+            "summary": existing.user_input or summary,
+            "total_tasks": existing.total_tasks,
+            "requires_confirmation": merged_requires_confirmation,
+            "tasks": tasks_for_event,
+        })
+        plan_json_output = json.dumps({
+            "type": "plan_generated",
+            "plan_id": existing.id,
+            "summary": existing.user_input or summary,
+            "total_tasks": existing.total_tasks,
+            "requires_confirmation": merged_requires_confirmation,
+            "tasks": tasks_for_event,
+        }, ensure_ascii=False)
         return (
-            f"错误：本会话已有待确认计划 #{existing.id}（status=pending）。"
-            f"请改用 update_task 调整，或先 cancel_plan({existing.id})，"
-            "不要重复创建新计划。"
+            plan_json_output
+            + "\n\n"
+            + f"已并入计划 #{existing.id}，现含 {existing.total_tasks} 个子任务。"
+            f"如需调整任务用 update_task；无需重新创建，请告知用户在卡片确认。"
         )
 
     # message_id：绑定到本会话最近一条 assistant 消息（总管上下文不暴露当前消息 id，
