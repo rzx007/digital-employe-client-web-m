@@ -1,8 +1,7 @@
 """LLM httpx timeout 解耦测试。
 
-read 超时设为 None（无限）：长命令/长任务期间「两个 chunk 之间」的空闲不再被
-底层 HTTP 误杀，判「模型挂死」交给应用层活动看门狗 + 900s no_content watchdog。
-connect/write/pool 仍有限，不放大。
+read 超时设为 180s（有限，与 agent_chunk_timeout 对齐）：命令耗时由 shell 超时转后台
+承接，read 回归 chunk 间隙语义。connect/write/pool 也有限，不放大。
 """
 
 from __future__ import annotations
@@ -27,7 +26,7 @@ def _resolve_timeout(chat: object) -> httpx.Timeout:
     return rt
 
 
-def test_read_timeout_is_none_others_finite() -> None:
+def test_read_timeout_is_finite_180_others_finite() -> None:
     chat = build_chat_model(
         model="deepseek-chat",
         api_key="test-key",
