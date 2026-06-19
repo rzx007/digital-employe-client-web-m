@@ -255,6 +255,7 @@ export function CuratorView({
   onOpenConversations,
   onNewConversation,
   isCreatingConversation,
+  getExtraMetadata,
   className,
   ...props
 }: ComponentProps<"div"> & {
@@ -271,6 +272,11 @@ export function CuratorView({
   onOpenConversations?: () => void
   onNewConversation?: () => void
   isCreatingConversation?: boolean
+  /**
+   * 仅工作台场景传入：返回随发送请求附带的额外 metadata（如「工作台现状」快照），
+   * 会并入 pendingMeta → 服务端 extra_meta。不传时默认 undefined，其他总管/员工会话不受影响。
+   */
+  getExtraMetadata?: () => Record<string, unknown> | undefined
 }) {
   const [inputValue, setInputValue] = useState("")
   const [command, setCommand] = useState<{ id: string; title: string } | null>(
@@ -501,11 +507,13 @@ export function CuratorView({
         }
       }
 
+      const extra = getExtraMetadata?.()
       const pendingMeta = {
         command: command ? { id: command.id, title: command.title } : undefined,
         mentions: mentions.length > 0 ? mentions : undefined,
         files: filesMeta,
         voice: voiceMeta,
+        ...(extra ?? {}),
       }
 
       try {
@@ -567,6 +575,7 @@ export function CuratorView({
       curatorContactId,
       contact,
       updateTitleMutation,
+      getExtraMetadata,
     ]
   )
 

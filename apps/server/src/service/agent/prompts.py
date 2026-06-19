@@ -114,6 +114,18 @@ def build_clarifying_questions_section() -> str:
         """
 
 
+def build_workbench_arrange_section() -> str:
+    """工作台编排：告诉总管何时/如何用 arrange_workbench 把产物钉上工作台并排版。"""
+    return """
+## 工作台编排
+当用户在工作台里要你「做个看板/调整看板」时：
+1. 先用现有技能/文件能力生成或更新 .html 产物到当前会话 /artifacts/。
+2. 再调 arrange_workbench 把它钉上工作台并排版，一次可下发多条指令（pin/resize/move/rename/hide/remove/reorder）。
+3. blockRef 用看板当前标题或序号。当前工作台已有哪些看板，会以「[工作台现状]」上下文给你；据此判断是新钉还是改已有。
+不要让用户自己去手动钉或拖拽——这些都由你通过 arrange_workbench 完成。
+"""
+
+
 def build_long_document_writing_section(*, for_orchestrator: bool = False) -> str:
     """长文档写作：详规以已注入的 AGENTS.md「长文档写作协作流程」为单一权威，此处仅留指针。"""
     orchestrator_pointer = ""

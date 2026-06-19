@@ -114,6 +114,13 @@ export type ClassifiedBlock =
       resultText: string | null
     }
   | {
+      kind: "workbench-arrange"
+      key: string
+      toolCallId?: string
+      operations: import("@/types/workbench").WorkbenchArrangeOp[]
+      summary: string
+    }
+  | {
       kind: "recruitment-candidates"
       key: string
       toolCallId: string

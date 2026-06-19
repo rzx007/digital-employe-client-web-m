@@ -22,6 +22,7 @@ import {
 import { ensureCuratorConversationAndSelect } from "@/lib/chat/curator-conversation-actions"
 import { getContactId } from "@/lib/chat/contact-utils"
 import { resolveWorkbenchCuratorPanel } from "./resolve-workbench-curator-panel"
+import { buildWorkbenchSnapshot } from "@/lib/workbench/workbench-context"
 import {
   useConversationsQuery,
   useCuratorConversationQuery,
@@ -326,6 +327,7 @@ export function WorkbenchContentSplit({
         onOpenResourceFile={handleOpenResourceFile}
         onOpenConversations={handleOpenCuratorConversations}
         onNewConversation={handleNewCuratorConversation}
+        getExtraMetadata={() => ({ workbench: buildWorkbenchSnapshot() })}
       />
     )
   }
