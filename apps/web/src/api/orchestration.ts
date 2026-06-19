@@ -62,6 +62,7 @@ export interface OrchestrationDeliverable {
   task_id: number
   task_name: string
   action: string
+  size?: number | null
 }
 
 export interface OrchestrationPlanFull {

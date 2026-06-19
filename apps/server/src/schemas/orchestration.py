@@ -59,6 +59,7 @@ class OrchestrationDeliverable(BaseModel):
     task_id: int
     task_name: str
     action: str = "created"
+    size: int | None = None
 
 
 class OrchestrationPlanDetail(BaseModel):

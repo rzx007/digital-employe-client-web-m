@@ -33,6 +33,8 @@ const FILE_ROW =
 interface FileChangeCardsProps {
   files: FileChangeItem[]
   className?: string
+  /** 头部标签；默认「本轮文件变更」，总管交付物聚合可传「团队交付物」。 */
+  title?: string
 }
 
 function getIcon(file: FileChangeItem) {
@@ -296,7 +298,11 @@ function IntermediateSection({
   )
 }
 
-export function FileChangeCards({ files, className }: FileChangeCardsProps) {
+export function FileChangeCards({
+  files,
+  className,
+  title = "本轮文件变更",
+}: FileChangeCardsProps) {
   const curatorFile = useCuratorFile()
   const openResource = useArtifactStore((s) => s.openResource)
   const openHtmlPreview = useBrowserStore((s) => s.openHtmlPreview)
@@ -360,7 +366,7 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
     <div className={cn(CARD_SHELL, className)}>
       <div className="mb-2 flex items-center gap-2">
         <span className="text-[10px] font-medium text-muted-foreground @[28rem]/file-changes:text-xs">
-          本轮文件变更
+          {title}
         </span>
         <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
           {mainFiles.length}

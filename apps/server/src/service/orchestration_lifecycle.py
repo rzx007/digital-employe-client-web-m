@@ -90,10 +90,12 @@ def collect_plan_deliverables(db: Session, plan_id: int) -> list[dict]:
             )
             if action is None:
                 continue
-            inp = p.get("input")
-            fp = inp.get("file_path") if isinstance(inp, dict) else None
+            inp = p.get("input") if isinstance(p.get("input"), dict) else {}
+            fp = inp.get("file_path")
             if not isinstance(fp, str) or not fp or not _looks_like_product(fp):
                 continue
+            content = inp.get("content") if action == "created" else inp.get("new_string")
+            size = len(content) if isinstance(content, str) else None
             norm = fp.replace("\\", "/")
             base = norm.rstrip("/").split("/")[-1]
             if norm not in seen:
@@ -104,6 +106,7 @@ def collect_plan_deliverables(db: Session, plan_id: int) -> list[dict]:
                 "task_id": t.id,
                 "task_name": t.task_name,
                 "action": action,
+                "size": size,
             }
 
     plan = db.get(OrchestrationPlan, plan_id)
