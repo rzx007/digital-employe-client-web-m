@@ -7,6 +7,7 @@ import json
 from langchain_core.tools import tool
 from sqlalchemy import select
 
+from src.models.conversation import ConversationMessage
 from src.models.employee import Employee
 from src.models.employee_task import EmployeeTask
 from src.models.orchestration_plan import OrchestrationPlan
@@ -96,9 +97,21 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
             "不要重复创建新计划。"
         )
 
+    # message_id：绑定到本会话最近一条 assistant 消息（总管上下文不暴露当前消息 id，
+    # 故按 id 倒序取最新 assistant 消息；无则留 None）。
+    latest_assistant = db.scalars(
+        select(ConversationMessage)
+        .where(
+            ConversationMessage.conversation_id == conversation_id,
+            ConversationMessage.role == "assistant",
+        )
+        .order_by(ConversationMessage.id.desc())
+    ).first()
+
     plan = OrchestrationPlan(
         workspace_id=workspace_id,
         conversation_id=conversation_id,
+        message_id=(latest_assistant.id if latest_assistant else None),
         user_input=summary,
         plan_json=json.dumps(task_list, ensure_ascii=False),
         status="pending",

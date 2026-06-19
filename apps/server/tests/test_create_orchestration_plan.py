@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.models.conversation import Conversation
+from src.models.conversation import Conversation, ConversationMessage
 from src.models.employee_task import EmployeeTask
 from src.models.orchestration_plan import OrchestrationPlan
 from src.service.agent.orchestrator.runtime import set_context
@@ -138,3 +138,39 @@ def test_create_allowed_after_confirm(db_session, workspace):
         .count()
     )
     assert count == 2
+
+
+def test_create_writes_message_id_from_latest_assistant_msg(
+    db_session, workspace
+):
+    employee = add_employee(db_session, workspace.id, name="执行员工")
+    conv = _make_conv(db_session, workspace)
+
+    # 历史里先有一条 user 消息，再有一条 assistant 消息（最新）。
+    db_session.add(
+        ConversationMessage(
+            conversation_id=conv.id, role="user", content="帮我安排"
+        )
+    )
+    assistant_msg = ConversationMessage(
+        conversation_id=conv.id, role="assistant", content="好的，我来拆解"
+    )
+    db_session.add(assistant_msg)
+    db_session.commit()
+    db_session.refresh(assistant_msg)
+    assistant_id = assistant_msg.id
+
+    set_context(
+        db=db_session,
+        workspace_id=workspace.id,
+        conversation_id=conv.id,
+    )
+
+    _invoke_create(employee)
+
+    plan = (
+        db_session.query(OrchestrationPlan)
+        .filter(OrchestrationPlan.conversation_id == conv.id)
+        .one()
+    )
+    assert plan.message_id == assistant_id
