@@ -36,6 +36,7 @@ import { resolveGroupClarifyTarget } from "@/lib/chat/hitl/group-clarify-target"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
 import { stripGhostComposerAssistants } from "@/lib/chat/group-composer-ghosts"
+import { dedupePlanCardsByPlanId } from "@/lib/chat/dedupe-plan-cards"
 import {
   isLeaderClarifyResolvedInTimeline,
   resolveGroupActiveHitlFromTimeline,
@@ -427,6 +428,9 @@ export function ConversationChatView({
     let source = pickMessageDisplaySource(messages, initialMessages, status)
     if (contact?.type === "group") {
       source = stripGhostComposerAssistants(source)
+      // 同一编排计划被组长会话断流/重连多次投影成多条消息 → 同 plan_id 重复出卡。
+      // 时间线组装层按 plan_id 去重，只在最新一条消息上保留计划卡 part。
+      source = dedupePlanCardsByPlanId(source)
     }
 
     const prepared = prepareDisplayMessages(source)
