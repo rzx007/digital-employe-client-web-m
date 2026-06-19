@@ -84,27 +84,79 @@ def _invoke_create(employee, summary="测试计划"):
     })
 
 
-def test_create_rejects_when_pending_plan_exists(db_session, workspace):
-    employee = add_employee(db_session, workspace.id, name="执行员工")
+def _invoke_create_with(employee, task_name, summary="测试计划"):
+    return create_orchestration_plan.invoke({
+        "summary": summary,
+        "tasks": [{
+            "employee_id": employee.id,
+            "task_name": task_name,
+            "prompt": "执行",
+        }],
+    })
+
+
+def test_second_create_merges_new_task_into_pending_plan(
+    db_session, workspace
+):
+    emp_a = add_employee(db_session, workspace.id, name="员工甲")
+    emp_b = add_employee(db_session, workspace.id, name="员工乙")
     conv = _make_conv(db_session, workspace)
     set_context(
-        db=db_session,
-        workspace_id=workspace.id,
-        conversation_id=conv.id,
+        db=db_session, workspace_id=workspace.id, conversation_id=conv.id
     )
 
-    first = _invoke_create(employee)
+    first = _invoke_create_with(emp_a, "查微博新闻")
     assert "已生成" in first
 
-    second = _invoke_create(employee, summary="重复计划")
-    assert "已有待确认计划" in second
+    second = _invoke_create_with(emp_b, "查小米17价格", summary="补充")
+    assert "cancel" not in second.lower()
+    assert "已并入" in second
 
-    count = (
+    plans = (
         db_session.query(OrchestrationPlan)
         .filter(OrchestrationPlan.conversation_id == conv.id)
+        .all()
+    )
+    assert len(plans) == 1
+    assert plans[0].total_tasks == 2
+    tasks = (
+        db_session.query(EmployeeTask)
+        .filter(EmployeeTask.orchestration_plan_id == plans[0].id)
+        .all()
+    )
+    names = {t.task_name for t in tasks}
+    assert names == {"查微博新闻", "查小米17价格"}
+    import json as _json
+
+    pj = _json.loads(plans[0].plan_json)
+    assert len(pj) == 2
+
+
+def test_second_create_dedupes_same_employee_and_task_name(
+    db_session, workspace
+):
+    emp = add_employee(db_session, workspace.id, name="员工甲")
+    conv = _make_conv(db_session, workspace)
+    set_context(
+        db=db_session, workspace_id=workspace.id, conversation_id=conv.id
+    )
+
+    _invoke_create_with(emp, "查微博新闻")
+    second = _invoke_create_with(emp, "查微博新闻", summary="重申")
+    assert "cancel" not in second.lower()
+
+    plan = (
+        db_session.query(OrchestrationPlan)
+        .filter(OrchestrationPlan.conversation_id == conv.id)
+        .one()
+    )
+    assert plan.total_tasks == 1
+    tcount = (
+        db_session.query(EmployeeTask)
+        .filter(EmployeeTask.orchestration_plan_id == plan.id)
         .count()
     )
-    assert count == 1
+    assert tcount == 1
 
 
 def test_create_allowed_after_confirm(db_session, workspace):
