@@ -28,6 +28,7 @@ import {
 } from "@/lib/chat/message-utils"
 import { shouldIncludeFileChangesForMessage } from "@/lib/chat/file-change-utils"
 import { useConversationSession } from "@/hooks/use-conversation-session"
+import { useStreamCleanupOnUnmount } from "@/hooks/use-stream-cleanup-on-unmount"
 import { getContactId } from "@/lib/chat/contact-utils"
 import { useInvalidateContactsOnTeamChanges } from "@/hooks/use-invalidate-contacts-on-team-changes"
 import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
@@ -392,6 +393,10 @@ export function CuratorView({
       prevCuratorConversationIdRef.current = curatorConversationId
     }
   }, [curatorConversationId])
+
+  // 切到「消息」等菜单使整棵 WorkbenchView 卸载时，断开本会话尚在进行的 SSE。
+  // 缺这步会导致切回工作台后总管气泡空白、要等执行完才显示（见 hook 注释）。
+  useStreamCleanupOnUnmount(stop)
 
   const displayError =
     error &&
