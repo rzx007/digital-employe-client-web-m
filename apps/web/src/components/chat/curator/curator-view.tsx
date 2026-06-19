@@ -447,6 +447,9 @@ export function CuratorView({
     status === "submitted" || status === "streaming" || backendStreaming
   const isBusy = streamBusy || tasksRunning
   const chatStatus = status === "ready" && streamBusy ? "submitted" : status
+  // 排队态：忙但按钮非「停止」(如员工任务后台跑)——发送会进队列，按钮改显「排队」图标。
+  const queueing =
+    isBusy && chatStatus !== "streaming" && chatStatus !== "submitted"
 
   const displayMessages = useMemo(() => {
     const source = pickMessageDisplaySource(messages, initialMessages, status)
@@ -913,6 +916,7 @@ export function CuratorView({
             onSend={handleSendMessage}
             onStop={handleStop}
             status={chatStatus}
+            queueing={queueing}
             submitDisabled={!isBusy && !inputValue.trim()}
             showVoiceInput
             size="compact"

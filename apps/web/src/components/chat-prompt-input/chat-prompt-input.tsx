@@ -11,7 +11,7 @@ import {
   PromptInputTools,
 } from "@workspace/ui/components/ai-elements/prompt-input"
 import { toast } from "sonner"
-import { IconMicrophone } from "@tabler/icons-react"
+import { IconClockHour9, IconMicrophone } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { LexicalPromptInputTextarea } from "../lexical-editor/prompt-input-textarea"
 import { Separator } from "@workspace/ui/components/separator"
@@ -40,8 +40,12 @@ export function ChatPromptInput({
   messages,
   showContextBudget = true,
   showVoiceInput = false,
+  queueing = false,
 }: ChatPromptInputProps) {
   const isCompact = size === "compact"
+  // 排队态(有流/任务在跑、发送会进队列)且按钮非「停止」时，改显「排队」图标+提示。
+  const showQueueAffordance =
+    queueing && status !== "streaming" && status !== "submitted"
 
   const recorder = useVoiceRecorder({
     onResult: (result) => {
@@ -148,7 +152,17 @@ export function ChatPromptInput({
                 status={status}
                 onStop={onStop}
                 className="bg-primary/80 transition-colors hover:bg-primary"
-              />
+                {...(showQueueAffordance
+                  ? {
+                      title: "排队发送（当前有任务在执行，完成后自动发送）",
+                      "aria-label": "排队发送",
+                    }
+                  : {})}
+              >
+                {showQueueAffordance ? (
+                  <IconClockHour9 className="size-4" />
+                ) : undefined}
+              </PromptInputSubmit>
             </>
           )}
         </PromptInputTools>

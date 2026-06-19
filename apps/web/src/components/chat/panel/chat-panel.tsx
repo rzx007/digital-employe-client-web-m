@@ -175,6 +175,7 @@ export function ChatPanel({
   onDraftSuggestionSelect,
   hideHeader = false,
   readOnly = false,
+  queueing,
   className,
   ...props
 }: React.ComponentProps<"div"> & {
@@ -213,6 +214,8 @@ export function ChatPanel({
   hideHeader?: boolean
   /** 只读模式：隐藏底部输入区（如员工任务执行会话钻取，仅查看转录） */
   readOnly?: boolean
+  /** 排队态：发送会进待发队列，提交按钮改显「排队」图标 */
+  queueing?: boolean
 }) {
   const contactDisplayName = contact
     ? getContactDisplayName(contact)
@@ -397,6 +400,7 @@ export function ChatPanel({
                   onHitlApproved={onHitlApproved}
                   activeHitl={activeHitl}
                   status={status}
+                  queueing={queueing}
                   submitDisabled={isSubmitDisabled}
                   placeholder="请输入任务，然后交给我, 键入 / 指定调用技能"
                   size="compact"

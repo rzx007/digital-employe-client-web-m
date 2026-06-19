@@ -52,6 +52,7 @@ export function ChatComposerArea({
   pendingQueueClassName,
   showContextBudget = true,
   showVoiceInput,
+  queueing,
 }: {
   messages: UIMessage[]
   conversationId: string | number | null
@@ -78,6 +79,8 @@ export function ChatComposerArea({
   pendingQueueClassName?: string
   showContextBudget?: boolean
   showVoiceInput?: boolean
+  /** 排队态：发送会进待发队列，提交按钮改显「排队」图标 */
+  queueing?: boolean
 }) {
   const pendingHitl: (PendingHitl & { input: Record<string, unknown> }) | null =
     React.useMemo(() => {
@@ -188,6 +191,7 @@ export function ChatComposerArea({
           messages={messages}
           showContextBudget={showContextBudget}
           showVoiceInput={showVoiceInput && !blocksComposer}
+          queueing={queueing}
         />
       </div>
 
