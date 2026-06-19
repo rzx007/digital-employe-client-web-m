@@ -46,6 +46,15 @@ class ShellExecuteInput(BaseModel):
         ),
     )
 
+    timeout: int | None = Field(
+        default=None,
+        description=(
+            "可选：前台等待上限（秒）。命令在此时间内完成则直接返回结果；超时仍未完成"
+            "则自动转后台运行、返回 session_id（输出不会丢失），用 shell_poll(session_id) 查进度、"
+            "shell_kill(session_id) 终止。预计耗时长的命令建议设较小值（如 30）。"
+        ),
+    )
+
     @field_validator("intent", mode="before")
     @classmethod
     def _normalize_intent(cls, value: object) -> str | None:
@@ -66,18 +75,25 @@ def create_shell_execute_tool(
     async def _arun(
         command: str,
         intent: str | None = None,
+        timeout: int | None = None,
         tool_call_id: Annotated[str, InjectedToolCallId] = "",
     ) -> str:
         del intent
-        response = await shell.aexecute(command, tool_call_id=tool_call_id or None)
+        response = await shell.aexecute(
+            command,
+            timeout=timeout,
+            tool_call_id=tool_call_id or None,
+            allow_background=True,
+        )
         return format_execute_response(response, shell)
 
     def _run(
         command: str,
         intent: str | None = None,
+        timeout: int | None = None,
         tool_call_id: Annotated[str, InjectedToolCallId] = "",
     ) -> str:
-        del intent, tool_call_id
+        del intent, tool_call_id, timeout
         return format_execute_response(shell.execute(command), shell)
 
     return StructuredTool.from_function(
@@ -93,4 +109,54 @@ def create_shell_execute_tool(
             "勿假设 listdir('.') 能扫到 save 到其他盘符路径的文件。"
         ),
         args_schema=ShellExecuteInput,
+    )
+
+
+def create_shell_poll_tool() -> BaseTool:
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    class _PollInput(BaseModel):
+        session_id: str = Field(description="shell_execute 转后台时返回的 session_id")
+        offset: int | None = Field(default=None, description="可选：从该字节偏移继续读，默认接上次")
+
+    def _poll(session_id: str, offset: int | None = None) -> str:
+        r = get_background_shell_registry().poll(session_id, from_offset=offset)
+        if not r.get("found"):
+            return f"未找到后台命令 session_id={session_id}（可能已结束并被回收）。"
+        status = "运行中" if r["running"] else f"已结束(exit_code={r['exit_code']})"
+        body = r["new_output"] or "(无新增输出)"
+        return f"[{status}] 新增输出:\n{body}\n[offset={r['offset']}]"
+
+    return StructuredTool.from_function(
+        func=_poll,
+        name="shell_poll",
+        args_schema=_PollInput,
+        description=(
+            "查询 shell_execute 转后台运行的命令：返回新增 stdout、是否仍在运行、退出码。"
+            "需要结果时再调用，勿空转轮询。"
+        ),
+    )
+
+
+def create_shell_kill_tool() -> BaseTool:
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    class _KillInput(BaseModel):
+        session_id: str = Field(description="要终止的后台命令 session_id")
+
+    def _kill(session_id: str) -> str:
+        r = get_background_shell_registry().kill(session_id)
+        if not r.get("found"):
+            return f"未找到后台命令 session_id={session_id}。"
+        return (
+            f"已终止后台命令 session_id={session_id}。"
+            if r["killed"]
+            else "命令已先行结束，无需终止。"
+        )
+
+    return StructuredTool.from_function(
+        func=_kill,
+        name="shell_kill",
+        args_schema=_KillInput,
+        description="终止 shell_execute 转后台运行的命令。",
     )

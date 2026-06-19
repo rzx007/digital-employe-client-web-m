@@ -22,3 +22,41 @@ def test_shell_execute_input_accepts_quoted_intent() -> None:
         intent='"安装python-pptx和Pillow"',
     )
     assert parsed.intent == "安装python-pptx和Pillow"
+
+
+def test_shell_execute_input_accepts_timeout():
+    from src.service.agent.shell_execute_tool import ShellExecuteInput
+    m = ShellExecuteInput(command="echo hi", timeout=30)
+    assert m.timeout == 30
+    assert ShellExecuteInput(command="echo hi").timeout is None
+
+
+def test_poll_and_kill_tools_call_registry(tmp_path):
+    import subprocess, sys, tempfile
+    from src.service.agent.shell_execute_tool import (
+        create_shell_poll_tool, create_shell_kill_tool,
+    )
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    reg = get_background_shell_registry()
+    tmp = tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".stdout"); tmp.close()
+    h = open(tmp.name, "ab")
+    p = subprocess.Popen([sys.executable, "-u", "-c", "print('hi', flush=True)"],
+                         stdout=h, stderr=subprocess.STDOUT)
+    h.close()
+    p.wait()  # 让子进程先退出，避免 kill 走 taskkill /T 把 pytest 自身带走（Windows进程树）
+    sid = reg.register(popen=p, tmp_path=tmp.name, read_offset=0, command="t")
+
+    poll_tool = create_shell_poll_tool()
+    out = poll_tool.invoke({"session_id": sid})
+    assert isinstance(out, str)
+
+    kill_tool = create_shell_kill_tool()
+    kout = kill_tool.invoke({"session_id": sid})
+    assert isinstance(kout, str)
+
+
+def test_poll_unknown_session_message():
+    from src.service.agent.shell_execute_tool import create_shell_poll_tool
+    out = create_shell_poll_tool().invoke({"session_id": "nope"})
+    assert "未找到" in out
