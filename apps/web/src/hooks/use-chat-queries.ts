@@ -221,6 +221,7 @@ export function useOrchestrationPlansQuery(
           id: number
           workspace_id: number
           conversation_id: number
+          message_id: number | null
           user_input: string
           plan_json: string
           status: string
