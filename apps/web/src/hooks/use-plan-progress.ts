@@ -1,3 +1,4 @@
+// NOTE(2026-06-19): 计划卡已改为后端权威态驱动，本 hook 暂无引用方（保留以备未来「领先提示」复用）。
 import { useEffect, useState } from "react"
 
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
