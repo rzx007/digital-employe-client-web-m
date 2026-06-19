@@ -289,11 +289,6 @@ export function ConversationChatView({
 
   const chatStatus = status
 
-  // 排队态：忙但按钮非「停止」(无可停止的流，如员工任务后台跑/SSE假结束)——发送会进队列，
-  // 提交按钮改显「排队」图标。
-  const queueing =
-    effectiveBusy && chatStatus !== "streaming" && chatStatus !== "submitted"
-
   const isSubmitDisabled = useMemo(() => {
     if (effectiveBusy) {
       return false
@@ -461,7 +456,6 @@ export function ConversationChatView({
       composerMessages={messages}
       inputValue={inputValue}
       status={chatStatus}
-      queueing={queueing}
       storedAssistantStreamState={lastStoredStreamState}
       error={displayError}
       isDraftMode={false}

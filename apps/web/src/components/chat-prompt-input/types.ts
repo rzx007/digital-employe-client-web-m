@@ -42,9 +42,4 @@ export interface ChatPromptInputProps {
   showContextBudget?: boolean
   /** 是否显示语音输入（麦克风）按钮；群聊等场景传 false，默认 false */
   showVoiceInput?: boolean
-  /**
-   * 排队态：当前有流/任务在跑，发送会进待发队列(而非立即发送)。
-   * status 仍为 ready(无可停止的流)，但提交按钮改显「排队」图标+提示，避免误以为立即发送。
-   */
-  queueing?: boolean
 }
