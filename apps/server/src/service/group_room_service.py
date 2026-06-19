@@ -286,6 +286,9 @@ def build_leader_brief(
         "- 用户**已 respond 提交过澄清答案**后：同一任务流程内**不得再次**澄清，"
         "直接按用户答案拆解派活。\n"
         f"{plan_step}"
+        "- **一个需求只建一个计划**：所有子任务放进同一次 `create_orchestration_plan` "
+        "的 `tasks` 数组里一次性提交；**禁止**为单个子任务或「总计划」分批/嵌套地多次 "
+        "create（会拆出多份并行计划、破坏依赖图）。要调整已建计划用 `update_task`，不要再 create。\n"
         "成员产出会自动汇总到群里。\n\n"
         f"用户需求：{question}"
     )
