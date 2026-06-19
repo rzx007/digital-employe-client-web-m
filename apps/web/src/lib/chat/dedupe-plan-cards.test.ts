@@ -28,6 +28,25 @@ function leaderMessage(id: string, planId: number): UIMessage {
   } as unknown as UIMessage
 }
 
+/** 组长会话的工具结果实际形态：plan_generated 载荷被包成 {status,text} 双层编码。 */
+function wrappedPlanPart(planId: number, totalTasks: number) {
+  return {
+    type: "tool-create_orchestration_plan" as const,
+    toolCallId: `call-${planId}-${totalTasks}`,
+    state: "output-available" as const,
+    input: { summary: "计划", tasks: [] },
+    output: JSON.stringify({
+      status: "success",
+      text: JSON.stringify({
+        type: "plan_generated",
+        plan_id: planId,
+        summary: "计划",
+        total_tasks: totalTasks,
+      }),
+    }),
+  }
+}
+
 function countPlanParts(messages: UIMessage[]): number {
   let n = 0
   for (const m of messages) {
@@ -40,19 +59,13 @@ function countPlanParts(messages: UIMessage[]): number {
 
 describe("dedupePlanCardsByPlanId", () => {
   it("keeps only one plan part when two messages carry the same plan_id", () => {
-    const messages = [
-      leaderMessage("m1", 45),
-      leaderMessage("m2", 45),
-    ]
+    const messages = [leaderMessage("m1", 45), leaderMessage("m2", 45)]
     const out = dedupePlanCardsByPlanId(messages)
     expect(countPlanParts(out)).toBe(1)
   })
 
   it("keeps the plan part on the LATEST message (most up-to-date state)", () => {
-    const messages = [
-      leaderMessage("m1", 45),
-      leaderMessage("m2", 45),
-    ]
+    const messages = [leaderMessage("m1", 45), leaderMessage("m2", 45)]
     const out = dedupePlanCardsByPlanId(messages)
     const last = out[out.length - 1]
     expect(
@@ -69,15 +82,30 @@ describe("dedupePlanCardsByPlanId", () => {
     const out = dedupePlanCardsByPlanId(messages)
     expect(out).toHaveLength(2)
     // 仍保留正文 text part
-    expect(
-      out[0].parts.some((p) => p.type === "text")
-    ).toBe(true)
+    expect(out[0].parts.some((p) => p.type === "text")).toBe(true)
   })
 
   it("keeps distinct plan_ids as separate cards", () => {
     const messages = [leaderMessage("m1", 45), leaderMessage("m2", 46)]
     const out = dedupePlanCardsByPlanId(messages)
     expect(countPlanParts(out)).toBe(2)
+  })
+
+  it("folds two {status,text}-wrapped parts of the same plan_id on ONE message", () => {
+    // 组长一轮里两次 create_orchestration_plan（首建 2 任务 + 合并后 3 任务），
+    // 两个工具结果都落在同一条组长消息上、同 plan_id（199）、外层是 {status,text}。
+    // 拆壳前 plan_id 取不到 → 不折叠 → 渲染两张卡（截图 bug）。拆壳后应折成一张。
+    const msg = {
+      id: "m1",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "需求清晰，我来安排。", state: "done" },
+        wrappedPlanPart(199, 2),
+        wrappedPlanPart(199, 3),
+      ],
+    } as unknown as UIMessage
+    const out = dedupePlanCardsByPlanId([msg])
+    expect(countPlanParts(out)).toBe(1)
   })
 
   it("returns the same array reference when there is nothing to dedupe", () => {
