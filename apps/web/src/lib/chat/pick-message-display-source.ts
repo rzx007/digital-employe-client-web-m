@@ -185,13 +185,7 @@ export function hydrateEmptyAssistantShellsFromDb(
     const stored = storedById.get(String(dbId))
     if (!stored?.parts?.length) return liveMsg
     changed = true
-    return {
-      ...liveMsg,
-      parts: stored.parts,
-      metadata: {
-        ...(readMetadata(liveMsg) ?? {}),
-      },
-    } as UIMessage
+    return { ...liveMsg, parts: stored.parts } as UIMessage
   })
   return changed ? next : liveMessages
 }

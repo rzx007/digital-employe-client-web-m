@@ -117,4 +117,46 @@ describe("pickMessageDisplaySource", () => {
     const out = pickMessageDisplaySource(live, stored, "streaming")
     expect(out.find((m) => m.id === "99")?.parts?.length).toBe(0)
   })
+
+  it("streaming 期：无空壳可填 → 返回同一引用(no-op,避免重渲染churn)", () => {
+    const live: UIMessage[] = [
+      { id: "1", role: "user", parts: [{ type: "text", text: "hi" }] },
+      {
+        id: "99",
+        role: "assistant",
+        parts: [{ type: "text", text: "已有内容" }],
+        metadata: { streamState: "streaming" },
+      },
+    ]
+    const stored: UIMessage[] = [
+      {
+        id: "99",
+        role: "assistant",
+        parts: [{ type: "text", text: "DB" }],
+        metadata: { streamState: "streaming" },
+      },
+    ]
+    const out = pickMessageDisplaySource(live, stored, "streaming")
+    expect(out).toBe(live)
+  })
+
+  it("streaming 期：空壳在中间(非末条)也能从 DB 回退", () => {
+    const live: UIMessage[] = [
+      { id: "50", role: "assistant", parts: [], metadata: { streamState: "streaming" } },
+      { id: "u2", role: "user", parts: [{ type: "text", text: "下一句" }] },
+    ]
+    const stored: UIMessage[] = [
+      {
+        id: "50",
+        role: "assistant",
+        parts: [{ type: "text", text: "中间那条的正文" }],
+        metadata: { streamState: "streaming" },
+      },
+      { id: "u2", role: "user", parts: [{ type: "text", text: "下一句" }] },
+    ]
+    const out = pickMessageDisplaySource(live, stored, "streaming")
+    expect(out.find((m) => m.id === "50")?.parts?.[0]).toMatchObject({
+      text: "中间那条的正文",
+    })
+  })
 })
