@@ -93,7 +93,7 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
     if existing is not None:
         return (
             f"错误：本会话已有待确认计划 #{existing.id}（status=pending）。"
-            f"请改用 update_task 调整，或先 cancel_orchestration_plan({existing.id}），"
+            f"请改用 update_task 调整，或先 cancel_plan({existing.id})，"
             "不要重复创建新计划。"
         )
 
