@@ -678,6 +678,46 @@ class GroupRoomService:
         task.subscribe(_on_event)
 
     @staticmethod
+    def _project_member_milestone(
+        *,
+        room,
+        db,
+        member_employee_id: int | None,
+        sender_label: str,
+        member_conversation_id: int | None,
+        kind: str,
+        text: str,
+        artifacts: list[str] | None = None,
+        new_member_state: str | None = None,
+        member=None,
+    ):
+        """统一的成员里程碑投影：把一条带 role+milestone 的消息写到群时间线。
+
+        kind: accepted|progress|delivered|failed|cancelled
+        new_member_state/member: 给出时顺带更新成员状态。
+        """
+        extra_meta = {
+            "role": "worker",
+            "member_conversation_id": member_conversation_id,
+            "milestone": {
+                "kind": kind,
+                "text": text,
+                **({"artifacts": artifacts} if artifacts else {}),
+            },
+        }
+        GroupRoomService.post_to_timeline(
+            db, room,
+            role="assistant",
+            content=text,
+            sender_id=member_employee_id,
+            sender_label=sender_label,
+            extra_meta=extra_meta,
+            source_conversation_id=member_conversation_id,
+        )
+        if new_member_state is not None and member is not None:
+            GroupRoomService.update_member_state(db, member, new_member_state)
+
+    @staticmethod
     def _project_member_conclusion(
         room_id: int, member_id: int, member_conv_id: int, status_val: str
     ) -> None:
@@ -705,15 +745,12 @@ class GroupRoomService:
                 content = (last.content or "").strip() if last else ""
                 if not content:
                     content = "（已完成）"
-                GroupRoomService.post_to_timeline(
-                    db, room,
-                    role="assistant",
-                    content=content,
-                    sender_id=member.employee_id,
-                    sender_label=sender_label,
-                    extra_meta={"member_conversation_id": member_conv_id},
+                GroupRoomService._project_member_milestone(
+                    room=room, db=db, member_employee_id=member.employee_id,
+                    sender_label=sender_label, member_conversation_id=member_conv_id,
+                    kind="delivered", text=content,
+                    new_member_state="done", member=member,
                 )
-                GroupRoomService.update_member_state(db, member, "done")
             else:
                 if status_val == "cancelled":
                     body = f"⏹️ {sender_label}的任务已被取消。"
@@ -726,18 +763,16 @@ class GroupRoomService:
                         "，请稍后重试；若反复失败请检查模型设置"
                         "（API Key / Base URL / 模型名）。"
                     )
-                GroupRoomService.post_to_timeline(
-                    db, room,
-                    role="assistant",
-                    content=body,
-                    sender_id=member.employee_id,
-                    sender_label=sender_label,
-                    extra_meta={
-                        "member_conversation_id": member_conv_id,
-                        "stream_state": status_val,
-                    },
+                kind = (
+                    "cancelled" if status_val == "cancelled"
+                    else "failed"  # interrupted 也归 failed 区，文案区分见 body
                 )
-                GroupRoomService.update_member_state(db, member, "ready")
+                GroupRoomService._project_member_milestone(
+                    room=room, db=db, member_employee_id=member.employee_id,
+                    sender_label=sender_label, member_conversation_id=member_conv_id,
+                    kind=kind, text=body,
+                    new_member_state="ready", member=member,
+                )
         finally:
             db.close()
 
