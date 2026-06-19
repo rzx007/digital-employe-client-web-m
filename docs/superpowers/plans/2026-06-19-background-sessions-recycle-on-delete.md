@@ -68,6 +68,8 @@ Expected: 能 grep 到 `backgroundSessions: Set<string>` / `noteBackgroundOpen` 
 
 说明：`clearBackground`/`noteBackgroundOpen` 已实现且幂等，但当前测试文件未覆盖。先补测试锁定「删除回收」依赖的核心契约（幂等 + 精确删除）。这是 TDD 里「为已存在但未测的契约补网」，测试应直接通过。
 
+> **合并后实测注意（重要）**：合进 dev 后 `backgroundSessions` 是 **`Map<string, string>`**（conversationId → 最后导航 url），不是 spec 早前假设的 `Set<string>`；`noteBackgroundOpen(conversationId, url)` **需要第二个 `url` 参数**。`.has(id)` 在 Map 上同样可用，回收逻辑 `clearBackground(id)` 不变。下面测试代码已按 Map API 写。
+
 - [ ] **Step 1: 追加测试块**
 
 在 `apps/web/src/stores/browser-store.test.ts` 末尾追加（保持文件已有的 import/mock 不动；现有 mock 已覆盖 artifact/chat/monitor store，`clearBackground`/`noteBackgroundOpen` 不触达 electron，无需新增 mock）：
@@ -80,8 +82,8 @@ describe("browser-store backgroundSessions 回收契约", () => {
 
   it("noteBackgroundOpen 记录后台会话，clearBackground 精确删除单个 id", () => {
     const store = useBrowserStore.getState()
-    store.noteBackgroundOpen("a")
-    store.noteBackgroundOpen("b")
+    store.noteBackgroundOpen("a", "https://a.example")
+    store.noteBackgroundOpen("b", "https://b.example")
     expect(useBrowserStore.getState().backgroundSessions.has("a")).toBe(true)
     expect(useBrowserStore.getState().backgroundSessions.has("b")).toBe(true)
 
@@ -93,14 +95,14 @@ describe("browser-store backgroundSessions 回收契约", () => {
 
   it("clearBackground 对不存在的 id 幂等、不抛错、不误删", () => {
     const store = useBrowserStore.getState()
-    store.noteBackgroundOpen("b")
+    store.noteBackgroundOpen("b", "https://b.example")
     expect(() => store.clearBackground("nope")).not.toThrow()
     expect(useBrowserStore.getState().backgroundSessions.has("b")).toBe(true)
   })
 
   it("reset 故意保留 backgroundSessions（跨前台留存）", () => {
     const store = useBrowserStore.getState()
-    store.noteBackgroundOpen("b")
+    store.noteBackgroundOpen("b", "https://b.example")
     store.reset()
     expect(useBrowserStore.getState().backgroundSessions.has("b")).toBe(true)
   })
