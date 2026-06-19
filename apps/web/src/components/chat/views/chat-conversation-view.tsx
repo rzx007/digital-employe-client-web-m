@@ -19,7 +19,10 @@ import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
 
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
 
-import { useMessagesQuery } from "@/hooks/use-chat-queries"
+import {
+  useMessagesQuery,
+  useOrchestrationPlansQuery,
+} from "@/hooks/use-chat-queries"
 
 import { usePendingMessages } from "@/hooks/use-pending-messages"
 
@@ -36,7 +39,10 @@ import { resolveGroupClarifyTarget } from "@/lib/chat/hitl/group-clarify-target"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
 import { stripGhostComposerAssistants } from "@/lib/chat/group-composer-ghosts"
-import { dedupePlanCardsByPlanId } from "@/lib/chat/dedupe-plan-cards"
+import {
+  dedupePlanCardsByMessageId,
+  dedupePlanCardsByPlanId,
+} from "@/lib/chat/dedupe-plan-cards"
 import {
   isLeaderClarifyResolvedInTimeline,
   resolveGroupActiveHitlFromTimeline,
@@ -176,6 +182,12 @@ export function ConversationChatView({
 
     isError: isMessagesError,
   } = useMessagesQuery(conversationId)
+
+  // 一轮里组长可能产出多份不同 plan_id 的计划，后端给每份盖上同一条组长消息的 message_id；
+  // 拉编排计划元数据用于按 message_id 折叠计划卡（仅群会话需要）。
+  const { data: orchestrationPlans } = useOrchestrationPlansQuery(
+    contact?.type === "group" ? conversationId : null
+  )
 
   useEffect(() => {
     if (isMessagesError) {
@@ -428,9 +440,20 @@ export function ConversationChatView({
     let source = pickMessageDisplaySource(messages, initialMessages, status)
     if (contact?.type === "group") {
       source = stripGhostComposerAssistants(source)
-      // 同一编排计划被组长会话断流/重连多次投影成多条消息 → 同 plan_id 重复出卡。
-      // 时间线组装层按 plan_id 去重，只在最新一条消息上保留计划卡 part。
-      source = dedupePlanCardsByPlanId(source)
+      // 优先按 message_id 折叠：一轮里组长可能产出多份不同 plan_id 的计划，它们共享
+      // 同一条组长消息的 message_id → 折成一张卡。缺编排计划元数据时回退到按 plan_id 去重
+      // （同一计划被断流/重连多次投影成多条消息 → 同 plan_id 重复出卡）。
+      if (orchestrationPlans && orchestrationPlans.length > 0) {
+        const planMetaById = new Map(
+          orchestrationPlans.map((p) => [
+            p.id,
+            { messageId: p.message_id ?? null },
+          ])
+        )
+        source = dedupePlanCardsByMessageId(source, planMetaById)
+      } else {
+        source = dedupePlanCardsByPlanId(source)
+      }
     }
 
     const prepared = prepareDisplayMessages(source)
@@ -440,7 +463,14 @@ export function ConversationChatView({
       return [...prepared, ...extraStreamingMessages]
     }
     return prepared
-  }, [contact?.type, initialMessages, messages, status, extraStreamingMessages])
+  }, [
+    contact?.type,
+    initialMessages,
+    messages,
+    status,
+    extraStreamingMessages,
+    orchestrationPlans,
+  ])
 
   // 群 SSE 仅 ack+[DONE]，useChat 会留下空 assistant；流结束后清掉 composer 残留。
   useEffect(() => {

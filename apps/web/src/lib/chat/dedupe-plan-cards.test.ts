@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest"
 
 import type { UIMessage } from "ai"
 
-import { dedupePlanCardsByPlanId } from "./dedupe-plan-cards"
+import {
+  dedupePlanCardsByMessageId,
+  dedupePlanCardsByPlanId,
+} from "./dedupe-plan-cards"
 
 function planPart(planId: number) {
   return {
@@ -93,5 +96,63 @@ describe("dedupePlanCardsByPlanId", () => {
     const out = dedupePlanCardsByPlanId(messages)
     expect(countPlanParts(out)).toBe(1)
     expect(out).toHaveLength(3)
+  })
+})
+
+describe("dedupePlanCardsByMessageId", () => {
+  it("folds different plan_ids that map to the same message_id", () => {
+    const messages = [leaderMessage("m1", 1), leaderMessage("m2", 2)]
+    const planMetaById = new Map([
+      [1, { messageId: 99 }],
+      [2, { messageId: 99 }],
+    ])
+    const out = dedupePlanCardsByMessageId(messages, planMetaById)
+    // 同一条组长消息(99)下的多份 plan 只保留最新一条消息上的卡。
+    expect(countPlanParts(out)).toBe(1)
+    const last = out[out.length - 1]
+    expect(
+      last.parts.some((p) => p.type === "tool-create_orchestration_plan")
+    ).toBe(true)
+    const first = out[0]
+    expect(
+      first.parts.some((p) => p.type === "tool-create_orchestration_plan")
+    ).toBe(false)
+    // 早消息的其余 part 保留。
+    expect(first.parts.some((p) => p.type === "text")).toBe(true)
+  })
+
+  it("keeps plans that map to different message_ids", () => {
+    const messages = [leaderMessage("m1", 1), leaderMessage("m2", 2)]
+    const planMetaById = new Map([
+      [1, { messageId: 99 }],
+      [2, { messageId: 100 }],
+    ])
+    const out = dedupePlanCardsByMessageId(messages, planMetaById)
+    expect(countPlanParts(out)).toBe(2)
+  })
+
+  it("falls back to plan_id when message_id is missing or null", () => {
+    const messages = [leaderMessage("m1", 1), leaderMessage("m2", 2)]
+    // plan 1 缺 meta，plan 2 的 messageId 为 null → 各自按 plan_id 独立成卡，不因缺 message_id 互相折叠。
+    const planMetaById = new Map([[2, { messageId: null }]])
+    const out = dedupePlanCardsByMessageId(messages, planMetaById)
+    expect(countPlanParts(out)).toBe(2)
+  })
+
+  it("still folds repeats of the same plan_id when message_id absent", () => {
+    const messages = [leaderMessage("m1", 7), leaderMessage("m2", 7)]
+    const planMetaById = new Map<number, { messageId: number | null }>()
+    const out = dedupePlanCardsByMessageId(messages, planMetaById)
+    expect(countPlanParts(out)).toBe(1)
+  })
+
+  it("returns the same array reference when there is nothing to dedupe", () => {
+    const messages = [leaderMessage("m1", 1), leaderMessage("m2", 2)]
+    const planMetaById = new Map([
+      [1, { messageId: 99 }],
+      [2, { messageId: 100 }],
+    ])
+    const out = dedupePlanCardsByMessageId(messages, planMetaById)
+    expect(out).toBe(messages)
   })
 })
