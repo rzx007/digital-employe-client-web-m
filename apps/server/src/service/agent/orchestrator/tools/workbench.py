@@ -8,7 +8,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from collections.abc import Callable
+from pathlib import PurePath
 
 from langchain_core.tools import tool
 
@@ -51,12 +52,14 @@ def _normalize_pos(pos: object) -> dict[str, int] | None:
 
 def normalize_operations(
     ops: object,
-    valid_paths: set[str],
+    resolve_path: Callable[[str], str | None],
 ) -> tuple[list[dict], list[str]]:
     """校验并归一化一批 operations。
 
     返回 (归一化后的合法 operations, 错误信息列表)。
-    - pin 的 resourcePath 必须在 valid_paths 内，否则记错误且该 op 丢弃。
+    - pin 的 resourcePath（模型给的文件名 / 路径）经 resolve_path 解析为**真实绝对磁盘路径**；
+      解析不到（产物不存在）则记错误且该 op 丢弃。归一化后的 pin 携带真实绝对路径，
+      与手动钉/资源管理器同一套（前端 content API 凭此取源码）。
     - span 档位字符串归一化为 {w,h}。
     - 未知 op 记错误且丢弃。
     ops 必须是 list，否则抛 ValueError。
@@ -74,14 +77,20 @@ def normalize_operations(
         kind = op["op"]
 
         if kind == "pin":
-            path = op.get("resourcePath")
-            if not isinstance(path, str) or path not in valid_paths:
+            ref = op.get("resourcePath")
+            real_path = resolve_path(ref) if isinstance(ref, str) else None
+            if real_path is None:
+                hint = ""
+                available = getattr(resolve_path, "available_names", None)
+                if available:
+                    hint = f"当前可钉的 .html：{', '.join(sorted(available))}。"
+                else:
+                    hint = "当前会话还没有 .html 产物，请先用 write_file 生成。"
                 errors.append(
-                    f"operations[{i}]：产物 {path!r} 在当前会话 /artifacts/ 下不存在，"
-                    "请先确认文件名或重新生成"
+                    f"operations[{i}]：产物 {ref!r} 找不到。{hint}"
                 )
                 continue
-            norm = {"op": "pin", "resourcePath": path}
+            norm = {"op": "pin", "resourcePath": real_path}
             if isinstance(op.get("title"), str):
                 norm["title"] = op["title"]
             if "span" in op:
@@ -134,20 +143,62 @@ def normalize_operations(
     return out, errors
 
 
-def _current_conversation_html_paths() -> set[str]:
-    """列出当前总管会话 /artifacts/ 下的 .html 文件（虚拟路径形式 /artifacts/x.html）。"""
+def build_html_resolver_from_entries(
+    entries: list[dict] | list,
+) -> Callable[[str], str | None]:
+    """从资源条目（每条含 name + 真实绝对 path）建一个解析器：
+
+    给定模型提供的 resourcePath（文件名 / basename / 完整真实路径），
+    返回对应的**真实绝对磁盘路径**；找不到或非 .html 返回 None。
+
+    只收录 .html/.htm，索引键含：文件名、路径 basename、完整路径（多形式命中，对模型更宽容）。
+    """
+    index: dict[str, str] = {}
+    for e in entries:
+        name = e.get("name") if isinstance(e, dict) else getattr(e, "name", None)
+        path = e.get("path") if isinstance(e, dict) else getattr(e, "path", None)
+        if not isinstance(path, str):
+            continue
+        if PurePath(path).suffix.lower() not in (".html", ".htm"):
+            continue
+        index[path] = path
+        index[PurePath(path).name] = path
+        if isinstance(name, str) and name:
+            index[name] = path
+
+    def resolve(ref: str) -> str | None:
+        if not isinstance(ref, str) or not ref:
+            return None
+        if ref in index:
+            return index[ref]
+        # 容错：模型给了带目录的相对/虚拟路径（如 /artifacts/x.html）→ 退到 basename 匹配
+        return index.get(PurePath(ref).name)
+
+    # 供错误提示列出"当前可钉的文件名"，让模型一步自纠。
+    resolve.available_names = {PurePath(p).name for p in set(index.values())}
+    return resolve
+
+
+def _build_current_conversation_resolver() -> Callable[[str], str | None]:
+    """用 ResourceService（与手动钉 / 资源管理器同一套）列出当前会话产物，建 .html 解析器。
+
+    复用 resource_service 意味着：正确的员工/总管工作空间布局
+    （<root>/employee-<owner>/artifacts/conv-<cid>/）、房间共享、旧布局兼容全都到位，
+    不再用此前臆想的 <root>/<cid>/ 朴素路径（那是本 bug 的根因）。
+    """
     cid = get_conversation_id()
     if cid is None:
-        return set()
-    conv_dir = Path(get_settings().artifacts_path) / str(cid)
-    if not conv_dir.is_dir():
-        return set()
-    paths: set[str] = set()
-    for p in conv_dir.rglob("*"):
-        if p.is_file() and p.suffix.lower() in (".html", ".htm"):
-            rel = p.relative_to(conv_dir).as_posix()
-            paths.add(f"/artifacts/{rel}")
-    return paths
+        return lambda _ref: None
+    from src.service.resource_service import ResourceService
+
+    listing = ResourceService.list_resources(get_settings().artifacts_path, int(cid))
+    # 当前会话产物 + 员工工作空间（含历史 conv-*）+ 公共区，都允许钉。
+    entries = [
+        *listing.artifacts,
+        *listing.workspace,
+        *listing.public,
+    ]
+    return build_html_resolver_from_entries(entries)
 
 
 @tool
@@ -155,9 +206,11 @@ def arrange_workbench(operations: str) -> str:
     """编排工作台看板（仅在工作台页面的总管对话里可用）。
 
     operations 是 JSON 数组字符串，每条 op ∈ {pin, resize, move, rename, hide, remove, reorder}：
-      - pin:     {"op":"pin","resourcePath":"/artifacts/x.html","title":"标题","span":"medium","pos":{"x":0,"y":0}}
+      - pin:     {"op":"pin","resourcePath":"x.html","title":"标题","span":"medium","pos":{"x":0,"y":0}}
                  span 可省（默认 medium），可填档位 small/medium/large/full 或 {"w":列,"h":行}；
-                 pos 可省（自动找空位）。resourcePath 必须是当前会话 /artifacts/ 下已存在的 .html。
+                 pos 可省（自动找空位）。
+                 resourcePath **直接填你生成的 .html 文件名**（如 "weibo-dashboard.html"）即可，
+                 工具会自动在当前会话产物里定位真实路径——不要拼 /artifacts/ 前缀或绝对路径。
       - resize:  {"op":"resize","blockRef":"销售看板","span":"large"}
       - move:    {"op":"move","blockRef":"销售看板","pos":{"x":0,"y":0}}
       - rename:  {"op":"rename","blockRef":"销售看板","title":"新标题"}
@@ -174,8 +227,8 @@ def arrange_workbench(operations: str) -> str:
         return f"错误：operations 不是合法 JSON：{exc}"
 
     try:
-        valid_paths = _current_conversation_html_paths()
-        normalized, errors = normalize_operations(parsed, valid_paths)
+        resolve_path = _build_current_conversation_resolver()
+        normalized, errors = normalize_operations(parsed, resolve_path)
     except ValueError as exc:
         return f"错误：{exc}"
 
