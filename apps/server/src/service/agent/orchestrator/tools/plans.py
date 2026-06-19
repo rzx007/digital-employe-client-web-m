@@ -27,6 +27,39 @@ from src.service.agent.orchestrator.tools._helpers import (
 )
 
 
+def _build_employee_task(
+    db, t: dict, plan_id: int, workspace_id: int, conversation_id: int
+) -> EmployeeTask:
+    """从单个任务 dict 构造一条 EmployeeTask（首建/合并两条路径共用，杜绝字段漂移）。
+
+    输出档位（small/standard/large）存入 task_input_json，派单时取出设成该成员模型的
+    max_tokens（见 start_task_as_conversation）。
+    """
+    cron_expr = t.get("cron")
+    emp = db.get(Employee, t["employee_id"])
+    return EmployeeTask(
+        workspace_id=workspace_id,
+        employee_id=t["employee_id"],
+        employee_name_snapshot=emp.name if emp else "",
+        task_name=t["task_name"],
+        dispatch_type=t.get("dispatch_type", "skill"),
+        skill_id=t.get("skill_id"),
+        cron_expression=cron_expr if cron_expr else "",
+        cron_expression_type="custom",
+        user_prompt=t.get("prompt", ""),
+        task_input_json=json.dumps(
+            {"output_tier": (t.get("output_tier") or "standard")},
+            ensure_ascii=False,
+        ),
+        execute_mode="scheduled" if cron_expr else "immediate",
+        source="orchestration",
+        orchestration_plan_id=plan_id,
+        source_conversation_id=conversation_id,
+        priority=t.get("priority", 0),
+        is_active=True,
+    )
+
+
 @tool
 def create_orchestration_plan(summary: str, tasks: str | list) -> str:
     """创建任务编排计划。调用时机：确认任务拆解和员工分配无误后调用。
@@ -108,34 +141,21 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
             if key in existing_keys:
                 continue
             existing_keys.add(key)
-            cron_expr = t.get("cron")
-            emp = db.get(Employee, t["employee_id"])
-            new_task = EmployeeTask(
-                workspace_id=workspace_id,
-                employee_id=t["employee_id"],
-                employee_name_snapshot=emp.name if emp else "",
-                task_name=t["task_name"],
-                dispatch_type=t.get("dispatch_type", "skill"),
-                skill_id=t.get("skill_id"),
-                cron_expression=cron_expr if cron_expr else "",
-                cron_expression_type="custom",
-                user_prompt=t.get("prompt", ""),
-                task_input_json=json.dumps(
-                    {"output_tier": (t.get("output_tier") or "standard")},
-                    ensure_ascii=False,
-                ),
-                execute_mode="scheduled" if cron_expr else "immediate",
-                source="orchestration",
-                orchestration_plan_id=existing.id,
-                source_conversation_id=conversation_id,
-                priority=t.get("priority", 0),
-                is_active=True,
+            new_task = _build_employee_task(
+                db, t, existing.id, workspace_id, conversation_id
             )
             db.add(new_task)
             appended.append(new_task)
             merged_entry = dict(t)
             merged_entry.pop("depends_on", None)
             existing_plan_json.append(merged_entry)
+
+        # 本次任务均已在计划中：不重写 plan_json、不提交、不空推事件，直接返回现状。
+        if not appended:
+            return (
+                f"计划 #{existing.id} 已是最新（本次任务均已在计划中），现含 "
+                f"{existing.total_tasks} 个子任务。无需重复创建，请告知用户在卡片确认。"
+            )
 
         existing.plan_json = json.dumps(existing_plan_json, ensure_ascii=False)
         existing.total_tasks = len(existing_plan_json)
@@ -214,30 +234,8 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
 
     created_tasks: list[EmployeeTask] = []
     for t in task_list:
-        cron_expr = t.get("cron")
-        emp = db.get(Employee, t["employee_id"])
-        task = EmployeeTask(
-            workspace_id=workspace_id,
-            employee_id=t["employee_id"],
-            employee_name_snapshot=emp.name if emp else "",
-            task_name=t["task_name"],
-            dispatch_type=t.get("dispatch_type", "skill"),
-            skill_id=t.get("skill_id"),
-            cron_expression=cron_expr if cron_expr else "",
-            cron_expression_type="custom",
-            user_prompt=t.get("prompt", ""),
-            # 输出档位（small/standard/large）存入 task_input_json，派单时取出设成
-            # 该成员模型的 max_tokens（见 start_task_as_conversation）。
-            task_input_json=json.dumps(
-                {"output_tier": (t.get("output_tier") or "standard")},
-                ensure_ascii=False,
-            ),
-            execute_mode="scheduled" if cron_expr else "immediate",
-            source="orchestration",
-            orchestration_plan_id=plan.id,
-            source_conversation_id=conversation_id,
-            priority=t.get("priority", 0),
-            is_active=True,
+        task = _build_employee_task(
+            db, t, plan.id, workspace_id, conversation_id
         )
         db.add(task)
         created_tasks.append(task)
