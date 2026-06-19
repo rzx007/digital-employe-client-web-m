@@ -2170,7 +2170,7 @@ class StreamRegistry:
             )
             state_final = "error"
             task.error_message = user_error
-            partial_text = latest_updates_text or None
+            partial_text = latest_updates_text or ("".join(assistant_text_parts) or None)
 
             evt = task.buffer.add({"status": "error", "error": user_error})
             self.broadcast(conversation_id, evt)
