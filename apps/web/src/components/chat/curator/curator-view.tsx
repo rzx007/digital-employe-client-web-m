@@ -27,6 +27,7 @@ import {
   mapStoredMessagesToUIMessages,
 } from "@/lib/chat/message-utils"
 import { shouldIncludeFileChangesForMessage } from "@/lib/chat/file-change-utils"
+import { CuratorTurnDeliverables } from "./curator-turn-deliverables"
 import { useConversationSession } from "@/hooks/use-conversation-session"
 import { getContactId } from "@/lib/chat/contact-utils"
 import { useInvalidateContactsOnTeamChanges } from "@/hooks/use-invalidate-contacts-on-team-changes"
@@ -911,6 +912,13 @@ export function CuratorView({
                     className={cn("-mt-4", layout.message)}
                   />
                 )}
+
+                {curatorConversationId ? (
+                  <CuratorTurnDeliverables
+                    conversationId={curatorConversationId}
+                    className={cn("mt-1", layout.message)}
+                  />
+                ) : null}
               </ConversationContent>
               <ConversationScrollButton />
             </ConversationUI>

@@ -29,12 +29,39 @@ def _looks_like_product(path: str) -> bool:
     return True
 
 
+def _plan_artifacts_dir(db: Session, plan):
+    """该计划对应项目的共享产物目录（用于存在性过滤）。失败→None。"""
+    from src.service.agent.orchestrator.qa_delivery_check import _resolve_artifacts_dir
+
+    conv_id = getattr(plan, "conversation_id", None)
+    return _resolve_artifacts_dir(db, conv_id) if conv_id else None
+
+
+def _still_exists_nonempty(path: str, artifacts_dir) -> bool:
+    """文件结束时是否仍真实存在且非空（过滤跑完即删的临时脚本）。
+
+    相对名按产物目录解析；产物目录解析不到时**保守保留**（不误删真实交付物）。
+    """
+    from pathlib import Path
+
+    try:
+        p = Path(str(path).replace("\\", "/"))
+        if not p.is_absolute():
+            if artifacts_dir is None:
+                return True
+            p = Path(artifacts_dir) / p
+        return p.is_file() and p.stat().st_size > 0
+    except OSError:
+        return True
+
+
 def collect_plan_deliverables(db: Session, plan_id: int) -> list[dict]:
     """聚合某编排计划各子任务产出的文件（归属到任务）。
 
     来源：每个子任务最新执行日志所在员工会话的 write_file/edit_file 工具 parts 的
-    file_path（排除非产物桶、去重）。返回 [{path, basename, task_id, task_name, action}]。
-    注：shell 直接写的文件不在 parts 里、会漏（v1 已知限制）。
+    file_path（排除非产物桶、去重），**且只保留结束时磁盘上仍存在且非空的文件**——
+    跑完即删的临时脚本会被过滤掉。返回 [{path, basename, task_id, task_name, action}]。
+    注：shell 直接写的文件不在 parts 里、会漏（已知限制，按需再补目录扫描）。
     """
     from src.service.task_service import TaskService
 
@@ -78,7 +105,12 @@ def collect_plan_deliverables(db: Session, plan_id: int) -> list[dict]:
                 "task_name": t.task_name,
                 "action": action,
             }
-    return [seen[k] for k in order]
+
+    plan = db.get(OrchestrationPlan, plan_id)
+    adir = _plan_artifacts_dir(db, plan) if plan is not None else None
+    return [
+        seen[k] for k in order if _still_exists_nonempty(seen[k]["path"], adir)
+    ]
 
 
 def cancel_running_executions_for_task(
