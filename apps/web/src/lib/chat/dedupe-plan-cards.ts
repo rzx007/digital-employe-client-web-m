@@ -37,14 +37,35 @@ function stripDuplicatePlanParts(
   lastIndexByKey: Map<string, number>,
   keyOf: (part: ToolUIPart) => string | null
 ): UIMessage[] {
+  // 一条消息内也可能有同 key 的多个计划 part（组长一轮调两次 create，结果都落在
+  // 同一条消息上）。仅靠「最后一条消息」判定会把同消息里的多个都保留 → 渲染多张卡。
+  // 因此在胜出消息上，只保留该 key 的**最后一个** part，更早的同 key part 也剥掉。
+  const lastPartPosByKeyOnWinner = new Map<string, number>()
+  messages.forEach((message, index) => {
+    message.parts.forEach((part, pos) => {
+      if (!isToolUIPart(part)) return
+      const key = keyOf(part)
+      if (key == null) return
+      if (lastIndexByKey.get(key) === index) {
+        lastPartPosByKeyOnWinner.set(key, pos)
+      }
+    })
+  })
+
   let changed = false
   const next = messages.map((message, index) => {
     let removed = false
-    const nextParts = message.parts.filter((part) => {
+    const nextParts = message.parts.filter((part, pos) => {
       if (!isToolUIPart(part)) return true
       const key = keyOf(part)
       if (key == null) return true
-      if (lastIndexByKey.get(key) === index) return true
+      // 只在「胜出消息」且是该 key 在该消息上的最后一个 part 时保留。
+      if (
+        lastIndexByKey.get(key) === index &&
+        lastPartPosByKeyOnWinner.get(key) === pos
+      ) {
+        return true
+      }
       removed = true
       return false
     })
