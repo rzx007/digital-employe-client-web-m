@@ -39,6 +39,47 @@ from src.service.agent import delete_conversation_checkpoint, get_agent
 logger = logging.getLogger(__name__)
 
 
+# 这些是「真正的终态」——一旦 DB 消息已是其一，resume 不得再覆盖（防把 completed/
+# interrupted 误改成 cancelled）。只有仍在途的 streaming/queued 才需要落终态。
+_TERMINAL_STREAM_STATES = ("completed", "cancelled", "error", "interrupted")
+_IN_FLIGHT_STREAM_STATES = ("streaming", "queued")
+
+
+def reconcile_stale_stream_state_on_resume(
+    db: Session,
+    conversation_id: int,
+    *,
+    terminal_status: str,
+) -> bool:
+    """resume 命中「流已终态」时，把 DB 里仍滞后在 streaming/queued 的末尾 assistant
+    消息落成 terminal_status，让 DB 与 registry 收敛。
+
+    背景：某轮 stream 在 registry 已是终态（如 cancelled），但该轮 assistant 消息
+    在 DB 里仍 stream_state='streaming'。前端从 DB 读到 streaming → 反复 resume →
+    后端「stream already ended」分支只通知不落库 → DB 永远 streaming → 死循环（一直
+    转圈+闪屏）。这里在 return 前补一次落库，断掉循环。
+
+    返回是否实际改了行（用于日志/测试）。已是终态或无在途消息时不动、返回 False。
+    """
+    stmt = (
+        select(ConversationMessage)
+        .where(
+            ConversationMessage.conversation_id == conversation_id,
+            ConversationMessage.role == "assistant",
+            ConversationMessage.stream_state.in_(_IN_FLIGHT_STREAM_STATES),
+        )
+        .order_by(ConversationMessage.id.desc())
+        .limit(1)
+    )
+    msg = db.scalar(stmt)
+    if not msg:
+        return False
+    msg.stream_state = terminal_status
+    msg.stream_cursor = 0
+    db.commit()
+    return True
+
+
 async def _commit_db_off_loop(db: Session) -> None:
     """把同步 db.commit() 放到 DB 写线程，避免阻塞事件循环。
 
@@ -1046,7 +1087,23 @@ class ChatService:
         status_info = registry.get_stream_status(conversation_id, db)
         if status_info:
             logger.info("[resume] conv=%s stream already ended: status=%s", conversation_id, status_info)
-            if status_info.get("status") == "interrupted":
+            terminal_status = status_info.get("status")
+            # DB 收敛：registry 已终态但 DB 该轮 assistant 可能仍滞后在 streaming/queued，
+            # 不落库则前端从 DB 读到 streaming → 反复 resume → 死循环（转圈+闪屏）。
+            if isinstance(terminal_status, str) and terminal_status in _TERMINAL_STREAM_STATES:
+                try:
+                    if reconcile_stale_stream_state_on_resume(
+                        db, conversation_id, terminal_status=terminal_status
+                    ):
+                        logger.warning(
+                            "[resume] conv=%s DB 滞后 streaming/queued 已落成 %s，断 resume 热循环",
+                            conversation_id, terminal_status,
+                        )
+                except Exception:
+                    logger.warning(
+                        "[resume] conv=%s reconcile DB 终态失败", conversation_id, exc_info=True
+                    )
+            if terminal_status == "interrupted":
                 yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': 'interrupted', 'message_id': status_info.get('message_id')}}, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
                 return
