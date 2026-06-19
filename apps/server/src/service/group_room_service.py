@@ -294,6 +294,19 @@ def build_leader_brief(
     )
 
 
+def _conclusion_kind(status_val: str) -> str:
+    """成员流终态 → 里程碑 kind。
+
+    completed=delivered；cancelled=cancelled；interrupted/error 都归 failed
+    （粗粒度视觉桶，精确语义见投影文案 body）。
+    """
+    if status_val == "completed":
+        return "delivered"
+    if status_val == "cancelled":
+        return "cancelled"
+    return "failed"  # interrupted / error
+
+
 class GroupRoomService:
     # ---- 房间生命周期 ----
 
@@ -763,10 +776,7 @@ class GroupRoomService:
                         "，请稍后重试；若反复失败请检查模型设置"
                         "（API Key / Base URL / 模型名）。"
                     )
-                kind = (
-                    "cancelled" if status_val == "cancelled"
-                    else "failed"  # interrupted 也归 failed 区，文案区分见 body
-                )
+                kind = _conclusion_kind(status_val)
                 GroupRoomService._project_member_milestone(
                     room=room, db=db, member_employee_id=member.employee_id,
                     sender_label=sender_label, member_conversation_id=member_conv_id,

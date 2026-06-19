@@ -1,6 +1,4 @@
-import json
-import pytest
-from src.service.group_room_service import GroupRoomService
+from src.service.group_room_service import GroupRoomService, _conclusion_kind
 
 
 class _FakeMsg:
@@ -31,3 +29,12 @@ def test_conclusion_completed_carries_delivered_milestone(monkeypatch):
     assert captured["extra_meta"]["role"] == "worker"
     assert captured["extra_meta"]["milestone"]["kind"] == "delivered"
     assert captured["extra_meta"]["milestone"]["artifacts"] == ["a/report.md"]
+
+
+def test_conclusion_kind_maps_status_to_milestone_kind():
+    """终态→kind 映射：completed=delivered, cancelled=cancelled,
+    interrupted/error 都归 failed（粗粒度桶，精确语义在文案 body）。"""
+    assert _conclusion_kind("completed") == "delivered"
+    assert _conclusion_kind("cancelled") == "cancelled"
+    assert _conclusion_kind("interrupted") == "failed"
+    assert _conclusion_kind("error") == "failed"
