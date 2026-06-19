@@ -55,6 +55,7 @@ import { cancelConversationStream } from "@/api/chat"
 import { getContactId } from "@/lib/chat/contact-utils"
 import { isGroupDeepLinkExecutionView } from "@/lib/chat/group-navigation"
 import { getLastAssistantMessage } from "@/lib/chat/message-query-cache"
+import { sealLiveAssistantParts } from "@/lib/chat/seal-live-assistant-parts"
 import { useChatStore } from "@/stores/chat-store"
 import { prepareVoiceMeta } from "@/lib/voice/prepare-voice-meta"
 import type { VoiceMessageMeta } from "@/types/chat"
@@ -347,6 +348,10 @@ export function ConversationChatView({
   }, [session.onStreamFinish, session.retryResumeIfNeeded])
 
   const handleStop = useCallback(async () => {
+    // 终止前先定格 live 已生成内容（标 streamState=cancelled），让停止瞬间 UI 立即
+    // 显示「已停止」终态，而非短暂空白等收尾（现象1 加固，SDK 本身已保留 parts）。
+    setMessages((prev) => sealLiveAssistantParts(prev))
+
     stop()
 
     chatTransport.cancelReconnect()
@@ -376,6 +381,7 @@ export function ConversationChatView({
     groupRoomBusy,
     onGroupRoomStop,
     session,
+    setMessages,
     status,
     stop,
   ])

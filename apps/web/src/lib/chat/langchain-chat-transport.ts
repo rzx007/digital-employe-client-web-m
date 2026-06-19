@@ -498,9 +498,19 @@ export class LangChainChatTransport<
     const decoder = new TextDecoder()
     const reader = stream.getReader()
 
-    // signal 触发时取消 reader，关闭底层 TCP 连接
+    // signal 触发时：优雅收尾（flush 已收 chunk + 补 text-end + finish）再取消 reader，
+    // 避免裸 cancel 丢掉 rAF batcher 里尚未 flush 给 SDK 的 chunk（现象1 根因）。
+    // gracefulAbort 由内层 start 闭包登记（它持有 controller/flushSync/state）；
+    // abort 早于 start 执行完成的极端情况下 gracefulAbort 可能还没登记，回退裸 cancel。
+    let gracefulAbort: (() => void) | null = null
     if (abortSignal) {
-      const onAbort = () => reader.cancel()
+      const onAbort = () => {
+        if (gracefulAbort) {
+          gracefulAbort()
+        } else {
+          void reader.cancel()
+        }
+      }
       if (abortSignal.aborted) {
         onAbort()
       } else {
@@ -522,6 +532,26 @@ export class LangChainChatTransport<
           controller,
           reconnectStats
         )
+
+        // 所有 close 点共用，防重复 close（gracefulAbort 与 [DONE]/interrupted/
+        // 错误/正常结束/benign cancel 等终态分支可能相互竞争）。
+        let streamClosed = false
+        // 供外层 onAbort 调用：与 [DONE] 同样收尾，确保停止时 batcher 残留不丢。
+        gracefulAbort = () => {
+          if (streamClosed) return
+          streamClosed = true
+          try {
+            flushSync()
+            closeTextPhaseIfNeeded(state).forEach((chunk) =>
+              controller.enqueue(chunk)
+            )
+            enqueueFinish(controller, state)
+            controller.close()
+          } catch {
+            /* controller 已被 SDK 关闭/锁定则忽略 */
+          }
+          void reader.cancel()
+        }
 
         controller.enqueue({ type: "start" })
 
@@ -550,6 +580,8 @@ export class LangChainChatTransport<
 
           // [DONE] → 流正常结束
           if (data === "[DONE]") {
+            if (streamClosed) return true
+            streamClosed = true
             flushSync()
             closeTextPhaseIfNeeded(state).forEach((chunk) =>
               controller.enqueue(chunk)
@@ -568,6 +600,7 @@ export class LangChainChatTransport<
               typeof payload === "object" &&
               payload.status === "interrupted"
             ) {
+              if (streamClosed) return true
               const messageId = payload.message_id as
                 | string
                 | number
@@ -606,6 +639,7 @@ export class LangChainChatTransport<
                 }
               }
               enqueueFinish(controller, state)
+              streamClosed = true
               controller.close()
               return true
             }
@@ -646,6 +680,8 @@ export class LangChainChatTransport<
 
             // 检测流式错误事件: {"error": "<message>"}
             if (event && typeof event === "object" && "error" in event) {
+              if (streamClosed) return true
+              streamClosed = true
               const raw = (event as { error: unknown }).error
               const errorText =
                 typeof raw === "string" ? raw : JSON.stringify(raw)
@@ -677,6 +713,7 @@ export class LangChainChatTransport<
               ((event as { type: string }).type === "stream_ended" ||
                 (event as { type: string }).type === "no_stream")
             ) {
+              if (streamClosed) return true
               // HITL: interrupted 状态 — 通知上层
               const eventData = (
                 event as {
@@ -739,6 +776,7 @@ export class LangChainChatTransport<
                   type: "finish",
                   finishReason: "error" as const,
                 })
+                streamClosed = true
                 controller.close()
                 return true
               }
@@ -748,6 +786,7 @@ export class LangChainChatTransport<
                 controller.enqueue(chunk)
               )
               enqueueFinish(controller, state)
+              streamClosed = true
               controller.close()
               return true
             }
@@ -889,11 +928,19 @@ export class LangChainChatTransport<
             controller.enqueue(chunk)
           )
           enqueueFinish(controller, state)
-          controller.close()
+          if (!streamClosed) {
+            streamClosed = true
+            controller.close()
+          }
         } catch (error) {
           if (isBenignStreamAbortError(error)) {
-            flushSync()
-            controller.close()
+            // gracefulAbort 已优雅收尾并 cancel reader 时，read() 在此 reject benign，
+            // streamClosed 已 true → 跳过重复 close。
+            if (!streamClosed) {
+              streamClosed = true
+              flushSync()
+              controller.close()
+            }
           } else if (isStreamDisconnectedError(error)) {
             // idle 看门狗超时（连接假死）：不吐 error 块（否则会在气泡里冒一条
             // 可见报错），只 error 出 StreamDisconnectedError 交上层 resume 续流。
