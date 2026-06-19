@@ -19,6 +19,10 @@ import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input
 
 import { useMessagesQuery } from "@/hooks/use-chat-queries"
 
+import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
+
+import { ACTIVE_TASK_RUN_STATUSES } from "@/types/schedule-monitor"
+
 import { usePendingMessages } from "@/hooks/use-pending-messages"
 
 import { useConversationSession } from "@/hooks/use-conversation-session"
@@ -123,6 +127,16 @@ export function ConversationChatView({
   const lastStoredStreamState =
     getLastAssistantMessage(storedMessages)?.streamState ?? null
   const backendStreaming = lastStoredStreamState === "streaming"
+
+  // 总管派发的员工任务在后台异步跑(总管自身已收尾、无活跃流)时也算忙：发送走排队、
+  // 等任务跑完再发，避免边跑边发打断编排链路。仅总管会话有意义(员工会话无总管任务)。
+  // 查询按会话缓存，与头部「N 个任务在执行」指示器同一份(react-query 去重，无额外开销)。
+  const { data: curatorExecutions = [] } = useCuratorTaskExecutions(
+    contact?.type === "curator" ? conversationId : null
+  )
+  const tasksRunning = curatorExecutions.some((e) =>
+    ACTIVE_TASK_RUN_STATUSES.has(e.run_status)
+  )
 
   const onStreamFinishRef = useRef<() => void>(() => {})
   const onRetryResumeRef = useRef<() => boolean>(() => false)
@@ -270,8 +284,8 @@ export function ConversationChatView({
 
   const isBusy = status === "submitted" || status === "streaming"
 
-  // 含「后端仍在跑」：用于发送决策(走排队)、停止、禁用态——本地 SSE 假结束时仍算忙。
-  const effectiveBusy = isBusy || backendStreaming
+  // 含「后端仍在跑」(总管自身的流) + 「员工任务在后台跑」：用于发送决策(走排队)、禁用态。
+  const effectiveBusy = isBusy || backendStreaming || tasksRunning
 
   const chatStatus = status
 
@@ -376,7 +390,7 @@ export function ConversationChatView({
 
     onStop: handleStop,
 
-    backendBusy: backendStreaming,
+    backendBusy: backendStreaming || tasksRunning,
   })
 
   const handleSendMessage = useCallback(

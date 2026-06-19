@@ -40,6 +40,8 @@ import { usePendingMessages } from "@/hooks/use-pending-messages"
 import { useSyncConversationSubtasks } from "@/hooks/use-conversation-subtasks"
 import { useChatStore } from "@/stores/chat-store"
 import { getLastAssistantMessage } from "@/lib/chat/message-query-cache"
+import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
+import { ACTIVE_TASK_RUN_STATUSES } from "@/types/schedule-monitor"
 
 import { cancelConversationStream } from "@/api/chat"
 import { prepareVoiceMeta } from "@/lib/voice/prepare-voice-meta"
@@ -433,9 +435,18 @@ export function CuratorView({
   // 也算忙——发送走排队、显忙、不抢占在跑的流（与主对话 ConversationChatView 同源修复）。
   const backendStreaming =
     getLastAssistantMessage(storedMessages)?.streamState === "streaming"
-  const isBusy =
+  // 总管派发的员工任务在后台异步跑时也算忙(发送走排队)。与头部「N 个任务在执行」
+  // 同一份缓存(react-query 去重)。tasksRunning 不进 chatStatus(总管已空闲、无流可停,
+  // 避免误显示停止键)——「显忙」由该指示器承担。
+  const { data: curatorExecutions = [] } =
+    useCuratorTaskExecutions(curatorConversationId)
+  const tasksRunning = curatorExecutions.some((e) =>
+    ACTIVE_TASK_RUN_STATUSES.has(e.run_status)
+  )
+  const streamBusy =
     status === "submitted" || status === "streaming" || backendStreaming
-  const chatStatus = status === "ready" && isBusy ? "submitted" : status
+  const isBusy = streamBusy || tasksRunning
+  const chatStatus = status === "ready" && streamBusy ? "submitted" : status
 
   const displayMessages = useMemo(() => {
     const source = pickMessageDisplaySource(messages, initialMessages, status)
@@ -603,7 +614,7 @@ export function CuratorView({
     status,
     onSend: doSend,
     onStop: handleStop,
-    backendBusy: backendStreaming,
+    backendBusy: backendStreaming || tasksRunning,
   })
 
   const sendToolUiAction = useCallback(
