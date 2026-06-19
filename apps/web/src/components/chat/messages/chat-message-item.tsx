@@ -88,15 +88,13 @@ function ChatMessageItemInner({
     [message, activeHitl]
   )
 
-  // 群时间线进行中消息（组长/成员逐字流式临时态）：显示「正在生成 N 字…」+ 流式
-  // 光标，给群里的流式输出和单聊/总管一致的观感（轻量视觉对齐，不改后端协议）。
+  // 群时间线进行中消息（组长/成员逐字流式临时态）：用流式光标传达「还在打字」，
+  // 不显示字数（无品）。仅作为「是否在流式」的标记，门控占位/光标/动作区显示。
   const groupStreaming = React.useMemo(() => {
     if (contact.type !== "group" || message.role !== "assistant") return null
     const meta = (message as { metadata?: Record<string, unknown> }).metadata
     if (!meta || meta.streamState !== "streaming") return null
-    const count =
-      typeof meta.streamCharCount === "number" ? meta.streamCharCount : null
-    return { charCount: count }
+    return true
   }, [contact.type, message])
 
   // 自动派单的首条 user 消息：后端 extra_meta 标记，邮戳与真人消息区分。
@@ -316,16 +314,6 @@ function ChatMessageItemInner({
       ) : (
         <MessageContent className="w-auto">{messageBody}</MessageContent>
       )}
-      {groupStreaming &&
-      !groupStreamingAwaitingFirstToken &&
-      groupStreaming.charCount &&
-      groupStreaming.charCount > 0 ? (
-        <div className="mt-1 flex items-center gap-1.5 text-muted-foreground">
-          <Shimmer className="text-[11px]">
-            {`正在生成 ${groupStreaming.charCount} 字…`}
-          </Shimmer>
-        </div>
-      ) : null}
       {groupStreaming ? null : message.role === "assistant" ? (
         <MessageAssistantActions
           copyText={copyText}
