@@ -234,6 +234,13 @@ function CuratorMessageItem({
             ) : message.role === "assistant" ? (
               <MessageResponse />
             ) : null}
+            {/* 团队交付物紧贴在本轮最后一条总管消息的内容末尾（与其自身文件卡同区） */}
+            {isLastAssistantMessage &&
+            hasCurrentTurnEnded &&
+            message.role === "assistant" &&
+            curatorConversationId != null ? (
+              <CuratorTurnDeliverables conversationId={curatorConversationId} />
+            ) : null}
           </div>
         </MessageContent>
       )}
@@ -247,15 +254,6 @@ function CuratorMessageItem({
       ) : (
         <MessageCopyAction text={copyText} />
       )}
-      {isLastAssistantMessage &&
-      hasCurrentTurnEnded &&
-      message.role === "assistant" &&
-      curatorConversationId != null ? (
-        <CuratorTurnDeliverables
-          conversationId={curatorConversationId}
-          className="mt-2"
-        />
-      ) : null}
     </Message>
   )
 }
