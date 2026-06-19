@@ -247,6 +247,15 @@ function CuratorMessageItem({
       ) : (
         <MessageCopyAction text={copyText} />
       )}
+      {isLastAssistantMessage &&
+      hasCurrentTurnEnded &&
+      message.role === "assistant" &&
+      curatorConversationId != null ? (
+        <CuratorTurnDeliverables
+          conversationId={curatorConversationId}
+          className="mt-2"
+        />
+      ) : null}
     </Message>
   )
 }
@@ -912,13 +921,6 @@ export function CuratorView({
                     className={cn("-mt-4", layout.message)}
                   />
                 )}
-
-                {curatorConversationId ? (
-                  <CuratorTurnDeliverables
-                    conversationId={curatorConversationId}
-                    className={cn("mt-1", layout.message)}
-                  />
-                ) : null}
               </ConversationContent>
               <ConversationScrollButton />
             </ConversationUI>

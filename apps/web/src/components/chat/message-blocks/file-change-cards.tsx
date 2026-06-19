@@ -4,11 +4,13 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconDownload,
+  IconWorld,
 } from "@tabler/icons-react"
 
 import folderIcon from "@/assets/files/fold.png"
 import plainIcon from "@/assets/files/plain_dark.png"
 import { downloadResource } from "@/api/chat"
+import { isHtmlPath } from "@/components/artifact/artifact-content/resolve-renderer"
 import { useCuratorFile } from "@/components/chat/curator/use-curator-file"
 import type { FileChangeItem } from "@/lib/chat/file-change-utils"
 import { EXTENSION_ICONS } from "@/lib/chat/file-icons"
@@ -78,6 +80,7 @@ function FileChangeCardRow({
   dim = false,
   onOpen,
   onDownload,
+  onPreview,
 }: {
   file: FileChangeItem
   conversationId: string | number | null
@@ -85,9 +88,11 @@ function FileChangeCardRow({
   dim?: boolean
   onOpen: (path: string) => void
   onDownload: (file: FileChangeItem) => void
+  onPreview?: (path: string) => void
 }) {
   const size = formatSize(file.size)
   const pathBasename = basename(file.path)
+  const canPreviewHtml = isHtmlPath(file.path) && onPreview != null
 
   const actionButtons = conversationId != null && (
     <div
@@ -97,6 +102,20 @@ function FileChangeCardRow({
         "@[28rem]/file-changes:opacity-0 @[28rem]/file-changes:transition-opacity @[28rem]/file-changes:group-hover:opacity-100"
       )}
     >
+      {canPreviewHtml ? (
+        <button
+          type="button"
+          className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          onClick={(e) => {
+            e.stopPropagation()
+            onPreview?.(file.path)
+          }}
+          aria-label="在内置浏览器查看"
+          title="在内置浏览器查看"
+        >
+          <IconWorld className="size-3.5" />
+        </button>
+      ) : null}
       <button
         type="button"
         className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -177,6 +196,7 @@ interface FileRowHandlers {
   conversationId: string | number | null
   onOpen: (path: string) => void
   onDownload: (file: FileChangeItem) => void
+  onPreview?: (path: string) => void
 }
 
 /** 一段文件列表：含 grid 布局、滚动雾化、超阈值折叠/展开。交付物与脚本两段各用一个。 */
@@ -233,6 +253,7 @@ function FileGridList({
               conversationId={handlers.conversationId}
               onOpen={handlers.onOpen}
               onDownload={handlers.onDownload}
+              onPreview={handlers.onPreview}
             />
           ))}
         </div>
@@ -333,6 +354,14 @@ export function FileChangeCards({
     [conversationId]
   )
 
+  const handlePreview = React.useCallback(
+    (path: string) => {
+      if (conversationId == null) return
+      openHtmlPreview(conversationId, path)
+    },
+    [conversationId, openHtmlPreview]
+  )
+
   const { deliverables, intermediates } = React.useMemo(() => {
     const deliverables: FileChangeItem[] = []
     const intermediates: FileChangeItem[] = []
@@ -354,6 +383,7 @@ export function FileChangeCards({
     conversationId,
     onOpen: handleOpen,
     onDownload: handleDownload,
+    onPreview: handlePreview,
   }
 
   // 兜底：若本轮没有交付物（全是脚本/依赖），主区直接展示这些文件，
