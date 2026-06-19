@@ -1351,7 +1351,26 @@ class GroupRoomService:
                         (grp_plan.plan_json if grp_plan else None) or "[]"
                     )
                 plan_json_obj = plan_json_cache[plan_id_key]
-            per_plan_map, _succ = build_dependency_maps(group_tasks, plan_json_obj)
+            # build_dependency_maps 把 task[i] 与 plan_json[i] **按位置**对应，并以
+            # idx 解 depends_on（bounded by len(tasks)）。若只传该计划的「在执行子集」
+            # 却配上**完整** plan_json，下标会错位→依赖边丢失/错连（部分执行=运行中
+            # 的常态）。因此用该计划的**全部任务**（id 升序，与 create_orchestration_plan
+            # 按 plan_json 顺序插入一致）来算依赖：dep_map 以全局 task.id 为键，over
+            # full plan 计算才正确；下游节点只渲染聚合子集，dep_map.get(t.id, []) 自然
+            # 只产出存在节点间的边（指向未渲染任务的边因不在节点集里而被忽略）。
+            if plan_id_key is not None:
+                full_plan_tasks = list(
+                    db.scalars(
+                        select(EmployeeTask)
+                        .where(EmployeeTask.orchestration_plan_id == plan_id_key)
+                        .order_by(EmployeeTask.id.asc())
+                    ).all()
+                )
+            else:
+                full_plan_tasks = group_tasks
+            per_plan_map, _succ = build_dependency_maps(
+                full_plan_tasks, plan_json_obj
+            )
             dep_map.update(per_plan_map)
 
         # 「主计划」：聚合任务里出现最多的 orchestration_plan_id，用于 plan_id 返回与
