@@ -1,5 +1,4 @@
 import * as React from "react"
-import type { UIMessage } from "ai"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
@@ -13,6 +12,7 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { stopGroupRoom } from "@/api/group-room"
 import { getContactId } from "@/lib/chat/contact-utils"
+import { computeGroupExtraMessages } from "@/lib/chat/group-extra-messages"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useGroupRoom } from "@/hooks/use-group-room"
 import type { ChatViewContact } from "../shared/chat-view-shared"
@@ -50,6 +50,8 @@ export function GroupRoomView({
   const { members, dag, streaming, autoConfirm, setAutoConfirm, clearStreaming } =
     useGroupRoom(conversationId)
   const [overviewOpen, setOverviewOpen] = React.useState(false)
+  const [awaitingLeaderFirstResponse, setAwaitingLeaderFirstResponse] =
+    React.useState(false)
 
   const groupRoomBusy = React.useMemo(() => {
     const leaderRunning = members.some(
@@ -95,52 +97,39 @@ export function GroupRoomView({
 
   // 进行中成员/组长的逐字流式 → 转成时间线临时消息，像单聊一样逐字渲染。
   // 组长在首 token 前：房间状态已 running 但尚无 stream 增量 → 占位「正在生成回复…」。
+  // 用户刚发送、组长尚未起跑（awaiting）也补占位，消除空窗期以为卡死。
   // 完成后由落库的 room_message 接管，streaming 被清空。
-  const extraStreamingMessages = React.useMemo<UIMessage[]>(() => {
-    const leader = members.find((m) => m.role_in_room === "leader")
-    const leaderConvId = leader?.conversation_id ?? null
-    const leaderStream = streaming.find((s) =>
-      leaderConvId != null
-        ? s.sourceConversationId === leaderConvId
-        : s.senderLabel === "组长"
+  const extraStreamingMessages = React.useMemo(
+    () =>
+      computeGroupExtraMessages({
+        members,
+        streaming,
+        awaitingLeaderFirstResponse,
+      }),
+    [members, streaming, awaitingLeaderFirstResponse]
+  )
+
+  // 组长首个可见输出到达 → 清占位等待态（真实流式/落库内容接管）。
+  const leaderConvIdForClear = React.useMemo(() => {
+    const l = members.find((m) => m.role_in_room === "leader")
+    return l?.conversation_id ?? null
+  }, [members])
+  const leaderHasVisible = React.useMemo(() => {
+    const s = streaming.find((x) =>
+      leaderConvIdForClear != null
+        ? x.sourceConversationId === leaderConvIdForClear
+        : x.senderLabel === "组长"
     )
-    const leaderHasVisibleStream = Boolean(
-      leaderStream && leaderStream.text.trim().length > 0
-    )
+    return Boolean(s && s.text.trim().length > 0)
+  }, [streaming, leaderConvIdForClear])
+  React.useEffect(() => {
+    if (leaderHasVisible) setAwaitingLeaderFirstResponse(false)
+  }, [leaderHasVisible])
 
-    const msgs: UIMessage[] = streaming
-      .filter((s) => s.text.trim().length > 0)
-      .map((s) => ({
-        id: `group-stream-${s.sourceConversationId}`,
-        role: "assistant" as const,
-        parts: [{ type: "text" as const, text: s.text }],
-        metadata: {
-          senderName: s.senderLabel,
-          senderId: s.senderId != null ? String(s.senderId) : undefined,
-          streamState: "streaming",
-          streamCharCount: s.charCount,
-        },
-      }))
-
-    if (leader?.state === "running" && !leaderHasVisibleStream) {
-      msgs.push({
-        id:
-          leaderConvId != null
-            ? `group-stream-${leaderConvId}`
-            : "group-stream-pending-leader",
-        role: "assistant",
-        parts: [{ type: "text", text: "" }],
-        metadata: {
-          senderName: "组长",
-          streamState: "streaming",
-          streamCharCount: leaderStream?.charCount ?? 0,
-          pendingReply: true,
-        },
-      })
-    }
-
-    return msgs
-  }, [streaming, members])
+  // 切换会话 → reset，避免占位等待态跨会话残留（老会话进去不误现）。
+  React.useEffect(() => {
+    setAwaitingLeaderFirstResponse(false)
+  }, [conversationId])
 
   return (
     <div
@@ -161,6 +150,7 @@ export function GroupRoomView({
         onOpenConversations={onOpenConversations}
         onNewConversation={onNewConversation}
         extraStreamingMessages={extraStreamingMessages}
+        onUserSend={() => setAwaitingLeaderFirstResponse(true)}
         groupRoomBusy={groupRoomBusy}
         onGroupRoomStop={handleGroupRoomStop}
         className="min-h-0 min-w-0 flex-1"
