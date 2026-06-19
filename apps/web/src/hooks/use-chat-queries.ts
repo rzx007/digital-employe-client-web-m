@@ -233,6 +233,7 @@ export function useOrchestrationPlansQuery(
       }>(`/workspaces/1/orchestration/plans${qs}`, { signal })
       return res?.data ?? []
     },
+    enabled: convKey != null,
     refetchInterval: 5000,
   })
 }
