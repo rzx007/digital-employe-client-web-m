@@ -56,3 +56,58 @@ def test_kill_terminates_running_process():
     assert r["found"] is True and r["killed"] is True
     time.sleep(0.3)
     assert popen.poll() is not None
+
+
+def test_kill_terminates_grandchild_process(tmp_path):
+    import os, subprocess, sys, tempfile, time
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    reg = get_background_shell_registry()
+    tmp = tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".stdout"); tmp.close()
+    handle = open(tmp.name, "ab")
+    # 父进程(shell)起一个 python 子进程(grandchild)写自己的 pid 到一个文件, 然后 sleep 30
+    pidfile = str(tmp_path / "gc.pid")
+    # 用 shell=True + 进程组, 让 shell 起一个长命令 grandchild
+    inner = (
+        f"import os,time,sys; "
+        f"open(r'{pidfile}','w').write(str(os.getpid())); "
+        f"sys.stdout.flush(); time.sleep(30)"
+    )
+    if sys.platform == "win32":
+        cmd = f'{sys.executable} -u -c "{inner}"'
+        popen = subprocess.Popen(cmd, stdout=handle, stderr=subprocess.STDOUT, shell=True,
+                                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+    else:
+        cmd = f"{sys.executable} -u -c \"{inner}\""
+        popen = subprocess.Popen(cmd, stdout=handle, stderr=subprocess.STDOUT, shell=True,
+                                 start_new_session=True)
+    handle.close()
+    sid = reg.register(popen=popen, tmp_path=tmp.name, read_offset=0, command="gc")
+
+    # 等 grandchild 起来并写 pid
+    gc_pid = None
+    for _ in range(50):
+        time.sleep(0.1)
+        try:
+            gc_pid = int(open(pidfile).read().strip())
+            break
+        except (OSError, ValueError):
+            continue
+    assert gc_pid, "grandchild 未写出 pid"
+
+    reg.kill(sid)
+    time.sleep(0.5)
+
+    # 验证 grandchild 已死
+    def _alive(pid: int) -> bool:
+        if sys.platform == "win32":
+            out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}"],
+                                 capture_output=True, text=True)
+            return str(pid) in out.stdout
+        else:
+            try:
+                os.kill(pid, 0)
+                return True
+            except OSError:
+                return False
+    assert not _alive(gc_pid), f"grandchild pid={gc_pid} 仍存活(被孤儿化)"

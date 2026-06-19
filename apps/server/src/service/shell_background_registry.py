@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
 import subprocess
 import threading
 import time
@@ -85,6 +86,38 @@ class BackgroundShellRegistry:
             "offset": new_offset,
         }
 
+    def _terminate(self, popen: subprocess.Popen) -> None:
+        """跨平台杀整个进程组，避免 shell 的子孙进程被孤儿化。"""
+        import sys
+        if popen.poll() is not None:
+            return
+        try:
+            if sys.platform == "win32":
+                # CREATE_NEW_PROCESS_GROUP 起的进程：先发 CTRL_BREAK 给组，
+                # 再用 taskkill /T 杀整棵进程树(TerminateProcess 只杀 shell 组长，
+                # 子孙会被孤儿化)，最后兜底 popen.kill()。
+                try:
+                    popen.send_signal(signal.CTRL_BREAK_EVENT)
+                except Exception:
+                    pass
+                try:
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(popen.pid)],
+                        capture_output=True,
+                        timeout=10,
+                    )
+                except Exception:
+                    pass
+                popen.kill()
+            else:
+                # start_new_session=True → 子进程是新会话/进程组组长，pgid == pid。
+                try:
+                    os.killpg(os.getpgid(popen.pid), signal.SIGKILL)
+                except (ProcessLookupError, PermissionError, OSError):
+                    popen.kill()  # 兜底：组不存在则直接杀进程
+        except Exception:
+            logger.warning("[bg-shell] _terminate failed pid=%s", popen.pid, exc_info=True)
+
     def kill(self, session_id: str) -> dict:
         with self._lock:
             s = self._sessions.get(session_id)
@@ -93,7 +126,7 @@ class BackgroundShellRegistry:
         killed = False
         try:
             if s.popen.poll() is None:
-                s.popen.kill()
+                self._terminate(s.popen)
                 s.popen.wait(timeout=5)
                 killed = True
         except Exception:
@@ -117,10 +150,7 @@ class BackgroundShellRegistry:
         for sid, s in items:
             rc = s.popen.poll()
             if rc is None and now - s.started_at > _MAX_AGE_SECONDS:
-                try:
-                    s.popen.kill()
-                except Exception:
-                    pass
+                self._terminate(s.popen)
                 rc = -1
             if rc is not None:
                 self._cleanup_file(s)
