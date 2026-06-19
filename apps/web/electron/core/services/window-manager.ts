@@ -107,6 +107,8 @@ export class WindowManager {
         preload: preloadPath ?? getPreloadPath(),
         nodeIntegration: false,
         contextIsolation: true,
+        // 后台窗口仍承载流式渲染时，关后台节流防 rAF 被冻结吞掉 chunk（同 main/index.ts）。
+        backgroundThrottling: false,
       },
     }
 

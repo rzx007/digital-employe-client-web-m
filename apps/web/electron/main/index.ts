@@ -83,6 +83,10 @@ function getMainWindowOptions(): Electron.BrowserWindowConstructorOptions {
     icon: path.join(process.env.APP_ROOT!, "build/icon.ico"),
     webPreferences: {
       preload: paths.preloadPath,
+      // 关闭后台节流：主窗口被遮挡/隐藏时 Chromium 默认会冻结 rAF、钳制定时器，
+      // 导致流式 chunk 的 rAF 批处理停摆——切到别的应用时聊天流「丢数据」，切回/切菜单
+      // 从 DB 重拉才恢复。聊天/编排流式渲染须在后台持续推进，故关掉它。
+      backgroundThrottling: false,
     },
     width: 1280,
     height: 800,

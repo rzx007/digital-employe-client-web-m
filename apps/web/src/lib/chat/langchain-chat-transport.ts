@@ -18,6 +18,7 @@ import {
   StreamDisconnectedError,
 } from "./stream-abort"
 import { conversationRuntimeBus } from "./conversation-runtime-bus"
+import { createChunkFlushScheduler } from "./chunk-flush-scheduler"
 import {
   buildHitlInterruptStreamChunks,
   collectHitlToolCallIdsAlreadyStreamed,
@@ -81,12 +82,15 @@ function compactStreamChunks(chunks: UIMessageChunk[]): UIMessageChunk[] {
 
 /**
  * rAF 批处理 enqueue；结束前须 flushSync，保证顺序与收尾。
+ *
+ * 调度委托给 createChunkFlushScheduler（rAF + setTimeout 兜底双挂、先到者赢）：
+ * Electron 主窗口被遮挡/隐藏时 Chromium 会冻结 rAF，纯 rAF 调度会让 pending chunk
+ * 永不 drain（切到别的应用→流「丢数据」，切菜单从 DB 重拉才恢复）。兜底 timer 保底。
  */
 function createChunkFlushBatcher(
   controller: ReadableStreamDefaultController<UIMessageChunk>
 ) {
   let pending: UIMessageChunk[] = []
-  let rafId: number | null = null
 
   const drainPending = () => {
     if (pending.length === 0) return
@@ -97,21 +101,15 @@ function createChunkFlushBatcher(
     }
   }
 
+  const scheduler = createChunkFlushScheduler(drainPending)
+
   const flushSync = () => {
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId)
-      rafId = null
-    }
-    drainPending()
+    scheduler.flushSync()
   }
 
   const schedule = (chunk: UIMessageChunk) => {
     pending.push(chunk)
-    if (rafId !== null) return
-    rafId = requestAnimationFrame(() => {
-      rafId = null
-      drainPending()
-    })
+    scheduler.schedule()
   }
 
   return { schedule, flushSync }
