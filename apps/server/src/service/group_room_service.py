@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any
+from typing import Any, Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -41,6 +41,7 @@ def _schedule_stream_start(
     orchestrator_auth_token: str | None = None,
     orchestrator_owned_db: Any | None = None,
     source: str = "group_room",
+    on_started: Callable[[], None] | None = None,
 ) -> None:
     """把 registry.request_start 投递到主事件循环执行。
 
@@ -88,6 +89,17 @@ def _schedule_stream_start(
                     exc_info=True,
                 )
             unregister_group_stream_relay(conversation_id)
+        else:
+            # 真正启动成功（非 REJECTED）才触发回调（如投 accepted 里程碑），
+            # 避免给被拒的僵尸流误报「已接活」。
+            if on_started is not None:
+                try:
+                    on_started()
+                except Exception:
+                    logger.warning(
+                        "on_started callback failed conv=%s", conversation_id,
+                        exc_info=True,
+                    )
 
     try:
         from src.service.agent.orchestrator.runtime import get_main_loop
@@ -105,6 +117,10 @@ ROOM_MEMBER_STATE_EVENT = "room_member_state"
 # 群流式中继：conversation_id -> 该流在群里的归属信息。
 # 成员/组长流产出 token 时，经 relay_group_stream_delta 实时推到群时间线。
 _GROUP_STREAM_RELAY: dict[int, dict] = {}
+
+# 群流里 write_todos 的上一次 todos 快照（按 conversation_id），用于在 LIVE 流
+# 钩子 relay_group_todo_progress 里检测「某条 todo 新变为 completed」。中继注销时清理。
+_GROUP_TODO_PREV: dict[int, list] = {}
 
 
 def register_group_stream_relay(
@@ -129,6 +145,7 @@ def register_group_stream_relay(
 
 def unregister_group_stream_relay(conversation_id: int) -> None:
     _GROUP_STREAM_RELAY.pop(conversation_id, None)
+    _GROUP_TODO_PREV.pop(conversation_id, None)
 
 
 def relay_group_stream_delta(conversation_id: int, delta_text: str) -> None:
@@ -158,6 +175,61 @@ def relay_group_stream_delta(conversation_id: int, delta_text: str) -> None:
     except Exception:
         logger.warning(
             "relay group stream delta failed conv=%s", conversation_id, exc_info=True
+        )
+
+
+def relay_group_todo_progress(conversation_id: int, serializable: Any) -> None:
+    """成员/组长私有流里 write_todos 的「新完成项」→ 投 progress 里程碑（LIVE 钩子）。
+
+    由 stream_registry 运行循环对**每个** chunk 调用（与逐字文本 relay 并列）。
+    write_todos 是工具块、无 text_part，故走这条独立判断。**热路径**：必须先以
+    `_GROUP_STREAM_RELAY` 成员判断快速 no-op（非群流直接返回），再做提取/diff。
+    """
+    info = _GROUP_STREAM_RELAY.get(conversation_id)
+    if not info:
+        return  # 非群流：最廉价的 no-op（先判，避免热循环里做无谓提取）
+    try:
+        cur_todos = _extract_write_todos_from_event(serializable)
+        if not cur_todos:
+            return
+        prev = _GROUP_TODO_PREV.get(conversation_id)
+        newly = _diff_completed_todos(prev, cur_todos)
+        _GROUP_TODO_PREV[conversation_id] = cur_todos
+        if not newly:
+            return
+        import time
+        from src.db.session import get_session_local
+
+        room_id = info["room_id"]
+        sender_id = info["sender_id"]
+        sender_label = info["sender_label"]
+        for content in newly:
+            # 去抖：同会话 progress 最小间隔 + 文本去重，避免刷屏。
+            if not _milestone_debouncer.allow(
+                conv_id=conversation_id, kind="progress",
+                text=content, now=time.monotonic(),
+            ):
+                continue
+            # 直接复用中继登记里已知的 room_id + sender_id + sender_label，
+            # 无需把 employee_id 反解成 GroupRoomMember.id，这里走
+            # _project_member_milestone 更直接。
+            db = get_session_local()()
+            try:
+                room = db.get(GroupRoom, room_id)
+                if room is None:
+                    continue
+                GroupRoomService._project_member_milestone(
+                    room=room, db=db, member_employee_id=sender_id,
+                    sender_label=sender_label,
+                    member_conversation_id=conversation_id,
+                    kind="progress", text=f"已完成：{content}",
+                )
+            finally:
+                db.close()
+    except Exception:
+        logger.warning(
+            "relay group todo progress failed conv=%s",
+            conversation_id, exc_info=True,
         )
 
 
@@ -293,6 +365,112 @@ def build_leader_brief(
         "成员产出会自动汇总到群里。\n\n"
         f"用户需求：{question}"
     )
+
+
+def _build_accepted_milestone_text(question: str) -> str:
+    """接活里程碑文案：'收到，开始处理：<任务摘要>'，截断到 40 字内。"""
+    q = (question or "").strip().replace("\n", " ")
+    head = q[:22] + ("…" if len(q) > 22 else "")
+    return f"收到，开始处理：{head}" if head else "收到，开始处理"
+
+
+class _MilestoneDebouncer:
+    """里程碑去抖：仅对 progress 类做「同会话最小间隔 + 文本去重」。
+    accepted/delivered/failed/cancelled 必出，不参与去抖。
+    """
+
+    _DEBOUNCED_KINDS = {"progress"}
+
+    def __init__(self, min_interval_s: float = 3.0):
+        self._min = min_interval_s
+        self._last_ts: dict[int, float] = {}
+        self._seen_text: dict[int, set[str]] = {}
+
+    def allow(self, *, conv_id: int, kind: str, text: str, now: float) -> bool:
+        if kind not in self._DEBOUNCED_KINDS:
+            return True
+        seen = self._seen_text.setdefault(conv_id, set())
+        if text in seen:
+            return False
+        last = self._last_ts.get(conv_id)
+        if last is not None and (now - last) < self._min:
+            return False
+        self._last_ts[conv_id] = now
+        seen.add(text)
+        return True
+
+
+_milestone_debouncer = _MilestoneDebouncer()
+
+
+def _diff_completed_todos(prev: list[dict] | None, cur: list[dict] | None) -> list[str]:
+    """对比前后 todo 列表，返回本次新变为 completed 的条目 content 列表。"""
+    prev = prev or []
+    cur = cur or []
+    prev_done = {
+        (t.get("content") or "").strip()
+        for t in prev
+        if t.get("status") == "completed"
+    }
+    newly: list[str] = []
+    for t in cur:
+        c = (t.get("content") or "").strip()
+        if c and t.get("status") == "completed" and c not in prev_done:
+            newly.append(c)
+    return newly
+
+
+def _extract_write_todos_from_event(data: Any) -> list[dict] | None:
+    """从一个 buffer 事件的 data 里取 write_todos 工具调用携带的 todos 列表。
+
+    成员流以 stream_mode=["messages","updates","custom"] 跑，订阅者收到的
+    event["data"] 即序列化后的 chunk。**只有 `updates` 模式的事件**才带「完整、
+    已解析」的 tool_calls.args（messages 模式只有逐字增量的 tool_call_chunks，
+    args 是半截 JSON 串，拿不到 todos 列表），故这里只认 type=="updates"：
+
+      {"type":"updates","data":{ <节点名>: {"messages":[<AIMessage>, ...]} }}
+
+    AIMessage 可能是 LC constructor 序列化（todos 在 kwargs.tool_calls）或兜底
+    序列化（__type__=="AIMessage"，tool_calls 在顶层）。节点名不固定（model/agent/
+    deepagents 节点），故遍历所有节点的 messages。找到 name=="write_todos" 且
+    args.todos 为 list 的工具调用即返回该 todos（同一事件多条取最后一条）。
+    无则返回 None。
+    """
+    if not isinstance(data, dict) or data.get("type") != "updates":
+        return None
+    payload = data.get("data")
+    if not isinstance(payload, dict):
+        return None
+
+    found: list[dict] | None = None
+    for node_update in payload.values():
+        if not isinstance(node_update, dict):
+            continue
+        messages = node_update.get("messages")
+        if not isinstance(messages, list):
+            continue
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            # LC constructor: {"type":"constructor","kwargs":{...}}；
+            # 兜底序列化: {"__type__":"AIMessage", "tool_calls":[...]}（顶层）。
+            kwargs = msg.get("kwargs") if isinstance(msg.get("kwargs"), dict) else msg
+            tool_calls = kwargs.get("tool_calls")
+            if not isinstance(tool_calls, list):
+                continue
+            for tc in tool_calls:
+                if not isinstance(tc, dict):
+                    continue
+                inner = tc.get("kwargs") if isinstance(tc.get("kwargs"), dict) else tc
+                if inner.get("name") != "write_todos":
+                    continue
+                args = inner.get("args")
+                if not isinstance(args, dict):
+                    continue
+                todos = args.get("todos")
+                if isinstance(todos, list):
+                    found = todos  # 同一事件多条 write_todos 取最后一条
+    return found
 
 
 class GroupRoomService:
@@ -632,6 +810,11 @@ class GroupRoomService:
             messages=request_messages,
             stream_msg_id=assistant_msg.id,
             source="group_room",
+            # 真正启动成功（非 REJECTED）才投 accepted 里程碑——回调在主循环延迟执行，
+            # 故捕获 room.id/member.id 等纯值（不持 ORM 对象，回调里另开独立 Session）。
+            on_started=lambda: GroupRoomService._project_accepted_milestone(
+                room.id, member.id, member_conv_id, question
+            ),
         )
 
         GroupRoomService.update_member_state(db, member, "running")
@@ -640,49 +823,51 @@ class GroupRoomService:
         # （DB 映射查找，不依赖脆弱的即时 buffer 订阅）。
         return member_conv_id
 
-    # ---- 投影订阅器 ----
-
     @staticmethod
-    def _attach_projector(room_id: int, member_id: int, member_conv_id: int) -> None:
-        """订阅成员私有流的终态，完成时把结论投影到群时间线。
+    def _project_member_milestone(
+        *,
+        room,
+        db,
+        member_employee_id: int | None,
+        sender_label: str,
+        member_conversation_id: int | None,
+        kind: str,
+        text: str,
+        artifacts: list[str] | None = None,
+        new_member_state: str | None = None,
+        member=None,
+    ):
+        """统一的成员里程碑投影：把一条带 role+milestone 的消息写到群时间线。
 
-        采用轻量方式：不逐 token 转发（防上下文爆炸），只在成员流**完成**时，
-        读取其最终 assistant 消息内容作为"结论"投影到房间。
-        成员完成的信号由 stream_registry.on_task_finalized 提供，但那是任务编排专用；
-        对于群内 @ 派发的非任务流，这里用 buffer 订阅监听 stream_ended。
+        kind: accepted|progress|delivered|failed|cancelled
+        new_member_state/member: 给出时顺带更新成员状态。
         """
-        from src.service.stream_registry import registry
-
-        task = registry._tasks.get(member_conv_id)
-        if not task:
-            return
-
-        def _on_event(event: dict) -> None:
-            data = event.get("data") if isinstance(event, dict) else None
-            status_val = None
-            if isinstance(data, dict):
-                status_val = data.get("status")
-            elif isinstance(data, str):
-                status_val = data
-            if status_val in ("completed", "cancelled", "error", "interrupted"):
-                try:
-                    GroupRoomService._project_member_conclusion(
-                        room_id, member_id, member_conv_id, status_val
-                    )
-                except Exception:
-                    logger.warning(
-                        "project member conclusion failed conv=%s",
-                        member_conv_id,
-                        exc_info=True,
-                    )
-
-        task.subscribe(_on_event)
+        extra_meta = {
+            "role": "worker",
+            "member_conversation_id": member_conversation_id,
+            "milestone": {
+                "kind": kind,
+                "text": text,
+                **({"artifacts": artifacts} if artifacts else {}),
+            },
+        }
+        GroupRoomService.post_to_timeline(
+            db, room,
+            role="assistant",
+            content=text,
+            sender_id=member_employee_id,
+            sender_label=sender_label,
+            extra_meta=extra_meta,
+            source_conversation_id=member_conversation_id,
+        )
+        if new_member_state is not None and member is not None:
+            GroupRoomService.update_member_state(db, member, new_member_state)
 
     @staticmethod
-    def _project_member_conclusion(
-        room_id: int, member_id: int, member_conv_id: int, status_val: str
+    def _project_accepted_milestone(
+        room_id: int, member_id: int, member_conv_id: int, question: str
     ) -> None:
-        """读取成员私有会话最终结论，写到群时间线（独立 Session）。"""
+        """派活成功（非 REJECTED）时投 accepted 里程碑。独立 Session（回调在主循环延迟执行）。"""
         from src.db.session import get_session_local
 
         db = get_session_local()()
@@ -693,52 +878,11 @@ class GroupRoomService:
                 return
             employee = db.get(Employee, member.employee_id)
             sender_label = employee.name if employee else f"员工#{member.employee_id}"
-
-            if status_val == "completed":
-                last = db.scalars(
-                    select(ConversationMessage)
-                    .where(
-                        ConversationMessage.conversation_id == member_conv_id,
-                        ConversationMessage.role == "assistant",
-                    )
-                    .order_by(ConversationMessage.id.desc())
-                ).first()
-                content = (last.content or "").strip() if last else ""
-                if not content:
-                    content = "（已完成）"
-                GroupRoomService.post_to_timeline(
-                    db, room,
-                    role="assistant",
-                    content=content,
-                    sender_id=member.employee_id,
-                    sender_label=sender_label,
-                    extra_meta={"member_conversation_id": member_conv_id},
-                )
-                GroupRoomService.update_member_state(db, member, "done")
-            else:
-                if status_val == "cancelled":
-                    body = f"⏹️ {sender_label}的任务已被取消。"
-                elif status_val == "interrupted":
-                    body = f"⏸️ {sender_label}的任务已中断，等待补充信息后继续。"
-                else:  # error
-                    reason = _extract_failure_reason(db, member_conv_id)
-                    body = f"⚠️ {sender_label}执行失败"
-                    body += f"：{reason}" if reason else (
-                        "，请稍后重试；若反复失败请检查模型设置"
-                        "（API Key / Base URL / 模型名）。"
-                    )
-                GroupRoomService.post_to_timeline(
-                    db, room,
-                    role="assistant",
-                    content=body,
-                    sender_id=member.employee_id,
-                    sender_label=sender_label,
-                    extra_meta={
-                        "member_conversation_id": member_conv_id,
-                        "stream_state": status_val,
-                    },
-                )
-                GroupRoomService.update_member_state(db, member, "ready")
+            GroupRoomService._project_member_milestone(
+                room=room, db=db, member_employee_id=member.employee_id,
+                sender_label=sender_label, member_conversation_id=member_conv_id,
+                kind="accepted", text=_build_accepted_milestone_text(question),
+            )
         finally:
             db.close()
 
@@ -2223,18 +2367,14 @@ def project_member_conversation_if_in_room(
                 body = f"✅ 已完成：{task_name}"
                 if summary:
                     body += f"\n\n{summary}"
-                GroupRoomService.post_to_timeline(
-                    db,
-                    task_room,
-                    role="assistant",
-                    content=body,
-                    sender_id=task_employee_id,
+                # 成员状态已在上方按 done/ready 单独更新过，这里不再传 new_member_state，
+                # 避免双重 update；编排任务不收集 artifacts，省略该参数。
+                GroupRoomService._project_member_milestone(
+                    room=task_room, db=db,
+                    member_employee_id=task_employee_id,
                     sender_label=sender_label,
-                    extra_meta={
-                        "member_conversation_id": conversation_id,
-                        "kind": "delivery",
-                    },
-                    source_conversation_id=conversation_id,
+                    member_conversation_id=conversation_id,
+                    kind="delivered", text=body,
                 )
             logger.info(
                 "member task conv=%s (%s) → DAG + delivery (room=%s)",
@@ -2271,19 +2411,27 @@ def project_member_conversation_if_in_room(
             content = (last.content or "").strip() if last else ""
             if not content:
                 content = "（已完成）"
-            GroupRoomService.post_to_timeline(
-                db,
-                room,
-                role="assistant",
-                content=content,
-                sender_id=member.employee_id,
+            GroupRoomService._project_member_milestone(
+                room=room, db=db, member_employee_id=member.employee_id,
                 sender_label=sender_label,
-                extra_meta={"member_conversation_id": conversation_id},
-                source_conversation_id=conversation_id,
+                member_conversation_id=conversation_id,
+                kind="delivered", text=content,
+                new_member_state="done", member=member,
             )
-            GroupRoomService.update_member_state(db, member, "done")
         elif stream_state in ("cancelled", "error", "interrupted"):
-            GroupRoomService.update_member_state(db, member, "ready")
+            kind = "cancelled" if stream_state == "cancelled" else "failed"
+            text = (
+                f"⏹️ {sender_label}的任务已取消"
+                if stream_state == "cancelled"
+                else f"⚠️ {sender_label}执行失败或中断"
+            )
+            GroupRoomService._project_member_milestone(
+                room=room, db=db, member_employee_id=member.employee_id,
+                sender_label=sender_label,
+                member_conversation_id=conversation_id,
+                kind=kind, text=text,
+                new_member_state="ready", member=member,
+            )
         logger.info(
             "projected @member conv=%s (%s) to room=%s timeline",
             conversation_id,

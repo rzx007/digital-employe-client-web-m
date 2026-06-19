@@ -3,6 +3,12 @@ import type { UIMessage } from "ai"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@workspace/ui/components/sheet"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { stopGroupRoom } from "@/api/group-room"
@@ -13,6 +19,7 @@ import type { ChatViewContact } from "../shared/chat-view-shared"
 
 import { ConversationChatView } from "../views/chat-conversation-view"
 import { GroupMemberSidebar } from "./group-member-sidebar"
+import { GroupPresenceBar } from "./group-presence-bar"
 import { GroupSopPanel } from "./group-sop-panel"
 
 /**
@@ -42,6 +49,7 @@ export function GroupRoomView({
   const queryClient = useQueryClient()
   const { members, dag, streaming, autoConfirm, setAutoConfirm, clearStreaming } =
     useGroupRoom(conversationId)
+  const [overviewOpen, setOverviewOpen] = React.useState(false)
 
   const groupRoomBusy = React.useMemo(() => {
     const leaderRunning = members.some(
@@ -135,7 +143,16 @@ export function GroupRoomView({
   }, [streaming, members])
 
   return (
-    <div className={cn("flex h-full min-h-0 w-full", className)} {...props}>
+    <div
+      className={cn("flex h-full min-h-0 w-full flex-col", className)}
+      {...props}
+    >
+      {members.length > 0 ? (
+        <GroupPresenceBar
+          members={members}
+          onOpenOverview={() => setOverviewOpen(true)}
+        />
+      ) : null}
       <ConversationChatView
         contact={contact}
         title={title}
@@ -146,31 +163,38 @@ export function GroupRoomView({
         extraStreamingMessages={extraStreamingMessages}
         groupRoomBusy={groupRoomBusy}
         onGroupRoomStop={handleGroupRoomStop}
-        className="min-w-0 flex-1"
+        className="min-h-0 min-w-0 flex-1"
       />
-      {/* 组长统筹模式 → DAG 流程图；@直接派活 → 简单成员列表 */}
-      {hasDag && dag ? (
-        <GroupSopPanel
-          dag={dag}
-          conversationId={conversationId}
-          groupContactId={groupContactId ?? `group:${conversationId}`}
-          memberConversationByEmployeeId={memberConversationByEmployeeId}
-          autoConfirm={autoConfirm}
-          onAutoConfirmChange={setAutoConfirm}
-          className="hidden w-80 shrink-0 border-l bg-background/60 md:flex"
-        />
-      ) : (
-        <GroupMemberSidebar
-          members={members}
-          // 用群名做标题，绝不用会话标题（=用户任务全文，会把右栏顶部塞满长文）
-          title={contact?.group?.name || "群成员"}
-          groupContactId={groupContactId}
-          groupConversationId={conversationId}
-          autoConfirm={autoConfirm}
-          onAutoConfirmChange={setAutoConfirm}
-          className="hidden md:flex"
-        />
-      )}
+      <Sheet open={overviewOpen} onOpenChange={setOverviewOpen}>
+        <SheetContent side="right" className="w-[360px] p-0 sm:max-w-[360px]">
+          <SheetHeader className="px-4 py-3">
+            <SheetTitle>协作流程</SheetTitle>
+          </SheetHeader>
+          {/* 组长统筹模式 → DAG 流程图；@直接派活 → 简单成员列表 */}
+          {hasDag && dag ? (
+            <GroupSopPanel
+              dag={dag}
+              conversationId={conversationId}
+              groupContactId={groupContactId ?? `group:${conversationId}`}
+              memberConversationByEmployeeId={memberConversationByEmployeeId}
+              autoConfirm={autoConfirm}
+              onAutoConfirmChange={setAutoConfirm}
+              className="flex h-[calc(100%-3.5rem)]"
+            />
+          ) : (
+            <GroupMemberSidebar
+              members={members}
+              // 用群名做标题，绝不用会话标题（=用户任务全文，会把右栏顶部塞满长文）
+              title={contact?.group?.name || "群成员"}
+              groupContactId={groupContactId}
+              groupConversationId={conversationId}
+              autoConfirm={autoConfirm}
+              onAutoConfirmChange={setAutoConfirm}
+              className="flex h-[calc(100%-3.5rem)]"
+            />
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

@@ -211,6 +211,8 @@ function ChatMessageItemInner({
                   : undefined
               const senderId =
                 typeof meta?.senderId === "string" ? meta.senderId : undefined
+              const senderRole =
+                typeof meta?.role === "string" ? meta.role : undefined
               const member = contact.group?.participants.find(
                 (p) => p.id === senderId || p.name === senderName
               )
@@ -224,15 +226,21 @@ function ChatMessageItemInner({
                   />
                 )
               }
-              // 组长（无 sender_id）用总管头像；用户/无法识别则回退群拼图
-              if (senderName === "组长") {
+              // 组长：role==="leader" 或回退老逻辑 senderName==="组长"。
+              // 金环头像 + 「组长」徽标，给协调者在群里清晰的身份感。
+              if (senderRole === "leader" || senderName === "组长") {
                 return (
-                  <EmployeeContactAvatar
-                    name="组长"
-                    avatar={CURATOR_AVATAR_URL}
-                    avatarClassName="size-6"
-                    fallbackClassName="text-[10px]"
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <EmployeeContactAvatar
+                      name="组长"
+                      avatar={CURATOR_AVATAR_URL}
+                      avatarClassName="size-6 ring-2 ring-amber-300/60"
+                      fallbackClassName="text-[10px]"
+                    />
+                    <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                      组长
+                    </span>
+                  </div>
                 )
               }
               return (

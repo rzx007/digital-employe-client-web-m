@@ -12,6 +12,7 @@ import { RecruitmentCandidatesCard } from "./recruitment-candidates-card"
 import { EmployeeHiredCard } from "./employee-hired-card"
 import { EmployeesHiredBatchCard } from "./employees-hired-batch-card"
 import { GroupCreatedCard } from "./group-created-card"
+import { MemberMilestoneBlock } from "./member-milestone-block"
 import {
   EmployeeDeletedCard,
   EmployeeDetailCard,
@@ -147,6 +148,19 @@ export function BlockRenderer({
     filesMeta,
   } = ctx
 
+  if (block.kind === "member-milestone") {
+    return (
+      <MemberMilestoneBlock
+        key={block.key}
+        senderName={block.senderName}
+        kind={block.milestoneKind}
+        text={block.text}
+        artifacts={block.artifacts}
+        onOpenArtifact={(p) => useArtifactStore.getState().openResource(p)}
+        className="w-full"
+      />
+    )
+  }
   if (block.kind === "tool-group") {
     return (
       <ToolGroupBlock
