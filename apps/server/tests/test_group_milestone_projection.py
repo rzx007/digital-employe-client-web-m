@@ -212,3 +212,170 @@ def test_on_event_projects_progress_for_newly_completed_todos(monkeypatch):
     ]))
 
     assert captured == ["检索资料", "起草"]
+
+
+def test_relay_group_todo_progress_projects_once_per_new_completion(monkeypatch):
+    """LIVE 钩子 relay_group_todo_progress：已登记的群流里 write_todos 出现新完成项
+    → 投 progress 里程碑；同一完成项重复喂 → 不再投（prev-todos diff + 去抖）。"""
+    import time as _time
+    import src.service.group_room_service as grs
+    from src.service.group_room_service import (
+        GroupRoomService,
+        relay_group_todo_progress,
+        register_group_stream_relay,
+        unregister_group_stream_relay,
+    )
+
+    captured = []
+
+    monkeypatch.setattr(
+        GroupRoomService,
+        "_project_member_milestone",
+        staticmethod(lambda **kw: captured.append((kw.get("kind"), kw.get("text")))),
+    )
+    # 投影内部会 db.get(GroupRoom, ...)；本路径走 registry 直投不需真 room，
+    # 但 inline 实现里会开 session 取 room → 打桩 get_session_local 返回假 session。
+    class _FakeSession:
+        def get(self, *a, **k):
+            return object()
+
+        def close(self):
+            pass
+
+    import src.db.session as _dbsess
+    monkeypatch.setattr(_dbsess, "get_session_local", lambda: (lambda: _FakeSession()))
+
+    # 重置去抖器状态，避免跨测试污染
+    grs._milestone_debouncer._last_ts.clear()
+    grs._milestone_debouncer._seen_text.clear()
+
+    conv_id = 7777
+    register_group_stream_relay(
+        conv_id,
+        room_id=1,
+        room_conversation_id=10,
+        workspace_id=100,
+        sender_id=5,
+        sender_label="李四",
+    )
+    try:
+        # 新完成「检索资料」→ 投一次
+        relay_group_todo_progress(conv_id, _make_updates_event([
+            {"content": "检索资料", "status": "completed"},
+            {"content": "起草", "status": "in_progress"},
+        ])["data"])
+        # 同一完成项再喂 → 不重复投（diff + 去抖）
+        relay_group_todo_progress(conv_id, _make_updates_event([
+            {"content": "检索资料", "status": "completed"},
+            {"content": "起草", "status": "in_progress"},
+        ])["data"])
+
+        assert len(captured) == 1
+        assert captured[0][0] == "progress"
+        assert "检索资料" in captured[0][1]
+    finally:
+        unregister_group_stream_relay(conv_id)
+
+
+def test_relay_group_todo_progress_noop_for_unregistered_conv(monkeypatch):
+    """未登记的会话（非群流）→ 快速 no-op，不做任何投影。"""
+    import src.service.group_room_service as grs
+    from src.service.group_room_service import GroupRoomService, relay_group_todo_progress
+
+    captured = []
+    monkeypatch.setattr(
+        GroupRoomService,
+        "_project_member_milestone",
+        staticmethod(lambda **kw: captured.append(kw)),
+    )
+
+    # 确保该 conv 未登记
+    grs._GROUP_STREAM_RELAY.pop(123456, None)
+    relay_group_todo_progress(123456, _make_updates_event([
+        {"content": "X", "status": "completed"},
+    ])["data"])
+    assert captured == []
+
+
+def test_unregister_relay_clears_todo_prev_state():
+    """注销中继时同步清理 _GROUP_TODO_PREV，防止跨会话/重用 conv_id 残留。"""
+    import src.service.group_room_service as grs
+    from src.service.group_room_service import unregister_group_stream_relay
+
+    grs._GROUP_TODO_PREV[55555] = [{"content": "A", "status": "completed"}]
+    unregister_group_stream_relay(55555)
+    assert 55555 not in grs._GROUP_TODO_PREV
+
+
+def test_conclusion_branch_c_cancelled_projects_milestone(monkeypatch):
+    """结论路径 Branch C（@直接派）：cancelled/error/interrupted 现在会投一条
+    里程碑（此前只 update_member_state、不发消息）。校验 kind 与状态映射。"""
+    import src.service.group_room_service as grs
+    from src.service.group_room_service import (
+        GroupRoomService,
+        project_member_conversation_if_in_room,
+    )
+
+    captured = []
+    monkeypatch.setattr(
+        GroupRoomService,
+        "_project_member_milestone",
+        staticmethod(lambda **kw: captured.append((kw.get("kind"), kw.get("new_member_state"), kw.get("text")))),
+    )
+    # Branch A/B 都不命中：leader_room=None、编排解析返回 (None, None)
+    monkeypatch.setattr(
+        grs, "_resolve_room_for_orchestration_conv",
+        lambda db, conv_id: (None, None),
+    )
+
+    class _FakeMember:
+        id = 9
+        room_id = 3
+        employee_id = 5
+
+    class _FakeEmployee:
+        name = "王五"
+
+    class _FakeScalars:
+        def __init__(self, val):
+            self._val = val
+
+        def first(self):
+            return self._val
+
+    member = _FakeMember()
+
+    class _FakeSession:
+        def __init__(self):
+            self._scalar_calls = 0
+
+        def scalars(self, *a, **k):
+            # 第 1 次 = leader_room 查询(None)；第 2 次 = member 查询(命中)
+            self._scalar_calls += 1
+            if self._scalar_calls == 1:
+                return _FakeScalars(None)
+            return _FakeScalars(member)
+
+        def get(self, model, key):
+            # GroupRoom / Employee 反查
+            if getattr(model, "__name__", "") == "GroupRoom":
+                class _FakeRoom:
+                    id = 3
+                return _FakeRoom()
+            return _FakeEmployee()
+
+        def close(self):
+            pass
+
+    import src.db.session as _dbsess
+    monkeypatch.setattr(_dbsess, "get_session_local", lambda: (lambda: _FakeSession()))
+
+    project_member_conversation_if_in_room(4242, "cancelled")
+    assert captured == [("cancelled", "ready", "⏹️ 王五的任务已取消")]
+
+    captured.clear()
+    import src.db.session as _dbsess
+    monkeypatch.setattr(_dbsess, "get_session_local", lambda: (lambda: _FakeSession()))
+    project_member_conversation_if_in_room(4242, "error")
+    assert captured[0][0] == "failed"
+    assert captured[0][1] == "ready"

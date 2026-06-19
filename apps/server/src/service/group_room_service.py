@@ -118,6 +118,10 @@ ROOM_MEMBER_STATE_EVENT = "room_member_state"
 # 成员/组长流产出 token 时，经 relay_group_stream_delta 实时推到群时间线。
 _GROUP_STREAM_RELAY: dict[int, dict] = {}
 
+# 群流里 write_todos 的上一次 todos 快照（按 conversation_id），用于在 LIVE 流
+# 钩子 relay_group_todo_progress 里检测「某条 todo 新变为 completed」。中继注销时清理。
+_GROUP_TODO_PREV: dict[int, list] = {}
+
 
 def register_group_stream_relay(
     conversation_id: int,
@@ -141,6 +145,7 @@ def register_group_stream_relay(
 
 def unregister_group_stream_relay(conversation_id: int) -> None:
     _GROUP_STREAM_RELAY.pop(conversation_id, None)
+    _GROUP_TODO_PREV.pop(conversation_id, None)
 
 
 def relay_group_stream_delta(conversation_id: int, delta_text: str) -> None:
@@ -170,6 +175,61 @@ def relay_group_stream_delta(conversation_id: int, delta_text: str) -> None:
     except Exception:
         logger.warning(
             "relay group stream delta failed conv=%s", conversation_id, exc_info=True
+        )
+
+
+def relay_group_todo_progress(conversation_id: int, serializable: Any) -> None:
+    """成员/组长私有流里 write_todos 的「新完成项」→ 投 progress 里程碑（LIVE 钩子）。
+
+    由 stream_registry 运行循环对**每个** chunk 调用（与逐字文本 relay 并列）。
+    write_todos 是工具块、无 text_part，故走这条独立判断。**热路径**：必须先以
+    `_GROUP_STREAM_RELAY` 成员判断快速 no-op（非群流直接返回），再做提取/diff。
+    """
+    info = _GROUP_STREAM_RELAY.get(conversation_id)
+    if not info:
+        return  # 非群流：最廉价的 no-op（先判，避免热循环里做无谓提取）
+    try:
+        cur_todos = _extract_write_todos_from_event(serializable)
+        if not cur_todos:
+            return
+        prev = _GROUP_TODO_PREV.get(conversation_id)
+        newly = _diff_completed_todos(prev, cur_todos)
+        _GROUP_TODO_PREV[conversation_id] = cur_todos
+        if not newly:
+            return
+        import time
+        from src.db.session import get_session_local
+
+        room_id = info["room_id"]
+        sender_id = info["sender_id"]
+        sender_label = info["sender_label"]
+        for content in newly:
+            # 去抖：同会话 progress 最小间隔 + 文本去重，避免刷屏。
+            if not _milestone_debouncer.allow(
+                conv_id=conversation_id, kind="progress",
+                text=content, now=time.monotonic(),
+            ):
+                continue
+            # 直接复用中继登记里已知的 room_id + sender_id + sender_label，
+            # 无需把 employee_id 反解成 GroupRoomMember.id（_project_progress_milestone
+            # 需要 member_id，这里走 _project_member_milestone 更直接）。
+            db = get_session_local()()
+            try:
+                room = db.get(GroupRoom, room_id)
+                if room is None:
+                    continue
+                GroupRoomService._project_member_milestone(
+                    room=room, db=db, member_employee_id=sender_id,
+                    sender_label=sender_label,
+                    member_conversation_id=conversation_id,
+                    kind="progress", text=f"已完成：{content}",
+                )
+            finally:
+                db.close()
+    except Exception:
+        logger.warning(
+            "relay group todo progress failed conv=%s",
+            conversation_id, exc_info=True,
         )
 
 
@@ -2464,18 +2524,14 @@ def project_member_conversation_if_in_room(
                 body = f"✅ 已完成：{task_name}"
                 if summary:
                     body += f"\n\n{summary}"
-                GroupRoomService.post_to_timeline(
-                    db,
-                    task_room,
-                    role="assistant",
-                    content=body,
-                    sender_id=task_employee_id,
+                # 成员状态已在上方按 done/ready 单独更新过，这里不再传 new_member_state，
+                # 避免双重 update；编排任务不收集 artifacts，省略该参数。
+                GroupRoomService._project_member_milestone(
+                    room=task_room, db=db,
+                    member_employee_id=task_employee_id,
                     sender_label=sender_label,
-                    extra_meta={
-                        "member_conversation_id": conversation_id,
-                        "kind": "delivery",
-                    },
-                    source_conversation_id=conversation_id,
+                    member_conversation_id=conversation_id,
+                    kind="delivered", text=body,
                 )
             logger.info(
                 "member task conv=%s (%s) → DAG + delivery (room=%s)",
@@ -2512,19 +2568,27 @@ def project_member_conversation_if_in_room(
             content = (last.content or "").strip() if last else ""
             if not content:
                 content = "（已完成）"
-            GroupRoomService.post_to_timeline(
-                db,
-                room,
-                role="assistant",
-                content=content,
-                sender_id=member.employee_id,
+            GroupRoomService._project_member_milestone(
+                room=room, db=db, member_employee_id=member.employee_id,
                 sender_label=sender_label,
-                extra_meta={"member_conversation_id": conversation_id},
-                source_conversation_id=conversation_id,
+                member_conversation_id=conversation_id,
+                kind="delivered", text=content,
+                new_member_state="done", member=member,
             )
-            GroupRoomService.update_member_state(db, member, "done")
         elif stream_state in ("cancelled", "error", "interrupted"):
-            GroupRoomService.update_member_state(db, member, "ready")
+            kind = "cancelled" if stream_state == "cancelled" else "failed"
+            text = (
+                f"⏹️ {sender_label}的任务已取消"
+                if stream_state == "cancelled"
+                else f"⚠️ {sender_label}执行失败或中断"
+            )
+            GroupRoomService._project_member_milestone(
+                room=room, db=db, member_employee_id=member.employee_id,
+                sender_label=sender_label,
+                member_conversation_id=conversation_id,
+                kind=kind, text=text,
+                new_member_state="ready", member=member,
+            )
         logger.info(
             "projected @member conv=%s (%s) to room=%s timeline",
             conversation_id,

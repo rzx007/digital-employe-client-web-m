@@ -1948,6 +1948,18 @@ class StreamRegistry:
                 elif text_part and not _is_tool_chunk and _subagent_ns:
                     # 子任务正文 token：算真实进展（刷新判死计时），但不进父气泡/不 relay。
                     task.touch_content()
+                # 群协作：成员私有流里 write_todos 的「新完成项」→ 投 progress 里程碑。
+                # 与上方文本 relay 并列：write_todos 是工具块(无 text_part)，故单独判，
+                # 不挂在 text_part 分支上；仅顶层流(ns 空)处理，子任务进度不刷群。
+                if not _subagent_ns:
+                    try:
+                        from src.service.group_room_service import (
+                            relay_group_todo_progress,
+                        )
+
+                        relay_group_todo_progress(conversation_id, serializable)
+                    except Exception:
+                        pass
                 if text_part:
                     if not _first_token_recorded:
                         _stream_metrics.record_first_token(conversation_id)
