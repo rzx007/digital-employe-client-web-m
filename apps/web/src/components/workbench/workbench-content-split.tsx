@@ -350,7 +350,10 @@ export function WorkbenchContentSplit({
           minSize="35%"
           className="min-w-0"
         >
-          <div className="h-full min-h-0 overflow-auto p-3">{children}</div>
+          {/* 隐藏外层网格滚动条但保留滚动（与看板格子内一致，整体更干净） */}
+          <div className="h-full min-h-0 overflow-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {children}
+          </div>
         </ResizablePanel>
 
         {!showResources && (

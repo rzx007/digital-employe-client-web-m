@@ -43,8 +43,9 @@ export function WorkbenchHtmlPanel({
   const content = data?.content
   const srcDoc = React.useMemo(() => {
     if (!content) return null
-    // 注入中性 base（防相对引用递归）+ 运行时代理拦截脚本（外部 fetch/XHR 走后端 /proxy 绕 CORS）
-    return wrapHtmlForPreview(content, getRequestBaseUrl())
+    // 注入中性 base（防相对引用递归）+ 运行时代理拦截脚本（外部 fetch/XHR 走后端 /proxy 绕 CORS）。
+    // hideScrollbar：看板格子固定高度，内容超高时隐藏 iframe 内滚动条（仍可滚），避免露丑。
+    return wrapHtmlForPreview(content, getRequestBaseUrl(), { hideScrollbar: true })
   }, [content])
 
   const missing = isError || (!isLoading && !content)

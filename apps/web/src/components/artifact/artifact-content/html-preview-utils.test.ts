@@ -69,6 +69,25 @@ describe("wrapHtmlForPreview", () => {
       wrapped.indexOf("part1.html")
     )
   })
+
+  it("默认不注入隐藏滚动条样式", () => {
+    const wrapped = wrapHtmlForPreview("<div>hi</div>")
+    expect(wrapped).not.toContain("scrollbar-width")
+  })
+
+  it("hideScrollbar=true 时注入隐藏滚动条样式（仍保留滚动）", () => {
+    // 工作台看板用：iframe 内容高于格子时不显丑滚动条，但内容仍可滚。
+    const wrapped = wrapHtmlForPreview("<div>hi</div>", "", { hideScrollbar: true })
+    expect(wrapped).toContain("scrollbar-width:none")
+    expect(wrapped).toContain("::-webkit-scrollbar")
+  })
+
+  it("hideScrollbar 对完整文档也注入到 <head>", () => {
+    const full =
+      '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>x</body></html>'
+    const wrapped = wrapHtmlForPreview(full, "", { hideScrollbar: true })
+    expect(wrapped).toContain("scrollbar-width:none")
+  })
 })
 
 describe("buildProxyInterceptorScript / wrapHtmlForPreview proxy injection", () => {
