@@ -1341,16 +1341,13 @@ class GroupRoomService:
         tasks_by_plan: dict[int | None, list[EmployeeTask]] = {}
         for t in plan_tasks:
             tasks_by_plan.setdefault(t.orchestration_plan_id, []).append(t)
-        plan_json_cache: dict[int, list] = {}
         for plan_id_key, group_tasks in tasks_by_plan.items():
             plan_json_obj: list = []
             if plan_id_key is not None:
-                if plan_id_key not in plan_json_cache:
-                    grp_plan = db.get(OrchestrationPlan, plan_id_key)
-                    plan_json_cache[plan_id_key] = json.loads(
-                        (grp_plan.plan_json if grp_plan else None) or "[]"
-                    )
-                plan_json_obj = plan_json_cache[plan_id_key]
+                grp_plan = db.get(OrchestrationPlan, plan_id_key)
+                plan_json_obj = json.loads(
+                    (grp_plan.plan_json if grp_plan else None) or "[]"
+                )
             # build_dependency_maps 把 task[i] 与 plan_json[i] **按位置**对应，并以
             # idx 解 depends_on（bounded by len(tasks)）。若只传该计划的「在执行子集」
             # 却配上**完整** plan_json，下标会错位→依赖边丢失/错连（部分执行=运行中
@@ -1472,8 +1469,8 @@ class GroupRoomService:
             "task": (primary_plan.user_input if primary_plan else "") or "",
             "state": "done", "artifacts": [],
         })
-        # 组长「分解与派活」节点：走到这里说明编排计划已生成（前面 plan is None 已
-        # return），即派活一定完成了 → 永久 done。绝不能用「组长会话是否在流式」判断：
+        # 组长「分解与派活」节点：走到这里说明编排计划已生成（前面 plan_tasks 为空
+        # 已 return has_dag=False），即派活一定完成了 → 永久 done。绝不能用「组长会话是否在流式」判断：
         # 组长会话被复用做「派活」和「汇总」两个阶段，成员全完成后触发汇总会让组长
         # 会话再次流式，若据此把 leader 节点又判 running，就会出现「后面任务完成了
         # 状态反而回滚到组长」的 bug。汇总的进行中状态由下方独立的 summary 节点表达。

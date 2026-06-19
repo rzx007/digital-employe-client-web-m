@@ -207,3 +207,52 @@ def test_room_dag_aggregates_all_running_tasks_not_just_latest_plan(
     # 应聚合 Plan A 两个在执行的任务，而非只画 Plan B 的 1 个
     assert len(worker_nodes) == 2
     assert all(n["state"] == "running" for n in worker_nodes)
+
+
+def test_room_dag_aggregates_running_tasks_across_two_plans(db_session, workspace):
+    """两份不同 plan 各有一个在执行的任务时，应跨 plan 聚合并都渲染成 running。
+
+    验证 dep_map.update 的跨计划合并（不同 plan 的 task.id 互不冲突）以及
+    两份计划的在执行任务都进入聚合渲染集。primary_plan_id 取 Counter.most_common
+    首项；本场景两 plan 各 1 个任务（平票），只断言落在 {planA.id, planB.id}。
+    """
+    emp_a = add_employee(db_session, workspace.id, name="员工甲2")
+    emp_b = add_employee(db_session, workspace.id, name="员工乙2")
+
+    group = GroupService.create_group(
+        db_session, workspace.id, "双计划群", [emp_a.id, emp_b.id]
+    )
+    group_conv = Conversation(
+        workspace_id=workspace.id,
+        target_type="group",
+        target_id=group.id,
+        title="双计划群",
+    )
+    db_session.add(group_conv)
+    db_session.commit()
+    db_session.refresh(group_conv)
+
+    room = GroupRoomService.ensure_room(db_session, group_conv)
+    leader_conv_id = room.leader_conversation_id
+    assert leader_conv_id is not None
+
+    # Plan A：1 个任务，在执行
+    plan_a = _add_plan(db_session, workspace.id, leader_conv_id)
+    task_a = _add_task(db_session, workspace.id, emp_a.id, plan_a.id, "任务A")
+    _add_running_log(db_session, task_a, leader_conv_id)
+
+    # Plan B：另一份计划，1 个任务，也在执行
+    plan_b = _add_plan(db_session, workspace.id, leader_conv_id)
+    task_b = _add_task(db_session, workspace.id, emp_b.id, plan_b.id, "任务B")
+    _add_running_log(db_session, task_b, leader_conv_id)
+
+    dag = GroupRoomService.get_room_dag(db_session, group_conv.id)
+    worker_nodes = [n for n in dag["nodes"] if n["type"] == "worker"]
+
+    # 跨两份计划聚合：两个在执行的任务都应渲染且 running
+    assert len(worker_nodes) == 2
+    assert all(n["state"] == "running" for n in worker_nodes)
+    worker_ids = {n["id"] for n in worker_nodes}
+    assert worker_ids == {f"task-{task_a.id}", f"task-{task_b.id}"}
+    # 平票时 most_common 任取其一，断言落在两 plan 之内
+    assert dag["plan_id"] in {plan_a.id, plan_b.id}
