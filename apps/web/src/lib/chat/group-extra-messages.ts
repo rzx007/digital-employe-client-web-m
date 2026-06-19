@@ -89,3 +89,36 @@ export function computeGroupExtraMessages({
 
   return msgs
 }
+
+/** 一条 assistant 消息是否「空的流式占位」（streamState=streaming 且无可见正文）。 */
+function isEmptyStreamingPlaceholder(message: UIMessage): boolean {
+  if (message.role !== "assistant") return false
+  const meta = (message as { metadata?: Record<string, unknown> }).metadata
+  if (!meta || meta.streamState !== "streaming") return false
+  const hasVisibleText = (message.parts ?? []).some(
+    (p) =>
+      p.type === "text" &&
+      "text" in p &&
+      typeof p.text === "string" &&
+      p.text.trim().length > 0
+  )
+  return !hasVisibleText
+}
+
+/**
+ * 把合成的流式临时消息（computeGroupExtraMessages 的产物）并入已准备好的时间线。
+ *
+ * 直接 `[...prepared, ...extras]` 会出现**两条**「正在生成回复...」：prepared 里可能
+ * 已有一条真实的空流式占位（useChat composer 残留 / 落库的 streaming 空行，
+ * stripGhostComposerAssistants 因 streamState=streaming 会保留它），extras 又合成了
+ * 一条占位 → 两条空流式气泡并列。合成 extras 是当前流式态的权威表示，故合并时先剥掉
+ * prepared 里的空流式占位（有可见正文的真实流式气泡保留），再追加 extras。
+ */
+export function mergeGroupStreamingMessages(
+  prepared: UIMessage[],
+  extras: UIMessage[]
+): UIMessage[] {
+  if (!extras.length) return prepared
+  const deduped = prepared.filter((m) => !isEmptyStreamingPlaceholder(m))
+  return [...deduped, ...extras]
+}

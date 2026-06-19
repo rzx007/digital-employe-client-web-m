@@ -39,6 +39,7 @@ import { resolveGroupClarifyTarget } from "@/lib/chat/hitl/group-clarify-target"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
 import { stripGhostComposerAssistants } from "@/lib/chat/group-composer-ghosts"
+import { mergeGroupStreamingMessages } from "@/lib/chat/group-extra-messages"
 import {
   dedupePlanCardsByMessageId,
   dedupePlanCardsByPlanId,
@@ -464,8 +465,10 @@ export function ConversationChatView({
     const prepared = prepareDisplayMessages(source)
     // 群协作：把进行中成员/组长的逐字流式临时消息追加到时间线末尾，
     // 用与单聊完全相同的气泡逐字渲染；完成后由落库消息接管、临时消息清除。
+    // mergeGroupStreamingMessages 会先剥掉 prepared 里的空流式占位，避免与合成
+    // 占位并列出现两条「正在生成回复...」。
     if (extraStreamingMessages && extraStreamingMessages.length > 0) {
-      return [...prepared, ...extraStreamingMessages]
+      return mergeGroupStreamingMessages(prepared, extraStreamingMessages)
     }
     return prepared
   }, [
