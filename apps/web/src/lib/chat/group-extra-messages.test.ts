@@ -124,6 +124,49 @@ describe("mergeGroupStreamingMessages", () => {
     const prepared = [withText] as unknown as UIMessage[]
     const out = mergeGroupStreamingMessages(prepared, syntheticPlaceholder)
     expect(out.some((m) => m.id === "real-leader-text")).toBe(true)
+    expect(
+      out.some(
+        (m) => (m.metadata as Record<string, unknown> | undefined)?.pendingReply === true
+      )
+    ).toBe(false)
+  })
+
+  it("组长真实流式已在 extras → 剥掉 extras 里的 pendingReply 占位", () => {
+    const realLeaderStream = {
+      id: "group-stream-746",
+      role: "assistant",
+      parts: [{ type: "text", text: "安排：微博热搜助手查热搜…" }],
+      metadata: { senderName: "组长", streamState: "streaming", streamCharCount: 12 },
+    } as unknown as UIMessage
+    const placeholder = {
+      id: "group-stream-pending-leader",
+      role: "assistant",
+      parts: [{ type: "text", text: "" }],
+      metadata: { senderName: "组长", streamState: "streaming", pendingReply: true },
+    } as unknown as UIMessage
+    const prepared = [
+      { id: "u1", role: "user", parts: [{ type: "text", text: "派活" }] },
+    ] as unknown as UIMessage[]
+    const out = mergeGroupStreamingMessages(prepared, [realLeaderStream, placeholder])
+    expect(out.some((m) => (m.metadata as Record<string, unknown> | undefined)?.pendingReply === true)).toBe(false)
+    expect(out.some((m) => m.id === "group-stream-746")).toBe(true)
+  })
+
+  it("组长已落库回复在 prepared → 剥掉 extras 里的 pendingReply 占位", () => {
+    const landedLeaderReply = {
+      id: "3875",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "安排：微博热搜助手查热搜，浏览器助手查小米17价格。" },
+        { type: "tool-create_orchestration_plan" },
+        { type: "text", text: "编排计划 #210 已生成，包含 2 个子任务。" },
+      ],
+      metadata: { senderName: "组长", streamState: "completed" },
+    } as unknown as UIMessage
+    const prepared = [landedLeaderReply] as unknown as UIMessage[]
+    const out = mergeGroupStreamingMessages(prepared, syntheticPlaceholder)
+    expect(out.some((m) => (m.metadata as Record<string, unknown> | undefined)?.pendingReply === true)).toBe(false)
+    expect(out.some((m) => m.id === "3875")).toBe(true)
   })
 
   it("no extras → returns prepared unchanged (same reference)", () => {

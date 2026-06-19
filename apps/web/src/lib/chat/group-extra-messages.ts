@@ -1,5 +1,7 @@
 import type { UIMessage } from "ai"
 
+import { assistantMessageHasVisibleBody } from "./group-composer-ghosts"
+
 export interface GroupMemberLike {
   role_in_room: string
   conversation_id: number | null
@@ -119,6 +121,30 @@ export function mergeGroupStreamingMessages(
   extras: UIMessage[]
 ): UIMessage[] {
   if (!extras.length) return prepared
+
+  const isLeader = (m: UIMessage): boolean =>
+    (m as { metadata?: Record<string, unknown> }).metadata?.senderName === "组长"
+  const isPendingPlaceholder = (m: UIMessage): boolean =>
+    (m as { metadata?: Record<string, unknown> }).metadata?.pendingReply === true
+
+  // 组长已有真实可见内容（extras 里非占位组长流式有正文，或 prepared 里组长可见回复）→
+  // pendingReply 占位多余，剥掉，避免与真实内容并存出现两条「正在生成回复」。
+  const leaderHasRealContent =
+    extras.some(
+      (m) =>
+        isLeader(m) &&
+        !isPendingPlaceholder(m) &&
+        assistantMessageHasVisibleBody(m)
+    ) ||
+    prepared.some(
+      (m) =>
+        m.role === "assistant" && isLeader(m) && assistantMessageHasVisibleBody(m)
+    )
+
+  const nextExtras = leaderHasRealContent
+    ? extras.filter((m) => !isPendingPlaceholder(m))
+    : extras
+
   const deduped = prepared.filter((m) => !isEmptyStreamingPlaceholder(m))
-  return [...deduped, ...extras]
+  return [...deduped, ...nextExtras]
 }
