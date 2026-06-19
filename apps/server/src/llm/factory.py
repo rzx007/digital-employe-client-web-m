@@ -129,11 +129,10 @@ def build_chat_model(
 
     req_timeout = max(15.0, float(settings.llm_request_timeout))
     connect_cap = min(12.0, req_timeout)
-    # read 超时 = 流式「两个 chunk 之间」的最长等待。设 None（无限）：判「模型是否挂死」
-    # 完全交给应用层「看活动」看门狗——长命令/长任务期间工具 stdout + 30s 心跳持续刷新
-    # 活动时间戳，不会被底层 HTTP 误杀；模型真挂死（连续无任何活动）由 stream_registry 的
-    # 900s no_content watchdog cancel 回收。connect/write/pool 仍有限，不放大。
-    read_timeout = None
+    # 命令耗时已由 shell_execute「超时转后台」机制承接（命令不再占用 LLM 连接），read 回到
+    # 「纯模型 chunk 间隙」语义：180s 与 agent_chunk_timeout 对齐，让模型真挂死/半开连接较快
+    # 被 httpx 断连重连（max_retries=2），不必干等到 900s 应用层 no_content watchdog。
+    read_timeout = min(180.0, req_timeout)
     llm_timeout = httpx.Timeout(
         connect=connect_cap,
         read=read_timeout,

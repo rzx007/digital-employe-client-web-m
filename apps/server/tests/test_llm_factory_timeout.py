@@ -35,7 +35,7 @@ def test_read_timeout_is_none_others_finite() -> None:
         apply_profile=False,
     )
     t = _resolve_timeout(chat)
-    assert t.read is None
+    assert t.read == 180.0
     assert t.connect is not None and t.connect <= 12.0
     assert t.write is not None
     assert t.pool is not None
