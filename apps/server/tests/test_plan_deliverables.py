@@ -103,6 +103,31 @@ def test_collect_plan_deliverables_attributes_and_filters(db_session, workspace,
     assert rep["task_id"] == ta.id and rep["task_name"] == ta.task_name
     slide = next(d for d in out if d["basename"] == "slides.pptx")
     assert slide["task_id"] == tb.id
+    # size：created 取 content 长度；created→edited 保留 create 大小(不被片段长度覆盖)
+    assert rep["size"] == len("...")
+    assert slide["size"] == len("...")
+
+
+def test_collect_plan_deliverables_edited_only_no_size(db_session, workspace, monkeypatch, tmp_path):
+    """仅被 edit_file 改过的文件：不报 size(避免用片段长度误导)。"""
+    from src.service import orchestration_lifecycle as ol
+    monkeypatch.setattr(ol, "_plan_artifacts_dir", lambda db, plan: tmp_path)
+    (tmp_path / "已有稿.md").write_text("real", encoding="utf-8")
+    a = add_employee(db_session, workspace.id, name="甲")
+    plan = OrchestrationPlan(
+        workspace_id=workspace.id, conversation_id=1, user_input="x",
+        plan_json="[]", status="confirmed", total_tasks=1,
+    )
+    db_session.add(plan); db_session.commit(); db_session.refresh(plan)
+    ca = _conv(db_session, workspace, a)
+    _task_with_log(db_session, workspace, plan, a, ca)
+    _assistant_parts(db_session, ca.id, [
+        {"type": "tool-edit_file", "toolCallId": "e", "state": "output-available",
+         "input": {"file_path": "已有稿.md", "new_string": "小修一处"}},
+    ])
+    out = ol.collect_plan_deliverables(db_session, plan.id)
+    assert out and out[0]["basename"] == "已有稿.md"
+    assert out[0]["size"] is None
 
 
 def test_collect_plan_deliverables_empty_when_no_writes(db_session, workspace):

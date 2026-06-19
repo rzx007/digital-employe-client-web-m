@@ -94,19 +94,22 @@ def collect_plan_deliverables(db: Session, plan_id: int) -> list[dict]:
             fp = inp.get("file_path")
             if not isinstance(fp, str) or not fp or not _looks_like_product(fp):
                 continue
-            content = inp.get("content") if action == "created" else inp.get("new_string")
+            # size 只取 created 的 content 长度（≈文件大小）；edited 的 new_string 是
+            # 片段、用作 size 会误导，故置 None，并在去重时保留 create 时已记的大小。
+            content = inp.get("content") if action == "created" else None
             size = len(content) if isinstance(content, str) else None
             norm = fp.replace("\\", "/")
             base = norm.rstrip("/").split("/")[-1]
             if norm not in seen:
                 order.append(norm)
+            prev = seen.get(norm)
             seen[norm] = {
                 "path": fp,
                 "basename": base,
                 "task_id": t.id,
                 "task_name": t.task_name,
                 "action": action,
-                "size": size,
+                "size": size if size is not None else (prev or {}).get("size"),
             }
 
     plan = db.get(OrchestrationPlan, plan_id)
