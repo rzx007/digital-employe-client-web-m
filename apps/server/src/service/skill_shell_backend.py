@@ -7,7 +7,6 @@ import subprocess
 import tempfile
 import threading
 import time
-import uuid
 from pathlib import Path
 from typing import Callable
 
@@ -293,15 +292,22 @@ class SkillAwareShellBackend(LocalShellBackend):
             return match.group("code")
         return None
 
-    def _materialize_multiline_python_c(self, command: str) -> str:
-        """Windows cmd 无法可靠执行多行 python -c；落盘为临时 .py 再运行。"""
+    def _materialize_multiline_python_c(
+        self, command: str
+    ) -> tuple[str, str | None]:
+        """Windows cmd 无法可靠执行多行 python -c；落盘为临时 .py 再运行。
+
+        脚本写进**系统临时目录**(而非产物目录)并返回其路径，由调用方在子进程结束后删除——
+        既不污染资源管理器(产物目录)、也不堆积磁盘。子进程 cwd 仍是产物目录，故脚本里的
+        相对路径(./output.xlsx 等)解析不受影响。返回 (rewritten_command, script_path|None)。
+        """
         if os.name != "nt" or "\n" not in command:
-            return command
+            return command, None
         lowered = command.lower()
         if "-c" not in lowered:
-            return command
+            return command, None
         if not any(p in lowered for p in ("python", "py ", "py\t")):
-            return command
+            return command, None
 
         code = self._extract_python_c_code(command)
         if not code:
@@ -309,16 +315,27 @@ class SkillAwareShellBackend(LocalShellBackend):
                 "[shell] multiline python -c detected but failed to extract code; "
                 "command may silently fail on Windows cmd"
             )
-            return command
+            return command, None
 
-        script_path = self.cwd / f"_agent_exec_{uuid.uuid4().hex[:8]}.py"
-        script_path.write_text(code, encoding="utf-8", newline="\n")
+        fd, script_path = tempfile.mkstemp(suffix=".py", prefix="agent_exec_")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+                f.write(code)
+        except Exception:
+            try:
+                os.unlink(script_path)
+            except OSError:
+                pass
+            logger.warning(
+                "[shell] failed to materialize python -c script", exc_info=True
+            )
+            return command, None
         logger.info("[shell] materialized multiline python -c to %s", script_path)
-        return f'python -u "{script_path}"'
+        return f'python -u "{script_path}"', script_path
 
-    def _prepare_shell_command(self, command: str) -> str:
+    def _prepare_shell_command(self, command: str) -> tuple[str, str | None]:
         # 不再做虚拟前缀 rewrite：agent 直接用真实绝对路径（或 $ARTIFACTS_DIR 等 env）。
-        # 仅保留 Windows 多行 python -c 落盘（与路径虚拟化无关）。
+        # 仅保留 Windows 多行 python -c 落盘（与路径虚拟化无关）。返回 (命令, 临时脚本路径)。
         return self._materialize_multiline_python_c(command)
 
     def _get_stream_writer(self) -> Callable[[dict], None]:
@@ -339,7 +356,7 @@ class SkillAwareShellBackend(LocalShellBackend):
         timeout: int | None = None,
         tool_call_id: str | None = None,
     ):
-        rewritten = self._prepare_shell_command(command)
+        rewritten, _script_tmp_path = self._prepare_shell_command(command)
         effective_timeout = timeout if timeout is not None else self._default_timeout
         if effective_timeout <= 0:
             raise ValueError(f"timeout must be positive, got {effective_timeout}")
@@ -479,6 +496,12 @@ class SkillAwareShellBackend(LocalShellBackend):
                     logger.warning(
                         "[shell] failed to delete tmpfile %s", _tmp_path, exc_info=True
                     )
+                # 删除多行 python -c 落盘的临时脚本（子进程已退出，不再需要）。
+                if _script_tmp_path:
+                    try:
+                        os.unlink(_script_tmp_path)
+                    except OSError:
+                        pass
             return proc.returncode
 
         future = loop.run_in_executor(None, _read_lines_sync)
@@ -616,7 +639,7 @@ class SkillAwareShellBackend(LocalShellBackend):
         return ExecuteResponse(output=output, exit_code=exit_code, truncated=truncated)
 
     def execute(self, command: str, *, timeout: int | None = None):
-        rewritten = self._prepare_shell_command(command)
+        rewritten, _script_tmp_path = self._prepare_shell_command(command)
         effective_timeout = timeout if timeout is not None else self._default_timeout
         if effective_timeout <= 0:
             raise ValueError(f"timeout must be positive, got {effective_timeout}")
@@ -682,6 +705,13 @@ class SkillAwareShellBackend(LocalShellBackend):
                 exit_code=1,
                 truncated=False,
             )
+        finally:
+            # 删除多行 python -c 落盘的临时脚本（子进程已结束，不再需要）。
+            if _script_tmp_path:
+                try:
+                    os.unlink(_script_tmp_path)
+                except OSError:
+                    pass
 
     @staticmethod
     def _decode_output_bytes(data: bytes) -> str:

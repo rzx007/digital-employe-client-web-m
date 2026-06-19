@@ -63,6 +63,17 @@ def _scan_file(file_path: Path, bucket: str) -> ResourceEntry:
     )
 
 
+# 内部 scratch 临时文件——不展示在资源管理器（也不算入文件数）。
+# 如 Windows 多行 python -c 落盘的执行脚本 `_agent_exec_*`。A 方案已把新脚本写进系统
+# 临时目录、跑完即删；此过滤兜底历史残留与未来其它内部临时文件。只匹配确定的内部前缀，
+# 不滥过滤所有 `_` 前缀，以免误伤用户命名的产物（如 `_notes.md`）。
+_INTERNAL_SCRATCH_PREFIXES = ("_agent_exec_",)
+
+
+def _is_internal_scratch(name: str) -> bool:
+    return name.startswith(_INTERNAL_SCRATCH_PREFIXES)
+
+
 def _scan_dir_flat(
     directory: Path, bucket: str
 ) -> list[ResourceEntry]:
@@ -70,6 +81,8 @@ def _scan_dir_flat(
         return []
     entries: list[ResourceEntry] = []
     for item in sorted(directory.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+        if _is_internal_scratch(item.name):
+            continue
         if item.is_dir():
             children = _scan_dir_flat(item, bucket)
             entries.append(
