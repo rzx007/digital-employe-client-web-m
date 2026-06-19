@@ -388,7 +388,7 @@ export function CuratorView({
 
   useEffect(() => {
     if (prevCuratorConversationIdRef.current !== curatorConversationId) {
-      chatTransport.cancelReconnect()
+      chatTransport.resetForConversation()
       prevCuratorConversationIdRef.current = curatorConversationId
     }
   }, [curatorConversationId])
