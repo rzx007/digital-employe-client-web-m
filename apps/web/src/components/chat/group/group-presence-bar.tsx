@@ -50,7 +50,10 @@ export function GroupPresenceBar({
         {shown.map((m) => (
           <Avatar key={m.member_id} className="size-6 ring-2 ring-background">
             <AvatarFallback
-              className={cn("text-[10px] font-semibold", colorOf(m.employee_name))}
+              className={cn(
+                "text-[10px] font-semibold",
+                colorOf(m.employee_name)
+              )}
             >
               {initialOf(m.employee_name)}
             </AvatarFallback>
@@ -68,7 +71,9 @@ export function GroupPresenceBar({
           <span className="ml-1 text-blue-600">· {runningCount} 进行中</span>
         ) : null}
       </span>
-      <span className="ml-auto text-[11px] text-muted-foreground">协作流程 ›</span>
+      <span className="ml-auto text-[11px] text-muted-foreground">
+        协作流程 ›
+      </span>
     </button>
   )
 }

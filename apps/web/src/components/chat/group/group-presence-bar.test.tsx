@@ -9,8 +9,22 @@ describe("GroupPresenceBar", () => {
     render(
       <GroupPresenceBar
         members={[
-          { member_id: 1, employee_id: 1, employee_name: "张三", state: "running", role_in_room: "worker", conversation_id: 9 },
-          { member_id: 2, employee_id: 2, employee_name: "李四", state: "ready", role_in_room: "worker", conversation_id: null },
+          {
+            member_id: 1,
+            employee_id: 1,
+            employee_name: "张三",
+            state: "running",
+            role_in_room: "worker",
+            conversation_id: 9,
+          },
+          {
+            member_id: 2,
+            employee_id: 2,
+            employee_name: "李四",
+            state: "ready",
+            role_in_room: "worker",
+            conversation_id: null,
+          },
         ]}
         onOpenOverview={onOpen}
       />
@@ -24,8 +38,22 @@ describe("GroupPresenceBar", () => {
     render(
       <GroupPresenceBar
         members={[
-          { member_id: 1, employee_id: null, employee_name: "组长", state: "running", role_in_room: "leader", conversation_id: 1 },
-          { member_id: 2, employee_id: 2, employee_name: "李四", state: "ready", role_in_room: "worker", conversation_id: null },
+          {
+            member_id: 1,
+            employee_id: null,
+            employee_name: "组长",
+            state: "running",
+            role_in_room: "leader",
+            conversation_id: 1,
+          },
+          {
+            member_id: 2,
+            employee_id: 2,
+            employee_name: "李四",
+            state: "ready",
+            role_in_room: "worker",
+            conversation_id: null,
+          },
         ]}
         onOpenOverview={() => {}}
       />
