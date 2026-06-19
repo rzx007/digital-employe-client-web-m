@@ -14,6 +14,21 @@ export interface GroupStreamLike {
   charCount: number
 }
 
+/** 组长是否已有可见的逐字流式输出（首响应已到达）。占位显示/清除两处共用，避免规则漂移。 */
+export function leaderHasVisibleStream(
+  members: GroupMemberLike[],
+  streaming: GroupStreamLike[]
+): boolean {
+  const leader = members.find((m) => m.role_in_room === "leader")
+  const leaderConvId = leader?.conversation_id ?? null
+  const leaderStream = streaming.find((s) =>
+    leaderConvId != null
+      ? s.sourceConversationId === leaderConvId
+      : s.senderLabel === "组长"
+  )
+  return Boolean(leaderStream && leaderStream.text.trim().length > 0)
+}
+
 /**
  * 计算群时间线追加的临时消息：进行中成员/组长的逐字流式 + 组长首响应占位。
  * 占位（pendingReply）在「后端已 running」或「用户本地已发出本轮、尚无组长可见输出」
@@ -36,9 +51,7 @@ export function computeGroupExtraMessages({
       ? s.sourceConversationId === leaderConvId
       : s.senderLabel === "组长"
   )
-  const leaderHasVisibleStream = Boolean(
-    leaderStream && leaderStream.text.trim().length > 0
-  )
+  const leaderHasVisibleStreamFlag = leaderHasVisibleStream(members, streaming)
 
   const msgs: UIMessage[] = streaming
     .filter((s) => s.text.trim().length > 0)
@@ -56,7 +69,7 @@ export function computeGroupExtraMessages({
 
   const showPlaceholder =
     (leader?.state === "running" || awaitingLeaderFirstResponse) &&
-    !leaderHasVisibleStream
+    !leaderHasVisibleStreamFlag
   if (showPlaceholder) {
     msgs.push({
       id:

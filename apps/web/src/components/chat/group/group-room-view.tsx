@@ -12,7 +12,10 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { stopGroupRoom } from "@/api/group-room"
 import { getContactId } from "@/lib/chat/contact-utils"
-import { computeGroupExtraMessages } from "@/lib/chat/group-extra-messages"
+import {
+  computeGroupExtraMessages,
+  leaderHasVisibleStream,
+} from "@/lib/chat/group-extra-messages"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useGroupRoom } from "@/hooks/use-group-room"
 import type { ChatViewContact } from "../shared/chat-view-shared"
@@ -110,18 +113,10 @@ export function GroupRoomView({
   )
 
   // 组长首个可见输出到达 → 清占位等待态（真实流式/落库内容接管）。
-  const leaderConvIdForClear = React.useMemo(() => {
-    const l = members.find((m) => m.role_in_room === "leader")
-    return l?.conversation_id ?? null
-  }, [members])
-  const leaderHasVisible = React.useMemo(() => {
-    const s = streaming.find((x) =>
-      leaderConvIdForClear != null
-        ? x.sourceConversationId === leaderConvIdForClear
-        : x.senderLabel === "组长"
-    )
-    return Boolean(s && s.text.trim().length > 0)
-  }, [streaming, leaderConvIdForClear])
+  const leaderHasVisible = React.useMemo(
+    () => leaderHasVisibleStream(members, streaming),
+    [members, streaming]
+  )
   React.useEffect(() => {
     if (leaderHasVisible) setAwaitingLeaderFirstResponse(false)
   }, [leaderHasVisible])

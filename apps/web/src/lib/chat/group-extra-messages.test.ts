@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest"
 
-import { computeGroupExtraMessages } from "./group-extra-messages"
+import {
+  computeGroupExtraMessages,
+  leaderHasVisibleStream,
+} from "./group-extra-messages"
 
 type Member = { role_in_room: string; conversation_id: number | null; state: string }
 type Stream = {
@@ -64,5 +67,32 @@ describe("computeGroupExtraMessages", () => {
     expect(msgs).toHaveLength(1)
     expect(msgs[0].metadata?.pendingReply).toBeUndefined()
     expect(msgs[0].parts[0]).toMatchObject({ type: "text", text: "需求清晰，我来安排" })
+  })
+})
+
+describe("leaderHasVisibleStream", () => {
+  it("组长流有文本 → true", () => {
+    expect(
+      leaderHasVisibleStream(
+        [{ role_in_room: "leader", conversation_id: 10, state: "running" }],
+        [{ sourceConversationId: 10, senderId: null, senderLabel: "组长", text: "在安排", charCount: 3 }]
+      )
+    ).toBe(true)
+  })
+  it("无组长流 → false", () => {
+    expect(
+      leaderHasVisibleStream(
+        [{ role_in_room: "leader", conversation_id: 10, state: "running" }],
+        []
+      )
+    ).toBe(false)
+  })
+  it("组长流空白文本 → false", () => {
+    expect(
+      leaderHasVisibleStream(
+        [{ role_in_room: "leader", conversation_id: 10, state: "running" }],
+        [{ sourceConversationId: 10, senderId: null, senderLabel: "组长", text: "   ", charCount: 0 }]
+      )
+    ).toBe(false)
   })
 })
