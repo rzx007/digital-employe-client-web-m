@@ -163,6 +163,40 @@ export function patchComposerFromStoredWhenSameTurn(
 }
 
 /**
+ * 流式重放期，composer 末条 assistant 常被清成空壳（resetLastAssistantPartsForResume，
+ * 为 SDK 全量重放不丢不重）。此时若 DB 已有同 id 的已落 parts，用 DB 填回空壳，避免
+ * 气泡塌空——delta 到达后 live 那条 parts 非空即不再回退。仅对 parts 为空的 assistant
+ * 回退，非空 live 不动；无任何填充返回同引用。
+ */
+export function hydrateEmptyAssistantShellsFromDb(
+  liveMessages: UIMessage[],
+  storedMessages: UIMessage[]
+): UIMessage[] {
+  if (liveMessages.length === 0 || storedMessages.length === 0) {
+    return liveMessages
+  }
+  const storedById = storedMessageIndexByDbId(storedMessages)
+  let changed = false
+  const next = liveMessages.map((liveMsg) => {
+    if (liveMsg.role !== "assistant") return liveMsg
+    if (liveMsg.parts && liveMsg.parts.length > 0) return liveMsg
+    const dbId = parseDbMessageId(liveMsg.id)
+    if (dbId == null) return liveMsg
+    const stored = storedById.get(String(dbId))
+    if (!stored?.parts?.length) return liveMsg
+    changed = true
+    return {
+      ...liveMsg,
+      parts: stored.parts,
+      metadata: {
+        ...(readMetadata(liveMsg) ?? {}),
+      },
+    } as UIMessage
+  })
+  return changed ? next : liveMessages
+}
+
+/**
  * 流式结束后展示来源：
  * - 流式中用 live composer
  * - 结束后若 composer 已包含完整轮次，继续用 live（DB refetch 仅后台同步）
@@ -174,7 +208,7 @@ export function pickMessageDisplaySource(
   status: string
 ): UIMessage[] {
   if (status === "streaming" || status === "submitted") {
-    return liveMessages
+    return hydrateEmptyAssistantShellsFromDb(liveMessages, storedMessages)
   }
 
   let source = liveMessages
