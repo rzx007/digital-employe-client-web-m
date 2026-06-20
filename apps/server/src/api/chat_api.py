@@ -27,6 +27,8 @@ from src.schemas.conversation import (
     ConversationTitleSuggestResponse,
     ConversationUpdate,
     ConversationsBulkDeleteResult,
+    ExternalDirModeRead,
+    ExternalDirModeUpdate,
     StreamConversationRequest,
 )
 from src.schemas.recent_contact import (
@@ -613,3 +615,41 @@ def batch_delete_conversation_resources(
     product_root = resolve_conversation_product_root(db, conversation)
     result = ResourceService.batch_delete(product_root, payload.paths)
     return ResponseBase(data=ResourceBatchDeleteResult(**result))
+
+
+@router.get(
+    "/chat/conversations/{conversation_id}/external-dir-mode",
+    response_model=ResponseBase[ExternalDirModeRead],
+)
+def get_external_dir_mode(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+) -> ResponseBase[ExternalDirModeRead]:
+    """返回会话的工作区外目录写授权模式（ask/auto/deny）。"""
+    from src.service.agent.path_authorization import (
+        get_external_dir_mode as _get_mode,
+    )
+
+    mode = _get_mode(db, conversation_id)
+    return ResponseBase(data=ExternalDirModeRead(mode=mode))
+
+
+@router.patch(
+    "/chat/conversations/{conversation_id}/external-dir-mode",
+    response_model=ResponseBase[ExternalDirModeRead],
+)
+def set_external_dir_mode(
+    conversation_id: int,
+    payload: ExternalDirModeUpdate,
+    db: Session = Depends(get_db),
+) -> ResponseBase[ExternalDirModeRead]:
+    """设置会话的工作区外目录写授权模式（ask/auto/deny）。非法值返回 400。"""
+    from src.service.agent.path_authorization import (
+        set_external_dir_mode as _set_mode,
+    )
+
+    try:
+        _set_mode(db, conversation_id, payload.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return ResponseBase(data=ExternalDirModeRead(mode=payload.mode))

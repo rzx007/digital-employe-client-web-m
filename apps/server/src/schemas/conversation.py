@@ -117,3 +117,11 @@ class ApproveRequest(BaseModel):
     decisions: list[dict]
     destructive_hitl: dict | None = None
     external_dir: dict | None = None
+
+
+class ExternalDirModeRead(BaseModel):
+    mode: str
+
+
+class ExternalDirModeUpdate(BaseModel):
+    mode: str
