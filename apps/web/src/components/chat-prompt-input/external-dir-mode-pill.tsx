@@ -13,7 +13,7 @@ import type { ExternalDirMode } from "@/api/conversation"
 
 const MODE_LABELS: Record<ExternalDirMode, string> = {
   ask: "询问",
-  auto: "放行",
+  auto: "自动",
   deny: "严禁",
 }
 
