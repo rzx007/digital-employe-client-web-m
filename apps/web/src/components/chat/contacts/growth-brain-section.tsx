@@ -74,7 +74,8 @@ export function GrowthBrainSection({
     brain.skills_list.length > 0 ||
     brain.memories_md ||
     brain.journal_entries.length > 0 ||
-    candidates.length > 0
+    candidates.length > 0 ||
+    (brain.recent_skill_edits?.length ?? 0) > 0
 
   if (!hasAny) {
     return (
@@ -207,6 +208,29 @@ export function GrowthBrainSection({
                     {e.status}
                     {e.duration_ms != null ? ` · ${e.duration_ms}ms` : ""}
                     {e.ts ? ` · ${e.ts}` : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {(brain.recent_skill_edits?.length ?? 0) > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>技能修订记录</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {brain.recent_skill_edits!.map((e, i) => (
+                <div
+                  key={`${e.ts}-${i}`}
+                  className="border-l-2 pl-3 py-1 text-sm"
+                >
+                  <p className="font-medium">{e.skill_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {`修订理由：${e.reason} · ${e.ts}`}
                   </p>
                 </div>
               ))}

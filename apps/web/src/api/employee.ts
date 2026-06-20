@@ -200,6 +200,12 @@ export interface EmployeeGrowthBrain {
     duration_ms: number | null
   }>
   skill_candidates: EmployeeSkillCandidate[]
+  recent_skill_edits?: Array<{
+    ts: string
+    skill_name: string
+    reason: string
+    backup_version: string | null
+  }>
 }
 
 /**
