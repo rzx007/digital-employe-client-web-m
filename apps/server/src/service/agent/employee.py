@@ -32,6 +32,7 @@ from src.service.agent.hitl_interrupt_on import HITL_INTERRUPT_ON
 from src.service.agent.external_dir_request_tool import (
     build_request_external_dir_tool,
 )
+from src.service.agent.update_skill_tool import create_update_skill_tool
 from src.service.agent.path_authorization import collect_workspace_roots
 from src.service.agent.write_guard_registry import register_write_guard
 from src.models.workspace import CST
@@ -226,6 +227,12 @@ def get_agent(
     )
     remember_memory_tool = create_remember_memory_tool(memories_dir)
     extra_tools: list = [shell_execute_tool, remember_memory_tool, get_current_time_tool]
+    # 技能在用中自改进：员工可就地修订已加载技能并落库同步（A）。
+    # 需 employee_id 反查 workspace/user；available_skills 作「只能改已加载技能」守卫。
+    if employee_id is not None:
+        extra_tools.append(
+            create_update_skill_tool(employee_id, available_skills)
+        )
     if sql_tools:
         extra_tools.extend(sql_tools)
     extra_tools.extend(_session_search_tools)

@@ -58,3 +58,12 @@ def test_rejects_null_user_id(monkeypatch):
     tool = create_update_skill_tool(employee_id=99, available_skills=["pptx"])
     out = tool.invoke({"skill_name": "pptx", "new_content": "X", "reason": "r"})
     assert "拒绝" in out and "user_id" in out
+
+
+def test_employee_module_wires_update_skill():
+    # 静态断言：employee.py 源码确实 import 了工厂（接线证据，非恒真占位）
+    import inspect
+    import src.service.agent.employee as emp_mod
+    src = inspect.getsource(emp_mod)
+    assert "create_update_skill_tool" in src
+    assert "from src.service.agent.update_skill_tool import create_update_skill_tool" in src
