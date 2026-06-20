@@ -16,7 +16,7 @@ from src.service.image_multimodal import (
     LLM_IMAGE_MAX_VISUAL_TOKENS,
     prepare_image_bytes_for_llm,
 )
-from deepagents.backends.protocol import ReadResult
+from deepagents.backends.protocol import EditResult, ReadResult, WriteResult
 from deepagents.backends.utils import (
     _get_file_type,
     check_empty_content,
@@ -26,11 +26,15 @@ from deepagents.backends.utils import (
 from deepagents.middleware.filesystem import (
     DEFAULT_READ_LIMIT,
     DEFAULT_READ_OFFSET,
+    EDIT_FILE_TOOL_DESCRIPTION,
     NUM_CHARS_PER_TOKEN,
     READ_FILE_TOOL_DESCRIPTION,
+    WRITE_FILE_TOOL_DESCRIPTION,
+    EditFileSchema,
     FilesystemMiddleware,
     FilesystemState,
     ReadFileSchema,
+    WriteFileSchema,
     _check_fs_permission,
 )
 from langchain.agents.middleware.types import (
@@ -44,6 +48,8 @@ from langchain_core.messages import BaseMessage, ToolMessage
 from langchain_core.messages.content import ContentBlock
 from langchain_core.tools import BaseTool, StructuredTool
 
+from src.db.session import sqlite_db_session
+from src.service.agent.path_authorization import guard_external_write
 from src.service.agent.read_file_dedupe import (
     dedupe_read_file_tool_messages,
     inject_excessive_edit_run_stop_hint,
@@ -51,6 +57,10 @@ from src.service.agent.read_file_dedupe import (
     inject_write_already_exists_hint,
 )
 from src.service.agent.read_file_path_compression import compress_large_read_file_history
+from src.service.agent.write_guard_registry import (
+    conv_id_from_runtime,
+    lookup_write_guard,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -458,6 +468,40 @@ def _prepare_read_file_messages_for_llm(
     return compress_large_read_file_history(messages)
 
 
+def run_write_guard(
+    target: str,
+    conversation_id: int | None,
+    *,
+    tool_call_id: str | None,
+    tool_name: str,
+) -> ToolMessage | None:
+    """工作区外目录写守卫桥。
+
+    返回 ToolMessage(status="error")=挡回（调用方直接 return 它）；返回 None=放行。
+    fail-open：注册表里查不到本会话的 ctx（含 conversation_id 为 None）→ 放行，
+    避免无 conversation 的路径（如非流式工具调用）被误挡。
+    """
+    ctx = lookup_write_guard(conversation_id)
+    if ctx is None:
+        return None
+    with sqlite_db_session() as db:
+        hint = guard_external_write(
+            target,
+            db=db,
+            workspace_id=ctx.workspace_id,
+            conversation_id=conversation_id,
+            roots=ctx.roots,
+        )
+    if hint:
+        return ToolMessage(
+            content=hint,
+            name=tool_name,
+            tool_call_id=tool_call_id,
+            status="error",
+        )
+    return None
+
+
 class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
     """read_file 结果与 DashScope 兼容：禁止向模型发送 type=file 内容块。"""
 
@@ -616,6 +660,272 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
             coroutine=async_read_file,
             infer_schema=False,
             args_schema=ReadFileSchema,
+        )
+
+    def _create_write_file_tool(self) -> BaseTool:
+        """覆盖基类 write_file：照搬基类工厂体，validate_path 成功后插工作区外写守卫。"""
+        tool_description = (
+            self._custom_tool_descriptions.get("write_file")
+            or WRITE_FILE_TOOL_DESCRIPTION
+        )
+
+        def sync_write_file(
+            file_path: Annotated[
+                str,
+                "Absolute path where the file should be created. Must be absolute, not relative.",
+            ],
+            content: Annotated[
+                str, "The text content to write to the file. This parameter is required."
+            ],
+            runtime: ToolRuntime[None, FilesystemState],
+        ) -> ToolMessage:
+            """Synchronous wrapper for write_file tool."""
+            resolved_backend = self._get_backend(runtime)
+            try:
+                validated_path = validate_path(file_path)
+            except ValueError as e:
+                return ToolMessage(
+                    content=f"Error: {e}",
+                    name="write_file",
+                    tool_call_id=runtime.tool_call_id,
+                    status="error",
+                )
+
+            if _check_fs_permission(self._permissions, "write", validated_path) == "deny":
+                return ToolMessage(
+                    content=f"Error: permission denied for write on {validated_path}",
+                    name="write_file",
+                    tool_call_id=runtime.tool_call_id,
+                    status="error",
+                )
+            conv_id = conv_id_from_runtime(runtime)
+            blocked = run_write_guard(
+                validated_path,
+                conv_id,
+                tool_call_id=runtime.tool_call_id,
+                tool_name="write_file",
+            )
+            if blocked is not None:
+                return blocked
+            res: WriteResult = resolved_backend.write(validated_path, content)
+            if res.error:
+                return ToolMessage(
+                    content=res.error,
+                    name="write_file",
+                    tool_call_id=runtime.tool_call_id,
+                    status="error",
+                )
+            return ToolMessage(
+                content=f"Updated file {res.path}",
+                name="write_file",
+                tool_call_id=runtime.tool_call_id,
+                status="success",
+            )
+
+        async def async_write_file(
+            file_path: Annotated[
+                str,
+                "Absolute path where the file should be created. Must be absolute, not relative.",
+            ],
+            content: Annotated[
+                str, "The text content to write to the file. This parameter is required."
+            ],
+            runtime: ToolRuntime[None, FilesystemState],
+        ) -> ToolMessage:
+            """Asynchronous wrapper for write_file tool."""
+            resolved_backend = self._get_backend(runtime)
+            try:
+                validated_path = validate_path(file_path)
+            except ValueError as e:
+                return ToolMessage(
+                    content=f"Error: {e}",
+                    name="write_file",
+                    tool_call_id=runtime.tool_call_id,
+                    status="error",
+                )
+
+            if _check_fs_permission(self._permissions, "write", validated_path) == "deny":
+                return ToolMessage(
+                    content=f"Error: permission denied for write on {validated_path}",
+                    name="write_file",
+                    tool_call_id=runtime.tool_call_id,
+                    status="error",
+                )
+            conv_id = conv_id_from_runtime(runtime)
+            blocked = run_write_guard(
+                validated_path,
+                conv_id,
+                tool_call_id=runtime.tool_call_id,
+                tool_name="write_file",
+            )
+            if blocked is not None:
+                return blocked
+            res: WriteResult = await resolved_backend.awrite(validated_path, content)
+            if res.error:
+                return ToolMessage(
+                    content=res.error,
+                    name="write_file",
+                    tool_call_id=runtime.tool_call_id,
+                    status="error",
+                )
+            return ToolMessage(
+                content=f"Updated file {res.path}",
+                name="write_file",
+                tool_call_id=runtime.tool_call_id,
+                status="success",
+            )
+
+        return StructuredTool.from_function(
+            name="write_file",
+            description=tool_description,
+            func=sync_write_file,
+            coroutine=async_write_file,
+            infer_schema=False,
+            args_schema=WriteFileSchema,
+        )
+
+    def _create_edit_file_tool(self) -> BaseTool:
+        """覆盖基类 edit_file：照搬基类工厂体，validate_path 成功后插工作区外写守卫。"""
+        tool_description = (
+            self._custom_tool_descriptions.get("edit_file")
+            or EDIT_FILE_TOOL_DESCRIPTION
+        )
+
+        def sync_edit_file(
+            file_path: Annotated[
+                str, "Absolute path to the file to edit. Must be absolute, not relative."
+            ],
+            old_string: Annotated[
+                str,
+                "The exact text to find and replace. Must be unique in the file unless replace_all is True.",
+            ],
+            new_string: Annotated[
+                str,
+                "The text to replace old_string with. Must be different from old_string.",
+            ],
+            runtime: ToolRuntime[None, FilesystemState],
+            *,
+            replace_all: Annotated[
+                bool,
+                "If True, replace all occurrences of old_string. If False (default), old_string must be unique.",
+            ] = False,
+        ) -> ToolMessage:
+            """Synchronous wrapper for edit_file tool."""
+            resolved_backend = self._get_backend(runtime)
+            try:
+                validated_path = validate_path(file_path)
+            except ValueError as e:
+                return ToolMessage(
+                    content=f"Error: {e}",
+                    name="edit_file",
+                    tool_call_id=runtime.tool_call_id,
+                    status="error",
+                )
+
+            if _check_fs_permission(self._permissions, "write", validated_path) == "deny":
+                return ToolMessage(
+                    content=f"Error: permission denied for write on {validated_path}",
+                    name="edit_file",
+                    tool_call_id=runtime.tool_call_id,
+                    status="error",
+                )
+            conv_id = conv_id_from_runtime(runtime)
+            blocked = run_write_guard(
+                validated_path,
+                conv_id,
+                tool_call_id=runtime.tool_call_id,
+                tool_name="edit_file",
+            )
+            if blocked is not None:
+                return blocked
+            res: EditResult = resolved_backend.edit(
+                validated_path, old_string, new_string, replace_all=replace_all
+            )
+            if res.error:
+                return ToolMessage(
+                    content=res.error,
+                    name="edit_file",
+                    tool_call_id=runtime.tool_call_id,
+                    status="error",
+                )
+            return ToolMessage(
+                content=f"Successfully replaced {res.occurrences} instance(s) of the string in '{res.path}'",
+                name="edit_file",
+                tool_call_id=runtime.tool_call_id,
+                status="success",
+            )
+
+        async def async_edit_file(
+            file_path: Annotated[
+                str, "Absolute path to the file to edit. Must be absolute, not relative."
+            ],
+            old_string: Annotated[
+                str,
+                "The exact text to find and replace. Must be unique in the file unless replace_all is True.",
+            ],
+            new_string: Annotated[
+                str,
+                "The text to replace old_string with. Must be different from old_string.",
+            ],
+            runtime: ToolRuntime[None, FilesystemState],
+            *,
+            replace_all: Annotated[
+                bool,
+                "If True, replace all occurrences of old_string. If False (default), old_string must be unique.",
+            ] = False,
+        ) -> ToolMessage:
+            """Asynchronous wrapper for edit_file tool."""
+            resolved_backend = self._get_backend(runtime)
+            try:
+                validated_path = validate_path(file_path)
+            except ValueError as e:
+                return ToolMessage(
+                    content=f"Error: {e}",
+                    name="edit_file",
+                    tool_call_id=runtime.tool_call_id,
+                    status="error",
+                )
+
+            if _check_fs_permission(self._permissions, "write", validated_path) == "deny":
+                return ToolMessage(
+                    content=f"Error: permission denied for write on {validated_path}",
+                    name="edit_file",
+                    tool_call_id=runtime.tool_call_id,
+                    status="error",
+                )
+            conv_id = conv_id_from_runtime(runtime)
+            blocked = run_write_guard(
+                validated_path,
+                conv_id,
+                tool_call_id=runtime.tool_call_id,
+                tool_name="edit_file",
+            )
+            if blocked is not None:
+                return blocked
+            res: EditResult = await resolved_backend.aedit(
+                validated_path, old_string, new_string, replace_all=replace_all
+            )
+            if res.error:
+                return ToolMessage(
+                    content=res.error,
+                    name="edit_file",
+                    tool_call_id=runtime.tool_call_id,
+                    status="error",
+                )
+            return ToolMessage(
+                content=f"Successfully replaced {res.occurrences} instance(s) of the string in '{res.path}'",
+                name="edit_file",
+                tool_call_id=runtime.tool_call_id,
+                status="success",
+            )
+
+        return StructuredTool.from_function(
+            name="edit_file",
+            description=tool_description,
+            func=sync_edit_file,
+            coroutine=async_edit_file,
+            infer_schema=False,
+            args_schema=EditFileSchema,
         )
 
 
