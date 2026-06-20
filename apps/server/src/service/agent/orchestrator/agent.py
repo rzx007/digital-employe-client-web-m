@@ -327,6 +327,35 @@ def get_orchestrator_agent(
         get_current_time_tool,
     ]
 
+    # 工作区外目录写授权：与员工对称接线。登记本会话合法写入根集合 + workspace_id，
+    # 供 write_file/edit_file 守卫反查；并挂显式申请工具 request_external_dir_access
+    # （已并入 interrupt_on，故 enable_hitl 时调用会被挂起等用户授权）。
+    # 后台子任务（enable_hitl=False）暂不挂此守卫：后台路径无人弹卡片授权，
+    # 不注册则守卫 fail-open 放行，优先保可用性，待后续支持后台预授权后再收紧。
+    # 延迟导入：write_guard_registry 在模块级从 orchestrator.runtime 导入，
+    # 若提升为顶层 import 会与 orchestrator/__init__ → agent.py 形成循环导入。
+    if enable_hitl and conversation_id is not None and workspace_id is not None:
+        from src.service.agent.external_dir_request_tool import (
+            build_request_external_dir_tool,
+        )
+        from src.service.agent.path_authorization import collect_workspace_roots
+        from src.service.agent.write_guard_registry import register_write_guard
+
+        # 幂等覆盖：register 按 conv_id 覆写旧条目，重建 agent（如 HITL resume）不残留。
+        register_write_guard(
+            conversation_id,
+            roots=collect_workspace_roots(
+                str(artifacts_path), skills_root, memories_dir
+            ),
+            workspace_id=workspace_id,
+        )
+        orchestrator_tools.append(build_request_external_dir_tool())
+        system_prompt = (
+            system_prompt
+            + "\n\n写工作区外目录前必须先调用 request_external_dir_access(path=目标父目录)"
+            "申请授权，获批后再写；未获授权时 write_file 会被拒绝。"
+        )
+
     session_flags = (
         get_session_flags(db, conversation_id)
         if (enable_hitl and conversation_id)
