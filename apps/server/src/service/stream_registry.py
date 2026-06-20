@@ -2202,6 +2202,19 @@ class StreamRegistry:
             # 或留下本 task 永不清理）。被覆盖时本 task 已与字典失联，无需清理。
             if self._tasks.get(conversation_id) is task:
                 self._schedule_cleanup(conversation_id)
+                # 工作区外写守卫注册表随会话流结束清理（仅当本 task 仍是属主，
+                # 避免误清被新流重新登记的守卫）。对未登记会话是 no-op。
+                try:
+                    from src.service.agent.write_guard_registry import (
+                        clear_write_guard,
+                    )
+
+                    clear_write_guard(conversation_id)
+                except Exception:
+                    logger.warning(
+                        "[run] conv=%s finally: clear_write_guard 失败",
+                        conversation_id, exc_info=True,
+                    )
             else:
                 logger.warning(
                     "[run] conv=%s finally: task 已被新流覆盖，跳过清理（防误删/僵尸）",

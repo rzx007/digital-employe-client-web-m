@@ -29,6 +29,11 @@ from src.service.agent.clarifying_questions_tool import (
 from src.service.agent.document_plan_tool import submit_document_plan
 from src.service.agent.bug_report_tool import submit_bug_report
 from src.service.agent.hitl_interrupt_on import HITL_INTERRUPT_ON
+from src.service.agent.external_dir_request_tool import (
+    build_request_external_dir_tool,
+)
+from src.service.agent.path_authorization import collect_workspace_roots
+from src.service.agent.write_guard_registry import register_write_guard
 from src.models.workspace import CST
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
@@ -59,6 +64,7 @@ def get_agent(
     employee_id: int | None = None,
     include_sqlite_tools: bool = False,
     conversation_id: int | None = None,
+    workspace_id: int | None = None,
     enable_hitl: bool = True,
     clarify_only_hitl: bool = False,
     max_output_tokens: int | None = None,
@@ -230,24 +236,48 @@ def get_agent(
             [submit_clarifying_questions, submit_document_plan, submit_bug_report]
         )
 
+    # 工作区外目录写授权：登记本会话合法写入根集合 + workspace_id，供 write_file/
+    # edit_file 守卫反查；并挂显式申请工具 request_external_dir_access（已并入
+    # HITL_INTERRUPT_ON，故 enable_hitl 时调用会被挂起等用户授权）。
+    # 无 conversation_id / workspace_id 的路径跳过登记 → 守卫 fail-open 放行。
+    if conversation_id is not None and workspace_id is not None:
+        # 幂等覆盖：register 按 conv_id 覆写旧条目，重建 agent（如 HITL resume）不残留。
+        register_write_guard(
+            conversation_id,
+            roots=collect_workspace_roots(
+                str(root_path), skills_root, memories_dir
+            ),
+            workspace_id=workspace_id,
+        )
+        extra_tools.append(build_request_external_dir_tool())
+
+    system_prompt = build_system_prompt(
+        current_time,
+        available_skills,
+        has_draft_route=has_draft_route,
+        skills_real_path=str(skills_root),
+        draft_skills_real_path=str(draft_dir) if draft_dir is not None else "",
+        uploads_real_path=str(uploads_dir) if uploads_dir is not None else "",
+        artifacts_real_path=str(artifacts_dir),
+        memories_real_path=str(memories_dir),
+        agent_real_path=str(base_dir),
+        use_session_history=use_session_history,
+        virtual_mode=is_agent_virtual_mode(),
+    )
+    # 守卫已登记时，告知模型工作区外写盘须先申请授权（与 write_file 守卫回执一致）。
+    if conversation_id is not None and workspace_id is not None:
+        system_prompt = (
+            system_prompt
+            + "\n\n写工作区外目录前必须先调用 request_external_dir_access(path=目标父目录)"
+            "申请授权，获批后再写；未获授权时 write_file 会被拒绝。"
+        )
+
     agent = create_deep_agent(
         model=model,
         memory=[str(base_dir / "AGENTS.md"), str(memories_dir / "AGENTS.md")],
         skills=skill_sources,
         subagents=[],
-        system_prompt=build_system_prompt(
-            current_time,
-            available_skills,
-            has_draft_route=has_draft_route,
-            skills_real_path=str(skills_root),
-            draft_skills_real_path=str(draft_dir) if draft_dir is not None else "",
-            uploads_real_path=str(uploads_dir) if uploads_dir is not None else "",
-            artifacts_real_path=str(artifacts_dir),
-            memories_real_path=str(memories_dir),
-            agent_real_path=str(base_dir),
-            use_session_history=use_session_history,
-            virtual_mode=is_agent_virtual_mode(),
-        ),
+        system_prompt=system_prompt,
         backend=backend,
         checkpointer=checkpointer,
         tools=extra_tools,

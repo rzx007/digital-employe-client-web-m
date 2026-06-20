@@ -228,6 +228,7 @@ def _build_employee_agent_for_rework(db, task, employee, conversation_id: int):
 
     return get_agent(
         skills_path, root_path, employee_id=employee.id,
-        conversation_id=conversation_id, enable_hitl=False,
+        conversation_id=conversation_id, workspace_id=task.workspace_id,
+        enable_hitl=False,
         max_output_tokens=resolve_output_tokens(_tier),
     )

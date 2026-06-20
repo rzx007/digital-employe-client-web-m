@@ -364,6 +364,7 @@ def start_task_as_conversation(
         root_path,
         employee_id=employee_id,
         conversation_id=conversation_id,
+        workspace_id=workspace_id,
         enable_hitl=False,
         max_output_tokens=resolve_output_tokens(_task_output_tier),
     )
