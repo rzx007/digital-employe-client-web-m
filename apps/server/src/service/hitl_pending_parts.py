@@ -6,6 +6,9 @@ import copy
 from typing import Any
 
 from src.service.agent.destructive_hitl import DESTRUCTIVE_HITL_TOOLS
+from src.service.agent.external_dir_request_tool import (
+    REQUEST_EXTERNAL_DIR_TOOL_NAME,
+)
 from src.service.message_parts_extractor import (
     INTERRUPT_PAUSE_SENTINEL,
     extract_message_parts_from_buffer,
@@ -16,6 +19,7 @@ HITL_TOOL_NAMES = frozenset(
         "submit_clarifying_questions",
         "submit_document_plan",
         "submit_bug_report",
+        REQUEST_EXTERNAL_DIR_TOOL_NAME,
         *DESTRUCTIVE_HITL_TOOLS,
     }
 )
