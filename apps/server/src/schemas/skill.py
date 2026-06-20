@@ -112,3 +112,13 @@ class SaveDraftSkillResult(BaseModel):
     overwritten: bool = False
     attachedToEmployee: bool = True
     attachError: str | None = None
+
+
+class RestoreLocalSkillRequest(BaseModel):
+    version: str  # 时间戳，格式 YYYYmmdd-HHMMSS
+
+
+class RestoreLocalSkillResult(BaseModel):
+    skillName: str
+    restoredVersion: str
+    syncedEmployeeCount: int = 0

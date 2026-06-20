@@ -2,10 +2,68 @@
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
 from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
+
+
+def _backup_skill_version(skill_name: str, workspace_id: int) -> Optional[str]:
+    """把工作区技能的当前 SKILL.md 备份到 <workspace_dir>/.history/<YYYYmmdd-HHMMSS>.md。
+
+    Returns:
+        时间戳字符串（如 "20260620-153000"），若跳过则返回 None。
+
+    跳过条件：
+    - 工作区目录不存在（仅内置或全新技能）。
+    - 工作区目录存在但没有 SKILL.md。
+
+    防御性保护：
+    - 若解析出的目录位于 builtin 根下（不应发生），则硬跳过并记 error 日志。
+    """
+    # 下游 import 保持在函数体内（与 _apply_skill_update 同一约定）
+    from datetime import datetime
+    from src.service.local_skill_service import LocalSkillService
+
+    try:
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        workspace_dir = LocalSkillService._skill_dir(normalized, workspace_id)
+
+        if not workspace_dir.is_dir():
+            # 工作区无该技能目录 → 新技能 or 仅内置，无需备份
+            return None
+
+        skill_md = workspace_dir / LocalSkillService.SKILL_MD_NAME
+        if not skill_md.exists():
+            return None
+
+        # 安全防御：绝不写入 builtin 根
+        if LocalSkillService._is_under_builtin(workspace_dir):
+            logger.error(
+                "_backup_skill_version: resolved workspace_dir is under builtin root, "
+                "refusing to write backup. skill=%s workspace_id=%s dir=%s",
+                skill_name, workspace_id, workspace_dir,
+            )
+            return None
+
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        history_dir = workspace_dir / ".history"
+        history_dir.mkdir(parents=True, exist_ok=True)
+        backup_file = history_dir / f"{ts}.md"
+        backup_file.write_text(skill_md.read_text(encoding="utf-8"), encoding="utf-8")
+        logger.info(
+            "_backup_skill_version: backed up skill=%s workspace_id=%s ts=%s",
+            skill_name, workspace_id, ts,
+        )
+        return ts
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "_backup_skill_version failed (best-effort, update will continue): "
+            "skill=%s workspace_id=%s err=%s",
+            skill_name, workspace_id, exc,
+        )
+        return None
 
 
 def create_update_skill_tool(employee_id: int, available_skills: list[str]):
@@ -63,6 +121,7 @@ def _apply_skill_update(
         LocalSkillService.ensure_editable_from_employee_copy(
             skill_name, workspace_id, employee_id
         )
+        _backup_skill_version(skill_name, workspace_id)
         LocalSkillService.update_local_skill(
             skill_name, workspace_id, skill_md_content=new_content, target="workspace"
         )

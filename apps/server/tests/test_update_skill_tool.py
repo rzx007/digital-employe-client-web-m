@@ -1,4 +1,4 @@
-from src.service.agent.update_skill_tool import create_update_skill_tool
+from src.service.agent.update_skill_tool import create_update_skill_tool, _backup_skill_version
 
 
 def test_rejects_skill_not_loaded():
@@ -200,3 +200,131 @@ def test_ensure_editable_returns_none_when_builtin_exists(monkeypatch, tmp_path)
 
     # Assert: 返回 None，交给 update_local_skill 处理内置 fork
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Task A-2: backup + restore tests
+# ---------------------------------------------------------------------------
+
+def _settings_fixture(monkeypatch, tmp_path):
+    """把 local_skills_path 重定向到 tmp_path，返回 (local_skills_root, settings)。"""
+    from src.core.config import get_settings
+    local_skills_root = tmp_path / "local-skills"
+    local_skills_root.mkdir(parents=True)
+    settings = get_settings()
+    monkeypatch.setattr(settings, "local_skills_path", str(local_skills_root))
+    return local_skills_root, settings
+
+
+def test_backup_written_before_overwrite(monkeypatch, tmp_path):
+    """工作区已有 SKILL.md 时，_backup_skill_version 应在 .history/ 写入旧内容并返回时间戳。"""
+    from src.service.local_skill_service import LocalSkillService
+
+    local_skills_root, _ = _settings_fixture(monkeypatch, tmp_path)
+
+    workspace_id = 5
+    skill_name = "my-skill"
+    old_content = "# OLD CONTENT\n旧版本\n"
+
+    # Arrange: 在工作区创建已存在的技能目录 + SKILL.md
+    ws_skill_dir = local_skills_root / str(workspace_id) / skill_name
+    ws_skill_dir.mkdir(parents=True)
+    (ws_skill_dir / LocalSkillService.SKILL_MD_NAME).write_text(old_content, encoding="utf-8")
+
+    # Act
+    ts = _backup_skill_version(skill_name, workspace_id)
+
+    # Assert: 返回非空时间戳
+    assert ts is not None
+    assert len(ts) == 15  # YYYYmmdd-HHMMSS
+
+    # .history/<ts>.md 存在且内容是旧的
+    history_file = ws_skill_dir / ".history" / f"{ts}.md"
+    assert history_file.exists(), f"history file not found: {history_file}"
+    assert history_file.read_text(encoding="utf-8") == old_content
+
+
+def test_backup_skipped_when_no_workspace_copy(monkeypatch, tmp_path):
+    """工作区无该技能目录时（仅内置或全新），_backup_skill_version 应返回 None 且不创建 .history。"""
+    from src.service.local_skill_service import LocalSkillService
+
+    local_skills_root, _ = _settings_fixture(monkeypatch, tmp_path)
+
+    workspace_id = 5
+    skill_name = "no-ws-skill"
+
+    # 确认工作区没有该目录
+    ws_skill_dir = local_skills_root / str(workspace_id) / skill_name
+    assert not ws_skill_dir.exists()
+
+    # Act
+    ts = _backup_skill_version(skill_name, workspace_id)
+
+    # Assert: 返回 None，没有创建任何 .history
+    assert ts is None
+    assert not ws_skill_dir.exists()  # 连目录都没有被创建
+
+
+def test_restore_endpoint(monkeypatch, tmp_path):
+    """POST /skills/local/{skill_name}/restore 应读取 .history 备份并回写 SKILL.md。"""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from src.api.skill_api import router
+    from src.service.local_skill_service import LocalSkillService
+
+    local_skills_root, _ = _settings_fixture(monkeypatch, tmp_path)
+
+    # patch get_workspace_id_from_request to return fixed workspace_id
+    # (must patch in the skill_api module's namespace since it's imported there)
+    monkeypatch.setattr(
+        "src.api.skill_api.get_workspace_id_from_request",
+        lambda req: 5,
+    )
+    # patch get_user_id in the same namespace
+    monkeypatch.setattr(
+        "src.api.skill_api.get_user_id",
+        lambda req: "u1",
+    )
+    # patch sync to avoid DB
+    monkeypatch.setattr(
+        "src.service.employee_service.EmployeeService.sync_local_skill_to_assignees",
+        lambda db, **kw: 0,
+    )
+    # patch get_db (yields a dummy session)
+    class _FakeDB:
+        def close(self): ...
+
+    def _fake_get_db():
+        yield _FakeDB()
+
+    monkeypatch.setattr("src.api.skill_api.get_db", _fake_get_db)
+
+    workspace_id = 5
+    skill_name = "restore-skill"
+
+    # Arrange: workspace skill dir with current SKILL.md + a backup in .history
+    ws_skill_dir = local_skills_root / str(workspace_id) / skill_name
+    ws_skill_dir.mkdir(parents=True)
+    old_content = "# RESTORED CONTENT\n旧版本\n"
+    current_content = "# CURRENT\n新版本\n"
+    (ws_skill_dir / LocalSkillService.SKILL_MD_NAME).write_text(current_content, encoding="utf-8")
+    history_dir = ws_skill_dir / ".history"
+    history_dir.mkdir(parents=True)
+    version = "20260101-120000"
+    (history_dir / f"{version}.md").write_text(old_content, encoding="utf-8")
+
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    resp = client.post(
+        f"/skills/local/{skill_name}/restore",
+        json={"version": version},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["data"]["restoredVersion"] == version
+
+    # SKILL.md should now contain old_content
+    actual = (ws_skill_dir / LocalSkillService.SKILL_MD_NAME).read_text(encoding="utf-8")
+    assert actual == old_content

@@ -41,6 +41,8 @@ from src.schemas.skill import (
     UpdateLocalSkillResult,
     SaveDraftSkillRequest,
     SaveDraftSkillResult,
+    RestoreLocalSkillRequest,
+    RestoreLocalSkillResult,
 )
 from src.schemas.employee import EmployeeUpdate
 from src.service.chat_service import ChatService
@@ -392,6 +394,52 @@ def update_local_skill(
     return ResponseBase[UpdateLocalSkillResult](
         data=UpdateLocalSkillResult(
             **updated,
+            syncedEmployeeCount=synced_count,
+        )
+    )
+
+
+@router.post(
+    "/skills/local/{skill_name}/restore",
+    response_model=ResponseBase[RestoreLocalSkillResult],
+)
+def restore_local_skill(
+    request: Request,
+    skill_name: str,
+    payload: RestoreLocalSkillRequest,
+    db: Session = Depends(get_db),
+) -> ResponseBase[RestoreLocalSkillResult]:
+    """回滚技能至指定历史备份版本。
+
+    version 为 _backup_skill_version 返回的时间戳（YYYYmmdd-HHMMSS），
+    对应 <workspace skill dir>/.history/<version>.md 文件。
+    """
+    workspace_id = get_workspace_id_from_request(request)
+    normalized = LocalSkillService._normalize_skill_name(skill_name)
+    skill_dir = LocalSkillService._skill_dir(normalized, workspace_id)
+    history_file = skill_dir / ".history" / f"{payload.version}.md"
+    if not history_file.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到该版本备份",
+        )
+    old_content = history_file.read_text(encoding="utf-8")
+    LocalSkillService.update_local_skill(
+        skill_name,
+        workspace_id,
+        skill_md_content=old_content,
+        target="workspace",
+    )
+    synced_count = EmployeeService.sync_local_skill_to_assignees(
+        db,
+        user_id=get_user_id(request),
+        workspace_id=workspace_id,
+        skill_name=skill_name,
+    )
+    return ResponseBase[RestoreLocalSkillResult](
+        data=RestoreLocalSkillResult(
+            skillName=normalized,
+            restoredVersion=payload.version,
             syncedEmployeeCount=synced_count,
         )
     )
