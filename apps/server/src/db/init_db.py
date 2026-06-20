@@ -14,11 +14,30 @@ def init_db() -> None:
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
 
+    # workspaces 表：幂等加列（已有库不会被 create_all 自动 ALTER）
+    _ensure_workspace_auto_grant_column(engine)
+
     # FTS5 全文索引：conversation_messages.content
     _init_fts5(engine)
 
     # 启动时清理上次进程遗留的"运行中"流状态。
     _reset_orphaned_streams(engine)
+
+
+def _ensure_workspace_auto_grant_column(engine) -> None:
+    """幂等地为 workspaces 表加 auto_grant_external_dirs 列。
+
+    新库由 create_all 直接建全；已有库不会被 ALTER，需在此补列。
+    """
+    insp = inspect(engine)
+    cols = {c["name"] for c in insp.get_columns("workspaces")}
+    if "auto_grant_external_dirs" not in cols:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE workspaces ADD COLUMN auto_grant_external_dirs "
+                "BOOLEAN NOT NULL DEFAULT 0"
+            ))
+        logger.info("added column workspaces.auto_grant_external_dirs")
 
 
 def _reset_orphaned_streams(engine) -> None:

@@ -11,6 +11,7 @@ from src.models.recent_contact import RecentContact
 from src.models.skill_rating import SkillRating
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import Workspace
+from src.models.workspace_authorized_dir import WorkspaceAuthorizedDir  # noqa: F401
 
 __all__ = [
     "Workspace",
@@ -27,5 +28,6 @@ __all__ = [
     "TaskExecutionLog",
     "SkillRating",
     "RecentContact",
+    "WorkspaceAuthorizedDir",
 ]
 

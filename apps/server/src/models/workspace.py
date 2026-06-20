@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.base import Base
@@ -27,6 +27,9 @@ class Workspace(Base):
         DateTime(timezone=True),
         default=cst_now,
         onupdate=cst_now,
+    )
+    auto_grant_external_dirs: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="0"
     )
 
     # 员工/会话已挂 user_id，不随 workspace 删除而消失。
