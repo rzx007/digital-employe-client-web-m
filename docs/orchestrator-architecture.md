@@ -263,6 +263,9 @@ flowchart LR
 | `learning/librarian.py` | `run_librarian`、`generate_profile`、`consolidate_memory`、`promote_skills` | 后台复盘：画像（含教训）/记忆去重/硬技能晋升 |
 | `orchestrator/qa_delivery_check.py` | `check_log_delivery`、`detect_missing_delivery_artifacts` | 交付物真伪代码兜底（自报 vs 磁盘） |
 | `agent/command_safety.py` | `check_hardline`、`normalize_command` | shell 灾难命令硬底线（接入 `SkillAwareShellBackend.execute/aexecute` 单一咽喉，对所有 agent 生效、永不执行；floor 非完整沙箱） |
+| `agent/path_authorization.py` | `is_granted`、`record_grant`、`is_outside_workspace` | 工作区外写授权核心：6 级检查链（mode/once令牌/会话/永久DB/auto/deny）+ 按 scope 落地记录 |
+| `agent/write_guard_registry.py` | `WriteGuardRegistry`、`guard_external_write` | 覆盖 `write_file`/`edit_file` 入口，路径在工作区外且未授权时返回提示串挂 HITL |
+| `agent/tools/external_dir_request_tool.py` | `request_external_dir_access` | 员工主动请求授权工具，触发 HITL 卡片（三档：once/session/permanent + deny） |
 | `stream_registry.py` | `_finalize_task_stream`、`on_task_finalized` | 流终态钩子：捕获/反思/复盘/去抖/驱动 DAG |
 | `server.py` | `_on_task_finalized`（lifespan 装配） | 把终态事件接到调度器 + 推前端事件 |
 | `employee_service.py` | `build_employee_growth_brain`、`adopt_skill_candidate`、`dismiss_skill_candidate` | 成长大脑只读聚合 + 候选采纳/忽略 |
@@ -281,6 +284,7 @@ flowchart LR
 7. **轻量再入 + 编排层与主上下文分离**：完成事件只带摘要+状态，去抖批量唤醒；子任务全过程留编排层，总管主上下文只收精炼结论。
 8. **不自爆内部机制**：自动放行/DAG/快照注入/reported_at 等是内部规则，正文只对用户说人话。
 9. **shell 灾难命令硬底线**：所有 agent（含 HITL-off 员工）的 shell 命令经 `command_safety.check_hardline` 过一道——`rm -rf 根/家目录`、`mkfs/dd` 写盘、fork bomb 等**永不执行**，不靠模型/确认门遵从。是 floor（挡直接灾难命令）非完整沙箱（挡不住"写脚本再跑"，彻底边界需 OS 沙箱）。
+10. **工作区外目录写授权**：员工写工具（`write_file`/`edit_file`）被 `WriteGuardRegistry` 拦截，目标路径在工作区外且未授权时挂起并调 `request_external_dir_access` 弹 HITL 卡片；用户三选一（仅这次 / 本会话 / 永久），`record_grant` 按 scope 落库；会话级模式（ask/auto/deny）通过 `ExternalDirMode` 端点整体切换，前端药丸常驻显示当前模式。读操作静默放行，shell 路径继续由 `command_safety` 兜底。
 
 ---
 

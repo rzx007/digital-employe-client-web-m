@@ -28,6 +28,10 @@ import {
   fetchVoiceAudioBlob as fetchVoiceAudioBlobApi,
 } from "@/api/conversation"
 import {
+  getExternalDirMode as getExternalDirModeApi,
+  setExternalDirMode as setExternalDirModeApi,
+} from "@/api/conversation"
+import {
   mapChatMessageToMessage,
   mapConversationListItemToConversation,
   mapCreatedConversationListItem,
@@ -45,7 +49,13 @@ export type {
   HitlDecision,
   BugFeedbackInput,
   BugFeedbackResult,
+  ExternalDirMode,
 } from "@/api/conversation"
+
+export {
+  getExternalDirModeApi as getExternalDirMode,
+  setExternalDirModeApi as setExternalDirMode,
+}
 
 export {
   approveHitlApi as approveHitl,

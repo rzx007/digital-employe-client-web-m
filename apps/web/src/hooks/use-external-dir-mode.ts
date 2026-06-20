@@ -4,7 +4,7 @@ import {
   getExternalDirMode,
   setExternalDirMode,
   type ExternalDirMode,
-} from "@/api/conversation"
+} from "@/api/chat"
 
 function externalDirModeKey(conversationId: string | number | null) {
   return ["external-dir-mode", conversationId != null ? String(conversationId) : null]
