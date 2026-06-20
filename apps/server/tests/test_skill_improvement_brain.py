@@ -15,12 +15,6 @@ def test_trigger_improvement_review_writes_to_brain(tmp_path, monkeypatch):
     brain_root = tmp_path / "brain"
     brain_root.mkdir()
 
-    # 构造员工 copy 下的 SKILL.md（service 从这里读原文）
-    skill_copy_dir = tmp_path / "skills_copy" / skill_name
-    skill_copy_dir.mkdir(parents=True)
-    skill_md = skill_copy_dir / "SKILL.md"
-    skill_md.write_text("# pptx 技能\n这是技能内容。", encoding="utf-8")
-
     # 让 settings.skill_path 指向 skills_copy，使 skill_root 定位到正确位置
     # skill_root = Path(settings.skill_path) / str(employee_id) / "skills" / skill_name
     skills_path_parent = tmp_path / "skills_copy"

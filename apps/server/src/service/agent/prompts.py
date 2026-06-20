@@ -15,8 +15,9 @@ def build_filesystem_prompt_section(
     use_session_history: bool = False,
     has_draft_route: bool = False,
     virtual_mode: bool = True,
-    skills_with_hints: list[str] = [],
+    skills_with_hints: list[str] | None = None,
 ) -> str:
+    skills_with_hints = skills_with_hints or []
     dir_rows = []
     if artifacts_real_path:
         dir_rows.append(f"  $ARTIFACTS_DIR     产物/交付物    {artifacts_real_path}")
@@ -195,8 +196,9 @@ def build_system_prompt(
     agent_real_path: str = "",
     use_session_history: bool = False,
     virtual_mode: bool = True,
-    skills_with_hints: list[str] = [],
+    skills_with_hints: list[str] | None = None,
 ) -> str:
+    skills_with_hints = skills_with_hints or []
     skills_line = ", ".join(available_skills) if available_skills else "无"
 
     fs_section = build_filesystem_prompt_section(
