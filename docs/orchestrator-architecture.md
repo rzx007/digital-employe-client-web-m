@@ -262,6 +262,7 @@ flowchart LR
 | `learning/journal.py` | `capture_journal_entry` | 终态零成本捕获结构化流水 |
 | `learning/librarian.py` | `run_librarian`、`generate_profile`、`consolidate_memory`、`promote_skills` | 后台复盘：画像（含教训）/记忆去重/硬技能晋升 |
 | `orchestrator/qa_delivery_check.py` | `check_log_delivery`、`detect_missing_delivery_artifacts` | 交付物真伪代码兜底（自报 vs 磁盘） |
+| `agent/command_safety.py` | `check_hardline`、`normalize_command` | shell 灾难命令硬底线（接入 `SkillAwareShellBackend.execute/aexecute` 单一咽喉，对所有 agent 生效、永不执行；floor 非完整沙箱） |
 | `stream_registry.py` | `_finalize_task_stream`、`on_task_finalized` | 流终态钩子：捕获/反思/复盘/去抖/驱动 DAG |
 | `server.py` | `_on_task_finalized`（lifespan 装配） | 把终态事件接到调度器 + 推前端事件 |
 | `employee_service.py` | `build_employee_growth_brain`、`adopt_skill_candidate`、`dismiss_skill_candidate` | 成长大脑只读聚合 + 候选采纳/忽略 |
@@ -272,13 +273,14 @@ flowchart LR
 ## 7. 关键设计不变量（改代码时勿破坏）
 
 1. **唯一对话面**：员工永不直接对用户说话，所有人机交互（澄清/确认）只在总管层。
-2. **自包含派单 + 员工无澄清**：员工 `enable_hitl=False`、拿到契约四要素（目标/输出/资源/非目标）跑到底，缺信息写进结果带回，不阻塞等人。
+2. **自包含派单 + 员工无澄清**：员工 `enable_hitl=False`、拿到契约四要素（目标/输出/资源/非目标）跑到底，缺信息写进结果带回，不阻塞等人。员工 HITL-off，故由 `command_safety` shell 硬底线（见不变量 9）兜灾难命令。
 3. **真 DAG，完成驱动**：后继在前置**真正完成且 QA 接受**后才派；状态从 DB 派生，重启不丢。
 4. **确认门保守**：仅「单任务 + 只读 + 无 cron + 无破坏词」免确认自动执行；其余必确认。
 5. **质检结果导向 + 代码兜底**：对照派活契约判达标；高风险交付有 `qa_delivery_check` 代码核验标红，不全靠模型遵从。
 6. **学习闭环：单次不晋升硬技能**：软知识（教训）单次可写；硬知识（技能）须重复+验证，且只产「候选」、人确认才转正。
 7. **轻量再入 + 编排层与主上下文分离**：完成事件只带摘要+状态，去抖批量唤醒；子任务全过程留编排层，总管主上下文只收精炼结论。
 8. **不自爆内部机制**：自动放行/DAG/快照注入/reported_at 等是内部规则，正文只对用户说人话。
+9. **shell 灾难命令硬底线**：所有 agent（含 HITL-off 员工）的 shell 命令经 `command_safety.check_hardline` 过一道——`rm -rf 根/家目录`、`mkfs/dd` 写盘、fork bomb 等**永不执行**，不靠模型/确认门遵从。是 floor（挡直接灾难命令）非完整沙箱（挡不住"写脚本再跑"，彻底边界需 OS 沙箱）。
 
 ---
 
