@@ -444,3 +444,36 @@ export async function fetchVoiceAudioBlob(
   }
   return raw instanceof Blob ? raw : new Blob([raw])
 }
+
+export type ExternalDirMode = "ask" | "auto" | "deny"
+
+/**
+ * 获取会话工作区外目录访问模式
+ * GET /chat/conversations/{conversationId}/external-dir-mode
+ */
+export async function getExternalDirMode(
+  conversationId: number | string
+): Promise<ExternalDirMode> {
+  const res = await request<ApiResponse<{ mode: ExternalDirMode }>>(
+    `/chat/conversations/${conversationId}/external-dir-mode`
+  )
+  return res.data.mode
+}
+
+/**
+ * 设置会话工作区外目录访问模式
+ * PATCH /chat/conversations/{conversationId}/external-dir-mode
+ */
+export async function setExternalDirMode(
+  conversationId: number | string,
+  mode: ExternalDirMode
+): Promise<ExternalDirMode> {
+  const res = await request<ApiResponse<{ mode: ExternalDirMode }>>(
+    `/chat/conversations/${conversationId}/external-dir-mode`,
+    {
+      method: "PATCH",
+      body: { mode },
+    }
+  )
+  return res.data.mode
+}

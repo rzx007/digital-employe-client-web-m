@@ -22,6 +22,7 @@ import { useVoiceRecorder } from "./use-voice-recorder"
 import { VoiceRecorderPill } from "./voice-recorder"
 import { cn } from "@workspace/ui/lib/utils"
 import { ContextBudgetIndicator } from "@/components/chat/panel/context-budget-indicator"
+import { ExternalDirModePill } from "./external-dir-mode-pill"
 
 export function ChatPromptInput({
   value,
@@ -104,6 +105,7 @@ export function ChatPromptInput({
               />
             </PromptInputActionMenuContent>
           </PromptInputActionMenu>
+          <ExternalDirModePill conversationId={conversationId} />
           {showContextBudget && (
             <>
               <Separator orientation="vertical" className="mt-2 mr-3 h-3" />
