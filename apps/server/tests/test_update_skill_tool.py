@@ -40,3 +40,21 @@ def test_applies_update_and_syncs(monkeypatch):
     assert calls["update"][2]["target"] == "workspace"   # 防就地改全局内置
     assert calls["sync"] == {"user_id": "u1", "workspace_id": 7, "skill_name": "pptx"}
     assert calls.get("commit") and calls.get("close")
+    assert "rollback" not in calls
+
+
+def test_rejects_null_user_id(monkeypatch):
+    class _EmpNoUser:
+        workspace_id = 7
+        user_id = None
+
+    class _DB:
+        def get(self, *_): return _EmpNoUser()
+        def commit(self): ...
+        def rollback(self): ...
+        def close(self): ...
+
+    monkeypatch.setattr("src.db.session.get_session_local", lambda: (lambda: _DB()))
+    tool = create_update_skill_tool(employee_id=99, available_skills=["pptx"])
+    out = tool.invoke({"skill_name": "pptx", "new_content": "X", "reason": "r"})
+    assert "拒绝" in out and "user_id" in out

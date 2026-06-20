@@ -29,6 +29,8 @@ def create_update_skill_tool(employee_id: int, available_skills: list[str]):
                 f"拒绝：技能「{skill_name}」不在你已加载的技能列表中，"
                 f"只能修订已加载的技能。已加载：{sorted(loaded)}"
             )
+        if not new_content or not new_content.strip():
+            return "拒绝：new_content 为空，不允许清空技能内容。"
         return _apply_skill_update(employee_id, skill_name, new_content, reason)
 
     return update_skill
@@ -40,6 +42,7 @@ def _apply_skill_update(
     # ⚠️ 下游 import 必须留在函数体内（而非模块顶层别名）：测试靠 monkeypatch
     # `src.db.session.get_session_local` / `LocalSkillService.update_local_skill` /
     # `EmployeeService.sync_local_skill_to_assignees`，顶层别名 import 会让 patch 失效。
+    from fastapi import HTTPException
     from src.db.session import get_session_local
     from src.models.employee import Employee
     from src.service.local_skill_service import LocalSkillService
@@ -69,6 +72,10 @@ def _apply_skill_update(
             employee_id, skill_name, reason,
         )
         return f"已更新技能「{skill_name}」并同步所有使用该技能的同事。"
+    except HTTPException as http_exc:
+        db.rollback()
+        logger.warning("update_skill rejected by service: %s", http_exc.detail)
+        return f"更新技能「{skill_name}」失败：{http_exc.detail}"
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         logger.error("update_skill failed: %s", exc, exc_info=True)
