@@ -241,6 +241,15 @@ export type ClassifiedBlock =
       employeeConversationId: number | null
       taskId: number | null
     }
+  | {
+      kind: "external_dir_authorization"
+      key: string
+      toolCallId: string
+      toolName: string
+      state: string
+      input: unknown
+      resultText: string | null
+    }
 
 interface ClassifyMessagePartsOptions {
   includeFileChanges?: boolean

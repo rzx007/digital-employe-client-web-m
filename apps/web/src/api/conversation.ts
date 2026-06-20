@@ -348,6 +348,7 @@ export async function approveHitl(
   decisions: HitlDecision[],
   options?: {
     destructive_hitl?: { skip_for_conversation?: boolean }
+    external_dir?: { path: string; scope: "once" | "session" | "permanent" | "auto" }
   }
 ) {
   const dbId = Number(messageId)
@@ -369,6 +370,7 @@ export async function approveHitl(
       ...(options?.destructive_hitl
         ? { destructive_hitl: options.destructive_hitl }
         : {}),
+      ...(options?.external_dir ? { external_dir: options.external_dir } : {}),
     }),
   })
 }

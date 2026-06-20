@@ -19,6 +19,7 @@ import { TasksDeletedBatchCard } from "./tasks-deleted-batch-card"
 import { EmployeesDismissedBatchCard } from "./employees-dismissed-batch-card"
 import { UserActionSummaryCard } from "./user-action-summary-card"
 import { DestructiveDeleteConfirmCard } from "./destructive-delete-confirm-card"
+import { ExternalDirAuthCard } from "./external-dir-auth-card"
 import { FileChangeCards } from "./file-change-cards"
 import { DraftSkillSaveCard } from "./draft-skill-save-card"
 import { FinalResponseContent } from "./artifact-path-chip"
@@ -248,6 +249,21 @@ export function BlockRenderer({
             ? "output-available"
             : block.state
         }
+        resultText={block.resultText}
+        conversationId={conversationId}
+        messageId={messageId}
+        onHitlApproved={onHitlApproved}
+        className="w-full"
+      />
+    )
+  }
+  if (block.kind === "external_dir_authorization") {
+    return (
+      <ExternalDirAuthCard
+        key={block.key}
+        toolName={block.toolName}
+        input={block.input}
+        state={block.state}
         resultText={block.resultText}
         conversationId={conversationId}
         messageId={messageId}

@@ -113,10 +113,11 @@ export function ChatComposerArea({
 
   const planActive = pendingHitl?.kind === "document-plan"
   const destructiveDeleteActive = pendingHitl?.kind === "destructive-delete"
+  const externalDirAuthActive = pendingHitl?.kind === "external_dir_authorization"
   const clarifyDockReady =
     clarifyActive && activeHitl != null && dockPending != null
   const blocksComposer =
-    clarifyDockReady || planActive || destructiveDeleteActive
+    clarifyDockReady || planActive || destructiveDeleteActive || externalDirAuthActive
 
   const handleClarifySubmitted = React.useCallback(
     (opts?: { resumed?: boolean; assistantMessageId?: string | number }) => {

@@ -10,6 +10,7 @@ import { employeeCrudHandler } from "./handlers/employee-crud"
 import { employeeDismissHandler } from "./handlers/employee-dismiss"
 import { taskMutationsHandler } from "./handlers/task-mutations"
 import { destructiveDeleteHandler } from "./handlers/destructive-delete"
+import { externalDirAuthHandler } from "./handlers/external-dir-auth"
 
 export const TOOL_BLOCK_HANDLERS: ToolBlockHandler[] = [
   planGeneratedHandler,
@@ -17,6 +18,7 @@ export const TOOL_BLOCK_HANDLERS: ToolBlockHandler[] = [
   bugReportHandler,
   clarifyAnswersHandler,
   destructiveDeleteHandler,
+  externalDirAuthHandler,
   recruitmentHandler,
   employeeCrudHandler,
   employeeDismissHandler,
