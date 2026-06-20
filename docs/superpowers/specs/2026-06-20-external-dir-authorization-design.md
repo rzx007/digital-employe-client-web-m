@@ -141,21 +141,24 @@ if reason is not None:
 
 **授权卡片**：复用现有 HITL 卡片 interrupt→渲染→resume 通路（澄清/删除审批已有），新增卡片类型 `external_dir_authorization`：展示「员工 X 想写入工作区外目录 `D:\...`」+ 五按钮（仅这次 / 本会话 / 永久 / 放行所有(本会话) / 拒绝），点击以所选值 resume 当前 run。「放行所有(本会话)」= 把会话 mode 切到 `auto`。
 
-**输入框模式切换（会话级三态）**：composer 区加「工作区外目录」模式开关（沿用现有输入框模式开关样式）：
+**输入框模式药丸（会话级三态，Claude-Code 式）**：在 composer 底部工具栏放一个**模式药丸 + 下拉菜单**，仿 Claude Code 的 Mode 选择器交互（药丸显示当前模式名，点开下拉列三项、当前项打勾，可选键盘快捷键）。**只管"工作区外目录"这一件事**，借的是"药丸 + 下拉 + 勾选"的交互形态，非照搬 Claude Code 全部权限模式。
 
-| 模式 | 含义 | 落地 |
-|------|------|------|
-| 询问（默认） | 越界写弹卡片 | 正常流 |
-| 全放行 / auto | 越界写全部静默放行 | `external_dir_mode=auto` |
-| 严格禁止 | 越界写一律直拒、不弹 | `external_dir_mode=deny` |
+- **落点**：[`chat-prompt-input.tsx`](../../../apps/web/src/components/chat-prompt-input/chat-prompt-input.tsx) 的 `PromptInputFooter` **左侧** `PromptInputTools` 组（紧挨附件菜单 `PromptInputActionMenu` / 上下文预算 `ContextBudgetIndicator`）。新增组件 `ExternalDirModePill`。
 
-卡片「放行所有」按钮与输入框开关共用同一状态 `session_flags.external_dir_mode`。具体前端组件文件在写实施计划时定位（本节锁定"复用 HITL 卡片基建 + 加卡片类型 + 输入框三态开关"）。
+| 模式 | 药丸显示 | 含义 | 落地 |
+|------|---------|------|------|
+| 询问（默认） | 「目录·询问」 | 越界写弹卡片 | `external_dir_mode=ask` |
+| 全放行 / auto | 「目录·放行」 | 越界写全部静默放行 | `external_dir_mode=auto` |
+| 严格禁止 | 「目录·严禁」 | 越界写一律直拒、不弹 | `external_dir_mode=deny` |
+
+- **状态单一来源**：药丸 ↔ 卡片「放行所有」按钮共用同一会话状态 `session_flags.external_dir_mode`；切药丸 = 写该会话 flag，卡片点「放行所有」= 把它切到 `auto`，两处实时一致。
+- **API 接线**：新增读/写会话 `external_dir_mode` 的端点（仿 `set_skip_destructive_hitl` 那条会话 flag 写入通路），前端 TanStack Query hook 驱动药丸状态。新会话初值取 `Workspace.auto_grant_external_dirs`（默认 `ask`）。
 
 ## 5. 改动面
 
 - **后端新增**：`models/workspace_authorized_dir.py`；`service/agent/path_authorization.py`（边界判定 + 守卫 + is_granted + record_grant）；`service/authorized_dir_service.py`（list/grant/revoke）；`destructive_hitl` 风格的 session_flags 辅助（mode/granted_dirs 读写）。
 - **后端改动**：`Workspace` 加列 `auto_grant_external_dirs` + 迁移；`compatible_filesystem_middleware` 的 write_file/edit_file 工具接守卫（无 delete 文件工具，故不含 delete）；orchestrator/employee 把 workspace_id + 各允许根传入守卫上下文。
-- **前端**：新增 `external_dir_authorization` HITL 卡片类型；输入框「工作区外目录」三态模式开关 + 对应 session_flags 读写 API 接线。
+- **前端**：新增 `external_dir_authorization` HITL 卡片类型；新增 `ExternalDirModePill`（药丸+下拉，挂 `chat-prompt-input.tsx` 的 `PromptInputFooter` 左侧 `PromptInputTools` 组）；会话 `external_dir_mode` 读写端点 + TanStack Query hook。
 - **数据库**：新表 + Workspace 一列,需迁移。
 
 ## 6. 测试策略
