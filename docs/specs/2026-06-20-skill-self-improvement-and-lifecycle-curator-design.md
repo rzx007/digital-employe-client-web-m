@@ -47,7 +47,7 @@ A/B 的绝大部分地基**已存在**，本设计是接通而非重造：
 | `reflection_engine`（返工后成功/失败后成功 信号 critic） | [reflection_engine.py](../../apps/server/src/service/reflection_engine.py) | A 的自动触发信号之一 |
 | `_growth_brain_root_for(employee_id)` + `skill_candidates/` | [employee_service.py:36](../../apps/server/src/service/employee_service.py#L36) | B 的 `skill_lifecycle.json` 落点；近重复候选合并对象 |
 | 员工 agent 工具注册 | [agent/employee.py:96](../../apps/server/src/service/agent/employee.py#L96) | A 的 `update_skill` 工具挂载点 |
-| 技能可用集 → `skill_prerouter` | [agent/skill_prerouter.py](../../apps/server/src/service/agent/skill_prerouter.py) | B 的 archived 排除点 |
+| 技能可用集构造 `available_skills` | [agent/employee.py:76](../../apps/server/src/service/agent/employee.py#L76)（喂 prerouter + 系统提示两路） | B 的 archived 排除点（见 §5.3） |
 
 **关键洞察**：`skill_improvement_service` 是条**断头路**——低分时 LLM 分析后写 `improvement-suggestion.md` 到**员工副本目录**（会被 materialize/重建冲掉），**既不进候选、也不落库、没人看**。A 收编它：分析结果改为驱动就地修订，而非死文件。
 
@@ -68,16 +68,22 @@ update_skill(skill_name: str, new_content: str, reason: str) -> str
 
 ### 4.2 落库数据流
 
+> ⚠️ **关键 plumbing（评审补正）**：`update_skill` 工具挂在 `get_agent()`（[employee.py:55](../../apps/server/src/service/agent/employee.py#L55)）里，闭包只有 `employee_id / conversation_id / skill_path / root_path`，**没有 `db` / `workspace_id` / `user_id`**。所以工具内部必须**自己开 DB session 并从 `employee_id` 反查 `workspace_id` + `user_id`**（查 `Employee` 行）。下游两个函数的**真实签名**：
+> - `update_local_skill(skill_name, workspace_id, *, skill_md_content=..., target=...)`（[local_skill_service.py:797](../../apps/server/src/service/local_skill_service.py#L797)）
+> - `sync_local_skill_to_assignees(db, *, user_id, workspace_id, skill_name)`（[employee_service.py:1072](../../apps/server/src/service/employee_service.py#L1072)）
+
 ```
 员工 agent.update_skill(name, content, reason)
+  └─ 0. 解析上下文：开 DB session；Employee = get(employee_id) → 取 workspace_id, user_id
   └─ 1. 守卫：name ∈ 本员工已加载技能？否→拒绝（防误改无关技能）
   └─ 2. fork-on-edit：确保该技能在工作区技能库有可编辑副本
   │       └─ 复用 update_local_skill 内置的 _fork_builtin_to_workspace 思路；
   │          远程直分配（无库文件）技能→先固化为工作区本地技能
   └─ 3. 版本备份：把改前 SKILL.md 存到 <技能库>/<name>/.history/<ts>.md（可回滚）
-  └─ 4. update_local_skill(name, skill_md_content=content, workspace_id)  → 写库文件
-  └─ 5. sync_local_skill_to_assignees(name)  → 推送所有已分配员工副本 + DB + 快照
-  └─ 6. 记审计事件（见 4.4），返回简短确认给 agent
+  └─ 4. update_local_skill(name, workspace_id, skill_md_content=content)   → 写库文件
+  └─ 5. sync_local_skill_to_assignees(db, user_id=.., workspace_id=.., skill_name=name)
+  │                                                       → 推送所有已分配员工副本 + DB + 快照
+  └─ 6. 记审计事件（见 4.4），提交 DB，返回简短确认给 agent
 ```
 
 **fork-on-edit 统一出口**：无论技能来自本地/内置/远程直分配，修订都收敛为「写工作区技能库文件」这一个真相点。内置技能已有 fork 先例（[local_skill_service.py:829](../../apps/server/src/service/local_skill_service.py#L829)），远程直分配技能补一条「首次修订即固化为本地技能」。
@@ -117,7 +123,11 @@ update_skill(skill_name: str, new_content: str, reason: str) -> str
   "updated_at": "<iso>"
 }
 ```
-- `last_used` **不入文件**，运行时从 `TaskExecutionLog`（该员工 + skill_id，max created_at）派生——单一真相、不重复维护。
+- `last_used` **不入文件**，运行时派生——单一真相、不重复维护。**来源须两路取 max（评审补正）**：
+  - `TaskExecutionLog`（该员工 + skill_id，max created_at）——但 ⚠️ `TaskExecutionLog.skill_id` **只等于派单时为子任务选定的那一个技能**，不含 prerouter 软提示 / agent 自行 read 的技能；
+  - `SkillRating.created_at`（每次技能调用评分都写，覆盖更全）作**补充信号**；
+  - 取两者 max。**键映射（评审补正）**：lifecycle.json 以 `skill_name` 为键，而上述表用数字 `skill_id`（负=本地 localId，正=远程 id），二者经 `employee_skills`（同时有 `skill_id` 与 `skill_name`，[models/employee_skill.py](../../apps/server/src/models/employee_skill.py)）映射；技能 fork/改名后以当前 employee_skills 绑定为准。
+  - **保守口径**：任一信号显示近期用过即判 active；只有所有信号都 idle 才老化——宁可不归档，不可误archive 常用技能。
 - `pinned`、`status`、`archived_at` 入文件（curator 与用户操作可写）。
 
 ### 5.2 老化状态机（保守）
@@ -129,7 +139,7 @@ curator 后台 pass（搭 librarian 既有异步复盘，不占用户主流程�
 - 从未使用过的技能：以「分配时间」为 last_used 基准，避免新分配立即判 stale。
 
 ### 5.3 archived 的行为
-- **路由排除**：archived 技能从员工「可用技能集」剔除（[skill_prerouter](../../apps/server/src/service/agent/skill_prerouter.py) 的 available_skills 上游过滤），不再被软路由提示、不进系统提示技能清单。
+- **路由排除**：archived 技能从员工「可用技能集」剔除。⚠️ **排除点（评审补正）**：发生在 `available_skills` 的**构造层**（员工技能清单生成处，[employee.py:76](../../apps/server/src/service/agent/employee.py#L76) 一带），**不是** `skill_prerouter` 内部（它只认一张硬编码 builtin 触发表 `SKILL_TRIGGERS`）。剔除后既不进 prerouter 候选、也不进系统提示技能清单。
 - **不删文件/不解绑**：employee_skills 行与副本保留，仅「逻辑隐藏」。
 - **UI**：成长面板/技能列表把 archived 折叠到「已归档」分组，提供「恢复」「置顶(pin)」操作。
 
@@ -176,7 +186,7 @@ curator pass 顺带扫 `<brain>/skill_candidates/*.md`：
 ## 8. 风险与开放问题
 1. **A 直接改无审核门**（用户已拍）：靠备份+审计+回滚+加载守卫兜底；开放：要不要给「改他人高频技能」配轻量确认档（默认不配）。
 2. **全员同步阻塞**：`sync_local_skill_to_assignees` 同步多员工，员工多时是否需异步化（v1 同步，量大再说）。
-3. **last_used 精度**：TaskExecutionLog 是否覆盖所有「使用」？非任务态（直接对话）用技能是否落 log——需核（若不全，stale 判定偏保守即可，宁可不归档）。
+3. **last_used 精度（前置项，B-1 开工前必核）**：`TaskExecutionLog.skill_id` 只记**派单技能**，prerouter 软提示 / agent 自行 read 的技能、以及非任务态直接对话用技能都**不落 log**。已在 §5.1 用「TaskExecutionLog ∪ SkillRating 取 max + 保守口径」缓解；规划时仍须核实 SkillRating 的实际写入覆盖率，若两路都漏某类使用，则该类技能老化判定偏保守（不归档）即可，绝不可误归档常用技能。
 4. **B 与 A 交互**：archived 技能被 A 的低分/返工信号触发时，应先「恢复」还是忽略——v1 忽略 archived 的自动信号。
 
 ---
