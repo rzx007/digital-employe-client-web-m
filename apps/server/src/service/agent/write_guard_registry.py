@@ -34,26 +34,38 @@ class WriteGuardCtx:
 _registry: dict[int, WriteGuardCtx] = {}
 
 
+def _coerce_conv_id(conversation_id) -> int | None:
+    """容错转 int：conversation_id 可能来自 env 字符串（"17"）；非数字/None → None。
+    run_shell_guard 在每条 shell 命令前都查表，裸 int() 抛错会波及全部 shell 执行，故兜底。"""
+    if conversation_id is None:
+        return None
+    try:
+        return int(conversation_id)
+    except (TypeError, ValueError):
+        return None
+
+
 def register_write_guard(
     conversation_id: int | None, roots: list[Path], workspace_id: int
 ) -> None:
-    if conversation_id is None:
+    cid = _coerce_conv_id(conversation_id)
+    if cid is None:
         return
-    _registry[int(conversation_id)] = WriteGuardCtx(
-        roots=list(roots), workspace_id=workspace_id
-    )
+    _registry[cid] = WriteGuardCtx(roots=list(roots), workspace_id=workspace_id)
 
 
 def lookup_write_guard(conversation_id: int | None) -> WriteGuardCtx | None:
-    if conversation_id is None:
+    cid = _coerce_conv_id(conversation_id)
+    if cid is None:
         return None
-    return _registry.get(int(conversation_id))
+    return _registry.get(cid)
 
 
 def clear_write_guard(conversation_id: int | None) -> None:
-    if conversation_id is None:
+    cid = _coerce_conv_id(conversation_id)
+    if cid is None:
         return
-    _registry.pop(int(conversation_id), None)
+    _registry.pop(cid, None)
 
 
 def run_shell_guard(command: str, conversation_id) -> str | None:
