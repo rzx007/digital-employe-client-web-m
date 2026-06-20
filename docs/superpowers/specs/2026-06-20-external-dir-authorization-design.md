@@ -8,14 +8,16 @@
 
 总管/员工的文件工具当前**可写本机任意绝对路径**，无工作区边界、无授权流程。[`_validate_path_allow_physical`](../../../apps/server/src/service/agent/compatible_filesystem_middleware.py) 直接放行 Windows 盘符 / Unix 绝对路径；唯一的沙箱检查 [`_resolve_safe_path`](../../../apps/server/src/service/resource_service.py) 只在**资源管理器读列表/读内容**时生效，碰不到 Agent 工具层。HITL 仅覆盖 6 个数据库删除工具（[`destructive_hitl`](../../../apps/server/src/service/agent/destructive_hitl.py)），shell 仅有灾难命令硬底线。
 
-**结论：当前没有"工作区外目录写授权"机制——员工给个绝对路径就能写/删工作区外任意目录，无校验、无弹窗。**
+**结论：当前没有"工作区外目录写授权"机制——员工给个绝对路径就能写工作区外任意目录，无校验、无弹窗（文件删除经 shell `rm`，另由硬底线兜底）。**
 
 ### 目标
-为**写/删类文件工具**补一道工作区边界闸：当目标路径在工作区外且未授权时，挂 HITL 让用户当场决定，授权按用户所选档位（仅这次 / 本会话 / 永久）记录，后续命中即放行。同时提供会话级"全放行 / 严格禁止"模式开关（输入框切换 + 卡片一键升级）。
+为**写类文件工具 `write_file` / `edit_file`**补一道工作区边界闸：当目标路径在工作区外且未授权时，挂 HITL 让用户当场决定，授权按用户所选档位（仅这次 / 本会话 / 永久）记录，后续命中即放行。同时提供会话级"全放行 / 严格禁止"模式开关（输入框切换 + 卡片一键升级）。
+
+> **范围澄清（评审纠正）**：agent 工具层**没有独立的"删除文件"工具**——文件删除只能经 `shell_execute` 的 `rm` 实现。`destructive_hitl` 的 6 个删除工具均为**数据库**删除（员工/任务/技能），非文件删除。故本闸实际只覆盖 `write_file` / `edit_file`；工作区外**文件删除**随 shell 一并不纳入本闸，由 `command_safety` 硬底线兜底（用户"只拦写/删"的意图在文件工具层等价于"拦写")。
 
 ### 非目标
 - **不**拦读（`read_file`/`ls` 等读工作区外目录静默放行——低风险）。
-- **不**纳入 `shell_execute`（命令字符串无法可靠判读写/抽路径，继续靠 `command_safety` 硬底线兜底）。
+- **不**纳入 `shell_execute`（命令字符串无法可靠判读写/抽路径，继续靠 `command_safety` 硬底线兜底）；**文件删除走 shell，故同样不纳入本闸**。
 - **不**改 [`_validate_path_allow_physical`](../../../apps/server/src/service/agent/compatible_filesystem_middleware.py) 的物理路径放行语义（它无工具身份/会话上下文，不是强制点）。
 - **不**做工作区设置页 UI 管理"已授权目录列表"（本期只留 service，UI 留口子）。
 
@@ -24,7 +26,7 @@
 | 维度 | 决策 |
 |------|------|
 | 授权粒度 | 用户在卡片上**当场三选一**：仅这次 / 本会话 / 永久 |
-| 读写分级 | **读放行，只拦写/删** |
+| 读写分级 | **读放行，只拦写**（文件工具层无 delete 工具，"删"经 shell→见 §1 范围澄清） |
 | shell | 本期不纳入，靠硬底线兜底 |
 | auto 模式 | 用户可"放行所有"——收编为会话级三态模式 `ask/auto/deny` |
 | 授权归属 | 永久授权挂 `workspace_id`（非 user_id），同用户不同工作区互不串 |
@@ -33,18 +35,18 @@
 ## 3. 架构
 
 ```
-write_file / edit_file / 删除工具  ──执行前守卫──▶ guard_external_write(ctx, target, tool)
+write_file / edit_file             ──执行前守卫──▶ guard_external_write(ctx, target, tool)
 read_file / ls / shell             ──不经守卫──▶ 原样放行
                                                      │
                   is_outside_workspace(target, roots)?  ──否(工作区内)──▶ 放行
                                                      │是
                           is_granted(ctx, target)?  ──是(已授权/auto)──▶ 放行
-                          会话 mode == deny?         ──是──▶ ToolRejected(直拒,不弹)
+                          会话 mode == deny?         ──是──▶ error ToolMessage(直拒,不弹)
                                                      │否(需询问)
                           interrupt({type:"external_dir_authorization", path, tool, choices})
                                                      │ 前端卡片 → 用户选择 → resume
                           record_grant(ctx, target, decision)  →  原始写操作继续
-                          decision==reject → ToolRejected
+                          decision==reject → error ToolMessage(不抛异常)
 ```
 
 并存关系：本特性的 `interrupt()` 是**按参数动态抛**（写到工作区外才触发），与现有 `interrupt_on` 的**按工具名静态挂**（澄清/删除）互不冲突、各走各的 resume 通路。
@@ -104,28 +106,36 @@ class WorkspaceAuthorizedDir(Base):
 
 ### 4.4 动态拦截与 resume — 守卫接入
 
-在 [compatible_filesystem_middleware](../../../apps/server/src/service/agent/compatible_filesystem_middleware.py) 给 **write_file / edit_file / 删除** 工具的执行函数套守卫（read_file/ls 不套、shell 不套）：
+在 [compatible_filesystem_middleware](../../../apps/server/src/service/agent/compatible_filesystem_middleware.py) 给 **write_file / edit_file** 工具的执行函数套守卫（read_file/ls 不套、shell 不套）。守卫**返回拒绝原因串或 None**，调用方据此决定放行还是返回 error `ToolMessage`（沿用本代码库现有 reject 语义——**返回 `ToolMessage(status="error", ...)`，不抛异常**）：
 
 ```python
-def guard_external_write(ctx, target, tool_name):
+def guard_external_write(ctx, target, tool_name) -> str | None:
+    """返回 None=放行；返回拒绝原因串=拒绝(调用方转 error ToolMessage)。"""
     roots = collect_workspace_roots(ctx)
     if not is_outside_workspace(target, roots):
-        return                                   # 工作区内,放行
+        return None                               # 工作区内,放行
     if is_granted(ctx, target):
-        return                                   # 已授权/auto,放行
+        return None                               # 已授权/auto,放行
     if session_mode(ctx) == "deny":
-        raise ToolRejected(f"严格模式:拒绝写入工作区外目录 {target}")
-    decision = interrupt({                        # langgraph 动态 interrupt
+        return f"严格模式:拒绝写入工作区外目录 {target}"
+    decision = interrupt({                         # langgraph 动态 interrupt
         "type": "external_dir_authorization",
         "path": target, "tool": tool_name,
         "choices": ["once", "session", "permanent", "auto_session", "reject"],
     })
     if decision == "reject":
-        raise ToolRejected(f"用户拒绝了对工作区外目录 {target} 的写入")
-    record_grant(ctx, target, decision)           # 按档位:落永久表/写 granted_dirs/切 mode=auto
+        return f"用户拒绝了对工作区外目录 {target} 的写入"
+    record_grant(ctx, target, decision)            # 按档位:落永久表/写 granted_dirs/切 mode=auto
+    return None
+
+# 工具包装层:
+reason = guard_external_write(ctx, target, "write_file")
+if reason is not None:
+    return ToolMessage(status="error", content=reason, tool_call_id=...)  # Agent 据此另谋出路
+# else 继续执行原始写
 ```
 
-**resume 语义**：`interrupt()` 挂起后,用户在前端选完,graph 从该工具节点**重跑**,`interrupt()` 第二次返回所选值;此时 `record_grant` 已落地,原始写继续执行。守卫**幂等**:重跑时 `is_granted` 已 True（或 interrupt 返回决策),不会二次弹窗。`reject` → 工具返回拒绝串,Agent 据此另谋出路。`record_grant` 把 target 取**父目录**写入（前缀授权,见 §4.2 匹配）。
+**resume 语义**：`interrupt()` 挂起后,用户在前端选完,graph 从该工具节点**重跑**,`interrupt()` 第二次返回所选值;此时 `record_grant` 已落地,原始写继续执行。守卫**幂等**:重跑时 `is_granted` 已 True（或 interrupt 第二次直接返回所选 once 决策),不会二次弹窗。拒绝 → 工具返回 error `ToolMessage`,Agent 据此另谋出路。`record_grant` 把 target 取**父目录**写入（前缀授权,见 §4.2 匹配）。
 
 ### 4.5 前端 — 授权卡片 + 输入框模式切换
 
@@ -144,7 +154,7 @@ def guard_external_write(ctx, target, tool_name):
 ## 5. 改动面
 
 - **后端新增**：`models/workspace_authorized_dir.py`；`service/agent/path_authorization.py`（边界判定 + 守卫 + is_granted + record_grant）；`service/authorized_dir_service.py`（list/grant/revoke）；`destructive_hitl` 风格的 session_flags 辅助（mode/granted_dirs 读写）。
-- **后端改动**：`Workspace` 加列 `auto_grant_external_dirs` + 迁移；`compatible_filesystem_middleware` write/edit/delete 工具接守卫；orchestrator/employee 把 workspace_id + 各允许根传入守卫上下文。
+- **后端改动**：`Workspace` 加列 `auto_grant_external_dirs` + 迁移；`compatible_filesystem_middleware` 的 write_file/edit_file 工具接守卫（无 delete 文件工具，故不含 delete）；orchestrator/employee 把 workspace_id + 各允许根传入守卫上下文。
 - **前端**：新增 `external_dir_authorization` HITL 卡片类型；输入框「工作区外目录」三态模式开关 + 对应 session_flags 读写 API 接线。
 - **数据库**：新表 + Workspace 一列,需迁移。
 
@@ -152,7 +162,7 @@ def guard_external_write(ctx, target, tool_name):
 
 - **单元**：`is_outside_workspace`（resolve 吃 `../`/符号链接/子路径/相对路径绕过;多允许根命中）；`is_granted` 五级短路优先级；目录前缀匹配（授权父→子文件放行,授权 `foo` 不放行 `foobar`）。
 - **service**：永久表 grant/revoke/list（唯一约束、跨 workspace 隔离）；session_flags `granted_dirs` 与 `external_dir_mode` 读写。
-- **集成**：越界写 → 抛 interrupt;按 once/session/permanent/auto_session resume → 各档位授权落地 + 操作继续;reject → 操作中止(ToolRejected);同目录/子目录二次写 → 不再 interrupt;mode=deny → 直拒不弹;mode=auto / 工作区 auto 列 → 静默放行。
+- **集成**：越界写 → 抛 interrupt;按 once/session/permanent/auto_session resume → 各档位授权落地 + 操作继续;reject → 操作中止(返回 error ToolMessage,不抛异常);同目录/子目录二次写 → 不再 interrupt;mode=deny → 直拒不弹;mode=auto / 工作区 auto 列 → 静默放行。
 - **回归底线**：工作区内写**永不**弹;读工作区外**永不**弹;shell 越界**不**走此闸(仅硬底线)。
 - **基线**：后端现有 5 failed 基线不新增（参 MEMORY 全套 686 passed 基线）;前端 typecheck/vitest 基线不破。
 
