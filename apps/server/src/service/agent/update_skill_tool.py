@@ -60,6 +60,9 @@ def _apply_skill_update(
         if user_id is None:
             return f"拒绝：员工(id={employee_id}) 缺 user_id，无法定位同步范围。"
 
+        LocalSkillService.ensure_editable_from_employee_copy(
+            skill_name, workspace_id, employee_id
+        )
         LocalSkillService.update_local_skill(
             skill_name, workspace_id, skill_md_content=new_content, target="workspace"
         )

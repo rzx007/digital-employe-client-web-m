@@ -67,3 +67,61 @@ def test_employee_module_wires_update_skill():
     src = inspect.getsource(emp_mod)
     assert "create_update_skill_tool" in src
     assert "from src.service.agent.update_skill_tool import create_update_skill_tool" in src
+
+
+def test_fork_from_employee_copy_when_no_library(monkeypatch, tmp_path):
+    """远程直分配技能（无库文件）应从员工私有副本 fork 到工作区技能库。"""
+    from src.service.local_skill_service import LocalSkillService
+    from src.service.employee_service import EmployeeService
+
+    # 把 local_skills_path 和 skill_path 都指到 tmp_path 下的子目录
+    local_skills_root = tmp_path / "local-skills"
+    skill_path_root = tmp_path / "skill-path"
+    local_skills_root.mkdir(parents=True)
+    skill_path_root.mkdir(parents=True)
+
+    # 取真实 settings 对象，用 monkeypatch 改属性（与 test_orchestrator_self_skills.py 同一模式）
+    from src.core.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "local_skills_path", str(local_skills_root))
+    monkeypatch.setattr(settings, "skill_path", str(skill_path_root))
+
+    workspace_id = 11
+    employee_id = 42
+    skill_name = "remote-x"
+
+    # Arrange: 确认工作区库和内置都没有该技能（tmp 目录是空的，已满足）
+    workspace_dir = local_skills_root / str(workspace_id) / skill_name
+    assert not workspace_dir.exists()
+    builtin_dir = local_skills_root / "builtin" / skill_name
+    assert not builtin_dir.exists()
+
+    # 创建员工私有副本
+    private_dir = skill_path_root / str(employee_id) / "skills" / skill_name
+    private_dir.mkdir(parents=True)
+    skill_md_content = "---\nname: remote-x\ndescription: 远程技能\n---\n# Remote X\n"
+    (private_dir / LocalSkillService.SKILL_MD_NAME).write_text(skill_md_content, encoding="utf-8")
+
+    # Act
+    result = LocalSkillService.ensure_editable_from_employee_copy(
+        skill_name, workspace_id, employee_id
+    )
+
+    # Assert: 返回工作区目录
+    assert result is not None
+    assert result == workspace_dir
+
+    # SKILL.md 已复制到工作区库
+    forked_skill_md = workspace_dir / LocalSkillService.SKILL_MD_NAME
+    assert forked_skill_md.exists()
+    assert forked_skill_md.read_text(encoding="utf-8") == skill_md_content
+
+    # .skill-meta.json 存在且含 localId
+    import json
+    meta_file = workspace_dir / LocalSkillService.META_FILE_NAME
+    assert meta_file.exists()
+    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    assert "localId" in meta
+    assert meta["localId"] < 0  # 本地技能 id 为负数
+    assert meta["skillName"] == skill_name
+    assert "fork:employee:" in meta.get("sourceFileName", "")

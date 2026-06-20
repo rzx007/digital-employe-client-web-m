@@ -794,6 +794,49 @@ class LocalSkillService:
         return target_dir
 
     @staticmethod
+    def ensure_editable_from_employee_copy(
+        skill_name: str, workspace_id: int, employee_id: int
+    ) -> "Path | None":
+        """确保技能在工作区技能库有可编辑副本，供 update_local_skill 写入。
+
+        - 工作区已有副本 → 返回该目录（无需 fork）。
+        - 内置存在 → 返回 None（交给 update_local_skill(target="workspace") fork 内置）。
+        - 都无、但员工私有副本存在 → 把私有副本固化为工作区本地技能并返回新目录。
+        - 都无 → 抛 HTTPException(404) 明确技能无可编辑来源。
+        """
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        workspace_dir = LocalSkillService._skill_dir(normalized, workspace_id)
+        if workspace_dir.is_dir():
+            return workspace_dir
+        builtin_dir = LocalSkillService._skill_dir(normalized, None)
+        if builtin_dir.is_dir():
+            return None  # update_local_skill(target="workspace") 会 fork 内置
+        # 远程直分配：无库文件，从员工私有副本固化
+        from src.service.employee_service import EmployeeService
+        private_dir = (
+            EmployeeService._resolve_skill_root()
+            / str(employee_id)
+            / "skills"
+            / normalized
+        )
+        if not (private_dir / LocalSkillService.SKILL_MD_NAME).is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"技能 {normalized} 无可编辑来源（工作区/内置/员工私有副本均无）。",
+            )
+        local_root = LocalSkillService._resolve_local_root(workspace_id)
+        local_root.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(private_dir, workspace_dir, dirs_exist_ok=False)
+        meta = LocalSkillService._read_meta(workspace_dir)
+        reserved = LocalSkillService._reserved_negative_ids_universal()
+        meta["skillName"] = normalized
+        meta["localId"] = LocalSkillService._next_id_below_reserved(reserved)
+        meta["importedAt"] = datetime.now().isoformat(timespec="seconds")
+        meta["sourceFileName"] = f"fork:employee:{employee_id}:{normalized}"
+        LocalSkillService._write_meta(workspace_dir, meta)
+        return workspace_dir
+
+    @staticmethod
     def update_local_skill(
         skill_name: str,
         workspace_id: int | None = None,
