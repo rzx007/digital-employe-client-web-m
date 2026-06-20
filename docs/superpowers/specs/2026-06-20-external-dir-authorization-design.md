@@ -30,7 +30,7 @@
 |------|------|
 | 授权粒度 | 用户在卡片上**当场三选一**：仅这次 / 本会话 / 永久 |
 | 读写分级 | **读放行，只拦写**（文件工具层无 delete 工具，"删"经 shell→见 §1 范围澄清） |
-| shell | 本期不纳入，靠硬底线兜底 |
+| shell | ~~本期不纳入~~ → **实现后改为纳入：启发式路径抽取拦截**（见 §9 增补，决策于真人复测发现总管用 shell 落盘绕过后） |
 | auto 模式 | 用户可"放行所有"——收编为会话级三态模式 `ask/auto/deny` |
 | 授权归属 | 永久授权挂 `workspace_id`（非 user_id），同用户不同工作区互不串 |
 | 授权匹配 | 按**目录前缀**——授权父目录则其子路径一并放行 |
@@ -199,4 +199,22 @@ if reason is not None:
 
 ## 8. 验收对照
 
-员工写工作区外目录 `D:\其他项目\x.txt` → 守卫挡回并提示，员工调 `request_external_dir_access` → 弹授权卡片(五选项)。选「永久」→ 落 `workspace_authorized_dir`，此后该工作区任意会话写该目录及子路径守卫直接放行;选「本会话」→ 仅本对话放行;选「仅这次」→ 仅紧接其后那次写放行、再写又需申请;选「放行所有」或输入框切 auto → 本会话所有越界写静默放行;输入框切「严格禁止」→ 越界写直接被拒、不触发申请。工作区内写、读工作区外、shell 越界——均不受影响。
+员工写工作区外目录 `D:\其他项目\x.txt` → 守卫挡回并提示，员工调 `request_external_dir_access` → 弹授权卡片(五选项)。选「永久」→ 落 `workspace_authorized_dir`，此后该工作区任意会话写该目录及子路径守卫直接放行;选「本会话」→ 仅本对话放行;选「仅这次」→ 仅紧接其后那次写放行、再写又需申请;选「放行所有」或输入框切 auto → 本会话所有越界写静默放行;输入框切「严格禁止」→ 越界写直接被拒、不触发申请。工作区内写、读工作区外——不受影响。
+
+## 9. 实现后增补（真人复测驱动）
+
+实现并通过自动化测试后，真人在**总管对话**复测"在桌面创建 test.md"，发现两个原设计盲区，已修复：
+
+### 9.1 总管（orchestrator）写守卫漏接线 — bug 修复
+**现象**：总管写工作区外（`write_file` 写 `D:/test.md`）无授权卡片。**根因**：守卫的 `register_write_guard` 接线当初只加在 `employee.py get_agent`，而总管走**独立的** `get_orchestrator_agent`（`orchestrator/agent.py`），从未注册 → `lookup_write_guard` 返回 None → fail-open。**修复**：给 `get_orchestrator_agent` 补上与员工**完全对称**的接线（`enable_hitl=True` + `conversation_id` + `workspace_id` 时 `register_write_guard` + 挂 `request_external_dir_access` + 追加系统提示）。总管 interrupt_on 已含请求工具（经 `build_orchestrator_interrupt_on`→`HITL_INTERRUPT_ON`），无需改。（commit `2cf25aaf`）
+
+### 9.2 shell 改为纳入 — 启发式路径拦截（推翻 §1/§2 原"shell 不纳入"）
+**动因**：复测发现总管很自然地用 `shell_execute`（`echo "x" > "%USERPROFILE%\Desktop\test.md"`）落盘，绕过只覆盖 `write_file/edit_file` 的守卫。用户决策：shell 也纳入。**实现**（启发式，接受"可能漏拦混淆路径/误拦部分读"的取舍）：
+- `path_authorization.extract_command_paths(command)`：正则抽取命令里的绝对路径（Windows 盘符 / UNC / `%VAR%` / `~` / Unix 绝对），`expandvars`/`expanduser` 展开。
+- `path_authorization.guard_external_shell(...)`：对每个抽出的路径复用 `guard_external_write` 判定，任一越界未授权即挡回。
+- `write_guard_registry.run_shell_guard(command, conversation_id)`：桥（查注册表→`sqlite_db_session`→`guard_external_shell`），fail-open。
+- 接入点：`skill_shell_backend` 的 `execute`/`aexecute`，**与硬底线 `_hardline_refusal` 同层**（硬底线之后、`_prepare_shell_command` 之前，扫原始命令）。conv_id 取自 `self._env["CONVERSATION_ID"]`；`_coerce_conv_id` 容错防崩。
+- 覆盖面：employee 与 orchestrator 共用同一 backend，一改两覆盖。（commits `7653fac4` / `1f0a360f` / `403c76c3`）
+
+### 9.3 不变量更新
+§8 验收末句"shell 越界不受影响"**已作废**——现在 shell 越界写（被启发式抽到绝对路径的）同样挡回。仍不变的：工作区内写、读工作区外不受影响；后台子任务（`enable_hitl=False`）仍整体放行（§1 已知限制）。
