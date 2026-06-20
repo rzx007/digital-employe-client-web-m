@@ -33,13 +33,22 @@ def build_filesystem_prompt_section(
     draft_instruction = ""
     if has_draft_route and draft_skills_real_path:
         draft_instruction = f"""
-        创建/修改技能：写到草稿技能目录 `{draft_skills_real_path}`（$SKILLS_DRAFT_DIR），
+        创建新技能：写到草稿技能目录 `{draft_skills_real_path}`（$SKILLS_DRAFT_DIR），
         例如 write_file("{draft_skills_real_path}/my-skill/SKILL.md", "...")；草稿技能立即生效。
-        正式技能目录 $SKILLS_DIR 下的技能也可直接 edit_file 修改（不再只读）。
+        正式技能目录 $SKILLS_DIR 下的技能可用 read_file 查看；直接 edit_file 改技能文件只对**当前会话临时生效**、不持久——
+        **要让修订持久并同步所有同事，必须用 `update_skill` 工具**（而非 edit_file）。
+        你加载的技能若在使用中发现**错误/缺步骤/已过时**，可用 `update_skill(skill_name, new_content, reason)` 就地修正——
+        优先修你正用着的这个技能，让它越用越准。仅在确有把握、且是技能本身的问题（非本次任务一次性特例）时才改；
+        改动会写入技能库并**同步给所有使用该技能的同事**，故须类级、通用、保守，不写 session 专属内容。
         """
     elif skills_real_path:
         draft_instruction = f"""
-        技能目录 `{skills_real_path}`（$SKILLS_DIR）下的技能文件可直接 read_file/edit_file 查看与修改。
+        技能目录 `{skills_real_path}`（$SKILLS_DIR）下的技能文件可用 read_file 查看；
+        直接 edit_file 改技能文件只对**当前会话临时生效**、不持久——
+        **要让修订持久并同步所有同事，必须用 `update_skill` 工具**（而非 edit_file）。
+        你加载的技能若在使用中发现**错误/缺步骤/已过时**，可用 `update_skill(skill_name, new_content, reason)` 就地修正——
+        优先修你正用着的这个技能，让它越用越准。仅在确有把握、且是技能本身的问题（非本次任务一次性特例）时才改；
+        改动会写入技能库并**同步给所有使用该技能的同事**，故须类级、通用、保守，不写 session 专属内容。
         """
 
     history_hint = (
