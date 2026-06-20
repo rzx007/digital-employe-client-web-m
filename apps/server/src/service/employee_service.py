@@ -787,7 +787,8 @@ class EmployeeService:
             if str(skill.get("source") or "").strip().lower() == "local":
                 local_path = Path(str(skill.get("path") or "").strip())
                 if local_path.is_dir():
-                    shutil.copytree(local_path, skill_dir, dirs_exist_ok=True)
+                    shutil.copytree(local_path, skill_dir, dirs_exist_ok=True,
+                                    ignore=shutil.ignore_patterns(".history"))
                 continue
 
             file_map = EmployeeService._skill_content_to_file_map(
@@ -1143,7 +1144,8 @@ class EmployeeService:
             target_dir.parent.mkdir(parents=True, exist_ok=True)
             if target_dir.exists():
                 shutil.rmtree(target_dir, ignore_errors=True)
-            shutil.copytree(skill_dir, target_dir, dirs_exist_ok=False)
+            shutil.copytree(skill_dir, target_dir, dirs_exist_ok=False,
+                            ignore=shutil.ignore_patterns(".history"))
 
             EmployeeService._patch_employee_skills_json_for_local_skill(
                 employee,
@@ -1446,12 +1448,36 @@ class EmployeeService:
                 if meta:
                     skill_candidates.append(meta)
 
+        # 技能编辑审计（employee 改过技能时写入，供成长面板消费）
+        recent_skill_edits: list[dict] = []
+        audit_file = brain / "skill_edits.jsonl"
+        if audit_file.is_file():
+            try:
+                for line in audit_file.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        e = _json.loads(line)
+                    except ValueError:
+                        continue
+                    recent_skill_edits.append({
+                        "ts": e.get("ts", ""),
+                        "skill_name": e.get("skill_name", ""),
+                        "reason": e.get("reason", ""),
+                        "backup_version": e.get("backup_version"),
+                    })
+            except OSError:
+                pass
+        recent_skill_edits = recent_skill_edits[-20:]
+
         return {
             "profile_md": profile_md,
             "skills_list": skills_list,
             "memories_md": memories_md,
             "journal_entries": journal_entries,
             "skill_candidates": skill_candidates,
+            "recent_skill_edits": recent_skill_edits,
         }
 
     @staticmethod

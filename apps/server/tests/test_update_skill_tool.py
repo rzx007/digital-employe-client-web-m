@@ -435,6 +435,46 @@ def test_audit_best_effort_never_raises(monkeypatch):
     assert result is None
 
 
+# ---------------------------------------------------------------------------
+# Fix I-2: _clear_skill_hint tests
+# ---------------------------------------------------------------------------
+
+def test_clear_skill_hint_removes_file(monkeypatch, tmp_path):
+    """_clear_skill_hint 应在成功更新后删除 <brain>/skill_hints/<skill_name>.md。"""
+    from src.service.agent.update_skill_tool import _clear_skill_hint
+
+    brain_dir = tmp_path / "brain-42"
+    hint_dir = brain_dir / "skill_hints"
+    hint_dir.mkdir(parents=True)
+    hint_file = hint_dir / "pptx.md"
+    hint_file.write_text("这个技能有问题", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "src.service.employee_service._growth_brain_root_for",
+        lambda employee_id: brain_dir,
+    )
+
+    _clear_skill_hint(42, "pptx")
+
+    assert not hint_file.exists(), "hint 文件应已被删除"
+
+
+def test_clear_skill_hint_best_effort_no_raise(monkeypatch):
+    """_clear_skill_hint 在 brain 根不可获取时不应抛出异常（best-effort）。"""
+    from src.service.agent.update_skill_tool import _clear_skill_hint
+
+    def _raise(_employee_id):
+        raise RuntimeError("brain root unavailable")
+
+    monkeypatch.setattr(
+        "src.service.employee_service._growth_brain_root_for",
+        _raise,
+    )
+
+    # 不应 raise
+    _clear_skill_hint(99, "pptx")
+
+
 def test_restore_endpoint_traversal_rejected(monkeypatch, tmp_path):
     """路径穿越格式的 version 应被 Pydantic 校验拒绝（422）或边界检查拒绝（400）。"""
     from fastapi import FastAPI

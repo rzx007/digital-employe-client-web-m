@@ -46,7 +46,7 @@ def test_build_growth_brain_empty(db_session, workspace, monkeypatch, tmp_path):
     brain = es.EmployeeService.build_employee_growth_brain(db_session, emp.id)
     assert brain == {
         "profile_md": "", "skills_list": [], "memories_md": "",
-        "journal_entries": [], "skill_candidates": [],
+        "journal_entries": [], "skill_candidates": [], "recent_skill_edits": [],
     }
 
 
@@ -60,3 +60,107 @@ def test_growth_brain_endpoint(db_session, workspace, monkeypatch, tmp_path):
     assert resp.data.profile_md and "调研" in resp.data.profile_md
     assert "my-skill" in resp.data.skills_list
     assert resp.data.journal_entries[0].task_name == "调研A"
+
+
+# ---------------------------------------------------------------------------
+# Fix I-1: recent_skill_edits in growth brain payload
+# ---------------------------------------------------------------------------
+
+def test_build_growth_brain_includes_recent_skill_edits(db_session, workspace, monkeypatch, tmp_path):
+    """build_employee_growth_brain 应从 skill_edits.jsonl 读取并返回 recent_skill_edits。"""
+    from src.service import employee_service as es
+    emp = add_employee(db_session, workspace.id, name="审计员工")
+    brain_dir = tmp_path / str(emp.id)
+    monkeypatch.setattr(es, "_growth_brain_root_for", lambda eid: brain_dir)
+    _seed_brain(brain_dir)
+
+    # 写入 skill_edits.jsonl（3条记录）
+    audit_entries = [
+        {"ts": "2026-06-01T10:00:00", "employee_id": emp.id, "skill_name": "pptx", "reason": "缺步骤", "backup_version": "20260601-100000-000000"},
+        {"ts": "2026-06-10T12:00:00", "employee_id": emp.id, "skill_name": "xlsx", "reason": "格式错误", "backup_version": None},
+        {"ts": "2026-06-20T08:00:00", "employee_id": emp.id, "skill_name": "pptx", "reason": "再次修正", "backup_version": "20260620-080000-000000"},
+    ]
+    audit_file = brain_dir / "skill_edits.jsonl"
+    audit_file.write_text(
+        "\n".join(json.dumps(e, ensure_ascii=False) for e in audit_entries) + "\n",
+        encoding="utf-8",
+    )
+
+    brain = es.EmployeeService.build_employee_growth_brain(db_session, emp.id)
+
+    assert "recent_skill_edits" in brain, "返回字典应含 recent_skill_edits 键"
+    edits = brain["recent_skill_edits"]
+    assert len(edits) == 3
+
+    # 保持 JSONL 顺序（最新在最后，与 journal_entries 相同约定）
+    assert edits[0]["skill_name"] == "pptx"
+    assert edits[0]["reason"] == "缺步骤"
+    assert edits[2]["skill_name"] == "pptx"
+    assert edits[2]["reason"] == "再次修正"
+
+    # 必须含 ts / skill_name / reason / backup_version 四个字段
+    for ed in edits:
+        assert "ts" in ed
+        assert "skill_name" in ed
+        assert "reason" in ed
+        assert "backup_version" in ed
+
+
+def test_build_growth_brain_skill_edits_tolerates_missing(db_session, workspace, monkeypatch, tmp_path):
+    """skill_edits.jsonl 不存在时 recent_skill_edits 应为空列表，不报错。"""
+    from src.service import employee_service as es
+    emp = add_employee(db_session, workspace.id, name="空大脑员工")
+    brain_dir = tmp_path / str(emp.id)
+    monkeypatch.setattr(es, "_growth_brain_root_for", lambda eid: brain_dir)
+
+    brain = es.EmployeeService.build_employee_growth_brain(db_session, emp.id)
+    assert brain["recent_skill_edits"] == []
+
+
+def test_build_growth_brain_skill_edits_bad_line_skipped(db_session, workspace, monkeypatch, tmp_path):
+    """skill_edits.jsonl 中有损坏行时，跳过损坏行，只返回合法行。"""
+    from src.service import employee_service as es
+    emp = add_employee(db_session, workspace.id, name="坏行员工")
+    brain_dir = tmp_path / str(emp.id)
+    monkeypatch.setattr(es, "_growth_brain_root_for", lambda eid: brain_dir)
+    brain_dir.mkdir(parents=True, exist_ok=True)
+
+    audit_file = brain_dir / "skill_edits.jsonl"
+    audit_file.write_text(
+        '{"ts":"2026-06-01T00:00:00","skill_name":"pptx","reason":"ok","backup_version":null}\n'
+        "THIS IS NOT JSON\n"
+        '{"ts":"2026-06-02T00:00:00","skill_name":"xlsx","reason":"ok2","backup_version":null}\n',
+        encoding="utf-8",
+    )
+
+    brain = es.EmployeeService.build_employee_growth_brain(db_session, emp.id)
+    edits = brain["recent_skill_edits"]
+    assert len(edits) == 2
+    assert edits[0]["skill_name"] == "pptx"
+    assert edits[1]["skill_name"] == "xlsx"
+
+
+def test_build_growth_brain_skill_edits_keeps_last_20(db_session, workspace, monkeypatch, tmp_path):
+    """skill_edits.jsonl 超过 20 行时只保留最后 20 条。"""
+    from src.service import employee_service as es
+    emp = add_employee(db_session, workspace.id, name="多行员工")
+    brain_dir = tmp_path / str(emp.id)
+    monkeypatch.setattr(es, "_growth_brain_root_for", lambda eid: brain_dir)
+    brain_dir.mkdir(parents=True, exist_ok=True)
+
+    lines = []
+    for i in range(25):
+        lines.append(json.dumps({
+            "ts": f"2026-06-{i+1:02d}T00:00:00",
+            "skill_name": f"skill-{i}",
+            "reason": f"r{i}",
+            "backup_version": None,
+        }, ensure_ascii=False))
+    (brain_dir / "skill_edits.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    brain = es.EmployeeService.build_employee_growth_brain(db_session, emp.id)
+    edits = brain["recent_skill_edits"]
+    assert len(edits) == 20
+    # 保留最后 20 条（skill-5 到 skill-24）
+    assert edits[0]["skill_name"] == "skill-5"
+    assert edits[-1]["skill_name"] == "skill-24"

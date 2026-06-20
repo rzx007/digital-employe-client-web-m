@@ -146,9 +146,18 @@ class EmployeeSkillCandidate(BaseModel):
     description: str = ""
 
 
+class EmployeeSkillEditEntry(BaseModel):
+    """技能自改进审计记录（来自 <brain>/skill_edits.jsonl）。"""
+    ts: str
+    skill_name: str
+    reason: str
+    backup_version: str | None = None
+
+
 class EmployeeGrowthBrainRead(BaseModel):
     profile_md: str
     skills_list: list[str]
     memories_md: str
     journal_entries: list[EmployeeGrowthJournalEntry]
     skill_candidates: list[EmployeeSkillCandidate] = Field(default_factory=list)
+    recent_skill_edits: list[EmployeeSkillEditEntry] = Field(default_factory=list)

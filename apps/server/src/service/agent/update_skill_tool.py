@@ -97,6 +97,17 @@ def _write_skill_edit_audit(
         logger.warning("skill edit audit write failed", exc_info=True)
 
 
+def _clear_skill_hint(employee_id: int, skill_name: str) -> None:
+    """技能成功更新后，删除成长大脑中对应的改进提示文件（best-effort）。"""
+    try:
+        from src.service.employee_service import _growth_brain_root_for
+        hint = _growth_brain_root_for(employee_id) / "skill_hints" / f"{skill_name}.md"
+        if hint.is_file():
+            hint.unlink()
+    except Exception:  # noqa: BLE001
+        logger.warning("clear skill hint failed", exc_info=True)
+
+
 def create_update_skill_tool(employee_id: int, available_skills: list[str]):
     """构造绑定到某员工的 update_skill 工具。available_skills 即该员工本轮已加载技能，
     作为「只能改已加载技能」的守卫白名单。"""
@@ -165,6 +176,7 @@ def _apply_skill_update(
             employee_id, skill_name, reason,
         )
         _write_skill_edit_audit(employee_id, skill_name, reason, new_content, backup_version)
+        _clear_skill_hint(employee_id, skill_name)
         return f"已更新技能「{skill_name}」并同步所有使用该技能的同事。"
     except HTTPException as http_exc:
         db.rollback()

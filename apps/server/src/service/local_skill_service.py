@@ -979,7 +979,9 @@ class LocalSkillService:
         files: list[str] = []
         for path in sorted(skill_dir.rglob("*")):
             if path.is_file():
-                files.append(path.relative_to(skill_dir).as_posix())
+                rel = path.relative_to(skill_dir).as_posix()
+                if not rel.startswith(".history/"):
+                    files.append(rel)
         builtin_root = LocalSkillService._resolve_builtin_root().resolve()
         try:
             is_builtin = skill_dir.resolve().is_relative_to(builtin_root)
@@ -1027,5 +1029,7 @@ class LocalSkillService:
                 if not path.is_file():
                     continue
                 arcname = path.relative_to(skill_dir).as_posix()
+                if arcname.startswith(".history/"):
+                    continue
                 zip_file.write(path, arcname)
         return f"{skill_name}.zip", buffer.getvalue()

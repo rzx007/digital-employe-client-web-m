@@ -411,7 +411,7 @@ def restore_local_skill(
 ) -> ResponseBase[RestoreLocalSkillResult]:
     """回滚技能至指定历史备份版本。
 
-    version 为 _backup_skill_version 返回的时间戳（YYYYmmdd-HHMMSS），
+    version 为 _backup_skill_version 返回的时间戳（YYYYmmdd-HHMMSS-ffffff），
     对应 <workspace skill dir>/.history/<version>.md 文件。
     """
     workspace_id = get_workspace_id_from_request(request)
