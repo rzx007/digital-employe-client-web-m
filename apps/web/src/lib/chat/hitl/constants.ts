@@ -13,11 +13,13 @@ export const DESTRUCTIVE_DELETE_REJECT_MESSAGE = "用户取消删除"
 export const CLARIFY_TOOL_NAME = "submit_clarifying_questions"
 export const DOCUMENT_PLAN_TOOL_NAME = "submit_document_plan"
 export const BUG_REPORT_TOOL_NAME = "submit_bug_report"
+export const EXTERNAL_DIR_TOOL_NAME = "request_external_dir_access"
 
 export const HITL_TOOL_NAMES = new Set([
   CLARIFY_TOOL_NAME,
   DOCUMENT_PLAN_TOOL_NAME,
   BUG_REPORT_TOOL_NAME,
+  EXTERNAL_DIR_TOOL_NAME,
   ...DESTRUCTIVE_HITL_TOOL_NAMES,
 ])
 
@@ -25,6 +27,7 @@ export const HITL_TOOL_TYPES = new Set([
   `tool-${CLARIFY_TOOL_NAME}`,
   `tool-${DOCUMENT_PLAN_TOOL_NAME}`,
   `tool-${BUG_REPORT_TOOL_NAME}`,
+  `tool-${EXTERNAL_DIR_TOOL_NAME}`,
   ...Array.from(DESTRUCTIVE_HITL_TOOL_NAMES).map((name) => `tool-${name}`),
 ])
 

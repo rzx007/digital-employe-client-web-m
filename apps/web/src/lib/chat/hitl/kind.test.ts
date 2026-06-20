@@ -24,6 +24,12 @@ describe("hitlKindFromToolType", () => {
     }
   })
 
+  it("maps request_external_dir_access to external_dir_authorization", () => {
+    expect(hitlKindFromToolType("tool-request_external_dir_access")).toBe(
+      "external_dir_authorization"
+    )
+  })
+
   it("returns null for non-HITL tools and malformed types", () => {
     expect(hitlKindFromToolType("tool-read_file")).toBeNull()
     expect(hitlKindFromToolType("text")).toBeNull()
