@@ -349,6 +349,25 @@ class SkillAwareShellBackend(LocalShellBackend):
             logger.warning("[shell] get_stream_writer() failed: %s", e)
             return lambda _: None
 
+    def _hardline_refusal(self, command: str) -> ExecuteResponse | None:
+        """灾难级命令硬底线（最后底线，对所有 agent 生效）：命中即返回拒绝响应、
+        永不执行；否则 None。见 command_safety.py。"""
+        from src.service.agent.command_safety import check_hardline
+
+        reason = check_hardline(command)
+        if reason is None:
+            return None
+        logger.warning("[硬底线] 拒绝执行灾难命令(%s): %s", reason, (command or "")[:200])
+        return ExecuteResponse(
+            output=(
+                f"⛔ 命令被安全底线拒绝执行：{reason}。这是不可逆的灾难级操作，"
+                "系统永不执行。请改用安全、限定范围的命令"
+                "（如删除请指明具体相对路径，勿对 / 或 ~ 递归强删）。"
+            ),
+            exit_code=126,
+            truncated=False,
+        )
+
     async def aexecute(
         self,
         command: str,
@@ -356,6 +375,9 @@ class SkillAwareShellBackend(LocalShellBackend):
         timeout: int | None = None,
         tool_call_id: str | None = None,
     ):
+        refusal = self._hardline_refusal(command)
+        if refusal is not None:
+            return refusal
         rewritten, _script_tmp_path = self._prepare_shell_command(command)
         effective_timeout = timeout if timeout is not None else self._default_timeout
         if effective_timeout <= 0:
@@ -639,6 +661,9 @@ class SkillAwareShellBackend(LocalShellBackend):
         return ExecuteResponse(output=output, exit_code=exit_code, truncated=truncated)
 
     def execute(self, command: str, *, timeout: int | None = None):
+        refusal = self._hardline_refusal(command)
+        if refusal is not None:
+            return refusal
         rewritten, _script_tmp_path = self._prepare_shell_command(command)
         effective_timeout = timeout if timeout is not None else self._default_timeout
         if effective_timeout <= 0:
