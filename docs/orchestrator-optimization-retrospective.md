@@ -44,6 +44,7 @@
 
 4. **P1-A 低风险单任务自动执行**：「只读」判定是**关键词启发式**；被派员工 `enable_hitl=False`，一旦误判把含破坏性操作的任务当只读自动放行，则无 HITL 拦截。
    - 保守口径（small 档 + 无 cron + 破坏性词命中即走确认）已尽量压低，但非零风险。
+   - ✅ **已加代码级底线**（commit `2c9ed202`）：`command_safety.py` shell 硬底线对所有 agent（含 HITL-off 员工）生效——灾难命令（rm -rf 根、mkfs/dd 写盘、fork bomb…）**永不执行**，不靠模型/确认门遵从。注：是 floor 非完整沙箱（彻底边界需 OS 沙箱，见 [Hermes 参考 F](reference-hermes-agent-learnings.md)）。
 
 ---
 

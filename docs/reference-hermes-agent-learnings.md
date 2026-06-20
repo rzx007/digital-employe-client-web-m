@@ -79,7 +79,7 @@
 
 ## 五、最高优先建议（若要动手）
 
-1. **C（shell hardline 底线 + 命令归一化）** — 最小改动、直接堵 P1-A 安全洞，不靠模型遵从。**首推**。
+1. ~~**C（shell hardline 底线 + 命令归一化）**~~ → ✅ **已落地**（commit `2c9ed202`）：`command_safety.py` 灾难级硬底线接入 `SkillAwareShellBackend.execute/aexecute` 单一咽喉，对所有 agent 生效、不靠模型遵从。经独立 code-review 修掉「sudo 前缀绕过」等 bypass。注：这是 floor 不是完整沙箱（F 才是）。
 2. **A（技能在使用中自我改进 / 用户纠正进技能层）** — 把「越用越强」从造新技能扩到老技能越用越准，补已延后的用户纠正信号。
 3. **B（技能/员工生命周期 curator）** — 落地延后的「防膨胀」，顺带治近重复候选。
 4. （中长期）**D 脚本-RPC 管道**、**F 员工沙箱**、**E FTS5 跨会话搜索**。
