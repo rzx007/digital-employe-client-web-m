@@ -170,6 +170,38 @@ flowchart TD
 
 ---
 
+## 7.5 技能在用中自改进（update_skill：改老技能，与 §7 造新技能互补）
+
+§7 把「越用越强」做到了**造新技能**；本节把它扩到**老技能越用越准**——员工带着某技能干活、发现它错/缺/过时时，可就地改对并持久化、全员同步。来源借鉴见 [Hermes 参考 A](reference-hermes-agent-learnings.md)。
+
+```mermaid
+flowchart TD
+    Find[员工干活中发现已加载技能<br/>错/缺/过时] --> Tool[update_skill skill_name,new_content,reason]
+    Tool --> Guard{技能 ∈ 已加载?<br/>new_content 非空?}
+    Guard -->|否| Reject[拒绝 · 防误改无关技能/清空]
+    Guard -->|是| Fork[ensure_editable_from_employee_copy<br/>fork-on-edit:内置/远程直分配→工作区库]
+    Fork --> Backup[改前备份 .history/&lt;ts&gt;.md<br/>绝不写全局内置]
+    Backup --> Write[update_local_skill target=workspace 写库]
+    Write --> Sync[sync_local_skill_to_assignees 全员副本+DB]
+    Sync --> Audit[审计 skill_edits.jsonl<br/>→ 成长面板可见]
+    Audit --> Clear[清除该技能 skill_hints/ 待办线索]
+```
+
+**与既有「死文件」病的收编**：低分(<3)+评论触发的 `skill_improvement_service` 原本把分析写到**易失员工副本**、无人读。现改为：① 写持久 `<brain>/skill_hints/<技能名>.md`；② 员工加载该技能时系统提示注入「此技能有改进线索，必要时 update_skill 修订」（空时不注入，保护缓存前缀）；③ 成功 update_skill 后自动清除该线索（防反复诱导改已修好的技能）。
+
+**护栏（经逐任务两阶段审查 + 整体审查确认）**：
+1. **只能改已加载技能**（available_skills 白名单守卫）；空内容拒绝（防清空）。
+2. **fork-on-edit 单一真相点**：内置/远程直分配技能首次修订即固化为工作区本地技能，`target="workspace"` 始终传——**绝不就地改全局内置**（影响所有工作区）。
+3. **改前必备份**，时序铁律：fork → 备份(落工作区，`_is_under_builtin` 反向硬校验绝不写内置) → 写库；可经 `POST /skills/local/{name}/restore` 回滚（version 双重路径穿越防护）。
+4. **直接改无审核门的兜底**（用户已拍此档）：备份+回滚 + 审计「谁改了哪个技能」成长面板显式可见 + 加载守卫，三条配平即时性风险。
+5. `.history` 不外泄到员工副本/详情/导出（copytree `ignore_patterns`）。
+
+**相关符号**：`agent/update_skill_tool.py`（`create_update_skill_tool` / `_apply_skill_update` / `_backup_skill_version` / `_write_skill_edit_audit` / `_clear_skill_hint`）；`LocalSkillService.ensure_editable_from_employee_copy` / `update_local_skill`；`EmployeeService.sync_local_skill_to_assignees`；端点 `POST /skills/local/{name}/restore`；`skill_improvement_service.trigger_improvement_review`（改 hint 去向）；前端 `growth-brain-section.tsx`「技能修订记录」。
+
+> **v1.1 待办**：返工/失败信号自动**关联到具体技能**并注入（当前仅低分→hint 这一路自动；返工信号进 memory 但未定向到技能层）。
+
+---
+
 ## 8. QA 代码兜底与闭环的关系
 
 `qa_delivery_check.py` 不是学习闭环的一环，但与之同源（都为「质量不靠模型自觉」）：注入总管执行快照时，若员工**自报**了交付物却在产物区找不到对应非空文件，快照里直接标红「疑似假交付」。自报判定两路（控误报）：① 二进制交付物（docx/pptx/xlsx/pdf）全文匹配；② 其余交付物类文件仅在含「交付动词」（生成/保存/导出…）的行里取，且排除脚本/依赖扩展名（跑完即删属正常）。它保证了**喂进 journal/反思的「成功」是真成功**——避免把假交付当正样本污染学习闭环。

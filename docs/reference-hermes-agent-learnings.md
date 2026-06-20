@@ -80,7 +80,7 @@
 ## 五、最高优先建议（若要动手）
 
 1. ~~**C（shell hardline 底线 + 命令归一化）**~~ → ✅ **已落地**（commit `2c9ed202`）：`command_safety.py` 灾难级硬底线接入 `SkillAwareShellBackend.execute/aexecute` 单一咽喉，对所有 agent 生效、不靠模型遵从。经独立 code-review 修掉「sudo 前缀绕过」等 bypass。注：这是 floor 不是完整沙箱（F 才是）。
-2. **A（技能在使用中自我改进 / 用户纠正进技能层）** — 把「越用越强」从造新技能扩到老技能越用越准，补已延后的用户纠正信号。
+2. ~~**A（技能在使用中自我改进）**~~ → ✅ **已落地**（spec [skill-self-improvement-and-lifecycle-curator-design.md](specs/2026-06-20-skill-self-improvement-and-lifecycle-curator-design.md) §4，计划 [skill-self-improvement-A.md](plans/2026-06-20-skill-self-improvement-A.md)）：员工 agent 新增 `update_skill` 工具，干活中发现已加载技能错/缺/过时即就地改 → fork-on-edit 固化到工作区库 → 改前备份(可回滚) → `update_local_skill` 写库 → `sync_local_skill_to_assignees` 全员同步 → 审计入 `skill_edits.jsonl`(成长面板可见)。低分反馈的改进线索从「死文件」收编为持久 `skill_hints/`、加载时注入提示引导 update_skill、改后自动清除。经 spec/plan 双评审 + 逐任务两阶段审查 + 整体审查，后端 916 passed。注：返工信号自动关联到具体技能仍属 v1.1。
 3. **B（技能/员工生命周期 curator）** — 落地延后的「防膨胀」，顺带治近重复候选。
 4. （中长期）**D 脚本-RPC 管道**、**F 员工沙箱**、**E FTS5 跨会话搜索**。
 
