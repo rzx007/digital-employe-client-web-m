@@ -42,9 +42,11 @@
 把结论（覆盖点、DB 获取方式、签名）写进本 Task 下方 “Spike 结论” 小节。`git checkout -- <spike 改动文件>` 回滚临时代码。**若覆盖不可行或守卫内无法安全开 DB → 停止，回报用户，不进入 Phase 1。**
 
 **Spike 结论**（实施者填写）：
-- write/edit 覆盖点：______
-- DB 获取方式：______
-- write_file 同步/异步函数签名：______
+- write/edit 覆盖点：______（基类工厂 `_create_write_file_tool`/`_create_edit_file_tool` 在 `OpenAICompatibleFilesystemMiddleware` 子类覆盖？还是 patch backend.write？）
+- **guard_ctx 送达机制**：______ ⚠️ 关键——middleware 在 `install_compatible_filesystem_middleware` 类级 monkeypatch、由 `create_deep_agent` 内部实例化，employee.py **不直接构造 middleware 实例**，故无直接缝传 per-conversation 闭包。确定方案：模块级 `contextvar`（employee.py 每会话 set）/ 包装 backend.write / 其它？
+- **collect_workspace_roots 完整性**：______ 核对 `skills_root`、`memories_dir`、每会话目录 `Path(root_path)/conversation_id` 是否都 resolve 在已收集根之下；若不在，Task 3 须补进 roots（否则员工写技能/记忆文件会误弹授权卡）。
+- DB 获取方式：______（SessionLocal / get_db 工厂，工具内 `with db_factory() as db`）
+- write_file 同步/异步函数签名：______（已知基类约为 `(file_path, content, runtime)`）
 
 - [ ] **Step 5: Commit（仅结论文档，无代码）**
 
@@ -319,7 +321,7 @@ def collect_workspace_roots(root_path: str, base_dir: str) -> list[Path]:
     ]
 ```
 
-（注：`collect_workspace_roots` 字段名以 Task 0 / `workspace_paths.py` 实际 `WorkspaceDirs` 为准，实施期核对。）
+（注：`collect_workspace_roots` 字段名以 Task 0 / `workspace_paths.py` 实际 `WorkspaceDirs` 为准。**完整性**：按 Task 0 spike 结论，若 `skills_root`、`memories_dir`、每会话目录不在上述根之下，须一并加入 roots——否则员工写技能/记忆文件会被误判越界、弹出无谓授权卡。spec §4.1 列了 `skills_root` 但 `WorkspaceDirs` 无此字段，实施期补齐。）
 
 - [ ] **Step 4: 跑测试确认通过** — Expected: PASS
 
@@ -768,7 +770,7 @@ def build_request_external_dir_tool():
 
 - 在构造 agent 处，用作用域内的 `conversation_id`、`resolve_workspace_dirs(...)`、db 工厂构造 `guard_ctx`（传给 Task 7 覆盖的写工具闭包）。
 - 把 `build_request_external_dir_tool()` 加入 agent 工具集。
-- agent `interrupt_on` 经 `build_orchestrator_interrupt_on` 链路自动含新工具（因已并入 `HITL_INTERRUPT_ON`）；核对 employee 用的是该合并入口。
+- 因 Step 3 已把 `EXTERNAL_DIR_INTERRUPT_ON` 并入 `HITL_INTERRUPT_ON`，而 employee.py（约 L254-258）**直接传 `HITL_INTERRUPT_ON`** 给 agent，故新工具自动含在 interrupt_on，无需额外接线（注意：employee 不走 `build_orchestrator_interrupt_on`，那是 orchestrator 路径；两处都吃 `HITL_INTERRUPT_ON` 故都覆盖）。
 - 在员工系统提示追加一句："写工作区外目录前必须先调用 request_external_dir_access(path=父目录) 申请授权，获批后再写。"
 
 - [ ] **Step 5: 跑测试确认通过** — Expected: PASS（工具/interrupt_on 单测）；employee 接线由 Phase 6 集成测试覆盖。
@@ -960,6 +962,7 @@ git commit -m "feat(web): composer 工作区外目录模式药丸(询问/放行/
   - `scope=once` → 第一次放行、第二次又挡回。
   - `mode=deny` → 守卫直拒、不提示请求工具。
   - `mode=auto` / `workspace.auto_grant_external_dirs=True` → 守卫静默放行。
+  - **隔离断言**：对一个**非** `request_external_dir_access` 的 approve（如 destructive delete）即便误带 `external_dir` 字段，也**不应**记授权——`_apply_external_dir_grant` 只在 resume 该工具时调用。
 
 - [ ] **Step 2: 跑确认通过** — `uv run pytest tests/test_external_dir_e2e.py -v` PASS
 
