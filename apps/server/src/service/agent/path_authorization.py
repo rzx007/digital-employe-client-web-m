@@ -124,3 +124,66 @@ def consume_once_granted_dir(db: Session, conversation_id: int, target: str) -> 
         except (OSError, ValueError):
             continue
     return False
+
+
+# ---------------------------------------------------------------------------
+# 工作区外目录写授权：6级短路检查链 + 按scope落地
+# ---------------------------------------------------------------------------
+
+from src.models.workspace import Workspace  # noqa: E402
+from src.service.authorized_dir_service import grant_dir, list_authorized_dirs  # noqa: E402
+
+
+def _prefix_hit(target: str, dirs: list[str]) -> bool:
+    """target 落在 dirs 中任一目录前缀之下 → True。"""
+    try:
+        t = Path(target).resolve()
+    except (OSError, ValueError):
+        return False
+    for d in dirs:
+        try:
+            if t.is_relative_to(Path(d).resolve()):
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
+def is_granted(db: Session, workspace_id: int, conversation_id: int, target: str) -> bool:
+    """6级短路：命中任一即放行（返回 True）。
+    1. workspace.auto_grant_external_dirs
+    2. 会话 external_dir_mode == "auto"
+    3. 工作区永久授权目录前缀
+    4. 会话级授权目录前缀
+    5. 一次性令牌前缀（命中即消费）
+    6. 以上均未命中 → False
+    """
+    ws = db.get(Workspace, workspace_id)
+    if ws and ws.auto_grant_external_dirs:
+        return True
+    if get_external_dir_mode(db, conversation_id) == "auto":
+        return True
+    if _prefix_hit(target, list_authorized_dirs(db, workspace_id)):
+        return True
+    if _prefix_hit(target, get_session_granted_dirs(db, conversation_id)):
+        return True
+    if consume_once_granted_dir(db, conversation_id, target):
+        return True
+    return False
+
+
+def record_grant(db: Session, workspace_id: int, conversation_id: int, path: str, scope: str) -> None:
+    """按 scope 把授权落到对应存储。
+    scope 取值：permanent / session / auto / once；其他值抛 ValueError。
+    """
+    if scope not in {"permanent", "session", "auto", "once"}:
+        raise ValueError(f"invalid scope: {scope!r}，合法值：permanent/session/auto/once")
+    parent = str(Path(path).resolve())
+    if scope == "permanent":
+        grant_dir(db, workspace_id, parent)
+    elif scope == "session":
+        add_session_granted_dir(db, conversation_id, parent)
+    elif scope == "auto":
+        set_external_dir_mode(db, conversation_id, "auto")
+    elif scope == "once":
+        add_once_granted_dir(db, conversation_id, parent)
