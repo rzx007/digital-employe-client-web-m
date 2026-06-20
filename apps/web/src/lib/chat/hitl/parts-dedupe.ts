@@ -6,6 +6,22 @@ import {
   toolPartHasFinalOutput,
 } from "./part-utils"
 
+/**
+ * 后端 interrupt 时写入的占位正文（stream_registry.py: final_text = "等待用户确认..."）。
+ * resume 后这条 interrupted 消息与 completed 消息合并到同一气泡，占位正文会成为孤儿。
+ * 当本气泡内 HITL 已 resolved 时，精确匹配并过滤掉它（仅此占位，不误删正常正文）。
+ */
+const HITL_PENDING_PLACEHOLDER_TEXTS = new Set(["等待用户确认...", "等待用户确认…"])
+
+function isResolvedHitlPlaceholderTextPart(
+  part: UIMessage["parts"][number]
+): boolean {
+  if (part.type !== "text" || !("text" in part) || typeof part.text !== "string") {
+    return false
+  }
+  return HITL_PENDING_PLACEHOLDER_TEXTS.has(part.text.trim())
+}
+
 /** 同一条 assistant 消息内，已有 output 的 toolCallId 对应的 pending part 视为陈旧副本 */
 function isStalePendingHitlPart(
   part: UIMessage["parts"][number],
@@ -162,7 +178,9 @@ export function normalizeAssistantMessageParts(
     resolvedToolCallIds.size === 0
       ? parts
       : parts.filter(
-          (part) => !isStalePendingHitlPart(part, resolvedToolCallIds)
+          (part) =>
+            !isStalePendingHitlPart(part, resolvedToolCallIds) &&
+            !isResolvedHitlPlaceholderTextPart(part)
         )
   return dedupeToolPartsByToolCallId(
     dedupeDuplicateTextParts(dedupeDuplicatePendingHitlParts(withoutStale))

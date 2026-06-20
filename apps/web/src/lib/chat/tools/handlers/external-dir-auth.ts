@@ -4,11 +4,8 @@ import type { ToolBlockHandler } from "./plan-generated"
 export const externalDirAuthHandler: ToolBlockHandler = {
   match: (vm) => vm.toolName === EXTERNAL_DIR_TOOL_NAME,
   classify: (vm, messageId, index) => {
-    // 已成功确认输出时不渲染卡片（工具已完成）
-    if (vm.state === "output-available") {
-      return null
-    }
-
+    // output-available（已批准）也渲染卡片——卡片走 isConfirmed 分支，
+    // 显示「授权已确认」+ 目标路径、无按钮。与 output-error（拒绝）对称。
     return {
       kind: "external_dir_authorization",
       key: `${messageId}:external-dir-auth:${index}`,
