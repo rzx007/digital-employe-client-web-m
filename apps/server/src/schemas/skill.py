@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+_VERSION_RE = re.compile(r"^\d{8}-\d{6}-\d{6}$")
 
 
 class SkillListItem(BaseModel):
@@ -115,7 +118,14 @@ class SaveDraftSkillResult(BaseModel):
 
 
 class RestoreLocalSkillRequest(BaseModel):
-    version: str  # 时间戳，格式 YYYYmmdd-HHMMSS
+    version: str
+
+    @field_validator("version")
+    @classmethod
+    def _validate_version(cls, v: str) -> str:
+        if not _VERSION_RE.match(v):
+            raise ValueError("version 格式非法，须为 YYYYmmdd-HHMMSS-ffffff")
+        return v
 
 
 class RestoreLocalSkillResult(BaseModel):

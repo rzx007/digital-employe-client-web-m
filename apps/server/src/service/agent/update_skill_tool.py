@@ -47,7 +47,7 @@ def _backup_skill_version(skill_name: str, workspace_id: int) -> Optional[str]:
             )
             return None
 
-        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         history_dir = workspace_dir / ".history"
         history_dir.mkdir(parents=True, exist_ok=True)
         backup_file = history_dir / f"{ts}.md"

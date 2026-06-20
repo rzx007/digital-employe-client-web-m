@@ -417,7 +417,15 @@ def restore_local_skill(
     workspace_id = get_workspace_id_from_request(request)
     normalized = LocalSkillService._normalize_skill_name(skill_name)
     skill_dir = LocalSkillService._skill_dir(normalized, workspace_id)
-    history_file = skill_dir / ".history" / f"{payload.version}.md"
+    if not skill_dir.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="该技能在当前工作区无本地副本，无法回滚",
+        )
+    history_dir = skill_dir / ".history"
+    history_file = (history_dir / f"{payload.version}.md").resolve()
+    if not history_file.is_relative_to(history_dir.resolve()):
+        raise HTTPException(status_code=400, detail="version 参数非法")
     if not history_file.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

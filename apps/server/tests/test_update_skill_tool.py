@@ -234,9 +234,10 @@ def test_backup_written_before_overwrite(monkeypatch, tmp_path):
     # Act
     ts = _backup_skill_version(skill_name, workspace_id)
 
-    # Assert: 返回非空时间戳
+    # Assert: 返回非空时间戳，格式 YYYYmmdd-HHMMSS-ffffff（22 字符）
     assert ts is not None
-    assert len(ts) == 15  # YYYYmmdd-HHMMSS
+    import re
+    assert re.fullmatch(r"\d{8}-\d{6}-\d{6}", ts), f"unexpected ts format: {ts}"
 
     # .history/<ts>.md 存在且内容是旧的
     history_file = ws_skill_dir / ".history" / f"{ts}.md"
@@ -310,7 +311,7 @@ def test_restore_endpoint(monkeypatch, tmp_path):
     (ws_skill_dir / LocalSkillService.SKILL_MD_NAME).write_text(current_content, encoding="utf-8")
     history_dir = ws_skill_dir / ".history"
     history_dir.mkdir(parents=True)
-    version = "20260101-120000"
+    version = "20260101-120000-000000"
     (history_dir / f"{version}.md").write_text(old_content, encoding="utf-8")
 
     app = FastAPI()
@@ -328,3 +329,81 @@ def test_restore_endpoint(monkeypatch, tmp_path):
     # SKILL.md should now contain old_content
     actual = (ws_skill_dir / LocalSkillService.SKILL_MD_NAME).read_text(encoding="utf-8")
     assert actual == old_content
+
+
+def test_restore_endpoint_version_not_found(monkeypatch, tmp_path):
+    """合法格式但不存在的 version 应返回 404。"""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from src.api.skill_api import router
+    from src.service.local_skill_service import LocalSkillService
+
+    local_skills_root, _ = _settings_fixture(monkeypatch, tmp_path)
+
+    monkeypatch.setattr("src.api.skill_api.get_workspace_id_from_request", lambda req: 5)
+    monkeypatch.setattr("src.api.skill_api.get_user_id", lambda req: "u1")
+    monkeypatch.setattr(
+        "src.service.employee_service.EmployeeService.sync_local_skill_to_assignees",
+        lambda db, **kw: 0,
+    )
+
+    class _FakeDB:
+        def close(self): ...
+
+    def _fake_get_db():
+        yield _FakeDB()
+
+    monkeypatch.setattr("src.api.skill_api.get_db", _fake_get_db)
+
+    workspace_id = 5
+    skill_name = "restore-skill-404"
+
+    # 工作区目录 + SKILL.md 存在，但 .history 里没有这个版本
+    ws_skill_dir = local_skills_root / str(workspace_id) / skill_name
+    ws_skill_dir.mkdir(parents=True)
+    (ws_skill_dir / LocalSkillService.SKILL_MD_NAME).write_text("# CURRENT\n", encoding="utf-8")
+
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    resp = client.post(
+        f"/skills/local/{skill_name}/restore",
+        json={"version": "99991231-235959-000000"},
+    )
+    assert resp.status_code == 404, resp.text
+
+
+def test_restore_endpoint_traversal_rejected(monkeypatch, tmp_path):
+    """路径穿越格式的 version 应被 Pydantic 校验拒绝（422）或边界检查拒绝（400）。"""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from src.api.skill_api import router
+
+    local_skills_root, _ = _settings_fixture(monkeypatch, tmp_path)
+
+    monkeypatch.setattr("src.api.skill_api.get_workspace_id_from_request", lambda req: 5)
+    monkeypatch.setattr("src.api.skill_api.get_user_id", lambda req: "u1")
+    monkeypatch.setattr(
+        "src.service.employee_service.EmployeeService.sync_local_skill_to_assignees",
+        lambda db, **kw: 0,
+    )
+
+    class _FakeDB:
+        def close(self): ...
+
+    def _fake_get_db():
+        yield _FakeDB()
+
+    monkeypatch.setattr("src.api.skill_api.get_db", _fake_get_db)
+
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    resp = client.post(
+        "/skills/local/restore-skill/restore",
+        json={"version": "../../x/SKILL"},
+    )
+    # Pydantic schema validator 会产生 422；边界检查会产生 400；二者均可接受
+    assert resp.status_code in (400, 422), resp.text
