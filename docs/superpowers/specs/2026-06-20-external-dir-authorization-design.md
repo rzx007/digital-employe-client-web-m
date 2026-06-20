@@ -21,6 +21,9 @@
 - **不**改 [`_validate_path_allow_physical`](../../../apps/server/src/service/agent/compatible_filesystem_middleware.py) 的物理路径放行语义（它无工具身份/会话上下文，不是强制点）。
 - **不**做工作区设置页 UI 管理"已授权目录列表"（本期只留 service，UI 留口子）。
 
+### 已知限制（决策存档）
+- **后台子任务（`enable_hitl=False`）暂不挂此守卫，工作区外写放行**：派单/返工路径无人值守、无法弹 HITL 卡片授权；强挂守卫只会使任务持续被挡回、卡住，可用性代价不可接受。当前决策：`employee.py` 的 `get_agent` 中，只有 `enable_hitl=True`（真人会话）+ 有 `conversation_id` + 有 `workspace_id` 时才注册守卫并挂 `request_external_dir_access` 工具；后台路径不注册，守卫 fail-open 放行。待后续实现"后台预授权（任务创建时锁定允许目录列表）"或"异步审批"机制后再收紧。
+
 ## 2. 核心决策（已与用户对齐）
 
 | 维度 | 决策 |

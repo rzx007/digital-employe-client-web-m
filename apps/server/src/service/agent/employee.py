@@ -240,7 +240,10 @@ def get_agent(
     # edit_file 守卫反查；并挂显式申请工具 request_external_dir_access（已并入
     # HITL_INTERRUPT_ON，故 enable_hitl 时调用会被挂起等用户授权）。
     # 无 conversation_id / workspace_id 的路径跳过登记 → 守卫 fail-open 放行。
-    if conversation_id is not None and workspace_id is not None:
+    # 后台子任务（enable_hitl=False）暂不挂此守卫：后台路径无人弹卡片授权，挂了
+    # 会持续挡回导致任务卡住；不注册则守卫 fail-open 放行，优先保可用性，待后续
+    # 支持后台预授权 / 异步审批后再收紧。
+    if enable_hitl and conversation_id is not None and workspace_id is not None:
         # 幂等覆盖：register 按 conv_id 覆写旧条目，重建 agent（如 HITL resume）不残留。
         register_write_guard(
             conversation_id,
@@ -265,7 +268,8 @@ def get_agent(
         virtual_mode=is_agent_virtual_mode(),
     )
     # 守卫已登记时，告知模型工作区外写盘须先申请授权（与 write_file 守卫回执一致）。
-    if conversation_id is not None and workspace_id is not None:
+    # 后台路径（enable_hitl=False）未挂守卫，无需此提示。
+    if enable_hitl and conversation_id is not None and workspace_id is not None:
         system_prompt = (
             system_prompt
             + "\n\n写工作区外目录前必须先调用 request_external_dir_access(path=目标父目录)"

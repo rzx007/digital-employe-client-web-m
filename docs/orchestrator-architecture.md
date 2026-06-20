@@ -284,7 +284,7 @@ flowchart LR
 7. **轻量再入 + 编排层与主上下文分离**：完成事件只带摘要+状态，去抖批量唤醒；子任务全过程留编排层，总管主上下文只收精炼结论。
 8. **不自爆内部机制**：自动放行/DAG/快照注入/reported_at 等是内部规则，正文只对用户说人话。
 9. **shell 灾难命令硬底线**：所有 agent（含 HITL-off 员工）的 shell 命令经 `command_safety.check_hardline` 过一道——`rm -rf 根/家目录`、`mkfs/dd` 写盘、fork bomb 等**永不执行**，不靠模型/确认门遵从。是 floor（挡直接灾难命令）非完整沙箱（挡不住"写脚本再跑"，彻底边界需 OS 沙箱）。
-10. **工作区外目录写授权**：员工写工具（`write_file`/`edit_file`）被 `WriteGuardRegistry` 拦截，目标路径在工作区外且未授权时挂起并调 `request_external_dir_access` 弹 HITL 卡片；用户三选一（仅这次 / 本会话 / 永久），`record_grant` 按 scope 落库；会话级模式（ask/auto/deny）通过 `ExternalDirMode` 端点整体切换，前端药丸常驻显示当前模式。读操作静默放行，shell 路径继续由 `command_safety` 兜底。
+10. **工作区外目录写授权**：员工写工具（`write_file`/`edit_file`）被 `WriteGuardRegistry` 拦截，目标路径在工作区外且未授权时挂起并调 `request_external_dir_access` 弹 HITL 卡片；用户三选一（仅这次 / 本会话 / 永久），`record_grant` 按 scope 落库；会话级模式（ask/auto/deny）通过 `ExternalDirMode` 端点整体切换，前端药丸常驻显示当前模式。读操作静默放行，shell 路径继续由 `command_safety` 兜底。**后台子任务（`enable_hitl=False`）暂不挂此守卫、工作区外写放行**（可用性取舍——后台无人弹卡片授权，挂了会任务卡住；待后续支持后台预授权/异步审批）。
 
 ---
 
