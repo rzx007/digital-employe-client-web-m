@@ -822,7 +822,7 @@ class LocalSkillService:
         if not (private_dir / LocalSkillService.SKILL_MD_NAME).is_file():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"技能 {normalized} 无可编辑来源（工作区/内置/员工私有副本均无）。",
+                detail=f"未找到可编辑技能来源（工作区/内置/员工私有副本均无）: {normalized}",
             )
         local_root = LocalSkillService._resolve_local_root(workspace_id)
         local_root.mkdir(parents=True, exist_ok=True)

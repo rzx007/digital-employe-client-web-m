@@ -31,6 +31,10 @@ def test_applies_update_and_syncs(monkeypatch):
         "src.service.employee_service.EmployeeService.sync_local_skill_to_assignees",
         lambda db, **kw: calls.setdefault("sync", kw),
     )
+    monkeypatch.setattr(
+        "src.service.local_skill_service.LocalSkillService.ensure_editable_from_employee_copy",
+        lambda name, ws, emp: None,
+    )
     tool = create_update_skill_tool(employee_id=1, available_skills=["pptx"])
     out = tool.invoke({"skill_name": "pptx", "new_content": "NEW", "reason": "缺步骤"})
 
@@ -125,3 +129,74 @@ def test_fork_from_employee_copy_when_no_library(monkeypatch, tmp_path):
     assert meta["localId"] < 0  # 本地技能 id 为负数
     assert meta["skillName"] == skill_name
     assert "fork:employee:" in meta.get("sourceFileName", "")
+
+
+def test_ensure_editable_returns_workspace_dir_when_exists(monkeypatch, tmp_path):
+    """工作区技能库已有副本时，ensure_editable_from_employee_copy 直接返回该目录（不 fork）。"""
+    from src.service.local_skill_service import LocalSkillService
+
+    local_skills_root = tmp_path / "local-skills"
+    skill_path_root = tmp_path / "skill-path"
+    local_skills_root.mkdir(parents=True)
+    skill_path_root.mkdir(parents=True)
+
+    from src.core.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "local_skills_path", str(local_skills_root))
+    monkeypatch.setattr(settings, "skill_path", str(skill_path_root))
+
+    workspace_id = 11
+    employee_id = 42
+    skill_name = "ws-x"
+
+    # Arrange: 工作区库已有副本
+    workspace_dir = local_skills_root / str(workspace_id) / skill_name
+    workspace_dir.mkdir(parents=True)
+    (workspace_dir / LocalSkillService.SKILL_MD_NAME).write_text(
+        "# WS-X\n", encoding="utf-8"
+    )
+
+    # Act
+    result = LocalSkillService.ensure_editable_from_employee_copy(
+        skill_name, workspace_id, employee_id
+    )
+
+    # Assert: 直接返回工作区目录，内容未变
+    assert result == workspace_dir
+    assert (workspace_dir / LocalSkillService.SKILL_MD_NAME).read_text(encoding="utf-8") == "# WS-X\n"
+
+
+def test_ensure_editable_returns_none_when_builtin_exists(monkeypatch, tmp_path):
+    """内置技能存在（无工作区副本）时，ensure_editable_from_employee_copy 返回 None。"""
+    from src.service.local_skill_service import LocalSkillService
+
+    local_skills_root = tmp_path / "local-skills"
+    skill_path_root = tmp_path / "skill-path"
+    local_skills_root.mkdir(parents=True)
+    skill_path_root.mkdir(parents=True)
+
+    from src.core.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "local_skills_path", str(local_skills_root))
+    monkeypatch.setattr(settings, "skill_path", str(skill_path_root))
+
+    workspace_id = 11
+    employee_id = 42
+    skill_name = "bi-x"
+
+    # Arrange: 内置有副本，工作区库无
+    builtin_dir = local_skills_root / "builtin" / skill_name
+    builtin_dir.mkdir(parents=True)
+    (builtin_dir / LocalSkillService.SKILL_MD_NAME).write_text(
+        "# BI-X\n", encoding="utf-8"
+    )
+    workspace_dir = local_skills_root / str(workspace_id) / skill_name
+    assert not workspace_dir.exists()
+
+    # Act
+    result = LocalSkillService.ensure_editable_from_employee_copy(
+        skill_name, workspace_id, employee_id
+    )
+
+    # Assert: 返回 None，交给 update_local_skill 处理内置 fork
+    assert result is None
