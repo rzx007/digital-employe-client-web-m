@@ -98,6 +98,9 @@ def create_update_skill_tool(employee_id: int, available_skills: list[str]):
 def _apply_skill_update(
     employee_id: int, skill_name: str, new_content: str, reason: str
 ) -> str:
+    # ⚠️ 下游 import 必须留在函数体内（而非模块顶层别名）：测试靠 monkeypatch
+    # `src.db.session.get_session_local` / `LocalSkillService.update_local_skill` /
+    # `EmployeeService.sync_local_skill_to_assignees`，顶层别名 import 会让 patch 失效。
     from src.db.session import get_session_local
     from src.models.employee import Employee
     from src.service.local_skill_service import LocalSkillService
@@ -110,6 +113,10 @@ def _apply_skill_update(
             return "拒绝：未找到员工记录。"
         workspace_id = emp.workspace_id
         user_id = emp.user_id
+        # Employee.user_id 可空（Mapped[str | None]）。为 None 时 sync 会 WHERE user_id==None
+        # 匹配 0 行 → 静默"改了库却没同步任何人"。显式挡掉，避免难排查的假成功。
+        if user_id is None:
+            return f"拒绝：员工(id={employee_id}) 缺 user_id，无法定位同步范围。"
 
         LocalSkillService.update_local_skill(
             skill_name, workspace_id, skill_md_content=new_content, target="workspace"
@@ -197,13 +204,16 @@ git commit -m "feat(skill): update_skill 工具核心——守卫+落库+全员�
 
 ```python
 # 追加到 tests/test_update_skill_tool.py
-def test_tool_registered_when_employee_id(monkeypatch, tmp_path):
-    # 仅验证「有 employee_id 时工具被纳入」的接线意图：直接断言工厂在 employee 模块被引用
+def test_employee_module_wires_update_skill():
+    # 静态断言：employee.py 源码确实 import 了工厂（接线证据，非恒真占位）
+    import inspect
     import src.service.agent.employee as emp_mod
-    assert hasattr(emp_mod, "create_update_skill_tool") or True  # 接线见 Step 3
+    src = inspect.getsource(emp_mod)
+    assert "create_update_skill_tool" in src
+    assert "from src.service.agent.update_skill_tool import create_update_skill_tool" in src
 ```
 
-> 说明：`get_agent` 起真模型/检查点，端到端难单测；本任务以「工厂被 import 并在 employee_id 非空时 append 到 extra_tools」为验收，靠下一步代码审查 + 人工冒烟确认工具出现在模型可见工具里。
+> 说明：`get_agent` 起真模型/检查点，端到端难单测；本任务以「源码确实 import 工厂并在 employee_id 非空时 append 到 extra_tools」为静态验收，再靠下一步代码审查 + 人工冒烟确认工具出现在模型可见工具里。
 
 - [ ] **Step 2: 在 employee.py 引入并挂载**
 
@@ -257,7 +267,7 @@ def test_fork_from_employee_copy_when_no_library(monkeypatch, tmp_path):
     ...
 ```
 
-> 实现前先读 `_skill_dir`、`_resolve_local_root`、`EmployeeService._resolve_skill_root`，对齐路径来源；fork 逻辑仿 `_fork_builtin_to_workspace`（[local_skill_service.py:766](../../apps/server/src/service/local_skill_service.py#L766)），源换成员工私有副本目录，并写入新 localId 元数据。
+> 员工私有副本路径口径（与 [skill_improvement_service.py:33](../../apps/server/src/service/skill_improvement_service.py#L33) 一致）：`Path(settings.skill_path)/str(employee_id)/"skills"/skill_name/`。fork 逻辑仿 `_fork_builtin_to_workspace`（[local_skill_service.py:766](../../apps/server/src/service/local_skill_service.py#L766)），源换成上述员工私有副本目录、目标用 `_skill_dir(name, workspace_id)`，并写入新 localId 元数据。实现前读 `_skill_dir`、`_resolve_local_root` 对齐目标路径。`_apply_skill_update` 已有 `employee_id`，直接下传。
 
 - [ ] **Step 2: 跑测试确认失败** — `uv run pytest tests/test_update_skill_tool.py::test_fork_from_employee_copy_when_no_library -v`
 
@@ -290,9 +300,21 @@ def test_backs_up_before_overwrite(monkeypatch, tmp_path):
     ...
 ```
 
-- [ ] **Step 2-4:** 在 `_apply_skill_update` 里、`update_local_skill` 调用**前**：解析可编辑目录（复用 `_resolve_editable_skill_dir` / fork 后路径），读旧 `SKILL.md`，写 `<skill_dir>/.history/<YYYYmmdd-HHMMSS>.md`（`datetime.now()`，Python 运行时可用）。失败不阻断主流程（best-effort + 日志）。跑测试转绿。
+- [ ] **Step 2-4: 备份时序——必须在 fork 之后、update 之前（安全关键）**
 
-- [ ] **Step 5: 回滚端点**：`POST /skills/local/{skill_name}/restore`，body `{version: "<ts>"}` → 读 `.history/<ts>.md` → `update_local_skill(target="workspace")` 写回 + `sync_local_skill_to_assignees`。复用 Task 1 落库链路。写端点测试。
+  ⚠️ **顺序铁律**：备份的目标目录**必须是 Task 3 fork/ensure-editable 之后的工作区目录**。`_apply_skill_update` 内顺序固定为：
+  ```
+  1. ensure_editable_from_employee_copy(...)（Task 3，把内置/远程固化到工作区）
+  2. 解析"工作区可编辑目录"skill_dir（此时必为工作区副本，绝非全局内置）
+  3. 读旧 SKILL.md → 写 <skill_dir>/.history/<YYYYmmdd-HHMMSS>.md（datetime.now()）
+  4. update_local_skill(target="workspace")
+  5. sync_local_skill_to_assignees
+  ```
+  **绝不可**在 fork 前对一个仅有内置版的技能解析路径并写 `.history/`——那会污染全局内置原版，直接违背"绝不动全局内置"。Step 4 备份须断言写入路径在工作区 `local_skills_path/<workspace_id>/` 下、不在 builtin 根下（可用 `LocalSkillService._is_under_builtin` 反向校验）。备份失败本身 best-effort + 日志，不阻断主流程；但**路径落到内置则必须硬失败**。
+
+- [ ] **Step 5: 回滚端点（上下文取自 request，非员工反查）**
+
+  `POST /skills/local/{skill_name}/restore`，body `{version: "<ts>"}`。⚠️ 这是 HTTP 端点，**与现有 `update_local_skill` 端点同构**（[skill_api.py:378](../../apps/server/src/api/skill_api.py#L378)）：`workspace_id = get_workspace_id_from_request(request)`、`user_id` 取自 request，**不要**复用 Task 1 的 `_apply_skill_update`（它从 employee_id 反查、无 request 上下文）。流程：读 `.history/<ts>.md` → `LocalSkillService.update_local_skill(skill_name, workspace_id, skill_md_content=旧文, target="workspace")` → `EmployeeService.sync_local_skill_to_assignees(db, user_id=.., workspace_id=.., skill_name=..)`。写端点测试。
 
 - [ ] **Step 6: 独立 code-review** 审备份/回滚的路径解析与并发覆盖安全。
 
