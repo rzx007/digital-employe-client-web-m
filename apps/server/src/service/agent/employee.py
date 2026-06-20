@@ -243,7 +243,22 @@ def get_agent(
     # 后台子任务（enable_hitl=False）暂不挂此守卫：后台路径无人弹卡片授权，挂了
     # 会持续挡回导致任务卡住；不注册则守卫 fail-open 放行，优先保可用性，待后续
     # 支持后台预授权 / 异步审批后再收紧。
+    # 会话外部目录模式（ask/auto/deny）：员工 get_agent 不接收 db，开一个短生命周期
+    # 会话在构造期读一次 mode；既决定 request 工具回执话术，也决定它是否登记在
+    # interrupt_on（auto/deny 时移出=不弹卡）。取不到/异常默认 ask（保留弹卡，安全默认）。
+    external_dir_mode = "ask"
     if enable_hitl and conversation_id is not None and workspace_id is not None:
+        from src.db.session import get_session_local
+        from src.service.agent.path_authorization import get_external_dir_mode
+
+        _mode_db = get_session_local()()
+        try:
+            external_dir_mode = get_external_dir_mode(_mode_db, conversation_id)
+        except Exception:  # noqa: BLE001 - 取不到/异常默认 ask（保留弹卡，安全默认）
+            external_dir_mode = "ask"
+        finally:
+            _mode_db.close()
+
         # 幂等覆盖：register 按 conv_id 覆写旧条目，重建 agent（如 HITL resume）不残留。
         register_write_guard(
             conversation_id,
@@ -252,7 +267,7 @@ def get_agent(
             ),
             workspace_id=workspace_id,
         )
-        extra_tools.append(build_request_external_dir_tool())
+        extra_tools.append(build_request_external_dir_tool(external_dir_mode))
 
     system_prompt = build_system_prompt(
         current_time,
@@ -276,6 +291,21 @@ def get_agent(
             "申请授权，获批后再写；未获授权时 write_file 会被拒绝。"
         )
 
+    # interrupt_on：全量 HITL（enable_hitl）/ 仅澄清（clarify_only）/ 全关。
+    # mode=auto/deny 时把 request_external_dir_access 移出（不挂起、不弹卡）；ask 保留弹卡。
+    from src.service.agent.external_dir_request_tool import (
+        strip_external_dir_interrupt,
+    )
+
+    if enable_hitl:
+        interrupt_on = strip_external_dir_interrupt(
+            dict(HITL_INTERRUPT_ON), external_dir_mode
+        )
+    elif clarify_only_hitl:
+        interrupt_on = dict(CLARIFYING_QUESTIONS_INTERRUPT_ON)
+    else:
+        interrupt_on = {}
+
     agent = create_deep_agent(
         model=model,
         memory=[str(base_dir / "AGENTS.md"), str(memories_dir / "AGENTS.md")],
@@ -285,11 +315,7 @@ def get_agent(
         backend=backend,
         checkpointer=checkpointer,
         tools=extra_tools,
-        interrupt_on=(
-            HITL_INTERRUPT_ON
-            if enable_hitl
-            else (dict(CLARIFYING_QUESTIONS_INTERRUPT_ON) if clarify_only_hitl else {})
-        ),
+        interrupt_on=interrupt_on,
         middleware=_emp_middleware,
         # 去虚拟路径后全部用真实绝对路径；deepagents 的 FilesystemPermission 仅支持
         # `/` 开头的虚拟路径 glob，无法表达 Windows 盘符路径，且与「技能全放开」诉求

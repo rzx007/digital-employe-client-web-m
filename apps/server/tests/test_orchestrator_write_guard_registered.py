@@ -50,10 +50,15 @@ def test_orchestrator_write_guard_uses_artifacts_path():
 
 
 def test_orchestrator_appends_request_external_dir_tool():
-    """总管 tools 列表已追加 build_request_external_dir_tool()。"""
+    """总管 tools 列表已追加 build_request_external_dir_tool(external_dir_mode)。
+
+    mode 在构造期读一次，传入工具决定回执话术；auto/deny 时该工具另被
+    strip_external_dir_interrupt 从 interrupt_on 移出（不弹卡）。
+    """
     src = inspect.getsource(orch.get_orchestrator_agent)
-    assert "build_request_external_dir_tool()" in src
+    assert "build_request_external_dir_tool(external_dir_mode)" in src
     assert "orchestrator_tools.append(" in src
+    assert "strip_external_dir_interrupt(" in src
 
 
 def test_orchestrator_write_guard_condition_symmetric_with_employee():

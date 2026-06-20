@@ -334,12 +334,23 @@ def get_orchestrator_agent(
     # 不注册则守卫 fail-open 放行，优先保可用性，待后续支持后台预授权后再收紧。
     # 延迟导入：write_guard_registry 在模块级从 orchestrator.runtime 导入，
     # 若提升为顶层 import 会与 orchestrator/__init__ → agent.py 形成循环导入。
+    # 会话外部目录模式（ask/auto/deny）：在构造期读一次，既决定 request 工具的回执
+    # 话术，也决定它是否登记在 interrupt_on（auto/deny 时移出=不弹卡）。
+    external_dir_mode = "ask"
     if enable_hitl and conversation_id is not None and workspace_id is not None:
         from src.service.agent.external_dir_request_tool import (
             build_request_external_dir_tool,
         )
-        from src.service.agent.path_authorization import collect_workspace_roots
+        from src.service.agent.path_authorization import (
+            collect_workspace_roots,
+            get_external_dir_mode,
+        )
         from src.service.agent.write_guard_registry import register_write_guard
+
+        try:
+            external_dir_mode = get_external_dir_mode(db, conversation_id)
+        except Exception:  # noqa: BLE001 - 取不到/异常默认 ask（保留弹卡，安全默认）
+            external_dir_mode = "ask"
 
         # 幂等覆盖：register 按 conv_id 覆写旧条目，重建 agent（如 HITL resume）不残留。
         register_write_guard(
@@ -349,7 +360,9 @@ def get_orchestrator_agent(
             ),
             workspace_id=workspace_id,
         )
-        orchestrator_tools.append(build_request_external_dir_tool())
+        orchestrator_tools.append(
+            build_request_external_dir_tool(external_dir_mode)
+        )
         system_prompt = (
             system_prompt
             + "\n\n写工作区外目录前必须先调用 request_external_dir_access(path=目标父目录)"
@@ -366,6 +379,14 @@ def get_orchestrator_agent(
         clarify_only_hitl=clarify_only_hitl,
         session_flags=session_flags,
     )
+    # mode=auto/deny 时把 request_external_dir_access 移出 interrupt_on（不挂起、不弹卡）；
+    # ask 时保留弹卡。interrupt_on 为 None（无 HITL）时无需处理。
+    if interrupt_on is not None:
+        from src.service.agent.external_dir_request_tool import (
+            strip_external_dir_interrupt,
+        )
+
+        interrupt_on = strip_external_dir_interrupt(interrupt_on, external_dir_mode)
 
     agent = create_deep_agent(
         model=model,

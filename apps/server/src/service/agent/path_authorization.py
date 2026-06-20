@@ -188,7 +188,10 @@ def guard_external_write(target: str, *, db: Session, workspace_id: int, convers
     if is_granted(db, workspace_id, conversation_id, target):
         return None
     if get_external_dir_mode(db, conversation_id) == "deny":
-        return f"严格模式：拒绝写入工作区外目录 {target}"
+        return (
+            f"严格模式（目录模式=严禁）：拒绝写入工作区外目录 {target}；"
+            "不可申请授权，请改用工作区内路径或请用户切换模式。"
+        )
     parent = str(Path(target).resolve().parent)
     return (
         f"目标 {target} 在工作区外且未授权。请先调用 "
