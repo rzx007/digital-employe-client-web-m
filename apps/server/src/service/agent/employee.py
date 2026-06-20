@@ -34,6 +34,7 @@ from src.service.agent.external_dir_request_tool import (
 )
 from src.service.agent.update_skill_tool import create_update_skill_tool
 from src.service.agent.path_authorization import collect_workspace_roots
+from src.service.employee_service import _growth_brain_root_for
 from src.service.agent.write_guard_registry import register_write_guard
 from src.models.workspace import CST
 from src.service.skill_shell_backend import SkillAwareShellBackend
@@ -276,6 +277,18 @@ def get_agent(
         )
         extra_tools.append(build_request_external_dir_tool(external_dir_mode))
 
+    # 检查已加载技能中是否有改进线索（brain/skill_hints/<技能名>.md）。
+    # 仅对实名员工做：best-effort，任何异常退化为空列表，不影响主流程。
+    skills_with_hints: list[str] = []
+    if employee_id is not None:
+        try:
+            hints_dir = _growth_brain_root_for(employee_id) / "skill_hints"
+            skills_with_hints = [
+                s for s in available_skills if (hints_dir / f"{s}.md").is_file()
+            ]
+        except Exception:  # noqa: BLE001
+            skills_with_hints = []
+
     system_prompt = build_system_prompt(
         current_time,
         available_skills,
@@ -288,6 +301,7 @@ def get_agent(
         agent_real_path=str(base_dir),
         use_session_history=use_session_history,
         virtual_mode=is_agent_virtual_mode(),
+        skills_with_hints=skills_with_hints,
     )
     # 守卫已登记时，告知模型工作区外写盘须先申请授权（与 write_file 守卫回执一致）。
     # 后台路径（enable_hitl=False）未挂守卫，无需此提示。

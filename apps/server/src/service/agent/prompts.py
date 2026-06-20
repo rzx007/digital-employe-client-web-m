@@ -15,6 +15,7 @@ def build_filesystem_prompt_section(
     use_session_history: bool = False,
     has_draft_route: bool = False,
     virtual_mode: bool = True,
+    skills_with_hints: list[str] = [],
 ) -> str:
     dir_rows = []
     if artifacts_real_path:
@@ -57,6 +58,14 @@ def build_filesystem_prompt_section(
         else "会话历史目录（按 thread 分文件）"
     )
 
+    hints_line = ""
+    if skills_with_hints:
+        names = "、".join(skills_with_hints)
+        hints_line = (
+            f"\n以下已加载技能有改进线索（来自用户低分反馈，位于 <brain>/skill_hints/<技能名>.md）："
+            f"{names}。处理相关任务时可读取该线索，确有必要时用 update_skill 修订。"
+        )
+
     file_tool_rules = build_file_tool_rules(
         virtual_mode=virtual_mode,
         artifacts_real_path=artifacts_real_path,
@@ -79,7 +88,7 @@ def build_filesystem_prompt_section(
         - **聊天正文禁止**写出磁盘绝对路径；只说交付物名称/用途，文件由变更卡片与产物面板展示（详见已注入的 AGENTS.md「对用户回复」）
         - **不要**在产物目录下创建 Users、.boban-staff 等磁盘路径镜像
         - 长期记忆相关规则见「## 长期记忆」一节（唯一权威），此处不重复
-        {draft_instruction}
+        {draft_instruction}{hints_line}
 
         ## 上下文管理
         - 你可以调用 `compact_conversation` 工具来压缩对话历史，释放上下文空间
@@ -186,6 +195,7 @@ def build_system_prompt(
     agent_real_path: str = "",
     use_session_history: bool = False,
     virtual_mode: bool = True,
+    skills_with_hints: list[str] = [],
 ) -> str:
     skills_line = ", ".join(available_skills) if available_skills else "无"
 
@@ -199,6 +209,7 @@ def build_system_prompt(
         use_session_history=use_session_history,
         has_draft_route=has_draft_route,
         virtual_mode=virtual_mode,
+        skills_with_hints=skills_with_hints,
     )
     long_doc_section = build_long_document_writing_section()
     subtask_section = build_subtask_parallel_section()

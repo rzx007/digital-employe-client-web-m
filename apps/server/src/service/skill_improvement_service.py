@@ -1,7 +1,7 @@
 """技能评分改进建议服务。
 
 当用户对技能的评分低于 3 分且带有评论时，自动调用 LLM 分析
-改进方向，在技能目录下生成 improvement-suggestion.md。
+改进方向，写入员工持久 brain 目录（skill_hints/<技能名>.md）。
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from langchain_openai import ChatOpenAI
 
 from src.core.config import get_settings
 from src.llm.factory import build_chat_model
+from src.service.employee_service import _growth_brain_root_for
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,11 @@ def trigger_improvement_review(
         )
         result = llm.invoke(prompt).content.strip()
 
-        suggestion_path = skill_root / "improvement-suggestion.md"
+        # 写入持久 brain 目录（不会被 agent rebuild 覆盖），而非易失的员工 copy 目录。
+        brain_root = _growth_brain_root_for(employee_id)
+        hints_dir = brain_root / "skill_hints"
+        hints_dir.mkdir(parents=True, exist_ok=True)
+        suggestion_path = hints_dir / f"{skill_name}.md"
         suggestion_path.write_text(
             f"# 技能改进建议\n\n"
             f"## 评分信息\n"
@@ -70,7 +75,7 @@ def trigger_improvement_review(
             f"自动生成于 {_now_iso()}\n",
             encoding="utf-8",
         )
-        logger.info("improvement suggestion written: %s", suggestion_path)
+        logger.info("improvement suggestion written to brain: %s", suggestion_path)
 
     except Exception as e:
         logger.error("skill improvement review failed: %s", e, exc_info=True)
