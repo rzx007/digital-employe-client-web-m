@@ -58,6 +58,19 @@ async def _refresh_db_off_loop(db: Session, obj: Any) -> None:
     await loop.run_in_executor(_DB_WRITE_EXECUTOR, db.refresh, obj)
 
 
+def _apply_external_dir_grant(db, workspace_id, conversation_id, external_dir) -> None:
+    """approve 时按 scope 记授权。external_dir 形如 {path, scope}；缺字段/非法值/None → 安全 no-op。"""
+    if not external_dir:
+        return
+    path = external_dir.get("path")
+    scope = external_dir.get("scope")
+    if not path or scope not in {"once", "session", "permanent", "auto"}:
+        return
+    from src.service.agent.path_authorization import record_grant
+
+    record_grant(db, workspace_id, conversation_id, path, scope)
+
+
 class ChatService:
     @staticmethod
     def _to_virtual_backend_path(abs_path: str, root_path: str) -> str:
@@ -1165,6 +1178,7 @@ class ChatService:
         decisions: list[dict],
         auth_token: str | None = None,
         destructive_hitl: dict | None = None,
+        external_dir: dict | None = None,
     ) -> dict:
         """HITL approve：封存 interrupted 段 + 新建 assistant 行 + resume。"""
         from datetime import datetime, timezone
@@ -1191,6 +1205,19 @@ class ChatService:
 
         if destructive_hitl and destructive_hitl.get("skip_for_conversation"):
             set_skip_destructive_hitl(db, conversation_id, True)
+
+        # 工作区外目录写授权：仅在用户 approve（非 reject）时按 scope 记授权。
+        # 门控靠字段存在性——前端只在 request_external_dir_access 卡片才发 external_dir。
+        # reject 决策不记。record_grant 内部会自行 commit（独立于本事务，安全）。
+        _decision_is_approve = any(
+            isinstance(d, dict) and d.get("type") == "approve" for d in decisions
+        ) and not any(
+            isinstance(d, dict) and d.get("type") == "reject" for d in decisions
+        )
+        if external_dir and _decision_is_approve:
+            _apply_external_dir_grant(
+                db, conversation.workspace_id, conversation_id, external_dir
+            )
 
         new_msg = ChatService._append_message(
             db,

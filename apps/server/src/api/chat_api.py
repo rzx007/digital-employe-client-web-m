@@ -405,6 +405,7 @@ async def approve_hitl(
         decisions=payload.decisions,
         auth_token=http_request.headers.get("token"),
         destructive_hitl=payload.destructive_hitl,
+        external_dir=payload.external_dir,
     )
     if not result.get("accepted"):
         return BaseResponse(code=400, msg=result.get("message", "审批失败"), data=None)
