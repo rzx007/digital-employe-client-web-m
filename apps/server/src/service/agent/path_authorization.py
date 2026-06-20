@@ -172,6 +172,28 @@ def is_granted(db: Session, workspace_id: int, conversation_id: int, target: str
     return False
 
 
+def guard_external_write(target: str, *, db: Session, workspace_id: int, conversation_id: int, roots: list[Path]) -> str | None:
+    """返回 None=放行写；返回错误提示串=挡回(调用方转 error ToolMessage)。
+
+    判定顺序：
+    1. 目标在工作区内 → None（放行）
+    2. 已授权（is_granted 含 auto/永久/会话/once）→ None
+    3. 会话 mode == "deny" → 返回"严格模式拒绝"串
+    4. 否则（ask 且未授权）→ 返回"请先调用 request_external_dir_access 申请授权"串
+    """
+    if not is_outside_workspace(target, roots):
+        return None
+    if is_granted(db, workspace_id, conversation_id, target):
+        return None
+    if get_external_dir_mode(db, conversation_id) == "deny":
+        return f"严格模式：拒绝写入工作区外目录 {target}"
+    parent = str(Path(target).resolve().parent)
+    return (
+        f"目标 {target} 在工作区外且未授权。请先调用 "
+        f'request_external_dir_access(path="{parent}") 申请授权，获批后再写。'
+    )
+
+
 def record_grant(db: Session, workspace_id: int, conversation_id: int, path: str, scope: str) -> None:
     """按 scope 把授权落到对应存储。
     scope 取值：permanent / session / auto / once；其他值抛 ValueError。
