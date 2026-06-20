@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -192,6 +194,113 @@ def guard_external_write(target: str, *, db: Session, workspace_id: int, convers
         f"目标 {target} 在工作区外且未授权。请先调用 "
         f'request_external_dir_access(path="{parent}") 申请授权，获批后再写。'
     )
+
+
+# ---------------------------------------------------------------------------
+# Shell 命令启发式路径抽取 + shell 写守卫
+# ---------------------------------------------------------------------------
+
+# 各类绝对路径候选正则（保守：字符类排除空白与 "<>|，避免误吸选项/管道/重定向符）
+_WIN_DRIVE_RE = re.compile(
+    r"""[A-Za-z]:[/\\][^\s"'<>|]*""",
+)
+_UNC_RE = re.compile(
+    r"""\\\\[^\s"'<>|]+""",
+)
+_ENV_VAR_RE = re.compile(
+    r"""%[^%\s]+%[/\\][^\s"'<>|]*""",
+)
+_TILDE_RE = re.compile(
+    r"""~[/\\][^\s"'<>|]*""",
+)
+_UNIX_ABS_RE = re.compile(
+    # 负后向断言：前面不是盘符字母+冒号（避免把 C:/foo 中的 /foo 单独抽出）
+    r"""(?<![A-Za-z]:)/[^\s"'<>|]+""",
+)
+
+_ALL_PATTERNS = [_WIN_DRIVE_RE, _UNC_RE, _ENV_VAR_RE, _TILDE_RE, _UNIX_ABS_RE]
+
+
+def _strip_quotes(s: str) -> str:
+    """去掉两端的成对单/双引号。"""
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ('"', "'"):
+        return s[1:-1]
+    return s
+
+
+def extract_command_paths(command: str) -> list[str]:
+    """启发式从 shell 命令字符串里抽取绝对路径，展开环境变量/~，去重返回。
+
+    保守策略：宁可漏抽混淆路径，也不把非路径误报成路径。
+    覆盖形态：
+    - Windows 盘符路径：``C:\\foo``  ``D:/bar``
+    - UNC 路径：``\\\\server\\share``
+    - 含环境变量：``%USERPROFILE%\\Desktop\\x.txt``
+    - 波浪线展开：``~/Documents/x.txt``
+    - Unix 绝对路径：``/etc/passwd``
+    已知会漏：极度混淆（base64 编码路径、变量拼接等）。
+    已知限制：若 Windows 盘符路径含正斜杠（如 C:/foo），同一字符串中的子路径
+    （/foo）可能同时被 Unix 正则抽取，后处理阶段会过滤掉此类子串。
+    """
+    # 第一阶段：用各模式收集原始候选 token（连同在命令字符串中的位置）
+    # 非 Unix 模式优先抽取（盘符、UNC、环境变量、~），Unix 模式最后
+    non_unix_patterns = [_WIN_DRIVE_RE, _UNC_RE, _ENV_VAR_RE, _TILDE_RE]
+    non_unix_spans: list[tuple[int, int]] = []
+    raw_candidates: list[str] = []
+
+    for pat in non_unix_patterns:
+        for m in pat.finditer(command):
+            non_unix_spans.append(m.span())
+            raw_candidates.append(m.group(0))
+
+    # Unix 绝对路径：只收集不在非 Unix 匹配范围内的（避免把盘符路径的 /子路径 重复抽取）
+    for m in _UNIX_ABS_RE.finditer(command):
+        start, end = m.span()
+        # 若该 match 的开始位置落在任何非 Unix 匹配的范围之内，跳过
+        overlaps = any(ns <= start < ne for ns, ne in non_unix_spans)
+        if not overlaps:
+            raw_candidates.append(m.group(0))
+
+    # 第二阶段：展开、过滤、去重
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in raw_candidates:
+        token = _strip_quotes(raw.strip())
+        # 展开 %VAR% 与 $VAR 环境变量、~ 用户目录
+        expanded = os.path.expandvars(token)
+        expanded = os.path.expanduser(expanded)
+        # 若展开后仍含未解析的 %...%，说明变量不存在，丢弃（无意义路径）
+        if re.search(r"%[^%]+%", expanded):
+            continue
+        # 只保留展开后仍是绝对路径的候选
+        if not (os.path.isabs(expanded) or re.match(r"[A-Za-z]:[/\\]", expanded)):
+            continue
+        if expanded not in seen:
+            seen.add(expanded)
+            result.append(expanded)
+    return result
+
+
+def guard_external_shell(
+    command: str,
+    *,
+    db: Session,
+    workspace_id: int,
+    conversation_id: int,
+    roots: list[Path],
+) -> str | None:
+    """扫命令里的绝对路径，任一在工作区外且未授权 → 返回挡回提示串；否则 None。"""
+    for p in extract_command_paths(command):
+        reason = guard_external_write(
+            p,
+            db=db,
+            workspace_id=workspace_id,
+            conversation_id=conversation_id,
+            roots=roots,
+        )
+        if reason is not None:
+            return reason
+    return None
 
 
 def record_grant(db: Session, workspace_id: int, conversation_id: int, path: str, scope: str) -> None:
