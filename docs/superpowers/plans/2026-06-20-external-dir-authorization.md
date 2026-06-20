@@ -41,12 +41,13 @@
 
 把结论（覆盖点、DB 获取方式、签名）写进本 Task 下方 “Spike 结论” 小节。`git checkout -- <spike 改动文件>` 回滚临时代码。**若覆盖不可行或守卫内无法安全开 DB → 停止，回报用户，不进入 Phase 1。**
 
-**Spike 结论**（实施者填写）：
-- write/edit 覆盖点：______（基类工厂 `_create_write_file_tool`/`_create_edit_file_tool` 在 `OpenAICompatibleFilesystemMiddleware` 子类覆盖？还是 patch backend.write？）
-- **guard_ctx 送达机制**：______ ⚠️ 关键——middleware 在 `install_compatible_filesystem_middleware` 类级 monkeypatch、由 `create_deep_agent` 内部实例化，employee.py **不直接构造 middleware 实例**，故无直接缝传 per-conversation 闭包。确定方案：模块级 `contextvar`（employee.py 每会话 set）/ 包装 backend.write / 其它？
-- **collect_workspace_roots 完整性**：______ 核对 `skills_root`、`memories_dir`、每会话目录 `Path(root_path)/conversation_id` 是否都 resolve 在已收集根之下；若不在，Task 3 须补进 roots（否则员工写技能/记忆文件会误弹授权卡）。
-- DB 获取方式：______（SessionLocal / get_db 工厂，工具内 `with db_factory() as db`）
-- write_file 同步/异步函数签名：______（已知基类约为 `(file_path, content, runtime)`）
+**Spike 结论（已完成，总判 GO）：**
+- **write/edit 覆盖点**：子类 `OpenAICompatibleFilesystemMiddleware` 重写 `_create_write_file_tool` / `_create_edit_file_tool`（基类 `__init__` 从这些工厂构建 `self.tools`，`deepagents/middleware/filesystem.py:717-725`）。照搬基类工厂体，在 `validate_path` 成功后、调 `resolved_backend.write/edit` 之前插守卫。**不 patch backend**（backend 是 shell-aware，patch 会绕过守卫+影响 shell）。基类签名：`sync_write_file(file_path, content, runtime)`（`filesystem.py:1009`）、`sync_edit_file(file_path, old_string, new_string, runtime, *, replace_all=False)`（`:1100`），均含 `runtime: ToolRuntime`。
+- **guard_ctx 送达机制**：**不用新 contextvar**。工具收 `runtime`，用 `from src.service.agent.orchestrator.runtime import conversation_id_from_runtime`（`runtime.py:58`，从 `runtime.config["configurable"]["thread_id"]` 取 conv_id）。仿 `_stream_sessions`（`runtime.py:55-89`）建 `write_guard_registry: dict[conv_id -> (roots, workspace_id)]`，employee.py `get_agent` 内 `register_write_guard(...)`，工具内 `lookup_write_guard(conv_id)`。runtime+registry 比 contextvar 稳（无跨 astream/checkpointer 传播时序坑）。
+- **collect_workspace_roots 完整性**：`WorkspaceDirs` 仅覆盖 `root/artifacts|uploads|skills-draft`；`skills_root`、`memories_dir` 在**独立另一棵树**，每会话目录 `Path(root_path)/conv_id` 是 artifacts 兄弟。**roots 须收 `[Path(root_path), skills_root, memories_dir]`**（整根涵盖 artifacts/uploads/skills-draft/会话目录），否则技能/记忆写入误判越界。
+- **DB 获取方式**：`from src.db.session import sqlite_db_session`（`db/session.py:18`，线程安全短生命周期，带 `SQLITE_ACCESS_LOCK`）。工具内 `with sqlite_db_session() as db:`。**不用**裸 `get_session_local()()`（会与流式 flush 抢锁）。
+- **fail-open**：conv_id 取不到 / 未注册（如 workspace_api 无 conversation_id 的路径）→ 放行，不挡无害场景。
+- **实证**：spike 脚本确认覆盖被装上（`write_file description: SPIKE`）、返回 error 挡回、`db_ok=yes`；已 `git checkout` 回滚，工作树干净。
 
 - [ ] **Step 5: Commit（仅结论文档，无代码）**
 
@@ -311,17 +312,19 @@ def is_outside_workspace(target: str, roots: list[Path]) -> bool:
     return True
 
 
-def collect_workspace_roots(root_path: str, base_dir: str) -> list[Path]:
-    """工作区合法写入根集合。复用 resolve_workspace_dirs。"""
-    from src.service.agent.workspace_paths import resolve_workspace_dirs
-    ws = resolve_workspace_dirs(root_path=root_path, base_dir=base_dir)
-    return [
-        ws.artifacts_dir, ws.workspace_dir, ws.uploads_dir,
-        ws.draft_dir, ws.public_root,
-    ]
+def collect_workspace_roots(root_path: str, skills_root, memories_dir) -> list[Path]:
+    """工作区合法写入根集合（按 Spike 结论 Q4）。
+    Path(root_path) 整根已涵盖 artifacts / uploads / skills-draft / 每会话目录;
+    skills_root、memories_dir 在独立另一棵树,必须显式加入。"""
+    roots = [Path(root_path)]
+    if skills_root:
+        roots.append(Path(skills_root))
+    if memories_dir:
+        roots.append(Path(memories_dir))
+    return roots
 ```
 
-（注：`collect_workspace_roots` 字段名以 Task 0 / `workspace_paths.py` 实际 `WorkspaceDirs` 为准。**完整性**：按 Task 0 spike 结论，若 `skills_root`、`memories_dir`、每会话目录不在上述根之下，须一并加入 roots——否则员工写技能/记忆文件会被误判越界、弹出无谓授权卡。spec §4.1 列了 `skills_root` 但 `WorkspaceDirs` 无此字段，实施期补齐。）
+（依据 Spike 结论 Q4：`WorkspaceDirs` 漏了 skills_root/memories_dir/会话目录，故 roots 取整根 + 两棵独立树，而非细分桶。`skills_root`/`memories_dir` 由 employee.py 在 `get_agent` 内算出后随 `register_write_guard` 传入，见 Task 8。）
 
 - [ ] **Step 4: 跑测试确认通过** — Expected: PASS
 
@@ -694,7 +697,29 @@ def apply_write_guard(target, guard_ctx, do_write, *, tool_call_id):
     return do_write()
 ```
 
-按 spike 结论，在子类 / 安装函数里覆盖 write_file、edit_file 工具：其 func/coroutine 先取 path 参数与注入的 `guard_ctx`（闭包，见 Task 8），调 `apply_write_guard(path, guard_ctx, lambda: <原始基类写>, tool_call_id=runtime.tool_call_id)`。`guard_ctx` 的 `db` 用注入的 db 工厂每次新开 session（`with db_factory() as db`），避免跨请求复用。
+**按 Spike 结论的精确覆盖方式**：在 `OpenAICompatibleFilesystemMiddleware` 重写 `_create_write_file_tool` 和 `_create_edit_file_tool`（仿现有 `_create_read_file_tool`），**照搬基类工厂体**（`deepagents/middleware/filesystem.py:1005`/`:1096`），在 `validate_path` 成功后、调 `resolved_backend.write/edit` 前插守卫：
+
+```python
+from src.db.session import sqlite_db_session
+from src.service.agent.path_authorization import guard_external_write
+from src.service.agent.write_guard_registry import lookup_write_guard, conv_id_from_runtime
+
+# 在覆盖后的 sync/async write_file、edit_file 工具内，validate_path 成功后:
+conv_id = conv_id_from_runtime(runtime)            # 取不到 → None
+ctx = lookup_write_guard(conv_id) if conv_id else None
+if ctx:                                            # fail-open: ctx 缺失则不挡
+    with sqlite_db_session() as db:
+        hint = guard_external_write(
+            validated_path, db=db, workspace_id=ctx.workspace_id,
+            conversation_id=conv_id, roots=ctx.roots,
+        )
+    if hint:
+        return ToolMessage(content=hint, name="write_file",  # edit_file 同理
+                           tool_call_id=runtime.tool_call_id, status="error")
+# 否则继续基类原始写
+```
+
+`conv_id_from_runtime` 复用 `orchestrator/runtime.py:58` 的 `conversation_id_from_runtime`（建议在 `write_guard_registry` 里 re-export，避免直接依赖 orchestrator 包）。Step 1 的 `apply_write_guard` 高阶函数测试仍保留（测守卫挡/放行逻辑），覆盖工厂里直接内联上述守卫调用即可。
 
 - [ ] **Step 4: 跑测试确认通过** — Expected: PASS
 
@@ -709,10 +734,13 @@ git commit -m "feat: 覆盖 write_file/edit_file 接 apply_write_guard 写守卫
 
 **Files:**
 - Create: `apps/server/src/service/agent/external_dir_request_tool.py`
+- Create: `apps/server/src/service/agent/write_guard_registry.py`（注册表，Task 7 也用）
 - Modify: `apps/server/src/service/agent/hitl_interrupt_on.py`（合并新 interrupt_on）
-- Modify: `apps/server/src/service/agent/employee.py`（注入 guard_ctx 闭包 + 挂工具 + 系统提示）
-- Test: `apps/server/tests/test_external_dir_request_tool.py`
-- 参考：`clarifying_questions_tool.py`、`destructive_hitl.py:23`、`hitl_interrupt_on.py`
+- Modify: `apps/server/src/service/agent/employee.py`（register_write_guard + 挂工具 + 系统提示）
+- Test: `apps/server/tests/test_external_dir_request_tool.py`、`apps/server/tests/test_write_guard_registry.py`
+- 参考：`clarifying_questions_tool.py`、`destructive_hitl.py:23`、`hitl_interrupt_on.py`、`orchestrator/runtime.py:55-89`（`_stream_sessions` 注册表样板）
+
+> **注**：`write_guard_registry.py` 被 Task 7 的写工具覆盖依赖，故应在 Task 7 之前或同批落地（含 `register_write_guard(conv_id, roots, workspace_id)` / `lookup_write_guard(conv_id) -> ctx|None` / re-export `conv_id_from_runtime`）。本计划把它归在 Task 8，实施时若 Task 7 先做则先建此模块。仿 `_stream_sessions` 的模块级 dict，无需线程锁（GIL 下 dict 读写原子，且按 conv_id 隔离）。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -766,9 +794,9 @@ def build_request_external_dir_tool():
 
 在 `hitl_interrupt_on.py` 合并 `EXTERNAL_DIR_INTERRUPT_ON`（仿现有 `**CLARIFYING... **DOCUMENT_PLAN...` 风格）。
 
-- [ ] **Step 4: employee.py 接线**（按 Task 0 结论）
+- [ ] **Step 4: employee.py 接线**（按 Spike 结论）
 
-- 在构造 agent 处，用作用域内的 `conversation_id`、`resolve_workspace_dirs(...)`、db 工厂构造 `guard_ctx`（传给 Task 7 覆盖的写工具闭包）。
+- 在 `get_agent` 内（作用域已有 `conversation_id`、`root_path`、`ws`/`workspace_id`、`skills_root`、`memories_dir`），调 `register_write_guard(conversation_id, roots=collect_workspace_roots(root_path, skills_root, memories_dir), workspace_id=workspace_id)`。无 conversation_id 的构造路径跳过注册（fail-open）。
 - 把 `build_request_external_dir_tool()` 加入 agent 工具集。
 - 因 Step 3 已把 `EXTERNAL_DIR_INTERRUPT_ON` 并入 `HITL_INTERRUPT_ON`，而 employee.py（约 L254-258）**直接传 `HITL_INTERRUPT_ON`** 给 agent，故新工具自动含在 interrupt_on，无需额外接线（注意：employee 不走 `build_orchestrator_interrupt_on`，那是 orchestrator 路径；两处都吃 `HITL_INTERRUPT_ON` 故都覆盖）。
 - 在员工系统提示追加一句："写工作区外目录前必须先调用 request_external_dir_access(path=父目录) 申请授权，获批后再写。"
