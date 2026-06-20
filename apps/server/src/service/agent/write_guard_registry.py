@@ -21,6 +21,7 @@ __all__ = [
     "register_write_guard",
     "lookup_write_guard",
     "clear_write_guard",
+    "run_shell_guard",
 ]
 
 
@@ -53,3 +54,27 @@ def clear_write_guard(conversation_id: int | None) -> None:
     if conversation_id is None:
         return
     _registry.pop(int(conversation_id), None)
+
+
+def run_shell_guard(command: str, conversation_id) -> str | None:
+    """shell 命令越界守卫桥：返回挡回提示串 | None。
+
+    fail-open：conv_id 缺失/未注册 → None（放行）。
+    延迟 import guard_external_shell / sqlite_db_session 避免循环依赖。
+    """
+    if conversation_id is None:
+        return None
+    ctx = lookup_write_guard(conversation_id)
+    if ctx is None:
+        return None
+    from src.service.agent.path_authorization import guard_external_shell
+    from src.db.session import sqlite_db_session
+
+    with sqlite_db_session() as db:
+        return guard_external_shell(
+            command,
+            db=db,
+            workspace_id=ctx.workspace_id,
+            conversation_id=conversation_id,
+            roots=ctx.roots,
+        )

@@ -368,6 +368,18 @@ class SkillAwareShellBackend(LocalShellBackend):
             truncated=False,
         )
 
+    def _external_dir_shell_refusal(self, command: str) -> ExecuteResponse | None:
+        """工作区外目录越界守卫（与硬底线同层，在 _prepare_shell_command 改写前扫原始命令）。
+        fail-open：无 CONVERSATION_ID / 未注册 → None（放行）。
+        """
+        conv_id = self._env.get("CONVERSATION_ID")
+        from src.service.agent.write_guard_registry import run_shell_guard
+
+        reason = run_shell_guard(command, conv_id)
+        if reason is None:
+            return None
+        return ExecuteResponse(output=reason, exit_code=126, truncated=False)
+
     async def aexecute(
         self,
         command: str,
@@ -376,6 +388,9 @@ class SkillAwareShellBackend(LocalShellBackend):
         tool_call_id: str | None = None,
     ):
         refusal = self._hardline_refusal(command)
+        if refusal is not None:
+            return refusal
+        refusal = self._external_dir_shell_refusal(command)
         if refusal is not None:
             return refusal
         rewritten, _script_tmp_path = self._prepare_shell_command(command)
@@ -662,6 +677,9 @@ class SkillAwareShellBackend(LocalShellBackend):
 
     def execute(self, command: str, *, timeout: int | None = None):
         refusal = self._hardline_refusal(command)
+        if refusal is not None:
+            return refusal
+        refusal = self._external_dir_shell_refusal(command)
         if refusal is not None:
             return refusal
         rewritten, _script_tmp_path = self._prepare_shell_command(command)
