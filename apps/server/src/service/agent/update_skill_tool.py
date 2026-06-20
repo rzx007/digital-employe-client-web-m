@@ -66,6 +66,37 @@ def _backup_skill_version(skill_name: str, workspace_id: int) -> Optional[str]:
         return None
 
 
+def _write_skill_edit_audit(
+    employee_id: int,
+    skill_name: str,
+    reason: str,
+    new_content: str,
+    backup_version: Optional[str],
+) -> None:
+    """成功修订后追加一条审计到 <brain>/skill_edits.jsonl。best-effort，绝不阻断主流程。"""
+    # in-function imports（与文件约定一致）
+    import hashlib
+    import json
+    from datetime import datetime
+    from src.service.employee_service import _growth_brain_root_for
+    try:
+        brain = _growth_brain_root_for(employee_id)
+        brain.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "ts": datetime.now().isoformat(timespec="seconds"),
+            "employee_id": employee_id,
+            "skill_name": skill_name,
+            "reason": reason,
+            "new_sha256": hashlib.sha256(new_content.encode("utf-8")).hexdigest()[:16],
+            "backup_version": backup_version,  # 可回滚到的 .history 版本号；None 表示首次（无前版）
+        }
+        audit_file = brain / "skill_edits.jsonl"
+        with audit_file.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:  # noqa: BLE001
+        logger.warning("skill edit audit write failed", exc_info=True)
+
+
 def create_update_skill_tool(employee_id: int, available_skills: list[str]):
     """构造绑定到某员工的 update_skill 工具。available_skills 即该员工本轮已加载技能，
     作为「只能改已加载技能」的守卫白名单。"""
@@ -121,7 +152,7 @@ def _apply_skill_update(
         LocalSkillService.ensure_editable_from_employee_copy(
             skill_name, workspace_id, employee_id
         )
-        _backup_skill_version(skill_name, workspace_id)
+        backup_version = _backup_skill_version(skill_name, workspace_id)
         LocalSkillService.update_local_skill(
             skill_name, workspace_id, skill_md_content=new_content, target="workspace"
         )
@@ -133,6 +164,7 @@ def _apply_skill_update(
             "update_skill applied: emp=%s skill=%s reason=%s",
             employee_id, skill_name, reason,
         )
+        _write_skill_edit_audit(employee_id, skill_name, reason, new_content, backup_version)
         return f"已更新技能「{skill_name}」并同步所有使用该技能的同事。"
     except HTTPException as http_exc:
         db.rollback()

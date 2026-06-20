@@ -374,6 +374,67 @@ def test_restore_endpoint_version_not_found(monkeypatch, tmp_path):
     assert resp.status_code == 404, resp.text
 
 
+# ---------------------------------------------------------------------------
+# Task A-2: 审计事件 tests
+# ---------------------------------------------------------------------------
+
+def test_audit_written_on_success(monkeypatch, tmp_path):
+    """_write_skill_edit_audit 成功时应在 <brain>/skill_edits.jsonl 追加一条合法 JSON 行。"""
+    import json
+    from src.service.agent.update_skill_tool import _write_skill_edit_audit
+
+    brain_dir = tmp_path / "brain-42"
+
+    monkeypatch.setattr(
+        "src.service.employee_service._growth_brain_root_for",
+        lambda employee_id: brain_dir,
+    )
+
+    _write_skill_edit_audit(
+        employee_id=42,
+        skill_name="pptx",
+        reason="缺步骤",
+        new_content="# 新内容\n",
+        backup_version="20260620-153000-123456",
+    )
+
+    audit_file = brain_dir / "skill_edits.jsonl"
+    assert audit_file.exists(), "skill_edits.jsonl 应被创建"
+    lines = audit_file.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 1, f"应有1行审计记录，实际: {len(lines)}"
+
+    entry = json.loads(lines[0])
+    assert entry["employee_id"] == 42
+    assert entry["skill_name"] == "pptx"
+    assert entry["reason"] == "缺步骤"
+    assert "new_sha256" in entry and len(entry["new_sha256"]) == 16
+    assert entry["backup_version"] == "20260620-153000-123456"
+    assert "ts" in entry
+
+
+def test_audit_best_effort_never_raises(monkeypatch):
+    """_write_skill_edit_audit 在 brain 目录无法获取时不应抛出异常。"""
+    from src.service.agent.update_skill_tool import _write_skill_edit_audit
+
+    def _raise(_employee_id):
+        raise RuntimeError("brain root unavailable")
+
+    monkeypatch.setattr(
+        "src.service.employee_service._growth_brain_root_for",
+        _raise,
+    )
+
+    # 不应 raise
+    result = _write_skill_edit_audit(
+        employee_id=99,
+        skill_name="xlsx",
+        reason="测试",
+        new_content="content",
+        backup_version=None,
+    )
+    assert result is None
+
+
 def test_restore_endpoint_traversal_rejected(monkeypatch, tmp_path):
     """路径穿越格式的 version 应被 Pydantic 校验拒绝（422）或边界检查拒绝（400）。"""
     from fastapi import FastAPI
