@@ -262,12 +262,13 @@ export async function dismissSkillCandidate(
 /**
  * 恢复已归档的技能
  * POST /employees/{employee_id}/growth/skills/{skill_name}/restore
+ * 后端返回 ResponseBase[dict] → data: { skillName, status }
  */
 export async function restoreSkill(
   employeeId: number,
   skillName: string
 ) {
-  return request<ApiResponse<{ restored: string }>>(
+  return request<ApiResponse<{ skillName: string; status: string }>>(
     `/employees/${employeeId}/growth/skills/${encodeURIComponent(skillName)}/restore`,
     { method: "POST" }
   )
@@ -276,13 +277,14 @@ export async function restoreSkill(
 /**
  * 置顶/取消置顶技能
  * POST /employees/{employee_id}/growth/skills/{skill_name}/pin
+ * 后端返回 ResponseBase[dict] → data: { skillName, pinned }
  */
 export async function pinSkill(
   employeeId: number,
   skillName: string,
   pinned: boolean
 ) {
-  return request<ApiResponse<{ pinned: boolean }>>(
+  return request<ApiResponse<{ skillName: string; pinned: boolean }>>(
     `/employees/${employeeId}/growth/skills/${encodeURIComponent(skillName)}/pin`,
     { method: "POST", body: { pinned } }
   )

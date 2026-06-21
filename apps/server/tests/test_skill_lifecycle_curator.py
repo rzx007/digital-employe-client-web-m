@@ -655,3 +655,114 @@ def test_growth_brain_archive_suggestion_none_for_active(db_session, workspace, 
 
     result = es.EmployeeService.build_employee_growth_brain(db_session, emp.id)
     assert result["archive_suggestion"] is None
+
+
+# ---------------------------------------------------------------------------
+# Fix 1 (整体回顾集成测试): restore 后再次 run_curator 不会立即重新归档
+# ---------------------------------------------------------------------------
+
+def test_restore_resists_rearchive_on_next_curator_run(
+    db_session, workspace, tmp_path, monkeypatch
+):
+    """restore_skill 后，第二次 run_curator 应保持 active（restored_at 作为 last_used 基线）。
+
+    脑路路径确定性：monkeypatch librarian._brain_root_for → brain_dir（固定 tmp 目录），
+    restore_skill 也传入同一个 brain_dir，保证读写一致。
+    """
+    from datetime import timezone
+    from sqlalchemy.orm import sessionmaker
+    from tests.conftest import add_employee
+    from src.models.employee_skill import EmployeeSkill
+    from src.models.workspace import CST
+
+    # ── Arrange ──────────────────────────────────────────────────────────────
+    emp = add_employee(db_session, workspace.id, name="restore-resists")
+    now_cst = datetime.now(CST)
+
+    # "stale-x"：120 天前分配，无任何使用记录 → curator 必然将其归档
+    old_created = now_cst - timedelta(days=120)
+    skill_stale = EmployeeSkill(
+        workspace_id=workspace.id,
+        employee_id=emp.id,
+        user_id=emp.user_id,
+        skill_id=501,
+        skill_name="stale-x",
+        created_at=old_created,
+    )
+    db_session.add(skill_stale)
+    db_session.commit()
+
+    # monkeypatch brain 目录 & DB session（与 test_run_curator_ages_skills 相同模式）
+    brain_dir = tmp_path / str(emp.id)
+    brain_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(
+        "src.service.learning.librarian._brain_root_for",
+        lambda eid: brain_dir,
+    )
+    engine = db_session.bind
+    session_factory = sessionmaker(bind=engine)
+    monkeypatch.setattr(
+        "src.db.session.get_session_local",
+        lambda: session_factory,
+    )
+
+    # ── Act 1: 首次 curator run → stale-x 被归档 ────────────────────────────
+    curator.run_curator(emp.id)
+    lc_after_first = curator._load_lifecycle(brain_dir)
+    assert lc_after_first["skills"]["stale-x"]["status"] == "archived", (
+        f"Act 1 失败：stale-x 未被归档（setup 有误），实际: {lc_after_first}"
+    )
+
+    # ── Act 2: restore_skill（使用与 run_curator 相同的 brain_dir）────────────
+    curator.restore_skill(brain_dir, "stale-x")
+    lc_after_restore = curator._load_lifecycle(brain_dir)
+    assert lc_after_restore["skills"]["stale-x"]["status"] == "active", (
+        f"Act 2 失败：restore 后 status 不是 active，实际: {lc_after_restore}"
+    )
+    assert lc_after_restore["skills"]["stale-x"]["restored_at"] is not None, (
+        "Act 2 失败：restored_at 应被设置"
+    )
+
+    # ── Act 3: 再次 curator run → restored_at 作为 last_used 基线，不应重新归档 ─
+    curator.run_curator(emp.id)
+    lc_after_second = curator._load_lifecycle(brain_dir)
+    assert lc_after_second["skills"]["stale-x"]["status"] == "active", (
+        f"Act 3 失败：第二次 run_curator 重新归档了 stale-x，"
+        f"说明 restored_at 基线未生效。实际: {lc_after_second}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fix 2 (整体回顾集成测试): archived 技能被排除出 available-skills 路径
+# ---------------------------------------------------------------------------
+
+def test_archived_excluded_from_available_skills_path(tmp_path):
+    """验证 employee.py get_agent 使用的 archived 过滤表达式。
+
+    此测试直接模拟 employee.py 中 get_agent 的过滤逻辑：
+        _archived = curator.archived_skill_names(brain)
+        available_skills = [s for s in available_skills if s not in _archived]
+    （参见 src/service/agent/employee.py ~L88-L92）
+
+    通过在 tmp brain 中预置 lifecycle.json 后调用 archived_skill_names，
+    再执行相同过滤，验证 archived 技能被排除、非 lifecycle 技能直接透传。
+    """
+    brain = tmp_path
+
+    # 1. Seed：keep=active，gone=archived（通过 _save_lifecycle 写入，与 curator 真实写法一致）
+    curator._save_lifecycle(brain, {"skills": {
+        "keep": {"status": "active", "pinned": False, "archived_at": None, "restored_at": None},
+        "gone": {"status": "archived", "pinned": False, "archived_at": "2026-01-01T00:00:00",
+                 "restored_at": None},
+    }})
+
+    # 2. 模拟 employee.py 过滤表达式（与源码保持一致）
+    archived = curator.archived_skill_names(brain)
+    # "skill-creator" 未在 lifecycle.json 中 → 不在 archived 集合里 → 透传
+    available = [s for s in ["keep", "gone", "skill-creator"] if s not in archived]
+
+    # 3. 断言
+    assert available == ["keep", "skill-creator"], (
+        f"archived 过滤结果不符预期，实际: {available}。"
+        f"archived 集合: {archived}"
+    )
