@@ -9,6 +9,7 @@ from deepagents.backends.protocol import ExecuteResponse
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
 INTENT_MAX_LENGTH = 20
+DEFAULT_FOREGROUND_TIMEOUT = 60
 
 
 def normalize_shell_intent(value: object) -> str | None:
@@ -81,7 +82,7 @@ def create_shell_execute_tool(
         del intent
         response = await shell.aexecute(
             command,
-            timeout=timeout,
+            timeout=timeout if timeout is not None else DEFAULT_FOREGROUND_TIMEOUT,
             tool_call_id=tool_call_id or None,
             allow_background=True,
         )

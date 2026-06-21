@@ -92,3 +92,40 @@ def test_shell_wait_tool_unknown_session():
     out = tool.invoke({"session_id": "nope", "max_seconds": 1})
     assert isinstance(out, str)
     assert "未找到" in out
+
+
+def test_arun_uses_default_foreground_timeout_when_none():
+    import asyncio
+    from src.service.agent.shell_execute_tool import (
+        create_shell_execute_tool, DEFAULT_FOREGROUND_TIMEOUT,
+    )
+    from deepagents.backends.protocol import ExecuteResponse
+
+    captured = {}
+
+    class _FakeShell:
+        async def aexecute(self, command, *, timeout=None, tool_call_id=None,
+                           allow_background=False):
+            captured["timeout"] = timeout
+            return ExecuteResponse(output="ok", exit_code=0)
+
+        def format_shell_output(self, response):
+            return response.output
+
+    tool = create_shell_execute_tool(_FakeShell())
+
+    def _call(args):
+        # 工具含 InjectedToolCallId，须以完整 ToolCall 形式调用
+        return {
+            "args": args,
+            "name": "shell_execute",
+            "type": "tool_call",
+            "id": "tc-test",
+        }
+
+    # 不传 timeout → 应被替换为 DEFAULT_FOREGROUND_TIMEOUT
+    asyncio.run(tool.ainvoke(_call({"command": "echo hi"})))
+    assert captured["timeout"] == DEFAULT_FOREGROUND_TIMEOUT
+    # 传了 timeout → 用传入值
+    asyncio.run(tool.ainvoke(_call({"command": "echo hi", "timeout": 5})))
+    assert captured["timeout"] == 5
