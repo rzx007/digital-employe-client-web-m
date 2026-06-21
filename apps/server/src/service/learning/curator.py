@@ -76,6 +76,16 @@ def _age_status(last_used: datetime, now: datetime, *, pinned: bool) -> tuple[st
     return ("active", None)
 
 
+def archived_skill_names(brain) -> set[str]:
+    """读 lifecycle.json，返回 status=="archived" 的技能名集合。容错→空集。"""
+    try:
+        skills = _load_lifecycle(brain).get("skills", {})
+        return {name for name, meta in skills.items()
+                if isinstance(meta, dict) and meta.get("status") == "archived"}
+    except Exception:  # noqa: BLE001
+        return set()
+
+
 def run_curator(employee_id: int) -> None:
     """扫该员工所有已分配技能，按闲置时长更新 skill_lifecycle.json。
 

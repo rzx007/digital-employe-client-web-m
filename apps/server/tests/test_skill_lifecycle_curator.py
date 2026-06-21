@@ -117,3 +117,9 @@ def test_run_curator_ages_skills(db_session, workspace, tmp_path, monkeypatch):
     lc = curator._load_lifecycle(brain_dir)
     assert lc["skills"]["old-a"]["status"] == "archived", f"old-a should be archived, got: {lc}"
     assert lc["skills"]["fresh-b"]["status"] == "active", f"fresh-b should be active, got: {lc}"
+
+
+def test_archived_skill_names(tmp_path):
+    curator._save_lifecycle(tmp_path, {"skills": {
+        "a": {"status": "archived"}, "b": {"status": "active"}}})
+    assert curator.archived_skill_names(tmp_path) == {"a"}

@@ -82,6 +82,16 @@ def get_agent(
     current_time = datetime.now(CST).strftime("%Y-%m-%d")
     skills_root = resolve_skills_root(skill_path)
     available_skills = list_available_skills(skills_root)
+    # 生命周期 curator：archived 技能逻辑隐藏（文件在、可恢复）——从可用集剔除。
+    if employee_id is not None:
+        try:
+            from src.service.learning.curator import archived_skill_names
+            from src.service.learning.librarian import _brain_root_for
+            _archived = archived_skill_names(_brain_root_for(employee_id))
+            if _archived:
+                available_skills = [s for s in available_skills if s not in _archived]
+        except Exception:  # noqa: BLE001
+            pass
     logger.info(
         "get_agent skill_path=%s skills_root=%s available_skills=%s employee_id=%s conversation_id=%s",
         skill_path,
