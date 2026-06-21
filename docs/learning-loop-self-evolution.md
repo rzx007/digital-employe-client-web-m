@@ -202,6 +202,21 @@ flowchart TD
 
 ---
 
+## 7.6 生命周期 curator（防膨胀：闲置老化 + 候选合并）
+
+进化（§7/§7.5）让技能只增不减会膨胀；curator 是反向的「退场」环，治膨胀。`learning/curator.py` 搭 librarian 后台 pass（`run_librarian` 第 4 步，受同一 5min 限流），保守运行。
+
+**三件事，全部「绝不删、可恢复」：**
+1. **技能闲置老化**：`last_used = max(分配时间, max(TaskExecutionLog.created_at), max(SkillRating.created_at), restored_at)` → `active → stale(30天) → archived(90天)`。archived 从员工 `available_skills` **逻辑隐藏**（文件在、不解绑），不再进路由/系统提示。`pinned` 永久豁免。用户「恢复」写 `restored_at` 作新基线，防下一轮即刻重归档。状态存 `<brain>/skill_lifecycle.json`，curator 每轮从 last_used 重算 status，但 `pinned`/`restored_at` 是用户操作写入、curator 不覆盖。
+2. **近重复候选合并**：扫 `skill_candidates/*.md`，slug token 集相等 OR difflib≥0.85 判近义，保留信息最全者、其余并入「亦见」后删除——治 §7 promote 残留的近义 slug 多候选。**只动候选，绝不碰正式技能**。
+3. **员工归档建议**：员工 90 天未被派活 → 产**只读建议**（成长面板提示），**绝不自动归档**（员工归档牵动总管路由，留用户决断）。
+
+**为何保守**：`TaskExecutionLog.skill_id` 只记派单技能，prerouter/自读用的技能不落 log → last_used 可能偏旧。故以「分配时间为基线 + SkillRating 补充 + 30/90 天宽阈 + archived 仅逻辑隐藏可恢复」层层兜底——宁可不归档，不可误archive 常用技能；即便误判，恢复/置顶一键可逆。
+
+**相关符号**：`curator.run_curator`（挂 `librarian.run_librarian`）/ `_age_status` / `_effective_last_used` / `archived_skill_names`（employee.py 用于剔除）/ `restore_skill` / `set_pinned` / `_merge_near_dup_candidates` / `employee_archive_suggestion`；端点 `POST /employees/{id}/growth/skills/{name}/restore|pin`；前端 `growth-brain-section.tsx`（已归档折叠/恢复/置顶/归档建议）。
+
+---
+
 ## 8. QA 代码兜底与闭环的关系
 
 `qa_delivery_check.py` 不是学习闭环的一环，但与之同源（都为「质量不靠模型自觉」）：注入总管执行快照时，若员工**自报**了交付物却在产物区找不到对应非空文件，快照里直接标红「疑似假交付」。自报判定两路（控误报）：① 二进制交付物（docx/pptx/xlsx/pdf）全文匹配；② 其余交付物类文件仅在含「交付动词」（生成/保存/导出…）的行里取，且排除脚本/依赖扩展名（跑完即删属正常）。它保证了**喂进 journal/反思的「成功」是真成功**——避免把假交付当正样本污染学习闭环。
@@ -215,7 +230,10 @@ flowchart TD
 ├── journal/YYYY-MM-DD.jsonl       ← ①情景记忆(零成本, 复盘原料)
 ├── memories/AGENTS.md             ← ②软教训(critic 写, librarian 去重, 留 .bak)
 ├── profile.md                     ← ③能力画像(librarian 生成, 读 journal+教训, 回喂路由)
-├── skill_candidates/<slug>.md     ← 硬技能候选(promote 产出, 待人确认)
+├── skill_candidates/<slug>.md     ← 硬技能候选(promote 产出, 待人确认; curator 合并近重复)
+├── skill_hints/<技能名>.md         ← 改进线索(低分反馈→加载注入提示引导 update_skill, 改后清除)[A]
+├── skill_edits.jsonl              ← 技能修订审计(update_skill 写, 成长面板可见)[A]
+├── skill_lifecycle.json           ← 技能老化状态(curator 写: active/stale/archived + pinned)[B]
 └── skills/<slug>/SKILL.md         ← 正式技能(人采纳后, agent 兜底加载 + 面板展示)
 ```
 
@@ -241,7 +259,8 @@ flowchart TD
 4. **不在用户等待路径反思**：critic/librarian 全后台 daemon + 限流（反思 60s / 复盘 5min）。
 5. **自清理有护栏**：`consolidate_memory` 非空+保留分节+不显著变短才写并留备份；候选 no-clobber。
 6. **记忆私有、产物共享**：经验归个体大脑，交付落共享产物区，二者不混用。
-7. **容错降级**：每个钩子（捕获/反思/复盘）异常都只 warning、不上抛，绝不拖垮 finalize 主线。
+7. **容错降级**：每个钩子（捕获/反思/复盘/curator）异常都只 warning、不上抛，绝不拖垮 finalize 主线。
+8. **curator 保守可逆**：闲置老化**绝不删除**（archived 仅逻辑隐藏、文件在）、pinned 豁免、恢复一键可逆；**绝不自动归档员工**（只产建议）；近重复合并只动候选不碰正式技能。
 
 ---
 
