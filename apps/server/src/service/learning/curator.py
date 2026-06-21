@@ -216,6 +216,59 @@ def _merge_near_dup_candidates(brain: Path) -> None:
         logger.warning("_merge_near_dup_candidates failed", exc_info=True)
 
 
+_EMPLOYEE_IDLE_ARCHIVE_DAYS = 90
+
+
+def employee_archive_suggestion(db, employee_id: int) -> dict | None:
+    """闲置建议（只读，不归档）：该员工最近一次 TaskExecutionLog 距今 > 90 天
+    （或从无记录且员工创建 > 90 天前）→ 返回 {employee_id, last_active(iso|None),
+    idle_days}；否则 None。容错→None。绝对不写入任何数据。
+    """
+    try:
+        from src.models.task_execution_log import TaskExecutionLog
+        from src.models.employee import Employee
+        from src.models.workspace import cst_now
+
+        now = cst_now()
+
+        last_active_raw = db.execute(
+            select(func.max(TaskExecutionLog.created_at)).where(
+                TaskExecutionLog.employee_id == employee_id
+            )
+        ).scalar_one_or_none()
+
+        if last_active_raw is not None:
+            last_active_aware = _to_aware(last_active_raw)
+            idle_days = (now - last_active_aware).days
+            if idle_days > _EMPLOYEE_IDLE_ARCHIVE_DAYS:
+                return {
+                    "employee_id": employee_id,
+                    "last_active": last_active_aware.isoformat(timespec="seconds"),
+                    "idle_days": idle_days,
+                }
+            return None
+
+        # 从未派发任务 → 回退到员工创建时间作为基线
+        emp = db.execute(
+            select(Employee).where(Employee.id == employee_id)
+        ).scalar_one_or_none()
+        if emp is None or emp.created_at is None:
+            return None
+        created_aware = _to_aware(emp.created_at)
+        idle_days = (now - created_aware).days
+        if idle_days > _EMPLOYEE_IDLE_ARCHIVE_DAYS:
+            return {
+                "employee_id": employee_id,
+                "last_active": None,
+                "idle_days": idle_days,
+            }
+        return None
+
+    except Exception:  # noqa: BLE001
+        logger.warning("employee_archive_suggestion failed eid=%s", employee_id, exc_info=True)
+        return None
+
+
 def run_curator(employee_id: int) -> None:
     """扫该员工所有已分配技能，按闲置时长更新 skill_lifecycle.json。
 

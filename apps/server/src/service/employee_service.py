@@ -1479,6 +1479,14 @@ class EmployeeService:
         except Exception:
             skill_lifecycle = {}
 
+        # 员工闲置归档建议（只提示，不自动归档），best-effort
+        archive_suggestion = None
+        try:
+            from src.service.learning import curator as _curator
+            archive_suggestion = _curator.employee_archive_suggestion(db, employee_id)
+        except Exception:
+            archive_suggestion = None
+
         return {
             "profile_md": profile_md,
             "skills_list": skills_list,
@@ -1487,6 +1495,7 @@ class EmployeeService:
             "skill_candidates": skill_candidates,
             "recent_skill_edits": recent_skill_edits,
             "skill_lifecycle": skill_lifecycle,
+            "archive_suggestion": archive_suggestion,
         }
 
     @staticmethod

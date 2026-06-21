@@ -478,3 +478,180 @@ def test_merge_near_dup_ratio_threshold(tmp_path):
     curator._merge_near_dup_candidates(tmp_path)
     remaining = sorted(p.name for p in cand.glob("*.md"))
     assert len(remaining) == 2 and "pdf-merge.md" in remaining
+
+
+# ---------------------------------------------------------------------------
+# B-4: employee_archive_suggestion（只建议不自动归档）
+# ---------------------------------------------------------------------------
+
+def test_employee_archive_suggestion_active_recently(db_session, workspace):
+    """最近派发过任务（今天）→ suggestion 应为 None。"""
+    from tests.conftest import add_employee
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.models.workspace import CST
+
+    emp = add_employee(db_session, workspace.id, name="active-emp")
+    now_cst = datetime.now(CST)
+
+    log = TaskExecutionLog(
+        workspace_id=workspace.id,
+        employee_id=emp.id,
+        task_name_snapshot="fresh task",
+        run_status="success",
+        started_at=now_cst,
+        created_at=now_cst,
+    )
+    db_session.add(log)
+    db_session.commit()
+
+    result = curator.employee_archive_suggestion(db_session, emp.id)
+    assert result is None
+
+
+def test_employee_archive_suggestion_idle_100_days(db_session, workspace):
+    """最后一次派发距今 100 天 → 返回 suggestion，idle_days >= 100。"""
+    from tests.conftest import add_employee
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.models.workspace import CST
+
+    emp = add_employee(db_session, workspace.id, name="idle-emp")
+    now_cst = datetime.now(CST)
+    old_time = now_cst - timedelta(days=100)
+
+    log = TaskExecutionLog(
+        workspace_id=workspace.id,
+        employee_id=emp.id,
+        task_name_snapshot="old task",
+        run_status="success",
+        started_at=old_time,
+        created_at=old_time,
+    )
+    db_session.add(log)
+    db_session.commit()
+
+    result = curator.employee_archive_suggestion(db_session, emp.id)
+    assert result is not None
+    assert result["employee_id"] == emp.id
+    assert result["idle_days"] >= 100
+    assert result["last_active"] is not None  # ISO 字符串
+
+
+def test_employee_archive_suggestion_never_dispatched_old_employee(db_session, workspace):
+    """从未派发过任务、但员工创建已超 90 天 → 返回 suggestion（last_active=None）。"""
+    from tests.conftest import add_employee
+    from src.models.workspace import CST
+    from src.models.employee import Employee
+
+    emp = add_employee(db_session, workspace.id, name="old-never-dispatched")
+    # 回写 created_at 为 100 天前（绕过 ORM default）
+    old_time = datetime.now(CST) - timedelta(days=100)
+    db_session.execute(
+        __import__("sqlalchemy").update(Employee)
+        .where(Employee.id == emp.id)
+        .values(created_at=old_time)
+    )
+    db_session.commit()
+
+    result = curator.employee_archive_suggestion(db_session, emp.id)
+    assert result is not None
+    assert result["employee_id"] == emp.id
+    assert result["last_active"] is None
+    assert result["idle_days"] >= 100
+
+
+def test_employee_archive_suggestion_never_dispatched_new_employee(db_session, workspace):
+    """从未派发过任务、且员工刚创建（today）→ None。"""
+    from tests.conftest import add_employee
+
+    emp = add_employee(db_session, workspace.id, name="new-never-dispatched")
+    # created_at 默认为 cst_now()，即今天，不超过 90 天
+    result = curator.employee_archive_suggestion(db_session, emp.id)
+    assert result is None
+
+
+def test_employee_archive_suggestion_read_only(db_session, workspace):
+    """employee_archive_suggestion 纯只读：调用后员工记录不变。"""
+    from tests.conftest import add_employee
+    from src.models.employee import Employee
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.models.workspace import CST
+
+    emp = add_employee(db_session, workspace.id, name="readonly-check")
+    now_cst = datetime.now(CST)
+    old_time = now_cst - timedelta(days=120)
+
+    log = TaskExecutionLog(
+        workspace_id=workspace.id,
+        employee_id=emp.id,
+        task_name_snapshot="old task",
+        run_status="success",
+        started_at=old_time,
+        created_at=old_time,
+    )
+    db_session.add(log)
+    db_session.commit()
+
+    before_status = emp.name  # 员工 name 作为状态代理（归档会改 status）
+
+    curator.employee_archive_suggestion(db_session, emp.id)
+
+    db_session.refresh(emp)
+    assert emp.name == before_status  # 未被修改
+
+
+def test_growth_brain_includes_archive_suggestion(db_session, workspace, tmp_path, monkeypatch):
+    """build_employee_growth_brain 在员工长期闲置时应在 payload 中返回 archive_suggestion。"""
+    from tests.conftest import add_employee
+    from src.service import employee_service as es
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.models.workspace import CST
+    from src.models.employee import Employee
+
+    emp = add_employee(db_session, workspace.id, name="growth-brain-archive")
+    brain_dir = tmp_path / str(emp.id)
+    brain_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(es, "_growth_brain_root_for", lambda eid: brain_dir)
+
+    # 回写 created_at 为 100 天前
+    old_time = datetime.now(CST) - timedelta(days=100)
+    db_session.execute(
+        __import__("sqlalchemy").update(Employee)
+        .where(Employee.id == emp.id)
+        .values(created_at=old_time)
+    )
+    db_session.commit()
+
+    result = es.EmployeeService.build_employee_growth_brain(db_session, emp.id)
+    assert "archive_suggestion" in result
+    sugg = result["archive_suggestion"]
+    assert sugg is not None
+    assert sugg["employee_id"] == emp.id
+    assert sugg["idle_days"] >= 100
+
+
+def test_growth_brain_archive_suggestion_none_for_active(db_session, workspace, tmp_path, monkeypatch):
+    """build_employee_growth_brain：最近活跃员工 archive_suggestion 应为 None。"""
+    from tests.conftest import add_employee
+    from src.service import employee_service as es
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.models.workspace import CST
+
+    emp = add_employee(db_session, workspace.id, name="growth-brain-active")
+    brain_dir = tmp_path / str(emp.id)
+    brain_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(es, "_growth_brain_root_for", lambda eid: brain_dir)
+
+    now_cst = datetime.now(CST)
+    log = TaskExecutionLog(
+        workspace_id=workspace.id,
+        employee_id=emp.id,
+        task_name_snapshot="recent task",
+        run_status="success",
+        started_at=now_cst,
+        created_at=now_cst,
+    )
+    db_session.add(log)
+    db_session.commit()
+
+    result = es.EmployeeService.build_employee_growth_brain(db_session, emp.id)
+    assert result["archive_suggestion"] is None

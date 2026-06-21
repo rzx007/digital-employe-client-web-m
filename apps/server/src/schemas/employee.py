@@ -160,6 +160,13 @@ class EmployeeSkillLifecycleEntry(BaseModel):
     pinned: bool
 
 
+class EmployeeArchiveSuggestion(BaseModel):
+    """员工闲置归档建议（只建议，不自动归档）。"""
+    employee_id: int
+    last_active: str | None
+    idle_days: int
+
+
 class EmployeeGrowthBrainRead(BaseModel):
     profile_md: str
     skills_list: list[str]
@@ -168,6 +175,7 @@ class EmployeeGrowthBrainRead(BaseModel):
     skill_candidates: list[EmployeeSkillCandidate] = Field(default_factory=list)
     recent_skill_edits: list[EmployeeSkillEditEntry] = Field(default_factory=list)
     skill_lifecycle: dict[str, EmployeeSkillLifecycleEntry] = Field(default_factory=dict)
+    archive_suggestion: EmployeeArchiveSuggestion | None = None
 
 
 class SkillPinRequest(BaseModel):

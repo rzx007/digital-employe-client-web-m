@@ -48,6 +48,7 @@ def test_build_growth_brain_empty(db_session, workspace, monkeypatch, tmp_path):
         "profile_md": "", "skills_list": [], "memories_md": "",
         "journal_entries": [], "skill_candidates": [], "recent_skill_edits": [],
         "skill_lifecycle": {},
+        "archive_suggestion": None,
     }
 
 
