@@ -390,3 +390,91 @@ def test_endpoint_pin_path_traversal_rejected(tmp_path, db_session, workspace, m
     with _pytest.raises(HTTPException) as exc_info2:
         employee_api.restore_skill_lifecycle(emp.id, "../../etc/passwd", db_session)
     assert exc_info2.value.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# B-3: 近重复候选合并
+# ---------------------------------------------------------------------------
+
+def test_merge_near_dup_candidates(tmp_path):
+    cand = tmp_path / "skill_candidates"
+    cand.mkdir()
+    (cand / "excel-export.md").write_text("---\nname: excel-export\n---\nA", encoding="utf-8")
+    (cand / "export-excel.md").write_text("---\nname: export-excel\n---\nBB longer body", encoding="utf-8")
+    (cand / "pdf-merge.md").write_text("---\nname: pdf-merge\n---\nC", encoding="utf-8")
+    curator._merge_near_dup_candidates(tmp_path)
+    remaining = sorted(p.name for p in cand.glob("*.md"))
+    # excel-export 与 export-excel 是近义(同 token 集) → 合并为一；pdf-merge 保留
+    assert len(remaining) == 2 and "pdf-merge.md" in remaining
+
+
+def test_merge_near_dup_candidates_no_dir(tmp_path):
+    """skill_candidates 目录不存在 → no-op，不报错。"""
+    curator._merge_near_dup_candidates(tmp_path)  # should not raise
+
+
+def test_merge_near_dup_candidates_single_file(tmp_path):
+    """只有一个候选文件 → no-op。"""
+    cand = tmp_path / "skill_candidates"
+    cand.mkdir()
+    (cand / "solo.md").write_text("---\nname: solo\n---\nonly one", encoding="utf-8")
+    curator._merge_near_dup_candidates(tmp_path)
+    assert list(cand.glob("*.md")) == [cand / "solo.md"]
+
+
+def test_merge_near_dup_candidates_keeps_longest_content(tmp_path):
+    """保留内容最长的候选；并追加亦见注记。"""
+    cand = tmp_path / "skill_candidates"
+    cand.mkdir()
+    (cand / "excel-export.md").write_text("---\nname: excel-export\n---\nshort", encoding="utf-8")
+    (cand / "export-excel.md").write_text("---\nname: export-excel\n---\n" + "x" * 100, encoding="utf-8")
+    curator._merge_near_dup_candidates(tmp_path)
+    remaining = list(cand.glob("*.md"))
+    assert len(remaining) == 1
+    kept = remaining[0]
+    content = kept.read_text(encoding="utf-8")
+    assert "亦见" in content
+
+
+def test_merge_near_dup_candidates_deterministic_tiebreak(tmp_path):
+    """内容等长时按 slug 字典序保留较小的那个。"""
+    cand = tmp_path / "skill_candidates"
+    cand.mkdir()
+    (cand / "excel-export.md").write_text("---\nname: excel-export\n---\nsame", encoding="utf-8")
+    (cand / "export-excel.md").write_text("---\nname: export-excel\n---\nsame", encoding="utf-8")
+    curator._merge_near_dup_candidates(tmp_path)
+    remaining = list(cand.glob("*.md"))
+    assert len(remaining) == 1
+    assert remaining[0].stem == "excel-export"  # 字典序更小
+
+
+def test_merge_near_dup_candidates_never_touches_skills_dir(tmp_path):
+    """skills/ 正式目录绝对不被碰。"""
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    (skills_dir / "excel-export.md").write_text("formal skill", encoding="utf-8")
+    (skills_dir / "export-excel.md").write_text("formal skill 2", encoding="utf-8")
+
+    cand = tmp_path / "skill_candidates"
+    cand.mkdir()
+    (cand / "data-viz.md").write_text("---\nname: data-viz\n---\nA", encoding="utf-8")
+
+    curator._merge_near_dup_candidates(tmp_path)
+
+    # skills/ 下文件完全不变
+    assert (skills_dir / "excel-export.md").exists()
+    assert (skills_dir / "export-excel.md").exists()
+
+
+def test_merge_near_dup_ratio_threshold(tmp_path):
+    """ratio >= 0.85 (e.g. email-send / email-sender) 合并；ratio 低的不合并。"""
+    cand = tmp_path / "skill_candidates"
+    cand.mkdir()
+    # email-send vs email-sender: ratio高(≥0.85)
+    (cand / "email-send.md").write_text("---\nname: email-send\n---\nA", encoding="utf-8")
+    (cand / "email-sender.md").write_text("---\nname: email-sender\n---\nBB longer", encoding="utf-8")
+    # pdf-merge: 与以上无近似
+    (cand / "pdf-merge.md").write_text("---\nname: pdf-merge\n---\nC", encoding="utf-8")
+    curator._merge_near_dup_candidates(tmp_path)
+    remaining = sorted(p.name for p in cand.glob("*.md"))
+    assert len(remaining) == 2 and "pdf-merge.md" in remaining

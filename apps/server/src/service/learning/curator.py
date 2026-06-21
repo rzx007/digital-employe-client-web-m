@@ -1,6 +1,7 @@
 """技能/候选/员工 生命周期 curator：保守闲置老化，绝不删除。搭 librarian 后台 pass。"""
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 from datetime import datetime, timedelta
@@ -124,6 +125,97 @@ def archived_skill_names(brain: Path) -> set[str]:
         return set()
 
 
+def _merge_near_dup_candidates(brain: Path) -> None:
+    """将 <brain>/skill_candidates/ 中的近重复候选合并为单一文件。
+
+    近重复判定（保守，宁漏勿错）：
+      - slug token 集相等（如 excel-export ↔ export-excel），OR
+      - difflib ratio >= 0.85
+
+    合并策略：
+      - 保留内容最长的文件；内容等长则取字典序更小的 slug。
+      - 在保留文件末尾追加 "\\n\\n亦见: <其余slug逗号分隔>"。
+      - 删除其余文件。
+
+    只操作 skill_candidates/，绝不触碰 skills/。best-effort：任何异常只 warn 不 raise。
+    """
+    try:
+        cand_dir = brain / "skill_candidates"
+        if not cand_dir.is_dir():
+            return
+        files = sorted(cand_dir.glob("*.md"))
+        if len(files) < 2:
+            return
+
+        # 收集 (slug, content, path) 三元组
+        entries: list[tuple[str, str, Path]] = []
+        for fp in files:
+            try:
+                content = fp.read_text(encoding="utf-8")
+            except OSError:
+                logger.warning("_merge_near_dup_candidates: cannot read %s", fp, exc_info=True)
+                continue
+            entries.append((fp.stem, content, fp))
+
+        def _is_near_dup(slug_a: str, slug_b: str) -> bool:
+            tokens_a = frozenset(slug_a.split("-"))
+            tokens_b = frozenset(slug_b.split("-"))
+            if tokens_a == tokens_b:
+                return True
+            ratio = difflib.SequenceMatcher(None, slug_a, slug_b).ratio()
+            return ratio >= 0.85
+
+        # 贪心聚类：visited 标记已归入某簇
+        visited = [False] * len(entries)
+        clusters: list[list[int]] = []
+        for i in range(len(entries)):
+            if visited[i]:
+                continue
+            cluster = [i]
+            visited[i] = True
+            for j in range(i + 1, len(entries)):
+                if not visited[j] and _is_near_dup(entries[i][0], entries[j][0]):
+                    cluster.append(j)
+                    visited[j] = True
+            clusters.append(cluster)
+
+        # 对每个大小 > 1 的簇执行合并
+        for cluster in clusters:
+            if len(cluster) == 1:
+                continue
+            # 选代表：最长内容；同长则字典序最小的 slug
+            def _sort_key(idx: int) -> tuple[int, str]:
+                slug, content, _ = entries[idx]
+                return (-len(content), slug)  # 内容越长越优先；同长取 slug 字典序小的
+
+            cluster_sorted = sorted(cluster, key=_sort_key)
+            keep_idx = cluster_sorted[0]
+            drop_indices = cluster_sorted[1:]
+
+            keep_slug, keep_content, keep_path = entries[keep_idx]
+            drop_slugs = [entries[i][0] for i in drop_indices]
+
+            # 追加亦见注记
+            new_content = keep_content.rstrip() + "\n\n亦见: " + ", ".join(sorted(drop_slugs))
+            try:
+                keep_path.write_text(new_content, encoding="utf-8")
+            except OSError:
+                logger.warning("_merge_near_dup_candidates: cannot write %s", keep_path, exc_info=True)
+                continue
+
+            # 删除其余文件
+            for i in drop_indices:
+                try:
+                    entries[i][2].unlink()
+                except OSError:
+                    logger.warning("_merge_near_dup_candidates: cannot delete %s", entries[i][2], exc_info=True)
+
+            logger.info("_merge_near_dup_candidates: merged %s into %s", drop_slugs, keep_slug)
+
+    except Exception:  # noqa: BLE001
+        logger.warning("_merge_near_dup_candidates failed", exc_info=True)
+
+
 def run_curator(employee_id: int) -> None:
     """扫该员工所有已分配技能，按闲置时长更新 skill_lifecycle.json。
 
@@ -205,6 +297,9 @@ def run_curator(employee_id: int) -> None:
 
         _save_lifecycle(brain, lifecycle)
         logger.info("run_curator eid=%s processed %d skills", employee_id, len(rows))
+
+        # B-3: 近重复候选合并（best-effort，异常已在函数内 warn，不阻断 curator）
+        _merge_near_dup_candidates(brain)
 
     except Exception:
         logger.warning("run_curator failed eid=%s", employee_id, exc_info=True)
