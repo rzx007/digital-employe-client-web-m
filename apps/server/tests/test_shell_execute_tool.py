@@ -222,3 +222,67 @@ def test_modules_import_start_service():
 def test_registry_registers_atexit_kill_all_services():
     import src.service.shell_background_registry as reg_mod
     assert getattr(reg_mod, "_ATEXIT_REGISTERED", False) is True
+
+
+def test_watch_background_registers_when_running(monkeypatch):
+    import sys, subprocess, tempfile
+    from src.service.agent.shell_execute_tool import create_watch_background_tool
+    from src.service.shell_background_registry import get_background_shell_registry
+    from src.service.background_watch_registry import get_background_watch_registry
+
+    tmp = tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".stdout"); tmp.close()
+    handle = open(tmp.name, "ab")
+    _grp = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+            if sys.platform == "win32" else {"start_new_session": True})
+    popen = subprocess.Popen([sys.executable, "-u", "-c", "import time; time.sleep(30)"],
+                             stdout=handle, stderr=subprocess.STDOUT, **_grp)
+    handle.close()
+    reg = get_background_shell_registry()
+    sid = reg.register(popen=popen, tmp_path=tmp.name, read_offset=0, command="svc")
+
+    import src.service.agent.shell_execute_tool as mod
+    monkeypatch.setattr(mod, "_resolve_watch_context",
+                        lambda runtime: (123, "curator"))
+
+    tool = create_watch_background_tool()
+    out = tool.invoke({"session_id": sid})
+    assert isinstance(out, str)
+    assert "已登记" in out or "自动" in out
+    wreg = get_background_watch_registry()
+    assert any(w.session_id == sid and w.conversation_id == 123
+               for w in wreg.list_watching())
+    reg.kill(sid)
+    wreg.drop(sid)
+
+
+def test_watch_background_rejects_finished_session():
+    from src.service.agent.shell_execute_tool import create_watch_background_tool
+    tool = create_watch_background_tool()
+    out = tool.invoke({"session_id": "nonexistent-id"})
+    assert isinstance(out, str)
+    assert "已结束" in out or "未找到" in out or "无需" in out
+
+
+def test_watch_background_no_context_does_not_crash(monkeypatch):
+    import sys, subprocess, tempfile
+    from src.service.agent.shell_execute_tool import create_watch_background_tool
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    tmp = tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".stdout"); tmp.close()
+    handle = open(tmp.name, "ab")
+    _grp = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+            if sys.platform == "win32" else {"start_new_session": True})
+    popen = subprocess.Popen([sys.executable, "-u", "-c", "import time; time.sleep(30)"],
+                             stdout=handle, stderr=subprocess.STDOUT, **_grp)
+    handle.close()
+    reg = get_background_shell_registry()
+    sid = reg.register(popen=popen, tmp_path=tmp.name, read_offset=0, command="svc")
+
+    import src.service.agent.shell_execute_tool as mod
+    monkeypatch.setattr(mod, "_resolve_watch_context", lambda runtime: (None, None))
+
+    tool = create_watch_background_tool()
+    out = tool.invoke({"session_id": sid})
+    assert isinstance(out, str)
+    assert "无法登记" in out or "缺会话" in out
+    reg.kill(sid)

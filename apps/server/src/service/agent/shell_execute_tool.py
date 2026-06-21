@@ -307,3 +307,74 @@ def create_start_service_tool() -> BaseTool:
             "会结束的普通命令用 shell_execute，不要用本工具。"
         ),
     )
+
+
+def _resolve_watch_context(runtime) -> tuple[int | None, str | None]:
+    """从 tool runtime 取 (conversation_id, target_type)。runtime 不可用时返回 (None, None)。"""
+    from src.service.agent.orchestrator.runtime import conversation_id_from_runtime
+
+    conv_id = conversation_id_from_runtime(runtime)
+    if conv_id is None:
+        return None, None
+    target_type = None
+    try:
+        from src.db.session import get_session_local
+
+        db = get_session_local()()
+        try:
+            from src.models.conversation import Conversation
+
+            conv = db.get(Conversation, conv_id)
+            target_type = conv.target_type if conv is not None else None
+        finally:
+            db.close()
+    except Exception:
+        target_type = None
+    return conv_id, target_type
+
+
+def create_watch_background_tool() -> BaseTool:
+    from langchain.tools import ToolRuntime
+    from langchain_core.tools import tool as _tool
+
+    from src.service.shell_background_registry import get_background_shell_registry
+    from src.service.background_watch_registry import get_background_watch_registry
+
+    @_tool("watch_background")
+    def _watch_background(
+        session_id: str,
+        runtime: ToolRuntime[None, None] = None,
+    ) -> str:
+        """登记一个后台运行的命令（shell_execute 转后台返回的 session_id），
+
+        命令真正完成后系统会自动唤醒我回到本会话继续处理（带上命令结果）。
+        判断是超大任务、不想让用户盯着时用它；登记后体面收尾本轮即可。
+
+        Args:
+            session_id: shell_execute 转后台返回的会话 id
+        """
+        r = get_background_shell_registry().poll(session_id)
+        if not r.get("found"):
+            return (
+                f"未找到后台命令 session_id={session_id}（可能已结束并被回收）；"
+                f"用 shell_poll 看结果即可，无需 watch。"
+            )
+        if not r.get("running"):
+            return (
+                f"该命令已结束(exit_code={r.get('exit_code')})，无需 watch；"
+                f"用 shell_poll(session_id={session_id}) 看结果即可。"
+            )
+        conv_id, target_type = _resolve_watch_context(runtime)
+        if conv_id is None or target_type is None:
+            return "无法登记（缺会话上下文）；请改用 shell_wait/shell_poll 自己取结果。"
+        get_background_watch_registry().register_watch(
+            session_id=session_id,
+            conversation_id=conv_id,
+            target_type=target_type,
+        )
+        return (
+            f"已登记：后台命令 session_id={session_id} 完成后，我会自动回到本会话继续，"
+            f"你不用盯着。期间你可以做别的。"
+        )
+
+    return _watch_background
