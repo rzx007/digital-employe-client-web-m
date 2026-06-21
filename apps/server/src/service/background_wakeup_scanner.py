@@ -127,9 +127,11 @@ def _start_wake_stream_on_main(conv_id, asst_id, workspace_id, target_type,
 
         orch_db = _new_db_session()
         try:
+            from src.service.agent_stream_queue import StartResult
+
             agent = get_orchestrator_agent(workspace_id, orch_db, conv_id,
                                            employee_id=None, bind_context=False)
-            stream_registry.start(
+            result = stream_registry.start(
                 conversation_id=conv_id, agent=agent, messages=messages,
                 config=config, stream_msg_id=asst_id, skill_name="",
                 debug_content_only=False,
@@ -138,6 +140,10 @@ def _start_wake_stream_on_main(conv_id, asst_id, workspace_id, target_type,
                 orchestrator_conversation_id=conv_id,
                 source="background_wakeup",
             )
+            # 被拒（会话在 scan 与 start 之间又忙起来）：回收 orch_db，防泄漏（对齐 _start_curator_task）
+            if result == StartResult.REJECTED:
+                reset_context(conv_id)
+                orch_db.close()
         except Exception:
             logger.warning("[bg-wake] curator start failed conv=%s", conv_id,
                            exc_info=True)
