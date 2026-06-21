@@ -50,9 +50,10 @@ class ShellExecuteInput(BaseModel):
     timeout: int | None = Field(
         default=None,
         description=(
-            "可选：前台等待上限（秒）。命令在此时间内完成则直接返回结果；超时仍未完成"
-            "则自动转后台运行、返回 session_id（输出不会丢失），用 shell_poll(session_id) 查进度、"
-            "shell_kill(session_id) 终止。预计耗时长的命令建议设较小值（如 30）。"
+            "可选：前台等待上限（秒）。一般命令不用传（默认 60，几秒内完成的会同步返回）；"
+            "仅预判长任务（扫盘/编译/下载/拉镜像）时才传较大值（如 120-300）让它前台多等。"
+            "超时仍未完成则自动转后台、返回 session_id（输出不丢失），"
+            "随后用 shell_wait(session_id) 有节奏地等结果、shell_kill(session_id) 终止。"
         ),
     )
 
@@ -133,8 +134,8 @@ def create_shell_poll_tool() -> BaseTool:
         name="shell_poll",
         args_schema=_PollInput,
         description=(
-            "查询 shell_execute 转后台运行的命令：返回新增 stdout、是否仍在运行、退出码。"
-            "需要结果时再调用，勿空转轮询。"
+            "快速查询一次 shell_execute 转后台运行的命令：返回新增 stdout、是否仍在运行、退出码。"
+            "只查一眼用它；要**等结果**请用 shell_wait（阻塞等一轮），勿用 poll 空轮询。"
         ),
     )
 

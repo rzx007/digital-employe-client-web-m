@@ -142,3 +142,16 @@ def test_employee_and_orchestrator_modules_import_shell_wait():
     import src.service.agent.orchestrator.agent as orch
     assert hasattr(emp, "create_shell_wait_tool")
     assert hasattr(orch, "create_shell_wait_tool")
+
+
+def test_timeout_description_steers_to_default_and_background():
+    from src.service.agent.shell_execute_tool import ShellExecuteInput
+    desc = ShellExecuteInput.model_fields["timeout"].description
+    assert "默认 60" in desc
+    assert "shell_wait" in desc
+
+
+def test_poll_description_points_to_wait_for_waiting():
+    from src.service.agent.shell_execute_tool import create_shell_poll_tool
+    desc = create_shell_poll_tool().description
+    assert "shell_wait" in desc
