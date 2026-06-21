@@ -12,6 +12,7 @@ import { getWindowManager } from "../../core/services/window-registry"
 import { rootLogger as logger } from "../../core/logger"
 import { injectHighlightStyles } from "./browser-highlight"
 import {
+  computeFallbackBounds,
   cssViewportBoxToDipBounds,
   MEASURE_BROWSER_VIEWPORT_SCRIPT,
 } from "./viewport-bounds"
@@ -20,7 +21,6 @@ const PARTITION_NAME = "persist:browser-panel"
 const DEFAULT_WIDTH_RATIO = 0.6
 const MIN_WIDTH_RATIO = 0.3
 const MAX_WIDTH_RATIO = 0.8
-const HEADER_OFFSET_Y = 40
 const MIN_VIEWPORT_PX = 40
 
 /** Chromium：导航被取消（连续 load / 改 bounds 时常见），勿当网络错误 */
@@ -155,13 +155,22 @@ export class BrowserWindowController {
       await new Promise((r) => setTimeout(r, 80))
     }
 
-    if (!this.hasValidBounds()) {
-      throw new Error("BROWSER_VIEWPORT_NOT_READY")
+    if (this.hasValidBounds()) {
+      // 前台会话：视口已挂载并测得真实 bounds → 摊开可见
+      view.setVisible(true)
+      this.applyBounds(main)
+      this.attachBrowserSubview(main)
+    } else {
+      // 离屏后台：总管派活 / 用户停在别的会话 → 视口 DOM 未挂载，测不到 bounds。
+      // 不再抛 BROWSER_VIEWPORT_NOT_READY，改用内容尺寸兜底布局让 WebContents
+      // 能正常渲染/导航；View 保持不可见（前台切到该会话时视口挂载后由
+      // applyViewportLayout 测得真实 bounds 摊开）。
+      // 不写回 this.viewportBounds——那是「前台已测视口」字段，污染它会让后续
+      // layout 误判为前台而把后台视图翻可见、盖住当前界面。直接 setBounds 即可。
+      this.applyOffscreenBounds(main)
+      view.setVisible(false)
+      this.attachBrowserSubview(main)
     }
-
-    view.setVisible(true)
-    this.applyBounds(main)
-    this.attachBrowserSubview(main)
 
     const wc = this.getBrowserWebContents()
     if (!wc || wc.isDestroyed()) {
@@ -548,6 +557,30 @@ export class BrowserWindowController {
     })
   }
 
+  /**
+   * 离屏后台兜底：用内容尺寸算 bounds 直接 setBounds，但不写回 viewportBounds，
+   * 避免后续 layout 误判为前台而翻可见。仅供 prepareViewportForBridge 后台分支用。
+   */
+  private applyOffscreenBounds(main: BrowserWindow): void {
+    const view = this.browserView
+    const container = this.browserContainer
+    if (!view || !container || view.webContents.isDestroyed()) return
+
+    const [contentWidth, contentHeight] = main.getContentSize()
+    const bounds = computeFallbackBounds(
+      contentWidth,
+      contentHeight,
+      this.widthRatio
+    )
+    container.setBounds(bounds)
+    view.setBounds({
+      x: 0,
+      y: 0,
+      width: bounds.width,
+      height: bounds.height,
+    })
+  }
+
   private computeBounds(main: BrowserWindow): Rectangle {
     const vp = this.viewportBounds
     if (vp && vp.width >= MIN_VIEWPORT_PX && vp.height >= MIN_VIEWPORT_PX) {
@@ -560,13 +593,7 @@ export class BrowserWindowController {
     }
 
     const [contentWidth, contentHeight] = main.getContentSize()
-    const width = Math.round(contentWidth * this.widthRatio)
-    return {
-      x: contentWidth - width,
-      y: HEADER_OFFSET_Y,
-      width,
-      height: Math.max(0, contentHeight - HEADER_OFFSET_Y),
-    }
+    return computeFallbackBounds(contentWidth, contentHeight, this.widthRatio)
   }
 
   private attachEventForwarders(

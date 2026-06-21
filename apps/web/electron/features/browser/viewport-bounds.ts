@@ -17,6 +17,29 @@ export interface DipViewportBounds {
   height: number
 }
 
+/** 内嵌浏览器顶部工具条高度，兜底布局据此下移视口 */
+export const HEADER_OFFSET_Y = 40
+
+/**
+ * 无 DOM 视口测量时的兜底布局：按主窗口内容尺寸 + widthRatio 摊在右侧。
+ * 供「离屏后台」(总管派活、用户停在别的会话→视口未挂载) 复用——
+ * View 保持不可见，但仍需真实 bounds 才能渲染/导航。
+ * 放在本 (无 electron 依赖) 模块以便单测。
+ */
+export function computeFallbackBounds(
+  contentWidth: number,
+  contentHeight: number,
+  widthRatio: number
+): DipViewportBounds {
+  const width = Math.round(contentWidth * widthRatio)
+  return {
+    x: contentWidth - width,
+    y: HEADER_OFFSET_Y,
+    width,
+    height: Math.max(0, contentHeight - HEADER_OFFSET_Y),
+  }
+}
+
 /** 在 main.webContents 中 executeJavaScript 执行 */
 export const MEASURE_BROWSER_VIEWPORT_SCRIPT = `(() => {
   const el = document.querySelector('[data-browser-viewport]');
