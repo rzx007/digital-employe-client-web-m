@@ -24,6 +24,13 @@ def test_compute_last_used_takes_max_of_sources():
     assert curator._effective_last_used(assign, None, None, None) == assign
 
 
+def test_effective_last_used_restored_wins():
+    """restored_at 是四源中最新时，应成为 last_used。"""
+    assert curator._effective_last_used(
+        datetime(2026, 1, 1), datetime(2026, 2, 1), None, datetime(2026, 5, 1)
+    ) == datetime(2026, 5, 1)
+
+
 def test_age_status_thresholds():
     now = datetime(2026, 6, 1)
     assert curator._age_status(now - timedelta(days=5), now, pinned=False)[0] == "active"

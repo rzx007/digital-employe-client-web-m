@@ -8,6 +8,16 @@ from pathlib import Path
 
 from sqlalchemy import func, select
 
+# CST 在首次 run_curator 调用时才可用，模块级 _to_aware 用延迟引用
+def _to_aware(dt: datetime | None) -> datetime | None:
+    """naive datetime → CST-aware；None 原样透传。"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        from src.models.workspace import CST
+        return dt.replace(tzinfo=CST)
+    return dt
+
 logger = logging.getLogger(__name__)
 
 _LIFECYCLE_FILE = "skill_lifecycle.json"
@@ -32,9 +42,10 @@ def _load_lifecycle(brain: Path) -> dict:
 def _save_lifecycle(brain: Path, data: dict) -> None:
     """best-effort 写回（含 updated_at）。"""
     try:
+        from src.models.workspace import cst_now
         brain.mkdir(parents=True, exist_ok=True)
         data = dict(data)
-        data["updated_at"] = datetime.now().isoformat(timespec="seconds")
+        data["updated_at"] = cst_now().isoformat(timespec="seconds")
         (brain / _LIFECYCLE_FILE).write_text(
             json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError:
@@ -94,12 +105,8 @@ def run_curator(employee_id: int) -> None:
                 skill_name = row.skill_name
                 skill_id = row.skill_id
 
-                # assign 基线（tz-aware）
+                # assign 基线（tz-aware，由 _to_aware 统一规整）
                 assign = row.created_at
-                # 确保 assign 是 tz-aware（应该始终是，但防御）
-                if assign is not None and assign.tzinfo is None:
-                    from datetime import timezone
-                    assign = assign.replace(tzinfo=CST)
 
                 # task max
                 task_max = db.execute(
@@ -131,13 +138,6 @@ def run_curator(employee_id: int) -> None:
                         restored_dt = None
 
                 # SQLite 返回 naive datetime；统一转成 CST-aware 以便与 now 比较
-                def _to_aware(dt: datetime | None) -> datetime | None:
-                    if dt is None:
-                        return None
-                    if dt.tzinfo is None:
-                        return dt.replace(tzinfo=CST)
-                    return dt
-
                 assign = _to_aware(assign)
                 task_max = _to_aware(task_max)
                 rating_max = _to_aware(rating_max)
