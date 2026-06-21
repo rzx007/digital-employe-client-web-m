@@ -36,3 +36,16 @@ def test_employee_prompt_has_rhythmic_wait_guidance():
     assert "shell_wait" in src
     assert "有节奏" in src
     assert "稍后问我进度" in src
+
+
+def test_orchestrator_prompt_has_start_service_guidance():
+    from src.service.agent.orchestrator.prompts import (
+        ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE,
+    )
+    assert "start_service" in ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE
+
+
+def test_employee_prompt_has_start_service_guidance():
+    import inspect
+    import src.service.agent.prompts as prompts_mod
+    assert "start_service" in inspect.getsource(prompts_mod)
