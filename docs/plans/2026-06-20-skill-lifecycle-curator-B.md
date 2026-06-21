@@ -183,7 +183,7 @@ def test_run_curator_ages_skills(tmp_path, monkeypatch, db_session):
 ```
 > 用现有测试的 DB fixture（grep tests/ 找 `db_session`/in-memory session 的范式）；造 `EmployeeSkill`(created_at 120 天前) + 一条 `TaskExecutionLog`(今天, skill_id=B)。monkeypatch `_brain_root_for`→tmp_path。
 
-- [ ] **Step 6: 实现 `run_curator(employee_id)`**：开 session（仿 librarian 其它函数）；读该员工 `EmployeeSkill` 行（skill_id↔skill_name + created_at 基线）；对每个技能查 `max(TaskExecutionLog.created_at)`、`max(SkillRating.created_at)`（按 employee_id+skill_id）；读 lifecycle.json 取 pinned/restored_at；算 `_effective_last_used` → `_age_status` → 写回 lifecycle.json。全程容错（异常只 warning，不阻断 librarian）。
+- [ ] **Step 6: 实现 `run_curator(employee_id)`**：⚠️ **自开 DB session**——librarian 现有函数只读 brain 文件、**不开 session**，不能仿；改为 `from src.db.session import get_session_local; db = get_session_local()(); try: ... finally: db.close()`（与 [update_skill_tool.py](../../apps/server/src/service/agent/update_skill_tool.py) `_apply_skill_update` / [employee.py:254](../../apps/server/src/service/agent/employee.py#L254) 同款）。brain 路径用 `librarian._brain_root_for(employee_id)`。流程：读该员工 `EmployeeSkill` 行（skill_id↔skill_name + created_at 基线）；对每个技能查 `max(TaskExecutionLog.created_at)`、`max(SkillRating.created_at)`（按 employee_id+skill_id）；读 lifecycle.json 取 pinned/restored_at；算 `_effective_last_used` → `_age_status` → 写回 lifecycle.json。全程容错（异常只 warning，不阻断 librarian）。
 
 - [ ] **Step 7: 挂进 librarian**：在 `run_librarian`（librarian.py）的 `promote_skills(employee_id)` 之后加：
 ```python
@@ -261,7 +261,8 @@ def test_restore_and_pin(tmp_path):
 
 - [ ] **Step 2-4:** 实现 `restore_skill(brain, name)`（status→active、restored_at=now、archived_at=None）与 `set_pinned(brain, name, pinned)`（写 pinned；技能不在表里则创建条目）→ 跑测试通过。
 
-- [ ] **Step 5: payload 暴露**：在 `build_employee_growth_brain`（[employee_service.py](../../apps/server/src/service/employee_service.py) ~L1450，A 已在此加过 `recent_skill_edits`）追加 `skill_lifecycle`：读该员工 brain 的 lifecycle.json，返回 `{skill_name: {status, pinned}}`（best-effort，缺失→{}）。同步 schema `EmployeeGrowthBrainRead`。
+- [ ] **Step 5: payload 暴露**：在 `build_employee_growth_brain`（[employee_service.py](../../apps/server/src/service/employee_service.py) ~L1398，A 已在此加过 `recent_skill_edits`）追加 `skill_lifecycle`：读该员工 brain 的 lifecycle.json（用 `_growth_brain_root_for`），返回 `{skill_name: {status, pinned}}`（best-effort，缺失→{}）。同步 schema `EmployeeGrowthBrainRead`。
+  > ⚠️ **测试 mock 一致性**：curator 写 lifecycle 走 `librarian._brain_root_for`，本 payload 读走 `employee_service._growth_brain_root_for`——两者实现字节相同、生产同路径，但单测里**须把两个 helper 都 patch 到同一 tmp_path**（或测试直接用真实路径 seed lifecycle.json），否则读写错位测试假绿/假红。
 
 - [ ] **Step 6: 端点**：在 employee_api.py 加 `POST /employees/{id}/growth/skills/{skill_name}/restore` 与 `.../pin`（body `{pinned: bool}`）。解析 brain：`_brain_root_for(id)`；skill_name 防穿越（沿用 A 的 `_VERSION_RE` 思路或复用既有 skill name 校验 `_validate_skill_slug`/`_normalize_skill_name`）。写端点测试（TestClient，仿 A 的 restore 端点测试）。
 
