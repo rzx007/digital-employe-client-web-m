@@ -188,7 +188,8 @@ def create_shell_wait_tool() -> BaseTool:
             )
         return (
             f"[仍在运行] 已等待 {r['waited_seconds']}s 未完成。新增输出:\n{body}\n"
-            f"[offset={r['offset']}] 可再 shell_wait 等一轮，或判断是超大任务后告知用户稍后问进度。"
+            f"[offset={r['offset']}] 可再 shell_wait 等一轮；若判断是超大任务，"
+            f"调 watch_background(session_id) 登记——完成后我会自动回到本会话继续，不必让用户盯着。"
         )
 
     return StructuredTool.from_function(

@@ -645,7 +645,8 @@ class SkillAwareShellBackend(LocalShellBackend):
                 f"\n[命令仍在后台运行，session_id={background_session_id}（输出不会丢失）。"
                 f"要结果就用 shell_wait(session_id, N) 有节奏地等一轮（N 如 30-60s），"
                 f"没完成再等一轮；shell_poll(session_id) 只查一眼，shell_kill(session_id) 终止。"
-                f"判断是超大任务时告诉用户稍后问你进度并体面收尾，勿杀了重试。]"
+                f"判断是超大任务时调 watch_background(session_id) 登记，完成后系统会自动唤醒我回到本会话继续；"
+                f"然后体面收尾，勿杀了重试。]"
             )
             return ExecuteResponse(
                 output=(partial + note),

@@ -65,6 +65,7 @@ def build_filesystem_prompt_section(
         - 若 shell_execute 返回 exit code=0 但输出为空，先判断为命令可能是静默成功，不要立刻改用 python -c 重跑
         - **慢命令有节奏地等、别试错重试**：命令较慢会在默认 60s 后自动转后台、返回 session_id（输出不丢失）。此时用 `shell_wait(session_id, N)`（N 自定，如 30-60s）等一轮，没完成再 `shell_wait` 等一轮——绝大多数任务等一两轮就完成、直接拿结果。只有等了几轮判断是**真·超大任务**（拉大镜像/全盘扫描/大型编译，远未完）时，才告诉用户「这个任务较耗时、已在后台运行，你可以稍后问我进度」并体面收尾（后台仍在跑）。**不要**因为「还没完成」就 `shell_kill` 杀掉重试或换命令重来；没报错就是在正常跑。
         - **起常驻服务用 start_service**：dev server / uvicorn / `pnpm dev` 这类**永不自己结束**的服务，用 `start_service(command, ready=...)` 起（ready 选 stdout 关键词/http 健康/纯等 N 秒），就绪后返回 service_id；看日志 shell_poll/shell_wait(service_id)、停服务 shell_kill(service_id)。**别**用 shell_execute 起服务（会一直等 timeout 转后台、语义不对）。
+        - **超大任务用 watch_background 登记**：等了几轮判断是真·超大任务（拉大镜像/全盘扫描/大型编译）时，调 `watch_background(session_id)` 登记——命令完成后系统会**自动唤醒你回到本会话继续**（带上结果）。告诉用户「这任务较久，完成后我会自动回来继续，你不用盯着」，然后体面收尾。不必再让用户「稍后问你进度」。
 
         ### 用户可见产物（产物目录 $ARTIFACTS_DIR）
         - 代码、报告、导出数据等交付给用户看的文件：写入产物目录（相对文件名即可，cwd 即该目录；或用 `$ARTIFACTS_DIR/<名>`）

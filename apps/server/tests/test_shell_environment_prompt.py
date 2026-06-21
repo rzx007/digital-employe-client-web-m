@@ -49,3 +49,16 @@ def test_employee_prompt_has_start_service_guidance():
     import inspect
     import src.service.agent.prompts as prompts_mod
     assert "start_service" in inspect.getsource(prompts_mod)
+
+
+def test_orchestrator_prompt_mentions_watch_background():
+    from src.service.agent.orchestrator.prompts import (
+        ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE,
+    )
+    assert "watch_background" in ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE
+
+
+def test_employee_prompt_mentions_watch_background():
+    import inspect
+    import src.service.agent.prompts as prompts_mod
+    assert "watch_background" in inspect.getsource(prompts_mod)

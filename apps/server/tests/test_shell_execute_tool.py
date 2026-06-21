@@ -303,3 +303,10 @@ def test_modules_import_watch_background():
 def test_scheduler_has_run_scan_and_wake_job():
     from src.service.task_scheduler_service import TaskSchedulerService
     assert hasattr(TaskSchedulerService, "run_scan_and_wake_job")
+
+
+def test_shell_wait_running_message_mentions_watch_background():
+    import inspect
+    import src.service.agent.shell_execute_tool as mod
+    src = inspect.getsource(mod.create_shell_wait_tool)
+    assert "watch_background" in src
