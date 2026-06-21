@@ -205,3 +205,20 @@ def test_start_service_tool_http_requires_port():
     })
     assert isinstance(out, str)
     assert "port" in out.lower()
+
+
+def test_start_service_factory_named_correctly():
+    from src.service.agent.shell_execute_tool import create_start_service_tool
+    assert create_start_service_tool().name == "start_service"
+
+
+def test_modules_import_start_service():
+    import src.service.agent.employee as emp
+    import src.service.agent.orchestrator.agent as orch
+    assert hasattr(emp, "create_start_service_tool")
+    assert hasattr(orch, "create_start_service_tool")
+
+
+def test_registry_registers_atexit_kill_all_services():
+    import src.service.shell_background_registry as reg_mod
+    assert getattr(reg_mod, "_ATEXIT_REGISTERED", False) is True

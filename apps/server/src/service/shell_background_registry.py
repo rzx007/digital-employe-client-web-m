@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 import signal
@@ -225,3 +226,17 @@ def get_background_shell_registry() -> BackgroundShellRegistry:
             if _GLOBAL_REGISTRY is None:
                 _GLOBAL_REGISTRY = BackgroundShellRegistry()
     return _GLOBAL_REGISTRY
+
+
+_ATEXIT_REGISTERED = False
+
+
+def _register_atexit_once() -> None:
+    global _ATEXIT_REGISTERED
+    if _ATEXIT_REGISTERED:
+        return
+    atexit.register(lambda: get_background_shell_registry().kill_all_services())
+    _ATEXIT_REGISTERED = True
+
+
+_register_atexit_once()
