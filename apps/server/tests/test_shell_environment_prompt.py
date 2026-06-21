@@ -62,3 +62,20 @@ def test_employee_prompt_mentions_watch_background():
     import inspect
     import src.service.agent.prompts as prompts_mod
     assert "watch_background" in inspect.getsource(prompts_mod)
+
+
+def test_orchestrator_prompt_mentions_predict_long_task_background():
+    from src.service.agent.orchestrator.prompts import (
+        ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE,
+    )
+    p = ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE
+    assert "预判会跑很久" in p or "预判会久" in p
+    assert "下载" in p and "watch_background" in p
+
+
+def test_employee_prompt_mentions_predict_long_task_background():
+    import inspect
+    import src.service.agent.prompts as prompts_mod
+    src = inspect.getsource(prompts_mod)
+    assert "预判会跑很久" in src or "预判会久" in src
+    assert "下载" in src
