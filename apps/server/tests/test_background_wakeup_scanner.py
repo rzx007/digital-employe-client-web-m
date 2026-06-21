@@ -124,3 +124,22 @@ def test_sweep_stale_called():
     _scan(shell_registry=shell_reg, watch_registry=watch_reg,
           stream_registry=stream_reg, wake_fn=lambda w, r: None)
     assert watch_reg.swept == 1
+
+
+def test_build_wake_messages_contains_session_and_exit_and_output():
+    from src.service.background_wakeup_scanner import _build_wake_user_message
+    msg = _build_wake_user_message(
+        session_id="s9", exit_code=0,
+        new_output="line1\nline2\nline3\n", tail_lines=2,
+    )
+    assert "s9" in msg
+    assert "exit_code=0" in msg or "exit_code" in msg
+    assert "line2" in msg and "line3" in msg
+    assert "line1" not in msg
+
+
+def test_build_wake_messages_no_output_marker():
+    from src.service.background_wakeup_scanner import _build_wake_user_message
+    msg = _build_wake_user_message(session_id="s9", exit_code=1, new_output="", tail_lines=20)
+    assert "s9" in msg
+    assert "输出已被回收" in msg or "无输出" in msg

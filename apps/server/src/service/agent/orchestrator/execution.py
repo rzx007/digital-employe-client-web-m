@@ -504,6 +504,58 @@ def start_task_as_conversation(
     return conversation_id
 
 
+def build_employee_agent_for_wake(conversation_id: int):
+    """为后台命令完成续跑(_default_wake_fn 的 employee 分支)构造员工 agent。
+
+    尽力而为：从会话(target_type="employee" 时 target_id=employee_id)解析员工，
+    复用 start_task_as_conversation 的 skills_path/root_path 解析方式。续跑不挂 HITL
+    （没有真人在对面），其余参数用合理默认值。必须在主事件循环线程上调用。
+    调用方对本函数的异常做了 try/except 兜底，故此处直接抛出即可。
+    """
+    from src.models.conversation import Conversation
+    from src.models.employee import Employee
+    from src.service.agent.employee import get_agent
+    from src.service.chat_service import ChatService
+
+    db = None
+    from src.db.session import get_session_local
+
+    db = get_session_local()()
+    try:
+        conv = db.get(Conversation, conversation_id)
+        if conv is None:
+            raise RuntimeError(f"[bg-wake] conversation {conversation_id} 不存在")
+        employee = db.get(Employee, conv.target_id)
+        if employee is None:
+            raise RuntimeError(
+                f"[bg-wake] employee {conv.target_id} 不存在 conv={conversation_id}"
+            )
+
+        try:
+            skills_path = ChatService.resolve_employee_skills_dir(
+                skills_payload=employee.skills_json,
+                employee_id=employee.id,
+                employee_name=employee.name,
+                employee_code=employee.employee_code,
+            )
+        except Exception:
+            skills_path = ""
+
+        settings = get_settings()
+        root_path = settings.artifacts_path
+        employee_id = employee.id
+    finally:
+        db.close()
+
+    return get_agent(
+        skills_path,
+        root_path,
+        employee_id=employee_id,
+        conversation_id=conversation_id,
+        enable_hitl=False,
+    )
+
+
 def should_skip_orchestrator_wait(*, prereq_briefing: str = "") -> bool:
     """是否跳过「等编排会话 astream 结束再启员工流」。
 
