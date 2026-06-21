@@ -39,6 +39,26 @@
 | `MISSING_CONVERSATION_ID` | `open-artifact` 缺会话标识（shell 未注入 `CONVERSATION_ID`） |
 | `CANNOT_RESOLVE_PATH` | `open-artifact` 给纯文件名但 `$ARTIFACTS_DIR` 未注入；改用绝对路径，或在产物目录 cwd 下。会话目录外的文件由后端 404（先复制进产物目录再打开） |
 
+## ⚠️ 关键约定：不要把 `health` 当门禁
+
+`browserctl health` 的 `browser_available` 字段表示**此刻内嵌浏览器实例是否已存在**，
+而**不是**「浏览器能否使用」。内嵌浏览器是惰性创建的：只有 `open` / `navigate` 才会
+创建它，`health` 自己**永远不会**创建。
+
+因此存在一个完全正常、并非故障的情况：
+
+- 当任务**由组长/总管派单**（离屏后台会话）或用户停在别的会话时，浏览器尚未创建，
+  `health` 会如实返回 `browser_available: false`、`url: ""`。
+- 此时**直接 `browserctl open <url>` 即可**——`open` 会走离屏兜底分支创建浏览器并完成
+  导航（视图保持不可见，用户切回该会话时自动摊开）。
+
+**绝对不要**因为 `health` 返回 `browser_available: false` 就判定浏览器不可用、转去用
+Python/requests 抓页面。那是误判：`open` 仍会成功。只有当 `open` / `navigate` 本身返回
+`ok:false`（如 `BROWSER_UNAVAILABLE`、`BRIDGE_CONNECT_FAILED`）时才说明浏览器真的不可用。
+
+> 正确流程：**直接 `open`** →（按需 `wait`）→ `snapshot` / `extract-text`。
+> `health` 仅用于排查 bridge 连通性，**不是**使用浏览器前的必经检查。
+
 ## 命令
 
 ```bash
