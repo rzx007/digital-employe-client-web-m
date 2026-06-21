@@ -194,13 +194,24 @@ def test_service_restore_skill_lifecycle(tmp_path, db_session, workspace, monkey
 
     monkeypatch.setattr(es, "_growth_brain_root_for", lambda eid: brain_dir)
 
-    result = es.EmployeeService.restore_skill_lifecycle(emp.id, "pptx")
+    result = es.EmployeeService.restore_skill_lifecycle(db_session, emp.id, "pptx")
     assert result["skillName"] == "pptx"
     assert result["status"] == "active"
 
     entry = curator._load_lifecycle(brain_dir)["skills"]["pptx"]
     assert entry["status"] == "active"
     assert entry["restored_at"] is not None
+
+
+def test_service_restore_skill_lifecycle_unknown_employee(db_session):
+    """restore_skill_lifecycle：不存在的 employee_id → 404。"""
+    from src.service import employee_service as es
+    from fastapi import HTTPException
+    import pytest as _pytest
+
+    with _pytest.raises(HTTPException) as exc_info:
+        es.EmployeeService.restore_skill_lifecycle(db_session, 99999999, "pptx")
+    assert exc_info.value.status_code == 404
 
 
 def test_service_set_skill_pinned(tmp_path, db_session, workspace, monkeypatch):
@@ -214,7 +225,7 @@ def test_service_set_skill_pinned(tmp_path, db_session, workspace, monkeypatch):
 
     monkeypatch.setattr(es, "_growth_brain_root_for", lambda eid: brain_dir)
 
-    result = es.EmployeeService.set_skill_pinned(emp.id, "xlsx", True)
+    result = es.EmployeeService.set_skill_pinned(db_session, emp.id, "xlsx", True)
     assert result["skillName"] == "xlsx"
     assert result["pinned"] is True
 
@@ -223,8 +234,21 @@ def test_service_set_skill_pinned(tmp_path, db_session, workspace, monkeypatch):
     assert entry["status"] == "active"
 
 
+def test_service_set_skill_pinned_unknown_employee(db_session):
+    """set_skill_pinned：不存在的 employee_id → 404。"""
+    from src.service import employee_service as es
+    from fastapi import HTTPException
+    import pytest as _pytest
+
+    with _pytest.raises(HTTPException) as exc_info:
+        es.EmployeeService.set_skill_pinned(db_session, 99999999, "xlsx", True)
+    assert exc_info.value.status_code == 404
+
+
 def test_service_skill_lifecycle_validates_name(tmp_path, db_session, workspace, monkeypatch):
-    """skill_name 含路径穿越字符（../../x）时 restore/pin 应抛 HTTPException (400)。"""
+    """skill_name 含路径穿越字符（../../x）时 restore/pin 应抛 HTTPException (400)。
+    需要真实 employee_id，以便 get_employee 通过后才触发名称校验。
+    """
     from tests.conftest import add_employee
     from src.service import employee_service as es
     from fastapi import HTTPException
@@ -236,11 +260,11 @@ def test_service_skill_lifecycle_validates_name(tmp_path, db_session, workspace,
 
     import pytest as _pytest
     with _pytest.raises(HTTPException) as exc_info:
-        es.EmployeeService.restore_skill_lifecycle(emp.id, "../../etc/passwd")
+        es.EmployeeService.restore_skill_lifecycle(db_session, emp.id, "../../etc/passwd")
     assert exc_info.value.status_code == 400
 
     with _pytest.raises(HTTPException) as exc_info2:
-        es.EmployeeService.set_skill_pinned(emp.id, "../../etc/passwd", True)
+        es.EmployeeService.set_skill_pinned(db_session, emp.id, "../../etc/passwd", True)
     assert exc_info2.value.status_code == 400
 
 
@@ -298,9 +322,20 @@ def test_endpoint_restore_skill(tmp_path, db_session, workspace, monkeypatch):
         "pptx": {"status": "archived", "pinned": False, "archived_at": "x", "restored_at": None}
     }})
 
-    resp = employee_api.restore_skill_lifecycle(emp.id, "pptx")
+    resp = employee_api.restore_skill_lifecycle(emp.id, "pptx", db_session)
     assert resp.data["status"] == "active"
     assert curator._load_lifecycle(brain_dir)["skills"]["pptx"]["status"] == "active"
+
+
+def test_endpoint_restore_skill_unknown_employee(db_session):
+    """endpoint restore：不存在的 employee_id → 404。"""
+    from src.api import employee_api
+    from fastapi import HTTPException
+    import pytest as _pytest
+
+    with _pytest.raises(HTTPException) as exc_info:
+        employee_api.restore_skill_lifecycle(99999999, "pptx", db_session)
+    assert exc_info.value.status_code == 404
 
 
 def test_endpoint_pin_skill(tmp_path, db_session, workspace, monkeypatch):
@@ -315,13 +350,27 @@ def test_endpoint_pin_skill(tmp_path, db_session, workspace, monkeypatch):
     brain_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(es, "_growth_brain_root_for", lambda eid: brain_dir)
 
-    resp = employee_api.set_skill_pinned(emp.id, "xlsx", SkillPinRequest(pinned=True))
+    resp = employee_api.set_skill_pinned(emp.id, "xlsx", SkillPinRequest(pinned=True), db_session)
     assert resp.data["pinned"] is True
     assert curator._load_lifecycle(brain_dir)["skills"]["xlsx"]["pinned"] is True
 
 
+def test_endpoint_pin_skill_unknown_employee(db_session):
+    """endpoint pin：不存在的 employee_id → 404。"""
+    from src.api import employee_api
+    from src.schemas.employee import SkillPinRequest
+    from fastapi import HTTPException
+    import pytest as _pytest
+
+    with _pytest.raises(HTTPException) as exc_info:
+        employee_api.set_skill_pinned(99999999, "xlsx", SkillPinRequest(pinned=True), db_session)
+    assert exc_info.value.status_code == 404
+
+
 def test_endpoint_pin_path_traversal_rejected(tmp_path, db_session, workspace, monkeypatch):
-    """path traversal skill_name via the endpoint → 400."""
+    """path traversal skill_name via the endpoint → 400。
+    需要真实 employee_id，以便 get_employee 通过后才触发名称校验。
+    """
     from tests.conftest import add_employee
     from src.service import employee_service as es
     from src.api import employee_api
@@ -335,9 +384,9 @@ def test_endpoint_pin_path_traversal_rejected(tmp_path, db_session, workspace, m
     monkeypatch.setattr(es, "_growth_brain_root_for", lambda eid: brain_dir)
 
     with _pytest.raises(HTTPException) as exc_info:
-        employee_api.set_skill_pinned(emp.id, "../../etc/passwd", SkillPinRequest(pinned=True))
+        employee_api.set_skill_pinned(emp.id, "../../etc/passwd", SkillPinRequest(pinned=True), db_session)
     assert exc_info.value.status_code == 400
 
     with _pytest.raises(HTTPException) as exc_info2:
-        employee_api.restore_skill_lifecycle(emp.id, "../../etc/passwd")
+        employee_api.restore_skill_lifecycle(emp.id, "../../etc/passwd", db_session)
     assert exc_info2.value.status_code == 400

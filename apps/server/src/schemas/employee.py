@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional, List, Dict
+from typing import Any, Literal, Optional, List, Dict
 
 from pydantic import BaseModel, Field, field_serializer, model_validator
 
@@ -156,7 +156,7 @@ class EmployeeSkillEditEntry(BaseModel):
 
 class EmployeeSkillLifecycleEntry(BaseModel):
     """单个技能的生命周期状态（来自 <brain>/skill_lifecycle.json）。"""
-    status: str
+    status: Literal["active", "stale", "archived"]
     pinned: bool
 
 

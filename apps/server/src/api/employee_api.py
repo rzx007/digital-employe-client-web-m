@@ -94,18 +94,18 @@ def dismiss_skill_candidate(
 
 @router.post("/employees/{employee_id}/growth/skills/{skill_name}/restore")
 def restore_skill_lifecycle(
-    employee_id: int, skill_name: str
+    employee_id: int, skill_name: str, db: Session = Depends(get_db)
 ) -> ResponseBase[dict]:
-    """手动恢复已归档技能 → status=active（更新 lifecycle.json，不操作 DB）。"""
-    return ResponseBase(data=EmployeeService.restore_skill_lifecycle(employee_id, skill_name))
+    """手动恢复已归档技能 → status=active（更新 lifecycle.json；employee_id 不存在 → 404）。"""
+    return ResponseBase(data=EmployeeService.restore_skill_lifecycle(db, employee_id, skill_name))
 
 
 @router.post("/employees/{employee_id}/growth/skills/{skill_name}/pin")
 def set_skill_pinned(
-    employee_id: int, skill_name: str, body: SkillPinRequest
+    employee_id: int, skill_name: str, body: SkillPinRequest, db: Session = Depends(get_db)
 ) -> ResponseBase[dict]:
-    """置顶/取消置顶技能：pinned=True 的技能永不被老化归档（更新 lifecycle.json，不操作 DB）。"""
-    return ResponseBase(data=EmployeeService.set_skill_pinned(employee_id, skill_name, body.pinned))
+    """置顶/取消置顶技能：pinned=True 的技能永不被老化归档（更新 lifecycle.json；employee_id 不存在 → 404）。"""
+    return ResponseBase(data=EmployeeService.set_skill_pinned(db, employee_id, skill_name, body.pinned))
 
 
 # ---- 员工头像：自定义上传 + 读取 ----

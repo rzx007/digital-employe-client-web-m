@@ -1475,13 +1475,7 @@ class EmployeeService:
         skill_lifecycle: dict = {}
         try:
             from src.service.learning import curator as _curator
-            raw_lc = _curator._load_lifecycle(brain)
-            for _name, _meta in raw_lc.get("skills", {}).items():
-                if isinstance(_meta, dict):
-                    skill_lifecycle[_name] = {
-                        "status": _meta.get("status", "active"),
-                        "pinned": bool(_meta.get("pinned", False)),
-                    }
+            skill_lifecycle = _curator.get_lifecycle_snapshot(brain)
         except Exception:
             skill_lifecycle = {}
 
@@ -1574,12 +1568,14 @@ class EmployeeService:
         return {"dismissed": slug}
 
     @staticmethod
-    def restore_skill_lifecycle(employee_id: int, skill_name: str) -> dict:
+    def restore_skill_lifecycle(db: Session, employee_id: int, skill_name: str) -> dict:
         """手动恢复已归档技能的生命周期状态 → status=active。
 
+        employee_id 不存在 → 404。
         校验 skill_name 防路径穿越（与 _normalize_skill_name 同规则）。
-        操作是 best-effort 文件写入；不依赖 DB。
+        操作是 best-effort 文件写入。
         """
+        EmployeeService.get_employee(db, employee_id)  # 不存在 → 404
         from src.service.local_skill_service import LocalSkillService
         from src.service.learning import curator as _curator
 
@@ -1590,11 +1586,13 @@ class EmployeeService:
         return {"skillName": name, "status": "active"}
 
     @staticmethod
-    def set_skill_pinned(employee_id: int, skill_name: str, pinned: bool) -> dict:
+    def set_skill_pinned(db: Session, employee_id: int, skill_name: str, pinned: bool) -> dict:
         """设置技能置顶（pinned=True 永不老化）或取消置顶。
 
-        校验 skill_name 防路径穿越。不依赖 DB。
+        employee_id 不存在 → 404。
+        校验 skill_name 防路径穿越。
         """
+        EmployeeService.get_employee(db, employee_id)  # 不存在 → 404
         from src.service.local_skill_service import LocalSkillService
         from src.service.learning import curator as _curator
 

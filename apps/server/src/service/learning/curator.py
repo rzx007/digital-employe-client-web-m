@@ -82,7 +82,19 @@ def _now_iso() -> str:
     return cst_now().isoformat(timespec="seconds")
 
 
-def restore_skill(brain, skill_name: str) -> None:
+def get_lifecycle_snapshot(brain: Path) -> dict:
+    """只读快照：返回 {skill_name: {status, pinned}}（best-effort，缺失/坏 → {}）。"""
+    try:
+        skills = _load_lifecycle(brain).get("skills", {})
+        return {
+            name: {"status": meta.get("status", "active"), "pinned": bool(meta.get("pinned", False))}
+            for name, meta in skills.items() if isinstance(meta, dict)
+        }
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def restore_skill(brain: Path, skill_name: str) -> None:
     """手动恢复 archived 技能 → status=active、restored_at=now（作 last_used 新基线防再archive）、archived_at=None。"""
     data = _load_lifecycle(brain)
     entry = data["skills"].setdefault(skill_name, {})
@@ -93,7 +105,7 @@ def restore_skill(brain, skill_name: str) -> None:
     _save_lifecycle(brain, data)
 
 
-def set_pinned(brain, skill_name: str, pinned: bool) -> None:
+def set_pinned(brain: Path, skill_name: str, pinned: bool) -> None:
     """置顶/取消置顶：pinned 技能永不 stale/archived（curator 豁免）。技能不在表里则创建条目。"""
     data = _load_lifecycle(brain)
     entry = data["skills"].setdefault(skill_name, {})
@@ -102,7 +114,7 @@ def set_pinned(brain, skill_name: str, pinned: bool) -> None:
     _save_lifecycle(brain, data)
 
 
-def archived_skill_names(brain) -> set[str]:
+def archived_skill_names(brain: Path) -> set[str]:
     """读 lifecycle.json，返回 status=="archived" 的技能名集合。容错→空集。"""
     try:
         skills = _load_lifecycle(brain).get("skills", {})
