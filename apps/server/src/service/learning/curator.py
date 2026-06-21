@@ -6,6 +6,8 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from sqlalchemy import func, select
+
 logger = logging.getLogger(__name__)
 
 _LIFECYCLE_FILE = "skill_lifecycle.json"
@@ -43,3 +45,118 @@ def _effective_last_used(assign, task_max, rating_max, restored):
     """四源取 max：分配时间(必非空,作基线) 与 任务/评分/手动恢复 时间中的最大值。None 源忽略。"""
     candidates = [t for t in (assign, task_max, rating_max, restored) if t is not None]
     return max(candidates)
+
+
+def _age_status(last_used: datetime, now: datetime, *, pinned: bool) -> tuple[str, str | None]:
+    """根据闲置天数返回 (status, archived_at_iso_or_None)。
+
+    - pinned → 永远 active，不老化
+    - 闲置 >= _ARCHIVED_DAYS (90天) → archived，返回 now 的 ISO 字符串
+    - 闲置 >= _STALE_DAYS  (30天) → stale
+    - 其余                         → active
+    """
+    if pinned:
+        return ("active", None)
+    idle_days = (now - last_used).days
+    if idle_days >= _ARCHIVED_DAYS:
+        return ("archived", now.isoformat(timespec="seconds"))
+    if idle_days >= _STALE_DAYS:
+        return ("stale", None)
+    return ("active", None)
+
+
+def run_curator(employee_id: int) -> None:
+    """扫该员工所有已分配技能，按闲置时长更新 skill_lifecycle.json。
+
+    - 开/关自己的 DB session（best-effort，异常只 warn，不阻断 librarian）。
+    - pinned / restored_at 不被覆盖。
+    """
+    try:
+        from src.db.session import get_session_local
+        from src.models.employee_skill import EmployeeSkill
+        from src.models.task_execution_log import TaskExecutionLog
+        from src.models.skill_rating import SkillRating
+        from src.models.workspace import cst_now, CST
+        from src.service.learning.librarian import _brain_root_for
+
+        now = cst_now()
+        brain = _brain_root_for(employee_id)
+        lifecycle = _load_lifecycle(brain)
+        skills_data: dict = lifecycle.setdefault("skills", {})
+
+        db = get_session_local()()
+        try:
+            rows = db.execute(
+                select(EmployeeSkill).where(EmployeeSkill.employee_id == employee_id)
+            ).scalars().all()
+
+            for row in rows:
+                skill_name = row.skill_name
+                skill_id = row.skill_id
+
+                # assign 基线（tz-aware）
+                assign = row.created_at
+                # 确保 assign 是 tz-aware（应该始终是，但防御）
+                if assign is not None and assign.tzinfo is None:
+                    from datetime import timezone
+                    assign = assign.replace(tzinfo=CST)
+
+                # task max
+                task_max = db.execute(
+                    select(func.max(TaskExecutionLog.created_at)).where(
+                        TaskExecutionLog.employee_id == employee_id,
+                        TaskExecutionLog.skill_id == skill_id,
+                    )
+                ).scalar_one_or_none()
+
+                # rating max
+                rating_max = db.execute(
+                    select(func.max(SkillRating.created_at)).where(
+                        SkillRating.employee_id == employee_id,
+                        SkillRating.skill_id == skill_id,
+                    )
+                ).scalar_one_or_none()
+
+                # 从已有 lifecycle 读 pinned / restored_at
+                prior = skills_data.get(skill_name, {})
+                pinned: bool = prior.get("pinned", False)
+                restored_at_iso: str | None = prior.get("restored_at")
+                restored_dt: datetime | None = None
+                if restored_at_iso:
+                    try:
+                        restored_dt = datetime.fromisoformat(restored_at_iso)
+                        if restored_dt.tzinfo is None:
+                            restored_dt = restored_dt.replace(tzinfo=CST)
+                    except ValueError:
+                        restored_dt = None
+
+                # SQLite 返回 naive datetime；统一转成 CST-aware 以便与 now 比较
+                def _to_aware(dt: datetime | None) -> datetime | None:
+                    if dt is None:
+                        return None
+                    if dt.tzinfo is None:
+                        return dt.replace(tzinfo=CST)
+                    return dt
+
+                assign = _to_aware(assign)
+                task_max = _to_aware(task_max)
+                rating_max = _to_aware(rating_max)
+
+                last_used = _effective_last_used(assign, task_max, rating_max, restored_dt)
+                status, archived_at = _age_status(last_used, now, pinned=pinned)
+
+                skills_data[skill_name] = {
+                    "status": status,
+                    "pinned": pinned,
+                    "archived_at": archived_at if status == "archived" else prior.get("archived_at"),
+                    "restored_at": restored_at_iso,
+                }
+
+        finally:
+            db.close()
+
+        _save_lifecycle(brain, lifecycle)
+        logger.info("run_curator eid=%s processed %d skills", employee_id, len(rows))
+
+    except Exception:
+        logger.warning("run_curator failed eid=%s", employee_id, exc_info=True)

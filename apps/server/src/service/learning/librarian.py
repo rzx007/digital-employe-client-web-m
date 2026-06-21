@@ -319,6 +319,8 @@ def run_librarian(employee_id: int) -> None:
         generate_profile(employee_id)
         consolidate_memory(employee_id)
         promote_skills(employee_id)
+        from src.service.learning.curator import run_curator
+        run_curator(employee_id)
     except Exception:
         logger.warning("run_librarian failed eid=%s", employee_id, exc_info=True)
 
