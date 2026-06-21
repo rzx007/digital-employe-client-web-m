@@ -42,18 +42,19 @@
 
 文件：`apps/server/src/service/agent/orchestrator/prompts.py` + 员工 prompt（`employee.py` 里的 system prompt 或对应 prompt 文件——实现时定位）
 
-加一段 shell 用法指引（两处同义）：
+加一段 shell 用法指引（两处同义）。**核心：短命令零负担，只有预判的长任务才走超时/后台/wait 这套**：
 ```
-执行 shell 命令时按任务强度估 timeout（秒）：查询/取数/查目录等快任务 10-30s；扫盘/编译/下载/大目录递归等慢任务 60-300s。不确定就给默认（不传=60s）。
-命令超时未完成会自动转后台并返回 session_id（输出不丢失）。此时用 shell_wait(session_id, N) 阻塞等结果（N 按预估剩余时长，最多 300s），而不是反复 shell_poll 空轮询；确实不必等就先做别的、需要结果时再 shell_wait/shell_poll。绝不要对刚转后台的命令立刻连续 poll 刷屏。
+执行 shell 命令默认什么都不用管——一般命令（查目录/取数/echo/git 等几秒内完成的）直接调 shell_execute、不传 timeout、同步拿结果，不要为它们设 timeout 或想 shell_wait。
+仅当你**预判这是个长任务**（扫盘、递归算大目录大小、编译、下载、安装依赖等可能跑很久）时，才：① 给一个较大的 timeout（如 120-300s）让它前台多等会儿，或 ② 接受它超时（默认 60s）自动转后台、返回 session_id，然后用 shell_wait(session_id, N) 阻塞等结果（N 按预估剩余时长、最多 300s），而不是反复 shell_poll 空轮询。
+绝不要对刚转后台的命令立刻连续 poll 刷屏；确实不必等就先做别的、需要结果时再 shell_wait/shell_poll。
 ```
 
 ### 块 4：工具描述强化
 
 文件：`apps/server/src/service/agent/shell_execute_tool.py`
 
-- `ShellExecuteInput.timeout` 描述补：按任务强度估（快 10-30s/慢 60-300s），不传默认 60s 超时转后台。
-- `shell_wait` 描述：阻塞等命令结束或最多 N 秒，长任务等结果优先用它而非空轮询 poll。
+- `ShellExecuteInput.timeout` 描述补：**一般命令不用传**（默认 60s，几秒内完成的会同步返回）；仅预判长任务（扫盘/编译/下载）时才传较大值（如 120-300s）让它前台多等，否则超时自动转后台返回 session_id。
+- `shell_wait` 描述：阻塞等命令结束或最多 N 秒，**长任务转后台后**等结果优先用它而非空轮询 poll。
 - `shell_poll` 描述补：仅需快速查一次时用；要「等结果」用 shell_wait。
 
 ### 不在本期范围
