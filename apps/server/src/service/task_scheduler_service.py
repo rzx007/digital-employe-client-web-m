@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 from apscheduler.schedulers.background import BackgroundScheduler  # pylint: disable=import-error
 from apscheduler.triggers.cron import CronTrigger  # pylint: disable=import-error
+from apscheduler.triggers.interval import IntervalTrigger  # pylint: disable=import-error
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
@@ -195,6 +196,29 @@ class TaskSchedulerService:
                 coalesce=True,
                 misfire_grace_time=120,
             )
+
+        scheduler.add_job(
+            cls.run_scan_and_wake_job,
+            trigger=IntervalTrigger(seconds=20, timezone=CST),
+            id="system:scan_and_wake",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=15,
+        )
+
+    @staticmethod
+    def run_scan_and_wake_job() -> None:
+        from src.service.background_wakeup_scanner import scan_and_wake
+        try:
+            res = scan_and_wake()
+        except Exception as exc:
+            logger.warning("后台唤醒扫描失败（已忽略）: %s", exc)
+            return
+        if res.get("woke") or res.get("dropped"):
+            logger.info("后台唤醒扫描 scanned=%s woke=%s skipped_busy=%s dropped=%s",
+                        res.get("scanned"), res.get("woke"),
+                        res.get("skipped_busy"), res.get("dropped"))
 
     @staticmethod
     def run_dispatch_order_sync_job() -> None:

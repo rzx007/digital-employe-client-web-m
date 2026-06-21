@@ -286,3 +286,20 @@ def test_watch_background_no_context_does_not_crash(monkeypatch):
     assert isinstance(out, str)
     assert "无法登记" in out or "缺会话" in out
     reg.kill(sid)
+
+
+def test_watch_background_factory_named_correctly():
+    from src.service.agent.shell_execute_tool import create_watch_background_tool
+    assert create_watch_background_tool().name == "watch_background"
+
+
+def test_modules_import_watch_background():
+    import src.service.agent.employee as emp
+    import src.service.agent.orchestrator.agent as orch
+    assert hasattr(emp, "create_watch_background_tool")
+    assert hasattr(orch, "create_watch_background_tool")
+
+
+def test_scheduler_has_run_scan_and_wake_job():
+    from src.service.task_scheduler_service import TaskSchedulerService
+    assert hasattr(TaskSchedulerService, "run_scan_and_wake_job")

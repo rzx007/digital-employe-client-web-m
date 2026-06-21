@@ -77,6 +77,7 @@ from src.service.agent.shell_execute_tool import (
     create_shell_kill_tool,
     create_shell_wait_tool,
     create_start_service_tool,
+    create_watch_background_tool,
 )
 from src.models.workspace import CST
 from src.service.skill_shell_backend import SkillAwareShellBackend
@@ -293,6 +294,7 @@ def get_orchestrator_agent(
     orchestrator_tools.append(create_shell_kill_tool())
     orchestrator_tools.append(create_shell_wait_tool())
     orchestrator_tools.append(create_start_service_tool())
+    orchestrator_tools.append(create_watch_background_tool())
 
     session_flags = (
         get_session_flags(db, conversation_id)
