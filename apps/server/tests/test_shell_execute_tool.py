@@ -129,3 +129,16 @@ def test_arun_uses_default_foreground_timeout_when_none():
     # 传了 timeout → 用传入值
     asyncio.run(tool.ainvoke(_call({"command": "echo hi", "timeout": 5})))
     assert captured["timeout"] == 5
+
+
+def test_shell_wait_tool_factory_named_correctly():
+    from src.service.agent.shell_execute_tool import create_shell_wait_tool
+    assert create_shell_wait_tool().name == "shell_wait"
+
+
+def test_employee_and_orchestrator_modules_import_shell_wait():
+    # 注册点导入了 create_shell_wait_tool（冒烟，确保两处都改了）
+    import src.service.agent.employee as emp
+    import src.service.agent.orchestrator.agent as orch
+    assert hasattr(emp, "create_shell_wait_tool")
+    assert hasattr(orch, "create_shell_wait_tool")

@@ -24,6 +24,7 @@ from src.service.agent.shell_execute_tool import (
     create_shell_execute_tool,
     create_shell_poll_tool,
     create_shell_kill_tool,
+    create_shell_wait_tool,
 )
 from src.service.agent.remember_memory_tool import create_remember_memory_tool
 from src.service.agent.clarifying_questions_tool import (
@@ -230,6 +231,7 @@ def get_agent(
     extra_tools: list = [shell_execute_tool, remember_memory_tool, get_current_time_tool]
     extra_tools.append(create_shell_poll_tool())
     extra_tools.append(create_shell_kill_tool())
+    extra_tools.append(create_shell_wait_tool())
     if sql_tools:
         extra_tools.extend(sql_tools)
     extra_tools.extend(_session_search_tools)
