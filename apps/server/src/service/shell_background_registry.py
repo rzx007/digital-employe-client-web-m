@@ -29,6 +29,7 @@ class _Session:
     command: str
     started_at: float
     status: str = "running"  # running | finished | killed
+    is_service: bool = False
 
 
 class BackgroundShellRegistry:
@@ -37,12 +38,13 @@ class BackgroundShellRegistry:
         self._lock = threading.Lock()
 
     def register(self, *, popen: subprocess.Popen, tmp_path: str,
-                 read_offset: int, command: str) -> str:
+                 read_offset: int, command: str, is_service: bool = False) -> str:
         sid = uuid.uuid4().hex
         with self._lock:
             self._sessions[sid] = _Session(
                 popen=popen, tmp_path=tmp_path, read_offset=read_offset,
                 command=command, started_at=time.monotonic(),
+                is_service=is_service,
             )
         return sid
 
@@ -182,7 +184,7 @@ class BackgroundShellRegistry:
             items = list(self._sessions.items())
         for sid, s in items:
             rc = s.popen.poll()
-            if rc is None and now - s.started_at > _MAX_AGE_SECONDS:
+            if rc is None and not s.is_service and now - s.started_at > _MAX_AGE_SECONDS:
                 self._terminate(s.popen)
                 rc = -1
             if rc is not None:
@@ -191,6 +193,25 @@ class BackgroundShellRegistry:
         with self._lock:
             for sid in to_remove:
                 self._sessions.pop(sid, None)
+
+    def kill_all_services(self) -> int:
+        """杀掉所有 is_service 且仍在跑的服务进程组（供 atexit 兜底）。返回杀掉个数。"""
+        killed = 0
+        with self._lock:
+            items = list(self._sessions.items())
+        for sid, s in items:
+            if not s.is_service:
+                continue
+            try:
+                if s.popen.poll() is None:
+                    self._terminate(s.popen)
+                    killed += 1
+            except Exception:
+                logger.warning("[bg-shell] kill_all_services failed sid=%s", sid, exc_info=True)
+            with self._lock:
+                s.status = "killed"
+            self._cleanup_file(s)
+        return killed
 
 
 _GLOBAL_REGISTRY: BackgroundShellRegistry | None = None

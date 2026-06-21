@@ -143,3 +143,54 @@ def test_wait_unknown_session_returns_not_found():
     reg = get_background_shell_registry()
     r = reg.wait("nonexistent-id", 1)
     assert r["found"] is False
+
+
+def _spawn_to_tmpfile_own_group(py_code: str):
+    """同 _spawn_to_tmpfile，但子进程独占进程组（Win: CREATE_NEW_PROCESS_GROUP /
+    POSIX: start_new_session），这样 _terminate 发 CTRL_BREAK 不会回灌到 pytest 自身。
+    age-sweep 会真的 _terminate 这个进程，故必须隔离，否则杀到测试运行器(Win exit 58)。"""
+    tmp = tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".stdout")
+    tmp.close()
+    handle = open(tmp.name, "ab")
+    kwargs: dict = {"stdout": handle, "stderr": subprocess.STDOUT}
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    popen = subprocess.Popen([sys.executable, "-u", "-c", py_code], **kwargs)
+    handle.close()
+    return popen, tmp.name
+
+
+def test_service_session_is_exempt_from_age_sweep(monkeypatch):
+    import src.service.shell_background_registry as reg_mod
+    reg = get_background_shell_registry()
+    # 普通会话会被 age-sweep 真杀掉，必须独占进程组(否则 _terminate 的 CTRL_BREAK 杀到 pytest)。
+    popen_a, tmp_a = _spawn_to_tmpfile_own_group("import time; time.sleep(30)")
+    popen_b, tmp_b = _spawn_to_tmpfile("import time; time.sleep(30)")
+    sid_normal = reg.register(popen=popen_a, tmp_path=tmp_a, read_offset=0, command="n")
+    sid_service = reg.register(popen=popen_b, tmp_path=tmp_b, read_offset=0,
+                               command="svc", is_service=True)
+    monkeypatch.setattr(reg_mod, "_MAX_AGE_SECONDS", 0)
+    time.sleep(0.05)  # Win monotonic 粒度 15.6ms: 让 now-started_at 真大于 0 才会被 age-sweep
+    reg.sweep()
+    assert reg.poll(sid_normal)["found"] is False
+    assert reg.poll(sid_service)["found"] is True
+    assert reg.poll(sid_service)["running"] is True
+    reg.kill(sid_service)
+
+
+def test_kill_all_services_terminates_only_services():
+    reg = get_background_shell_registry()
+    popen_a, tmp_a = _spawn_to_tmpfile("import time; time.sleep(30)")
+    # 服务进程会被 kill_all_services 真杀，独占进程组避免 CTRL_BREAK 杀到 pytest。
+    popen_b, tmp_b = _spawn_to_tmpfile_own_group("import time; time.sleep(30)")
+    sid_normal = reg.register(popen=popen_a, tmp_path=tmp_a, read_offset=0, command="n")
+    sid_service = reg.register(popen=popen_b, tmp_path=tmp_b, read_offset=0,
+                               command="svc", is_service=True)
+    n = reg.kill_all_services()
+    assert n >= 1
+    time.sleep(0.5)
+    assert popen_b.poll() is not None
+    assert popen_a.poll() is None
+    reg.kill(sid_normal)
