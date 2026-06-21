@@ -25,3 +25,14 @@ def test_orchestrator_prompt_has_rhythmic_wait_guidance():
     assert "shell_wait" in p
     assert "有节奏" in p
     assert "稍后问我进度" in p
+
+
+def test_employee_prompt_has_rhythmic_wait_guidance():
+    # build_system_prompt 拼装后的员工系统提示应含 shell 节奏指引。
+    # 用 inspect.getsource 抓常量文本而非渲染，避免依赖参数：节奏指引是常量文本片段。
+    import inspect
+    import src.service.agent.prompts as prompts_mod
+    src = inspect.getsource(prompts_mod)
+    assert "shell_wait" in src
+    assert "有节奏" in src
+    assert "稍后问我进度" in src
