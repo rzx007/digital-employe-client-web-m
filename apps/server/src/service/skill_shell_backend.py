@@ -638,14 +638,14 @@ class SkillAwareShellBackend(LocalShellBackend):
                         pass
 
         # 已移交后台：进程仍在跑（线程 finally 未触达），不能 await future 否则会阻塞。
-        # 立即返回 session_id 指引，模型按需 shell_poll/shell_kill。
+        # 立即返回 session_id 指引，模型按需 shell_wait（等结果）/shell_poll（查一眼）/shell_kill。
         if handed_to_background:
             partial = "\n".join(lines) if lines else ""
             note = (
-                f"\n[命令仍在后台运行，session_id={background_session_id}。"
-                f"用 shell_poll(session_id) 查询进度/读取新输出，"
-                f"shell_kill(session_id) 终止。"
-                f"无需立即轮询——可先继续其它步骤，需要结果时再 poll。]"
+                f"\n[命令仍在后台运行，session_id={background_session_id}（输出不会丢失）。"
+                f"要结果就用 shell_wait(session_id, N) 有节奏地等一轮（N 如 30-60s），"
+                f"没完成再等一轮；shell_poll(session_id) 只查一眼，shell_kill(session_id) 终止。"
+                f"判断是超大任务时告诉用户稍后问你进度并体面收尾，勿杀了重试。]"
             )
             return ExecuteResponse(
                 output=(partial + note),

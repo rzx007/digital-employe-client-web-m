@@ -171,6 +171,8 @@ def create_shell_wait_tool() -> BaseTool:
         session_id: str = Field(description="shell_execute 转后台时返回的 session_id")
         max_seconds: int = Field(
             default=60,
+            ge=1,
+            le=300,
             description="本轮最多阻塞等待的秒数（命令提前结束则立即返回；上限300）",
         )
 
