@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 _READ_CHUNK = 65536
 _MAX_POLL_BYTES = 64 * 1024
 _MAX_AGE_SECONDS = 3600
+_WAIT_HARD_CAP = 300
+_WAIT_POLL_INTERVAL = 0.5
 
 
 @dataclass
@@ -84,6 +86,37 @@ class BackgroundShellRegistry:
             "exit_code": rc,
             "new_output": new_output,
             "offset": new_offset,
+        }
+
+    def wait(self, session_id: str, max_seconds: int) -> dict:
+        """阻塞等命令结束或最多 max_seconds（硬顶 _WAIT_HARD_CAP）秒。
+
+        同步轮询 popen.poll()，跑在工具执行线程、不占 LLM 连接。
+        读增量复用 _read_incremental + 推进 read_offset（与 poll 共用 offset）。
+        """
+        with self._lock:
+            s = self._sessions.get(session_id)
+        if s is None:
+            return {"found": False}
+        cap = max(0, min(int(max_seconds), _WAIT_HARD_CAP))
+        start = time.monotonic()
+        rc = s.popen.poll()
+        while rc is None and (time.monotonic() - start) < cap:
+            time.sleep(_WAIT_POLL_INTERVAL)
+            rc = s.popen.poll()
+        waited = time.monotonic() - start
+        new_offset, new_output = self._read_incremental(s.tmp_path, s.read_offset)
+        with self._lock:
+            s.read_offset = new_offset
+            if rc is not None and s.status == "running":
+                s.status = "finished"
+        return {
+            "found": True,
+            "finished": rc is not None,
+            "exit_code": rc,
+            "new_output": new_output,
+            "offset": new_offset,
+            "waited_seconds": round(waited, 2),
         }
 
     def _terminate(self, popen: subprocess.Popen) -> None:

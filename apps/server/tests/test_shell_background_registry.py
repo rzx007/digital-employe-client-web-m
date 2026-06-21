@@ -111,3 +111,35 @@ def test_kill_terminates_grandchild_process(tmp_path):
             except OSError:
                 return False
     assert not _alive(gc_pid), f"grandchild pid={gc_pid} 仍存活(被孤儿化)"
+
+
+def test_wait_returns_finished_when_process_completes_within_window():
+    reg = get_background_shell_registry()
+    popen, tmp = _spawn_to_tmpfile(
+        "import time; print('a', flush=True); time.sleep(0.5); print('b', flush=True)"
+    )
+    sid = reg.register(popen=popen, tmp_path=tmp, read_offset=0, command="t")
+    r = reg.wait(sid, 5)
+    assert r["found"] is True
+    assert r["finished"] is True
+    assert r["exit_code"] == 0
+    assert "a" in r["new_output"] and "b" in r["new_output"]
+    assert r["waited_seconds"] <= 5
+
+
+def test_wait_returns_unfinished_when_window_too_short():
+    reg = get_background_shell_registry()
+    popen, tmp = _spawn_to_tmpfile("import time; time.sleep(30)")
+    sid = reg.register(popen=popen, tmp_path=tmp, read_offset=0, command="t")
+    r = reg.wait(sid, 1)
+    assert r["found"] is True
+    assert r["finished"] is False
+    assert r["exit_code"] is None
+    assert 0.5 <= r["waited_seconds"] <= 3
+    reg.kill(sid)  # 收尾：先杀掉再让测试结束，避免 sleep(30) 拖住/被孤儿
+
+
+def test_wait_unknown_session_returns_not_found():
+    reg = get_background_shell_registry()
+    r = reg.wait("nonexistent-id", 1)
+    assert r["found"] is False
