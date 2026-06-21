@@ -32,8 +32,8 @@
 
 文件：新建 `apps/server/src/service/background_watch_registry.py`（全局单例，仿 `shell_background_registry` 的单例 + 锁结构）
 
-- `_Watch` dataclass：`session_id, conversation_id, is_orchestrator, workspace_id, employee_id, command, created_at, status="watching"`（watching | fired）。
-- `register_watch(*, session_id, conversation_id, is_orchestrator, workspace_id, employee_id, command) -> None`（同 session 重复登记则覆盖刷新）。
+- `_Watch` dataclass：`session_id, conversation_id, target_type, created_at, status="watching"`（target_type ∈ curator|employee，决定续跑路径；status ∈ watching|fired）。
+- `register_watch(*, session_id, conversation_id, target_type) -> None`（同 session 重复登记则覆盖刷新）。
 - `list_watching() -> list[_Watch]`（只返 status==watching 的快照）。
 - `mark_fired(session_id)`：置 fired 并从表移除（fired 即删——单次性）。
 - `drop(session_id)`：直接移除（进程 not-found / 续跑异常时用）。
@@ -44,10 +44,13 @@
 
 文件：`apps/server/src/service/agent/shell_execute_tool.py`（加工厂 `create_watch_background_tool`）
 
-- 入参：`session_id: str`。
+- 入参：`session_id: str`（LLM 传）+ **runtime 注入**（不让 LLM 传会话信息）。
 - 先 `shell_background_registry.poll(session_id)` 校验：not found / 已 finished → 不登记，返回「该命令已结束（或已回收），无需 watch；用 shell_poll 看结果即可」。
-- 仍在跑 → 从运行上下文取 `conversation_id`/`workspace_id`/`employee_id`/`is_orchestrator`，调 `register_watch(...)`，返回「已登记：该命令完成后我会自动回到本会话继续，无需你盯着」。
-- **运行上下文来源**：复用现有 ContextVar / runtime 取当前会话信息的机制（实现时定位 `runtime.py` 或 agent 注入的 context；与 remember_memory 等工具取 conversation 同源）。若取不到 conversation_id → 返回「无法登记（缺会话上下文）」不崩。
+- 仍在跑 → **从 runtime 取 conversation_id**，调 `register_watch(...)`，返回「已登记：该命令完成后我会自动回到本会话继续，无需你盯着」。
+- **运行上下文来源（关键，调研已定）**：用 `runtime.py` 的 `conversation_id_from_runtime(runtime)` 取——它从 tool runtime 的 `config["configurable"]["thread_id"]` 解析，而 `thread_id == conversation_id` 是全局不变式（所有 `registry.start` 都传 `config={"configurable":{"thread_id": conversation_id}}`）。**不要用 `get_conversation_id()` ContextVar**——它只在总管侧 `set_context` 时设、员工侧为 None。注入风格仿 `tool_call_id: Annotated[str, InjectedToolCallId]`，给工具注入 runtime。
+- **target_type**：登记时还要存「这会话是总管还是员工」（决定续跑路径）。从 runtime/conversation 取 `Conversation.target_type`（"curator"/"employee"）。
+- 若取不到 conversation_id → 返回「无法登记（缺会话上下文）」不崩。
+- **注**：因 watch 表自己存 conversation_id + target_type，**C 不需要改 `shell_background_registry` 的 `_Session` 数据结构**（shell 注册表只负责进程，会话归属由 watch 表持有）。
 
 ### 块 3：唤醒扫描器
 
@@ -58,30 +61,29 @@
     - `r = registry.poll(session_id)`
     - not found → `watch_registry.drop(session_id)`（无可唤醒）
     - running → 跳过
-    - finished → 查该会话是否忙（`stream_registry` 有该 conv 活跃/排队流）：
+    - finished → 查该会话是否忙（`stream_registry.is_busy(conv_id)`，stream_registry.py:832，含 active+queued）：
       - 忙 → 跳过（保留 watching，下轮再试）
       - 空闲 → `wake_fn(watch, poll_result)` 续跑 + `mark_fired(session_id)`
   - `wake_fn` 抛异常 → 记日志 + `drop(session_id)`（不无限重试、不影响其它 watch）。
   - 末尾顺带 `watch_registry.sweep_stale()`。
   - 返回 `{scanned, woke, skipped_busy, dropped}` 便于日志/测试断言。
 
-### 块 4：续跑触发器（默认 wake_fn）
+### 块 4：续跑触发器（默认 wake_fn，按 target_type 二分）
 
-文件：`background_wakeup_scanner.py`（同文件，`_default_wake_fn`）
+文件：`background_wakeup_scanner.py`（同文件，`_default_wake_fn` → `_wake_conversation(conv_id, target_type, wake_prompt)`）
 
-- 复刻成熟模板（参照 `_start_curator_task`）：
-  - 确保 `Conversation` 存在。
-  - 新建一条 assistant 空壳消息（stream_state="streaming"/"queued"）。
-  - 组装唤醒 user 消息：`[后台任务完成] session_id={sid} exit_code={rc}\n末尾输出:\n{tail}`（tail 取 poll 的 new_output 末尾 N 行；无输出→「(输出已被回收)」）。
-  - **在主循环线程**构造 agent（总管 `get_orchestrator_agent` / 员工 `get_agent`，按 `is_orchestrator`）。
-  - `get_main_loop().call_soon_threadsafe(...)` → `registry.start(conversation_id, agent, messages=[唤醒user消息], stream_msg_id=新assistant_id, source="background_wakeup", ...)`。
-- 落库的新 assistant 消息状态与 registry 实际状态严格一致（避 resume 热循环，[[resume-hot-loop-db-registry-mismatch]]）。
+**不能直接复用 `start_task_as_conversation`**（它新建会话，我们要回**原**会话）；抽其「建空壳 assistant + 主线程构造 agent + call_soon_threadsafe + registry.start」最小子集，按 target_type 二分：
+
+- **公共**：组装唤醒 user 消息 `[后台任务完成] session_id={sid} exit_code={rc}\n末尾输出:\n{tail}`（tail 取 poll 的 new_output 末尾 N 行；无→「(输出已被回收)」）；落 user 消息（stream_state="completed"）+ 新建 assistant 空壳（state 按 slot_busy 判 streaming/queued，仿 task_scheduler_service.py:590-595）+ `db.flush()` 拿 asst_id + `db.commit()`；启动闭包投主循环。
+- **target_type=="curator"**（照抄 `_start_curator_task` 的 `_start_on_main`，task_scheduler_service.py:682-725）：主循环闭包内 `orch_db=get_session_local()()` → `get_orchestrator_agent(ws, orch_db, conv_id, employee_id=, bind_context=False)` → `registry.start(..., orchestrator_owned_db=orch_db, orchestrator_workspace_id=ws, orchestrator_conversation_id=conv_id, source="background_wakeup", priority=SCHEDULED_PRIORITY)`；异常分支 `reset_context(conv_id)+orch_db.close()`。
+- **target_type=="employee"**（参照 execution.py:377-493）：`get_agent(skills_path, root_path, employee_id=, conversation_id=, enable_hitl=False, ...)` → `registry.start(..., orchestrator_conversation_id=None, source="background_wakeup")`（**不传** orchestrator_owned_db）。
+- **线程坑**：agent 构造 + registry.start 必须在主循环线程（`get_main_loop().call_soon_threadsafe(...)`），绝不在 apscheduler 线程直接调。落库新 assistant 状态与 registry 严格一致（避 resume 热循环，[[resume-hot-loop-db-registry-mismatch]]）。
 
 ### 块 5：接 apscheduler 周期 job + A 话术升级
 
 文件：`apps/server/src/service/task_scheduler_service.py`（`_register_system_jobs`）+ `apps/server/src/service/agent/shell_execute_tool.py` + 两套 prompt
 
-- 在 `_register_system_jobs` 加一个周期 job（如每 20s）调 `scan_and_wake()`，对齐现有系统 job 注册方式。
+- 在 `_register_system_jobs`（task_scheduler_service.py:165）末尾加一个周期 job 调 `cls.run_scan_and_wake_job`（一个 classmethod 包装 `scan_and_wake()`）：用 `IntervalTrigger(seconds=20, timezone=CST)`（cron 最细只到分钟，给不了 20s），`id="system:scan_and_wake"`, `replace_existing=True, max_instances=1, coalesce=True, misfire_grace_time=15`。`scan_and_wake` 跑在 apscheduler 后台线程，启动续跑必经 `_get_main_loop().call_soon_threadsafe`。
 - **A 话术升级**：现在模型有了 watch_background，A 的「稍后问我进度」可升级。改 `shell_wait` 工具的「仍在运行」返回、转后台 at-handoff 话术（`skill_shell_backend.py`）、两套 prompt 的「超大才升级」段：超大任务 → **调 watch_background 登记 → 告诉用户「这任务较久，完成后我会自动回到这里继续，你不用盯着」** → 体面收尾。即「稍后问我」→「watch 登记 + 完成自动继续」。
 
 ### 不在本子项目范围
