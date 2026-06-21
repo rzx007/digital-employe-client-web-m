@@ -76,6 +76,32 @@ def _age_status(last_used: datetime, now: datetime, *, pinned: bool) -> tuple[st
     return ("active", None)
 
 
+def _now_iso() -> str:
+    """当前 CST 时间 ISO 字符串（秒精度），与 _save_lifecycle 的 updated_at 保持一致。"""
+    from src.models.workspace import cst_now
+    return cst_now().isoformat(timespec="seconds")
+
+
+def restore_skill(brain, skill_name: str) -> None:
+    """手动恢复 archived 技能 → status=active、restored_at=now（作 last_used 新基线防再archive）、archived_at=None。"""
+    data = _load_lifecycle(brain)
+    entry = data["skills"].setdefault(skill_name, {})
+    entry["status"] = "active"
+    entry["restored_at"] = _now_iso()
+    entry["archived_at"] = None
+    entry.setdefault("pinned", False)
+    _save_lifecycle(brain, data)
+
+
+def set_pinned(brain, skill_name: str, pinned: bool) -> None:
+    """置顶/取消置顶：pinned 技能永不 stale/archived（curator 豁免）。技能不在表里则创建条目。"""
+    data = _load_lifecycle(brain)
+    entry = data["skills"].setdefault(skill_name, {})
+    entry["pinned"] = bool(pinned)
+    entry.setdefault("status", "active")
+    _save_lifecycle(brain, data)
+
+
 def archived_skill_names(brain) -> set[str]:
     """读 lifecycle.json，返回 status=="archived" 的技能名集合。容错→空集。"""
     try:

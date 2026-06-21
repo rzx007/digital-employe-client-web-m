@@ -154,6 +154,12 @@ class EmployeeSkillEditEntry(BaseModel):
     backup_version: str | None = None
 
 
+class EmployeeSkillLifecycleEntry(BaseModel):
+    """单个技能的生命周期状态（来自 <brain>/skill_lifecycle.json）。"""
+    status: str
+    pinned: bool
+
+
 class EmployeeGrowthBrainRead(BaseModel):
     profile_md: str
     skills_list: list[str]
@@ -161,3 +167,9 @@ class EmployeeGrowthBrainRead(BaseModel):
     journal_entries: list[EmployeeGrowthJournalEntry]
     skill_candidates: list[EmployeeSkillCandidate] = Field(default_factory=list)
     recent_skill_edits: list[EmployeeSkillEditEntry] = Field(default_factory=list)
+    skill_lifecycle: dict[str, EmployeeSkillLifecycleEntry] = Field(default_factory=dict)
+
+
+class SkillPinRequest(BaseModel):
+    """置顶/取消置顶技能请求体。"""
+    pinned: bool

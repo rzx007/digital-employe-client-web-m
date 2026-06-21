@@ -1471,6 +1471,20 @@ class EmployeeService:
                 pass
         recent_skill_edits = recent_skill_edits[-20:]
 
+        # 技能生命周期（归档/置顶状态），best-effort
+        skill_lifecycle: dict = {}
+        try:
+            from src.service.learning import curator as _curator
+            raw_lc = _curator._load_lifecycle(brain)
+            for _name, _meta in raw_lc.get("skills", {}).items():
+                if isinstance(_meta, dict):
+                    skill_lifecycle[_name] = {
+                        "status": _meta.get("status", "active"),
+                        "pinned": bool(_meta.get("pinned", False)),
+                    }
+        except Exception:
+            skill_lifecycle = {}
+
         return {
             "profile_md": profile_md,
             "skills_list": skills_list,
@@ -1478,6 +1492,7 @@ class EmployeeService:
             "journal_entries": journal_entries,
             "skill_candidates": skill_candidates,
             "recent_skill_edits": recent_skill_edits,
+            "skill_lifecycle": skill_lifecycle,
         }
 
     @staticmethod
@@ -1557,3 +1572,34 @@ class EmployeeService:
             cand.unlink()
         logger.info("dismiss_skill_candidate eid=%s slug=%s", employee_id, slug)
         return {"dismissed": slug}
+
+    @staticmethod
+    def restore_skill_lifecycle(employee_id: int, skill_name: str) -> dict:
+        """手动恢复已归档技能的生命周期状态 → status=active。
+
+        校验 skill_name 防路径穿越（与 _normalize_skill_name 同规则）。
+        操作是 best-effort 文件写入；不依赖 DB。
+        """
+        from src.service.local_skill_service import LocalSkillService
+        from src.service.learning import curator as _curator
+
+        name = LocalSkillService._normalize_skill_name(skill_name)
+        brain = _growth_brain_root_for(employee_id)
+        _curator.restore_skill(brain, name)
+        logger.info("restore_skill_lifecycle eid=%s skill=%s", employee_id, name)
+        return {"skillName": name, "status": "active"}
+
+    @staticmethod
+    def set_skill_pinned(employee_id: int, skill_name: str, pinned: bool) -> dict:
+        """设置技能置顶（pinned=True 永不老化）或取消置顶。
+
+        校验 skill_name 防路径穿越。不依赖 DB。
+        """
+        from src.service.local_skill_service import LocalSkillService
+        from src.service.learning import curator as _curator
+
+        name = LocalSkillService._normalize_skill_name(skill_name)
+        brain = _growth_brain_root_for(employee_id)
+        _curator.set_pinned(brain, name, pinned)
+        logger.info("set_skill_pinned eid=%s skill=%s pinned=%s", employee_id, name, pinned)
+        return {"skillName": name, "pinned": pinned}
