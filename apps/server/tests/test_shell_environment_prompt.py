@@ -15,3 +15,13 @@ def test_shell_environment_section_matches_platform(monkeypatch) -> None:
     monkeypatch.setattr(prompt_rules.platform, "system", lambda: "Linux")
     assert "Linux" in prompt_rules.build_shell_environment_section()
     assert "/home/" in prompt_rules.build_shell_environment_section()
+
+
+def test_orchestrator_prompt_has_rhythmic_wait_guidance():
+    from src.service.agent.orchestrator.prompts import (
+        ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE,
+    )
+    p = ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE
+    assert "shell_wait" in p
+    assert "有节奏" in p
+    assert "稍后问我进度" in p
