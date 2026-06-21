@@ -201,3 +201,108 @@ def create_shell_wait_tool() -> BaseTool:
             "未完成可再调一轮。不要用空轮询 shell_poll 来等。"
         ),
     )
+
+
+def create_start_service_tool() -> BaseTool:
+    import subprocess
+    import sys
+    import tempfile
+
+    from src.service.service_readiness import wait_for_service_ready
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    class _StartServiceInput(BaseModel):
+        command: str = Field(description="要起的常驻服务命令（dev server / uvicorn / pnpm dev 等）")
+        ready: dict | None = Field(
+            default=None,
+            description=(
+                "就绪判定（三选一）：{'type':'stdout','pattern':'Application startup complete'} "
+                "或 {'type':'http','path':'/','interval':0.5}（需传 port）"
+                "或 {'type':'wait','seconds':8}（纯等兜底）。不传默认 wait 8s。"
+            ),
+        )
+        cwd: str | None = Field(default=None, description="工作目录，默认当前进程 cwd")
+        ready_timeout: int = Field(default=30, description="等就绪最多秒数（上限120）")
+        host: str = Field(default="127.0.0.1", description="只允许 127.0.0.1 或 localhost")
+        port: int | None = Field(default=None, description="http 就绪模式必传：服务监听端口")
+        fatal_patterns: list[str] | None = Field(
+            default=None,
+            description="子进程输出命中任一即判失败（如 'Address already in use'）",
+        )
+
+    def _start_service(
+        command: str,
+        ready: dict | None = None,
+        cwd: str | None = None,
+        ready_timeout: int = 30,
+        host: str = "127.0.0.1",
+        port: int | None = None,
+        fatal_patterns: list[str] | None = None,
+    ) -> str:
+        if host not in ("127.0.0.1", "localhost"):
+            return f"[起服务失败] host 只允许 127.0.0.1 或 localhost，收到 {host}。"
+        ready = ready or {"type": "wait", "seconds": 8}
+        if ready.get("type") == "http" and not port:
+            return "[起服务失败] http 就绪模式必须传 port（服务监听端口）；或改用 stdout/wait 模式。"
+
+        tmp = tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".stdout")
+        tmp.close()
+        handle = open(tmp.name, "ab")
+        _pg_kwargs = (
+            {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+            if sys.platform == "win32"
+            else {"start_new_session": True}
+        )
+        try:
+            popen = subprocess.Popen(  # noqa: S602
+                command,
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+                shell=True,
+                cwd=cwd or None,
+                **_pg_kwargs,
+            )
+        finally:
+            handle.close()
+
+        reg = get_background_shell_registry()
+        sid = reg.register(
+            popen=popen, tmp_path=tmp.name, read_offset=0,
+            command=command, is_service=True,
+        )
+        r = wait_for_service_ready(
+            popen=popen, tmp_path=tmp.name, ready=ready,
+            host=host, port=port, ready_timeout=ready_timeout,
+            fatal_patterns=fatal_patterns or [], read_offset=0,
+        )
+        body = r.get("new_output") or "(无输出)"
+        if r.get("ready"):
+            return (
+                f"[服务已就绪] service_id={sid}\n启动输出:\n{body}\n"
+                f"[可用 shell_poll(service_id) 看日志、shell_wait(service_id,N) 等日志、"
+                f"shell_kill(service_id) 停服务]"
+            )
+        if r.get("fatal"):
+            reg.kill(sid)
+            return f"[起服务失败] 命中致命输出: {r.get('fatal_line')}\n{body}"
+        if r.get("exited"):
+            return (
+                f"[服务启动即退出 exit_code={r.get('exit_code')}] "
+                f"可能不是常驻命令或配置有误:\n{body}"
+            )
+        return (
+            f"service_id={sid} [尚未就绪，已等{ready_timeout}s] 服务可能仍在启动，"
+            f"用 shell_poll(service_id) 继续看，或 shell_kill(service_id) 停。\n{body}"
+        )
+
+    return StructuredTool.from_function(
+        func=_start_service,
+        name="start_service",
+        args_schema=_StartServiceInput,
+        description=(
+            "起一个**常驻服务**（dev server / uvicorn / pnpm dev 等永不自己结束的命令），"
+            "等它就绪后返回 service_id。ready 指定就绪判定（stdout 关键词 / http 健康探活 / 纯等 N 秒）。"
+            "服务免被回收；看日志用 shell_poll/shell_wait(service_id)，停服务用 shell_kill(service_id)。"
+            "会结束的普通命令用 shell_execute，不要用本工具。"
+        ),
+    )

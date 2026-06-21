@@ -155,3 +155,53 @@ def test_poll_description_points_to_wait_for_waiting():
     from src.service.agent.shell_execute_tool import create_shell_poll_tool
     desc = create_shell_poll_tool().description
     assert "shell_wait" in desc
+
+
+def test_start_service_tool_stdout_ready_returns_service_id():
+    import sys
+    from src.service.agent.shell_execute_tool import create_start_service_tool
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    tool = create_start_service_tool()
+    cmd = (
+        f'{sys.executable} -u -c "import time;print(\'Application startup complete\',flush=True);time.sleep(30)"'
+    )
+    out = tool.invoke({
+        "command": cmd,
+        "ready": {"type": "stdout", "pattern": "startup complete"},
+        "ready_timeout": 10,
+    })
+    assert isinstance(out, str)
+    assert "已就绪" in out
+    assert "service_id=" in out
+    import re
+    m = re.search(r"service_id=([0-9a-f]+)", out)
+    assert m
+    sid = m.group(1)
+    reg = get_background_shell_registry()
+    assert reg.poll(sid)["found"] is True
+    reg.kill(sid)
+
+
+def test_start_service_tool_rejects_non_local_host():
+    from src.service.agent.shell_execute_tool import create_start_service_tool
+    tool = create_start_service_tool()
+    out = tool.invoke({
+        "command": "echo hi",
+        "ready": {"type": "wait", "seconds": 1},
+        "host": "0.0.0.0",
+    })
+    assert isinstance(out, str)
+    assert "127.0.0.1" in out or "localhost" in out
+    assert "失败" in out or "只允许" in out
+
+
+def test_start_service_tool_http_requires_port():
+    from src.service.agent.shell_execute_tool import create_start_service_tool
+    tool = create_start_service_tool()
+    out = tool.invoke({
+        "command": "echo hi",
+        "ready": {"type": "http", "path": "/"},
+    })
+    assert isinstance(out, str)
+    assert "port" in out.lower()
