@@ -23,11 +23,7 @@ import { ChatPanelHeader } from "./chat-panel-header"
 import { CuratorReturnBar } from "../curator/curator-return-bar"
 import { GroupReturnBar } from "../group/group-return-bar"
 import type { PendingMessage } from "@/hooks/use-pending-messages"
-import {
-  isAssistantQueued,
-  isStoredAssistantQueued,
-  isTerminalAssistantStreamState,
-} from "@/lib/chat/assistant-stream-state"
+import { shouldShowBottomStreamingIndicator } from "@/lib/chat/bottom-streaming-indicator"
 import { ChatStreamingIndicator } from "./chat-streaming-indicator"
 import { MessageLoadingSkeleton } from "./message-loading-skeleton"
 import {
@@ -226,15 +222,18 @@ export function ChatPanel({
   const displayMessages = isDraftMode ? EMPTY_MESSAGES : messages
   const hasCurrentTurnEnded =
     status === "ready" || status === "error" || !!error
-  const showStreamingIndicator =
-    !hideStreamingIndicator &&
-    !isDraftMode &&
-    (status === "submitted" || status === "streaming") &&
-    !error &&
-    displayMessages.length > 0 &&
-    !isAssistantQueued(composerMessages ?? messages) &&
-    !isStoredAssistantQueued(storedAssistantStreamState) &&
-    !isTerminalAssistantStreamState(storedAssistantStreamState ?? undefined)
+  // 群会话不显示底部通用指示器：群在时间线内部用占位表达组长「正在生成」态，
+  // 底部再叠一条会同时出现两条「正在生成回复...」（见 bottom-streaming-indicator）。
+  const showStreamingIndicator = shouldShowBottomStreamingIndicator({
+    status,
+    contactType: contact?.type,
+    hideStreamingIndicator,
+    isDraftMode,
+    hasError: !!error,
+    messages: displayMessages,
+    composerMessages: composerMessages ?? messages,
+    storedAssistantStreamState,
+  })
 
   const slashCommands = React.useMemo<SlashCommandItem[]>(() => {
     const skills =
