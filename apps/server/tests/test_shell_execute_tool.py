@@ -60,3 +60,35 @@ def test_poll_unknown_session_message():
     from src.service.agent.shell_execute_tool import create_shell_poll_tool
     out = create_shell_poll_tool().invoke({"session_id": "nope"})
     assert "未找到" in out
+
+
+def test_shell_wait_tool_returns_finished_output():
+    import subprocess, sys, tempfile
+    from src.service.agent.shell_execute_tool import create_shell_wait_tool
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    reg = get_background_shell_registry()
+    tmp = tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".stdout")
+    tmp.close()
+    handle = open(tmp.name, "ab")
+    popen = subprocess.Popen(
+        [sys.executable, "-u", "-c", "print('done-marker', flush=True)"],
+        stdout=handle, stderr=subprocess.STDOUT,
+    )
+    handle.close()
+    sid = reg.register(popen=popen, tmp_path=tmp.name, read_offset=0, command="t")
+
+    tool = create_shell_wait_tool()
+    out = tool.invoke({"session_id": sid, "max_seconds": 5})
+    assert isinstance(out, str)
+    assert "done-marker" in out
+    assert "exit_code=0" in out
+
+
+def test_shell_wait_tool_unknown_session():
+    from src.service.agent.shell_execute_tool import create_shell_wait_tool
+
+    tool = create_shell_wait_tool()
+    out = tool.invoke({"session_id": "nope", "max_seconds": 1})
+    assert isinstance(out, str)
+    assert "未找到" in out

@@ -160,3 +160,40 @@ def create_shell_kill_tool() -> BaseTool:
         args_schema=_KillInput,
         description="终止 shell_execute 转后台运行的命令。",
     )
+
+
+def create_shell_wait_tool() -> BaseTool:
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    class _WaitInput(BaseModel):
+        session_id: str = Field(description="shell_execute 转后台时返回的 session_id")
+        max_seconds: int = Field(
+            default=60,
+            description="本轮最多阻塞等待的秒数（命令提前结束则立即返回；上限300）",
+        )
+
+    def _wait(session_id: str, max_seconds: int = 60) -> str:
+        r = get_background_shell_registry().wait(session_id, max_seconds)
+        if not r.get("found"):
+            return f"未找到后台命令 session_id={session_id}（可能已结束并被回收）。"
+        body = r["new_output"] or "(无新增输出)"
+        if r["finished"]:
+            return (
+                f"[已结束(exit_code={r['exit_code']})] 等待 {r['waited_seconds']}s。"
+                f"新增输出:\n{body}\n[offset={r['offset']}]"
+            )
+        return (
+            f"[仍在运行] 已等待 {r['waited_seconds']}s 未完成。新增输出:\n{body}\n"
+            f"[offset={r['offset']}] 可再 shell_wait 等一轮，或判断是超大任务后告知用户稍后问进度。"
+        )
+
+    return StructuredTool.from_function(
+        func=_wait,
+        name="shell_wait",
+        args_schema=_WaitInput,
+        description=(
+            "阻塞等待 shell_execute 转后台的命令结束、或最多 max_seconds 秒（上限300）。"
+            "转后台后**有节奏地等结果优先用它**（每轮如 30-60s），命令完成即返回最终输出与退出码；"
+            "未完成可再调一轮。不要用空轮询 shell_poll 来等。"
+        ),
+    )
