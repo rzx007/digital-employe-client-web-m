@@ -286,6 +286,7 @@ def create_start_service_tool() -> BaseTool:
             reg.kill(sid)
             return f"[起服务失败] 命中致命输出: {r.get('fatal_line')}\n{body}"
         if r.get("exited"):
+            reg.kill(sid)  # 进程已死，kill 只回收 session+清临时文件，防失败重试累积 .stdout
             return (
                 f"[服务启动即退出 exit_code={r.get('exit_code')}] "
                 f"可能不是常驻命令或配置有误:\n{body}"
