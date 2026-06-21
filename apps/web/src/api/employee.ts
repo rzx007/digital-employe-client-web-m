@@ -206,6 +206,15 @@ export interface EmployeeGrowthBrain {
     reason: string
     backup_version: string | null
   }>
+  skill_lifecycle?: Record<
+    string,
+    { status: "active" | "stale" | "archived"; pinned: boolean }
+  >
+  archive_suggestion?: {
+    employee_id: number
+    last_active: string | null
+    idle_days: number
+  } | null
 }
 
 /**
@@ -247,6 +256,35 @@ export async function dismissSkillCandidate(
   return request<ApiResponse<{ dismissed: string }>>(
     `/employees/${employeeId}/growth/skill-candidates/${encodeURIComponent(slug)}/dismiss`,
     { method: "POST" }
+  )
+}
+
+/**
+ * 恢复已归档的技能
+ * POST /employees/{employee_id}/growth/skills/{skill_name}/restore
+ */
+export async function restoreSkill(
+  employeeId: number,
+  skillName: string
+) {
+  return request<ApiResponse<{ restored: string }>>(
+    `/employees/${employeeId}/growth/skills/${encodeURIComponent(skillName)}/restore`,
+    { method: "POST" }
+  )
+}
+
+/**
+ * 置顶/取消置顶技能
+ * POST /employees/{employee_id}/growth/skills/{skill_name}/pin
+ */
+export async function pinSkill(
+  employeeId: number,
+  skillName: string,
+  pinned: boolean
+) {
+  return request<ApiResponse<{ pinned: boolean }>>(
+    `/employees/${employeeId}/growth/skills/${encodeURIComponent(skillName)}/pin`,
+    { method: "POST", body: { pinned } }
   )
 }
 

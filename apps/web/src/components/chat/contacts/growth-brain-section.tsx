@@ -10,7 +10,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card"
-import { adoptSkillCandidate, dismissSkillCandidate } from "@/api/employee"
+import {
+  adoptSkillCandidate,
+  dismissSkillCandidate,
+  restoreSkill,
+  pinSkill,
+} from "@/api/employee"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useEmployeeGrowthBrain } from "@/hooks/use-employee-growth"
 
@@ -22,6 +27,7 @@ export function GrowthBrainSection({
   const { data: brain, isLoading } = useEmployeeGrowthBrain(employeeId)
   const queryClient = useQueryClient()
   const [pendingSlug, setPendingSlug] = useState<string | null>(null)
+  const [archivedExpanded, setArchivedExpanded] = useState(false)
 
   const refetchBrain = async () => {
     await queryClient.invalidateQueries({
@@ -59,6 +65,35 @@ export function GrowthBrainSection({
     }
   }
 
+  const handleRestore = async (name: string) => {
+    if (!employeeId || pendingSlug) return
+    setPendingSlug(`restore:${name}`)
+    try {
+      await restoreSkill(Number(employeeId), name)
+      toast.success(`已恢复技能「${name}」`)
+      await refetchBrain()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "恢复失败")
+    } finally {
+      setPendingSlug(null)
+    }
+  }
+
+  const handlePin = async (name: string, currentPinned: boolean) => {
+    if (!employeeId || pendingSlug) return
+    const nextPinned = !currentPinned
+    setPendingSlug(`pin:${name}`)
+    try {
+      await pinSkill(Number(employeeId), name, nextPinned)
+      toast.success(nextPinned ? `已置顶技能「${name}」` : `已取消置顶「${name}」`)
+      await refetchBrain()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "操作失败")
+    } finally {
+      setPendingSlug(null)
+    }
+  }
+
   if (!employeeId) return null
   if (isLoading)
     return (
@@ -69,13 +104,25 @@ export function GrowthBrainSection({
   if (!brain) return null
 
   const candidates = brain.skill_candidates ?? []
+  const lifecycle = brain.skill_lifecycle ?? {}
+
+  // 将 skills_list 按生命周期状态分组
+  const activeSkills = brain.skills_list.filter(
+    (name) => (lifecycle[name]?.status ?? "active") !== "archived"
+  )
+  const archivedSkills = brain.skills_list.filter(
+    (name) => lifecycle[name]?.status === "archived"
+  )
+
   const hasAny =
     brain.profile_md ||
     brain.skills_list.length > 0 ||
     brain.memories_md ||
     brain.journal_entries.length > 0 ||
     candidates.length > 0 ||
-    (brain.recent_skill_edits?.length ?? 0) > 0
+    (brain.recent_skill_edits?.length ?? 0) > 0 ||
+    brain.archive_suggestion != null ||
+    Object.keys(lifecycle).length > 0
 
   if (!hasAny) {
     return (
@@ -87,6 +134,18 @@ export function GrowthBrainSection({
 
   return (
     <div className="space-y-4">
+      {brain.archive_suggestion != null ? (
+        <Card className="border-muted bg-muted/40">
+          <CardContent className="py-3 px-4 text-sm text-muted-foreground">
+            该员工已闲置{" "}
+            <span className="font-medium text-foreground">
+              {brain.archive_suggestion.idle_days}
+            </span>{" "}
+            天未派活，可考虑归档。
+          </CardContent>
+        </Card>
+      ) : null}
+
       {brain.profile_md ? (
         <Card>
           <CardHeader>
@@ -167,13 +226,75 @@ export function GrowthBrainSection({
             <CardTitle>技能</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {brain.skills_list.map((name) => (
-                <Badge key={name} variant="secondary">
-                  {name}
-                </Badge>
-              ))}
-            </div>
+            {activeSkills.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {activeSkills.map((name) => {
+                  const pinned = lifecycle[name]?.pinned ?? false
+                  const busy = pendingSlug === `pin:${name}`
+                  return (
+                    <div key={name} className="flex items-center gap-1">
+                      <Badge
+                        variant="secondary"
+                        className={pinned ? "border border-primary/40" : ""}
+                      >
+                        {pinned ? "★ " : ""}{name}
+                      </Badge>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 w-5 p-0 text-[10px] text-muted-foreground hover:text-foreground"
+                        disabled={busy || !!pendingSlug}
+                        onClick={() => void handlePin(name, pinned)}
+                        title={pinned ? "取消置顶" : "置顶"}
+                      >
+                        {pinned ? "★" : "☆"}
+                      </Button>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : null}
+
+            {archivedSkills.length > 0 ? (
+              <div className={activeSkills.length > 0 ? "mt-3" : ""}>
+                <button
+                  type="button"
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setArchivedExpanded((v) => !v)}
+                >
+                  <span>{archivedExpanded ? "▾" : "▸"}</span>
+                  <span>已归档 ({archivedSkills.length})</span>
+                </button>
+                {archivedExpanded ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {archivedSkills.map((name) => {
+                      const busy = pendingSlug === `restore:${name}`
+                      return (
+                        <div key={name} className="flex items-center gap-1">
+                          <Badge
+                            variant="outline"
+                            className="text-muted-foreground line-through"
+                          >
+                            {name}
+                          </Badge>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-5 px-1.5 text-[10px]"
+                            disabled={busy || !!pendingSlug}
+                            onClick={() => void handleRestore(name)}
+                          >
+                            {busy ? "…" : "恢复"}
+                          </Button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       ) : null}
