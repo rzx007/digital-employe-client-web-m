@@ -310,3 +310,30 @@ def test_shell_wait_running_message_mentions_watch_background():
     import src.service.agent.shell_execute_tool as mod
     src = inspect.getsource(mod.create_shell_wait_tool)
     assert "watch_background" in src
+
+
+def test_watch_background_refuses_group_conversation(monkeypatch):
+    import sys, subprocess, tempfile
+    from src.service.agent.shell_execute_tool import create_watch_background_tool
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    _grp = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+            if sys.platform == "win32" else {"start_new_session": True})
+    tmp = tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".stdout"); tmp.close()
+    handle = open(tmp.name, "ab")
+    popen = subprocess.Popen([sys.executable, "-u", "-c", "import time; time.sleep(30)"],
+                             stdout=handle, stderr=subprocess.STDOUT, **_grp)
+    handle.close()
+    reg = get_background_shell_registry()
+    sid = reg.register(popen=popen, tmp_path=tmp.name, read_offset=0, command="svc")
+
+    import src.service.agent.shell_execute_tool as mod
+    monkeypatch.setattr(mod, "_resolve_watch_context", lambda runtime: (77, "group"))
+
+    tool = create_watch_background_tool()
+    out = tool.invoke({"session_id": sid})
+    assert isinstance(out, str)
+    assert "暂不支持" in out
+    from src.service.background_watch_registry import get_background_watch_registry
+    assert all(w.session_id != sid for w in get_background_watch_registry().list_watching())
+    reg.kill(sid)

@@ -17,7 +17,7 @@ def scan_and_wake(*, shell_registry=None, watch_registry=None,
         from src.service.background_watch_registry import get_background_watch_registry
         watch_registry = get_background_watch_registry()
     if stream_registry is None:
-        from src.service.stream_registry import registry as stream_registry  # 实现时确认导出名
+        from src.service.stream_registry import registry as stream_registry
     if wake_fn is None:
         wake_fn = _default_wake_fn
 

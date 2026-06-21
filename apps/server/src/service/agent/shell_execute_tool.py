@@ -368,6 +368,13 @@ def create_watch_background_tool() -> BaseTool:
         conv_id, target_type = _resolve_watch_context(runtime)
         if conv_id is None or target_type is None:
             return "无法登记（缺会话上下文）；请改用 shell_wait/shell_poll 自己取结果。"
+        # 群会话的自动续跑路径暂未支持（续跑触发器只二分 curator/employee），
+        # 不登记以免做出「完成自动继续」却永不兑现的承诺。
+        if target_type not in ("curator", "employee"):
+            return (
+                f"当前会话（{target_type}）暂不支持后台命令自动续跑；"
+                f"请用 shell_wait(session_id={session_id}) 自己等结果。"
+            )
         get_background_watch_registry().register_watch(
             session_id=session_id,
             conversation_id=conv_id,
