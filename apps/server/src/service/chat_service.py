@@ -71,6 +71,16 @@ def _apply_external_dir_grant(db, workspace_id, conversation_id, external_dir) -
     record_grant(db, workspace_id, conversation_id, path, scope)
 
 
+def build_skill_question(skill_name: str | None, question: str) -> str:
+    """显式指定技能时给问题加「请使用X技能…」前缀；无技能则原样返回。
+
+    与员工对齐：curator 也注入（总管 agent 已把 orchestrator_skills 加载为可用技能）。
+    """
+    if skill_name:
+        return f"请使用{skill_name}技能回答这个问题：{question}"
+    return question
+
+
 class ChatService:
     @staticmethod
     def _to_virtual_backend_path(abs_path: str, root_path: str) -> str:
@@ -763,9 +773,7 @@ class ChatService:
         _phase("built_agent")
 
         try:
-            skill_question = question
-            if skill_name and target_type != "curator":
-                skill_question = f"请使用{skill_name}技能回答这个问题：{question}"
+            skill_question = build_skill_question(skill_name, question)
             user_content = build_user_agent_content(
                 skill_question,
                 extra_meta.get("files") if extra_meta else None,
