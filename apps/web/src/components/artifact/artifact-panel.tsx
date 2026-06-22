@@ -69,13 +69,7 @@ import {
   getPreviewableTypeLabel,
   isHtmlPath,
 } from "./artifact-content/resolve-renderer"
-import {
-  addHtmlArtifactBlock,
-  emitWorkbenchConfigChanged,
-  GLOBAL_WORKBENCH_ID,
-  initializeWorkbenchConfig,
-  loadWorkbenchConfig,
-} from "@/lib/workbench/workbench-config"
+import { pinHtmlToWorkbench } from "@/lib/workbench/pin-html-to-workbench"
 import type { Artifact } from "./artifact-types"
 import { ImportDraftSkillDialog } from "./import-draft-skill-dialog"
 import { SubConversationPanel } from "./sub-conversation-panel"
@@ -340,25 +334,6 @@ function SkillDraftContextMenu({
       </ContextMenuItem>
     </ContextMenuContent>
   )
-}
-
-/** 把某会话的 HTML 产物钉成工作台看板（直接读写 localStorage，并通知工作台立即刷新） */
-function pinHtmlToWorkbench(
-  conversationId: string | number,
-  path: string,
-  name: string
-) {
-  const config =
-    loadWorkbenchConfig(GLOBAL_WORKBENCH_ID) ??
-    initializeWorkbenchConfig(GLOBAL_WORKBENCH_ID)
-  const title = name.replace(/\.html?$/i, "")
-  addHtmlArtifactBlock(
-    config,
-    { conversationId, resourcePath: path, pinnedAt: Date.now() },
-    title
-  )
-  // 通知 WorkbenchView 重读配置（钉住即出现，无需切菜单）
-  emitWorkbenchConfigChanged()
 }
 
 function renderEntry(
@@ -717,7 +692,11 @@ export const ArtifactPanel = ({
   const handlePin = React.useCallback(
     (entry: ResourceEntry) => {
       if (!conversationId) return
-      pinHtmlToWorkbench(conversationId, entry.path, entry.name)
+      pinHtmlToWorkbench({
+        conversationId,
+        path: entry.path,
+        name: entry.name,
+      })
       toast.success(`已钉到工作台：${entry.name.replace(/\.html?$/i, "")}`)
     },
     [conversationId]
