@@ -14,6 +14,7 @@ import {
   HTML_PREVIEW_SANDBOX,
   wrapHtmlForPreview,
 } from "@/components/artifact/artifact-content/html-preview-utils"
+import { WORKBENCH_BOARD_FILES_CHANGED_EVENT } from "@/lib/workbench/workbench-config"
 import type { HtmlArtifactRef } from "@/types/workbench"
 
 interface WorkbenchHtmlPanelProps {
@@ -46,6 +47,27 @@ export function WorkbenchHtmlPanel({
     void refetch()
     setReloadNonce((n) => n + 1)
   }, [refetch])
+
+  // 自动刷新：工作台助手 write/edit 了本看板源文件时（file-change-cards 派发事件），
+  // 按 basename 匹配自己的 resourcePath → 自动重拉重渲，不用手点刷新。
+  React.useEffect(() => {
+    const myName = (htmlRef.resourcePath || "").split(/[\\/]/).pop()
+    if (!myName) return
+    const onChanged = (e: Event) => {
+      const paths = (e as CustomEvent<{ paths: string[] }>).detail?.paths ?? []
+      const hit = paths.some((p) => p.split(/[\\/]/).pop() === myName)
+      if (hit) handleRefresh()
+    }
+    window.addEventListener(
+      WORKBENCH_BOARD_FILES_CHANGED_EVENT,
+      onChanged as EventListener
+    )
+    return () =>
+      window.removeEventListener(
+        WORKBENCH_BOARD_FILES_CHANGED_EVENT,
+        onChanged as EventListener
+      )
+  }, [htmlRef.resourcePath, handleRefresh])
 
   const content = data?.content
   const srcDoc = React.useMemo(() => {

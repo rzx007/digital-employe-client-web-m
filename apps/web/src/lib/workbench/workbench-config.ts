@@ -37,6 +37,19 @@ export function emitWorkbenchOpenResources(): void {
   window.dispatchEvent(new Event(WORKBENCH_OPEN_RESOURCES_EVENT))
 }
 
+/**
+ * 「看板源文件已变更」事件：工作台助手 write/edit 了某些文件后派发（带变更路径），
+ * 已钉这些 .html 的看板面板监听并自动刷新——改完不用手点刷新。
+ */
+export const WORKBENCH_BOARD_FILES_CHANGED_EVENT = "workbench-board-files-changed"
+
+export function emitWorkbenchBoardFilesChanged(paths: string[]): void {
+  if (typeof window === "undefined" || paths.length === 0) return
+  window.dispatchEvent(
+    new CustomEvent(WORKBENCH_BOARD_FILES_CHANGED_EVENT, { detail: { paths } })
+  )
+}
+
 const STORAGE_KEY_PREFIX = "workbench-config-"
 
 function getStorageKey(employeeId: string): string {
