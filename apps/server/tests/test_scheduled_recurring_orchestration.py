@@ -300,6 +300,64 @@ def test_run_plan_job_opens_scheduled_run_without_curator(db_session, monkeypatc
     assert seen.get("run_id") is not None
 
 
+def test_two_scheduled_runs_end_to_end(db_session, monkeypatch):
+    """run_plan_job ×2：每轮 A→B 全链跑通，第二轮不被第一轮历史挡，B 各属各轮。"""
+    import src.service.task_scheduler_service as tss
+    import src.service.agent.orchestrator.execution as ex
+    import src.service.agent.orchestrator.dependency_scheduler as ds
+    import src.service.stream_registry as sr
+    from src.models.employee_task import EmployeeTask
+    from sqlalchemy import select as _select
+    from sqlalchemy.orm import sessionmaker
+
+    sf = sessionmaker(bind=db_session.get_bind())
+    # tss.run_plan_job uses `with get_session_local()() as db:` — give it the test bind.
+    monkeypatch.setattr(tss, "get_session_local", lambda: sf)
+    # ds.on_employee_task_completed opens its own session via get_session_local — same bind.
+    monkeypatch.setattr(ds, "get_session_local", lambda: sf)
+
+    ws, plan = _seed_ws_plan(db_session)
+    plan.cron = "0 10 * * *"; plan.is_recurring = True
+    plan.plan_json = '[{"depends_on": null}, {"depends_on": [0]}]'; db_session.commit()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+                     execute_mode="immediate", orchestration_plan_id=plan.id, user_prompt="a")
+    B = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="B",
+                     execute_mode="immediate", orchestration_plan_id=plan.id, user_prompt="b")
+    db_session.add_all([A, B]); db_session.commit()
+    plan_id = plan.id
+
+    monkeypatch.setattr("src.service.agent.orchestrator.runtime.can_assign_to_employee", lambda db, eid: True)
+    monkeypatch.setattr(sr.registry, "can_admit", lambda cls: True)
+
+    # Replace the real stream-start with a synchronous: create success log + auto-accept + drive completion.
+    def _fake_start(db, task, employee, workspace_id, *, priority=0, source="orchestration",
+                    prereq_briefing="", stream_class=None, run_id=None):
+        log = TaskExecutionLog(task_id=task.id, workspace_id=workspace_id, employee_id=employee.id,
+            skill_id=None, task_name_snapshot=task.task_name, run_status="success", run_result="ok",
+            input_json="{}", output_json="{}", started_at=cst_now(), run_id=run_id)
+        db.add(log); db.commit(); db.refresh(log)
+        sr._auto_accept_if_scheduled_run_safe(db, log)
+        ds.on_employee_task_completed(task.id, workspace_id)
+        return log.conversation_id or 1
+    monkeypatch.setattr(ex, "start_task_as_conversation", _fake_start)
+    # _dispatch_successor (in ds) forwards to start_task_as_conversation; route it through the same fake.
+    monkeypatch.setattr(ds, "_dispatch_successor",
+        lambda db, t, e, w, brief, rid, stream_class=None: _fake_start(db, t, e, w, run_id=rid))
+
+    # Two scheduled fires.
+    tss.TaskSchedulerService.run_plan_job(plan_id)
+    tss.TaskSchedulerService.run_plan_job(plan_id)
+
+    runs = db_session.scalars(_select(PlanRun).where(PlanRun.plan_id == plan_id)
+                              .order_by(PlanRun.run_seq)).all()
+    assert [r.run_seq for r in runs] == [1, 2]
+    for r in runs:
+        logs = db_session.scalars(_select(TaskExecutionLog).where(TaskExecutionLog.run_id == r.id)).all()
+        names = sorted(l.task_name_snapshot for l in logs)
+        assert names == ["A", "B"], f"run {r.run_seq} 应有 A、B 各一条，实得 {names}"
+
+
 def test_create_plan_with_schedule_sets_plan_cron(db_session, monkeypatch):
     import src.service.agent.orchestrator.tools.plans as tp
     monkeypatch.setattr(tp, "get_db", lambda: db_session)
