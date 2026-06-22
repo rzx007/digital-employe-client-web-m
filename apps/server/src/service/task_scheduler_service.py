@@ -97,28 +97,20 @@ class TaskSchedulerService:
                 scheduler.remove_job(job.id)
 
         with get_session_local()() as db:
-            from sqlalchemy import or_
             from src.models.orchestration_plan import OrchestrationPlan
             now = cst_now()
-            # task 级 cron 扫描：排除被 plan 级 cron 接管的子任务（避免双重调度），
-            # 但保留 plan 自己无 cron + 子任务有 cron 的场景（task 级是唯一调度入口）。
+            # task 级 cron 扫描：仅挂独立任务（无 orchestration_plan_id）。
+            # 编排子任务统一由 plan 级调度（schedule_kind）驱动，绝不走 task 级双重调度。
             tasks = list(
                 db.scalars(
-                    select(EmployeeTask).outerjoin(
-                        OrchestrationPlan,
-                        EmployeeTask.orchestration_plan_id == OrchestrationPlan.id,
-                    ).where(
+                    select(EmployeeTask).where(
                         EmployeeTask.is_active.is_(True),
-                        EmployeeTask.dispatch_type.in_(("skill", "mcp")),
+                        EmployeeTask.dispatch_type == "skill",
                         (EmployeeTask.valid_until.is_(None))
                         | (EmployeeTask.valid_until >= now),
                         EmployeeTask.cron_expression.isnot(None),
                         func.trim(EmployeeTask.cron_expression) != "",
-                        or_(
-                            EmployeeTask.orchestration_plan_id.is_(None),
-                            OrchestrationPlan.cron.is_(None),
-                            func.trim(OrchestrationPlan.cron) == "",
-                        ),
+                        EmployeeTask.orchestration_plan_id.is_(None),
                     ).order_by(
                         EmployeeTask.priority.desc(),
                         EmployeeTask.id.desc(),
@@ -170,28 +162,37 @@ class TaskSchedulerService:
                 db.add(task)
             db.commit()
 
-            # 计划级 cron jobs：每个循环计划注册一个 plan:{id} job
-            from src.models.orchestration_plan import OrchestrationPlan
+            # 计划级调度：按 schedule_kind 分派 —— recurring→CronTrigger，once→DateTrigger（未跑且未来）
+            from apscheduler.triggers.date import DateTrigger
             plans = list(db.scalars(
                 select(OrchestrationPlan).where(
                     OrchestrationPlan.status == "confirmed",
-                    OrchestrationPlan.cron.isnot(None),
-                    func.trim(OrchestrationPlan.cron) != "",
+                    OrchestrationPlan.schedule_kind.isnot(None),
                 )
             ).all())
             for plan in plans:
-                cron = (plan.cron or "").strip()
-                if TaskService.compute_next_run(cron, now=now) is None:
-                    logger.warning("跳过无法解析的计划级 cron plan_id=%s cron=%r", plan.id, cron)
-                    continue
                 job_id = f"plan:{plan.id}"
+                if plan.schedule_kind == "recurring":
+                    cron = (plan.cron or "").strip()
+                    if not cron or TaskService.compute_next_run(cron, now=now) is None:
+                        logger.warning("跳过无法解析的 recurring cron plan_id=%s cron=%r", plan.id, cron)
+                        continue
+                    trigger = CronTrigger.from_crontab(cron, timezone=CST)
+                elif plan.schedule_kind == "once":
+                    # once：未跑过(last_run_at 空) 且 run_at 在未来才挂 DateTrigger
+                    if plan.last_run_at is not None or plan.run_at is None or plan.run_at <= now:
+                        continue
+                    trigger = DateTrigger(run_date=plan.run_at, timezone=CST)
+                else:
+                    continue
                 scheduler.add_job(
-                    cls.run_plan_job, trigger=CronTrigger.from_crontab(cron, timezone=CST),
-                    id=job_id, args=[plan.id], replace_existing=True,
-                    max_instances=1, coalesce=True, misfire_grace_time=120,
+                    cls.run_plan_job, trigger=trigger, id=job_id, args=[plan.id],
+                    replace_existing=True, max_instances=1, coalesce=True, misfire_grace_time=120,
                 )
                 job = scheduler.get_job(job_id)
-                plan.next_run_at = job.next_run_time if job else TaskService.compute_next_run(cron)
+                plan.next_run_at = job.next_run_time if job else (
+                    TaskService.compute_next_run(plan.cron) if plan.schedule_kind == "recurring" else plan.run_at
+                )
             db.commit()
         cls._register_system_jobs()
 

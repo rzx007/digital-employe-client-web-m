@@ -144,3 +144,48 @@ def test_execute_plan_immediate_runs_via_primitive(db_session, monkeypatch):
         lambda db, p, *, trigger, auto_accept: seen.update(trigger=trigger, auto=auto_accept))
     ex.execute_plan(db_session, plan, ws.id)
     assert seen == {"trigger": "manual", "auto": False}
+
+
+def test_reload_jobs_task_scan_excludes_all_orchestration_subtasks(db_session):
+    from sqlalchemy import select, func
+    from src.models.employee_task import EmployeeTask
+    from src.models.employee import Employee
+    from src.models.workspace import Workspace
+    ws = Workspace(name="w", root_path="/tmp/w", user_id="u"); db_session.add(ws); db_session.flush()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    standalone = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="独立",
+        execute_mode="scheduled", cron_expression="0 9 * * *", dispatch_type="skill", is_active=True)
+    sub = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="子",
+        execute_mode="scheduled", cron_expression="0 9 * * *", dispatch_type="skill",
+        orchestration_plan_id=1, is_active=True)
+    db_session.add_all([standalone, sub]); db_session.commit()
+    rows = db_session.scalars(select(EmployeeTask).where(
+        EmployeeTask.is_active.is_(True),
+        EmployeeTask.dispatch_type == "skill",
+        EmployeeTask.cron_expression.isnot(None),
+        func.trim(EmployeeTask.cron_expression) != "",
+        EmployeeTask.orchestration_plan_id.is_(None),
+    )).all()
+    ids = {t.id for t in rows}
+    assert standalone.id in ids and sub.id not in ids
+
+
+def test_reload_jobs_plan_scan_includes_once_and_recurring(db_session):
+    from sqlalchemy import select
+    from src.models.orchestration_plan import OrchestrationPlan
+    from src.models.workspace import Workspace, cst_now
+    from datetime import timedelta
+    ws = Workspace(name="w", root_path="/tmp/w", user_id="u"); db_session.add(ws); db_session.flush()
+    rec = OrchestrationPlan(workspace_id=ws.id, conversation_id=1, user_input="r", plan_json="[]",
+        status="confirmed", schedule_kind="recurring", cron="0 10 * * *")
+    once_future = OrchestrationPlan(workspace_id=ws.id, conversation_id=1, user_input="o", plan_json="[]",
+        status="confirmed", schedule_kind="once", run_at=cst_now() + timedelta(hours=1))
+    once_done = OrchestrationPlan(workspace_id=ws.id, conversation_id=1, user_input="d", plan_json="[]",
+        status="done", schedule_kind="once", run_at=cst_now() + timedelta(hours=1))
+    db_session.add_all([rec, once_future, once_done]); db_session.commit()
+    rows = db_session.scalars(select(OrchestrationPlan).where(
+        OrchestrationPlan.status == "confirmed",
+        OrchestrationPlan.schedule_kind.isnot(None),
+    )).all()
+    ids = {p.id for p in rows}
+    assert rec.id in ids and once_future.id in ids and once_done.id not in ids

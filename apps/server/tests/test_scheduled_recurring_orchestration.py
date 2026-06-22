@@ -683,55 +683,10 @@ def test_two_runs_get_separate_conversations(db_session, monkeypatch):
         assert flags["run_seq"] == r.run_seq
 
 
-def test_reload_jobs_task_level_filter_skips_only_plan_level_cron_managed(db_session):
-    """task 级 cron 扫描应当：(a) 排除被 plan 级 cron 接管的子任务；(b) 保留 plan 自己无 cron 的子任务。
-
-    回归 plan#15 真实事故：plan.cron 为空但子任务有 cron 时，旧过滤 `orchestration_plan_id IS NULL`
-    把这条任务两边都排除（plan 级跳过、task 级跳过）→ 永远不触发。
-    """
-    from sqlalchemy import select, func, or_
-    from src.models.employee_task import EmployeeTask
-
-    ws = Workspace(name="w", root_path="/tmp/w", user_id="u-ws1"); db_session.add(ws); db_session.flush()
-    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
-    # 场景 1：独立定时任务（无 plan）—— 应该被扫到
-    standalone = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="独立",
-        execute_mode="scheduled", cron_expression="0 9 * * *", user_prompt="x", is_active=True)
-    # 场景 2：plan 自身有 cron（递归 plan）+ 子任务无 cron —— 子任务由 plan 级接管，task 级不挂
-    plan_recurring = OrchestrationPlan(workspace_id=ws.id, conversation_id=1, user_input="r",
-        plan_json="[]", status="confirmed", total_tasks=1, cron="*/2 * * * *", is_recurring=True)
-    db_session.add(plan_recurring); db_session.flush()
-    sub_recurring = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="递归子",
-        execute_mode="immediate", cron_expression="", orchestration_plan_id=plan_recurring.id,
-        user_prompt="y", is_active=True)
-    # 场景 3：plan 自身无 cron + 子任务有 cron —— 真实 bug 场景，必须保留（task 级是唯一入口）
-    plan_one_shot = OrchestrationPlan(workspace_id=ws.id, conversation_id=1, user_input="o",
-        plan_json="[]", status="confirmed", total_tasks=1, cron=None, is_recurring=False)
-    db_session.add(plan_one_shot); db_session.flush()
-    sub_with_cron = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="打卡提醒",
-        execute_mode="scheduled", cron_expression="30 17 * * *",
-        orchestration_plan_id=plan_one_shot.id, user_prompt="z", is_active=True)
-    db_session.add_all([standalone, sub_recurring, sub_with_cron]); db_session.commit()
-
-    # 复刻 reload_jobs 的新过滤：task 级扫描的 WHERE 子句
-    rows = db_session.scalars(
-        select(EmployeeTask).outerjoin(
-            OrchestrationPlan, EmployeeTask.orchestration_plan_id == OrchestrationPlan.id
-        ).where(
-            EmployeeTask.is_active.is_(True),
-            EmployeeTask.cron_expression.isnot(None),
-            func.trim(EmployeeTask.cron_expression) != "",
-            or_(
-                EmployeeTask.orchestration_plan_id.is_(None),
-                OrchestrationPlan.cron.is_(None),
-                func.trim(OrchestrationPlan.cron) == "",
-            ),
-        )
-    ).all()
-    got_ids = {t.id for t in rows}
-    assert standalone.id in got_ids, "独立定时任务必须被扫到"
-    assert sub_with_cron.id in got_ids, "plan 无 cron 但子任务有 cron 时必须被扫到（task 级是唯一入口）"
-    assert sub_recurring.id not in got_ids, "plan 级 cron 接管的子任务不应在 task 级双重调度"
+# test_reload_jobs_task_level_filter_skips_only_plan_level_cron_managed 已删除。
+# 旧测试断言「plan 无 cron 但子任务有 cron → task 级保留」这一旧行为。
+# 新模型下编排子任务 (orchestration_plan_id IS NOT NULL) 一律不走 task 级调度，
+# 该语义已由 test_scheduling_consolidation.py::test_reload_jobs_task_scan_excludes_all_orchestration_subtasks 覆盖。
 
 
 def test_backfill_plan_runs_for_legacy_plans(db_session):
