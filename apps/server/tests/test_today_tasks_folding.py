@@ -102,3 +102,38 @@ def test_standalone_task_not_affected(db_session):
     # 一定有这条独立任务、is_plan 不为 True
     found = [i for i in items if i.get("task_id") == standalone.id]
     assert len(found) == 1 and not found[0].get("is_plan")
+
+
+def test_plan_status_ignores_superseded_uses_latest_per_task(db_session):
+    """返工场景：同一子任务 superseded(旧)+success(新) → 取最新 success，不落 pending。"""
+    ws, plan, emp, A, B = _seed_plan_two_tasks(db_session)
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="scheduled", auto_accept=True)
+    db_session.commit()
+    _log(db_session, A, ws.id, emp.id, "superseded", run.id)  # A 旧 log 被返工作废
+    _log(db_session, A, ws.id, emp.id, "success", run.id)     # A 返工后新 log
+    _log(db_session, B, ws.id, emp.id, "success", run.id)
+    items = TaskService.list_today_tasks(db_session, ws.id)
+    assert [i for i in items if i.get("is_plan")][0]["run_status"] == "success"
+
+
+def test_plan_row_conversation_id_falls_back_to_plan_when_run_has_none(db_session):
+    """latest_run.conversation_id 为空时（老数据/即时计划/未跑过）→ 行 conversation_id 回落 plan.conversation_id。"""
+    ws, plan, emp, A, B = _seed_plan_two_tasks(db_session)
+    plan.conversation_id = 777; db_session.commit()
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="scheduled", auto_accept=True)
+    # run.conversation_id 故意不设（保持 NULL，模拟老数据/即时计划未写本轮会话）
+    db_session.commit()
+    _log(db_session, A, ws.id, emp.id, "success", run.id)
+    row = [i for i in TaskService.list_today_tasks(db_session, ws.id) if i.get("is_plan")][0]
+    assert row["conversation_id"] == 777
+
+
+def test_plan_row_conversation_id_uses_run_conv_when_present(db_session):
+    """有本轮专属会话（定时轮）时优先用 run.conversation_id，不回落 plan。"""
+    ws, plan, emp, A, B = _seed_plan_two_tasks(db_session)
+    plan.conversation_id = 1; db_session.commit()
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="scheduled", auto_accept=True)
+    run.conversation_id = 555; db_session.commit()
+    _log(db_session, A, ws.id, emp.id, "success", run.id)
+    row = [i for i in TaskService.list_today_tasks(db_session, ws.id) if i.get("is_plan")][0]
+    assert row["conversation_id"] == 555

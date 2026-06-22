@@ -743,7 +743,7 @@ def test_backfill_plan_runs_for_legacy_plans(db_session):
     ws = Workspace(name="w", root_path="/tmp/w", user_id="u-ws1"); db_session.add(ws); db_session.flush()
     emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
     # 场景 A：老 plan（无 PlanRun）+ 子任务有 success log（run_id=NULL，老格式）
-    old_plan = OrchestrationPlan(workspace_id=ws.id, conversation_id=1, user_input="老需求",
+    old_plan = OrchestrationPlan(workspace_id=ws.id, conversation_id=42, user_input="老需求",
         plan_json="[]", status="confirmed", total_tasks=1)
     db_session.add(old_plan); db_session.flush()
     old_task = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="老任务",
@@ -772,6 +772,7 @@ def test_backfill_plan_runs_for_legacy_plans(db_session):
     # 场景 A：老 plan 应得到一条 settled PlanRun + 旧 log 的 run_id 被回填
     runs_a = db_session.scalars(select(PlanRun).where(PlanRun.plan_id == old_plan.id)).all()
     assert len(runs_a) == 1 and runs_a[0].status == "settled" and runs_a[0].trigger == "manual"
+    assert runs_a[0].conversation_id == 42  # 回填的 run 带上 plan 创建源会话，保证 today 行可跳
     log_refreshed = db_session.get(TaskExecutionLog, old_log.id)
     assert log_refreshed.run_id == runs_a[0].id
     # 场景 B：新 plan 不被重复补

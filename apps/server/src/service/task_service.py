@@ -512,8 +512,16 @@ class TaskService:
                 # 与原 SQL 排序一致：按 started_at 升序
                 run_logs = sorted(run_logs, key=lambda l: l.started_at or "")
 
-                # 聚合状态（按优先级）
-                statuses = {l.run_status for l in run_logs if l.run_status}
+                # 每个子任务取本轮**最新一条** log（按 id）作有效状态——处理返工：
+                # 同一子任务 superseded(旧) + success(新) → 取 success，不被旧 log 拖成 pending。
+                latest_log_by_task: dict[int, TaskExecutionLog] = {}
+                for l in run_logs:
+                    prev = latest_log_by_task.get(l.task_id)
+                    if prev is None or (l.id or 0) > (prev.id or 0):
+                        latest_log_by_task[l.task_id] = l
+
+                # 聚合状态（按优先级）——只看每子任务的有效（最新）状态
+                statuses = {l.run_status for l in latest_log_by_task.values() if l.run_status}
                 if statuses & {"running", "queued"}:
                     agg_status = "running"
                 elif statuses & {"failed", "error", "timeout"}:
@@ -545,6 +553,14 @@ class TaskService:
                 if len(summary) > 60:
                     summary = summary[:60] + "…"
 
+                # 跳转会话：优先本轮专属会话（定时轮）；为空则回落 plan 创建源会话
+                # （即时/manual 计划、老数据、还没跑过的计划都靠这个回落保证点击可跳）。
+                row_conv_id = (
+                    latest_run.conversation_id
+                    if latest_run is not None and latest_run.conversation_id is not None
+                    else plan.conversation_id
+                )
+
                 plan_rows.append({
                     "task_id": 0,
                     "task_name": summary or f"编排计划 #{pid}",
@@ -559,7 +575,7 @@ class TaskService:
                     "started_at": started_iso,
                     "ended_at": None,
                     "duration_ms": duration_total,
-                    "conversation_id": latest_run.conversation_id if latest_run else None,
+                    "conversation_id": row_conv_id,
                     "is_plan": True,
                     "plan_id": pid,
                     "run_seq": latest_run.run_seq if latest_run else None,

@@ -95,7 +95,7 @@ def _backfill_plan_runs_for_legacy_plans(engine) -> None:
     with engine.begin() as conn:
         # 找所有 confirmed 但还没任何 PlanRun 的老 plan
         rows = conn.execute(text("""
-            SELECT p.id, p.workspace_id, p.created_at
+            SELECT p.id, p.workspace_id, p.created_at, p.conversation_id
             FROM orchestration_plans p
             LEFT JOIN plan_runs r ON r.plan_id = p.id
             WHERE p.status = 'confirmed' AND r.id IS NULL
@@ -104,13 +104,14 @@ def _backfill_plan_runs_for_legacy_plans(engine) -> None:
         if not rows:
             return
         backfilled = 0
-        for plan_id, workspace_id, created_at in rows:
-            # 建一条 settled PlanRun（trigger=manual 保守，auto_accept=False 保留交互式语义）
+        for plan_id, workspace_id, created_at, plan_conv_id in rows:
+            # 建一条 settled PlanRun（trigger=manual 保守，auto_accept=False 保留交互式语义）；
+            # conversation_id 用 plan 创建源会话，让 today 面板该行点击可跳。
             conn.execute(text("""
                 INSERT INTO plan_runs (plan_id, workspace_id, run_seq, trigger, auto_accept,
-                                       status, started_at, ended_at, created_at)
-                VALUES (:pid, :wid, 1, 'manual', 0, 'settled', :ts, :ts, :ts)
-            """), {"pid": plan_id, "wid": workspace_id, "ts": created_at})
+                                       status, conversation_id, started_at, ended_at, created_at)
+                VALUES (:pid, :wid, 1, 'manual', 0, 'settled', :conv, :ts, :ts, :ts)
+            """), {"pid": plan_id, "wid": workspace_id, "conv": plan_conv_id, "ts": created_at})
             new_run_id = conn.execute(text("SELECT last_insert_rowid()")).scalar()
             # 把该 plan 属下子任务的 logs（run_id 为 NULL 的）全部归到这条新 run
             conn.execute(text("""
