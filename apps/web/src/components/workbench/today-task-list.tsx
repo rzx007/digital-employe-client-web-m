@@ -106,16 +106,29 @@ export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
 
           const body = (
             <>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
+              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                {/* 标题行：plan 行只放标题（badge 下移到副信息行），员工任务行同行带 employee 标签 */}
+                {task.is_plan ? (
                   <span className="truncate text-xs font-medium">
                     {task.task_name}
                   </span>
-                  <span className="shrink-0 rounded bg-muted/70 px-1 py-px text-[10px] font-semibold text-foreground">
-                    {task.employee_name}
-                  </span>
-                </div>
+                ) : (
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate text-xs font-medium">
+                      {task.task_name}
+                    </span>
+                    <span className="shrink-0 rounded bg-muted/70 px-1 py-px text-[10px] font-semibold text-foreground">
+                      {task.employee_name}
+                    </span>
+                  </div>
+                )}
                 <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
+                  {task.is_plan && (
+                    <span className="shrink-0 rounded bg-muted/70 px-1 py-px text-[10px] font-medium text-foreground/80">
+                      编排计划
+                      {task.run_seq != null && ` · 第${task.run_seq}轮`}
+                    </span>
+                  )}
                   <span className="flex items-center gap-0.5">
                     <IconClock className="size-2.5" />
                     {formatTime(task.started_at || task.planned_at || "")}
@@ -125,7 +138,7 @@ export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
                   )}
                 </div>
               </div>
-              <TaskStatusBadge status={task.run_status} />
+              <TaskStatusBadge status={task.run_status} className="shrink-0" />
             </>
           )
 
