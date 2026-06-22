@@ -99,9 +99,15 @@ def test_invalidate_downstream_cancels_inflight(db_session, monkeypatch):
 
 def test_invalidate_downstream_skips_failed(db_session, monkeypatch):
     from src.service.agent.orchestrator import dependency_scheduler as ds
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
     monkeypatch.setattr(ds, "get_session_local", lambda: (lambda: _NoCloseSession(db_session)))
     ws, emp, plan, A, B = _seed_plan_AB(db_session)
-    bl = _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="failed", reported=False)
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+    db_session.commit()
+    # A 需要有 run_id 日志，使 latest_run_id_for_task(A) 解析到当前 run，函数不再提前返回
+    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, run_status="success", run_id=run.id)
+    # B 的 failed 日志也挂同一 run_id，BFS 查询能找到它并走失败跳过分支
+    bl = _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="failed", reported=False, run_id=run.id)
     out = ds.invalidate_downstream(A.id)
     assert out == []
     db_session.expire_all()
