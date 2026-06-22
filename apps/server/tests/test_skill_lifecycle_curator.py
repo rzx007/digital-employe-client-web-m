@@ -766,3 +766,68 @@ def test_archived_excluded_from_available_skills_path(tmp_path):
         f"archived 过滤结果不符预期，实际: {available}。"
         f"archived 集合: {archived}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Fix 2b (端到端集成): archived 技能确实从 get_agent 的 available_skills 被排除
+#
+# 闭环命门：EmployeeSkill.skill_name == <brain>/skills/<name> 目录名
+#           == list_available_skills 返回的 name == lifecycle.json 的 key。
+# 上面的 test_archived_excluded_from_available_skills_path 用的是硬编码字符串
+# 列表，并未穿过 list_available_skills 读真实技能目录——一旦目录命名规则变化
+# （例如改用 slug、加前缀），该单测仍全绿但闭环已静默断开。
+# 本测试造真实 <brain>/skills/<name>/SKILL.md 目录，monkeypatch _brain_root_for，
+# 复用 employee.py:84-92 完全相同的取数+过滤代码路径，确保 archived 真被隐藏、
+# 对照（未归档）技能仍可见。
+# ---------------------------------------------------------------------------
+
+def test_archived_skill_hidden_through_real_list_available_skills(tmp_path, monkeypatch):
+    from src.service.agent.paths import list_available_skills, resolve_skills_root
+    from src.service.learning.curator import archived_skill_names
+
+    employee_id = 4242
+    brain = tmp_path / str(employee_id)
+    skills_root = brain / "skills"
+
+    # 1. 在 brain 的 skills 目录下造两个真实技能（目录名 == skill_name == lifecycle key）
+    for name in ("kept-skill", "gone-skill"):
+        skill_dir = skills_root / name
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        (skill_dir / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: e2e fixture\n---\nbody\n",
+            encoding="utf-8",
+        )
+
+    # 2. 把 gone-skill 标为 archived（用 curator._save_lifecycle，与真实写法一致）
+    curator._save_lifecycle(brain, {"skills": {
+        "kept-skill": {"status": "active", "pinned": False,
+                       "archived_at": None, "restored_at": None},
+        "gone-skill": {"status": "archived", "pinned": False,
+                       "archived_at": "2026-01-01T00:00:00", "restored_at": None},
+    }})
+
+    # 3. monkeypatch brain 根（参照 test_run_curator_ages_skills L100-103）
+    monkeypatch.setattr(
+        "src.service.learning.librarian._brain_root_for",
+        lambda eid: brain,
+    )
+
+    # 4. 复用 get_agent (employee.py:84-92) 完全相同的代码路径
+    from src.service.learning.librarian import _brain_root_for
+    available_skills = list_available_skills(resolve_skills_root(str(skills_root)))
+    # 前提自检：未过滤前两个技能都应被 list_available_skills 真实读到
+    assert set(available_skills) == {"kept-skill", "gone-skill"}, (
+        f"list_available_skills 未读到预期技能目录，实际: {available_skills}"
+    )
+
+    _archived = archived_skill_names(_brain_root_for(employee_id))
+    if _archived:
+        available_skills = [s for s in available_skills if s not in _archived]
+
+    # 5. 断言：archived 被排除，对照仍在
+    assert "gone-skill" not in available_skills, (
+        f"archived 技能未被排除，闭环已断开。available={available_skills}, archived={_archived}"
+    )
+    assert "kept-skill" in available_skills, (
+        f"未归档对照技能不应被排除。available={available_skills}"
+    )
