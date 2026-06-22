@@ -585,7 +585,6 @@ class TaskSchedulerService:
 
         绝不调 _start_curator_task / 不重发总管消息 / 不重新分析分单。
         """
-        import json
         from src.models.conversation import Conversation, ConversationMessage
         from src.models.orchestration_plan import OrchestrationPlan
         from src.service.agent.orchestrator.execution import start_immediate_tasks
