@@ -18,10 +18,10 @@ from langchain.tools import ToolRuntime
 from langchain_core.tools import tool
 
 from src.core.config import get_settings
-from src.service.agent.orchestrator.runtime import (
-    conversation_id_from_runtime,
-    get_conversation_id,
-)
+
+# 注意：conversation_id_from_runtime / get_conversation_id 在函数内惰性 import，
+# 避免在模块加载期拉起 orchestrator 包（其 __init__ 会 import agent）→ 循环 import。
+# 与 shell_execute_tool 同款做法。
 
 
 SPAN_PRESETS: dict[str, dict[str, int]] = {
@@ -195,6 +195,11 @@ def _build_current_conversation_resolver(runtime=None) -> Callable[[str], str | 
     复用 resource_service 意味着：正确的员工/总管工作空间布局
     （<root>/employee-<owner>/artifacts/conv-<cid>/）、房间共享、旧布局兼容全都到位。
     """
+    from src.service.agent.orchestrator.runtime import (
+        conversation_id_from_runtime,
+        get_conversation_id,
+    )
+
     cid = conversation_id_from_runtime(runtime)
     if cid is None:
         cid = get_conversation_id()
