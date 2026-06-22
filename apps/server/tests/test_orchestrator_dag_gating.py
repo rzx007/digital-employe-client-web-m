@@ -13,7 +13,7 @@ from src.models.workspace import Workspace, cst_now
 
 
 def _seed_log(db, *, task_id, ws_id, emp_id, run_status="success",
-              reported=True, accepted=False, orch_conv=999):
+              reported=True, accepted=False, orch_conv=999, run_id=None):
     log = TaskExecutionLog(
         task_id=task_id, workspace_id=ws_id, employee_id=emp_id, skill_id=None,
         task_name_snapshot="t", run_status=run_status, run_result="r",
@@ -22,6 +22,7 @@ def _seed_log(db, *, task_id, ws_id, emp_id, run_status="success",
         ended_at=cst_now(),
         reported_at=cst_now() if reported else None,
         qa_accepted_at=cst_now() if accepted else None,
+        run_id=run_id,
     )
     db.add(log); db.commit()
     return log
@@ -36,12 +37,19 @@ def test_all_prereqs_accepted_pure():
 
 def test_load_accepted_task_ids_excludes_unaccepted_and_superseded(db_session):
     from src.service.agent.orchestrator.dependency_scheduler import _load_accepted_task_ids
+    from src.models.orchestration_plan import OrchestrationPlan
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
     ws = Workspace(name="w", root_path="/tmp/w"); db_session.add(ws); db_session.flush()
     emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
-    _seed_log(db_session, task_id=1, ws_id=ws.id, emp_id=emp.id, accepted=True)
-    _seed_log(db_session, task_id=2, ws_id=ws.id, emp_id=emp.id, accepted=False)
-    _seed_log(db_session, task_id=3, ws_id=ws.id, emp_id=emp.id, run_status="superseded", accepted=True)
-    got = _load_accepted_task_ids(db_session, [1, 2, 3])
+    plan = OrchestrationPlan(workspace_id=ws.id, conversation_id=1, user_input="x",
+                             plan_json="[]", status="confirmed", total_tasks=0)
+    db_session.add(plan); db_session.flush()
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+    db_session.commit()
+    _seed_log(db_session, task_id=1, ws_id=ws.id, emp_id=emp.id, accepted=True, run_id=run.id)
+    _seed_log(db_session, task_id=2, ws_id=ws.id, emp_id=emp.id, accepted=False, run_id=run.id)
+    _seed_log(db_session, task_id=3, ws_id=ws.id, emp_id=emp.id, run_status="superseded", accepted=True, run_id=run.id)
+    got = _load_accepted_task_ids(db_session, [1, 2, 3], run.id)
     assert got == {1}
 
 
@@ -98,30 +106,37 @@ def test_release_skips_superseded_and_unreported(db_session, monkeypatch):
 def test_scenario_b_downstream_gated_until_rework_accepted(db_session, monkeypatch):
     """情景B:上游被打回→返工→接受,下游谓词只在最终接受后翻真;接受的是返工后的 log。"""
     import src.service.agent.orchestrator.dependency_scheduler as ds
+    from src.models.orchestration_plan import OrchestrationPlan
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
     proxy = _NoCloseSession(db_session)
     monkeypatch.setattr(ds, "get_session_local", lambda: (lambda: proxy))
     monkeypatch.setattr(ds, "on_employee_task_completed", lambda tid, wid: None)
     ws = Workspace(name="w", root_path="/tmp/w"); db_session.add(ws); db_session.flush()
     emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    plan = OrchestrationPlan(workspace_id=ws.id, conversation_id=555, user_input="x",
+                             plan_json="[]", status="confirmed", total_tasks=0)
+    db_session.add(plan); db_session.flush()
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+    db_session.commit()
     A, B = 1, 2  # A=热搜(前置), B=Word(下游)
 
     # ① A 首次 success(已 reported,未接受) → B 还不能派
-    l1 = _seed_log(db_session, task_id=A, ws_id=ws.id, emp_id=emp.id, accepted=False, orch_conv=555)
-    assert ds._all_prereqs_accepted([A], ds._load_accepted_task_ids(db_session, [A, B])) is False
+    l1 = _seed_log(db_session, task_id=A, ws_id=ws.id, emp_id=emp.id, accepted=False, orch_conv=555, run_id=run.id)
+    assert ds._all_prereqs_accepted([A], ds._load_accepted_task_ids(db_session, [A, B], run.id)) is False
 
     # ② 总管打回:l1 superseded,A 返工新 log l2(queued、未 reported)
     l1.run_status = "superseded"; db_session.commit()
     l2 = _seed_log(db_session, task_id=A, ws_id=ws.id, emp_id=emp.id,
-                   run_status="queued", reported=False, accepted=False, orch_conv=555)
+                   run_status="queued", reported=False, accepted=False, orch_conv=555, run_id=run.id)
     # 评审流收尾对账:l1 superseded 排除、l2 未 success/未 reported → 无接受 → B 仍不可派
     assert ds.release_accepted_downstream(555) == 0
-    assert ds._all_prereqs_accepted([A], ds._load_accepted_task_ids(db_session, [A, B])) is False
+    assert ds._all_prereqs_accepted([A], ds._load_accepted_task_ids(db_session, [A, B], run.id)) is False
 
     # ③ A 返工完成:l2 success + reported → 再评审接受 → 放行对账盖 l2.qa_accepted_at
     l2.run_status = "success"; l2.reported_at = cst_now(); db_session.commit()
     assert ds.release_accepted_downstream(555) == 1
     db_session.expire_all()
     # 现在 B 的前置(A)已接受 → 可派；接受的是返工后的 l2，不是被否决的 l1
-    assert ds._all_prereqs_accepted([A], ds._load_accepted_task_ids(db_session, [A, B])) is True
+    assert ds._all_prereqs_accepted([A], ds._load_accepted_task_ids(db_session, [A, B], run.id)) is True
     assert db_session.get(TaskExecutionLog, l2.id).qa_accepted_at is not None
     assert db_session.get(TaskExecutionLog, l1.id).qa_accepted_at is None

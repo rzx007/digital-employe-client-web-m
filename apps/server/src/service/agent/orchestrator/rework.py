@@ -130,7 +130,8 @@ def redispatch_task_in_session(
         )
         assistant_msg.stream_state = "queued"
 
-        # 3) 新 TaskExecutionLog：同 task、同 conversation、同 orch 会话
+        # 3) 新 TaskExecutionLog：同 task、同 conversation、同 orch 会话、同 run
+        #    返工不新开 run——沿用 old 所在轮（run_id 继承），保持同轮审计一致性。
         new_log = TaskExecutionLog(
             task_id=task.id,
             workspace_id=workspace_id,
@@ -144,6 +145,7 @@ def redispatch_task_in_session(
             conversation_id=conv.id,
             orchestrator_conversation_id=old.orchestrator_conversation_id,
             started_at=cst_now(),
+            run_id=old.run_id,
         )
         db.add(new_log)
 

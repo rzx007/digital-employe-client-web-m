@@ -31,7 +31,7 @@ def _seed_plan_AB(db, *, dep=True):
     return ws, emp, plan, A, B
 
 
-def _seed_log(db, *, task, ws_id, emp_id, run_status="success", reported=True, accepted=False, conv_id=None):
+def _seed_log(db, *, task, ws_id, emp_id, run_status="success", reported=True, accepted=False, conv_id=None, run_id=None):
     log = TaskExecutionLog(
         task_id=task.id, workspace_id=ws_id, employee_id=emp_id, skill_id=None,
         task_name_snapshot=task.task_name, run_status=run_status, run_result="r",
@@ -40,6 +40,7 @@ def _seed_log(db, *, task, ws_id, emp_id, run_status="success", reported=True, a
         started_at=cst_now(), ended_at=cst_now(),
         reported_at=cst_now() if reported else None,
         qa_accepted_at=cst_now() if accepted else None,
+        run_id=run_id,
     )
     db.add(log); db.commit()
     return log
@@ -47,35 +48,48 @@ def _seed_log(db, *, task, ws_id, emp_id, run_status="success", reported=True, a
 
 def test_task_prereqs_accepted(db_session):
     from src.service.agent.orchestrator import dependency_scheduler as ds
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
     ws, emp, plan, A, B = _seed_plan_AB(db_session)
-    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, accepted=False)
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+    db_session.commit()
+    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, accepted=False, run_id=run.id)
     assert ds.task_prereqs_accepted(db_session, B) is False
     assert ds.task_prereqs_accepted(db_session, A) is True  # 根任务无前置
-    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, accepted=True)
+    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, accepted=True, run_id=run.id)
     assert ds.task_prereqs_accepted(db_session, B) is True
 
 
 def test_invalidate_downstream_supersedes_delivered(db_session, monkeypatch):
     from src.service.agent.orchestrator import dependency_scheduler as ds
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
     monkeypatch.setattr(ds, "get_session_local", lambda: (lambda: _NoCloseSession(db_session)))
     ws, emp, plan, A, B = _seed_plan_AB(db_session)
-    bl = _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True)
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+    db_session.commit()
+    # A needs a run_id log so latest_run_id_for_task(A) resolves the current run
+    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, run_status="success", run_id=run.id)
+    bl = _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, run_id=run.id)
     out = ds.invalidate_downstream(A.id)
     assert out == [B.id]
     db_session.expire_all()
     assert db_session.get(TaskExecutionLog, bl.id).run_status == "superseded"
-    sset = ds._log_status_by_task(db_session, [B.id])
+    sset = ds._log_status_by_task(db_session, [B.id], run.id)
     assert ds._already_dispatched(B.id, sset) is False
 
 
 def test_invalidate_downstream_cancels_inflight(db_session, monkeypatch):
     from src.service.agent.orchestrator import dependency_scheduler as ds
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
     from src.service.chat_service import ChatService
     monkeypatch.setattr(ds, "get_session_local", lambda: (lambda: _NoCloseSession(db_session)))
     cancelled = []
     monkeypatch.setattr(ChatService, "cancel_conversation_stream", staticmethod(lambda cid: cancelled.append(cid) or True))
     ws, emp, plan, A, B = _seed_plan_AB(db_session)
-    bl = _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="running", reported=False, conv_id=4242)
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+    db_session.commit()
+    # A needs a run_id log so latest_run_id_for_task(A) resolves the current run
+    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, run_status="success", run_id=run.id)
+    bl = _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="running", reported=False, conv_id=4242, run_id=run.id)
     out = ds.invalidate_downstream(A.id)
     assert out == [B.id]
     db_session.expire_all()
@@ -102,13 +116,16 @@ def _make_conv(db, ws_id, emp_id):
 
 def test_redispatch_refuses_when_prereq_not_accepted(db_session, monkeypatch):
     from src.service.agent.orchestrator import rework
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
     monkeypatch.setattr(rework, "_new_session", lambda: _NoCloseSession(db_session))
     monkeypatch.setattr(rework, "_schedule_employee_rework_stream", lambda **k: None)
     monkeypatch.setattr(rework, "_build_employee_agent_for_rework", lambda *a, **k: None)
     ws, emp, plan, A, B = _seed_plan_AB(db_session)
-    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, accepted=False)  # A 未接受
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+    db_session.commit()
+    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, accepted=False, run_id=run.id)  # A 未接受
     bconv = _make_conv(db_session, ws.id, emp.id)
-    bl = _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="success", conv_id=bconv)
+    bl = _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="success", conv_id=bconv, run_id=run.id)
     db_session.commit()
     msg = rework.redispatch_task_in_session(ws.id, B.id, "改B")
     assert "前置" in msg  # gate 拒绝
@@ -120,15 +137,18 @@ def test_redispatch_refuses_when_prereq_not_accepted(db_session, monkeypatch):
 def test_redispatch_invalidates_downstream(db_session, monkeypatch):
     from src.service.agent.orchestrator import rework
     from src.service.agent.orchestrator import dependency_scheduler as ds
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
     monkeypatch.setattr(rework, "_new_session", lambda: _NoCloseSession(db_session))
     monkeypatch.setattr(rework, "_schedule_employee_rework_stream", lambda **k: None)
     monkeypatch.setattr(rework, "_build_employee_agent_for_rework", lambda *a, **k: None)
     monkeypatch.setattr(ds, "get_session_local", lambda: (lambda: _NoCloseSession(db_session)))
     ws, emp, plan, A, B = _seed_plan_AB(db_session)
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+    db_session.commit()
     aconv = _make_conv(db_session, ws.id, emp.id)
-    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=aconv)
+    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=aconv, run_id=run.id)
     bconv = _make_conv(db_session, ws.id, emp.id)
-    bl = _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=bconv)
+    bl = _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=bconv, run_id=run.id)
     db_session.commit()
     msg = rework.redispatch_task_in_session(ws.id, A.id, "改A")  # 返工根任务 A → 打回A + 作废下游B
     assert "返工" in msg or "打回" in msg
@@ -140,15 +160,18 @@ def test_ordering_A_then_B(db_session, monkeypatch):
     """先返工A:作废B;再返工B → gate 拒(A不再接受)。"""
     from src.service.agent.orchestrator import rework
     from src.service.agent.orchestrator import dependency_scheduler as ds
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
     monkeypatch.setattr(rework, "_new_session", lambda: _NoCloseSession(db_session))
     monkeypatch.setattr(rework, "_schedule_employee_rework_stream", lambda **k: None)
     monkeypatch.setattr(rework, "_build_employee_agent_for_rework", lambda *a, **k: None)
     monkeypatch.setattr(ds, "get_session_local", lambda: (lambda: _NoCloseSession(db_session)))
     ws, emp, plan, A, B = _seed_plan_AB(db_session)
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+    db_session.commit()
     aconv = _make_conv(db_session, ws.id, emp.id)
-    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=aconv)
+    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=aconv, run_id=run.id)
     bconv = _make_conv(db_session, ws.id, emp.id)
-    bl = _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=bconv)
+    bl = _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=bconv, run_id=run.id)
     db_session.commit()
     rework.redispatch_task_in_session(ws.id, A.id, "改A")          # 返工A → 打回A + 作废B
     db_session.expire_all()
@@ -162,6 +185,7 @@ def test_ordering_B_then_A_cancels_inflight(db_session, monkeypatch):
     from sqlalchemy import select as _select
     from src.service.agent.orchestrator import rework
     from src.service.agent.orchestrator import dependency_scheduler as ds
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
     from src.service.chat_service import ChatService
     monkeypatch.setattr(rework, "_new_session", lambda: _NoCloseSession(db_session))
     monkeypatch.setattr(rework, "_schedule_employee_rework_stream", lambda **k: None)
@@ -171,10 +195,12 @@ def test_ordering_B_then_A_cancels_inflight(db_session, monkeypatch):
     monkeypatch.setattr(ChatService, "cancel_conversation_stream",
                         staticmethod(lambda cid: cancelled.append(cid) or True))
     ws, emp, plan, A, B = _seed_plan_AB(db_session)
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+    db_session.commit()
     aconv = _make_conv(db_session, ws.id, emp.id)
-    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=aconv)
+    _seed_log(db_session, task=A, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=aconv, run_id=run.id)
     bconv = _make_conv(db_session, ws.id, emp.id)
-    _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=bconv)
+    _seed_log(db_session, task=B, ws_id=ws.id, emp_id=emp.id, run_status="success", accepted=True, conv_id=bconv, run_id=run.id)
     db_session.commit()
     # 先返工 B(A 仍接受 → gate 过)→ B 起返工(新 queued log,conversation_id=bconv)
     rework.redispatch_task_in_session(ws.id, B.id, "改B")

@@ -195,3 +195,46 @@ def test_execute_plan_opens_run_and_tags_root_log(db_session, monkeypatch):
     run = db_session.scalars(_select(PlanRun).where(PlanRun.plan_id == plan.id)).first()
     assert run is not None and run.trigger == "manual" and run.auto_accept is False
     assert captured["run_id"] == run.id
+
+
+def test_rework_new_log_inherits_run_id(db_session):
+    """契约：返工不新开 run——新 log 复制 old.run_id（守住 rework.py 的继承字段）。"""
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
+    ws, plan = _seed_ws_plan(db_session)
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+    old = TaskExecutionLog(task_id=5, workspace_id=ws.id, employee_id=emp.id, skill_id=None,
+        task_name_snapshot="t", run_status="success", run_result="r", input_json="{}",
+        output_json="{}", conversation_id=1, orchestrator_conversation_id=9,
+        started_at=cst_now(), run_id=run.id)
+    db_session.add(old); db_session.commit()
+    new_log = TaskExecutionLog(task_id=5, workspace_id=ws.id, employee_id=emp.id, skill_id=None,
+        task_name_snapshot="t", run_status="queued", run_result="返工中",
+        input_json="{}", output_json="{}", conversation_id=1,
+        orchestrator_conversation_id=9, started_at=cst_now(), run_id=old.run_id)
+    db_session.add(new_log); db_session.commit()
+    assert new_log.run_id == run.id
+
+
+def test_task_prereqs_accepted_scoped_by_run(db_session, monkeypatch):
+    """task_prereqs_accepted 现按 plan 最新 run 判定接受集（修复其调用 _load_accepted_task_ids 的 arity）。"""
+    import src.service.agent.orchestrator.dependency_scheduler as ds
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
+    from src.models.employee_task import EmployeeTask
+    ws, plan = _seed_ws_plan(db_session)
+    plan.plan_json = '[{"depends_on": null}, {"depends_on": [0]}]'; db_session.commit()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+                     orchestration_plan_id=plan.id, user_prompt="a"); db_session.add(A)
+    B = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="B",
+                     orchestration_plan_id=plan.id, user_prompt="b"); db_session.add(B)
+    db_session.flush()
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+    # A 在本轮 success+accepted → B 的前置已接受 → task_prereqs_accepted(B) True
+    db_session.add(TaskExecutionLog(task_id=A.id, workspace_id=ws.id, employee_id=emp.id, skill_id=None,
+        task_name_snapshot="A", run_status="success", run_result="r", input_json="{}",
+        output_json="{}", started_at=cst_now(), run_id=run.id, qa_accepted_at=cst_now()))
+    db_session.commit()
+    assert ds.task_prereqs_accepted(db_session, B) is True
+    # 根任务 A 无前置 → True
+    assert ds.task_prereqs_accepted(db_session, A) is True

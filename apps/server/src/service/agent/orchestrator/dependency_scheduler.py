@@ -171,6 +171,7 @@ def waiting_status_for_task(db: Session, task, *, _plan_cache: dict | None = Non
     待放行(前置全 QA 接受) / 等待前置「X」(前置未接受) / 待派发(根任务无前置)。纯只读。
     _plan_cache：调用方可传 {} 跨多任务复用同一 plan 的 dep_map/accepted，避免重复加载。"""
     from src.models.orchestration_plan import OrchestrationPlan
+    from src.service.agent.orchestrator.plan_run_service import latest_run_id_for_plan
 
     plan_id = getattr(task, "orchestration_plan_id", None)
     if plan_id is None:
@@ -183,7 +184,8 @@ def waiting_status_for_task(db: Session, task, *, _plan_cache: dict | None = Non
         else:
             ptasks = _load_plan_tasks(db, plan_id)
             dep_map, _succ = build_dependency_maps(ptasks, json.loads(plan.plan_json or "[]"))
-            accepted = _load_accepted_task_ids(db, [t.id for t in ptasks])
+            run_id = latest_run_id_for_plan(db, plan_id)
+            accepted = _load_accepted_task_ids(db, [t.id for t in ptasks], run_id)
             cache[plan_id] = (dep_map, accepted, {t.id: t for t in ptasks})
     entry = cache[plan_id]
     if entry is None:
@@ -203,6 +205,7 @@ def waiting_status_for_task(db: Session, task, *, _plan_cache: dict | None = Non
 def task_prereqs_accepted(db: Session, task) -> bool:
     """该任务的所有前置是否都已 QA 接受(根任务无前置 → True)。返工 gate 用。"""
     from src.models.orchestration_plan import OrchestrationPlan
+    from src.service.agent.orchestrator.plan_run_service import latest_run_id_for_plan
 
     if task.orchestration_plan_id is None:
         return True
@@ -215,17 +218,20 @@ def task_prereqs_accepted(db: Session, task) -> bool:
     dep_ids = dep_map.get(task.id, [])
     if not dep_ids:
         return True
-    return _all_prereqs_accepted(dep_ids, _load_accepted_task_ids(db, dep_ids))
+    run_id = latest_run_id_for_plan(db, plan.id)
+    return _all_prereqs_accepted(dep_ids, _load_accepted_task_ids(db, dep_ids, run_id))
 
 
 def invalidate_downstream(task_id: int) -> list[int]:
     """返工 task_id 时,递归作废其下游子树(传递闭包):
     已交付(success/completed)→ superseded;在飞(running/queued/pending)→ 先 superseded
     并 commit、再取消其流。failed/skipped/superseded 不动(非目标)。返回被作废的 task_id。
-    自管独立 session(在调用方 rework.py 自己 commit 之后调,读到已提交状态)。"""
+    自管独立 session(在调用方 rework.py 自己 commit 之后调,读到已提交状态)。
+    只作废与 task_id 同轮(latest run_id)的下游 log——不触及其他轮历史。"""
     from src.models.employee_task import EmployeeTask
     from src.models.orchestration_plan import OrchestrationPlan
     from src.models.task_execution_log import TaskExecutionLog
+    from src.service.agent.orchestrator.plan_run_service import latest_run_id_for_task
     from src.service.chat_service import ChatService
 
     db = get_session_local()()
@@ -236,6 +242,12 @@ def invalidate_downstream(task_id: int) -> list[int]:
         plan = db.get(OrchestrationPlan, task.orchestration_plan_id)
         if plan is None:
             return []
+
+        run_id = latest_run_id_for_task(db, task_id)
+        if run_id is None:
+            # 无编排日志 → 不存在需要作废的下游
+            return []
+
         tasks = _load_plan_tasks(db, plan.id)
         plan_json_obj = json.loads(plan.plan_json or "[]")
         _dep_map, successors = build_dependency_maps(tasks, plan_json_obj)
@@ -251,7 +263,10 @@ def invalidate_downstream(task_id: int) -> list[int]:
             queue.extend(successors.get(cid, []))
             log = db.scalars(
                 select(TaskExecutionLog)
-                .where(TaskExecutionLog.task_id == cid)
+                .where(
+                    TaskExecutionLog.task_id == cid,
+                    TaskExecutionLog.run_id == run_id,
+                )
                 .order_by(TaskExecutionLog.id.desc())
             ).first()
             if log is None:
