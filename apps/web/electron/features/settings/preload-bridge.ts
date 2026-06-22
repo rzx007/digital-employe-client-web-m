@@ -33,4 +33,8 @@ export const settingsBridge = {
   resetApp: () => invoke(IpcChannels.resetApp),
   openLogsDirectory: () => invoke(IpcChannels.openLogsDirectory),
   exportLogs: () => invoke(IpcChannels.exportLogs),
+  revealPathInExplorer: (
+    path: string,
+    entryType: "file" | "directory"
+  ) => invoke(IpcChannels.revealPathInExplorer, path, entryType),
 }

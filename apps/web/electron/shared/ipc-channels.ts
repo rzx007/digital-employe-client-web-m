@@ -58,6 +58,7 @@ export const IpcChannels = {
   quitAndInstall: "quit-and-install",
   openLogsDirectory: "open-logs-directory",
   exportLogs: "export-logs",
+  revealPathInExplorer: "reveal-path-in-explorer",
   activationSuccess: "activation-success",
   // browser panel
   browserOpen: "browser:open",
@@ -245,6 +246,10 @@ export interface IpcInvokeMap {
   [IpcChannels.resetApp]: { args: []; result: void }
   [IpcChannels.openLogsDirectory]: { args: []; result: void }
   [IpcChannels.exportLogs]: { args: []; result: { path: string } | null }
+  [IpcChannels.revealPathInExplorer]: {
+    args: [path: string, entryType: "file" | "directory"]
+    result: void
+  }
   // activation
   [IpcChannels.activationSuccess]: { args: []; result: void }
   // update

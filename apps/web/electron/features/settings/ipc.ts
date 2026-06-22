@@ -4,6 +4,10 @@ import {
   openLogsDirectory,
 } from "../logs/log-exporter"
 import {
+  revealPathInExplorer,
+  type ExplorerEntryType,
+} from "../shell/open-in-explorer"
+import {
   createSettingsWindow,
   closeSettingsWindow,
 } from "./window-settings"
@@ -153,6 +157,21 @@ export const settingsIpcContribution: IpcContribution = {
         channel: IpcChannels.openLogsDirectory,
         handler: async () => {
           await openLogsDirectory()
+        },
+      },
+      {
+        channel: IpcChannels.revealPathInExplorer,
+        handler: async (_event, targetPath: unknown, entryType: unknown) => {
+          if (typeof targetPath !== "string" || !targetPath.trim()) {
+            throw new Error("无效路径")
+          }
+          if (entryType !== "file" && entryType !== "directory") {
+            throw new Error("无效条目类型")
+          }
+          await revealPathInExplorer(
+            targetPath,
+            entryType as ExplorerEntryType
+          )
         },
       },
       {

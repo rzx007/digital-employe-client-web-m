@@ -33,6 +33,7 @@ import {
   IconArrowLeft,
   IconListDetails,
   IconPin,
+  IconFolderOpen,
 } from "@tabler/icons-react"
 import { useLocalStorageState } from "ahooks"
 import {
@@ -79,6 +80,7 @@ import {
 import type { Artifact } from "./artifact-types"
 import { ImportDraftSkillDialog } from "./import-draft-skill-dialog"
 import { SubConversationPanel } from "./sub-conversation-panel"
+import { isElectron, withElectronApi } from "@/lib/electron/host"
 
 export interface ArtifactPanelProps {
   conversationId: string | number | null
@@ -251,6 +253,19 @@ function getFileIcon(artifactType: string | null) {
   }
 }
 
+function revealResourceInExplorer(entry: ResourceEntry) {
+  void withElectronApi(
+    (api) => api.revealPathInExplorer(entry.path, entry.entry_type),
+    {
+      onError: (error) => {
+        toast.error(
+          error instanceof Error ? error.message : "无法在本机打开"
+        )
+      },
+    }
+  )
+}
+
 function ResourceContextMenu({
   entry,
   conversationId,
@@ -276,6 +291,14 @@ function ResourceContextMenu({
         <ContextMenuItem onSelect={handleDownload}>
           <IconDownload className="size-4 text-muted-foreground" />
           <span>下载</span>
+        </ContextMenuItem>
+      )}
+      {isElectron() && !pendingOnly && (
+        <ContextMenuItem onSelect={() => revealResourceInExplorer(entry)}>
+          <IconFolderOpen className="size-4 text-muted-foreground" />
+          <span>
+            {entry.entry_type === "file" ? "在文件夹中显示" : "在本机打开"}
+          </span>
         </ContextMenuItem>
       )}
       {!pendingOnly && onPin && isHtmlPath(entry.path) && (
@@ -329,6 +352,14 @@ function SkillDraftContextMenu({
         <IconDownload className="size-4 text-muted-foreground" />
         <span>下载</span>
       </ContextMenuItem>
+      {isElectron() && (
+        <ContextMenuItem onSelect={() => revealResourceInExplorer(entry)}>
+          <IconFolderOpen className="size-4 text-muted-foreground" />
+          <span>
+            {entry.entry_type === "file" ? "在文件夹中显示" : "在本机打开"}
+          </span>
+        </ContextMenuItem>
+      )}
       <ContextMenuItem onSelect={onRefresh}>
         <IconRefresh className="size-4 text-muted-foreground" />
         <span>刷新</span>
