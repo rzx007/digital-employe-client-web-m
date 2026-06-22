@@ -181,9 +181,13 @@ export function SlashCommandPlugin({
           editor.update(() => {
             const selection = $getSelection()
             if ($isRangeSelection(selection)) {
+              const trailing =
+                cmd.kind === "shortcut" && cmd.prompt
+                  ? cmd.prompt
+                  : " "
               selection.insertNodes([
                 $createCommandPillNode(cmd.id, cmd.title),
-                $createTextNode(" "),
+                $createTextNode(trailing),
               ])
             }
           })
