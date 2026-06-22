@@ -26,6 +26,17 @@ export function emitWorkbenchConfigChanged(): void {
   window.dispatchEvent(new Event(WORKBENCH_CONFIG_CHANGED_EVENT))
 }
 
+/**
+ * 「打开资源池」事件名。看板区（WorkbenchView）的资源池按钮派发此事件，
+ * WorkbenchContentSplit 监听并展开右侧资源池面板——解耦看板区按钮与 split 内部状态。
+ */
+export const WORKBENCH_OPEN_RESOURCES_EVENT = "workbench-open-resources"
+
+export function emitWorkbenchOpenResources(): void {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new Event(WORKBENCH_OPEN_RESOURCES_EVENT))
+}
+
 const STORAGE_KEY_PREFIX = "workbench-config-"
 
 function getStorageKey(employeeId: string): string {
