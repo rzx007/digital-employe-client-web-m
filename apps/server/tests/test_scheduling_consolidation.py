@@ -72,3 +72,46 @@ def test_create_scheduled_run_conversation_helper(db_session):
     assert flags["kind"] == "scheduled_run" and flags["plan_id"] == plan.id and flags["run_seq"] == run.run_seq
     msgs = db_session.scalars(select(ConversationMessage).where(ConversationMessage.conversation_id == conv_id)).all()
     assert any("查热搜并总结" in (m.content or "") for m in msgs)
+
+
+def test_execute_plan_run_scheduled_opens_new_conversation(db_session, monkeypatch):
+    import src.service.agent.orchestrator.execution as ex
+    from src.models.employee import Employee
+    from src.models.employee_task import EmployeeTask
+    from src.models.conversation import Conversation
+    ws, plan = _seed_ws_plan_sc(db_session)
+    plan.plan_json = '[{"depends_on": null}]'; db_session.commit()
+    curator = Employee(workspace_id=ws.id, name="总管", employee_code="curator", is_curator=True)
+    db_session.add(curator); db_session.flush()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c", user_id=ws.user_id); db_session.add(emp); db_session.flush()
+    A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+        execute_mode="immediate", orchestration_plan_id=plan.id, user_prompt="a"); db_session.add(A); db_session.commit()
+
+    seen = {}
+    monkeypatch.setattr(ex, "start_immediate_tasks",
+        lambda db, tasks, plan, ws_id, run_id, orchestrator_conversation_id=None:
+            seen.update(run_id=run_id, orch_conv=orchestrator_conversation_id) or [])
+
+    run = ex.execute_plan_run(db_session, plan, trigger="scheduled", auto_accept=True)
+    assert run.trigger == "scheduled" and run.conversation_id is not None
+    conv = db_session.get(Conversation, run.conversation_id)
+    assert conv.target_type == "curator"  # 新 per-run 会话
+    assert seen["run_id"] == run.id and seen["orch_conv"] == run.conversation_id
+
+
+def test_execute_plan_run_manual_reuses_plan_conversation(db_session, monkeypatch):
+    import src.service.agent.orchestrator.execution as ex
+    from src.models.employee import Employee
+    from src.models.employee_task import EmployeeTask
+    from src.models.conversation import Conversation
+    ws, plan = _seed_ws_plan_sc(db_session)
+    plan.plan_json = '[{"depends_on": null}]'
+    conv = Conversation(workspace_id=ws.id, user_id="u-ws1", target_type="curator", target_id=1, title="源")
+    db_session.add(conv); db_session.flush()
+    plan.conversation_id = conv.id; db_session.commit()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+        execute_mode="immediate", orchestration_plan_id=plan.id, user_prompt="a"); db_session.add(A); db_session.commit()
+    monkeypatch.setattr(ex, "start_immediate_tasks", lambda *a, **k: [])
+    run = ex.execute_plan_run(db_session, plan, trigger="manual", auto_accept=False)
+    assert run.trigger == "manual" and run.conversation_id == conv.id  # 复用创建源会话

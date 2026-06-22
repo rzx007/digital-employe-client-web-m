@@ -124,6 +124,36 @@ async def _start_employee_stream_when_orchestrator_idle(
         )
 
 
+def execute_plan_run(db: Session, plan: OrchestrationPlan, *, trigger: str, auto_accept: bool):
+    """唯一执行原语：开 PlanRun + 解析本轮会话 + 派 root 任务。
+    trigger=="scheduled" → 每轮新 curator 会话；=="manual" → 复用 plan.conversation_id。
+    返回 PlanRun。调用方负责 last_run/next_run/once 自停等后续。"""
+    from src.service.agent.orchestrator.plan_run_service import (
+        open_plan_run, create_scheduled_run_conversation,
+    )
+
+    run = open_plan_run(db, plan.id, plan.workspace_id, trigger=trigger, auto_accept=auto_accept)
+    db.commit()
+
+    if trigger == "scheduled":
+        run.conversation_id = create_scheduled_run_conversation(db, plan, run)
+    else:
+        run.conversation_id = plan.conversation_id
+    db.commit()
+
+    tasks = list(db.scalars(
+        select(EmployeeTask).where(
+            EmployeeTask.orchestration_plan_id == plan.id,
+            EmployeeTask.is_active.is_(True),
+        ).order_by(EmployeeTask.priority.desc(), EmployeeTask.id.asc())
+    ).all())
+    start_immediate_tasks(
+        db, tasks, plan, plan.workspace_id,
+        run_id=run.id, orchestrator_conversation_id=run.conversation_id,
+    )
+    return run
+
+
 def execute_plan(db: Session, plan: OrchestrationPlan, workspace_id: int) -> str:
     plan.status = "confirmed"
     plan.started_at = cst_now()
