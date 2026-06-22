@@ -147,10 +147,16 @@ def execute_plan_run(db: Session, plan: OrchestrationPlan, *, trigger: str, auto
             EmployeeTask.is_active.is_(True),
         ).order_by(EmployeeTask.priority.desc(), EmployeeTask.id.asc())
     ).all())
-    start_immediate_tasks(
-        db, tasks, plan, plan.workspace_id,
-        run_id=run.id, orchestrator_conversation_id=run.conversation_id,
-    )
+    try:
+        start_immediate_tasks(
+            db, tasks, plan, plan.workspace_id,
+            run_id=run.id, orchestrator_conversation_id=run.conversation_id,
+        )
+    except Exception:
+        run.status = "failed"
+        run.ended_at = cst_now()
+        db.commit()
+        raise
     return run
 
 

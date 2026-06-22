@@ -277,7 +277,8 @@ def test_run_plan_job_opens_scheduled_run_without_curator(db_session, monkeypatc
     from sqlalchemy import select as _select
     from sqlalchemy.orm import sessionmaker
     ws, plan = _seed_ws_plan(db_session)
-    plan.cron = "0 10 * * *"; plan.is_recurring = True; plan.plan_json = '[{"depends_on": null}]'
+    plan.cron = "0 10 * * *"; plan.is_recurring = True; plan.schedule_kind = "recurring"
+    plan.plan_json = '[{"depends_on": null}]'
     db_session.commit()
     emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
     A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
@@ -318,7 +319,7 @@ def test_two_scheduled_runs_end_to_end(db_session, monkeypatch):
     monkeypatch.setattr(ds, "get_session_local", lambda: sf)
 
     ws, plan = _seed_ws_plan(db_session)
-    plan.cron = "0 10 * * *"; plan.is_recurring = True
+    plan.cron = "0 10 * * *"; plan.is_recurring = True; plan.schedule_kind = "recurring"
     plan.plan_json = '[{"depends_on": null}, {"depends_on": [0]}]'; db_session.commit()
     emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
     A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
@@ -384,7 +385,8 @@ def test_run_plan_job_stamps_next_run_and_fails_run_on_dispatch_error(db_session
     from sqlalchemy import select as _select
     from sqlalchemy.orm import sessionmaker
     ws, plan = _seed_ws_plan(db_session)
-    plan.cron = "0 10 * * *"; plan.is_recurring = True; plan.plan_json = '[{"depends_on": null}]'
+    plan.cron = "0 10 * * *"; plan.is_recurring = True; plan.schedule_kind = "recurring"
+    plan.plan_json = '[{"depends_on": null}]'
     db_session.commit()
     emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
     A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
@@ -530,7 +532,7 @@ def test_run_plan_job_creates_per_run_conversation_and_seeds_user_input(db_sessi
     from sqlalchemy import select as _select
     from sqlalchemy.orm import sessionmaker
     ws, plan = _seed_ws_plan(db_session)
-    plan.cron = "0 10 * * *"; plan.is_recurring = True
+    plan.cron = "0 10 * * *"; plan.is_recurring = True; plan.schedule_kind = "recurring"
     plan.plan_json = '[{"depends_on": null}]'
     plan.user_input = "每2分钟查热搜并总结成文档"
     db_session.commit()
@@ -623,7 +625,7 @@ def test_two_runs_get_separate_conversations(db_session, monkeypatch):
         monkeypatch.setattr(mod, "get_session_local", lambda: sf, raising=False)
 
     ws, plan = _seed_ws_plan(db_session)
-    plan.cron = "0 10 * * *"; plan.is_recurring = True
+    plan.cron = "0 10 * * *"; plan.is_recurring = True; plan.schedule_kind = "recurring"
     plan.user_input = "每天查热搜→总结文档"
     plan.plan_json = '[{"depends_on": null}, {"depends_on": [0]}]'
     db_session.commit()
@@ -744,53 +746,10 @@ def test_backfill_plan_runs_for_legacy_plans(db_session):
     assert len(runs_a2) == 1
 
 
-def test_run_task_job_plan_subtask_opens_run_and_per_run_conversation(db_session, monkeypatch):
-    """属于编排计划的子任务到点(task 级 cron)：也开 PlanRun + per-run curator 会话，
-    并把 run_id / orch_conv 透传给派发——与 run_plan_job 行为一致。回归世界杯提醒事故。"""
-    import src.service.task_scheduler_service as tss
-    from src.models.conversation import Conversation
-    from src.models.employee_task import EmployeeTask
-    from src.models.plan_run import PlanRun
-    from sqlalchemy import select as _select
-    from sqlalchemy.orm import sessionmaker
-    import json
-
-    ws, plan = _seed_ws_plan(db_session)
-    plan.cron = None; plan.is_recurring = False
-    plan.user_input = "5分钟后提醒看世界杯"
-    db_session.commit()
-    curator = Employee(workspace_id=ws.id, name="总管", employee_code="curator", is_curator=True)
-    db_session.add(curator); db_session.flush()
-    emp = Employee(workspace_id=ws.id, name="提醒员", employee_code="rm", user_id=ws.user_id)
-    db_session.add(emp); db_session.flush()
-    task = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="世界杯提醒",
-        execute_mode="scheduled", cron_expression="34 21 * * *", dispatch_type="skill",
-        orchestration_plan_id=plan.id, user_prompt="提醒", is_active=True)
-    db_session.add(task); db_session.commit()
-    task_id = task.id
-
-    sf = sessionmaker(bind=db_session.get_bind())
-    monkeypatch.setattr(tss, "get_session_local", lambda: sf)
-    captured = {}
-    def _fake_start(db, t, e, w, *, priority=0, source="orchestration",
-                    run_id=None, orchestrator_conversation_id=None, **kw):
-        captured["run_id"] = run_id
-        captured["orch_conv"] = orchestrator_conversation_id
-        return 1
-    monkeypatch.setattr("src.service.agent.orchestrator._start_task_as_conversation", _fake_start)
-
-    tss.TaskSchedulerService.run_task_job(task_id)
-
-    with sf() as d:
-        runs = d.scalars(_select(PlanRun).where(PlanRun.plan_id == plan.id)).all()
-        assert len(runs) == 1
-        assert runs[0].trigger == "scheduled" and runs[0].conversation_id is not None
-        conv = d.get(Conversation, runs[0].conversation_id)
-        flags = json.loads(conv.session_flags or "{}")
-        assert flags["kind"] == "scheduled_run" and flags["plan_id"] == plan.id
-        run_id, conv_id = runs[0].id, runs[0].conversation_id
-    assert captured.get("run_id") == run_id
-    assert captured.get("orch_conv") == conv_id
+# test_run_task_job_plan_subtask_opens_run_and_per_run_conversation 已删除。
+# 旧测试断言「编排子任务 task 级 cron 触发时 run_task_job 开 PlanRun + per-run 会话」的旧行为。
+# 新模型下编排子任务从 reload_jobs 扫描中排除（orchestration_plan_id IS NOT NULL），
+# 不再通过 run_task_job 执行；plan 级定时由 run_plan_job → execute_plan_run 统一驱动。
 
 
 def test_run_task_job_standalone_task_no_planrun(db_session, monkeypatch):

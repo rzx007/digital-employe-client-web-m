@@ -3,23 +3,18 @@ from __future__ import annotations
 import json
 import logging
 import re
-import urllib.parse
-from datetime import datetime
 from typing import Any
 
-import httpx
 from apscheduler.schedulers.background import BackgroundScheduler  # pylint: disable=import-error
 from apscheduler.triggers.cron import CronTrigger  # pylint: disable=import-error
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from src.core.config import get_settings
 from src.core.agent_runtime_policy import SCHEDULED_PRIORITY
 from src.core.request_utils import DEFAULT_USER_ID
 from src.llm.factory import build_chat_model
 from src.db.session import get_session_local
 from src.models.employee import Employee
-from src.models.employee_mcp import EmployeeMcp
 from src.models.employee_task import EmployeeTask
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import CST, Workspace, cst_now
@@ -344,89 +339,6 @@ class TaskSchedulerService:
         ).strip()
 
     @classmethod
-    def _execute_mcp_tool_call(cls, db: Session, task: EmployeeTask) -> dict[str, Any]:
-        from src.core.remote_gateway import RemoteGateway
-        RemoteGateway.ensure("mcp_task_execution")
-        
-        settings = get_settings()
-        base = (settings.mcp_base_url or "").strip().rstrip("/")
-        if not base:
-            raise ValueError("未配置 MCP_BASE_URL。")
-        if task.capability_id is None:
-            raise ValueError("MCP 任务缺少 capability_id。")
-
-        em = db.scalar(
-            select(EmployeeMcp).where(
-                EmployeeMcp.employee_id == task.employee_id,
-                EmployeeMcp.mcp_id == task.capability_id,
-            )
-        )
-        if not em:
-            raise ValueError(
-                f"未找到员工绑定的 MCP：employee_id={task.employee_id} mcp_id={task.capability_id}"
-            )
-
-        server_name = (em.mcp_server_name or "").strip()
-        if not server_name:
-            raise ValueError("MCP 记录缺少 mcp_server_name。")
-
-        input_payload = TaskSchedulerService._loads_json(task.task_input_json, {})
-        tool_name = str(input_payload.get("mcp_tool_name") or "").strip()
-        if not tool_name:
-            tool_name = (em.mcp_tool_name or "").strip()
-        if not tool_name:
-            raise ValueError(
-                "无法解析 MCP toolName，请在任务输入中配置 mcp_tool_name。"
-            )
-
-        args = input_payload.get("arguments")
-        if args is None:
-            args = input_payload.get("mcp_arguments")
-        if not isinstance(args, dict):
-            args = {}
-
-        timeout_sec = 600
-        raw_to = input_payload.get("timeout")
-        if isinstance(raw_to, int) and raw_to > 0:
-            timeout_sec = raw_to
-        elif isinstance(raw_to, str) and raw_to.isdigit():
-            timeout_sec = int(raw_to)
-
-        # 解析 base URL，确保存在协议头（如未指定则默认为 http）
-        parsed_url = urllib.parse.urlparse(
-            base if "://" in base else f"http://{base}"
-        )
- 
-        host_header = parsed_url.netloc
-
-        url = f"{base}"
-        payload = {
-            "serverName": server_name,
-            "toolName": tool_name,
-            "arguments": args,
-            "timeout": timeout_sec,
-        }
-        # 日志记录MCP的URL和参数
-        logger.info("MCP调用URL：%s, 参数为：%s", url, payload)
-
-        with httpx.Client(timeout=httpx.Timeout(timeout_sec + 60.0)) as client:
-            response = client.post(
-                url,
-                headers={
-                    "Accept": "*/*",
-                    "Host": host_header,
-                    "Connection": "keep-alive",
-                },
-                json=payload,
-            )
-
-        return {
-            "response": response,
-            "server_name": server_name,
-            "tool_name": tool_name,
-        }
-
-    @classmethod
     def _start_curator_task(cls, db: Session, task: EmployeeTask, employee: Employee) -> None:
         """总管员工的定时任务：投递到 curator 会话，由 orchestrator agent 执行。"""
         from src.core.agent_runtime_policy import get_agent_runtime_policy
@@ -592,63 +504,34 @@ class TaskSchedulerService:
         })
 
     @classmethod
-    def _create_scheduled_run_conversation(cls, db, plan, run) -> int:
-        """薄转发 → plan_run_service.create_scheduled_run_conversation（解 execution↔scheduler 环）。"""
-        from src.service.agent.orchestrator.plan_run_service import create_scheduled_run_conversation
-        return create_scheduled_run_conversation(db, plan, run)
-
-    @classmethod
     def run_plan_job(cls, plan_id: int) -> None:
-        """递归计划到点：每轮新建 curator 会话作汇报落点，重跑冻结 DAG 根任务。
-
-        绝不调 _start_curator_task / 不重发总管消息 / 不重新分析分单。
-        """
+        """计划级定时触发：走唯一原语 execute_plan_run；once 跑完自停。
+        绝不调 _start_curator_task / 不重发总管消息 / 不重新分析分单。"""
         from src.models.orchestration_plan import OrchestrationPlan
-        from src.service.agent.orchestrator.execution import start_immediate_tasks
-        from src.service.agent.orchestrator.plan_run_service import open_plan_run
+        from src.service.agent.orchestrator.execution import execute_plan_run
 
         with get_session_local()() as db:
             plan = db.get(OrchestrationPlan, plan_id)
-            if plan is None or plan.status != "confirmed" or not (plan.cron or "").strip():
+            if plan is None or plan.status != "confirmed" or not (plan.schedule_kind or "").strip():
                 return
-            tasks = list(db.scalars(
-                select(EmployeeTask).where(
-                    EmployeeTask.orchestration_plan_id == plan_id,
-                    EmployeeTask.is_active.is_(True),
-                ).order_by(EmployeeTask.priority.desc(), EmployeeTask.id.asc())
-            ).all())
-            if not tasks:
-                return
-
-            run = open_plan_run(db, plan_id, plan.workspace_id, trigger="scheduled", auto_accept=True)
-            db.commit()
-
-            # —— 建本轮专属 curator 会话 + 种 plan.user_input ——
+            run = None
             try:
-                run.conversation_id = cls._create_scheduled_run_conversation(db, plan, run)
-                db.commit()
+                run = execute_plan_run(db, plan, trigger="scheduled", auto_accept=True)
             except Exception:
-                logger.error("run_plan_job 建本轮会话失败 plan=%s run=%s", plan_id, run.id, exc_info=True)
-                run.status = "failed"
-                run.ended_at = cst_now()
-                db.commit()
-                return
-
-            try:
-                start_immediate_tasks(
-                    db, tasks, plan, plan.workspace_id, run_id=run.id,
-                    orchestrator_conversation_id=run.conversation_id,
-                )
-            except Exception:
-                logger.error("run_plan_job 派发失败 plan=%s run=%s", plan_id, run.id, exc_info=True)
-                run.status = "failed"
-                run.ended_at = cst_now()
-                db.commit()
-            plan.last_run_at = cst_now()
-            plan.next_run_at = TaskService.compute_next_run(plan.cron, now=plan.last_run_at)
+                logger.error("run_plan_job 触发失败 plan=%s", plan_id, exc_info=True)
+                if run is not None:
+                    run.status = "failed"
+                    run.ended_at = cst_now()
+            # once：跑完自停（status=done → reload_jobs 不再挂）
+            if plan.schedule_kind == "once":
+                plan.last_run_at = cst_now()
+                plan.next_run_at = None
+                plan.status = "done"
+            else:  # recurring
+                plan.last_run_at = cst_now()
+                plan.next_run_at = TaskService.compute_next_run(plan.cron, now=plan.last_run_at)
             db.commit()
-            logger.info("递归计划到点 plan=%s run_seq=%s conv=%s（绕开总管重分析）",
-                        plan_id, run.run_seq, run.conversation_id)
+            logger.info("计划级定时触发 plan=%s kind=%s（绕开总管重分析）", plan_id, plan.schedule_kind)
 
     @classmethod
     def run_task_job(cls, task_id: int) -> None:
@@ -657,139 +540,34 @@ class TaskSchedulerService:
                 select(EmployeeTask).where(
                     EmployeeTask.id == task_id,
                     EmployeeTask.is_active.is_(True),
-                    EmployeeTask.dispatch_type.in_(("skill", "mcp")),
+                    EmployeeTask.dispatch_type == "skill",
                 )
             )
             if not task:
                 return
 
             employee = db.get(Employee, task.employee_id)
-            workspace = db.get(Workspace, task.workspace_id)
 
-            run_log: TaskExecutionLog | None = None
-            started_at: datetime | None = None
             try:
-                if task.dispatch_type == "skill":
-                    if employee and employee.is_curator:
-                        cls._start_curator_task(db, task, employee)
-                    else:
-                        from src.service.agent.orchestrator import _start_task_as_conversation
-                        # 属于编排计划的子任务：与 run_plan_job 一致——开一轮 PlanRun +
-                        # 专属 curator 会话，并把 run_id / orch_conv 透传给派发，使
-                        # ①每次定时触发开新会话 ②今日折叠能按 PlanRun 读到正确状态。
-                        # 独立定时任务（无 plan）保持原行为：不开 PlanRun。
-                        _run_id = None
-                        _orch_conv_id = None
-                        if task.orchestration_plan_id is not None:
-                            from src.models.orchestration_plan import OrchestrationPlan
-                            from src.service.agent.orchestrator.plan_run_service import open_plan_run
-                            _plan = db.get(OrchestrationPlan, task.orchestration_plan_id)
-                            if _plan is not None:
-                                try:
-                                    _run = open_plan_run(
-                                        db, _plan.id, _plan.workspace_id,
-                                        trigger="scheduled", auto_accept=True,
-                                    )
-                                    db.commit()
-                                    _orch_conv_id = cls._create_scheduled_run_conversation(db, _plan, _run)
-                                    _run.conversation_id = _orch_conv_id
-                                    db.commit()
-                                    _run_id = _run.id
-                                except Exception:
-                                    logger.error(
-                                        "run_task_job 建本轮会话失败 task=%s plan=%s",
-                                        task_id, task.orchestration_plan_id, exc_info=True,
-                                    )
-                                    _run_id = None
-                                    _orch_conv_id = None
-                        _start_task_as_conversation(
-                            db,
-                            task,
-                            employee,
-                            task.workspace_id,
-                            priority=SCHEDULED_PRIORITY,
-                            source="scheduled",
-                            run_id=_run_id,
-                            orchestrator_conversation_id=_orch_conv_id,
-                        )
-                    task.last_run_at = cst_now()
-                    task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=task.last_run_at)
-                    db.add(task)
-                    db.commit()
-                    logger.info(
-                        "定时任务启动 task_id=%s task_name=%s employee_id=%s is_curator=%s",
-                        task_id, task.task_name, task.employee_id,
-                        bool(employee and employee.is_curator),
-                    )
-                    return
-                started_at = cst_now()
-                run_log = TaskExecutionLog(
-                    task_id=task.id,
-                    workspace_id=task.workspace_id,
-                    employee_id=task.employee_id,
-                    skill_id=task.skill_id,
-                    task_name_snapshot=task.task_name,
-                    run_status="running",
-                    run_result="执行中",
-                    input_json=task.task_input_json or "{}",
-                    output_json="{}",
-                    started_at=started_at,
-                )
-                db.add(run_log)
-                db.commit()
-                db.refresh(run_log)
-
-                mcp_out = cls._execute_mcp_tool_call(db, task)
-                resp = mcp_out["response"]
-                try:
-                    body: Any = resp.json()
-                except Exception as json_exc:  # pylint: disable=broad-exception-caught
-                    logger.error(
-                        "MCP 响应解析 JSON 失败 task_id=%s: %s",
-                        task_id,
-                        json_exc,
-                        exc_info=True,
-                    )
-                    body = {"raw": resp.text}
-                if resp.status_code >= 400:
-                    run_log.run_status = "failed"
-                    run_log.run_result = "MCP 调用失败"
-                    run_log.error_message = (
-                        f"HTTP {resp.status_code}: {str(resp.text)[:2000]}"
-                    )
-                    run_log.output_json = cls._to_json_string(
-                        body if isinstance(body, dict) else {"body": body}
-                    )
+                if employee and employee.is_curator:
+                    cls._start_curator_task(db, task, employee)
                 else:
-                    run_log.run_status = "success"
-                    run_log.run_result = "任务执行成功"
-                    run_log.error_message = None
-                    if isinstance(body, dict) and "data" in body:
-                        out_payload = body.get("data")
-                    else:
-                        out_payload = body
-                    run_log.output_json = cls._to_json_string(
-                        out_payload if out_payload is not None else body
+                    from src.service.agent.orchestrator import _start_task_as_conversation
+                    _start_task_as_conversation(
+                        db, task, employee, task.workspace_id,
+                        priority=SCHEDULED_PRIORITY, source="scheduled",
                     )
-
-                ended_at = cst_now()
-                run_log.ended_at = ended_at
-                run_log.duration_ms = int((ended_at - started_at).total_seconds() * 1000)
-                task.last_run_at = ended_at
-                task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=ended_at)
-                db.add(task)
-                db.add(run_log)
-                db.commit()
+                task.last_run_at = cst_now()
+                task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=task.last_run_at)
+                db.add(task); db.commit()
+                logger.info(
+                    "定时任务启动 task_id=%s task_name=%s employee_id=%s is_curator=%s",
+                    task_id, task.task_name, task.employee_id,
+                    bool(employee and employee.is_curator),
+                )
+                return
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.error("定时任务执行失败 task_id=%s", task_id, exc_info=True)
-                if run_log is not None and started_at is not None:
-                    run_log.run_status = "failed"
-                    run_log.run_result = "任务执行失败"
-                    run_log.error_message = str(exc)
-                    ended_at = cst_now()
-                    run_log.ended_at = ended_at
-                    run_log.duration_ms = int((ended_at - started_at).total_seconds() * 1000)
-                    db.add(run_log)
                 task.last_run_at = cst_now()
                 task.next_run_at = TaskService.compute_next_run(
                     task.cron_expression, now=task.last_run_at

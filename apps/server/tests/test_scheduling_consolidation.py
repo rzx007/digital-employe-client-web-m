@@ -189,3 +189,53 @@ def test_reload_jobs_plan_scan_includes_once_and_recurring(db_session):
     )).all()
     ids = {p.id for p in rows}
     assert rec.id in ids and once_future.id in ids and once_done.id not in ids
+
+
+def test_run_plan_job_once_auto_stops(db_session, monkeypatch):
+    """once 计划跑完 status=done，不再被调度。"""
+    import src.service.task_scheduler_service as tss
+    import src.service.agent.orchestrator.execution as ex
+    from src.models.orchestration_plan import OrchestrationPlan
+    from src.models.employee import Employee
+    from src.models.employee_task import EmployeeTask
+    from src.models.workspace import cst_now
+    from sqlalchemy.orm import sessionmaker
+    from datetime import timedelta
+    ws, plan = _seed_ws_plan_sc(db_session)
+    plan.schedule_kind = "once"; plan.run_at = cst_now() + timedelta(minutes=5)
+    db_session.commit()
+    curator = Employee(workspace_id=ws.id, name="总管", employee_code="curator", is_curator=True); db_session.add(curator); db_session.flush()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c", user_id=ws.user_id); db_session.add(emp); db_session.flush()
+    A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+        execute_mode="immediate", orchestration_plan_id=plan.id, user_prompt="a"); db_session.add(A); db_session.commit()
+    plan_id = plan.id
+    sf = sessionmaker(bind=db_session.get_bind())
+    monkeypatch.setattr(tss, "get_session_local", lambda: sf)
+    monkeypatch.setattr(ex, "execute_plan_run", lambda *a, **k: None)
+    tss.TaskSchedulerService.run_plan_job(plan_id)
+    with sf() as d:
+        p = d.get(OrchestrationPlan, plan_id)
+        assert p.status == "done"  # once 自停
+
+
+def test_run_plan_job_recurring_updates_next_run(db_session, monkeypatch):
+    import src.service.task_scheduler_service as tss
+    import src.service.agent.orchestrator.execution as ex
+    from src.models.orchestration_plan import OrchestrationPlan
+    from src.models.employee import Employee
+    from src.models.employee_task import EmployeeTask
+    from sqlalchemy.orm import sessionmaker
+    ws, plan = _seed_ws_plan_sc(db_session)
+    plan.schedule_kind = "recurring"; plan.cron = "0 10 * * *"; db_session.commit()
+    curator = Employee(workspace_id=ws.id, name="总管", employee_code="curator", is_curator=True); db_session.add(curator); db_session.flush()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c", user_id=ws.user_id); db_session.add(emp); db_session.flush()
+    A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+        execute_mode="immediate", orchestration_plan_id=plan.id, user_prompt="a"); db_session.add(A); db_session.commit()
+    plan_id = plan.id
+    sf = sessionmaker(bind=db_session.get_bind())
+    monkeypatch.setattr(tss, "get_session_local", lambda: sf)
+    monkeypatch.setattr(ex, "execute_plan_run", lambda *a, **k: None)
+    tss.TaskSchedulerService.run_plan_job(plan_id)
+    with sf() as d:
+        p = d.get(OrchestrationPlan, plan_id)
+        assert p.status == "confirmed" and p.last_run_at is not None and p.next_run_at is not None
