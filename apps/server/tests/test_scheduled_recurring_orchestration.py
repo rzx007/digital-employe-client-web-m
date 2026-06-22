@@ -217,7 +217,7 @@ def test_rework_new_log_inherits_run_id(db_session):
 
 
 def test_auto_accept_stamps_qa_for_scheduled_run(db_session):
-    from src.service.stream_registry import _auto_accept_if_scheduled_run
+    from src.service.stream_registry import _auto_accept_if_scheduled_run_safe
     from src.service.agent.orchestrator.plan_run_service import open_plan_run
     ws, plan = _seed_ws_plan(db_session)
     emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
@@ -231,17 +231,17 @@ def test_auto_accept_stamps_qa_for_scheduled_run(db_session):
         db_session.add(l); db_session.commit(); db_session.refresh(l); return l
 
     sched_log = _log(sched.id)
-    _auto_accept_if_scheduled_run(db_session, sched_log)
+    _auto_accept_if_scheduled_run_safe(db_session, sched_log)
     db_session.refresh(sched_log)
     assert sched_log.qa_accepted_at is not None     # 定时轮自动放行
 
     manual_log = _log(manual.id)
-    _auto_accept_if_scheduled_run(db_session, manual_log)
+    _auto_accept_if_scheduled_run_safe(db_session, manual_log)
     db_session.refresh(manual_log)
     assert manual_log.qa_accepted_at is None        # 交互式不自动盖
 
     failed_log = _log(sched.id, status="failed")
-    _auto_accept_if_scheduled_run(db_session, failed_log)
+    _auto_accept_if_scheduled_run_safe(db_session, failed_log)
     db_session.refresh(failed_log)
     assert failed_log.qa_accepted_at is None        # 仅 success 放行
 

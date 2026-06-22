@@ -2365,10 +2365,12 @@ def _maybe_librarian_safe(employee_id) -> None:
         logger.warning("librarian trigger hook failed", exc_info=True)
 
 
-def _auto_accept_if_scheduled_run(db, log) -> None:
+def _auto_accept_if_scheduled_run_safe(db, log) -> None:
     """无人值守定时轮：员工任务 success 即自动盖 qa_accepted_at，复用现成派发闸放行下游。
 
     仅当该 log 属 auto_accept=True 的 PlanRun 且本条为 success 时生效。容错、不抛。
+
+    本 helper 是唯一在 finalize 链中自行 db.commit() 的钩子——qa_accepted_at 必须在 on_task_finalized 用新 session 读取前持久化，故此提交是有意为之，勿删。
     """
     try:
         if log is None or log.run_id is None or log.run_status != "success":
@@ -2482,7 +2484,7 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
 
         db.commit()
         db.refresh(log)
-        _auto_accept_if_scheduled_run(db, log)   # 定时轮无人值守自动放行
+        _auto_accept_if_scheduled_run_safe(db, log)   # 定时轮无人值守自动放行
         _capture_journal_safe(db, log)   # 学习闭环 journal 捕获
         _reflect_on_signal_safe(db, log)   # 信号闸门 critic（替代旧的无条件反思）
         _maybe_librarian_safe(log.employee_id if log else None)  # 阈值触发后台复盘
