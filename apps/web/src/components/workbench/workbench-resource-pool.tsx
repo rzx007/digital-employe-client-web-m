@@ -8,6 +8,8 @@ import {
   useDeleteWorkbenchResource,
 } from "@/hooks/use-workbench-resources"
 import type { WorkbenchResource } from "@/api/workbench-resources"
+import { pinHtmlToWorkbench } from "@/lib/workbench/pin-html-to-workbench"
+import { WorkbenchHtmlPanel } from "./workbench-html-panel"
 
 /** 资源池拖拽载荷的 dataTransfer 类型键（网格 drop 区据此识别，见 parse-resource-drop）。 */
 export const WORKBENCH_RESOURCE_DRAG_TYPE = "application/x-workbench-resource"
@@ -28,6 +30,21 @@ export function WorkbenchResourcePool({
   const upload = useUploadWorkbenchResource()
   const del = useDeleteWorkbenchResource()
   const fileRef = React.useRef<HTMLInputElement>(null)
+  // 预览中的资源（点卡片预览）
+  const [previewId, setPreviewId] = React.useState<number | null>(null)
+  const previewResource = resources.find((r) => r.id === previewId) ?? null
+
+  // 把资源池条目钉到工作台网格（带 resourceId，渲染走资源内容端点）。
+  const handleAddToWorkbench = (r: WorkbenchResource) => {
+    const name = r.title.endsWith(".html") ? r.title : `${r.title}.html`
+    pinHtmlToWorkbench({
+      conversationId: "resource",
+      path: r.src_path,
+      name,
+      resourceId: r.id,
+    })
+    toast.success(`已添加到工作台：${r.title}`)
+  }
 
   const handleUpload = (file: File) => {
     if (!/\.html?$/i.test(file.name)) {
@@ -100,28 +117,64 @@ export function WorkbenchResourcePool({
               key={r.id}
               draggable
               onDragStart={(e) => onDragStart(e, r)}
-              className="group flex cursor-grab items-center gap-2 rounded border bg-card p-2 text-xs"
-              title="拖到工作台网格即可钉成看板"
+              onClick={() => setPreviewId(r.id)}
+              className={cn(
+                "group flex cursor-pointer items-center gap-1.5 rounded border bg-card p-2 text-xs",
+                previewId === r.id && "border-primary ring-1 ring-primary"
+              )}
+              title="点击预览，或拖到工作台网格"
             >
               <span className="min-w-0 flex-1 truncate">{r.title}</span>
               <span className="rounded bg-muted px-1 text-[10px] text-muted-foreground">
                 {r.source === "upload" ? "上传" : "助手"}
               </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-1.5 text-[11px]"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleAddToWorkbench(r)
+                }}
+              >
+                + 添加
+              </Button>
               <button
                 type="button"
                 aria-label="从资源池移除"
                 className="opacity-0 transition-opacity group-hover:opacity-100"
-                onClick={() =>
+                onClick={(e) => {
+                  e.stopPropagation()
                   del.mutate(r.id, {
-                    onSuccess: () => toast.success("已移除"),
-                    onError: (e) => toast.error(`移除失败：${String(e)}`),
+                    onSuccess: () => {
+                      toast.success("已移除")
+                      if (previewId === r.id) setPreviewId(null)
+                    },
+                    onError: (err) => toast.error(`移除失败：${String(err)}`),
                   })
-                }
+                }}
               >
                 ✕
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 预览区：点卡片在此渲染该 html 看板 */}
+      {previewResource && (
+        <div className="mt-1 min-h-0 flex-1 overflow-hidden rounded border">
+          <WorkbenchHtmlPanel
+            key={previewResource.id}
+            htmlRef={{
+              conversationId: "resource",
+              resourcePath: previewResource.src_path,
+              pinnedAt: 0,
+              resourceId: previewResource.id,
+            }}
+            title={previewResource.title}
+            className="h-full"
+          />
         </div>
       )}
     </div>
