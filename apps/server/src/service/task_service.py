@@ -462,6 +462,107 @@ class TaskService:
                 "conversation_id": None,
             })
 
+        # === Part C: 按 orchestration_plan_id 聚合编排计划子任务 ===
+        from src.models.orchestration_plan import OrchestrationPlan
+        from src.models.plan_run import PlanRun
+
+        # 现 result 里既有"已执行"也有"待执行"。先按 task_id 找回 orchestration_plan_id。
+        plan_id_by_task: dict[int, int] = {}
+        all_task_ids = {r["task_id"] for r in result if r["task_id"]}
+        if all_task_ids:
+            rows = db.execute(
+                select(EmployeeTask.id, EmployeeTask.orchestration_plan_id)
+                .where(EmployeeTask.id.in_(all_task_ids), EmployeeTask.orchestration_plan_id.isnot(None))
+            ).all()
+            plan_id_by_task = {tid: pid for tid, pid in rows}
+
+        if plan_id_by_task:
+            # 把属于编排计划的行从 result 中抽出，按 plan_id 分组
+            kept: list[dict] = []
+            plan_buckets: dict[int, list[dict]] = {}
+            for r in result:
+                pid = plan_id_by_task.get(r["task_id"])
+                if pid is None:
+                    kept.append(r)
+                else:
+                    plan_buckets.setdefault(pid, []).append(r)
+
+            plan_rows: list[dict] = []
+            for pid, sub_rows in plan_buckets.items():
+                plan = db.get(OrchestrationPlan, pid)
+                if plan is None:
+                    # 防御：找不到 plan 时把原始子任务行放回 kept
+                    kept.extend(sub_rows)
+                    continue
+                # 最新一轮 run
+                latest_run = db.scalars(
+                    select(PlanRun).where(PlanRun.plan_id == pid)
+                    .order_by(PlanRun.run_seq.desc()).limit(1)
+                ).first()
+                # 本轮内的子任务执行日志
+                run_logs: list[TaskExecutionLog] = []
+                if latest_run is not None:
+                    run_logs = list(db.scalars(
+                        select(TaskExecutionLog).where(
+                            TaskExecutionLog.run_id == latest_run.id,
+                        ).order_by(TaskExecutionLog.started_at.asc())
+                    ).all())
+
+                # 聚合状态（按优先级）
+                statuses = {(l.run_status or "") for l in run_logs}
+                if statuses & {"running", "queued"}:
+                    agg_status = "running"
+                elif statuses & {"failed", "error", "timeout"}:
+                    agg_status = "failed"
+                elif "cancelled" in statuses:
+                    agg_status = "cancelled"
+                elif "skipped" in statuses:
+                    agg_status = "skipped"
+                elif statuses and statuses <= {"success", "completed"}:
+                    agg_status = "success"
+                else:
+                    agg_status = "pending"  # 本轮无日志 / 未跑
+
+                started_iso = None
+                if run_logs:
+                    earliest = min((l.started_at for l in run_logs if l.started_at), default=None)
+                    started_iso = earliest.strftime("%Y-%m-%d %H:%M:%S") if earliest else None
+                duration_total = sum(
+                    (l.duration_ms or 0) for l in run_logs if l.ended_at and l.duration_ms
+                ) or None
+
+                # planned_at：用 plan.next_run_at 兜底（行还没跑过时）
+                planned_iso = None
+                if started_iso is None and plan.next_run_at is not None:
+                    planned_iso = plan.next_run_at.strftime("%Y-%m-%d %H:%M:%S")
+
+                # 标题：user_input 截断 60 字
+                summary = (plan.user_input or "").strip().replace("\n", " ")
+                if len(summary) > 60:
+                    summary = summary[:60] + "…"
+
+                plan_rows.append({
+                    "task_id": 0,
+                    "task_name": summary or f"编排计划 #{pid}",
+                    "employee_id": 0,
+                    "employee_name": "编排计划",
+                    "cron_expression": plan.cron,
+                    "execute_mode": "scheduled" if plan.is_recurring else "immediate",
+                    "planned_at": planned_iso or started_iso,
+                    "execution_id": None,
+                    "run_status": agg_status,
+                    "run_result": None,
+                    "started_at": started_iso,
+                    "ended_at": None,
+                    "duration_ms": duration_total,
+                    "conversation_id": latest_run.conversation_id if latest_run else None,
+                    "is_plan": True,
+                    "plan_id": pid,
+                    "run_seq": latest_run.run_seq if latest_run else None,
+                })
+
+            result = kept + plan_rows
+
         result.sort(key=lambda x: (
             0 if x["run_status"] == "running" else 1,
             x["started_at"] or x["planned_at"] or "",
