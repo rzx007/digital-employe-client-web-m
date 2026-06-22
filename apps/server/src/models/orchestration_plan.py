@@ -31,6 +31,10 @@ class OrchestrationPlan(Base):
     # 计划级节拍（标准 5 段 cron）；非空=递归计划，冻结模板的一部分。
     cron: Mapped[str | None] = mapped_column(String(128), nullable=True)
     is_recurring: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # 计划级调度类型：once（一次性，用 run_at）/ recurring（重复，用 cron）/ None（即时）
+    schedule_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # once 的绝对触发时间（recurring 用 cron）
+    run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True

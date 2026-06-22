@@ -36,6 +36,7 @@ def _ensure_orchestration_recurring_columns(engine) -> None:
     新库由 create_all 直接建全；已有库不会被 create_all ALTER，需在此补列：
     - task_execution_logs.run_id
     - orchestration_plans.cron / is_recurring / last_run_at / next_run_at
+    - orchestration_plans.schedule_kind / run_at
     - plan_runs.conversation_id（plan_runs 表由 create_all 建出，但此列后期添加）
     """
     insp = inspect(engine)
@@ -58,6 +59,12 @@ def _ensure_orchestration_recurring_columns(engine) -> None:
         if "next_run_at" not in op_cols:
             conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN next_run_at DATETIME"))
             logger.info("added column orchestration_plans.next_run_at")
+        if "schedule_kind" not in op_cols:
+            conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN schedule_kind VARCHAR(16)"))
+            logger.info("added column orchestration_plans.schedule_kind")
+        if "run_at" not in op_cols:
+            conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN run_at DATETIME"))
+            logger.info("added column orchestration_plans.run_at")
         if "conversation_id" not in pr_cols:
             conn.execute(text("ALTER TABLE plan_runs ADD COLUMN conversation_id INTEGER"))
             logger.info("added column plan_runs.conversation_id")
