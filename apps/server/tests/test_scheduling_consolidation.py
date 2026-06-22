@@ -239,3 +239,58 @@ def test_run_plan_job_recurring_updates_next_run(db_session, monkeypatch):
     with sf() as d:
         p = d.get(OrchestrationPlan, plan_id)
         assert p.status == "confirmed" and p.last_run_at is not None and p.next_run_at is not None
+
+
+def test_create_plan_once_sets_run_at(db_session, monkeypatch):
+    import src.service.agent.orchestrator.tools.plans as tp
+    from src.models.workspace import Workspace, cst_now
+    from src.models.employee import Employee
+    from src.models.orchestration_plan import OrchestrationPlan
+    from src.models.employee_task import EmployeeTask
+    from src.service.schedule_parser import ScheduleSpec
+    from datetime import timedelta
+    from sqlalchemy import select
+    monkeypatch.setattr(tp, "get_db", lambda: db_session)
+    monkeypatch.setattr(tp, "get_workspace_id", lambda: 1)
+    monkeypatch.setattr(tp, "get_conversation_id", lambda: 1)
+    monkeypatch.setattr(tp, "parse_schedule",
+        lambda s, now: ScheduleSpec(kind="once", run_at=now + timedelta(minutes=5)), raising=False)
+    monkeypatch.setattr(tp, "execute_plan", lambda db, plan, ws: "scheduled")
+    monkeypatch.setattr(tp, "compute_requires_confirmation", lambda tl, **kw: False)
+    ws = Workspace(id=1, name="w", root_path="/tmp/w"); db_session.add(ws); db_session.flush()
+    emp = Employee(id=1, workspace_id=1, name="e", employee_code="c"); db_session.add(emp); db_session.commit()
+    tasks = [{"employee_id": 1, "task_name": "提醒", "prompt": "提醒看世界杯", "depends_on": None}]
+    tp.create_orchestration_plan.func("世界杯提醒", tasks, schedule="5分钟后")
+    plan = db_session.scalars(select(OrchestrationPlan)).first()
+    assert plan.schedule_kind == "once" and plan.run_at is not None and plan.cron is None
+    sub = db_session.scalars(select(EmployeeTask).where(EmployeeTask.orchestration_plan_id == plan.id)).first()
+    assert sub.execute_mode == "immediate" and (sub.cron_expression or "") == ""
+
+
+def test_create_plan_recurring_sets_cron(db_session, monkeypatch):
+    import src.service.agent.orchestrator.tools.plans as tp
+    from src.models.workspace import Workspace
+    from src.models.employee import Employee
+    from src.models.orchestration_plan import OrchestrationPlan
+    from src.service.schedule_parser import ScheduleSpec
+    from sqlalchemy import select
+    monkeypatch.setattr(tp, "get_db", lambda: db_session)
+    monkeypatch.setattr(tp, "get_workspace_id", lambda: 1)
+    monkeypatch.setattr(tp, "get_conversation_id", lambda: 1)
+    monkeypatch.setattr(tp, "parse_schedule",
+        lambda s, now: ScheduleSpec(kind="recurring", cron="0 10 * * *"), raising=False)
+    monkeypatch.setattr(tp, "execute_plan", lambda db, plan, ws: "scheduled")
+    monkeypatch.setattr(tp, "compute_requires_confirmation", lambda tl, **kw: False)
+    ws = Workspace(id=1, name="w", root_path="/tmp/w"); db_session.add(ws); db_session.flush()
+    emp = Employee(id=1, workspace_id=1, name="e", employee_code="c"); db_session.add(emp); db_session.commit()
+    tasks = [{"employee_id": 1, "task_name": "查", "prompt": "查热搜", "depends_on": None}]
+    tp.create_orchestration_plan.func("每天查热搜", tasks, schedule="每天10点")
+    plan = db_session.scalars(select(OrchestrationPlan)).first()
+    assert plan.schedule_kind == "recurring" and plan.cron == "0 10 * * *" and plan.is_recurring is True
+
+
+def test_scheduled_plan_requires_confirmation():
+    from src.service.agent.orchestrator.confirmation_policy import compute_requires_confirmation
+    tasks = [{"output_tier": "small", "task_name": "查", "prompt": "查热搜", "depends_on": None}]
+    assert compute_requires_confirmation(tasks, has_schedule=True) is True   # 定时一律需确认
+    assert compute_requires_confirmation(tasks, has_schedule=False) is False  # 无定时单只读免确认

@@ -17,13 +17,11 @@ _DESTRUCTIVE_KEYWORDS: tuple[str, ...] = (
 
 
 def _task_is_readonly_query(task: dict[str, Any]) -> bool:
-    """该单任务是否为「只读/查询类」轻量活：small 档、无 cron、无破坏性关键词。
+    """该单任务是否为「只读/查询类」轻量活：small 档、无破坏性关键词。
 
     保守判定——任何不确定（缺 output_tier、非 small、命中危险词）都返回 False。
     """
     if (task.get("output_tier") or "").strip().lower() != "small":
-        return False
-    if task.get("cron"):
         return False
     haystack = f"{task.get('task_name') or ''}\n{task.get('prompt') or ''}".lower()
     for kw in _DESTRUCTIVE_KEYWORDS:
@@ -32,12 +30,17 @@ def _task_is_readonly_query(task: dict[str, Any]) -> bool:
     return True
 
 
-def compute_requires_confirmation(task_list: list[dict[str, Any]]) -> bool:
+def compute_requires_confirmation(
+    task_list: list[dict[str, Any]], *, has_schedule: bool = False
+) -> bool:
     """编排计划是否须用户确认后才执行。
 
-    默认须确认；仅当**单个只读/查询类任务**（small 档、无 cron、无依赖、无破坏性
-    关键词）时免确认，由 create_orchestration_plan 直接自动执行。
+    定时计划（has_schedule=True）一律须确认。
+    否则仅当**单个只读/查询类任务**（small 档、无依赖、无破坏性关键词）时免确认，
+    由 create_orchestration_plan 直接自动执行。
     """
+    if has_schedule:
+        return True
     if len(task_list) != 1:
         return True
     task = task_list[0]

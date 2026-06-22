@@ -21,9 +21,10 @@ def _readonly_task(**over):
 # ── 仍需确认的场景 ──────────────────────────────────────────────────────────
 
 def test_requires_confirmation_when_scheduled():
-    assert compute_requires_confirmation([
-        _readonly_task(cron="30 9 * * *"),
-    ]) is True
+    # 新模型：调度在计划级表达（has_schedule），子任务不携带 cron 字段
+    readonly_task = _readonly_task()
+    readonly_task.pop("cron", None)
+    assert compute_requires_confirmation([readonly_task], has_schedule=True) is True
 
 
 def test_requires_confirmation_when_more_than_one_task():

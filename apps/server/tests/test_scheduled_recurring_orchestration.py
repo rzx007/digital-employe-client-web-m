@@ -362,19 +362,21 @@ def test_two_scheduled_runs_end_to_end(db_session, monkeypatch):
 
 def test_create_plan_with_schedule_sets_plan_cron(db_session, monkeypatch):
     import src.service.agent.orchestrator.tools.plans as tp
+    from src.service.schedule_parser import ScheduleSpec
     monkeypatch.setattr(tp, "get_db", lambda: db_session)
     monkeypatch.setattr(tp, "get_workspace_id", lambda: 1)
     monkeypatch.setattr(tp, "get_conversation_id", lambda: 1)
-    monkeypatch.setattr(tp, "parse_nl_cron", lambda s: "0 10 * * *", raising=False)
+    monkeypatch.setattr(tp, "parse_schedule",
+        lambda s, now: ScheduleSpec(kind="recurring", cron="0 10 * * *"), raising=False)
     monkeypatch.setattr(tp, "execute_plan", lambda db, plan, ws: "scheduled")
-    monkeypatch.setattr(tp, "compute_requires_confirmation", lambda tl: False)
+    monkeypatch.setattr(tp, "compute_requires_confirmation", lambda tl, **kw: False)
     ws = Workspace(id=1, name="w", root_path="/tmp/w"); db_session.add(ws); db_session.flush()
     emp = Employee(id=1, workspace_id=1, name="e", employee_code="c"); db_session.add(emp); db_session.commit()
     tasks = [{"employee_id": 1, "task_name": "热搜", "prompt": "查热搜", "depends_on": None}]
     tp.create_orchestration_plan.func("每天查热搜", tasks, schedule="每天10点")
     from sqlalchemy import select as _select
     plan = db_session.scalars(_select(OrchestrationPlan)).first()
-    assert plan.cron == "0 10 * * *" and plan.is_recurring is True
+    assert plan.schedule_kind == "recurring" and plan.cron == "0 10 * * *" and plan.is_recurring is True
 
 
 def test_run_plan_job_stamps_next_run_and_fails_run_on_dispatch_error(db_session, monkeypatch):
@@ -418,9 +420,9 @@ def test_create_plan_with_unparseable_schedule_errors_not_degrades(db_session, m
     monkeypatch.setattr(tp, "get_db", lambda: db_session)
     monkeypatch.setattr(tp, "get_workspace_id", lambda: 1)
     monkeypatch.setattr(tp, "get_conversation_id", lambda: 1)
-    monkeypatch.setattr(tp, "parse_nl_cron", lambda s: None, raising=False)  # 模拟解析失败
+    monkeypatch.setattr(tp, "parse_schedule", lambda s, now: None, raising=False)  # 模拟解析失败
     monkeypatch.setattr(tp, "execute_plan", lambda db, plan, ws: "should-not-run")
-    monkeypatch.setattr(tp, "compute_requires_confirmation", lambda tl: False)
+    monkeypatch.setattr(tp, "compute_requires_confirmation", lambda tl, **kw: False)
     ws = Workspace(id=1, name="w", root_path="/tmp/w"); db_session.add(ws); db_session.flush()
     emp = Employee(id=1, workspace_id=1, name="e", employee_code="c"); db_session.add(emp); db_session.commit()
     tasks = [{"employee_id": 1, "task_name": "热搜", "prompt": "查热搜", "depends_on": None}]
