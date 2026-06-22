@@ -293,41 +293,15 @@ export function WorkbenchContentSplit({
   const curatorPanelBorder = showResources ? "border-r" : "border-l"
 
   const renderMemberArea = () => {
-    const tabClass = (active: boolean) =>
+    const switchClass = (active: boolean) =>
       cn(
-        "rounded px-2 py-1 text-xs transition-colors",
+        "rounded-md px-2.5 py-1 text-xs transition-colors",
         active
-          ? "bg-background font-medium shadow-sm"
-          : "text-muted-foreground hover:bg-muted/50"
+          ? "bg-primary/10 font-medium text-primary"
+          : "text-muted-foreground hover:bg-muted"
       )
     return (
       <div className={cn("flex h-full min-h-0 flex-col", curatorPanelBorder)}>
-        {/* 二选一切换：总管 ⇄ 工作台助手（默认总管）+ 资源池开关 */}
-        <div className="flex items-center gap-1 border-b bg-muted/30 px-2 py-1">
-          <button
-            type="button"
-            className={tabClass(chatTarget === "curator")}
-            onClick={() => setChatTarget("curator")}
-          >
-            总管助手
-          </button>
-          <button
-            type="button"
-            className={tabClass(chatTarget === "assistant")}
-            onClick={() => setChatTarget("assistant")}
-            disabled={!assistantContact}
-            title={assistantContact ? undefined : "未找到工作台助手员工"}
-          >
-            工作台助手
-          </button>
-          <button
-            type="button"
-            onClick={handleToggleResources}
-            className={cn("ml-auto", tabClass(showResources))}
-          >
-            资源池
-          </button>
-        </div>
         <div className="min-h-0 flex-1">
           {chatTarget === "assistant" ? (
             assistantContact ? (
@@ -355,9 +329,37 @@ export function WorkbenchContentSplit({
               className="h-full min-h-0"
               resourcesOpen={showResources}
               onToggleResources={handleToggleResources}
+              onOpenResourceFile={() => setResourcesOpen(true)}
               getExtraMetadata={() => ({ workbench: buildWorkbenchSnapshot() })}
             />
           )}
+        </div>
+        {/* 对话底部切换条：总管 ⇄ 工作台助手（贴近输入区，不碰核心输入组件） */}
+        <div className="flex items-center gap-1 border-t bg-muted/20 px-2 py-1">
+          <span className="mr-1 text-[11px] text-muted-foreground">对话对象</span>
+          <button
+            type="button"
+            className={switchClass(chatTarget === "curator")}
+            onClick={() => setChatTarget("curator")}
+          >
+            总管助手
+          </button>
+          <button
+            type="button"
+            className={switchClass(chatTarget === "assistant")}
+            onClick={() => setChatTarget("assistant")}
+            disabled={!assistantContact}
+            title={assistantContact ? undefined : "未找到工作台助手员工"}
+          >
+            工作台助手
+          </button>
+          <button
+            type="button"
+            onClick={handleToggleResources}
+            className={cn("ml-auto", switchClass(showResources))}
+          >
+            资源池
+          </button>
         </div>
       </div>
     )
