@@ -111,6 +111,10 @@ export function WorkbenchContentSplit({
 }) {
   const [resourcesOpen, setResourcesOpen] = useState(false)
   const [resourceTab, setResourceTab] = useState<"pool" | "files">("pool")
+  // 工作台助手当前会话 id（由 WorkbenchMemberPanel 上报），供「文件」tab 列其产物。
+  const [assistantConversationId, setAssistantConversationId] = useState<
+    string | number | null
+  >(null)
   const queryClient = useQueryClient()
   const { isPending: isCreatingCurator } = useCreateCuratorConversation()
 
@@ -309,6 +313,7 @@ export function WorkbenchContentSplit({
                 key={`assistant-${assistantEmployeeId}`}
                 contact={assistantContact}
                 onOpenArtifact={() => setResourcesOpen(true)}
+                onActiveConversation={setAssistantConversationId}
               />
             ) : (
               <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
@@ -454,21 +459,32 @@ export function WorkbenchContentSplit({
                 </button>
               </div>
               <div className="min-h-0 flex-1">
-                {resourceTab === "pool" ? (
-                  <WorkbenchResourcePool className="h-full rounded-lg border bg-background shadow-xl" />
-                ) : activeConversationId != null ? (
-                  <ArtifactPanel
-                    presentation="embedded"
-                    conversationId={activeConversationId}
-                    isOpen
-                    onClose={handleCloseResources}
-                    className="h-full rounded-lg border shadow-xl"
-                  />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                    暂无会话文件
-                  </div>
-                )}
+                {(() => {
+                  if (resourceTab === "pool") {
+                    return (
+                      <WorkbenchResourcePool className="h-full rounded-lg border bg-background shadow-xl" />
+                    )
+                  }
+                  // 「文件」tab 跟随当前对话对象：助手 → 助手会话产物；总管 → 总管会话产物。
+                  const filesConversationId =
+                    chatTarget === "assistant"
+                      ? assistantConversationId
+                      : activeConversationId
+                  return filesConversationId != null ? (
+                    <ArtifactPanel
+                      key={String(filesConversationId)}
+                      presentation="embedded"
+                      conversationId={filesConversationId}
+                      isOpen
+                      onClose={handleCloseResources}
+                      className="h-full rounded-lg border shadow-xl"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                      暂无会话文件
+                    </div>
+                  )
+                })()}
               </div>
             </div>
           )}

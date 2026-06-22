@@ -16,11 +16,14 @@ import { cn } from "@workspace/ui/lib/utils"
 export function WorkbenchMemberPanel({
   contact,
   onOpenArtifact,
+  onActiveConversation,
   className,
 }: {
   contact: Contact
   /** 点击对话头部资源图标 = 开右侧资源池 */
   onOpenArtifact?: () => void
+  /** 上报当前激活会话 id（供「文件」tab 列该会话产物）。 */
+  onActiveConversation?: (id: string | number | null) => void
   className?: string
 }) {
   const queryClient = useQueryClient()
@@ -77,6 +80,12 @@ export function WorkbenchMemberPanel({
     if (conversations.length > 0) return conversations[0].id
     return createdId
   }, [conversations, createdId])
+
+  // 上报激活会话 id（供父级「文件」tab 列该会话产物）。卸载时清空。
+  React.useEffect(() => {
+    onActiveConversation?.(activeId)
+    return () => onActiveConversation?.(null)
+  }, [activeId, onActiveConversation])
 
   const conversationTitle = React.useMemo(() => {
     if (activeId == null) return undefined
