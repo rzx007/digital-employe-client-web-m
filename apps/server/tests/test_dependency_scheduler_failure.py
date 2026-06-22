@@ -85,10 +85,15 @@ def _statuses(db, task_id: int) -> set[str]:
 def test_failed_prereq_cascades_skip(
     patched_task_mutations_db, db_session, workspace
 ) -> None:
+    from src.models.plan_run import PlanRun
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
     emp = add_employee(db_session, workspace.id, name="worker")
     plan, (a, b, c) = _make_plan_with_chain(db_session, workspace.id, emp.id)
 
-    # A 失败
+    # 开一轮 PlanRun，供 latest_run_id_for_task / _log_status_by_task 使用
+    run = open_plan_run(db_session, plan.id, workspace.id, trigger="manual", auto_accept=False)
+
+    # A 失败（带 run_id，使 on_employee_task_completed 不提前 return）
     db_session.add(
         TaskExecutionLog(
             task_id=a.id,
@@ -99,6 +104,7 @@ def test_failed_prereq_cascades_skip(
             run_result="boom",
             started_at=cst_now(),
             ended_at=cst_now(),
+            run_id=run.id,
         )
     )
     db_session.commit()

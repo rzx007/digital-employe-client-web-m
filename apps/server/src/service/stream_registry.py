@@ -2365,6 +2365,27 @@ def _maybe_librarian_safe(employee_id) -> None:
         logger.warning("librarian trigger hook failed", exc_info=True)
 
 
+def _auto_accept_if_scheduled_run(db, log) -> None:
+    """无人值守定时轮：员工任务 success 即自动盖 qa_accepted_at，复用现成派发闸放行下游。
+
+    仅当该 log 属 auto_accept=True 的 PlanRun 且本条为 success 时生效。容错、不抛。
+    """
+    try:
+        if log is None or log.run_id is None or log.run_status != "success":
+            return
+        if log.qa_accepted_at is not None:
+            return
+        from src.models.plan_run import PlanRun
+        from src.models.workspace import cst_now
+        run = db.get(PlanRun, log.run_id)
+        if run is not None and run.auto_accept:
+            log.qa_accepted_at = cst_now()
+            db.commit()
+            db.refresh(log)
+    except Exception:
+        logger.warning("auto-accept scheduled run failed log=%s", getattr(log, "id", None), exc_info=True)
+
+
 def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
     try:
         from src.db.session import get_session_local
@@ -2461,6 +2482,7 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
 
         db.commit()
         db.refresh(log)
+        _auto_accept_if_scheduled_run(db, log)   # 定时轮无人值守自动放行
         _capture_journal_safe(db, log)   # 学习闭环 journal 捕获
         _reflect_on_signal_safe(db, log)   # 信号闸门 critic（替代旧的无条件反思）
         _maybe_librarian_safe(log.employee_id if log else None)  # 阈值触发后台复盘

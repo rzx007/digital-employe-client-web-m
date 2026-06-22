@@ -216,6 +216,36 @@ def test_rework_new_log_inherits_run_id(db_session):
     assert new_log.run_id == run.id
 
 
+def test_auto_accept_stamps_qa_for_scheduled_run(db_session):
+    from src.service.stream_registry import _auto_accept_if_scheduled_run
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
+    ws, plan = _seed_ws_plan(db_session)
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    sched = open_plan_run(db_session, plan.id, ws.id, trigger="scheduled", auto_accept=True)
+    manual = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+
+    def _log(run_id, status="success"):
+        l = TaskExecutionLog(task_id=1, workspace_id=ws.id, employee_id=emp.id, skill_id=None,
+            task_name_snapshot="t", run_status=status, run_result="r", input_json="{}",
+            output_json="{}", started_at=cst_now(), run_id=run_id)
+        db_session.add(l); db_session.commit(); db_session.refresh(l); return l
+
+    sched_log = _log(sched.id)
+    _auto_accept_if_scheduled_run(db_session, sched_log)
+    db_session.refresh(sched_log)
+    assert sched_log.qa_accepted_at is not None     # 定时轮自动放行
+
+    manual_log = _log(manual.id)
+    _auto_accept_if_scheduled_run(db_session, manual_log)
+    db_session.refresh(manual_log)
+    assert manual_log.qa_accepted_at is None        # 交互式不自动盖
+
+    failed_log = _log(sched.id, status="failed")
+    _auto_accept_if_scheduled_run(db_session, failed_log)
+    db_session.refresh(failed_log)
+    assert failed_log.qa_accepted_at is None        # 仅 success 放行
+
+
 def test_task_prereqs_accepted_scoped_by_run(db_session, monkeypatch):
     """task_prereqs_accepted 现按 plan 最新 run 判定接受集（修复其调用 _load_accepted_task_ids 的 arity）。"""
     import src.service.agent.orchestrator.dependency_scheduler as ds
