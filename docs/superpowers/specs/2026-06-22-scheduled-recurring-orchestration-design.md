@@ -71,15 +71,16 @@
 | `created_at` | datetime | |
 
 **`TaskExecutionLog` 加列**（[models/task_execution_log.py](../../../apps/server/src/models/task_execution_log.py)）：
-- `run_id: int` → FK `plan_runs.id`（**NOT NULL**；orchestration 来源的日志一律写值）。
+- `run_id: int | None` → FK `plan_runs.id`（schema 上 `nullable=True` 以容纳非编排日志；**编排路径语义等价 NOT NULL**——编排写路径一律写值、读路径一律带 run_id 过滤，详见 §7）。
 
 > 注：独立手动 / MCP 定时任务（`run_task_job` 路径）也写 TaskExecutionLog（[task_scheduler_service.py:600](../../../apps/server/src/service/task_scheduler_service.py)）。它们不属编排计划、无 PlanRun。为保持 `run_id` NOT NULL 的单一语义又不波及该路径，方案见 §7「run_id 与非编排日志」——结论：`run_id` 设为 **nullable=False 但仅对编排日志强制**不可行（同一列），故最终取 **`run_id` nullable=True，但编排路径的所有读查询一律带 `run_id` 过滤、绝不回落全历史**；非编排日志 `run_id` 为 NULL 且从不被编排查询触及。详见 §7。
 
 **`OrchestrationPlan` 加列**（[models/orchestration_plan.py](../../../apps/server/src/models/orchestration_plan.py)）：
 - `cron: str(128) | None` — 计划级节拍（冻结模板的一部分）。非空即递归计划。
 - `is_recurring: bool` — 冗余标志，默认 False；`cron` 非空时为 True。
+- `last_run_at / next_run_at: datetime | None` — 计划级"上次/下次跑"（镜像 EmployeeTask 同名列，供 `run_plan_job` §6.2 更新 + 面板展示）。
 
-迁移：模型新增列 + `init_db.ensure_column` 增量加列（与既有 `qa_accepted_at` 等同模式）。开发库干净起步，无需回填。
+迁移：开发库干净起步——新表 `plan_runs` 与新列由 `Base.metadata.create_all`（[init_db.py](../../../apps/server/src/db/init_db.py)）在干净库自动建出，无需回填。注意当前 init_db **没有**通用 `ensure_column` 助手，只有单列 `_ensure_workspace_auto_grant_column`（:27）这一模板；既有 `qa_accepted_at` 即靠 `create_all` 在干净库建出。若需对非干净库做 per-column ALTER，照 `_ensure_*_column` 模板补即可（本期干净起步不需要）。
 
 ### 4.2 何时开一个 run
 
@@ -90,7 +91,7 @@
 | 返工（rework） | **沿用任务当前所在 run**（不新开），见 §4.3 | 跟随该 run |
 
 ### 4.3 返工与 run 的关系
-返工是"在当前这一轮内重做某步"，**不新开 run**。`redispatch_task` / `invalidate_downstream`（[rework.py](../../../apps/server/src/service/agent/orchestrator/rework.py)、[dependency_scheduler.py:220](../../../apps/server/src/service/agent/orchestrator/dependency_scheduler.py)）重派时，新日志写**与被作废日志相同的 run_id**。同一 run 内同一 task 可并存 `superseded`（旧）+ `running/success`（新）——与现有返工语义一致（`superseded` 不在 `_ALREADY_DISPATCHED_STATES`，可重派）。
+返工是"在当前这一轮内重做某步"，**不新开 run**。`redispatch_task_in_session`（[rework.py:60](../../../apps/server/src/service/agent/orchestrator/rework.py)）/ `invalidate_downstream`（[dependency_scheduler.py:220](../../../apps/server/src/service/agent/orchestrator/dependency_scheduler.py)）重派时，新日志写**与被作废日志相同的 run_id**（现有代码新日志已从旧日志继承 `orchestrator_conversation_id`，run_id 同处一并继承）。同一 run 内同一 task 可并存 `superseded`（旧）+ `running/success`（新）——与现有返工语义一致（`superseded` 不在 `_ALREADY_DISPATCHED_STATES`，可重派）。
 
 ## 5. 去重 / 依赖全面按 run 收敛
 
@@ -125,10 +126,10 @@
 
 ### 6.2 `run_plan_job(plan_id)`（新增）
 到点触发时：
-1. 取 plan；校验 `status == "confirmed"` 且 `cron` 非空且 `is_active` 类条件。
+1. 取 plan；校验 `status == "confirmed"` 且 `cron` 非空（无独立 is_active 列，`status=="confirmed"` 即生效条件；取消计划走 `cancel_plan` 改 status）。
 2. **开新 PlanRun**：run_seq = 该 plan 现有 max+1，trigger=`scheduled`，auto_accept=True，status=`running`。
 3. **重跑冻结 DAG 根任务**：复用 `start_immediate_tasks(db, plan_tasks, plan, workspace_id, run_id=新run)`（§6.4 透传 run_id）。下游照旧由 `on_employee_task_completed` 完成驱动。
-4. 更新 plan 的 `last_run_at` / `next_run_at`（沿用 `TaskService.compute_next_run`）。
+4. 更新 plan 的 `last_run_at` / `next_run_at`（§4.1 新增列，沿用 `TaskService.compute_next_run`）。
 5. **完全不调用 `_start_curator_task`、不重发总管消息、不重新分析**。
 
 ### 6.3 无人值守自动放行（auto_accept）
@@ -166,8 +167,8 @@
 |---|---|
 | `models/plan_run.py` | **新建** PlanRun 模型 |
 | `models/task_execution_log.py` | 加 `run_id` 列 + 关系 |
-| `models/orchestration_plan.py` | 加 `cron` / `is_recurring` 列 |
-| `db/init_db.py` | `ensure_column` 增量加 3 列 + 建 plan_runs 表 |
+| `models/orchestration_plan.py` | 加 `cron` / `is_recurring` / `last_run_at` / `next_run_at` 列 |
+| `db/init_db.py` | 干净库 `create_all` 自动建 plan_runs 表 + 新列（非干净库照 `_ensure_*_column` 模板补 ALTER，本期不需要）|
 | `service/agent/orchestrator/dependency_scheduler.py` | 全读查询 + 入口推导 + 返工/只读函数加 run_id（§5） |
 | `service/agent/orchestrator/execution.py` | execute_plan 开 run、透传 run_id（§6.4） |
 | `service/agent/orchestrator/rework.py` | 返工重派沿用所在 run_id（§4.3） |
