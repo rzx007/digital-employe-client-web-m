@@ -732,3 +732,57 @@ def test_reload_jobs_task_level_filter_skips_only_plan_level_cron_managed(db_ses
     assert standalone.id in got_ids, "独立定时任务必须被扫到"
     assert sub_with_cron.id in got_ids, "plan 无 cron 但子任务有 cron 时必须被扫到（task 级是唯一入口）"
     assert sub_recurring.id not in got_ids, "plan 级 cron 接管的子任务不应在 task 级双重调度"
+
+
+def test_backfill_plan_runs_for_legacy_plans(db_session):
+    """老数据迁移：PlanRun 机制前 confirmed 的 plan 应被补 settled run、logs.run_id 应被回填。"""
+    from sqlalchemy import select
+    from src.db.init_db import _backfill_plan_runs_for_legacy_plans
+    from src.models.employee_task import EmployeeTask
+
+    ws = Workspace(name="w", root_path="/tmp/w", user_id="u-ws1"); db_session.add(ws); db_session.flush()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    # 场景 A：老 plan（无 PlanRun）+ 子任务有 success log（run_id=NULL，老格式）
+    old_plan = OrchestrationPlan(workspace_id=ws.id, conversation_id=1, user_input="老需求",
+        plan_json="[]", status="confirmed", total_tasks=1)
+    db_session.add(old_plan); db_session.flush()
+    old_task = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="老任务",
+        execute_mode="immediate", orchestration_plan_id=old_plan.id, user_prompt="x", is_active=True)
+    db_session.add(old_task); db_session.commit()
+    old_log = TaskExecutionLog(task_id=old_task.id, workspace_id=ws.id, employee_id=emp.id,
+        skill_id=None, task_name_snapshot="老任务", run_status="success", run_result="r",
+        input_json="{}", output_json="{}", started_at=cst_now(), run_id=None)
+    db_session.add(old_log); db_session.commit()
+    # 场景 B：新 plan（已有 PlanRun）—— 不应被重复补
+    new_plan = OrchestrationPlan(workspace_id=ws.id, conversation_id=1, user_input="新需求",
+        plan_json="[]", status="confirmed", total_tasks=0)
+    db_session.add(new_plan); db_session.flush()
+    existing_run = PlanRun(plan_id=new_plan.id, workspace_id=ws.id, run_seq=1,
+        trigger="manual", auto_accept=False, status="settled")
+    db_session.add(existing_run); db_session.commit()
+    # 场景 C：pending 状态的 plan —— 不应被补（只补 confirmed）
+    pending_plan = OrchestrationPlan(workspace_id=ws.id, conversation_id=1, user_input="未确认",
+        plan_json="[]", status="pending", total_tasks=0)
+    db_session.add(pending_plan); db_session.commit()
+
+    # 跑回填
+    _backfill_plan_runs_for_legacy_plans(db_session.get_bind())
+    db_session.expire_all()
+
+    # 场景 A：老 plan 应得到一条 settled PlanRun + 旧 log 的 run_id 被回填
+    runs_a = db_session.scalars(select(PlanRun).where(PlanRun.plan_id == old_plan.id)).all()
+    assert len(runs_a) == 1 and runs_a[0].status == "settled" and runs_a[0].trigger == "manual"
+    log_refreshed = db_session.get(TaskExecutionLog, old_log.id)
+    assert log_refreshed.run_id == runs_a[0].id
+    # 场景 B：新 plan 不被重复补
+    runs_b = db_session.scalars(select(PlanRun).where(PlanRun.plan_id == new_plan.id)).all()
+    assert len(runs_b) == 1 and runs_b[0].id == existing_run.id
+    # 场景 C：pending plan 不被补
+    runs_c = db_session.scalars(select(PlanRun).where(PlanRun.plan_id == pending_plan.id)).all()
+    assert runs_c == []
+
+    # 幂等性：再跑一次不应重复
+    _backfill_plan_runs_for_legacy_plans(db_session.get_bind())
+    db_session.expire_all()
+    runs_a2 = db_session.scalars(select(PlanRun).where(PlanRun.plan_id == old_plan.id)).all()
+    assert len(runs_a2) == 1

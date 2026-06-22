@@ -20,6 +20,9 @@ def init_db() -> None:
     # 定时递归编排特性新增列：幂等补齐已有库
     _ensure_orchestration_recurring_columns(engine)
 
+    # PlanRun 机制引入前已 confirmed 的老 plan + 它们的 logs：幂等回填
+    _backfill_plan_runs_for_legacy_plans(engine)
+
     # FTS5 全文索引：conversation_messages.content
     _init_fts5(engine)
 
@@ -74,6 +77,52 @@ def _ensure_workspace_auto_grant_column(engine) -> None:
                 "BOOLEAN NOT NULL DEFAULT 0"
             ))
         logger.info("added column workspaces.auto_grant_external_dirs")
+
+
+def _backfill_plan_runs_for_legacy_plans(engine) -> None:
+    """幂等回填：为 PlanRun 机制引入前 confirmed 但无 PlanRun 的老 plan 补一条 settled run，
+    并把它们属下的 TaskExecutionLog.run_id（NULL）更新到该 run，让 today-tasks 折叠聚合能
+    正确读到历史状态而非误判为 pending。
+
+    新建的 plan 走 execute_plan / run_plan_job 都会开 PlanRun，不受影响。本 helper 只补老数据。
+    """
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    required = {"orchestration_plans", "plan_runs", "task_execution_logs", "employee_tasks"}
+    if not required.issubset(tables):
+        return
+
+    with engine.begin() as conn:
+        # 找所有 confirmed 但还没任何 PlanRun 的老 plan
+        rows = conn.execute(text("""
+            SELECT p.id, p.workspace_id, p.created_at
+            FROM orchestration_plans p
+            LEFT JOIN plan_runs r ON r.plan_id = p.id
+            WHERE p.status = 'confirmed' AND r.id IS NULL
+            GROUP BY p.id
+        """)).all()
+        if not rows:
+            return
+        backfilled = 0
+        for plan_id, workspace_id, created_at in rows:
+            # 建一条 settled PlanRun（trigger=manual 保守，auto_accept=False 保留交互式语义）
+            conn.execute(text("""
+                INSERT INTO plan_runs (plan_id, workspace_id, run_seq, trigger, auto_accept,
+                                       status, started_at, ended_at, created_at)
+                VALUES (:pid, :wid, 1, 'manual', 0, 'settled', :ts, :ts, :ts)
+            """), {"pid": plan_id, "wid": workspace_id, "ts": created_at})
+            new_run_id = conn.execute(text("SELECT last_insert_rowid()")).scalar()
+            # 把该 plan 属下子任务的 logs（run_id 为 NULL 的）全部归到这条新 run
+            conn.execute(text("""
+                UPDATE task_execution_logs
+                SET run_id = :rid
+                WHERE run_id IS NULL AND task_id IN (
+                    SELECT id FROM employee_tasks WHERE orchestration_plan_id = :pid
+                )
+            """), {"rid": new_run_id, "pid": plan_id})
+            backfilled += 1
+        if backfilled:
+            logger.info("backfilled %s legacy plan(s) with PlanRun + logs.run_id", backfilled)
 
 
 def _reset_orphaned_streams(engine) -> None:
