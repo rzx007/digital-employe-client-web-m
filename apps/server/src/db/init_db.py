@@ -33,7 +33,7 @@ def _ensure_orchestration_recurring_columns(engine) -> None:
     新库由 create_all 直接建全；已有库不会被 create_all ALTER，需在此补列：
     - task_execution_logs.run_id
     - orchestration_plans.cron / is_recurring / last_run_at / next_run_at
-    （plan_runs 新表由 create_all 自动建出，无需在此处理。）
+    - plan_runs.conversation_id（plan_runs 表由 create_all 建出，但此列后期添加）
     """
     insp = inspect(engine)
     tel_cols = {c["name"] for c in insp.get_columns("task_execution_logs")}
