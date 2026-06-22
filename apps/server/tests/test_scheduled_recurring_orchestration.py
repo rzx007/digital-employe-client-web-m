@@ -5,6 +5,16 @@ from src.models.workspace import Workspace
 from src.models.plan_run import PlanRun
 
 
+class _NoCloseSession:
+    """db_session 的透明代理，屏蔽 close()，防止被测函数 finally db.close() 关掉 fixture session。"""
+    def __init__(self, real):
+        self._real = real
+    def close(self):
+        pass
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
 def test_execution_log_has_run_id_column():
     assert "run_id" in TaskExecutionLog.__table__.columns
 
@@ -104,3 +114,52 @@ def test_log_status_by_task_scoped_by_run(db_session):
     assert got == {10: {"running"}}
     # 看 r1：只有 success
     assert _log_status_by_task(db_session, [10], r1.id) == {10: {"success"}}
+
+
+def test_rerun_not_blocked_by_previous_run_history(db_session, monkeypatch):
+    """同一冻结计划第二轮：根任务不被第一轮的 success 历史判为'已派过'。"""
+    import src.service.agent.orchestrator.dependency_scheduler as ds
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
+    from src.models.employee_task import EmployeeTask
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.models.workspace import cst_now
+
+    proxy = _NoCloseSession(db_session)
+    monkeypatch.setattr(ds, "get_session_local", lambda: (lambda: proxy))
+    ws, plan = _seed_ws_plan(db_session)
+    plan.plan_json = '[{"depends_on": null}, {"depends_on": [0]}]'
+    db_session.commit()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+                     orchestration_plan_id=plan.id, user_prompt="a"); db_session.add(A)
+    B = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="B",
+                     orchestration_plan_id=plan.id, user_prompt="b"); db_session.add(B)
+    db_session.flush()
+
+    dispatched = []
+    monkeypatch.setattr(ds, "_dispatch_successor",
+                        lambda db, t, e, w, brief, run_id, stream_class=None: dispatched.append((t.id, run_id)))
+    # can_assign_to_employee 是 on_employee_task_completed 内的函数级 import，须 patch 源模块：
+    monkeypatch.setattr("src.service.agent.orchestrator.runtime.can_assign_to_employee", lambda db, eid: True)
+    import src.service.stream_registry as sr
+    monkeypatch.setattr(sr.registry, "can_admit", lambda cls: True)
+
+    def _log(task_id, run_id, status, accepted=False):
+        db_session.add(TaskExecutionLog(
+            task_id=task_id, workspace_id=ws.id, employee_id=emp.id, skill_id=None,
+            task_name_snapshot="t", run_status=status, run_result="r",
+            input_json="{}", output_json="{}", started_at=cst_now(), run_id=run_id,
+            qa_accepted_at=cst_now() if accepted else None))
+        db_session.commit()
+
+    # 第一轮 r1：A 已 success+accepted（历史）
+    r1 = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+    _log(A.id, r1.id, "success", accepted=True)
+
+    # 第二轮 r2：A 在本轮 success+accepted，触发 on_employee_task_completed(A)
+    r2 = open_plan_run(db_session, plan.id, ws.id, trigger="scheduled", auto_accept=True)
+    _log(A.id, r2.id, "success", accepted=True)
+    ds.on_employee_task_completed(A.id, ws.id)
+
+    # B 应在 r2 内被派（不被 r1 历史挡），run_id 是 r2
+    assert (B.id, r2.id) in dispatched

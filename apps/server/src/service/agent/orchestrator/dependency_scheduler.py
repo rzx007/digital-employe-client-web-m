@@ -442,12 +442,19 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
             return
         plan_json_obj: list[dict] = json.loads(plan.plan_json or "[]")
 
+        from src.service.agent.orchestrator.plan_run_service import (
+            latest_run_id_for_task, settle_plan_run,
+        )
+        run_id = latest_run_id_for_task(db, task_id)
+        if run_id is None:
+            return  # 非编排日志（无 run）——无后继可派
+
         dep_map, _successors = build_dependency_maps(tasks, plan_json_obj)
         cls_by_id = build_class_map(tasks, plan_json_obj)  # 总管显式 heavy/light
 
         # 计划内任务通常很少，直接全量加载状态——逻辑更简单，且天然支持级联传播。
-        status_by_task = _log_status_by_task(db, [t.id for t in tasks])
-        accepted_ids = _load_accepted_task_ids(db, [t.id for t in tasks])
+        status_by_task = _log_status_by_task(db, [t.id for t in tasks], run_id)
+        accepted_ids = _load_accepted_task_ids(db, [t.id for t in tasks], run_id)
 
         # ① 级联跳过（fail-fast）：前置失败 → 下游拿不到完整输入，标 skipped；
         #    循环传播直到稳定（被跳过的任务又会让它的下游级联跳过）。
@@ -461,7 +468,7 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
                 ):
                     continue
                 if _any_prereq_failed(dep_map.get(t.id, []), status_by_task):
-                    _record_skip(db, t, workspace_id, "前置任务失败，已级联跳过")
+                    _record_skip(db, t, workspace_id, "前置任务失败，已级联跳过", run_id)
                     status_by_task.setdefault(t.id, set()).add(_SKIPPED_STATE)
                     skipped.append(t.id)
                     changed = True
@@ -509,11 +516,11 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
                 )
                 continue
 
-            prereq_refs = _collect_prereq_artifacts(db, dep_ids)
+            prereq_refs = _collect_prereq_artifacts(db, dep_ids, run_id)
             briefing = _build_prereq_briefing(prereq_refs)
             try:
                 _dispatch_successor(
-                    db, t, employee, workspace_id, briefing,
+                    db, t, employee, workspace_id, briefing, run_id,
                     stream_class=cls_by_id.get(cid),
                 )
                 dispatched.append(cid)
@@ -527,7 +534,7 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
                 task_id, dispatched, plan.id,
             )
 
-        # ③ 整盘定局（全部 成功/失败/跳过）且本轮无新派发 → 仅记录日志。
+        # ③ 整盘定局（全部 成功/失败/跳过）且本轮无新派发 → 收尾本轮 run。
         #    最终整合不再由此一次性触发：增量汇报去抖器（report_debouncer）已覆盖
         #    「每个员工任务完成 → notify → 去抖 → 唤醒总管增量汇报」的全程，最后一个
         #    任务的完成事件同样会经去抖落到一次最终整合。这里保留 all_settled 计算/
@@ -535,9 +542,10 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
         if not dispatched:
             all_settled = all(_is_settled(t.id, status_by_task) for t in tasks)
             if all_settled:
+                settle_plan_run(db, run_id)
+                db.commit()
                 logger.info(
-                    "plan=%s 全部任务定局（all_settled）；最终整合由增量汇报去抖器接管",
-                    plan.id,
+                    "plan=%s run=%s 全部定局（all_settled）", plan.id, run_id,
                 )
     except Exception:
         logger.error(
@@ -609,6 +617,7 @@ def _dispatch_successor(
     employee,
     workspace_id: int,
     prereq_briefing: str,
+    run_id: int,
     *,
     stream_class: str | None = None,
 ) -> int:
@@ -622,4 +631,5 @@ def _dispatch_successor(
         workspace_id,
         prereq_briefing=prereq_briefing,
         stream_class=stream_class,
+        run_id=run_id,
     )
