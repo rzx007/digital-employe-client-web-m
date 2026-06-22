@@ -27,8 +27,11 @@ import { chatKeys } from "@/lib/query-keys/chat"
 import { useChatStore } from "@/stores/chat-store"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 import { WorkbenchChatSwitcher } from "./workbench-chat-switcher"
 import { WorkbenchMemberPanel } from "./workbench-member-panel"
+import { WorkbenchResourcePool } from "./workbench-resource-pool"
+import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 import {
   GLOBAL_WORKBENCH_ID,
   getMembers,
@@ -113,6 +116,7 @@ export function WorkbenchContentSplit({
   children: ReactNode
 }) {
   const [resourcesOpen, setResourcesOpen] = useState(false)
+  const [resourceTab, setResourceTab] = useState<"pool" | "files">("pool")
   const queryClient = useQueryClient()
   const { isPending: isCreatingCurator } = useCreateCuratorConversation()
 
@@ -186,6 +190,25 @@ export function WorkbenchContentSplit({
       setMembers(GLOBAL_WORKBENCH_ID, next)
     },
     []
+  )
+
+  // 派单：当总管把任务派给某个工作台成员，工作台弹 toast 引导切到他看进度
+  // （切过去后该成员执行会话的 SSE 在工作台页面活，arrange_workbench 指令当场生效）。
+  const memberIdSet = useMemo(() => new Set(members.map((m) => m.id)), [members])
+  useWorkspaceEvents(
+    useCallback(
+      (event) => {
+        if (event.type !== "task_started") return
+        if (!memberIdSet.has(event.employee_id)) return
+        toast(`${event.employee_name} 开始做「${event.task_name}」`, {
+          action: {
+            label: "去工作台查看",
+            onClick: () => setPickedMemberId(event.employee_id),
+          },
+        })
+      },
+      [memberIdSet]
+    )
   )
   const workbenchCuratorConversationId = useChatStore(
     (s) => s.workbenchCuratorConversationId
@@ -266,7 +289,8 @@ export function WorkbenchContentSplit({
     setWorkbenchCuratorConversationId,
   ])
 
-  const showResources = resourcesOpen && activeConversationId != null
+  // 资源池不依赖会话，故只要 resourcesOpen 即展开（文件页另行处理无会话情形）。
+  const showResources = resourcesOpen
 
   const gridPanelRef = usePanelRef()
   const curatorPanelRef = usePanelRef()
@@ -284,9 +308,8 @@ export function WorkbenchContentSplit({
   )
 
   const handleToggleResources = useCallback(() => {
-    if (activeConversationId == null) return
     setResourcesOpen((open) => !open)
-  }, [activeConversationId])
+  }, [])
 
   const handleCloseResources = useCallback(() => {
     setResourcesOpen(false)
@@ -414,15 +437,58 @@ export function WorkbenchContentSplit({
           maxSize={showResources ? undefined : "0%"}
           className="min-w-0"
         >
-          {showResources && activeConversationId != null && (
-            <div className="h-full bg-muted/20 p-3">
-              <ArtifactPanel
-                presentation="embedded"
-                conversationId={activeConversationId}
-                isOpen
-                onClose={handleCloseResources}
-                className="h-full rounded-lg border shadow-xl"
-              />
+          {showResources && (
+            <div className="flex h-full flex-col bg-muted/20 p-3">
+              <div className="mb-2 flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setResourceTab("pool")}
+                  className={cn(
+                    "rounded px-2 py-1 text-xs",
+                    resourceTab === "pool"
+                      ? "bg-background font-medium shadow-sm"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  资源池
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResourceTab("files")}
+                  className={cn(
+                    "rounded px-2 py-1 text-xs",
+                    resourceTab === "files"
+                      ? "bg-background font-medium shadow-sm"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  文件
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCloseResources}
+                  className="ml-auto rounded px-2 py-1 text-xs text-muted-foreground"
+                >
+                  关闭
+                </button>
+              </div>
+              <div className="min-h-0 flex-1">
+                {resourceTab === "pool" ? (
+                  <WorkbenchResourcePool className="h-full rounded-lg border bg-background shadow-xl" />
+                ) : activeConversationId != null ? (
+                  <ArtifactPanel
+                    presentation="embedded"
+                    conversationId={activeConversationId}
+                    isOpen
+                    onClose={handleCloseResources}
+                    className="h-full rounded-lg border shadow-xl"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                    暂无会话文件
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </ResizablePanel>
