@@ -216,5 +216,26 @@ if reason is not None:
 - 接入点：`skill_shell_backend` 的 `execute`/`aexecute`，**与硬底线 `_hardline_refusal` 同层**（硬底线之后、`_prepare_shell_command` 之前，扫原始命令）。conv_id 取自 `self._env["CONVERSATION_ID"]`；`_coerce_conv_id` 容错防崩。
 - 覆盖面：employee 与 orchestrator 共用同一 backend，一改两覆盖。（commits `7653fac4` / `1f0a360f` / `403c76c3`）
 
-### 9.3 不变量更新
-§8 验收末句"shell 越界不受影响"**已作废**——现在 shell 越界写（被启发式抽到绝对路径的）同样挡回。仍不变的：工作区内写、读工作区外不受影响；后台子任务（`enable_hitl=False`）仍整体放行（§1 已知限制）。
+### 9.3 授权卡片不渲染 — bug 修复（HITL 工具清单第二处遗漏）
+**现象**：interrupt 挂起了，但前端不弹授权卡片，只显示原始工具 JSON + `[已暂停，等待继续]`。**根因**：后端 HITL 工具名有**两处清单**——`interrupt_on`（已含 `request_external_dir_access`，故能挂起）和 [`hitl_pending_parts.HITL_TOOL_NAMES`](../../../apps/server/src/service/hitl_pending_parts.py)（**漏了**，它决定中断时给前端合成哪种 part）。漏的后果：中断只留 `output-available + [已暂停] 哨兵` part，未合成 `input-available` 待确认 part → 前端 handler 在 output-available 时不渲染卡片。**修复**：把 `request_external_dir_access` 补进 `hitl_pending_parts.HITL_TOOL_NAMES`。（commit `db7c1560`）
+
+### 9.4 卡片收口 — 批准已确认态 + 清理孤儿占位
+**现象**：批准后卡片直接消失（拒绝则正常显示"已拒绝"卡），且残留孤儿"等待用户确认…"文案。**根因**：前端 handler [`external-dir-auth.ts`](../../../apps/web/src/lib/chat/tools/handlers/external-dir-auth.ts) 在 `output-available` 时 `return null`（与 `output-error` 渲染不对称）；"等待用户确认…"是后端 interrupted 消息 content 落成的 text part，resume 后残留。**修复**：handler 在 output-available 也渲染（卡片显示"授权已确认"，与"已拒绝"对称）；[`parts-dedupe.normalizeAssistantMessageParts`](../../../apps/web/src/lib/chat/hitl/parts-dedupe.ts) 在气泡含已 resolved HITL 时过滤掉"等待用户确认…"占位 text part。（commit `62e78345`）
+
+### 9.5 会话模式 auto/deny 真正生效 — 核心修复
+**现象**：切「自动」/「严禁」后写工作区外仍弹授权卡片；尤其 deny 下卡片可被用户批准 → **架空了 deny**（安全问题）。**根因**：`request_external_dir_access` 登记在 `interrupt_on`，**一被调用就无条件弹卡、不看 mode**；mode 原本只在守卫（实际写/shell 时）检查，但 agent 会**主动调**请求工具（绕过守卫）。**修复**（让模式真正说了算）：
+- `external_dir_request_tool.strip_external_dir_interrupt(interrupt_on, mode)`：mode ∈ {auto, deny} 时把 `request_external_dir_access` **移出 interrupt_on**（不弹卡）；ask 保留。仿 `build_orchestrator_interrupt_on` 的 `skip_destructive_hitl` 移除范式。
+- `build_request_external_dir_tool(mode)`：mode 感知回执——auto→"已自动放行，直接重试写入"；deny→"严禁，授权被自动拒绝，勿再申请"；ask→原话术（含 post-approve）。
+- orchestrator/employee 构造期读 `get_external_dir_mode(db, conversation_id)`，应用 `strip_external_dir_interrupt` + 传 mode 给工具。
+- 守卫（`guard_external_write`/`guard_external_shell`）**不变**，仍**调用期实时**按 mode 硬拦截——deny 的实际越界写拦截即便中途切模式也立即生效。
+- **时序**：弹不弹卡按**构造期** mode（切模式下条消息生效，与 `skip_destructive_hitl` 一致）；硬拦截按**调用期**实时 mode。deny 自此为**硬拒绝、不可被卡片批准覆盖**。（commit `466c1375`）
+
+### 9.6 文案
+输入框药丸「放行」→「自动」，与 mode 语义（auto）一致。（commit `98e1735b`）
+
+### 9.7 不变量更新（汇总）
+- §8 验收末句"shell 越界不受影响"**已作废**——shell 越界写（启发式抽到绝对路径的）同样挡回。
+- 守卫覆盖面：`write_file`/`edit_file`（path_authorization 守卫）+ `shell_execute`（启发式）；**总管与员工对称覆盖**。
+- 三态模式硬生效：ask 弹卡、auto 静默放行、deny 硬拒绝（不可覆盖）。
+- 仍不变：工作区内写、读工作区外不受影响；后台子任务（`enable_hitl=False`）整体放行（§1 已知限制）。
+- **维护提醒**：新增 HITL 工具须同时登记 **4 处**清单——后端 `hitl_interrupt_on.HITL_INTERRUPT_ON` + `hitl_pending_parts.HITL_TOOL_NAMES`，前端 `hitl/constants.ts` 的 `HITL_TOOL_NAMES` + `HITL_TOOL_TYPES`。本特性的多个 bug 均源于漏登记其一。

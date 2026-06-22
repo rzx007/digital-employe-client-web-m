@@ -268,9 +268,11 @@ flowchart LR
 | `learning/librarian.py` | `run_librarian`、`generate_profile`、`consolidate_memory`、`promote_skills` | 后台复盘：画像（含教训）/记忆去重/硬技能晋升 |
 | `orchestrator/qa_delivery_check.py` | `check_log_delivery`、`detect_missing_delivery_artifacts` | 交付物真伪代码兜底（自报 vs 磁盘） |
 | `agent/command_safety.py` | `check_hardline`、`normalize_command` | shell 灾难命令硬底线（接入 `SkillAwareShellBackend.execute/aexecute` 单一咽喉，对所有 agent 生效、永不执行；floor 非完整沙箱） |
-| `agent/path_authorization.py` | `is_granted`、`record_grant`、`is_outside_workspace` | 工作区外写授权核心：6 级检查链（mode/once令牌/会话/永久DB/auto/deny）+ 按 scope 落地记录 |
-| `agent/write_guard_registry.py` | `WriteGuardRegistry`、`guard_external_write` | 覆盖 `write_file`/`edit_file` 入口，路径在工作区外且未授权时返回提示串挂 HITL |
-| `agent/tools/external_dir_request_tool.py` | `request_external_dir_access` | 员工主动请求授权工具，触发 HITL 卡片（三档：once/session/permanent + deny） |
+| `agent/path_authorization.py` | `is_granted`、`record_grant`、`is_outside_workspace`、`guard_external_write`、`guard_external_shell`、`extract_command_paths`、`get/set_external_dir_mode` | 工作区外写授权核心：边界判定 + 6 级检查链（auto列/mode auto/永久DB/会话/once令牌）+ 按 scope 落地 + 守卫（write/edit 路径判定、shell 启发式抽路径判定）+ 会话三态模式读写 |
+| `agent/write_guard_registry.py` | `register_write_guard`、`lookup_write_guard`、`run_shell_guard`、`conv_id_from_runtime` | 按 conversation_id 注册/反查 roots+workspace_id（仿 `_stream_sessions`）；`run_write_guard`(在 compatible_filesystem_middleware)/`run_shell_guard` 据此查表 + fail-open。员工/总管构造期 `register_write_guard` |
+| `agent/external_dir_request_tool.py` | `request_external_dir_access`、`build_request_external_dir_tool(mode)`、`strip_external_dir_interrupt`、`EXTERNAL_DIR_INTERRUPT_ON` | 员工/总管主动请求授权工具，ask 模式触发 HITL 卡片（仅这次/本会话/永久/放行所有/拒绝）；auto/deny 时经 `strip_external_dir_interrupt` 移出 interrupt_on 不弹卡、_run 返回 mode 相应回执 |
+| `hitl_pending_parts.py` | `HITL_TOOL_NAMES`、`build_pending_hitl_parts` | 中断时给前端合成 `input-available` 待确认 part（HITL 工具名清单**之一**，新增 HITL 工具须登记） |
+| `compatible_filesystem_middleware.py` | 覆盖 `_create_write_file_tool`/`_create_edit_file_tool`、`run_write_guard` | 比照 read_file 覆盖写工具，validate_path 后插守卫；deepagents 基类工具的工作区边界闸 |
 | `stream_registry.py` | `_finalize_task_stream`、`on_task_finalized` | 流终态钩子：捕获/反思/复盘/去抖/驱动 DAG |
 | `server.py` | `_on_task_finalized`（lifespan 装配） | 把终态事件接到调度器 + 推前端事件 |
 | `employee_service.py` | `build_employee_growth_brain`、`adopt_skill_candidate`、`dismiss_skill_candidate` | 成长大脑只读聚合 + 候选采纳/忽略 |
@@ -291,7 +293,7 @@ flowchart LR
 7. **轻量再入 + 编排层与主上下文分离**：完成事件只带摘要+状态，去抖批量唤醒；子任务全过程留编排层，总管主上下文只收精炼结论。
 8. **不自爆内部机制**：自动放行/DAG/快照注入/reported_at 等是内部规则，正文只对用户说人话。
 9. **shell 灾难命令硬底线**：所有 agent（含 HITL-off 员工）的 shell 命令经 `command_safety.check_hardline` 过一道——`rm -rf 根/家目录`、`mkfs/dd` 写盘、fork bomb 等**永不执行**，不靠模型/确认门遵从。是 floor（挡直接灾难命令）非完整沙箱（挡不住"写脚本再跑"，彻底边界需 OS 沙箱）。
-10. **工作区外目录写授权**：员工写工具（`write_file`/`edit_file`）被 `WriteGuardRegistry` 拦截，目标路径在工作区外且未授权时挂起并调 `request_external_dir_access` 弹 HITL 卡片；用户三选一（仅这次 / 本会话 / 永久），`record_grant` 按 scope 落库；会话级模式（ask/auto/deny）通过 `ExternalDirMode` 端点整体切换，前端药丸常驻显示当前模式。读操作静默放行，shell 路径继续由 `command_safety` 兜底。**后台子任务（`enable_hitl=False`）暂不挂此守卫、工作区外写放行**（可用性取舍——后台无人弹卡片授权，挂了会任务卡住；待后续支持后台预授权/异步审批）。
+10. **工作区外目录写授权**：写工具（`write_file`/`edit_file`，覆盖 deepagents 基类）+ `shell_execute`（启发式抽命令里的绝对路径）被守卫拦截——目标在工作区外且未授权时，`write_file` 返回提示让 agent 调 `request_external_dir_access`、shell 在 backend 层与硬底线同层挡回。**员工与总管对称覆盖**（各自构造期 `register_write_guard` 填 roots+workspace_id 进注册表，工具/守卫据 conversation_id 反查；ctx 缺失 fail-open）。授权走声明式 `interrupt_on`+`/approve` 链路：弹 HITL 卡片，用户选 仅这次/本会话/永久/放行所有/拒绝，`record_grant` 按 scope 落库（永久挂 workspace、其余挂会话 session_flags，前缀匹配）。会话级**三态模式硬生效**（`external_dir_mode` 端点 + 前端药丸「目录·询问/自动/严禁」）：**ask** 弹卡；**auto** 把请求工具移出 interrupt_on→静默放行；**deny** 同样移出→硬拒绝、**不可被卡片批准覆盖**（守卫调用期实时按 mode 拦截兜底）。读操作静默放行；删除经 shell 由本守卫的启发式 + `command_safety` 共同兜底。**后台子任务（`enable_hitl=False`）整体放行**（可用性取舍——无人弹卡片授权，挂了会卡住；待后续做后台预授权/异步审批）。**维护提醒**：新增 HITL 工具须同时登记 4 处清单（后端 `HITL_INTERRUPT_ON` + `hitl_pending_parts.HITL_TOOL_NAMES`，前端 `HITL_TOOL_NAMES` + `HITL_TOOL_TYPES`）。
 
 ---
 
