@@ -32,6 +32,6 @@ class PlanRun(Base):
     auto_accept: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # running / settled
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="running", index=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=cst_now)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=cst_now)
