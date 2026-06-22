@@ -115,6 +115,8 @@ if (item?.kind === "shortcut") {
 
 slash-command-plugin 的 FloatingMenu 渲染时按 `kind` 分两组、各带分组标题（「快捷指令」「总管技能」）。技能空时该组隐藏。
 
+> 实现注意：菜单实际渲染用的是 `SlashCommandOption`（`MenuOption` 子类，slash-command-plugin.tsx:33-50），目前只透传 id/title/icon/description/keywords，且 `FloatingMenu` 硬编码单个 `heading="技能"` 的 CommandGroup（约 104 行）。`kind`/`prompt` 需同时 thread 进 `SlashCommandOption` 构造器；分组渲染需把硬编码单组改为按 `kind` 切两组。§5.1 的接口字段改动只是第一步。
+
 ## 6. 快捷指令清单（最终 7 条）
 
 | 指令标题 | prompt 模板 |
