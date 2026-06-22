@@ -35,6 +35,10 @@ class TaskExecutionLog(Base):
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 已纳入某次总管增量汇报 turn 的时间；NULL = 待汇报
     reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 所属执行轮（PlanRun.id）；编排日志一律写值，非编排（独立 run_task_job）日志为 NULL。
+    run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("plan_runs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     # 总管 QA 审核通过时间；NULL = 尚未接受（下游派发闸门）
     qa_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     confirm_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)

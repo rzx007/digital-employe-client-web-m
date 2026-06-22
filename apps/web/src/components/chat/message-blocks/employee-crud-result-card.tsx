@@ -4,11 +4,9 @@ import * as React from "react"
 import { memo } from "react"
 import {
   IconCircleCheck,
-  IconMessageCircle,
   IconTrash,
   IconUserSearch,
 } from "@tabler/icons-react"
-import { switchToContact } from "@/lib/chat/conversation-selection"
 import { Badge } from "@workspace/ui/components/badge"
 import {
   MorphingDialog,
@@ -117,12 +115,14 @@ function CrudCardHeader({
   isError,
   isCurator,
   action,
+  className,
 }: {
   variant: "detail" | "updated"
   isRunning: boolean
   isError: boolean
   isCurator?: boolean
   action?: React.ReactNode
+  className?: string
 }) {
   const cfg = VARIANT_CONFIG[variant]
   const Icon = cfg.icon
@@ -174,20 +174,7 @@ function EmployeeDetailExpandable({
           isRunning={false}
           isError={false}
           isCurator={payload.is_curator}
-          action={
-            <button
-              type="button"
-              aria-label="发消息"
-              title="发消息"
-              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              onClick={(e) => {
-                e.stopPropagation()
-                switchToContact(`employee:${payload.employee_id}`)
-              }}
-            >
-              <IconMessageCircle className="size-4" />
-            </button>
-          }
+          className="rounded-md p-1 "
         />
         <MorphingDialogTrigger
           className={EXPAND_TRIGGER}

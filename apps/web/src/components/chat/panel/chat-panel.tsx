@@ -304,7 +304,6 @@ export function ChatPanel({
                 {isDraftMode ? (
                   contact.type === "curator" ? (
                     <CuratorEmptyWelcome
-                      contact={contact}
                       displayName={contactDisplayName}
                       onSuggestionSelect={onDraftSuggestionSelect ?? (() => {})}
                       suggestionsDisabled={

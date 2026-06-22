@@ -6,6 +6,7 @@ from src.models.employee_mcp import EmployeeMcp
 from src.models.employee_skill import EmployeeSkill
 from src.models.employee_task import EmployeeTask
 from src.models.orchestration_plan import OrchestrationPlan
+from src.models.plan_run import PlanRun
 from src.models.performance_record import PerformanceRecord
 from src.models.recent_contact import RecentContact
 from src.models.skill_rating import SkillRating
@@ -24,6 +25,7 @@ __all__ = [
     "DispatchOrderSync",
     "EmployeeTask",
     "OrchestrationPlan",
+    "PlanRun",
     "PerformanceRecord",
     "TaskExecutionLog",
     "SkillRating",
