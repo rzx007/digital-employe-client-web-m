@@ -166,6 +166,33 @@ export function ChatView({
       (!conversationsQuerySuccess ||
         conversationExistsInList(conversations, selectedConversationId))
 
+    const isScheduledRunConv = (() => {
+      const flags = selectedConversation?.sessionFlags
+      if (!flags) return false
+      try {
+        const parsed = JSON.parse(flags)
+        return parsed?.kind === "scheduled_run"
+      } catch {
+        return false
+      }
+    })()
+
+    if (hasValidSelection && isScheduledRunConv && selectedConversationId != null) {
+      return (
+        <ConversationChatView
+          key={String(selectedConversationId)}
+          contact={contact}
+          title={selectedConversation?.title ?? "定时任务"}
+          conversationId={selectedConversationId}
+          onOpenContacts={onOpenContacts}
+          onOpenConversations={onOpenConversations}
+          readOnly
+          className={cn(className)}
+          {...props}
+        />
+      )
+    }
+
     if (hasValidSelection) {
       return (
         <CuratorView
