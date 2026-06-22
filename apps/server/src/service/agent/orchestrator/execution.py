@@ -149,7 +149,10 @@ def execute_plan(db: Session, plan: OrchestrationPlan, workspace_id: int) -> str
         results.append(f"{len(scheduled_tasks)} 个定时任务已加入调度队列")
 
     if immediate_tasks:
-        results += start_immediate_tasks(db, immediate_tasks, plan, workspace_id)
+        from src.service.agent.orchestrator.plan_run_service import open_plan_run
+        run = open_plan_run(db, plan.id, workspace_id, trigger="manual", auto_accept=False)
+        db.commit()
+        results += start_immediate_tasks(db, immediate_tasks, plan, workspace_id, run_id=run.id)
 
     return "\n".join([f"编排计划 #{plan.id} 执行中："] + results)
 
@@ -163,6 +166,7 @@ def start_immediate_tasks(
     tasks: list[EmployeeTask],
     plan: OrchestrationPlan,
     workspace_id: int,
+    run_id: int | None = None,
 ) -> list[str]:
     plan_json_obj: list[dict] = json.loads(plan.plan_json or "[]")
 
@@ -207,6 +211,7 @@ def start_immediate_tasks(
             conv_id = start_task_as_conversation(
                 db, task, employee, workspace_id,
                 stream_class=cls_by_id.get(tid),
+                run_id=run_id,
             )
             results.append(f"任务 {task.task_name}: 已创建会话 #{conv_id}")
             started_ids.add(tid)
@@ -239,6 +244,7 @@ def start_task_as_conversation(
     source: str = "orchestration",
     prereq_briefing: str = "",
     stream_class: str | None = None,
+    run_id: int | None = None,
 ) -> int:
     from src.models.conversation import Conversation, ConversationMessage
     from src.models.task_execution_log import TaskExecutionLog
@@ -288,6 +294,7 @@ def start_task_as_conversation(
         conversation_id=conversation.id,
         orchestrator_conversation_id=orch_conv_id,
         started_at=cst_now(),
+        run_id=run_id,
     )
     db.add(run_log)
 

@@ -1,7 +1,7 @@
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.orchestration_plan import OrchestrationPlan
 from src.models.employee import Employee
-from src.models.workspace import Workspace
+from src.models.workspace import Workspace, cst_now
 from src.models.plan_run import PlanRun
 
 
@@ -163,3 +163,35 @@ def test_rerun_not_blocked_by_previous_run_history(db_session, monkeypatch):
 
     # B 应在 r2 内被派（不被 r1 历史挡），run_id 是 r2
     assert (B.id, r2.id) in dispatched
+
+
+def test_execute_plan_opens_run_and_tags_root_log(db_session, monkeypatch):
+    import src.service.agent.orchestrator.execution as ex
+    from src.models.employee_task import EmployeeTask
+    from src.models.task_execution_log import TaskExecutionLog
+    from sqlalchemy import select as _select
+    ws, plan = _seed_ws_plan(db_session)
+    plan.plan_json = '[{"depends_on": null}]'; db_session.commit()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+                     execute_mode="immediate", orchestration_plan_id=plan.id, user_prompt="a")
+    db_session.add(A); db_session.commit()
+
+    captured = {}
+    def _fake_start(db, task, employee, workspace_id, *, priority=0, source="orchestration",
+                    prereq_briefing="", stream_class=None, run_id=None):
+        log = TaskExecutionLog(
+            task_id=task.id, workspace_id=workspace_id, employee_id=employee.id, skill_id=None,
+            task_name_snapshot=task.task_name, run_status="running", run_result="r",
+            input_json="{}", output_json="{}", started_at=cst_now(), run_id=run_id)
+        db.add(log); db.commit()
+        captured["run_id"] = run_id
+        return 123
+    monkeypatch.setattr(ex, "start_task_as_conversation", _fake_start)
+    monkeypatch.setattr("src.service.agent.orchestrator.runtime.can_assign_to_employee", lambda db, eid: True)
+
+    ex.execute_plan(db_session, plan, ws.id)
+    from src.models.plan_run import PlanRun
+    run = db_session.scalars(_select(PlanRun).where(PlanRun.plan_id == plan.id)).first()
+    assert run is not None and run.trigger == "manual" and run.auto_accept is False
+    assert captured["run_id"] == run.id
