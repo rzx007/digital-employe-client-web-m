@@ -87,6 +87,23 @@ async def upload_workbench_resource(
     return ResponseBase(data=WorkbenchResourceRead.model_validate(row))
 
 
+@router.get(
+    "/workbench-resources/{resource_id}/content",
+    response_model=ResponseBase[dict],
+)
+def read_workbench_resource_content(
+    resource_id: int,
+    workspace_id: int = Query(...),
+    db: Session = Depends(get_db),
+) -> ResponseBase[dict]:
+    """读资源池条目的 HTML 内容（按 resource_id，后端解析 root_path+src_path 绝对路径）。
+
+    资源池看板渲染走这里——不借 conversationId，因为资源是 workspace 级、跨会话复用。
+    """
+    data = WorkbenchResourceService.read_html_content(db, workspace_id, resource_id)
+    return ResponseBase(data=data)
+
+
 @router.delete(
     "/workbench-resources/{resource_id}",
     response_model=ResponseBase[dict],
