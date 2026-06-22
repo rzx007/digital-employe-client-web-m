@@ -39,6 +39,13 @@ export function WorkbenchHtmlPanel({
     useWorkbenchHtmlContentQuery(htmlRef)
 
   const [isFullscreen, setIsFullscreen] = React.useState(false)
+  // 刷新计数：点刷新时 ++，作为 iframe key 的一部分强制重载（即使新旧 srcDoc 字符串相同，
+  // 沙箱 iframe 也未必自动重渲染；换 key 强制重挂）。
+  const [reloadNonce, setReloadNonce] = React.useState(0)
+  const handleRefresh = React.useCallback(() => {
+    void refetch()
+    setReloadNonce((n) => n + 1)
+  }, [refetch])
 
   const content = data?.content
   const srcDoc = React.useMemo(() => {
@@ -88,7 +95,7 @@ export function WorkbenchHtmlPanel({
           size="icon-xs"
           className="size-5"
           title="刷新看板"
-          onClick={() => void refetch()}
+          onClick={handleRefresh}
         >
           <IconRefresh className="size-3" />
         </Button>
@@ -119,6 +126,7 @@ export function WorkbenchHtmlPanel({
           </div>
         ) : srcDoc ? (
           <iframe
+            key={reloadNonce}
             title={title}
             sandbox={HTML_PREVIEW_SANDBOX}
             srcDoc={srcDoc}
