@@ -465,10 +465,8 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
             return  # 非编排日志（无 run）——无后继可派
 
         from src.models.plan_run import PlanRun
-        run_conv_id = None
-        if run_id is not None:
-            _r = db.get(PlanRun, run_id)
-            run_conv_id = _r.conversation_id if _r else None
+        _r = db.get(PlanRun, run_id)
+        run_conv_id = _r.conversation_id if _r else None
 
         dep_map, _successors = build_dependency_maps(tasks, plan_json_obj)
         cls_by_id = build_class_map(tasks, plan_json_obj)  # 总管显式 heavy/light
