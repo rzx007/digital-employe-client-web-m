@@ -13,6 +13,7 @@ from src.models.performance_record import PerformanceRecord
 from src.models.recent_contact import RecentContact
 from src.models.skill_rating import SkillRating
 from src.models.task_execution_log import TaskExecutionLog
+from src.models.workbench_resource import WorkbenchResource
 from src.models.workspace import Workspace
 
 __all__ = [
@@ -34,5 +35,6 @@ __all__ = [
     "TaskExecutionLog",
     "SkillRating",
     "RecentContact",
+    "WorkbenchResource",
 ]
 
