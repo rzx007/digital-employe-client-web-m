@@ -5,6 +5,7 @@ import {
   useCallback,
   useMemo,
   type ComponentProps,
+  type ReactNode,
 } from "react"
 
 import { useQueryClient } from "@tanstack/react-query"
@@ -129,6 +130,8 @@ export function ConversationChatView({
 
   onOpenArtifact,
 
+  titleSlot,
+
   className,
 
   ...props
@@ -141,6 +144,9 @@ export function ConversationChatView({
 
   /** 工作台：覆盖 header 资源图标点击 = 开右侧资源池 */
   onOpenArtifact?: () => void
+
+  /** 工作台：header 标题区自定义内容（总管/助手 下拉切换） */
+  titleSlot?: ReactNode
 
   onOpenContacts?: () => void
 
@@ -717,6 +723,7 @@ export function ConversationChatView({
       onOpenConversations={onOpenConversations}
       onNewConversation={onNewConversation}
       onOpenArtifact={onOpenArtifact}
+      titleSlot={titleSlot}
       pendingMessages={pendingQueue}
       onPendingRemove={pendingRemove}
       onPendingSendNow={pendingSendNow}

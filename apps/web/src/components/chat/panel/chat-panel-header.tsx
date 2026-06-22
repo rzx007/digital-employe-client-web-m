@@ -61,6 +61,8 @@ interface ChatPanelHeaderProps {
    * 不传时维持默认（开/收内置 artifact 面板）。
    */
   onOpenArtifact?: () => void
+  /** 标题区自定义内容（工作台：总管/工作台助手 下拉切换）。传入时替代纯文字标题。 */
+  titleSlot?: React.ReactNode
 }
 
 export function ChatPanelHeader({
@@ -70,6 +72,7 @@ export function ChatPanelHeader({
   onOpenConversations,
   onNewConversation,
   onOpenArtifact,
+  titleSlot,
 }: ChatPanelHeaderProps) {
   const isMobile = useIsMobile()
   const [menuOpen, setMenuOpen] = React.useState(false)
@@ -164,15 +167,17 @@ export function ChatPanelHeader({
               <Separator orientation="vertical" className="h-5 self-center" />
             </>
           )}
-          <h3
-            className={cn(
-              "min-w-0 flex-1 truncate text-sm font-medium",
-              isCompactMode ? "max-w-[120px]" : "max-w-[200px]"
-            )}
-            title={title}
-          >
-            {title}
-          </h3>
+          {titleSlot ?? (
+            <h3
+              className={cn(
+                "min-w-0 flex-1 truncate text-sm font-medium",
+                isCompactMode ? "max-w-[120px]" : "max-w-[200px]"
+              )}
+              title={title}
+            >
+              {title}
+            </h3>
+          )}
         </div>
 
         <div className="flex items-center gap-1">

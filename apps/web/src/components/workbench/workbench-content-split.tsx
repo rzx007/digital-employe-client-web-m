@@ -30,6 +30,7 @@ import { useChatStore } from "@/stores/chat-store"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { WorkbenchMemberPanel } from "./workbench-member-panel"
+import { WorkbenchChatTargetSwitch } from "./workbench-chat-target-switch"
 import { WorkbenchResourcePool } from "./workbench-resource-pool"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 
@@ -297,13 +298,14 @@ export function WorkbenchContentSplit({
   const curatorPanelBorder = showResources ? "border-r" : "border-l"
 
   const renderMemberArea = () => {
-    const switchClass = (active: boolean) =>
-      cn(
-        "rounded-md px-2.5 py-1 text-xs transition-colors",
-        active
-          ? "bg-primary/10 font-medium text-primary"
-          : "text-muted-foreground hover:bg-muted"
-      )
+    // 对话头部标题处的「总管 ⇄ 工作台助手」下拉切换（替代纯标题，干净）。
+    const targetSwitch = (
+      <WorkbenchChatTargetSwitch
+        value={chatTarget}
+        onChange={setChatTarget}
+        assistantAvailable={!!assistantContact}
+      />
+    )
     return (
       <div className={cn("flex h-full min-h-0 flex-col", curatorPanelBorder)}>
         <div className="min-h-0 flex-1">
@@ -314,6 +316,7 @@ export function WorkbenchContentSplit({
                 contact={assistantContact}
                 onOpenArtifact={() => setResourcesOpen(true)}
                 onActiveConversation={setAssistantConversationId}
+                titleSlot={targetSwitch}
               />
             ) : (
               <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
@@ -335,36 +338,10 @@ export function WorkbenchContentSplit({
               resourcesOpen={showResources}
               onToggleResources={handleToggleResources}
               onOpenResourceFile={() => setResourcesOpen(true)}
+              titleSlot={targetSwitch}
               getExtraMetadata={() => ({ workbench: buildWorkbenchSnapshot() })}
             />
           )}
-        </div>
-        {/* 对话底部切换条：总管 ⇄ 工作台助手（贴近输入区，不碰核心输入组件） */}
-        <div className="flex items-center gap-1 border-t bg-muted/20 px-2 py-1">
-          <span className="mr-1 text-[11px] text-muted-foreground">对话对象</span>
-          <button
-            type="button"
-            className={switchClass(chatTarget === "curator")}
-            onClick={() => setChatTarget("curator")}
-          >
-            总管助手
-          </button>
-          <button
-            type="button"
-            className={switchClass(chatTarget === "assistant")}
-            onClick={() => setChatTarget("assistant")}
-            disabled={!assistantContact}
-            title={assistantContact ? undefined : "未找到工作台助手员工"}
-          >
-            工作台助手
-          </button>
-          <button
-            type="button"
-            onClick={handleToggleResources}
-            className={cn("ml-auto", switchClass(showResources))}
-          >
-            资源池
-          </button>
         </div>
       </div>
     )

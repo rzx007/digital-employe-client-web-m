@@ -17,6 +17,7 @@ export function WorkbenchMemberPanel({
   contact,
   onOpenArtifact,
   onActiveConversation,
+  titleSlot,
   className,
 }: {
   contact: Contact
@@ -24,6 +25,8 @@ export function WorkbenchMemberPanel({
   onOpenArtifact?: () => void
   /** 上报当前激活会话 id（供「文件」tab 列该会话产物）。 */
   onActiveConversation?: (id: string | number | null) => void
+  /** 对话头部标题区自定义（总管/助手 下拉切换）。 */
+  titleSlot?: React.ReactNode
   className?: string
 }) {
   const queryClient = useQueryClient()
@@ -115,6 +118,7 @@ export function WorkbenchMemberPanel({
       conversationId={activeId}
       title={conversationTitle ?? "工作台对话"}
       onOpenArtifact={onOpenArtifact}
+      titleSlot={titleSlot}
       className={cn("h-full min-h-0", className)}
     />
   )
