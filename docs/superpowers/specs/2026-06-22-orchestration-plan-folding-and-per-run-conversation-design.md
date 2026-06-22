@@ -23,7 +23,7 @@
 
 ### 2.2 每轮汇报落到同一会话
 - `run_plan_job`（[task_scheduler_service.py:600](../../../apps/server/src/service/task_scheduler_service.py)）调用 `start_immediate_tasks(db, tasks, plan, plan.workspace_id, run_id=run.id)`。
-- `start_task_as_conversation`（[execution.py:232](../../../apps/server/src/service/agent/orchestrator/execution.py)）取子任务的 `orchestrator_conversation_id` 经 `resolve_orchestrator_conversation_id(db, task)`（[orchestrator_conversation_links.py:16](../../../apps/server/src/service/orchestrator_conversation_links.py)）解析：优先 `task.source_conversation_id`（计划创建时绑定的会话）→ 否则 `plan.conversation_id`。
+- `start_task_as_conversation`（[execution.py:232](../../../apps/server/src/service/agent/orchestrator/execution.py)）取子任务的 `orchestrator_conversation_id` 经 `resolve_orchestrator_conversation_id(db, task)`（[orchestrator_conversation_links.py:16](../../../apps/server/src/service/orchestrator_conversation_links.py)，注意该文件在 `src/service/` 根下，**不**在 `agent/orchestrator/` 子包内）解析：优先 `task.source_conversation_id`（计划创建时绑定的会话）→ 否则 `plan.conversation_id`。
 - 即冻结模板每个子任务的报告目标会话**永远是计划创建时的那一个**，多轮重跑都共用，没有"每轮一个"概念。
 - 再入汇报（[reentry.py:196](../../../apps/server/src/service/agent/orchestrator/reentry.py)）根据 `TaskExecutionLog.orchestrator_conversation_id` 找会话起总管轮——所以**只要派单时写对 orch_conv_id，再入汇报会自动落对会话**。
 
@@ -63,7 +63,7 @@
 1. 取 plan、校验（`status=="confirmed"` 且 `cron` 非空）；取 active 子任务、校验非空。
 2. `open_plan_run(...)` 开新 PlanRun（trigger="scheduled", auto_accept=True）。
 3. **新建本轮总管会话**：
-   - 取 curator employee（用 `ensure_curator_conversation` 的 curator 解析逻辑——或抽个 helper `get_curator_employee(db, workspace_id, user_id)`，避免与默认主对话耦合）。
+   - 取 curator employee：**抽出新 helper** `get_curator_employee(db, workspace_id) -> Employee | None`（放在 chat_service 旁或 employee_service），复用 `ensure_curator_conversation` 现有的 `is_curator=True` 查询逻辑——避免与"默认主对话"创建路径耦合。两边都引用同一 helper。
    - 解析 user_id：与 `_start_curator_task` 一致——从 `plan.workspace_id` 的 Workspace 取 owner。
    - `Conversation(workspace_id, user_id, target_type="curator", target_id=curator.id, title=<§4.4 标题>, session_flags=json.dumps({"kind":"scheduled_run","plan_id":plan.id,"run_seq":run.run_seq}))`，add/flush。
 4. **种用户消息** = `plan.user_input`，stream_state="completed"。让会话可读、再入汇报时上下文不悬空。
@@ -74,7 +74,7 @@
 ### 4.3 派单链显式覆盖 `orchestrator_conversation_id`
 - `start_immediate_tasks(...)` 加 keyword 参 `orchestrator_conversation_id: int | None = None`，转给 `start_task_as_conversation`。
 - `start_task_as_conversation` 加 keyword 参 `orchestrator_conversation_id: int | None = None`；当非空时**直接用作 `orch_conv_id`，绕过 `resolve_orchestrator_conversation_id`**（不写回 `task.source_conversation_id`，保留模板"创建源会话"语义不变）。
-- `_dispatch_successor`（[dependency_scheduler.py:602](../../../apps/server/src/service/agent/orchestrator/dependency_scheduler.py)）**不**改：它转发用的 `task.source_conversation_id` 已被 manual run 派单时写过（交互式仍按现状），定时轮下游通过 `on_employee_task_completed` 入口推 run → 取 PlanRun.conversation_id 作显式覆盖再调 `_dispatch_successor` 的辅助路径——具体见 §4.5。
+- `_dispatch_successor`（[dependency_scheduler.py:602](../../../apps/server/src/service/agent/orchestrator/dependency_scheduler.py)）也加同名 keyword 参，转发给 `start_task_as_conversation`；调用方（`on_employee_task_completed`，§4.5）从本轮 PlanRun 取 `conversation_id` 传入。
 
 ### 4.4 会话标题
 格式：`<user_input 截断 30 字> · 第N轮`，例：`「每2分钟查热搜并总结成文档」· 第3轮`。
@@ -87,7 +87,7 @@
 - 交互式 manual run：PlanRun.conversation_id 等于 plan.conversation_id（§4.6），行为不变。
 
 ### 4.6 交互式 manual run 也写 `conversation_id`
-- `execute_plan`（[execution.py:127](../../../apps/server/src/service/agent/orchestrator/execution.py)）开 manual run 后 `run.conversation_id = plan.conversation_id`（即创建源会话）。
+- `execute_plan`（[execution.py:127](../../../apps/server/src/service/agent/orchestrator/execution.py)）：在 `open_plan_run(...)` 返回后、`start_immediate_tasks(...)` 调用前，写 `run.conversation_id = plan.conversation_id` 并 `db.commit()`，让 run 行带着 conv id 完整落库后再供下游派发读取。
 - 好处：Part B 折叠行的"链到该轮会话"统一从 `PlanRun.conversation_id` 取，manual 计划链到创建源（=主对话），scheduled 链到本轮新会话，无分支。
 
 ### 4.7 边角
@@ -190,7 +190,7 @@ UI：
 - A：新单测覆盖（i）run_plan_job 每轮新建会话 + 种 user_input 消息 + run.conversation_id 写值 + 子任务日志的 orchestrator_conversation_id 落到本轮会话；（ii）on_employee_task_completed 下游派发用本轮会话；（iii）execute_plan manual run 写 conversation_id=plan.conversation_id。
 - B：新单测覆盖 list_today_tasks 的聚合（多子任务一行；最新轮状态聚合规则各分支；独立任务不被影响）。
 - C：前端单测/组件测覆盖分桶 + 只读视图触发；后端 DTO 暴露 session_flags。
-- 全套件零新增回归（基线：1 pre-existing failure / 975 passed）。
+- 全套件零新增回归（基线：1 pre-existing failure `tests/test_workspace_crud_userlevel.py::test_create_user_workspace_empty` / 975 passed）。
 
 ## 8. 风险
 
