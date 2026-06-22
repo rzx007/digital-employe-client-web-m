@@ -138,7 +138,7 @@ def test_rerun_not_blocked_by_previous_run_history(db_session, monkeypatch):
 
     dispatched = []
     monkeypatch.setattr(ds, "_dispatch_successor",
-                        lambda db, t, e, w, brief, run_id, stream_class=None: dispatched.append((t.id, run_id)))
+                        lambda db, t, e, w, brief, run_id, *, stream_class=None, orchestrator_conversation_id=None: dispatched.append((t.id, run_id)))
     # can_assign_to_employee 是 on_employee_task_completed 内的函数级 import，须 patch 源模块：
     monkeypatch.setattr("src.service.agent.orchestrator.runtime.can_assign_to_employee", lambda db, eid: True)
     import src.service.stream_registry as sr
@@ -179,7 +179,7 @@ def test_execute_plan_opens_run_and_tags_root_log(db_session, monkeypatch):
 
     captured = {}
     def _fake_start(db, task, employee, workspace_id, *, priority=0, source="orchestration",
-                    prereq_briefing="", stream_class=None, run_id=None):
+                    prereq_briefing="", stream_class=None, run_id=None, orchestrator_conversation_id=None):
         log = TaskExecutionLog(
             task_id=task.id, workspace_id=workspace_id, employee_id=employee.id, skill_id=None,
             task_name_snapshot=task.task_name, run_status="running", run_result="r",
@@ -332,7 +332,7 @@ def test_two_scheduled_runs_end_to_end(db_session, monkeypatch):
 
     # Replace the real stream-start with a synchronous: create success log + auto-accept + drive completion.
     def _fake_start(db, task, employee, workspace_id, *, priority=0, source="orchestration",
-                    prereq_briefing="", stream_class=None, run_id=None):
+                    prereq_briefing="", stream_class=None, run_id=None, orchestrator_conversation_id=None):
         log = TaskExecutionLog(task_id=task.id, workspace_id=workspace_id, employee_id=employee.id,
             skill_id=None, task_name_snapshot=task.task_name, run_status="success", run_result="ok",
             input_json="{}", output_json="{}", started_at=cst_now(), run_id=run_id)
@@ -343,7 +343,7 @@ def test_two_scheduled_runs_end_to_end(db_session, monkeypatch):
     monkeypatch.setattr(ex, "start_task_as_conversation", _fake_start)
     # _dispatch_successor (in ds) forwards to start_task_as_conversation; route it through the same fake.
     monkeypatch.setattr(ds, "_dispatch_successor",
-        lambda db, t, e, w, brief, rid, stream_class=None: _fake_start(db, t, e, w, run_id=rid))
+        lambda db, t, e, w, brief, rid, *, stream_class=None, orchestrator_conversation_id=None: _fake_start(db, t, e, w, run_id=rid))
 
     # Two scheduled fires.
     tss.TaskSchedulerService.run_plan_job(plan_id)
@@ -430,3 +430,91 @@ def test_create_plan_with_unparseable_schedule_errors_not_degrades(db_session, m
 def test_plan_run_has_conversation_id_column():
     from src.models.plan_run import PlanRun
     assert "conversation_id" in PlanRun.__table__.columns
+
+
+def test_start_task_explicit_orch_conv_overrides_default(db_session, monkeypatch):
+    """显式 orchestrator_conversation_id 直接生效，不再 fallback 到 task.source_conversation_id。"""
+    import src.service.agent.orchestrator.execution as ex
+    from src.models.conversation import Conversation
+    from src.models.employee_task import EmployeeTask
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
+    from sqlalchemy import select as _select
+
+    ws, plan = _seed_ws_plan(db_session)
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    # 计划创建源会话
+    src_conv = Conversation(workspace_id=ws.id, user_id="u-ws1", target_type="curator", target_id=emp.id, title="原")
+    # 本轮专属会话
+    run_conv = Conversation(workspace_id=ws.id, user_id="u-ws1", target_type="curator", target_id=emp.id, title="本轮")
+    db_session.add_all([src_conv, run_conv]); db_session.flush()
+    plan.conversation_id = src_conv.id; db_session.commit()
+    task = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+                       execute_mode="immediate", orchestration_plan_id=plan.id,
+                       user_prompt="a", source_conversation_id=src_conv.id)
+    db_session.add(task); db_session.commit()
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="scheduled", auto_accept=True)
+    db_session.commit()
+
+    # 截 stream 启动：只关心日志的 orchestrator_conversation_id 落到哪
+    monkeypatch.setattr(ex, "get_main_loop", lambda: type("L", (), {"call_soon_threadsafe": lambda self, fn: None})())
+    monkeypatch.setattr("src.service.agent.employee.get_agent", lambda *a, **k: object())
+    monkeypatch.setattr("src.llm.factory.resolve_output_tokens", lambda t: 1024)
+    monkeypatch.setattr("src.service.product_paths.resolve_conversation_product_root", lambda db, c: "/tmp")
+    monkeypatch.setattr("src.service.stream_registry.registry.can_admit", lambda cls: True)
+
+    ex.start_task_as_conversation(
+        db_session, task, emp, ws.id,
+        run_id=run.id,
+        orchestrator_conversation_id=run_conv.id,
+    )
+    log = db_session.scalars(_select(TaskExecutionLog).where(TaskExecutionLog.task_id == task.id)).first()
+    assert log is not None and log.orchestrator_conversation_id == run_conv.id  # 用了本轮会话
+    # 模板 task.source_conversation_id 不被改写
+    db_session.refresh(task)
+    assert task.source_conversation_id == src_conv.id
+
+
+def test_on_employee_task_completed_dispatches_downstream_with_run_conversation(db_session, monkeypatch):
+    """下游派发也走本轮 PlanRun.conversation_id（不走 task.source_conversation_id fallback）。"""
+    import src.service.agent.orchestrator.dependency_scheduler as ds
+    from src.models.conversation import Conversation
+    from src.models.employee_task import EmployeeTask
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
+
+    proxy = _NoCloseSession(db_session)
+    monkeypatch.setattr(ds, "get_session_local", lambda: (lambda: proxy))
+    ws, plan = _seed_ws_plan(db_session)
+    plan.plan_json = '[{"depends_on": null}, {"depends_on": [0]}]'; db_session.commit()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    src_conv = Conversation(workspace_id=ws.id, user_id="u-ws1", target_type="curator", target_id=emp.id, title="原")
+    run_conv = Conversation(workspace_id=ws.id, user_id="u-ws1", target_type="curator", target_id=emp.id, title="本轮")
+    db_session.add_all([src_conv, run_conv]); db_session.flush()
+    plan.conversation_id = src_conv.id; db_session.commit()
+    A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+                     orchestration_plan_id=plan.id, source_conversation_id=src_conv.id, user_prompt="a")
+    B = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="B",
+                     orchestration_plan_id=plan.id, source_conversation_id=src_conv.id, user_prompt="b")
+    db_session.add_all([A, B]); db_session.commit()
+
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="scheduled", auto_accept=True)
+    run.conversation_id = run_conv.id; db_session.commit()
+
+    dispatched_orch_conv = []
+    monkeypatch.setattr(ds, "_dispatch_successor",
+        lambda db, t, e, w, brief, run_id, *, stream_class=None, orchestrator_conversation_id=None:
+            dispatched_orch_conv.append(orchestrator_conversation_id))
+    monkeypatch.setattr("src.service.agent.orchestrator.runtime.can_assign_to_employee", lambda db, eid: True)
+    import src.service.stream_registry as sr
+    monkeypatch.setattr(sr.registry, "can_admit", lambda cls: True)
+
+    # A 本轮 success + accepted → 触发 on_employee_task_completed(A)
+    db_session.add(TaskExecutionLog(task_id=A.id, workspace_id=ws.id, employee_id=emp.id, skill_id=None,
+        task_name_snapshot="A", run_status="success", run_result="ok", input_json="{}",
+        output_json="{}", started_at=cst_now(), run_id=run.id,
+        qa_accepted_at=cst_now(), orchestrator_conversation_id=run_conv.id))
+    db_session.commit()
+    ds.on_employee_task_completed(A.id, ws.id)
+    # B 被派、orch_conv 是本轮会话
+    assert dispatched_orch_conv == [run_conv.id]

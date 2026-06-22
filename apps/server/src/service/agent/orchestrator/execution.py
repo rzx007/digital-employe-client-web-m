@@ -175,6 +175,7 @@ def start_immediate_tasks(
     plan: OrchestrationPlan,
     workspace_id: int,
     run_id: int | None = None,
+    orchestrator_conversation_id: int | None = None,
 ) -> list[str]:
     plan_json_obj: list[dict] = json.loads(plan.plan_json or "[]")
 
@@ -220,6 +221,7 @@ def start_immediate_tasks(
                 db, task, employee, workspace_id,
                 stream_class=cls_by_id.get(tid),
                 run_id=run_id,
+                orchestrator_conversation_id=orchestrator_conversation_id,
             )
             results.append(f"任务 {task.task_name}: 已创建会话 #{conv_id}")
             started_ids.add(tid)
@@ -253,6 +255,7 @@ def start_task_as_conversation(
     prereq_briefing: str = "",
     stream_class: str | None = None,
     run_id: int | None = None,
+    orchestrator_conversation_id: int | None = None,
 ) -> int:
     from src.models.conversation import Conversation, ConversationMessage
     from src.models.task_execution_log import TaskExecutionLog
@@ -285,8 +288,11 @@ def start_task_as_conversation(
     db.add(conversation)
     db.flush()
 
-    orch_conv_id = resolve_orchestrator_conversation_id(db, task)
-    if task.source_conversation_id is None and orch_conv_id is not None:
+    if orchestrator_conversation_id is not None:
+        orch_conv_id = orchestrator_conversation_id
+    else:
+        orch_conv_id = resolve_orchestrator_conversation_id(db, task)
+    if orchestrator_conversation_id is None and task.source_conversation_id is None and orch_conv_id is not None:
         task.source_conversation_id = orch_conv_id
 
     run_log = TaskExecutionLog(

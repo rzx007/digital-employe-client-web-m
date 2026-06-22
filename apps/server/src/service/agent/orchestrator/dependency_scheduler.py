@@ -464,6 +464,12 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
         if run_id is None:
             return  # 非编排日志（无 run）——无后继可派
 
+        from src.models.plan_run import PlanRun
+        run_conv_id = None
+        if run_id is not None:
+            _r = db.get(PlanRun, run_id)
+            run_conv_id = _r.conversation_id if _r else None
+
         dep_map, _successors = build_dependency_maps(tasks, plan_json_obj)
         cls_by_id = build_class_map(tasks, plan_json_obj)  # 总管显式 heavy/light
 
@@ -537,6 +543,7 @@ def on_employee_task_completed(task_id: int | None, workspace_id: int) -> None:
                 _dispatch_successor(
                     db, t, employee, workspace_id, briefing, run_id,
                     stream_class=cls_by_id.get(cid),
+                    orchestrator_conversation_id=run_conv_id,
                 )
                 dispatched.append(cid)
                 status_by_task.setdefault(cid, set()).add("running")
@@ -635,6 +642,7 @@ def _dispatch_successor(
     run_id: int,
     *,
     stream_class: str | None = None,
+    orchestrator_conversation_id: int | None = None,
 ) -> int:
     """派发一个后继任务：复用 start_task_as_conversation，并把前置产物简报注入 prompt。"""
     from src.service.agent.orchestrator.execution import start_task_as_conversation
@@ -647,4 +655,5 @@ def _dispatch_successor(
         prereq_briefing=prereq_briefing,
         stream_class=stream_class,
         run_id=run_id,
+        orchestrator_conversation_id=orchestrator_conversation_id,
     )
