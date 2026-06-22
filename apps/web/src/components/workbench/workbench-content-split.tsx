@@ -15,14 +15,9 @@ import {
 } from "@workspace/ui/components/resizable"
 import { cn } from "@workspace/ui/lib/utils"
 import { ArtifactPanel } from "@/components/artifact"
-import { CuratorView } from "@/components/chat/curator/curator-view"
-import {
-  selectWorkbenchCuratorConversation,
-} from "@/lib/chat/conversation-selection"
 import { ensureCuratorConversationAndSelect } from "@/lib/chat/curator-conversation-actions"
 import { getContactId } from "@/lib/chat/contact-utils"
 import { resolveWorkbenchCuratorPanel } from "./resolve-workbench-curator-panel"
-import { buildWorkbenchSnapshot } from "@/lib/workbench/workbench-context"
 import {
   useConversationsQuery,
   useCuratorConversationQuery,
@@ -32,7 +27,14 @@ import { chatKeys } from "@/lib/query-keys/chat"
 import { useChatStore } from "@/stores/chat-store"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useQueryClient } from "@tanstack/react-query"
-import { WorkbenchCuratorSessionsSheet } from "./workbench-curator-sessions-sheet"
+import { WorkbenchChatSwitcher } from "./workbench-chat-switcher"
+import { WorkbenchMemberPanel } from "./workbench-member-panel"
+import {
+  GLOBAL_WORKBENCH_ID,
+  getMembers,
+  setMembers,
+  WORKBENCH_CONFIG_CHANGED_EVENT,
+} from "@/lib/workbench/workbench-config"
 
 const LAYOUT_STORAGE_ID = "workbench-grid-curator-resources-v2"
 const PANEL_IDS = ["grid", "curator", "resources"] as const
@@ -111,12 +113,80 @@ export function WorkbenchContentSplit({
   children: ReactNode
 }) {
   const [resourcesOpen, setResourcesOpen] = useState(false)
-  const [curatorSessionsOpen, setCuratorSessionsOpen] = useState(false)
   const queryClient = useQueryClient()
-  const { createCuratorConversation, isPending: isCreatingCurator } =
-    useCreateCuratorConversation()
+  const { isPending: isCreatingCurator } = useCreateCuratorConversation()
 
   const contacts = useChatStore((s) => s.contacts)
+
+  // ── 工作台成员（装了 workbench-builder 技能、被邀请进工作台的员工）──
+  const WORKBENCH_BUILDER_SKILL = "workbench-builder"
+  const employeeContacts = useMemo(
+    () => contacts.filter((c) => c.type === "employee" && c.employee),
+    [contacts]
+  )
+  // 装了 workbench-builder 技能的员工（可被邀请进工作台）
+  const invitableEmployees = useMemo(
+    () =>
+      employeeContacts
+        .filter((c) =>
+          (c.employee?.skills ?? []).some(
+            (s) => s.skillName === WORKBENCH_BUILDER_SKILL
+          )
+        )
+        .map((c) => ({ id: Number(c.employee!.id), name: c.employee!.name })),
+    [employeeContacts]
+  )
+  // members localStorage 跟随 workbench-config 变更刷新
+  const [memberIds, setMemberIds] = useState<number[]>(() =>
+    getMembers(GLOBAL_WORKBENCH_ID)
+  )
+  useEffect(() => {
+    const refresh = () => setMemberIds(getMembers(GLOBAL_WORKBENCH_ID))
+    window.addEventListener(WORKBENCH_CONFIG_CHANGED_EVENT, refresh)
+    return () =>
+      window.removeEventListener(WORKBENCH_CONFIG_CHANGED_EVENT, refresh)
+  }, [])
+  // 默认成员：工作台助手（首次进入、members 为空且能找到该员工时自动加入）
+  useEffect(() => {
+    if (memberIds.length > 0) return
+    const assistant = invitableEmployees.find((e) => e.name === "工作台助手")
+    if (assistant) setMembers(GLOBAL_WORKBENCH_ID, [assistant.id])
+  }, [memberIds.length, invitableEmployees])
+
+  const members = useMemo(() => {
+    const byId = new Map(invitableEmployees.map((e) => [e.id, e]))
+    return memberIds
+      .map((id) => byId.get(id))
+      .filter((e): e is { id: number; name: string } => !!e)
+  }, [memberIds, invitableEmployees])
+
+  // 用户显式点选的成员（可空）。未选 / 已不在成员列表 → 派生为第一个成员。
+  const [pickedMemberId, setPickedMemberId] = useState<number | null>(null)
+  const activeMemberId = useMemo<number | null>(() => {
+    if (members.length === 0) return null
+    if (members.some((m) => m.id === pickedMemberId)) return pickedMemberId
+    return members[0].id
+  }, [members, pickedMemberId])
+  const setActiveMemberId = setPickedMemberId
+
+  const activeMemberContact = useMemo(
+    () =>
+      employeeContacts.find(
+        (c) => Number(c.employee?.id) === activeMemberId
+      ) ?? null,
+    [employeeContacts, activeMemberId]
+  )
+
+  const handleToggleMember = useCallback(
+    (id: number, join: boolean) => {
+      const current = getMembers(GLOBAL_WORKBENCH_ID)
+      const next = join
+        ? Array.from(new Set([...current, id]))
+        : current.filter((x) => x !== id)
+      setMembers(GLOBAL_WORKBENCH_ID, next)
+    },
+    []
+  )
   const workbenchCuratorConversationId = useChatStore(
     (s) => s.workbenchCuratorConversationId
   )
@@ -196,41 +266,6 @@ export function WorkbenchContentSplit({
     setWorkbenchCuratorConversationId,
   ])
 
-  const conversationTitle = useMemo(() => {
-    if (activeConversationId == null) return undefined
-    return (
-      curatorConversations.find(
-        (c) => String(c.id) === String(activeConversationId)
-      )?.title ?? "总管对话"
-    )
-  }, [activeConversationId, curatorConversations])
-
-  const handleNewCuratorConversation = useCallback(() => {
-    if (!curatorContact || isCreatingCurator) return
-    void createCuratorConversation(curatorContact, undefined, {
-      selectScope: "workbench",
-    }).then(() => {
-      setCuratorSessionsOpen(false)
-      setResourcesOpen(false)
-    })
-  }, [
-    curatorContact,
-    createCuratorConversation,
-    isCreatingCurator,
-  ])
-
-  const handleOpenCuratorConversations = useCallback(() => {
-    setCuratorSessionsOpen(true)
-  }, [])
-
-  const handleSelectWorkbenchCuratorConversation = useCallback(
-    (conversationId: string | number) => {
-      selectWorkbenchCuratorConversation(conversationId)
-      setCuratorSessionsOpen(false)
-    },
-    []
-  )
-
   const showResources = resourcesOpen && activeConversationId != null
 
   const gridPanelRef = usePanelRef()
@@ -297,38 +332,32 @@ export function WorkbenchContentSplit({
 
   const curatorPanelBorder = showResources ? "border-r" : "border-l"
 
-  const renderCuratorPanel = () => {
-    if (panel.mode === "loading" || !curatorContact) {
-      return (
-        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-          {isCreatingCurator ? "创建会话…" : "加载总管会话…"}
-        </div>
-      )
-    }
-
-    if (activeConversationId == null) {
-      return (
-        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-          {isCreatingCurator ? "创建会话…" : "加载总管会话…"}
-        </div>
-      )
-    }
-
+  const renderMemberArea = () => {
     return (
-      <CuratorView
-        key={String(activeConversationId)}
-        contact={curatorContact}
-        conversationId={activeConversationId}
-        title={conversationTitle}
-        size="compact"
-        className={cn("h-full min-h-0", curatorPanelBorder)}
-        resourcesOpen={showResources}
-        onToggleResources={handleToggleResources}
-        onOpenResourceFile={handleOpenResourceFile}
-        onOpenConversations={handleOpenCuratorConversations}
-        onNewConversation={handleNewCuratorConversation}
-        getExtraMetadata={() => ({ workbench: buildWorkbenchSnapshot() })}
-      />
+      <div className={cn("flex h-full min-h-0 flex-col", curatorPanelBorder)}>
+        <WorkbenchChatSwitcher
+          members={members}
+          activeId={activeMemberId}
+          onSelect={setActiveMemberId}
+          invitable={invitableEmployees}
+          onToggleMember={handleToggleMember}
+        />
+        <div className="min-h-0 flex-1">
+          {activeMemberContact ? (
+            <WorkbenchMemberPanel
+              key={activeMemberId ?? "none"}
+              contact={activeMemberContact}
+              resourcesOpen={showResources}
+              onToggleResources={handleToggleResources}
+              onOpenResourceFile={handleOpenResourceFile}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
+              邀请一个装了 workbench-builder 技能的员工到工作台，开始做看板
+            </div>
+          )}
+        </div>
+      </div>
     )
   }
 
@@ -368,7 +397,7 @@ export function WorkbenchContentSplit({
           maxSize={showResources ? "60%" : "55%"}
           className="min-w-0"
         >
-          {renderCuratorPanel()}
+          {renderMemberArea()}
         </ResizablePanel>
 
         {showResources && (
@@ -398,14 +427,6 @@ export function WorkbenchContentSplit({
           )}
         </ResizablePanel>
       </ResizablePanelGroup>
-
-      <WorkbenchCuratorSessionsSheet
-        open={curatorSessionsOpen}
-        onOpenChange={setCuratorSessionsOpen}
-        curatorContact={curatorContact}
-        selectedConversationId={activeConversationId}
-        onSelectConversation={handleSelectWorkbenchCuratorConversation}
-      />
     </div>
   )
 }
