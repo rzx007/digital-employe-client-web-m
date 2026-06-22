@@ -12,6 +12,7 @@ import { useChat } from "@ai-sdk/react"
 import type { UIMessage } from "ai"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
+import type { PromptComposerHandle } from "@/components/lexical-editor/prompt-input-textarea"
 import {
   Conversation as ConversationUI,
   ConversationContent,
@@ -301,6 +302,7 @@ export function CuratorView({
   )
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [clearTaskLogs, setClearTaskLogs] = useState(true)
+  const composerRef = useRef<PromptComposerHandle>(null)
   const resetMutation = useResetCuratorConversation()
   const updateTitleMutation = useUpdateConversationTitleMutation()
   const queryClient = useQueryClient()
@@ -652,6 +654,15 @@ export function CuratorView({
     [isBusy, curatorConversationId, doSend]
   )
 
+  const handleMentionEmployee = useCallback(
+    (employee: { id: string; name: string }) => {
+      if (isBusy || !curatorConversationId) return
+      composerRef.current?.insertMention(employee.id, employee.name)
+      composerRef.current?.focus()
+    },
+    [isBusy, curatorConversationId]
+  )
+
   const handleAttachmentsChange = useCallback((paths: string[]) => {
     uploadedPathsRef.current = paths
   }, [])
@@ -902,7 +913,8 @@ export function CuratorView({
                   <CuratorEmptyWelcome
                     displayName={contactDisplayName}
                     onSuggestionSelect={handleGuidanceSelect}
-                    suggestionsDisabled={!curatorConversationId}
+                    onMentionEmployee={handleMentionEmployee}
+                    suggestionsDisabled={isBusy || !curatorConversationId}
                     size={size}
                   />
                 )}
@@ -957,6 +969,7 @@ export function CuratorView({
       <div className={layout.footer}>
         {curatorConversationId ? (
           <ChatComposerArea
+            composerRef={composerRef}
             messages={messages}
             conversationId={curatorConversationId}
             onHitlApproved={session.onHitlApproved}

@@ -1,3 +1,4 @@
+import { forwardRef } from "react"
 import {
   PromptInput,
   PromptInputActionAddAttachments,
@@ -13,7 +14,10 @@ import {
 import { toast } from "sonner"
 import { IconMicrophone } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
-import { LexicalPromptInputTextarea } from "../lexical-editor/prompt-input-textarea"
+import {
+  LexicalPromptInputTextarea,
+  type PromptComposerHandle,
+} from "../lexical-editor/prompt-input-textarea"
 import { Separator } from "@workspace/ui/components/separator"
 import { ChatPromptInputAttachments } from "./chat-prompt-input-attachments"
 import { ACCEPTED_FILE_TYPES, MAX_UPLOAD_SIZE_BYTES } from "./constants"
@@ -24,24 +28,30 @@ import { cn } from "@workspace/ui/lib/utils"
 import { ContextBudgetIndicator } from "@/components/chat/panel/context-budget-indicator"
 import { ExternalDirModePill } from "./external-dir-mode-pill"
 
-export function ChatPromptInput({
-  value,
-  onChange,
-  onSubmit,
-  onStop,
-  status,
-  disabled,
-  placeholder = "请输入任务，然后交给我",
-  size = "default",
-  className,
-  slashCommands,
-  mentionCandidates,
-  conversationId,
-  onAttachmentsChange,
-  messages,
-  showContextBudget = true,
-  showVoiceInput = false,
-}: ChatPromptInputProps) {
+export const ChatPromptInput = forwardRef<
+  PromptComposerHandle,
+  ChatPromptInputProps
+>(function ChatPromptInput(
+  {
+    value,
+    onChange,
+    onSubmit,
+    onStop,
+    status,
+    disabled,
+    placeholder = "请输入任务，然后交给我",
+    size = "default",
+    className,
+    slashCommands,
+    mentionCandidates,
+    conversationId,
+    onAttachmentsChange,
+    messages,
+    showContextBudget = true,
+    showVoiceInput = false,
+  },
+  ref
+) {
   const isCompact = size === "compact"
 
   const recorder = useVoiceRecorder({
@@ -85,6 +95,7 @@ export function ChatPromptInput({
         )}
       >
         <LexicalPromptInputTextarea
+          ref={ref}
           onChange={onChange}
           value={value}
           placeholder={placeholder}
@@ -157,4 +168,4 @@ export function ChatPromptInput({
       </PromptInputFooter>
     </PromptInput>
   )
-}
+})

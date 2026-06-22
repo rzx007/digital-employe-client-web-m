@@ -1,6 +1,8 @@
 import {
   useState,
   useCallback,
+  forwardRef,
+  useImperativeHandle,
   type ClipboardEventHandler,
   type ReactNode,
 } from "react"
@@ -36,6 +38,10 @@ import {
   type SlashCommandItem,
 } from "./slash-command-plugin"
 import { MentionPlugin, type MentionCandidate } from "./mention-plugin"
+import {
+  INSERT_MENTION_COMMAND,
+  InsertMentionPlugin,
+} from "./insert-mention-plugin"
 
 export interface PromptChangeEvent {
   value: string
@@ -328,6 +334,30 @@ function Placeholder({
   )
 }
 
+export interface PromptComposerHandle {
+  insertMention: (id: string, name: string) => void
+  focus: () => void
+}
+
+function ComposerHandleBridge({
+  handleRef,
+}: {
+  handleRef: React.Ref<PromptComposerHandle>
+}) {
+  const [editor] = useLexicalComposerContext()
+
+  useImperativeHandle(handleRef, () => ({
+    insertMention: (id: string, name: string) => {
+      editor.dispatchCommand(INSERT_MENTION_COMMAND, { id, name })
+    },
+    focus: () => {
+      editor.focus()
+    },
+  }))
+
+  return null
+}
+
 // 属性类型
 export interface LexicalPromptInputTextareaProps {
   value?: string
@@ -342,17 +372,23 @@ export interface LexicalPromptInputTextareaProps {
 }
 
 // 组件
-export function LexicalPromptInputTextarea({
-  onChange,
-  className,
-  placeholder = "请输入任务...",
-  value: propValue,
-  autoFocus = true,
-  commands,
-  mentionCandidates,
-  disabled = false,
-  disabledPlaceholder = "AI 正在回复中...",
-}: LexicalPromptInputTextareaProps) {
+export const LexicalPromptInputTextarea = forwardRef<
+  PromptComposerHandle,
+  LexicalPromptInputTextareaProps
+>(function LexicalPromptInputTextarea(
+  {
+    onChange,
+    className,
+    placeholder = "请输入任务...",
+    value: propValue,
+    autoFocus = true,
+    commands,
+    mentionCandidates,
+    disabled = false,
+    disabledPlaceholder = "AI 正在回复中...",
+  },
+  ref
+) {
   const controller = useOptionalPromptInputController()
   const attachments = usePromptInputAttachments()
   const [isComposing, setIsComposing] = useState(false)
@@ -478,7 +514,9 @@ export function LexicalPromptInputTextarea({
         <BackspaceAttachmentPlugin attachments={attachments} />
         <SlashCommandPlugin commands={commands} />
         <MentionPlugin candidates={mentionCandidates} />
+        <InsertMentionPlugin />
+        <ComposerHandleBridge handleRef={ref} />
       </div>
     </LexicalComposer>
   )
-}
+})

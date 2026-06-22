@@ -129,7 +129,7 @@ function CrudCardHeader({
   const showCurator = isCurator && !isRunning
 
   return (
-    <div className="mb-2 flex items-center gap-1.5">
+    <div className={cn("mb-2 flex items-center gap-1.5", className)}>
       {!isRunning && !isError && (
         <Icon className="size-3.5 shrink-0 text-green-600 dark:text-green-400" />
       )}

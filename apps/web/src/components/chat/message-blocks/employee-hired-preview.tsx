@@ -14,21 +14,31 @@ export function EmployeeHiredPreview({
   employeeCode,
   skills = [],
   message,
+  subtitle,
   compact = false,
+  hideEmployeeId = false,
   className,
 }: {
-  employeeId: number
+  employeeId?: number
   employeeName: string
   employeeCode?: string
   skills?: string[]
+  /** 简介 / 描述（compact 下也会 line-clamp 展示） */
   message?: string
+  /** 姓名下的短副标题（如能力标签），优先于员工 ID 行 */
+  subtitle?: string
   compact?: boolean
+  hideEmployeeId?: boolean
   className?: string
 }) {
   const avatarSize = compact ? "size-9" : "size-11"
-  const idLine = employeeCode
-    ? `员工 ID ${employeeId} · ${employeeCode}`
-    : `员工 ID ${employeeId}`
+  const idLine =
+    employeeId != null
+      ? employeeCode
+        ? `员工 ID ${employeeId} · ${employeeCode}`
+        : `员工 ID ${employeeId}`
+      : ""
+  const metaLine = subtitle?.trim() || (!hideEmployeeId && idLine ? idLine : "")
 
   return (
     <div
@@ -53,20 +63,27 @@ export function EmployeeHiredPreview({
         >
           {employeeName}
         </p>
-        <p
-          className="mt-0.5 truncate text-[11px] text-muted-foreground"
-          title={idLine}
-        >
-          {idLine}
-        </p>
-        {message && !compact && (
+        {metaLine ? (
           <p
-            className="mt-1 line-clamp-2 text-xs leading-relaxed break-words text-muted-foreground"
+            className="mt-0.5 truncate text-[11px] text-muted-foreground"
+            title={metaLine}
+          >
+            {metaLine}
+          </p>
+        ) : null}
+        {message?.trim() ? (
+          <p
+            className={cn(
+              "line-clamp-2 leading-relaxed break-words text-muted-foreground",
+              compact
+                ? "mt-0.5 text-[11px]"
+                : "mt-1 text-xs"
+            )}
             title={message}
           >
-            {message}
+            {message.trim()}
           </p>
-        )}
+        ) : null}
         {skills.length > 0 && (
           <div className="mt-1.5 flex max-w-full flex-wrap gap-1 @[22rem]/recruitment:mt-2">
             {skills.map((skill) => (

@@ -4,7 +4,10 @@ import * as React from "react"
 import type { UIMessage } from "ai"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import { ChatPromptInput } from "@/components/chat-prompt-input"
-import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
+import type {
+  PromptChangeEvent,
+  PromptComposerHandle,
+} from "@/components/lexical-editor/prompt-input-textarea"
 import type { SlashCommandItem } from "@/components/lexical-editor/slash-command-plugin"
 import type { MentionCandidate } from "@/components/lexical-editor/mention-plugin"
 import type {
@@ -52,6 +55,7 @@ export function ChatComposerArea({
   pendingQueueClassName,
   showContextBudget = true,
   showVoiceInput,
+  composerRef,
 }: {
   messages: UIMessage[]
   conversationId: string | number | null
@@ -78,6 +82,7 @@ export function ChatComposerArea({
   pendingQueueClassName?: string
   showContextBudget?: boolean
   showVoiceInput?: boolean
+  composerRef?: React.RefObject<PromptComposerHandle | null>
 }) {
   const pendingHitl: (PendingHitl & { input: Record<string, unknown> }) | null =
     React.useMemo(() => {
@@ -165,6 +170,7 @@ export function ChatComposerArea({
 
       <div data-chat-composer className="w-full">
         <ChatPromptInput
+          ref={composerRef}
           value={inputValue}
           onChange={onInputChange}
           onSubmit={onSend}
