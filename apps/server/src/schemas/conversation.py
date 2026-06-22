@@ -125,3 +125,10 @@ class ExternalDirModeRead(BaseModel):
 
 class ExternalDirModeUpdate(BaseModel):
     mode: str
+
+
+class OrchestratorSkillRead(BaseModel):
+    """总管固定技能（供主对话斜杠菜单）。"""
+
+    name: str
+    description: str = ""

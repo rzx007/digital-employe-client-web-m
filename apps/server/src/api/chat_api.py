@@ -29,6 +29,7 @@ from src.schemas.conversation import (
     ConversationsBulkDeleteResult,
     ExternalDirModeRead,
     ExternalDirModeUpdate,
+    OrchestratorSkillRead,
     StreamConversationRequest,
 )
 from src.schemas.recent_contact import (
@@ -47,11 +48,22 @@ from src.schemas.resource import (
 )
 from src.service.chat_service import ChatService
 from src.service.conversation_title_service import suggest_conversation_title
+from src.service.orchestrator_skill_catalog import list_orchestrator_skills
 from src.service.product_paths import resolve_conversation_product_root
 from src.service.recent_contact_service import RecentContactService
 from src.service.resource_service import ResourceService
 
 router = APIRouter(tags=["对话"])
+
+
+@router.get(
+    "/chat/orchestrator/skills",
+    response_model=ListResponse[OrchestratorSkillRead],
+)
+def list_orchestrator_skills_endpoint() -> ListResponse[OrchestratorSkillRead]:
+    """列出总管固定技能（orchestrator_skills/），供主对话斜杠菜单使用。"""
+    items = list_orchestrator_skills()
+    return ListResponse(data=[OrchestratorSkillRead(**it) for it in items])
 
 
 @router.get(
