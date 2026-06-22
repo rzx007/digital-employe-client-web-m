@@ -594,7 +594,10 @@ class TaskSchedulerService:
             if plan is None or plan.status != "confirmed" or not (plan.cron or "").strip():
                 return
             tasks = list(db.scalars(
-                select(EmployeeTask).where(EmployeeTask.orchestration_plan_id == plan_id)
+                select(EmployeeTask).where(
+                    EmployeeTask.orchestration_plan_id == plan_id,
+                    EmployeeTask.is_active.is_(True),
+                )
                 .order_by(EmployeeTask.priority.desc(), EmployeeTask.id.asc())
             ).all())
             if not tasks:
@@ -605,6 +608,11 @@ class TaskSchedulerService:
                 start_immediate_tasks(db, tasks, plan, plan.workspace_id, run_id=run.id)
             except Exception:
                 logger.error("run_plan_job 派发失败 plan=%s run=%s", plan_id, run.id, exc_info=True)
+                # 派发异常 → 本轮不会有完成事件来 settle，直接标失败终态，
+                # 避免 PlanRun 永久 status="running" 污染后续按轮判定。
+                run.status = "failed"
+                run.ended_at = cst_now()
+                db.commit()
             plan.last_run_at = cst_now()
             plan.next_run_at = TaskService.compute_next_run(plan.cron, now=plan.last_run_at)
             db.commit()

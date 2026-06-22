@@ -315,3 +315,36 @@ def test_create_plan_with_schedule_sets_plan_cron(db_session, monkeypatch):
     from sqlalchemy import select as _select
     plan = db_session.scalars(_select(OrchestrationPlan)).first()
     assert plan.cron == "0 10 * * *" and plan.is_recurring is True
+
+
+def test_run_plan_job_stamps_next_run_and_fails_run_on_dispatch_error(db_session, monkeypatch):
+    import src.service.task_scheduler_service as tss
+    import src.service.agent.orchestrator.execution as ex
+    from src.models.employee_task import EmployeeTask
+    from src.models.orchestration_plan import OrchestrationPlan
+    from sqlalchemy import select as _select
+    from sqlalchemy.orm import sessionmaker
+    ws, plan = _seed_ws_plan(db_session)
+    plan.cron = "0 10 * * *"; plan.is_recurring = True; plan.plan_json = '[{"depends_on": null}]'
+    db_session.commit()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+                     execute_mode="immediate", orchestration_plan_id=plan.id, user_prompt="a")
+    db_session.add(A); db_session.commit()
+    plan_id = plan.id
+
+    sf = sessionmaker(bind=db_session.get_bind())
+    monkeypatch.setattr(tss, "get_session_local", lambda: sf)
+    # 让派发抛错 → 走 except 分支
+    def _boom(*a, **k):
+        raise RuntimeError("dispatch boom")
+    monkeypatch.setattr(ex, "start_immediate_tasks", _boom)
+
+    tss.TaskSchedulerService.run_plan_job(plan_id)
+
+    from src.models.plan_run import PlanRun
+    with sf() as d:
+        run = d.scalars(_select(PlanRun).where(PlanRun.plan_id == plan_id)).first()
+        assert run is not None and run.status == "failed" and run.ended_at is not None
+        p = d.get(OrchestrationPlan, plan_id)
+        assert p.next_run_at is not None and p.last_run_at is not None
