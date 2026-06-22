@@ -592,3 +592,9 @@ def test_execute_plan_manual_run_writes_conversation_id_from_plan(db_session, mo
     ex.execute_plan(db_session, plan, ws.id)
     run = db_session.scalars(_select(PlanRun).where(PlanRun.plan_id == plan.id)).first()
     assert run is not None and run.trigger == "manual" and run.conversation_id == conv.id
+
+
+def test_today_task_read_has_plan_fields():
+    from src.schemas.task import TodayTaskRead
+    fields = TodayTaskRead.model_fields
+    assert "is_plan" in fields and "plan_id" in fields and "run_seq" in fields

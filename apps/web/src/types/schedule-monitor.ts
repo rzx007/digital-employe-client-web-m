@@ -175,6 +175,9 @@ export interface TodayTask {
   ended_at: string | null
   duration_ms: number | null
   conversation_id: number | null
+  is_plan?: boolean
+  plan_id?: number | null
+  run_seq?: number | null
 }
 
 export interface ToolFootprint {

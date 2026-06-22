@@ -179,6 +179,9 @@ class TodayTaskRead(BaseModel):
     ended_at: str | None = None
     duration_ms: int | None = None
     conversation_id: int | None = None
+    is_plan: bool = False
+    plan_id: int | None = None
+    run_seq: int | None = None
 
 
 class ToolFootprintRead(BaseModel):
