@@ -44,7 +44,7 @@
 | `apps/web/src/lib/chat/chat-mappers.ts` | mapConversationListItemToConversation / mapCreatedConversationListItem 透传 session_flags | 改 |
 | `apps/web/src/components/workbench/today-task-list.tsx` | plan 行按 is_plan 走 curator 选会话路径，不走 navigateToEmployeeFromCurator | 改 |
 | `apps/web/src/components/chat/conversations/conversation-list.tsx` | 分桶 scheduled_run 会话 + 末尾可折叠「定时任务」分组 | 改 |
-| `apps/web/src/components/chat/views/chat-view.tsx` + `views/curator-view.tsx` | CuratorView 接 readOnly prop；chat-view 根据当前会话 session_flags.kind == "scheduled_run" 透传 readOnly | 改 |
+| `apps/web/src/components/chat/views/chat-view.tsx` | curator 分支：当前会话 session_flags.kind == "scheduled_run" 时**绕开 CuratorView**，直接渲染 `ConversationChatView readOnly`（与员工 read-only 路径同款），不改 CuratorView | 改 |
 | `tests/test_scheduled_recurring_orchestration.py` | 追加本特性测试（后端） | 改 |
 | `tests/test_today_tasks_folding.py`（新）| 后端 list_today_tasks 聚合单测 | 新建 |
 
@@ -547,7 +547,7 @@ Expected: FAIL。
                         plan_id, run.run_seq, run.conversation_id)
 ```
 
-注意：`ConversationMessage` 模型已在别处使用（参考 `_start_curator_task`），路径 `src.models.conversation`。
+注意：`ConversationMessage` 模型已在别处使用（参考 `_start_curator_task`），路径 `src.models.conversation`。`Workspace` 和 `DEFAULT_USER_ID` 在 task_scheduler_service.py 顶部已 import（`_start_curator_task` 用过）——替换 `run_plan_job` 方法体时这些 module-level imports 不动。`EmployeeService.ensure_curator_employee(db, user_id, workspace_id)` 是已有方法（chat_service.py:551 `ensure_curator_conversation` 第 555 行调用），返回 curator Employee。
 
 - [ ] **Step 4: 跑确认通过**
 
@@ -861,6 +861,8 @@ Expected: 4 FAIL（聚合未实现）+ 1 standalone PASS（独立任务现状即
 
 把这段放在原 `result.sort(...)` 之前。`is_plan`/`plan_id`/`run_seq` 字段必须存在（DTO 已加，pydantic 会补默认）。独立任务行的 `is_plan` 不显式设置——`TodayTaskRead(**item)` 转换时 `is_plan` 取默认 `False`。
 
+> **已知局限（v1 接受）**：递归计划的子任务 `execute_mode == "immediate"`，被 list_today_tasks 的 Part B 过滤掉（`execute_mode != "immediate"`）。所以一个**今日还没跑过任何一轮**的递归计划（如刚 confirm 完、首个节拍未到）**不会出现在面板上**——它没有 logs（Part A 空）、子任务又被 Part B 过滤。spec §5.5 提到的"用 next_run_at 落 pending"在这种情况下不会触发。这是 v1 的边界（用户在 confirm 后能从总管对话感知），后续如果要"待跑的递归计划也露面"，再加一个扫 recurring confirmed plan 的合成行步骤。本期不做。
+
 - [ ] **Step 4: 前端 plan 行改路由**
 
 `apps/web/src/components/workbench/today-task-list.tsx`，`openTaskConversation` 当前一律走 `navigateToEmployeeFromCurator`（把会话当员工执行会话深链）。plan 行的 `conversation_id` 是 curator 会话不是员工会话，必须走另一条路径：
@@ -1081,47 +1083,62 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 9: scheduled_run 会话进入只读视图
+## Task 9: scheduled_run 会话进入只读视图（绕开 CuratorView）
+
+**重要背景**：`CuratorView`（在 `apps/web/src/components/chat/curator/curator-view.tsx`，不在 views/ 目录）是一个完全自定义的组件，**不代理 ChatPanel**——内部自己跑 `useChat`、`PromptComposer`、消息渲染、重置对话、@mention/斜杠命令等等。给它加 readOnly 是大改。**简洁方案：复用员工只读路径**——chat-view.tsx 的员工分支 `:247-258` 已经用 `<ConversationChatView readOnly />` 渲染只读会话（contact 即 employee）。`ConversationChatView` 接受 curator contact 也能渲染（只读视图只关心 conversationId + 拿来发消息组件）。我们就对 `scheduled_run` curator 会话**走同一个组件**，绕开 CuratorView。
 
 **Files:**
-- Modify: `apps/web/src/components/chat/views/chat-view.tsx`（curator 分支）
-- Modify: `apps/web/src/components/chat/views/curator-view.tsx`（加 readOnly prop 传给 ChatPanel）
+- Modify: `apps/web/src/components/chat/views/chat-view.tsx`（curator 分支前置一段：若选中的 curator 会话是 scheduled_run，渲染 `ConversationChatView readOnly` 并 return；否则走原 `CuratorView` 路径）
 
-- [ ] **Step 1: 给 CuratorView 加 readOnly prop**
+- [ ] **Step 1: 改 chat-view.tsx**
 
-READ `apps/web/src/components/chat/views/curator-view.tsx`。它内部应该最终渲染 `ChatPanel`（已支持 `readOnly`）。给 `CuratorView` 函数签名加 `readOnly?: boolean`，把它透传到内部的 `ChatPanel`/`ConversationChatView`。
+READ `apps/web/src/components/chat/views/chat-view.tsx` ~line 160 起的 curator 分支（`if (contact?.type === "curator")` 之后）。当前 `hasValidSelection` 为 true 时直接渲染 `<CuratorView ... />`。
 
-- [ ] **Step 2: chat-view 按 session_flags 判定**
-
-`apps/web/src/components/chat/views/chat-view.tsx`，在 curator 分支（~line 160-184）选中 `selectedConversation` 之后、`<CuratorView ... />` 之前，判定：
+在 curator 分支内、计算出 `selectedConversation`/`hasValidSelection` 之后、`if (hasValidSelection)` 之前，插入一段 scheduled_run 短路：
 
 ```typescript
-      const isScheduledRunConv = (() => {
-        const flags = selectedConversation?.sessionFlags
-        if (!flags) return false
-        try {
-          const parsed = JSON.parse(flags)
-          return parsed?.kind === "scheduled_run"
-        } catch {
-          return false
-        }
-      })()
+    const isScheduledRunConv = (() => {
+      const flags = selectedConversation?.sessionFlags
+      if (!flags) return false
+      try {
+        const parsed = JSON.parse(flags)
+        return parsed?.kind === "scheduled_run"
+      } catch {
+        return false
+      }
+    })()
+
+    if (hasValidSelection && isScheduledRunConv && selectedConversationId != null) {
+      return (
+        <ConversationChatView
+          key={String(selectedConversationId)}
+          contact={contact}
+          title={selectedConversation?.title ?? "定时任务"}
+          conversationId={selectedConversationId}
+          onOpenContacts={onOpenContacts}
+          onOpenConversations={onOpenConversations}
+          readOnly
+          className={cn(className)}
+          {...props}
+        />
+      )
+    }
 ```
 
-把 `<CuratorView ... />` 的 props 加 `readOnly={isScheduledRunConv}`。
+保留下面原有的 `if (hasValidSelection) { return <CuratorView ... /> }`——即"不是定时任务会话"还走 CuratorView。`ConversationChatView` 已在文件顶部 import（line 26 附近，员工分支用）；若没有则补 `import { ConversationChatView } from "./chat-conversation-view"`。
 
-- [ ] **Step 3: typecheck**
+- [ ] **Step 2: typecheck**
 
 ```bash
 cd apps/web && npx tsc -p tsconfig.app.json --noEmit 2>&1 | tail -20
 ```
 Expected: 零新增错。
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add apps/web/src/components/chat/views/chat-view.tsx apps/web/src/components/chat/views/curator-view.tsx
-git commit -m "feat(orch): scheduled_run 会话进入只读视图（CuratorView readOnly 透传）
+git add apps/web/src/components/chat/views/chat-view.tsx
+git commit -m "feat(orch): scheduled_run curator 会话走 ConversationChatView readOnly 绕开 CuratorView
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
