@@ -79,3 +79,28 @@ def test_latest_run_id_for_task_ignores_null_run_logs(db_session):
     _log(None)     # 之后来了一条非编排日志（run_id=NULL）
     # 仍应返回编排轮 run.id，而不是 None
     assert latest_run_id_for_task(db_session, 55) == run.id
+
+
+def test_log_status_by_task_scoped_by_run(db_session):
+    from src.service.agent.orchestrator.dependency_scheduler import _log_status_by_task
+    from src.service.agent.orchestrator.plan_run_service import open_plan_run
+    from src.models.workspace import cst_now
+    ws, plan = _seed_ws_plan(db_session)
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    r1 = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+    r2 = open_plan_run(db_session, plan.id, ws.id, trigger="scheduled", auto_accept=True)
+
+    def _log(task_id, run_id, status):
+        db_session.add(TaskExecutionLog(
+            task_id=task_id, workspace_id=ws.id, employee_id=emp.id, skill_id=None,
+            task_name_snapshot="t", run_status=status, run_result="r",
+            input_json="{}", output_json="{}", started_at=cst_now(), run_id=run_id))
+    _log(10, r1.id, "success")   # 上一轮
+    _log(10, r2.id, "running")   # 本轮
+    db_session.commit()
+
+    # 只看本轮 r2：task10 是 running，不含上一轮的 success
+    got = _log_status_by_task(db_session, [10], r2.id)
+    assert got == {10: {"running"}}
+    # 看 r1：只有 success
+    assert _log_status_by_task(db_session, [10], r1.id) == {10: {"success"}}

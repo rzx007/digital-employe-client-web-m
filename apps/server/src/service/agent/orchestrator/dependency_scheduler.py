@@ -123,15 +123,16 @@ def build_class_map(tasks: list, plan_json_obj: list[dict]) -> dict[int, str | N
     return out
 
 
-def _log_status_by_task(db: Session, task_ids: list[int]) -> dict[int, set[str]]:
-    """聚合每个任务的所有执行日志状态集合（一个任务可能有多条日志）。"""
+def _log_status_by_task(db: Session, task_ids: list[int], run_id: int) -> dict[int, set[str]]:
+    """聚合每个任务在**本轮 run** 内的执行日志状态集合。"""
     from src.models.task_execution_log import TaskExecutionLog
 
     if not task_ids:
         return {}
     rows = db.execute(
         select(TaskExecutionLog.task_id, TaskExecutionLog.run_status).where(
-            TaskExecutionLog.task_id.in_(task_ids)
+            TaskExecutionLog.task_id.in_(task_ids),
+            TaskExecutionLog.run_id == run_id,
         )
     ).all()
     out: dict[int, set[str]] = {}
@@ -142,11 +143,10 @@ def _log_status_by_task(db: Session, task_ids: list[int]) -> dict[int, set[str]]
     return out
 
 
-def _load_accepted_task_ids(db: Session, task_ids: list[int]) -> set[int]:
-    """直查 DB 取"已 QA 接受"的前置 task 集合：存在 success/completed 且 qa_accepted_at 非空的 log。
-    直查而非走 _log_status_by_task 的 set——后者表达不了"哪条 log 被接受"。"""
+def _load_accepted_task_ids(db: Session, task_ids: list[int], run_id: int | None) -> set[int]:
+    """直查 DB 取"本轮已 QA 接受"的前置 task 集合：存在 success/completed 且 qa_accepted_at 非空、且属本轮 run 的 log。"""
     from src.models.task_execution_log import TaskExecutionLog
-    if not task_ids:
+    if not task_ids or run_id is None:
         return set()
     rows = db.execute(
         select(TaskExecutionLog.task_id)
@@ -154,6 +154,7 @@ def _load_accepted_task_ids(db: Session, task_ids: list[int]) -> set[int]:
             TaskExecutionLog.task_id.in_(task_ids),
             TaskExecutionLog.run_status.in_(_PREREQ_DONE_STATES),
             TaskExecutionLog.qa_accepted_at.is_not(None),
+            TaskExecutionLog.run_id == run_id,
         )
         .distinct()
     ).all()
@@ -297,7 +298,7 @@ def _is_settled(task_id: int, status_by_task: dict[int, set[str]]) -> bool:
     return any(s in _SETTLED_STATES for s in status_by_task.get(task_id, set()))
 
 
-def _record_skip(db: Session, task, workspace_id: int, reason: str) -> None:
+def _record_skip(db: Session, task, workspace_id: int, reason: str, run_id: int) -> None:
     """为被级联跳过的任务写一条 skipped 执行日志（纳入 DB 派生状态）。"""
     from src.models.task_execution_log import TaskExecutionLog
     from src.models.workspace import cst_now
@@ -316,18 +317,20 @@ def _record_skip(db: Session, task, workspace_id: int, reason: str) -> None:
             output_json="{}",
             started_at=now,
             ended_at=now,
+            run_id=run_id,
         )
     )
     db.commit()
 
 
 def _collect_prereq_artifacts(
-    db: Session, dep_ids: list[int]
+    db: Session, dep_ids: list[int], run_id: int
 ) -> list[tuple[str, str]]:
     """收集前置任务的产物引用：(任务名, 产物摘要/路径)。
 
     只取"地址/摘要"，不把全文塞进上下文（防上下文爆炸，对齐 ChatDev/MetaGPT）。
     产物来源：TaskExecutionLog.output_json（completed 那条），其中可能含 artifacts 路径列表。
+    取本轮前置产物。
     """
     from src.models.task_execution_log import TaskExecutionLog
 
@@ -338,6 +341,7 @@ def _collect_prereq_artifacts(
             .where(
                 TaskExecutionLog.task_id == dep_id,
                 TaskExecutionLog.run_status.in_(_PREREQ_DONE_STATES),
+                TaskExecutionLog.run_id == run_id,
             )
             .order_by(TaskExecutionLog.id.desc())
         ).first()
