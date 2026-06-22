@@ -296,6 +296,48 @@ def test_scheduled_plan_requires_confirmation():
     assert compute_requires_confirmation(tasks, has_schedule=False) is False  # 无定时单只读免确认
 
 
+def test_e2e_once_plan_fire_then_autostop(db_session, monkeypatch):
+    import src.service.task_scheduler_service as tss
+    import src.service.agent.orchestrator.execution as ex
+    from src.models.orchestration_plan import OrchestrationPlan
+    from src.models.employee import Employee
+    from src.models.employee_task import EmployeeTask
+    from src.models.plan_run import PlanRun
+    from src.models.conversation import Conversation
+    from src.models.workspace import cst_now
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy import select
+    from datetime import timedelta
+    import json
+    ws, plan = _seed_ws_plan_sc(db_session)
+    plan.schedule_kind = "once"; plan.run_at = cst_now() + timedelta(minutes=5)
+    plan.user_input = "5分钟后提醒看世界杯"; db_session.commit()
+    curator = Employee(workspace_id=ws.id, name="总管", employee_code="curator", is_curator=True); db_session.add(curator); db_session.flush()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c", user_id=ws.user_id); db_session.add(emp); db_session.flush()
+    A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+        execute_mode="immediate", orchestration_plan_id=plan.id, user_prompt="a"); db_session.add(A); db_session.commit()
+    plan_id = plan.id
+    sf = sessionmaker(bind=db_session.get_bind())
+    monkeypatch.setattr(tss, "get_session_local", lambda: sf)
+    monkeypatch.setattr(ex, "start_immediate_tasks", lambda *a, **k: [])
+
+    # 触发一次
+    tss.TaskSchedulerService.run_plan_job(plan_id)
+    with sf() as d:
+        p = d.get(OrchestrationPlan, plan_id)
+        assert p.status == "done"  # 自停
+        runs = d.scalars(select(PlanRun).where(PlanRun.plan_id == plan_id)).all()
+        assert len(runs) == 1 and runs[0].trigger == "scheduled" and runs[0].conversation_id is not None
+        conv = d.get(Conversation, runs[0].conversation_id)
+        assert json.loads(conv.session_flags or "{}")["kind"] == "scheduled_run"
+
+    # 再触发（模拟误触）→ status=done 直接返回，不再开新 run
+    tss.TaskSchedulerService.run_plan_job(plan_id)
+    with sf() as d:
+        runs = d.scalars(select(PlanRun).where(PlanRun.plan_id == plan_id)).all()
+        assert len(runs) == 1  # 没有第二轮
+
+
 def test_cleanup_legacy_subtask_cron_plans(db_session):
     from src.db.init_db import _cleanup_legacy_subtask_cron_plans
     from src.models.workspace import Workspace
