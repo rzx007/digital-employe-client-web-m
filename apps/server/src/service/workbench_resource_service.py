@@ -73,22 +73,27 @@ class WorkbenchResourceService:
         db.commit()
 
     @staticmethod
+    def resource_root() -> Path:
+        """资源池路径基准：产物真实落盘根 artifacts_path（不是 workspace.root_path，
+        后者可能被用户填成 D:\\ 等无关路径）。入池/读内容/上传统一用它。"""
+        from src.core.config import get_settings
+
+        return Path(get_settings().artifacts_path).resolve()
+
+    @staticmethod
     def read_html_content(
         db: Session, workspace_id: int, resource_id: int
     ) -> dict:
-        """读取资源池条目的 HTML 内容（绝对路径 = workspace.root_path / src_path）。
+        """读取资源池条目的 HTML 内容（绝对路径 = artifacts_path / src_path）。
 
         返回与 ResourceContent 同形的 dict：{path, content, artifact_type, language}。
         资源不存在 / 越界 / 文件缺失 → HTTPException 404。
         """
-        from src.service.workspace_service import WorkspaceService
-
         row = db.get(WorkbenchResource, resource_id)
         if row is None or row.workspace_id != workspace_id:
             raise HTTPException(status_code=404, detail="资源不存在")
 
-        ws = WorkspaceService.get_workspace(db, workspace_id)
-        root = Path(ws.root_path).resolve()
+        root = WorkbenchResourceService.resource_root()
         target = (root / row.src_path).resolve()
         # 防越界：解析后的路径必须仍在 root 内
         if not str(target).startswith(str(root)):

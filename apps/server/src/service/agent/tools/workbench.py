@@ -315,7 +315,6 @@ def save_to_resource_pool(
 
     from src.db.session import get_session_local
     from src.models.conversation import Conversation
-    from src.models.workspace import Workspace
     from src.service.workbench_resource_service import WorkbenchResourceService
 
     db = get_session_local()()
@@ -323,11 +322,11 @@ def save_to_resource_pool(
         conv = db.get(Conversation, cid)
         if conv is None:
             return "错误：会话不存在，无法入池。"
-        ws = db.get(Workspace, conv.workspace_id)
-        if ws is None:
-            return "错误：工作空间不存在，无法入池。"
 
-        src_path = resolve_resource_pool_src_path(ws.root_path, real_path)
+        # 资源池 src_path 一律相对 artifacts_path（产物的真实落盘根），
+        # 不是 workspace.root_path（可能被用户填成 D:\ 等无关路径 → 越界）。
+        artifacts_root = get_settings().artifacts_path
+        src_path = resolve_resource_pool_src_path(artifacts_root, real_path)
         if src_path is None:
             return "错误：产物路径越界，无法入池。"
 

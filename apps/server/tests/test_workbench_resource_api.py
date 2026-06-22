@@ -63,14 +63,15 @@ def test_upload_rejects_non_html(client, workspace):
     assert r.status_code == 400
 
 
-def test_content_endpoint_reads_html(client, db_session, workspace, tmp_path):
-    from src.models.workspace import Workspace
+def test_content_endpoint_reads_html(
+    client, db_session, workspace, tmp_path, monkeypatch
+):
     from src.service.workbench_resource_service import WorkbenchResourceService
 
-    # 把 workspace.root_path 指到 tmp 并落一个相对路径下的 html
-    row_ws = db_session.get(Workspace, workspace.id)
-    row_ws.root_path = str(tmp_path)
-    db_session.commit()
+    # 资源池路径基准是 artifacts_path（产物真实落盘根），把它指到 tmp。
+    monkeypatch.setattr(
+        WorkbenchResourceService, "resource_root", staticmethod(lambda: tmp_path)
+    )
 
     rel = "employee-1/artifacts/sales.html"
     target = tmp_path / rel

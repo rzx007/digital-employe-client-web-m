@@ -70,9 +70,9 @@ async def upload_workbench_resource(
     if not content:
         raise HTTPException(status_code=400, detail="文件为空")
 
-    ws = WorkspaceService.get_workspace(db, workspace_id)
+    # 上传文件落到 artifacts_path 下（与入池/读内容同一路径基准），不是 ws.root_path。
     rel_dir = Path("workbench-uploads") / uuid.uuid4().hex
-    abs_dir = Path(ws.root_path) / rel_dir
+    abs_dir = WorkbenchResourceService.resource_root() / rel_dir
     abs_dir.mkdir(parents=True, exist_ok=True)
     (abs_dir / name).write_bytes(content)
     rel_path = (rel_dir / name).as_posix()
@@ -117,8 +117,7 @@ def delete_workbench_resource(
     row = db.get(WorkbenchResource, resource_id)
     if row is not None and row.workspace_id == workspace_id and row.source == "upload":
         try:
-            ws = WorkspaceService.get_workspace(db, workspace_id)
-            fp = Path(ws.root_path) / row.src_path
+            fp = WorkbenchResourceService.resource_root() / row.src_path
             if fp.is_file():
                 fp.unlink()
         except Exception as exc:  # 物理删除失败不阻塞登记删除
