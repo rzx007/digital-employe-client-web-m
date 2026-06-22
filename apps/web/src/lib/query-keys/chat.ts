@@ -26,6 +26,7 @@ export const chatKeys = {
   orchestrationPlans: (conversationId: string | null) =>
     [...chatKeys.all, "orchestration-plans", conversationId ?? "all"] as const,
   skills: () => [...chatKeys.all, "skills"] as const,
+  orchestratorSkills: () => [...chatKeys.all, "orchestrator-skills"] as const,
   skillsPickerLocal: () => [...chatKeys.all, "skills", "picker-local"] as const,
   localSkillDetail: (skillName: string) =>
     [...chatKeys.all, "local-skill-detail", skillName] as const,

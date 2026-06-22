@@ -527,7 +527,7 @@ export function CuratorView({
   }, [])
 
   const { data: orchestratorSkills } = useQuery({
-    queryKey: ["orchestrator-skills"],
+    queryKey: chatKeys.orchestratorSkills(),
     queryFn: fetchOrchestratorSkills,
     staleTime: 5 * 60 * 1000,
   })
@@ -966,7 +966,7 @@ export function CuratorView({
             onSend={handleSendMessage}
             onStop={handleStop}
             status={chatStatus}
-            submitDisabled={!isBusy && !inputValue.trim()}
+            submitDisabled={!isBusy && !inputValue.trim() && !command}
             showVoiceInput
             size="compact"
             placeholder={<CuratorRotatingPlaceholder />}
