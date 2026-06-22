@@ -1,12 +1,12 @@
 import * as React from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { CuratorView } from "@/components/chat/curator/curator-view"
 import { getContactId } from "@/lib/chat/contact-utils"
-import {
-  useConversationsQuery,
-  useCreateConversationMutation,
-} from "@/hooks/use-chat-queries"
+import { useConversationsQuery } from "@/hooks/use-chat-queries"
+import { ensureEmployeeConversation } from "@/lib/chat/ensure-employee-conversation"
+import { chatKeys } from "@/lib/query-keys/chat"
 import { buildWorkbenchSnapshot } from "@/lib/workbench/workbench-context"
-import type { Contact } from "@/types/chat"
+import type { Contact, Conversation } from "@/types/chat"
 import { cn } from "@workspace/ui/lib/utils"
 
 /**
@@ -26,47 +26,53 @@ export function WorkbenchMemberPanel({
   onOpenResourceFile?: (path: string) => void
   className?: string
 }) {
+  const queryClient = useQueryClient()
   const contactId = getContactId(contact)
   const { data: conversations = [], isSuccess } = useConversationsQuery(
     contactId,
     contact
   )
-  const createConversation = useCreateConversationMutation()
 
   const [createdId, setCreatedId] = React.useState<string | number | null>(null)
-  const creatingRef = React.useRef(false)
 
-  // 无会话时建一条（一次性，副作用只做"创建"这一外部动作，不在 effect 里同步派生 state）
+  // 无会话时建一条。用模块级去重的 ensureEmployeeConversation（跨重挂载存活，
+  // 避免组件 ref 在父组件重渲染churn下被重置导致永不创建/重复创建）。
   React.useEffect(() => {
     if (!isSuccess) return
     if (conversations.length > 0) return
-    if (creatingRef.current || createdId != null) return
-    const targetId = contact.employee?.id
-    if (!targetId) return
-    creatingRef.current = true
-    createConversation.mutate(
-      {
-        target_type: "employee",
-        target_id: Number(targetId),
-        title: "工作台对话",
-      },
-      {
-        onSuccess: (res) => {
-          const newId = res?.data?.id
-          if (newId != null) setCreatedId(newId)
-          creatingRef.current = false
-        },
-        onError: () => {
-          creatingRef.current = false
-        },
-      }
-    )
+    if (createdId != null) return
+    if (contact.type !== "employee" || !contact.employee?.id) return
+
+    let cancelled = false
+    void ensureEmployeeConversation(contact)
+      .then((conv: Conversation) => {
+        if (cancelled || !contactId) return
+        // 写入会话列表缓存，让 useConversationsQuery 立即看到新会话（不等下次 refetch）。
+        queryClient.setQueryData<Conversation[]>(
+          chatKeys.conversations(contactId),
+          (current) => {
+            if (!current || current.length === 0) return [conv]
+            if (current.some((c) => String(c.id) === String(conv.id)))
+              return current
+            return [conv, ...current]
+          }
+        )
+        queryClient.setQueryData(chatKeys.messages(String(conv.id)), [])
+        setCreatedId(conv.id)
+      })
+      .catch(() => {
+        /* ensure 失败：保持占位，下次 effect 再试 */
+      })
+    return () => {
+      cancelled = true
+    }
   }, [
     isSuccess,
     conversations.length,
     createdId,
-    contact.employee?.id,
-    createConversation,
+    contact,
+    contactId,
+    queryClient,
   ])
 
   // 派生当前激活会话：列表第一条；列表空则用刚建的。
