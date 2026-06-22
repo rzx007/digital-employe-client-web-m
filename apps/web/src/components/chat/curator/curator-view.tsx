@@ -767,7 +767,7 @@ export function CuratorView({
         (typeof message === "string" ? message : message.text)?.trim() ?? ""
       const hasFiles =
         typeof message !== "string" && (message.files?.length ?? 0) > 0
-      if (!(messageText || hasFiles)) return
+      if (!(messageText || hasFiles || command)) return
       const voicePayload =
         typeof message === "string" ? undefined : message.voice
       // 语音不进 pending 队列（队列项不携带 voice 载荷会静默降级为纯文本），
