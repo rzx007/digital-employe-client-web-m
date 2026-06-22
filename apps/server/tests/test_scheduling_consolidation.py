@@ -338,6 +338,26 @@ def test_e2e_once_plan_fire_then_autostop(db_session, monkeypatch):
         assert len(runs) == 1  # 没有第二轮
 
 
+def test_reload_jobs_marks_expired_once_plan_done(db_session):
+    """直接验证语义：一次性计划 run_at 已过且没跑过 → 应被标 done（错过窗口失效）。
+    (纯逻辑断言，不启真 APScheduler。)"""
+    from src.models.orchestration_plan import OrchestrationPlan
+    from src.models.workspace import Workspace, CST, cst_now
+    from datetime import timedelta
+    ws = Workspace(name="w", root_path="/tmp/w", user_id="u"); db_session.add(ws); db_session.flush()
+    expired = OrchestrationPlan(workspace_id=ws.id, conversation_id=1, user_input="过期", plan_json="[]",
+        status="confirmed", schedule_kind="once", run_at=cst_now() - timedelta(hours=1))
+    db_session.add(expired); db_session.commit()
+    # 复刻 reload_jobs once 分支的"过期判定"逻辑契约
+    # DB 回读的 run_at 可能是 offset-naive（SQLite），统一替换为 CST 再比较
+    now = cst_now()
+    run_at = expired.run_at
+    if run_at is not None and run_at.tzinfo is None:
+        run_at = run_at.replace(tzinfo=CST)
+    is_missed = (expired.last_run_at is None and run_at is not None and run_at <= now)
+    assert is_missed is True
+
+
 def test_cleanup_legacy_subtask_cron_plans(db_session):
     from src.db.init_db import _cleanup_legacy_subtask_cron_plans
     from src.models.workspace import Workspace

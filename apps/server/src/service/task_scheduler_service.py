@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler  # pylint: disable=import-error
@@ -12,7 +11,6 @@ from sqlalchemy.orm import Session
 
 from src.core.agent_runtime_policy import SCHEDULED_PRIORITY
 from src.core.request_utils import DEFAULT_USER_ID
-from src.llm.factory import build_chat_model
 from src.db.session import get_session_local
 from src.models.employee import Employee
 from src.models.employee_task import EmployeeTask
@@ -21,40 +19,6 @@ from src.models.workspace import CST, Workspace, cst_now
 from src.service.task_service import TaskService
 
 logger = logging.getLogger(__name__)
-
-_re_cron_digits = re.compile(r"^[\d\s\*\,\/\-]+$")
-
-
-def parse_nl_cron(nl_input: str) -> str | None:
-    """将自然语言时间表达式转为标准 cron 表达式。
-
-    如果输入已经是 cron 格式字符串，直接返回。
-    否则调用 LLM 一次性转换。
-
-    示例:
-        "每天上午 9:30" -> "30 9 * * *"
-        "每周一上午 10:00" -> "0 10 * * 1"
-        "下午3点" -> "0 15 * * *"
-    """
-    stripped = nl_input.strip()
-    if _re_cron_digits.match(stripped):
-        return stripped
-
-    try:
-        model = build_chat_model()
-        response = model.invoke(
-            f"将以下自然语言时间表达式转换为标准 cron 表达式（5 段：分 时 日 月 周）。"
-            f"只输出 cron 表达式，不要任何其他文字，不要换行。"
-            f"输入：{stripped}"
-        )
-        result = response.content.strip() if hasattr(response, "content") else ""
-        if _re_cron_digits.match(result) and len(result.split()) == 5:
-            return result
-        logger.warning("parse_nl_cron LLM 返回无效: %s", result)
-        return None
-    except Exception as exc:
-        logger.error("parse_nl_cron LLM 调用失败: %s", exc, exc_info=True)
-        return None
 
 
 class TaskSchedulerService:
@@ -174,8 +138,12 @@ class TaskSchedulerService:
                         continue
                     trigger = CronTrigger.from_crontab(cron, timezone=CST)
                 elif plan.schedule_kind == "once":
-                    # once：未跑过(last_run_at 空) 且 run_at 在未来才挂 DateTrigger
-                    if plan.last_run_at is not None or plan.run_at is None or plan.run_at <= now:
+                    if plan.last_run_at is None and plan.run_at is not None and plan.run_at <= now:
+                        # 一次性任务错过触发窗口（如后端宕机）：过期即失效，标 done 离开活跃集
+                        logger.warning("一次性计划已过期未触发，标记失效 plan_id=%s run_at=%s", plan.id, plan.run_at)
+                        plan.status = "done"
+                        continue
+                    if plan.last_run_at is not None or plan.run_at is None:
                         continue
                     trigger = DateTrigger(run_date=plan.run_at, timezone=CST)
                 else:
@@ -545,6 +513,12 @@ class TaskSchedulerService:
             )
             if not task:
                 return
+
+            if task.orchestration_plan_id is not None:
+                logger.warning(
+                    "run_task_job 收到编排子任务（不应发生，reload_jobs 应已排除）task_id=%s plan_id=%s，按独立任务处理",
+                    task_id, task.orchestration_plan_id,
+                )
 
             employee = db.get(Employee, task.employee_id)
 
