@@ -8,7 +8,7 @@ import {
 } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
-import { useResourceContentQuery } from "@/hooks/use-chat-queries"
+import { useWorkbenchHtmlContentQuery } from "@/hooks/use-chat-queries"
 import { getRequestBaseUrl } from "@/lib/request"
 import {
   HTML_PREVIEW_SANDBOX,
@@ -33,10 +33,10 @@ export function WorkbenchHtmlPanel({
   title,
   className,
 }: WorkbenchHtmlPanelProps) {
-  const { data, isLoading, isError, refetch } = useResourceContentQuery(
-    htmlRef.conversationId,
-    htmlRef.resourcePath
-  )
+  // 内容来源：资源池（带 resourceId）走资源内容端点，否则走会话内资源端点。
+  // 两个分支封装在 useWorkbenchHtmlContentQuery 内部，便于测试只 mock 一个钩子。
+  const { data, isLoading, isError, refetch } =
+    useWorkbenchHtmlContentQuery(htmlRef)
 
   const [isFullscreen, setIsFullscreen] = React.useState(false)
 

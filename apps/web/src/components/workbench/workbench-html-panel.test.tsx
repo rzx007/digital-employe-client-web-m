@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 // mock 掉重资源查询，隔离测面板自身分支
 const mockUseResourceContentQuery = vi.fn()
 vi.mock("@/hooks/use-chat-queries", () => ({
-  useResourceContentQuery: (...args: unknown[]) =>
+  useWorkbenchHtmlContentQuery: (...args: unknown[]) =>
     mockUseResourceContentQuery(...args),
 }))
 

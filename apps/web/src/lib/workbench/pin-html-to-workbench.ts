@@ -14,15 +14,22 @@ export function pinHtmlToWorkbench(args: {
   conversationId: string | number
   path: string
   name: string
+  /** 资源池来源时传资源条目 id；渲染走 /workbench-resources/{id}/content。 */
+  resourceId?: number
 }): void {
-  const { conversationId, path, name } = args
+  const { conversationId, path, name, resourceId } = args
   const config =
     loadWorkbenchConfig(GLOBAL_WORKBENCH_ID) ??
     initializeWorkbenchConfig(GLOBAL_WORKBENCH_ID)
   const title = name.replace(/\.html?$/i, "")
   addHtmlArtifactBlock(
     config,
-    { conversationId, resourcePath: path, pinnedAt: Date.now() },
+    {
+      conversationId,
+      resourcePath: path,
+      pinnedAt: Date.now(),
+      ...(resourceId != null ? { resourceId } : {}),
+    },
     title
   )
   // 通知 WorkbenchView 重读配置（钉住即出现，无需切菜单）
