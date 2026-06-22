@@ -518,3 +518,25 @@ def test_on_employee_task_completed_dispatches_downstream_with_run_conversation(
     ds.on_employee_task_completed(A.id, ws.id)
     # B 被派、orch_conv 是本轮会话
     assert dispatched_orch_conv == [run_conv.id]
+
+
+def test_execute_plan_manual_run_writes_conversation_id_from_plan(db_session, monkeypatch):
+    import src.service.agent.orchestrator.execution as ex
+    from src.models.conversation import Conversation
+    from src.models.employee_task import EmployeeTask
+    from src.models.plan_run import PlanRun
+    from sqlalchemy import select as _select
+    ws, plan = _seed_ws_plan(db_session)
+    plan.plan_json = '[{"depends_on": null}]'; db_session.commit()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    conv = Conversation(workspace_id=ws.id, user_id="u-ws1", target_type="curator", target_id=emp.id, title="源")
+    db_session.add(conv); db_session.flush()
+    plan.conversation_id = conv.id; db_session.commit()
+    A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+                     execute_mode="immediate", orchestration_plan_id=plan.id, user_prompt="a")
+    db_session.add(A); db_session.commit()
+    monkeypatch.setattr(ex, "start_immediate_tasks", lambda *a, **k: [])
+    monkeypatch.setattr("src.service.agent.orchestrator.runtime.can_assign_to_employee", lambda db, eid: True)
+    ex.execute_plan(db_session, plan, ws.id)
+    run = db_session.scalars(_select(PlanRun).where(PlanRun.plan_id == plan.id)).first()
+    assert run is not None and run.trigger == "manual" and run.conversation_id == conv.id

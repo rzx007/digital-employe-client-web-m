@@ -159,8 +159,15 @@ def execute_plan(db: Session, plan: OrchestrationPlan, workspace_id: int) -> str
     if immediate_tasks:
         from src.service.agent.orchestrator.plan_run_service import open_plan_run
         run = open_plan_run(db, plan.id, workspace_id, trigger="manual", auto_accept=False)
+        # manual run 把 PlanRun.conversation_id 写成 plan.conversation_id（创建源），
+        # 让 Part B 的 today-task 折叠行可以统一从 PlanRun.conversation_id 取链接。
+        if plan.conversation_id is not None:
+            run.conversation_id = plan.conversation_id
         db.commit()
-        results += start_immediate_tasks(db, immediate_tasks, plan, workspace_id, run_id=run.id)
+        results += start_immediate_tasks(
+            db, immediate_tasks, plan, workspace_id, run_id=run.id,
+            orchestrator_conversation_id=run.conversation_id,
+        )
 
     return "\n".join([f"编排计划 #{plan.id} 执行中："] + results)
 
