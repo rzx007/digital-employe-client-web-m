@@ -446,7 +446,9 @@ def test_rerun_not_blocked_by_previous_run_history(db_session, monkeypatch):
     monkeypatch.setattr(ds, "_dispatch_successor",
                         lambda db, t, e, w, brief, run_id, stream_class=None: dispatched.append((t.id, run_id)))
     # 让员工/容量/槽位检查恒过
-    monkeypatch.setattr(ds, "can_assign_to_employee", lambda db, eid: True)
+    # 注意：can_assign_to_employee 在 on_employee_task_completed 内是函数级 import，
+    # 必须 patch 源模块（patch ds 模块属性会 AttributeError 且打不中）。
+    monkeypatch.setattr("src.service.agent.orchestrator.runtime.can_assign_to_employee", lambda db, eid: True)
     import src.service.stream_registry as sr
     monkeypatch.setattr(sr.registry, "can_admit", lambda cls: True)
 
@@ -1049,7 +1051,8 @@ def test_two_scheduled_runs_end_to_end(db_session, monkeypatch):
                      execute_mode="immediate", orchestration_plan_id=plan.id, user_prompt="b")
     db_session.add_all([A, B]); db_session.commit()
 
-    monkeypatch.setattr(ds, "can_assign_to_employee", lambda db, eid: True)
+    # can_assign_to_employee 是函数级 import，必须 patch 源模块（见 Task 4 注释）。
+    monkeypatch.setattr("src.service.agent.orchestrator.runtime.can_assign_to_employee", lambda db, eid: True)
     import src.service.stream_registry as sr
     monkeypatch.setattr(sr.registry, "can_admit", lambda cls: True)
 
