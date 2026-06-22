@@ -817,7 +817,7 @@ Expected: FAIL。
 - [ ] **Step 4: 重写 run_task_job（删 MCP + 删编排子任务分支）**
 
 `run_task_job`：
-- 删除整个 `dispatch_type=="mcp"` 分支（`started_at = cst_now()` 起到 MCP 异常处理结束的整段）+ 删 `_execute_mcp_tool_call` 方法 + 删相关 import（httpx/urllib 若仅 MCP 用）。
+- 删除整个 `dispatch_type=="mcp"` 分支（`started_at = cst_now()` 起到 MCP 异常处理结束的整段）+ 删 `_execute_mcp_tool_call` 方法 + 删 **仅 MCP 用**的 import：`httpx`、`urllib.parse`、`EmployeeMcp`、`get_settings`（已核实仅 `_execute_mcp_tool_call` 用）。**务必保留 `build_chat_model`**（`parse_nl_cron` 还在用）。删后 grep `_execute_mcp_tool_call` / `httpx` / `urllib` 确认零悬挂引用。
 - 删除上次加的 `if task.orchestration_plan_id is not None: 开 PlanRun…` 整段。
 - 员工分支恢复为简单派发（不带 run_id/orch_conv，因为独立任务无 plan）：
   ```python
@@ -940,7 +940,7 @@ Expected: FAIL。
 - [ ] **Step 4: 改 create_orchestration_plan**
 
 `src/service/agent/orchestrator/tools/plans.py`：
-- import：`from src.service.schedule_parser import parse_schedule`、`from src.models.workspace import cst_now`。
+- import：`from src.service.schedule_parser import parse_schedule`、`from src.models.workspace import cst_now`。删除不再使用的 `parse_nl_cron` import（[plans.py:26](../../../apps/server/src/service/agent/orchestrator/tools/plans.py)，切到 parse_schedule 后无人用，避免死 import）。
 - 解析：
   ```python
   spec = parse_schedule(schedule, now=cst_now()) if schedule else None
@@ -969,7 +969,9 @@ cd apps/server && uv run pytest tests/test_scheduling_consolidation.py -k "creat
 uv run pytest tests/test_create_orchestration_plan.py tests/test_confirmation_policy.py -v
 uv run pytest tests/test_scheduled_recurring_orchestration.py -k "create_plan_with" -v
 ```
-既有 `test_create_plan_with_schedule_sets_plan_cron` / `test_create_plan_with_unparseable_schedule_errors_not_degrades`（上次加的，用 parse_nl_cron）需适配为新 parse_schedule 路径；`test_confirmation_policy.py` 若断言旧签名需补 `has_schedule=False`。逐一适配，记录清单。
+既有测试适配清单（**语义破坏，不只是签名**，逐一处理，不弱化断言）：
+- `test_create_orchestration_plan.py` 里 `test_create_plan_with_schedule_sets_plan_cron` / `test_create_plan_with_unparseable_schedule_errors_not_degrades`（上次加的，monkeypatch `parse_nl_cron`）→ 改为 monkeypatch `tp.parse_schedule` 返回 `ScheduleSpec`，断言 schedule_kind/cron。
+- **`test_confirmation_policy.py::test_requires_confirmation_when_scheduled`（约 line 23-26）会语义破坏**：它构造一个 `cron="30 9 * * *"` 的 small 只读任务并断言 `True`，**完全依赖**被删的那条 `if task.get("cron")`。删掉该 cron 检查后，该任务变成 small/只读/无依赖/无危险词 + `has_schedule` 默认 False → 返回 `False` → 测试红。**处理：把该测试改为新模型语义**——`compute_requires_confirmation([readonly_task_without_cron], has_schedule=True)` 断言 `True`（定时计划一律需确认），并去掉 task 里的 cron 字段。其余 test_confirmation_policy 用例若按位置传参不受影响（has_schedule 是带默认的 keyword）。
 
 - [ ] **Step 6: Commit**
 
