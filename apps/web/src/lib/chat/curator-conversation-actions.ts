@@ -6,6 +6,7 @@ import { selectConversationById } from "@/lib/chat/conversation-selection"
 import { getContactId } from "@/lib/chat/contact-utils"
 import { shouldRenameConversationOnFirstMessage } from "@/lib/chat/conversation-title"
 import { selectWorkbenchCuratorConversation } from "@/lib/chat/conversation-selection/apply"
+import { conversationListQueryKey } from "@/lib/chat/conversation-list-query-key"
 import { chatKeys } from "@/lib/query-keys/chat"
 import type { Contact, Conversation, Message } from "@/types/chat"
 
@@ -23,7 +24,7 @@ export function primeCuratorConversationInCache(
   conversation: Conversation
 ) {
   queryClient.setQueryData<Conversation[]>(
-    chatKeys.conversations(conversation.contactId),
+    conversationListQueryKey(conversation.contactId),
     (current) => {
       if (!current) return [conversation]
       const filtered = current.filter((item) => item.id !== conversation.id)

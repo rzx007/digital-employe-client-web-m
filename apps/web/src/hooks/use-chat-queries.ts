@@ -25,6 +25,7 @@ import {
   selectConversationById,
 } from "@/lib/chat/conversation-selection"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
+import { conversationListQueryKey } from "@/lib/chat/conversation-list-query-key"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import { useChatStore } from "@/stores/chat-store"
@@ -41,7 +42,7 @@ export function useConversationsQuery(
   contact?: Contact | undefined
 ) {
   return useQuery({
-    queryKey: chatKeys.conversations(contactId ?? ""),
+    queryKey: conversationListQueryKey(contactId ?? ""),
     queryFn: ({ signal }) =>
       fetchConversationsByContactId(contactId!, contact, { signal }),
     enabled: Boolean(contactId) && Boolean(contact),
@@ -112,7 +113,7 @@ export function useCreateConversationMutation() {
     mutationFn: createConversation,
     onSuccess: (conversation) => {
       queryClient.setQueryData<Conversation[]>(
-        chatKeys.conversations(conversation.contactId),
+        conversationListQueryKey(conversation.contactId),
         (current) => {
           if (!current) {
             return [conversation]
@@ -149,7 +150,7 @@ export function useUpdateConversationTitleMutation() {
     },
     onSuccess: (_data, variables) => {
       queryClient.setQueryData<Conversation[]>(
-        chatKeys.conversations(variables.contactId),
+        conversationListQueryKey(variables.contactId),
         (current) =>
           current?.map((item) =>
             String(item.id) === String(variables.conversationId)
@@ -192,22 +193,22 @@ export function useDeleteConversationMutation() {
     },
     onMutate: async ({ conversationId, contactId }) => {
       await queryClient.cancelQueries({
-        queryKey: chatKeys.conversations(contactId),
+        queryKey: conversationListQueryKey(contactId),
       })
 
       const previousConversations = queryClient.getQueryData<Conversation[]>(
-        chatKeys.conversations(contactId)
+        conversationListQueryKey(contactId)
       )
 
       queryClient.setQueryData<Conversation[]>(
-        chatKeys.conversations(contactId),
+        conversationListQueryKey(contactId),
         (current) =>
           current?.filter((c) => String(c.id) !== String(conversationId))
       )
 
       const remaining =
         queryClient.getQueryData<Conversation[]>(
-          chatKeys.conversations(contactId)
+          conversationListQueryKey(contactId)
         ) ?? []
       const contact = findContactInList(
         useChatStore.getState().contacts,
@@ -234,14 +235,14 @@ export function useDeleteConversationMutation() {
     onError: (_error, _variables, context) => {
       if (context?.previousConversations) {
         queryClient.setQueryData(
-          chatKeys.conversations(context.contactId),
+          conversationListQueryKey(context.contactId),
           context.previousConversations
         )
       }
     },
     onSettled: (_data, _error, variables) => {
       queryClient.invalidateQueries({
-        queryKey: chatKeys.conversations(variables.contactId),
+        queryKey: conversationListQueryKey(variables.contactId),
       })
       const contact = findContactInList(
         useChatStore.getState().contacts,
@@ -292,7 +293,7 @@ export function useResetCuratorConversation() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: chatKeys.curator() })
       queryClient.invalidateQueries({
-        queryKey: chatKeys.conversations(variables.contactId),
+        queryKey: conversationListQueryKey(variables.contactId),
       })
       queryClient.invalidateQueries({
         queryKey: [...chatKeys.all, "all-task-executions"],

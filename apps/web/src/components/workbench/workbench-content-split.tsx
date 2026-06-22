@@ -27,6 +27,7 @@ import {
   useCuratorConversationQuery,
 } from "@/hooks/use-chat-queries"
 import { useCreateCuratorConversation } from "@/hooks/use-create-curator-conversation"
+import { conversationListQueryKey } from "@/lib/chat/conversation-list-query-key"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useChatStore } from "@/stores/chat-store"
 import { useArtifactStore } from "@/stores/artifact-store"
@@ -161,7 +162,7 @@ export function WorkbenchContentSplit({
 
     void queryClient.invalidateQueries({ queryKey: chatKeys.curator() })
     void queryClient.invalidateQueries({
-      queryKey: chatKeys.conversations(curatorContactId),
+      queryKey: conversationListQueryKey(curatorContactId),
     })
   }, [
     curatorContactId,

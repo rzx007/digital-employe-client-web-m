@@ -1,8 +1,10 @@
 export const chatKeys = {
   all: ["chat"] as const,
   contacts: () => [...chatKeys.all, "contacts"] as const,
-  conversations: (contactId: string) =>
-    [...chatKeys.all, "conversations", contactId] as const,
+  /** 会话列表按 workspace + contact 隔离，避免切换项目时串缓存 */
+  conversations: (workspaceId: number, contactId: string) =>
+    [...chatKeys.all, "conversations", workspaceId, contactId] as const,
+  allConversations: () => [...chatKeys.all, "conversations"] as const,
   messages: (conversationId: string) =>
     [...chatKeys.all, "messages", conversationId] as const,
   employee: (id: string) => [...chatKeys.all, "employee", id] as const,

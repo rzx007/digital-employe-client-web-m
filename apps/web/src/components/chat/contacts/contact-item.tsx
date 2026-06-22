@@ -24,6 +24,7 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import type { Contact } from "@/types/chat"
 import { useChatStore } from "@/stores/chat-store"
+import { conversationListQueryKey } from "@/lib/chat/conversation-list-query-key"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { deleteEmployee } from "@/api/employee"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
@@ -112,7 +113,7 @@ export function ContactItem({
           queryKey: chatKeys.contacts(),
         })
         queryClient.removeQueries({
-          queryKey: chatKeys.conversations(contactId),
+          queryKey: conversationListQueryKey(contactId),
         })
         focusAfterContactRemoved(contactId)
         toast.success(`已删除「${displayName}」`)

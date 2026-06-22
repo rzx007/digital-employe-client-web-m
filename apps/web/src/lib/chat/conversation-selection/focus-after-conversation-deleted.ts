@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
 import { ensureCuratorConversationAndSelect } from "@/lib/chat/curator-conversation-actions"
+import { conversationListQueryKey } from "@/lib/chat/conversation-list-query-key"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useChatStore } from "@/stores/chat-store"
 import type { Contact, Conversation } from "@/types/chat"
@@ -26,7 +27,7 @@ export async function focusAfterDeletedConversation(
 
   const remaining =
     queryClient
-      .getQueryData<Conversation[]>(chatKeys.conversations(contactId))
+      .getQueryData<Conversation[]>(conversationListQueryKey(contactId))
       ?.filter((c) => String(c.id) !== deletedId) ?? []
 
   const targetsCurrentSelection =

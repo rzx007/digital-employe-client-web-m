@@ -18,6 +18,7 @@ import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import { useCreateCuratorConversation } from "@/hooks/use-create-curator-conversation"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 import { useTaskExecutionNotifications } from "@/hooks/use-task-execution-notifications"
+import { conversationListQueryKey } from "@/lib/chat/conversation-list-query-key"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { modelKeys } from "@/lib/query-keys/model"
 import { getElectronApi } from "@/lib/electron/host"
@@ -115,7 +116,9 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
         // 当任务开始时，重新获取对应员工的会话列表
         if (event.type === "task_started") {
           queryClient.invalidateQueries({
-            queryKey: chatKeys.conversations(String(event.employee_id)),
+            queryKey: conversationListQueryKey(
+              `employee:${event.employee_id}`
+            ),
           })
         }
         break

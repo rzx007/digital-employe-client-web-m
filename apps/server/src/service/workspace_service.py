@@ -210,6 +210,9 @@ class WorkspaceService:
             workspace.root_path = str(managed_root)
         db.commit()
         db.refresh(workspace)
+        from src.service.chat_service import ChatService
+
+        ChatService.ensure_curator_conversation(db, user_id, workspace.id)
         return workspace
 
     @staticmethod
