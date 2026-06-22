@@ -581,13 +581,16 @@ class TaskSchedulerService:
 
     @classmethod
     def run_plan_job(cls, plan_id: int) -> None:
-        """递归计划到点：开一轮新 scheduled run，直接重跑冻结 DAG 根任务。
+        """递归计划到点：每轮新建 curator 会话作汇报落点，重跑冻结 DAG 根任务。
 
         绝不调 _start_curator_task / 不重发总管消息 / 不重新分析分单。
         """
+        import json
+        from src.models.conversation import Conversation, ConversationMessage
         from src.models.orchestration_plan import OrchestrationPlan
         from src.service.agent.orchestrator.execution import start_immediate_tasks
         from src.service.agent.orchestrator.plan_run_service import open_plan_run
+        from src.service.employee_service import EmployeeService
 
         with get_session_local()() as db:
             plan = db.get(OrchestrationPlan, plan_id)
@@ -597,26 +600,68 @@ class TaskSchedulerService:
                 select(EmployeeTask).where(
                     EmployeeTask.orchestration_plan_id == plan_id,
                     EmployeeTask.is_active.is_(True),
-                )
-                .order_by(EmployeeTask.priority.desc(), EmployeeTask.id.asc())
+                ).order_by(EmployeeTask.priority.desc(), EmployeeTask.id.asc())
             ).all())
             if not tasks:
                 return
+
             run = open_plan_run(db, plan_id, plan.workspace_id, trigger="scheduled", auto_accept=True)
             db.commit()
+
+            # —— 建本轮专属 curator 会话 + 种 plan.user_input ——
             try:
-                start_immediate_tasks(db, tasks, plan, plan.workspace_id, run_id=run.id)
+                ws = db.get(Workspace, plan.workspace_id)
+                user_id = ws.user_id if ws is not None else DEFAULT_USER_ID
+                curator = EmployeeService.ensure_curator_employee(db, user_id, plan.workspace_id)
+                # 标题：user_input 截断 30 字 + 第N轮
+                summary = (plan.user_input or "").strip().replace("\n", " ")
+                if len(summary) > 30:
+                    summary = summary[:30] + "…"
+                title = f"「{summary}」· 第{run.run_seq}轮"
+                flags = json.dumps(
+                    {"kind": "scheduled_run", "plan_id": plan_id, "run_seq": run.run_seq},
+                    ensure_ascii=False,
+                )
+                run_conv = Conversation(
+                    workspace_id=plan.workspace_id,
+                    user_id=user_id,
+                    target_type="curator",
+                    target_id=curator.id,
+                    title=title,
+                    session_flags=flags,
+                )
+                db.add(run_conv); db.flush()
+                # 种 user_input 消息：作为本轮会话上下文
+                db.add(ConversationMessage(
+                    conversation_id=run_conv.id,
+                    role="user",
+                    content=plan.user_input or title,
+                    stream_state="completed",
+                ))
+                run.conversation_id = run_conv.id
+                db.commit()
+            except Exception:
+                logger.error("run_plan_job 建本轮会话失败 plan=%s run=%s", plan_id, run.id, exc_info=True)
+                run.status = "failed"
+                run.ended_at = cst_now()
+                db.commit()
+                return
+
+            try:
+                start_immediate_tasks(
+                    db, tasks, plan, plan.workspace_id, run_id=run.id,
+                    orchestrator_conversation_id=run.conversation_id,
+                )
             except Exception:
                 logger.error("run_plan_job 派发失败 plan=%s run=%s", plan_id, run.id, exc_info=True)
-                # 派发异常 → 本轮不会有完成事件来 settle，直接标失败终态，
-                # 避免 PlanRun 永久 status="running" 污染后续按轮判定。
                 run.status = "failed"
                 run.ended_at = cst_now()
                 db.commit()
             plan.last_run_at = cst_now()
             plan.next_run_at = TaskService.compute_next_run(plan.cron, now=plan.last_run_at)
             db.commit()
-            logger.info("递归计划到点 plan=%s run_seq=%s（绕开总管重分析）", plan_id, run.run_seq)
+            logger.info("递归计划到点 plan=%s run_seq=%s conv=%s（绕开总管重分析）",
+                        plan_id, run.run_seq, run.conversation_id)
 
     @classmethod
     def run_task_job(cls, task_id: int) -> None:

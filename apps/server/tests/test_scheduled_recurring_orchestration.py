@@ -288,7 +288,8 @@ def test_run_plan_job_opens_scheduled_run_without_curator(db_session, monkeypatc
     monkeypatch.setattr(tss, "get_session_local", lambda: sf)
     seen = {}
     monkeypatch.setattr(ex, "start_immediate_tasks",
-                        lambda db, tasks, plan, ws_id, run_id: seen.setdefault("run_id", run_id) or [])
+                        lambda db, tasks, plan, ws_id, run_id, orchestrator_conversation_id=None:
+                            seen.setdefault("run_id", run_id) or [])
     monkeypatch.setattr(tss.TaskSchedulerService, "_start_curator_task",
                         classmethod(lambda cls, *a, **k: (_ for _ in ()).throw(AssertionError("不该调总管"))))
 
@@ -518,6 +519,57 @@ def test_on_employee_task_completed_dispatches_downstream_with_run_conversation(
     ds.on_employee_task_completed(A.id, ws.id)
     # B 被派、orch_conv 是本轮会话
     assert dispatched_orch_conv == [run_conv.id]
+
+
+def test_run_plan_job_creates_per_run_conversation_and_seeds_user_input(db_session, monkeypatch):
+    import src.service.task_scheduler_service as tss
+    import src.service.agent.orchestrator.execution as ex
+    from src.models.conversation import Conversation, ConversationMessage
+    from src.models.employee_task import EmployeeTask
+    from src.models.plan_run import PlanRun
+    from sqlalchemy import select as _select
+    from sqlalchemy.orm import sessionmaker
+    ws, plan = _seed_ws_plan(db_session)
+    plan.cron = "0 10 * * *"; plan.is_recurring = True
+    plan.plan_json = '[{"depends_on": null}]'
+    plan.user_input = "每2分钟查热搜并总结成文档"
+    db_session.commit()
+    # 必须先有 curator employee
+    curator = Employee(workspace_id=ws.id, name="总管", employee_code="curator", is_curator=True)
+    db_session.add(curator); db_session.flush()
+    emp = Employee(workspace_id=ws.id, name="热搜", employee_code="hot", user_id=ws.user_id); db_session.add(emp); db_session.flush()
+    A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+                     execute_mode="immediate", orchestration_plan_id=plan.id, user_prompt="a")
+    db_session.add(A); db_session.commit()
+    plan_id = plan.id
+
+    sf = sessionmaker(bind=db_session.get_bind())
+    monkeypatch.setattr(tss, "get_session_local", lambda: sf)
+    seen = {}
+    monkeypatch.setattr(ex, "start_immediate_tasks",
+        lambda db, tasks, plan, ws_id, run_id, orchestrator_conversation_id=None:
+            seen.setdefault("orch_conv", orchestrator_conversation_id) or [])
+
+    tss.TaskSchedulerService.run_plan_job(plan_id)
+
+    with sf() as d:
+        run = d.scalars(_select(PlanRun).where(PlanRun.plan_id == plan_id)).first()
+        assert run is not None and run.conversation_id is not None
+        conv = d.get(Conversation, run.conversation_id)
+        assert conv is not None
+        assert conv.target_type == "curator"
+        # session_flags 标记
+        import json
+        flags = json.loads(conv.session_flags or "{}")
+        assert flags.get("kind") == "scheduled_run"
+        assert flags.get("plan_id") == plan_id
+        assert flags.get("run_seq") == run.run_seq
+        # 种 user_input 消息
+        msgs = list(d.scalars(_select(ConversationMessage)
+            .where(ConversationMessage.conversation_id == conv.id)).all())
+        assert any(m.role == "user" and "每2分钟查热搜并总结成文档" in (m.content or "") for m in msgs)
+    # orch_conv 透传到派单链
+    assert seen.get("orch_conv") == run.conversation_id
 
 
 def test_execute_plan_manual_run_writes_conversation_id_from_plan(db_session, monkeypatch):
