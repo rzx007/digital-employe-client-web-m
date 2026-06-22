@@ -88,8 +88,9 @@ export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
     <ScrollArea className="flex-1">
       <div className="space-y-1.5">
         {sorted.map((task) => {
-          const rowKey =
-            task.task_id + (task.execution_id ? `-${task.execution_id}` : "")
+          const rowKey = task.is_plan
+            ? `plan-${task.plan_id}`
+            : task.task_id + (task.execution_id ? `-${task.execution_id}` : "")
           const canOpenChat = task.conversation_id != null
           const rowClassName = cn(
             "flex items-center gap-2 rounded-md border p-2 transition-colors",

@@ -488,6 +488,12 @@ class TaskService:
                     plan_buckets.setdefault(pid, []).append(r)
 
             plan_rows: list[dict] = []
+            # 用 Part A 已加载的 logs 列表按 run_id 分组（含今天日期窗口），避免循环里 N+1。
+            logs_by_run_id: dict[int, list[TaskExecutionLog]] = {}
+            for _log in logs:
+                if _log.run_id is not None:
+                    logs_by_run_id.setdefault(_log.run_id, []).append(_log)
+
             for pid, sub_rows in plan_buckets.items():
                 plan = db.get(OrchestrationPlan, pid)
                 if plan is None:
@@ -499,17 +505,15 @@ class TaskService:
                     select(PlanRun).where(PlanRun.plan_id == pid)
                     .order_by(PlanRun.run_seq.desc()).limit(1)
                 ).first()
-                # 本轮内的子任务执行日志
-                run_logs: list[TaskExecutionLog] = []
-                if latest_run is not None:
-                    run_logs = list(db.scalars(
-                        select(TaskExecutionLog).where(
-                            TaskExecutionLog.run_id == latest_run.id,
-                        ).order_by(TaskExecutionLog.started_at.asc())
-                    ).all())
+                # 本轮内的子任务执行日志（复用 Part A 已加载的 logs，按 run_id 分组）
+                run_logs: list[TaskExecutionLog] = (
+                    logs_by_run_id.get(latest_run.id, []) if latest_run is not None else []
+                )
+                # 与原 SQL 排序一致：按 started_at 升序
+                run_logs = sorted(run_logs, key=lambda l: l.started_at or "")
 
                 # 聚合状态（按优先级）
-                statuses = {(l.run_status or "") for l in run_logs}
+                statuses = {l.run_status for l in run_logs if l.run_status}
                 if statuses & {"running", "queued"}:
                     agg_status = "running"
                 elif statuses & {"failed", "error", "timeout"}:
