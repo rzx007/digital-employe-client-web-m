@@ -6,7 +6,7 @@ import {
   useMemo,
   type ComponentProps,
 } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { cn } from "@workspace/ui/lib/utils"
 import { useChat } from "@ai-sdk/react"
 import type { UIMessage } from "ai"
@@ -47,6 +47,11 @@ import {
 } from "@/hooks/use-schedule-monitor-queries"
 import { ACTIVE_TASK_RUN_STATUSES } from "@/types/schedule-monitor"
 
+import { fetchOrchestratorSkills } from "@/api/orchestrator"
+import {
+  buildCuratorSlashCommands,
+  resolveCuratorSend,
+} from "./curator-slash-commands"
 import { cancelConversationStream } from "@/api/chat"
 import { prepareVoiceMeta } from "@/lib/voice/prepare-voice-meta"
 import { getVoiceMeta } from "@/lib/voice/voice-meta"
@@ -521,11 +526,28 @@ export function CuratorView({
     }
   }, [])
 
+  const { data: orchestratorSkills } = useQuery({
+    queryKey: ["orchestrator-skills"],
+    queryFn: fetchOrchestratorSkills,
+    staleTime: 5 * 60 * 1000,
+  })
+  const curatorSlashCommands = useMemo(
+    () => buildCuratorSlashCommands(orchestratorSkills ?? []),
+    [orchestratorSkills]
+  )
+
   const doSend = useCallback(
     async (message: PromptInputMessage | string) => {
       const messageText =
         (typeof message === "string" ? message : message.text)?.trim() ?? ""
-      if (!messageText || !curatorConversationId) return
+      const selectedCommandItem = command
+        ? curatorSlashCommands.find((c) => c.id === command.id)
+        : undefined
+      const { text: outboundText, skill: skillParam } = resolveCuratorSend(
+        selectedCommandItem,
+        messageText
+      )
+      if (!outboundText || !curatorConversationId) return
 
       const paths = uploadedPathsRef.current
       if (paths.length > 0) {
@@ -563,11 +585,11 @@ export function CuratorView({
           displayMessages.length === 0
 
         await sendMessage(
-          { text: messageText, metadata: pendingMeta },
+          { text: outboundText, metadata: pendingMeta },
           {
             body: {
               conversationId: curatorConversationId,
-              skill: command?.title ?? "",
+              skill: skillParam,
               metadata: pendingMeta,
             },
           }
@@ -615,6 +637,7 @@ export function CuratorView({
       curatorContactId,
       contact,
       updateTitleMutation,
+      curatorSlashCommands,
     ]
   )
 
@@ -948,7 +971,7 @@ export function CuratorView({
             size="compact"
             placeholder={<CuratorRotatingPlaceholder />}
             className="w-full"
-            slashCommands={[]}
+            slashCommands={curatorSlashCommands}
             mentionCandidates={mentionCandidates}
             onAttachmentsChange={handleAttachmentsChange}
             pendingMessages={pendingQueue}
