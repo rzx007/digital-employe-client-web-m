@@ -294,3 +294,34 @@ def test_scheduled_plan_requires_confirmation():
     tasks = [{"output_tier": "small", "task_name": "查", "prompt": "查热搜", "depends_on": None}]
     assert compute_requires_confirmation(tasks, has_schedule=True) is True   # 定时一律需确认
     assert compute_requires_confirmation(tasks, has_schedule=False) is False  # 无定时单只读免确认
+
+
+def test_cleanup_legacy_subtask_cron_plans(db_session):
+    from src.db.init_db import _cleanup_legacy_subtask_cron_plans
+    from src.models.workspace import Workspace
+    from src.models.employee import Employee
+    from src.models.employee_task import EmployeeTask
+    from src.models.orchestration_plan import OrchestrationPlan
+    ws = Workspace(name="w", root_path="/tmp/w", user_id="u"); db_session.add(ws); db_session.flush()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    # 脏：plan 无 cron/schedule_kind，子任务带 cron
+    dirty = OrchestrationPlan(workspace_id=ws.id, conversation_id=1, user_input="脏", plan_json="[]",
+        status="confirmed", cron=None, schedule_kind=None)
+    db_session.add(dirty); db_session.flush()
+    dt = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="脏子",
+        execute_mode="scheduled", cron_expression="30 17 * * *",
+        orchestration_plan_id=dirty.id, is_active=True)
+    # 合法 recurring（新模型）：plan 有 schedule_kind，子任务无 cron → 不动
+    good = OrchestrationPlan(workspace_id=ws.id, conversation_id=1, user_input="好", plan_json="[]",
+        status="confirmed", cron="0 10 * * *", schedule_kind="recurring")
+    db_session.add(good); db_session.flush()
+    gt = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="好子",
+        execute_mode="immediate", cron_expression="", orchestration_plan_id=good.id, is_active=True)
+    db_session.add_all([dt, gt]); db_session.commit()
+
+    _cleanup_legacy_subtask_cron_plans(db_session.get_bind())
+    db_session.expire_all()
+    assert db_session.get(OrchestrationPlan, dirty.id).status == "cancelled"
+    assert db_session.get(EmployeeTask, dt.id).is_active is False
+    assert db_session.get(OrchestrationPlan, good.id).status == "confirmed"  # 合法不动
+    assert db_session.get(EmployeeTask, gt.id).is_active is True

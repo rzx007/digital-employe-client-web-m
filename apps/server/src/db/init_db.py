@@ -20,6 +20,9 @@ def init_db() -> None:
     # 定时递归编排特性新增列：幂等补齐已有库
     _ensure_orchestration_recurring_columns(engine)
 
+    # 一次性清理脏数据：plan 无调度但子任务带 cron（旧模型偷偷定时产物）
+    _cleanup_legacy_subtask_cron_plans(engine)
+
     # PlanRun 机制引入前已 confirmed 的老 plan + 它们的 logs：幂等回填
     _backfill_plan_runs_for_legacy_plans(engine)
 
@@ -68,6 +71,35 @@ def _ensure_orchestration_recurring_columns(engine) -> None:
         if "conversation_id" not in pr_cols:
             conn.execute(text("ALTER TABLE plan_runs ADD COLUMN conversation_id INTEGER"))
             logger.info("added column plan_runs.conversation_id")
+
+
+def _cleanup_legacy_subtask_cron_plans(engine) -> None:
+    """一次性清理脏数据：计划级无 schedule（cron 空且 schedule_kind 空）但子任务带 task 级 cron
+    的编排计划——旧模型『偷偷定时』产物。收敛后这些子任务不再被调度，置 cancelled 让用户重建。
+    三段谓词防误杀合法 recurring（plan.cron 已设的不在此列）。"""
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    if not {"orchestration_plans", "employee_tasks"}.issubset(tables):
+        return
+    op_cols = {c["name"] for c in inspector.get_columns("orchestration_plans")}
+    if "schedule_kind" not in op_cols:
+        return  # 列还没加（迁移未跑），跳过
+    with engine.begin() as conn:
+        rows = conn.execute(text("""
+            SELECT DISTINCT p.id FROM orchestration_plans p
+            JOIN employee_tasks t ON t.orchestration_plan_id = p.id
+            WHERE p.status = 'confirmed'
+              AND (p.cron IS NULL OR trim(p.cron) = '')
+              AND (p.schedule_kind IS NULL OR trim(p.schedule_kind) = '')
+              AND t.cron_expression IS NOT NULL AND trim(t.cron_expression) != ''
+        """)).all()
+        ids = [r[0] for r in rows]
+        if not ids:
+            return
+        for pid in ids:
+            conn.execute(text("UPDATE orchestration_plans SET status='cancelled' WHERE id=:pid"), {"pid": pid})
+            conn.execute(text("UPDATE employee_tasks SET is_active=0 WHERE orchestration_plan_id=:pid"), {"pid": pid})
+        logger.info("cleanup legacy subtask-cron plans: cancelled %s (ids=%s)", len(ids), ids)
 
 
 def _ensure_workspace_auto_grant_column(engine) -> None:
