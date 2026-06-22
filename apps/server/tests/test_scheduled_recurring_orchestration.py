@@ -57,3 +57,25 @@ def test_latest_run_id_for_task(db_session):
     db_session.add(log); db_session.commit()
     assert latest_run_id_for_task(db_session, 77) == run.id
     assert latest_run_id_for_task(db_session, 999) is None
+
+
+def test_latest_run_id_for_task_ignores_null_run_logs(db_session):
+    from src.service.agent.orchestrator.plan_run_service import (
+        open_plan_run, latest_run_id_for_task,
+    )
+    from src.models.workspace import cst_now
+    ws, plan = _seed_ws_plan(db_session)
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="manual", auto_accept=False)
+
+    def _log(run_id):
+        db_session.add(TaskExecutionLog(
+            task_id=55, workspace_id=ws.id, employee_id=emp.id, skill_id=None,
+            task_name_snapshot="t", run_status="success", run_result="r",
+            input_json="{}", output_json="{}", started_at=cst_now(), run_id=run_id))
+        db_session.commit()
+
+    _log(run.id)   # 编排日志
+    _log(None)     # 之后来了一条非编排日志（run_id=NULL）
+    # 仍应返回编排轮 run.id，而不是 None
+    assert latest_run_id_for_task(db_session, 55) == run.id

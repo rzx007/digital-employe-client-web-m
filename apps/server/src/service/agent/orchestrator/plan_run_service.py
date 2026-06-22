@@ -30,10 +30,17 @@ def open_plan_run(
 
 
 def latest_run_id_for_task(db: Session, task_id: int) -> int | None:
-    """取某 task 最新一条执行日志的 run_id（=该 task 当前所在轮）。无日志/非编排 → None。"""
+    """取某 task 最新一条**编排**执行日志的 run_id（=该 task 当前所在轮）。无编排日志 → None。
+
+    过滤 run_id 非空：非编排日志（独立 run_task_job，run_id=NULL）不参与，
+    避免最新一条恰为非编排日志时误判该 task 不在任何轮。
+    """
     return db.scalar(
         select(TaskExecutionLog.run_id)
-        .where(TaskExecutionLog.task_id == task_id)
+        .where(
+            TaskExecutionLog.task_id == task_id,
+            TaskExecutionLog.run_id.is_not(None),
+        )
         .order_by(TaskExecutionLog.id.desc())
         .limit(1)
     )
