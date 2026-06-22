@@ -1,6 +1,35 @@
 # 工作台助手 + 资源池 + 协作台升级 — 设计
 
 日期：2026-06-22
+状态：**已实现**（实现与原设计有若干偏差，见下方「实现校正」）
+
+## 实现校正（2026-06-23，以实现为准）
+
+实现期与用户逐轮调整，以下几处偏离原设计，**以本节为准**：
+
+1. **切换器：N 选一协作台 → 二选一**。原设计「工作台是协作台，N 个成员可邀请切换」被砍掉，改为右侧对话**只在「总管助手 ⇄ 工作台助手」二选一**（默认总管）。`WorkbenchChatSwitcher` / `WorkbenchInviteMemberDialog` / `members` 邀请机制已删除。切换 UI = 对话头部标题处的下拉（`WorkbenchChatTargetSwitch`，经 header/compact-toolbar 的可选 `titleSlot`）。
+2. **入池权限：仅用户 → 用户 + 工作台助手**。原设计「agent 不入池」改为：用户要求时工作台助手可调 `save_to_resource_pool` 工具入池（服务端直接写 DB）。用户路径仍在：资源池面板「上传 HTML」、资源池卡片「+ 添加」、文件 tab 右键「加入资源池」。
+3. **资源池路径基准：workspace.root_path → artifacts_path**。原设计 src_path「相对 workspace.root_path」是疏漏（root_path 可能被用户填成 `D:\` 等无关路径 → 越界）。统一改为相对 `get_settings().artifacts_path`（产物真实落盘根），入池/读内容/上传/删除四处一致（`WorkbenchResourceService.resource_root()`）。
+4. **对话组件：CuratorView → ConversationChatView**。工作台助手对话不复用 `CuratorView`（其展示层硬编码总管身份/欢迎语/引导词），改用员工聊天同款 `ConversationChatView`。
+5. **资源池入口**：看板区「我的看板」那行右上角「资源池」按钮（派发 `WORKBENCH_OPEN_RESOURCES_EVENT`）+ 对话头部 📁 图标（`onOpenArtifact` slot）；资源池面板含「资源池 / 文件」两 Tab，资源池卡片支持点击预览（toggle）。
+6. **历史会话**：复用通用 sessions sheet，按当前对话对象（总管/助手）列会话，可选可新建。
+
+### 实现期顺带修复的独立旧 bug（非本设计范围，借机修掉）
+
+- 成员对话永卡「加载会话…」：组件级去重失效 → 模块级 `ensureEmployeeConversation`。
+- `.py` 工作脚本误弹「新技能」卡：skill-folder 仅当本轮写过 SKILL.md 才弹卡。
+- `$ARTIFACTS_DIR/x` 路径被 write_file 当字面目录：`SkillAwareShellBackend._expand_env_path` 展开。
+
+### 已知未做
+
+- **切流拖影**（流式生成卡片瞬间切换 → 卡片闪没、二次进来正常）：独立的核心流式↔切换时序问题，非工作台引入，留待单独深挖。
+- 中间网格区「大加号」入口：评估冗余（已有看板区「资源池」按钮 + 卡片「+添加」），不做。
+
+---
+
+## 原始设计（保留备查，注意已被上方「实现校正」覆盖部分内容）
+
+日期：2026-06-22
 状态：设计已确认，待写实现计划
 
 ## 背景与动机
