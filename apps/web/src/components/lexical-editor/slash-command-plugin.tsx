@@ -28,6 +28,8 @@ export interface SlashCommandItem {
   icon: React.ReactElement
   description: string
   keywords: string[]
+  kind?: "skill" | "shortcut" // 默认按 skill 处理
+  prompt?: string // 仅 shortcut：选中后注入正文的模板
 }
 
 class SlashCommandOption extends MenuOption {
@@ -36,6 +38,8 @@ class SlashCommandOption extends MenuOption {
   icon: React.ReactElement
   description: string
   keywords: Array<string>
+  kind?: "skill" | "shortcut"
+  prompt?: string
   onSelect: (queryString: string) => void
 
   constructor(item: SlashCommandItem, onSelect: (queryString: string) => void) {
@@ -45,6 +49,8 @@ class SlashCommandOption extends MenuOption {
     this.icon = item.icon
     this.description = item.description
     this.keywords = item.keywords
+    this.kind = item.kind
+    this.prompt = item.prompt
     this.onSelect = onSelect.bind(this)
   }
 }
@@ -101,8 +107,13 @@ function FloatingMenu({
     >
       <Command>
         <CommandList>
-          <CommandGroup heading="技能">
-            {options.map((option, i) => (
+          {(() => {
+            const indexed = options.map((option, i) => ({ option, i }))
+            const shortcuts = indexed.filter(
+              (x) => x.option.kind === "shortcut"
+            )
+            const skills = indexed.filter((x) => x.option.kind !== "shortcut")
+            const renderItem = (option: SlashCommandOption, i: number) => (
               <CommandItem
                 key={option.key}
                 onSelect={() => {
@@ -132,8 +143,22 @@ function FloatingMenu({
                   </span>
                 </div>
               </CommandItem>
-            ))}
-          </CommandGroup>
+            )
+            return (
+              <>
+                {shortcuts.length > 0 && (
+                  <CommandGroup heading="快捷指令">
+                    {shortcuts.map(({ option, i }) => renderItem(option, i))}
+                  </CommandGroup>
+                )}
+                {skills.length > 0 && (
+                  <CommandGroup heading="技能">
+                    {skills.map(({ option, i }) => renderItem(option, i))}
+                  </CommandGroup>
+                )}
+              </>
+            )
+          })()}
         </CommandList>
       </Command>
     </div>,
