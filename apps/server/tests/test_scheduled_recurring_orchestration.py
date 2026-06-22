@@ -787,3 +787,84 @@ def test_backfill_plan_runs_for_legacy_plans(db_session):
     db_session.expire_all()
     runs_a2 = db_session.scalars(select(PlanRun).where(PlanRun.plan_id == old_plan.id)).all()
     assert len(runs_a2) == 1
+
+
+def test_run_task_job_plan_subtask_opens_run_and_per_run_conversation(db_session, monkeypatch):
+    """属于编排计划的子任务到点(task 级 cron)：也开 PlanRun + per-run curator 会话，
+    并把 run_id / orch_conv 透传给派发——与 run_plan_job 行为一致。回归世界杯提醒事故。"""
+    import src.service.task_scheduler_service as tss
+    from src.models.conversation import Conversation
+    from src.models.employee_task import EmployeeTask
+    from src.models.plan_run import PlanRun
+    from sqlalchemy import select as _select
+    from sqlalchemy.orm import sessionmaker
+    import json
+
+    ws, plan = _seed_ws_plan(db_session)
+    plan.cron = None; plan.is_recurring = False
+    plan.user_input = "5分钟后提醒看世界杯"
+    db_session.commit()
+    curator = Employee(workspace_id=ws.id, name="总管", employee_code="curator", is_curator=True)
+    db_session.add(curator); db_session.flush()
+    emp = Employee(workspace_id=ws.id, name="提醒员", employee_code="rm", user_id=ws.user_id)
+    db_session.add(emp); db_session.flush()
+    task = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="世界杯提醒",
+        execute_mode="scheduled", cron_expression="34 21 * * *", dispatch_type="skill",
+        orchestration_plan_id=plan.id, user_prompt="提醒", is_active=True)
+    db_session.add(task); db_session.commit()
+    task_id = task.id
+
+    sf = sessionmaker(bind=db_session.get_bind())
+    monkeypatch.setattr(tss, "get_session_local", lambda: sf)
+    captured = {}
+    def _fake_start(db, t, e, w, *, priority=0, source="orchestration",
+                    run_id=None, orchestrator_conversation_id=None, **kw):
+        captured["run_id"] = run_id
+        captured["orch_conv"] = orchestrator_conversation_id
+        return 1
+    monkeypatch.setattr("src.service.agent.orchestrator._start_task_as_conversation", _fake_start)
+
+    tss.TaskSchedulerService.run_task_job(task_id)
+
+    with sf() as d:
+        runs = d.scalars(_select(PlanRun).where(PlanRun.plan_id == plan.id)).all()
+        assert len(runs) == 1
+        assert runs[0].trigger == "scheduled" and runs[0].conversation_id is not None
+        conv = d.get(Conversation, runs[0].conversation_id)
+        flags = json.loads(conv.session_flags or "{}")
+        assert flags["kind"] == "scheduled_run" and flags["plan_id"] == plan.id
+        run_id, conv_id = runs[0].id, runs[0].conversation_id
+    assert captured.get("run_id") == run_id
+    assert captured.get("orch_conv") == conv_id
+
+
+def test_run_task_job_standalone_task_no_planrun(db_session, monkeypatch):
+    """无 orchestration_plan_id 的独立定时任务：run_task_job 不开 PlanRun（行为不变）。"""
+    import src.service.task_scheduler_service as tss
+    from src.models.employee_task import EmployeeTask
+    from src.models.plan_run import PlanRun
+    from sqlalchemy import select as _select
+    from sqlalchemy.orm import sessionmaker
+
+    ws = Workspace(name="w", root_path="/tmp/w", user_id="u-ws1"); db_session.add(ws); db_session.flush()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    task = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="独立提醒",
+        execute_mode="scheduled", cron_expression="0 9 * * *", dispatch_type="skill",
+        user_prompt="x", is_active=True)  # 无 orchestration_plan_id
+    db_session.add(task); db_session.commit()
+    task_id = task.id
+
+    sf = sessionmaker(bind=db_session.get_bind())
+    monkeypatch.setattr(tss, "get_session_local", lambda: sf)
+    captured = {}
+    def _fake_start(db, t, e, w, *, priority=0, source="orchestration",
+                    run_id=None, orchestrator_conversation_id=None, **kw):
+        captured["run_id"] = run_id
+        return 1
+    monkeypatch.setattr("src.service.agent.orchestrator._start_task_as_conversation", _fake_start)
+
+    tss.TaskSchedulerService.run_task_job(task_id)
+    with sf() as d:
+        runs = d.scalars(_select(PlanRun)).all()
+        assert runs == []  # 独立任务不开 PlanRun
+    assert captured.get("run_id") is None  # 不透传 run_id

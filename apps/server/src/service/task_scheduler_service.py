@@ -591,16 +591,56 @@ class TaskSchedulerService:
         })
 
     @classmethod
+    def _create_scheduled_run_conversation(cls, db, plan, run) -> int:
+        """为一轮 scheduled run 新建专属 curator 会话（标 session_flags=scheduled_run）
+        + 种 plan.user_input 当上下文。返回 conversation_id。调用方负责 commit 与异常处理。
+
+        run_plan_job（计划级 cron）与 run_task_job（plan 子任务 task 级 cron）共用，
+        保证所有定时触发的编排执行都"每轮一个会话"、行为一致。
+        """
+        import json
+        from src.models.conversation import Conversation, ConversationMessage
+        from src.service.employee_service import EmployeeService
+
+        ws = db.get(Workspace, plan.workspace_id)
+        user_id = ws.user_id if ws is not None else DEFAULT_USER_ID
+        curator = EmployeeService.ensure_curator_employee(db, user_id, plan.workspace_id)
+        # 标题：user_input 截断 30 字 + 第N轮
+        summary = (plan.user_input or "").strip().replace("\n", " ")
+        if len(summary) > 30:
+            summary = summary[:30] + "…"
+        title = f"「{summary}」· 第{run.run_seq}轮"
+        flags = json.dumps(
+            {"kind": "scheduled_run", "plan_id": plan.id, "run_seq": run.run_seq},
+            ensure_ascii=False,
+        )
+        run_conv = Conversation(
+            workspace_id=plan.workspace_id,
+            user_id=user_id,
+            target_type="curator",
+            target_id=curator.id,
+            title=title,
+            session_flags=flags,
+        )
+        db.add(run_conv); db.flush()
+        # 种 user_input 消息：作为本轮会话上下文
+        db.add(ConversationMessage(
+            conversation_id=run_conv.id,
+            role="user",
+            content=plan.user_input or title,
+            stream_state="completed",
+        ))
+        return run_conv.id
+
+    @classmethod
     def run_plan_job(cls, plan_id: int) -> None:
         """递归计划到点：每轮新建 curator 会话作汇报落点，重跑冻结 DAG 根任务。
 
         绝不调 _start_curator_task / 不重发总管消息 / 不重新分析分单。
         """
-        from src.models.conversation import Conversation, ConversationMessage
         from src.models.orchestration_plan import OrchestrationPlan
         from src.service.agent.orchestrator.execution import start_immediate_tasks
         from src.service.agent.orchestrator.plan_run_service import open_plan_run
-        from src.service.employee_service import EmployeeService
 
         with get_session_local()() as db:
             plan = db.get(OrchestrationPlan, plan_id)
@@ -620,35 +660,7 @@ class TaskSchedulerService:
 
             # —— 建本轮专属 curator 会话 + 种 plan.user_input ——
             try:
-                ws = db.get(Workspace, plan.workspace_id)
-                user_id = ws.user_id if ws is not None else DEFAULT_USER_ID
-                curator = EmployeeService.ensure_curator_employee(db, user_id, plan.workspace_id)
-                # 标题：user_input 截断 30 字 + 第N轮
-                summary = (plan.user_input or "").strip().replace("\n", " ")
-                if len(summary) > 30:
-                    summary = summary[:30] + "…"
-                title = f"「{summary}」· 第{run.run_seq}轮"
-                flags = json.dumps(
-                    {"kind": "scheduled_run", "plan_id": plan_id, "run_seq": run.run_seq},
-                    ensure_ascii=False,
-                )
-                run_conv = Conversation(
-                    workspace_id=plan.workspace_id,
-                    user_id=user_id,
-                    target_type="curator",
-                    target_id=curator.id,
-                    title=title,
-                    session_flags=flags,
-                )
-                db.add(run_conv); db.flush()
-                # 种 user_input 消息：作为本轮会话上下文
-                db.add(ConversationMessage(
-                    conversation_id=run_conv.id,
-                    role="user",
-                    content=plan.user_input or title,
-                    stream_state="completed",
-                ))
-                run.conversation_id = run_conv.id
+                run.conversation_id = cls._create_scheduled_run_conversation(db, plan, run)
                 db.commit()
             except Exception:
                 logger.error("run_plan_job 建本轮会话失败 plan=%s run=%s", plan_id, run.id, exc_info=True)
@@ -697,6 +709,34 @@ class TaskSchedulerService:
                         cls._start_curator_task(db, task, employee)
                     else:
                         from src.service.agent.orchestrator import _start_task_as_conversation
+                        # 属于编排计划的子任务：与 run_plan_job 一致——开一轮 PlanRun +
+                        # 专属 curator 会话，并把 run_id / orch_conv 透传给派发，使
+                        # ①每次定时触发开新会话 ②今日折叠能按 PlanRun 读到正确状态。
+                        # 独立定时任务（无 plan）保持原行为：不开 PlanRun。
+                        _run_id = None
+                        _orch_conv_id = None
+                        if task.orchestration_plan_id is not None:
+                            from src.models.orchestration_plan import OrchestrationPlan
+                            from src.service.agent.orchestrator.plan_run_service import open_plan_run
+                            _plan = db.get(OrchestrationPlan, task.orchestration_plan_id)
+                            if _plan is not None:
+                                try:
+                                    _run = open_plan_run(
+                                        db, _plan.id, _plan.workspace_id,
+                                        trigger="scheduled", auto_accept=True,
+                                    )
+                                    db.commit()
+                                    _orch_conv_id = cls._create_scheduled_run_conversation(db, _plan, _run)
+                                    _run.conversation_id = _orch_conv_id
+                                    db.commit()
+                                    _run_id = _run.id
+                                except Exception:
+                                    logger.error(
+                                        "run_task_job 建本轮会话失败 task=%s plan=%s",
+                                        task_id, task.orchestration_plan_id, exc_info=True,
+                                    )
+                                    _run_id = None
+                                    _orch_conv_id = None
                         _start_task_as_conversation(
                             db,
                             task,
@@ -704,6 +744,8 @@ class TaskSchedulerService:
                             task.workspace_id,
                             priority=SCHEDULED_PRIORITY,
                             source="scheduled",
+                            run_id=_run_id,
+                            orchestrator_conversation_id=_orch_conv_id,
                         )
                     task.last_run_at = cst_now()
                     task.next_run_at = TaskService.compute_next_run(task.cron_expression, now=task.last_run_at)
