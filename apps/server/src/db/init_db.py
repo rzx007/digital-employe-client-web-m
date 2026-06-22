@@ -38,6 +38,7 @@ def _ensure_orchestration_recurring_columns(engine) -> None:
     insp = inspect(engine)
     tel_cols = {c["name"] for c in insp.get_columns("task_execution_logs")}
     op_cols = {c["name"] for c in insp.get_columns("orchestration_plans")}
+    pr_cols = {c["name"] for c in insp.get_columns("plan_runs")}
     with engine.begin() as conn:
         if "run_id" not in tel_cols:
             conn.execute(text("ALTER TABLE task_execution_logs ADD COLUMN run_id INTEGER"))
@@ -54,6 +55,9 @@ def _ensure_orchestration_recurring_columns(engine) -> None:
         if "next_run_at" not in op_cols:
             conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN next_run_at DATETIME"))
             logger.info("added column orchestration_plans.next_run_at")
+        if "conversation_id" not in pr_cols:
+            conn.execute(text("ALTER TABLE plan_runs ADD COLUMN conversation_id INTEGER"))
+            logger.info("added column plan_runs.conversation_id")
 
 
 def _ensure_workspace_auto_grant_column(engine) -> None:

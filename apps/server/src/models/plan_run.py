@@ -34,4 +34,8 @@ class PlanRun(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="running", index=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=cst_now)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 该轮专属总管会话（scheduled 轮新建；manual 轮 = plan.conversation_id）。SET NULL 防级联。
+    conversation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=cst_now)

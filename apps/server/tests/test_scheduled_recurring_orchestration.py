@@ -425,3 +425,8 @@ def test_create_plan_with_unparseable_schedule_errors_not_degrades(db_session, m
     assert "无法解析" in result            # 返回错误而非静默降级
     # 不应持久化任何 plan
     assert db_session.scalars(_select(OrchestrationPlan)).first() is None
+
+
+def test_plan_run_has_conversation_id_column():
+    from src.models.plan_run import PlanRun
+    assert "conversation_id" in PlanRun.__table__.columns
