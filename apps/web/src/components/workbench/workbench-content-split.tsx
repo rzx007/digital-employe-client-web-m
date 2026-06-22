@@ -25,7 +25,6 @@ import {
 import { useCreateCuratorConversation } from "@/hooks/use-create-curator-conversation"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useChatStore } from "@/stores/chat-store"
-import { useArtifactStore } from "@/stores/artifact-store"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { WorkbenchChatSwitcher } from "./workbench-chat-switcher"
@@ -315,17 +314,6 @@ export function WorkbenchContentSplit({
     setResourcesOpen(false)
   }, [])
 
-  const openResource = useArtifactStore((s) => s.openResource)
-
-  const handleOpenResourceFile = useCallback(
-    (path: string) => {
-      if (activeConversationId == null) return
-      setResourcesOpen(true)
-      openResource(path)
-    },
-    [activeConversationId, openResource],
-  )
-
   useEffect(() => {
     const id = requestAnimationFrame(() => {
       syncPanelCollapse(
@@ -358,6 +346,23 @@ export function WorkbenchContentSplit({
   const renderMemberArea = () => {
     return (
       <div className={cn("flex h-full min-h-0 flex-col", curatorPanelBorder)}>
+        <div className="flex items-center gap-1 border-b px-2 py-1">
+          <span className="text-xs font-medium text-muted-foreground">
+            工作台助手
+          </span>
+          <button
+            type="button"
+            onClick={handleToggleResources}
+            className={cn(
+              "ml-auto rounded px-2 py-1 text-xs",
+              showResources
+                ? "bg-muted font-medium"
+                : "text-muted-foreground hover:bg-muted/50"
+            )}
+          >
+            资源池
+          </button>
+        </div>
         <WorkbenchChatSwitcher
           members={members}
           activeId={activeMemberId}
@@ -370,9 +375,6 @@ export function WorkbenchContentSplit({
             <WorkbenchMemberPanel
               key={activeMemberId ?? "none"}
               contact={activeMemberContact}
-              resourcesOpen={showResources}
-              onToggleResources={handleToggleResources}
-              onOpenResourceFile={handleOpenResourceFile}
             />
           ) : (
             <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">

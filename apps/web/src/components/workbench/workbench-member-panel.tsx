@@ -1,29 +1,23 @@
 import * as React from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { CuratorView } from "@/components/chat/curator/curator-view"
+import { ConversationChatView } from "@/components/chat/views/chat-conversation-view"
 import { getContactId } from "@/lib/chat/contact-utils"
 import { useConversationsQuery } from "@/hooks/use-chat-queries"
 import { ensureEmployeeConversation } from "@/lib/chat/ensure-employee-conversation"
 import { chatKeys } from "@/lib/query-keys/chat"
-import { buildWorkbenchSnapshot } from "@/lib/workbench/workbench-context"
 import type { Contact, Conversation } from "@/types/chat"
 import { cn } from "@workspace/ui/lib/utils"
 
 /**
- * 工作台成员对话面板：给定一个员工 contact，自动取/建该员工的一条会话并渲染 CuratorView。
- * CuratorView 接受任意 contact，故复用之承载员工对话（无需单独 EmployeeView）。
+ * 工作台成员对话面板：给定一个员工 contact，自动取/建该员工的一条会话并渲染员工对话视图。
+ * 用 ConversationChatView（正常员工聊天同款，身份/欢迎语/引导词都按员工显示），
+ * 不再复用 CuratorView（其展示层硬编码为「总管助手」+总管引导词）。
  */
 export function WorkbenchMemberPanel({
   contact,
-  resourcesOpen,
-  onToggleResources,
-  onOpenResourceFile,
   className,
 }: {
   contact: Contact
-  resourcesOpen?: boolean
-  onToggleResources?: () => void
-  onOpenResourceFile?: (path: string) => void
   className?: string
 }) {
   const queryClient = useQueryClient()
@@ -103,17 +97,12 @@ export function WorkbenchMemberPanel({
   }
 
   return (
-    <CuratorView
+    <ConversationChatView
       key={String(activeId)}
       contact={contact}
       conversationId={activeId}
-      title={conversationTitle}
-      size="compact"
+      title={conversationTitle ?? "工作台对话"}
       className={cn("h-full min-h-0", className)}
-      resourcesOpen={resourcesOpen}
-      onToggleResources={onToggleResources}
-      onOpenResourceFile={onOpenResourceFile}
-      getExtraMetadata={() => ({ workbench: buildWorkbenchSnapshot() })}
     />
   )
 }
