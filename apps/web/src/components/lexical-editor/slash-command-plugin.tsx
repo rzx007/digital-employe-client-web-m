@@ -32,7 +32,7 @@ export interface SlashCommandItem {
   prompt?: string // 仅 shortcut：选中后注入正文的模板
 }
 
-class SlashCommandOption extends MenuOption {
+export class SlashCommandOption extends MenuOption {
   id: string
   title: string
   icon: React.ReactElement
@@ -55,7 +55,7 @@ class SlashCommandOption extends MenuOption {
   }
 }
 
-function FloatingMenu({
+export function FloatingMenu({
   anchorElementRef,
   options,
   selectedIndex,
@@ -98,6 +98,9 @@ function FloatingMenu({
   const renderItem = (option: SlashCommandOption, i: number) => (
     <CommandItem
       key={option.key}
+      // 把 DOM 节点登记到 option.ref：Lexical 方向键导航据此 scrollIntoView，
+      // 缺失则高亮变化但菜单不滚动（option.ref.current 恒 null）。
+      ref={option.setRefElement}
       onSelect={() => {
         setHighlightedIndex(i)
         selectOptionAndCleanUp(option)
