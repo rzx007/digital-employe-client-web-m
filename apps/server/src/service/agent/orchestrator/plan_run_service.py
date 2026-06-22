@@ -62,3 +62,36 @@ def settle_plan_run(db: Session, run_id: int) -> None:
     if run is not None and run.status != "settled":
         run.status = "settled"
         run.ended_at = cst_now()
+
+
+def create_scheduled_run_conversation(db: Session, plan, run) -> int:
+    """为一轮 scheduled run 新建专属 curator 会话（session_flags=scheduled_run）
+    + 种 plan.user_input 上下文。返回 conversation_id。调用方负责 commit 与异常处理。
+    run_plan_job 与 execute_plan_run 共用，避免 execution↔scheduler 循环依赖。"""
+    import json
+    from src.core.request_utils import DEFAULT_USER_ID
+    from src.models.conversation import Conversation, ConversationMessage
+    from src.models.workspace import Workspace
+    from src.service.employee_service import EmployeeService
+
+    ws = db.get(Workspace, plan.workspace_id)
+    user_id = ws.user_id if ws is not None else DEFAULT_USER_ID
+    curator = EmployeeService.ensure_curator_employee(db, user_id, plan.workspace_id)
+    summary = (plan.user_input or "").strip().replace("\n", " ")
+    if len(summary) > 30:
+        summary = summary[:30] + "…"
+    title = f"「{summary}」· 第{run.run_seq}轮"
+    flags = json.dumps(
+        {"kind": "scheduled_run", "plan_id": plan.id, "run_seq": run.run_seq},
+        ensure_ascii=False,
+    )
+    conv = Conversation(
+        workspace_id=plan.workspace_id, user_id=user_id,
+        target_type="curator", target_id=curator.id, title=title, session_flags=flags,
+    )
+    db.add(conv); db.flush()
+    db.add(ConversationMessage(
+        conversation_id=conv.id, role="user",
+        content=plan.user_input or title, stream_state="completed",
+    ))
+    return conv.id

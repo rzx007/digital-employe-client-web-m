@@ -1,3 +1,13 @@
+def _seed_ws_plan_sc(db):
+    from src.models.workspace import Workspace
+    from src.models.orchestration_plan import OrchestrationPlan
+    ws = Workspace(name="w", root_path="/tmp/w", user_id="u-ws1"); db.add(ws); db.flush()
+    plan = OrchestrationPlan(workspace_id=ws.id, conversation_id=1, user_input="查热搜并总结",
+        plan_json="[]", status="confirmed", total_tasks=0)
+    db.add(plan); db.flush()
+    return ws, plan
+
+
 def test_plan_has_schedule_kind_and_run_at_columns():
     from src.models.orchestration_plan import OrchestrationPlan
     cols = OrchestrationPlan.__table__.columns
@@ -40,3 +50,25 @@ def test_parse_schedule_unparseable_returns_none(monkeypatch):
     from src.models.workspace import cst_now
     monkeypatch.setattr(sp, "_classify_with_llm", lambda text, now: (None, None))
     assert parse_schedule("满月的子时", now=cst_now()) is None
+
+
+def test_create_scheduled_run_conversation_helper(db_session):
+    from src.service.agent.orchestrator.plan_run_service import (
+        open_plan_run, create_scheduled_run_conversation,
+    )
+    from src.models.employee import Employee
+    from src.models.conversation import Conversation, ConversationMessage
+    from sqlalchemy import select
+    import json
+    ws, plan = _seed_ws_plan_sc(db_session)
+    curator = Employee(workspace_id=ws.id, name="总管", employee_code="curator", is_curator=True)
+    db_session.add(curator); db_session.commit()
+    run = open_plan_run(db_session, plan.id, ws.id, trigger="scheduled", auto_accept=True)
+    db_session.commit()
+    conv_id = create_scheduled_run_conversation(db_session, plan, run)
+    conv = db_session.get(Conversation, conv_id)
+    assert conv.target_type == "curator"
+    flags = json.loads(conv.session_flags or "{}")
+    assert flags["kind"] == "scheduled_run" and flags["plan_id"] == plan.id and flags["run_seq"] == run.run_seq
+    msgs = db_session.scalars(select(ConversationMessage).where(ConversationMessage.conversation_id == conv_id)).all()
+    assert any("查热搜并总结" in (m.content or "") for m in msgs)
