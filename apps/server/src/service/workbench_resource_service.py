@@ -31,17 +31,29 @@ class WorkbenchResourceService:
         title: str | None,
         added_by: str | None,
     ) -> WorkbenchResource:
+        # src_path 可能是绝对路径（前端从资源管理器传真实路径）→ 归一为相对 artifacts_path。
+        rel = WorkbenchResourceService.to_resource_relative(src_path)
         row = WorkbenchResource(
             workspace_id=workspace_id,
             source="employee_artifact",
-            src_path=src_path,
-            title=(title or PurePath(src_path).name),
+            src_path=rel,
+            title=(title or PurePath(rel).name),
             added_by=added_by,
         )
         db.add(row)
         db.commit()
         db.refresh(row)
         return row
+
+    @staticmethod
+    def to_resource_relative(path: str) -> str:
+        """把可能是绝对路径的 path 归一为相对 artifacts_path（已是相对则原样）。"""
+        p = str(path).replace("\\", "/")
+        root = str(WorkbenchResourceService.resource_root()).replace("\\", "/")
+        try:
+            return PurePath(p).relative_to(PurePath(root)).as_posix()
+        except ValueError:
+            return PurePath(p).as_posix()
 
     @staticmethod
     def add_upload(

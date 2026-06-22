@@ -81,6 +81,8 @@ export interface ArtifactPanelProps {
   className?: string
   /** embedded：置于 Sheet 等容器内，不使用侧滑入场动画 */
   presentation?: "slide-over" | "embedded"
+  /** 工作台：.html 右键菜单加「加入资源池」。不传则不显示该项（主聊天原样）。 */
+  onAddToResourcePool?: (entry: ResourceEntry) => void
 }
 
 /** 侧栏树内文件名/文件夹名展示宽度；完整名见原生 title */
@@ -251,6 +253,7 @@ function ResourceContextMenu({
   onDelete,
   onRefresh,
   onPin,
+  onAddToResourcePool,
   pendingOnly = false,
 }: {
   entry: ResourceEntry
@@ -258,6 +261,7 @@ function ResourceContextMenu({
   onDelete: (entry: ResourceEntry) => void
   onRefresh: () => void
   onPin?: (entry: ResourceEntry) => void
+  onAddToResourcePool?: (entry: ResourceEntry) => void
   pendingOnly?: boolean
 }) {
   const handleDownload = async () => {
@@ -265,7 +269,7 @@ function ResourceContextMenu({
   }
 
   return (
-    <ContextMenuContent className="w-36">
+    <ContextMenuContent className="w-40">
       {!pendingOnly && (
         <ContextMenuItem onSelect={handleDownload}>
           <IconDownload className="size-4 text-muted-foreground" />
@@ -278,6 +282,14 @@ function ResourceContextMenu({
           <span>钉到工作台</span>
         </ContextMenuItem>
       )}
+      {!pendingOnly &&
+        onAddToResourcePool &&
+        isHtmlPath(entry.path) && (
+          <ContextMenuItem onSelect={() => onAddToResourcePool(entry)}>
+            <IconPin className="size-4 text-muted-foreground" />
+            <span>加入资源池</span>
+          </ContextMenuItem>
+        )}
       <ContextMenuItem onSelect={onRefresh}>
         <IconRefresh className="size-4 text-muted-foreground" />
         <span>刷新</span>
@@ -342,7 +354,8 @@ function renderEntry(
   onDelete: (entry: ResourceEntry) => void,
   onRefresh: () => void,
   getPendingForPath: (path: string) => PendingResource | null,
-  onPin?: (entry: ResourceEntry) => void
+  onPin?: (entry: ResourceEntry) => void,
+  onAddToResourcePool?: (entry: ResourceEntry) => void
 ) {
   if (entry.entry_type === "directory") {
     return (
@@ -416,6 +429,7 @@ function renderEntry(
         onDelete={onDelete}
         onRefresh={onRefresh}
         onPin={onPin}
+        onAddToResourcePool={onAddToResourcePool}
         pendingOnly={isPendingStreaming}
       />
     </ContextMenu>
@@ -428,6 +442,7 @@ export const ArtifactPanel = ({
   onClose,
   className,
   presentation = "slide-over",
+  onAddToResourcePool,
 }: ArtifactPanelProps) => {
   const [selectedPath, setSelectedPath] = React.useState<string | null>(null)
   const [expandedPaths, setExpandedPaths] = React.useState<Set<string>>(
@@ -892,7 +907,8 @@ export const ArtifactPanel = ({
                           handleDelete,
                           handleRefreshResources,
                           getPendingForPath,
-                          handlePin
+                          handlePin,
+                          onAddToResourcePool
                         )
                       )}
                     </FileTreeFolder>
@@ -911,7 +927,8 @@ export const ArtifactPanel = ({
                           handleDelete,
                           handleRefreshResources,
                           getPendingForPath,
-                          handlePin
+                          handlePin,
+                          onAddToResourcePool
                         )
                       )}
                     </FileTreeFolder>
@@ -943,7 +960,8 @@ export const ArtifactPanel = ({
                                     handleDelete,
                                     handleRefreshResources,
                                     getPendingForPath,
-                                    handlePin
+                                    handlePin,
+                                    onAddToResourcePool
                                   )
                                 )}
                               </FileTreeFolder>
@@ -974,7 +992,8 @@ export const ArtifactPanel = ({
                           handleDelete,
                           handleRefreshResources,
                           getPendingForPath,
-                          handlePin
+                          handlePin,
+                          onAddToResourcePool
                         )
                       )}
                     </FileTreeFolder>
@@ -993,7 +1012,8 @@ export const ArtifactPanel = ({
                           handleDelete,
                           handleRefreshResources,
                           getPendingForPath,
-                          handlePin
+                          handlePin,
+                          onAddToResourcePool
                         )
                       )}
                     </FileTreeFolder>

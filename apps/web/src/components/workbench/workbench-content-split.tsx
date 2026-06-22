@@ -35,6 +35,7 @@ import { WorkbenchResourcePool } from "./workbench-resource-pool"
 import { WorkbenchCuratorSessionsSheet } from "./workbench-curator-sessions-sheet"
 import { selectWorkbenchCuratorConversation } from "@/lib/chat/conversation-selection/apply"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
+import { useAddWorkbenchResource } from "@/hooks/use-workbench-resources"
 
 const LAYOUT_STORAGE_ID = "workbench-grid-curator-resources-v2"
 const PANEL_IDS = ["grid", "curator", "resources"] as const
@@ -114,6 +115,7 @@ export function WorkbenchContentSplit({
 }) {
   const [resourcesOpen, setResourcesOpen] = useState(false)
   const [resourceTab, setResourceTab] = useState<"pool" | "files">("pool")
+  const addResource = useAddWorkbenchResource()
   // 工作台助手当前会话 id（由 WorkbenchMemberPanel 上报），供「文件」tab 列其产物。
   const [assistantConversationId, setAssistantConversationId] = useState<
     string | number | null
@@ -465,6 +467,17 @@ export function WorkbenchContentSplit({
                       conversationId={filesConversationId}
                       isOpen
                       onClose={handleCloseResources}
+                      onAddToResourcePool={(entry) =>
+                        addResource.mutate(
+                          { src_path: entry.path, title: entry.name },
+                          {
+                            onSuccess: () =>
+                              toast.success(`已加入资源池：${entry.name}`),
+                            onError: (e) =>
+                              toast.error(`加入失败：${String(e)}`),
+                          }
+                        )
+                      }
                       className="h-full rounded-lg border shadow-xl"
                     />
                   ) : (
