@@ -15,9 +15,12 @@ import { cn } from "@workspace/ui/lib/utils"
  */
 export function WorkbenchMemberPanel({
   contact,
+  onOpenArtifact,
   className,
 }: {
   contact: Contact
+  /** 点击对话头部资源图标 = 开右侧资源池 */
+  onOpenArtifact?: () => void
   className?: string
 }) {
   const queryClient = useQueryClient()
@@ -102,6 +105,7 @@ export function WorkbenchMemberPanel({
       contact={contact}
       conversationId={activeId}
       title={conversationTitle ?? "工作台对话"}
+      onOpenArtifact={onOpenArtifact}
       className={cn("h-full min-h-0", className)}
     />
   )

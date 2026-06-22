@@ -334,6 +334,7 @@ export function WorkbenchContentSplit({
               <WorkbenchMemberPanel
                 key={`assistant-${assistantEmployeeId}`}
                 contact={assistantContact}
+                onOpenArtifact={() => setResourcesOpen(true)}
               />
             ) : (
               <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">

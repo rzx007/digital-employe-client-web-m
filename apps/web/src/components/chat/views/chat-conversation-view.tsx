@@ -127,6 +127,8 @@ export function ConversationChatView({
 
   onUserSend,
 
+  onOpenArtifact,
+
   className,
 
   ...props
@@ -136,6 +138,9 @@ export function ConversationChatView({
   title: string
 
   conversationId: string | number
+
+  /** 工作台：覆盖 header 资源图标点击 = 开右侧资源池 */
+  onOpenArtifact?: () => void
 
   onOpenContacts?: () => void
 
@@ -711,6 +716,7 @@ export function ConversationChatView({
       onOpenContacts={onOpenContacts}
       onOpenConversations={onOpenConversations}
       onNewConversation={onNewConversation}
+      onOpenArtifact={onOpenArtifact}
       pendingMessages={pendingQueue}
       onPendingRemove={pendingRemove}
       onPendingSendNow={pendingSendNow}
