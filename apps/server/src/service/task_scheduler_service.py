@@ -97,17 +97,28 @@ class TaskSchedulerService:
                 scheduler.remove_job(job.id)
 
         with get_session_local()() as db:
+            from sqlalchemy import or_
+            from src.models.orchestration_plan import OrchestrationPlan
             now = cst_now()
+            # task 级 cron 扫描：排除被 plan 级 cron 接管的子任务（避免双重调度），
+            # 但保留 plan 自己无 cron + 子任务有 cron 的场景（task 级是唯一调度入口）。
             tasks = list(
                 db.scalars(
-                    select(EmployeeTask).where(
+                    select(EmployeeTask).outerjoin(
+                        OrchestrationPlan,
+                        EmployeeTask.orchestration_plan_id == OrchestrationPlan.id,
+                    ).where(
                         EmployeeTask.is_active.is_(True),
                         EmployeeTask.dispatch_type.in_(("skill", "mcp")),
                         (EmployeeTask.valid_until.is_(None))
                         | (EmployeeTask.valid_until >= now),
                         EmployeeTask.cron_expression.isnot(None),
                         func.trim(EmployeeTask.cron_expression) != "",
-                        EmployeeTask.orchestration_plan_id.is_(None),
+                        or_(
+                            EmployeeTask.orchestration_plan_id.is_(None),
+                            OrchestrationPlan.cron.is_(None),
+                            func.trim(OrchestrationPlan.cron) == "",
+                        ),
                     ).order_by(
                         EmployeeTask.priority.desc(),
                         EmployeeTask.id.desc(),
