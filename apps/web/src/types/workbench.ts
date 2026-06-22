@@ -49,6 +49,8 @@ export interface WorkbenchConfig {
   employeeId: string
   blocks: WorkbenchBlock[]
   lastModified: number
+  /** 被邀请进工作台的员工 id（切换器据此列出）。缺省视为 []。 */
+  members?: number[]
 }
 
 /**

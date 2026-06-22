@@ -103,6 +103,20 @@ export function initializeWorkbenchConfig(employeeId: string): WorkbenchConfig {
   return config
 }
 
+/** 读工作台成员（被邀请进工作台的员工 id）。缺省 / 旧 config → []。 */
+export function getMembers(employeeId: string): number[] {
+  const cfg = loadWorkbenchConfig(employeeId)
+  return Array.isArray(cfg?.members) ? (cfg!.members as number[]) : []
+}
+
+/** 写工作台成员并广播变更。 */
+export function setMembers(employeeId: string, members: number[]): void {
+  const cfg =
+    loadWorkbenchConfig(employeeId) ?? initializeWorkbenchConfig(employeeId)
+  saveWorkbenchConfig({ ...cfg, members, lastModified: Date.now() })
+  emitWorkbenchConfigChanged()
+}
+
 /** 同一会话 + 同一资源路径视为同一个产物（钉重复时原地更新而非新增重复看板） */
 function isSameHtmlRef(a: HtmlArtifactRef, b: HtmlArtifactRef): boolean {
   return (
