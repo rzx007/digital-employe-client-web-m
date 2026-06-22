@@ -603,3 +603,81 @@ def test_today_task_read_has_plan_fields():
 def test_conversation_read_exposes_session_flags():
     from src.schemas.conversation import ConversationRead
     assert "session_flags" in ConversationRead.model_fields
+
+
+def test_two_runs_get_separate_conversations(db_session, monkeypatch):
+    """两轮调度各开一个 curator 会话，子任务日志 orch_conv 分别落到对应会话。"""
+    import src.service.task_scheduler_service as tss
+    import src.service.agent.orchestrator.execution as ex
+    import src.service.agent.orchestrator.dependency_scheduler as ds
+    import src.service.stream_registry as sr
+    from src.models.conversation import Conversation
+    from src.models.employee_task import EmployeeTask
+    from src.models.task_execution_log import TaskExecutionLog
+    from src.models.plan_run import PlanRun
+    from sqlalchemy import select as _select
+    from sqlalchemy.orm import sessionmaker
+
+    sf = sessionmaker(bind=db_session.get_bind())
+    for mod in (tss, ds):
+        monkeypatch.setattr(mod, "get_session_local", lambda: sf, raising=False)
+
+    ws, plan = _seed_ws_plan(db_session)
+    plan.cron = "0 10 * * *"; plan.is_recurring = True
+    plan.user_input = "每天查热搜→总结文档"
+    plan.plan_json = '[{"depends_on": null}, {"depends_on": [0]}]'
+    db_session.commit()
+    curator = Employee(workspace_id=ws.id, name="总管", employee_code="curator", is_curator=True)
+    db_session.add(curator); db_session.flush()
+    emp = Employee(workspace_id=ws.id, name="emp", employee_code="c", user_id=ws.user_id); db_session.add(emp); db_session.flush()
+    A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+                     execute_mode="immediate", orchestration_plan_id=plan.id, user_prompt="a")
+    B = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="B",
+                     execute_mode="immediate", orchestration_plan_id=plan.id, user_prompt="b")
+    db_session.add_all([A, B]); db_session.commit()
+    plan_id = plan.id
+
+    monkeypatch.setattr("src.service.agent.orchestrator.runtime.can_assign_to_employee", lambda db, eid: True)
+    monkeypatch.setattr(sr.registry, "can_admit", lambda cls: True)
+
+    def _fake_start(db, task, employee, workspace_id, *, priority=0, source="orchestration",
+                    prereq_briefing="", stream_class=None, run_id=None,
+                    orchestrator_conversation_id=None):
+        log = TaskExecutionLog(
+            task_id=task.id, workspace_id=workspace_id, employee_id=employee.id,
+            skill_id=None, task_name_snapshot=task.task_name, run_status="success",
+            run_result="ok", input_json="{}", output_json="{}", started_at=cst_now(),
+            run_id=run_id, orchestrator_conversation_id=orchestrator_conversation_id,
+        )
+        db.add(log); db.commit(); db.refresh(log)
+        sr._auto_accept_if_scheduled_run_safe(db, log)
+        ds.on_employee_task_completed(task.id, workspace_id)
+        return 1
+
+    monkeypatch.setattr(ex, "start_task_as_conversation", _fake_start)
+    monkeypatch.setattr(ds, "_dispatch_successor",
+        lambda db, t, e, w, brief, rid, *, stream_class=None, orchestrator_conversation_id=None:
+            _fake_start(db, t, e, w, run_id=rid, orchestrator_conversation_id=orchestrator_conversation_id))
+
+    # 两轮触发
+    tss.TaskSchedulerService.run_plan_job(plan_id)
+    tss.TaskSchedulerService.run_plan_job(plan_id)
+
+    runs = db_session.scalars(_select(PlanRun).where(PlanRun.plan_id == plan_id)
+                              .order_by(PlanRun.run_seq)).all()
+    assert [r.run_seq for r in runs] == [1, 2]
+    # 每轮一个 conversation，互不相同
+    conv_ids = [r.conversation_id for r in runs]
+    assert all(c is not None for c in conv_ids) and len(set(conv_ids)) == 2
+    # 每轮的子任务日志 orch_conv 落到本轮会话
+    for r in runs:
+        logs = db_session.scalars(_select(TaskExecutionLog)
+            .where(TaskExecutionLog.run_id == r.id)).all()
+        assert all(l.orchestrator_conversation_id == r.conversation_id for l in logs)
+    # 每个 conv session_flags 带正确标记
+    import json
+    for r in runs:
+        conv = db_session.get(Conversation, r.conversation_id)
+        flags = json.loads(conv.session_flags or "{}")
+        assert flags["kind"] == "scheduled_run" and flags["plan_id"] == plan_id
+        assert flags["run_seq"] == r.run_seq
