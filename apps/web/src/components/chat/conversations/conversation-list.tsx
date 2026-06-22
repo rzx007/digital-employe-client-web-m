@@ -1,4 +1,4 @@
-import { type ComponentProps } from "react"
+import { type ComponentProps, useMemo } from "react"
 import { IconCirclePlus, IconX } from "@tabler/icons-react"
 import { useShallow } from "zustand/react/shallow"
 import { Button } from "@workspace/ui/components/button"
@@ -83,6 +83,28 @@ export function ConversationList({
   const visibleConversations = q
     ? conversations.filter((c) => (c.title ?? "").toLowerCase().includes(q))
     : conversations
+
+  // 解析 session_flags 把 scheduled_run 会话分到独立分组
+  const { mainConversations, scheduledRunConversations } = useMemo(() => {
+    const main: typeof visibleConversations = []
+    const scheduled: typeof visibleConversations = []
+    for (const c of visibleConversations) {
+      let kind: string | undefined
+      if (c.sessionFlags) {
+        try {
+          const parsed = JSON.parse(c.sessionFlags)
+          if (parsed && typeof parsed === "object") {
+            kind = String(parsed.kind ?? "")
+          }
+        } catch {
+          // 非法 JSON 按普通会话处理
+        }
+      }
+      if (kind === "scheduled_run") scheduled.push(c)
+      else main.push(c)
+    }
+    return { mainConversations: main, scheduledRunConversations: scheduled }
+  }, [visibleConversations])
 
   const deepLinkConversationId = getEmployeeDeepLinkConversationId(
     selectedContactId,
@@ -241,7 +263,7 @@ export function ConversationList({
               }}
             />
           ) : null}
-          {visibleConversations.map((conversation) => (
+          {mainConversations.map((conversation) => (
             <ConversationItem
               key={conversation.id}
               conversation={conversation}
@@ -258,9 +280,35 @@ export function ConversationList({
               }}
             />
           ))}
+          {scheduledRunConversations.length > 0 && (
+            <details className="mt-2 rounded-md border bg-muted/30">
+              <summary className="cursor-pointer px-2 py-1.5 text-xs font-medium text-muted-foreground select-none">
+                定时任务（{scheduledRunConversations.length}）
+              </summary>
+              <div className="space-y-0.5 px-1 py-1">
+                {scheduledRunConversations.map((conversation) => (
+                  <ConversationItem
+                    key={conversation.id}
+                    conversation={conversation}
+                    isSelected={
+                      String(activeConversationId) === String(conversation.id)
+                    }
+                    onClick={() => {
+                      if (onSelectConversationId) {
+                        onSelectConversationId(conversation.id)
+                      } else {
+                        selectConversationById(conversation.id)
+                      }
+                      onSelectConversation?.()
+                    }}
+                  />
+                ))}
+              </div>
+            </details>
+          )}
           {activeContactId &&
             !conversationsPending &&
-            visibleConversations.length === 0 &&
+            mainConversations.length === 0 && scheduledRunConversations.length === 0 &&
             (q ? (
               <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
                 <p className="text-xs">没有匹配的对话</p>
