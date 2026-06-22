@@ -26,7 +26,7 @@ from src.service.agent.orchestrator.tools._helpers import (
 
 
 @tool
-def create_orchestration_plan(summary: str, tasks: str | list) -> str:
+def create_orchestration_plan(summary: str, tasks: str | list, schedule: str | None = None) -> str:
     """创建任务编排计划。调用时机：确认任务拆解和员工分配无误后调用。
 
     注意：禁止将同一 employee_id 拆成多条子任务；单员工多步须合并为一条 prompt。
@@ -45,6 +45,10 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
           "depends_on": <int | int[] | null>,
           "output_tier": "<small | standard | large>"
         }
+      schedule: 计划级重复节拍（可选）。标准 5 段 cron（"0 10 * * *"）或自然语言
+        （"每天 10 点"、"每周一上午 9:30"）均可。设置后整个计划在每个节拍自动
+        重跑冻结 DAG，绝不重新分析分单；子任务不再携带独立 cron。
+        不传或传 null → 一次性计划（confirm 后立即执行）。
       output_tier：该子任务**预期输出体量**，决定该成员单次最多生成多少 token：
         - "small"   ≈1k：取数/查询/一句话结论等极短产出；
         - "standard"≈16k：一般任务（默认，可省略）；
@@ -55,7 +59,8 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
         - 单个 int：等该前置任务**完成后**才开始（真·串行）；
         - int[]：等列出的多个前置全部完成后才开始（多依赖汇合）。
         依赖任务只有在前置真正产出结果后才会被派发，前置产物会自动作为简报引用注入。
-      cron：标准 5 段「分 时 日 月 周」。"30 9 * * *"=每天 9:30；"*/10 * * * *"=每 10 分钟重复。
+      cron：（子任务级，schedule 未设时有效）标准 5 段「分 时 日 月 周」。"30 9 * * *"=每天 9:30；
+        "*/10 * * * *"=每 10 分钟重复。
         标准 cron **无法表达"仅一次"**（"33 14 * * *" 会每天重复）；只跑一次用 cron=null（confirm 后立即执行）。
     """
     db = get_db()
@@ -74,6 +79,10 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
     if validation_error:
         return validation_error
 
+    # 解析计划级 cron（自然语言 or 标准 cron）
+    from src.service.task_scheduler_service import parse_nl_cron
+    plan_cron = parse_nl_cron(schedule) if schedule else None
+
     for i, t in enumerate(task_list):
         emp = db.get(Employee, t.get("employee_id"))
         if not emp:
@@ -86,6 +95,8 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
         plan_json=json.dumps(task_list, ensure_ascii=False),
         status="pending",
         total_tasks=len(task_list),
+        cron=plan_cron,
+        is_recurring=bool(plan_cron),
     )
     db.add(plan)
     db.flush()
@@ -94,6 +105,13 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
     for t in task_list:
         cron_expr = t.get("cron")
         emp = db.get(Employee, t["employee_id"])
+        # 计划级 cron 存在时：子任务不携带独立 cron，强制 immediate（由 run_plan_job 驱动）
+        if plan_cron:
+            task_cron_expression = ""
+            task_execute_mode = "immediate"
+        else:
+            task_cron_expression = cron_expr if cron_expr else ""
+            task_execute_mode = "scheduled" if cron_expr else "immediate"
         task = EmployeeTask(
             workspace_id=workspace_id,
             employee_id=t["employee_id"],
@@ -101,7 +119,7 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
             task_name=t["task_name"],
             dispatch_type=t.get("dispatch_type", "skill"),
             skill_id=t.get("skill_id"),
-            cron_expression=cron_expr if cron_expr else "",
+            cron_expression=task_cron_expression,
             cron_expression_type="custom",
             user_prompt=t.get("prompt", ""),
             # 输出档位（small/standard/large）存入 task_input_json，派单时取出设成
@@ -110,7 +128,7 @@ def create_orchestration_plan(summary: str, tasks: str | list) -> str:
                 {"output_tier": (t.get("output_tier") or "standard")},
                 ensure_ascii=False,
             ),
-            execute_mode="scheduled" if cron_expr else "immediate",
+            execute_mode=task_execute_mode,
             source="orchestration",
             orchestration_plan_id=plan.id,
             source_conversation_id=conversation_id,

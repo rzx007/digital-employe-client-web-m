@@ -93,7 +93,7 @@ class TaskSchedulerService:
             return
 
         for job in scheduler.get_jobs():
-            if job.id.startswith(cls._job_prefix):
+            if job.id.startswith(cls._job_prefix) or job.id.startswith("plan:"):
                 scheduler.remove_job(job.id)
 
         with get_session_local()() as db:
@@ -107,6 +107,7 @@ class TaskSchedulerService:
                         | (EmployeeTask.valid_until >= now),
                         EmployeeTask.cron_expression.isnot(None),
                         func.trim(EmployeeTask.cron_expression) != "",
+                        EmployeeTask.orchestration_plan_id.is_(None),
                     ).order_by(
                         EmployeeTask.priority.desc(),
                         EmployeeTask.id.desc(),
@@ -157,6 +158,33 @@ class TaskSchedulerService:
                 task.next_run_at = job.next_run_time if job else TaskService.compute_next_run(cron)
                 db.add(task)
             db.commit()
+
+            # 计划级 cron jobs：每个循环计划注册一个 plan:{id} job
+            try:
+                from src.models.orchestration_plan import OrchestrationPlan
+                plans = list(db.scalars(
+                    select(OrchestrationPlan).where(
+                        OrchestrationPlan.status == "confirmed",
+                        OrchestrationPlan.cron.isnot(None),
+                        func.trim(OrchestrationPlan.cron) != "",
+                    )
+                ).all())
+                for plan in plans:
+                    cron = (plan.cron or "").strip()
+                    if TaskService.compute_next_run(cron, now=now) is None:
+                        logger.warning("跳过无法解析的计划级 cron plan_id=%s cron=%r", plan.id, cron)
+                        continue
+                    job_id = f"plan:{plan.id}"
+                    scheduler.add_job(
+                        cls.run_plan_job, trigger=CronTrigger.from_crontab(cron, timezone=CST),
+                        id=job_id, args=[plan.id], replace_existing=True,
+                        max_instances=1, coalesce=True, misfire_grace_time=120,
+                    )
+                    job = scheduler.get_job(job_id)
+                    plan.next_run_at = job.next_run_time if job else TaskService.compute_next_run(cron)
+                db.commit()
+            except Exception as _plan_scan_exc:  # pylint: disable=broad-exception-caught
+                logger.warning("计划级 cron 扫描失败（跳过，不影响任务级调度）: %s", _plan_scan_exc)
         cls._register_system_jobs()
 
     @classmethod
@@ -553,6 +581,37 @@ class TaskSchedulerService:
             "employee_name": employee.name,
             "task_name": task_name_snap,
         })
+
+    @classmethod
+    def run_plan_job(cls, plan_id: int) -> None:
+        """递归计划到点：开一轮新 scheduled run，直接重跑冻结 DAG 根任务。
+
+        绝不调 _start_curator_task / 不重发总管消息 / 不重新分析分单。
+        """
+        from src.models.orchestration_plan import OrchestrationPlan
+        from src.service.agent.orchestrator.execution import start_immediate_tasks
+        from src.service.agent.orchestrator.plan_run_service import open_plan_run
+
+        with get_session_local()() as db:
+            plan = db.get(OrchestrationPlan, plan_id)
+            if plan is None or plan.status != "confirmed" or not (plan.cron or "").strip():
+                return
+            tasks = list(db.scalars(
+                select(EmployeeTask).where(EmployeeTask.orchestration_plan_id == plan_id)
+                .order_by(EmployeeTask.priority.desc(), EmployeeTask.id.asc())
+            ).all())
+            if not tasks:
+                return
+            run = open_plan_run(db, plan_id, plan.workspace_id, trigger="scheduled", auto_accept=True)
+            db.commit()
+            try:
+                start_immediate_tasks(db, tasks, plan, plan.workspace_id, run_id=run.id)
+            except Exception:
+                logger.error("run_plan_job 派发失败 plan=%s run=%s", plan_id, run.id, exc_info=True)
+            plan.last_run_at = cst_now()
+            plan.next_run_at = TaskService.compute_next_run(plan.cron, now=plan.last_run_at)
+            db.commit()
+            logger.info("递归计划到点 plan=%s run_seq=%s（绕开总管重分析）", plan_id, run.run_seq)
 
     @classmethod
     def run_task_job(cls, task_id: int) -> None:

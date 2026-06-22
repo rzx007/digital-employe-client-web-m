@@ -268,3 +268,50 @@ def test_task_prereqs_accepted_scoped_by_run(db_session, monkeypatch):
     assert ds.task_prereqs_accepted(db_session, B) is True
     # 根任务 A 无前置 → True
     assert ds.task_prereqs_accepted(db_session, A) is True
+
+
+def test_run_plan_job_opens_scheduled_run_without_curator(db_session, monkeypatch):
+    import src.service.task_scheduler_service as tss
+    import src.service.agent.orchestrator.execution as ex
+    from src.models.employee_task import EmployeeTask
+    from sqlalchemy import select as _select
+    from sqlalchemy.orm import sessionmaker
+    ws, plan = _seed_ws_plan(db_session)
+    plan.cron = "0 10 * * *"; plan.is_recurring = True; plan.plan_json = '[{"depends_on": null}]'
+    db_session.commit()
+    emp = Employee(workspace_id=ws.id, name="e", employee_code="c"); db_session.add(emp); db_session.flush()
+    A = EmployeeTask(workspace_id=ws.id, employee_id=emp.id, task_name="A",
+                     execute_mode="immediate", orchestration_plan_id=plan.id, user_prompt="a")
+    db_session.add(A); db_session.commit()
+
+    sf = sessionmaker(bind=db_session.get_bind())
+    monkeypatch.setattr(tss, "get_session_local", lambda: sf)
+    seen = {}
+    monkeypatch.setattr(ex, "start_immediate_tasks",
+                        lambda db, tasks, plan, ws_id, run_id: seen.setdefault("run_id", run_id) or [])
+    monkeypatch.setattr(tss.TaskSchedulerService, "_start_curator_task",
+                        classmethod(lambda cls, *a, **k: (_ for _ in ()).throw(AssertionError("不该调总管"))))
+
+    tss.TaskSchedulerService.run_plan_job(plan.id)
+
+    with sf() as d:
+        run = d.scalars(_select(PlanRun).where(PlanRun.plan_id == plan.id)).first()
+        assert run is not None and run.trigger == "scheduled" and run.auto_accept is True
+    assert seen.get("run_id") is not None
+
+
+def test_create_plan_with_schedule_sets_plan_cron(db_session, monkeypatch):
+    import src.service.agent.orchestrator.tools.plans as tp
+    monkeypatch.setattr(tp, "get_db", lambda: db_session)
+    monkeypatch.setattr(tp, "get_workspace_id", lambda: 1)
+    monkeypatch.setattr(tp, "get_conversation_id", lambda: 1)
+    monkeypatch.setattr(tp, "parse_nl_cron", lambda s: "0 10 * * *", raising=False)
+    monkeypatch.setattr(tp, "execute_plan", lambda db, plan, ws: "scheduled")
+    monkeypatch.setattr(tp, "compute_requires_confirmation", lambda tl: False)
+    ws = Workspace(id=1, name="w", root_path="/tmp/w"); db_session.add(ws); db_session.flush()
+    emp = Employee(id=1, workspace_id=1, name="e", employee_code="c"); db_session.add(emp); db_session.commit()
+    tasks = [{"employee_id": 1, "task_name": "热搜", "prompt": "查热搜", "depends_on": None}]
+    tp.create_orchestration_plan.func("每天查热搜", tasks, schedule="每天10点")
+    from sqlalchemy import select as _select
+    plan = db_session.scalars(_select(OrchestrationPlan)).first()
+    assert plan.cron == "0 10 * * *" and plan.is_recurring is True

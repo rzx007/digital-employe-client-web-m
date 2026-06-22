@@ -129,6 +129,14 @@ def execute_plan(db: Session, plan: OrchestrationPlan, workspace_id: int) -> str
     plan.started_at = cst_now()
     db.commit()
 
+    # 递归计划（计划级 cron）：只注册调度，不立即执行，等第一次 cron 触发
+    if (plan.cron or "").strip():
+        from src.service.task_scheduler_service import TaskSchedulerService
+        plan.is_recurring = True
+        db.commit()
+        TaskSchedulerService.reload_jobs()
+        return f"编排计划 #{plan.id} 已设为定时（{plan.cron}），将在每个节拍自动执行。"
+
     tasks = list(
         db.scalars(
             select(EmployeeTask).where(
