@@ -40,6 +40,7 @@ class ConversationRead(BaseModel):
     status: str = "idle"
     created_at: datetime
     updated_at: datetime
+    session_flags: str | None = None
 
     model_config = {"from_attributes": True}
 

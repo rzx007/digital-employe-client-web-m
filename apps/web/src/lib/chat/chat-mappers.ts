@@ -46,6 +46,7 @@ export function mapConversationListItemToConversation(
     lastMessageType: undefined,
     unreadCount: item.unreadCount ?? 0,
     updatedAt: new Date(item.updated_at),
+    sessionFlags: item.session_flags ?? undefined,
   }
 }
 
@@ -60,5 +61,6 @@ export function mapCreatedConversationListItem(
     status: (item.status as Conversation["status"]) ?? undefined,
     unreadCount: item.unreadCount ?? 0,
     updatedAt: new Date(item.updated_at),
+    sessionFlags: item.session_flags ?? undefined,
   }
 }

@@ -598,3 +598,8 @@ def test_today_task_read_has_plan_fields():
     from src.schemas.task import TodayTaskRead
     fields = TodayTaskRead.model_fields
     assert "is_plan" in fields and "plan_id" in fields and "run_seq" in fields
+
+
+def test_conversation_read_exposes_session_flags():
+    from src.schemas.conversation import ConversationRead
+    assert "session_flags" in ConversationRead.model_fields

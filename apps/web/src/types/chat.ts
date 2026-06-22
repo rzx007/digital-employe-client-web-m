@@ -34,6 +34,7 @@ export interface Conversation {
   unreadCount: number
   updatedAt: Date
   messages?: Message[]
+  sessionFlags?: string | null
 }
 
 export interface AIEmployee {

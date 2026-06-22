@@ -203,6 +203,7 @@ export interface ConversationListItemDto {
   lastMessage?: string
   lastMessageTime?: string
   unreadCount?: number
+  session_flags?: string | null
 }
 
 /**
