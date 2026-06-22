@@ -56,6 +56,11 @@ _BUILTIN_SEED_EMPLOYEES: tuple[tuple[str, tuple[str, ...], str | None], ...] = (
         ("bug-reporter",),
         "收集并提交 BUG 反馈到官方后台。",
     ),
+    (
+        "工作台助手",
+        ("workbench-builder",),
+        "在工作台里做、改、组织 HTML 看板。",
+    ),
 )
 
 
