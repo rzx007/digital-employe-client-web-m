@@ -39,7 +39,7 @@ class SlashCommandOption extends MenuOption {
   description: string
   keywords: Array<string>
   kind?: "skill" | "shortcut"
-  prompt?: string
+  prompt?: string // 仅 shortcut：由调用方(resolveCuratorSend)读取，插件本身不消费
   onSelect: (queryString: string) => void
 
   constructor(item: SlashCommandItem, onSelect: (queryString: string) => void) {
@@ -92,6 +92,41 @@ function FloatingMenu({
   const isBottomOverflow = rect.bottom + 300 > window.innerHeight
   const topPosition = isBottomOverflow ? rect.top - 40 : rect.bottom + 4
 
+  const indexed = options.map((option, i) => ({ option, i }))
+  const shortcuts = indexed.filter((x) => x.option.kind === "shortcut")
+  const skills = indexed.filter((x) => x.option.kind !== "shortcut")
+  const renderItem = (option: SlashCommandOption, i: number) => (
+    <CommandItem
+      key={option.key}
+      onSelect={() => {
+        setHighlightedIndex(i)
+        selectOptionAndCleanUp(option)
+      }}
+      className={cn(
+        "flex cursor-pointer items-start gap-2 rounded-sm p-2 hover:bg-accent hover:text-accent-foreground",
+        selectedIndex === i && "bg-accent text-accent-foreground"
+      )}
+      onMouseEnter={() => {
+        setHighlightedIndex(i)
+      }}
+      onMouseDown={(e) => {
+        e.preventDefault()
+      }}
+    >
+      <div className="flex h-6 w-6 items-center justify-center rounded-sm bg-muted text-muted-foreground">
+        {option.icon}
+      </div>
+      <div className="flex flex-col">
+        <span className="text-sm leading-none font-medium">
+          {option.title}
+        </span>
+        <span className="line-clamp-2 text-xs text-muted-foreground">
+          {option.description}
+        </span>
+      </div>
+    </CommandItem>
+  )
+
   return createPortal(
     <div
       data-prompt-typeahead-menu="true"
@@ -107,58 +142,16 @@ function FloatingMenu({
     >
       <Command>
         <CommandList>
-          {(() => {
-            const indexed = options.map((option, i) => ({ option, i }))
-            const shortcuts = indexed.filter(
-              (x) => x.option.kind === "shortcut"
-            )
-            const skills = indexed.filter((x) => x.option.kind !== "shortcut")
-            const renderItem = (option: SlashCommandOption, i: number) => (
-              <CommandItem
-                key={option.key}
-                onSelect={() => {
-                  setHighlightedIndex(i)
-                  selectOptionAndCleanUp(option)
-                }}
-                className={cn(
-                  "flex cursor-pointer items-start gap-2 rounded-sm p-2 hover:bg-accent hover:text-accent-foreground",
-                  selectedIndex === i && "bg-accent text-accent-foreground"
-                )}
-                onMouseEnter={() => {
-                  setHighlightedIndex(i)
-                }}
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                }}
-              >
-                <div className="flex h-6 w-6 items-center justify-center rounded-sm bg-muted text-muted-foreground">
-                  {option.icon}
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm leading-none font-medium">
-                    {option.title}
-                  </span>
-                  <span className="line-clamp-2 text-xs text-muted-foreground">
-                    {option.description}
-                  </span>
-                </div>
-              </CommandItem>
-            )
-            return (
-              <>
-                {shortcuts.length > 0 && (
-                  <CommandGroup heading="快捷指令">
-                    {shortcuts.map(({ option, i }) => renderItem(option, i))}
-                  </CommandGroup>
-                )}
-                {skills.length > 0 && (
-                  <CommandGroup heading="技能">
-                    {skills.map(({ option, i }) => renderItem(option, i))}
-                  </CommandGroup>
-                )}
-              </>
-            )
-          })()}
+          {shortcuts.length > 0 && (
+            <CommandGroup heading="快捷指令">
+              {shortcuts.map(({ option, i }) => renderItem(option, i))}
+            </CommandGroup>
+          )}
+          {skills.length > 0 && (
+            <CommandGroup heading="技能">
+              {skills.map(({ option, i }) => renderItem(option, i))}
+            </CommandGroup>
+          )}
         </CommandList>
       </Command>
     </div>,
