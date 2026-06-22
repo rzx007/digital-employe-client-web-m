@@ -406,3 +406,22 @@ def test_run_plan_job_stamps_next_run_and_fails_run_on_dispatch_error(db_session
         assert run is not None and run.status == "failed" and run.ended_at is not None
         p = d.get(OrchestrationPlan, plan_id)
         assert p.next_run_at is not None and p.last_run_at is not None
+
+
+def test_create_plan_with_unparseable_schedule_errors_not_degrades(db_session, monkeypatch):
+    import src.service.agent.orchestrator.tools.plans as tp
+    from sqlalchemy import select as _select
+    from src.models.orchestration_plan import OrchestrationPlan
+    monkeypatch.setattr(tp, "get_db", lambda: db_session)
+    monkeypatch.setattr(tp, "get_workspace_id", lambda: 1)
+    monkeypatch.setattr(tp, "get_conversation_id", lambda: 1)
+    monkeypatch.setattr(tp, "parse_nl_cron", lambda s: None, raising=False)  # 模拟解析失败
+    monkeypatch.setattr(tp, "execute_plan", lambda db, plan, ws: "should-not-run")
+    monkeypatch.setattr(tp, "compute_requires_confirmation", lambda tl: False)
+    ws = Workspace(id=1, name="w", root_path="/tmp/w"); db_session.add(ws); db_session.flush()
+    emp = Employee(id=1, workspace_id=1, name="e", employee_code="c"); db_session.add(emp); db_session.commit()
+    tasks = [{"employee_id": 1, "task_name": "热搜", "prompt": "查热搜", "depends_on": None}]
+    result = tp.create_orchestration_plan.func("每天查热搜", tasks, schedule="每个满月的子时")
+    assert "无法解析" in result            # 返回错误而非静默降级
+    # 不应持久化任何 plan
+    assert db_session.scalars(_select(OrchestrationPlan)).first() is None

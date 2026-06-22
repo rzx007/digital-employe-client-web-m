@@ -23,6 +23,7 @@ from src.service.agent.orchestrator.task_validation import validate_orchestratio
 from src.service.agent.orchestrator.tools._helpers import (
     parse_orchestration_task_list,
 )
+from src.service.task_scheduler_service import parse_nl_cron
 
 
 @tool
@@ -80,8 +81,13 @@ def create_orchestration_plan(summary: str, tasks: str | list, schedule: str | N
         return validation_error
 
     # 解析计划级 cron（自然语言 or 标准 cron）
-    from src.service.task_scheduler_service import parse_nl_cron
     plan_cron = parse_nl_cron(schedule) if schedule else None
+
+    if schedule and not plan_cron:
+        return (
+            f"错误：无法解析定时表达式「{schedule}」。请改用标准 5 段 cron"
+            f"（如「0 10 * * *」表示每天 10:00），或换一种更明确的时间说法。"
+        )
 
     for i, t in enumerate(task_list):
         emp = db.get(Employee, t.get("employee_id"))
