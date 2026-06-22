@@ -107,11 +107,14 @@ export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
           const body = (
             <>
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                {/* 标题行：plan 行只放标题（badge 下移到副信息行），员工任务行同行带 employee 标签 */}
+                {/* 标题行：plan 行只放标题（badge 下移到副信息行），员工任务行同行带 employee 标签
+                    注意：plan 行用 div 而非 span——truncate 的 overflow:hidden 在 inline span 上不生效，
+                    span 不缩会被外层 overflow-hidden 硬切（无省略号）。员工行的 span 因被内层 flex 包裹
+                    自动按 block-like 排版，truncate 才有效。 */}
                 {task.is_plan ? (
-                  <span className="truncate text-xs font-medium">
+                  <div className="truncate text-xs font-medium">
                     {task.task_name}
-                  </span>
+                  </div>
                 ) : (
                   <div className="flex min-w-0 items-center gap-1.5">
                     <span className="truncate text-xs font-medium">
