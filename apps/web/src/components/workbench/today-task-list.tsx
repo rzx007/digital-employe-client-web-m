@@ -8,7 +8,7 @@ import { TaskStatusBadge } from "./task-status-badge"
 import { navigateToEmployeeFromCurator } from "@/lib/chat/curator-navigation"
 import { getContactId } from "@/lib/chat/contact-utils"
 import { useChatStore } from "@/stores/chat-store"
-import { selectConversationById } from "@/lib/chat/conversation-selection"
+import { selectConversationForContact } from "@/lib/chat/conversation-selection"
 
 interface TodayTaskListProps {
   executions: TodayTask[]
@@ -39,8 +39,12 @@ export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
     (task: TodayTask) => {
       if (task.conversation_id == null) return
       if (task.is_plan) {
-        // plan 折叠行：直接打开本轮 curator 会话（不走员工深链）
-        selectConversationById(task.conversation_id)
+        // plan 折叠行：切到总管联系人 + 选中本轮 curator 会话（不走员工深链）
+        const state = useChatStore.getState()
+        const curatorContact = state.contacts.find((c) => c.type === "curator")
+        const curatorContactId = curatorContact ? getContactId(curatorContact) : null
+        if (curatorContactId == null) return
+        selectConversationForContact(curatorContactId, task.conversation_id)
         return
       }
       // 普通员工执行会话：用既有深链
