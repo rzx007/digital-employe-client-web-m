@@ -1,6 +1,8 @@
 import { useState } from "react"
 import { IconMessage, IconUsers } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
+import { switchToContact } from "@/lib/chat/conversation-selection"
+import { getContactId } from "@/lib/chat/contact-utils"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import {
   Tabs,
@@ -9,8 +11,6 @@ import {
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
 import { cn } from "@workspace/ui/lib/utils"
-import { switchToContact } from "@/lib/chat/conversation-selection"
-import { getContactId } from "@/lib/chat/contact-utils"
 import { useChatStore } from "@/stores/chat-store"
 import {
   useExecutionMetrics7d,
@@ -38,12 +38,9 @@ export function ContactDetailPanel({
   const selectedContact = useChatStore((s) => s.getSelectedContact())
 
   const handleSendMessage = () => {
-    const contact = useChatStore.getState().getSelectedContact()
-    if (!contact) return
-    const id = getContactId(contact)
-    if (id) {
-      switchToContact(id)
-    }
+    if (!selectedContact) return
+    const id = getContactId(selectedContact)
+    if (id) switchToContact(id)
   }
 
   if (!selectedContact) {
@@ -72,7 +69,11 @@ export function ContactDetailPanel({
         <div className="mx-auto max-w-3xl space-y-6 p-6">
           <ContactProfileCard
             contact={selectedContact}
-            onSendMessage={handleSendMessage}
+            onSendMessage={
+              selectedContact.type === "curator"
+                ? handleSendMessage
+                : undefined
+            }
           />
           {selectedContact.type === "employee" &&
             selectedContact.employee?.id && (
@@ -118,7 +119,7 @@ function ContactProfileCard({
   onSendMessage,
 }: {
   contact: ChatViewContact
-  onSendMessage: () => void
+  onSendMessage?: () => void
 }) {
   const displayName = getContactDisplayName(contact)
 
@@ -181,12 +182,14 @@ function ContactProfileCard({
         </div>
       </div>
 
-      <div className="mt-4">
-        <Button onClick={onSendMessage} className="gap-2">
-          <IconMessage className="size-4" />
-          发消息
-        </Button>
-      </div>
+      {onSendMessage && (
+        <div className="mt-4">
+          <Button onClick={onSendMessage} className="gap-2">
+            <IconMessage className="size-4" />
+            发消息
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

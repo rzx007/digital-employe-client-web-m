@@ -6,7 +6,6 @@ import { Input } from "@workspace/ui/components/input"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
 import type { Contact } from "@/types/chat"
-import { switchToContact } from "@/lib/chat/conversation-selection"
 import { getContactId } from "@/lib/chat/contact-utils"
 import { useChatStore } from "@/stores/chat-store"
 import { ContactItem } from "./contact-item"
@@ -92,9 +91,7 @@ export function ContactsPanel({
     [contacts]
   )
 
-  const handleDoubleClickContact = (contactId: string) => {
-    switchToContact(contactId)
-  }
+
 
   const q = searchQuery.toLowerCase()
   const filteredCuratorContacts = React.useMemo(
@@ -187,9 +184,7 @@ export function ContactsPanel({
                     contact={contact}
                     isCollapsed={false}
                     clickAction="select"
-                    onDoubleClick={() =>
-                      handleDoubleClickContact(getContactId(contact) ?? "")
-                    }
+
                   />
                 ))}
               </div>

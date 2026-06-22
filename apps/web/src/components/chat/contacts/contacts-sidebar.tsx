@@ -17,7 +17,6 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { request } from "@/lib/request"
 import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import { findContactInList, getContactId } from "@/lib/chat/contact-utils"
-import { switchToContact } from "@/lib/chat/conversation-selection"
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 
@@ -99,9 +98,7 @@ export function ContactsSidebar({
     [contacts]
   )
 
-  const handleDoubleClickContact = (contactId: string) => {
-    switchToContact(contactId)
-  }
+
 
   return (
     <>
@@ -149,9 +146,7 @@ export function ContactsSidebar({
                   key={contact.curator?.id}
                   contact={contact}
                   isCollapsed={isCollapsed}
-                  onDoubleClick={() =>
-                    handleDoubleClickContact(getContactId(contact) ?? "")
-                  }
+
                 />
               ))}
 
@@ -162,9 +157,7 @@ export function ContactsSidebar({
                   key={contact.employee?.id}
                   contact={contact}
                   isCollapsed={isCollapsed}
-                  onDoubleClick={() =>
-                    handleDoubleClickContact(getContactId(contact) ?? "")
-                  }
+
                 />
               ))}
             </div>
