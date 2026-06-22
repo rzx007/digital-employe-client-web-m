@@ -17,11 +17,43 @@ def init_db() -> None:
     # workspaces 表：幂等加列（已有库不会被 create_all 自动 ALTER）
     _ensure_workspace_auto_grant_column(engine)
 
+    # 定时递归编排特性新增列：幂等补齐已有库
+    _ensure_orchestration_recurring_columns(engine)
+
     # FTS5 全文索引：conversation_messages.content
     _init_fts5(engine)
 
     # 启动时清理上次进程遗留的"运行中"流状态。
     _reset_orphaned_streams(engine)
+
+
+def _ensure_orchestration_recurring_columns(engine) -> None:
+    """幂等为已有库补「定时递归编排」特性新增列。
+
+    新库由 create_all 直接建全；已有库不会被 create_all ALTER，需在此补列：
+    - task_execution_logs.run_id
+    - orchestration_plans.cron / is_recurring / last_run_at / next_run_at
+    （plan_runs 新表由 create_all 自动建出，无需在此处理。）
+    """
+    insp = inspect(engine)
+    tel_cols = {c["name"] for c in insp.get_columns("task_execution_logs")}
+    op_cols = {c["name"] for c in insp.get_columns("orchestration_plans")}
+    with engine.begin() as conn:
+        if "run_id" not in tel_cols:
+            conn.execute(text("ALTER TABLE task_execution_logs ADD COLUMN run_id INTEGER"))
+            logger.info("added column task_execution_logs.run_id")
+        if "cron" not in op_cols:
+            conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN cron VARCHAR(128)"))
+            logger.info("added column orchestration_plans.cron")
+        if "is_recurring" not in op_cols:
+            conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN is_recurring BOOLEAN NOT NULL DEFAULT 0"))
+            logger.info("added column orchestration_plans.is_recurring")
+        if "last_run_at" not in op_cols:
+            conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN last_run_at DATETIME"))
+            logger.info("added column orchestration_plans.last_run_at")
+        if "next_run_at" not in op_cols:
+            conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN next_run_at DATETIME"))
+            logger.info("added column orchestration_plans.next_run_at")
 
 
 def _ensure_workspace_auto_grant_column(engine) -> None:
