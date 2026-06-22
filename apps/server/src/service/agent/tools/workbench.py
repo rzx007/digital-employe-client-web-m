@@ -258,3 +258,89 @@ def arrange_workbench(operations: str, runtime: ToolRuntime[None, None] = None) 
         summary += f"（{len(errors)} 条被忽略：{'；'.join(errors)}）"
     # 回吐结构化 payload + 人类可读摘要，前端 handler 解析 marker 段。
     return f"{summary}\n{json.dumps(payload, ensure_ascii=False)}"
+
+
+def _resolve_conv_id(runtime=None) -> int | None:
+    """取当前会话 id：优先注入 runtime，回退 orchestrator context var。"""
+    from src.service.agent.orchestrator.runtime import (
+        conversation_id_from_runtime,
+        get_conversation_id,
+    )
+
+    cid = conversation_id_from_runtime(runtime)
+    if cid is None:
+        cid = get_conversation_id()
+    return int(cid) if cid is not None else None
+
+
+def resolve_resource_pool_src_path(root_path: str, abs_path: str) -> str | None:
+    """把产物的真实绝对路径转成相对 workspace.root_path 的 src_path（资源池存相对路径）。
+
+    越界（不在 root_path 内）返回 None。
+    """
+    try:
+        root = PurePath(str(root_path).replace("\\", "/"))
+        target = PurePath(str(abs_path).replace("\\", "/"))
+        rel = target.relative_to(root)
+        return rel.as_posix()
+    except ValueError:
+        return None
+
+
+@tool
+def save_to_resource_pool(
+    resourcePath: str, title: str = "", runtime: ToolRuntime[None, None] = None
+) -> str:
+    """把当前会话的一个 .html 产物加入工作台资源池（用户精选的看板库，可复用、可拖到工作台）。
+
+    resourcePath **直接填你生成的 .html 文件名**（如 "sales-dashboard.html"），工具会自动
+    在当前会话产物里定位真实路径——不要拼前缀或绝对路径。
+    title 可省（默认取文件名）。
+    用户说「把这个 html 加进资源池 / 上传到资源池 / 收藏这个看板」时调用本工具。
+    """
+    cid = _resolve_conv_id(runtime)
+    if cid is None:
+        return "错误：缺少会话上下文，无法入池。"
+
+    resolve_path = _build_current_conversation_resolver(runtime)
+    real_path = resolve_path(resourcePath) if isinstance(resourcePath, str) else None
+    if real_path is None:
+        hint = ""
+        available = getattr(resolve_path, "available_names", None)
+        if available:
+            hint = f"当前可入池的 .html：{', '.join(sorted(available))}。"
+        else:
+            hint = "当前会话还没有 .html 产物，请先用 write_file 生成。"
+        return f"错误：产物 {resourcePath!r} 找不到。{hint}"
+
+    from src.db.session import get_session_local
+    from src.models.conversation import Conversation
+    from src.models.workspace import Workspace
+    from src.service.workbench_resource_service import WorkbenchResourceService
+
+    db = get_session_local()()
+    try:
+        conv = db.get(Conversation, cid)
+        if conv is None:
+            return "错误：会话不存在，无法入池。"
+        ws = db.get(Workspace, conv.workspace_id)
+        if ws is None:
+            return "错误：工作空间不存在，无法入池。"
+
+        src_path = resolve_resource_pool_src_path(ws.root_path, real_path)
+        if src_path is None:
+            return "错误：产物路径越界，无法入池。"
+
+        row = WorkbenchResourceService.add_artifact(
+            db,
+            workspace_id=conv.workspace_id,
+            src_path=src_path,
+            title=(title or PurePath(real_path).name),
+            added_by=None,
+        )
+        return (
+            f"已把「{row.title}」加入工作台资源池，"
+            "你可以在工作台资源池里看到它，并拖到工作台网格上。"
+        )
+    finally:
+        db.close()

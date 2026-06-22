@@ -257,9 +257,13 @@ def get_agent(
     # 工作台编排：装了 workbench-builder 技能的员工（如「工作台助手」）才挂 arrange_workbench，
     # 让其能在工作台页面对话里钉/改/组织看板。其他员工不挂，避免污染工具集。
     if _should_mount_workbench(available_skills):
-        from src.service.agent.tools.workbench import arrange_workbench
+        from src.service.agent.tools.workbench import (
+            arrange_workbench,
+            save_to_resource_pool,
+        )
 
         extra_tools.append(arrange_workbench)
+        extra_tools.append(save_to_resource_pool)
 
     agent = create_deep_agent(
         model=model,

@@ -22,6 +22,7 @@ description: 在工作台里做、改、组织 HTML 看板。当用户在工作�
    - `blockRef` 用看板当前标题或 1 基序号。
    - 指令：`pin / resize / move / rename / hide / remove / reorder`。
    - span 档位：`small`(3×2) / `medium`(6×3) / `large`(6×6) / `full`(12×6)。
+3. **加入资源池**（用户要时）：用户说「把这个 html 加进资源池 / 上传到资源池 / 收藏这个看板」时，调 `save_to_resource_pool`，`resourcePath` 同样只填文件名。资源池是用户精选的看板库，可复用、可拖到工作台。
 
 # arrange_workbench 指令示例
 
@@ -34,6 +35,6 @@ description: 在工作台里做、改、组织 HTML 看板。当用户在工作�
 
 # 禁止
 
-- **禁止**把产物自作主张「加入资源池」——资源池入口只由用户在界面上点击触发，你没有入池工具。
+- **禁止**未经用户要求就把产物加入资源池——`save_to_resource_pool` 只在用户明确要求（「加进资源池/收藏」）时调。
 - **禁止**用 `arrange_workbench` 之外的方式操控看板。
 - **禁止**在聊天正文写出 `/artifacts/...` 等路径——交付时只说看板名称。
