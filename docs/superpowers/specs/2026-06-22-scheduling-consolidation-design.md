@@ -72,6 +72,7 @@
 - **recurring**：周期性表达（"每天/每周/每N分钟/标准cron"）→ cron（复用现有 `parse_nl_cron` 逻辑）。
 - **once**：相对/绝对一次性（"5分钟后/今晚8点/明天上午9点/2026-06-23 21:34"）→ 绝对 datetime（基于传入的 `now`，CST）。
 - 判别由 LLM 一次性归类（沿用 `parse_nl_cron` 的 `build_chat_model().invoke` 模式，但 prompt 要它先判 once/recurring 再给值），失败回落保守：纯 5 段数字 → recurring cron；其余无法判 → None（创建时报错，不静默降级）。
+- **⚠️ 顺序坑**：`parse_nl_cron` 顶部有 `_re_cron_digits` 正则快路（[task_scheduler_service.py:30/45](../../../apps/server/src/service/task_scheduler_service.py)），裸数字串（如 "5"）会被当 cron 直接返回。`parse_schedule` 的 once/recurring 归类必须**先于**这个数字快路跑，否则 "5分钟后" 之类会被误当 cron。
 
 > `now` 由调用方（create_orchestration_plan）传入 `cst_now()`，便于测试注入。
 
@@ -84,7 +85,7 @@
   - `schedule` 给了但解析失败 → 返回错误串（不静默降级，沿用现有 §最终评审#1 行为）。
   - `schedule` 为空 → 即时计划（schedule_kind=None）。
 - **删除 per-task `cron` 处理**：子任务一律 `cron_expression=""`、`execute_mode="immediate"`（无论计划是否定时）。docstring 移除 per-task `cron` 字段，schedule 说明改为"计划级、支持一次性(如『5分钟后』『今晚8点』)与重复(如『每天10点』)"。
-- `compute_requires_confirmation`（[confirmation_policy.py:35](../../../apps/server/src/service/agent/orchestrator/confirmation_policy.py)）的 `_task_is_readonly_query` 里"无 cron"判定改为看 plan 级 schedule（定时计划不免确认）；细节实现时对齐。
+- **`compute_requires_confirmation` 必改（不是可选）**（[confirmation_policy.py:26/35](../../../apps/server/src/service/agent/orchestrator/confirmation_policy.py)）：`_task_is_readonly_query` 现在按**子任务 `cron`** 判"无 cron 才免确认"。收敛后子任务永不带 cron，这条会失效——必须改为按**计划级 `schedule`**：有 schedule（once/recurring）的计划**一律需确认**（不能让定时计划走只读免确认路径直接自动执行）。这是一个明确的实现 TODO，不能漏。
 
 ## 7. 调度注册：`reload_jobs`
 
@@ -112,13 +113,14 @@
 3. 取 active 子任务，`start_immediate_tasks(db, tasks, plan, plan.workspace_id, run_id=run.id, orchestrator_conversation_id=run.conversation_id)`。
 4. 返回 run（调用方负责 last_run/next_run 等后续）。
 
-> `_create_scheduled_run_conversation` 已存在（上次抽出），保持；可考虑移到 execution.py 或保留在 scheduler、execute_plan_run 引用之。实现时择一，避免循环 import（scheduler 已 import execution，execution 不应反向 import scheduler → 把会话 helper 下沉到一个无环依赖的位置，如 execution.py 或新 `plan_run_service`）。
+> **import 方向（已核实现状）**：execution.py 目前已**惰性**（函数内）import task_scheduler_service（execute_plan 内调 reload_jobs），scheduler 也 import execution——靠"惰性局部 import"避免加载期环。`execute_plan_run` 放 execution.py 后若要建 per-run 会话，**不要在 execution.py 顶层 import scheduler**。把 `_create_scheduled_run_conversation` 从 TaskSchedulerService **下沉到一个无环位置**（推荐：新 `plan_run_service.py` 里加，或 execution.py 内），execute_plan_run 与 run_plan_job 都引用该位置，避免 execution→scheduler 的模块顶层依赖。保持现有"scheduler→execution 惰性 import"纪律即可。
 
 ### 8.1 `run_plan_job` 改用原语 + once 自停
 [task_scheduler_service.py:635](../../../apps/server/src/service/task_scheduler_service.py)：
 - 校验 plan confirmed 且 `schedule_kind` 非空。
 - 调 `execute_plan_run(db, plan, trigger="scheduled", auto_accept=True)`（替换原内联的 open_plan_run + 建会话 + start_immediate_tasks）。
-- **once 自停**：`schedule_kind=="once"` → 跑完设 `plan.status="done"`（或 `is_active` 语义；新状态值 `"done"`）使 reload_jobs 不再挂 + 不再出现在 confirmed 调度扫描；`recurring` → 更新 `last_run_at` / `next_run_at`。
+- **once 自停**：`schedule_kind=="once"` → 跑完设 `plan.status="done"`（新状态值）使 reload_jobs 不再挂；`recurring` → 更新 `last_run_at` / `next_run_at`。
+  - **⚠️ status="done" 副作用核查（实现时必做）**：grep 所有 `status == "confirmed"` / `status in (...)` 的判定点（cancel_orchestration_plan 的 guard、reload_jobs 的计划扫描、今日折叠 Part C、任何 UI/DTO 状态守卫），确认一个 done 的 once 计划：①当天面板仍能显示其最终状态（Part C 从已 surface 的子任务行/日志聚合，不重查 confirmed，应 OK，需确认）②不会被 cancel guard 拒绝或别处误判。若 "done" 引入不兼容，退而用 `is_recurring=False` + 清 run_at + 置一个"已消费"标记列让 reload_jobs 跳过，二选一在实现时定。
 - 失败处理（建会话失败 / 派发失败）沿用现有标 run failed 逻辑。
 
 ### 8.2 `execute_plan` 改用原语
@@ -136,7 +138,8 @@
 
 ## 9. 边角与迁移
 
-- **存量"子任务带 cron"的脏数据**（如已建的 plan#17/#18：plan.cron=None 但 task#19/#20 有 cron）：阶段A 后这些 task 级 job 不再被 reload_jobs 挂（编排子任务被 `orchestration_plan_id IS NULL` 过滤掉），于是它们**不再触发**。需一次性迁移：`init_db` 启动时把"`orchestration_plan_id` 非空且 `cron_expression` 非空"的存量子任务，按其 cron 反推 plan 的 schedule（recurring：plan.cron=task.cron + schedule_kind=recurring；难判 once/recurring 时一律按 recurring 保守）并清空 task.cron_expression。**或**更简单：标记这些计划 `status="cancelled"`（它们本就是测试脏数据，世界杯/打卡提醒），让用户重建。**实现时选后者（清理脏数据）**——避免反推歧义；spec 默认：迁移把"plan.cron 空但子任务带 cron"的计划 status 置 cancelled + 子任务 is_active=False，并日志列出，让用户按新模型重建。
+- **存量"子任务带 cron"的脏数据**（如已建的 plan#17/#18：plan.cron=None 但 task#19/#20 有 cron）：阶段A 后这些 task 级 job 不再被 reload_jobs 挂（编排子任务被 `orchestration_plan_id IS NULL` 过滤掉），于是它们**不再触发**。需一次性迁移：`init_db` 启动时把"`orchestration_plan_id` 非空且 `cron_expression` 非空"的存量子任务，按其 cron 反推 plan 的 schedule（recurring：plan.cron=task.cron + schedule_kind=recurring；难判 once/recurring 时一律按 recurring 保守）并清空 task.cron_expression。**或**更简单：标记这些计划 `status="cancelled"`（它们本就是测试脏数据，世界杯/打卡提醒），让用户重建。**实现时选后者（清理脏数据）**——避免反推歧义；spec 默认：迁移把符合**三段谓词**的计划置 cancelled + 子任务 is_active=False，并日志列出，让用户按新模型重建。
+- **三段谓词（精确，防误杀）**：`plan.schedule_kind IS NULL`（或新列尚不存在时 `plan.cron IS NULL/空`）**且** 存在 `orchestration_plan_id==plan.id 且 cron_expression 非空` 的子任务。即只杀"计划级无调度、却靠子任务 cron 偷偷定时"的脏数据。**不得**只按"子任务有 cron"两段判——那会误杀老模型里 plan.cron 已设的合法 recurring 计划（它们的子任务在旧实现里也可能带过 cron）。`orchestration_plan_id` 仅在 [plans.py:139](../../../apps/server/src/service/agent/orchestrator/tools/plans.py) 一处写入（必是编排子任务），无独立任务误入。
 - **once 的 DateTrigger 重启**：reload_jobs 对 once 只在 `last_run_at IS NULL` 且 `run_at>now` 时挂；跑过的不挂、过期未跑的不补触发（一次性过期即失效，记 warning）。
 - **今日折叠**：once 计划未跑 → pending + planned_at=run_at；跑完自停后仍能在当天面板显示其最终状态（Part C 读 latest run）。
 
