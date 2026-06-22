@@ -29,7 +29,6 @@ from src.service.agent.prompts import (
     build_filesystem_prompt_section,
     build_long_document_writing_section,
     build_memory_update_section,
-    build_workbench_arrange_section,
 )
 from src.service.agent.orchestrator.prompts import (
     ORCHESTRATOR_RUNTIME_CONTEXT_TEMPLATE,
@@ -37,7 +36,6 @@ from src.service.agent.orchestrator.prompts import (
 )
 from src.service.agent.orchestrator.runtime import set_context
 from src.service.agent.orchestrator.tools import (
-    arrange_workbench,
     cancel_plan,
     confirm_orchestration_plan,
     create_group_and_dispatch,
@@ -257,7 +255,6 @@ def get_orchestrator_agent(
         + fs_section
         + build_memory_update_section()
         + build_clarifying_questions_section()
-        + build_workbench_arrange_section()
         + build_long_document_writing_section(for_orchestrator=True)
         + runtime_context
     )
@@ -331,8 +328,6 @@ def get_orchestrator_agent(
             _serialize_db_tool(create_orchestration_plan),
             _serialize_db_tool(confirm_orchestration_plan),
             create_group_and_dispatch,
-            # arrange_workbench 纯内存编排指令解析，不读写 DB、不走网络，故不包串行锁。
-            arrange_workbench,
             _serialize_db_tool(list_workspace_groups),
             _serialize_db_tool(get_group),
             _serialize_db_tool(update_group),
