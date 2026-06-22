@@ -160,31 +160,28 @@ class TaskSchedulerService:
             db.commit()
 
             # 计划级 cron jobs：每个循环计划注册一个 plan:{id} job
-            try:
-                from src.models.orchestration_plan import OrchestrationPlan
-                plans = list(db.scalars(
-                    select(OrchestrationPlan).where(
-                        OrchestrationPlan.status == "confirmed",
-                        OrchestrationPlan.cron.isnot(None),
-                        func.trim(OrchestrationPlan.cron) != "",
-                    )
-                ).all())
-                for plan in plans:
-                    cron = (plan.cron or "").strip()
-                    if TaskService.compute_next_run(cron, now=now) is None:
-                        logger.warning("跳过无法解析的计划级 cron plan_id=%s cron=%r", plan.id, cron)
-                        continue
-                    job_id = f"plan:{plan.id}"
-                    scheduler.add_job(
-                        cls.run_plan_job, trigger=CronTrigger.from_crontab(cron, timezone=CST),
-                        id=job_id, args=[plan.id], replace_existing=True,
-                        max_instances=1, coalesce=True, misfire_grace_time=120,
-                    )
-                    job = scheduler.get_job(job_id)
-                    plan.next_run_at = job.next_run_time if job else TaskService.compute_next_run(cron)
-                db.commit()
-            except Exception as _plan_scan_exc:  # pylint: disable=broad-exception-caught
-                logger.warning("计划级 cron 扫描失败（跳过，不影响任务级调度）: %s", _plan_scan_exc)
+            from src.models.orchestration_plan import OrchestrationPlan
+            plans = list(db.scalars(
+                select(OrchestrationPlan).where(
+                    OrchestrationPlan.status == "confirmed",
+                    OrchestrationPlan.cron.isnot(None),
+                    func.trim(OrchestrationPlan.cron) != "",
+                )
+            ).all())
+            for plan in plans:
+                cron = (plan.cron or "").strip()
+                if TaskService.compute_next_run(cron, now=now) is None:
+                    logger.warning("跳过无法解析的计划级 cron plan_id=%s cron=%r", plan.id, cron)
+                    continue
+                job_id = f"plan:{plan.id}"
+                scheduler.add_job(
+                    cls.run_plan_job, trigger=CronTrigger.from_crontab(cron, timezone=CST),
+                    id=job_id, args=[plan.id], replace_existing=True,
+                    max_instances=1, coalesce=True, misfire_grace_time=120,
+                )
+                job = scheduler.get_job(job_id)
+                plan.next_run_at = job.next_run_time if job else TaskService.compute_next_run(cron)
+            db.commit()
         cls._register_system_jobs()
 
     @classmethod
