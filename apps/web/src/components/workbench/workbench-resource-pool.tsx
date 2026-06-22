@@ -117,12 +117,14 @@ export function WorkbenchResourcePool({
               key={r.id}
               draggable
               onDragStart={(e) => onDragStart(e, r)}
-              onClick={() => setPreviewId(r.id)}
+              onClick={() =>
+                setPreviewId((cur) => (cur === r.id ? null : r.id))
+              }
               className={cn(
                 "group flex cursor-pointer items-center gap-1.5 rounded border bg-card p-2 text-xs",
                 previewId === r.id && "border-primary ring-1 ring-primary"
               )}
-              title="点击预览，或拖到工作台网格"
+              title="点击预览/收起，或拖到工作台网格"
             >
               <span className="min-w-0 flex-1 truncate">{r.title}</span>
               <span className="rounded bg-muted px-1 text-[10px] text-muted-foreground">
@@ -163,18 +165,33 @@ export function WorkbenchResourcePool({
 
       {/* 预览区：点卡片在此渲染该 html 看板 */}
       {previewResource && (
-        <div className="mt-1 min-h-0 flex-1 overflow-hidden rounded border">
-          <WorkbenchHtmlPanel
-            key={previewResource.id}
-            htmlRef={{
-              conversationId: "resource",
-              resourcePath: previewResource.src_path,
-              pinnedAt: 0,
-              resourceId: previewResource.id,
-            }}
-            title={previewResource.title}
-            className="h-full"
-          />
+        <div className="mt-1 flex min-h-0 flex-1 flex-col overflow-hidden rounded border">
+          <div className="flex items-center gap-2 border-b bg-muted/30 px-2 py-1">
+            <span className="min-w-0 flex-1 truncate text-xs font-medium">
+              预览：{previewResource.title}
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-1.5 text-[11px]"
+              onClick={() => setPreviewId(null)}
+            >
+              收起预览
+            </Button>
+          </div>
+          <div className="min-h-0 flex-1">
+            <WorkbenchHtmlPanel
+              key={previewResource.id}
+              htmlRef={{
+                conversationId: "resource",
+                resourcePath: previewResource.src_path,
+                pinnedAt: 0,
+                resourceId: previewResource.id,
+              }}
+              title={previewResource.title}
+              className="h-full"
+            />
+          </div>
         </div>
       )}
     </div>
