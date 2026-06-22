@@ -159,47 +159,16 @@ def execute_plan(db: Session, plan: OrchestrationPlan, workspace_id: int) -> str
     plan.started_at = cst_now()
     db.commit()
 
-    # 递归计划（计划级 cron）：只注册调度，不立即执行，等第一次 cron 触发
-    if (plan.cron or "").strip():
+    # 定时计划（计划级 schedule）：只注册调度，不立即跑。
+    if (plan.schedule_kind or "").strip():
         from src.service.task_scheduler_service import TaskSchedulerService
-        plan.is_recurring = True
-        db.commit()
         TaskSchedulerService.reload_jobs()
-        return f"编排计划 #{plan.id} 已设为定时（{plan.cron}），将在每个节拍自动执行。"
+        when = plan.cron if plan.schedule_kind == "recurring" else plan.run_at
+        return f"编排计划 #{plan.id} 已设为定时（{plan.schedule_kind}: {when}），到点自动执行。"
 
-    tasks = list(
-        db.scalars(
-            select(EmployeeTask).where(
-                EmployeeTask.orchestration_plan_id == plan.id
-            ).order_by(EmployeeTask.priority.desc(), EmployeeTask.id.asc())
-        ).all()
-    )
-
-    immediate_tasks = [t for t in tasks if t.execute_mode == "immediate"]
-    scheduled_tasks = [t for t in tasks if t.execute_mode == "scheduled"]
-
-    results: list[str] = []
-
-    if scheduled_tasks:
-        from src.service.task_scheduler_service import TaskSchedulerService
-
-        TaskSchedulerService.reload_jobs()
-        results.append(f"{len(scheduled_tasks)} 个定时任务已加入调度队列")
-
-    if immediate_tasks:
-        from src.service.agent.orchestrator.plan_run_service import open_plan_run
-        run = open_plan_run(db, plan.id, workspace_id, trigger="manual", auto_accept=False)
-        # manual run 把 PlanRun.conversation_id 写成 plan.conversation_id（创建源），
-        # 让 Part B 的 today-task 折叠行可以统一从 PlanRun.conversation_id 取链接。
-        if plan.conversation_id is not None:
-            run.conversation_id = plan.conversation_id
-        db.commit()
-        results += start_immediate_tasks(
-            db, immediate_tasks, plan, workspace_id, run_id=run.id,
-            orchestrator_conversation_id=run.conversation_id,
-        )
-
-    return "\n".join([f"编排计划 #{plan.id} 执行中："] + results)
+    # 即时计划：唯一原语 manual run，立即派活。
+    execute_plan_run(db, plan, trigger="manual", auto_accept=False)
+    return f"编排计划 #{plan.id} 执行中。"
 
 
 # 兼容 orchestration_api 等既有 import

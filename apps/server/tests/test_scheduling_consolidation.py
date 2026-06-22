@@ -115,3 +115,32 @@ def test_execute_plan_run_manual_reuses_plan_conversation(db_session, monkeypatc
     monkeypatch.setattr(ex, "start_immediate_tasks", lambda *a, **k: [])
     run = ex.execute_plan_run(db_session, plan, trigger="manual", auto_accept=False)
     assert run.trigger == "manual" and run.conversation_id == conv.id  # 复用创建源会话
+
+
+def test_execute_plan_scheduled_only_registers(db_session, monkeypatch):
+    """定时计划(schedule_kind 非空)：execute_plan 只注册调度、不立即跑、不开 PlanRun。"""
+    import src.service.agent.orchestrator.execution as ex
+    from src.models.plan_run import PlanRun
+    from sqlalchemy import select
+    ws, plan = _seed_ws_plan_sc(db_session)
+    plan.schedule_kind = "recurring"; plan.cron = "0 10 * * *"; db_session.commit()
+    called = {}
+    monkeypatch.setattr("src.service.task_scheduler_service.TaskSchedulerService.reload_jobs",
+        classmethod(lambda cls: called.setdefault("reload", True)))
+    ran = {"run": False}
+    monkeypatch.setattr(ex, "execute_plan_run", lambda *a, **k: ran.update(run=True))
+    msg = ex.execute_plan(db_session, plan, ws.id)
+    assert called.get("reload") and not ran["run"]
+    assert db_session.scalars(select(PlanRun).where(PlanRun.plan_id == plan.id)).first() is None
+
+
+def test_execute_plan_immediate_runs_via_primitive(db_session, monkeypatch):
+    """即时计划(无 schedule)：execute_plan 走 execute_plan_run(manual)。"""
+    import src.service.agent.orchestrator.execution as ex
+    ws, plan = _seed_ws_plan_sc(db_session)
+    plan.schedule_kind = None; plan.cron = None; db_session.commit()
+    seen = {}
+    monkeypatch.setattr(ex, "execute_plan_run",
+        lambda db, p, *, trigger, auto_accept: seen.update(trigger=trigger, auto=auto_accept))
+    ex.execute_plan(db_session, plan, ws.id)
+    assert seen == {"trigger": "manual", "auto": False}
