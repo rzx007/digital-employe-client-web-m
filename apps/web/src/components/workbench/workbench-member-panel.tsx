@@ -15,16 +15,22 @@ import { cn } from "@workspace/ui/lib/utils"
  */
 export function WorkbenchMemberPanel({
   contact,
+  selectedConversationId,
   onOpenArtifact,
   onActiveConversation,
+  onOpenConversations,
   titleSlot,
   className,
 }: {
   contact: Contact
+  /** 用户从历史会话弹层选中的会话（覆盖默认取列表第一条）。 */
+  selectedConversationId?: string | number | null
   /** 点击对话头部资源图标 = 开右侧资源池 */
   onOpenArtifact?: () => void
   /** 上报当前激活会话 id（供「文件」tab 列该会话产物）。 */
   onActiveConversation?: (id: string | number | null) => void
+  /** 打开历史会话弹层。 */
+  onOpenConversations?: () => void
   /** 对话头部标题区自定义（总管/助手 下拉切换）。 */
   titleSlot?: React.ReactNode
   className?: string
@@ -78,11 +84,19 @@ export function WorkbenchMemberPanel({
     queryClient,
   ])
 
-  // 派生当前激活会话：列表第一条；列表空则用刚建的。
+  // 派生当前激活会话：用户选过且仍在列表 → 用它；否则列表第一条；否则刚建的。
   const activeId = React.useMemo<string | number | null>(() => {
+    if (
+      selectedConversationId != null &&
+      conversations.some(
+        (c) => String(c.id) === String(selectedConversationId)
+      )
+    ) {
+      return selectedConversationId
+    }
     if (conversations.length > 0) return conversations[0].id
     return createdId
-  }, [conversations, createdId])
+  }, [selectedConversationId, conversations, createdId])
 
   // 上报激活会话 id（供父级「文件」tab 列该会话产物）。卸载时清空。
   React.useEffect(() => {
@@ -118,6 +132,7 @@ export function WorkbenchMemberPanel({
       conversationId={activeId}
       title={conversationTitle ?? "工作台对话"}
       onOpenArtifact={onOpenArtifact}
+      onOpenConversations={onOpenConversations}
       titleSlot={titleSlot}
       className={cn("h-full min-h-0", className)}
     />

@@ -32,6 +32,8 @@ import { toast } from "sonner"
 import { WorkbenchMemberPanel } from "./workbench-member-panel"
 import { WorkbenchChatTargetSwitch } from "./workbench-chat-target-switch"
 import { WorkbenchResourcePool } from "./workbench-resource-pool"
+import { WorkbenchCuratorSessionsSheet } from "./workbench-curator-sessions-sheet"
+import { selectWorkbenchCuratorConversation } from "@/lib/chat/conversation-selection/apply"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 
 const LAYOUT_STORAGE_ID = "workbench-grid-curator-resources-v2"
@@ -114,6 +116,12 @@ export function WorkbenchContentSplit({
   const [resourceTab, setResourceTab] = useState<"pool" | "files">("pool")
   // 工作台助手当前会话 id（由 WorkbenchMemberPanel 上报），供「文件」tab 列其产物。
   const [assistantConversationId, setAssistantConversationId] = useState<
+    string | number | null
+  >(null)
+  // 历史会话弹层
+  const [sessionsOpen, setSessionsOpen] = useState(false)
+  // 用户在历史会话弹层选中的工作台助手会话（覆盖默认取第一条）。
+  const [pickedAssistantConvId, setPickedAssistantConvId] = useState<
     string | number | null
   >(null)
   const queryClient = useQueryClient()
@@ -314,8 +322,10 @@ export function WorkbenchContentSplit({
               <WorkbenchMemberPanel
                 key={`assistant-${assistantEmployeeId}`}
                 contact={assistantContact}
+                selectedConversationId={pickedAssistantConvId}
                 onOpenArtifact={() => setResourcesOpen(true)}
                 onActiveConversation={setAssistantConversationId}
+                onOpenConversations={() => setSessionsOpen(true)}
                 titleSlot={targetSwitch}
               />
             ) : (
@@ -338,6 +348,7 @@ export function WorkbenchContentSplit({
               resourcesOpen={showResources}
               onToggleResources={handleToggleResources}
               onOpenResourceFile={() => setResourcesOpen(true)}
+              onOpenConversations={() => setSessionsOpen(true)}
               titleSlot={targetSwitch}
               getExtraMetadata={() => ({ workbench: buildWorkbenchSnapshot() })}
             />
@@ -467,6 +478,30 @@ export function WorkbenchContentSplit({
           )}
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      {/* 历史会话弹层：按当前对话对象（总管/工作台助手）列其会话，可选可新建。 */}
+      <WorkbenchCuratorSessionsSheet
+        open={sessionsOpen}
+        onOpenChange={setSessionsOpen}
+        curatorContact={
+          chatTarget === "assistant"
+            ? assistantContact ?? undefined
+            : curatorContact
+        }
+        selectedConversationId={
+          chatTarget === "assistant"
+            ? assistantConversationId
+            : activeConversationId
+        }
+        onSelectConversation={(id) => {
+          if (chatTarget === "assistant") {
+            setPickedAssistantConvId(id)
+          } else {
+            selectWorkbenchCuratorConversation(id)
+          }
+          setSessionsOpen(false)
+        }}
+      />
     </div>
   )
 }
