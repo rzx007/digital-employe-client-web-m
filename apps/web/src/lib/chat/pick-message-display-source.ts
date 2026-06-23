@@ -191,6 +191,41 @@ export function hydrateEmptyAssistantShellsFromDb(
 }
 
 /**
+ * 流式期 composer（live）比 DB（stored）短时——典型场景：切走再切回后 useChat 以新
+ * 会话 id 重置成空，resume 仅从后端 buffer 重建「当前轮」那一条 assistant——直接渲染
+ * live 会把前面整段历史（上一轮 user+assistant）整体吞掉（「卡片之上、上一轮消息也缺失，
+ * 二次进来才回来」的根因）。
+ *
+ * 修法：以 DB 时间线为底，对其中**也存在于 live** 的消息用 live 覆盖（live 持实时流式
+ * parts，且空壳已先经 hydrateEmptyAssistantShellsFromDb 用 DB 回填）；仅在 live、不在 DB
+ * 的消息（如尚未落库的乐观新条）按原相对顺序追加在末尾。如此历史不丢、当前轮仍实时。
+ *
+ * 仅当 live 确实「短于且为 stored 子集」时才走合并；其余情形（live≥stored 或两者发散）
+ * 交回调用方既有分支，避免影响正常流式（live 持续增长追平 DB）的同引用 no-op。
+ */
+function mergeStreamingLiveOntoStoredHistory(
+  liveMessages: UIMessage[],
+  storedMessages: UIMessage[]
+): UIMessage[] {
+  const liveById = new Map<string, UIMessage>()
+  for (const m of liveMessages) liveById.set(String(m.id), m)
+
+  // 以 DB 时间线为底，live 同 id 覆盖（live 持实时 parts）。
+  const merged = storedMessages.map((storedMsg) => {
+    const live = liveById.get(String(storedMsg.id))
+    return live ?? storedMsg
+  })
+
+  // live 独有（DB 还没有）的消息按原顺序补在末尾，保持当前轮实时增量可见。
+  const storedIds = new Set(storedMessages.map((m) => String(m.id)))
+  for (const liveMsg of liveMessages) {
+    if (!storedIds.has(String(liveMsg.id))) merged.push(liveMsg)
+  }
+
+  return merged
+}
+
+/**
  * 流式结束后展示来源：
  * - 流式中用 live composer
  * - 结束后若 composer 已包含完整轮次，继续用 live（DB refetch 仅后台同步）
@@ -202,7 +237,20 @@ export function pickMessageDisplaySource(
   status: string
 ): UIMessage[] {
   if (status === "streaming" || status === "submitted") {
-    return hydrateEmptyAssistantShellsFromDb(liveMessages, storedMessages)
+    const hydrated = hydrateEmptyAssistantShellsFromDb(
+      liveMessages,
+      storedMessages
+    )
+    // live 比 DB 短且为其子集（切回后 resume 仅重建当前轮，composer 未追平 DB）→
+    // 以 DB 历史为底合并，避免前面整段历史被吞。其余情形保持既有行为（同引用 no-op）。
+    if (storedMessages.length > 0 && hydrated.length < storedMessages.length) {
+      const storedIds = new Set(storedMessages.map((m) => String(m.id)))
+      const liveAllInStored = hydrated.every((m) => storedIds.has(String(m.id)))
+      if (liveAllInStored) {
+        return mergeStreamingLiveOntoStoredHistory(hydrated, storedMessages)
+      }
+    }
+    return hydrated
   }
 
   let source = liveMessages

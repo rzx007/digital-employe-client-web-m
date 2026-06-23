@@ -63,6 +63,8 @@ function renderSession(
   })
   const initialMessages = mapStoredMessagesToUIMessages(overrides.storedMessages)
 
+  const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries")
+
   const view = renderHook(() =>
     useConversationSession({
       conversationId: CONV_ID,
@@ -77,7 +79,16 @@ function renderSession(
     })
   )
 
-  return { view, resumeStream, setMessages, queryClient }
+  return { view, resumeStream, setMessages, queryClient, invalidateSpy }
+}
+
+/** 取某次 renderSession 里 invalidateQueries 被调用过的所有 queryKey（JSON 串）。 */
+function invalidatedKeys(
+  spy: ReturnType<typeof vi.spyOn>
+): string[] {
+  return spy.mock.calls.map(([arg]) =>
+    JSON.stringify((arg as { queryKey?: unknown } | undefined)?.queryKey)
+  )
 }
 
 describe("useConversationSession — resume on re-enter", () => {
@@ -111,6 +122,33 @@ describe("useConversationSession — resume on re-enter", () => {
     })
 
     await waitFor(() => expect(resumeStream).toHaveBeenCalledTimes(1))
+  })
+
+  it("切流拖影根因①：切回时 transport 残留同会话「在飞」resume 归属（切走那拍调度的死连接）→ 仍必须 resume，不被 inflight 闸永久挡住", async () => {
+    // 模拟切走那一拍：unmount 的 stop() abort 触发 retryResume，给 transport 设了
+    // 本会话「在飞」归属。若切回不硬清这个残留，shouldSkipResumeWhenInFlight 命中→
+    // resume 0 次→当前轮气泡空白直到 idle 看门狗回收/二次进来。
+    const { chatTransport } = await import(
+      "@/components/chat/shared/chat-view-shared"
+    )
+    const t = chatTransport as unknown as {
+      _reconnectAbort: AbortController | null
+      _reconnectChatId: string | null
+    }
+    t._reconnectAbort = new AbortController()
+    t._reconnectChatId = String(CONV_ID)
+
+    try {
+      const { resumeStream } = renderSession({
+        storedMessages: storedWithLastAssistant("streaming"),
+        status: "ready",
+      })
+
+      await waitFor(() => expect(resumeStream).toHaveBeenCalledTimes(1))
+    } finally {
+      t._reconnectAbort = null
+      t._reconnectChatId = null
+    }
   })
 
   it("空续（no_stream）热循环：composer 不增长时 retryResume 受 MAX 配额封顶、不无限重试", async () => {
@@ -209,5 +247,64 @@ describe("useConversationSession — refetch 防抖不应被 status 变化清掉
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe("useConversationSession — 快结束切换：进入兜底态立即补拉终态(不等 4s)", () => {
+  // 复刻已知能稳定通过的 renderSession 结构（与 line 84「resume on re-enter」同形），
+  // 只额外 spy invalidateQueries 断言「进入兜底态(本地 ready + DB streaming)立刻补拉
+  // 一次 messages」。手写 renderHook + spy 真实 invalidate 曾触发 happy-dom worker
+  // 死循环（与 helper 的差异在隔离/清理），故沿用 helper。
+  it("本地 ready 但 DB 末条 assistant 仍 streaming → 立刻 invalidate 一次 messages(消除 4s 工具卡空窗)", async () => {
+    const { invalidateSpy } = renderSession({
+      storedMessages: storedWithLastAssistant("streaming"),
+      status: "ready",
+    })
+
+    // 立即补拉用 setTimeout(0) 异步派发（避开同步重入），故等一个宏任务再断言。
+    await new Promise((r) => setTimeout(r, 0))
+
+    const messagesKey = JSON.stringify(chatKeys.messages(String(CONV_ID)))
+    expect(invalidatedKeys(invalidateSpy)).toContain(messagesKey)
+  })
+})
+
+describe("useConversationSession — 中断塌文字：终态但 parts 暂缺立即补拉", () => {
+  it("DB 末条 assistant=cancelled + 无 message_parts + 有 content → 立刻补拉一次(等后端 parts 落库)", async () => {
+    // 模拟点中断后那一拍：DB 已 patch 成 cancelled、content 是流式累积的脏文本，但后端
+    // _flush_terminal 还没把 message_parts 落完。不补拉则渲染回退成一坨纯文字、工具卡塌。
+    const stored: Message[] = [
+      makeMessage({ id: "100", role: "user", content: "查热搜" }),
+      makeMessage({
+        id: "101",
+        role: "assistant",
+        content: "正在打开微博\nbrowserctl ...(脏文本)",
+        streamState: "cancelled",
+        messageParts: undefined, // 关键：终态但 parts 还没落
+      }),
+    ]
+    const { invalidateSpy } = renderSession({
+      storedMessages: stored,
+      status: "ready",
+    })
+
+    await new Promise((r) => setTimeout(r, 0))
+
+    const messagesKey = JSON.stringify(chatKeys.messages(String(CONV_ID)))
+    expect(invalidatedKeys(invalidateSpy)).toContain(messagesKey)
+  })
+
+  it("DB 末条 assistant=cancelled + 已有 message_parts → 不补拉(避免无谓刷新)", async () => {
+    const { invalidateSpy } = renderSession({
+      // storedWithLastAssistant 自带 messageParts → 已有结构，不该触发终态补拉
+      storedMessages: storedWithLastAssistant("cancelled"),
+      status: "ready",
+    })
+
+    await new Promise((r) => setTimeout(r, 0))
+
+    const messagesKey = JSON.stringify(chatKeys.messages(String(CONV_ID)))
+    // 注意：onStreamFinish 等其它路径不会在纯渲染挂载时触发；这里断言「终态补拉」未发生
+    expect(invalidatedKeys(invalidateSpy)).not.toContain(messagesKey)
   })
 })

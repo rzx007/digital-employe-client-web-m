@@ -138,7 +138,10 @@ export function WorkbenchContentSplit({
     string | number | null
   >(null)
   const queryClient = useQueryClient()
-  const { isPending: isCreatingCurator } = useCreateCuratorConversation()
+  const {
+    createCuratorConversation,
+    isPending: isCreatingCurator,
+  } = useCreateCuratorConversation()
 
   const contacts = useChatStore((s) => s.contacts)
 
@@ -263,6 +266,16 @@ export function WorkbenchContentSplit({
     )
   }, [activeConversationId, curatorConversations])
 
+  // 工作台总管「新建对话」：建新总管会话并按 workbench scope 选中（更新工作台侧栏选中态，
+  // 不影响全局聊天选中）。缺这个 handler 时 CuratorCompactToolbar 的「新建对话」按钮不渲染
+  // （onNewConversation 未传），用户只能从历史会话弹层里新建 —— 即本次回归的根因。
+  const handleNewCuratorConversation = useCallback(() => {
+    if (!curatorContact || isCreatingCurator) return
+    void createCuratorConversation(curatorContact, undefined, {
+      selectScope: "workbench",
+    })
+  }, [curatorContact, isCreatingCurator, createCuratorConversation])
+
   // 资源池不依赖会话，故只要 resourcesOpen 即展开（文件页另行处理无会话情形）。
   const showResources = resourcesOpen
 
@@ -362,6 +375,8 @@ export function WorkbenchContentSplit({
               onToggleResources={handleToggleResources}
               onOpenResourceFile={() => setResourcesOpen(true)}
               onOpenConversations={() => setSessionsOpen(true)}
+              onNewConversation={handleNewCuratorConversation}
+              isCreatingConversation={isCreatingCurator}
               titleSlot={targetSwitch}
               getExtraMetadata={() => ({ workbench: buildWorkbenchSnapshot() })}
             />
