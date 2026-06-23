@@ -68,10 +68,6 @@ def _ensure_orchestration_recurring_columns(engine) -> None:
         if "run_at" not in op_cols:
             conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN run_at DATETIME"))
             logger.info("added column orchestration_plans.run_at")
-        if "reminder_message" not in op_cols:
-            # 纯提醒型计划（create_reminder）：到点直接发此文案，无员工任务。
-            conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN reminder_message TEXT"))
-            logger.info("added column orchestration_plans.reminder_message")
         if "conversation_id" not in pr_cols:
             conn.execute(text("ALTER TABLE plan_runs ADD COLUMN conversation_id INTEGER"))
             logger.info("added column plan_runs.conversation_id")

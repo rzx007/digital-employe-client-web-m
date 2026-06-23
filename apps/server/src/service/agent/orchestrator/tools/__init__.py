@@ -42,7 +42,6 @@ from src.service.agent.orchestrator.tools.plans import (
     cancel_plan,
     confirm_orchestration_plan,
     create_orchestration_plan,
-    create_reminder,
 )
 from src.service.agent.orchestrator.tools.skills import (
     delete_workspace_skill,
@@ -78,7 +77,6 @@ __all__ = [
     "build_employee_update_payload",
     # plans
     "create_orchestration_plan",
-    "create_reminder",
     "confirm_orchestration_plan",
     "cancel_plan",
     # tasks

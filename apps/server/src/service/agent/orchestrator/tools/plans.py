@@ -196,61 +196,6 @@ def create_orchestration_plan(summary: str, tasks: str | list, schedule: str | N
 
 
 @tool
-def create_reminder(message: str, schedule: str) -> str:
-    """创建定时提醒：到点直接给用户发一条提醒消息——不派员工、不起执行、不需要技能。
-
-    用户要「（每天/每周/某时间）提醒我 X」这类**纯提醒**（只通知、无实际产出）时用本工具；
-    别 create_orchestration_plan 派员工、更别查技能库/搜技能市场找「提醒技能」。
-
-    参数:
-      message: 提醒内容（到点原样发给用户，如「该看世界杯了」「该开会了」）。
-      schedule: 自然语言时间，直接传用户原话——系统自动判一次性/重复并解析：
-        - 一次性：『3分钟后』『今晚8点』『明天上午9点』。
-        - 重复：『每天晚上8点』『每周一上午9点』『每5分钟』。
-    """
-    db = get_db()
-    workspace_id = get_workspace_id()
-    conversation_id = get_conversation_id()
-    if not conversation_id:
-        return "错误：当前没有活跃的对话，无法创建提醒。"
-    msg = (message or "").strip()
-    if not msg:
-        return "错误：提醒内容不能为空。"
-    spec = parse_schedule(schedule, now=cst_now())
-    if spec is None:
-        return (
-            f"错误：无法解析定时表达式「{schedule}」。"
-            "请换更明确的说法（如『5分钟后』『每天8点』）。"
-        )
-
-    plan = OrchestrationPlan(
-        workspace_id=workspace_id,
-        conversation_id=conversation_id,
-        user_input=f"定时提醒：{msg}",
-        plan_json="[]",
-        status="confirmed",  # 提醒无需用户确认，直接登记调度
-        total_tasks=0,
-        cron=(spec.cron if spec.kind == "recurring" else None),
-        is_recurring=(spec.kind == "recurring"),
-        schedule_kind=spec.kind,
-        run_at=(spec.run_at if spec.kind == "once" else None),
-        reminder_message=msg,
-    )
-    db.add(plan)
-    db.commit()
-
-    from src.service.task_scheduler_service import TaskSchedulerService
-
-    TaskSchedulerService.reload_jobs()
-
-    when = "每次重复" if spec.kind == "recurring" else "一次"
-    return (
-        f"已设定提醒（{when}，{schedule}）：到点会发「{msg}」。"
-        f"（提醒 #{plan.id}，纯提醒不派员工、无需技能。）"
-    )
-
-
-@tool
 def confirm_orchestration_plan(plan_id: int) -> str:
     """启动编排计划下所有子任务（各员工在独立会话执行）。
 

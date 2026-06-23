@@ -43,9 +43,6 @@ class OrchestrationPlan(Base):
     # 业务逻辑不使用此字段，进度由 _compute_plan_progress 实时从 TaskExecutionLog 聚合。
     completed_tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # 纯提醒型计划：非空=这是一条定时提醒（无员工任务），到点 run_plan_job 直接把此文案
-    # 发进会话、不派员工、不起执行。普通编排计划此列为 NULL。
-    reminder_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=cst_now, onupdate=cst_now

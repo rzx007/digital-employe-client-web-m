@@ -495,21 +495,14 @@ class TaskSchedulerService:
             plan = db.get(OrchestrationPlan, plan_id)
             if plan is None or plan.status != "confirmed" or not (plan.schedule_kind or "").strip():
                 return
-            if (plan.reminder_message or "").strip():
-                # 纯提醒型计划：到点直接把提醒发进会话，不派员工、不起执行。
-                try:
-                    cls._deliver_reminder(db, plan)
-                except Exception:
-                    logger.error("提醒投递失败 plan=%s", plan_id, exc_info=True)
-            else:
-                run = None
-                try:
-                    run = execute_plan_run(db, plan, trigger="scheduled", auto_accept=True)
-                except Exception:
-                    logger.error("run_plan_job 触发失败 plan=%s", plan_id, exc_info=True)
-                    if run is not None:
-                        run.status = "failed"
-                        run.ended_at = cst_now()
+            run = None
+            try:
+                run = execute_plan_run(db, plan, trigger="scheduled", auto_accept=True)
+            except Exception:
+                logger.error("run_plan_job 触发失败 plan=%s", plan_id, exc_info=True)
+                if run is not None:
+                    run.status = "failed"
+                    run.ended_at = cst_now()
             # once：跑完自停（status=done → reload_jobs 不再挂）
             if plan.schedule_kind == "once":
                 plan.last_run_at = cst_now()
@@ -520,33 +513,6 @@ class TaskSchedulerService:
                 plan.next_run_at = TaskService.compute_next_run(plan.cron, now=plan.last_run_at)
             db.commit()
             logger.info("计划级定时触发 plan=%s kind=%s（绕开总管重分析）", plan_id, plan.schedule_kind)
-
-    @classmethod
-    def _deliver_reminder(cls, db, plan) -> None:
-        """纯提醒：把提醒文案作为一条 assistant 消息发进计划所属会话，并推未读事件。"""
-        from src.models.conversation import Conversation
-        from src.service.chat_service import ChatService
-
-        conv = db.get(Conversation, plan.conversation_id)
-        if conv is None:
-            return
-        ChatService._append_message(
-            db,
-            conversation=conv,
-            role="assistant",
-            content=f"⏰ {plan.reminder_message}",
-        )
-        db.commit()
-        try:
-            from src.service.workspace_events import WorkspaceEventBus
-
-            WorkspaceEventBus.push(plan.workspace_id, {
-                "type": "conversation_status_changed",
-                "conversation_id": plan.conversation_id,
-                "status": "unread",
-            })
-        except Exception:
-            logger.warning("提醒事件推送失败 plan=%s", plan.id, exc_info=True)
 
     @classmethod
     def run_task_job(cls, task_id: int) -> None:
