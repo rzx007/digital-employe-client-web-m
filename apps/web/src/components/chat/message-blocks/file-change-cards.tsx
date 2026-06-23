@@ -13,7 +13,7 @@ import { downloadResource } from "@/api/chat"
 import { isHtmlPath } from "@/components/artifact/artifact-content/resolve-renderer"
 import { useCuratorFile } from "@/components/chat/curator/use-curator-file"
 import type { FileChangeItem } from "@/lib/chat/file-change-utils"
-import { EXTENSION_ICONS } from "@/lib/chat/file-icons"
+import { getFileIcon } from "@/lib/chat/file-icons"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useBrowserStore } from "@/stores/browser-store"
 import { useChatStore } from "@/stores/chat-store"
@@ -44,9 +44,8 @@ function getIcon(file: FileChangeItem) {
     return folderIcon
   }
 
-  return file.extension
-    ? (EXTENSION_ICONS[file.extension] ?? plainIcon)
-    : plainIcon
+  const filename = file.extension ? `file.${file.extension}` : "file"
+  return getFileIcon(filename) || plainIcon
 }
 
 function getActionLabel(file: FileChangeItem) {

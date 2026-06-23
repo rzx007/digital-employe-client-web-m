@@ -19,9 +19,6 @@ import {
   IconDownload,
   IconX,
   IconFile,
-  IconCode,
-  IconFileTypeCsv,
-  IconPhoto,
   IconSparkles,
   IconRefresh,
   IconSearch,
@@ -52,6 +49,7 @@ import {
 import { deleteResource, downloadResource } from "@/api/chat"
 import { useQueryClient } from "@tanstack/react-query"
 import { chatKeys } from "@/lib/query-keys/chat"
+import { getFileIcon as getFileIconUrl } from "@/lib/chat/file-icons"
 import { detectLanguage } from "@/components/chat/shared/code-highlight"
 import {
   findPendingByPath,
@@ -237,20 +235,12 @@ function isDocumentFile(path: string | null | undefined): boolean {
   return ext ? DOCUMENT_EXTENSIONS.has(ext) : false
 }
 
-function getFileIcon(artifactType: string | null) {
-  switch (artifactType) {
-    case "code":
-    case "skill-draft":
-      return <IconCode className="size-4 text-blue-500" />
-    case "sheet":
-      return <IconFileTypeCsv className="size-4 text-green-500" />
-    case "image":
-      return <IconPhoto className="size-4 text-purple-500" />
-    case "document":
-      return <IconFile className="size-4 text-orange-500" />
-    default:
-      return <IconFile className="size-4 text-muted-foreground" />
-  }
+// 按真实文件名解析 Material 文件类型图标（覆盖数百种扩展名）。
+// 传文件名/路径而非粗粒度 artifact_type，故 .ts/.py/.json/.zip… 各有其图标。
+function getFileIcon(filename: string | null | undefined) {
+  const url = filename ? getFileIconUrl(filename) : ""
+  if (!url) return <IconFile className="size-4 text-muted-foreground" />
+  return <img src={url} alt="" aria-hidden className="size-4 shrink-0" />
 }
 
 function toNativeAbsPath(p: string): string {
@@ -488,10 +478,10 @@ function renderEntry(
           title={entry.name}
           path={entry.path}
           name={entry.name}
-          icon={getFileIcon(entry.artifact_type)}
+          icon={getFileIcon(entry.name)}
         >
           <span className="size-4 shrink-0" />
-          <span className="shrink-0">{getFileIcon(entry.artifact_type)}</span>
+          <span className="shrink-0">{getFileIcon(entry.name)}</span>
           <span
             className={cn(
               "min-w-0 flex-1 truncate",
@@ -1142,7 +1132,7 @@ export const ArtifactPanel = ({
           <div className="flex min-w-0 items-center justify-between gap-3 border-b bg-background/95 px-4 py-3">
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
-                {selectedEntry && getFileIcon(selectedEntry.artifact_type)}
+                {selectedEntry && getFileIcon(selectedEntry.name)}
                 <h3
                   className={cn(
                     "min-w-0 truncate text-sm font-medium",

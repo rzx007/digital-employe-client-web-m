@@ -26,6 +26,9 @@ importers:
       electron-updater:
         specifier: ^6.8.3
         version: 6.8.3
+      vscode-material-icons:
+        specifier: ^0.1.1
+        version: 0.1.1
     devDependencies:
       '@ai-sdk/react':
         specifier: ^3.0.139
@@ -7494,6 +7497,9 @@ packages:
         optional: true
       jsdom:
         optional: true
+
+  vscode-material-icons@0.1.1:
+    resolution: {integrity: sha512-GsoEEF8Tbb0yUFQ6N6FPvh11kFkL9F95x0FkKlbbfRQN9eFms67h+L3t6b9cUv58dSn2gu8kEhNfoESVCrz4ag==}
 
   w3c-keyname@2.2.8:
     resolution: {integrity: sha512-dpojBhNsCNN7T82Tm7k26A6G9ML3NkhDsnw9n/eoxSRlVBB4CEtIQ/KTCLI2Fwf3ataSXRhYFkQi3SlnFwPvPQ==}
@@ -15494,6 +15500,8 @@ snapshots:
       happy-dom: 20.9.0
     transitivePeerDependencies:
       - msw
+
+  vscode-material-icons@0.1.1: {}
 
   w3c-keyname@2.2.8: {}
 
