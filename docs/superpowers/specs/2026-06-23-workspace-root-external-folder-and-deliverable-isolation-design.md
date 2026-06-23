@@ -49,10 +49,10 @@
 - **app 托管**（root 在 `APP_PROJECTS_BASE` 下）：保持现状——产物根=root，artifacts=`root/artifacts`，uploads=`root/uploads`，draft=`root/skills-draft`。
 - **外部文件夹**（root 不在 APP_PROJECTS_BASE 下）：**flat 直挂**——
   - `resolve_workspace_product_root(external)` 返回 `external` **本身**（不再套 `.boban-staff`）。
-  - `resolve_workspace_dirs` 对外部 root：`artifacts_dir = workspace_dir = public_dir = public_root = root`（即文件夹本身，产物平铺其中）；`uploads_dir = root`（平铺，用户明确要求）。
-  - `draft_dir`（skills-draft，员工技能草稿，与项目交付无关、属内部 plumbing）：**不平铺进外部文件夹**——路由到 app 托管的 per-workspace 隐藏位置（如 `APP_PROJECTS_BASE/_external_drafts/ws-<id>/skills-draft`），避免污染用户代码仓。（这是对"直接平铺"的唯一例外，理由=技能草稿非交付物；实现时如评审认为应一并平铺，再调。）
-  - 需把 `resolve_workspace_dirs` 改成**接收"是否外部 + workspace_id"**或直接接收已解析的 product_root + is_external 标志，按分支给目录。READ 现签名（接收 root_path + base_dir）后选最小改动法。
-- **关键副作用核查**：`resource_service`/产物面板扫描 artifacts_dir。外部 flat 时 artifacts_dir=root=用户文件夹 → 面板会列出文件夹**全部文件**（含用户已有文件）。这对"外部=我的项目文件夹、IDE 式工作"是**预期**（文件树即项目）。但**交付物卡**（`collect_plan_deliverables`）走 tool parts（agent 写过的文件），**不**是目录扫描，故非空目录里只显示 agent 产出——无污染。实现时确认两条链路区分清楚。
+  - `resolve_workspace_dirs` 对外部 root：`artifacts_dir = workspace_dir = public_dir = public_root = root`（即文件夹本身，产物平铺其中）；`uploads_dir = root`（平铺，用户明确要求 artifacts/uploads 平铺）。
+  - `draft_dir`（skills-draft）：**保持 `root/skills-draft`（仍是子目录，不平铺、不另路由）**。理由：①用户只点名 artifacts/uploads 平铺，未提 draft；②draft 有**两个独立消费者**——`employee.py` 经 `WorkspaceDirs.draft_dir`、`skill_api.py:213` 独立算 `resolve_conversation_product_root()/"skills-draft"`（评审揪出）。两者现都 = `root/skills-draft`；只要不动 draft 的相对位置，外部 flat 后两者仍一致（写=读=`<external>/skills-draft`），不会 404。若改 draft 位置则必须同时改两个消费者——故本期**不动 draft**，最稳。
+  - **`is_external` 在 `resolve_workspace_dirs` 内部判定**（`Path(root_path).is_relative_to(APP_PROJECTS_BASE)`，与 `resolve_workspace_product_root:44` 同谓词），**不改函数签名**、两函数分支同源。app 托管分支保持现状（artifacts=root/artifacts 等）。
+- **关键副作用核查（评审确认）**：`resource_service._scan_dir_flat` 扫描 artifacts_dir。外部 flat 时 artifacts_dir=root=用户文件夹 → 产物面板会列出文件夹**全部文件**（含用户已有文件）。这对"外部=我的项目文件夹、IDE 式工作"是**预期**（文件树即项目，用户已签字 IDE 模型）。而**交付物卡**（`collect_plan_deliverables:84` 走 write/edit_file tool parts、非目录扫描）只显示 agent 产出——非空目录里**无污染**。实现时确认两条链路区分清楚（产物面板=目录扫描=显示全树；交付物卡=tool parts=只显示 agent 写的）。
 
 ### 5.2 创建 + 自动授权
 - `create_user_workspace`（:179）：传入外部 root_path 时——
@@ -102,6 +102,8 @@
 - A：ensure_default_workspace 返回 projects/<id> root；迁移把盘根脏值改 projects/<id>、不动 app 托管/用户外部根。
 - B：resolve_workspace_product_root(外部) = 外部本身（无 .boban-staff）；resolve_workspace_dirs 外部 flat（artifacts=root）；create_user_workspace 外部 → 自动 grant + auto_grant_external_dirs=True + 非空允许 + 不存在报 400。
 - C：collect_plan_deliverables(plan,run_id) 只返该轮文件；resolve_run_id_for_conversation 解析 per-run/manual/非run；API conversation_id 维度返本轮；纯定时计划主对话(创建源)无 manual run → 空。
+- C 前置核查（计划首任务做）：`TaskExecutionLog.run_id` 列已存在且编排日志已写值（前序 run_id 特性 + 回填，预期 OK，显式确认）。
+- 引用勘误：get_plan API 在 [orchestration_api.py:164](../../../apps/server/src/api/orchestration_api.py)（`:175` 是其内部 collect_plan_deliverables import）。skills-draft 读在 skill_api.py:213、draft 双消费者见 §5.1。无现成 openDirectory IPC（仅 openFile），§5.3 须**新增** select-directory IPC（前端，需实跑验证）。
 - 全后端零新增回归；前端 typecheck 零新增。
 
 ## 8. 风险
