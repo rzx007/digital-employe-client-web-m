@@ -218,6 +218,40 @@ def test_run_plan_job_once_auto_stops(db_session, monkeypatch):
         assert p.status == "done"  # once 自停
 
 
+def test_reload_jobs_once_naive_run_at_does_not_crash(db_session, monkeypatch):
+    """回归：run_at 经 SQLite 取出为 naive，reload_jobs 比较 `run_at <= now`（now 为
+    CST-aware）不得抛 TypeError。否则 reload_jobs 在确认时崩溃→once 任务永不注册、永不触发。
+    复现用户 bug：'3分钟后提醒开会' 确认后从未执行。"""
+    import src.service.task_scheduler_service as tss
+    from src.models.orchestration_plan import OrchestrationPlan
+    from src.models.workspace import Workspace
+    from sqlalchemy.orm import sessionmaker
+    from datetime import datetime, timedelta
+
+    ws = Workspace(name="w", root_path="/tmp/w", user_id="u"); db_session.add(ws); db_session.flush()
+    # 关键：naive future run_at（无 tzinfo，模拟 SQLite 读出的裸 datetime）
+    naive_future = datetime.now() + timedelta(hours=1)
+    assert naive_future.tzinfo is None
+    plan = OrchestrationPlan(workspace_id=ws.id, conversation_id=1, user_input="开会",
+        plan_json="[]", status="confirmed", schedule_kind="once", run_at=naive_future)
+    db_session.add(plan); db_session.commit()
+    plan_id = plan.id
+
+    sf = sessionmaker(bind=db_session.get_bind())
+    monkeypatch.setattr(tss, "get_session_local", lambda: sf)
+
+    svc = tss.TaskSchedulerService
+    scheduler = svc._get_scheduler()
+    if not scheduler.running:
+        scheduler.start()
+    try:
+        svc.reload_jobs()  # 不得抛 TypeError
+        assert scheduler.get_job(f"plan:{plan_id}") is not None  # once 任务已注册
+    finally:
+        scheduler.shutdown(wait=False)
+        svc._scheduler = None  # 还原全局单例，避免污染其它测试
+
+
 def test_run_plan_job_recurring_updates_next_run(db_session, monkeypatch):
     import src.service.task_scheduler_service as tss
     import src.service.agent.orchestrator.execution as ex

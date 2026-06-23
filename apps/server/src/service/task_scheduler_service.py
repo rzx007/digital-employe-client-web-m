@@ -130,6 +130,9 @@ class TaskSchedulerService:
                 )
             ).all())
             for plan in plans:
+              # 每计划隔离：单个计划注册失败仅记日志跳过，绝不让一个坏计划拖垮整轮
+              # reload_jobs（连带 line 168 的系统级 job 也注册不上→全局调度静默瘫痪）。
+              try:
                 job_id = f"plan:{plan.id}"
                 if plan.schedule_kind == "recurring":
                     cron = (plan.cron or "").strip()
@@ -138,7 +141,15 @@ class TaskSchedulerService:
                         continue
                     trigger = CronTrigger.from_crontab(cron, timezone=CST)
                 elif plan.schedule_kind == "once":
-                    if plan.last_run_at is None and plan.run_at is not None and plan.run_at <= now:
+                    # run_at 经 SQLite 取出为 naive，now 为 CST-aware；按 CST 本地时刻补 tzinfo
+                    # 再比，否则 naive<=aware 抛 TypeError 致整个 reload_jobs 崩溃、once 任务永不
+                    # 注册（与 line 148 的 DateTrigger(timezone=CST) 对 naive 的解释保持一致）。
+                    run_at_aware = (
+                        plan.run_at.replace(tzinfo=CST)
+                        if plan.run_at is not None and plan.run_at.tzinfo is None
+                        else plan.run_at
+                    )
+                    if plan.last_run_at is None and run_at_aware is not None and run_at_aware <= now:
                         # 一次性任务错过触发窗口（如后端宕机）：过期即失效，标 done 离开活跃集
                         logger.warning("一次性计划已过期未触发，标记失效 plan_id=%s run_at=%s", plan.id, plan.run_at)
                         plan.status = "done"
@@ -156,6 +167,8 @@ class TaskSchedulerService:
                 plan.next_run_at = job.next_run_time if job else (
                     TaskService.compute_next_run(plan.cron) if plan.schedule_kind == "recurring" else plan.run_at
                 )
+              except Exception:  # noqa: BLE001 - 单计划失败不影响其余计划与系统 job
+                logger.exception("reload_jobs 注册计划失败 plan_id=%s（已跳过）", plan.id)
             db.commit()
         cls._register_system_jobs()
 
