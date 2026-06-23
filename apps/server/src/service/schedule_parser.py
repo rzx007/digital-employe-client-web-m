@@ -4,11 +4,27 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
 _RE_CRON = re.compile(r"^[\d\s\*\,\/\-]+$")
+
+# 相对一次性时间：『N分钟后 / N小时后 / N天后 / N秒后』——确定性判为 once
+_RE_RELATIVE = re.compile(r"(\d+)\s*(秒|分钟|分|小时|个小时|时|天)后")
+_UNIT_SECONDS = {"秒": 1, "分钟": 60, "分": 60, "小时": 3600, "个小时": 3600, "时": 3600, "天": 86400}
+
+
+def _relative_once_run_at(text: str, now: datetime):
+    """识别『N分钟后』类相对一次性表达，返回绝对 run_at（CST）；无则 None。"""
+    m = _RE_RELATIVE.search(text)
+    if not m:
+        return None
+    n = int(m.group(1))
+    secs = n * _UNIT_SECONDS.get(m.group(2), 0)
+    if secs <= 0:
+        return None
+    return now + timedelta(seconds=secs)
 
 
 @dataclass
@@ -55,6 +71,11 @@ def parse_schedule(text: str, *, now: datetime) -> ScheduleSpec | None:
     stripped = (text or "").strip()
     if not stripped:
         return None
+
+    # 0) 确定性相对一次性快路（『N分钟后』），不依赖 LLM、不会被误判 recurring
+    rel = _relative_once_run_at(stripped, now)
+    if rel is not None:
+        return ScheduleSpec(kind="once", run_at=rel)
 
     # 1) 先 LLM 归类（顺序坑：必须先于裸 cron 数字快路）
     kind, value = _classify_with_llm(stripped, now)

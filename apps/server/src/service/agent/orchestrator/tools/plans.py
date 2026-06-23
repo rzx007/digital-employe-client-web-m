@@ -47,9 +47,11 @@ def create_orchestration_plan(summary: str, tasks: str | list, schedule: str | N
           "depends_on": <int | int[] | null>,
           "output_tier": "<small | standard | large>"
         }
-      schedule: 计划级，支持一次性(如『5分钟后』『今晚8点』)与重复(如『每天10点』)。
-        设置后整个计划按该节拍自动重跑冻结 DAG，绝不重新分析分单；子任务不携带独立 cron。
-        不传或传 null → 无定时计划（confirm 后立即执行）。
+      schedule: 计划级定时（可选）。**直接传用户的自然语言时间表达，不要自己转成 cron**——
+        系统会判定一次性还是重复：
+        - 一次性（只触发一次）：如『5分钟后』『2分钟后』『今晚8点』『明天上午9点』『6月23日21:34』。
+        - 重复：如『每天10点』『每周一上午9点』『每5分钟』。
+        不传=即时执行（确认后立即跑）。切勿把一次性时间写成 cron（cron 无法表达"仅一次"，会被当成每天重复）。
       output_tier：该子任务**预期输出体量**，决定该成员单次最多生成多少 token：
         - "small"   ≈1k：取数/查询/一句话结论等极短产出；
         - "standard"≈16k：一般任务（默认，可省略）；

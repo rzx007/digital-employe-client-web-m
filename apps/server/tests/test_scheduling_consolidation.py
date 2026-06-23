@@ -387,3 +387,39 @@ def test_cleanup_legacy_subtask_cron_plans(db_session):
     assert db_session.get(EmployeeTask, dt.id).is_active is False
     assert db_session.get(OrchestrationPlan, good.id).status == "confirmed"  # 合法不动
     assert db_session.get(EmployeeTask, gt.id).is_active is True
+
+
+def test_parse_schedule_relative_minutes_is_once_deterministic(monkeypatch):
+    """『N分钟后』确定性判为 once（不依赖 LLM），run_at ≈ now+N 分钟。"""
+    import src.service.schedule_parser as sp
+    from src.service.schedule_parser import parse_schedule
+    from src.models.workspace import cst_now
+    from datetime import timedelta
+    # LLM 即便误判 recurring 也不该影响——相对时间走确定性快路
+    monkeypatch.setattr(sp, "_classify_with_llm", lambda text, now: ("recurring", "17 9 * * *"))
+    now = cst_now()
+    spec = parse_schedule("2分钟后口头提醒看世界杯", now=now)
+    assert spec is not None and spec.kind == "once" and spec.cron is None
+    delta = (spec.run_at - now).total_seconds()
+    assert 100 <= delta <= 140  # ~120s
+
+
+def test_parse_schedule_relative_hours_is_once(monkeypatch):
+    import src.service.schedule_parser as sp
+    from src.service.schedule_parser import parse_schedule
+    from src.models.workspace import cst_now
+    monkeypatch.setattr(sp, "_classify_with_llm", lambda text, now: (None, None))
+    now = cst_now()
+    spec = parse_schedule("3小时后提醒我", now=now)
+    assert spec.kind == "once"
+    assert 3*3600 - 60 <= (spec.run_at - now).total_seconds() <= 3*3600 + 60
+
+
+def test_parse_schedule_recurring_phrase_still_recurring(monkeypatch):
+    """『每天X点』不被相对快路误抓，仍走 LLM → recurring。"""
+    import src.service.schedule_parser as sp
+    from src.service.schedule_parser import parse_schedule
+    from src.models.workspace import cst_now
+    monkeypatch.setattr(sp, "_classify_with_llm", lambda text, now: ("recurring", "0 10 * * *"))
+    spec = parse_schedule("每天10点查热搜", now=cst_now())
+    assert spec.kind == "recurring" and spec.cron == "0 10 * * *"
