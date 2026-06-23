@@ -17,7 +17,7 @@ import { getContactId } from "@/lib/chat/contact-utils"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import { useCreateCuratorConversation } from "@/hooks/use-create-curator-conversation"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
-import { useTaskExecutionNotifications } from "@/hooks/use-task-execution-notifications"
+import { useScheduledRunNotifications } from "@/hooks/use-scheduled-run-notifications"
 import { conversationListQueryKey } from "@/lib/chat/conversation-list-query-key"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { modelKeys } from "@/lib/query-keys/model"
@@ -141,7 +141,7 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
     }
   })
 
-  useTaskExecutionNotifications()
+  useScheduledRunNotifications()
 
   useEffect(() => {
     initOnboarding()

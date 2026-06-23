@@ -88,6 +88,14 @@ export type WorkspaceEvent =
       /** 累计已生成字符数（用于显示“正在生成 N 字”进度） */
       acc?: number
     }
+  | {
+      type: "scheduled_run"
+      plan_id: number
+      run_id: number
+      run_seq: number
+      conversation_id: number
+      title: string
+    }
 
 type EventHandler = (event: WorkspaceEvent) => void
 
