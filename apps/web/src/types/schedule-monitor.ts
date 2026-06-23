@@ -32,19 +32,6 @@ export interface TaskRun {
   log: string | null
 }
 
-export interface ScheduleTask {
-  capability_id: number
-  is_active: boolean
-  task_type: number
-  task_id: number
-  task_name: string
-  employee_id: number
-  employee_name: string
-  cron_expression: string
-  cron_description: string
-  cron_expression_type: string
-}
-
 export interface EmployeeScheduleTask {
   id: number
   workspace_id: number
@@ -111,27 +98,19 @@ export interface TaskExecution {
   is_read: boolean
 }
 
-export interface ShiftSchedule {
-  start_date: string
-  end_date: string
-  status: number
-  notes: string
-}
-
-export interface ScheduleEmployee {
-  employee_id: number
-  employee_name: string
-  tasks: ScheduleTask[]
-  shift_id: number
-  shift_name: string
-  shift_schedule: ShiftSchedule
+/** 单条编排计划在某日的运行项（来自 /tasks/calendar/monthly 的 days[date].runs）。 */
+export interface ScheduleRun {
+  plan_id: number
+  title: string
+  schedule_kind: "once" | "recurring"
+  time: string
+  cron: string | null
 }
 
 export interface ScheduleDay {
   day: number
   date: string
-  total: number
-  employees: ScheduleEmployee[]
+  runs: ScheduleRun[]
 }
 
 export interface ExecutionMetrics7d {

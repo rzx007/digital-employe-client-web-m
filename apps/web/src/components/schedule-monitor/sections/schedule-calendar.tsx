@@ -23,7 +23,7 @@ function formatHoverDateLabel(dateStr: string): string {
 }
 
 function countDayTasks(dayData: ScheduleDay): number {
-  return dayData.employees.reduce((sum, emp) => sum + emp.tasks.length, 0)
+  return dayData.runs.length
 }
 
 function ScheduleDayHoverContent({
@@ -33,26 +33,38 @@ function ScheduleDayHoverContent({
   dateStr: string
   dayData: ScheduleDay
 }) {
-  const totalTasks = countDayTasks(dayData)
+  const totalRuns = countDayTasks(dayData)
   return (
     <div className="flex flex-col gap-0">
       <p className="text-[11px] leading-snug font-medium text-foreground">
         {formatHoverDateLabel(dateStr)}
       </p>
       <p className="mt-0.5 text-[10px] text-muted-foreground">
-        {totalTasks} 个任务 · {dayData.employees.length} 人
+        {totalRuns} 次运行
       </p>
       <ul className="mt-1.5 max-h-32 space-y-1 overflow-y-auto border-t border-border/50 pt-1.5">
-        {dayData.employees.map((emp) => (
+        {dayData.runs.map((run) => (
           <li
-            key={emp.employee_id}
+            key={`${run.plan_id}-${run.time}`}
             className="flex items-center justify-between gap-2 text-[10px]"
           >
             <span className="min-w-0 truncate font-medium text-foreground">
-              {emp.employee_name}
+              {run.title}
             </span>
-            <span className="shrink-0 rounded-md bg-muted px-1.5 py-px text-muted-foreground tabular-nums">
-              {emp.tasks.length}
+            <span className="flex shrink-0 items-center gap-1">
+              <span className="text-muted-foreground tabular-nums">
+                {run.time}
+              </span>
+              <span
+                className={cn(
+                  "rounded-md px-1.5 py-px",
+                  run.schedule_kind === "recurring"
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300"
+                    : "bg-muted text-muted-foreground"
+                )}
+              >
+                {run.schedule_kind === "recurring" ? "循环" : "单次"}
+              </span>
             </span>
           </li>
         ))}
@@ -62,13 +74,10 @@ function ScheduleDayHoverContent({
 }
 
 function getLevel(dayData: ScheduleDay): 0 | 1 | 2 | 3 {
-  const totalTasks = dayData.employees.reduce(
-    (sum, emp) => sum + emp.tasks.length,
-    0
-  )
-  if (totalTasks === 0) return 0
-  if (totalTasks <= 5) return 1
-  if (totalTasks <= 8) return 2
+  const totalRuns = dayData.runs.length
+  if (totalRuns === 0) return 0
+  if (totalRuns <= 5) return 1
+  if (totalRuns <= 8) return 2
   return 3
 }
 
@@ -206,7 +215,7 @@ export function ScheduleCalendar({
           const dayData = dayMap.get(dateStr)
           const level = dayData ? getLevel(dayData) : 0
           const isToday = dateStr === todayStr
-          const hasSchedule = dayData && dayData.employees.length > 0
+          const hasSchedule = dayData && dayData.runs.length > 0
 
           const buttonProps = {
             type: "button" as const,
@@ -223,8 +232,8 @@ export function ScheduleCalendar({
           }
 
           if (hasSchedule && dayData) {
-            const totalTasks = countDayTasks(dayData)
-            const hoverTitle = `${formatHoverDateLabel(dateStr)} · ${totalTasks} 个任务 · ${dayData.employees.length} 人`
+            const totalRuns = countDayTasks(dayData)
+            const hoverTitle = `${formatHoverDateLabel(dateStr)} · ${totalRuns} 次运行`
             return (
               <HoverCard key={dateStr} openDelay={120} closeDelay={80}>
                 <HoverCardTrigger asChild>
