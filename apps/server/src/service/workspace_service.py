@@ -132,7 +132,10 @@ class WorkspaceService:
         if workspace:
             return workspace
 
-        default_root = WorkspaceService._resolve_default_root()
+        from src.service.agent.workspace_paths import APP_PROJECTS_BASE
+
+        default_root = APP_PROJECTS_BASE / str(default_workspace_id)
+        default_root.mkdir(parents=True, exist_ok=True)
         workspace = Workspace(
             id=default_workspace_id,
             name=default_workspace_name,
