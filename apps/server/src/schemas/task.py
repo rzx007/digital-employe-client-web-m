@@ -114,31 +114,18 @@ class TaskExecutionLogRead(BaseModel):
         return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
-class MonthlyCalendarTaskRead(BaseModel):
-    is_active: bool
-    task_type: int | None
-    task_id: int
-    task_name: str
-    employee_id: int
-    employee_name: str | None
-    cron_expression: str
-    cron_description: str
-    cron_expression_type: str
-
-
-class MonthlyCalendarEmployeeRead(BaseModel):
-    employee_id: int
-    employee_name: str | None
-    tasks: list[MonthlyCalendarTaskRead]
-    shift_id: int | None
-    shift_name: str | None
-    shift_schedule: dict[str, Any]
+class MonthlyCalendarRunRead(BaseModel):
+    plan_id: int
+    title: str
+    schedule_kind: str
+    time: str
+    cron: str | None
 
 
 class MonthlyCalendarDayRead(BaseModel):
     day: int
     date: str
-    employees: list[MonthlyCalendarEmployeeRead]
+    runs: list[MonthlyCalendarRunRead]
 
 
 class MonthlyCalendarRead(BaseModel):

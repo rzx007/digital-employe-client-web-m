@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from src.models.employee import Employee
 from src.models.employee_task import EmployeeTask
+from src.models.orchestration_plan import OrchestrationPlan
 from src.models.skill_rating import SkillRating
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import CST, cst_now
@@ -937,79 +938,83 @@ class TaskService:
         total_days = monthrange(target_year, target_month)[1]
         start_of_month = date(target_year, target_month, 1)
         end_of_month = date(target_year, target_month, total_days)
-
-        employee_stmt = select(Employee).where(Employee.user_id == user_id)
-        if employee_id is not None:
-            employee_stmt = employee_stmt.where(Employee.id == employee_id)
-        employees = list(db.scalars(employee_stmt.order_by(Employee.id.asc())).all())
-        if employee_id is not None and not employees:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到员工。")
-
-        employee_ids = [emp.id for emp in employees]
-        tasks_by_employee: dict[int, list[EmployeeTask]] = {emp_id: [] for emp_id in employee_ids}
-        if employee_ids:
-            task_stmt = select(EmployeeTask).where(
-                EmployeeTask.employee_id.in_(employee_ids),
-                EmployeeTask.is_active.is_(True),
-                EmployeeTask.dispatch_type == "skill",
-            ).order_by(EmployeeTask.priority.desc(), EmployeeTask.id.desc())
-            for task in list(db.scalars(task_stmt).all()):
-                tasks_by_employee.setdefault(task.employee_id, []).append(task)
-
+        # 整月每一天预置空 runs，保证响应包含全月日键。
         days: dict[str, Any] = {}
         for day_num in range(1, total_days + 1):
             day_date = date(target_year, target_month, day_num)
             day_key = day_date.strftime("%Y-%m-%d")
-            day_employees: list[dict[str, Any]] = []
+            days[day_key] = {"day": day_num, "date": day_key, "runs": []}
 
-            for employee in employees:
-                shift_id, shift_name, shift_schedule = TaskService._extract_shift_info(employee)
-                schedule_start = shift_schedule.get("start_date")
-                schedule_end = shift_schedule.get("end_date")
-                in_shift = True
-                try:
-                    if schedule_start:
-                        in_shift = day_date >= datetime.strptime(str(schedule_start), "%Y-%m-%d").date()
-                    if in_shift and schedule_end:
-                        in_shift = day_date <= datetime.strptime(str(schedule_end), "%Y-%m-%d").date()
-                except ValueError:
-                    in_shift = True
+        # employee_id 参数对编排计划无意义（计划非按员工），保留签名但忽略。
+        # 用户可能拥有多个工作空间，聚合全部空间的已确认调度计划。
+        ws_ids = [
+            ws.id for ws in WorkspaceService.list_user_workspaces(db, user_id or "")
+        ]
+        if not ws_ids:
+            return {"year": target_year, "month": target_month, "days": days}
 
-                employee_tasks = tasks_by_employee.get(employee.id, [])
-                if not in_shift and not employee_tasks:
-                    continue
-                if not in_shift:
-                    continue
-
-                tasks_payload = [
-                    {
-                        "is_active": task.is_active,
-                        "task_type": task.task_type,
-                        "task_id": task.id,
-                        "task_name": task.task_name,
-                        "employee_id": employee.id,
-                        "employee_name": employee.name,
-                        "cron_expression": task.cron_expression,
-                        "cron_description": TaskService._describe_cron(task.cron_expression),
-                        "cron_expression_type": task.cron_expression_type,
-                    }
-                    for task in employee_tasks
-                ]
-                if not tasks_payload and not shift_schedule:
-                    continue
-
-                day_employees.append(
-                    {
-                        "employee_id": employee.id,
-                        "employee_name": employee.name,
-                        "tasks": tasks_payload,
-                        "shift_id": shift_id,
-                        "shift_name": shift_name,
-                        "shift_schedule": shift_schedule,
-                    }
+        plans = list(
+            db.scalars(
+                select(OrchestrationPlan).where(
+                    OrchestrationPlan.workspace_id.in_(ws_ids),
+                    OrchestrationPlan.status == "confirmed",
+                    OrchestrationPlan.schedule_kind.isnot(None),
                 )
+            ).all()
+        )
 
-            days[day_key] = {"day": day_num, "date": day_key, "employees": day_employees}
+        month_start_aware = datetime(target_year, target_month, 1, tzinfo=CST)
+
+        for plan in plans:
+            title = (plan.user_input or "")[:30]
+            if plan.schedule_kind == "recurring" and plan.cron:
+                try:
+                    trig = CronTrigger.from_crontab(plan.cron, timezone=CST)
+                except (ValueError, TypeError) as exc:
+                    logger.warning(
+                        "月历跳过无法解析的 plan cron plan_id=%s cron=%r: %s",
+                        plan.id,
+                        plan.cron,
+                        exc,
+                    )
+                    continue
+                base = max(month_start_aware, now)
+                seen_dates: set[date] = set()
+                t = trig.get_next_fire_time(None, base)
+                while t is not None and t.date() <= end_of_month:
+                    d = t.date()
+                    if d not in seen_dates:
+                        seen_dates.add(d)
+                        day_key = d.strftime("%Y-%m-%d")
+                        if day_key in days:
+                            days[day_key]["runs"].append(
+                                {
+                                    "plan_id": plan.id,
+                                    "title": title,
+                                    "schedule_kind": "recurring",
+                                    "time": t.strftime("%H:%M"),
+                                    "cron": plan.cron,
+                                }
+                            )
+                    t = trig.get_next_fire_time(t, t)
+            elif plan.schedule_kind == "once" and plan.run_at is not None:
+                if plan.last_run_at is not None:
+                    continue
+                ra = plan.run_at
+                if ra.tzinfo is None:
+                    ra = ra.replace(tzinfo=CST)
+                if start_of_month <= ra.date() <= end_of_month:
+                    day_key = ra.strftime("%Y-%m-%d")
+                    if day_key in days:
+                        days[day_key]["runs"].append(
+                            {
+                                "plan_id": plan.id,
+                                "title": title,
+                                "schedule_kind": "once",
+                                "time": ra.strftime("%H:%M"),
+                                "cron": None,
+                            }
+                        )
 
         return {"year": target_year, "month": target_month, "days": days}
 

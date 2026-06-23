@@ -1,55 +1,56 @@
-"""月历视图按 user_id 过滤员工（修跨用户泄漏）。"""
+"""月历视图按 user_id 过滤工作空间的调度计划（修跨用户泄漏）。"""
 
 from __future__ import annotations
 
-import json
+from src.models.orchestration_plan import OrchestrationPlan
+from src.models.workspace import Workspace
+from src.service.task_service import TaskService
 
 
-def _shift_for_june_2026() -> str:
-    # 给员工一个覆盖 2026-06 的排班，使其在月历里产生条目（否则无班无任务会被跳过）。
-    return json.dumps(
-        {
-            "shift_id": 1,
-            "shift_name": "白班",
-            "start_date": "2026-06-01",
-            "end_date": "2026-06-30",
-        }
+def _ws(db, user_id: str) -> Workspace:
+    ws = Workspace(name="w", root_path="/tmp/w", user_id=user_id)
+    db.add(ws)
+    db.flush()
+    return ws
+
+
+def _recurring_plan(db, ws, title: str, cron: str) -> OrchestrationPlan:
+    plan = OrchestrationPlan(
+        workspace_id=ws.id,
+        conversation_id=1,
+        user_input=title,
+        plan_json="[]",
+        status="confirmed",
+        total_tasks=0,
+        schedule_kind="recurring",
+        cron=cron,
+        is_recurring=True,
     )
+    db.add(plan)
+    db.flush()
+    return plan
 
 
-def test_monthly_calendar_only_includes_requesting_user_employees(db_session):
-    from src.models.employee import Employee
-    from src.service.task_service import TaskService
-
-    alice = Employee(
-        workspace_id=1,
-        user_id="u1",
-        employee_code="a",
-        name="Alice",
-        shift_schedule_json=_shift_for_june_2026(),
-    )
-    bob = Employee(
-        workspace_id=1,
-        user_id="u2",
-        employee_code="b",
-        name="Bob",
-        shift_schedule_json=_shift_for_june_2026(),
-    )
-    db_session.add_all([alice, bob])
+def test_monthly_calendar_only_includes_requesting_user_plans(db_session):
+    """月历只投影请求用户名下工作空间的计划，不泄漏其他用户。"""
+    ws_u1 = _ws(db_session, "u1")
+    ws_u2 = _ws(db_session, "u2")
+    _recurring_plan(db_session, ws_u1, "Alice 每日计划", "0 9 * * *")
+    _recurring_plan(db_session, ws_u2, "Bob 每日计划", "0 9 * * *")
     db_session.commit()
 
     payload = TaskService.build_monthly_calendar(
-        db_session, user_id="u1", year=2026, month=6
+        db_session, user_id="u1", year=2099, month=6
     )
 
     serialized = str(payload)
-    assert "Alice" in serialized  # u1 自己的员工应出现
-    assert "Bob" not in serialized  # 不得泄漏 u2 的员工
+    assert "Alice" in serialized  # u1 自己的计划应出现
+    assert "Bob" not in serialized  # 不得泄漏 u2 的计划
 
-    leaked_ids = {
-        emp.get("employee_id")
+    titles = {
+        run["title"]
         for day in payload["days"].values()
-        for emp in day["employees"]
+        for run in day["runs"]
     }
-    assert bob.id not in leaked_ids
-    assert alice.id in leaked_ids
+    assert "Alice 每日计划" in titles
+    assert "Bob 每日计划" not in titles
