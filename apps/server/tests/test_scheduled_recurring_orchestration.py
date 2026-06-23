@@ -413,6 +413,44 @@ def test_run_plan_job_stamps_next_run_and_fails_run_on_dispatch_error(db_session
         assert p.next_run_at is not None and p.last_run_at is not None
 
 
+def test_run_plan_job_emits_scheduled_run_event(db_session, monkeypatch):
+    import src.service.task_scheduler_service as tss
+    import src.service.agent.orchestrator.execution as ex
+    import src.service.workspace_events as we
+    from sqlalchemy.orm import sessionmaker
+
+    ws, plan = _seed_ws_plan(db_session)
+    plan.cron = "0 10 * * *"; plan.is_recurring = True; plan.schedule_kind = "recurring"
+    plan.user_input = "每天早上汇总昨天的销售数据并发周报给团队" * 3  # >40 chars
+    db_session.commit()
+    plan_id = plan.id
+    ws_id = ws.id
+    long_input = plan.user_input
+
+    sf = sessionmaker(bind=db_session.get_bind())
+    monkeypatch.setattr(tss, "get_session_local", lambda: sf)
+
+    fake_run = type("R", (), {"id": 777, "run_seq": 3, "conversation_id": 999, "status": "running"})()
+    monkeypatch.setattr(ex, "execute_plan_run", lambda *a, **k: fake_run)
+
+    pushed: list[tuple[int, dict]] = []
+    monkeypatch.setattr(we.WorkspaceEventBus, "push",
+                        classmethod(lambda cls, wid, ev: pushed.append((wid, ev))))
+
+    tss.TaskSchedulerService.run_plan_job(plan_id)
+
+    scheduled = [ev for _, ev in pushed if ev.get("type") == "scheduled_run"]
+    assert len(scheduled) == 1
+    wid, ev = next((w, e) for (w, e) in pushed if e.get("type") == "scheduled_run")
+    assert wid == ws_id
+    assert ev["plan_id"] == plan_id
+    assert ev["run_id"] == 777
+    assert ev["run_seq"] == 3
+    assert ev["conversation_id"] == 999
+    assert ev["title"] == long_input[:40]
+    assert len(ev["title"]) == 40
+
+
 def test_create_plan_with_unparseable_schedule_errors_not_degrades(db_session, monkeypatch):
     import src.service.agent.orchestrator.tools.plans as tp
     from sqlalchemy import select as _select

@@ -503,6 +503,20 @@ class TaskSchedulerService:
                 if run is not None:
                     run.status = "failed"
                     run.ended_at = cst_now()
+            # 一轮一条 scheduled_run 事件 → 前端原生通知/铃铛；发事件失败绝不影响调度
+            if run is not None:
+                try:
+                    from src.service.workspace_events import WorkspaceEventBus
+                    WorkspaceEventBus.push(plan.workspace_id, {
+                        "type": "scheduled_run",
+                        "plan_id": plan.id,
+                        "run_id": run.id,
+                        "run_seq": run.run_seq,
+                        "conversation_id": run.conversation_id,
+                        "title": (plan.user_input or "")[:40],
+                    })
+                except Exception:
+                    logger.error("run_plan_job 发 scheduled_run 事件失败 plan=%s", plan_id, exc_info=True)
             # once：跑完自停（status=done → reload_jobs 不再挂）
             if plan.schedule_kind == "once":
                 plan.last_run_at = cst_now()
