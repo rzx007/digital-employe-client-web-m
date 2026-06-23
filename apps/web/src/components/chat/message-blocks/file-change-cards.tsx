@@ -11,6 +11,7 @@ import plainIcon from "@/assets/files/plain_dark.png"
 import { downloadResource } from "@/api/chat"
 import { useCuratorFile } from "@/components/chat/curator/use-curator-file"
 import type { FileChangeItem } from "@/lib/chat/file-change-utils"
+import { emitWorkbenchBoardFilesChanged } from "@/lib/workbench/workbench-config"
 import { EXTENSION_ICONS } from "@/lib/chat/file-icons"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useBrowserStore } from "@/stores/browser-store"
@@ -301,6 +302,17 @@ export function FileChangeCards({ files, className }: FileChangeCardsProps) {
   const openResource = useArtifactStore((s) => s.openResource)
   const openHtmlPreview = useBrowserStore((s) => s.openHtmlPreview)
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
+
+  // 工作台助手 write/edit 了 .html → 派发「看板源文件已变更」事件，
+  // 已钉这些看板的工作台面板监听并自动刷新（改完不用手点刷新）。
+  const changedHtmlKey = files
+    .filter((f) => f.kind === "file" && /\.html?$/i.test(f.path))
+    .map((f) => f.path)
+    .join("|")
+  React.useEffect(() => {
+    if (!changedHtmlKey) return
+    emitWorkbenchBoardFilesChanged(changedHtmlKey.split("|"))
+  }, [changedHtmlKey])
 
   const conversationId = curatorFile?.conversationId ?? selectedConversationId
   const curatorOnOpenFile = curatorFile?.onOpenFile

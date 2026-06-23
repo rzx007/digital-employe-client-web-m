@@ -26,6 +26,30 @@ export function emitWorkbenchConfigChanged(): void {
   window.dispatchEvent(new Event(WORKBENCH_CONFIG_CHANGED_EVENT))
 }
 
+/**
+ * 「打开资源池」事件名。看板区（WorkbenchView）的资源池按钮派发此事件，
+ * WorkbenchContentSplit 监听并展开右侧资源池面板——解耦看板区按钮与 split 内部状态。
+ */
+export const WORKBENCH_OPEN_RESOURCES_EVENT = "workbench-open-resources"
+
+export function emitWorkbenchOpenResources(): void {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new Event(WORKBENCH_OPEN_RESOURCES_EVENT))
+}
+
+/**
+ * 「看板源文件已变更」事件：工作台助手 write/edit 了某些文件后派发（带变更路径），
+ * 已钉这些 .html 的看板面板监听并自动刷新——改完不用手点刷新。
+ */
+export const WORKBENCH_BOARD_FILES_CHANGED_EVENT = "workbench-board-files-changed"
+
+export function emitWorkbenchBoardFilesChanged(paths: string[]): void {
+  if (typeof window === "undefined" || paths.length === 0) return
+  window.dispatchEvent(
+    new CustomEvent(WORKBENCH_BOARD_FILES_CHANGED_EVENT, { detail: { paths } })
+  )
+}
+
 const STORAGE_KEY_PREFIX = "workbench-config-"
 
 function getStorageKey(employeeId: string): string {
@@ -101,6 +125,20 @@ export function initializeWorkbenchConfig(employeeId: string): WorkbenchConfig {
   }
   saveWorkbenchConfig(config)
   return config
+}
+
+/** 读工作台成员（被邀请进工作台的员工 id）。缺省 / 旧 config → []。 */
+export function getMembers(employeeId: string): number[] {
+  const cfg = loadWorkbenchConfig(employeeId)
+  return Array.isArray(cfg?.members) ? (cfg!.members as number[]) : []
+}
+
+/** 写工作台成员并广播变更。 */
+export function setMembers(employeeId: string, members: number[]): void {
+  const cfg =
+    loadWorkbenchConfig(employeeId) ?? initializeWorkbenchConfig(employeeId)
+  saveWorkbenchConfig({ ...cfg, members, lastModified: Date.now() })
+  emitWorkbenchConfigChanged()
 }
 
 /** 同一会话 + 同一资源路径视为同一个产物（钉重复时原地更新而非新增重复看板） */

@@ -8,12 +8,13 @@ import {
 } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
-import { useResourceContentQuery } from "@/hooks/use-chat-queries"
+import { useWorkbenchHtmlContentQuery } from "@/hooks/use-chat-queries"
 import { getRequestBaseUrl } from "@/lib/request"
 import {
   HTML_PREVIEW_SANDBOX,
   wrapHtmlForPreview,
 } from "@/components/artifact/artifact-content/html-preview-utils"
+import { WORKBENCH_BOARD_FILES_CHANGED_EVENT } from "@/lib/workbench/workbench-config"
 import type { HtmlArtifactRef } from "@/types/workbench"
 
 interface WorkbenchHtmlPanelProps {
@@ -33,12 +34,40 @@ export function WorkbenchHtmlPanel({
   title,
   className,
 }: WorkbenchHtmlPanelProps) {
-  const { data, isLoading, isError, refetch } = useResourceContentQuery(
-    htmlRef.conversationId,
-    htmlRef.resourcePath
-  )
+  // 内容来源：资源池（带 resourceId）走资源内容端点，否则走会话内资源端点。
+  // 两个分支封装在 useWorkbenchHtmlContentQuery 内部，便于测试只 mock 一个钩子。
+  const { data, isLoading, isError, refetch } =
+    useWorkbenchHtmlContentQuery(htmlRef)
 
   const [isFullscreen, setIsFullscreen] = React.useState(false)
+  // 刷新计数：点刷新时 ++，作为 iframe key 的一部分强制重载（即使新旧 srcDoc 字符串相同，
+  // 沙箱 iframe 也未必自动重渲染；换 key 强制重挂）。
+  const [reloadNonce, setReloadNonce] = React.useState(0)
+  const handleRefresh = React.useCallback(() => {
+    void refetch()
+    setReloadNonce((n) => n + 1)
+  }, [refetch])
+
+  // 自动刷新：工作台助手 write/edit 了本看板源文件时（file-change-cards 派发事件），
+  // 按 basename 匹配自己的 resourcePath → 自动重拉重渲，不用手点刷新。
+  React.useEffect(() => {
+    const myName = (htmlRef.resourcePath || "").split(/[\\/]/).pop()
+    if (!myName) return
+    const onChanged = (e: Event) => {
+      const paths = (e as CustomEvent<{ paths: string[] }>).detail?.paths ?? []
+      const hit = paths.some((p) => p.split(/[\\/]/).pop() === myName)
+      if (hit) handleRefresh()
+    }
+    window.addEventListener(
+      WORKBENCH_BOARD_FILES_CHANGED_EVENT,
+      onChanged as EventListener
+    )
+    return () =>
+      window.removeEventListener(
+        WORKBENCH_BOARD_FILES_CHANGED_EVENT,
+        onChanged as EventListener
+      )
+  }, [htmlRef.resourcePath, handleRefresh])
 
   const content = data?.content
   const srcDoc = React.useMemo(() => {
@@ -88,7 +117,7 @@ export function WorkbenchHtmlPanel({
           size="icon-xs"
           className="size-5"
           title="刷新看板"
-          onClick={() => void refetch()}
+          onClick={handleRefresh}
         >
           <IconRefresh className="size-3" />
         </Button>
@@ -119,6 +148,7 @@ export function WorkbenchHtmlPanel({
           </div>
         ) : srcDoc ? (
           <iframe
+            key={reloadNonce}
             title={title}
             sandbox={HTML_PREVIEW_SANDBOX}
             srcDoc={srcDoc}

@@ -257,6 +257,7 @@ export function CuratorView({
   onNewConversation,
   isCreatingConversation,
   getExtraMetadata,
+  titleSlot,
   className,
   ...props
 }: ComponentProps<"div"> & {
@@ -264,6 +265,8 @@ export function CuratorView({
   conversationId: string | number
   title?: string
   size?: "default" | "compact"
+  /** 工作台：替代 compact 工具栏名字区（总管/助手 下拉切换）。 */
+  titleSlot?: React.ReactNode
   /** compact 工作台：由 WorkbenchContentSplit 控制资源分栏 */
   resourcesOpen?: boolean
   onToggleResources?: () => void
@@ -824,6 +827,7 @@ export function CuratorView({
           isCreatingConversation={isCreatingConversation}
           resourcesOpen={resourcesOpen}
           onToggleResources={onToggleResources}
+          titleSlot={titleSlot}
         />
       ) : (
         <CuratorChatHeader

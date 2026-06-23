@@ -172,6 +172,8 @@ export function ChatPanel({
   onHitlApproved,
   onDraftSuggestionSelect,
   hideHeader = false,
+  onOpenArtifact,
+  titleSlot,
   className,
   ...props
 }: React.ComponentProps<"div"> & {
@@ -210,6 +212,10 @@ export function ChatPanel({
   onDraftSuggestionSelect?: (text: string) => void
   /** 工作台 compact：外层已有 CuratorCompactToolbar */
   hideHeader?: boolean
+  /** 覆盖 header 资源管理器图标的点击行为（工作台：开右侧资源池）。 */
+  onOpenArtifact?: () => void
+  /** header 标题区自定义内容（工作台：总管/助手 下拉切换）。 */
+  titleSlot?: React.ReactNode
 }) {
   const contactDisplayName = contact
     ? getContactDisplayName(contact)
@@ -299,6 +305,8 @@ export function ChatPanel({
               onOpenContacts={onOpenContacts}
               onOpenConversations={onOpenConversations}
               onNewConversation={onNewConversation}
+              onOpenArtifact={onOpenArtifact}
+              titleSlot={titleSlot}
             />
           )}
           <CuratorReturnBar />

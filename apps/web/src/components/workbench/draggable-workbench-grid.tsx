@@ -8,6 +8,9 @@ import { IconTrash } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 import type { GridSpan, GridPos, WorkbenchBlock } from "@/types/workbench"
 import { GRID_COLS, GRID_ROW_HEIGHT } from "@/lib/workbench/grid"
+import { parseResourceDrop } from "@/lib/workbench/parse-resource-drop"
+import { pinHtmlToWorkbench } from "@/lib/workbench/pin-html-to-workbench"
+import { WORKBENCH_RESOURCE_DRAG_TYPE } from "./workbench-resource-pool"
 import { WorkbenchHtmlPanel } from "./workbench-html-panel"
 // react-grid-layout v2 自带 resize 手柄样式，不再依赖 react-resizable（v1 才需要）。
 import "react-grid-layout/css/styles.css"
@@ -26,6 +29,30 @@ export function DraggableWorkbenchGrid({
   const { width, containerRef, mounted } = useContainerWidth()
   const visible = useMemo(() => blocks.filter((b) => b.enabled), [blocks])
 
+  // 资源池卡片拖到网格 → 钉成看板（资源池来源带 resourceId，渲染走资源内容端点）。
+  const handleDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes(WORKBENCH_RESOURCE_DRAG_TYPE)) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = "copy"
+    }
+  }
+  const handleDrop = (e: React.DragEvent) => {
+    const dropped = parseResourceDrop(
+      e.dataTransfer.getData(WORKBENCH_RESOURCE_DRAG_TYPE)
+    )
+    if (!dropped) return
+    e.preventDefault()
+    const name = dropped.title.endsWith(".html")
+      ? dropped.title
+      : `${dropped.title}.html`
+    pinHtmlToWorkbench({
+      conversationId: "resource",
+      path: dropped.src_path,
+      name,
+      resourceId: dropped.id,
+    })
+  }
+
   const layout = useMemo<LayoutItem[]>(
     () =>
       visible.map((b) => ({
@@ -43,6 +70,8 @@ export function DraggableWorkbenchGrid({
   if (visible.length === 0) {
     return (
       <div
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
         className={cn(
           "flex w-full flex-col items-center justify-center gap-3 rounded-xl border border-dashed",
           "border-border/70 bg-muted/10 px-6 py-16",
@@ -52,7 +81,7 @@ export function DraggableWorkbenchGrid({
         <div className="max-w-sm text-center">
           <div className="text-sm text-muted-foreground">还没有看板</div>
           <div className="mt-2 text-xs text-muted-foreground">
-            在右侧直接让总管「做一个看板」，它会自动钉到工作台并排好版
+            在右侧让工作台助手「做一个看板」，或从资源池把看板拖到这里
           </div>
         </div>
       </div>
@@ -72,7 +101,12 @@ export function DraggableWorkbenchGrid({
   }
 
   return (
-    <div ref={containerRef} className="w-full">
+    <div
+      ref={containerRef}
+      className="w-full"
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
       {mounted && (
         <GridLayout
           className="layout"

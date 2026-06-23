@@ -16,13 +16,10 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import { ArtifactPanel } from "@/components/artifact"
 import { CuratorView } from "@/components/chat/curator/curator-view"
-import {
-  selectWorkbenchCuratorConversation,
-} from "@/lib/chat/conversation-selection"
 import { ensureCuratorConversationAndSelect } from "@/lib/chat/curator-conversation-actions"
 import { getContactId } from "@/lib/chat/contact-utils"
-import { resolveWorkbenchCuratorPanel } from "./resolve-workbench-curator-panel"
 import { buildWorkbenchSnapshot } from "@/lib/workbench/workbench-context"
+import { resolveWorkbenchCuratorPanel } from "./resolve-workbench-curator-panel"
 import {
   useConversationsQuery,
   useCuratorConversationQuery,
@@ -30,9 +27,16 @@ import {
 import { useCreateCuratorConversation } from "@/hooks/use-create-curator-conversation"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useChatStore } from "@/stores/chat-store"
-import { useArtifactStore } from "@/stores/artifact-store"
 import { useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
+import { WorkbenchMemberPanel } from "./workbench-member-panel"
+import { WorkbenchChatTargetSwitch } from "./workbench-chat-target-switch"
+import { WorkbenchResourcePool } from "./workbench-resource-pool"
 import { WorkbenchCuratorSessionsSheet } from "./workbench-curator-sessions-sheet"
+import { selectWorkbenchCuratorConversation } from "@/lib/chat/conversation-selection/apply"
+import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
+import { useAddWorkbenchResource } from "@/hooks/use-workbench-resources"
+import { WORKBENCH_OPEN_RESOURCES_EVENT } from "@/lib/workbench/workbench-config"
 
 const LAYOUT_STORAGE_ID = "workbench-grid-curator-resources-v2"
 const PANEL_IDS = ["grid", "curator", "resources"] as const
@@ -111,12 +115,66 @@ export function WorkbenchContentSplit({
   children: ReactNode
 }) {
   const [resourcesOpen, setResourcesOpen] = useState(false)
-  const [curatorSessionsOpen, setCuratorSessionsOpen] = useState(false)
+  const [resourceTab, setResourceTab] = useState<"pool" | "files">("pool")
+  const addResource = useAddWorkbenchResource()
+
+  // 看板区「资源池」按钮派发事件 → 展开右侧资源池面板（资源池 tab）。
+  useEffect(() => {
+    const open = () => {
+      setResourceTab("pool")
+      setResourcesOpen(true)
+    }
+    window.addEventListener(WORKBENCH_OPEN_RESOURCES_EVENT, open)
+    return () => window.removeEventListener(WORKBENCH_OPEN_RESOURCES_EVENT, open)
+  }, [])
+  // 工作台助手当前会话 id（由 WorkbenchMemberPanel 上报），供「文件」tab 列其产物。
+  const [assistantConversationId, setAssistantConversationId] = useState<
+    string | number | null
+  >(null)
+  // 历史会话弹层
+  const [sessionsOpen, setSessionsOpen] = useState(false)
+  // 用户在历史会话弹层选中的工作台助手会话（覆盖默认取第一条）。
+  const [pickedAssistantConvId, setPickedAssistantConvId] = useState<
+    string | number | null
+  >(null)
   const queryClient = useQueryClient()
-  const { createCuratorConversation, isPending: isCreatingCurator } =
-    useCreateCuratorConversation()
+  const { isPending: isCreatingCurator } = useCreateCuratorConversation()
 
   const contacts = useChatStore((s) => s.contacts)
+
+  // ── 右侧对话：总管 ⇄ 工作台助手 二选一切换（默认总管）──
+  const [chatTarget, setChatTarget] = useState<"curator" | "assistant">(
+    "curator"
+  )
+  // 工作台助手 = 名为「工作台助手」的种子员工 contact
+  const assistantContact = useMemo(
+    () =>
+      contacts.find(
+        (c) => c.type === "employee" && c.employee?.name === "工作台助手"
+      ) ?? null,
+    [contacts]
+  )
+  const assistantEmployeeId = assistantContact?.employee?.id
+    ? Number(assistantContact.employee.id)
+    : null
+
+  // 派单：总管把任务派给工作台助手时，工作台弹 toast 引导切过去看进度。
+  useWorkspaceEvents(
+    useCallback(
+      (event) => {
+        if (event.type !== "task_started") return
+        if (assistantEmployeeId == null) return
+        if (event.employee_id !== assistantEmployeeId) return
+        toast(`${event.employee_name} 开始做「${event.task_name}」`, {
+          action: {
+            label: "去工作台查看",
+            onClick: () => setChatTarget("assistant"),
+          },
+        })
+      },
+      [assistantEmployeeId]
+    )
+  )
   const workbenchCuratorConversationId = useChatStore(
     (s) => s.workbenchCuratorConversationId
   )
@@ -205,33 +263,8 @@ export function WorkbenchContentSplit({
     )
   }, [activeConversationId, curatorConversations])
 
-  const handleNewCuratorConversation = useCallback(() => {
-    if (!curatorContact || isCreatingCurator) return
-    void createCuratorConversation(curatorContact, undefined, {
-      selectScope: "workbench",
-    }).then(() => {
-      setCuratorSessionsOpen(false)
-      setResourcesOpen(false)
-    })
-  }, [
-    curatorContact,
-    createCuratorConversation,
-    isCreatingCurator,
-  ])
-
-  const handleOpenCuratorConversations = useCallback(() => {
-    setCuratorSessionsOpen(true)
-  }, [])
-
-  const handleSelectWorkbenchCuratorConversation = useCallback(
-    (conversationId: string | number) => {
-      selectWorkbenchCuratorConversation(conversationId)
-      setCuratorSessionsOpen(false)
-    },
-    []
-  )
-
-  const showResources = resourcesOpen && activeConversationId != null
+  // 资源池不依赖会话，故只要 resourcesOpen 即展开（文件页另行处理无会话情形）。
+  const showResources = resourcesOpen
 
   const gridPanelRef = usePanelRef()
   const curatorPanelRef = usePanelRef()
@@ -249,24 +282,12 @@ export function WorkbenchContentSplit({
   )
 
   const handleToggleResources = useCallback(() => {
-    if (activeConversationId == null) return
     setResourcesOpen((open) => !open)
-  }, [activeConversationId])
+  }, [])
 
   const handleCloseResources = useCallback(() => {
     setResourcesOpen(false)
   }, [])
-
-  const openResource = useArtifactStore((s) => s.openResource)
-
-  const handleOpenResourceFile = useCallback(
-    (path: string) => {
-      if (activeConversationId == null) return
-      setResourcesOpen(true)
-      openResource(path)
-    },
-    [activeConversationId, openResource],
-  )
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {
@@ -297,38 +318,56 @@ export function WorkbenchContentSplit({
 
   const curatorPanelBorder = showResources ? "border-r" : "border-l"
 
-  const renderCuratorPanel = () => {
-    if (panel.mode === "loading" || !curatorContact) {
-      return (
-        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-          {isCreatingCurator ? "创建会话…" : "加载总管会话…"}
-        </div>
-      )
-    }
-
-    if (activeConversationId == null) {
-      return (
-        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-          {isCreatingCurator ? "创建会话…" : "加载总管会话…"}
-        </div>
-      )
-    }
-
-    return (
-      <CuratorView
-        key={String(activeConversationId)}
-        contact={curatorContact}
-        conversationId={activeConversationId}
-        title={conversationTitle}
-        size="compact"
-        className={cn("h-full min-h-0", curatorPanelBorder)}
-        resourcesOpen={showResources}
-        onToggleResources={handleToggleResources}
-        onOpenResourceFile={handleOpenResourceFile}
-        onOpenConversations={handleOpenCuratorConversations}
-        onNewConversation={handleNewCuratorConversation}
-        getExtraMetadata={() => ({ workbench: buildWorkbenchSnapshot() })}
+  const renderMemberArea = () => {
+    // 对话头部标题处的「总管 ⇄ 工作台助手」下拉切换（替代纯标题，干净）。
+    const targetSwitch = (
+      <WorkbenchChatTargetSwitch
+        value={chatTarget}
+        onChange={setChatTarget}
+        assistantAvailable={!!assistantContact}
       />
+    )
+    return (
+      <div className={cn("flex h-full min-h-0 flex-col", curatorPanelBorder)}>
+        <div className="min-h-0 flex-1">
+          {chatTarget === "assistant" ? (
+            assistantContact ? (
+              <WorkbenchMemberPanel
+                key={`assistant-${assistantEmployeeId}`}
+                contact={assistantContact}
+                selectedConversationId={pickedAssistantConvId}
+                onOpenArtifact={() => setResourcesOpen(true)}
+                onActiveConversation={setAssistantConversationId}
+                onOpenConversations={() => setSessionsOpen(true)}
+                titleSlot={targetSwitch}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
+                未找到「工作台助手」员工
+              </div>
+            )
+          ) : !curatorContact || activeConversationId == null ? (
+            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+              {isCreatingCurator ? "创建会话…" : "加载总管会话…"}
+            </div>
+          ) : (
+            <CuratorView
+              key={String(activeConversationId)}
+              contact={curatorContact}
+              conversationId={activeConversationId}
+              title={conversationTitle}
+              size="compact"
+              className="h-full min-h-0"
+              resourcesOpen={showResources}
+              onToggleResources={handleToggleResources}
+              onOpenResourceFile={() => setResourcesOpen(true)}
+              onOpenConversations={() => setSessionsOpen(true)}
+              titleSlot={targetSwitch}
+              getExtraMetadata={() => ({ workbench: buildWorkbenchSnapshot() })}
+            />
+          )}
+        </div>
+      </div>
     )
   }
 
@@ -368,7 +407,7 @@ export function WorkbenchContentSplit({
           maxSize={showResources ? "60%" : "55%"}
           className="min-w-0"
         >
-          {renderCuratorPanel()}
+          {renderMemberArea()}
         </ResizablePanel>
 
         {showResources && (
@@ -385,26 +424,107 @@ export function WorkbenchContentSplit({
           maxSize={showResources ? undefined : "0%"}
           className="min-w-0"
         >
-          {showResources && activeConversationId != null && (
-            <div className="h-full bg-muted/20 p-3">
-              <ArtifactPanel
-                presentation="embedded"
-                conversationId={activeConversationId}
-                isOpen
-                onClose={handleCloseResources}
-                className="h-full rounded-lg border shadow-xl"
-              />
+          {showResources && (
+            <div className="flex h-full flex-col bg-muted/20 p-3">
+              <div className="mb-2 flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setResourceTab("pool")}
+                  className={cn(
+                    "rounded px-2 py-1 text-xs",
+                    resourceTab === "pool"
+                      ? "bg-background font-medium shadow-sm"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  资源池
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResourceTab("files")}
+                  className={cn(
+                    "rounded px-2 py-1 text-xs",
+                    resourceTab === "files"
+                      ? "bg-background font-medium shadow-sm"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  文件
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCloseResources}
+                  className="ml-auto rounded px-2 py-1 text-xs text-muted-foreground"
+                >
+                  关闭
+                </button>
+              </div>
+              <div className="min-h-0 flex-1">
+                {(() => {
+                  if (resourceTab === "pool") {
+                    return (
+                      <WorkbenchResourcePool className="h-full rounded-lg border bg-background shadow-xl" />
+                    )
+                  }
+                  // 「文件」tab 跟随当前对话对象：助手 → 助手会话产物；总管 → 总管会话产物。
+                  const filesConversationId =
+                    chatTarget === "assistant"
+                      ? assistantConversationId
+                      : activeConversationId
+                  return filesConversationId != null ? (
+                    <ArtifactPanel
+                      key={String(filesConversationId)}
+                      presentation="embedded"
+                      conversationId={filesConversationId}
+                      isOpen
+                      onClose={handleCloseResources}
+                      onAddToResourcePool={(entry) =>
+                        addResource.mutate(
+                          { src_path: entry.path, title: entry.name },
+                          {
+                            onSuccess: () =>
+                              toast.success(`已加入资源池：${entry.name}`),
+                            onError: (e) =>
+                              toast.error(`加入失败：${String(e)}`),
+                          }
+                        )
+                      }
+                      className="h-full rounded-lg border shadow-xl"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                      暂无会话文件
+                    </div>
+                  )
+                })()}
+              </div>
             </div>
           )}
         </ResizablePanel>
       </ResizablePanelGroup>
 
+      {/* 历史会话弹层：按当前对话对象（总管/工作台助手）列其会话，可选可新建。 */}
       <WorkbenchCuratorSessionsSheet
-        open={curatorSessionsOpen}
-        onOpenChange={setCuratorSessionsOpen}
-        curatorContact={curatorContact}
-        selectedConversationId={activeConversationId}
-        onSelectConversation={handleSelectWorkbenchCuratorConversation}
+        open={sessionsOpen}
+        onOpenChange={setSessionsOpen}
+        curatorContact={
+          chatTarget === "assistant"
+            ? assistantContact ?? undefined
+            : curatorContact
+        }
+        selectedConversationId={
+          chatTarget === "assistant"
+            ? assistantConversationId
+            : activeConversationId
+        }
+        onSelectConversation={(id) => {
+          if (chatTarget === "assistant") {
+            setPickedAssistantConvId(id)
+          } else {
+            selectWorkbenchCuratorConversation(id)
+          }
+          setSessionsOpen(false)
+        }}
       />
     </div>
   )

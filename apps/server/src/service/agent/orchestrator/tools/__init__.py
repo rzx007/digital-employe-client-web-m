@@ -68,9 +68,6 @@ from src.service.agent.orchestrator.tools.tasks import (
     list_tasks,
     update_task,
 )
-from src.service.agent.orchestrator.tools.workbench import arrange_workbench
-
-
 __all__ = [
     # employees
     "list_workspace_employees",
@@ -97,8 +94,6 @@ __all__ = [
     "update_task",
     "delete_task",
     "delete_tasks_batch",
-    # workbench
-    "arrange_workbench",
     # skills
     "list_workspace_skills",
     "get_workspace_skill_detail",

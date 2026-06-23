@@ -24,6 +24,7 @@ def test_builtin_seed_contains_office_and_browser_assistants() -> None:
     names = _seed_names()
     assert ("文档办公助手", frozenset({"docx", "pptx", "xlsx", "pdf"})) in names
     assert ("浏览器助手", frozenset({"browser-runtime"})) in names
+    assert ("工作台助手", frozenset({"workbench-builder"})) in names
 
 
 def test_ensure_builtin_seed_creates_office_and_browser_assistants(
@@ -56,3 +57,4 @@ def test_ensure_builtin_seed_creates_office_and_browser_assistants(
 
     assert by_name["文档办公助手"] == {"docx", "pptx", "xlsx", "pdf"}
     assert by_name["浏览器助手"] == {"browser-runtime"}
+    assert by_name["工作台助手"] == {"workbench-builder"}
