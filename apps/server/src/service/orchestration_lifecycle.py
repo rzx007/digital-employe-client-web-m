@@ -130,14 +130,19 @@ def resolve_run_id_for_conversation(
 
     用于 per-run 会话按本轮过滤交付物：scheduled 轮有专属会话，命中其 run；
     非任何 run 的会话（如纯定时计划创建源会话）返回 None。
+
+    注：manual 轮共用 plan.conversation_id（execution 处 run.conversation_id=plan.conversation_id），
+    同一会话可能命中多轮 → order_by id desc 取最新轮，保证确定性。
     """
     from src.models.plan_run import PlanRun
 
     return db.scalar(
-        select(PlanRun.id).where(
+        select(PlanRun.id)
+        .where(
             PlanRun.plan_id == plan_id,
             PlanRun.conversation_id == conversation_id,
         )
+        .order_by(PlanRun.id.desc())
     )
 
 
