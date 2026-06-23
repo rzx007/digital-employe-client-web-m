@@ -9,7 +9,6 @@ import type {
   MetadataSkill,
   SkillListItem,
 } from "./types"
-import type { TaskFormData, ShiftScheduleForm } from "@/types/task"
 
 export async function fetchMcpList(): Promise<McpListItem[]> {
   const res = await request<{ code?: number; data?: McpListItem[] }>(
@@ -133,38 +132,12 @@ export interface CreateEmployeeParams {
   detail_page_url?: string | null
   mcp_ids?: number[]
   skill_ids?: number[]
-  shift_schedule?: ShiftScheduleForm | null
-  tasks?: TaskFormData[]
 }
 
 function buildEmployeeBody(
   params: CreateEmployeeParams
 ): Record<string, unknown> {
-  const { shift_schedule, tasks, ...basic } = params
-
-  const body: Record<string, unknown> = { ...basic }
-  if (shift_schedule) {
-    body.shift_schedule = shift_schedule
-  }
-
-  if (tasks && tasks.length > 0) {
-    body.tasks = tasks.map((task) => ({
-      id: task.id,
-      task_name: task.task_name,
-      capability_id: task.capability_id,
-      task_type: task.task_type ?? 2,
-      config: {},
-      cron_expression: task.cron_expression || "",
-      is_active: task.is_active ?? true,
-      cron_expression_type: task.cron_expression_type || "daily",
-      user_prompt: task.user_prompt,
-      task_resource_type: task.task_resource_type,
-      skill_id: task.skill_id,
-      confirm_execution_result: task.confirm_execution_result ?? false,
-    }))
-  }
-
-  return body
+  return { ...params }
 }
 
 /**
