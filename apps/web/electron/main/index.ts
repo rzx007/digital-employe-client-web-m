@@ -42,7 +42,7 @@ if (process.platform === "linux") {
 }
 
 if (process.platform === "win32")
-  app.setAppUserModelId("com.boban-staff.app")
+  app.setAppUserModelId("com.boban-staff-next.app")
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()

@@ -1,9 +1,9 @@
 // @see https://www.electron.build/configuration/configuration
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.boban-staff.app",
+  "appId": "com.boban-staff-next.app",
   "asar": true,
-  "productName": "BobanStaff",
+  "productName": "BobanStaffNext",
   "directories": {
     "output": "release"
   },
@@ -44,7 +44,7 @@
       "dmg",
       "zip"
     ],
-    "artifactName": "BobanStaff-Offline-Mac-${version}-Installer.${ext}"
+    "artifactName": "BobanStaffNext-Offline-Mac-${version}-Installer.${ext}"
   },
   "win": {
     "icon": "build/icon.ico",
@@ -56,7 +56,7 @@
         ]
       }
     ],
-    "artifactName": "BobanStaff-Offline-Windows-${version}-Setup.${ext}"
+    "artifactName": "BobanStaffNext-Offline-Windows-${version}-Setup.${ext}"
   },
   "nsis": {
     "oneClick": false,
@@ -74,6 +74,6 @@
       }
     ],
     "category": "Office",
-    "artifactName": "BobanStaff-Offline-Linux-arm64-${version}.${ext}"
+    "artifactName": "BobanStaffNext-Offline-Linux-arm64-${version}.${ext}"
   }
 }

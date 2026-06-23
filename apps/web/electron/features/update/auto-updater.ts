@@ -34,7 +34,9 @@ async function resolveUpdateFeedURL(): Promise<string | null> {
     const json = await res.json()
     const baseUrl: string | undefined = json?.data?.config_value
     if (baseUrl) {
-      return `${baseUrl.replace(/\/+$/, "")}${getPlatformPath()}`
+      // BobanStaffNext 独立产品分叉：更新产物隔离在 <platform>/next 子目录，
+      // 与正式版 BobanStaff（同服务器 <platform> 根）互不串更新。
+      return `${baseUrl.replace(/\/+$/, "")}${getPlatformPath()}/next`
     }
   } catch {
     // backend not available

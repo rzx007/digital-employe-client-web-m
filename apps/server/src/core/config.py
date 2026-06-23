@@ -9,8 +9,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# 后端本机数据目录单一来源（BobanStaff 独立项目，与旧 app 数据隔离，不迁移老数据）。
-APP_DIR_NAME = "boban-staff"
+# 后端本机数据目录单一来源（BobanStaffNext 独立产品分叉，与 BobanStaff/旧 app 数据隔离，不迁移老数据）。
+APP_DIR_NAME = "boban-staff-next"
 
 
 def app_data_dir() -> Path:
@@ -37,7 +37,7 @@ def get_default_local_skills_path() -> str:
 
 
 def get_default_logs_dir() -> Path:
-    # 与 Electron getLogsDir()（~/.boban-staff/logs）一致
+    # 与 Electron getLogsDir()（~/.boban-staff-next/logs）一致
     return app_data_dir() / "logs"
 
 

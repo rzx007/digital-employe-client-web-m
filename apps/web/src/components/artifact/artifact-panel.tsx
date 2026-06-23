@@ -591,6 +591,35 @@ export const ArtifactPanel = ({
     hasSearchQuery,
   ])
 
+  // 首次加载该会话的资源后，自动展开有内容的桶根目录（工作空间产物默认展开可见，
+  // 含 app 托管与外部 flat 工作空间）。每会话只做一次，之后不覆盖用户手动折叠。
+  const initialExpandConvRef = React.useRef<string | number | null>(null)
+  React.useEffect(() => {
+    if (hasSearchQuery || conversationId == null || !resourceList) return
+    if (initialExpandConvRef.current === conversationId) return
+    initialExpandConvRef.current = conversationId
+    setExpandedPaths((prev) => {
+      const next = new Set(prev)
+      for (const root of RESOURCE_TREE_ROOTS) {
+        const list =
+          root.listKey === "artifacts"
+            ? resources.artifacts
+            : root.listKey === "uploads"
+              ? resources.uploads
+              : resources.skills_draft
+        if (hasEntries(list)) next.add(root.path)
+      }
+      return next
+    })
+  }, [
+    conversationId,
+    hasSearchQuery,
+    resourceList,
+    resources.artifacts,
+    resources.uploads,
+    resources.skills_draft,
+  ])
+
   React.useEffect(() => {
     if (!selectionPath) return
     setExpandedPaths((prev) => {

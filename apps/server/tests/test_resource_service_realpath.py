@@ -19,13 +19,21 @@ def _seed(root: Path) -> None:
 
 
 def test_list_resources_buckets_under_product_root(tmp_path):
+    # 外部 flat 工作空间：artifacts 平铺在产物根本身；uploads 物理在子目录
     root = tmp_path / "proj"
-    _seed(root)
+    root.mkdir(parents=True)
+    (root / "report.md").write_text("# r", encoding="utf-8")
+    (root / "sub").mkdir()
+    (root / "sub" / "nested.md").write_text("n", encoding="utf-8")
+    (root / "uploads").mkdir()
+    (root / "uploads" / "a.txt").write_text("u", encoding="utf-8")
+
     data = ResourceService.list_resources(root)
     art_names = {e.name for e in data.artifacts}
     assert "report.md" in art_names
     assert "sub" in art_names
-    # uploads 单列
+    # uploads 单列（物理子目录，不混入 artifacts）
+    assert "uploads" not in art_names
     assert data.uploads and data.uploads[0].name == "a.txt"
     # 不再有 workspace/public 桶
     assert data.workspace == []

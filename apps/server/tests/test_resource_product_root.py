@@ -49,19 +49,54 @@ def test_list_resources_reads_project_product_root(db_session, tmp_path):
     # 外部用户文件夹 flat 直挂：产物根 = 文件夹本身
     assert product_root == proj
 
-    artifacts_dir = product_root / "artifacts"
-    artifacts_dir.mkdir(parents=True)
-    (artifacts_dir / "foo.txt").write_text("hello", encoding="utf-8")
+    # flat：AI 产物平铺写在产物根本身
+    product_root.mkdir(parents=True, exist_ok=True)
+    (product_root / "foo.txt").write_text("hello", encoding="utf-8")
 
     data = ResourceService.list_resources(product_root)
     names = {e.name for e in data.artifacts}
     assert "foo.txt" in names
 
     # read_content 用同一根可读到
-    real = str(artifacts_dir / "foo.txt")
+    real = str(product_root / "foo.txt")
     content = ResourceService.read_content(product_root, real)
     assert content is not None
     assert content.content == "hello"
+
+
+def test_list_resources_external_flat_shows_preexisting_files(db_session, tmp_path):
+    """非空外部工作空间：用户已有文件/目录平铺显示；噪音/隐藏/其它桶目录跳过。"""
+    proj = tmp_path / "existing-repo"
+    proj.mkdir()
+    # 用户已有内容
+    (proj / "main.py").write_text("print(1)", encoding="utf-8")
+    (proj / "README.md").write_text("# repo", encoding="utf-8")
+    (proj / "src").mkdir()
+    (proj / "src" / "util.py").write_text("x=1", encoding="utf-8")
+    # 噪音 / 隐藏 / 其它桶——应被跳过
+    (proj / "node_modules").mkdir()
+    (proj / "node_modules" / "dep.js").write_text("//", encoding="utf-8")
+    (proj / ".git").mkdir()
+    (proj / ".git" / "HEAD").write_text("ref", encoding="utf-8")
+    (proj / "uploads").mkdir()
+    (proj / "uploads" / "up.txt").write_text("u", encoding="utf-8")
+
+    ws = _mk_workspace(db_session, proj)
+    conv = _mk_conv(db_session, ws, target_id=1)
+    product_root = resolve_conversation_product_root(db_session, conv)
+    assert product_root == proj
+
+    data = ResourceService.list_resources(product_root)
+    top = {e.name: e for e in data.artifacts}
+    assert "main.py" in top and "README.md" in top and "src" in top
+    # src 目录递归出 util.py
+    assert any(c.name == "util.py" for c in top["src"].children)
+    # 噪音/隐藏/其它桶不在 artifacts
+    assert "node_modules" not in top
+    assert ".git" not in top
+    assert "uploads" not in top
+    # uploads 物理子目录归 uploads 桶
+    assert any(e.name == "up.txt" for e in data.uploads)
 
 
 def test_two_conversations_same_project_share_artifacts(db_session, tmp_path):
@@ -75,9 +110,9 @@ def test_two_conversations_same_project_share_artifacts(db_session, tmp_path):
     # 同项目 → 同产物根（项目共享，conv_id 不入路径）
     assert root_a == root_b
 
-    # 会话 A 写产物，会话 B 解析的同一根能列出
-    (root_a / "artifacts").mkdir(parents=True)
-    (root_a / "artifacts" / "shared.md").write_text("by A", encoding="utf-8")
+    # 会话 A 写产物（flat 平铺在产物根），会话 B 解析的同一根能列出
+    root_a.mkdir(parents=True, exist_ok=True)
+    (root_a / "shared.md").write_text("by A", encoding="utf-8")
 
     data_b = ResourceService.list_resources(root_b)
     assert any(e.name == "shared.md" for e in data_b.artifacts)

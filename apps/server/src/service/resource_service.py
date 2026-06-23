@@ -40,6 +40,13 @@ MAX_UPLOAD_FILE_SIZE = 200 * 1024 * 1024
 MAX_VOICE_FILE_SIZE = 10 * 1024 * 1024
 
 
+def _is_relative_to(path: Path, base: Path) -> bool:
+    try:
+        return path.is_relative_to(base)
+    except (ValueError, OSError):
+        return False
+
+
 def _resolve_safe_path(product_root: Path, real_path: str) -> Path | None:
     """校验真实绝对路径在产物根内（沙箱），返回 resolve 后的路径；越界返回 None。"""
     try:
@@ -74,8 +81,33 @@ def _is_internal_scratch(name: str) -> bool:
     return name.startswith(_INTERNAL_SCRATCH_PREFIXES)
 
 
+# 外部 flat 工作空间扫描 artifacts 时跳过的目录：
+# ① 其它桶的子目录（uploads/voice/skills-draft 各自成桶，physical 写入仍在子目录，避免重复/串桶）；
+# ② 工具/构建噪音目录。
+# 另外隐藏目录（'.' 开头，如 .git/.venv/.idea）一律跳过；隐藏文件（.env/.gitignore）保留。
+_EXTERNAL_NOISE_DIRS = frozenset(
+    {
+        # 其它桶
+        "uploads",
+        "voice",
+        "skills-draft",
+        # 噪音
+        "node_modules",
+        "__pycache__",
+        "dist",
+        "build",
+        "out",
+        "target",
+    }
+)
+
+
 def _scan_dir_flat(
-    directory: Path, bucket: str
+    directory: Path,
+    bucket: str,
+    *,
+    exclude_dir_names: frozenset[str] = frozenset(),
+    skip_hidden_dirs: bool = False,
 ) -> list[ResourceEntry]:
     if not directory.is_dir():
         return []
@@ -84,7 +116,16 @@ def _scan_dir_flat(
         if _is_internal_scratch(item.name):
             continue
         if item.is_dir():
-            children = _scan_dir_flat(item, bucket)
+            if item.name in exclude_dir_names:
+                continue
+            if skip_hidden_dirs and item.name.startswith("."):
+                continue
+            children = _scan_dir_flat(
+                item,
+                bucket,
+                exclude_dir_names=exclude_dir_names,
+                skip_hidden_dirs=skip_hidden_dirs,
+            )
             entries.append(
                 ResourceEntry(
                     name=item.name,
@@ -145,10 +186,23 @@ class ResourceService:
 
     @staticmethod
     def list_resources(product_root: Path) -> ResourceList:
-        # uploads/skills-draft 是 product_root 下的同级桶,不在 artifacts 内,无需 skip
-        artifacts = _scan_dir_flat(
-            product_root / "artifacts", "artifacts"
-        )
+        from src.service.agent.workspace_paths import APP_PROJECTS_BASE
+
+        is_external = not _is_relative_to(product_root, APP_PROJECTS_BASE)
+        if is_external:
+            # 外部 flat 工作空间：文件夹本身即产物根，AI 产物平铺写在其下（含用户已有文件），
+            # 故 artifacts 桶 = 平铺扫描 product_root 本身；跳过噪音/隐藏目录及其它桶子目录
+            # （uploads/voice/skills-draft 物理仍在子目录、各自成桶）。
+            artifacts = _scan_dir_flat(
+                product_root,
+                "artifacts",
+                exclude_dir_names=_EXTERNAL_NOISE_DIRS,
+                skip_hidden_dirs=True,
+            )
+        else:
+            # app 托管：artifacts 为 product_root 下的子目录
+            artifacts = _scan_dir_flat(product_root / "artifacts", "artifacts")
+        # uploads/skills-draft 两桶物理路径在 product_root 下子目录，外部/托管一致
         uploads = _scan_dir_flat(product_root / "uploads", "uploads")
         skills_draft = _scan_skills_draft(product_root / "skills-draft")
 
