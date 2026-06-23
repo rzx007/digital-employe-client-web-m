@@ -7,13 +7,11 @@ import { useMonitorStore } from "@/stores/monitor-store"
 import {
   useExecutionMetrics7d,
   useMonthlyScheduleOverview,
-  useTaskSummary,
   useTodayTaskRuns,
 } from "@/hooks/use-schedule-monitor-queries"
 import { MonitorHeader } from "./monitor-header"
 import { EmployeeBasicInfo } from "./sections/employee-basic-info"
 import { ScheduleCalendar } from "./sections/schedule-calendar"
-import { TaskStatsCards } from "./sections/task-stats-cards"
 import { ExecutionDetail } from "./sections/execution-detail"
 import { ExecutionMetricsCard } from "./sections/execution-metrics-card"
 import type { ChatViewContact } from "@/components/chat/shared/chat-view-shared"
@@ -53,7 +51,6 @@ export function MonitorPanel({
     targetEmployeeId
   )
   const { data: taskRuns = [] } = useTodayTaskRuns(targetEmployeeId)
-  const { data: summary } = useTaskSummary(targetEmployeeId)
   const { data: executionMetrics } = useExecutionMetrics7d(targetEmployeeId)
 
   const handleMonthChange = (year: number, month: number) => {
@@ -85,8 +82,6 @@ export function MonitorPanel({
               onMonthChange={handleMonthChange}
             />
           )}
-
-          {summary && <TaskStatsCards summary={summary} />}
 
           <ExecutionMetricsCard metrics={executionMetrics} />
 

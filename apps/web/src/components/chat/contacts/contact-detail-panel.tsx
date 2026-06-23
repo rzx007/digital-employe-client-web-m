@@ -1,4 +1,3 @@
-import { useState } from "react"
 import { IconMessage, IconUsers } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { switchToContact } from "@/lib/chat/conversation-selection"
@@ -14,8 +13,6 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useChatStore } from "@/stores/chat-store"
 import {
   useExecutionMetrics7d,
-  useMonthlyScheduleOverview,
-  useTaskSummary,
   useTodayTaskRuns,
 } from "@/hooks/use-schedule-monitor-queries"
 import {
@@ -23,8 +20,6 @@ import {
   type ChatViewContact,
 } from "../shared/chat-view-shared"
 import { EmployeeContactAvatar } from "./contact-avatars"
-import { ScheduleCalendar } from "@/components/schedule-monitor/sections/schedule-calendar"
-import { TaskStatsCards } from "@/components/schedule-monitor/sections/task-stats-cards"
 import { ExecutionDetail } from "@/components/schedule-monitor/sections/execution-detail"
 import { ExecutionMetricsCard } from "@/components/schedule-monitor/sections/execution-metrics-card"
 import { EmployeeEditForm } from "@/components/employee/employee-edit-form"
@@ -77,28 +72,30 @@ export function ContactDetailPanel({
           />
           {selectedContact.type === "employee" &&
             selectedContact.employee?.id && (
-              <Tabs defaultValue="tasks" className="w-full">
+              <Tabs defaultValue="profile" className="w-full">
                 <TabsList variant="line" className="w-full">
-                  <TabsTrigger value="tasks" className="flex-1">
-                    任务监控
+                  <TabsTrigger value="profile" className="flex-1">
+                    资料与执行
                   </TabsTrigger>
                   <TabsTrigger value="growth" className="flex-1">
                     成长履历
                   </TabsTrigger>
-                  <TabsTrigger value="edit" className="flex-1">
-                    编辑员工
-                  </TabsTrigger>
                 </TabsList>
-                <TabsContent value="edit">
-                  <EmployeeEditForm
-                    key={selectedContact.employee?.id}
-                    employeeId={selectedContact.employee?.id ?? ""}
-                  />
-                </TabsContent>
-                <TabsContent value="tasks">
-                  <ContactMonitorSection
-                    employeeId={selectedContact.employee?.id ?? ""}
-                  />
+                <TabsContent value="profile">
+                  <div className="space-y-6">
+                    <EmployeeEditForm
+                      key={selectedContact.employee?.id}
+                      employeeId={selectedContact.employee?.id ?? ""}
+                    />
+                    <div className="space-y-3 border-t pt-6">
+                      <h3 className="text-sm font-medium text-muted-foreground">
+                        执行历史
+                      </h3>
+                      <ContactExecutionSection
+                        employeeId={selectedContact.employee?.id ?? ""}
+                      />
+                    </div>
+                  </div>
                 </TabsContent>
                 <TabsContent value="growth">
                   <GrowthBrainSection
@@ -194,37 +191,13 @@ function ContactProfileCard({
   )
 }
 
-function ContactMonitorSection({ employeeId }: { employeeId: string }) {
-  const now = new Date()
-  const [viewYear, setViewYear] = useState(now.getFullYear())
-  const [viewMonth, setViewMonth] = useState(now.getMonth() + 1)
-
-  const { data: overview } = useMonthlyScheduleOverview(
-    viewYear,
-    viewMonth,
-    employeeId
-  )
+function ContactExecutionSection({ employeeId }: { employeeId: string }) {
   const { data: taskRuns = [] } = useTodayTaskRuns(employeeId)
-  const { data: summary } = useTaskSummary(employeeId)
   const { data: executionMetrics } = useExecutionMetrics7d(employeeId)
-
-  const handleMonthChange = (year: number, month: number) => {
-    setViewYear(year)
-    setViewMonth(month)
-  }
 
   return (
     <div className="space-y-4">
-      {summary && <TaskStatsCards summary={summary} />}
-
       <ExecutionMetricsCard metrics={executionMetrics} />
-
-      {overview && (
-        <ScheduleCalendar
-          overview={overview}
-          onMonthChange={handleMonthChange}
-        />
-      )}
 
       <ExecutionDetail runs={taskRuns} />
     </div>

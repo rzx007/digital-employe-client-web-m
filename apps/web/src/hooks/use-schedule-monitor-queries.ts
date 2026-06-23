@@ -8,12 +8,10 @@ import { chatKeys } from "@/lib/query-keys/chat"
 import { request } from "@/lib/request"
 import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import type {
-  EmployeeScheduleTask,
   ExecutionMetrics7d,
   MonthlyOverview,
   TaskExecution,
   TaskRun,
-  TaskSummary,
   TodayTask,
   ToolFootprint,
 } from "@/types/schedule-monitor"
@@ -85,74 +83,6 @@ export function useTodayTaskRuns(employeeId: string | null) {
         { signal }
       )
       return res.data.map(mapExecutionToTaskRun)
-    },
-    enabled: Boolean(employeeId),
-    staleTime: 30_000,
-  })
-}
-
-export function useTaskSummary(employeeId: string | null) {
-  const workspaceId = getActiveWorkspaceId()
-  return useQuery({
-    queryKey: [...chatKeys.all, "task-summary", workspaceId, employeeId],
-    queryFn: async ({ signal }) => {
-      const [scheduleRes, execRes] = await Promise.all([
-        request<{
-          code: number
-          data: { date: string; skill_tasks: EmployeeScheduleTask[] }
-        }>(`/employees/${employeeId}/tasks/schedule`, { signal }),
-        request<{
-          code: number
-          data: TaskExecution[]
-        }>(
-          `/workspaces/${workspaceId}/tasks/executions?employee_id=${employeeId}`,
-          { signal }
-        ),
-      ])
-
-      const scheduledTasks = scheduleRes.data.skill_tasks
-      const executions = execRes.data
-
-      const latestByTask = new Map<number, TaskExecution>()
-      for (const exec of executions) {
-        const existing = latestByTask.get(exec.task_id)
-        if (
-          !existing ||
-          new Date(exec.started_at) > new Date(existing.started_at)
-        ) {
-          latestByTask.set(exec.task_id, exec)
-        }
-      }
-
-      let completed = 0
-      let failed = 0
-      let pending = 0
-
-      for (const task of scheduledTasks) {
-        const latest = latestByTask.get(task.id)
-        if (!latest) {
-          pending++
-          continue
-        }
-        if (latest.run_status === "success") {
-          completed++
-        } else if (
-          latest.run_status === "failed" ||
-          latest.run_status === "timeout"
-        ) {
-          failed++
-        } else {
-          pending++
-        }
-      }
-
-      const summary: TaskSummary = {
-        total: scheduledTasks.length,
-        completed,
-        failed,
-        pending,
-      }
-      return summary
     },
     enabled: Boolean(employeeId),
     staleTime: 30_000,

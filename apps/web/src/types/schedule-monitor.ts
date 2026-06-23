@@ -32,27 +32,6 @@ export interface TaskRun {
   log: string | null
 }
 
-export interface EmployeeScheduleTask {
-  id: number
-  workspace_id: number
-  employee_id: number
-  employee_name_snapshot: string
-  task_name: string
-  dispatch_type: string
-  skill_id: number
-  capability_id: number
-  priority: number
-  task_type: number
-  cron_expression: string
-  cron_expression_type: string
-  is_active: boolean
-  task_input: Record<string, unknown>
-  next_run_at: string
-  last_run_at: string
-  created_at: string
-  updated_at: string
-}
-
 export interface SkillResponse {
   messages?: string[]
   [key: string]: unknown
@@ -130,13 +109,6 @@ export interface MonthlyOverview {
   year: number
   month: number
   days: Record<string, ScheduleDay>
-}
-
-export interface TaskSummary {
-  total: number
-  completed: number
-  failed: number
-  pending: number
 }
 
 export interface TodayTask {
