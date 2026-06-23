@@ -1,5 +1,3 @@
 export { EmployeeDetailDialog } from "./employee-detail-dialog"
 export { EmployeeEditForm } from "./employee-edit-form"
-export { ScheduleTaskConfig } from "./schedule-task-config"
-export { TaskEditDialog } from "./task-edit-dialog"
 export { RecruitmentPage } from "./recruitment-page"

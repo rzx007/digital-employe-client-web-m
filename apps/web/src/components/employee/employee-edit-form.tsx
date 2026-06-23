@@ -8,18 +8,10 @@ import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { Separator } from "@workspace/ui/components/separator"
 import { Skeleton } from "@workspace/ui/components/skeleton"
-import { Switch } from "@workspace/ui/components/switch"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { cn } from "@workspace/ui/lib/utils"
 import { fetchMcpList } from "@/api/employee"
 import type { Employee, McpListItem, MetadataMcp } from "@/api/types"
-import {
-  convertApiEmployeeTasksToListItems,
-  tasksToApiPayload,
-  type ApiEmployeeTaskRead,
-  type ScheduleTaskListItem,
-  type ShiftScheduleForm,
-} from "@/types/task"
 import {
   useEmployeeDetailQuery,
   useUpdateEmployeeMutation,
@@ -28,32 +20,16 @@ import { useEmployeePickerSkillsQuery } from "@/hooks/use-skill-queries"
 
 import { CapabilityPickerDialog } from "./capability-picker-dialog"
 import { EmployeeSkillBadge } from "./employee-skill-badge"
-import { ScheduleTaskConfig } from "./schedule-task-config"
-
-const EMPTY_SCHEDULE: ShiftScheduleForm = {
-  start_date: "",
-  end_date: "",
-  status: 1,
-  notes: "",
-}
 
 type EmployeeFormInitial = {
   name: string
   description: string
-  showScheduleAndTask: boolean
-  tasks: ScheduleTaskListItem[]
-  schedule: ShiftScheduleForm
   selectedMcpIds: number[]
   selectedSkillIds: number[]
 }
 
 function getEmployeeFormInitialState(employee: Employee): EmployeeFormInitial {
   const meta = employee.metadata
-  const metaTasks = (employee.metadata as unknown as Record<string, unknown>)
-    ?.tasks as ApiEmployeeTaskRead[] | undefined
-  const hasTasks = Boolean(metaTasks?.length)
-  const sch = employee.shift_schedule as ShiftScheduleForm | undefined
-  const hasSchedule = Boolean(sch)
 
   return {
     name: meta?.employee_name ?? employee.name ?? "",
@@ -61,9 +37,6 @@ function getEmployeeFormInitialState(employee: Employee): EmployeeFormInitial {
     selectedMcpIds:
       (meta?.mcps as MetadataMcp[] | undefined)?.map((m) => m.id) ?? [],
     selectedSkillIds: (meta?.skills ?? []).map((s) => s.skill_id),
-    tasks: hasTasks ? convertApiEmployeeTasksToListItems(metaTasks!) : [],
-    schedule: sch ?? EMPTY_SCHEDULE,
-    showScheduleAndTask: hasTasks || hasSchedule,
   }
 }
 
@@ -79,12 +52,6 @@ function EmployeeEditFormFields({
 
   const [name, setName] = React.useState(initial.name)
   const [description, setDescription] = React.useState(initial.description)
-  const [showScheduleAndTask, setShowScheduleAndTask] = React.useState(
-    initial.showScheduleAndTask
-  )
-  const [tasks, setTasks] = React.useState<ScheduleTaskListItem[]>(initial.tasks)
-  const [schedule, setSchedule] =
-    React.useState<ShiftScheduleForm>(initial.schedule)
   const [selectedMcpIds, setSelectedMcpIds] = React.useState<number[]>(
     initial.selectedMcpIds
   )
@@ -141,8 +108,6 @@ function EmployeeEditFormFields({
         status: employee.metadata?.status ?? 1,
         mcp_ids: validMcpIds || [],
         skill_ids: validSkillIds || [],
-        shift_schedule: showScheduleAndTask ? schedule : null,
-        tasks: showScheduleAndTask ? tasksToApiPayload(tasks) : [],
       })
       toast.success(`已成功更新「${name.trim()}」`)
     } catch {
@@ -243,35 +208,6 @@ function EmployeeEditFormFields({
                 </p>
               )}
           </div>
-
-          <Separator />
-
-          <div className="flex items-center justify-between">
-            <Label
-              htmlFor="edit-show-schedule-task"
-              className="cursor-pointer text-xs text-muted-foreground"
-            >
-              配置排班和任务
-            </Label>
-            <Switch
-              id="edit-show-schedule-task"
-              checked={showScheduleAndTask}
-              onCheckedChange={setShowScheduleAndTask}
-            />
-          </div>
-
-          {showScheduleAndTask && (
-            <ScheduleTaskConfig
-              capabilities={employee.metadata?.mcps ?? []}
-              capabilityIds={selectedMcpIds}
-              skillIds={selectedSkillIds}
-              skills={selectedSkillItems}
-              tasks={tasks}
-              schedule={schedule}
-              onTasksChange={setTasks}
-              onScheduleChange={setSchedule}
-            />
-          )}
         </div>
 
         <div
