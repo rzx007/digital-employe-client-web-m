@@ -162,7 +162,11 @@ def list_plans(
 
 
 @router.get("/orchestration/plans/{plan_id}", response_model=ResponseBase[OrchestrationPlanDetail])
-def get_plan(plan_id: int, db: Session = Depends(get_db)) -> ResponseBase[OrchestrationPlanDetail]:
+def get_plan(
+    plan_id: int,
+    conversation_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> ResponseBase[OrchestrationPlanDetail]:
     plan = db.get(OrchestrationPlan, plan_id)
     if not plan:
         from fastapi import HTTPException
@@ -172,12 +176,26 @@ def get_plan(plan_id: int, db: Session = Depends(get_db)) -> ResponseBase[Orches
     plan_data.completed_tasks = completed
     plan_data.total_tasks = max(total, plan.total_tasks)
     plan_data.status = status
-    from src.service.orchestration_lifecycle import collect_plan_deliverables
+    from src.service.orchestration_lifecycle import (
+        collect_plan_deliverables,
+        resolve_run_id_for_conversation,
+    )
+
+    if conversation_id is None:
+        # 不传 → 全 plan（向后兼容）。
+        artifacts = collect_plan_deliverables(db, plan.id)
+    else:
+        run_id = resolve_run_id_for_conversation(db, plan.id, conversation_id)
+        # 会话非任何 run 的会话 → 空，避免主对话显示定时轮产物。
+        artifacts = (
+            [] if run_id is None
+            else collect_plan_deliverables(db, plan.id, run_id=run_id)
+        )
 
     return ResponseBase(data=OrchestrationPlanDetail(
         plan=plan_data,
         tasks=_build_task_items(db, plan),
-        artifacts=collect_plan_deliverables(db, plan.id),
+        artifacts=artifacts,
     ))
 
 

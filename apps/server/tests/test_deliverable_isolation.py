@@ -156,3 +156,94 @@ def test_resolve_run_id_for_conversation(db_session):
 
     assert resolve_run_id_for_conversation(db_session, plan.id, 555) == run.id
     assert resolve_run_id_for_conversation(db_session, plan.id, 999) is None
+
+
+def test_get_plan_filters_artifacts_by_conversation(db_session, monkeypatch):
+    """get_plan?conversation_id= → 按该会话所属 run 过滤交付物；
+    非任何 run 的会话 → 空；不传 → 全 plan（向后兼容）。
+    """
+    import src.service.orchestration_lifecycle as lifecycle
+    from src.api.orchestration_api import get_plan
+    from src.service.task_service import TaskService
+
+    ws, plan = _mk_plan(db_session)
+
+    # 一轮 scheduled（专属会话 201），一轮 manual（共用 plan.conversation_id）。
+    sched = open_plan_run(
+        db_session, plan.id, ws.id, trigger="scheduled", auto_accept=True
+    )
+    manual = open_plan_run(
+        db_session, plan.id, ws.id, trigger="manual", auto_accept=True
+    )
+    db_session.flush()
+    sched.conversation_id = 201
+    manual.conversation_id = plan.conversation_id
+    db_session.flush()
+
+    task = EmployeeTask(
+        workspace_id=ws.id,
+        employee_id=1,
+        task_name="t1",
+        orchestration_plan_id=plan.id,
+    )
+    db_session.add(task)
+    db_session.flush()
+
+    log_sched = TaskExecutionLog(
+        task_id=task.id,
+        workspace_id=ws.id,
+        employee_id=1,
+        conversation_id=301,
+        task_name_snapshot="t1",
+        run_status="success",
+        run_id=sched.id,
+        started_at=datetime.now(),
+    )
+    log_manual = TaskExecutionLog(
+        task_id=task.id,
+        workspace_id=ws.id,
+        employee_id=1,
+        conversation_id=302,
+        task_name_snapshot="t1",
+        run_status="success",
+        run_id=manual.id,
+        started_at=datetime.now(),
+    )
+    db_session.add_all([log_sched, log_manual])
+    db_session.commit()
+
+    def fake_tool_parts(db, conversation_id):
+        if conversation_id == 301:
+            return [
+                {
+                    "type": "tool-write_file",
+                    "input": {"file_path": "/out/sched.txt", "content": "s"},
+                }
+            ]
+        if conversation_id == 302:
+            return [
+                {
+                    "type": "tool-write_file",
+                    "input": {"file_path": "/out/manual.txt", "content": "m"},
+                }
+            ]
+        return []
+
+    monkeypatch.setattr(
+        TaskService, "get_conversation_tool_parts", staticmethod(fake_tool_parts)
+    )
+    monkeypatch.setattr(
+        lifecycle, "_still_exists_nonempty", lambda path, adir: True
+    )
+
+    # scheduled per-run 会话 → 只该轮产物。
+    resp = get_plan(plan.id, conversation_id=201, db=db_session)
+    assert {a.path for a in resp.data.artifacts} == {"/out/sched.txt"}
+
+    # 非任何 run 的会话 → 空（不退化成全 plan）。
+    resp_none = get_plan(plan.id, conversation_id=99999, db=db_session)
+    assert resp_none.data.artifacts == []
+
+    # 不传 conversation_id → 全 plan（最新 log 的会话 → manual）。
+    resp_all = get_plan(plan.id, conversation_id=None, db=db_session)
+    assert {a.path for a in resp_all.data.artifacts} == {"/out/manual.txt"}
