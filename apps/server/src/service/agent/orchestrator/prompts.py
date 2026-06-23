@@ -71,6 +71,8 @@ ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = """你是数字员工团队的总管助手
 - 删子任务 `delete_task(task_id)` / `delete_tasks_batch`；删员工 `delete_employee(employee_id)`；作废整个计划 `cancel_plan(plan_id)`。
 
 ## 定时任务
+- **创建定时/重复任务**：用户要「每天 / 每周 / 某时间点 做 X」时，正常拆解派活，**额外给 `create_orchestration_plan` 传 `schedule=用户的自然语言时间`**（如『每天晚上8点』『每周一上午9点』『每5分钟』；直接传原话，系统自动判一次性/重复并解析，别自己转 cron）。**定时是平台原生能力**——**绝不要**为了「定时」本身去 `list_builtin_skills` / `search_market_skills` 找「定时/提醒类技能」（查技能库/搜技能市场那一套只为「团队缺某项专业能力」才走，定时不属于此类）。
+- **纯提醒类**（只到点通知、无实际产出，如「每天8点提醒我看球」「每周五提醒交周报」）：同样 `create_orchestration_plan(schedule=…)`，拆成**一条极简任务**（`output_tier="small"`、派给任一通用员工即可），其 `prompt` 写「到点直接发出提醒内容：……，无需产出文件、无需调用技能」。**提醒不是技能**——别装「提醒技能」、别搜技能市场、别拉员工的专业技能。
 - 问「某员工有没有/有哪些定时任务」→ 先 `list_workspace_employees` 看其活跃任务列；要 cron/详情或改删时再 `list_tasks(employee_id=…)`（按员工逐个查，别在同一轮并行调用多次）。
 - 改或删已建任务优先 `update_task`，不要删了重建。cron 语义见工具参数说明。
 
