@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from src.models.orchestration_plan import OrchestrationPlan
-from src.models.workspace import CST, Workspace
+from src.models.workspace import CST, Workspace, cst_now
 from src.service.task_service import TaskService
 
 
@@ -94,6 +94,74 @@ def test_recurring_daily_cron_has_run_every_day_deduped(db_session):
         assert run["plan_id"] == plan.id
         assert run["time"] == "08:00"
         assert run["title"] == plan.user_input[:30]
+
+
+def test_sub_daily_cron_caps_at_one_run_per_day(db_session):
+    """细粒度 cron（每分钟）每天也只投影一条——验证按天跳进的迭代上限（防 ~4.3万次空转）。"""
+    ws = _ws(db_session, "u-fine")
+    _plan(
+        db_session,
+        ws,
+        schedule_kind="recurring",
+        cron="* * * * *",  # 每分钟
+        is_recurring=True,
+    )
+    db_session.commit()
+
+    payload = TaskService.build_monthly_calendar(
+        db_session, user_id="u-fine", year=2099, month=6
+    )
+    # 6 月 30 天，每天恰好 1 条（不是每天 1440 条、更不是整月空转）。
+    assert len(payload["days"]) == 30
+    for day in payload["days"].values():
+        assert len(day["runs"]) == 1
+
+
+def test_current_month_truncates_past_days(db_session):
+    """当月：base=max(月初, now)，今天之前的天不投影（只显即将到来）。"""
+    ws = _ws(db_session, "u-cur")
+    _plan(
+        db_session,
+        ws,
+        schedule_kind="recurring",
+        cron="0 8 * * *",
+        is_recurring=True,
+    )
+    db_session.commit()
+
+    today = cst_now().date()
+    payload = TaskService.build_monthly_calendar(
+        db_session, user_id="u-cur", year=today.year, month=today.month
+    )
+    for day_key, day in payload["days"].items():
+        day_d = datetime.strptime(day_key, "%Y-%m-%d").date()
+        if day_d < today:
+            assert day["runs"] == [], f"过去的天不应有运行: {day_key}"
+        # 今天及以后该有一条（今天若已过 08:00 由 cron 下一触发落明天——故只断言「未来天」必有）
+        if day_d > today:
+            assert len(day["runs"]) == 1, f"未来的天应有一条: {day_key}"
+
+
+def test_once_past_day_in_current_month_not_shown(db_session):
+    """当月已过去那天的未跑 once 不显示（与 recurring 的「即将到来」一致）。"""
+    today = cst_now().date()
+    if today.day <= 1:
+        return  # 月初无「过去的天」，跳过
+    ws = _ws(db_session, "u-once-past")
+    past_day = datetime(today.year, today.month, 1, 9, 0, tzinfo=CST)
+    _plan(
+        db_session,
+        ws,
+        schedule_kind="once",
+        run_at=past_day,
+        last_run_at=None,
+    )
+    db_session.commit()
+
+    payload = TaskService.build_monthly_calendar(
+        db_session, user_id="u-once-past", year=today.year, month=today.month
+    )
+    assert _all_runs(payload) == []
 
 
 def test_once_run_at_in_month_appears_on_that_day(db_session):

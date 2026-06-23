@@ -979,31 +979,38 @@ class TaskService:
                     )
                     continue
                 base = max(month_start_aware, now)
-                seen_dates: set[date] = set()
+                # 每天只记一条 → 记完当天就跳到次日 0 点继续找，避免 `* * * * *` 这类
+                # 细粒度 cron 一个月空转 ~4.3万次（dedup 只去重输出、不省迭代）。
+                # 硬上限 366 作绝对兜底，杜绝任何意外死循环。
                 t = trig.get_next_fire_time(None, base)
-                while t is not None and t.date() <= end_of_month:
+                guard = 0
+                while t is not None and t.date() <= end_of_month and guard < 366:
+                    guard += 1
                     d = t.date()
-                    if d not in seen_dates:
-                        seen_dates.add(d)
-                        day_key = d.strftime("%Y-%m-%d")
-                        if day_key in days:
-                            days[day_key]["runs"].append(
-                                {
-                                    "plan_id": plan.id,
-                                    "title": title,
-                                    "schedule_kind": "recurring",
-                                    "time": t.strftime("%H:%M"),
-                                    "cron": plan.cron,
-                                }
-                            )
-                    t = trig.get_next_fire_time(t, t)
+                    day_key = d.strftime("%Y-%m-%d")
+                    if day_key in days:
+                        days[day_key]["runs"].append(
+                            {
+                                "plan_id": plan.id,
+                                "title": title,
+                                "schedule_kind": "recurring",
+                                "time": t.strftime("%H:%M"),
+                                "cron": plan.cron,
+                            }
+                        )
+                    next_day_start = datetime(
+                        d.year, d.month, d.day, tzinfo=CST
+                    ) + timedelta(days=1)
+                    t = trig.get_next_fire_time(None, next_day_start)
             elif plan.schedule_kind == "once" and plan.run_at is not None:
                 if plan.last_run_at is not None:
                     continue
                 ra = plan.run_at
                 if ra.tzinfo is None:
                     ra = ra.replace(tzinfo=CST)
-                if start_of_month <= ra.date() <= end_of_month:
+                # 与 recurring 一致只显「即将到来」：当月已过去的天不显示未跑的 once
+                once_lower = max(start_of_month, now.date())
+                if once_lower <= ra.date() <= end_of_month:
                     day_key = ra.strftime("%Y-%m-%d")
                     if day_key in days:
                         days[day_key]["runs"].append(
