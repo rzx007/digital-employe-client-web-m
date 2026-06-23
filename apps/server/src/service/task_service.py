@@ -476,10 +476,12 @@ class TaskService:
             ).all()
             plan_id_by_task = {tid: pid for tid, pid in rows}
 
+        # 把属于编排计划的行从 result 中抽出，按 plan_id 分组
+        kept: list[dict] = []
+        plan_buckets: dict[int, list[dict]] = {}
+        plan_rows: list[dict] = []
+
         if plan_id_by_task:
-            # 把属于编排计划的行从 result 中抽出，按 plan_id 分组
-            kept: list[dict] = []
-            plan_buckets: dict[int, list[dict]] = {}
             for r in result:
                 pid = plan_id_by_task.get(r["task_id"])
                 if pid is None:
@@ -487,7 +489,6 @@ class TaskService:
                 else:
                     plan_buckets.setdefault(pid, []).append(r)
 
-            plan_rows: list[dict] = []
             # 用 Part A 已加载的 logs 列表按 run_id 分组（含今天日期窗口），避免循环里 N+1。
             logs_by_run_id: dict[int, list[TaskExecutionLog]] = {}
             for _log in logs:
@@ -580,8 +581,54 @@ class TaskService:
                     "plan_id": pid,
                     "run_seq": latest_run.run_seq if latest_run else None,
                 })
+        else:
+            kept = list(result)
 
-            result = kept + plan_rows
+        # === Part D: 确认态定时计划但今天还没产生任何行（未触发）→ 补一条 pending plan 行 ===
+        represented_plan_ids = set(plan_buckets.keys())
+        sched_plans = db.scalars(
+            select(OrchestrationPlan).where(
+                OrchestrationPlan.workspace_id == workspace_id,
+                OrchestrationPlan.status == "confirmed",
+                OrchestrationPlan.schedule_kind.isnot(None),
+            )
+        ).all()
+        for p in sched_plans:
+            if p.id in represented_plan_ids:
+                continue
+            # 下次触发时间：recurring 用 next_run_at（或现算）；once 用 run_at
+            planned = None
+            if p.schedule_kind == "recurring":
+                planned = p.next_run_at or (
+                    TaskService.compute_next_run(p.cron) if p.cron else None
+                )
+            elif p.schedule_kind == "once":
+                planned = p.run_at
+            planned_iso = planned.strftime("%Y-%m-%d %H:%M:%S") if planned else None
+            summary = (p.user_input or "").strip().replace("\n", " ")
+            if len(summary) > 60:
+                summary = summary[:60] + "…"
+            plan_rows.append({
+                "task_id": 0,
+                "task_name": summary or f"编排计划 #{p.id}",
+                "employee_id": 0,
+                "employee_name": "编排计划",
+                "cron_expression": p.cron,
+                "execute_mode": "scheduled",
+                "planned_at": planned_iso,
+                "execution_id": None,
+                "run_status": "pending",
+                "run_result": None,
+                "started_at": None,
+                "ended_at": None,
+                "duration_ms": None,
+                "conversation_id": p.conversation_id,
+                "is_plan": True,
+                "plan_id": p.id,
+                "run_seq": None,
+            })
+
+        result = kept + plan_rows
 
         result.sort(key=lambda x: (
             0 if x["run_status"] == "running" else 1,
