@@ -57,11 +57,24 @@ def _resolve_safe_path(product_root: Path, real_path: str) -> Path | None:
     return target
 
 
-def _scan_file(file_path: Path, bucket: str) -> ResourceEntry:
+def _rel_to(path: Path, product_root: Path | None) -> str | None:
+    """相对产物根的正斜杠路径；无根或越界返回 None。"""
+    if product_root is None:
+        return None
+    try:
+        return path.relative_to(product_root).as_posix()
+    except (ValueError, OSError):
+        return None
+
+
+def _scan_file(
+    file_path: Path, bucket: str, product_root: Path | None = None
+) -> ResourceEntry:
     real = file_path.as_posix()
     return ResourceEntry(
         name=file_path.name,
         path=real,
+        rel_path=_rel_to(file_path, product_root),
         bucket=bucket,
         entry_type="file",
         artifact_type=infer_resource_artifact_type(file_path.name),
@@ -108,6 +121,7 @@ def _scan_dir_flat(
     *,
     exclude_dir_names: frozenset[str] = frozenset(),
     skip_hidden_dirs: bool = False,
+    product_root: Path | None = None,
 ) -> list[ResourceEntry]:
     if not directory.is_dir():
         return []
@@ -125,22 +139,26 @@ def _scan_dir_flat(
                 bucket,
                 exclude_dir_names=exclude_dir_names,
                 skip_hidden_dirs=skip_hidden_dirs,
+                product_root=product_root,
             )
             entries.append(
                 ResourceEntry(
                     name=item.name,
                     path=item.as_posix(),
+                    rel_path=_rel_to(item, product_root),
                     bucket=bucket,
                     entry_type="directory",
                     children=children,
                 )
             )
         else:
-            entries.append(_scan_file(item, bucket))
+            entries.append(_scan_file(item, bucket, product_root))
     return entries
 
 
-def _scan_skills_draft(directory: Path) -> list[ResourceEntry]:
+def _scan_skills_draft(
+    directory: Path, product_root: Path | None = None
+) -> list[ResourceEntry]:
     if not directory.is_dir():
         return []
     entries: list[ResourceEntry] = []
@@ -150,22 +168,26 @@ def _scan_skills_draft(directory: Path) -> list[ResourceEntry]:
         children: list[ResourceEntry] = []
         for item in sorted(skill_dir.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
             if item.is_dir():
-                sub_children = _scan_dir_flat(item, "skills_draft")
+                sub_children = _scan_dir_flat(
+                    item, "skills_draft", product_root=product_root
+                )
                 children.append(
                     ResourceEntry(
                         name=item.name,
                         path=item.as_posix(),
+                        rel_path=_rel_to(item, product_root),
                         bucket="skills_draft",
                         entry_type="directory",
                         children=sub_children,
                     )
                 )
             else:
-                children.append(_scan_file(item, "skills_draft"))
+                children.append(_scan_file(item, "skills_draft", product_root))
         entries.append(
             ResourceEntry(
                 name=skill_dir.name,
                 path=skill_dir.as_posix(),
+                rel_path=_rel_to(skill_dir, product_root),
                 bucket="skills_draft",
                 entry_type="directory",
                 artifact_type="skill-draft",
@@ -198,13 +220,18 @@ class ResourceService:
                 "artifacts",
                 exclude_dir_names=_EXTERNAL_NOISE_DIRS,
                 skip_hidden_dirs=True,
+                product_root=product_root,
             )
         else:
             # app 托管：artifacts 为 product_root 下的子目录
-            artifacts = _scan_dir_flat(product_root / "artifacts", "artifacts")
+            artifacts = _scan_dir_flat(
+                product_root / "artifacts", "artifacts", product_root=product_root
+            )
         # uploads/skills-draft 两桶物理路径在 product_root 下子目录，外部/托管一致
-        uploads = _scan_dir_flat(product_root / "uploads", "uploads")
-        skills_draft = _scan_skills_draft(product_root / "skills-draft")
+        uploads = _scan_dir_flat(
+            product_root / "uploads", "uploads", product_root=product_root
+        )
+        skills_draft = _scan_skills_draft(product_root / "skills-draft", product_root)
 
         return ResourceList(
             artifacts=artifacts,

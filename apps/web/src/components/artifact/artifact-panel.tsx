@@ -253,6 +253,43 @@ function getFileIcon(artifactType: string | null) {
   }
 }
 
+function toNativeAbsPath(p: string): string {
+  // Windows 盘符路径转反斜杠展示；POSIX 路径保持正斜杠
+  return /^[A-Za-z]:/.test(p) ? p.replace(/\//g, "\\") : p
+}
+
+async function copyTextToClipboard(text: string, label: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast.success(`已复制${label}`)
+  } catch {
+    toast.error("复制失败")
+  }
+}
+
+function CopyPathMenuItems({ entry }: { entry: ResourceEntry }) {
+  return (
+    <>
+      <ContextMenuItem
+        onSelect={() =>
+          copyTextToClipboard(toNativeAbsPath(entry.path), "绝对路径")
+        }
+      >
+        <IconCopy className="size-4 text-muted-foreground" />
+        <span>复制绝对路径</span>
+      </ContextMenuItem>
+      {entry.rel_path ? (
+        <ContextMenuItem
+          onSelect={() => copyTextToClipboard(entry.rel_path!, "相对路径")}
+        >
+          <IconCopy className="size-4 text-muted-foreground" />
+          <span>复制相对路径</span>
+        </ContextMenuItem>
+      ) : null}
+    </>
+  )
+}
+
 function revealResourceInExplorer(entry: ResourceEntry) {
   void withElectronApi(
     (api) => api.revealPathInExplorer(entry.path, entry.entry_type),
@@ -286,7 +323,7 @@ function ResourceContextMenu({
   }
 
   return (
-    <ContextMenuContent className="w-36">
+    <ContextMenuContent className="w-44">
       {!pendingOnly && (
         <ContextMenuItem onSelect={handleDownload}>
           <IconDownload className="size-4 text-muted-foreground" />
@@ -307,6 +344,9 @@ function ResourceContextMenu({
           <span>钉到工作台</span>
         </ContextMenuItem>
       )}
+      <ContextMenuSeparator />
+      <CopyPathMenuItems entry={entry} />
+      <ContextMenuSeparator />
       <ContextMenuItem onSelect={onRefresh}>
         <IconRefresh className="size-4 text-muted-foreground" />
         <span>刷新</span>
@@ -360,6 +400,9 @@ function SkillDraftContextMenu({
           </span>
         </ContextMenuItem>
       )}
+      <ContextMenuSeparator />
+      <CopyPathMenuItems entry={entry} />
+      <ContextMenuSeparator />
       <ContextMenuItem onSelect={onRefresh}>
         <IconRefresh className="size-4 text-muted-foreground" />
         <span>刷新</span>

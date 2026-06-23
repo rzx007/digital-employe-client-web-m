@@ -328,6 +328,8 @@ export interface LocalSkillImportResult {
 export interface ResourceEntry {
   name: string
   path: string
+  /** 相对工作空间产物根的路径（正斜杠）；越界/无法计算时为 null。供复制相对路径。 */
+  rel_path?: string | null
   /** 分桶 key（后端按真实子目录归属推导）：artifacts/uploads/skills_draft/workspace/public */
   bucket?: string | null
   entry_type: "file" | "directory"

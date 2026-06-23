@@ -35,6 +35,14 @@ def test_list_resources_buckets_under_product_root(tmp_path):
     # uploads 单列（物理子目录，不混入 artifacts）
     assert "uploads" not in art_names
     assert data.uploads and data.uploads[0].name == "a.txt"
+
+    # rel_path 相对产物根（正斜杠）
+    by_name = {e.name: e for e in data.artifacts}
+    assert by_name["report.md"].rel_path == "report.md"
+    sub = by_name["sub"]
+    assert sub.rel_path == "sub"
+    assert sub.children and sub.children[0].rel_path == "sub/nested.md"
+    assert data.uploads[0].rel_path == "uploads/a.txt"
     # 不再有 workspace/public 桶
     assert data.workspace == []
     assert data.public == []

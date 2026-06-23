@@ -7,6 +7,8 @@ class ResourceEntry(BaseModel):
     name: str
     # 去虚拟前缀后 path 为真实磁盘绝对路径；bucket 为前端分桶 key（取代旧的前缀解析）。
     path: str
+    # 相对工作空间产物根（root_path）的路径，正斜杠；越界/无法计算时为 None。供前端复制相对路径。
+    rel_path: str | None = None
     bucket: str | None = None  # "artifacts" | "uploads" | "skills_draft"
     entry_type: str
     artifact_type: str | None = None
