@@ -13,7 +13,7 @@ from tests.conftest import add_employee
 
 
 def test_delete_employee_keeps_project_shared_products(db_session, workspace):
-    # workspace fixture 的 root_path 是外部临时目录 → 产物根为 <root>/.boban-staff
+    # workspace fixture 的 root_path 是外部临时目录 → flat 产物根 = root 本身
     product_root = resolve_workspace_product_root(workspace.root_path)
     artifacts = product_root / "artifacts"
     artifacts.mkdir(parents=True, exist_ok=True)

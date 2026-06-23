@@ -16,9 +16,10 @@ def test_managed_base_itself_is_managed():
     assert resolve_workspace_product_root(str(APP_PROJECTS_BASE)) == APP_PROJECTS_BASE
 
 
-def test_external_folder_gets_hidden_subdir():
+def test_external_folder_is_flat():
+    # 外部用户文件夹 flat 直挂：文件夹本身即产物根，不再套 .boban-staff
     ext = Path("/tmp/my-source-repo")
-    assert resolve_workspace_product_root(str(ext)) == ext / ".boban-staff"
+    assert resolve_workspace_product_root(str(ext)) == ext
 
 
 def test_conversation_product_root_from_workspace(db_session):

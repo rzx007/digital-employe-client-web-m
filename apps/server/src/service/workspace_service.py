@@ -246,15 +246,16 @@ class WorkspaceService:
         项目级（随空间删）：TaskExecutionLog / EmployeeTask / OrchestrationPlan / RecentContact。
         用户级（保留）：Employee / EmployeeSkill / EmployeeMcp / SkillRating / Conversation。
 
-        磁盘产物（SP2）：
+        磁盘产物：
         - 托管目录（root_path 在 APP_PROJECTS_BASE 下）：整删 root_path 目录。
-        - 外部用户文件夹：仅删 <root_path>/.boban-staff 子目录，永不触碰外部本体及用户文件。
+        - 外部用户文件夹（flat 直挂，root 即用户整个文件夹，归用户所有）：
+          磁盘上**什么都不删**，仅撤销该目录的 authorized_dir 授权，
+          永不触碰外部本体及用户文件（否则会抹掉用户真实代码）。
         清理在 DB 行删除前进行且全程 try/except，磁盘失败绝不阻断 DB 删除。
         """
         import shutil
 
         from src.service.agent import workspace_paths
-        from src.service.agent.workspace_paths import resolve_workspace_product_root
 
         workspace = WorkspaceService.get_workspace(db, workspace_id)
 
@@ -264,24 +265,44 @@ class WorkspaceService:
             p = Path(root_path)
             # 在调用时按属性查 APP_PROJECTS_BASE（测试可 monkeypatch 模块属性命中托管分支）。
             if p.is_relative_to(workspace_paths.APP_PROJECTS_BASE):
-                target = p  # 托管：整删
+                # 托管：整删 projects/<id> 目录。
+                target = p
+                try:
+                    if target.exists():
+                        if _is_unsafe_rmtree_target(target):
+                            logger.error(
+                                "delete_workspace: 拒绝删除危险目标 %s"
+                                "（疑似托管基目录/根），跳过磁盘清理",
+                                target,
+                            )
+                        else:
+                            logger.warning(
+                                "delete_workspace: 删除产物目录 %s", target
+                            )
+                            shutil.rmtree(target, ignore_errors=True)
+                except Exception:
+                    logger.warning(
+                        "delete_workspace: 清理产物目录失败 %s", target, exc_info=True
+                    )
             else:
-                target = resolve_workspace_product_root(root_path)  # 外部：仅 .boban-staff
-            try:
-                if target.exists():
-                    if _is_unsafe_rmtree_target(target):
-                        logger.error(
-                            "delete_workspace: 拒绝删除危险目标 %s"
-                            "（疑似托管基目录/根），跳过磁盘清理",
-                            target,
-                        )
-                    else:
-                        logger.warning("delete_workspace: 删除产物目录 %s", target)
-                        shutil.rmtree(target, ignore_errors=True)
-            except Exception:
-                logger.warning(
-                    "delete_workspace: 清理产物目录失败 %s", target, exc_info=True
+                # 外部 flat：root 即用户整个文件夹，磁盘上什么都不删，
+                # 只撤销该目录的 authorized_dir 授权。
+                logger.info(
+                    "delete_workspace: 外部工作空间 %s 磁盘内容保留（归用户所有），"
+                    "仅撤销授权 ws#%s",
+                    root_path,
+                    workspace_id,
                 )
+                try:
+                    from src.service.authorized_dir_service import revoke_dir
+
+                    revoke_dir(db, workspace_id, root_path)
+                except Exception:
+                    logger.warning(
+                        "delete_workspace: 撤销外部目录授权失败 %s",
+                        root_path,
+                        exc_info=True,
+                    )
 
         from src.models.employee_task import EmployeeTask
         from src.models.orchestration_plan import OrchestrationPlan

@@ -28,7 +28,7 @@ def static_client(db_engine, monkeypatch):
     session_factory = sessionmaker(bind=db_engine)
 
     # 创建 workspace + conversation（id=1）。workspace.root_path 为外部用户文件夹，
-    # 故项目产物根 = <root_path>/.boban-staff（resolve_workspace_product_root）。
+    # flat 直挂故项目产物根 = root_path 本身（resolve_workspace_product_root）。
     ws_root = tempfile.mkdtemp()
     session = session_factory()
     try:
@@ -48,8 +48,8 @@ def static_client(db_engine, monkeypatch):
     finally:
         session.close()
 
-    # SP2 布局：产物三桶直挂项目产物根 → <root>/.boban-staff/artifacts/{...}
-    product_root = Path(ws_root) / ".boban-staff"
+    # 外部 flat 布局：产物根 = root_path 本身 → <root>/artifacts/{...}
+    product_root = Path(ws_root)
     artifacts_dir = product_root / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     (artifacts_dir / "report.html").write_text(HTML_BODY, encoding="utf-8")

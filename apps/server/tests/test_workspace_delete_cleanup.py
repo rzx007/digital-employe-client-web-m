@@ -1,4 +1,4 @@
-"""删工作空间清理产物目录：托管整删 / 外部只删 .boban-staff 子目录。
+"""删工作空间清理产物目录：托管整删 / 外部 flat 磁盘什么都不删（只撤授权）。
 
 安全关键：外部用户文件夹本体与用户文件必须永不被触碰（断言验证）。
 托管删除测试 monkeypatch APP_PROJECTS_BASE 到 tmp_path，永不 rmtree 真实 home 下任何目录。
@@ -32,26 +32,34 @@ def test_delete_managed_workspace_removes_whole_dir(db_session, tmp_path, monkey
     assert db_session.get(Workspace, 7) is None  # DB 行也删
 
 
-def test_delete_external_workspace_removes_only_subdir(db_session, tmp_path):
+def test_delete_external_workspace_deletes_nothing_on_disk(db_session, tmp_path):
+    """外部 flat：root 即用户整个文件夹，删工作空间磁盘上什么都不删（防数据丢失）。
+
+    flat 后产物平铺进文件夹本身，故无任何 app 拥有的子目录可删；
+    delete_workspace 只删 DB 行 + 撤授权，永不触碰用户磁盘内容。
+    """
+    from src.service.authorized_dir_service import grant_dir, list_authorized_dirs
+
     ext = tmp_path / "user-repo"
     ext.mkdir()
     (ext / "user_file.txt").write_text("keep me")  # 用户自己的文件
-    de = ext / ".boban-staff"
-    de.mkdir()
-    (de / "artifacts").mkdir()
-    (de / "artifacts" / "p.txt").write_text("product")
+    # 产物平铺进文件夹本身（flat）
+    (ext / "artifacts").mkdir()
+    (ext / "artifacts" / "p.txt").write_text("product")
 
     ws = Workspace(name="w2", root_path=str(ext), user_id="u1")
     db_session.add(ws)
     db_session.commit()
     ws_id = ws.id
+    grant_dir(db_session, ws_id, str(ext))
 
     WorkspaceService.delete_workspace(db_session, ws_id)
 
-    assert not de.exists()  # 仅 .boban-staff 子目录被删
-    assert (ext / "user_file.txt").exists()  # 用户文件存活
     assert ext.exists()  # 外部根本体不动
+    assert (ext / "user_file.txt").exists()  # 用户文件存活
+    assert (ext / "artifacts" / "p.txt").exists()  # 产物也不删（磁盘归用户）
     assert db_session.get(Workspace, ws_id) is None  # DB 行删除保留 SP1 行为
+    assert list_authorized_dirs(db_session, ws_id) == []  # 授权已撤
 
 
 def test_delete_refuses_to_rmtree_managed_base_itself(db_session, tmp_path, monkeypatch):

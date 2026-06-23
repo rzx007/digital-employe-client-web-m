@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.core.config import APP_DIR_NAME, app_data_dir
+from src.core.config import app_data_dir
 
 
 @dataclass(frozen=True)
@@ -38,12 +38,13 @@ APP_PROJECTS_BASE = app_data_dir() / "projects"
 def resolve_workspace_product_root(root_path: str) -> Path:
     """项目产物根。
     - app 托管目录（~/.boban-staff/projects/<id>/）：整个目录归 app，产物直接放其下。
-    - 外部用户文件夹（用户手选的源码目录）：套隐藏子目录 .boban-staff/ 防污染其文件树。
+    - 外部用户文件夹（用户手选的源码目录）：flat 直挂——文件夹本身即产物根，
+      产物/上传平铺其中（draft 仍套 skills-draft 子目录），不再套 .boban-staff。
     """
     p = Path(root_path)
     if p.is_relative_to(APP_PROJECTS_BASE):  # is_relative_to 已含相等（Py≥3.11）
         return p
-    return p / f".{APP_DIR_NAME}"
+    return p  # 外部文件夹：直接用其本身（flat，不再套 .boban-staff）
 
 
 def resolve_workspace_dirs(
@@ -59,16 +60,19 @@ def resolve_workspace_dirs(
     last-write-wins（SP2 既定取舍）。uploads/draft 各自扁平直挂产物根。
     """
     root = Path(root_path) if root_path else Path(base_dir)
+    is_external = not root.is_relative_to(APP_PROJECTS_BASE)
 
-    # 项目级单一共享产物区：四个读写口子（artifacts/workspace/public_dir/public_root）归一
-    artifacts_dir = root / "artifacts"
-    workspace_dir = root / "artifacts"
-    public_dir = root / "artifacts"
-    public_root = root / "artifacts"
-
-    # uploads / draft 各自扁平直挂产物根
-    uploads_dir = root / "uploads"
-    draft_dir = root / "skills-draft"
+    if is_external:
+        # 外部 flat：文件夹本身即产物根，产物/上传平铺其中；
+        # draft 仍套 skills-draft 子目录（双消费者一致、给不污染源码树留余地）。
+        artifacts_dir = workspace_dir = public_dir = public_root = root
+        uploads_dir = root
+        draft_dir = root / "skills-draft"
+    else:
+        # app 托管：项目级单一共享产物区，artifacts/uploads 各自子目录（保持现状）。
+        artifacts_dir = workspace_dir = public_dir = public_root = root / "artifacts"
+        uploads_dir = root / "uploads"
+        draft_dir = root / "skills-draft"
 
     return WorkspaceDirs(
         artifacts_dir=artifacts_dir,

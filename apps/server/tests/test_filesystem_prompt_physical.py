@@ -45,11 +45,12 @@ def test_file_tool_rules_single_shared_area():
 
 def test_single_shared_area_contract_physical(tmp_path):
     """单一共享区物理契约：员工 agent 用到的 artifacts/workspace/public_dir/
-    public_root 全等于 <root>/artifacts；写入 artifacts_dir 的文件，队友经
-    workspace_dir/public_root（同路径）即可读到——"能读写产物、能读到队友产物"。"""
+    public_root 全归一到同一共享区；写入 artifacts_dir 的文件，队友经
+    workspace_dir/public_root（同路径）即可读到——"能读写产物、能读到队友产物"。
+    外部 root（tmp_path 不在 APP_PROJECTS_BASE 下）→ flat：共享区 = root 本身。"""
     d = resolve_workspace_dirs(root_path=str(tmp_path), base_dir=tmp_path / "svc")
 
-    shared = tmp_path / "artifacts"
+    shared = tmp_path
     assert d.artifacts_dir == shared
     assert d.workspace_dir == shared
     assert d.public_dir == shared
