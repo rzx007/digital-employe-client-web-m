@@ -3,7 +3,7 @@ import { create } from "zustand"
 import { getElectronApi } from "@/lib/electron/host"
 import { getRequestBaseUrl } from "@/lib/request"
 import { useArtifactStore } from "@/stores/artifact-store"
-import { useChatStore } from "@/stores/chat-store"
+import { useChatStore, type ActiveTab } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
 
@@ -26,6 +26,8 @@ interface BrowserState {
   activeBrowserConversationId: string | null
   // 有浏览器命令在跑、但不属于当前前台会话 → 静默记录（conversationId → 最后导航的 url），不渲染
   backgroundSessions: Map<string, string>
+  // 开浏览器前的来源 tab（如工作台）；关闭/重置时切回，避免落在消息页。null = 本就在 chat
+  originTab: ActiveTab | null
 
   openBrowser: (url: string) => void
   openHtmlPreview: (
@@ -88,10 +90,17 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   canGoForward: false,
   activeBrowserConversationId: null,
   backgroundSessions: new Map<string, string>(),
+  originTab: null,
 
   openBrowser: (url: string) => {
     closeOtherRightPanels()
-    useChatStore.getState().setActiveTab("chat")
+    // 浏览器面板只在 chat 布局渲染，故开浏览器要切到 chat tab。
+    // 记住来源 tab（如工作台），关闭/重置时切回去，避免「从工作台开网页、关掉后落在消息页」。
+    const chat = useChatStore.getState()
+    if (chat.activeTab !== "chat") {
+      set({ originTab: chat.activeTab })
+    }
+    chat.setActiveTab("chat")
 
     const api = getElectronApi()
     if (!api?.browser) {
@@ -158,6 +167,11 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   destroyBrowser: () => {
     const api = getElectronApi()
     void api?.browser.close()
+    // 从工作台等非 chat tab 开的浏览器，UI 关闭时切回来源 tab（否则落在消息页）。
+    const origin = get().originTab
+    if (origin && origin !== "chat") {
+      useChatStore.getState().setActiveTab(origin)
+    }
     set({
       isOpen: false,
       isMinimized: false,
@@ -168,6 +182,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
       error: null,
       canGoBack: false,
       canGoForward: false,
+      originTab: null,
     })
   },
 
@@ -267,6 +282,11 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   },
 
   reset: () => {
+    // 关浏览器：若是从工作台等非 chat tab 开的，切回来源 tab（否则落在消息页）。
+    const origin = get().originTab
+    if (origin && origin !== "chat") {
+      useChatStore.getState().setActiveTab(origin)
+    }
     set({
       isOpen: false,
       isMinimized: false,
@@ -278,6 +298,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
       canGoBack: false,
       canGoForward: false,
       activeBrowserConversationId: null,
+      originTab: null,
       // 故意不清 backgroundSessions：其他后台会话的「有浏览器在跑」标记应跨前台
       // reset 留存，否则切走再回来会丢失归属。其回收走按 conversationId 的 close 事件。
     })

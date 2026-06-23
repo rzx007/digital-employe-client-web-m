@@ -18,13 +18,16 @@ vi.mock("@/lib/request", () => ({
 vi.mock("@/stores/artifact-store", () => ({
   useArtifactStore: { getState: () => ({ closeArtifact: vi.fn() }) },
 }))
+// 稳定的 chat-store 桩：activeTab 可控、setActiveTab 是固定 spy（供断言来源 tab 恢复）。
+const chatState = {
+  activeTab: "chat" as "chat" | "workbench" | "contacts" | "calendar" | "skills",
+  setActiveTab: vi.fn((tab: string) => {
+    chatState.activeTab = tab as typeof chatState.activeTab
+  }),
+  closeConversationList: vi.fn(),
+}
 vi.mock("@/stores/chat-store", () => ({
-  useChatStore: {
-    getState: () => ({
-      setActiveTab: vi.fn(),
-      closeConversationList: vi.fn(),
-    }),
-  },
+  useChatStore: { getState: () => chatState },
 }))
 vi.mock("@/stores/monitor-store", () => ({
   useMonitorStore: { getState: () => ({ closeMonitor: vi.fn() }) },
@@ -130,5 +133,45 @@ describe("browser-store suspendForConversationSwitch 切对话收起不销毁", 
     expect(useBrowserStore.getState().currentUrl).toBe(
       "https://s.weibo.com/top/summary"
     )
+  })
+})
+
+describe("browser-store 来源 tab 恢复（从工作台开浏览器，关掉切回工作台）", () => {
+  beforeEach(() => {
+    browserOpen.mockClear()
+    chatState.setActiveTab.mockClear()
+    chatState.activeTab = "chat"
+    useBrowserStore.getState().reset()
+  })
+
+  it("从 workbench 开浏览器记下 originTab，reset 时切回 workbench", () => {
+    chatState.activeTab = "workbench"
+    useBrowserStore.getState().openBrowser("https://example.com")
+    expect(useBrowserStore.getState().originTab).toBe("workbench")
+    // openBrowser 切到 chat
+    expect(chatState.setActiveTab).toHaveBeenCalledWith("chat")
+
+    chatState.setActiveTab.mockClear()
+    useBrowserStore.getState().reset()
+    // 关闭切回 workbench
+    expect(chatState.setActiveTab).toHaveBeenCalledWith("workbench")
+    expect(useBrowserStore.getState().originTab).toBeNull()
+  })
+
+  it("本就在 chat 开浏览器，关闭不乱切 tab", () => {
+    chatState.activeTab = "chat"
+    useBrowserStore.getState().openBrowser("https://example.com")
+    expect(useBrowserStore.getState().originTab).toBeNull()
+    chatState.setActiveTab.mockClear()
+    useBrowserStore.getState().reset()
+    expect(chatState.setActiveTab).not.toHaveBeenCalled()
+  })
+
+  it("destroyBrowser（UI 关闭）也切回来源 tab", () => {
+    chatState.activeTab = "workbench"
+    useBrowserStore.getState().openBrowser("https://example.com")
+    chatState.setActiveTab.mockClear()
+    useBrowserStore.getState().destroyBrowser()
+    expect(chatState.setActiveTab).toHaveBeenCalledWith("workbench")
   })
 })
