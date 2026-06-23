@@ -17,6 +17,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { request } from "@/lib/request"
 import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import { findContactInList, getContactId } from "@/lib/chat/contact-utils"
+import { switchToContact } from "@/lib/chat/conversation-selection"
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 
@@ -35,11 +36,17 @@ export function ContactsSidebar({
       defaultValue: false,
     }
   )
-  const { setContacts, selectedContactId, setSelectedContactId } = useChatStore(
+  const {
+    setContacts,
+    detailContactId,
+    setDetailContactId,
+    migrateLegacyEmployeeSelection,
+  } = useChatStore(
     useShallow((state) => ({
       setContacts: state.setContacts,
-      selectedContactId: state.selectedContactId,
-      setSelectedContactId: state.setSelectedContactId,
+      detailContactId: state.detailContactId,
+      setDetailContactId: state.setDetailContactId,
+      migrateLegacyEmployeeSelection: state.migrateLegacyEmployeeSelection,
     }))
   )
   const { data: apiContacts } = useContactsQuery()
@@ -63,30 +70,26 @@ export function ContactsSidebar({
 
   React.useEffect(() => {
     setContacts(contacts)
-  }, [contacts, setContacts])
+    migrateLegacyEmployeeSelection()
+  }, [contacts, setContacts, migrateLegacyEmployeeSelection])
 
   React.useEffect(() => {
     if (
       contacts.length > 0 &&
-      selectedContactId &&
-      !findContactInList(contacts, selectedContactId)
+      detailContactId &&
+      !findContactInList(contacts, detailContactId)
     ) {
-      const firstCurator = contacts.find((c) => c.type === "curator")
-      if (firstCurator?.curator) {
-        setSelectedContactId(
-          getContactId(firstCurator) ?? firstCurator.curator.id
-        )
-      }
+      setDetailContactId(null)
     }
-  }, [contacts, selectedContactId, setSelectedContactId])
+  }, [contacts, detailContactId, setDetailContactId])
 
   React.useEffect(() => {
-    if (!selectedContactId) return
-    const contact = findContactInList(contacts, selectedContactId)
+    if (!detailContactId) return
+    const contact = findContactInList(contacts, detailContactId)
     if (contact?.type === "employee" && contact.employee) {
       setTargetEmployee(String(contact.employee.id), contact.employee.name)
     }
-  }, [selectedContactId, contacts, setTargetEmployee])
+  }, [detailContactId, contacts, setTargetEmployee])
 
   const curatorContacts = React.useMemo(
     () => contacts.filter((contact) => contact.type === "curator"),
@@ -98,7 +101,11 @@ export function ContactsSidebar({
     [contacts]
   )
 
-
+  const handleDoubleClickCurator = (contactId: string) => {
+    if (contactId.startsWith("curator:")) {
+      switchToContact(contactId)
+    }
+  }
 
   return (
     <>
@@ -146,7 +153,7 @@ export function ContactsSidebar({
                   key={contact.curator?.id}
                   contact={contact}
                   isCollapsed={isCollapsed}
-
+                  clickAction="select"
                 />
               ))}
 
@@ -157,7 +164,7 @@ export function ContactsSidebar({
                   key={contact.employee?.id}
                   contact={contact}
                   isCollapsed={isCollapsed}
-
+                  clickAction="select"
                 />
               ))}
             </div>
@@ -172,8 +179,9 @@ export function ContactsSidebar({
                     key={contact.curator?.id}
                     contact={contact}
                     isCollapsed={isCollapsed}
+                    clickAction="select"
                     onDoubleClick={() =>
-                      handleDoubleClickContact(getContactId(contact) ?? "")
+                      handleDoubleClickCurator(getContactId(contact) ?? "")
                     }
                   />
                 ))}
@@ -189,9 +197,7 @@ export function ContactsSidebar({
                       key={contact.employee?.id}
                       contact={contact}
                       isCollapsed={isCollapsed}
-                      onDoubleClick={() =>
-                        handleDoubleClickContact(getContactId(contact) ?? "")
-                      }
+                      clickAction="select"
                     />
                   ))}
                 </div>
@@ -227,14 +233,6 @@ export function ContactsSidebar({
               className={cn("size-4", syncMutation.isPending && "animate-spin")}
             />
           </Button>
-          {/* <Button
-            variant="ghost"
-            size="icon-sm"
-            className="h-8 w-8"
-            title="设置"
-          >
-            <IconSettings className="size-4" />
-          </Button> */}
           <Button
             variant="ghost"
             size="icon-sm"

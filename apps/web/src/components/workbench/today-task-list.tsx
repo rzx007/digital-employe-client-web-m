@@ -1,7 +1,6 @@
 import { useCallback, useMemo } from "react"
 import { IconClock } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
-import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import type { TodayTask } from "@/types/schedule-monitor"
 import { TaskStatusBadge } from "./task-status-badge"
@@ -89,82 +88,87 @@ export function TodayTaskList({ executions, isLoading }: TodayTaskListProps) {
   }
 
   return (
-    <ScrollArea className="flex-1">
-      <div className="space-y-1.5">
-        {sorted.map((task) => {
-          const rowKey = task.is_plan
-            ? `plan-${task.plan_id}`
-            : task.task_id + (task.execution_id ? `-${task.execution_id}` : "")
-          const canOpenChat = task.conversation_id != null
-          const rowClassName = cn(
-            "flex items-center gap-2 rounded-md border p-2 transition-colors",
-            task.run_status === "running" &&
-              "border-blue-300 bg-blue-50/50 dark:bg-blue-950/20",
-            canOpenChat && "cursor-pointer hover:bg-muted/40",
-            !canOpenChat && "cursor-default"
-          )
+    <div className="w-full min-w-0 space-y-1.5">
+      {sorted.map((task) => {
+        const rowKey = task.is_plan
+          ? `plan-${task.plan_id}`
+          : task.task_id + (task.execution_id ? `-${task.execution_id}` : "")
+        const canOpenChat = task.conversation_id != null
+        const rowClassName = cn(
+          "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-0 rounded-md border p-2 transition-colors",
+          task.run_status === "running" &&
+            "border-blue-300 bg-blue-50/50 dark:bg-blue-950/20",
+          canOpenChat && "cursor-pointer hover:bg-muted/40",
+          !canOpenChat && "cursor-default"
+        )
 
-          const body = (
-            <>
-              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                {/* 标题行：plan 行只放标题（badge 下移到副信息行），员工任务行同行带 employee 标签
-                    注意：plan 行用 div 而非 span——truncate 的 overflow:hidden 在 inline span 上不生效，
-                    span 不缩会被外层 overflow-hidden 硬切（无省略号）。员工行的 span 因被内层 flex 包裹
-                    自动按 block-like 排版，truncate 才有效。 */}
-                {task.is_plan ? (
-                  <div className="truncate text-xs font-medium">
+        const body = (
+          <>
+            <div className="min-w-0 overflow-hidden">
+              {task.is_plan ? (
+                <p
+                  className="line-clamp-2 text-xs leading-snug font-medium break-words"
+                  title={task.task_name}
+                >
+                  {task.task_name}
+                </p>
+              ) : (
+                <div className="flex min-w-0 items-start gap-1.5 overflow-hidden">
+                  <p
+                    className="min-w-0 flex-1 line-clamp-2 text-xs leading-snug font-medium break-words"
+                    title={task.task_name}
+                  >
                     {task.task_name}
-                  </div>
-                ) : (
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate text-xs font-medium">
-                      {task.task_name}
-                    </span>
-                    <span className="shrink-0 rounded bg-muted/70 px-1 py-px text-[10px] font-semibold text-foreground">
-                      {task.employee_name}
-                    </span>
-                  </div>
-                )}
-                <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
-                  {task.is_plan && (
-                    <span className="shrink-0 rounded bg-muted/70 px-1 py-px text-[10px] font-medium text-foreground/80">
-                      编排计划
-                      {task.run_seq != null && ` · 第${task.run_seq}轮`}
-                    </span>
-                  )}
-                  <span className="flex items-center gap-0.5">
-                    <IconClock className="size-2.5" />
-                    {formatTime(task.started_at || task.planned_at || "")}
+                  </p>
+                  <span className="max-w-[5rem] shrink-0 truncate rounded bg-muted/70 px-1 py-px text-[10px] font-semibold text-foreground">
+                    {task.employee_name}
                   </span>
-                  {task.duration_ms != null && (
-                    <span>{formatDuration(task.duration_ms)}</span>
-                  )}
                 </div>
+              )}
+              <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
+                {task.is_plan && (
+                  <span className="shrink-0 rounded bg-muted/70 px-1 py-px text-[10px] font-medium text-foreground/80">
+                    编排计划
+                    {task.run_seq != null && ` · 第${task.run_seq}轮`}
+                  </span>
+                )}
+                <span className="flex shrink-0 items-center gap-0.5">
+                  <IconClock className="size-2.5" />
+                  {formatTime(task.started_at || task.planned_at || "")}
+                </span>
+                {task.duration_ms != null && (
+                  <span className="shrink-0">
+                    {formatDuration(task.duration_ms)}
+                  </span>
+                )}
               </div>
-              <TaskStatusBadge status={task.run_status} className="shrink-0" />
-            </>
-          )
-
-          if (canOpenChat) {
-            return (
-              <button
-                key={rowKey}
-                type="button"
-                className={cn(rowClassName, "w-full text-left")}
-                onClick={() => openTaskConversation(task)}
-              >
-                {body}
-              </button>
-            )
-          }
-
-          return (
-            <div key={rowKey} className={rowClassName}>
-              {body}
             </div>
+            <TaskStatusBadge
+              status={task.run_status}
+              className="shrink-0 justify-self-end"
+            />
+          </>
+        )
+
+        if (canOpenChat) {
+          return (
+            <button
+              key={rowKey}
+              type="button"
+              className={cn(rowClassName, "text-left")}
+              onClick={() => openTaskConversation(task)}
+            >
+              {body}
+            </button>
           )
-        })}
-      </div>
-    </ScrollArea>
+        }
+
+        return (
+          <div key={rowKey} className={rowClassName}>
+            {body}
+          </div>
+        )
+      })}
+    </div>
   )
 }

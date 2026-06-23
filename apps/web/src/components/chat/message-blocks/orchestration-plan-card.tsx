@@ -8,6 +8,7 @@ import { CronPreviewBadge } from "./cron-preview-badge"
 
 export interface OrchestrationTaskProgress {
   task_id: number
+  employee_id?: number
   employee_name: string
   task_name: string
   status: "pending" | "running" | "success" | "failed"

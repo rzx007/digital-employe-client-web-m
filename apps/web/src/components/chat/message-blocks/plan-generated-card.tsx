@@ -14,6 +14,7 @@ import {
 } from "@/api/orchestration"
 import { PlanEditDialog } from "./plan-edit-dialog"
 import { useOrchestrationPlansQuery } from "@/hooks/use-chat-queries"
+import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { CronPreviewBadge } from "./cron-preview-badge"
 import {
@@ -115,6 +116,25 @@ function PlanGeneratedCardInner({
     planTaskIds,
     conversationId
   )
+
+  const { data: planExecutions = [] } = useCuratorTaskExecutions(
+    conversationId ?? null
+  )
+
+  const executionByTaskId = React.useMemo(() => {
+    const map = new Map<
+      number,
+      { conversation_id?: number; employee_id?: number }
+    >()
+    for (const execution of planExecutions) {
+      if (execution.task_id == null) continue
+      map.set(execution.task_id, {
+        conversation_id: execution.conversation_id ?? undefined,
+        employee_id: execution.employee_id,
+      })
+    }
+    return map
+  }, [planExecutions])
 
   const isPlanPending =
     remoteStatus === "pending" ||
@@ -413,17 +433,24 @@ function PlanGeneratedCardInner({
             summary={data.summary}
             total={total}
             completed={completed}
-            tasks={data.tasks.map<OrchestrationTaskProgress>((t, i) => ({
-              task_id: t.task_id ?? i,
-              task_name: t.task_name,
-              employee_name: t.employee_name ?? "",
-              status:
-                t.task_id != null
-                  ? (statusByTaskId[t.task_id] ?? "pending")
-                  : "pending",
-              cron: t.cron,
-              execute_mode: t.execute_mode ?? "immediate",
-            }))}
+            curatorConversationId={conversationId}
+            tasks={data.tasks.map<OrchestrationTaskProgress>((t, i) => {
+              const execution =
+                t.task_id != null ? executionByTaskId.get(t.task_id) : undefined
+              return {
+                task_id: t.task_id ?? i,
+                task_name: t.task_name,
+                employee_id: t.employee_id ?? execution?.employee_id,
+                employee_name: t.employee_name ?? "",
+                status:
+                  t.task_id != null
+                    ? (statusByTaskId[t.task_id] ?? "pending")
+                    : "pending",
+                conversation_id: execution?.conversation_id,
+                cron: t.cron,
+                execute_mode: t.execute_mode ?? "immediate",
+              }
+            })}
           />
         ) : (
           <p className="mt-2.5 text-[11px] text-muted-foreground">

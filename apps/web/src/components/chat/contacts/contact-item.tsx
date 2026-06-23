@@ -29,6 +29,7 @@ import { chatKeys } from "@/lib/query-keys/chat"
 import { deleteEmployee } from "@/api/employee"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import {
+  clearDetailContact,
   clearSelectedContact,
   selectContactForDetail,
   switchToContact,
@@ -46,27 +47,41 @@ interface ContactItemProps extends React.ComponentProps<"div"> {
   onDoubleClick?: () => void
 }
 
+function resolveClickAction(
+  contact: Contact,
+  clickAction: "select" | "openChat" | undefined
+): "select" | "openChat" {
+  if (clickAction) return clickAction
+  return contact.type === "curator" ? "openChat" : "select"
+}
+
 export function ContactItem({
   contact,
   isCollapsed,
-  clickAction = "openChat",
+  clickAction: clickActionProp,
   onDoubleClick,
   className,
   ...props
 }: ContactItemProps) {
-  const { contacts, selectedContactId, setContacts } = useChatStore(
-    useShallow((state) => ({
-      contacts: state.contacts,
-      selectedContactId: state.selectedContactId,
-      setContacts: state.setContacts,
-    }))
-  )
+  const clickAction = resolveClickAction(contact, clickActionProp)
+  const { contacts, selectedContactId, detailContactId, setContacts } =
+    useChatStore(
+      useShallow((state) => ({
+        contacts: state.contacts,
+        selectedContactId: state.selectedContactId,
+        detailContactId: state.detailContactId,
+        setContacts: state.setContacts,
+      }))
+    )
   // 选择标识：带 type 前缀，避免群与员工同 id 串号
   const contactId = getContactId(contact)
   // 原始主键：用于删除等需要真实 id 的后端操作
   const rawId =
     contact.type === "curator" ? contact.curator?.id : contact.employee?.id
-  const isSelected = selectedContactId === contactId
+  const isSelected =
+    clickAction === "select"
+      ? detailContactId === contactId
+      : selectedContactId === contactId
 
   const [alertOpen, setAlertOpen] = React.useState(false)
   const [detailOpen, setDetailOpen] = React.useState(false)
@@ -93,6 +108,9 @@ export function ContactItem({
   }
 
   const focusAfterContactRemoved = (removedContactId: string) => {
+    if (detailContactId === removedContactId) {
+      clearDetailContact()
+    }
     if (selectedContactId !== removedContactId) return
     clearSelectedContact()
     resetChatRightPanels()

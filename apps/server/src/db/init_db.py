@@ -23,9 +23,6 @@ def init_db() -> None:
     # 一次性清理脏数据：plan 无调度但子任务带 cron（旧模型偷偷定时产物）
     _cleanup_legacy_subtask_cron_plans(engine)
 
-    # 迁移「盘根回退」产生的默认工作空间根（如 'D:\\' / 'C:\\'）到 app 托管 projects/<id>
-    _migrate_default_workspace_root(engine)
-
     # PlanRun 机制引入前已 confirmed 的老 plan + 它们的 logs：幂等回填
     _backfill_plan_runs_for_legacy_plans(engine)
 
@@ -103,33 +100,6 @@ def _cleanup_legacy_subtask_cron_plans(engine) -> None:
             conn.execute(text("UPDATE orchestration_plans SET status='cancelled' WHERE id=:pid"), {"pid": pid})
             conn.execute(text("UPDATE employee_tasks SET is_active=0 WHERE orchestration_plan_id=:pid"), {"pid": pid})
         logger.info("cleanup legacy subtask-cron plans: cancelled %s (ids=%s)", len(ids), ids)
-
-
-def _migrate_default_workspace_root(engine) -> None:
-    """把"盘根回退"产生的默认工作空间 root（如 'D:\\' / 'C:\\'）迁到 app 托管 projects/<id>。
-    只动恰好等于盘根 anchor 的脏值；不动 app 托管根、不动用户显式选的外部子目录。"""
-    from pathlib import Path
-    from src.service.agent.workspace_paths import APP_PROJECTS_BASE
-    inspector = inspect(engine)
-    if "workspaces" not in set(inspector.get_table_names()):
-        return
-    with engine.begin() as conn:
-        rows = conn.execute(text("SELECT id, root_path FROM workspaces")).all()
-        for wid, rp in rows:
-            if not rp:
-                continue
-            p = Path(rp)
-            # 脏值判定：root_path 恰好是个盘根 anchor（'D:\\' / 'C:\\' / '/'）
-            if str(p).rstrip("\\/") == p.anchor.rstrip("\\/") and p.anchor:
-                # 每行隔离：单行 mkdir/UPDATE 失败仅记日志跳过，绝不让迁移拖垮 init_db→启动崩溃
-                try:
-                    managed = APP_PROJECTS_BASE / str(wid)
-                    managed.mkdir(parents=True, exist_ok=True)
-                    conn.execute(text("UPDATE workspaces SET root_path=:rp WHERE id=:id"),
-                                 {"rp": str(managed), "id": wid})
-                    logger.info("迁移默认工作空间根 ws#%s: %r -> %s", wid, rp, managed)
-                except Exception:
-                    logger.exception("迁移默认工作空间根失败 ws#%s（已跳过）: %r", wid, rp)
 
 
 def _ensure_workspace_auto_grant_column(engine) -> None:

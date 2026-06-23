@@ -163,12 +163,14 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   useEffect(() => {
     if (apiContacts) {
       setContacts(apiContacts)
-      const { selectedContactId } = useChatStore.getState()
-      // 用 getContactId（带 type 前缀）统一匹配，避免裸 id 与前缀化选择 id 不一致
-      const hasSelected = apiContacts.some(
+      const state = useChatStore.getState()
+      state.migrateLegacyEmployeeSelection()
+
+      const { selectedContactId, detailContactId } = useChatStore.getState()
+      const hasChatSelected = apiContacts.some(
         (c) => getContactId(c) === selectedContactId
       )
-      if (!hasSelected) {
+      if (!hasChatSelected) {
         const firstCurator = apiContacts.find((c) => c.type === "curator")
         if (firstCurator?.curator) {
           useChatStore
@@ -177,6 +179,13 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
               getContactId(firstCurator) ?? firstCurator.curator.id
             )
         }
+      }
+
+      if (
+        detailContactId &&
+        !apiContacts.some((c) => getContactId(c) === detailContactId)
+      ) {
+        useChatStore.getState().setDetailContactId(null)
       }
     }
   }, [apiContacts, setContacts])

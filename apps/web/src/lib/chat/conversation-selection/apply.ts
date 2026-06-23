@@ -33,9 +33,9 @@ export function selectConversationForContact(
     .selectConversation(String(contactId), String(conversationId))
 }
 
-/** 联系人页：仅选中查看详情，不切换 Tab、不更新最近消息排序 */
+/** 联系人页：仅选中查看详情，不切换 Tab、不影响对话 Tab 选中态 */
 export function selectContactForDetail(contactId: string) {
-  useChatStore.getState().setSelectedContactId(contactId)
+  useChatStore.getState().setDetailContactId(contactId)
 }
 
 export function switchToContact(contactId: string) {
@@ -47,6 +47,15 @@ export function selectContactById(contactId: string) {
   switchToContact(contactId)
 }
 
+/** 进入对话 Tab（含非深链时归位总管的 store 安全网） */
+export function enterChatTab() {
+  useChatStore.getState().setActiveTab("chat")
+}
+
 export function clearSelectedContact() {
   useChatStore.getState().setSelectedContactId(null)
+}
+
+export function clearDetailContact() {
+  useChatStore.getState().setDetailContactId(null)
 }

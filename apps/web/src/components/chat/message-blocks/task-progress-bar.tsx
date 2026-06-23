@@ -1,4 +1,6 @@
 import { cn } from "@workspace/ui/lib/utils"
+import { getContactId } from "@/lib/chat/contact-utils"
+import { navigateToEmployeeFromCurator } from "@/lib/chat/curator-navigation"
 import { useChatStore } from "@/stores/chat-store"
 import type { OrchestrationTaskProgress } from "./orchestration-plan-card"
 import { TaskReworkButton } from "./task-rework-button"
@@ -34,12 +36,34 @@ function humanCron(cron: string | null | undefined): string | null {
   return `每天 ${hour}:${min}`
 }
 
+function openTaskExecution(
+  task: OrchestrationTaskProgress,
+  curatorConversationId: string | number | null | undefined
+) {
+  if (task.conversation_id == null || task.employee_id == null) return
+  const state = useChatStore.getState()
+  const curator = state.getCuratorContact()
+  const curatorContactId = getContactId(curator)
+  if (!curatorContactId) return
+  const resolvedCuratorConversationId =
+    curatorConversationId ?? state.selectedConversationId
+  if (resolvedCuratorConversationId == null) return
+
+  navigateToEmployeeFromCurator({
+    curatorContactId,
+    curatorConversationId: resolvedCuratorConversationId,
+    employeeId: String(task.employee_id),
+    employeeConversationId: task.conversation_id,
+  })
+}
+
 export function TaskProgressBar({
-  planId,
-  summary,
+  planId: _planId,
+  summary: _summary,
   total,
   completed,
   tasks,
+  curatorConversationId,
   className,
 }: {
   planId: number
@@ -47,13 +71,9 @@ export function TaskProgressBar({
   total: number
   completed: number
   tasks: OrchestrationTaskProgress[]
+  curatorConversationId?: string | number | null
   className?: string
 }) {
-  const setSelectedContactId = useChatStore((s) => s.setSelectedContactId)
-  const setSelectedConversationId = useChatStore(
-    (s) => s.setSelectedConversationId
-  )
-
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0
   const anyFailed = tasks.some((t) => t.status === "failed")
   const allSettled = total > 0 && completed >= total
@@ -68,7 +88,6 @@ export function TaskProgressBar({
       ? "bg-amber-500"
       : "bg-green-500"
     : "bg-blue-500"
-  // 单任务计划无需「N/N (x%)」进度条——状态由任务行自身表达，避免冗余。
   const isMulti = total > 1
 
   return (
@@ -130,13 +149,11 @@ export function TaskProgressBar({
                 {humanCron(task.cron)}
               </span>
             )}
-            {task.conversation_id ? (
+            {task.conversation_id != null && task.employee_id != null ? (
               <button
                 type="button"
                 className="shrink-0 text-[10px] text-blue-500 hover:underline"
-                onClick={() => {
-                  setSelectedContactId(String(task.conversation_id))
-                }}
+                onClick={() => openTaskExecution(task, curatorConversationId)}
               >
                 查看
               </button>

@@ -35,7 +35,7 @@ export function ContactDetailPanel({
   className,
   ...props
 }: React.ComponentProps<"div">) {
-  const selectedContact = useChatStore((s) => s.getSelectedContact())
+  const selectedContact = useChatStore((s) => s.getDetailContact())
 
   const handleSendMessage = () => {
     if (!selectedContact) return

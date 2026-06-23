@@ -1,5 +1,7 @@
 export {
+  clearDetailContact,
   clearSelectedContact,
+  enterChatTab,
   enterDraftConversation,
   selectContactById,
   selectContactForDetail,

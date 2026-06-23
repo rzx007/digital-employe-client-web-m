@@ -28,7 +28,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import type { MetadataSkill } from "@/api/types"
 import type { Contact } from "@/types/chat"
-import { switchToContact } from "@/lib/chat/conversation-selection"
+import { enterChatTab } from "@/lib/chat/conversation-selection"
 import { useEmployeeDetailQuery } from "@/hooks/use-chat-queries"
 import {
   uploadEmployeeAvatar,
@@ -166,9 +166,7 @@ export function EmployeeDetailDialog({
 
   const handleSendMessage = () => {
     onOpenChange(false)
-    if (employeeId) {
-      switchToContact(`employee:${employeeId}`)
-    }
+    enterChatTab()
   }
 
   const metadata = employee?.metadata

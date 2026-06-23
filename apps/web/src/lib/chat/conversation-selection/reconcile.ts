@@ -110,7 +110,7 @@ export function useReconcileConversationSelection(
       return
     }
 
-    // 群 / 总管深链的执行会话不在列表里时，勿抢选旧会话
+    // 深链 preserved 选中：勿抢选旧会话；员工单聊已退场，不再 auto-pick 第一条
     if (
       isPreservedEmployeeConversationSelection(
         selectedContactId,
@@ -119,11 +119,6 @@ export function useReconcileConversationSelection(
       )
     ) {
       return
-    }
-
-    const next = pickFirstConversation(conversations)
-    if (next) {
-      selectConversationById(next.id)
     }
   }, [
     conversations,

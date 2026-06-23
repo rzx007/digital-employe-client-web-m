@@ -2,6 +2,7 @@ import { useState } from "react"
 import { IconCalendar } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
+import { cn } from "@workspace/ui/lib/utils"
 import {
   useMonthlyScheduleOverview,
   useTodayAllExecutions,
@@ -29,8 +30,16 @@ export function WorkbenchLeftPanel() {
 
   return (
     <div className="flex h-full w-[320px] shrink-0 flex-col border-r">
-      <ScrollArea className="min-h-0 flex-1 p-3">
-        <div className="flex flex-col gap-3">
+      <ScrollArea
+        className={cn(
+          "min-h-0 flex-1 p-3",
+          // Radix viewport 子节点默认 table 布局会撑破宽度，导致内部 truncate 失效
+          "[&_[data-slot=scroll-area-viewport]>div]:!block",
+          "[&_[data-slot=scroll-area-viewport]>div]:!w-full",
+          "[&_[data-slot=scroll-area-viewport]>div]:!min-w-0"
+        )}
+      >
+        <div className="flex min-w-0 flex-col gap-3">
           <WorkbenchPerformanceSection />
 
           <div className="flex items-center justify-between gap-2">
@@ -54,14 +63,15 @@ export function WorkbenchLeftPanel() {
             />
           )}
 
-          <div className="text-xs font-medium text-muted-foreground">
-            今日任务
+          <div className="min-w-0 overflow-hidden">
+            <div className="text-xs font-medium text-muted-foreground">
+              今日任务
+            </div>
+            <TodayTaskList
+              executions={executions}
+              isLoading={isExecutionsLoading}
+            />
           </div>
-
-          <TodayTaskList
-            executions={executions}
-            isLoading={isExecutionsLoading}
-          />
         </div>
       </ScrollArea>
 

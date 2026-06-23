@@ -7,6 +7,7 @@ import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
 import type { Contact } from "@/types/chat"
 import { getContactId } from "@/lib/chat/contact-utils"
+import { switchToContact } from "@/lib/chat/conversation-selection"
 import { useChatStore } from "@/stores/chat-store"
 import { ContactItem } from "./contact-item"
 import { getElectronApi } from "@/lib/electron/host"
@@ -116,6 +117,12 @@ export function ContactsPanel({
     [filteredEmployeeContacts]
   )
 
+  const handleDoubleClickCurator = (contactId: string) => {
+    if (contactId.startsWith("curator:")) {
+      switchToContact(contactId)
+    }
+  }
+
   return (
     <>
       <div
@@ -165,7 +172,7 @@ export function ContactsPanel({
                   isCollapsed={false}
                   clickAction="select"
                   onDoubleClick={() =>
-                    handleDoubleClickContact(getContactId(contact) ?? "")
+                    handleDoubleClickCurator(getContactId(contact) ?? "")
                   }
                 />
               ))}
