@@ -121,11 +121,15 @@ def _migrate_default_workspace_root(engine) -> None:
             p = Path(rp)
             # 脏值判定：root_path 恰好是个盘根 anchor（'D:\\' / 'C:\\' / '/'）
             if str(p).rstrip("\\/") == p.anchor.rstrip("\\/") and p.anchor:
-                managed = APP_PROJECTS_BASE / str(wid)
-                managed.mkdir(parents=True, exist_ok=True)
-                conn.execute(text("UPDATE workspaces SET root_path=:rp WHERE id=:id"),
-                             {"rp": str(managed), "id": wid})
-                logger.info("迁移默认工作空间根 ws#%s: %r -> %s", wid, rp, managed)
+                # 每行隔离：单行 mkdir/UPDATE 失败仅记日志跳过，绝不让迁移拖垮 init_db→启动崩溃
+                try:
+                    managed = APP_PROJECTS_BASE / str(wid)
+                    managed.mkdir(parents=True, exist_ok=True)
+                    conn.execute(text("UPDATE workspaces SET root_path=:rp WHERE id=:id"),
+                                 {"rp": str(managed), "id": wid})
+                    logger.info("迁移默认工作空间根 ws#%s: %r -> %s", wid, rp, managed)
+                except Exception:
+                    logger.exception("迁移默认工作空间根失败 ws#%s（已跳过）: %r", wid, rp)
 
 
 def _ensure_workspace_auto_grant_column(engine) -> None:
