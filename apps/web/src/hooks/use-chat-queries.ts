@@ -267,47 +267,6 @@ export function useDeleteConversationMutation() {
   })
 }
 
-export function useResetCuratorConversation() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async ({
-      conversationId,
-      contactId,
-      clearTaskLogs,
-    }: {
-      conversationId: number | string
-      contactId: string
-      clearTaskLogs?: boolean
-    }) => {
-      const promises: Promise<unknown>[] = [
-        deleteConversationApi(conversationId),
-      ]
-      if (clearTaskLogs) {
-        promises.push(
-          deleteTaskExecutionsByOrchestratorConversation(conversationId)
-        )
-      }
-      await Promise.all(promises)
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: chatKeys.curator() })
-      queryClient.invalidateQueries({
-        queryKey: conversationListQueryKey(variables.contactId),
-      })
-      queryClient.invalidateQueries({
-        queryKey: [...chatKeys.all, "all-task-executions"],
-      })
-      queryClient.invalidateQueries({
-        queryKey: [...chatKeys.all, "curator-executions"],
-      })
-      queryClient.invalidateQueries({
-        queryKey: [...chatKeys.all, "orchestration-plans"],
-      })
-    },
-  })
-}
-
 export function useUpdateEmployeeMutation(employeeId: string) {
   const queryClient = useQueryClient()
 

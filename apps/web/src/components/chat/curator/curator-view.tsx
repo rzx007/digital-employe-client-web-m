@@ -35,7 +35,6 @@ import { useInvalidateContactsOnTeamChanges } from "@/hooks/use-invalidate-conta
 import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
 import {
   useMessagesQuery,
-  useResetCuratorConversation,
   useUpdateConversationTitleMutation,
 } from "@/hooks/use-chat-queries"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
@@ -61,17 +60,6 @@ import type { VoiceMessageMeta } from "@/types/chat"
 import { shouldRenameCuratorConversationOnFirstMessage } from "@/lib/chat/curator-conversation-actions"
 import { applySemanticConversationTitle } from "@/lib/chat/conversation-title"
 import { toast } from "sonner"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@workspace/ui/components/alert-dialog"
-import { Checkbox } from "@workspace/ui/components/checkbox"
 import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
 import { CuratorChatHeader } from "../contacts/curator-chat-header"
 import { CuratorCompactToolbar } from "./curator-compact-toolbar"
@@ -307,10 +295,7 @@ export function CuratorView({
   const [mentions, setMentions] = useState<Array<{ id: string; name: string }>>(
     []
   )
-  const [showResetDialog, setShowResetDialog] = useState(false)
-  const [clearTaskLogs, setClearTaskLogs] = useState(true)
   const composerRef = useRef<PromptComposerHandle>(null)
-  const resetMutation = useResetCuratorConversation()
   const updateTitleMutation = useUpdateConversationTitleMutation()
   const queryClient = useQueryClient()
   const curatorConversationId = conversationIdProp
@@ -442,33 +427,6 @@ export function CuratorView({
     !isStreamDisconnectedError(error)
       ? error
       : undefined
-
-  const handleReset = useCallback(async () => {
-    if (!curatorConversationId || !curatorContactId) return
-    try {
-      await resetMutation.mutateAsync({
-        conversationId: curatorConversationId,
-        contactId: curatorContactId,
-        clearTaskLogs,
-      })
-      queryClient.setQueryData(
-        chatKeys.messages(String(curatorConversationId)),
-        []
-      )
-      setMessages([])
-      setShowResetDialog(false)
-      toast.success("会话已清空")
-    } catch {
-      toast.error("清空失败")
-    }
-  }, [
-    curatorConversationId,
-    curatorContactId,
-    clearTaskLogs,
-    resetMutation,
-    setMessages,
-    queryClient,
-  ])
 
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
@@ -891,7 +849,6 @@ export function CuratorView({
           conversationId={curatorConversationId}
           displayName={contactDisplayName}
           conversationTitle={conversationTitle}
-          onReset={() => setShowResetDialog(true)}
           onOpenConversations={onOpenConversations}
           onNewConversation={onNewConversation}
           isCreatingConversation={isCreatingConversation}
@@ -903,7 +860,6 @@ export function CuratorView({
           contact={resolvedContact}
           conversationId={curatorConversationId}
           title={conversationTitle}
-          onReset={() => setShowResetDialog(true)}
           onOpenContacts={onOpenContacts}
           onOpenConversations={onOpenConversations}
           onNewConversation={onNewConversation}
@@ -1005,34 +961,6 @@ export function CuratorView({
           />
         ) : null}
       </div>
-
-      <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>清空会话</AlertDialogTitle>
-            <AlertDialogDescription>
-              确定要清空总管助手的会话记录吗？此操作不可撤销。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="flex items-center gap-2 px-1">
-            <Checkbox
-              id="clear-task-logs"
-              checked={clearTaskLogs}
-              onCheckedChange={(checked) => setClearTaskLogs(checked === true)}
-            />
-            <label
-              htmlFor="clear-task-logs"
-              className="cursor-pointer text-xs text-muted-foreground select-none"
-            >
-              同时清空员工执行日志
-            </label>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={handleReset}>确定</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }
