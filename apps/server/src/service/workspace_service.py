@@ -61,9 +61,13 @@ class WorkspaceService:
            - 是则认领该 workspace（将存量数据迁移给该用户）
            - 否则创建新 workspace，命名为 "<username>的工作空间" 或 "用户工作空间"
         """
+        # 用户可拥有多个工作空间（新增外部文件夹特性后合法）：默认取最早（主）那个，
+        # 不能用 scalar_one_or_none（多行会抛 MultipleResultsFound 致 /workspaces/my 500）。
         existing_workspace = db.execute(
-            select(Workspace).where(Workspace.user_id == user_id)
-        ).scalar_one_or_none()
+            select(Workspace)
+            .where(Workspace.user_id == user_id)
+            .order_by(Workspace.id.asc())
+        ).scalars().first()
         if existing_workspace:
             return existing_workspace
 

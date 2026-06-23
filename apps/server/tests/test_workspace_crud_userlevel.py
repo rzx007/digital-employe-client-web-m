@@ -19,6 +19,22 @@ def test_list_user_workspaces_scoped(db_session):
     assert {w.name for w in out} == {"a", "b"}
 
 
+def test_ensure_user_default_workspace_with_multiple(db_session):
+    """回归：用户有多个工作空间（新外部文件夹特性后合法）时，ensure_user_default_workspace
+    不得因 scalar_one_or_none 抛 MultipleResultsFound；确定性返回最早（主）工作空间。
+    复现 /workspaces/my 500：user_id=1 同时拥有 app 托管 + 外部文件夹两个工作空间。"""
+    from src.models.workspace import Workspace
+    from src.service.workspace_service import WorkspaceService
+
+    primary = Workspace(name="主", root_path="/tmp/p", user_id="u1")
+    external = Workspace(name="外部", root_path="/tmp/ext", user_id="u1")
+    db_session.add_all([primary, external])
+    db_session.commit()
+
+    ws = WorkspaceService.ensure_user_default_workspace(db_session, "u1")
+    assert ws.id == primary.id  # 最早 id = 主工作空间
+
+
 def test_create_user_workspace_empty(db_session):
     from src.models.employee import Employee
     from src.service.workspace_service import WorkspaceService
