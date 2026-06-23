@@ -190,14 +190,28 @@ class WorkspaceService:
 
         - 未显式给 root_path：自动建托管项目目录 APP_PROJECTS_BASE/<id>/ 并 mkdir
           （需先 flush 拿到自增 id）。
-        - 显式给外部 root_path（用户手选文件夹）：原样存储，不重定位、不 mkdir 其本体
-          （用户拥有该目录；产物后续懒建在其 .boban-staff/ 子目录）。
+        - 显式给外部 root_path（用户手选文件夹，不在 APP_PROJECTS_BASE 下）：
+          原样存储，不重定位、不 mkdir 其本体（用户拥有该目录）。flat 模型——
+          产物直接落该文件夹本体（无 .boban-staff/ 子目录）。文件夹必须已存在
+          （不存在报 400），允许非空（可挂已有项目目录）。建好后置
+          auto_grant_external_dirs=True 并自动授权该目录，避免运行期反复弹审批。
         """
         from src.service.agent.workspace_paths import APP_PROJECTS_BASE
 
         settings = get_settings()
         workspace_name = name or settings.default_workspace_name or "新项目"
         explicit_root = bool(root_path)
+
+        is_external = False
+        if explicit_root:
+            rp = Path(root_path)
+            is_external = not rp.is_relative_to(APP_PROJECTS_BASE)
+            if is_external and not rp.exists():
+                # 外部文件夹必须已存在；非空不校验（允许已有项目目录）。
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"文件夹不存在：{root_path}",
+                )
 
         workspace = Workspace(
             name=workspace_name,
@@ -211,8 +225,15 @@ class WorkspaceService:
             managed_root = APP_PROJECTS_BASE / str(workspace.id)
             managed_root.mkdir(parents=True, exist_ok=True)
             workspace.root_path = str(managed_root)
+        if is_external:
+            # 外部根：自动授权 + 置 workspace 级 auto 放行，免运行期反复弹审批。
+            workspace.auto_grant_external_dirs = True
         db.commit()
         db.refresh(workspace)
+        if is_external:
+            from src.service.authorized_dir_service import grant_dir
+
+            grant_dir(db, workspace.id, str(root_path))
         from src.service.chat_service import ChatService
 
         ChatService.ensure_curator_conversation(db, user_id, workspace.id)

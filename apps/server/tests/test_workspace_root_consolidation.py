@@ -105,3 +105,32 @@ def test_delete_external_workspace_does_not_rmtree(db_session, tmp_path):
     assert ext.exists()  # 外部文件夹本体不动
     assert (ext / "user_file.txt").exists()  # 用户文件存活
     assert db_session.get(Workspace, ws_id) is None  # 仅 DB 行删除
+
+
+# ---- Task B2: create_user_workspace 外部自动授权 + 非空 + exists 校验 ----
+
+
+def test_create_user_workspace_external_auto_grants(db_session, tmp_path):
+    from src.service.workspace_service import WorkspaceService
+    from src.service.authorized_dir_service import list_authorized_dirs
+
+    ext = str(tmp_path / "repo")
+    (tmp_path / "repo").mkdir()
+    (tmp_path / "repo" / "existing.txt").write_text("x")  # 非空
+    ws = WorkspaceService.create_user_workspace(
+        db_session, user_id="u", name="ext", root_path=ext
+    )
+    assert ws.root_path == ext
+    assert ws.auto_grant_external_dirs is True
+    dirs = list_authorized_dirs(db_session, ws.id)
+    assert any(ext in str(d) for d in dirs)  # 已自动授权
+
+
+def test_create_user_workspace_external_missing_path_errors(db_session, tmp_path):
+    from src.service.workspace_service import WorkspaceService
+    import pytest
+
+    with pytest.raises(Exception):  # 不存在 → 报错(HTTPException)
+        WorkspaceService.create_user_workspace(
+            db_session, user_id="u", name="x", root_path=str(tmp_path / "nope")
+        )
