@@ -199,6 +199,7 @@ export function ChatView({
           key={String(selectedConversationId)}
           contact={contact}
           conversationId={selectedConversationId}
+          sessionFlags={selectedConversation?.sessionFlags}
           title={selectedConversation?.title ?? "总管对话"}
           className={cn(className)}
           onOpenContacts={onOpenContacts}

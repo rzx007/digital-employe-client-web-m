@@ -136,6 +136,7 @@ function CuratorMessageItem({
   ts,
   session,
   curatorConversationId,
+  sessionFlags,
   onSendUserMessage,
 }: {
   message: UIMessage
@@ -149,6 +150,7 @@ function CuratorMessageItem({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   session: any
   curatorConversationId: string | number | null
+  sessionFlags?: string | null
   onSendUserMessage?: (text: string) => Promise<void>
 }) {
   const {
@@ -245,7 +247,10 @@ function CuratorMessageItem({
             hasCurrentTurnEnded &&
             message.role === "assistant" &&
             curatorConversationId != null ? (
-              <CuratorTurnDeliverables conversationId={curatorConversationId} />
+              <CuratorTurnDeliverables
+                conversationId={curatorConversationId}
+                sessionFlags={sessionFlags}
+              />
             ) : null}
           </div>
         </MessageContent>
@@ -267,6 +272,7 @@ function CuratorMessageItem({
 export function CuratorView({
   contact,
   conversationId: conversationIdProp,
+  sessionFlags,
   title: conversationTitle,
   size = "default",
   resourcesOpen,
@@ -281,6 +287,7 @@ export function CuratorView({
 }: ComponentProps<"div"> & {
   contact?: ChatViewContact
   conversationId: string | number
+  sessionFlags?: string | null
   title?: string
   size?: "default" | "compact"
   /** compact 工作台：由 WorkbenchContentSplit 控制资源分栏 */
@@ -943,6 +950,7 @@ export function CuratorView({
                       ts={entry.ts}
                       session={session}
                       curatorConversationId={curatorConversationId}
+                      sessionFlags={sessionFlags}
                     />
                   )
                 })}

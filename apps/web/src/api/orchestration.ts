@@ -70,11 +70,18 @@ export interface OrchestrationPlanFull {
   artifacts: OrchestrationDeliverable[]
 }
 
-/** GET /orchestration/plans/{plan_id} — 实时子任务(含 prompt/employee_id) + 团队产物。 */
+/**
+ * GET /orchestration/plans/{plan_id} — 实时子任务(含 prompt/employee_id) + 团队产物。
+ * 传 conversationId 时后端按该会话对应的 run 过滤产物（per-run 会话只见本轮交付物）。
+ */
 export async function fetchOrchestrationPlanDetail(
   planId: number,
-  opts?: { signal?: AbortSignal }
+  opts?: { signal?: AbortSignal; conversationId?: number | null }
 ): Promise<OrchestrationPlanFull> {
+  const qs =
+    opts?.conversationId != null
+      ? `?conversation_id=${encodeURIComponent(String(opts.conversationId))}`
+      : ""
   const res = await request<{
     code: number
     msg: string
@@ -83,7 +90,7 @@ export async function fetchOrchestrationPlanDetail(
       artifacts?: OrchestrationDeliverable[]
     } | null
   }>(
-    `/orchestration/plans/${planId}`,
+    `/orchestration/plans/${planId}${qs}`,
     opts?.signal ? { signal: opts.signal } : {}
   )
   if (!isApiSuccess(res.code) || !res.data) {
