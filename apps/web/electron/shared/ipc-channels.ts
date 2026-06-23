@@ -59,6 +59,7 @@ export const IpcChannels = {
   openLogsDirectory: "open-logs-directory",
   exportLogs: "export-logs",
   revealPathInExplorer: "reveal-path-in-explorer",
+  selectDirectory: "select-directory",
   activationSuccess: "activation-success",
   // browser panel
   browserOpen: "browser:open",
@@ -250,6 +251,7 @@ export interface IpcInvokeMap {
     args: [path: string, entryType: "file" | "directory"]
     result: void
   }
+  [IpcChannels.selectDirectory]: { args: []; result: string | null }
   // activation
   [IpcChannels.activationSuccess]: { args: []; result: void }
   // update

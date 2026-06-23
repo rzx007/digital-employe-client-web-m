@@ -37,4 +37,5 @@ export const settingsBridge = {
     path: string,
     entryType: "file" | "directory"
   ) => invoke(IpcChannels.revealPathInExplorer, path, entryType),
+  selectDirectory: () => invoke(IpcChannels.selectDirectory),
 }

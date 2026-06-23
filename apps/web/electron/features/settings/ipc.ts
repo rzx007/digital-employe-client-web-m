@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron"
+import { app, BrowserWindow, dialog } from "electron"
 import {
   exportLogsToFile,
   openLogsDirectory,
@@ -172,6 +172,23 @@ export const settingsIpcContribution: IpcContribution = {
             targetPath,
             entryType as ExplorerEntryType
           )
+        },
+      },
+      {
+        channel: IpcChannels.selectDirectory,
+        handler: async (event) => {
+          const parent = BrowserWindow.fromWebContents(event.sender)
+          if (!parent || parent.isDestroyed()) {
+            throw new Error("No host window available for file dialog")
+          }
+          const result = await dialog.showOpenDialog(parent, {
+            title: "选择文件夹",
+            properties: ["openDirectory"],
+          })
+          if (result.canceled || result.filePaths.length === 0) {
+            return null
+          }
+          return result.filePaths[0]!
         },
       },
       {

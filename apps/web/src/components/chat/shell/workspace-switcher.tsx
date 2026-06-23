@@ -44,6 +44,7 @@ import {
   type WorkspaceData,
 } from "@/api/workspace"
 import { restoreChatAfterWorkspaceSwitch } from "@/lib/chat/restore-chat-after-workspace-switch"
+import { withElectronApi } from "@/lib/electron/host"
 import { useAuthStore } from "@/stores/auth-store"
 
 /** 工作空间（项目）切换器：列出当前用户项目、切换、新建空项目、删除非当前项目。 */
@@ -57,6 +58,7 @@ export function WorkspaceSwitcher({
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [createOpen, setCreateOpen] = React.useState(false)
   const [newName, setNewName] = React.useState("")
+  const [newRootPath, setNewRootPath] = React.useState<string | null>(null)
   const [pendingDelete, setPendingDelete] =
     React.useState<WorkspaceData | null>(null)
 
@@ -80,11 +82,13 @@ export function WorkspaceSwitcher({
   )
 
   const createMutation = useMutation({
-    mutationFn: (name?: string) => createWorkspace(name),
+    mutationFn: (vars: { name?: string; rootPath?: string }) =>
+      createWorkspace(vars.name, vars.rootPath),
     onSuccess: (workspace) => {
       void queryClient.invalidateQueries({ queryKey: ["workspaces", "list"] })
       setCreateOpen(false)
       setNewName("")
+      setNewRootPath(null)
       switchTo(workspace.id)
       toast.success("项目已创建")
     },
@@ -107,7 +111,17 @@ export function WorkspaceSwitcher({
 
   const handleCreate = () => {
     const name = newName.trim()
-    createMutation.mutate(name || undefined)
+    createMutation.mutate({
+      name: name || undefined,
+      rootPath: newRootPath || undefined,
+    })
+  }
+
+  const handlePickFolder = () => {
+    void withElectronApi(async (api) => {
+      const path = await api.selectDirectory()
+      if (path) setNewRootPath(path)
+    })
   }
 
   return (
@@ -181,7 +195,13 @@ export function WorkspaceSwitcher({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open)
+          if (!open) setNewRootPath(null)
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>新建项目</DialogTitle>
@@ -195,6 +215,31 @@ export function WorkspaceSwitcher({
               if (e.key === "Enter") handleCreate()
             }}
           />
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handlePickFolder}
+                disabled={createMutation.isPending}
+              >
+                <IconFolder className="size-4" />
+                选择文件夹（可选）
+              </Button>
+              {newRootPath && (
+                <span
+                  className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+                  title={newRootPath}
+                >
+                  {newRootPath}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              选本地文件夹作工作空间，产物直接存入；支持已有项目目录
+            </p>
+          </div>
           <DialogFooter>
             <Button
               variant="outline"
