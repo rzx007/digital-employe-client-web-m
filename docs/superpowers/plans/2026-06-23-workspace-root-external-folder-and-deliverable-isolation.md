@@ -212,12 +212,30 @@ def resolve_workspace_dirs(*, root_path, base_dir) -> WorkspaceDirs:
         uploads_dir=uploads_dir, draft_dir=draft_dir, public_dir=public_dir, public_root=public_root)
 ```
 
-- [ ] **Step 4: 通过 + 回归** → `cd apps/server && uv run pytest tests/test_workspace_root_consolidation.py -v && uv run pytest -q`（注意：既有依赖 `<external>/.boban-staff` 的测试若存在会破——grep `.boban-staff` 测试，适配为 flat 预期，不弱化）。
+- [ ] **Step 4（🔴 BLOCKER 必做）：修 delete_workspace 数据丢失风险**
 
-- [ ] **Step 5: Commit**
+评审揪出：`delete_workspace`（[workspace_service.py:266](../../../apps/server/src/service/workspace_service.py)）外部分支 `target = resolve_workspace_product_root(root_path)` 然后 `shutil.rmtree(target)`。flat 后 target = **用户整个外部文件夹** → 删外部工作空间会**抹掉用户真实代码**，`_is_unsafe_rmtree_target` 只挡 FS 根/托管基，挡不住任意外部目录。
+
+**修法**：delete_workspace 里——
+- app 托管（root 在 APP_PROJECTS_BASE 下）：照旧 rmtree `projects/<id>`。
+- **外部（root 不在 APP_PROJECTS_BASE 下）：磁盘上什么都不删**（文件夹是用户的、我们不拥有），只删 DB workspace 记录 + 撤 authorized_dir grant。
+先写一个测试 `test_delete_external_workspace_does_not_rmtree(tmp_path)`：建外部 ws + 文件夹放文件 → delete_workspace → 断言**文件夹和文件仍在**（仅 DB 行删）。再实现分支。
+
+- [ ] **Step 5: 适配既有 `.boban-staff` 布局测试（明确清单，不弱化，改为 flat 预期）**
+
+这些断言旧 `<external>/.boban-staff` 布局、flat 后会破，逐一改为 flat 预期：
+- `tests/test_product_paths.py`（~:21 外部根=.boban-staff）→ 外部根=文件夹本身。
+- `tests/test_resource_product_root.py`（~:50）→ flat。
+- `tests/test_workspace_delete_cleanup.py`（~:39/:51）→ 配合 Step 4 新语义（外部不删盘）。
+- `test_resource_static.py` / `test_employee_delete_keeps_products.py` 若 grep 命中 `.boban-staff` 且断旧布局 → 适配。
+先 `grep -rn "\.boban-staff" tests` 列全，逐个改。
+
+- [ ] **Step 6: 通过 + 全量** → `cd apps/server && uv run pytest tests/test_workspace_root_consolidation.py tests/test_product_paths.py tests/test_resource_product_root.py tests/test_workspace_delete_cleanup.py -v && uv run pytest -q`（1 failed 预存、零其它新增）。
+
+- [ ] **Step 7: Commit**
 ```bash
-git add apps/server/src/service/agent/workspace_paths.py apps/server/tests/
-git commit -m "feat(ws): 外部文件夹工作空间 flat 直挂（root即产物根,artifacts/uploads平铺,draft保留子目录）
+git add apps/server/src/service/agent/workspace_paths.py apps/server/src/service/workspace_service.py apps/server/tests/
+git commit -m "feat(ws): 外部文件夹工作空间 flat 直挂 + delete 不删用户外部文件夹（防数据丢失）+ 适配布局测试
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
@@ -272,7 +290,7 @@ def test_create_user_workspace_external_missing_path_errors(db_session, tmp_path
             from src.service.authorized_dir_service import grant_dir
             grant_dir(db, ws.id, root_path)
 ```
-按 grant_dir 真实签名调用。
+按 grant_dir 真实签名调用。**同步改 `create_user_workspace` 旧 docstring（~190-191 说外部产物落 `.boban-staff/` 子目录）为 flat 新模型，避免误导。**
 
 - [ ] **Step 4: 通过 + 全量** → 1 failed 预存。
 
@@ -341,7 +359,7 @@ def test_collect_deliverables_filtered_by_run(db_session):
     #  两个 PlanRun，子任务在 run1/run2 各一条 log，run_id 过滤只取对应轮的 log.conversation。）
     pass  # 实现者按 collect_plan_deliverables 真实结构写，确保 run_id 过滤生效
 ```
-（第二个测试实现者按 `collect_plan_deliverables` 实际从 log→会话 tool parts 取产物的结构，构造能验证 run_id 过滤的最小用例；tool parts 可 monkeypatch `TaskService.get_conversation_tool_parts` 返回固定假数据按 conversation 区分。）
+（第二个测试实现者按 `collect_plan_deliverables` 实际从 log→会话 tool parts 取产物的结构，构造能验证 run_id 过滤的最小用例；tool parts 可 monkeypatch `TaskService.get_conversation_tool_parts` 返回固定假数据按 conversation 区分。**注意**：`collect_plan_deliverables` 末尾有 `_still_exists_nonempty`（或同类磁盘存在性过滤）会把不存在的文件滤掉——否则断言会退化成 `[]==[]` 假绿。测试需 monkeypatch 该过滤或让假 file_path 真实落盘。）
 
 - [ ] **Step 2: 跑确认失败**
 
@@ -374,7 +392,7 @@ API 加可选 query `conversation_id`：传入 per-run 会话 id → 只返该�
 
 ### Task C3: 前端 per-run 会话渲染本轮交付物
 
-**Files:** Modify `curator-turn-deliverables.tsx` + `api/orchestration.ts`. Typecheck only.
+**Files:** Modify `src/components/chat/curator/curator-turn-deliverables.tsx` + `api/orchestration.ts`. Typecheck only.
 
 - [ ] **Step 1: 实现**
 - `api/orchestration.ts` `fetchOrchestrationPlanDetail(planId, conversationId?)`：query 透传 `conversation_id`。
