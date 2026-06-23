@@ -82,7 +82,12 @@ def create_scheduled_run_conversation(db: Session, plan, run) -> int:
         summary = summary[:30] + "…"
     title = f"「{summary}」· 第{run.run_seq}轮"
     flags = json.dumps(
-        {"kind": "scheduled_run", "plan_id": plan.id, "run_seq": run.run_seq},
+        {
+            "kind": "scheduled_run",
+            "plan_id": plan.id,
+            "run_seq": run.run_seq,
+            "run_id": run.id,
+        },
         ensure_ascii=False,
     )
     conv = Conversation(

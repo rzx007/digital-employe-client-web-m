@@ -55,13 +55,18 @@ def _still_exists_nonempty(path: str, artifacts_dir) -> bool:
         return True
 
 
-def collect_plan_deliverables(db: Session, plan_id: int) -> list[dict]:
+def collect_plan_deliverables(
+    db: Session, plan_id: int, run_id: int | None = None
+) -> list[dict]:
     """聚合某编排计划各子任务产出的文件（归属到任务）。
 
     来源：每个子任务最新执行日志所在员工会话的 write_file/edit_file 工具 parts 的
     file_path（排除非产物桶、去重），**且只保留结束时磁盘上仍存在且非空的文件**——
     跑完即删的临时脚本会被过滤掉。返回 [{path, basename, task_id, task_name, action}]。
     注：shell 直接写的文件不在 parts 里、会漏（已知限制，按需再补目录扫描）。
+
+    run_id 给定时，每个子任务的「最新执行日志」只在该轮（TaskExecutionLog.run_id ==
+    run_id）内取——只浮现该轮交付物；为 None 时为历史全量（取该任务全历史最新日志）。
     """
     from src.service.task_service import TaskService
 
@@ -75,11 +80,10 @@ def collect_plan_deliverables(db: Session, plan_id: int) -> list[dict]:
     seen: dict[str, dict] = {}
     order: list[str] = []
     for t in tasks:
-        log = db.scalars(
-            select(TaskExecutionLog)
-            .where(TaskExecutionLog.task_id == t.id)
-            .order_by(TaskExecutionLog.id.desc())
-        ).first()
+        log_q = select(TaskExecutionLog).where(TaskExecutionLog.task_id == t.id)
+        if run_id is not None:
+            log_q = log_q.where(TaskExecutionLog.run_id == run_id)
+        log = db.scalars(log_q.order_by(TaskExecutionLog.id.desc())).first()
         conv_id = log.conversation_id if log else None
         for p in TaskService.get_conversation_tool_parts(db, conv_id):
             ptype = p.get("type", "")
@@ -117,6 +121,24 @@ def collect_plan_deliverables(db: Session, plan_id: int) -> list[dict]:
     return [
         seen[k] for k in order if _still_exists_nonempty(seen[k]["path"], adir)
     ]
+
+
+def resolve_run_id_for_conversation(
+    db: Session, plan_id: int, conversation_id: int
+) -> int | None:
+    """某会话对应的 PlanRun.id（该计划下 conversation_id 命中的轮）；无 → None。
+
+    用于 per-run 会话按本轮过滤交付物：scheduled 轮有专属会话，命中其 run；
+    非任何 run 的会话（如纯定时计划创建源会话）返回 None。
+    """
+    from src.models.plan_run import PlanRun
+
+    return db.scalar(
+        select(PlanRun.id).where(
+            PlanRun.plan_id == plan_id,
+            PlanRun.conversation_id == conversation_id,
+        )
+    )
 
 
 def cancel_running_executions_for_task(
