@@ -1,5 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from src.core.cst import cst_now
 from src.models.channel_inbox import ChannelInbox
 
 _PENDING = ("acked", "running")
@@ -42,7 +43,6 @@ def find_pending_by_plan_run(db, plan_run_id):
 
 def mark(db, row, status, *, plan_run_id=None, assistant_message_id=None,
          user_message_id=None, reported=False):
-    from src.models.workspace import cst_now
     row.status = status
     if plan_run_id is not None:
         row.plan_run_id = plan_run_id

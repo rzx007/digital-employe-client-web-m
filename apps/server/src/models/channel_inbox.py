@@ -3,7 +3,7 @@ from sqlalchemy import Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from src.db.base import Base
 from src.db.types import CstDateTime
-from src.models.workspace import cst_now
+from src.core.cst import cst_now
 
 
 class ChannelInbox(Base):
