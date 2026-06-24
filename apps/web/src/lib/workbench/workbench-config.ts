@@ -12,10 +12,19 @@ export const GLOBAL_WORKBENCH_ID = "global"
  */
 export const WORKBENCH_CONFIG_CHANGED_EVENT = "workbench-config-changed"
 
+/** 工作台看板区「资源池」按钮派发；WorkbenchContentSplit 监听并展开资源面板。 */
+export const WORKBENCH_OPEN_RESOURCES_EVENT = "workbench-open-resources"
+
 /** 派发配置变更事件（仅在浏览器环境）。 */
 export function emitWorkbenchConfigChanged(): void {
   if (typeof window === "undefined") return
   window.dispatchEvent(new Event(WORKBENCH_CONFIG_CHANGED_EVENT))
+}
+
+/** 派发打开资源池事件（仅在浏览器环境）。 */
+export function emitWorkbenchOpenResources(): void {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new Event(WORKBENCH_OPEN_RESOURCES_EVENT))
 }
 
 const STORAGE_KEY_PREFIX = "workbench-config-"

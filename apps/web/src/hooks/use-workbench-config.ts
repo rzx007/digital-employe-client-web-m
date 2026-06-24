@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react"
-import type { GridPos, GridSpan, WorkbenchConfig } from "@/types/workbench"
+import type { WorkbenchConfig } from "@/types/workbench"
 import {
   initializeWorkbenchConfig,
   loadWorkbenchConfig,
   removeBlock,
-  setBlockPos,
-  setBlockSpan,
+  updateBlockOrder,
+  updateBlockSize,
   WORKBENCH_CONFIG_CHANGED_EVENT,
 } from "@/lib/workbench/workbench-config"
 
@@ -55,19 +55,24 @@ export function useWorkbenchConfig({ employeeId }: UseWorkbenchConfigOptions) {
     setConfig((prev) => (prev ? removeBlock(prev, blockId) : prev))
   }, [])
 
-  const resizeBlock = useCallback((blockId: string, span: GridSpan) => {
-    setConfig((prev) => (prev ? setBlockSpan(prev, blockId, span) : prev))
+  const reorderBlocks = useCallback((blockIds: string[]) => {
+    setConfig((prev) => (prev ? updateBlockOrder(prev, blockIds) : prev))
   }, [])
 
-  const moveBlock = useCallback((blockId: string, pos: GridPos) => {
-    setConfig((prev) => (prev ? setBlockPos(prev, blockId, pos) : prev))
-  }, [])
+  const resizeBlock = useCallback(
+    (blockId: string, width: number, height: number) => {
+      setConfig((prev) =>
+        prev ? updateBlockSize(prev, blockId, width, height) : prev
+      )
+    },
+    []
+  )
 
   return {
     config,
     removeBlock: removeBlockById,
+    reorderBlocks,
     resizeBlock,
-    moveBlock,
     refreshConfig,
   }
 }

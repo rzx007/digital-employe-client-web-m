@@ -22,6 +22,7 @@ import {
 import { ensureCuratorConversationAndSelect } from "@/lib/chat/curator-conversation-actions"
 import { getContactId } from "@/lib/chat/contact-utils"
 import { resolveWorkbenchCuratorPanel } from "./resolve-workbench-curator-panel"
+import { WORKBENCH_OPEN_RESOURCES_EVENT } from "@/lib/workbench/workbench-config"
 import {
   useConversationsQuery,
   useCuratorConversationQuery,
@@ -180,6 +181,17 @@ export function WorkbenchContentSplit({
   }, [curatorContact, panel.mode, isCreatingCurator, queryClient])
 
   const activeConversationId = panel.conversationId ?? null
+
+  useEffect(() => {
+    const handler = () => {
+      if (activeConversationId == null) return
+      setResourcesOpen(true)
+    }
+    window.addEventListener(WORKBENCH_OPEN_RESOURCES_EVENT, handler)
+    return () => {
+      window.removeEventListener(WORKBENCH_OPEN_RESOURCES_EVENT, handler)
+    }
+  }, [activeConversationId])
 
   useEffect(() => {
     if (panel.mode === "loading") return
