@@ -1,18 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from src.core.cst import CST, cst_now
 from src.db.base import Base
-
-
-CST = timezone(timedelta(hours=8))
-
-
-def cst_now() -> datetime:
-    return datetime.now(CST)
 
 
 class Workspace(Base):
