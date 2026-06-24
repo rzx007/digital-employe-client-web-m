@@ -77,7 +77,7 @@
 
 > ⚠️ 前端设置组件实际在 `apps/web/src/components/settings/`（`general-settings.tsx`/`settings-page.tsx`/`settings-sidebar.tsx`/`settings-types.ts`），`routes/settings.tsx` 只是路由壳。
 
-**`apps/web/src/api/feishu-channel.ts`（新）**：`fetchQrcode("feishu")`、`pollQrcodeStatus("feishu", token)`，走现有 `request`，status 入参用 `request` 的 `query` 选项（`{ query: { token } }`），不手拼 URL。
+**`apps/web/src/api/feishu-channel.ts`（新）**：`fetchQrcode("feishu")`、`pollQrcodeStatus("feishu", token)`，走现有 `request`，status 入参用 `request` 的 `params` 选项（`{ params: { token } }`，对齐现有 `conversation.ts` 约定），不手拼 URL。
 
 **`apps/web/src/components/settings/channels-settings.tsx`（新，仿 `general-settings.tsx`）**：渠道 tab 容器，内含 `feishu-section.tsx`（飞书区块）。
 
