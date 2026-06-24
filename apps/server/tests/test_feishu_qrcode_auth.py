@@ -88,3 +88,22 @@ def test_fetch_qrcode_unsupported_method(monkeypatch):
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
     with pytest.raises(RuntimeError):
         asyncio.run(FeishuQRCodeAuthHandler().fetch_qrcode())
+
+
+def test_poll_status_raises_on_http_error(monkeypatch):
+    import httpx, asyncio
+    from src.service.channel.qrcode_auth import FeishuQRCodeAuthHandler
+
+    class _Resp:
+        def raise_for_status(self): raise RuntimeError("500 from feishu")
+        def json(self): return {}
+
+    class _Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, *a, **k): return _Resp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    with pytest.raises(Exception):
+        asyncio.run(FeishuQRCodeAuthHandler().poll_status("dev_x"))

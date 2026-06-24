@@ -88,6 +88,7 @@ class FeishuQRCodeAuthHandler(QRCodeAuthHandler):
             resp = await client.post(endpoint, content=urlencode({
                 "action": "poll", "device_code": token,
             }), headers=_FORM_HEADERS)
+            resp.raise_for_status()
             return _normalize_feishu_poll(resp.json())
 
 

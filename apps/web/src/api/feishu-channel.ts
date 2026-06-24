@@ -18,7 +18,8 @@ export interface PollResp {
 
 export async function fetchQrcode(channel = "feishu"): Promise<QrcodeResp> {
   const res = await request<ApiResponse<QrcodeResp>>(
-    `/channels/${channel}/qrcode`
+    `/channels/${channel}/qrcode`,
+    { retry: 0 }
   )
   return res.data
 }
