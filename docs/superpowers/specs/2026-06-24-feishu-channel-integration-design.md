@@ -45,8 +45,11 @@ FeishuChannel.on_message(event)
         │ ① external_event_id 去重(ChannelInbox)
         │ ② 白名单校验 open_id
         │ ③ resolve 最近活跃总管会话(target_type=curator, 按最近消息; 无则 ensure 默认工作空间总管会话)
-        │ ④ 回调跨线程：call_soon_threadsafe 投回主 event loop（见 §4.3）
-        │    inject_curator_instruction(会话, 文本, source_meta)  ← 复用 headless 注入
+        │ ④ 回调跨线程：call_soon_threadsafe 投回主 event loop（见 §4.3），在主 loop 闭包内：
+        │   ④a 忙碌兜底(权威检查，放主 loop 内避免 TOCTOU)：registry.is_active(conversation_id)?
+        │       → 是则回 "⏳ 总管正忙，待会再试"，不注入/不排队，
+        │         但仍写一行 inbox(status=rejected) 以记录 event_id 去重(重投不重复回复)；结束
+        │   ④b inject_curator_instruction(会话, 文本, source_meta)  ← 复用 headless 注入
         │ ⑤ 写 ChannelInbox 行(status=acked，DB unique 去重兜底), 立即回飞书 "✅ 收到"
         ▼
 总管照常执行(纯对话回复 / 或拆成 PlanRun 多子任务)  ——异步
@@ -108,7 +111,7 @@ send_report(chat_id, report)  # 出站：最终报告
 | `workspace_id` / `conversation_id` | 入站时刻快照：接盘的总管会话 + 其工作空间 |
 | `user_message_id` / `assistant_message_id` | 关联触发的那一轮；`user_message_id` 也用于**消息级飞书徽标**渲染 |
 | `plan_run_id` (nullable) | 若该轮拆了编排轮，回填 |
-| `status` | received → acked → running → reported / failed |
+| `status` | received → acked → running → reported / failed / **rejected**（会话忙碌拒绝，仅记录去重） |
 | `reported_at` | 回执时间 |
 
 **会话解析** `resolve_active_curator_conversation(db, user_id)`：取 `target_type="curator"` 中**最近有消息**的会话（按 last message / `updated_at`）；若一个都没有 → fallback `ensure_curator_conversation(db, user_id, default_workspace_id)`（**复用现有函数**，不新建专属会话）。**`Conversation` 不加 `channel` 字段**，飞书来源的区分完全落在 `ChannelInbox`（消息级），UI 据 `user_message_id` 给该条消息加飞书徽标。
@@ -180,6 +183,7 @@ FeishuChannel
   交付物：report.xlsx、分析.md
   ```
   纯对话场景直接发总管回答文本。超长 → 截断 + "详见客户端"。
+- **忙碌拒绝**（接盘会话正在跑流）：`⏳ 总管正忙，待会再试`，不注入、不排队。
 
 ## 7. 错误处理
 
@@ -192,7 +196,8 @@ FeishuChannel
 | 长连接断开 | lark-oapi 自动重连，ChannelManager 监管 + 日志 |
 | 后端重启时有未终态的轮 | **`ChannelManager.start()` 时对账**：扫 inbox `status∈{acked,running}` 行 → 关联 conversation 的流不在 `stream_registry` 中（重启后内存流必然丢失，即判定该轮已死）→ 回 `执行被中断` 并置终态收尾，杜绝永久悬挂 |
 | 回发失败（飞书侧故障） | 重试数次，仍失败保留状态待重试 |
-| 并发：多条飞书指令同时来 | 复用现有并发槽队列；ACK 区分"已开始 / 已排队" |
+| **接盘会话正在跑流**（会话级忙碌兜底） | 主 loop 内 `registry.is_active(conversation_id)` 为真 → 立即回 `⏳ 总管正忙，待会再试`，**不注入、不排队**（避免往用户正在用 / 正在跑的总管对话里插一轮、抢流），仅写一行 `inbox(status=rejected)` 记录 event_id 去重。用户稍后手动重发（新 event_id）即可。这是并发场景的主兜底，对应"同时跑虽少但要兜底"。 |
+| 全局并发槽满但接盘会话空闲（更次要） | 走 `inject_curator_instruction` 现有路径，curator 轮可能 `queued`；ACK 据实回 `✅ 收到` / `⏳ 已排队`，照常回执 |
 
 ## 8. 复用现有代码
 
