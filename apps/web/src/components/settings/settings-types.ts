@@ -7,6 +7,7 @@ import {
   IconUser,
   IconPaw,
   IconPlug,
+  IconWifi,
 } from "@tabler/icons-react"
 
 import type { Capabilities } from "@/lib/runtime/runtime-types"
@@ -29,12 +30,12 @@ export const SETTINGS_TABS: {
   icon: React.ComponentType<{ className?: string }>
   capability?: keyof Capabilities
 }[] = [
-  { id: "account", label: "账号与隐私", icon: IconUser, capability: "remote_login" },
-  { id: "general", label: "通用", icon: IconSettings },
-  { id: "shortcuts", label: "快捷键", icon: IconKeyboard },
-  { id: "models", label: "模型", icon: IconBrain },
-  { id: "pet", label: "宠物", icon: IconPaw },
-  { id: "extensions", label: "插件", icon: IconPlug },
-  { id: "channels", label: "渠道", icon: IconPlug, capability: "feishu_platform" },
-  { id: "about", label: "关于", icon: IconInfoCircle },
-]
+    { id: "account", label: "账号与隐私", icon: IconUser, capability: "remote_login" },
+    { id: "general", label: "通用", icon: IconSettings },
+    { id: "shortcuts", label: "快捷键", icon: IconKeyboard },
+    { id: "models", label: "模型", icon: IconBrain },
+    { id: "pet", label: "宠物", icon: IconPaw },
+    { id: "extensions", label: "插件", icon: IconPlug },
+    { id: "channels", label: "渠道", icon: IconWifi, capability: "feishu_platform" },
+    { id: "about", label: "关于", icon: IconInfoCircle },
+  ]

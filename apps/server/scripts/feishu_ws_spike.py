@@ -1,5 +1,6 @@
 """飞书长连接连通性 spike。用法：
   set FEISHU_APP_ID=cli_xxx & set FEISHU_APP_SECRET=xxx
+  powerShell：$env:FEISHU_APP_ID = "cli_aab13b5590789bb6"; $env:FEISHU_APP_SECRET = "hiNNSsu9LB5gU4QF99PnwcZMvoPVTLxq"
   cd apps/server && uv run --no-sync python scripts/feishu_ws_spike.py
 然后用白名单飞书号私聊机器人发一条文字。预期：打印事件字段 + 机器人回 "spike ok"。
 """
