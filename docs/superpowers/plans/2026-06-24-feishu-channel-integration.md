@@ -743,8 +743,8 @@ git commit -m "feat(channel): build_channel_report（纯回复取最终文本 / 
 - [ ] **Step 1: 写失败测试（用 FakeChannel + 模拟事件）**
 
 覆盖分发路径（注意 monkeypatch `resolve_latest_run_id_by_conversation`，它决定纯对话 vs 编排轮）：
-- **纯对话**：inbox `status=acked`；`resolve_run_id_for_conversation` 返回 `None` →喂 `CONVERSATION_STATUS_CHANGED(idle)` → send_report 被调一次、inbox 变 `reported`。
-- **编排轮回填（关键，防 blocker 回归）**：inbox `status=acked, plan_run_id=None`；`resolve_run_id_for_conversation` 返回 `R` →喂 `CONVERSATION_STATUS_CHANGED(idle)` → **不回执**、inbox 变 `status=running, plan_run_id=R`；随后喂 `plan_run_settled(run_id=R)` → 回执一次、`reported`。
+- **纯对话**：inbox `status=acked`；`resolve_latest_run_id_by_conversation` 返回 `None` →喂 `CONVERSATION_STATUS_CHANGED(idle)` → send_report 被调一次、inbox 变 `reported`。
+- **编排轮回填（关键，防 blocker 回归）**：inbox `status=acked, plan_run_id=None`；`resolve_latest_run_id_by_conversation` 返回 `R` →喂 `CONVERSATION_STATUS_CHANGED(idle)` → **不回执**、inbox 变 `status=running, plan_run_id=R`；随后喂 `plan_run_settled(run_id=R)` → 回执一次、`reported`。
 - **幂等**：同一事件喂两次，只回执一次（第二次因 status 已 reported 不命中）。
 - **次新行**：会话有 `reported` 旧行 + `running` 新行 → 只命中新行（`order_by id desc + status in pending`）。
 ```python
