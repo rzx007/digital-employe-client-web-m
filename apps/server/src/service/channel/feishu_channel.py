@@ -1,4 +1,41 @@
+import logging
+
 from src.service.channel.base import Channel, InboundMessage
+
+logger = logging.getLogger(__name__)
+
+
+def parse_lark_message_event(data) -> InboundMessage | None:
+    """从 P2ImMessageReceiveV1 提取 InboundMessage；非文本/缺字段返回 None。"""
+    import json
+
+    try:
+        header = getattr(data, "header", None)
+        event = getattr(data, "event", None)
+        if event is None:
+            return None
+        message = getattr(event, "message", None)
+        sender = getattr(event, "sender", None)
+        if message is None or sender is None:
+            return None
+        if getattr(message, "message_type", None) != "text":
+            return None
+        sender_id = getattr(sender, "sender_id", None)
+        open_id = getattr(sender_id, "open_id", None) if sender_id else None
+        chat_id = getattr(message, "chat_id", None)
+        event_id = getattr(header, "event_id", None) if header else None
+        content = getattr(message, "content", None)
+        if not (open_id and chat_id and event_id and content):
+            return None
+        text = json.loads(content).get("text", "")
+        if not text:
+            return None
+        return InboundMessage(
+            external_user_id=open_id, external_chat_id=chat_id,
+            text=text, external_event_id=event_id,
+        )
+    except Exception:
+        return None
 
 
 class FeishuChannel(Channel):
