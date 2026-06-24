@@ -146,6 +146,23 @@ def resolve_run_id_for_conversation(
     )
 
 
+def resolve_latest_run_id_by_conversation(
+    db: Session, conversation_id: int
+) -> int | None:
+    """某会话最新一轮 PlanRun.id（按 id 降序取首条）；无 → None。
+
+    ChannelManager 只持有 conversation_id（无 plan_id），用此判断「这一轮是否产生了
+    编排 run」：None=纯对话回复，非 None=编排轮（需等 plan_run_settled 才回执）。
+    """
+    from src.models.plan_run import PlanRun
+
+    return db.scalar(
+        select(PlanRun.id)
+        .where(PlanRun.conversation_id == conversation_id)
+        .order_by(PlanRun.id.desc())
+    )
+
+
 def cancel_running_executions_for_task(
     db: Session,
     task_id: int,
