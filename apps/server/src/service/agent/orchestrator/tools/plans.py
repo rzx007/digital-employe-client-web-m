@@ -27,6 +27,10 @@ from src.models.workspace import cst_now
 from src.service.schedule_parser import parse_schedule
 
 
+# 远程渠道来源：这些来源的总管会话由远程用户驱动，看不到桌面确认卡片，
+# 故「需确认」编排计划在这些来源直接拒绝（未来钉钉/企微等加这里）。
+_CHANNEL_SOURCES = {"feishu"}
+
 
 @tool
 def create_orchestration_plan(summary: str, tasks: str | list, schedule: str | None = None) -> str:
@@ -182,6 +186,21 @@ def create_orchestration_plan(summary: str, tasks: str | list, schedule: str | N
             "已**自动执行**，无需用户确认、**不要**再调用 confirm_orchestration_plan。\n"
             + exec_result
             + "\n按「进度汇报骨架」给计数+状态清单后结束本轮。"
+        )
+
+    # channel 来源（飞书等远程渠道）看不到桌面确认卡片，无法远程确认。
+    # 需确认计划在这些渠道直接拒绝：取消计划（不留 pending），返回回绝语由总管转达。
+    from src.service.agent.orchestrator.runtime import get_orchestrator_source
+
+    if get_orchestrator_source() in _CHANNEL_SOURCES:
+        plan.status = "cancelled"
+        db.commit()
+        return (
+            plan_json_output
+            + "\n\n"
+            + f"⚠️ 编排计划 #{plan.id} 涉及需人工确认的操作（多任务/定时/高风险），"
+            + "飞书渠道不支持远程确认执行，已拒绝。如需远程执行，请改为单个明确的只读任务，"
+            + "或在客户端确认。"
         )
 
     return (
