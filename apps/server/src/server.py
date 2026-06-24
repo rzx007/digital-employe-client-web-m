@@ -54,6 +54,20 @@ from contextlib import asynccontextmanager
 logger = logging.getLogger(__name__)
 
 
+def _parse_feishu_whitelist(raw: str | None) -> set[str]:
+    """支持逗号分隔或 JSON 数组字符串。"""
+    if not raw:
+        return set()
+    raw = raw.strip()
+    if raw.startswith("["):
+        import json
+        try:
+            return {str(x).strip() for x in json.loads(raw) if str(x).strip()}
+        except Exception:
+            pass
+    return {p.strip() for p in raw.split(",") if p.strip()}
+
+
 def create_app() -> FastAPI:
 
     @asynccontextmanager
@@ -257,6 +271,26 @@ def create_app() -> FastAPI:
 
         # 启动调度器
         TaskSchedulerService.start()
+
+        # 飞书 channel（分级护栏：缺凭证/能力关→不启动；已启用但白名单空→照常启动但全拒答）
+        try:
+            from src.core.config import get_settings as _get_settings
+            from src.core.runtime_capabilities import get_capabilities as _get_caps
+            from src.service.channel.manager import manager as _channel_manager
+            from src.service.channel.feishu_channel import FeishuChannel as _FeishuChannel
+
+            _s = _get_settings()
+            if (_get_caps().feishu_platform and _s.feishu_app_id and _s.feishu_app_secret
+                    and _s.feishu_channel_enabled):
+                _wl = _parse_feishu_whitelist(_s.feishu_whitelist_open_ids)
+                if not _wl:
+                    logger.warning("飞书 channel 白名单为空，所有飞书消息将被拒答")
+                _channel_manager.register(_FeishuChannel(_s.feishu_app_id, _s.feishu_app_secret, _wl))
+                _channel_manager.start()
+                logger.info("飞书 channel 已启动（白名单 %d 人）", len(_wl))
+        except Exception:
+            logger.error("飞书 channel 启动失败（不影响主程序）", exc_info=True)
+
         yield
         # Cancel all active streams so background tasks flush final state
         from src.service.stream_registry import registry
@@ -266,6 +300,11 @@ def create_app() -> FastAPI:
             for conv_id in _active:
                 registry.cancel(conv_id)
         TaskSchedulerService.shutdown()
+        try:
+            from src.service.channel.manager import manager as _channel_manager
+            _channel_manager.stop()
+        except Exception:
+            logger.error("飞书 channel 停止异常", exc_info=True)
         # 仅 sqlite 后端持有 aiosqlite 连接需关闭；file 后端无连接。
         if settings.checkpointer_backend == "sqlite" and conn is not None:
             await conn.close()
