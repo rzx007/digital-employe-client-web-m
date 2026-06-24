@@ -34,3 +34,18 @@ def test_cstdatetime_bind_and_result_roundtrip():
 def test_cstdatetime_cache_ok():
     from src.db.types import CstDateTime
     assert CstDateTime.cache_ok is True
+
+
+def test_workspace_authorized_dir_created_at_is_cst_aware(db_session):
+    from src.models.workspace_authorized_dir import WorkspaceAuthorizedDir
+    from src.core.cst import cst_now
+
+    d = WorkspaceAuthorizedDir(workspace_id=1, path="/x")
+    db_session.add(d)
+    db_session.commit()
+    db_session.expire_all()
+
+    got = db_session.get(WorkspaceAuthorizedDir, d.id)
+    assert got.created_at.tzinfo is not None
+    # +8h bug would be 28800s off; 300s tolerance catches it
+    assert abs((cst_now() - got.created_at).total_seconds()) < 300
