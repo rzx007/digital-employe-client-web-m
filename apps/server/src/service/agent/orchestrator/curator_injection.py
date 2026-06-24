@@ -24,6 +24,12 @@ def inject_curator_instruction(
     """在 curator 会话注入一条 user 指令并起 orchestrator 流。
 
     返回 (user_msg_id, assistant_msg_id)。source/priority 透传给 registry.start。
+
+    注：喂给 agent 的 human 文本与存库 user 消息均用同一 ``text``。相比抽取前的
+    ``_start_curator_task``（存库用 ``user_prompt or task_name``、喂 agent 用
+    ``user_prompt or ""``），当 ``user_prompt`` 为空时本函数统一喂 ``text``（调用方传
+    ``user_prompt or task_name``），即喂 agent 的文本由 ``''`` 收敛为 ``task_name``
+    ——这是有意的良性统一。
     """
     from src.models.conversation import ConversationMessage
 
