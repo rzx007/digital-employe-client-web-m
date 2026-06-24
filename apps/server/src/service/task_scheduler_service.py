@@ -494,8 +494,9 @@ class TaskSchedulerService:
             except Exception:
                 logger.error("run_plan_job 触发失败 plan=%s", plan_id, exc_info=True)
                 if run is not None:
-                    run.status = "failed"
-                    run.ended_at = cst_now()
+                    from src.service.agent.orchestrator.plan_run_service import mark_plan_run_failed
+                    mark_plan_run_failed(db, run)
+                    db.commit()
             # 一轮一条 scheduled_run 事件 → 前端原生通知/铃铛；发事件失败绝不影响调度
             if run is not None:
                 try:

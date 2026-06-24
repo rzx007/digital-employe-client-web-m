@@ -153,8 +153,8 @@ def execute_plan_run(db: Session, plan: OrchestrationPlan, *, trigger: str, auto
             run_id=run.id, orchestrator_conversation_id=run.conversation_id,
         )
     except Exception:
-        run.status = "failed"
-        run.ended_at = cst_now()
+        from src.service.agent.orchestrator.plan_run_service import mark_plan_run_failed
+        mark_plan_run_failed(db, run)
         db.commit()
         raise
     return run

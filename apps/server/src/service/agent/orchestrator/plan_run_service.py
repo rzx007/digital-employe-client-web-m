@@ -78,6 +78,14 @@ def settle_plan_run(db: Session, run_id: int) -> None:
         emit_plan_run_settled(run)
 
 
+def mark_plan_run_failed(db: Session, run: PlanRun) -> None:
+    """异常路径：置 failed + 发终态事件。调用方负责 commit。"""
+    if run.status not in ("settled", "failed"):
+        run.status = "failed"
+        run.ended_at = cst_now()
+    emit_plan_run_settled(run)
+
+
 def create_scheduled_run_conversation(db: Session, plan, run) -> int:
     """为一轮 scheduled run 新建专属 curator 会话（session_flags=scheduled_run）
     + 种 plan.user_input 上下文。返回 conversation_id。调用方负责 commit 与异常处理。
