@@ -194,6 +194,11 @@ def create_orchestration_plan(summary: str, tasks: str | list, schedule: str | N
 
     if get_orchestrator_source() in _CHANNEL_SOURCES:
         plan.status = "cancelled"
+        # 拒绝即取消：把本计划已建子任务全部停用，避免留下「幽灵子任务」
+        # （is_active=True）污染 list_tasks/任务列表。对齐正规取消路径
+        # orchestration_lifecycle.cancel_orchestration_plan 的停用语义。
+        for task in created_tasks:
+            task.is_active = False
         db.commit()
         return (
             plan_json_output

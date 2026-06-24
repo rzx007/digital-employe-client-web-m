@@ -1605,6 +1605,13 @@ class StreamRegistry:
         orchestrator_auth_token: str | None = None,
     ) -> None:
         from src.service.chat_service import ChatService
+        from src.service.agent.orchestrator.runtime import set_orchestrator_source
+
+        # 每条流入口都按自己的 task.source 绑定 source ContextVar，覆盖从父协程
+        # （create_task 拷贝）继承来的残留值。员工子任务流 task.source="orchestration"，
+        # 会把飞书总管流残留的 "feishu" 覆盖掉，避免将来员工读 get_orchestrator_source
+        # 被误判成 channel 来源。orchestrator_owned_db 分支不再重复 set（统一在此一次）。
+        set_orchestrator_source(task.source)
 
         stream_conv_id = orchestrator_conversation_id or conversation_id
         if orchestrator_workspace_id is not None:
@@ -1626,10 +1633,7 @@ class StreamRegistry:
                 raise ValueError(
                     "orchestrator_workspace_id required when orchestrator_owned_db is set"
                 )
-            from src.service.agent.orchestrator.runtime import (
-                set_context,
-                set_orchestrator_source,
-            )
+            from src.service.agent.orchestrator.runtime import set_context
 
             set_context(
                 orchestrator_owned_db,
@@ -1638,10 +1642,9 @@ class StreamRegistry:
                 auth_token=orchestrator_auth_token,
                 bind_auth_token=True,
             )
-            # source 与 db/workspace_id 同点绑定到本流执行协程的 ContextVar 上下文：
-            # 飞书轮在此 set "feishu"、桌面轮 set "user_chat"，随各自流隔离、互不污染。
+            # source 已在本方法入口按 task.source 统一绑定（见上）：飞书轮 "feishu"、
+            # 桌面轮 "user_chat"、员工子任务流 "orchestration"，随各自流隔离、互不污染。
             # 总管工具（create_orchestration_plan）经 get_orchestrator_source() 读到本流值。
-            set_orchestrator_source(task.source)
 
         stream_start_time = time.monotonic()
         assistant_text_parts: list[str] = []

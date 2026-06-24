@@ -10,6 +10,7 @@ import json
 import pytest
 
 from src.models.conversation import Conversation
+from src.models.employee_task import EmployeeTask
 from src.models.orchestration_plan import OrchestrationPlan
 from src.service.agent.orchestrator.runtime import (
     reset_context,
@@ -85,6 +86,14 @@ def test_channel_feishu_rejects_confirmation_plan(db_session, workspace, monkeyp
     plan = db_session.get(OrchestrationPlan, payload["plan_id"])
     assert plan is not None
     assert plan.status == "cancelled"
+    # 拒绝时已建子任务必须全部停用，不留「幽灵子任务」污染任务列表
+    child_tasks = (
+        db_session.query(EmployeeTask)
+        .filter_by(orchestration_plan_id=plan.id)
+        .all()
+    )
+    assert len(child_tasks) > 0
+    assert all(t.is_active is False for t in child_tasks)
 
 
 def test_desktop_source_still_pending(db_session, workspace, monkeypatch):
