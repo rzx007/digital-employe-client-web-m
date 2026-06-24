@@ -102,6 +102,22 @@ def test_pure_reply_not_misled_by_stale_run(db_session, monkeypatch):
     assert fake.reports == [("oc", "R")]
 
 
+def test_report_send_failure_marks_failed_not_stuck(db_session, monkeypatch):
+    monkeypatch.setattr("src.service.channel.manager.build_channel_report", lambda db, row: "R")
+    monkeypatch.setattr("src.service.channel.manager.resolve_latest_run_id_by_conversation", lambda db, cid, **kw: None)
+
+    class BoomChannel(FakeChannel):
+        def send_report(self, chat_id, report):
+            raise RuntimeError("feishu down")
+
+    row = _row(db_session, external_event_id="eboom", conversation_id=88, status="running")
+    mgr = ChannelManager(); mgr.register(BoomChannel())
+    mgr._on_terminal_event(db_session, {"type": "conversation_status_changed",
+                                        "conversation_id": 88, "status": "idle"})
+    db_session.refresh(row)
+    assert row.status == "failed"   # 不卡 running
+
+
 def test_reconcile_interrupted(db_session, monkeypatch):
     class _R:
         @staticmethod

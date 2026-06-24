@@ -42,6 +42,27 @@ def test_busy_rejects(db_session, monkeypatch):
     assert "正忙" in ch.send_ack.call_args[0][1]
 
 
+def test_busy_when_pending_inbox_exists(db_session, monkeypatch):
+    ch = _make_channel(); conv = _conv(db_session)
+    monkeypatch.setattr("src.service.channel.resolve.resolve_active_curator_conversation", lambda db: conv)
+    import src.service.stream_registry as sr
+    monkeypatch.setattr(sr.registry, "is_active", lambda cid: False)   # 流不活跃
+    inject_called = {"n": 0}
+    monkeypatch.setattr("src.service.agent.orchestrator.curator_injection.inject_curator_instruction",
+                        lambda *a, **k: (inject_called.__setitem__("n", inject_called["n"] + 1) or (1, 2)))
+    from src.service.channel import inbox_service
+    # 预置一条同会话 pending(running) 行
+    inbox_service.record_event(db_session, channel="feishu", external_event_id="prev",
+        external_user_id="ou_ok", external_chat_id="oc", workspace_id=conv.workspace_id,
+        conversation_id=conv.id, text="prev", status="running")
+    msg = InboundMessage(external_user_id="ou_ok", external_chat_id="oc", text="第二条", external_event_id="ev2")
+    ch.handle_inbound(db_session, msg)
+    assert inject_called["n"] == 0   # 没注入
+    row = db_session.query(ChannelInbox).filter_by(external_event_id="ev2").one()
+    assert row.status == "rejected"
+    assert "正忙" in ch.send_ack.call_args[0][1]
+
+
 def test_idle_injects_and_acks(db_session, monkeypatch):
     ch = _make_channel(); conv = _conv(db_session)
     monkeypatch.setattr("src.service.channel.resolve.resolve_active_curator_conversation", lambda db: conv)

@@ -77,8 +77,13 @@ class ChannelManager:
         """
         report = build_channel_report(db, row)
         ch = self.get(row.channel)
-        if ch is not None:
-            ch.send_report(row.external_chat_id, report)
+        try:
+            if ch is not None:
+                ch.send_report(row.external_chat_id, report)
+        except Exception:
+            logger.warning("send_report 失败 row=%s，标 failed", row.id, exc_info=True)
+            inbox_service.mark(db, row, "failed")
+            return
         inbox_service.mark(db, row, "reported", reported=True)
 
     # --- 生命周期 -----------------------------------------------------------

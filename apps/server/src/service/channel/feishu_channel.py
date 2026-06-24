@@ -75,8 +75,13 @@ class FeishuChannel(Channel):
 
         conv = resolve_active_curator_conversation(db)
 
-        # 会话级忙碌兜底（本方法在主 loop 内被调，is_active 检查权威）
-        if registry.is_active(conv.id):
+        # 会话级忙碌兜底（本方法在主 loop 内被调，is_active 检查权威）。
+        # 叠加“该会话已有未结清 inbox 行”：覆盖“流刚结束(is_active=False)、回执尚未发完”
+        # 的窗口——否则同会话第二条会落成第二条 pending 行，回执 id desc 错配。
+        busy = registry.is_active(conv.id) or (
+            inbox_service.find_pending_by_conversation(db, conv.id) is not None
+        )
+        if busy:
             inbox_service.record_event(
                 db, channel="feishu", external_event_id=msg.external_event_id,
                 external_user_id=msg.external_user_id, external_chat_id=msg.external_chat_id,
