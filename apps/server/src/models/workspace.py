@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from src.db.types import CstDateTime
 
 from src.core.cst import CST, cst_now
 from src.db.base import Base
@@ -16,9 +17,9 @@ class Workspace(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     root_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     user_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)
+    created_at: Mapped[datetime] = mapped_column(CstDateTime, default=cst_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        CstDateTime,
         default=cst_now,
         onupdate=cst_now,
     )

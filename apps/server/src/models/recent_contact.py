@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
+from src.db.types import CstDateTime
 
 from src.db.base import Base
 from src.models.workspace import cst_now
@@ -30,16 +31,16 @@ class RecentContact(Base):
     target_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     is_pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_accessed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        CstDateTime,
         default=cst_now,
         index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        CstDateTime,
         default=cst_now,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        CstDateTime,
         default=cst_now,
         onupdate=cst_now,
     )

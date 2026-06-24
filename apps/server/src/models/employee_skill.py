@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from src.db.types import CstDateTime
 
 from src.db.base import Base
 from src.models.workspace import cst_now
@@ -24,7 +25,7 @@ class EmployeeSkill(Base):
     # 来自远程技能详情（get_remote_skill）的 prompt、skillContent
     prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     skill_content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now, onupdate=cst_now)
+    created_at: Mapped[datetime] = mapped_column(CstDateTime, default=cst_now)
+    updated_at: Mapped[datetime] = mapped_column(CstDateTime, default=cst_now, onupdate=cst_now)
 
     employee = relationship("Employee", back_populates="skills")

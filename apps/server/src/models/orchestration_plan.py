@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
+from src.db.types import CstDateTime
 
 from src.db.base import Base
 from src.models.workspace import cst_now
@@ -34,16 +35,16 @@ class OrchestrationPlan(Base):
     # 计划级调度类型：once（一次性，用 run_at）/ recurring（重复，用 cron）/ None（即时）
     schedule_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # once 的绝对触发时间（recurring 用 cron）
-    run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    run_at: Mapped[datetime | None] = mapped_column(CstDateTime, nullable=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(CstDateTime, nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, index=True
+        CstDateTime, nullable=True, index=True
     )
     # SQLite 不支持 DROP COLUMN，此列保留以兼容历史表结构。
     # 业务逻辑不使用此字段，进度由 _compute_plan_progress 实时从 TaskExecutionLog 聚合。
     completed_tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)
+    started_at: Mapped[datetime | None] = mapped_column(CstDateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(CstDateTime, default=cst_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=cst_now, onupdate=cst_now
+        CstDateTime, default=cst_now, onupdate=cst_now
     )

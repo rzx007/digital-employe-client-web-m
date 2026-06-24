@@ -49,3 +49,31 @@ def test_workspace_authorized_dir_created_at_is_cst_aware(db_session):
     assert got.created_at.tzinfo is not None
     # +8h bug would be 28800s off; 300s tolerance catches it
     assert abs((cst_now() - got.created_at).total_seconds()) < 300
+
+
+def test_db_datetime_columns_read_back_cst_aware(db_session):
+    from src.models.orchestration_plan import OrchestrationPlan
+    from src.models.workspace import Workspace
+    from src.core.cst import CST, cst_now
+    from datetime import datetime, timedelta
+
+    ws = Workspace(name="w", root_path="/tmp/w", user_id="u")
+    db_session.add(ws)
+    db_session.flush()
+    # 写 naive run_at（模拟生产）
+    plan = OrchestrationPlan(
+        workspace_id=ws.id,
+        conversation_id=1,
+        user_input="x",
+        plan_json="[]",
+        status="confirmed",
+        schedule_kind="once",
+        run_at=datetime.now() + timedelta(hours=1),
+    )
+    db_session.add(plan)
+    db_session.commit()
+    db_session.expire_all()
+    got = db_session.get(OrchestrationPlan, plan.id)
+    assert got.run_at.tzinfo == CST and got.created_at.tzinfo == CST
+    # 关键：与 cst_now() 直接比较不再抛 TypeError
+    assert (got.run_at <= cst_now()) in (True, False)

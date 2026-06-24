@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
+from src.db.types import CstDateTime
 
 from src.db.base import Base
 from src.models.workspace import cst_now
@@ -38,13 +39,13 @@ class EmployeeTask(Base):
     source_conversation_id: Mapped[int | None] = mapped_column(
         ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
-    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    valid_from: Mapped[datetime | None] = mapped_column(CstDateTime, nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(CstDateTime, nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(CstDateTime, nullable=True, index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(CstDateTime, nullable=True, index=True)
     rework_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now, onupdate=cst_now)
+    created_at: Mapped[datetime] = mapped_column(CstDateTime, default=cst_now)
+    updated_at: Mapped[datetime] = mapped_column(CstDateTime, default=cst_now, onupdate=cst_now)
 
     def __init__(self, **kwargs: object) -> None:
         # SQLAlchemy 2.x mapped_column(default=) 仅在 INSERT 时生效；

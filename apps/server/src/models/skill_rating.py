@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
+from src.db.types import CstDateTime
 
 from src.db.base import Base
 from src.models.workspace import cst_now
@@ -33,4 +34,4 @@ class SkillRating(Base):
     skill_name: Mapped[str] = mapped_column(String(255), nullable=False)
     score: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now, index=True)
+    created_at: Mapped[datetime] = mapped_column(CstDateTime, default=cst_now, index=True)

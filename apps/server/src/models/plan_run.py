@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
+from src.db.types import CstDateTime
 
 from src.db.base import Base
 from src.models.workspace import cst_now
@@ -32,10 +33,10 @@ class PlanRun(Base):
     auto_accept: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # running / settled
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="running", index=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=cst_now)
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(CstDateTime, nullable=False, default=cst_now)
+    ended_at: Mapped[datetime | None] = mapped_column(CstDateTime, nullable=True)
     # 该轮专属总管会话（scheduled 轮新建；manual 轮 = plan.conversation_id）。SET NULL 防级联。
     conversation_id: Mapped[int | None] = mapped_column(
         ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=cst_now)
+    created_at: Mapped[datetime] = mapped_column(CstDateTime, nullable=False, default=cst_now)
