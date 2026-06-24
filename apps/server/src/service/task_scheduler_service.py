@@ -316,8 +316,10 @@ class TaskSchedulerService:
     def _start_curator_task(cls, db: Session, task: EmployeeTask, employee: Employee) -> None:
         """总管员工的定时任务：投递到 curator 会话，由 orchestrator agent 执行。"""
         from src.core.agent_runtime_policy import get_agent_runtime_policy
-        from src.models.conversation import Conversation, ConversationMessage
-        from src.service.agent.orchestrator import get_orchestrator_agent, _get_main_loop
+        from src.models.conversation import Conversation
+        from src.service.agent.orchestrator.curator_injection import (
+            inject_curator_instruction,
+        )
         from src.service.stream_registry import registry as _stream_registry
         from src.service.workspace_events import WorkspaceEventBus
 
@@ -385,88 +387,19 @@ class TaskSchedulerService:
         db.add(run_log)
         db.flush()
 
-        # 3. 用户消息
-        user_msg = ConversationMessage(
-            conversation_id=conv.id,
-            role="user",
-            content=task.user_prompt or task.task_name,
-            stream_state="completed",
-        )
-        db.add(user_msg)
-
-        # 4. 助手消息
-        assistant_msg = ConversationMessage(
-            conversation_id=conv.id,
-            role="assistant",
-            content="",
-            stream_state=initial_msg_state,
-        )
-        db.add(assistant_msg)
-        db.flush()
-
-        if initial_msg_state == "queued":
-            assistant_msg.content = (
-                assistant_msg.content or "已加入执行队列，等待其他对话完成"
-            )
-
+        # 3. 注入 user 指令并起 orchestrator 流（与飞书 channel 共享同一实现）
         conv_id = conv.id
-        asst_msg_id = assistant_msg.id
         task_name_snap = task.task_name
-        workspace_id_snap = workspace_id
-        employee_id_snap = employee.id
-        messages = [
-            {"role": "user", "content": task.user_prompt or ""},
-        ]
 
-        db.commit()
-
-        # 在主事件循环上创建 agent 并启动流，确保总管 Tool 的 ContextVar 与 astream 同线程
-        def _start_on_main() -> None:
-            from src.db.session import get_session_local
-            from src.service.agent.orchestrator.runtime import reset_context
-
-            orch_db = get_session_local()()
-            try:
-                # user_id 由 runtime 兜底从激活 workspace 所有者解析（见 resolve_user_id），
-                # 此处 bind_context=False 不绑定。
-                agent = get_orchestrator_agent(
-                    workspace_id_snap,
-                    orch_db,
-                    conv_id,
-                    employee_id=employee_id_snap,
-                    bind_context=False,
-                )
-                from src.service.agent_stream_queue import StartResult
-
-                result = _stream_registry.start(
-                    conversation_id=conv_id,
-                    agent=agent,
-                    messages=messages,
-                    config={"configurable": {"thread_id": conv_id}},
-                    stream_msg_id=asst_msg_id,
-                    skill_name="",
-                    debug_content_only=False,
-                    orchestrator_owned_db=orch_db,
-                    orchestrator_workspace_id=workspace_id_snap,
-                    orchestrator_conversation_id=conv_id,
-                    priority=SCHEDULED_PRIORITY,
-                    source="scheduled",
-                )
-                if result == StartResult.REJECTED:
-                    reset_context(conv_id)
-                    orch_db.close()
-            except Exception:
-                reset_context(conv_id)
-                orch_db.close()
-                logger.error(
-                    "总管定时任务启动流失败 task_id=%s conv_id=%s",
-                    task.id,
-                    conv_id,
-                    exc_info=True,
-                )
-
-        main_loop = _get_main_loop()
-        main_loop.call_soon_threadsafe(_start_on_main)
+        _, _ = inject_curator_instruction(
+            db,
+            conv,
+            task.user_prompt or task.task_name,
+            source="scheduled",
+            employee_id=employee.id,
+            priority=SCHEDULED_PRIORITY,
+            initial_msg_state=initial_msg_state,
+        )
 
         WorkspaceEventBus.push(workspace_id, {
             "type": "task_started",
