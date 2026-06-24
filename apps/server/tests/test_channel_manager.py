@@ -60,6 +60,23 @@ def test_dispatch_latest_row_only(db_session, monkeypatch):
     assert new.status == "reported"  # 只命中 acked 新行
 
 
+def test_stop_unsubscribes():
+    """stop() 应退订全局队列，反复 start/stop 不在全局订阅集合泄漏废弃 queue。
+
+    start() 会起后台线程 + 跑 reconcile_on_start（新开 DB session），在纯单测环境
+    不稳定，故此处直接手动 subscribe_all 模拟订阅，再验证 stop() 退订。
+    """
+    from src.service.workspace_events import WorkspaceEventBus
+
+    before = len(WorkspaceEventBus._global_subscribers)
+    mgr = ChannelManager()
+    mgr._queue = WorkspaceEventBus.subscribe_all()
+    assert len(WorkspaceEventBus._global_subscribers) == before + 1  # 已订阅
+    mgr.stop()  # 应 unsubscribe（_thread 为 None，join 跳过）
+    after = len(WorkspaceEventBus._global_subscribers)
+    assert after == before  # 无泄漏
+
+
 def test_reconcile_interrupted(db_session, monkeypatch):
     class _R:
         @staticmethod

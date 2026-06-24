@@ -138,6 +138,16 @@ class ChannelManager:
                 ch.stop()
             except Exception:
                 logger.warning("channel %s stop failed", getattr(ch, "name", "?"), exc_info=True)
+        # 退订全局队列，避免反复 start/stop 泄漏废弃 queue
+        try:
+            if getattr(self, "_queue", None) is not None:
+                WorkspaceEventBus.unsubscribe_all(self._queue)
+        except Exception:
+            pass
+        # join 后台线程
+        t = getattr(self, "_thread", None)
+        if t is not None:
+            t.join(timeout=2.0)
 
     def reconcile_on_start(self, db) -> None:
         """重启对账：未结清的入站行，若其会话流已不再 active（进程崩过）→ 回执中断、标 failed。"""
