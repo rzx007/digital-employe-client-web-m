@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from src.models.plan_run import PlanRun
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import cst_now
+from src.service.workspace_events import PLAN_RUN_SETTLED, WorkspaceEventBus
 
 
 def open_plan_run(
@@ -56,12 +57,25 @@ def latest_run_id_for_plan(db: Session, plan_id: int) -> int | None:
     )
 
 
+def emit_plan_run_settled(run: PlanRun) -> None:
+    """PlanRun 到终态时发 channel-无关领域事件（settled / failed 都发）。"""
+    WorkspaceEventBus.push(run.workspace_id, {
+        "type": PLAN_RUN_SETTLED,
+        "plan_id": run.plan_id,
+        "run_id": run.id,
+        "workspace_id": run.workspace_id,
+        "conversation_id": run.conversation_id,
+        "status": run.status,
+    })
+
+
 def settle_plan_run(db: Session, run_id: int) -> None:
     """标记一轮 run 全部定局。调用方负责 commit。"""
     run = db.get(PlanRun, run_id)
     if run is not None and run.status != "settled":
         run.status = "settled"
         run.ended_at = cst_now()
+        emit_plan_run_settled(run)
 
 
 def create_scheduled_run_conversation(db: Session, plan, run) -> int:
