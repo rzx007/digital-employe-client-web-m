@@ -1,6 +1,7 @@
 build-in-skills
 docs
 evals
+logs
 orchestrator_skills
 scripts
 src
