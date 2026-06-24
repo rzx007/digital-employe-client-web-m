@@ -126,7 +126,8 @@ def test_fetch_qrcode_orchestration(monkeypatch):
 
     async def _post(url, content=None, headers=None):
         calls.append(content)
-        if b"action=init" in content.encode() if isinstance(content, str) else b"action=init" in content:
+        payload = content.decode() if isinstance(content, bytes) else content
+        if "action=init" in payload:
             return _Resp({"supported_auth_methods": ["client_secret"]})
         return _Resp({"device_code": "dev_X",
                       "verification_uri_complete": "https://applink.feishu.cn/x?k=1"})
