@@ -2442,7 +2442,7 @@ def _finalize_task_stream(conversation_id: int, stream_state: str) -> None:
         log.ended_at = cst_now()
         if log.started_at and log.ended_at:
             log.duration_ms = int(
-                (log.ended_at.replace(tzinfo=None) - log.started_at.replace(tzinfo=None)).total_seconds() * 1000
+                (log.ended_at - log.started_at).total_seconds() * 1000
             )
 
         if stream_state == "completed":
@@ -2582,7 +2582,7 @@ def cleanup_zombie_executions(db: Any) -> int:
             log.ended_at = now
             if log.started_at:
                 log.duration_ms = int(
-                    (now.replace(tzinfo=None) - log.started_at.replace(tzinfo=None)).total_seconds() * 1000
+                    (now - log.started_at).total_seconds() * 1000
                 )
 
         if zombies:

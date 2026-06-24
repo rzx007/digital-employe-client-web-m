@@ -881,10 +881,7 @@ class TaskService:
             log.ended_at = now
             if log.started_at:
                 log.duration_ms = int(
-                    (
-                        now.replace(tzinfo=None)
-                        - log.started_at.replace(tzinfo=None)
-                    ).total_seconds()
+                    (now - log.started_at).total_seconds()
                     * 1000
                 )
             db.add(log)

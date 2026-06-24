@@ -175,10 +175,7 @@ def cancel_running_executions_for_task(
         log.ended_at = now
         if log.started_at:
             log.duration_ms = int(
-                (
-                    log.ended_at.replace(tzinfo=None)
-                    - log.started_at.replace(tzinfo=None)
-                ).total_seconds()
+                (log.ended_at - log.started_at).total_seconds()
                 * 1000
             )
 
