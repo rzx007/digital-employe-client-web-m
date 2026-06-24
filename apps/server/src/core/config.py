@@ -163,6 +163,8 @@ class Settings:
     feishu_bitable_app_token: str = "JjbwbZqiQaT2ZosTeJPcRxF5npc"
     feishu_bitable_table_id: str = "tblY6kGa1btVqkH3"
     feishu_bitable_view_id: str = "vewhP7JKEa"
+    feishu_channel_enabled: bool = False
+    feishu_whitelist_open_ids: str | None = None
     prompt_cache_mode: str | None = None
     # 流式会话存储后端：file（默认，per-thread/per-message 文件）| sqlite（回滚老路径）。
     # checkpointer_backend 控 LangGraph 检查点；stream_progress_backend 控业务瞬时进度。
@@ -599,6 +601,12 @@ def get_settings() -> Settings:
         or "tblGUEhjytwRMNAn",
         feishu_bitable_view_id=_get_kv_value(kv_data, "FEISHU_BITABLE_VIEW_ID")
         or "vewr46ceAD",
+        feishu_channel_enabled=_get_kv_bool(
+            kv_data, "FEISHU_CHANNEL_ENABLED", default=False
+        ),
+        feishu_whitelist_open_ids=_get_kv_value(
+            kv_data, "FEISHU_WHITELIST_OPEN_IDS"
+        ),
         prompt_cache_mode=normalize_prompt_cache_mode(
             _get_kv_value(kv_data, "PROMPT_CACHE_MODE")
         ),
