@@ -43,6 +43,17 @@ _workspace_id_ctx: ContextVar[int | None] = ContextVar("orchestrator_ws", defaul
 _conversation_id_ctx: ContextVar[int | None] = ContextVar("orchestrator_conv", default=None)
 _auth_token_ctx: ContextVar[str | None] = ContextVar("orchestrator_token", default=None)
 _user_id_ctx: ContextVar[str | None] = ContextVar("orchestrator_user", default=None)
+# 当前执行流的来源（如 "feishu"）。与 db/workspace_id 同点绑定（见 stream_registry
+# _run_agent_background），随流隔离——飞书轮与桌面轮各自独立的 ContextVar 值，互不污染。
+_source_ctx: ContextVar[str | None] = ContextVar("orchestrator_source", default=None)
+
+
+def get_orchestrator_source() -> str | None:
+    return _source_ctx.get()
+
+
+def set_orchestrator_source(source: str | None) -> None:
+    _source_ctx.set(source)
 
 
 @dataclass(slots=True)
@@ -253,6 +264,7 @@ def reset_context(conversation_id: int | None = None) -> None:
     _conversation_id_ctx.set(None)
     _auth_token_ctx.set(None)
     _user_id_ctx.set(None)
+    _source_ctx.set(None)
 
 
 def invalidate_orchestrator_db_cache() -> None:
