@@ -133,13 +133,15 @@ FeishuChannel
 
 ## 5. 终态判定（一条飞书指令何时算"跑完"）
 
-> ⚠️ **现状核实（评审已确认）**：`WorkspaceEventBus` 当前事件类型只有 `task_started / task_completed / task_failed / conversation_status_changed / orchestration_plan_generated / scheduled_run`，**没有任何 PlanRun 级终态事件**；`PlanRun.status` 只有 `running / settled` 两态（**不存在** `completed/partially_failed/cancelled`）；全盘终态唯一判定点是 `dependency_scheduler.on_employee_task_completed` 末尾 `all_settled → settle_plan_run`（`plan_run_service.py:59`），且**只改 status、不发事件**。下面的设计据此修正。
+> ⚠️ **现状核实（评审已确认）**：`WorkspaceEventBus` 当前事件类型只有 `task_started / task_completed / task_failed / conversation_status_changed / orchestration_plan_generated / scheduled_run`，**没有任何 PlanRun 级终态事件**。`PlanRun.status` 的**正常收尾路径**（`dependency_scheduler.on_employee_task_completed` 末尾 `all_settled → settle_plan_run`，`plan_run_service.py:59`）只产出 `settled`，且**只改 status、不发事件**。
+>
+> ⚠️ **另有两条异常路径直接写 `failed` 且绕过 `settle_plan_run`**：`execution.start_immediate_tasks` 派根任务抛异常（`execution.py:156`）、`run_plan_job` 抛异常（`task_scheduler_service.py:497`）。这两条若不收编，对应 inbox 行会永久卡在 `running` 悬挂——正是本设计要消灭的。故 §5.1 的"对账所有 settle 入口"**必须把这两条异常路径也纳入**（让它们也经过 `settle_plan_run` / 也补发 `plan_run_settled`）。
 
 ### 5.1 必做的核心编排改动（in-scope，唯一侵入点）
 
 在 `settle_plan_run` 内 **push 一个 channel-无关的领域事件 `plan_run_settled`**（payload：`plan_run_id / workspace_id / conversation_id`）。
 
-- 必须对账**所有 settle 入口**（含 `task_scheduler_service.run_plan_job` 路径）确保都经过 `settle_plan_run`，从而都发事件。
+- 必须对账**所有 settle / 终态入口**确保都经过 `settle_plan_run`（从而都发事件），**尤其包括两条绕过 settle 的异常 `failed` 路径**（`execution.py:156`、`task_scheduler_service.py:497`）——否则异常轮的 inbox 行会悬挂。
 - 该事件是通用领域事件，SSE / 通知中心同样可订阅受益——不是飞书专属钩子。
 - 这是核心编排的**唯一**改动；除此之外编排不感知 channel。
 
@@ -169,7 +171,7 @@ FeishuChannel
 ## 6. 回执内容格式
 
 - **ACK**：`✅ 收到，已开始执行：<指令摘要>`；并发槽满时 → `⏳ 已排队`（复用现有 `slot_busy` 队列语义）。
-- **报告**：起步用飞书 markdown 文本（卡片留后续）。"完成 / 部分失败"的判定**由 `orchestrator_execution_summary` 逐子任务状态聚合**得出（PlanRun.status 本身只有 settled，不细分）：
+- **报告**：起步用飞书 markdown 文本（卡片留后续）。"完成 / 部分失败"的判定**由 `orchestrator_execution_summary` 逐子任务状态聚合**得出（PlanRun.status 正常收尾只产出 settled、不细分成败）：
   ```
   【执行完成 / 部分失败】
   指令：<原文截断>
