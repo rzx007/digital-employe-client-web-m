@@ -20,7 +20,7 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog"
 import { cn } from "@workspace/ui/lib/utils"
-import { getConfigKv, setConfigKv } from "@/api/config-kv"
+import { getConfigKv, setManyConfigKv } from "@/api/config-kv"
 import { fetchQrcode, pollQrcodeStatus } from "@/api/feishu-channel"
 import { appendOpenId } from "@/lib/feishu-whitelist"
 
@@ -83,10 +83,12 @@ export function FeishuSection() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await setConfigKv("FEISHU_CHANNEL_ENABLED", enabled ? "1" : "0")
-      await setConfigKv("FEISHU_APP_ID", appId)
-      await setConfigKv("FEISHU_APP_SECRET", appSecret)
-      await setConfigKv("FEISHU_WHITELIST_OPEN_IDS", whitelist)
+      await setManyConfigKv([
+        { key: "FEISHU_CHANNEL_ENABLED", value: enabled ? "1" : "0" },
+        { key: "FEISHU_APP_ID", value: appId },
+        { key: "FEISHU_APP_SECRET", value: appSecret },
+        { key: "FEISHU_WHITELIST_OPEN_IDS", value: whitelist },
+      ])
       toast.success("已保存")
     } catch {
       toast.error("保存失败")
