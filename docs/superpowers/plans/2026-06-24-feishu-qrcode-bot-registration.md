@@ -15,7 +15,7 @@
 ## 关键约定
 
 - **后端测试**：`cd apps/server && uv run --no-sync python -m pytest <path> -v`（`--no-sync` 避免 websockets .pyd 锁）。
-- **前端测试**：`cd apps/web && npm run test -- <path>`（vitest；React 组件测试文件加 `// @vitest-environment happy-dom`）。
+- **前端测试**：`cd apps/web && npm run test:unit -- <path>`（vitest 真入口；**注意 `npm run test` 跑的是 electron 测试、不是 vitest**）。React 组件测试文件加 `// @vitest-environment happy-dom`。
 - **设备流端点**：`https://accounts.feishu.cn/oauth/v1/app/registration`，三步全 POST `application/x-www-form-urlencoded`。**匿名请求，不带任何已有应用凭证**。
 - **分支**：`feat/orchestrator-centric`。每 Task 末尾一次 commit。
 - 已知预存在失败 `test_create_user_workspace_empty` 忽略。
@@ -33,6 +33,7 @@
 **前端新增/改：**
 - `apps/web/src/api/feishu-channel.ts`（新）— `fetchQrcode` / `pollQrcodeStatus`
 - `apps/web/src/components/settings/settings-types.ts` — 加 `"channels"` tab
+- `apps/web/src/routes/settings.tsx` — `settingsSearchSchema` 的 `z.enum` 加 `"channels"`（否则 `?tab=channels` 运行时 parse 抛错）
 - `apps/web/src/components/settings/settings-sidebar.tsx` — 过滤逻辑改通用
 - `apps/web/src/components/settings/settings-page.tsx` — 加 channels 渲染分支
 - `apps/web/src/components/settings/channels-settings.tsx`（新）— 渠道 tab 容器
@@ -47,7 +48,7 @@
 
 - [ ] **Step 1: 加依赖**
 
-Run: `cd apps/server && uv add segno`（若 .venv 被进程锁导致 sync 失败，手动在 `pyproject.toml` 的 dependencies 加 `"segno>=1.6.0"` 后 `uv lock`）。
+**首选手动**（避开 websockets `.pyd` 锁）：在 `apps/server/pyproject.toml` 的 dependencies 加 `"segno>=1.6.0"`，再 `cd apps/server && uv lock`。（仅当 venv 无进程占用时可改用 `uv add segno`。）
 验证：`cd apps/server && uv run --no-sync python -c "import segno; print('ok')"` → `ok`。
 
 - [ ] **Step 2: 提交**
@@ -108,7 +109,61 @@ def test_generate_qrcode_image_is_base64_png():
 
 def test_registry_has_feishu():
     assert "feishu" in QRCODE_AUTH_HANDLERS
+
+
+def test_fetch_qrcode_orchestration(monkeypatch):
+    """mock 三次 POST（init→begin），断言 scan_url 拼 source、poll_token=device_code。"""
+    import httpx
+    from unittest.mock import AsyncMock
+    from src.service.channel.qrcode_auth import FeishuQRCodeAuthHandler
+
+    calls = []
+
+    class _Resp:
+        def __init__(self, payload): self._p = payload
+        def raise_for_status(self): pass
+        def json(self): return self._p
+
+    async def _post(url, content=None, headers=None):
+        calls.append(content)
+        if b"action=init" in content.encode() if isinstance(content, str) else b"action=init" in content:
+            return _Resp({"supported_auth_methods": ["client_secret"]})
+        return _Resp({"device_code": "dev_X",
+                      "verification_uri_complete": "https://applink.feishu.cn/x?k=1"})
+
+    class _Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        post = staticmethod(_post)
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    import asyncio
+    result = asyncio.run(FeishuQRCodeAuthHandler().fetch_qrcode())
+    assert result.poll_token == "dev_X"
+    assert "source=DigitalEmployee" in result.scan_url
+    assert "&source=" in result.scan_url  # verification_uri 已含 ?，故用 &
+
+
+def test_fetch_qrcode_unsupported_method(monkeypatch):
+    import httpx, asyncio
+    from src.service.channel.qrcode_auth import FeishuQRCodeAuthHandler
+
+    class _Resp:
+        def raise_for_status(self): pass
+        def json(self): return {"supported_auth_methods": []}  # 不含 client_secret
+
+    class _Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, *a, **k): return _Resp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    with pytest.raises(RuntimeError):
+        asyncio.run(FeishuQRCodeAuthHandler().fetch_qrcode())
 ```
+（测试顶部加 `import pytest`。`_post` 里判 `action=init` 的写法以实际 content 类型为准，简化即可——关键是 init 返回支持 client_secret、begin 返回 device_code/verification_uri。）
 
 Run: `cd apps/server && uv run --no-sync python -m pytest tests/test_feishu_qrcode_auth.py -v` → FAIL（模块不存在）。
 
@@ -250,11 +305,12 @@ from src.service.channel.qrcode_auth import QRCodeResult, PollResult
 
 @pytest.fixture()
 def client(monkeypatch):
-    # 能力门打开
-    from src.core import runtime_capabilities as rc
-    caps = rc.get_capabilities()
-    monkeypatch.setattr(rc, "get_capabilities", lambda: caps.__class__(
-        **{**caps.__dict__, "feishu_platform": True}))
+    # 能力门打开：必须 patch deps 模块持有的 get_capabilities 名字
+    # （require_capability 闭包用的是 src.core.deps.get_capabilities，patch runtime_capabilities 模块打不中）
+    monkeypatch.setattr(
+        "src.core.deps.get_capabilities",
+        lambda: type("C", (), {"feishu_platform": True})(),
+    )
     from src.api.channel_qrcode_api import router
     app = FastAPI()
     app.include_router(router)
@@ -291,9 +347,17 @@ def test_status_ok(client):
     data = r.json()["data"]
     assert data["status"] == "success"
     assert data["credentials"]["app_id"] == "cli"
-```
 
-> 注：上面 monkeypatch get_capabilities 的写法以 `RuntimeCapabilities` 实际结构为准（Read `runtime_capabilities.py` 看是 dataclass 还是别的，调整构造方式）。若过于别扭，改为 `monkeypatch.setattr("src.core.deps.get_capabilities", lambda: <带 feishu_platform=True 的对象>)`——关键是让 `require_capability("feishu_platform")` 通过。
+
+def test_handler_error_maps_502(client):
+    with patch("src.api.channel_qrcode_api.QRCODE_AUTH_HANDLERS", {
+        "feishu": type("H", (), {
+            "fetch_qrcode": AsyncMock(side_effect=RuntimeError("feishu down")),
+        })()
+    }):
+        r = client.get("/channels/feishu/qrcode")
+    assert r.status_code == 502
+```
 
 Run: `cd apps/server && uv run --no-sync python -m pytest tests/test_channel_qrcode_api.py -v` → FAIL（模块不存在）。
 
@@ -313,12 +377,22 @@ router = APIRouter(
 )
 
 
-@router.get("/channels/{channel}/qrcode", summary="获取渠道扫码二维码")
-async def get_channel_qrcode(channel: str) -> ResponseBase[dict[str, Any]]:
+def _require_handler(channel: str):
     handler = QRCODE_AUTH_HANDLERS.get(channel)
     if handler is None:
         raise HTTPException(status_code=404, detail=f"未知渠道：{channel}")
-    result = await handler.fetch_qrcode()
+    return handler
+
+
+@router.get("/channels/{channel}/qrcode", summary="获取渠道扫码二维码")
+async def get_channel_qrcode(channel: str) -> ResponseBase[dict[str, Any]]:
+    handler = _require_handler(channel)
+    try:
+        result = await handler.fetch_qrcode()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"获取二维码失败：{exc}") from exc
     return ResponseBase(data={
         "qrcode_img": generate_qrcode_image(result.scan_url),
         "poll_token": result.poll_token,
@@ -329,10 +403,13 @@ async def get_channel_qrcode(channel: str) -> ResponseBase[dict[str, Any]]:
 async def get_channel_qrcode_status(
     channel: str, token: str = Query(...),
 ) -> ResponseBase[dict[str, Any]]:
-    handler = QRCODE_AUTH_HANDLERS.get(channel)
-    if handler is None:
-        raise HTTPException(status_code=404, detail=f"未知渠道：{channel}")
-    result = await handler.poll_status(token)
+    handler = _require_handler(channel)
+    try:
+        result = await handler.poll_status(token)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"轮询状态失败：{exc}") from exc
     return ResponseBase(data={"status": result.status, "credentials": result.credentials})
 ```
 
@@ -383,7 +460,7 @@ describe("appendOpenId", () => {
 })
 ```
 
-Run: `cd apps/web && npm run test -- src/lib/feishu-whitelist.test.ts` → FAIL。
+Run: `cd apps/web && npm run test:unit -- src/lib/feishu-whitelist.test.ts` → FAIL。
 
 - [ ] **Step 2: 实现工具 + API**
 
@@ -401,7 +478,7 @@ export function appendOpenId(existing: string, openId: string): string {
 ```ts
 // src/api/feishu-channel.ts
 import { request } from "@/lib/request"
-import type { ApiResponse } from "@/lib/request"  // 以现有 ApiResponse 导出位置为准
+import type { ApiResponse } from "./types"  // ApiResponse 在 src/api/types，参照 config-kv.ts:2
 
 export interface QrcodeResp { qrcode_img: string; poll_token: string }
 export interface PollResp {
@@ -422,11 +499,10 @@ export async function pollQrcodeStatus(token: string, channel = "feishu"): Promi
   return res.data
 }
 ```
-（`ApiResponse` 的确切导入路径以 `config-kv.ts` 现有 import 为准。）
 
 - [ ] **Step 3: 通过 + 提交**
 
-Run: `cd apps/web && npm run test -- src/lib/feishu-whitelist.test.ts` → PASS。
+Run: `cd apps/web && npm run test:unit -- src/lib/feishu-whitelist.test.ts` → PASS。
 ```bash
 git add apps/web/src/api/feishu-channel.ts apps/web/src/lib/feishu-whitelist.ts apps/web/src/lib/feishu-whitelist.test.ts
 git commit -m "feat(web): feishu-channel API + 白名单 open_id 追加去重工具
@@ -437,6 +513,10 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task B2：渠道 tab 接线（types + sidebar + page）
 
 **Files:** Modify `settings-types.ts` · `settings-sidebar.tsx` · `settings-page.tsx`（均在 `apps/web/src/components/settings/`）
+
+- [ ] **Step 0: routes/settings.tsx 的 zod enum 加 "channels"**
+
+`apps/web/src/routes/settings.tsx` 的 `settingsSearchSchema` 里 `z.enum([...])` 加 `"channels"`，否则 `?tab=channels` 进入时 `.parse` 运行时抛错、且 `tabFromSearch` 类型不含 channels。
 
 - [ ] **Step 1: settings-types.ts**
 
