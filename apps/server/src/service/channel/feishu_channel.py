@@ -106,23 +106,44 @@ class FeishuChannel(Channel):
     def start(self):
         import threading
 
+        self._stopped = False
+        self._thread = threading.Thread(
+            target=self._run_ws, name="feishu-ws", daemon=True
+        )
+        self._thread.start()
+        logger.info("飞书 ws 长连接线程已启动")
+
+    def _run_ws(self) -> None:
+        """后台线程：用本线程独立 event loop 跑 lark ws.Client（阻塞）。
+
+        lark 的 ws.Client.start() 用的是 **模块级全局 loop**（``lark_oapi.ws.client.loop``，
+        在模块首次 import 时 ``asyncio.get_event_loop()`` 捕获）。本应用在 FastAPI 主 loop
+        运行期间 import 它，会捕获到主 loop，导致后台线程里 ``loop.run_until_complete()``
+        撞 "This event loop is already running"。这里给本线程建独立 loop 并覆盖该模块全局，
+        我们是该 ws client 的唯一消费者，安全。
+        """
+        import asyncio
+
+        import lark_oapi.ws.client as _lark_ws_client
         from lark_oapi import EventDispatcherHandler
         from lark_oapi.ws import Client as LarkWsClient
 
-        handler = (
-            EventDispatcherHandler.builder("", "")
-            .register_p2_im_message_receive_v1(self._on_lark_event)
-            .build()
-        )
-        self._ws = LarkWsClient(
-            self._app_id, self._app_secret, event_handler=handler
-        )
-        self._stopped = False
-        self._thread = threading.Thread(
-            target=self._ws.start, name="feishu-ws", daemon=True
-        )
-        self._thread.start()
-        logger.info("飞书 ws 长连接已启动")
+        try:
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            _lark_ws_client.loop = new_loop
+
+            handler = (
+                EventDispatcherHandler.builder("", "")
+                .register_p2_im_message_receive_v1(self._on_lark_event)
+                .build()
+            )
+            self._ws = LarkWsClient(
+                self._app_id, self._app_secret, event_handler=handler
+            )
+            self._ws.start()  # 阻塞：跑 ws 收发循环
+        except Exception:
+            logger.error("飞书 ws 线程异常退出", exc_info=True)
 
     def stop(self):
         # lark ws.Client 无公开 stop()；置标志，daemon 线程随进程退出
