@@ -132,6 +132,8 @@ class FeishuChannel(Channel):
     def _on_lark_event(self, data) -> None:
         """lark ws 回调线程：解析事件 → 投主 loop 用新 session 调 handle_inbound。"""
         try:
+            if self._stopped:
+                return  # stop() 后忽略残余事件，使 stop 标志真正生效
             msg = parse_lark_message_event(data)
             if msg is None:
                 return
