@@ -35,6 +35,8 @@
    → 成功: client_id(=app_id) + client_secret(=app_secret) + user_info.open_id
 ```
 
+> **关键假设（地基）**：三步设备流均为**匿名请求，不携带任何已有应用凭证**（不读、不需要 FEISHU_APP_ID/SECRET、不需要 tenant_access_token）——这正是它能"凭空建应用"的前提。此假设须在 §6 用真账号验证。
+
 **数据流**：
 ```
 前端点"获取飞书二维码"
@@ -64,17 +66,26 @@
 **`apps/server/src/api/channel_qrcode_api.py`（新）**
 - `GET /channels/{channel}/qrcode` → 查注册表，`handler.fetch_qrcode(request)` → `generate_qrcode_image` → `{qrcode_img, poll_token}`。未知 channel → 404。
 - `GET /channels/{channel}/qrcode/status?token=...` → `handler.poll_status(token, request)` → `{status, credentials}`。
-- 整 router `Depends(require_capability("feishu_platform"))`；在 server.py 注册 router。
+- 整 router `Depends(require_capability("feishu_platform"))`（能力门关 → 503，前端用 capability 预判隐藏入口，503 仅作兜底）。
+- **router 注册点**：`apps/server/src/api/__init__.py` 的 `include_router` 集中处（**不是 server.py**）。
+- `?source=<PROJECT_NAME>`：`PROJECT_NAME` 后端无现成常量，**直接写死一个产品标识字符串**（如 `"DigitalEmployee"`），定义在 `qrcode_auth.py` 顶部。
+- `device_code` 短期凭证、低敏感，放 query 可接受；端点用 GET 便于轮询。
 
-**依赖**：`segno`（纯 Python 二维码库）→ `uv add segno`。
+**依赖**：`segno`（纯 Python 二维码库，现无）→ `uv add segno`。
 
-### 前端（1 API + 1 面板 + 接线）
+### 前端（1 API + 1 面板 + 渠道 tab 接线）
 
-**`apps/web/src/api/feishu-channel.ts`（新）**：`fetchQrcode("feishu")`、`pollQrcodeStatus("feishu", token)`，走现有 `request`。
+> ⚠️ 前端设置组件实际在 `apps/web/src/components/settings/`（`general-settings.tsx`/`settings-page.tsx`/`settings-sidebar.tsx`/`settings-types.ts`），`routes/settings.tsx` 只是路由壳。
 
-**`apps/web/src/routes/.../settings/channels-settings.tsx`（新，仿 `general-settings.tsx`）**：渠道 tab 容器，内含 `feishu-section.tsx`（飞书区块）。
+**`apps/web/src/api/feishu-channel.ts`（新）**：`fetchQrcode("feishu")`、`pollQrcodeStatus("feishu", token)`，走现有 `request`，status 入参用 `request` 的 `query` 选项（`{ query: { token } }`），不手拼 URL。
 
-**接线**：`settings-page.tsx` 加"渠道"tab。
+**`apps/web/src/components/settings/channels-settings.tsx`（新，仿 `general-settings.tsx`）**：渠道 tab 容器，内含 `feishu-section.tsx`（飞书区块）。
+
+**渠道 tab 接线（4 处改动，B1/M2/M5——别低估）**：
+1. `settings-types.ts`：`SettingsTab` 联合类型加 `"channels"`；`SETTINGS_TABS` 数组加一项 `{ id: "channels", label: "渠道", capability: "feishu_platform" }`。
+2. `settings-sidebar.tsx:14`：现有过滤写死 `!tab.capability || (tab.capability === "remote_login" && canAccount)`——必须**改成通用**：先把各 tab.capability 用 `useCapability` 解析成布尔（hook 不能在 filter 里调，先在组件体内解析好再过滤），`!tab.capability || capMap[tab.capability]`。确认前端 `Capabilities` 类型（`runtime-types.ts`）含 `feishu_platform`，没有则补。
+3. `settings-page.tsx`：加 `activeTab === "channels"` 的渲染分支（注意现有 `canAccount` 硬编码分支同源，照其范式加）。
+4. 验证："渠道" tab 在 `feishu_platform` 开时可见、关时隐藏。
 
 ### 最小面板字段（飞书区块）
 
@@ -83,7 +94,7 @@
 | 已启用 | `FEISHU_CHANNEL_ENABLED` | 开关 |
 | App ID | `FEISHU_APP_ID` | 输入框（扫码自动回填） |
 | App Secret | `FEISHU_APP_SECRET` | 密码框（扫码自动回填） |
-| 白名单 open_ids | `FEISHU_WHITELIST_OPEN_IDS` | 多行/逗号输入（扫码人 open_id 自动追加，去重） |
+| 白名单 open_ids | `FEISHU_WHITELIST_OPEN_IDS` | 多行/逗号输入；**前端统一存逗号分隔**（匹配后端 `_parse_feishu_whitelist` 首选路径）；追加扫码人 open_id 前 trim + 去重 |
 | 获取飞书二维码 | — | 按钮 → 二维码区 + 状态文字 + 轮询 |
 | 保存 | — | 逐项 `setConfigKv` |
 
@@ -105,13 +116,15 @@
 - 关弹窗 / 离开面板 → 清轮询定时器，防泄漏。
 - 单次 status 请求失败不立即判死，连续数次失败再停。
 
-**后端错误**：设备流任一步 httpx 失败 / 飞书返回非预期 → `HTTPException(502, detail)`，前端提示"获取二维码失败，请重试"。能力门 `feishu_platform` 关 / 离线版 → 端点 503，前端隐藏入口或提示不可用。
+**后端错误**：设备流任一步 httpx 失败 / 飞书返回非预期 → `HTTPException(502, detail)`，前端提示"获取二维码失败，请重试"。
+
+**能力门两条防线**：前端用 `useCapability("feishu_platform")` **预判隐藏**渠道 tab/按钮（主路径，见 §4 接线）；端点 `require_capability` 返回 **503** 仅作后端兜底。两者实现位置不同，别混。
 
 ## 6. 已知限制 / 范围外
 
 1. **保存后需重启生效**：channel 在 `server.py` lifespan 启动，改配置点保存**不热启动** channel，需重启应用才连上飞书。面板明确提示"保存后重启生效"。（热重载 channel 为后续。）
 2. **依赖飞书 ws 接线**：`FeishuChannel.start()/stop()` 目前是骨架（待 spike 人工门填实）。扫码配好凭证后真正收发消息须等 ws 接线完成——**本功能只负责"扫码拿凭证 + 存配置"，端到端连线在 ws 接线完成后再做**。
-3. **设备流端点半官方**：`oauth/v1/app/registration` 是飞书半官方端点；生产前用真账号验稳定性与 PersonalAgent 应用权限范围（能否满足机器人收发消息 + 事件订阅所需 scope）。
+3. **设备流端点半官方 + 凭证依赖待验**：`oauth/v1/app/registration` 是飞书半官方端点；生产前用真账号验证 ① §3 的"匿名无凭证依赖"假设是否成立（设备流不需已有 app_id/secret/tenant_token）；② 稳定性；③ PersonalAgent 应用权限范围（能否满足机器人收发消息 + 事件订阅所需 scope）。任一不成立则本功能地基受影响。
 
 ## 7. 测试
 
