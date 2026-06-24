@@ -1,3 +1,4 @@
+from src.models.channel_inbox import ChannelInbox
 from src.models.config_kv import ConfigKv
 from src.models.conversation import Conversation, ConversationMessage
 from src.models.dispatch_order_sync import DispatchOrderSync
@@ -19,6 +20,7 @@ __all__ = [
     "Employee",
     "EmployeeMcp",
     "EmployeeSkill",
+    "ChannelInbox",
     "ConfigKv",
     "Conversation",
     "ConversationMessage",
