@@ -11,6 +11,7 @@ const settingsSearchSchema = z.object({
       "models",
       "pet",
       "extensions",
+      "channels",
       "about",
     ])
     .optional(),

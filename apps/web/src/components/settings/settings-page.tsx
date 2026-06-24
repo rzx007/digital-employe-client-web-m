@@ -7,6 +7,7 @@ import { GeneralSettings } from "./general-settings"
 import { ModelsSettings } from "./models-settings"
 import { PetSettings } from "./pet-settings"
 import { ExtensionsSettings } from "./extensions-settings"
+import { ChannelsSettings } from "./channels-settings"
 import { SettingsSidebar } from "./settings-sidebar"
 import type { SettingsTab } from "./settings-types"
 import { ShortcutsSettings } from "./shortcuts-settings"
@@ -15,6 +16,7 @@ import { useCapability } from "@/lib/runtime/runtime-provider"
 export function SettingsPage() {
   const { tab: tabFromSearch } = Route.useSearch()
   const canAccount = useCapability("remote_login")
+  const canFeishu = useCapability("feishu_platform")
   const defaultTab = canAccount ? "account" : "general"
   const [activeTab, setActiveTab] = React.useState<SettingsTab>(
     tabFromSearch ?? defaultTab
@@ -42,6 +44,7 @@ export function SettingsPage() {
         {activeTab === "models" && <ModelsSettings />}
         {activeTab === "pet" && <PetSettings />}
         {activeTab === "extensions" && <ExtensionsSettings />}
+        {activeTab === "channels" && canFeishu ? <ChannelsSettings /> : null}
         {activeTab === "about" && <AboutSettings />}
       </ScrollArea>
     </div>

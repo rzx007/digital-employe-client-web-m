@@ -11,7 +11,14 @@ export function SettingsSidebar({
   onTabChange: (tab: SettingsTab) => void
 }) {
   const canAccount = useCapability("remote_login")
-  const tabs = SETTINGS_TABS.filter((tab) => !tab.capability || (tab.capability === "remote_login" && canAccount))
+  const canFeishu = useCapability("feishu_platform")
+  const capMap: Record<string, boolean> = {
+    remote_login: canAccount,
+    feishu_platform: canFeishu,
+  }
+  const tabs = SETTINGS_TABS.filter(
+    (tab) => !tab.capability || capMap[tab.capability]
+  )
   return (
     <div className="w-48 shrink-0 border-r bg-muted/50 p-4">
       <nav className="flex flex-col gap-1">

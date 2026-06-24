@@ -18,6 +18,7 @@ export type SettingsTab =
   | "models"
   | "pet"
   | "extensions"
+  | "channels"
   | "about"
 
 export type PetVisibilityMode = "always" | "when_main_hidden"
@@ -34,5 +35,6 @@ export const SETTINGS_TABS: {
   { id: "models", label: "模型", icon: IconBrain },
   { id: "pet", label: "宠物", icon: IconPaw },
   { id: "extensions", label: "插件", icon: IconPlug },
+  { id: "channels", label: "渠道", icon: IconPlug, capability: "feishu_platform" },
   { id: "about", label: "关于", icon: IconInfoCircle },
 ]
