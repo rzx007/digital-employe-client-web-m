@@ -3,7 +3,9 @@ import logging
 import os
 import re
 import shlex
+import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -26,6 +28,42 @@ from src.service.agent.basic_file_backend import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _kill_process_tree(proc: subprocess.Popen) -> None:
+    """杀整棵进程树（Windows 用 taskkill /T，Unix 用 killpg）。
+
+    shell=True + CREATE_NEW_PROCESS_GROUP 时 proc.kill() 只杀 cmd.exe 组长，
+    python.exe 等子孙被孤儿化、永不退出，_read_lines_sync 线程卡在 proc.wait()
+    把 asyncio 默认线程池耗尽 → 后续所有 shell_execute 排队永不执行。
+    """
+    if proc.poll() is not None:
+        return
+    try:
+        if sys.platform == "win32":
+            try:
+                proc.send_signal(signal.CTRL_BREAK_EVENT)
+            except Exception:
+                pass
+            try:
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                    capture_output=True,
+                    timeout=10,
+                )
+            except Exception:
+                pass
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        else:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError, OSError):
+                proc.kill()
+    except Exception:
+        logger.warning("[shell] _kill_process_tree failed for pid=%s", proc.pid, exc_info=True)
 
 
 def _truncation_notice(limit_desc: str) -> str:
@@ -486,12 +524,22 @@ class SkillAwareShellBackend(LocalShellBackend):
                         _emit_partial_line(partial_line)
                         last_partial_emit = now
 
-                proc.wait()
+                try:
+                    proc.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    _kill_process_tree(proc)
+                    try:
+                        proc.wait(timeout=5)
+                    except Exception:
+                        pass
             finally:
                 # 双保险：线程侧也检查取消信号，确保无论谁先触发都能清
                 if cancel_requested.is_set() and proc.poll() is None:
-                    proc.kill()
-                    proc.wait()
+                    _kill_process_tree(proc)
+                    try:
+                        proc.wait(timeout=5)
+                    except Exception:
+                        pass
                 loop.call_soon_threadsafe(queue.put_nowait, None)
                 # 已移交后台时不删临时文件——注册表还要继续读它，由注册表负责清理
                 if not _background_handoff.is_set():
@@ -623,10 +671,7 @@ class SkillAwareShellBackend(LocalShellBackend):
                 else:
                     cancel_requested.set()
                     if proc is not None and proc.poll() is None:
-                        try:
-                            proc.kill()
-                        except Exception:
-                            pass
+                        _kill_process_tree(proc)
                     try:
                         _emit_batch()
                     except Exception:
