@@ -26,12 +26,12 @@
 | # | 决策点 | 结论 |
 |---|---|---|
 | 1 | 连通方式 | **飞书长连接（WebSocket，wss 直连飞书开放平台）**。客户端连出，免公网 URL，适配桌面端 NAT 部署。 |
-| 2 | 渠道→工作空间映射 | 机器人私聊 = **入站时刻的默认 / 当前激活工作空间**；按入站时刻**快照**进 inbox 行，回执路由按该快照走，**不随后续切换激活工作空间而漂移**。 |
+| 2 | 接盘会话 / 工作空间映射 | 飞书消息**接盘"最近活跃的总管会话"**：在 `target_type="curator"` 里挑最近有消息的那个；一个都没有则 fallback **ensure 默认工作空间总管会话**。工作空间由该会话决定。接盘会话 id + workspace_id 按入站时刻**快照**进 inbox 行，回执路由按快照走，**不随后续活跃会话 / 切换工作空间而漂移**。 |
 | 3 | 授权 | **open_id 白名单**；非白名单消息拒答（可配静默）。 |
 | 4 | 回执时机 | **立即 ACK + 最终报告**两拨。 |
 | 5 | ACK / 报告回发归属 | **channel 自己回发**（同一套机器人凭证，回到来源 chat）。 |
 | 6 | source 粒度 | **按轮 / 按消息**（不是按会话）。一条飞书入站 = 一行 inbox，"这行存在"即该轮 `source=feishu`。 |
-| 7 | 专属会话 | 每渠道一个**唯一**总管会话——"唯一"指 **per (channel, workspace_id, user_id) 唯一**（非全局唯一）。仅做"容器 + UI 特殊样式"，**不参与回执路由**。用户可直接在该会话里敲字，那种消息无 inbox 行 → 不回执飞书。 |
+| 7 | 不建专属会话 / 消息级区分 | **不**建专属飞书会话、**无** `Conversation.channel` 字段。飞书消息插进接盘的总管会话里，与用户手敲的消息混排；区分靠**消息级飞书徽标**（由 inbox 行标识哪条 user 消息来自飞书）。同一会话里：飞书来的轮（有 inbox 行）→ 回执；手敲的轮（无 inbox 行）→ 不回执。 |
 | 8 | 出网 | 直连飞书；**离线版天然不启用**（启动护栏空操作）。 |
 | 9 | 通用化 | 后续会接其他 channel，故现在就抽 `Channel` 接口 + `ChannelManager` + 通用 `ChannelInbox` 表。仅实现飞书。 |
 
@@ -44,7 +44,7 @@
 FeishuChannel.on_message(event)
         │ ① external_event_id 去重(ChannelInbox)
         │ ② 白名单校验 open_id
-        │ ③ ensure 专属飞书总管会话(默认工作空间, 幂等, 唯一)
+        │ ③ resolve 最近活跃总管会话(target_type=curator, 按最近消息; 无则 ensure 默认工作空间总管会话)
         │ ④ 回调跨线程：call_soon_threadsafe 投回主 event loop（见 §4.3）
         │    inject_curator_instruction(会话, 文本, source_meta)  ← 复用 headless 注入
         │ ⑤ 写 ChannelInbox 行(status=acked，DB unique 去重兜底), 立即回飞书 "✅ 收到"
@@ -105,13 +105,13 @@ send_report(chat_id, report)  # 出站：最终报告
 | `external_event_id` (unique) | 渠道事件去重（飞书会重投） |
 | `external_user_id` | 渠道侧发送者（open_id 等） |
 | `external_chat_id` | 回执发回的地址 |
-| `workspace_id` / `conversation_id` | 落到哪个工作空间的专属会话 |
-| `user_message_id` / `assistant_message_id` | 关联触发的那一轮 |
+| `workspace_id` / `conversation_id` | 入站时刻快照：接盘的总管会话 + 其工作空间 |
+| `user_message_id` / `assistant_message_id` | 关联触发的那一轮；`user_message_id` 也用于**消息级飞书徽标**渲染 |
 | `plan_run_id` (nullable) | 若该轮拆了编排轮，回填 |
 | `status` | received → acked → running → reported / failed |
 | `reported_at` | 回执时间 |
 
-**`Conversation` 新增 `channel` 字段**：判别器 + UI 特殊样式；`null` = 普通 Web 会话。每渠道一个唯一会话，`ensure_channel_curator_conversation(db, user_id, workspace_id, channel)` 幂等返回。**不参与回执路由**（路由由 ChannelInbox 决定）。
+**会话解析** `resolve_active_curator_conversation(db, user_id)`：取 `target_type="curator"` 中**最近有消息**的会话（按 last message / `updated_at`）；若一个都没有 → fallback `ensure_curator_conversation(db, user_id, default_workspace_id)`（**复用现有函数**，不新建专属会话）。**`Conversation` 不加 `channel` 字段**，飞书来源的区分完全落在 `ChannelInbox`（消息级），UI 据 `user_message_id` 给该条消息加飞书徽标。
 
 ### 4.5 重构（targeted，in-scope）
 
@@ -123,12 +123,13 @@ send_report(chat_id, report)  # 出站：最终报告
 ChannelManager ──注册──> [FeishuChannel, (future) DingtalkChannel...]
      │ 订阅 WorkspaceEventBus 终态 → 查 ChannelInbox.channel → 路由到对应 Channel.send_report()
 FeishuChannel
-  ├─依赖→ lark-oapi ws client          (入站长连接)
-  ├─依赖→ inject_curator_instruction   (复用注入，不自己写编排)
-  ├─依赖→ ChannelInbox                 (去重 / 关联 / 状态)
-  ├─依赖→ orchestrator_execution_summary (拉报告内容)
-  └─依赖→ FeishuIMService              (ACK / 回执出站)
-核心编排代码：零改动、不知道任何 channel 存在
+  ├─依赖→ lark-oapi ws client              (入站长连接)
+  ├─依赖→ resolve_active_curator_conversation (接盘最近活跃总管会话 / fallback ensure 默认)
+  ├─依赖→ inject_curator_instruction       (复用注入，不自己写编排)
+  ├─依赖→ ChannelInbox                     (去重 / 关联 / 状态)
+  ├─依赖→ orchestrator_execution_summary   (拉报告内容)
+  └─依赖→ FeishuIMService                  (ACK / 回执出站)
+核心编排代码：仅 settle_plan_run 多发一个 channel-无关领域事件，不感知 channel 概念
 ```
 
 ## 5. 终态判定（一条飞书指令何时算"跑完"）
@@ -197,6 +198,7 @@ FeishuChannel
 
 | 用途 | 现有资产 |
 |---|---|
+| 接盘会话兜底 | `ChatService.ensure_curator_conversation(db, user_id, workspace_id)`（无活跃总管会话时 fallback 用） |
 | headless 注入指令 + 起 orchestrator 流 | `task_scheduler_service._start_curator_task`（抽成共享函数；含主 loop 投递范式） |
 | 终态触发 | `WorkspaceEventBus`（channel 是又一个订阅者，和 SSE 通知中心平级）；**注意需新增 `plan_run_settled` 事件，见 §5.1** |
 | 报告内容聚合 + 交付物清单 | `orchestrator_execution_summary.py` / `collect_plan_deliverables` |
