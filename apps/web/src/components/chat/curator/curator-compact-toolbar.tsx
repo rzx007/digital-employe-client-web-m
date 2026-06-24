@@ -28,6 +28,7 @@ export function CuratorCompactToolbar({
   isCreatingConversation,
   resourcesOpen = false,
   onToggleResources,
+  titleSlot,
   className,
 }: {
   contact?: ChatViewContact
@@ -40,6 +41,8 @@ export function CuratorCompactToolbar({
   isCreatingConversation?: boolean
   resourcesOpen?: boolean
   onToggleResources?: () => void
+  /** 替代名字区（工作台：总管/助手 下拉切换）。 */
+  titleSlot?: React.ReactNode
   className?: string
 }) {
   const handleNewConversation =
@@ -69,14 +72,16 @@ export function CuratorCompactToolbar({
           avatarClassName="size-7"
           fallbackClassName="text-[10px]"
         />
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-medium">{name}</span>
-          {conversationTitle ? (
-            <span className="truncate text-[10px] text-muted-foreground">
-              {conversationTitle}
-            </span>
-          ) : null}
-        </div>
+        {titleSlot ?? (
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate text-sm font-medium">{name}</span>
+            {conversationTitle ? (
+              <span className="truncate text-[10px] text-muted-foreground">
+                {conversationTitle}
+              </span>
+            ) : null}
+          </div>
+        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5">

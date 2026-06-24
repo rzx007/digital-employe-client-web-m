@@ -267,6 +267,29 @@ class SkillAwareShellBackend(LocalShellBackend):
         )
         return output + footer
 
+    def _expand_env_path(self, file_path: str) -> str:
+        """展开路径里的 $VAR / ${VAR} 环境变量字面量为真实路径。
+
+        prompt 教 agent 用 `$ARTIFACTS_DIR/x.json` 这类路径；shell 命令由 shell 展开，
+        但 write/read/edit 文件工具不走 shell，若不展开会把 `$ARTIFACTS_DIR` 当成
+        真实目录名建出来。这里用本后端注入的 self._env 展开（os.environ 兜底）。
+        """
+        if not file_path or "$" not in file_path:
+            return file_path
+
+        def _sub(match: "re.Match[str]") -> str:
+            name = match.group("braced") or match.group("bare")
+            val = self._env.get(name)
+            if val is None:
+                val = os.environ.get(name)
+            return val if val is not None else match.group(0)
+
+        return re.sub(
+            r"\$(?:\{(?P<braced>[A-Za-z_][A-Za-z0-9_]*)\}|(?P<bare>[A-Za-z_][A-Za-z0-9_]*))",
+            _sub,
+            file_path,
+        )
+
     def read(
         self,
         file_path: str,
@@ -274,7 +297,9 @@ class SkillAwareShellBackend(LocalShellBackend):
         limit: int = 2000,
     ) -> ReadResult:
         """PDF/Office 走文本提取，与 /uploads/、/artifacts/ 路由一致。"""
-        return basic_file_read(self, file_path, offset=offset, limit=limit)
+        return basic_file_read(
+            self, self._expand_env_path(file_path), offset=offset, limit=limit
+        )
 
     def edit(
         self,
@@ -286,7 +311,7 @@ class SkillAwareShellBackend(LocalShellBackend):
         """纯文本 edit：读时编码回退，写回统一 UTF-8。"""
         return basic_file_edit(
             self,
-            file_path,
+            self._expand_env_path(file_path),
             old_string,
             new_string,
             replace_all=replace_all,
@@ -294,7 +319,7 @@ class SkillAwareShellBackend(LocalShellBackend):
 
     def write(self, file_path: str, content: str) -> WriteResult:
         """写文件同名直接覆盖（不报 already exists），避免反复重建同名文件的死循环。"""
-        return basic_file_write(self, file_path, content)
+        return basic_file_write(self, self._expand_env_path(file_path), content)
 
     def _extract_python_c_code(self, command: str) -> str | None:
         """从 `python -c '...'` 提取代码体。

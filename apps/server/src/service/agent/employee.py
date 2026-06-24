@@ -44,6 +44,14 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
+WORKBENCH_BUILDER_SKILL = "workbench-builder"
+
+
+def _should_mount_workbench(available_skills: list[str]) -> bool:
+    """员工装了 workbench-builder 技能 → 应挂 arrange_workbench 工具。"""
+    return WORKBENCH_BUILDER_SKILL in set(available_skills)
+
+
 def _augment_skills_with_skill_creator(
     skill_sources: list[str], available_skills: list[str]
 ) -> tuple[list[str], list[str]]:
@@ -245,6 +253,17 @@ def get_agent(
         extra_tools.extend(
             [submit_clarifying_questions, submit_document_plan, submit_bug_report]
         )
+
+    # 工作台编排：装了 workbench-builder 技能的员工（如「工作台助手」）才挂 arrange_workbench，
+    # 让其能在工作台页面对话里钉/改/组织看板。其他员工不挂，避免污染工具集。
+    if _should_mount_workbench(available_skills):
+        from src.service.agent.tools.workbench import (
+            arrange_workbench,
+            save_to_resource_pool,
+        )
+
+        extra_tools.append(arrange_workbench)
+        extra_tools.append(save_to_resource_pool)
 
     agent = create_deep_agent(
         model=model,

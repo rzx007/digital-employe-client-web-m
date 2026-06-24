@@ -4,14 +4,21 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Annotated, Any, NotRequired
 
 from deepagents.middleware.summarization import (
     SUMMARIZATION_SYSTEM_PROMPT,
+    SummarizationEvent,
     SummarizationMiddleware,
+    SummarizationState,
     SummarizationToolMiddleware,
 )
-from langchain.agents.middleware.types import ExtendedModelResponse, ModelRequest, ModelResponse
+from langchain.agents.middleware.types import (
+    ExtendedModelResponse,
+    ModelRequest,
+    ModelResponse,
+    PrivateStateAttr,
+)
 from langgraph.config import get_config
 
 from src.core.config import get_settings
@@ -21,6 +28,31 @@ from src.service.model_context import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _merge_summarization_event(
+    left: SummarizationEvent | None,
+    right: SummarizationEvent | None,
+) -> SummarizationEvent | None:
+    # deepagents 0.6.7 ships `_summarization_event` without a reducer, so two
+    # writers landing in the same superstep (multiple `compact_conversation`
+    # tool calls in one assistant turn, or wrap_model_call + tool call
+    # converging) trip langgraph INVALID_CONCURRENT_GRAPH_UPDATE. Take the
+    # event with the higher cutoff_index — that's the more recent compaction.
+    if right is None:
+        return left
+    if left is None:
+        return right
+    return right if right.get("cutoff_index", 0) >= left.get("cutoff_index", 0) else left
+
+
+class _PatchedSummarizationState(SummarizationState):
+    _summarization_event: Annotated[
+        NotRequired[SummarizationEvent | None],
+        PrivateStateAttr,
+        _merge_summarization_event,
+    ]
+
 
 CHECKPOINT_COMPACT_TOOL_PROMPT = (
     SUMMARIZATION_SYSTEM_PROMPT
@@ -36,6 +68,7 @@ Also call `compact_conversation` proactively when:
 class ConversationSummarizationMiddleware(SummarizationMiddleware):
     """Summarization with session history path + API usage / checkpoint triggers."""
 
+    state_schema = _PatchedSummarizationState
     use_session_history_file: bool = False
 
     def _get_history_path(self) -> str:
@@ -123,6 +156,8 @@ class ConversationSummarizationMiddleware(SummarizationMiddleware):
 
 class ConversationSummarizationToolMiddleware(SummarizationToolMiddleware):
     """compact_conversation tool with project-specific usage nudges."""
+
+    state_schema = _PatchedSummarizationState
 
     def __init__(
         self,

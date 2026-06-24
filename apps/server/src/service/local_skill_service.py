@@ -117,8 +117,41 @@ class LocalSkillService:
         return configured_root
 
     @staticmethod
+    def _unwrap_overescaped(value: str) -> str:
+        """剥掉 LLM 调工具时偶发多套的外层引号/反斜杠。
+
+        模型本应传 `workbench-builder`，却偶发把字符串参数多做一层 JSON 转义传成
+        `"\\"workbench-builder\\""`（含字面反斜杠和引号）→ 过不了 SKILL_NAME_PATTERN
+        报「skillName 格式非法」。这里反复剥去首尾成对的引号（含被反斜杠转义的 \\"）
+        与零散反斜杠，把它还原成裸技能名。对正常输入（本就无引号）是无操作。
+        """
+        s = value.strip()
+        # 反复剥：去掉首尾的反斜杠+引号组合，再去掉首尾成对的普通引号/反斜杠。
+        for _ in range(4):  # 最多套几层，给足余量；正常输入一轮即稳定
+            prev = s
+            s = s.strip()
+            # 先去首尾被转义的引号 \" ... \"
+            if s.startswith('\\"') and s.endswith('\\"') and len(s) > 4:
+                s = s[2:-2]
+            # 再去首尾成对的普通引号 " ... " 或 ' ... '
+            elif (
+                len(s) >= 2
+                and s[0] == s[-1]
+                and s[0] in ("\"", "'")
+            ):
+                s = s[1:-1]
+            else:
+                # 去掉零散的首尾反斜杠
+                s = s.strip("\\").strip()
+            if s == prev:
+                break
+        return s
+
+    @staticmethod
     def _normalize_skill_name(skill_name: str) -> str:
-        normalized = (skill_name or "").strip()
+        # 先剥 LLM 偶发多套的外层引号/反斜杠（如 \"workbench-builder\"），再校验，
+        # 避免本可救的双重转义入参被直接判「格式非法」。
+        normalized = LocalSkillService._unwrap_overescaped(skill_name or "")
         if not normalized:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

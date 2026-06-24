@@ -38,6 +38,8 @@ import { mapRecentContactDtoToItem } from "@/lib/chat/recent-contact-mappers"
 import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { getActiveWorkspaceId } from "@/lib/workspace-id"
+import { fetchWorkbenchResourceContent } from "@/api/workbench-resources"
+import type { HtmlArtifactRef } from "@/types/workbench"
 import { useAuthStore } from "@/stores/auth-store"
 import { useBrowserStore } from "@/stores/browser-store"
 import { useChatStore } from "@/stores/chat-store"
@@ -553,6 +555,38 @@ export function useResourceContentQuery(
       return res.data
     },
     enabled: !!path,
+  })
+}
+
+/**
+ * 工作台看板内容查询：统一两类来源。
+ * - htmlRef.resourceId 存在 → 资源池条目，走 /workbench-resources/{id}/content。
+ * - 否则 → 会话内资源，走 useResourceContentQuery 同款会话内容端点。
+ * 返回与 useResourceContentQuery 同形（data/isLoading/isError/refetch）。
+ */
+export function useWorkbenchHtmlContentQuery(htmlRef: HtmlArtifactRef) {
+  const isResource = typeof htmlRef.resourceId === "number"
+  return useQuery({
+    queryKey: isResource
+      ? (["workbench-resource-content", htmlRef.resourceId] as const)
+      : chatKeys.resourceContent(
+          String(htmlRef.conversationId),
+          htmlRef.resourcePath ?? ""
+        ),
+    queryFn: async ({ signal }) => {
+      if (isResource) {
+        return fetchWorkbenchResourceContent(htmlRef.resourceId as number, {
+          signal,
+        })
+      }
+      const res = await fetchResourceContent(
+        htmlRef.conversationId,
+        htmlRef.resourcePath,
+        { signal }
+      )
+      return res.data
+    },
+    enabled: isResource || !!htmlRef.resourcePath,
   })
 }
 

@@ -69,13 +69,7 @@ import {
   getPreviewableTypeLabel,
   isHtmlPath,
 } from "./artifact-content/resolve-renderer"
-import {
-  addHtmlArtifactBlock,
-  emitWorkbenchConfigChanged,
-  GLOBAL_WORKBENCH_ID,
-  initializeWorkbenchConfig,
-  loadWorkbenchConfig,
-} from "@/lib/workbench/workbench-config"
+import { pinHtmlToWorkbench } from "@/lib/workbench/pin-html-to-workbench"
 import type { Artifact } from "./artifact-types"
 import { ImportDraftSkillDialog } from "./import-draft-skill-dialog"
 import { SubConversationPanel } from "./sub-conversation-panel"
@@ -87,6 +81,8 @@ export interface ArtifactPanelProps {
   className?: string
   /** embedded：置于 Sheet 等容器内，不使用侧滑入场动画 */
   presentation?: "slide-over" | "embedded"
+  /** 工作台：.html 右键菜单加「加入资源池」。不传则不显示该项（主聊天原样）。 */
+  onAddToResourcePool?: (entry: ResourceEntry) => void
 }
 
 /** 侧栏树内文件名/文件夹名展示宽度；完整名见原生 title */
@@ -257,6 +253,7 @@ function ResourceContextMenu({
   onDelete,
   onRefresh,
   onPin,
+  onAddToResourcePool,
   pendingOnly = false,
 }: {
   entry: ResourceEntry
@@ -264,6 +261,7 @@ function ResourceContextMenu({
   onDelete: (entry: ResourceEntry) => void
   onRefresh: () => void
   onPin?: (entry: ResourceEntry) => void
+  onAddToResourcePool?: (entry: ResourceEntry) => void
   pendingOnly?: boolean
 }) {
   const handleDownload = async () => {
@@ -271,7 +269,7 @@ function ResourceContextMenu({
   }
 
   return (
-    <ContextMenuContent className="w-36">
+    <ContextMenuContent className="w-40">
       {!pendingOnly && (
         <ContextMenuItem onSelect={handleDownload}>
           <IconDownload className="size-4 text-muted-foreground" />
@@ -284,6 +282,14 @@ function ResourceContextMenu({
           <span>钉到工作台</span>
         </ContextMenuItem>
       )}
+      {!pendingOnly &&
+        onAddToResourcePool &&
+        isHtmlPath(entry.path) && (
+          <ContextMenuItem onSelect={() => onAddToResourcePool(entry)}>
+            <IconPin className="size-4 text-muted-foreground" />
+            <span>加入资源池</span>
+          </ContextMenuItem>
+        )}
       <ContextMenuItem onSelect={onRefresh}>
         <IconRefresh className="size-4 text-muted-foreground" />
         <span>刷新</span>
@@ -342,32 +348,14 @@ function SkillDraftContextMenu({
   )
 }
 
-/** 把某会话的 HTML 产物钉成工作台看板（直接读写 localStorage，并通知工作台立即刷新） */
-function pinHtmlToWorkbench(
-  conversationId: string | number,
-  path: string,
-  name: string
-) {
-  const config =
-    loadWorkbenchConfig(GLOBAL_WORKBENCH_ID) ??
-    initializeWorkbenchConfig(GLOBAL_WORKBENCH_ID)
-  const title = name.replace(/\.html?$/i, "")
-  addHtmlArtifactBlock(
-    config,
-    { conversationId, resourcePath: path, pinnedAt: Date.now() },
-    title
-  )
-  // 通知 WorkbenchView 重读配置（钉住即出现，无需切菜单）
-  emitWorkbenchConfigChanged()
-}
-
 function renderEntry(
   entry: ResourceEntry,
   conversationId: string | number,
   onDelete: (entry: ResourceEntry) => void,
   onRefresh: () => void,
   getPendingForPath: (path: string) => PendingResource | null,
-  onPin?: (entry: ResourceEntry) => void
+  onPin?: (entry: ResourceEntry) => void,
+  onAddToResourcePool?: (entry: ResourceEntry) => void
 ) {
   if (entry.entry_type === "directory") {
     return (
@@ -441,6 +429,7 @@ function renderEntry(
         onDelete={onDelete}
         onRefresh={onRefresh}
         onPin={onPin}
+        onAddToResourcePool={onAddToResourcePool}
         pendingOnly={isPendingStreaming}
       />
     </ContextMenu>
@@ -453,6 +442,7 @@ export const ArtifactPanel = ({
   onClose,
   className,
   presentation = "slide-over",
+  onAddToResourcePool,
 }: ArtifactPanelProps) => {
   const [selectedPath, setSelectedPath] = React.useState<string | null>(null)
   const [expandedPaths, setExpandedPaths] = React.useState<Set<string>>(
@@ -717,7 +707,11 @@ export const ArtifactPanel = ({
   const handlePin = React.useCallback(
     (entry: ResourceEntry) => {
       if (!conversationId) return
-      pinHtmlToWorkbench(conversationId, entry.path, entry.name)
+      pinHtmlToWorkbench({
+        conversationId,
+        path: entry.path,
+        name: entry.name,
+      })
       toast.success(`已钉到工作台：${entry.name.replace(/\.html?$/i, "")}`)
     },
     [conversationId]
@@ -913,7 +907,8 @@ export const ArtifactPanel = ({
                           handleDelete,
                           handleRefreshResources,
                           getPendingForPath,
-                          handlePin
+                          handlePin,
+                          onAddToResourcePool
                         )
                       )}
                     </FileTreeFolder>
@@ -932,7 +927,8 @@ export const ArtifactPanel = ({
                           handleDelete,
                           handleRefreshResources,
                           getPendingForPath,
-                          handlePin
+                          handlePin,
+                          onAddToResourcePool
                         )
                       )}
                     </FileTreeFolder>
@@ -964,7 +960,8 @@ export const ArtifactPanel = ({
                                     handleDelete,
                                     handleRefreshResources,
                                     getPendingForPath,
-                                    handlePin
+                                    handlePin,
+                                    onAddToResourcePool
                                   )
                                 )}
                               </FileTreeFolder>
@@ -995,7 +992,8 @@ export const ArtifactPanel = ({
                           handleDelete,
                           handleRefreshResources,
                           getPendingForPath,
-                          handlePin
+                          handlePin,
+                          onAddToResourcePool
                         )
                       )}
                     </FileTreeFolder>
@@ -1014,7 +1012,8 @@ export const ArtifactPanel = ({
                           handleDelete,
                           handleRefreshResources,
                           getPendingForPath,
-                          handlePin
+                          handlePin,
+                          onAddToResourcePool
                         )
                       )}
                     </FileTreeFolder>

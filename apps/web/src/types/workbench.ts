@@ -8,6 +8,12 @@ export interface HtmlArtifactRef {
   resourcePath: string
   /** 钉住时间戳 */
   pinnedAt: number
+  /**
+   * 资源池来源标记：当看板来自资源池（跨会话复用）时存资源池条目 id。
+   * 存在时渲染走 /workbench-resources/{id}/content（按 id 解析绝对路径），
+   * 不存在时走原有的会话内资源内容端点。
+   */
+  resourceId?: number
 }
 
 /** 看板尺寸档位。 */
@@ -49,6 +55,8 @@ export interface WorkbenchConfig {
   employeeId: string
   blocks: WorkbenchBlock[]
   lastModified: number
+  /** 被邀请进工作台的员工 id（切换器据此列出）。缺省视为 []。 */
+  members?: number[]
 }
 
 /**
