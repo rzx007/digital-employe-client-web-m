@@ -99,28 +99,44 @@ function parsePath(url: string): {
   return { sessionId: match[1], action: match[2] }
 }
 
-function notifyRequestOpen(url: string): void {
+function notifyRequestOpen(url: string, conversationId: string | null): void {
   const main = getWindowManager().get("main")
   if (main && !main.isDestroyed()) {
-    main.webContents.send("browser:request-open", { url })
+    main.webContents.send("browser:request-open", { url, conversationId })
   }
 }
 
 function ensureBrowserSession(sessionId: string): boolean {
-  return sessionId === DEFAULT_SESSION
+  // 放行 "default"（脱离桌面端调试 / 未重建的 browserctl）与任意非空 session 段。
+  // 真实会话归属判断交给前端按 conversationId 比对，bridge 只负责把 id 透传下去。
+  return sessionId.length > 0
+}
+
+// 真实会话 = 纯数字 conv_id（前端据此判归属）。"default" / 非数字 → 视为「无归属」，
+// 维持旧的「无条件摊开当前前台」行为，保证旧调试路径不被打断。
+function sessionToConversationId(sessionId: string): string | null {
+  return /^\d+$/.test(sessionId) ? sessionId : null
 }
 
 function handleHealth(res: ServerResponse): void {
   const wc = getBrowserController().getBrowserWebContents()
+  const available = Boolean(wc && !wc.isDestroyed())
   reply(res, 200, {
     ok: true,
     data: {
       electron_up: true,
       bridge_port: DEFAULT_PORT,
       session: DEFAULT_SESSION,
-      browser_available: Boolean(wc && !wc.isDestroyed()),
-      url: wc && !wc.isDestroyed() ? wc.getURL() : "",
-      title: wc && !wc.isDestroyed() ? wc.getTitle() : "",
+      browser_available: available,
+      url: available ? wc!.getURL() : "",
+      title: available ? wc!.getTitle() : "",
+      // 从源头消除「browser_available:false 被当门禁」的误判：该字段只表示**此刻视口
+      // 是否已创建**（惰性创建：只有 open/navigate 才建，health 自己永不创建），不代表
+      // 浏览器能否使用。派单/后台会话里它如实为 false 是正常态。无论哪个技能、模型怎么
+      // 推理，拿到 health 输出就看到这句引导，不依赖技能文档写对。
+      hint: available
+        ? "浏览器视口已就绪，可直接 open/navigate/extract-text。"
+        : "browser_available=false 仅表示视口尚未创建（惰性创建，正常态），并非浏览器不可用。请直接 `browserctl open <url>`（会按需创建），切勿据此转用 Python/requests 抓页面。只有 open/navigate 本身返回 ok:false 才说明真不可用。",
     },
   })
 }
@@ -214,11 +230,12 @@ function listenWithRetry(server: http.Server, port: number): void {
 
 async function handleNavigate(
   res: ServerResponse,
-  url: string
+  url: string,
+  conversationId: string | null
 ): Promise<void> {
   const controller = getBrowserController()
 
-  notifyRequestOpen(url)
+  notifyRequestOpen(url, conversationId)
   await delay(120)
 
   let wc = await waitForBrowserWebContents(NAVIGATE_VIEWPORT_WAIT_MS)
@@ -319,7 +336,10 @@ async function handleBrowserRequest(
           reply(res, 400, { ok: false, error: "url required" })
           return
         }
-        await handleNavigate(res, url)
+        const convId = sessionToConversationId(sessionId)
+        // 记下当前活跃会话，供 setWindowOpenHandler（页面内 _blank 弹窗）复用归属
+        getBrowserController().setActiveConversationId(convId)
+        await handleNavigate(res, url, convId)
         return
       }
       case "snapshot": {
@@ -338,6 +358,7 @@ async function handleBrowserRequest(
           reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE" })
           return
         }
+        const clickConvId = sessionToConversationId(sessionId)
         const wc = dbg.getWebContents()
         const refOrSelector = String(body.ref_or_selector ?? "")
         const confirmationRequired = Boolean(body.confirmation_required)
@@ -363,6 +384,7 @@ async function handleBrowserRequest(
               message: confirmationMessage,
               refOrSelector,
               screenshotBase64: shot.ok ? shot.data?.base64 : undefined,
+              conversationId: clickConvId,
             })
           } finally {
             if (wasVisible) browserController.setVisibilitySuppressed(false)
@@ -455,7 +477,10 @@ async function handleBrowserRequest(
         getBrowserController().close()
         const main = getWindowManager().get("main")
         if (main && !main.isDestroyed()) {
-          main.webContents.send("browser:request-close")
+          const closeConvId = sessionToConversationId(sessionId)
+          main.webContents.send("browser:request-close", {
+            conversationId: closeConvId,
+          })
         }
         reply(res, 200, { ok: true, data: { closed: true } })
         return

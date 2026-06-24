@@ -73,3 +73,4 @@ apps/server/micro_agent.egg-info/requires.txt
 apps/server/micro_agent.egg-info/SOURCES.txt
 apps/server/micro_agent.egg-info/top_level.txt
 docs/secrets/
+.superpowers/

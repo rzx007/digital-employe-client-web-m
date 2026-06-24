@@ -1,7 +1,12 @@
 import { IpcChannels } from "../../shared/ipc-channels"
-import { invoke } from "../../preload/invoke"
+import { invoke, onChannelAll } from "../../preload/invoke"
 
 export const settingsBridge = {
+  /** 头像上传成功后调用：主进程会把 avatar-updated 广播给所有窗口 */
+  broadcastAvatarUpdated: () => invoke(IpcChannels.broadcastAvatarUpdated),
+  /** 订阅头像更新广播，回调里通常 bumpAvatarVersion() 触发本窗口头像重取 */
+  onAvatarUpdated: (callback: () => void) =>
+    onChannelAll("avatar-updated", () => callback()),
   openSettings: () => invoke(IpcChannels.openSettings),
   closeSettings: () => invoke(IpcChannels.closeSettings),
   setAutoLaunch: (enabled: boolean) =>

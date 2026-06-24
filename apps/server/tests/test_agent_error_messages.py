@@ -20,3 +20,24 @@ def test_tool_result_too_large_chinese() -> None:
     )
     assert "工具返回内容过大" in msg
     assert "update_employee" in msg
+
+
+def test_empty_str_timeout_exception_gives_readable_message():
+    import httpx
+    from src.service.agent.error_messages import format_agent_error_for_user
+
+    exc = httpx.ReadTimeout("")
+    msg = format_agent_error_for_user(exc)
+    assert "超时" in msg
+    assert "任务执行失败" not in msg
+
+
+def test_empty_str_non_timeout_exception_keeps_generic():
+    from src.service.agent.error_messages import format_agent_error_for_user
+
+    class WeirdError(Exception):
+        def __str__(self):
+            return ""
+
+    msg = format_agent_error_for_user(WeirdError())
+    assert msg == "任务执行失败，请稍后重试。"

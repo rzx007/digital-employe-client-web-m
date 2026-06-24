@@ -3,7 +3,6 @@
 ## 百度搜索
 
 ```bash
-browserctl health
 browserctl open https://www.baidu.com
 browserctl snapshot
 browserctl fill "#kw" "数字员工"

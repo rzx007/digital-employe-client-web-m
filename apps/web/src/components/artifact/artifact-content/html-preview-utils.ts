@@ -22,6 +22,16 @@ export const HTML_PREVIEW_SANDBOX =
 const NEUTRAL_BASE_TAG = '<base href="about:blank" target="_blank">'
 
 /**
+ * 隐藏滚动条但**保留滚动能力**的样式。工作台看板格子是固定高度，总管生成的 HTML
+ * 仪表盘内容常高于格子 → iframe 自带内部滚动条，难看。注入此样式让 html/body 仍可滚
+ * （overflow:auto），只是不显示滚动条（Firefox: scrollbar-width:none；WebKit: 0 宽）。
+ * 仅工作台预览传 hideScrollbar=true；完整 artifact 查看器不传，保留可见滚动条。
+ */
+const HIDE_SCROLLBAR_STYLE =
+  "<style>html,body{scrollbar-width:none;-ms-overflow-style:none}" +
+  "html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}</style>"
+
+/**
  * 构建「运行时拦截脚本」：在看板 HTML 内 patch window.fetch 与 XMLHttpRequest，把对外部
  * http(s) 接口的请求**在调用那一刻**改走本地后端 /proxy（服务端拉取无 CORS）。
  *
@@ -74,14 +84,17 @@ export function buildProxyInterceptorScript(proxyBaseUrl: string): string {
  *
  * @param content 原始 HTML
  * @param proxyBaseUrl 本地后端基址（如 http://localhost:34567）；空则不注入拦截脚本
+ * @param options.hideScrollbar 隐藏 iframe 内滚动条但保留滚动（工作台看板用，避免固定格子里露丑滚动条）
  */
 export function wrapHtmlForPreview(
   content: string,
   proxyBaseUrl = "",
+  options: { hideScrollbar?: boolean } = {},
 ): string {
   const head =
     NEUTRAL_BASE_TAG +
-    (proxyBaseUrl ? buildProxyInterceptorScript(proxyBaseUrl) : "")
+    (proxyBaseUrl ? buildProxyInterceptorScript(proxyBaseUrl) : "") +
+    (options.hideScrollbar ? HIDE_SCROLLBAR_STYLE : "")
   const isFullDocument = /<!DOCTYPE|<html[\s>]/i.test(content)
   if (!isFullDocument) {
     return `<!DOCTYPE html><html><head><meta charset="utf-8">${head}</head><body>${content}</body></html>`

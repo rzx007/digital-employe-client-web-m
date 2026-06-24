@@ -8,6 +8,7 @@ from src.models.orchestration_plan import OrchestrationPlan
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import cst_now
 from src.service.agent.orchestrator.task_mutations import _delete_task_with_fresh_session
+from src.schemas.orchestration import OrchestrationPlanRead
 from src.service.orchestration_lifecycle import cancel_orchestration_plan
 from tests.conftest import add_employee
 from tests.test_task_mutations import add_task
@@ -36,6 +37,17 @@ def _add_plan(db, workspace_id: int, *, status: str = "confirmed") -> Orchestrat
     db.commit()
     db.refresh(plan)
     return plan
+
+
+def test_plan_read_schema_exposes_message_id(db_session, workspace):
+    """OrchestrationPlanRead 透出 ORM 上的 message_id，供前端折叠计划卡。"""
+    plan = _add_plan(db_session, workspace.id, status="confirmed")
+    plan.message_id = 4242
+    db_session.commit()
+    db_session.refresh(plan)
+
+    plan_data = OrchestrationPlanRead.model_validate(plan)
+    assert plan_data.message_id == 4242
 
 
 def test_delete_task_cancels_running_execution(

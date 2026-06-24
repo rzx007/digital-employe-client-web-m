@@ -36,9 +36,9 @@ describe("parsePlanTasksFromInput", () => {
   })
 
   it("returns empty for invalid tasks", () => {
-    expect(parsePlanTasksFromInput({ summary: "x", tasks: "not-json" })).toEqual(
-      []
-    )
+    expect(
+      parsePlanTasksFromInput({ summary: "x", tasks: "not-json" })
+    ).toEqual([])
     expect(parsePlanTasksFromInput(null)).toEqual([])
   })
 })
@@ -62,6 +62,28 @@ describe("parsePlanGeneratedOutput", () => {
       '{"type":"plan_generated","plan_id":47,"requires_confirmation":false,"tasks":[{"task_name":"即时查"}]}'
     )
     expect(simple?.requires_confirmation).toBe(false)
+  })
+
+  it("unwraps {status,text} envelope from group leader tool result", () => {
+    // 组长会话的 create_orchestration_plan 工具结果被包成 {status,text}，
+    // plan_generated 载荷嵌在 text 字符串里（双层编码）。不拆壳就取不到
+    // plan_id → 计划卡按 plan_id 折叠失败 → 同一计划渲染成多张卡。
+    const wrapped = parsePlanGeneratedOutput(
+      JSON.stringify({
+        status: "success",
+        text: JSON.stringify({
+          type: "plan_generated",
+          plan_id: 199,
+          summary: "微博热搜助手查询微博新闻，浏览器助手查询小米17价格",
+          total_tasks: 3,
+          requires_confirmation: true,
+          tasks: [{ task_name: "查询微博新闻", employee_id: 19 }],
+        }),
+      })
+    )
+    expect(wrapped?.plan_id).toBe(199)
+    expect(wrapped?.total_tasks).toBe(3)
+    expect(wrapped?.tasks?.[0]?.task_name).toBe("查询微博新闻")
   })
 })
 

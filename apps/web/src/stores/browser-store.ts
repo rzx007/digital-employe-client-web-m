@@ -3,7 +3,7 @@ import { create } from "zustand"
 import { getElectronApi } from "@/lib/electron/host"
 import { getRequestBaseUrl } from "@/lib/request"
 import { useArtifactStore } from "@/stores/artifact-store"
-import { useChatStore } from "@/stores/chat-store"
+import { useChatStore, type ActiveTab } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
 import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
@@ -23,6 +23,12 @@ interface BrowserState {
   error: string | null
   canGoBack: boolean
   canGoForward: boolean
+  // 当前活跃浏览器归属的会话 id（与前台一致时才渲染）；null = 无归属/调试路径
+  activeBrowserConversationId: string | null
+  // 有浏览器命令在跑、但不属于当前前台会话 → 静默记录（conversationId → 最后导航的 url），不渲染
+  backgroundSessions: Map<string, string>
+  // 开浏览器前的来源 tab（如工作台）；关闭/重置时切回，避免落在消息页。null = 本就在 chat
+  originTab: ActiveTab | null
 
   openBrowser: (url: string) => void
   openHtmlPreview: (
@@ -31,6 +37,7 @@ interface BrowserState {
   ) => void
   minimizeBrowser: () => void
   restoreBrowser: () => void
+  suspendForConversationSwitch: () => void
   destroyBrowser: () => void
   navigate: (url: string) => void
   goBack: () => void
@@ -45,6 +52,10 @@ interface BrowserState {
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
   toggleFullscreen: () => void
+  noteBackgroundOpen: (conversationId: string, url: string) => void
+  clearBackground: (conversationId: string) => void
+  adoptForeground: (conversationId: string) => void
+  setActiveBrowserConversationId: (conversationId: string | null) => void
   reset: () => void
 }
 
@@ -78,10 +89,19 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   isFullscreen: false,
   canGoBack: false,
   canGoForward: false,
+  activeBrowserConversationId: null,
+  backgroundSessions: new Map<string, string>(),
+  originTab: null,
 
   openBrowser: (url: string) => {
     closeOtherRightPanels()
-    useChatStore.getState().setActiveTab("chat")
+    // 浏览器面板只在 chat 布局渲染，故开浏览器要切到 chat tab。
+    // 记住来源 tab（如工作台），关闭/重置时切回去，避免「从工作台开网页、关掉后落在消息页」。
+    const chat = useChatStore.getState()
+    if (chat.activeTab !== "chat") {
+      set({ originTab: chat.activeTab })
+    }
+    chat.setActiveTab("chat")
 
     const api = getElectronApi()
     if (!api?.browser) {
@@ -132,9 +152,31 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     set({ isOpen: true, isMinimized: false, error: null })
   },
 
+  // 切对话时收起浏览器 UI，但**不销毁视口**（不调 api.browser.close）。
+  // destroyBrowser 会销毁单例 WebContentsView + 卸载承载视口测量的面板 DOM，
+  // 打断 agent（尤其后台执行会话）此刻正跑的 browserctl → BROWSER_VIEWPORT_NOT_READY。
+  // 仅 hide：electron 视口存活、agent 继续可用；切回该会话靠 adoptForeground /
+  // restoreBrowser 重现。currentUrl 保留以供重现。
+  suspendForConversationSwitch: () => {
+    const api = getElectronApi()
+    void api?.browser.hide()
+    set({
+      isOpen: false,
+      isMinimized: true,
+      isFullscreen: false,
+      isLoading: false,
+      error: null,
+    })
+  },
+
   destroyBrowser: () => {
     const api = getElectronApi()
     void api?.browser.close()
+    // 从工作台等非 chat tab 开的浏览器，UI 关闭时切回来源 tab（否则落在消息页）。
+    const origin = get().originTab
+    if (origin && origin !== "chat") {
+      useChatStore.getState().setActiveTab(origin)
+    }
     set({
       isOpen: false,
       isMinimized: false,
@@ -145,6 +187,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
       error: null,
       canGoBack: false,
       canGoForward: false,
+      originTab: null,
     })
   },
 
@@ -210,7 +253,45 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     set((s) => ({ isFullscreen: !s.isFullscreen }))
   },
 
+  noteBackgroundOpen: (conversationId: string, url: string) => {
+    set((s) => {
+      const next = new Map(s.backgroundSessions)
+      next.set(conversationId, url)
+      return { backgroundSessions: next }
+    })
+  },
+
+  // 回收路径有两条：①browserctl close 事件带匹配 conversationId（见 browser-confirmation-host）
+  // ②会话删除（见 use-chat-queries 三个删除 mutation 的 onSuccess）。
+  // 故意不接 task-end：任务结束不必然关浏览器（面板/内嵌浏览器可在 run 结束后留存供查看），
+  // 在 task-end 清标记会误删仍有效的后台标记。
+  clearBackground: (conversationId: string) => {
+    set((s) => {
+      if (!s.backgroundSessions.has(conversationId)) return {}
+      const next = new Map(s.backgroundSessions)
+      next.delete(conversationId)
+      return { backgroundSessions: next }
+    })
+  },
+
+  adoptForeground: (conversationId: string) => {
+    const url = get().backgroundSessions.get(conversationId)
+    if (!url) return
+    get().openBrowser(url)
+    get().setActiveBrowserConversationId(conversationId)
+    get().clearBackground(conversationId)
+  },
+
+  setActiveBrowserConversationId: (conversationId: string | null) => {
+    set({ activeBrowserConversationId: conversationId })
+  },
+
   reset: () => {
+    // 关浏览器：若是从工作台等非 chat tab 开的，切回来源 tab（否则落在消息页）。
+    const origin = get().originTab
+    if (origin && origin !== "chat") {
+      useChatStore.getState().setActiveTab(origin)
+    }
     set({
       isOpen: false,
       isMinimized: false,
@@ -221,6 +302,10 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
       error: null,
       canGoBack: false,
       canGoForward: false,
+      activeBrowserConversationId: null,
+      originTab: null,
+      // 故意不清 backgroundSessions：其他后台会话的「有浏览器在跑」标记应跨前台
+      // reset 留存，否则切走再回来会丢失归属。其回收走按 conversationId 的 close 事件。
     })
   },
 }))

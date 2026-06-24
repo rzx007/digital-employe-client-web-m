@@ -19,6 +19,8 @@ import { Separator } from "@workspace/ui/components/separator"
 import { cn } from "@workspace/ui/lib/utils"
 import { useAuthStore } from "@/stores/auth-store"
 import { uploadAvatar, AVATAR_ACCEPT, AVATAR_MAX_BYTES } from "@/api/avatar"
+import { useFileDropzone } from "@/hooks/use-file-dropzone"
+import { withElectronApi } from "@/lib/electron/host"
 import { UserAvatar } from "@/components/user-avatar"
 import { ChangePasswordDialog } from "./change-password-dialog"
 
@@ -44,12 +46,9 @@ export function AccountSettings() {
     fileInputRef.current?.click()
   }
 
-  const handleAvatarChange = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = e.target.files?.[0]
-    e.target.value = "" // 允许重选同名文件
-    if (!file || user?.id == null) return
+  // 点击选图与拖放上传共用这一条校验+上传路径
+  const processAvatarFile = async (file: File) => {
+    if (user?.id == null) return
 
     if (!AVATAR_ACCEPT.split(",").includes(file.type)) {
       toast.error("仅支持 PNG / JPG / WEBP 图片")
@@ -63,7 +62,9 @@ export function AccountSettings() {
     setUploading(true)
     try {
       await uploadAvatar(user.id, file)
-      bumpAvatarVersion()
+      bumpAvatarVersion() // 本窗口立即刷新
+      // 设置通常是独立窗口，广播让主窗口等其它窗口也刷新头像
+      void withElectronApi((api) => api.broadcastAvatarUpdated())
       toast.success("头像已更新")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "头像上传失败")
@@ -71,6 +72,17 @@ export function AccountSettings() {
       setUploading(false)
     }
   }
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = "" // 允许重选同名文件
+    if (file) void processAvatarFile(file)
+  }
+
+  const { isDragging, dropProps } = useFileDropzone({
+    onDrop: (file) => void processAvatarFile(file),
+    disabled: uploading,
+  })
 
   return (
     <>
@@ -86,15 +98,24 @@ export function AccountSettings() {
                 type="button"
                 onClick={handlePickAvatar}
                 disabled={uploading}
-                title="点击更换头像"
-                className="group relative size-16 shrink-0 overflow-hidden rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                title="点击或拖入图片更换头像"
+                {...dropProps}
+                className={cn(
+                  "group relative size-16 shrink-0 overflow-hidden rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  isDragging && "ring-2 ring-primary ring-offset-2"
+                )}
               >
                 <UserAvatar
                   userId={user?.id}
                   alt={user?.name || "用户"}
                   className="size-full object-cover"
                 />
-                <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
+                <span
+                  className={cn(
+                    "absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100",
+                    (uploading || isDragging) && "opacity-100"
+                  )}
+                >
                   {uploading ? (
                     <IconLoader2 className="size-5 animate-spin text-white" />
                   ) : (

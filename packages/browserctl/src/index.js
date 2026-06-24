@@ -8,7 +8,16 @@ import { pathToFileURL } from "node:url"
 const VERSION = "0.1.0"
 const DEFAULT_BASE_URL =
   process.env.BROWSER_RUNTIME_BRIDGE_URL || "http://127.0.0.1:34555"
-const DEFAULT_SESSION = process.env.BROWSER_RUNTIME_SESSION || "default"
+// 会话归属：显式 BROWSER_RUNTIME_SESSION 覆盖 > 发起会话 CONVERSATION_ID（桌面端
+// 每会话 shell 已注入）> "default"（脱离桌面端单独调 CLI 时回落）。bridge 据此把
+// 浏览器面板只摊给发起会话，不再无条件拍到当前前台窗口。
+export function resolveSession(env = process.env) {
+  const explicit = (env.BROWSER_RUNTIME_SESSION || "").trim()
+  if (explicit) return explicit
+  const conv = (env.CONVERSATION_ID || "").trim()
+  if (conv) return conv
+  return "default"
+}
 // 单次请求 socket 超时；默认 60s 以容纳慢导航，可用 env 覆盖
 const REQUEST_TIMEOUT_MS =
   Number(process.env.BROWSER_RUNTIME_TIMEOUT_MS) || 60000
@@ -34,7 +43,7 @@ Usage:
 
 Environment:
   BROWSER_RUNTIME_BRIDGE_URL  default ${DEFAULT_BASE_URL}
-  BROWSER_RUNTIME_SESSION     default ${DEFAULT_SESSION}`
+  BROWSER_RUNTIME_SESSION     default ${resolveSession()}`
 }
 
 export function parseFlags(argv) {
@@ -248,7 +257,7 @@ function requestJson(method, path, payload = {}) {
 function postAction(action, payload) {
   return requestJson(
     "POST",
-    `/internal/browser/${encodeURIComponent(DEFAULT_SESSION)}/${action}`,
+    `/internal/browser/${encodeURIComponent(resolveSession())}/${action}`,
     payload
   )
 }

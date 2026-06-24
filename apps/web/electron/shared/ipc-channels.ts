@@ -56,6 +56,7 @@ export const IpcChannels = {
   checkUpdate: "check-update",
   startDownload: "start-download",
   quitAndInstall: "quit-and-install",
+  broadcastAvatarUpdated: "broadcast-avatar-updated",
   openLogsDirectory: "open-logs-directory",
   exportLogs: "export-logs",
   revealPathInExplorer: "reveal-path-in-explorer",
@@ -258,6 +259,7 @@ export interface IpcInvokeMap {
   [IpcChannels.checkUpdate]: { args: []; result: unknown }
   [IpcChannels.startDownload]: { args: []; result: void }
   [IpcChannels.quitAndInstall]: { args: []; result: void }
+  [IpcChannels.broadcastAvatarUpdated]: { args: []; result: void }
   // pet window
   [IpcChannels.petShow]: { args: []; result: void }
   [IpcChannels.petHide]: { args: []; result: void }

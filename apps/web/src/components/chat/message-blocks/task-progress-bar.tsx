@@ -1,3 +1,4 @@
+// NOTE(2026-06-19): 计划卡确认态已改为静态提示，本组件暂无引用方（进度统一由右侧协作流程 DAG 展示）。
 import { cn } from "@workspace/ui/lib/utils"
 import { getContactId } from "@/lib/chat/contact-utils"
 import { navigateToEmployeeFromCurator } from "@/lib/chat/curator-navigation"

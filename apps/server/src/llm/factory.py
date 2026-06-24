@@ -129,12 +129,10 @@ def build_chat_model(
 
     req_timeout = max(15.0, float(settings.llm_request_timeout))
     connect_cap = min(12.0, req_timeout)
-    # read 超时 = 流式「两个 chunk 之间」的最长等待。本地模型正常两 chunk 间隔
-    # 仅几秒；之前 read=300s（5分钟）意味着模型挂住后底层 HTTP 要干等 5 分钟才断，
-    # 期间占着 llama.cpp slot、拖累其它请求。降到 90s：既宽松容纳大文档生成的
-    # 间隙，又能在模型真挂住时较快断连、释放 slot。比应用层 chunk_timeout 略小，
-    # 让「底层 HTTP 先断 → 释放 slot」先于「应用层判超时」发生。
-    read_timeout = min(90.0, req_timeout)
+    # 命令耗时已由 shell_execute「超时转后台」机制承接（命令不再占用 LLM 连接），read 回到
+    # 「纯模型 chunk 间隙」语义：180s 与 agent_chunk_timeout 对齐，让模型真挂死/半开连接较快
+    # 被 httpx 断连重连（max_retries=2），不必干等到 900s 应用层 no_content watchdog。
+    read_timeout = min(180.0, req_timeout)
     llm_timeout = httpx.Timeout(
         connect=connect_cap,
         read=read_timeout,

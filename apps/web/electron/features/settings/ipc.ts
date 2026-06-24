@@ -40,6 +40,19 @@ export const settingsIpcContribution: IpcContribution = {
         handler: () => createSettingsWindow(),
       },
       {
+        // 头像上传成功后，由上传窗口（通常是独立的设置窗口）调用，
+        // 广播给所有窗口——各窗口是独立渲染进程/独立 store，否则只有
+        // 上传窗口自己刷新，主窗口侧栏头像不会变。
+        channel: IpcChannels.broadcastAvatarUpdated,
+        handler: () => {
+          BrowserWindow.getAllWindows().forEach((win) => {
+            if (!win.isDestroyed()) {
+              win.webContents.send("avatar-updated")
+            }
+          })
+        },
+      },
+      {
         channel: IpcChannels.closeSettings,
         handler: () => closeSettingsWindow(),
       },

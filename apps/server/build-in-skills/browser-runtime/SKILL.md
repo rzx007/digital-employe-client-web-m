@@ -28,12 +28,18 @@ browserctl health
 
 ## 标准工作流
 
-1. `browserctl health` 检查 Electron bridge 是否可用
-2. `browserctl open <url>` 打开网页（已自动等到 `readyState=complete`）
-3. `browserctl snapshot --interactive` 获取可交互节点的 `@eN`（紧凑文本，省 token；需要完整结构用 `--tree`，需机读 JSON 用默认）
-4. 使用 `browserctl click @eN` / `browserctl fill @eN "文本"` 操作
-5. **操作触发页面变化后，先 `browserctl wait --selector <css>` 或 `--text <关键词>` 等目标出现，再 `browserctl snapshot`**——避免抓到仍在加载的半成品页面
-6. 用 `browserctl extract-text`、`browserctl get url` 或新 snapshot 验证结果
+1. **直接 `browserctl open <url>` 打开网页**（已自动等到 `readyState=complete`）。浏览器是惰性创建的，`open` 会按需创建它——**不需要**先跑 `health`
+2. `browserctl snapshot --interactive` 获取可交互节点的 `@eN`（紧凑文本，省 token；需要完整结构用 `--tree`，需机读 JSON 用默认）
+3. 使用 `browserctl click @eN` / `browserctl fill @eN "文本"` 操作
+4. **操作触发页面变化后，先 `browserctl wait --selector <css>` 或 `--text <关键词>` 等目标出现，再 `browserctl snapshot`**——避免抓到仍在加载的半成品页面
+5. 用 `browserctl extract-text`、`browserctl get url` 或新 snapshot 验证结果
+
+> ⚠️ **不要用 `health` 当门禁**：`browserctl health` 只用于排查 bridge 连通性。它的
+> `browser_available` 字段表示「此刻浏览器实例是否已存在」，**不是**「浏览器能否使用」。
+> 任务由**组长/总管派单**（离屏后台会话）时浏览器尚未创建，`health` 会如实返回
+> `browser_available: false`——这**完全正常**，直接 `open` 即可创建并使用。**绝不要**因为
+> `health` 返回 false 就转去用 Python/requests 抓页面：那是误判。只有 `open`/`navigate`
+> 本身返回 `ok:false` 时才说明浏览器真的不可用。详见 [reference.md](reference.md)。
 
 > click 后页面常异步加载（SPA / XHR），不要紧接着就 snapshot/extract-text；用 `wait` 等到关键元素或文本出现。无明确目标时可 `browserctl wait --ms 800` 兜底。
 

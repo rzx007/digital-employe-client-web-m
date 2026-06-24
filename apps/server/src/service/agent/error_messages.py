@@ -18,6 +18,11 @@ def format_agent_error_for_user(exc: BaseException | str) -> str:
     """统一 Agent 流式错误文案：中文 + 当前模型信息（若相关）。"""
     raw = str(exc).strip() if exc is not None else ""
     if not raw:
+        type_name = (
+            type(exc).__name__ if isinstance(exc, BaseException) else ""
+        )
+        if "timeout" in type_name.lower() or "timedout" in type_name.lower():
+            return f"模型 {_active_model_label()} 流式响应超时，请稍后重试。"
         return "任务执行失败，请稍后重试。"
 
     lower = raw.lower()
