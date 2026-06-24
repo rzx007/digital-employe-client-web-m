@@ -742,10 +742,11 @@ git commit -m "feat(channel): build_channel_report（纯回复取最终文本 / 
 
 - [ ] **Step 1: 写失败测试（用 FakeChannel + 模拟事件）**
 
-覆盖两条分发路径：
-- 纯对话：inbox 行 `plan_run_id=None, status=acked` →喂 `CONVERSATION_STATUS_CHANGED(idle)` 事件 → FakeChannel.send_report 被调一次、inbox 变 `reported`。
-- 编排轮：inbox 行 `status=running, plan_run_id=R` →喂 `plan_run_settled(run_id=R)` → 回执一次。
-- 幂等：同一事件喂两次，只回执一次（第二次因 status 已 reported 不命中）。
+覆盖分发路径（注意 monkeypatch `resolve_run_id_for_conversation`，它决定纯对话 vs 编排轮）：
+- **纯对话**：inbox `status=acked`；`resolve_run_id_for_conversation` 返回 `None` →喂 `CONVERSATION_STATUS_CHANGED(idle)` → send_report 被调一次、inbox 变 `reported`。
+- **编排轮回填（关键，防 blocker 回归）**：inbox `status=acked, plan_run_id=None`；`resolve_run_id_for_conversation` 返回 `R` →喂 `CONVERSATION_STATUS_CHANGED(idle)` → **不回执**、inbox 变 `status=running, plan_run_id=R`；随后喂 `plan_run_settled(run_id=R)` → 回执一次、`reported`。
+- **幂等**：同一事件喂两次，只回执一次（第二次因 status 已 reported 不命中）。
+- **次新行**：会话有 `reported` 旧行 + `running` 新行 → 只命中新行（`order_by id desc + status in pending`）。
 ```python
 # tests/test_channel_manager.py
 from src.models.channel_inbox import ChannelInbox
@@ -766,6 +767,8 @@ class FakeChannel(Channel):
 def test_dispatch_pure_reply(db_session, monkeypatch):
     monkeypatch.setattr("src.service.channel.manager.build_channel_report",
                         lambda db, row: "REPORT")
+    monkeypatch.setattr("src.service.channel.manager.resolve_run_id_for_conversation",
+                        lambda db, cid: None)  # 纯对话：无 PlanRun
     conv_id = 10
     row = ChannelInbox(channel="feishu", external_event_id="e1", external_user_id="ou",
                        external_chat_id="oc", workspace_id=1, conversation_id=conv_id,
@@ -784,16 +787,42 @@ def test_dispatch_pure_reply(db_session, monkeypatch):
     assert len(fake.reports) == 1
 ```
 
+- [ ] **Step 1.5: 先加 `WorkspaceEventBus.subscribe_all()`（前置子步骤，Issue 2）**
+
+> ⚠️ 实测：`WorkspaceEventBus.push(workspace_id, ...)` 对**没有订阅者的 workspace 直接 return 丢事件**（`workspace_events.py:22-24`），且只有 per-workspace `subscribe`，**无全局订阅**。ChannelManager 不可能预知所有 workspace_id，必须有全局订阅，否则回执触发会被静默吃掉。
+
+先给 `workspace_events.py` 加一个 channel-无关的全局订阅（通知中心也可复用）：
+```python
+# WorkspaceEventBus 内新增
+_global_subscribers: set[queue.Queue] = set()   # 类属性
+
+@classmethod
+def subscribe_all(cls) -> queue.Queue:
+    q: queue.Queue = queue.Queue(maxsize=512)
+    cls._global_subscribers.add(q)
+    return q
+
+# push() 末尾追加：除 per-workspace 外，也投全局队列
+for q in list(cls._global_subscribers):
+    try:
+        q.put_nowait(data)
+    except Exception:
+        cls._global_subscribers.discard(q)
+```
+附测试 `tests/test_workspace_events_subscribe_all.py`：`subscribe_all()` 后 `push(任意 workspace, evt)` 能在全局队列收到。
+
 - [ ] **Step 2: 确认失败 → Step 3: 实现 ChannelManager**
 
 要点：`register/get`、`_on_terminal_event(db, evt)` 按事件类型分流：
-- `conversation_status_changed` 且 status∈{idle,error}：`find_pending_by_conversation` → 若命中行 `plan_run_id is None` → 回执 + mark reported；若该行已绑定 plan_run_id 则忽略（等 plan_run_settled）。
-- `plan_run_settled`：`find_pending_by_plan_run` → 回执 + mark reported。
+- **`conversation_status_changed` 且 status∈{idle,error}（关键：此事件在总管自己的流结束即发，**早于** PlanRun settle）**：
+  - `find_pending_by_conversation(conv_id)` 命中 pending 行后，**必须查这一轮有没有产生 PlanRun**（用现成原语 `resolve_run_id_for_conversation(db, conv_id)`，`orchestration_lifecycle.py:126`）：
+    - **没有 run（纯对话回复）** → `build_channel_report` 回执 + mark `reported`。
+    - **有 run（编排轮）** → `inbox_service.mark(row, "running", plan_run_id=run_id)` **回填 plan_run_id、先不回执**，等 `plan_run_settled`。
+  - ❌ 不要只判 `plan_run_id is None` 就回执——那会把每个编排轮在刚开跑时误当纯对话回执掉。
+- **`plan_run_settled`**：`find_pending_by_plan_run(run_id)` 命中 → 回执 + mark `reported`。（防御：即使 `db.get(PlanRun, run_id)` 读到的 status 不是 settled，也按终态处理，靠 inbox `status` 幂等去重——Issue 4。）
 - 回执：`build_channel_report` → `self.get(row.channel).send_report(row.external_chat_id, report)` → `inbox_service.mark(reported=True)`。
-- `start()`：遍历注册 channel 调 `start()`；起一个后台线程订阅各 workspace 事件（或全局订阅）调用 `_on_terminal_event`（线程内新开 `get_session_local()()`）。`stop()`：逐个 `stop()` + 停线程。
+- `start()`：遍历注册 channel 调 `start()`；`q = WorkspaceEventBus.subscribe_all()`，起后台线程循环 `q.get()` → 新开 `get_session_local()()` → `_on_terminal_event(db, evt)`。**先订阅再放行入站**，确保订阅早于任何终态 push。`stop()`：逐个 `stop()` + 停线程。
 - 单例：`ChannelManager` 提供模块级 `manager = ChannelManager()` 供 server.py 用。
-
-> 订阅实现细节：`WorkspaceEventBus.subscribe(workspace_id)` 是 per-workspace。简化起步：ChannelManager 维护"已知 workspace_id 集合"，对每个有 inbox 活动的 workspace 订阅；或加一个全局订阅辅助。实现时若 WorkspaceEventBus 无全局订阅，给它加一个 `subscribe_all()`（channel-无关，通知中心也可复用）。**此处若需改 WorkspaceEventBus，作为本任务子步骤，附测试。**
 
 - [ ] **Step 4: 确认通过 → Step 5: 提交**
 
@@ -916,7 +945,7 @@ class FeishuChannel(Channel):
 ```
 > ⚠️ **线程归属**：真正的 `handle_inbound` 调用必须经 `call_soon_threadsafe` 投回主 loop（见 Task 6.3），且在主 loop 闭包内新开 DB session。忙碌检查、注入都在主 loop（防 TOCTOU）。ACK/report 是纯 HTTP，可同步发。
 >
-> ⚠️ **会话绑定 plan_run_id**：`handle_inbound` 注入后 inbox 是 `running` 但 `plan_run_id=None`。当这一轮产生 PlanRun 时，需要把 run 关联回 inbox。**关联方式**：ChannelManager 收 `plan_run_settled` 时，事件带 `conversation_id`——可改 `find_pending_by_plan_run` 失败时回退用 `conversation_id` 匹配该会话最近 running 行并回填 `plan_run_id`。把这一步加进 Task 5.1 的分发逻辑（plan_run_settled 优先按 conversation_id 命中 running 行）。**实现 Task 6.2 时若发现 Task 5.1 未覆盖此回填，补一个子步骤 + 测试。**
+> ⚠️ **会话绑定 plan_run_id（回填时机，已在 Task 5.1 处理）**：`handle_inbound` 注入后 inbox 是 `running`/`acked` 但 `plan_run_id=None`。**回填发生在 ChannelManager 收到 `conversation_status_changed(idle)` 时**（那一刻总管流已结束、PlanRun 已存在但还没 settle）——用 `resolve_run_id_for_conversation` 查到 run_id 回填、保持 running、不回执；等 `plan_run_settled` 再按 plan_run_id 命中回执。Task 6.2 不需要自己回填，只要把 inbox 置 `running` 即可。
 
 - [ ] **Step 4: 确认通过 → Step 5: 提交**
 
@@ -935,14 +964,14 @@ git commit -m "feat(channel): FeishuChannel.handle_inbound（去重/授权/忙�
 >         .order_by(Conversation.updated_at.desc())).first()
 >     if conv is not None:
 >         return conv
->     # fallback：ensure 默认/激活工作空间总管会话
+>     # fallback：ensure 默认工作空间总管会话
 >     from src.service.chat_service import ChatService
->     from src.service.workspace_service import WorkspaceService  # 取激活 workspace
->     ws = WorkspaceService.get_active_or_default(db)  # 实现时核对确切方法名
->     read = ChatService.ensure_curator_conversation(db, ws.user_id, ws.id)
+>     from src.service.workspace_service import WorkspaceService
+>     ws = WorkspaceService.ensure_default_workspace(db)  # 已核实存在（非 get_active_or_default）
+>     read = ChatService.ensure_curator_conversation(db, ws.user_id, ws.id)  # ws.user_id 可能为 None，OK
 >     return db.get(Conversation, read.id)
 > ```
-> 单独写一个测试 `test_resolve.py` 覆盖"有会话取最近、无会话走 fallback"。fallback 里的 `WorkspaceService` 取激活工作空间的确切方法在实现时核对（grep `def .*active.*workspace`）。
+> 单独写 `test_resolve.py` 覆盖：① 有 curator 会话 → 取 `updated_at` 最近；② 无会话 → 走 fallback（含 `ws.user_id=None` 分支，断言返回的会话 `target_type=="curator"`）。
 
 ### Task 6.3：lark-oapi ws 接线 + 启动护栏
 
