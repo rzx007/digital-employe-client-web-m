@@ -58,3 +58,16 @@ def test_dispatch_latest_row_only(db_session, monkeypatch):
     mgr._on_terminal_event(db_session, {"type": "conversation_status_changed", "conversation_id": 30, "status": "idle"})
     db_session.refresh(new)
     assert new.status == "reported"  # 只命中 acked 新行
+
+
+def test_reconcile_interrupted(db_session, monkeypatch):
+    class _R:
+        @staticmethod
+        def is_active(cid): return False
+    monkeypatch.setattr("src.service.channel.manager.registry", _R())
+    row = _row(db_session, external_event_id="e9", conversation_id=5, status="running")
+    mgr = ChannelManager(); fake = FakeChannel(); mgr.register(fake)
+    mgr.reconcile_on_start(db_session)
+    db_session.refresh(row)
+    assert row.status == "failed"
+    assert fake.reports and "中断" in fake.reports[0][1]

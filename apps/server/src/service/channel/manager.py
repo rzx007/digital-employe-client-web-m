@@ -9,13 +9,17 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import threading
 
 from src.service.channel.report import build_channel_report
 from src.service.orchestration_lifecycle import (
     resolve_latest_run_id_by_conversation,
 )
 from src.service.channel import inbox_service
+from src.service.stream_registry import registry
+from src.service.workspace_events import WorkspaceEventBus
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +27,9 @@ logger = logging.getLogger(__name__)
 class ChannelManager:
     def __init__(self) -> None:
         self._channels: dict[str, "object"] = {}
+        self._running = False
+        self._thread: threading.Thread | None = None
+        self._queue = None
 
     def register(self, channel) -> None:
         self._channels[channel.name] = channel
@@ -69,6 +76,81 @@ class ChannelManager:
         if ch is not None:
             ch.send_report(row.external_chat_id, report)
         inbox_service.mark(db, row, "reported", reported=True)
+
+    # --- 生命周期 -----------------------------------------------------------
+
+    def start(self) -> None:
+        """启动各 channel、做重启对账、起后台订阅线程。"""
+        for ch in list(self._channels.values()):
+            try:
+                ch.start()
+            except Exception:
+                logger.warning("channel %s start failed", getattr(ch, "name", "?"), exc_info=True)
+
+        from src.db.session import get_session_local
+
+        db = get_session_local()()
+        try:
+            self.reconcile_on_start(db)
+        except Exception:
+            logger.warning("channel reconcile_on_start failed", exc_info=True)
+        finally:
+            db.close()
+
+        self._running = True
+        self._queue = WorkspaceEventBus.subscribe_all()
+        self._thread = threading.Thread(
+            target=self._run_loop, name="channel-manager", daemon=True
+        )
+        self._thread.start()
+
+    def _run_loop(self) -> None:
+        from src.db.session import get_session_local
+
+        while self._running:
+            try:
+                data = self._queue.get(timeout=1.0)
+            except Exception:
+                continue  # 超时/空 → 回头看 _running 是否仍为 True
+            if data is None:  # 停机哨兵
+                break
+            try:
+                evt = json.loads(data)
+            except Exception:
+                continue
+            db = get_session_local()()
+            try:
+                self._on_terminal_event(db, evt)
+            except Exception:
+                logger.warning("channel manager dispatch failed", exc_info=True)
+            finally:
+                db.close()
+
+    def stop(self) -> None:
+        self._running = False
+        if self._queue is not None:
+            try:
+                self._queue.put_nowait(None)  # 哨兵唤醒线程立即退出
+            except Exception:
+                pass
+        for ch in list(self._channels.values()):
+            try:
+                ch.stop()
+            except Exception:
+                logger.warning("channel %s stop failed", getattr(ch, "name", "?"), exc_info=True)
+
+    def reconcile_on_start(self, db) -> None:
+        """重启对账：未结清的入站行，若其会话流已不再 active（进程崩过）→ 回执中断、标 failed。"""
+        for row in inbox_service.list_unsettled(db):
+            if registry.is_active(row.conversation_id):
+                continue  # 还在跑，留给正常事件路径
+            ch = self.get(row.channel)
+            if ch is not None:
+                try:
+                    ch.send_report(row.external_chat_id, "执行被中断，请重试")
+                except Exception:
+                    logger.warning("reconcile send_report failed row=%s", row.id, exc_info=True)
+            inbox_service.mark(db, row, "failed")
 
 
 manager = ChannelManager()
