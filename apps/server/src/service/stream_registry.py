@@ -1578,7 +1578,10 @@ class StreamRegistry:
                 raise ValueError(
                     "orchestrator_workspace_id required when orchestrator_owned_db is set"
                 )
-            from src.service.agent.orchestrator.runtime import set_context
+            from src.service.agent.orchestrator.runtime import (
+                set_context,
+                set_orchestrator_source,
+            )
 
             set_context(
                 orchestrator_owned_db,
@@ -1587,6 +1590,10 @@ class StreamRegistry:
                 auth_token=orchestrator_auth_token,
                 bind_auth_token=True,
             )
+            # source 与 db/workspace_id 同点绑定到本流执行协程的 ContextVar 上下文：
+            # 飞书轮在此 set "feishu"、桌面轮 set "user_chat"，随各自流隔离、互不污染。
+            # 总管工具（create_orchestration_plan）经 get_orchestrator_source() 读到本流值。
+            set_orchestrator_source(task.source)
 
         stream_start_time = time.monotonic()
         assistant_text_parts: list[str] = []
