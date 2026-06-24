@@ -75,6 +75,9 @@ import { CuratorPlanFeedbackProvider } from "./curator-plan-feedback-context"
 import { RunningTasksIndicator } from "./running-tasks-indicator"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
+import { UserAvatar } from "@/components/user-avatar"
+import { useAuthStore } from "@/stores/auth-store"
+import { getChannelBadge } from "@/lib/chat/assistant-stream-state"
 import { getElapsedMsFromMeta } from "../shared/chat-view-shared"
 import {
   buildCuratorTimeline,
@@ -153,6 +156,15 @@ function CuratorMessageItem({
     isTurnEnded: hasCurrentTurnEnded,
   })
 
+  const user = useAuthStore((s) => s.user)
+  const userName = user?.name || "我"
+  const channelBadge =
+    message.role === "user"
+      ? getChannelBadge(
+          (message as { metadata?: Record<string, unknown> }).metadata
+        )
+      : null
+
   const elapsedMs = getElapsedMsFromMeta(message)
   const copyText = getCopyableMessageText(message, { includeFileChanges })
   const voiceMeta =
@@ -211,6 +223,32 @@ function CuratorMessageItem({
           <span className="ml-auto text-[10px] text-muted-foreground/60">
             {formatTime(ts)}
           </span>
+        </div>
+      )}
+      {message.role === "user" && channelBadge && (
+        <div className="mb-2 flex items-center justify-end gap-2">
+          <span className="text-xs text-muted-foreground">
+            {channelBadge.name}
+          </span>
+          <div className="size-6 shrink-0 overflow-hidden rounded">
+            <img
+              src={channelBadge.logo}
+              alt={channelBadge.name}
+              className="size-full object-cover"
+            />
+          </div>
+        </div>
+      )}
+      {message.role === "user" && !channelBadge && (
+        <div className="mb-2 flex items-center justify-end gap-2">
+          <span className="text-xs text-muted-foreground">{userName}</span>
+          <div className="size-6 shrink-0 overflow-hidden rounded">
+            <UserAvatar
+              userId={user?.id}
+              alt={userName}
+              className="size-full object-cover"
+            />
+          </div>
         </div>
       )}
       {voiceMeta && curatorConversationId != null ? (

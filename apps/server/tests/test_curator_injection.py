@@ -1,3 +1,4 @@
+import json
 from unittest.mock import MagicMock
 
 from src.models.conversation import Conversation, ConversationMessage
@@ -72,3 +73,43 @@ def test_inject_passes_text_and_queued_fallback(db_session, monkeypatch):
     # ③ source / priority 透传
     assert kwargs["source"] == "feishu"
     assert kwargs["priority"] == 7
+
+
+def test_inject_marks_channel_source_on_user_msg(db_session, monkeypatch):
+    """飞书等 channel 来源给 user 消息 extra_meta 打 channel 标。"""
+    conv = Conversation(workspace_id=3, user_id="1", target_type="curator",
+                        target_id=0, status="idle")
+    db_session.add(conv); db_session.commit()
+
+    fake_loop = MagicMock()
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.curator_injection._get_main_loop",
+        lambda: fake_loop)
+    from src.service.agent.orchestrator.curator_injection import (
+        inject_curator_instruction,
+    )
+    inject_curator_instruction(db_session, conv, "帮我跑日报", source="feishu")
+
+    user_msg = db_session.query(ConversationMessage).filter_by(
+        conversation_id=conv.id, role="user").one()
+    assert json.loads(user_msg.extra_meta) == {"channel": "feishu"}
+
+
+def test_inject_no_channel_mark_for_scheduled_source(db_session, monkeypatch):
+    """scheduled 等非 channel 来源不打标，user 消息 extra_meta 为 None。"""
+    conv = Conversation(workspace_id=3, user_id="1", target_type="curator",
+                        target_id=0, status="idle")
+    db_session.add(conv); db_session.commit()
+
+    fake_loop = MagicMock()
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.curator_injection._get_main_loop",
+        lambda: fake_loop)
+    from src.service.agent.orchestrator.curator_injection import (
+        inject_curator_instruction,
+    )
+    inject_curator_instruction(db_session, conv, "跑日报", source="scheduled")
+
+    user_msg = db_session.query(ConversationMessage).filter_by(
+        conversation_id=conv.id, role="user").one()
+    assert user_msg.extra_meta is None

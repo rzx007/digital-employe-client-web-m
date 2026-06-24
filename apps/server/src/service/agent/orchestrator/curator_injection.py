@@ -4,11 +4,16 @@
 建 user/assistant 消息 -> 快照 -> 投递主事件循环起流。
 """
 
+import json
 import logging
 
 from src.service.agent.orchestrator import _get_main_loop
 
 logger = logging.getLogger(__name__)
+
+# channel 来源（飞书/未来钉钉、企微）。这些来源的 user 消息打 channel 标，
+# 前端据此显示渠道徽标。"scheduled"/"web" 等非 channel 来源不打标。
+_CHANNEL_SOURCES = {"feishu"}
 
 
 def inject_curator_instruction(
@@ -33,12 +38,18 @@ def inject_curator_instruction(
     """
     from src.models.conversation import ConversationMessage
 
-    # 用户消息
+    # 用户消息（channel 来源打标，前端据此显示渠道徽标）
+    channel_extra_meta = (
+        json.dumps({"channel": source}, ensure_ascii=False)
+        if source in _CHANNEL_SOURCES
+        else None
+    )
     user_msg = ConversationMessage(
         conversation_id=conversation.id,
         role="user",
         content=text,
         stream_state="completed",
+        extra_meta=channel_extra_meta,
     )
     db.add(user_msg)
 

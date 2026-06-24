@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import type { UIMessage } from "ai"
+
+// vitest 默认不处理静态资源 import，mock 飞书 PNG 为占位字符串。
+vi.mock("@/assets/channels/飞书.png", () => ({ default: "feishu.png" }))
 
 import {
   isAssistantQueued,
@@ -7,6 +10,7 @@ import {
   isTerminalAssistantStreamState,
   lastAssistantStreamState,
   getDispatchBadge,
+  getChannelBadge,
   shouldHideStaleQueuePlaceholder,
 } from "./assistant-stream-state"
 
@@ -67,5 +71,14 @@ describe("assistant-stream-state", () => {
       title: "总管自动派单消息（非真人发送）",
     })
     expect(getDispatchBadge({})).toBeNull()
+  })
+
+  it("channel badge for feishu source", () => {
+    const badge = getChannelBadge({ channel: "feishu" })
+    expect(badge?.name).toBe("飞书")
+    expect(typeof badge?.logo).toBe("string")
+    expect(getChannelBadge({})).toBeNull()
+    expect(getChannelBadge(undefined)).toBeNull()
+    expect(getChannelBadge({ channel: "unknown" })).toBeNull()
   })
 })

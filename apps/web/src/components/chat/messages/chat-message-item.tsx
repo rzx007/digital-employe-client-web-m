@@ -7,7 +7,10 @@ import {
   MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
 import { getCopyableMessageText } from "@/lib/chat/message-utils"
-import { getDispatchBadge } from "@/lib/chat/assistant-stream-state"
+import {
+  getDispatchBadge,
+  getChannelBadge,
+} from "@/lib/chat/assistant-stream-state"
 import { UserAvatar } from "@/components/user-avatar"
 import { useAuthStore } from "@/stores/auth-store"
 import { cn } from "@workspace/ui/lib/utils"
@@ -86,6 +89,14 @@ function ChatMessageItemInner({
     )
   }, [message])
 
+  // channel 来源（飞书等）的 user 消息：显示渠道名+logo 头部（替代名字头像）。
+  const channelBadge = React.useMemo(() => {
+    if (message.role !== "user") return null
+    return getChannelBadge(
+      (message as { metadata?: Record<string, unknown> }).metadata
+    )
+  }, [message])
+
   // 用户语音消息：metadata.voice 合法时气泡换成微信式语音胶囊。
   const voiceMeta =
     message.role === "user"
@@ -157,13 +168,27 @@ function ChatMessageItemInner({
           </span>
         </div>
       )}
-      {message.role === "user" && !dispatchBadge && (
+      {message.role === "user" && !dispatchBadge && !channelBadge && (
         <div className="mb-2 flex items-center justify-end gap-2">
           <span className="text-xs text-muted-foreground">{userName}</span>
           <div className="size-6 shrink-0 overflow-hidden rounded">
             <UserAvatar
               userId={user?.id}
               alt={userName}
+              className="size-full object-cover"
+            />
+          </div>
+        </div>
+      )}
+      {message.role === "user" && !dispatchBadge && channelBadge && (
+        <div className="mb-2 flex items-center justify-end gap-2">
+          <span className="text-xs text-muted-foreground">
+            {channelBadge.name}
+          </span>
+          <div className="size-6 shrink-0 overflow-hidden rounded">
+            <img
+              src={channelBadge.logo}
+              alt={channelBadge.name}
               className="size-full object-cover"
             />
           </div>

@@ -1,6 +1,7 @@
 import type { UIMessage } from "ai"
 
 import type { Message } from "@/types/chat"
+import feishuLogo from "@/assets/channels/飞书.png"
 
 type MessageWithMeta = UIMessage & {
   metadata?: { streamState?: string }
@@ -75,6 +76,21 @@ export function shouldHideStaleQueuePlaceholder(
 ): boolean {
   if (streamState !== "streaming") return false
   return isOrchestrationQueuePlaceholder(content)
+}
+
+export type ChannelBadge = { name: string; logo: string }
+
+const CHANNEL_BADGES: Record<string, ChannelBadge> = {
+  feishu: { name: "飞书", logo: feishuLogo },
+}
+
+/** 渠道来源徽标（user 消息 extra_meta.channel） */
+export function getChannelBadge(
+  metadata: Record<string, unknown> | undefined
+): ChannelBadge | null {
+  const channel = metadata?.channel
+  if (typeof channel !== "string") return null
+  return CHANNEL_BADGES[channel] ?? null
 }
 
 export type DispatchBadge = { label: string; title: string }
