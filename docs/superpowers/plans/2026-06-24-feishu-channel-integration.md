@@ -742,7 +742,7 @@ git commit -m "feat(channel): build_channel_report（纯回复取最终文本 / 
 
 - [ ] **Step 1: 写失败测试（用 FakeChannel + 模拟事件）**
 
-覆盖分发路径（注意 monkeypatch `resolve_run_id_for_conversation`，它决定纯对话 vs 编排轮）：
+覆盖分发路径（注意 monkeypatch `resolve_latest_run_id_by_conversation`，它决定纯对话 vs 编排轮）：
 - **纯对话**：inbox `status=acked`；`resolve_run_id_for_conversation` 返回 `None` →喂 `CONVERSATION_STATUS_CHANGED(idle)` → send_report 被调一次、inbox 变 `reported`。
 - **编排轮回填（关键，防 blocker 回归）**：inbox `status=acked, plan_run_id=None`；`resolve_run_id_for_conversation` 返回 `R` →喂 `CONVERSATION_STATUS_CHANGED(idle)` → **不回执**、inbox 变 `status=running, plan_run_id=R`；随后喂 `plan_run_settled(run_id=R)` → 回执一次、`reported`。
 - **幂等**：同一事件喂两次，只回执一次（第二次因 status 已 reported 不命中）。
@@ -767,7 +767,7 @@ class FakeChannel(Channel):
 def test_dispatch_pure_reply(db_session, monkeypatch):
     monkeypatch.setattr("src.service.channel.manager.build_channel_report",
                         lambda db, row: "REPORT")
-    monkeypatch.setattr("src.service.channel.manager.resolve_run_id_for_conversation",
+    monkeypatch.setattr("src.service.channel.manager.resolve_latest_run_id_by_conversation",
                         lambda db, cid: None)  # 纯对话：无 PlanRun
     conv_id = 10
     row = ChannelInbox(channel="feishu", external_event_id="e1", external_user_id="ou",
@@ -809,13 +809,30 @@ for q in list(cls._global_subscribers):
     except Exception:
         cls._global_subscribers.discard(q)
 ```
-附测试 `tests/test_workspace_events_subscribe_all.py`：`subscribe_all()` 后 `push(任意 workspace, evt)` 能在全局队列收到。
+附测试 `tests/test_workspace_events_subscribe_all.py`：**对一个从未 `subscribe(ws)` 的 workspace**，`subscribe_all()` 后 `push(ws, evt)` 仍能在全局队列收到（这正是 ChannelManager 的场景——它从不 per-workspace 订阅）。
+
+> ⚠️ **`push` 必须重构**（不能只在末尾"追加"）：现状 `push` 开头 `if not queues: return`（`workspace_events.py:24`），在无 per-workspace 订阅者时**直接 return，`data = json.dumps(...)` 都没执行**。必须把 `data = json.dumps(...)` 提到该 `return` **之前**，并让全局投递循环在"per-workspace 为空也继续"的路径上执行。否则对无 per-workspace 订阅的 workspace（ChannelManager 的核心场景）全局队列永远收不到，Issue 2 等于没解。改后保留原 per-workspace 的 `queue.Full`/dead 清理逻辑不动。
+
+- [ ] **Step 1.6: 加按会话查最新 run 的原语（前置子步骤，Issue A）**
+
+> ⚠️ 现成 `resolve_run_id_for_conversation` 签名是三参 `(db, plan_id, conversation_id)`（`orchestration_lifecycle.py:126`，按 plan_id+conversation_id 联合查），而 ChannelManager 的 idle 分支手里只有 `conversation_id`（`CONVERSATION_STATUS_CHANGED` payload 无 plan_id），**用不了**。
+
+在 `orchestration_lifecycle.py` 加一个只按会话查的原语：
+```python
+def resolve_latest_run_id_by_conversation(db, conversation_id: int) -> int | None:
+    from sqlalchemy import select
+    from src.models.plan_run import PlanRun
+    return db.scalar(
+        select(PlanRun.id).where(PlanRun.conversation_id == conversation_id)
+        .order_by(PlanRun.id.desc()))
+```
+附测试 `tests/test_resolve_latest_run.py`：会话无 run → None；有两轮 run → 返回最新 run.id。
 
 - [ ] **Step 2: 确认失败 → Step 3: 实现 ChannelManager**
 
 要点：`register/get`、`_on_terminal_event(db, evt)` 按事件类型分流：
 - **`conversation_status_changed` 且 status∈{idle,error}（关键：此事件在总管自己的流结束即发，**早于** PlanRun settle）**：
-  - `find_pending_by_conversation(conv_id)` 命中 pending 行后，**必须查这一轮有没有产生 PlanRun**（用现成原语 `resolve_run_id_for_conversation(db, conv_id)`，`orchestration_lifecycle.py:126`）：
+  - `find_pending_by_conversation(conv_id)` 命中 pending 行后，**必须查这一轮有没有产生 PlanRun**（用 Step 1.6 新增的 `resolve_latest_run_id_by_conversation(db, conv_id)`）：
     - **没有 run（纯对话回复）** → `build_channel_report` 回执 + mark `reported`。
     - **有 run（编排轮）** → `inbox_service.mark(row, "running", plan_run_id=run_id)` **回填 plan_run_id、先不回执**，等 `plan_run_settled`。
   - ❌ 不要只判 `plan_run_id is None` 就回执——那会把每个编排轮在刚开跑时误当纯对话回执掉。
@@ -938,14 +955,19 @@ class FeishuChannel(Channel):
             conversation_id=conv.id, text=msg.text, status="acked")
         if row is None:
             return  # 重复事件
-        user_mid, asst_mid = inject_curator_instruction(db, conv, msg.text, source="feishu")
+        try:
+            user_mid, asst_mid = inject_curator_instruction(db, conv, msg.text, source="feishu")
+        except Exception:
+            inbox_service.mark(db, row, "failed")
+            self.send_ack(msg.external_chat_id, "❌ 启动失败，请稍后重试")
+            raise
         inbox_service.mark(db, row, "running",
                            user_message_id=user_mid, assistant_message_id=asst_mid)
         self.send_ack(msg.external_chat_id, "✅ 收到，已开始执行")
 ```
 > ⚠️ **线程归属**：真正的 `handle_inbound` 调用必须经 `call_soon_threadsafe` 投回主 loop（见 Task 6.3），且在主 loop 闭包内新开 DB session。忙碌检查、注入都在主 loop（防 TOCTOU）。ACK/report 是纯 HTTP，可同步发。
 >
-> ⚠️ **会话绑定 plan_run_id（回填时机，已在 Task 5.1 处理）**：`handle_inbound` 注入后 inbox 是 `running`/`acked` 但 `plan_run_id=None`。**回填发生在 ChannelManager 收到 `conversation_status_changed(idle)` 时**（那一刻总管流已结束、PlanRun 已存在但还没 settle）——用 `resolve_run_id_for_conversation` 查到 run_id 回填、保持 running、不回执；等 `plan_run_settled` 再按 plan_run_id 命中回执。Task 6.2 不需要自己回填，只要把 inbox 置 `running` 即可。
+> ⚠️ **会话绑定 plan_run_id（回填时机，已在 Task 5.1 处理）**：`handle_inbound` 注入后 inbox 是 `running`/`acked` 但 `plan_run_id=None`。**回填发生在 ChannelManager 收到 `conversation_status_changed(idle)` 时**（那一刻总管流已结束、PlanRun 已存在但还没 settle）——用 `resolve_latest_run_id_by_conversation` 查到 run_id 回填、保持 running、不回执；等 `plan_run_settled` 再按 plan_run_id 命中回执。Task 6.2 不需要自己回填，只要把 inbox 置 `running` 即可。
 
 - [ ] **Step 4: 确认通过 → Step 5: 提交**
 
