@@ -49,6 +49,8 @@ class FeishuChannel(Channel):
         self._app_id = app_id
         self._app_secret = app_secret
         self._ws = None
+        self._thread = None
+        self._stopped = False
 
     def is_authorized(self, uid):
         return uid in self._whitelist
@@ -102,10 +104,52 @@ class FeishuChannel(Channel):
         self.send_ack(msg.external_chat_id, "✅ 收到，已开始执行")
 
     def start(self):
-        # 骨架：起 lark-oapi WebSocket 长连接 client，事件回调把消息→InboundMessage→投主 loop→handle_inbound
-        # ⚠️ 待 spike 在真实凭证下校验 lark-oapi ws.Client 的事件 handler 形态后填实；当前留接口
-        ...
+        import threading
+
+        from lark_oapi import EventDispatcherHandler
+        from lark_oapi.ws import Client as LarkWsClient
+
+        handler = (
+            EventDispatcherHandler.builder("", "")
+            .register_p2_im_message_receive_v1(self._on_lark_event)
+            .build()
+        )
+        self._ws = LarkWsClient(
+            self._app_id, self._app_secret, event_handler=handler
+        )
+        self._stopped = False
+        self._thread = threading.Thread(
+            target=self._ws.start, name="feishu-ws", daemon=True
+        )
+        self._thread.start()
+        logger.info("飞书 ws 长连接已启动")
 
     def stop(self):
-        # 骨架：停 ws 长连接。⚠️ 待 spike 校验 lark-oapi ws client 的 close/disconnect API 后填实。
-        ...
+        # lark ws.Client 无公开 stop()；置标志，daemon 线程随进程退出
+        self._stopped = True
+        logger.info("飞书 ws 长连接停止（daemon 线程随进程退出）")
+
+    def _on_lark_event(self, data) -> None:
+        """lark ws 回调线程：解析事件 → 投主 loop 用新 session 调 handle_inbound。"""
+        try:
+            msg = parse_lark_message_event(data)
+            if msg is None:
+                return
+            from src.db.session import get_session_local
+            from src.service.agent.orchestrator import _get_main_loop
+
+            def _on_main():
+                db = get_session_local()()
+                try:
+                    self.handle_inbound(db, msg)
+                except Exception:
+                    logger.error(
+                        "飞书 handle_inbound 失败 event_id=%s",
+                        msg.external_event_id, exc_info=True,
+                    )
+                finally:
+                    db.close()
+
+            _get_main_loop().call_soon_threadsafe(_on_main)
+        except Exception:
+            logger.exception("飞书 _on_lark_event 异常")
