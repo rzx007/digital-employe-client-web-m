@@ -30,7 +30,7 @@ export async function pollQrcodeStatus(
 ): Promise<PollResp> {
   const res = await request<ApiResponse<PollResp>>(
     `/channels/${channel}/qrcode/status`,
-    { params: { token } }
+    { params: { token }, retry: 0 }
   )
   return res.data
 }
