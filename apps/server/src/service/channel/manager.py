@@ -49,7 +49,11 @@ class ChannelManager:
             row = inbox_service.find_pending_by_conversation(db, conversation_id)
             if row is None:
                 return
-            run_id = resolve_latest_run_id_by_conversation(db, row.conversation_id)
+            # 只算这条指令进来之后才开始的 run（排除共享会话里的历史 PlanRun，
+            # 否则纯对话回复会被老 run 误判成编排轮、傻等永不来的 plan_run_settled）。
+            run_id = resolve_latest_run_id_by_conversation(
+                db, row.conversation_id, since=row.created_at
+            )
             if run_id is None:
                 # 纯对话回复：立刻回执。
                 self._report(db, row)

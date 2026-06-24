@@ -147,20 +147,24 @@ def resolve_run_id_for_conversation(
 
 
 def resolve_latest_run_id_by_conversation(
-    db: Session, conversation_id: int
+    db: Session, conversation_id: int, *, since=None
 ) -> int | None:
     """某会话最新一轮 PlanRun.id（按 id 降序取首条）；无 → None。
 
     ChannelManager 只持有 conversation_id（无 plan_id），用此判断「这一轮是否产生了
     编排 run」：None=纯对话回复，非 None=编排轮（需等 plan_run_settled 才回执）。
+
+    ⚠️ ``since``：飞书接盘的是**共享**总管会话，会话里可能残留**历史 PlanRun**（之前几轮
+    编排留下的）。若不过滤，纯对话回复会被历史 run 误判成编排轮、傻等永不再来的
+    plan_run_settled。故传入本次指令的入站时间（inbox 行 created_at），只算
+    ``started_at >= since`` 的 run——即「这条指令进来之后才开始的 run」。
     """
     from src.models.plan_run import PlanRun
 
-    return db.scalar(
-        select(PlanRun.id)
-        .where(PlanRun.conversation_id == conversation_id)
-        .order_by(PlanRun.id.desc())
-    )
+    stmt = select(PlanRun.id).where(PlanRun.conversation_id == conversation_id)
+    if since is not None:
+        stmt = stmt.where(PlanRun.started_at >= since)
+    return db.scalar(stmt.order_by(PlanRun.id.desc()))
 
 
 def cancel_running_executions_for_task(
