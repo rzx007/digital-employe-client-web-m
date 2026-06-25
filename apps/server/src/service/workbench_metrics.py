@@ -10,12 +10,29 @@ Return shapes match the frontend widget contract:
 """
 from __future__ import annotations
 
+import logging
+from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from src.core.cst import cst_now
+from src.models.employee import Employee
+from src.models.orchestration_plan import OrchestrationPlan
+from src.models.task_execution_log import TaskExecutionLog
 from src.service.performance_balance_service import PerformanceBalanceService
 from src.service.task_service import TaskService
+
+logger = logging.getLogger(__name__)
+
+
+def _ws(params: dict[str, Any]) -> int:
+    return int(params.get("workspace_id") or 1)
+
+
+def _day_start(dt: datetime) -> datetime:
+    return dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +103,113 @@ async def _today_tasks(db: Session, params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _task_execution_stats(db: Session, params: dict[str, Any]) -> dict[str, Any]:
+    """KPI widget: 今日任务执行统计 + 成功率(读 task_execution_log，按工作空间)。"""
+    ws = _ws(params)
+    today0 = _day_start(cst_now())
+    rows = db.execute(
+        select(TaskExecutionLog.run_status, func.count())
+        .where(
+            TaskExecutionLog.workspace_id == ws,
+            TaskExecutionLog.started_at >= today0,
+        )
+        .group_by(TaskExecutionLog.run_status)
+    ).all()
+    by = {status: int(n) for status, n in rows}
+    success = by.get("success", 0)
+    failed = by.get("failed", 0)
+    running = by.get("running", 0) + by.get("queued", 0) + by.get("pending", 0)
+    done = success + failed
+    rate = round(success / done * 100) if done else None
+    return {
+        "items": [
+            {"label": "今日成功", "value": success, "deltaDir": "up"},
+            {"label": "失败", "value": failed, "deltaDir": "down" if failed else "flat"},
+            {"label": "进行中", "value": running},
+            {"label": "成功率", "value": rate, "unit": "%"},
+        ]
+    }
+
+
+async def _employee_overview(db: Session, params: dict[str, Any]) -> dict[str, Any]:
+    """KPI widget: 员工概览(在职员工数 + 近7天新增；排除 AI 总管 is_curator)。"""
+    ws = _ws(params)
+    week_ago = cst_now() - timedelta(days=7)
+    headcount = (
+        db.scalar(
+            select(func.count())
+            .select_from(Employee)
+            .where(Employee.workspace_id == ws, Employee.is_curator.is_(False))
+        )
+        or 0
+    )
+    recent = (
+        db.scalar(
+            select(func.count())
+            .select_from(Employee)
+            .where(
+                Employee.workspace_id == ws,
+                Employee.is_curator.is_(False),
+                Employee.created_at >= week_ago,
+            )
+        )
+        or 0
+    )
+    return {
+        "items": [
+            {"label": "在职员工", "value": int(headcount)},
+            {
+                "label": "近7天新增",
+                "value": int(recent),
+                "deltaDir": "up" if recent else "flat",
+            },
+        ]
+    }
+
+
+async def _plan_progress(db: Session, params: dict[str, Any]) -> dict[str, Any]:
+    """KPI widget: 编排计划进度(按状态计数，读 orchestration_plan)。"""
+    ws = _ws(params)
+    rows = db.execute(
+        select(OrchestrationPlan.status, func.count())
+        .where(OrchestrationPlan.workspace_id == ws)
+        .group_by(OrchestrationPlan.status)
+    ).all()
+    by = {status: int(n) for status, n in rows}
+    return {
+        "items": [
+            {"label": "待确认", "value": by.get("pending", 0)},
+            {"label": "进行中", "value": by.get("running", 0)},
+            {"label": "已完成", "value": by.get("completed", 0)},
+            {"label": "已取消", "value": by.get("cancelled", 0)},
+        ]
+    }
+
+
+async def _skill_usage(db: Session, params: dict[str, Any]) -> dict[str, Any]:
+    """KPI widget: 技能使用情况(总数 + 按来源；读本地技能目录)。"""
+    ws = _ws(params)
+    try:
+        from src.service.agent.orchestrator.tools.skills import (
+            format_workspace_skills_list,
+        )
+
+        # db=None 跳过需要 orchestrator runtime 上下文的 assignees 查询,只取来源计数
+        items = format_workspace_skills_list(ws, compact=True, db=None)
+    except Exception:
+        logger.debug("skill_usage 读取技能目录失败", exc_info=True)
+        items = []
+    total = len(items)
+    builtin = sum(1 for it in items if it.get("source") == "builtin")
+    return {
+        "items": [
+            {"label": "技能总数", "value": total},
+            {"label": "内置", "value": builtin},
+            {"label": "工作区", "value": total - builtin},
+        ]
+    }
+
+
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
@@ -94,6 +218,10 @@ _REGISTRY: dict[str, Callable[[Session, dict[str, Any]], Awaitable[dict[str, Any
     "monthly_performance": _monthly_performance,
     "task_calendar": _task_calendar,
     "today_tasks": _today_tasks,
+    "task_execution_stats": _task_execution_stats,
+    "employee_overview": _employee_overview,
+    "plan_progress": _plan_progress,
+    "skill_usage": _skill_usage,
 }
 
 

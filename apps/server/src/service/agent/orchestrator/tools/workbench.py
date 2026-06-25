@@ -48,7 +48,13 @@ def add_workbench_widget(
 
     type 取值: kpi|line|bar|area|pie|table|progress|list|gauge|sparkline|radar|scatter。
     data 与 data_source 至少给一个：data 为内联快照；data_source={"metricId": "...","params":{...}} 绑定实时指标。
-    可用 metricId: monthly_performance, task_calendar, today_tasks。
+    可用 metricId(均按当前工作空间实时取数):
+      monthly_performance(配 kpi)、task_calendar(配 table)、today_tasks(配 list)、
+      task_execution_stats(今日成功/失败/进行中/成功率,配 kpi)、
+      employee_overview(在职员工/近7天新增,配 kpi)、
+      plan_progress(编排计划 待确认/进行中/已完成/已取消,配 kpi)、
+      skill_usage(技能总数/内置/工作区,配 kpi)。
+      绑定示例: data_source={"metricId":"task_execution_stats","refreshSec":30}。
 
     内联 data 必须严格按对应 type 的形状(否则前端渲染为空):
       kpi:      {"items": [{"label": "本月销售", "value": 1234, "unit": "¥",
