@@ -102,3 +102,99 @@ def test_watcher_no_conversation_skips_injection(monkeypatch):
         session_id="s1", conversation_id=None, command="x", poll_interval=0.01
     ))
     assert injected["called"] is False
+
+
+def _patch_inject_wake_deps(monkeypatch, *, target_type):
+    """共享：mock _inject_wake 的真实依赖，隔离「按 target_type 分发」逻辑。
+
+    返回 calls 字典记录两条路径分别被调几次。
+    """
+    from src.service.agent.orchestrator import background_wake as bw
+
+    calls = {"employee": 0, "curator": 0}
+
+    # registry.is_active 恒 False（无进行中 turn，不跳过）。
+    class _Reg:
+        def is_active(self, conv_id):
+            return False
+
+    import src.service.stream_registry as sr
+    monkeypatch.setattr(sr, "registry", _Reg())
+
+    # Conversation 查询：返回带指定 target_type 的伪 conversation。
+    class _Conv:
+        id = 42
+        target_type = target_type
+        target_id = 9
+        workspace_id = 3
+
+    class _Query:
+        def filter(self, *a, **k):
+            return self
+        def first(self):
+            return _Conv()
+
+    class _Db:
+        def query(self, *a, **k):
+            return _Query()
+        def close(self):
+            pass
+
+    import src.db.session as dbs
+    monkeypatch.setattr(dbs, "get_session_local", lambda: (lambda: _Db()))
+
+    # 两条续跑路径各自打点。
+    monkeypatch.setattr(
+        bw, "_inject_wake_employee",
+        lambda **k: calls.__setitem__("employee", calls["employee"] + 1),
+    )
+    monkeypatch.setattr(
+        bw, "_inject_wake_curator",
+        lambda **k: calls.__setitem__("curator", calls["curator"] + 1),
+    )
+    return bw, calls
+
+
+def test_inject_wake_dispatches_employee(monkeypatch):
+    """employee 会话 → 只走员工续跑路径。"""
+    bw, calls = _patch_inject_wake_deps(monkeypatch, target_type="employee")
+    bw._inject_wake(conversation_id=42, message="hi")
+    assert calls == {"employee": 1, "curator": 0}
+
+
+def test_inject_wake_dispatches_curator(monkeypatch):
+    """curator 会话 → 只走总管续跑路径。"""
+    bw, calls = _patch_inject_wake_deps(monkeypatch, target_type="curator")
+    bw._inject_wake(conversation_id=42, message="hi")
+    assert calls == {"employee": 0, "curator": 1}
+
+
+def test_inject_wake_group_does_not_resume(monkeypatch):
+    """group（及其它类型）会话 → 两条路径都不调，直接 return。"""
+    bw, calls = _patch_inject_wake_deps(monkeypatch, target_type="group")
+    bw._inject_wake(conversation_id=42, message="hi")
+    assert calls == {"employee": 0, "curator": 0}
+
+
+def test_inject_wake_active_turn_skips(monkeypatch):
+    """有进行中 turn → 直接跳过，不查 conversation、不续跑。"""
+    from src.service.agent.orchestrator import background_wake as bw
+
+    calls = {"employee": 0, "curator": 0}
+
+    class _Reg:
+        def is_active(self, conv_id):
+            return True
+
+    import src.service.stream_registry as sr
+    monkeypatch.setattr(sr, "registry", _Reg())
+    monkeypatch.setattr(
+        bw, "_inject_wake_employee",
+        lambda **k: calls.__setitem__("employee", calls["employee"] + 1),
+    )
+    monkeypatch.setattr(
+        bw, "_inject_wake_curator",
+        lambda **k: calls.__setitem__("curator", calls["curator"] + 1),
+    )
+    bw._inject_wake(conversation_id=42, message="hi")
+    assert calls == {"employee": 0, "curator": 0}
