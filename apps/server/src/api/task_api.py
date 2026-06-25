@@ -284,6 +284,23 @@ def get_shell_execution_output(
 
 
 @router.delete(
+    "/workspaces/{workspace_id}/tasks/shell-executions/{session_id}",
+    response_model=ResponseBase[dict],
+    summary="终止后台 shell 命令（面板「终止」按钮）",
+)
+def kill_shell_execution(
+    workspace_id: int,
+    session_id: str,
+) -> ResponseBase[dict]:
+    """手动终止某后台命令：调注册表 kill（整树杀），状态转 killed，
+    日志保留在窗口期供面板查看。"""
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    r = get_background_shell_registry().kill(session_id)
+    return ResponseBase(data=r)
+
+
+@router.delete(
     "/workspaces/{workspace_id}/tasks/executions",
     response_model=ResponseBase[dict],
     summary="清空任务执行日志",

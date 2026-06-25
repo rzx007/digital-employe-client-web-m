@@ -275,3 +275,26 @@ def test_shell_tools_smoke():
     assert "未找到" in poll.invoke({"session_id": "nope"})
     assert "未找到" in wait.invoke({"session_id": "nope", "max_seconds": 1})
     assert "未找到" in kill.invoke({"session_id": "nope"})
+
+
+def test_kill_endpoint_calls_registry_kill(monkeypatch):
+    """DELETE shell-executions/{sid} 调 registry.kill 并返回 killed。"""
+    from fastapi.testclient import TestClient
+    from src.server import app
+    from src.service import shell_background_registry as reg_mod
+
+    called = {}
+
+    class _FakeReg:
+        def kill(self, sid):
+            called["sid"] = sid
+            return {"found": True, "killed": True}
+
+    monkeypatch.setattr(
+        reg_mod, "get_background_shell_registry", lambda: _FakeReg()
+    )
+    client = TestClient(app)
+    resp = client.delete("/workspaces/1/tasks/shell-executions/abc123")
+    assert resp.status_code == 200
+    assert resp.json()["data"]["killed"] is True
+    assert called["sid"] == "abc123"
