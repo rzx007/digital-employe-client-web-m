@@ -119,16 +119,6 @@ export const settingsIpcContribution: IpcContribution = {
         },
       },
       {
-        channel: IpcChannels.getOnboardingCompleted,
-        handler: () => getSetting("onboardingCompleted") ?? false,
-      },
-      {
-        channel: IpcChannels.setOnboardingCompleted,
-        handler: (_event, value: unknown) => {
-          setSetting("onboardingCompleted", Boolean(value))
-        },
-      },
-      {
         channel: IpcChannels.getModelSettings,
         handler: () => getModelSettings(),
       },

@@ -30,8 +30,6 @@ import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
 import { SubtaskPanel } from "../panel/subtask-panel"
 import { EmployeeTasksPanel } from "../panel/employee-tasks-panel"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
-import { useOnboardingStore } from "@/stores/onboarding-store"
-import { WelcomeDialog, UserTour } from "@/components/onboarding"
 import { AppToolbar } from "./app-toolbar"
 import { SkillsPage } from "@/components/skills"
 import { ChatView } from "../views/chat-view"
@@ -62,10 +60,6 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const activeTab = useChatStore((s) => s.activeTab)
   const setActiveTab = useChatStore((s) => s.setActiveTab)
   const setContacts = useChatStore((s) => s.setContacts)
-  const showWelcome = useOnboardingStore((s) => s.showWelcome)
-  const onboardingCompleted = useOnboardingStore((s) => s.onboardingCompleted)
-  const initialized = useOnboardingStore((s) => s.initialized)
-  const initOnboarding = useOnboardingStore((s) => s.initOnboarding)
 
   const { data: apiContacts } = useContactsQuery()
 
@@ -144,21 +138,10 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   useScheduledRunNotifications()
 
   useEffect(() => {
-    initOnboarding()
-  }, [initOnboarding])
-
-  useEffect(() => {
     if (activeTab === "calendar") {
       setActiveTab("workbench")
     }
   }, [activeTab, setActiveTab])
-
-  useEffect(() => {
-    if (initialized && !onboardingCompleted) {
-      const timer = setTimeout(() => showWelcome(), 1500)
-      return () => clearTimeout(timer)
-    }
-  }, [initialized, onboardingCompleted, showWelcome])
 
   useEffect(() => {
     if (apiContacts) {
@@ -342,8 +325,6 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
       )}
       {...props}
     >
-      <WelcomeDialog />
-      <UserTour />
       <BrowserConfirmationHost />
       <div className="chat-layout-root flex min-h-0 min-w-0 flex-1">
         {!isMobile && !isBrowserFullscreen && <AppToolbar />}

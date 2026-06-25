@@ -14,7 +14,6 @@ interface SettingsData {
   model: string
   apiKey: string
   apiUrl: string
-  onboardingCompleted: boolean
   endpoint: string
   petEnabled: boolean
   petVisibilityMode: PetVisibilityMode
@@ -35,7 +34,6 @@ export function initSettingsStore(): void {
       model: "",
       apiKey: "",
       apiUrl: "",
-      onboardingCompleted: false,
       endpoint: "",
       petEnabled: false,
       petVisibilityMode: "when_main_hidden",
@@ -56,7 +54,6 @@ export function getSetting<K extends keyof SettingsData>(
       model: "",
       apiKey: "",
       apiUrl: "",
-      onboardingCompleted: false,
       endpoint: "",
       petEnabled: false,
       petVisibilityMode: "when_main_hidden",

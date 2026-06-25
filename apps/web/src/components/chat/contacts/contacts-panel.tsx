@@ -179,7 +179,7 @@ export function ContactsPanel({
             </div>
 
             {filteredEmployeeContacts.length > 0 && (
-              <div className="space-y-0.5" data-tour-id="contact-employee">
+              <div className="space-y-0.5">
                 <EmployeeContactsSectionHeader
                   total={filteredEmployeeContacts.length}
                   online={employeeStatusCounts.online}

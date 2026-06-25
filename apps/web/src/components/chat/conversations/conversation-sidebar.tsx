@@ -103,7 +103,6 @@ export function ConversationSidebar({
           onClick={handleNew}
           disabled={isPending || !curator}
           title="新增对话"
-          data-tour-id="add-button"
         >
           <IconCirclePlus className="size-5" />
         </Button>

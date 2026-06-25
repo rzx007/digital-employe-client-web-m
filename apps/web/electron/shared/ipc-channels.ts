@@ -46,8 +46,6 @@ export const IpcChannels = {
   petHide: "pet:hide",
   petSetPosition: "pet:set-position",
   petGetPosition: "pet:get-position",
-  getOnboardingCompleted: "get-onboarding-completed",
-  setOnboardingCompleted: "set-onboarding-completed",
   getModelSettings: "get-model-settings",
   setModelSettings: "set-model-settings",
   getEndpoint: "get-endpoint",
@@ -233,11 +231,6 @@ export interface IpcInvokeMap {
     result: { slug: string; displayName: string } | null
   }
   [IpcChannels.petUninstall]: { args: [slug: string]; result: void }
-  [IpcChannels.getOnboardingCompleted]: { args: []; result: boolean }
-  [IpcChannels.setOnboardingCompleted]: {
-    args: [value: boolean]
-    result: void
-  }
   [IpcChannels.getModelSettings]: { args: []; result: ModelSettings }
   [IpcChannels.setModelSettings]: {
     args: [data: { model: string; apiKey: string; apiUrl: string }]

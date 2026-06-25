@@ -24,9 +24,6 @@ export const settingsBridge = {
     petVisibilityMode?: "always" | "when_main_hidden"
     petAlwaysOnTop?: boolean
   }) => invoke(IpcChannels.setPetSettings, partial),
-  getOnboardingCompleted: () => invoke(IpcChannels.getOnboardingCompleted),
-  setOnboardingCompleted: (value: boolean) =>
-    invoke(IpcChannels.setOnboardingCompleted, value),
   getEndpoint: () => invoke(IpcChannels.getEndpoint),
   setEndpoint: (endpoint: string) => invoke(IpcChannels.setEndpoint, endpoint),
   getModelSettings: () => invoke(IpcChannels.getModelSettings),

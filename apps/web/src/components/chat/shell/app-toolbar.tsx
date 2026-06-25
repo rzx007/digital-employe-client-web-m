@@ -138,9 +138,6 @@ export function AppToolbar({
                     "relative size-10 rounded-lg",
                     activeTab === tab.id && "bg-accent text-accent-foreground"
                   )}
-                  data-tour-id={
-                    tab.id === "contacts" ? "contacts-tab" : undefined
-                  }
                   onClick={() => setActiveTab(tab.id)}
                 >
                   {activeTab === tab.id ? (
@@ -163,9 +160,7 @@ export function AppToolbar({
         </nav>
 
         <div className="mt-auto flex flex-col gap-2">
-          <div data-tour-id="notification-bell">
-            <NotificationBell />
-          </div>
+          <NotificationBell />
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -173,7 +168,6 @@ export function AppToolbar({
                 variant="ghost"
                 size="icon"
                 className="size-10 rounded-lg text-muted-foreground hover:text-foreground"
-                data-tour-id="settings-btn"
                 onClick={() =>
                   void withElectronApi((api) => api.openSettings())
                 }
