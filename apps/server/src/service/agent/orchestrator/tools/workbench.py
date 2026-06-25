@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from langchain_core.tools import tool
@@ -9,7 +10,9 @@ from sqlalchemy.orm import Session
 
 from src.db.session import get_session_local
 from src.service import workbench_service as ws
-from src.service.agent.orchestrator.runtime import get_user_id
+from src.service.agent.orchestrator.runtime import get_user_id, get_workspace_id
+
+logger = logging.getLogger(__name__)
 
 
 def _add_widget_impl(db: Session, user_id: str, spec: dict[str, Any]) -> str:
@@ -19,6 +22,17 @@ def _add_widget_impl(db: Session, user_id: str, spec: dict[str, Any]) -> str:
     except Exception as e:
         return f"错误：{e}"
     return f"已添加 widget「{widget.title}」(id={widget.id}) 到工作台。"
+
+
+def _notify_workbench_changed() -> None:
+    """推 workbench_changed 事件,让前端工作台即时 invalidate 重新拉配置。
+    后端工具写库后前端无从感知,不推事件则新 widget 要刷新页面才出现。"""
+    try:
+        from src.service.workspace_events import WorkspaceEventBus
+
+        WorkspaceEventBus.push(get_workspace_id(), {"type": "workbench_changed"})
+    except Exception:
+        logger.debug("workbench_changed 事件推送失败", exc_info=True)
 
 
 @tool
@@ -65,6 +79,9 @@ def add_workbench_widget(
 
     db = get_session_local()()
     try:
-        return _add_widget_impl(db, user_id, spec)
+        msg = _add_widget_impl(db, user_id, spec)
     finally:
         db.close()
+    if msg.startswith("已添加"):
+        _notify_workbench_changed()
+    return msg

@@ -96,6 +96,10 @@ export type WorkspaceEvent =
       conversation_id: number
       title: string
     }
+  | {
+      // 总管经 add_workbench_widget 改了工作台配置 → 前端 invalidate 重新拉,新 widget 即时出现
+      type: "workbench_changed"
+    }
 
 type EventHandler = (event: WorkspaceEvent) => void
 
