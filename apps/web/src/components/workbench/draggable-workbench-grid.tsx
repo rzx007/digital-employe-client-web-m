@@ -47,6 +47,7 @@ const DEFAULT_SIZE: Record<WidgetType, { w: number; h: number }> = {
   line: { w: 560, h: 260 },
   bar: { w: 560, h: 260 },
   area: { w: 560, h: 260 },
+  pie: { w: 360, h: 280 },
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))

@@ -27,4 +27,4 @@ def test_append_widget_validates_and_persists(db_session):
 def test_append_widget_rejects_bad_type(db_session):
     import pytest
     with pytest.raises(ValueError):
-        ws.append_widget(db_session, "u1", {"type": "pie", "title": "x", "data": {"a": 1}})
+        ws.append_widget(db_session, "u1", {"type": "scatter", "title": "x", "data": {"a": 1}})

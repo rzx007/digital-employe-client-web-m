@@ -2,6 +2,7 @@ import type { WorkbenchWidget } from "@/types/workbench"
 import { useMetricData } from "@/hooks/use-metric-data"
 import { KpiWidget } from "./kpi-widget"
 import { ChartWidget } from "./chart-widget"
+import { PieWidget } from "./pie-widget"
 import { TableWidget } from "./table-widget"
 import { ProgressWidget } from "./progress-widget"
 import { ListWidget } from "./list-widget"
@@ -15,6 +16,7 @@ const REGISTRY: Record<
   line: ChartWidget,
   bar: ChartWidget,
   area: ChartWidget,
+  pie: PieWidget,
   table: TableWidget,
   progress: ProgressWidget,
   list: ListWidget,

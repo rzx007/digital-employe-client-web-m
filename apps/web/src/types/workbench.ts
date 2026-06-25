@@ -1,4 +1,12 @@
-export type WidgetType = "kpi" | "line" | "bar" | "area" | "table" | "progress" | "list"
+export type WidgetType =
+  | "kpi"
+  | "line"
+  | "bar"
+  | "area"
+  | "pie"
+  | "table"
+  | "progress"
+  | "list"
 
 export interface WidgetDataSource {
   metricId: string

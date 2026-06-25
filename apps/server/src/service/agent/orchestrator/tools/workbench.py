@@ -46,7 +46,7 @@ def add_workbench_widget(
 ) -> str:
     """向当前用户的工作台看板添加一个统计块(widget)。
 
-    type 取值: kpi|line|bar|area|table|progress|list。
+    type 取值: kpi|line|bar|area|pie|table|progress|list。
     data 与 data_source 至少给一个：data 为内联快照；data_source={"metricId": "...","params":{...}} 绑定实时指标。
     可用 metricId: monthly_performance, task_calendar, today_tasks。
 
@@ -57,6 +57,8 @@ def add_workbench_widget(
                       "series": [{"key": "sales", "label": "销售额"}],
                       "rows": [{"date": "周一", "sales": 120}, {"date": "周二", "sales": 90}]}
                      (rows 是对象数组,每行含 xKey 和各 series.key 字段)
+      pie:      {"items": [{"name": "直接访问", "value": 38},
+                           {"name": "搜索引擎", "value": 27}]}  —— options:{"donut":true} 可切环形
       table:    {"columns": [{"key": "name", "label": "姓名"}],
                  "rows": [{"name": "张三"}]}  —— 推荐对象列+对象行;
                 也接受简易式 {"columns": ["姓名","分数"], "rows": [["张三", 95]]}(字符串列+数组行)
