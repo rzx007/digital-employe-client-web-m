@@ -824,12 +824,23 @@ class EmployeeService:
         for name, skill in desired.items():
             if name in current_assigned:
                 continue
+            # 不用库版本覆盖同名的 grown 技能（采纳/自改进的成果优先）
+            existing_dir = employee_root / name
+            if existing_dir.is_dir():
+                existing_origin = skill_provenance.read_origin(existing_dir).origin or ""
+                if existing_origin.startswith("grown"):
+                    continue
+            # assigned 技能必须带真实 id；缺 id 跳过（不写 skill_id=0）
+            sid = skill.get("id")
+            if not sid:
+                logger.warning("assign: 技能 %r 缺 id，跳过落盘", name)
+                continue
             target = EmployeeService._materialize_one_skill(employee_root, skill)
             if target is not None:
                 skill_provenance.write_origin(
                     target,
                     origin="assigned",
-                    skill_id=int(skill.get("id") or 0),
+                    skill_id=int(sid),
                     prompt=EmployeeService._skill_detail_prompt_to_text(skill.get("prompt")),
                     display_name_zh=str(skill.get("displayNameZh") or "") or None,
                     description=skill.get("description"),
@@ -843,28 +854,6 @@ class EmployeeService:
         prompt_str = prompt if isinstance(prompt, str) else str(prompt)
         prompt_str = prompt_str.strip()
         return prompt_str or None
-
-    @staticmethod
-    def _replace_employee_skills(db: Session, employee: Employee, skills: list[dict]) -> None:
-        db.execute(delete(EmployeeSkill).where(
-            EmployeeSkill.employee_id == employee.id))
-        for item in skills:
-            db.add(
-                EmployeeSkill(
-                    workspace_id=employee.workspace_id,
-                    user_id=employee.user_id,
-                    employee_id=employee.id,
-                    skill_id=int(item.get("id")),
-                    skill_name=str(item.get("skillName") or ""),
-                    skill_name_zh=str(item.get("displayNameZh") or ""),
-                    skill_description=item.get("description"),
-                    prompt=EmployeeService._skill_detail_prompt_to_text(
-                        item.get("prompt")),
-                    skill_content=EmployeeService._skill_detail_skill_content_to_text(
-                        item.get("skillContent")),
-                )
-            )
-        employee.skills_json = json.dumps(skills, ensure_ascii=False)
 
     @staticmethod
     def _replace_shift_schedule(
