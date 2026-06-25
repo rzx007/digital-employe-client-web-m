@@ -302,25 +302,21 @@ def test_kill_endpoint_calls_registry_kill(monkeypatch):
 
 def test_consumed_by_agent_flag():
     """agent 主动 poll(agent_initiated=True) 后 is_consumed_by_agent 为真，用于续跑去重。"""
-    import os
-    import tempfile
-
     reg = BackgroundShellRegistry()
-    tf = tempfile.NamedTemporaryFile(delete=False, suffix=".log")
-    tf.close()
-    with open(tf.name, "w") as fh:
-        p = subprocess.Popen([sys.executable, "-c", "print('hi')"], stdout=fh)  # noqa: S603
-    p.wait()
-    sid = reg.register(
-        popen=p, tmp_path=tf.name, read_offset=0, command="x", conversation_id=7
-    )
+
+    # 第一个会话：独立进程/文件
+    tmp1 = _new_tmp()
+    p1 = _spawn("print('hi')", tmp1)
+    p1.wait(timeout=10)
+    sid = _register(reg, p1, tmp1, conversation_id=7)
     assert reg.is_consumed_by_agent(sid) is False
     reg.poll(sid, agent_initiated=True)
     assert reg.is_consumed_by_agent(sid) is True
-    # watcher 调 poll（默认 agent_initiated=False）不应置位
-    sid2 = reg.register(
-        popen=p, tmp_path=tf.name, read_offset=0, command="y", conversation_id=7
-    )
+
+    # 第二个会话：独立进程/文件。watcher 调 poll（默认 agent_initiated=False）不应置位
+    tmp2 = _new_tmp()
+    p2 = _spawn("print('hi')", tmp2)
+    p2.wait(timeout=10)
+    sid2 = _register(reg, p2, tmp2, conversation_id=7)
     reg.poll(sid2)  # 默认 False
     assert reg.is_consumed_by_agent(sid2) is False
-    os.unlink(tf.name)
