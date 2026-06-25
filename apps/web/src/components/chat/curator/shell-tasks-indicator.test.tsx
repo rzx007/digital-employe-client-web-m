@@ -59,6 +59,20 @@ describe("ShellTasksIndicator", () => {
     expect(screen.getByText(/2 个后台命令/)).toBeTruthy()
   })
 
+  it("count>0 渲染 inline 超链接文案（非居中 pill）", () => {
+    useShellExecutions.mockReturnValue({
+      data: [
+        makeExecution({ session_id: "a", running: true, status: "running" }),
+        makeExecution({ session_id: "b", running: true, status: "running" }),
+      ],
+    })
+
+    render(<ShellTasksIndicator conversationId="1" />)
+    const link = screen.getByRole("button")
+    expect(link.textContent).toContain("2 个后台命令")
+    expect(link.className).not.toContain("rounded-full")
+  })
+
   it("只计 running（finished/killed 不计入）", () => {
     useShellExecutions.mockReturnValue({
       data: [
