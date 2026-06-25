@@ -23,71 +23,78 @@ export interface AxNode {
 
 const MASKED_ROLES = new Set(["password"])
 
-export function buildRefs(nodes: unknown[], maxNodes: number): RefNode[] {
+export function buildRefs(framesNodes: unknown[][], maxNodes: number): RefNode[] {
   const refs: RefNode[] = []
   let counter = 0
 
-  const nodeMap = new Map<string, AxNode>()
-  for (const n of nodes) {
-    const node = n as AxNode
-    if (node.nodeId != null) nodeMap.set(String(node.nodeId), node)
-  }
-
-  const walk = (node: AxNode, depth: number) => {
-    if (refs.length >= maxNodes) return
-    const role = node.role?.value ?? "generic"
-    // ignored 节点（wrapper / 布局容器）自身不暴露，但子节点可能是真正的可交互控件——
-    // 必须透明穿透继续遍历，否则整棵子树被剪。
-    if (node.ignored) {
-      if (node.childIds) {
-        for (const childId of node.childIds) {
-          const child = nodeMap.get(String(childId))
-          if (child) walk(child, depth)
-        }
-      }
-      return
+  const walkFrame = (nodes: unknown[]) => {
+    const nodeMap = new Map<string, AxNode>()
+    for (const n of nodes) {
+      const node = n as AxNode
+      if (node.nodeId != null) nodeMap.set(String(node.nodeId), node)
     }
-    if (MASKED_ROLES.has(role)) {
+
+    const walk = (node: AxNode, depth: number) => {
+      if (refs.length >= maxNodes) return
+      const role = node.role?.value ?? "generic"
+      // ignored 节点（wrapper / 布局容器）自身不暴露，但子节点可能是真正的可交互控件——
+      // 必须透明穿透继续遍历，否则整棵子树被剪。
+      if (node.ignored) {
+        if (node.childIds) {
+          for (const childId of node.childIds) {
+            const child = nodeMap.get(String(childId))
+            if (child) walk(child, depth)
+          }
+        }
+        return
+      }
+      if (MASKED_ROLES.has(role)) {
+        refs.push({
+          ref: `@e${counter++}`,
+          role,
+          name: "[masked]",
+          value: null,
+          backendNodeId: node.backendDOMNodeId ?? 0,
+          depth,
+        })
+        return
+      }
+      if (
+        ["presentation", "none"].includes(role) &&
+        !node.name?.value &&
+        depth > 2
+      ) {
+        return
+      }
+
       refs.push({
         ref: `@e${counter++}`,
         role,
-        name: "[masked]",
-        value: null,
+        name: node.name?.value ?? null,
+        value: node.value?.value ?? null,
         backendNodeId: node.backendDOMNodeId ?? 0,
         depth,
       })
-      return
-    }
-    if (
-      ["presentation", "none"].includes(role) &&
-      !node.name?.value &&
-      depth > 2
-    ) {
-      return
-    }
 
-    refs.push({
-      ref: `@e${counter++}`,
-      role,
-      name: node.name?.value ?? null,
-      value: node.value?.value ?? null,
-      backendNodeId: node.backendDOMNodeId ?? 0,
-      depth,
-    })
-
-    if (node.childIds) {
-      for (const childId of node.childIds) {
-        const child = nodeMap.get(String(childId))
-        if (child) walk(child, depth + 1)
+      if (node.childIds) {
+        for (const childId of node.childIds) {
+          const child = nodeMap.get(String(childId))
+          if (child) walk(child, depth + 1)
+        }
       }
     }
+
+    const root = nodes.find(
+      (n) => (n as AxNode).role?.value === "RootWebArea"
+    ) as AxNode | undefined
+    if (root) walk(root, 0)
+    else for (const n of nodes) walk(n as AxNode, 0)
   }
 
-  const root = nodes.find(
-    (n) => (n as AxNode).role?.value === "RootWebArea"
-  ) as AxNode | undefined
-  if (root) walk(root, 0)
-  else for (const n of nodes) walk(n as AxNode, 0)
+  for (const nodes of framesNodes) {
+    if (refs.length >= maxNodes) break
+    walkFrame(nodes)
+  }
 
   return refs
 }

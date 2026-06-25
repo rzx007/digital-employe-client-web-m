@@ -135,7 +135,7 @@ export class BrowserDebuggerController {
         if (rootChildCount > 0 || Date.now() >= deadline) break
         await new Promise((r) => setTimeout(r, 150))
       }
-      const refs = buildRefs(nodes, maxNodes)
+      const refs = buildRefs([nodes], maxNodes)
       this.refCache = refs
       // 诊断：若 rawNodes<=1/rootChildCount=0 仍空，则非时序问题（iframe/无语义/canvas）
       logger.info("[browser-debugger] snapshot", {
