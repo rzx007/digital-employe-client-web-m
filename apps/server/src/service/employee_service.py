@@ -1090,12 +1090,15 @@ class EmployeeService:
                         EmployeeSkill.skill_name == info.name,
                     )
                 ).first()
-                if row is not None and row.skill_id > 0:
-                    skill_provenance.write_origin(d, origin="assigned", skill_id=row.skill_id)
-                else:
-                    skill_provenance.write_origin(
-                        d, origin="grown:adopted",
-                        skill_id=skill_provenance.next_grown_skill_id(skills_root))
+                try:
+                    if row is not None and row.skill_id > 0:
+                        skill_provenance.write_origin(d, origin="assigned", skill_id=row.skill_id)
+                    else:
+                        skill_provenance.write_origin(
+                            d, origin="grown:adopted",
+                            skill_id=skill_provenance.next_grown_skill_id(skills_root))
+                except OSError:
+                    logger.warning("reconcile: backfill write_origin failed: %s", d, exc_info=True)
         disk = skill_provenance.scan_employee_skills(skills_root)
 
         disk_by_name = {info.name: info for info in disk}
@@ -1112,18 +1115,30 @@ class EmployeeService:
 
         for name, info in disk_by_name.items():
             skill_md = skills_root / name / skill_provenance.SKILL_MD
-            content = (
-                read_text_with_encoding_fallback(skill_md)
-                if skill_md.is_file() else None
-            )
+            try:
+                content = (
+                    read_text_with_encoding_fallback(skill_md)
+                    if skill_md.is_file() else None
+                )
+            except OSError:
+                logger.warning("reconcile: read SKILL.md failed: %s", skill_md, exc_info=True)
+                content = None
             row = existing.get(name)
             if row is None:
+                skill_id = info.skill_id
+                if skill_id is None:
+                    # 兜底（标记损坏极少触发）：生成并立即落盘，保证下次 reconcile 复用同一 id
+                    skill_id = skill_provenance.next_grown_skill_id(skills_root)
+                    skill_provenance.write_origin(
+                        skills_root / name,
+                        origin=(info.origin or "grown:adopted"),
+                        skill_id=skill_id,
+                    )
                 row = EmployeeSkill(
                     workspace_id=employee.workspace_id,
                     user_id=employee.user_id,
                     employee_id=employee.id,
-                    skill_id=info.skill_id if info.skill_id is not None else
-                        skill_provenance.next_grown_skill_id(skills_root),
+                    skill_id=skill_id,
                     skill_name=name,
                 )
                 db.add(row)

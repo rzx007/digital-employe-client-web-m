@@ -33,6 +33,9 @@ def test_reconcile_inserts_rows_from_disk(db_session, tmp_path, monkeypatch):
     db_session.commit()
     rows = db_session.scalars(select(EmployeeSkill).where(EmployeeSkill.employee_id == emp.id)).all()
     assert {r.skill_name for r in rows} == {"alpha", "beta"}
+    by_name = {r.skill_name: r for r in rows}
+    assert by_name["alpha"].skill_id == 10
+    assert by_name["alpha"].skill_content == "# c"
 
 
 def test_reconcile_deletes_rows_without_disk(db_session, tmp_path, monkeypatch):
@@ -55,3 +58,28 @@ def test_reconcile_backfills_unmarked_dir(db_session, tmp_path, monkeypatch):
     db_session.commit()
     info = skill_provenance.read_origin(d)
     assert info.origin is not None
+
+
+def test_reconcile_is_idempotent(db_session, tmp_path, monkeypatch):
+    emp = _seed_employee(db_session, tmp_path, monkeypatch)
+    _disk_skill(tmp_path, emp.id, "alpha", origin="assigned", skill_id=10)
+    _disk_skill(tmp_path, emp.id, "beta", origin="grown:adopted", skill_id=-1)
+    EmployeeService.reconcile_employee_skills(db_session, emp)
+    db_session.commit()
+    EmployeeService.reconcile_employee_skills(db_session, emp)  # second call
+    db_session.commit()
+    rows = db_session.scalars(select(EmployeeSkill).where(EmployeeSkill.employee_id == emp.id)).all()
+    assert sorted(r.skill_name for r in rows) == ["alpha", "beta"]  # no duplicates
+
+
+def test_reconcile_backfills_multiple_unmarked_dirs_with_distinct_ids(db_session, tmp_path, monkeypatch):
+    emp = _seed_employee(db_session, tmp_path, monkeypatch)
+    for n in ("u1", "u2"):
+        d = tmp_path / str(emp.id) / "skills" / n
+        d.mkdir(parents=True)
+        (d / "SKILL.md").write_text("# c", encoding="utf-8")
+    EmployeeService.reconcile_employee_skills(db_session, emp)
+    db_session.commit()
+    ids = [skill_provenance.read_origin(tmp_path / str(emp.id) / "skills" / n).skill_id for n in ("u1", "u2")]
+    assert ids[0] != ids[1]  # distinct negative ids
+    assert all(i is not None and i < 0 for i in ids)
