@@ -12,6 +12,36 @@ export interface CdpResult<T = unknown> {
   error?: string
 }
 
+const KEY_MAP: Record<string, { key: string; code: string; keyCode: number }> = {
+  Enter: { key: "Enter", code: "Enter", keyCode: 13 },
+  Tab: { key: "Tab", code: "Tab", keyCode: 9 },
+  Escape: { key: "Escape", code: "Escape", keyCode: 27 },
+  Backspace: { key: "Backspace", code: "Backspace", keyCode: 8 },
+  Delete: { key: "Delete", code: "Delete", keyCode: 46 },
+  ArrowUp: { key: "ArrowUp", code: "ArrowUp", keyCode: 38 },
+  ArrowDown: { key: "ArrowDown", code: "ArrowDown", keyCode: 40 },
+  ArrowLeft: { key: "ArrowLeft", code: "ArrowLeft", keyCode: 37 },
+  ArrowRight: { key: "ArrowRight", code: "ArrowRight", keyCode: 39 },
+}
+
+function resolveKey(key: string): { key: string; code: string; keyCode: number } {
+  if (KEY_MAP[key]) return KEY_MAP[key]
+  if (key.length === 1) {
+    const code = /[a-z]/i.test(key)
+      ? `Key${key.toUpperCase()}`
+      : /[0-9]/.test(key)
+        ? `Digit${key}`
+        : ""
+    return { key, code, keyCode: key.toUpperCase().charCodeAt(0) }
+  }
+  return { key, code: "", keyCode: 0 }
+}
+
+// CDP Input.dispatchKeyEvent modifiers 位掩码：Alt=1, Ctrl=2, Meta=4, Shift=8
+function modBits(m: Record<string, boolean>): number {
+  return (m.alt ? 1 : 0) | (m.ctrl ? 2 : 0) | (m.meta ? 4 : 0) | (m.shift ? 8 : 0)
+}
+
 export class BrowserDebuggerController {
   private wc: WebContents | null = null
   private attached = false
@@ -175,6 +205,67 @@ export class BrowserDebuggerController {
           text: char,
         })
       }
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  }
+
+  // 按键派发：可选先点中目标元素聚焦，再发 keyDown/(char)/keyUp。
+  // 单字符且无 ctrl/alt/meta 时补一个 char 事件，让可输入元素真正收到字符。
+  async press(
+    key: string,
+    modifiers: Record<string, boolean>,
+    refOrSelector?: string
+  ): Promise<CdpResult> {
+    try {
+      if (refOrSelector) {
+        const node = await this.resolveNode(refOrSelector)
+        if (node) {
+          const { x, y } = node.center
+          await this.sendCommand("Input.dispatchMouseEvent", {
+            type: "mousePressed",
+            x,
+            y,
+            button: "left",
+            clickCount: 1,
+          })
+          await this.sendCommand("Input.dispatchMouseEvent", {
+            type: "mouseReleased",
+            x,
+            y,
+            button: "left",
+            clickCount: 1,
+          })
+        }
+      }
+      const k = resolveKey(key)
+      const mods = modBits(modifiers)
+      await this.sendCommand("Input.dispatchKeyEvent", {
+        type: "keyDown",
+        key: k.key,
+        code: k.code,
+        windowsVirtualKeyCode: k.keyCode,
+        modifiers: mods,
+      })
+      if (
+        key.length === 1 &&
+        !modifiers.ctrl &&
+        !modifiers.alt &&
+        !modifiers.meta
+      ) {
+        await this.sendCommand("Input.dispatchKeyEvent", {
+          type: "char",
+          text: key,
+        })
+      }
+      await this.sendCommand("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key: k.key,
+        code: k.code,
+        windowsVirtualKeyCode: k.keyCode,
+        modifiers: mods,
+      })
       return { ok: true }
     } catch (e) {
       return { ok: false, error: (e as Error).message }

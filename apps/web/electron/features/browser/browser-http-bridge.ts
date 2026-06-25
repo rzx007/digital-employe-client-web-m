@@ -421,6 +421,21 @@ async function handleBrowserRequest(
         reply(res, result.ok ? 200 : 502, result)
         return
       }
+      case "press": {
+        if (!attachDebugger()) {
+          reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE" })
+          return
+        }
+        const key = String(body.key ?? "")
+        const refOrSelector =
+          typeof body.ref_or_selector === "string"
+            ? body.ref_or_selector
+            : undefined
+        const m = (body.modifiers ?? {}) as Record<string, boolean>
+        const result = await dbg.press(key, m, refOrSelector)
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
       case "wait": {
         if (!attachDebugger()) {
           reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE" })

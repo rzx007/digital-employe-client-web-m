@@ -443,6 +443,45 @@ test("open-artifact 纯文件名用 ARTIFACTS_DIR 拼真实路径", async () => 
   }
 })
 
+test("press Enter 命中 /press，key=Enter 且 modifiers 为空对象", async () => {
+  let reqUrl
+  let received
+  const srv = await startServer(async (req, res) => {
+    reqUrl = req.url
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["press", "Enter"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.ok(reqUrl.endsWith("/press"), `expected /press, got ${reqUrl}`)
+    assert.equal(received.key, "Enter")
+    assert.deepEqual(received.modifiers, {})
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("press a @e4 --ctrl --shift 携带 ref 与修饰键", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["press", "a", "@e4", "--ctrl", "--shift"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(received.key, "a")
+    assert.equal(received.ref_or_selector, "@e4")
+    assert.equal(received.modifiers.ctrl, true)
+    assert.equal(received.modifiers.shift, true)
+  } finally {
+    await closeServer(srv)
+  }
+})
+
 test("open-artifact 缺少 CONVERSATION_ID 时报错且不访问 bridge", async () => {
   let hit = false
   const srv = await startServer((req, res) => {

@@ -32,6 +32,7 @@ Usage:
   browserctl open-artifact <virtual-path>   # 打开会话产物目录里的 HTML 到内嵌浏览器
   browserctl snapshot [--max-nodes 200] [--tree | --interactive] [--pretty]
   browserctl click <@eN|selector> [--confirm "message"] [--pretty]
+  browserctl press <key> [@eN|selector] [--ctrl|--shift|--alt|--meta] [--pretty]
   browserctl wait (--selector <css> | --text <text> | --ms <n>) [--timeout 10000] [--pretty]
   browserctl fill <@eN|selector> (<text> | --text-file <path> | --text-stdin) [--pretty]
   browserctl get url|title [--pretty]
@@ -75,6 +76,14 @@ export function parseFlags(argv) {
       flags.out = argv[++i] || ""
     } else if (value === "--tree") {
       flags.tree = true
+    } else if (value === "--ctrl") {
+      flags.ctrl = true
+    } else if (value === "--shift") {
+      flags.shift = true
+    } else if (value === "--alt") {
+      flags.alt = true
+    } else if (value === "--meta") {
+      flags.meta = true
     } else if (value === "--interactive" || value === "-i") {
       flags.interactive = true
     } else if (value === "--help" || value === "-h") {
@@ -375,6 +384,22 @@ async function run(argv) {
         ref_or_selector: refOrSelector,
         text,
       }),
+      flags.pretty
+    )
+    return
+  }
+
+  if (command === "press") {
+    const key = rest[0]
+    if (!key) throw new Error("key required")
+    const refOrSelector = rest[1]
+    const modifiers = {}
+    if (flags.ctrl) modifiers.ctrl = true
+    if (flags.shift) modifiers.shift = true
+    if (flags.alt) modifiers.alt = true
+    if (flags.meta) modifiers.meta = true
+    print(
+      await postAction("press", { key, ref_or_selector: refOrSelector, modifiers }),
       flags.pretty
     )
     return
