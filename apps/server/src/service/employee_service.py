@@ -1227,6 +1227,7 @@ class EmployeeService:
             if skill_md_content is not None:
                 row.skill_content = skill_md_content
 
+        from src.service import skill_provenance
         for employee_id in employee_ids:
             employee = employees.get(employee_id)
             if employee is None:
@@ -1238,20 +1239,30 @@ class EmployeeService:
                 / "skills"
                 / normalized
             )
-            target_dir.parent.mkdir(parents=True, exist_ok=True)
-            if target_dir.exists():
-                shutil.rmtree(target_dir, ignore_errors=True)
-            shutil.copytree(skill_dir, target_dir, dirs_exist_ok=False,
-                            ignore=shutil.ignore_patterns(".history"))
 
-            EmployeeService._patch_employee_skills_json_for_local_skill(
-                employee,
-                normalized,
-                display_name_zh=display_name_zh,
-                description=description,
-                skill_md_content=skill_md_content,
-            )
-            EmployeeService._refresh_employee_meta_skills(db, employee)
+            # (b) 私有改进优先：已私改(locallyModified)或 grown 的私有副本，不被库版本覆盖
+            skip_overwrite = False
+            if target_dir.is_dir():
+                info = skill_provenance.read_origin(target_dir)
+                if info.locally_modified or (info.origin or "").startswith("grown"):
+                    skip_overwrite = True
+
+            if not skip_overwrite:
+                target_dir.parent.mkdir(parents=True, exist_ok=True)
+                if target_dir.exists():
+                    shutil.rmtree(target_dir, ignore_errors=True)
+                shutil.copytree(skill_dir, target_dir, dirs_exist_ok=False,
+                                ignore=shutil.ignore_patterns(".history"))
+                EmployeeService._patch_employee_skills_json_for_local_skill(
+                    employee,
+                    normalized,
+                    display_name_zh=display_name_zh,
+                    description=description,
+                    skill_md_content=skill_md_content,
+                )
+
+            # 不论是否覆盖都重投影：被跳过者借此把上方行内写纠回其私有磁盘内容
+            EmployeeService.reconcile_employee_skills(db, employee)
 
         db.commit()
         logger.info(
