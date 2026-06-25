@@ -40,11 +40,12 @@
 每个技能文件夹携带一个**来源标记**，落在该技能 meta 内（随文件夹移动），取值：
 
 - `assigned:<skill_id>` —— 从工作区库 / 远程市场**分配**而来。
-- `grown:adopted` —— 采纳技能候选而来。
-- `grown:improved` —— 库里没有、纯靠 `update_skill` 在私有副本长出来的独立技能。
-- 附加布尔 `locallyModified`（仅对 `assigned:*` 有意义）：该 assigned 技能被 `update_skill` 私下改进过、已与库版本分叉。
+- `grown:adopted` —— 采纳技能候选而来（库里没有，只在私有副本）。
+- 附加布尔 `locallyModified`（仅对 `assigned:*` 有意义）：该 assigned 技能被员工 `update_skill` **私下改进过**、已与库版本分叉。
 
 标记的唯一用途：让**分配**与**库同步**两个动作知道哪些技能可增删 / 可覆盖、哪些绝不能碰。
+
+> 设计决策（路 2 · 改进按员工隔离）：员工自改进彻底落在私有副本，不回写工作区库、不广播同事。因此不存在「库里没有、纯靠 update_skill 凭空长出的独立技能」——update_skill 只改**已加载的现有技能**（assigned 或 adopted）。改进 assigned 技能 → 置 `locallyModified=true`；改进 adopted 技能 → 仍 `grown:adopted`、内容更新。
 
 > 标记的物理存储（复用 LocalSkillService 的 meta 文件，还是各技能文件夹内新增 `.origin` / `meta.json`）在实现计划阶段最终敲定；要求：跟随文件夹、可被 reconcile 读取、对 `list_available_skills` 透明（不被误当成技能）。
 
@@ -72,14 +73,24 @@
 - **不碰**：已在 `desired` 的 assigned 技能（保住已分配状态，**不重新 copy**，从而保住 `locallyModified` 改进版）；以及**所有 `grown:*`**。
 - 末尾 `reconcile_employee_skills`。
 
-### 3.2 采纳候选 / update_skill：补一句 reconcile
+### 3.2 采纳候选：补一句 reconcile
 
-- `adopt_skill_candidate`：写磁盘后加 reconcile，标记 `grown:adopted` → 档案立刻可见。
-- agent 的 `update_skill`（写私有副本）：编辑后加 reconcile；若被编辑的是 `assigned:*` 技能 → 置其 `locallyModified=true`。
+`adopt_skill_candidate`：写磁盘后加 reconcile，标记 `grown:adopted` → 档案立刻可见。
 
-### 3.3 库技能同步：私有改进优先（边界 (b)）
+### 3.3 update_skill 工具重做：改进按员工隔离（路 2）
 
-`sync_local_skill_to_assignees`（在工作区技能库编辑某技能时，覆盖推送到装了它的员工私有副本）：
+现状 [update_skill_tool.py:163-172](apps/server/src/service/agent/update_skill_tool.py#L163) 走「固化到工作区库 → `update_local_skill(target=workspace)` → `sync_local_skill_to_assignees` 广播全员」，即改进是**集体的**。路 2 改为**每员工隔离**：
+
+- `update_skill` 只把 `new_content` 写入**该员工自己的私有副本** `<skill_path>/<员工id>/skills/<技能>/SKILL.md`。
+- **不再**调 `ensure_editable_from_employee_copy` / `update_local_skill` / `sync_local_skill_to_assignees`（不回写库、不广播同事）。
+- 备份 `.history` 落到**私有副本目录**（不再落工作区库目录）；审计 `skill_edits.jsonl`、清 hint 不变。
+- 若被改的是 `assigned:*` 技能 → 置 `locallyModified=true`；若是 `grown:adopted` → 内容更新、标记不变。
+- 末尾 `reconcile`（更新 EmployeeSkill 行的 `skill_content` 快照）。
+- 现有 update_skill 测试 monkeypatch 的是 `update_local_skill` / `sync_local_skill_to_assignees`，须随重做**重写**为针对私有副本写入的断言。
+
+### 3.4 库技能维护广播：私有改进优先（边界 (b)）
+
+库编辑的广播入口在 [skill_api.py:388/441/472](apps/server/src/api/skill_api.py#L388)（工作区技能库 UI 改内容 / 改显示名）→ `sync_local_skill_to_assignees`（覆盖推送到装了它的员工私有副本）。改为：
 
 - 推送前检查每个 assignee 私有副本：**`locallyModified=true`（或来源已是 `grown:*`）→ 跳过覆盖**，保住该员工的改进版（技能版本允许分叉）。
 - 仅推送给未私下改进过的 assignee。
@@ -109,13 +120,14 @@
 
 ## 6. 测试（TDD）
 
-先写**失败**用例复现核心 bug，再实现到绿（5 条均为必需）：
+先写**失败**用例复现核心 bug，再实现到绿（6 条均为必需）：
 
 1. 采纳候选后 `EmployeeSkill` / 档案接口可见，标记 `grown:adopted`。
 2. 已采纳 / 已 `update_skill` 改进的技能存在时，再次分配（增删别的库技能）**不删**这些成长技能。
 3. 任一磁盘技能集变更后 `EmployeeSkill` 与磁盘集合一致（reconcile 投影正确）。
-4. 库技能编辑同步：`locallyModified` 的 assignee 被跳过、未改进的被更新（边界 (b)）。
-5. 迁移：无标记的旧私有副本首次 reconcile 后获得正确来源标记。
+4. `update_skill` 只改该员工私有副本：不触发库写入 / 不广播同事，被改 assigned 技能置 `locallyModified=true`，EmployeeSkill 行内容快照刷新。
+5. 库技能编辑同步：`locallyModified` 的 assignee 被跳过、未改进的被更新（边界 (b)）。
+6. 迁移：无标记的旧私有副本首次 reconcile 后获得正确来源标记。
 
 ## 7. 不做（YAGNI）
 
@@ -126,8 +138,9 @@
 
 ## 8. 影响文件（预估，实现计划细化）
 
-- `apps/server/src/service/employee_service.py`：`_save_skills_to_skill_path` / `_replace_employee_skills`（增量化）、`adopt_skill_candidate`、`sync_local_skill_to_assignees` / `unassign_local_skill_from_assignees`、新增 `reconcile_employee_skills`、来源标记读写 helper、迁移回填。
-- `apps/server/src/service/agent/update_skill_tool.py`：编辑后 reconcile + 置 `locallyModified`。
+- `apps/server/src/service/employee_service.py`：`_save_skills_to_skill_path` / `_replace_employee_skills`（增量化）、`adopt_skill_candidate`、`sync_local_skill_to_assignees`（加 (b) 守卫）/ `unassign_local_skill_from_assignees`、新增 `reconcile_employee_skills`、来源标记读写 helper、迁移回填。
+- `apps/server/src/service/agent/update_skill_tool.py`：**重做**为只改私有副本（去掉库写入 + 广播），`.history` 改落私有目录，置 `locallyModified`，末尾 reconcile。
 - 来源标记存储（meta helper，可能落 `local_skill_service` 或新模块）。
-- 测试：`apps/server/tests/` 新增覆盖第 6 节的 5 条用例。
+- 测试：`apps/server/tests/` 新增覆盖第 6 节 6 条用例；**重写** update_skill 现有测试（原 monkeypatch `update_local_skill` / `sync_local_skill_to_assignees` 的断言失效）。
+- 不变：`apps/server/src/api/skill_api.py`（库维护广播入口保留，仅其下游 sync 加 (b) 守卫）。
 - （可选）前端 `growth-brain-section.tsx` / 档案 tab：`grown:*` 角标。
