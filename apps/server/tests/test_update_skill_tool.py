@@ -1,4 +1,7 @@
-from src.service.agent.update_skill_tool import create_update_skill_tool, _backup_skill_version
+from src.service.agent.update_skill_tool import (
+    create_update_skill_tool,
+    _backup_skill_version_private,
+)
 
 
 def test_rejects_skill_not_loaded():
@@ -7,61 +10,56 @@ def test_rejects_skill_not_loaded():
     assert "拒绝" in out and "not-loaded" in out
 
 
-def test_applies_update_and_syncs(monkeypatch):
-    calls = {}
+def test_applies_update_to_private_copy_only(db_session, tmp_path, monkeypatch):
+    """改技能只写调用者自己的私有副本，不写库、不广播；标记 locallyModified。"""
+    from src.models.employee import Employee
+    from src.service.employee_service import EmployeeService
+    from src.service import skill_provenance
+    import src.service.local_skill_service as lss
+    import src.service.employee_service as es
 
-    class _Emp:
-        workspace_id = 7
-        user_id = "u1"
+    monkeypatch.setattr(EmployeeService, "_resolve_skill_root", staticmethod(lambda: tmp_path))
+    # 库写入与广播都不应发生：触发即断言失败
+    monkeypatch.setattr(
+        lss.LocalSkillService, "update_local_skill",
+        staticmethod(lambda *a, **k: (_ for _ in ()).throw(AssertionError("库不应被写"))),
+    )
+    monkeypatch.setattr(
+        es.EmployeeService, "sync_local_skill_to_assignees",
+        staticmethod(lambda *a, **k: (_ for _ in ()).throw(AssertionError("不应广播"))),
+    )
+    monkeypatch.setattr("src.db.session.get_session_local", lambda: (lambda: db_session))
 
-    class _DB:
-        def get(self, *_): return _Emp()
-        def commit(self): calls["commit"] = True
-        def rollback(self): calls["rollback"] = True
-        def close(self): calls["close"] = True
+    emp = Employee(workspace_id=7, user_id="u1", name="员工", employee_code="c1")
+    db_session.add(emp); db_session.commit(); db_session.refresh(emp)
+    d = tmp_path / str(emp.id) / "skills" / "pptx"
+    d.mkdir(parents=True)
+    (d / "SKILL.md").write_text("# old", encoding="utf-8")
+    skill_provenance.write_origin(d, origin="assigned", skill_id=3)
 
-    monkeypatch.setattr(
-        "src.db.session.get_session_local", lambda: (lambda: _DB())
-    )
-    monkeypatch.setattr(
-        "src.service.local_skill_service.LocalSkillService.update_local_skill",
-        lambda name, ws, **kw: calls.setdefault("update", (name, ws, kw)),
-    )
-    monkeypatch.setattr(
-        "src.service.employee_service.EmployeeService.sync_local_skill_to_assignees",
-        lambda db, **kw: calls.setdefault("sync", kw),
-    )
-    monkeypatch.setattr(
-        "src.service.local_skill_service.LocalSkillService.ensure_editable_from_employee_copy",
-        lambda name, ws, emp: None,
-    )
-    tool = create_update_skill_tool(employee_id=1, available_skills=["pptx"])
+    tool = create_update_skill_tool(employee_id=emp.id, available_skills=["pptx"])
     out = tool.invoke({"skill_name": "pptx", "new_content": "NEW", "reason": "缺步骤"})
 
-    assert "已更新" in out
-    assert calls["update"][0] == "pptx" and calls["update"][1] == 7
-    assert calls["update"][2]["skill_md_content"] == "NEW"
-    assert calls["update"][2]["target"] == "workspace"   # 防就地改全局内置
-    assert calls["sync"] == {"user_id": "u1", "workspace_id": 7, "skill_name": "pptx"}
-    assert calls.get("commit") and calls.get("close")
-    assert "rollback" not in calls
+    assert "仅你自己的副本" in out
+    assert "失败" not in out
+    assert (d / "SKILL.md").read_text(encoding="utf-8") == "NEW"
+    assert skill_provenance.read_origin(d).locally_modified is True
 
 
-def test_rejects_null_user_id(monkeypatch):
-    class _EmpNoUser:
-        workspace_id = 7
-        user_id = None
+def test_rejects_missing_private_copy(db_session, tmp_path, monkeypatch):
+    """私有副本不存在时拒绝（替代旧 null-user_id 守卫：新流程不再依赖 user_id）。"""
+    from src.models.employee import Employee
+    from src.service.employee_service import EmployeeService
 
-    class _DB:
-        def get(self, *_): return _EmpNoUser()
-        def commit(self): ...
-        def rollback(self): ...
-        def close(self): ...
+    monkeypatch.setattr(EmployeeService, "_resolve_skill_root", staticmethod(lambda: tmp_path))
+    monkeypatch.setattr("src.db.session.get_session_local", lambda: (lambda: db_session))
 
-    monkeypatch.setattr("src.db.session.get_session_local", lambda: (lambda: _DB()))
-    tool = create_update_skill_tool(employee_id=99, available_skills=["pptx"])
+    emp = Employee(workspace_id=7, user_id=None, name="员工", employee_code="c2")
+    db_session.add(emp); db_session.commit(); db_session.refresh(emp)
+
+    tool = create_update_skill_tool(employee_id=emp.id, available_skills=["pptx"])
     out = tool.invoke({"skill_name": "pptx", "new_content": "X", "reason": "r"})
-    assert "拒绝" in out and "user_id" in out
+    assert "拒绝" in out and "私有副本不存在" in out
 
 
 def test_employee_module_wires_update_skill():
@@ -216,54 +214,38 @@ def _settings_fixture(monkeypatch, tmp_path):
     return local_skills_root, settings
 
 
-def test_backup_written_before_overwrite(monkeypatch, tmp_path):
-    """工作区已有 SKILL.md 时，_backup_skill_version 应在 .history/ 写入旧内容并返回时间戳。"""
-    from src.service.local_skill_service import LocalSkillService
-
-    local_skills_root, _ = _settings_fixture(monkeypatch, tmp_path)
-
-    workspace_id = 5
-    skill_name = "my-skill"
+def test_backup_written_before_overwrite(tmp_path):
+    """私有副本已有 SKILL.md 时，_backup_skill_version_private 应在 .history/ 写入旧内容并返回时间戳。"""
+    skill_dir = tmp_path / "my-skill"
+    skill_dir.mkdir(parents=True)
     old_content = "# OLD CONTENT\n旧版本\n"
-
-    # Arrange: 在工作区创建已存在的技能目录 + SKILL.md
-    ws_skill_dir = local_skills_root / str(workspace_id) / skill_name
-    ws_skill_dir.mkdir(parents=True)
-    (ws_skill_dir / LocalSkillService.SKILL_MD_NAME).write_text(old_content, encoding="utf-8")
+    (skill_dir / "SKILL.md").write_text(old_content, encoding="utf-8")
 
     # Act
-    ts = _backup_skill_version(skill_name, workspace_id)
+    ts = _backup_skill_version_private(skill_dir)
 
-    # Assert: 返回非空时间戳，格式 YYYYmmdd-HHMMSS-ffffff（22 字符）
+    # Assert: 返回非空时间戳，格式 YYYYmmdd-HHMMSS-ffffff
     assert ts is not None
     import re
     assert re.fullmatch(r"\d{8}-\d{6}-\d{6}", ts), f"unexpected ts format: {ts}"
 
     # .history/<ts>.md 存在且内容是旧的
-    history_file = ws_skill_dir / ".history" / f"{ts}.md"
+    history_file = skill_dir / ".history" / f"{ts}.md"
     assert history_file.exists(), f"history file not found: {history_file}"
     assert history_file.read_text(encoding="utf-8") == old_content
 
 
-def test_backup_skipped_when_no_workspace_copy(monkeypatch, tmp_path):
-    """工作区无该技能目录时（仅内置或全新），_backup_skill_version 应返回 None 且不创建 .history。"""
-    from src.service.local_skill_service import LocalSkillService
-
-    local_skills_root, _ = _settings_fixture(monkeypatch, tmp_path)
-
-    workspace_id = 5
-    skill_name = "no-ws-skill"
-
-    # 确认工作区没有该目录
-    ws_skill_dir = local_skills_root / str(workspace_id) / skill_name
-    assert not ws_skill_dir.exists()
+def test_backup_skipped_when_no_skill_md(tmp_path):
+    """私有副本无 SKILL.md 时，_backup_skill_version_private 应返回 None 且不创建 .history。"""
+    skill_dir = tmp_path / "no-md-skill"
+    skill_dir.mkdir(parents=True)
 
     # Act
-    ts = _backup_skill_version(skill_name, workspace_id)
+    ts = _backup_skill_version_private(skill_dir)
 
-    # Assert: 返回 None，没有创建任何 .history
+    # Assert: 返回 None，没有创建 .history
     assert ts is None
-    assert not ws_skill_dir.exists()  # 连目录都没有被创建
+    assert not (skill_dir / ".history").exists()
 
 
 def test_restore_endpoint(monkeypatch, tmp_path):
