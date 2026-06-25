@@ -60,6 +60,11 @@ export function setActiveTab(config: WorkbenchConfig, tabId: string): WorkbenchC
 
 export function reorderTabs(config: WorkbenchConfig, orderedIds: string[]): WorkbenchConfig {
   const ids = orderedIds.filter((id) => id !== DASHBOARD_TAB_ID)
+  // 防止漏传 id 导致标签丢失:把 htmlTabs 里有但 orderedIds 没给的补到末尾(自愈)
+  const seen = new Set(ids)
+  for (const t of config.htmlTabs) {
+    if (!seen.has(t.id)) ids.push(t.id)
+  }
   return { ...config, tabOrder: [DASHBOARD_TAB_ID, ...ids] }
 }
 
