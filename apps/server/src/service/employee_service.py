@@ -1338,7 +1338,8 @@ class EmployeeService:
                         filtered, ensure_ascii=False
                     )
 
-            EmployeeService._refresh_employee_meta_skills(db, employee)
+            # 收口走 reconcile：rmtree 已移除该技能磁盘目录，投影据此收敛 EmployeeSkill 行。
+            EmployeeService.reconcile_employee_skills(db, employee)
 
         db.commit()
         logger.info(
