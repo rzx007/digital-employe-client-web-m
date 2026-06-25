@@ -27,3 +27,11 @@ def test_put_then_get_roundtrip(client):
 def test_resolve_unknown_404(client):
     r = client.post("/workbench/metrics/ghost/resolve", headers={"userid": "u1"}, json={})
     assert r.status_code == 404
+
+
+def test_config_isolated_per_user(client):
+    # 按 user_id 分区:u1 保存后,u2 仍拿到干净默认(核心隔离契约)
+    cfg = {"dashboard": {"widgets": []}, "htmlTabs": [], "tabOrder": ["dashboard"], "activeTabId": None, "updatedAt": 99}
+    assert client.put("/workbench", headers={"userid": "u1"}, json=cfg).status_code == 200
+    other = client.get("/workbench", headers={"userid": "u2"}).json()
+    assert other["updatedAt"] == 0 and other["tabOrder"] == ["dashboard"]
