@@ -186,6 +186,14 @@ app.whenReady().then(() => {
   })
   registerBrowserIpcHandlers()
   startBrowserHttpBridge()
+
+  // Chrome 扩展（MV3）测试宿主：仅在显式开启时启动，默认不影响正常流程。
+  // 用法：CHROME_EXT_DEMO=1 pnpm --filter web dev:app
+  if (process.env.CHROME_EXT_DEMO === "1") {
+    void import("../chrome-plugin/chrome-ext-tester").then((m) =>
+      m.startChromeExtDemo()
+    )
+  }
 })
 
 function registerBrowserIpcHandlers(): void {
