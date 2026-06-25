@@ -410,6 +410,26 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
       error: "安装失败",
     },
   },
+  get_current_time: {
+    icon: "⏰",
+    label: "获取当前时间",
+    verb: "获取当前时间",
+    simple: {
+      running: "正在获取当前时间...",
+      done: "当前时间已获取",
+      error: "获取失败",
+    },
+  },
+  add_workbench_widget: {
+    icon: "📊",
+    label: "添加工作台小部件",
+    verb: "添加工作台小部件",
+    simple: {
+      running: "正在添加工作台小部件...",
+      done: "工作台小部件已添加",
+      error: "添加失败",
+    },
+  },
 }
 
 export function getToolDisplay(toolName: string): ToolDisplayDef | undefined {

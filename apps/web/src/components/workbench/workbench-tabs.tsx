@@ -90,7 +90,7 @@ export function WorkbenchTabs({ config, onChange }: WorkbenchTabsProps) {
       <div
         role="tablist"
         className={cn(
-          "flex shrink-0 items-end gap-0 overflow-x-auto border-b border-border bg-muted/60 px-1 pt-1",
+          "flex shrink-0 items-end gap-0 overflow-x-auto border-b border-border bg-muted/60 px-0.5 pt-0.5",
           "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         )}
       >
@@ -150,7 +150,7 @@ export function WorkbenchTabs({ config, onChange }: WorkbenchTabsProps) {
         className="min-h-0 flex-1 overflow-auto bg-background"
       >
         {activeTabId === DASHBOARD_TAB_ID || !activeHtmlTab ? (
-          <div className="min-h-full bg-muted/30 p-4">
+          <div className="min-h-full bg-muted/30 p-3">
             <DraggableWorkbenchGrid
               widgets={config.dashboard.widgets}
               onReorder={(ids) => onChange(reorderWidgets(config, ids))}
