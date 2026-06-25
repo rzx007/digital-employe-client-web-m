@@ -45,6 +45,8 @@
 
 > `ChromeExtMeta = { id, name, version, iconDataUrl?, hasPopup, enabled }`。`id` 用 manifest 计算的扩展 id(与 `loadExtension` 返回的 `ext.id` 一致),registry 在加载后回填真实 id。
 
+> **id 时序依赖(评审补充)**:扩展真实 `ext.id` **只在 `loadExtension()` 解析后**才确定。因此:① `chromeExt:list` 返回的必须是**加载后回填的真实 id**,未加载/禁用的扩展只能给「待加载」态(不暴露猜测 id);② 拼图入口与 popup(`chrome-extension://<id>/popup.html`)只能对**已成功加载**的扩展开启。registry 维护 `manifest 路径 → 加载后真实 id` 的映射,`openPopup(id)` 校验该 id 已加载。
+
 ### 启动与加载流程
 
 ```
