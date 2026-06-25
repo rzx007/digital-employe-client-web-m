@@ -32,6 +32,7 @@
 | `BROWSER_UNAVAILABLE` | 内嵌浏览器实例不可用 |
 | `BROWSER_VIEWPORT_NOT_READY` | 右栏视口尚未完成布局 |
 | `ELEMENT_NOT_FOUND` | 元素引用或选择器未找到 |
+| `OPTION_NOT_FOUND` | `select` 下拉项按 value/label 都未匹配到 |
 | `USER_CANCELLED` | 用户取消确认 |
 | `TIMEOUT` | 操作超时（含 `wait` 超时） |
 | `EMPTY_SCREENSHOT` | 截图数据为空 |
@@ -74,8 +75,13 @@ browserctl wait --ms <毫秒>          # 固定等待（无明确目标时兜底
 browserctl fill <@eN|selector> <text>
 browserctl fill <@eN|selector> --text-file <path>   # 文本含引号/&/|/空格/换行等特殊字符时优先用
 browserctl fill <@eN|selector> --text-stdin          # 从管道读取文本（echo ... | browserctl fill ...）
+browserctl press <key> [@eN|selector] [--ctrl|--shift|--alt|--meta]   # 按键；不带元素则发到当前焦点
+browserctl scroll [@eN|selector] [--to top|bottom] [--by <px>]        # 滚动到元素/顶底/指定距离
+browserctl select <@eN|selector> (<value> | --label <文本>)          # 选原生 <select> 项（value 精确匹配 / label 按文本）
 browserctl get url
 browserctl get title
+browserctl get value <@eN|selector>    # 读元素当前值（el.value 优先，回退 value 属性），校验 fill/select
+browserctl get attr <@eN|selector> <name>    # 读元素属性（href/src/aria-* 等），不存在返回 null
 browserctl get-url
 browserctl get-title
 browserctl extract-text

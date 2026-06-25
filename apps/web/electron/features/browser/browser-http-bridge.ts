@@ -517,6 +517,35 @@ async function handleBrowserRequest(
         reply(res, 200, { ok: true, data: { title: wc.getTitle() } })
         return
       }
+      case "get-value": {
+        if (!attachDebugger()) {
+          reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE" })
+          return
+        }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const result = await dbg.getValue(refOrSelector)
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "get-attribute": {
+        if (!attachDebugger()) {
+          reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE" })
+          return
+        }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const name = String(body.name ?? "")
+        const result = await dbg.getAttribute(refOrSelector, name)
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
       case "close": {
         // 运行时关闭：detach CDP + 销毁内嵌浏览器；并通知 renderer 收起右栏
         getBrowserDebuggerController().detach()

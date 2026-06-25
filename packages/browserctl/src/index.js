@@ -38,6 +38,8 @@ Usage:
   browserctl fill <@eN|selector> (<text> | --text-file <path> | --text-stdin) [--pretty]
   browserctl select <@eN|selector> (<value> | --label <text>) [--pretty]
   browserctl get url|title [--pretty]
+  browserctl get value <@eN|selector> [--pretty]
+  browserctl get attr <@eN|selector> <name> [--pretty]
   browserctl get-url [--pretty]
   browserctl get-title [--pretty]
   browserctl extract-text [--pretty]
@@ -473,7 +475,19 @@ async function run(argv) {
       print(await postAction("get-title", {}), flags.pretty)
       return
     }
-    throw new Error("get target must be url or title")
+    if (target === "value") {
+      const refOrSelector = rest[1]
+      if (!refOrSelector) throw new Error("ref or selector required")
+      print(await postAction("get-value", { ref_or_selector: refOrSelector }), flags.pretty)
+      return
+    }
+    if (target === "attr" || target === "attribute") {
+      const refOrSelector = rest[1], name = rest[2]
+      if (!refOrSelector || !name) throw new Error("ref/selector and attribute name required")
+      print(await postAction("get-attribute", { ref_or_selector: refOrSelector, name }), flags.pretty)
+      return
+    }
+    throw new Error("get target must be url|title|value|attr")
   }
 
   if (command === "get-url" || command === "get-title") {

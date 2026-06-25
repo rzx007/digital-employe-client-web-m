@@ -553,6 +553,50 @@ test("select @e5 BJ 把位置参数作为 body.value 携带", async () => {
   }
 })
 
+test("get value @e4 命中 /get-value 并把 data.value 输出", async () => {
+  let reqUrl
+  let received
+  const srv = await startServer(async (req, res) => {
+    reqUrl = req.url
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: { value: "x" } }))
+  })
+  try {
+    const { stdout } = await runCli(["get", "value", "@e4"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.ok(reqUrl.endsWith("/get-value"), `expected /get-value, got ${reqUrl}`)
+    assert.equal(received.ref_or_selector, "@e4")
+    const j = JSON.parse(stdout)
+    assert.equal(j.data.value, "x")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("get attr @e7 href 命中 /get-attribute 且携带 name", async () => {
+  let reqUrl
+  let received
+  const srv = await startServer(async (req, res) => {
+    reqUrl = req.url
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: { value: "https://x" } }))
+  })
+  try {
+    await runCli(["get", "attr", "@e7", "href"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.ok(
+      reqUrl.endsWith("/get-attribute"),
+      `expected /get-attribute, got ${reqUrl}`
+    )
+    assert.equal(received.ref_or_selector, "@e7")
+    assert.equal(received.name, "href")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
 test("open-artifact 缺少 CONVERSATION_ID 时报错且不访问 bridge", async () => {
   let hit = false
   const srv = await startServer((req, res) => {

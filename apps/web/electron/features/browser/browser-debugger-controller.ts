@@ -442,6 +442,40 @@ export class BrowserDebuggerController {
     }
   }
 
+  /**
+   * 读元素当前值：优先 `el.value`（input/textarea/select 的实时值），
+   * 回退到 `value` 属性。用于校验 fill/select 是否落地。
+   */
+  async getValue(
+    refOrSelector: string
+  ): Promise<CdpResult<{ value: string | null }>> {
+    try {
+      const v = await this.runOnElement(
+        refOrSelector,
+        "return (el.value != null ? String(el.value) : (el.getAttribute('value') ?? null));"
+      )
+      return { ok: true, data: { value: (v as string | null) ?? null } }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  }
+
+  /** 读元素指定属性（如 href/src/aria-*）；属性不存在返回 null。 */
+  async getAttribute(
+    refOrSelector: string,
+    name: string
+  ): Promise<CdpResult<{ value: string | null }>> {
+    try {
+      const v = await this.runOnElement(
+        refOrSelector,
+        `return el.getAttribute(${JSON.stringify(name)});`
+      )
+      return { ok: true, data: { value: (v as string | null) ?? null } }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  }
+
   /** 等待页面 readyState=complete；超时返回 ok:false（调用方可选择忽略） */
   async waitForReady(timeoutMs = 10_000): Promise<CdpResult> {
     try {

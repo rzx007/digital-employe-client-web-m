@@ -61,6 +61,11 @@ browserctl snapshot --max-nodes 200
 browserctl click @e3
 browserctl click @e8 --confirm "确认提交申请？"
 browserctl fill @e4 "输入内容"
+browserctl press Enter @e4                # 按键（Enter/Tab/Escape/方向键等）；可带 --ctrl/--shift/--alt/--meta
+browserctl scroll --to bottom            # 滚动到底部/顶部；或 scroll @e3 滚到元素、--by <px> 滚指定距离
+browserctl select @e5 --label "北京"     # 选原生 <select> 下拉项（--label 按文本 / 位置参数按 value）
+browserctl get value @e4                 # 读元素当前值，校验 fill/select 是否落地
+browserctl get attr @e3 href             # 读元素属性（href/src/aria-* 等）
 browserctl get url
 browserctl extract-text
 browserctl screenshot                    # 截图落盘，返回文件路径（非 base64）
