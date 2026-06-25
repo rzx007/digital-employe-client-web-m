@@ -38,6 +38,27 @@ def test_reconcile_inserts_rows_from_disk(db_session, tmp_path, monkeypatch):
     assert by_name["alpha"].skill_content == "# c"
 
 
+def test_backfill_negative_id_legacy_row_classified_assigned(db_session, tmp_path, monkeypatch):
+    """legacy 无标记目录 + 负 id 的 EmployeeSkill 行(库分配技能 localId 为负)→ 回填为 assigned，
+    而非 grown。守护：库分配技能不被迁移误标成成长技能。"""
+    emp = _seed_employee(db_session, tmp_path, monkeypatch)
+    # 无标记目录（模拟 legacy 私有副本）
+    d = tmp_path / str(emp.id) / "skills" / "lib-skl"
+    d.mkdir(parents=True)
+    (d / "SKILL.md").write_text("# c", encoding="utf-8")
+    # legacy EmployeeSkill 行：库技能负 localId
+    db_session.add(EmployeeSkill(
+        workspace_id=1, user_id="u1", employee_id=emp.id, skill_id=-101, skill_name="lib-skl"))
+    db_session.commit()
+
+    EmployeeService.reconcile_employee_skills(db_session, emp)
+    db_session.commit()
+
+    info = skill_provenance.read_origin(d)
+    assert info.origin == "assigned"   # 不是 grown:adopted
+    assert info.skill_id == -101       # 复用原负 id，不分配新合成 id
+
+
 def test_reconcile_deletes_rows_without_disk(db_session, tmp_path, monkeypatch):
     emp = _seed_employee(db_session, tmp_path, monkeypatch)
     _disk_skill(tmp_path, emp.id, "alpha", origin="assigned", skill_id=10)

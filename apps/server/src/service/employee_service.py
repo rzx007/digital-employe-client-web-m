@@ -829,6 +829,11 @@ class EmployeeService:
             if existing_dir.is_dir():
                 existing_origin = skill_provenance.read_origin(existing_dir).origin or ""
                 if existing_origin.startswith("grown"):
+                    # 该员工已有同名成长技能，库版本不覆盖——分配对此技能静默无效，记日志可诊断
+                    logger.info(
+                        "assign: 技能 %r 被同名成长技能遮蔽，库版本未应用(employee=%s)",
+                        name, employee.id,
+                    )
                     continue
             # assigned 技能必须带真实 id；缺 id 跳过（不写 skill_id=0）
             sid = skill.get("id")
@@ -1108,7 +1113,9 @@ class EmployeeService:
                     )
                 ).first()
                 try:
-                    if row is not None and row.skill_id > 0:
+                    # legacy 行皆为 assigned（grown 是本次新增、必带标记，故无标记目录必非 grown）。
+                    # 库技能 localId 为负，不能用 >0 判定，否则会把库分配技能误标为 grown。
+                    if row is not None and row.skill_id is not None:
                         skill_provenance.write_origin(d, origin="assigned", skill_id=row.skill_id)
                     else:
                         skill_provenance.write_origin(
