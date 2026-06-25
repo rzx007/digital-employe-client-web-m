@@ -58,6 +58,7 @@ def validate_widget_spec(
 ) -> WorkbenchWidget:
     if spec.get("type") not in WIDGET_TYPES:
         raise ValueError(f"不支持的 widget type: {spec.get('type')}")
+    # 空 dict 视为无效内联数据——内联快照必须至少含一个键(否则应改用 dataSource)
     if not spec.get("data") and not spec.get("dataSource"):
         raise ValueError("必须提供 data 或 dataSource 之一")
     src = spec.get("dataSource")

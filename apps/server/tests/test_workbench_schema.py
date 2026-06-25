@@ -1,10 +1,22 @@
+from typing import get_args
+
 import pytest
 from src.models.workbench_config import (
-    WIDGET_TYPES, validate_widget_spec, WorkbenchConfig, default_config,
+    WIDGET_TYPES, WorkbenchWidget, validate_widget_spec, WorkbenchConfig, default_config,
 )
 
 def test_widget_types_catalog():
     assert WIDGET_TYPES == {"kpi", "line", "bar", "area", "table", "progress", "list"}
+
+def test_widget_types_matches_literal():
+    # 锁定 WIDGET_TYPES 与 WorkbenchWidget.type 的 Literal 同步,防止将来漏改一处
+    literal_types = set(get_args(WorkbenchWidget.model_fields["type"].annotation))
+    assert WIDGET_TYPES == literal_types
+
+def test_reject_empty_inline_data():
+    # 空 dict 的内联 data 视为无效,必须改用 dataSource 或提供非空 data
+    with pytest.raises(ValueError, match="data 或 dataSource"):
+        validate_widget_spec({"type": "kpi", "title": "x", "data": {}}, metric_whitelist=set())
 
 def test_valid_inline_widget():
     spec = {"type": "kpi", "title": "本月销售", "data": {"items": []}}
