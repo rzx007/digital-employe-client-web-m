@@ -3,6 +3,7 @@ from pathlib import Path
 from src.service.skill_provenance import (
     read_origin,
     write_origin,
+    set_locally_modified,
     scan_employee_skills,
     next_grown_skill_id,
 )
@@ -48,3 +49,12 @@ def test_next_grown_skill_id_is_unique_negative(tmp_path: Path):
     a = _make_skill(skills, "a")
     write_origin(a, origin="grown:adopted", skill_id=-1)
     assert next_grown_skill_id(skills) == -2
+
+
+def test_set_locally_modified_toggles_flag(tmp_path: Path):
+    d = _make_skill(tmp_path, "s")
+    write_origin(d, origin="assigned", skill_id=1)
+    set_locally_modified(d, True)
+    assert read_origin(d).locally_modified is True
+    set_locally_modified(d, False)
+    assert read_origin(d).locally_modified is False

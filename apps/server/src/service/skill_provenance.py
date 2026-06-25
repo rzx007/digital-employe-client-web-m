@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+# TODO(债): 复用 LocalSkillService 的私有 _read_meta/_write_meta（计划已采纳此复用）。
+# 待 LocalSkillService 拆分时，改为它暴露的公共 read_skill_meta/write_skill_meta。
 from src.service.local_skill_service import LocalSkillService
 
 SKILL_MD = LocalSkillService.SKILL_MD_NAME
@@ -87,6 +89,10 @@ def scan_employee_skills(skills_root: Path) -> list[SkillOrigin]:
 
 
 def next_grown_skill_id(skills_root: Path) -> int:
-    """该员工目录内唯一的负数合成 id（grown 技能用）。"""
+    """返回当前扫描时刻该员工目录内唯一的负数合成 id（grown 技能用）。
+
+    调用方须立即 write_origin 写入该 id 以声明占用。并发对同一员工采纳多个技能时
+    存在 TOCTOU 窗口，最终由 EmployeeSkill 的 (employee_id, skill_id) 唯一约束兜底。
+    """
     existing = [s.skill_id for s in scan_employee_skills(skills_root) if s.skill_id is not None]
     return min([*existing, 0]) - 1
