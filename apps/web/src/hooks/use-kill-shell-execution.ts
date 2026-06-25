@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { chatKeys } from "@/lib/query-keys/chat"
 import { request } from "@/lib/request"
@@ -22,6 +23,9 @@ export function useKillShellExecution(
       queryClient.invalidateQueries({
         queryKey: chatKeys.shellExecutions(id),
       })
+    },
+    onError: () => {
+      toast.error("终止失败，请重试")
     },
   })
 }
