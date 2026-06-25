@@ -102,6 +102,16 @@ describe("browser-store minimize/restore（切换 panel 不中断浏览器）", 
     expect(useBrowserStore.getState().isMinimized).toBe(false)
   })
 
+  it("浏览器未显示时 suspend 为 no-op（关闭后切 tab 不冒幻影恢复图标）", () => {
+    // 复现「从工作台开浏览器→关掉→切回 chat 冒出点不动的恢复图标」根因：
+    // 关闭后 isOpen=false，切到非 chat tab 的 effect 仍会调 suspendForConversationSwitch，
+    // 若无守卫会把已关闭的浏览器误置 isMinimized=true → 切回 chat 冒幻影图标、点击无反应。
+    expect(useBrowserStore.getState().isOpen).toBe(false)
+    useBrowserStore.getState().suspendForConversationSwitch()
+    expect(browserHide).not.toHaveBeenCalled()
+    expect(useBrowserStore.getState().isMinimized).toBe(false)
+  })
+
   it("恢复浏览器：收起其它右栏 + 重新占栏（isOpen=true/isMinimized=false，不重新 open 导航）", () => {
     useBrowserStore.getState().openHtmlPreview(123, REAL_PATH)
     useBrowserStore.getState().minimizeBrowser()

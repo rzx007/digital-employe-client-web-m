@@ -158,6 +158,10 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   // 仅 hide：electron 视口存活、agent 继续可用；切回该会话靠 adoptForeground /
   // restoreBrowser 重现。currentUrl 保留以供重现。
   suspendForConversationSwitch: () => {
+    // 浏览器未开（含已 destroyBrowser 关闭）时为 no-op：否则切对话/切 tab 的 effect
+    // 会给已销毁的浏览器置 isMinimized=true → 切回 chat 冒出幻影恢复图标、点击因
+    // currentUrl 已清而无反应（与 minimizeBrowser 同守卫）。
+    if (!get().isOpen) return
     const api = getElectronApi()
     void api?.browser.hide()
     set({
