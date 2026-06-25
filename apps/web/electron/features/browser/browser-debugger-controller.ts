@@ -148,12 +148,72 @@ export class BrowserDebuggerController {
     }
   }
 
+  // 把目标滚进视口中心。@eN 走 DOM.resolveNode → callFunctionOn；
+  // selector 走 Runtime.evaluate。失败静默（调用方据 resolveNode 已有兜底）。
+  async scrollIntoView(refOrSelector: string): Promise<void> {
+    const node = await this.resolveNode(refOrSelector)
+    if (!node?.backendNodeId) {
+      const escaped = refOrSelector
+        .replace(/\\/g, "\\\\")
+        .replace(/'/g, "\\'")
+      await this.sendCommand("Runtime.evaluate", {
+        expression: `document.querySelector('${escaped}')?.scrollIntoView({block:'center',inline:'center'})`,
+      })
+      return
+    }
+    const resolved = (await this.sendCommand("DOM.resolveNode", {
+      backendNodeId: node.backendNodeId,
+    })) as { object?: { objectId?: string } }
+    if (resolved.object?.objectId) {
+      await this.sendCommand("Runtime.callFunctionOn", {
+        objectId: resolved.object.objectId,
+        functionDeclaration:
+          "function(){ this.scrollIntoView({block:'center',inline:'center'}) }",
+      })
+    }
+  }
+
+  // 滚动：传 ref/selector 则把该元素滚进视口；否则按 to(top/bottom)/by(px) 滚窗口。
+  async scroll(opts: {
+    refOrSelector?: string
+    to?: string
+    by?: number
+  }): Promise<CdpResult> {
+    try {
+      if (opts.refOrSelector) {
+        await this.scrollIntoView(opts.refOrSelector)
+        return { ok: true }
+      }
+      if (opts.to === "bottom") {
+        await this.sendCommand("Runtime.evaluate", {
+          expression: "window.scrollTo(0, document.body.scrollHeight)",
+        })
+      } else if (opts.to === "top") {
+        await this.sendCommand("Runtime.evaluate", {
+          expression: "window.scrollTo(0,0)",
+        })
+      } else if (typeof opts.by === "number") {
+        await this.sendCommand("Runtime.evaluate", {
+          expression: `window.scrollBy(0, ${opts.by})`,
+        })
+      }
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  }
+
   async click(refOrSelector: string): Promise<CdpResult> {
     try {
       const nodeInfo = await this.resolveNode(refOrSelector)
       if (!nodeInfo) return { ok: false, error: "ELEMENT_NOT_FOUND" }
 
-      const { x, y } = nodeInfo.center
+      // 先把元素滚进视口，再重新取一次坐标：滚动会改变 getBoundingClientRect，
+      // 若沿用滚动前的 center，点击会落到视口外的旧位置（off-screen click 失效）。
+      // 重取若为 null（极端时序）则回退到滚动前坐标，绝不因此把已找到的元素判失败。
+      await this.scrollIntoView(refOrSelector)
+      const fresh = await this.resolveNode(refOrSelector)
+      const { x, y } = (fresh ?? nodeInfo).center
       await this.sendCommand("Input.dispatchMouseEvent", {
         type: "mousePressed",
         x,

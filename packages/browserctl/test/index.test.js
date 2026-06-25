@@ -482,6 +482,41 @@ test("press a @e4 --ctrl --shift 携带 ref 与修饰键", async () => {
   }
 })
 
+test("scroll --to bottom 命中 /scroll 且 body.to=bottom", async () => {
+  let reqUrl
+  let received
+  const srv = await startServer(async (req, res) => {
+    reqUrl = req.url
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["scroll", "--to", "bottom"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.ok(reqUrl.endsWith("/scroll"), `expected /scroll, got ${reqUrl}`)
+    assert.equal(received.to, "bottom")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("scroll @e8 把 ref 作为 ref_or_selector 携带", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["scroll", "@e8"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(received.ref_or_selector, "@e8")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
 test("open-artifact 缺少 CONVERSATION_ID 时报错且不访问 bridge", async () => {
   let hit = false
   const srv = await startServer((req, res) => {

@@ -436,6 +436,21 @@ async function handleBrowserRequest(
         reply(res, result.ok ? 200 : 502, result)
         return
       }
+      case "scroll": {
+        if (!attachDebugger()) {
+          reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE" })
+          return
+        }
+        const refOrSelector =
+          typeof body.ref_or_selector === "string"
+            ? body.ref_or_selector
+            : undefined
+        const to = typeof body.to === "string" ? body.to : undefined
+        const by = typeof body.by === "number" ? body.by : undefined
+        const result = await dbg.scroll({ refOrSelector, to, by })
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
       case "wait": {
         if (!attachDebugger()) {
           reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE" })

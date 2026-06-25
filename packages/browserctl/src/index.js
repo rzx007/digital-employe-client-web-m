@@ -33,6 +33,7 @@ Usage:
   browserctl snapshot [--max-nodes 200] [--tree | --interactive] [--pretty]
   browserctl click <@eN|selector> [--confirm "message"] [--pretty]
   browserctl press <key> [@eN|selector] [--ctrl|--shift|--alt|--meta] [--pretty]
+  browserctl scroll [@eN|selector] [--to top|bottom] [--by <px>] [--pretty]
   browserctl wait (--selector <css> | --text <text> | --ms <n>) [--timeout 10000] [--pretty]
   browserctl fill <@eN|selector> (<text> | --text-file <path> | --text-stdin) [--pretty]
   browserctl get url|title [--pretty]
@@ -74,6 +75,10 @@ export function parseFlags(argv) {
       flags.timeout = Number(argv[++i])
     } else if (value === "--out") {
       flags.out = argv[++i] || ""
+    } else if (value === "--to") {
+      flags.to = argv[++i] || ""
+    } else if (value === "--by") {
+      flags.by = Number(argv[++i])
     } else if (value === "--tree") {
       flags.tree = true
     } else if (value === "--ctrl") {
@@ -400,6 +405,20 @@ async function run(argv) {
     if (flags.meta) modifiers.meta = true
     print(
       await postAction("press", { key, ref_or_selector: refOrSelector, modifiers }),
+      flags.pretty
+    )
+    return
+  }
+
+  if (command === "scroll") {
+    const refOrSelector =
+      rest[0] && !rest[0].startsWith("--") ? rest[0] : undefined
+    print(
+      await postAction("scroll", {
+        ref_or_selector: refOrSelector,
+        to: flags.to,
+        by: Number.isFinite(flags.by) ? flags.by : undefined,
+      }),
       flags.pretty
     )
     return
