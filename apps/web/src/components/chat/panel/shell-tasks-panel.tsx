@@ -8,6 +8,7 @@ import {
 
 import { cn } from "@workspace/ui/lib/utils"
 
+import { useKillShellExecution } from "@/hooks/use-kill-shell-execution"
 import { useShellExecutionOutput } from "@/hooks/use-shell-execution-output"
 import {
   useShellExecutions,
@@ -117,54 +118,76 @@ function ShellTaskOutput({ exec }: { exec: ShellExecution }) {
   )
 }
 
-function ShellTaskCard({ exec }: { exec: ShellExecution }) {
+export function ShellTasksRow({
+  exec,
+  conversationId,
+}: {
+  exec: ShellExecution
+  conversationId: string | number | null | undefined
+}) {
   const [expanded, setExpanded] = useState(false)
   const liveElapsed = useLiveElapsed(exec.started_wall, exec.running)
   const elapsed = exec.running ? liveElapsed : exec.elapsed_seconds
   const title = exec.intent?.trim() || truncate(exec.command)
+  const killExec = useKillShellExecution(conversationId)
 
   return (
     <div className="overflow-hidden rounded-lg border bg-card">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted/50"
-      >
-        <IconTerminal2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">
-              {title}
-            </span>
-            <StatusBadge exec={exec} />
-          </div>
-          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-            <code className="min-w-0 flex-1 truncate font-mono text-[11px]">
-              {exec.command}
-            </code>
-            <span className="shrink-0 tabular-nums">
-              {formatElapsed(elapsed)}
-            </span>
-            {!exec.running && exec.exit_code != null ? (
-              <span
-                className={cn(
-                  "shrink-0 tabular-nums",
-                  exec.exit_code === 0
-                    ? "text-muted-foreground"
-                    : "text-destructive"
-                )}
-              >
-                code {exec.exit_code}
+      <div className="flex items-start transition-colors hover:bg-muted/50">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex min-w-0 flex-1 items-start gap-2 px-3 py-2.5 text-left"
+        >
+          <IconTerminal2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                {title}
               </span>
-            ) : null}
+              <StatusBadge exec={exec} />
+            </div>
+            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+              <code className="min-w-0 flex-1 truncate font-mono text-[11px]">
+                {exec.command}
+              </code>
+              <span className="shrink-0 tabular-nums">
+                {formatElapsed(elapsed)}
+              </span>
+              {!exec.running && exec.exit_code != null ? (
+                <span
+                  className={cn(
+                    "shrink-0 tabular-nums",
+                    exec.exit_code === 0
+                      ? "text-muted-foreground"
+                      : "text-destructive"
+                  )}
+                >
+                  code {exec.exit_code}
+                </span>
+              ) : null}
+            </div>
           </div>
-        </div>
-        {expanded ? (
-          <IconChevronDown className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        ) : (
-          <IconChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        )}
-      </button>
+          {expanded ? (
+            <IconChevronDown className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          ) : (
+            <IconChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          )}
+        </button>
+        {exec.running ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              killExec.mutate(exec.session_id)
+            }}
+            disabled={killExec.isPending}
+            className="mt-2 mr-2 shrink-0 self-start rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:pointer-events-none disabled:opacity-50"
+          >
+            终止
+          </button>
+        ) : null}
+      </div>
 
       {expanded ? (
         <div className="space-y-2 border-t bg-muted/30 px-3 py-2.5">
@@ -274,7 +297,11 @@ export function ShellTasksPanel({
                 <SectionLabel>进行中 · {running.length}</SectionLabel>
                 <div className="space-y-2">
                   {running.map((exec) => (
-                    <ShellTaskCard key={exec.session_id} exec={exec} />
+                    <ShellTasksRow
+                      key={exec.session_id}
+                      exec={exec}
+                      conversationId={conversationId}
+                    />
                   ))}
                 </div>
               </>
@@ -284,7 +311,11 @@ export function ShellTasksPanel({
                 <SectionLabel>已完成 · {finished.length}</SectionLabel>
                 <div className="space-y-2">
                   {finished.map((exec) => (
-                    <ShellTaskCard key={exec.session_id} exec={exec} />
+                    <ShellTasksRow
+                      key={exec.session_id}
+                      exec={exec}
+                      conversationId={conversationId}
+                    />
                   ))}
                 </div>
               </>
