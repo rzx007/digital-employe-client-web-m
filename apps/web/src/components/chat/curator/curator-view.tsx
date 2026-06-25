@@ -303,6 +303,8 @@ export function CuratorView({
   size = "default",
   resourcesOpen,
   onToggleResources,
+  employeeTasksOpen,
+  onToggleEmployeeTasks,
   onOpenResourceFile,
   onOpenContacts,
   onOpenConversations,
@@ -319,6 +321,9 @@ export function CuratorView({
   /** compact 工作台：由 WorkbenchContentSplit 控制资源分栏 */
   resourcesOpen?: boolean
   onToggleResources?: () => void
+  /** compact 工作台：由 WorkbenchContentSplit 控制员工任务分栏 */
+  employeeTasksOpen?: boolean
+  onToggleEmployeeTasks?: () => void
   /** 工作台：打开资源面板并选中文件 */
   onOpenResourceFile?: (path: string) => void
   onOpenContacts?: () => void
@@ -892,6 +897,8 @@ export function CuratorView({
           isCreatingConversation={isCreatingConversation}
           resourcesOpen={resourcesOpen}
           onToggleResources={onToggleResources}
+          employeeTasksOpen={employeeTasksOpen}
+          onToggleEmployeeTasks={onToggleEmployeeTasks}
         />
       ) : (
         <CuratorChatHeader
@@ -965,6 +972,7 @@ export function CuratorView({
 
       <RunningTasksIndicator
         curatorConversationId={curatorConversationId}
+        onOpenEmployeeTasks={onToggleEmployeeTasks}
         className="mb-2"
       />
 

@@ -11,6 +11,19 @@ from src.core.cst import cst_now
 
 WIDGET_TYPES = {"kpi", "line", "bar", "area", "table", "progress", "list"}
 
+# 每个 type 的内联 data 必需的数组字段(对齐 add_workbench_widget 文档契约)。
+# 提供内联 data 时这些键必须存在且为 list,否则前端按契约渲染成空白。
+# 模型最常见的误写是把 kpi 写成扁平 {value,target,unit,prefix}——无 items → 空白。
+INLINE_DATA_REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
+    "kpi": ("items",),
+    "progress": ("items",),
+    "list": ("items",),
+    "line": ("series", "rows"),
+    "bar": ("series", "rows"),
+    "area": ("series", "rows"),
+    "table": ("columns", "rows"),
+}
+
 
 class WidgetDataSource(BaseModel):
     metricId: str
@@ -79,4 +92,29 @@ def validate_widget_spec(
     src = spec.get("dataSource")
     if src and src.get("metricId") not in metric_whitelist:
         raise ValueError(f"未注册的指标: {src.get('metricId')}")
+    _validate_inline_data_shape(spec)
     return WorkbenchWidget(**spec)
+
+
+def _validate_inline_data_shape(spec: dict[str, Any]) -> None:
+    """提供内联 data 时,按 type 校验必需的数组字段存在,避免形状错导致前端渲染空白。
+
+    走 dataSource(无内联 data)时跳过——data 由指标运行时填充。
+    形状对、内容空(如 items=[])视为合法,只拒形状错(缺键 / 非数组)。
+    """
+    data = spec.get("data")
+    if not data:
+        return
+    required = INLINE_DATA_REQUIRED_KEYS.get(spec["type"], ())
+    for key in required:
+        if key not in data:
+            raise ValueError(
+                f"{spec['type']} 的内联 data 缺少必需字段「{key}」(须为数组)；"
+                f"收到的键: {sorted(data.keys())}。"
+                f"正确形状见 add_workbench_widget 文档,例如 kpi: "
+                f'{{"items": [{{"label": "已完成", "value": 8, "unit": "个"}}]}}'
+            )
+        if not isinstance(data[key], list):
+            raise ValueError(
+                f"{spec['type']} 的 data.{key} 必须是数组,收到 {type(data[key]).__name__}"
+            )

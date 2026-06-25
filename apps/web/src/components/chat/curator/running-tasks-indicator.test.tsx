@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 
 import type { TaskExecution } from "@/types/schedule-monitor"
 
@@ -11,11 +11,12 @@ vi.mock("@/hooks/use-schedule-monitor-queries", () => ({
     useCuratorTaskExecutions(...args),
 }))
 
-// 隔离 store：仅暴露 open spy
+// 隔离 store：仅暴露 open / toggle spy
 const openSpy = vi.fn()
+const toggleSpy = vi.fn()
 vi.mock("@/stores/employee-tasks-panel-store", () => ({
   useEmployeeTasksPanelStore: {
-    getState: () => ({ open: openSpy }),
+    getState: () => ({ open: openSpy, toggle: toggleSpy }),
   },
 }))
 
@@ -53,6 +54,7 @@ afterEach(() => {
   cleanup()
   useCuratorTaskExecutions.mockReset()
   openSpy.mockReset()
+  toggleSpy.mockReset()
 })
 
 describe("RunningTasksIndicator", () => {
@@ -112,5 +114,34 @@ describe("RunningTasksIndicator", () => {
     )
 
     expect(container.firstChild).toBeNull()
+  })
+
+  it("点击默认调用 store.toggle", () => {
+    useCuratorTaskExecutions.mockReturnValue({
+      data: [makeExecution({ id: 1, run_status: "running" })],
+    })
+
+    render(<RunningTasksIndicator curatorConversationId={42} />)
+    fireEvent.click(screen.getByRole("button"))
+
+    expect(toggleSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it("onOpenEmployeeTasks 优先于 store", () => {
+    useCuratorTaskExecutions.mockReturnValue({
+      data: [makeExecution({ id: 1, run_status: "running" })],
+    })
+    const onOpen = vi.fn()
+
+    render(
+      <RunningTasksIndicator
+        curatorConversationId={42}
+        onOpenEmployeeTasks={onOpen}
+      />
+    )
+    fireEvent.click(screen.getByRole("button"))
+
+    expect(onOpen).toHaveBeenCalledTimes(1)
+    expect(toggleSpy).not.toHaveBeenCalled()
   })
 })

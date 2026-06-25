@@ -15,6 +15,7 @@ import {
 } from "@workspace/ui/components/resizable"
 import { cn } from "@workspace/ui/lib/utils"
 import { ArtifactPanel } from "@/components/artifact"
+import { EmployeeTasksPanel } from "@/components/chat/panel/employee-tasks-panel"
 import { CuratorView } from "@/components/chat/curator/curator-view"
 import {
   selectWorkbenchCuratorConversation,
@@ -88,21 +89,25 @@ function clampClosedResourcesLayout(layout: Layout): Layout {
   }
 }
 
+type SidePanelMode = "closed" | "resources" | "employeeTasks"
+
 function syncPanelCollapse(
-  resourcesOpen: boolean,
+  mode: SidePanelMode,
   gridRef: RefObject<PanelImperativeHandle | null>,
   curatorRef: RefObject<PanelImperativeHandle | null>,
-  resourcesRef: RefObject<PanelImperativeHandle | null>,
+  sidePanelRef: RefObject<PanelImperativeHandle | null>,
 ) {
-  if (resourcesOpen) {
-    gridRef.current?.collapse()
-    resourcesRef.current?.expand()
+  if (mode === "closed") {
+    sidePanelRef.current?.collapse()
+    gridRef.current?.expand()
+    return
+  }
+  gridRef.current?.collapse()
+  sidePanelRef.current?.expand()
+  if (mode === "resources") {
     requestAnimationFrame(() => {
       curatorRef.current?.resize(`${CURATOR_MIN_WIDTH_PX}px`)
     })
-  } else {
-    resourcesRef.current?.collapse()
-    gridRef.current?.expand()
   }
 }
 
@@ -112,6 +117,7 @@ export function WorkbenchContentSplit({
   children: ReactNode
 }) {
   const [resourcesOpen, setResourcesOpen] = useState(false)
+  const [employeeTasksOpen, setEmployeeTasksOpen] = useState(false)
   const [curatorSessionsOpen, setCuratorSessionsOpen] = useState(false)
   const queryClient = useQueryClient()
   const { createCuratorConversation, isPending: isCreatingCurator } =
@@ -177,7 +183,7 @@ export function WorkbenchContentSplit({
     if (isCreatingCurator) return
     void ensureCuratorConversationAndSelect(queryClient, curatorContact, {
       selectScope: "workbench",
-    }).catch(() => {})
+    }).catch(() => { })
   }, [curatorContact, panel.mode, isCreatingCurator, queryClient])
 
   const activeConversationId = panel.conversationId ?? null
@@ -185,6 +191,7 @@ export function WorkbenchContentSplit({
   useEffect(() => {
     const handler = () => {
       if (activeConversationId == null) return
+      setEmployeeTasksOpen(false)
       setResourcesOpen(true)
     }
     window.addEventListener(WORKBENCH_OPEN_RESOURCES_EVENT, handler)
@@ -224,6 +231,7 @@ export function WorkbenchContentSplit({
     }).then(() => {
       setCuratorSessionsOpen(false)
       setResourcesOpen(false)
+      setEmployeeTasksOpen(false)
     })
   }, [
     curatorContact,
@@ -243,7 +251,15 @@ export function WorkbenchContentSplit({
     []
   )
 
-  const showResources = resourcesOpen && activeConversationId != null
+  const sidePanelMode: SidePanelMode =
+    activeConversationId == null
+      ? "closed"
+      : resourcesOpen
+        ? "resources"
+        : employeeTasksOpen
+          ? "employeeTasks"
+          : "closed"
+  const showSidePanel = sidePanelMode !== "closed"
 
   const gridPanelRef = usePanelRef()
   const curatorPanelRef = usePanelRef()
@@ -262,11 +278,28 @@ export function WorkbenchContentSplit({
 
   const handleToggleResources = useCallback(() => {
     if (activeConversationId == null) return
-    setResourcesOpen((open) => !open)
+    setResourcesOpen((open) => {
+      const next = !open
+      if (next) setEmployeeTasksOpen(false)
+      return next
+    })
+  }, [activeConversationId])
+
+  const handleToggleEmployeeTasks = useCallback(() => {
+    if (activeConversationId == null) return
+    setEmployeeTasksOpen((open) => {
+      const next = !open
+      if (next) setResourcesOpen(false)
+      return next
+    })
   }, [activeConversationId])
 
   const handleCloseResources = useCallback(() => {
     setResourcesOpen(false)
+  }, [])
+
+  const handleCloseEmployeeTasks = useCallback(() => {
+    setEmployeeTasksOpen(false)
   }, [])
 
   const openResource = useArtifactStore((s) => s.openResource)
@@ -274,6 +307,7 @@ export function WorkbenchContentSplit({
   const handleOpenResourceFile = useCallback(
     (path: string) => {
       if (activeConversationId == null) return
+      setEmployeeTasksOpen(false)
       setResourcesOpen(true)
       openResource(path)
     },
@@ -283,18 +317,18 @@ export function WorkbenchContentSplit({
   useEffect(() => {
     const id = requestAnimationFrame(() => {
       syncPanelCollapse(
-        showResources,
+        sidePanelMode,
         gridPanelRef,
         curatorPanelRef,
         resourcesPanelRef,
       )
     })
     return () => cancelAnimationFrame(id)
-  }, [showResources, gridPanelRef, curatorPanelRef, resourcesPanelRef])
+  }, [sidePanelMode, gridPanelRef, curatorPanelRef, resourcesPanelRef])
 
   const handleLayoutChanged = useCallback(
     (layout: Layout) => {
-      if (showResources) return
+      if (showSidePanel) return
 
       const resources = layout.resources ?? 0
       if (typeof resources === "number" && resources > 0.5) {
@@ -304,10 +338,10 @@ export function WorkbenchContentSplit({
       const clamped = clampClosedResourcesLayout(layout)
       onLayoutChanged(clamped)
     },
-    [showResources, onLayoutChanged, resourcesPanelRef],
+    [showSidePanel, onLayoutChanged, resourcesPanelRef],
   )
 
-  const curatorPanelBorder = showResources ? "border-r" : "border-l"
+  const curatorPanelBorder = showSidePanel ? "border-r" : "border-l"
 
   const renderCuratorPanel = () => {
     if (panel.mode === "loading" || !curatorContact) {
@@ -334,8 +368,10 @@ export function WorkbenchContentSplit({
         title={conversationTitle}
         size="compact"
         className={cn("h-full min-h-0", curatorPanelBorder)}
-        resourcesOpen={showResources}
+        resourcesOpen={resourcesOpen}
         onToggleResources={handleToggleResources}
+        employeeTasksOpen={employeeTasksOpen}
+        onToggleEmployeeTasks={handleToggleEmployeeTasks}
         onOpenResourceFile={handleOpenResourceFile}
         onOpenConversations={handleOpenCuratorConversations}
         onNewConversation={handleNewCuratorConversation}
@@ -361,10 +397,10 @@ export function WorkbenchContentSplit({
           minSize="35%"
           className="min-w-0"
         >
-          <div className="h-full min-h-0 overflow-auto p-3">{children}</div>
+          <div className="h-full min-h-0 overflow-auto">{children}</div>
         </ResizablePanel>
 
-        {!showResources && (
+        {!showSidePanel && (
           <ResizableHandle withHandle className="z-10 bg-border" />
         )}
 
@@ -373,13 +409,13 @@ export function WorkbenchContentSplit({
           panelRef={curatorPanelRef}
           defaultSize={`${CURATOR_WIDTH_PX}px`}
           minSize={`${CURATOR_MIN_WIDTH_PX}px`}
-          maxSize={showResources ? "60%" : "55%"}
+          maxSize={showSidePanel ? "60%" : "55%"}
           className="min-w-0"
         >
           {renderCuratorPanel()}
         </ResizablePanel>
 
-        {showResources && (
+        {showSidePanel && (
           <ResizableHandle withHandle className="z-10 bg-border" />
         )}
 
@@ -389,19 +425,29 @@ export function WorkbenchContentSplit({
           collapsible
           collapsedSize={0}
           defaultSize={0}
-          minSize={showResources ? "25%" : "0%"}
-          maxSize={showResources ? undefined : "0%"}
+          minSize={showSidePanel ? "25%" : "0%"}
+          maxSize={showSidePanel ? undefined : "0%"}
           className="min-w-0"
         >
-          {showResources && activeConversationId != null && (
+          {showSidePanel && activeConversationId != null && (
             <div className="h-full bg-muted/20 p-3">
-              <ArtifactPanel
-                presentation="embedded"
-                conversationId={activeConversationId}
-                isOpen
-                onClose={handleCloseResources}
-                className="h-full rounded-lg border shadow-xl"
-              />
+              {resourcesOpen ? (
+                <ArtifactPanel
+                  presentation="embedded"
+                  conversationId={activeConversationId}
+                  isOpen
+                  onClose={handleCloseResources}
+                  className="h-full rounded-lg border shadow-xl"
+                />
+              ) : null}
+              {employeeTasksOpen ? (
+                <EmployeeTasksPanel
+                  curatorConversationId={activeConversationId}
+                  curatorContactId={curatorContact?.curator?.id}
+                  onClose={handleCloseEmployeeTasks}
+                  className="h-full rounded-lg border shadow-xl"
+                />
+              ) : null}
             </div>
           )}
         </ResizablePanel>

@@ -43,6 +43,8 @@ export function CuratorCompactToolbar({
   onOpenConversations,
   resourcesOpen = false,
   onToggleResources,
+  employeeTasksOpen = false,
+  onToggleEmployeeTasks,
   className,
 }: {
   contact?: ChatViewContact
@@ -55,14 +57,23 @@ export function CuratorCompactToolbar({
   isCreatingConversation?: boolean
   resourcesOpen?: boolean
   onToggleResources?: () => void
+  employeeTasksOpen?: boolean
+  onToggleEmployeeTasks?: () => void
   className?: string
 }) {
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [alertOpen, setAlertOpen] = React.useState(false)
   const queryClient = useQueryClient()
   const deleteMutation = useDeleteConversationMutation()
-  const isEmployeeTasksPanelOpen = useEmployeeTasksPanelStore((s) => s.isOpen)
-  const toggleEmployeeTasksPanel = useEmployeeTasksPanelStore((s) => s.toggle)
+  const storeEmployeeTasksOpen = useEmployeeTasksPanelStore((s) => s.isOpen)
+  const storeToggleEmployeeTasks = useEmployeeTasksPanelStore((s) => s.toggle)
+  const useLocalEmployeeTasks = onToggleEmployeeTasks != null
+  const isEmployeeTasksPanelOpen = useLocalEmployeeTasks
+    ? employeeTasksOpen
+    : storeEmployeeTasksOpen
+  const handleEmployeeTasksClick = useLocalEmployeeTasks
+    ? onToggleEmployeeTasks
+    : storeToggleEmployeeTasks
   const { data: executions = [] } = useCuratorTaskExecutions(conversationId)
   const runningTaskCount = executions.filter((e) =>
     ACTIVE_TASK_RUN_STATUSES.has(e.run_status)
@@ -159,7 +170,7 @@ export function CuratorCompactToolbar({
               variant="ghost"
               size="icon-sm"
               className="relative"
-              onClick={toggleEmployeeTasksPanel}
+              onClick={handleEmployeeTasksClick}
             >
               <IconChecklist className="size-4" />
               {runningTaskCount > 0 && (
