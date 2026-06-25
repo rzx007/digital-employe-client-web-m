@@ -27,6 +27,43 @@ from src.service.agent.basic_file_backend import (
 logger = logging.getLogger(__name__)
 
 
+def _spawn_background_watcher(
+    *,
+    session_id: str,
+    conversation_id: int | None,
+    command: str,
+) -> None:
+    """命令转后台后起 per-process watcher：轮询至退出 → 注入会话续跑一轮。
+
+    经主事件循环调度（call_soon_threadsafe，从同步 / 工作线程 / 主循环调用皆安全），
+    确保 watcher 协程与 agent astream / 注入续跑同在主循环线程。fail-open：拿不到
+    主循环或调度失败只 log，绝不影响后台命令本身（命令已交注册表照常跑）。
+    """
+    try:
+        from src.service.agent.orchestrator.background_wake import (
+            watch_background_command,
+        )
+        from src.service.agent.orchestrator.runtime import get_main_loop
+
+        loop = get_main_loop()
+        loop.call_soon_threadsafe(
+            lambda: asyncio.ensure_future(
+                watch_background_command(
+                    session_id=session_id,
+                    conversation_id=conversation_id,
+                    command=command,
+                )
+            )
+        )
+    except Exception:
+        logger.warning(
+            "[bg-wake] 起 watcher 失败 sid=%s conv=%s（不影响后台命令本身）",
+            session_id,
+            conversation_id,
+            exc_info=True,
+        )
+
+
 def _truncation_notice(limit_desc: str) -> str:
     """可纠偏的截断提示：告诉模型输出被截断了、以及如何拿到剩余内容，
     避免模型误以为结果到此为止（参考 Anthropic「工具报错/截断应给可执行的纠正方向」）。"""
@@ -428,6 +465,11 @@ class SkillAwareShellBackend(LocalShellBackend):
             conversation_id=self._conversation_id_int,
             intent=intent,
         )
+        _spawn_background_watcher(
+            session_id=sid,
+            conversation_id=self._conversation_id_int,
+            command=original_command,
+        )
         if script_tmp_path:
             # 多行 python -c 落盘脚本：后台进程仍需它，进程结束后无人清理（小概率泄漏，
             # 可接受）；不在此删，避免删掉正在运行的脚本。
@@ -757,6 +799,11 @@ class SkillAwareShellBackend(LocalShellBackend):
                         workspace_id=self._workspace_id,
                         conversation_id=self._conversation_id_int,
                         intent=intent,
+                    )
+                    _spawn_background_watcher(
+                        session_id=background_session_id,
+                        conversation_id=self._conversation_id_int,
+                        command=command,
                     )
                     try:
                         _emit_batch()

@@ -40,3 +40,65 @@ def test_build_wake_message_tail_on_line_boundary():
     assert "line999" in msg
     assert "line0\n" not in msg  # 开头被切掉
     assert "截断" in msg or "truncat" in msg.lower()
+
+
+import asyncio
+
+
+def test_watcher_injects_on_exit_and_dedupes(monkeypatch):
+    """watcher 检测退出 → 调 _inject_wake；若 is_consumed_by_agent 为真则跳过。"""
+    from src.service.agent.orchestrator import background_wake as bw
+
+    polls = [
+        {"found": True, "running": True, "exit_code": None, "new_output": ""},
+        {"found": True, "running": False, "exit_code": 0, "new_output": "done\n"},
+    ]
+    consumed = {"v": False}
+    injected = {"called": False}
+
+    class _Reg:
+        def poll(self, sid, from_offset=None, agent_initiated=False):
+            return polls.pop(0) if polls else {"found": True, "running": False, "exit_code": 0, "new_output": ""}
+        def is_consumed_by_agent(self, sid):
+            return consumed["v"]
+        def read_output_tail(self, sid, max_bytes=65536):
+            return {"output": "done\n", "size": 5}
+
+    monkeypatch.setattr(bw, "get_background_shell_registry", lambda: _Reg())
+    monkeypatch.setattr(bw, "_inject_wake", lambda **k: injected.__setitem__("called", True))
+
+    asyncio.run(bw.watch_background_command(
+        session_id="s1", conversation_id=7, command="make", poll_interval=0.01
+    ))
+    assert injected["called"] is True
+
+    # 已被 agent 消费 → 不注入
+    injected["called"] = False
+    consumed["v"] = True
+    polls[:] = [{"found": True, "running": False, "exit_code": 0, "new_output": ""}]
+    asyncio.run(bw.watch_background_command(
+        session_id="s1", conversation_id=7, command="make", poll_interval=0.01
+    ))
+    assert injected["called"] is False
+
+
+def test_watcher_no_conversation_skips_injection(monkeypatch):
+    """裸 shell（无 conversation_id）→ 不注入。"""
+    from src.service.agent.orchestrator import background_wake as bw
+    injected = {"called": False}
+
+    class _Reg:
+        def poll(self, sid, from_offset=None, agent_initiated=False):
+            return {"found": True, "running": False, "exit_code": 0, "new_output": ""}
+        def is_consumed_by_agent(self, sid):
+            return False
+        def read_output_tail(self, sid, max_bytes=65536):
+            return {"output": "", "size": 0}
+
+    monkeypatch.setattr(bw, "get_background_shell_registry", lambda: _Reg())
+    monkeypatch.setattr(bw, "_inject_wake", lambda **k: injected.__setitem__("called", True))
+
+    asyncio.run(bw.watch_background_command(
+        session_id="s1", conversation_id=None, command="x", poll_interval=0.01
+    ))
+    assert injected["called"] is False
