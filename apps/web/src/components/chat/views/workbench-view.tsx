@@ -1,13 +1,9 @@
-import { IconX, IconFolder } from "@tabler/icons-react"
+import { IconX } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { useWorkbenchConfig } from "@/hooks/use-workbench-config"
-import {
-  GLOBAL_WORKBENCH_ID,
-  emitWorkbenchOpenResources,
-} from "@/lib/workbench/workbench-config"
 import { WorkbenchLeftPanel } from "@/components/workbench/workbench-left-panel"
-import { DraggableWorkbenchGrid } from "@/components/workbench/draggable-workbench-grid"
+import { WorkbenchTabs } from "@/components/workbench/workbench-tabs"
 import { WorkbenchContentSplit } from "@/components/workbench/workbench-content-split"
 
 interface WorkbenchViewProps {
@@ -16,9 +12,7 @@ interface WorkbenchViewProps {
 }
 
 export function WorkbenchView({ onClose, className }: WorkbenchViewProps) {
-  const { config, removeBlock, reorderBlocks, resizeBlock } = useWorkbenchConfig({
-    employeeId: GLOBAL_WORKBENCH_ID,
-  })
+  const { config, isLoading, mutate } = useWorkbenchConfig()
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
@@ -36,26 +30,13 @@ export function WorkbenchView({ onClose, className }: WorkbenchViewProps) {
       <div className="flex min-h-0 flex-1">
         <WorkbenchLeftPanel />
         <WorkbenchContentSplit>
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <div className="text-xs font-medium text-muted-foreground">我的看板</div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1 text-xs"
-              onClick={() => emitWorkbenchOpenResources()}
-            >
-              <IconFolder className="size-3.5" />
-              资源池
-            </Button>
-          </div>
-          {config ? (
-            <DraggableWorkbenchGrid
-              blocks={config.blocks}
-              onReorder={reorderBlocks}
-              onResizeBlock={resizeBlock}
-              onRemoveBlock={removeBlock}
-            />
-          ) : null}
+          {isLoading || !config ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              加载中…
+            </div>
+          ) : (
+            <WorkbenchTabs config={config} onChange={mutate} />
+          )}
         </WorkbenchContentSplit>
       </div>
     </div>
