@@ -17,24 +17,24 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { IconGripVertical, IconTrash } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
-import type { WorkbenchBlock } from "@/types/workbench"
-import { WorkbenchHtmlPanel } from "./workbench-html-panel"
+import type { WorkbenchWidget } from "@/types/workbench"
+import { WidgetRenderer } from "./widgets/widget-renderer"
 
 interface DraggableWorkbenchGridProps {
-  blocks: WorkbenchBlock[]
-  onReorder: (blockIds: string[]) => void
-  onRemoveBlock?: (blockId: string) => void
-  onResizeBlock?: (blockId: string, width: number, height: number) => void
+  widgets: WorkbenchWidget[]
+  onReorder: (orderedIds: string[]) => void
+  onRemoveWidget: (id: string) => void
+  onResizeWidget: (id: string, width: number, height: number) => void
 }
 
 function SortableBlock({
-  block,
+  widget,
   onRemove,
   onResize,
 }: {
-  block: WorkbenchBlock
-  onRemove?: (blockId: string) => void
-  onResize?: (blockId: string, width: number, height: number) => void
+  widget: WorkbenchWidget
+  onRemove: (id: string) => void
+  onResize: (id: string, width: number, height: number) => void
 }) {
   const {
     attributes,
@@ -43,7 +43,7 @@ function SortableBlock({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: block.id })
+  } = useSortable({ id: widget.id })
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -86,42 +86,41 @@ function SortableBlock({
           <IconGripVertical className="size-4" stroke={1.5} />
         </button>
 
-        {onRemove && (
-          <button
-            type="button"
-            onClick={() => onRemove(block.id)}
-            title="移除此模块"
-            className={cn(
-              "absolute top-0 right-2 z-20 flex size-8 items-center justify-center rounded-lg",
-              "border border-transparent text-muted-foreground",
-              "opacity-0 transition-[opacity,transform,colors,background-color,border-color] duration-200 ease-out",
-              "hover:border-border/80 hover:bg-destructive/10 hover:text-destructive",
-              "active:scale-[0.97]",
-              "focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none",
-              "group-hover/sortable:opacity-100"
-            )}
-          >
-            <IconTrash className="size-4" stroke={1.5} />
-          </button>
-        )}
+        <button
+          type="button"
+          data-testid="remove-widget"
+          onClick={() => onRemove(widget.id)}
+          title="移除此模块"
+          className={cn(
+            "absolute top-0 right-2 z-20 flex size-8 items-center justify-center rounded-lg",
+            "border border-transparent text-muted-foreground",
+            "opacity-0 transition-[opacity,transform,colors,background-color,border-color] duration-200 ease-out",
+            "hover:border-border/80 hover:bg-destructive/10 hover:text-destructive",
+            "active:scale-[0.97]",
+            "focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none",
+            "group-hover/sortable:opacity-100"
+          )}
+        >
+          <IconTrash className="size-4" stroke={1.5} />
+        </button>
 
-        <ResizableHtmlBlock block={block} onResize={onResize} />
+        <ResizableWidget widget={widget} onResize={onResize} />
       </div>
     </div>
   )
 }
 
-function ResizableHtmlBlock({
-  block,
+function ResizableWidget({
+  widget,
   onResize,
 }: {
-  block: WorkbenchBlock
-  onResize?: (blockId: string, width: number, height: number) => void
+  widget: WorkbenchWidget
+  onResize: (id: string, width: number, height: number) => void
 }) {
   const [isResizing, setIsResizing] = useState(false)
   const [size, setSize] = useState({
-    width: block.width || 360,
-    height: block.height || 240,
+    width: widget.width || 360,
+    height: widget.height || 240,
   })
 
   const handleMouseDown = useCallback(
@@ -144,14 +143,14 @@ function ResizableHtmlBlock({
         setIsResizing(false)
         document.removeEventListener("mousemove", handleMouseMove)
         document.removeEventListener("mouseup", handleMouseUp)
-        if (onResize && (finalW !== block.width || finalH !== block.height)) {
-          onResize(block.id, finalW, finalH)
+        if (finalW !== widget.width || finalH !== widget.height) {
+          onResize(widget.id, finalW, finalH)
         }
       }
       document.addEventListener("mousemove", handleMouseMove)
       document.addEventListener("mouseup", handleMouseUp)
     },
-    [size.width, size.height, block.id, block.width, block.height, onResize]
+    [size.width, size.height, widget.id, widget.width, widget.height, onResize]
   )
 
   return (
@@ -162,11 +161,7 @@ function ResizableHtmlBlock({
       )}
       style={{ width: size.width, height: size.height }}
     >
-      <WorkbenchHtmlPanel
-        htmlRef={block.htmlRef}
-        title={block.title}
-        className="h-full"
-      />
+      <WidgetRenderer widget={widget} />
       <div
         className={cn(
           "absolute right-0.5 bottom-0.5 flex size-5 cursor-se-resize items-end justify-end rounded-sm p-0.5 opacity-0 transition-opacity group-hover/card:opacity-100",
@@ -196,10 +191,10 @@ function ResizableHtmlBlock({
 }
 
 export function DraggableWorkbenchGrid({
-  blocks,
+  widgets,
   onReorder,
-  onRemoveBlock,
-  onResizeBlock,
+  onRemoveWidget,
+  onResizeWidget,
 }: DraggableWorkbenchGridProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -212,18 +207,18 @@ export function DraggableWorkbenchGrid({
     const { active, over } = event
 
     if (over && active.id !== over.id) {
-      const oldIndex = blocks.findIndex((b) => b.id === active.id)
-      const newIndex = blocks.findIndex((b) => b.id === over.id)
+      const oldIndex = widgets.findIndex((w) => w.id === active.id)
+      const newIndex = widgets.findIndex((w) => w.id === over.id)
 
-      const newBlockIds = [...blocks.map((b) => b.id)]
-      newBlockIds.splice(oldIndex, 1)
-      newBlockIds.splice(newIndex, 0, active.id as string)
+      const newIds = [...widgets.map((w) => w.id)]
+      newIds.splice(oldIndex, 1)
+      newIds.splice(newIndex, 0, active.id as string)
 
-      onReorder(newBlockIds)
+      onReorder(newIds)
     }
   }
 
-  if (blocks.length === 0) {
+  if (widgets.length === 0) {
     return (
       <div
         className={cn(
@@ -233,9 +228,9 @@ export function DraggableWorkbenchGrid({
         )}
       >
         <div className="max-w-sm text-center">
-          <div className="text-sm text-muted-foreground">还没有看板</div>
+          <div className="text-sm text-muted-foreground">暂无统计块</div>
           <div className="mt-2 text-xs text-muted-foreground">
-            在右侧让总管生成一个 HTML 看板，然后在资源面板里「钉到工作台」
+            让总管帮你生成统计看板，然后在资源面板里「钉到工作台」
           </div>
         </div>
       </div>
@@ -249,16 +244,16 @@ export function DraggableWorkbenchGrid({
       onDragEnd={handleDragEnd}
     >
       <SortableContext
-        items={blocks.map((b) => b.id)}
+        items={widgets.map((w) => w.id)}
         strategy={rectSortingStrategy}
       >
         <div className="flex flex-wrap gap-3">
-          {blocks.map((block) => (
+          {widgets.map((widget) => (
             <SortableBlock
-              key={block.id}
-              block={block}
-              onRemove={onRemoveBlock}
-              onResize={onResizeBlock}
+              key={widget.id}
+              widget={widget}
+              onRemove={onRemoveWidget}
+              onResize={onResizeWidget}
             />
           ))}
         </div>
