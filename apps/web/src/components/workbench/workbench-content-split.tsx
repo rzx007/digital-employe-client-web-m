@@ -205,6 +205,17 @@ export function WorkbenchContentSplit({
     }
   }, [activeConversationId, closeShellTasks])
 
+  // 反向互斥：shell 后台面板从 store 侧被打开时（如 CuratorView 正文里的
+  // 「N 个后台命令运行中 · 查看」指示器），store 的 closeOtherSidePanels 碰不到
+  // 工作台本地的 resourcesOpen / employeeTasksOpen，需在此把它们清掉，
+  // 否则 ArtifactPanel/EmployeeTasksPanel 会与 ShellTasksPanel 同时叠加渲染。
+  useEffect(() => {
+    if (shellTasksOpen) {
+      setResourcesOpen(false)
+      setEmployeeTasksOpen(false)
+    }
+  }, [shellTasksOpen])
+
   useEffect(() => {
     if (panel.mode === "loading") return
     if (activeConversationId == null || !curatorConversationsReady) return
