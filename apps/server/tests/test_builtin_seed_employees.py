@@ -38,6 +38,12 @@ def test_ensure_builtin_seed_creates_office_and_browser_assistants(
 
     get_settings.cache_clear()
 
+    # 隔离员工私有技能落盘根，避免污染（并读取）真实用户目录。
+    skill_root = tmp_path / "employees-skills"
+    monkeypatch.setattr(
+        EmployeeService, "_resolve_skill_root", staticmethod(lambda: skill_root)
+    )
+
     monkeypatch.setattr(
         LocalSkillService,
         "_resolve_packaged_builtin_skills_root",

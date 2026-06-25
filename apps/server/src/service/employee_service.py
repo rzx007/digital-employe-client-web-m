@@ -767,43 +767,73 @@ class EmployeeService:
         return str(skill_content)
 
     @staticmethod
+    def _materialize_one_skill(employee_root: Path, skill: dict) -> Path | None:
+        """把单个技能(本地 copytree / 远程 file_map)落盘到 employee_root/<skillName>/。
+        返回技能目录；无有效内容则 None。"""
+        skill_name = skill.get("skillName")
+        if not isinstance(skill_name, str) or not skill_name.strip():
+            return None
+        skill_dir = employee_root / skill_name.strip()
+
+        if str(skill.get("source") or "").strip().lower() == "local":
+            local_path = Path(str(skill.get("path") or "").strip())
+            if local_path.is_dir():
+                shutil.copytree(local_path, skill_dir, dirs_exist_ok=True,
+                                ignore=shutil.ignore_patterns(".history"))
+                return skill_dir
+            return None
+
+        file_map = EmployeeService._skill_content_to_file_map(skill.get("skillContent"))
+        if not file_map:
+            return None
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        for relative_path, content in file_map.items():
+            target = EmployeeService._safe_skill_file_path(skill_dir, relative_path)
+            if target is None:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+        return skill_dir
+
+    @staticmethod
     def _save_skills_to_skill_path(employee: Employee, skills: list[dict]) -> Path:
-        """将技能全量覆盖落盘到 local-employees/<员工ID>/skills/。"""
+        """增量落盘员工私有技能：只增删 assigned 技能，绝不碰 grown:*（采纳/自改进）。"""
+        from src.service import skill_provenance
         employee_root = (
             EmployeeService._resolve_skill_root() / str(employee.id) / "skills"
         )
-        if employee_root.exists():
-            shutil.rmtree(employee_root, ignore_errors=True)
         employee_root.mkdir(parents=True, exist_ok=True)
-        for skill in skills:
-            if not isinstance(skill, dict):
-                continue
-            skill_name = skill.get("skillName")
-            if not isinstance(skill_name, str) or not skill_name.strip():
-                continue
-            skill_dir = employee_root / skill_name.strip()
 
-            # 本地技能：直接复制本地技能目录到员工私有目录
-            if str(skill.get("source") or "").strip().lower() == "local":
-                local_path = Path(str(skill.get("path") or "").strip())
-                if local_path.is_dir():
-                    shutil.copytree(local_path, skill_dir, dirs_exist_ok=True,
-                                    ignore=shutil.ignore_patterns(".history"))
-                continue
+        desired = {
+            str(s.get("skillName")).strip(): s
+            for s in skills
+            if isinstance(s, dict) and str(s.get("skillName") or "").strip()
+        }
 
-            file_map = EmployeeService._skill_content_to_file_map(
-                skill.get("skillContent"))
-            if not file_map:
+        current_assigned = {
+            info.name
+            for info in skill_provenance.scan_employee_skills(employee_root)
+            if info.origin == "assigned"
+        }
+
+        # 删：被取消勾选的 assigned（grown:* 不在 current_assigned，天然保留）
+        for name in current_assigned - set(desired):
+            shutil.rmtree(employee_root / name, ignore_errors=True)
+
+        # 增：新勾选的库/远程技能。已存在的 assigned 跳过重 copy（保住 locallyModified 改进版）
+        for name, skill in desired.items():
+            if name in current_assigned:
                 continue
-            skill_dir.mkdir(parents=True, exist_ok=True)
-            for relative_path, content in file_map.items():
-                target = EmployeeService._safe_skill_file_path(
-                    skill_dir, relative_path)
-                if target is None:
-                    continue
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(content, encoding="utf-8")
-        # 返回 skill 根目录
+            target = EmployeeService._materialize_one_skill(employee_root, skill)
+            if target is not None:
+                skill_provenance.write_origin(
+                    target,
+                    origin="assigned",
+                    skill_id=int(skill.get("id") or 0),
+                    prompt=EmployeeService._skill_detail_prompt_to_text(skill.get("prompt")),
+                    display_name_zh=str(skill.get("displayNameZh") or "") or None,
+                    description=skill.get("description"),
+                )
         return employee_root
 
     @staticmethod
@@ -926,14 +956,12 @@ class EmployeeService:
                 workspace_id=employee.workspace_id,
                 token=token,
             )
-            EmployeeService._replace_employee_skills(
-                db, employee, [*remote_skills, *local_skills]
-            )
             employee.skills_json = EmployeeService._build_skills_json_payload(
                 employee,
                 remote_skills,
                 local_skills,
             )
+            EmployeeService.reconcile_employee_skills(db, employee)
 
         if "mcp_ids" in payload.model_fields_set:
             mcp_details = EmployeeService._validate_and_fetch_mcps(payload.mcp_ids, token)
@@ -1388,7 +1416,6 @@ class EmployeeService:
             db.flush()
             employee.employee_code = str(employee.id)
 
-            EmployeeService._replace_employee_skills(db, employee, payloads)
             EmployeeService._replace_employee_mcps(db, employee, [])
             EmployeeService._replace_shift_schedule(db, employee, None)
             employee.skills_json = EmployeeService._build_skills_json_payload(
@@ -1396,6 +1423,7 @@ class EmployeeService:
                 [],
                 payloads,
             )
+            EmployeeService.reconcile_employee_skills(db, employee)
             db.commit()
             db.refresh(employee)
             logger.info(
@@ -1455,9 +1483,6 @@ class EmployeeService:
         db.flush()
         employee.employee_code = str(employee.id)
 
-        EmployeeService._replace_employee_skills(
-            db, employee, [*remote_skills, *local_skills]
-        )
         EmployeeService._replace_employee_mcps(db, employee, mcp_details)
         EmployeeService._replace_shift_schedule(db, employee, shift_schedule)
         employee.skills_json = EmployeeService._build_skills_json_payload(
@@ -1465,6 +1490,7 @@ class EmployeeService:
             remote_skills,
             local_skills,
         )
+        EmployeeService.reconcile_employee_skills(db, employee)
         db.commit()
         db.refresh(employee)
 
