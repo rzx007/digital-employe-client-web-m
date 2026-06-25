@@ -517,6 +517,42 @@ test("scroll @e8 把 ref 作为 ref_or_selector 携带", async () => {
   }
 })
 
+test("select @e5 --label 北京 命中 /select 且 body.label=北京", async () => {
+  let reqUrl
+  let received
+  const srv = await startServer(async (req, res) => {
+    reqUrl = req.url
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["select", "@e5", "--label", "北京"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.ok(reqUrl.endsWith("/select"), `expected /select, got ${reqUrl}`)
+    assert.equal(received.ref_or_selector, "@e5")
+    assert.equal(received.label, "北京")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("select @e5 BJ 把位置参数作为 body.value 携带", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["select", "@e5", "BJ"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(received.value, "BJ")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
 test("open-artifact 缺少 CONVERSATION_ID 时报错且不访问 bridge", async () => {
   let hit = false
   const srv = await startServer((req, res) => {

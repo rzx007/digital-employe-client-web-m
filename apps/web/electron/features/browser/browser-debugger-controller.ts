@@ -10,6 +10,7 @@ export interface CdpResult<T = unknown> {
   ok: boolean
   data?: T
   error?: string
+  code?: string
 }
 
 const KEY_MAP: Record<string, { key: string; code: string; keyCode: number }> = {
@@ -378,6 +379,66 @@ export class BrowserDebuggerController {
       }
     } catch {
       /* 清空失败不阻断后续输入 */
+    }
+  }
+
+  /** 在 refOrSelector 元素上执行 JS（this=el），返回 returnByValue 结果。 */
+  private async runOnElement(
+    refOrSelector: string,
+    funcBody: string
+  ): Promise<unknown> {
+    const nodeInfo = await this.resolveNode(refOrSelector)
+    if (!nodeInfo) throw new Error("ELEMENT_NOT_FOUND")
+    if (nodeInfo.backendNodeId) {
+      const resolved = (await this.sendCommand("DOM.resolveNode", {
+        backendNodeId: nodeInfo.backendNodeId,
+      })) as { object?: { objectId?: string } }
+      const objectId = resolved.object?.objectId
+      if (!objectId) throw new Error("ELEMENT_NOT_FOUND")
+      const r = (await this.sendCommand("Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: `function(){ const el=this; ${funcBody} }`,
+        returnByValue: true,
+      })) as { result?: { value?: unknown } }
+      return r.result?.value
+    }
+    const escaped = refOrSelector.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+    const r = (await this.sendCommand("Runtime.evaluate", {
+      expression: `(()=>{ const el=document.querySelector('${escaped}'); if(!el) return null; ${funcBody} })()`,
+      returnByValue: true,
+    })) as { result?: { value?: unknown } }
+    return r.result?.value
+  }
+
+  /**
+   * 选择原生 <select> 下拉项：按 value 精确匹配或 label（option 文本）匹配，
+   * 命中后派发 input/change 事件让框架同步状态。返回是否命中。
+   */
+  async select(
+    refOrSelector: string,
+    opts: { value?: string; label?: string }
+  ): Promise<CdpResult> {
+    try {
+      const v = JSON.stringify(opts.value ?? null)
+      const lbl = JSON.stringify(opts.label ?? null)
+      const ok = await this.runOnElement(
+        refOrSelector,
+        `
+        if (el.tagName !== 'SELECT') return false;
+        const value=${v}, label=${lbl};
+        let matched=false;
+        for (const o of el.options) {
+          if ((value!=null && o.value===value) || (label!=null && o.textContent.trim()===label)) { el.value=o.value; matched=true; break; }
+        }
+        if (matched) { el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); }
+        return matched;
+      `
+      )
+      return ok
+        ? { ok: true }
+        : { ok: false, error: "option not found", code: "OPTION_NOT_FOUND" }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
     }
   }
 

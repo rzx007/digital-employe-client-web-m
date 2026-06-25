@@ -421,6 +421,22 @@ async function handleBrowserRequest(
         reply(res, result.ok ? 200 : 502, result)
         return
       }
+      case "select": {
+        if (!attachDebugger()) {
+          reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE" })
+          return
+        }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const value = typeof body.value === "string" ? body.value : undefined
+        const label = typeof body.label === "string" ? body.label : undefined
+        const result = await dbg.select(refOrSelector, { value, label })
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
       case "press": {
         if (!attachDebugger()) {
           reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE" })

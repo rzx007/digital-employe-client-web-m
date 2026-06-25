@@ -36,6 +36,7 @@ Usage:
   browserctl scroll [@eN|selector] [--to top|bottom] [--by <px>] [--pretty]
   browserctl wait (--selector <css> | --text <text> | --ms <n>) [--timeout 10000] [--pretty]
   browserctl fill <@eN|selector> (<text> | --text-file <path> | --text-stdin) [--pretty]
+  browserctl select <@eN|selector> (<value> | --label <text>) [--pretty]
   browserctl get url|title [--pretty]
   browserctl get-url [--pretty]
   browserctl get-title [--pretty]
@@ -69,6 +70,8 @@ export function parseFlags(argv) {
       flags.selector = argv[++i] || ""
     } else if (value === "--text") {
       flags.text = argv[++i] || ""
+    } else if (value === "--label") {
+      flags.label = argv[++i] || ""
     } else if (value === "--ms") {
       flags.ms = Number(argv[++i])
     } else if (value === "--timeout") {
@@ -388,6 +391,21 @@ async function run(argv) {
       await postAction("fill", {
         ref_or_selector: refOrSelector,
         text,
+      }),
+      flags.pretty
+    )
+    return
+  }
+
+  if (command === "select") {
+    const refOrSelector = rest[0]
+    if (!refOrSelector) throw new Error("ref or selector required")
+    const value = rest[1]
+    print(
+      await postAction("select", {
+        ref_or_selector: refOrSelector,
+        value,
+        label: flags.label,
       }),
       flags.pretty
     )
