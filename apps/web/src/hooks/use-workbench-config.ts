@@ -37,5 +37,15 @@ export function useWorkbenchConfig() {
     return () => window.removeEventListener(WORKBENCH_CONFIG_CHANGED_EVENT, h)
   }, [qc])
 
+  // 卸载时清掉防抖定时器,并把最后一次乐观结果同步落库(防止快速切走丢失最后一次编辑)
+  useEffect(() => {
+    return () => {
+      if (!timer.current) return
+      clearTimeout(timer.current)
+      const cached = qc.getQueryData<WorkbenchConfig>(KEY)
+      if (cached) void saveWorkbench({ ...cached, updatedAt: Date.now() })
+    }
+  }, [qc])
+
   return { config: query.data ?? null, isLoading: query.isLoading, mutate }
 }
