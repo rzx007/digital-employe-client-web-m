@@ -1652,16 +1652,25 @@ class EmployeeService:
         content = read_text_with_encoding_fallback(cand)
         target_dir.mkdir(parents=True, exist_ok=True)
         (target_dir / "SKILL.md").write_text(content, encoding="utf-8")
-        from src.service import skill_provenance
-        skills_root = brain / "skills"
-        skill_provenance.write_origin(
-            target_dir,
-            origin="grown:adopted",
-            skill_id=skill_provenance.next_grown_skill_id(skills_root),
-        )
-        emp = db.get(Employee, employee_id)
-        if emp is not None:
-            EmployeeService.reconcile_employee_skills(db, emp)
+        # 写标记 + 投影为 best-effort：即便此处失败（如磁盘异常），技能文件已落盘，
+        # 下次任一 reconcile 的迁移自愈会把这个无标记目录回填为 grown:adopted 并补 DB 行，
+        # 故不因投影失败让整个采纳 500。与下方 cand.unlink() 的容错哲学一致。
+        try:
+            from src.service import skill_provenance
+            skills_root = brain / "skills"
+            skill_provenance.write_origin(
+                target_dir,
+                origin="grown:adopted",
+                skill_id=skill_provenance.next_grown_skill_id(skills_root),
+            )
+            emp = db.get(Employee, employee_id)
+            if emp is not None:
+                EmployeeService.reconcile_employee_skills(db, emp)
+        except Exception:  # noqa: BLE001 - 投影失败不致命，reconcile 自愈兜底
+            logger.warning(
+                "adopt: provenance/reconcile failed for eid=%s slug=%s (将由后续 reconcile 自愈)",
+                employee_id, slug, exc_info=True,
+            )
         try:
             cand.unlink()
         except OSError:
