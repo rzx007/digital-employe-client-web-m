@@ -35,6 +35,19 @@ def add_workbench_widget(
     type 取值: kpi|line|bar|area|table|progress|list。
     data 与 data_source 至少给一个：data 为内联快照；data_source={"metricId": "...","params":{...}} 绑定实时指标。
     可用 metricId: monthly_performance, task_calendar, today_tasks。
+
+    内联 data 必须严格按对应 type 的形状(否则前端渲染为空):
+      kpi:      {"items": [{"label": "本月销售", "value": 1234, "unit": "¥",
+                            "delta": "+5%", "deltaDir": "up|down|flat"}]}
+      line/bar/area: {"xKey": "date",
+                      "series": [{"key": "sales", "label": "销售额"}],
+                      "rows": [{"date": "周一", "sales": 120}, {"date": "周二", "sales": 90}]}
+                     (rows 是对象数组,每行含 xKey 和各 series.key 字段)
+      table:    {"columns": [{"key": "name", "label": "姓名"}],
+                 "rows": [{"name": "张三"}]}  —— 推荐对象列+对象行;
+                也接受简易式 {"columns": ["姓名","分数"], "rows": [["张三", 95]]}(字符串列+数组行)
+      progress: {"items": [{"label": "目标完成度", "value": 75, "max": 100}]}
+      list:     {"items": [{"title": "待办A", "value": "进行中", "badge": "高"}]}
     """
     spec: dict[str, Any] = {"type": type, "title": title}
     if subtitle is not None:

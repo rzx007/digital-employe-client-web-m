@@ -35,6 +35,27 @@ describe("TableWidget", () => {
     expect(screen.getByText("80")).toBeTruthy()
   })
 
+  it("兼容 LLM 形状:字符串列 + 数组行(定位取值)", () => {
+    const data = {
+      columns: ["日期", "TOP1话题", "热度峰值", "趋势"],
+      rows: [
+        ["06-22 周一", "欧洲杯小组赛战报", "1350万", "↑"],
+        ["06-25 周四", "世界杯16强对阵出炉", "1580万", "↑"],
+      ],
+    }
+    render(
+      <TableWidget
+        widget={{ ...baseWidget, subtitle: "2026-06-25 更新" }}
+        data={data}
+      />
+    )
+    expect(screen.getByText("日期")).toBeTruthy()
+    expect(screen.getByText("趋势")).toBeTruthy()
+    expect(screen.getByText("欧洲杯小组赛战报")).toBeTruthy()
+    expect(screen.getByText("1580万")).toBeTruthy()
+    expect(screen.getByText("2026-06-25 更新")).toBeTruthy() // subtitle 渲染
+  })
+
   it("renders — for null cell values", () => {
     const data = {
       columns: [{ key: "val", label: "值" }],
