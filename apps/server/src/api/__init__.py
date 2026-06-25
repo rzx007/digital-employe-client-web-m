@@ -22,6 +22,7 @@ from src.api.analytics_api import router as analytics_router
 from src.api.avatar_api import router as avatar_router
 from src.api.proxy_api import router as proxy_router
 from src.api.channel_qrcode_api import router as channel_qrcode_router
+from src.api.workbench_api import router as workbench_router
 
 api_router = APIRouter()
 api_router.include_router(workspace_router)
@@ -46,6 +47,7 @@ api_router.include_router(analytics_router)
 api_router.include_router(avatar_router)
 api_router.include_router(proxy_router)
 api_router.include_router(channel_qrcode_router)
+api_router.include_router(workbench_router)
 
 __all__ = ["api_router"]
 
