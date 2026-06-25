@@ -39,6 +39,14 @@ export function WidgetBody({
 
 export function WidgetRenderer({ widget }: { widget: WorkbenchWidget }) {
   const q = useMetricData(widget.dataSource)
+  // 实时数据源首次加载、且无内联兜底时,显示加载态以区别于"真的没数据"
+  if (widget.dataSource && q.isLoading && !widget.data) {
+    return (
+      <div className="flex h-full items-center justify-center p-3 text-xs text-muted-foreground">
+        加载中…
+      </div>
+    )
+  }
   const data = widget.dataSource
     ? (q.data ?? widget.data ?? {})
     : (widget.data ?? {})
