@@ -2,6 +2,11 @@ from __future__ import annotations
 import uuid
 from typing import Any, Literal
 from pydantic import BaseModel, Field
+from sqlalchemy import String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+from src.db.base import Base
+from src.db.types import CstDateTime
+from src.core.cst import cst_now
 
 WIDGET_TYPES = {"kpi", "line", "bar", "area", "table", "progress", "list"}
 
@@ -47,6 +52,13 @@ class WorkbenchConfig(BaseModel):
     tabOrder: list[str] = Field(default_factory=lambda: ["dashboard"])
     activeTabId: str | None = None
     updatedAt: int = 0
+
+
+class WorkbenchConfigRow(Base):
+    __tablename__ = "workbench_configs"
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    config_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    updated_at = mapped_column(CstDateTime, default=cst_now, onupdate=cst_now)
 
 
 def default_config() -> WorkbenchConfig:
