@@ -109,7 +109,7 @@
 
 ## 6. 测试（TDD）
 
-先写**失败**用例复现三个 bug，再实现到绿：
+先写**失败**用例复现核心 bug，再实现到绿（5 条均为必需）：
 
 1. 采纳候选后 `EmployeeSkill` / 档案接口可见，标记 `grown:adopted`。
 2. 已采纳 / 已 `update_skill` 改进的技能存在时，再次分配（增删别的库技能）**不删**这些成长技能。
@@ -129,5 +129,5 @@
 - `apps/server/src/service/employee_service.py`：`_save_skills_to_skill_path` / `_replace_employee_skills`（增量化）、`adopt_skill_candidate`、`sync_local_skill_to_assignees` / `unassign_local_skill_from_assignees`、新增 `reconcile_employee_skills`、来源标记读写 helper、迁移回填。
 - `apps/server/src/service/agent/update_skill_tool.py`：编辑后 reconcile + 置 `locallyModified`。
 - 来源标记存储（meta helper，可能落 `local_skill_service` 或新模块）。
-- 测试：`apps/server/tests/` 新增覆盖上述 6 节用例。
+- 测试：`apps/server/tests/` 新增覆盖第 6 节的 5 条用例。
 - （可选）前端 `growth-brain-section.tsx` / 档案 tab：`grown:*` 角标。
