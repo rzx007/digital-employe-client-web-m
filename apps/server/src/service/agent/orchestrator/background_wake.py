@@ -53,16 +53,69 @@ def build_wake_message(
 
 
 def _inject_wake(*, conversation_id: int, message: str) -> None:
-    """主事件循环线程内：以一条合成 user 消息触发该员工会话续跑一轮 astream。
+    """主事件循环线程内：判活 → 查会话类型 → 分发到对应续跑路径。
 
     必须在主事件循环线程上调用（watcher 协程跑在主循环上，直接同步调用即可）。
     职责：
       1. 会话有进行中 turn → 跳过（不打断；本期不重试）。
-      2. build_employee_agent_for_wake 构造续跑 agent（失败 log + return）。
-      3. 建 user(合成通知)/assistant(空) 消息，registry.start 起一轮员工流并落库。
+      2. 短 db session 查 Conversation 拿 target_type（查不到 → log + return）。
+      3. 按 target_type 分发：
+         - employee → _inject_wake_employee（员工 agent 续跑）
+         - curator  → _inject_wake_curator（总管 agent 续跑）
+         - 其它（group 等）→ log + 不续跑（本期只支持 employee/curator）
+    """
+    from src.models.conversation import Conversation
+    from src.service.stream_registry import registry
 
-    参照 curator_injection.inject_curator_instruction 的「建双消息 + 快照 + start」流程，
-    但走员工 agent（非总管）、不绑 orchestrator_owned_db。
+    # 1. 进行中 turn → 不打断（registry.is_active 是会话级判活，见 stream_registry）。
+    #    注意：此时不查 conversation、不续跑（直接 return）。
+    if registry.is_active(conversation_id):
+        logger.info(
+            "[bg-wake] conv=%s 有进行中 turn，跳过续跑注入（本期不重试）",
+            conversation_id,
+        )
+        return
+
+    # 2. 短 db session 查会话类型（查询形态与测试 mock 一致：.query().filter().first()）。
+    from src.db.session import get_session_local
+
+    db = get_session_local()()
+    try:
+        conversation = (
+            db.query(Conversation)
+            .filter(Conversation.id == conversation_id)
+            .first()
+        )
+    finally:
+        db.close()
+
+    if conversation is None:
+        logger.info(
+            "[bg-wake] conv=%s 未找到会话，放弃续跑注入",
+            conversation_id,
+        )
+        return
+
+    target_type = conversation.target_type
+
+    # 3. 按会话类型分发续跑路径。
+    if target_type == "employee":
+        _inject_wake_employee(conversation_id=conversation_id, message=message)
+    elif target_type == "curator":
+        _inject_wake_curator(conversation_id=conversation_id, message=message)
+    else:
+        logger.info(
+            "[bg-wake] conv=%s target_type=%s 不续跑（本期仅 employee/curator）",
+            conversation_id,
+            target_type,
+        )
+
+
+def _inject_wake_employee(*, conversation_id: int, message: str) -> None:
+    """员工会话续跑：构造员工 agent + 建双消息 + registry.start（员工分支）。
+
+    建 user(合成通知)/assistant(空) 消息，registry.start 起一轮员工流并落库。
+    走员工 agent（非总管）、不绑 orchestrator_owned_db、只传 source=_WAKE_SOURCE。
     """
     import json
 
@@ -73,15 +126,7 @@ def _inject_wake(*, conversation_id: int, message: str) -> None:
     from src.service.agent_stream_queue import StartResult
     from src.service.stream_registry import registry
 
-    # 1. 进行中 turn → 不打断（registry.is_active 是会话级判活，见 stream_registry）。
-    if registry.is_active(conversation_id):
-        logger.info(
-            "[bg-wake] conv=%s 有进行中 turn，跳过续跑注入（本期不重试）",
-            conversation_id,
-        )
-        return
-
-    # 2. 构造续跑 agent（必须在主循环线程；本函数即在主循环上调用）。
+    # 构造续跑 agent（必须在主循环线程；本函数即在主循环上调用）。
     try:
         agent = build_employee_agent_for_wake(conversation_id)
     except Exception:
@@ -92,7 +137,7 @@ def _inject_wake(*, conversation_id: int, message: str) -> None:
         )
         return
 
-    # 3. 建双消息 + 起员工流。用独立 Session 落库后立即提交，避免跨线程复用。
+    # 建双消息 + 起员工流。用独立 Session 落库后立即提交，避免跨线程复用。
     from src.db.session import get_session_local
 
     db = get_session_local()()
@@ -151,6 +196,60 @@ def _inject_wake(*, conversation_id: int, message: str) -> None:
             assistant_msg_id,
             result,
         )
+
+
+def _inject_wake_curator(*, conversation_id: int, message: str) -> None:
+    """总管（curator）会话续跑：复用 inject_curator_instruction 注入指令并起总管流。
+
+    DRY：inject_curator_instruction 已封装「建双消息 + 构造总管 agent
+    (get_orchestrator_agent) + registry.start（带 orchestrator_owned_db /
+    workspace_id / conversation_id / priority，db 托管，REJECTED 处理）」整套。
+    本函数仅负责拿一个带 conversation 的 db 喂给它（合成通知文本即指令）。
+
+    db 由 inject_curator_instruction 内部 commit；其另起的 orch_db 也由它托管/关闭。
+    """
+    from src.models.conversation import Conversation
+    from src.service.agent.orchestrator.curator_injection import (
+        inject_curator_instruction,
+    )
+    from src.db.session import get_session_local
+
+    db = get_session_local()()
+    try:
+        conversation = (
+            db.query(Conversation)
+            .filter(Conversation.id == conversation_id)
+            .first()
+        )
+        if conversation is None:
+            logger.info(
+                "[bg-wake] conv=%s 未找到总管会话，放弃续跑注入",
+                conversation_id,
+            )
+            return
+        inject_curator_instruction(
+            db,
+            conversation,
+            message,
+            source=_WAKE_SOURCE,
+        )
+        logger.info(
+            "[bg-wake] conv=%s 已注入总管续跑（source=%s）",
+            conversation_id,
+            _WAKE_SOURCE,
+        )
+    except Exception:
+        logger.warning(
+            "[bg-wake] conv=%s 总管续跑注入异常，放弃本次唤醒",
+            conversation_id,
+            exc_info=True,
+        )
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    finally:
+        db.close()
 
 
 async def watch_background_command(

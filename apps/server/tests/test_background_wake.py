@@ -122,9 +122,11 @@ def _patch_inject_wake_deps(monkeypatch, *, target_type):
     monkeypatch.setattr(sr, "registry", _Reg())
 
     # Conversation 查询：返回带指定 target_type 的伪 conversation。
+    _target_type = target_type
+
     class _Conv:
         id = 42
-        target_type = target_type
+        target_type = _target_type
         target_id = 9
         workspace_id = 3
 
