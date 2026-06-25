@@ -174,10 +174,7 @@ export function useConversationSession({
   const convKey = conversationId != null ? String(conversationId) : null
 
   const tryScheduleResume = useCallback(
-    (
-      assistantId: string,
-      options?: { allowBusyStatus?: boolean; forceReconnect?: boolean }
-    ) => {
+    (assistantId: string, options?: { allowBusyStatus?: boolean }) => {
       if (!convKey) return false
 
       const willResume = shouldAttemptResume({
@@ -210,17 +207,11 @@ export function useConversationSession({
         ) {
           return
         }
-        // forceReconnect（会话切回/进入路径）：transport 上残留的同会话「在飞」归属，
-        // 是切走那一拍 unmount 调度的死连接（其消费组件已卸载），不是当前前台真活流。
-        // 切回时若被 inflight 闸挡住，当前轮气泡会空白直到 idle 看门狗回收/二次进来
-        // （「切流拖影」根因①）。故进入路径先同步硬清这道残留归属再续，绝不被它永久挡。
-        // 同会话「再触发」路径（retryResumeIfNeeded，未传 forceReconnect）仍保留 skip 闸，
-        // 防 orchestration/群流反复 abort+全量重放跳屏。
-        if (options?.forceReconnect) {
-          if (chatTransport.getInFlightResumeChatId() === convKey) {
-            chatTransport.cancelReconnect()
-          }
-        } else if (
+        // 止抖动：同会话已有在飞 resume 连接时直接跳过——不清空气泡、不重连，
+        // 避免 effect 反复重跑触发的 abort+全量重放把画面从头重打（orchestration/群流
+        // 无 live 流、全靠 resume，最易暴露）。假死连接由 transport idle 看门狗回收后
+        // 不再在飞，下次调度自然放行。
+        if (
           shouldSkipResumeWhenInFlight(
             chatTransport.getInFlightResumeChatId(),
             convKey
@@ -306,35 +297,12 @@ export function useConversationSession({
   // 不再依赖手动重进会话。一旦 DB 转终态或本地 status 回到 streaming（resume 接上了）
   // 就停轮询。与 B（SSE 续流）互补：B 续上时 status→streaming 会停掉本轮询，避免双补。
   const isLocallyStreaming = status === "streaming" || status === "submitted"
-  // 「立即补拉」去重：同一条 streaming assistant 只在进入兜底态时立刻拉一次终态，
-  // 之后交给 interval，避免 storedMessages 每变都重建 effect 触发狂刷。
-  const stallImmediateFetchedRef = useRef<string | null>(null)
   useEffect(() => {
     if (!convKey) return
     if (isLocallyStreaming) return
 
     const lastAssistant = getLastAssistantMessage(storedMessages)
     if (lastAssistant?.streamState !== "streaming") return
-
-    // 「快结束时切走再切回」竞态修复：流在后台刚跑完终态（completed + message_parts
-    // 已原子落库），但前端 react-query 还握着切走前那份 streamState=streaming 的旧缓存。
-    // 此时本地 status 已 ready → 不走 streaming 分支、不 resume；而 DB 旧缓存那条
-    // streaming+无 parts 会被 mapStoredMessagesToUIMessages 丢成 null → 工具卡「偶尔
-    // 看不见」。若只靠下方 interval，要等 DB_STALL_POLL_INTERVAL_MS(4s) 才首拉 →
-    // 正是「过一下/再切一次才好」的空窗。故进入兜底态立刻补拉一次终态（按 lastAssistant
-    // id 去重，只拉一次），把 4s 空窗压到一次 refetch 往返。
-    // 注意：用 setTimeout(0) 异步派发 invalidate，避免在 effect 同步体内触发 query
-    // 通知→订阅组件同步重渲染→本 effect 重入的潜在循环；ref 去重保证整条 stream 只拉一次。
-    const lastId = lastAssistant?.id ? String(lastAssistant.id) : null
-    let immediateTimer: ReturnType<typeof setTimeout> | null = null
-    if (lastId && stallImmediateFetchedRef.current !== lastId) {
-      stallImmediateFetchedRef.current = lastId
-      immediateTimer = setTimeout(() => {
-        void queryClient.invalidateQueries({
-          queryKey: chatKeys.messages(convKey),
-        })
-      }, 0)
-    }
 
     const timer = setInterval(() => {
       const cached = queryClient.getQueryData<Message[]>(
@@ -348,46 +316,7 @@ export function useConversationSession({
       })
     }, DB_STALL_POLL_INTERVAL_MS)
 
-    return () => {
-      if (immediateTimer) clearTimeout(immediateTimer)
-      clearInterval(timer)
-    }
-  }, [convKey, isLocallyStreaming, storedMessages, queryClient])
-
-  // 「中断/终态那拍 message_parts 还没落」竞态修复（与上方 streaming 兜底同源，触发点是
-  // 终态）：点中断走 onStreamStopped → 立即把 DB 那条 patch 成 cancelled + 800ms 后 refetch，
-  // 但后端 _flush_terminal（异步 to_thread 解析 message_parts）可能还没落完 parts。前端这一
-  // refetch 拿到 cancelled/error + 无 parts + content（流式累积的脏文本）→
-  // mapStoredMessagesToUIMessages 命中「终态有 content」分支把脏文本当一坨纯文本渲染 →
-  // 工具卡塌成重复纯文字（中断后现象）。故终态但 parts 仍空、content 非空时，一次性补拉
-  // （非轮询，终态不会再变）；后端 parts 落库后 refetch 自然补回结构化工具卡。按消息 id
-  // 去重只拉一次；本就无 parts 的纯文本回复补拉无害（拉回仍无 parts、渲染纯文本正确）。
-  const terminalPartsRefetchedRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (!convKey) return
-    if (isLocallyStreaming) return
-
-    const last = getLastAssistantMessage(storedMessages)
-    if (!last) return
-    const ss = last.streamState
-    const isTerminal = ss === "cancelled" || ss === "error" || ss === "completed"
-    if (!isTerminal) return
-    // 仅当「无结构化 parts 但有 content」才补拉——这正是 parts 落库滞后的特征；
-    // 已有 parts（正常）或 content 也空（无可补）都不触发。
-    const hasParts =
-      Array.isArray(last.messageParts) && last.messageParts.length > 0
-    const hasContent = typeof last.content === "string" && last.content.trim().length > 0
-    if (hasParts || !hasContent) return
-
-    const lastId = last.id ? String(last.id) : null
-    if (!lastId || terminalPartsRefetchedRef.current === lastId) return
-    terminalPartsRefetchedRef.current = lastId
-    const t = setTimeout(() => {
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.messages(convKey),
-      })
-    }, 0)
-    return () => clearTimeout(t)
+    return () => clearInterval(timer)
   }, [convKey, isLocallyStreaming, storedMessages, queryClient])
 
   useEffect(() => {
@@ -418,18 +347,13 @@ export function useConversationSession({
       dispatch({ type: "ACTIVATED" })
       hydrateFromDbIfBehind()
 
-      // 切走再切回：useChat 可能残留 streaming，但 SSE 已断 —— 需重新 resume。
-      // forceReconnect：硬清切走那拍残留的同会话「在飞」死连接，否则被 inflight 闸挡住
-      // 当前轮气泡会空白（切流拖影根因①）。
+      // 切走再切回：useChat 可能残留 streaming，但 SSE 已断 —— 需重新 resume
       if (
         lastAssistant?.streamState === "streaming" &&
         lastAssistantId &&
         !wasActive
       ) {
-        tryScheduleResume(lastAssistantId, {
-          allowBusyStatus: true,
-          forceReconnect: true,
-        })
+        tryScheduleResume(lastAssistantId, { allowBusyStatus: true })
       }
 
       return () => cancelScheduledStreamResume(resumeScheduleRef.current)
@@ -477,9 +401,7 @@ export function useConversationSession({
 
     if (!willResume || !lastAssistantId) return
 
-    // 进入/hydrate 路径：forceReconnect 硬清切走那拍残留的同会话「在飞」死连接，
-    // 否则被 inflight 闸挡住，当前轮气泡空白直到二次进来（切流拖影根因①）。
-    tryScheduleResume(String(lastAssistantId), { forceReconnect: true })
+    tryScheduleResume(String(lastAssistantId))
 
     return () => cancelScheduledStreamResume(resumeScheduleRef.current)
 

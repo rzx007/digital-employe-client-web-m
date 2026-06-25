@@ -32,13 +32,7 @@ export function parsePlanGeneratedOutput(
 ): PlanGeneratedOutput | null {
   if (!resultText?.trim()) return null
   const firstLine = resultText.trim().split("\n", 1)[0] ?? ""
-  let obj = parseJsonObject(firstLine)
-  // 组长会话的工具结果被包成 {status,text}，真正的 plan_generated 载荷嵌在
-  // text 字符串里（双层编码）。不拆壳就取不到 plan_id → 计划卡按 plan_id 折叠
-  // 失败、同一计划渲染成多张卡。
-  if (obj && obj.type !== "plan_generated" && typeof obj.text === "string") {
-    obj = parseJsonObject(obj.text) ?? obj
-  }
+  const obj = parseJsonObject(firstLine)
   if (!obj || obj.type !== "plan_generated") return null
   const planId = obj.plan_id
   if (typeof planId !== "number" || !Number.isFinite(planId)) return null
