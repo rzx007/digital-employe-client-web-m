@@ -1071,6 +1071,71 @@ class EmployeeService:
         employee.meta_json = json.dumps(meta, ensure_ascii=False)
 
     @staticmethod
+    def reconcile_employee_skills(db: Session, employee: Employee) -> None:
+        """唯一的「磁盘 → EmployeeSkill」投影。幂等。改动磁盘技能集后必调。"""
+        from src.service import skill_provenance
+        from src.service.basic_file_reader import read_text_with_encoding_fallback
+
+        skills_root = (
+            EmployeeService._resolve_skill_root() / str(employee.id) / "skills"
+        )
+        disk = skill_provenance.scan_employee_skills(skills_root)
+
+        for info in disk:
+            if info.origin is None:
+                d = skills_root / info.name
+                row = db.scalars(
+                    select(EmployeeSkill).where(
+                        EmployeeSkill.employee_id == employee.id,
+                        EmployeeSkill.skill_name == info.name,
+                    )
+                ).first()
+                if row is not None and row.skill_id > 0:
+                    skill_provenance.write_origin(d, origin="assigned", skill_id=row.skill_id)
+                else:
+                    skill_provenance.write_origin(
+                        d, origin="grown:adopted",
+                        skill_id=skill_provenance.next_grown_skill_id(skills_root))
+        disk = skill_provenance.scan_employee_skills(skills_root)
+
+        disk_by_name = {info.name: info for info in disk}
+        existing = {
+            r.skill_name: r
+            for r in db.scalars(
+                select(EmployeeSkill).where(EmployeeSkill.employee_id == employee.id)
+            ).all()
+        }
+
+        for name, row in existing.items():
+            if name not in disk_by_name:
+                db.delete(row)
+
+        for name, info in disk_by_name.items():
+            skill_md = skills_root / name / skill_provenance.SKILL_MD
+            content = (
+                read_text_with_encoding_fallback(skill_md)
+                if skill_md.is_file() else None
+            )
+            row = existing.get(name)
+            if row is None:
+                row = EmployeeSkill(
+                    workspace_id=employee.workspace_id,
+                    user_id=employee.user_id,
+                    employee_id=employee.id,
+                    skill_id=info.skill_id if info.skill_id is not None else
+                        skill_provenance.next_grown_skill_id(skills_root),
+                    skill_name=name,
+                )
+                db.add(row)
+            row.skill_name_zh = info.display_name_zh or ""
+            row.skill_description = info.description
+            row.prompt = info.prompt
+            row.skill_content = content
+
+        db.flush()
+        EmployeeService._refresh_employee_meta_skills(db, employee)
+
+    @staticmethod
     def sync_local_skill_to_assignees(
         db: Session,
         *,
