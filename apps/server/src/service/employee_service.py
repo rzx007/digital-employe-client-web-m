@@ -1652,6 +1652,16 @@ class EmployeeService:
         content = read_text_with_encoding_fallback(cand)
         target_dir.mkdir(parents=True, exist_ok=True)
         (target_dir / "SKILL.md").write_text(content, encoding="utf-8")
+        from src.service import skill_provenance
+        skills_root = brain / "skills"
+        skill_provenance.write_origin(
+            target_dir,
+            origin="grown:adopted",
+            skill_id=skill_provenance.next_grown_skill_id(skills_root),
+        )
+        emp = db.get(Employee, employee_id)
+        if emp is not None:
+            EmployeeService.reconcile_employee_skills(db, emp)
         try:
             cand.unlink()
         except OSError:
