@@ -32,7 +32,10 @@ def _backup_skill_version_private(skill_dir) -> Optional[str]:
         )
         return ts
     except Exception as exc:  # noqa: BLE001
-        logger.warning("_backup_skill_version_private failed (best-effort): %s", exc)
+        logger.warning(
+            "_backup_skill_version_private failed (best-effort): dir=%s err=%s",
+            skill_dir, exc,
+        )
         return None
 
 
@@ -123,9 +126,14 @@ def _apply_skill_update(
         if emp is None:
             return "拒绝：未找到员工记录。"
         # 单一真相：只改调用者自己的私有副本，不写库、不广播给同事。
-        skill_dir = (
-            EmployeeService._resolve_skill_root() / str(employee_id) / "skills" / skill_name
-        )
+        skills_root = EmployeeService._resolve_skill_root() / str(employee_id) / "skills"
+        skill_dir = skills_root / skill_name
+        # 纵深防御：防 skill_name 含 ../ 越界到别人目录（wrapper 白名单之外再兜一层）。
+        try:
+            if not skill_dir.resolve().is_relative_to(skills_root.resolve()):
+                return f"拒绝：技能名「{skill_name}」非法（路径越界）。"
+        except (OSError, ValueError):
+            return f"拒绝：技能名「{skill_name}」非法。"
         skill_md = skill_dir / "SKILL.md"
         if not skill_md.is_file():
             return f"拒绝：技能「{skill_name}」的私有副本不存在。"
