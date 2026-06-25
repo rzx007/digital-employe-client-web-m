@@ -1220,6 +1220,10 @@ class EmployeeService:
             ).all()
         }
 
+        # 先无条件把全部 assignee 行写成库版本（含 skill_content）。这对「已私改」的
+        # assignee 是暂时性错值——会在下方循环里被无条件的 reconcile 从其私有磁盘纠回。
+        # 安全：db.commit() 延后到所有 reconcile 之后，中途任一 reconcile 抛错则整体回滚，
+        # 不会把这里的暂时错值落库。
         for row in rows:
             row.skill_name_zh = display_name_zh or ""
             if description is not None:
@@ -1240,7 +1244,9 @@ class EmployeeService:
                 / normalized
             )
 
-            # (b) 私有改进优先：已私改(locallyModified)或 grown 的私有副本，不被库版本覆盖
+            # (b) 私有改进优先：已私改(locallyModified)或 grown 的私有副本，不被库版本覆盖。
+            # 跳过者也不调 _patch_employee_skills_json（库的显示名/描述不灌给已分叉的副本）——
+            # reconcile 会从其私有 meta 派生行，保留员工自己那一整份（含元数据）。
             skip_overwrite = False
             if target_dir.is_dir():
                 info = skill_provenance.read_origin(target_dir)
