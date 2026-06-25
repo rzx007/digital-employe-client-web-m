@@ -78,33 +78,4 @@ describe("classifyMessageParts — 草稿技能", () => {
     expect(findBlocks(blocks, "draft-skill-save")).toHaveLength(0)
     expect(findBlocks(blocks, "file-changes")).toHaveLength(1)
   })
-
-  it("skills-draft 下只有 .py 脚本（无 SKILL.md）不产出 draft-skill-save 块", () => {
-    // agent 把临时脚本写进 skills-draft，但没有 SKILL.md → 不是真正的技能，不该弹卡
-    const message = assistantMessage("m4", [
-      writeFilePart("/home/user/skills-draft/fetch-weibo/fetch-weibo-api.py", "t1"),
-      writeFilePart("/home/user/skills-draft/fetch-weibo/test-apis.py", "t2"),
-    ])
-
-    const blocks = classifyMessageParts(message, { includeFileChanges: true })
-
-    expect(findBlocks(blocks, "draft-skill-save")).toHaveLength(0)
-  })
-
-  it("skills-draft 下有 SKILL.md + 脚本时，仍只产出一张 draft-skill-save 卡", () => {
-    const message = assistantMessage("m5", [
-      writeFilePart("/home/user/skills-draft/news-digest/SKILL.md", "t1"),
-      writeFilePart("/home/user/skills-draft/news-digest/fetch.py", "t2"),
-    ])
-
-    const blocks = classifyMessageParts(message, { includeFileChanges: true })
-
-    const draftBlocks = findBlocks(blocks, "draft-skill-save")
-    expect(draftBlocks).toHaveLength(1)
-    const draft = draftBlocks[0] as Extract<
-      ClassifiedBlock,
-      { kind: "draft-skill-save" }
-    >
-    expect(draft.skillName).toBe("news-digest")
-  })
 })

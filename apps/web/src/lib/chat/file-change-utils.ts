@@ -134,10 +134,7 @@ function getSkillDraftFolder(path: string) {
   }
 }
 
-function buildFileChange(
-  part: ToolUIPart,
-  skillFoldersWithManifest: Set<string>
-): FileChangeItem | null {
+function buildFileChange(part: ToolUIPart): FileChangeItem | null {
   const vm = normalizeToolPart(part)
   const action: FileChangeAction | null =
     vm.toolName === "write_file"
@@ -161,9 +158,7 @@ function buildFileChange(
   }
 
   const skillFolder = getSkillDraftFolder(path)
-  // 仅当该草稿文件夹本轮写过 SKILL.md（真正技能的标志）才作为 skill-folder；
-  // 否则降级为普通文件变更（agent 把脚本临时丢进 skills-draft 不算新技能）。
-  if (skillFolder && skillFoldersWithManifest.has(skillFolder.path)) {
+  if (skillFolder) {
     // 草稿技能是用户要导入的成果，恒为交付物
     return {
       id: `skill-folder:${skillFolder.path}`,
@@ -191,39 +186,17 @@ function buildFileChange(
   }
 }
 
-/** 该 skills-draft 写入是否为 SKILL.md（真正技能的标志文件）。 */
-function isSkillManifestWrite(path: string): boolean {
-  if (getResourceBucket(path) !== "skills_draft") return false
-  return getBasename(path).toLowerCase() === "skill.md"
-}
-
 export function getFileChangesFromUIMessage(
   message: UIMessage
 ): FileChangeItem[] {
   const changes = new Map<string, FileChangeItem>()
-  // 真正的技能必须有 SKILL.md。记录本轮写过 SKILL.md 的草稿技能文件夹路径，
-  // 只有这些文件夹的 skill-folder 项才视为「草稿技能」（弹保存卡）；
-  // 否则只是 agent 把脚本临时丢进 skills-draft，不该被当成新技能。
-  const skillFoldersWithManifest = new Set<string>()
-
-  for (const part of message.parts) {
-    if (!isToolUIPart(part)) {
-      continue
-    }
-    const vm = normalizeToolPart(part)
-    const rawPath = (vm.input as Record<string, unknown>)?.file_path
-    if (typeof rawPath === "string" && isSkillManifestWrite(rawPath)) {
-      const folder = getSkillDraftFolder(normalizeToolFilePath(rawPath))
-      if (folder) skillFoldersWithManifest.add(folder.path)
-    }
-  }
 
   for (const part of message.parts) {
     if (!isToolUIPart(part)) {
       continue
     }
 
-    const change = buildFileChange(part, skillFoldersWithManifest)
+    const change = buildFileChange(part)
     if (!change) {
       continue
     }

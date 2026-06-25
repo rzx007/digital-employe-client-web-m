@@ -1,11 +1,8 @@
-import { IconX, IconFolder } from "@tabler/icons-react"
+import { IconX } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { useWorkbenchConfig } from "@/hooks/use-workbench-config"
-import {
-  GLOBAL_WORKBENCH_ID,
-  emitWorkbenchOpenResources,
-} from "@/lib/workbench/workbench-config"
+import { GLOBAL_WORKBENCH_ID } from "@/lib/workbench/workbench-config"
 import { WorkbenchLeftPanel } from "@/components/workbench/workbench-left-panel"
 import { DraggableWorkbenchGrid } from "@/components/workbench/draggable-workbench-grid"
 import { WorkbenchContentSplit } from "@/components/workbench/workbench-content-split"
@@ -16,7 +13,7 @@ interface WorkbenchViewProps {
 }
 
 export function WorkbenchView({ onClose, className }: WorkbenchViewProps) {
-  const { config, removeBlock, reorderBlocks, resizeBlock } = useWorkbenchConfig({
+  const { config, reorderBlocks, removeBlock, resizeBlock } = useWorkbenchConfig({
     employeeId: GLOBAL_WORKBENCH_ID,
   })
 
@@ -38,22 +35,13 @@ export function WorkbenchView({ onClose, className }: WorkbenchViewProps) {
         <WorkbenchContentSplit>
           <div className="mb-2 flex items-center justify-between gap-3">
             <div className="text-xs font-medium text-muted-foreground">我的看板</div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1 text-xs"
-              onClick={() => emitWorkbenchOpenResources()}
-            >
-              <IconFolder className="size-3.5" />
-              资源池
-            </Button>
           </div>
           {config ? (
             <DraggableWorkbenchGrid
               blocks={config.blocks}
               onReorder={reorderBlocks}
-              onResizeBlock={resizeBlock}
               onRemoveBlock={removeBlock}
+              onResizeBlock={resizeBlock}
             />
           ) : null}
         </WorkbenchContentSplit>

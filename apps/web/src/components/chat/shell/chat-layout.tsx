@@ -223,18 +223,13 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const isBrowserMinimized = useBrowserStore((s) => s.isMinimized)
   const isBrowserFullscreen = useBrowserStore((s) => s.isFullscreen)
   const restoreBrowser = useBrowserStore((s) => s.restoreBrowser)
-  const suspendBrowserForSwitch = useBrowserStore(
-    (s) => s.suspendForConversationSwitch
-  )
+  const destroyBrowser = useBrowserStore((s) => s.destroyBrowser)
   const browserWidthRatio = useBrowserStore((s) => s.widthRatio)
 
-  // 切到非聊天 Tab / 切对话时，只收起浏览器 UI，**不销毁视口**——否则会打断 agent
-  // （尤其后台执行会话）正跑的 browserctl，触发 BROWSER_VIEWPORT_NOT_READY。
-  // 切回会话靠 browser-confirmation-host 的 adoptForeground 重现。
   useEffect(() => {
     if (activeTab === "chat") return
-    suspendBrowserForSwitch()
-  }, [activeTab, suspendBrowserForSwitch])
+    destroyBrowser()
+  }, [activeTab, destroyBrowser])
 
   const selectedContactId = useChatStore((s) => s.selectedContactId)
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
@@ -263,8 +258,8 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   useEffect(() => {
     if (prevConversationKeyRef.current === conversationKey) return
     prevConversationKeyRef.current = conversationKey
-    suspendBrowserForSwitch()
-  }, [conversationKey, suspendBrowserForSwitch])
+    destroyBrowser()
+  }, [conversationKey, destroyBrowser])
 
   const prevConversationCountRef = useRef<number | null>(null)
   const prevContactIdForConvRef = useRef<string | null>(null)

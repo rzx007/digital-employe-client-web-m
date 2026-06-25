@@ -53,13 +53,6 @@ interface ChatPanelHeaderProps {
   onOpenContacts?: () => void
   onOpenConversations?: () => void
   onNewConversation?: () => void
-  /**
-   * 资源管理器图标的点击行为覆盖。传入时点击 = 调本回调（如工作台场景开右侧资源池），
-   * 不传时维持默认（开/收内置 artifact 面板）。
-   */
-  onOpenArtifact?: () => void
-  /** 标题区自定义内容（工作台：总管/工作台助手 下拉切换）。传入时替代纯文字标题。 */
-  titleSlot?: React.ReactNode
 }
 
 export function ChatPanelHeader({
@@ -68,8 +61,6 @@ export function ChatPanelHeader({
   onOpenContacts,
   onOpenConversations,
   onNewConversation,
-  onOpenArtifact,
-  titleSlot,
 }: ChatPanelHeaderProps) {
   const isMobile = useIsMobile()
   const [menuOpen, setMenuOpen] = React.useState(false)
@@ -159,17 +150,15 @@ export function ChatPanelHeader({
               <Separator orientation="vertical" className="h-5 self-center" />
             </>
           )}
-          {titleSlot ?? (
-            <h3
-              className={cn(
-                "min-w-0 flex-1 truncate text-sm font-medium",
-                isCompactMode ? "max-w-[120px]" : "max-w-[200px]"
-              )}
-              title={title}
-            >
-              {title}
-            </h3>
-          )}
+          <h3
+            className={cn(
+              "min-w-0 flex-1 truncate text-sm font-medium",
+              isCompactMode ? "max-w-[120px]" : "max-w-[200px]"
+            )}
+            title={title}
+          >
+            {title}
+          </h3>
         </div>
 
         <div className="flex items-center gap-1">
@@ -207,22 +196,12 @@ export function ChatPanelHeader({
               </span>
             </Button>
           )}
-          {(selectedConversationId || onOpenArtifact) && (
+          {selectedConversationId && (
             <Button
-              title={
-                onOpenArtifact
-                  ? "打开资源池"
-                  : isArtifactPanelOpen
-                    ? "收起资源管理器"
-                    : "打开资源管理器"
-              }
+              title={isArtifactPanelOpen ? "收起资源管理器" : "打开资源管理器"}
               variant="ghost"
               size="icon-sm"
-              onClick={() =>
-                onOpenArtifact
-                  ? onOpenArtifact()
-                  : setArtifactPanelOpen(!isArtifactPanelOpen)
-              }
+              onClick={() => setArtifactPanelOpen(!isArtifactPanelOpen)}
             >
               <IconFolder className="size-4" />
             </Button>

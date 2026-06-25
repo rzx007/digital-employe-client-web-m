@@ -209,78 +209,30 @@ async def _graph_has_pending_non_interrupt_work(agent: Any, config: dict) -> boo
     return True
 
 
-def _usage_from_serialized_message(msg: Any) -> dict | None:
-    """从一个序列化后的 message 取 usage_metadata。
-
-    LC constructor 格式把它放在 kwargs 下；自定义兜底序列化放在顶层。两处都查。
-    """
-    if not isinstance(msg, dict):
-        return None
-    direct = msg.get("usage_metadata")
-    if direct:
-        return direct
-    kwargs = msg.get("kwargs")
-    if isinstance(kwargs, dict) and kwargs.get("usage_metadata"):
-        return kwargs["usage_metadata"]
-    return None
-
-
-def _raw_has_subagent_ns(raw: dict) -> bool:
-    """该 buffer 事件是否来自子任务（task 子图，ns 非空）。
-
-    子代理在自己独立的小上下文上跑，其 input_tokens 不代表父轮的上下文大小，
-    统计父轮用量时须排除（见 _event_subagent_ns）。
-    """
-    ns = raw.get("ns")
-    return isinstance(ns, (list, tuple)) and len(ns) > 0
-
-
-def _extract_peak_usage_from_buffer(events: list[dict]) -> dict | None:
-    """从 buffer 取本轮 input_tokens 峰值的 usage_metadata（排除子任务）。
-
-    一轮带工具调用的回复会发起多次 LLM 调用：上下文随工具结果累积而增长，
-    最后一次调用可能跑在被裁剪过的较小上下文上。驱动摘要/压缩、也是用户该看到
-    的「上下文用量」是本轮的**峰值**输入，而非最后一次调用。故取 input_tokens
-    最大的那次（并列时取较晚一次，输出更接近本轮真实尾状态）。
-
-    v2 stream_mode=["messages",...] 落库后的真实结构为：
-      {"type":"messages","ns":[...],"data":[[<序列化 message>, <metadata>]]}
-    message 双层嵌套在 data[0][0]，usage 又在该 message 的 kwargs 下
-    （LangChain LC constructor 格式）。ns 非空 = 子任务，跳过。
-    """
-    best: dict | None = None
-    best_input = -1
-    for event in events:
+def _extract_last_usage_from_buffer(events: list[dict]) -> dict | None:
+    """从 buffer 倒序取最后一次 AIMessageChunk 的 usage_metadata。"""
+    for event in reversed(events):
         if not isinstance(event, dict):
             continue
         raw = event.get("data")
         if not isinstance(raw, dict):
             continue
-        if _raw_has_subagent_ns(raw):
-            continue
-        # 兜底序列化路径：usage 可能直接挂在 raw 顶层。
-        candidates: list[dict] = []
         if raw.get("usage_metadata"):
-            candidates.append(raw["usage_metadata"])
-        elif raw.get("type") == "messages":
-            inner = raw.get("data")
-            if isinstance(inner, list):
-                # inner = [[<msg>, <metadata>], ...]；逐个 [msg, meta] 对取 message。
-                for pair in inner:
-                    msg = pair[0] if isinstance(pair, list) and pair else pair
-                    usage = _usage_from_serialized_message(msg)
-                    if usage:
-                        candidates.append(usage)
-        for usage in candidates:
-            try:
-                cur = int(usage.get("input_tokens") or 0)
-            except (TypeError, ValueError):
-                cur = 0
-            # >= 让并列时较晚（buffer 顺序靠后）的胜出。
-            if cur >= best_input:
-                best_input = cur
-                best = usage
-    return best
+            return raw["usage_metadata"]
+        if raw.get("type") != "messages":
+            continue
+        inner = raw.get("data")
+        if not isinstance(inner, list) or not inner:
+            continue
+        first = inner[0]
+        if not isinstance(first, dict):
+            continue
+        if first.get("usage_metadata"):
+            return first["usage_metadata"]
+        kwargs = first.get("kwargs")
+        if isinstance(kwargs, dict) and kwargs.get("usage_metadata"):
+            return kwargs["usage_metadata"]
+    return None
 
 
 def _flush_to_db_sync(
@@ -676,7 +628,7 @@ def _flush_terminal_sync(
             exc_info=True,
         )
 
-    usage_meta = _extract_peak_usage_from_buffer(buffer_events_snapshot)
+    usage_meta = _extract_last_usage_from_buffer(buffer_events_snapshot)
     if usage_meta is None and conversation_id is not None:
         from src.service.usage_estimation import (
             estimate_usage_for_conversation_turn_sync,
@@ -1605,13 +1557,6 @@ class StreamRegistry:
         orchestrator_auth_token: str | None = None,
     ) -> None:
         from src.service.chat_service import ChatService
-        from src.service.agent.orchestrator.runtime import set_orchestrator_source
-
-        # 每条流入口都按自己的 task.source 绑定 source ContextVar，覆盖从父协程
-        # （create_task 拷贝）继承来的残留值。员工子任务流 task.source="orchestration"，
-        # 会把飞书总管流残留的 "feishu" 覆盖掉，避免将来员工读 get_orchestrator_source
-        # 被误判成 channel 来源。orchestrator_owned_db 分支不再重复 set（统一在此一次）。
-        set_orchestrator_source(task.source)
 
         stream_conv_id = orchestrator_conversation_id or conversation_id
         if orchestrator_workspace_id is not None:
@@ -1633,7 +1578,10 @@ class StreamRegistry:
                 raise ValueError(
                     "orchestrator_workspace_id required when orchestrator_owned_db is set"
                 )
-            from src.service.agent.orchestrator.runtime import set_context
+            from src.service.agent.orchestrator.runtime import (
+                set_context,
+                set_orchestrator_source,
+            )
 
             set_context(
                 orchestrator_owned_db,
@@ -1642,9 +1590,10 @@ class StreamRegistry:
                 auth_token=orchestrator_auth_token,
                 bind_auth_token=True,
             )
-            # source 已在本方法入口按 task.source 统一绑定（见上）：飞书轮 "feishu"、
-            # 桌面轮 "user_chat"、员工子任务流 "orchestration"，随各自流隔离、互不污染。
+            # source 与 db/workspace_id 同点绑定到本流执行协程的 ContextVar 上下文：
+            # 飞书轮在此 set "feishu"、桌面轮 set "user_chat"，随各自流隔离、互不污染。
             # 总管工具（create_orchestration_plan）经 get_orchestrator_source() 读到本流值。
+            set_orchestrator_source(task.source)
 
         stream_start_time = time.monotonic()
         assistant_text_parts: list[str] = []
@@ -2162,7 +2111,7 @@ class StreamRegistry:
             )
             state_final = "error"
             task.error_message = user_error
-            partial_text = latest_updates_text or ("".join(assistant_text_parts) or None)
+            partial_text = latest_updates_text or None
 
             evt = task.buffer.add({"status": "error", "error": user_error})
             self.broadcast(conversation_id, evt)

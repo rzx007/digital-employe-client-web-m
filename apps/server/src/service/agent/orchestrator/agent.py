@@ -38,7 +38,6 @@ from src.service.agent.orchestrator.prompts import (
 )
 from src.service.agent.orchestrator.runtime import set_context
 from src.service.agent.orchestrator.tools import (
-    add_workbench_widget,
     cancel_plan,
     confirm_orchestration_plan,
     create_orchestration_plan,
@@ -418,7 +417,6 @@ def get_orchestrator_agent(
             _serialize_db_tool(delete_tasks_batch),
             _serialize_db_tool(cancel_plan),
             _serialize_db_tool(list_tasks),
-            _serialize_db_tool(add_workbench_widget),
             # 用户明确要求总管亲自执行（含长文档）时与员工 agent 相同的 HITL 门
             submit_clarifying_questions,
             submit_document_plan,
