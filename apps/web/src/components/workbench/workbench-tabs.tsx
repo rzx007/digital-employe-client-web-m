@@ -150,7 +150,7 @@ export function WorkbenchTabs({ config, onChange }: WorkbenchTabsProps) {
         className="min-h-0 flex-1 overflow-auto bg-background"
       >
         {activeTabId === DASHBOARD_TAB_ID || !activeHtmlTab ? (
-          <div className="p-3">
+          <div className="min-h-full bg-muted/30 p-4">
             <DraggableWorkbenchGrid
               widgets={config.dashboard.widgets}
               onReorder={(ids) => onChange(reorderWidgets(config, ids))}

@@ -1,11 +1,4 @@
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@workspace/ui/components/card"
-import {
   Table,
   TableBody,
   TableCell,
@@ -13,7 +6,9 @@ import {
   TableHeader,
   TableRow,
 } from "@workspace/ui/components/table"
+import { cn } from "@workspace/ui/lib/utils"
 import type { WorkbenchWidget } from "@/types/workbench"
+import { WidgetCard, WidgetEmpty } from "./widget-card"
 
 type Align = "left" | "center" | "right"
 
@@ -47,7 +42,6 @@ function cellOf(row: RawRow, col: NormColumn, colIndex: number): unknown {
   if (row && typeof row === "object") {
     const obj = row as Record<string, unknown>
     if (col.key in obj) return obj[col.key]
-    // 列是字符串、行却是对象时,key 是索引取不到 → 回退按位置取对象第 colIndex 个值
     return Object.values(obj)[colIndex]
   }
   return undefined
@@ -65,51 +59,64 @@ export function TableWidget({
 
   const alignClass = (align?: Align) => {
     if (align === "center") return "text-center"
-    if (align === "right") return "text-right"
+    if (align === "right") return "text-right tabular-nums"
     return "text-left"
   }
 
   return (
-    <Card className="h-full">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">{widget.title}</CardTitle>
-        {widget.subtitle ? (
-          <CardDescription className="text-xs">{widget.subtitle}</CardDescription>
-        ) : null}
-      </CardHeader>
-      <CardContent>
-        {rows.length === 0 ? (
-          <div className="flex h-16 items-center justify-center text-xs text-muted-foreground">
-            暂无数据
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {columns.map((col) => (
-                  <TableHead key={col.key} className={alignClass(col.align)}>
-                    {col.label}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row, i) => (
-                <TableRow key={i}>
-                  {columns.map((col, ci) => {
-                    const val = cellOf(row, col, ci)
-                    return (
-                      <TableCell key={col.key} className={alignClass(col.align)}>
-                        {val === null || val === undefined ? "—" : String(val)}
-                      </TableCell>
-                    )
-                  })}
-                </TableRow>
+    <WidgetCard
+      title={widget.title}
+      subtitle={widget.subtitle}
+      bodyClassName="overflow-auto px-0 pb-1"
+    >
+      {rows.length === 0 ? (
+        <WidgetEmpty />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow className="border-border/60 hover:bg-transparent">
+              {columns.map((col) => (
+                <TableHead
+                  key={col.key}
+                  className={cn(
+                    "h-8 px-4 text-xs font-medium text-muted-foreground",
+                    alignClass(col.align)
+                  )}
+                >
+                  {col.label}
+                </TableHead>
               ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row, i) => (
+              <TableRow
+                key={i}
+                className="border-border/40 transition-colors last:border-0 hover:bg-muted/50"
+              >
+                {columns.map((col, ci) => {
+                  const val = cellOf(row, col, ci)
+                  return (
+                    <TableCell
+                      key={col.key}
+                      className={cn(
+                        "px-4 py-2 text-sm text-foreground/90",
+                        alignClass(col.align)
+                      )}
+                    >
+                      {val === null || val === undefined ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        String(val)
+                      )}
+                    </TableCell>
+                  )
+                })}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </WidgetCard>
   )
 }

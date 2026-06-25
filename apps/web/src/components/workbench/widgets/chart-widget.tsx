@@ -9,12 +9,6 @@ import {
   XAxis,
 } from "recharts"
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@workspace/ui/components/card"
-import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
@@ -23,6 +17,7 @@ import {
   type ChartConfig,
 } from "@workspace/ui/components/chart"
 import type { WorkbenchWidget } from "@/types/workbench"
+import { WidgetCard, WidgetEmpty } from "./widget-card"
 
 interface SeriesDef {
   key: string
@@ -31,7 +26,7 @@ interface SeriesDef {
 }
 
 interface ChartData {
-  rows?: object[]
+  rows?: Record<string, unknown>[]
   xKey?: string
   series?: SeriesDef[]
 }
@@ -46,18 +41,15 @@ export function ChartWidget({
   const rows = data?.rows ?? []
   const xKey = data?.xKey ?? "x"
   const series: SeriesDef[] = data?.series ?? []
+  const type = widget.type
 
+  // 默认走工作台数据色板(品牌靛蓝锚定),而非全局灰阶 chart-*
   const config: ChartConfig = Object.fromEntries(
     series.map((s, i) => [
       s.key,
-      {
-        label: s.label,
-        color: s.color ?? `var(--chart-${i + 1})`,
-      },
+      { label: s.label, color: s.color ?? `var(--wb-${(i % 5) + 1})` },
     ])
   )
-
-  const type = widget.type
 
   const renderSeries = () => {
     if (type === "line") {
@@ -67,7 +59,9 @@ export function ChartWidget({
           type="monotone"
           dataKey={s.key}
           stroke={`var(--color-${s.key})`}
+          strokeWidth={2}
           dot={false}
+          activeDot={{ r: 3 }}
         />
       ))
     }
@@ -78,14 +72,20 @@ export function ChartWidget({
           type="monotone"
           dataKey={s.key}
           stroke={`var(--color-${s.key})`}
-          fill={`var(--color-${s.key})`}
-          fillOpacity={0.2}
+          strokeWidth={2}
+          fill={`url(#fill-${widget.id}-${s.key})`}
+          dot={false}
         />
       ))
     }
-    // bar
     return series.map((s) => (
-      <Bar key={s.key} dataKey={s.key} fill={`var(--color-${s.key})`} />
+      <Bar
+        key={s.key}
+        dataKey={s.key}
+        fill={`var(--color-${s.key})`}
+        radius={[4, 4, 0, 0]}
+        maxBarSize={48}
+      />
     ))
   }
 
@@ -93,27 +93,61 @@ export function ChartWidget({
     type === "line" ? LineChart : type === "area" ? AreaChart : BarChart
 
   return (
-    <Card className="h-full">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">{widget.title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {rows.length === 0 ? (
-          <div className="flex h-32 items-center justify-center text-xs text-muted-foreground">
-            暂无数据
-          </div>
-        ) : (
-          <ChartContainer config={config}>
-            <ChartComponent data={rows}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={xKey} />
-              <ChartTooltip content={<ChartTooltipContent />} />
+    <WidgetCard
+      title={widget.title}
+      subtitle={widget.subtitle}
+      bodyClassName="pb-3"
+    >
+      {rows.length === 0 ? (
+        <WidgetEmpty />
+      ) : (
+        <ChartContainer config={config} className="h-full w-full">
+          <ChartComponent
+            data={rows}
+            margin={{ top: 8, right: 8, left: 4, bottom: 0 }}
+          >
+            <defs>
+              {type === "area"
+                ? series.map((s) => (
+                    <linearGradient
+                      key={s.key}
+                      id={`fill-${widget.id}-${s.key}`}
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="0%"
+                        stopColor={`var(--color-${s.key})`}
+                        stopOpacity={0.28}
+                      />
+                      <stop
+                        offset="100%"
+                        stopColor={`var(--color-${s.key})`}
+                        stopOpacity={0.02}
+                      />
+                    </linearGradient>
+                  ))
+                : null}
+            </defs>
+            <CartesianGrid vertical={false} stroke="var(--border)" />
+            <XAxis
+              dataKey={xKey}
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+              minTickGap={16}
+              className="text-xs"
+            />
+            <ChartTooltip content={<ChartTooltipContent />} />
+            {series.length > 1 ? (
               <ChartLegend content={<ChartLegendContent />} />
-              {renderSeries()}
-            </ChartComponent>
-          </ChartContainer>
-        )}
-      </CardContent>
-    </Card>
+            ) : null}
+            {renderSeries()}
+          </ChartComponent>
+        </ChartContainer>
+      )}
+    </WidgetCard>
   )
 }

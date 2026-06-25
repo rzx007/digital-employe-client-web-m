@@ -1,11 +1,6 @@
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@workspace/ui/components/card"
 import { Progress } from "@workspace/ui/components/progress"
 import type { WorkbenchWidget } from "@/types/workbench"
+import { WidgetCard, WidgetEmpty } from "./widget-card"
 
 interface ProgressItem {
   label: string
@@ -39,17 +34,12 @@ export function ProgressWidget({
   }
 
   return (
-    <Card className="h-full">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">{widget.title}</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {items.length === 0 ? (
-          <div className="flex h-16 items-center justify-center text-xs text-muted-foreground">
-            暂无数据
-          </div>
-        ) : (
-          items.map((it, i) => {
+    <WidgetCard title={widget.title} subtitle={widget.subtitle}>
+      {items.length === 0 ? (
+        <WidgetEmpty />
+      ) : (
+        <div className="flex h-full flex-col justify-center gap-4">
+          {items.map((it, i) => {
             const pct = toPercent(it)
             const hasValue = it.value !== null && it.value !== undefined
             const display = hasValue
@@ -61,15 +51,19 @@ export function ProgressWidget({
             return (
               <div key={i} className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">{it.label}</span>
-                  <span className="tabular-nums">{display}</span>
+                  <span className="font-medium text-foreground/80">
+                    {it.label}
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">
+                    {display}
+                  </span>
                 </div>
-                <Progress value={pct} />
+                <Progress value={pct} className="h-2" />
               </div>
             )
-          })
-        )}
-      </CardContent>
-    </Card>
+          })}
+        </div>
+      )}
+    </WidgetCard>
   )
 }

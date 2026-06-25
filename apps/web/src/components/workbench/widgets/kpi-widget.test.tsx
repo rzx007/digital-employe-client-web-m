@@ -23,7 +23,9 @@ describe("KpiWidget", () => {
     }
     render(<KpiWidget widget={baseWidget} data={data} />)
     expect(screen.getByText("KPI 指标")).toBeTruthy()
-    expect(screen.getByText("¥1200")).toBeTruthy()
+    // 单位与数值分两个节点渲染(单位为弱化的小字)
+    expect(screen.getByText("1200")).toBeTruthy()
+    expect(screen.getByText("¥")).toBeTruthy()
     expect(screen.getByText("42")).toBeTruthy()
     expect(screen.getByText("销售额")).toBeTruthy()
   })

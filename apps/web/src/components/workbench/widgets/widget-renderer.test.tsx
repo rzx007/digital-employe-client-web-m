@@ -31,7 +31,7 @@ describe("WidgetBody", () => {
     }
     render(<WidgetBody widget={widget} data={data} />)
     expect(screen.getByText("KPI 测试")).toBeTruthy()
-    expect(screen.getByText("$9999")).toBeTruthy()
+    expect(screen.getByText("9999")).toBeTruthy()
   })
 
   it("renders table widget via registry", () => {

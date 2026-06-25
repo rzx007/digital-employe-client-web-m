@@ -1,11 +1,6 @@
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@workspace/ui/components/card"
 import { Badge } from "@workspace/ui/components/badge"
 import type { WorkbenchWidget } from "@/types/workbench"
+import { WidgetCard, WidgetEmpty } from "./widget-card"
 
 interface ListItem {
   title: string
@@ -28,38 +23,39 @@ export function ListWidget({
   const items: ListItem[] = data?.items ?? []
 
   return (
-    <Card className="h-full">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">{widget.title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {items.length === 0 ? (
-          <div className="flex h-16 items-center justify-center text-xs text-muted-foreground">
-            暂无数据
-          </div>
-        ) : (
-          <ul className="flex flex-col divide-y divide-border">
-            {items.map((it, i) => (
-              <li
-                key={i}
-                className="flex items-center justify-between gap-2 py-2"
-              >
-                <span className="text-xs">{it.title}</span>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  {it.value !== null && it.value !== undefined && (
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {String(it.value)}
-                    </span>
-                  )}
-                  {it.badge != null && (
-                    <Badge variant="secondary">{it.badge}</Badge>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
+    <WidgetCard
+      title={widget.title}
+      subtitle={widget.subtitle}
+      bodyClassName="px-0 pb-2"
+    >
+      {items.length === 0 ? (
+        <WidgetEmpty />
+      ) : (
+        <ul className="flex flex-col">
+          {items.map((it, i) => (
+            <li
+              key={i}
+              className="flex items-center justify-between gap-3 px-4 py-2 transition-colors hover:bg-muted/50"
+            >
+              <span className="min-w-0 truncate text-sm text-foreground/90">
+                {it.title}
+              </span>
+              <div className="flex shrink-0 items-center gap-2">
+                {it.value !== null && it.value !== undefined ? (
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {String(it.value)}
+                  </span>
+                ) : null}
+                {it.badge != null ? (
+                  <Badge variant="secondary" className="font-normal">
+                    {it.badge}
+                  </Badge>
+                ) : null}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </WidgetCard>
   )
 }

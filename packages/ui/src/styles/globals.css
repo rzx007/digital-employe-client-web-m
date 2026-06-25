@@ -33,6 +33,12 @@
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+  /* 工作台专用数据色板(品牌靛蓝锚定,不污染全局灰阶 chart-*) */
+  --color-wb-1: var(--wb-1);
+  --color-wb-2: var(--wb-2);
+  --color-wb-3: var(--wb-3);
+  --color-wb-4: var(--wb-4);
+  --color-wb-5: var(--wb-5);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -85,6 +91,12 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* 工作台数据色板(亮色):靛蓝→蓝→紫→青 + 一支暖橙做对比 */
+  --wb-1: oklch(0.55 0.2 264);
+  --wb-2: oklch(0.64 0.15 232);
+  --wb-3: oklch(0.6 0.17 300);
+  --wb-4: oklch(0.7 0.13 188);
+  --wb-5: oklch(0.68 0.17 45);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -120,6 +132,12 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* 工作台数据色板(暗色):整体提亮、降一点彩度,贴深底 */
+  --wb-1: oklch(0.68 0.17 264);
+  --wb-2: oklch(0.72 0.13 232);
+  --wb-3: oklch(0.7 0.15 300);
+  --wb-4: oklch(0.76 0.11 188);
+  --wb-5: oklch(0.76 0.15 50);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.623 0.214 259.815);

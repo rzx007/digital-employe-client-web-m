@@ -30,7 +30,7 @@ describe("WorkbenchTabs", () => {
   afterEach(() => cleanup())
   it("dashboard 标签存在且不可关闭", () => {
     wrap(<WorkbenchTabs config={cfg} onChange={vi.fn()} />)
-    expect(screen.getByText("工作台")).toBeTruthy()
+    expect(screen.getByText("看板")).toBeTruthy()
     expect(screen.queryByTestId("close-dashboard")).toBeNull()
   })
 
