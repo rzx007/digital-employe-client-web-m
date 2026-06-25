@@ -223,7 +223,7 @@ flowchart LR
 **两种经验、两道闸门**（方法论 §3）：
 - **软知识（教训）**：单次强信号即写 `memories/AGENTS.md`（失败后成功、返工后达标）。
 - **硬知识（技能）**：**单次不晋升**——`promote_skills` 要求成功流水 ≥3 且体现同一套打法，才提炼成**技能候选**（`skill_candidates/<slug>.md`），且**只造候选、不自动转正**，人在成长面板点「采纳」才转为正式技能（`skills/<slug>/SKILL.md`）。
-- **技能在用中自改进**（与上互补：改老技能）：员工干活中发现已加载技能错/缺/过时，用 `update_skill` 工具就地改 → fork-on-edit 固化到工作区库 → 改前备份可回滚 → `update_local_skill` 写库 + `sync_local_skill_to_assignees` **全员同步** → 审计入 `skill_edits.jsonl`（成长面板「技能修订记录」可见）。详见 [learning-loop-self-evolution.md §7.5](learning-loop-self-evolution.md)。
+- **技能在用中自改进**（与上互补：改老技能）：员工干活中发现已加载技能错/缺/过时，用 `update_skill` 工具**只改自己的私有副本**（不写库、不广播同事，改进按员工隔离；2026-06-25 路2，见 [技能单一真相 spec](specs/2026-06-25-skill-single-source-of-truth-design.md)）→ 改前备份可回滚 → `reconcile_employee_skills` 投影到 DB → 审计入 `skill_edits.jsonl`（成长面板「技能修订记录」可见）。详见 [learning-loop-self-evolution.md §7.5](learning-loop-self-evolution.md)。
 - **生命周期 curator（防膨胀：闲置退场）**：`learning/curator.py` 搭 librarian 后台 pass，技能按 last_used 老化 active→stale(30d)→archived(90d)（**绝不删、pinned 豁免、可恢复**，archived 从 `available_skills` 逻辑隐藏）；近重复候选合并；员工闲置 90 天产**归档建议**（只读、不自动）。状态存 `skill_lifecycle.json`。详见 [learning-loop-self-evolution.md §7.6](learning-loop-self-evolution.md)。
 
 **QA 代码兜底**（`qa_delivery_check.py`）：注入执行快照时，若员工自报了交付物却在产物区找不到对应非空文件，快照里直接标红「疑似假交付」，不依赖总管主动抽检。自报判定两路控误报：① 二进制交付物（docx/pptx/xlsx/pdf）全文匹配；② 其余文件仅在含「交付动词」的行里取、排除脚本扩展名。
@@ -277,7 +277,7 @@ flowchart LR
 | `server.py` | `_on_task_finalized`（lifespan 装配） | 把终态事件接到调度器 + 推前端事件 |
 | `employee_service.py` | `build_employee_growth_brain`、`adopt_skill_candidate`、`dismiss_skill_candidate` | 成长大脑只读聚合 + 候选采纳/忽略 |
 | 前端 `growth-brain-section.tsx` | `GrowthBrainSection` | 成长面板：画像/技能(置顶·已归档折叠·恢复)/记忆/日志/**技能候选(采纳·忽略)**/**技能修订记录**/**员工归档建议** |
-| `agent/update_skill_tool.py` | `create_update_skill_tool`、`_apply_skill_update`、`_backup_skill_version` | 技能在用中自改进：就地改技能→落库→全员同步→备份/审计/清线索 |
+| `agent/update_skill_tool.py` | `create_update_skill_tool`、`_apply_skill_update`、`_backup_skill_version_private` | 技能在用中自改进：只改员工私有副本(不写库/不广播)→reconcile 投影→备份/审计/清线索 |
 | `learning/curator.py` | `run_curator`(挂 librarian)、`_age_status`、`archived_skill_names`、`restore_skill`/`set_pinned`、`_merge_near_dup_candidates`、`employee_archive_suggestion` | 生命周期 curator：技能闲置老化/候选合并/员工归档建议(保守可逆) |
 
 ---

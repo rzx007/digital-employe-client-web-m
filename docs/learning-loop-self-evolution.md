@@ -172,31 +172,37 @@ flowchart TD
 
 ## 7.5 技能在用中自改进（update_skill：改老技能，与 §7 造新技能互补）
 
-§7 把「越用越强」做到了**造新技能**；本节把它扩到**老技能越用越准**——员工带着某技能干活、发现它错/缺/过时时，可就地改对并持久化、全员同步。来源借鉴见 [Hermes 参考 A](reference-hermes-agent-learnings.md)。
+§7 把「越用越强」做到了**造新技能**；本节把它扩到**老技能越用越准**——员工带着某技能干活、发现它错/缺/过时时，可就地改对并持久化。来源借鉴见 [Hermes 参考 A](reference-hermes-agent-learnings.md)。
+
+> **2026-06-25 改为按员工隔离（路2，见 [技能单一真相 spec](specs/2026-06-25-skill-single-source-of-truth-design.md)）**：原 update_skill 走「固化到工作区库 → 写库 → 广播全员副本」，即改进是**集体的**。现改为**只改调用者自己的私有副本**——不写工作区库、不广播同事，一个员工的改进**不影响**其他人。这与 §11 不变量#6「记忆私有、好打法不自动扩散」一致；也偏离了 Hermes 参考 A 的「广播」做法（刻意的产品选择）。
 
 ```mermaid
 flowchart TD
     Find[员工干活中发现已加载技能<br/>错/缺/过时] --> Tool[update_skill skill_name,new_content,reason]
-    Tool --> Guard{技能 ∈ 已加载?<br/>new_content 非空?}
-    Guard -->|否| Reject[拒绝 · 防误改无关技能/清空]
-    Guard -->|是| Fork[ensure_editable_from_employee_copy<br/>fork-on-edit:内置/远程直分配→工作区库]
-    Fork --> Backup[改前备份 .history/&lt;ts&gt;.md<br/>绝不写全局内置]
-    Backup --> Write[update_local_skill target=workspace 写库]
-    Write --> Sync[sync_local_skill_to_assignees 全员副本+DB]
-    Sync --> Audit[审计 skill_edits.jsonl<br/>→ 成长面板可见]
+    Tool --> Guard{技能 ∈ 已加载?<br/>new_content 非空?<br/>路径不越界?}
+    Guard -->|否| Reject[拒绝 · 防误改无关技能/清空/穿越]
+    Guard -->|是| Backup[改前备份私有 .history/&lt;ts&gt;.md<br/>best-effort]
+    Backup --> Write[写自己的私有副本 SKILL.md<br/>不写库、不广播同事]
+    Write --> Mark[assigned 技能 → 置 locallyModified=true]
+    Mark --> Reconcile[reconcile_employee_skills<br/>磁盘→EmployeeSkill 投影]
+    Reconcile --> Audit[审计 skill_edits.jsonl<br/>→ 成长面板可见]
     Audit --> Clear[清除该技能 skill_hints/ 待办线索]
 ```
+
+> 库技能的**集中维护**仍可经工作区技能库 UI（`skill_api` → `sync_local_skill_to_assignees`）广播给装了它的员工，但**会跳过**已 `locallyModified`/`grown` 的员工（私有改进优先，边界 b）。
 
 **与既有「死文件」病的收编**：低分(<3)+评论触发的 `skill_improvement_service` 原本把分析写到**易失员工副本**、无人读。现改为：① 写持久 `<brain>/skill_hints/<技能名>.md`；② 员工加载该技能时系统提示注入「此技能有改进线索，必要时 update_skill 修订」（空时不注入，保护缓存前缀）；③ 成功 update_skill 后自动清除该线索（防反复诱导改已修好的技能）。
 
 **护栏（经逐任务两阶段审查 + 整体审查确认）**：
 1. **只能改已加载技能**（available_skills 白名单守卫）；空内容拒绝（防清空）。
-2. **fork-on-edit 单一真相点**：内置/远程直分配技能首次修订即固化为工作区本地技能，`target="workspace"` 始终传——**绝不就地改全局内置**（影响所有工作区）。
-3. **改前必备份**，时序铁律：fork → 备份(落工作区，`_is_under_builtin` 反向硬校验绝不写内置) → 写库；可经 `POST /skills/local/{name}/restore` 回滚（version 双重路径穿越防护）。
-4. **直接改无审核门的兜底**（用户已拍此档）：备份+回滚 + 审计「谁改了哪个技能」成长面板显式可见 + 加载守卫，三条配平即时性风险。
-5. `.history` 不外泄到员工副本/详情/导出（copytree `ignore_patterns`）。
+2. **只改自己的私有副本**：写 `<skill_path>/<员工id>/skills/<技能>/SKILL.md`——不写工作区库、不广播同事，改进按员工隔离。
+3. **纵深防御防越界**：白名单之外再校验 `skill_dir.resolve().is_relative_to(skills_root)`，防 `skill_name` 含 `../` 越界到别人目录。
+4. **改前必备份**（best-effort 落私有 `.history/<ts>.md`），可经 `POST /skills/local/{name}/restore` 回滚（version 双重路径穿越防护）。备份/审计/清 hint 全 best-effort，绝不阻断更新主流程。
+5. **直接改无审核门的兜底**（用户已拍此档）：备份+回滚 + 审计「谁改了哪个技能」成长面板显式可见 + 加载守卫。
+6. `.history` 不外泄到员工副本/详情/导出（copytree `ignore_patterns`）。
 
-**相关符号**：`agent/update_skill_tool.py`（`create_update_skill_tool` / `_apply_skill_update` / `_backup_skill_version` / `_write_skill_edit_audit` / `_clear_skill_hint`）；`LocalSkillService.ensure_editable_from_employee_copy` / `update_local_skill`；`EmployeeService.sync_local_skill_to_assignees`；端点 `POST /skills/local/{name}/restore`；`skill_improvement_service.trigger_improvement_review`（改 hint 去向）；前端 `growth-brain-section.tsx`「技能修订记录」。
+**相关符号**：`agent/update_skill_tool.py`（`create_update_skill_tool` / `_apply_skill_update` / `_backup_skill_version_private` / `_write_skill_edit_audit` / `_clear_skill_hint`）；`skill_provenance.set_locally_modified`；`EmployeeService.reconcile_employee_skills`（投影磁盘→DB）；端点 `POST /skills/local/{name}/restore`；`skill_improvement_service.trigger_improvement_review`（改 hint 去向）；前端 `growth-brain-section.tsx`「技能修订记录」。
+> 注：`LocalSkillService.update_local_skill` / `EmployeeService.sync_local_skill_to_assignees` 现仅服务**库的集中维护**（skill_api UI），不再是 update_skill 工具的下游。
 
 > **v1.1 待办**：返工/失败信号自动**关联到具体技能**并注入（当前仅低分→hint 这一路自动；返工信号进 memory 但未定向到技能层）。
 
@@ -234,10 +240,14 @@ flowchart TD
 ├── skill_hints/<技能名>.md         ← 改进线索(低分反馈→加载注入提示引导 update_skill, 改后清除)[A]
 ├── skill_edits.jsonl              ← 技能修订审计(update_skill 写, 成长面板可见)[A]
 ├── skill_lifecycle.json           ← 技能老化状态(curator 写: active/stale/archived + pinned)[B]
-└── skills/<slug>/SKILL.md         ← 正式技能(人采纳后, agent 兜底加载 + 面板展示)
+└── skills/<slug>/                  ← **唯一真相**:agent 运行加载这里;EmployeeSkill DB 行是其派生投影[C]
+    ├── SKILL.md                    ←   技能正文(分配 copy / 采纳写 / update_skill 改)
+    └── .skill-meta.json            ←   来源标记: origin(assigned/grown:adopted) + skillId + locallyModified
 ```
 
 **记忆私有、产物共享**：大脑（经验）每员工私有、互不可见，成长归个体；产物（交付）落项目共享区 `$ARTIFACTS_DIR`、全队互见。好打法要全队共享靠复盘半自动提升，不自动扩散。
+
+> [C] **技能单一真相（2026-06-25，见 [spec](specs/2026-06-25-skill-single-source-of-truth-design.md)）**：员工私有 `skills/` 目录是该员工技能的**唯一真相**；`EmployeeSkill` DB 表降为它的**单向派生投影**，由 `reconcile_employee_skills(db, employee)`（唯一写入者）从磁盘 + `.skill-meta.json` 投影而来。分配=增量（绝不碰 `grown:*`）；采纳候选/`update_skill` 改完都调 reconcile。彻底消除了「档案(DB)↔履历(磁盘)」分叉与分配 rmtree 冲掉成长技能的问题。
 
 ---
 
