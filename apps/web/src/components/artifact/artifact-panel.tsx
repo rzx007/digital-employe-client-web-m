@@ -806,10 +806,11 @@ export const ArtifactPanel = ({
   const handlePin = React.useCallback(
     (entry: ResourceEntry) => {
       if (!conversationId) return
-      void pinHtmlToWorkbench(conversationId, entry.path, entry.name).catch(
-        () => toast.error("钉到工作台失败")
-      )
-      toast.success(`已钉到工作台：${entry.name.replace(/\.html?$/i, "")}`)
+      void pinHtmlToWorkbench(conversationId, entry.path, entry.name)
+        .then(() =>
+          toast.success(`已钉到工作台：${entry.name.replace(/\.html?$/i, "")}`)
+        )
+        .catch(() => toast.error("钉到工作台失败"))
     },
     [conversationId]
   )
