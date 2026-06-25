@@ -7,6 +7,10 @@ export type WidgetType =
   | "table"
   | "progress"
   | "list"
+  | "gauge"
+  | "sparkline"
+  | "radar"
+  | "scatter"
 
 export interface WidgetDataSource {
   metricId: string

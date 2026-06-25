@@ -9,7 +9,7 @@ def test_add_widget_impl_ok(db_session):
 
 
 def test_add_widget_impl_bad_type(db_session):
-    msg = _add_widget_impl(db_session, "u1", {"type": "scatter", "title": "x", "data": {"a": 1}})
+    msg = _add_widget_impl(db_session, "u1", {"type": "__nope__", "title": "x", "data": {"a": 1}})
     assert "错误" in msg
 
 

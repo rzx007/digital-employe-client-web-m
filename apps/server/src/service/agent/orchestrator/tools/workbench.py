@@ -46,7 +46,7 @@ def add_workbench_widget(
 ) -> str:
     """向当前用户的工作台看板添加一个统计块(widget)。
 
-    type 取值: kpi|line|bar|area|pie|table|progress|list。
+    type 取值: kpi|line|bar|area|pie|table|progress|list|gauge|sparkline|radar|scatter。
     data 与 data_source 至少给一个：data 为内联快照；data_source={"metricId": "...","params":{...}} 绑定实时指标。
     可用 metricId: monthly_performance, task_calendar, today_tasks。
 
@@ -64,6 +64,14 @@ def add_workbench_widget(
                 也接受简易式 {"columns": ["姓名","分数"], "rows": [["张三", 95]]}(字符串列+数组行)
       progress: {"items": [{"label": "目标完成度", "value": 75, "max": 100}]}
       list:     {"items": [{"title": "待办A", "value": "进行中", "badge": "高"}]}
+      gauge:    {"value": 72, "max": 100, "label": "完成度", "unit": ""}  —— 单值对目标的环形仪表
+      sparkline:{"label": "本周访问", "value": 1280, "unit": "", "delta": "+8%",
+                 "deltaDir": "up", "points": [5,7,6,9,8,11,12]}  —— 大数字+迷你趋势线
+      radar:    {"axisKey": "axis",
+                 "rows": [{"axis": "速度", "A": 80}, {"axis": "精度", "A": 90}],
+                 "series": [{"key": "A", "label": "模型A"}]}  —— 多维对比
+      scatter:  {"points": [{"x": 1, "y": 2}, {"x": 3, "y": 5}],
+                 "xLabel": "价格", "yLabel": "销量"}  —— 也支持 series:[{name,points:[{x,y}]}] 多组
     """
     spec: dict[str, Any] = {"type": type, "title": title}
     if subtitle is not None:

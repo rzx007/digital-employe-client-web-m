@@ -7,7 +7,8 @@ from src.models.workbench_config import (
 
 def test_widget_types_catalog():
     assert WIDGET_TYPES == {
-        "kpi", "line", "bar", "area", "pie", "table", "progress", "list"
+        "kpi", "line", "bar", "area", "pie", "table", "progress", "list",
+        "gauge", "sparkline", "radar", "scatter",
     }
 
 def test_widget_types_matches_literal():
@@ -32,7 +33,7 @@ def test_valid_datasource_widget():
 
 def test_reject_unknown_type():
     with pytest.raises(ValueError, match="不支持的 widget type"):
-        validate_widget_spec({"type": "scatter", "title": "x", "data": {}}, metric_whitelist=set())
+        validate_widget_spec({"type": "__nope__", "title": "x", "data": {}}, metric_whitelist=set())
 
 def test_reject_no_data_and_no_source():
     with pytest.raises(ValueError, match="data 或 dataSource"):

@@ -9,7 +9,10 @@ from src.db.base import Base
 from src.db.types import CstDateTime
 from src.core.cst import cst_now
 
-WIDGET_TYPES = {"kpi", "line", "bar", "area", "pie", "table", "progress", "list"}
+WIDGET_TYPES = {
+    "kpi", "line", "bar", "area", "pie", "table", "progress", "list",
+    "gauge", "sparkline", "radar", "scatter",
+}
 
 # 每个 type 的内联 data 必需的数组字段(对齐 add_workbench_widget 文档契约)。
 # 提供内联 data 时这些键必须存在且为 list,否则前端按契约渲染成空白。
@@ -22,6 +25,7 @@ INLINE_DATA_REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
     "bar": ("series", "rows"),
     "area": ("series", "rows"),
     "table": ("columns", "rows"),
+    "radar": ("series", "rows"),
 }
 
 
@@ -34,7 +38,8 @@ class WidgetDataSource(BaseModel):
 class WorkbenchWidget(BaseModel):
     id: str = Field(default_factory=lambda: f"wd-{uuid.uuid4().hex[:8]}")
     type: Literal[
-        "kpi", "line", "bar", "area", "pie", "table", "progress", "list"
+        "kpi", "line", "bar", "area", "pie", "table", "progress", "list",
+        "gauge", "sparkline", "radar", "scatter",
     ]
     title: str
     subtitle: str | None = None

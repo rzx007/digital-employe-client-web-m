@@ -3,6 +3,10 @@ import { useMetricData } from "@/hooks/use-metric-data"
 import { KpiWidget } from "./kpi-widget"
 import { ChartWidget } from "./chart-widget"
 import { PieWidget } from "./pie-widget"
+import { GaugeWidget } from "./gauge-widget"
+import { SparklineWidget } from "./sparkline-widget"
+import { RadarWidget } from "./radar-widget"
+import { ScatterWidget } from "./scatter-widget"
 import { TableWidget } from "./table-widget"
 import { ProgressWidget } from "./progress-widget"
 import { ListWidget } from "./list-widget"
@@ -17,6 +21,10 @@ const REGISTRY: Record<
   bar: ChartWidget,
   area: ChartWidget,
   pie: PieWidget,
+  gauge: GaugeWidget,
+  sparkline: SparklineWidget,
+  radar: RadarWidget,
+  scatter: ScatterWidget,
   table: TableWidget,
   progress: ProgressWidget,
   list: ListWidget,

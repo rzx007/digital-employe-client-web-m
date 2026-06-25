@@ -48,6 +48,10 @@ const DEFAULT_SIZE: Record<WidgetType, { w: number; h: number }> = {
   bar: { w: 560, h: 260 },
   area: { w: 560, h: 260 },
   pie: { w: 360, h: 280 },
+  gauge: { w: 300, h: 260 },
+  sparkline: { w: 300, h: 200 },
+  radar: { w: 380, h: 300 },
+  scatter: { w: 460, h: 300 },
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
