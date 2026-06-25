@@ -62,7 +62,7 @@ def test_watcher_injects_on_exit_and_dedupes(monkeypatch):
         def is_consumed_by_agent(self, sid):
             return consumed["v"]
         def read_output_tail(self, sid, max_bytes=65536):
-            return {"output": "done\n", "size": 5}
+            return {"output": "done\n", "total_size": 5}
 
     monkeypatch.setattr(bw, "get_background_shell_registry", lambda: _Reg())
     monkeypatch.setattr(bw, "_inject_wake", lambda **k: injected.__setitem__("called", True))
@@ -93,7 +93,7 @@ def test_watcher_no_conversation_skips_injection(monkeypatch):
         def is_consumed_by_agent(self, sid):
             return False
         def read_output_tail(self, sid, max_bytes=65536):
-            return {"output": "", "size": 0}
+            return {"output": "", "total_size": 0}
 
     monkeypatch.setattr(bw, "get_background_shell_registry", lambda: _Reg())
     monkeypatch.setattr(bw, "_inject_wake", lambda **k: injected.__setitem__("called", True))
