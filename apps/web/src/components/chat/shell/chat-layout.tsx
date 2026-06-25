@@ -27,8 +27,10 @@ import { useMonitorStore } from "@/stores/monitor-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
 import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
+import { useShellTasksPanelStore } from "@/stores/shell-tasks-panel-store"
 import { SubtaskPanel } from "../panel/subtask-panel"
 import { EmployeeTasksPanel } from "../panel/employee-tasks-panel"
+import { ShellTasksPanel } from "../panel/shell-tasks-panel"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import { AppToolbar } from "./app-toolbar"
 import { SkillsPage } from "@/components/skills"
@@ -49,6 +51,7 @@ type RightPanel =
   | "browser"
   | "subtask"
   | "employee-tasks"
+  | "shell-tasks"
 
 const RIGHT_PANEL_SHELL = "shrink-0 overflow-hidden border-l bg-muted/20 p-3"
 
@@ -74,6 +77,12 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
     })
     void queryClient.refetchQueries({
       queryKey: [...chatKeys.all, "today-all-executions"],
+    })
+  }, [queryClient])
+
+  const refetchShellExecutions = useCallback(() => {
+    void queryClient.refetchQueries({
+      queryKey: [...chatKeys.all, "shell-executions"],
     })
   }, [queryClient])
 
@@ -131,6 +140,11 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
         queryClient.invalidateQueries({
           queryKey: [...chatKeys.all, "orchestration-plans"],
         })
+        break
+      case "shell_task_started":
+      case "shell_task_finished":
+        // 后台命令起/止：刷新后台命令快照，指示条与面板近实时更新。
+        refetchShellExecutions()
         break
     }
   })
@@ -202,6 +216,8 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const isSubtaskPanelOpen = useSubtaskPanelStore((s) => s.isOpen)
   const isEmployeeTasksPanelOpen = useEmployeeTasksPanelStore((s) => s.isOpen)
   const closeEmployeeTasksPanel = useEmployeeTasksPanelStore((s) => s.close)
+  const isShellTasksPanelOpen = useShellTasksPanelStore((s) => s.isOpen)
+  const closeShellTasksPanel = useShellTasksPanelStore((s) => s.close)
   const isBrowserOpen = useBrowserStore((s) => s.isOpen)
   const isBrowserMinimized = useBrowserStore((s) => s.isMinimized)
   const isBrowserFullscreen = useBrowserStore((s) => s.isFullscreen)
@@ -296,9 +312,11 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
         ? "subtask"
         : isEmployeeTasksPanelOpen
           ? "employee-tasks"
-          : isMonitorOpen
-            ? "monitor"
-            : null
+          : isShellTasksPanelOpen
+            ? "shell-tasks"
+            : isMonitorOpen
+              ? "monitor"
+              : null
 
   const hasRightPanel = rightPanel !== null
   const isBrowserRightPanel = rightPanel === "browser"
@@ -407,6 +425,18 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
                 curatorConversationId={artifactPanelConversationId}
                 curatorContactId={selectedContact?.curator?.id}
                 onClose={closeEmployeeTasksPanel}
+                className="h-full rounded-xl"
+              />
+            </div>
+          )}
+
+        {hasRightPanel &&
+          activeTab === "chat" &&
+          rightPanel === "shell-tasks" && (
+            <div className={cn(RIGHT_PANEL_SHELL, NARROW_RIGHT_PANEL_WIDTH)}>
+              <ShellTasksPanel
+                conversationId={artifactPanelConversationId}
+                onClose={closeShellTasksPanel}
                 className="h-full rounded-xl"
               />
             </div>

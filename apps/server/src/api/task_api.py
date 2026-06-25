@@ -248,6 +248,41 @@ def list_task_executions(
     return PageResponse(data=payload, total=total, page=page, page_size=page_size)
 
 
+@router.get(
+    "/workspaces/{workspace_id}/tasks/shell-executions",
+    response_model=ResponseBase[list[dict]],
+    summary="后台 shell 命令快照（后台命令面板）",
+)
+def list_shell_executions(
+    workspace_id: int,
+    conversation_id: int | None = Query(default=None),
+) -> ResponseBase[list[dict]]:
+    """后台命令面板数据源：读进程级内存注册表，按 workspace（+可选 conversation）过滤，
+    返回 Running/Finished 快照（不落 DB）。"""
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    rows = get_background_shell_registry().list_snapshot(
+        workspace_id=workspace_id, conversation_id=conversation_id
+    )
+    return ResponseBase(data=rows)
+
+
+@router.get(
+    "/workspaces/{workspace_id}/tasks/shell-executions/{session_id}/output",
+    response_model=ResponseBase[dict],
+    summary="后台 shell 命令输出（面板点开看日志）",
+)
+def get_shell_execution_output(
+    workspace_id: int,
+    session_id: str,
+) -> ResponseBase[dict]:
+    """面板「点开看日志」：返回该后台命令的输出末尾（只读，不影响模型的 read_offset）。"""
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    r = get_background_shell_registry().read_output_tail(session_id)
+    return ResponseBase(data=r)
+
+
 @router.delete(
     "/workspaces/{workspace_id}/tasks/executions",
     response_model=ResponseBase[dict],

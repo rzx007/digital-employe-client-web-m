@@ -20,7 +20,12 @@ from src.service.agent.prompts import build_system_prompt
 from src.service.agent.skill_sources import resolve_builtin_skill_creator_source
 from src.service.context_compression import build_summarization_middleware_stack
 from src.service.agent.get_current_time_tool import get_current_time_tool
-from src.service.agent.shell_execute_tool import create_shell_execute_tool
+from src.service.agent.shell_execute_tool import (
+    create_shell_execute_tool,
+    create_shell_kill_tool,
+    create_shell_poll_tool,
+    create_shell_wait_tool,
+)
 from src.service.agent.remember_memory_tool import create_remember_memory_tool
 from src.service.agent.clarifying_questions_tool import (
     CLARIFYING_QUESTIONS_INTERRUPT_ON,
@@ -196,6 +201,7 @@ def get_agent(
         public_dir=ws.public_dir,
         public_root=ws.public_root,
         conversation_id=conversation_id,
+        workspace_id=workspace_id,
         virtual_mode=is_agent_virtual_mode(),
         inherit_env=True,
         timeout=settings.execute_timeout * 2,
@@ -237,7 +243,14 @@ def get_agent(
         shell_backend, artifacts_dir=str(artifacts_dir)
     )
     remember_memory_tool = create_remember_memory_tool(memories_dir)
-    extra_tools: list = [shell_execute_tool, remember_memory_tool, get_current_time_tool]
+    extra_tools: list = [
+        shell_execute_tool,
+        create_shell_poll_tool(),
+        create_shell_wait_tool(),
+        create_shell_kill_tool(),
+        remember_memory_tool,
+        get_current_time_tool,
+    ]
     # 技能在用中自改进：员工可就地修订已加载技能并落库同步（A）。
     # 需 employee_id 反查 workspace/user；available_skills 作「只能改已加载技能」守卫。
     if employee_id is not None:

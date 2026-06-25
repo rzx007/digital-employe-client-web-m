@@ -14,6 +14,9 @@ TASK_FAILED = "task_failed"
 ORCHESTRATION_PLAN_GENERATED = "orchestration_plan_generated"
 CONVERSATION_STATUS_CHANGED = "conversation_status_changed"
 PLAN_RUN_SETTLED = "plan_run_settled"
+# 后台 shell 命令：面板用其定向失效刷新 list_snapshot 查询。
+SHELL_TASK_STARTED = "shell_task_started"
+SHELL_TASK_FINISHED = "shell_task_finished"
 
 
 class WorkspaceEventBus:

@@ -68,7 +68,12 @@ from src.service.agent.orchestrator.tools import (
 from src.service.context_compression import build_summarization_middleware_stack
 from src.service.agent.remember_memory_tool import create_remember_memory_tool
 from src.service.agent.get_current_time_tool import get_current_time_tool
-from src.service.agent.shell_execute_tool import create_shell_execute_tool
+from src.service.agent.shell_execute_tool import (
+    create_shell_execute_tool,
+    create_shell_kill_tool,
+    create_shell_poll_tool,
+    create_shell_wait_tool,
+)
 from src.models.workspace import CST
 from src.service.skill_shell_backend import SkillAwareShellBackend
 
@@ -242,6 +247,7 @@ def get_orchestrator_agent(
         public_dir=ws.public_dir,
         public_root=ws.public_root,
         conversation_id=conversation_id,
+        workspace_id=workspace_id,
         virtual_mode=is_agent_virtual_mode(),
         inherit_env=True,
         timeout=settings.execute_timeout * 2,
@@ -324,6 +330,9 @@ def get_orchestrator_agent(
 
     orchestrator_tools: list = [
         shell_execute_tool,
+        create_shell_poll_tool(),
+        create_shell_wait_tool(),
+        create_shell_kill_tool(),
         remember_memory_tool,
         get_current_time_tool,
     ]

@@ -144,6 +144,7 @@ class SkillAwareShellBackend(LocalShellBackend):
         public_dir: Path | None = None,
         public_root: Path | None = None,
         conversation_id: int | str | None = None,
+        workspace_id: int | None = None,
         virtual_mode: bool = True,
         inherit_env: bool = True,
         timeout: int = 30,
@@ -178,6 +179,14 @@ class SkillAwareShellBackend(LocalShellBackend):
         # 注入会话 ID，供子进程（如 browserctl open-artifact）按会话定位产物
         if conversation_id is not None and str(conversation_id) != "":
             self._env["CONVERSATION_ID"] = str(conversation_id)
+        # 后台任务注册表归属：把 ws/conv 留作 int，供转后台/直接后台时登记，前端面板按会话过滤。
+        self._workspace_id = workspace_id
+        self._conversation_id_int: int | None = None
+        try:
+            if conversation_id is not None and str(conversation_id) != "":
+                self._conversation_id_int = int(conversation_id)
+        except (TypeError, ValueError):
+            self._conversation_id_int = None
         # 注入产物/技能/记忆等目录的真实绝对路径，供 agent 与子进程以真实路径定位，
         # 取代已删除的虚拟前缀（/artifacts/ 等）。
         self._env["ARTIFACTS_DIR"] = str(self._artifacts_dir)
@@ -380,12 +389,68 @@ class SkillAwareShellBackend(LocalShellBackend):
             return None
         return ExecuteResponse(output=reason, exit_code=126, truncated=False)
 
+    def _launch_detached_background(
+        self,
+        rewritten: str,
+        original_command: str,
+        intent: str | None,
+        script_tmp_path: str | None,
+    ) -> ExecuteResponse:
+        """run_in_background=True：起独立进程组、stdout→临时文件，立即登记注册表并返回 session_id，
+        不进前台流式等待。模型用 shell_wait/poll 取结果、shell_kill 终止，前端面板显示 Running。"""
+        from src.service.shell_background_registry import (
+            get_background_shell_registry,
+            process_group_kwargs,
+        )
+
+        tmp = tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".stdout")
+        tmp.close()
+        env = {**self._env, "PYTHONUNBUFFERED": "1"}
+        handle = open(tmp.name, "ab")
+        try:
+            proc = subprocess.Popen(  # noqa: S602
+                rewritten,
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+                shell=True,
+                env=env,
+                cwd=str(self.cwd),
+                **process_group_kwargs(),
+            )
+        finally:
+            handle.close()
+        sid = get_background_shell_registry().register(
+            popen=proc,
+            tmp_path=tmp.name,
+            read_offset=0,
+            command=original_command,
+            workspace_id=self._workspace_id,
+            conversation_id=self._conversation_id_int,
+            intent=intent,
+        )
+        if script_tmp_path:
+            # 多行 python -c 落盘脚本：后台进程仍需它，进程结束后无人清理（小概率泄漏，
+            # 可接受）；不在此删，避免删掉正在运行的脚本。
+            logger.info(
+                "[shell] background python -c script not auto-cleaned: %s", script_tmp_path
+            )
+        note = (
+            f"[命令已在后台运行，session_id={sid}（输出写入文件，不会丢失）。"
+            f"用 shell_wait(session_id, N) 有节奏地等结果（N 如 30-60s）、"
+            f"shell_poll(session_id) 查一眼、shell_kill(session_id) 终止；"
+            f"后台任务也会显示在「后台命令」面板里。]"
+        )
+        return ExecuteResponse(output=note, exit_code=0, truncated=False)
+
     async def aexecute(
         self,
         command: str,
         *,
         timeout: int | None = None,
         tool_call_id: str | None = None,
+        allow_background: bool = False,
+        run_in_background: bool = False,
+        intent: str | None = None,
     ):
         refusal = self._hardline_refusal(command)
         if refusal is not None:
@@ -398,6 +463,11 @@ class SkillAwareShellBackend(LocalShellBackend):
         if effective_timeout <= 0:
             raise ValueError(f"timeout must be positive, got {effective_timeout}")
 
+        if run_in_background:
+            return self._launch_detached_background(
+                rewritten, command, intent, _script_tmp_path
+            )
+
         stream_writer = self._get_stream_writer()
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[str | None] = asyncio.Queue()
@@ -409,6 +479,10 @@ class SkillAwareShellBackend(LocalShellBackend):
         # 临时文件替代 subprocess.PIPE，避免子进程启动的后代进程（如浏览器）
         # 持有 PIPE 写端句柄不释放，导致 proc.stdout 永远等不到 EOF 而挂起
         _tmp_path: str | None = None
+        # 超时转后台移交：async 侧 set 后线程跳过 unlink/不杀进程/停止续读，把文件与进程留给注册表。
+        _background_handoff = threading.Event()
+        # 线程把临时文件路径与已读字节量暴露给 async 侧，移交时作注册表 read_offset。
+        _tmp_path_holder: dict = {"path": None, "last_size": 0}
         _POLL_SECONDS = 0.1
         _PARTIAL_EMIT_SECONDS = 0.3
         _READ_CHUNK = 65536       # 文件分块读取大小，控制内存峰值
@@ -463,9 +537,16 @@ class SkillAwareShellBackend(LocalShellBackend):
             tmp = tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.stdout')
             tmp.close()
             _tmp_path = tmp.name
+            _tmp_path_holder["path"] = _tmp_path
+
+            from src.service.shell_background_registry import (
+                process_group_kwargs,
+                terminate_process_group,
+            )
 
             env = {**self._env, "PYTHONUNBUFFERED": "1"}
             stdout_handle = open(_tmp_path, 'ab')
+            # 独立进程组：超时转后台后 shell_kill 可整组终止，避免孤儿
             proc = subprocess.Popen(  # noqa: S602
                 rewritten,
                 stdout=stdout_handle,            # stdout → 临时文件，不用 PIPE
@@ -473,6 +554,7 @@ class SkillAwareShellBackend(LocalShellBackend):
                 shell=True,
                 env=env,
                 cwd=str(self.cwd),
+                **process_group_kwargs(),
             )
             stdout_handle.close()                # 释放本进程对文件的引用
             _proc_ref.append(proc)
@@ -489,11 +571,15 @@ class SkillAwareShellBackend(LocalShellBackend):
                         last_size, partial_line, complete_lines = (
                             _read_incremental_from_tmp(last_size, partial_line)
                         )
+                        _tmp_path_holder["last_size"] = last_size
                         _emit_complete_lines(complete_lines)
                         _emit_partial_line(partial_line)
                         partial_line = b""
                         break
                     if cancel_requested.is_set():
+                        break
+                    # 已移交后台：停止续读，把文件与进程交注册表（registry 接管增量读）。
+                    if _background_handoff.is_set():
                         break
 
                     time.sleep(_POLL_SECONDS)
@@ -501,6 +587,7 @@ class SkillAwareShellBackend(LocalShellBackend):
                     last_size, partial_line, complete_lines = (
                         _read_incremental_from_tmp(last_size, partial_line)
                     )
+                    _tmp_path_holder["last_size"] = last_size
                     if complete_lines:
                         _emit_complete_lines(complete_lines)
 
@@ -520,21 +607,37 @@ class SkillAwareShellBackend(LocalShellBackend):
                         _emit_partial_line(partial_line)
                         last_partial_emit = now
 
-                proc.wait()
+                # 已移交后台：进程交注册表续跑，绝不在此等它结束（否则线程挂到任务结束）。
+                if not _background_handoff.is_set():
+                    try:
+                        proc.wait(timeout=30)
+                    except subprocess.TimeoutExpired:
+                        if cancel_requested.is_set():
+                            terminate_process_group(proc)
             finally:
-                # 双保险：线程侧也检查取消信号，确保无论谁先触发都能清
-                if cancel_requested.is_set() and proc.poll() is None:
-                    proc.kill()
-                    proc.wait()
+                # 双保险：线程侧也检查取消信号；已移交后台则绝不杀（进程归注册表）。
+                if (
+                    cancel_requested.is_set()
+                    and not _background_handoff.is_set()
+                    and proc.poll() is None
+                ):
+                    terminate_process_group(proc)
+                    try:
+                        proc.wait(timeout=5)
+                    except Exception:
+                        pass
                 loop.call_soon_threadsafe(queue.put_nowait, None)
-                try:
-                    os.unlink(_tmp_path)
-                except Exception:
-                    logger.warning(
-                        "[shell] failed to delete tmpfile %s", _tmp_path, exc_info=True
-                    )
+                # 已移交后台时不删临时文件——注册表还要继续读它，由注册表负责清理。
+                if not _background_handoff.is_set():
+                    try:
+                        os.unlink(_tmp_path)
+                    except Exception:
+                        logger.warning(
+                            "[shell] failed to delete tmpfile %s", _tmp_path, exc_info=True
+                        )
                 # 删除多行 python -c 落盘的临时脚本（子进程已退出，不再需要）。
-                if _script_tmp_path:
+                # 已移交后台时脚本可能仍被后台进程使用，不在此删（小概率泄漏，可接受）。
+                if _script_tmp_path and not _background_handoff.is_set():
                     try:
                         os.unlink(_script_tmp_path)
                     except OSError:
@@ -599,6 +702,9 @@ class SkillAwareShellBackend(LocalShellBackend):
         # completed_normally 用于标记子进程是自行退出（收到 None），
         # 而非超时 / 取消 / 异常终止。finally 块据此决定是否杀进程。
         completed_normally = False
+        # 超时转后台移交状态
+        handed_to_background = False
+        background_session_id: str | None = None
         try:
             while True:
                 try:
@@ -624,25 +730,70 @@ class SkillAwareShellBackend(LocalShellBackend):
             _emit_batch()
         finally:
             _keepalive_task.cancel()
-            # 非正常退出（超时 / 取消 / 异常）：通知线程杀子进程，避免孤儿进程
+            # 非正常退出（超时 / 取消 / 异常）：默认杀子进程避免孤儿；但若「超时 + 允许后台 +
+            # 进程仍在跑」则改为移交后台注册表（不杀），返回 session_id 让模型 wait/poll/kill。
             if not completed_normally:
-                cancel_requested.set()
-                if _proc_ref:
-                    proc = _proc_ref[0]
-                    if proc.poll() is None:
+                proc = _proc_ref[0] if _proc_ref else None
+                can_bg = (
+                    timed_out
+                    and allow_background
+                    and proc is not None
+                    and proc.poll() is None
+                    and _tmp_path_holder.get("path")
+                )
+                if can_bg:
+                    from src.service.shell_background_registry import (
+                        get_background_shell_registry,
+                    )
+                    # 先 set handoff：线程据此停止续读/跳过 unlink/不杀进程；
+                    # cancel_requested 保持未 set，线程不会 kill。
+                    handed_to_background = True
+                    _background_handoff.set()
+                    background_session_id = get_background_shell_registry().register(
+                        popen=proc,
+                        tmp_path=_tmp_path_holder["path"],
+                        read_offset=_tmp_path_holder.get("last_size", 0),
+                        command=command,
+                        workspace_id=self._workspace_id,
+                        conversation_id=self._conversation_id_int,
+                        intent=intent,
+                    )
+                    try:
+                        _emit_batch()
+                    except Exception:
+                        pass
+                else:
+                    cancel_requested.set()
+                    if proc is not None and proc.poll() is None:
+                        from src.service.shell_background_registry import (
+                            terminate_process_group,
+                        )
                         try:
-                            proc.kill()
+                            terminate_process_group(proc)
                         except Exception:
                             pass
-                try:
-                    _emit_batch()
-                except Exception:
-                    pass
-                # 等线程函数收尾（kill 后 proc.wait()），最长等 10s
-                try:
-                    await asyncio.wait_for(asyncio.shield(future), timeout=10)
-                except Exception:
-                    pass
+                    try:
+                        _emit_batch()
+                    except Exception:
+                        pass
+                    # 等线程函数收尾（kill 后），最长等 10s
+                    try:
+                        await asyncio.wait_for(asyncio.shield(future), timeout=10)
+                    except Exception:
+                        pass
+
+        # 已移交后台：进程仍在跑（线程已停读返回），立即返回 session_id 指引，不 await 退出码。
+        if handed_to_background:
+            partial = "\n".join(lines) if lines else ""
+            note = (
+                f"\n[命令仍在后台运行，session_id={background_session_id}（输出不会丢失）。"
+                f"要结果就用 shell_wait(session_id, N) 有节奏地等一轮（N 如 30-60s），没完成再等一轮；"
+                f"shell_poll(session_id) 只查一眼，shell_kill(session_id) 终止。"
+                f"若判断是超大任务，告诉用户『已在后台运行，可在「后台命令」面板查看或稍后问我进度』"
+                f"并体面收尾，勿杀了重试。]"
+            )
+            out = (partial + note) if partial else note.lstrip("\n")
+            return ExecuteResponse(output=out, exit_code=0, truncated=bool(lines))
 
         try:
             exit_code = await asyncio.wait_for(

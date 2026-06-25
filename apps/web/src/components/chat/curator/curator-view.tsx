@@ -73,6 +73,7 @@ import { CuratorFileProvider } from "./curator-file-provider"
 import { CuratorRecruitmentProvider } from "./curator-recruitment-provider"
 import { CuratorPlanFeedbackProvider } from "./curator-plan-feedback-context"
 import { RunningTasksIndicator } from "./running-tasks-indicator"
+import { ShellTasksIndicator } from "./shell-tasks-indicator"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import { UserAvatar } from "@/components/user-avatar"
@@ -973,6 +974,11 @@ export function CuratorView({
       <RunningTasksIndicator
         curatorConversationId={curatorConversationId}
         onOpenEmployeeTasks={onToggleEmployeeTasks}
+        className="mb-2"
+      />
+
+      <ShellTasksIndicator
+        conversationId={curatorConversationId}
         className="mb-2"
       />
 
