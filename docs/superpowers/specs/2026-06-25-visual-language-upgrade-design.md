@@ -98,7 +98,7 @@
 
 ## 5. 字体系统
 
-- 依赖：新增 `@fontsource/ibm-plex-sans` 与 `@fontsource/ibm-plex-mono`（静态权重；按需 import 400/500/600），在 `packages/ui/src/styles/globals.css` 顶部 `@import`。移除/保留 lora 视实际使用而定（保留不影响）。
+- 依赖：新增 `@fontsource/ibm-plex-sans` 与 `@fontsource/ibm-plex-mono`（静态权重；按需 import 400/500/600），在 `packages/ui/src/styles/globals.css` 顶部 `@import`。`@fontsource-variable/lora` **保留不动**（已在 globals.css 第 4 行 import，保留无副作用，避免 hunt-for-usages 弯路）。
 - 变量改写（`@theme inline`）：
   - `--font-sans: 'IBM Plex Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;`（拉丁/数字走 Plex，中文回退系统字体——与设计稿一致）
   - 新增 `--font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;`，暴露为 Tailwind `font-mono`。
@@ -121,7 +121,7 @@
 
 ### 6.3 辅助
 - `PulseDot`（被 StatusPill 内用，也可独立用于状态栏）：脉冲圆点；动画 `@keyframes`（pulse）加到 globals.css。
-- 阴影工具类：在 `@theme inline` 暴露 `--shadow`/`--shadow-lg` 为 `shadow-card` / `shadow-float`（或直接 `shadow-[var(--shadow)]`，二选一，倾向工具类便于复用）。
+- 阴影工具类：**定为** 在 `@theme inline` 暴露 `--shadow`/`--shadow-lg` 为 `shadow-card` / `shadow-float` 工具类（不走 inline `shadow-[var(--shadow)]`），便于母题与业务侧统一复用。
 - 卡片：**不新建组件**——设计稿卡片观感主要来自令牌（border + shadow + radius）。现有 shadcn `Card` 接令牌后自动到位；仅在 globals 校准 `--radius` 与卡片默认阴影。
 
 > YAGNI：不抽 `MonoNumber`、不抽 `Card` 变体；约定 + 现有件足够。
@@ -131,7 +131,7 @@
 ### 7.1 `app-titlebar.tsx`
 - 维持 36px 高度与窗口控制结构不变。
 - 品牌区：在 logo 旁增设计稿的渐变方块徽标（`linear-gradient(--brand→--brand-ink)`）+ 右上 `--highlight` 通知点；标题旁可选 mono 大写小标签（如 `BOBAN STAFF`）。
-- 关闭按钮 hover 用 `--destructive`。
+- 关闭按钮 hover 由当前 `hover:bg-red-500` 换为 `--destructive`（无设计稿像素目标，纯令牌统一）。
 
 ### 7.2 `app-toolbar.tsx`（导航 rail）— 最显著变化
 - 容器底色 `bg-muted/50` → `bg-[var(--rail)]`（深海军蓝，明暗都深）。
