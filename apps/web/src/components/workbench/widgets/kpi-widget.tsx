@@ -14,14 +14,26 @@ const ARROW = {
   flat: IconMinus,
 } as const
 
+interface KpiItem {
+  label?: string
+  value?: number | string | null
+  unit?: string
+  delta?: number | string | null
+  deltaDir?: string
+}
+
+interface KpiData {
+  items?: KpiItem[]
+}
+
 export function KpiWidget({
   widget,
   data,
 }: {
   widget: WorkbenchWidget
-  data: any
+  data: KpiData
 }) {
-  const items: any[] = data?.items ?? []
+  const items: KpiItem[] = data?.items ?? []
 
   return (
     <Card className="h-full">

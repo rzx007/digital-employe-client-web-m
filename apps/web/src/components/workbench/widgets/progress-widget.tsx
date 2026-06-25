@@ -27,10 +27,13 @@ export function ProgressWidget({
 }) {
   const items: ProgressItem[] = data?.items ?? []
 
+  const hasMax = (item: ProgressItem): boolean =>
+    item.max != null && item.max > 0
+
   const toPercent = (item: ProgressItem): number => {
     if (item.value === null || item.value === undefined) return 0
-    if (item.max) {
-      return Math.min(100, Math.max(0, (item.value / item.max) * 100))
+    if (hasMax(item)) {
+      return Math.min(100, Math.max(0, (item.value / item.max!) * 100))
     }
     return Math.min(100, Math.max(0, item.value))
   }
@@ -50,7 +53,7 @@ export function ProgressWidget({
             const pct = toPercent(it)
             const hasValue = it.value !== null && it.value !== undefined
             const display = hasValue
-              ? it.max
+              ? hasMax(it)
                 ? `${it.value} / ${it.max}`
                 : `${it.value}%`
               : "—"
