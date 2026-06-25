@@ -1,131 +1,52 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import type { HtmlArtifactRef, WorkbenchConfig } from "@/types/workbench"
+import { describe, it, expect } from "vitest"
 import {
-  addHtmlArtifactBlock,
-  emitWorkbenchConfigChanged,
-  loadWorkbenchConfig,
-  removeBlock,
-  updateBlockOrder,
-  WORKBENCH_CONFIG_CHANGED_EVENT,
+  emptyConfig, addHtmlTab, removeTab, reorderTabs, reorderWidgets, removeWidget, resizeWidget,
 } from "./workbench-config"
 
-const KEY = "workbench-config-global"
+const ref = (p: string) => ({ conversationId: "c1", resourcePath: p, pinnedAt: 1 })
 
-function makeRef(path: string): HtmlArtifactRef {
-  return { conversationId: 12, resourcePath: path, pinnedAt: 1 }
-}
-
-beforeEach(() => {
-  localStorage.clear()
-  vi.spyOn(Date, "now").mockReturnValue(1000)
-})
-
-afterEach(() => {
-  vi.restoreAllMocks()
-})
-
-describe("loadWorkbenchConfig", () => {
-  it("returns null when nothing stored", () => {
-    expect(loadWorkbenchConfig("global")).toBeNull()
+describe("workbench-config v2 纯函数", () => {
+  it("钉 HTML 追加 tab 到 tabOrder 末尾并设 active", () => {
+    const c = addHtmlTab(emptyConfig(), ref("/a.html"), "A")
+    expect(c.htmlTabs).toHaveLength(1)
+    expect(c.tabOrder[c.tabOrder.length - 1]).toBe(c.htmlTabs[0].id)
+    expect(c.activeTabId).toBe(c.htmlTabs[0].id)
   })
-
-  it("resets legacy config (block missing html-artifact type) to null", () => {
-    localStorage.setItem(
-      KEY,
-      JSON.stringify({
-        employeeId: "global",
-        blocks: [{ id: "x", type: "custom", queryInterface: { id: "i" } }],
-        lastModified: 1,
-      })
-    )
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
-    expect(loadWorkbenchConfig("global")).toBeNull()
-    expect(warn).toHaveBeenCalled()
+  it("钉重复 HTML 不新增 tab,只切到已存在的", () => {
+    const c1 = addHtmlTab(emptyConfig(), ref("/a.html"), "A")
+    const c2 = addHtmlTab(c1, ref("/a.html"), "A")
+    expect(c2.htmlTabs).toHaveLength(1)
+    expect(c2.activeTabId).toBe(c1.htmlTabs[0].id)
   })
-
-  it("loads a valid html-artifact config", () => {
-    const cfg: WorkbenchConfig = {
-      employeeId: "global",
-      blocks: [
-        {
-          id: "b1",
-          type: "html-artifact",
-          title: "看板",
-          enabled: true,
-          order: 0,
-          htmlRef: makeRef("/artifacts/a.html"),
-        },
-      ],
-      lastModified: 1,
-    }
-    localStorage.setItem(KEY, JSON.stringify(cfg))
-    expect(loadWorkbenchConfig("global")).toEqual(cfg)
+  it("关闭当前 tab 回退并从 tabOrder 移除", () => {
+    let c = addHtmlTab(emptyConfig(), ref("/a.html"), "A")
+    const id = c.htmlTabs[0].id
+    c = removeTab(c, id)
+    expect(c.htmlTabs).toHaveLength(0)
+    expect(c.tabOrder).toEqual(["dashboard"])
+    expect(c.activeTabId).toBe("dashboard")
   })
-})
-
-describe("addHtmlArtifactBlock", () => {
-  it("appends a new html-artifact block and persists", () => {
-    const base: WorkbenchConfig = {
-      employeeId: "global",
-      blocks: [],
-      lastModified: 1,
-    }
-    const next = addHtmlArtifactBlock(base, makeRef("/artifacts/a.html"), "销售看板")
-    expect(next.blocks).toHaveLength(1)
-    expect(next.blocks[0]).toMatchObject({
-      type: "html-artifact",
-      title: "销售看板",
-      enabled: true,
-      order: 0,
-      htmlRef: { resourcePath: "/artifacts/a.html" },
-    })
-    expect(loadWorkbenchConfig("global")?.blocks).toHaveLength(1)
+  it("dashboard 标签不可关闭", () => {
+    const c = removeTab(emptyConfig(), "dashboard")
+    expect(c.tabOrder).toEqual(["dashboard"])
   })
-
-  it("does not duplicate when pinning the same artifact twice; updates title in place", () => {
-    let cfg: WorkbenchConfig = {
-      employeeId: "global",
-      blocks: [],
-      lastModified: 1,
-    }
-    cfg = addHtmlArtifactBlock(cfg, makeRef("/artifacts/a.html"), "旧标题")
-    const firstId = cfg.blocks[0]!.id
-    cfg = addHtmlArtifactBlock(cfg, makeRef("/artifacts/a.html"), "新标题")
-    expect(cfg.blocks).toHaveLength(1)
-    expect(cfg.blocks[0]!.id).toBe(firstId)
-    expect(cfg.blocks[0]!.title).toBe("新标题")
+  it("reorderTabs 保持 dashboard 在首位", () => {
+    let c = addHtmlTab(emptyConfig(), ref("/a.html"), "A")
+    c = reorderTabs(c, [c.htmlTabs[0].id, "dashboard"])
+    expect(c.tabOrder[0]).toBe("dashboard")
   })
-})
-
-describe("removeBlock / updateBlockOrder", () => {
-  it("removes a block and re-orders remaining", () => {
-    let cfg: WorkbenchConfig = { employeeId: "global", blocks: [], lastModified: 1 }
-    cfg = addHtmlArtifactBlock(cfg, makeRef("/a.html"), "A")
-    cfg = addHtmlArtifactBlock(cfg, makeRef("/b.html"), "B")
-    const firstId = cfg.blocks[0]!.id
-    cfg = removeBlock(cfg, firstId)
-    expect(cfg.blocks).toHaveLength(1)
-    expect(cfg.blocks[0]!.order).toBe(0)
+  it("reorderWidgets 按新顺序重排并刷新 order", () => {
+    const base = { ...emptyConfig(), dashboard: { widgets: [
+      { id: "w1", type: "kpi", title: "1", order: 0 }, { id: "w2", type: "kpi", title: "2", order: 1 },
+    ] } } as any
+    const c = reorderWidgets(base, ["w2", "w1"])
+    expect(c.dashboard.widgets.map((w: any) => w.id)).toEqual(["w2", "w1"])
+    expect(c.dashboard.widgets[0].order).toBe(0)
   })
-
-  it("reorders blocks by id list", () => {
-    let cfg: WorkbenchConfig = { employeeId: "global", blocks: [], lastModified: 1 }
-    cfg = addHtmlArtifactBlock(cfg, makeRef("/a.html"), "A")
-    cfg = addHtmlArtifactBlock(cfg, makeRef("/b.html"), "B")
-    const [a, b] = cfg.blocks.map((x) => x.id)
-    cfg = updateBlockOrder(cfg, [b!, a!])
-    expect(cfg.blocks.map((x) => x.id)).toEqual([b, a])
-    expect(cfg.blocks.map((x) => x.order)).toEqual([0, 1])
-  })
-})
-
-describe("emitWorkbenchConfigChanged", () => {
-  it("dispatches the config-changed event on window", () => {
-    const handler = vi.fn()
-    window.addEventListener(WORKBENCH_CONFIG_CHANGED_EVENT, handler)
-    emitWorkbenchConfigChanged()
-    expect(handler).toHaveBeenCalledTimes(1)
-    window.removeEventListener(WORKBENCH_CONFIG_CHANGED_EVENT, handler)
+  it("removeWidget / resizeWidget", () => {
+    const base = { ...emptyConfig(), dashboard: { widgets: [{ id: "w1", type: "kpi", title: "1", order: 0 }] } } as any
+    expect(removeWidget(base, "w1").dashboard.widgets).toHaveLength(0)
+    expect(resizeWidget(base, "w1", 300, 200).dashboard.widgets[0].width).toBe(300)
   })
 })
