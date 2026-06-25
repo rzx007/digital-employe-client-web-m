@@ -137,7 +137,9 @@ def create_shell_poll_tool() -> BaseTool:
         )
 
     def _poll(session_id: str, offset: int | None = None) -> str:
-        r = get_background_shell_registry().poll(session_id, from_offset=offset)
+        r = get_background_shell_registry().poll(
+            session_id, from_offset=offset, agent_initiated=True
+        )
         if not r.get("found"):
             return f"未找到后台命令 session_id={session_id}（可能已结束并被回收）。"
         status = "运行中" if r["running"] else f"已结束(exit_code={r['exit_code']})"
@@ -168,7 +170,9 @@ def create_shell_wait_tool() -> BaseTool:
         )
 
     def _wait(session_id: str, max_seconds: int = 60) -> str:
-        r = get_background_shell_registry().wait(session_id, max_seconds)
+        r = get_background_shell_registry().wait(
+            session_id, max_seconds, agent_initiated=True
+        )
         if not r.get("found"):
             return f"未找到后台命令 session_id={session_id}（可能已结束并被回收）。"
         body = r["new_output"] or "(无新增输出)"

@@ -298,3 +298,29 @@ def test_kill_endpoint_calls_registry_kill(monkeypatch):
     assert resp.status_code == 200
     assert resp.json()["data"]["killed"] is True
     assert called["sid"] == "abc123"
+
+
+def test_consumed_by_agent_flag():
+    """agent 主动 poll(agent_initiated=True) 后 is_consumed_by_agent 为真，用于续跑去重。"""
+    import os
+    import tempfile
+
+    reg = BackgroundShellRegistry()
+    tf = tempfile.NamedTemporaryFile(delete=False, suffix=".log")
+    tf.close()
+    with open(tf.name, "w") as fh:
+        p = subprocess.Popen([sys.executable, "-c", "print('hi')"], stdout=fh)  # noqa: S603
+    p.wait()
+    sid = reg.register(
+        popen=p, tmp_path=tf.name, read_offset=0, command="x", conversation_id=7
+    )
+    assert reg.is_consumed_by_agent(sid) is False
+    reg.poll(sid, agent_initiated=True)
+    assert reg.is_consumed_by_agent(sid) is True
+    # watcher 调 poll（默认 agent_initiated=False）不应置位
+    sid2 = reg.register(
+        popen=p, tmp_path=tf.name, read_offset=0, command="y", conversation_id=7
+    )
+    reg.poll(sid2)  # 默认 False
+    assert reg.is_consumed_by_agent(sid2) is False
+    os.unlink(tf.name)

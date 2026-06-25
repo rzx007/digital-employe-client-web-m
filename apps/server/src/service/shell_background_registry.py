@@ -50,6 +50,7 @@ class _Session:
     exit_code: int | None = None
     finished_at: float | None = None  # monotonic，置 finished 时记，sweep 据此过保留窗
     finished_emitted: bool = False  # 防 finished 事件重复发
+    consumed_by_agent: bool = False  # agent 是否已主动 poll/wait 拉过结果（续跑去重用）
 
 
 def process_group_kwargs() -> dict:
@@ -179,7 +180,12 @@ class BackgroundShellRegistry:
         if emit:
             self._emit_event("shell_task_finished", sid)
 
-    def poll(self, session_id: str, from_offset: int | None = None) -> dict:
+    def poll(
+        self,
+        session_id: str,
+        from_offset: int | None = None,
+        agent_initiated: bool = False,
+    ) -> dict:
         self._maybe_sweep()
         with self._lock:
             s = self._sessions.get(session_id)
@@ -190,6 +196,8 @@ class BackgroundShellRegistry:
         rc = s.popen.poll()
         with self._lock:
             s.read_offset = new_offset
+            if agent_initiated:
+                s.consumed_by_agent = True
         self._settle_if_exited(session_id, s, rc)
         return {
             "found": True,
@@ -199,7 +207,12 @@ class BackgroundShellRegistry:
             "offset": new_offset,
         }
 
-    def wait(self, session_id: str, max_seconds: int) -> dict:
+    def wait(
+        self,
+        session_id: str,
+        max_seconds: int,
+        agent_initiated: bool = False,
+    ) -> dict:
         """阻塞等命令结束或最多 max_seconds（硬顶 _WAIT_HARD_CAP）秒。
 
         同步轮询 popen.poll()，跑在工具执行线程、不占 LLM 连接。
@@ -219,6 +232,8 @@ class BackgroundShellRegistry:
         new_offset, new_output = self._read_incremental(s.tmp_path, s.read_offset)
         with self._lock:
             s.read_offset = new_offset
+            if agent_initiated:
+                s.consumed_by_agent = True
         self._settle_if_exited(session_id, s, rc)
         return {
             "found": True,
@@ -228,6 +243,12 @@ class BackgroundShellRegistry:
             "offset": new_offset,
             "waited_seconds": round(waited, 2),
         }
+
+    def is_consumed_by_agent(self, session_id: str) -> bool:
+        """agent 是否已主动 poll/wait 拉过该命令结果（续跑去重用）。未知 session 返回 False。"""
+        with self._lock:
+            s = self._sessions.get(session_id)
+            return bool(s and s.consumed_by_agent)
 
     # ---- 终止 ----
 
