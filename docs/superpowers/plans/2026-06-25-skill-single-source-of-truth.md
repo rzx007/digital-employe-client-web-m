@@ -573,7 +573,7 @@ Expected: FAIL（无 EmployeeSkill 行）
             EmployeeService.reconcile_employee_skills(db, emp)
 ```
 
-（`adopt_skill_candidate` 当前签名已带 `db`、`employee_id`；`brain = _growth_brain_root_for(employee_id)` 已在方法内。）
+（`adopt_skill_candidate` 当前签名已带 `db`、`employee_id`；`brain = _growth_brain_root_for(employee_id)` 已在方法内。该方法不自己 `commit`，由 API 层调用方提交——补 reconcile 后确认 API 层仍 commit。）
 
 - [ ] **Step 4: Run → PASS**
 
@@ -673,7 +673,7 @@ Expected: FAIL（现实现会调库 → AssertionError）
         db.close()
 ```
 
-`_backup_skill_version_private(skill_dir)`：把 `_backup_skill_version` 改为接收私有 `skill_dir`，备份其 `SKILL.md` 到 `skill_dir/.history/<ts>.md`，返回 ts（去掉 builtin 防御与 workspace 解析）。
+`_backup_skill_version_private(skill_dir)`：把 `_backup_skill_version` 改为接收私有 `skill_dir`，备份其 `SKILL.md` 到 `skill_dir/.history/<ts>.md`，返回 ts（去掉 builtin 防御与 workspace 解析）。**保留原有 best-effort try/except 契约**——`.history` 写失败只 warn 返回 None，绝不中断技能更新主流程。
 
 - [ ] **Step 4: 重写既有 update_skill 测试**
 
@@ -721,6 +721,8 @@ git commit -m "feat(skill): update_skill 改为只改私有副本(去库写入+�
 ```
 
 循环末尾把 `_refresh_employee_meta_skills(db, employee)` 替换/补为 `EmployeeService.reconcile_employee_skills(db, employee)`（覆盖后内容变，reconcile 刷新行）。
+
+> ⚠️ 注意：`sync_local_skill_to_assignees` 在 1126-1131 处**先无条件**改了 `EmployeeSkill` 行的 `skill_content` 等（在 per-employee 磁盘循环之前）。本任务的跳过守卫只挡住**磁盘**覆盖，那段行内写仍会跑——但因末尾改走 `reconcile_employee_skills` 从（未被覆盖的）磁盘重新派生行，会被纠回。**测试里务必断言"已私改 assignee 的 EmployeeSkill.skill_content 最终 == 其私有磁盘内容"**，防止将来有人删掉 reconcile 又把这个 bug 引回来。
 
 - [ ] **Step 4: Run → PASS**
 
