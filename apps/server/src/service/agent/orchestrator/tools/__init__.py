@@ -62,6 +62,8 @@ from src.service.agent.orchestrator.tools.tasks import (
     redispatch_task,
     update_task,
 )
+from src.service.agent.orchestrator.tools.workbench import add_workbench_widget
+
 __all__ = [
     # employees
     "list_workspace_employees",
@@ -94,6 +96,8 @@ __all__ = [
     "get_market_skill_detail",
     "install_market_skill",
     "format_workspace_skills_list",
+    # workbench
+    "add_workbench_widget",
     # shared helpers
     "parse_orchestration_task_list",
     "resolve_conv_id",
