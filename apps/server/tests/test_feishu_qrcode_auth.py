@@ -90,13 +90,36 @@ def test_fetch_qrcode_unsupported_method(monkeypatch):
         asyncio.run(FeishuQRCodeAuthHandler().fetch_qrcode())
 
 
-def test_poll_status_raises_on_http_error(monkeypatch):
+def test_poll_status_pending_400_is_waiting(monkeypatch):
+    """回归：设备流未授权时飞书返 HTTP 400 + JSON {"error":"authorization_pending"}，
+    这是 RFC8628 正常的'仍在等待'，必须归一为 waiting、绝不能因 400 抛错。"""
+    import httpx, asyncio
+    from src.service.channel.qrcode_auth import FeishuQRCodeAuthHandler
+
+    class _Resp:
+        # 即便 raise_for_status 会因 400 抛，只要 body 是 JSON 就不该走到它
+        def raise_for_status(self): raise RuntimeError("400 Bad Request")
+        def json(self): return {"error": "authorization_pending"}
+
+    class _Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, *a, **k): return _Resp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    r = asyncio.run(FeishuQRCodeAuthHandler().poll_status("dev_x"))
+    assert r.status == "waiting"
+
+
+def test_poll_status_raises_on_non_json(monkeypatch):
+    """真·错误页(非 JSON body)：json() 抛 → raise_for_status 抛清晰 HTTP 错误。"""
     import httpx, asyncio
     from src.service.channel.qrcode_auth import FeishuQRCodeAuthHandler
 
     class _Resp:
         def raise_for_status(self): raise RuntimeError("500 from feishu")
-        def json(self): return {}
+        def json(self): raise ValueError("not json")
 
     class _Client:
         def __init__(self, *a, **k): pass

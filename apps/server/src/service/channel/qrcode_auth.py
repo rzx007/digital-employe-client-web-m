@@ -88,8 +88,17 @@ class FeishuQRCodeAuthHandler(QRCodeAuthHandler):
             resp = await client.post(endpoint, content=urlencode({
                 "action": "poll", "device_code": token,
             }), headers=_FORM_HEADERS)
-            resp.raise_for_status()
-            return _normalize_feishu_poll(resp.json())
+            # ⚠️ 设备授权流(RFC 8628)：未授权时 poll 端点返回 **HTTP 400 + JSON
+            # {"error":"authorization_pending"}**（slow_down 同理）——这是协议规定的
+            # "仍在等待"正常响应，不能当 HTTP 错误抛。故先解析 JSON body 交给
+            # _normalize_feishu_poll（按 error 字段归一 waiting/expired/fail/success），
+            # 只有 body 根本不是 JSON（真·5xx/HTML 错误页）才 raise 报清晰错误。
+            try:
+                data = resp.json()
+            except Exception:
+                resp.raise_for_status()  # 非 JSON 错误页 → 抛清晰 HTTP 错误
+                raise  # 2xx 但非 JSON 的异常兜底
+            return _normalize_feishu_poll(data)
 
 
 QRCODE_AUTH_HANDLERS: dict[str, QRCodeAuthHandler] = {

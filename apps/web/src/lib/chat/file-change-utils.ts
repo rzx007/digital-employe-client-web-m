@@ -24,7 +24,14 @@ export interface FileChangeItem {
   path: string
   extension?: string
   size?: number
-  toolCallId: string
+  /** parts 派生时有；file_outputs 权威来源派生时无（后端 journal 不带 toolCallId）。 */
+  toolCallId?: string
+}
+
+/** 后端 journal 写入消息 extra_meta.file_outputs 的单条结构（透传到 message metadata）。 */
+export interface FileOutput {
+  path: string
+  action: "create" | "modify"
 }
 
 // 代码/脚本扩展名 → 中间产物（口径对齐后端 artifacts.py _ARTIFACT_CODE_EXTENSIONS，
@@ -186,9 +193,99 @@ function buildFileChange(part: ToolUIPart): FileChangeItem | null {
   }
 }
 
+/**
+ * 从 file_outputs 单条构造 FileChangeItem。复用与 parts 派生（buildFileChange）一致的
+ * id / kind / category 口径，保证两条来源去重命中一致。无 toolCallId、无 size。
+ */
+function buildFileChangeFromOutput(output: FileOutput): FileChangeItem | null {
+  const path = normalizeToolFilePath(output.path)
+  if (!isUserVisibleFileChange(path)) {
+    return null
+  }
+
+  const action: FileChangeAction =
+    output.action === "create" ? "created" : "edited"
+
+  const skillFolder = getSkillDraftFolder(path)
+  if (skillFolder) {
+    // 草稿技能是用户要导入的成果，恒为交付物
+    return {
+      id: `skill-folder:${skillFolder.path}`,
+      kind: "skill-folder",
+      category: "deliverable",
+      action,
+      title: skillFolder.name,
+      path: skillFolder.path,
+    }
+  }
+
+  const basename = getBasename(path)
+  const extension = getExtension(path)
+  return {
+    id: `file:${path}`,
+    kind: "file",
+    category: classifyFileCategory(basename, extension),
+    action,
+    title: basename,
+    path,
+    extension,
+  }
+}
+
+/** 读 message.metadata.file_outputs，逐条构造并按 id 去重。 */
+export function getFileChangesFromFileOutputs(
+  message: UIMessage
+): FileChangeItem[] {
+  const outputs = readFileOutputs(message)
+  const changes = new Map<string, FileChangeItem>()
+
+  for (const output of outputs) {
+    const change = buildFileChangeFromOutput(output)
+    if (!change) {
+      continue
+    }
+    changes.set(change.id, change)
+  }
+
+  return Array.from(changes.values())
+}
+
+/** 从 UIMessage.metadata 安全读取 file_outputs（参考 metadata.usage/streamState 的读法）。 */
+function readFileOutputs(message: UIMessage): FileOutput[] {
+  const metadata = (message as UIMessage & { metadata?: unknown }).metadata
+  if (!metadata || typeof metadata !== "object") {
+    return []
+  }
+  const raw = (metadata as Record<string, unknown>).file_outputs
+  if (!Array.isArray(raw)) {
+    return []
+  }
+  const outputs: FileOutput[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue
+    const path = (item as Record<string, unknown>).path
+    const action = (item as Record<string, unknown>).action
+    if (typeof path !== "string" || !path) continue
+    if (action !== "create" && action !== "modify") continue
+    outputs.push({ path, action })
+  }
+  return outputs
+}
+
+/** 该消息是否带 file_outputs（权威来源）。供调用方决定是否对 file-changes 做资源树交集。 */
+export function messageHasFileOutputs(message: UIMessage): boolean {
+  return readFileOutputs(message).length > 0
+}
+
 export function getFileChangesFromUIMessage(
   message: UIMessage
 ): FileChangeItem[] {
+  // file_outputs 是权威来源（含 bash 写的、已过滤幻影/删除）。有则只用它（忽略 parts
+  // 派生）；无（流式进行中 / 极老历史消息）才回退 parts 解析作即时兜底。
+  if (readFileOutputs(message).length > 0) {
+    return getFileChangesFromFileOutputs(message)
+  }
+
   const changes = new Map<string, FileChangeItem>()
 
   for (const part of message.parts) {
