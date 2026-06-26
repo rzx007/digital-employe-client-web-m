@@ -74,6 +74,6 @@
       }
     ],
     "category": "Office",
-    "artifactName": "BobanStaffNext-Offline-Linux-arm64-${version}.${ext}"
+    "artifactName": "BobanStaff-Offline-Linux-arm64-${version}.${ext}"
   }
 }
