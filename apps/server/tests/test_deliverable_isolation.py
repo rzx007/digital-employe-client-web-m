@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 
 from datetime import datetime
-from pathlib import Path
 
 from src.models.conversation import Conversation, ConversationMessage
 from src.models.employee import Employee

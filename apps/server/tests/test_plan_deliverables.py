@@ -126,8 +126,8 @@ def test_collect_plan_deliverables_attributes_and_filters(db_session, workspace)
     assert rep["task_id"] == ta.id and rep["task_name"] == ta.task_name
     slide = next(d for d in out if d["basename"] == "slides.pptx")
     assert slide["task_id"] == tb.id
-    # create 不被后续 modify 降级
-    assert slide["action"] == "create"
+    # create 不被后续 modify 降级（边界映射成 created）
+    assert slide["action"] == "created"
     # size 取文件系统 entry 大小
     assert rep["size"] == len("PK real docx")
     assert slide["size"] == len("PK real pptx")
@@ -149,7 +149,7 @@ def test_collect_plan_deliverables_action_modify(db_session, workspace):
 
     out = ol.collect_plan_deliverables(db_session, plan.id)
     assert out and out[0]["basename"] == "已有稿.md"
-    assert out[0]["action"] == "modify"
+    assert out[0]["action"] == "edited"
     assert out[0]["size"] == len("real-content")
 
 

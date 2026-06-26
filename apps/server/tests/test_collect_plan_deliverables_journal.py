@@ -60,7 +60,7 @@ def _assistant_msg_with_outputs(db, conv_id: int, outputs: list[dict]) -> None:
 
 
 def test_collect_intersects_journal_with_filesystem(db_session):
-    """file_outputs 列两条，磁盘只放一条 → 只返回存在的那条，action 透传。"""
+    """file_outputs 列两条，磁盘只放一条 → 只返回存在的那条，action 映射成 created。"""
     from src.service.orchestration_lifecycle import collect_plan_deliverables
 
     with tempfile.TemporaryDirectory(prefix="de-collect-") as tmpdir:
@@ -128,7 +128,7 @@ def test_collect_intersects_journal_with_filesystem(db_session):
         results = collect_plan_deliverables(db_session, plan.id, run_id=run.id)
         basenames = {r["basename"] for r in results}
         assert basenames == {"present.md"}  # 磁盘不存在的 deleted.md 被过滤
-        assert results[0]["action"] == "create"
+        assert results[0]["action"] == "created"
         assert results[0]["task_id"] == task.id
         assert results[0]["task_name"] == "t1"
         assert results[0]["size"] == len("hello")

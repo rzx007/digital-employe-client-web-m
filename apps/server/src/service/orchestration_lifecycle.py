@@ -118,7 +118,10 @@ def collect_plan_deliverables(
         ).all()
     )
 
-    # journal 侧：聚合各任务会话的 file_outputs（path → 归属信息）。后出现的任务覆盖早的。
+    # journal 侧：聚合各任务会话的 file_outputs（path → 归属信息）。归属（task_id/
+    # task_name）跟随后出现的任务；但 action 沿用 journal 内部规则——一旦标过
+    # create 即不被后续 modify 降级（create-wins，跨任务同会话内一致）。聚合阶段保留
+    # 原始 create/modify，最终产出时统一映射成对外契约的 created/edited（见下方循环）。
     seen: dict[str, dict] = {}
     order: list[str] = []
     for t in tasks:
@@ -133,14 +136,20 @@ def collect_plan_deliverables(
                 key = Path(path).resolve().as_posix()
             except OSError:
                 continue
+            raw_action = o.get("action") or "modify"
             if key not in seen:
                 order.append(key)
+                prev_action = None
+            else:
+                prev_action = seen[key].get("raw_action")
+            # create 优先：已是 create 则保留，不被后续 modify 降级。
+            action = "create" if prev_action == "create" else raw_action
             seen[key] = {
                 "path": key,
                 "basename": Path(key).name,
                 "task_id": t.id,
                 "task_name": t.task_name,
-                "action": o.get("action") or "modify",
+                "raw_action": action,
             }
 
     if not seen:
@@ -166,6 +175,10 @@ def collect_plan_deliverables(
         if entry is None:
             continue  # 磁盘上已不存在 → 落选
         d = seen[key]
+        # 边界映射：把 journal 内部词汇 create/modify 映射回公共契约 created/edited，
+        # 保持 PlanDeliverablesCard 契约稳定（default created、只认 edited）。
+        raw_action = d.pop("raw_action", "modify")
+        d["action"] = "created" if raw_action == "create" else "edited"
         d["size"] = entry.size
         results.append(d)
     return results
