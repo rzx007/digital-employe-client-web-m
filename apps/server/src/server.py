@@ -98,6 +98,11 @@ def create_app() -> FastAPI:
 
         # 离线 IO 密集型初始化到线程池，避免阻塞事件循环导致前端请求挂起
         def _startup_db_init():
+            # 升级迁移：从旧数据目录(.boban-staff/.digital-employee)拷激活文件到新目录，
+            # 免老用户升级后重新激活。幂等、失败不抛，须在激活中间件鉴权前跑。
+            from src.core.activation.storage import migrate_legacy_activation
+
+            migrate_legacy_activation()
             init_db()
             with get_session_local()() as db:
                 workspace = WorkspaceService.ensure_default_workspace(db)

@@ -83,5 +83,16 @@
     ],
     "category": "Office",
     "artifactName": "${productName}-Linux-arm64-${version}.${ext}"
+  },
+  // 包改名 digital-employee → boban-staff（dpkg 包名取自 package.json 的 name）。两包
+  // 文件都落在 /opt/BobanStaff/*，老机器升级时若不声明替换关系，dpkg -i 会与已装的
+  // digital-employee 撞「文件覆盖」而失败。声明 Conflicts/Replaces/Provides 让 dpkg 装
+  // 新包时自动卸旧包，无需每台机器现场改 deploy.sh。见 scripts/activation/deploy.sh.boban-rename.patch.md
+  "deb": {
+    "fpm": [
+      "--conflicts", "digital-employee",
+      "--replaces", "digital-employee",
+      "--provides", "digital-employee"
+    ]
   }
 }

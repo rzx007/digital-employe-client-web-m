@@ -4,7 +4,7 @@
 
 1. 先调用 scripts/build-server.py 打包后端
 2. 在 py-server 目录下写入 .offline 标记文件
-3. 调用 pnpm --filter digital-employee build:app:offline 打包 Electron (使用离线配置)
+3. 调用 pnpm --filter boban-staff build:app:offline 打包 Electron (使用离线配置)
 
 使用方法:
     python scripts/build-offline-app.py [--clean] [--debug]
@@ -63,7 +63,7 @@ def main():
 
     # 3. 打包 Electron
     print("🖥️ 步骤 3: 打包 Electron (离线配置)...")
-    electron_cmd = ["pnpm", "--filter", "digital-employee", "build:app:offline"]
+    electron_cmd = ["pnpm", "--filter", "boban-staff", "build:app:offline"]
     # Windows 上 subprocess 调 pnpm 需要 shell=True 或者用 pnpm.cmd
     shell = sys.platform == "win32"
     try:
@@ -71,7 +71,23 @@ def main():
     except subprocess.CalledProcessError:
         print("❌ Electron 打包失败。")
         sys.exit(1)
-        
+
+    # 防回归：pnpm --filter 若因包改名而失配，会 exit 0 静默跳过（不产出任何安装包），
+    # 让本脚本误报“打包完成”一路漏到飞书分发。这里显式校验产物目录非空。
+    release_dir = ROOT_DIR / "apps" / "web" / "release"
+    installer_exts = {".deb", ".exe", ".dmg", ".zip", ".appimage"}
+    installers = (
+        [p for p in release_dir.glob("*") if p.suffix.lower() in installer_exts]
+        if release_dir.exists()
+        else []
+    )
+    if not installers:
+        print(
+            f"❌ 未在 {release_dir} 找到任何安装包产物——electron 构建可能被静默跳过"
+            f"（请检查 --filter 包名是否与 apps/web/package.json 的 name 一致）。"
+        )
+        sys.exit(1)
+
     print()
     print("🎉 离线应用打包完成!")
     print(f"   产物目录: {ROOT_DIR / 'apps' / 'web' / 'release'}")
