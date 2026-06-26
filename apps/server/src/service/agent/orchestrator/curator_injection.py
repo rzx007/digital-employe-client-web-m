@@ -116,6 +116,27 @@ def inject_curator_instruction(
             if result == StartResult.REJECTED:
                 reset_context(conv_id)
                 orch_db.close()
+            else:
+                # 服务端自发起的总管 turn（后台命令唤醒 / 定时任务 / 飞书渠道）：前端已打开
+                # 的会话不会主动接住，推一个事件让其 refetch 总管会话消息 → 看到 streaming
+                # 占位 → resume/attach 到这条流 → 实时显示（否则要刷新页面 / 来回切会话才发现
+                # 对话已在执行）。与增量汇报（reentry.trigger_incremental_report）同源同事件。
+                try:
+                    from src.service.workspace_events import WorkspaceEventBus
+
+                    WorkspaceEventBus.push(
+                        workspace_id_snap,
+                        {
+                            "type": "orchestrator_turn_started",
+                            "orchestrator_conversation_id": conv_id,
+                        },
+                    )
+                except Exception:
+                    logger.warning(
+                        "push orchestrator_turn_started failed conv=%s",
+                        conv_id,
+                        exc_info=True,
+                    )
         except Exception:
             reset_context(conv_id)
             orch_db.close()

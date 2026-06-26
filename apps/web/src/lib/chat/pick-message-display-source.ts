@@ -163,10 +163,51 @@ export function patchComposerFromStoredWhenSameTurn(
 }
 
 /**
+ * 重放期 / 服务端发起的总管 turn（增量汇报「回调通知」）期间，composer 末条 assistant 常被
+ * 清成空壳（resetLastAssistantPartsForResume，为 SDK 全量重放不丢不重）。此时若 DB 已有同 id
+ * 的已落 parts，用 DB 填回空壳，避免气泡塌空——delta 到达后 live 那条 parts 非空即不再回退。
+ *
+ * 仅对 parts 为空的 assistant 回退，非空 live 不动（保留 SSE 实时累积）；无任何填充返回同引用。
+ * 与 streaming 短路无关：服务端发起的 turn 走 resume，常回 no_stream→末条留空壳、status 回 ready，
+ * 内容只在 DB；不在此回退则要切走再切回（remount 重灌 DB）才显示。
+ */
+export function hydrateEmptyAssistantShellsFromDb(
+  liveMessages: UIMessage[],
+  storedMessages: UIMessage[]
+): UIMessage[] {
+  if (liveMessages.length === 0 || storedMessages.length === 0) {
+    return liveMessages
+  }
+
+  const storedById = storedMessageIndexByDbId(storedMessages)
+  let changed = false
+
+  const next = liveMessages.map((liveMsg) => {
+    if (liveMsg.role !== "assistant") return liveMsg
+    if ((liveMsg.parts?.length ?? 0) > 0) return liveMsg
+
+    const dbId = parseDbMessageId(liveMsg.id)
+    if (dbId == null) return liveMsg
+
+    const stored = storedById.get(String(dbId))
+    if (!stored?.parts?.length) return liveMsg
+
+    changed = true
+    return { ...liveMsg, parts: stored.parts } as UIMessage
+  })
+
+  return changed ? next : liveMessages
+}
+
+/**
  * 流式结束后展示来源：
  * - 流式中用 live composer
  * - 结束后若 composer 已包含完整轮次，继续用 live（DB refetch 仅后台同步）
  * - 仅当 live 明显落后于 DB（stop 后变短、重进会话）才切 stored
+ *
+ * 末一步统一对选中源里的「空壳 assistant」按 db id 从 DB 回退 parts：覆盖重放期
+ * （streaming）与服务端发起 turn 走 resume→no_stream 后留下的空壳（status 已回 ready、
+ * 等长分支只 patch interrupted 行够不到它）。非空 live 不动，故对正常路径是 no-op。
  */
 export function pickMessageDisplaySource(
   liveMessages: UIMessage[],
@@ -174,7 +215,7 @@ export function pickMessageDisplaySource(
   status: string
 ): UIMessage[] {
   if (status === "streaming" || status === "submitted") {
-    return liveMessages
+    return hydrateEmptyAssistantShellsFromDb(liveMessages, storedMessages)
   }
 
   let source = liveMessages
@@ -203,5 +244,5 @@ export function pickMessageDisplaySource(
     }
   }
 
-  return source
+  return hydrateEmptyAssistantShellsFromDb(source, storedMessages)
 }
