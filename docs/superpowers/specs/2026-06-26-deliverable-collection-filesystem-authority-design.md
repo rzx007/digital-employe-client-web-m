@@ -28,7 +28,7 @@
 - `shell_execute` 的 subprocess `cwd = artifacts_dir`,bash 写的文件也落在同一个
   `artifacts` 目录(`skill_shell_backend.py`)。
 - **并发是硬约束**:多个会话(员工 + 总管 + 定时)共写同一个 `root/artifacts`,无锁,
-  last-write-wins(SP2 既定取舍,`workspace_paths.py`)。
+  last-write-wins(SP2 既定取舍,`apps/server/src/service/agent/workspace_paths.py`)。
 - "一轮"对员工会话的天然边界 = **一条 assistant 消息**(有 `created_at`、`stream_state`、
   `extra_meta`,编排场景可带 `run_id`);没有独立 `round_id` 但不缺标识。
 
@@ -85,6 +85,9 @@ assistant 消息建立,绑定 `conversation_id`(+ 编排场景的 `run_id`)。
   `action` 同样按"执行前是否存在"判定。这是抓住 bash 写文件的关键。
 - 流结束(`stream_state` → `completed`)时,累加器**按 path 去重**(同一文件多次写只留最终
   action:出现过 create 即 create,否则 modify)后落进 `message.extra_meta.file_outputs`。
+- **跨线程注意**:`stream_registry` 把 `extra_meta` 写库 offload 到专用 DB 写线程,
+  contextvar 不会自动传进去。落库前必须在**发起的 async 上下文里把累加器快照成普通值**,
+  再作为参数传给写线程,而不是在写线程里去读 contextvar。
 
 **并发安全性:** 每个写都在自己会话/消息的 contextvar 上下文里执行,归属天然正确,不靠全局
 时间窗猜。bash 的窄 diff 只覆盖单条命令的执行窗;在"同一秒两条 shell 并发写共享目录"的极端
