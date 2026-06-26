@@ -129,6 +129,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   loginWithToken: async (token, user, rememberMe = false) => {
     localStorage.setItem("token", token)
+    localStorage.setItem("userId", String(user.id))
     // 显示名（真实姓名）只在客户端有，token 里没有；写入供埋点上报
     localStorage.setItem("displayName", user.name ?? "")
 
@@ -168,6 +169,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: async () => {
     localStorage.removeItem("token")
+    localStorage.removeItem("userId")
     localStorage.removeItem("workspaceId")
     localStorage.removeItem("displayName")
 
@@ -194,6 +196,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (status?.token) {
       localStorage.setItem("token", status.token)
       const user = status.user as unknown as LoginUser
+      if (user?.id != null) {
+        localStorage.setItem("userId", String(user.id))
+      }
       localStorage.setItem("displayName", user?.name ?? "")
       set({
         token: status.token,

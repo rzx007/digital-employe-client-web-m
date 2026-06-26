@@ -181,6 +181,9 @@ export function PetWindow() {
       const user = status.user as { id?: unknown; name?: unknown } | null
       const userId = user?.id != null ? String(user.id) : ""
       const username = user?.name != null ? String(user.name) : ""
+      if (userId) {
+        localStorage.setItem("userId", userId)
+      }
       if (!status.token || !userId || !username) return
       try {
         const workspace = await getMyWorkspace(userId, username)

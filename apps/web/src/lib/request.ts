@@ -110,6 +110,13 @@ export function getAuthToken() {
   return localStorage.getItem("token")
 }
 
+export function getAuthUserId() {
+  if (typeof window === "undefined") {
+    return null
+  }
+  return localStorage.getItem("userId")
+}
+
 export function getRequestHeaders(customHeaders?: HeadersInit) {
   const nextHeaders = new Headers({
     ...defaultHeaders,
@@ -121,6 +128,11 @@ export function getRequestHeaders(customHeaders?: HeadersInit) {
   const token = getAuthToken()
   if (token) {
     nextHeaders.set("token", `${token}`)
+  }
+
+  const userId = getAuthUserId()
+  if (userId) {
+    nextHeaders.set("userid", userId)
   }
 
   return nextHeaders
@@ -143,6 +155,11 @@ export const request = ofetch.create({
     const token = getAuthToken()
     if (token) {
       headers.set("token", `${token}`)
+    }
+
+    const userId = getAuthUserId()
+    if (userId) {
+      headers.set("userid", userId)
     }
 
     const workspaceId = localStorage.getItem("workspaceId")
@@ -175,6 +192,7 @@ export const request = ofetch.create({
     const status = response?.status
     if (status === 401 || status === 403) {
       localStorage.removeItem("token")
+      localStorage.removeItem("userId")
       if (isElectron()) {
         await withElectronApi((api) => api.clearAuth(), { silent: true })
       }
