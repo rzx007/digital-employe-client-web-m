@@ -322,13 +322,18 @@ import type { FrameTreeNode } from "./frame-tree"
               frameId,
             })) as { nodes?: unknown[] }
             framesNodes.push(r.nodes ?? [])
-          } catch {
+          } catch (err) {
+            // 跨源 OOPIF 单 session 取不到树属预期；记 debug 以便与真实 CDP 异常区分
             skippedFrames++
+            logger.debug("[browser-debugger] snapshot frame skipped", {
+              frameId,
+              err: (err as Error).message,
+            })
           }
         }
       } catch (e) {
-        // getFrameTree 失败：退化为仅主 frame，不影响主流程
-        logger.info("[browser-debugger] getFrameTree failed, main-frame only", {
+        // getFrameTree 失败：退化为仅主 frame，不影响主流程（用 warn：意外、非预期）
+        logger.warn("[browser-debugger] getFrameTree failed, main-frame only", {
           err: (e as Error).message,
         })
       }
@@ -419,7 +424,7 @@ git commit -m "docs(browser-runtime): 说明 snapshot 同源 iframe 支持 + ifr
 
 - [ ] **Step 3: 跨源优雅降级**
   - 打开一个含**跨源** iframe（如嵌第三方/广告）的页面。
-  - `browserctl snapshot` 不报错、主页面元素照常返回；查日志确认 `skippedFrames > 0`。
+  - `browserctl snapshot` 不报错、主页面元素照常返回；看 `[browser-debugger] snapshot` 主日志行（info 级，必可见）的 `skippedFrames > 0` 字段确认有 frame 被跳过（逐 frame 的 skip 明细是 debug 级，需开 debug 才见）。
 
 - [ ] **Step 4: 主 frame 无 iframe 回归**
   - 普通无 iframe 页面 `snapshot` 行为与改造前一致（无重复 `@eN`、`frames: 1`）。

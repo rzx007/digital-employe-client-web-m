@@ -54,7 +54,7 @@ snapshot(maxNodes = 200):
       framesNodes.push(nodes)
     catch:
       // 跨源 OOPIF / frame 已卸载：单 frame 失败不拖垮整体
-      logger.info("[browser-debugger] snapshot frame skipped", { frameId: fid })
+      logger.debug("[browser-debugger] snapshot frame skipped", { frameId, err })  // 预期事件，debug 减噪
 
   refs = buildRefs(framesNodes, maxNodes)
   this.refCache = refs

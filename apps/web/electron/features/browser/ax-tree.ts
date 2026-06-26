@@ -1,5 +1,6 @@
 // 把 CDP Accessibility.getFullAXTree 的节点数组解析为 @eN 引用列表。
-// 纯函数、无 Electron 依赖，便于单测（见 ax-tree.test.ts）。
+// 支持多 frame：每个 frame 一组节点（各建独立 nodeMap，AXNodeId 仅 frame 内唯一），
+// @eN 计数器/截断上限全局共享、连续编号。纯函数、无 Electron 依赖，便于单测（见 ax-tree.test.ts）。
 
 export interface RefNode {
   ref: string
