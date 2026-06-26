@@ -16,7 +16,7 @@ export function selectConversationById(conversationId: string | number) {
   state.setDraftConversation(false)
 }
 
-/** 工作台右侧总管面板选中会话（不影响聊天 Tab 当前联系人/会话） */
+/** 工作台总管面板选中会话；总管「当前会话」与聊天 Tab 共享，故聊天 Tab 也同步定位到总管+该会话 */
 export function selectWorkbenchCuratorConversation(
   conversationId: string | number
 ) {

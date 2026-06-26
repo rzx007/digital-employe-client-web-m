@@ -19,6 +19,10 @@ function isEmployeeContactId(id: string | null | undefined): boolean {
   return id?.startsWith("employee:") ?? false
 }
 
+function isCuratorContactId(id: string | null | undefined): boolean {
+  return id?.startsWith("curator:") ?? false
+}
+
 function findCuratorContactId(contacts: readonly Contact[]): string | null {
   const curator = contacts.find((c) => c.type === "curator")
   return curator ? getContactId(curator) : null
@@ -87,12 +91,33 @@ export const useChatStore = create<ChatStore>()(
         }),
       setDetailContactId: (id) => set({ detailContactId: id }),
       setSelectedConversationId: (id) =>
-        set({
+        set((state) => ({
           selectedConversationId: id,
-        }),
+          // 总管「当前会话」在 chat tab 与工作台总管面板之间是单一共享态：
+          // chat tab 选总管会话时同步给工作台（两 tab 互斥、不会同屏，无打断）。
+          // 当前联系人是员工/草稿时不镜像（不污染工作台总管选中）。
+          ...(isCuratorContactId(state.selectedContactId)
+            ? { workbenchCuratorConversationId: id }
+            : {}),
+        })),
       setWorkbenchCuratorConversationId: (id) =>
-        set({
-          workbenchCuratorConversationId: id,
+        set((state) => {
+          // 同值重复 set（工作台自动 resolve 常以相同会话回写）不再触碰 chat tab
+          // 选中态，避免反复 clobber。
+          if (
+            String(id ?? "") ===
+            String(state.workbenchCuratorConversationId ?? "")
+          ) {
+            return { workbenchCuratorConversationId: id }
+          }
+          // 工作台切总管会话 → 反向同步 chat tab：定位到总管联系人 + 该会话，
+          // 切到 chat tab 即停在同一会话。
+          const curatorId = findCuratorContactId(get().contacts)
+          return {
+            workbenchCuratorConversationId: id,
+            selectedConversationId: id,
+            ...(curatorId ? { selectedContactId: curatorId } : {}),
+          }
         }),
       setDraftConversation: (isDraft) =>
         set((state) => ({
@@ -141,6 +166,10 @@ export const useChatStore = create<ChatStore>()(
           selectedContactId: contactId,
           selectedConversationId: conversationId,
           isDraftConversation: false,
+          // 选中的是总管会话时同步给工作台总管面板（与 setSelectedConversationId 同策略）。
+          ...(isCuratorContactId(contactId)
+            ? { workbenchCuratorConversationId: conversationId }
+            : {}),
         }),
       switchToContact: (contactId) => {
         if (isEmployeeContactId(contactId)) {
