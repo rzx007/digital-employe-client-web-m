@@ -3,7 +3,6 @@
 ## 百度搜索
 
 ```bash
-browserctl health
 browserctl open https://www.baidu.com
 browserctl snapshot
 browserctl fill "#kw" "数字员工"
@@ -33,6 +32,22 @@ browserctl extract-text
 ```
 
 提交、删除、付款、审批等动作必须带 `--confirm`。
+
+## iframe 内的表单（同源子页）
+
+很多 OA/ERP 用同源 iframe 承载子页面。`snapshot` 会自动遍历同源 iframe，iframe 内的控件直接出现在 `@eN` 列表里，照常操作——**iframe 内只能用 `@eN`，CSS 选择器不跨 frame**（选择器只在主文档生效）。
+
+```bash
+browserctl open https://erp.example.com/order
+browserctl snapshot --interactive   # iframe 内的输入框/按钮/下拉也在 @eN 里
+browserctl fill @e7 "ORD-20260626-001"
+browserctl select @e9 --label "华东仓"
+browserctl click @e12 --confirm "确认创建订单？"
+browserctl wait --text "创建成功"
+browserctl get value @e7            # 校验 iframe 内填写已落地
+```
+
+跨源 iframe（不同域、独立进程）会被自动跳过、不影响主页面；若必须操作跨源 iframe 内部，当前版本不支持。
 
 ## 填入含特殊字符的长文本（规避 quoting）
 
