@@ -47,7 +47,8 @@ zip -q "$core" deploy.sh >/dev/null
 # 其余文件（cli / SHA256SUMS / 上面的下载说明）照打。
 find packages -type f ! -name '*.deb' ! -name '*.debbak*' ! -name 'activation.md' -print0 | xargs -0 zip -q "$core" 2>/dev/null || true
 [[ -d ime ]] && find ime -type f -print0 | xargs -0 zip -q "$core" 2>/dev/null || true
-find runtime -maxdepth 1 -type f -name 'docker-compose.yml*' -print0 | xargs -0 zip -q "$core" 2>/dev/null || true
+# 只打 compose 本体，排除 *.bak / *.ymlbak 等备份（精确名，不用 docker-compose.yml* 通配）
+find runtime -maxdepth 1 -type f -name 'docker-compose.yml' -print0 | xargs -0 zip -q "$core" 2>/dev/null || true
 # headroom 压缩网关镜像（选装）随核心包走——体积小（~580M），免为它单独拖巨大模型包。
 # deploy.sh WITH_HEADROOM=1 时从此 tar 离线载入并起网关；默认关则不用。
 [[ -f images/headroom-arm64.tar ]] && zip -q "$core" images/headroom-arm64.tar >/dev/null 2>&1 || true
