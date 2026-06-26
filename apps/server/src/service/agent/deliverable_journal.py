@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from pathlib import Path
@@ -77,6 +78,18 @@ def snapshot_and_clear(conversation_id: int | None) -> list[FileOutput]:
     if not bucket:
         return []
     return [{"path": p, "action": a} for p, a in bucket.items()]
+
+
+def merge_file_outputs_into_meta(extra_meta: str | None, outputs: list[dict]) -> str | None:
+    """把 file_outputs 合并进 extra_meta(JSON 字符串),保留已有字段;空 outputs 原样返回。"""
+    if not outputs:
+        return extra_meta
+    try:
+        meta = json.loads(extra_meta) if extra_meta else {}
+    except (json.JSONDecodeError, TypeError):
+        meta = {}
+    meta["file_outputs"] = outputs
+    return json.dumps(meta, ensure_ascii=False)
 
 
 def scan_tree(root: Path) -> dict[str, tuple[float, int]]:

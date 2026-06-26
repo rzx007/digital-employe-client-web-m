@@ -113,6 +113,22 @@ def test_scan_tree_prunes_noise_dirs(tmp_path):
     assert (root / ".env").resolve().as_posix() in paths
 
 
+def test_merge_file_outputs_preserves_existing_meta():
+    import json
+    from src.service.agent.deliverable_journal import merge_file_outputs_into_meta
+
+    meta = json.dumps({"usage": {"t": 1}})
+    merged = merge_file_outputs_into_meta(meta, [{"path": "/a", "action": "create"}])
+    obj = json.loads(merged)
+    assert obj["usage"] == {"t": 1}
+    assert obj["file_outputs"] == [{"path": "/a", "action": "create"}]
+
+
+def test_merge_empty_outputs_is_noop():
+    from src.service.agent.deliverable_journal import merge_file_outputs_into_meta
+    assert merge_file_outputs_into_meta(None, []) is None
+
+
 def test_shell_execute_sync_reports_bash_written_file(tmp_path):
     import sys
 

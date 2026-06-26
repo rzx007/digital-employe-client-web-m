@@ -292,6 +292,7 @@ def _flush_to_db_sync(
     message_parts: str | None = None,
     usage_metadata: dict | None = None,
     elapsed_ms: int | None = None,
+    file_outputs: list[dict] | None = None,
 ) -> bool:
     """同步写入会话消息流状态；在 asyncio.to_thread 中调用，勿跨线程复用 Session。"""
     from src.db.session import sqlite_db_session
@@ -332,6 +333,13 @@ def _flush_to_db_sync(
                     except (json.JSONDecodeError, TypeError):
                         meta = {}
                     meta["elapsed_ms"] = elapsed_ms
+                    msg.extra_meta = json.dumps(meta, ensure_ascii=False)
+                if file_outputs:
+                    try:
+                        meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
+                    except (json.JSONDecodeError, TypeError):
+                        meta = {}
+                    meta["file_outputs"] = file_outputs
                     msg.extra_meta = json.dumps(meta, ensure_ascii=False)
                 db.commit()
                 logger.info(
@@ -696,6 +704,12 @@ def _flush_terminal_sync(
                 usage_meta.get("output_tokens"),
             )
 
+    # 取走本轮 journal 累积(begin 在 _run_agent_background 开流时已清旧残留)。
+    # conversation_id 是普通入参(由 _flush_terminal 传 task.conversation_id)、非
+    # contextvar，跨线程安全；snapshot 在此取，merge 落在 _flush_to_db_sync。
+    from src.service.agent import deliverable_journal as dj
+    _file_outputs = dj.snapshot_and_clear(conversation_id)
+
     ok = _flush_to_db_sync(
         stream_msg_id,
         buffer_cursor,
@@ -705,6 +719,7 @@ def _flush_terminal_sync(
         message_parts=message_parts_json,
         usage_metadata=usage_meta,
         elapsed_ms=elapsed_ms,
+        file_outputs=_file_outputs,
     )
 
     # 终态结果已落 app.db（历史永久记录），清理瞬时进度 sidecar——此后 DB 为唯一
@@ -1647,6 +1662,12 @@ class StreamRegistry:
             # 总管工具（create_orchestration_plan）经 get_orchestrator_source() 读到本流值。
 
         stream_start_time = time.monotonic()
+
+        # 开一轮流:清掉该会话上一轮可能残留的产物 journal,避免污染本轮 file_outputs。
+        # 用 conversation_id(= task.conversation_id,终态 snapshot 取走时用的同一键)对齐。
+        from src.service.agent import deliverable_journal as _dj
+        _dj.begin(conversation_id)
+
         assistant_text_parts: list[str] = []
         latest_updates_text: str | None = None
         state_final = "completed"
