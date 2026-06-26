@@ -2,57 +2,98 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from src.models.conversation import Conversation, ConversationMessage
 from src.models.employee_task import EmployeeTask
 from src.models.orchestration_plan import OrchestrationPlan
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import cst_now
+from src.schemas.resource import ResourceEntry
 
 logger = logging.getLogger(__name__)
 
 
-def _looks_like_product(path: str) -> bool:
-    """该 write/edit 的目标是否算「项目产物」：排除 uploads/memories/已装 skills；
-    草稿技能(skills-draft)算交付物；相对名(无目录段,落在产物 cwd)算产物。"""
-    n = (path or "").replace("\\", "/").lower()
-    if not n:
-        return False
-    if "/skills-draft/" in n:
-        return True
-    for seg in ("/uploads/", "/memories/", "/skills/"):
-        if seg in n:
-            return False
-    return True
+def _conversation_file_outputs(db: Session, conversation_id: int | None) -> list[dict]:
+    """读某会话全部 assistant 消息 extra_meta.file_outputs，聚合去重。
 
-
-def _plan_artifacts_dir(db: Session, plan):
-    """该计划对应项目的共享产物目录（用于存在性过滤）。失败→None。"""
-    from src.service.agent.orchestrator.qa_delivery_check import _resolve_artifacts_dir
-
-    conv_id = getattr(plan, "conversation_id", None)
-    return _resolve_artifacts_dir(db, conv_id) if conv_id else None
-
-
-def _still_exists_nonempty(path: str, artifacts_dir) -> bool:
-    """文件结束时是否仍真实存在且非空（过滤跑完即删的临时脚本）。
-
-    相对名按产物目录解析；产物目录解析不到时**保守保留**（不误删真实交付物）。
+    Task 5 在流结束时把本轮写的文件落进 assistant 消息的
+    `extra_meta.file_outputs`（`[{path, action}]`，path 为 resolve 绝对 posix）。
+    这里按 id 升序遍历该会话所有 assistant 消息、容错解析 JSON，按 path 合并：
+    后出现的消息覆盖早的 action，但 **create 不被 modify 降级**（一旦标过 create 即 create）。
+    返回 `[{path, action}]`。
     """
-    from pathlib import Path
+    if conversation_id is None:
+        return []
+    msgs = list(
+        db.scalars(
+            select(ConversationMessage)
+            .where(
+                ConversationMessage.conversation_id == conversation_id,
+                ConversationMessage.role == "assistant",
+            )
+            .order_by(ConversationMessage.id.asc())
+        ).all()
+    )
+    merged: dict[str, str] = {}
+    order: list[str] = []
+    for m in msgs:
+        if not m.extra_meta:
+            continue
+        try:
+            meta = json.loads(m.extra_meta)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        outputs = meta.get("file_outputs") if isinstance(meta, dict) else None
+        if not isinstance(outputs, list):
+            continue
+        for o in outputs:
+            if not isinstance(o, dict):
+                continue
+            path = o.get("path")
+            action = o.get("action")
+            if not isinstance(path, str) or not path:
+                continue
+            if path not in merged:
+                order.append(path)
+            # create 优先：一旦记过 create，不被后续 modify 降级。
+            if merged.get(path) == "create":
+                continue
+            merged[path] = action if isinstance(action, str) else "modify"
+    return [{"path": p, "action": merged[p]} for p in order]
 
-    try:
-        p = Path(str(path).replace("\\", "/"))
-        if not p.is_absolute():
-            if artifacts_dir is None:
-                return True
-            p = Path(artifacts_dir) / p
-        return p.is_file() and p.stat().st_size > 0
-    except OSError:
-        return True
+
+def _filesystem_deliverable_index(product_root: Path) -> dict[str, ResourceEntry]:
+    """扫产物根，把 artifacts + skills_draft 两桶里所有 file entry（递归 children）
+    按 **resolve 后**的绝对 posix 路径建索引。
+
+    ⚠️ 必须 resolve：journal 侧路径是 `Path(...).resolve().as_posix()`，而
+    ResourceEntry.path 来自 iterdir（`as_posix()` 未 resolve）；不对齐则交集全空。
+    """
+    from src.service.resource_service import ResourceService
+
+    listing = ResourceService.list_resources(product_root)
+    index: dict[str, ResourceEntry] = {}
+
+    def _walk(entries: list[ResourceEntry]) -> None:
+        for e in entries:
+            if e.entry_type == "file":
+                try:
+                    key = Path(e.path).resolve().as_posix()
+                except OSError:
+                    continue
+                index[key] = e
+            elif e.children:
+                _walk(e.children)
+
+    _walk(listing.artifacts)
+    _walk(listing.skills_draft)
+    return index
 
 
 def collect_plan_deliverables(
@@ -60,16 +101,15 @@ def collect_plan_deliverables(
 ) -> list[dict]:
     """聚合某编排计划各子任务产出的文件（归属到任务）。
 
-    来源：每个子任务最新执行日志所在员工会话的 write_file/edit_file 工具 parts 的
-    file_path（排除非产物桶、去重），**且只保留结束时磁盘上仍存在且非空的文件**——
-    跑完即删的临时脚本会被过滤掉。返回 [{path, basename, task_id, task_name, action}]。
-    注：shell 直接写的文件不在 parts 里、会漏（已知限制，按需再补目录扫描）。
+    来源：每个子任务最新执行日志所在员工会话的 assistant 消息
+    `extra_meta.file_outputs`（Task 5 写入，含 write/edit/bash 写的文件），聚合后
+    与当前文件系统（ResourceService 扫 artifacts + skills_draft 两桶）求**交集**——
+    只保留磁盘上仍存在的文件（删除/空文件自然落选）。返回
+    [{path, basename, task_id, task_name, action, size}]。
 
     run_id 给定时，每个子任务的「最新执行日志」只在该轮（TaskExecutionLog.run_id ==
     run_id）内取——只浮现该轮交付物；为 None 时为历史全量（取该任务全历史最新日志）。
     """
-    from src.service.task_service import TaskService
-
     tasks = list(
         db.scalars(
             select(EmployeeTask)
@@ -77,6 +117,8 @@ def collect_plan_deliverables(
             .order_by(EmployeeTask.id.asc())
         ).all()
     )
+
+    # journal 侧：聚合各任务会话的 file_outputs（path → 归属信息）。后出现的任务覆盖早的。
     seen: dict[str, dict] = {}
     order: list[str] = []
     for t in tasks:
@@ -85,42 +127,48 @@ def collect_plan_deliverables(
             log_q = log_q.where(TaskExecutionLog.run_id == run_id)
         log = db.scalars(log_q.order_by(TaskExecutionLog.id.desc())).first()
         conv_id = log.conversation_id if log else None
-        for p in TaskService.get_conversation_tool_parts(db, conv_id):
-            ptype = p.get("type", "")
-            action = (
-                "created" if ptype == "tool-write_file"
-                else "edited" if ptype == "tool-edit_file"
-                else None
-            )
-            if action is None:
+        for o in _conversation_file_outputs(db, conv_id):
+            path = o["path"]
+            try:
+                key = Path(path).resolve().as_posix()
+            except OSError:
                 continue
-            inp = p.get("input") if isinstance(p.get("input"), dict) else {}
-            fp = inp.get("file_path")
-            if not isinstance(fp, str) or not fp or not _looks_like_product(fp):
-                continue
-            # size 只取 created 的 content 长度（≈文件大小）；edited 的 new_string 是
-            # 片段、用作 size 会误导，故置 None，并在去重时保留 create 时已记的大小。
-            content = inp.get("content") if action == "created" else None
-            size = len(content) if isinstance(content, str) else None
-            norm = fp.replace("\\", "/")
-            base = norm.rstrip("/").split("/")[-1]
-            if norm not in seen:
-                order.append(norm)
-            prev = seen.get(norm)
-            seen[norm] = {
-                "path": fp,
-                "basename": base,
+            if key not in seen:
+                order.append(key)
+            seen[key] = {
+                "path": key,
+                "basename": Path(key).name,
                 "task_id": t.id,
                 "task_name": t.task_name,
-                "action": action,
-                "size": size if size is not None else (prev or {}).get("size"),
+                "action": o.get("action") or "modify",
             }
 
+    if not seen:
+        return []
+
+    # 文件系统侧：交集——只保留磁盘上仍存在的文件，size 取文件系统 entry。
     plan = db.get(OrchestrationPlan, plan_id)
-    adir = _plan_artifacts_dir(db, plan) if plan is not None else None
-    return [
-        seen[k] for k in order if _still_exists_nonempty(seen[k]["path"], adir)
-    ]
+    plan_conv = (
+        db.get(Conversation, plan.conversation_id)
+        if plan is not None and plan.conversation_id is not None
+        else None
+    )
+    if plan_conv is None:
+        return []
+    from src.service.product_paths import resolve_conversation_product_root
+
+    product_root = resolve_conversation_product_root(db, plan_conv)
+    fs_index = _filesystem_deliverable_index(product_root)
+
+    results: list[dict] = []
+    for key in order:
+        entry = fs_index.get(key)
+        if entry is None:
+            continue  # 磁盘上已不存在 → 落选
+        d = seen[key]
+        d["size"] = entry.size
+        results.append(d)
+    return results
 
 
 def resolve_run_id_for_conversation(
