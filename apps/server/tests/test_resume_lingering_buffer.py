@@ -57,6 +57,28 @@ def test_resume_replays_lingering_buffer_for_completed_turn(monkeypatch):
     assert "[DONE]" in blob
 
 
+def test_resume_live_active_task_cold_replay_no_unbound(monkeypatch):
+    """live 路径(活跃 task)冷启回放会走到 get_settings()——曾因在终态分支里写了函数内
+    `from ... import get_settings`，把它变成整函数局部 → live 路径用它时 UnboundLocalError，
+    导致正常聊天("你好")整个炸。守此回归：活跃 task 冷启回放必须正常出正文、不抛。"""
+    conv = 9003
+    reg = StreamRegistry()
+    task = ActiveStreamTask(conv)
+    task.status = "streaming"  # 活跃 → get_stream_status 返 None → 走 live 路径
+    task.buffer.add({"type": "text-delta", "delta": "活流正文"})
+    task.buffer.add({"status": "completed"})  # buffer 自带终态 → 回放后即 return，不挂 live 订阅
+    reg._tasks[conv] = task
+
+    monkeypatch.setattr("src.service.stream_registry.registry", reg)
+
+    db = MagicMock()
+    db.scalar.return_value = None
+
+    blob = asyncio.run(_collect(ChatService.resume_conversation_stream(db, conv)))
+    assert "活流正文" in blob
+    assert "[DONE]" in blob
+
+
 def test_resume_no_buffer_keeps_stream_ended(monkeypatch):
     """无可重放 buffer（buffer 空）的终态 → 维持原行为：只发 stream_ended，不报错。"""
     conv = 9002

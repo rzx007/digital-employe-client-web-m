@@ -1043,8 +1043,6 @@ class ChatService:
                 # 冷启(after_seq=None)对已结束历史流沿用 RESUME_COLD_REPLAY_CAP 截断，
                 # 防超长 buffer 反复全量重放卡死（与 live 回放 ended 分支一致）。
                 if after_seq is None:
-                    from src.core.config import get_settings
-
                     cold_cap = get_settings().resume_cold_replay_cap
                     if cold_cap > 0 and len(replay_events) > cold_cap:
                         replay_events = replay_events[-cold_cap:]
