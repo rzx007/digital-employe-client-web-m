@@ -11,7 +11,7 @@
     "test": "turbo test",
     "dev:client": "turbo dev:app",
     "build:client": "turbo build:app",
-    "build:app": "python scripts/build-server.py --app && pnpm build:client",
+    "build:app": "python3 scripts/build-server.py --app && pnpm build:client",
     "build:app:offline": "python3 scripts/build-offline-app.py",
     "build:app:offline:clean": "python3 scripts/build-offline-app.py --clean",
     "build:deb:arm64": "bash scripts/build-deb.sh",
