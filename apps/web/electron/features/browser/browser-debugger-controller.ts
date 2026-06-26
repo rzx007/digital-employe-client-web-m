@@ -3,6 +3,8 @@ import type { WebContents } from "electron"
 import { rootLogger as logger } from "../../core/logger"
 import { buildRefs } from "./ax-tree"
 import type { AxNode, RefNode } from "./ax-tree"
+import { collectChildFrames } from "./frame-tree"
+import type { FrameTreeNode } from "./frame-tree"
 
 export type { RefNode }
 
@@ -116,32 +118,65 @@ export class BrowserDebuggerController {
 
   async snapshot(maxNodes = 200): Promise<CdpResult<{ refs: RefNode[] }>> {
     try {
-      // Chromium 的 a11y tree 惰性构建：未 enable 时纯客户端 SPA 只返回退化的
-      // RootWebArea（无子节点）。enable 后 renderer 异步重建树，立即取会拿到旧的空树，
-      // 故轮询直到 RootWebArea 暴露子节点或超时。
       await this.sendCommand("Accessibility.enable")
-      let nodes: unknown[] = []
+      // 主 frame：a11y 树惰性构建，轮询直到 RootWebArea 暴露子节点或超时 3s
+      let mainNodes: unknown[] = []
       let rootChildCount = 0
       const deadline = Date.now() + 3000
       for (;;) {
         const result = (await this.sendCommand(
           "Accessibility.getFullAXTree"
         )) as { nodes?: unknown[] }
-        nodes = result.nodes ?? []
-        const root = nodes.find(
+        mainNodes = result.nodes ?? []
+        const root = mainNodes.find(
           (n) => (n as AxNode).role?.value === "RootWebArea"
         ) as AxNode | undefined
         rootChildCount = root?.childIds?.length ?? 0
         if (rootChildCount > 0 || Date.now() >= deadline) break
         await new Promise((r) => setTimeout(r, 150))
       }
-      const refs = buildRefs([nodes], maxNodes)
+
+      // 子 frame：同源/in-process 能取到树→拼入；跨源 OOPIF 取不到→跳过、不崩
+      const framesNodes: unknown[][] = [mainNodes]
+      let skippedFrames = 0
+      try {
+        const tree = (await this.sendCommand("Page.getFrameTree")) as {
+          frameTree?: FrameTreeNode
+        }
+        const childFrameIds = tree.frameTree
+          ? collectChildFrames(tree.frameTree)
+          : []
+        for (const frameId of childFrameIds) {
+          try {
+            const r = (await this.sendCommand("Accessibility.getFullAXTree", {
+              frameId,
+            })) as { nodes?: unknown[] }
+            framesNodes.push(r.nodes ?? [])
+          } catch (err) {
+            // 跨源 OOPIF 单 session 取不到树属预期；记 debug 以便与真实 CDP 异常区分
+            skippedFrames++
+            logger.debug("[browser-debugger] snapshot frame skipped", {
+              frameId,
+              err: (err as Error).message,
+            })
+          }
+        }
+      } catch (e) {
+        // getFrameTree 失败：退化为仅主 frame，不影响主流程
+        logger.warn("[browser-debugger] getFrameTree failed, main-frame only", {
+          err: (e as Error).message,
+        })
+      }
+
+      const refs = buildRefs(framesNodes, maxNodes)
       this.refCache = refs
-      // 诊断：若 rawNodes<=1/rootChildCount=0 仍空，则非时序问题（iframe/无语义/canvas）
       logger.info("[browser-debugger] snapshot", {
-        rawNodes: nodes.length,
+        frames: framesNodes.length,
+        skippedFrames,
+        mainRawNodes: mainNodes.length,
         rootChildCount,
         refs: refs.length,
+        truncated: refs.length >= maxNodes,
       })
       return { ok: true, data: { refs } }
     } catch (e) {
