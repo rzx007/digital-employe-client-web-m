@@ -10,8 +10,10 @@ import {
 import folderIcon from "@/assets/files/fold.png"
 import plainIcon from "@/assets/files/plain_dark.png"
 import { downloadResource } from "@/api/chat"
+import type { ResourceEntry, ResourceList } from "@/api/types"
 import { isHtmlPath } from "@/components/artifact/artifact-content/resolve-renderer"
 import { useCuratorFile } from "@/components/chat/curator/use-curator-file"
+import { useConversationResourcesQuery } from "@/hooks/use-chat-queries"
 import type { FileChangeItem } from "@/lib/chat/file-change-utils"
 import { getFileIcon } from "@/lib/chat/file-icons"
 import { useArtifactStore } from "@/stores/artifact-store"
@@ -37,6 +39,39 @@ interface FileChangeCardsProps {
   className?: string
   /** 头部标签；默认「本轮文件变更」，总管交付物聚合可传「团队交付物」。 */
   title?: string
+  /**
+   * true=files 来自 file_outputs 权威来源 → 与会话资源树求交集，已删/空文件不显示。
+   * false（默认）=parts 流式兜底或外部聚合（团队交付物）→ 不做交集过滤，保即时反馈。
+   */
+  authoritative?: boolean
+}
+
+/** Windows 盘符大小写差异 + 反斜杠：统一正斜杠并小写化便于不区分大小写比较。 */
+function normalizePathForMatch(path: string): string {
+  return path.replace(/\\/g, "/").toLowerCase()
+}
+
+/** 收集资源树里所有 file 条目的可匹配路径（path / rel_path 两套都收，便于命中）。 */
+function collectResourceFilePaths(list: ResourceList | undefined): Set<string> {
+  const paths = new Set<string>()
+  if (!list) return paths
+  const visit = (entries: ResourceEntry[] | null | undefined) => {
+    if (!entries) return
+    for (const entry of entries) {
+      if (entry.entry_type === "file") {
+        if (entry.path) paths.add(normalizePathForMatch(entry.path))
+        if (entry.rel_path) paths.add(normalizePathForMatch(entry.rel_path))
+      }
+      if (entry.children) visit(entry.children)
+    }
+  }
+  // 交付物桶（产物 / 草稿技能）已覆盖 FileChangeCards 可见的所有桶；uploads 一并收无害。
+  visit(list.artifacts)
+  visit(list.uploads)
+  visit(list.skills_draft)
+  visit(list.workspace)
+  visit(list.public)
+  return paths
 }
 
 function getIcon(file: FileChangeItem) {
@@ -322,6 +357,7 @@ export function FileChangeCards({
   files,
   className,
   title = "本轮文件变更",
+  authoritative = false,
 }: FileChangeCardsProps) {
   const curatorFile = useCuratorFile()
   const openResource = useArtifactStore((s) => s.openResource)
@@ -329,6 +365,21 @@ export function FileChangeCards({
   const selectedConversationId = useChatStore((s) => s.selectedConversationId)
 
   const conversationId = curatorFile?.conversationId ?? selectedConversationId
+
+  // 仅权威来源（file_outputs）才与资源树求交集：已删 / 空文件不在树里 → 不显示。
+  // parts 兜底 / 团队交付物聚合不拉资源树，维持现状即时反馈。
+  const { data: resourceList } = useConversationResourcesQuery(
+    authoritative ? conversationId : null
+  )
+  const visibleFiles = React.useMemo(() => {
+    if (!authoritative) return files
+    // 资源树尚未加载出来（流式刚结束 / 请求中）：先不过滤，避免误杀即时反馈。
+    if (!resourceList) return files
+    const treePaths = collectResourceFilePaths(resourceList)
+    return files.filter((file) =>
+      treePaths.has(normalizePathForMatch(file.path))
+    )
+  }, [authoritative, files, resourceList])
   const curatorOnOpenFile = curatorFile?.onOpenFile
   const handleOpen = React.useCallback(
     (path: string) => {
@@ -364,7 +415,7 @@ export function FileChangeCards({
   const { deliverables, intermediates } = React.useMemo(() => {
     const deliverables: FileChangeItem[] = []
     const intermediates: FileChangeItem[] = []
-    for (const file of files) {
+    for (const file of visibleFiles) {
       if (file.category === "intermediate") {
         intermediates.push(file)
       } else {
@@ -372,9 +423,9 @@ export function FileChangeCards({
       }
     }
     return { deliverables, intermediates }
-  }, [files])
+  }, [visibleFiles])
 
-  if (files.length === 0) {
+  if (visibleFiles.length === 0) {
     return null
   }
 

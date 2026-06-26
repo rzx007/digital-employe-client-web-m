@@ -56,12 +56,10 @@ export function formatErrorDisplayText(text: string): string {
   return localizeErrorMessage(raw)
 }
 
-import {
-  isSkillToolCall,
-  extractSkillName,
-} from "./tool-summarizer"
+import { isSkillToolCall, extractSkillName } from "./tool-summarizer"
 import {
   getFileChangesFromUIMessage,
+  messageHasFileOutputs,
   type FileChangeItem,
 } from "./file-change-utils"
 import { isSummarizationTextPart } from "./langchain-summarization-text"
@@ -194,7 +192,13 @@ export type ClassifiedBlock =
       uiAction?: ToolUiActionKind
     }
   | { kind: "final-response"; key: string; text: string }
-  | { kind: "file-changes"; key: string; files: FileChangeItem[] }
+  | {
+      kind: "file-changes"
+      key: string
+      files: FileChangeItem[]
+      /** true=来自 file_outputs 权威来源（应与资源树求交集）；false=parts 流式兜底（不过滤）。 */
+      authoritative: boolean
+    }
   | {
       kind: "draft-skill-save"
       key: string
@@ -304,13 +308,20 @@ function extractOrchestratorTaskSummary(
     }
   }
   rawText = rawText.trim()
-  if (!rawText && typeof (message as unknown as { content?: unknown }).content === "string") {
-    rawText = ((message as unknown as { content?: string }).content ?? "").trim()
+  if (
+    !rawText &&
+    typeof (message as unknown as { content?: unknown }).content === "string"
+  ) {
+    rawText = (
+      (message as unknown as { content?: string }).content ?? ""
+    ).trim()
   }
   if (!rawText) return null
 
   const firstLineBreak = rawText.indexOf("\n")
-  const heading = (firstLineBreak === -1 ? rawText : rawText.slice(0, firstLineBreak)).trim()
+  const heading = (
+    firstLineBreak === -1 ? rawText : rawText.slice(0, firstLineBreak)
+  ).trim()
   const body = (firstLineBreak === -1 ? "" : rawText.slice(firstLineBreak + 1))
     .replace(/\n*可点击下方卡片进入员工对话查看详情。\s*$/u, "")
     .trim()
@@ -632,6 +643,9 @@ export function classifyMessageParts(
   const fileChanges = shouldIncludeFileChanges
     ? getFileChangesFromUIMessage(message)
     : []
+  // file_outputs 权威来源 → 卡片侧应与资源树求交集消除已删/空文件；parts 兜底则不过滤
+  // （流式刚结束、资源树未刷新时保留即时反馈）。
+  const fileChangesAuthoritative = messageHasFileOutputs(message)
   // 草稿技能改由 DraftSkillSaveCard 卡片承载，文件变更面板里去重移除，避免重复。
   const panelFileChanges = fileChanges.filter((c) => c.kind !== "skill-folder")
   if (panelFileChanges.length > 0) {
@@ -639,6 +653,7 @@ export function classifyMessageParts(
       kind: "file-changes",
       key: `${message.id}:file-changes`,
       files: panelFileChanges,
+      authoritative: fileChangesAuthoritative,
     })
   }
   for (const item of fileChanges) {

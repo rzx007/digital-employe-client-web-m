@@ -372,7 +372,13 @@ export function BlockRenderer({
     )
   }
   if (block.kind === "file-changes") {
-    return <FileChangeCards files={block.files} key={block.key} />
+    return (
+      <FileChangeCards
+        files={block.files}
+        authoritative={block.authoritative}
+        key={block.key}
+      />
+    )
   }
   if (block.kind === "draft-skill-save") {
     return (
