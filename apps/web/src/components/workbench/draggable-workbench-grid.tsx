@@ -243,7 +243,7 @@ export function DraggableWorkbenchGrid({
         <div className="max-w-sm text-center">
           <div className="text-sm text-muted-foreground">暂无统计块</div>
           <div className="mt-2 text-xs text-muted-foreground">
-            让总管帮你生成统计看板，然后在资源面板里「钉到工作台」
+            让总管帮你生成统计看板，或在资源面板里将页面「钉到工作台」
           </div>
         </div>
       </div>
