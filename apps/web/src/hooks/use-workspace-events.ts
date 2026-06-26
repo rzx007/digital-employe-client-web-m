@@ -100,6 +100,20 @@ export type WorkspaceEvent =
       // 总管经 add_workbench_widget 改了工作台配置 → 前端 invalidate 重新拉,新 widget 即时出现
       type: "workbench_changed"
     }
+  | {
+      // 后台 shell 命令起流：前端 invalidate 后台命令快照,使指示条/面板近实时更新。
+      type: "shell_task_started"
+      workspace_id: number
+      conversation_id: number
+      session_id: string
+    }
+  | {
+      // 后台 shell 命令结束(正常退出/被 kill):同样 invalidate 后台命令快照。
+      type: "shell_task_finished"
+      workspace_id: number
+      conversation_id: number
+      session_id: string
+    }
 
 type EventHandler = (event: WorkspaceEvent) => void
 

@@ -19,7 +19,6 @@ dependencies = [
     "PyMySQL>=1.0.0",
     "fastapi>=0.104.0",
     "uvicorn>=0.24.0",
-    "jwt>=1.4.0",
     "PyJWT>=2.8.0",
     "python-multipart>=0.0.27",
     "authlib>=1.7.0",

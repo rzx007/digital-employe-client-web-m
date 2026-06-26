@@ -23,6 +23,10 @@ export const chatKeys = {
   curator: () => [...chatKeys.all, "curator"] as const,
   curatorExecutions: (conversationId: string) =>
     [...chatKeys.all, "curator-executions", conversationId] as const,
+  shellExecutions: (conversationId: string) =>
+    [...chatKeys.all, "shell-executions", conversationId] as const,
+  shellExecutionOutput: (sessionId: string) =>
+    [...chatKeys.all, "shell-execution-output", sessionId] as const,
   orchestrationPlans: (conversationId: string | null) =>
     [...chatKeys.all, "orchestration-plans", conversationId ?? "all"] as const,
   skills: () => [...chatKeys.all, "skills"] as const,

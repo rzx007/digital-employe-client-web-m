@@ -465,6 +465,7 @@ def build_employee_agent_for_wake(conversation_id: int):
     调用方对本函数的异常做了 try/except 兜底，故此处直接抛出即可。
     """
     from src.models.conversation import Conversation
+    from src.core.config import get_settings
     from src.models.employee import Employee
     from src.service.agent.employee import get_agent
     from src.service.chat_service import ChatService
