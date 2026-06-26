@@ -39,3 +39,37 @@ def test_none_conversation_is_noop():
     dj.begin(None)
     dj.record(None, "/x/y.md", "create")  # 不崩
     assert dj.snapshot_and_clear(None) == []
+
+
+def test_shell_delta_detects_new_and_modified(tmp_path):
+    conv = 9100
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    existing = root / "keep.txt"
+    existing.write_text("v1", encoding="utf-8")
+
+    dj.begin(conv)
+    before = dj.scan_tree(root)
+
+    # 模拟 shell 写:新文件 + 改已有
+    (root / "made_by_bash.csv").write_text("x,y\n1,2", encoding="utf-8")
+    existing.write_text("v2-longer", encoding="utf-8")  # size 变化
+
+    after = dj.scan_tree(root)
+    dj.record_shell_delta(conv, before, after)
+
+    out = {o["path"]: o["action"] for o in dj.snapshot_and_clear(conv)}
+    assert out[(root / "made_by_bash.csv").resolve().as_posix()] == "create"
+    assert out[existing.resolve().as_posix()] == "modify"
+
+
+def test_shell_delta_skips_internal_scratch(tmp_path):
+    conv = 9101
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    dj.begin(conv)
+    before = dj.scan_tree(root)
+    (root / "_agent_exec_123.py").write_text("print(1)", encoding="utf-8")
+    after = dj.scan_tree(root)
+    dj.record_shell_delta(conv, before, after)
+    assert dj.snapshot_and_clear(conv) == []
