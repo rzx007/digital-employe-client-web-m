@@ -707,6 +707,14 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
             )
             if blocked is not None:
                 return blocked
+            from src.service.agent import deliverable_journal as dj
+            import os
+            _existed = False
+            try:
+                _resolved = str(resolved_backend._resolve_path(validated_path))
+                _existed = os.path.exists(_resolved)
+            except Exception:
+                _resolved = validated_path
             res: WriteResult = resolved_backend.write(validated_path, content)
             if res.error:
                 return ToolMessage(
@@ -715,6 +723,12 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
                     tool_call_id=runtime.tool_call_id,
                     status="error",
                 )
+            try:
+                dj.report_file_write(
+                    conv_id, _resolved, existed_before=_existed, is_edit=False
+                )
+            except Exception:
+                logger.debug("deliverable journal record failed", exc_info=True)
             return ToolMessage(
                 content=f"Updated file {res.path}",
                 name="write_file",
@@ -760,6 +774,14 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
             )
             if blocked is not None:
                 return blocked
+            from src.service.agent import deliverable_journal as dj
+            import os
+            _existed = False
+            try:
+                _resolved = str(resolved_backend._resolve_path(validated_path))
+                _existed = os.path.exists(_resolved)
+            except Exception:
+                _resolved = validated_path
             res: WriteResult = await resolved_backend.awrite(validated_path, content)
             if res.error:
                 return ToolMessage(
@@ -768,6 +790,12 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
                     tool_call_id=runtime.tool_call_id,
                     status="error",
                 )
+            try:
+                dj.report_file_write(
+                    conv_id, _resolved, existed_before=_existed, is_edit=False
+                )
+            except Exception:
+                logger.debug("deliverable journal record failed", exc_info=True)
             return ToolMessage(
                 content=f"Updated file {res.path}",
                 name="write_file",
@@ -838,6 +866,11 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
             )
             if blocked is not None:
                 return blocked
+            from src.service.agent import deliverable_journal as dj
+            try:
+                _resolved = str(resolved_backend._resolve_path(validated_path))
+            except Exception:
+                _resolved = validated_path
             res: EditResult = resolved_backend.edit(
                 validated_path, old_string, new_string, replace_all=replace_all
             )
@@ -848,6 +881,12 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
                     tool_call_id=runtime.tool_call_id,
                     status="error",
                 )
+            try:
+                dj.report_file_write(
+                    conv_id, _resolved, existed_before=True, is_edit=True
+                )
+            except Exception:
+                logger.debug("deliverable journal record failed", exc_info=True)
             return ToolMessage(
                 content=f"Successfully replaced {res.occurrences} instance(s) of the string in '{res.path}'",
                 name="edit_file",
@@ -902,6 +941,11 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
             )
             if blocked is not None:
                 return blocked
+            from src.service.agent import deliverable_journal as dj
+            try:
+                _resolved = str(resolved_backend._resolve_path(validated_path))
+            except Exception:
+                _resolved = validated_path
             res: EditResult = await resolved_backend.aedit(
                 validated_path, old_string, new_string, replace_all=replace_all
             )
@@ -912,6 +956,12 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
                     tool_call_id=runtime.tool_call_id,
                     status="error",
                 )
+            try:
+                dj.report_file_write(
+                    conv_id, _resolved, existed_before=True, is_edit=True
+                )
+            except Exception:
+                logger.debug("deliverable journal record failed", exc_info=True)
             return ToolMessage(
                 content=f"Successfully replaced {res.occurrences} instance(s) of the string in '{res.path}'",
                 name="edit_file",

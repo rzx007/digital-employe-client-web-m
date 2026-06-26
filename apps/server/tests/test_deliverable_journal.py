@@ -75,6 +75,19 @@ def test_shell_delta_skips_internal_scratch(tmp_path):
     assert dj.snapshot_and_clear(conv) == []
 
 
+def test_report_file_write_action_mapping():
+    conv = 9200
+    dj.begin(conv)
+    dj.report_file_write(conv, "/proj/artifacts/new.md", existed_before=False, is_edit=False)   # → create
+    dj.report_file_write(conv, "/proj/artifacts/old.md", existed_before=True, is_edit=False)    # → modify
+    dj.report_file_write(conv, "/proj/artifacts/ed.md", existed_before=True, is_edit=True)      # → modify
+    out = {o["path"]: o["action"] for o in dj.snapshot_and_clear(conv)}
+    norm = lambda s: __import__("pathlib").Path(s).resolve().as_posix()
+    assert out[norm("/proj/artifacts/new.md")] == "create"
+    assert out[norm("/proj/artifacts/old.md")] == "modify"
+    assert out[norm("/proj/artifacts/ed.md")] == "modify"
+
+
 def test_scan_tree_prunes_noise_dirs(tmp_path):
     # 噪音/隐藏目录下的文件应被剪枝排除,不出现在扫描结果里。
     root = tmp_path / "artifacts"

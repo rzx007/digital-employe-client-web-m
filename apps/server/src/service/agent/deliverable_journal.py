@@ -60,6 +60,14 @@ def record(conversation_id: int | None, path: str, action: Action) -> None:
         bucket[key] = action
 
 
+def report_file_write(
+    conversation_id: int | None, path: str, *, existed_before: bool, is_edit: bool
+) -> None:
+    """write/edit 成功后的统一上报。edit 必为 modify;write 视写前是否已存在分 create/modify。"""
+    action: Action = "modify" if (is_edit or existed_before) else "create"
+    record(conversation_id, path, action)
+
+
 def snapshot_and_clear(conversation_id: int | None) -> list[FileOutput]:
     """取走并清空该会话累积,返回 [{path, action}]。"""
     if conversation_id is None:
