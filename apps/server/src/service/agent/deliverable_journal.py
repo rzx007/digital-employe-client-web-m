@@ -25,11 +25,11 @@ Action = Literal["create", "modify"]
 
 class FileOutput(TypedDict):
     path: str
-    action: str
+    action: Action
 
 
 # conversation_id -> {abs_posix_path: action}。action: "create" | "modify"。
-_journals: dict[int, dict[str, str]] = {}
+_journals: dict[int, dict[str, Action]] = {}
 _lock = threading.Lock()
 
 
@@ -73,25 +73,38 @@ def snapshot_and_clear(conversation_id: int | None) -> list[FileOutput]:
 
 def scan_tree(root: Path) -> dict[str, tuple[float, int]]:
     """递归扫一个目录,返回 {abs_posix: (mtime, size)}。跳过内部 scratch / 噪音目录 /
-    隐藏目录,与 resource_service 的展示口径一致,顺带把扫描成本压在产物文件上。"""
+    隐藏目录,与 resource_service 的展示口径一致,顺带把扫描成本压在产物文件上。
+
+    采用 iterdir + 原地剪枝(镜像 resource_service._scan_dir_flat):遇到噪音/隐藏
+    目录直接不下钻,避免完整枚举 node_modules/.git 等再丢弃(热路径,每条 shell 前后各调一次)。
+    """
     out: dict[str, tuple[float, int]] = {}
     if not root.is_dir():
         return out
-    for p in root.rglob("*"):
-        name = p.name
-        if any(
-            part in _EXTERNAL_NOISE_DIRS or part.startswith(".")
-            for part in p.relative_to(root).parts[:-1]
-        ):
-            continue
-        if not p.is_file() or _is_internal_scratch(name):
-            continue
+
+    def _walk(d: Path) -> None:
         try:
-            st = p.stat()
+            items = list(d.iterdir())
         except OSError:
-            logger.debug("scan_tree stat failed: %s", p, exc_info=True)
-            continue
-        out[p.resolve().as_posix()] = (st.st_mtime, st.st_size)
+            logger.debug("scan_tree iterdir failed: %s", d, exc_info=True)
+            return
+        for p in items:
+            name = p.name
+            if p.is_dir():
+                if name in _EXTERNAL_NOISE_DIRS or name.startswith("."):
+                    continue  # 剪枝:不下钻
+                _walk(p)
+            else:
+                if _is_internal_scratch(name):
+                    continue
+                try:
+                    st = p.stat()
+                except OSError:
+                    logger.debug("scan_tree stat failed: %s", p, exc_info=True)
+                    continue
+                out[p.resolve().as_posix()] = (st.st_mtime, st.st_size)
+
+    _walk(root)
     return out
 
 

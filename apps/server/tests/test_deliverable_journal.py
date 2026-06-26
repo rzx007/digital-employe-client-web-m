@@ -73,3 +73,28 @@ def test_shell_delta_skips_internal_scratch(tmp_path):
     after = dj.scan_tree(root)
     dj.record_shell_delta(conv, before, after)
     assert dj.snapshot_and_clear(conv) == []
+
+
+def test_scan_tree_prunes_noise_dirs(tmp_path):
+    # 噪音/隐藏目录下的文件应被剪枝排除,不出现在扫描结果里。
+    root = tmp_path / "artifacts"
+    root.mkdir()
+
+    noise = root / "node_modules"
+    noise.mkdir()
+    (noise / "x.js").write_text("module.exports = {}", encoding="utf-8")
+
+    hidden = root / ".git"
+    hidden.mkdir()
+    (hidden / "config").write_text("[core]", encoding="utf-8")
+
+    # 对照:正常产物文件 + 隐藏文件(隐藏文件应保留,仅隐藏目录剪枝)
+    (root / "report.md").write_text("# hi", encoding="utf-8")
+    (root / ".env").write_text("KEY=1", encoding="utf-8")
+
+    result = dj.scan_tree(root)
+    paths = set(result)
+    assert (noise / "x.js").resolve().as_posix() not in paths
+    assert (hidden / "config").resolve().as_posix() not in paths
+    assert (root / "report.md").resolve().as_posix() in paths
+    assert (root / ".env").resolve().as_posix() in paths
