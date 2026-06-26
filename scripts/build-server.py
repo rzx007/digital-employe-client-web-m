@@ -32,7 +32,7 @@ OUTPUT_DIR = ROOT_DIR / "apps" / "web" / "py-server"
 BUILD_DIR = ROOT_DIR / "build" / "server"
 
 
-# 国内 PyPI 镜像；sync 用 --locked 读 uv.lock，禁用 --frozen（frozen 才直链 pythonhosted）
+# 国内 PyPI 镜像；sync 跟 uv.lock 解析版本，勿用 --frozen/--locked（与 --no-install-workspace 不兼容）
 PYPI_MIRROR = "https://mirrors.aliyun.com/pypi/simple/"
 PYPI_MIRROR_FALLBACK = "https://npmmirror.com/mirror/pypi/simple"
 PYPI_OFFICIAL = "https://pypi.org/simple"
@@ -87,7 +87,7 @@ def subprocess_env() -> dict[str, str]:
 
 
 def _uv_sync_cmd(env: dict[str, str]) -> list[str]:
-    """uv sync --locked：版本跟 uv.lock，不走 --frozen，下载仍可用镜像。"""
+    """uv sync：版本跟 uv.lock 解析，下载走镜像（勿加 --locked，见根 pyproject 注释）。"""
     mirror = env.get("UV_INDEX_URL", PYPI_MIRROR)
     extra = env.get("UV_EXTRA_INDEX_URL", PYPI_MIRROR_FALLBACK)
     cmd = [
@@ -97,7 +97,6 @@ def _uv_sync_cmd(env: dict[str, str]) -> list[str]:
         "apps/server",
         "--group",
         "dev",
-        "--locked",
         "--index-strategy",
         "unsafe-best-match",
         "--default-index",
