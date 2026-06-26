@@ -89,6 +89,8 @@ browserctl screenshot [--out <path>]   # 截图落盘到产物目录，返回 { 
 browserctl close                       # 关闭内嵌浏览器并收起右栏（任务结束释放资源）
 ```
 
+> `snapshot` 会自动遍历同源 iframe：iframe 内的元素也会出现在 `@eN` 列表里，可直接 `click`/`fill`/`select`/`get`/`scroll`。跨源 iframe（不同域，走独立进程）会被静默跳过、不影响主页面。**iframe 内只能用 `@eN` 定位，CSS 选择器不跨 frame**（选择器只在主文档生效），优先用 `@eN`。
+
 > `screenshot` 默认写到当前会话产物目录 `browser-screenshot-<时间戳>.png`，或用 `--out` 指定路径。返回文件路径后，如需让模型查看可再 `read` 该图片。
 
 ## 调用方式

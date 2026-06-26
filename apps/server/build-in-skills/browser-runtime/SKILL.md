@@ -34,6 +34,8 @@ browserctl health
 4. **操作触发页面变化后，先 `browserctl wait --selector <css>` 或 `--text <关键词>` 等目标出现，再 `browserctl snapshot`**——避免抓到仍在加载的半成品页面
 5. 用 `browserctl extract-text`、`browserctl get url` 或新 snapshot 验证结果
 
+> iframe（同源）内的控件会一并出现在 snapshot 的 `@eN` 里，照常 click/fill 即可；iframe 内只能用 `@eN`，不要用 CSS 选择器。
+
 > ⚠️ **不要用 `health` 当门禁**：`browserctl health` 只用于排查 bridge 连通性。它的
 > `browser_available` 字段表示「此刻浏览器实例是否已存在」，**不是**「浏览器能否使用」。
 > 任务由**组长/总管派单**（离屏后台会话）时浏览器尚未创建，`health` 会如实返回
@@ -57,7 +59,7 @@ browserctl health
 ```bash
 browserctl open https://example.com
 browserctl open-artifact report.html   # 打开产物目录里的 HTML（cwd 即产物目录，纯文件名即可；无文件卡片时用）
-browserctl snapshot --max-nodes 200
+browserctl snapshot --max-nodes 200   # 自动含同源 iframe 内元素；跨源 iframe 跳过
 browserctl click @e3
 browserctl click @e8 --confirm "确认提交申请？"
 browserctl fill @e4 "输入内容"
