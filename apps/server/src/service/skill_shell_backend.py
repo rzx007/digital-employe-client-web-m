@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable
 
@@ -25,6 +26,29 @@ from src.service.agent.basic_file_backend import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _shell_delta_journal(conv: int | None, artifacts_dir: Path):
+    """shell 执行前后扫 artifacts 做 diff 上报 journal：snapshot on enter、record on exit。
+
+    把本条命令窗内新增/变更的产物归到本轮。journal 失败绝不影响 shell 执行（整段裹
+    try/except 吞掉）。conv 为 None（无会话）时不扫、不上报。调用方在背景移交时把
+    yield 出的 skip["v"]=True 以跳过 after 扫描（移交后的进程仍在跑，此刻扫 after
+    捕获不到它写的文件——与 detached 路径同取舍）。
+    """
+    from src.service.agent import deliverable_journal as dj
+
+    before = dj.scan_tree(artifacts_dir) if conv is not None else None
+    skip = {"v": False}
+    try:
+        yield skip
+    finally:
+        if before is not None and not skip["v"]:
+            try:
+                dj.record_shell_delta(conv, before, dj.scan_tree(artifacts_dir))
+            except Exception:
+                logger.debug("shell delta journal failed", exc_info=True)
 
 
 def _spawn_background_watcher(
@@ -590,125 +614,112 @@ class SkillAwareShellBackend(LocalShellBackend):
                 terminate_process_group,
             )
 
-            from src.service.agent import deliverable_journal as dj
+            # journal 在进程真正结束（非移交后台）后扫 after：CM snapshot-on-enter，
+            # exit 时据 _skip 决定是否 record（移交分支把 _skip["v"]=True）。
+            with _shell_delta_journal(
+                self._conversation_id_int, self._artifacts_dir
+            ) as _skip:
+                env = {**self._env, "PYTHONUNBUFFERED": "1"}
+                stdout_handle = open(_tmp_path, 'ab')
+                # 独立进程组：超时转后台后 shell_kill 可整组终止，避免孤儿
+                proc = subprocess.Popen(  # noqa: S602
+                    rewritten,
+                    stdout=stdout_handle,            # stdout → 临时文件，不用 PIPE
+                    stderr=subprocess.STDOUT,
+                    shell=True,
+                    env=env,
+                    cwd=str(self.cwd),
+                    **process_group_kwargs(),
+                )
+                stdout_handle.close()                # 释放本进程对文件的引用
+                _proc_ref.append(proc)
 
-            _conv = self._conversation_id_int
-            _before = (
-                dj.scan_tree(self._artifacts_dir)
-                if _conv is not None
-                else None
-            )
+                try:
+                    last_size = 0
+                    partial_line = b""
+                    last_partial_emit = 0.0
 
-            env = {**self._env, "PYTHONUNBUFFERED": "1"}
-            stdout_handle = open(_tmp_path, 'ab')
-            # 独立进程组：超时转后台后 shell_kill 可整组终止，避免孤儿
-            proc = subprocess.Popen(  # noqa: S602
-                rewritten,
-                stdout=stdout_handle,            # stdout → 临时文件，不用 PIPE
-                stderr=subprocess.STDOUT,
-                shell=True,
-                env=env,
-                cwd=str(self.cwd),
-                **process_group_kwargs(),
-            )
-            stdout_handle.close()                # 释放本进程对文件的引用
-            _proc_ref.append(proc)
+                    while True:
+                        if proc.poll() is not None:
+                            # 子进程已退出：务必最后再读一次 stdout 文件，避免
+                            # curl -s 等无换行输出在 poll 与写盘之间的竞态丢失。
+                            last_size, partial_line, complete_lines = (
+                                _read_incremental_from_tmp(last_size, partial_line)
+                            )
+                            _tmp_path_holder["last_size"] = last_size
+                            _emit_complete_lines(complete_lines)
+                            _emit_partial_line(partial_line)
+                            partial_line = b""
+                            break
+                        if cancel_requested.is_set():
+                            break
+                        # 已移交后台：停止续读，把文件与进程交注册表（registry 接管增量读）。
+                        if _background_handoff.is_set():
+                            break
 
-            try:
-                last_size = 0
-                partial_line = b""
-                last_partial_emit = 0.0
+                        time.sleep(_POLL_SECONDS)
 
-                while True:
-                    if proc.poll() is not None:
-                        # 子进程已退出：务必最后再读一次 stdout 文件，避免
-                        # curl -s 等无换行输出在 poll 与写盘之间的竞态丢失。
                         last_size, partial_line, complete_lines = (
                             _read_incremental_from_tmp(last_size, partial_line)
                         )
                         _tmp_path_holder["last_size"] = last_size
-                        _emit_complete_lines(complete_lines)
-                        _emit_partial_line(partial_line)
-                        partial_line = b""
-                        break
-                    if cancel_requested.is_set():
-                        break
-                    # 已移交后台：停止续读，把文件与进程交注册表（registry 接管增量读）。
-                    if _background_handoff.is_set():
-                        break
+                        if complete_lines:
+                            _emit_complete_lines(complete_lines)
 
-                    time.sleep(_POLL_SECONDS)
+                        if last_size > _MAX_TMPFILE_BYTES:
+                            loop.call_soon_threadsafe(
+                                queue.put_nowait,
+                                _truncation_notice("超过 1MB").lstrip("\n"),
+                            )
+                            break
 
-                    last_size, partial_line, complete_lines = (
-                        _read_incremental_from_tmp(last_size, partial_line)
-                    )
-                    _tmp_path_holder["last_size"] = last_size
-                    if complete_lines:
-                        _emit_complete_lines(complete_lines)
+                        # 无换行输出（如 curl -s 单行 JSON）运行中也推送，避免 UI 长时间空白
+                        now = time.monotonic()
+                        if (
+                            partial_line
+                            and now - last_partial_emit >= _PARTIAL_EMIT_SECONDS
+                        ):
+                            _emit_partial_line(partial_line)
+                            last_partial_emit = now
 
-                    if last_size > _MAX_TMPFILE_BYTES:
-                        loop.call_soon_threadsafe(
-                            queue.put_nowait,
-                            _truncation_notice("超过 1MB").lstrip("\n"),
-                        )
-                        break
-
-                    # 无换行输出（如 curl -s 单行 JSON）运行中也推送，避免 UI 长时间空白
-                    now = time.monotonic()
+                    # 已移交后台：进程交注册表续跑，绝不在此等它结束（否则线程挂到任务结束）。
+                    if not _background_handoff.is_set():
+                        try:
+                            proc.wait(timeout=30)
+                        except subprocess.TimeoutExpired:
+                            if cancel_requested.is_set():
+                                terminate_process_group(proc)
+                finally:
+                    # 双保险：线程侧也检查取消信号；已移交后台则绝不杀（进程归注册表）。
                     if (
-                        partial_line
-                        and now - last_partial_emit >= _PARTIAL_EMIT_SECONDS
+                        cancel_requested.is_set()
+                        and not _background_handoff.is_set()
+                        and proc.poll() is None
                     ):
-                        _emit_partial_line(partial_line)
-                        last_partial_emit = now
-
-                # 已移交后台：进程交注册表续跑，绝不在此等它结束（否则线程挂到任务结束）。
-                if not _background_handoff.is_set():
-                    try:
-                        proc.wait(timeout=30)
-                    except subprocess.TimeoutExpired:
-                        if cancel_requested.is_set():
-                            terminate_process_group(proc)
-            finally:
-                # 双保险：线程侧也检查取消信号；已移交后台则绝不杀（进程归注册表）。
-                if (
-                    cancel_requested.is_set()
-                    and not _background_handoff.is_set()
-                    and proc.poll() is None
-                ):
-                    terminate_process_group(proc)
-                    try:
-                        proc.wait(timeout=5)
-                    except Exception:
-                        pass
-                loop.call_soon_threadsafe(queue.put_nowait, None)
-                # 前后 diff 上报 journal：只在进程真正结束（非移交后台）时扫 after，
-                # 把本条命令窗内新增/变更的产物归到本轮。移交后台的进程仍在跑、
-                # 捕获不到，跳过（与 detached 路径同取舍）。整段裹 try/except 吞掉。
-                if _before is not None and not _background_handoff.is_set():
-                    try:
-                        dj.record_shell_delta(
-                            _conv, _before, dj.scan_tree(self._artifacts_dir)
-                        )
-                    except Exception:
-                        logger.debug(
-                            "shell delta journal failed", exc_info=True
-                        )
-                # 已移交后台时不删临时文件——注册表还要继续读它，由注册表负责清理。
-                if not _background_handoff.is_set():
-                    try:
-                        os.unlink(_tmp_path)
-                    except Exception:
-                        logger.warning(
-                            "[shell] failed to delete tmpfile %s", _tmp_path, exc_info=True
-                        )
-                # 删除多行 python -c 落盘的临时脚本（子进程已退出，不再需要）。
-                # 已移交后台时脚本可能仍被后台进程使用，不在此删（小概率泄漏，可接受）。
-                if _script_tmp_path and not _background_handoff.is_set():
-                    try:
-                        os.unlink(_script_tmp_path)
-                    except OSError:
-                        pass
+                        terminate_process_group(proc)
+                        try:
+                            proc.wait(timeout=5)
+                        except Exception:
+                            pass
+                    loop.call_soon_threadsafe(queue.put_nowait, None)
+                    # 移交后台的进程仍在跑、扫 after 捕获不到，跳过（与 detached 同取舍）。
+                    if _background_handoff.is_set():
+                        _skip["v"] = True
+                    # 已移交后台时不删临时文件——注册表还要继续读它，由注册表负责清理。
+                    if not _background_handoff.is_set():
+                        try:
+                            os.unlink(_tmp_path)
+                        except Exception:
+                            logger.warning(
+                                "[shell] failed to delete tmpfile %s", _tmp_path, exc_info=True
+                            )
+                    # 删除多行 python -c 落盘的临时脚本（子进程已退出，不再需要）。
+                    # 已移交后台时脚本可能仍被后台进程使用，不在此删（小概率泄漏，可接受）。
+                    if _script_tmp_path and not _background_handoff.is_set():
+                        try:
+                            os.unlink(_script_tmp_path)
+                        except OSError:
+                            pass
             return proc.returncode
 
         future = loop.run_in_executor(None, _read_lines_sync)
@@ -910,55 +921,54 @@ class SkillAwareShellBackend(LocalShellBackend):
         if effective_timeout <= 0:
             raise ValueError(f"timeout must be positive, got {effective_timeout}")
 
-        from src.service.agent import deliverable_journal as dj
-
-        _conv = self._conversation_id_int
-        _before = (
-            dj.scan_tree(self._artifacts_dir) if _conv is not None else None
-        )
         try:
-            # Windows 下不要用 text=True。
-            # 部分技能脚本会输出 UTF-8 字节，而父进程默认按 GBK 解码，
-            # 会在 subprocess 读取线程触发 UnicodeDecodeError，
-            # 最终出现“exit code=0 但无输出”的假象。
-            result = subprocess.run(  # noqa: S602
-                rewritten,
-                check=False,
-                shell=True,
-                capture_output=True,
-                text=False,
-                timeout=effective_timeout,
-                env=self._env,
-                cwd=str(self.cwd),
-            )
+            with _shell_delta_journal(
+                self._conversation_id_int, self._artifacts_dir
+            ):
+                # Windows 下不要用 text=True。
+                # 部分技能脚本会输出 UTF-8 字节，而父进程默认按 GBK 解码，
+                # 会在 subprocess 读取线程触发 UnicodeDecodeError，
+                # 最终出现“exit code=0 但无输出”的假象。
+                result = subprocess.run(  # noqa: S602
+                    rewritten,
+                    check=False,
+                    shell=True,
+                    capture_output=True,
+                    text=False,
+                    timeout=effective_timeout,
+                    env=self._env,
+                    cwd=str(self.cwd),
+                )
 
-            stdout = self._decode_output_bytes(result.stdout)
-            stderr = self._decode_output_bytes(result.stderr)
+                stdout = self._decode_output_bytes(result.stdout)
+                stderr = self._decode_output_bytes(result.stderr)
 
-            output_parts: list[str] = []
-            if stdout:
-                output_parts.append(stdout)
-            if stderr:
-                stderr_lines = stderr.strip().split("\n")
-                output_parts.extend(f"[stderr] {line}" for line in stderr_lines if line)
+                output_parts: list[str] = []
+                if stdout:
+                    output_parts.append(stdout)
+                if stderr:
+                    stderr_lines = stderr.strip().split("\n")
+                    output_parts.extend(
+                        f"[stderr] {line}" for line in stderr_lines if line
+                    )
 
-            output = "\n".join(output_parts) if output_parts else " "
+                output = "\n".join(output_parts) if output_parts else " "
 
-            truncated = False
-            if len(output) > self._max_output_bytes:
-                output = output[: self._max_output_bytes]
-                output += _truncation_notice(f"{self._max_output_bytes} 字节上限")
-                truncated = True
+                truncated = False
+                if len(output) > self._max_output_bytes:
+                    output = output[: self._max_output_bytes]
+                    output += _truncation_notice(f"{self._max_output_bytes} 字节上限")
+                    truncated = True
 
-            if result.returncode != 0:
-                hint = _steer_on_error(output)
-                output = f"{output.rstrip()}\n\nExit code: {result.returncode}{hint}"
+                if result.returncode != 0:
+                    hint = _steer_on_error(output)
+                    output = f"{output.rstrip()}\n\nExit code: {result.returncode}{hint}"
 
-            return ExecuteResponse(
-                output=output,
-                exit_code=result.returncode,
-                truncated=truncated,
-            )
+                return ExecuteResponse(
+                    output=output,
+                    exit_code=result.returncode,
+                    truncated=truncated,
+                )
         except subprocess.TimeoutExpired:
             if timeout is not None:
                 msg = (
@@ -978,15 +988,6 @@ class SkillAwareShellBackend(LocalShellBackend):
                 truncated=False,
             )
         finally:
-            # 前后 diff 上报 journal：把本条命令窗内新增/变更的产物归到本轮。
-            # 整段裹 try/except 吞掉，绝不影响 shell 执行本身。
-            if _before is not None:
-                try:
-                    dj.record_shell_delta(
-                        _conv, _before, dj.scan_tree(self._artifacts_dir)
-                    )
-                except Exception:
-                    logger.debug("shell delta journal failed", exc_info=True)
             # 删除多行 python -c 落盘的临时脚本（子进程已结束，不再需要）。
             if _script_tmp_path:
                 try:
