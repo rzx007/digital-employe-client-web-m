@@ -440,6 +440,10 @@ class SkillAwareShellBackend(LocalShellBackend):
             process_group_kwargs,
         )
 
+        # 后台 detached 路径不接 journal diff：进程在流结束后仍可能运行，
+        # 此刻扫 after 捕获不到它写的文件（已知取舍）。
+        logger.debug("shell delta journal skipped for background exec")
+
         tmp = tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".stdout")
         tmp.close()
         env = {**self._env, "PYTHONUNBUFFERED": "1"}
@@ -586,6 +590,15 @@ class SkillAwareShellBackend(LocalShellBackend):
                 terminate_process_group,
             )
 
+            from src.service.agent import deliverable_journal as dj
+
+            _conv = self._conversation_id_int
+            _before = (
+                dj.scan_tree(self._artifacts_dir)
+                if _conv is not None
+                else None
+            )
+
             env = {**self._env, "PYTHONUNBUFFERED": "1"}
             stdout_handle = open(_tmp_path, 'ab')
             # 独立进程组：超时转后台后 shell_kill 可整组终止，避免孤儿
@@ -669,6 +682,18 @@ class SkillAwareShellBackend(LocalShellBackend):
                     except Exception:
                         pass
                 loop.call_soon_threadsafe(queue.put_nowait, None)
+                # 前后 diff 上报 journal：只在进程真正结束（非移交后台）时扫 after，
+                # 把本条命令窗内新增/变更的产物归到本轮。移交后台的进程仍在跑、
+                # 捕获不到，跳过（与 detached 路径同取舍）。整段裹 try/except 吞掉。
+                if _before is not None and not _background_handoff.is_set():
+                    try:
+                        dj.record_shell_delta(
+                            _conv, _before, dj.scan_tree(self._artifacts_dir)
+                        )
+                    except Exception:
+                        logger.debug(
+                            "shell delta journal failed", exc_info=True
+                        )
                 # 已移交后台时不删临时文件——注册表还要继续读它，由注册表负责清理。
                 if not _background_handoff.is_set():
                     try:
@@ -885,6 +910,12 @@ class SkillAwareShellBackend(LocalShellBackend):
         if effective_timeout <= 0:
             raise ValueError(f"timeout must be positive, got {effective_timeout}")
 
+        from src.service.agent import deliverable_journal as dj
+
+        _conv = self._conversation_id_int
+        _before = (
+            dj.scan_tree(self._artifacts_dir) if _conv is not None else None
+        )
         try:
             # Windows 下不要用 text=True。
             # 部分技能脚本会输出 UTF-8 字节，而父进程默认按 GBK 解码，
@@ -947,6 +978,15 @@ class SkillAwareShellBackend(LocalShellBackend):
                 truncated=False,
             )
         finally:
+            # 前后 diff 上报 journal：把本条命令窗内新增/变更的产物归到本轮。
+            # 整段裹 try/except 吞掉，绝不影响 shell 执行本身。
+            if _before is not None:
+                try:
+                    dj.record_shell_delta(
+                        _conv, _before, dj.scan_tree(self._artifacts_dir)
+                    )
+                except Exception:
+                    logger.debug("shell delta journal failed", exc_info=True)
             # 删除多行 python -c 落盘的临时脚本（子进程已结束，不再需要）。
             if _script_tmp_path:
                 try:

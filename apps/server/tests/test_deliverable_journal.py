@@ -111,3 +111,26 @@ def test_scan_tree_prunes_noise_dirs(tmp_path):
     assert (hidden / "config").resolve().as_posix() not in paths
     assert (root / "report.md").resolve().as_posix() in paths
     assert (root / ".env").resolve().as_posix() in paths
+
+
+def test_shell_execute_sync_reports_bash_written_file(tmp_path):
+    import sys
+
+    from src.service.skill_shell_backend import SkillAwareShellBackend
+
+    conv = 9300
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    backend = SkillAwareShellBackend(
+        root_dir=str(artifacts),
+        skills_root=tmp_path / "skills",
+        draft_root=None,
+        conversation_id=conv,
+    )
+    dj.begin(conv)
+    # 跨平台:用 python 写一个文件(避开 echo 重定向差异)
+    backend.execute(
+        f'{sys.executable} -c "open(\'out.txt\',\'w\').write(\'hi\')"'
+    )
+    out = {o["path"]: o["action"] for o in dj.snapshot_and_clear(conv)}
+    assert (artifacts / "out.txt").resolve().as_posix() in out
