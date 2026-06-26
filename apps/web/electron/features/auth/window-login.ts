@@ -9,15 +9,15 @@ export function createLoginWindow(): void {
     id: "login",
     route: "/login",
     overrides: {
-      width: 310,
-      height: 450,
+      width: 360,
+      height: 600,
       title: "数字员工",
       frame: false,
       resizable: false,
       useContentSize: true,
       center: true,
       autoHideMenuBar: true,
-      webPreferences: { zoomFactor: 0.95 },
+      webPreferences: { zoomFactor: 1 },
     },
   })
 }
