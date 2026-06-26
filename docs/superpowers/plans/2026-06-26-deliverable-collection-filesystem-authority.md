@@ -274,80 +274,82 @@ git commit -m "feat(deliverable): journal 增加 shell 目录前后 diff helper"
 
 ## Phase 2 — 三个写入口接 journal
 
-### Task 3: write_file / edit_file 上报
+### Task 3: write_file / edit_file 上报(挂在中间件,conv_id 可靠)
+
+> **为何不挂 basic_file_backend:** 评审确认 async 工具走 `await resolved_backend.awrite(...)`,
+> deepagents 基类 `awrite` 把 `self.write` offload 到 worker 线程,contextvar **不跨 to_thread 传播**
+> → 从 `basic_file_write` 里读 `get_conversation_id()` 在默认(async)路径会拿到 None,journal 静默失效。
+> 中间件 `compatible_filesystem_middleware.py` 在 sync/async 两条路径都已有可靠的
+> `conv_id = conv_id_from_runtime(runtime)`(它给 write_guard 用),把上报挂这里。
 
 **Files:**
-- Modify: `apps/server/src/service/agent/basic_file_backend.py:279-311`(write)、`:269-276`(edit 成功分支)、`:253-261`(edit fuzzy 分支)
+- Modify: `apps/server/src/service/agent/deliverable_journal.py`(加 `report_file_write` 映射)
+- Modify: `apps/server/src/service/agent/compatible_filesystem_middleware.py`
+  - `sync_write_file`(~710)、`async_write_file`(~763):写成功后上报 create/modify
+  - `sync_edit_file`(~841)、`async_edit_file`(~905):编辑成功后上报 modify
 - Test: `apps/server/tests/test_deliverable_journal.py`
 
-- [ ] **Step 1: 写失败测试 —— 通过真实 backend 写文件后 journal 有记录**
+- [ ] **Step 1: 写失败测试 —— report_file_write 的 action 映射**
 
 ```python
 # 追加到 test_deliverable_journal.py
-def test_basic_write_reports_create_then_modify(tmp_path, monkeypatch):
-    from src.service.agent.basic_file_backend import (
-        BasicFileFilesystemBackend,
-        basic_file_write,
-    )
-    import src.service.agent.basic_file_backend as bfb
-
+def test_report_file_write_action_mapping():
     conv = 9200
-    backend = BasicFileFilesystemBackend(root_dir=str(tmp_path))
-    monkeypatch.setattr(bfb, "_current_conversation_id", lambda: conv)
-
     dj.begin(conv)
-    basic_file_write(backend, "report.md", "hello")
-    basic_file_write(backend, "report.md", "hello again")  # 第二次:已存在→modify,但合并保 create
-
+    dj.report_file_write(conv, "/proj/artifacts/new.md", existed_before=False, is_edit=False)   # → create
+    dj.report_file_write(conv, "/proj/artifacts/old.md", existed_before=True, is_edit=False)    # → modify
+    dj.report_file_write(conv, "/proj/artifacts/ed.md", existed_before=True, is_edit=True)      # → modify
     out = {o["path"]: o["action"] for o in dj.snapshot_and_clear(conv)}
-    p = (tmp_path / "report.md").resolve().as_posix()
-    assert out == {p: "create"}
+    norm = lambda s: __import__("pathlib").Path(s).resolve().as_posix()
+    assert out[norm("/proj/artifacts/new.md")] == "create"
+    assert out[norm("/proj/artifacts/old.md")] == "modify"
+    assert out[norm("/proj/artifacts/ed.md")] == "modify"
 ```
 
 - [ ] **Step 2: 运行,确认失败**
 
-Run: `cd apps/server && uv run pytest tests/test_deliverable_journal.py::test_basic_write_reports_create_then_modify -v`
-Expected: FAIL(`_current_conversation_id` 不存在 / 无记录)
+Run: `cd apps/server && uv run pytest tests/test_deliverable_journal.py::test_report_file_write_action_mapping -v`
+Expected: FAIL(`AttributeError: report_file_write`)
 
-- [ ] **Step 3: 在 basic_file_backend 接 journal**
-
-文件顶部加帮助函数与 import(放在 `logger = ...` 之后):
+- [ ] **Step 3a: 在 deliverable_journal 加 report_file_write**
 
 ```python
-def _current_conversation_id() -> int | None:
-    """执行上下文中的 conversation_id;拿不到则 None(静默跳过 journal)。"""
-    try:
-        from src.service.agent.orchestrator.runtime import get_conversation_id
-
-        return get_conversation_id()
-    except Exception:
-        return None
-
-
-def _report_deliverable(resolved_path, action: str) -> None:
-    try:
-        from src.service.agent import deliverable_journal as dj
-
-        dj.record(_current_conversation_id(), str(resolved_path), action)
-    except Exception:
-        logger.debug("deliverable journal record failed", exc_info=True)
+# 追加到 deliverable_journal.py
+def report_file_write(
+    conversation_id: int | None, path: str, *, existed_before: bool, is_edit: bool
+) -> None:
+    """write/edit 成功后的统一上报。edit 必为 modify;write 视写前是否已存在分 create/modify。"""
+    action = "modify" if (is_edit or existed_before) else "create"
+    record(conversation_id, path, action)
 ```
 
-`basic_file_write`:在 `_warn_if_artifact_overwrite(backend, resolved_path)` 之后、`mkdir` 之前判 action,在写成功 `return WriteResult(path=file_path)` 之前上报:
+- [ ] **Step 3b: 在中间件 4 处接入**
+
+每处的模式:在调用 backend 写之前算 `existed_before`(用 backend 的 `_resolve_path` 拿与
+journal/资源树一致的绝对路径),写成功(`res.error` 为空)后上报。示例(`async_write_file`,
+其余三处同构,edit 传 `is_edit=True`):
 
 ```python
-    _warn_if_artifact_overwrite(backend, resolved_path)
-    _write_action = "modify" if resolved_path.exists() else "create"
-    try:
-        resolved_path.parent.mkdir(parents=True, exist_ok=True)
-        ...
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
-            f.write(content)
-        _report_deliverable(resolved_path, _write_action)   # ← 新增
-        return WriteResult(path=file_path)
+            # run_write_guard 通过、调用 awrite 之前:
+            from src.service.agent import deliverable_journal as dj
+            try:
+                _resolved = str(resolved_backend._resolve_path(validated_path))
+            except Exception:
+                _resolved = validated_path
+            _existed = os.path.exists(_resolved)
+
+            res: WriteResult = await resolved_backend.awrite(validated_path, content)
+            if res.error:
+                return ToolMessage(... status="error")
+            try:
+                dj.report_file_write(conv_id, _resolved, existed_before=_existed, is_edit=False)
+            except Exception:
+                logger.debug("deliverable journal record failed", exc_info=True)
+            return ToolMessage(... status="success")
 ```
 
-`basic_file_edit`:两个写成功点(fuzzy 分支 `:256` 与正常分支 `:272`)之后各加一行 `_report_deliverable(resolved_path, "modify")`(edit 目标必然已存在 → modify)。
+> `conv_id` 在每个函数里已由 `conv_id = conv_id_from_runtime(runtime)` 取到(write_guard 用的同一个)。
+> 确认文件顶部已 `import os`、有 `logger`;否则补。sync 路径(`sync_write_file`/`sync_edit_file`)同样处理。
 
 - [ ] **Step 4: 运行,确认通过**
 
@@ -357,8 +359,8 @@ Expected: PASS
 - [ ] **Step 5: 提交**
 
 ```bash
-git add apps/server/src/service/agent/basic_file_backend.py apps/server/tests/test_deliverable_journal.py
-git commit -m "feat(deliverable): write_file/edit_file 写盘后上报 journal"
+git add apps/server/src/service/agent/deliverable_journal.py apps/server/src/service/agent/compatible_filesystem_middleware.py apps/server/tests/test_deliverable_journal.py
+git commit -m "feat(deliverable): write_file/edit_file 经中间件(可靠conv_id)上报 journal"
 ```
 
 ---
@@ -470,12 +472,9 @@ Expected: FAIL
 
 - [ ] **Step 3: 实现 merge helper + 接入 stream_registry**
 
-`deliverable_journal.py` 增:
+`deliverable_journal.py` 增(`json` 已在 Task 5-merge 前的 import,确认有 `import json`):
 
 ```python
-import json
-
-
 def merge_file_outputs_into_meta(extra_meta: str | None, outputs: list[dict]) -> str | None:
     if not outputs:
         return extra_meta
@@ -487,17 +486,48 @@ def merge_file_outputs_into_meta(extra_meta: str | None, outputs: list[dict]) ->
     return json.dumps(meta, ensure_ascii=False)
 ```
 
-`stream_registry.py`:
-1. 流开始(`_run_agent_background` 起始,拿到 `stream_msg_id` 与 `conversation_id` 后)调用 `deliverable_journal.begin(conversation_id)`。
-2. 在写终态的 `_flush_to_db_sync`/`_flush_terminal_sync` 内,**在 `db.commit()` 之前**:
+`stream_registry.py` 三处(锚点已核实):
+
+1. **流开始 begin**:`_run_agent_background` 起始(拿到 `stream_msg_id` 与 `conversation_id` 后)
+   调用 `deliverable_journal.begin(conversation_id)`。
+
+2. **`_flush_to_db_sync`(286-344)新增参数 + 合并块**:给签名加 `file_outputs: list[dict] | None = None`;
+   在 `elapsed_ms` 合并块(329-335)之后、`db.commit()`(336)之前,照同样 read-modify-write 模式加:
 
 ```python
-                from src.service.agent import deliverable_journal as dj
-                _outputs = dj.snapshot_and_clear(conversation_id)  # 该函数已有 conversation_id 入参
-                msg.extra_meta = dj.merge_file_outputs_into_meta(msg.extra_meta, _outputs)
+                if file_outputs:
+                    try:
+                        meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
+                    except (json.JSONDecodeError, TypeError):
+                        meta = {}
+                    meta["file_outputs"] = file_outputs
+                    msg.extra_meta = json.dumps(meta, ensure_ascii=False)
 ```
 
-> `_flush_to_db_sync` 当前签名无 `conversation_id`,`_flush_terminal_sync` 经 `_flush_terminal` 传入了 `task.conversation_id`。把 snapshot 调用放在**确有 conversation_id 的终态落库函数**里(`_flush_terminal_sync`)。**注意跨线程**:不要在该函数里读 contextvar——`conversation_id` 必须是入参传进来的值(本就如此)。
+3. **`_flush_terminal_sync`(642-708)快照 + 透传**:它已持有入参 `conversation_id`。在调用
+   `_flush_to_db_sync`(699)**之前**取快照,并把结果作为新参数传下去:
+
+```python
+    from src.service.agent import deliverable_journal as dj
+    _file_outputs = dj.snapshot_and_clear(conversation_id)
+
+    ok = _flush_to_db_sync(
+        stream_msg_id,
+        buffer_cursor,
+        state=state,
+        content=content,
+        error_message=error_message,
+        message_parts=message_parts_json,
+        usage_metadata=usage_meta,
+        elapsed_ms=elapsed_ms,
+        file_outputs=_file_outputs,   # ← 新增
+    )
+```
+
+> 关键:`_flush_to_db_sync` 是**唯一**加载 `msg` 并 `db.commit()` 的地方(`_flush_terminal_sync`
+> 本身没有 `msg`/`commit`,直接在那写 `msg.extra_meta` 会 NameError)。snapshot 在
+> `_flush_terminal_sync` 取(有 `conversation_id` 入参,非 contextvar,跨线程安全),merge 落在
+> `_flush_to_db_sync`。`merge_file_outputs_into_meta` helper 供前面单测复用,生产路径直接走上面合并块即可。
 
 - [ ] **Step 4: 运行,确认通过 + 全量后端回归**
 
@@ -582,7 +612,13 @@ def _conversation_file_outputs(db: Session, conversation_id: int | None) -> list
 
 
 def _filesystem_deliverable_index(product_root) -> dict[str, "ResourceEntry"]:
-    """artifacts + skills_draft 两桶所有 file entry,按绝对 posix path 索引。"""
+    """artifacts + skills_draft 两桶所有 file entry,按 **resolve 后**绝对 posix path 索引。
+
+    ⚠️ 路径坐标系对齐:journal 侧用 Path(...).resolve() 归一(可能解符号链接),而
+    ResourceEntry.path 来自 iterdir 未 resolve。若 product_root 含符号链接,两边字符串不等
+    → 交集会静默全空。故此处对 entry.path 也 resolve 后再做键,确保两侧同坐标。
+    """
+    from pathlib import Path
     from src.service.resource_service import ResourceService
 
     res = ResourceService.list_resources(product_root)
@@ -591,7 +627,11 @@ def _filesystem_deliverable_index(product_root) -> dict[str, "ResourceEntry"]:
     def walk(entries):
         for e in entries:
             if e.entry_type == "file":
-                index[e.path] = e
+                try:
+                    key = Path(e.path).resolve().as_posix()
+                except OSError:
+                    key = e.path
+                index[key] = e
             elif e.children:
                 walk(e.children)
 
@@ -600,7 +640,14 @@ def _filesystem_deliverable_index(product_root) -> dict[str, "ResourceEntry"]:
     return index
 ```
 
-`collect_plan_deliverables` 主体改为:聚合 `_conversation_file_outputs` → 与 `_filesystem_deliverable_index(product_root)` 交集。`product_root` 由 `resolve_conversation_product_root(db, plan_conversation)` 取(替换 `_plan_artifacts_dir`/`_still_exists_nonempty`)。
+`collect_plan_deliverables` 主体改为:聚合 `_conversation_file_outputs`(其 path 已是 journal 写下的
+resolve 绝对 posix)→ 与 `_filesystem_deliverable_index(product_root)` 的键(同为 resolve 绝对 posix)
+做交集。`product_root` 由 `resolve_conversation_product_root(db, plan_conversation)` 取(替换
+`_plan_artifacts_dir`/`_still_exists_nonempty`)。
+
+> **集成断言(加进 Task 6 测试)**:新写一个文件后,其 journal 路径字符串应与
+> `_filesystem_deliverable_index` 的键命中——即"写一个文件→file_outputs 里那条能在文件系统索引里查到"。
+> 这条断言守住路径坐标系不漂移。
 
 - [ ] **Step 4: 运行,确认通过 + 隔离回归**
 
@@ -636,6 +683,14 @@ git commit -m "feat(deliverable): message 透传 file_outputs 到前端 metadata
 ---
 
 ### Task 8: 前端 FileChangeCards 改读 file_outputs ∩ 资源列表
+
+> **依赖 Task 7:** 必须先确认 `file_outputs` 已透传到前端 message 对象。若没有数据,本任务做完也只会
+> 显示空——Task 7 的结论是本任务的前置。
+
+> **路径匹配容差:** message 的 `file_outputs.path` 是后端 journal 写下的 **resolve 绝对路径**,
+> `apiResourceList` 条目的 `path` 是 `ResourceEntry.path`(未 resolve 绝对)。dev 环境 product_root 一般
+> 无符号链接、两者相等;交集比较前两边都做轻归一(`replace(\\,/)`、Windows 下盘符小写),按 `path`
+> 命中即可。命中不上时优先用 `rel_path` 兜底(后端两侧都有 rel_path 时更稳)。Task 9 的 e2e 验证此匹配。
 
 **Files:**
 - Modify: `apps/web/src/lib/chat/file-change-utils.ts`(新增 `getFileChangesFromFileOutputs`;改 `getFileChangesFromUIMessage`)
