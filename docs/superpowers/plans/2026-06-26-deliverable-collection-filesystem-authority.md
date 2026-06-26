@@ -330,13 +330,16 @@ journal/资源树一致的绝对路径),写成功(`res.error` 为空)后上报�
 其余三处同构,edit 传 `is_edit=True`):
 
 ```python
-            # run_write_guard 通过、调用 awrite 之前:
+            # run_write_guard 通过、调用 awrite 之前:算 existed_before(整段裹一个 try,
+            # 任何异常——含漏 import os 的 NameError——都吞掉,绝不影响写入主流程)
             from src.service.agent import deliverable_journal as dj
+            import os
+            _existed = False
             try:
                 _resolved = str(resolved_backend._resolve_path(validated_path))
+                _existed = os.path.exists(_resolved)
             except Exception:
                 _resolved = validated_path
-            _existed = os.path.exists(_resolved)
 
             res: WriteResult = await resolved_backend.awrite(validated_path, content)
             if res.error:
@@ -349,7 +352,8 @@ journal/资源树一致的绝对路径),写成功(`res.error` 为空)后上报�
 ```
 
 > `conv_id` 在每个函数里已由 `conv_id = conv_id_from_runtime(runtime)` 取到(write_guard 用的同一个)。
-> 确认文件顶部已 `import os`、有 `logger`;否则补。sync 路径(`sync_write_file`/`sync_edit_file`)同样处理。
+> 上面用了函数内 `import os` 兜底(中间件文件顶部当前**未** import os);确认有 `logger`。
+> sync 路径(`sync_write_file`/`sync_edit_file`)同样处理,edit 两处传 `is_edit=True`。
 
 - [ ] **Step 4: 运行,确认通过**
 
