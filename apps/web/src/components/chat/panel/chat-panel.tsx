@@ -12,7 +12,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { IconSparkles } from "@tabler/icons-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useStickToBottomContext } from "use-stick-to-bottom"
-import logo from "@/assets/logo.png"
+import { useBrand } from "@/lib/brand/brand"
 import { useChatStore } from "@/stores/chat-store"
 
 import { ChatComposerArea } from "./chat-composer-area"
@@ -214,6 +214,7 @@ export function ChatPanel({
   /** 只读模式：隐藏底部输入区（如员工任务执行会话钻取，仅查看转录） */
   readOnly?: boolean
 }) {
+  const brand = useBrand()
   const contactDisplayName = contact
     ? getContactDisplayName(contact)
     : "AI 助手"
@@ -314,13 +315,13 @@ export function ChatPanel({
                     <ConversationEmptyState className="py-16">
                       <div className="flex flex-col items-center gap-6">
                         <img
-                          src={logo}
+                          src={brand.logos.app}
                           alt="Logo"
                           className="w-12 opacity-80"
                         />
                         <div className="space-y-3 text-center">
                           <h2 className="text-md font-semibold tracking-tight">
-                            数字员工智能助手
+                            {brand.subtitle}
                           </h2>
                           <p className="text-sm text-muted-foreground">
                             随时为您解答问题、处理任务、提升效率
@@ -349,7 +350,11 @@ export function ChatPanel({
                 ) : displayMessages.length === 0 ? (
                   <ConversationEmptyState className="py-16">
                     <div className="flex flex-col items-center gap-5">
-                      <img src={logo} alt="Logo" className="w-14 opacity-50" />
+                      <img
+                        src={brand.logos.app}
+                        alt="Logo"
+                        className="w-14 opacity-50"
+                      />
                       <div className="space-y-1.5 text-center">
                         <h3 className="text-sm font-medium">开始新对话</h3>
                         <p className="text-xs text-muted-foreground">

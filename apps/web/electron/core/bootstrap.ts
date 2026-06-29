@@ -22,6 +22,7 @@ import { allIpcContributions } from "../features"
 import { initExtensions } from "../features/extension/extension-loader"
 import { rootLogger } from "./logger"
 import { isOfflineMode } from "./runtime-env"
+import { registerBrandingIpc } from "../features/branding/ipc"
 
 export interface BootstrapOptions {
   mainDirname: string
@@ -34,6 +35,9 @@ export interface BootstrapOptions {
  * 应用就绪后的启动编排
  */
 export async function bootstrapApp(options: BootstrapOptions): Promise<void> {
+  // 必须在创建任何窗口前：preload 同步取品牌靠这个 handler。
+  registerBrandingIpc()
+
   if (process.platform === "darwin") {
     Menu.setApplicationMenu(createMacApplicationMenu())
   } else {

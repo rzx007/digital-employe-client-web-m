@@ -1,6 +1,6 @@
 import { Menu } from "electron"
 
-import { APP_DISPLAY_NAME } from "./app-product"
+import { getAppDisplayName } from "./app-product"
 import { checkForUpdatesFromMenu } from "../features/update/auto-updater"
 
 /**
@@ -10,9 +10,10 @@ import { checkForUpdatesFromMenu } from "../features/update/auto-updater"
  * 打包后以 Info.plist / productName 为准。
  */
 export function createMacApplicationMenu(): Menu {
+  const appName = getAppDisplayName()
   const template: Electron.MenuItemConstructorOptions[] = [
     {
-      label: APP_DISPLAY_NAME,
+      label: appName,
       submenu: [
         { role: "about" },
         { type: "separator" },
@@ -30,7 +31,7 @@ export function createMacApplicationMenu(): Menu {
         { role: "unhide" },
         { type: "separator" },
         {
-          label: `退出 ${APP_DISPLAY_NAME}`,
+          label: `退出 ${appName}`,
           accelerator: "Command+Q",
           click: () => {
             void import("../core/services/lifecycle").then(({ quitApp }) => {

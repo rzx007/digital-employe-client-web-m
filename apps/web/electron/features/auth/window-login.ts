@@ -1,5 +1,6 @@
 import { BrowserWindow } from "electron"
 import { getWindowManager } from "../../core/services/window-registry"
+import { getResolvedBrand } from "../branding/brand-config"
 
 export function createLoginWindow(): void {
   const wm = getWindowManager()
@@ -11,7 +12,7 @@ export function createLoginWindow(): void {
     overrides: {
       width: 310,
       height: 450,
-      title: "数字员工",
+      title: getResolvedBrand().windowTitle,
       frame: false,
       resizable: false,
       useContentSize: true,

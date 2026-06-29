@@ -21,6 +21,12 @@
   ],
   "extraResources": [
     {
+      // 品牌资源包（运行时可热替换）：default/ 兜底 + 各品牌示例。
+      // 部署时 deploy.sh 可把选定品牌拷到 resources/branding/active/。
+      "from": "branding",
+      "to": "branding"
+    },
+    {
       "from": "py-server",
       "to": "py-server",
       "filter": [

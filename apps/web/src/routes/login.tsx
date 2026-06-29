@@ -14,7 +14,6 @@ import {
   IconX,
 } from "@tabler/icons-react"
 import { motion, AnimatePresence } from "motion/react"
-import logoImage from "@/assets/logo.png"
 import bgImage from "@/assets/Group.png"
 import feishuIcon from "@/assets/feishu.svg"
 import { useAuthStore } from "@/stores/auth-store"
@@ -24,6 +23,7 @@ import { ChangePasswordForm } from "@/components/login/change-password-form"
 import { useEndpointStore } from "@/stores/endpoint-store"
 import { updateRequestBaseUrl } from "@/lib/request"
 import { getOAuthAuthorizeUrl } from "@/api/auth"
+import { useBrand } from "@/lib/brand/brand"
 import {
   isElectron,
   subscribeElectron,
@@ -37,6 +37,7 @@ export const Route = createFileRoute("/login")({
 type LoginView = "login" | "endpoint" | "changePassword"
 
 function LoginPage() {
+  const brand = useBrand()
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -228,7 +229,11 @@ function LoginPage() {
               : "mx-auto flex w-full max-w-md items-center justify-center gap-2 pb-6",
           )}
         >
-          <img src={logoImage} alt="DigitalEmployee" className="h-7 w-9" />
+          <img
+            src={brand.logos.login}
+            alt={brand.productName}
+            className="h-7 w-9"
+          />
           <h1
             className={cn(
               "text-gray-800 tracking-wider",
@@ -237,7 +242,7 @@ function LoginPage() {
                 : "text-xl font-semibold",
             )}
           >
-            数字员工
+            {brand.productName}
           </h1>
         </div>
       </div>
