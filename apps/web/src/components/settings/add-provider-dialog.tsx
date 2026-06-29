@@ -212,26 +212,29 @@ export function AddProviderDialog({
   }
 
   const handleSubmitCustom = async () => {
-    if (!customId.trim() || !customName.trim() || !customUrl.trim()) {
-      toast.error("请填写供应商 ID、名称与 API 地址")
+    if (!customUrl.trim()) {
+      toast.error("请填写 API 地址")
       return
     }
     const normalized = models
-      .map((m) => ({
-        id: m.id.trim(),
-        display_name: m.display_name?.trim() || null,
-      }))
+      .map((m) => ({ id: m.id.trim() }))
       .filter((m) => m.id)
     if (normalized.length === 0) {
       toast.error("至少需要一个模型")
       return
     }
+    const host = hostFromUrl(customUrl)
+    const displayName = customName.trim() || host || "自定义供应商"
+    const providerId = uniqueProviderId(
+      customName.trim() || host || "provider",
+      existingProviderIds
+    )
     setSubmitting(true)
     try {
       const next = await addLlmProvider({
         source: "custom",
-        provider_id: customId.trim().toLowerCase(),
-        display_name: customName.trim(),
+        provider_id: providerId,
+        display_name: displayName,
         base_url: customUrl.trim(),
         api_key: customApiKey.trim(),
         models: normalized,
