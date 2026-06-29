@@ -116,6 +116,36 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
       error: "执行失败",
     },
   },
+  shell_poll: {
+    icon: "🔄",
+    label: "查看命令进度",
+    verb: "查看命令进度",
+    simple: {
+      running: "正在查看命令进度...",
+      done: "已获取进度",
+      error: "查看失败",
+    },
+  },
+  shell_wait: {
+    icon: "⏳",
+    label: "等待命令完成",
+    verb: "等待命令完成",
+    simple: {
+      running: "正在等待命令完成...",
+      done: "命令已完成",
+      error: "等待失败",
+    },
+  },
+  shell_kill: {
+    icon: "🛑",
+    label: "终止命令",
+    verb: "终止命令",
+    simple: {
+      running: "正在终止命令...",
+      done: "命令已终止",
+      error: "终止失败",
+    },
+  },
   ls: {
     icon: "📁",
     label: "列出目录",
@@ -429,6 +459,26 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
       running: "正在联网搜索...",
       done: "搜索完成",
       error: "搜索失败",
+    },
+  },
+  remember_memory: {
+    icon: "🧠",
+    label: "记录记忆",
+    verb: "记录记忆",
+    simple: {
+      running: "正在记录记忆...",
+      done: "已记录",
+      error: "记录失败",
+    },
+  },
+  update_skill: {
+    icon: "🧩",
+    label: "更新技能",
+    verb: "更新技能",
+    simple: {
+      running: "正在更新技能...",
+      done: "技能已更新",
+      error: "更新失败",
     },
   },
   add_workbench_widget: {
