@@ -90,7 +90,8 @@ class SearchBackend(Protocol):
 - **健康缓存**：进程内记录各后端最近一次可用性 + TTL（默认 5 分钟）。某后端近期判定不可达时**跳过**，避免每次搜索都白等 Exa 超时——这对"连不上外网"的环境尤其关键。
 - 逐个后端尝试：异常或空结果 → 下一个；成功即停。
 - 成功后按需 ContentFetcher 补正文。
-- 总输出按字符预算截断（默认 10k，配置可调，对齐 opencode 的 `contextMaxCharacters` 默认值）。
+- **返回参照 opencode：透传后端文本，最小加工**（详见 §5）。Exa 文本原样透传；国内/searxng 后端格式化成同款文本块。
+- 总输出按字符预算截断（默认 10k，配置可调，对齐 opencode 的 `contextMaxCharacters` 默认值），并施加 256KB 字节硬上限（对齐 opencode `MAX_RESPONSE_BYTES`）。
 - 全部后端失败：**返回清晰的文字说明**（不抛异常），提示 agent 可改用 browserctl 打开具体页面。
 
 ### 3.7 连通性自检（落地实测用）
@@ -121,15 +122,23 @@ def web_search(query: str, num_results: int = 8, fetch_content: bool = True) -> 
     """联网搜索并返回结果摘要（含前几条正文）。需要查最新/外部信息时用本工具，
     比开浏览器更快更稳。要对某个具体网页做点击/填表等交互，才用 browser-runtime 技能。"""
 ```
-返回（纯文本，喂模型）：
+**返回逻辑参照 opencode**：几乎不二次加工，**透传后端文本**，只做预算截断。opencode 的 `toModelOutput` 直接把 provider 文本原样塞给模型（`[{type:"text", text}]`）。
+
+- **ExaBackend**：Exa 自带的 `result.content[0].text` 已是规整文本块（`Title/URL/Published/Author/Highlights`，`---` 分隔），**原样透传**，只施加字符预算（`WEB_SEARCH_MAX_CHARS`，默认 10k，对齐 Exa `contextMaxCharacters`）+ 256KB 字节硬上限（对齐 opencode `MAX_RESPONSE_BYTES`）。
+- **DomesticBackend / SearxngBackend**（返回结构化 `SearchResult`）：在 `WebSearchService` 里**格式化成与 Exa 一致的同款文本块**，让模型无论走哪个后端都看到统一形态：
 ```
-搜索：<query>（后端：exa）
-1. <title>
-   <url>
-   摘要：<snippet>
-   正文：<content 截断>
-2. ...
+Title: <title>
+URL: <url>
+Published: <published or N/A>
+Highlights:
+<snippet>
+<content 截断>
+
+---
+
+Title: ...
 ```
+- 顶部加一行轻量前缀 `搜索：<query>（后端：<name>）`，其余透传。全文按字符预算截断。
 
 ## 6. 集成点（最小改动）
 
